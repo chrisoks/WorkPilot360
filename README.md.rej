@@ -1,0 +1,68 @@
+diff a/README.md b/README.md	(rejected hunks)
+@@ -1,2 +1,64 @@
+-# Tasks
+-Ein Programm um offene Aufgaben zu monitoren und auf dem Schirm zu haben
++# Tasks SaaS MVP (Next.js + Prisma)
++
++## 1) Anforderungsanalyse (Kurzfassung)
++- Mandantenfähigkeit ist Kernanforderung: jeder Datensatz ist an `organizationId` gebunden.
++- Rechte nach Rollen: Admin > Geschäftsführer > Führungskraft > Mitarbeiter > Gast.
++- Führungskräfte sehen Teamaufgaben, Mitarbeiter primär eigene Aufgaben.
++- Aufgaben benötigen Status, Priorität, Deadline, Kategorie, Kunde, Vorgabezeit, Teilnehmer, Kommentare, Links und Zeitbuchungen.
++- Änderungen an Aufgaben müssen auditierbar sein.
++
++## 2) Technische Architektur
++- **Frontend:** Next.js App Router, TypeScript, responsive ausbaubar.
++- **Backend:** Server-seitige Services in `src/lib/services`, Prisma als Datenzugriff.
++- **Sicherheit:**
++  - zentrale Permission-Helper in `src/lib/permissions`
++  - zentrale Tenant-Checks in `src/lib/tenant`
++- **Internationalisierung:** Deutsch als Standardsprache, Struktur für spätere Englisch-Lokalisierung vorbereitet.
++- **Erweiterbarkeit:** Integrations- und Automationsmodelle (Notification, EscalationRule, RecurringTaskRule, TaskTemplate) vorhanden.
++
++## 3) MVP-Status
++Dieses Repository liefert eine belastbare **Grundstruktur** inklusive:
++- Prisma-Datenmodell mit allen geforderten Entitäten
++- Seed-Daten für Demo-Mandant und Rollen
++- zentrale Berechtigungslogik + Tenant-Isolation
++- Task-Service mit AuditLog-Beispiel beim Statuswechsel
++- Tests für Rechteprüfung und Tenant-Isolation
++
++Noch nicht vollständig umgesetzt (nur vorbereitet):
++- Outlook/HERO/DATEV/Dropbox Integrationen
++- Push, Exporte, Freigabeprozesse
++- komplette UI-Workflows für alle Dashboards und Ansichten
++
++## 4) Projektstruktur
++- `prisma/schema.prisma` – Datenmodell
++- `prisma/seed.ts` – Demo-Seed
++- `src/lib/permissions` – Rollen- und Zugriffslogik
++- `src/lib/tenant` – Tenant-Prüfung und Filter-Helfer
++- `src/lib/services` – Business-Logik (Task-Service)
++- `tests` – Vitest-Suites für Security-Basics
++
++## 5) Lokales Starten
++```bash
++cp .env.example .env
++npm install
++npx prisma generate
++npx prisma db push
++npx prisma db seed
++npm run dev
++```
++
++## 6) Nächste sinnvolle Schritte
++1. Auth (E-Mail/Passwort) mit Session-Handling vollständig verdrahten.
++2. Mandantenkontext in Middleware erzwingen.
++3. UI für Task-Liste, Kanban, Kalender, Dashboards ausbauen.
++4. Cron/Queue für Deadline-Erinnerung (24h) und Überfälligkeits-Eskalation ergänzen.
++
++## Troubleshooting (wenn in VS Code alles rot ist)
++Typische Ursachen:
++1. **Abhängigkeiten fehlen**: zuerst `npm install` ausführen (im Projektordner mit `package.json`).
++2. **Falscher geöffneter Ordner**: in VS Code muss der Root `Aufgaben-MGMT` offen sein, nicht ein übergeordneter Mischordner.
++3. **TypeScript Server hängt**: `Ctrl+Shift+P` → `TypeScript: Restart TS Server`.
++4. **Node.js fehlt/zu alt**: `node -v` prüfen (empfohlen Node 20 LTS).
++5. **Prisma Client fehlt**: `npx prisma generate` ausführen.
++
++Wenn `vitest/config` oder `node:path` rot markiert sind, ist fast immer Punkt 1 (fehlendes `node_modules`) die Ursache.
