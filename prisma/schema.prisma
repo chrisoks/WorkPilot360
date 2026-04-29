@@ -51,6 +51,7 @@ model Organization {
   categories       Category[]
   subcategories    Subcategory[]
   notifications    Notification[]
+  taskLinks        TaskLink[]
   auditLogs        AuditLog[]
   escalationRules  EscalationRule[]
   taskTemplates    TaskTemplate[]
@@ -128,6 +129,7 @@ model Task {
   comments            TaskComment[]
   links               TaskLink[]
   timeEntries         TimeEntry[]
+  notifications       Notification[]
   auditLogs           AuditLog[]
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt

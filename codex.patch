@@ -1,4 +1,3 @@
- (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/.env.example b/.env.example
 new file mode 100644
 index 0000000000000000000000000000000000000000..6f7b64be3e6002a93dd220aacdd1f4aca7cb410e
@@ -442,13 +441,181 @@ index 0000000000000000000000000000000000000000..e1e373afec4dc199a047fbd2c9372049
 +}
 +
 +main().finally(async () => prisma.$disconnect());
+diff --git a/src/app/dashboard/page.tsx b/src/app/dashboard/page.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..4a335c8e6a824c047c46f795667fb04345475551
+--- /dev/null
++++ b/src/app/dashboard/page.tsx
+@@ -0,0 +1,143 @@
++'use client';
++
++import { FormEvent, useMemo, useState } from 'react';
++import styles from '@/components/dashboard/dashboard.module.css';
++
++type TaskStatus = 'offen' | 'in Bearbeitung' | 'erledigt';
++type TaskPriority = 'niedrig' | 'normal' | 'hoch';
++
++type TaskItem = {
++  id: string;
++  titel: string;
++  status: TaskStatus;
++  prioritaet: TaskPriority;
++  zustaendig: string;
++  faelligkeit: string;
++};
++
++const initialTasks: TaskItem[] = [
++  { id: 'T-1021', titel: 'Kundenanfrage prüfen', status: 'offen', prioritaet: 'hoch', zustaendig: 'Mia Bauer', faelligkeit: '30.04.2026' },
++  { id: 'T-1022', titel: 'Monatsreport aktualisieren', status: 'in Bearbeitung', prioritaet: 'normal', zustaendig: 'Lars Klein', faelligkeit: '02.05.2026' },
++  { id: 'T-1023', titel: 'Vertrag A12 abschließen', status: 'erledigt', prioritaet: 'niedrig', zustaendig: 'Gina Roth', faelligkeit: '28.04.2026' }
++];
++
++const statusClass: Record<TaskStatus, string> = {
++  offen: styles.open,
++  'in Bearbeitung': styles.progress,
++  erledigt: styles.done
++};
++
++const priorityClass: Record<TaskPriority, string> = {
++  niedrig: styles.low,
++  normal: styles.normal,
++  hoch: styles.high
++};
++
++export default function DashboardRoute() {
++  const [tasks, setTasks] = useState<TaskItem[]>(initialTasks);
++  const [showModal, setShowModal] = useState(false);
++  const [form, setForm] = useState<Omit<TaskItem, 'id'>>({
++    titel: '',
++    status: 'offen',
++    prioritaet: 'normal',
++    zustaendig: '',
++    faelligkeit: ''
++  });
++
++  const stats = useMemo(() => {
++    const offen = tasks.filter((t) => t.status === 'offen').length;
++    const inBearbeitung = tasks.filter((t) => t.status === 'in Bearbeitung').length;
++    const erledigt = tasks.filter((t) => t.status === 'erledigt').length;
++    return { offen, inBearbeitung, erledigt, total: tasks.length };
++  }, [tasks]);
++
++  const handleSave = (e: FormEvent<HTMLFormElement>) => {
++    e.preventDefault();
++    if (!form.titel.trim() || !form.zustaendig.trim() || !form.faelligkeit) return;
++
++    const newTask: TaskItem = {
++      ...form,
++      id: `T-${1000 + tasks.length + 1}`,
++      faelligkeit: new Date(form.faelligkeit).toLocaleDateString('de-DE')
++    };
++
++    setTasks((prev) => [newTask, ...prev]);
++    setShowModal(false);
++    setForm({ titel: '', status: 'offen', prioritaet: 'normal', zustaendig: '', faelligkeit: '' });
++  };
++
++  return (
++    <div className={styles.wrapper}>
++      <aside className={styles.sidebar}>
++        <div className={styles.brand}>Aufgaben-MGMT</div>
++        <nav className={styles.nav}>
++          <a className={`${styles.navItem} ${styles.active}`} href="/dashboard">Dashboard</a>
++          <a className={styles.navItem} href="#">Aufgaben</a>
++          <a className={styles.navItem} href="#">Kalender</a>
++          <a className={styles.navItem} href="#">Teams</a>
++          <a className={styles.navItem} href="#">Einstellungen</a>
++        </nav>
++      </aside>
++
++      <main className={styles.main}>
++        <header className={styles.header}>
++          <h1 className={styles.title}>Meine Aufgaben</h1>
++          <button className={styles.button} onClick={() => setShowModal(true)}>Neue Aufgabe</button>
++        </header>
++
++        <section className={styles.cards}>
++          <article className={styles.card}><p className={styles.cardLabel}>Gesamt</p><p className={styles.cardValue}>{stats.total}</p></article>
++          <article className={styles.card}><p className={styles.cardLabel}>Offen</p><p className={styles.cardValue}>{stats.offen}</p></article>
++          <article className={styles.card}><p className={styles.cardLabel}>In Bearbeitung</p><p className={styles.cardValue}>{stats.inBearbeitung}</p></article>
++          <article className={styles.card}><p className={styles.cardLabel}>Erledigt</p><p className={styles.cardValue}>{stats.erledigt}</p></article>
++        </section>
++
++        <section className={styles.tableWrap}>
++          <table className={styles.table}>
++            <thead>
++              <tr>
++                <th>Aufgabe</th><th>Status</th><th>Priorität</th><th>Zuständigkeit</th><th>Fälligkeitsdatum</th>
++              </tr>
++            </thead>
++            <tbody>
++              {tasks.map((task) => (
++                <tr key={task.id}>
++                  <td>{task.id} · {task.titel}</td>
++                  <td><span className={`${styles.badge} ${statusClass[task.status]}`}>{task.status}</span></td>
++                  <td><span className={`${styles.badge} ${priorityClass[task.prioritaet]}`}>{task.prioritaet}</span></td>
++                  <td>{task.zustaendig}</td>
++                  <td>{task.faelligkeit}</td>
++                </tr>
++              ))}
++            </tbody>
++          </table>
++        </section>
++      </main>
++
++      {showModal && (
++        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.45)', display: 'grid', placeItems: 'center', padding: 16 }}>
++          <form onSubmit={handleSave} style={{ background: '#fff', width: 'min(560px, 100%)', borderRadius: 14, padding: 20, display: 'grid', gap: 12 }}>
++            <h2 style={{ margin: 0 }}>Neue Aufgabe</h2>
++            <input placeholder="Titel" value={form.titel} onChange={(e) => setForm((prev) => ({ ...prev, titel: e.target.value }))} required style={{ padding: 10 }} />
++            <select value={form.status} onChange={(e) => setForm((prev) => ({ ...prev, status: e.target.value as TaskStatus }))} style={{ padding: 10 }}>
++              <option value="offen">offen</option>
++              <option value="in Bearbeitung">in Bearbeitung</option>
++              <option value="erledigt">erledigt</option>
++            </select>
++            <select value={form.prioritaet} onChange={(e) => setForm((prev) => ({ ...prev, prioritaet: e.target.value as TaskPriority }))} style={{ padding: 10 }}>
++              <option value="niedrig">niedrig</option>
++              <option value="normal">normal</option>
++              <option value="hoch">hoch</option>
++            </select>
++            <input placeholder="Zuständig" value={form.zustaendig} onChange={(e) => setForm((prev) => ({ ...prev, zustaendig: e.target.value }))} required style={{ padding: 10 }} />
++            <input type="date" value={form.faelligkeit} onChange={(e) => setForm((prev) => ({ ...prev, faelligkeit: e.target.value }))} required style={{ padding: 10 }} />
++            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
++              <button type="button" onClick={() => setShowModal(false)} style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff' }}>Abbrechen</button>
++              <button type="submit" className={styles.button}>Speichern</button>
++            </div>
++          </form>
++        </div>
++      )}
++    </div>
++  );
++}
+diff --git a/src/app/globals.css b/src/app/globals.css
+new file mode 100644
+index 0000000000000000000000000000000000000000..1565ec651943bfd6772c7b509b2f0bdc0892bfde
+--- /dev/null
++++ b/src/app/globals.css
+@@ -0,0 +1,12 @@
++:root {
++  color-scheme: light;
++}
++* { box-sizing: border-box; }
++body {
++  margin: 0;
++  font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
++  background: #f5f7fb;
++  color: #1e293b;
++}
++a { color: inherit; text-decoration: none; }
++button { font: inherit; }
 diff --git a/src/app/layout.tsx b/src/app/layout.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..ef4014232ea08cbc904f307ee3533713e8b214ea
+index 0000000000000000000000000000000000000000..86df7b90e5b1f044948cbbb058e2c73fa20e595b
 --- /dev/null
 +++ b/src/app/layout.tsx
-@@ -0,0 +1,9 @@
+@@ -0,0 +1,10 @@
 +import type { ReactNode } from 'react';
++import './globals.css';
 +
 +export default function RootLayout({ children }: { children: ReactNode }) {
 +  return (
@@ -459,17 +626,152 @@ index 0000000000000000000000000000000000000000..ef4014232ea08cbc904f307ee3533713
 +}
 diff --git a/src/app/page.tsx b/src/app/page.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..db32f5dc45fce93504899154a61b5b1b961d0d4a
+index 0000000000000000000000000000000000000000..46439763d5c6bf8d187d930377025f1a4a21348e
 --- /dev/null
 +++ b/src/app/page.tsx
-@@ -0,0 +1,8 @@
+@@ -0,0 +1,11 @@
++import Link from 'next/link';
++
 +export default function HomePage() {
 +  return (
 +    <main style={{ padding: 24 }}>
 +      <h1>Aufgabenmanagement SaaS MVP</h1>
-+      <p>Mandantenfähige Basis mit Rollen- und Tenant-Prüfung ist vorbereitet.</p>
++      <p>Die sichtbare MVP-Oberfläche findest du im Dashboard.</p>
++      <Link href="/dashboard">Zum Dashboard</Link>
 +    </main>
 +  );
++}
+diff --git a/src/components/dashboard/dashboard-page.tsx b/src/components/dashboard/dashboard-page.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..5302a4191e6cb9345f7509c3c2d715fbe59c0a99
+--- /dev/null
++++ b/src/components/dashboard/dashboard-page.tsx
+@@ -0,0 +1,87 @@
++import styles from './dashboard.module.css';
++
++type TaskStatus = 'offen' | 'in Bearbeitung' | 'erledigt';
++type TaskPriority = 'niedrig' | 'normal' | 'hoch';
++
++type TaskItem = {
++  id: string;
++  titel: string;
++  status: TaskStatus;
++  prioritaet: TaskPriority;
++  zustaendig: string;
++  faelligkeit: string;
++};
++
++const demoTasks: TaskItem[] = [
++  { id: 'T-1021', titel: 'Kundenanfrage prüfen', status: 'offen', prioritaet: 'hoch', zustaendig: 'Mia Bauer', faelligkeit: '30.04.2026' },
++  { id: 'T-1022', titel: 'Monatsreport aktualisieren', status: 'in Bearbeitung', prioritaet: 'normal', zustaendig: 'Lars Klein', faelligkeit: '02.05.2026' },
++  { id: 'T-1023', titel: 'Vertrag A12 abschließen', status: 'erledigt', prioritaet: 'niedrig', zustaendig: 'Gina Roth', faelligkeit: '28.04.2026' }
++];
++
++const statusClass: Record<TaskStatus, string> = {
++  offen: styles.open,
++  'in Bearbeitung': styles.progress,
++  erledigt: styles.done
++};
++
++const priorityClass: Record<TaskPriority, string> = {
++  niedrig: styles.low,
++  normal: styles.normal,
++  hoch: styles.high
++};
++
++export function DashboardPage() {
++  const offene = demoTasks.filter((t) => t.status === 'offen').length;
++  const bearbeitung = demoTasks.filter((t) => t.status === 'in Bearbeitung').length;
++  const erledigt = demoTasks.filter((t) => t.status === 'erledigt').length;
++
++  return (
++    <div className={styles.wrapper}>
++      <aside className={styles.sidebar}>
++        <div className={styles.brand}>Aufgaben-MGMT</div>
++        <nav className={styles.nav}>
++          <a className={`${styles.navItem} ${styles.active}`} href="/dashboard">Dashboard</a>
++          <a className={styles.navItem} href="#">Aufgaben</a>
++          <a className={styles.navItem} href="#">Kalender</a>
++          <a className={styles.navItem} href="#">Teams</a>
++          <a className={styles.navItem} href="#">Einstellungen</a>
++        </nav>
++      </aside>
++
++      <main className={styles.main}>
++        <header className={styles.header}>
++          <h1 className={styles.title}>Meine Aufgaben</h1>
++          <button className={styles.button}>Neue Aufgabe</button>
++        </header>
++
++        <section className={styles.cards}>
++          <article className={styles.card}><p className={styles.cardLabel}>Gesamt</p><p className={styles.cardValue}>{demoTasks.length}</p></article>
++          <article className={styles.card}><p className={styles.cardLabel}>Offen</p><p className={styles.cardValue}>{offene}</p></article>
++          <article className={styles.card}><p className={styles.cardLabel}>In Bearbeitung</p><p className={styles.cardValue}>{bearbeitung}</p></article>
++          <article className={styles.card}><p className={styles.cardLabel}>Erledigt</p><p className={styles.cardValue}>{erledigt}</p></article>
++        </section>
++
++        <section className={styles.tableWrap}>
++          <table className={styles.table}>
++            <thead>
++              <tr>
++                <th>Aufgabe</th><th>Status</th><th>Priorität</th><th>Zuständigkeit</th><th>Fälligkeitsdatum</th>
++              </tr>
++            </thead>
++            <tbody>
++              {demoTasks.map((task) => (
++                <tr key={task.id}>
++                  <td>{task.id} · {task.titel}</td>
++                  <td><span className={`${styles.badge} ${statusClass[task.status]}`}>{task.status}</span></td>
++                  <td><span className={`${styles.badge} ${priorityClass[task.prioritaet]}`}>{task.prioritaet}</span></td>
++                  <td>{task.zustaendig}</td>
++                  <td>{task.faelligkeit}</td>
++                </tr>
++              ))}
++            </tbody>
++          </table>
++        </section>
++      </main>
++    </div>
++  );
++}
+diff --git a/src/components/dashboard/dashboard.module.css b/src/components/dashboard/dashboard.module.css
+new file mode 100644
+index 0000000000000000000000000000000000000000..38e7f4988d06ac4ba7aae4923da93adc10e0caf2
+--- /dev/null
++++ b/src/components/dashboard/dashboard.module.css
+@@ -0,0 +1,33 @@
++.wrapper { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
++.sidebar { background: #0f172a; color: #e2e8f0; padding: 28px 20px; }
++.brand { font-size: 1.1rem; font-weight: 700; margin-bottom: 28px; }
++.nav { display: grid; gap: 8px; }
++.navItem { padding: 10px 12px; border-radius: 10px; opacity: .9; }
++.active { background: #1e293b; opacity: 1; }
++.main { padding: 28px; }
++.header { display:flex; justify-content:space-between; align-items:center; gap: 12px; margin-bottom: 20px; }
++.title { margin: 0; font-size: 1.6rem; }
++.button { background:#2563eb; color:#fff; border:0; border-radius:10px; padding:10px 14px; font-weight:600; cursor:pointer; }
++.cards { display:grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap:14px; margin-bottom:20px; }
++.card { background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:16px; }
++.cardLabel { color:#64748b; font-size:.9rem; margin:0 0 6px; }
++.cardValue { margin:0; font-size:1.35rem; font-weight:700; }
++.tableWrap { background:#fff; border:1px solid #e2e8f0; border-radius:14px; overflow:auto; }
++.table { width:100%; border-collapse:collapse; }
++.table th, .table td { padding:14px 12px; text-align:left; border-bottom:1px solid #f1f5f9; font-size:.95rem; }
++.badge { display:inline-block; padding:4px 8px; border-radius:999px; font-size:.78rem; font-weight:600; }
++.open { background:#dbeafe; color:#1d4ed8; }
++.progress { background:#fef3c7; color:#b45309; }
++.done { background:#dcfce7; color:#15803d; }
++.low { background:#f1f5f9; color:#334155; }
++.normal { background:#e0e7ff; color:#4338ca; }
++.high { background:#fee2e2; color:#b91c1c; }
++@media (max-width: 980px) {
++  .wrapper { grid-template-columns: 1fr; }
++  .sidebar { display:none; }
++  .cards { grid-template-columns: repeat(2,minmax(0,1fr)); }
++}
++@media (max-width: 640px) {
++  .main { padding:16px; }
++  .cards { grid-template-columns: 1fr; }
 +}
 diff --git a/src/lib/db/client.ts b/src/lib/db/client.ts
 new file mode 100644
@@ -675,6 +977,3 @@ index 0000000000000000000000000000000000000000..b33c9ebb839cf76bcb3203c0d661cd64
 +    alias: { '@': path.resolve(__dirname, './src') }
 +  }
 +});
- 
-EOF
-)
