@@ -1,0 +1,680 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/.env.example b/.env.example
+new file mode 100644
+index 0000000000000000000000000000000000000000..6f7b64be3e6002a93dd220aacdd1f4aca7cb410e
+--- /dev/null
++++ b/.env.example
+@@ -0,0 +1 @@
++DATABASE_URL="postgresql://postgres:postgres@localhost:5432/tasks"
+diff --git a/README.md b/README.md
+index 96ef6b87d78649da43ef283a5ec2844495869b60..c7a81e60c99615f817f69fb03c672b1a55e836c1 100644
+--- a/README.md
++++ b/README.md
+@@ -1,2 +1,64 @@
+-# Tasks
+-Ein Programm um offene Aufgaben zu monitoren und auf dem Schirm zu haben
++# Tasks SaaS MVP (Next.js + Prisma)
++
++## 1) Anforderungsanalyse (Kurzfassung)
++- Mandantenfähigkeit ist Kernanforderung: jeder Datensatz ist an `organizationId` gebunden.
++- Rechte nach Rollen: Admin > Geschäftsführer > Führungskraft > Mitarbeiter > Gast.
++- Führungskräfte sehen Teamaufgaben, Mitarbeiter primär eigene Aufgaben.
++- Aufgaben benötigen Status, Priorität, Deadline, Kategorie, Kunde, Vorgabezeit, Teilnehmer, Kommentare, Links und Zeitbuchungen.
++- Änderungen an Aufgaben müssen auditierbar sein.
++
++## 2) Technische Architektur
++- **Frontend:** Next.js App Router, TypeScript, responsive ausbaubar.
++- **Backend:** Server-seitige Services in `src/lib/services`, Prisma als Datenzugriff.
++- **Sicherheit:**
++  - zentrale Permission-Helper in `src/lib/permissions`
++  - zentrale Tenant-Checks in `src/lib/tenant`
++- **Internationalisierung:** Deutsch als Standardsprache, Struktur für spätere Englisch-Lokalisierung vorbereitet.
++- **Erweiterbarkeit:** Integrations- und Automationsmodelle (Notification, EscalationRule, RecurringTaskRule, TaskTemplate) vorhanden.
++
++## 3) MVP-Status
++Dieses Repository liefert eine belastbare **Grundstruktur** inklusive:
++- Prisma-Datenmodell mit allen geforderten Entitäten
++- Seed-Daten für Demo-Mandant und Rollen
++- zentrale Berechtigungslogik + Tenant-Isolation
++- Task-Service mit AuditLog-Beispiel beim Statuswechsel
++- Tests für Rechteprüfung und Tenant-Isolation
++
++Noch nicht vollständig umgesetzt (nur vorbereitet):
++- Outlook/HERO/DATEV/Dropbox Integrationen
++- Push, Exporte, Freigabeprozesse
++- komplette UI-Workflows für alle Dashboards und Ansichten
++
++## 4) Projektstruktur
++- `prisma/schema.prisma` – Datenmodell
++- `prisma/seed.ts` – Demo-Seed
++- `src/lib/permissions` – Rollen- und Zugriffslogik
++- `src/lib/tenant` – Tenant-Prüfung und Filter-Helfer
++- `src/lib/services` – Business-Logik (Task-Service)
++- `tests` – Vitest-Suites für Security-Basics
++
++## 5) Lokales Starten
++```bash
++cp .env.example .env
++npm install
++npx prisma generate
++npx prisma db push
++npx prisma db seed
++npm run dev
++```
++
++## 6) Nächste sinnvolle Schritte
++1. Auth (E-Mail/Passwort) mit Session-Handling vollständig verdrahten.
++2. Mandantenkontext in Middleware erzwingen.
++3. UI für Task-Liste, Kanban, Kalender, Dashboards ausbauen.
++4. Cron/Queue für Deadline-Erinnerung (24h) und Überfälligkeits-Eskalation ergänzen.
++
++## Troubleshooting (wenn in VS Code alles rot ist)
++Typische Ursachen:
++1. **Abhängigkeiten fehlen**: zuerst `npm install` ausführen (im Projektordner mit `package.json`).
++2. **Falscher geöffneter Ordner**: in VS Code muss der Root `Aufgaben-MGMT` offen sein, nicht ein übergeordneter Mischordner.
++3. **TypeScript Server hängt**: `Ctrl+Shift+P` → `TypeScript: Restart TS Server`.
++4. **Node.js fehlt/zu alt**: `node -v` prüfen (empfohlen Node 20 LTS).
++5. **Prisma Client fehlt**: `npx prisma generate` ausführen.
++
++Wenn `vitest/config` oder `node:path` rot markiert sind, ist fast immer Punkt 1 (fehlendes `node_modules`) die Ursache.
+diff --git a/next.config.mjs b/next.config.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..b44fec7638e98aaaddf629249bfaabeb6ca0bd67
+--- /dev/null
++++ b/next.config.mjs
+@@ -0,0 +1,8 @@
++/** @type {import('next').NextConfig} */
++const nextConfig = {
++  experimental: {
++    typedRoutes: true
++  }
++};
++
++export default nextConfig;
+diff --git a/package.json b/package.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..a765af2ca761b8266eac1f9e669eb9c0c7afc4ea
+--- /dev/null
++++ b/package.json
+@@ -0,0 +1,30 @@
++{
++  "name": "tasks-saas-mvp",
++  "version": "0.1.0",
++  "private": true,
++  "scripts": {
++    "dev": "next dev",
++    "build": "next build",
++    "start": "next start",
++    "lint": "next lint",
++    "test": "vitest run",
++    "test:watch": "vitest"
++  },
++  "dependencies": {
++    "@prisma/client": "^5.19.1",
++    "bcryptjs": "^2.4.3",
++    "next": "14.2.5",
++    "next-intl": "^3.17.2",
++    "react": "18.3.1",
++    "react-dom": "18.3.1",
++    "zod": "^3.23.8"
++  },
++  "devDependencies": {
++    "@types/node": "^20.14.12",
++    "@types/react": "^18.3.3",
++    "@types/react-dom": "^18.3.0",
++    "prisma": "^5.19.1",
++    "typescript": "^5.5.4",
++    "vitest": "^2.0.5"
++  }
++}
+diff --git a/prisma/schema.prisma b/prisma/schema.prisma
+new file mode 100644
+index 0000000000000000000000000000000000000000..63373a1363af94774c398e301b66590cc0157b05
+--- /dev/null
++++ b/prisma/schema.prisma
+@@ -0,0 +1,264 @@
++generator client {
++  provider = "prisma-client-js"
++}
++
++datasource db {
++  provider = "postgresql"
++  url      = env("DATABASE_URL")
++}
++
++enum Role {
++  ADMIN
++  GESCHAEFTSFUEHRER
++  FUEHRUNGSKRAFT
++  MITARBEITER
++  GAST
++}
++
++enum TaskStatus {
++  OFFEN
++  IN_BEARBEITUNG
++  WARTET_AUF_RUECKMELDUNG
++  ERLEDIGT
++  ABGELEHNT
++  UEBERFAELLIG
++  ARCHIVIERT
++}
++
++enum TaskPriority {
++  NIEDRIG
++  NORMAL
++  HOCH
++  KRITISCH
++}
++
++enum CustomerClassification {
++  A
++  B
++  C
++}
++
++model Organization {
++  id               String           @id @default(cuid())
++  name             String
++  slug             String           @unique
++  locale           String           @default("de")
++  timezone         String           @default("Europe/Berlin")
++  users            User[]
++  departments      Department[]
++  teams            Team[]
++  tasks            Task[]
++  categories       Category[]
++  subcategories    Subcategory[]
++  notifications    Notification[]
++  auditLogs        AuditLog[]
++  escalationRules  EscalationRule[]
++  taskTemplates    TaskTemplate[]
++  recurringRules   RecurringTaskRule[]
++  createdAt        DateTime         @default(now())
++  updatedAt        DateTime         @updatedAt
++}
++
++model User {
++  id              String      @id @default(cuid())
++  organizationId  String
++  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
++  email           String
++  passwordHash    String
++  firstName       String
++  lastName        String
++  role            Role
++  isActive        Boolean     @default(true)
++  teamId          String?
++  team            Team?       @relation(fields: [teamId], references: [id])
++  departmentId    String?
++  department      Department? @relation(fields: [departmentId], references: [id])
++  ownedTasks      Task[]      @relation("TaskOwner")
++  taskParticipations TaskParticipant[]
++  taskComments    TaskComment[]
++  timeEntries     TimeEntry[]
++  notifications   Notification[]
++  createdAt       DateTime    @default(now())
++  updatedAt       DateTime    @updatedAt
++
++  @@unique([organizationId, email])
++}
++
++model Department {
++  id              String      @id @default(cuid())
++  organizationId  String
++  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
++  name            String
++  teams           Team[]
++  users           User[]
++}
++
++model Team {
++  id              String      @id @default(cuid())
++  organizationId  String
++  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
++  departmentId    String?
++  department      Department? @relation(fields: [departmentId], references: [id])
++  name            String
++  users           User[]
++  tasks           Task[]
++}
++
++model Task {
++  id                  String                @id @default(cuid())
++  organizationId      String
++  organization        Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
++  title               String
++  description         String
++  status              TaskStatus            @default(OFFEN)
++  priority            TaskPriority          @default(NORMAL)
++  deadline            DateTime
++  customer            String?
++  customerClass       CustomerClassification?
++  categoryId          String?
++  category            Category?             @relation(fields: [categoryId], references: [id])
++  subcategoryId       String?
++  subcategory         Subcategory?          @relation(fields: [subcategoryId], references: [id])
++  estimateMinutes     Int?
++  ownerId             String
++  owner               User                  @relation("TaskOwner", fields: [ownerId], references: [id])
++  teamId              String?
++  team                Team?                 @relation(fields: [teamId], references: [id])
++  participants        TaskParticipant[]
++  comments            TaskComment[]
++  links               TaskLink[]
++  timeEntries         TimeEntry[]
++  auditLogs           AuditLog[]
++  createdAt           DateTime              @default(now())
++  updatedAt           DateTime              @updatedAt
++}
++
++model TaskParticipant {
++  id              String   @id @default(cuid())
++  organizationId  String
++  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
++  taskId          String
++  task            Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
++  userId          String
++  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
++  createdAt       DateTime @default(now())
++
++  @@unique([taskId, userId])
++}
++
++model TaskComment {
++  id              String   @id @default(cuid())
++  organizationId  String
++  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
++  taskId          String
++  task            Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
++  authorId        String
++  author          User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
++  body            String
++  createdAt       DateTime @default(now())
++}
++
++model TimeEntry {
++  id              String   @id @default(cuid())
++  organizationId  String
++  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
++  taskId          String
++  task            Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
++  userId          String
++  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
++  startedAt       DateTime
++  stoppedAt       DateTime?
++  durationMinutes Int      @default(0)
++  note            String?
++}
++
++model TaskLink {
++  id              String   @id @default(cuid())
++  organizationId  String
++  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
++  taskId          String
++  task            Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
++  label           String
++  url             String
++}
++
++model Category {
++  id              String   @id @default(cuid())
++  organizationId  String
++  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
++  name            String
++  subcategories   Subcategory[]
++  tasks           Task[]
++}
++
++model Subcategory {
++  id              String   @id @default(cuid())
++  organizationId  String
++  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
++  categoryId      String
++  category        Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
++  name            String
++  tasks           Task[]
++}
++
++model Notification {
++  id              String   @id @default(cuid())
++  organizationId  String
++  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
++  userId          String
++  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
++  taskId          String?
++  task            Task?    @relation(fields: [taskId], references: [id])
++  channel         String
++  subject         String
++  body            String
++  sentAt          DateTime?
++  createdAt       DateTime @default(now())
++}
++
++model AuditLog {
++  id              String   @id @default(cuid())
++  organizationId  String
++  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
++  taskId          String?
++  task            Task?    @relation(fields: [taskId], references: [id])
++  actorId         String?
++  action          String
++  entityType      String
++  entityId        String
++  payload         Json?
++  createdAt       DateTime @default(now())
++}
++
++model EscalationRule {
++  id              String   @id @default(cuid())
++  organizationId  String
++  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
++  name            String
++  hoursAfterDue   Int      @default(0)
++  targetRole      Role
++  isActive        Boolean  @default(true)
++}
++
++model TaskTemplate {
++  id              String   @id @default(cuid())
++  organizationId  String
++  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
++  name            String
++  description     String?
++  defaultPriority TaskPriority @default(NORMAL)
++  defaultEstimate Int?
++  categoryId      String?
++  subcategoryId   String?
++}
++
++model RecurringTaskRule {
++  id              String   @id @default(cuid())
++  organizationId  String
++  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
++  name            String
++  cronExpression  String
++  isActive        Boolean  @default(true)
++  templateId      String?
++  nextRunAt       DateTime?
++}
+diff --git a/prisma/seed.ts b/prisma/seed.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..e1e373afec4dc199a047fbd2c93720495750cc42
+--- /dev/null
++++ b/prisma/seed.ts
+@@ -0,0 +1,39 @@
++import { PrismaClient, Role } from '@prisma/client';
++import bcrypt from 'bcryptjs';
++
++const prisma = new PrismaClient();
++
++async function main() {
++  const org = await prisma.organization.upsert({
++    where: { slug: 'demo-gmbh' },
++    update: {},
++    create: { name: 'Demo GmbH', slug: 'demo-gmbh', locale: 'de' }
++  });
++
++  const department = await prisma.department.create({ data: { name: 'Operations', organizationId: org.id } });
++  const team = await prisma.team.create({ data: { name: 'Team Alpha', organizationId: org.id, departmentId: department.id } });
++
++  const users = [
++    { email: 'admin@demo.local', role: Role.ADMIN, firstName: 'Ada', lastName: 'Admin' },
++    { email: 'ceo@demo.local', role: Role.GESCHAEFTSFUEHRER, firstName: 'Gina', lastName: 'CEO' },
++    { email: 'lead@demo.local', role: Role.FUEHRUNGSKRAFT, firstName: 'Lars', lastName: 'Lead' },
++    { email: 'mitarbeiter1@demo.local', role: Role.MITARBEITER, firstName: 'Mia', lastName: 'Mitarbeiter' },
++    { email: 'mitarbeiter2@demo.local', role: Role.MITARBEITER, firstName: 'Max', lastName: 'Mitarbeiter' }
++  ];
++
++  for (const user of users) {
++    await prisma.user.upsert({
++      where: { organizationId_email: { organizationId: org.id, email: user.email } },
++      update: {},
++      create: {
++        ...user,
++        passwordHash: await bcrypt.hash('Passwort123!', 10),
++        organizationId: org.id,
++        departmentId: department.id,
++        teamId: team.id
++      }
++    });
++  }
++}
++
++main().finally(async () => prisma.$disconnect());
+diff --git a/src/app/layout.tsx b/src/app/layout.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..ef4014232ea08cbc904f307ee3533713e8b214ea
+--- /dev/null
++++ b/src/app/layout.tsx
+@@ -0,0 +1,9 @@
++import type { ReactNode } from 'react';
++
++export default function RootLayout({ children }: { children: ReactNode }) {
++  return (
++    <html lang="de">
++      <body>{children}</body>
++    </html>
++  );
++}
+diff --git a/src/app/page.tsx b/src/app/page.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..db32f5dc45fce93504899154a61b5b1b961d0d4a
+--- /dev/null
++++ b/src/app/page.tsx
+@@ -0,0 +1,8 @@
++export default function HomePage() {
++  return (
++    <main style={{ padding: 24 }}>
++      <h1>Aufgabenmanagement SaaS MVP</h1>
++      <p>Mandantenfähige Basis mit Rollen- und Tenant-Prüfung ist vorbereitet.</p>
++    </main>
++  );
++}
+diff --git a/src/lib/db/client.ts b/src/lib/db/client.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..88d8d143733c807f2a6d4da07e48ee22bd081bab
+--- /dev/null
++++ b/src/lib/db/client.ts
+@@ -0,0 +1,7 @@
++import { PrismaClient } from '@prisma/client';
++
++const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
++
++export const prisma = globalForPrisma.prisma ?? new PrismaClient();
++
++if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
+diff --git a/src/lib/permissions/index.ts b/src/lib/permissions/index.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..967e5d6fac4048a646485d3ef888ae2be739878c
+--- /dev/null
++++ b/src/lib/permissions/index.ts
+@@ -0,0 +1,21 @@
++import { Role } from '@prisma/client';
++import { SessionUser } from '@/types/auth';
++
++export const roleHierarchy: Record<Role, number> = {
++  GAST: 10,
++  MITARBEITER: 20,
++  FUEHRUNGSKRAFT: 30,
++  GESCHAEFTSFUEHRER: 40,
++  ADMIN: 50
++};
++
++export function hasMinimumRole(user: SessionUser, minimumRole: Role): boolean {
++  return roleHierarchy[user.role] >= roleHierarchy[minimumRole];
++}
++
++export function canReadTask(user: SessionUser, task: { ownerId: string; teamId?: string | null }): boolean {
++  if (user.role === Role.ADMIN || user.role === Role.GESCHAEFTSFUEHRER) return true;
++  if (user.role === Role.FUEHRUNGSKRAFT) return task.teamId != null && user.teamId === task.teamId;
++  if (user.role === Role.MITARBEITER) return task.ownerId === user.id;
++  return false;
++}
+diff --git a/src/lib/services/task-service.ts b/src/lib/services/task-service.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..c03eabb62d258303e02ae42307790c24ffba72d0
+--- /dev/null
++++ b/src/lib/services/task-service.ts
+@@ -0,0 +1,36 @@
++import { TaskStatus } from '@prisma/client';
++import { prisma } from '@/lib/db/client';
++import { canReadTask } from '@/lib/permissions';
++import { assertSameTenant, withTenantFilter } from '@/lib/tenant';
++import { SessionUser } from '@/types/auth';
++
++export async function listVisibleTasks(user: SessionUser) {
++  const baseTasks = await prisma.task.findMany({
++    where: withTenantFilter(user, { status: { not: TaskStatus.ARCHIVIERT } }),
++    orderBy: { deadline: 'asc' }
++  });
++
++  return baseTasks.filter((task) => canReadTask(user, task));
++}
++
++export async function updateTaskStatus(user: SessionUser, taskId: string, status: TaskStatus) {
++  const task = await prisma.task.findUniqueOrThrow({ where: { id: taskId } });
++  assertSameTenant(user, task.organizationId);
++
++  if (!canReadTask(user, task)) throw new Error('Forbidden');
++
++  const updated = await prisma.task.update({ where: { id: task.id }, data: { status } });
++  await prisma.auditLog.create({
++    data: {
++      organizationId: task.organizationId,
++      taskId: task.id,
++      actorId: user.id,
++      action: 'TASK_STATUS_UPDATED',
++      entityType: 'Task',
++      entityId: task.id,
++      payload: { from: task.status, to: status }
++    }
++  });
++
++  return updated;
++}
+diff --git a/src/lib/tenant/index.ts b/src/lib/tenant/index.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..8c97dce17981a3008c56af8629118b1b9289928c
+--- /dev/null
++++ b/src/lib/tenant/index.ts
+@@ -0,0 +1,11 @@
++import { SessionUser } from '@/types/auth';
++
++export function assertSameTenant(user: SessionUser, organizationId: string): void {
++  if (user.organizationId !== organizationId) {
++    throw new Error('Forbidden: tenant mismatch');
++  }
++}
++
++export function withTenantFilter<T extends object>(user: SessionUser, where: T): T & { organizationId: string } {
++  return { ...where, organizationId: user.organizationId };
++}
+diff --git a/src/types/auth.ts b/src/types/auth.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..109fb97baaa3021afeb9b06d119e0cde424989cc
+--- /dev/null
++++ b/src/types/auth.ts
+@@ -0,0 +1,8 @@
++import { Role } from '@prisma/client';
++
++export type SessionUser = {
++  id: string;
++  organizationId: string;
++  teamId?: string | null;
++  role: Role;
++};
+diff --git a/tests/permissions.test.ts b/tests/permissions.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..e56ea571519c34337fa68d3340df68aafa5567d6
+--- /dev/null
++++ b/tests/permissions.test.ts
+@@ -0,0 +1,17 @@
++import { describe, expect, it } from 'vitest';
++import { Role } from '@prisma/client';
++import { canReadTask, hasMinimumRole } from '@/lib/permissions';
++
++describe('permissions', () => {
++  it('allows leadership to read own team tasks', () => {
++    const user = { id: 'u1', organizationId: 'o1', teamId: 't1', role: Role.FUEHRUNGSKRAFT };
++    expect(canReadTask(user, { ownerId: 'u2', teamId: 't1' })).toBe(true);
++    expect(canReadTask(user, { ownerId: 'u2', teamId: 't2' })).toBe(false);
++  });
++
++  it('enforces minimum role', () => {
++    const user = { id: 'u1', organizationId: 'o1', role: Role.MITARBEITER };
++    expect(hasMinimumRole(user, Role.GAST)).toBe(true);
++    expect(hasMinimumRole(user, Role.FUEHRUNGSKRAFT)).toBe(false);
++  });
++});
+diff --git a/tests/tenant.test.ts b/tests/tenant.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..9edfad4f3f15614518c6c4de392b1ede58453b48
+--- /dev/null
++++ b/tests/tenant.test.ts
+@@ -0,0 +1,14 @@
++import { describe, expect, it } from 'vitest';
++import { assertSameTenant, withTenantFilter } from '@/lib/tenant';
++
++describe('tenant isolation', () => {
++  const user = { id: 'u1', organizationId: 'tenant-a', role: 'MITARBEITER' as const };
++
++  it('adds organization filter automatically', () => {
++    expect(withTenantFilter(user, { id: 'task-1' })).toEqual({ id: 'task-1', organizationId: 'tenant-a' });
++  });
++
++  it('throws on tenant mismatch', () => {
++    expect(() => assertSameTenant(user, 'tenant-b')).toThrowError(/tenant mismatch/);
++  });
++});
+diff --git a/tsconfig.json b/tsconfig.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..33cb2d5032c99d05160f4ef7d69df36ff65f204f
+--- /dev/null
++++ b/tsconfig.json
+@@ -0,0 +1,24 @@
++{
++  "compilerOptions": {
++    "target": "ES2022",
++    "lib": ["dom", "dom.iterable", "es2022"],
++    "allowJs": false,
++    "skipLibCheck": true,
++    "strict": true,
++    "noEmit": true,
++    "esModuleInterop": true,
++    "module": "esnext",
++    "moduleResolution": "bundler",
++    "resolveJsonModule": true,
++    "isolatedModules": true,
++    "jsx": "preserve",
++    "incremental": true,
++    "baseUrl": ".",
++    "types": ["node", "vitest/globals"],
++    "paths": {
++      "@/*": ["src/*"]
++    }
++  },
++  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
++  "exclude": ["node_modules"]
++}
+diff --git a/vitest.config.ts b/vitest.config.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..b33c9ebb839cf76bcb3203c0d661cd6457adc8f8
+--- /dev/null
++++ b/vitest.config.ts
+@@ -0,0 +1,12 @@
++import { defineConfig } from 'vitest/config';
++import path from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++const __dirname = path.dirname(fileURLToPath(import.meta.url));
++
++export default defineConfig({
++  test: { environment: 'node' },
++  resolve: {
++    alias: { '@': path.resolve(__dirname, './src') }
++  }
++});
+ 
+EOF
+)
