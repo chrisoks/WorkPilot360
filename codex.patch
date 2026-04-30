@@ -441,97 +441,362 @@ index 0000000000000000000000000000000000000000..e1e373afec4dc199a047fbd2c9372049
 +}
 +
 +main().finally(async () => prisma.$disconnect());
+diff --git a/src/app/api/tasks/route.ts b/src/app/api/tasks/route.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..9a95e7364db9dc810f86c047e9a275c73e686ea0
+--- /dev/null
++++ b/src/app/api/tasks/route.ts
+@@ -0,0 +1,163 @@
++import { NextRequest, NextResponse } from 'next/server';
++import { TaskPriority, TaskStatus } from '@prisma/client';
++import { prisma } from '@/lib/db/client';
++
++function mapStatus(status: string): TaskStatus {
++  if (status === 'in Bearbeitung') return TaskStatus.IN_BEARBEITUNG;
++  if (status === 'erledigt') return TaskStatus.ERLEDIGT;
++  return TaskStatus.OFFEN;
++}
++
++function mapPriority(priority: string): TaskPriority {
++  if (priority === 'hoch') return TaskPriority.HOCH;
++  if (priority === 'niedrig') return TaskPriority.NIEDRIG;
++  return TaskPriority.NORMAL;
++}
++
++function toUiStatus(status: TaskStatus): 'offen' | 'in Bearbeitung' | 'erledigt' {
++  if (status === TaskStatus.IN_BEARBEITUNG) return 'in Bearbeitung';
++  if (status === TaskStatus.ERLEDIGT) return 'erledigt';
++  return 'offen';
++}
++
++function toUiPriority(priority: TaskPriority): 'niedrig' | 'normal' | 'hoch' {
++  if (priority === TaskPriority.HOCH) return 'hoch';
++  if (priority === TaskPriority.NIEDRIG) return 'niedrig';
++  return 'normal';
++}
++
++export async function GET() {
++  const tasks = await prisma.task.findMany({
++    orderBy: { createdAt: 'desc' },
++    include: { owner: { select: { firstName: true, lastName: true } } }
++  });
++
++  return NextResponse.json(
++    tasks.map((task) => ({
++      id: task.id,
++      title: task.title,
++      status: toUiStatus(task.status),
++      priority: toUiPriority(task.priority),
++      owner: `${task.owner.firstName} ${task.owner.lastName}`.trim(),
++      deadline: task.deadline
++    }))
++  );
++}
++
++export async function POST(request: NextRequest) {
++  const body = await request.json();
++  const { title, status, priority, owner, deadline } = body as {
++    title: string;
++    status: string;
++    priority: string;
++    owner: string;
++    deadline: string;
++  };
++
++  if (!title || !owner || !deadline) {
++    return NextResponse.json({ error: 'title, owner, deadline sind erforderlich' }, { status: 400 });
++  }
++
++  const org = await prisma.organization.findFirst();
++  if (!org) return NextResponse.json({ error: 'Keine Organization vorhanden' }, { status: 400 });
++
++  const [firstName, ...rest] = owner.trim().split(' ');
++  const lastName = rest.join(' ') || 'User';
++
++  let ownerUser = await prisma.user.findFirst({
++    where: { organizationId: org.id, firstName, lastName }
++  });
++
++  if (!ownerUser) {
++    ownerUser = await prisma.user.findFirst({ where: { organizationId: org.id } });
++  }
++
++  if (!ownerUser) return NextResponse.json({ error: 'Kein Benutzer gefunden' }, { status: 400 });
++
++  const task = await prisma.task.create({
++    data: {
++      organizationId: org.id,
++      title,
++      description: 'Über Dashboard erstellt',
++      status: mapStatus(status),
++      priority: mapPriority(priority),
++      ownerId: ownerUser.id,
++      deadline: new Date(deadline),
++      teamId: ownerUser.teamId
++    }
++  });
++
++  return NextResponse.json(task, { status: 201 });
++}
++
++
++export async function PATCH(request: NextRequest) {
++  const body = await request.json();
++  const { id, title, status, priority, owner, deadline } = body as {
++    id: string;
++    title: string;
++    status: string;
++    priority: string;
++    owner: string;
++    deadline: string;
++  };
++
++  if (!id || !title || !owner || !deadline) {
++    return NextResponse.json({ error: 'id, title, owner, deadline sind erforderlich' }, { status: 400 });
++  }
++
++  const existing = await prisma.task.findUnique({ where: { id } });
++  if (!existing) return NextResponse.json({ error: 'Task nicht gefunden' }, { status: 404 });
++
++  const [firstName, ...rest] = owner.trim().split(' ');
++  const lastName = rest.join(' ') || 'User';
++
++  let ownerUser = await prisma.user.findFirst({
++    where: { organizationId: existing.organizationId, firstName, lastName }
++  });
++
++  if (!ownerUser) {
++    ownerUser = await prisma.user.findFirst({ where: { organizationId: existing.organizationId } });
++  }
++
++  if (!ownerUser) return NextResponse.json({ error: 'Kein Benutzer gefunden' }, { status: 400 });
++
++  const updated = await prisma.task.update({
++    where: { id },
++    data: {
++      title,
++      status: mapStatus(status),
++      priority: mapPriority(priority),
++      ownerId: ownerUser.id,
++      teamId: ownerUser.teamId,
++      deadline: new Date(deadline)
++    },
++    include: { owner: { select: { firstName: true, lastName: true } } }
++  });
++
++  return NextResponse.json({
++    id: updated.id,
++    title: updated.title,
++    status: toUiStatus(updated.status),
++    priority: toUiPriority(updated.priority),
++    owner: `${updated.owner.firstName} ${updated.owner.lastName}`.trim(),
++    deadline: updated.deadline
++  });
++}
++
++
++export async function DELETE(request: NextRequest) {
++  const body = await request.json();
++  const { id } = body as { id?: string };
++
++  if (!id) {
++    return NextResponse.json({ error: 'id ist erforderlich' }, { status: 400 });
++  }
++
++  try {
++    await prisma.task.delete({ where: { id } });
++    return NextResponse.json({ success: true });
++  } catch {
++    return NextResponse.json({ error: 'Task konnte nicht gelöscht werden' }, { status: 400 });
++  }
++}
+diff --git a/src/app/dashboard/dashboard.module.css b/src/app/dashboard/dashboard.module.css
+new file mode 100644
+index 0000000000000000000000000000000000000000..7c5d5084a0806d083c5f46c76003d62cf9def067
+--- /dev/null
++++ b/src/app/dashboard/dashboard.module.css
+@@ -0,0 +1,77 @@
++.page {
++  min-height: 100vh;
++  background: linear-gradient(180deg, #e9eef8 0%, #eef2f8 100%);
++  padding: 24px;
++  color: #0f172a;
++}
++.container {
++  max-width: 1240px;
++  margin: 0 auto;
++  background: #fff;
++  border: 1px solid #dbe3ef;
++  border-radius: 36px;
++  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
++  padding: 22px 26px 28px;
++}
++.logoWrap { text-align: center; margin: 6px 0 4px; }
++.logo { height: 64px; object-fit: contain; }
++.brand { font-size: 1.55rem; font-weight: 800; color: #0b2a66; margin: 2px 0 0; }
++.slogan { margin: 4px 0 0; color: #4b5563; font-size: 0.96rem; }
++.nav {
++  margin-top: 18px;
++  display: flex;
++  gap: 10px;
++  flex-wrap: wrap;
++  justify-content: center;
++}
++.navTab {
++  background: #dce9ff;
++  color: #1846a3;
++  font-weight: 700;
++  padding: 10px 16px;
++  border-radius: 999px;
++}
++.navTabActive { background: #2563eb; color: #fff; }
++.header { margin-top: 26px; display:flex; justify-content:space-between; align-items:center; gap: 12px; }
++.title { margin: 0; font-size: 1.5rem; color: #0f2554; }
++.button { background:#2563eb; color:#fff; border:0; border-radius:12px; padding:10px 14px; font-weight:700; cursor:pointer; }
++.cards { margin-top: 16px; display:grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap:14px; }
++.card { border: 1px solid #e5ebf5; border-radius: 16px; padding: 14px 16px; background: #f9fbff; }
++.cardLabel { color:#5b6472; font-size:.9rem; margin:0 0 8px; }
++.cardValue { margin:0; font-size:1.3rem; font-weight:800; color:#0f2554; }
++.tableWrap { margin-top: 18px; border:1px solid #e5ebf5; border-radius: 16px; overflow:hidden; }
++.table { width:100%; border-collapse:collapse; }
++.table th { text-align:left; background:#f7faff; color:#32518f; font-size:.82rem; letter-spacing:.02em; text-transform:uppercase; }
++.table th,.table td { padding:14px 12px; border-bottom:1px solid #edf2f8; }
++.row { cursor: pointer; transition: background .15s ease; }
++.row:hover { background: #f8fbff; }
++.badge { display:inline-block; padding:4px 9px; border-radius:999px; font-size:.78rem; font-weight:700; }
++.open { background:#dbeafe; color:#1e40af; }
++.progress { background:#e0ecff; color:#1d4ed8; }
++.done { background:#dcfce7; color:#15803d; }
++.low { background:#f1f5f9; color:#334155; }
++.normal { background:#e0e7ff; color:#3730a3; }
++.high { background:#fee2e2; color:#b91c1c; }
++.overlay { position: fixed; inset: 0; background: rgba(15,23,42,.45); display:grid; place-items:center; padding:16px; }
++.modal { background:#fff; width:min(560px,100%); border-radius:20px; border:1px solid #dbe3ef; padding:20px; display:grid; gap:12px; }
++.modalTitle { margin:0; color:#0f2554; }
++.input, .select { width:100%; padding:10px 12px; border:1px solid #ced8e8; border-radius:10px; background:#fff; }
++.actions { display:flex; justify-content:flex-end; gap:8px; margin-top:6px; }
++.cancel { padding:10px 14px; border-radius:10px; border:1px solid #cbd5e1; background:#fff; }
++@media (max-width: 900px){ .cards{grid-template-columns:repeat(2,minmax(0,1fr));} }
++@media (max-width: 640px){ .page{padding:10px;} .container{padding:14px; border-radius:22px;} .cards{grid-template-columns:1fr;} }
++
++.deleteButton {
++  border: 1px solid #fecaca;
++  background: #fef2f2;
++  color: #b91c1c;
++  padding: 6px 10px;
++  border-radius: 10px;
++  font-size: 0.78rem;
++  font-weight: 700;
++  cursor: pointer;
++}
++.deleteButton:hover {
++  background: #fee2e2;
++  border-color: #fca5a5;
++}
 diff --git a/src/app/dashboard/page.tsx b/src/app/dashboard/page.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..4a335c8e6a824c047c46f795667fb04345475551
+index 0000000000000000000000000000000000000000..4eefbeed048e21934ea32046081fd6baeaa5aeea
 --- /dev/null
 +++ b/src/app/dashboard/page.tsx
-@@ -0,0 +1,143 @@
+@@ -0,0 +1,153 @@
 +'use client';
 +
-+import { FormEvent, useMemo, useState } from 'react';
-+import styles from '@/components/dashboard/dashboard.module.css';
++import { FormEvent, useEffect, useMemo, useState } from 'react';
++import styles from './dashboard.module.css';
 +
 +type TaskStatus = 'offen' | 'in Bearbeitung' | 'erledigt';
 +type TaskPriority = 'niedrig' | 'normal' | 'hoch';
++type TaskItem = { id: string; titel: string; status: TaskStatus; prioritaet: TaskPriority; zustaendig: string; faelligkeit: string };
++type FormState = { id?: string; titel: string; status: TaskStatus; prioritaet: TaskPriority; zustaendig: string; faelligkeit: string };
 +
-+type TaskItem = {
-+  id: string;
-+  titel: string;
-+  status: TaskStatus;
-+  prioritaet: TaskPriority;
-+  zustaendig: string;
-+  faelligkeit: string;
-+};
-+
-+const initialTasks: TaskItem[] = [
-+  { id: 'T-1021', titel: 'Kundenanfrage prüfen', status: 'offen', prioritaet: 'hoch', zustaendig: 'Mia Bauer', faelligkeit: '30.04.2026' },
-+  { id: 'T-1022', titel: 'Monatsreport aktualisieren', status: 'in Bearbeitung', prioritaet: 'normal', zustaendig: 'Lars Klein', faelligkeit: '02.05.2026' },
-+  { id: 'T-1023', titel: 'Vertrag A12 abschließen', status: 'erledigt', prioritaet: 'niedrig', zustaendig: 'Gina Roth', faelligkeit: '28.04.2026' }
-+];
-+
-+const statusClass: Record<TaskStatus, string> = {
-+  offen: styles.open,
-+  'in Bearbeitung': styles.progress,
-+  erledigt: styles.done
-+};
-+
-+const priorityClass: Record<TaskPriority, string> = {
-+  niedrig: styles.low,
-+  normal: styles.normal,
-+  hoch: styles.high
-+};
++const statusClass: Record<TaskStatus, string> = { offen: styles.open, 'in Bearbeitung': styles.progress, erledigt: styles.done };
++const priorityClass: Record<TaskPriority, string> = { niedrig: styles.low, normal: styles.normal, hoch: styles.high };
++const initialForm: FormState = { titel: '', status: 'offen', prioritaet: 'normal', zustaendig: '', faelligkeit: '' };
 +
 +export default function DashboardRoute() {
-+  const [tasks, setTasks] = useState<TaskItem[]>(initialTasks);
++  const [tasks, setTasks] = useState<TaskItem[]>([]);
 +  const [showModal, setShowModal] = useState(false);
-+  const [form, setForm] = useState<Omit<TaskItem, 'id'>>({
-+    titel: '',
-+    status: 'offen',
-+    prioritaet: 'normal',
-+    zustaendig: '',
-+    faelligkeit: ''
-+  });
++  const [isLoading, setIsLoading] = useState(true);
++  const [mode, setMode] = useState<'create' | 'edit'>('create');
++  const [form, setForm] = useState<FormState>(initialForm);
 +
-+  const stats = useMemo(() => {
-+    const offen = tasks.filter((t) => t.status === 'offen').length;
-+    const inBearbeitung = tasks.filter((t) => t.status === 'in Bearbeitung').length;
-+    const erledigt = tasks.filter((t) => t.status === 'erledigt').length;
-+    return { offen, inBearbeitung, erledigt, total: tasks.length };
-+  }, [tasks]);
++  const loadTasks = async () => {
++    setIsLoading(true);
++    const response = await fetch('/api/tasks', { cache: 'no-store' });
++    const data = await response.json();
++    setTasks(data.map((task: { id: string; title: string; status: TaskStatus; priority: TaskPriority; owner: string; deadline: string }) => ({
++      id: task.id, titel: task.title, status: task.status, prioritaet: task.priority, zustaendig: task.owner, faelligkeit: new Date(task.deadline).toLocaleDateString('de-DE')
++    })));
++    setIsLoading(false);
++  };
 +
-+  const handleSave = (e: FormEvent<HTMLFormElement>) => {
++  useEffect(() => { loadTasks(); }, []);
++
++  const stats = useMemo(() => ({
++    offen: tasks.filter((t) => t.status === 'offen').length,
++    inBearbeitung: tasks.filter((t) => t.status === 'in Bearbeitung').length,
++    erledigt: tasks.filter((t) => t.status === 'erledigt').length,
++    total: tasks.length
++  }), [tasks]);
++
++  const handleSave = async (e: FormEvent<HTMLFormElement>) => {
 +    e.preventDefault();
 +    if (!form.titel.trim() || !form.zustaendig.trim() || !form.faelligkeit) return;
++    const payload = { title: form.titel, status: form.status, priority: form.prioritaet, owner: form.zustaendig, deadline: form.faelligkeit };
++    if (mode === 'create') await fetch('/api/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
++    else await fetch('/api/tasks', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: form.id, ...payload }) });
 +
-+    const newTask: TaskItem = {
-+      ...form,
-+      id: `T-${1000 + tasks.length + 1}`,
-+      faelligkeit: new Date(form.faelligkeit).toLocaleDateString('de-DE')
-+    };
++    setShowModal(false); setForm(initialForm); setMode('create'); await loadTasks();
++  };
 +
-+    setTasks((prev) => [newTask, ...prev]);
-+    setShowModal(false);
-+    setForm({ titel: '', status: 'offen', prioritaet: 'normal', zustaendig: '', faelligkeit: '' });
++
++  const handleDelete = async (id: string) => {
++    const ok = confirm('Aufgabe wirklich löschen?');
++    if (!ok) return;
++
++    const response = await fetch('/api/tasks', {
++      method: 'DELETE',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ id })
++    });
++
++    if (!response.ok) {
++      const error = await response.json().catch(() => ({ error: 'Löschen fehlgeschlagen' }));
++      alert(error.error ?? 'Löschen fehlgeschlagen');
++      return;
++    }
++
++    setTasks((prev) => prev.filter((task) => task.id !== id));
++    await loadTasks();
++  };
++
++  const openEdit = (task: TaskItem) => {
++    const [d, m, y] = task.faelligkeit.split('.');
++    setMode('edit');
++    setForm({ id: task.id, titel: task.titel, status: task.status, prioritaet: task.prioritaet, zustaendig: task.zustaendig, faelligkeit: `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}` });
++    setShowModal(true);
 +  };
 +
 +  return (
-+    <div className={styles.wrapper}>
-+      <aside className={styles.sidebar}>
-+        <div className={styles.brand}>Aufgaben-MGMT</div>
-+        <nav className={styles.nav}>
-+          <a className={`${styles.navItem} ${styles.active}`} href="/dashboard">Dashboard</a>
-+          <a className={styles.navItem} href="#">Aufgaben</a>
-+          <a className={styles.navItem} href="#">Kalender</a>
-+          <a className={styles.navItem} href="#">Teams</a>
-+          <a className={styles.navItem} href="#">Einstellungen</a>
-+        </nav>
-+      </aside>
++    <div className={styles.page}>
++      <div className={styles.container}>
++        <div className={styles.logoWrap}>
++          <img src="/workpilot-logo.png" alt="WorkPilot" className={styles.logo} />
++          <p className={styles.brand}>WorkPilot</p>
++          <p className={styles.slogan}>Dein Plan. Dein Fortschritt.</p>
++        </div>
 +
-+      <main className={styles.main}>
++        <nav className={styles.nav}>
++          <span className={`${styles.navTab} ${styles.navTabActive}`}>Dashboard</span>
++          <span className={styles.navTab}>Aufgaben</span>
++          <span className={styles.navTab}>Kalender</span>
++          <span className={styles.navTab}>Team</span>
++          <span className={styles.navTab}>Einstellungen</span>
++        </nav>
++
 +        <header className={styles.header}>
 +          <h1 className={styles.title}>Meine Aufgaben</h1>
-+          <button className={styles.button} onClick={() => setShowModal(true)}>Neue Aufgabe</button>
++          <button className={styles.button} onClick={() => { setMode('create'); setForm(initialForm); setShowModal(true); }}>Neue Aufgabe</button>
 +        </header>
 +
 +        <section className={styles.cards}>
@@ -543,47 +808,44 @@ index 0000000000000000000000000000000000000000..4a335c8e6a824c047c46f795667fb043
 +
 +        <section className={styles.tableWrap}>
 +          <table className={styles.table}>
-+            <thead>
-+              <tr>
-+                <th>Aufgabe</th><th>Status</th><th>Priorität</th><th>Zuständigkeit</th><th>Fälligkeitsdatum</th>
-+              </tr>
-+            </thead>
++            <thead><tr><th>Aufgabe</th><th>Status</th><th>Priorität</th><th>Zuständigkeit</th><th>Fälligkeitsdatum</th><th>Aktion</th></tr></thead>
 +            <tbody>
-+              {tasks.map((task) => (
-+                <tr key={task.id}>
-+                  <td>{task.id} · {task.titel}</td>
++              {isLoading ? <tr><td colSpan={6}>Lade Aufgaben…</td></tr> : tasks.length === 0 ? <tr><td colSpan={6}>Noch keine Aufgaben vorhanden.</td></tr> : tasks.map((task, index) => (
++                <tr key={task.id} className={styles.row} onClick={() => openEdit(task)}>
++                  <td>{`T-${1001 + index}`} · {task.titel}</td>
 +                  <td><span className={`${styles.badge} ${statusClass[task.status]}`}>{task.status}</span></td>
 +                  <td><span className={`${styles.badge} ${priorityClass[task.prioritaet]}`}>{task.prioritaet}</span></td>
 +                  <td>{task.zustaendig}</td>
 +                  <td>{task.faelligkeit}</td>
++                  <td>
++                    <button
++                      type="button"
++                      className={styles.deleteButton}
++                      onClick={(e) => {
++                        e.stopPropagation();
++                        void handleDelete(task.id);
++                      }}
++                    >
++                      Löschen
++                    </button>
++                  </td>
 +                </tr>
 +              ))}
 +            </tbody>
 +          </table>
 +        </section>
-+      </main>
++      </div>
 +
 +      {showModal && (
-+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.45)', display: 'grid', placeItems: 'center', padding: 16 }}>
-+          <form onSubmit={handleSave} style={{ background: '#fff', width: 'min(560px, 100%)', borderRadius: 14, padding: 20, display: 'grid', gap: 12 }}>
-+            <h2 style={{ margin: 0 }}>Neue Aufgabe</h2>
-+            <input placeholder="Titel" value={form.titel} onChange={(e) => setForm((prev) => ({ ...prev, titel: e.target.value }))} required style={{ padding: 10 }} />
-+            <select value={form.status} onChange={(e) => setForm((prev) => ({ ...prev, status: e.target.value as TaskStatus }))} style={{ padding: 10 }}>
-+              <option value="offen">offen</option>
-+              <option value="in Bearbeitung">in Bearbeitung</option>
-+              <option value="erledigt">erledigt</option>
-+            </select>
-+            <select value={form.prioritaet} onChange={(e) => setForm((prev) => ({ ...prev, prioritaet: e.target.value as TaskPriority }))} style={{ padding: 10 }}>
-+              <option value="niedrig">niedrig</option>
-+              <option value="normal">normal</option>
-+              <option value="hoch">hoch</option>
-+            </select>
-+            <input placeholder="Zuständig" value={form.zustaendig} onChange={(e) => setForm((prev) => ({ ...prev, zustaendig: e.target.value }))} required style={{ padding: 10 }} />
-+            <input type="date" value={form.faelligkeit} onChange={(e) => setForm((prev) => ({ ...prev, faelligkeit: e.target.value }))} required style={{ padding: 10 }} />
-+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-+              <button type="button" onClick={() => setShowModal(false)} style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff' }}>Abbrechen</button>
-+              <button type="submit" className={styles.button}>Speichern</button>
-+            </div>
++        <div className={styles.overlay}>
++          <form className={styles.modal} onSubmit={handleSave}>
++            <h2 className={styles.modalTitle}>{mode === 'create' ? 'Neue Aufgabe' : 'Aufgabe bearbeiten'}</h2>
++            <input className={styles.input} placeholder="Titel" value={form.titel} onChange={(e) => setForm((p) => ({ ...p, titel: e.target.value }))} required />
++            <select className={styles.select} value={form.status} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value as TaskStatus }))}><option value="offen">offen</option><option value="in Bearbeitung">in Bearbeitung</option><option value="erledigt">erledigt</option></select>
++            <select className={styles.select} value={form.prioritaet} onChange={(e) => setForm((p) => ({ ...p, prioritaet: e.target.value as TaskPriority }))}><option value="niedrig">niedrig</option><option value="normal">normal</option><option value="hoch">hoch</option></select>
++            <input className={styles.input} placeholder="Zuständig" value={form.zustaendig} onChange={(e) => setForm((p) => ({ ...p, zustaendig: e.target.value }))} required />
++            <input className={styles.input} type="date" value={form.faelligkeit} onChange={(e) => setForm((p) => ({ ...p, faelligkeit: e.target.value }))} required />
++            <div className={styles.actions}><button type="button" className={styles.cancel} onClick={() => setShowModal(false)}>Abbrechen</button><button type="submit" className={styles.button}>Speichern</button></div>
 +          </form>
 +        </div>
 +      )}

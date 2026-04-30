@@ -1,9 +1,19 @@
-import type { ReactNode } from 'react';
+import "./globals.css";
+import { Outfit } from "next/font/google";
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+const outfit = Outfit({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+});
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="de">
-      <body>{children}</body>
+      <body className={outfit.className}>{children}</body>
     </html>
   );
 }
