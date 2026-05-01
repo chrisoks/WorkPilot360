@@ -31,8 +31,20 @@ declare namespace __next_route_internal_types__ {
   type StaticRoutes = 
     | `/`
     | `/dashboard`
+    | `/api/absences`
+    | `/api/auth/login`
+    | `/api/escalation-rules`
+    | `/api/hero/import-projects`
+    | `/api/hero/projects`
+    | `/api/notifications`
     | `/api/tasks`
-  type DynamicRoutes<T extends string = string> = never
+    | `/api/tasks/respond`
+    | `/api/teams`
+    | `/api/trades`
+    | `/api/users`
+  type DynamicRoutes<T extends string = string> = 
+    | `/api/tasks/${SafeSlug<T>}/time-entries`
+    | `/api/tasks/${SafeSlug<T>}/comments`
 
   type RouteImpl<T> = 
     | StaticRoutes

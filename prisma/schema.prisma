@@ -73,6 +73,7 @@ model User {
   lastName        String
   role            Role
   isActive        Boolean     @default(true)
+  dailyWorkHours  Float       @default(8)
   teamId          String?
   team            Team?       @relation(fields: [teamId], references: [id])
   departmentId    String?
@@ -119,6 +120,19 @@ model Task {
   deadline            DateTime
   customer            String?
   customerClass       CustomerClassification?
+  autoFeedbackEnabled Boolean               @default(false)
+  autoFeedbackRecipientId String?
+  recurrenceEnabled   Boolean               @default(false)
+  recurrenceInterval  String?
+  recurrenceParentTaskId String?
+  createdById         String?
+  acceptanceStatus    String                @default("accepted")
+  acceptanceRespondedAt DateTime?
+  rejectionReason     String?
+  completedAt         DateTime?
+  archiveDueAt        DateTime?
+  archivedAt          DateTime?
+  archiveReason       String?
   categoryId          String?
   category            Category?             @relation(fields: [categoryId], references: [id])
   subcategoryId       String?
@@ -218,6 +232,7 @@ model Notification {
   subject         String
   body            String
   sentAt          DateTime?
+  readAt          DateTime?
   createdAt       DateTime @default(now())
 }
 

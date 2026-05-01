@@ -1,75 +1,427 @@
 import { NextResponse } from "next/server";
+import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
-import { Role, TaskPriority, TaskStatus } from "@prisma/client";
+import {
+  CustomerClassification,
+  Prisma,
+  Role,
+  TaskPriority,
+  TaskStatus,
+  type Task,
+  type TaskComment,
+  type TimeEntry,
+  type User,
+} from "@prisma/client";
+
+function canAssignOther(role: Role) {
+  return role === Role.ADMIN || role === Role.GESCHAEFTSFUEHRER || role === Role.FUEHRUNGSKRAFT;
+}
+
+function canDeleteTask(role: Role) {
+  return role === Role.ADMIN || role === Role.GESCHAEFTSFUEHRER;
+}
 
 function mapStatus(status: string): TaskStatus {
   if (status === "in Bearbeitung") return TaskStatus.IN_BEARBEITUNG;
+  if (status === "wartet auf R\u00fcckmeldung") return TaskStatus.WARTET_AUF_RUECKMELDUNG;
   if (status === "erledigt") return TaskStatus.ERLEDIGT;
+  if (status === "abgelehnt") return TaskStatus.ABGELEHNT;
+  if (status === "\u00fcberf\u00e4llig") return TaskStatus.UEBERFAELLIG;
+  if (status === "archiviert") return TaskStatus.ARCHIVIERT;
   return TaskStatus.OFFEN;
 }
 
 function mapPriority(priority: string): TaskPriority {
+  if (priority === "kritisch") return TaskPriority.KRITISCH;
   if (priority === "hoch") return TaskPriority.HOCH;
   if (priority === "niedrig") return TaskPriority.NIEDRIG;
   return TaskPriority.NORMAL;
 }
 
+function mapCustomerClass(customerClass?: string | null): CustomerClassification | null {
+  if (customerClass === "A") return CustomerClassification.A;
+  if (customerClass === "B") return CustomerClassification.B;
+  if (customerClass === "C") return CustomerClassification.C;
+  return null;
+}
+
 function toUiStatus(status: TaskStatus) {
   if (status === TaskStatus.IN_BEARBEITUNG) return "in Bearbeitung";
+  if (status === TaskStatus.WARTET_AUF_RUECKMELDUNG) return "wartet auf R\u00fcckmeldung";
   if (status === TaskStatus.ERLEDIGT) return "erledigt";
+  if (status === TaskStatus.ABGELEHNT) return "abgelehnt";
+  if (status === TaskStatus.UEBERFAELLIG) return "\u00fcberf\u00e4llig";
+  if (status === TaskStatus.ARCHIVIERT) return "archiviert";
   return "offen";
 }
 
 function toUiPriority(priority: TaskPriority) {
+  if (priority === TaskPriority.KRITISCH) return "kritisch";
   if (priority === TaskPriority.HOCH) return "hoch";
   if (priority === TaskPriority.NIEDRIG) return "niedrig";
   return "normal";
 }
 
-async function getDemoContext() {
-  const organization = await prisma.organization.upsert({
-    where: { slug: "demo" },
-    update: {},
-    create: {
-      name: "Demo Organisation",
-      slug: "demo",
-    },
-  });
-
-  const user = await prisma.user.upsert({
-    where: {
-      organizationId_email: {
-        organizationId: organization.id,
-        email: "demo@example.com",
-      },
-    },
-    update: {},
-    create: {
-      organizationId: organization.id,
-      email: "demo@example.com",
-      passwordHash: "demo",
-      firstName: "Demo",
-      lastName: "User",
-      role: Role.ADMIN,
-    },
-  });
-
-  return { organization, user };
+function roleLabel(role: Role) {
+  if (role === Role.GESCHAEFTSFUEHRER) return "Gesch\u00e4ftsf\u00fchrung";
+  if (role === Role.FUEHRUNGSKRAFT) return "F\u00fchrungskraft";
+  if (role === Role.MITARBEITER) return "Mitarbeiter";
+  if (role === Role.GAST) return "Gast";
+  return "Admin";
 }
 
-function formatTask(task: any) {
+function parseDeadline(deadline?: string | null) {
+  if (!deadline) {
+    const defaultDeadline = new Date();
+    defaultDeadline.setHours(12, 0, 0, 0);
+    return defaultDeadline;
+  }
+
+  const trimmedDeadline = deadline.trim();
+  const dateOnlyMatch = trimmedDeadline.match(/^(\d{4}-\d{2}-\d{2})(?:T)?$/);
+  if (dateOnlyMatch) return new Date(`${dateOnlyMatch[1]}T12:00`);
+
+  const parsedDeadline = new Date(trimmedDeadline);
+  if (Number.isNaN(parsedDeadline.getTime())) {
+    const fallbackDeadline = new Date();
+    fallbackDeadline.setHours(12, 0, 0, 0);
+    return fallbackDeadline;
+  }
+
+  return parsedDeadline;
+}
+
+function toLocalDateTimeInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function parseEstimate(estimateMinutes?: unknown) {
+  if (estimateMinutes === null || estimateMinutes === undefined || estimateMinutes === "") {
+    return null;
+  }
+
+  const value = Number(estimateMinutes);
+  return Number.isFinite(value) ? value : null;
+}
+
+function validateCompletionRequirements(
+  nextStatus: TaskStatus,
+  estimateMinutes: number | null,
+  timeEntryCount: number
+) {
+  if (nextStatus !== TaskStatus.ERLEDIGT) return null;
+
+  if (!estimateMinutes || estimateMinutes <= 0) {
+    return "Eine Aufgabe kann nur als erledigt gespeichert werden, wenn eine Vorgabezeit hinterlegt ist.";
+  }
+
+  if (timeEntryCount < 1) {
+    return "Eine Aufgabe kann nur als erledigt gespeichert werden, wenn mindestens ein Zeiteintrag erstellt wurde.";
+  }
+
+  return null;
+}
+
+type TaskWithRelations = Task & {
+  owner: User;
+  category: { id: string; name: string } | null;
+  comments: Array<TaskComment & { author: User }>;
+  timeEntries: Array<TimeEntry & { user: User }>;
+};
+
+type TaskFeedbackSettings = {
+  taskId: string;
+  autoFeedbackEnabled: boolean;
+  autoFeedbackRecipientId: string | null;
+  recurrenceEnabled: boolean;
+  recurrenceInterval: string | null;
+  recurrenceParentTaskId: string | null;
+  createdById: string | null;
+  acceptanceStatus: string;
+  acceptanceRespondedAt: Date | null;
+  rejectionReason: string | null;
+  completedAt: Date | null;
+  archiveDueAt: Date | null;
+  archivedAt: Date | null;
+  archiveReason: string | null;
+};
+
+function formatTask(task: TaskWithRelations, feedback?: TaskFeedbackSettings) {
+  const totalTrackedMinutes = task.timeEntries.reduce(
+    (total, entry) => total + entry.durationMinutes,
+    0
+  );
+
   return {
     id: task.id,
+    createdAt: task.createdAt.toISOString(),
     titel: task.title,
+    beschreibung: task.description,
     status: toUiStatus(task.status),
     prioritaet: toUiPriority(task.priority),
+    gewerkId: task.categoryId ?? "",
+    gewerk: task.category?.name ?? "",
+    zustaendigId: task.ownerId,
     zustaendig: `${task.owner.firstName} ${task.owner.lastName}`,
-    faelligkeit: task.deadline.toISOString().slice(0, 10),
+    rolle: roleLabel(task.owner.role),
+    faelligkeit: toLocalDateTimeInputValue(task.deadline),
+    kunde: task.customer ?? "",
+    kundenklasse: task.customerClass ?? "",
+    autoFeedbackEnabled: feedback?.autoFeedbackEnabled ?? false,
+    autoFeedbackRecipientId: feedback?.autoFeedbackRecipientId ?? "",
+    recurrenceEnabled: feedback?.recurrenceEnabled ?? false,
+    recurrenceInterval: feedback?.recurrenceInterval ?? "",
+    createdById: feedback?.createdById ?? task.ownerId,
+    acceptanceStatus: feedback?.acceptanceStatus ?? "accepted",
+    acceptanceRespondedAt: feedback?.acceptanceRespondedAt?.toISOString() ?? null,
+    rejectionReason: feedback?.rejectionReason ?? "",
+    completedAt: feedback?.completedAt?.toISOString() ?? null,
+    archiveDueAt: feedback?.archiveDueAt?.toISOString() ?? null,
+    archivedAt: feedback?.archivedAt?.toISOString() ?? null,
+    archiveReason: feedback?.archiveReason ?? "",
+    vorgabeMinuten: task.estimateMinutes,
+    gesamtzeitMinuten: totalTrackedMinutes,
+    kommentare: task.comments.map((comment) => ({
+      id: comment.id,
+      text: comment.body,
+      erstelltAm: comment.createdAt.toISOString(),
+      autor: `${comment.author.firstName} ${comment.author.lastName}`,
+    })),
+    zeiteintraege: task.timeEntries.map((entry) => ({
+      id: entry.id,
+      gestartetAm: toLocalDateTimeInputValue(entry.startedAt),
+      dauerMinuten: entry.durationMinutes,
+      notiz: entry.note ?? "",
+      nutzer: `${entry.user.firstName} ${entry.user.lastName}`,
+    })),
   };
+}
+
+function parseRecurrenceInterval(interval: unknown, enabled: boolean) {
+  if (!enabled || typeof interval !== "string") return null;
+
+  return ["daily", "weekly", "monthly", "yearly"].includes(interval) ? interval : "weekly";
+}
+
+function getNextRecurringDeadline(openedAt: Date, interval: string) {
+  const nextDeadline = new Date(openedAt);
+
+  if (interval === "daily") nextDeadline.setDate(nextDeadline.getDate() + 1);
+  if (interval === "weekly") nextDeadline.setDate(nextDeadline.getDate() + 7);
+  if (interval === "monthly") nextDeadline.setMonth(nextDeadline.getMonth() + 1);
+  if (interval === "yearly") nextDeadline.setFullYear(nextDeadline.getFullYear() + 1);
+
+  return nextDeadline;
+}
+
+function parseAutoFeedbackRecipient(
+  recipientId: unknown,
+  enabled: boolean,
+  users: User[]
+) {
+  if (!enabled || typeof recipientId !== "string") return null;
+
+  return users.find((demoUser) => demoUser.id === recipientId)?.id ?? null;
+}
+
+async function createDoneFeedbackNotification(
+  task: TaskWithRelations,
+  previousStatus: TaskStatus | null,
+  users: User[],
+  feedback: TaskFeedbackSettings
+) {
+  if (previousStatus === TaskStatus.ERLEDIGT || task.status !== TaskStatus.ERLEDIGT) return;
+  if (!feedback.autoFeedbackEnabled || !feedback.autoFeedbackRecipientId) return;
+
+  const recipient = users.find((demoUser) => demoUser.id === feedback.autoFeedbackRecipientId);
+  if (!recipient) return;
+
+  const existingNotification = await prisma.notification.findFirst({
+    where: {
+      taskId: task.id,
+      userId: recipient.id,
+      channel: "email",
+      subject: "Aufgabe erledigt",
+    },
+  });
+
+  if (existingNotification) return;
+
+  await prisma.notification.create({
+    data: {
+      organizationId: task.organizationId,
+      taskId: task.id,
+      userId: recipient.id,
+      channel: "email",
+      subject: "Aufgabe erledigt",
+      body: `Die Aufgabe "${task.title}" wurde erledigt. Rückmeldung an: ${recipient.email}`,
+      sentAt: null,
+    },
+  });
+}
+
+async function getTaskFeedbackSettings(taskIds: string[]) {
+  if (taskIds.length === 0) return new Map<string, TaskFeedbackSettings>();
+
+  const feedbackRows = await prisma.$queryRaw<TaskFeedbackSettings[]>`
+    SELECT
+      id as "taskId",
+      "autoFeedbackEnabled",
+      "autoFeedbackRecipientId",
+      "recurrenceEnabled",
+      "recurrenceInterval",
+      "recurrenceParentTaskId",
+      "createdById",
+      "acceptanceStatus",
+      "acceptanceRespondedAt",
+      "rejectionReason",
+      "completedAt",
+      "archiveDueAt",
+      "archivedAt",
+      "archiveReason"
+    FROM "Task"
+    WHERE id IN (${Prisma.join(taskIds)})
+  `;
+
+  return new Map(feedbackRows.map((row) => [row.taskId, row]));
+}
+
+async function updateTaskFeedbackSettings(
+  taskId: string,
+  enabled: boolean,
+  recipientId: string | null,
+  recurrenceEnabled: boolean,
+  recurrenceInterval: string | null,
+  createdById?: string | null,
+  acceptanceStatus?: string
+) {
+  await prisma.$executeRaw`
+    UPDATE "Task"
+    SET
+      "autoFeedbackEnabled" = ${enabled},
+      "autoFeedbackRecipientId" = ${recipientId},
+      "recurrenceEnabled" = ${recurrenceEnabled},
+      "recurrenceInterval" = ${recurrenceInterval},
+      "createdById" = COALESCE(${createdById ?? null}, "createdById"),
+      "acceptanceStatus" = COALESCE(${acceptanceStatus ?? null}, "acceptanceStatus")
+    WHERE id = ${taskId}
+  `;
+
+  return {
+    taskId,
+    autoFeedbackEnabled: enabled,
+    autoFeedbackRecipientId: recipientId,
+    recurrenceEnabled,
+    recurrenceInterval,
+    recurrenceParentTaskId: null,
+    createdById: createdById ?? null,
+    acceptanceStatus: acceptanceStatus ?? "accepted",
+    acceptanceRespondedAt: null,
+    rejectionReason: null,
+    completedAt: null,
+    archiveDueAt: null,
+    archivedAt: null,
+    archiveReason: null,
+  };
+}
+
+async function autoArchiveExpiredTasks() {
+  await prisma.$executeRawUnsafe(`
+    UPDATE "Task"
+    SET
+      status = 'ARCHIVIERT',
+      "archivedAt" = CURRENT_TIMESTAMP,
+      "archiveReason" = 'Automatisch nach 120 Stunden archiviert'
+    WHERE status = 'ERLEDIGT'
+      AND "archiveDueAt" IS NOT NULL
+      AND "archiveDueAt" <= CURRENT_TIMESTAMP
+  `);
+}
+
+async function updateCompletionArchiveTimer(
+  taskId: string,
+  previousStatus: TaskStatus | null,
+  nextStatus: TaskStatus
+) {
+  if (previousStatus !== TaskStatus.ERLEDIGT && nextStatus === TaskStatus.ERLEDIGT) {
+    await prisma.$executeRaw`
+      UPDATE "Task"
+      SET
+        "completedAt" = CURRENT_TIMESTAMP,
+        "archiveDueAt" = CURRENT_TIMESTAMP + INTERVAL '120 hours',
+        "archiveReason" = NULL
+      WHERE id = ${taskId}
+    `;
+    return;
+  }
+
+  if (previousStatus === TaskStatus.ERLEDIGT && nextStatus !== TaskStatus.ERLEDIGT) {
+    await prisma.$executeRaw`
+      UPDATE "Task"
+      SET
+        "completedAt" = NULL,
+        "archiveDueAt" = NULL
+      WHERE id = ${taskId}
+    `;
+  }
+}
+
+async function createNextRecurringTask(
+  task: TaskWithRelations,
+  previousStatus: TaskStatus | null,
+  recurrence: TaskFeedbackSettings
+) {
+  if (previousStatus === TaskStatus.ERLEDIGT || task.status !== TaskStatus.ERLEDIGT) return;
+  if (!recurrence.recurrenceEnabled || !recurrence.recurrenceInterval) return;
+
+  const existingNextTask = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM "Task"
+    WHERE "recurrenceParentTaskId" = ${task.id}
+    LIMIT 1
+  `;
+
+  if (existingNextTask.length > 0) return;
+
+  const nextTask = await prisma.task.create({
+    data: {
+      organizationId: task.organizationId,
+      ownerId: task.ownerId,
+      teamId: task.teamId,
+      title: task.title,
+      description: task.description,
+      status: TaskStatus.OFFEN,
+      priority: task.priority,
+      deadline: getNextRecurringDeadline(task.createdAt, recurrence.recurrenceInterval),
+      customer: task.customer,
+      customerClass: task.customerClass,
+      categoryId: task.categoryId,
+      estimateMinutes: task.estimateMinutes,
+    },
+  });
+
+  await prisma.$executeRaw`
+    UPDATE "Task"
+    SET
+      "recurrenceEnabled" = ${recurrence.recurrenceEnabled},
+      "recurrenceInterval" = ${recurrence.recurrenceInterval},
+      "recurrenceParentTaskId" = ${task.id},
+      "autoFeedbackEnabled" = ${recurrence.autoFeedbackEnabled},
+      "autoFeedbackRecipientId" = ${recurrence.autoFeedbackRecipientId},
+      "createdById" = ${recurrence.createdById ?? task.ownerId},
+      "acceptanceStatus" = ${recurrence.acceptanceStatus}
+    WHERE id = ${nextTask.id}
+  `;
 }
 
 export async function GET() {
   const { organization } = await getDemoContext();
+  await autoArchiveExpiredTasks();
 
   const tasks = await prisma.task.findMany({
     where: {
@@ -80,70 +432,293 @@ export async function GET() {
     },
     include: {
       owner: true,
+      category: true,
+      comments: {
+        orderBy: {
+          createdAt: "desc",
+        },
+        include: {
+          author: true,
+        },
+      },
+      timeEntries: {
+        orderBy: {
+          startedAt: "desc",
+        },
+        include: {
+          user: true,
+        },
+      },
     },
   });
 
-  return NextResponse.json(tasks.map(formatTask));
+  const feedbackByTaskId = await getTaskFeedbackSettings(tasks.map((task) => task.id));
+
+  return NextResponse.json(
+    tasks.map((task) => formatTask(task, feedbackByTaskId.get(task.id)))
+  );
 }
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { organization, user } = await getDemoContext();
+  const { organization, user, users } = await getDemoContext();
+  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const requestedOwner = users.find((demoUser) => demoUser.id === body.ownerId);
+  const owner = requestedOwner && canAssignOther(actor.role) ? requestedOwner : actor;
+  const acceptanceStatus = owner.id === actor.id ? "accepted" : "pending";
+  const nextStatus = TaskStatus.OFFEN;
+  const nextEstimate = parseEstimate(body.estimateMinutes);
+  const completionError = validateCompletionRequirements(nextStatus, nextEstimate, 0);
+
+  if (completionError) {
+    return NextResponse.json({ error: completionError }, { status: 400 });
+  }
 
   const task = await prisma.task.create({
     data: {
       organizationId: organization.id,
-      ownerId: user.id,
+      ownerId: owner.id,
+      teamId: owner.teamId,
       title: body.title,
-      description: "",
-      status: mapStatus(body.status),
+      description: body.description ?? "",
+      status: nextStatus,
       priority: mapPriority(body.priority),
-      deadline: body.deadline ? new Date(body.deadline) : new Date(),
+      deadline: parseDeadline(body.deadline),
+      customer: body.customer || null,
+      customerClass: mapCustomerClass(body.customerClass),
+      categoryId: body.tradeId || null,
+      estimateMinutes: nextEstimate,
     },
     include: {
       owner: true,
+      category: true,
+      comments: {
+        orderBy: {
+          createdAt: "desc",
+        },
+        include: {
+          author: true,
+        },
+      },
+      timeEntries: {
+        orderBy: {
+          startedAt: "desc",
+        },
+        include: {
+          user: true,
+        },
+      },
     },
   });
+  await updateCompletionArchiveTimer(task.id, null, nextStatus);
 
-  return NextResponse.json(formatTask(task));
+  const feedback = await updateTaskFeedbackSettings(
+    task.id,
+    Boolean(body.autoFeedbackEnabled),
+    parseAutoFeedbackRecipient(
+      body.autoFeedbackRecipientId,
+      Boolean(body.autoFeedbackEnabled),
+      users
+    ),
+    Boolean(body.recurrenceEnabled),
+    parseRecurrenceInterval(body.recurrenceInterval, Boolean(body.recurrenceEnabled)),
+    actor.id,
+    acceptanceStatus
+  );
+  await createDoneFeedbackNotification(task, null, users, feedback);
+  await createNextRecurringTask(task, null, feedback);
+
+  return NextResponse.json(formatTask(task, feedback));
 }
 
 export async function PATCH(req: Request) {
   const body = await req.json();
+  const { user, users } = await getDemoContext();
+  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const requestedOwner = users.find((demoUser) => demoUser.id === body.ownerId);
+  const nextStatus = mapStatus(body.status);
+  const nextEstimate = parseEstimate(body.estimateMinutes);
+
+  if (body.restore) {
+    const task = await prisma.task.findUnique({
+      where: {
+        id: body.id,
+      },
+    });
+
+    if (!task) {
+      return NextResponse.json({ error: "Aufgabe wurde nicht gefunden." }, { status: 404 });
+    }
+
+    if (!canDeleteTask(actor.role)) {
+      return NextResponse.json(
+        { error: "Nur Admins und Geschäftsführung dürfen Aufgaben wiederherstellen." },
+        { status: 403 }
+      );
+    }
+
+    await prisma.$executeRaw`
+      UPDATE "Task"
+      SET
+        status = 'OFFEN'::"TaskStatus",
+        "archivedAt" = NULL,
+        "archiveDueAt" = NULL,
+        "archiveReason" = NULL,
+        "completedAt" = NULL
+      WHERE id = ${body.id}
+    `;
+
+    return NextResponse.json({ success: true });
+  }
+
+  if (requestedOwner && requestedOwner.id !== actor.id && !canAssignOther(actor.role)) {
+    return NextResponse.json(
+      { error: "Du darfst Aufgaben nicht anderen Personen zuweisen." },
+      { status: 403 }
+    );
+  }
+
+  const owner = requestedOwner ?? actor;
+  const existingTask = await prisma.task.findUnique({
+    where: {
+      id: body.id,
+    },
+  });
+  const existingFeedback = body.id
+    ? (await getTaskFeedbackSettings([body.id])).get(body.id)
+    : undefined;
+  const nextAcceptanceStatus =
+    existingTask && owner.id !== existingTask.ownerId && owner.id !== actor.id
+      ? "pending"
+      : existingFeedback?.acceptanceStatus;
+  const timeEntryCount = await prisma.timeEntry.count({
+    where: {
+      taskId: body.id,
+    },
+  });
+  const completionError = validateCompletionRequirements(
+    nextStatus,
+    nextEstimate,
+    timeEntryCount
+  );
+
+  if (completionError) {
+    return NextResponse.json({ error: completionError }, { status: 400 });
+  }
 
   const task = await prisma.task.update({
     where: {
       id: body.id,
     },
     data: {
+      ownerId: owner.id,
+      teamId: owner.teamId,
       title: body.title,
-      status: mapStatus(body.status),
+      description: body.description ?? "",
+      status: nextStatus,
       priority: mapPriority(body.priority),
-      deadline: body.deadline ? new Date(body.deadline) : new Date(),
+      deadline: parseDeadline(body.deadline),
+      customer: body.customer || null,
+      customerClass: mapCustomerClass(body.customerClass),
+      categoryId: body.tradeId || null,
+      estimateMinutes: nextEstimate,
     },
     include: {
       owner: true,
+      category: true,
+      comments: {
+        orderBy: {
+          createdAt: "desc",
+        },
+        include: {
+          author: true,
+        },
+      },
+      timeEntries: {
+        orderBy: {
+          startedAt: "desc",
+        },
+        include: {
+          user: true,
+        },
+      },
     },
   });
+  await updateCompletionArchiveTimer(task.id, existingTask?.status ?? null, nextStatus);
 
-  return NextResponse.json(formatTask(task));
+  const feedback = await updateTaskFeedbackSettings(
+    task.id,
+    Boolean(body.autoFeedbackEnabled),
+    parseAutoFeedbackRecipient(
+      body.autoFeedbackRecipientId,
+      Boolean(body.autoFeedbackEnabled),
+      users
+    ),
+    Boolean(body.recurrenceEnabled),
+    parseRecurrenceInterval(body.recurrenceInterval, Boolean(body.recurrenceEnabled)),
+    existingFeedback?.createdById ?? actor.id,
+    nextAcceptanceStatus
+  );
+  await createDoneFeedbackNotification(task, existingTask?.status ?? null, users, feedback);
+  await createNextRecurringTask(task, existingTask?.status ?? null, feedback);
+
+  return NextResponse.json(formatTask(task, feedback));
 }
 
 export async function DELETE(req: Request) {
   const body = await req.json();
+  const { user, users } = await getDemoContext();
+  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
 
   if (!body.id) {
     return NextResponse.json(
-      { error: "Keine Aufgaben-ID übergeben" },
+      { error: "Keine Aufgaben-ID \u00fcbergeben" },
       { status: 400 }
     );
   }
 
-  await prisma.task.delete({
+  if (!canDeleteTask(actor.role)) {
+    return NextResponse.json(
+      { error: "Nur Admins und Gesch\u00e4ftsf\u00fchrung d\u00fcrfen Aufgaben l\u00f6schen." },
+      { status: 403 }
+    );
+  }
+
+  const task = await prisma.task.findUnique({
     where: {
       id: body.id,
     },
   });
+
+  if (!task) {
+    return NextResponse.json({ error: "Aufgabe wurde nicht gefunden." }, { status: 404 });
+  }
+
+  if (body.permanent) {
+    if (task.status !== TaskStatus.ARCHIVIERT) {
+      return NextResponse.json(
+        { error: "Aufgaben k\u00f6nnen endg\u00fcltig nur aus dem Archiv gel\u00f6scht werden." },
+        { status: 400 }
+      );
+    }
+
+    await prisma.task.delete({
+      where: {
+        id: body.id,
+      },
+    });
+
+    return NextResponse.json({ success: true });
+  }
+
+  await prisma.$executeRaw`
+    UPDATE "Task"
+    SET
+      status = 'ARCHIVIERT'::"TaskStatus",
+      "archivedAt" = CURRENT_TIMESTAMP,
+      "archiveReason" = 'Manuell archiviert'
+    WHERE id = ${body.id}
+  `;
 
   return NextResponse.json({ success: true });
 }
