@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db/client";
+﻿import { prisma } from "@/lib/db/client";
 import { Role } from "@prisma/client";
 
 export async function getDemoContext() {
@@ -175,3 +175,4 @@ export async function getDemoContext() {
     user: currentUser,
   };
 }
+

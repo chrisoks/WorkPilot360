@@ -380,6 +380,16 @@ type UserOption = {
   teamIds: string[];
   dailyWorkHours: number;
   profileImageDataUrl: string;
+  salutation?: string;
+  birthDate?: string;
+  language?: string;
+  phone?: string;
+  mobile?: string;
+  street?: string;
+  postalCode?: string;
+  city?: string;
+  signature?: string;
+  signatureHidden?: boolean;
 };
 
 type TeamOption = {
@@ -2127,7 +2137,9 @@ export function DashboardPage() {
   const [authChecked, setAuthChecked] = useState(false);
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [loginError, setLoginError] = useState("");
+  const [isLoginSubmitting, setIsLoginSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<AppTab>("overview");
   const [documentConfigSection, setDocumentConfigSection] =
     useState<DocumentConfiguratorSection>("general");
@@ -2317,6 +2329,16 @@ export function DashboardPage() {
   const [userRole, setUserRole] = useState<UserRole>("MITARBEITER");
   const [userDailyWorkHours, setUserDailyWorkHours] = useState("8");
   const [userPassword, setUserPassword] = useState("");
+  const [userProfileImageDataUrl, setUserProfileImageDataUrl] = useState("");
+  const [employeeSalutation, setEmployeeSalutation] = useState("Herr");
+  const [employeeBirthDate, setEmployeeBirthDate] = useState("");
+  const [employeeLanguage, setEmployeeLanguage] = useState("Deutsch (Deutschland)");
+  const [employeePhone, setEmployeePhone] = useState("");
+  const [employeeMobile, setEmployeeMobile] = useState("");
+  const [employeeStreet, setEmployeeStreet] = useState("");
+  const [employeePostalCode, setEmployeePostalCode] = useState("");
+  const [employeeCity, setEmployeeCity] = useState("");
+  const [employeePasswordMessage, setEmployeePasswordMessage] = useState("");
   const [loginCredentialsDraft, setLoginCredentialsDraft] =
     useState<LoginCredentialsDraft | null>(null);
   const [ownName, setOwnName] = useState("");
@@ -2449,7 +2471,6 @@ export function DashboardPage() {
     setUsers(data);
     setZustaendigId((current) => current || storedUser?.id || data[0]?.id || "");
     setAbsenceUserId((current) => current || storedUser?.id || data[0]?.id || "");
-    setLoginEmail((current) => current || storedUser?.email || "");
 
     if (storedUser) {
       setActiveUserId(storedUser.id);
@@ -2755,20 +2776,34 @@ export function DashboardPage() {
   }
 
   async function handleLogin() {
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        email: loginEmail,
-        password: loginPassword,
-      }),
-    });
+    const email = loginEmail.trim().toLowerCase();
+    if (!email || !loginPassword || isLoginSubmitting) return;
+
+    setIsLoginSubmitting(true);
+    setLoginError("");
+
+    let res: Response;
+    try {
+      res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          password: loginPassword,
+        }),
+      });
+    } catch {
+      setLoginError("Der Login-Dienst ist gerade nicht erreichbar.");
+      setIsLoginSubmitting(false);
+      return;
+    }
 
     if (!res.ok) {
       const data = await res.json().catch(() => null);
       setLoginError(data?.error ?? "E-Mail oder Passwort ist nicht korrekt.");
+      setIsLoginSubmitting(false);
       return;
     }
 
@@ -2782,6 +2817,8 @@ export function DashboardPage() {
     setPlanningOwnerFilter(user.id);
     setLoginPassword("");
     setLoginError("");
+    setShowLoginPassword(false);
+    setIsLoginSubmitting(false);
     setIsAuthenticated(true);
   }
 
@@ -2789,6 +2826,10 @@ export function DashboardPage() {
     window.localStorage.removeItem("workpilot-user-id");
     setIsAuthenticated(false);
     setActiveUserId("");
+    setLoginEmail("");
+    setLoginPassword("");
+    setLoginError("");
+    setShowLoginPassword(false);
     setOwnerFilter("");
     setKanbanOwnerFilter("");
     setPlanningOwnerFilter("");
@@ -4957,6 +4998,18 @@ export function DashboardPage() {
     setUserRole("MITARBEITER");
     setUserDailyWorkHours("8");
     setUserPassword("");
+    setUserProfileImageDataUrl("");
+    setEmployeeSalutation("Herr");
+    setEmployeeBirthDate("");
+    setEmployeeLanguage("Deutsch (Deutschland)");
+    setEmployeePhone("");
+    setEmployeeMobile("");
+    setEmployeeStreet("");
+    setEmployeePostalCode("");
+    setEmployeeCity("");
+    setEmployeeSignatureHidden(false);
+    setEmployeeSignature("Mit freundlichen Grüßen\n\n");
+    setEmployeePasswordMessage("");
     setUserTeamIds([]);
     setUserAllTeams(false);
   }
@@ -4968,6 +5021,21 @@ export function DashboardPage() {
     setUserRole(user.role);
     setUserDailyWorkHours(user.dailyWorkHours.toString());
     setUserPassword("");
+    setUserProfileImageDataUrl(user.profileImageDataUrl ?? "");
+    setEmployeeSalutation(user.salutation || "Herr");
+    setEmployeeBirthDate(user.birthDate || "");
+    setEmployeeLanguage(user.language || "Deutsch (Deutschland)");
+    setEmployeePhone(user.phone || "");
+    setEmployeeMobile(user.mobile || "");
+    setEmployeeStreet(user.street || "");
+    setEmployeePostalCode(user.postalCode || "");
+    setEmployeeCity(user.city || "");
+    setEmployeeSignatureHidden(Boolean(user.signatureHidden));
+    setEmployeeSignature(
+      user.signature ||
+        `Mit freundlichen Grüßen\n\n${user.name}\n${user.roleLabel}\nOK solutions GmbH\nIm Krötenteich 3/4\n74722 Buchen`
+    );
+    setEmployeePasswordMessage("");
     setUserTeamIds(user.teamIds ?? []);
     setUserAllTeams(teams.length > 0 && user.teamIds.length === teams.length);
     setErrorMessage("");
@@ -4980,6 +5048,25 @@ export function DashboardPage() {
     ).join("");
 
     setUserPassword(generatedPassword);
+    setEmployeePasswordMessage("");
+  }
+
+  async function handleEmployeeProfileImageUpload(file: File | null) {
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setErrorMessage("Bitte eine Bilddatei als Profilbild auswählen.");
+      return;
+    }
+
+    try {
+      setUserProfileImageDataUrl(await resizeProfileImage(file));
+      setErrorMessage("");
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Profilbild konnte nicht verarbeitet werden."
+      );
+    }
   }
 
   function getLoginCredentialsMessage(credentials: LoginCredentialsDraft) {
@@ -5071,6 +5158,17 @@ export function DashboardPage() {
         role: userRole,
         password: userPassword,
         dailyWorkHours: Number(userDailyWorkHours),
+        profileImageDataUrl: userProfileImageDataUrl,
+        salutation: employeeSalutation,
+        birthDate: employeeBirthDate,
+        language: employeeLanguage,
+        phone: employeePhone,
+        mobile: employeeMobile,
+        street: employeeStreet,
+        postalCode: employeePostalCode,
+        city: employeeCity,
+        signature: employeeSignature,
+        signatureHidden: employeeSignatureHidden,
         teamIds: userAllTeams ? teams.map((team) => team.id) : userTeamIds,
         allTeams: userAllTeams,
         actorId: activeUserId,
@@ -5098,15 +5196,59 @@ export function DashboardPage() {
     return true;
   }
 
+  async function saveEmployeePassword() {
+    if (!editingUserId) {
+      setEmployeePasswordMessage("Neue Mitarbeiter werden mit dem Passwort über Speichern angelegt.");
+      return;
+    }
+
+    const nextPassword = userPassword.trim();
+    if (nextPassword.length < 4) {
+      setEmployeePasswordMessage("Bitte ein Passwort mit mindestens 4 Zeichen vergeben.");
+      return;
+    }
+
+    const res = await fetch("/api/users", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        userId: editingUserId,
+        name: userName,
+        email: userEmail,
+        role: userRole,
+        password: nextPassword,
+        dailyWorkHours: Number(userDailyWorkHours),
+        profileImageDataUrl: userProfileImageDataUrl,
+        teamIds: userAllTeams ? teams.map((team) => team.id) : userTeamIds,
+        allTeams: userAllTeams,
+        actorId: activeUserId,
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setEmployeePasswordMessage(data?.error ?? "Passwort konnte nicht gespeichert werden.");
+      return;
+    }
+
+    const savedUser = (await res.json()) as UserOption;
+    setLoginCredentialsDraft({
+      name: savedUser.name,
+      email: savedUser.email,
+      password: nextPassword,
+    });
+    setUserPassword("");
+    setEmployeePasswordMessage("Passwort gespeichert. Der Login funktioniert jetzt mit dieser E-Mail-Adresse und dem neuen Passwort.");
+    await loadUsers();
+  }
+
   function openEmployeeFile(user: UserOption) {
     editUser(user);
     setSelectedEmployeeId(user.id);
     setEmployeeTopTab("overview");
     setEmployeeSideTab("personal");
-    setEmployeeSignature(
-      `Mit freundlichen Grüxen\n\n${user.name}\n${user.roleLabel}\nOK solutions GmbH\nIm Krötenteich 3/4\n74722 Buchen`
-    );
-    setEmployeeSignatureHidden(false);
     setErrorMessage("");
   }
 
@@ -5133,8 +5275,6 @@ export function DashboardPage() {
     setEmployeeTopTab("overview");
     setEmployeeSideTab("personal");
     setEmployeeStatusView("active");
-    setEmployeeSignature("Mit freundlichen Grüxen\n\n");
-    setEmployeeSignatureHidden(false);
     setErrorMessage("");
   }
 
@@ -6426,9 +6566,54 @@ export function DashboardPage() {
       <main className={styles.page}>
         <section className={`${styles.shell} ${styles.loginShell}`}>
           <div className={styles.loginLayout}>
-            <aside className={styles.loginPanel}>
-              <img className={styles.loginLogo} src="/workpilot-logo.png" alt="WorkPilot" />
+            <section className={styles.loginHero}>
+              <div className={styles.loginHeroContent}>
+                <img className={styles.loginLogo} src="/wp360-freigestellt.png" alt="WorkPilot360" />
+                <p className={styles.loginKicker}>Willkommen</p>
+                <h2>
+                  Dein Cockpit für
+                  <br />
+                  Projekte, Aufgaben
+                  <br />
+                  und Zeit.
+                </h2>
+                <p>Arbeite mit klaren Zuständigkeiten, aktuellen Projektständen und einem Login pro Mitarbeiter.</p>
 
+                <div className={styles.loginPreviewStack} aria-hidden="true">
+                  <div className={styles.loginMiniCard}>
+                    <span>Projekte</span>
+                    <strong>127</strong>
+                    <i />
+                  </div>
+                  <div className={styles.loginProgressCard}>
+                    <span>Projektfortschritt</span>
+                    <div className={styles.loginProgressVisual}>
+                      <strong>68%</strong>
+                    </div>
+                    <ul>
+                      <li><span /> Abgeschlossen <strong>68%</strong></li>
+                      <li><span /> In Arbeit <strong>24%</strong></li>
+                      <li><span /> Geplant <strong>8%</strong></li>
+                    </ul>
+                  </div>
+                  <div className={styles.loginTaskCard}>
+                    <span>Aufgaben</span>
+                    <strong>14</strong>
+                    <i />
+                    <i />
+                    <i />
+                  </div>
+                  <div className={styles.loginListCard}>
+                    <span>Meine nächsten Aufgaben</span>
+                    <div><strong>Angebot erstellen</strong><small>In Arbeit</small></div>
+                    <div><strong>Projektplanung</strong><small>Geplant</small></div>
+                    <div><strong>Kundenmeeting</strong><small>Heute</small></div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <aside className={styles.loginPanel}>
               <form
                 className={styles.loginCard}
                 onSubmit={(event) => {
@@ -6436,81 +6621,75 @@ export function DashboardPage() {
                   handleLogin();
                 }}
               >
-                <div className={styles.loginAvatar} aria-hidden="true">
-                  <svg viewBox="0 0 24 24">
-                    <path d="M20 21a8 8 0 0 0-16 0" />
-                    <circle cx="12" cy="7" r="4" />
-                  </svg>
+                <div className={styles.loginCardHeader}>
+                  <span>WORKPILOT360</span>
+                  <h1>Sign in</h1>
+                  <p>Melde dich mit deinen Zugangsdaten an.</p>
                 </div>
 
-                <label>
-                  E-Mail
-                  <input
-                    type="email"
-                    value={loginEmail}
-                    onChange={(event) => setLoginEmail(event.target.value)}
-                    placeholder="name@unternehmen.de"
-                    autoComplete="email"
-                  />
+                <label className={styles.loginFieldGroup}>
+                  <span>E-Mail</span>
+                  <div className={styles.loginInputShell}>
+                    <span aria-hidden="true">✉</span>
+                    <input
+                      type="email"
+                      value={loginEmail}
+                      onChange={(event) => setLoginEmail(event.target.value)}
+                      placeholder="name@unternehmen.de"
+                      autoComplete="off"
+                    />
+                  </div>
                 </label>
 
-                <label>
-                  Passwort
-                  <input
-                    type="password"
-                    value={loginPassword}
-                    onChange={(event) => setLoginPassword(event.target.value)}
-                    placeholder="demo"
-                    autoComplete="current-password"
-                  />
+                <label className={styles.loginFieldGroup}>
+                  <span>Passwort</span>
+                  <div className={styles.loginPasswordField}>
+                    <span aria-hidden="true">▣</span>
+                    <input
+                      type={showLoginPassword ? "text" : "password"}
+                      value={loginPassword}
+                      onChange={(event) => setLoginPassword(event.target.value)}
+                      placeholder="Passwort"
+                      autoComplete="off"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowLoginPassword((current) => !current)}
+                    >
+                      {showLoginPassword ? "Verbergen" : "Anzeigen"}
+                    </button>
+                  </div>
                 </label>
 
-                {loginError && <p className={styles.modalWarning}>{loginError}</p>}
+                {loginError && <p className={styles.loginError}>{loginError}</p>}
+
+                <div className={styles.loginOptionsRow}>
+                  <label>
+                    <input type="checkbox" defaultChecked />
+                    Angemeldet bleiben
+                  </label>
+                  <button type="button">Passwort vergessen?</button>
+                </div>
 
                 <button
-                  className={styles.primaryButton}
+                  className={styles.loginSubmitButton}
                   type="submit"
-                  disabled={!loginEmail.trim() || !loginPassword}
+                  disabled={!loginEmail.trim() || !loginPassword || isLoginSubmitting}
                 >
-                  Einloggen
+                  <span>{isLoginSubmitting ? "Anmeldung läuft..." : "Einloggen"}</span>
+                  <strong aria-hidden="true">→</strong>
                 </button>
 
-                <p className={styles.loginHint}>Demo-Passwort: demo</p>
-              </form>
-
-              <div className={styles.creatorBadge}>
-                <img src="/ok-solutions-logo.png" alt="OK solutions" />
-                <span>created by OK solutions</span>
-              </div>
-            </aside>
-
-            <section className={styles.loginHero}>
-              <div className={styles.loginHeroContent}>
-                <p className={styles.loginKicker}>WorkPilot Aufgabenmanagement</p>
-                <h1>Fokus, Verantwortung und Deadlines an einem Ort.</h1>
-                <p>
-                  WorkPilot bündelt Aufgaben, Zeiten, Abwesenheiten, Eskalationen und
-                  Projektdaten in einer klaren Arbeitsoberfläche. Mitarbeiter sehen, was jetzt
-                  wichtig ist. Führungskräfte erkennen frühzeitig Engpässe, offene Sbergaben und
-                  überfällige Deadlines.
+                <p className={styles.loginContactHint}>
+                  Noch kein Konto? <button type="button">Jetzt kontaktieren</button>
                 </p>
 
-                <div className={styles.loginFeatureGrid}>
-                  <article>
-                    <strong>Klare Zuständigkeit</strong>
-                    <span>Aufgaben mit Verantwortlichen, Status, Priorität und Annahmeprozess.</span>
-                  </article>
-                  <article>
-                    <strong>Planbare Auslastung</strong>
-                    <span>Vorgabezeiten, Tageskapazitäten, Urlaub und Krank direkt im Report.</span>
-                  </article>
-                  <article>
-                    <strong>Keine stillen Fristen</strong>
-                    <span>Deadline-Fortschritt, Benachrichtigungen und Eskalationen sichtbar.</span>
-                  </article>
+                <div className={styles.creatorBadge}>
+                  <img src="/ok-solutions-logo.png" alt="OK solutions" />
+                  <span>created by OK solutions</span>
                 </div>
-              </div>
-            </section>
+              </form>
+            </aside>
           </div>
         </section>
       </main>
@@ -7714,8 +7893,8 @@ export function DashboardPage() {
             <div className={styles.employeeFileLayout}>
               <aside className={styles.employeeFileSidebar}>
                 <div className={styles.employeePhoto}>
-                  {selectedEmployee?.profileImageDataUrl ? (
-                    <img src={selectedEmployee.profileImageDataUrl} alt={selectedEmployee.name} />
+                  {userProfileImageDataUrl ? (
+                    <img src={userProfileImageDataUrl} alt={employeeName} />
                   ) : (
                     <span>{getInitials(employeeName || "MA")}</span>
                   )}
@@ -7741,9 +7920,47 @@ export function DashboardPage() {
                       <h2>Persönliches</h2>
                     </div>
                     <div className={styles.employeeFormGrid}>
+                      <div className={`${styles.profileImageEditor} ${styles.fullWidth}`}>
+                        <div className={styles.profileImagePreview}>
+                          {userProfileImageDataUrl ? (
+                            <img src={userProfileImageDataUrl} alt="Profilbild Vorschau" />
+                          ) : (
+                            <span>{getInitials(employeeName || "MA")}</span>
+                          )}
+                        </div>
+                        <div>
+                          <strong>Profilbild</strong>
+                          <p>JPG oder PNG hochladen. Das Bild wird direkt als Avatar verwendet.</p>
+                          <label className={styles.fileButton}>
+                            Bild auswählen
+                            <input
+                              type="file"
+                              accept="image/*"
+                              disabled={!mayManageUsers}
+                              onChange={(event) =>
+                                handleEmployeeProfileImageUpload(event.target.files?.[0] ?? null)
+                              }
+                            />
+                          </label>
+                          {userProfileImageDataUrl && (
+                            <button
+                              type="button"
+                              className={styles.secondaryButton}
+                              disabled={!mayManageUsers}
+                              onClick={() => setUserProfileImageDataUrl("")}
+                            >
+                              Bild entfernen
+                            </button>
+                          )}
+                        </div>
+                      </div>
                       <label>
                         Anrede
-                        <select defaultValue="Herr">
+                        <select
+                          value={employeeSalutation}
+                          disabled={!mayManageUsers}
+                          onChange={(event) => setEmployeeSalutation(event.target.value)}
+                        >
                           <option>Herr</option>
                           <option>Frau</option>
                           <option>Divers</option>
@@ -7768,11 +7985,20 @@ export function DashboardPage() {
                       </label>
                       <label>
                         Geburtsdatum
-                        <input type="date" />
+                        <input
+                          type="date"
+                          value={employeeBirthDate}
+                          disabled={!mayManageUsers}
+                          onChange={(event) => setEmployeeBirthDate(event.target.value)}
+                        />
                       </label>
                       <label>
                         Anzeigesprache
-                        <select defaultValue="Deutsch (Deutschland)">
+                        <select
+                          value={employeeLanguage}
+                          disabled={!mayManageUsers}
+                          onChange={(event) => setEmployeeLanguage(event.target.value)}
+                        >
                           <option>Deutsch (Deutschland)</option>
                         </select>
                       </label>
@@ -7787,23 +8013,46 @@ export function DashboardPage() {
                       </label>
                       <label>
                         Telefonnummer
-                        <input placeholder="+49..." />
+                        <input
+                          value={employeePhone}
+                          disabled={!mayManageUsers}
+                          onChange={(event) => setEmployeePhone(event.target.value)}
+                          placeholder="+49..."
+                        />
                       </label>
                       <label>
                         Mobilfunknummer
-                        <input placeholder="+49..." />
+                        <input
+                          value={employeeMobile}
+                          disabled={!mayManageUsers}
+                          onChange={(event) => setEmployeeMobile(event.target.value)}
+                          placeholder="+49..."
+                        />
                       </label>
                       <label className={styles.fullWidth}>
                         Straxe & Hausnummer
-                        <input placeholder="Straxe und Hausnummer" />
+                        <input
+                          value={employeeStreet}
+                          disabled={!mayManageUsers}
+                          onChange={(event) => setEmployeeStreet(event.target.value)}
+                          placeholder="Straße und Hausnummer"
+                        />
                       </label>
                       <label>
                         Postleitzahl
-                        <input />
+                        <input
+                          value={employeePostalCode}
+                          disabled={!mayManageUsers}
+                          onChange={(event) => setEmployeePostalCode(event.target.value)}
+                        />
                       </label>
                       <label>
                         Ort
-                        <input />
+                        <input
+                          value={employeeCity}
+                          disabled={!mayManageUsers}
+                          onChange={(event) => setEmployeeCity(event.target.value)}
+                        />
                       </label>
                       <div className={`${styles.fullWidth} ${styles.employeeSignatureEditor}`}>
                         <label className={styles.checkboxField}>
@@ -8037,27 +8286,58 @@ export function DashboardPage() {
                 {employeeSideTab === "password" && (
                   <>
                     <div className={styles.employeeSectionHeader}>
-                      <h2>Passwort ändern</h2>
+                      <h2>Login-Passwort setzen</h2>
                     </div>
-                    <div className={styles.employeeFormGrid}>
-                      <label className={styles.fullWidth}>
+                    <div className={styles.employeePasswordBox}>
+                      <div className={styles.employeePasswordIntro}>
+                        <strong>Login-Daten</strong>
+                        <span>
+                          Der Mitarbeiter meldet sich mit dieser E-Mail-Adresse und dem hier gesetzten Passwort an.
+                        </span>
+                      </div>
+                      <label>
+                        E-Mail-Adresse für Login
+                        <input value={userEmail} readOnly />
+                      </label>
+                      <label>
                         Neues Passwort{isNewEmployee ? " *" : ""}
                         <input
                           type="text"
                           value={userPassword}
                           disabled={!mayManageUsers}
-                          onChange={(event) => setUserPassword(event.target.value)}
-                          placeholder={isNewEmployee ? "Passwort für Login vergeben" : "Leer lassen, wenn unverändert"}
+                          onChange={(event) => {
+                            setUserPassword(event.target.value);
+                            setEmployeePasswordMessage("");
+                          }}
+                          placeholder={isNewEmployee ? "Passwort für Login vergeben" : "Neues Login-Passwort eingeben"}
                         />
                       </label>
-                      <button
-                        type="button"
-                        className={styles.secondaryButton}
-                        disabled={!mayManageUsers}
-                        onClick={generateUserPassword}
-                      >
-                        Passwort generieren
-                      </button>
+                      <div className={styles.employeePasswordActions}>
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          disabled={!mayManageUsers}
+                          onClick={generateUserPassword}
+                        >
+                          Passwort generieren
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.primaryButton}
+                          disabled={!mayManageUsers || isNewEmployee || userPassword.trim().length < 4}
+                          onClick={saveEmployeePassword}
+                        >
+                          Passwort speichern
+                        </button>
+                      </div>
+                      {isNewEmployee && (
+                        <p className={styles.employeePasswordHint}>
+                          Bei neuen Mitarbeitern wird das Passwort zusammen mit dem Mitarbeiter über Speichern angelegt.
+                        </p>
+                      )}
+                      {employeePasswordMessage && (
+                        <p className={styles.employeePasswordHint}>{employeePasswordMessage}</p>
+                      )}
                     </div>
                   </>
                 )}

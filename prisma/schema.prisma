@@ -7,6 +7,419 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Organization {
+  id               String              @id @default(cuid())
+  name             String
+  slug             String              @unique
+  locale           String              @default("de")
+  timezone         String              @default("Europe/Berlin")
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  auditLogs        AuditLog[]
+  categories       Category[]
+  departments      Department[]
+  escalationRules  EscalationRule[]
+  notifications    Notification[]
+  recurringRules   RecurringTaskRule[]
+  subcategories    Subcategory[]
+  tasks            Task[]
+  taskComments     TaskComment[]
+  taskLinks        TaskLink[]
+  taskParticipants TaskParticipant[]
+  taskTemplates    TaskTemplate[]
+  teams            Team[]
+  timeEntries      TimeEntry[]
+  users            User[]
+}
+
+model User {
+  id                  String            @id @default(cuid())
+  organizationId      String
+  email               String
+  passwordHash        String
+  firstName           String
+  lastName            String
+  role                Role
+  isActive            Boolean           @default(true)
+  teamId              String?
+  departmentId        String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  dailyWorkHours      Float             @default(8)
+  profileImageDataUrl String?
+  salutation          String?
+  birthDate           DateTime?
+  language            String?
+  phone               String?
+  mobile              String?
+  street              String?
+  postalCode          String?
+  city                String?
+  signature           String?
+  signatureHidden     Boolean?          @default(false)
+  notifications       Notification[]
+  ownedTasks          Task[]            @relation("TaskOwner")
+  taskComments        TaskComment[]
+  taskParticipations  TaskParticipant[]
+  timeEntries         TimeEntry[]
+  department          Department?       @relation(fields: [departmentId], references: [id])
+  organization        Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team                Team?             @relation(fields: [teamId], references: [id])
+
+  @@unique([organizationId, email])
+}
+
+model Department {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  teams          Team[]
+  users          User[]
+}
+
+model Team {
+  id             String       @id @default(cuid())
+  organizationId String
+  departmentId   String?
+  name           String
+  tasks          Task[]
+  department     Department?  @relation(fields: [departmentId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  users          User[]
+}
+
+model Task {
+  id                      String                  @id @default(cuid())
+  organizationId          String
+  title                   String
+  description             String
+  status                  TaskStatus              @default(OFFEN)
+  priority                TaskPriority            @default(NORMAL)
+  deadline                DateTime
+  customer                String?
+  customerClass           CustomerClassification?
+  categoryId              String?
+  subcategoryId           String?
+  estimateMinutes         Int?
+  ownerId                 String
+  teamId                  String?
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
+  autoFeedbackEnabled     Boolean                 @default(false)
+  autoFeedbackRecipientId String?
+  recurrenceEnabled       Boolean                 @default(false)
+  recurrenceInterval      String?
+  recurrenceParentTaskId  String?
+  createdById             String?
+  acceptanceStatus        String                  @default("accepted")
+  acceptanceRespondedAt   DateTime?
+  rejectionReason         String?
+  completedAt             DateTime?
+  archiveDueAt            DateTime?
+  archivedAt              DateTime?
+  archiveReason           String?
+  planningAllocations     Json                    @default("[]")
+  auditLogs               AuditLog[]
+  notifications           Notification[]
+  category                Category?               @relation(fields: [categoryId], references: [id])
+  organization            Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner                   User                    @relation("TaskOwner", fields: [ownerId], references: [id])
+  subcategory             Subcategory?            @relation(fields: [subcategoryId], references: [id])
+  team                    Team?                   @relation(fields: [teamId], references: [id])
+  comments                TaskComment[]
+  links                   TaskLink[]
+  participants            TaskParticipant[]
+  timeEntries             TimeEntry[]
+}
+
+model TaskParticipant {
+  id             String       @id @default(cuid())
+  organizationId String
+  taskId         String
+  userId         String
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task           Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+}
+
+model TaskComment {
+  id             String       @id @default(cuid())
+  organizationId String
+  taskId         String
+  authorId       String
+  body           String
+  createdAt      DateTime     @default(now())
+  author         User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task           Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model TimeEntry {
+  id              String       @id @default(cuid())
+  organizationId  String
+  taskId          String
+  userId          String
+  startedAt       DateTime
+  stoppedAt       DateTime?
+  durationMinutes Int          @default(0)
+  note            String?
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task            Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TaskLink {
+  id             String       @id @default(cuid())
+  organizationId String
+  taskId         String
+  label          String
+  url            String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task           Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model Category {
+  id             String        @id @default(cuid())
+  organizationId String
+  name           String
+  projectPrefix  String?
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subcategories  Subcategory[]
+  tasks          Task[]
+}
+
+model Subcategory {
+  id             String       @id @default(cuid())
+  organizationId String
+  categoryId     String
+  name           String
+  category       Category     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tasks          Task[]
+}
+
+model Notification {
+  id             String       @id @default(cuid())
+  organizationId String
+  userId         String
+  taskId         String?
+  channel        String
+  subject        String
+  body           String
+  sentAt         DateTime?
+  createdAt      DateTime     @default(now())
+  readAt         DateTime?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task           Task?        @relation(fields: [taskId], references: [id])
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  taskId         String?
+  actorId        String?
+  action         String
+  entityType     String
+  entityId       String
+  payload        Json?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task           Task?        @relation(fields: [taskId], references: [id])
+}
+
+model EscalationRule {
+  id              String       @id @default(cuid())
+  organizationId  String
+  name            String
+  hoursAfterDue   Int          @default(0)
+  targetRole      Role
+  isActive        Boolean      @default(true)
+  emailEnabled    Boolean      @default(false)
+  emailRecipients String       @default("")
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model TaskTemplate {
+  id              String       @id @default(cuid())
+  organizationId  String
+  name            String
+  description     String?
+  defaultPriority TaskPriority @default(NORMAL)
+  defaultEstimate Int?
+  categoryId      String?
+  subcategoryId   String?
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model RecurringTaskRule {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  cronExpression String
+  isActive       Boolean      @default(true)
+  templateId     String?
+  nextRunAt      DateTime?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model Absence {
+  id                   String   @id
+  organizationId       String
+  userId               String
+  type                 String
+  date                 DateTime @db.Date
+  note                 String?
+  createdAt            DateTime @default(now())
+  representativeUserId String?
+
+  @@unique([userId, date])
+}
+
+model Contact {
+  id                    String   @id
+  organizationId        String
+  category              String   @default("Kunde")
+  type                  String   @default("person")
+  customerNumber        String
+  salutation            String?
+  additionalSalutation  String?
+  companyName           String?
+  firstName             String?
+  lastName              String?
+  position              String?
+  email                 String?
+  phone                 String?
+  mobile                String?
+  fax                   String?
+  website               String?
+  source                String?
+  reachability          String?
+  isInvoiceRecipient    Boolean  @default(false)
+  street                String?
+  addressLine1          String?
+  addressLine2          String?
+  postalCode            String?
+  city                  String?
+  country               String?
+  paymentTermDays       Int?
+  discountPercent       Float?
+  discountTermDays      Int?
+  priceGroup            String?
+  iban                  String?
+  bic                   String?
+  bankName              String?
+  taxId                 String?
+  debtorCreditorAccount String?
+  leitwegId             String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @default(now())
+  parentCompanyId       String?
+  parentCompanyName     String?
+  mainContactName       String?
+  isMainContact         Boolean  @default(false)
+  legalForm             String?
+}
+
+model DocumentTextTemplate {
+  id             String   @id
+  organizationId String
+  source         String   @default("Eigene")
+  kind           String   @default("text")
+  title          String
+  body           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now())
+
+  @@unique([organizationId, title], map: "DocumentTextTemplate_org_title_key")
+}
+
+model DocumentTypeConfig {
+  id             String    @id
+  organizationId String
+  name           String
+  baseType       String    @default("Dokument")
+  folder         String    @default("Allgemein")
+  status         String    @default("Aktiv")
+  config         Json      @default("{}")
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @default(now())
+
+  @@unique([organizationId, name], map: "DocumentTypeConfig_org_name_key")
+}
+
+model ProjectLogbookEntry {
+  id             String   @id
+  organizationId String
+  projectId      String
+  title          String?
+  body           String
+  author         String?
+  colleague      String?
+  visibleFor     Json     @default("[]")
+  attachments    Json     @default("[]")
+  createdAt      DateTime @default(now())
+}
+
+model ProjectTimeEntry {
+  id             String   @id
+  organizationId String
+  projectId      String
+  projectLabel   String?
+  employee       String?
+  date           String
+  startTime      String
+  endTime        String
+  durationMs     BigInt   @default(0)
+  pauseMs        BigInt   @default(0)
+  comment        String?
+  createdAt      DateTime @default(now())
+  mode           String   @default("project")
+}
+
+model UserTeamMembership {
+  userId    String
+  teamId    String
+  createdAt DateTime @default(now())
+
+  @@id([userId, teamId])
+}
+
+model WorkPilotProject {
+  id                  String   @id
+  organizationId      String
+  projectNumber       String
+  title               String
+  customer            String?
+  status              String   @default("Lead / Kl├ñrung")
+  statusCode          String?
+  description         String?
+  contactId           String?
+  contactPersonId     String?
+  addressContactId    String?
+  projectType         String?
+  projectKind         String?
+  projectRuntimeFrom  String?
+  projectRuntimeUntil String?
+  billingInterval     String?
+  trade               String?
+  branch              String?
+  volume              String?
+  source              String?
+  address             String?
+  participants        String?
+  timeBudgetHours     String?
+  timeBudgetHistory   Json     @default("[]")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @default(now())
+  responsibleName     String?
+}
+
 enum Role {
   ADMIN
   GESCHAEFTSFUEHRER
@@ -38,248 +451,5 @@ enum CustomerClassification {
   C
 }
 
-model Organization {
-  id               String           @id @default(cuid())
-  name             String
-  slug             String           @unique
-  locale           String           @default("de")
-  timezone         String           @default("Europe/Berlin")
-  users            User[]
-  departments      Department[]
-  teams            Team[]
-  tasks            Task[]
-  categories       Category[]
-  subcategories    Subcategory[]
-  notifications    Notification[]
-  taskLinks        TaskLink[]
-  taskParticipants TaskParticipant[]
-taskComments     TaskComment[]
-timeEntries      TimeEntry[]
-  auditLogs        AuditLog[]
-  escalationRules  EscalationRule[]
-  taskTemplates    TaskTemplate[]
-  recurringRules   RecurringTaskRule[]
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-}
 
-model User {
-  id              String      @id @default(cuid())
-  organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  email           String
-  passwordHash    String
-  firstName       String
-  lastName        String
-  role            Role
-  isActive        Boolean     @default(true)
-  dailyWorkHours  Float       @default(8)
-  teamId          String?
-  team            Team?       @relation(fields: [teamId], references: [id])
-  departmentId    String?
-  department      Department? @relation(fields: [departmentId], references: [id])
-  ownedTasks      Task[]      @relation("TaskOwner")
-  taskParticipations TaskParticipant[]
-  taskComments    TaskComment[]
-  timeEntries     TimeEntry[]
-  notifications   Notification[]
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
 
-  @@unique([organizationId, email])
-}
-
-model Department {
-  id              String      @id @default(cuid())
-  organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  name            String
-  teams           Team[]
-  users           User[]
-}
-
-model Team {
-  id              String      @id @default(cuid())
-  organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  departmentId    String?
-  department      Department? @relation(fields: [departmentId], references: [id])
-  name            String
-  users           User[]
-  tasks           Task[]
-}
-
-model Task {
-  id                  String                @id @default(cuid())
-  organizationId      String
-  organization        Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  title               String
-  description         String
-  status              TaskStatus            @default(OFFEN)
-  priority            TaskPriority          @default(NORMAL)
-  deadline            DateTime
-  customer            String?
-  customerClass       CustomerClassification?
-  autoFeedbackEnabled Boolean               @default(false)
-  autoFeedbackRecipientId String?
-  recurrenceEnabled   Boolean               @default(false)
-  recurrenceInterval  String?
-  recurrenceParentTaskId String?
-  createdById         String?
-  acceptanceStatus    String                @default("accepted")
-  acceptanceRespondedAt DateTime?
-  rejectionReason     String?
-  completedAt         DateTime?
-  archiveDueAt        DateTime?
-  archivedAt          DateTime?
-  archiveReason       String?
-  categoryId          String?
-  category            Category?             @relation(fields: [categoryId], references: [id])
-  subcategoryId       String?
-  subcategory         Subcategory?          @relation(fields: [subcategoryId], references: [id])
-  estimateMinutes     Int?
-  ownerId             String
-  owner               User                  @relation("TaskOwner", fields: [ownerId], references: [id])
-  teamId              String?
-  team                Team?                 @relation(fields: [teamId], references: [id])
-  participants        TaskParticipant[]
-  comments            TaskComment[]
-  links               TaskLink[]
-  timeEntries         TimeEntry[]
-  notifications       Notification[]
-  auditLogs           AuditLog[]
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime              @updatedAt
-}
-
-model TaskParticipant {
-  id              String   @id @default(cuid())
-  organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  taskId          String
-  task            Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt       DateTime @default(now())
-
-  @@unique([taskId, userId])
-}
-
-model TaskComment {
-  id              String   @id @default(cuid())
-  organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  taskId          String
-  task            Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  authorId        String
-  author          User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  body            String
-  createdAt       DateTime @default(now())
-}
-
-model TimeEntry {
-  id              String   @id @default(cuid())
-  organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  taskId          String
-  task            Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  startedAt       DateTime
-  stoppedAt       DateTime?
-  durationMinutes Int      @default(0)
-  note            String?
-}
-
-model TaskLink {
-  id              String   @id @default(cuid())
-  organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  taskId          String
-  task            Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  label           String
-  url             String
-}
-
-model Category {
-  id              String   @id @default(cuid())
-  organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  name            String
-  projectPrefix   String?
-  subcategories   Subcategory[]
-  tasks           Task[]
-}
-
-model Subcategory {
-  id              String   @id @default(cuid())
-  organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  categoryId      String
-  category        Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  name            String
-  tasks           Task[]
-}
-
-model Notification {
-  id              String   @id @default(cuid())
-  organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  taskId          String?
-  task            Task?    @relation(fields: [taskId], references: [id])
-  channel         String
-  subject         String
-  body            String
-  sentAt          DateTime?
-  readAt          DateTime?
-  createdAt       DateTime @default(now())
-}
-
-model AuditLog {
-  id              String   @id @default(cuid())
-  organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  taskId          String?
-  task            Task?    @relation(fields: [taskId], references: [id])
-  actorId         String?
-  action          String
-  entityType      String
-  entityId        String
-  payload         Json?
-  createdAt       DateTime @default(now())
-}
-
-model EscalationRule {
-  id              String   @id @default(cuid())
-  organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  name            String
-  hoursAfterDue   Int      @default(0)
-  targetRole      Role
-  isActive        Boolean  @default(true)
-}
-
-model TaskTemplate {
-  id              String   @id @default(cuid())
-  organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  name            String
-  description     String?
-  defaultPriority TaskPriority @default(NORMAL)
-  defaultEstimate Int?
-  categoryId      String?
-  subcategoryId   String?
-}
-
-model RecurringTaskRule {
-  id              String   @id @default(cuid())
-  organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  name            String
-  cronExpression  String
-  isActive        Boolean  @default(true)
-  templateId      String?
-  nextRunAt       DateTime?
-}

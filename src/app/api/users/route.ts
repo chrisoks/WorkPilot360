@@ -28,7 +28,22 @@ function formatUser(user: {
   teamId: string | null;
   dailyWorkHours?: number | null;
   profileImageDataUrl?: string | null;
+  salutation?: string | null;
+  birthDate?: Date | string | null;
+  language?: string | null;
+  phone?: string | null;
+  mobile?: string | null;
+  street?: string | null;
+  postalCode?: string | null;
+  city?: string | null;
+  signature?: string | null;
+  signatureHidden?: boolean | null;
 }, teamIds: string[] = []) {
+  const birthDate =
+    user.birthDate instanceof Date
+      ? user.birthDate.toISOString().slice(0, 10)
+      : user.birthDate ?? "";
+
   return {
     id: user.id,
     name: `${user.firstName} ${user.lastName}`,
@@ -39,6 +54,16 @@ function formatUser(user: {
     teamIds,
     dailyWorkHours: user.dailyWorkHours ?? 8,
     profileImageDataUrl: user.profileImageDataUrl ?? "",
+    salutation: user.salutation ?? "Herr",
+    birthDate,
+    language: user.language ?? "Deutsch (Deutschland)",
+    phone: user.phone ?? "",
+    mobile: user.mobile ?? "",
+    street: user.street ?? "",
+    postalCode: user.postalCode ?? "",
+    city: user.city ?? "",
+    signature: user.signature ?? "",
+    signatureHidden: Boolean(user.signatureHidden),
   };
 }
 
@@ -50,6 +75,17 @@ function parseDailyWorkHours(value: unknown) {
 
 function parsePassword(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function parseText(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function parseBirthDate(value: unknown) {
+  const text = parseText(value);
+  if (!text) return null;
+  const date = new Date(`${text}T00:00:00.000Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 async function getUserTeamIds(userId: string) {
@@ -73,20 +109,90 @@ async function getUserDailyWorkHours(userIds: string[]) {
 async function ensureUserProfileColumns() {
   await prisma.$executeRaw`
     ALTER TABLE "User"
-    ADD COLUMN IF NOT EXISTS "profileImageDataUrl" TEXT
+    ADD COLUMN IF NOT EXISTS "profileImageDataUrl" TEXT,
+    ADD COLUMN IF NOT EXISTS "salutation" TEXT,
+    ADD COLUMN IF NOT EXISTS "birthDate" TIMESTAMP(3),
+    ADD COLUMN IF NOT EXISTS "language" TEXT,
+    ADD COLUMN IF NOT EXISTS "phone" TEXT,
+    ADD COLUMN IF NOT EXISTS "mobile" TEXT,
+    ADD COLUMN IF NOT EXISTS "street" TEXT,
+    ADD COLUMN IF NOT EXISTS "postalCode" TEXT,
+    ADD COLUMN IF NOT EXISTS "city" TEXT,
+    ADD COLUMN IF NOT EXISTS "signature" TEXT,
+    ADD COLUMN IF NOT EXISTS "signatureHidden" BOOLEAN DEFAULT false
   `;
 }
 
-async function getUserProfileImages(userIds: string[]) {
-  if (userIds.length === 0) return new Map<string, string>();
+type UserDetails = {
+  profileImageDataUrl: string;
+  salutation: string;
+  birthDate: string;
+  language: string;
+  phone: string;
+  mobile: string;
+  street: string;
+  postalCode: string;
+  city: string;
+  signature: string;
+  signatureHidden: boolean;
+};
+
+async function getUserDetails(userIds: string[]) {
+  if (userIds.length === 0) return new Map<string, UserDetails>();
 
   await ensureUserProfileColumns();
 
-  const rows = await prisma.$queryRaw<Array<{ id: string; profileImageDataUrl: string | null }>>`
-    SELECT id, "profileImageDataUrl" FROM "User" WHERE id IN (${Prisma.join(userIds)})
+  const rows = await prisma.$queryRaw<
+    Array<{
+      id: string;
+      profileImageDataUrl: string | null;
+      salutation: string | null;
+      birthDate: Date | null;
+      language: string | null;
+      phone: string | null;
+      mobile: string | null;
+      street: string | null;
+      postalCode: string | null;
+      city: string | null;
+      signature: string | null;
+      signatureHidden: boolean | null;
+    }>
+  >`
+    SELECT
+      id,
+      "profileImageDataUrl",
+      "salutation",
+      "birthDate",
+      "language",
+      "phone",
+      "mobile",
+      "street",
+      "postalCode",
+      "city",
+      "signature",
+      "signatureHidden"
+    FROM "User"
+    WHERE id IN (${Prisma.join(userIds)})
   `;
 
-  return new Map(rows.map((row) => [row.id, row.profileImageDataUrl ?? ""]));
+  return new Map(
+    rows.map((row) => [
+      row.id,
+      {
+        profileImageDataUrl: row.profileImageDataUrl ?? "",
+        salutation: row.salutation ?? "Herr",
+        birthDate: row.birthDate ? row.birthDate.toISOString().slice(0, 10) : "",
+        language: row.language ?? "Deutsch (Deutschland)",
+        phone: row.phone ?? "",
+        mobile: row.mobile ?? "",
+        street: row.street ?? "",
+        postalCode: row.postalCode ?? "",
+        city: row.city ?? "",
+        signature: row.signature ?? "",
+        signatureHidden: Boolean(row.signatureHidden),
+      },
+    ])
+  );
 }
 
 async function setUserTeams(userId: string, teamIds: string[]) {
@@ -114,7 +220,7 @@ function splitName(name: string) {
 export async function GET() {
   const { users } = await getDemoContext();
   const dailyWorkHoursByUserId = await getUserDailyWorkHours(users.map((user) => user.id));
-  const profileImageByUserId = await getUserProfileImages(users.map((user) => user.id));
+  const detailsByUserId = await getUserDetails(users.map((user) => user.id));
 
   return NextResponse.json(
     await Promise.all(
@@ -123,7 +229,7 @@ export async function GET() {
           {
             ...user,
             dailyWorkHours: dailyWorkHoursByUserId.get(user.id) ?? 8,
-            profileImageDataUrl: profileImageByUserId.get(user.id) ?? "",
+            ...(detailsByUserId.get(user.id) ?? {}),
           },
           await getUserTeamIds(user.id)
         )
@@ -206,14 +312,71 @@ export async function PATCH(req: Request) {
     );
   }
   const nextPasswordHash = nextPassword ? bcrypt.hashSync(nextPassword, 10) : "";
+  const hasProfileImageUpdate = Object.prototype.hasOwnProperty.call(body, "profileImageDataUrl");
   const nextProfileImageDataUrl =
-    typeof body.profileImageDataUrl === "string" ? body.profileImageDataUrl : "";
+    hasProfileImageUpdate && typeof body.profileImageDataUrl === "string"
+      ? body.profileImageDataUrl
+      : "";
+  const hasSalutationUpdate = Object.prototype.hasOwnProperty.call(body, "salutation");
+  const hasBirthDateUpdate = Object.prototype.hasOwnProperty.call(body, "birthDate");
+  const hasLanguageUpdate = Object.prototype.hasOwnProperty.call(body, "language");
+  const hasPhoneUpdate = Object.prototype.hasOwnProperty.call(body, "phone");
+  const hasMobileUpdate = Object.prototype.hasOwnProperty.call(body, "mobile");
+  const hasStreetUpdate = Object.prototype.hasOwnProperty.call(body, "street");
+  const hasPostalCodeUpdate = Object.prototype.hasOwnProperty.call(body, "postalCode");
+  const hasCityUpdate = Object.prototype.hasOwnProperty.call(body, "city");
+  const hasSignatureUpdate = Object.prototype.hasOwnProperty.call(body, "signature");
+  const hasSignatureHiddenUpdate = Object.prototype.hasOwnProperty.call(body, "signatureHidden");
+  const nextBirthDate = parseBirthDate(body.birthDate);
 
   await prisma.$executeRaw`
     UPDATE "User"
     SET
       "dailyWorkHours" = ${parseDailyWorkHours(body.dailyWorkHours)},
-      "profileImageDataUrl" = ${nextProfileImageDataUrl || null},
+      "salutation" = CASE
+        WHEN ${hasSalutationUpdate} THEN ${parseText(body.salutation) || null}
+        ELSE "salutation"
+      END,
+      "birthDate" = CASE
+        WHEN ${hasBirthDateUpdate} THEN ${nextBirthDate}
+        ELSE "birthDate"
+      END,
+      "language" = CASE
+        WHEN ${hasLanguageUpdate} THEN ${parseText(body.language) || "Deutsch (Deutschland)"}
+        ELSE "language"
+      END,
+      "phone" = CASE
+        WHEN ${hasPhoneUpdate} THEN ${parseText(body.phone) || null}
+        ELSE "phone"
+      END,
+      "mobile" = CASE
+        WHEN ${hasMobileUpdate} THEN ${parseText(body.mobile) || null}
+        ELSE "mobile"
+      END,
+      "street" = CASE
+        WHEN ${hasStreetUpdate} THEN ${parseText(body.street) || null}
+        ELSE "street"
+      END,
+      "postalCode" = CASE
+        WHEN ${hasPostalCodeUpdate} THEN ${parseText(body.postalCode) || null}
+        ELSE "postalCode"
+      END,
+      "city" = CASE
+        WHEN ${hasCityUpdate} THEN ${parseText(body.city) || null}
+        ELSE "city"
+      END,
+      "signature" = CASE
+        WHEN ${hasSignatureUpdate} THEN ${typeof body.signature === "string" ? body.signature : ""}
+        ELSE "signature"
+      END,
+      "signatureHidden" = CASE
+        WHEN ${hasSignatureHiddenUpdate} THEN ${Boolean(body.signatureHidden)}
+        ELSE "signatureHidden"
+      END,
+      "profileImageDataUrl" = CASE
+        WHEN ${hasProfileImageUpdate} THEN ${nextProfileImageDataUrl || null}
+        ELSE "profileImageDataUrl"
+      END,
       "passwordHash" = CASE
         WHEN ${nextPasswordHash} = '' THEN "passwordHash"
         ELSE ${nextPasswordHash}
@@ -221,12 +384,14 @@ export async function PATCH(req: Request) {
     WHERE id = ${updated.id}
   `;
 
+  const detailsByUserId = await getUserDetails([updated.id]);
+
   return NextResponse.json(
     formatUser(
       {
         ...updated,
         dailyWorkHours: parseDailyWorkHours(body.dailyWorkHours),
-        profileImageDataUrl: nextProfileImageDataUrl,
+        ...(detailsByUserId.get(updated.id) ?? {}),
       },
       updatedTeamIds
     )
@@ -280,6 +445,9 @@ export async function POST(req: Request) {
   const requestedTeamIds = Array.isArray(body.teamIds) ? body.teamIds : [];
   const teamIds = body.allTeams ? allTeams.map((team) => team.id) : requestedTeamIds;
   const primaryTeamId = teamIds[0] ?? null;
+  const profileImageDataUrl =
+    typeof body.profileImageDataUrl === "string" ? body.profileImageDataUrl : "";
+  const birthDate = parseBirthDate(body.birthDate);
   const created = await prisma.user.create({
     data: {
       organizationId: organization.id,
@@ -296,12 +464,41 @@ export async function POST(req: Request) {
   await setUserTeams(created.id, teamIds);
   await prisma.$executeRaw`
     UPDATE "User"
-    SET "dailyWorkHours" = ${parseDailyWorkHours(body.dailyWorkHours)}
+    SET
+      "dailyWorkHours" = ${parseDailyWorkHours(body.dailyWorkHours)},
+      "profileImageDataUrl" = ${profileImageDataUrl || null},
+      "salutation" = ${parseText(body.salutation) || null},
+      "birthDate" = ${birthDate},
+      "language" = ${parseText(body.language) || "Deutsch (Deutschland)"},
+      "phone" = ${parseText(body.phone) || null},
+      "mobile" = ${parseText(body.mobile) || null},
+      "street" = ${parseText(body.street) || null},
+      "postalCode" = ${parseText(body.postalCode) || null},
+      "city" = ${parseText(body.city) || null},
+      "signature" = ${typeof body.signature === "string" ? body.signature : ""},
+      "signatureHidden" = ${Boolean(body.signatureHidden)}
     WHERE id = ${created.id}
   `;
 
   return NextResponse.json(
-    formatUser({ ...created, dailyWorkHours: parseDailyWorkHours(body.dailyWorkHours) }, teamIds),
+    formatUser(
+      {
+        ...created,
+        dailyWorkHours: parseDailyWorkHours(body.dailyWorkHours),
+        profileImageDataUrl,
+        salutation: parseText(body.salutation) || "Herr",
+        birthDate: body.birthDate ?? "",
+        language: parseText(body.language) || "Deutsch (Deutschland)",
+        phone: parseText(body.phone),
+        mobile: parseText(body.mobile),
+        street: parseText(body.street),
+        postalCode: parseText(body.postalCode),
+        city: parseText(body.city),
+        signature: typeof body.signature === "string" ? body.signature : "",
+        signatureHidden: Boolean(body.signatureHidden),
+      },
+      teamIds
+    ),
     { status: 201 }
   );
 }

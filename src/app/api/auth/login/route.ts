@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
@@ -93,3 +93,4 @@ export async function POST(req: Request) {
     profileImageDataUrl: user.profileImageDataUrl ?? "",
   });
 }
+
