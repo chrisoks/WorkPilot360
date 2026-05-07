@@ -3,6 +3,10 @@ import { Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 
+const bcrypt = require("bcryptjs") as {
+  compareSync(password: string, hash: string): boolean;
+};
+
 function roleLabel(role: Role) {
   if (role === Role.GESCHAEFTSFUEHRER) return "Geschäftsführung";
   if (role === Role.FUEHRUNGSKRAFT) return "Führungskraft";
@@ -65,8 +69,12 @@ export async function POST(req: Request) {
 
   const user = rows[0];
   const storedPassword = user?.passwordHash || "demo";
+  const passwordMatches =
+    !!user &&
+    (storedPassword === password ||
+      (storedPassword.startsWith("$2") && bcrypt.compareSync(password, storedPassword)));
 
-  if (!user || storedPassword !== password) {
+  if (!passwordMatches) {
     return NextResponse.json(
       { error: "E-Mail oder Passwort ist nicht korrekt." },
       { status: 401 }

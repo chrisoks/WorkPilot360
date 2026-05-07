@@ -1,6 +1,6 @@
-import { randomUUID } from "crypto";
+﻿import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import { Role } from "@prisma/client";
+import { Prisma, Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 
@@ -41,6 +41,52 @@ function formatAbsence(row: AbsenceRow) {
     date: dateKey,
     note: row.note ?? "",
   };
+}
+
+function getAbsenceTypeLabel(type: AbsenceType) {
+  return type === "urlaub" ? "Urlaub" : "Krank";
+}
+
+function addDays(date: Date, days: number) {
+  const nextDate = new Date(date);
+  nextDate.setDate(nextDate.getDate() + days);
+  return nextDate;
+}
+
+async function notifyAbsenceChange(
+  organizationId: string,
+  users: Awaited<ReturnType<typeof getDemoContext>>["users"],
+  subject: string,
+  body: string
+) {
+  const recipients = users.filter(
+    (demoUser) => demoUser.role === Role.GESCHAEFTSFUEHRER || demoUser.role === Role.FUEHRUNGSKRAFT
+  );
+
+  for (const recipient of recipients) {
+    await prisma.$executeRaw`
+      INSERT INTO "Notification" (
+        "id",
+        "organizationId",
+        "userId",
+        "taskId",
+        "channel",
+        "subject",
+        "body",
+        "createdAt"
+      )
+      VALUES (
+        ${randomUUID()},
+        ${organizationId},
+        ${recipient.id},
+        NULL,
+        'app',
+        ${subject},
+        ${body},
+        CURRENT_TIMESTAMP
+      )
+    `;
+  }
 }
 
 async function ensureAbsenceTable() {
@@ -273,15 +319,171 @@ export async function POST(req: Request) {
   return NextResponse.json(rows.map(formatAbsence), { status: 201 });
 }
 
+export async function PATCH(req: Request) {
+  await ensureAbsenceTable();
+  const body = await req.json();
+  const { organization, user, users } = await getDemoContext();
+  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const absenceId = String(body.absenceId ?? "");
+  const targetUserId = String(body.userId ?? "");
+  const dateFrom = String(body.dateFrom ?? "");
+  const dateTo = String(body.dateTo ?? dateFrom);
+  const representativeUserId = String(body.representativeUserId ?? "");
+  const type = String(body.type ?? "") as AbsenceType;
+  const baseNote = String(body.note ?? "").trim();
+  const handoverChecklist = Array.isArray(body.handoverChecklist)
+    ? body.handoverChecklist.map((item: unknown) => String(item)).filter(Boolean)
+    : [];
+  const handoverConfirmed = Boolean(body.handoverConfirmed);
+
+  const existingRows = await prisma.$queryRaw<AbsenceRow[]>`
+    SELECT
+      absences.id,
+      absences."userId",
+      CONCAT(users."firstName", ' ', users."lastName") as "userName",
+      absences."representativeUserId",
+      CASE
+        WHEN representatives.id IS NULL THEN NULL
+        ELSE CONCAT(representatives."firstName", ' ', representatives."lastName")
+      END as "representativeName",
+      absences.type,
+      absences.date,
+      absences.note
+    FROM "Absence" absences
+    INNER JOIN "User" users ON users.id = absences."userId"
+    LEFT JOIN "User" representatives ON representatives.id = absences."representativeUserId"
+    WHERE absences.id = ${absenceId}
+      AND absences."organizationId" = ${organization.id}
+    LIMIT 1
+  `;
+  const existingAbsence = existingRows[0];
+
+  if (!existingAbsence) {
+    return NextResponse.json({ error: "Abwesenheit wurde nicht gefunden." }, { status: 404 });
+  }
+
+  if (existingAbsence.userId !== actor.id && !canManageAbsences(actor.role)) {
+    return NextResponse.json(
+      { error: "Du darfst diese Abwesenheit nicht bearbeiten." },
+      { status: 403 }
+    );
+  }
+
+  if (!targetUserId || !dateFrom || !dateTo) {
+    return NextResponse.json(
+      { error: "Bitte Benutzer sowie Datum von und bis ausw\u00e4hlen." },
+      { status: 400 }
+    );
+  }
+
+  if (type !== "urlaub" && type !== "krank") {
+    return NextResponse.json(
+      { error: "Bitte Urlaub oder Krank ausw\u00e4hlen." },
+      { status: 400 }
+    );
+  }
+
+  if (type === "urlaub" && (!handoverConfirmed || handoverChecklist.length === 0)) {
+    return NextResponse.json(
+      { error: "Bitte die Urlaubs\u00fcbergabe vollst\u00e4ndig ausf\u00fcllen und best\u00e4tigen." },
+      { status: 400 }
+    );
+  }
+
+  const startDate = new Date(`${dateFrom}T00:00:00`);
+  const endDate = new Date(`${dateTo}T00:00:00`);
+
+  if (startDate.getTime() > endDate.getTime()) {
+    return NextResponse.json(
+      { error: "Das Bis-Datum darf nicht vor dem Von-Datum liegen." },
+      { status: 400 }
+    );
+  }
+
+  const targetUser = users.find((demoUser) => demoUser.id === targetUserId);
+  const representative = users.find((demoUser) => demoUser.id === representativeUserId) ?? null;
+
+  if (!targetUser || !representative || representative.id === targetUser.id) {
+    return NextResponse.json({ error: "Bitte einen Vertreter ausw\u00e4hlen." }, { status: 400 });
+  }
+
+  const existingDate = existingAbsence.date instanceof Date
+    ? formatDateKey(existingAbsence.date)
+    : existingAbsence.date.slice(0, 10);
+  const siblingRows = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT id FROM "Absence"
+    WHERE "organizationId" = ${organization.id}
+      AND "userId" = ${existingAbsence.userId}
+      AND type = ${existingAbsence.type}
+      AND COALESCE("representativeUserId", '') = ${existingAbsence.representativeUserId ?? ""}
+      AND COALESCE(note, '') = ${existingAbsence.note ?? ""}
+      AND date >= ${formatDateKey(addDays(new Date(`${existingDate}T00:00:00`), -31))}::date
+      AND date <= ${formatDateKey(addDays(new Date(`${existingDate}T00:00:00`), 31))}::date
+  `;
+
+  await prisma.$executeRaw`
+    DELETE FROM "Absence"
+    WHERE id IN (${Prisma.join(siblingRows.map((row) => row.id))})
+      AND "organizationId" = ${organization.id}
+  `;
+
+  const handoverNote =
+    type === "urlaub"
+      ? `Urlaubs\u00fcbergabe best\u00e4tigt: ${handoverChecklist.join("; ")}`
+      : "";
+  const savedNote = [baseNote, handoverNote].filter(Boolean).join("\n\n") || null;
+
+  for (const currentDate = new Date(startDate); currentDate <= endDate; currentDate.setDate(currentDate.getDate() + 1)) {
+    const date = formatDateKey(currentDate);
+
+    await prisma.$executeRaw`
+      INSERT INTO "Absence" ("id", "organizationId", "userId", "type", "date", "representativeUserId", "note")
+      VALUES (
+        ${randomUUID()},
+        ${organization.id},
+        ${targetUserId},
+        ${type},
+        ${date}::date,
+        ${representative.id},
+        ${savedNote}
+      )
+      ON CONFLICT ("userId", "date")
+      DO UPDATE SET
+        "type" = EXCLUDED."type",
+        "representativeUserId" = EXCLUDED."representativeUserId",
+        "note" = EXCLUDED."note"
+    `;
+  }
+
+  await notifyAbsenceChange(
+    organization.id,
+    users,
+    "Abwesenheit bearbeitet",
+    `${actor.firstName} ${actor.lastName} hat eine Abwesenheit bearbeitet: ${targetUser.firstName} ${targetUser.lastName}, ${getAbsenceTypeLabel(type)} vom ${dateFrom} bis ${dateTo}.`
+  );
+
+  return NextResponse.json({ success: true });
+}
+
 export async function DELETE(req: Request) {
   await ensureAbsenceTable();
   const body = await req.json();
   const { organization, user, users } = await getDemoContext();
   const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
   const absenceId = String(body.absenceId ?? "");
+  const dateFrom = String(body.dateFrom ?? "");
+  const dateTo = String(body.dateTo ?? dateFrom);
 
-  const rows = await prisma.$queryRaw<Array<{ userId: string }>>`
-    SELECT "userId" FROM "Absence"
+  const rows = await prisma.$queryRaw<
+    Array<{
+      userId: string;
+      representativeUserId: string | null;
+      type: AbsenceType;
+      date: Date;
+      note: string | null;
+    }>
+  >`
+    SELECT "userId", "representativeUserId", type, date, note FROM "Absence"
     WHERE id = ${absenceId} AND "organizationId" = ${organization.id}
     LIMIT 1
   `;
@@ -298,10 +500,27 @@ export async function DELETE(req: Request) {
     );
   }
 
+  const deleteStart = dateFrom || formatDateKey(absence.date);
+  const deleteEnd = dateTo || deleteStart;
+
   await prisma.$executeRaw`
     DELETE FROM "Absence"
-    WHERE id = ${absenceId} AND "organizationId" = ${organization.id}
+    WHERE "organizationId" = ${organization.id}
+      AND "userId" = ${absence.userId}
+      AND type = ${absence.type}
+      AND COALESCE("representativeUserId", '') = ${absence.representativeUserId ?? ""}
+      AND COALESCE(note, '') = ${absence.note ?? ""}
+      AND date >= ${deleteStart}::date
+      AND date <= ${deleteEnd}::date
   `;
+
+  const targetUser = users.find((demoUser) => demoUser.id === absence.userId);
+  await notifyAbsenceChange(
+    organization.id,
+    users,
+    "Abwesenheit gelöscht",
+    `${actor.firstName} ${actor.lastName} hat eine Abwesenheit gelöscht: ${targetUser ? `${targetUser.firstName} ${targetUser.lastName}` : "Benutzer"}, ${getAbsenceTypeLabel(absence.type)} vom ${deleteStart} bis ${deleteEnd}.`
+  );
 
   return NextResponse.json({ success: true });
 }

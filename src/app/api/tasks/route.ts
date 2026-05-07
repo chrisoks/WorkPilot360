@@ -150,7 +150,56 @@ type TaskFeedbackSettings = {
   archiveDueAt: Date | null;
   archivedAt: Date | null;
   archiveReason: string | null;
+  planningAllocations: unknown;
 };
+
+type TaskPlanningAllocation = {
+  date: string;
+  minutes: number;
+};
+
+function normalizeStoredPlanningAllocations(value: unknown): TaskPlanningAllocation[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((allocation) => {
+      if (!allocation || typeof allocation !== "object") return null;
+      const current = allocation as { date?: unknown; minutes?: unknown };
+      const date = typeof current.date === "string" ? current.date : "";
+      const minutes = Number(current.minutes);
+
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(minutes) || minutes <= 0) {
+        return null;
+      }
+
+      return {
+        date,
+        minutes: Math.round(minutes),
+      };
+    })
+    .filter((allocation): allocation is TaskPlanningAllocation => Boolean(allocation));
+}
+
+function parsePlanningAllocations(
+  value: unknown,
+  estimateMinutes: number | null
+): TaskPlanningAllocation[] | { error: string } {
+  const allocations = normalizeStoredPlanningAllocations(value);
+  if (allocations.length === 0) return [];
+
+  if (!estimateMinutes || estimateMinutes <= 0) {
+    return { error: "Bitte eine Vorgabezeit angeben, bevor sie auf mehrere Tage verteilt wird." };
+  }
+
+  const totalMinutes = allocations.reduce((total, allocation) => total + allocation.minutes, 0);
+  if (totalMinutes !== estimateMinutes) {
+    return {
+      error: `Die verteilte Vorgabezeit muss exakt ${estimateMinutes} Minuten ergeben.`,
+    };
+  }
+
+  return allocations;
+}
 
 function formatTask(task: TaskWithRelations, feedback?: TaskFeedbackSettings) {
   const totalTrackedMinutes = task.timeEntries.reduce(
@@ -187,6 +236,7 @@ function formatTask(task: TaskWithRelations, feedback?: TaskFeedbackSettings) {
     archiveReason: feedback?.archiveReason ?? "",
     vorgabeMinuten: task.estimateMinutes,
     gesamtzeitMinuten: totalTrackedMinutes,
+    planningAllocations: normalizeStoredPlanningAllocations(feedback?.planningAllocations),
     kommentare: task.comments.map((comment) => ({
       id: comment.id,
       text: comment.body,
@@ -269,6 +319,8 @@ async function createDoneFeedbackNotification(
 async function getTaskFeedbackSettings(taskIds: string[]) {
   if (taskIds.length === 0) return new Map<string, TaskFeedbackSettings>();
 
+  await ensureTaskPlanningColumn();
+
   const feedbackRows = await prisma.$queryRaw<TaskFeedbackSettings[]>`
     SELECT
       id as "taskId",
@@ -284,12 +336,32 @@ async function getTaskFeedbackSettings(taskIds: string[]) {
       "completedAt",
       "archiveDueAt",
       "archivedAt",
-      "archiveReason"
+      "archiveReason",
+      "planningAllocations"
     FROM "Task"
     WHERE id IN (${Prisma.join(taskIds)})
   `;
 
   return new Map(feedbackRows.map((row) => [row.taskId, row]));
+}
+
+async function ensureTaskPlanningColumn() {
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "Task"
+    ADD COLUMN IF NOT EXISTS "planningAllocations" JSONB NOT NULL DEFAULT '[]'::jsonb
+  `);
+}
+
+async function updateTaskPlanningAllocations(
+  taskId: string,
+  allocations: TaskPlanningAllocation[]
+) {
+  await ensureTaskPlanningColumn();
+  await prisma.$executeRaw`
+    UPDATE "Task"
+    SET "planningAllocations" = ${JSON.stringify(allocations)}::jsonb
+    WHERE id = ${taskId}
+  `;
 }
 
 async function updateTaskFeedbackSettings(
@@ -300,7 +372,7 @@ async function updateTaskFeedbackSettings(
   recurrenceInterval: string | null,
   createdById?: string | null,
   acceptanceStatus?: string
-) {
+): Promise<TaskFeedbackSettings> {
   await prisma.$executeRaw`
     UPDATE "Task"
     SET
@@ -328,6 +400,7 @@ async function updateTaskFeedbackSettings(
     archiveDueAt: null,
     archivedAt: null,
     archiveReason: null,
+    planningAllocations: [],
   };
 }
 
@@ -468,7 +541,12 @@ export async function POST(req: Request) {
   const acceptanceStatus = owner.id === actor.id ? "accepted" : "pending";
   const nextStatus = TaskStatus.OFFEN;
   const nextEstimate = parseEstimate(body.estimateMinutes);
+  const planningAllocations = parsePlanningAllocations(body.planningAllocations, nextEstimate);
   const completionError = validateCompletionRequirements(nextStatus, nextEstimate, 0);
+
+  if ("error" in planningAllocations) {
+    return NextResponse.json({ error: planningAllocations.error }, { status: 400 });
+  }
 
   if (completionError) {
     return NextResponse.json({ error: completionError }, { status: 400 });
@@ -511,6 +589,7 @@ export async function POST(req: Request) {
     },
   });
   await updateCompletionArchiveTimer(task.id, null, nextStatus);
+  await updateTaskPlanningAllocations(task.id, planningAllocations);
 
   const feedback = await updateTaskFeedbackSettings(
     task.id,
@@ -525,6 +604,7 @@ export async function POST(req: Request) {
     actor.id,
     acceptanceStatus
   );
+  feedback.planningAllocations = planningAllocations;
   await createDoneFeedbackNotification(task, null, users, feedback);
   await createNextRecurringTask(task, null, feedback);
 
@@ -538,6 +618,11 @@ export async function PATCH(req: Request) {
   const requestedOwner = users.find((demoUser) => demoUser.id === body.ownerId);
   const nextStatus = mapStatus(body.status);
   const nextEstimate = parseEstimate(body.estimateMinutes);
+  const planningAllocations = parsePlanningAllocations(body.planningAllocations, nextEstimate);
+
+  if ("error" in planningAllocations) {
+    return NextResponse.json({ error: planningAllocations.error }, { status: 400 });
+  }
 
   if (body.restore) {
     const task = await prisma.task.findUnique({
@@ -645,6 +730,7 @@ export async function PATCH(req: Request) {
     },
   });
   await updateCompletionArchiveTimer(task.id, existingTask?.status ?? null, nextStatus);
+  await updateTaskPlanningAllocations(task.id, planningAllocations);
 
   const feedback = await updateTaskFeedbackSettings(
     task.id,
@@ -659,6 +745,7 @@ export async function PATCH(req: Request) {
     existingFeedback?.createdById ?? actor.id,
     nextAcceptanceStatus
   );
+  feedback.planningAllocations = planningAllocations;
   await createDoneFeedbackNotification(task, existingTask?.status ?? null, users, feedback);
   await createNextRecurringTask(task, existingTask?.status ?? null, feedback);
 

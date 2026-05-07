@@ -3,6 +3,10 @@ import { Prisma, Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 
+const bcrypt = require("bcryptjs") as {
+  hashSync(password: string, saltRounds: number): string;
+};
+
 function canManageUsers(role: Role) {
   return role === Role.ADMIN || role === Role.GESCHAEFTSFUEHRER;
 }
@@ -42,6 +46,10 @@ function parseDailyWorkHours(value: unknown) {
   const hours = Number(value);
   if (!Number.isFinite(hours) || hours < 0) return 8;
   return hours;
+}
+
+function parsePassword(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 async function getUserTeamIds(userId: string) {
@@ -130,15 +138,16 @@ export async function PATCH(req: Request) {
   const { organization, department, user, users } = await getDemoContext();
   const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
   const isSelfUpdate = body.userId === actor.id;
+  const isManagedUpdate = canManageUsers(actor.role);
 
-  if (!canManageUsers(actor.role) && !isSelfUpdate) {
+  if (!isManagedUpdate && !isSelfUpdate) {
     return NextResponse.json(
       { error: "Du darfst nur deine eigenen Einstellungen ändern." },
       { status: 403 }
     );
   }
 
-  if (!isSelfUpdate && !Object.values(Role).includes(body.role)) {
+  if (isManagedUpdate && !Object.values(Role).includes(body.role)) {
     return NextResponse.json(
       { error: "Die ausgew\u00e4hlte Rolle ist ung\u00fcltig." },
       { status: 400 }
@@ -171,8 +180,8 @@ export async function PATCH(req: Request) {
       firstName: name.firstName,
       lastName: name.lastName,
       email: body.email,
-      role: isSelfUpdate ? existingUser.role : body.role,
-      teamId: isSelfUpdate ? existingUser.teamId : primaryTeamId,
+      role: isManagedUpdate ? body.role : existingUser.role,
+      teamId: isManagedUpdate ? primaryTeamId : existingUser.teamId,
       departmentId: department.id,
     },
   });
@@ -184,12 +193,19 @@ export async function PATCH(req: Request) {
     );
   }
 
-  if (!isSelfUpdate) {
+  if (isManagedUpdate) {
     await setUserTeams(updated.id, teamIds);
   }
 
-  const updatedTeamIds = isSelfUpdate ? await getUserTeamIds(updated.id) : teamIds;
-  const nextPassword = typeof body.password === "string" ? body.password.trim() : "";
+  const updatedTeamIds = isManagedUpdate ? teamIds : await getUserTeamIds(updated.id);
+  const nextPassword = parsePassword(body.password);
+  if (nextPassword && nextPassword.length < 4) {
+    return NextResponse.json(
+      { error: "Bitte ein Passwort mit mindestens 4 Zeichen vergeben." },
+      { status: 400 }
+    );
+  }
+  const nextPasswordHash = nextPassword ? bcrypt.hashSync(nextPassword, 10) : "";
   const nextProfileImageDataUrl =
     typeof body.profileImageDataUrl === "string" ? body.profileImageDataUrl : "";
 
@@ -199,8 +215,8 @@ export async function PATCH(req: Request) {
       "dailyWorkHours" = ${parseDailyWorkHours(body.dailyWorkHours)},
       "profileImageDataUrl" = ${nextProfileImageDataUrl || null},
       "passwordHash" = CASE
-        WHEN ${nextPassword} = '' THEN "passwordHash"
-        ELSE ${nextPassword}
+        WHEN ${nextPasswordHash} = '' THEN "passwordHash"
+        ELSE ${nextPasswordHash}
       END
     WHERE id = ${updated.id}
   `;
@@ -244,6 +260,14 @@ export async function POST(req: Request) {
     );
   }
 
+  const password = parsePassword(body.password);
+  if (password.length < 4) {
+    return NextResponse.json(
+      { error: "Bitte ein Passwort mit mindestens 4 Zeichen vergeben." },
+      { status: 400 }
+    );
+  }
+
   const name = splitName(body.name);
   const allTeams = await prisma.team.findMany({
     where: {
@@ -262,7 +286,7 @@ export async function POST(req: Request) {
       firstName: name.firstName,
       lastName: name.lastName,
       email: body.email,
-      passwordHash: "demo",
+      passwordHash: bcrypt.hashSync(password, 10),
       role: body.role,
       teamId: primaryTeamId,
       departmentId: department.id,

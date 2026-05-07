@@ -206,6 +206,7 @@ model Category {
   organizationId  String
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   name            String
+  projectPrefix   String?
   subcategories   Subcategory[]
   tasks           Task[]
 }
