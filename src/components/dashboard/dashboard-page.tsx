@@ -295,10 +295,9 @@ function DocumentLetterheadCanvas({
       if (!canvas || !dataUrl) return;
 
       const pdfjs = await import("pdfjs-dist");
-      pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-        "pdfjs-dist/build/pdf.worker.min.mjs",
-        import.meta.url
-      ).toString();
+
+	pdfjs.GlobalWorkerOptions.workerSrc =
+  `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
       const buffer = await fetch(dataUrl).then((res) => res.arrayBuffer());
       if (cancelled) return;
