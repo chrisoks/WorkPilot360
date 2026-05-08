@@ -1111,6 +1111,19 @@
   margin: 8px 0 0;
 }
 
+.notificationLinkButton {
+  background: #2563eb;
+  border: 0;
+  border-radius: 10px;
+  color: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 900;
+  margin-top: 10px;
+  padding: 8px 10px;
+}
+
 @keyframes bell-swing {
   0%,
   100% {
@@ -3080,6 +3093,51 @@
 
 .modalFooter .modalActions {
   margin-top: 0;
+}
+
+.dangerButton {
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  color: #b91c1c;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 950;
+  padding: 10px 16px;
+}
+
+.dangerButton:hover {
+  background: #fecaca;
+}
+
+.successButton,
+.requestButton {
+  border: 1px solid transparent;
+  border-radius: 12px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 950;
+  padding: 10px 16px;
+}
+
+.successButton {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #15803d;
+}
+
+.successButton:hover {
+  background: #bbf7d0;
+}
+
+.requestButton {
+  background: #fef3c7;
+  border-color: #fde68a;
+  color: #92400e;
+}
+
+.requestButton:hover {
+  background: #fde68a;
 }
 
 .modalSaveNotice {
@@ -6126,6 +6184,79 @@
   border-right: 0;
 }
 
+.projectTimeTable tr[data-approval="requested"] td {
+  background: #fffbeb;
+}
+
+.planningStatusPill {
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.74rem;
+  font-weight: 950;
+  padding: 5px 8px;
+}
+
+.planningStatusPill[data-status="confirmed"] {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.planningStatusPill[data-status="requested"] {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.planningHistorySection {
+  border-top: 1px solid #94a3b8;
+  display: grid;
+  gap: 14px;
+  margin-top: 220px;
+  padding-top: 18px;
+}
+
+.planningHistorySection h3 {
+  color: #0f172a;
+  font-size: 1.05rem;
+  font-weight: 900;
+  margin: 0;
+}
+
+.planningHistorySection > p {
+  color: #64748b;
+  font-size: 0.9rem;
+  font-weight: 750;
+  margin: 0;
+}
+
+.planningHistoryList {
+  display: grid;
+  gap: 10px;
+}
+
+.planningHistoryList article {
+  background: #f8fbff;
+  border: 1px solid #d8e0ea;
+  border-left: 4px solid #009ca6;
+  border-radius: 10px;
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+}
+
+.planningHistoryList strong {
+  color: #0f172a;
+  font-size: 0.9rem;
+  font-weight: 950;
+}
+
+.planningHistoryList span,
+.planningHistoryList p {
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 800;
+  margin: 0;
+}
+
 .timeEntryEditButton {
   background: #eef6ff;
   border: 1px solid #c8d7ea;
@@ -7356,6 +7487,109 @@
 
 .employeeFormGrid .fullWidth {
   grid-column: 1 / -1;
+}
+
+.employeePlanningTotal {
+  background: #e6f8fa;
+  border: 1px solid #b8ecf0;
+  border-radius: 999px;
+  color: #008b96;
+  font-size: 0.88rem;
+  font-weight: 950;
+  padding: 7px 12px;
+}
+
+.employeePlanningSettings {
+  background: #f8fbff;
+  border: 1px solid #d8e0ea;
+  border-radius: 14px;
+  display: grid;
+  gap: 16px;
+  margin-top: 4px;
+  padding: 16px;
+}
+
+.employeePlanningSettings h3 {
+  color: #0f172a;
+  font-size: 1rem;
+  font-weight: 950;
+  margin: 0;
+}
+
+.employeePlanningSettings p {
+  color: #64748b;
+  font-size: 0.86rem;
+  font-weight: 750;
+  margin: 4px 0 0;
+}
+
+.employeeWeeklyGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(7, minmax(132px, 1fr));
+}
+
+.employeeWeeklyGrid label {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  color: #334155;
+  display: grid;
+  font-size: 0.78rem;
+  font-weight: 900;
+  gap: 8px;
+  padding: 12px;
+}
+
+.employeeWeeklyGrid small {
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 850;
+}
+
+.employeeWeeklyGrid input {
+  border: 1px solid #d8e0ea;
+  border-radius: 10px;
+  color: #0f172a;
+  font: inherit;
+  font-weight: 900;
+  min-height: 38px;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+.planningResponsibilityGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.planningResponsibilityGrid article {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.planningResponsibilityGrid strong {
+  color: #0f172a;
+  font-size: 0.88rem;
+  font-weight: 950;
+}
+
+.planningResponsibilityGrid label {
+  align-items: center;
+  color: #334155;
+  display: flex;
+  font-size: 0.84rem;
+  font-weight: 850;
+  gap: 8px;
+}
+
+.planningResponsibilityGrid input {
+  accent-color: #009ca6;
 }
 
 .employeePasswordBox {
@@ -9276,7 +9510,7 @@
 .planningBoardCell {
   background: transparent;
   border: 0;
-  color: #c41f1f;
+  color: #008b96;
   cursor: pointer;
   display: flex;
   flex-direction: column;
@@ -9289,11 +9523,19 @@
 .planningBoardCell span {
   font-size: 0.8rem;
   line-height: 1;
+  margin-bottom: 3px;
+}
+
+.planningBoardCell small {
+  color: #64748b;
+  font-size: 0.62rem;
+  font-weight: 850;
+  line-height: 1.1;
   margin-bottom: 5px;
 }
 
 .planningBoardCell b {
-  background: #6ea43b;
+  background: #dbe5f0;
   display: block;
   height: 10px;
   overflow: hidden;
@@ -9301,9 +9543,17 @@
 }
 
 .planningBoardCell i {
-  background: #c20000;
+  background: linear-gradient(90deg, #1e5eff, #009ca6);
   display: block;
   height: 100%;
+}
+
+.planningBoardCell[data-overloaded="true"] {
+  color: #c20000;
+}
+
+.planningBoardCell[data-overloaded="true"] i {
+  background: #c20000;
 }
 
 .planningBoardCell em {
@@ -9393,6 +9643,18 @@
   text-transform: uppercase;
 }
 
+.planningEmptyRow {
+  background: #f8fbff;
+  border: 1px dashed #cbd8e6;
+  border-radius: 12px;
+  color: #64748b;
+  font-size: 0.9rem;
+  font-weight: 850;
+  grid-column: 1 / -1;
+  margin-top: 10px;
+  padding: 16px;
+}
+
 .planningHourScale {
   align-items: center;
   background: #ffffff;
@@ -9427,7 +9689,9 @@
 }
 
 .planningWorkerCell strong,
-.planningWorkerCell span {
+.planningWorkerCell span,
+.planningWorkerCell small,
+.planningWorkerCell em {
   display: block;
 }
 
@@ -9442,6 +9706,25 @@
   font-size: 0.76rem;
   font-weight: 800;
   margin-top: 4px;
+}
+
+.planningWorkerCell small {
+  color: #008b96;
+  font-size: 0.78rem;
+  font-weight: 950;
+  margin-top: 4px;
+}
+
+.planningWorkerCell em {
+  color: #475569;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 800;
+  margin-top: 3px;
+}
+
+.planningWorkerCell[data-overloaded="true"] small {
+  color: #c20000;
 }
 
 .planningTimelineLane {
@@ -9469,13 +9752,51 @@
   opacity: 0.75;
 }
 
+.planningUnavailableWindow {
+  background: rgba(15, 23, 42, 0.08);
+  bottom: 0;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  z-index: 0;
+}
+
+.planningUnavailableWindow[data-side="before"] {
+  left: 0;
+  width: var(--planning-window-start, 14.285%);
+}
+
+.planningUnavailableWindow[data-side="after"] {
+  left: var(--planning-window-end, 78.571%);
+  right: 0;
+}
+
+.planningBreakWindow {
+  align-items: center;
+  align-self: center;
+  background: #d8dee8;
+  border-radius: 8px;
+  color: #475569;
+  display: inline-flex;
+  font-size: 0.68rem;
+  font-weight: 950;
+  height: 26px;
+  justify-content: center;
+  pointer-events: none;
+  position: relative;
+  z-index: 1;
+}
+
 .planningTimelineBlock {
   align-items: center;
   align-self: center;
   background: #c4d222;
+  border: 0;
   border-radius: 9px;
   color: #061532;
+  cursor: pointer;
   display: inline-flex;
+  font-family: inherit;
   font-size: 0.72rem;
   font-weight: 950;
   height: 26px;
@@ -9493,6 +9814,185 @@
 .planningTimelineBlock[data-pause="true"] {
   background: #d8dee8;
   color: #475569;
+}
+
+.planningTimelineBlock[data-source="manual"] {
+  background: #16a34a;
+  color: #ffffff;
+}
+
+.planningTimelineBlock[data-source="offer"] {
+  background: #16a34a;
+  color: #ffffff;
+}
+
+.planningTimelineBlock[data-approval="requested"] {
+  background: #facc15;
+  color: #422006;
+}
+
+.planningTimelineBlock[data-conflict="true"] {
+  animation: planningConflictBlink 1s ease-in-out infinite;
+  background: #dc2626;
+  color: #ffffff;
+}
+
+@keyframes planningConflictBlink {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7);
+    opacity: 1;
+  }
+
+  50% {
+    box-shadow: 0 0 0 5px rgba(220, 38, 38, 0.18);
+    opacity: 0.68;
+  }
+}
+
+.planningApprovalNotice {
+  border: 1px solid #bbf7d0;
+  border-radius: 14px;
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+}
+
+.planningApprovalNotice[data-status="confirmed"] {
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.planningApprovalNotice[data-status="requested"] {
+  background: #fef9c3;
+  border-color: #fde68a;
+  color: #854d0e;
+}
+
+.planningApprovalNotice strong {
+  font-size: 0.9rem;
+  font-weight: 950;
+}
+
+.planningApprovalNotice span {
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.planningEntryModal {
+  max-width: 860px;
+  width: min(860px, calc(100vw - 32px));
+}
+
+.planningEntryModalBody {
+  display: grid;
+  gap: 18px;
+  padding: 18px 22px;
+}
+
+.planningEntryGrid {
+  display: grid;
+  gap: 14px 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.planningEntryGrid label {
+  color: #334155;
+  display: grid;
+  font-size: 0.82rem;
+  font-weight: 850;
+  gap: 7px;
+}
+
+.planningEntryGrid input,
+.planningEntryGrid select,
+.planningEntryGrid textarea {
+  background: #ffffff;
+  border: 1px solid #d8e0ea;
+  border-radius: 12px;
+  color: #0f172a;
+  font: inherit;
+  font-weight: 750;
+  min-height: 42px;
+  padding: 9px 12px;
+}
+
+.planningEntryGrid textarea {
+  resize: vertical;
+}
+
+.planningOfferInfo {
+  align-content: center;
+  background: #e6f8fa;
+  border: 1px solid #b8ecf0;
+  border-radius: 12px;
+  color: #008b96;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+
+.planningOfferInfo span {
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.planningOfferInfo strong {
+  font-size: 0.92rem;
+  font-weight: 950;
+}
+
+.planningProjectSearch {
+  position: relative;
+}
+
+.planningProjectResults {
+  background: #ffffff;
+  border: 1px solid #d8e0ea;
+  border-radius: 14px;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.14);
+  left: 0;
+  max-height: 280px;
+  overflow: auto;
+  padding: 6px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+}
+
+.planningProjectResults button {
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  color: #0f172a;
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  gap: 3px;
+  padding: 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.planningProjectResults button:hover:not(:disabled) {
+  background: #eef6ff;
+}
+
+.planningProjectResults button:disabled {
+  color: #94a3b8;
+  cursor: default;
+}
+
+.planningProjectResults strong {
+  font-size: 0.86rem;
+  font-weight: 950;
+}
+
+.planningProjectResults span {
+  color: #64748b;
+  font-size: 0.76rem;
+  font-weight: 750;
 }
 
 .planningDayGrid {

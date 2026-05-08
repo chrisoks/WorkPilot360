@@ -10,9 +10,22 @@ type NotificationRow = {
   createdAt: Date;
   readAt: Date | null;
   taskId: string | null;
+  linkTarget: string | null;
+  linkTargetId: string | null;
+  linkLabel: string | null;
 };
 
+async function ensureNotificationLinkColumns() {
+  await prisma.$executeRaw`
+    ALTER TABLE "Notification"
+    ADD COLUMN IF NOT EXISTS "linkTarget" TEXT,
+    ADD COLUMN IF NOT EXISTS "linkTargetId" TEXT,
+    ADD COLUMN IF NOT EXISTS "linkLabel" TEXT
+  `;
+}
+
 export async function GET(req: Request) {
+  await ensureNotificationLinkColumns();
   const { searchParams } = new URL(req.url);
   const requestedUserId = searchParams.get("userId");
   const { user, users } = await getDemoContext();
@@ -26,7 +39,10 @@ export async function GET(req: Request) {
       channel,
       "createdAt",
       "readAt",
-      "taskId"
+      "taskId",
+      "linkTarget",
+      "linkTargetId",
+      "linkLabel"
     FROM "Notification"
     WHERE "userId" = ${activeUser.id}
     ORDER BY "createdAt" DESC
@@ -42,6 +58,9 @@ export async function GET(req: Request) {
       createdAt: notification.createdAt.toISOString(),
       readAt: notification.readAt?.toISOString() ?? null,
       taskId: notification.taskId,
+      linkTarget: notification.linkTarget ?? "",
+      linkTargetId: notification.linkTargetId ?? "",
+      linkLabel: notification.linkLabel ?? "",
     }))
   );
 }

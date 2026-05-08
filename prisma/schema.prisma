@@ -57,6 +57,14 @@ model User {
   city                String?
   signature           String?
   signatureHidden     Boolean?          @default(false)
+  planningBoard       String?
+  planningGroup       String?
+  weeklyCapacity      Json              @default("{\"monday\":8,\"tuesday\":8,\"wednesday\":8,\"thursday\":8,\"friday\":8,\"saturday\":0,\"sunday\":0}")
+  planningStartTime   String            @default("08:00")
+  planningEndTime     String            @default("17:00")
+  planningTimeWindows Json              @default("{\"monday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"tuesday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"wednesday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"thursday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"friday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"saturday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"sunday\":{\"start\":\"08:00\",\"end\":\"17:00\"}}")
+  planningBreakWindows Json             @default("{\"monday\":{\"start\":\"12:00\",\"end\":\"12:30\"},\"tuesday\":{\"start\":\"12:00\",\"end\":\"12:30\"},\"wednesday\":{\"start\":\"12:00\",\"end\":\"12:30\"},\"thursday\":{\"start\":\"12:00\",\"end\":\"12:30\"},\"friday\":{\"start\":\"12:00\",\"end\":\"12:30\"},\"saturday\":{\"start\":\"\",\"end\":\"\"},\"sunday\":{\"start\":\"\",\"end\":\"\"}}")
+  planningResponsibleFor Json           @default("[]")
   notifications       Notification[]
   ownedTasks          Task[]            @relation("TaskOwner")
   taskComments        TaskComment[]
@@ -210,6 +218,9 @@ model Notification {
   channel        String
   subject        String
   body           String
+  linkTarget     String?
+  linkTargetId   String?
+  linkLabel      String?
   sentAt         DateTime?
   createdAt      DateTime     @default(now())
   readAt         DateTime?
@@ -382,6 +393,52 @@ model ProjectTimeEntry {
   mode           String   @default("project")
 }
 
+model PlanningEntry {
+  id                   String   @id
+  organizationId       String
+  source               String   @default("manual")
+  board                String
+  groupName            String
+  userId               String?
+  employeeName         String?
+  date                 String
+  startTime            String
+  endTime              String
+  durationMinutes      Int      @default(0)
+  title                String
+  description          String?
+  customer             String?
+  projectId            String?
+  projectLabel         String?
+  offerId              String?
+  offerLineId          String?
+  offerLabel           String?
+  offerTotalMinutes    Int?
+  offerPlannedMinutes  Int?
+  approvalStatus       String   @default("confirmed")
+  requestedByUserId    String?
+  requestedByName      String?
+  approvedByUserId     String?
+  approvedAt           DateTime?
+  deletedAt            DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @default(now())
+}
+
+model PlanningEntryHistory {
+  id              String   @id
+  organizationId  String
+  planningEntryId String
+  projectId       String?
+  eventType       String
+  actorUserId     String?
+  actorName       String?
+  fromStatus      String?
+  toStatus        String?
+  note            String?
+  createdAt       DateTime @default(now())
+}
+
 model UserTeamMembership {
   userId    String
   teamId    String
@@ -450,6 +507,3 @@ enum CustomerClassification {
   B
   C
 }
-
-
-

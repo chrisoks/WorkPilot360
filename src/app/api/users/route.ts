@@ -7,6 +7,33 @@ const bcrypt = require("bcryptjs") as {
   hashSync(password: string, saltRounds: number): string;
 };
 
+const defaultWeeklyCapacity = {
+  monday: 8,
+  tuesday: 8,
+  wednesday: 8,
+  thursday: 8,
+  friday: 8,
+  saturday: 0,
+  sunday: 0,
+};
+
+const defaultPlanningTimeWindows = Object.fromEntries(
+  Object.keys(defaultWeeklyCapacity).map((day) => [day, { start: "08:00", end: "17:00" }])
+);
+const defaultPlanningBreakWindows = Object.fromEntries(
+  Object.keys(defaultWeeklyCapacity).map((day) => [
+    day,
+    day === "saturday" || day === "sunday"
+      ? { start: "", end: "" }
+      : { start: "12:00", end: "12:30" },
+  ])
+);
+
+const planningGroupsByBoard: Record<string, string[]> = {
+  "OK solutions": ["Marketing", "Arb.Sich.", "HR"],
+  "OK immocare": ["VZK", "TZK"],
+};
+
 function canManageUsers(role: Role) {
   return role === Role.ADMIN || role === Role.GESCHAEFTSFUEHRER;
 }
@@ -38,6 +65,14 @@ function formatUser(user: {
   city?: string | null;
   signature?: string | null;
   signatureHidden?: boolean | null;
+  planningBoard?: string | null;
+  planningGroup?: string | null;
+  weeklyCapacity?: Prisma.JsonValue | null;
+  planningStartTime?: string | null;
+  planningEndTime?: string | null;
+  planningTimeWindows?: Prisma.JsonValue | null;
+  planningBreakWindows?: Prisma.JsonValue | null;
+  planningResponsibleFor?: Prisma.JsonValue | null;
 }, teamIds: string[] = []) {
   const birthDate =
     user.birthDate instanceof Date
@@ -64,6 +99,18 @@ function formatUser(user: {
     city: user.city ?? "",
     signature: user.signature ?? "",
     signatureHidden: Boolean(user.signatureHidden),
+    planningBoard: user.planningBoard ?? "OK solutions",
+    planningGroup: user.planningGroup ?? "Marketing",
+    weeklyCapacity: parseWeeklyCapacity(user.weeklyCapacity),
+    planningStartTime: user.planningStartTime ?? "08:00",
+    planningEndTime: user.planningEndTime ?? "17:00",
+    planningTimeWindows: parsePlanningTimeWindows(
+      user.planningTimeWindows,
+      user.planningStartTime ?? "08:00",
+      user.planningEndTime ?? "17:00"
+    ),
+    planningBreakWindows: parsePlanningBreakWindows(user.planningBreakWindows),
+    planningResponsibleFor: parsePlanningResponsibleFor(user.planningResponsibleFor),
   };
 }
 
@@ -79,6 +126,104 @@ function parsePassword(value: unknown) {
 
 function parseText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function parsePlanningBoard(value: unknown) {
+  const text = parseText(value);
+  return Object.keys(planningGroupsByBoard).includes(text) ? text : "OK solutions";
+}
+
+function parsePlanningGroup(board: string, value: unknown) {
+  const text = parseText(value);
+  const groups = planningGroupsByBoard[board] ?? planningGroupsByBoard["OK solutions"];
+  return groups.includes(text) ? text : groups[0];
+}
+
+function parseWeeklyCapacity(value: unknown) {
+  const source =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+
+  return Object.fromEntries(
+    Object.entries(defaultWeeklyCapacity).map(([day, fallback]) => {
+      const hours = Number(source[day]);
+      return [day, Number.isFinite(hours) && hours >= 0 ? hours : fallback];
+    })
+  );
+}
+
+function parsePlanningTime(value: unknown, fallback: string) {
+  const text = parseText(value);
+  return /^\d{2}:\d{2}$/.test(text) ? text : fallback;
+}
+
+function parseOptionalPlanningTime(value: unknown) {
+  const text = parseText(value);
+  return !text || /^\d{2}:\d{2}$/.test(text) ? text : "";
+}
+
+function parsePlanningTimeWindows(value: unknown, fallbackStart = "08:00", fallbackEnd = "17:00") {
+  const source =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+
+  return Object.fromEntries(
+    Object.keys(defaultWeeklyCapacity).map((day) => {
+      const entry =
+        source[day] && typeof source[day] === "object" && !Array.isArray(source[day])
+          ? (source[day] as Record<string, unknown>)
+          : {};
+
+      return [
+        day,
+        {
+          start: parsePlanningTime(entry.start, fallbackStart),
+          end: parsePlanningTime(entry.end, fallbackEnd),
+        },
+      ];
+    })
+  );
+}
+
+function parsePlanningBreakWindows(value: unknown) {
+  const source =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+
+  return Object.fromEntries(
+    Object.keys(defaultWeeklyCapacity).map((day) => {
+      const fallback = defaultPlanningBreakWindows[day] as { start: string; end: string };
+      const entry =
+        source[day] && typeof source[day] === "object" && !Array.isArray(source[day])
+          ? (source[day] as Record<string, unknown>)
+          : {};
+
+      return [
+        day,
+        {
+          start: parseOptionalPlanningTime(entry.start) || fallback.start,
+          end: parseOptionalPlanningTime(entry.end) || fallback.end,
+        },
+      ];
+    })
+  );
+}
+
+function parsePlanningResponsibleFor(value: unknown) {
+  if (!Array.isArray(value)) return [];
+
+  const validKeys = new Set(
+    Object.entries(planningGroupsByBoard).flatMap(([board, groups]) =>
+      groups.map((group) => `${board}:${group}`)
+    )
+  );
+
+  return value
+    .map((entry) => parseText(entry))
+    .filter((entry, index, entries) => validKeys.has(entry) && entries.indexOf(entry) === index);
 }
 
 function parseBirthDate(value: unknown) {
@@ -119,7 +264,15 @@ async function ensureUserProfileColumns() {
     ADD COLUMN IF NOT EXISTS "postalCode" TEXT,
     ADD COLUMN IF NOT EXISTS "city" TEXT,
     ADD COLUMN IF NOT EXISTS "signature" TEXT,
-    ADD COLUMN IF NOT EXISTS "signatureHidden" BOOLEAN DEFAULT false
+    ADD COLUMN IF NOT EXISTS "signatureHidden" BOOLEAN DEFAULT false,
+    ADD COLUMN IF NOT EXISTS "planningBoard" TEXT,
+    ADD COLUMN IF NOT EXISTS "planningGroup" TEXT,
+    ADD COLUMN IF NOT EXISTS "weeklyCapacity" JSONB DEFAULT '{"monday":8,"tuesday":8,"wednesday":8,"thursday":8,"friday":8,"saturday":0,"sunday":0}'::jsonb,
+    ADD COLUMN IF NOT EXISTS "planningStartTime" TEXT DEFAULT '08:00',
+    ADD COLUMN IF NOT EXISTS "planningEndTime" TEXT DEFAULT '17:00',
+    ADD COLUMN IF NOT EXISTS "planningTimeWindows" JSONB DEFAULT '{"monday":{"start":"08:00","end":"17:00"},"tuesday":{"start":"08:00","end":"17:00"},"wednesday":{"start":"08:00","end":"17:00"},"thursday":{"start":"08:00","end":"17:00"},"friday":{"start":"08:00","end":"17:00"},"saturday":{"start":"08:00","end":"17:00"},"sunday":{"start":"08:00","end":"17:00"}}'::jsonb,
+    ADD COLUMN IF NOT EXISTS "planningBreakWindows" JSONB DEFAULT '{"monday":{"start":"12:00","end":"12:30"},"tuesday":{"start":"12:00","end":"12:30"},"wednesday":{"start":"12:00","end":"12:30"},"thursday":{"start":"12:00","end":"12:30"},"friday":{"start":"12:00","end":"12:30"},"saturday":{"start":"","end":""},"sunday":{"start":"","end":""}}'::jsonb,
+    ADD COLUMN IF NOT EXISTS "planningResponsibleFor" JSONB DEFAULT '[]'::jsonb
   `;
 }
 
@@ -135,6 +288,14 @@ type UserDetails = {
   city: string;
   signature: string;
   signatureHidden: boolean;
+  planningBoard: string;
+  planningGroup: string;
+  weeklyCapacity: Record<string, number>;
+  planningStartTime: string;
+  planningEndTime: string;
+  planningTimeWindows: Record<string, { start: string; end: string }>;
+  planningBreakWindows: Record<string, { start: string; end: string }>;
+  planningResponsibleFor: string[];
 };
 
 async function getUserDetails(userIds: string[]) {
@@ -156,6 +317,14 @@ async function getUserDetails(userIds: string[]) {
       city: string | null;
       signature: string | null;
       signatureHidden: boolean | null;
+      planningBoard: string | null;
+      planningGroup: string | null;
+      weeklyCapacity: Prisma.JsonValue | null;
+      planningStartTime: string | null;
+      planningEndTime: string | null;
+      planningTimeWindows: Prisma.JsonValue | null;
+      planningBreakWindows: Prisma.JsonValue | null;
+      planningResponsibleFor: Prisma.JsonValue | null;
     }>
   >`
     SELECT
@@ -170,7 +339,15 @@ async function getUserDetails(userIds: string[]) {
       "postalCode",
       "city",
       "signature",
-      "signatureHidden"
+      "signatureHidden",
+      "planningBoard",
+      "planningGroup",
+      "weeklyCapacity",
+      "planningStartTime",
+      "planningEndTime",
+      "planningTimeWindows",
+      "planningBreakWindows",
+      "planningResponsibleFor"
     FROM "User"
     WHERE id IN (${Prisma.join(userIds)})
   `;
@@ -190,6 +367,18 @@ async function getUserDetails(userIds: string[]) {
         city: row.city ?? "",
         signature: row.signature ?? "",
         signatureHidden: Boolean(row.signatureHidden),
+        planningBoard: row.planningBoard ?? "OK solutions",
+        planningGroup: row.planningGroup ?? "Marketing",
+        weeklyCapacity: parseWeeklyCapacity(row.weeklyCapacity),
+        planningStartTime: row.planningStartTime ?? "08:00",
+        planningEndTime: row.planningEndTime ?? "17:00",
+        planningTimeWindows: parsePlanningTimeWindows(
+          row.planningTimeWindows,
+          row.planningStartTime ?? "08:00",
+          row.planningEndTime ?? "17:00"
+        ),
+        planningBreakWindows: parsePlanningBreakWindows(row.planningBreakWindows),
+        planningResponsibleFor: parsePlanningResponsibleFor(row.planningResponsibleFor),
       },
     ])
   );
@@ -327,7 +516,27 @@ export async function PATCH(req: Request) {
   const hasCityUpdate = Object.prototype.hasOwnProperty.call(body, "city");
   const hasSignatureUpdate = Object.prototype.hasOwnProperty.call(body, "signature");
   const hasSignatureHiddenUpdate = Object.prototype.hasOwnProperty.call(body, "signatureHidden");
+  const hasPlanningBoardUpdate = Object.prototype.hasOwnProperty.call(body, "planningBoard");
+  const hasPlanningGroupUpdate = Object.prototype.hasOwnProperty.call(body, "planningGroup");
+  const hasWeeklyCapacityUpdate = Object.prototype.hasOwnProperty.call(body, "weeklyCapacity");
+  const hasPlanningStartTimeUpdate = Object.prototype.hasOwnProperty.call(body, "planningStartTime");
+  const hasPlanningEndTimeUpdate = Object.prototype.hasOwnProperty.call(body, "planningEndTime");
+  const hasPlanningTimeWindowsUpdate = Object.prototype.hasOwnProperty.call(body, "planningTimeWindows");
+  const hasPlanningBreakWindowsUpdate = Object.prototype.hasOwnProperty.call(body, "planningBreakWindows");
+  const hasPlanningResponsibleForUpdate = Object.prototype.hasOwnProperty.call(body, "planningResponsibleFor");
   const nextBirthDate = parseBirthDate(body.birthDate);
+  const nextPlanningBoard = parsePlanningBoard(body.planningBoard);
+  const nextPlanningGroup = parsePlanningGroup(nextPlanningBoard, body.planningGroup);
+  const nextWeeklyCapacity = parseWeeklyCapacity(body.weeklyCapacity);
+  const nextPlanningStartTime = parsePlanningTime(body.planningStartTime, "08:00");
+  const nextPlanningEndTime = parsePlanningTime(body.planningEndTime, "17:00");
+  const nextPlanningTimeWindows = parsePlanningTimeWindows(
+    body.planningTimeWindows,
+    nextPlanningStartTime,
+    nextPlanningEndTime
+  );
+  const nextPlanningBreakWindows = parsePlanningBreakWindows(body.planningBreakWindows);
+  const nextPlanningResponsibleFor = parsePlanningResponsibleFor(body.planningResponsibleFor);
 
   await prisma.$executeRaw`
     UPDATE "User"
@@ -376,6 +585,38 @@ export async function PATCH(req: Request) {
       "profileImageDataUrl" = CASE
         WHEN ${hasProfileImageUpdate} THEN ${nextProfileImageDataUrl || null}
         ELSE "profileImageDataUrl"
+      END,
+      "planningBoard" = CASE
+        WHEN ${hasPlanningBoardUpdate} THEN ${nextPlanningBoard}
+        ELSE "planningBoard"
+      END,
+      "planningGroup" = CASE
+        WHEN ${hasPlanningGroupUpdate} THEN ${nextPlanningGroup}
+        ELSE "planningGroup"
+      END,
+      "weeklyCapacity" = CASE
+        WHEN ${hasWeeklyCapacityUpdate} THEN ${JSON.stringify(nextWeeklyCapacity)}::jsonb
+        ELSE "weeklyCapacity"
+      END,
+      "planningStartTime" = CASE
+        WHEN ${hasPlanningStartTimeUpdate} THEN ${nextPlanningStartTime}
+        ELSE "planningStartTime"
+      END,
+      "planningEndTime" = CASE
+        WHEN ${hasPlanningEndTimeUpdate} THEN ${nextPlanningEndTime}
+        ELSE "planningEndTime"
+      END,
+      "planningTimeWindows" = CASE
+        WHEN ${hasPlanningTimeWindowsUpdate} THEN ${JSON.stringify(nextPlanningTimeWindows)}::jsonb
+        ELSE "planningTimeWindows"
+      END,
+      "planningBreakWindows" = CASE
+        WHEN ${hasPlanningBreakWindowsUpdate} THEN ${JSON.stringify(nextPlanningBreakWindows)}::jsonb
+        ELSE "planningBreakWindows"
+      END,
+      "planningResponsibleFor" = CASE
+        WHEN ${hasPlanningResponsibleForUpdate} THEN ${JSON.stringify(nextPlanningResponsibleFor)}::jsonb
+        ELSE "planningResponsibleFor"
       END,
       "passwordHash" = CASE
         WHEN ${nextPasswordHash} = '' THEN "passwordHash"
@@ -448,6 +689,18 @@ export async function POST(req: Request) {
   const profileImageDataUrl =
     typeof body.profileImageDataUrl === "string" ? body.profileImageDataUrl : "";
   const birthDate = parseBirthDate(body.birthDate);
+  const planningBoard = parsePlanningBoard(body.planningBoard);
+  const planningGroup = parsePlanningGroup(planningBoard, body.planningGroup);
+  const weeklyCapacity = parseWeeklyCapacity(body.weeklyCapacity);
+  const planningStartTime = parsePlanningTime(body.planningStartTime, "08:00");
+  const planningEndTime = parsePlanningTime(body.planningEndTime, "17:00");
+  const planningTimeWindows = parsePlanningTimeWindows(
+    body.planningTimeWindows,
+    planningStartTime,
+    planningEndTime
+  );
+  const planningBreakWindows = parsePlanningBreakWindows(body.planningBreakWindows);
+  const planningResponsibleFor = parsePlanningResponsibleFor(body.planningResponsibleFor);
   const created = await prisma.user.create({
     data: {
       organizationId: organization.id,
@@ -476,7 +729,15 @@ export async function POST(req: Request) {
       "postalCode" = ${parseText(body.postalCode) || null},
       "city" = ${parseText(body.city) || null},
       "signature" = ${typeof body.signature === "string" ? body.signature : ""},
-      "signatureHidden" = ${Boolean(body.signatureHidden)}
+      "signatureHidden" = ${Boolean(body.signatureHidden)},
+      "planningBoard" = ${planningBoard},
+      "planningGroup" = ${planningGroup},
+      "weeklyCapacity" = ${JSON.stringify(weeklyCapacity)}::jsonb,
+      "planningStartTime" = ${planningStartTime},
+      "planningEndTime" = ${planningEndTime},
+      "planningTimeWindows" = ${JSON.stringify(planningTimeWindows)}::jsonb,
+      "planningBreakWindows" = ${JSON.stringify(planningBreakWindows)}::jsonb,
+      "planningResponsibleFor" = ${JSON.stringify(planningResponsibleFor)}::jsonb
     WHERE id = ${created.id}
   `;
 
@@ -496,6 +757,14 @@ export async function POST(req: Request) {
         city: parseText(body.city),
         signature: typeof body.signature === "string" ? body.signature : "",
         signatureHidden: Boolean(body.signatureHidden),
+        planningBoard,
+        planningGroup,
+        weeklyCapacity,
+        planningStartTime,
+        planningEndTime,
+        planningTimeWindows,
+        planningBreakWindows,
+        planningResponsibleFor,
       },
       teamIds
     ),

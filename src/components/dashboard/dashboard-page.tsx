@@ -112,6 +112,7 @@ type EmployeeSideTab =
   | "permissions"
   | "mailserver"
   | "employment"
+  | "planningSettings"
   | "tax"
   | "bank"
   | "password";
@@ -390,6 +391,71 @@ type UserOption = {
   city?: string;
   signature?: string;
   signatureHidden?: boolean;
+  planningBoard?: string;
+  planningGroup?: string;
+  weeklyCapacity?: WeeklyCapacity;
+  planningStartTime?: string;
+  planningEndTime?: string;
+  planningTimeWindows?: WeeklyPlanningWindows;
+  planningBreakWindows?: WeeklyPlanningWindows;
+  planningResponsibleFor?: string[];
+};
+
+type PlanningBoardCompany = "OK solutions" | "OK immocare";
+type WeeklyDayKey =
+  | "monday"
+  | "tuesday"
+  | "wednesday"
+  | "thursday"
+  | "friday"
+  | "saturday"
+  | "sunday";
+type WeeklyCapacity = Record<WeeklyDayKey, number>;
+type PlanningTimeWindow = { start: string; end: string };
+type WeeklyPlanningWindows = Record<WeeklyDayKey, PlanningTimeWindow>;
+type PlanningEntrySource = "manual" | "offer";
+type PlanningEntryApprovalStatus = "confirmed" | "requested";
+type PlanningEntryHistory = {
+  id: string;
+  planningEntryId: string;
+  projectId: string;
+  eventType: string;
+  actorUserId: string;
+  actorName: string;
+  fromStatus: string;
+  toStatus: string;
+  note: string;
+  createdAt: string;
+};
+type PlanningEntry = {
+  id: string;
+  source: PlanningEntrySource;
+  board: PlanningBoardCompany;
+  groupName: string;
+  userId: string;
+  employeeName: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  durationMinutes: number;
+  title: string;
+  description: string;
+  customer: string;
+  projectId: string;
+  projectLabel: string;
+  offerId: string;
+  offerLineId: string;
+  offerLabel: string;
+  offerTotalMinutes: number;
+  offerPlannedMinutes: number;
+  approvalStatus: PlanningEntryApprovalStatus;
+  requestedByUserId: string;
+  requestedByName: string;
+  approvedByUserId: string;
+  approvedAt: string;
+  deletedAt: string;
+  createdAt: string;
+  history: PlanningEntryHistory[];
 };
 
 type TeamOption = {
@@ -459,6 +525,9 @@ type AppNotification = {
   createdAt: string;
   readAt: string | null;
   taskId: string | null;
+  linkTarget?: string;
+  linkTargetId?: string;
+  linkLabel?: string;
 };
 
 type AbsenceItem = {
@@ -911,6 +980,51 @@ const planningBoardSections = [
     ],
   },
 ];
+
+const planningBoardGroupsByCompany: Record<PlanningBoardCompany, string[]> = {
+  "OK solutions": ["Marketing", "Arb.Sich.", "HR"],
+  "OK immocare": ["VZK", "TZK"],
+};
+
+const weeklyCapacityDayLabels: Array<{ key: WeeklyDayKey; label: string; shortLabel: string }> = [
+  { key: "monday", label: "Montag", shortLabel: "Mo" },
+  { key: "tuesday", label: "Dienstag", shortLabel: "Di" },
+  { key: "wednesday", label: "Mittwoch", shortLabel: "Mi" },
+  { key: "thursday", label: "Donnerstag", shortLabel: "Do" },
+  { key: "friday", label: "Freitag", shortLabel: "Fr" },
+  { key: "saturday", label: "Samstag", shortLabel: "Sa" },
+  { key: "sunday", label: "Sonntag", shortLabel: "So" },
+];
+
+const defaultWeeklyCapacity: WeeklyCapacity = {
+  monday: 8,
+  tuesday: 8,
+  wednesday: 8,
+  thursday: 8,
+  friday: 8,
+  saturday: 0,
+  sunday: 0,
+};
+
+const defaultWeeklyPlanningWindows: WeeklyPlanningWindows = {
+  monday: { start: "08:00", end: "17:00" },
+  tuesday: { start: "08:00", end: "17:00" },
+  wednesday: { start: "08:00", end: "17:00" },
+  thursday: { start: "08:00", end: "17:00" },
+  friday: { start: "08:00", end: "17:00" },
+  saturday: { start: "08:00", end: "17:00" },
+  sunday: { start: "08:00", end: "17:00" },
+};
+
+const defaultWeeklyBreakWindows: WeeklyPlanningWindows = {
+  monday: { start: "12:00", end: "12:30" },
+  tuesday: { start: "12:00", end: "12:30" },
+  wednesday: { start: "12:00", end: "12:30" },
+  thursday: { start: "12:00", end: "12:30" },
+  friday: { start: "12:00", end: "12:30" },
+  saturday: { start: "", end: "" },
+  sunday: { start: "", end: "" },
+};
 
 const planningTimelineSlots = Array.from({ length: 57 }, (_, index) => {
   const totalMinutes = 6 * 60 + index * 15;
@@ -2356,6 +2470,18 @@ export function DashboardPage() {
   const [employeeSearchTerm, setEmployeeSearchTerm] = useState("");
   const [employeeSignatureHidden, setEmployeeSignatureHidden] = useState(false);
   const [employeeSignature, setEmployeeSignature] = useState("");
+  const [employeePlanningBoard, setEmployeePlanningBoard] =
+    useState<PlanningBoardCompany>("OK solutions");
+  const [employeePlanningGroup, setEmployeePlanningGroup] = useState("Marketing");
+  const [employeeWeeklyCapacity, setEmployeeWeeklyCapacity] =
+    useState<WeeklyCapacity>(defaultWeeklyCapacity);
+  const [employeePlanningStartTime, setEmployeePlanningStartTime] = useState("08:00");
+  const [employeePlanningEndTime, setEmployeePlanningEndTime] = useState("17:00");
+  const [employeePlanningTimeWindows, setEmployeePlanningTimeWindows] =
+    useState<WeeklyPlanningWindows>(defaultWeeklyPlanningWindows);
+  const [employeePlanningBreakWindows, setEmployeePlanningBreakWindows] =
+    useState<WeeklyPlanningWindows>(defaultWeeklyBreakWindows);
+  const [employeePlanningResponsibleFor, setEmployeePlanningResponsibleFor] = useState<string[]>([]);
   const [employeeTimePeriod, setEmployeeTimePeriod] = useState<EmployeeTimePeriod>("day");
   const [employeeTimeFrom, setEmployeeTimeFrom] = useState(() => formatInputDate(new Date()));
   const [employeeTimeTo, setEmployeeTimeTo] = useState(() => formatInputDate(new Date()));
@@ -2379,6 +2505,27 @@ export function DashboardPage() {
   );
   const [selectedPlanningGroup, setSelectedPlanningGroup] = useState("Marketing");
   const [isPlanningDayOpen, setIsPlanningDayOpen] = useState(false);
+  const [planningEntries, setPlanningEntries] = useState<PlanningEntry[]>([]);
+  const [isPlanningEntryModalOpen, setIsPlanningEntryModalOpen] = useState(false);
+  const [editingPlanningEntryId, setEditingPlanningEntryId] = useState("");
+  const [planningEntrySource, setPlanningEntrySource] = useState<PlanningEntrySource>("manual");
+  const [planningEntryBoard, setPlanningEntryBoard] =
+    useState<PlanningBoardCompany>("OK solutions");
+  const [planningEntryGroup, setPlanningEntryGroup] = useState("Marketing");
+  const [planningEntryUserId, setPlanningEntryUserId] = useState("");
+  const [planningEntryDate, setPlanningEntryDate] = useState(() => formatDateKey(new Date()));
+  const [planningEntryStartTime, setPlanningEntryStartTime] = useState("08:00");
+  const [planningEntryEndTime, setPlanningEntryEndTime] = useState("09:00");
+  const [planningEntryTitle, setPlanningEntryTitle] = useState("");
+  const [planningEntryCustomer, setPlanningEntryCustomer] = useState("");
+  const [planningEntryProjectSearch, setPlanningEntryProjectSearch] = useState("");
+  const [isPlanningEntryProjectSearchOpen, setIsPlanningEntryProjectSearchOpen] = useState(false);
+  const [planningEntryProjectId, setPlanningEntryProjectId] = useState("");
+  const [planningEntryDescription, setPlanningEntryDescription] = useState("");
+  const [planningEntryOfferLabel, setPlanningEntryOfferLabel] = useState("");
+  const [planningEntryOfferTotalHours, setPlanningEntryOfferTotalHours] = useState("5");
+  const [planningEntryApprovalStatus, setPlanningEntryApprovalStatus] =
+    useState<PlanningEntryApprovalStatus>("confirmed");
   const [selectedCalendarActionDate, setSelectedCalendarActionDate] = useState("");
   const [absenceUserId, setAbsenceUserId] = useState("");
   const [absenceDateFrom, setAbsenceDateFrom] = useState(() => formatDateKey(new Date()));
@@ -2490,6 +2637,18 @@ export function DashboardPage() {
     }
 
     setAuthChecked(true);
+  }
+
+  async function loadPlanningEntries() {
+    const res = await fetch("/api/planning-entries", { cache: "no-store" });
+
+    if (!res.ok) {
+      setErrorMessage("Planungen konnten nicht geladen werden.");
+      return;
+    }
+
+    const data = (await res.json()) as PlanningEntry[];
+    setPlanningEntries(data);
   }
 
   async function loadContacts() {
@@ -3238,6 +3397,24 @@ export function DashboardPage() {
     await loadNotifications(false);
   }
 
+  function openNotificationTarget(notification: AppNotification) {
+    if (
+      (notification.linkTarget === "planning-entry" ||
+        notification.linkTarget === "planning-entry-overlap") &&
+      notification.linkTargetId
+    ) {
+      const entry = planningEntries.find((item) => item.id === notification.linkTargetId);
+      if (entry) {
+        setSelectedPlanningDateKey(entry.date);
+        setSelectedPlanningGroup(entry.groupName);
+        setIsPlanningDayOpen(true);
+        setActiveTab("planningBoard");
+        setIsNotificationsOpen(false);
+        openEditPlanningEntryModal(entry);
+      }
+    }
+  }
+
   async function saveAbsence() {
     setAbsenceWarning("");
 
@@ -3332,6 +3509,231 @@ export function DashboardPage() {
     setSelectedCalendarActionDate("");
   }
 
+  function getPlanningEntryGroups(board: PlanningBoardCompany) {
+    return planningBoardGroupsByCompany[board];
+  }
+
+  function resetPlanningEntryForm() {
+    setEditingPlanningEntryId("");
+    setPlanningEntryApprovalStatus("confirmed");
+    setPlanningEntrySource("manual");
+    setPlanningEntryBoard("OK solutions");
+    setPlanningEntryGroup("Marketing");
+    setPlanningEntryUserId("");
+    setPlanningEntryDate(formatDateKey(new Date()));
+    setPlanningEntryStartTime("08:00");
+    setPlanningEntryEndTime("09:00");
+    setPlanningEntryTitle("");
+    setPlanningEntryCustomer("");
+    setPlanningEntryProjectSearch("");
+    setIsPlanningEntryProjectSearchOpen(false);
+    setPlanningEntryProjectId("");
+    setPlanningEntryDescription("");
+    setPlanningEntryOfferLabel("");
+    setPlanningEntryOfferTotalHours("5");
+  }
+
+  function openPlanningEntryModal(options: Partial<{
+    board: PlanningBoardCompany;
+    groupName: string;
+    date: string;
+    userId: string;
+    startTime: string;
+    approvalStatus: PlanningEntryApprovalStatus;
+  }> = {}) {
+    const board = options.board ?? "OK solutions";
+    const groups = getPlanningEntryGroups(board);
+    const groupName = options.groupName && groups.includes(options.groupName) ? options.groupName : groups[0];
+    const startTime = options.startTime ?? "08:00";
+    const defaultUserId =
+      options.userId ??
+      users.find(
+        (user) =>
+          (user.planningBoard ?? "OK solutions") === board &&
+          (user.planningGroup ?? "") === groupName
+      )?.id ??
+      "";
+
+    resetPlanningEntryForm();
+    setPlanningEntryApprovalStatus(options.approvalStatus ?? "confirmed");
+    setPlanningEntryBoard(board);
+    setPlanningEntryGroup(groupName);
+    setPlanningEntryDate(options.date ?? selectedPlanningDateKey);
+    setPlanningEntryUserId(defaultUserId);
+    setPlanningEntryStartTime(startTime);
+    setPlanningEntryEndTime(startTime === "08:00" ? "09:00" : startTime);
+    setIsPlanningEntryModalOpen(true);
+  }
+
+  function openEditPlanningEntryModal(entry: PlanningEntry) {
+    const board = (entry.board === "OK immocare" ? "OK immocare" : "OK solutions") as PlanningBoardCompany;
+    const groups = getPlanningEntryGroups(board);
+    const groupName = groups.includes(entry.groupName) ? entry.groupName : groups[0];
+
+    setEditingPlanningEntryId(entry.id);
+    setPlanningEntryApprovalStatus(entry.approvalStatus);
+    setPlanningEntrySource(entry.source);
+    setPlanningEntryBoard(board);
+    setPlanningEntryGroup(groupName);
+    setPlanningEntryUserId(entry.userId);
+    setPlanningEntryDate(entry.date);
+    setPlanningEntryStartTime(entry.startTime);
+    setPlanningEntryEndTime(entry.endTime);
+    setPlanningEntryTitle(entry.title);
+    setPlanningEntryCustomer(entry.customer);
+    setPlanningEntryProjectId(entry.projectId);
+    setPlanningEntryProjectSearch(entry.projectLabel || entry.customer || "");
+    setIsPlanningEntryProjectSearchOpen(false);
+    setPlanningEntryDescription(entry.description);
+    setPlanningEntryOfferLabel(entry.offerLabel);
+    setPlanningEntryOfferTotalHours(
+      entry.offerTotalMinutes > 0 ? String(entry.offerTotalMinutes / 60) : "5"
+    );
+    setIsPlanningEntryModalOpen(true);
+  }
+
+  function entryOrFallbackRequestedByUserId() {
+    if (!editingPlanningEntryId) return activeUserId;
+    return planningEntries.find((entry) => entry.id === editingPlanningEntryId)?.requestedByUserId || activeUserId;
+  }
+
+  function entryOrFallbackRequestedByName() {
+    if (!editingPlanningEntryId) return activeUser?.name ?? "";
+    return planningEntries.find((entry) => entry.id === editingPlanningEntryId)?.requestedByName || activeUser?.name || "";
+  }
+
+  async function savePlanningEntry(nextApprovalStatus = planningEntryApprovalStatus) {
+    const selectedUser = users.find((user) => user.id === planningEntryUserId);
+    const selectedProject = heroProjects.find((project) => project.id === planningEntryProjectId);
+    const durationMinutes = getPlanningNetMinutesBetween(
+      planningEntryStartTime,
+      planningEntryEndTime,
+      getUserBreakWindowForDate(selectedUser, planningEntryDate)
+    );
+    const offerTotalMinutes = Math.round(Number(planningEntryOfferTotalHours) * 60);
+    const title =
+      planningEntrySource === "offer"
+        ? planningEntryTitle.trim() || planningEntryOfferLabel.trim() || "Planung aus Angebot"
+        : planningEntryTitle.trim();
+
+    const res = await fetch("/api/planning-entries", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        source: planningEntrySource,
+        id: editingPlanningEntryId,
+        approvalStatus: nextApprovalStatus,
+        actorUserId: activeUserId,
+        actorName: activeUser?.name ?? "",
+        requestedByUserId:
+          nextApprovalStatus === "requested"
+            ? entryOrFallbackRequestedByUserId()
+            : "",
+        requestedByName:
+          nextApprovalStatus === "requested"
+            ? entryOrFallbackRequestedByName()
+            : "",
+        approvedByUserId:
+          nextApprovalStatus === "confirmed" && editingPlanningEntryId
+            ? activeUserId
+            : "",
+        board: planningEntryBoard,
+        groupName: planningEntryGroup,
+        userId: planningEntryUserId,
+        employeeName: selectedUser?.name ?? "",
+        date: planningEntryDate,
+        startTime: planningEntryStartTime,
+        endTime: planningEntryEndTime,
+        durationMinutes,
+        title,
+        customer: selectedProject?.customer || planningEntryCustomer,
+        description: planningEntryDescription,
+        projectId: selectedProject?.id ?? "",
+        projectLabel: selectedProject
+          ? `${selectedProject.projectNumber} | ${selectedProject.title}`
+          : "",
+        offerLabel: planningEntrySource === "offer" ? planningEntryOfferLabel : "",
+        offerTotalMinutes: planningEntrySource === "offer" ? offerTotalMinutes : 0,
+        offerPlannedMinutes: planningEntrySource === "offer" ? durationMinutes : 0,
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setErrorMessage(data?.error ?? "Planung konnte nicht gespeichert werden.");
+      return;
+    }
+
+    setIsPlanningEntryModalOpen(false);
+    resetPlanningEntryForm();
+    await loadPlanningEntries();
+    await loadNotifications(true);
+  }
+
+  async function deletePlanningEntry() {
+    if (!editingPlanningEntryId) return;
+    const confirmed = window.confirm("Planung wirklich löschen?");
+    if (!confirmed) return;
+
+    const params = new URLSearchParams({
+      id: editingPlanningEntryId,
+      actorUserId: activeUserId,
+      actorName: activeUser?.name ?? "",
+    });
+    const res = await fetch(`/api/planning-entries?${params.toString()}`, { method: "DELETE" });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setErrorMessage(data?.error ?? "Planung konnte nicht gelöscht werden.");
+      return;
+    }
+
+    setIsPlanningEntryModalOpen(false);
+    resetPlanningEntryForm();
+    await loadPlanningEntries();
+  }
+
+  function jumpToPlanningEntry(entry: PlanningEntry) {
+    setSelectedPlanningDateKey(entry.date);
+    setSelectedPlanningGroup(entry.groupName);
+    setIsPlanningDayOpen(true);
+    setActiveTab("planningBoard");
+    setSelectedProjectFileId("");
+  }
+
+  function openMainView(tab: AppTab) {
+    setActiveTab(tab);
+
+    if (tab === "contacts") {
+      setSelectedCustomerFileId("");
+      setSelectedContactIds([]);
+    }
+
+    if (tab === "projectsSolutions" || tab === "projectsImmocare" || tab === "hero") {
+      setSelectedProjectFileId("");
+      setProjectFileTab("logbook");
+    }
+
+    if (
+      tab === "employees" ||
+      tab === "absenceRequests" ||
+      tab === "timeTracking" ||
+      tab === "timeCategories" ||
+      tab === "breakManagement"
+    ) {
+      setSelectedEmployeeId("");
+      resetUserForm();
+    }
+
+    if (tab === "planningBoard") {
+      setIsPlanningDayOpen(false);
+      setIsPlanningEntryModalOpen(false);
+      setEditingPlanningEntryId("");
+    }
+  }
+
   function openEditAbsenceModal(absence: AbsenceItem) {
     const relatedAbsences = absences
       .filter(
@@ -3364,6 +3766,7 @@ export function DashboardPage() {
     loadTrades();
     loadEscalationRules();
     loadAbsences();
+    loadPlanningEntries();
     loadContacts();
     loadProjectTimeEntries();
     loadProjectLogbookEntries();
@@ -5009,9 +5412,100 @@ export function DashboardPage() {
     setEmployeeCity("");
     setEmployeeSignatureHidden(false);
     setEmployeeSignature("Mit freundlichen Grüßen\n\n");
+    setEmployeePlanningBoard("OK solutions");
+    setEmployeePlanningGroup("Marketing");
+    setEmployeeWeeklyCapacity(defaultWeeklyCapacity);
+    setEmployeePlanningStartTime("08:00");
+    setEmployeePlanningEndTime("17:00");
+    setEmployeePlanningTimeWindows(defaultWeeklyPlanningWindows);
+    setEmployeePlanningBreakWindows(defaultWeeklyBreakWindows);
+    setEmployeePlanningResponsibleFor([]);
     setEmployeePasswordMessage("");
     setUserTeamIds([]);
     setUserAllTeams(false);
+  }
+
+  function getSafeWeeklyCapacity(value?: Partial<WeeklyCapacity>) {
+    return Object.fromEntries(
+      weeklyCapacityDayLabels.map(({ key }) => {
+        const hours = Number(value?.[key] ?? defaultWeeklyCapacity[key]);
+        return [key, Number.isFinite(hours) && hours >= 0 ? hours : defaultWeeklyCapacity[key]];
+      })
+    ) as WeeklyCapacity;
+  }
+
+  function getPlanningGroupsForBoard(board: string) {
+    return planningBoardGroupsByCompany[board as PlanningBoardCompany] ?? planningBoardGroupsByCompany["OK solutions"];
+  }
+
+  function getPlanningResponsibilityKey(board: PlanningBoardCompany, group: string) {
+    return `${board}:${group}`;
+  }
+
+  function togglePlanningResponsibility(key: string, enabled: boolean) {
+    setEmployeePlanningResponsibleFor((current) => {
+      if (enabled) return current.includes(key) ? current : [...current, key];
+      return current.filter((entry) => entry !== key);
+    });
+  }
+
+  function setEmployeeWeeklyCapacityDay(day: WeeklyDayKey, value: string) {
+    const hours = Number(value);
+    setEmployeeWeeklyCapacity((current) => ({
+      ...current,
+      [day]: Number.isFinite(hours) && hours >= 0 ? hours : 0,
+    }));
+  }
+
+  function getSafePlanningTime(value: string | undefined, fallback: string) {
+    return value !== undefined && (value === "" || /^\d{2}:\d{2}$/.test(value)) ? value : fallback;
+  }
+
+  function getSafePlanningTimeWindows(
+    value?: Partial<Record<WeeklyDayKey, Partial<PlanningTimeWindow>>>,
+    fallbackStart = "08:00",
+    fallbackEnd = "17:00"
+  ) {
+    return Object.fromEntries(
+      weeklyCapacityDayLabels.map(({ key }) => {
+        const entry = value?.[key];
+        return [
+          key,
+          {
+            start: getSafePlanningTime(entry?.start, fallbackStart),
+            end: getSafePlanningTime(entry?.end, fallbackEnd),
+          },
+        ];
+      })
+    ) as WeeklyPlanningWindows;
+  }
+
+  function setEmployeePlanningWindowDay(
+    day: WeeklyDayKey,
+    field: keyof PlanningTimeWindow,
+    value: string
+  ) {
+    setEmployeePlanningTimeWindows((current) => ({
+      ...current,
+      [day]: {
+        ...current[day],
+        [field]: getSafePlanningTime(value, field === "start" ? "08:00" : "17:00"),
+      },
+    }));
+  }
+
+  function setEmployeePlanningBreakDay(
+    day: WeeklyDayKey,
+    field: keyof PlanningTimeWindow,
+    value: string
+  ) {
+    setEmployeePlanningBreakWindows((current) => ({
+      ...current,
+      [day]: {
+        ...current[day],
+        [field]: getSafePlanningTime(value, ""),
+      },
+    }));
   }
 
   function editUser(user: UserOption) {
@@ -5035,6 +5529,28 @@ export function DashboardPage() {
       user.signature ||
         `Mit freundlichen Grüßen\n\n${user.name}\n${user.roleLabel}\nOK solutions GmbH\nIm Krötenteich 3/4\n74722 Buchen`
     );
+    const planningBoard = (user.planningBoard === "OK immocare" ? "OK immocare" : "OK solutions") as PlanningBoardCompany;
+    const planningGroups = getPlanningGroupsForBoard(planningBoard);
+    setEmployeePlanningBoard(planningBoard);
+    setEmployeePlanningGroup(
+      user.planningGroup && planningGroups.includes(user.planningGroup)
+        ? user.planningGroup
+        : planningGroups[0]
+    );
+    setEmployeeWeeklyCapacity(getSafeWeeklyCapacity(user.weeklyCapacity));
+    setEmployeePlanningStartTime(getSafePlanningTime(user.planningStartTime, "08:00"));
+    setEmployeePlanningEndTime(getSafePlanningTime(user.planningEndTime, "17:00"));
+    setEmployeePlanningTimeWindows(
+      getSafePlanningTimeWindows(
+        user.planningTimeWindows,
+        getSafePlanningTime(user.planningStartTime, "08:00"),
+        getSafePlanningTime(user.planningEndTime, "17:00")
+      )
+    );
+    setEmployeePlanningBreakWindows(
+      getSafePlanningTimeWindows(user.planningBreakWindows, "12:00", "12:30")
+    );
+    setEmployeePlanningResponsibleFor(user.planningResponsibleFor ?? []);
     setEmployeePasswordMessage("");
     setUserTeamIds(user.teamIds ?? []);
     setUserAllTeams(teams.length > 0 && user.teamIds.length === teams.length);
@@ -5169,6 +5685,14 @@ export function DashboardPage() {
         city: employeeCity,
         signature: employeeSignature,
         signatureHidden: employeeSignatureHidden,
+        planningBoard: employeePlanningBoard,
+        planningGroup: employeePlanningGroup,
+        weeklyCapacity: employeeWeeklyCapacity,
+        planningStartTime: employeePlanningStartTime,
+        planningEndTime: employeePlanningEndTime,
+        planningTimeWindows: employeePlanningTimeWindows,
+        planningBreakWindows: employeePlanningBreakWindows,
+        planningResponsibleFor: employeePlanningResponsibleFor,
         teamIds: userAllTeams ? teams.map((team) => team.id) : userTeamIds,
         allTeams: userAllTeams,
         actorId: activeUserId,
@@ -5882,64 +6406,233 @@ export function DashboardPage() {
     date.setDate(date.getDate() + index);
     return date;
   });
-  const planningDetailGroups = planningBoardSections.flatMap((section) => section.detailGroups);
+  const getPlanningBoardUsers = (company: string, groupName: string) =>
+    users.filter((user) => {
+      if ((user.planningBoard ?? "OK solutions") !== company) return false;
+      return groupName === "Gesamt" || (user.planningGroup ?? "") === groupName;
+    });
+  const getWeeklyDayKeyForDate = (dateKey: string): WeeklyDayKey => {
+    const day = new Date(`${dateKey}T12:00`).getDay();
+    return weeklyCapacityDayLabels[(day + 6) % 7].key;
+  };
+  const getUserCapacityForDate = (user: UserOption, dateKey: string) => {
+    if (isWeekendDateKey(dateKey)) return 0;
+    if (getHolidayForDateKey(dateKey)) return 0;
+    const capacity = getSafeWeeklyCapacity(user.weeklyCapacity);
+    return capacity[getWeeklyDayKeyForDate(dateKey)] ?? 0;
+  };
+  const getUserPlanningWindowForDate = (user: UserOption | undefined, dateKey: string) => {
+    const dayKey = getWeeklyDayKeyForDate(dateKey);
+    const windows = getSafePlanningTimeWindows(
+      user?.planningTimeWindows,
+      user?.planningStartTime ?? "08:00",
+      user?.planningEndTime ?? "17:00"
+    );
+    return windows[dayKey];
+  };
+  const getUserBreakWindowForDate = (user: UserOption | undefined, dateKey: string) => {
+    const dayKey = getWeeklyDayKeyForDate(dateKey);
+    const windows = getSafePlanningTimeWindows(user?.planningBreakWindows, "", "");
+    return windows[dayKey];
+  };
+  const getPlanningBoardCapacity = (company: string, groupName: string, dateKey: string) =>
+    getPlanningBoardUsers(company, groupName).reduce(
+      (total, user) => total + getUserCapacityForDate(user, dateKey),
+      0
+    );
+  const getPlanningEntriesForScope = (company: string, groupName: string, dateKey: string) =>
+    planningEntries.filter((entry) => {
+      if (entry.deletedAt) return false;
+      if (entry.date !== dateKey) return false;
+      if (entry.board !== company) return false;
+      if (groupName === "Gesamt") return true;
+      return entry.groupName === groupName;
+    });
+  const getPlanningPlannedHours = (company: string, groupName: string, dateKey: string) =>
+    getPlanningEntriesForScope(company, groupName, dateKey).reduce(
+      (total, entry) => total + entry.durationMinutes / 60,
+      0
+    );
+  const getPlanningBoardUtilization = (company: string, groupName: string, dateKey: string) => {
+    const capacityHours = getPlanningBoardCapacity(company, groupName, dateKey);
+    const plannedHours = getPlanningPlannedHours(company, groupName, dateKey);
+    const percent = capacityHours > 0 ? Math.round((plannedHours / capacityHours) * 100) : 0;
+
+    return {
+      capacityHours,
+      plannedHours,
+      percent,
+    };
+  };
+  const getEmployeePlannedHours = (employeeName: string, groupName: string, dateKey: string) =>
+    planningEntries
+      .filter(
+        (entry) =>
+          entry.date === dateKey &&
+          entry.groupName === groupName &&
+          entry.employeeName === employeeName
+      )
+      .reduce((total, entry) => total + entry.durationMinutes / 60, 0);
+  const getEmployeePlanningUtilization = (
+    employeeName: string,
+    capacityHours: number,
+    groupName: string,
+    dateKey: string
+  ) => {
+    const plannedHours = getEmployeePlannedHours(employeeName, groupName, dateKey);
+    const percent = capacityHours > 0 ? Math.round((plannedHours / capacityHours) * 100) : 0;
+
+    return {
+      plannedHours,
+      percent,
+    };
+  };
   const selectedPlanningGroupEmployees =
-    planningDetailGroups.find((group) => group.name === selectedPlanningGroup)?.employees ??
-    planningDetailGroups[0]?.employees ??
-    [];
+    users
+      .filter((user) => (user.planningGroup ?? "") === selectedPlanningGroup)
+      .map((user) => user.name);
   const selectedPlanningDate = new Date(`${selectedPlanningDateKey}T12:00`);
   const selectedPlanningHoliday = getHolidayForDateKey(selectedPlanningDateKey);
   const selectedPlanningIsWeekend = isWeekendDateKey(selectedPlanningDateKey);
-  const getPlanningGroupLoad = (groupName: string, dateKey: string, dayIndex: number) => {
-    if (isWeekendDateKey(dateKey)) return 0;
-    if (getHolidayForDateKey(dateKey)) return 0;
-
-    const values = [98, 96, 98, 97, 93, 99, 96, 95, 97];
-    return values[(dayIndex + groupName.length) % values.length];
-  };
-  const getPlanningBoardLoad = (
-    section: (typeof planningBoardSections)[number],
-    groupName: string,
-    dateKey: string,
-    dayIndex: number
-  ) => {
-    if (groupName !== "Gesamt") return getPlanningGroupLoad(groupName, dateKey, dayIndex);
-
-    const groupLoads = section.detailGroups.map((group) =>
-      getPlanningGroupLoad(group.name, dateKey, dayIndex)
-    );
-    if (groupLoads.length === 0) return 0;
-
-    return Math.round(groupLoads.reduce((total, load) => total + load, 0) / groupLoads.length);
-  };
   const getPlanningSlotIndex = (time: string) => {
     const hour = Number(time.slice(0, 2));
     const minute = Number(time.slice(3, 5));
     return Math.max(0, Math.min(planningSlotColumnCount, (hour - 6) * 4 + minute / 15));
   };
-  const getPlanningAssignmentsForEmployee = (employeeName: string) => {
-    const normalizedEmployee = normalizeStampSearchValue(employeeName);
-    const isFirstEmployee = normalizedEmployee.length % 2 === 0;
+  const getPlanningMinutesBetween = (startTime: string, endTime: string) => {
+    const start = Number(startTime.slice(0, 2)) * 60 + Number(startTime.slice(3, 5));
+    const end = Number(endTime.slice(0, 2)) * 60 + Number(endTime.slice(3, 5));
+    return Math.max(0, end - start);
+  };
+  const doPlanningTimesOverlap = (
+    firstStart: string,
+    firstEnd: string,
+    secondStart: string,
+    secondEnd: string
+  ) =>
+    Math.max(getPlanningSlotIndex(firstStart), getPlanningSlotIndex(secondStart)) <
+    Math.min(getPlanningSlotIndex(firstEnd), getPlanningSlotIndex(secondEnd));
+  const isPlanningEntryCreatedAfter = (entry: PlanningEntry, candidate: PlanningEntry) => {
+    const entryCreatedAt = Date.parse(entry.createdAt);
+    const candidateCreatedAt = Date.parse(candidate.createdAt);
 
+    if (!Number.isFinite(entryCreatedAt) || !Number.isFinite(candidateCreatedAt)) return false;
+    if (entryCreatedAt === candidateCreatedAt) return entry.id > candidate.id;
+    return entryCreatedAt > candidateCreatedAt;
+  };
+  const getPlanningNetMinutesBetween = (
+    startTime: string,
+    endTime: string,
+    breakWindow?: PlanningTimeWindow
+  ) => {
+    const grossMinutes = getPlanningMinutesBetween(startTime, endTime);
+    if (!breakWindow?.start || !breakWindow.end) return grossMinutes;
+
+    const start = Number(startTime.slice(0, 2)) * 60 + Number(startTime.slice(3, 5));
+    const end = Number(endTime.slice(0, 2)) * 60 + Number(endTime.slice(3, 5));
+    const breakStart =
+      Number(breakWindow.start.slice(0, 2)) * 60 + Number(breakWindow.start.slice(3, 5));
+    const breakEnd =
+      Number(breakWindow.end.slice(0, 2)) * 60 + Number(breakWindow.end.slice(3, 5));
+    const overlap = Math.max(0, Math.min(end, breakEnd) - Math.max(start, breakStart));
+
+    return Math.max(0, grossMinutes - overlap);
+  };
+  const planningTimeOptions = planningTimelineSlots.slice(0, -1);
+  const openPlanningProjects = heroProjects.filter(
+    (project) => project.status !== "Abgeschlossen" && project.status !== "Archiviert"
+  );
+  const filteredPlanningProjects = openPlanningProjects
+    .filter((project) => {
+      const search = normalizeStampSearchValue(planningEntryProjectSearch);
+      if (!search) return true;
+
+      return [
+        project.projectNumber,
+        project.title,
+        project.customer,
+        project.status,
+        project.trade,
+        project.address,
+        project.responsibleName,
+      ]
+        .filter(Boolean)
+        .some((value) => normalizeStampSearchValue(String(value)).includes(search));
+    })
+    .slice(0, 12);
+  function selectPlanningProject(project: HeroProjectPreview) {
+    setPlanningEntryProjectId(project.id);
+    setPlanningEntryCustomer(project.customer || "");
+    setPlanningEntryProjectSearch(`${project.projectNumber} | ${project.title}`);
+    setIsPlanningEntryProjectSearchOpen(false);
+  }
+  const getPlanningWindowStyle = (user: UserOption | undefined): CSSProperties => {
+    const window = getUserPlanningWindowForDate(user, selectedPlanningDateKey);
+    const start = getPlanningSlotIndex(window.start);
+    const end = getPlanningSlotIndex(window.end);
+    const safeStart = Math.min(start, end);
+    const safeEnd = Math.max(start, end);
+
+    return {
+      "--planning-window-start": `${(safeStart / planningSlotColumnCount) * 100}%`,
+      "--planning-window-end": `${(safeEnd / planningSlotColumnCount) * 100}%`,
+    } as CSSProperties;
+  };
+  const getPlanningBreakStyle = (user: UserOption | undefined): CSSProperties => {
+    const window = getUserBreakWindowForDate(user, selectedPlanningDateKey);
+    if (!window.start || !window.end) {
+      return {
+        "--planning-break-start": "0%",
+        "--planning-break-end": "0%",
+      } as CSSProperties;
+    }
+
+    const start = getPlanningSlotIndex(window.start);
+    const end = getPlanningSlotIndex(window.end);
+    const safeStart = Math.min(start, end);
+    const safeEnd = Math.max(start, end);
+
+    return {
+      "--planning-break-start": `${(safeStart / planningSlotColumnCount) * 100}%`,
+      "--planning-break-end": `${(safeEnd / planningSlotColumnCount) * 100}%`,
+    } as CSSProperties;
+  };
+  const getPlanningAssignmentsForEmployee = (employeeName: string) => {
     if (selectedPlanningIsWeekend || selectedPlanningHoliday) return [];
 
-    const assignments = isFirstEmployee
-      ? [
-          { label: "Projekt ASS-388", start: "07:00", end: "10:00" },
-          { label: "Pause", start: "12:00", end: "12:30" },
-          { label: "Projekt HR-129", start: "13:00", end: "16:00" },
-        ]
-      : [
-          { label: "Projekt MKG-136", start: "09:00", end: "12:00" },
-          { label: "Pause", start: "12:00", end: "12:30" },
-          { label: "Projekt WID-166", start: "14:00", end: "17:00" },
-        ];
+    const entriesForEmployee = planningEntries.filter(
+      (entry) =>
+        !entry.deletedAt &&
+        entry.date === selectedPlanningDateKey &&
+        entry.groupName === selectedPlanningGroup &&
+        entry.employeeName === employeeName
+    );
 
-    return assignments.map((assignment) => ({
-      ...assignment,
-      startColumn: getPlanningSlotIndex(assignment.start) + 1,
-      endColumn: getPlanningSlotIndex(assignment.end) + 1,
-    }));
+    return entriesForEmployee
+      .filter(
+        (entry) => entry.date === selectedPlanningDateKey
+      )
+      .map((entry) => ({
+        id: entry.id,
+        label: entry.title,
+        start: entry.startTime,
+        end: entry.endTime,
+        source: entry.source,
+        approvalStatus: entry.approvalStatus,
+        hasConflict: entriesForEmployee.some(
+          (candidate) =>
+            candidate.id !== entry.id &&
+            isPlanningEntryCreatedAfter(entry, candidate) &&
+            doPlanningTimesOverlap(
+              entry.startTime,
+              entry.endTime,
+              candidate.startTime,
+              candidate.endTime
+            )
+        ),
+        startColumn: getPlanningSlotIndex(entry.startTime) + 1,
+        endColumn: getPlanningSlotIndex(entry.endTime) + 1,
+      }));
   };
   const getUserAbsenceForDay = (userId: string, date: Date) =>
     absences.find((absence) => absence.userId === userId && absence.date === formatDateKey(date));
@@ -7074,6 +7767,31 @@ export function DashboardPage() {
     );
     const projectTrackedHours =
       projectStampEntries.reduce((sum, entry) => sum + entry.durationMs, 0) / 3_600_000;
+    const projectPlanningHistoryEntries = planningEntries.filter(
+      (entry) => String(entry.projectId) === String(selectedProjectFile.id)
+    );
+    const projectPlanningEntries = planningEntries
+      .filter(
+        (entry) =>
+          !entry.deletedAt && String(entry.projectId) === String(selectedProjectFile.id)
+      )
+      .sort((first, second) =>
+        `${second.date} ${second.startTime}`.localeCompare(`${first.date} ${first.startTime}`)
+      );
+    const projectPlanningHistory = projectPlanningHistoryEntries
+      .flatMap((entry) =>
+        (entry.history ?? []).map((history) => ({
+          ...history,
+          entryTitle: entry.title,
+          entryDate: entry.date,
+          entryStartTime: entry.startTime,
+          entryEndTime: entry.endTime,
+        }))
+      )
+      .sort(
+        (first, second) =>
+          new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime()
+      );
     const projectBudgetHours = parseHoursInput(selectedProjectFile.timeBudgetHours);
     const projectRemainingHours = projectBudgetHours > 0 ? projectBudgetHours - projectTrackedHours : 0;
     const projectBudgetUsagePercent =
@@ -7393,6 +8111,106 @@ export function DashboardPage() {
                   </table>
                 )}
               </div>
+            ) : projectFileTab === "appointments" ? (
+              <div className={styles.projectTimeModule}>
+                <div className={styles.customerFileMainHeader}>
+                  <h2>Termine</h2>
+                  <span>{projectPlanningEntries.length} Planungstermine</span>
+                </div>
+                {projectPlanningEntries.length === 0 ? (
+                  <div className={styles.customerDocumentEmpty}>
+                    <strong>Noch keine Planungstermine vorhanden.</strong>
+                    <p>
+                      Sobald eine Planung mit diesem Projekt verknüpft wird, erscheint sie hier.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <table className={styles.projectTimeTable}>
+                      <thead>
+                        <tr>
+                          <th>Datum</th>
+                          <th>Uhrzeit</th>
+                          <th>Titel</th>
+                          <th>Mitarbeiter</th>
+                          <th>Gruppe</th>
+                          <th>Status</th>
+                          <th>Aktion</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {projectPlanningEntries.map((entry) => (
+                          <tr key={entry.id} data-approval={entry.approvalStatus}>
+                            <td>{formatProjectDate(entry.date)}</td>
+                            <td>
+                              {entry.startTime} - {entry.endTime}
+                            </td>
+                            <td>{entry.title}</td>
+                            <td>{entry.employeeName || "-"}</td>
+                            <td>{entry.groupName}</td>
+                            <td>
+                              <span
+                                className={styles.planningStatusPill}
+                                data-status={entry.approvalStatus}
+                              >
+                                {entry.approvalStatus === "requested"
+                                  ? "Terminwunsch"
+                                  : "Bestätigt"}
+                              </span>
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                className={styles.timeEntryEditButton}
+                                onClick={() => jumpToPlanningEntry(entry)}
+                              >
+                                Zum Tag
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+
+                    <section className={styles.planningHistorySection}>
+                      <h3>Terminhistorie</h3>
+                      {projectPlanningHistory.length === 0 ? (
+                        <p>Noch keine Terminhistorie vorhanden.</p>
+                      ) : (
+                        <div className={styles.planningHistoryList}>
+                          {projectPlanningHistory.map((history) => (
+                            <article key={history.id}>
+                              <strong>
+                                {history.eventType === "approved"
+                                  ? "Termin freigegeben"
+                                  : history.eventType === "requested"
+                                    ? "Terminwunsch angelegt"
+                                    : history.eventType === "deleted"
+                                      ? "Termin gelöscht"
+                                      : "Termin angelegt"}
+                              </strong>
+                              <span>
+                                {new Date(history.createdAt).toLocaleString("de-DE", {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                                {" "}von {history.actorName || "System"}
+                              </span>
+                              <p>
+                                {history.entryTitle} am {formatProjectDate(history.entryDate)} von{" "}
+                                {history.entryStartTime} bis {history.entryEndTime}
+                              </p>
+                            </article>
+                          ))}
+                        </div>
+                      )}
+                    </section>
+                  </>
+                )}
+              </div>
             ) : (
               <div className={styles.customerEmptyModule}>
                 <h2>{menuItems.find((item) => item.id === projectFileTab)?.label}</h2>
@@ -7580,6 +8398,39 @@ export function DashboardPage() {
               <div className={styles.planningDayActions}>
                 <button
                   type="button"
+                  className={styles.primaryButton}
+                  onClick={() =>
+                    openPlanningEntryModal({
+                      date: selectedPlanningDateKey,
+                      groupName: selectedPlanningGroup,
+                      board:
+                        selectedPlanningGroup === "VZK" || selectedPlanningGroup === "TZK"
+                          ? "OK immocare"
+                          : "OK solutions",
+                    })
+                  }
+                >
+                  + Planung
+                </button>
+                <button
+                  type="button"
+                  className={styles.requestButton}
+                  onClick={() =>
+                    openPlanningEntryModal({
+                      date: selectedPlanningDateKey,
+                      groupName: selectedPlanningGroup,
+                      approvalStatus: "requested",
+                      board:
+                        selectedPlanningGroup === "VZK" || selectedPlanningGroup === "TZK"
+                          ? "OK immocare"
+                          : "OK solutions",
+                    })
+                  }
+                >
+                  + Terminwunsch
+                </button>
+                <button
+                  type="button"
                   className={styles.secondaryButton}
                   onClick={() => setIsPlanningDayOpen(false)}
                 >
@@ -7621,35 +8472,91 @@ export function DashboardPage() {
                   ))}
                 </div>
 
-                {selectedPlanningGroupEmployees.map((employee, index) => {
+                {selectedPlanningGroupEmployees.length === 0 && (
+                  <div className={styles.planningEmptyRow}>
+                    Für diese Planungsgruppe ist noch kein Mitarbeiter hinterlegt.
+                  </div>
+                )}
+
+                {selectedPlanningGroupEmployees.map((employee) => {
+                  const employeeUser = users.find((user) => user.name === employee);
+                  const employeeCapacity = employeeUser
+                    ? getUserCapacityForDate(employeeUser, selectedPlanningDateKey)
+                    : 0;
+                  const employeePlanningWindow = getUserPlanningWindowForDate(
+                    employeeUser,
+                    selectedPlanningDateKey
+                  );
+                  const employeeUtilization = getEmployeePlanningUtilization(
+                    employee,
+                    employeeCapacity,
+                    selectedPlanningGroup,
+                    selectedPlanningDateKey
+                  );
+                  const employeeBreakWindow = getUserBreakWindowForDate(
+                    employeeUser,
+                    selectedPlanningDateKey
+                  );
+                  const employeeBreakStartColumn = employeeBreakWindow.start
+                    ? getPlanningSlotIndex(employeeBreakWindow.start) + 1
+                    : 1;
+                  const employeeBreakEndColumn = employeeBreakWindow.end
+                    ? getPlanningSlotIndex(employeeBreakWindow.end) + 1
+                    : 1;
                   const assignments = getPlanningAssignmentsForEmployee(employee);
 
                   return (
                     <div key={employee} className={styles.planningWorkerRow}>
-                      <div className={styles.planningWorkerCell}>
+                      <div
+                        className={styles.planningWorkerCell}
+                        data-overloaded={employeeUtilization.percent > 100}
+                      >
                         <strong>{employee}</strong>
-                        <span>
-                          {index === 0 ? "8h verf. / 2,9h fix / Fest planbar" : "8h verf. / 0h fix / Fest planbar"}
-                        </span>
+                        <small>{employeeUtilization.percent}% ausgelastet</small>
+                        <em>
+                          {formatHours(employeeUtilization.plannedHours)}h von{" "}
+                          {formatHours(employeeCapacity)}h verplant
+                        </em>
                       </div>
                       <div
                         className={styles.planningTimelineLane}
                         data-muted={selectedPlanningIsWeekend || Boolean(selectedPlanningHoliday)}
                         style={{
                           gridTemplateColumns: `repeat(${planningSlotColumnCount}, minmax(24px, 1fr))`,
+                          ...getPlanningWindowStyle(employeeUser),
                         }}
                       >
-                        {assignments.map((assignment) => (
+                        <span className={styles.planningUnavailableWindow} data-side="before" />
+                        <span className={styles.planningUnavailableWindow} data-side="after" />
+                        {employeeBreakWindow.start && employeeBreakWindow.end && (
                           <span
+                            className={styles.planningBreakWindow}
+                            style={{
+                              gridColumn: `${employeeBreakStartColumn} / ${employeeBreakEndColumn}`,
+                            }}
+                          >
+                            Pause
+                          </span>
+                        )}
+                        {assignments.map((assignment) => (
+                          <button
+                            type="button"
                             key={`${employee}-${assignment.label}-${assignment.start}`}
                             className={styles.planningTimelineBlock}
                             data-pause={assignment.label === "Pause"}
+                            data-source={assignment.source}
+                            data-approval={assignment.approvalStatus}
+                            data-conflict={assignment.hasConflict}
+                            onClick={() => {
+                              const entry = planningEntries.find((item) => item.id === assignment.id);
+                              if (entry) openEditPlanningEntryModal(entry);
+                            }}
                             style={{
                               gridColumn: `${assignment.startColumn} / ${assignment.endColumn}`,
                             }}
                           >
                             {assignment.label}
-                          </span>
+                          </button>
                         ))}
                       </div>
                     </div>
@@ -7672,6 +8579,22 @@ export function DashboardPage() {
               Ansicht ab heute für vier Wochen. Wochenenden sind ausgegraut, Feiertage werden
               markiert.
             </p>
+          </div>
+          <div className={styles.toplineActions}>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={() => openPlanningEntryModal()}
+            >
+              + Planung
+            </button>
+            <button
+              type="button"
+              className={styles.requestButton}
+              onClick={() => openPlanningEntryModal({ approvalStatus: "requested" })}
+            >
+              + Terminwunsch
+            </button>
           </div>
         </div>
 
@@ -7729,7 +8652,11 @@ export function DashboardPage() {
                         const dateKey = formatDateKey(day);
                         const holiday = getHolidayForDateKey(dateKey);
                         const isWeekend = isWeekendDateKey(dateKey);
-                        const load = getPlanningBoardLoad(section, groupName, dateKey, dayIndex);
+                        const utilization = getPlanningBoardUtilization(
+                          section.company,
+                          groupName,
+                          dateKey
+                        );
                         const targetGroup =
                           groupName === "Gesamt" ? section.detailGroups[0]?.name ?? "Marketing" : groupName;
                         const isSelected =
@@ -7745,6 +8672,7 @@ export function DashboardPage() {
                             data-weekend={isWeekend}
                             data-holiday={Boolean(holiday)}
                             data-active={isSelected}
+                            data-overloaded={utilization.percent > 100}
                             title={holiday?.name}
                             onClick={() => {
                               setSelectedPlanningDateKey(dateKey);
@@ -7754,9 +8682,20 @@ export function DashboardPage() {
                           >
                             {!isWeekend && !holiday ? (
                               <>
-                                <span>{load}%</span>
+                                <span>{utilization.percent}%</span>
+                                <small>
+                                  {formatHours(utilization.plannedHours)}h /{" "}
+                                  {formatHours(utilization.capacityHours)}h
+                                </small>
                                 <b>
-                                  <i style={{ width: `${Math.max(8, Math.min(load, 100))}%` }} />
+                                  <i
+                                    style={{
+                                      width: `${Math.max(
+                                        utilization.percent > 0 ? 8 : 0,
+                                        Math.min(utilization.percent, 100)
+                                      )}%`,
+                                    }}
+                                  />
                                 </b>
                               </>
                             ) : (
@@ -7810,10 +8749,16 @@ export function DashboardPage() {
       { id: "permissions", label: "Berechtigungen" },
       { id: "mailserver", label: "Mailserver" },
       { id: "employment", label: "Anstellung" },
+      { id: "planningSettings", label: "Planungseinstellungen" },
       { id: "tax", label: "Steuerdaten" },
       { id: "bank", label: "Bankdaten" },
       { id: "password", label: "Passwort ändern" },
     ];
+    const employeePlanningGroups = getPlanningGroupsForBoard(employeePlanningBoard);
+    const employeeWeeklyCapacityTotal = weeklyCapacityDayLabels.reduce(
+      (total, day) => total + (employeeWeeklyCapacity[day.key] ?? 0),
+      0
+    );
     const now = new Date(timerNow);
     const employeePeriodStart =
       employeeTimePeriod === "day"
@@ -8145,6 +9090,37 @@ export function DashboardPage() {
                           <option>App-Nutzer</option>
                         </select>
                       </label>
+                      <section className={`${styles.employeePlanningSettings} ${styles.fullWidth}`}>
+                        <div>
+                          <h3>Planungsverantwortung</h3>
+                          <p>
+                            Verantwortliche erhalten Terminwünsche der jeweiligen Planungsgruppe zur Freigabe.
+                          </p>
+                        </div>
+                        <div className={styles.planningResponsibilityGrid}>
+                          {(Object.keys(planningBoardGroupsByCompany) as PlanningBoardCompany[]).map((board) => (
+                            <article key={board}>
+                              <strong>{board}</strong>
+                              {planningBoardGroupsByCompany[board].map((group) => {
+                                const key = getPlanningResponsibilityKey(board, group);
+                                return (
+                                  <label key={key}>
+                                    <input
+                                      type="checkbox"
+                                      checked={employeePlanningResponsibleFor.includes(key)}
+                                      disabled={!mayManageUsers}
+                                      onChange={(event) =>
+                                        togglePlanningResponsibility(key, event.target.checked)
+                                      }
+                                    />
+                                    {group}
+                                  </label>
+                                );
+                              })}
+                            </article>
+                          ))}
+                        </div>
+                      </section>
                     </div>
                   </>
                 )}
@@ -8217,6 +9193,106 @@ export function DashboardPage() {
                         <input type="number" min="0" defaultValue={30} />
                       </label>
                     </div>
+                  </>
+                )}
+
+                {employeeSideTab === "planningSettings" && (
+                  <>
+                    <div className={styles.employeeSectionHeader}>
+                      <h2>Planungseinstellungen</h2>
+                      <strong className={styles.employeePlanningTotal}>
+                        {formatHours(employeeWeeklyCapacityTotal)} Std. pro Woche
+                      </strong>
+                    </div>
+                    <div className={styles.employeeFormGrid}>
+                      <label>
+                        Planungsboard
+                        <select
+                          value={employeePlanningBoard}
+                          disabled={!mayManageUsers}
+                          onChange={(event) => {
+                            const nextBoard = event.target.value as PlanningBoardCompany;
+                            const nextGroups = getPlanningGroupsForBoard(nextBoard);
+                            setEmployeePlanningBoard(nextBoard);
+                            setEmployeePlanningGroup(nextGroups[0]);
+                          }}
+                        >
+                          <option>OK solutions</option>
+                          <option>OK immocare</option>
+                        </select>
+                      </label>
+                      <label>
+                        Planungsgruppe
+                        <select
+                          value={employeePlanningGroup}
+                          disabled={!mayManageUsers}
+                          onChange={(event) => setEmployeePlanningGroup(event.target.value)}
+                        >
+                          {employeePlanningGroups.map((group) => (
+                            <option key={group}>{group}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                    <section className={styles.employeePlanningSettings}>
+                      <div>
+                        <h3>Arbeitszeit nach Wochentagen</h3>
+                        <p>Diese Stunden werden im jeweiligen Planungsboard als Tageskapazität verwendet.</p>
+                      </div>
+                      <div className={styles.employeeWeeklyGrid}>
+                        {weeklyCapacityDayLabels.map((day) => (
+                          <label key={day.key}>
+                            <span>{day.label}</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.25"
+                              value={employeeWeeklyCapacity[day.key]}
+                              disabled={!mayManageUsers}
+                              onChange={(event) =>
+                                setEmployeeWeeklyCapacityDay(day.key, event.target.value)
+                              }
+                            />
+                            <small>Planbar von</small>
+                            <input
+                              type="time"
+                              value={employeePlanningTimeWindows[day.key].start}
+                              disabled={!mayManageUsers}
+                              onChange={(event) =>
+                                setEmployeePlanningWindowDay(day.key, "start", event.target.value)
+                              }
+                            />
+                            <small>Planbar bis</small>
+                            <input
+                              type="time"
+                              value={employeePlanningTimeWindows[day.key].end}
+                              disabled={!mayManageUsers}
+                              onChange={(event) =>
+                                setEmployeePlanningWindowDay(day.key, "end", event.target.value)
+                              }
+                            />
+                            <small>Pause von</small>
+                            <input
+                              type="time"
+                              value={employeePlanningBreakWindows[day.key].start}
+                              disabled={!mayManageUsers}
+                              onChange={(event) =>
+                                setEmployeePlanningBreakDay(day.key, "start", event.target.value)
+                              }
+                            />
+                            <small>Pause bis</small>
+                            <input
+                              type="time"
+                              value={employeePlanningBreakWindows[day.key].end}
+                              disabled={!mayManageUsers}
+                              onChange={(event) =>
+                                setEmployeePlanningBreakDay(day.key, "end", event.target.value)
+                              }
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    </section>
                   </>
                 )}
 
@@ -10377,6 +11453,15 @@ export function DashboardPage() {
                         </div>
                         <span>{formatDeadline(notification.createdAt)}</span>
                         <p>{notification.body}</p>
+                        {notification.linkTarget && notification.linkTargetId && (
+                          <button
+                            type="button"
+                            className={styles.notificationLinkButton}
+                            onClick={() => openNotificationTarget(notification)}
+                          >
+                            {notification.linkLabel || "Öffnen"}
+                          </button>
+                        )}
                       </article>
                     ))
                   )}
@@ -10452,7 +11537,7 @@ export function DashboardPage() {
                   <button
                     className={`${styles.tab} ${isActiveGroup ? styles.activeTab : ""}`}
                     onClick={() => {
-                      setActiveTab(tab);
+                      openMainView(tab);
                       setIsFirmSettingsNavOpen(false);
                       setOpenProjectNav({ projectsSolutions: false, projectsImmocare: false });
                       setOpenSidebarMenus({ [tab]: !isOpen });
@@ -10472,7 +11557,7 @@ export function DashboardPage() {
                           type="button"
                           data-active={activeTab === item.id}
                           onClick={() => {
-                            setActiveTab(item.id);
+                            openMainView(item.id);
                             setIsFirmSettingsNavOpen(false);
                             setOpenProjectNav({ projectsSolutions: false, projectsImmocare: false });
                             setOpenSidebarMenus({ [tab]: true });
@@ -10504,7 +11589,7 @@ export function DashboardPage() {
                   <button
                     className={`${styles.tab} ${isActiveGroup ? styles.activeTab : ""}`}
                     onClick={() => {
-                      setActiveTab(tab);
+                      openMainView(tab);
                       setIsFirmSettingsNavOpen(false);
                       setOpenProjectNav({ projectsSolutions: false, projectsImmocare: false });
                       setOpenSidebarMenus({ [tab]: !isOpen });
@@ -10524,7 +11609,7 @@ export function DashboardPage() {
                           type="button"
                           data-active={activeTab === item.id}
                           onClick={() => {
-                            setActiveTab(item.id);
+                            openMainView(item.id);
                             setIsFirmSettingsNavOpen(false);
                             setOpenProjectNav({ projectsSolutions: false, projectsImmocare: false });
                             setOpenSidebarMenus({ [tab]: true });
@@ -10553,7 +11638,7 @@ export function DashboardPage() {
                       activeTab === tab ? styles.activeTab : ""
                     }`}
                     onClick={() => {
-                      setActiveTab(tab);
+                      openMainView(tab);
                       setSelectedProjectKindFilter("");
                       setIsFirmSettingsNavOpen(false);
                       setOpenSidebarMenus({});
@@ -10582,7 +11667,7 @@ export function DashboardPage() {
                           type="button"
                           data-active={activeTab === tab && selectedProjectKindFilter === item.value}
                           onClick={() => {
-                            setActiveTab(tab);
+                            openMainView(tab);
                             setSelectedProjectKindFilter(item.value);
                             setIsFirmSettingsNavOpen(false);
                             setOpenSidebarMenus({});
@@ -10626,7 +11711,7 @@ export function DashboardPage() {
                   <button
                     className={`${styles.tab} ${isActiveGroup ? styles.activeTab : ""}`}
                     onClick={() => {
-                      setActiveTab(tab);
+                      openMainView(tab);
                       setIsFirmSettingsNavOpen(false);
                       setOpenProjectNav({ projectsSolutions: false, projectsImmocare: false });
                       setOpenSidebarMenus({ [tab]: !isOpen });
@@ -10646,7 +11731,7 @@ export function DashboardPage() {
                           type="button"
                           data-active={activeTab === item.id}
                           onClick={() => {
-                            setActiveTab(item.id);
+                            openMainView(item.id);
                             setIsFirmSettingsNavOpen(false);
                             setOpenProjectNav({ projectsSolutions: false, projectsImmocare: false });
                             setOpenSidebarMenus({ [tab]: true });
@@ -10666,7 +11751,7 @@ export function DashboardPage() {
                 key={tab}
                 className={`${styles.tab} ${activeTab === tab ? styles.activeTab : ""}`}
                 onClick={() => {
-                  setActiveTab(tab);
+                  openMainView(tab);
                   setIsFirmSettingsNavOpen(false);
                   setOpenSidebarMenus({});
                   setOpenProjectNav({ projectsSolutions: false, projectsImmocare: false });
@@ -13194,6 +14279,320 @@ export function DashboardPage() {
           )}
         </section>
       </section>
+
+      {isPlanningEntryModalOpen && (
+        <div className={styles.overlay} onClick={() => setIsPlanningEntryModalOpen(false)}>
+          <div
+            className={`${styles.modal} ${styles.planningEntryModal}`}
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={styles.contactModalHeader}>
+              <div>
+                <p className={styles.eyebrow}>Planungsboard</p>
+                <h2>{editingPlanningEntryId ? "Planung bearbeiten" : "Planung anlegen"}</h2>
+              </div>
+              <button
+                type="button"
+                className={styles.modalCloseButton}
+                onClick={() => setIsPlanningEntryModalOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className={styles.planningEntryModalBody}>
+              <div
+                className={styles.planningApprovalNotice}
+                data-status={planningEntryApprovalStatus}
+              >
+                <strong>
+                  {planningEntryApprovalStatus === "requested"
+                    ? "Terminwunsch - Freigabe erforderlich"
+                    : "Bestätigter Planungstermin"}
+                </strong>
+                <span>
+                  {planningEntryApprovalStatus === "requested"
+                    ? "Der Termin wird gelb angezeigt, bis ein Planungsverantwortlicher ihn bestätigt."
+                    : "Der Termin wird fest im Planungsboard geführt."}
+                </span>
+              </div>
+
+              <div className={styles.segmentedControl}>
+                <button
+                  type="button"
+                  data-active={planningEntrySource === "manual"}
+                  onClick={() => setPlanningEntrySource("manual")}
+                >
+                  Manuell
+                </button>
+                <button
+                  type="button"
+                  data-active={planningEntrySource === "offer"}
+                  onClick={() => setPlanningEntrySource("offer")}
+                >
+                  Aus Angebot
+                </button>
+              </div>
+
+              <div className={styles.planningEntryGrid}>
+                <label>
+                  Planungsboard
+                  <select
+                    value={planningEntryBoard}
+                    onChange={(event) => {
+                      const nextBoard = event.target.value as PlanningBoardCompany;
+                      const nextGroup = getPlanningEntryGroups(nextBoard)[0];
+                      setPlanningEntryBoard(nextBoard);
+                      setPlanningEntryGroup(nextGroup);
+                      setPlanningEntryUserId(
+                        users.find(
+                          (user) =>
+                            (user.planningBoard ?? "OK solutions") === nextBoard &&
+                            (user.planningGroup ?? "") === nextGroup
+                        )?.id ?? ""
+                      );
+                    }}
+                  >
+                    <option>OK solutions</option>
+                    <option>OK immocare</option>
+                  </select>
+                </label>
+                <label>
+                  Planungsgruppe
+                  <select
+                    value={planningEntryGroup}
+                    onChange={(event) => {
+                      const nextGroup = event.target.value;
+                      setPlanningEntryGroup(nextGroup);
+                      setPlanningEntryUserId(
+                        users.find(
+                          (user) =>
+                            (user.planningBoard ?? "OK solutions") === planningEntryBoard &&
+                            (user.planningGroup ?? "") === nextGroup
+                        )?.id ?? ""
+                      );
+                    }}
+                  >
+                    {getPlanningEntryGroups(planningEntryBoard).map((group) => (
+                      <option key={group}>{group}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Mitarbeiter
+                  <select
+                    value={planningEntryUserId}
+                    onChange={(event) => setPlanningEntryUserId(event.target.value)}
+                  >
+                    <option value="">Noch nicht zugewiesen</option>
+                    {users
+                      .filter(
+                        (user) =>
+                          (user.planningBoard ?? "OK solutions") === planningEntryBoard &&
+                          (user.planningGroup ?? "") === planningEntryGroup
+                      )
+                      .map((user) => (
+                        <option key={user.id} value={user.id}>
+                          {user.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label>
+                  Datum
+                  <input
+                    type="date"
+                    value={planningEntryDate}
+                    onChange={(event) => setPlanningEntryDate(event.target.value)}
+                  />
+                </label>
+                <label>
+                  Von
+                  <select
+                    value={planningEntryStartTime}
+                    onChange={(event) => setPlanningEntryStartTime(event.target.value)}
+                  >
+                    {planningTimeOptions.map((time) => (
+                      <option key={time} value={time}>
+                        {time}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Bis
+                  <select
+                    value={planningEntryEndTime}
+                    onChange={(event) => setPlanningEntryEndTime(event.target.value)}
+                  >
+                    {planningTimeOptions.map((time) => (
+                      <option key={time} value={time}>
+                        {time}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className={styles.fullWidth}>
+                  Titel
+                  <input
+                    value={planningEntryTitle}
+                    onChange={(event) => setPlanningEntryTitle(event.target.value)}
+                    placeholder={planningEntrySource === "offer" ? "z.B. Rasenmähen" : "z.B. Kundentermin"}
+                  />
+                </label>
+                <label>
+                  Kunde / Projekt
+                  <div className={styles.planningProjectSearch}>
+                    <input
+                      value={planningEntryProjectSearch}
+                      onFocus={() => {
+                        if (!hasLoadedHeroProjects && !isHeroProjectsLoading) void loadHeroProjects();
+                        setIsPlanningEntryProjectSearchOpen(true);
+                      }}
+                      onChange={(event) => {
+                        setPlanningEntryProjectSearch(event.target.value);
+                        setPlanningEntryProjectId("");
+                        setPlanningEntryCustomer(event.target.value);
+                        setIsPlanningEntryProjectSearchOpen(true);
+                        if (!hasLoadedHeroProjects && !isHeroProjectsLoading) void loadHeroProjects();
+                      }}
+                      placeholder="Projekt, Kunde, Projekt-ID suchen..."
+                    />
+                    {isPlanningEntryProjectSearchOpen && (
+                      <div className={styles.planningProjectResults}>
+                        {isHeroProjectsLoading ? (
+                          <button type="button" disabled>
+                            Projekte werden geladen...
+                          </button>
+                        ) : filteredPlanningProjects.length === 0 ? (
+                          <button type="button" disabled>
+                            Kein offenes Projekt gefunden
+                          </button>
+                        ) : (
+                          filteredPlanningProjects.map((project) => (
+                            <button
+                              key={project.id}
+                              type="button"
+                              onClick={() => selectPlanningProject(project)}
+                            >
+                              <strong>{project.projectNumber} | {project.title}</strong>
+                              <span>{project.customer || "-"} · {project.status}</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </label>
+                <label>
+                  Geplante Dauer
+                  <input
+                    readOnly
+                    value={`${formatHours(
+                      getPlanningNetMinutesBetween(
+                        planningEntryStartTime,
+                        planningEntryEndTime,
+                        getUserBreakWindowForDate(
+                          users.find((user) => user.id === planningEntryUserId),
+                          planningEntryDate
+                        )
+                      ) / 60
+                    )} Std.`}
+                  />
+                </label>
+                {planningEntrySource === "offer" && (
+                  <>
+                    <label className={styles.fullWidth}>
+                      Angebotsposition
+                      <input
+                        value={planningEntryOfferLabel}
+                        onChange={(event) => setPlanningEntryOfferLabel(event.target.value)}
+                        placeholder="z.B. Rasenmähen - 5 Std."
+                      />
+                    </label>
+                    <label>
+                      Angebotene Stunden
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.25"
+                        value={planningEntryOfferTotalHours}
+                        onChange={(event) => setPlanningEntryOfferTotalHours(event.target.value)}
+                      />
+                    </label>
+                    <div className={styles.planningOfferInfo}>
+                      <span>Angebot vorbereitet</span>
+                      <strong>
+                        {formatHours(
+                          getPlanningNetMinutesBetween(
+                            planningEntryStartTime,
+                            planningEntryEndTime,
+                            getUserBreakWindowForDate(
+                              users.find((user) => user.id === planningEntryUserId),
+                              planningEntryDate
+                            )
+                          ) / 60
+                        )} von{" "}
+                        {formatHours(Number(planningEntryOfferTotalHours) || 0)} Std. verplant
+                      </strong>
+                    </div>
+                  </>
+                )}
+                <label className={styles.fullWidth}>
+                  Beschreibung
+                  <textarea
+                    rows={4}
+                    value={planningEntryDescription}
+                    onChange={(event) => setPlanningEntryDescription(event.target.value)}
+                    placeholder="Notiz zur Planung"
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className={styles.modalFooter}>
+              <div className={styles.modalActions}>
+                {editingPlanningEntryId && (
+                  <button
+                    type="button"
+                    className={styles.dangerButton}
+                    onClick={deletePlanningEntry}
+                  >
+                    Löschen
+                  </button>
+                )}
+                {editingPlanningEntryId && planningEntryApprovalStatus === "requested" && (
+                  <button
+                    type="button"
+                    className={styles.successButton}
+                    onClick={() => void savePlanningEntry("confirmed")}
+                  >
+                    Termin bestätigen
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => setIsPlanningEntryModalOpen(false)}
+                >
+                  Abbrechen
+                </button>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  onClick={() => void savePlanningEntry()}
+                >
+                  {planningEntryApprovalStatus === "requested"
+                    ? "Terminwunsch speichern"
+                    : "Planung speichern"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isCompanyProfileModalOpen && (
         <div className={styles.overlay} onClick={() => setIsCompanyProfileModalOpen(false)}>
