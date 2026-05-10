@@ -33,6 +33,7 @@ type AppTab =
   | "orders"
   | "articles"
   | "services"
+  | "packages"
   | "salesPrices"
   | "datanorm"
   | "accounting"
@@ -65,6 +66,7 @@ type CustomerDocumentType =
   | "Angebote"
   | "Angebote: Sonderangebote"
   | "Tätigkeitsberichte"
+  | "Endkontrolle"
   | "Mahnung"
   | "Rechnungen";
 type ProjectFileTab =
@@ -88,6 +90,7 @@ type SidebarPreparedTab =
   | "documentGaeb"
   | "articles"
   | "services"
+  | "packages"
   | "salesPrices"
   | "datanorm";
 type FirmSettingsTab =
@@ -105,7 +108,7 @@ type FirmSettingsTab =
   | "mailServer"
   | "customFields";
 type CompanyProfileEditTab = "general" | "contact" | "bank";
-type EmployeeTopTab = "overview" | "absence" | "time" | "balance" | "documents";
+type EmployeeTopTab = "overview" | "absence" | "time" | "balance" | "documents" | "costs";
 type EmployeeTimePeriod = "day" | "month" | "year" | "custom";
 type EmployeeSideTab =
   | "personal"
@@ -377,6 +380,7 @@ type UserOption = {
   email: string;
   role: UserRole;
   roleLabel: string;
+  isActive: boolean;
   teamId: string | null;
   teamIds: string[];
   dailyWorkHours: number;
@@ -399,6 +403,22 @@ type UserOption = {
   planningTimeWindows?: WeeklyPlanningWindows;
   planningBreakWindows?: WeeklyPlanningWindows;
   planningResponsibleFor?: string[];
+};
+
+type EmployeeCostCalculation = {
+  id: string;
+  userId: string;
+  monthlySalary: number;
+  fullCostFactor: number;
+  annualHours: number;
+  vacationDays: number;
+  trainingDays: number;
+  sickDays: number;
+  hoursPerDay: number;
+  updatedByUserId?: string;
+  updatedByName?: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 type PlanningBoardCompany = "OK solutions" | "OK immocare";
@@ -456,6 +476,169 @@ type PlanningEntry = {
   deletedAt: string;
   createdAt: string;
   history: PlanningEntryHistory[];
+};
+
+type CatalogItemType = "article" | "service" | "package";
+type CatalogFormTab = "information" | "components" | "calculation" | "history";
+type CatalogItemHistory = {
+  id: string;
+  catalogItemId: string;
+  eventType: string;
+  fieldName: string;
+  oldValue: string;
+  newValue: string;
+  actorUserId: string;
+  actorName: string;
+  note: string;
+  createdAt: string;
+};
+type CatalogItem = {
+  id: string;
+  type: CatalogItemType;
+  number: string;
+  name: string;
+  category: string;
+  unit: string;
+  description: string;
+  matchcode: string;
+  ean: string;
+  costCenter: string;
+  supplierName: string;
+  supplierNumber: string;
+  manufacturer: string;
+  manufacturerNumber: string;
+  manufacturerTypeName: string;
+  minimumOrderQuantity: number | null;
+  quantityScale: string;
+  priceUnit: string;
+  deliveryTime: string;
+  stockQuantity: number | null;
+  purchasePrice: number;
+  listPrice: number;
+  salesPrice: number;
+  vatRate: number;
+  isPlanningRelevant: boolean;
+  planningMinutesPerUnit: number;
+  defaultPlanningBoard: string;
+  defaultPlanningGroup: string;
+  isActive: boolean;
+  usedCount: number;
+  createdAt: string;
+  updatedAt: string;
+  history: CatalogItemHistory[];
+  packageItems: CatalogPackageItem[];
+};
+type CatalogPackageItem = {
+  id: string;
+  packageId: string;
+  componentItemId: string;
+  quantity: number;
+  position: number;
+  descriptionOverride: string;
+  priceOverride: number | null;
+  componentNumber: string;
+  componentName: string;
+  componentType: CatalogItemType;
+  componentUnit: string;
+  componentPurchasePrice: number;
+  componentSalesPrice: number;
+  componentPlanningMinutesPerUnit: number;
+  componentIsActive: boolean;
+};
+type OfferLineDraft = {
+  id: string;
+  catalogItemId: string;
+  catalogType: CatalogItemType | "";
+  quantity: number;
+  unit: string;
+  title: string;
+  description: string;
+  unitPrice: number;
+  vatRate: number;
+  laborItems: OfferLineLaborDraft[];
+};
+type OfferLineLaborDraft = {
+  id: string;
+  userId: string;
+  employeeName: string;
+  plannedHours: number;
+  hourlyCostRate: number;
+  totalCost: number;
+};
+type OfferItem = {
+  id: string;
+  projectId: string;
+  projectNumber: string;
+  projectTitle: string;
+  company: "OK solutions" | "OK immocare";
+  offerNumber: string;
+  status: string;
+  customerName: string;
+  customerStreet: string;
+  customerCity: string;
+  contactName: string;
+  internalContactName: string;
+  internalPhone: string;
+  internalEmail: string;
+  introText: string;
+  closingText: string;
+  netTotal: number;
+  vatRate: number;
+  grossTotal: number;
+  pdfAvailable: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lines: OfferLineDraft[];
+};
+type InvoiceItem = {
+  id: string;
+  projectId: string;
+  projectNumber: string;
+  projectTitle: string;
+  company: "OK solutions" | "OK immocare";
+  invoiceNumber: string;
+  status: string;
+  customerName: string;
+  customerStreet: string;
+  customerCity: string;
+  contactName: string;
+  internalContactName: string;
+  internalPhone: string;
+  internalEmail: string;
+  introText: string;
+  closingText: string;
+  netTotal: number;
+  vatRate: number;
+  grossTotal: number;
+  pdfAvailable: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lines: OfferLineDraft[];
+};
+type OfferHistoryItem = {
+  id: string;
+  offerId: string;
+  projectId: string;
+  offerNumber: string;
+  eventType: string;
+  title: string;
+  note: string;
+  actorName: string;
+  createdAt: string;
+};
+type OfferDraft = {
+  company: "OK solutions" | "OK immocare";
+  customerName: string;
+  customerStreet: string;
+  customerCity: string;
+  contactName: string;
+  internalContactName: string;
+  internalPhone: string;
+  internalEmail: string;
+  introText: string;
+  closingText: string;
+  vatRate: number;
+  lines: OfferLineDraft[];
 };
 
 type TeamOption = {
@@ -703,13 +886,19 @@ type StampTimeEntry = {
   mode: StampMode;
   projectId: string;
   projectLabel: string;
+  userId: string;
   employee: string;
+  entrySource?: "stamped" | "manual";
   date: string;
   startTime: string;
   endTime: string;
   durationMs: number;
   pauseMs: number;
   comment: string;
+  invoiceId?: string;
+  invoiceNumber?: string;
+  invoicedAt?: string;
+  createdAt?: string;
 };
 
 const defaultContactColumnIds: ContactColumnId[] = [
@@ -1034,6 +1223,53 @@ const planningTimelineSlots = Array.from({ length: 57 }, (_, index) => {
 });
 const planningHourLabels = Array.from({ length: 15 }, (_, index) => `${String(6 + index).padStart(2, "0")}:00`);
 const planningSlotColumnCount = 56;
+const catalogUnits = ["Stk", "Std", "m²", "m", "km", "Tag", "kg", "L", "Pauschal"];
+const emptyCatalogItemDraft: Omit<CatalogItem, "id" | "createdAt" | "updatedAt" | "history" | "usedCount"> = {
+  type: "article",
+  number: "",
+  name: "",
+  category: "",
+  unit: "Stk",
+  description: "",
+  matchcode: "",
+  ean: "",
+  costCenter: "",
+  supplierName: "",
+  supplierNumber: "",
+  manufacturer: "",
+  manufacturerNumber: "",
+  manufacturerTypeName: "",
+  minimumOrderQuantity: null,
+  quantityScale: "",
+  priceUnit: "",
+  deliveryTime: "",
+  stockQuantity: null,
+  purchasePrice: 0,
+  listPrice: 0,
+  salesPrice: 0,
+  vatRate: 19,
+  isPlanningRelevant: false,
+  planningMinutesPerUnit: 0,
+  defaultPlanningBoard: "",
+  defaultPlanningGroup: "",
+  isActive: true,
+  packageItems: [],
+};
+const emptyOfferDraft: OfferDraft = {
+  company: "OK solutions",
+  customerName: "",
+  customerStreet: "",
+  customerCity: "",
+  contactName: "",
+  internalContactName: "",
+  internalPhone: "",
+  internalEmail: "",
+  introText:
+    "wir danken Ihnen fuer Ihre Anfrage und unterbreiten Ihnen auf den folgenden Seiten unser Angebot.",
+  closingText: "Wir freuen uns auf Ihre Rückmeldung.",
+  vatRate: 19,
+  lines: [],
+};
 
 const navigationTabs: Array<[AppTab, string]> = [
   ["overview", "Übersicht"],
@@ -1060,6 +1296,7 @@ const preparedSidebarTabLabels: Record<SidebarPreparedTab, string> = {
   documentGaeb: "Ausschreibungen (GAEB)",
   articles: "Artikel",
   services: "Leistungen",
+  packages: "Pakete",
   salesPrices: "Verkaufspreise",
   datanorm: "Datanorm",
 };
@@ -1126,7 +1363,7 @@ function SidebarIcon({ tab }: { tab: AppTab }) {
     );
   }
 
-  if (tab === "articles" || tab === "services" || tab === "salesPrices" || tab === "datanorm") {
+  if (tab === "articles" || tab === "services" || tab === "packages" || tab === "salesPrices" || tab === "datanorm") {
     return (
       <svg {...common}>
         <path d="M5 6h3M5 12h3M5 18h3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -1499,6 +1736,54 @@ function formatHours(value: number) {
   });
 }
 
+function formatHourMinutes(value: number) {
+  const sign = value < 0 ? "-" : "";
+  const totalMinutes = Math.round(Math.abs(value) * 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  return `${sign}${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function formatMoney(value: number) {
+  return `${value.toLocaleString("de-DE", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} €`;
+}
+
+const defaultEmployeeCostCalculation: EmployeeCostCalculation = {
+  id: "",
+  userId: "",
+  monthlySalary: 0,
+  fullCostFactor: 1.35,
+  annualHours: 2080,
+  vacationDays: 30,
+  trainingDays: 0,
+  sickDays: 10,
+  hoursPerDay: 8,
+};
+
+function getEmployeeCostMetrics(cost: EmployeeCostCalculation) {
+  const deductionDays = cost.vacationDays + cost.trainingDays + cost.sickDays;
+  const deductionHours = deductionDays * cost.hoursPerDay;
+  const sellableAnnualHours = Math.max(0, cost.annualHours - deductionHours);
+  const sellableMonthlyHours = sellableAnnualHours / 12;
+  const annualFullCost = cost.monthlySalary * 12 * cost.fullCostFactor;
+  const monthlyFullCost = cost.monthlySalary * cost.fullCostFactor;
+  const hourlyCost = sellableAnnualHours > 0 ? annualFullCost / sellableAnnualHours : 0;
+
+  return {
+    deductionDays,
+    deductionHours,
+    sellableAnnualHours,
+    sellableMonthlyHours,
+    annualFullCost,
+    monthlyFullCost,
+    hourlyCost,
+  };
+}
+
 function formatDeadline(value: string) {
   if (!value) return "-";
   return new Intl.DateTimeFormat("de-DE", {
@@ -1531,7 +1816,24 @@ function formatDateKey(date: Date) {
 function parseProjectDate(value?: string) {
   if (!value) return null;
 
-  const [year, month, day] = value.split("-").map(Number);
+  const normalizedValue = value.trim();
+  const isoMatch = normalizedValue.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    const [, yearValue, monthValue, dayValue] = isoMatch;
+    const date = new Date(Number(yearValue), Number(monthValue) - 1, Number(dayValue));
+    return Number.isFinite(date.getTime()) ? date : null;
+  }
+
+  const germanMatch = normalizedValue.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})/);
+  if (germanMatch) {
+    const [, dayValue, monthValue, yearValue] = germanMatch;
+    const parsedYear = Number(yearValue);
+    const year = parsedYear < 100 ? 2000 + parsedYear : parsedYear;
+    const date = new Date(year, Number(monthValue) - 1, Number(dayValue));
+    return Number.isFinite(date.getTime()) ? date : null;
+  }
+
+  const [year, month, day] = normalizedValue.split("-").map(Number);
   if (!year || !month || !day) return null;
 
   const date = new Date(year, month - 1, day);
@@ -2280,6 +2582,47 @@ export function DashboardPage() {
   const [documentTextDraftTitle, setDocumentTextDraftTitle] = useState("");
   const [documentTextDraftBody, setDocumentTextDraftBody] = useState("");
   const [documentTextDraftError, setDocumentTextDraftError] = useState("");
+  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
+  const [catalogSearchTerm, setCatalogSearchTerm] = useState("");
+  const [catalogStatusFilter, setCatalogStatusFilter] = useState<"active" | "inactive" | "all">("active");
+  const [catalogPageSize, setCatalogPageSize] = useState(25);
+  const [catalogPage, setCatalogPage] = useState(1);
+  const [catalogColumnFilters, setCatalogColumnFilters] = useState({
+    number: "",
+    name: "",
+    category: "",
+    unit: "",
+    supplierName: "",
+  });
+  const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
+  const [editingCatalogItemId, setEditingCatalogItemId] = useState("");
+  const [catalogFormTab, setCatalogFormTab] = useState<CatalogFormTab>("information");
+  const [catalogDraft, setCatalogDraft] = useState(emptyCatalogItemDraft);
+  const [catalogError, setCatalogError] = useState("");
+  const [offers, setOffers] = useState<OfferItem[]>([]);
+  const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
+  const [offerHistory, setOfferHistory] = useState<OfferHistoryItem[]>([]);
+  const [isOfferModalOpen, setIsOfferModalOpen] = useState(false);
+  const [editingOfferId, setEditingOfferId] = useState("");
+  const [offerDraft, setOfferDraft] = useState<OfferDraft>(emptyOfferDraft);
+  const [offerError, setOfferError] = useState("");
+  const [isSavingOffer, setIsSavingOffer] = useState(false);
+  const [offerPreviewDataUrl, setOfferPreviewDataUrl] = useState("");
+  const [isGeneratingOfferPreview, setIsGeneratingOfferPreview] = useState(false);
+  const [offerLineSearchTerms, setOfferLineSearchTerms] = useState<Record<string, string>>({});
+  const [openOfferLinePickerId, setOpenOfferLinePickerId] = useState("");
+  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
+  const [editingInvoiceId, setEditingInvoiceId] = useState("");
+  const [invoiceDraft, setInvoiceDraft] = useState<OfferDraft>(emptyOfferDraft);
+  const [invoiceError, setInvoiceError] = useState("");
+  const [isSavingInvoice, setIsSavingInvoice] = useState(false);
+  const [invoicePreviewDataUrl, setInvoicePreviewDataUrl] = useState("");
+  const [isGeneratingInvoicePreview, setIsGeneratingInvoicePreview] = useState(false);
+  const [isInvoiceSourcePickerOpen, setIsInvoiceSourcePickerOpen] = useState(false);
+  const [invoiceLineSearchTerms, setInvoiceLineSearchTerms] = useState<Record<string, string>>({});
+  const [openInvoiceLinePickerId, setOpenInvoiceLinePickerId] = useState("");
+  const [invoiceStampEntryIds, setInvoiceStampEntryIds] = useState<string[]>([]);
+  const [invoiceBillableStampEntryIds, setInvoiceBillableStampEntryIds] = useState<string[]>([]);
   const letterheadUploadRef = useRef<HTMLInputElement | null>(null);
   const [globalSearchTerm, setGlobalSearchTerm] = useState("");
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
@@ -2322,6 +2665,8 @@ export function DashboardPage() {
   const [stampComment, setStampComment] = useState("");
   const [stampError, setStampError] = useState("");
   const [editingStampEntry, setEditingStampEntry] = useState<StampTimeEntry | null>(null);
+  const [isManualProjectTimeModalOpen, setIsManualProjectTimeModalOpen] = useState(false);
+  const [manualProjectTimeUserId, setManualProjectTimeUserId] = useState("");
   const [stampEditDate, setStampEditDate] = useState("");
   const [stampEditStartTime, setStampEditStartTime] = useState("");
   const [stampEditEndTime, setStampEditEndTime] = useState("");
@@ -2485,6 +2830,11 @@ export function DashboardPage() {
   const [employeeTimePeriod, setEmployeeTimePeriod] = useState<EmployeeTimePeriod>("day");
   const [employeeTimeFrom, setEmployeeTimeFrom] = useState(() => formatInputDate(new Date()));
   const [employeeTimeTo, setEmployeeTimeTo] = useState(() => formatInputDate(new Date()));
+  const [employeeCostCalculations, setEmployeeCostCalculations] = useState<
+    Record<string, EmployeeCostCalculation>
+  >({});
+  const [employeeCostError, setEmployeeCostError] = useState("");
+  const [isSavingEmployeeCost, setIsSavingEmployeeCost] = useState(false);
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
   const [teamName, setTeamName] = useState("");
   const [editingTradeId, setEditingTradeId] = useState<string | null>(null);
@@ -2555,6 +2905,9 @@ export function DashboardPage() {
   const activeUser = useMemo(
     () => users.find((user) => user.id === activeUserId),
     [activeUserId, users]
+  );
+  const mayAccessEmployeeCosts = ["ramona eid", "christian eid"].includes(
+    (activeUser?.name ?? "").trim().toLowerCase()
   );
   const canManageProjectTimeEntries =
     activeUser?.role === "ADMIN" ||
@@ -2661,6 +3014,1185 @@ export function DashboardPage() {
 
     const data = (await res.json()) as ContactItem[];
     setContacts(data);
+  }
+
+  async function loadCatalogItems() {
+    const res = await fetch("/api/catalog-items", { cache: "no-store" });
+
+    if (!res.ok) {
+      setErrorMessage("Artikel & Leistungen konnten nicht geladen werden.");
+      return;
+    }
+
+    const data = (await res.json()) as CatalogItem[];
+    setCatalogItems(data);
+  }
+
+  async function loadOffers(projectId = "") {
+    const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
+    const res = await fetch(`/api/offers${query}`, { cache: "no-store" });
+
+    if (!res.ok) {
+      setErrorMessage("Angebote konnten nicht geladen werden.");
+      return;
+    }
+
+    const data = (await res.json()) as OfferItem[];
+    setOffers((currentOffers) => {
+      if (!projectId) return data;
+      const otherOffers = currentOffers.filter((offer) => offer.projectId !== projectId);
+      return [...data, ...otherOffers];
+    });
+  }
+
+  async function loadInvoices(projectId = "") {
+    const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
+    const res = await fetch(`/api/invoices${query}`, { cache: "no-store" });
+
+    if (!res.ok) {
+      setErrorMessage("Rechnungen konnten nicht geladen werden.");
+      return;
+    }
+
+    const data = (await res.json()) as InvoiceItem[];
+    setInvoices((currentInvoices) => {
+      if (!projectId) return data;
+      const otherInvoices = currentInvoices.filter((invoice) => invoice.projectId !== projectId);
+      return [...data, ...otherInvoices];
+    });
+  }
+
+  async function loadOfferHistory(projectId: string) {
+    if (!projectId) return;
+    const res = await fetch(`/api/offers?historyProjectId=${encodeURIComponent(projectId)}`, {
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      setErrorMessage("Angebotshistorie konnte nicht geladen werden.");
+      return;
+    }
+
+    const data = (await res.json()) as OfferHistoryItem[];
+    setOfferHistory((currentHistory) => {
+      const otherHistory = currentHistory.filter((entry) => entry.projectId !== projectId);
+      return [...data, ...otherHistory];
+    });
+  }
+
+  function getCatalogPackageSalesPrice(item: CatalogItem) {
+    if (item.type !== "package") return item.salesPrice;
+    if (item.salesPrice > 0) return item.salesPrice;
+    return item.packageItems.reduce(
+      (sum, packageItem) =>
+        sum + (packageItem.priceOverride ?? packageItem.componentSalesPrice) * packageItem.quantity,
+      0
+    );
+  }
+
+  function getCatalogPackagePurchasePrice(item: CatalogItem) {
+    if (item.type !== "package") return item.purchasePrice;
+    return item.packageItems.reduce(
+      (sum, packageItem) => sum + packageItem.componentPurchasePrice * packageItem.quantity,
+      0
+    );
+  }
+
+  function createOfferLineFromCatalogItem(item: CatalogItem): OfferLineDraft {
+    return {
+      id: crypto.randomUUID(),
+      catalogItemId: item.id,
+      catalogType: item.type,
+      quantity: 1,
+      unit: item.unit || "Stk",
+      title: item.name,
+      description: item.description || item.category || "",
+      unitPrice: getCatalogPackageSalesPrice(item),
+      vatRate: item.vatRate || 19,
+      laborItems: [],
+    };
+  }
+
+  function getOfferLineTypeLabel(type: CatalogItemType | "") {
+    if (type === "service") return "Leistung";
+    if (type === "package") return "Paket";
+    if (type === "article") return "Material";
+    return "Freie Position";
+  }
+
+  function canPlanOfferLineLabor(line: OfferLineDraft) {
+    return line.catalogType === "service" || line.catalogType === "package";
+  }
+
+  function getEmployeeHourlyCostRate(userId: string) {
+    const cost = employeeCostCalculations[userId];
+    return cost ? getEmployeeCostMetrics(cost).hourlyCost : 0;
+  }
+
+  function createOfferLaborItem(user?: UserOption): OfferLineLaborDraft {
+    const targetUser = user ?? users.find((item) => item.isActive);
+    const hourlyCostRate = targetUser ? getEmployeeHourlyCostRate(targetUser.id) : 0;
+    return {
+      id: crypto.randomUUID(),
+      userId: targetUser?.id ?? "",
+      employeeName: targetUser?.name ?? "",
+      plannedHours: 0,
+      hourlyCostRate,
+      totalCost: 0,
+    };
+  }
+
+  function getOfferLineLaborHours(line: OfferLineDraft) {
+    return line.laborItems.reduce((sum, labor) => sum + Number(labor.plannedHours || 0), 0);
+  }
+
+  function clampOfferLaborItems(
+    laborItems: OfferLineLaborDraft[],
+    maxHours: number
+  ): OfferLineLaborDraft[] {
+    let remainingHours = Math.max(Number(maxHours || 0), 0);
+    return laborItems.map((labor) => {
+      const plannedHours = Math.min(Math.max(Number(labor.plannedHours || 0), 0), remainingHours);
+      remainingHours -= plannedHours;
+      return {
+        ...labor,
+        plannedHours,
+        totalCost: plannedHours * Number(labor.hourlyCostRate || 0),
+      };
+    });
+  }
+
+  function updateOfferLine(index: number, patch: Partial<OfferLineDraft>) {
+    setOfferDraft((current) => ({
+      ...current,
+      lines: current.lines.map((line, lineIndex) => {
+        if (lineIndex !== index) return line;
+        const selectedItem = patch.catalogItemId
+          ? catalogItems.find((item) => item.id === patch.catalogItemId)
+          : null;
+        if (selectedItem) {
+          const nextQuantity = patch.quantity ?? line.quantity;
+          const nextLine = createOfferLineFromCatalogItem(selectedItem);
+          return {
+            ...line,
+            ...nextLine,
+            id: line.id,
+            quantity: nextQuantity,
+            laborItems:
+              nextLine.catalogType === "service" || nextLine.catalogType === "package"
+                ? clampOfferLaborItems(line.laborItems, nextQuantity)
+                : [],
+          };
+        }
+        const nextLine = { ...line, ...patch };
+        if (Object.prototype.hasOwnProperty.call(patch, "quantity")) {
+          return {
+            ...nextLine,
+            laborItems: canPlanOfferLineLabor(nextLine)
+              ? clampOfferLaborItems(nextLine.laborItems, nextLine.quantity)
+              : [],
+          };
+        }
+        return nextLine;
+      }),
+    }));
+  }
+
+  function updateOfferLineLabor(
+    lineIndex: number,
+    laborId: string,
+    patch: Partial<OfferLineLaborDraft>
+  ) {
+    setOfferDraft((current) => ({
+      ...current,
+      lines: current.lines.map((line, currentLineIndex) => {
+        if (currentLineIndex !== lineIndex) return line;
+        const maxHours = Math.max(Number(line.quantity || 0), 0);
+
+        return {
+          ...line,
+          laborItems: line.laborItems.map((labor) => {
+            if (labor.id !== laborId) return labor;
+            const selectedUser = patch.userId
+              ? users.find((user) => user.id === patch.userId)
+              : null;
+            const otherHours = line.laborItems
+              .filter((item) => item.id !== laborId)
+              .reduce((sum, item) => sum + Number(item.plannedHours || 0), 0);
+            const availableHours = Math.max(maxHours - otherHours, 0);
+            const plannedHours = Math.min(
+              Math.max(Number(patch.plannedHours ?? labor.plannedHours), 0),
+              availableHours
+            );
+            const hourlyCostRate = patch.userId
+              ? getEmployeeHourlyCostRate(patch.userId)
+              : patch.hourlyCostRate ?? labor.hourlyCostRate;
+
+            return {
+              ...labor,
+              ...patch,
+              employeeName: selectedUser?.name ?? patch.employeeName ?? labor.employeeName,
+              plannedHours,
+              hourlyCostRate,
+              totalCost: plannedHours * hourlyCostRate,
+            };
+          }),
+        };
+      }),
+    }));
+  }
+
+  function addOfferLineLabor(lineIndex: number) {
+    setOfferDraft((current) => ({
+      ...current,
+      lines: current.lines.map((line, currentLineIndex) =>
+        currentLineIndex === lineIndex && getOfferLineLaborHours(line) < Number(line.quantity || 0)
+          ? { ...line, laborItems: [...line.laborItems, createOfferLaborItem()] }
+          : line
+      ),
+    }));
+  }
+
+  function removeOfferLineLabor(lineIndex: number, laborId: string) {
+    setOfferDraft((current) => ({
+      ...current,
+      lines: current.lines.map((line, currentLineIndex) =>
+        currentLineIndex === lineIndex
+          ? { ...line, laborItems: line.laborItems.filter((labor) => labor.id !== laborId) }
+          : line
+      ),
+    }));
+  }
+
+  function selectOfferCatalogItem(index: number, itemId: string) {
+    updateOfferLine(index, { catalogItemId: itemId });
+    const lineId = offerDraft.lines[index]?.id;
+    if (lineId) {
+      setOfferLineSearchTerms((current) => ({ ...current, [lineId]: "" }));
+    }
+    setOpenOfferLinePickerId("");
+  }
+
+  function removeOfferLine(index: number) {
+    setOfferDraft((current) => ({
+      ...current,
+      lines: current.lines.filter((_, lineIndex) => lineIndex !== index),
+    }));
+    const lineId = offerDraft.lines[index]?.id;
+    if (lineId) {
+      setOfferLineSearchTerms((current) => {
+        const next = { ...current };
+        delete next[lineId];
+        return next;
+      });
+    }
+  }
+
+  function addOfferLine() {
+    const firstItem = catalogItems.find((item) => item.isActive);
+    setOfferDraft((current) => ({
+      ...current,
+      lines: [
+        ...current.lines,
+        firstItem
+          ? createOfferLineFromCatalogItem(firstItem)
+          : {
+              id: crypto.randomUUID(),
+              catalogItemId: "",
+              catalogType: "",
+              quantity: 1,
+              unit: "Stk",
+              title: "",
+              description: "",
+              unitPrice: 0,
+              vatRate: current.vatRate,
+              laborItems: [],
+            },
+      ],
+    }));
+  }
+
+  function openOfferModal(project: HeroProjectPreview) {
+    const isImmocare =
+      (project.projectType ?? "").toLowerCase().includes("immocare") ||
+      (project.projectNumber ?? "").toLowerCase().startsWith("oki");
+    const addressParts = (project.address || "").split(",").map((part) => part.trim()).filter(Boolean);
+    const firstItem = catalogItems.find((item) => item.isActive);
+    setOfferDraft({
+      ...emptyOfferDraft,
+      company: isImmocare ? "OK immocare" : "OK solutions",
+      customerName: project.customer || "",
+      customerStreet: addressParts[0] || project.address || "",
+      customerCity: addressParts.slice(1).join(", "),
+      internalContactName: activeUser?.name || "Christian Eid",
+      internalEmail: activeUser?.email || "",
+      lines: firstItem ? [createOfferLineFromCatalogItem(firstItem)] : [],
+    });
+    setOfferError("");
+    setEditingOfferId("");
+    setOfferPreviewDataUrl("");
+    setOfferLineSearchTerms({});
+    setOpenOfferLinePickerId("");
+    setIsOfferModalOpen(true);
+  }
+
+  function openEditOfferModal(offer: OfferItem) {
+    setOfferDraft({
+      company: offer.company,
+      customerName: offer.customerName,
+      customerStreet: offer.customerStreet,
+      customerCity: offer.customerCity,
+      contactName: offer.contactName,
+      internalContactName: offer.internalContactName,
+      internalPhone: offer.internalPhone,
+      internalEmail: offer.internalEmail,
+      introText: offer.introText || emptyOfferDraft.introText,
+      closingText: offer.closingText || emptyOfferDraft.closingText,
+      vatRate: offer.vatRate || 19,
+      lines: offer.lines.map((line) => ({
+        id: line.id || crypto.randomUUID(),
+        catalogItemId: line.catalogItemId,
+        catalogType: line.catalogType,
+        quantity: line.quantity,
+        unit: line.unit,
+        title: line.title,
+        description: line.description,
+        unitPrice: line.unitPrice,
+        vatRate: line.vatRate,
+        laborItems: (line.laborItems ?? []).map((labor) => ({
+          id: labor.id || crypto.randomUUID(),
+          userId: labor.userId,
+          employeeName: labor.employeeName,
+          plannedHours: labor.plannedHours,
+          hourlyCostRate: labor.hourlyCostRate,
+          totalCost: labor.totalCost,
+        })),
+      })),
+    });
+    setEditingOfferId(offer.id);
+    setOfferError("");
+    setOfferPreviewDataUrl(offer.pdfAvailable ? `/api/offers?pdfId=${encodeURIComponent(offer.id)}` : "");
+    setOfferLineSearchTerms({});
+    setOpenOfferLinePickerId("");
+    setIsOfferModalOpen(true);
+  }
+
+  async function generateOfferPreview() {
+    if (!selectedProjectFile) return;
+    setIsGeneratingOfferPreview(true);
+    setOfferError("");
+
+    const editingOffer = offers.find((offer) => offer.id === editingOfferId);
+    const res = await fetch("/api/offers", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...offerDraft,
+        offerNumber: editingOffer?.offerNumber || "VORSCHAU",
+        projectId: selectedProjectFile.id,
+        projectNumber: selectedProjectFile.projectNumber || selectedProjectFile.id,
+        projectTitle: selectedProjectFile.title,
+      }),
+    });
+
+    setIsGeneratingOfferPreview(false);
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setOfferError(data?.error ?? "Vorschau konnte nicht erstellt werden.");
+      return;
+    }
+
+    const data = (await res.json()) as { pdfDataUrl: string };
+    setOfferPreviewDataUrl(data.pdfDataUrl);
+  }
+
+  async function saveOffer() {
+    if (!selectedProjectFile) return;
+    setIsSavingOffer(true);
+    setOfferError("");
+
+    const res = await fetch("/api/offers", {
+      method: editingOfferId ? "PATCH" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: editingOfferId,
+        ...offerDraft,
+        projectId: selectedProjectFile.id,
+        projectNumber: selectedProjectFile.projectNumber || selectedProjectFile.id,
+        projectTitle: selectedProjectFile.title,
+      }),
+    });
+
+    setIsSavingOffer(false);
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setOfferError(data?.error ?? "Angebot konnte nicht erstellt werden.");
+      return;
+    }
+
+    const savedOffer = (await res.json()) as OfferItem;
+    setOffers((currentOffers) => [savedOffer, ...currentOffers.filter((offer) => offer.id !== savedOffer.id)]);
+    await loadOfferHistory(selectedProjectFile.id);
+    await addProjectLogbookEntry(
+      selectedProjectFile.id,
+      "Angebot",
+      `${editingOfferId ? "Angebot geändert" : "Angebot erstellt"}: ${savedOffer.offerNumber} (${formatMoney(
+        savedOffer.grossTotal
+      )} brutto).`
+    );
+    setSelectedProjectDocumentType("Angebote");
+    setProjectFileTab("documents");
+    setIsOfferModalOpen(false);
+    setEditingOfferId("");
+    window.open(`/api/offers?pdfId=${encodeURIComponent(savedOffer.id)}`, "_blank");
+  }
+
+  async function deleteOffer(offer: OfferItem) {
+    if (!selectedProjectFile) return;
+    const confirmed = window.confirm(`Angebot ${offer.offerNumber} wirklich löschen?`);
+    if (!confirmed) return;
+
+    const res = await fetch("/api/offers", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: offer.id,
+        actorName: activeUser?.name || "Christian Eid",
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setErrorMessage(data?.error ?? "Angebot konnte nicht gelöscht werden.");
+      return;
+    }
+
+    setOffers((currentOffers) => currentOffers.filter((currentOffer) => currentOffer.id !== offer.id));
+    await loadOfferHistory(selectedProjectFile.id);
+    await addProjectLogbookEntry(
+      selectedProjectFile.id,
+      "Angebot",
+      `Angebot gelöscht: ${offer.offerNumber}.`
+    );
+  }
+
+  function openFreeInvoiceModal(project: HeroProjectPreview) {
+    const isImmocare =
+      (project.projectType ?? "").toLowerCase().includes("immocare") ||
+      (project.projectNumber ?? "").toLowerCase().startsWith("oki");
+    const addressParts = (project.address || "").split(",").map((part) => part.trim()).filter(Boolean);
+    const firstItem = catalogItems.find((item) => item.isActive);
+    setInvoiceDraft({
+      ...emptyOfferDraft,
+      company: isImmocare ? "OK immocare" : "OK solutions",
+      customerName: project.customer || "",
+      customerStreet: addressParts[0] || project.address || "",
+      customerCity: addressParts.slice(1).join(", "),
+      internalContactName: activeUser?.name || "Christian Eid",
+      internalEmail: activeUser?.email || "",
+      introText: "wir stellen Ihnen folgende Leistungen in Rechnung.",
+      closingText: "Bitte überweisen Sie den Rechnungsbetrag innerhalb der vereinbarten Zahlungsfrist.",
+      lines: firstItem ? [createOfferLineFromCatalogItem(firstItem)] : [],
+    });
+    setEditingInvoiceId("");
+    setInvoicePreviewDataUrl("");
+    setInvoiceError("");
+    setInvoiceLineSearchTerms({});
+    setOpenInvoiceLinePickerId("");
+    setInvoiceStampEntryIds([]);
+    setInvoiceBillableStampEntryIds([]);
+    setIsInvoiceSourcePickerOpen(false);
+    setIsInvoiceModalOpen(true);
+  }
+
+  function openInvoiceFromOffer(offer: OfferItem) {
+    setInvoiceDraft({
+      company: offer.company,
+      customerName: offer.customerName,
+      customerStreet: offer.customerStreet,
+      customerCity: offer.customerCity,
+      contactName: offer.contactName,
+      internalContactName: activeUser?.name || offer.internalContactName,
+      internalPhone: offer.internalPhone,
+      internalEmail: activeUser?.email || offer.internalEmail,
+      introText: "wir stellen Ihnen folgende Leistungen aus dem Angebot in Rechnung.",
+      closingText: "Bitte überweisen Sie den Rechnungsbetrag innerhalb der vereinbarten Zahlungsfrist.",
+      vatRate: offer.vatRate || 19,
+      lines: offer.lines.map((line) => ({
+        id: crypto.randomUUID(),
+        catalogItemId: line.catalogItemId,
+        catalogType: line.catalogType,
+        quantity: line.quantity,
+        unit: line.unit,
+        title: line.title,
+        description: line.description,
+        unitPrice: line.unitPrice,
+        vatRate: line.vatRate,
+        laborItems: (line.laborItems ?? []).map((labor) => ({
+          id: crypto.randomUUID(),
+          userId: labor.userId,
+          employeeName: labor.employeeName,
+          plannedHours: labor.plannedHours,
+          hourlyCostRate: labor.hourlyCostRate,
+          totalCost: labor.totalCost,
+        })),
+      })),
+    });
+    setEditingInvoiceId("");
+    setInvoicePreviewDataUrl("");
+    setInvoiceError("");
+    setInvoiceLineSearchTerms({});
+    setOpenInvoiceLinePickerId("");
+    setInvoiceStampEntryIds([]);
+    setInvoiceBillableStampEntryIds([]);
+    setIsInvoiceSourcePickerOpen(false);
+    setIsInvoiceModalOpen(true);
+  }
+
+  function openInvoiceFlow(project: HeroProjectPreview) {
+    const projectOffers = offers.filter((offer) => offer.projectId === project.id);
+    const invoicedOfferNumbers = new Set(
+      invoices
+        .filter((invoice) => invoice.projectId === project.id)
+        .map((invoice) => invoice.lines.map((line) => line.description).join(" "))
+        .join(" ")
+        .match(/ANG-\d+/g) ?? []
+    );
+    const openOffers = projectOffers.filter((offer) => !invoicedOfferNumbers.has(offer.offerNumber));
+
+    if (openOffers.length > 0) {
+      setIsInvoiceSourcePickerOpen(true);
+      return;
+    }
+
+    openFreeInvoiceModal(project);
+  }
+
+  function updateInvoiceLine(index: number, patch: Partial<OfferLineDraft>) {
+    setInvoiceDraft((current) => ({
+      ...current,
+      lines: current.lines.map((line, lineIndex) => {
+        if (lineIndex !== index) return line;
+        const selectedItem = patch.catalogItemId
+          ? catalogItems.find((item) => item.id === patch.catalogItemId)
+          : null;
+        if (selectedItem) {
+          const nextQuantity = patch.quantity ?? line.quantity;
+          const nextLine = createOfferLineFromCatalogItem(selectedItem);
+          return {
+            ...line,
+            ...nextLine,
+            id: line.id,
+            quantity: nextQuantity,
+            laborItems: canPlanOfferLineLabor(nextLine) ? line.laborItems : [],
+          };
+        }
+        return { ...line, ...patch };
+      }),
+    }));
+  }
+
+  function selectInvoiceCatalogItem(index: number, itemId: string) {
+    if (itemId) {
+      updateInvoiceLine(index, { catalogItemId: itemId });
+    } else {
+      updateInvoiceLine(index, {
+        catalogItemId: "",
+        catalogType: "",
+        title: "",
+        description: "",
+        quantity: 1,
+        unit: "Stk",
+        unitPrice: 0,
+        laborItems: [],
+      });
+    }
+    const lineId = invoiceDraft.lines[index]?.id;
+    if (lineId) {
+      setInvoiceLineSearchTerms((current) => ({ ...current, [lineId]: "" }));
+    }
+    setOpenInvoiceLinePickerId("");
+  }
+
+  function updateInvoiceLineLabor(lineIndex: number, laborId: string, plannedHours: number) {
+    setInvoiceDraft((current) => ({
+      ...current,
+      lines: current.lines.map((line, currentLineIndex) => {
+        if (currentLineIndex !== lineIndex) return line;
+
+        const laborItems = line.laborItems.map((labor) =>
+          labor.id === laborId
+            ? {
+                ...labor,
+                plannedHours: Math.max(0, plannedHours),
+                totalCost: Math.max(0, plannedHours) * Number(labor.hourlyCostRate || 0),
+              }
+            : labor
+        );
+        const invoiceHours = laborItems.reduce((sum, labor) => sum + Number(labor.plannedHours || 0), 0);
+
+        return {
+          ...line,
+          quantity: canPlanOfferLineLabor(line) ? invoiceHours : line.quantity,
+          laborItems,
+        };
+      }),
+    }));
+  }
+
+  function addInvoiceLineLabor(lineIndex: number) {
+    setInvoiceDraft((current) => ({
+      ...current,
+      lines: current.lines.map((line, currentLineIndex) =>
+        currentLineIndex === lineIndex && canPlanOfferLineLabor(line)
+          ? { ...line, laborItems: [...line.laborItems, createOfferLaborItem()] }
+          : line
+      ),
+    }));
+  }
+
+  function removeInvoiceLineLabor(lineIndex: number, laborId: string) {
+    setInvoiceDraft((current) => ({
+      ...current,
+      lines: current.lines.map((line, currentLineIndex) => {
+        if (currentLineIndex !== lineIndex) return line;
+        const laborItems = line.laborItems.filter((labor) => labor.id !== laborId);
+        const invoiceHours = laborItems.reduce((sum, labor) => sum + Number(labor.plannedHours || 0), 0);
+        return {
+          ...line,
+          quantity: canPlanOfferLineLabor(line) ? invoiceHours : line.quantity,
+          laborItems,
+        };
+      }),
+    }));
+  }
+
+  function addInvoiceLine() {
+    const firstItem = catalogItems.find((item) => item.isActive);
+    setInvoiceDraft((current) => ({
+      ...current,
+      lines: [
+        ...current.lines,
+        firstItem
+          ? createOfferLineFromCatalogItem(firstItem)
+          : {
+              id: crypto.randomUUID(),
+              catalogItemId: "",
+              catalogType: "",
+              quantity: 1,
+              unit: "Stk",
+              title: "",
+              description: "",
+              unitPrice: 0,
+              vatRate: current.vatRate,
+              laborItems: [],
+            },
+      ],
+    }));
+  }
+
+  function removeInvoiceLine(index: number) {
+    setInvoiceDraft((current) => ({
+      ...current,
+      lines: current.lines.filter((_, lineIndex) => lineIndex !== index),
+    }));
+    const lineId = invoiceDraft.lines[index]?.id;
+    if (lineId) {
+      setInvoiceLineSearchTerms((current) => {
+        const next = { ...current };
+        delete next[lineId];
+        return next;
+      });
+    }
+  }
+
+  async function generateInvoicePreview() {
+    if (!selectedProjectFile) return;
+    setIsGeneratingInvoicePreview(true);
+    setInvoiceError("");
+    const editingInvoice = invoices.find((invoice) => invoice.id === editingInvoiceId);
+    const res = await fetch("/api/invoices", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...invoiceDraft,
+        invoiceNumber: editingInvoice?.invoiceNumber || "VORSCHAU",
+        projectId: selectedProjectFile.id,
+        projectNumber: selectedProjectFile.projectNumber || selectedProjectFile.id,
+        projectTitle: selectedProjectFile.title,
+      }),
+    });
+    setIsGeneratingInvoicePreview(false);
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setInvoiceError(data?.error ?? "Vorschau konnte nicht erstellt werden.");
+      return;
+    }
+
+    const data = (await res.json()) as { pdfDataUrl: string };
+    setInvoicePreviewDataUrl(data.pdfDataUrl);
+  }
+
+  function getUnbilledProjectStampEntries(projectId: string) {
+    return stampEntries.filter(
+      (entry) =>
+        entry.mode === "project" &&
+        String(entry.projectId) === String(projectId) &&
+        !String(entry.invoiceId ?? "").trim()
+    );
+  }
+
+  function getStampedInvoiceLaborItems(entries: StampTimeEntry[]) {
+    const grouped = new Map<string, OfferLineLaborDraft>();
+    for (const entry of entries) {
+      const userId = String(entry.userId ?? "");
+      const employeeName = entry.employee || users.find((user) => user.id === userId)?.name || "Mitarbeiter";
+      const key = userId || employeeName;
+      const hours = Number(entry.durationMs || 0) / 3_600_000;
+      const current =
+        grouped.get(key) ??
+        (userId
+          ? createOfferLaborItem(users.find((user) => user.id === userId))
+          : {
+              id: crypto.randomUUID(),
+              userId: "",
+              employeeName,
+              plannedHours: 0,
+              hourlyCostRate: 0,
+              totalCost: 0,
+            });
+      current.userId = userId || current.userId;
+      current.employeeName = employeeName;
+      current.plannedHours += hours;
+      current.hourlyCostRate = current.userId ? getEmployeeHourlyCostRate(current.userId) : current.hourlyCostRate;
+      current.totalCost = current.plannedHours * Number(current.hourlyCostRate || 0);
+      grouped.set(key, current);
+    }
+    return Array.from(grouped.values()).map((labor) => ({
+      ...labor,
+      id: crypto.randomUUID(),
+      plannedHours: Number(labor.plannedHours.toFixed(2)),
+      totalCost: Number((labor.plannedHours * Number(labor.hourlyCostRate || 0)).toFixed(2)),
+    }));
+  }
+
+  function applyStampedHoursToInvoiceDraft(draft: OfferDraft, entries: StampTimeEntry[]) {
+    const laborItems = getStampedInvoiceLaborItems(entries);
+    const stampedHours = laborItems.reduce((sum, labor) => sum + Number(labor.plannedHours || 0), 0);
+    if (stampedHours <= 0) return draft;
+
+    const targetLineIndex = draft.lines.findIndex((line) => canPlanOfferLineLabor(line));
+    const lines = [...draft.lines];
+    if (targetLineIndex >= 0) {
+      const line = lines[targetLineIndex];
+      lines[targetLineIndex] = {
+        ...line,
+        quantity: stampedHours,
+        laborItems,
+      };
+      return { ...draft, lines };
+    }
+
+    const serviceItem = catalogItems.find((item) => item.isActive && item.type === "service");
+    const fallbackLine = serviceItem
+      ? createOfferLineFromCatalogItem(serviceItem)
+      : {
+          id: crypto.randomUUID(),
+          catalogItemId: "",
+          catalogType: "service" as CatalogItemType,
+          quantity: stampedHours,
+          unit: "Std",
+          title: "Arbeitszeit laut Stempelung",
+          description: "Produktiv gestempelte Stunden",
+          unitPrice: 0,
+          vatRate: draft.vatRate,
+          laborItems: [],
+        };
+
+    return {
+      ...draft,
+      lines: [
+        ...lines,
+        {
+          ...fallbackLine,
+          quantity: stampedHours,
+          laborItems,
+        },
+      ],
+    };
+  }
+
+  function takeOverStampEntriesForInvoice(entries: StampTimeEntry[], billable: boolean) {
+    if (entries.length === 0) return;
+    const entryIds = entries.map((entry) => entry.id);
+    if (billable) {
+      setInvoiceDraft((current) => applyStampedHoursToInvoiceDraft(current, entries));
+      setInvoiceBillableStampEntryIds(entryIds);
+    }
+    setInvoiceStampEntryIds(entryIds);
+  }
+
+  function getInvoiceDraftLaborHours(draft: OfferDraft) {
+    return draft.lines.reduce(
+      (sum, line) =>
+        sum + line.laborItems.reduce((lineSum, labor) => lineSum + Number(labor.plannedHours || 0), 0),
+      0
+    );
+  }
+
+  async function saveInvoice() {
+    if (!selectedProjectFile) return;
+    setIsSavingInvoice(true);
+    setInvoiceError("");
+    let draftToSave = invoiceDraft;
+    let billedStampEntryIds = invoiceStampEntryIds;
+    let allowUnderbilledStampedHours = false;
+    const unbilledStampEntries = getUnbilledProjectStampEntries(selectedProjectFile.id);
+    const selectedStampEntries = unbilledStampEntries.filter((entry) =>
+      invoiceStampEntryIds.includes(entry.id)
+    );
+    const billableStampEntries = unbilledStampEntries.filter((entry) =>
+      invoiceBillableStampEntryIds.includes(entry.id)
+    );
+
+    if (billableStampEntries.length > 0) {
+      const stampedHours = billableStampEntries.reduce((sum, entry) => sum + Number(entry.durationMs || 0) / 3_600_000, 0);
+      const invoiceLaborHours = getInvoiceDraftLaborHours(draftToSave);
+      if (invoiceLaborHours + 0.01 < stampedHours) {
+        allowUnderbilledStampedHours = window.confirm(
+          `Achtung: Es wurden ${formatHours(stampedHours)} Std. zur Rechnung übernommen, aber nur ${formatHours(invoiceLaborHours)} Std. fakturiert. Trotzdem speichern?`
+        );
+        if (!allowUnderbilledStampedHours) {
+          setIsSavingInvoice(false);
+          return;
+        }
+      }
+    } else if (selectedStampEntries.length > 0) {
+      allowUnderbilledStampedHours = true;
+    } else if (unbilledStampEntries.length > 0) {
+      const stampedHours = unbilledStampEntries.reduce((sum, entry) => sum + Number(entry.durationMs || 0) / 3_600_000, 0);
+      const shouldTakeOverStampedHours = window.confirm(
+        `Es gibt ${formatHours(stampedHours)} produktiv gestempelte, noch nicht fakturierte Stunden. Möchtest du diese Stunden auf die Rechnung übernehmen?`
+      );
+
+      if (shouldTakeOverStampedHours) {
+        draftToSave = applyStampedHoursToInvoiceDraft(invoiceDraft, unbilledStampEntries);
+        billedStampEntryIds = unbilledStampEntries.map((entry) => entry.id);
+        setInvoiceDraft(draftToSave);
+        setInvoiceStampEntryIds(billedStampEntryIds);
+        setInvoiceBillableStampEntryIds(billedStampEntryIds);
+
+        const invoiceLaborHours = getInvoiceDraftLaborHours(draftToSave);
+        if (invoiceLaborHours + 0.01 < stampedHours) {
+          allowUnderbilledStampedHours = window.confirm(
+            `Achtung: Es wurden ${formatHours(stampedHours)} Std. gestempelt, aber nur ${formatHours(invoiceLaborHours)} Std. fakturiert. Trotzdem speichern?`
+          );
+          if (!allowUnderbilledStampedHours) {
+            setIsSavingInvoice(false);
+            return;
+          }
+        }
+      }
+    }
+
+    const res = await fetch("/api/invoices", {
+      method: editingInvoiceId ? "PATCH" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: editingInvoiceId,
+        ...draftToSave,
+        billedStampEntryIds,
+        allowUnderbilledStampedHours,
+        projectId: selectedProjectFile.id,
+        projectNumber: selectedProjectFile.projectNumber || selectedProjectFile.id,
+        projectTitle: selectedProjectFile.title,
+      }),
+    });
+    setIsSavingInvoice(false);
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      if (data?.requiresUnderbillingConfirmation) {
+        const confirmed = window.confirm(`${data.error} Trotzdem speichern?`);
+        setIsSavingInvoice(false);
+        if (confirmed) {
+          setTimeout(() => {
+            void saveInvoice();
+          }, 0);
+        }
+        return;
+      }
+      setInvoiceError(data?.error ?? "Rechnung konnte nicht erstellt werden.");
+      return;
+    }
+
+    const savedInvoice = (await res.json()) as InvoiceItem;
+    setInvoices((currentInvoices) => [savedInvoice, ...currentInvoices.filter((invoice) => invoice.id !== savedInvoice.id)]);
+    if (billedStampEntryIds.length > 0) {
+      setStampEntries((currentEntries) =>
+        currentEntries.map((entry) =>
+          billedStampEntryIds.includes(entry.id)
+            ? {
+                ...entry,
+                invoiceId: savedInvoice.id,
+                invoiceNumber: savedInvoice.invoiceNumber,
+                invoicedAt: new Date().toISOString(),
+              }
+            : entry
+        )
+      );
+    }
+    await addProjectLogbookEntry(
+      selectedProjectFile.id,
+      "Rechnung",
+      `${editingInvoiceId ? "Rechnung geändert" : "Rechnung erstellt"}: ${savedInvoice.invoiceNumber} (${formatMoney(
+        savedInvoice.grossTotal
+      )} brutto).`
+    );
+    setSelectedProjectDocumentType("Rechnungen");
+    setProjectFileTab("documents");
+    setIsInvoiceModalOpen(false);
+    setEditingInvoiceId("");
+    setInvoiceStampEntryIds([]);
+    setInvoiceBillableStampEntryIds([]);
+    window.open(`/api/invoices?pdfId=${encodeURIComponent(savedInvoice.id)}`, "_blank");
+  }
+
+  async function cancelInvoice(invoice: InvoiceItem) {
+    if (!selectedProjectFile) return;
+    if (["Storniert", "Stornorechnung", "Gelöscht"].includes(invoice.status)) return;
+
+    const confirmed = window.confirm(
+      `Soll ${invoice.invoiceNumber} wirklich storniert werden? Es wird automatisch eine neue Stornorechnung mit eigener Rechnungsnummer erstellt.`
+    );
+    if (!confirmed) return;
+
+    const res = await fetch("/api/invoices", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: invoice.id,
+        action: "cancel",
+        actorName: activeUser?.name || "System",
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setErrorMessage(data?.error ?? "Rechnung konnte nicht storniert werden.");
+      return;
+    }
+
+    const data = (await res.json()) as {
+      originalInvoice: InvoiceItem;
+      cancellationInvoice: InvoiceItem;
+    };
+    setInvoices((currentInvoices) => [
+      data.cancellationInvoice,
+      data.originalInvoice,
+      ...currentInvoices.filter(
+        (currentInvoice) =>
+          currentInvoice.id !== data.originalInvoice.id &&
+          currentInvoice.id !== data.cancellationInvoice.id
+      ),
+    ]);
+    setStampEntries((currentEntries) =>
+      currentEntries.map((entry) =>
+        entry.invoiceId === invoice.id
+          ? { ...entry, invoiceId: "", invoiceNumber: "", invoicedAt: "" }
+          : entry
+      )
+    );
+    await addProjectLogbookEntry(
+      selectedProjectFile.id,
+      "Rechnung",
+      `Rechnung storniert: ${invoice.invoiceNumber}. Stornorechnung ${data.cancellationInvoice.invoiceNumber} wurde erstellt.`
+    );
+    window.open(`/api/invoices?pdfId=${encodeURIComponent(data.cancellationInvoice.id)}`, "_blank");
+  }
+
+  function getNextCatalogNumber(type: CatalogItemType) {
+    const prefix = type === "service" ? "L" : type === "package" ? "P" : "A";
+    const current =
+      catalogItems
+        .filter((item) => item.number.startsWith(prefix))
+        .map((item) => Number(item.number.replace(/\D/g, "")))
+        .filter((value) => Number.isFinite(value))
+        .sort((first, second) => second - first)[0] ?? 1000;
+
+    return `${prefix}${String(current + 1).padStart(4, "0")}`;
+  }
+
+  function openCatalogModal(type: CatalogItemType = activeTab === "services" ? "service" : activeTab === "packages" ? "package" : "article") {
+    setCatalogDraft({
+      ...emptyCatalogItemDraft,
+      type,
+      unit: type === "service" ? "Std" : type === "package" ? "Paket" : "Stk",
+      number: getNextCatalogNumber(type),
+      isPlanningRelevant: type === "service" || type === "package",
+      planningMinutesPerUnit: type === "service" ? 60 : 0,
+    });
+    setEditingCatalogItemId("");
+    setCatalogFormTab("information");
+    setCatalogError("");
+    setIsCatalogModalOpen(true);
+  }
+
+  function openEditCatalogModal(item: CatalogItem) {
+    const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, history: _history, usedCount: _usedCount, ...draft } = item;
+    setCatalogDraft(draft);
+    setEditingCatalogItemId(item.id);
+    setCatalogFormTab("information");
+    setCatalogError("");
+    setIsCatalogModalOpen(true);
+  }
+
+  function duplicateCatalogItem(item: CatalogItem) {
+    const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, history: _history, usedCount: _usedCount, ...draft } = item;
+    setCatalogDraft({
+      ...draft,
+      number: getNextCatalogNumber(item.type),
+      name: `${item.name} Kopie`,
+    });
+    setEditingCatalogItemId("");
+    setCatalogFormTab("information");
+    setCatalogError("");
+    setIsCatalogModalOpen(true);
+  }
+
+  function updateCatalogDraft<K extends keyof typeof catalogDraft>(
+    key: K,
+    value: (typeof catalogDraft)[K]
+  ) {
+    setCatalogDraft((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  }
+
+  function addCatalogPackageItem(componentItemId = "") {
+    const component = catalogItems.find((item) => item.id === componentItemId);
+    setCatalogDraft((current) => ({
+      ...current,
+      packageItems: [
+        ...current.packageItems,
+        {
+          id: `draft-${Date.now()}-${current.packageItems.length}`,
+          packageId: editingCatalogItemId,
+          componentItemId,
+          quantity: 1,
+          position: current.packageItems.length,
+          descriptionOverride: "",
+          priceOverride: null,
+          componentNumber: component?.number ?? "",
+          componentName: component?.name ?? "",
+          componentType: component?.type ?? "article",
+          componentUnit: component?.unit ?? "",
+          componentPurchasePrice: component?.purchasePrice ?? 0,
+          componentSalesPrice: component?.salesPrice ?? 0,
+          componentPlanningMinutesPerUnit: component?.planningMinutesPerUnit ?? 0,
+          componentIsActive: component?.isActive ?? true,
+        },
+      ],
+    }));
+  }
+
+  function updateCatalogPackageItem(index: number, patch: Partial<CatalogPackageItem>) {
+    setCatalogDraft((current) => ({
+      ...current,
+      packageItems: current.packageItems.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+        const selectedComponent = patch.componentItemId
+          ? catalogItems.find((candidate) => candidate.id === patch.componentItemId)
+          : null;
+        return {
+          ...item,
+          ...patch,
+          ...(selectedComponent
+            ? {
+                componentNumber: selectedComponent.number,
+                componentName: selectedComponent.name,
+                componentType: selectedComponent.type,
+                componentUnit: selectedComponent.unit,
+                componentPurchasePrice: selectedComponent.purchasePrice,
+                componentSalesPrice: selectedComponent.salesPrice,
+                componentPlanningMinutesPerUnit: selectedComponent.planningMinutesPerUnit,
+                componentIsActive: selectedComponent.isActive,
+              }
+            : {}),
+        };
+      }),
+    }));
+  }
+
+  function removeCatalogPackageItem(index: number) {
+    setCatalogDraft((current) => ({
+      ...current,
+      packageItems: current.packageItems.filter((_, itemIndex) => itemIndex !== index),
+    }));
+  }
+
+  async function saveCatalogItem(keepOpen = false) {
+    const res = await fetch("/api/catalog-items", {
+      method: editingCatalogItemId ? "PATCH" : "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ...catalogDraft,
+        id: editingCatalogItemId,
+        actorUserId: activeUserId,
+        actorName: activeUser?.name ?? "",
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setCatalogError(data?.error ?? "Artikel/Leistung konnte nicht gespeichert werden.");
+      return;
+    }
+
+    await loadCatalogItems();
+    if (keepOpen) {
+      const type = catalogDraft.type;
+      setCatalogDraft({
+        ...emptyCatalogItemDraft,
+        type,
+        unit: type === "service" ? "Std" : "Stk",
+        number: getNextCatalogNumber(type),
+      isPlanningRelevant: type === "service" || type === "package",
+        planningMinutesPerUnit: type === "service" ? 60 : 0,
+      });
+      setEditingCatalogItemId("");
+      setCatalogFormTab("information");
+      return;
+    }
+
+    setIsCatalogModalOpen(false);
+    setEditingCatalogItemId("");
+  }
+
+  async function deactivateCatalogItem(item: CatalogItem) {
+    const confirmed = window.confirm(`${item.name} deaktivieren?`);
+    if (!confirmed) return;
+
+    const params = new URLSearchParams({
+      id: item.id,
+      actorUserId: activeUserId,
+      actorName: activeUser?.name ?? "",
+    });
+    const res = await fetch(`/api/catalog-items?${params.toString()}`, { method: "DELETE" });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setErrorMessage(data?.error ?? "Artikel/Leistung konnte nicht deaktiviert werden.");
+      return;
+    }
+
+    await loadCatalogItems();
   }
 
   function openCreateContactModal(target: "contact" | "person" | "address" | "" = "") {
@@ -3602,6 +5134,21 @@ export function DashboardPage() {
     return planningEntries.find((entry) => entry.id === editingPlanningEntryId)?.requestedByName || activeUser?.name || "";
   }
 
+  function getAlreadyPlannedOfferMinutesForPlanningEntry() {
+    const selectedUser = users.find((user) => user.id === planningEntryUserId);
+
+    return planningEntries
+      .filter(
+        (entry) =>
+          entry.source === "offer" &&
+          entry.projectId === planningEntryProjectId &&
+          (entry.userId === planningEntryUserId || (!!selectedUser?.name && entry.employeeName === selectedUser.name)) &&
+          entry.id !== editingPlanningEntryId &&
+          !entry.deletedAt
+      )
+      .reduce((sum, entry) => sum + Number(entry.offerPlannedMinutes || entry.durationMinutes || 0), 0);
+  }
+
   async function savePlanningEntry(nextApprovalStatus = planningEntryApprovalStatus) {
     const selectedUser = users.find((user) => user.id === planningEntryUserId);
     const selectedProject = heroProjects.find((project) => project.id === planningEntryProjectId);
@@ -3615,6 +5162,20 @@ export function DashboardPage() {
       planningEntrySource === "offer"
         ? planningEntryTitle.trim() || planningEntryOfferLabel.trim() || "Planung aus Angebot"
         : planningEntryTitle.trim();
+
+    if (planningEntrySource === "offer") {
+      const alreadyPlannedMinutes = getAlreadyPlannedOfferMinutesForPlanningEntry();
+      const remainingOfferMinutes = Math.max(offerTotalMinutes - alreadyPlannedMinutes, 0);
+
+      if (durationMinutes > remainingOfferMinutes) {
+        const confirmed = window.confirm(
+          `Du willst ${formatMinutes(durationMinutes)} planen, aus dem Angebot sind aber nur noch ${formatMinutes(
+            remainingOfferMinutes
+          )} offen. Trotzdem speichern?`
+        );
+        if (!confirmed) return;
+      }
+    }
 
     const res = await fetch("/api/planning-entries", {
       method: "POST",
@@ -3666,19 +5227,39 @@ export function DashboardPage() {
       return;
     }
 
+    const logProjectId = selectedProject?.id ?? "";
+    const logEntryWasEdit = Boolean(editingPlanningEntryId);
+    const logPlanningDate = planningEntryDate;
+    const logPlanningStartTime = planningEntryStartTime;
+    const logPlanningEndTime = planningEntryEndTime;
+    const logEmployeeName = selectedUser?.name || "Mitarbeiter";
     setIsPlanningEntryModalOpen(false);
     resetPlanningEntryForm();
     await loadPlanningEntries();
     await loadNotifications(true);
+    if (logProjectId) {
+      await addProjectLogbookEntry(
+        logProjectId,
+        "Planung",
+        `${logEntryWasEdit ? "Planung geändert" : "Planung angelegt"}: ${title} am ${formatProjectDate(
+          logPlanningDate
+        )} von ${logPlanningStartTime} bis ${logPlanningEndTime} für ${logEmployeeName}.`
+      );
+    }
   }
 
   async function deletePlanningEntry() {
     if (!editingPlanningEntryId) return;
+    await deletePlanningEntryById(editingPlanningEntryId);
+  }
+
+  async function deletePlanningEntryById(entryId: string) {
+    if (!entryId) return;
     const confirmed = window.confirm("Planung wirklich löschen?");
     if (!confirmed) return;
 
     const params = new URLSearchParams({
-      id: editingPlanningEntryId,
+      id: entryId,
       actorUserId: activeUserId,
       actorName: activeUser?.name ?? "",
     });
@@ -3693,6 +5274,16 @@ export function DashboardPage() {
     setIsPlanningEntryModalOpen(false);
     resetPlanningEntryForm();
     await loadPlanningEntries();
+    const deletedEntry = planningEntries.find((entry) => entry.id === entryId);
+    if (deletedEntry?.projectId) {
+      await addProjectLogbookEntry(
+        deletedEntry.projectId,
+        "Planung",
+        `Planung gelöscht: ${deletedEntry.title} am ${formatProjectDate(deletedEntry.date)} von ${
+          deletedEntry.startTime
+        } bis ${deletedEntry.endTime} für ${deletedEntry.employeeName || "Mitarbeiter"}.`
+      );
+    }
   }
 
   function jumpToPlanningEntry(entry: PlanningEntry) {
@@ -3731,6 +5322,11 @@ export function DashboardPage() {
       setIsPlanningDayOpen(false);
       setIsPlanningEntryModalOpen(false);
       setEditingPlanningEntryId("");
+    }
+
+    if (tab === "articles" || tab === "services" || tab === "packages" || tab === "salesPrices" || tab === "datanorm") {
+      setIsCatalogModalOpen(false);
+      setEditingCatalogItemId("");
     }
   }
 
@@ -3772,11 +5368,75 @@ export function DashboardPage() {
     loadProjectLogbookEntries();
     loadDocumentTypes();
     loadDocumentTexts();
+    loadCatalogItems();
+    loadOffers();
+    loadInvoices();
   }, []);
 
   useEffect(() => {
     setContactPage(1);
   }, [contactSearchTerm, contactCategoryFilter, contactColumnFilters, contactPageSize]);
+
+  useEffect(() => {
+    setCatalogPage(1);
+  }, [catalogSearchTerm, catalogStatusFilter, catalogColumnFilters, catalogPageSize, activeTab]);
+
+  useEffect(() => {
+    if (selectedProjectFileId) {
+      void loadOffers(selectedProjectFileId);
+      void loadInvoices(selectedProjectFileId);
+      void loadOfferHistory(selectedProjectFileId);
+    }
+  }, [selectedProjectFileId]);
+
+  useEffect(() => {
+    if (!mayAccessEmployeeCosts && employeeTopTab === "costs") {
+      setEmployeeTopTab("overview");
+    }
+  }, [employeeTopTab, mayAccessEmployeeCosts]);
+
+  useEffect(() => {
+    if (
+      employeeTopTab !== "costs" ||
+      !selectedEmployeeId ||
+      selectedEmployeeId === "__new__" ||
+      !mayAccessEmployeeCosts
+    ) {
+      return;
+    }
+
+    void loadEmployeeCost(selectedEmployeeId);
+  }, [activeUserId, employeeTopTab, mayAccessEmployeeCosts, selectedEmployeeId]);
+
+  useEffect(() => {
+    if (!isOfferModalOpen || !mayAccessEmployeeCosts) return;
+
+    users
+      .filter((user) => user.isActive && !employeeCostCalculations[user.id])
+      .forEach((user) => {
+        void loadEmployeeCost(user.id);
+      });
+  }, [employeeCostCalculations, isOfferModalOpen, mayAccessEmployeeCosts, users]);
+
+  useEffect(() => {
+    if (!isOfferModalOpen) return;
+
+    setOfferDraft((current) => ({
+      ...current,
+      lines: current.lines.map((line) => ({
+        ...line,
+        laborItems: line.laborItems.map((labor) => {
+          if (!labor.userId || labor.hourlyCostRate > 0) return labor;
+          const hourlyCostRate = getEmployeeHourlyCostRate(labor.userId);
+          return {
+            ...labor,
+            hourlyCostRate,
+            totalCost: labor.plannedHours * hourlyCostRate,
+          };
+        }),
+      })),
+    }));
+  }, [employeeCostCalculations, isOfferModalOpen]);
 
   useEffect(() => {
     const storedState = window.localStorage.getItem("workpilot-holiday-state") as GermanStateCode | null;
@@ -4216,6 +5876,115 @@ export function DashboardPage() {
     resetLogbookDraft();
   }
 
+  async function uploadProjectImageCategory(category: string, files: FileList | null) {
+    if (!selectedProjectFile || !files || files.length === 0) return;
+
+    const attachments = await Promise.all(
+      Array.from(files).map((file) => readLogbookAttachment(file, "Bild"))
+    );
+    const res = await fetch("/api/project-logbook-entries", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        projectId: selectedProjectFile.id,
+        title: `Bilder: ${category}`,
+        text: `${category} hochgeladen`,
+        author: activeUser?.name || "Christian Eid",
+        colleague: "",
+        visibleFor: [
+          "Geschaeftsfuehrer",
+          "Vertriebler",
+          "Niederlassungsleiter",
+          "Monteur",
+          "Buchhaltung",
+        ],
+        attachments,
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setLogbookError(data?.error ?? "Bilder konnten nicht gespeichert werden.");
+      return;
+    }
+
+    const savedEntry = (await res.json()) as ProjectLogbookEntry;
+    setProjectLogbookEntries((currentEntries) => [savedEntry, ...currentEntries]);
+    setLogbookError("");
+  }
+
+  async function addProjectLogbookEntry(projectId: string, title: string, text: string, attachments: LogbookAttachment[] = []) {
+    if (!projectId || !text.trim()) return;
+
+    const res = await fetch("/api/project-logbook-entries", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        projectId,
+        title,
+        text,
+        author: activeUser?.name || "Christian Eid",
+        colleague: "",
+        visibleFor: [
+          "Geschaeftsfuehrer",
+          "Vertriebler",
+          "Niederlassungsleiter",
+          "Monteur",
+          "Buchhaltung",
+        ],
+        attachments,
+      }),
+    });
+
+    if (!res.ok) return;
+
+    const savedEntry = (await res.json()) as ProjectLogbookEntry;
+    setProjectLogbookEntries((currentEntries) => [savedEntry, ...currentEntries]);
+  }
+
+  async function uploadProjectDocumentCategory(category: CustomerDocumentType, files: FileList | null) {
+    if (!selectedProjectFile || !files || files.length === 0) return;
+
+    const attachments = await Promise.all(
+      Array.from(files).map((file) => readLogbookAttachment(file, "Dokument"))
+    );
+    const res = await fetch("/api/project-logbook-entries", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        projectId: selectedProjectFile.id,
+        title: `Dokumente: ${category}`,
+        text: `${category} abgelegt`,
+        author: activeUser?.name || "Christian Eid",
+        colleague: "",
+        visibleFor: [
+          "Geschaeftsfuehrer",
+          "Vertriebler",
+          "Niederlassungsleiter",
+          "Monteur",
+          "Buchhaltung",
+        ],
+        attachments,
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setLogbookError(data?.error ?? "Dokumente konnten nicht gespeichert werden.");
+      return;
+    }
+
+    const savedEntry = (await res.json()) as ProjectLogbookEntry;
+    setProjectLogbookEntries((currentEntries) => [savedEntry, ...currentEntries]);
+    setLogbookError("");
+  }
+
   function getContactAddressLine(contact: ContactItem) {
     return [contact.street, [contact.postalCode, contact.city].filter(Boolean).join(" ")]
       .filter(Boolean)
@@ -4347,6 +6116,11 @@ export function DashboardPage() {
       setSelectedProjectPipelineStatus(savedProject.status || "Alle Offenen");
       setSelectedProjectKindFilter(projectDraft.projectKind);
       setActiveTab(targetPipeline.tab);
+      await addProjectLogbookEntry(
+        savedProject.id,
+        "Projekt",
+        `Projektdaten geändert: ${savedProject.projectNumber || savedProject.id} | ${savedProject.title}.`
+      );
       closeProjectModal();
       return;
     }
@@ -4416,6 +6190,11 @@ export function DashboardPage() {
     setSelectedProjectPipelineStatus("Lead / Klärung");
     setSelectedProjectKindFilter(projectDraft.projectKind);
     setActiveTab(targetPipeline.tab);
+    await addProjectLogbookEntry(
+      savedProject.id,
+      "Projekt",
+      `Projekt angelegt: ${savedProject.projectNumber || savedProject.id} | ${savedProject.title}.`
+    );
     closeProjectModal();
   }
 
@@ -4982,6 +6761,89 @@ export function DashboardPage() {
     setStampEditError("");
   }
 
+  function openManualProjectTimeModal() {
+    if (!selectedProjectFile) return;
+    const now = new Date();
+    setManualProjectTimeUserId(activeUser?.id || users.find((user) => user.isActive)?.id || "");
+    setStampEditDate(
+      new Intl.DateTimeFormat("de-DE", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      }).format(now)
+    );
+    setStampEditStartTime("08:00");
+    setStampEditEndTime("09:00");
+    setStampEditPause("0:00:00");
+    setStampEditComment("");
+    setStampEditError("");
+    setIsManualProjectTimeModalOpen(true);
+  }
+
+  function closeManualProjectTimeModal() {
+    setIsManualProjectTimeModalOpen(false);
+    setStampEditError("");
+  }
+
+  async function saveManualProjectTimeEntry() {
+    if (!selectedProjectFile) return;
+    const startMinutes = parseStampTimeToMinutes(stampEditStartTime);
+    const endMinutes = parseStampTimeToMinutes(stampEditEndTime);
+    const pauseMs = parseStampPauseToMilliseconds(stampEditPause);
+    const selectedUser = users.find((user) => user.id === manualProjectTimeUserId);
+
+    if (!selectedUser) {
+      setStampEditError("Bitte einen Mitarbeiter auswählen.");
+      return;
+    }
+
+    if (!stampEditDate.trim()) {
+      setStampEditError("Bitte ein Datum eintragen.");
+      return;
+    }
+
+    if (startMinutes === null || endMinutes === null || pauseMs === null) {
+      setStampEditError("Bitte Zeiten im Format HH:MM und Pause als H:MM:SS eintragen.");
+      return;
+    }
+
+    const rawDurationMs = (endMinutes - startMinutes) * 60_000 - pauseMs;
+    if (rawDurationMs <= 0) {
+      setStampEditError("Die Laufzeit muss größer als 0 sein.");
+      return;
+    }
+
+    const manualEntry: StampTimeEntry = {
+      id: crypto.randomUUID(),
+      mode: "project",
+      projectId: selectedProjectFile.id,
+      projectLabel: selectedProjectFile.title,
+      userId: selectedUser.id,
+      employee: selectedUser.name,
+      entrySource: "manual",
+      date: stampEditDate.trim(),
+      startTime: stampEditStartTime,
+      endTime: stampEditEndTime,
+      durationMs: rawDurationMs,
+      pauseMs,
+      comment: stampEditComment.trim() || "Manuell hinzugefügt",
+    };
+
+    try {
+      await saveStampTimeEntry(manualEntry);
+      await addProjectLogbookEntry(
+        selectedProjectFile.id,
+        "Zeit & Lohn",
+        `Manueller Zeiteintrag: ${selectedUser.name}, ${stampEditDate.trim()} ${stampEditStartTime}-${stampEditEndTime}, ${formatStampDuration(rawDurationMs)}.`
+      );
+      closeManualProjectTimeModal();
+    } catch (error) {
+      setStampEditError(
+        error instanceof Error ? error.message : "Zeiteintrag konnte nicht gespeichert werden."
+      );
+    }
+  }
+
   function closeStampEntryEditModal() {
     setEditingStampEntry(null);
     setStampEditError("");
@@ -5064,7 +6926,9 @@ export function DashboardPage() {
         stampSession.mode === "project" && closedProjectId
           ? getStampProjectLabel(closedProjectId)
           : "Unproduktiv",
+      userId: activeUser?.id || "",
       employee: activeUser?.name || "Aktueller Mitarbeiter",
+      entrySource: "stamped",
       date: new Intl.DateTimeFormat("de-DE", {
         day: "2-digit",
         month: "2-digit",
@@ -5768,6 +7632,74 @@ export function DashboardPage() {
     await loadUsers();
   }
 
+  function getEmployeeCostDraft(userId: string) {
+    return employeeCostCalculations[userId] ?? {
+      ...defaultEmployeeCostCalculation,
+      userId,
+      annualHours: Number(userDailyWorkHours || 8) * 5 * 52,
+      hoursPerDay: Number(userDailyWorkHours || 8),
+    };
+  }
+
+  function updateEmployeeCostDraft(userId: string, patch: Partial<EmployeeCostCalculation>) {
+    setEmployeeCostCalculations((current) => ({
+      ...current,
+      [userId]: {
+        ...getEmployeeCostDraft(userId),
+        ...patch,
+      },
+    }));
+  }
+
+  async function loadEmployeeCost(userId: string) {
+    if (!userId || !activeUserId || !mayAccessEmployeeCosts) return;
+
+    const params = new URLSearchParams({
+      userId,
+      actorId: activeUserId,
+    });
+    const res = await fetch(`/api/employee-costs?${params.toString()}`, { cache: "no-store" });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setEmployeeCostError(data?.error ?? "Lohnkosten konnten nicht geladen werden.");
+      return;
+    }
+
+    const data = (await res.json()) as EmployeeCostCalculation;
+    setEmployeeCostCalculations((current) => ({ ...current, [userId]: data }));
+    setEmployeeCostError("");
+  }
+
+  async function saveEmployeeCost(userId: string) {
+    if (!userId || !activeUserId || !mayAccessEmployeeCosts) return;
+
+    setIsSavingEmployeeCost(true);
+    setEmployeeCostError("");
+    const draft = getEmployeeCostDraft(userId);
+    const res = await fetch("/api/employee-costs", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ...draft,
+        userId,
+        actorId: activeUserId,
+      }),
+    });
+
+    setIsSavingEmployeeCost(false);
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setEmployeeCostError(data?.error ?? "Lohnkosten konnten nicht gespeichert werden.");
+      return;
+    }
+
+    const data = (await res.json()) as EmployeeCostCalculation;
+    setEmployeeCostCalculations((current) => ({ ...current, [userId]: data }));
+  }
+
   function openEmployeeFile(user: UserOption) {
     editUser(user);
     setSelectedEmployeeId(user.id);
@@ -5984,7 +7916,7 @@ export function DashboardPage() {
   }
 
   async function deleteUser(userId: string) {
-    const confirmed = window.confirm("Benutzer wirklich entfernen?");
+    const confirmed = window.confirm("Mitarbeiter wirklich auf inaktiv setzen?");
     if (!confirmed) return;
 
     const res = await fetch("/api/users", {
@@ -6002,8 +7934,34 @@ export function DashboardPage() {
     }
 
     if (editingUserId === userId) resetUserForm();
+    if (selectedEmployeeId === userId) setSelectedEmployeeId("");
+    setEmployeeStatusView("inactive");
     await loadUsers();
     await loadTasks();
+  }
+
+  async function restoreUser(userId: string) {
+    const res = await fetch("/api/users", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        action: "set-active",
+        userId,
+        isActive: true,
+        actorId: activeUserId,
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setErrorMessage(data?.error ?? "Mitarbeiter konnte nicht reaktiviert werden.");
+      return;
+    }
+
+    setEmployeeStatusView("active");
+    await loadUsers();
   }
 
   const holidayDateKeys = new Set(holidays.map((holiday) => holiday.date));
@@ -6140,6 +8098,11 @@ export function DashboardPage() {
       currentProjects.map((project) =>
         project.id === selectedProjectFileId ? { ...project, status: nextStatus } : project
       )
+    );
+    await addProjectLogbookEntry(
+      currentProject.id,
+      "Projektstatus",
+      `Projektstatus geändert: ${currentProject.status || "-"} -> ${nextStatus}.`
     );
     setSelectedProjectPipelineStatus(nextStatus);
     setSelectedHeroDetailId(selectedProjectFileId);
@@ -7409,6 +9372,7 @@ export function DashboardPage() {
       "Angebote",
       "Angebote: Sonderangebote",
       "Tätigkeitsberichte",
+      "Endkontrolle",
       "Mahnung",
       "Rechnungen",
     ];
@@ -7425,6 +9389,30 @@ export function DashboardPage() {
             selectedCustomerFile.mainContactName.replace(/^(Herr|Frau)\s+/i, "")
           )
       );
+    const selectedCustomerLabel = getContactLabel(selectedCustomerFile);
+    const selectedCustomerDisplayName = getContactDisplayName(selectedCustomerFile);
+    const customerProjects = heroProjects.filter((project) => {
+      const projectCustomer = (project.customer || "").trim().toLowerCase();
+      return (
+        project.contactId === selectedCustomerFile.id ||
+        project.contactPersonId === selectedCustomerFile.id ||
+        projectCustomer === selectedCustomerLabel.trim().toLowerCase() ||
+        projectCustomer === selectedCustomerDisplayName.trim().toLowerCase() ||
+        (!!selectedCustomerFile.companyName &&
+          projectCustomer === selectedCustomerFile.companyName.trim().toLowerCase())
+      );
+    });
+    const customerProjectIds = new Set(customerProjects.map((project) => project.id));
+    const customerProjectLogEntries = projectLogbookEntries.filter((entry) =>
+      customerProjectIds.has(entry.projectId)
+    );
+    const customerProjectOffers = offers.filter((offer) => customerProjectIds.has(offer.projectId));
+    const customerProjectInvoices = invoices.filter((invoice) => customerProjectIds.has(invoice.projectId));
+    const customerProjectDocumentEntries = customerProjectLogEntries.filter(
+      (entry) =>
+        entry.title === `Dokumente: ${selectedCustomerDocumentType}` &&
+        entry.attachments.some((attachment) => attachment.type === "Dokument")
+    );
     const logbookEntries = [
       ...customerLogbookEntries
         .filter((entry) => entry.customerId === selectedCustomerFile.id)
@@ -7435,6 +9423,16 @@ export function DashboardPage() {
           taskTitle: entry.taskTitle,
           colleague: entry.colleague,
         })),
+      ...customerProjectLogEntries.map((entry) => {
+        const project = customerProjects.find((item) => item.id === entry.projectId);
+        return {
+          date: entry.date,
+          text: `${project?.projectNumber || entry.projectId}: ${entry.text}`,
+          attachments: entry.attachments,
+          taskTitle: "",
+          colleague: entry.colleague,
+        };
+      }),
       {
         date: "16.02.2026 11:08",
         text: `Aufgabe "Heckenrückschnitt ${selectedCustomerFile.companyName || title}" wurde erstellt.`,
@@ -7619,18 +9617,190 @@ export function DashboardPage() {
               <div className={styles.customerDocumentModule}>
                 <div className={styles.customerFileMainHeader}>
                   <h2>{selectedCustomerDocumentType}</h2>
-                  <button type="button" className={styles.primaryButton}>
-                    + Dokument
-                  </button>
+                  <span>Aus verknüpften Projekten</span>
                 </div>
-                <div className={styles.customerDocumentEmpty}>
-                  <strong>Noch keine Dokumente vorhanden.</strong>
-                  <p>
-                    Hier werden später alle Dateien dieser Dokumentenart für diesen Kunden abgelegt.
-                    Anhänge aus Logbucheinträgen können wir im nächsten Schritt automatisch hier
-                    einsortieren.
-                  </p>
+                {selectedCustomerDocumentType === "Rechnungen" ? (
+                  customerProjectInvoices.length === 0 ? (
+                    <div className={styles.customerDocumentEmpty}>
+                      <strong>Noch keine Rechnungen vorhanden.</strong>
+                      <p>Rechnungen aus verknüpften Projekten erscheinen automatisch in dieser Kundenakte.</p>
+                    </div>
+                  ) : (
+                    <table className={styles.projectTimeTable}>
+                      <thead>
+                        <tr>
+                          <th>Nummer</th>
+                          <th>Projekt</th>
+                          <th>Firma</th>
+                          <th>Status</th>
+                          <th>Netto</th>
+                          <th>Brutto</th>
+                          <th>Aktion</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {customerProjectInvoices.map((invoice) => (
+                          <tr key={invoice.id}>
+                            <td className={styles.number}>{invoice.invoiceNumber}</td>
+                            <td>{invoice.projectNumber} | {invoice.projectTitle}</td>
+                            <td>{invoice.company}</td>
+                            <td>{invoice.status}</td>
+                            <td>{formatMoney(invoice.netTotal)}</td>
+                            <td>{formatMoney(invoice.grossTotal)}</td>
+                            <td>
+                              <div className={styles.tableActionGroup}>
+                                <button
+                                  type="button"
+                                  className={styles.timeEntryEditButton}
+                                  onClick={() => window.open(`/api/invoices?pdfId=${encodeURIComponent(invoice.id)}`, "_blank")}
+                                >
+                                  PDF öffnen
+                                </button>
+                                {!["Storniert", "Stornorechnung", "Gelöscht"].includes(invoice.status) ? (
+                                  <button
+                                    type="button"
+                                    className={styles.timeEntryEditButton}
+                                    onClick={() => cancelInvoice(invoice)}
+                                  >
+                                    Stornieren
+                                  </button>
+                                ) : null}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )
+                ) : selectedCustomerDocumentType === "Angebote" ? (
+                  customerProjectOffers.length === 0 ? (
+                    <div className={styles.customerDocumentEmpty}>
+                      <strong>Noch keine Angebote vorhanden.</strong>
+                      <p>Angebote aus verknüpften Projekten erscheinen automatisch in dieser Kundenakte.</p>
+                    </div>
+                  ) : (
+                    <table className={styles.projectTimeTable}>
+                      <thead>
+                        <tr>
+                          <th>Nummer</th>
+                          <th>Projekt</th>
+                          <th>Firma</th>
+                          <th>Status</th>
+                          <th>Netto</th>
+                          <th>Brutto</th>
+                          <th>Aktion</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {customerProjectOffers.map((offer) => (
+                          <tr key={offer.id}>
+                            <td className={styles.number}>{offer.offerNumber}</td>
+                            <td>{offer.projectNumber} | {offer.projectTitle}</td>
+                            <td>{offer.company}</td>
+                            <td>{offer.status}</td>
+                            <td>{formatMoney(offer.netTotal)}</td>
+                            <td>{formatMoney(offer.grossTotal)}</td>
+                            <td>
+                              <button
+                                type="button"
+                                className={styles.timeEntryEditButton}
+                                onClick={() => window.open(`/api/offers?pdfId=${encodeURIComponent(offer.id)}`, "_blank")}
+                              >
+                                PDF öffnen
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )
+                ) : customerProjectDocumentEntries.length === 0 ? (
+                  <div className={styles.customerDocumentEmpty}>
+                    <strong>Noch keine Dokumente vorhanden.</strong>
+                    <p>
+                      Dokumente aus den verknüpften Projekten werden automatisch hier einsortiert.
+                    </p>
+                  </div>
+                ) : (
+                  <div className={styles.projectDocumentList}>
+                    {customerProjectDocumentEntries.flatMap((entry) =>
+                      entry.attachments
+                        .filter((attachment) => attachment.type === "Dokument")
+                        .map((attachment, index) =>
+                          attachment.dataUrl ? (
+                            <a
+                              key={`${entry.id}-${attachment.name}-${index}`}
+                              href={attachment.dataUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <strong>{attachment.name}</strong>
+                              <span>{entry.date}</span>
+                            </a>
+                          ) : (
+                            <span key={`${entry.id}-${attachment.name}-${index}`}>{attachment.name}</span>
+                          )
+                        )
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : customerFileTab === "projects" ? (
+              <div className={styles.customerDocumentModule}>
+                <div className={styles.customerFileMainHeader}>
+                  <h2>Projekte</h2>
+                  <span>{customerProjects.length} Projekt{customerProjects.length === 1 ? "" : "e"}</span>
                 </div>
+                {customerProjects.length === 0 ? (
+                  <div className={styles.customerDocumentEmpty}>
+                    <strong>Noch keine Projekte verknüpft.</strong>
+                    <p>Projekte erscheinen hier automatisch, wenn der Kunde im Projekt hinterlegt ist.</p>
+                  </div>
+                ) : (
+                  <table className={styles.projectTimeTable}>
+                    <thead>
+                      <tr>
+                        <th>Nummer</th>
+                        <th>Projekt</th>
+                        <th>Status</th>
+                        <th>Gewerk</th>
+                        <th>Adresse</th>
+                        <th>Aktion</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {customerProjects.map((project) => (
+                        <tr key={project.id}>
+                          <td className={styles.number}>{project.projectNumber || project.id}</td>
+                          <td>{project.title}</td>
+                          <td>{project.status || "-"}</td>
+                          <td>{project.trade || "-"}</td>
+                          <td>{project.address || "-"}</td>
+                          <td>
+                            <button
+                              type="button"
+                              className={styles.timeEntryEditButton}
+                              onClick={() => {
+                                const projectType = (project.projectType ?? "").toLowerCase();
+                                const projectNumber = (project.projectNumber ?? "").toLowerCase();
+                                setActiveTab(
+                                  projectType.includes("immocare") || projectNumber.startsWith("oki")
+                                    ? "projectsImmocare"
+                                    : "projectsSolutions"
+                                );
+                                setSelectedCustomerFileId("");
+                                setSelectedProjectFileId(project.id);
+                                setProjectFileTab("logbook");
+                              }}
+                            >
+                              Öffnen
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             ) : (
               <div className={styles.customerEmptyModule}>
@@ -7698,7 +9868,7 @@ export function DashboardPage() {
       { id: "appointments", label: "Termine", icon: "" },
       { id: "tasks", label: "Aufgaben", icon: "" },
       { id: "material", label: "Material", icon: "€" },
-      { id: "comparison", label: "Soll/Ist Vergleich", icon: "" },
+      { id: "comparison", label: "Planungspositionen", icon: "" },
       { id: "participants", label: "Projektbeteiligte", icon: "•" },
       { id: "checklists", label: "Checklisten", icon: "✓" },
     ];
@@ -7733,8 +9903,10 @@ export function DashboardPage() {
       },
     ];
     const projectLogbookQuery = projectLogbookSearch.trim().toLowerCase();
-    const savedProjectLogEntries = projectLogbookEntries
-      .filter((entry) => String(entry.projectId) === String(selectedProjectFile.id))
+    const projectLogEntries = projectLogbookEntries.filter(
+      (entry) => String(entry.projectId) === String(selectedProjectFile.id)
+    );
+    const savedProjectLogEntries = projectLogEntries
       .filter((entry) => {
         if (!projectLogbookQuery) return true;
 
@@ -7796,30 +9968,306 @@ export function DashboardPage() {
     const projectRemainingHours = projectBudgetHours > 0 ? projectBudgetHours - projectTrackedHours : 0;
     const projectBudgetUsagePercent =
       projectBudgetHours > 0 ? clampPercent((projectTrackedHours / projectBudgetHours) * 100) : 0;
+    const projectOffers = offers.filter((offer) => offer.projectId === selectedProjectFile.id);
+    const projectInvoices = invoices.filter((invoice) => invoice.projectId === selectedProjectFile.id);
+    const projectComparisonOfferNumbers = projectOffers.map((offer) => offer.offerNumber);
+    const projectLaborComparisonRows = Array.from(
+      projectOffers
+        .flatMap((offer) =>
+          offer.lines.flatMap((line) =>
+            (() => {
+              const lineLaborTotalHours = (line.laborItems ?? []).reduce(
+                (sum, labor) => sum + Number(labor.plannedHours || 0),
+                0
+              );
+              const lineRevenue = Number(line.quantity || 0) * Number(line.unitPrice || 0);
+
+              return (line.laborItems ?? []).map((labor) => ({
+                userId: labor.userId,
+                employeeName: labor.employeeName || users.find((user) => user.id === labor.userId)?.name || "-",
+                plannedHours: Number(labor.plannedHours || 0),
+                hourlyCostRate: Number(labor.hourlyCostRate || getEmployeeHourlyCostRate(labor.userId) || 0),
+                laborRevenue:
+                  lineLaborTotalHours > 0
+                    ? lineRevenue * (Number(labor.plannedHours || 0) / lineLaborTotalHours)
+                    : 0,
+                positionTitle: line.title,
+                offerNumber: offer.offerNumber,
+              }));
+            })()
+          )
+        )
+        .reduce((rows, labor) => {
+          const current = rows.get(labor.employeeName) ?? {
+            userId: labor.userId,
+            employeeName: labor.employeeName,
+            plannedHours: 0,
+            plannedPlanningHours: 0,
+            actualHours: 0,
+            laborRevenue: 0,
+            hourlyCostRate: 0,
+            positions: [] as string[],
+            offerNumbers: [] as string[],
+          };
+          if (!current.userId && labor.userId) current.userId = labor.userId;
+          current.plannedHours += labor.plannedHours;
+          current.laborRevenue += labor.laborRevenue;
+          current.hourlyCostRate =
+            current.hourlyCostRate > 0 ? current.hourlyCostRate : labor.hourlyCostRate;
+          const positionLabel = `${labor.offerNumber}: ${labor.positionTitle}`;
+          if (!current.positions.includes(positionLabel)) {
+            current.positions.push(positionLabel);
+          }
+          if (!current.offerNumbers.includes(labor.offerNumber)) {
+            current.offerNumbers.push(labor.offerNumber);
+          }
+          rows.set(labor.employeeName, current);
+          return rows;
+        }, new Map<string, { userId: string; employeeName: string; plannedHours: number; plannedPlanningHours: number; actualHours: number; laborRevenue: number; hourlyCostRate: number; positions: string[]; offerNumbers: string[] }>())
+        .values()
+    ).map((row) => ({
+      ...row,
+      plannedPlanningHours:
+        planningEntries
+          .filter(
+            (entry) =>
+              entry.source === "offer" &&
+              entry.projectId === selectedProjectFile.id &&
+              (entry.userId === row.userId || entry.employeeName === row.employeeName) &&
+              !entry.deletedAt
+          )
+          .reduce((sum, entry) => sum + Number(entry.offerPlannedMinutes || entry.durationMinutes || 0), 0) / 60,
+      actualHours:
+        projectStampEntries
+          .filter((entry) => entry.employee === row.employeeName)
+          .reduce((sum, entry) => sum + entry.durationMs, 0) / 3_600_000,
+    }));
+    const projectLaborPerformanceRows = projectLaborComparisonRows.map((row) => {
+      const actualLaborCost = row.actualHours * row.hourlyCostRate;
+      const laborContribution = row.laborRevenue - actualLaborCost;
+      const laborMargin = row.laborRevenue > 0 ? (laborContribution / row.laborRevenue) * 100 : 0;
+      const performancePercent = row.actualHours > 0 ? (row.plannedHours / row.actualHours) * 100 : 0;
+
+      return {
+        ...row,
+        actualLaborCost,
+        laborContribution,
+        laborMargin,
+        performancePercent,
+      };
+    });
+    const openOfferPlanningFromComparison = (row: (typeof projectLaborComparisonRows)[number]) => {
+      const user = users.find((item) => item.id === row.userId || item.name === row.employeeName);
+      const board = (user?.planningBoard === "OK immocare" ? "OK immocare" : "OK solutions") as PlanningBoardCompany;
+      const groups = getPlanningEntryGroups(board);
+      const groupName = user?.planningGroup && groups.includes(user.planningGroup) ? user.planningGroup : groups[0];
+      const remainingHours = Math.max(row.plannedHours - row.plannedPlanningHours, 0);
+
+      resetPlanningEntryForm();
+      setPlanningEntrySource("offer");
+      setPlanningEntryBoard(board);
+      setPlanningEntryGroup(groupName);
+      setPlanningEntryUserId(user?.id ?? row.userId ?? "");
+      setPlanningEntryDate(selectedPlanningDateKey);
+      setPlanningEntryStartTime("08:00");
+      setPlanningEntryEndTime("09:00");
+      setPlanningEntryTitle(row.positions[0]?.replace(/^ANG-\d+:\s*/, "") || "Planung aus Angebot");
+      setPlanningEntryCustomer(selectedProjectFile.customer || "");
+      setPlanningEntryProjectId(selectedProjectFile.id);
+      setPlanningEntryProjectSearch(`${selectedProjectFile.projectNumber || selectedProjectFile.id} | ${selectedProjectFile.title}`);
+      setIsPlanningEntryProjectSearchOpen(false);
+      setPlanningEntryDescription(
+        `Planung aus Angebot: ${row.offerNumbers.join(", ")}. Offene Vorgabezeit: ${formatHours(remainingHours)} Std.`
+      );
+      setPlanningEntryOfferLabel(row.positions.join(", "));
+      setPlanningEntryOfferTotalHours(String(row.plannedHours));
+      setPlanningEntryApprovalStatus("confirmed");
+      setEditingPlanningEntryId("");
+      setIsPlanningEntryModalOpen(true);
+    };
+    const projectOfferPlannedTotalHours = projectLaborComparisonRows.reduce(
+      (sum, row) => sum + Number(row.plannedPlanningHours || 0),
+      0
+    );
+    const projectOpenOfferPlanningHours = projectLaborComparisonRows.reduce(
+      (sum, row) => sum + Math.max(Number(row.plannedHours || 0) - Number(row.plannedPlanningHours || 0), 0),
+      0
+    );
+    const projectPlanningButtonState =
+      projectOpenOfferPlanningHours <= 0 ? "normal" : projectOfferPlannedTotalHours > 0 ? "partial" : "open";
+    const projectPlanningButtonLabel =
+      projectPlanningButtonState === "open"
+        ? "Termin/Zeiten planbar"
+        : projectPlanningButtonState === "partial"
+          ? "Restzeit planen"
+          : "Termin einplanen";
+    const getProjectImageEntries = (category: string) =>
+      projectLogEntries.filter(
+        (entry) =>
+          entry.title === `Bilder: ${category}` &&
+          entry.attachments.some((attachment) => attachment.type === "Bild")
+      );
+    const getProjectDocumentEntries = (category: CustomerDocumentType) =>
+      projectLogEntries.filter(
+        (entry) =>
+          entry.title === `Dokumente: ${category}` &&
+          entry.attachments.some((attachment) => attachment.type === "Dokument")
+      );
+    const hasProjectDocumentMarker = (keyword: string) =>
+      projectLogEntries.some((entry) => {
+        const haystack = [
+          entry.title,
+          entry.text,
+          ...entry.attachments
+            .filter((attachment) => attachment.type === "Dokument")
+            .map((attachment) => attachment.name),
+        ]
+          .join(" ")
+          .toLowerCase();
+
+        return haystack.includes(keyword.toLowerCase());
+      });
+    const projectProgressSteps = [
+      {
+        id: "offer",
+        label: "Angebot",
+        state: projectOffers.length > 0 ? "done" : "open",
+        hint:
+          projectOffers.length > 0
+            ? `${projectOffers.length} Angebot${projectOffers.length === 1 ? "" : "e"} vorhanden`
+            : "Noch kein Angebot abgelegt",
+        onClick: () => {
+          setProjectFileTab("documents");
+          setSelectedProjectDocumentType("Angebote");
+        },
+      },
+      {
+        id: "appointment",
+        label: "TerWu",
+        state: projectPlanningEntries.length > 0 ? "done" : "open",
+        hint:
+          projectPlanningEntries.length > 0
+            ? "Terminwunsch oder Termin vorhanden"
+            : "Noch kein Terminwunsch oder Termin vorhanden",
+        onClick: () => setProjectFileTab("appointments"),
+      },
+      {
+        id: "planning",
+        label: "Planung",
+        state:
+          projectLaborComparisonRows.length === 0
+            ? "open"
+            : projectOpenOfferPlanningHours > 0
+              ? "partial"
+              : "done",
+        hint:
+          projectLaborComparisonRows.length === 0
+            ? "Noch keine Angebotszeiten vorhanden"
+            : projectOpenOfferPlanningHours > 0
+              ? `${formatHours(projectOpenOfferPlanningHours)} Std. noch offen`
+              : "Alle Zeiten komplett verplant",
+        onClick: () => setProjectFileTab("comparison"),
+      },
+      {
+        id: "beforeImages",
+        label: "V-Bilder",
+        state: getProjectImageEntries("Vorherbilder").length > 0 ? "done" : "open",
+        hint:
+          getProjectImageEntries("Vorherbilder").length > 0
+            ? "Vorherbilder vorhanden"
+            : "Noch keine Vorherbilder hochgeladen",
+        onClick: () => setProjectFileTab("images"),
+      },
+      {
+        id: "afterImages",
+        label: "N-Bilder",
+        state: getProjectImageEntries("Nachherbilder").length > 0 ? "done" : "open",
+        hint:
+          getProjectImageEntries("Nachherbilder").length > 0
+            ? "Nachherbilder vorhanden"
+            : "Noch keine Nachherbilder hochgeladen",
+        onClick: () => setProjectFileTab("images"),
+      },
+      {
+        id: "finalCheck",
+        label: "Endkontr.",
+        state: hasProjectDocumentMarker("endkontrolle") ? "done" : "open",
+        hint: hasProjectDocumentMarker("endkontrolle")
+          ? "Endkontrolle abgelegt"
+          : "Noch keine Endkontrolle abgelegt",
+        onClick: () => {
+          setProjectFileTab("documents");
+          setSelectedProjectDocumentType("Endkontrolle");
+        },
+      },
+      {
+        id: "invoice",
+        label: "Rechnung",
+        state: projectInvoices.length > 0 || hasProjectDocumentMarker("rechnung") ? "done" : "open",
+        hint: projectInvoices.length > 0 || hasProjectDocumentMarker("rechnung")
+          ? "Rechnung abgelegt"
+          : "Noch keine Rechnung abgelegt",
+        onClick: () => {
+          setProjectFileTab("documents");
+          setSelectedProjectDocumentType("Rechnungen");
+        },
+      },
+    ] as Array<{ id: string; label: string; state: "done" | "partial" | "open"; hint: string; onClick: () => void }>;
+    const projectImageCategories = [
+      {
+        label: "Objektbesichtigungen",
+        description: "Bilder aus Besichtigung, Aufmaß oder Erstaufnahme.",
+      },
+      {
+        label: "Vorherbilder",
+        description: "Dokumentation vor Ausführung der Leistung.",
+      },
+      {
+        label: "Nachherbilder",
+        description: "Dokumentation nach Fertigstellung.",
+      },
+    ];
+    const openProjectPlanningAction = () => {
+      if (projectOpenOfferPlanningHours > 0) {
+        setProjectFileTab("comparison");
+        return;
+      }
+
+      openProjectPlanningBoard();
+    };
+    const projectOfferHistory = offerHistory
+      .filter((entry) => entry.projectId === selectedProjectFile.id)
+      .sort((first, second) => new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime());
     const projectResponsibleName = selectedProjectFile.responsibleName || activeUser?.name || "Christian Eid";
     const projectStartDate = parseProjectDate(selectedProjectFile.projectRuntimeFrom);
     const projectEndDate = parseProjectDate(selectedProjectFile.projectRuntimeUntil);
+    const projectRuntimeReferenceDate = parseProjectDate(selectedProjectFile.createdAt) ?? projectStartDate;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const dayMs = 24 * 60 * 60 * 1000;
     const projectRuntimeTotalDays =
-      projectStartDate && projectEndDate
-        ? Math.max(0, Math.ceil((projectEndDate.getTime() - projectStartDate.getTime()) / dayMs))
+      projectRuntimeReferenceDate && projectEndDate && projectEndDate.getTime() >= projectRuntimeReferenceDate.getTime()
+        ? Math.ceil((projectEndDate.getTime() - projectRuntimeReferenceDate.getTime()) / dayMs)
         : 0;
     const projectRuntimeElapsedDays =
-      projectStartDate && projectEndDate
-        ? Math.min(
-            projectRuntimeTotalDays,
-            Math.max(0, Math.ceil((today.getTime() - projectStartDate.getTime()) / dayMs))
-          )
+      projectRuntimeReferenceDate && projectEndDate && projectRuntimeTotalDays > 0
+        ? today.getTime() <= projectRuntimeReferenceDate.getTime()
+          ? 0
+          : today.getTime() >= projectEndDate.getTime()
+            ? projectRuntimeTotalDays
+            : Math.ceil((today.getTime() - projectRuntimeReferenceDate.getTime()) / dayMs)
         : 0;
     const projectRuntimeRemainingDays =
-      projectStartDate && projectEndDate
-        ? Math.max(0, Math.ceil((projectEndDate.getTime() - today.getTime()) / dayMs))
+      projectRuntimeTotalDays > 0
+        ? Math.max(0, projectRuntimeTotalDays - projectRuntimeElapsedDays)
         : 0;
     const projectRuntimeUsagePercent =
       projectRuntimeTotalDays > 0
         ? clampPercent((projectRuntimeElapsedDays / projectRuntimeTotalDays) * 100)
+        : 0;
+    const projectRuntimeRemainingPercent =
+      projectRuntimeTotalDays > 0
+        ? clampPercent((projectRuntimeRemainingDays / projectRuntimeTotalDays) * 100)
         : 0;
 
     return (
@@ -7895,13 +10343,39 @@ export function DashboardPage() {
             </button>
             <button
               type="button"
-              className={styles.secondaryButton}
-              onClick={openProjectPlanningBoard}
+              className={`${styles.secondaryButton} ${styles.projectOfferPlanningButton}`}
+              data-state={projectPlanningButtonState}
+              title={
+                projectOpenOfferPlanningHours > 0
+                  ? `${formatHours(projectOpenOfferPlanningHours)} Std. aus Angeboten offen`
+                  : undefined
+              }
+              onClick={openProjectPlanningAction}
             >
-              Termin einplanen
+              {projectPlanningButtonLabel}
             </button>
           </div>
         </header>
+
+        <nav className={styles.projectProgressTracker} aria-label="Projektfortschritt">
+          {projectProgressSteps.map((step, index) => (
+            <button
+              key={step.id}
+              type="button"
+              data-state={step.state}
+              title={step.hint}
+              onClick={step.onClick}
+            >
+              <span className={styles.projectProgressNode}>
+                {step.state === "done" ? "✓" : step.state === "partial" ? "!" : ""}
+              </span>
+              <strong>{step.label}</strong>
+              {index < projectProgressSteps.length - 1 ? (
+                <i aria-hidden="true" />
+              ) : null}
+            </button>
+          ))}
+        </nav>
 
         <div className={styles.projectFileGrid}>
           <aside className={styles.customerFileNav}>
@@ -7930,7 +10404,12 @@ export function DashboardPage() {
                           }}
                         >
                           {type}
-                          {type === "Angebote" && <strong>1</strong>}
+                          {type === "Angebote" && projectOffers.length > 0 && (
+                            <strong>{projectOffers.length}</strong>
+                          )}
+                          {type === "Rechnungen" && projectInvoices.length > 0 && (
+                            <strong>{projectInvoices.length}</strong>
+                          )}
                         </button>
                       ))}
                     </div>
@@ -8036,27 +10515,314 @@ export function DashboardPage() {
                   )}
                 </div>
               </>
+            ) : projectFileTab === "images" ? (
+              <div className={styles.projectImageModule}>
+                <div className={styles.customerFileMainHeader}>
+                  <h2>Bilder</h2>
+                  <span>Objekt, Vorher und Nachher getrennt dokumentieren</span>
+                </div>
+                {logbookError ? <p className={styles.emptyState}>{logbookError}</p> : null}
+                <div className={styles.projectImageGrid}>
+                  {projectImageCategories.map((category) => {
+                    const entries = getProjectImageEntries(category.label);
+                    const images = entries.flatMap((entry) =>
+                      entry.attachments
+                        .filter((attachment) => attachment.type === "Bild")
+                        .map((attachment) => ({
+                          ...attachment,
+                          entryId: entry.id,
+                          date: entry.date,
+                        }))
+                    );
+
+                    return (
+                      <section key={category.label} className={styles.projectImageBucket}>
+                        <div>
+                          <h3>{category.label}</h3>
+                          <p>{category.description}</p>
+                        </div>
+                        <label className={styles.projectImageUpload}>
+                          Bilder hochladen
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            onChange={(event) => {
+                              void uploadProjectImageCategory(category.label, event.target.files);
+                              event.currentTarget.value = "";
+                            }}
+                          />
+                        </label>
+                        {images.length === 0 ? (
+                          <p className={styles.projectImageEmpty}>Noch keine Bilder vorhanden.</p>
+                        ) : (
+                          <div className={styles.projectImageThumbs}>
+                            {images.map((image, index) =>
+                              image.dataUrl ? (
+                                <a
+                                  key={`${image.entryId}-${image.name}-${index}`}
+                                  href={image.dataUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title={`${image.name} (${image.date})`}
+                                >
+                                  <img src={image.dataUrl} alt={image.name} />
+                                  <span>{image.name}</span>
+                                </a>
+                              ) : (
+                                <span key={`${image.entryId}-${image.name}-${index}`}>{image.name}</span>
+                              )
+                            )}
+                          </div>
+                        )}
+                      </section>
+                    );
+                  })}
+                </div>
+              </div>
             ) : projectFileTab === "documents" ? (
               <div className={styles.customerDocumentModule}>
                 <div className={styles.customerFileMainHeader}>
                   <h2>{selectedProjectDocumentType}</h2>
-                  <button type="button" className={styles.primaryButton}>
-                    + Dokument
-                  </button>
+                  {selectedProjectDocumentType === "Angebote" ? (
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      onClick={() => openOfferModal(selectedProjectFile)}
+                    >
+                      + Angebot
+                    </button>
+                  ) : selectedProjectDocumentType === "Rechnungen" ? (
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      onClick={() => openInvoiceFlow(selectedProjectFile)}
+                    >
+                      + Rechnung
+                    </button>
+                  ) : (
+                    <label className={styles.projectDocumentUpload}>
+                      Dokument hochladen
+                      <input
+                        type="file"
+                        multiple
+                        onChange={(event) => {
+                          void uploadProjectDocumentCategory(selectedProjectDocumentType, event.target.files);
+                          event.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
+                  )}
                 </div>
-                <div className={styles.customerDocumentEmpty}>
-                  <strong>Noch keine Projektdokumente vorhanden.</strong>
-                  <p>
-                    Diese Ablage ist für {selectedProjectDocumentType} im Projekt vorbereitet.
-                    Tätigkeitsberichte ersetzen hier die Aufmax-Kategorie.
-                  </p>
-                </div>
+                {selectedProjectDocumentType === "Angebote" ? (
+                  projectOffers.length === 0 ? (
+                    <div className={styles.customerDocumentEmpty}>
+                      <strong>Noch keine Angebote vorhanden.</strong>
+                      <p>
+                        Lege ein Angebot an, wähle Positionen aus Artikel, Leistungen oder Paketen
+                        und erstelle daraus direkt die PDF auf dem passenden Geschäftspapier.
+                      </p>
+                    </div>
+                  ) : (
+                    <table className={styles.projectTimeTable}>
+                      <thead>
+                        <tr>
+                          <th>Nummer</th>
+                          <th>Kunde</th>
+                          <th>Firma</th>
+                          <th>Status</th>
+                          <th>Netto</th>
+                          <th>Brutto</th>
+                          <th>Aktion</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {projectOffers.map((offer) => (
+                          <tr key={offer.id}>
+                            <td className={styles.number}>{offer.offerNumber}</td>
+                            <td>{offer.customerName || "-"}</td>
+                            <td>{offer.company}</td>
+                            <td>{offer.status}</td>
+                            <td>{formatMoney(offer.netTotal)}</td>
+                            <td>{formatMoney(offer.grossTotal)}</td>
+                            <td>
+                              <div className={styles.tableActionGroup}>
+                                <button
+                                  type="button"
+                                  className={styles.timeEntryEditButton}
+                                  onClick={() => openEditOfferModal(offer)}
+                                >
+                                  Bearbeiten
+                                </button>
+                                <button
+                                  type="button"
+                                  className={styles.timeEntryEditButton}
+                                  onClick={() => openInvoiceFromOffer(offer)}
+                                >
+                                  Rechnung erstellen
+                                </button>
+                                <button
+                                  type="button"
+                                  className={styles.timeEntryEditButton}
+                                  onClick={() => window.open(`/api/offers?pdfId=${encodeURIComponent(offer.id)}`, "_blank")}
+                                >
+                                  PDF öffnen
+                                </button>
+                                <button
+                                  type="button"
+                                  className={styles.timeEntryEditButton}
+                                  onClick={() => deleteOffer(offer)}
+                                >
+                                  Löschen
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )
+                ) : null}
+                {selectedProjectDocumentType === "Rechnungen" ? (
+                  projectInvoices.length === 0 ? (
+                    <div className={styles.customerDocumentEmpty}>
+                      <strong>Noch keine Rechnungen vorhanden.</strong>
+                      <p>
+                        Erstelle eine Rechnung aus einem offenen Angebot oder als freie Rechnung.
+                      </p>
+                    </div>
+                  ) : (
+                    <table className={styles.projectTimeTable}>
+                      <thead>
+                        <tr>
+                          <th>Nummer</th>
+                          <th>Kunde</th>
+                          <th>Firma</th>
+                          <th>Status</th>
+                          <th>Netto</th>
+                          <th>Brutto</th>
+                          <th>Aktion</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {projectInvoices.map((invoice) => (
+                          <tr key={invoice.id}>
+                            <td className={styles.number}>{invoice.invoiceNumber}</td>
+                            <td>{invoice.customerName || "-"}</td>
+                            <td>{invoice.company}</td>
+                            <td>{invoice.status}</td>
+                            <td>{formatMoney(invoice.netTotal)}</td>
+                            <td>{formatMoney(invoice.grossTotal)}</td>
+                            <td>
+                              <div className={styles.tableActionGroup}>
+                                <button
+                                  type="button"
+                                  className={styles.timeEntryEditButton}
+                                  onClick={() => window.open(`/api/invoices?pdfId=${encodeURIComponent(invoice.id)}`, "_blank")}
+                                >
+                                  PDF öffnen
+                                </button>
+                                {!["Storniert", "Stornorechnung", "Gelöscht"].includes(invoice.status) ? (
+                                  <button
+                                    type="button"
+                                    className={styles.timeEntryEditButton}
+                                    onClick={() => cancelInvoice(invoice)}
+                                  >
+                                    Stornieren
+                                  </button>
+                                ) : null}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )
+                ) : selectedProjectDocumentType === "Angebote" ? (
+                  <section className={styles.planningHistorySection}>
+                    <h3>Angebotshistorie</h3>
+                    {projectOfferHistory.length === 0 ? (
+                      <p>Noch keine Angebotshistorie vorhanden.</p>
+                    ) : (
+                      <div className={styles.planningHistoryList}>
+                        {projectOfferHistory.map((history) => (
+                          <article key={history.id}>
+                            <strong>{history.title || "Angebot geändert"}</strong>
+                            <span>
+                              {new Date(history.createdAt).toLocaleString("de-DE", {
+                                day: "2-digit",
+                                month: "2-digit",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                              {" "}von {history.actorName || "System"}
+                            </span>
+                            <p>{history.note || history.offerNumber}</p>
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                ) : (
+                  (() => {
+                    const entries = getProjectDocumentEntries(selectedProjectDocumentType);
+                    const documents = entries.flatMap((entry) =>
+                      entry.attachments
+                        .filter((attachment) => attachment.type === "Dokument")
+                        .map((attachment) => ({
+                          ...attachment,
+                          entryId: entry.id,
+                          date: entry.date,
+                        }))
+                    );
+
+                    return documents.length === 0 ? (
+                      <div className={styles.customerDocumentEmpty}>
+                        <strong>Noch keine Projektdokumente vorhanden.</strong>
+                        <p>
+                          Lade hier Dokumente für {selectedProjectDocumentType} hoch. Endkontrolle
+                          und Rechnung setzen automatisch den passenden Haken im Projektfortschritt.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className={styles.projectDocumentList}>
+                        {documents.map((document, index) =>
+                          document.dataUrl ? (
+                            <a
+                              key={`${document.entryId}-${document.name}-${index}`}
+                              href={document.dataUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <strong>{document.name}</strong>
+                              <span>{document.date}</span>
+                            </a>
+                          ) : (
+                            <span key={`${document.entryId}-${document.name}-${index}`}>
+                              {document.name}
+                            </span>
+                          )
+                        )}
+                      </div>
+                    );
+                  })()
+                )}
               </div>
             ) : projectFileTab === "time" ? (
               <div className={styles.projectTimeModule}>
                 <div className={styles.customerFileMainHeader}>
                   <h2>Zeit & Lohn</h2>
-                  <span>{projectStampEntries.length} Zeiteinträge</span>
+                  <div className={styles.headerActions}>
+                    <span>{projectStampEntries.length} Zeiteinträge</span>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={openManualProjectTimeModal}
+                    >
+                      + Zeiteintrag
+                    </button>
+                  </div>
                 </div>
                 {projectStampEntries.length === 0 ? (
                   <div className={styles.customerDocumentEmpty}>
@@ -8075,6 +10841,8 @@ export function DashboardPage() {
                         <th>Laufzeit</th>
                         <th>Pause</th>
                         <th>Mitarbeiter</th>
+                        <th>Herkunft</th>
+                        <th>Rechnung</th>
                         <th>Kommentar</th>
                         <th>Aktion</th>
                       </tr>
@@ -8089,6 +10857,8 @@ export function DashboardPage() {
                           <td>{formatStampDuration(entry.durationMs)}</td>
                           <td>{formatStampDuration(entry.pauseMs)}</td>
                           <td>{entry.employee}</td>
+                          <td>{entry.entrySource === "manual" ? "Manuell" : "Gestempelt"}</td>
+                          <td>{entry.invoiceNumber ? `Fakturiert: ${entry.invoiceNumber}` : "Offen"}</td>
                           <td>{entry.comment}</td>
                           <td>
                             <button
@@ -8110,6 +10880,188 @@ export function DashboardPage() {
                     </tbody>
                   </table>
                 )}
+                <section className={styles.planningHistorySection}>
+                  <h3>Soll/Ist Abgleich</h3>
+                  {projectLaborPerformanceRows.length === 0 ? (
+                    <p>Noch keine Vorgabezeiten aus Angeboten vorhanden.</p>
+                  ) : (
+                    <table className={styles.projectTimeTable}>
+                      <thead>
+                        <tr>
+                          <th>Mitarbeiter</th>
+                          <th>Soll-Zeit in h</th>
+                          <th>Ist-Zeit in h</th>
+                          <th>Differenz in h</th>
+                          <th>Leistungsgrad in %</th>
+                          <th>Lohnkosten intern</th>
+                          <th>Lohnerlöse</th>
+                          <th>Differenz</th>
+                          <th>Marge</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {projectLaborPerformanceRows.map((row) => (
+                          <tr key={`performance-${row.employeeName}`}>
+                            <td>{row.employeeName}</td>
+                            <td>{formatHourMinutes(row.plannedHours)}</td>
+                            <td>{formatHourMinutes(row.actualHours)}</td>
+                            <td>{formatHourMinutes(row.actualHours - row.plannedHours)}</td>
+                            <td>
+                              {row.actualHours > 0 ? formatPercent(row.performancePercent) : "-"}
+                            </td>
+                            <td>{formatMoney(row.actualLaborCost)}</td>
+                            <td>{formatMoney(row.laborRevenue)}</td>
+                            <td>{formatMoney(row.laborContribution)}</td>
+                            <td>{row.laborRevenue > 0 ? `${formatPercent(row.laborMargin)}%` : "-"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </section>
+                <section className={styles.planningHistorySection}>
+                  <h3>Zeithistorie</h3>
+                  {projectStampEntries.length === 0 ? (
+                    <p>Noch keine Zeithistorie vorhanden.</p>
+                  ) : (
+                    <div className={styles.planningHistoryList}>
+                      {projectStampEntries.map((entry) => (
+                        <article key={`time-history-${entry.id}`}>
+                          <strong>
+                            {entry.entrySource === "manual"
+                              ? "Zeiteintrag manuell hinzugefügt"
+                              : "Zeit echt gestempelt"}
+                          </strong>
+                          <span>
+                            {entry.date} von {entry.startTime} bis {entry.endTime} | {entry.employee}
+                          </span>
+                          <p>
+                            {formatStampDuration(entry.durationMs)} produktiv gebucht
+                            {entry.invoiceNumber ? ` | fakturiert mit ${entry.invoiceNumber}` : " | noch nicht fakturiert"}
+                            {entry.comment ? ` | ${entry.comment}` : ""}
+                          </p>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              </div>
+            ) : projectFileTab === "comparison" ? (
+              <div className={styles.projectTimeModule}>
+                <div className={styles.customerFileMainHeader}>
+                  <h2>Planungspositionen</h2>
+                  <span>
+                    {projectComparisonOfferNumbers.length > 0
+                      ? `Basis ${projectComparisonOfferNumbers.length} Angebot${
+                          projectComparisonOfferNumbers.length === 1 ? "" : "e"
+                        }: ${projectComparisonOfferNumbers.join(", ")}`
+                      : "Noch keine Angebotszeiten"}
+                  </span>
+                </div>
+                {projectLaborComparisonRows.length === 0 ? (
+                  <div className={styles.customerDocumentEmpty}>
+                    <strong>Noch keine Planungspositionen vorhanden.</strong>
+                    <p>
+                      Hinterlege im Angebot pro Position die internen Mitarbeiterzeiten. Diese
+                      Zeiten erscheinen hier als Vorgabezeit je Mitarbeiter.
+                    </p>
+                  </div>
+                ) : (
+                  <table className={styles.projectTimeTable}>
+                    <thead>
+                      <tr>
+                        <th>Mitarbeiter</th>
+                        <th>Positionen aus Angebot</th>
+                        <th>Sollzeit</th>
+                        <th>Geplant</th>
+                        <th>Offen</th>
+                        <th>Überplant</th>
+                        <th>Differenz</th>
+                        <th>Status</th>
+                        <th>Aktion</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {projectLaborComparisonRows.map((row) => {
+                        const openPlanningHours = Math.max(row.plannedHours - row.plannedPlanningHours, 0);
+                        const overPlannedHours = Math.max(row.plannedPlanningHours - row.plannedHours, 0);
+                        const planningDifference = row.plannedPlanningHours - row.plannedHours;
+                        const planningStatus =
+                          openPlanningHours > 0
+                            ? "Offen"
+                            : overPlannedHours > 0
+                              ? "Überplant"
+                              : "Voll verplant";
+                        return (
+                          <tr key={row.employeeName}>
+                            <td>{row.employeeName}</td>
+                            <td>{row.positions.join(", ")}</td>
+                            <td>{formatHours(row.plannedHours)} Std.</td>
+                            <td>{formatHours(row.plannedPlanningHours)} Std.</td>
+                            <td>{formatHours(openPlanningHours)} Std.</td>
+                            <td>{formatHours(overPlannedHours)} Std.</td>
+                            <td>{formatHours(planningDifference)} Std.</td>
+                            <td>
+                              <span
+                                className={styles.planningStatusPill}
+                                data-status={openPlanningHours > 0 ? "requested" : overPlannedHours > 0 ? "over" : "confirmed"}
+                              >
+                                {planningStatus}
+                              </span>
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                className={styles.secondaryButton}
+                                onClick={() => openOfferPlanningFromComparison(row)}
+                              >
+                                {openPlanningHours > 0 ? "Planen" : "Ändern"}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+                <section className={styles.planningHistorySection}>
+                  <h3>Planungshistorie</h3>
+                  {projectPlanningHistory.length === 0 ? (
+                    <p>Noch keine Planungshistorie vorhanden.</p>
+                  ) : (
+                    <div className={styles.planningHistoryList}>
+                      {projectPlanningHistory.map((history) => (
+                        <article key={`comparison-${history.id}`}>
+                          <strong>
+                            {history.eventType === "approved"
+                              ? "Termin freigegeben"
+                              : history.eventType === "requested"
+                                ? "Terminwunsch angelegt"
+                                : history.eventType === "deleted"
+                                  ? "Termin gelöscht"
+                                  : history.eventType === "updated"
+                                    ? "Termin geändert"
+                                    : "Termin angelegt"}
+                          </strong>
+                          <span>
+                            {new Date(history.createdAt).toLocaleString("de-DE", {
+                              day: "2-digit",
+                              month: "2-digit",
+                              year: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                            {" "}von {history.actorName || "System"}
+                          </span>
+                          <p>
+                            {history.entryTitle} am {formatProjectDate(history.entryDate)} von{" "}
+                            {history.entryStartTime} bis {history.entryEndTime}
+                          </p>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </section>
               </div>
             ) : projectFileTab === "appointments" ? (
               <div className={styles.projectTimeModule}>
@@ -8159,13 +11111,29 @@ export function DashboardPage() {
                               </span>
                             </td>
                             <td>
-                              <button
-                                type="button"
-                                className={styles.timeEntryEditButton}
-                                onClick={() => jumpToPlanningEntry(entry)}
-                              >
-                                Zum Tag
-                              </button>
+                              <div className={styles.tableActionGroup}>
+                                <button
+                                  type="button"
+                                  className={styles.timeEntryEditButton}
+                                  onClick={() => openEditPlanningEntryModal(entry)}
+                                >
+                                  Bearbeiten
+                                </button>
+                                <button
+                                  type="button"
+                                  className={styles.timeEntryEditButton}
+                                  onClick={() => jumpToPlanningEntry(entry)}
+                                >
+                                  Zum Tag
+                                </button>
+                                <button
+                                  type="button"
+                                  className={styles.timeEntryEditButton}
+                                  onClick={() => void deletePlanningEntryById(entry.id)}
+                                >
+                                  Löschen
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -8250,8 +11218,11 @@ export function DashboardPage() {
                   <span>Rest</span>
                   <strong>{projectRuntimeRemainingDays} Tg.</strong>
                 </div>
-                <div className={styles.projectTimeBudgetBar}>
-                  <span style={{ width: `${projectRuntimeUsagePercent}%` }} />
+                <div
+                  className={styles.projectTimeBudgetBar}
+                  title={`${projectRuntimeUsagePercent.toFixed(0)}% verstrichen, ${projectRuntimeRemainingPercent.toFixed(0)}% Restlaufzeit`}
+                >
+                  <span style={{ width: `${projectRuntimeRemainingPercent}%` }} />
                 </div>
               </div>
             </article>
@@ -8365,7 +11336,938 @@ export function DashboardPage() {
             <h2>Datenerfassungsbogen</h2>
           </div>
         </section>
+        {renderOfferModal()}
+        {renderInvoiceSourcePicker()}
+        {renderInvoiceModal()}
       </section>
+    );
+  }
+
+  function renderInvoiceSourcePicker() {
+    if (!isInvoiceSourcePickerOpen || !selectedProjectFile) return null;
+    const projectOffers = offers.filter((offer) => offer.projectId === selectedProjectFile.id);
+
+    return (
+      <div className={styles.modalOverlay}>
+        <div className={`${styles.modal} ${styles.catalogModal}`}>
+          <div className={styles.catalogModalHeader}>
+            <div>
+              <h2>Rechnung erstellen</h2>
+              <p>{selectedProjectFile.projectNumber || selectedProjectFile.id} | {selectedProjectFile.title}</p>
+            </div>
+            <button type="button" className={styles.iconButton} onClick={() => setIsInvoiceSourcePickerOpen(false)}>×</button>
+          </div>
+          <div className={styles.offerModalBody}>
+            <div className={styles.customerDocumentEmpty}>
+              <strong>Aus Angebot fakturieren?</strong>
+              <p>Es gibt Angebote in diesem Projekt. Wähle ein Angebot aus oder erstelle bewusst eine freie Rechnung.</p>
+            </div>
+            <table className={styles.projectTimeTable}>
+              <thead>
+                <tr>
+                  <th>Nummer</th>
+                  <th>Kunde</th>
+                  <th>Netto</th>
+                  <th>Brutto</th>
+                  <th>Aktion</th>
+                </tr>
+              </thead>
+              <tbody>
+                {projectOffers.map((offer) => (
+                  <tr key={offer.id}>
+                    <td className={styles.number}>{offer.offerNumber}</td>
+                    <td>{offer.customerName}</td>
+                    <td>{formatMoney(offer.netTotal)}</td>
+                    <td>{formatMoney(offer.grossTotal)}</td>
+                    <td>
+                      <button type="button" className={styles.timeEntryEditButton} onClick={() => openInvoiceFromOffer(offer)}>
+                        Übernehmen
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className={styles.modalFooter}>
+            <div className={styles.modalActions}>
+              <button type="button" className={styles.secondaryButton} onClick={() => setIsInvoiceSourcePickerOpen(false)}>Abbrechen</button>
+              <button type="button" className={styles.primaryButton} onClick={() => openFreeInvoiceModal(selectedProjectFile)}>Freie Rechnung</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderInvoiceModal() {
+    if (!isInvoiceModalOpen || !selectedProjectFile) return null;
+    const invoiceNetTotal = invoiceDraft.lines.reduce(
+      (sum, line) => sum + Number(line.quantity || 0) * Number(line.unitPrice || 0),
+      0
+    );
+    const invoiceGrossTotal = invoiceNetTotal * (1 + Number(invoiceDraft.vatRate || 0) / 100);
+    const unbilledInvoiceStampEntries = getUnbilledProjectStampEntries(selectedProjectFile.id);
+    const selectedInvoiceStampEntries = unbilledInvoiceStampEntries.filter((entry) =>
+      invoiceStampEntryIds.includes(entry.id)
+    );
+    const unbilledInvoiceStampHours = unbilledInvoiceStampEntries.reduce(
+      (sum, entry) => sum + Number(entry.durationMs || 0) / 3_600_000,
+      0
+    );
+    const selectedInvoiceStampHours = selectedInvoiceStampEntries.reduce(
+      (sum, entry) => sum + Number(entry.durationMs || 0) / 3_600_000,
+      0
+    );
+    const selectedInvoiceBillableStampHours = selectedInvoiceStampEntries
+      .filter((entry) => invoiceBillableStampEntryIds.includes(entry.id))
+      .reduce((sum, entry) => sum + Number(entry.durationMs || 0) / 3_600_000, 0);
+    const activeInvoiceCatalogItems = catalogItems.filter((item) => item.isActive);
+    const getFilteredInvoiceCatalogItems = (line: OfferLineDraft) => {
+      const search = (invoiceLineSearchTerms[line.id] ?? "").trim().toLowerCase();
+      if (!search) return activeInvoiceCatalogItems;
+      return activeInvoiceCatalogItems.filter((item) =>
+        [item.number, item.name, item.category, item.type, item.unit]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(search)
+      );
+    };
+
+    return (
+      <div className={styles.modalOverlay}>
+        <div className={`${styles.modal} ${styles.catalogModal} ${styles.offerModal}`}>
+          <div className={styles.catalogModalHeader}>
+            <div>
+              <h2>{editingInvoiceId ? "Rechnung bearbeiten" : "Neue Rechnung erstellen"}</h2>
+              <p>{selectedProjectFile.projectNumber || selectedProjectFile.id} | {selectedProjectFile.title}</p>
+            </div>
+            <button type="button" className={styles.iconButton} onClick={() => setIsInvoiceModalOpen(false)}>×</button>
+          </div>
+          <div className={styles.offerModalBody}>
+            {invoiceError ? <p className={styles.formError}>{invoiceError}</p> : null}
+            <div className={styles.offerModalLayout}>
+              <div className={styles.offerEditorColumn}>
+                <section className={styles.offerSection}>
+                  <div className={styles.offerSectionHeader}>
+                    <h3>Kopfdaten</h3>
+                    <span>{invoiceDraft.company}</span>
+                  </div>
+                  <div className={styles.catalogFormGrid}>
+                    <label>
+                      Geschäftspapier
+                      <select
+                        value={invoiceDraft.company}
+                        onChange={(event) => setInvoiceDraft((current) => ({ ...current, company: event.target.value as OfferDraft["company"] }))}
+                      >
+                        <option>OK solutions</option>
+                        <option>OK immocare</option>
+                      </select>
+                    </label>
+                    <label>
+                      Kunde
+                      <input value={invoiceDraft.customerName} onChange={(event) => setInvoiceDraft((current) => ({ ...current, customerName: event.target.value }))} />
+                    </label>
+                    <label>
+                      Bearbeiter/in
+                      <input value={invoiceDraft.internalContactName} onChange={(event) => setInvoiceDraft((current) => ({ ...current, internalContactName: event.target.value }))} />
+                    </label>
+                    <label>
+                      Straße
+                      <input value={invoiceDraft.customerStreet} onChange={(event) => setInvoiceDraft((current) => ({ ...current, customerStreet: event.target.value }))} />
+                    </label>
+                    <label>
+                      PLZ / Ort
+                      <input value={invoiceDraft.customerCity} onChange={(event) => setInvoiceDraft((current) => ({ ...current, customerCity: event.target.value }))} />
+                    </label>
+                    <label>
+                      MwSt. %
+                      <input type="number" value={invoiceDraft.vatRate} onChange={(event) => setInvoiceDraft((current) => ({ ...current, vatRate: Number(event.target.value) }))} />
+                    </label>
+                    <label className={styles.fullWidth}>
+                      Einleitung
+                      <textarea rows={2} value={invoiceDraft.introText} onChange={(event) => setInvoiceDraft((current) => ({ ...current, introText: event.target.value }))} />
+                    </label>
+                    <label className={styles.fullWidth}>
+                      Schlusstext
+                      <textarea rows={2} value={invoiceDraft.closingText} onChange={(event) => setInvoiceDraft((current) => ({ ...current, closingText: event.target.value }))} />
+                    </label>
+                  </div>
+                </section>
+                <section className={styles.offerSection}>
+                  <div className={styles.offerSectionHeader}>
+                    <h3>Positionen</h3>
+                    <button type="button" className={styles.secondaryButton} onClick={addInvoiceLine}>+ Position</button>
+                  </div>
+                  <div className={styles.offerInternalCalculation}>
+                    <div className={styles.offerInternalHeader}>
+                      <strong>Offene Zeiteinträge</strong>
+                      <div className={styles.tableActionGroup}>
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          disabled={unbilledInvoiceStampEntries.length === 0}
+                          onClick={() => takeOverStampEntriesForInvoice(unbilledInvoiceStampEntries, true)}
+                        >
+                          Abrechnungswirksam übernehmen
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          disabled={unbilledInvoiceStampEntries.length === 0}
+                          onClick={() => takeOverStampEntriesForInvoice(unbilledInvoiceStampEntries, false)}
+                        >
+                          Nur verknüpfen
+                        </button>
+                      </div>
+                    </div>
+                    {unbilledInvoiceStampEntries.length === 0 ? (
+                      <p>Keine offenen produktiven Zeiteinträge für dieses Projekt.</p>
+                    ) : (
+                      <>
+                        <small>
+                          Offen: {formatHours(unbilledInvoiceStampHours)} Std. aus{" "}
+                          {unbilledInvoiceStampEntries.length} Zeiteintrag
+                          {unbilledInvoiceStampEntries.length === 1 ? "" : "en"}.
+                          {selectedInvoiceStampEntries.length > 0
+                            ? ` Verknüpft: ${formatHours(selectedInvoiceStampHours)} Std. | abrechnungswirksam: ${formatHours(selectedInvoiceBillableStampHours)} Std.`
+                            : ""}
+                        </small>
+                        <div className={styles.planningHistoryList}>
+                          {unbilledInvoiceStampEntries.slice(0, 4).map((entry) => (
+                            <article key={`invoice-stamp-${entry.id}`}>
+                              <strong>
+                                {entry.employee} | {formatStampDuration(entry.durationMs)}
+                              </strong>
+                              <span>
+                                {entry.date} von {entry.startTime} bis {entry.endTime} |{" "}
+                                {entry.entrySource === "manual" ? "Manuell" : "Gestempelt"}
+                              </span>
+                              <p>{entry.comment || "Ohne Kommentar"}</p>
+                            </article>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <div className={styles.offerLinesTableWrap}>
+                    <table className={styles.offerLinesTable}>
+                      <thead>
+                        <tr>
+                          <th>Artikel / Leistung / Paket</th>
+                          <th>Menge</th>
+                          <th>Einheit</th>
+                          <th>Einzelpreis</th>
+                          <th>Gesamt</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {invoiceDraft.lines.map((line, index) => (
+                          <tr key={line.id} data-picker-open={openInvoiceLinePickerId === line.id}>
+                            <td>
+                              <div className={styles.offerLineHeader}>
+                                <span>Position {index + 1}</span>
+                                <em data-type={line.catalogType || "free"}>{getOfferLineTypeLabel(line.catalogType)}</em>
+                                <button type="button" className={styles.offerLineDeleteButton} onClick={() => removeInvoiceLine(index)}>Löschen</button>
+                              </div>
+                              <div className={styles.offerLinePicker}>
+                                <input
+                                  value={
+                                    openInvoiceLinePickerId === line.id
+                                      ? invoiceLineSearchTerms[line.id] ?? ""
+                                      : line.catalogItemId
+                                        ? `${catalogItems.find((item) => item.id === line.catalogItemId)?.number ?? ""} | ${
+                                            catalogItems.find((item) => item.id === line.catalogItemId)?.name ?? line.title
+                                          }`
+                                        : invoiceLineSearchTerms[line.id] ?? ""
+                                  }
+                                  onFocus={() => setOpenInvoiceLinePickerId(line.id)}
+                                  onBlur={() => window.setTimeout(() => setOpenInvoiceLinePickerId(""), 120)}
+                                  onChange={(event) => {
+                                    setOpenInvoiceLinePickerId(line.id);
+                                    setInvoiceLineSearchTerms((current) => ({
+                                      ...current,
+                                      [line.id]: event.target.value,
+                                    }));
+                                  }}
+                                  placeholder="Artikel, Leistung oder Paket suchen..."
+                                />
+                                {openInvoiceLinePickerId === line.id ? (
+                                  <div className={styles.offerLinePickerMenu}>
+                                    <button
+                                      type="button"
+                                      onMouseDown={(event) => event.preventDefault()}
+                                      onClick={() => selectInvoiceCatalogItem(index, "")}
+                                    >
+                                      Freie Position
+                                    </button>
+                                    {getFilteredInvoiceCatalogItems(line).map((item) => (
+                                      <button
+                                        key={item.id}
+                                        type="button"
+                                        data-active={line.catalogItemId === item.id}
+                                        onMouseDown={(event) => event.preventDefault()}
+                                        onClick={() => selectInvoiceCatalogItem(index, item.id)}
+                                      >
+                                        {item.number} | {item.name}
+                                      </button>
+                                    ))}
+                                    {getFilteredInvoiceCatalogItems(line).length === 0 ? (
+                                      <span>Keine Treffer</span>
+                                    ) : null}
+                                  </div>
+                                ) : null}
+                              </div>
+                              <input value={line.title} onChange={(event) => updateInvoiceLine(index, { title: event.target.value })} />
+                              <textarea rows={2} value={line.description} onChange={(event) => updateInvoiceLine(index, { description: event.target.value })} />
+                              {canPlanOfferLineLabor(line) ? (
+                                <div className={styles.offerInternalCalculation}>
+                                  <div className={styles.offerInternalHeader}>
+                                    <strong>Abrechenbare Monteurstunden</strong>
+                                    <button
+                                      type="button"
+                                      className={styles.secondaryButton}
+                                      onClick={() => addInvoiceLineLabor(index)}
+                                    >
+                                      + Mitarbeiter
+                                    </button>
+                                  </div>
+                                  {line.laborItems.length === 0 ? (
+                                    <p>Noch keine Stunden hinterlegt.</p>
+                                  ) : (
+                                    <div className={styles.offerLaborRows}>
+                                      {line.laborItems.map((labor) => (
+                                        <div key={labor.id} className={styles.offerLaborRow}>
+                                          <input value={labor.employeeName} readOnly />
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            step="0.25"
+                                            value={labor.plannedHours}
+                                            onChange={(event) =>
+                                              updateInvoiceLineLabor(index, labor.id, Number(event.target.value))
+                                            }
+                                          />
+                                          <span>Std. fakturieren</span>
+                                          <strong>{formatMoney(Number(labor.plannedHours || 0) * Number(line.unitPrice || 0))}</strong>
+                                          <button
+                                            type="button"
+                                            className={styles.iconButton}
+                                            onClick={() => removeInvoiceLineLabor(index, labor.id)}
+                                          >
+                                            ×
+                                          </button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                  <small>
+                                    Summe {formatHours(line.laborItems.reduce((sum, labor) => sum + Number(labor.plannedHours || 0), 0))} Std.
+                                    wird als Menge der Leistungsposition fakturiert.
+                                  </small>
+                                </div>
+                              ) : null}
+                            </td>
+                            <td><input type="number" min="0" step="0.25" value={line.quantity} disabled={canPlanOfferLineLabor(line)} onChange={(event) => updateInvoiceLine(index, { quantity: Number(event.target.value) })} /></td>
+                            <td><input value={line.unit} onChange={(event) => updateInvoiceLine(index, { unit: event.target.value })} /></td>
+                            <td><input type="number" step="0.01" value={line.unitPrice} onChange={(event) => updateInvoiceLine(index, { unitPrice: Number(event.target.value) })} /></td>
+                            <td>{formatMoney(Number(line.quantity || 0) * Number(line.unitPrice || 0))}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className={styles.offerTotals}>
+                    <div>
+                      <article><span>Netto</span><strong>{formatMoney(invoiceNetTotal)}</strong></article>
+                      <article><span>MwSt.</span><strong>{formatMoney(invoiceGrossTotal - invoiceNetTotal)}</strong></article>
+                      <article><span>Brutto</span><strong>{formatMoney(invoiceGrossTotal)}</strong></article>
+                    </div>
+                  </div>
+                </section>
+              </div>
+              <aside className={styles.offerPreviewPanel}>
+                <div className={styles.offerSectionHeader}>
+                  <h3>Vorschau</h3>
+                  <div className={styles.offerPreviewActions}>
+                    <button type="button" className={styles.secondaryButton} onClick={generateInvoicePreview} disabled={isGeneratingInvoicePreview}>
+                      {isGeneratingInvoicePreview ? "Aktualisiere..." : "Vorschau aktualisieren"}
+                    </button>
+                    {invoicePreviewDataUrl ? (
+                      <button type="button" className={styles.secondaryButton} onClick={() => window.open(invoicePreviewDataUrl, "_blank")}>Groß öffnen</button>
+                    ) : null}
+                  </div>
+                </div>
+                {invoicePreviewDataUrl ? (
+                  <iframe className={styles.offerPdfPreview} src={invoicePreviewDataUrl} title="Rechnungsvorschau" />
+                ) : (
+                  <div className={styles.offerPreviewEmpty}>
+                    <div>
+                      <strong>Noch keine Vorschau.</strong>
+                      <p>Aktualisiere die Vorschau, um die Rechnung auf Geschäftspapier zu prüfen.</p>
+                    </div>
+                  </div>
+                )}
+              </aside>
+            </div>
+          </div>
+          <div className={styles.modalFooter}>
+            <div className={styles.modalActions}>
+              <button type="button" className={styles.secondaryButton} onClick={() => setIsInvoiceModalOpen(false)}>Abbrechen</button>
+              <button type="button" className={styles.primaryButton} onClick={saveInvoice} disabled={isSavingInvoice}>
+                {isSavingInvoice ? "Speichert..." : "Rechnung erstellen"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderOfferModal() {
+    if (!isOfferModalOpen || !selectedProjectFile) return null;
+
+    const offerNetTotal = offerDraft.lines.reduce(
+      (sum, line) => sum + Number(line.quantity || 0) * Number(line.unitPrice || 0),
+      0
+    );
+    const offerGrossTotal = offerNetTotal * (1 + Number(offerDraft.vatRate || 0) / 100);
+    const offerPurchaseTotal = offerDraft.lines.reduce((sum, line) => {
+      const catalogItem = catalogItems.find((item) => item.id === line.catalogItemId);
+      return sum + (catalogItem ? getCatalogPackagePurchasePrice(catalogItem) : 0) * Number(line.quantity || 0);
+    }, 0);
+    const offerLaborTotal = offerDraft.lines.reduce(
+      (sum, line) =>
+        sum + line.laborItems.reduce((lineSum, labor) => lineSum + Number(labor.totalCost || 0), 0),
+      0
+    );
+    const offerInternalCostTotal = offerPurchaseTotal + offerLaborTotal;
+    const offerMarginPercent =
+      offerNetTotal > 0 ? ((offerNetTotal - offerInternalCostTotal) / offerNetTotal) * 100 : 0;
+    const offerMarginState =
+      offerMarginPercent >= 25 ? "good" : offerMarginPercent >= 15 ? "warn" : "bad";
+    const getInternalMarginPercent = (revenue: number, cost: number) =>
+      revenue > 0 ? ((revenue - cost) / revenue) * 100 : 0;
+    const getInternalMarginState = (margin: number) => (margin >= 25 ? "good" : margin >= 15 ? "warn" : "bad");
+    const offerInternalBreakdown = offerDraft.lines.reduce(
+      (breakdown, line) => {
+        const quantity = Number(line.quantity || 0);
+        const revenue = quantity * Number(line.unitPrice || 0);
+        const catalogItem = catalogItems.find((item) => item.id === line.catalogItemId);
+        const materialCost = (catalogItem ? getCatalogPackagePurchasePrice(catalogItem) : 0) * quantity;
+        const laborCost = line.laborItems.reduce((lineSum, labor) => lineSum + Number(labor.totalCost || 0), 0);
+
+        if (line.catalogType === "service") {
+          return {
+            materialRevenue: breakdown.materialRevenue,
+            laborRevenue: breakdown.laborRevenue + revenue,
+          };
+        }
+
+        if (line.catalogType === "package") {
+          const lineCostTotal = materialCost + laborCost;
+          if (lineCostTotal > 0) {
+            return {
+              materialRevenue: breakdown.materialRevenue + revenue * (materialCost / lineCostTotal),
+              laborRevenue: breakdown.laborRevenue + revenue * (laborCost / lineCostTotal),
+            };
+          }
+
+          return {
+            materialRevenue: breakdown.materialRevenue,
+            laborRevenue: breakdown.laborRevenue + revenue,
+          };
+        }
+
+        return {
+          materialRevenue: breakdown.materialRevenue + revenue,
+          laborRevenue: breakdown.laborRevenue,
+        };
+      },
+      { materialRevenue: 0, laborRevenue: 0 }
+    );
+    const offerLaborMarginPercent = getInternalMarginPercent(offerInternalBreakdown.laborRevenue, offerLaborTotal);
+    const offerMaterialMarginPercent = getInternalMarginPercent(
+      offerInternalBreakdown.materialRevenue,
+      offerPurchaseTotal
+    );
+    const activeCatalogItems = catalogItems.filter((item) => item.isActive);
+    const getFilteredOfferCatalogItems = (line: OfferLineDraft) => {
+      const search = (offerLineSearchTerms[line.id] ?? "").trim().toLowerCase();
+      if (!search) return activeCatalogItems;
+      return activeCatalogItems.filter((item) =>
+        [item.number, item.name, item.category, item.type, item.unit]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(search)
+      );
+    };
+
+    return (
+      <div className={styles.modalOverlay}>
+        <div className={`${styles.modal} ${styles.catalogModal} ${styles.offerModal}`}>
+          <div className={styles.catalogModalHeader}>
+            <div>
+              <h2>{editingOfferId ? "Angebot bearbeiten" : "Neues Angebot anlegen"}</h2>
+              <p>{selectedProjectFile.projectNumber || selectedProjectFile.id} | {selectedProjectFile.title}</p>
+            </div>
+            <button
+              className={styles.iconButton}
+              type="button"
+              onClick={() => {
+                setIsOfferModalOpen(false);
+                setEditingOfferId("");
+              }}
+            >
+              ×
+            </button>
+          </div>
+
+          <div className={styles.offerModalBody}>
+            {offerError ? <p className={styles.errorText}>{offerError}</p> : null}
+
+            <div className={styles.offerModalLayout}>
+              <div className={styles.offerEditorColumn}>
+            <section className={styles.offerSection}>
+              <div className={styles.offerSectionHeader}>
+                <h3>Kopfdaten</h3>
+                <span>{offerDraft.company}</span>
+              </div>
+              <div className={styles.catalogFormGrid}>
+                <label>
+                  Geschäftspapier
+                  <select
+                    value={offerDraft.company}
+                    onChange={(event) =>
+                      setOfferDraft((current) => ({
+                        ...current,
+                        company: event.target.value === "OK immocare" ? "OK immocare" : "OK solutions",
+                      }))
+                    }
+                  >
+                    <option value="OK solutions">OK solutions</option>
+                    <option value="OK immocare">OK immocare</option>
+                  </select>
+                </label>
+                <label>
+                  Kunde
+                  <input
+                    value={offerDraft.customerName}
+                    onChange={(event) => setOfferDraft((current) => ({ ...current, customerName: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  Ansprechpartner/in
+                  <input
+                    value={offerDraft.contactName}
+                    onChange={(event) => setOfferDraft((current) => ({ ...current, contactName: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  Straße
+                  <input
+                    value={offerDraft.customerStreet}
+                    onChange={(event) => setOfferDraft((current) => ({ ...current, customerStreet: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  PLZ / Ort
+                  <input
+                    value={offerDraft.customerCity}
+                    onChange={(event) => setOfferDraft((current) => ({ ...current, customerCity: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  Bearbeiter/in
+                  <input
+                    value={offerDraft.internalContactName}
+                    onChange={(event) =>
+                      setOfferDraft((current) => ({ ...current, internalContactName: event.target.value }))
+                    }
+                  />
+                </label>
+                <label>
+                  Telefon
+                  <input
+                    value={offerDraft.internalPhone}
+                    onChange={(event) => setOfferDraft((current) => ({ ...current, internalPhone: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  E-Mail
+                  <input
+                    value={offerDraft.internalEmail}
+                    onChange={(event) => setOfferDraft((current) => ({ ...current, internalEmail: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  MwSt. %
+                  <input
+                    type="number"
+                    value={offerDraft.vatRate}
+                    onChange={(event) =>
+                      setOfferDraft((current) => ({ ...current, vatRate: Number(event.target.value) }))
+                    }
+                  />
+                </label>
+                <label className={styles.catalogWideField}>
+                  Einleitung
+                  <textarea
+                    value={offerDraft.introText}
+                    onChange={(event) => setOfferDraft((current) => ({ ...current, introText: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  Schlusstext
+                  <textarea
+                    value={offerDraft.closingText}
+                    onChange={(event) => setOfferDraft((current) => ({ ...current, closingText: event.target.value }))}
+                  />
+                </label>
+              </div>
+            </section>
+
+            <section className={styles.offerSection}>
+              <div className={styles.offerSectionHeader}>
+                <h3>Positionen</h3>
+                <button type="button" className={styles.secondaryButton} onClick={addOfferLine}>
+                  + Position
+                </button>
+              </div>
+              <div className={styles.offerLinesTableWrap}>
+                <table className={styles.offerLinesTable}>
+                  <thead>
+                    <tr>
+                      <th>Artikel / Leistung / Paket</th>
+                      <th>Menge</th>
+                      <th>Einheit</th>
+                      <th>Einzelpreis</th>
+                      <th>Gesamt</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {offerDraft.lines.map((line, index) => (
+                      <tr key={line.id} data-picker-open={openOfferLinePickerId === line.id}>
+                        <td>
+                          <div className={styles.offerLineHeader}>
+                            <span>Position {index + 1}</span>
+                            <em data-type={line.catalogType || "free"}>
+                              {getOfferLineTypeLabel(line.catalogType)}
+                            </em>
+                            <button
+                              type="button"
+                              className={styles.offerLineDeleteButton}
+                              onClick={() => removeOfferLine(index)}
+                            >
+                              Löschen
+                            </button>
+                          </div>
+                          <div className={styles.offerLinePicker}>
+                            <input
+                              value={
+                                openOfferLinePickerId === line.id
+                                  ? offerLineSearchTerms[line.id] ?? ""
+                                  : line.catalogItemId
+                                    ? `${catalogItems.find((item) => item.id === line.catalogItemId)?.number ?? ""} | ${
+                                        catalogItems.find((item) => item.id === line.catalogItemId)?.name ?? line.title
+                                      }`
+                                    : offerLineSearchTerms[line.id] ?? ""
+                              }
+                              onFocus={() => setOpenOfferLinePickerId(line.id)}
+                              onBlur={() => window.setTimeout(() => setOpenOfferLinePickerId(""), 120)}
+                              onChange={(event) => {
+                                setOpenOfferLinePickerId(line.id);
+                                setOfferLineSearchTerms((current) => ({
+                                  ...current,
+                                  [line.id]: event.target.value,
+                                }));
+                              }}
+                              placeholder="Artikel, Leistung oder Paket suchen..."
+                            />
+                            {openOfferLinePickerId === line.id ? (
+                              <div className={styles.offerLinePickerMenu}>
+                                <button
+                                  type="button"
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  onClick={() => selectOfferCatalogItem(index, "")}
+                                >
+                                  Freie Position
+                                </button>
+                                {getFilteredOfferCatalogItems(line).map((item) => (
+                                  <button
+                                    key={item.id}
+                                    type="button"
+                                    data-active={line.catalogItemId === item.id}
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={() => selectOfferCatalogItem(index, item.id)}
+                                  >
+                                    {item.number} | {item.name}
+                                  </button>
+                                ))}
+                                {getFilteredOfferCatalogItems(line).length === 0 ? (
+                                  <span>Keine Treffer</span>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </div>
+                          <input
+                            value={line.title}
+                            onChange={(event) => updateOfferLine(index, { title: event.target.value })}
+                            placeholder="Bezeichnung"
+                          />
+                          <textarea
+                            value={line.description}
+                            onChange={(event) => updateOfferLine(index, { description: event.target.value })}
+                            placeholder="Beschreibung"
+                          />
+                          {canPlanOfferLineLabor(line) ? (
+                            <div className={styles.offerInternalCalculation}>
+                              <div className={styles.offerInternalHeader}>
+                                <strong>Interne Kalkulation</strong>
+                                <button
+                                  type="button"
+                                  className={styles.secondaryButton}
+                                  disabled={getOfferLineLaborHours(line) >= Number(line.quantity || 0)}
+                                  onClick={() => addOfferLineLabor(index)}
+                                >
+                                  + Mitarbeiterzeit
+                                </button>
+                              </div>
+                              <small>
+                                {formatHours(getOfferLineLaborHours(line))} von{" "}
+                                {formatHours(Number(line.quantity || 0))} Std. intern verplant
+                              </small>
+                              {line.laborItems.length === 0 ? (
+                                <p>Noch keine interne Vorgabezeit hinterlegt.</p>
+                              ) : (
+                                <div className={styles.offerLaborRows}>
+                                  {line.laborItems.map((labor) => (
+                                    <div key={labor.id} className={styles.offerLaborRow}>
+                                      <select
+                                        value={labor.userId}
+                                        onChange={(event) =>
+                                          updateOfferLineLabor(index, labor.id, {
+                                            userId: event.target.value,
+                                          })
+                                        }
+                                      >
+                                        <option value="">Mitarbeiter auswählen</option>
+                                        {users
+                                          .filter((user) => user.isActive)
+                                          .map((user) => (
+                                            <option key={user.id} value={user.id}>
+                                              {user.name}
+                                            </option>
+                                          ))}
+                                      </select>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        max={
+                                          Number(line.quantity || 0) -
+                                          line.laborItems
+                                            .filter((item) => item.id !== labor.id)
+                                            .reduce((sum, item) => sum + Number(item.plannedHours || 0), 0)
+                                        }
+                                        step="0.25"
+                                        value={labor.plannedHours}
+                                        onChange={(event) =>
+                                          updateOfferLineLabor(index, labor.id, {
+                                            plannedHours: Number(event.target.value),
+                                          })
+                                        }
+                                        aria-label="Vorgabezeit in Stunden"
+                                      />
+                                      <span>{formatMoney(labor.hourlyCostRate)} / Std.</span>
+                                      <strong>{formatMoney(labor.totalCost)}</strong>
+                                      <button
+                                        type="button"
+                                        className={styles.iconButton}
+                                        onClick={() => removeOfferLineLabor(index, labor.id)}
+                                        aria-label="Mitarbeiterzeit löschen"
+                                      >
+                                        ×
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={line.quantity}
+                            onChange={(event) => updateOfferLine(index, { quantity: Number(event.target.value) })}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            value={line.unit}
+                            onChange={(event) => updateOfferLine(index, { unit: event.target.value })}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={line.unitPrice}
+                            onChange={(event) => updateOfferLine(index, { unitPrice: Number(event.target.value) })}
+                          />
+                        </td>
+                        <td>{formatMoney(Number(line.quantity || 0) * Number(line.unitPrice || 0))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section className={styles.offerTotals}>
+              <div>
+                <article>
+                  <span>Netto</span>
+                  <strong>{formatMoney(offerNetTotal)}</strong>
+                </article>
+                <article>
+                  <span>MwSt.</span>
+                  <strong>{formatMoney(offerGrossTotal - offerNetTotal)}</strong>
+                </article>
+                <article>
+                  <span>Brutto</span>
+                  <strong>{formatMoney(offerGrossTotal)}</strong>
+                </article>
+              </div>
+              <div>
+                <table className={styles.offerInternalSummaryTable}>
+                  <thead>
+                    <tr>
+                      <th>Kosten</th>
+                      <th>Erlöse</th>
+                      <th>Differenz in €</th>
+                      <th>Marge in %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>
+                        <span>Lohnkosten intern</span>
+                        <strong>{formatMoney(offerLaborTotal)}</strong>
+                      </td>
+                      <td>
+                        <span>Lohnerlöse</span>
+                        <strong>{formatMoney(offerInternalBreakdown.laborRevenue)}</strong>
+                      </td>
+                      <td>{formatMoney(offerInternalBreakdown.laborRevenue - offerLaborTotal)}</td>
+                      <td data-margin={getInternalMarginState(offerLaborMarginPercent)}>
+                        {formatHours(offerLaborMarginPercent)}%
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <span>Artikelkosten intern</span>
+                        <strong>{formatMoney(offerPurchaseTotal)}</strong>
+                      </td>
+                      <td>
+                        <span>Artikelerlöse</span>
+                        <strong>{formatMoney(offerInternalBreakdown.materialRevenue)}</strong>
+                      </td>
+                      <td>{formatMoney(offerInternalBreakdown.materialRevenue - offerPurchaseTotal)}</td>
+                      <td data-margin={getInternalMarginState(offerMaterialMarginPercent)}>
+                        {formatHours(offerMaterialMarginPercent)}%
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <span>Gesamtkosten intern</span>
+                        <strong>{formatMoney(offerInternalCostTotal)}</strong>
+                      </td>
+                      <td>
+                        <span>Gesamterlöse</span>
+                        <strong>{formatMoney(offerNetTotal)}</strong>
+                      </td>
+                      <td>{formatMoney(offerNetTotal - offerInternalCostTotal)}</td>
+                      <td data-margin={offerMarginState}>{formatHours(offerMarginPercent)}%</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+              </div>
+
+              <aside className={styles.offerPreviewPanel}>
+                <div className={styles.offerSectionHeader}>
+                  <h3>Vorschau</h3>
+                  <div className={styles.offerPreviewActions}>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={generateOfferPreview}
+                      disabled={isGeneratingOfferPreview}
+                    >
+                      {isGeneratingOfferPreview ? "Erstelle..." : "Vorschau aktualisieren"}
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => offerPreviewDataUrl && window.open(offerPreviewDataUrl, "_blank")}
+                      disabled={!offerPreviewDataUrl}
+                    >
+                      Groß öffnen
+                    </button>
+                  </div>
+                </div>
+                {offerPreviewDataUrl ? (
+                  <iframe
+                    className={styles.offerPdfPreview}
+                    src={offerPreviewDataUrl}
+                    title="Angebotsvorschau"
+                  />
+                ) : (
+                  <div className={styles.offerPreviewEmpty}>
+                    <strong>Noch keine PDF-Vorschau</strong>
+                    <p>
+                      Klicke auf Vorschau aktualisieren. Die Anzeige nutzt exakt denselben
+                      PDF-Renderer wie das finale Angebot.
+                    </p>
+                  </div>
+                )}
+              </aside>
+            </div>
+          </div>
+
+          <div className={styles.modalFooter}>
+            <div />
+            <div className={styles.modalActions}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => {
+                  setIsOfferModalOpen(false);
+                  setEditingOfferId("");
+                }}
+              >
+                Abbrechen
+              </button>
+              <button type="button" className={styles.primaryButton} onClick={saveOffer} disabled={isSavingOffer}>
+                {isSavingOffer
+                  ? editingOfferId
+                    ? "Speichere PDF..."
+                    : "Erstelle PDF..."
+                  : editingOfferId
+                    ? "Angebot speichern"
+                    : "Angebot erstellen"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     );
   }
 
@@ -8735,14 +12637,16 @@ export function DashboardPage() {
         .filter(Boolean)
         .some((value) => value.toLowerCase().includes(search));
     });
-    const visibleEmployees =
-      employeeStatusView === "active" ? filteredEmployees : [];
+    const visibleEmployees = filteredEmployees.filter((user) =>
+      employeeStatusView === "active" ? user.isActive : !user.isActive
+    );
     const employeeTopTabs: Array<{ id: EmployeeTopTab; label: string }> = [
       { id: "overview", label: "Übersicht" },
       { id: "absence", label: "Urlaub und Abwesenheiten" },
       { id: "time", label: "Zeiterfassung" },
       { id: "balance", label: "Stundenausgleich" },
       { id: "documents", label: "Dokumente" },
+      ...(mayAccessEmployeeCosts ? [{ id: "costs" as EmployeeTopTab, label: "Lohnkosten" }] : []),
     ];
     const employeeSideTabs: Array<{ id: EmployeeSideTab; label: string }> = [
       { id: "personal", label: "Persönliches" },
@@ -8792,6 +12696,11 @@ export function DashboardPage() {
       .filter((entry) => entry.mode === "unproductive")
       .reduce((sum, entry) => sum + entry.durationMs, 0);
     const employeeTotalTimeMs = employeeProductiveMs + employeeUnproductiveMs;
+    const employeeCostDraft =
+      selectedEmployee && mayAccessEmployeeCosts
+        ? getEmployeeCostDraft(selectedEmployee.id)
+        : defaultEmployeeCostCalculation;
+    const employeeCostMetrics = getEmployeeCostMetrics(employeeCostDraft);
 
     if (selectedEmployee || isNewEmployee) {
       return (
@@ -9580,6 +13489,175 @@ export function DashboardPage() {
                   </table>
                 </section>
               )}
+              {employeeTopTab === "costs" && selectedEmployee && mayAccessEmployeeCosts && (
+                <section className={styles.employeeCostPanel}>
+                  <div className={styles.employeeSectionHeader}>
+                    <div>
+                      <h2>Lohnkostenberechnung</h2>
+                      <p>
+                        Interne Kalkulation für {selectedEmployee.name}. Diese Ansicht ist nur für
+                        Ramona Eid und Christian Eid sichtbar.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      disabled={isSavingEmployeeCost}
+                      onClick={() => saveEmployeeCost(selectedEmployee.id)}
+                    >
+                      {isSavingEmployeeCost ? "Speichert..." : "Lohnkosten speichern"}
+                    </button>
+                  </div>
+
+                  {employeeCostError ? <p className={styles.errorText}>{employeeCostError}</p> : null}
+
+                  <div className={styles.employeeCostForm}>
+                    <label>
+                      Monatsgehalt brutto
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={employeeCostDraft.monthlySalary}
+                        onChange={(event) =>
+                          updateEmployeeCostDraft(selectedEmployee.id, {
+                            monthlySalary: Number(event.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      Vollkostenfaktor
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={employeeCostDraft.fullCostFactor}
+                        onChange={(event) =>
+                          updateEmployeeCostDraft(selectedEmployee.id, {
+                            fullCostFactor: Number(event.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      Jahresstunden gesamt
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={employeeCostDraft.annualHours}
+                        onChange={(event) =>
+                          updateEmployeeCostDraft(selectedEmployee.id, {
+                            annualHours: Number(event.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      Urlaubstage
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={employeeCostDraft.vacationDays}
+                        onChange={(event) =>
+                          updateEmployeeCostDraft(selectedEmployee.id, {
+                            vacationDays: Number(event.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      Schulungstage
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={employeeCostDraft.trainingDays}
+                        onChange={(event) =>
+                          updateEmployeeCostDraft(selectedEmployee.id, {
+                            trainingDays: Number(event.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      Krankheitstage angenommen
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={employeeCostDraft.sickDays}
+                        onChange={(event) =>
+                          updateEmployeeCostDraft(selectedEmployee.id, {
+                            sickDays: Number(event.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      Stunden pro Arbeitstag
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.25"
+                        value={employeeCostDraft.hoursPerDay}
+                        onChange={(event) =>
+                          updateEmployeeCostDraft(selectedEmployee.id, {
+                            hoursPerDay: Number(event.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                  </div>
+
+                  <div className={styles.employeeCostSummary}>
+                    <article>
+                      <span>Jahreslohnkosten</span>
+                      <strong>{formatMoney(employeeCostMetrics.annualFullCost)}</strong>
+                      <small>Gehalt x 12 x Vollkostenfaktor</small>
+                    </article>
+                    <article>
+                      <span>Monatsvollkosten</span>
+                      <strong>{formatMoney(employeeCostMetrics.monthlyFullCost)}</strong>
+                      <small>Gehalt x Vollkostenfaktor</small>
+                    </article>
+                    <article>
+                      <span>Verkaufbare Jahresstunden</span>
+                      <strong>{formatHours(employeeCostMetrics.sellableAnnualHours)} Std.</strong>
+                      <small>
+                        {formatHours(employeeCostMetrics.deductionHours)} Std. Abzug aus{" "}
+                        {formatHours(employeeCostMetrics.deductionDays)} Tagen
+                      </small>
+                    </article>
+                    <article>
+                      <span>Verkaufbare Monatsstunden</span>
+                      <strong>{formatHours(employeeCostMetrics.sellableMonthlyHours)} Std.</strong>
+                      <small>Jahreswert geteilt durch 12</small>
+                    </article>
+                    <article className={styles.employeeCostHighlight}>
+                      <span>Interner Kostensatz</span>
+                      <strong>{formatMoney(employeeCostMetrics.hourlyCost)} / Std.</strong>
+                      <small>Basis für spätere Leistungs- und Paketkalkulation</small>
+                    </article>
+                  </div>
+
+                  {employeeCostDraft.updatedAt ? (
+                    <p className={styles.employeeCostMeta}>
+                      Zuletzt gespeichert am{" "}
+                      {new Date(employeeCostDraft.updatedAt).toLocaleString("de-DE", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                      {employeeCostDraft.updatedByName ? ` von ${employeeCostDraft.updatedByName}` : ""}
+                    </p>
+                  ) : null}
+                </section>
+              )}
               {employeeTopTab === "documents" && (
                 <section className={styles.tableCard}>
                   <table className={styles.table}>
@@ -9658,12 +13736,13 @@ export function DashboardPage() {
                 <th>Position</th>
                 <th>Niederlassungen</th>
                 <th>Erstellt</th>
+                <th>Aktion</th>
               </tr>
             </thead>
             <tbody>
               {visibleEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan={6}>Keine passenden Einträge gefunden.</td>
+                  <td colSpan={7}>Keine passenden Einträge gefunden.</td>
                 </tr>
               ) : (
                 visibleEmployees.map((user, index) => (
@@ -9691,6 +13770,35 @@ export function DashboardPage() {
                             .join(", ") || "-"}
                     </td>
                     <td>-</td>
+                    <td>
+                      <div className={styles.employeeRowActions}>
+                        {user.isActive ? (
+                          <button
+                            type="button"
+                            className={styles.deleteButton}
+                            disabled={!mayManageUsers || user.id === activeUserId}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void deleteUser(user.id);
+                            }}
+                          >
+                            Inaktiv setzen
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className={styles.acceptButton}
+                            disabled={!mayManageUsers}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void restoreUser(user.id);
+                            }}
+                          >
+                            Reaktivieren
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
@@ -10117,6 +14225,671 @@ export function DashboardPage() {
     if (letterheadUploadRef.current) {
       letterheadUploadRef.current.value = "";
     }
+  }
+
+  function getCatalogViewType(): CatalogItemType | "" {
+    if (activeTab === "articles") return "article";
+    if (activeTab === "services") return "service";
+    if (activeTab === "packages") return "package";
+    return "";
+  }
+
+  function renderCatalogItems() {
+    const viewType = getCatalogViewType();
+    const search = catalogSearchTerm.trim().toLowerCase();
+    const filteredItems = catalogItems.filter((item) => {
+      if (viewType && item.type !== viewType) return false;
+      if (catalogStatusFilter === "active" && !item.isActive) return false;
+      if (catalogStatusFilter === "inactive" && item.isActive) return false;
+      const haystack = [
+        item.number,
+        item.name,
+        item.category,
+        item.unit,
+        item.description,
+        item.matchcode,
+        item.supplierName,
+        item.manufacturer,
+      ].join(" ").toLowerCase();
+      if (search && !haystack.includes(search)) return false;
+      return (
+        item.number.toLowerCase().includes(catalogColumnFilters.number.toLowerCase()) &&
+        item.name.toLowerCase().includes(catalogColumnFilters.name.toLowerCase()) &&
+        item.category.toLowerCase().includes(catalogColumnFilters.category.toLowerCase()) &&
+        item.unit.toLowerCase().includes(catalogColumnFilters.unit.toLowerCase()) &&
+        item.supplierName.toLowerCase().includes(catalogColumnFilters.supplierName.toLowerCase())
+      );
+    });
+    const pageCount = Math.max(1, Math.ceil(filteredItems.length / catalogPageSize));
+    const safePage = Math.min(catalogPage, pageCount);
+    const pagedItems = filteredItems.slice((safePage - 1) * catalogPageSize, safePage * catalogPageSize);
+    const articleCount = catalogItems.filter((item) => item.type === "article" && item.isActive).length;
+    const serviceCount = catalogItems.filter((item) => item.type === "service" && item.isActive).length;
+    const packageCount = catalogItems.filter((item) => item.type === "package" && item.isActive).length;
+    const activeCreateType: CatalogItemType =
+      activeTab === "services" ? "service" : activeTab === "packages" ? "package" : "article";
+    const catalogCreateButtons: Array<{ type: CatalogItemType; label: string }> = [
+      { type: "article", label: "+ Artikel" },
+      { type: "service", label: "+ Leistung" },
+      { type: "package", label: "+ Paket" },
+    ];
+
+    if (activeTab === "datanorm") {
+      return (
+        <section className={styles.settingsPanel}>
+          <div className={styles.topline}>
+            <div>
+              <p className={styles.eyebrow}>Artikel & Leistungen</p>
+              <h1>Datanorm</h1>
+              <p className={styles.subline}>
+                Der Importbereich ist vorbereitet. Die Stammdatenstruktur ist bereits für spätere Lieferanten- und Datanorm-Importe ausgelegt.
+              </p>
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    return (
+      <section className={styles.contactsPanel}>
+        <div className={styles.topline}>
+          <div>
+            <p className={styles.eyebrow}>Artikel & Leistungen</p>
+            <h1>
+              {activeTab === "services"
+                ? "Leistungen"
+                : activeTab === "packages"
+                ? "Pakete"
+                : activeTab === "salesPrices"
+                ? "Verkaufspreise"
+                : "Artikel"}
+            </h1>
+            <p className={styles.subline}>Zentrale Stammdaten für Angebote, Rechnungen, Planung und spätere Nachkalkulation.</p>
+          </div>
+          <div className={styles.actionGroup}>
+            {catalogCreateButtons.map((button) => (
+              <button
+                key={button.type}
+                className={activeCreateType === button.type ? styles.primaryButton : styles.secondaryButton}
+                onClick={() => openCatalogModal(button.type)}
+              >
+                {button.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <section className={styles.contactSummaryGrid}>
+          {[
+            { label: "Artikel", value: "articles", count: articleCount },
+            { label: "Leistungen", value: "services", count: serviceCount },
+            { label: "Pakete", value: "packages", count: packageCount },
+          ].map((item) => (
+            <button
+              key={item.label}
+              className={styles.contactSummaryCard}
+              data-active={activeTab === item.value}
+              onClick={() => {
+                if (item.value === "articles") {
+                  openMainView("articles");
+                  setCatalogStatusFilter("active");
+                } else if (item.value === "services") {
+                  openMainView("services");
+                  setCatalogStatusFilter("active");
+                } else if (item.value === "packages") {
+                  openMainView("packages");
+                  setCatalogStatusFilter("active");
+                }
+              }}
+            >
+              <span>{item.label}</span>
+              <strong>{item.count}</strong>
+            </button>
+          ))}
+        </section>
+
+        <section className={styles.contactToolbar}>
+          <label>
+            Suche
+            <input value={catalogSearchTerm} onChange={(event) => setCatalogSearchTerm(event.target.value)} placeholder="Nummer, Name, Kategorie, Lieferant, Matchcode" />
+          </label>
+          <label>
+            Status
+            <select value={catalogStatusFilter} onChange={(event) => setCatalogStatusFilter(event.target.value as "active" | "inactive" | "all")}>
+              <option value="active">Aktiv</option>
+              <option value="inactive">Inaktiv</option>
+              <option value="all">Alle</option>
+            </select>
+          </label>
+        </section>
+
+        <div className={styles.contactPagination}>
+          <span>Seite</span>
+          <button className={styles.iconButton} disabled={safePage <= 1} onClick={() => setCatalogPage((page) => Math.max(1, page - 1))}>‹</button>
+          <input value={safePage} onChange={(event) => setCatalogPage(Number(event.target.value) || 1)} />
+          <button className={styles.iconButton} disabled={safePage >= pageCount} onClick={() => setCatalogPage((page) => Math.min(pageCount, page + 1))}>›</button>
+          <span>von {pageCount}</span>
+          <span>Zeige</span>
+          <select value={catalogPageSize} onChange={(event) => setCatalogPageSize(Number(event.target.value))}>
+            {[25, 50, 100, 250].map((size) => <option key={size} value={size}>{size}</option>)}
+          </select>
+          <strong>{filteredItems.length} Einträge gefunden</strong>
+        </div>
+
+        <section className={`${styles.contactsTableCard} ${styles.catalogTableCard}`}>
+          <table className={`${styles.contactsTable} ${styles.catalogTable}`}>
+            <thead>
+              <tr>
+                <th>Nummer</th>
+                <th>Name</th>
+                <th>Typ</th>
+                <th>Kategorie</th>
+                <th>Einheit</th>
+                <th>Lieferant</th>
+                <th>Genutzt</th>
+                <th>EK</th>
+                <th>VK</th>
+                <th>MwSt.</th>
+                <th>Status</th>
+                <th>Aktionen</th>
+              </tr>
+              <tr className={styles.contactFilterRow}>
+                <th><input value={catalogColumnFilters.number} onChange={(event) => setCatalogColumnFilters((current) => ({ ...current, number: event.target.value }))} /></th>
+                <th><input value={catalogColumnFilters.name} onChange={(event) => setCatalogColumnFilters((current) => ({ ...current, name: event.target.value }))} /></th>
+                <th />
+                <th><input value={catalogColumnFilters.category} onChange={(event) => setCatalogColumnFilters((current) => ({ ...current, category: event.target.value }))} /></th>
+                <th><input value={catalogColumnFilters.unit} onChange={(event) => setCatalogColumnFilters((current) => ({ ...current, unit: event.target.value }))} /></th>
+                <th><input value={catalogColumnFilters.supplierName} onChange={(event) => setCatalogColumnFilters((current) => ({ ...current, supplierName: event.target.value }))} /></th>
+                <th colSpan={6} />
+              </tr>
+            </thead>
+            <tbody>
+              {pagedItems.length === 0 ? (
+                <tr><td colSpan={12}>Noch keine Einträge gefunden.</td></tr>
+              ) : pagedItems.map((item) => (
+                <tr key={item.id} data-selected={!item.isActive ? "true" : undefined}>
+                  <td><button className={styles.tableTextLink} onClick={() => openEditCatalogModal(item)}>{item.number}</button></td>
+                  <td className={styles.title}>{item.name}</td>
+                  <td>{item.type === "service" ? "Leistung" : item.type === "package" ? "Paket" : "Artikel"}</td>
+                  <td>{item.category || "-"}</td>
+                  <td>{item.unit}</td>
+                  <td>{item.supplierName || "-"}</td>
+                  <td>{item.usedCount}</td>
+                  <td>{formatMoney(item.purchasePrice)}</td>
+                  <td>{formatMoney(item.salesPrice)}</td>
+                  <td>{formatHours(item.vatRate)}%</td>
+                  <td>{item.isActive ? "Aktiv" : "Inaktiv"}</td>
+                  <td>
+                    <div className={styles.tableActionGroup}>
+                      <button className={styles.iconButton} onClick={() => openEditCatalogModal(item)} title="Bearbeiten">✎</button>
+                      <button className={styles.iconButton} onClick={() => duplicateCatalogItem(item)} title="Duplizieren">⧉</button>
+                      <button className={styles.iconButton} onClick={() => deactivateCatalogItem(item)} title="Deaktivieren">⌫</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+
+        {isCatalogModalOpen ? renderCatalogModal() : null}
+      </section>
+    );
+  }
+
+  function renderCatalogModal() {
+    const editingItem = catalogItems.find((item) => item.id === editingCatalogItemId);
+    const packagePurchaseTotal = catalogDraft.packageItems.reduce(
+      (sum, item) => sum + item.componentPurchasePrice * item.quantity,
+      0
+    );
+    const packageSalesTotal = catalogDraft.packageItems.reduce(
+      (sum, item) => sum + (item.priceOverride ?? item.componentSalesPrice) * item.quantity,
+      0
+    );
+    const packagePlanningMinutes = catalogDraft.packageItems.reduce(
+      (sum, item) => sum + item.componentPlanningMinutesPerUnit * item.quantity,
+      0
+    );
+    const materialPackageItems = catalogDraft.packageItems.filter((item) => item.componentType === "article");
+    const laborPackageItems = catalogDraft.packageItems.filter((item) => item.componentType === "service");
+    const materialPurchaseTotal = materialPackageItems.reduce(
+      (sum, item) => sum + item.componentPurchasePrice * item.quantity,
+      0
+    );
+    const materialSalesTotal = materialPackageItems.reduce(
+      (sum, item) => sum + (item.priceOverride ?? item.componentSalesPrice) * item.quantity,
+      0
+    );
+    const laborPurchaseTotal = laborPackageItems.reduce(
+      (sum, item) => sum + item.componentPurchasePrice * item.quantity,
+      0
+    );
+    const laborSalesTotal = laborPackageItems.reduce(
+      (sum, item) => sum + (item.priceOverride ?? item.componentSalesPrice) * item.quantity,
+      0
+    );
+    const effectivePurchasePrice = catalogDraft.type === "package" ? packagePurchaseTotal : catalogDraft.purchasePrice;
+    const effectiveSalesPrice = catalogDraft.type === "package" && catalogDraft.salesPrice === 0 ? packageSalesTotal : catalogDraft.salesPrice;
+    const margin = effectiveSalesPrice > 0 ? ((effectiveSalesPrice - effectivePurchasePrice) / effectiveSalesPrice) * 100 : 0;
+    const packageNetSalesPrice =
+      catalogDraft.type === "package" && catalogDraft.salesPrice === 0
+        ? packageSalesTotal
+        : catalogDraft.salesPrice;
+    const packageGrossSalesPrice = packageNetSalesPrice * (1 + catalogDraft.vatRate / 100);
+    const packageMargin = packageNetSalesPrice > 0
+      ? ((packageNetSalesPrice - packagePurchaseTotal) / packageNetSalesPrice) * 100
+      : 0;
+    const getMarkupPercent = (purchasePrice: number, salesPrice: number) =>
+      purchasePrice > 0 ? ((salesPrice - purchasePrice) / purchasePrice) * 100 : 0;
+    const planningGroups = catalogDraft.defaultPlanningBoard === "OK immocare" ? ["VZK", "TZK"] : ["Marketing", "Arb.Sich.", "HR"];
+    const catalogTypeLabel =
+      catalogDraft.type === "service" ? "Leistung" : catalogDraft.type === "package" ? "Paket" : "Artikel";
+    const catalogModalTitle = editingCatalogItemId
+      ? `${catalogTypeLabel} bearbeiten`
+      : catalogDraft.type === "service"
+      ? "Neue Leistung anlegen"
+      : catalogDraft.type === "package"
+      ? "Neues Paket anlegen"
+      : "Neuen Artikel anlegen";
+
+    return (
+      <div className={styles.modalOverlay}>
+        <section className={`${styles.modal} ${styles.catalogModal}`}>
+          <div className={styles.catalogModalHeader}>
+            <div>
+              <h2>{catalogModalTitle}</h2>
+              <p>{catalogTypeLabel} {catalogDraft.number}</p>
+            </div>
+            <button className={styles.iconButton} onClick={() => setIsCatalogModalOpen(false)}>×</button>
+          </div>
+          <div className={styles.contactFormTabs}>
+            {[
+              ["information", "Informationen"],
+              ["calculation", "Kalkulation"],
+              ["history", "Historie"],
+            ].map(([id, label]) => (
+              <button key={id} type="button" data-active={catalogFormTab === id} onClick={() => setCatalogFormTab(id as CatalogFormTab)}>{label}</button>
+            ))}
+          </div>
+          {catalogError ? <p className={styles.modalWarning}>{catalogError}</p> : null}
+          {catalogFormTab === "information" ? (
+            <div className={styles.catalogFormGrid}>
+              <label>Typ<select value={catalogDraft.type} onChange={(event) => updateCatalogDraft("type", event.target.value as CatalogItemType)}><option value="article">Artikel</option><option value="service">Leistung</option><option value="package">Paket</option></select></label>
+              <label>Nummer<input value={catalogDraft.number} onChange={(event) => updateCatalogDraft("number", event.target.value)} /></label>
+              <label className={styles.catalogWideField}>Name<input value={catalogDraft.name} onChange={(event) => updateCatalogDraft("name", event.target.value)} /></label>
+              <label>Kategorie<input value={catalogDraft.category} onChange={(event) => updateCatalogDraft("category", event.target.value)} /></label>
+              <label>Einheit<select value={catalogDraft.unit} onChange={(event) => updateCatalogDraft("unit", event.target.value)}>{catalogUnits.map((unit) => <option key={unit} value={unit}>{unit}</option>)}</select></label>
+              <label>Matchcode<input value={catalogDraft.matchcode} onChange={(event) => updateCatalogDraft("matchcode", event.target.value)} /></label>
+              <label>EAN<input value={catalogDraft.ean} onChange={(event) => updateCatalogDraft("ean", event.target.value)} /></label>
+              <label>Kostenstelle<input value={catalogDraft.costCenter} onChange={(event) => updateCatalogDraft("costCenter", event.target.value)} /></label>
+              <label>Lieferant<input value={catalogDraft.supplierName} onChange={(event) => updateCatalogDraft("supplierName", event.target.value)} /></label>
+              <label>Lieferanten-Nr.<input value={catalogDraft.supplierNumber} onChange={(event) => updateCatalogDraft("supplierNumber", event.target.value)} /></label>
+              <label>Hersteller<input value={catalogDraft.manufacturer} onChange={(event) => updateCatalogDraft("manufacturer", event.target.value)} /></label>
+              <label>Hersteller-Nr.<input value={catalogDraft.manufacturerNumber} onChange={(event) => updateCatalogDraft("manufacturerNumber", event.target.value)} /></label>
+              <label>Hersteller-Typ<input value={catalogDraft.manufacturerTypeName} onChange={(event) => updateCatalogDraft("manufacturerTypeName", event.target.value)} /></label>
+              <label>Mindestbestellmenge<input type="number" value={catalogDraft.minimumOrderQuantity ?? ""} onChange={(event) => updateCatalogDraft("minimumOrderQuantity", event.target.value ? Number(event.target.value) : null)} /></label>
+              <label>Mengenstaffel<input value={catalogDraft.quantityScale} onChange={(event) => updateCatalogDraft("quantityScale", event.target.value)} /></label>
+              <label>Lieferzeit<input value={catalogDraft.deliveryTime} onChange={(event) => updateCatalogDraft("deliveryTime", event.target.value)} /></label>
+              <label>Lagerbestand<input type="number" value={catalogDraft.stockQuantity ?? ""} onChange={(event) => updateCatalogDraft("stockQuantity", event.target.value ? Number(event.target.value) : null)} /></label>
+              <label className={styles.catalogWideField}>Beschreibung<textarea value={catalogDraft.description} onChange={(event) => updateCatalogDraft("description", event.target.value)} /></label>
+              <label className={styles.checkboxRow}><input type="checkbox" checked={catalogDraft.isActive} onChange={(event) => updateCatalogDraft("isActive", event.target.checked)} />Aktiv</label>
+            </div>
+          ) : null}
+          {catalogFormTab === "components" ? (
+            <div className={styles.catalogComponentsPanel}>
+              <div className={styles.catalogComponentToolbar}>
+                <div>
+                  <strong>Paketbestandteile</strong>
+                  <span>{catalogDraft.packageItems.length} Positionen</span>
+                </div>
+                <button className={styles.secondaryButton} onClick={() => addCatalogPackageItem()}>
+                  + Bestandteil
+                </button>
+              </div>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Artikel/Leistung</th>
+                    <th>Menge</th>
+                    <th>Einheit</th>
+                    <th>EK</th>
+                    <th>VK</th>
+                    <th>Planung</th>
+                    <th>Beschreibung</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {catalogDraft.packageItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={8}>Noch keine Bestandteile hinterlegt.</td>
+                    </tr>
+                  ) : (
+                    catalogDraft.packageItems.map((item, index) => (
+                      <tr key={item.id}>
+                        <td>
+                          <select
+                            value={item.componentItemId}
+                            onChange={(event) =>
+                              updateCatalogPackageItem(index, { componentItemId: event.target.value })
+                            }
+                          >
+                            <option value="">Bitte auswählen</option>
+                            {catalogItems
+                              .filter((candidate) => candidate.type !== "package" && candidate.isActive)
+                              .map((candidate) => (
+                                <option key={candidate.id} value={candidate.id}>
+                                  {candidate.number} | {candidate.name}
+                                </option>
+                              ))}
+                          </select>
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            value={item.quantity}
+                            onChange={(event) =>
+                              updateCatalogPackageItem(index, { quantity: Number(event.target.value) })
+                            }
+                          />
+                        </td>
+                        <td>{item.componentUnit || "-"}</td>
+                        <td>{formatMoney(item.componentPurchasePrice * item.quantity)}</td>
+                        <td>
+                          <input
+                            type="number"
+                            value={item.priceOverride ?? item.componentSalesPrice}
+                            onChange={(event) =>
+                              updateCatalogPackageItem(index, { priceOverride: Number(event.target.value) })
+                            }
+                          />
+                        </td>
+                        <td>{formatMinutes(Math.round(item.componentPlanningMinutesPerUnit * item.quantity))}</td>
+                        <td>
+                          <input
+                            value={item.descriptionOverride}
+                            onChange={(event) =>
+                              updateCatalogPackageItem(index, { descriptionOverride: event.target.value })
+                            }
+                            placeholder={item.componentName}
+                          />
+                        </td>
+                        <td>
+                          <button className={styles.iconButton} onClick={() => removeCatalogPackageItem(index)}>
+                            ×
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+              <div className={styles.catalogPackageTotals}>
+                <article><span>EK Paket</span><strong>{formatMoney(packagePurchaseTotal)}</strong></article>
+                <article><span>VK aus Bestandteilen</span><strong>{formatMoney(packageSalesTotal)}</strong></article>
+                <article><span>Planungszeit</span><strong>{formatMinutes(Math.round(packagePlanningMinutes))}</strong></article>
+              </div>
+            </div>
+          ) : null}
+          {catalogFormTab === "calculation" && catalogDraft.type === "package" ? (
+            <div className={styles.packageCalculationPanel}>
+              <section>
+                <div className={styles.packageCalculationHeader}>
+                  <h3>Material</h3>
+                  <button
+                    className={styles.tableTextLink}
+                    onClick={() => addCatalogPackageItem(catalogItems.find((item) => item.type === "article" && item.isActive)?.id)}
+                  >
+                    + Hinzufügen
+                  </button>
+                </div>
+                <table className={styles.packageCalculationTable}>
+                  <thead>
+                    <tr>
+                      <th>Artikelname</th>
+                      <th>Menge</th>
+                      <th>Einheit</th>
+                      <th>EK/Einheit</th>
+                      <th>VK/Einheit</th>
+                      <th>Aufschlag %</th>
+                      <th>VK Netto</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {materialPackageItems.length === 0 ? (
+                      <tr>
+                        <td colSpan={8}>Noch kein Material hinterlegt.</td>
+                      </tr>
+                    ) : (
+                      materialPackageItems.map((item) => {
+                        const index = catalogDraft.packageItems.findIndex((candidate) => candidate.id === item.id);
+                        const unitSalesPrice = item.priceOverride ?? item.componentSalesPrice;
+                        return (
+                          <tr key={item.id}>
+                            <td>
+                              <select
+                                value={item.componentItemId}
+                                onChange={(event) => updateCatalogPackageItem(index, { componentItemId: event.target.value })}
+                              >
+                                <option value="">Bitte auswählen</option>
+                                {catalogItems
+                                  .filter((candidate) => candidate.type === "article" && candidate.isActive)
+                                  .map((candidate) => (
+                                    <option key={candidate.id} value={candidate.id}>
+                                      {candidate.number} | {candidate.name}
+                                    </option>
+                                  ))}
+                              </select>
+                            </td>
+                            <td>
+                              <input type="number" value={item.quantity} onChange={(event) => updateCatalogPackageItem(index, { quantity: Number(event.target.value) })} />
+                            </td>
+                            <td>{item.componentUnit || "-"}</td>
+                            <td>{formatMoney(item.componentPurchasePrice)}</td>
+                            <td>
+                              <input type="number" value={unitSalesPrice} onChange={(event) => updateCatalogPackageItem(index, { priceOverride: Number(event.target.value) })} />
+                            </td>
+                            <td>{formatHours(getMarkupPercent(item.componentPurchasePrice, unitSalesPrice))}</td>
+                            <td>{formatMoney(unitSalesPrice * item.quantity)}</td>
+                            <td><button className={styles.iconButton} onClick={() => removeCatalogPackageItem(index)}>×</button></td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </section>
+
+              <section>
+                <div className={styles.packageCalculationHeader}>
+                  <h3>Lohn / Maschinenkosten</h3>
+                  <button
+                    className={styles.tableTextLink}
+                    onClick={() => addCatalogPackageItem(catalogItems.find((item) => item.type === "service" && item.isActive)?.id)}
+                  >
+                    + Hinzufügen
+                  </button>
+                </div>
+                <table className={styles.packageCalculationTable}>
+                  <thead>
+                    <tr>
+                      <th>Leistung</th>
+                      <th>Beschreibung</th>
+                      <th>Minuten</th>
+                      <th>in Stunden</th>
+                      <th>EK/Einheit</th>
+                      <th>VK/Einheit</th>
+                      <th>Aufschlag %</th>
+                      <th>VK Netto</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {laborPackageItems.length === 0 ? (
+                      <tr>
+                        <td colSpan={9}>Noch keine Leistung hinterlegt.</td>
+                      </tr>
+                    ) : (
+                      laborPackageItems.map((item) => {
+                        const index = catalogDraft.packageItems.findIndex((candidate) => candidate.id === item.id);
+                        const unitSalesPrice = item.priceOverride ?? item.componentSalesPrice;
+                        const minutes = item.componentPlanningMinutesPerUnit * item.quantity;
+                        return (
+                          <tr key={item.id}>
+                            <td>
+                              <select
+                                value={item.componentItemId}
+                                onChange={(event) => updateCatalogPackageItem(index, { componentItemId: event.target.value })}
+                              >
+                                <option value="">Bitte auswählen</option>
+                                {catalogItems
+                                  .filter((candidate) => candidate.type === "service" && candidate.isActive)
+                                  .map((candidate) => (
+                                    <option key={candidate.id} value={candidate.id}>
+                                      {candidate.number} | {candidate.name}
+                                    </option>
+                                  ))}
+                              </select>
+                            </td>
+                            <td>
+                              <input value={item.descriptionOverride} onChange={(event) => updateCatalogPackageItem(index, { descriptionOverride: event.target.value })} placeholder={item.componentName} />
+                            </td>
+                            <td>{formatHours(minutes)}</td>
+                            <td>{formatHours(minutes / 60)}</td>
+                            <td>{formatMoney(item.componentPurchasePrice)}</td>
+                            <td>
+                              <input type="number" value={unitSalesPrice} onChange={(event) => updateCatalogPackageItem(index, { priceOverride: Number(event.target.value) })} />
+                            </td>
+                            <td>{formatHours(getMarkupPercent(item.componentPurchasePrice, unitSalesPrice))}</td>
+                            <td>{formatMoney(unitSalesPrice * item.quantity)}</td>
+                            <td><button className={styles.iconButton} onClick={() => removeCatalogPackageItem(index)}>×</button></td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </section>
+
+              <section>
+                <h3>Netto</h3>
+                <table className={styles.packageSummaryTable}>
+                  <thead>
+                    <tr>
+                      <th />
+                      <th>EK</th>
+                      <th>Aufschlag %</th>
+                      <th>VK Netto</th>
+                      <th>Paket-VK Netto</th>
+                      <th>Marge %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <th>Material</th>
+                      <td>{formatMoney(materialPurchaseTotal)}</td>
+                      <td>{formatHours(getMarkupPercent(materialPurchaseTotal, materialSalesTotal))}</td>
+                      <td>{formatMoney(materialSalesTotal)}</td>
+                      <td>{formatMoney(materialSalesTotal)}</td>
+                      <td>{materialSalesTotal > 0 ? formatHours(((materialSalesTotal - materialPurchaseTotal) / materialSalesTotal) * 100) : "0,00"}</td>
+                    </tr>
+                    <tr>
+                      <th>Lohn / Maschinenkosten</th>
+                      <td>{formatMoney(laborPurchaseTotal)}</td>
+                      <td>{formatHours(getMarkupPercent(laborPurchaseTotal, laborSalesTotal))}</td>
+                      <td>{formatMoney(laborSalesTotal)}</td>
+                      <td>{formatMoney(laborSalesTotal)}</td>
+                      <td>{laborSalesTotal > 0 ? formatHours(((laborSalesTotal - laborPurchaseTotal) / laborSalesTotal) * 100) : "0,00"}</td>
+                    </tr>
+                    <tr>
+                      <th>Gesamtsumme</th>
+                      <td>{formatMoney(packagePurchaseTotal)}</td>
+                      <td>{formatHours(getMarkupPercent(packagePurchaseTotal, packageSalesTotal))}</td>
+                      <td>{formatMoney(packageSalesTotal)}</td>
+                      <td>{formatMoney(packageNetSalesPrice)}</td>
+                      <td>{formatHours(packageMargin)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </section>
+
+              <section>
+                <h3>Gesamt</h3>
+                <div className={styles.packageTotalGrid}>
+                  <label>
+                    Paket-VK Netto
+                    <input
+                      type="number"
+                      value={catalogDraft.salesPrice || packageSalesTotal}
+                      onChange={(event) => updateCatalogDraft("salesPrice", Number(event.target.value))}
+                    />
+                  </label>
+                  <label>
+                    MwSt. %
+                    <input type="number" value={catalogDraft.vatRate} onChange={(event) => updateCatalogDraft("vatRate", Number(event.target.value))} />
+                  </label>
+                  <article>
+                    <span>Marge</span>
+                    <strong>{formatHours(packageMargin)}%</strong>
+                  </article>
+                  <article>
+                    <span>Gesamt VK Brutto</span>
+                    <strong>{formatMoney(packageGrossSalesPrice)}</strong>
+                  </article>
+                  <article>
+                    <span>Planungszeit</span>
+                    <strong>{formatMinutes(Math.round(packagePlanningMinutes))}</strong>
+                  </article>
+                </div>
+              </section>
+            </div>
+          ) : null}
+          {catalogFormTab === "calculation" && catalogDraft.type !== "package" ? (
+            <div className={styles.catalogCalculationGrid}>
+              <label>Einkaufspreis<input type="number" value={catalogDraft.purchasePrice} onChange={(event) => updateCatalogDraft("purchasePrice", Number(event.target.value))} /></label>
+              <label>Verkaufspreis<input type="number" value={catalogDraft.salesPrice} onChange={(event) => updateCatalogDraft("salesPrice", Number(event.target.value))} /></label>
+              <label>MwSt. %<input type="number" value={catalogDraft.vatRate} onChange={(event) => updateCatalogDraft("vatRate", Number(event.target.value))} /></label>
+              <article className={styles.catalogMetric}><span>Marge</span><strong>{formatHours(margin)}%</strong></article>
+              <label className={styles.checkboxRow}><input type="checkbox" checked={catalogDraft.isPlanningRelevant} onChange={(event) => updateCatalogDraft("isPlanningRelevant", event.target.checked)} />Für Planung verfügbar</label>
+              <label>Planungszeit je Einheit<input type="number" value={catalogDraft.planningMinutesPerUnit} onChange={(event) => updateCatalogDraft("planningMinutesPerUnit", Number(event.target.value))} /></label>
+              <label>Standard-Board<select value={catalogDraft.defaultPlanningBoard} onChange={(event) => updateCatalogDraft("defaultPlanningBoard", event.target.value)}><option value="">Nicht vorbelegen</option><option value="OK solutions">OK solutions</option><option value="OK immocare">OK immocare</option></select></label>
+              <label>Standard-Gruppe<select value={catalogDraft.defaultPlanningGroup} onChange={(event) => updateCatalogDraft("defaultPlanningGroup", event.target.value)}><option value="">Nicht vorbelegen</option>{planningGroups.map((group) => <option key={group} value={group}>{group}</option>)}</select></label>
+            </div>
+          ) : null}
+          {catalogFormTab === "history" ? (
+            <div className={styles.catalogHistoryTable}>
+              <table className={styles.table}>
+                <thead><tr><th>Zeitpunkt</th><th>Ereignis</th><th>Feld</th><th>Alter Wert</th><th>Neuer Wert</th><th>Geändert von</th></tr></thead>
+                <tbody>
+                  {(editingItem?.history ?? []).length === 0 ? (
+                    <tr><td colSpan={6}>Noch keine Historie vorhanden.</td></tr>
+                  ) : (editingItem?.history ?? []).map((entry) => (
+                    <tr key={entry.id}>
+                      <td>{formatDeadline(entry.createdAt)}</td>
+                      <td>{entry.note || entry.eventType}</td>
+                      <td>{entry.fieldName || "-"}</td>
+                      <td>{entry.oldValue || "-"}</td>
+                      <td>{entry.newValue || "-"}</td>
+                      <td>{entry.actorName || "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+          <div className={styles.modalFooter}>
+            <div />
+            <div className={styles.modalActions}>
+              <button className={styles.secondaryButton} onClick={() => setIsCatalogModalOpen(false)}>Abbrechen</button>
+              {!editingCatalogItemId ? <button className={styles.secondaryButton} onClick={() => saveCatalogItem(true)}>Speichern und neu</button> : null}
+              <button className={styles.primaryButton} onClick={() => saveCatalogItem(false)}>Speichern</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
   }
 
   function renderDocumentField<K extends keyof DocumentLayoutConfig>(
@@ -11700,6 +16473,7 @@ export function DashboardPage() {
                   : [
                       { id: "articles", label: "Artikel" },
                       { id: "services", label: "Leistungen" },
+                      { id: "packages", label: "Pakete" },
                       { id: "salesPrices", label: "Verkaufspreise" },
                       { id: "datanorm", label: "Datanorm" },
                     ];
@@ -12644,6 +17418,12 @@ export function DashboardPage() {
             renderDocumentConfigurator()
           ) : activeTab === "documentTexts" ? (
             renderDocumentTextsAndTitles()
+          ) : activeTab === "articles" ||
+            activeTab === "services" ||
+            activeTab === "packages" ||
+            activeTab === "salesPrices" ||
+            activeTab === "datanorm" ? (
+            renderCatalogItems()
           ) : isPreparedSidebarTab(activeTab) ? (
             <section className={styles.settingsPanel}>
               <div className={styles.topline}>
@@ -14524,19 +19304,34 @@ export function DashboardPage() {
                     </label>
                     <div className={styles.planningOfferInfo}>
                       <span>Angebot vorbereitet</span>
-                      <strong>
-                        {formatHours(
-                          getPlanningNetMinutesBetween(
-                            planningEntryStartTime,
-                            planningEntryEndTime,
-                            getUserBreakWindowForDate(
-                              users.find((user) => user.id === planningEntryUserId),
-                              planningEntryDate
-                            )
-                          ) / 60
-                        )} von{" "}
-                        {formatHours(Number(planningEntryOfferTotalHours) || 0)} Std. verplant
-                      </strong>
+                      {(() => {
+                        const currentMinutes = getPlanningNetMinutesBetween(
+                          planningEntryStartTime,
+                          planningEntryEndTime,
+                          getUserBreakWindowForDate(
+                            users.find((user) => user.id === planningEntryUserId),
+                            planningEntryDate
+                          )
+                        );
+                        const alreadyPlannedMinutes = getAlreadyPlannedOfferMinutesForPlanningEntry();
+                        const offerTotalMinutes = Math.round((Number(planningEntryOfferTotalHours) || 0) * 60);
+                        const plannedAfterSaveMinutes = alreadyPlannedMinutes + currentMinutes;
+                        const remainingAfterSaveMinutes = Math.max(offerTotalMinutes - plannedAfterSaveMinutes, 0);
+
+                        return (
+                          <>
+                            <strong>
+                              {formatHours(plannedAfterSaveMinutes / 60)} von{" "}
+                              {formatHours(offerTotalMinutes / 60)} Std. verplant
+                            </strong>
+                            <small>
+                              Bereits {formatHours(alreadyPlannedMinutes / 60)} Std. | Dieser Termin{" "}
+                              {formatHours(currentMinutes / 60)} Std. | Danach offen{" "}
+                              {formatHours(remainingAfterSaveMinutes / 60)} Std.
+                            </small>
+                          </>
+                        );
+                      })()}
                     </div>
                   </>
                 )}
@@ -16136,6 +20931,106 @@ export function DashboardPage() {
                 </button>
                 <button type="button" className={styles.primaryButton} onClick={saveProjectDraft}>
                   Speichern
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isManualProjectTimeModalOpen && (
+        <div className={styles.overlay} onClick={closeManualProjectTimeModal}>
+          <div
+            className={`${styles.modal} ${styles.stampModal}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={styles.contactModalHeader}>
+              <h2>Zeiteintrag hinzufügen</h2>
+              <button
+                className={styles.modalCloseButton}
+                type="button"
+                onClick={closeManualProjectTimeModal}
+                aria-label="Zeiteintrag schließen"
+              >
+                Auswahl
+              </button>
+            </div>
+            <div className={styles.stampModalBody}>
+              <label>
+                Mitarbeiter
+                <select
+                  value={manualProjectTimeUserId}
+                  onChange={(event) => setManualProjectTimeUserId(event.target.value)}
+                >
+                  <option value="">Bitte auswählen</option>
+                  {users
+                    .filter((user) => user.isActive)
+                    .map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <div className={styles.projectTwoColumn}>
+                <label>
+                  Datum
+                  <input
+                    value={stampEditDate}
+                    onChange={(event) => setStampEditDate(event.target.value)}
+                    placeholder="TT.MM.JJJJ"
+                  />
+                </label>
+                <label>
+                  Pause
+                  <input
+                    value={stampEditPause}
+                    onChange={(event) => setStampEditPause(event.target.value)}
+                    placeholder="0:00:00"
+                  />
+                </label>
+              </div>
+              <div className={styles.projectTwoColumn}>
+                <label>
+                  Start
+                  <input
+                    type="time"
+                    value={stampEditStartTime}
+                    onChange={(event) => setStampEditStartTime(event.target.value)}
+                  />
+                </label>
+                <label>
+                  Ende
+                  <input
+                    type="time"
+                    value={stampEditEndTime}
+                    onChange={(event) => setStampEditEndTime(event.target.value)}
+                  />
+                </label>
+              </div>
+              <label>
+                Kommentar
+                <textarea
+                  rows={4}
+                  value={stampEditComment}
+                  onChange={(event) => setStampEditComment(event.target.value)}
+                  placeholder="Warum wird die Zeit manuell hinzugefügt?"
+                />
+              </label>
+              {stampEditError && <p className={styles.stampError}>{stampEditError}</p>}
+            </div>
+            <div className={styles.modalFooter}>
+              <span />
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={closeManualProjectTimeModal}
+                >
+                  Abbrechen
+                </button>
+                <button type="button" className={styles.primaryButton} onClick={saveManualProjectTimeEntry}>
+                  Hinzufügen
                 </button>
               </div>
             </div>

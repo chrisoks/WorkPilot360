@@ -9,13 +9,18 @@ type ProjectTimeEntryRow = {
   mode: string | null;
   projectId: string;
   projectLabel: string | null;
+  userId: string | null;
   employee: string | null;
+  entrySource: string | null;
   date: string;
   startTime: string;
   endTime: string;
   durationMs: bigint | number;
   pauseMs: bigint | number;
   comment: string | null;
+  invoiceId: string | null;
+  invoiceNumber: string | null;
+  invoicedAt: Date | null;
   createdAt: Date;
 };
 
@@ -27,20 +32,30 @@ async function ensureProjectTimeEntryTable() {
       "mode" TEXT NOT NULL DEFAULT 'project',
       "projectId" TEXT NOT NULL,
       "projectLabel" TEXT,
+      "userId" TEXT,
       "employee" TEXT,
+      "entrySource" TEXT NOT NULL DEFAULT 'stamped',
       "date" TEXT NOT NULL,
       "startTime" TEXT NOT NULL,
       "endTime" TEXT NOT NULL,
       "durationMs" BIGINT NOT NULL DEFAULT 0,
       "pauseMs" BIGINT NOT NULL DEFAULT 0,
       "comment" TEXT,
+      "invoiceId" TEXT,
+      "invoiceNumber" TEXT,
+      "invoicedAt" TIMESTAMP(3),
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `;
 
   await prisma.$executeRaw`
     ALTER TABLE "ProjectTimeEntry"
-    ADD COLUMN IF NOT EXISTS "mode" TEXT NOT NULL DEFAULT 'project'
+    ADD COLUMN IF NOT EXISTS "mode" TEXT NOT NULL DEFAULT 'project',
+    ADD COLUMN IF NOT EXISTS "userId" TEXT,
+    ADD COLUMN IF NOT EXISTS "entrySource" TEXT NOT NULL DEFAULT 'stamped',
+    ADD COLUMN IF NOT EXISTS "invoiceId" TEXT,
+    ADD COLUMN IF NOT EXISTS "invoiceNumber" TEXT,
+    ADD COLUMN IF NOT EXISTS "invoicedAt" TIMESTAMP(3)
   `;
 }
 
@@ -59,13 +74,19 @@ function formatEntry(entry: ProjectTimeEntryRow) {
     mode: entry.mode === "unproductive" ? "unproductive" : "project",
     projectId: entry.projectId,
     projectLabel: entry.projectLabel ?? "",
+    userId: entry.userId ?? "",
     employee: entry.employee ?? "",
+    entrySource: entry.entrySource === "manual" ? "manual" : "stamped",
     date: entry.date,
     startTime: entry.startTime,
     endTime: entry.endTime,
     durationMs: Number(entry.durationMs),
     pauseMs: Number(entry.pauseMs),
     comment: entry.comment ?? "",
+    invoiceId: entry.invoiceId ?? "",
+    invoiceNumber: entry.invoiceNumber ?? "",
+    invoicedAt: entry.invoicedAt?.toISOString() ?? "",
+    createdAt: entry.createdAt.toISOString(),
   };
 }
 
@@ -102,7 +123,9 @@ export async function POST(req: Request) {
 
   const id = cleanString(body.id) || randomUUID();
   const projectLabel = cleanString(body.projectLabel);
+  const userId = cleanString(body.userId);
   const employee = cleanString(body.employee);
+  const entrySource = cleanString(body.entrySource) === "manual" ? "manual" : "stamped";
   const date = cleanString(body.date);
   const startTime = cleanString(body.startTime);
   const endTime = cleanString(body.endTime);
@@ -120,7 +143,9 @@ export async function POST(req: Request) {
       "mode",
       "projectId",
       "projectLabel",
+      "userId",
       "employee",
+      "entrySource",
       "date",
       "startTime",
       "endTime",
@@ -134,7 +159,9 @@ export async function POST(req: Request) {
       ${mode},
       ${projectId},
       ${projectLabel || null},
+      ${userId || null},
       ${employee || null},
+      ${entrySource},
       ${date},
       ${startTime},
       ${endTime},
@@ -145,7 +172,9 @@ export async function POST(req: Request) {
     ON CONFLICT ("id") DO UPDATE SET
       "mode" = EXCLUDED."mode",
       "projectLabel" = EXCLUDED."projectLabel",
+      "userId" = EXCLUDED."userId",
       "employee" = EXCLUDED."employee",
+      "entrySource" = EXCLUDED."entrySource",
       "date" = EXCLUDED."date",
       "startTime" = EXCLUDED."startTime",
       "endTime" = EXCLUDED."endTime",

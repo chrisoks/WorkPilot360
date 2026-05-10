@@ -52,6 +52,7 @@ function formatUser(user: {
   lastName: string;
   email: string;
   role: Role;
+  isActive?: boolean | null;
   teamId: string | null;
   dailyWorkHours?: number | null;
   profileImageDataUrl?: string | null;
@@ -85,6 +86,7 @@ function formatUser(user: {
     email: user.email,
     role: user.role,
     roleLabel: roleLabel(user.role),
+    isActive: user.isActive ?? true,
     teamId: user.teamId,
     teamIds,
     dailyWorkHours: user.dailyWorkHours ?? 8,
@@ -407,7 +409,23 @@ function splitName(name: string) {
 }
 
 export async function GET() {
-  const { users } = await getDemoContext();
+  const { organization } = await getDemoContext();
+  const users = await prisma.user.findMany({
+    where: {
+      organizationId: organization.id,
+    },
+    orderBy: [
+      {
+        isActive: "desc",
+      },
+      {
+        role: "asc",
+      },
+      {
+        firstName: "asc",
+      },
+    ],
+  });
   const dailyWorkHoursByUserId = await getUserDailyWorkHours(users.map((user) => user.id));
   const detailsByUserId = await getUserDetails(users.map((user) => user.id));
 
@@ -439,6 +457,53 @@ export async function PATCH(req: Request) {
     return NextResponse.json(
       { error: "Du darfst nur deine eigenen Einstellungen ändern." },
       { status: 403 }
+    );
+  }
+
+  if (body.action === "set-active") {
+    if (!isManagedUpdate) {
+      return NextResponse.json(
+        { error: "Nur Admins und Geschäftsführung dürfen Mitarbeiter aktivieren oder deaktivieren." },
+        { status: 403 }
+      );
+    }
+
+    if (body.userId === actor.id && body.isActive === false) {
+      return NextResponse.json(
+        { error: "Der aktive Nutzer kann sich nicht selbst deaktivieren." },
+        { status: 400 }
+      );
+    }
+
+    const targetUser = await prisma.user.findFirst({
+      where: {
+        id: body.userId,
+        organizationId: organization.id,
+      },
+    });
+
+    if (!targetUser) {
+      return NextResponse.json({ error: "Benutzer wurde nicht gefunden." }, { status: 404 });
+    }
+
+    const updated = await prisma.user.update({
+      where: {
+        id: targetUser.id,
+      },
+      data: {
+        isActive: Boolean(body.isActive),
+      },
+    });
+    const updatedTeamIds = await getUserTeamIds(updated.id);
+
+    return NextResponse.json(
+      formatUser(
+        {
+          ...updated,
+          ...(await getUserDetails([updated.id])).get(updated.id),
+        },
+        updatedTeamIds
+      )
     );
   }
 
@@ -774,7 +839,7 @@ export async function POST(req: Request) {
 
 export async function DELETE(req: Request) {
   const body = await req.json();
-  const { user, users } = await getDemoContext();
+  const { organization, user, users } = await getDemoContext();
   const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
 
   if (!canManageUsers(actor.role)) {
@@ -791,9 +856,20 @@ export async function DELETE(req: Request) {
     );
   }
 
-  await prisma.user.update({
+  const targetUser = await prisma.user.findFirst({
     where: {
       id: body.userId,
+      organizationId: organization.id,
+    },
+  });
+
+  if (!targetUser) {
+    return NextResponse.json({ error: "Benutzer wurde nicht gefunden." }, { status: 404 });
+  }
+
+  await prisma.user.update({
+    where: {
+      id: targetUser.id,
     },
     data: {
       isActive: false,

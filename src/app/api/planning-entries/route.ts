@@ -619,6 +619,18 @@ export async function POST(req: Request) {
       toStatus: "confirmed",
       note: "Terminwunsch freigegeben",
     });
+  } else if (existingEntry) {
+    await createPlanningHistoryEvent({
+      organizationId: organization.id,
+      planningEntryId: savedEntry.id,
+      projectId: savedEntry.projectId ?? "",
+      eventType: "updated",
+      actorUserId,
+      actorName,
+      fromStatus: existingEntry.approvalStatus ?? "",
+      toStatus: savedEntry.approvalStatus ?? "",
+      note: "Planungstermin geändert",
+    });
   }
 
   await notifyPlanningResponsibles(savedEntry, organization.id);
