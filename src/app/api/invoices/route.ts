@@ -490,19 +490,22 @@ function drawTextBlock(
   return cursorY;
 }
 
-async function getNextinvoiceNumber(organizationId: string) {
+async function getNextinvoiceNumber(organizationId: string, prefix = "RE") {
+  const invoiceNumberPrefix = prefix.toUpperCase();
   const rows = await prisma.$queryRaw<Array<{ invoiceNumber: string }>>`
     SELECT "invoiceNumber"
     FROM "Invoice"
     WHERE "organizationId" = ${organizationId}
+      AND "invoiceNumber" LIKE ${`${invoiceNumberPrefix}-%`}
   `;
+  const invoiceNumberPattern = new RegExp(`^${invoiceNumberPrefix}-(\\d+)$`);
   const highest =
     rows
-      .map((row) => Number((row.invoiceNumber.match(/\d+/g) ?? ["10099"]).join("")))
+      .map((row) => Number(row.invoiceNumber.match(invoiceNumberPattern)?.[1] ?? "10099"))
       .filter((value) => Number.isFinite(value))
       .sort((first, second) => second - first)[0] ?? 10099;
 
-  return `RE-${highest + 1}`;
+  return `${invoiceNumberPrefix}-${highest + 1}`;
 }
 
 function getTemplatePath(company: InvoiceCompany) {
@@ -851,6 +854,7 @@ async function cancelInvoice(input: {
   invoiceId: string;
   actorName: string;
 }) {
+  try {
   const existingRows = await prisma.$queryRaw<InvoiceRow[]>`
     SELECT *
     FROM "Invoice"
@@ -871,7 +875,7 @@ async function cancelInvoice(input: {
     return NextResponse.json({ error: "Die Rechnung hat keine Positionen." }, { status: 400 });
   }
 
-  const cancellationNumber = await getNextinvoiceNumber(input.organizationId);
+  const cancellationNumber = await getNextinvoiceNumber(input.organizationId, "ST");
   const cancellationId = randomUUID();
   const cancellationLines = originalLines.map((line) => ({
     catalogItemId: line.catalogItemId,
@@ -911,7 +915,7 @@ async function cancelInvoice(input: {
       "id", "organizationId", "projectId", "projectNumber", "projectTitle", "company",
       "invoiceNumber", "status", "customerName", "customerStreet", "customerCity",
       "contactName", "internalContactName", "internalPhone", "internalEmail",
-      "introText", "closingText", "netTotal", "vatRate", "grossTotal", "pdfData"
+      "introText", "closingText", "netTotal", "vatRate", "grossTotal", "pdfData", "updatedAt"
     ) VALUES (
       ${cancellationId}, ${input.organizationId}, ${existingInvoice.projectId}, ${existingInvoice.projectNumber},
       ${existingInvoice.projectTitle}, ${existingInvoice.company}, ${cancellationNumber}, ${"Stornorechnung"},
@@ -919,7 +923,7 @@ async function cancelInvoice(input: {
       ${existingInvoice.contactName}, ${existingInvoice.internalContactName}, ${existingInvoice.internalPhone},
       ${existingInvoice.internalEmail}, ${`hiermit stornieren wir die Rechnung ${existingInvoice.invoiceNumber} vollständig.`},
       ${"Diese Stornorechnung hebt die ursprüngliche Rechnung auf."},
-      ${pdf.netTotal}, ${pdf.vatRate}, ${pdf.grossTotal}, ${pdf.pdfData}
+      ${pdf.netTotal}, ${pdf.vatRate}, ${pdf.grossTotal}, ${pdf.pdfData}, CURRENT_TIMESTAMP
     )
     RETURNING *
   `;
@@ -930,11 +934,11 @@ async function cancelInvoice(input: {
     const lineRows = await prisma.$queryRaw<InvoiceLineRow[]>`
       INSERT INTO "InvoiceLine" (
         "id", "organizationId", "invoiceId", "catalogItemId", "catalogType", "position",
-        "quantity", "unit", "title", "description", "unitPrice", "vatRate", "totalNet"
+        "quantity", "unit", "title", "description", "unitPrice", "vatRate", "totalNet", "updatedAt"
       ) VALUES (
         ${randomUUID()}, ${input.organizationId}, ${cancellationId}, ${line.catalogItemId}, ${line.catalogType}, ${index + 1},
         ${line.quantity}, ${line.unit}, ${line.title}, ${line.description},
-        ${line.unitPrice}, ${line.vatRate}, ${line.quantity * line.unitPrice}
+        ${line.unitPrice}, ${line.vatRate}, ${line.quantity * line.unitPrice}, CURRENT_TIMESTAMP
       )
       RETURNING *
     `;
@@ -946,10 +950,10 @@ async function cancelInvoice(input: {
       const laborRows = await prisma.$queryRaw<InvoiceLineLaborRow[]>`
         INSERT INTO "InvoiceLineLabor" (
           "id", "organizationId", "invoiceId", "invoiceLineId", "userId", "employeeName",
-          "plannedHours", "hourlyCostRate", "totalCost", "position"
+          "plannedHours", "hourlyCostRate", "totalCost", "position", "updatedAt"
         ) VALUES (
           ${randomUUID()}, ${input.organizationId}, ${cancellationId}, ${lineRows[0].id}, ${labor.userId}, ${labor.employeeName},
-          ${-Math.abs(Number(labor.plannedHours ?? 0))}, ${Number(labor.hourlyCostRate ?? 0)}, ${-Math.abs(Number(labor.totalCost ?? 0))}, ${laborIndex + 1}
+          ${-Math.abs(Number(labor.plannedHours ?? 0))}, ${Number(labor.hourlyCostRate ?? 0)}, ${-Math.abs(Number(labor.totalCost ?? 0))}, ${laborIndex + 1}, CURRENT_TIMESTAMP
         )
         RETURNING *
       `;
@@ -995,6 +999,15 @@ async function cancelInvoice(input: {
     originalInvoice: serializeInvoice(originalRows[0], originalLines, originalLaborRows),
     cancellationInvoice: serializeInvoice(cancellationRows[0], savedLines, savedLaborRows),
   });
+  } catch (error) {
+    console.error("Invoice cancellation failed", error);
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : "Stornorechnung konnte nicht erstellt werden.",
+      },
+      { status: 500 }
+    );
+  }
 }
 
 export async function GET(req: Request) {
@@ -1125,14 +1138,14 @@ export async function POST(req: Request) {
       "id", "organizationId", "projectId", "projectNumber", "projectTitle", "company",
       "invoiceNumber", "status", "customerName", "customerStreet", "customerCity",
       "contactName", "internalContactName", "internalPhone", "internalEmail",
-      "introText", "closingText", "netTotal", "vatRate", "grossTotal", "pdfData"
+      "introText", "closingText", "netTotal", "vatRate", "grossTotal", "pdfData", "updatedAt"
     ) VALUES (
       ${id}, ${organization.id}, ${cleanString(body.projectId)}, ${cleanString(body.projectNumber)},
       ${cleanString(body.projectTitle)}, ${company}, ${invoiceNumber}, ${"Fakturiert"},
       ${cleanString(body.customerName)}, ${cleanString(body.customerStreet)}, ${cleanString(body.customerCity)},
       ${cleanString(body.contactName)}, ${cleanString(body.internalContactName)}, ${cleanString(body.internalPhone)},
       ${cleanString(body.internalEmail)}, ${cleanString(body.introText)}, ${cleanString(body.closingText)},
-      ${pdf.netTotal}, ${pdf.vatRate}, ${pdf.grossTotal}, ${pdf.pdfData}
+      ${pdf.netTotal}, ${pdf.vatRate}, ${pdf.grossTotal}, ${pdf.pdfData}, CURRENT_TIMESTAMP
     )
     RETURNING *
   `;
@@ -1143,11 +1156,11 @@ export async function POST(req: Request) {
     const lineRows = await prisma.$queryRaw<InvoiceLineRow[]>`
       INSERT INTO "InvoiceLine" (
         "id", "organizationId", "invoiceId", "catalogItemId", "catalogType", "position",
-        "quantity", "unit", "title", "description", "unitPrice", "vatRate", "totalNet"
+        "quantity", "unit", "title", "description", "unitPrice", "vatRate", "totalNet", "updatedAt"
       ) VALUES (
         ${randomUUID()}, ${organization.id}, ${id}, ${line.catalogItemId}, ${line.catalogType}, ${index + 1},
         ${line.quantity}, ${line.unit}, ${line.title}, ${line.description},
-        ${line.unitPrice}, ${line.vatRate}, ${line.quantity * line.unitPrice}
+        ${line.unitPrice}, ${line.vatRate}, ${line.quantity * line.unitPrice}, CURRENT_TIMESTAMP
       )
       RETURNING *
     `;
@@ -1157,10 +1170,10 @@ export async function POST(req: Request) {
       const laborRows = await prisma.$queryRaw<InvoiceLineLaborRow[]>`
         INSERT INTO "InvoiceLineLabor" (
           "id", "organizationId", "invoiceId", "invoiceLineId", "userId", "employeeName",
-          "plannedHours", "hourlyCostRate", "totalCost", "position"
+          "plannedHours", "hourlyCostRate", "totalCost", "position", "updatedAt"
         ) VALUES (
           ${randomUUID()}, ${organization.id}, ${id}, ${lineRows[0].id}, ${labor.userId}, ${labor.employeeName},
-          ${labor.plannedHours}, ${labor.hourlyCostRate}, ${labor.totalCost}, ${laborIndex + 1}
+          ${labor.plannedHours}, ${labor.hourlyCostRate}, ${labor.totalCost}, ${laborIndex + 1}, CURRENT_TIMESTAMP
         )
         RETURNING *
       `;
@@ -1322,11 +1335,11 @@ export async function PATCH(req: Request) {
     const lineRows = await prisma.$queryRaw<InvoiceLineRow[]>`
       INSERT INTO "InvoiceLine" (
         "id", "organizationId", "invoiceId", "catalogItemId", "catalogType", "position",
-        "quantity", "unit", "title", "description", "unitPrice", "vatRate", "totalNet"
+        "quantity", "unit", "title", "description", "unitPrice", "vatRate", "totalNet", "updatedAt"
       ) VALUES (
         ${randomUUID()}, ${organization.id}, ${id}, ${line.catalogItemId}, ${line.catalogType}, ${index + 1},
         ${line.quantity}, ${line.unit}, ${line.title}, ${line.description},
-        ${line.unitPrice}, ${line.vatRate}, ${line.quantity * line.unitPrice}
+        ${line.unitPrice}, ${line.vatRate}, ${line.quantity * line.unitPrice}, CURRENT_TIMESTAMP
       )
       RETURNING *
     `;
@@ -1336,10 +1349,10 @@ export async function PATCH(req: Request) {
       const laborRows = await prisma.$queryRaw<InvoiceLineLaborRow[]>`
         INSERT INTO "InvoiceLineLabor" (
           "id", "organizationId", "invoiceId", "invoiceLineId", "userId", "employeeName",
-          "plannedHours", "hourlyCostRate", "totalCost", "position"
+          "plannedHours", "hourlyCostRate", "totalCost", "position", "updatedAt"
         ) VALUES (
           ${randomUUID()}, ${organization.id}, ${id}, ${lineRows[0].id}, ${labor.userId}, ${labor.employeeName},
-          ${labor.plannedHours}, ${labor.hourlyCostRate}, ${labor.totalCost}, ${laborIndex + 1}
+          ${labor.plannedHours}, ${labor.hourlyCostRate}, ${labor.totalCost}, ${laborIndex + 1}, CURRENT_TIMESTAMP
         )
         RETURNING *
       `;

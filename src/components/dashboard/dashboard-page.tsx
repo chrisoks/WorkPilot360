@@ -3982,7 +3982,9 @@ export function DashboardPage() {
 
     if (!res.ok) {
       const data = await res.json().catch(() => null);
-      setErrorMessage(data?.error ?? "Rechnung konnte nicht storniert werden.");
+      const message = data?.error ?? "Rechnung konnte nicht storniert werden.";
+      setErrorMessage(message);
+      window.alert(message);
       return;
     }
 
@@ -9859,18 +9861,34 @@ export function DashboardPage() {
       "Mahnung",
       "Rechnungen",
     ];
+    const projectTabHelp: Partial<Record<ProjectFileTab, string>> = {
+      time: "Hier stehen echte und manuell ergänzte Stempelzeiten. Unten werden Istzeiten gegen Sollzeiten aus Angeboten verglichen.",
+      appointments: "Hier stehen die konkret geplanten Termine mit Datum, Uhrzeit, Mitarbeiter und Planungsgruppe.",
+      comparison: "Hier stehen die Vorgabezeiten aus Angeboten je Mitarbeiter und Position. Von hier aus werden offene Zeiten verplant.",
+    };
+    const renderProjectMenuLabel = (item: { id: ProjectFileTab; label: string; icon: string }) => (
+      <>
+        <span>{item.icon}</span>
+        <span className={styles.projectNavLabelText}>{item.label}</span>
+        {projectTabHelp[item.id] ? (
+          <span className={styles.projectNavHelp} title={projectTabHelp[item.id]} aria-label={projectTabHelp[item.id]}>
+            ?
+          </span>
+        ) : null}
+      </>
+    );
     const menuItems: Array<{ id: ProjectFileTab; label: string; icon: string }> = [
       { id: "logbook", label: "Logbuch", icon: "" },
       { id: "images", label: "Bilder", icon: "" },
       { id: "documents", label: "Dokumente", icon: "" },
-      { id: "gaeb", label: "Ausschreibungen (GAEB)", icon: "" },
-      { id: "time", label: "Zeit & Lohn", icon: "" },
-      { id: "appointments", label: "Termine", icon: "" },
+      { id: "comparison", label: "Vorgabezeiten aus Angebot", icon: "" },
+      { id: "appointments", label: "Geplante Termine", icon: "" },
+      { id: "time", label: "Stempelungen & Soll/Ist", icon: "" },
       { id: "tasks", label: "Aufgaben", icon: "" },
-      { id: "material", label: "Material", icon: "€" },
-      { id: "comparison", label: "Planungspositionen", icon: "" },
-      { id: "participants", label: "Projektbeteiligte", icon: "•" },
-      { id: "checklists", label: "Checklisten", icon: "✓" },
+      { id: "material", label: "Material", icon: "" },
+      { id: "participants", label: "Projektbeteiligte", icon: "" },
+      { id: "checklists", label: "Checklisten", icon: "" },
+      { id: "gaeb", label: "Ausschreibungen (GAEB)", icon: "" },
     ];
     const selectedContact = selectedProjectFile.contactId
       ? contacts.find((contact) => contact.id === selectedProjectFile.contactId)
@@ -10387,8 +10405,7 @@ export function DashboardPage() {
                     data-active={projectFileTab === item.id}
                     onClick={() => setProjectFileTab(item.id)}
                   >
-                    <span>{item.icon}</span>
-                    {item.label}
+                    {renderProjectMenuLabel(item)}
                     <b>v</b>
                   </button>
                   {projectFileTab === "documents" && (
@@ -10440,8 +10457,7 @@ export function DashboardPage() {
                   data-active={projectFileTab === item.id}
                   onClick={() => setProjectFileTab(item.id)}
                 >
-                  <span>{item.icon}</span>
-                  {item.label}
+                  {renderProjectMenuLabel(item)}
                 </button>
               )
             )}
@@ -10812,7 +10828,7 @@ export function DashboardPage() {
             ) : projectFileTab === "time" ? (
               <div className={styles.projectTimeModule}>
                 <div className={styles.customerFileMainHeader}>
-                  <h2>Zeit & Lohn</h2>
+                  <h2>Stempelungen & Soll/Ist</h2>
                   <div className={styles.headerActions}>
                     <span>{projectStampEntries.length} Zeiteinträge</span>
                     <button
@@ -10949,7 +10965,7 @@ export function DashboardPage() {
             ) : projectFileTab === "comparison" ? (
               <div className={styles.projectTimeModule}>
                 <div className={styles.customerFileMainHeader}>
-                  <h2>Planungspositionen</h2>
+                  <h2>Vorgabezeiten aus Angebot</h2>
                   <span>
                     {projectComparisonOfferNumbers.length > 0
                       ? `Basis ${projectComparisonOfferNumbers.length} Angebot${
@@ -10960,7 +10976,7 @@ export function DashboardPage() {
                 </div>
                 {projectLaborComparisonRows.length === 0 ? (
                   <div className={styles.customerDocumentEmpty}>
-                    <strong>Noch keine Planungspositionen vorhanden.</strong>
+                    <strong>Noch keine Vorgabezeiten aus Angebot vorhanden.</strong>
                     <p>
                       Hinterlege im Angebot pro Position die internen Mitarbeiterzeiten. Diese
                       Zeiten erscheinen hier als Vorgabezeit je Mitarbeiter.
@@ -11066,7 +11082,7 @@ export function DashboardPage() {
             ) : projectFileTab === "appointments" ? (
               <div className={styles.projectTimeModule}>
                 <div className={styles.customerFileMainHeader}>
-                  <h2>Termine</h2>
+                  <h2>Geplante Termine</h2>
                   <span>{projectPlanningEntries.length} Planungstermine</span>
                 </div>
                 {projectPlanningEntries.length === 0 ? (
@@ -11192,7 +11208,7 @@ export function DashboardPage() {
               <h2>Verbrauchte Zeitkontingente</h2>
               <div className={styles.projectTimeBudget}>
                 <div>
-                  <span>Gebucht</span>
+                  <span>Gebucht (durch Stempelungen)</span>
                   <strong>{formatHours(projectTrackedHours)} Std.</strong>
                 </div>
                 <div>

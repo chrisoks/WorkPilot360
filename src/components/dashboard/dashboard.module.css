@@ -5663,6 +5663,27 @@
   color: #0f172a;
 }
 
+.projectNavLabelText {
+  min-width: 0;
+}
+
+.projectNavHelp {
+  align-items: center;
+  background: #e2e8f0;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  color: #334155;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  font-weight: 900;
+  height: 16px;
+  justify-content: center;
+  line-height: 1;
+  margin-left: 6px;
+  width: 16px;
+}
+
 .customerFileNavGroup {
   display: grid;
 }
