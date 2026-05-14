@@ -23,6 +23,68 @@ function parseRecipients(value: unknown) {
     .filter(Boolean);
 }
 
+function getDocumentKindLabel(kind: string) {
+  if (kind === "offer") return "Angebot";
+  if (kind === "invoice") return "Rechnung";
+  if (kind === "cancellation") return "Stornorechnung";
+  if (kind === "activityReport") return "Tätigkeitsbericht";
+  return "Dokument";
+}
+
+function getDataUrlAttachment(name: string, dataUrl: string) {
+  const match = dataUrl.match(/^data:([^;,]+)?(?:;[^,]*)?;base64,(.+)$/);
+  if (!match) return null;
+
+  return {
+    "@odata.type": "#microsoft.graph.fileAttachment",
+    name: name || "Dokument.pdf",
+    contentType: match[1] || "application/octet-stream",
+    contentBytes: match[2],
+  };
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function textToHtml(value: string) {
+  return escapeHtml(value.trimEnd())
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.replace(/\r?\n/g, "<br>"))
+    .map((paragraph) => `<p>${paragraph || "&nbsp;"}</p>`)
+    .join("");
+}
+
+function sanitizeSignatureHtml(value: string) {
+  return value
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
+    .replace(/\son\w+="[^"]*"/gi, "")
+    .replace(/\son\w+='[^']*'/gi, "");
+}
+
+function normalizeSignatureHtml(value: string) {
+  const signature = cleanText(value);
+  if (!signature) return "";
+  return /<\/?[a-z][\s\S]*>/i.test(signature) ? sanitizeSignatureHtml(signature) : textToHtml(signature);
+}
+
+async function getSenderSignature(userId: string) {
+  const rows = await prisma.$queryRaw<Array<{ signature: string | null; signatureHidden: boolean | null }>>`
+    SELECT "signature", "signatureHidden"
+    FROM "User"
+    WHERE id = ${userId}
+    LIMIT 1
+  `;
+  const row = rows[0];
+  if (!row || row.signatureHidden) return "";
+  return normalizeSignatureHtml(row.signature ?? "");
+}
+
 async function ensureDocumentMailTables() {
   await prisma.$executeRaw`
     ALTER TABLE "User"
@@ -59,7 +121,33 @@ async function ensureDocumentMailTables() {
 }
 
 async function addDocumentMailHistory(body: Record<string, unknown>, actorName: string, recipients: string[]) {
-  if (cleanText(body.kind) !== "offer") return;
+  const kind = cleanText(body.kind);
+  if (kind !== "offer" && kind !== "invoice" && kind !== "cancellation") return;
+
+  if (kind === "invoice" || kind === "cancellation") {
+    const rows = await prisma.$queryRaw<Array<{ organizationId: string }>>`
+      SELECT "organizationId"
+      FROM "Invoice"
+      WHERE id = ${cleanText(body.documentId)}
+      LIMIT 1
+    `;
+    const invoice = rows[0];
+    if (!invoice) return;
+
+    await prisma.$executeRaw`
+      INSERT INTO "InvoiceHistory" (
+        "id", "organizationId", "invoiceId", "projectId", "invoiceNumber",
+        "eventType", "title", "note", "actorName"
+      ) VALUES (
+        ${randomUUID()}, ${invoice.organizationId}, ${cleanText(body.documentId)},
+        ${cleanText(body.projectId)}, ${cleanText(body.documentNumber)},
+        ${"email_sent"}, ${`${getDocumentKindLabel(kind)} per E-Mail versendet`},
+        ${`Gesendet an ${recipients.join(", ")}. Betreff: ${cleanText(body.subject)}`},
+        ${actorName}
+      )
+    `;
+    return;
+  }
 
   const rows = await prisma.$queryRaw<Array<{ organizationId: string }>>`
     SELECT "organizationId"
@@ -121,7 +209,7 @@ async function sendViaMicrosoftGraph(input: {
       message: {
         subject: input.subject,
         body: {
-          contentType: "Text",
+          contentType: "HTML",
           content: input.body,
         },
         toRecipients: input.to.map((address) => ({ emailAddress: { address } })),
@@ -153,7 +241,7 @@ export async function POST(req: Request) {
   const bccRecipients = parseRecipients(body.bcc);
   const kind = cleanText(body.kind);
 
-  if (!["offer", "invoice"].includes(kind)) {
+  if (!["offer", "invoice", "cancellation", "activityReport", "document"].includes(kind)) {
     return NextResponse.json({ error: "Dokumenttyp ist ungültig." }, { status: 400 });
   }
 
@@ -168,9 +256,19 @@ export async function POST(req: Request) {
     );
   }
 
-  const attachments = Boolean(body.attachPdf)
+  const storedAttachments = Boolean(body.attachPdf)
     ? await getPdfAttachment(kind, cleanText(body.documentId), cleanText(body.documentNumber))
     : [];
+  const uploadedAttachment =
+    Boolean(body.attachPdf) && cleanText(body.attachmentDataUrl)
+      ? getDataUrlAttachment(
+          cleanText(body.attachmentName) || `${cleanText(body.documentNumber)}.pdf`,
+          cleanText(body.attachmentDataUrl)
+        )
+      : null;
+  const attachments = uploadedAttachment ? [...storedAttachments, uploadedAttachment] : storedAttachments;
+  const signatureHtml = await getSenderSignature(actor.id);
+  const messageHtml = `${textToHtml(cleanText(body.body))}${signatureHtml ? signatureHtml : ""}`;
 
   try {
     await sendViaMicrosoftGraph({
@@ -179,7 +277,7 @@ export async function POST(req: Request) {
       cc: ccRecipients,
       bcc: bccRecipients,
       subject: cleanText(body.subject),
-      body: cleanText(body.body),
+      body: messageHtml,
       attachments,
     });
   } catch (error) {

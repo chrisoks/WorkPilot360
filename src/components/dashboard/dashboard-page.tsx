@@ -487,7 +487,7 @@ type EmployeeMailAccount = {
   lastTestAt: string;
 };
 
-type DocumentMailKind = "offer" | "invoice";
+type DocumentMailKind = "offer" | "invoice" | "cancellation" | "activityReport" | "document";
 
 type DocumentMailDraft = {
   kind: DocumentMailKind;
@@ -497,6 +497,8 @@ type DocumentMailDraft = {
   projectNumber: string;
   projectTitle: string;
   customerName: string;
+  attachmentName?: string;
+  attachmentDataUrl?: string;
   to: string;
   cc: string;
   bcc: string;
@@ -1602,6 +1604,21 @@ const defaultDocumentMailTemplates: Record<DocumentMailKind, { subject: string; 
     subject: "Rechnung {{number}}",
     body:
       "Hallo,\n\nanbei senden wir Ihnen unsere Rechnung {{number}} als PDF.\n\nBitte prüfen Sie die Unterlagen. Bei Rückfragen stehen wir gern zur Verfügung.\n\nMit freundlichen Grüßen\n{{sender}}",
+  },
+  cancellation: {
+    subject: "Stornorechnung {{number}}",
+    body:
+      "Hallo,\n\nanbei senden wir Ihnen die Stornorechnung {{number}} als PDF.\n\nBei Rückfragen stehen wir gern zur Verfügung.\n\nMit freundlichen Grüßen\n{{sender}}",
+  },
+  activityReport: {
+    subject: "Tätigkeitsbericht {{number}}",
+    body:
+      "Hallo,\n\nanbei senden wir Ihnen den Tätigkeitsbericht {{number}}.\n\nBei Fragen melden Sie sich gern.\n\nMit freundlichen Grüßen\n{{sender}}",
+  },
+  document: {
+    subject: "Dokument {{number}}",
+    body:
+      "Hallo,\n\nanbei senden wir Ihnen das Dokument {{number}}.\n\nBei Fragen melden Sie sich gern.\n\nMit freundlichen Grüßen\n{{sender}}",
   },
 };
 const emptyContentDraft: ContentDraft = {
@@ -5295,11 +5312,89 @@ export function DashboardPage() {
   function applyMailTemplate(kind: DocumentMailKind, documentNumber: string) {
     const template = mailTemplates[kind];
     const sender = activeUser?.name || "WorkPilot360";
+    const normalizeTemplateText = (value: string) =>
+      value
+        .replaceAll("Rueckfragen", "Rückfragen")
+        .replaceAll("Verfuegung", "Verfügung")
+        .replaceAll("Gruessen", "Grüßen")
+        .replaceAll("Taetigkeitsbericht", "Tätigkeitsbericht");
 
     return {
-      subject: template.subject.replaceAll("{{number}}", documentNumber).replaceAll("{{sender}}", sender),
-      body: template.body.replaceAll("{{number}}", documentNumber).replaceAll("{{sender}}", sender),
+      subject: normalizeTemplateText(template.subject)
+        .replaceAll("{{number}}", documentNumber)
+        .replaceAll("{{sender}}", sender),
+      body: normalizeTemplateText(template.body)
+        .replaceAll("{{number}}", documentNumber)
+        .replaceAll("{{sender}}", sender),
     };
+  }
+
+  function escapeMailHtml(value: string) {
+    return value
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function textToMailHtml(value: string) {
+    return escapeMailHtml(value.trimEnd())
+      .split(/\n{2,}/)
+      .map((paragraph) => paragraph.replace(/\r?\n/g, "<br>"))
+      .map((paragraph) => `<p>${paragraph || "&nbsp;"}</p>`)
+      .join("");
+  }
+
+  function sanitizeMailSignatureHtml(value: string) {
+    return value
+      .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
+      .replace(/\son\w+="[^"]*"/gi, "")
+      .replace(/\son\w+='[^']*'/gi, "");
+  }
+
+  function normalizeMailSignatureHtml(value = "") {
+    const signature = value.trim();
+    if (!signature) return "";
+    return /<\/?[a-z][\s\S]*>/i.test(signature)
+      ? sanitizeMailSignatureHtml(signature)
+      : textToMailHtml(signature);
+  }
+
+  function getActiveUserSignatureHtml() {
+    if (activeUser?.signatureHidden) return "";
+    return normalizeMailSignatureHtml(activeUser?.signature || "");
+  }
+
+  function getDocumentMailPreviewHtml() {
+    if (!documentMailDraft) return "";
+    const signatureHtml = getActiveUserSignatureHtml();
+    return `${textToMailHtml(documentMailDraft.body)}${signatureHtml ? signatureHtml : ""}`;
+  }
+
+  function getDefaultSignatureSource(user: UserOption) {
+    return [
+      "<p>Mit freundlichen Gr&uuml;&szlig;en</p>",
+      `<p><strong>${escapeMailHtml(user.name)}</strong><br>`,
+      `${escapeMailHtml(user.roleLabel || "")}<br>`,
+      "OK solutions GmbH<br>",
+      "Im Kr&ouml;tenteich 3/4<br>",
+      "74722 Buchen</p>",
+    ].join("");
+  }
+
+  function getDocumentMailKindLabel(kind: DocumentMailKind) {
+    if (kind === "offer") return "Angebot";
+    if (kind === "invoice") return "Rechnung";
+    if (kind === "cancellation") return "Stornorechnung";
+    if (kind === "activityReport") return "Tätigkeitsbericht";
+    return "Dokument";
+  }
+
+  function getInvoiceDocumentMailKind(invoice: InvoiceItem): DocumentMailKind {
+    return invoice.status === "Stornorechnung" || invoice.invoiceNumber.toUpperCase().startsWith("ST-")
+      ? "cancellation"
+      : "invoice";
   }
 
   function openDocumentMailDialog(kind: DocumentMailKind, document: OfferItem | InvoiceItem) {
@@ -5326,6 +5421,45 @@ export function DashboardPage() {
       activeMailAccount.status === "connected"
         ? ""
         : "Für deinen Benutzer ist noch kein Microsoft 365 Konto verbunden. Du kannst den Versanddialog vorbereiten, aber noch nicht senden."
+    );
+    setDocumentMailSuccess("");
+  }
+
+  function openGenericDocumentMailDialog(input: {
+    kind: DocumentMailKind;
+    documentId: string;
+    documentNumber: string;
+    projectId?: string;
+    projectNumber?: string;
+    projectTitle?: string;
+    customerName?: string;
+    attachmentName?: string;
+    attachmentDataUrl?: string;
+  }) {
+    const activeMailAccount = getSafeEmployeeMailAccount(activeUser?.mailAccount, activeUser?.email || "");
+    const template = applyMailTemplate(input.kind, input.documentNumber);
+
+    setDocumentMailDraft({
+      kind: input.kind,
+      documentId: input.documentId,
+      documentNumber: input.documentNumber,
+      projectId: input.projectId || selectedProjectFile?.id || "",
+      projectNumber: input.projectNumber || selectedProjectFile?.projectNumber || selectedProjectFile?.id || "",
+      projectTitle: input.projectTitle || selectedProjectFile?.title || "",
+      customerName: input.customerName || selectedProjectFile?.customer || "",
+      attachmentName: input.attachmentName,
+      attachmentDataUrl: input.attachmentDataUrl,
+      to: "",
+      cc: "",
+      bcc: activeMailAccount.bcc,
+      subject: template.subject,
+      body: template.body,
+      attachPdf: Boolean(input.attachmentDataUrl),
+    });
+    setDocumentMailError(
+      activeMailAccount.status === "connected"
+        ? ""
+        : "FÃ¼r deinen Benutzer ist noch kein Microsoft 365 Konto verbunden. Du kannst den Versanddialog vorbereiten, aber noch nicht senden."
     );
     setDocumentMailSuccess("");
   }
@@ -5360,6 +5494,13 @@ export function DashboardPage() {
 
     setDocumentMailSuccess("E-Mail wurde für den Versand protokolliert.");
     await loadOfferHistory(documentMailDraft.projectId);
+    if (documentMailDraft.projectId) {
+      await addProjectLogbookEntry(
+        documentMailDraft.projectId,
+        "E-Mail",
+        `${getDocumentMailKindLabel(documentMailDraft.kind)} ${documentMailDraft.documentNumber} wurde per E-Mail an ${documentMailDraft.to} gesendet.`
+      );
+    }
     window.setTimeout(() => setDocumentMailDraft(null), 700);
   }
 
@@ -8809,7 +8950,7 @@ export function DashboardPage() {
     setEmployeePostalCode("");
     setEmployeeCity("");
     setEmployeeSignatureHidden(false);
-    setEmployeeSignature("Mit freundlichen Grüßen\n\n");
+    setEmployeeSignature("<p>Mit freundlichen Gr&uuml;&szlig;en</p>");
     setEmployeePlanningBoard("OK solutions");
     setEmployeePlanningGroup("Marketing");
     setEmployeeWeeklyCapacity(defaultWeeklyCapacity);
@@ -8926,10 +9067,7 @@ export function DashboardPage() {
     setEmployeePostalCode(user.postalCode || "");
     setEmployeeCity(user.city || "");
     setEmployeeSignatureHidden(Boolean(user.signatureHidden));
-    setEmployeeSignature(
-      user.signature ||
-        `Mit freundlichen Grüßen\n\n${user.name}\n${user.roleLabel}\nOK solutions GmbH\nIm Krötenteich 3/4\n74722 Buchen`
-    );
+    setEmployeeSignature(user.signature || getDefaultSignatureSource(user));
     const planningBoard = (user.planningBoard === "OK immocare" ? "OK immocare" : "OK solutions") as PlanningBoardCompany;
     const planningGroups = getPlanningGroupsForBoard(planningBoard);
     setEmployeePlanningBoard(planningBoard);
@@ -9289,9 +9427,7 @@ export function DashboardPage() {
     setSelectedEmployeeId(user.id);
     setEmployeeTopTab("time");
     setEmployeeSideTab("personal");
-    setEmployeeSignature(
-      `Mit freundlichen Grüßen\n\n${user.name}\n${user.roleLabel}\nOK solutions GmbH\nIm Krötenteich 3/4\n74722 Buchen`
-    );
+    setEmployeeSignature(getDefaultSignatureSource(user));
     setEmployeeSignatureHidden(false);
     setErrorMessage("");
   }
@@ -9787,6 +9923,24 @@ export function DashboardPage() {
     printWindow.document.close();
     printWindow.focus();
     printWindow.print();
+  }
+
+  function printPdfDocument(url: string) {
+    const printWindow = window.open(url, "_blank");
+
+    if (!printWindow) {
+      setErrorMessage("PDF konnte nicht zum Drucken geöffnet werden.");
+      return;
+    }
+
+    window.setTimeout(() => {
+      try {
+        printWindow.focus();
+        printWindow.print();
+      } catch {
+        setErrorMessage("PDF wurde geöffnet. Bitte den Druckdialog im Browser starten.");
+      }
+    }, 700);
   }
 
   const selectedProjectContact = contacts.find((contact) => contact.id === projectDraft.contactId);
@@ -11279,15 +11433,14 @@ export function DashboardPage() {
                                 >
                                   PDF öffnen
                                 </button>
+                                <button
+                                  type="button"
+                                  className={styles.timeEntryEditButton}
+                                  onClick={() => openDocumentMailDialog(getInvoiceDocumentMailKind(invoice), invoice)}
+                                >
+                                  Per E-Mail senden
+                                </button>
                                 {!["Storniert", "Stornorechnung", "Gelöscht"].includes(invoice.status) ? (
-                                  <>
-                                  <button
-                                    type="button"
-                                    className={styles.timeEntryEditButton}
-                                    onClick={() => openDocumentMailDialog("invoice", invoice)}
-                                  >
-                                    Per E-Mail senden
-                                  </button>
                                   <button
                                     type="button"
                                     className={styles.timeEntryEditButton}
@@ -11295,7 +11448,6 @@ export function DashboardPage() {
                                   >
                                     Stornieren
                                   </button>
-                                  </>
                                 ) : null}
                               </div>
                             </td>
@@ -12336,6 +12488,13 @@ export function DashboardPage() {
                                 <button
                                   type="button"
                                   className={styles.timeEntryEditButton}
+                                  onClick={() => printPdfDocument(`/api/offers?pdfId=${encodeURIComponent(offer.id)}`)}
+                                >
+                                  Drucken
+                                </button>
+                                <button
+                                  type="button"
+                                  className={styles.timeEntryEditButton}
                                   onClick={() => openDocumentMailDialog("offer", offer)}
                                 >
                                   Per E-Mail senden
@@ -12393,6 +12552,20 @@ export function DashboardPage() {
                                   onClick={() => window.open(`/api/invoices?pdfId=${encodeURIComponent(invoice.id)}`, "_blank")}
                                 >
                                   PDF öffnen
+                                </button>
+                                <button
+                                  type="button"
+                                  className={styles.timeEntryEditButton}
+                                  onClick={() => printPdfDocument(`/api/invoices?pdfId=${encodeURIComponent(invoice.id)}`)}
+                                >
+                                  Drucken
+                                </button>
+                                <button
+                                  type="button"
+                                  className={styles.timeEntryEditButton}
+                                  onClick={() => openDocumentMailDialog(getInvoiceDocumentMailKind(invoice), invoice)}
+                                >
+                                  Per E-Mail senden
                                 </button>
                                 {!["Storniert", "Stornorechnung", "Gelöscht"].includes(invoice.status) ? (
                                   <button
@@ -12453,23 +12626,40 @@ export function DashboardPage() {
                       </div>
                     ) : (
                       <div className={styles.projectDocumentList}>
-                        {documents.map((document, index) =>
-                          document.dataUrl ? (
-                            <a
-                              key={`${document.entryId}-${document.name}-${index}`}
-                              href={document.dataUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
+                        {documents.map((document, index) => {
+                          const mailKind: DocumentMailKind =
+                            selectedProjectDocumentType === "Tätigkeitsberichte" ? "activityReport" : "document";
+                          const documentNumber = document.name || `${selectedProjectDocumentType} ${index + 1}`;
+
+                          return (
+                            <article key={`${document.entryId}-${document.name}-${index}`}>
                               <strong>{document.name}</strong>
                               <span>{document.date}</span>
-                            </a>
-                          ) : (
-                            <span key={`${document.entryId}-${document.name}-${index}`}>
-                              {document.name}
-                            </span>
-                          )
-                        )}
+                              <div className={styles.tableActionGroup}>
+                                {document.dataUrl ? (
+                                  <a href={document.dataUrl} target="_blank" rel="noreferrer">
+                                    Öffnen
+                                  </a>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  className={styles.timeEntryEditButton}
+                                  onClick={() =>
+                                    openGenericDocumentMailDialog({
+                                      kind: mailKind,
+                                      documentId: `${document.entryId}-${index}`,
+                                      documentNumber,
+                                      attachmentName: document.name,
+                                      attachmentDataUrl: document.dataUrl,
+                                    })
+                                  }
+                                >
+                                  Per E-Mail senden
+                                </button>
+                              </div>
+                            </article>
+                          );
+                        })}
                       </div>
                     );
                   })()
@@ -13091,15 +13281,15 @@ export function DashboardPage() {
 
     return (
       <div className={styles.modalOverlay}>
-        <div className={`${styles.modal} ${styles.catalogModal}`}>
-          <div className={styles.catalogModalHeader}>
+        <div className={`${styles.standardModal} ${styles.catalogModal}`}>
+          <div className={styles.standardModalHeader}>
             <div>
               <h2>Rechnung erstellen</h2>
               <p>{selectedProjectFile.projectNumber || selectedProjectFile.id} | {selectedProjectFile.title}</p>
             </div>
             <button type="button" className={styles.iconButton} onClick={() => setIsInvoiceSourcePickerOpen(false)}>×</button>
           </div>
-          <div className={styles.offerModalBody}>
+          <div className={`${styles.standardModalBody} ${styles.offerModalBody}`}>
             <div className={styles.customerDocumentEmpty}>
               <strong>Aus Angebot fakturieren?</strong>
               <p>Es gibt Angebote in diesem Projekt. Wähle ein Angebot aus oder erstelle bewusst eine freie Rechnung.</p>
@@ -13131,7 +13321,7 @@ export function DashboardPage() {
               </tbody>
             </table>
           </div>
-          <div className={styles.modalFooter}>
+          <div className={styles.standardModalFooter}>
             <div className={styles.modalActions}>
               <button type="button" className={styles.secondaryButton} onClick={() => setIsInvoiceSourcePickerOpen(false)}>Abbrechen</button>
               <button type="button" className={styles.primaryButton} onClick={() => openFreeInvoiceModal(selectedProjectFile)}>Freie Rechnung</button>
@@ -13179,15 +13369,15 @@ export function DashboardPage() {
 
     return (
       <div className={styles.modalOverlay}>
-        <div className={`${styles.modal} ${styles.catalogModal} ${styles.offerModal}`}>
-          <div className={styles.catalogModalHeader}>
+        <div className={`${styles.standardModal} ${styles.catalogModal} ${styles.offerModal}`}>
+          <div className={styles.standardModalHeader}>
             <div>
               <h2>{editingInvoiceId ? "Rechnung bearbeiten" : "Neue Rechnung erstellen"}</h2>
               <p>{selectedProjectFile.projectNumber || selectedProjectFile.id} | {selectedProjectFile.title}</p>
             </div>
             <button type="button" className={styles.iconButton} onClick={() => setIsInvoiceModalOpen(false)}>×</button>
           </div>
-          <div className={styles.offerModalBody}>
+          <div className={`${styles.standardModalBody} ${styles.offerModalBody}`}>
             {invoiceError ? <p className={styles.formError}>{invoiceError}</p> : null}
             <div className={styles.offerModalLayout}>
               <div className={styles.offerEditorColumn}>
@@ -13454,7 +13644,7 @@ export function DashboardPage() {
               </aside>
             </div>
           </div>
-          <div className={styles.modalFooter}>
+          <div className={styles.standardModalFooter}>
             <div className={styles.modalActions}>
               <button type="button" className={styles.secondaryButton} onClick={() => setIsInvoiceModalOpen(false)}>Abbrechen</button>
               <button type="button" className={styles.primaryButton} onClick={saveInvoice} disabled={isSavingInvoice}>
@@ -13549,8 +13739,8 @@ export function DashboardPage() {
 
     return (
       <div className={styles.modalOverlay}>
-        <div className={`${styles.modal} ${styles.catalogModal} ${styles.offerModal}`}>
-          <div className={styles.catalogModalHeader}>
+        <div className={`${styles.standardModal} ${styles.catalogModal} ${styles.offerModal}`}>
+          <div className={styles.standardModalHeader}>
             <div>
               <h2>{editingOfferId ? "Angebot bearbeiten" : "Neues Angebot anlegen"}</h2>
               <p>{selectedProjectFile.projectNumber || selectedProjectFile.id} | {selectedProjectFile.title}</p>
@@ -13567,7 +13757,7 @@ export function DashboardPage() {
             </button>
           </div>
 
-          <div className={styles.offerModalBody}>
+          <div className={`${styles.standardModalBody} ${styles.offerModalBody}`}>
             {offerError ? <p className={styles.errorText}>{offerError}</p> : null}
 
             <div className={styles.offerModalLayout}>
@@ -13984,8 +14174,7 @@ export function DashboardPage() {
             </div>
           </div>
 
-          <div className={styles.modalFooter}>
-            <div />
+          <div className={styles.standardModalFooter}>
             <div className={styles.modalActions}>
               <button
                 type="button"
@@ -16738,36 +16927,34 @@ export function DashboardPage() {
                           Keine Signatur anzeigen
                         </label>
                         <div className={styles.signatureToolbar} aria-label="Signatur-Editor Toolbar">
-                          <button type="button" title="Formatierung">S</button>
-                          <select title="Schriftgröxe" defaultValue="15">
-                            <option>12</option>
-                            <option>15</option>
-                            <option>18</option>
-                          </select>
-                          <button type="button" title="Fett">B</button>
-                          <button type="button" title="Unterstrichen">U</button>
-                          <button type="button" title="Kursiv">I</button>
-                          <select title="Schriftart" defaultValue="Arial">
-                            <option>Arial</option>
-                            <option>Outfit</option>
-                            <option>Calibri</option>
-                          </select>
-                          <button type="button" title="Textfarbe">A</button>
-                          <button type="button" title="Aufzählung">•</button>
-                          <button type="button" title="Nummerierung">1.</button>
-                          <button type="button" title="Ausrichtung">0</button>
-                          <button type="button" title="Tabelle"></button>
-                          <button type="button" title="Dokument"></button>
-                          <button type="button" title="Quellcode anzeigen">&lt;/&gt;</button>
-                          <button type="button" title="Link">Link</button>
+                          <strong>HTML-Quellcode</strong>
+                          <button
+                            type="button"
+                            title="Standard-Signatur einsetzen"
+                            disabled={employeeSignatureHidden || !selectedEmployee}
+                            onClick={() => selectedEmployee ? setEmployeeSignature(getDefaultSignatureSource(selectedEmployee)) : undefined}
+                          >
+                            Vorlage
+                          </button>
+                          <span>HTML aus Outlook/HERO kann hier eingef?gt werden.</span>
                         </div>
                         <textarea
                           rows={10}
                           value={employeeSignature}
                           disabled={employeeSignatureHidden}
-                          placeholder="Signatur für E-Mails hinterlegen"
+                          placeholder="<p>Mit freundlichen Gr&uuml;&szlig;en</p>"
                           onChange={(event) => setEmployeeSignature(event.target.value)}
                         />
+                        {!employeeSignatureHidden && employeeSignature.trim() ? (
+                          <div className={styles.signaturePreview}>
+                            <span>Vorschau</span>
+                            <div
+                              dangerouslySetInnerHTML={{
+                                __html: normalizeMailSignatureHtml(employeeSignature),
+                              }}
+                            />
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   </>
@@ -18014,10 +18201,10 @@ export function DashboardPage() {
               </div>
             </div>
             <div className={styles.employeeFormGrid}>
-              {(["offer", "invoice"] as DocumentMailKind[]).map((kind) => (
+              {(["offer", "invoice", "cancellation", "activityReport", "document"] as DocumentMailKind[]).map((kind) => (
                 <section key={kind} className={`${styles.offerSection} ${styles.fullWidth}`}>
                   <div className={styles.offerSectionHeader}>
-                    <h3>{kind === "offer" ? "Angebot versenden" : "Rechnung versenden"}</h3>
+                    <h3>{getDocumentMailKindLabel(kind)} versenden</h3>
                     <span>{"{{number}} · {{sender}}"}</span>
                   </div>
                   <label>
@@ -18520,14 +18707,15 @@ export function DashboardPage() {
 
     return (
       <div className={styles.modalOverlay}>
-        <section className={`${styles.modal} ${styles.catalogModal}`}>
-          <div className={styles.catalogModalHeader}>
+        <section className={`${styles.standardModal} ${styles.catalogModal}`}>
+          <div className={styles.standardModalHeader}>
             <div>
               <h2>{catalogModalTitle}</h2>
               <p>{catalogTypeLabel} {catalogDraft.number}</p>
             </div>
             <button className={styles.iconButton} onClick={() => setIsCatalogModalOpen(false)}>×</button>
           </div>
+          <div className={styles.standardModalBody}>
           <div className={styles.contactFormTabs}>
             {[
               ["information", "Informationen"],
@@ -18904,9 +19092,13 @@ export function DashboardPage() {
               </table>
             </div>
           ) : null}
-          <div className={styles.modalFooter}>
+          </div>
+          <div className={styles.standardModalFooter}>
             <div />
-            <div className={styles.modalActions}>
+            </div>
+
+            <div className={styles.standardModalFooter}>
+              <div className={styles.modalActions}>
               <button className={styles.secondaryButton} onClick={() => setIsCatalogModalOpen(false)}>Abbrechen</button>
               {!editingCatalogItemId ? <button className={styles.secondaryButton} onClick={() => saveCatalogItem(true)}>Speichern und neu</button> : null}
               <button className={styles.primaryButton} onClick={() => saveCatalogItem(false)}>Speichern</button>
@@ -18921,12 +19113,12 @@ export function DashboardPage() {
     if (!documentMailDraft) return null;
     const activeMailAccount = getSafeEmployeeMailAccount(activeUser?.mailAccount, activeUser?.email || "");
     const canSendMail = activeMailAccount.status === "connected";
-    const documentLabel = documentMailDraft.kind === "offer" ? "Angebot" : "Rechnung";
+    const documentLabel = getDocumentMailKindLabel(documentMailDraft.kind);
 
     return (
       <div className={styles.modalOverlay}>
-        <div className={`${styles.modal} ${styles.catalogModal} ${styles.documentMailModal}`}>
-          <div className={styles.catalogModalHeader}>
+        <div className={`${styles.standardModal} ${styles.documentMailModal}`}>
+          <div className={styles.standardModalHeader}>
             <div>
               <h2>{documentLabel} per E-Mail senden</h2>
               <p>
@@ -18937,7 +19129,7 @@ export function DashboardPage() {
               ×
             </button>
           </div>
-          <div className={styles.offerModalBody}>
+          <div className={styles.standardModalBody}>
             <section className={styles.mailConnectionCard} data-status={activeMailAccount.status}>
               <div>
                 <span>Absender</span>
@@ -18951,8 +19143,8 @@ export function DashboardPage() {
             </section>
             {documentMailError ? <p className={styles.formError}>{documentMailError}</p> : null}
             {documentMailSuccess ? <p className={styles.inlineSuccess}>{documentMailSuccess}</p> : null}
-            <div className={styles.employeeFormGrid}>
-              <label className={styles.fullWidth}>
+            <div className={styles.standardFormGrid}>
+              <label className={styles.standardFormWide}>
                 Empfänger
                 <input
                   type="email"
@@ -18989,7 +19181,7 @@ export function DashboardPage() {
                   }
                 />
               </label>
-              <label className={styles.fullWidth}>
+              <label className={styles.standardFormWide}>
                 Betreff
                 <input
                   value={documentMailDraft.subject}
@@ -19000,10 +19192,10 @@ export function DashboardPage() {
                   }
                 />
               </label>
-              <label className={styles.fullWidth}>
+              <label className={styles.standardFormWide}>
                 Nachricht
                 <textarea
-                  rows={9}
+                  rows={7}
                   value={documentMailDraft.body}
                   onChange={(event) =>
                     setDocumentMailDraft((current) =>
@@ -19012,7 +19204,15 @@ export function DashboardPage() {
                   }
                 />
               </label>
-              <label className={`${styles.checkboxField} ${styles.fullWidth}`}>
+              <div className={`${styles.standardFormWide} ${styles.mailSignaturePreview}`}>
+                <span>E-Mail-Vorschau inkl. Signatur</span>
+                <div
+                  dangerouslySetInnerHTML={{
+                    __html: getDocumentMailPreviewHtml(),
+                  }}
+                />
+              </div>
+              <label className={`${styles.checkboxField} ${styles.standardFormWide}`}>
                 <input
                   type="checkbox"
                   checked={documentMailDraft.attachPdf}
@@ -19022,11 +19222,11 @@ export function DashboardPage() {
                     )
                   }
                 />
-                PDF automatisch anhängen
+                {documentMailDraft.attachmentName || "PDF"} automatisch anhängen
               </label>
             </div>
           </div>
-          <div className={styles.modalFooter}>
+          <div className={styles.standardModalFooter}>
             <span />
             <div className={styles.modalActions}>
               <button type="button" className={styles.secondaryButton} onClick={() => setDocumentMailDraft(null)}>
@@ -20684,20 +20884,23 @@ export function DashboardPage() {
 
         {isDocumentTextModalOpen && (
           <div className={styles.overlay}>
-            <div className={`${styles.modal} ${styles.documentTextModal}`} role="dialog" aria-modal="true">
-              <div className={styles.contactModalHeader}>
-                <h2>{editingDocumentTextId ? "Eintrag bearbeiten" : "Eintrag anlegen"}</h2>
+            <div className={`${styles.standardModal} ${styles.documentTextModal}`} role="dialog" aria-modal="true">
+              <div className={styles.standardModalHeader}>
+                <div>
+                  <h2>{editingDocumentTextId ? "Eintrag bearbeiten" : "Eintrag anlegen"}</h2>
+                  <p>Texte und Titel fuer Dokumente pflegen</p>
+                </div>
                 <button
                   type="button"
-                  className={styles.modalCloseButton}
+                  className={styles.iconButton}
                   aria-label="Schliessen"
                   onClick={closeDocumentTextModal}
                 >
-                  x
+                  Ã—
                 </button>
               </div>
 
-              <div className={styles.documentTextModalBody}>
+              <div className={`${styles.standardModalBody} ${styles.documentTextModalBody}`}>
                 <div className={styles.formGrid}>
                   <label>
                     Typ
@@ -20768,7 +20971,7 @@ export function DashboardPage() {
                 <p className={styles.stampError}>{documentTextDraftError}</p>
               )}
 
-              <div className={styles.modalFooter}>
+              <div className={styles.standardModalFooter}>
                 <div className={styles.modalActions}>
                   <button
                     type="button"
@@ -23931,26 +24134,26 @@ export function DashboardPage() {
       {isPlanningEntryModalOpen && (
         <div className={styles.overlay} onClick={() => setIsPlanningEntryModalOpen(false)}>
           <div
-            className={`${styles.modal} ${styles.planningEntryModal}`}
+            className={`${styles.standardModal} ${styles.planningEntryModal}`}
             role="dialog"
             aria-modal="true"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className={styles.contactModalHeader}>
+            <div className={styles.standardModalHeader}>
               <div>
-                <p className={styles.eyebrow}>Planungsboard</p>
                 <h2>{editingPlanningEntryId ? "Planung bearbeiten" : "Planung anlegen"}</h2>
+                <p>Planungsboard</p>
               </div>
               <button
                 type="button"
-                className={styles.modalCloseButton}
+                className={styles.iconButton}
                 onClick={() => setIsPlanningEntryModalOpen(false)}
               >
                 ×
               </button>
             </div>
 
-            <div className={styles.planningEntryModalBody}>
+            <div className={`${styles.standardModalBody} ${styles.planningEntryModalBody}`}>
               <div
                 className={styles.planningApprovalNotice}
                 data-status={planningEntryApprovalStatus}
@@ -24215,7 +24418,7 @@ export function DashboardPage() {
               </div>
             </div>
 
-            <div className={styles.modalFooter}>
+            <div className={styles.standardModalFooter}>
               {planningEntryError ? (
                 <p className={styles.modalWarning}>{planningEntryError}</p>
               ) : null}
@@ -24263,22 +24466,25 @@ export function DashboardPage() {
       {isCompanyProfileModalOpen && (
         <div className={styles.overlay} onClick={() => setIsCompanyProfileModalOpen(false)}>
           <div
-            className={`${styles.modal} ${styles.companyProfileModal}`}
+            className={`${styles.standardModal} ${styles.companyProfileModal}`}
             onClick={(event) => event.stopPropagation()}
           >
-            <div className={styles.contactModalHeader}>
-              <h2>OK solutions GmbH bearbeiten</h2>
+            <div className={styles.standardModalHeader}>
+              <div>
+                <h2>OK solutions GmbH bearbeiten</h2>
+                <p>Firmendaten, Kontakt und Bankinformationen pflegen</p>
+              </div>
               <button
-                className={styles.modalCloseButton}
+                className={styles.iconButton}
                 type="button"
                 onClick={() => setIsCompanyProfileModalOpen(false)}
                 aria-label="Firmendaten schließen"
               >
-
+                Ã—
               </button>
             </div>
 
-            <div className={styles.companyProfileModalBody}>
+            <div className={`${styles.standardModalBody} ${styles.companyProfileModalBody}`}>
               <div className={styles.contactFormTabs}>
                 {[
                   ["general", "ALLGEMEIN"],
@@ -24435,7 +24641,7 @@ export function DashboardPage() {
               )}
             </div>
 
-            <div className={styles.modalFooter}>
+            <div className={styles.standardModalFooter}>
               <span />
               <div className={styles.modalActions}>
                 <button
@@ -24461,22 +24667,25 @@ export function DashboardPage() {
       {isTradeManagementModalOpen && (
         <div className={styles.overlay} onClick={() => setIsTradeManagementModalOpen(false)}>
           <div
-            className={`${styles.modal} ${styles.tradeManagementModal}`}
+            className={`${styles.standardModal} ${styles.tradeManagementModal}`}
             onClick={(event) => event.stopPropagation()}
           >
-            <div className={styles.contactModalHeader}>
-              <h2>Gewerke von OK solutions GmbH bearbeiten</h2>
+            <div className={styles.standardModalHeader}>
+              <div>
+                <h2>Gewerke von OK solutions GmbH bearbeiten</h2>
+                <p>Gewerke und Projektkuerzel verwalten</p>
+              </div>
               <button
-                className={styles.modalCloseButton}
+                className={styles.iconButton}
                 type="button"
                 onClick={() => setIsTradeManagementModalOpen(false)}
                 aria-label="Gewerke schließen"
               >
-
+                Ã—
               </button>
             </div>
 
-            <div className={styles.tradeManagementBody}>
+            <div className={`${styles.standardModalBody} ${styles.tradeManagementBody}`}>
               <div className={styles.contactFormTabs}>
                 <button type="button" data-active="true">
                   GEWERKE
@@ -24539,7 +24748,7 @@ export function DashboardPage() {
               </div>
             </div>
 
-            <div className={styles.modalFooter}>
+            <div className={styles.standardModalFooter}>
               <span />
               <div className={styles.modalActions}>
                 <button
@@ -24565,22 +24774,25 @@ export function DashboardPage() {
       {isLogbookModalOpen && (
         <div className={styles.overlay} onClick={() => setIsLogbookModalOpen(false)}>
           <div
-            className={`${styles.modal} ${styles.logbookEntryModal}`}
+            className={`${styles.standardModal} ${styles.logbookEntryModal}`}
             onClick={(event) => event.stopPropagation()}
           >
-            <div className={styles.contactModalHeader}>
-              <h2>Nachricht ergänzen</h2>
+            <div className={styles.standardModalHeader}>
+              <div>
+                <h2>Nachricht ergänzen</h2>
+                <p>Logbuch, Anhaenge und Sichtbarkeit pflegen</p>
+              </div>
               <button
-                className={styles.modalCloseButton}
+                className={styles.iconButton}
                 type="button"
                 onClick={() => setIsLogbookModalOpen(false)}
                 aria-label="Nachricht schliessen"
               >
-
+                ×
               </button>
             </div>
 
-            <div className={styles.logbookEntryBody}>
+            <div className={`${styles.standardModalBody} ${styles.logbookEntryBody}`}>
               <div className={styles.contactFormTabs}>
                 <button type="button" data-active="true">
                   NACHRICHT
@@ -24687,7 +24899,7 @@ export function DashboardPage() {
               )}
             </div>
 
-            <div className={styles.modalFooter}>
+            <div className={styles.standardModalFooter}>
               <span />
               <div className={styles.modalActions}>
                 <button
@@ -24714,22 +24926,25 @@ export function DashboardPage() {
       {isContactBulkModalOpen && (
         <div className={styles.overlay} onClick={() => setIsContactBulkModalOpen(false)}>
           <div
-            className={`${styles.modal} ${styles.contactBulkModal}`}
+            className={`${styles.standardModal} ${styles.contactBulkModal}`}
             onClick={(event) => event.stopPropagation()}
           >
-            <div className={styles.contactModalHeader}>
-              <h2>Gruppenaktion für {contactBulkCount} Kontakte</h2>
+            <div className={styles.standardModalHeader}>
+              <div>
+                <h2>Gruppenaktion für {contactBulkCount} Kontakte</h2>
+                <p>Mehrere Kontakte gemeinsam bearbeiten</p>
+              </div>
               <button
-                className={styles.modalCloseButton}
+                className={styles.iconButton}
                 type="button"
                 onClick={() => setIsContactBulkModalOpen(false)}
                 aria-label="Gruppenaktion schließen"
               >
-
+                ×
               </button>
             </div>
 
-            <div className={styles.contactBulkBody}>
+            <div className={`${styles.standardModalBody} ${styles.contactBulkBody}`}>
               <div className={styles.contactFormTabs}>
                 <button type="button" data-active="true">
                   AKTION
@@ -24755,7 +24970,7 @@ export function DashboardPage() {
               </p>
             </div>
 
-            <div className={styles.modalFooter}>
+            <div className={styles.standardModalFooter}>
               <span />
               <div className={styles.modalActions}>
                 <button
@@ -24787,25 +25002,20 @@ export function DashboardPage() {
           onClick={() => setIsContactModalOpen(false)}
         >
           <div
-            className={`${styles.modal} ${styles.contactModal}`}
+            className={`${styles.standardModal} ${styles.contactModal}`}
             onClick={(event) => event.stopPropagation()}
           >
-            <div className={styles.contactModalHeader}>
+            <div className={styles.standardModalHeader}>
               <div>
-                <p className={styles.eyebrow}>CRM</p>
                 <h2>{editingContactId ? "Kontakt bearbeiten" : "Kontakt erstellen"}</h2>
+                <p>CRM-Kontakt mit Adresse, Konditionen und Zahlungsdaten pflegen</p>
               </div>
-              <button
-                className={styles.modalCloseButton}
-                type="button"
-                onClick={() => setIsContactModalOpen(false)}
-                aria-label="Kontaktmaske schließen"
-              >
-
+              <button className={styles.iconButton} type="button" onClick={() => setIsContactModalOpen(false)}>
+                ×
               </button>
             </div>
 
-            <div className={styles.contactModalBody}>
+            <div className={`${styles.standardModalBody} ${styles.contactModalBody}`}>
               <section className={styles.contactFormTopGrid}>
                 {!editingContactId && (
                   <label>
@@ -25187,7 +25397,7 @@ export function DashboardPage() {
               )}
             </div>
 
-            <div className={styles.modalFooter}>
+            <div className={styles.standardModalFooter}>
               <div>
                 {editingContactId && (
                   <button className={styles.deleteButton} onClick={deleteContact}>
@@ -25210,9 +25420,18 @@ export function DashboardPage() {
 
       {isAbsenceModalOpen && (
         <div className={styles.overlay} onClick={() => setIsAbsenceModalOpen(false)}>
-          <div className={styles.modal} onClick={(event) => event.stopPropagation()}>
-            <h2>{editingAbsenceId ? "Abwesenheit bearbeiten" : "Neue Abwesenheit"}</h2>
+          <div className={`${styles.standardModal} ${styles.absenceModal}`} onClick={(event) => event.stopPropagation()}>
+            <div className={styles.standardModalHeader}>
+              <div>
+                <h2>{editingAbsenceId ? "Abwesenheit bearbeiten" : "Neue Abwesenheit"}</h2>
+                <p>Urlaub, Krankheit und Vertreter regeln</p>
+              </div>
+              <button className={styles.iconButton} type="button" onClick={() => setIsAbsenceModalOpen(false)}>
+                Ã—
+              </button>
+            </div>
 
+            <div className={styles.standardModalBody}>
             <div className={styles.formGrid}>
               <label>
                 Benutzer
@@ -25437,7 +25656,10 @@ export function DashboardPage() {
               </p>
             )}
 
-            <div className={styles.modalActions}>
+            </div>
+
+            <div className={styles.standardModalFooter}>
+              <div className={styles.modalActions}>
               {isRepresentativeAbsenceView && representativeReviewAbsence ? (
                 <>
                   {isRepresentativeAbsenceReview ? (
@@ -25479,9 +25701,10 @@ export function DashboardPage() {
                   )}
                 </>
               )}
-              <button className={styles.secondaryButton} onClick={() => setIsAbsenceModalOpen(false)}>
-                Abbrechen
-              </button>
+                <button className={styles.secondaryButton} onClick={() => setIsAbsenceModalOpen(false)}>
+                  Abbrechen
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -25489,9 +25712,18 @@ export function DashboardPage() {
 
       {isOwnSettingsOpen && (
         <div className={styles.overlay} onClick={() => setIsOwnSettingsOpen(false)}>
-          <div className={styles.modal} onClick={(event) => event.stopPropagation()}>
-            <h2>Eigene Einstellungen</h2>
+          <div className={`${styles.standardModal} ${styles.ownSettingsModal}`} onClick={(event) => event.stopPropagation()}>
+            <div className={styles.standardModalHeader}>
+              <div>
+                <h2>Eigene Einstellungen</h2>
+                <p>Profil, Arbeitszeit und Passwort pflegen</p>
+              </div>
+              <button className={styles.iconButton} type="button" onClick={() => setIsOwnSettingsOpen(false)}>
+                ×
+              </button>
+            </div>
 
+            <div className={styles.standardModalBody}>
             <div className={styles.formGrid}>
               <div className={`${styles.profileImageEditor} ${styles.fullWidth}`}>
                 <div className={styles.profileImagePreview}>
@@ -25583,7 +25815,10 @@ export function DashboardPage() {
               </div>
             </div>
 
-            <div className={styles.modalActions}>
+            </div>
+
+            <div className={styles.standardModalFooter}>
+              <div className={styles.modalActions}>
               <button className={styles.primaryButton} onClick={saveOwnSettings}>
                 Speichern
               </button>
@@ -25593,6 +25828,7 @@ export function DashboardPage() {
               >
                 Abbrechen
               </button>
+              </div>
             </div>
           </div>
         </div>
@@ -25601,19 +25837,25 @@ export function DashboardPage() {
       {isContentModalOpen && (
         <div className={styles.overlay} onClick={() => setIsContentModalOpen(false)}>
           <div
-            className={`${styles.modal} ${styles.contentItemModal}`}
+            className={`${styles.standardModal} ${styles.contentItemModal}`}
             onClick={(event) => event.stopPropagation()}
           >
-            <div className={styles.contactModalHeader}>
-              <h2>{editingContentItemId ? "Inhalt bearbeiten" : "Inhalt anlegen"}</h2>
+            <div className={styles.standardModalHeader}>
+              <div>
+                <h2>{editingContentItemId ? "Inhalt bearbeiten" : "Inhalt anlegen"}</h2>
+                <p>Content, Termine und Freigaben pflegen</p>
+              </div>
               <button
                 type="button"
-                className={styles.modalCloseButton}
+                className={styles.iconButton}
             onClick={() => setIsContentModalOpen(false)}
             aria-label="Content-Maske schließen"
-          />
+          >
+            ×
+          </button>
         </div>
 
+            <div className={styles.standardModalBody}>
             {editingContentItem && isContentLockedAfterApproval(editingContentItem) ? (
               <p className={styles.modalWarning}>
                 {isContentPostApprovalEditing
@@ -25945,7 +26187,10 @@ export function DashboardPage() {
 
             {contentError ? <p className={styles.modalWarning}>{contentError}</p> : null}
 
-            <div className={styles.modalActions}>
+            </div>
+
+            <div className={styles.standardModalFooter}>
+              <div className={styles.modalActions}>
               <button
                 type="button"
                 className={styles.primaryButton}
@@ -25966,6 +26211,7 @@ export function DashboardPage() {
               >
                 Abbrechen
               </button>
+              </div>
             </div>
           </div>
         </div>
@@ -25974,23 +26220,22 @@ export function DashboardPage() {
       {isProjectModalOpen && (
         <div className={styles.overlay} onClick={closeProjectModal}>
           <div
-            className={`${styles.modal} ${styles.projectCreateModal}`}
+            className={`${styles.standardModal} ${styles.projectCreateModal}`}
             onClick={(event) => event.stopPropagation()}
           >
-            <div className={styles.contactModalHeader}>
-              <h2>{editingProjectDataId ? "Projektdaten bearbeiten" : "Projekt erstellen"}</h2>
-              <button
-                className={styles.modalCloseButton}
-                type="button"
-                onClick={closeProjectModal}
-                aria-label="Projektmaske schließen"
-              >
-
+            <div className={styles.standardModalHeader}>
+              <div>
+                <h2>{editingProjectDataId ? "Projektdaten bearbeiten" : "Projekt erstellen"}</h2>
+                <p>Kontakt, Projektdaten und kaufmännische Eckdaten pflegen</p>
+              </div>
+              <button className={styles.iconButton} type="button" onClick={closeProjectModal}>
+                ×
               </button>
             </div>
 
-            <div className={styles.projectCreateBody}>
-              <label className={styles.projectSelectWithAction}>
+            <div className={styles.standardModalBody}>
+            <div className={`${styles.standardFormGrid} ${styles.projectCreateBody}`}>
+              <label className={`${styles.projectSelectWithAction} ${styles.standardFormWide}`}>
                 Kontakt
                 <div>
                   <div className={styles.projectContactPicker}>
@@ -26053,9 +26298,9 @@ export function DashboardPage() {
                 </div>
               </label>
 
-              <strong className={styles.projectSectionTitle}>Projektdetails</strong>
+              <strong className={`${styles.projectSectionTitle} ${styles.standardFormWide}`}>Projektdetails</strong>
 
-              <label className={styles.projectSelectWithAction}>
+              <label className={`${styles.projectSelectWithAction} ${styles.standardFormWide}`}>
                 Ansprechpartner/in
                 <div>
                   <select
@@ -26085,7 +26330,7 @@ export function DashboardPage() {
                 </div>
               </label>
 
-              <label className={styles.projectSelectWithAction}>
+              <label className={`${styles.projectSelectWithAction} ${styles.standardFormWide}`}>
                 Projektadresse
                 <div>
                   <select
@@ -26149,7 +26394,7 @@ export function DashboardPage() {
               </label>
 
               {projectDraft.projectKind === "Dauerläufer-Projekt" && (
-                <div className={styles.projectTwoColumn}>
+                <div className={`${styles.projectTwoColumn} ${styles.standardFormWide}`}>
                   <label>
                     Geplanter Projektstart
                     <input
@@ -26199,7 +26444,7 @@ export function DashboardPage() {
                 </div>
               )}
 
-              <div className={styles.projectTwoColumn}>
+              <div className={`${styles.projectTwoColumn} ${styles.standardFormWide}`}>
                 <label>
                   Gewerk
                   <select
@@ -26237,7 +26482,7 @@ export function DashboardPage() {
                 />
               </label>
 
-              <div className={styles.projectTwoColumn}>
+              <div className={`${styles.projectTwoColumn} ${styles.standardFormWide}`}>
                 <label>
                   Potentielles Projektvolumen (optional)
                   <div className={styles.moneyInput}>
@@ -26289,7 +26534,9 @@ export function DashboardPage() {
               </label>
             </div>
 
-            <div className={styles.modalFooter}>
+            </div>
+
+            <div className={styles.standardModalFooter}>
               <span />
               <div className={styles.modalActions}>
                 <button
@@ -26311,21 +26558,21 @@ export function DashboardPage() {
       {isManualProjectTimeModalOpen && (
         <div className={styles.overlay} onClick={closeManualProjectTimeModal}>
           <div
-            className={`${styles.modal} ${styles.stampModal}`}
+            className={`${styles.standardModal} ${styles.stampModal}`}
             onClick={(event) => event.stopPropagation()}
           >
-            <div className={styles.contactModalHeader}>
+            <div className={styles.standardModalHeader}>
               <h2>Zeiteintrag hinzufügen</h2>
               <button
-                className={styles.modalCloseButton}
+                className={styles.iconButton}
                 type="button"
                 onClick={closeManualProjectTimeModal}
                 aria-label="Zeiteintrag schließen"
               >
-                Auswahl
+                Ã—
               </button>
             </div>
-            <div className={styles.stampModalBody}>
+            <div className={`${styles.standardModalBody} ${styles.stampModalBody}`}>
               <label>
                 Mitarbeiter
                 <select
@@ -26389,7 +26636,7 @@ export function DashboardPage() {
               </label>
               {stampEditError && <p className={styles.stampError}>{stampEditError}</p>}
             </div>
-            <div className={styles.modalFooter}>
+            <div className={styles.standardModalFooter}>
               <span />
               <div className={styles.modalActions}>
                 <button
@@ -26411,21 +26658,21 @@ export function DashboardPage() {
       {editingStampEntry && (
         <div className={styles.overlay} onClick={closeStampEntryEditModal}>
           <div
-            className={`${styles.modal} ${styles.stampModal}`}
+            className={`${styles.standardModal} ${styles.stampModal}`}
             onClick={(event) => event.stopPropagation()}
           >
-            <div className={styles.contactModalHeader}>
+            <div className={styles.standardModalHeader}>
               <h2>Zeiteintrag bearbeiten</h2>
               <button
-                className={styles.modalCloseButton}
+                className={styles.iconButton}
                 type="button"
                 onClick={closeStampEntryEditModal}
                 aria-label="Zeiteintrag schließen"
               >
-                Auswahl
+                Ã—
               </button>
             </div>
-            <div className={styles.stampModalBody}>
+            <div className={`${styles.standardModalBody} ${styles.stampModalBody}`}>
               <div className={styles.projectTwoColumn}>
                 <label>
                   Datum
@@ -26492,7 +26739,7 @@ export function DashboardPage() {
               </section>
               {stampEditError && <p className={styles.stampError}>{stampEditError}</p>}
             </div>
-            <div className={styles.modalFooter}>
+            <div className={styles.standardModalFooter}>
               <button type="button" className={styles.deleteButton} onClick={deleteEditedStampEntry}>
                 Löschen
               </button>
@@ -26516,10 +26763,10 @@ export function DashboardPage() {
       {isStampModalOpen && (
         <div className={styles.overlay} onClick={() => setIsStampModalOpen(false)}>
           <div
-            className={`${styles.modal} ${styles.stampModal}`}
+            className={`${styles.standardModal} ${styles.stampModal}`}
             onClick={(event) => event.stopPropagation()}
           >
-            <div className={styles.contactModalHeader}>
+            <div className={styles.standardModalHeader}>
               <h2>
                 {stampModalMode === "start"
                   ? "Stempelung starten"
@@ -26528,15 +26775,15 @@ export function DashboardPage() {
                     : "Folgetätigkeit auswählen"}
               </h2>
               <button
-                className={styles.modalCloseButton}
+                className={styles.iconButton}
                 type="button"
                 onClick={() => setIsStampModalOpen(false)}
                 aria-label="Stempelmaske schließen"
               >
-
+                Ã—
               </button>
             </div>
-            <div className={styles.stampModalBody}>
+            <div className={`${styles.standardModalBody} ${styles.stampModalBody}`}>
               {(stampModalMode === "change" || stampModalMode === "stop") && (
                 <label>
                   Kommentar zur abgeschlossenen Tätigkeit
@@ -26631,7 +26878,7 @@ export function DashboardPage() {
 
               {stampError && <p className={styles.stampError}>{stampError}</p>}
             </div>
-            <div className={styles.modalFooter}>
+            <div className={styles.standardModalFooter}>
               <span />
               <div className={styles.modalActions}>
                 <button
@@ -26658,22 +26905,35 @@ export function DashboardPage() {
 
       {isModalOpen && (
         <div className={styles.overlay} onClick={closeTaskModal}>
-          <div className={styles.modal} onClick={(event) => event.stopPropagation()}>
-            <h2>
-              {editingTask
-                ? "Aufgabe bearbeiten"
-                : isCreatingAbsenceHandoverTask
-                  ? "Übergabe-Aufgabe erstellen"
-                  : "Neue Aufgabe erstellen"}
-            </h2>
+          <div className={`${styles.standardModal} ${styles.taskModal}`} onClick={(event) => event.stopPropagation()}>
+            <div className={styles.standardModalHeader}>
+              <div>
+                <h2>
+                  {editingTask
+                    ? "Aufgabe bearbeiten"
+                    : isCreatingAbsenceHandoverTask
+                      ? "Übergabe-Aufgabe erstellen"
+                      : "Neue Aufgabe erstellen"}
+                </h2>
+                <p>
+                  {editingTask
+                    ? "Aufgabe, Zuständigkeit und Kommentare bearbeiten"
+                    : "Neue Aufgabe mit Kunde, Projekt und Deadline anlegen"}
+                </p>
+              </div>
+              <button className={styles.iconButton} type="button" onClick={closeTaskModal}>
+                ×
+              </button>
+            </div>
 
-            <div className={styles.formGrid}>
-              <label className={styles.fullWidth}>
+            <div className={styles.standardModalBody}>
+            <div className={styles.standardFormGrid}>
+              <label className={styles.standardFormWide}>
                 Titel
                 <input value={titel} onChange={(event) => setTitel(event.target.value)} />
               </label>
 
-              <label className={styles.fullWidth}>
+              <label className={styles.standardFormWide}>
                 Beschreibung
                 <textarea
                   rows={4}
@@ -26769,7 +27029,7 @@ export function DashboardPage() {
               </label>
 
             {editingTask && (
-              <section className={`${styles.commentBox} ${styles.fullWidth}`}>
+              <section className={`${styles.commentBox} ${styles.standardFormWide}`}>
                 <div className={styles.timeHeader}>
                   <div>
                     <h3>Kommentare</h3>
@@ -26813,8 +27073,9 @@ export function DashboardPage() {
 
             </div>
             {errorMessage && <div className={styles.modalSaveNotice}>{errorMessage}</div>}
+            </div>
 
-            <div className={styles.modalFooter}>
+            <div className={styles.standardModalFooter}>
               <div className={styles.modalActions}>
               <button className={styles.primaryButton} onClick={saveTask}>
                 Speichern
