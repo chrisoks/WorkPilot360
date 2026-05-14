@@ -4,10 +4,15 @@ import { Role } from "@prisma/client";
 export async function getDemoContext() {
   const organization = await prisma.organization.upsert({
     where: { slug: "demo" },
-    update: {},
+    update: {
+      locale: "de",
+      timezone: "Europe/Berlin",
+    },
     create: {
       name: "Demo Organisation",
       slug: "demo",
+      locale: "de",
+      timezone: "Europe/Berlin",
     },
   });
 

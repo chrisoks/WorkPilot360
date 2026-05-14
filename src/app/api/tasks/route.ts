@@ -110,22 +110,8 @@ function parseEstimate(estimateMinutes?: unknown) {
   return Number.isFinite(value) ? value : null;
 }
 
-function validateCompletionRequirements(
-  nextStatus: TaskStatus,
-  estimateMinutes: number | null,
-  timeEntryCount: number
-) {
-  if (nextStatus !== TaskStatus.ERLEDIGT) return null;
-
-  if (!estimateMinutes || estimateMinutes <= 0) {
-    return "Eine Aufgabe kann nur als erledigt gespeichert werden, wenn eine Vorgabezeit hinterlegt ist.";
-  }
-
-  if (timeEntryCount < 1) {
-    return "Eine Aufgabe kann nur als erledigt gespeichert werden, wenn mindestens ein Zeiteintrag erstellt wurde.";
-  }
-
-  return null;
+function normalizeProjectId(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 type TaskWithRelations = Task & {
@@ -222,6 +208,7 @@ function formatTask(task: TaskWithRelations, feedback?: TaskFeedbackSettings) {
     faelligkeit: toLocalDateTimeInputValue(task.deadline),
     kunde: task.customer ?? "",
     kundenklasse: task.customerClass ?? "",
+    projectId: (task as Task & { projectId?: string | null }).projectId ?? "",
     autoFeedbackEnabled: feedback?.autoFeedbackEnabled ?? false,
     autoFeedbackRecipientId: feedback?.autoFeedbackRecipientId ?? "",
     recurrenceEnabled: feedback?.recurrenceEnabled ?? false,
@@ -352,6 +339,36 @@ async function ensureTaskPlanningColumn() {
   `);
 }
 
+async function ensureTaskProjectColumn() {
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "Task"
+    ADD COLUMN IF NOT EXISTS "projectId" TEXT
+  `);
+}
+
+async function getTaskProjectIds(taskIds: string[]) {
+  if (taskIds.length === 0) return new Map<string, string>();
+
+  await ensureTaskProjectColumn();
+
+  const rows = await prisma.$queryRaw<Array<{ id: string; projectId: string | null }>>`
+    SELECT id, "projectId"
+    FROM "Task"
+    WHERE id IN (${Prisma.join(taskIds)})
+  `;
+
+  return new Map(rows.map((row) => [row.id, row.projectId ?? ""]));
+}
+
+async function updateTaskProjectId(taskId: string, projectId: string | null) {
+  await ensureTaskProjectColumn();
+  await prisma.$executeRaw`
+    UPDATE "Task"
+    SET "projectId" = ${projectId}
+    WHERE id = ${taskId}
+  `;
+}
+
 async function updateTaskPlanningAllocations(
   taskId: string,
   allocations: TaskPlanningAllocation[]
@@ -478,6 +495,11 @@ async function createNextRecurringTask(
     },
   });
 
+  await updateTaskProjectId(
+    nextTask.id,
+    (task as Task & { projectId?: string | null }).projectId ?? null
+  );
+
   await prisma.$executeRaw`
     UPDATE "Task"
     SET
@@ -494,6 +516,7 @@ async function createNextRecurringTask(
 
 export async function GET() {
   const { organization } = await getDemoContext();
+  await ensureTaskProjectColumn();
   await autoArchiveExpiredTasks();
 
   const tasks = await prisma.task.findMany({
@@ -526,30 +549,35 @@ export async function GET() {
   });
 
   const feedbackByTaskId = await getTaskFeedbackSettings(tasks.map((task) => task.id));
+  const projectIdByTaskId = await getTaskProjectIds(tasks.map((task) => task.id));
 
   return NextResponse.json(
-    tasks.map((task) => formatTask(task, feedbackByTaskId.get(task.id)))
+    tasks.map((task) => ({
+      ...formatTask(task, feedbackByTaskId.get(task.id)),
+      projectId: projectIdByTaskId.get(task.id) ?? "",
+    }))
   );
 }
 
 export async function POST(req: Request) {
   const body = await req.json();
   const { organization, user, users } = await getDemoContext();
+  await ensureTaskProjectColumn();
   const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
   const requestedOwner = users.find((demoUser) => demoUser.id === body.ownerId);
-  const owner = requestedOwner && canAssignOther(actor.role) ? requestedOwner : actor;
-  const acceptanceStatus = owner.id === actor.id ? "accepted" : "pending";
+  const owner = requestedOwner && (canAssignOther(actor.role) || body.absenceHandoverTask) ? requestedOwner : actor;
+  const acceptanceStatus = body.absenceHandoverTask
+    ? "pending"
+    : owner.id === actor.id
+      ? "accepted"
+      : "pending";
   const nextStatus = TaskStatus.OFFEN;
   const nextEstimate = parseEstimate(body.estimateMinutes);
+  const nextProjectId = normalizeProjectId(body.projectId);
   const planningAllocations = parsePlanningAllocations(body.planningAllocations, nextEstimate);
-  const completionError = validateCompletionRequirements(nextStatus, nextEstimate, 0);
 
   if ("error" in planningAllocations) {
     return NextResponse.json({ error: planningAllocations.error }, { status: 400 });
-  }
-
-  if (completionError) {
-    return NextResponse.json({ error: completionError }, { status: 400 });
   }
 
   const task = await prisma.task.create({
@@ -590,6 +618,7 @@ export async function POST(req: Request) {
   });
   await updateCompletionArchiveTimer(task.id, null, nextStatus);
   await updateTaskPlanningAllocations(task.id, planningAllocations);
+  await updateTaskProjectId(task.id, nextProjectId);
 
   const feedback = await updateTaskFeedbackSettings(
     task.id,
@@ -608,16 +637,21 @@ export async function POST(req: Request) {
   await createDoneFeedbackNotification(task, null, users, feedback);
   await createNextRecurringTask(task, null, feedback);
 
-  return NextResponse.json(formatTask(task, feedback));
+  return NextResponse.json({
+    ...formatTask(task, feedback),
+    projectId: nextProjectId ?? "",
+  });
 }
 
 export async function PATCH(req: Request) {
   const body = await req.json();
   const { user, users } = await getDemoContext();
+  await ensureTaskProjectColumn();
   const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
   const requestedOwner = users.find((demoUser) => demoUser.id === body.ownerId);
   const nextStatus = mapStatus(body.status);
   const nextEstimate = parseEstimate(body.estimateMinutes);
+  const nextProjectId = normalizeProjectId(body.projectId);
   const planningAllocations = parsePlanningAllocations(body.planningAllocations, nextEstimate);
 
   if ("error" in planningAllocations) {
@@ -676,20 +710,6 @@ export async function PATCH(req: Request) {
     existingTask && owner.id !== existingTask.ownerId && owner.id !== actor.id
       ? "pending"
       : existingFeedback?.acceptanceStatus;
-  const timeEntryCount = await prisma.timeEntry.count({
-    where: {
-      taskId: body.id,
-    },
-  });
-  const completionError = validateCompletionRequirements(
-    nextStatus,
-    nextEstimate,
-    timeEntryCount
-  );
-
-  if (completionError) {
-    return NextResponse.json({ error: completionError }, { status: 400 });
-  }
 
   const task = await prisma.task.update({
     where: {
@@ -731,6 +751,7 @@ export async function PATCH(req: Request) {
   });
   await updateCompletionArchiveTimer(task.id, existingTask?.status ?? null, nextStatus);
   await updateTaskPlanningAllocations(task.id, planningAllocations);
+  await updateTaskProjectId(task.id, nextProjectId);
 
   const feedback = await updateTaskFeedbackSettings(
     task.id,
@@ -749,7 +770,10 @@ export async function PATCH(req: Request) {
   await createDoneFeedbackNotification(task, existingTask?.status ?? null, users, feedback);
   await createNextRecurringTask(task, existingTask?.status ?? null, feedback);
 
-  return NextResponse.json(formatTask(task, feedback));
+  return NextResponse.json({
+    ...formatTask(task, feedback),
+    projectId: nextProjectId ?? "",
+  });
 }
 
 export async function DELETE(req: Request) {

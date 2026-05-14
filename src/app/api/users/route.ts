@@ -29,6 +29,17 @@ const defaultPlanningBreakWindows = Object.fromEntries(
   ])
 );
 
+const defaultMailAccount = {
+  provider: "microsoft365",
+  status: "not_connected",
+  email: "",
+  displayName: "",
+  bcc: "",
+  sendCopyToSelf: true,
+  connectedAt: "",
+  lastTestAt: "",
+};
+
 const planningGroupsByBoard: Record<string, string[]> = {
   "OK solutions": ["Marketing", "Arb.Sich.", "HR"],
   "OK immocare": ["VZK", "TZK"],
@@ -74,6 +85,8 @@ function formatUser(user: {
   planningTimeWindows?: Prisma.JsonValue | null;
   planningBreakWindows?: Prisma.JsonValue | null;
   planningResponsibleFor?: Prisma.JsonValue | null;
+  notifyIdeaStore?: boolean | null;
+  mailAccount?: Prisma.JsonValue | null;
 }, teamIds: string[] = []) {
   const birthDate =
     user.birthDate instanceof Date
@@ -113,6 +126,8 @@ function formatUser(user: {
     ),
     planningBreakWindows: parsePlanningBreakWindows(user.planningBreakWindows),
     planningResponsibleFor: parsePlanningResponsibleFor(user.planningResponsibleFor),
+    notifyIdeaStore: user.notifyIdeaStore ?? true,
+    mailAccount: parseMailAccount(user.mailAccount, user.email),
   };
 }
 
@@ -228,6 +243,29 @@ function parsePlanningResponsibleFor(value: unknown) {
     .filter((entry, index, entries) => validKeys.has(entry) && entries.indexOf(entry) === index);
 }
 
+function parseMailAccount(value: unknown, fallbackEmail = "") {
+  const source =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  const status =
+    source.status === "connected" || source.status === "expired" || source.status === "not_connected"
+      ? source.status
+      : "not_connected";
+
+  return {
+    ...defaultMailAccount,
+    provider: "microsoft365",
+    status,
+    email: parseText(source.email) || fallbackEmail,
+    displayName: parseText(source.displayName),
+    bcc: parseText(source.bcc),
+    sendCopyToSelf: source.sendCopyToSelf !== false,
+    connectedAt: parseText(source.connectedAt),
+    lastTestAt: parseText(source.lastTestAt),
+  };
+}
+
 function parseBirthDate(value: unknown) {
   const text = parseText(value);
   if (!text) return null;
@@ -274,7 +312,9 @@ async function ensureUserProfileColumns() {
     ADD COLUMN IF NOT EXISTS "planningEndTime" TEXT DEFAULT '17:00',
     ADD COLUMN IF NOT EXISTS "planningTimeWindows" JSONB DEFAULT '{"monday":{"start":"08:00","end":"17:00"},"tuesday":{"start":"08:00","end":"17:00"},"wednesday":{"start":"08:00","end":"17:00"},"thursday":{"start":"08:00","end":"17:00"},"friday":{"start":"08:00","end":"17:00"},"saturday":{"start":"08:00","end":"17:00"},"sunday":{"start":"08:00","end":"17:00"}}'::jsonb,
     ADD COLUMN IF NOT EXISTS "planningBreakWindows" JSONB DEFAULT '{"monday":{"start":"12:00","end":"12:30"},"tuesday":{"start":"12:00","end":"12:30"},"wednesday":{"start":"12:00","end":"12:30"},"thursday":{"start":"12:00","end":"12:30"},"friday":{"start":"12:00","end":"12:30"},"saturday":{"start":"","end":""},"sunday":{"start":"","end":""}}'::jsonb,
-    ADD COLUMN IF NOT EXISTS "planningResponsibleFor" JSONB DEFAULT '[]'::jsonb
+    ADD COLUMN IF NOT EXISTS "planningResponsibleFor" JSONB DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS "notifyIdeaStore" BOOLEAN DEFAULT true,
+    ADD COLUMN IF NOT EXISTS "mailAccount" JSONB DEFAULT '{}'::jsonb
   `;
 }
 
@@ -298,6 +338,8 @@ type UserDetails = {
   planningTimeWindows: Record<string, { start: string; end: string }>;
   planningBreakWindows: Record<string, { start: string; end: string }>;
   planningResponsibleFor: string[];
+  notifyIdeaStore: boolean;
+  mailAccount: ReturnType<typeof parseMailAccount>;
 };
 
 async function getUserDetails(userIds: string[]) {
@@ -327,6 +369,8 @@ async function getUserDetails(userIds: string[]) {
       planningTimeWindows: Prisma.JsonValue | null;
       planningBreakWindows: Prisma.JsonValue | null;
       planningResponsibleFor: Prisma.JsonValue | null;
+      notifyIdeaStore: boolean | null;
+      mailAccount: Prisma.JsonValue | null;
     }>
   >`
     SELECT
@@ -349,7 +393,9 @@ async function getUserDetails(userIds: string[]) {
       "planningEndTime",
       "planningTimeWindows",
       "planningBreakWindows",
-      "planningResponsibleFor"
+      "planningResponsibleFor",
+      "notifyIdeaStore",
+      "mailAccount"
     FROM "User"
     WHERE id IN (${Prisma.join(userIds)})
   `;
@@ -381,6 +427,8 @@ async function getUserDetails(userIds: string[]) {
         ),
         planningBreakWindows: parsePlanningBreakWindows(row.planningBreakWindows),
         planningResponsibleFor: parsePlanningResponsibleFor(row.planningResponsibleFor),
+        notifyIdeaStore: row.notifyIdeaStore ?? true,
+        mailAccount: parseMailAccount(row.mailAccount, ""),
       },
     ])
   );
@@ -589,6 +637,8 @@ export async function PATCH(req: Request) {
   const hasPlanningTimeWindowsUpdate = Object.prototype.hasOwnProperty.call(body, "planningTimeWindows");
   const hasPlanningBreakWindowsUpdate = Object.prototype.hasOwnProperty.call(body, "planningBreakWindows");
   const hasPlanningResponsibleForUpdate = Object.prototype.hasOwnProperty.call(body, "planningResponsibleFor");
+  const hasNotifyIdeaStoreUpdate = Object.prototype.hasOwnProperty.call(body, "notifyIdeaStore");
+  const hasMailAccountUpdate = Object.prototype.hasOwnProperty.call(body, "mailAccount");
   const nextBirthDate = parseBirthDate(body.birthDate);
   const nextPlanningBoard = parsePlanningBoard(body.planningBoard);
   const nextPlanningGroup = parsePlanningGroup(nextPlanningBoard, body.planningGroup);
@@ -602,6 +652,29 @@ export async function PATCH(req: Request) {
   );
   const nextPlanningBreakWindows = parsePlanningBreakWindows(body.planningBreakWindows);
   const nextPlanningResponsibleFor = parsePlanningResponsibleFor(body.planningResponsibleFor);
+  const nextMailAccount = parseMailAccount(body.mailAccount, body.email);
+  const existingMailRows = await prisma.$queryRaw<Array<{ mailAccount: Prisma.JsonValue | null }>>`
+    SELECT "mailAccount" FROM "User" WHERE id = ${updated.id} LIMIT 1
+  `;
+  const existingMailAccount =
+    existingMailRows[0]?.mailAccount &&
+    typeof existingMailRows[0].mailAccount === "object" &&
+    !Array.isArray(existingMailRows[0].mailAccount)
+      ? (existingMailRows[0].mailAccount as Record<string, unknown>)
+      : {};
+  const mergedMailAccount =
+    nextMailAccount.status === "connected"
+      ? {
+          ...existingMailAccount,
+          ...nextMailAccount,
+        }
+      : {
+          ...nextMailAccount,
+          accessToken: undefined,
+          refreshToken: undefined,
+          expiresAt: undefined,
+          microsoftUserId: undefined,
+        };
 
   await prisma.$executeRaw`
     UPDATE "User"
@@ -682,6 +755,14 @@ export async function PATCH(req: Request) {
       "planningResponsibleFor" = CASE
         WHEN ${hasPlanningResponsibleForUpdate} THEN ${JSON.stringify(nextPlanningResponsibleFor)}::jsonb
         ELSE "planningResponsibleFor"
+      END,
+      "notifyIdeaStore" = CASE
+        WHEN ${hasNotifyIdeaStoreUpdate} THEN ${Boolean(body.notifyIdeaStore)}
+        ELSE "notifyIdeaStore"
+      END,
+      "mailAccount" = CASE
+        WHEN ${hasMailAccountUpdate} THEN ${JSON.stringify(mergedMailAccount)}::jsonb
+        ELSE "mailAccount"
       END,
       "passwordHash" = CASE
         WHEN ${nextPasswordHash} = '' THEN "passwordHash"
@@ -766,6 +847,8 @@ export async function POST(req: Request) {
   );
   const planningBreakWindows = parsePlanningBreakWindows(body.planningBreakWindows);
   const planningResponsibleFor = parsePlanningResponsibleFor(body.planningResponsibleFor);
+  const notifyIdeaStore = body.notifyIdeaStore !== false;
+  const mailAccount = parseMailAccount(body.mailAccount, body.email);
   const created = await prisma.user.create({
     data: {
       organizationId: organization.id,
@@ -802,7 +885,9 @@ export async function POST(req: Request) {
       "planningEndTime" = ${planningEndTime},
       "planningTimeWindows" = ${JSON.stringify(planningTimeWindows)}::jsonb,
       "planningBreakWindows" = ${JSON.stringify(planningBreakWindows)}::jsonb,
-      "planningResponsibleFor" = ${JSON.stringify(planningResponsibleFor)}::jsonb
+      "planningResponsibleFor" = ${JSON.stringify(planningResponsibleFor)}::jsonb,
+      "notifyIdeaStore" = ${notifyIdeaStore},
+      "mailAccount" = ${JSON.stringify(mailAccount)}::jsonb
     WHERE id = ${created.id}
   `;
 
@@ -830,6 +915,8 @@ export async function POST(req: Request) {
         planningTimeWindows,
         planningBreakWindows,
         planningResponsibleFor,
+        notifyIdeaStore,
+        mailAccount,
       },
       teamIds
     ),

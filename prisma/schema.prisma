@@ -23,6 +23,8 @@ model Organization {
   catalogItems     CatalogItem[]
   catalogItemHistory CatalogItemHistory[]
   catalogPackageItems CatalogPackageItem[]
+  contentApprovalHistory ContentApprovalHistory[]
+  contentItems     ContentItem[]
   offers           Offer[]
   offerLines       OfferLine[]
   offerLineLabor   OfferLineLabor[]
@@ -77,6 +79,9 @@ model User {
   planningTimeWindows Json              @default("{\"monday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"tuesday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"wednesday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"thursday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"friday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"saturday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"sunday\":{\"start\":\"08:00\",\"end\":\"17:00\"}}")
   planningBreakWindows Json             @default("{\"monday\":{\"start\":\"12:00\",\"end\":\"12:30\"},\"tuesday\":{\"start\":\"12:00\",\"end\":\"12:30\"},\"wednesday\":{\"start\":\"12:00\",\"end\":\"12:30\"},\"thursday\":{\"start\":\"12:00\",\"end\":\"12:30\"},\"friday\":{\"start\":\"12:00\",\"end\":\"12:30\"},\"saturday\":{\"start\":\"\",\"end\":\"\"},\"sunday\":{\"start\":\"\",\"end\":\"\"}}")
   planningResponsibleFor Json           @default("[]")
+  notifyIdeaStore    Boolean           @default(true)
+  mailAccount        Json              @default("{}")
+  employeeAssessment Json              @default("{}")
   costCalculations  EmployeeCostCalculation[]
   notifications       Notification[]
   ownedTasks          Task[]            @relation("TaskOwner")
@@ -142,6 +147,7 @@ model Task {
   deadline                DateTime
   customer                String?
   customerClass           CustomerClassification?
+  projectId               String?
   categoryId              String?
   subcategoryId           String?
   estimateMinutes         Int?
@@ -174,6 +180,8 @@ model Task {
   links                   TaskLink[]
   participants            TaskParticipant[]
   timeEntries             TimeEntry[]
+
+  @@index([organizationId, projectId])
 }
 
 model TaskParticipant {
@@ -343,6 +351,64 @@ model CatalogItemHistory {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, catalogItemId])
+  @@index([organizationId, createdAt])
+}
+
+model ContentItem {
+  id                    String                   @id @default(cuid())
+  organizationId        String
+  title                 String
+  description           String                   @default("")
+  channel               String                   @default("Instagram")
+  format                String                   @default("Post")
+  ownerUserId           String?
+  ownerName             String                   @default("")
+  plannedDate           String
+  productionDueDate     String                   @default("")
+  productionDueTime     String                   @default("17:00")
+  approvalDueDate       String                   @default("")
+  approvalDueTime       String                   @default("17:00")
+  plannedTime           String                   @default("09:00")
+  approvalLevel         String                   @default("gruen")
+  status                String                   @default("Idee")
+  directionApprovedById String?
+  directionApprovedByName String?
+  directionApprovedAt   DateTime?
+  finalApprovedById     String?
+  finalApprovedByName   String?
+  finalApprovedAt       DateTime?
+  correctionNote        String                   @default("")
+  assetLink             String                   @default("")
+  imageDataUrl          String                   @default("")
+  sourceIdeaId          String?
+  sourceIdeaTitle       String                   @default("")
+  createdByUserId       String?
+  createdByName         String                   @default("")
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  organization          Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  history               ContentApprovalHistory[]
+
+  @@index([organizationId, plannedDate])
+  @@index([organizationId, status])
+  @@index([organizationId, approvalLevel])
+}
+
+model ContentApprovalHistory {
+  id             String       @id @default(cuid())
+  organizationId String
+  contentItemId  String
+  eventType      String
+  fromStatus     String?
+  toStatus       String?
+  actorUserId    String?
+  actorName      String       @default("")
+  note           String       @default("")
+  createdAt      DateTime     @default(now())
+  contentItem    ContentItem  @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, contentItemId])
   @@index([organizationId, createdAt])
 }
 
@@ -581,13 +647,88 @@ model Absence {
   id                   String   @id
   organizationId       String
   userId               String
+  requestGroupId       String?
   type                 String
+  dayPart              String   @default("full")
+  status               String   @default("genehmigt")
   date                 DateTime @db.Date
-  note                 String?
-  createdAt            DateTime @default(now())
   representativeUserId String?
+  note                 String?
+  handoverTaskIds      Json     @default("[]")
+  rejectionReason      String?
+  history              Json     @default("[]")
+  createdAt            DateTime @default(now())
 
   @@unique([userId, date])
+}
+
+model IdeaPost {
+  id                   String   @id
+  organizationId       String
+  title                String
+  body                 String   @default("")
+  authorUserId         String?
+  authorName           String   @default("")
+  pinned               Boolean  @default(false)
+  plannedContentItemId String?
+  plannedContentTitle  String   @default("")
+  plannedContentStatus String   @default("")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+}
+
+model IdeaComment {
+  id             String   @id
+  organizationId String
+  ideaId         String
+  body           String
+  authorUserId   String?
+  authorName     String   @default("")
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, ideaId])
+}
+
+model IdeaLike {
+  organizationId String
+  ideaId         String
+  userId         String
+  reaction       String   @default("up")
+  createdAt      DateTime @default(now())
+
+  @@id([ideaId, userId])
+  @@index([organizationId, ideaId])
+}
+
+model DocumentMailDispatch {
+  id                String   @id
+  organizationId    String
+  documentKind      String
+  documentId        String
+  documentNumber    String
+  projectId         String   @default("")
+  projectNumber     String   @default("")
+  projectTitle      String   @default("")
+  customerName      String   @default("")
+  senderUserId      String
+  senderName        String
+  senderEmail       String
+  toRecipients      String
+  ccRecipients      String   @default("")
+  bccRecipients     String   @default("")
+  subject           String
+  body              String
+  attachPdf         Boolean  @default(true)
+  provider          String   @default("microsoft365")
+  status            String   @default("queued")
+  providerMessageId String   @default("")
+  errorMessage      String   @default("")
+  createdAt         DateTime @default(now())
+
+  @@index([organizationId, documentKind, documentId])
+  @@index([organizationId, createdAt])
 }
 
 model Contact {
@@ -693,6 +834,11 @@ model ProjectTimeEntry {
   invoiceId      String?
   invoiceNumber  String?
   invoicedAt     DateTime?
+  overtimeApprovalStatus String @default("not_required")
+  overtimeApprovedByUserId String?
+  overtimeApprovedByName String?
+  overtimeApprovedAt DateTime?
+  editHistory    Json     @default("[]")
   createdAt      DateTime @default(now())
   mode           String   @default("project")
 }

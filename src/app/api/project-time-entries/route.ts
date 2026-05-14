@@ -21,6 +21,11 @@ type ProjectTimeEntryRow = {
   invoiceId: string | null;
   invoiceNumber: string | null;
   invoicedAt: Date | null;
+  overtimeApprovalStatus: string | null;
+  overtimeApprovedByUserId: string | null;
+  overtimeApprovedByName: string | null;
+  overtimeApprovedAt: Date | null;
+  editHistory: unknown;
   createdAt: Date;
 };
 
@@ -44,6 +49,11 @@ async function ensureProjectTimeEntryTable() {
       "invoiceId" TEXT,
       "invoiceNumber" TEXT,
       "invoicedAt" TIMESTAMP(3),
+      "overtimeApprovalStatus" TEXT NOT NULL DEFAULT 'not_required',
+      "overtimeApprovedByUserId" TEXT,
+      "overtimeApprovedByName" TEXT,
+      "overtimeApprovedAt" TIMESTAMP(3),
+      "editHistory" JSONB NOT NULL DEFAULT '[]'::jsonb,
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `;
@@ -55,7 +65,12 @@ async function ensureProjectTimeEntryTable() {
     ADD COLUMN IF NOT EXISTS "entrySource" TEXT NOT NULL DEFAULT 'stamped',
     ADD COLUMN IF NOT EXISTS "invoiceId" TEXT,
     ADD COLUMN IF NOT EXISTS "invoiceNumber" TEXT,
-    ADD COLUMN IF NOT EXISTS "invoicedAt" TIMESTAMP(3)
+    ADD COLUMN IF NOT EXISTS "invoicedAt" TIMESTAMP(3),
+    ADD COLUMN IF NOT EXISTS "overtimeApprovalStatus" TEXT NOT NULL DEFAULT 'not_required',
+    ADD COLUMN IF NOT EXISTS "overtimeApprovedByUserId" TEXT,
+    ADD COLUMN IF NOT EXISTS "overtimeApprovedByName" TEXT,
+    ADD COLUMN IF NOT EXISTS "overtimeApprovedAt" TIMESTAMP(3),
+    ADD COLUMN IF NOT EXISTS "editHistory" JSONB NOT NULL DEFAULT '[]'::jsonb
   `;
 }
 
@@ -86,6 +101,14 @@ function formatEntry(entry: ProjectTimeEntryRow) {
     invoiceId: entry.invoiceId ?? "",
     invoiceNumber: entry.invoiceNumber ?? "",
     invoicedAt: entry.invoicedAt?.toISOString() ?? "",
+    overtimeApprovalStatus:
+      entry.overtimeApprovalStatus === "pending" || entry.overtimeApprovalStatus === "approved"
+        ? entry.overtimeApprovalStatus
+        : "not_required",
+    overtimeApprovedByUserId: entry.overtimeApprovedByUserId ?? "",
+    overtimeApprovedByName: entry.overtimeApprovedByName ?? "",
+    overtimeApprovedAt: entry.overtimeApprovedAt?.toISOString() ?? "",
+    editHistory: Array.isArray(entry.editHistory) ? entry.editHistory : [],
     createdAt: entry.createdAt.toISOString(),
   };
 }
@@ -131,6 +154,13 @@ export async function POST(req: Request) {
   const endTime = cleanString(body.endTime);
   const pauseMs = parseMilliseconds(body.pauseMs);
   const comment = cleanString(body.comment);
+  const overtimeApprovalStatus = ["pending", "approved"].includes(cleanString(body.overtimeApprovalStatus))
+    ? cleanString(body.overtimeApprovalStatus)
+    : "not_required";
+  const overtimeApprovedByUserId = cleanString(body.overtimeApprovedByUserId);
+  const overtimeApprovedByName = cleanString(body.overtimeApprovedByName);
+  const overtimeApprovedAt = cleanString(body.overtimeApprovedAt);
+  const editHistory = Array.isArray(body.editHistory) ? body.editHistory : [];
 
   if (!date || !startTime || !endTime) {
     return NextResponse.json({ error: "Datum und Uhrzeit fehlen." }, { status: 400 });
@@ -151,7 +181,12 @@ export async function POST(req: Request) {
       "endTime",
       "durationMs",
       "pauseMs",
-      "comment"
+      "comment",
+      "overtimeApprovalStatus",
+      "overtimeApprovedByUserId",
+      "overtimeApprovedByName",
+      "overtimeApprovedAt",
+      "editHistory"
     )
     VALUES (
       ${id},
@@ -167,7 +202,12 @@ export async function POST(req: Request) {
       ${endTime},
       ${durationMs},
       ${pauseMs},
-      ${comment || null}
+      ${comment || null},
+      ${overtimeApprovalStatus},
+      ${overtimeApprovedByUserId || null},
+      ${overtimeApprovedByName || null},
+      ${overtimeApprovedAt ? new Date(overtimeApprovedAt) : null},
+      ${editHistory}
     )
     ON CONFLICT ("id") DO UPDATE SET
       "mode" = EXCLUDED."mode",
@@ -180,7 +220,12 @@ export async function POST(req: Request) {
       "endTime" = EXCLUDED."endTime",
       "durationMs" = EXCLUDED."durationMs",
       "pauseMs" = EXCLUDED."pauseMs",
-      "comment" = EXCLUDED."comment"
+      "comment" = EXCLUDED."comment",
+      "overtimeApprovalStatus" = EXCLUDED."overtimeApprovalStatus",
+      "overtimeApprovedByUserId" = EXCLUDED."overtimeApprovedByUserId",
+      "overtimeApprovedByName" = EXCLUDED."overtimeApprovedByName",
+      "overtimeApprovedAt" = EXCLUDED."overtimeApprovedAt",
+      "editHistory" = EXCLUDED."editHistory"
     RETURNING *
   `;
 

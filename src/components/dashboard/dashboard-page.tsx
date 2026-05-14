@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import {
   useEffect,
@@ -13,6 +13,57 @@ import styles from "./dashboard.module.css";
 
 const DOCUMENT_PREVIEW_WIDTH = 595;
 const DOCUMENT_PREVIEW_HEIGHT = 842;
+const APP_LOCALE = "de-DE";
+const APP_TIME_ZONE = "Europe/Berlin";
+
+function getTimeZoneOffsetMs(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const zonedAsUtc = Date.UTC(
+    Number(values.year),
+    Number(values.month) - 1,
+    Number(values.day),
+    Number(values.hour),
+    Number(values.minute),
+    Number(values.second)
+  );
+
+  return zonedAsUtc - date.getTime();
+}
+
+function parseAppDateTime(value: string) {
+  if (!value) return new Date(NaN);
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?Z$/
+  );
+
+  if (!match) return new Date(value);
+
+  const [, year, month, day, hour, minute, second = "00", millisecond = "0"] = match;
+  const wallTimeAsUtc = new Date(
+    Date.UTC(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second),
+      Number(millisecond.padEnd(3, "0"))
+    )
+  );
+  const offset = getTimeZoneOffsetMs(wallTimeAsUtc, APP_TIME_ZONE);
+
+  return new Date(wallTimeAsUtc.getTime() - offset);
+}
 
 type AppTab =
   | "overview"
@@ -30,6 +81,13 @@ type AppTab =
   | "documentTemplates"
   | "documentConfigurator"
   | "documentGaeb"
+  | "contentManagement"
+  | "contentRound"
+  | "editorialPlan"
+  | "contentApprovals"
+  | "contentCorrections"
+  | "contentQuotas"
+  | "ideaStore"
   | "orders"
   | "articles"
   | "services"
@@ -110,6 +168,17 @@ type FirmSettingsTab =
 type CompanyProfileEditTab = "general" | "contact" | "bank";
 type EmployeeTopTab = "overview" | "absence" | "time" | "balance" | "documents" | "costs";
 type EmployeeTimePeriod = "day" | "month" | "year" | "custom";
+type PersonalDataView =
+  | "overview"
+  | "absences"
+  | "time"
+  | "stamps"
+  | "performance"
+  | "development"
+  | "disg"
+  | "tasks"
+  | "documents"
+  | "masterData";
 type EmployeeSideTab =
   | "personal"
   | "permissions"
@@ -403,6 +472,37 @@ type UserOption = {
   planningTimeWindows?: WeeklyPlanningWindows;
   planningBreakWindows?: WeeklyPlanningWindows;
   planningResponsibleFor?: string[];
+  notifyIdeaStore?: boolean;
+  mailAccount?: EmployeeMailAccount;
+};
+
+type EmployeeMailAccount = {
+  provider: "microsoft365";
+  status: "not_connected" | "connected" | "expired";
+  email: string;
+  displayName: string;
+  bcc: string;
+  sendCopyToSelf: boolean;
+  connectedAt: string;
+  lastTestAt: string;
+};
+
+type DocumentMailKind = "offer" | "invoice";
+
+type DocumentMailDraft = {
+  kind: DocumentMailKind;
+  documentId: string;
+  documentNumber: string;
+  projectId: string;
+  projectNumber: string;
+  projectTitle: string;
+  customerName: string;
+  to: string;
+  cc: string;
+  bcc: string;
+  subject: string;
+  body: string;
+  attachPdf: boolean;
 };
 
 type EmployeeCostCalculation = {
@@ -418,6 +518,91 @@ type EmployeeCostCalculation = {
   updatedByUserId?: string;
   updatedByName?: string;
   createdAt?: string;
+  updatedAt?: string;
+};
+
+type AssessmentAnswerMap = Record<string, number>;
+type AssessmentTextMap = Record<string, string>;
+
+type EmployeeAssessmentBlock = {
+  answers: AssessmentAnswerMap;
+  texts: AssessmentTextMap;
+  updatedAt?: string;
+};
+
+type EmployeeDevelopmentMeasure = {
+  id: string;
+  field: string;
+  goal: string;
+  action: string;
+  support: string;
+  reviewDate: string;
+  successCriterion: string;
+  status: "offen" | "in Umsetzung" | "abgeschlossen";
+};
+
+type EmployeeAssessmentConversation = {
+  strengths: string;
+  developmentFields: string;
+  agreedMeasures: string;
+  nextReviewDate: string;
+  internalNote: string;
+};
+
+type EmployeeAssessmentHistoryCase = {
+  id: string;
+  completedAt: string;
+  self?: EmployeeAssessmentBlock;
+  manager?: EmployeeAssessmentBlock;
+  measures?: EmployeeDevelopmentMeasure[];
+  conversation?: EmployeeAssessmentConversation;
+  selfAverage?: number | null;
+  managerAverage?: number | null;
+  measuresCount?: number;
+};
+
+type DisgDimension = "D" | "I" | "S" | "G";
+
+type DisgQuestion = {
+  id: string;
+  text: string;
+};
+
+type DisgResultDimension = {
+  points: number;
+  average: number;
+  percent: number;
+};
+
+type DisgResult = {
+  scores: Record<DisgDimension, DisgResultDimension>;
+  primaryType: DisgDimension;
+  secondaryType: DisgDimension;
+  profile: string;
+  isBalanced: boolean;
+  closeProfile: boolean;
+  completedAt: string;
+};
+
+type DisgAssessmentState = {
+  answers: Record<string, number>;
+  order: string[];
+  status: "not_started" | "draft" | "completed";
+  locked: boolean;
+  startedAt?: string;
+  completedAt?: string;
+  result?: DisgResult;
+};
+
+type EmployeeAssessmentState = {
+  self: EmployeeAssessmentBlock;
+  manager: EmployeeAssessmentBlock;
+  measures: EmployeeDevelopmentMeasure[];
+  conversation: EmployeeAssessmentConversation;
+  selfLocked: boolean;
+  currentCaseId?: string;
+  history: EmployeeAssessmentHistoryCase[];
+  disg: DisgAssessmentState;
   updatedAt?: string;
 };
 
@@ -476,6 +661,105 @@ type PlanningEntry = {
   deletedAt: string;
   createdAt: string;
   history: PlanningEntryHistory[];
+};
+
+type ContentApprovalLevel = "gruen" | "gelb" | "rot";
+type ContentStatus =
+  | "Idee"
+  | "Richtungsfreigabe offen"
+  | "In Produktion"
+  | "Fertig produziert"
+  | "Finale Freigabe offen"
+  | "Korrektur nötig"
+  | "Freigegeben"
+  | "Veröffentlicht";
+type ContentHistoryItem = {
+  id: string;
+  contentItemId: string;
+  eventType: string;
+  fromStatus: string;
+  toStatus: string;
+  actorUserId: string;
+  actorName: string;
+  note: string;
+  createdAt: string;
+};
+type ContentItem = {
+  id: string;
+  title: string;
+  description: string;
+  channel: string;
+  format: string;
+  ownerUserId: string;
+  ownerName: string;
+  plannedDate: string;
+  productionDueDate: string;
+  productionDueTime: string;
+  approvalDueDate: string;
+  approvalDueTime: string;
+  plannedTime: string;
+  approvalLevel: ContentApprovalLevel;
+  status: ContentStatus;
+  directionApprovedById: string;
+  directionApprovedByName: string;
+  directionApprovedAt: string;
+  finalApprovedById: string;
+  finalApprovedByName: string;
+  finalApprovedAt: string;
+  correctionNote: string;
+  assetLink: string;
+  imageDataUrl: string;
+  sourceIdeaId: string;
+  sourceIdeaTitle: string;
+  createdByUserId: string;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
+  history: ContentHistoryItem[];
+};
+type ContentDraft = {
+  title: string;
+  description: string;
+  channel: string;
+  format: string;
+  ownerUserId: string;
+  plannedDate: string;
+  productionDueDate: string;
+  productionDueTime: string;
+  approvalDueDate: string;
+  approvalDueTime: string;
+  plannedTime: string;
+  approvalLevel: ContentApprovalLevel;
+  status: ContentStatus;
+  assetLink: string;
+  imageDataUrl: string;
+  sourceIdeaId: string;
+  sourceIdeaTitle: string;
+};
+type IdeaStoreComment = {
+  id: string;
+  ideaId: string;
+  body: string;
+  authorUserId: string;
+  authorName: string;
+  createdAt: string;
+};
+type IdeaStorePost = {
+  id: string;
+  title: string;
+  body: string;
+  authorUserId: string;
+  authorName: string;
+  pinned: boolean;
+  plannedContentItemId: string;
+  plannedContentTitle: string;
+  plannedContentStatus: string;
+  createdAt: string;
+  likeCount: number;
+  dislikeCount: number;
+  likedByActiveUser: boolean;
+  dislikedByActiveUser: boolean;
+  comments: IdeaStoreComment[];
 };
 
 type CatalogItemType = "article" | "service" | "package";
@@ -715,13 +999,25 @@ type AppNotification = {
 
 type AbsenceItem = {
   id: string;
+  requestGroupId: string;
   userId: string;
   userName: string;
   representativeUserId: string | null;
   representativeName: string | null;
   type: "urlaub" | "krank";
+  dayPart: "full" | "first-half" | "second-half";
+  status: "wartet_vertreter" | "wartet_geschaeftsfuehrung" | "genehmigt" | "abgelehnt";
   date: string;
   note: string;
+  handoverTaskIds: string[];
+  rejectionReason: string;
+  history: Array<{
+    id: string;
+    event: string;
+    actorName: string;
+    note: string;
+    createdAt: string;
+  }>;
 };
 
 type ContactItem = {
@@ -898,6 +1194,20 @@ type StampTimeEntry = {
   invoiceId?: string;
   invoiceNumber?: string;
   invoicedAt?: string;
+  overtimeApprovalStatus?: "not_required" | "pending" | "approved";
+  overtimeApprovedByUserId?: string;
+  overtimeApprovedByName?: string;
+  overtimeApprovedAt?: string;
+  editHistory?: Array<{
+    id: string;
+    actorUserId: string;
+    actorName: string;
+    event: string;
+    note: string;
+    previousValue: string;
+    nextValue: string;
+    createdAt: string;
+  }>;
   createdAt?: string;
 };
 
@@ -1271,13 +1581,76 @@ const emptyOfferDraft: OfferDraft = {
   lines: [],
 };
 
+const emptyEmployeeMailAccount: EmployeeMailAccount = {
+  provider: "microsoft365",
+  status: "not_connected",
+  email: "",
+  displayName: "",
+  bcc: "",
+  sendCopyToSelf: true,
+  connectedAt: "",
+  lastTestAt: "",
+};
+
+const defaultDocumentMailTemplates: Record<DocumentMailKind, { subject: string; body: string }> = {
+  offer: {
+    subject: "Angebot {{number}}",
+    body:
+      "Hallo,\n\nanbei senden wir Ihnen unser Angebot {{number}} als PDF.\n\nBei Fragen melden Sie sich gern.\n\nMit freundlichen Grüßen\n{{sender}}",
+  },
+  invoice: {
+    subject: "Rechnung {{number}}",
+    body:
+      "Hallo,\n\nanbei senden wir Ihnen unsere Rechnung {{number}} als PDF.\n\nBitte prüfen Sie die Unterlagen. Bei Rückfragen stehen wir gern zur Verfügung.\n\nMit freundlichen Grüßen\n{{sender}}",
+  },
+};
+const emptyContentDraft: ContentDraft = {
+  title: "",
+  description: "",
+  channel: "Marketing",
+  format: "Marketingkonzept",
+  ownerUserId: "",
+  plannedDate: "",
+  productionDueDate: "",
+  productionDueTime: "17:00",
+  approvalDueDate: "",
+  approvalDueTime: "17:00",
+  plannedTime: "09:00",
+  approvalLevel: "gruen",
+  status: "In Produktion",
+  assetLink: "",
+  imageDataUrl: "",
+  sourceIdeaId: "",
+  sourceIdeaTitle: "",
+};
+const contentApprovalLevelLabels: Record<ContentApprovalLevel, string> = {
+  gruen: "Grün",
+  gelb: "Gelb",
+  rot: "Rot",
+};
+const contentApprovalLevelHints: Record<ContentApprovalLevel, string> = {
+  gruen: "Creator entscheidet selbst",
+  gelb: "Kurze Abstimmung nötig",
+  rot: "Art Direction entscheidet",
+};
+const contentStatusOptions: ContentStatus[] = [
+  "Idee",
+  "Richtungsfreigabe offen",
+  "In Produktion",
+  "Fertig produziert",
+  "Finale Freigabe offen",
+  "Korrektur nötig",
+  "Freigegeben",
+  "Veröffentlicht",
+];
+
 const navigationTabs: Array<[AppTab, string]> = [
   ["overview", "Übersicht"],
   ["reports", "Auswertungen"],
   ["contacts", "Kontakte"],
   ["projectsSolutions", "Projekte OK solutions"],
   ["projectsImmocare", "Projekte OK immocare"],
-  ["documents", "Dokumente"],
+  ["contentManagement", "Content-Management"],
   ["articles", "Artikel & Leistungen"],
   ["dashboard", "Aufgaben"],
   ["planningBoard", "Planungsboard"],
@@ -1359,6 +1732,23 @@ function SidebarIcon({ tab }: { tab: AppTab }) {
       <svg {...common}>
         <path d="M7 3h7l4 4v14H7z" />
         <path d="M14 3v5h5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      </svg>
+    );
+  }
+
+  if (
+    tab === "contentManagement" ||
+    tab === "contentRound" ||
+    tab === "editorialPlan" ||
+    tab === "contentApprovals" ||
+    tab === "contentCorrections" ||
+    tab === "contentQuotas" ||
+    tab === "ideaStore"
+  ) {
+    return (
+      <svg {...common}>
+        <rect x="4" y="5" width="16" height="14" rx="2" />
+        <path d="M8 9h8M8 13h5M16 13l2 2-3 3-2-2 3-3Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     );
   }
@@ -1539,6 +1929,7 @@ type TaskItem = {
   faelligkeit: string;
   kunde: string;
   kundenklasse: CustomerClass;
+  projectId: string;
   autoFeedbackEnabled: boolean;
   autoFeedbackRecipientId: string;
   recurrenceEnabled: boolean;
@@ -1636,6 +2027,232 @@ const roleOptions: Array<{ value: UserRole; label: string }> = [
   { value: "GAST", label: "Gast" },
 ];
 
+const assessmentScale = [
+  { value: 1, label: "1 - trifft nicht zu" },
+  { value: 2, label: "2 - trifft eher nicht zu" },
+  { value: 3, label: "3 - teils/teils" },
+  { value: 4, label: "4 - trifft eher zu" },
+  { value: 5, label: "5 - trifft voll zu" },
+];
+
+const disgScale = [
+  { value: 1, label: "1 - trifft gar nicht auf mich zu" },
+  { value: 2, label: "2 - trifft eher nicht auf mich zu" },
+  { value: 3, label: "3 - teils/teils" },
+  { value: 4, label: "4 - trifft eher auf mich zu" },
+  { value: 5, label: "5 - trifft voll auf mich zu" },
+];
+
+const disgQuestions: DisgQuestion[] = [
+  { id: "q01", text: "Ich treffe Entscheidungen lieber zügig, als Dinge lange offen zu lassen." },
+  { id: "q02", text: "Ich arbeite gern in einem stabilen und verlässlichen Umfeld." },
+  { id: "q03", text: "Ich gehe offen auf andere Menschen zu." },
+  { id: "q04", text: "Ich prüfe Informationen sorgfältig, bevor ich eine Entscheidung treffe." },
+  { id: "q05", text: "Ich übernehme Verantwortung, wenn eine Situation unklar ist." },
+  { id: "q06", text: "Ich kann andere gut für Ideen oder Vorhaben begeistern." },
+  { id: "q07", text: "Ich unterstütze Kolleginnen und Kollegen, auch wenn es nicht direkt meine Aufgabe ist." },
+  { id: "q08", text: "Ich arbeite gern strukturiert und nach klaren Standards." },
+  { id: "q09", text: "Ich spreche Probleme direkt an, auch wenn das Gespräch unangenehm werden kann." },
+  { id: "q10", text: "Ich höre aufmerksam zu, bevor ich meine Meinung äußere." },
+  { id: "q11", text: "Ich bringe gern positive Energie in ein Team." },
+  { id: "q12", text: "Ich achte stark auf Details und Genauigkeit." },
+  { id: "q13", text: "Ich konzentriere mich stark darauf, konkrete Ergebnisse zu erreichen." },
+  { id: "q14", text: "Ich kommuniziere lieber persönlich als ausschließlich schriftlich." },
+  { id: "q15", text: "Ich lege Wert auf ein harmonisches Miteinander." },
+  { id: "q16", text: "Ich möchte Zusammenhänge verstehen, bevor ich handle." },
+  { id: "q17", text: "Ich mag es, wenn Aufgaben klar vorankommen und nicht unnötig verzögert werden." },
+  { id: "q18", text: "Ich bleibe auch bei wiederkehrenden Aufgaben geduldig und zuverlässig." },
+  { id: "q19", text: "Ich knüpfe leicht Kontakte und baue Beziehungen auf." },
+  { id: "q20", text: "Ich halte Regeln, Prozesse und Qualitätsvorgaben für wichtig." },
+  { id: "q21", text: "Ich setze mich für meine Meinung ein, wenn ich von ihr überzeugt bin." },
+  { id: "q22", text: "Ich motiviere andere durch Zuspruch und Optimismus." },
+  { id: "q23", text: "Ich bin für andere häufig eine ruhige und ausgleichende Person." },
+  { id: "q24", text: "Ich erkenne Fehler oder Unstimmigkeiten oft frühzeitig." },
+  { id: "q25", text: "Ich übernehme in Gruppen häufig eine aktive steuernde Rolle." },
+  { id: "q26", text: "Ich halte Absprachen zuverlässig ein." },
+  { id: "q27", text: "Ich teile Ideen gern frühzeitig mit anderen." },
+  { id: "q28", text: "Ich bevorzuge gut vorbereitete Entscheidungen gegenüber spontanen Entscheidungen." },
+  { id: "q29", text: "Ich bleibe auch unter Druck handlungsfähig." },
+  { id: "q30", text: "Ich arbeite besonders gern in lebendigen, kommunikativen Umgebungen." },
+  { id: "q31", text: "Ich vermeide unnötige Konflikte und suche lieber nach Ausgleich." },
+  { id: "q32", text: "Ich dokumentiere Arbeitsergebnisse gern nachvollziehbar." },
+  { id: "q33", text: "Ich messe Erfolg daran, ob vereinbarte Ziele tatsächlich erreicht wurden." },
+  { id: "q34", text: "Ich gebe anderen Sicherheit durch Verlässlichkeit und Kontinuität." },
+  { id: "q35", text: "Ich finde es wichtig, dass Zusammenarbeit auch Freude macht." },
+  { id: "q36", text: "Ich hinterfrage Aussagen, wenn mir Fakten oder Belege fehlen." },
+  { id: "q37", text: "Ich fordere klare Entscheidungen ein, wenn Dinge zu lange offen bleiben." },
+  { id: "q38", text: "Ich kann in Gesprächen gut auf Menschen eingehen." },
+  { id: "q39", text: "Ich arbeite lieber gründlich und beständig als hektisch und sprunghaft." },
+  { id: "q40", text: "Ich lege Wert darauf, dass Aufgaben korrekt und vollständig erledigt werden." },
+];
+
+const defaultDisgOrder = disgQuestions.map((question) => question.id);
+
+const disgTypeDetails: Record<DisgDimension, {
+  title: string;
+  description: string;
+  strengths: string[];
+  risks: string[];
+  workStyle: string[];
+  communication: string[];
+  development: string[];
+}> = {
+  D: {
+    title: "D - Dominant",
+    description: "Der dominante Stil ist stark auf Ergebnisse, Entscheidungen, Fortschritt und Einfluss ausgerichtet.",
+    strengths: ["entscheidungsfreudig", "ziel- und ergebnisorientiert", "durchsetzungsstark", "handlungsfähig unter Druck", "übernimmt Verantwortung"],
+    risks: ["kann ungeduldig wirken", "kann andere überfahren", "hört manchmal zu wenig zu", "übersieht emotionale Zwischentöne"],
+    workStyle: ["will klare Ziele und schnelle Entscheidungen", "bevorzugt kurze, sachliche Kommunikation", "möchte Ergebnisse sehen"],
+    communication: ["klar, direkt und ergebnisorientiert kommunizieren", "Optionen und Konsequenzen aufzeigen", "Entscheidungsbedarf klar benennen"],
+    development: ["bewusster zuhören", "Betroffene früher einbinden", "Wirkung der eigenen Direktheit reflektieren"],
+  },
+  I: {
+    title: "I - Initiativ",
+    description: "Der initiative Stil ist stark auf Kommunikation, Begeisterung, Beziehungen und Einfluss durch Austausch ausgerichtet.",
+    strengths: ["kommunikativ", "begeisterungsfähig", "motivierend", "kontaktstark", "optimistisch"],
+    risks: ["kann Details übersehen", "kann zu schnell Zusagen machen", "springt manchmal zwischen Ideen", "braucht gelegentlich mehr Struktur"],
+    workStyle: ["sucht Austausch und persönliche Kommunikation", "bringt Ideen spontan ein", "motiviert Teams und Kollegen"],
+    communication: ["offen und wertschätzend kommunizieren", "Raum für Ideen geben", "Vereinbarungen anschließend klar festhalten"],
+    development: ["Zusagen bewusster prüfen", "Prioritäten klarer setzen", "mehr Fokus auf Abschluss und Nachverfolgung legen"],
+  },
+  S: {
+    title: "S - Stetig",
+    description: "Der stetige Stil ist stark auf Verlässlichkeit, Teamorientierung, Harmonie und Stabilität ausgerichtet.",
+    strengths: ["zuverlässig", "geduldig", "loyal", "teamorientiert", "hilfsbereit", "ausgleichend"],
+    risks: ["vermeidet Konflikte zu lange", "sagt manchmal zu spät Nein", "tut sich mit schnellen Veränderungen schwer"],
+    workStyle: ["arbeitet verlässlich und ruhig", "unterstützt andere", "bevorzugt klare, stabile Rahmenbedingungen"],
+    communication: ["ruhig und respektvoll kommunizieren", "Veränderungen frühzeitig erklären", "Zeit für Fragen lassen"],
+    development: ["eigene Grenzen klarer kommunizieren", "Konflikte früher ansprechen", "mutiger eigene Meinung äußern"],
+  },
+  G: {
+    title: "G - Gewissenhaft",
+    description: "Der gewissenhafte Stil ist stark auf Qualität, Genauigkeit, Analyse, Struktur und Verlässlichkeit ausgerichtet.",
+    strengths: ["genau", "analytisch", "strukturiert", "qualitätsbewusst", "sorgfältig", "faktenbasiert"],
+    risks: ["kann zu perfektionistisch werden", "braucht manchmal zu lange für Entscheidungen", "wirkt kritisch oder distanziert"],
+    workStyle: ["arbeitet gründlich und systematisch", "möchte klare Qualitätsstandards", "prüft Fakten vor Entscheidungen"],
+    communication: ["gut vorbereitet und sachlich kommunizieren", "Fakten und klare Anforderungen liefern", "Zeit für Prüfung geben"],
+    development: ["gut genug von perfekt unterscheiden", "Entscheidungen bei unvollständigen Informationen üben", "Chancen neben Risiken betrachten"],
+  },
+};
+
+const disgMixDescriptions: Record<string, string> = {
+  "D/I": "Ergebnisorientiert und kommunikativ. Treibt Themen aktiv voran und kann andere begeistern.",
+  "D/G": "Entscheidungsstark und analytisch. Kombiniert Zielorientierung mit Qualitätsanspruch.",
+  "I/S": "Kommunikativ und teamorientiert. Stärkt Beziehungen und achtet auf ein positives Miteinander.",
+  "I/G": "Ideenreich und qualitätsbewusst. Verbindet Kommunikation mit Struktur.",
+  "S/G": "Verlässlich und sorgfältig. Arbeitet ruhig, loyal und qualitätsorientiert.",
+  "S/D": "Teamorientiert und verantwortungsbereit. Wirkt ausgleichend und übernimmt bei klaren Zielen Verantwortung.",
+  "G/D": "Analytisch und entscheidungsorientiert. Entscheidet fundiert und achtet auf Umsetzung.",
+  "G/I": "Strukturiert und kommunikativ. Vermittelt komplexe Themen verständlich und achtet auf Qualität.",
+  "D/S": "Zielorientiert und verlässlich. Übernimmt Verantwortung und bleibt bei längeren Aufgaben stabil.",
+  "I/D": "Überzeugend und durchsetzungsfähig. Gewinnt andere für Ziele und treibt Entscheidungen kommunikativ voran.",
+  "S/I": "Unterstützend und kommunikativ. Schafft Vertrauen und stärkt das Teamklima.",
+  "G/S": "Sorgfältig und beständig. Sorgt für Qualität, Ordnung und Verlässlichkeit.",
+};
+
+const assessmentAreas = [
+  {
+    id: "fachlich",
+    label: "Fachliche Kompetenz",
+    questions: [
+      "Ich verfüge über das notwendige Fachwissen für meine Aufgaben.",
+      "Ich erledige meine Aufgaben fachlich sicher und in guter Qualität.",
+      "Ich entwickle mein Wissen weiter, wenn neue Anforderungen entstehen.",
+    ],
+  },
+  {
+    id: "zuverlaessigkeit",
+    label: "Zuverlässigkeit und Arbeitsweise",
+    questions: [
+      "Ich erledige Aufgaben sorgfältig, vollständig und termingerecht.",
+      "Ich arbeite strukturiert und setze sinnvolle Prioritäten.",
+      "Ich informiere rechtzeitig, wenn Probleme oder Verzögerungen auftreten.",
+    ],
+  },
+  {
+    id: "eigeninitiative",
+    label: "Eigeninitiative und Verantwortung",
+    questions: [
+      "Ich erkenne selbstständig, was zu tun ist.",
+      "Ich bringe eigene Ideen oder Verbesserungsvorschläge ein.",
+      "Ich übernehme Verantwortung für meine Aufgaben und Ergebnisse.",
+    ],
+  },
+  {
+    id: "kommunikation",
+    label: "Kommunikation",
+    questions: [
+      "Ich kommuniziere klar, offen und rechtzeitig.",
+      "Ich höre zu und frage nach, wenn etwas unklar ist.",
+      "Ich nehme Feedback an und gehe konstruktiv damit um.",
+    ],
+  },
+  {
+    id: "zusammenarbeit",
+    label: "Zusammenarbeit",
+    questions: [
+      "Ich arbeite respektvoll und konstruktiv mit anderen zusammen.",
+      "Ich unterstütze Kolleginnen und Kollegen, wenn es sinnvoll oder notwendig ist.",
+      "Ich trage zu einem positiven Arbeitsklima bei.",
+    ],
+  },
+  {
+    id: "entwicklung",
+    label: "Entwicklung und Lernbereitschaft",
+    questions: [
+      "Ich bin offen für Veränderungen und neue Aufgaben.",
+      "Ich erkenne eigene Stärken und Entwicklungsfelder.",
+      "Ich setze vereinbarte Entwicklungsmaßnahmen aktiv um.",
+    ],
+  },
+];
+
+const employeeSelfTextQuestions = [
+  { id: "strengths", label: "Was sind meine größten Stärken?" },
+  { id: "developmentNeeds", label: "Wo sehe ich aktuell Entwicklungsbedarf?" },
+  { id: "supportWish", label: "Welche Unterstützung wünsche ich mir?" },
+  { id: "nextGoals", label: "Welche Ziele oder Aufgaben möchte ich in den nächsten Monaten angehen?" },
+  { id: "environment", label: "Was sollte im Arbeitsumfeld verbessert werden, damit ich besser arbeiten kann?" },
+];
+
+const managerTextQuestions = [
+  { id: "strengths", label: "Welche Stärken sehe ich beim Mitarbeiter?" },
+  { id: "developmentNeeds", label: "Wo sehe ich Entwicklungsbedarf?" },
+  { id: "supportOffer", label: "Welche Unterstützung kann ich anbieten?" },
+  { id: "nextGoals", label: "Welche Ziele oder Aufgaben halte ich für sinnvoll?" },
+  { id: "environment", label: "Welche Rahmenbedingungen sollten verbessert werden?" },
+];
+
+const emptyAssessmentBlock: EmployeeAssessmentBlock = {
+  answers: {},
+  texts: {},
+};
+
+const emptyAssessmentConversation: EmployeeAssessmentConversation = {
+  strengths: "",
+  developmentFields: "",
+  agreedMeasures: "",
+  nextReviewDate: "",
+  internalNote: "",
+};
+
+const emptyDisgAssessment: DisgAssessmentState = {
+  answers: {},
+  order: defaultDisgOrder,
+  status: "not_started",
+  locked: false,
+};
+
+const emptyEmployeeAssessment: EmployeeAssessmentState = {
+  self: emptyAssessmentBlock,
+  manager: emptyAssessmentBlock,
+  measures: [],
+  conversation: emptyAssessmentConversation,
+  selfLocked: false,
+  history: [],
+  disg: emptyDisgAssessment,
+};
+
 const statusOptions: TaskStatus[] = [
   "offen",
   "in Bearbeitung",
@@ -1730,7 +2347,7 @@ function parseHoursInput(value?: string) {
 }
 
 function formatHours(value: number) {
-  return value.toLocaleString("de-DE", {
+  return value.toLocaleString(APP_LOCALE, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
@@ -1746,7 +2363,7 @@ function formatHourMinutes(value: number) {
 }
 
 function formatMoney(value: number) {
-  return `${value.toLocaleString("de-DE", {
+  return `${value.toLocaleString(APP_LOCALE, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })} €`;
@@ -1786,23 +2403,35 @@ function getEmployeeCostMetrics(cost: EmployeeCostCalculation) {
 
 function formatDeadline(value: string) {
   if (!value) return "-";
-  return new Intl.DateTimeFormat("de-DE", {
+  return new Intl.DateTimeFormat(APP_LOCALE, {
     dateStyle: "medium",
     timeStyle: "short",
+    timeZone: APP_TIME_ZONE,
+  }).format(parseAppDateTime(value));
+}
+
+function formatInstantDateTime(value: string) {
+  if (!value) return "-";
+  return new Intl.DateTimeFormat(APP_LOCALE, {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: APP_TIME_ZONE,
   }).format(new Date(value));
 }
 
 function formatDateOnly(value: string) {
   if (!value) return "-";
-  return new Intl.DateTimeFormat("de-DE", {
+  return new Intl.DateTimeFormat(APP_LOCALE, {
     dateStyle: "medium",
+    timeZone: APP_TIME_ZONE,
   }).format(new Date(value));
 }
 
 function formatCalendarTitle(date: Date) {
-  return new Intl.DateTimeFormat("de-DE", {
+  return new Intl.DateTimeFormat(APP_LOCALE, {
     month: "long",
     year: "numeric",
+    timeZone: APP_TIME_ZONE,
   }).format(date);
 }
 
@@ -1811,6 +2440,23 @@ function formatDateKey(date: Date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function normalizeDateKeyValue(value: string) {
+  if (!value) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const germanDate = parseGermanDate(value);
+  return germanDate ? formatDateKey(germanDate) : value;
+}
+
+function parseDateKeyValue(value: string) {
+  const normalized = normalizeDateKeyValue(value);
+  if (!normalized) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    const [year, month, day] = normalized.split("-").map((part) => Number(part));
+    return new Date(year, month - 1, day, 12);
+  }
+  return parseGermanDate(value);
 }
 
 function parseProjectDate(value?: string) {
@@ -1842,7 +2488,12 @@ function parseProjectDate(value?: string) {
 
 function formatProjectDate(value?: string) {
   const date = parseProjectDate(value);
-  return date ? date.toLocaleDateString("de-DE") : "-";
+  return date
+    ? new Intl.DateTimeFormat(APP_LOCALE, {
+        dateStyle: "medium",
+        timeZone: APP_TIME_ZONE,
+      }).format(date)
+    : "-";
 }
 
 function formatProjectRuntimeDuration(startValue?: string, endValue?: string) {
@@ -1927,29 +2578,36 @@ function formatWeekTitle(date: Date) {
   const days = getWeekDays(date);
   const first = days[0];
   const last = days[6];
-  return `${new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit" }).format(
+  return `${new Intl.DateTimeFormat(APP_LOCALE, {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: APP_TIME_ZONE,
+  }).format(
     first
-  )} - ${new Intl.DateTimeFormat("de-DE", {
+  )} - ${new Intl.DateTimeFormat(APP_LOCALE, {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+    timeZone: APP_TIME_ZONE,
   }).format(last)}`;
 }
 
 function formatDayTitle(date: Date) {
-  return new Intl.DateTimeFormat("de-DE", {
+  return new Intl.DateTimeFormat(APP_LOCALE, {
     weekday: "long",
     day: "2-digit",
     month: "long",
     year: "numeric",
+    timeZone: APP_TIME_ZONE,
   }).format(date);
 }
 
 function formatShortDate(date: Date) {
-  return new Intl.DateTimeFormat("de-DE", {
+  return new Intl.DateTimeFormat(APP_LOCALE, {
     weekday: "short",
     day: "2-digit",
     month: "2-digit",
+    timeZone: APP_TIME_ZONE,
   }).format(date);
 }
 
@@ -2002,7 +2660,7 @@ function getWorkingMillisecondsBetween(start: Date, end: Date, holidayDateKeys: 
 function getDeadlineProgress(task: TaskItem, nowMs: number, holidayDateKeys: Set<string>) {
   if (!task.faelligkeit || !task.createdAt) return 0;
 
-  const createdAt = new Date(task.createdAt);
+  const createdAt = parseAppDateTime(task.createdAt);
   const deadline = new Date(task.faelligkeit);
   const now = new Date(nowMs);
 
@@ -2025,6 +2683,67 @@ function getDeadlineProgress(task: TaskItem, nowMs: number, holidayDateKeys: Set
   return clampPercent(Math.round((elapsedWorkingMilliseconds / totalWorkingMilliseconds) * 100));
 }
 
+function getContentRuntimeProgress(entry: ContentItem, nowMs: number) {
+  const createdAt = parseAppDateTime(entry.createdAt).getTime();
+  const publicationDate = new Date(`${entry.plannedDate}T${entry.plannedTime || "09:00"}:00`).getTime();
+
+  if (!Number.isFinite(createdAt) || !Number.isFinite(publicationDate)) return 0;
+  if (publicationDate <= createdAt) return nowMs >= publicationDate ? 100 : 0;
+
+  return clampPercent(Math.round(((nowMs - createdAt) / (publicationDate - createdAt)) * 100));
+}
+
+function getContentRuntimeProgressLabel(progress: number, entry: ContentItem, nowMs: number) {
+  const createdAt = parseAppDateTime(entry.createdAt).getTime();
+  if (progress === 0 && Number.isFinite(createdAt) && nowMs > createdAt) return "<1";
+  return String(progress);
+}
+
+function getContentRuntimeProgressWidth(progress: number, entry: ContentItem, nowMs: number) {
+  const createdAt = parseAppDateTime(entry.createdAt).getTime();
+  if (progress === 0 && Number.isFinite(createdAt) && nowMs > createdAt) return 3;
+  return progress;
+}
+
+function getReadableContentStatus(status: string) {
+  if (status.startsWith("Korrektur")) return "Korrektur nötig";
+  if (status.includes("ffentlicht")) return "Veröffentlicht";
+  return status;
+}
+
+function isContentDone(entry: ContentItem) {
+  const status = getReadableContentStatus(entry.status);
+  return status === "Freigegeben" || status === "Veröffentlicht";
+}
+
+function getContentStatusBadge(entry: ContentItem) {
+  const status = getReadableContentStatus(entry.status);
+  if (status === "Fertig produziert") {
+    return { label: "Fertig produziert", icon: "?", tone: "produced" };
+  }
+  if (status === "Finale Freigabe offen") {
+    return { label: "Finale Freigabe offen", icon: "!", tone: "approval" };
+  }
+  if (status === "Korrektur nötig") {
+    return { label: "Korrektur nötig", icon: "!", tone: "correction" };
+  }
+  if (status === "Freigegeben") {
+    return { label: "Freigegeben", icon: "?", tone: "approved" };
+  }
+  if (status === "Veröffentlicht") {
+    return { label: "Veröffentlicht", icon: "??", tone: "published" };
+  }
+  return null;
+}
+
+const contentStatusLegend = [
+  { label: "Fertig produziert", icon: "?", tone: "produced" },
+  { label: "Finale Freigabe offen", icon: "!", tone: "approval" },
+  { label: "Korrektur nötig", icon: "!", tone: "correction" },
+  { label: "Freigegeben", icon: "?", tone: "approved" },
+  { label: "Veröffentlicht", icon: "??", tone: "published" },
+];
+
 function getDeadlineWorkingTimeInfo(
   task: TaskItem,
   nowMs: number,
@@ -2038,7 +2757,7 @@ function getDeadlineWorkingTimeInfo(
     };
   }
 
-  const createdAt = new Date(task.createdAt);
+  const createdAt = parseAppDateTime(task.createdAt);
   const deadline = new Date(task.faelligkeit);
   const now = new Date(nowMs);
 
@@ -2278,7 +2997,7 @@ function getPercent(part: number, total: number) {
 
 function formatPercent(value: number) {
   const rounded = Math.round(value * 10) / 10;
-  return rounded.toLocaleString("de-DE", {
+  return rounded.toLocaleString(APP_LOCALE, {
     maximumFractionDigits: Number.isInteger(rounded) ? 0 : 1,
     minimumFractionDigits: Number.isInteger(rounded) ? 0 : 1,
   });
@@ -2386,26 +3105,87 @@ function getPerformanceGaugeStyle(performanceGrade: number | null) {
   } as CSSProperties;
 }
 
-function getCompletionValidationMessage(
-  nextStatus: TaskStatus,
-  estimateMinutes: number | null,
-  timeEntryCount: number
-) {
-  if (nextStatus !== "erledigt") return "";
-  if (!estimateMinutes || estimateMinutes <= 0) {
-    return "Eine Aufgabe kann nur als erledigt gespeichert werden, wenn eine Vorgabezeit hinterlegt ist.";
-  }
-  if (timeEntryCount < 1) {
-    return "Eine Aufgabe kann nur als erledigt gespeichert werden, wenn mindestens ein Zeiteintrag erstellt wurde.";
-  }
-  return "";
-}
-
 function canManageUsers(role?: UserRole) {
   return role === "ADMIN" || role === "GESCHAEFTSFUEHRER";
 }
 
+function getAssessmentQuestionId(areaId: string, index: number) {
+  return `${areaId}-${index}`;
+}
+
+function normalizeAssessmentBlock(value: Partial<EmployeeAssessmentBlock> | null | undefined): EmployeeAssessmentBlock {
+  return {
+    answers: value?.answers ?? {},
+    texts: value?.texts ?? {},
+    updatedAt: value?.updatedAt,
+  };
+}
+
+function normalizeEmployeeAssessment(value: Partial<EmployeeAssessmentState> | null | undefined): EmployeeAssessmentState {
+  return {
+    self: normalizeAssessmentBlock(value?.self),
+    manager: normalizeAssessmentBlock(value?.manager),
+    measures: Array.isArray(value?.measures) ? value.measures : [],
+    conversation: {
+      ...emptyAssessmentConversation,
+      ...(value?.conversation ?? {}),
+    },
+    selfLocked: Boolean(value?.selfLocked),
+    currentCaseId: value?.currentCaseId,
+    history: Array.isArray(value?.history) ? value.history : [],
+    disg: {
+      ...emptyDisgAssessment,
+      ...(value?.disg ?? {}),
+      answers: value?.disg?.answers ?? {},
+      order: Array.isArray(value?.disg?.order) && value.disg.order.length > 0 ? value.disg.order : defaultDisgOrder,
+      locked: Boolean(value?.disg?.locked),
+      status: value?.disg?.status ?? "not_started",
+    },
+    updatedAt: value?.updatedAt,
+  };
+}
+
+function getAssessmentAreaAverage(answers: AssessmentAnswerMap, areaId: string) {
+  const values = assessmentAreas
+    .find((area) => area.id === areaId)
+    ?.questions.map((_, index) => answers[getAssessmentQuestionId(areaId, index)])
+    .filter((value): value is number => Number.isFinite(value));
+
+  if (!values || values.length === 0) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function formatAssessmentScore(value: number | null) {
+  return value === null ? "-" : value.toLocaleString(APP_LOCALE, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
+function getAssessmentEvaluation(assessment: EmployeeAssessmentState) {
+  return assessmentAreas.map((area) => {
+    const selfAverage = getAssessmentAreaAverage(assessment.self.answers, area.id);
+    const managerAverage = getAssessmentAreaAverage(assessment.manager.answers, area.id);
+    const diff =
+      selfAverage !== null && managerAverage !== null ? Math.round((selfAverage - managerAverage) * 10) / 10 : null;
+    const isNoticeable = diff !== null && Math.abs(diff) >= 1;
+    const isStrength = managerAverage !== null ? managerAverage >= 4 : selfAverage !== null && selfAverage >= 4;
+    const isDevelopmentField = managerAverage !== null && managerAverage < 3.5;
+
+    return {
+      ...area,
+      selfAverage,
+      managerAverage,
+      diff,
+      isNoticeable,
+      isStrength,
+      isDevelopmentField,
+    };
+  });
+}
+
 function canAssignOther(role?: UserRole) {
+  return role === "ADMIN" || role === "GESCHAEFTSFUEHRER" || role === "FUEHRUNGSKRAFT";
+}
+
+function canManageAbsences(role?: UserRole) {
   return role === "ADMIN" || role === "GESCHAEFTSFUEHRER" || role === "FUEHRUNGSKRAFT";
 }
 
@@ -2557,6 +3337,31 @@ export function DashboardPage() {
   const [loginError, setLoginError] = useState("");
   const [isLoginSubmitting, setIsLoginSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<AppTab>("overview");
+  const [personalDataView, setPersonalDataView] = useState<PersonalDataView>("overview");
+  const [selectedPersonalUserId, setSelectedPersonalUserId] = useState("");
+  const [personalTimeDate, setPersonalTimeDate] = useState(() => new Date());
+  const [employeeAssessment, setEmployeeAssessment] =
+    useState<EmployeeAssessmentState>(emptyEmployeeAssessment);
+  const [assessmentLoadedUserId, setAssessmentLoadedUserId] = useState("");
+  const [isAssessmentLoading, setIsAssessmentLoading] = useState(false);
+  const [assessmentError, setAssessmentError] = useState("");
+  const [assessmentSaveMessage, setAssessmentSaveMessage] = useState("");
+  const [disgQuestionPage, setDisgQuestionPage] = useState(0);
+  const [contentCalendarView, setContentCalendarView] = useState<CalendarView>("month");
+  const [contentCalendarDate, setContentCalendarDate] = useState(() => new Date());
+  const [contentItems, setContentItems] = useState<ContentItem[]>([]);
+  const [isContentModalOpen, setIsContentModalOpen] = useState(false);
+  const [editingContentItemId, setEditingContentItemId] = useState("");
+  const [contentDraft, setContentDraft] = useState<ContentDraft>(emptyContentDraft);
+  const [contentError, setContentError] = useState("");
+  const [contentCorrectionNote, setContentCorrectionNote] = useState("");
+  const [isContentPostApprovalEditing, setIsContentPostApprovalEditing] = useState(false);
+  const [ideaPosts, setIdeaPosts] = useState<IdeaStorePost[]>([]);
+  const [ideaTitle, setIdeaTitle] = useState("");
+  const [ideaBody, setIdeaBody] = useState("");
+  const [ideaCommentDrafts, setIdeaCommentDrafts] = useState<Record<string, string>>({});
+  const [ideaFeedbackErrors, setIdeaFeedbackErrors] = useState<Record<string, string>>({});
+  const [ideaStoreError, setIdeaStoreError] = useState("");
   const [documentConfigSection, setDocumentConfigSection] =
     useState<DocumentConfiguratorSection>("general");
   const [documentPreviewPage, setDocumentPreviewPage] = useState<DocumentPreviewPage>("first");
@@ -2623,6 +3428,12 @@ export function DashboardPage() {
   const [openInvoiceLinePickerId, setOpenInvoiceLinePickerId] = useState("");
   const [invoiceStampEntryIds, setInvoiceStampEntryIds] = useState<string[]>([]);
   const [invoiceBillableStampEntryIds, setInvoiceBillableStampEntryIds] = useState<string[]>([]);
+  const [documentMailDraft, setDocumentMailDraft] = useState<DocumentMailDraft | null>(null);
+  const [documentMailError, setDocumentMailError] = useState("");
+  const [documentMailSuccess, setDocumentMailSuccess] = useState("");
+  const [isSendingDocumentMail, setIsSendingDocumentMail] = useState(false);
+  const [mailTemplates, setMailTemplates] =
+    useState<Record<DocumentMailKind, { subject: string; body: string }>>(defaultDocumentMailTemplates);
   const letterheadUploadRef = useRef<HTMLInputElement | null>(null);
   const [globalSearchTerm, setGlobalSearchTerm] = useState("");
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
@@ -2635,6 +3446,8 @@ export function DashboardPage() {
   const [openSidebarMenus, setOpenSidebarMenus] = useState<Record<string, boolean>>({
     overview: false,
     documents: false,
+    contentManagement: false,
+    accounting: false,
     articles: false,
     dashboard: false,
   });
@@ -2827,9 +3640,16 @@ export function DashboardPage() {
   const [employeePlanningBreakWindows, setEmployeePlanningBreakWindows] =
     useState<WeeklyPlanningWindows>(defaultWeeklyBreakWindows);
   const [employeePlanningResponsibleFor, setEmployeePlanningResponsibleFor] = useState<string[]>([]);
+  const [employeeNotifyIdeaStore, setEmployeeNotifyIdeaStore] = useState(true);
+  const [employeeMailAccount, setEmployeeMailAccount] =
+    useState<EmployeeMailAccount>(emptyEmployeeMailAccount);
+  const [employeeMailMessage, setEmployeeMailMessage] = useState("");
   const [employeeTimePeriod, setEmployeeTimePeriod] = useState<EmployeeTimePeriod>("day");
   const [employeeTimeFrom, setEmployeeTimeFrom] = useState(() => formatInputDate(new Date()));
   const [employeeTimeTo, setEmployeeTimeTo] = useState(() => formatInputDate(new Date()));
+  const [timeTrackingEmployeeId, setTimeTrackingEmployeeId] = useState("");
+  const [timeTrackingFrom, setTimeTrackingFrom] = useState(() => formatInputDate(new Date()));
+  const [timeTrackingTo, setTimeTrackingTo] = useState(() => formatInputDate(new Date()));
   const [employeeCostCalculations, setEmployeeCostCalculations] = useState<
     Record<string, EmployeeCostCalculation>
   >({});
@@ -2872,6 +3692,7 @@ export function DashboardPage() {
   const [isPlanningEntryProjectSearchOpen, setIsPlanningEntryProjectSearchOpen] = useState(false);
   const [planningEntryProjectId, setPlanningEntryProjectId] = useState("");
   const [planningEntryDescription, setPlanningEntryDescription] = useState("");
+  const [planningEntryError, setPlanningEntryError] = useState("");
   const [planningEntryOfferLabel, setPlanningEntryOfferLabel] = useState("");
   const [planningEntryOfferTotalHours, setPlanningEntryOfferTotalHours] = useState("5");
   const [planningEntryApprovalStatus, setPlanningEntryApprovalStatus] =
@@ -2881,8 +3702,16 @@ export function DashboardPage() {
   const [absenceDateFrom, setAbsenceDateFrom] = useState(() => formatDateKey(new Date()));
   const [absenceDateTo, setAbsenceDateTo] = useState(() => formatDateKey(new Date()));
   const [absenceType, setAbsenceType] = useState<AbsenceItem["type"]>("urlaub");
+  const [absenceDayPart, setAbsenceDayPart] = useState<AbsenceItem["dayPart"]>("full");
   const [absenceRepresentativeUserId, setAbsenceRepresentativeUserId] = useState("");
   const [absenceNote, setAbsenceNote] = useState("");
+  const [absenceHandoverMode, setAbsenceHandoverMode] = useState<"none" | "open">("open");
+  const [absenceHandoverTaskIds, setAbsenceHandoverTaskIds] = useState<string[]>([]);
+  const [absenceRequestView, setAbsenceRequestView] = useState<"active" | "history">("active");
+  const [highlightedAbsenceRequestId, setHighlightedAbsenceRequestId] = useState("");
+  const [acceptedHandoverTaskIds, setAcceptedHandoverTaskIds] = useState<string[]>([]);
+  const [pendingHandoverTaskIds, setPendingHandoverTaskIds] = useState<string[]>([]);
+  const [isCreatingAbsenceHandoverTask, setIsCreatingAbsenceHandoverTask] = useState(false);
   const [editingAbsenceId, setEditingAbsenceId] = useState<string | null>(null);
   const [absenceChecklist, setAbsenceChecklist] = useState<boolean[]>(
     vacationHandoverItems.map(() => false)
@@ -2893,7 +3722,6 @@ export function DashboardPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [deadlineFilter, setDeadlineFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
-  const [customerFilter, setCustomerFilter] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("");
   const [taskNumberSort, setTaskNumberSort] = useState<"desc" | "asc">("desc");
   const [kanbanOwnerFilter, setKanbanOwnerFilter] = useState("");
@@ -2906,6 +3734,13 @@ export function DashboardPage() {
     () => users.find((user) => user.id === activeUserId),
     [activeUserId, users]
   );
+  const canManageEmployeeAssessments = canManageUsers(activeUser?.role);
+  const personalAssessmentTargetUserId =
+    canManageEmployeeAssessments && selectedPersonalUserId ? selectedPersonalUserId : activeUserId;
+  const editingContentItem = useMemo(
+    () => contentItems.find((item) => item.id === editingContentItemId),
+    [contentItems, editingContentItemId]
+  );
   const mayAccessEmployeeCosts = ["ramona eid", "christian eid"].includes(
     (activeUser?.name ?? "").trim().toLowerCase()
   );
@@ -2916,7 +3751,8 @@ export function DashboardPage() {
     /ceo/i.test(activeUser?.name ?? "");
   const isVacationHandoverComplete =
     absenceType !== "urlaub" ||
-    (absenceChecklist.every(Boolean) && absenceHandoverConfirmed);
+    absenceHandoverMode === "none" ||
+    (absenceHandoverMode === "open" && absenceHandoverTaskIds.length > 0);
 
   const assignableUsers = canAssignOther(activeUser?.role)
     ? users
@@ -2926,7 +3762,7 @@ export function DashboardPage() {
     () =>
       [...notifications].sort(
         (first, second) =>
-          new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime()
+          parseAppDateTime(second.createdAt).getTime() - parseAppDateTime(first.createdAt).getTime()
       ),
     [notifications]
   );
@@ -2992,6 +3828,74 @@ export function DashboardPage() {
     setAuthChecked(true);
   }
 
+  async function loadEmployeeAssessment(userId: string) {
+    if (!activeUserId || !userId) return;
+
+    setIsAssessmentLoading(true);
+    setAssessmentError("");
+
+    try {
+      const res = await fetch(`/api/employee-assessments?actorId=${activeUserId}&userId=${userId}`, {
+        cache: "no-store",
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setAssessmentError(data.error || "Einschätzung konnte nicht geladen werden.");
+        setEmployeeAssessment(emptyEmployeeAssessment);
+        return;
+      }
+
+      const data = await res.json();
+      setEmployeeAssessment(normalizeEmployeeAssessment(data.assessment));
+      setAssessmentLoadedUserId(userId);
+    } finally {
+      setIsAssessmentLoading(false);
+    }
+  }
+
+  async function saveEmployeeAssessmentSection(
+    section:
+      | "self"
+      | "manager"
+      | "measures"
+      | "conversation"
+      | "unlock-self"
+      | "disg-save"
+      | "disg-complete"
+      | "disg-unlock"
+      | "disg-reset",
+    data: unknown,
+    message = "Einschätzung gespeichert."
+  ) {
+    if (!activeUserId || !personalAssessmentTargetUserId) return;
+
+    setAssessmentError("");
+    setAssessmentSaveMessage("");
+
+    const res = await fetch("/api/employee-assessments", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorId: activeUserId,
+        userId: personalAssessmentTargetUserId,
+        section,
+        data,
+      }),
+    });
+
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setAssessmentError(result.error || "Einschätzung konnte nicht gespeichert werden.");
+      return;
+    }
+
+    setEmployeeAssessment(normalizeEmployeeAssessment(result.assessment));
+    setAssessmentSaveMessage(message);
+  }
+
   async function loadPlanningEntries() {
     const res = await fetch("/api/planning-entries", { cache: "no-store" });
 
@@ -3002,6 +3906,378 @@ export function DashboardPage() {
 
     const data = (await res.json()) as PlanningEntry[];
     setPlanningEntries(data);
+  }
+
+  async function loadContentItems() {
+    const res = await fetch("/api/content-items", { cache: "no-store" });
+
+    if (!res.ok) {
+      setErrorMessage("Content-Inhalte konnten nicht geladen werden.");
+      return [];
+    }
+
+    const data = (await res.json()) as ContentItem[];
+    setContentItems(data);
+    return data;
+  }
+
+  async function loadIdeaPosts(showNotifications = false) {
+    if (!activeUserId) return [];
+    const res = await fetch(`/api/idea-store?userId=${activeUserId}`, { cache: "no-store" });
+    if (!res.ok) {
+      setIdeaStoreError("Ideen-Feed konnte nicht geladen werden.");
+      return [];
+    }
+    const data = (await res.json()) as IdeaStorePost[];
+    setIdeaPosts(data);
+    if (showNotifications) await loadNotifications(true);
+    return data;
+  }
+
+  async function createIdeaPost() {
+    if (!ideaTitle.trim() || !ideaBody.trim()) {
+      setIdeaStoreError("Bitte Titel und Beschreibung der Idee ausfüllen.");
+      return;
+    }
+
+    const res = await fetch("/api/idea-store", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: ideaTitle, body: ideaBody, actorId: activeUserId }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setIdeaStoreError(data?.error ?? "Idee konnte nicht gespeichert werden.");
+      return;
+    }
+    setIdeaPosts(data);
+    setIdeaTitle("");
+    setIdeaBody("");
+    setIdeaStoreError("");
+    await loadNotifications(true);
+  }
+
+  async function updateIdeaPost(ideaId: string, action: "comment" | "like" | "dislike" | "pin") {
+    if ((action === "comment" || action === "dislike") && !ideaCommentDrafts[ideaId]?.trim()) {
+      setIdeaFeedbackErrors((current) => ({
+        ...current,
+        [ideaId]:
+          action === "dislike"
+            ? "Daumen runter kann nur mit Kommentar gespeichert werden."
+            : "Bitte einen Kommentar eingeben.",
+      }));
+      return;
+    }
+
+    const res = await fetch("/api/idea-store", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ideaId,
+        action,
+        body: ideaCommentDrafts[ideaId] ?? "",
+        actorId: activeUserId,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setIdeaFeedbackErrors((current) => ({
+        ...current,
+        [ideaId]: data?.error ?? "Idee konnte nicht aktualisiert werden.",
+      }));
+      return;
+    }
+    setIdeaPosts(data);
+    if (action === "comment" || action === "dislike") {
+      setIdeaCommentDrafts((current) => ({ ...current, [ideaId]: "" }));
+    }
+    setIdeaFeedbackErrors((current) => {
+      const next = { ...current };
+      delete next[ideaId];
+      return next;
+    });
+    setIdeaStoreError("");
+    await loadNotifications(true);
+  }
+
+  function getIdeaContentBriefing(idea: IdeaStorePost) {
+    const commentLines = idea.comments.map(
+      (comment) => `- ${comment.authorName || "Unbekannt"} (${formatDeadline(comment.createdAt)}): ${comment.body}`
+    );
+
+    return [
+      idea.body,
+      "",
+      `Ursprung: Ideen-Feed · ${idea.title}`,
+      commentLines.length > 0 ? "Kommentare aus dem Ideen-Feed:" : "",
+      ...commentLines,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  function planIdeaAsContent(idea: IdeaStorePost) {
+    const plannedDate = formatDateKey(contentCalendarDate);
+    const dueDates = getContentDueDates(plannedDate);
+    const fallbackOwner = activeUser ?? users.find((user) => user.isActive);
+
+    setEditingContentItemId("");
+    setContentDraft({
+      ...emptyContentDraft,
+      title: idea.title,
+      description: getIdeaContentBriefing(idea),
+      channel: "Marketing",
+      format: "Marketingkonzept",
+      ownerUserId: fallbackOwner?.id ?? "",
+      plannedDate,
+      productionDueDate: dueDates.productionDueDate,
+      productionDueTime: dueDates.productionDueTime,
+      approvalDueDate: dueDates.approvalDueDate,
+      approvalDueTime: dueDates.approvalDueTime,
+      plannedTime: dueDates.plannedTime,
+      approvalLevel: "gruen",
+      status: "In Produktion",
+      sourceIdeaId: idea.id,
+      sourceIdeaTitle: idea.title,
+    });
+    setIsContentPostApprovalEditing(false);
+    setContentCorrectionNote("");
+    setContentError("");
+    setIsContentModalOpen(true);
+  }
+
+  async function openContentFromIdea(idea: IdeaStorePost) {
+    if (!idea.plannedContentItemId) return;
+
+    let entry = contentItems.find((item) => item.id === idea.plannedContentItemId);
+    if (!entry) {
+      const loadedItems = await loadContentItems();
+      entry = loadedItems.find((item) => item.id === idea.plannedContentItemId);
+    }
+
+    if (entry) {
+      setActiveTab("editorialPlan");
+      setOpenSidebarMenus({ contentManagement: true });
+      openContentModal(entry);
+    }
+  }
+
+  function getContentDueDates(plannedDate: string) {
+    const baseDate = plannedDate ? new Date(`${plannedDate}T00:00:00`) : new Date();
+    const day = baseDate.getDay();
+    const thursday = new Date(baseDate);
+    thursday.setDate(baseDate.getDate() + (day <= 4 ? 4 - day : 11 - day));
+    const friday = new Date(thursday);
+    friday.setDate(thursday.getDate() + 1);
+
+    return {
+      productionDueDate: formatDateKey(thursday),
+      productionDueTime: "17:00",
+      approvalDueDate: formatDateKey(friday),
+      approvalDueTime: "17:00",
+      plannedTime: "09:00",
+    };
+  }
+
+  function getInitialContentStatus(level: ContentApprovalLevel): ContentStatus {
+    return level === "gruen" ? "In Produktion" : "Richtungsfreigabe offen";
+  }
+
+  function isContentLockedAfterApproval(contentItem?: ContentItem) {
+    return contentItem?.status === "Freigegeben" || contentItem?.status === "Veröffentlicht";
+  }
+
+  function openContentModal(contentItem?: ContentItem, mode: "content" | "week" = "content") {
+    const plannedDate = contentItem?.plannedDate || formatDateKey(contentCalendarDate);
+    const dueDates = getContentDueDates(plannedDate);
+    const fallbackOwner = activeUser ?? users.find((user) => user.isActive);
+
+    setEditingContentItemId(contentItem?.id ?? "");
+    setContentDraft(
+      contentItem
+        ? {
+            title: contentItem.title,
+            description: contentItem.description,
+            channel: contentItem.channel,
+            format: contentItem.format,
+            ownerUserId: contentItem.ownerUserId,
+            plannedDate: contentItem.plannedDate,
+            productionDueDate: contentItem.productionDueDate,
+            productionDueTime: contentItem.productionDueTime || "17:00",
+            approvalDueDate: contentItem.approvalDueDate,
+            approvalDueTime: contentItem.approvalDueTime || "17:00",
+            plannedTime: contentItem.plannedTime || "09:00",
+            approvalLevel: contentItem.approvalLevel,
+            status: contentItem.status,
+            assetLink: contentItem.assetLink,
+            imageDataUrl: contentItem.imageDataUrl,
+            sourceIdeaId: contentItem.sourceIdeaId,
+            sourceIdeaTitle: contentItem.sourceIdeaTitle,
+          }
+        : {
+            ...emptyContentDraft,
+            title: mode === "week" ? "Wochenplan" : "",
+            channel: mode === "week" ? "Richtlinien" : "Marketing",
+            format: mode === "week" ? "Wochenplan" : "Marketingkonzept",
+            ownerUserId: fallbackOwner?.id ?? "",
+            plannedDate,
+            productionDueDate: dueDates.productionDueDate,
+            productionDueTime: dueDates.productionDueTime,
+            approvalDueDate: dueDates.approvalDueDate,
+            approvalDueTime: dueDates.approvalDueTime,
+            plannedTime: dueDates.plannedTime,
+            approvalLevel: mode === "week" ? "gelb" : "gruen",
+            status: mode === "week" ? "Richtungsfreigabe offen" : "In Produktion",
+          }
+    );
+    setIsContentPostApprovalEditing(false);
+    setContentCorrectionNote("");
+    setContentError("");
+    setIsContentModalOpen(true);
+  }
+
+  function getContentDraftFromItem(contentItem: ContentItem): ContentDraft {
+    return {
+      title: contentItem.title,
+      description: contentItem.description,
+      channel: contentItem.channel,
+      format: contentItem.format,
+      ownerUserId: contentItem.ownerUserId,
+      plannedDate: contentItem.plannedDate,
+      productionDueDate: contentItem.productionDueDate,
+      productionDueTime: contentItem.productionDueTime || "17:00",
+      approvalDueDate: contentItem.approvalDueDate,
+      approvalDueTime: contentItem.approvalDueTime || "17:00",
+      plannedTime: contentItem.plannedTime || "09:00",
+      approvalLevel: contentItem.approvalLevel,
+      status: contentItem.status,
+      assetLink: contentItem.assetLink,
+      imageDataUrl: contentItem.imageDataUrl,
+      sourceIdeaId: contentItem.sourceIdeaId,
+      sourceIdeaTitle: contentItem.sourceIdeaTitle,
+    };
+  }
+
+  function updateContentDraft<K extends keyof ContentDraft>(key: K, value: ContentDraft[K]) {
+    setContentDraft((current) => {
+      const next = { ...current, [key]: value };
+      if (key === "approvalLevel") {
+        next.status = getInitialContentStatus(value as ContentApprovalLevel);
+      }
+      return next;
+    });
+  }
+
+  async function saveContentItem() {
+    const owner = users.find((user) => user.id === contentDraft.ownerUserId);
+    const method = editingContentItemId ? "PATCH" : "POST";
+    const res = await fetch("/api/content-items", {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: editingContentItemId,
+        ...contentDraft,
+        status: editingContentItem?.status ?? contentDraft.status,
+        postApprovalEdit: isContentPostApprovalEditing,
+        ownerName: owner?.name ?? "",
+        actorId: activeUserId,
+      }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      setContentError(data?.error ?? "Inhalt konnte nicht gespeichert werden.");
+      return;
+    }
+
+    setContentItems(data);
+    if (contentDraft.sourceIdeaId) {
+      await loadIdeaPosts(false);
+    }
+    setIsContentModalOpen(false);
+    setEditingContentItemId("");
+    setContentDraft(emptyContentDraft);
+    setIsContentPostApprovalEditing(false);
+    setContentError("");
+    await loadNotifications(true);
+  }
+
+  async function updateContentStatus(
+    contentItem: ContentItem,
+    action:
+      | "direction-approve"
+      | "mark-produced"
+      | "final-approve"
+      | "publish"
+      | "request-correction"
+      | "resubmit"
+      | "unlock-post-approval-edit",
+    note = ""
+  ) {
+    const res = await fetch("/api/content-items", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: contentItem.id,
+        action,
+        note,
+        actorId: activeUserId,
+      }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      setContentError(data?.error ?? "Content-Status konnte nicht geändert werden.");
+      return;
+    }
+
+    setContentItems(data);
+    const updatedContentItem = (data as ContentItem[]).find((item) => item.id === contentItem.id);
+    if (updatedContentItem && editingContentItemId === contentItem.id) {
+      setContentDraft(getContentDraftFromItem(updatedContentItem));
+    }
+    if (
+      action === "mark-produced" ||
+      action === "final-approve" ||
+      action === "publish" ||
+      action === "request-correction" ||
+      action === "resubmit"
+    ) {
+      setIsContentModalOpen(false);
+      setEditingContentItemId("");
+      setContentDraft(emptyContentDraft);
+      setIsContentPostApprovalEditing(false);
+    }
+    if (action === "unlock-post-approval-edit") {
+      setIsContentPostApprovalEditing(true);
+    }
+    setContentCorrectionNote("");
+    setContentError("");
+    await loadNotifications(true);
+  }
+
+  async function deleteContentItem() {
+    if (!editingContentItemId) return;
+    if (!window.confirm("Diesen Inhalt wirklich löschen?")) return;
+
+    const res = await fetch("/api/content-items", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: editingContentItemId,
+        actorId: activeUserId,
+      }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      setContentError(data?.error ?? "Inhalt konnte nicht gelöscht werden.");
+      return;
+    }
+
+    setContentItems(data);
+    setIsContentModalOpen(false);
+    setEditingContentItemId("");
   }
 
   async function loadContacts() {
@@ -4016,6 +5292,77 @@ export function DashboardPage() {
     window.open(`/api/invoices?pdfId=${encodeURIComponent(data.cancellationInvoice.id)}`, "_blank");
   }
 
+  function applyMailTemplate(kind: DocumentMailKind, documentNumber: string) {
+    const template = mailTemplates[kind];
+    const sender = activeUser?.name || "WorkPilot360";
+
+    return {
+      subject: template.subject.replaceAll("{{number}}", documentNumber).replaceAll("{{sender}}", sender),
+      body: template.body.replaceAll("{{number}}", documentNumber).replaceAll("{{sender}}", sender),
+    };
+  }
+
+  function openDocumentMailDialog(kind: DocumentMailKind, document: OfferItem | InvoiceItem) {
+    const activeMailAccount = getSafeEmployeeMailAccount(activeUser?.mailAccount, activeUser?.email || "");
+    const documentNumber = kind === "offer" ? (document as OfferItem).offerNumber : (document as InvoiceItem).invoiceNumber;
+    const template = applyMailTemplate(kind, documentNumber);
+
+    setDocumentMailDraft({
+      kind,
+      documentId: document.id,
+      documentNumber,
+      projectId: document.projectId,
+      projectNumber: document.projectNumber,
+      projectTitle: document.projectTitle,
+      customerName: document.customerName,
+      to: "",
+      cc: "",
+      bcc: activeMailAccount.bcc,
+      subject: template.subject,
+      body: template.body,
+      attachPdf: true,
+    });
+    setDocumentMailError(
+      activeMailAccount.status === "connected"
+        ? ""
+        : "Für deinen Benutzer ist noch kein Microsoft 365 Konto verbunden. Du kannst den Versanddialog vorbereiten, aber noch nicht senden."
+    );
+    setDocumentMailSuccess("");
+  }
+
+  async function sendDocumentMail() {
+    if (!documentMailDraft) return;
+    if (!documentMailDraft.to.trim()) {
+      setDocumentMailError("Bitte mindestens einen Empfänger eintragen.");
+      return;
+    }
+
+    setIsSendingDocumentMail(true);
+    setDocumentMailError("");
+    setDocumentMailSuccess("");
+
+    const res = await fetch("/api/document-mail", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...documentMailDraft,
+        actorId: activeUserId,
+      }),
+    });
+
+    const data = await res.json().catch(() => null);
+    setIsSendingDocumentMail(false);
+
+    if (!res.ok) {
+      setDocumentMailError(data?.error ?? "E-Mail konnte nicht gesendet werden.");
+      return;
+    }
+
+    setDocumentMailSuccess("E-Mail wurde für den Versand protokolliert.");
+    await loadOfferHistory(documentMailDraft.projectId);
+    window.setTimeout(() => setDocumentMailDraft(null), 700);
+  }
+
   function getNextCatalogNumber(type: CatalogItemType) {
     const prefix = type === "service" ? "L" : type === "package" ? "P" : "A";
     const current =
@@ -4851,7 +6198,7 @@ export function DashboardPage() {
     }
 
     const data = (await res.json()) as StampTimeEntry[];
-    setStampEntries(data);
+    setStampEntries(data.map((entry) => ({ ...entry, date: normalizeDateKeyValue(entry.date) })));
   }
 
   async function loadProjectLogbookEntries() {
@@ -4931,7 +6278,7 @@ export function DashboardPage() {
     await loadNotifications(false);
   }
 
-  function openNotificationTarget(notification: AppNotification) {
+  async function openNotificationTarget(notification: AppNotification) {
     if (
       (notification.linkTarget === "planning-entry" ||
         notification.linkTarget === "planning-entry-overlap") &&
@@ -4946,6 +6293,40 @@ export function DashboardPage() {
         setIsNotificationsOpen(false);
         openEditPlanningEntryModal(entry);
       }
+    }
+
+    if (notification.linkTarget === "content-item" && notification.linkTargetId) {
+      let entry = contentItems.find((item) => item.id === notification.linkTargetId);
+      if (!entry) {
+        const loadedItems = await loadContentItems();
+        entry = loadedItems.find((item) => item.id === notification.linkTargetId);
+      }
+      if (entry) {
+        const targetTab =
+          entry.status === "Korrektur nötig"
+            ? "contentCorrections"
+            : entry.status === "Richtungsfreigabe offen" || entry.status === "Finale Freigabe offen"
+              ? "contentApprovals"
+              : "editorialPlan";
+        setActiveTab(targetTab);
+        setOpenSidebarMenus({ contentManagement: true });
+        setIsNotificationsOpen(false);
+        openContentModal(entry);
+      }
+    }
+
+    if (notification.linkTarget === "idea-store") {
+      await loadIdeaPosts();
+      setActiveTab("ideaStore");
+      setOpenSidebarMenus({ contentManagement: true });
+      setIsNotificationsOpen(false);
+    }
+
+    if (notification.linkTarget === "absence-request" && notification.linkTargetId) {
+      setActiveTab("absenceRequests");
+      setAbsenceRequestView("history");
+      setHighlightedAbsenceRequestId(notification.linkTargetId);
+      setIsNotificationsOpen(false);
     }
   }
 
@@ -4974,9 +6355,11 @@ export function DashboardPage() {
         dateFrom: absenceDateFrom,
         dateTo: absenceDateTo,
         type: absenceType,
+        dayPart: absenceDayPart,
         representativeUserId: absenceRepresentativeUserId || null,
         note: absenceNote,
-        handoverChecklist: absenceType === "urlaub" ? vacationHandoverItems : [],
+        handoverTaskIds: absenceHandoverMode === "open" ? absenceHandoverTaskIds : [],
+        handoverChecklist: [],
         handoverConfirmed: absenceType !== "urlaub" || isVacationHandoverComplete,
       }),
     });
@@ -4988,11 +6371,113 @@ export function DashboardPage() {
     }
 
     setAbsenceNote("");
+    setAbsenceDayPart("full");
+    setAbsenceHandoverMode("open");
+    setAbsenceHandoverTaskIds([]);
+    setAcceptedHandoverTaskIds([]);
+    setPendingHandoverTaskIds([]);
     setEditingAbsenceId(null);
     setAbsenceChecklist(vacationHandoverItems.map(() => false));
     setAbsenceHandoverConfirmed(false);
     setAbsenceWarning("");
     setIsAbsenceModalOpen(false);
+    await loadAbsences();
+    await loadNotifications(true);
+  }
+
+  async function updateAbsenceRequest(absence: AbsenceItem, action: "accept-representation" | "final-approve" | "reject") {
+    const reason =
+      action === "reject"
+        ? window.prompt("Bitte Begründung für die Ablehnung angeben:")?.trim()
+        : "";
+
+    if (action === "reject" && !reason) {
+      setErrorMessage("Bitte eine Begründung für die Ablehnung angeben.");
+      return;
+    }
+
+    const res = await fetch("/api/absences", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        actorId: activeUserId,
+        absenceId: absence.id,
+        action,
+        reason,
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      const message = data?.error ?? "Abwesenheitsantrag konnte nicht aktualisiert werden.";
+      setAbsenceWarning(message);
+      setErrorMessage(message);
+      return;
+    }
+
+    await loadAbsences();
+    await loadNotifications(true);
+    setAbsenceWarning("");
+    setEditingAbsenceId(null);
+    setIsAbsenceModalOpen(false);
+  }
+
+  async function acceptAbsenceHandoverTask(event: MouseEvent<HTMLButtonElement>, task: TaskItem) {
+    event.stopPropagation();
+    setErrorMessage("");
+    setAbsenceWarning("");
+    setPendingHandoverTaskIds((current) => (current.includes(task.id) ? current : [...current, task.id]));
+
+    const res = await fetch("/api/tasks/respond", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        taskId: task.id,
+        actorId: activeUserId,
+        response: "accepted",
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      const message = data?.error ?? "Übergabe-Aufgabe konnte nicht akzeptiert werden.";
+      setAbsenceWarning(message);
+      setErrorMessage(message);
+      setPendingHandoverTaskIds((current) => current.filter((taskId) => taskId !== task.id));
+      return;
+    }
+
+    setAcceptedHandoverTaskIds((current) => (current.includes(task.id) ? current : [...current, task.id]));
+    setPendingHandoverTaskIds((current) => current.filter((taskId) => taskId !== task.id));
+    setTasks((currentTasks) =>
+      currentTasks.map((currentTask) =>
+        currentTask.id === task.id
+          ? {
+              ...currentTask,
+              acceptanceStatus: "accepted",
+              acceptanceRespondedAt: new Date().toISOString(),
+              rejectionReason: "",
+              zustaendigId: activeUserId,
+              zustaendig: activeUser?.name ?? currentTask.zustaendig,
+            }
+          : currentTask
+      )
+    );
+    const currentAbsence = absences.find((absence) => absence.id === editingAbsenceId);
+    const allHandoverTasksAccepted = absenceHandoverTaskIds.every((handoverTaskId) => {
+      if (handoverTaskId === task.id) return true;
+      return tasks.find((currentTask) => currentTask.id === handoverTaskId)?.acceptanceStatus === "accepted";
+    });
+
+    if (
+      currentAbsence &&
+      currentAbsence.status === "wartet_vertreter" &&
+      allHandoverTasksAccepted
+    ) {
+      await updateAbsenceRequest(currentAbsence, "accept-representation");
+    }
+
+    await loadTasks();
     await loadAbsences();
     await loadNotifications(true);
   }
@@ -5026,15 +6511,20 @@ export function DashboardPage() {
     setIsAbsenceModalOpen(false);
   }
 
-  function openAbsenceModal(date?: Date | string) {
+  function openAbsenceModal(date?: Date | string, userId?: string) {
     const selectedDate =
       typeof date === "string" ? date : date ? formatDateKey(date) : formatDateKey(new Date());
-    setAbsenceUserId((current) => current || activeUserId || users[0]?.id || "");
+    setAbsenceUserId(userId || activeUserId || users[0]?.id || "");
     setAbsenceDateFrom(selectedDate);
     setAbsenceDateTo(selectedDate);
     setAbsenceType("urlaub");
+    setAbsenceDayPart("full");
     setAbsenceRepresentativeUserId("");
     setAbsenceNote("");
+    setAbsenceHandoverMode("open");
+    setAbsenceHandoverTaskIds([]);
+    setAcceptedHandoverTaskIds([]);
+    setPendingHandoverTaskIds([]);
     setEditingAbsenceId(null);
     setAbsenceChecklist(vacationHandoverItems.map(() => false));
     setAbsenceHandoverConfirmed(false);
@@ -5063,6 +6553,7 @@ export function DashboardPage() {
     setIsPlanningEntryProjectSearchOpen(false);
     setPlanningEntryProjectId("");
     setPlanningEntryDescription("");
+    setPlanningEntryError("");
     setPlanningEntryOfferLabel("");
     setPlanningEntryOfferTotalHours("5");
   }
@@ -5096,6 +6587,8 @@ export function DashboardPage() {
     setPlanningEntryUserId(defaultUserId);
     setPlanningEntryStartTime(startTime);
     setPlanningEntryEndTime(startTime === "08:00" ? "09:00" : startTime);
+    setErrorMessage("");
+    setPlanningEntryError("");
     setIsPlanningEntryModalOpen(true);
   }
 
@@ -5123,6 +6616,8 @@ export function DashboardPage() {
     setPlanningEntryOfferTotalHours(
       entry.offerTotalMinutes > 0 ? String(entry.offerTotalMinutes / 60) : "5"
     );
+    setErrorMessage("");
+    setPlanningEntryError("");
     setIsPlanningEntryModalOpen(true);
   }
 
@@ -5152,6 +6647,8 @@ export function DashboardPage() {
   }
 
   async function savePlanningEntry(nextApprovalStatus = planningEntryApprovalStatus) {
+    setPlanningEntryError("");
+    setErrorMessage("");
     const selectedUser = users.find((user) => user.id === planningEntryUserId);
     const selectedProject = heroProjects.find((project) => project.id === planningEntryProjectId);
     const durationMinutes = getPlanningNetMinutesBetween(
@@ -5164,6 +6661,18 @@ export function DashboardPage() {
       planningEntrySource === "offer"
         ? planningEntryTitle.trim() || planningEntryOfferLabel.trim() || "Planung aus Angebot"
         : planningEntryTitle.trim();
+    const selectedAbsence = planningEntryUserId
+      ? getUserAbsenceForDateKey(planningEntryUserId, planningEntryDate)
+      : undefined;
+
+    if (doesAbsenceBlockTime(selectedAbsence, planningEntryStartTime, planningEntryEndTime)) {
+      setPlanningEntryError(
+        `${selectedUser?.name ?? "Der ausgewählte Mitarbeiter"} ist am ${formatDateOnly(planningEntryDate)} ${absenceLabel(
+          selectedAbsence!.type
+        )} (${absenceDayPartLabel(selectedAbsence!.dayPart)}). Die Planung wurde blockiert.`
+      );
+      return;
+    }
 
     if (planningEntrySource === "offer") {
       const alreadyPlannedMinutes = getAlreadyPlannedOfferMinutesForPlanningEntry();
@@ -5225,7 +6734,7 @@ export function DashboardPage() {
 
     if (!res.ok) {
       const data = await res.json().catch(() => null);
-      setErrorMessage(data?.error ?? "Planung konnte nicht gespeichert werden.");
+      setPlanningEntryError(data?.error ?? "Planung konnte nicht gespeichert werden.");
       return;
     }
 
@@ -5346,10 +6855,19 @@ export function DashboardPage() {
     setEditingAbsenceId(absence.id);
     setAbsenceUserId(absence.userId);
     setAbsenceType(absence.type);
+    setAbsenceDayPart(absence.dayPart);
     setAbsenceDateFrom(relatedAbsences[0]?.date ?? absence.date);
     setAbsenceDateTo(relatedAbsences.at(-1)?.date ?? absence.date);
     setAbsenceRepresentativeUserId(absence.representativeUserId ?? "");
     setAbsenceNote(absence.note);
+    setAbsenceHandoverMode(absence.handoverTaskIds.length > 0 ? "open" : "none");
+    setAbsenceHandoverTaskIds(absence.handoverTaskIds);
+    setAcceptedHandoverTaskIds(
+      tasks
+        .filter((task) => absence.handoverTaskIds.includes(task.id) && task.acceptanceStatus === "accepted")
+        .map((task) => task.id)
+    );
+    setPendingHandoverTaskIds([]);
     setAbsenceChecklist(vacationHandoverItems.map(() => true));
     setAbsenceHandoverConfirmed(true);
     setAbsenceWarning("");
@@ -5365,6 +6883,8 @@ export function DashboardPage() {
     loadEscalationRules();
     loadAbsences();
     loadPlanningEntries();
+    loadContentItems();
+    loadIdeaPosts();
     loadContacts();
     loadProjectTimeEntries();
     loadProjectLogbookEntries();
@@ -5374,6 +6894,14 @@ export function DashboardPage() {
     loadOffers();
     loadInvoices();
   }, []);
+
+  useEffect(() => {
+    if (activeTab !== "personalData" || !["development", "disg"].includes(personalDataView)) return;
+    if (!personalAssessmentTargetUserId) return;
+    if (assessmentLoadedUserId === personalAssessmentTargetUserId) return;
+
+    void loadEmployeeAssessment(personalAssessmentTargetUserId);
+  }, [activeTab, personalDataView, personalAssessmentTargetUserId, assessmentLoadedUserId]);
 
   useEffect(() => {
     setContactPage(1);
@@ -5484,6 +7012,7 @@ export function DashboardPage() {
 
     hasLoadedNotifications.current = false;
     void loadNotifications(false);
+    void loadIdeaPosts();
 
     const intervalId = window.setInterval(() => {
       void loadNotifications(true);
@@ -5804,12 +7333,13 @@ export function DashboardPage() {
     if (!logbookMessage.trim()) return;
 
     const now = new Date();
-    const date = new Intl.DateTimeFormat("de-DE", {
+    const date = new Intl.DateTimeFormat(APP_LOCALE, {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
+      timeZone: APP_TIME_ZONE,
     }).format(now);
     const taskTitle = logbookCreateTask
       ? logbookTaskTitle.trim() || logbookMessage.trim().slice(0, 80)
@@ -6079,12 +7609,13 @@ export function DashboardPage() {
           ? [
               {
                 id: `budget-${Date.now()}`,
-                changedAt: new Intl.DateTimeFormat("de-DE", {
+                changedAt: new Intl.DateTimeFormat(APP_LOCALE, {
                   day: "2-digit",
                   month: "2-digit",
                   year: "2-digit",
                   hour: "2-digit",
                   minute: "2-digit",
+                  timeZone: APP_TIME_ZONE,
                 }).format(new Date()),
                 changedBy: activeUser?.name || "Aktueller Mitarbeiter",
                 previousHours: previousBudget || "0",
@@ -6150,12 +7681,13 @@ export function DashboardPage() {
         ? [
             {
               id: `budget-${Date.now()}`,
-              changedAt: new Intl.DateTimeFormat("de-DE", {
+              changedAt: new Intl.DateTimeFormat(APP_LOCALE, {
                 day: "2-digit",
                 month: "2-digit",
                 year: "2-digit",
                 hour: "2-digit",
                 minute: "2-digit",
+                timeZone: APP_TIME_ZONE,
               }).format(new Date()),
               changedBy: activeUser?.name || "Aktueller Mitarbeiter",
               previousHours: "0",
@@ -6167,12 +7699,13 @@ export function DashboardPage() {
       address: projectAddress,
       participants: projectDraft.participants,
       responsibleName: activeUser?.name || "Christian Eid",
-      createdAt: new Intl.DateTimeFormat("de-DE", {
+      createdAt: new Intl.DateTimeFormat(APP_LOCALE, {
         day: "2-digit",
         month: "2-digit",
         year: "2-digit",
         hour: "2-digit",
         minute: "2-digit",
+        timeZone: APP_TIME_ZONE,
       }).format(new Date()),
       description: projectDescription,
     };
@@ -6202,6 +7735,7 @@ export function DashboardPage() {
 
   function closeTaskModal() {
     setIsModalOpen(false);
+    setIsCreatingAbsenceHandoverTask(false);
     setErrorMessage("");
   }
 
@@ -6220,7 +7754,7 @@ export function DashboardPage() {
     setGewerkId(task.gewerkId);
     setZustaendigId(task.zustaendigId);
     setSelectedHeroProjectId(
-      heroProjects.find((project) => project.title === task.titel)?.id ?? ""
+      task.projectId || heroProjects.find((project) => project.title === task.titel)?.id || ""
     );
     setFaelligkeit(task.faelligkeit);
     setKunde(task.kunde);
@@ -6343,51 +7877,12 @@ export function DashboardPage() {
 
   async function saveTask() {
     if (!titel.trim()) return;
-    if (autoFeedbackEnabled && !autoFeedbackRecipientId) {
-      setErrorMessage("Bitte einen Empfänger für die automatische Rückmeldung auswählen.");
-      return;
-    }
-
-    const normalizedPlanningAllocations = planningEnabled ? getNormalizedPlanningAllocations() : [];
-    const estimateMinutes = vorgabeMinuten ? Number(vorgabeMinuten) : null;
-
-    if (planningEnabled) {
-      const distributedMinutes = normalizedPlanningAllocations.reduce(
-        (total, allocation) => total + allocation.minutes,
-        0
-      );
-
-      if (!estimateMinutes || estimateMinutes <= 0) {
-        setErrorMessage("Bitte zuerst eine Vorgabezeit eintragen, bevor sie verteilt wird.");
-        return;
-      }
-
-      if (normalizedPlanningAllocations.length === 0) {
-        setErrorMessage("Bitte mindestens einen Planungstag mit Minuten eintragen.");
-        return;
-      }
-
-      if (distributedMinutes !== estimateMinutes) {
-        setErrorMessage(
-          `Die verteilte Vorgabezeit muss exakt ${formatMinutes(estimateMinutes)} ergeben. Aktuell verteilt: ${formatMinutes(distributedMinutes)}.`
-        );
-        return;
-      }
-    }
-
-    const completionValidationMessage = getCompletionValidationMessage(
-      status,
-      estimateMinutes,
-      editingTask?.zeiteintraege.length ?? 0
-    );
-
-    if (completionValidationMessage) {
-      setErrorMessage(completionValidationMessage);
-      return;
-    }
+    const normalizedPlanningAllocations: TaskPlanningAllocation[] = [];
+    const estimateMinutes = null;
 
     const method = editingTask ? "PATCH" : "POST";
-    const selectedOwnerId = canAssignOther(activeUser?.role) ? zustaendigId : activeUserId;
+    const selectedOwnerId =
+      canAssignOther(activeUser?.role) || isCreatingAbsenceHandoverTask ? zustaendigId : activeUserId;
     const plannedDateKeys =
       normalizedPlanningAllocations.length > 0
         ? Array.from(new Set(normalizedPlanningAllocations.map((allocation) => allocation.date)))
@@ -6402,13 +7897,6 @@ export function DashboardPage() {
         `${selectedOwnerName} ist am geplanten Tag abwesend. Die Aufgabe kann nicht gespeichert werden, weil die Person bis einschliexlich ${formatDateOnly(absentUntil)} abwesend ist.`
       );
       return;
-    }
-
-    if (!planningEnabled && estimateMinutes && estimateMinutes > 0) {
-      const confirmed = window.confirm(
-        "Hinweis: Die gesamte Vorgabezeit der Aufgabe wird am Tag der Deadline geplant. Möchtest du fortfahren?"
-      );
-      if (!confirmed) return;
     }
 
     const holidayDate = plannedDateKeys.find((dateKey) => getHolidayForDateKey(dateKey));
@@ -6435,17 +7923,19 @@ export function DashboardPage() {
       description: beschreibung,
       status,
       priority: prioritaet,
-      tradeId: gewerkId || null,
+      tradeId: null,
       ownerId: selectedOwnerId,
       deadline: normalizeDeadlineInput(faelligkeit) || getDefaultDeadlineValue(),
       customer: kunde,
-      customerClass: kundenklasse || null,
-      autoFeedbackEnabled,
-      autoFeedbackRecipientId: autoFeedbackEnabled ? autoFeedbackRecipientId : null,
-      recurrenceEnabled,
-      recurrenceInterval: recurrenceEnabled ? recurrenceInterval : null,
+      customerClass: null,
+      projectId: selectedHeroProjectId,
+      autoFeedbackEnabled: false,
+      autoFeedbackRecipientId: null,
+      recurrenceEnabled: false,
+      recurrenceInterval: null,
       estimateMinutes,
       planningAllocations: normalizedPlanningAllocations,
+      absenceHandoverTask: isCreatingAbsenceHandoverTask,
     };
 
     const res = await fetch("/api/tasks", {
@@ -6462,6 +7952,13 @@ export function DashboardPage() {
       return;
     }
 
+    const savedTask = (await res.json()) as TaskItem;
+    if (isCreatingAbsenceHandoverTask) {
+      setAbsenceHandoverTaskIds((current) =>
+        current.includes(savedTask.id) ? current : [...current, savedTask.id]
+      );
+      setIsCreatingAbsenceHandoverTask(false);
+    }
     await loadTasks();
     await loadNotifications(true);
     setIsModalOpen(false);
@@ -6710,10 +8207,35 @@ export function DashboardPage() {
     }
 
     const savedEntry = (await res.json()) as StampTimeEntry;
+    const normalizedSavedEntry = { ...savedEntry, date: normalizeDateKeyValue(savedEntry.date) };
     setStampEntries((currentEntries) => [
-      savedEntry,
-      ...currentEntries.filter((currentEntry) => currentEntry.id !== savedEntry.id),
+      normalizedSavedEntry,
+      ...currentEntries.filter((currentEntry) => currentEntry.id !== normalizedSavedEntry.id),
     ]);
+  }
+
+  async function approveOvertimeForDay(userId: string, dateKey: string) {
+    if (!canManageAbsences(activeUser?.role)) return;
+
+    const entriesToApprove = stampEntries.filter((entry) => entry.userId === userId && entry.date === dateKey);
+    if (entriesToApprove.length === 0) return;
+
+    try {
+      await Promise.all(
+        entriesToApprove.map((entry) =>
+          saveStampTimeEntry({
+            ...entry,
+            overtimeApprovalStatus: "approved",
+            overtimeApprovedByUserId: activeUserId,
+            overtimeApprovedByName: activeUser?.name ?? "",
+            overtimeApprovedAt: new Date().toISOString(),
+          })
+        )
+      );
+      await loadProjectTimeEntries();
+    } catch {
+      setErrorMessage("Überstunden konnten nicht freigegeben werden.");
+    }
   }
 
   function parseStampTimeToMinutes(value: string) {
@@ -6768,10 +8290,11 @@ export function DashboardPage() {
     const now = new Date();
     setManualProjectTimeUserId(activeUser?.id || users.find((user) => user.isActive)?.id || "");
     setStampEditDate(
-      new Intl.DateTimeFormat("de-DE", {
+      new Intl.DateTimeFormat(APP_LOCALE, {
         day: "2-digit",
         month: "2-digit",
         year: "numeric",
+        timeZone: APP_TIME_ZONE,
       }).format(now)
     );
     setStampEditStartTime("08:00");
@@ -6823,7 +8346,7 @@ export function DashboardPage() {
       userId: selectedUser.id,
       employee: selectedUser.name,
       entrySource: "manual",
-      date: stampEditDate.trim(),
+      date: normalizeDateKeyValue(stampEditDate.trim()),
       startTime: stampEditStartTime,
       endTime: stampEditEndTime,
       durationMs: rawDurationMs,
@@ -6874,14 +8397,29 @@ export function DashboardPage() {
       return;
     }
 
+    const previousSummary = `${editingStampEntry.date} ${editingStampEntry.startTime}-${editingStampEntry.endTime}, Pause ${formatStampDuration(editingStampEntry.pauseMs)}, ${formatStampDuration(editingStampEntry.durationMs)}`;
+    const nextSummary = `${normalizeDateKeyValue(stampEditDate.trim())} ${stampEditStartTime}-${stampEditEndTime}, Pause ${formatStampDuration(pauseMs)}, ${formatStampDuration(rawDurationMs)}`;
     const updatedEntry: StampTimeEntry = {
       ...editingStampEntry,
-      date: stampEditDate.trim(),
+      date: normalizeDateKeyValue(stampEditDate.trim()),
       startTime: stampEditStartTime,
       endTime: stampEditEndTime,
       pauseMs,
       durationMs: rawDurationMs,
       comment: stampEditComment.trim(),
+      editHistory: [
+        {
+          id: crypto.randomUUID(),
+          actorUserId: activeUserId,
+          actorName: activeUser?.name ?? "",
+          event: "Zeiteintrag bearbeitet",
+          note: stampEditComment.trim(),
+          previousValue: previousSummary,
+          nextValue: nextSummary,
+          createdAt: new Date().toISOString(),
+        },
+        ...(editingStampEntry.editHistory ?? []),
+      ],
     };
 
     try {
@@ -6931,18 +8469,21 @@ export function DashboardPage() {
       userId: activeUser?.id || "",
       employee: activeUser?.name || "Aktueller Mitarbeiter",
       entrySource: "stamped",
-      date: new Intl.DateTimeFormat("de-DE", {
+      date: new Intl.DateTimeFormat(APP_LOCALE, {
         day: "2-digit",
         month: "2-digit",
         year: "numeric",
+        timeZone: APP_TIME_ZONE,
       }).format(new Date(stampSession.startedAt)),
-      startTime: new Intl.DateTimeFormat("de-DE", {
+      startTime: new Intl.DateTimeFormat(APP_LOCALE, {
         hour: "2-digit",
         minute: "2-digit",
+        timeZone: APP_TIME_ZONE,
       }).format(new Date(stampSession.startedAt)),
-      endTime: new Intl.DateTimeFormat("de-DE", {
+      endTime: new Intl.DateTimeFormat(APP_LOCALE, {
         hour: "2-digit",
         minute: "2-digit",
+        timeZone: APP_TIME_ZONE,
       }).format(new Date(now)),
       durationMs,
       pauseMs: getStampPauseMilliseconds(stampSession),
@@ -7134,21 +8675,12 @@ export function DashboardPage() {
     }
 
     await loadTasks();
+    await loadAbsences();
     await loadNotifications(true);
   }
 
   async function moveTaskToStatus(task: TaskItem, nextStatus: TaskStatus) {
     if (task.status === nextStatus) return;
-    const completionValidationMessage = getCompletionValidationMessage(
-      nextStatus,
-      task.vorgabeMinuten,
-      task.zeiteintraege.length
-    );
-
-    if (completionValidationMessage) {
-      setErrorMessage(completionValidationMessage);
-      return;
-    }
 
     setTasks((currentTasks) =>
       currentTasks.map((currentTask) =>
@@ -7286,6 +8818,9 @@ export function DashboardPage() {
     setEmployeePlanningTimeWindows(defaultWeeklyPlanningWindows);
     setEmployeePlanningBreakWindows(defaultWeeklyBreakWindows);
     setEmployeePlanningResponsibleFor([]);
+    setEmployeeNotifyIdeaStore(true);
+    setEmployeeMailAccount(emptyEmployeeMailAccount);
+    setEmployeeMailMessage("");
     setEmployeePasswordMessage("");
     setUserTeamIds([]);
     setUserAllTeams(false);
@@ -7417,6 +8952,9 @@ export function DashboardPage() {
       getSafePlanningTimeWindows(user.planningBreakWindows, "12:00", "12:30")
     );
     setEmployeePlanningResponsibleFor(user.planningResponsibleFor ?? []);
+    setEmployeeNotifyIdeaStore(user.notifyIdeaStore ?? true);
+    setEmployeeMailAccount(getSafeEmployeeMailAccount(user.mailAccount, user.email));
+    setEmployeeMailMessage("");
     setEmployeePasswordMessage("");
     setUserTeamIds(user.teamIds ?? []);
     setUserAllTeams(teams.length > 0 && user.teamIds.length === teams.length);
@@ -7470,6 +9008,36 @@ export function DashboardPage() {
   async function copyLoginCredentials() {
     if (!loginCredentialsDraft || typeof navigator === "undefined") return;
     await navigator.clipboard?.writeText(getLoginCredentialsMessage(loginCredentialsDraft));
+  }
+
+  function connectEmployeeMicrosoftMail() {
+    const targetUserId = editingUserId || selectedEmployeeId;
+    if (!targetUserId || targetUserId === "__new__") {
+      setEmployeeMailMessage("Bitte den Mitarbeiter zuerst speichern, danach kann Microsoft 365 verbunden werden.");
+      return;
+    }
+
+    const returnTo =
+      typeof window !== "undefined"
+        ? `${window.location.pathname}${window.location.search}`
+        : "/dashboard";
+    window.location.href = `/api/mail/oauth/start?userId=${encodeURIComponent(targetUserId)}&returnTo=${encodeURIComponent(returnTo)}`;
+  }
+
+  function disconnectEmployeeMicrosoftMail() {
+    setEmployeeMailAccount({
+      ...emptyEmployeeMailAccount,
+      email: userEmail,
+    });
+    setEmployeeMailMessage("E-Mail-Konto wurde getrennt.");
+  }
+
+  function markEmployeeMailTest() {
+    setEmployeeMailAccount((current) => ({
+      ...getSafeEmployeeMailAccount(current, userEmail),
+      lastTestAt: new Date().toISOString(),
+    }));
+    setEmployeeMailMessage("Test-E-Mail wurde vorgemerkt. Nach OAuth-Aktivierung wird sie direkt über Microsoft 365 gesendet.");
   }
 
   function toggleUserTeam(teamId: string, checked: boolean) {
@@ -7559,6 +9127,8 @@ export function DashboardPage() {
         planningTimeWindows: employeePlanningTimeWindows,
         planningBreakWindows: employeePlanningBreakWindows,
         planningResponsibleFor: employeePlanningResponsibleFor,
+        notifyIdeaStore: employeeNotifyIdeaStore,
+        mailAccount: employeeMailAccount,
         teamIds: userAllTeams ? teams.map((team) => team.id) : userTeamIds,
         allTeams: userAllTeams,
         actorId: activeUserId,
@@ -7976,6 +9546,10 @@ export function DashboardPage() {
     (task) => isTaskOverdueByWorkingTime(task, deadlineProgressTime, holidayDateKeys)
   ).length;
   const mayManageUsers = canManageUsers(activeUser?.role);
+  const mayApproveContent =
+    mayManageUsers ||
+    activeUser?.role === "FUEHRUNGSKRAFT" ||
+    /pauline/i.test(activeUser?.name ?? "");
   const mayFilterPlanningUsers = canAssignOther(activeUser?.role);
   const effectivePlanningOwnerFilter = mayFilterPlanningUsers
     ? planningOwnerFilter || ""
@@ -8287,10 +9861,11 @@ export function DashboardPage() {
     })
     .slice(0, 10);
   const selectedStampProject = heroProjects.find((project) => project.id === stampProjectId);
-  const todayStampDate = new Intl.DateTimeFormat("de-DE", {
+  const todayStampDate = new Intl.DateTimeFormat(APP_LOCALE, {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+    timeZone: APP_TIME_ZONE,
   }).format(new Date(timerNow));
   const completedTodayStampMilliseconds = stampEntries
     .filter((entry) => {
@@ -8299,11 +9874,6 @@ export function DashboardPage() {
       return entry.employee === activeUser.name;
     })
     .reduce((sum, entry) => sum + entry.durationMs, 0);
-  const modalCompletionHint = getCompletionValidationMessage(
-    status,
-    vorgabeMinuten ? Number(vorgabeMinuten) : null,
-    editingTask?.zeiteintraege.length ?? 0
-  );
   const kanbanStatuses: TaskStatus[] = [
     "offen",
     "in Bearbeitung",
@@ -8383,8 +9953,10 @@ export function DashboardPage() {
   const getUserCapacityForDate = (user: UserOption, dateKey: string) => {
     if (isWeekendDateKey(dateKey)) return 0;
     if (getHolidayForDateKey(dateKey)) return 0;
+    const absence = getUserAbsenceForDateKey(user.id, dateKey);
     const capacity = getSafeWeeklyCapacity(user.weeklyCapacity);
-    return capacity[getWeeklyDayKeyForDate(dateKey)] ?? 0;
+    const baseCapacity = capacity[getWeeklyDayKeyForDate(dateKey)] ?? 0;
+    return absence ? (absence.dayPart === "full" ? 0 : baseCapacity / 2) : baseCapacity;
   };
   const getUserPlanningWindowForDate = (user: UserOption | undefined, dateKey: string) => {
     const dayKey = getWeeklyDayKeyForDate(dateKey);
@@ -8478,8 +10050,8 @@ export function DashboardPage() {
     Math.max(getPlanningSlotIndex(firstStart), getPlanningSlotIndex(secondStart)) <
     Math.min(getPlanningSlotIndex(firstEnd), getPlanningSlotIndex(secondEnd));
   const isPlanningEntryCreatedAfter = (entry: PlanningEntry, candidate: PlanningEntry) => {
-    const entryCreatedAt = Date.parse(entry.createdAt);
-    const candidateCreatedAt = Date.parse(candidate.createdAt);
+    const entryCreatedAt = parseAppDateTime(entry.createdAt).getTime();
+    const candidateCreatedAt = parseAppDateTime(candidate.createdAt).getTime();
 
     if (!Number.isFinite(entryCreatedAt) || !Number.isFinite(candidateCreatedAt)) return false;
     if (entryCreatedAt === candidateCreatedAt) return entry.id > candidate.id;
@@ -8599,10 +10171,56 @@ export function DashboardPage() {
         endColumn: getPlanningSlotIndex(entry.endTime) + 1,
       }));
   };
+  const isApprovedAbsence = (absence: AbsenceItem) => absence.status === "genehmigt";
   const getUserAbsenceForDay = (userId: string, date: Date) =>
-    absences.find((absence) => absence.userId === userId && absence.date === formatDateKey(date));
+    absences.find((absence) => absence.userId === userId && absence.date === formatDateKey(date) && isApprovedAbsence(absence));
   const getUserAbsenceForDateKey = (userId: string, dateKey: string) =>
-    absences.find((absence) => absence.userId === userId && absence.date === dateKey);
+    absences.find((absence) => absence.userId === userId && absence.date === dateKey && isApprovedAbsence(absence));
+  const doesAbsenceBlockTime = (absence: AbsenceItem | undefined, startTime: string, endTime: string) => {
+    if (!absence || !isApprovedAbsence(absence)) return false;
+    if (absence.dayPart === "full") return true;
+    const midpoint = "12:00";
+    return absence.dayPart === "first-half"
+      ? doPlanningTimesOverlap(startTime, endTime, "00:00", midpoint)
+      : doPlanningTimesOverlap(startTime, endTime, midpoint, "23:59");
+  };
+  const absenceDayPartLabel = (dayPart: AbsenceItem["dayPart"]) =>
+    dayPart === "first-half" ? "1. Tageshälfte" : dayPart === "second-half" ? "2. Tageshälfte" : "Ganzer Tag";
+  const absenceStatusLabel = (status: AbsenceItem["status"]) =>
+    status === "wartet_vertreter"
+      ? "Wartet auf Vertreter"
+      : status === "wartet_geschaeftsfuehrung"
+        ? "Wartet auf Geschäftsführung"
+        : status === "genehmigt"
+          ? "Genehmigt"
+          : "Abgelehnt";
+  const editingAbsence = editingAbsenceId
+    ? absences.find((absence) => absence.id === editingAbsenceId) ?? null
+    : null;
+  const representativeReviewAbsence =
+    editingAbsence ??
+    absences.find(
+      (absence) =>
+        absence.representativeUserId === activeUserId &&
+        absence.userId === absenceUserId &&
+        absenceHandoverTaskIds.some((taskId) => absence.handoverTaskIds.includes(taskId))
+    ) ??
+    null;
+  const isRepresentativeAbsenceView =
+    Boolean(representativeReviewAbsence) &&
+    representativeReviewAbsence?.representativeUserId === activeUserId &&
+    representativeReviewAbsence?.userId !== activeUserId &&
+    representativeReviewAbsence?.status !== "genehmigt" &&
+    representativeReviewAbsence?.status !== "abgelehnt";
+  const isRepresentativeAbsenceReview =
+    isRepresentativeAbsenceView &&
+    representativeReviewAbsence?.status === "wartet_vertreter";
+  const canRepresentativeReleaseAbsence =
+    isRepresentativeAbsenceReview &&
+    absenceHandoverTaskIds.every((taskId) => {
+      const task = tasks.find((item) => item.id === taskId);
+      return task?.acceptanceStatus === "accepted" || acceptedHandoverTaskIds.includes(taskId);
+    });
   const getUserAbsentUntil = (userId: string, dateKey: string) => {
     const userAbsenceDates = absences
       .filter((absence) => absence.userId === userId)
@@ -8653,7 +10271,6 @@ export function DashboardPage() {
       taskNumber.includes(search) ||
       task.titel.toLowerCase().includes(search) ||
       task.beschreibung.toLowerCase().includes(search) ||
-      task.kunde.toLowerCase().includes(search) ||
       task.zustaendig.toLowerCase().includes(search);
     const matchesDeadlineFilter =
       !deadlineFilter ||
@@ -8666,7 +10283,6 @@ export function DashboardPage() {
       (!statusFilter || task.status === statusFilter) &&
       matchesDeadlineFilter &&
       (!priorityFilter || task.prioritaet === priorityFilter) &&
-      (!customerFilter || task.kunde === customerFilter) &&
       (!ownerFilter || task.zustaendigId === ownerFilter)
     );
   }).sort((first, second) => {
@@ -9038,12 +10654,12 @@ export function DashboardPage() {
       tone: "teal",
     },
     {
-      tab: "documents",
-      kicker: "Dokumente",
-      title: "Angebote & Rechnungen",
-      value: `${openInvoiceCount}`,
-      body: "Angebote, Auftragsbestätigungen, Rechnungen und Projektdateien bekommen ein eigenes Modul.",
-      action: "Dokumente öffnen",
+      tab: "contentManagement",
+      kicker: "Content",
+      title: "Content-Management",
+      value: "0",
+      body: "Redaktionsplan, Freigaben und geplante Inhalte werden hier gebündelt.",
+      action: "Content öffnen",
       tone: "amber",
     },
     {
@@ -9086,11 +10702,16 @@ export function DashboardPage() {
   const plannedModuleLabels: Partial<Record<AppTab, string>> = {
     contacts: "Kontakte und CRM",
     documents: "Dokumente",
+    contentRound: "Richtlinien",
+    contentQuotas: "Kundenkontingente",
+    ideaStore: "Ideen-Feed",
+    contentApprovals: "Freigaben",
+    contentCorrections: "Korrekturen",
     orders: "Aufträge",
     accounting: "Buchhaltung",
     personalData: "Persönliche Daten",
     employees: "Mitarbeiter",
-    absenceRequests: "Abwesenheitsanträge",
+    absenceRequests: "Team-Kalender",
     timeTracking: "Zeiterfassung",
     timeCategories: "Zeitkategorien",
     breakManagement: "Pausenverwaltung",
@@ -9288,7 +10909,7 @@ export function DashboardPage() {
                 <label className={styles.loginFieldGroup}>
                   <span>E-Mail</span>
                   <div className={styles.loginInputShell}>
-                    <span aria-hidden="true">✉</span>
+                    <span aria-hidden="true">?</span>
                     <input
                       type="email"
                       value={loginEmail}
@@ -9302,7 +10923,7 @@ export function DashboardPage() {
                 <label className={styles.loginFieldGroup}>
                   <span>Passwort</span>
                   <div className={styles.loginPasswordField}>
-                    <span aria-hidden="true">▣</span>
+                    <span aria-hidden="true">?</span>
                     <input
                       type={showLoginPassword ? "text" : "password"}
                       value={loginPassword}
@@ -9335,7 +10956,7 @@ export function DashboardPage() {
                   disabled={!loginEmail.trim() || !loginPassword || isLoginSubmitting}
                 >
                   <span>{isLoginSubmitting ? "Anmeldung läuft..." : "Einloggen"}</span>
-                  <strong aria-hidden="true">→</strong>
+                  <strong aria-hidden="true">?</strong>
                 </button>
 
                 <p className={styles.loginContactHint}>
@@ -9363,7 +10984,7 @@ export function DashboardPage() {
       { id: "documents", label: "Dokumente", icon: "" },
       { id: "gaeb", label: "Ausschreibungen (GAEB)", icon: "" },
       { id: "contacts", label: "Ansprechpartner", icon: "•" },
-      { id: "tasks", label: "Aufgaben", icon: "✓" },
+      { id: "tasks", label: "Aufgaben", icon: "?" },
       { id: "orders", label: "Aufträge", icon: "A" },
       { id: "projects", label: "Projekte", icon: "" },
       { id: "addresses", label: "Objektadressen", icon: "" },
@@ -9659,6 +11280,14 @@ export function DashboardPage() {
                                   PDF öffnen
                                 </button>
                                 {!["Storniert", "Stornorechnung", "Gelöscht"].includes(invoice.status) ? (
+                                  <>
+                                  <button
+                                    type="button"
+                                    className={styles.timeEntryEditButton}
+                                    onClick={() => openDocumentMailDialog("invoice", invoice)}
+                                  >
+                                    Per E-Mail senden
+                                  </button>
                                   <button
                                     type="button"
                                     className={styles.timeEntryEditButton}
@@ -9666,6 +11295,7 @@ export function DashboardPage() {
                                   >
                                     Stornieren
                                   </button>
+                                  </>
                                 ) : null}
                               </div>
                             </td>
@@ -9968,6 +11598,25 @@ export function DashboardPage() {
       .sort((first, second) =>
         `${second.date} ${second.startTime}`.localeCompare(`${first.date} ${first.startTime}`)
       );
+    const isTaskLinkedToSelectedProject = (task: TaskItem) => {
+      if (task.projectId && String(task.projectId) === String(selectedProjectFile.id)) return true;
+
+      const haystack = [task.titel, task.beschreibung, task.kunde].join(" ").toLowerCase();
+      const projectMarkers = [
+        selectedProjectFile.projectNumber,
+        selectedProjectFile.title,
+        `${selectedProjectFile.projectNumber || ""} | ${selectedProjectFile.title || ""}`,
+      ]
+        .filter(Boolean)
+        .map((value) => String(value).toLowerCase());
+
+      return projectMarkers.some((marker) => marker && haystack.includes(marker));
+    };
+    const projectTasks = tasks.filter(isTaskLinkedToSelectedProject);
+    const openProjectTasks = projectTasks.filter(
+      (task) => task.status !== "erledigt" && task.status !== "archiviert"
+    );
+    const completedProjectTasks = projectTasks.filter((task) => task.status === "erledigt");
     const projectPlanningHistory = projectPlanningHistoryEntries
       .flatMap((entry) =>
         (entry.history ?? []).map((history) => ({
@@ -9980,7 +11629,7 @@ export function DashboardPage() {
       )
       .sort(
         (first, second) =>
-          new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime()
+          parseAppDateTime(second.createdAt).getTime() - parseAppDateTime(first.createdAt).getTime()
       );
     const projectBudgetHours = parseHoursInput(selectedProjectFile.timeBudgetHours);
     const projectRemainingHours = projectBudgetHours > 0 ? projectBudgetHours - projectTrackedHours : 0;
@@ -10255,7 +11904,7 @@ export function DashboardPage() {
     };
     const projectOfferHistory = offerHistory
       .filter((entry) => entry.projectId === selectedProjectFile.id)
-      .sort((first, second) => new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime());
+      .sort((first, second) => parseAppDateTime(second.createdAt).getTime() - parseAppDateTime(first.createdAt).getTime());
     const projectResponsibleName = selectedProjectFile.responsibleName || activeUser?.name || "Christian Eid";
     const projectStartDate = parseProjectDate(selectedProjectFile.projectRuntimeFrom);
     const projectEndDate = parseProjectDate(selectedProjectFile.projectRuntimeUntil);
@@ -10385,7 +12034,7 @@ export function DashboardPage() {
               onClick={step.onClick}
             >
               <span className={styles.projectProgressNode}>
-                {step.state === "done" ? "✓" : step.state === "partial" ? "!" : ""}
+                {step.state === "done" ? "?" : step.state === "partial" ? "!" : ""}
               </span>
               <strong>{step.label}</strong>
               {index < projectProgressSteps.length - 1 ? (
@@ -10687,6 +12336,13 @@ export function DashboardPage() {
                                 <button
                                   type="button"
                                   className={styles.timeEntryEditButton}
+                                  onClick={() => openDocumentMailDialog("offer", offer)}
+                                >
+                                  Per E-Mail senden
+                                </button>
+                                <button
+                                  type="button"
+                                  className={styles.timeEntryEditButton}
                                   onClick={() => deleteOffer(offer)}
                                 >
                                   Löschen
@@ -10765,13 +12421,7 @@ export function DashboardPage() {
                           <article key={history.id}>
                             <strong>{history.title || "Angebot geändert"}</strong>
                             <span>
-                              {new Date(history.createdAt).toLocaleString("de-DE", {
-                                day: "2-digit",
-                                month: "2-digit",
-                                year: "numeric",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
+                              {formatDeadline(history.createdAt)}
                               {" "}von {history.actorName || "System"}
                             </span>
                             <p>{history.note || history.offerNumber}</p>
@@ -10823,6 +12473,94 @@ export function DashboardPage() {
                       </div>
                     );
                   })()
+                )}
+              </div>
+            ) : projectFileTab === "tasks" ? (
+              <div className={styles.projectTimeModule}>
+                <div className={styles.customerFileMainHeader}>
+                  <h2>Aufgaben</h2>
+                  <div className={styles.headerActions}>
+                    <span>
+                      {openProjectTasks.length} offen · {completedProjectTasks.length} erledigt
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      onClick={() => openProjectTaskModal(selectedProjectFile, "task")}
+                    >
+                      + Aufgabe
+                    </button>
+                  </div>
+                </div>
+                {projectTasks.length === 0 ? (
+                  <div className={styles.customerDocumentEmpty}>
+                    <strong>Noch keine Aufgaben mit diesem Projekt verknüpft.</strong>
+                    <p>
+                      Sobald eine Aufgabe mit diesem Projekt angelegt wird, erscheint sie hier.
+                      Bestehende Übergabe-Aufgaben werden erkannt, wenn Projektnummer oder Projekttitel enthalten sind.
+                    </p>
+                  </div>
+                ) : (
+                  <table className={styles.projectTimeTable}>
+                    <thead>
+                      <tr>
+                        <th>Nr.</th>
+                        <th>Aufgabe</th>
+                        <th>Status</th>
+                        <th>Priorität</th>
+                        <th>Zuständig</th>
+                        <th>Deadline</th>
+                        <th>Aktion</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {projectTasks.map((task) => (
+                        <tr key={task.id}>
+                          <td className={styles.number}>{getTaskNumber(task.id, tasks)}</td>
+                          <td>
+                            <strong>{task.titel}</strong>
+                            {task.beschreibung ? (
+                              <span className={styles.metaLine}>
+                                {truncateText(task.beschreibung, 80)}
+                              </span>
+                            ) : null}
+                            {task.acceptanceStatus === "pending" ? (
+                              <span className={styles.pendingHint}>wartet auf Annahme</span>
+                            ) : null}
+                            {task.acceptanceStatus === "rejected" ? (
+                              <span className={styles.pendingHint}>
+                                abgelehnt{task.rejectionReason ? `: ${task.rejectionReason}` : ""}
+                              </span>
+                            ) : null}
+                          </td>
+                          <td>
+                            <span className={`${styles.badge} ${styles.status}`} data-status={task.status}>
+                              {task.status}
+                            </span>
+                          </td>
+                          <td>
+                            <span className={`${styles.badge} ${styles.priority}`} data-priority={task.prioritaet}>
+                              {task.prioritaet}
+                            </span>
+                          </td>
+                          <td>
+                            {task.zustaendig}
+                            <span className={styles.metaLine}>{task.rolle}</span>
+                          </td>
+                          <td>{formatDeadline(task.faelligkeit)}</td>
+                          <td>
+                            <button
+                              type="button"
+                              className={styles.timeEntryEditButton}
+                              onClick={() => openEditModal(task)}
+                            >
+                              Öffnen
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 )}
               </div>
             ) : projectFileTab === "time" ? (
@@ -11060,13 +12798,7 @@ export function DashboardPage() {
                                     : "Termin angelegt"}
                           </strong>
                           <span>
-                            {new Date(history.createdAt).toLocaleString("de-DE", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              year: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
+                            {formatDeadline(history.createdAt)}
                             {" "}von {history.actorName || "System"}
                           </span>
                           <p>
@@ -11174,13 +12906,7 @@ export function DashboardPage() {
                                       : "Termin angelegt"}
                               </strong>
                               <span>
-                                {new Date(history.createdAt).toLocaleString("de-DE", {
-                                  day: "2-digit",
-                                  month: "2-digit",
-                                  year: "numeric",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
+                                {formatDeadline(history.createdAt)}
                                 {" "}von {history.actorName || "System"}
                               </span>
                               <p>
@@ -12287,6 +14013,1879 @@ export function DashboardPage() {
     );
   }
 
+  function updateAssessmentAnswer(kind: "self" | "manager", questionId: string, value: number) {
+    setEmployeeAssessment((current) => ({
+      ...current,
+      [kind]: {
+        ...current[kind],
+        answers: {
+          ...current[kind].answers,
+          [questionId]: value,
+        },
+      },
+    }));
+  }
+
+  function getSafeEmployeeMailAccount(value?: Partial<EmployeeMailAccount>, fallbackEmail = ""): EmployeeMailAccount {
+    const status =
+      value?.status === "connected" || value?.status === "expired" || value?.status === "not_connected"
+        ? value.status
+        : "not_connected";
+
+    return {
+      ...emptyEmployeeMailAccount,
+      ...value,
+      provider: "microsoft365",
+      status,
+      email: value?.email || fallbackEmail,
+      displayName: value?.displayName || "",
+      bcc: value?.bcc || "",
+      sendCopyToSelf: value?.sendCopyToSelf !== false,
+      connectedAt: value?.connectedAt || "",
+      lastTestAt: value?.lastTestAt || "",
+    };
+  }
+
+  function updateAssessmentText(kind: "self" | "manager", fieldId: string, value: string) {
+    setEmployeeAssessment((current) => ({
+      ...current,
+      [kind]: {
+        ...current[kind],
+        texts: {
+          ...current[kind].texts,
+          [fieldId]: value,
+        },
+      },
+    }));
+  }
+
+  function updateDevelopmentMeasure(id: string, changes: Partial<EmployeeDevelopmentMeasure>) {
+    setEmployeeAssessment((current) => ({
+      ...current,
+      measures: current.measures.map((measure) =>
+        measure.id === id ? { ...measure, ...changes } : measure
+      ),
+    }));
+  }
+
+  function addDevelopmentMeasure() {
+    setEmployeeAssessment((current) => ({
+      ...current,
+      measures: [
+        ...current.measures,
+        {
+          id: crypto.randomUUID(),
+          field: "",
+          goal: "",
+          action: "",
+          support: "",
+          reviewDate: "",
+          successCriterion: "",
+          status: "offen",
+        },
+      ],
+    }));
+  }
+
+  function removeDevelopmentMeasure(id: string) {
+    setEmployeeAssessment((current) => ({
+      ...current,
+      measures: current.measures.filter((measure) => measure.id !== id),
+    }));
+  }
+
+  function updateAssessmentConversation(changes: Partial<EmployeeAssessmentConversation>) {
+    setEmployeeAssessment((current) => ({
+      ...current,
+      conversation: {
+        ...current.conversation,
+        ...changes,
+      },
+    }));
+  }
+
+  function updateDisgAnswer(questionId: string, value: number) {
+    setEmployeeAssessment((current) => ({
+      ...current,
+      disg: {
+        ...current.disg,
+        status: current.disg.status === "not_started" ? "draft" : current.disg.status,
+        startedAt: current.disg.startedAt || new Date().toISOString(),
+        order: current.disg.order.length > 0 ? current.disg.order : defaultDisgOrder,
+        answers: {
+          ...current.disg.answers,
+          [questionId]: value,
+        },
+      },
+    }));
+  }
+
+  function renderPersonalDisg(currentUser: UserOption | undefined) {
+    const disg = employeeAssessment.disg;
+    const isManagerView = canManageEmployeeAssessments;
+    const canEditDisg = currentUser?.id === activeUserId && !disg.locked;
+    const canResetDisg = !disg.locked && (canEditDisg || isManagerView);
+    const orderedQuestions = (disg.order.length > 0 ? disg.order : defaultDisgOrder)
+      .map((questionId) => disgQuestions.find((question) => question.id === questionId))
+      .filter((question): question is DisgQuestion => Boolean(question));
+    const answeredCount = Object.keys(disg.answers).filter((questionId) => Number(disg.answers[questionId]) > 0).length;
+    const progress = Math.round((answeredCount / disgQuestions.length) * 100);
+    const currentPage = Math.max(0, Math.min(disgQuestionPage, 3));
+    const visibleQuestions = disg.status === "completed" ? orderedQuestions : orderedQuestions.slice(currentPage * 10, currentPage * 10 + 10);
+    const result = disg.result;
+    const primaryDetails = result ? disgTypeDetails[result.primaryType] : null;
+    const mixText = result ? disgMixDescriptions[result.profile] : "";
+
+    return (
+      <section className={styles.personalDevelopmentPage}>
+        {assessmentError ? <p className={styles.inlineError}>{assessmentError}</p> : null}
+        {assessmentSaveMessage ? <p className={styles.inlineSuccess}>{assessmentSaveMessage}</p> : null}
+
+        <section className={styles.personalPanel}>
+          <div className={styles.personalPanelHeader}>
+            <div>
+              <p className={styles.eyebrow}>DISG-Selbstreflexion</p>
+              <h2>Arbeitsbezogene Verhaltenstendenzen</h2>
+            </div>
+            {isManagerView && disg.locked ? (
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => {
+                  setDisgQuestionPage(0);
+                  void saveEmployeeAssessmentSection("disg-unlock", null, "DISG-Fragebogen wurde wieder geöffnet.");
+                }}
+              >
+                DISG wieder öffnen
+              </button>
+            ) : null}
+          </div>
+          <p className={styles.inlineHint}>
+            Dieses Modul dient der Selbstreflexion und persönlichen Entwicklung. Es zeigt arbeitsbezogene Verhaltenstendenzen auf Basis deiner Selbsteinschätzung. Das Ergebnis ist keine psychologische Diagnose und ersetzt kein zertifiziertes Persönlichkeitsverfahren. Beantworte die Fragen möglichst spontan und ehrlich.
+          </p>
+          <div className={styles.disgProgress}>
+            <span>Fortschritt: {answeredCount} von {disgQuestions.length} beantwortet</span>
+            <strong>{progress}%</strong>
+            <i style={{ width: `${progress}%` }} />
+          </div>
+        </section>
+
+        {disg.status !== "completed" ? (
+          <section className={styles.personalPanel}>
+            <div className={styles.personalPanelHeader}>
+              <div>
+                <p className={styles.eyebrow}>Fragebogen</p>
+                <h2>Abschnitt {currentPage + 1} von 4</h2>
+              </div>
+              {canEditDisg || canResetDisg ? (
+                <div className={styles.buttonRow}>
+                  {canEditDisg ? (
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() =>
+                        void saveEmployeeAssessmentSection(
+                          "disg-save",
+                          { ...disg, status: "draft", order: disg.order.length > 0 ? disg.order : defaultDisgOrder },
+                          "DISG-Zwischenstand gespeichert."
+                        )
+                      }
+                    >
+                      Zwischenspeichern
+                    </button>
+                  ) : null}
+                  {canResetDisg ? (
+                    <button
+                      type="button"
+                      className={styles.dangerButton}
+                      onClick={() => {
+                        setDisgQuestionPage(0);
+                        void saveEmployeeAssessmentSection("disg-reset", null, "DISG-Fragebogen wurde zurückgesetzt.");
+                      }}
+                    >
+                      Zurücksetzen
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            <div className={styles.disgStepNav} aria-label="DISG Frageabschnitte">
+              {[0, 1, 2, 3].map((page) => (
+                <button
+                  key={page}
+                  type="button"
+                  data-active={currentPage === page}
+                  onClick={() => setDisgQuestionPage(page)}
+                >
+                  Abschnitt {page + 1}
+                </button>
+              ))}
+            </div>
+            <div className={styles.assessmentQuestions}>
+              {visibleQuestions.map((question) => (
+                <label key={question.id} className={styles.assessmentQuestionRow}>
+                  <span>{question.text}</span>
+                  <select
+                    value={disg.answers[question.id] ?? ""}
+                    disabled={!canEditDisg}
+                    onChange={(event) => updateDisgAnswer(question.id, Number(event.target.value))}
+                  >
+                    <option value="">Auswählen</option>
+                    {disgScale.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+            <div className={styles.buttonRow}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                disabled={currentPage === 0}
+                onClick={() => setDisgQuestionPage((page) => Math.max(0, page - 1))}
+              >
+                Zurück
+              </button>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                disabled={currentPage === 3}
+                onClick={() => setDisgQuestionPage((page) => Math.min(3, page + 1))}
+              >
+                Weiter
+              </button>
+              {canEditDisg ? (
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  disabled={answeredCount < disgQuestions.length}
+                  onClick={() =>
+                    void saveEmployeeAssessmentSection(
+                      "disg-complete",
+                      { ...disg, order: disg.order.length > 0 ? disg.order : defaultDisgOrder },
+                      "DISG-Fragebogen abgeschlossen."
+                    )
+                  }
+                >
+                  DISG abschließen
+                </button>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+
+        {result ? (
+          <section className={styles.personalPanel}>
+            <div className={styles.personalPanelHeader}>
+              <div>
+                <p className={styles.eyebrow}>Ergebnis</p>
+                <h2>{result.profile}-Tendenz</h2>
+              </div>
+            </div>
+            <div className={styles.disgResultHero}>
+              <article>
+                <span>Primärer Stil</span>
+                <strong>{disgTypeDetails[result.primaryType].title}</strong>
+              </article>
+              <article>
+                <span>Sekundäre Ausprägung</span>
+                <strong>{disgTypeDetails[result.secondaryType].title}</strong>
+              </article>
+              <article>
+                <span>Profil</span>
+                <strong>{result.profile}</strong>
+              </article>
+            </div>
+            {result.isBalanced ? (
+              <p className={styles.inlineHint}>Die Werte sind relativ ausgeglichen. Es dominiert kein einzelner Stil stark.</p>
+            ) : result.closeProfile ? (
+              <p className={styles.inlineHint}>Die beiden stärksten Ausprägungen liegen nah beieinander und bilden ein Mischprofil.</p>
+            ) : null}
+            <div className={styles.assessmentChart}>
+              {(["D", "I", "S", "G"] as DisgDimension[]).map((dimension) => (
+                <article key={dimension}>
+                  <div>
+                    <strong>{disgTypeDetails[dimension].title}</strong>
+                    <span>
+                      {result.scores[dimension].points} Punkte · Ø {formatAssessmentScore(result.scores[dimension].average)}
+                    </span>
+                  </div>
+                  <div className={styles.assessmentBarGroup}>
+                    <span data-kind="manager" style={{ width: `${result.scores[dimension].percent}%` }} />
+                  </div>
+                </article>
+              ))}
+            </div>
+            {primaryDetails ? (
+              <div className={styles.disgDetailGrid}>
+                <article>
+                  <strong>Kurzbeschreibung</strong>
+                  <p>{primaryDetails.description}</p>
+                </article>
+                <article>
+                  <strong>Typische Stärken</strong>
+                  <ul>{primaryDetails.strengths.map((item) => <li key={item}>{item}</li>)}</ul>
+                </article>
+                <article>
+                  <strong>Mögliche Schwächen / Risiken</strong>
+                  <ul>{primaryDetails.risks.map((item) => <li key={item}>{item}</li>)}</ul>
+                </article>
+                <article>
+                  <strong>Arbeitsalltag</strong>
+                  <ul>{primaryDetails.workStyle.map((item) => <li key={item}>{item}</li>)}</ul>
+                </article>
+                <article>
+                  <strong>Kommunikation</strong>
+                  <ul>{primaryDetails.communication.map((item) => <li key={item}>{item}</li>)}</ul>
+                </article>
+                <article>
+                  <strong>Entwicklungsempfehlungen</strong>
+                  <ul>{primaryDetails.development.map((item) => <li key={item}>{item}</li>)}</ul>
+                </article>
+              </div>
+            ) : null}
+            {mixText ? <p className={styles.inlineHint}>Mischprofil {result.profile}: {mixText}</p> : null}
+            <p className={styles.inlineHint}>Hinweis: Dieses Ergebnis ist eine Selbstreflexion und keine psychologische Diagnose.</p>
+          </section>
+        ) : null}
+      </section>
+    );
+  }
+
+  function renderAssessmentForm(kind: "self" | "manager", readonly = false) {
+    const block = employeeAssessment[kind];
+    const textQuestions = kind === "self" ? employeeSelfTextQuestions : managerTextQuestions;
+
+    return (
+      <div className={styles.assessmentForm}>
+        {assessmentAreas.map((area) => (
+          <article key={area.id} className={styles.assessmentAreaCard}>
+            <div className={styles.assessmentAreaHeader}>
+              <strong>{area.label}</strong>
+              <span>Ø {formatAssessmentScore(getAssessmentAreaAverage(block.answers, area.id))}</span>
+            </div>
+            <div className={styles.assessmentQuestions}>
+              {area.questions.map((question, index) => {
+                const questionId = getAssessmentQuestionId(area.id, index);
+                return (
+                  <label key={questionId} className={styles.assessmentQuestionRow}>
+                    <span>{question}</span>
+                    <select
+                      value={block.answers[questionId] ?? ""}
+                      disabled={readonly}
+                      onChange={(event) => updateAssessmentAnswer(kind, questionId, Number(event.target.value))}
+                    >
+                      <option value="">Auswählen</option>
+                      {assessmentScale.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                );
+              })}
+            </div>
+          </article>
+        ))}
+
+        <div className={styles.assessmentTextGrid}>
+          {textQuestions.map((question) => (
+            <label key={question.id}>
+              <span>{question.label}</span>
+              <textarea
+                value={block.texts[question.id] ?? ""}
+                disabled={readonly}
+                onChange={(event) => updateAssessmentText(kind, question.id, event.target.value)}
+              />
+            </label>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  function renderPersonalDevelopment(currentUser: UserOption | undefined) {
+    const isManagerView = canManageEmployeeAssessments;
+    const canEditSelf = currentUser?.id === activeUserId && !employeeAssessment.selfLocked;
+    const evaluation = getAssessmentEvaluation(employeeAssessment);
+    const strengths = evaluation.filter((item) => item.isStrength);
+    const developmentFields = evaluation.filter((item) => item.isDevelopmentField);
+    const conversationPoints = evaluation.filter((item) => item.isNoticeable);
+    const historyItems = employeeAssessment.history ?? [];
+
+    return (
+      <section className={styles.personalDevelopmentPage}>
+        {isAssessmentLoading ? <p className={styles.inlineHint}>Einschätzung wird geladen...</p> : null}
+        {assessmentError ? <p className={styles.inlineError}>{assessmentError}</p> : null}
+        {assessmentSaveMessage ? <p className={styles.inlineSuccess}>{assessmentSaveMessage}</p> : null}
+
+        <section className={styles.personalPanel}>
+          <div className={styles.personalPanelHeader}>
+            <div>
+              <p className={styles.eyebrow}>Selbsteinschätzung</p>
+              <h2>Eigene Einschätzung</h2>
+            </div>
+            {isManagerView && employeeAssessment.selfLocked ? (
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() =>
+                  void saveEmployeeAssessmentSection(
+                    "unlock-self",
+                    null,
+                    "Selbsteinschätzung wurde wieder freigeschaltet."
+                  )
+                }
+              >
+                Bearbeitung freischalten
+              </button>
+            ) : null}
+            {canEditSelf ? (
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={() =>
+                  void saveEmployeeAssessmentSection("self", {
+                    ...employeeAssessment.self,
+                    updatedAt: new Date().toISOString(),
+                  })
+                }
+              >
+                Selbsteinschätzung speichern
+              </button>
+            ) : null}
+          </div>
+          {employeeAssessment.selfLocked ? (
+            <p className={styles.inlineHint}>
+              Diese Selbsteinschätzung ist gespeichert und gesperrt. Eine Bearbeitung kann nur durch die Geschäftsführung wieder freigegeben werden.
+            </p>
+          ) : null}
+          {renderAssessmentForm("self", !canEditSelf)}
+        </section>
+
+        {isManagerView ? (
+          <section className={styles.personalPanel}>
+            <div className={styles.personalPanelHeader}>
+              <div>
+                <p className={styles.eyebrow}>Geschäftsführer</p>
+                <h2>Fremdeinschätzung</h2>
+              </div>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={() =>
+                  void saveEmployeeAssessmentSection("manager", {
+                    ...employeeAssessment.manager,
+                    updatedAt: new Date().toISOString(),
+                  })
+                }
+              >
+                Fremdeinschätzung speichern
+              </button>
+            </div>
+            {renderAssessmentForm("manager")}
+          </section>
+        ) : null}
+
+        {isManagerView ? (
+          <section className={styles.personalPanel}>
+            <div className={styles.personalPanelHeader}>
+              <div>
+                <p className={styles.eyebrow}>Auswertung</p>
+                <h2>Selbst- und Fremdbild vergleichen</h2>
+              </div>
+            </div>
+            <div className={styles.assessmentChart}>
+              {evaluation.map((item) => (
+                <article key={item.id} data-alert={item.isNoticeable}>
+                  <div>
+                    <strong>{item.label}</strong>
+                    <span>
+                      Selbst {formatAssessmentScore(item.selfAverage)} · Fremd{" "}
+                      {formatAssessmentScore(item.managerAverage)}
+                    </span>
+                  </div>
+                  <div className={styles.assessmentBarGroup}>
+                    <span
+                      data-kind="self"
+                      style={{ width: `${((item.selfAverage ?? 0) / 5) * 100}%` }}
+                    />
+                    <span
+                      data-kind="manager"
+                      style={{ width: `${((item.managerAverage ?? 0) / 5) * 100}%` }}
+                    />
+                  </div>
+                  <em>
+                    {item.diff === null
+                      ? "Noch nicht vollständig bewertet"
+                      : item.isNoticeable
+                        ? item.diff > 0
+                          ? `Gesprächspunkt: Mitarbeiter schätzt sich um ${formatAssessmentScore(Math.abs(item.diff))} Punkte stärker ein.`
+                          : `Gesprächspunkt: Mitarbeiter schätzt sich um ${formatAssessmentScore(Math.abs(item.diff))} Punkte kritischer ein.`
+                        : `Differenz ${formatAssessmentScore(Math.abs(item.diff))}`}
+                  </em>
+                </article>
+              ))}
+            </div>
+            <div className={styles.assessmentInsightGrid}>
+              <article>
+                <strong>Stärken</strong>
+                <span>{strengths.length ? strengths.map((item) => item.label).join(", ") : "Noch keine Stärke ab 4,0 erkennbar."}</span>
+              </article>
+              <article>
+                <strong>Entwicklungsfelder</strong>
+                <span>
+                  {developmentFields.length
+                    ? developmentFields.map((item) => item.label).join(", ")
+                    : "Keine Fremdeinschätzung unter 3,5."}
+                </span>
+              </article>
+              <article>
+                <strong>Gesprächspunkte</strong>
+                <span>
+                  {conversationPoints.length
+                    ? conversationPoints.map((item) => item.label).join(", ")
+                    : "Keine auffällige Abweichung ab 1,0 Punkten."}
+                </span>
+              </article>
+            </div>
+          </section>
+        ) : null}
+
+        <section className={styles.personalPanel}>
+          <div className={styles.personalPanelHeader}>
+            <div>
+              <p className={styles.eyebrow}>Historie</p>
+              <h2>Abgeschlossene Einschätzungsfälle</h2>
+            </div>
+          </div>
+          {historyItems.length === 0 ? (
+            <p className={styles.inlineHint}>Noch keine abgeschlossene Selbst- und Fremdeinschätzung vorhanden.</p>
+          ) : (
+            <div className={styles.assessmentHistoryList}>
+              {historyItems.map((item) => {
+                const itemEvaluation =
+                  isManagerView && item.self && item.manager
+                    ? getAssessmentEvaluation({
+                        ...emptyEmployeeAssessment,
+                        self: normalizeAssessmentBlock(item.self),
+                        manager: normalizeAssessmentBlock(item.manager),
+                      })
+                    : [];
+                const noticeableCount = itemEvaluation.filter((entry) => entry.isNoticeable).length;
+
+                return (
+                  <article key={item.id}>
+                    <div>
+                      <strong>{item.completedAt ? formatInstantDateTime(item.completedAt) : "Abgeschlossener Fall"}</strong>
+                      <span>
+                        Selbst Ø {formatAssessmentScore(item.selfAverage ?? null)}
+                        {isManagerView ? ` · Fremd Ø ${formatAssessmentScore(item.managerAverage ?? null)}` : ""}
+                      </span>
+                    </div>
+                    {isManagerView ? (
+                      <em>{noticeableCount} Gesprächspunkt(e) · {item.measures?.length ?? 0} Maßnahme(n)</em>
+                    ) : (
+                      <em>{item.measuresCount ?? 0} Maßnahme(n)</em>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        <section className={styles.personalPanel}>
+          <div className={styles.personalPanelHeader}>
+            <div>
+              <p className={styles.eyebrow}>Entwicklungsmaßnahmen</p>
+              <h2>Konkrete nächste Schritte</h2>
+            </div>
+            {isManagerView ? (
+              <div className={styles.buttonRow}>
+                <button type="button" className={styles.secondaryButton} onClick={addDevelopmentMeasure}>
+                  Maßnahme hinzufügen
+                </button>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  onClick={() => void saveEmployeeAssessmentSection("measures", employeeAssessment.measures, "Maßnahmen gespeichert.")}
+                >
+                  Maßnahmen speichern
+                </button>
+              </div>
+            ) : null}
+          </div>
+
+          {employeeAssessment.measures.length === 0 ? (
+            <p className={styles.inlineHint}>Es wurden noch keine Entwicklungsmaßnahmen vereinbart.</p>
+          ) : (
+            <div className={styles.developmentMeasureList}>
+              {employeeAssessment.measures.map((measure) => (
+                <article key={measure.id}>
+                  {isManagerView ? (
+                    <>
+                      <label>
+                        <span>Entwicklungsfeld</span>
+                        <input value={measure.field} onChange={(event) => updateDevelopmentMeasure(measure.id, { field: event.target.value })} />
+                      </label>
+                      <label>
+                        <span>Ziel</span>
+                        <input value={measure.goal} onChange={(event) => updateDevelopmentMeasure(measure.id, { goal: event.target.value })} />
+                      </label>
+                      <label>
+                        <span>Konkrete Maßnahme</span>
+                        <textarea value={measure.action} onChange={(event) => updateDevelopmentMeasure(measure.id, { action: event.target.value })} />
+                      </label>
+                      <label>
+                        <span>Unterstützung durch Geschäftsführer</span>
+                        <textarea value={measure.support} onChange={(event) => updateDevelopmentMeasure(measure.id, { support: event.target.value })} />
+                      </label>
+                      <label>
+                        <span>Zeitraum / Überprüfungstermin</span>
+                        <input value={measure.reviewDate} onChange={(event) => updateDevelopmentMeasure(measure.id, { reviewDate: event.target.value })} />
+                      </label>
+                      <label>
+                        <span>Erfolgskriterium</span>
+                        <input value={measure.successCriterion} onChange={(event) => updateDevelopmentMeasure(measure.id, { successCriterion: event.target.value })} />
+                      </label>
+                      <label>
+                        <span>Status</span>
+                        <select
+                          value={measure.status}
+                          onChange={(event) =>
+                            updateDevelopmentMeasure(measure.id, {
+                              status: event.target.value as EmployeeDevelopmentMeasure["status"],
+                            })
+                          }
+                        >
+                          <option value="offen">offen</option>
+                          <option value="in Umsetzung">in Umsetzung</option>
+                          <option value="abgeschlossen">abgeschlossen</option>
+                        </select>
+                      </label>
+                      <button type="button" className={styles.dangerButton} onClick={() => removeDevelopmentMeasure(measure.id)}>
+                        Löschen
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <strong>{measure.field || "Entwicklungsmaßnahme"}</strong>
+                      <dl>
+                        <div><dt>Ziel</dt><dd>{measure.goal || "-"}</dd></div>
+                        <div><dt>Maßnahme</dt><dd>{measure.action || "-"}</dd></div>
+                        <div><dt>Unterstützung</dt><dd>{measure.support || "-"}</dd></div>
+                        <div><dt>Zeitraum</dt><dd>{measure.reviewDate || "-"}</dd></div>
+                        <div><dt>Erfolgskriterium</dt><dd>{measure.successCriterion || "-"}</dd></div>
+                        <div><dt>Status</dt><dd>{measure.status}</dd></div>
+                      </dl>
+                    </>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {isManagerView ? (
+          <section className={styles.personalPanel}>
+            <div className={styles.personalPanelHeader}>
+              <div>
+                <p className={styles.eyebrow}>Gesprächsergebnis</p>
+                <h2>Interne Zusammenfassung</h2>
+              </div>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={() =>
+                  void saveEmployeeAssessmentSection(
+                    "conversation",
+                    employeeAssessment.conversation,
+                    "Gesprächsergebnis gespeichert."
+                  )
+                }
+              >
+                Gesprächsergebnis speichern
+              </button>
+            </div>
+            <div className={styles.assessmentTextGrid}>
+              <label>
+                <span>Wichtigste Stärken</span>
+                <textarea value={employeeAssessment.conversation.strengths} onChange={(event) => updateAssessmentConversation({ strengths: event.target.value })} />
+              </label>
+              <label>
+                <span>Wichtigste Entwicklungsfelder</span>
+                <textarea value={employeeAssessment.conversation.developmentFields} onChange={(event) => updateAssessmentConversation({ developmentFields: event.target.value })} />
+              </label>
+              <label>
+                <span>Vereinbarte Maßnahmen</span>
+                <textarea value={employeeAssessment.conversation.agreedMeasures} onChange={(event) => updateAssessmentConversation({ agreedMeasures: event.target.value })} />
+              </label>
+              <label>
+                <span>Nächster Überprüfungstermin</span>
+                <input
+                  type="date"
+                  value={employeeAssessment.conversation.nextReviewDate}
+                  onChange={(event) => updateAssessmentConversation({ nextReviewDate: event.target.value })}
+                />
+              </label>
+              <label>
+                <span>Interne Notiz</span>
+                <textarea value={employeeAssessment.conversation.internalNote} onChange={(event) => updateAssessmentConversation({ internalNote: event.target.value })} />
+              </label>
+            </div>
+          </section>
+        ) : null}
+      </section>
+    );
+  }
+
+  function renderPersonalData() {
+    const canSwitchPersonalUser = activeUser?.role === "ADMIN" || activeUser?.role === "GESCHAEFTSFUEHRER";
+    const selectablePersonalUsers = users.filter((user) => user.isActive);
+    const selectedPersonalUser = users.find((user) => user.id === selectedPersonalUserId);
+    const currentUser = canSwitchPersonalUser
+      ? selectedPersonalUser ?? activeUser ?? users.find((user) => user.id === activeUserId) ?? users[0]
+      : activeUser ?? users.find((user) => user.id === activeUserId) ?? users[0];
+    const today = new Date();
+    const todayKey = formatDateKey(today);
+    const currentYear = today.getFullYear();
+    const personalTimeYear = personalTimeDate.getFullYear();
+    const personalTimeMonth = personalTimeDate.getMonth();
+    const currentMonthKey = `${personalTimeYear}-${String(personalTimeMonth + 1).padStart(2, "0")}`;
+    const activeUserCost =
+      (currentUser ? employeeCostCalculations[currentUser.id] : undefined) ?? defaultEmployeeCostCalculation;
+    const vacationEntitlement = activeUserCost.vacationDays || 30;
+    const weeklyTargetHours = currentUser?.weeklyCapacity
+      ? Object.values(currentUser.weeklyCapacity).reduce((sum, hours) => sum + Number(hours || 0), 0)
+      : (currentUser?.dailyWorkHours || activeUserCost.hoursPerDay || 8) * 5;
+    const dailyTargetHours = currentUser?.dailyWorkHours || activeUserCost.hoursPerDay || 8;
+    const personalTabs: Array<{ id: PersonalDataView; label: string }> = [
+      { id: "overview", label: "Übersicht" },
+      { id: "absences", label: "Abwesenheiten" },
+      { id: "time", label: "Zeitkonto" },
+      { id: "stamps", label: "Stempelungen" },
+      { id: "performance", label: "Leistungsdaten" },
+      { id: "development", label: "Entwicklung" },
+      { id: "disg", label: "DISG" },
+      { id: "tasks", label: "Meine Aufgaben" },
+      { id: "documents", label: "Dokumente" },
+      { id: "masterData", label: "Stammdaten" },
+    ];
+    const personalAbsences = absences.filter((absence) => absence.userId === currentUser?.id);
+    const personalAbsenceGroups = Array.from(
+      personalAbsences
+        .reduce<Map<string, AbsenceItem[]>>((groups, absence) => {
+          const key = absence.requestGroupId || absence.id;
+          groups.set(key, [...(groups.get(key) ?? []), absence]);
+          return groups;
+        }, new Map())
+        .values()
+    )
+      .map((items) => [...items].sort((first, second) => first.date.localeCompare(second.date)))
+      .sort((first, second) => second[0].date.localeCompare(first[0].date));
+    const currentYearAbsences = personalAbsences.filter((absence) => absence.date.startsWith(String(currentYear)));
+    const approvedVacationDates = Array.from(
+      new Set(
+        currentYearAbsences
+          .filter((absence) => absence.type === "urlaub" && absence.status === "genehmigt")
+          .map((absence) => absence.date)
+      )
+    );
+    const usedVacationDays = approvedVacationDates.filter((dateKey) => dateKey <= todayKey).length;
+    const plannedVacationDays = approvedVacationDates.filter((dateKey) => dateKey > todayKey).length;
+    const remainingVacationDays = Math.max(0, vacationEntitlement - approvedVacationDates.length);
+    const sicknessDays = new Set(
+      currentYearAbsences
+        .filter((absence) => absence.type === "krank" && absence.status === "genehmigt")
+        .map((absence) => absence.date)
+    ).size;
+    const pendingAbsenceGroups = personalAbsenceGroups.filter(([absence]) =>
+      ["wartet_vertreter", "wartet_geschaeftsfuehrung"].includes(absence.status)
+    );
+    const personalStampEntries = stampEntries.filter(
+      (entry) => entry.userId === currentUser?.id || entry.employee === currentUser?.name
+    );
+    const monthStampEntries = personalStampEntries.filter((entry) => entry.date.startsWith(currentMonthKey));
+    const personalTimeMonthDays = Array.from(
+      { length: new Date(personalTimeYear, personalTimeMonth + 1, 0).getDate() },
+      (_, index) => new Date(personalTimeYear, personalTimeMonth, index + 1, 12)
+    );
+    const monthProductiveMs = monthStampEntries.reduce(
+      (sum, entry) => sum + Math.max(0, entry.durationMs - entry.pauseMs),
+      0
+    );
+    const yearProductiveMs = personalStampEntries
+      .filter((entry) => entry.date.startsWith(String(currentYear)))
+      .reduce((sum, entry) => sum + Math.max(0, entry.durationMs - entry.pauseMs), 0);
+    const getPersonalTargetHoursForDate = (dateKey: string) => {
+      if (!currentUser || isWeekendDateKey(dateKey) || getHolidayForDateKey(dateKey)) return 0;
+      const capacity = getSafeWeeklyCapacity(currentUser.weeklyCapacity);
+      return capacity[getWeeklyDayKeyForDate(dateKey)] ?? dailyTargetHours;
+    };
+    const targetMonthHours = personalTimeMonthDays.reduce(
+      (sum, date) => sum + getPersonalTargetHoursForDate(formatDateKey(date)),
+      0
+    );
+    const monthBalanceHours = monthProductiveMs / 3600000 - targetMonthHours;
+    const personalDailyTimeRows = personalTimeMonthDays.map((date) => {
+      const dateKey = formatDateKey(date);
+      const dayEntries = monthStampEntries
+        .filter((entry) => entry.date === dateKey)
+        .sort((first, second) => first.startTime.localeCompare(second.startTime));
+      const productiveMs = dayEntries.reduce(
+        (sum, entry) => sum + Math.max(0, entry.durationMs - entry.pauseMs),
+        0
+      );
+      const pauseMs = dayEntries.reduce((sum, entry) => sum + entry.pauseMs, 0);
+      const targetMs = getPersonalTargetHoursForDate(dateKey) * 3_600_000;
+      const balanceMs = productiveMs - targetMs;
+      const overtimeMs = Math.max(0, productiveMs - targetMs);
+      const requiresApproval = overtimeMs > 30 * 60_000;
+      const approvedOvertime =
+        requiresApproval &&
+        dayEntries.length > 0 &&
+        dayEntries.every((entry) => entry.overtimeApprovalStatus === "approved");
+      const absence = currentUser ? getUserAbsenceForDateKey(currentUser.id, dateKey) : undefined;
+      return {
+        date,
+        dateKey,
+        entries: dayEntries,
+        productiveMs,
+        pauseMs,
+        targetMs,
+        balanceMs,
+        overtimeMs,
+        progress: targetMs > 0 ? Math.min(100, Math.round((productiveMs / targetMs) * 100)) : 0,
+        requiresApproval,
+        approvedOvertime,
+        absence,
+        startTime: dayEntries[0]?.startTime ?? "",
+        endTime: dayEntries.at(-1)?.endTime ?? "",
+      };
+    });
+    const firstPersonalStampDateKey = personalStampEntries
+      .map((entry) => entry.date)
+      .filter(Boolean)
+      .sort((first, second) => first.localeCompare(second))[0];
+    const accountStartDate = firstPersonalStampDateKey
+      ? new Date(
+          Number(firstPersonalStampDateKey.slice(0, 4)),
+          Number(firstPersonalStampDateKey.slice(5, 7)) - 1,
+          1,
+          12
+        )
+      : new Date(personalTimeYear, personalTimeMonth, 1, 12);
+    const selectedMonthEndDate = new Date(personalTimeYear, personalTimeMonth + 1, 0, 12);
+    const accountEndDate = selectedMonthEndDate.getTime() > today.getTime()
+      ? new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12)
+      : selectedMonthEndDate;
+    const accountDateKeys: string[] = [];
+    for (
+      let cursor = new Date(accountStartDate);
+      cursor.getTime() <= accountEndDate.getTime();
+      cursor.setDate(cursor.getDate() + 1)
+    ) {
+      accountDateKeys.push(formatDateKey(cursor));
+    }
+    const accountStartDateKey = formatDateKey(accountStartDate);
+    const accountEndDateKey = formatDateKey(accountEndDate);
+    const cumulativeProductiveMs = personalStampEntries
+      .filter((entry) => entry.date >= accountStartDateKey && entry.date <= accountEndDateKey)
+      .reduce((sum, entry) => sum + Math.max(0, entry.durationMs - entry.pauseMs), 0);
+    const cumulativeTargetHours = accountDateKeys.reduce(
+      (sum, dateKey) => sum + getPersonalTargetHoursForDate(dateKey),
+      0
+    );
+    const cumulativeBalanceHours = cumulativeProductiveMs / 3600000 - cumulativeTargetHours;
+    const monthOvertimeMs = personalDailyTimeRows.reduce((sum, row) => sum + row.overtimeMs, 0);
+    const pendingOvertimeRows = personalDailyTimeRows.filter(
+      (row) => row.requiresApproval && !row.approvedOvertime
+    );
+    const personalTasks = tasks.filter(
+      (task) => task.zustaendigId === currentUser?.id && task.status !== "archiviert"
+    );
+    const openPersonalTasks = personalTasks.filter((task) => task.status !== "erledigt");
+    const overduePersonalTasks = openPersonalTasks.filter((task) => {
+      if (!task.faelligkeit) return false;
+      return parseAppDateTime(task.faelligkeit).getTime() < Date.now();
+    });
+    const handoverTasks = personalTasks.filter((task) => task.acceptanceStatus === "pending");
+    const completedPersonalTasks = personalTasks.filter((task) => task.status === "erledigt");
+    const personalTaskCompletionRate =
+      personalTasks.length > 0 ? Math.round((completedPersonalTasks.length / personalTasks.length) * 100) : 0;
+    const monthProjectEntries = monthStampEntries.filter((entry) => entry.mode === "project");
+    const monthUnproductiveEntries = monthStampEntries.filter((entry) => entry.mode === "unproductive");
+    const monthProjectMs = monthProjectEntries.reduce(
+      (sum, entry) => sum + Math.max(0, entry.durationMs - entry.pauseMs),
+      0
+    );
+    const monthUnproductiveMs = monthUnproductiveEntries.reduce(
+      (sum, entry) => sum + Math.max(0, entry.durationMs - entry.pauseMs),
+      0
+    );
+    const productiveShare =
+      monthProductiveMs > 0 ? Math.round((monthProjectMs / monthProductiveMs) * 100) : 0;
+    const averageDailyHours =
+      personalDailyTimeRows.filter((row) => row.productiveMs > 0).length > 0
+        ? monthProductiveMs /
+          3600000 /
+          personalDailyTimeRows.filter((row) => row.productiveMs > 0).length
+        : 0;
+    const groupedSpan = (items: AbsenceItem[]) => ({
+      from: items[0]?.date ?? "",
+      to: items.at(-1)?.date ?? items[0]?.date ?? "",
+    });
+    const formatSignedHours = (value: number) => {
+      const prefix = value > 0 ? "+" : value < 0 ? "-" : "";
+      return `${prefix}${formatHours(Math.abs(value))} Std.`;
+    };
+
+    return (
+      <section className={styles.personalDataPage}>
+        <div className={styles.topline}>
+          <div>
+            <p className={styles.eyebrow}>Persönlicher Bereich</p>
+            <h1>Persönliche Daten</h1>
+            <p className={styles.subline}>
+              Urlaub, Krankheit, Zeitkonto, Aufgaben und eigene Stammdaten an einem Ort.
+            </p>
+          </div>
+          <button type="button" className={styles.primaryButton} onClick={() => openAbsenceModal(undefined, currentUser?.id)}>
+            Urlaub beantragen
+          </button>
+        </div>
+
+        <div className={styles.personalProfileHeader}>
+          <div className={styles.personalIdentity}>
+            {currentUser?.profileImageDataUrl ? (
+              <img src={currentUser.profileImageDataUrl} alt="" />
+            ) : (
+              <em>{getInitials(currentUser?.name ?? "?")}</em>
+            )}
+            <div>
+              <strong>{currentUser?.name ?? "Kein Benutzer ausgewählt"}</strong>
+              <span>{currentUser?.roleLabel ?? "-"} · {currentUser?.planningGroup || "Keine Planungsgruppe"}</span>
+            </div>
+          </div>
+          {canSwitchPersonalUser ? (
+            <label className={styles.personalEmployeePicker}>
+              <span>Mitarbeiter anzeigen</span>
+              <select
+                value={currentUser?.id ?? ""}
+                onChange={(event) => setSelectedPersonalUserId(event.target.value)}
+              >
+                {selectablePersonalUsers.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name} · {user.roleLabel}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          <div className={styles.personalQuickFacts}>
+            <span>{weeklyTargetHours > 0 ? `${formatHours(weeklyTargetHours)} Std./Woche` : "Wochenstunden offen"}</span>
+            <span>{currentUser?.planningBoard || "Kein Planungsboard"}</span>
+            <span>{currentUser?.email || "Keine E-Mail"}</span>
+          </div>
+        </div>
+
+        <div className={styles.personalTabs} role="tablist" aria-label="Persönliche Daten">
+          {personalTabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              data-active={personalDataView === tab.id}
+              onClick={() => setPersonalDataView(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {personalDataView === "overview" ? (
+          <>
+            <div className={styles.personalTimeCards}>
+              <article>
+                <span>Resturlaub</span>
+                <strong>{remainingVacationDays}</strong>
+                <small>{usedVacationDays} genutzt · {plannedVacationDays} geplant · {vacationEntitlement} Anspruch</small>
+              </article>
+              <article>
+                <span>Krankheitstage</span>
+                <strong>{sicknessDays}</strong>
+                <small>Genehmigte Krankheitstage im Jahr {currentYear}</small>
+              </article>
+              <article data-tone={monthBalanceHours >= 0 ? "positive" : "warning"}>
+                <span>Überstunden / Minusstunden</span>
+                <strong>{formatSignedHours(monthBalanceHours)}</strong>
+                <small>Monatssaldo aus erfasster Zeit gegen Soll bis heute</small>
+              </article>
+              <article data-tone={pendingAbsenceGroups.length > 0 ? "warning" : "neutral"}>
+                <span>Offene Anträge</span>
+                <strong>{pendingAbsenceGroups.length}</strong>
+                <small>Warten auf Vertretung oder Geschäftsführung</small>
+              </article>
+            </div>
+
+            <div className={styles.personalTwoColumn}>
+              <section className={styles.personalPanel}>
+                <div className={styles.personalPanelHeader}>
+                  <div>
+                    <p className={styles.eyebrow}>Nächste Schritte</p>
+                    <h2>Aufgaben & Übergaben</h2>
+                  </div>
+                  <button type="button" className={styles.secondaryButton} onClick={() => setPersonalDataView("tasks")}>
+                    Alle anzeigen
+                  </button>
+                </div>
+                <div className={styles.personalList}>
+                  {openPersonalTasks.slice(0, 4).map((task) => (
+                    <button key={task.id} type="button" onClick={() => openEditModal(task)}>
+                      <strong>{task.titel}</strong>
+                      <span>{task.kunde || "Ohne Kunde"} · {task.status}</span>
+                      <small>{formatDeadline(task.faelligkeit)}</small>
+                    </button>
+                  ))}
+                  {openPersonalTasks.length === 0 ? <p>Keine offenen Aufgaben.</p> : null}
+                </div>
+              </section>
+
+              <section className={styles.personalPanel}>
+                <div className={styles.personalPanelHeader}>
+                  <div>
+                    <p className={styles.eyebrow}>Abwesenheiten</p>
+                    <h2>Aktuelle Anträge</h2>
+                  </div>
+                  <button type="button" className={styles.secondaryButton} onClick={() => setPersonalDataView("absences")}>
+                    Verlauf öffnen
+                  </button>
+                </div>
+                <div className={styles.personalList}>
+                  {personalAbsenceGroups.slice(0, 4).map((items) => {
+                    const absence = items[0];
+                    const span = groupedSpan(items);
+                    return (
+                      <button key={absence.requestGroupId || absence.id} type="button" onClick={() => openEditAbsenceModal(absence)}>
+                        <strong>{absenceLabel(absence.type)} · {absenceStatusLabel(absence.status)}</strong>
+                        <span>{formatDateOnly(span.from)} bis {formatDateOnly(span.to)}</span>
+                        <small>Vertreter: {absence.representativeName || "-"}</small>
+                      </button>
+                    );
+                  })}
+                  {personalAbsenceGroups.length === 0 ? <p>Noch keine Abwesenheitsanträge.</p> : null}
+                </div>
+              </section>
+            </div>
+          </>
+        ) : null}
+
+        {personalDataView === "absences" ? (
+          <section className={styles.personalPanel}>
+            <div className={styles.personalPanelHeader}>
+              <div>
+                <p className={styles.eyebrow}>Abwesenheiten</p>
+                <h2>Abwesenheitsanträge</h2>
+              </div>
+              <button type="button" className={styles.primaryButton} onClick={() => openAbsenceModal(undefined, currentUser?.id)}>
+                Neuer Antrag
+              </button>
+            </div>
+            <div className={styles.personalAbsenceList}>
+              {personalAbsenceGroups.map((items) => {
+                const absence = items[0];
+                const span = groupedSpan(items);
+                return (
+                  <article key={absence.requestGroupId || absence.id} data-status={absence.status}>
+                    <div>
+                      <strong>{absenceLabel(absence.type)} · {formatDateOnly(span.from)} bis {formatDateOnly(span.to)}</strong>
+                      <span>{absenceDayPartLabel(absence.dayPart)} · Vertreter: {absence.representativeName || "-"}</span>
+                      {absence.rejectionReason ? <small>Ablehnung: {absence.rejectionReason}</small> : null}
+                    </div>
+                    <em>{absenceStatusLabel(absence.status)}</em>
+                    <button type="button" className={styles.secondaryButton} onClick={() => openEditAbsenceModal(absence)}>
+                      Öffnen
+                    </button>
+                  </article>
+                );
+              })}
+              {personalAbsenceGroups.length === 0 ? <p>Noch keine Abwesenheitsanträge vorhanden.</p> : null}
+            </div>
+          </section>
+        ) : null}
+
+        {personalDataView === "time" ? (
+          <section className={styles.personalTimePage}>
+            <div className={styles.personalTimeToolbar}>
+              <div className={styles.personalTimeNav}>
+                <button type="button" className={styles.secondaryButton} onClick={() => setPersonalTimeDate(new Date())}>
+                  Heute
+                </button>
+                <button
+                  type="button"
+                  className={styles.iconButton}
+                  aria-label="Vorheriger Monat"
+                  onClick={() => setPersonalTimeDate(new Date(personalTimeYear, personalTimeMonth - 1, 1))}
+                >
+                  {"<"}
+                </button>
+                <button
+                  type="button"
+                  className={styles.iconButton}
+                  aria-label="Nächster Monat"
+                  onClick={() => setPersonalTimeDate(new Date(personalTimeYear, personalTimeMonth + 1, 1))}
+                >
+                  {">"}
+                </button>
+                <strong>{formatCalendarTitle(new Date(personalTimeYear, personalTimeMonth, 1, 12))}</strong>
+              </div>
+              <button type="button" className={styles.secondaryButton} onClick={() => setActiveTab("timeTracking")}>
+                Zeiterfassung öffnen
+              </button>
+            </div>
+            <div className={styles.personalKpiGrid}>
+              <article>
+                <span>Gebucht im Monat</span>
+                <strong>{formatHours(monthProductiveMs / 3600000)} Std.</strong>
+                <small>Produktive Zeit abzüglich Pausen</small>
+              </article>
+              <article>
+                <span>Gebucht im Jahr</span>
+                <strong>{formatHours(yearProductiveMs / 3600000)} Std.</strong>
+                <small>Alle erfassten produktiven Zeiten</small>
+              </article>
+              <article data-tone={monthBalanceHours >= 0 ? "positive" : "warning"}>
+                <span>Monatssaldo</span>
+                <strong>{formatSignedHours(monthBalanceHours)}</strong>
+                <small>Monats-Soll: {formatHours(targetMonthHours)} Std.</small>
+              </article>
+              <article data-tone={cumulativeBalanceHours < 0 || pendingOvertimeRows.length > 0 ? "warning" : "positive"}>
+                <span>{cumulativeBalanceHours < 0 ? "Minusstunden" : "Überstunden"}</span>
+                <strong>{formatHours(Math.abs(cumulativeBalanceHours))}h</strong>
+                <small>
+                  {cumulativeBalanceHours < 0
+                    ? `Fortlaufender Zeitkonto-Stand seit ${formatDateOnly(accountStartDateKey)}`
+                    : pendingOvertimeRows.length > 0
+                      ? `${pendingOvertimeRows.length} Tag(e) warten auf Freigabe`
+                      : `Fortlaufender Zeitkonto-Stand seit ${formatDateOnly(accountStartDateKey)}`}
+                </small>
+              </article>
+              <article>
+                <span>Arbeitszeitmodell</span>
+                <strong>{formatHours(weeklyTargetHours)}h/Woche</strong>
+                <div className={styles.personalWorkModel}>
+                  {weeklyCapacityDayLabels.map((day) => (
+                    <span key={day.key}>
+                      <b>{day.shortLabel}</b>
+                      {formatHours(getSafeWeeklyCapacity(currentUser?.weeklyCapacity)[day.key] ?? 0)}h
+                    </span>
+                  ))}
+                </div>
+              </article>
+            </div>
+            <table className={styles.personalTimeTable}>
+              <thead>
+                <tr>
+                  <th />
+                  <th>Datum</th>
+                  <th>Beginn</th>
+                  <th />
+                  <th>Ende</th>
+                  <th>Erfasste Arbeitsstunden</th>
+                  <th>Fortschritt</th>
+                  <th>Über-/Minusstunden</th>
+                  <th>Pausen</th>
+                  <th>Abwesenheit</th>
+                  <th>Status</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {personalDailyTimeRows.map((row) => {
+                  const holiday = getHolidayForDateKey(row.dateKey);
+                  const isToday = row.dateKey === todayKey;
+                  const statusLabel = row.requiresApproval
+                    ? row.approvedOvertime
+                      ? "Freigegeben"
+                      : "Freigabe offen"
+                    : row.productiveMs > 0 || row.absence || holiday
+                      ? "Freigegeben"
+                      : "-";
+
+                  return (
+                    <tr key={row.dateKey} data-today={isToday} data-empty={row.productiveMs === 0 && !row.absence && !holiday}>
+                      <td>
+                        <input type="checkbox" aria-label={`Tag ${formatDateOnly(row.dateKey)} auswählen`} />
+                      </td>
+                      <td>
+                        <strong>
+                          {row.date.toLocaleDateString(APP_LOCALE, { weekday: "short", timeZone: APP_TIME_ZONE })}
+                        </strong>
+                        <span>{row.date.toLocaleDateString(APP_LOCALE, { day: "numeric", month: "long", timeZone: APP_TIME_ZONE })}</span>
+                        {holiday ? <small>{holiday.name}</small> : null}
+                      </td>
+                      <td>{row.startTime || "-"}</td>
+                      <td>→</td>
+                      <td>{row.endTime || "-"}</td>
+                      <td>
+                        {row.productiveMs > 0 ? (
+                          <strong>
+                            {formatHours(row.productiveMs / 3600000)}h
+                            {row.targetMs > 0 ? <em>/{formatHours(row.targetMs / 3600000)}h</em> : null}
+                          </strong>
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                      <td>
+                        {row.targetMs > 0 && row.productiveMs > 0 ? (
+                          <span className={styles.personalProgress}>
+                            <i style={{ width: `${row.progress}%` }} />
+                          </span>
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                      <td data-overtime={row.requiresApproval && !row.approvedOvertime ? "pending" : "done"}>
+                        {row.productiveMs > 0 && row.targetMs > 0
+                          ? `${row.balanceMs >= 0 ? "+" : "-"}${formatStampDuration(Math.abs(row.balanceMs))}`
+                          : row.overtimeMs > 0
+                            ? `+${formatStampDuration(row.overtimeMs)}`
+                            : "-"}
+                      </td>
+                      <td>{row.pauseMs > 0 ? formatStampDuration(row.pauseMs) : "-"}</td>
+                      <td>{row.absence ? `${absenceLabel(row.absence.type)} ${formatHours(row.targetMs / 3600000)}h` : "-"}</td>
+                      <td>
+                        <span
+                          className={styles.personalTimeStatus}
+                          data-status={row.requiresApproval && !row.approvedOvertime ? "pending" : "approved"}
+                        >
+                          {statusLabel}
+                        </span>
+                      </td>
+                      <td>
+                        {row.requiresApproval && !row.approvedOvertime && canManageAbsences(activeUser?.role) && currentUser ? (
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            onClick={() => void approveOvertimeForDay(currentUser.id, row.dateKey)}
+                          >
+                            Freigeben
+                          </button>
+                        ) : (
+                          <button type="button" className={styles.personalMoreButton} aria-label="Mehr Optionen">
+                            ...
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </section>
+        ) : null}
+
+        {personalDataView === "stamps" ? (
+          <section className={styles.personalPanel}>
+            <div className={styles.personalPanelHeader}>
+              <div>
+                <p className={styles.eyebrow}>Stempelungen</p>
+                <h2>Nachvollziehbare Buchungen</h2>
+              </div>
+              <button type="button" className={styles.secondaryButton} onClick={() => setActiveTab("timeTracking")}>
+                Zeiterfassung öffnen
+              </button>
+            </div>
+            <table className={styles.personalTable}>
+              <thead>
+                <tr>
+                  <th>Datum</th>
+                  <th>Beginn</th>
+                  <th>Ende</th>
+                  <th>Art</th>
+                  <th>Projekt / Tätigkeit</th>
+                  <th>Dauer</th>
+                  <th>Pause</th>
+                  <th>Überstundenfreigabe</th>
+                  <th>Kommentar</th>
+                </tr>
+              </thead>
+              <tbody>
+                {personalStampEntries.length > 0 ? (
+                  personalStampEntries.map((entry) => (
+                    <tr key={entry.id}>
+                      <td>{formatDateOnly(entry.date)}</td>
+                      <td>{entry.startTime || "-"}</td>
+                      <td>{entry.endTime || "-"}</td>
+                      <td>{entry.entrySource === "manual" ? "Manuell" : "Gestempelt"}</td>
+                      <td>{entry.projectLabel || (entry.mode === "unproductive" ? "Unproduktiv" : "-")}</td>
+                      <td>{formatStampDuration(Math.max(0, entry.durationMs - entry.pauseMs))}</td>
+                      <td>{entry.pauseMs > 0 ? formatStampDuration(entry.pauseMs) : "-"}</td>
+                      <td>
+                        <span
+                          className={styles.personalTimeStatus}
+                          data-status={entry.overtimeApprovalStatus === "pending" ? "pending" : "approved"}
+                        >
+                          {entry.overtimeApprovalStatus === "pending"
+                            ? "Freigabe offen"
+                            : entry.overtimeApprovalStatus === "approved"
+                              ? "Freigegeben"
+                              : "Nicht nötig"}
+                        </span>
+                      </td>
+                      <td>{entry.comment || "-"}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={9}>Noch keine Stempelungen vorhanden.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </section>
+        ) : null}
+
+        {personalDataView === "performance" ? (
+          <section className={styles.personalPanel}>
+            <div className={styles.personalPanelHeader}>
+              <div>
+                <p className={styles.eyebrow}>Leistungsdaten</p>
+                <h2>Eigene Kennzahlen</h2>
+              </div>
+            </div>
+            <div className={styles.personalKpiGrid}>
+              <article>
+                <span>Produktive Zeit</span>
+                <strong>{formatHours(monthProjectMs / 3600000)} Std.</strong>
+                <small>{productiveShare}% Anteil an der erfassten Monatszeit</small>
+              </article>
+              <article>
+                <span>Unproduktive Zeit</span>
+                <strong>{formatHours(monthUnproductiveMs / 3600000)} Std.</strong>
+                <small>Interne oder nicht projektbezogene Stempelungen</small>
+              </article>
+              <article>
+                <span>Ø Stunden pro Stempeltag</span>
+                <strong>{formatHours(averageDailyHours)} Std.</strong>
+                <small>Nur Tage mit erfasster Arbeitszeit</small>
+              </article>
+              <article data-tone={overduePersonalTasks.length > 0 ? "warning" : "positive"}>
+                <span>Aufgabenerledigung</span>
+                <strong>{personalTaskCompletionRate}%</strong>
+                <small>{completedPersonalTasks.length} erledigt · {overduePersonalTasks.length} überfällig</small>
+              </article>
+            </div>
+            <div className={styles.personalPerformanceGrid}>
+              <article>
+                <strong>Überstundenfreigaben</strong>
+                <span>{pendingOvertimeRows.length} offene Tag(e) im ausgewählten Monat</span>
+              </article>
+              <article>
+                <strong>Abwesenheiten</strong>
+                <span>{sicknessDays} Krankheitstage · {usedVacationDays + plannedVacationDays} Urlaubstage im Jahr</span>
+              </article>
+              <article>
+                <strong>Aufgabenbestand</strong>
+                <span>{openPersonalTasks.length} offen · {handoverTasks.length} Übergaben · {personalTasks.length} gesamt</span>
+              </article>
+            </div>
+          </section>
+        ) : null}
+
+        {personalDataView === "development" ? renderPersonalDevelopment(currentUser) : null}
+
+        {personalDataView === "disg" ? renderPersonalDisg(currentUser) : null}
+
+        {personalDataView === "tasks" ? (
+          <section className={styles.personalPanel}>
+            <div className={styles.personalPanelHeader}>
+              <div>
+                <p className={styles.eyebrow}>Meine Aufgaben</p>
+                <h2>Offene Aufgaben und Übergaben</h2>
+              </div>
+              <div className={styles.personalCounterGroup}>
+                <span>{openPersonalTasks.length} offen</span>
+                <span>{overduePersonalTasks.length} überfällig</span>
+                <span>{handoverTasks.length} Übergaben</span>
+              </div>
+            </div>
+            <table className={styles.personalTable}>
+              <thead>
+                <tr>
+                  <th>Aufgabe</th>
+                  <th>Status</th>
+                  <th>Priorität</th>
+                  <th>Kunde</th>
+                  <th>Deadline</th>
+                  <th>Aktion</th>
+                </tr>
+              </thead>
+              <tbody>
+                {personalTasks.map((task) => (
+                  <tr key={task.id}>
+                    <td>
+                      <strong>{task.titel}</strong>
+                      <span>{task.beschreibung || "-"}</span>
+                    </td>
+                    <td>{task.status}</td>
+                    <td>{task.prioritaet}</td>
+                    <td>{task.kunde || "-"}</td>
+                    <td>{formatDeadline(task.faelligkeit)}</td>
+                    <td>
+                      <button type="button" className={styles.secondaryButton} onClick={() => openEditModal(task)}>
+                        Öffnen
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {personalTasks.length === 0 ? (
+                  <tr>
+                    <td colSpan={6}>Keine Aufgaben für dich vorhanden.</td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </section>
+        ) : null}
+
+        {personalDataView === "documents" ? (
+          <section className={styles.personalPanel}>
+            <div className={styles.personalPanelHeader}>
+              <div>
+                <p className={styles.eyebrow}>Dokumente</p>
+                <h2>Persönliche Unterlagen</h2>
+              </div>
+            </div>
+            <div className={styles.personalDocumentGrid}>
+              {["Arbeitsvertrag", "Lohnabrechnungen", "Bescheinigungen", "Krankmeldungen", "Urlaubsnachweise", "Weiterbildungen"].map(
+                (label) => (
+                  <article key={label}>
+                    <strong>{label}</strong>
+                    <span>Noch keine Datei hinterlegt.</span>
+                  </article>
+                )
+              )}
+            </div>
+          </section>
+        ) : null}
+
+        {personalDataView === "masterData" ? (
+          <section className={styles.personalPanel}>
+            <div className={styles.personalPanelHeader}>
+              <div>
+                <p className={styles.eyebrow}>Stammdaten</p>
+                <h2>Eigene Mitarbeiterdaten</h2>
+              </div>
+            </div>
+            <dl className={styles.personalMasterData}>
+              <div><dt>Name</dt><dd>{currentUser?.name || "-"}</dd></div>
+              <div><dt>E-Mail</dt><dd>{currentUser?.email || "-"}</dd></div>
+              <div><dt>Telefon</dt><dd>{currentUser?.phone || currentUser?.mobile || "-"}</dd></div>
+              <div><dt>Rolle</dt><dd>{currentUser?.roleLabel || "-"}</dd></div>
+              <div><dt>Planungsboard</dt><dd>{currentUser?.planningBoard || "-"}</dd></div>
+              <div><dt>Planungsgruppe</dt><dd>{currentUser?.planningGroup || "-"}</dd></div>
+              <div><dt>Arbeitszeit</dt><dd>{weeklyTargetHours > 0 ? `${formatHours(weeklyTargetHours)} Std./Woche` : "-"}</dd></div>
+              <div><dt>Adresse</dt><dd>{[currentUser?.street, currentUser?.postalCode, currentUser?.city].filter(Boolean).join(", ") || "-"}</dd></div>
+            </dl>
+          </section>
+        ) : null}
+      </section>
+    );
+  }
+
+  function renderTeamCalendar() {
+    const monthStart = new Date(calendarDate.getFullYear(), calendarDate.getMonth(), 1);
+    const monthDays = Array.from(
+      { length: new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 0).getDate() },
+      (_, index) => new Date(calendarDate.getFullYear(), calendarDate.getMonth(), index + 1, 12)
+    );
+    const activeEmployees = users.filter((user) => user.isActive);
+    const groupedAbsences = Array.from(
+      absences
+        .reduce<Map<string, AbsenceItem[]>>((groups, absence) => {
+          const key = absence.requestGroupId || absence.id;
+          groups.set(key, [...(groups.get(key) ?? []), absence]);
+          return groups;
+        }, new Map())
+        .values()
+    ).map((items) => [...items].sort((first, second) => first.date.localeCompare(second.date)));
+    const myRepresentationRequests = groupedAbsences.filter(
+      ([absence]) => absence.representativeUserId === activeUserId && absence.status === "wartet_vertreter"
+    );
+    const managementRequests = canManageAbsences(activeUser?.role)
+      ? groupedAbsences.filter(([absence]) => absence.status === "wartet_geschaeftsfuehrung")
+      : [];
+    const visibleApprovalRequests = [...myRepresentationRequests, ...managementRequests];
+    const canViewAllAbsenceHistory =
+      activeUser?.role === "ADMIN" || activeUser?.role === "GESCHAEFTSFUEHRER";
+    const myRequests = groupedAbsences.filter(([absence]) => absence.userId === activeUserId);
+    const activeMyRequests = myRequests.filter(
+      ([absence]) => absence.status === "wartet_vertreter" || absence.status === "wartet_geschaeftsfuehrung"
+    );
+    const historicalAbsenceRequests = (canViewAllAbsenceHistory ? groupedAbsences : myRequests).filter(
+      ([absence]) => absence.status === "genehmigt" || absence.status === "abgelehnt"
+    );
+    const visibleMyRequests =
+      absenceRequestView === "active" ? activeMyRequests : historicalAbsenceRequests;
+    const isAllAbsenceHistoryView = absenceRequestView === "history" && canViewAllAbsenceHistory;
+    const getAbsenceGroupSpan = (absence: AbsenceItem) => {
+      const dates = absences
+        .filter((item) => (item.requestGroupId || item.id) === (absence.requestGroupId || absence.id))
+        .map((item) => item.date)
+        .sort((first, second) => first.localeCompare(second));
+      return {
+        from: dates[0] ?? absence.date,
+        to: dates.at(-1) ?? absence.date,
+      };
+    };
+
+    return (
+      <section className={styles.teamCalendarPage}>
+        <div className={styles.topline}>
+          <div>
+            <p className={styles.eyebrow}>Mitarbeiter</p>
+            <h1>Team-Kalender</h1>
+            <p className={styles.subline}>
+              Abwesenheitsanträge, Vertretung und genehmigte Abwesenheiten im Überblick.
+            </p>
+          </div>
+          <button type="button" className={styles.primaryButton} onClick={() => openAbsenceModal()}>
+            Abwesenheit beantragen
+          </button>
+        </div>
+
+        <section className={styles.calendarToolbar}>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))}
+          >
+            Zurück
+          </button>
+          <div className={styles.calendarTitleGroup}>
+            <h2>{formatCalendarTitle(monthStart)}</h2>
+          </div>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))}
+          >
+            Weiter
+          </button>
+        </section>
+
+        {visibleApprovalRequests.length > 0 ? (
+          <section className={styles.teamCalendarApprovals}>
+            <div>
+              <p className={styles.eyebrow}>Meine Freigaben</p>
+              <h2>Offene Abwesenheitsanträge</h2>
+            </div>
+            <div className={styles.teamCalendarApprovalList}>
+              {visibleApprovalRequests.map((items) => {
+                const absence = items[0];
+                const span = getAbsenceGroupSpan(absence);
+                const handoverTasks = tasks.filter((task) => absence.handoverTaskIds.includes(task.id));
+
+                return (
+                  <article key={absence.requestGroupId || absence.id}>
+                    <div>
+                      <strong>{absence.userName}</strong>
+                      <span>
+                        {absenceLabel(absence.type)} · {absenceDayPartLabel(absence.dayPart)} ·{" "}
+                        {formatDateOnly(span.from)} bis {formatDateOnly(span.to)}
+                      </span>
+                      <small>
+                        Vertreter: {absence.representativeName || "-"} · Übergabe-Aufgaben:{" "}
+                        {handoverTasks.length}
+                      </small>
+                    </div>
+                    <div className={styles.teamCalendarApprovalActions}>
+                      {absence.status === "wartet_vertreter" ? (
+                        <button
+                          type="button"
+                          className={styles.primaryButton}
+                          onClick={() => void updateAbsenceRequest(absence, "accept-representation")}
+                        >
+                          Vertretung akzeptieren
+                        </button>
+                      ) : null}
+                      {absence.status === "wartet_geschaeftsfuehrung" ? (
+                        <>
+                          <button
+                            type="button"
+                            className={styles.primaryButton}
+                            onClick={() => void updateAbsenceRequest(absence, "final-approve")}
+                          >
+                            Final genehmigen
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.deleteButton}
+                            onClick={() => void updateAbsenceRequest(absence, "reject")}
+                          >
+                            Ablehnen
+                          </button>
+                        </>
+                      ) : null}
+                      <button type="button" className={styles.secondaryButton} onClick={() => openEditAbsenceModal(absence)}>
+                        Öffnen
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
+
+        <section className={styles.teamCalendarRequests}>
+          <div className={styles.teamCalendarRequestsHeader}>
+            <div>
+              <p className={styles.eyebrow}>
+                {isAllAbsenceHistoryView ? "Alle Anträge" : "Meine Anträge"}
+              </p>
+              <h2>
+                {isAllAbsenceHistoryView ? "Historie aller Abwesenheitsanträge" : "Eigene Abwesenheitsanträge"}
+              </h2>
+            </div>
+            <div className={styles.segmentedControl}>
+              <button
+                type="button"
+                data-active={absenceRequestView === "active"}
+                onClick={() => setAbsenceRequestView("active")}
+              >
+                Aktiv
+              </button>
+              <button
+                type="button"
+                data-active={absenceRequestView === "history"}
+                onClick={() => setAbsenceRequestView("history")}
+              >
+                Historie
+              </button>
+            </div>
+          </div>
+
+          {visibleMyRequests.length === 0 ? (
+            <p className={styles.emptyState}>
+              {absenceRequestView === "active"
+                ? "Keine offenen eigenen Anträge."
+                : isAllAbsenceHistoryView
+                  ? "Noch keine genehmigten oder abgelehnten Anträge vorhanden."
+                  : "Noch keine genehmigten oder abgelehnten Anträge."}
+            </p>
+          ) : (
+            <div className={styles.teamCalendarRequestList}>
+              {visibleMyRequests.map((items) => {
+                const absence = items[0];
+                const span = getAbsenceGroupSpan(absence);
+                const handoverTasks = tasks.filter((task) => absence.handoverTaskIds.includes(task.id));
+                const requestId = absence.requestGroupId || absence.id;
+
+                return (
+                  <article
+                    key={requestId}
+                    data-status={absence.status}
+                    data-highlighted={highlightedAbsenceRequestId === requestId}
+                  >
+                    <div className={styles.teamCalendarRequestTop}>
+                      <div>
+                        <strong>
+                          {isAllAbsenceHistoryView ? `${absence.userName} · ` : ""}
+                          {absenceLabel(absence.type)} · {formatDateOnly(span.from)} bis{" "}
+                          {formatDateOnly(span.to)}
+                        </strong>
+                        <span>
+                          {absenceDayPartLabel(absence.dayPart)} · Vertreter:{" "}
+                          {absence.representativeName || "-"} · Übergabe-Aufgaben: {handoverTasks.length}
+                        </span>
+                      </div>
+                      <em>{absenceStatusLabel(absence.status)}</em>
+                    </div>
+
+                    {absence.status === "abgelehnt" && absence.rejectionReason ? (
+                      <p className={styles.absenceRejectionReason}>
+                        Ablehnungsgrund: {absence.rejectionReason}
+                      </p>
+                    ) : null}
+
+                    {handoverTasks.length > 0 ? (
+                      <div className={styles.absenceRequestTasks}>
+                        {handoverTasks.map((task) => (
+                          <span key={task.id}>
+                            {task.titel} ·{" "}
+                            {task.acceptanceStatus === "accepted"
+                              ? "angenommen"
+                              : task.acceptanceStatus === "rejected"
+                                ? `abgelehnt${task.rejectionReason ? `: ${task.rejectionReason}` : ""}`
+                                : "offen"}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <details className={styles.absenceHistory}>
+                      <summary>Historie</summary>
+                      {absence.history.length === 0 ? (
+                        <p>Noch keine Historie vorhanden.</p>
+                      ) : (
+                        <div>
+                          {absence.history.map((entry) => (
+                            <section key={entry.id}>
+                              <strong>{entry.event}</strong>
+                              <span>
+                                {entry.actorName || "-"} · {formatDeadline(entry.createdAt)}
+                              </span>
+                              {entry.note ? <p>{entry.note}</p> : null}
+                            </section>
+                          ))}
+                        </div>
+                      )}
+                    </details>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        <section className={styles.teamCalendarShell}>
+          <aside className={styles.teamCalendarPeople}>
+            <div className={styles.teamCalendarPeopleHeader}>
+              <strong>{activeEmployees.length} Personen</strong>
+              <span>von {users.length} in Ihrem Unternehmen</span>
+            </div>
+            {activeEmployees.map((employee) => (
+              <button key={employee.id} type="button" onClick={() => setPlanningOwnerFilter(employee.id)}>
+                {employee.profileImageDataUrl ? (
+                  <img src={employee.profileImageDataUrl} alt={employee.name} />
+                ) : (
+                  <em>{getInitials(employee.name)}</em>
+                )}
+                <span>
+                  <b>{employee.name}</b>
+                  <small>{employee.planningGroup || employee.roleLabel}</small>
+                </span>
+              </button>
+            ))}
+          </aside>
+          <div className={styles.teamCalendarGridWrap}>
+            <div
+              className={styles.teamCalendarGrid}
+              style={{ gridTemplateColumns: `repeat(${monthDays.length}, minmax(44px, 1fr))` }}
+            >
+              {monthDays.map((day) => {
+                const dateKey = formatDateKey(day);
+                const isToday = dateKey === formatDateKey(new Date());
+                return (
+                  <div key={`head-${dateKey}`} className={styles.teamCalendarDayHead} data-today={isToday}>
+                    <span>
+                      {day.toLocaleDateString(APP_LOCALE, { weekday: "short", timeZone: APP_TIME_ZONE })}
+                    </span>
+                    <strong>{day.getDate()}</strong>
+                  </div>
+                );
+              })}
+              {activeEmployees.flatMap((employee, employeeIndex) => {
+                const gridRow = employeeIndex + 2;
+                const employeeAbsenceGroups = groupedAbsences
+                  .filter(([absence]) => absence.userId === employee.id)
+                  .map((items) => {
+                    const first = items[0];
+                    const visibleIndexes = items
+                      .map((absence) => monthDays.findIndex((day) => formatDateKey(day) === absence.date))
+                      .filter((index) => index >= 0)
+                      .sort((firstIndex, secondIndex) => firstIndex - secondIndex);
+
+                    if (visibleIndexes.length === 0) return null;
+
+                    return {
+                      absence: first,
+                      start: visibleIndexes[0],
+                      span: visibleIndexes.at(-1)! - visibleIndexes[0] + 1,
+                    };
+                  })
+                  .filter(
+                    (
+                      item
+                    ): item is {
+                      absence: AbsenceItem;
+                      start: number;
+                      span: number;
+                    } => Boolean(item)
+                  );
+
+                return [
+                  ...monthDays.map((day, dayIndex) => {
+                    const dateKey = formatDateKey(day);
+                    const absence = absences.find(
+                      (item) => item.userId === employee.id && item.date === dateKey
+                    );
+                    return (
+                      <button
+                        key={`${employee.id}-${dateKey}`}
+                        type="button"
+                        className={styles.teamCalendarCell}
+                        data-weekend={isWeekendDateKey(dateKey)}
+                        style={{
+                          gridColumn: String(dayIndex + 1),
+                          gridRow: String(gridRow),
+                        }}
+                        onClick={() => (absence ? openEditAbsenceModal(absence) : openAbsenceModal(dateKey))}
+                        title="Abwesenheit beantragen"
+                      />
+                    );
+                  }),
+                  ...employeeAbsenceGroups.map(({ absence, start, span }) => (
+                    <button
+                      key={`${employee.id}-${absence.requestGroupId || absence.id}-bar`}
+                      type="button"
+                      className={styles.teamCalendarAbsenceBar}
+                      data-status={absence.status}
+                      data-type={absence.type}
+                      data-part={absence.dayPart}
+                      style={
+                        {
+                          "--team-calendar-start": start + 1,
+                          "--team-calendar-span": span,
+                          gridRow: String(gridRow),
+                        } as CSSProperties
+                      }
+                      onClick={() => openEditAbsenceModal(absence)}
+                      title={`${absence.userName}: ${absenceLabel(absence.type)} · ${absenceDayPartLabel(absence.dayPart)} · ${absenceStatusLabel(absence.status)}`}
+                    >
+                      <span>{absenceLabel(absence.type)}</span>
+                      <small>{absenceStatusLabel(absence.status)}</small>
+                    </button>
+                  )),
+                ];
+              })}
+            </div>
+          </div>
+        </section>
+      </section>
+    );
+  }
+
+  function openAbsenceHandoverTaskModal() {
+    setIsCreatingAbsenceHandoverTask(true);
+    setEditingTask(null);
+    setErrorMessage("");
+    resetForm();
+    setZustaendigId(absenceRepresentativeUserId || activeUserId);
+    setFaelligkeit(`${absenceDateFrom}T12:00`);
+    setTitel("");
+    setBeschreibung("");
+    if (!hasLoadedHeroProjects) void loadHeroProjects();
+    setIsModalOpen(true);
+  }
+
   function renderPlanningBoard() {
     const allDetailGroups = planningBoardSections.flatMap((section) => section.detailGroups);
 
@@ -12298,11 +15897,12 @@ export function DashboardPage() {
               <div>
                 <p className={styles.eyebrow}>Tagesplanung</p>
                 <h1>
-                  {selectedPlanningDate.toLocaleDateString("de-DE", {
+                  {selectedPlanningDate.toLocaleDateString(APP_LOCALE, {
                     weekday: "long",
                     day: "2-digit",
                     month: "2-digit",
                     year: "numeric",
+                    timeZone: APP_TIME_ZONE,
                   })}
                 </h1>
                 <p>
@@ -12415,6 +16015,9 @@ export function DashboardPage() {
                     employeeUser,
                     selectedPlanningDateKey
                   );
+                  const employeeAbsence = employeeUser
+                    ? getUserAbsenceForDateKey(employeeUser.id, selectedPlanningDateKey)
+                    : undefined;
                   const employeeBreakStartColumn = employeeBreakWindow.start
                     ? getPlanningSlotIndex(employeeBreakWindow.start) + 1
                     : 1;
@@ -12435,6 +16038,11 @@ export function DashboardPage() {
                           {formatHours(employeeUtilization.plannedHours)}h von{" "}
                           {formatHours(employeeCapacity)}h verplant
                         </em>
+                        {employeeAbsence ? (
+                          <small>
+                            {absenceLabel(employeeAbsence.type)} · {absenceDayPartLabel(employeeAbsence.dayPart)}
+                          </small>
+                        ) : null}
                       </div>
                       <div
                         className={styles.planningTimelineLane}
@@ -12446,6 +16054,15 @@ export function DashboardPage() {
                       >
                         <span className={styles.planningUnavailableWindow} data-side="before" />
                         <span className={styles.planningUnavailableWindow} data-side="after" />
+                        {employeeAbsence ? (
+                          <span
+                            className={styles.planningAbsenceWindow}
+                            data-type={employeeAbsence.type}
+                            data-part={employeeAbsence.dayPart}
+                          >
+                            {absenceLabel(employeeAbsence.type)}
+                          </span>
+                        ) : null}
                         {employeeBreakWindow.start && employeeBreakWindow.end && (
                           <span
                             className={styles.planningBreakWindow}
@@ -12550,12 +16167,16 @@ export function DashboardPage() {
                         }}
                       >
                         <strong>
-                          {day.toLocaleDateString("de-DE", { weekday: "short" }).toUpperCase()}
+                          {day.toLocaleDateString(APP_LOCALE, {
+                            weekday: "short",
+                            timeZone: APP_TIME_ZONE,
+                          }).toUpperCase()}
                         </strong>
                         <span>
-                          {day.toLocaleDateString("de-DE", {
+                          {day.toLocaleDateString(APP_LOCALE, {
                             day: "2-digit",
                             month: "2-digit",
+                            timeZone: APP_TIME_ZONE,
                           })}
                         </span>
                         {holiday && <small>Feiertag</small>}
@@ -12634,6 +16255,189 @@ export function DashboardPage() {
     );
   }
 
+  function renderTimeTrackingOverview() {
+    const selectedUser =
+      users.find((user) => user.id === timeTrackingEmployeeId) ??
+      users.find((user) => user.id === activeUserId) ??
+      users[0];
+    const fromDate = parseDateKeyValue(timeTrackingFrom) ?? new Date();
+    const toDate = parseDateKeyValue(timeTrackingTo) ?? new Date();
+    const visibleTimeEntries = stampEntries
+      .filter((entry) => {
+        if (selectedUser && entry.userId !== selectedUser.id && entry.employee !== selectedUser.name) return false;
+        const entryDate = parseDateKeyValue(entry.date);
+        return entryDate ? isDateInRange(entryDate, fromDate, toDate) : false;
+      })
+      .sort((first, second) => {
+        const dateCompare = second.date.localeCompare(first.date);
+        return dateCompare || second.startTime.localeCompare(first.startTime);
+      });
+    const productiveMs = visibleTimeEntries
+      .filter((entry) => entry.mode === "project")
+      .reduce((sum, entry) => sum + Math.max(0, entry.durationMs - entry.pauseMs), 0);
+    const unproductiveMs = visibleTimeEntries
+      .filter((entry) => entry.mode === "unproductive")
+      .reduce((sum, entry) => sum + Math.max(0, entry.durationMs - entry.pauseMs), 0);
+    const pauseMs = visibleTimeEntries.reduce((sum, entry) => sum + entry.pauseMs, 0);
+    const editedCount = visibleTimeEntries.filter((entry) => (entry.editHistory ?? []).length > 0).length;
+
+    return (
+      <section className={styles.employeeTimeOverview}>
+        <div className={styles.topline}>
+          <div>
+            <p className={styles.eyebrow}>Mitarbeiter</p>
+            <h1>Zeiterfassung</h1>
+            <p className={styles.subline}>
+              Stempelungen je Mitarbeiter einsehen, prüfen und mit Bearbeitungshistorie nachvollziehen.
+            </p>
+          </div>
+        </div>
+
+        <section className={styles.employeeTimeControlPanel}>
+          <label>
+            Mitarbeiter
+            <select
+              value={selectedUser?.id ?? ""}
+              onChange={(event) => setTimeTrackingEmployeeId(event.target.value)}
+            >
+              {users.filter((user) => user.isActive).map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.name} · {user.roleLabel}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Von
+            <input
+              type="date"
+              value={timeTrackingFrom}
+              onChange={(event) => setTimeTrackingFrom(event.target.value)}
+            />
+          </label>
+          <label>
+            Bis
+            <input
+              type="date"
+              value={timeTrackingTo}
+              onChange={(event) => setTimeTrackingTo(event.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={() => {
+              const now = new Date();
+              setTimeTrackingFrom(formatDateKey(new Date(now.getFullYear(), now.getMonth(), 1, 12)));
+              setTimeTrackingTo(formatDateKey(new Date(now.getFullYear(), now.getMonth() + 1, 0, 12)));
+            }}
+          >
+            Aktueller Monat
+          </button>
+        </section>
+
+        <div className={styles.employeeKpiGrid}>
+          <article>
+            <span>Gesamt</span>
+            <strong>{formatStampDuration(productiveMs + unproductiveMs)}</strong>
+            <small>Produktiv + unproduktiv</small>
+          </article>
+          <article>
+            <span>Produktiv</span>
+            <strong>{formatStampDuration(productiveMs)}</strong>
+            <small>Projektstempelungen</small>
+          </article>
+          <article>
+            <span>Unproduktiv</span>
+            <strong>{formatStampDuration(unproductiveMs)}</strong>
+            <small>Interne Zeiten</small>
+          </article>
+          <article>
+            <span>Pausen</span>
+            <strong>{formatStampDuration(pauseMs)}</strong>
+            <small>Gesamt im Zeitraum</small>
+          </article>
+          <article data-tone={editedCount > 0 ? "warning" : undefined}>
+            <span>Bearbeitet</span>
+            <strong>{editedCount}</strong>
+            <small>Einträge mit Historie</small>
+          </article>
+        </div>
+
+        <section className={styles.tableCard}>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>Datum</th>
+                <th>Mitarbeiter</th>
+                <th>Beginn</th>
+                <th>Ende</th>
+                <th>Dauer</th>
+                <th>Pause</th>
+                <th>Art</th>
+                <th>Projekt / Bereich</th>
+                <th>Historie</th>
+                <th>Aktion</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleTimeEntries.length === 0 ? (
+                <tr>
+                  <td colSpan={10}>Keine Stempelungen im gewählten Zeitraum.</td>
+                </tr>
+              ) : (
+                visibleTimeEntries.map((entry) => (
+                  <tr key={entry.id}>
+                    <td>{formatDateOnly(entry.date)}</td>
+                    <td>{entry.employee || "-"}</td>
+                    <td>{entry.startTime}</td>
+                    <td>{entry.endTime}</td>
+                    <td>{formatStampDuration(Math.max(0, entry.durationMs - entry.pauseMs))}</td>
+                    <td>{formatStampDuration(entry.pauseMs)}</td>
+                    <td>{entry.entrySource === "manual" ? "Manuell" : "Gestempelt"}</td>
+                    <td>{entry.projectLabel || (entry.mode === "unproductive" ? "Unproduktiv" : "-")}</td>
+                    <td>
+                      {(entry.editHistory ?? []).length > 0 ? (
+                        <details className={styles.timeEntryHistoryDetails}>
+                          <summary>{entry.editHistory?.length} Änderung(en)</summary>
+                          {(entry.editHistory ?? []).map((history) => (
+                            <article key={history.id}>
+                              <strong>{history.event}</strong>
+                              <span>
+                                {history.actorName || "-"} · {formatInstantDateTime(history.createdAt)}
+                              </span>
+                              <p>
+                                Vorher: {history.previousValue}
+                                <br />
+                                Nachher: {history.nextValue}
+                              </p>
+                            </article>
+                          ))}
+                        </details>
+                      ) : (
+                        "Keine"
+                      )}
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className={styles.timeEntryEditButton}
+                        disabled={!canManageProjectTimeEntries}
+                        onClick={() => openStampEntryEditModal(entry)}
+                      >
+                        Bearbeiten
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </section>
+      </section>
+    );
+  }
+
   function renderEmployeeManagement() {
     const selectedEmployee =
       selectedEmployeeId && selectedEmployeeId !== "__new__"
@@ -12702,7 +16506,7 @@ export function DashboardPage() {
               : now;
     const employeeTimeEntries = stampEntries.filter((entry) => {
       if (!employeeName || entry.employee !== employeeName) return false;
-      const entryDate = parseGermanDate(entry.date);
+      const entryDate = parseDateKeyValue(entry.date);
       return entryDate ? isDateInRange(entryDate, employeePeriodStart, employeePeriodEnd) : false;
     });
     const employeeProductiveMs = employeeTimeEntries
@@ -13015,6 +16819,15 @@ export function DashboardPage() {
                           <option>App-Nutzer</option>
                         </select>
                       </label>
+                      <label className={`${styles.checkboxField} ${styles.fullWidth}`}>
+                        <input
+                          type="checkbox"
+                          checked={employeeNotifyIdeaStore}
+                          disabled={!mayManageUsers}
+                          onChange={(event) => setEmployeeNotifyIdeaStore(event.target.checked)}
+                        />
+                        Benachrichtigung bei neuen Ideen, Kommentaren und Reaktionen im Ideen-Feed
+                      </label>
                       <section className={`${styles.employeePlanningSettings} ${styles.fullWidth}`}>
                         <div>
                           <h3>Planungsverantwortung</h3>
@@ -13053,25 +16866,134 @@ export function DashboardPage() {
                 {employeeSideTab === "mailserver" && (
                   <>
                     <div className={styles.employeeSectionHeader}>
-                      <h2>Mailservereinstellungen</h2>
+                      <h2>E-Mail & Versand</h2>
                     </div>
-                    <div className={styles.employeeFormGrid}>
-                      <label>
-                        Ihre E-Mail-Adresse
-                        <input value={userEmail} readOnly />
-                      </label>
-                      <label>
-                        Anbieter
-                        <select defaultValue="Outlook / Hotmail (via OAuth2)">
-                          <option>Outlook / Hotmail (via OAuth2)</option>
-                          <option>Gmail / Google Workspace</option>
-                          <option>Anderer Anbieter</option>
-                        </select>
-                      </label>
-                      <label className={styles.fullWidth}>
-                        BCC (Blindkopie)
-                        <input placeholder="example@gmail.com" />
-                      </label>
+                    <div className={styles.mailSettingsPanel}>
+                      <article className={styles.mailConnectionCard} data-status={employeeMailAccount.status}>
+                        <div>
+                          <span>Microsoft 365</span>
+                          <strong>
+                            {employeeMailAccount.status === "connected"
+                              ? "Verbunden"
+                              : employeeMailAccount.status === "expired"
+                                ? "Verbindung abgelaufen"
+                                : "Nicht verbunden"}
+                          </strong>
+                          <p>
+                            Angebote und Rechnungen werden direkt über das persönliche
+                            MS365-Konto dieses Mitarbeiters versendet.
+                          </p>
+                        </div>
+                        <div className={styles.buttonRow}>
+                          {employeeMailAccount.status === "connected" ? (
+                            <button
+                              type="button"
+                              className={styles.secondaryButton}
+                              disabled={!mayManageUsers}
+                              onClick={disconnectEmployeeMicrosoftMail}
+                            >
+                              Verbindung trennen
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className={styles.primaryButton}
+                              disabled={!mayManageUsers}
+                              onClick={connectEmployeeMicrosoftMail}
+                            >
+                              Microsoft 365 verbinden
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            disabled={!mayManageUsers || employeeMailAccount.status !== "connected"}
+                            onClick={markEmployeeMailTest}
+                          >
+                            Test-E-Mail senden
+                          </button>
+                        </div>
+                      </article>
+                      {employeeMailMessage ? <p className={styles.inlineSuccess}>{employeeMailMessage}</p> : null}
+                      <div className={styles.employeeFormGrid}>
+                        <label>
+                          Verbundene Adresse
+                          <input
+                            type="email"
+                            value={employeeMailAccount.email || userEmail}
+                            disabled={!mayManageUsers || employeeMailAccount.status === "connected"}
+                            onChange={(event) =>
+                              setEmployeeMailAccount((current) => ({
+                                ...getSafeEmployeeMailAccount(current, userEmail),
+                                email: event.target.value,
+                              }))
+                            }
+                          />
+                        </label>
+                        <label>
+                          Absendername
+                          <input
+                            value={employeeMailAccount.displayName || userName}
+                            disabled={!mayManageUsers}
+                            onChange={(event) =>
+                              setEmployeeMailAccount((current) => ({
+                                ...getSafeEmployeeMailAccount(current, userEmail),
+                                displayName: event.target.value,
+                              }))
+                            }
+                          />
+                        </label>
+                        <label>
+                          BCC Standard
+                          <input
+                            value={employeeMailAccount.bcc}
+                            disabled={!mayManageUsers}
+                            placeholder="z.B. buchhaltung@ok-solutions.com"
+                            onChange={(event) =>
+                              setEmployeeMailAccount((current) => ({
+                                ...getSafeEmployeeMailAccount(current, userEmail),
+                                bcc: event.target.value,
+                              }))
+                            }
+                          />
+                        </label>
+                        <label className={styles.checkboxField}>
+                          <input
+                            type="checkbox"
+                            checked={employeeMailAccount.sendCopyToSelf}
+                            disabled={!mayManageUsers}
+                            onChange={(event) =>
+                              setEmployeeMailAccount((current) => ({
+                                ...getSafeEmployeeMailAccount(current, userEmail),
+                                sendCopyToSelf: event.target.checked,
+                              }))
+                            }
+                          />
+                          Kopie an Absender senden
+                        </label>
+                        <div className={`${styles.fullWidth} ${styles.mailMetaGrid}`}>
+                          <article>
+                            <span>OAuth-Status</span>
+                            <strong>{employeeMailAccount.status}</strong>
+                          </article>
+                          <article>
+                            <span>Verbunden am</span>
+                            <strong>
+                              {employeeMailAccount.connectedAt
+                                ? formatDeadline(employeeMailAccount.connectedAt)
+                                : "-"}
+                            </strong>
+                          </article>
+                          <article>
+                            <span>Letzter Test</span>
+                            <strong>
+                              {employeeMailAccount.lastTestAt
+                                ? formatDeadline(employeeMailAccount.lastTestAt)
+                                : "-"}
+                            </strong>
+                          </article>
+                        </div>
+                      </div>
                     </div>
                   </>
                 )}
@@ -13662,12 +17584,13 @@ export function DashboardPage() {
                   {employeeCostDraft.updatedAt ? (
                     <p className={styles.employeeCostMeta}>
                       Zuletzt gespeichert am{" "}
-                      {new Date(employeeCostDraft.updatedAt).toLocaleString("de-DE", {
+                      {new Date(employeeCostDraft.updatedAt).toLocaleString(APP_LOCALE, {
                         day: "2-digit",
                         month: "2-digit",
                         year: "numeric",
                         hour: "2-digit",
                         minute: "2-digit",
+                        timeZone: APP_TIME_ZONE,
                       })}
                       {employeeCostDraft.updatedByName ? ` von ${employeeCostDraft.updatedByName}` : ""}
                     </p>
@@ -13853,6 +17776,7 @@ export function DashboardPage() {
       ["Webseite", "https://www.ok-solutions.com"],
       ["Gründung", "04.04.24"],
       ["Rechtsform", "GmbH"],
+      ["Regionale Zeitzone", `${APP_TIME_ZONE} (Deutschland)`],
       ["Kontoinhaber", ""],
       ["Bank", "Sparkasse Neckartal-Odenwald"],
       ["IBAN", "DE85674500480004369971"],
@@ -14038,6 +17962,91 @@ export function DashboardPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </section>
+        ) : firmSettingsTab === "mailServer" ? (
+          <section className={styles.settingsCard}>
+            <div className={styles.settingsHeader}>
+              <div>
+                <h2>Microsoft 365 Mailversand</h2>
+                <p>
+                  Die Mitarbeiter verbinden ihr eigenes MS365-Konto in der Mitarbeiterakte.
+                  Angebote und Rechnungen werden dann über diesen Absender verschickt.
+                </p>
+              </div>
+            </div>
+            <div className={styles.mailSettingsPanel}>
+              <article className={styles.mailConnectionCard} data-status="connected">
+                <div>
+                  <span>OAuth Anbieter</span>
+                  <strong>Microsoft Graph</strong>
+                  <p>
+                    Benötigt Azure App Registrierung mit Client-ID, Tenant-ID,
+                    Redirect-URL und Berechtigung Mail.Send.
+                  </p>
+                </div>
+                <button type="button" className={styles.secondaryButton}>
+                  Azure-Daten später hinterlegen
+                </button>
+              </article>
+              <div className={styles.mailMetaGrid}>
+                <article>
+                  <span>Versandart</span>
+                  <strong>Persönliches Konto</strong>
+                </article>
+                <article>
+                  <span>Standard-Anhang</span>
+                  <strong>PDF Angebot/Rechnung</strong>
+                </article>
+                <article>
+                  <span>Historie</span>
+                  <strong>Dokument + Projekt</strong>
+                </article>
+              </div>
+            </div>
+          </section>
+        ) : firmSettingsTab === "emailTemplates" ? (
+          <section className={styles.settingsCard}>
+            <div className={styles.settingsHeader}>
+              <div>
+                <h2>E-Mail-Vorlagen</h2>
+                <p>Diese Texte werden beim Versand von Angeboten und Rechnungen vorausgefüllt.</p>
+              </div>
+            </div>
+            <div className={styles.employeeFormGrid}>
+              {(["offer", "invoice"] as DocumentMailKind[]).map((kind) => (
+                <section key={kind} className={`${styles.offerSection} ${styles.fullWidth}`}>
+                  <div className={styles.offerSectionHeader}>
+                    <h3>{kind === "offer" ? "Angebot versenden" : "Rechnung versenden"}</h3>
+                    <span>{"{{number}} · {{sender}}"}</span>
+                  </div>
+                  <label>
+                    Betreff
+                    <input
+                      value={mailTemplates[kind].subject}
+                      onChange={(event) =>
+                        setMailTemplates((current) => ({
+                          ...current,
+                          [kind]: { ...current[kind], subject: event.target.value },
+                        }))
+                      }
+                    />
+                  </label>
+                  <label>
+                    Text
+                    <textarea
+                      rows={7}
+                      value={mailTemplates[kind].body}
+                      onChange={(event) =>
+                        setMailTemplates((current) => ({
+                          ...current,
+                          [kind]: { ...current[kind], body: event.target.value },
+                        }))
+                      }
+                    />
+                  </label>
+                </section>
+              ))}
             </div>
           </section>
         ) : firmSettingsTab === "branches" ? (
@@ -14437,9 +18446,9 @@ export function DashboardPage() {
                   <td>{item.isActive ? "Aktiv" : "Inaktiv"}</td>
                   <td>
                     <div className={styles.tableActionGroup}>
-                      <button className={styles.iconButton} onClick={() => openEditCatalogModal(item)} title="Bearbeiten">✎</button>
-                      <button className={styles.iconButton} onClick={() => duplicateCatalogItem(item)} title="Duplizieren">⧉</button>
-                      <button className={styles.iconButton} onClick={() => deactivateCatalogItem(item)} title="Deaktivieren">⌫</button>
+                      <button className={styles.iconButton} onClick={() => openEditCatalogModal(item)} title="Bearbeiten">?</button>
+                      <button className={styles.iconButton} onClick={() => duplicateCatalogItem(item)} title="Duplizieren">?</button>
+                      <button className={styles.iconButton} onClick={() => deactivateCatalogItem(item)} title="Deaktivieren">?</button>
                     </div>
                   </td>
                 </tr>
@@ -14904,6 +18913,136 @@ export function DashboardPage() {
             </div>
           </div>
         </section>
+      </div>
+    );
+  }
+
+  function renderDocumentMailModal() {
+    if (!documentMailDraft) return null;
+    const activeMailAccount = getSafeEmployeeMailAccount(activeUser?.mailAccount, activeUser?.email || "");
+    const canSendMail = activeMailAccount.status === "connected";
+    const documentLabel = documentMailDraft.kind === "offer" ? "Angebot" : "Rechnung";
+
+    return (
+      <div className={styles.modalOverlay}>
+        <div className={`${styles.modal} ${styles.catalogModal} ${styles.documentMailModal}`}>
+          <div className={styles.catalogModalHeader}>
+            <div>
+              <h2>{documentLabel} per E-Mail senden</h2>
+              <p>
+                {documentMailDraft.documentNumber} · {documentMailDraft.projectNumber} · {documentMailDraft.customerName || "Kein Kunde hinterlegt"}
+              </p>
+            </div>
+            <button className={styles.iconButton} type="button" onClick={() => setDocumentMailDraft(null)}>
+              ×
+            </button>
+          </div>
+          <div className={styles.offerModalBody}>
+            <section className={styles.mailConnectionCard} data-status={activeMailAccount.status}>
+              <div>
+                <span>Absender</span>
+                <strong>{activeMailAccount.email || activeUser?.email || "-"}</strong>
+                <p>
+                  {canSendMail
+                    ? "Versand über das verbundene Microsoft 365 Konto."
+                    : "Noch kein Microsoft 365 Konto verbunden. Bitte im Mitarbeiter unter E-Mail & Versand verbinden."}
+                </p>
+              </div>
+            </section>
+            {documentMailError ? <p className={styles.formError}>{documentMailError}</p> : null}
+            {documentMailSuccess ? <p className={styles.inlineSuccess}>{documentMailSuccess}</p> : null}
+            <div className={styles.employeeFormGrid}>
+              <label className={styles.fullWidth}>
+                Empfänger
+                <input
+                  type="email"
+                  value={documentMailDraft.to}
+                  placeholder="kunde@example.de"
+                  onChange={(event) =>
+                    setDocumentMailDraft((current) =>
+                      current ? { ...current, to: event.target.value } : current
+                    )
+                  }
+                />
+              </label>
+              <label>
+                CC
+                <input
+                  value={documentMailDraft.cc}
+                  placeholder="Optional"
+                  onChange={(event) =>
+                    setDocumentMailDraft((current) =>
+                      current ? { ...current, cc: event.target.value } : current
+                    )
+                  }
+                />
+              </label>
+              <label>
+                BCC
+                <input
+                  value={documentMailDraft.bcc}
+                  placeholder="Optional"
+                  onChange={(event) =>
+                    setDocumentMailDraft((current) =>
+                      current ? { ...current, bcc: event.target.value } : current
+                    )
+                  }
+                />
+              </label>
+              <label className={styles.fullWidth}>
+                Betreff
+                <input
+                  value={documentMailDraft.subject}
+                  onChange={(event) =>
+                    setDocumentMailDraft((current) =>
+                      current ? { ...current, subject: event.target.value } : current
+                    )
+                  }
+                />
+              </label>
+              <label className={styles.fullWidth}>
+                Nachricht
+                <textarea
+                  rows={9}
+                  value={documentMailDraft.body}
+                  onChange={(event) =>
+                    setDocumentMailDraft((current) =>
+                      current ? { ...current, body: event.target.value } : current
+                    )
+                  }
+                />
+              </label>
+              <label className={`${styles.checkboxField} ${styles.fullWidth}`}>
+                <input
+                  type="checkbox"
+                  checked={documentMailDraft.attachPdf}
+                  onChange={(event) =>
+                    setDocumentMailDraft((current) =>
+                      current ? { ...current, attachPdf: event.target.checked } : current
+                    )
+                  }
+                />
+                PDF automatisch anhängen
+              </label>
+            </div>
+          </div>
+          <div className={styles.modalFooter}>
+            <span />
+            <div className={styles.modalActions}>
+              <button type="button" className={styles.secondaryButton} onClick={() => setDocumentMailDraft(null)}>
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                disabled={!canSendMail || isSendingDocumentMail}
+                onClick={sendDocumentMail}
+              >
+                {isSendingDocumentMail ? "Sende..." : "E-Mail senden"}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -15502,6 +19641,653 @@ export function DashboardPage() {
           ) : null}
         </div>
       </aside>
+    );
+  }
+
+  function renderContentManagement() {
+    const editorialEntries = contentItems;
+    const contentProgressNowMs = Date.now();
+    const getContentDueLabel = (entry: ContentItem) => {
+      if (entry.status === "Richtungsfreigabe offen") return "Richtungsfreigabe";
+      if (entry.status === "Finale Freigabe offen") return "Finale Freigabe";
+      if (entry.status === "Fertig produziert") return "Fertigstellung";
+      return entry.approvalDueDate ? `Freigabe bis ${formatProjectDate(entry.approvalDueDate)}` : "";
+    };
+    const weeklyWorkflow = [
+      {
+        day: "Montag",
+        title: "Redaktionsrunde",
+        description: "Angeline, Luke und Stephanie bringen Wochenpläne ein. Pauline gibt die Richtung frei.",
+      },
+      {
+        day: "Dienstag - Donnerstag",
+        title: "Produktion",
+        description: "Inhalte werden selbstständig erstellt und nach Grün, Gelb oder Rot kategorisiert.",
+      },
+      {
+        day: "Donnerstag",
+        title: "Fertigstellungstag",
+        description: "Bis hier müssen alle produzierten Inhalte fertig sein. Erste finale Freigaben sind möglich.",
+      },
+      {
+        day: "Freitag",
+        title: "Freigabetag",
+        description: "Pauline erteilt finale Freigaben oder stößt Korrekturen an.",
+      },
+    ];
+    const approvalRules = [
+      {
+        level: "gruen",
+        label: "Grün",
+        title: "Creator entscheidet selbst",
+        examples: "Captions, Story-Ideen, kleine Reel-Konzepte, Hooks, Posting-Texte, einfache Designs nach Vorlage.",
+      },
+      {
+        level: "gelb",
+        label: "Gelb",
+        title: "Kurze Abstimmung nötig",
+        examples: "Neue Kampagnenideen, ungewohnte Gestaltung, humorvolle Inhalte, neue Formate, sensible Kunden.",
+      },
+      {
+        level: "rot",
+        label: "Rot",
+        title: "Art Direction entscheidet",
+        examples: "Corporate Design, Kampagnenlook, Markenauftritt und Kundenpräsentationen.",
+      },
+    ];
+    const visibleDays =
+      contentCalendarView === "month"
+        ? getMonthDays(contentCalendarDate)
+        : contentCalendarView === "week"
+          ? getWeekDays(contentCalendarDate)
+          : [contentCalendarDate];
+
+    const moveContentCalendar = (direction: -1 | 1) => {
+      const nextDate = new Date(contentCalendarDate);
+      if (contentCalendarView === "month") {
+        nextDate.setMonth(contentCalendarDate.getMonth() + direction, 1);
+      } else if (contentCalendarView === "week") {
+        nextDate.setDate(contentCalendarDate.getDate() + direction * 7);
+      } else {
+        nextDate.setDate(contentCalendarDate.getDate() + direction);
+      }
+      setContentCalendarDate(nextDate);
+    };
+
+    if (activeTab === "contentRound" || activeTab === "contentManagement") {
+      return (
+        <section className={styles.contentManagementShell}>
+          <div className={styles.documentTypeHeader}>
+            <div>
+              <p className={styles.eyebrow}>Content-Management</p>
+              <h1>Richtlinien</h1>
+              <p>Monatliche Planung, Richtungsfreigabe und klare Ampelregeln für Content-Entscheidungen.</p>
+            </div>
+          </div>
+
+          <div className={styles.editorialWorkflowGrid}>
+            {weeklyWorkflow.map((item) => (
+              <article key={item.day} className={styles.editorialWorkflowCard}>
+                <span>{item.day}</span>
+                <h2>{item.title}</h2>
+                <p>{item.description}</p>
+              </article>
+            ))}
+          </div>
+
+          <section className={styles.editorialApprovalRules}>
+            {approvalRules.map((rule) => (
+              <article key={rule.level} data-level={rule.level}>
+                <span>{rule.label}</span>
+                <h2>{rule.title}</h2>
+                <p>{rule.examples}</p>
+              </article>
+            ))}
+          </section>
+
+          <section className={styles.editorialRoundTable}>
+            <div>
+              <h2>Aktuelle Wochenpläne</h2>
+              <p>Die Einträge aus den Richtlinien werden danach in den Redaktionsplan übernommen.</p>
+            </div>
+            <div className={styles.contentRoundRows}>
+              {editorialEntries.filter((entry) => entry.channel === "Richtlinien" || entry.channel === "Redaktionsrunde").length === 0 ? (
+                <p className={styles.emptyState}>Noch keine Wochenpläne angelegt.</p>
+              ) : (
+                editorialEntries
+                  .filter((entry) => entry.channel === "Richtlinien" || entry.channel === "Redaktionsrunde")
+                  .map((entry) => (
+                  <article
+                    key={entry.id}
+                    className={styles.contentRoundRow}
+                    data-level={entry.approvalLevel}
+                    onClick={() => openContentModal(entry)}
+                  >
+                    <div>
+                      <strong>{entry.title}</strong>
+                      <span>{entry.ownerName || "-"} · {getContentDueLabel(entry)}</span>
+                    </div>
+                    <small>
+                      {contentApprovalLevelLabels[entry.approvalLevel]}:{" "}
+                      {contentApprovalLevelHints[entry.approvalLevel]}
+                    </small>
+                  </article>
+                  ))
+              )}
+            </div>
+          </section>
+        </section>
+      );
+    }
+
+    if (activeTab === "contentQuotas") {
+      const quotaCards = [
+        {
+          title: "Monatskontingente",
+          body: "Gebuchte Stunden, Pakete oder Content-Mengen pro Kunde bündeln.",
+          value: "0 aktiv",
+        },
+        {
+          title: "Verbrauch",
+          body: "Produzierte Inhalte, Korrekturen und Konzeptarbeit später gegen Kontingente buchen.",
+          value: "0 erfasst",
+        },
+        {
+          title: "Warnungen",
+          body: "Hinweise, sobald ein Kontingent fast ausgeschöpft oder überschritten ist.",
+          value: "0 offen",
+        },
+      ];
+
+      return (
+        <section className={styles.documentTypeOverview}>
+          <div className={styles.documentTypeHeader}>
+            <div>
+              <p className={styles.eyebrow}>Content-Management</p>
+              <h1>Kundenkontingente</h1>
+              <p>Überblick über gebuchte, verbrauchte und offene Content- oder Marketingkontingente.</p>
+            </div>
+          </div>
+          <div className={styles.contentQuotaGrid}>
+            {quotaCards.map((card) => (
+              <article key={card.title} className={styles.contentQuotaCard}>
+                <span>{card.value}</span>
+                <h2>{card.title}</h2>
+                <p>{card.body}</p>
+              </article>
+            ))}
+          </div>
+          <p className={styles.emptyState}>Noch keine Kundenkontingente angelegt.</p>
+        </section>
+      );
+    }
+
+    if (activeTab === "ideaStore") {
+      const pinnedIdeas = ideaPosts.filter((idea) => idea.pinned);
+
+      return (
+        <section className={styles.documentTypeOverview}>
+          <div className={styles.documentTypeHeader}>
+            <div>
+              <p className={styles.eyebrow}>Content-Management</p>
+              <h1>Ideen-Feed</h1>
+              <p>Ideen teilen, gemeinsam bewerten und Feedback direkt begründen.</p>
+            </div>
+          </div>
+          <div className={styles.ideaStoreShell}>
+            <section className={styles.ideaComposer}>
+              <label>
+                Titel der Idee
+                <input
+                  value={ideaTitle}
+                  placeholder="z.B. Vorher-Nachher-Serie für Kundenprojekte"
+                  onChange={(event) => setIdeaTitle(event.target.value)}
+                />
+              </label>
+              <label>
+                Beschreibung
+                <textarea
+                  rows={4}
+                  value={ideaBody}
+                  placeholder="Worum geht es, für welchen Kunden oder Kanal ist die Idee gedacht?"
+                  onChange={(event) => setIdeaBody(event.target.value)}
+                />
+              </label>
+              <div className={styles.ideaComposerFooter}>
+                {ideaStoreError ? <p>{ideaStoreError}</p> : <span />}
+                <button type="button" className={styles.primaryButton} onClick={createIdeaPost}>
+                  Idee einstellen
+                </button>
+              </div>
+            </section>
+
+            <section className={styles.ideaFeed}>
+              {ideaPosts.length === 0 ? (
+                <p className={styles.emptyState}>Noch keine Ideen eingestellt.</p>
+              ) : (
+                ideaPosts.map((idea) => (
+                  <article key={idea.id} className={styles.ideaCard}>
+                    <div className={styles.ideaCardHeader}>
+                      <div>
+                        <h2>{idea.title}</h2>
+                        <span>
+                          {idea.authorName || "Unbekannt"} · {formatDeadline(idea.createdAt)}
+                        </span>
+                        {idea.plannedContentItemId ? (
+                          <small className={styles.ideaPlannedBadge}>
+                            Geplant als Inhalt · {idea.plannedContentStatus || "Status offen"}
+                          </small>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        className={styles.ideaPinButton}
+                        data-active={idea.pinned}
+                        onClick={() => updateIdeaPost(idea.id, "pin")}
+                      >
+                        {idea.pinned ? "Angepinnt" : "Anpinnen"}
+                      </button>
+                    </div>
+                    <p>{idea.body}</p>
+                    <div className={styles.ideaPlanActions}>
+                      {idea.plannedContentItemId ? (
+                        <button type="button" onClick={() => openContentFromIdea(idea)}>
+                          Inhalt öffnen
+                        </button>
+                      ) : (
+                        <button type="button" onClick={() => planIdeaAsContent(idea)}>
+                          Als Inhalt planen
+                        </button>
+                      )}
+                    </div>
+                    <div className={styles.ideaReactionBar}>
+                      <button
+                        type="button"
+                        data-active={idea.likedByActiveUser}
+                        aria-label="Daumen hoch"
+                        onClick={() => updateIdeaPost(idea.id, "like")}
+                      >
+                        <span aria-hidden="true">??</span>
+                        <strong>{idea.likeCount}</strong>
+                      </button>
+                      <button
+                        type="button"
+                        data-active={idea.dislikedByActiveUser}
+                        aria-label="Daumen runter"
+                        title="Daumen runter wird nur mit Kommentar gespeichert."
+                        onClick={() => updateIdeaPost(idea.id, "dislike")}
+                      >
+                        <span aria-hidden="true">??</span>
+                        <strong>{idea.dislikeCount}</strong>
+                      </button>
+                      {ideaFeedbackErrors[idea.id] ? (
+                        <small data-error="true">{ideaFeedbackErrors[idea.id]}</small>
+                      ) : (
+                        <small>Daumen runter benötigt einen Kommentar.</small>
+                      )}
+                    </div>
+                    <div className={styles.ideaComments}>
+                      <strong>Kommentare</strong>
+                      {idea.comments.length === 0 ? (
+                        <span>Noch keine Kommentare.</span>
+                      ) : (
+                        idea.comments.map((comment) => (
+                          <article key={comment.id}>
+                            <b>{comment.authorName || "Unbekannt"}</b>
+                            <small>{formatDeadline(comment.createdAt)}</small>
+                            <p>{comment.body}</p>
+                          </article>
+                        ))
+                      )}
+                    </div>
+                    <div className={styles.ideaCommentForm}>
+                      <input
+                        value={ideaCommentDrafts[idea.id] ?? ""}
+                        placeholder="Kommentar schreiben..."
+                        onChange={(event) =>
+                          setIdeaCommentDrafts((current) => ({
+                            ...current,
+                            [idea.id]: event.target.value,
+                          }))
+                        }
+                      />
+                      <button type="button" onClick={() => updateIdeaPost(idea.id, "comment")}>
+                        Kommentieren
+                      </button>
+                    </div>
+                  </article>
+                ))
+              )}
+            </section>
+
+            <aside className={styles.ideaPinnedPanel}>
+              <h2>Angepinnt</h2>
+              {pinnedIdeas.length === 0 ? (
+                <p>Noch keine Beiträge angepinnt.</p>
+              ) : (
+                pinnedIdeas.map((idea) => (
+                  <button
+                    key={idea.id}
+                    type="button"
+                    onClick={() =>
+                      idea.plannedContentItemId ? void openContentFromIdea(idea) : planIdeaAsContent(idea)
+                    }
+                  >
+                    <strong>{idea.title}</strong>
+                    <span>
+                      {idea.plannedContentItemId
+                        ? `Geplant · ${idea.plannedContentStatus || "Status offen"}`
+                        : idea.authorName || "Unbekannt"}
+                    </span>
+                  </button>
+                ))
+              )}
+            </aside>
+          </div>
+        </section>
+      );
+    }
+
+    if (activeTab === "contentCorrections") {
+      const correctionEntries = editorialEntries.filter((entry) => entry.status === "Korrektur nötig");
+      const canResubmitContent = (entry: ContentItem) =>
+        mayApproveContent || !entry.ownerUserId || entry.ownerUserId === activeUserId;
+      const getCorrectionNote = (entry: ContentItem) =>
+        entry.correctionNote ||
+        entry.history.find((historyEntry) => historyEntry.eventType === "Korrektur angefordert")?.note ||
+        "Noch kein Korrekturhinweis hinterlegt.";
+
+      return (
+        <section className={styles.documentTypeOverview}>
+          <div className={styles.documentTypeHeader}>
+            <div>
+              <p className={styles.eyebrow}>Content-Management</p>
+              <h1>Korrekturen</h1>
+              <p>Zurückgespielte Inhalte bearbeiten und nach Anpassung erneut in die finale Freigabe geben.</p>
+            </div>
+          </div>
+          <div className={styles.contentCorrectionsList}>
+            {correctionEntries.length === 0 ? (
+              <p className={styles.emptyState}>Aktuell sind keine Korrekturen offen.</p>
+            ) : (
+              correctionEntries.map((entry) => (
+                <article key={entry.id} className={styles.contentCorrectionCard} data-level={entry.approvalLevel}>
+                  <div>
+                    <strong>{entry.title}</strong>
+                    <span>{entry.channel} · {entry.format} · {entry.ownerName || "-"}</span>
+                  </div>
+                  <p>{getCorrectionNote(entry)}</p>
+                  <small>
+                    {contentApprovalLevelLabels[entry.approvalLevel]}:{" "}
+                    {contentApprovalLevelHints[entry.approvalLevel]} · Veröffentlichung{" "}
+                    {formatProjectDate(entry.plannedDate)}
+                  </small>
+                  <div className={styles.contentApprovalActions}>
+                    <button type="button" onClick={() => openContentModal(entry)}>
+                      Öffnen
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!canResubmitContent(entry)}
+                      onClick={() => updateContentStatus(entry, "resubmit")}
+                    >
+                      Erneut einreichen
+                    </button>
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
+        </section>
+      );
+    }
+
+    if (activeTab === "contentApprovals") {
+      const approvalColumns = [
+        {
+          title: "Richtungsfreigabe offen",
+          entries: editorialEntries.filter((entry) => entry.status === "Richtungsfreigabe offen"),
+        },
+        {
+          title: "Finale Freigabe offen",
+          entries: editorialEntries.filter((entry) => entry.status === "Finale Freigabe offen"),
+        },
+        {
+          title: "Fertig / Freigegeben",
+          entries: editorialEntries.filter((entry) =>
+            ["Fertig produziert", "Freigegeben"].includes(entry.status)
+          ),
+        },
+      ];
+
+      return (
+        <section className={styles.documentTypeOverview}>
+          <div className={styles.documentTypeHeader}>
+            <div>
+              <p className={styles.eyebrow}>Content-Management</p>
+              <h1>Freigaben</h1>
+              <p>Gelbe und rote Inhalte prüfen, Richtung freigeben und finale Freigaben steuern.</p>
+            </div>
+          </div>
+          <div className={styles.contentApprovalBoard}>
+            {approvalColumns.map((column) => (
+              <article key={column.title} className={styles.contentApprovalColumn}>
+                <h2>{column.title}</h2>
+                {column.entries.length === 0 ? (
+                  <p className={styles.emptyState}>Keine Inhalte</p>
+                ) : (
+                  column.entries.map((entry) => (
+                    <div key={entry.id} className={styles.contentApprovalCard} data-level={entry.approvalLevel}>
+                      <div>
+                        <strong>{entry.title}</strong>
+                        <span>{entry.channel} · {entry.ownerName || "-"}</span>
+                      </div>
+                      <small>
+                        {contentApprovalLevelLabels[entry.approvalLevel]}:{" "}
+                        {contentApprovalLevelHints[entry.approvalLevel]}
+                      </small>
+                      <small>{formatProjectDate(entry.plannedDate)} · {getContentDueLabel(entry)}</small>
+                      <div className={styles.contentApprovalActions}>
+                        {entry.status === "Richtungsfreigabe offen" ? (
+                          <button
+                            type="button"
+                            disabled={!mayApproveContent}
+                            onClick={() => updateContentStatus(entry, "direction-approve")}
+                          >
+                            Richtung freigeben
+                          </button>
+                        ) : null}
+                        {entry.status === "Fertig produziert" || entry.status === "Finale Freigabe offen" ? (
+                          <button
+                            type="button"
+                            disabled={!mayApproveContent}
+                            onClick={() => updateContentStatus(entry, "final-approve")}
+                          >
+                            Final freigeben
+                          </button>
+                        ) : null}
+                        {entry.status === "Freigegeben" ? (
+                          <button
+                            type="button"
+                            onClick={() => updateContentStatus(entry, "publish")}
+                          >
+                            Veröffentlicht
+                          </button>
+                        ) : null}
+                        <button type="button" onClick={() => openContentModal(entry)}>
+                          Öffnen
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
+    return (
+      <section className={styles.documentTypeOverview}>
+        <div className={styles.documentTypeHeader}>
+          <div>
+            <p className={styles.eyebrow}>Content-Management</p>
+            <h1>Redaktionsplan</h1>
+            <p>Kalender für Wochenplanung, Produktion, Fertigstellung und Freigaben.</p>
+          </div>
+          <button type="button" className={styles.primaryButton} onClick={() => openContentModal()}>
+            + Inhalt
+          </button>
+        </div>
+
+        <section className={styles.contentCalendarToolbar}>
+          <button type="button" className={styles.secondaryButton} onClick={() => moveContentCalendar(-1)}>
+            Zurück
+          </button>
+          <div className={styles.calendarTitleGroup}>
+            <div className={styles.viewSwitch}>
+              {(["month", "week", "day"] as CalendarView[]).map((view) => (
+                <button
+                  key={view}
+                  type="button"
+                  className={contentCalendarView === view ? styles.activeViewButton : ""}
+                  onClick={() => setContentCalendarView(view)}
+                >
+                  {view === "month" ? "Monat" : view === "week" ? "Woche" : "Tag"}
+                </button>
+              ))}
+            </div>
+            <h2>
+              {contentCalendarView === "month"
+                ? formatCalendarTitle(contentCalendarDate)
+                : contentCalendarView === "week"
+                  ? formatWeekTitle(contentCalendarDate)
+                  : formatDayTitle(contentCalendarDate)}
+            </h2>
+          </div>
+          <button type="button" className={styles.secondaryButton} onClick={() => moveContentCalendar(1)}>
+            Weiter
+          </button>
+        </section>
+
+        <section className={styles.contentStatusLegend} aria-label="Legende der Statussymbole">
+          {contentStatusLegend.map((item) => (
+            <span key={item.label}>
+              <em data-status={item.tone}>{item.icon}</em>
+              {item.label}
+            </span>
+          ))}
+        </section>
+
+        <section
+          className={
+            contentCalendarView === "month"
+              ? styles.contentMonthGrid
+              : contentCalendarView === "week"
+                ? styles.contentWeekGrid
+                : styles.contentDayGrid
+          }
+        >
+          {contentCalendarView === "month" &&
+            ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((weekday) => (
+              <div key={weekday} className={styles.contentCalendarWeekday}>
+                {weekday}
+              </div>
+            ))}
+          {visibleDays.map((day, index) => {
+            const dateKey = day ? formatDateKey(day) : `empty-${index}`;
+            const entries = day ? editorialEntries.filter((entry) => entry.plannedDate === dateKey) : [];
+            const isToday = day && dateKey === formatDateKey(new Date());
+            const weekday = day ? day.getDay() : -1;
+            const phaseLabel =
+              weekday === 1
+                ? "Redaktionsrunde"
+                : weekday >= 2 && weekday <= 4
+                  ? weekday === 4
+                    ? "Fertigstellung"
+                    : "Produktion"
+                  : weekday === 5
+                    ? "Freigabe"
+                    : "";
+
+            return (
+              <article
+                key={dateKey}
+                className={`${styles.contentCalendarDay} ${!day ? styles.emptyDay : ""} ${
+                  isToday ? styles.today : ""
+                }`}
+              >
+                {day ? (
+                  <>
+                    <div className={styles.contentCalendarDayHeader}>
+                      <div className={styles.contentCalendarDayTitle}>
+                        <strong>
+                          {contentCalendarView === "month" ? day.getDate() : formatShortDate(day)}
+                        </strong>
+                        {phaseLabel ? <small className={styles.contentPhaseLabel}>{phaseLabel}</small> : null}
+                      </div>
+                      <span>{entries.length}</span>
+                    </div>
+                    <div className={styles.contentCalendarEntries}>
+                      {entries.length === 0 ? (
+                        <p>Keine Inhalte</p>
+                      ) : (
+                        entries.map((entry) => {
+                          const progress = getContentRuntimeProgress(entry, contentProgressNowMs);
+                          const progressLabel = getContentRuntimeProgressLabel(progress, entry, contentProgressNowMs);
+                          const progressWidth = getContentRuntimeProgressWidth(progress, entry, contentProgressNowMs);
+                          const isDone = isContentDone(entry);
+                          const progressTone = isDone ? "done" : progress >= 100 ? "critical" : "active";
+                          const statusBadge = getContentStatusBadge(entry);
+
+                          return (
+                            <button
+                              key={entry.id}
+                              type="button"
+                              className={styles.contentCalendarEntry}
+                              data-level={entry.approvalLevel}
+                              data-progress={progressTone}
+                              style={{ "--content-progress": `${progressWidth}%` } as CSSProperties}
+                              onClick={() => openContentModal(entry)}
+                            >
+                              <span className={styles.contentCalendarEntryHeader}>
+                                <strong>{entry.title}</strong>
+                                {statusBadge ? (
+                                  <em
+                                    aria-label={statusBadge.label}
+                                    title={statusBadge.label}
+                                    data-status={statusBadge.tone}
+                                  >
+                                    {statusBadge.icon}
+                                  </em>
+                                ) : null}
+                              </span>
+                              <span>
+                                {entry.channel} · {entry.ownerName || "-"}
+                              </span>
+                              <small>
+                                {contentApprovalLevelLabels[entry.approvalLevel]} ·{" "}
+                                {getReadableContentStatus(entry.status)}
+                              </small>
+                              <span className={styles.contentCalendarProgress} aria-hidden="true">
+                                <i />
+                              </span>
+                              <small className={styles.contentCalendarProgressLabel}>
+                                Zeit bis Veröffentlichung: {progressLabel}%
+                              </small>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </>
+                ) : null}
+              </article>
+            );
+          })}
+        </section>
+      </section>
     );
   }
 
@@ -16365,10 +21151,8 @@ export function DashboardPage() {
               const isOpen = openSidebarMenus[tab] ?? false;
               const children: Array<{ id: AppTab; label: string }> = [
                 { id: "employees", label: "Mitarbeiter" },
-                { id: "absenceRequests", label: "Abwesenheitsanträge" },
+                { id: "absenceRequests", label: "Team-Kalender" },
                 { id: "timeTracking", label: "Zeiterfassung" },
-                { id: "timeCategories", label: "Zeitkategorien" },
-                { id: "breakManagement", label: "Pausenverwaltung" },
               ];
               const isActiveGroup =
                 activeTab === tab || children.some((item) => item.id === activeTab);
@@ -16464,6 +21248,112 @@ export function DashboardPage() {
                               projectsSolutions: tab === "projectsSolutions",
                               projectsImmocare: tab === "projectsImmocare",
                             });
+                          }}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            if (tab === "contentManagement") {
+              const isOpen = openSidebarMenus[tab] ?? false;
+              const children: Array<{ id: AppTab; label: string }> = [
+                { id: "contentRound", label: "Richtlinien" },
+                { id: "editorialPlan", label: "Redaktionsplan" },
+                { id: "contentApprovals", label: "Freigaben" },
+                { id: "contentCorrections", label: "Korrekturen" },
+                { id: "contentQuotas", label: "Kundenkontingente" },
+                { id: "ideaStore", label: "Ideen-Feed" },
+              ];
+              const isActiveGroup =
+                activeTab === tab || children.some((item) => item.id === activeTab);
+
+              return (
+                <div key={tab} className={styles.sidebarGroup}>
+                  <button
+                    className={`${styles.tab} ${isActiveGroup ? styles.activeTab : ""}`}
+                    onClick={() => {
+                      openMainView("contentRound");
+                      setIsFirmSettingsNavOpen(false);
+                      setOpenProjectNav({ projectsSolutions: false, projectsImmocare: false });
+                      setOpenSidebarMenus({ [tab]: !isOpen });
+                    }}
+                  >
+                    <span className={styles.navLabel}>
+                      <SidebarIcon tab={tab} />
+                      {label}
+                    </span>
+                    <b>{isOpen ? "^" : "v"}</b>
+                  </button>
+                  {isOpen && (
+                    <div className={styles.sidebarSubTabs}>
+                      {children.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          data-active={activeTab === item.id}
+                          onClick={() => {
+                            openMainView(item.id);
+                            setIsFirmSettingsNavOpen(false);
+                            setOpenProjectNav({ projectsSolutions: false, projectsImmocare: false });
+                            setOpenSidebarMenus({ [tab]: true });
+                          }}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            if (tab === "accounting") {
+              const isOpen = openSidebarMenus[tab] ?? false;
+              const children: Array<{ id: AppTab; label: string }> = [
+                { id: "documents", label: "Dokumente" },
+                { id: "documentOverview", label: "Dokumentenübersicht" },
+                { id: "documentTexts", label: "Texte & Titel" },
+                { id: "documentTemplates", label: "Vorlagen" },
+                { id: "documentConfigurator", label: "Konfigurator" },
+                { id: "documentGaeb", label: "Ausschreibungen (GAEB)" },
+              ];
+              const isActiveGroup =
+                activeTab === tab || children.some((item) => item.id === activeTab);
+
+              return (
+                <div key={tab} className={styles.sidebarGroup}>
+                  <button
+                    className={`${styles.tab} ${isActiveGroup ? styles.activeTab : ""}`}
+                    onClick={() => {
+                      openMainView(tab);
+                      setIsFirmSettingsNavOpen(false);
+                      setOpenProjectNav({ projectsSolutions: false, projectsImmocare: false });
+                      setOpenSidebarMenus({ [tab]: !isOpen });
+                    }}
+                  >
+                    <span className={styles.navLabel}>
+                      <SidebarIcon tab={tab} />
+                      {label}
+                    </span>
+                    <b>{isOpen ? "^" : "v"}</b>
+                  </button>
+                  {isOpen && (
+                    <div className={styles.sidebarSubTabs}>
+                      {children.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          data-active={activeTab === item.id}
+                          onClick={() => {
+                            openMainView(item.id);
+                            setIsFirmSettingsNavOpen(false);
+                            setOpenProjectNav({ projectsSolutions: false, projectsImmocare: false });
+                            setOpenSidebarMenus({ [tab]: true });
                           }}
                         >
                           {item.label}
@@ -17428,8 +22318,18 @@ export function DashboardPage() {
               </section>
             </section>
             )
+          ) : activeTab === "absenceRequests" ? (
+            renderTeamCalendar()
           ) : activeTab === "planningBoard" ? (
             renderPlanningBoard()
+          ) : activeTab === "contentManagement" ||
+            activeTab === "contentRound" ||
+            activeTab === "editorialPlan" ||
+            activeTab === "contentApprovals" ||
+            activeTab === "contentCorrections" ||
+            activeTab === "contentQuotas" ||
+            activeTab === "ideaStore" ? (
+            renderContentManagement()
           ) : activeTab === "documentConfigurator" ? (
             renderDocumentConfigurator()
           ) : activeTab === "documentTexts" ? (
@@ -17598,7 +22498,7 @@ export function DashboardPage() {
                     disabled={activeContactPage <= 1}
                     onClick={() => setContactPage((page) => Math.max(1, page - 1))}
                   >
-                    ←
+                    ?
                   </button>
                   <input
                     aria-label="Kontaktseite"
@@ -17619,7 +22519,7 @@ export function DashboardPage() {
                     disabled={activeContactPage >= contactPageCount}
                     onClick={() => setContactPage((page) => Math.min(contactPageCount, page + 1))}
                   >
-                    →
+                    ?
                   </button>
                   <span>von {contactPageCount}</span>
                   <span>Zeige</span>
@@ -17719,7 +22619,7 @@ export function DashboardPage() {
                     disabled={activeContactPage <= 1}
                     onClick={() => setContactPage((page) => Math.max(1, page - 1))}
                   >
-                    ←
+                    ?
                   </button>
                   <input
                     aria-label="Kontaktseite unten"
@@ -17740,7 +22640,7 @@ export function DashboardPage() {
                     disabled={activeContactPage >= contactPageCount}
                     onClick={() => setContactPage((page) => Math.min(contactPageCount, page + 1))}
                   >
-                    →
+                    ?
                   </button>
                   <span>von {contactPageCount}</span>
                   <span>Zeige</span>
@@ -17759,12 +22659,14 @@ export function DashboardPage() {
                 </div>
               </section>
             </section>
+          ) : activeTab === "timeTracking" ? (
+            renderTimeTrackingOverview()
           ) : activeTab === "employees" ||
-            activeTab === "absenceRequests" ||
-            activeTab === "timeTracking" ||
             activeTab === "timeCategories" ||
             activeTab === "breakManagement" ? (
             renderEmployeeManagement()
+          ) : activeTab === "personalData" ? (
+            renderPersonalData()
           ) : plannedModuleLabels[activeTab] ? (
             <section className={styles.plannedModule}>
               <div>
@@ -18245,10 +23147,11 @@ export function DashboardPage() {
                       >
                         <div className={styles.calendarDayHeader}>
                           <strong>
-                            {new Intl.DateTimeFormat("de-DE", {
+                            {new Intl.DateTimeFormat(APP_LOCALE, {
                               weekday: "short",
                               day: "2-digit",
                               month: "2-digit",
+                              timeZone: APP_TIME_ZONE,
                             }).format(day)}
                           </strong>
                           <span>{dayTasks.length}</span>
@@ -18522,7 +23425,7 @@ export function DashboardPage() {
                     <p className={styles.eyebrow}>Leistung</p>
                     <h2>Leistungsgrad</h2>
                   </div>
-                  <p>Vorgabezeit geteilt durch erfasste Zeit. Sber 100% bedeutet schneller als Vorgabe.</p>
+                  <p>Vorgabezeit geteilt durch erfasste Zeit. Über 100% bedeutet schneller als Vorgabe.</p>
                 </div>
 
                 <div className={styles.performanceGaugeGrid}>
@@ -18768,7 +23671,7 @@ export function DashboardPage() {
                   }}
                 >
                   <span>
-                    Sberfällig
+                    Überfällig
                     {ueberfaellig > 0 && <span className={styles.pulseAlert}>!</span>}
                   </span>
                   <strong>{ueberfaellig}</strong>
@@ -18792,7 +23695,7 @@ export function DashboardPage() {
                   <input
                     value={searchTerm}
                     onChange={(event) => setSearchTerm(event.target.value)}
-                    placeholder="Aufgabennummer, Aufgabe, Kunde, Zuständigkeit"
+                    placeholder="Aufgabennummer, Aufgabe, Zuständigkeit"
                   />
                 </label>
 
@@ -18819,21 +23722,6 @@ export function DashboardPage() {
                   >
                     <option value="">Alle</option>
                     {priorityOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label>
-                  Kunde
-                  <select
-                    value={customerFilter}
-                    onChange={(event) => setCustomerFilter(event.target.value)}
-                  >
-                    <option value="">Alle</option>
-                    {customerOptions.map((option) => (
                       <option key={option} value={option}>
                         {option}
                       </option>
@@ -18874,7 +23762,6 @@ export function DashboardPage() {
                     setStatusFilter("");
                     setDeadlineFilter("");
                     setPriorityFilter("");
-                    setCustomerFilter("");
                     setOwnerFilter(activeUserId);
                     setTaskNumberSort("desc");
                   }}
@@ -18892,11 +23779,8 @@ export function DashboardPage() {
                       <th>Aufgabe</th>
                       <th>Status</th>
                       <th>Priorität</th>
-                      <th>Kunde</th>
                       <th>Zuständig</th>
                       <th>Deadline</th>
-                      <th>Vorgabe</th>
-                      <th>Restzeit</th>
                       <th>Aktion</th>
                     </tr>
                   </thead>
@@ -18911,17 +23795,6 @@ export function DashboardPage() {
                       >
                         <td>
                           <div className={styles.timerCell}>
-                            <div
-                              className={styles.timerUsageBar}
-                              data-state={getTaskTimerUsageState(task)}
-                              title={
-                                task.vorgabeMinuten
-                                  ? `${getTaskTimerUsagePercent(task)}% der Vorgabezeit erfasst`
-                                  : "Keine Vorgabezeit hinterlegt"
-                              }
-                            >
-                              <span style={{ width: `${getTaskTimerUsagePercent(task)}%` }} />
-                            </div>
                             <div className={styles.timerControl}>
                               <button
                                 type="button"
@@ -18993,12 +23866,6 @@ export function DashboardPage() {
                           </span>
                         </td>
                         <td>
-                          {task.kunde || "-"}
-                          {task.kundenklasse && (
-                            <span className={styles.metaLine}>Klasse {task.kundenklasse}</span>
-                          )}
-                        </td>
-                        <td>
                           {task.zustaendig}
                           <span className={styles.metaLine}>{task.rolle}</span>
                         </td>
@@ -19022,21 +23889,6 @@ export function DashboardPage() {
                               {formatArchiveCountdown(task)}
                             </span>
                           )}
-                        </td>
-                        <td>{formatMinutes(task.vorgabeMinuten)}</td>
-                        <td>
-                          <span
-                            className={styles.remainingTime}
-                            data-state={
-                              getRemainingMinutes(task) === null
-                                ? "empty"
-                                : getRemainingMinutes(task)! < 0
-                                  ? "over"
-                                  : "ok"
-                            }
-                          >
-                            {formatRemainingTime(task)}
-                          </span>
                         </td>
                         <td>
                           {task.acceptanceStatus === "pending" &&
@@ -19364,6 +24216,9 @@ export function DashboardPage() {
             </div>
 
             <div className={styles.modalFooter}>
+              {planningEntryError ? (
+                <p className={styles.modalWarning}>{planningEntryError}</p>
+              ) : null}
               <div className={styles.modalActions}>
                 {editingPlanningEntryId && (
                   <button
@@ -19419,7 +24274,7 @@ export function DashboardPage() {
                 onClick={() => setIsCompanyProfileModalOpen(false)}
                 aria-label="Firmendaten schließen"
               >
-                
+
               </button>
             </div>
 
@@ -19617,7 +24472,7 @@ export function DashboardPage() {
                 onClick={() => setIsTradeManagementModalOpen(false)}
                 aria-label="Gewerke schließen"
               >
-                
+
               </button>
             </div>
 
@@ -19674,7 +24529,7 @@ export function DashboardPage() {
                         onClick={() => deleteCompanyProfileTrade(trade.id)}
                         aria-label={`${trade.name} entfernen`}
                       >
-                        
+
                       </button>
                       {trade.name}
                       <strong>{trade.projectPrefix || getProjectTradePrefix(trade.name)}</strong>
@@ -19721,7 +24576,7 @@ export function DashboardPage() {
                 onClick={() => setIsLogbookModalOpen(false)}
                 aria-label="Nachricht schliessen"
               >
-                
+
               </button>
             </div>
 
@@ -19775,7 +24630,7 @@ export function DashboardPage() {
                           )
                         }
                       >
-                        
+
                       </button>
                     </span>
                   ))}
@@ -19870,7 +24725,7 @@ export function DashboardPage() {
                 onClick={() => setIsContactBulkModalOpen(false)}
                 aria-label="Gruppenaktion schließen"
               >
-                
+
               </button>
             </div>
 
@@ -19946,7 +24801,7 @@ export function DashboardPage() {
                 onClick={() => setIsContactModalOpen(false)}
                 aria-label="Kontaktmaske schließen"
               >
-                
+
               </button>
             </div>
 
@@ -20361,7 +25216,11 @@ export function DashboardPage() {
             <div className={styles.formGrid}>
               <label>
                 Benutzer
-                <select value={absenceUserId} onChange={(event) => setAbsenceUserId(event.target.value)}>
+                <select
+                  value={absenceUserId}
+                  disabled={isRepresentativeAbsenceView}
+                  onChange={(event) => setAbsenceUserId(event.target.value)}
+                >
                   {users.map((user) => (
                     <option key={user.id} value={user.id}>
                       {user.name}
@@ -20374,6 +25233,7 @@ export function DashboardPage() {
                 Abwesenheitsart
                 <select
                   value={absenceType}
+                  disabled={isRepresentativeAbsenceView}
                   onChange={(event) => setAbsenceType(event.target.value as AbsenceItem["type"])}
                 >
                   <option value="urlaub">Urlaub</option>
@@ -20382,10 +25242,24 @@ export function DashboardPage() {
               </label>
 
               <label>
+                Umfang
+                <select
+                  value={absenceDayPart}
+                  disabled={isRepresentativeAbsenceView}
+                  onChange={(event) => setAbsenceDayPart(event.target.value as AbsenceItem["dayPart"])}
+                >
+                  <option value="full">Ganzer Tag</option>
+                  <option value="first-half">Erste Tageshälfte</option>
+                  <option value="second-half">Zweite Tageshälfte</option>
+                </select>
+              </label>
+
+              <label>
                 Datum von
                 <input
                   type="date"
                   value={absenceDateFrom}
+                  disabled={isRepresentativeAbsenceView}
                   onChange={(event) => {
                     setAbsenceDateFrom(event.target.value);
                     setAbsenceDateTo((current) => current < event.target.value ? event.target.value : current);
@@ -20399,6 +25273,7 @@ export function DashboardPage() {
                   type="date"
                   value={absenceDateTo}
                   min={absenceDateFrom}
+                  disabled={isRepresentativeAbsenceView}
                   onChange={(event) => setAbsenceDateTo(event.target.value)}
                 />
               </label>
@@ -20407,6 +25282,7 @@ export function DashboardPage() {
                 Vertreter
                 <select
                   value={absenceRepresentativeUserId}
+                  disabled={isRepresentativeAbsenceView}
                   onChange={(event) => setAbsenceRepresentativeUserId(event.target.value)}
                 >
                   <option value="">Kein Vertreter ausgewählt</option>
@@ -20424,6 +25300,7 @@ export function DashboardPage() {
                 Notiz
                 <input
                   value={absenceNote}
+                  disabled={isRepresentativeAbsenceView}
                   onChange={(event) => setAbsenceNote(event.target.value)}
                   placeholder="Optional"
                 />
@@ -20434,40 +25311,118 @@ export function DashboardPage() {
               <section className={styles.handoverChecklist}>
                 <div>
                   <p className={styles.eyebrow}>Urlaubsübergabe</p>
-                  <h3>Checkliste vor dem Abschicken</h3>
-                  <p>
-                    Der Urlaub kann erst gespeichert werden, wenn alle Punkte erledigt und die
-                    Sbergabe bestätigt wurde.
-                  </p>
+                  <h3>Aufgabenübergabe</h3>
+                  <p>Falls Aufgaben offen sind, lege sie hier als echte Aufgaben für den Vertreter an.</p>
                 </div>
 
                 <div className={styles.checklistItems}>
-                  {vacationHandoverItems.map((item, index) => (
-                    <label key={item} className={styles.checkboxLine}>
-                      <input
-                        type="checkbox"
-                        checked={absenceChecklist[index]}
-                        onChange={(event) =>
-                          setAbsenceChecklist((current) =>
-                            current.map((checked, currentIndex) =>
-                              currentIndex === index ? event.target.checked : checked
-                            )
-                          )
-                        }
-                      />
-                      {item}
-                    </label>
-                  ))}
+                  <label className={styles.checkboxLine}>
+                    <input
+                      type="checkbox"
+                      checked={absenceHandoverMode === "none"}
+                      disabled={isRepresentativeAbsenceView}
+                      onChange={() => {
+                        setAbsenceHandoverMode("none");
+                        setAbsenceHandoverTaskIds([]);
+                        setAcceptedHandoverTaskIds([]);
+                        setPendingHandoverTaskIds([]);
+                      }}
+                    />
+                    Keine offenen Aufgaben zu übergeben
+                  </label>
+                  <label className={styles.checkboxLine}>
+                    <input
+                      type="checkbox"
+                      checked={absenceHandoverMode === "open"}
+                      disabled={isRepresentativeAbsenceView}
+                      onChange={() => setAbsenceHandoverMode("open")}
+                    />
+                    Offene Aufgaben zu übergeben
+                  </label>
                 </div>
 
-                <label className={styles.checkboxLine}>
-                  <input
-                    type="checkbox"
-                    checked={absenceHandoverConfirmed}
-                    onChange={(event) => setAbsenceHandoverConfirmed(event.target.checked)}
-                  />
-                  Ich bestätige, dass die Urlaubsübergabe vollständig erledigt ist.
-                </label>
+                {absenceHandoverMode === "open" ? (
+                  <div className={styles.absenceTaskList}>
+                    {absenceHandoverTaskIds.length === 0 ? (
+                      <p>Noch keine Übergabe-Aufgabe angelegt.</p>
+                    ) : (
+                      absenceHandoverTaskIds.map((taskId) => {
+                        const task = tasks.find((item) => item.id === taskId);
+                        if (!task) return null;
+                        const isTaskAccepted =
+                          task.acceptanceStatus === "accepted" || acceptedHandoverTaskIds.includes(task.id);
+                        const isTaskPendingAcceptance = pendingHandoverTaskIds.includes(task.id);
+                        return (
+                          <article
+                            key={taskId}
+                            data-accepted={isTaskAccepted}
+                            role="button"
+                            tabIndex={0}
+                            title="Aufgabe öffnen"
+                            onClick={() => openEditModal(task)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                openEditModal(task);
+                              }
+                            }}
+                          >
+                            <div>
+                              <strong>{task.titel}</strong>
+                              <span>
+                                {task.zustaendig} ·{" "}
+                                {isTaskAccepted
+                                  ? "Angenommen"
+                                  : task.acceptanceStatus === "rejected"
+                                    ? `Abgelehnt${task.rejectionReason ? `: ${task.rejectionReason}` : ""}`
+                                    : isTaskPendingAcceptance
+                                      ? "Wird angenommen..."
+                                      : "Offen"}
+                              </span>
+                            </div>
+                            {absenceRepresentativeUserId === activeUserId &&
+                            !isTaskAccepted &&
+                            task.acceptanceStatus === "pending" ? (
+                              <div className={styles.absenceTaskActions}>
+                                <button
+                                  type="button"
+                                  className={styles.primaryButton}
+                                  disabled={isTaskPendingAcceptance}
+                                  onClick={(event) => void acceptAbsenceHandoverTask(event, task)}
+                                >
+                                  {isTaskPendingAcceptance ? "Speichert..." : "Annehmen"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className={styles.deleteButton}
+                                  onClick={(event) => void respondToTask(event, task, "rejected")}
+                                >
+                                  Ablehnen
+                                </button>
+                              </div>
+                            ) : isTaskAccepted ? (
+                              <small className={styles.absenceAcceptedBadge}>
+                                <span>?</span> Angenommen / akzeptiert
+                              </small>
+                            ) : task.acceptanceStatus === "rejected" ? (
+                              <small>Abgelehnt</small>
+                            ) : null}
+                          </article>
+                        );
+                      })
+                    )}
+                    {!editingAbsenceId && !isRepresentativeAbsenceView ? (
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        disabled={!absenceRepresentativeUserId}
+                        onClick={openAbsenceHandoverTaskModal}
+                      >
+                        + Aufgabe
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
               </section>
             )}
 
@@ -20478,25 +25433,51 @@ export function DashboardPage() {
                 {absenceWarning ||
                   (!absenceRepresentativeUserId
                     ? "Bitte einen Vertreter auswählen. Eine Abwesenheit kann nur mit Vertreter gespeichert werden."
-                    : "Bitte die Urlaubsübergabe vollständig ausfüllen und bestätigen.")}
+                    : "Bitte entweder bestätigen, dass keine Aufgaben offen sind, oder mindestens eine Übergabe-Aufgabe anlegen.")}
               </p>
             )}
 
             <div className={styles.modalActions}>
-              <button
-                className={styles.primaryButton}
-                onClick={saveAbsence}
-                disabled={!absenceRepresentativeUserId || !isVacationHandoverComplete}
-              >
-                {editingAbsenceId ? "Änderungen speichern" : "Speichern"}
-              </button>
-              {editingAbsenceId && (
-                <button
-                  className={styles.deleteButton}
-                  onClick={() => deleteAbsence(editingAbsenceId)}
-                >
-                  Löschen
-                </button>
+              {isRepresentativeAbsenceView && representativeReviewAbsence ? (
+                <>
+                  {isRepresentativeAbsenceReview ? (
+                    <>
+                      <button
+                        className={styles.primaryButton}
+                        onClick={() => void updateAbsenceRequest(representativeReviewAbsence, "accept-representation")}
+                        disabled={!canRepresentativeReleaseAbsence}
+                      >
+                        Freigeben
+                      </button>
+                      <button
+                        className={styles.deleteButton}
+                        onClick={() => void updateAbsenceRequest(representativeReviewAbsence, "reject")}
+                      >
+                        Ablehnen
+                      </button>
+                    </>
+                  ) : (
+                    <span className={styles.metaLine}>Vertretung wurde freigegeben.</span>
+                  )}
+                </>
+              ) : (
+                <>
+                  <button
+                    className={styles.primaryButton}
+                    onClick={saveAbsence}
+                    disabled={!absenceRepresentativeUserId || !isVacationHandoverComplete}
+                  >
+                    {editingAbsenceId ? "Änderungen speichern" : "Speichern"}
+                  </button>
+                  {editingAbsenceId && (
+                    <button
+                      className={styles.deleteButton}
+                      onClick={() => deleteAbsence(editingAbsenceId)}
+                    >
+                      Löschen
+                    </button>
+                  )}
+                </>
               )}
               <button className={styles.secondaryButton} onClick={() => setIsAbsenceModalOpen(false)}>
                 Abbrechen
@@ -20617,6 +25598,379 @@ export function DashboardPage() {
         </div>
       )}
 
+      {isContentModalOpen && (
+        <div className={styles.overlay} onClick={() => setIsContentModalOpen(false)}>
+          <div
+            className={`${styles.modal} ${styles.contentItemModal}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={styles.contactModalHeader}>
+              <h2>{editingContentItemId ? "Inhalt bearbeiten" : "Inhalt anlegen"}</h2>
+              <button
+                type="button"
+                className={styles.modalCloseButton}
+            onClick={() => setIsContentModalOpen(false)}
+            aria-label="Content-Maske schließen"
+          />
+        </div>
+
+            {editingContentItem && isContentLockedAfterApproval(editingContentItem) ? (
+              <p className={styles.modalWarning}>
+                {isContentPostApprovalEditing
+                  ? "Nachträgliche Bearbeitung ist aktiv. Relevante Änderungen setzen den Inhalt zurück in die finale Freigabe."
+                  : "Dieser Inhalt ist freigegeben und gegen nachträgliche Änderungen gesperrt."}
+              </p>
+            ) : null}
+
+            {contentDraft.sourceIdeaId ? (
+              <section className={styles.contentSourceIdeaBox}>
+                <div>
+                  <strong>Entstanden aus Idee</strong>
+                  <span>{contentDraft.sourceIdeaTitle || "Idee aus dem Ideen-Feed"}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsContentModalOpen(false);
+                    setActiveTab("ideaStore");
+                    setOpenSidebarMenus({ contentManagement: true });
+                  }}
+                >
+                  Ideen-Feed öffnen
+                </button>
+              </section>
+            ) : null}
+
+            <div className={styles.formGrid}>
+              <label className={styles.fullWidth}>
+                Titel
+                <input
+                  value={contentDraft.title}
+                  disabled={isContentLockedAfterApproval(editingContentItem) && !isContentPostApprovalEditing}
+                  onChange={(event) => updateContentDraft("title", event.target.value)}
+                  placeholder="z.B. Vorher/Nachher-Projekt"
+                />
+              </label>
+              <label>
+                Kanal
+                <select
+                  value={contentDraft.channel}
+                  disabled={isContentLockedAfterApproval(editingContentItem) && !isContentPostApprovalEditing}
+                  onChange={(event) => updateContentDraft("channel", event.target.value)}
+                >
+                  {[
+                    "Richtlinien",
+                    "Marketing",
+                    "Branding",
+                    "Print",
+                    "Website",
+                    "Instagram",
+                    "LinkedIn",
+                    "Newsletter",
+                    "Anzeige",
+                    "Kundenkommunikation",
+                  ].map((channel) => (
+                    <option key={channel} value={channel}>
+                      {channel}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Format
+                <select
+                  value={contentDraft.format}
+                  disabled={isContentLockedAfterApproval(editingContentItem) && !isContentPostApprovalEditing}
+                  onChange={(event) => updateContentDraft("format", event.target.value)}
+                >
+                  {[
+                    "Wochenplan",
+                    "Marketingkonzept",
+                    "Kampagnenkonzept",
+                    "Flyer",
+                    "Logo",
+                    "Corporate Design",
+                    "Kundenpräsentation",
+                    "Landingpage",
+                    "Blog",
+                    "Anzeige",
+                    "Post",
+                    "Story",
+                    "Reel",
+                    "Karussell",
+                  ].map((format) => (
+                    <option key={format} value={format}>
+                      {format}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Verantwortlich
+                <select
+                  value={contentDraft.ownerUserId}
+                  disabled={isContentLockedAfterApproval(editingContentItem) && !isContentPostApprovalEditing}
+                  onChange={(event) => updateContentDraft("ownerUserId", event.target.value)}
+                >
+                  <option value="">Bitte auswählen</option>
+                  {users
+                    .filter((user) => user.isActive)
+                    .map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label>
+                Ampelstufe
+                <select
+                  value={contentDraft.approvalLevel}
+                  disabled={isContentLockedAfterApproval(editingContentItem) && !isContentPostApprovalEditing}
+                  onChange={(event) =>
+                    updateContentDraft("approvalLevel", event.target.value as ContentApprovalLevel)
+                  }
+                >
+                  <option value="gruen">Grün - Creator entscheidet selbst</option>
+                  <option value="gelb">Gelb - kurze Abstimmung nötig</option>
+                  <option value="rot">Rot - Art Direction entscheidet</option>
+                </select>
+              </label>
+              <div className={`${styles.contentDateTimeRow} ${styles.fullWidth}`}>
+                <label>
+                  Fertigstellung bis
+                  <input
+                    type="date"
+                    value={contentDraft.productionDueDate}
+                    disabled={isContentLockedAfterApproval(editingContentItem) && !isContentPostApprovalEditing}
+                    onChange={(event) => updateContentDraft("productionDueDate", event.target.value)}
+                  />
+                </label>
+                <label>
+                  Uhrzeit
+                  <input
+                    type="time"
+                    value={contentDraft.productionDueTime}
+                    disabled={isContentLockedAfterApproval(editingContentItem) && !isContentPostApprovalEditing}
+                    onChange={(event) => updateContentDraft("productionDueTime", event.target.value)}
+                  />
+                </label>
+              </div>
+              <div className={`${styles.contentDateTimeRow} ${styles.fullWidth}`}>
+                <label>
+                  Freigabe bis
+                  <input
+                    type="date"
+                    value={contentDraft.approvalDueDate}
+                    disabled={isContentLockedAfterApproval(editingContentItem) && !isContentPostApprovalEditing}
+                    onChange={(event) => updateContentDraft("approvalDueDate", event.target.value)}
+                  />
+                </label>
+                <label>
+                  Uhrzeit
+                  <input
+                    type="time"
+                    value={contentDraft.approvalDueTime}
+                    disabled={isContentLockedAfterApproval(editingContentItem) && !isContentPostApprovalEditing}
+                    onChange={(event) => updateContentDraft("approvalDueTime", event.target.value)}
+                  />
+                </label>
+              </div>
+              <div className={`${styles.contentDateTimeRow} ${styles.fullWidth}`}>
+                <label>
+                  Veröffentlichung
+                  <input
+                    type="date"
+                    value={contentDraft.plannedDate}
+                    disabled={isContentLockedAfterApproval(editingContentItem) && !isContentPostApprovalEditing}
+                    onChange={(event) => updateContentDraft("plannedDate", event.target.value)}
+                  />
+                </label>
+                <label>
+                  Uhrzeit
+                  <input
+                    type="time"
+                    value={contentDraft.plannedTime}
+                    disabled={isContentLockedAfterApproval(editingContentItem) && !isContentPostApprovalEditing}
+                    onChange={(event) => updateContentDraft("plannedTime", event.target.value)}
+                  />
+                </label>
+              </div>
+              <label>
+                Status
+                <select
+                  value={contentDraft.status}
+                  disabled={Boolean(editingContentItemId)}
+                  onChange={(event) => updateContentDraft("status", event.target.value as ContentStatus)}
+                >
+                  {contentStatusOptions.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className={styles.fullWidth}>
+                Briefing / Beschreibung
+                <textarea
+                  rows={4}
+                  value={contentDraft.description}
+                  disabled={isContentLockedAfterApproval(editingContentItem) && !isContentPostApprovalEditing}
+                  onChange={(event) => updateContentDraft("description", event.target.value)}
+                />
+              </label>
+              <label className={styles.fullWidth}>
+                Link zu Datei / Entwurf
+                <input
+                  value={contentDraft.assetLink}
+                  disabled={isContentLockedAfterApproval(editingContentItem) && !isContentPostApprovalEditing}
+                  onChange={(event) => updateContentDraft("assetLink", event.target.value)}
+                  placeholder="https://..."
+                />
+              </label>
+            </div>
+
+            {editingContentItem ? (
+              <section className={styles.contentModalWorkflow}>
+                <div className={styles.contentModalActions}>
+                  {isContentLockedAfterApproval(editingContentItem) && !isContentPostApprovalEditing ? (
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => updateContentStatus(editingContentItem, "unlock-post-approval-edit")}
+                    >
+                      Nachträglich bearbeiten
+                    </button>
+                  ) : null}
+                  {getReadableContentStatus(editingContentItem.status) === "Richtungsfreigabe offen" ? (
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      disabled={!mayApproveContent}
+                      onClick={() => updateContentStatus(editingContentItem, "direction-approve")}
+                    >
+                      Richtung freigeben
+                    </button>
+                  ) : null}
+                  {getReadableContentStatus(editingContentItem.status) === "In Produktion" ? (
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => updateContentStatus(editingContentItem, "mark-produced")}
+                    >
+                      Fertig produziert
+                    </button>
+                  ) : null}
+                  {getReadableContentStatus(editingContentItem.status) === "Fertig produziert" ||
+                  getReadableContentStatus(editingContentItem.status) === "Finale Freigabe offen" ? (
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      disabled={!mayApproveContent}
+                      onClick={() => updateContentStatus(editingContentItem, "final-approve")}
+                    >
+                      Final freigeben
+                    </button>
+                  ) : null}
+                  {getReadableContentStatus(editingContentItem.status) === "Freigegeben" ? (
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => updateContentStatus(editingContentItem, "publish")}
+                    >
+                      Veröffentlicht
+                    </button>
+                  ) : null}
+                </div>
+                {getReadableContentStatus(editingContentItem.status) === "Korrektur nötig" ? (
+                  <div className={styles.contentCorrectionBox}>
+                    <label>
+                      Rückmeldung zur Korrektur
+                      <textarea
+                        rows={2}
+                        value={contentCorrectionNote}
+                        onChange={(event) => setContentCorrectionNote(event.target.value)}
+                        placeholder="Was wurde korrigiert?"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => updateContentStatus(editingContentItem, "resubmit", contentCorrectionNote)}
+                    >
+                      Erneut einreichen
+                    </button>
+                  </div>
+                ) : !isContentDone(editingContentItem) ? (
+                  <div className={styles.contentCorrectionBox}>
+                    <label>
+                      Korrekturhinweis
+                      <textarea
+                        rows={2}
+                        value={contentCorrectionNote}
+                        onChange={(event) => setContentCorrectionNote(event.target.value)}
+                        placeholder="Pflicht bei Korrektur"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      disabled={!mayApproveContent}
+                      onClick={() =>
+                        updateContentStatus(editingContentItem, "request-correction", contentCorrectionNote)
+                      }
+                    >
+                      Korrektur nötig
+                    </button>
+                  </div>
+                ) : null}
+                <div className={styles.contentHistoryList}>
+                  <h3>Historie</h3>
+                  {editingContentItem.history.length === 0 ? (
+                    <p className={styles.emptyState}>Noch keine Historie.</p>
+                  ) : (
+                    editingContentItem.history.map((entry) => (
+                      <article key={entry.id}>
+                        <strong>{entry.eventType}</strong>
+                        <span>
+                          {entry.actorName || "System"} · {formatDeadline(entry.createdAt)}
+                        </span>
+                        {entry.note ? <p>{entry.note}</p> : null}
+                      </article>
+                    ))
+                  )}
+                </div>
+              </section>
+            ) : null}
+
+            {contentError ? <p className={styles.modalWarning}>{contentError}</p> : null}
+
+            <div className={styles.modalActions}>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                disabled={isContentLockedAfterApproval(editingContentItem) && !isContentPostApprovalEditing}
+                onClick={saveContentItem}
+              >
+                Speichern
+              </button>
+              {editingContentItemId ? (
+                <button type="button" className={styles.deleteButton} onClick={deleteContentItem}>
+                  Löschen
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => setIsContentModalOpen(false)}
+              >
+                Abbrechen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isProjectModalOpen && (
         <div className={styles.overlay} onClick={closeProjectModal}>
           <div
@@ -20631,7 +25985,7 @@ export function DashboardPage() {
                 onClick={closeProjectModal}
                 aria-label="Projektmaske schließen"
               >
-                
+
               </button>
             </div>
 
@@ -21116,6 +26470,26 @@ export function DashboardPage() {
                   onChange={(event) => setStampEditComment(event.target.value)}
                 />
               </label>
+              <section className={styles.timeEntryEditHistory}>
+                <h3>Bearbeitungshistorie</h3>
+                {(editingStampEntry.editHistory ?? []).length === 0 ? (
+                  <p>Noch keine Änderungen dokumentiert.</p>
+                ) : (
+                  (editingStampEntry.editHistory ?? []).map((history) => (
+                    <article key={history.id}>
+                      <strong>{history.event}</strong>
+                      <span>
+                        {history.actorName || "-"} · {formatInstantDateTime(history.createdAt)}
+                      </span>
+                      <p>
+                        Vorher: {history.previousValue}
+                        <br />
+                        Nachher: {history.nextValue}
+                      </p>
+                    </article>
+                  ))
+                )}
+              </section>
               {stampEditError && <p className={styles.stampError}>{stampEditError}</p>}
             </div>
             <div className={styles.modalFooter}>
@@ -21159,7 +26533,7 @@ export function DashboardPage() {
                 onClick={() => setIsStampModalOpen(false)}
                 aria-label="Stempelmaske schließen"
               >
-                
+
               </button>
             </div>
             <div className={styles.stampModalBody}>
@@ -21280,10 +26654,18 @@ export function DashboardPage() {
         </div>
       )}
 
+      {renderDocumentMailModal()}
+
       {isModalOpen && (
         <div className={styles.overlay} onClick={closeTaskModal}>
           <div className={styles.modal} onClick={(event) => event.stopPropagation()}>
-            <h2>{editingTask ? "Aufgabe bearbeiten" : "Neue Aufgabe erstellen"}</h2>
+            <h2>
+              {editingTask
+                ? "Aufgabe bearbeiten"
+                : isCreatingAbsenceHandoverTask
+                  ? "Übergabe-Aufgabe erstellen"
+                  : "Neue Aufgabe erstellen"}
+            </h2>
 
             <div className={styles.formGrid}>
               <label className={styles.fullWidth}>
@@ -21329,22 +26711,10 @@ export function DashboardPage() {
               </label>
 
               <label>
-                Gewerk
-                <select value={gewerkId} onChange={(event) => setGewerkId(event.target.value)}>
-                  <option value="">Kein Gewerk ausgewählt</option>
-                  {trades.map((trade) => (
-                    <option key={trade.id} value={trade.id}>
-                      {trade.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
                 Zuständig
                 <select
                   value={zustaendigId}
-                  disabled={!canAssignOther(activeUser?.role)}
+                  disabled={!canAssignOther(activeUser?.role) && !isCreatingAbsenceHandoverTask}
                   onChange={(event) => setZustaendigId(event.target.value)}
                 >
                   {assignableUsers.map((user) => (
@@ -21398,192 +26768,6 @@ export function DashboardPage() {
                 </select>
               </label>
 
-              <label>
-                Kundenklasse
-                <select
-                  value={kundenklasse}
-                  onChange={(event) => setKundenklasse(event.target.value as CustomerClass)}
-                >
-                  <option value="">Keine</option>
-                  <option value="A">A</option>
-                  <option value="B">B</option>
-                  <option value="C">C</option>
-                </select>
-              </label>
-
-              <label>
-                Gesamt-Vorgabezeit der Aufgabe in Minuten
-                <input
-                  type="number"
-                  min="0"
-                  value={vorgabeMinuten}
-                  onChange={(event) => setVorgabeMinuten(event.target.value)}
-                />
-              </label>
-
-              <section className={`${styles.planningBox} ${styles.fullWidth}`}>
-                <label className={styles.checkboxLabel}>
-                  <input
-                    type="checkbox"
-                    checked={planningEnabled}
-                    onChange={(event) => togglePlanningEnabled(event.target.checked)}
-                  />
-                  Verplanung der Vorgabezeit (bei Bedarf auf mehrere Tage)
-                </label>
-
-                {planningEnabled && (
-                  <div className={styles.planningTool}>
-                    <div className={styles.planningSummary}>
-                      <span>
-                        Verteilt:{" "}
-                        {formatMinutes(
-                          getNormalizedPlanningAllocations().reduce(
-                            (total, allocation) => total + allocation.minutes,
-                            0
-                          )
-                        )}
-                      </span>
-                      <span>Vorgabe: {formatMinutes(vorgabeMinuten ? Number(vorgabeMinuten) : null)}</span>
-                    </div>
-
-                    <div className={styles.planningRows}>
-                      {planningAllocations.map((allocation, index) => (
-                        <div key={`${allocation.date}-${index}`} className={styles.planningRow}>
-                          <label>
-                            Datum
-                            <input
-                              type="date"
-                              value={allocation.date}
-                              onChange={(event) =>
-                                updatePlanningAllocation(index, "date", event.target.value)
-                              }
-                            />
-                          </label>
-                          <label>
-                            Minuten
-                            <input
-                              type="number"
-                              min="0"
-                              value={allocation.minutes}
-                              onChange={(event) =>
-                                updatePlanningAllocation(index, "minutes", event.target.value)
-                              }
-                            />
-                          </label>
-                          <button
-                            type="button"
-                            className={styles.deleteButton}
-                            onClick={() => removePlanningAllocation(index)}
-                            disabled={planningAllocations.length <= 1}
-                          >
-                            Entfernen
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-
-                    {getNormalizedPlanningAllocations().reduce(
-                      (total, allocation) => total + allocation.minutes,
-                      0
-                    ) > (vorgabeMinuten ? Number(vorgabeMinuten) : 0) && (
-                      <p className={styles.planningWarning}>
-                        Die verteilte Zeit ist höher als die Vorgabezeit. Bitte vor dem Speichern
-                        korrigieren.
-                      </p>
-                    )}
-
-                    <div className={styles.actionGroup}>
-                      <button
-                        type="button"
-                        className={styles.secondaryButton}
-                        onClick={addPlanningAllocation}
-                      >
-                        Tag hinzufügen
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.secondaryButton}
-                        onClick={distributePlanningEvenly}
-                        disabled={!vorgabeMinuten}
-                      >
-                        Gleichmäxig verteilen
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </section>
-
-            {editingTask && (
-              <section className={`${styles.timeBox} ${styles.fullWidth}`}>
-                <div className={styles.timeHeader}>
-                  <div>
-                    <h3>Zeiterfassung</h3>
-                    <p>Gesamt erfasst: {formatMinutes(editingTask.gesamtzeitMinuten)}</p>
-                  </div>
-                </div>
-
-                <div className={styles.timeForm}>
-                  <label>
-                    Dauer in Minuten
-                    <input
-                      type="number"
-                      min="1"
-                      value={zeitDauer}
-                      onChange={(event) => setZeitDauer(event.target.value)}
-                    />
-                  </label>
-
-                  <label>
-                    Dokumentation
-                    <input
-                      value={zeitNotiz}
-                      onChange={(event) => setZeitNotiz(event.target.value)}
-                      placeholder="Was wurde gemacht?"
-                    />
-                  </label>
-
-                  <button className={styles.secondaryButton} onClick={addTimeEntry}>
-                    {editingTimeEntryId ? "Zeit aktualisieren" : "Zeit speichern"}
-                  </button>
-                  {editingTimeEntryId && (
-                    <button className={styles.secondaryButton} onClick={cancelEditTimeEntry}>
-                      Abbrechen
-                    </button>
-                  )}
-                </div>
-
-                <div className={styles.timeEntries}>
-                  {editingTask.zeiteintraege.length === 0 ? (
-                    <p className={styles.emptyState}>Noch keine Zeit erfasst.</p>
-                  ) : (
-                    editingTask.zeiteintraege.map((entry) => (
-                      <article key={entry.id} className={styles.timeEntry}>
-                        <div>
-                          <strong>{formatMinutes(entry.dauerMinuten)}</strong>
-                          <span>{formatDeadline(entry.gestartetAm)}</span>
-                          <p>{entry.notiz || "Keine Dokumentation hinterlegt."}</p>
-                        </div>
-                        <div className={styles.timeEntryActions}>
-                          <button
-                            className={styles.secondaryButton}
-                            onClick={() => startEditTimeEntry(entry)}
-                          >
-                            Bearbeiten
-                          </button>
-                          <button
-                            className={styles.deleteButton}
-                            onClick={() => deleteTimeEntry(entry)}
-                          >
-                            Löschen
-                          </button>
-                        </div>
-                      </article>
-                    ))
-                  )}
-                </div>
-              </section>
-            )}
-
             {editingTask && (
               <section className={`${styles.commentBox} ${styles.fullWidth}`}>
                 <div className={styles.timeHeader}>
@@ -21627,78 +26811,7 @@ export function DashboardPage() {
               </section>
             )}
 
-              <div className={`${styles.feedbackOption} ${styles.fullWidth}`}>
-                <label className={styles.checkboxLabel}>
-                  <input
-                    type="checkbox"
-                    checked={autoFeedbackEnabled}
-                    onChange={(event) => {
-                      setAutoFeedbackEnabled(event.target.checked);
-                      if (event.target.checked && !autoFeedbackRecipientId) {
-                        setAutoFeedbackRecipientId(activeUserId);
-                      }
-                      if (!event.target.checked) setAutoFeedbackRecipientId("");
-                    }}
-                  />
-                  Automatische Rückmeldung senden, wenn die Aufgabe erledigt wurde
-                </label>
-
-                <label>
-                  Empfänger
-                  <select
-                    value={autoFeedbackRecipientId}
-                    disabled={!autoFeedbackEnabled}
-                    onChange={(event) => setAutoFeedbackRecipientId(event.target.value)}
-                  >
-                    <option value="">Benutzer auswählen</option>
-                    {users.map((user) => (
-                      <option key={user.id} value={user.id}>
-                        {user.name} - {user.email}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              <div className={`${styles.feedbackOption} ${styles.fullWidth}`}>
-                <label className={styles.checkboxLabel}>
-                  <input
-                    type="checkbox"
-                    checked={recurrenceEnabled}
-                    onChange={(event) => {
-                      setRecurrenceEnabled(event.target.checked);
-                      if (event.target.checked && !recurrenceInterval) {
-                        setRecurrenceInterval("weekly");
-                      }
-                    }}
-                  />
-                  Aufgabe wiederkehrend ab Aufgabeneröffnung anlegen
-                </label>
-
-                <label>
-                  Intervall
-                  <select
-                    value={recurrenceInterval}
-                    disabled={!recurrenceEnabled}
-                    onChange={(event) =>
-                      setRecurrenceInterval(event.target.value as RecurrenceInterval)
-                    }
-                  >
-                    <option value="daily">Täglich</option>
-                    <option value="weekly">Wöchentlich</option>
-                    <option value="monthly">Monatlich</option>
-                    <option value="yearly">Jährlich</option>
-                  </select>
-                </label>
-              </div>
             </div>
-
-
-
-            {status === "erledigt" && modalCompletionHint && (
-              <div className={styles.modalWarning}>{modalCompletionHint}</div>
-            )}
-
             {errorMessage && <div className={styles.modalSaveNotice}>{errorMessage}</div>}
 
             <div className={styles.modalFooter}>
@@ -21712,7 +26825,7 @@ export function DashboardPage() {
               </div>
               {editingTask?.createdAt && (
                 <p className={styles.createdAtHint}>
-                  Aufgabe erstellt am: {formatDeadline(editingTask.createdAt)}
+                  Aufgabe erstellt am: {formatInstantDateTime(editingTask.createdAt)}
                 </p>
               )}
             </div>
