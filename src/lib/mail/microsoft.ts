@@ -29,6 +29,7 @@ export function getMicrosoftOAuthConfig(req?: Request) {
     tenantId,
     clientId,
     clientSecret,
+    appOrigin: origin,
     redirectUri,
     authorizeUrl: `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize`,
     tokenUrl: `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,

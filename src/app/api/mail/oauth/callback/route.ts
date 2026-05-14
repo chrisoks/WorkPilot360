@@ -16,12 +16,13 @@ function decodeState(value: string) {
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
+  const config = getMicrosoftOAuthConfig(req);
   const code = url.searchParams.get("code") || "";
   const state = url.searchParams.get("state") || "";
   const expectedState = req.headers.get("cookie")?.match(/(?:^|;\s*)wp360_ms_oauth_state=([^;]+)/)?.[1] || "";
   const decodedState = decodeState(state);
-  const returnTo = decodedState.returnTo || "/";
-  const redirectUrl = new URL(returnTo, url.origin);
+  const returnTo = decodedState.returnTo?.startsWith("/") ? decodedState.returnTo : "/";
+  const redirectUrl = new URL(returnTo, config.appOrigin || url.origin);
 
   if (!code || !state || decodeURIComponent(expectedState) !== state || !decodedState.userId) {
     redirectUrl.searchParams.set("mailOAuth", "error");
@@ -29,7 +30,6 @@ export async function GET(req: Request) {
     return NextResponse.redirect(redirectUrl);
   }
 
-  const config = getMicrosoftOAuthConfig(req);
   const tokenBody = new URLSearchParams({
     client_id: config.clientId,
     client_secret: config.clientSecret,
