@@ -8960,7 +8960,8 @@ export function DashboardPage() {
     window.localStorage.setItem("workpilot-active-tab", activeTab);
 
     if (
-      (activeTab === "hero" ||
+      (activeTab === "dashboard" ||
+        activeTab === "hero" ||
         activeTab === "projectsSolutions" ||
         activeTab === "projectsImmocare" ||
         activeTab === "reports" ||
@@ -11896,6 +11897,25 @@ export function DashboardPage() {
   const holidayDateKeys = new Set(holidays.map((holiday) => holiday.date));
   const activeTasks = tasks.filter((task) => task.status !== "archiviert");
   const archivedTasks = tasks.filter((task) => task.status === "archiviert");
+  const isManagingDirector = activeUser?.role === "GESCHAEFTSFUEHRER";
+  const isActiveUserProjectParticipant = (task: TaskItem) => {
+    if (!activeUser || !task.projectId) return false;
+
+    const project = heroProjects.find((item) => item.id === task.projectId);
+    if (!project) return false;
+
+    const activeUserName = activeUser.name.trim().toLowerCase();
+    const activeUserEmail = activeUser.email.trim().toLowerCase();
+    const participantText = [project.responsibleName, project.participants]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    return (
+      Boolean(activeUserName && participantText.includes(activeUserName)) ||
+      Boolean(activeUserEmail && participantText.includes(activeUserEmail))
+    );
+  };
   const isTaskEscalatedToActiveUser = (task: TaskItem) => {
     if (!activeUser?.role || task.status === "erledigt" || task.status === "abgelehnt") return false;
 
@@ -11905,12 +11925,7 @@ export function DashboardPage() {
     const hoursAfterDue = (deadlineProgressTime - deadline.getTime()) / 3_600_000;
     if (hoursAfterDue < 0) return false;
 
-    return escalationRules.some(
-      (rule) =>
-        rule.isActive &&
-        rule.targetRole === activeUser.role &&
-        hoursAfterDue >= rule.hoursAfterDue
-    );
+    return isManagingDirector || isActiveUserProjectParticipant(task);
   };
   const myRelevantTasks = activeTasks.filter(
     (task) =>
@@ -11918,7 +11933,7 @@ export function DashboardPage() {
       task.participants.some((participant) => participant.userId === activeUserId) ||
       isTaskEscalatedToActiveUser(task)
   );
-  const taskOverviewTasks = canAssignOther(activeUser?.role) ? activeTasks : myRelevantTasks;
+  const taskOverviewTasks = canManageUsers(activeUser?.role) ? activeTasks : myRelevantTasks;
   const offene = taskOverviewTasks.filter((task) => task.status === "offen").length;
   const bearbeitung = taskOverviewTasks.filter((task) => task.status === "in Bearbeitung").length;
   const erledigt = taskOverviewTasks.filter((task) => task.status === "erledigt").length;
