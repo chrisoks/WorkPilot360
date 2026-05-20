@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:local": "node scripts/start-next-dev.js",
+    "prebuild": "node scripts/clean-next-build-cache.js",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

@@ -2,12 +2,6 @@ import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
-import {
-  getHeroCustomerName,
-  getHeroProjectDescription,
-  getHeroProjectTitle,
-  listHeroProjects,
-} from "@/lib/hero/client";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +22,8 @@ type LocalProjectRow = {
   projectRuntimeFrom: string | null;
   projectRuntimeUntil: string | null;
   billingInterval: string | null;
+  forecastBillingType: string | null;
+  forecastNetAmount: string | null;
   trade: string | null;
   branch: string | null;
   volume: string | null;
@@ -37,6 +33,14 @@ type LocalProjectRow = {
   responsibleName: string | null;
   timeBudgetHours: string | null;
   timeBudgetHistory: unknown;
+  timeBudgetAllocations: unknown;
+  autoBillingEnabled: boolean | null;
+  autoBillingNetAmount: string | null;
+  autoBillingVatRate: string | null;
+  autoBillingStartMonth: string | null;
+  autoBillingEndMonth: string | null;
+  autoBillingTemplateMode: string | null;
+  autoBillingTemplate: unknown;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -60,6 +64,8 @@ async function ensureLocalProjectTable() {
       "projectRuntimeFrom" TEXT,
       "projectRuntimeUntil" TEXT,
       "billingInterval" TEXT,
+      "forecastBillingType" TEXT,
+      "forecastNetAmount" TEXT,
       "trade" TEXT,
       "branch" TEXT,
       "volume" TEXT,
@@ -69,6 +75,14 @@ async function ensureLocalProjectTable() {
       "responsibleName" TEXT,
       "timeBudgetHours" TEXT,
       "timeBudgetHistory" JSONB NOT NULL DEFAULT '[]'::jsonb,
+      "timeBudgetAllocations" JSONB NOT NULL DEFAULT '[]'::jsonb,
+      "autoBillingEnabled" BOOLEAN NOT NULL DEFAULT false,
+      "autoBillingNetAmount" TEXT,
+      "autoBillingVatRate" TEXT,
+      "autoBillingStartMonth" TEXT,
+      "autoBillingEndMonth" TEXT,
+      "autoBillingTemplateMode" TEXT,
+      "autoBillingTemplate" JSONB,
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
@@ -88,6 +102,8 @@ async function ensureLocalProjectTable() {
     ADD COLUMN IF NOT EXISTS "projectRuntimeFrom" TEXT,
     ADD COLUMN IF NOT EXISTS "projectRuntimeUntil" TEXT,
     ADD COLUMN IF NOT EXISTS "billingInterval" TEXT,
+    ADD COLUMN IF NOT EXISTS "forecastBillingType" TEXT,
+    ADD COLUMN IF NOT EXISTS "forecastNetAmount" TEXT,
     ADD COLUMN IF NOT EXISTS "trade" TEXT,
     ADD COLUMN IF NOT EXISTS "branch" TEXT,
     ADD COLUMN IF NOT EXISTS "volume" TEXT,
@@ -97,6 +113,14 @@ async function ensureLocalProjectTable() {
     ADD COLUMN IF NOT EXISTS "responsibleName" TEXT,
     ADD COLUMN IF NOT EXISTS "timeBudgetHours" TEXT,
     ADD COLUMN IF NOT EXISTS "timeBudgetHistory" JSONB NOT NULL DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS "timeBudgetAllocations" JSONB NOT NULL DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS "autoBillingEnabled" BOOLEAN NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS "autoBillingNetAmount" TEXT,
+    ADD COLUMN IF NOT EXISTS "autoBillingVatRate" TEXT,
+    ADD COLUMN IF NOT EXISTS "autoBillingStartMonth" TEXT,
+    ADD COLUMN IF NOT EXISTS "autoBillingEndMonth" TEXT,
+    ADD COLUMN IF NOT EXISTS "autoBillingTemplateMode" TEXT,
+    ADD COLUMN IF NOT EXISTS "autoBillingTemplate" JSONB,
     ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
   `;
@@ -120,6 +144,26 @@ function cleanBudgetHistory(value: unknown) {
         changedBy: cleanString(candidate.changedBy),
         previousHours: cleanString(candidate.previousHours),
         nextHours: cleanString(candidate.nextHours),
+      };
+    })
+    .filter(Boolean);
+}
+
+function cleanBudgetAllocations(value: unknown) {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const candidate = entry as Record<string, unknown>;
+      const month = cleanString(candidate.month);
+
+      if (!month) return null;
+
+      return {
+        id: cleanString(candidate.id) || randomUUID(),
+        month,
+        hours: cleanString(candidate.hours),
       };
     })
     .filter(Boolean);
@@ -152,6 +196,8 @@ function formatLocalProject(project: LocalProjectRow) {
     projectRuntimeFrom: project.projectRuntimeFrom ?? "",
     projectRuntimeUntil: project.projectRuntimeUntil ?? "",
     billingInterval: project.billingInterval ?? "",
+    forecastBillingType: project.forecastBillingType ?? "",
+    forecastNetAmount: project.forecastNetAmount ?? "",
     trade: project.trade ?? "",
     branch: project.branch ?? "",
     volume: project.volume ?? "",
@@ -162,6 +208,14 @@ function formatLocalProject(project: LocalProjectRow) {
     createdAt: formatDateTime(project.createdAt),
     timeBudgetHours: project.timeBudgetHours ?? "",
     timeBudgetHistory: cleanBudgetHistory(project.timeBudgetHistory),
+    timeBudgetAllocations: cleanBudgetAllocations(project.timeBudgetAllocations),
+    autoBillingEnabled: Boolean(project.autoBillingEnabled),
+    autoBillingNetAmount: project.autoBillingNetAmount ?? "",
+    autoBillingVatRate: project.autoBillingVatRate ?? "",
+    autoBillingStartMonth: project.autoBillingStartMonth ?? "",
+    autoBillingEndMonth: project.autoBillingEndMonth ?? "",
+    autoBillingTemplateMode: project.autoBillingTemplateMode ?? "previous",
+    autoBillingTemplate: project.autoBillingTemplate ?? null,
   };
 }
 
@@ -213,27 +267,7 @@ async function getLocalProjects() {
 }
 
 export async function GET() {
-  const localProjects = await getLocalProjects();
-
-  try {
-    const projects = await listHeroProjects();
-    const localProjectIds = new Set(localProjects.map((project) => project.id));
-    const heroProjects = projects
-      .map((project) => ({
-        id: String(project.id),
-        projectNumber: project.project_nr ?? "",
-        title: getHeroProjectTitle(project),
-        customer: getHeroCustomerName(project),
-        status: normalizeProjectStatus(project.current_project_match_status?.name ?? ""),
-        statusCode: String(project.current_project_match_status?.status_code ?? ""),
-        description: getHeroProjectDescription(project),
-      }))
-      .filter((project) => !localProjectIds.has(project.id));
-
-    return NextResponse.json([...localProjects, ...heroProjects]);
-  } catch {
-    return NextResponse.json(localProjects);
-  }
+  return NextResponse.json(await getLocalProjects());
 }
 
 export async function POST(req: Request) {
@@ -273,6 +307,8 @@ export async function POST(req: Request) {
       "projectRuntimeFrom",
       "projectRuntimeUntil",
       "billingInterval",
+      "forecastBillingType",
+      "forecastNetAmount",
       "trade",
       "branch",
       "volume",
@@ -281,7 +317,15 @@ export async function POST(req: Request) {
       "participants",
       "responsibleName",
       "timeBudgetHours",
-      "timeBudgetHistory"
+      "timeBudgetHistory",
+      "timeBudgetAllocations",
+      "autoBillingEnabled",
+      "autoBillingNetAmount",
+      "autoBillingVatRate",
+      "autoBillingStartMonth",
+      "autoBillingEndMonth",
+      "autoBillingTemplateMode",
+      "autoBillingTemplate"
     )
     VALUES (
       ${id},
@@ -300,6 +344,8 @@ export async function POST(req: Request) {
       ${cleanString(body.projectRuntimeFrom) || null},
       ${cleanString(body.projectRuntimeUntil) || null},
       ${cleanString(body.billingInterval) || null},
+      ${cleanString(body.forecastBillingType) || null},
+      ${cleanString(body.forecastNetAmount) || null},
       ${cleanString(body.trade) || null},
       ${cleanString(body.branch) || null},
       ${cleanString(body.volume) || null},
@@ -308,7 +354,15 @@ export async function POST(req: Request) {
       ${cleanString(body.participants) || null},
       ${cleanString(body.responsibleName) || null},
       ${cleanString(body.timeBudgetHours) || null},
-      ${JSON.stringify(cleanBudgetHistory(body.timeBudgetHistory))}::jsonb
+      ${JSON.stringify(cleanBudgetHistory(body.timeBudgetHistory))}::jsonb,
+      ${JSON.stringify(cleanBudgetAllocations(body.timeBudgetAllocations))}::jsonb,
+      ${Boolean(body.autoBillingEnabled)},
+      ${cleanString(body.autoBillingNetAmount) || null},
+      ${cleanString(body.autoBillingVatRate) || null},
+      ${cleanString(body.autoBillingStartMonth) || null},
+      ${cleanString(body.autoBillingEndMonth) || null},
+      ${cleanString(body.autoBillingTemplateMode) || "previous"},
+      ${JSON.stringify(body.autoBillingTemplate ?? null)}::jsonb
     )
     ON CONFLICT ("id") DO UPDATE SET
       "projectNumber" = EXCLUDED."projectNumber",
@@ -325,6 +379,8 @@ export async function POST(req: Request) {
       "projectRuntimeFrom" = EXCLUDED."projectRuntimeFrom",
       "projectRuntimeUntil" = EXCLUDED."projectRuntimeUntil",
       "billingInterval" = EXCLUDED."billingInterval",
+      "forecastBillingType" = EXCLUDED."forecastBillingType",
+      "forecastNetAmount" = EXCLUDED."forecastNetAmount",
       "trade" = EXCLUDED."trade",
       "branch" = EXCLUDED."branch",
       "volume" = EXCLUDED."volume",
@@ -334,6 +390,14 @@ export async function POST(req: Request) {
       "responsibleName" = EXCLUDED."responsibleName",
       "timeBudgetHours" = EXCLUDED."timeBudgetHours",
       "timeBudgetHistory" = EXCLUDED."timeBudgetHistory",
+      "timeBudgetAllocations" = EXCLUDED."timeBudgetAllocations",
+      "autoBillingEnabled" = EXCLUDED."autoBillingEnabled",
+      "autoBillingNetAmount" = EXCLUDED."autoBillingNetAmount",
+      "autoBillingVatRate" = EXCLUDED."autoBillingVatRate",
+      "autoBillingStartMonth" = EXCLUDED."autoBillingStartMonth",
+      "autoBillingEndMonth" = EXCLUDED."autoBillingEndMonth",
+      "autoBillingTemplateMode" = EXCLUDED."autoBillingTemplateMode",
+      "autoBillingTemplate" = EXCLUDED."autoBillingTemplate",
       "updatedAt" = CURRENT_TIMESTAMP
     RETURNING *
   `;

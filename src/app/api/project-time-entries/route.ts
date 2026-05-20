@@ -26,6 +26,7 @@ type ProjectTimeEntryRow = {
   overtimeApprovedByName: string | null;
   overtimeApprovedAt: Date | null;
   editHistory: unknown;
+  deletedAt: Date | null;
   createdAt: Date;
 };
 
@@ -54,6 +55,7 @@ async function ensureProjectTimeEntryTable() {
       "overtimeApprovedByName" TEXT,
       "overtimeApprovedAt" TIMESTAMP(3),
       "editHistory" JSONB NOT NULL DEFAULT '[]'::jsonb,
+      "deletedAt" TIMESTAMP(3),
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `;
@@ -70,7 +72,8 @@ async function ensureProjectTimeEntryTable() {
     ADD COLUMN IF NOT EXISTS "overtimeApprovedByUserId" TEXT,
     ADD COLUMN IF NOT EXISTS "overtimeApprovedByName" TEXT,
     ADD COLUMN IF NOT EXISTS "overtimeApprovedAt" TIMESTAMP(3),
-    ADD COLUMN IF NOT EXISTS "editHistory" JSONB NOT NULL DEFAULT '[]'::jsonb
+    ADD COLUMN IF NOT EXISTS "editHistory" JSONB NOT NULL DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS "deletedAt" TIMESTAMP(3)
   `;
 }
 
@@ -109,6 +112,7 @@ function formatEntry(entry: ProjectTimeEntryRow) {
     overtimeApprovedByName: entry.overtimeApprovedByName ?? "",
     overtimeApprovedAt: entry.overtimeApprovedAt?.toISOString() ?? "",
     editHistory: Array.isArray(entry.editHistory) ? entry.editHistory : [],
+    deletedAt: entry.deletedAt?.toISOString() ?? "",
     createdAt: entry.createdAt.toISOString(),
   };
 }
@@ -207,7 +211,7 @@ export async function POST(req: Request) {
       ${overtimeApprovedByUserId || null},
       ${overtimeApprovedByName || null},
       ${overtimeApprovedAt ? new Date(overtimeApprovedAt) : null},
-      ${editHistory}
+      CAST(${JSON.stringify(editHistory)} AS jsonb)
     )
     ON CONFLICT ("id") DO UPDATE SET
       "mode" = EXCLUDED."mode",
@@ -235,6 +239,9 @@ export async function POST(req: Request) {
 export async function DELETE(req: Request) {
   const { searchParams } = new URL(req.url);
   const id = cleanString(searchParams.get("id"));
+  const actorUserId = cleanString(searchParams.get("actorUserId"));
+  const actorName = cleanString(searchParams.get("actorName"));
+  const note = cleanString(searchParams.get("note")) || "Zeiteintrag gelöscht";
 
   if (!id) {
     return NextResponse.json({ error: "Zeiteintrag fehlt." }, { status: 400 });
@@ -243,11 +250,38 @@ export async function DELETE(req: Request) {
   const { organization } = await getDemoContext();
   await ensureProjectTimeEntryTable();
 
-  await prisma.$executeRaw`
-    DELETE FROM "ProjectTimeEntry"
+  const existingRows = await prisma.$queryRaw<ProjectTimeEntryRow[]>`
+    SELECT *
+    FROM "ProjectTimeEntry"
     WHERE "id" = ${id}
       AND "organizationId" = ${organization.id}
+    LIMIT 1
+  `;
+  const existingEntry = existingRows[0];
+  if (!existingEntry) {
+    return NextResponse.json({ ok: true });
+  }
+
+  const currentHistory = Array.isArray(existingEntry.editHistory) ? existingEntry.editHistory : [];
+  const deleteHistory = {
+    id: randomUUID(),
+    actorUserId,
+    actorName,
+    event: "Zeiteintrag gelöscht",
+    note,
+    previousValue: `${existingEntry.date} ${existingEntry.startTime}-${existingEntry.endTime}, ${Number(existingEntry.durationMs)} ms`,
+    nextValue: "Gelöscht",
+    createdAt: new Date().toISOString(),
+  };
+
+  const rows = await prisma.$queryRaw<ProjectTimeEntryRow[]>`
+    UPDATE "ProjectTimeEntry"
+    SET "deletedAt" = CURRENT_TIMESTAMP,
+        "editHistory" = CAST(${JSON.stringify([deleteHistory, ...currentHistory])} AS jsonb)
+    WHERE "id" = ${id}
+      AND "organizationId" = ${organization.id}
+    RETURNING *
   `;
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json(formatEntry(rows[0]));
 }

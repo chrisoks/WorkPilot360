@@ -14,6 +14,8 @@ import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 
 type OfferCompany = "OK solutions" | "OK immocare";
+type OfferType = "base" | "addendum";
+type OfferAddendumMode = "addition" | "replacement" | "reduction";
 
 type OfferLineInput = {
   catalogItemId?: string;
@@ -23,6 +25,9 @@ type OfferLineInput = {
   title?: string;
   description?: string;
   unitPrice?: number;
+  discountPercent?: number;
+  laborCostRateKey?: string;
+  laborCostRate?: number;
   vatRate?: number;
   laborItems?: OfferLineLaborInput[];
 };
@@ -39,7 +44,12 @@ type OfferInput = {
   projectId?: string;
   projectNumber?: string;
   projectTitle?: string;
+  saveAsDraft?: boolean;
   company?: OfferCompany;
+  offerType?: OfferType;
+  addendumMode?: OfferAddendumMode;
+  plannedExecutionEndMonth?: string;
+  parentOfferId?: string;
   customerName?: string;
   customerStreet?: string;
   customerCity?: string;
@@ -47,9 +57,11 @@ type OfferInput = {
   internalContactName?: string;
   internalPhone?: string;
   internalEmail?: string;
+  plannedExecutionMonth?: string;
   introText?: string;
   closingText?: string;
   vatRate?: number;
+  discountPercent?: number;
   lines?: OfferLineInput[];
 };
 
@@ -60,6 +72,10 @@ type OfferRow = {
   projectNumber: string;
   projectTitle: string;
   company: OfferCompany;
+  offerType: OfferType;
+  addendumMode: OfferAddendumMode;
+  plannedExecutionEndMonth: string;
+  parentOfferId: string;
   offerNumber: string;
   status: string;
   customerName: string;
@@ -69,11 +85,13 @@ type OfferRow = {
   internalContactName: string;
   internalPhone: string;
   internalEmail: string;
+  plannedExecutionMonth: string;
   introText: string;
   closingText: string;
   netTotal: number;
   vatRate: number;
   grossTotal: number;
+  discountPercent: number;
   pdfData: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -90,6 +108,9 @@ type OfferLineRow = {
   title: string;
   description: string;
   unitPrice: number;
+  discountPercent: number;
+  laborCostRateKey: string;
+  laborCostRate: number;
   vatRate: number;
   totalNet: number;
 };
@@ -152,6 +173,10 @@ async function ensureOfferTables() {
       "projectNumber" TEXT NOT NULL DEFAULT '',
       "projectTitle" TEXT NOT NULL DEFAULT '',
       "company" TEXT NOT NULL DEFAULT 'OK solutions',
+      "offerType" TEXT NOT NULL DEFAULT 'base',
+      "addendumMode" TEXT NOT NULL DEFAULT 'addition',
+      "plannedExecutionEndMonth" TEXT NOT NULL DEFAULT '',
+      "parentOfferId" TEXT NOT NULL DEFAULT '',
       "offerNumber" TEXT NOT NULL,
       "status" TEXT NOT NULL DEFAULT 'Entwurf',
       "customerName" TEXT NOT NULL DEFAULT '',
@@ -161,15 +186,52 @@ async function ensureOfferTables() {
       "internalContactName" TEXT NOT NULL DEFAULT '',
       "internalPhone" TEXT NOT NULL DEFAULT '',
       "internalEmail" TEXT NOT NULL DEFAULT '',
+      "plannedExecutionMonth" TEXT NOT NULL DEFAULT '',
       "introText" TEXT NOT NULL DEFAULT '',
       "closingText" TEXT NOT NULL DEFAULT '',
       "netTotal" DOUBLE PRECISION NOT NULL DEFAULT 0,
       "vatRate" DOUBLE PRECISION NOT NULL DEFAULT 19,
       "grossTotal" DOUBLE PRECISION NOT NULL DEFAULT 0,
+      "discountPercent" DOUBLE PRECISION NOT NULL DEFAULT 0,
       "pdfData" TEXT,
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "Offer"
+    ADD COLUMN IF NOT EXISTS "plannedExecutionMonth" TEXT NOT NULL DEFAULT ''
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "Offer"
+    ADD COLUMN IF NOT EXISTS "offerType" TEXT NOT NULL DEFAULT 'base'
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "Offer"
+    ADD COLUMN IF NOT EXISTS "addendumMode" TEXT NOT NULL DEFAULT 'addition'
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "Offer"
+    ADD COLUMN IF NOT EXISTS "plannedExecutionEndMonth" TEXT NOT NULL DEFAULT ''
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "Offer"
+    ADD COLUMN IF NOT EXISTS "parentOfferId" TEXT NOT NULL DEFAULT ''
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "Offer"
+    ADD COLUMN IF NOT EXISTS "discountPercent" DOUBLE PRECISION NOT NULL DEFAULT 0
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "Offer"
+    ALTER COLUMN "updatedAt" SET DEFAULT CURRENT_TIMESTAMP
   `;
 
   await prisma.$executeRaw`
@@ -195,6 +257,9 @@ async function ensureOfferTables() {
       "title" TEXT NOT NULL DEFAULT '',
       "description" TEXT NOT NULL DEFAULT '',
       "unitPrice" DOUBLE PRECISION NOT NULL DEFAULT 0,
+      "discountPercent" DOUBLE PRECISION NOT NULL DEFAULT 0,
+      "laborCostRateKey" TEXT NOT NULL DEFAULT '',
+      "laborCostRate" DOUBLE PRECISION NOT NULL DEFAULT 0,
       "vatRate" DOUBLE PRECISION NOT NULL DEFAULT 19,
       "totalNet" DOUBLE PRECISION NOT NULL DEFAULT 0,
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -219,6 +284,22 @@ async function ensureOfferTables() {
   `;
 
   await prisma.$executeRaw`
+    ALTER TABLE "OfferLine"
+    ALTER COLUMN "updatedAt" SET DEFAULT CURRENT_TIMESTAMP
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "OfferLine"
+    ADD COLUMN IF NOT EXISTS "discountPercent" DOUBLE PRECISION NOT NULL DEFAULT 0
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "OfferLine"
+    ADD COLUMN IF NOT EXISTS "laborCostRateKey" TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS "laborCostRate" DOUBLE PRECISION NOT NULL DEFAULT 0
+  `;
+
+  await prisma.$executeRaw`
     CREATE TABLE IF NOT EXISTS "OfferLineLabor" (
       "id" TEXT NOT NULL PRIMARY KEY,
       "organizationId" TEXT NOT NULL,
@@ -234,6 +315,11 @@ async function ensureOfferTables() {
       "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT "OfferLineLabor_offerLineId_fkey" FOREIGN KEY ("offerLineId") REFERENCES "OfferLine"("id") ON DELETE CASCADE
     )
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "OfferLineLabor"
+    ALTER COLUMN "updatedAt" SET DEFAULT CURRENT_TIMESTAMP
   `;
 
   await prisma.$executeRaw`
@@ -259,6 +345,63 @@ function cleanString(value: unknown) {
 function cleanNumber(value: unknown, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
+}
+
+function cleanPercent(value: unknown) {
+  return Math.min(Math.max(cleanNumber(value, 0), 0), 100);
+}
+
+function roundMoney(value: number) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function normalizeOfferType(value: unknown): OfferType {
+  return value === "addendum" ? "addendum" : "base";
+}
+
+function normalizeAddendumMode(value: unknown): OfferAddendumMode {
+  return value === "replacement" || value === "reduction" ? value : "addition";
+}
+
+function cleanMonth(value: unknown) {
+  const month = cleanString(value);
+  return /^\d{4}-\d{2}$/.test(month) ? month : "";
+}
+
+function normalizeUnit(value: unknown) {
+  const unit = cleanString(value);
+  const aliases: Record<string, string> = {
+    h: "Std",
+    std: "Std",
+    stunde: "Std",
+    stunden: "Std",
+    stk: "Stk",
+    stück: "Stk",
+    stueck: "Stk",
+    pauschale: "Pauschal",
+    pauschal: "Pauschal",
+    liter: "L",
+    ltr: "L",
+  };
+  return aliases[unit.toLowerCase()] ?? unit;
+}
+
+function getLineBaseNet(line: Pick<Required<OfferLineInput>, "quantity" | "unitPrice">) {
+  return line.quantity * line.unitPrice;
+}
+
+function getLineDiscountAmount(line: Pick<Required<OfferLineInput>, "quantity" | "unitPrice" | "discountPercent">) {
+  return roundMoney(getLineBaseNet(line) * (line.discountPercent / 100));
+}
+
+function getLineTotalNet(line: Pick<Required<OfferLineInput>, "quantity" | "unitPrice" | "discountPercent">) {
+  return roundMoney(getLineBaseNet(line) - getLineDiscountAmount(line));
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error && error.message
+    ? error.message
+    : "Unbekannter Fehler";
 }
 
 function formatEuro(value: number) {
@@ -479,7 +622,12 @@ async function generateOfferPdf(offer: OfferInput & { offerNumber: string }, lin
   for (const [index, line] of lines.entries()) {
     const descriptionLines = wrapText(line.description || "", regular, descriptionSize, table.titleWidth - descriptionIndent);
     const titleLines = wrapText(line.title || "-", bold, titleSize, table.titleWidth);
-    const rowHeight = Math.max(31, 14 + titleLines.length * 10 + descriptionLines.length * 9);
+    const lineDiscountAmount = getLineDiscountAmount(line);
+    const lineTotalNet = getLineTotalNet(line);
+    const rowHeight = Math.max(
+      31,
+      14 + titleLines.length * 10 + descriptionLines.length * 9 + (line.discountPercent > 0 ? 10 : 0)
+    );
 
     if (y - rowHeight < bottomLimit) {
       await newPage();
@@ -513,34 +661,58 @@ async function generateOfferPdf(offer: OfferInput & { offerNumber: string }, lin
       size: rowSize,
       font: regular,
     });
-    drawRightAlignedText(page, formatEuro(line.quantity * line.unitPrice), table.totalRightX, y, {
+    drawRightAlignedText(page, formatEuro(lineTotalNet), table.totalRightX, y, {
       size: rowSize,
       font: regular,
     });
+    if (line.discountPercent > 0) {
+      drawRightAlignedText(
+        page,
+        `( Rabatt ${formatQuantity(line.discountPercent)}% ${formatEuro(lineDiscountAmount)} )`,
+        table.totalRightX,
+        y - 11,
+        { size: 6.6, font: regular, color: MUTED }
+      );
+    }
     y -= rowHeight;
   }
 
-  const netTotal = lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);
+  const netBeforeOfferDiscount = lines.reduce((sum, line) => sum + getLineTotalNet(line), 0);
+  const offerDiscountPercent = cleanPercent(offer.discountPercent);
+  const offerDiscountAmount = roundMoney(netBeforeOfferDiscount * (offerDiscountPercent / 100));
+  const netTotal = roundMoney(netBeforeOfferDiscount - offerDiscountAmount);
   const vatRate = cleanNumber(offer.vatRate, 19);
-  const grossTotal = netTotal * (1 + vatRate / 100);
+  const grossTotal = roundMoney(netTotal * (1 + vatRate / 100));
 
-  if (y < 165) {
+  if (y < (offerDiscountPercent > 0 ? 195 : 165)) {
     await newPage();
   }
 
   page.drawLine({ start: { x: 375, y: y + 12 }, end: { x: table.right, y: y + 12 }, thickness: 0.8, color: LINE });
-  page.drawText("Netto", { x: 385, y, size: 8.3, font: bold, color: INK });
-  drawRightAlignedText(page, formatEuro(netTotal), table.totalRightX, y, { size: 8.3, font: bold });
-  page.drawText(`MwSt. ${formatQuantity(vatRate)} %`, { x: 385, y: y - 15, size: 8.3, font: regular, color: INK });
-  drawRightAlignedText(page, formatEuro(grossTotal - netTotal), table.totalRightX, y - 15, {
+  let totalsY = y;
+  if (offerDiscountPercent > 0) {
+    page.drawText("Nettobetrag (ohne Rabatt)", { x: 385, y: totalsY, size: 8.3, font: bold, color: INK });
+    drawRightAlignedText(page, formatEuro(netBeforeOfferDiscount), table.totalRightX, totalsY, { size: 8.3, font: bold });
+    totalsY -= 15;
+    page.drawText(`Rabatt ${formatQuantity(offerDiscountPercent)}%`, { x: 385, y: totalsY, size: 8.3, font: regular, color: INK });
+    drawRightAlignedText(page, `-${formatEuro(offerDiscountAmount)}`, table.totalRightX, totalsY, {
+      size: 8.3,
+      font: regular,
+    });
+    totalsY -= 15;
+  }
+  page.drawText("Netto", { x: 385, y: totalsY, size: 8.3, font: bold, color: INK });
+  drawRightAlignedText(page, formatEuro(netTotal), table.totalRightX, totalsY, { size: 8.3, font: bold });
+  page.drawText(`MwSt. ${formatQuantity(vatRate)} %`, { x: 385, y: totalsY - 15, size: 8.3, font: regular, color: INK });
+  drawRightAlignedText(page, formatEuro(grossTotal - netTotal), table.totalRightX, totalsY - 15, {
     size: 8.3,
     font: regular,
   });
-  page.drawText("Gesamt brutto", { x: 385, y: y - 32, size: 9, font: bold, color: INK });
-  drawRightAlignedText(page, formatEuro(grossTotal), table.totalRightX, y - 32, { size: 9, font: bold });
+  page.drawText("Gesamt brutto", { x: 385, y: totalsY - 32, size: 9, font: bold, color: INK });
+  drawRightAlignedText(page, formatEuro(grossTotal), table.totalRightX, totalsY - 32, { size: 9, font: bold });
 
   if (offer.closingText) {
-    drawTextBlock(page, offer.closingText, 71, y - 66, {
+    drawTextBlock(page, offer.closingText, 71, totalsY - 66, {
       font: regular,
       size: 8.3,
       maxWidth: 330,
@@ -568,6 +740,7 @@ function normalizeOfferLines(lines: OfferLineInput[] = []) {
     .map((line) => {
       const quantity = Math.max(cleanNumber(line.quantity, 1), 0);
       const unitPrice = cleanNumber(line.unitPrice, 0);
+      const discountPercent = cleanPercent(line.discountPercent);
       const catalogType = cleanString(line.catalogType);
       const canPlanLabor = catalogType === "service" || catalogType === "package";
       const laborItems = canPlanLabor && Array.isArray(line.laborItems)
@@ -599,15 +772,43 @@ function normalizeOfferLines(lines: OfferLineInput[] = []) {
         catalogItemId: cleanString(line.catalogItemId),
         catalogType,
         quantity,
-        unit: cleanString(line.unit) || "Stk",
+        unit: normalizeUnit(line.unit) || "Stk",
         title: cleanString(line.title),
         description: cleanString(line.description),
         unitPrice,
+        discountPercent,
+        laborCostRateKey: cleanString(line.laborCostRateKey),
+        laborCostRate: Math.max(cleanNumber(line.laborCostRate, 0), 0),
         vatRate: cleanNumber(line.vatRate, 19),
         laborItems,
       };
     })
     .filter((line) => line.title || line.catalogItemId);
+}
+
+function getOfferLaborValidationMessage(lines: ReturnType<typeof normalizeOfferLines>) {
+  return "";
+
+  const laborCapableLines = lines.filter((line) => line.catalogType === "service" || line.catalogType === "package");
+  if (laborCapableLines.length === 0) {
+    return "Bitte mindestens eine Leistungs- oder Paketposition hinzufügen, damit Angebotszeiten zugewiesen werden können.";
+  }
+
+  const incompleteLineIndex = lines.findIndex((line) => {
+    if (line.catalogType !== "service" && line.catalogType !== "package") return false;
+    const assignedHours = line.laborItems.reduce(
+      (sum, labor) =>
+        labor.userId || labor.employeeName
+          ? sum + Number(labor.plannedHours || 0)
+          : sum,
+      0
+    );
+    return assignedHours + 0.001 < Number(line.quantity || 0);
+  });
+
+  return incompleteLineIndex >= 0
+    ? `Bitte Position ${incompleteLineIndex + 1} vollständig auf Mitarbeiter verplanen.`
+    : "";
 }
 
 function serializeOffer(
@@ -617,6 +818,12 @@ function serializeOffer(
 ) {
   return {
     ...row,
+    offerType: normalizeOfferType(row.offerType),
+    addendumMode: normalizeAddendumMode(row.addendumMode),
+    plannedExecutionMonth: row.plannedExecutionMonth || "",
+    plannedExecutionEndMonth: row.plannedExecutionEndMonth || "",
+    parentOfferId: row.parentOfferId || "",
+    discountPercent: Number(row.discountPercent ?? 0),
     netTotal: Number(row.netTotal ?? 0),
     vatRate: Number(row.vatRate ?? 19),
     grossTotal: Number(row.grossTotal ?? 0),
@@ -628,6 +835,9 @@ function serializeOffer(
       ...line,
       quantity: Number(line.quantity ?? 0),
       unitPrice: Number(line.unitPrice ?? 0),
+      discountPercent: Number(line.discountPercent ?? 0),
+      laborCostRateKey: line.laborCostRateKey ?? "",
+      laborCostRate: Number(line.laborCostRate ?? 0),
       vatRate: Number(line.vatRate ?? 19),
       totalNet: Number(line.totalNet ?? 0),
       laborItems: laborRows
@@ -759,80 +969,113 @@ export async function POST(req: Request) {
   await ensureOfferTables();
   const body = (await req.json()) as OfferInput;
   const lines = normalizeOfferLines(body.lines);
+  const saveAsDraft = Boolean(body.saveAsDraft);
 
   if (!body.projectId) {
     return NextResponse.json({ error: "Projekt fehlt." }, { status: 400 });
   }
 
-  if (lines.length === 0) {
+  if (!saveAsDraft && lines.length === 0) {
     return NextResponse.json({ error: "Bitte mindestens eine Position hinzufügen." }, { status: 400 });
   }
 
-  const offerNumber = await getNextOfferNumber(organization.id);
-  const id = randomUUID();
-  const company = body.company === "OK immocare" ? "OK immocare" : "OK solutions";
-  const pdf = await generateOfferPdf({ ...body, company, offerNumber }, lines);
+  const plannedExecutionMonth = saveAsDraft ? cleanMonth(body.plannedExecutionMonth) : cleanString(body.plannedExecutionMonth);
+  if (!saveAsDraft && !/^\d{4}-\d{2}$/.test(plannedExecutionMonth)) {
+    return NextResponse.json({ error: "Bitte geplanten Ausführungsmonat auswählen." }, { status: 400 });
+  }
 
-  const rows = await prisma.$queryRaw<OfferRow[]>`
-    INSERT INTO "Offer" (
-      "id", "organizationId", "projectId", "projectNumber", "projectTitle", "company",
-      "offerNumber", "status", "customerName", "customerStreet", "customerCity",
-      "contactName", "internalContactName", "internalPhone", "internalEmail",
-      "introText", "closingText", "netTotal", "vatRate", "grossTotal", "pdfData"
-    ) VALUES (
-      ${id}, ${organization.id}, ${cleanString(body.projectId)}, ${cleanString(body.projectNumber)},
-      ${cleanString(body.projectTitle)}, ${company}, ${offerNumber}, ${"Entwurf"},
-      ${cleanString(body.customerName)}, ${cleanString(body.customerStreet)}, ${cleanString(body.customerCity)},
-      ${cleanString(body.contactName)}, ${cleanString(body.internalContactName)}, ${cleanString(body.internalPhone)},
-      ${cleanString(body.internalEmail)}, ${cleanString(body.introText)}, ${cleanString(body.closingText)},
-      ${pdf.netTotal}, ${pdf.vatRate}, ${pdf.grossTotal}, ${pdf.pdfData}
-    )
-    RETURNING *
-  `;
+  const offerType = normalizeOfferType(body.offerType);
+  const addendumMode = normalizeAddendumMode(body.addendumMode);
+  const plannedExecutionEndMonth = cleanMonth(body.plannedExecutionEndMonth);
+  if (plannedExecutionMonth && plannedExecutionEndMonth && plannedExecutionEndMonth < plannedExecutionMonth) {
+    return NextResponse.json({ error: "Der Ausfuehrungszeitraum endet vor dem Startmonat." }, { status: 400 });
+  }
 
-  const savedLines: OfferLineRow[] = [];
-  const savedLaborRows: OfferLineLaborRow[] = [];
-  for (const [index, line] of lines.entries()) {
-    const lineRows = await prisma.$queryRaw<OfferLineRow[]>`
-      INSERT INTO "OfferLine" (
-        "id", "organizationId", "offerId", "catalogItemId", "catalogType", "position",
-        "quantity", "unit", "title", "description", "unitPrice", "vatRate", "totalNet"
+  const laborValidationMessage = saveAsDraft ? "" : getOfferLaborValidationMessage(lines);
+  if (laborValidationMessage) {
+    return NextResponse.json({ error: laborValidationMessage }, { status: 400 });
+  }
+
+  try {
+    const offerNumber = await getNextOfferNumber(organization.id);
+    const id = randomUUID();
+    const company = body.company === "OK immocare" ? "OK immocare" : "OK solutions";
+    const pdf =
+      lines.length > 0
+        ? await generateOfferPdf({ ...body, company, offerNumber }, lines)
+        : { netTotal: 0, vatRate: cleanNumber(body.vatRate, 19), grossTotal: 0, pdfData: null };
+
+    const rows = await prisma.$queryRaw<OfferRow[]>`
+      INSERT INTO "Offer" (
+        "id", "organizationId", "projectId", "projectNumber", "projectTitle", "company",
+        "offerType", "addendumMode", "plannedExecutionEndMonth", "parentOfferId",
+        "offerNumber", "status", "customerName", "customerStreet", "customerCity",
+        "contactName", "internalContactName", "internalPhone", "internalEmail",
+        "plannedExecutionMonth", "introText", "closingText", "discountPercent", "netTotal", "vatRate", "grossTotal", "pdfData", "updatedAt"
       ) VALUES (
-        ${randomUUID()}, ${organization.id}, ${id}, ${line.catalogItemId}, ${line.catalogType}, ${index + 1},
-        ${line.quantity}, ${line.unit}, ${line.title}, ${line.description},
-        ${line.unitPrice}, ${line.vatRate}, ${line.quantity * line.unitPrice}
+        ${id}, ${organization.id}, ${cleanString(body.projectId)}, ${cleanString(body.projectNumber)},
+        ${cleanString(body.projectTitle)}, ${company}, ${offerType}, ${addendumMode}, ${plannedExecutionEndMonth},
+        ${cleanString(body.parentOfferId)}, ${offerNumber}, ${saveAsDraft ? "Entwurf" : "Erstellt"},
+        ${cleanString(body.customerName)}, ${cleanString(body.customerStreet)}, ${cleanString(body.customerCity)},
+        ${cleanString(body.contactName)}, ${cleanString(body.internalContactName)}, ${cleanString(body.internalPhone)},
+        ${cleanString(body.internalEmail)}, ${plannedExecutionMonth}, ${cleanString(body.introText)}, ${cleanString(body.closingText)},
+        ${cleanPercent(body.discountPercent)}, ${pdf.netTotal}, ${pdf.vatRate}, ${pdf.grossTotal}, ${pdf.pdfData}, CURRENT_TIMESTAMP
       )
       RETURNING *
     `;
-    savedLines.push(lineRows[0]);
 
-    for (const [laborIndex, labor] of line.laborItems.entries()) {
-      const laborRows = await prisma.$queryRaw<OfferLineLaborRow[]>`
-        INSERT INTO "OfferLineLabor" (
-          "id", "organizationId", "offerId", "offerLineId", "userId", "employeeName",
-          "plannedHours", "hourlyCostRate", "totalCost", "position"
+    const savedLines: OfferLineRow[] = [];
+    const savedLaborRows: OfferLineLaborRow[] = [];
+    for (const [index, line] of lines.entries()) {
+      const lineRows = await prisma.$queryRaw<OfferLineRow[]>`
+        INSERT INTO "OfferLine" (
+          "id", "organizationId", "offerId", "catalogItemId", "catalogType", "position",
+          "quantity", "unit", "title", "description", "unitPrice", "discountPercent", "laborCostRateKey", "laborCostRate", "vatRate", "totalNet", "updatedAt"
         ) VALUES (
-          ${randomUUID()}, ${organization.id}, ${id}, ${lineRows[0].id}, ${labor.userId}, ${labor.employeeName},
-          ${labor.plannedHours}, ${labor.hourlyCostRate}, ${labor.totalCost}, ${laborIndex + 1}
+          ${randomUUID()}, ${organization.id}, ${id}, ${line.catalogItemId}, ${line.catalogType}, ${index + 1},
+          ${line.quantity}, ${line.unit}, ${line.title}, ${line.description},
+          ${line.unitPrice}, ${line.discountPercent}, ${line.laborCostRateKey}, ${line.laborCostRate}, ${line.vatRate}, ${getLineTotalNet(line)}, CURRENT_TIMESTAMP
         )
         RETURNING *
       `;
-      savedLaborRows.push(laborRows[0]);
+      savedLines.push(lineRows[0]);
+
+      for (const [laborIndex, labor] of line.laborItems.entries()) {
+        const laborRows = await prisma.$queryRaw<OfferLineLaborRow[]>`
+          INSERT INTO "OfferLineLabor" (
+            "id", "organizationId", "offerId", "offerLineId", "userId", "employeeName",
+            "plannedHours", "hourlyCostRate", "totalCost", "position", "updatedAt"
+          ) VALUES (
+            ${randomUUID()}, ${organization.id}, ${id}, ${lineRows[0].id}, ${labor.userId}, ${labor.employeeName},
+            ${labor.plannedHours}, ${labor.hourlyCostRate}, ${labor.totalCost}, ${laborIndex + 1}, CURRENT_TIMESTAMP
+          )
+          RETURNING *
+        `;
+        savedLaborRows.push(laborRows[0]);
+      }
     }
+
+    await addOfferHistory({
+      organizationId: organization.id,
+      offerId: id,
+      projectId: cleanString(body.projectId),
+      offerNumber,
+      eventType: "created",
+      title: saveAsDraft ? "Angebotsentwurf gespeichert" : "Angebot angelegt",
+      note: `${offerType === "addendum" ? "Nachtragsangebot" : "Angebot"} ${offerNumber} wurde ${
+        saveAsDraft ? "als Entwurf gespeichert" : "erstellt"
+      }.`,
+      actorName: cleanString(body.internalContactName) || "System",
+    });
+
+    return NextResponse.json(serializeOffer(rows[0], savedLines, savedLaborRows));
+  } catch (error) {
+    console.error("Offer creation failed", error);
+    return NextResponse.json(
+      { error: `Angebot konnte nicht erstellt werden: ${getErrorMessage(error)}` },
+      { status: 500 }
+    );
   }
-
-  await addOfferHistory({
-    organizationId: organization.id,
-    offerId: id,
-    projectId: cleanString(body.projectId),
-    offerNumber,
-    eventType: "created",
-    title: "Angebot angelegt",
-    note: `${offerNumber} wurde erstellt.`,
-    actorName: cleanString(body.internalContactName) || "System",
-  });
-
-  return NextResponse.json(serializeOffer(rows[0], savedLines, savedLaborRows));
 }
 
 export async function PUT(req: Request) {
@@ -866,17 +1109,35 @@ export async function PATCH(req: Request) {
   const body = (await req.json()) as OfferInput & { id?: string };
   const id = cleanString(body.id);
   const lines = normalizeOfferLines(body.lines);
+  const saveAsDraft = Boolean(body.saveAsDraft);
 
   if (!id) {
     return NextResponse.json({ error: "Angebot fehlt." }, { status: 400 });
   }
 
-  if (lines.length === 0) {
+  if (!saveAsDraft && lines.length === 0) {
     return NextResponse.json({ error: "Bitte mindestens eine Position hinzufügen." }, { status: 400 });
   }
 
-  const existingRows = await prisma.$queryRaw<Array<{ offerNumber: string }>>`
-    SELECT "offerNumber"
+  const plannedExecutionMonth = saveAsDraft ? cleanMonth(body.plannedExecutionMonth) : cleanString(body.plannedExecutionMonth);
+  if (!saveAsDraft && !/^\d{4}-\d{2}$/.test(plannedExecutionMonth)) {
+    return NextResponse.json({ error: "Bitte geplanten Ausführungsmonat auswählen." }, { status: 400 });
+  }
+
+  const laborValidationMessage = saveAsDraft ? "" : getOfferLaborValidationMessage(lines);
+  if (laborValidationMessage) {
+    return NextResponse.json({ error: laborValidationMessage }, { status: 400 });
+  }
+
+  const offerType = normalizeOfferType(body.offerType);
+  const addendumMode = normalizeAddendumMode(body.addendumMode);
+  const plannedExecutionEndMonth = cleanMonth(body.plannedExecutionEndMonth);
+  if (plannedExecutionMonth && plannedExecutionEndMonth && plannedExecutionEndMonth < plannedExecutionMonth) {
+    return NextResponse.json({ error: "Der Ausfuehrungszeitraum endet vor dem Startmonat." }, { status: 400 });
+  }
+
+  const existingRows = await prisma.$queryRaw<Array<{ offerNumber: string; status: string }>>`
+    SELECT "offerNumber", "status"
     FROM "Offer"
     WHERE "organizationId" = ${organization.id} AND "id" = ${id}
     LIMIT 1
@@ -887,7 +1148,10 @@ export async function PATCH(req: Request) {
   }
 
   const company = body.company === "OK immocare" ? "OK immocare" : "OK solutions";
-  const pdf = await generateOfferPdf({ ...body, company, offerNumber: existingOffer.offerNumber }, lines);
+  const pdf =
+    lines.length > 0
+      ? await generateOfferPdf({ ...body, company, offerNumber: existingOffer.offerNumber }, lines)
+      : { netTotal: 0, vatRate: cleanNumber(body.vatRate, 19), grossTotal: 0, pdfData: null };
 
   const rows = await prisma.$queryRaw<OfferRow[]>`
     UPDATE "Offer"
@@ -896,6 +1160,10 @@ export async function PATCH(req: Request) {
       "projectNumber" = ${cleanString(body.projectNumber)},
       "projectTitle" = ${cleanString(body.projectTitle)},
       "company" = ${company},
+      "offerType" = ${offerType},
+      "addendumMode" = ${addendumMode},
+      "plannedExecutionEndMonth" = ${plannedExecutionEndMonth},
+      "parentOfferId" = ${cleanString(body.parentOfferId)},
       "customerName" = ${cleanString(body.customerName)},
       "customerStreet" = ${cleanString(body.customerStreet)},
       "customerCity" = ${cleanString(body.customerCity)},
@@ -903,12 +1171,19 @@ export async function PATCH(req: Request) {
       "internalContactName" = ${cleanString(body.internalContactName)},
       "internalPhone" = ${cleanString(body.internalPhone)},
       "internalEmail" = ${cleanString(body.internalEmail)},
+      "plannedExecutionMonth" = ${plannedExecutionMonth},
       "introText" = ${cleanString(body.introText)},
       "closingText" = ${cleanString(body.closingText)},
+      "discountPercent" = ${cleanPercent(body.discountPercent)},
       "netTotal" = ${pdf.netTotal},
       "vatRate" = ${pdf.vatRate},
       "grossTotal" = ${pdf.grossTotal},
       "pdfData" = ${pdf.pdfData},
+      "status" = CASE
+        WHEN ${saveAsDraft} THEN 'Entwurf'
+        WHEN "status" = 'Entwurf' THEN 'Erstellt'
+        ELSE "status"
+      END,
       "updatedAt" = CURRENT_TIMESTAMP
     WHERE "organizationId" = ${organization.id} AND "id" = ${id}
     RETURNING *
@@ -925,11 +1200,11 @@ export async function PATCH(req: Request) {
     const lineRows = await prisma.$queryRaw<OfferLineRow[]>`
       INSERT INTO "OfferLine" (
         "id", "organizationId", "offerId", "catalogItemId", "catalogType", "position",
-        "quantity", "unit", "title", "description", "unitPrice", "vatRate", "totalNet"
+        "quantity", "unit", "title", "description", "unitPrice", "discountPercent", "laborCostRateKey", "laborCostRate", "vatRate", "totalNet", "updatedAt"
       ) VALUES (
         ${randomUUID()}, ${organization.id}, ${id}, ${line.catalogItemId}, ${line.catalogType}, ${index + 1},
         ${line.quantity}, ${line.unit}, ${line.title}, ${line.description},
-        ${line.unitPrice}, ${line.vatRate}, ${line.quantity * line.unitPrice}
+        ${line.unitPrice}, ${line.discountPercent}, ${line.laborCostRateKey}, ${line.laborCostRate}, ${line.vatRate}, ${getLineTotalNet(line)}, CURRENT_TIMESTAMP
       )
       RETURNING *
     `;
@@ -939,10 +1214,10 @@ export async function PATCH(req: Request) {
       const laborRows = await prisma.$queryRaw<OfferLineLaborRow[]>`
         INSERT INTO "OfferLineLabor" (
           "id", "organizationId", "offerId", "offerLineId", "userId", "employeeName",
-          "plannedHours", "hourlyCostRate", "totalCost", "position"
+          "plannedHours", "hourlyCostRate", "totalCost", "position", "updatedAt"
         ) VALUES (
           ${randomUUID()}, ${organization.id}, ${id}, ${lineRows[0].id}, ${labor.userId}, ${labor.employeeName},
-          ${labor.plannedHours}, ${labor.hourlyCostRate}, ${labor.totalCost}, ${laborIndex + 1}
+          ${labor.plannedHours}, ${labor.hourlyCostRate}, ${labor.totalCost}, ${laborIndex + 1}, CURRENT_TIMESTAMP
         )
         RETURNING *
       `;
@@ -956,8 +1231,8 @@ export async function PATCH(req: Request) {
     projectId: cleanString(body.projectId),
     offerNumber: existingOffer.offerNumber,
     eventType: "updated",
-    title: "Angebot bearbeitet",
-    note: `${existingOffer.offerNumber} wurde aktualisiert.`,
+    title: saveAsDraft ? "Angebotsentwurf gespeichert" : "Angebot bearbeitet",
+    note: `${existingOffer.offerNumber} wurde ${saveAsDraft ? "als Entwurf gespeichert" : "aktualisiert"}.`,
     actorName: cleanString(body.internalContactName) || "System",
   });
 

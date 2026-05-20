@@ -447,11 +447,21 @@ export async function POST(req: Request) {
     (demoUser) => demoUser.role === Role.ADMIN || demoUser.role === Role.GESCHAEFTSFUEHRER
   );
 
-  const notificationRecipients: Array<{ userId: string; subject: string; body: string }> = [
+  const notificationRecipients: Array<{
+    userId: string;
+    subject: string;
+    body: string;
+    linkTarget?: string;
+    linkTargetId?: string;
+    linkLabel?: string;
+  }> = [
     {
       userId: representative.id,
-      subject: "Vertretung eingetragen",
-      body: `Du wurdest als Vertreter f\u00fcr ${targetUserName} eingetragen: ${absenceTypeLabel} vom ${dateFrom} bis ${dateTo}.`,
+      subject: "Vertretung freigeben",
+      body: `Bitte pr\u00fcfe die Vertretung f\u00fcr ${targetUserName}: ${absenceTypeLabel} vom ${dateFrom} bis ${dateTo}.`,
+      linkTarget: "absence-request",
+      linkTargetId: requestGroupId,
+      linkLabel: "Vertretung pr\u00fcfen",
     },
     ...adminRecipients.map((recipient) => ({
       userId: recipient.id,
@@ -470,7 +480,10 @@ export async function POST(req: Request) {
         "channel",
         "subject",
         "body",
-        "createdAt"
+        "createdAt",
+        "linkTarget",
+        "linkTargetId",
+        "linkLabel"
       )
       VALUES (
         ${randomUUID()},
@@ -480,7 +493,10 @@ export async function POST(req: Request) {
         'app',
         ${notification.subject},
         ${notification.body},
-        CURRENT_TIMESTAMP
+        CURRENT_TIMESTAMP,
+        ${notification.linkTarget ?? null},
+        ${notification.linkTargetId ?? null},
+        ${notification.linkLabel ?? null}
       )
     `;
   }

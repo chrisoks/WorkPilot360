@@ -26,6 +26,8 @@ type PlanningEntryRow = {
   offerLabel: string | null;
   offerTotalMinutes: number | null;
   offerPlannedMinutes: number | null;
+  recurrenceId: string | null;
+  recurrenceRule: string | null;
   approvalStatus: string | null;
   requestedByUserId: string | null;
   requestedByName: string | null;
@@ -74,6 +76,8 @@ async function ensurePlanningEntryTable() {
       "offerLabel" TEXT,
       "offerTotalMinutes" INTEGER,
       "offerPlannedMinutes" INTEGER,
+      "recurrenceId" TEXT,
+      "recurrenceRule" TEXT,
       "approvalStatus" TEXT NOT NULL DEFAULT 'confirmed',
       "requestedByUserId" TEXT,
       "requestedByName" TEXT,
@@ -88,6 +92,8 @@ async function ensurePlanningEntryTable() {
   await prisma.$executeRaw`
     ALTER TABLE "PlanningEntry"
     ADD COLUMN IF NOT EXISTS "approvalStatus" TEXT NOT NULL DEFAULT 'confirmed',
+    ADD COLUMN IF NOT EXISTS "recurrenceId" TEXT,
+    ADD COLUMN IF NOT EXISTS "recurrenceRule" TEXT,
     ADD COLUMN IF NOT EXISTS "requestedByUserId" TEXT,
     ADD COLUMN IF NOT EXISTS "requestedByName" TEXT,
     ADD COLUMN IF NOT EXISTS "approvedByUserId" TEXT,
@@ -203,6 +209,8 @@ function formatEntry(entry: PlanningEntryRow, histories: PlanningEntryHistoryRow
     offerLabel: entry.offerLabel ?? "",
     offerTotalMinutes: entry.offerTotalMinutes ?? 0,
     offerPlannedMinutes: entry.offerPlannedMinutes ?? 0,
+    recurrenceId: entry.recurrenceId ?? "",
+    recurrenceRule: entry.recurrenceRule ?? "",
     approvalStatus: entry.approvalStatus === "requested" ? "requested" : "confirmed",
     requestedByUserId: entry.requestedByUserId ?? "",
     requestedByName: entry.requestedByName ?? "",
@@ -467,6 +475,8 @@ export async function POST(req: Request) {
   const offerLabel = cleanString(body.offerLabel);
   const offerTotalMinutes = cleanMinutes(body.offerTotalMinutes);
   const offerPlannedMinutes = cleanMinutes(body.offerPlannedMinutes);
+  const recurrenceId = cleanString(body.recurrenceId);
+  const recurrenceRule = cleanString(body.recurrenceRule);
   const approvalStatus = cleanApprovalStatus(body.approvalStatus);
   const requestedByUserId = cleanString(body.requestedByUserId);
   const requestedByName = cleanString(body.requestedByName);
@@ -518,6 +528,8 @@ export async function POST(req: Request) {
       "offerLabel",
       "offerTotalMinutes",
       "offerPlannedMinutes",
+      "recurrenceId",
+      "recurrenceRule",
       "approvalStatus",
       "requestedByUserId",
       "requestedByName",
@@ -546,6 +558,8 @@ export async function POST(req: Request) {
       ${offerLabel || null},
       ${offerTotalMinutes || null},
       ${offerPlannedMinutes || null},
+      ${recurrenceId || null},
+      ${recurrenceRule || null},
       ${approvalStatus},
       ${requestedByUserId || null},
       ${requestedByName || null},
@@ -572,6 +586,8 @@ export async function POST(req: Request) {
       "offerLabel" = EXCLUDED."offerLabel",
       "offerTotalMinutes" = EXCLUDED."offerTotalMinutes",
       "offerPlannedMinutes" = EXCLUDED."offerPlannedMinutes",
+      "recurrenceId" = EXCLUDED."recurrenceId",
+      "recurrenceRule" = EXCLUDED."recurrenceRule",
       "approvalStatus" = EXCLUDED."approvalStatus",
       "requestedByUserId" = EXCLUDED."requestedByUserId",
       "requestedByName" = EXCLUDED."requestedByName",

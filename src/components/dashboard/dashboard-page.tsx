@@ -95,8 +95,10 @@ type AppTab =
   | "salesPrices"
   | "datanorm"
   | "accounting"
+  | "batchBilling"
   | "personalData"
   | "employees"
+  | "laborCostRates"
   | "absenceRequests"
   | "timeTracking"
   | "timeCategories"
@@ -107,6 +109,15 @@ type AppTab =
 type CalendarView = "month" | "week" | "day";
 type PerformancePeriod = "day" | "month" | "year";
 type ProductivityPeriod = "day" | "week" | "month" | "quarter" | "year";
+type ReportAnalyticsTab =
+  | "forecast"
+  | "revenue"
+  | "projects"
+  | "customers"
+  | "catalog"
+  | "employees"
+  | "overview"
+  | "map";
 type ContactFormTab = "details" | "address" | "terms" | "payment" | "zugferd";
 type CustomerFileTab =
   | "logbook"
@@ -114,6 +125,7 @@ type CustomerFileTab =
   | "documents"
   | "gaeb"
   | "contacts"
+  | "potentials"
   | "tasks"
   | "orders"
   | "projects"
@@ -122,7 +134,7 @@ type CustomerDocumentType =
   | "Allgemeine Dokumente"
   | "Anfragen"
   | "Angebote"
-  | "Angebote: Sonderangebote"
+  | "Angebote: Nachtragsangebote"
   | "Tätigkeitsberichte"
   | "Endkontrolle"
   | "Mahnung"
@@ -134,6 +146,8 @@ type ProjectFileTab =
   | "gaeb"
   | "time"
   | "appointments"
+  | "budgets"
+  | "automaticBilling"
   | "tasks"
   | "material"
   | "comparison"
@@ -153,6 +167,8 @@ type SidebarPreparedTab =
   | "datanorm";
 type FirmSettingsTab =
   | "profile"
+  | "units"
+  | "businessAreaTargets"
   | "appearance"
   | "branches"
   | "emailTemplates"
@@ -472,8 +488,18 @@ type UserOption = {
   planningTimeWindows?: WeeklyPlanningWindows;
   planningBreakWindows?: WeeklyPlanningWindows;
   planningResponsibleFor?: string[];
+  branchAllocations?: BranchAllocations;
+  includeInLaborCostRate?: boolean;
   notifyIdeaStore?: boolean;
+  notifyUpsell?: boolean;
   mailAccount?: EmployeeMailAccount;
+};
+
+type BranchAllocations = {
+  okSolutions: number;
+  okImmocare: number;
+  okImmocareVzk?: number;
+  okImmocareTzk?: number;
 };
 
 type EmployeeMailAccount = {
@@ -622,6 +648,7 @@ type PlanningTimeWindow = { start: string; end: string };
 type WeeklyPlanningWindows = Record<WeeklyDayKey, PlanningTimeWindow>;
 type PlanningEntrySource = "manual" | "offer";
 type PlanningEntryApprovalStatus = "confirmed" | "requested";
+type PlanningRecurrenceType = "once" | "weekly" | "biweekly" | "monthly";
 type PlanningEntryHistory = {
   id: string;
   planningEntryId: string;
@@ -655,6 +682,8 @@ type PlanningEntry = {
   offerLabel: string;
   offerTotalMinutes: number;
   offerPlannedMinutes: number;
+  recurrenceId: string;
+  recurrenceRule: string;
   approvalStatus: PlanningEntryApprovalStatus;
   requestedByUserId: string;
   requestedByName: string;
@@ -800,6 +829,7 @@ type CatalogItem = {
   deliveryTime: string;
   stockQuantity: number | null;
   purchasePrice: number;
+  laborCostRateKey: string;
   listPrice: number;
   salesPrice: number;
   vatRate: number;
@@ -840,6 +870,9 @@ type OfferLineDraft = {
   title: string;
   description: string;
   unitPrice: number;
+  discountPercent?: number;
+  laborCostRateKey?: string;
+  laborCostRate?: number;
   vatRate: number;
   laborItems: OfferLineLaborDraft[];
 };
@@ -857,6 +890,10 @@ type OfferItem = {
   projectNumber: string;
   projectTitle: string;
   company: "OK solutions" | "OK immocare";
+  offerType?: "base" | "addendum";
+  addendumMode?: "addition" | "replacement" | "reduction";
+  plannedExecutionEndMonth?: string;
+  parentOfferId?: string;
   offerNumber: string;
   status: string;
   customerName: string;
@@ -866,11 +903,13 @@ type OfferItem = {
   internalContactName: string;
   internalPhone: string;
   internalEmail: string;
+  plannedExecutionMonth: string;
   introText: string;
   closingText: string;
   netTotal: number;
   vatRate: number;
   grossTotal: number;
+  discountPercent?: number;
   pdfAvailable: boolean;
   createdAt: string;
   updatedAt: string;
@@ -884,6 +923,30 @@ type InvoiceItem = {
   company: "OK solutions" | "OK immocare";
   invoiceNumber: string;
   status: string;
+  billingSource: "manual" | "batch";
+  customerName: string;
+  customerStreet: string;
+  customerCity: string;
+  contactName: string;
+  internalContactName: string;
+  internalPhone: string;
+  internalEmail: string;
+  plannedExecutionMonth: string;
+  introText: string;
+  closingText: string;
+  netTotal: number;
+  vatRate: number;
+  grossTotal: number;
+  discountPercent: number;
+  isPaid: boolean;
+  paidAt: string;
+  pdfAvailable: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lines: OfferLineDraft[];
+};
+type AutoBillingTemplate = {
+  company: "OK solutions" | "OK immocare";
   customerName: string;
   customerStreet: string;
   customerCity: string;
@@ -893,12 +956,8 @@ type InvoiceItem = {
   internalEmail: string;
   introText: string;
   closingText: string;
-  netTotal: number;
   vatRate: number;
-  grossTotal: number;
-  pdfAvailable: boolean;
-  createdAt: string;
-  updatedAt: string;
+  discountPercent: number;
   lines: OfferLineDraft[];
 };
 type OfferHistoryItem = {
@@ -914,6 +973,10 @@ type OfferHistoryItem = {
 };
 type OfferDraft = {
   company: "OK solutions" | "OK immocare";
+  offerType: "base" | "addendum";
+  addendumMode: "addition" | "replacement" | "reduction";
+  plannedExecutionEndMonth: string;
+  parentOfferId: string;
   customerName: string;
   customerStreet: string;
   customerCity: string;
@@ -921,9 +984,11 @@ type OfferDraft = {
   internalContactName: string;
   internalPhone: string;
   internalEmail: string;
+  plannedExecutionMonth: string;
   introText: string;
   closingText: string;
   vatRate: number;
+  discountPercent: number;
   lines: OfferLineDraft[];
 };
 
@@ -939,6 +1004,34 @@ type TradeOption = {
   id: string;
   name: string;
   projectPrefix: string;
+  businessAreaId: string;
+  businessAreaName: string;
+};
+
+type BusinessAreaOption = {
+  id: string;
+  name: string;
+};
+
+type BusinessAreaTarget = {
+  id: string;
+  businessAreaId: string;
+  businessAreaName: string;
+  month: string;
+  amount: number;
+};
+
+type TradeInlineDraft = {
+  name: string;
+  projectPrefix: string;
+  businessAreaId: string;
+};
+
+type UnitOption = {
+  id: string;
+  name: string;
+  sortOrder: number;
+  isActive: boolean;
 };
 
 type EscalationRule = {
@@ -968,6 +1061,8 @@ type HeroProjectPreview = {
   projectRuntimeFrom?: string;
   projectRuntimeUntil?: string;
   billingInterval?: string;
+  forecastBillingType?: string;
+  forecastNetAmount?: string;
   trade?: string;
   branch?: string;
   volume?: string;
@@ -984,6 +1079,20 @@ type HeroProjectPreview = {
     previousHours: string;
     nextHours: string;
   }>;
+  timeBudgetAllocations?: ProjectTimeBudgetAllocation[];
+  autoBillingEnabled?: boolean;
+  autoBillingNetAmount?: string;
+  autoBillingVatRate?: string;
+  autoBillingStartMonth?: string;
+  autoBillingEndMonth?: string;
+  autoBillingTemplateMode?: string;
+  autoBillingTemplate?: AutoBillingTemplate | null;
+};
+
+type ProjectTimeBudgetAllocation = {
+  id: string;
+  month: string;
+  hours: string;
 };
 
 type AppNotification = {
@@ -1025,7 +1134,7 @@ type AbsenceItem = {
 type ContactItem = {
   id: string;
   category: string;
-  type: "person" | "company";
+  type: "person" | "company" | "private";
   legalForm: string;
   customerNumber: string;
   salutation: string;
@@ -1127,6 +1236,8 @@ type ProjectDraft = {
   projectRuntimeFrom: string;
   projectRuntimeUntil: string;
   billingInterval: "monatlich" | "quartalsweise" | "jährlich";
+  forecastBillingType: "monatlich" | "wöchentlich" | "quartalsweise";
+  forecastNetAmount: string;
   trade: string;
   branch: string;
   name: string;
@@ -1135,7 +1246,7 @@ type ProjectDraft = {
   source: string;
   participants: string;
 };
-type ProjectKindFilter = "" | ProjectDraft["projectKind"];
+type ProjectKindFilter = "" | ProjectDraft["projectKind"] | "potentials";
 
 type CustomerLogbookEntry = {
   id: string;
@@ -1168,15 +1279,50 @@ type ProjectLogbookEntry = {
   attachments: LogbookAttachment[];
 };
 
+type ProjectPotentialStatus = "open" | "follow_up" | "offered" | "lost";
+
+type ProjectPotential = {
+  id: string;
+  contactId: string;
+  customerName: string;
+  projectId: string;
+  projectLabel: string;
+  description: string;
+  status: ProjectPotentialStatus;
+  taskId: string;
+  followUpAt: string;
+  offeredAt: string;
+  closedAt: string;
+  history: Array<{ at: string; actor: string; action: string; note: string }>;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type StampMode = "project" | "unproductive";
 
 type StampSession = {
   mode: StampMode;
   projectId: string;
+  projectLabel?: string;
   startedAt: number;
   accumulatedMs: number;
   pauseStartedAt: number | null;
   pauseMs: number;
+};
+
+type ActiveStampSessionResponse = {
+  id: string;
+  userId: string;
+  employee: string;
+  mode: StampMode;
+  projectId: string;
+  projectLabel: string;
+  startedAt: string;
+  accumulatedMs: number;
+  pauseStartedAt: string | null;
+  pauseMs: number;
+  createdAt: string;
+  updatedAt: string;
 };
 
 type StampTimeEntry = {
@@ -1210,6 +1356,7 @@ type StampTimeEntry = {
     nextValue: string;
     createdAt: string;
   }>;
+  deletedAt?: string;
   createdAt?: string;
 };
 
@@ -1236,6 +1383,8 @@ const emptyProjectDraft: ProjectDraft = {
   projectRuntimeFrom: "",
   projectRuntimeUntil: "",
   billingInterval: "monatlich",
+  forecastBillingType: "monatlich",
+  forecastNetAmount: "",
   trade: "Winterdienst",
   branch: "OK solutions GmbH",
   name: "",
@@ -1535,7 +1684,26 @@ const planningTimelineSlots = Array.from({ length: 57 }, (_, index) => {
 });
 const planningHourLabels = Array.from({ length: 15 }, (_, index) => `${String(6 + index).padStart(2, "0")}:00`);
 const planningSlotColumnCount = 56;
-const catalogUnits = ["Stk", "Std", "m²", "m", "km", "Tag", "kg", "L", "Pauschal"];
+const catalogUnits = ["Stk", "Std", "Pauschal", "Paket", "m²", "m³", "m", "km", "Tag", "Monat", "kg", "L"];
+
+function normalizeUnit(value: string) {
+  const trimmed = value.trim();
+  const aliases: Record<string, string> = {
+    h: "Std",
+    std: "Std",
+    stunde: "Std",
+    stunden: "Std",
+    stk: "Stk",
+    "stück": "Stk",
+    stueck: "Stk",
+    pauschale: "Pauschal",
+    pauschal: "Pauschal",
+    liter: "L",
+    ltr: "L",
+  };
+
+  return aliases[trimmed.toLowerCase()] ?? trimmed;
+}
 const emptyCatalogItemDraft: Omit<CatalogItem, "id" | "createdAt" | "updatedAt" | "history" | "usedCount"> = {
   type: "article",
   number: "",
@@ -1557,6 +1725,7 @@ const emptyCatalogItemDraft: Omit<CatalogItem, "id" | "createdAt" | "updatedAt" 
   deliveryTime: "",
   stockQuantity: null,
   purchasePrice: 0,
+  laborCostRateKey: "",
   listPrice: 0,
   salesPrice: 0,
   vatRate: 19,
@@ -1569,6 +1738,10 @@ const emptyCatalogItemDraft: Omit<CatalogItem, "id" | "createdAt" | "updatedAt" 
 };
 const emptyOfferDraft: OfferDraft = {
   company: "OK solutions",
+  offerType: "base",
+  addendumMode: "addition",
+  plannedExecutionEndMonth: "",
+  parentOfferId: "",
   customerName: "",
   customerStreet: "",
   customerCity: "",
@@ -1576,10 +1749,12 @@ const emptyOfferDraft: OfferDraft = {
   internalContactName: "",
   internalPhone: "",
   internalEmail: "",
+  plannedExecutionMonth: "",
   introText:
     "wir danken Ihnen fuer Ihre Anfrage und unterbreiten Ihnen auf den folgenden Seiten unser Angebot.",
   closingText: "Wir freuen uns auf Ihre Rückmeldung.",
   vatRate: 19,
+  discountPercent: 0,
   lines: [],
 };
 
@@ -1662,7 +1837,7 @@ const contentStatusOptions: ContentStatus[] = [
 ];
 
 const navigationTabs: Array<[AppTab, string]> = [
-  ["overview", "Übersicht"],
+  ["overview", "Dashboard"],
   ["reports", "Auswertungen"],
   ["contacts", "Kontakte"],
   ["projectsSolutions", "Projekte OK solutions"],
@@ -1797,7 +1972,7 @@ function SidebarIcon({ tab }: { tab: AppTab }) {
     );
   }
 
-  if (tab === "accounting") {
+  if (tab === "accounting" || tab === "batchBilling") {
     return (
       <svg {...common}>
         <ellipse cx="12" cy="6" rx="7" ry="3" />
@@ -1839,6 +2014,8 @@ function SidebarIcon({ tab }: { tab: AppTab }) {
 
 const firmSettingsTabs: Array<{ id: FirmSettingsTab; label: string }> = [
   { id: "profile", label: "Firmenprofil" },
+  { id: "units", label: "Einheiten" },
+  { id: "businessAreaTargets", label: "Geschäftsbereich-Soll" },
   { id: "appearance", label: "Seitendarstellung" },
   { id: "branches", label: "Niederlassungen" },
   { id: "emailTemplates", label: "Email-Templates" },
@@ -1892,7 +2069,7 @@ const legalFormOptions = [
 
 const emptyContact: Omit<ContactItem, "id" | "createdAt" | "updatedAt"> = {
   category: "Kunde",
-  type: "person",
+  type: "company",
   legalForm: "",
   customerNumber: "",
   salutation: "",
@@ -1931,6 +2108,17 @@ const emptyContact: Omit<ContactItem, "id" | "createdAt" | "updatedAt"> = {
   leitwegId: "",
 };
 
+const finalInspectionItems = [
+  "Auftrag vollständig erledigt",
+  "Ergebnis sauber und ordentlich",
+  "Keine sichtbaren Mängel",
+  "Arbeitsbereich sicher und sauber hinterlassen",
+  "Material / Geräte mitgenommen",
+  "Besonderheiten oder Schäden gemeldet",
+];
+const TASK_ACCEPTANCE_REQUIRED_MESSAGE =
+  "Sie müssen zuerst die Aufgabe annehmen, bevor Sie die Aufgabe bearbeiten.";
+
 type TaskItem = {
   id: string;
   createdAt: string;
@@ -1952,6 +2140,7 @@ type TaskItem = {
   recurrenceEnabled: boolean;
   recurrenceInterval: RecurrenceInterval | "";
   createdById: string;
+  createdByName: string;
   acceptanceStatus: "pending" | "accepted" | "rejected";
   acceptanceRespondedAt: string | null;
   rejectionReason: string;
@@ -1962,8 +2151,30 @@ type TaskItem = {
   vorgabeMinuten: number | null;
   gesamtzeitMinuten: number;
   planningAllocations: TaskPlanningAllocation[];
+  participants: TaskParticipantItem[];
+  history: TaskHistoryItem[];
   kommentare: CommentItem[];
   zeiteintraege: TimeEntryItem[];
+};
+
+type TaskParticipantItem = {
+  id: string;
+  taskId: string;
+  userId: string;
+  userName: string;
+  role: string;
+  acceptanceStatus: "pending" | "accepted" | "rejected";
+  acceptanceRespondedAt: string | null;
+  rejectionReason: string;
+  createdAt: string;
+};
+
+type TaskHistoryItem = {
+  id: string;
+  event: string;
+  actorName: string;
+  note: string;
+  createdAt: string;
 };
 
 type HolidayItem = {
@@ -1976,6 +2187,8 @@ type CommentItem = {
   text: string;
   erstelltAm: string;
   autor: string;
+  recipientUserId?: string;
+  recipientName?: string;
 };
 
 type TimeEntryItem = {
@@ -2386,6 +2599,14 @@ function formatMoney(value: number) {
   })} €`;
 }
 
+function roundCurrencyValue(value: number) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function formatCurrencyInputValue(value: number) {
+  return roundCurrencyValue(value).toFixed(2);
+}
+
 const defaultEmployeeCostCalculation: EmployeeCostCalculation = {
   id: "",
   userId: "",
@@ -2748,7 +2969,7 @@ function getContentStatusBadge(entry: ContentItem) {
     return { label: "Freigegeben", icon: "?", tone: "approved" };
   }
   if (status === "Veröffentlicht") {
-    return { label: "Veröffentlicht", icon: "??", tone: "published" };
+    return { label: "Veröffentlicht", icon: "?", tone: "published" };
   }
   return null;
 }
@@ -2758,7 +2979,7 @@ const contentStatusLegend = [
   { label: "Finale Freigabe offen", icon: "!", tone: "approval" },
   { label: "Korrektur nötig", icon: "!", tone: "correction" },
   { label: "Freigegeben", icon: "?", tone: "approved" },
-  { label: "Veröffentlicht", icon: "??", tone: "published" },
+  { label: "Veröffentlicht", icon: "?", tone: "published" },
 ];
 
 function getDeadlineWorkingTimeInfo(
@@ -3004,6 +3225,97 @@ function getProjectKind(project: HeroProjectPreview): ProjectDraft["projectKind"
     : "einmaliges Projekt";
 }
 
+function getProjectPlanningMonthKey(value?: string | null) {
+  const date = parseProjectDate(value || "");
+  if (!date) return "";
+
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getProjectPlanningStartMonth(project: HeroProjectPreview) {
+  return (
+    getProjectPlanningMonthKey(project.projectRuntimeFrom) ||
+    getProjectPlanningMonthKey(project.createdAt)
+  );
+}
+
+function getOfferPlanningStartMonth(offer: Pick<OfferItem, "plannedExecutionMonth">, project: HeroProjectPreview) {
+  return offer.plannedExecutionMonth || getProjectPlanningStartMonth(project);
+}
+
+function getProjectPlanningEndMonth(project: HeroProjectPreview) {
+  return getProjectPlanningMonthKey(project.projectRuntimeUntil);
+}
+
+function getProjectBudgetMonths(project: HeroProjectPreview) {
+  const startDate = parseProjectDate(project.projectRuntimeFrom || project.createdAt);
+  const endDate =
+    parseProjectDate(project.projectRuntimeUntil) ??
+    parseProjectDate(project.projectRuntimeFrom || project.createdAt);
+
+  if (!startDate || !endDate) return [];
+
+  const months: string[] = [];
+  const cursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1, 12);
+  const endCursor = new Date(endDate.getFullYear(), endDate.getMonth(), 1, 12);
+
+  while (cursor.getTime() <= endCursor.getTime()) {
+    months.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`);
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+
+  return months;
+}
+
+function formatMonthLabel(monthKey: string) {
+  const [year, month] = monthKey.split("-").map(Number);
+  if (!year || !month) return monthKey;
+
+  return new Date(year, month - 1, 1, 12).toLocaleDateString(APP_LOCALE, {
+    month: "long",
+    year: "numeric",
+    timeZone: APP_TIME_ZONE,
+  });
+}
+
+function getProjectBudgetAllocationHours(project: HeroProjectPreview, monthKey: string) {
+  const allocation = (project.timeBudgetAllocations ?? []).find((entry) => entry.month === monthKey);
+  return allocation ? parseHoursInput(allocation.hours) : 0;
+}
+
+function getProjectBudgetAllocationTotal(project: HeroProjectPreview) {
+  return (project.timeBudgetAllocations ?? []).reduce(
+    (sum, allocation) => sum + parseHoursInput(allocation.hours),
+    0
+  );
+}
+
+function isRecurringProject(project: HeroProjectPreview) {
+  return getProjectKind(project).startsWith("Dauer");
+}
+
+function isOfferDueForPlanningMonth(
+  offer: Pick<OfferItem, "plannedExecutionMonth" | "plannedExecutionEndMonth">,
+  project: HeroProjectPreview,
+  monthKey: string
+) {
+  const startMonth = getOfferPlanningStartMonth(offer, project);
+  if (!startMonth) return false;
+  if (!isRecurringProject(project)) return monthKey === startMonth;
+
+  const endMonth = offer.plannedExecutionEndMonth || getProjectPlanningEndMonth(project);
+  return monthKey >= startMonth && (!endMonth || monthKey <= endMonth);
+}
+
+function isProjectBudgetDueForPlanningMonth(project: HeroProjectPreview, monthKey: string) {
+  const startMonth = getProjectPlanningStartMonth(project);
+  if (!startMonth) return false;
+  if (!isRecurringProject(project)) return monthKey === startMonth;
+
+  const endMonth = getProjectPlanningEndMonth(project);
+  return monthKey >= startMonth && (!endMonth || monthKey <= endMonth);
+}
+
 function clampPercent(value: number) {
   return Math.max(0, Math.min(100, value));
 }
@@ -3229,7 +3541,7 @@ const documentTemplateSyntax = [
   { placeholder: "{{referenceDocument.number}}", description: "Referenzdokumentnummer" },
   { placeholder: "{{referenceDocument.date}}", description: "Datum des Referenzdokuments" },
   { placeholder: "{{referenceDocument.amount}}", description: "Betrag des Referenzdokuments" },
-  { placeholder: "{{referenceDocument.dueDate}}", description: "Faelligkeitsdatum" },
+  { placeholder: "{{referenceDocument.dueDate}}", description: "Fälligkeitsdatum" },
   { placeholder: "{{customerDocument.dueDays}}", description: "Zahlungsziel in Tagen" },
   {
     placeholder: "{{customerDocument.currentReminderIntervalEnd}}",
@@ -3353,6 +3665,8 @@ export function DashboardPage() {
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [isLoginSubmitting, setIsLoginSubmitting] = useState(false);
+  const [authenticatedUserId, setAuthenticatedUserId] = useState("");
+  const [impersonatedUserId, setImpersonatedUserId] = useState("");
   const [activeTab, setActiveTab] = useState<AppTab>("overview");
   const [personalDataView, setPersonalDataView] = useState<PersonalDataView>("overview");
   const [selectedPersonalUserId, setSelectedPersonalUserId] = useState("");
@@ -3429,10 +3743,16 @@ export function DashboardPage() {
   const [offerDraft, setOfferDraft] = useState<OfferDraft>(emptyOfferDraft);
   const [offerError, setOfferError] = useState("");
   const [isSavingOffer, setIsSavingOffer] = useState(false);
+  const [upsellOfferProjectId, setUpsellOfferProjectId] = useState("");
   const [offerPreviewDataUrl, setOfferPreviewDataUrl] = useState("");
   const [isGeneratingOfferPreview, setIsGeneratingOfferPreview] = useState(false);
   const [offerLineSearchTerms, setOfferLineSearchTerms] = useState<Record<string, string>>({});
   const [openOfferLinePickerId, setOpenOfferLinePickerId] = useState("");
+  const [isOfferExecutionMonthPickerOpen, setIsOfferExecutionMonthPickerOpen] = useState(false);
+  const [isOfferExecutionEndMonthPickerOpen, setIsOfferExecutionEndMonthPickerOpen] = useState(false);
+  const [offerExecutionMonthPickerYear, setOfferExecutionMonthPickerYear] = useState(() => new Date().getFullYear());
+  const [offerExecutionEndMonthPickerYear, setOfferExecutionEndMonthPickerYear] = useState(() => new Date().getFullYear());
+  const previousOfferDraftRef = useRef(offerDraft);
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState("");
   const [invoiceDraft, setInvoiceDraft] = useState<OfferDraft>(emptyOfferDraft);
@@ -3445,6 +3765,9 @@ export function DashboardPage() {
   const [openInvoiceLinePickerId, setOpenInvoiceLinePickerId] = useState("");
   const [invoiceStampEntryIds, setInvoiceStampEntryIds] = useState<string[]>([]);
   const [invoiceBillableStampEntryIds, setInvoiceBillableStampEntryIds] = useState<string[]>([]);
+  const [pendingFinalizeInvoice, setPendingFinalizeInvoice] = useState<
+    { source: "list"; invoice: InvoiceItem } | { source: "modal" } | null
+  >(null);
   const [documentMailDraft, setDocumentMailDraft] = useState<DocumentMailDraft | null>(null);
   const [documentMailError, setDocumentMailError] = useState("");
   const [documentMailSuccess, setDocumentMailSuccess] = useState("");
@@ -3455,6 +3778,16 @@ export function DashboardPage() {
   const [globalSearchTerm, setGlobalSearchTerm] = useState("");
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
   const [firmSettingsTab, setFirmSettingsTab] = useState<FirmSettingsTab>("profile");
+  const [reportAnalyticsTab, setReportAnalyticsTab] = useState<ReportAnalyticsTab>("forecast");
+  const [selectedForecastPeriod, setSelectedForecastPeriod] = useState("total");
+  const [reportSearch, setReportSearch] = useState("");
+  const [batchBillingMonth, setBatchBillingMonth] = useState(() => formatInputDate(new Date()).slice(0, 7));
+  const [selectedBatchProjectIds, setSelectedBatchProjectIds] = useState<string[]>([]);
+  const [selectedBatchDraftInvoiceIds, setSelectedBatchDraftInvoiceIds] = useState<string[]>([]);
+  const [isCreatingBatchDrafts, setIsCreatingBatchDrafts] = useState(false);
+  const [isFinalizingBatchInvoices, setIsFinalizingBatchInvoices] = useState(false);
+  const [batchBillingMessage, setBatchBillingMessage] = useState("");
+  const [batchBillingError, setBatchBillingError] = useState("");
   const [isFirmSettingsNavOpen, setIsFirmSettingsNavOpen] = useState(false);
   const [openProjectNav, setOpenProjectNav] = useState<Record<string, boolean>>({
     projectsSolutions: false,
@@ -3474,17 +3807,28 @@ export function DashboardPage() {
   const [isTradeManagementModalOpen, setIsTradeManagementModalOpen] = useState(false);
   const [tradeDraftName, setTradeDraftName] = useState("");
   const [tradeDraftPrefix, setTradeDraftPrefix] = useState("");
+  const [tradeDraftBusinessAreaId, setTradeDraftBusinessAreaId] = useState("");
   const [tradeManagementError, setTradeManagementError] = useState("");
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
   const [teams, setTeams] = useState<TeamOption[]>([]);
   const [trades, setTrades] = useState<TradeOption[]>([]);
+  const [businessAreas, setBusinessAreas] = useState<BusinessAreaOption[]>([]);
+  const [businessAreaTargets, setBusinessAreaTargets] = useState<BusinessAreaTarget[]>([]);
+  const [businessAreaTargetDrafts, setBusinessAreaTargetDrafts] = useState<Record<string, string>>({});
+  const [businessAreaTargetError, setBusinessAreaTargetError] = useState("");
+  const [tradeInlineDrafts, setTradeInlineDrafts] = useState<Record<string, TradeInlineDraft>>({});
+  const [units, setUnits] = useState<UnitOption[]>([]);
+  const [unitDraftName, setUnitDraftName] = useState("");
+  const [editingUnitId, setEditingUnitId] = useState("");
+  const [unitError, setUnitError] = useState("");
   const [escalationRules, setEscalationRules] = useState<EscalationRule[]>([]);
   const [deadlineProgressTime, setDeadlineProgressTime] = useState(() => Date.now());
   const [timerNow, setTimerNow] = useState(() => Date.now());
-  const [runningTaskTimers, setRunningTaskTimers] = useState<Record<string, number>>({});
-  const [lastTaskTimerDurations, setLastTaskTimerDurations] = useState<Record<string, number>>({});
   const [stampSession, setStampSession] = useState<StampSession | null>(null);
+  const [dashboardStampSessions, setDashboardStampSessions] = useState<
+    Record<string, ActiveStampSessionResponse>
+  >({});
   const [stampEntries, setStampEntries] = useState<StampTimeEntry[]>([]);
   const [isStampModalOpen, setIsStampModalOpen] = useState(false);
   const [stampModalMode, setStampModalMode] = useState<"start" | "change" | "stop">("start");
@@ -3494,6 +3838,13 @@ export function DashboardPage() {
   const [isStampProjectSearchOpen, setIsStampProjectSearchOpen] = useState(true);
   const [stampComment, setStampComment] = useState("");
   const [stampError, setStampError] = useState("");
+  const [stampCompletionState, setStampCompletionState] = useState<"" | "finished" | "interrupted">("");
+  const [finalInspectionChecks, setFinalInspectionChecks] = useState<boolean[]>(
+    finalInspectionItems.map(() => false)
+  );
+  const [finalInspectionByColleague, setFinalInspectionByColleague] = useState(false);
+  const [finalInspectionHasUpsell, setFinalInspectionHasUpsell] = useState(false);
+  const [finalInspectionUpsellNotes, setFinalInspectionUpsellNotes] = useState("");
   const [editingStampEntry, setEditingStampEntry] = useState<StampTimeEntry | null>(null);
   const [isManualProjectTimeModalOpen, setIsManualProjectTimeModalOpen] = useState(false);
   const [manualProjectTimeUserId, setManualProjectTimeUserId] = useState("");
@@ -3511,13 +3862,25 @@ export function DashboardPage() {
   const [selectedHeroDetailId, setSelectedHeroDetailId] = useState("");
   const [selectedProjectFileId, setSelectedProjectFileId] = useState("");
   const [isProjectStatusMenuOpen, setIsProjectStatusMenuOpen] = useState(false);
+  const [isProjectUpsellMenuOpen, setIsProjectUpsellMenuOpen] = useState(false);
   const [projectFileTab, setProjectFileTab] = useState<ProjectFileTab>("logbook");
+  const [isProjectCombinedHistoryExpanded, setIsProjectCombinedHistoryExpanded] = useState(false);
+  const [projectComparisonMonth, setProjectComparisonMonth] = useState(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  });
+  const [projectBudgetMode, setProjectBudgetMode] = useState<"total" | "custom">("total");
+  const [projectBudgetTotalDraft, setProjectBudgetTotalDraft] = useState("");
+  const [projectBudgetMonthDrafts, setProjectBudgetMonthDrafts] = useState<Record<string, string>>({});
   const [selectedProjectDocumentType, setSelectedProjectDocumentType] =
     useState<CustomerDocumentType>("Allgemeine Dokumente");
   const [selectedProjectPipelineStatus, setSelectedProjectPipelineStatus] =
     useState("Alle Offenen");
   const [selectedProjectKindFilter, setSelectedProjectKindFilter] =
     useState<ProjectKindFilter>("");
+  const [potentialStatusFilter, setPotentialStatusFilter] =
+    useState<"all" | ProjectPotentialStatus | "due">("all");
+  const [historyPotential, setHistoryPotential] = useState<ProjectPotential | null>(null);
   const [isQuickCreateOpen, setIsQuickCreateOpen] = useState(false);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [editingProjectDataId, setEditingProjectDataId] = useState("");
@@ -3557,6 +3920,7 @@ export function DashboardPage() {
     useState<CustomerDocumentType>("Allgemeine Dokumente");
   const [customerLogbookEntries, setCustomerLogbookEntries] = useState<CustomerLogbookEntry[]>([]);
   const [projectLogbookEntries, setProjectLogbookEntries] = useState<ProjectLogbookEntry[]>([]);
+  const [projectPotentials, setProjectPotentials] = useState<ProjectPotential[]>([]);
   const [projectLogbookSearch, setProjectLogbookSearch] = useState("");
   const [logbookTarget, setLogbookTarget] = useState<"customer" | "project">("customer");
   const [logbookError, setLogbookError] = useState("");
@@ -3577,6 +3941,10 @@ export function DashboardPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAbsenceModalOpen, setIsAbsenceModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<TaskItem | null>(null);
+  const [pendingPotentialFollowUp, setPendingPotentialFollowUp] = useState<{
+    potentialId: string;
+    projectId: string;
+  } | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -3612,6 +3980,13 @@ export function DashboardPage() {
   const [zeitNotiz, setZeitNotiz] = useState("");
   const [editingTimeEntryId, setEditingTimeEntryId] = useState<string | null>(null);
   const [kommentarText, setKommentarText] = useState("");
+  const [commentRecipientUserId, setCommentRecipientUserId] = useState("");
+  const [isTaskAcceptancePopupOpen, setIsTaskAcceptancePopupOpen] = useState(false);
+  const [isTaskStatusConfirmOpen, setIsTaskStatusConfirmOpen] = useState(false);
+  const [taskStatusConfirmValue, setTaskStatusConfirmValue] =
+    useState<TaskStatus>(emptyTask.status);
+  const [taskParticipantUserId, setTaskParticipantUserId] = useState("");
+  const [isTaskHistoryOpen, setIsTaskHistoryOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
@@ -3647,6 +4022,12 @@ export function DashboardPage() {
   const [employeeSignature, setEmployeeSignature] = useState("");
   const [employeePlanningBoard, setEmployeePlanningBoard] =
     useState<PlanningBoardCompany>("OK solutions");
+  const [employeeBranchAllocations, setEmployeeBranchAllocations] = useState<BranchAllocations>({
+    okSolutions: 100,
+    okImmocare: 0,
+    okImmocareVzk: 0,
+    okImmocareTzk: 0,
+  });
   const [employeePlanningGroup, setEmployeePlanningGroup] = useState("Marketing");
   const [employeeWeeklyCapacity, setEmployeeWeeklyCapacity] =
     useState<WeeklyCapacity>(defaultWeeklyCapacity);
@@ -3657,7 +4038,9 @@ export function DashboardPage() {
   const [employeePlanningBreakWindows, setEmployeePlanningBreakWindows] =
     useState<WeeklyPlanningWindows>(defaultWeeklyBreakWindows);
   const [employeePlanningResponsibleFor, setEmployeePlanningResponsibleFor] = useState<string[]>([]);
+  const [employeeIncludeInLaborCostRate, setEmployeeIncludeInLaborCostRate] = useState(true);
   const [employeeNotifyIdeaStore, setEmployeeNotifyIdeaStore] = useState(true);
+  const [employeeNotifyUpsell, setEmployeeNotifyUpsell] = useState(false);
   const [employeeMailAccount, setEmployeeMailAccount] =
     useState<EmployeeMailAccount>(emptyEmployeeMailAccount);
   const [employeeMailMessage, setEmployeeMailMessage] = useState("");
@@ -3677,6 +4060,7 @@ export function DashboardPage() {
   const [editingTradeId, setEditingTradeId] = useState<string | null>(null);
   const [tradeName, setTradeName] = useState("");
   const [tradePrefix, setTradePrefix] = useState("");
+  const [tradeBusinessAreaId, setTradeBusinessAreaId] = useState("");
   const [editingEscalationRuleId, setEditingEscalationRuleId] = useState<string | null>(null);
   const [escalationName, setEscalationName] = useState("");
   const [escalationHours, setEscalationHours] = useState("24");
@@ -3712,8 +4096,12 @@ export function DashboardPage() {
   const [planningEntryError, setPlanningEntryError] = useState("");
   const [planningEntryOfferLabel, setPlanningEntryOfferLabel] = useState("");
   const [planningEntryOfferTotalHours, setPlanningEntryOfferTotalHours] = useState("5");
+  const [planningRecurrenceType, setPlanningRecurrenceType] = useState<PlanningRecurrenceType>("once");
+  const [planningRecurrenceUntil, setPlanningRecurrenceUntil] = useState("");
+  const [planningRecurrenceSkipWeekends, setPlanningRecurrenceSkipWeekends] = useState(true);
   const [planningEntryApprovalStatus, setPlanningEntryApprovalStatus] =
     useState<PlanningEntryApprovalStatus>("confirmed");
+  const [planningBoardView, setPlanningBoardView] = useState<"board" | "open">("board");
   const [selectedCalendarActionDate, setSelectedCalendarActionDate] = useState("");
   const [absenceUserId, setAbsenceUserId] = useState("");
   const [absenceDateFrom, setAbsenceDateFrom] = useState(() => formatDateKey(new Date()));
@@ -3751,6 +4139,20 @@ export function DashboardPage() {
     () => users.find((user) => user.id === activeUserId),
     [activeUserId, users]
   );
+  const authenticatedUser = useMemo(
+    () => users.find((user) => user.id === authenticatedUserId),
+    [authenticatedUserId, users]
+  );
+  const impersonationControllerUser = authenticatedUser ?? activeUser;
+  const impersonationControllerUserId = authenticatedUserId || activeUserId;
+  const impersonatedUser = useMemo(
+    () => users.find((user) => user.id === impersonatedUserId),
+    [impersonatedUserId, users]
+  );
+  const canImpersonateUsers =
+    impersonationControllerUser?.role === "ADMIN" ||
+    impersonationControllerUser?.role === "GESCHAEFTSFUEHRER";
+  const isImpersonating = Boolean(impersonatedUserId && impersonatedUser);
   const canManageEmployeeAssessments = canManageUsers(activeUser?.role);
   const personalAssessmentTargetUserId =
     canManageEmployeeAssessments && selectedPersonalUserId ? selectedPersonalUserId : activeUserId;
@@ -3766,6 +4168,15 @@ export function DashboardPage() {
     activeUser?.role === "GESCHAEFTSFUEHRER" ||
     /gesch[aä]ftsf[uü]hrer|geschaeftsfuehrer|ceo/i.test(activeUser?.roleLabel ?? "") ||
     /ceo/i.test(activeUser?.name ?? "");
+  const canDeleteInvoices = activeUser?.role === "GESCHAEFTSFUEHRER";
+  const isDeletedInvoice = (invoice: InvoiceItem) => invoice.status === "Gelöscht";
+  const getInvoiceDisplayNumber = (invoice: InvoiceItem) =>
+    invoice.status === "Entwurf" ? "Entwurf" : invoice.invoiceNumber;
+  const renderInvoiceStatusChip = (status: string) => (
+    <span className={styles.invoiceStatusChip} data-status={status}>
+      {status}
+    </span>
+  );
   const isVacationHandoverComplete =
     absenceType !== "urlaub" ||
     absenceHandoverMode === "none" ||
@@ -3800,11 +4211,12 @@ export function DashboardPage() {
 
     if (!res.ok) {
       setErrorMessage("Aufgaben konnten nicht geladen werden.");
-      return;
+      return [];
     }
 
-    const data = await res.json();
+    const data = (await res.json()) as TaskItem[];
     setTasks(data);
+    return data;
   }
 
   async function loadUsers() {
@@ -3819,23 +4231,37 @@ export function DashboardPage() {
     const data = await res.json();
     const storedUserId =
       typeof window !== "undefined" ? window.localStorage.getItem("workpilot-user-id") : null;
+    const storedImpersonatedUserId =
+      typeof window !== "undefined" ? window.localStorage.getItem("workpilot-impersonated-user-id") : null;
     const storedUser = data.find((demoUser: UserOption) => demoUser.id === storedUserId);
+    const storedCanImpersonate =
+      storedUser?.role === "ADMIN" || storedUser?.role === "GESCHAEFTSFUEHRER";
+    const storedImpersonatedUser =
+      storedCanImpersonate && storedImpersonatedUserId
+        ? data.find((demoUser: UserOption) => demoUser.id === storedImpersonatedUserId && demoUser.isActive)
+        : undefined;
+    const effectiveUser = storedImpersonatedUser || storedUser;
 
     setUsers(data);
-    setZustaendigId((current) => current || storedUser?.id || data[0]?.id || "");
-    setAbsenceUserId((current) => current || storedUser?.id || data[0]?.id || "");
+    setZustaendigId((current) => current || effectiveUser?.id || data[0]?.id || "");
+    setAbsenceUserId((current) => current || effectiveUser?.id || data[0]?.id || "");
 
     if (storedUser) {
-      setActiveUserId(storedUser.id);
-      setOwnerFilter((current) => current || storedUser.id);
-      setKanbanOwnerFilter((current) => current || storedUser.id);
-      setPlanningOwnerFilter((current) => current || storedUser.id);
+      setAuthenticatedUserId(storedUser.id);
+      setImpersonatedUserId(storedImpersonatedUser?.id || "");
+      setActiveUserId(effectiveUser?.id || storedUser.id);
+      setOwnerFilter((current) => current || effectiveUser?.id || storedUser.id);
+      setKanbanOwnerFilter((current) => current || effectiveUser?.id || storedUser.id);
+      setPlanningOwnerFilter((current) => current || effectiveUser?.id || storedUser.id);
       setIsAuthenticated(true);
     } else {
       if (storedUserId && typeof window !== "undefined") {
         window.localStorage.removeItem("workpilot-user-id");
+        window.localStorage.removeItem("workpilot-impersonated-user-id");
       }
       setIsAuthenticated(false);
+      setAuthenticatedUserId("");
+      setImpersonatedUserId("");
       setActiveUserId("");
       setOwnerFilter("");
       setKanbanOwnerFilter("");
@@ -4347,12 +4773,33 @@ export function DashboardPage() {
       return;
     }
 
-    const data = (await res.json()) as InvoiceItem[];
+    const data = ((await res.json()) as InvoiceItem[]).filter((invoice) => !isDeletedInvoice(invoice));
     setInvoices((currentInvoices) => {
       if (!projectId) return data;
       const otherInvoices = currentInvoices.filter((invoice) => invoice.projectId !== projectId);
       return [...data, ...otherInvoices];
     });
+  }
+
+  async function markInvoiceAsPaid(invoice: InvoiceItem) {
+    const res = await fetch("/api/invoices", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: invoice.id,
+        action: "mark-paid",
+        actorName: activeUser?.name ?? "System",
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setErrorMessage(data?.error ?? "Rechnung konnte nicht als bezahlt markiert werden.");
+      return;
+    }
+
+    await loadInvoices();
+    if (selectedProjectFileId) await loadInvoices(selectedProjectFileId);
   }
 
   async function loadOfferHistory(projectId: string) {
@@ -4391,6 +4838,30 @@ export function DashboardPage() {
     );
   }
 
+  function getCatalogMaterialPurchasePrice(item: CatalogItem) {
+    if (item.type === "service") return 0;
+    if (item.type !== "package") return item.purchasePrice;
+    return item.packageItems
+      .filter((packageItem) => packageItem.componentType === "article")
+      .reduce((sum, packageItem) => sum + packageItem.componentPurchasePrice * packageItem.quantity, 0);
+  }
+
+  function getCatalogLaborPurchasePrice(item: CatalogItem) {
+    if (item.type === "service") return item.purchasePrice;
+    if (item.type !== "package") return 0;
+    return item.packageItems
+      .filter((packageItem) => packageItem.componentType === "service")
+      .reduce((sum, packageItem) => sum + packageItem.componentPurchasePrice * packageItem.quantity, 0);
+  }
+
+  function getDefaultLaborCostRateKeyForCatalogItem(item: Pick<CatalogItem, "type" | "defaultPlanningBoard" | "defaultPlanningGroup">) {
+    if (item.type !== "service") return "";
+    if (item.defaultPlanningBoard === "OK immocare") {
+      return item.defaultPlanningGroup === "TZK" ? "ok-immocare-tzk" : "ok-immocare-vzk";
+    }
+    return "ok-solutions";
+  }
+
   function createOfferLineFromCatalogItem(item: CatalogItem): OfferLineDraft {
     return {
       id: crypto.randomUUID(),
@@ -4401,7 +4872,28 @@ export function DashboardPage() {
       title: item.name,
       description: item.description || item.category || "",
       unitPrice: getCatalogPackageSalesPrice(item),
+      discountPercent: 0,
+      laborCostRateKey: item.laborCostRateKey || getDefaultLaborCostRateKeyForCatalogItem(item),
+      laborCostRate: roundCurrencyValue(getCatalogLaborPurchasePrice(item)),
       vatRate: item.vatRate || 19,
+      laborItems: [],
+    };
+  }
+
+  function createEmptyOfferLine(vatRate = 19): OfferLineDraft {
+    return {
+      id: crypto.randomUUID(),
+      catalogItemId: "",
+      catalogType: "",
+      quantity: 1,
+      unit: "Stk",
+      title: "",
+      description: "",
+      unitPrice: 0,
+      discountPercent: 0,
+      laborCostRateKey: "",
+      laborCostRate: 0,
+      vatRate,
       laborItems: [],
     };
   }
@@ -4417,9 +4909,156 @@ export function DashboardPage() {
     return line.catalogType === "service" || line.catalogType === "package";
   }
 
+  function getDefaultBranchAllocations(board: PlanningBoardCompany = "OK solutions"): BranchAllocations {
+    return board === "OK immocare"
+      ? { okSolutions: 0, okImmocare: 100, okImmocareVzk: 100, okImmocareTzk: 0 }
+      : { okSolutions: 100, okImmocare: 0, okImmocareVzk: 0, okImmocareTzk: 0 };
+  }
+
+  function normalizeBranchAllocations(
+    value?: Partial<BranchAllocations> | null,
+    fallbackBoard: PlanningBoardCompany = "OK solutions"
+  ): BranchAllocations {
+    const fallback = getDefaultBranchAllocations(fallbackBoard);
+    const legacyImmocare = Number(value?.okImmocare ?? fallback.okImmocare) || 0;
+    const rawVzk =
+      value?.okImmocareVzk !== undefined
+        ? Number(value.okImmocareVzk) || 0
+        : fallbackBoard === "OK immocare"
+          ? legacyImmocare
+          : 0;
+    const rawTzk = value?.okImmocareTzk !== undefined ? Number(value.okImmocareTzk) || 0 : 0;
+    const okImmocareVzk = clampPercent(rawVzk);
+    const okImmocareTzk = clampPercent(rawTzk);
+    const okImmocare = clampPercent(okImmocareVzk + okImmocareTzk);
+    return {
+      okSolutions: clampPercent(Number(value?.okSolutions ?? fallback.okSolutions) || 0),
+      okImmocare,
+      okImmocareVzk,
+      okImmocareTzk,
+    };
+  }
+
+  function getBranchAllocationTotal(allocations: BranchAllocations) {
+    return (
+      Number(allocations.okSolutions || 0) +
+      Number(allocations.okImmocareVzk || 0) +
+      Number(allocations.okImmocareTzk || 0)
+    );
+  }
+
+  function createBoundedBranchAllocations(
+    current: BranchAllocations,
+    key: "okSolutions" | "okImmocareVzk" | "okImmocareTzk",
+    rawValue: number
+  ): BranchAllocations {
+    const value = clampPercent(rawValue);
+    const next = normalizeBranchAllocations(current);
+    const otherKeys = (["okSolutions", "okImmocareVzk", "okImmocareTzk"] as const).filter((item) => item !== key);
+
+    next[key] = value;
+    let overflow = getBranchAllocationTotal(next) - 100;
+    if (overflow > 0) {
+      [...otherKeys].reverse().forEach((item) => {
+        if (overflow <= 0) return;
+        const currentValue = Number(next[item] || 0);
+        const reduction = Math.min(currentValue, overflow);
+        next[item] = clampPercent(currentValue - reduction);
+        overflow -= reduction;
+      });
+    }
+
+    next.okImmocare = clampPercent(Number(next.okImmocareVzk || 0) + Number(next.okImmocareTzk || 0));
+    return next;
+  }
+
+  function getUserPlanningBoard(user: UserOption) {
+    return user.planningBoard === "OK immocare" ? "OK immocare" : "OK solutions";
+  }
+
+  function getUserBranchAllocations(user: UserOption) {
+    return normalizeBranchAllocations(user.branchAllocations, getUserPlanningBoard(user));
+  }
+
+  function getBranchAllocationShare(user: UserOption, board: PlanningBoardCompany) {
+    const allocations = getUserBranchAllocations(user);
+    return (board === "OK immocare" ? allocations.okImmocare : allocations.okSolutions) / 100;
+  }
+
+  function getLaborCostAllocationShare(user: UserOption, board: PlanningBoardCompany, planningGroup = "") {
+    const allocations = getUserBranchAllocations(user);
+    if (board === "OK solutions") return allocations.okSolutions / 100;
+    if (planningGroup === "TZK") return (allocations.okImmocareTzk ?? 0) / 100;
+    if (planningGroup === "VZK") return (allocations.okImmocareVzk ?? allocations.okImmocare) / 100;
+    return allocations.okImmocare / 100;
+  }
+
+  function getPrimaryBranchFromAllocations(allocations: BranchAllocations): PlanningBoardCompany {
+    return allocations.okImmocare > allocations.okSolutions ? "OK immocare" : "OK solutions";
+  }
+
+  function formatBranchAllocations(user: UserOption) {
+    const allocations = getUserBranchAllocations(user);
+    const parts = [
+      allocations.okSolutions > 0 ? `OK solutions ${formatHours(allocations.okSolutions)}%` : "",
+      (allocations.okImmocareVzk ?? 0) > 0 ? `OK immocare VZK ${formatHours(allocations.okImmocareVzk ?? 0)}%` : "",
+      (allocations.okImmocareTzk ?? 0) > 0 ? `OK immocare TZK ${formatHours(allocations.okImmocareTzk ?? 0)}%` : "",
+    ].filter(Boolean);
+    return parts.join(" / ") || "-";
+  }
+
   function getEmployeeHourlyCostRate(userId: string) {
     const cost = employeeCostCalculations[userId];
     return cost ? getEmployeeCostMetrics(cost).hourlyCost : 0;
+  }
+
+  function getAverageLaborCostRate(board: PlanningBoardCompany, planningGroup = "") {
+    const boardUsers = users.filter(
+      (user) =>
+        user.isActive &&
+        user.includeInLaborCostRate !== false &&
+        getLaborCostAllocationShare(user, board, planningGroup) > 0
+    );
+    const allocationTotal = boardUsers.reduce((sum, user) => sum + getLaborCostAllocationShare(user, board, planningGroup), 0);
+    const total = boardUsers.reduce(
+      (sum, user) => sum + getEmployeeHourlyCostRate(user.id) * getLaborCostAllocationShare(user, board, planningGroup),
+      0
+    );
+    return {
+      board,
+      planningGroup,
+      label: planningGroup ? `${board} ${planningGroup}` : board,
+      users: boardUsers,
+      total,
+      allocationTotal,
+      average: boardUsers.length > 0 ? total / boardUsers.length : 0,
+      count: boardUsers.length,
+    };
+  }
+
+  function getLaborCostRateOptions() {
+    return [
+      { key: "ok-solutions", label: "OK solutions", rate: getAverageLaborCostRate("OK solutions").average },
+      { key: "ok-immocare-vzk", label: "OK immocare VZK", rate: getAverageLaborCostRate("OK immocare", "VZK").average },
+      { key: "ok-immocare-tzk", label: "OK immocare TZK", rate: getAverageLaborCostRate("OK immocare", "TZK").average },
+    ];
+  }
+
+  function getLaborCostRateOption(key: string) {
+    return getLaborCostRateOptions().find((option) => option.key === key) ?? null;
+  }
+
+  function getProjectLaborCostBoard(project?: HeroProjectPreview | null): PlanningBoardCompany {
+    return project?.projectType === "Projekt OK immocare" || project?.branch === "OK immocare GmbH"
+      ? "OK immocare"
+      : "OK solutions";
+  }
+
+  function getOfferDraftLaborCostRate() {
+    const selectedProject =
+      selectedProjectFile || heroProjects.find((project) => project.id === upsellOfferProjectId) || null;
+    const board = getProjectLaborCostBoard(selectedProject);
+    return getAverageLaborCostRate(board);
   }
 
   function createOfferLaborItem(user?: UserOption): OfferLineLaborDraft {
@@ -4477,7 +5116,10 @@ export function DashboardPage() {
                 : [],
           };
         }
-        const nextLine = { ...line, ...patch };
+      const nextLine = { ...line, ...patch };
+        if (Object.prototype.hasOwnProperty.call(patch, "unit")) {
+          nextLine.unit = normalizeUnit(String(patch.unit ?? ""));
+        }
         if (Object.prototype.hasOwnProperty.call(patch, "quantity")) {
           return {
             ...nextLine,
@@ -4582,56 +5224,78 @@ export function DashboardPage() {
   }
 
   function addOfferLine() {
-    const firstItem = catalogItems.find((item) => item.isActive);
     setOfferDraft((current) => ({
       ...current,
-      lines: [
-        ...current.lines,
-        firstItem
-          ? createOfferLineFromCatalogItem(firstItem)
-          : {
-              id: crypto.randomUUID(),
-              catalogItemId: "",
-              catalogType: "",
-              quantity: 1,
-              unit: "Stk",
-              title: "",
-              description: "",
-              unitPrice: 0,
-              vatRate: current.vatRate,
-              laborItems: [],
-            },
-      ],
+      lines: [...current.lines, createEmptyOfferLine(current.vatRate)],
     }));
   }
 
-  function openOfferModal(project: HeroProjectPreview) {
+  function closeOfferModal() {
+    setIsOfferModalOpen(false);
+    setEditingOfferId("");
+    setUpsellOfferProjectId("");
+    setIsOfferExecutionMonthPickerOpen(false);
+    setIsOfferExecutionEndMonthPickerOpen(false);
+  }
+
+  function openOfferModal(project: HeroProjectPreview, options: { fromUpsell?: boolean; asAddendum?: boolean } = {}) {
     const isImmocare =
       (project.projectType ?? "").toLowerCase().includes("immocare") ||
       (project.projectNumber ?? "").toLowerCase().startsWith("oki");
     const addressParts = (project.address || "").split(",").map((part) => part.trim()).filter(Boolean);
-    const firstItem = catalogItems.find((item) => item.isActive);
+    const isRecurringProject = getProjectKind(project).startsWith("Dauer");
+    const recurringStartMonth = options.asAddendum
+      ? `${reportNow.getFullYear()}-${String(reportNow.getMonth() + 1).padStart(2, "0")}`
+      : project.projectRuntimeFrom
+        ? project.projectRuntimeFrom.slice(0, 7)
+        : "";
+    const recurringEndMonth = project.projectRuntimeUntil ? project.projectRuntimeUntil.slice(0, 7) : "";
     setOfferDraft({
       ...emptyOfferDraft,
+      offerType: options.asAddendum ? "addendum" : "base",
+      plannedExecutionMonth: isRecurringProject ? recurringStartMonth : "",
+      plannedExecutionEndMonth: isRecurringProject ? recurringEndMonth : "",
       company: isImmocare ? "OK immocare" : "OK solutions",
       customerName: project.customer || "",
       customerStreet: addressParts[0] || project.address || "",
       customerCity: addressParts.slice(1).join(", "),
       internalContactName: activeUser?.name || "Christian Eid",
       internalEmail: activeUser?.email || "",
-      lines: firstItem ? [createOfferLineFromCatalogItem(firstItem)] : [],
+      lines: [createEmptyOfferLine(emptyOfferDraft.vatRate)],
     });
     setOfferError("");
     setEditingOfferId("");
     setOfferPreviewDataUrl("");
     setOfferLineSearchTerms({});
     setOpenOfferLinePickerId("");
+    setIsOfferExecutionMonthPickerOpen(false);
+    setIsOfferExecutionEndMonthPickerOpen(false);
+    setOfferExecutionMonthPickerYear(
+      recurringStartMonth ? Number(recurringStartMonth.slice(0, 4)) : reportNow.getFullYear()
+    );
+    setOfferExecutionEndMonthPickerYear(
+      recurringEndMonth ? Number(recurringEndMonth.slice(0, 4)) : reportNow.getFullYear()
+    );
+    setUpsellOfferProjectId(options.fromUpsell ? project.id : "");
     setIsOfferModalOpen(true);
   }
 
   function openEditOfferModal(offer: OfferItem) {
+    const offerExecutionYear = Number((offer.plannedExecutionMonth || "").slice(0, 4));
+    const isRecurringProject = selectedProjectFile ? getProjectKind(selectedProjectFile).startsWith("Dauer") : false;
     setOfferDraft({
       company: offer.company,
+      offerType: offer.offerType === "addendum" ? "addendum" : "base",
+      addendumMode:
+        offer.addendumMode === "replacement" || offer.addendumMode === "reduction"
+          ? offer.addendumMode
+          : "addition",
+      plannedExecutionEndMonth:
+        offer.plannedExecutionEndMonth ||
+        (isRecurringProject && selectedProjectFile?.projectRuntimeUntil
+          ? selectedProjectFile.projectRuntimeUntil.slice(0, 7)
+          : ""),
+      parentOfferId: offer.parentOfferId || "",
       customerName: offer.customerName,
       customerStreet: offer.customerStreet,
       customerCity: offer.customerCity,
@@ -4639,34 +5303,51 @@ export function DashboardPage() {
       internalContactName: offer.internalContactName,
       internalPhone: offer.internalPhone,
       internalEmail: offer.internalEmail,
+      plannedExecutionMonth: offer.plannedExecutionMonth || "",
       introText: offer.introText || emptyOfferDraft.introText,
       closingText: offer.closingText || emptyOfferDraft.closingText,
       vatRate: offer.vatRate || 19,
-      lines: offer.lines.map((line) => ({
-        id: line.id || crypto.randomUUID(),
-        catalogItemId: line.catalogItemId,
-        catalogType: line.catalogType,
-        quantity: line.quantity,
-        unit: line.unit,
-        title: line.title,
-        description: line.description,
-        unitPrice: line.unitPrice,
-        vatRate: line.vatRate,
-        laborItems: (line.laborItems ?? []).map((labor) => ({
-          id: labor.id || crypto.randomUUID(),
-          userId: labor.userId,
-          employeeName: labor.employeeName,
-          plannedHours: labor.plannedHours,
-          hourlyCostRate: labor.hourlyCostRate,
-          totalCost: labor.totalCost,
-        })),
-      })),
+      discountPercent: offer.discountPercent ?? 0,
+      lines:
+        offer.lines.length > 0
+          ? offer.lines.map((line) => ({
+              id: line.id || crypto.randomUUID(),
+              catalogItemId: line.catalogItemId,
+              catalogType: line.catalogType,
+              quantity: line.quantity,
+              unit: line.unit,
+              title: line.title,
+              description: line.description,
+              unitPrice: line.unitPrice,
+              discountPercent: line.discountPercent ?? 0,
+              laborCostRateKey: line.laborCostRateKey || "",
+              laborCostRate: roundCurrencyValue(line.laborCostRate || 0),
+              vatRate: line.vatRate,
+              laborItems: (line.laborItems ?? []).map((labor) => ({
+                id: labor.id || crypto.randomUUID(),
+                userId: labor.userId,
+                employeeName: labor.employeeName,
+                plannedHours: labor.plannedHours,
+                hourlyCostRate: labor.hourlyCostRate,
+                totalCost: labor.totalCost,
+              })),
+            }))
+          : [createEmptyOfferLine(offer.vatRate || 19)],
     });
     setEditingOfferId(offer.id);
     setOfferError("");
     setOfferPreviewDataUrl(offer.pdfAvailable ? `/api/offers?pdfId=${encodeURIComponent(offer.id)}` : "");
     setOfferLineSearchTerms({});
     setOpenOfferLinePickerId("");
+    setIsOfferExecutionMonthPickerOpen(false);
+    setIsOfferExecutionEndMonthPickerOpen(false);
+    setOfferExecutionMonthPickerYear(Number.isFinite(offerExecutionYear) ? offerExecutionYear : reportNow.getFullYear());
+    setOfferExecutionEndMonthPickerYear(
+      Number.isFinite(Number((offer.plannedExecutionEndMonth || selectedProjectFile?.projectRuntimeUntil || "").slice(0, 4)))
+        ? Number((offer.plannedExecutionEndMonth || selectedProjectFile?.projectRuntimeUntil || "").slice(0, 4))
+        : reportNow.getFullYear()
+    );
+    setUpsellOfferProjectId("");
     setIsOfferModalOpen(true);
   }
 
@@ -4676,11 +5357,19 @@ export function DashboardPage() {
     setOfferError("");
 
     const editingOffer = offers.find((offer) => offer.id === editingOfferId);
+    const offerPayload = {
+      ...offerDraft,
+      lines: offerDraft.lines.map((line) => ({
+        ...line,
+        laborCostRate: roundCurrencyValue(line.laborCostRate || 0),
+        laborItems: [],
+      })),
+    };
     const res = await fetch("/api/offers", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        ...offerDraft,
+        ...offerPayload,
         offerNumber: editingOffer?.offerNumber || "VORSCHAU",
         projectId: selectedProjectFile.id,
         projectNumber: selectedProjectFile.projectNumber || selectedProjectFile.id,
@@ -4700,17 +5389,32 @@ export function DashboardPage() {
     setOfferPreviewDataUrl(data.pdfDataUrl);
   }
 
-  async function saveOffer() {
+  async function saveOffer(options: { asDraft?: boolean } = {}) {
     if (!selectedProjectFile) return;
+    const saveAsDraft = Boolean(options.asDraft);
+    const validationMessage = saveAsDraft ? "" : getOfferSaveValidationMessage();
+    if (validationMessage) {
+      setOfferError(validationMessage);
+      return;
+    }
     setIsSavingOffer(true);
     setOfferError("");
+    const offerPayload = {
+      ...offerDraft,
+      lines: offerDraft.lines.map((line) => ({
+        ...line,
+        laborCostRate: roundCurrencyValue(line.laborCostRate || 0),
+        laborItems: [],
+      })),
+    };
 
     const res = await fetch("/api/offers", {
       method: editingOfferId ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id: editingOfferId,
-        ...offerDraft,
+        ...offerPayload,
+        saveAsDraft,
         projectId: selectedProjectFile.id,
         projectNumber: selectedProjectFile.projectNumber || selectedProjectFile.id,
         projectTitle: selectedProjectFile.title,
@@ -4731,15 +5435,65 @@ export function DashboardPage() {
     await addProjectLogbookEntry(
       selectedProjectFile.id,
       "Angebot",
-      `${editingOfferId ? "Angebot geändert" : "Angebot erstellt"}: ${savedOffer.offerNumber} (${formatMoney(
+      `${saveAsDraft ? "Angebotsentwurf gespeichert" : editingOfferId ? "Angebot geändert" : "Angebot erstellt"}: ${savedOffer.offerNumber} (${formatMoney(
         savedOffer.grossTotal
       )} brutto).`
     );
-    setSelectedProjectDocumentType("Angebote");
+    if (!saveAsDraft && !editingOfferId && upsellOfferProjectId === selectedProjectFile.id) {
+      const potential = projectPotentials.find(
+        (item) => item.projectId === selectedProjectFile.id && ["open", "follow_up"].includes(item.status)
+      );
+      if (potential) {
+        await updateProjectPotential(potential, "offered", {
+          note: `Angebot ${savedOffer.offerNumber} erstellt.`,
+        });
+      }
+      await addProjectLogbookEntry(
+        selectedProjectFile.id,
+        "Zusatzverkauf: Angebot erstellt",
+        `Aus dem erkannten Zusatzverkauf wurde Angebot ${savedOffer.offerNumber} erstellt.`
+      );
+      setUpsellOfferProjectId("");
+    }
+    setSelectedProjectDocumentType(savedOffer.offerType === "addendum" ? "Angebote: Nachtragsangebote" : "Angebote");
     setProjectFileTab("documents");
     setIsOfferModalOpen(false);
     setEditingOfferId("");
-    window.open(`/api/offers?pdfId=${encodeURIComponent(savedOffer.id)}`, "_blank");
+    if (!saveAsDraft && savedOffer.pdfAvailable) {
+      window.open(`/api/offers?pdfId=${encodeURIComponent(savedOffer.id)}`, "_blank");
+    }
+  }
+
+  function getOfferSaveValidationMessage() {
+    if (!offerDraft.plannedExecutionMonth) {
+      return "Bitte geplanten Ausführungsmonat auswählen.";
+    }
+    const isRecurringOfferProject = selectedProjectFile ? getProjectKind(selectedProjectFile).startsWith("Dauer") : false;
+    if (isRecurringOfferProject && !offerDraft.plannedExecutionEndMonth) {
+      return "Bitte beim Dauerlaeufer den Ausfuehrungszeitraum bis auswaehlen.";
+    }
+    if (
+      offerDraft.plannedExecutionEndMonth &&
+      offerDraft.plannedExecutionEndMonth < offerDraft.plannedExecutionMonth
+    ) {
+      return "Bitte beim Ausfuehrungszeitraum ein Enddatum nach dem Startmonat waehlen.";
+    }
+    if (offerDraft.lines.length === 0) {
+      return "Bitte mindestens eine Position hinzufügen.";
+    }
+    const incompleteLineIndex = offerDraft.lines.findIndex((line) => !line.title.trim() && !line.catalogItemId);
+    if (incompleteLineIndex >= 0) {
+      return `Bitte Position ${incompleteLineIndex + 1} auswählen oder eine Bezeichnung eintragen.`;
+    }
+    const invalidQuantityIndex = offerDraft.lines.findIndex((line) => Number(line.quantity || 0) <= 0);
+    if (invalidQuantityIndex >= 0) {
+      return `Bitte bei Position ${invalidQuantityIndex + 1} eine Menge größer 0 eintragen.`;
+    }
+    const invalidPriceIndex = offerDraft.lines.findIndex((line) => Number(line.unitPrice || 0) < 0);
+    if (invalidPriceIndex >= 0) {
+      return `Bitte bei Position ${invalidPriceIndex + 1} keinen negativen Einzelpreis eintragen.`;
+    }
+    return "";
   }
 
   async function deleteOffer(offer: OfferItem) {
@@ -4800,9 +5554,199 @@ export function DashboardPage() {
     setIsInvoiceModalOpen(true);
   }
 
+  function invoiceToAutoBillingTemplate(invoice: InvoiceItem): AutoBillingTemplate {
+    return {
+      company: invoice.company,
+      customerName: invoice.customerName,
+      customerStreet: invoice.customerStreet,
+      customerCity: invoice.customerCity,
+      contactName: invoice.contactName,
+      internalContactName: invoice.internalContactName,
+      internalPhone: invoice.internalPhone,
+      internalEmail: invoice.internalEmail,
+      introText: invoice.introText,
+      closingText: invoice.closingText,
+      vatRate: invoice.vatRate || 19,
+      discountPercent: invoice.discountPercent || 0,
+      lines: invoice.lines.map((line) => ({
+        ...line,
+        id: crypto.randomUUID(),
+        laborItems: (line.laborItems ?? []).map((labor) => ({ ...labor, id: crypto.randomUUID() })),
+      })),
+    };
+  }
+
+  function isUsableAutoBillingInvoice(invoice: InvoiceItem) {
+    return !isDeletedInvoice(invoice) && !["Entwurf", "Storniert", "Stornorechnung"].includes(invoice.status);
+  }
+
+  function getProjectInvoicesSorted(projectId: string) {
+    return invoices
+      .filter((invoice) => invoice.projectId === projectId && isUsableAutoBillingInvoice(invoice))
+      .sort((first, second) => parseAppDateTime(second.createdAt).getTime() - parseAppDateTime(first.createdAt).getTime());
+  }
+
+  function saveAutoBillingProjectPatch(project: HeroProjectPreview, patch: Partial<HeroProjectPreview>) {
+    const nextProject = { ...project, ...patch };
+    setHeroProjects((currentProjects) =>
+      currentProjects.map((currentProject) => (currentProject.id === project.id ? nextProject : currentProject))
+    );
+    if (selectedProjectFileId === project.id) {
+      setSelectedProjectFileId(project.id);
+    }
+    return persistProject(nextProject).then((savedProject) => {
+      setHeroProjects((currentProjects) =>
+        currentProjects.map((currentProject) => (currentProject.id === savedProject.id ? savedProject : currentProject))
+      );
+      setBatchBillingMessage("Automatische Abrechnung gespeichert.");
+      return savedProject;
+    });
+  }
+
+  async function createAutoBillingTemplateFromLatestInvoice(project: HeroProjectPreview) {
+    const latestInvoice = getProjectInvoicesSorted(project.id)[0];
+    if (!latestInvoice) {
+      setErrorMessage("Für dieses Projekt gibt es noch keine Rechnung als Vorlage.");
+      return;
+    }
+
+    await saveAutoBillingProjectPatch(project, {
+      autoBillingTemplateMode: "project",
+      autoBillingTemplate: invoiceToAutoBillingTemplate(latestInvoice),
+      autoBillingNetAmount: project.autoBillingNetAmount || String(latestInvoice.netTotal).replace(".", ","),
+      autoBillingVatRate: project.autoBillingVatRate || String(latestInvoice.vatRate || 19).replace(".", ","),
+    });
+  }
+
+  async function createAutoBillingTemplateFromProject(project: HeroProjectPreview) {
+    const amount = getAutoBillingNetAmount(project);
+    if (amount <= 0) {
+      setErrorMessage("Bitte zuerst einen monatlichen Nettobetrag fuer die automatische Abrechnung eintragen.");
+      return;
+    }
+
+    const isImmocare =
+      (project.projectType ?? "").toLowerCase().includes("immocare") ||
+      (project.projectNumber ?? "").toLowerCase().startsWith("oki");
+    const addressParts = (project.address || "").split(",").map((part) => part.trim()).filter(Boolean);
+    const vatRate = parseReportAmount(project.autoBillingVatRate || "") || 19;
+    const template: AutoBillingTemplate = {
+      company: isImmocare ? "OK immocare" : "OK solutions",
+      customerName: project.customer || "",
+      customerStreet: addressParts[0] || project.address || "",
+      customerCity: addressParts.slice(1).join(", "),
+      contactName: "",
+      internalContactName: "",
+      internalPhone: "",
+      internalEmail: "",
+      introText: "wir berechnen Ihnen vereinbarungsgemaess die monatliche Leistung.",
+      closingText: "Vielen Dank fuer Ihren Auftrag.",
+      vatRate,
+      discountPercent: 0,
+      lines: [
+        {
+          ...createEmptyOfferLine(vatRate),
+          title: "Monatliche Pauschale",
+          description: project.title,
+          quantity: 1,
+          unit: "Pauschale",
+          unitPrice: amount,
+        },
+      ],
+    };
+
+    await saveAutoBillingProjectPatch(project, {
+      autoBillingTemplateMode: "project",
+      autoBillingTemplate: template,
+      autoBillingNetAmount: project.autoBillingNetAmount || String(amount).replace(".", ","),
+      autoBillingVatRate: project.autoBillingVatRate || String(vatRate).replace(".", ","),
+    });
+  }
+
+  function getProjectInvoiceMonth(invoice: InvoiceItem) {
+    return invoice.plannedExecutionMonth || getReportMonthKey(invoice.createdAt);
+  }
+
+  function isProjectActiveInBillingMonth(project: HeroProjectPreview, monthKey: string) {
+    const startMonth = (project.autoBillingStartMonth || project.projectRuntimeFrom || "").slice(0, 7);
+    const endMonth = (project.autoBillingEndMonth || project.projectRuntimeUntil || "").slice(0, 7);
+    return (!startMonth || monthKey >= startMonth) && (!endMonth || monthKey <= endMonth);
+  }
+
+  function getAutoBillingNetAmount(project: HeroProjectPreview) {
+    return parseReportAmount(project.autoBillingNetAmount || project.forecastNetAmount);
+  }
+
+  function getAutoBillingComparison(project: HeroProjectPreview, monthKey: string) {
+    const previousInvoices = getProjectInvoicesSorted(project.id)
+      .filter((invoice) => {
+        const invoiceMonth = getProjectInvoiceMonth(invoice);
+        return invoiceMonth && invoiceMonth < monthKey;
+      })
+      .slice(0, 3);
+    const amounts = previousInvoices.map((invoice) => roundCurrencyValue(invoice.netTotal));
+    const stable = amounts.length >= 3 && amounts.every((amount) => amount === amounts[0]);
+
+    return { previousInvoices, stable };
+  }
+
+  function getAutoBillingTemplateForProject(project: HeroProjectPreview): AutoBillingTemplate | null {
+    if (project.autoBillingTemplateMode === "project" && project.autoBillingTemplate) {
+      return project.autoBillingTemplate;
+    }
+    const previousInvoice = getProjectInvoicesSorted(project.id)[0];
+    return previousInvoice ? invoiceToAutoBillingTemplate(previousInvoice) : null;
+  }
+
+  function buildAutoBillingInvoiceDraft(project: HeroProjectPreview, monthKey: string) {
+    const isImmocare =
+      (project.projectType ?? "").toLowerCase().includes("immocare") ||
+      (project.projectNumber ?? "").toLowerCase().startsWith("oki");
+    const addressParts = (project.address || "").split(",").map((part) => part.trim()).filter(Boolean);
+    const amount = getAutoBillingNetAmount(project);
+    const template = getAutoBillingTemplateForProject(project);
+    const monthLabel = formatMonthLabel(monthKey);
+    const vatRate = parseReportAmount(project.autoBillingVatRate || "") || template?.vatRate || 19;
+    const lines =
+      template?.lines && template.lines.length > 0
+        ? template.lines.map((line) => ({ ...line, id: crypto.randomUUID(), laborItems: [] }))
+        : [
+            {
+              ...createEmptyOfferLine(vatRate),
+              title: `Monatliche Pauschale ${monthLabel}`,
+              description: project.title,
+              quantity: 1,
+              unit: "Pauschale",
+              unitPrice: amount,
+            },
+          ];
+
+    return {
+      ...emptyOfferDraft,
+      company: template?.company || (isImmocare ? "OK immocare" : "OK solutions"),
+      customerName: template?.customerName || project.customer || "",
+      customerStreet: template?.customerStreet || addressParts[0] || project.address || "",
+      customerCity: template?.customerCity || addressParts.slice(1).join(", "),
+      contactName: template?.contactName || "",
+      internalContactName: activeUser?.name || template?.internalContactName || "System",
+      internalPhone: template?.internalPhone || "",
+      internalEmail: activeUser?.email || template?.internalEmail || "",
+      plannedExecutionMonth: monthKey,
+      introText: template?.introText || `wir stellen Ihnen die monatliche Leistung fuer ${monthLabel} in Rechnung.`,
+      closingText: template?.closingText || "Bitte ueberweisen Sie den Rechnungsbetrag innerhalb der vereinbarten Zahlungsfrist.",
+      vatRate,
+      discountPercent: template?.discountPercent || 0,
+      lines,
+    };
+  }
+
   function openInvoiceFromOffer(offer: OfferItem) {
     setInvoiceDraft({
       company: offer.company,
+      offerType: "base",
+      addendumMode: "addition",
+      plannedExecutionEndMonth: offer.plannedExecutionEndMonth || "",
+      parentOfferId: "",
       customerName: offer.customerName,
       customerStreet: offer.customerStreet,
       customerCity: offer.customerCity,
@@ -4810,6 +5754,8 @@ export function DashboardPage() {
       internalContactName: activeUser?.name || offer.internalContactName,
       internalPhone: offer.internalPhone,
       internalEmail: activeUser?.email || offer.internalEmail,
+      plannedExecutionMonth: offer.plannedExecutionMonth || "",
+      discountPercent: offer.discountPercent ?? 0,
       introText: "wir stellen Ihnen folgende Leistungen aus dem Angebot in Rechnung.",
       closingText: "Bitte überweisen Sie den Rechnungsbetrag innerhalb der vereinbarten Zahlungsfrist.",
       vatRate: offer.vatRate || 19,
@@ -4822,6 +5768,7 @@ export function DashboardPage() {
         title: line.title,
         description: line.description,
         unitPrice: line.unitPrice,
+        discountPercent: line.discountPercent ?? 0,
         vatRate: line.vatRate,
         laborItems: (line.laborItems ?? []).map((labor) => ({
           id: crypto.randomUUID(),
@@ -4844,11 +5791,65 @@ export function DashboardPage() {
     setIsInvoiceModalOpen(true);
   }
 
+  function openEditInvoiceModal(invoice: InvoiceItem) {
+    setInvoiceDraft({
+      company: invoice.company,
+      offerType: "base",
+      addendumMode: "addition",
+      plannedExecutionEndMonth: "",
+      parentOfferId: "",
+      customerName: invoice.customerName,
+      customerStreet: invoice.customerStreet,
+      customerCity: invoice.customerCity,
+      contactName: invoice.contactName,
+      internalContactName: invoice.internalContactName,
+      internalPhone: invoice.internalPhone,
+      internalEmail: invoice.internalEmail,
+      plannedExecutionMonth: invoice.plannedExecutionMonth || "",
+      discountPercent: invoice.discountPercent ?? 0,
+      introText: invoice.introText,
+      closingText: invoice.closingText,
+      vatRate: invoice.vatRate || 19,
+      lines:
+        invoice.lines.length > 0
+          ? invoice.lines.map((line) => ({
+              id: line.id || crypto.randomUUID(),
+              catalogItemId: line.catalogItemId,
+              catalogType: line.catalogType,
+              quantity: line.quantity,
+              unit: line.unit,
+              title: line.title,
+              description: line.description,
+              unitPrice: line.unitPrice,
+              discountPercent: line.discountPercent ?? 0,
+              vatRate: line.vatRate,
+              laborItems: (line.laborItems ?? []).map((labor) => ({
+                id: labor.id || crypto.randomUUID(),
+                userId: labor.userId,
+                employeeName: labor.employeeName,
+                plannedHours: labor.plannedHours,
+                hourlyCostRate: labor.hourlyCostRate,
+                totalCost: labor.totalCost,
+              })),
+            }))
+          : [createEmptyOfferLine(invoice.vatRate || 19)],
+    });
+    setEditingInvoiceId(invoice.id);
+    setInvoicePreviewDataUrl(invoice.pdfAvailable ? `/api/invoices?pdfId=${encodeURIComponent(invoice.id)}` : "");
+    setInvoiceError("");
+    setInvoiceLineSearchTerms({});
+    setOpenInvoiceLinePickerId("");
+    setInvoiceStampEntryIds([]);
+    setInvoiceBillableStampEntryIds([]);
+    setIsInvoiceSourcePickerOpen(false);
+    setIsInvoiceModalOpen(true);
+  }
+
   function openInvoiceFlow(project: HeroProjectPreview) {
-    const projectOffers = offers.filter((offer) => offer.projectId === project.id);
+    const projectOffers = offers.filter((offer) => offer.projectId === project.id && offer.status !== "Entwurf");
     const invoicedOfferNumbers = new Set(
       invoices
-        .filter((invoice) => invoice.projectId === project.id)
+        .filter((invoice) => invoice.projectId === project.id && !isDeletedInvoice(invoice))
         .map((invoice) => invoice.lines.map((line) => line.description).join(" "))
         .join(" ")
         .match(/ANG-\d+/g) ?? []
@@ -4882,7 +5883,11 @@ export function DashboardPage() {
             laborItems: canPlanOfferLineLabor(nextLine) ? line.laborItems : [],
           };
         }
-        return { ...line, ...patch };
+        const nextLine = { ...line, ...patch };
+        if (Object.prototype.hasOwnProperty.call(patch, "unit")) {
+          nextLine.unit = normalizeUnit(String(patch.unit ?? ""));
+        }
+        return nextLine;
       }),
     }));
   }
@@ -5034,8 +6039,23 @@ export function DashboardPage() {
       (entry) =>
         entry.mode === "project" &&
         String(entry.projectId) === String(projectId) &&
+        !entry.deletedAt &&
         !String(entry.invoiceId ?? "").trim()
     );
+  }
+
+  function getProjectStampEntriesForMonth(projectId: string, monthKey: string) {
+    return stampEntries.filter(
+      (entry) =>
+        entry.mode === "project" &&
+        String(entry.projectId) === String(projectId) &&
+        !entry.deletedAt &&
+        normalizeDateKeyValue(entry.date).startsWith(monthKey)
+    );
+  }
+
+  function getUnbilledProjectStampEntriesForMonth(projectId: string, monthKey: string) {
+    return getProjectStampEntriesForMonth(projectId, monthKey).filter((entry) => !String(entry.invoiceId ?? "").trim());
   }
 
   function getStampedInvoiceLaborItems(entries: StampTimeEntry[]) {
@@ -5101,6 +6121,7 @@ export function DashboardPage() {
           title: "Arbeitszeit laut Stempelung",
           description: "Produktiv gestempelte Stunden",
           unitPrice: 0,
+          discountPercent: 0,
           vatRate: draft.vatRate,
           laborItems: [],
         };
@@ -5128,6 +6149,12 @@ export function DashboardPage() {
     setInvoiceStampEntryIds(entryIds);
   }
 
+  function toggleInvoiceStampEntry(entryId: string, checked: boolean) {
+    setInvoiceStampEntryIds((currentIds) =>
+      checked ? Array.from(new Set([...currentIds, entryId])) : currentIds.filter((id) => id !== entryId)
+    );
+  }
+
   function getInvoiceDraftLaborHours(draft: OfferDraft) {
     return draft.lines.reduce(
       (sum, line) =>
@@ -5136,8 +6163,59 @@ export function DashboardPage() {
     );
   }
 
-  async function saveInvoice() {
+  function createInvoiceDraftFromInvoice(invoice: InvoiceItem): OfferDraft {
+    return {
+      company: invoice.company,
+      offerType: "base",
+      addendumMode: "addition",
+      plannedExecutionEndMonth: "",
+      parentOfferId: "",
+      customerName: invoice.customerName,
+      customerStreet: invoice.customerStreet,
+      customerCity: invoice.customerCity,
+      contactName: invoice.contactName,
+      internalContactName: invoice.internalContactName,
+      internalPhone: invoice.internalPhone,
+      internalEmail: invoice.internalEmail,
+      plannedExecutionMonth: invoice.plannedExecutionMonth || "",
+      discountPercent: invoice.discountPercent ?? 0,
+      introText: invoice.introText,
+      closingText: invoice.closingText,
+      vatRate: invoice.vatRate || 19,
+      lines:
+        invoice.lines.length > 0
+          ? invoice.lines.map((line) => ({
+              id: line.id || crypto.randomUUID(),
+              catalogItemId: line.catalogItemId,
+              catalogType: line.catalogType,
+              quantity: line.quantity,
+              unit: line.unit,
+              title: line.title,
+              description: line.description,
+              unitPrice: line.unitPrice,
+              discountPercent: line.discountPercent ?? 0,
+              vatRate: line.vatRate,
+              laborItems: (line.laborItems ?? []).map((labor) => ({
+                id: labor.id || crypto.randomUUID(),
+                userId: labor.userId,
+                employeeName: labor.employeeName,
+                plannedHours: labor.plannedHours,
+                hourlyCostRate: labor.hourlyCostRate,
+                totalCost: labor.totalCost,
+              })),
+            }))
+          : [createEmptyOfferLine(invoice.vatRate || 19)],
+    };
+  }
+
+  async function saveInvoice(options: { asDraft?: boolean; finalizeConfirmed?: boolean } = {}) {
     if (!selectedProjectFile) return;
+    const saveAsDraft = Boolean(options.asDraft);
+    const editingInvoice = editingInvoiceId ? invoices.find((invoice) => invoice.id === editingInvoiceId) : null;
+    if (!saveAsDraft && editingInvoice?.status === "Entwurf" && !options.finalizeConfirmed) {
+      setPendingFinalizeInvoice({ source: "modal" });
+      return;
+    }
     setIsSavingInvoice(true);
     setInvoiceError("");
     let draftToSave = invoiceDraft;
@@ -5151,7 +6229,7 @@ export function DashboardPage() {
       invoiceBillableStampEntryIds.includes(entry.id)
     );
 
-    if (billableStampEntries.length > 0) {
+    if (!saveAsDraft && billableStampEntries.length > 0) {
       const stampedHours = billableStampEntries.reduce((sum, entry) => sum + Number(entry.durationMs || 0) / 3_600_000, 0);
       const invoiceLaborHours = getInvoiceDraftLaborHours(draftToSave);
       if (invoiceLaborHours + 0.01 < stampedHours) {
@@ -5163,9 +6241,9 @@ export function DashboardPage() {
           return;
         }
       }
-    } else if (selectedStampEntries.length > 0) {
+    } else if (!saveAsDraft && selectedStampEntries.length > 0) {
       allowUnderbilledStampedHours = true;
-    } else if (unbilledStampEntries.length > 0) {
+    } else if (!saveAsDraft && unbilledStampEntries.length > 0) {
       const stampedHours = unbilledStampEntries.reduce((sum, entry) => sum + Number(entry.durationMs || 0) / 3_600_000, 0);
       const shouldTakeOverStampedHours = window.confirm(
         `Es gibt ${formatHours(stampedHours)} produktiv gestempelte, noch nicht fakturierte Stunden. Möchtest du diese Stunden auf die Rechnung übernehmen?`
@@ -5197,6 +6275,7 @@ export function DashboardPage() {
       body: JSON.stringify({
         id: editingInvoiceId,
         ...draftToSave,
+        saveAsDraft,
         billedStampEntryIds,
         allowUnderbilledStampedHours,
         projectId: selectedProjectFile.id,
@@ -5224,7 +6303,7 @@ export function DashboardPage() {
 
     const savedInvoice = (await res.json()) as InvoiceItem;
     setInvoices((currentInvoices) => [savedInvoice, ...currentInvoices.filter((invoice) => invoice.id !== savedInvoice.id)]);
-    if (billedStampEntryIds.length > 0) {
+    if (!saveAsDraft && billedStampEntryIds.length > 0) {
       setStampEntries((currentEntries) =>
         currentEntries.map((entry) =>
           billedStampEntryIds.includes(entry.id)
@@ -5241,7 +6320,7 @@ export function DashboardPage() {
     await addProjectLogbookEntry(
       selectedProjectFile.id,
       "Rechnung",
-      `${editingInvoiceId ? "Rechnung geändert" : "Rechnung erstellt"}: ${savedInvoice.invoiceNumber} (${formatMoney(
+      `${saveAsDraft ? "Rechnungsentwurf gespeichert" : editingInvoiceId ? "Rechnung geändert" : "Rechnung erstellt"}: ${savedInvoice.invoiceNumber} (${formatMoney(
         savedInvoice.grossTotal
       )} brutto).`
     );
@@ -5251,7 +6330,65 @@ export function DashboardPage() {
     setEditingInvoiceId("");
     setInvoiceStampEntryIds([]);
     setInvoiceBillableStampEntryIds([]);
-    window.open(`/api/invoices?pdfId=${encodeURIComponent(savedInvoice.id)}`, "_blank");
+    if (!saveAsDraft && savedInvoice.pdfAvailable) {
+      window.open(`/api/invoices?pdfId=${encodeURIComponent(savedInvoice.id)}`, "_blank");
+    }
+  }
+
+  async function finalizeInvoice(invoice: InvoiceItem) {
+    if (invoice.status !== "Entwurf") return;
+    const project = heroProjects.find((item) => item.id === invoice.projectId) || selectedProjectFile;
+    if (!project) {
+      setErrorMessage("Projekt zur Rechnung wurde nicht gefunden.");
+      return;
+    }
+
+    setIsSavingInvoice(true);
+    setInvoiceError("");
+
+    const res = await fetch("/api/invoices", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: invoice.id,
+        ...createInvoiceDraftFromInvoice(invoice),
+        saveAsDraft: false,
+        billedStampEntryIds: [],
+        allowUnderbilledStampedHours: false,
+        projectId: project.id,
+        projectNumber: project.projectNumber || project.id,
+        projectTitle: project.title,
+      }),
+    });
+
+    setIsSavingInvoice(false);
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setErrorMessage(data?.error ?? "Rechnung konnte nicht fakturiert werden.");
+      return;
+    }
+
+    const savedInvoice = (await res.json()) as InvoiceItem;
+    setInvoices((currentInvoices) =>
+      currentInvoices.map((currentInvoice) => (currentInvoice.id === savedInvoice.id ? savedInvoice : currentInvoice))
+    );
+    await addProjectLogbookEntry(
+      project.id,
+      "Rechnung",
+      `Rechnung fakturiert: ${savedInvoice.invoiceNumber} (${formatMoney(savedInvoice.grossTotal)} brutto).`
+    );
+  }
+
+  async function confirmFinalizeInvoice() {
+    const pending = pendingFinalizeInvoice;
+    if (!pending) return;
+    setPendingFinalizeInvoice(null);
+    if (pending.source === "modal") {
+      await saveInvoice({ finalizeConfirmed: true });
+      return;
+    }
+    await finalizeInvoice(pending.invoice);
   }
 
   async function cancelInvoice(invoice: InvoiceItem) {
@@ -5307,6 +6444,53 @@ export function DashboardPage() {
       `Rechnung storniert: ${invoice.invoiceNumber}. Stornorechnung ${data.cancellationInvoice.invoiceNumber} wurde erstellt.`
     );
     window.open(`/api/invoices?pdfId=${encodeURIComponent(data.cancellationInvoice.id)}`, "_blank");
+  }
+
+  async function deleteInvoice(invoice: InvoiceItem, projectOverride?: HeroProjectPreview) {
+    const invoiceProject = projectOverride ?? selectedProjectFile ?? heroProjects.find((project) => project.id === invoice.projectId);
+    if (!invoiceProject || !canDeleteInvoices) return;
+    if (invoice.status === "Gelöscht") return;
+
+    const confirmed = window.confirm(
+      `Rechnung ${invoice.invoiceNumber} wirklich löschen? Sie wird als gelöscht markiert und aus verknüpften Stempelzeiten gelöst.`
+    );
+    if (!confirmed) return;
+
+    const res = await fetch("/api/invoices", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: invoice.id,
+        actorId: activeUserId,
+        actorName: activeUser?.name || "System",
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      const message = data?.error ?? "Rechnung konnte nicht gelöscht werden.";
+      setErrorMessage(message);
+      window.alert(message);
+      return;
+    }
+
+    const deletedInvoice = (await res.json()) as InvoiceItem;
+    setInvoices((currentInvoices) =>
+      currentInvoices.filter((currentInvoice) => currentInvoice.id !== deletedInvoice.id)
+    );
+    setSelectedBatchDraftInvoiceIds((currentIds) => currentIds.filter((invoiceId) => invoiceId !== deletedInvoice.id));
+    setStampEntries((currentEntries) =>
+      currentEntries.map((entry) =>
+        entry.invoiceId === invoice.id
+          ? { ...entry, invoiceId: "", invoiceNumber: "", invoicedAt: "" }
+          : entry
+      )
+    );
+    await addProjectLogbookEntry(
+      invoiceProject.id,
+      "Rechnung",
+      `Rechnung gelöscht: ${invoice.invoiceNumber}.`
+    );
   }
 
   function applyMailTemplate(kind: DocumentMailKind, documentNumber: string) {
@@ -5398,8 +6582,12 @@ export function DashboardPage() {
   }
 
   function openDocumentMailDialog(kind: DocumentMailKind, document: OfferItem | InvoiceItem) {
+    if (kind === "invoice" && (document as InvoiceItem).status === "Entwurf") {
+      const confirmed = window.confirm("Sie möchten einen Entwurf versenden. Sind Sie sicher?");
+      if (!confirmed) return;
+    }
     const activeMailAccount = getSafeEmployeeMailAccount(activeUser?.mailAccount, activeUser?.email || "");
-    const documentNumber = kind === "offer" ? (document as OfferItem).offerNumber : (document as InvoiceItem).invoiceNumber;
+    const documentNumber = kind === "offer" ? (document as OfferItem).offerNumber : getInvoiceDisplayNumber(document as InvoiceItem);
     const template = applyMailTemplate(kind, documentNumber);
 
     setDocumentMailDraft({
@@ -5459,7 +6647,7 @@ export function DashboardPage() {
     setDocumentMailError(
       activeMailAccount.status === "connected"
         ? ""
-        : "FÃ¼r deinen Benutzer ist noch kein Microsoft 365 Konto verbunden. Du kannst den Versanddialog vorbereiten, aber noch nicht senden."
+        : "F?r deinen Benutzer ist noch kein Microsoft 365 Konto verbunden. Du kannst den Versanddialog vorbereiten, aber noch nicht senden."
     );
     setDocumentMailSuccess("");
   }
@@ -5633,6 +6821,10 @@ export function DashboardPage() {
       },
       body: JSON.stringify({
         ...catalogDraft,
+        purchasePrice:
+          catalogDraft.type === "service"
+            ? roundCurrencyValue(catalogDraft.purchasePrice)
+            : catalogDraft.purchasePrice,
         id: editingCatalogItemId,
         actorUserId: activeUserId,
         actorName: activeUser?.name ?? "",
@@ -5695,6 +6887,7 @@ export function DashboardPage() {
     setContactDraft({
       ...emptyContact,
       category: target === "person" ? "Ansprechpartner" : emptyContact.category,
+      type: target === "person" ? "person" : emptyContact.type,
       customerNumber: String(nextNumber + 1),
     });
     setProjectContactTarget(target);
@@ -5722,14 +6915,45 @@ export function DashboardPage() {
     }));
   }
 
+  function updateContactType(type: ContactItem["type"], category?: string) {
+    setContactDraft((current) => ({
+      ...current,
+      type,
+      category:
+        type === "person"
+          ? "Ansprechpartner"
+          : type === "private"
+            ? "Privatkunde"
+            : category ||
+              (current.category === "Privatkunde" || current.category === "Ansprechpartner"
+                ? "Kunde"
+                : current.category),
+      parentCompanyId: type === "person" ? current.parentCompanyId : "",
+      parentCompanyName: type === "person" ? current.parentCompanyName : "",
+    }));
+  }
+
   async function saveContact() {
+    const normalizedContactDraft = {
+      ...contactDraft,
+      category:
+        contactDraft.type === "person"
+          ? "Ansprechpartner"
+          : contactDraft.type === "private"
+            ? "Privatkunde"
+            : contactDraft.category === "Privatkunde" || contactDraft.category === "Ansprechpartner"
+              ? "Kunde"
+              : contactDraft.category,
+      parentCompanyId: contactDraft.type === "person" ? contactDraft.parentCompanyId : "",
+      parentCompanyName: contactDraft.type === "person" ? contactDraft.parentCompanyName : "",
+    };
     const res = await fetch("/api/contacts", {
       method: editingContactId ? "PATCH" : "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        ...contactDraft,
+        ...normalizedContactDraft,
         id: editingContactId,
       }),
     });
@@ -5990,6 +7214,9 @@ export function DashboardPage() {
 
     const user = (await res.json()) as UserOption;
     window.localStorage.setItem("workpilot-user-id", user.id);
+    window.localStorage.removeItem("workpilot-impersonated-user-id");
+    setAuthenticatedUserId(user.id);
+    setImpersonatedUserId("");
     setActiveUserId(user.id);
     setZustaendigId(user.id);
     setAbsenceUserId(user.id);
@@ -6005,7 +7232,10 @@ export function DashboardPage() {
 
   function handleLogout() {
     window.localStorage.removeItem("workpilot-user-id");
+    window.localStorage.removeItem("workpilot-impersonated-user-id");
     setIsAuthenticated(false);
+    setAuthenticatedUserId("");
+    setImpersonatedUserId("");
     setActiveUserId("");
     setLoginEmail("");
     setLoginPassword("");
@@ -6017,6 +7247,44 @@ export function DashboardPage() {
     setIsUserMenuOpen(false);
     setIsNotificationsOpen(false);
     setNotifications([]);
+  }
+
+  function applyEffectiveUser(userId: string) {
+    setActiveUserId(userId);
+    setZustaendigId(userId);
+    setAbsenceUserId(userId);
+    setOwnerFilter(userId);
+    setKanbanOwnerFilter(userId);
+    setPlanningOwnerFilter(userId);
+    setIsUserMenuOpen(false);
+    setIsNotificationsOpen(false);
+  }
+
+  function startUserImpersonation(userId: string) {
+    if (!canImpersonateUsers || !userId || userId === impersonationControllerUserId) {
+      stopUserImpersonation();
+      return;
+    }
+
+    const targetUser = users.find((user) => user.id === userId && user.isActive);
+    if (!targetUser) return;
+
+    window.localStorage.setItem("workpilot-impersonated-user-id", targetUser.id);
+    if (!authenticatedUserId && activeUserId) {
+      setAuthenticatedUserId(activeUserId);
+    }
+    setImpersonatedUserId(targetUser.id);
+    applyEffectiveUser(targetUser.id);
+  }
+
+  function stopUserImpersonation() {
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem("workpilot-impersonated-user-id");
+    }
+    setImpersonatedUserId("");
+    if (impersonationControllerUserId) {
+      applyEffectiveUser(impersonationControllerUserId);
+    }
   }
 
   function openOwnSettings() {
@@ -6122,7 +7390,167 @@ export function DashboardPage() {
     }
 
     const data = await res.json();
+    const businessAreasRes = await fetch("/api/trades?businessAreas=1", { cache: "no-store" });
+    if (!businessAreasRes.ok) {
+      setErrorMessage("Geschäftsbereiche konnten nicht geladen werden.");
+      return;
+    }
+    const businessAreaData = await businessAreasRes.json();
     setTrades(data);
+    setBusinessAreas(businessAreaData);
+    setTradeInlineDrafts(
+      Object.fromEntries(
+        (data as TradeOption[]).map((trade) => [
+          trade.id,
+          {
+            name: trade.name,
+            projectPrefix: trade.projectPrefix,
+            businessAreaId: trade.businessAreaId,
+          },
+        ])
+      )
+    );
+  }
+
+  function getBusinessAreaTargetMonths() {
+    return Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, "0"));
+  }
+
+  function parseBusinessAreaTargetDraft(value: string | undefined) {
+    const parsed = Number(String(value ?? "0").replace(",", "."));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function getBusinessAreaTargetYearTotal(businessAreaId: string) {
+    return getBusinessAreaTargetMonths().reduce((sum, month) => {
+      const key = `${businessAreaId}:${month}`;
+      return sum + parseBusinessAreaTargetDraft(businessAreaTargetDrafts[key]);
+    }, 0);
+  }
+
+  async function loadBusinessAreaTargets() {
+    const months = getBusinessAreaTargetMonths();
+    const res = await fetch(`/api/business-area-targets?months=${encodeURIComponent(months.join(","))}`, {
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      setBusinessAreaTargetError("Geschäftsbereich-Sollwerte konnten nicht geladen werden.");
+      return;
+    }
+
+    const data = (await res.json()) as BusinessAreaTarget[];
+    setBusinessAreaTargets(data);
+    setBusinessAreaTargetDrafts(
+      Object.fromEntries(
+        data.map((target) => [
+          `${target.businessAreaId}:${target.month}`,
+          target.amount ? String(target.amount).replace(".", ",") : "",
+        ])
+      )
+    );
+    setBusinessAreaTargetError("");
+  }
+
+  async function saveBusinessAreaTargets() {
+    const targets = Object.entries(businessAreaTargetDrafts).map(([key, amount]) => {
+      const [businessAreaId, month] = key.split(":");
+      return { businessAreaId, month, amount };
+    });
+    const res = await fetch("/api/business-area-targets", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: activeUserId, targets }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setBusinessAreaTargetError(data?.error ?? "Geschäftsbereich-Sollwerte konnten nicht gespeichert werden.");
+      return;
+    }
+
+    await loadBusinessAreaTargets();
+  }
+
+  async function loadUnits() {
+    const res = await fetch("/api/units", { cache: "no-store" });
+
+    if (!res.ok) {
+      setErrorMessage("Einheiten konnten nicht geladen werden.");
+      return;
+    }
+
+    const data = (await res.json()) as UnitOption[];
+    setUnits(data);
+  }
+
+  function getUnitOptions(extraUnit = "") {
+    const names = new Set<string>();
+    units.filter((unit) => unit.isActive).forEach((unit) => names.add(unit.name));
+    catalogUnits.forEach((unit) => names.add(unit));
+    const normalizedExtraUnit = normalizeUnit(extraUnit);
+    if (normalizedExtraUnit) names.add(normalizedExtraUnit);
+    return Array.from(names);
+  }
+
+  function editUnit(unit: UnitOption) {
+    setEditingUnitId(unit.id);
+    setUnitDraftName(unit.name);
+    setUnitError("");
+  }
+
+  function resetUnitForm() {
+    setEditingUnitId("");
+    setUnitDraftName("");
+    setUnitError("");
+  }
+
+  async function saveUnit() {
+    const name = normalizeUnit(unitDraftName);
+    if (!name) {
+      setUnitError("Bitte eine Einheit eintragen.");
+      return;
+    }
+
+    const res = await fetch("/api/units", {
+      method: editingUnitId ? "PATCH" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: editingUnitId,
+        name,
+        sortOrder: editingUnitId ? units.find((unit) => unit.id === editingUnitId)?.sortOrder ?? 999 : units.length + 1,
+        actorId: activeUserId,
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setUnitError(data?.error ?? "Einheit konnte nicht gespeichert werden.");
+      return;
+    }
+
+    resetUnitForm();
+    await loadUnits();
+  }
+
+  async function deleteUnit(unit: UnitOption) {
+    const confirmed = window.confirm(`Einheit ${unit.name} wirklich deaktivieren?`);
+    if (!confirmed) return;
+
+    const res = await fetch("/api/units", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: unit.id, actorId: activeUserId }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setUnitError(data?.error ?? "Einheit konnte nicht deaktiviert werden.");
+      return;
+    }
+
+    if (editingUnitId === unit.id) resetUnitForm();
+    await loadUnits();
   }
 
   async function createTrade() {
@@ -6138,7 +7566,12 @@ export function DashboardPage() {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ name, projectPrefix, actorId: activeUserId }),
+      body: JSON.stringify({
+        name,
+        projectPrefix,
+        businessAreaId: tradeDraftBusinessAreaId,
+        actorId: activeUserId,
+      }),
     });
 
     if (!res.ok) {
@@ -6149,6 +7582,7 @@ export function DashboardPage() {
 
     setTradeDraftName("");
     setTradeDraftPrefix("");
+    setTradeDraftBusinessAreaId("");
     setTradeManagementError("");
     await loadTrades();
   }
@@ -6165,6 +7599,57 @@ export function DashboardPage() {
     if (!res.ok) {
       const data = await res.json().catch(() => null);
       setTradeManagementError(data?.error ?? "Gewerk konnte nicht entfernt werden.");
+      return;
+    }
+
+    setTradeManagementError("");
+    await loadTrades();
+  }
+
+  function updateTradeInlineDraft(tradeId: string, patch: Partial<TradeInlineDraft>) {
+    setTradeInlineDrafts((current) => ({
+      ...current,
+      [tradeId]: {
+        ...current[tradeId],
+        name: current[tradeId]?.name ?? "",
+        projectPrefix: current[tradeId]?.projectPrefix ?? "",
+        businessAreaId: current[tradeId]?.businessAreaId ?? "",
+        ...patch,
+      },
+    }));
+  }
+
+  async function saveCompanyProfileTrade(trade: TradeOption) {
+    const draft = tradeInlineDrafts[trade.id] ?? {
+      name: trade.name,
+      projectPrefix: trade.projectPrefix,
+      businessAreaId: trade.businessAreaId,
+    };
+    const name = draft.name.trim();
+    const projectPrefix = normalizeProjectPrefixInput(draft.projectPrefix);
+
+    if (!name) {
+      setTradeManagementError("Bitte einen Gewerknamen eintragen.");
+      return;
+    }
+
+    const res = await fetch("/api/trades", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        tradeId: trade.id,
+        name,
+        projectPrefix,
+        businessAreaId: draft.businessAreaId,
+        actorId: activeUserId,
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setTradeManagementError(data?.error ?? "Gewerk konnte nicht gespeichert werden.");
       return;
     }
 
@@ -6288,11 +7773,12 @@ export function DashboardPage() {
 
     if (!res.ok) {
       setErrorMessage("Abwesenheiten konnten nicht geladen werden.");
-      return;
+      return [];
     }
 
-    const data = await res.json();
+    const data = (await res.json()) as AbsenceItem[];
     setAbsences(data);
+    return data;
   }
 
   async function loadHeroProjects() {
@@ -6342,6 +7828,91 @@ export function DashboardPage() {
     setStampEntries(data.map((entry) => ({ ...entry, date: normalizeDateKeyValue(entry.date) })));
   }
 
+  function getBerlinOffsetMs(timestampMs: number) {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Europe/Berlin",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(new Date(timestampMs));
+    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    const berlinTimeAsUtc = Date.UTC(
+      Number(values.year),
+      Number(values.month) - 1,
+      Number(values.day),
+      Number(values.hour),
+      Number(values.minute),
+      Number(values.second)
+    );
+
+    return berlinTimeAsUtc - Math.floor(timestampMs / 1000) * 1000;
+  }
+
+  function normalizeStampTimestamp(timestampMs: number, nowMs = Date.now()) {
+    if (!Number.isFinite(timestampMs) || timestampMs <= nowMs + 60_000) return timestampMs;
+
+    const correctedTimestampMs = timestampMs - getBerlinOffsetMs(timestampMs);
+    if (correctedTimestampMs <= nowMs + 60_000) return correctedTimestampMs;
+
+    return timestampMs;
+  }
+
+  function mapActiveStampSession(session: ActiveStampSessionResponse | null): StampSession | null {
+    if (!session) return null;
+    const startedAt = normalizeStampTimestamp(new Date(session.startedAt).getTime());
+    const pauseStartedAt = session.pauseStartedAt
+      ? normalizeStampTimestamp(new Date(session.pauseStartedAt).getTime())
+      : null;
+
+    return {
+      mode: session.mode === "unproductive" ? "unproductive" : "project",
+      projectId: session.mode === "project" ? session.projectId : "",
+      projectLabel: session.projectLabel,
+      startedAt,
+      accumulatedMs: Number(session.accumulatedMs || 0),
+      pauseStartedAt,
+      pauseMs: Number(session.pauseMs || 0),
+    };
+  }
+
+  async function loadActiveStampSession(options: { silent?: boolean } = {}) {
+    if (!activeUserId) {
+      setStampSession(null);
+      return null;
+    }
+
+    const res = await fetch(`/api/stamp-session?userId=${encodeURIComponent(activeUserId)}`, {
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      if (!options.silent) setErrorMessage("Aktive Stempelung konnte nicht geladen werden.");
+      return null;
+    }
+
+    const data = (await res.json()) as ActiveStampSessionResponse | null;
+    const mappedSession = mapActiveStampSession(data);
+    setStampSession(mappedSession);
+    setTimerNow(Date.now());
+    return mappedSession;
+  }
+
+  async function loadDashboardStampSessions() {
+    const res = await fetch("/api/stamp-session", { cache: "no-store" });
+
+    if (!res.ok) return;
+
+    const data = (await res.json()) as ActiveStampSessionResponse[];
+    setDashboardStampSessions(
+      Object.fromEntries(data.map((session) => [session.userId, session]))
+    );
+    setTimerNow(Date.now());
+  }
+
   async function loadProjectLogbookEntries() {
     const res = await fetch("/api/project-logbook-entries", { cache: "no-store" });
 
@@ -6353,6 +7924,18 @@ export function DashboardPage() {
     const data = (await res.json()) as ProjectLogbookEntry[];
     setProjectLogbookEntries(data);
     setLogbookError("");
+  }
+
+  async function loadProjectPotentials() {
+    const res = await fetch("/api/potentials", { cache: "no-store" });
+
+    if (!res.ok) {
+      setErrorMessage("Potenziale konnten nicht geladen werden.");
+      return;
+    }
+
+    const data = (await res.json()) as ProjectPotential[];
+    setProjectPotentials(data);
   }
 
   async function loadNotifications(showDesktopNotice = false) {
@@ -6463,11 +8046,49 @@ export function DashboardPage() {
       setIsNotificationsOpen(false);
     }
 
+    if (notification.linkTarget === "task" && notification.linkTargetId) {
+      let task = tasks.find((item) => item.id === notification.linkTargetId);
+      if (!task) {
+        const loadedTasks = await loadTasks();
+        task = loadedTasks.find((item) => item.id === notification.linkTargetId);
+      }
+      if (task) {
+        setActiveTab("dashboard");
+        setOpenSidebarMenus({ tasks: true });
+        setIsNotificationsOpen(false);
+        openEditModal(task);
+      }
+    }
+
+    if (notification.linkTarget === "project-logbook" && notification.linkTargetId) {
+      await loadProjectLogbookEntries();
+      setSelectedProjectFileId(notification.linkTargetId);
+      setProjectFileTab("logbook");
+      setProjectLogbookSearch("Zusatzverkauf");
+      setActiveTab("projectsSolutions");
+      setOpenSidebarMenus({ projectsSolutions: true });
+      setIsNotificationsOpen(false);
+    }
+
     if (notification.linkTarget === "absence-request" && notification.linkTargetId) {
+      let targetAbsence = absences.find(
+        (absence) => (absence.requestGroupId || absence.id) === notification.linkTargetId
+      );
+
+      if (!targetAbsence) {
+        const loadedAbsences = await loadAbsences();
+        targetAbsence = loadedAbsences.find(
+          (absence) => (absence.requestGroupId || absence.id) === notification.linkTargetId
+        );
+      }
+
       setActiveTab("absenceRequests");
-      setAbsenceRequestView("history");
+      setAbsenceRequestView(
+        targetAbsence?.status === "genehmigt" || targetAbsence?.status === "abgelehnt" ? "history" : "active"
+      );
       setHighlightedAbsenceRequestId(notification.linkTargetId);
       setIsNotificationsOpen(false);
+      if (targetAbsence) openEditAbsenceModal(targetAbsence);
     }
   }
 
@@ -6697,6 +8318,9 @@ export function DashboardPage() {
     setPlanningEntryError("");
     setPlanningEntryOfferLabel("");
     setPlanningEntryOfferTotalHours("5");
+    setPlanningRecurrenceType("once");
+    setPlanningRecurrenceUntil("");
+    setPlanningRecurrenceSkipWeekends(true);
   }
 
   function openPlanningEntryModal(options: Partial<{
@@ -6740,7 +8364,7 @@ export function DashboardPage() {
 
     setEditingPlanningEntryId(entry.id);
     setPlanningEntryApprovalStatus(entry.approvalStatus);
-    setPlanningEntrySource(entry.source);
+    setPlanningEntrySource("manual");
     setPlanningEntryBoard(board);
     setPlanningEntryGroup(groupName);
     setPlanningEntryUserId(entry.userId);
@@ -6757,6 +8381,9 @@ export function DashboardPage() {
     setPlanningEntryOfferTotalHours(
       entry.offerTotalMinutes > 0 ? String(entry.offerTotalMinutes / 60) : "5"
     );
+    setPlanningRecurrenceType("once");
+    setPlanningRecurrenceUntil("");
+    setPlanningRecurrenceSkipWeekends(true);
     setErrorMessage("");
     setPlanningEntryError("");
     setIsPlanningEntryModalOpen(true);
@@ -6773,18 +8400,63 @@ export function DashboardPage() {
   }
 
   function getAlreadyPlannedOfferMinutesForPlanningEntry() {
-    const selectedUser = users.find((user) => user.id === planningEntryUserId);
+    const normalizedOfferLabel = planningEntryOfferLabel.trim().toLowerCase();
+    const normalizedTitle = planningEntryTitle.trim().toLowerCase();
 
     return planningEntries
       .filter(
-        (entry) =>
-          entry.source === "offer" &&
-          entry.projectId === planningEntryProjectId &&
-          (entry.userId === planningEntryUserId || (!!selectedUser?.name && entry.employeeName === selectedUser.name)) &&
-          entry.id !== editingPlanningEntryId &&
-          !entry.deletedAt
+        (entry) => {
+          if (
+            entry.source !== "offer" ||
+            entry.projectId !== planningEntryProjectId ||
+            entry.id === editingPlanningEntryId ||
+            entry.deletedAt
+          ) {
+            return false;
+          }
+
+          const haystack = [entry.title, entry.description, entry.offerLabel].join(" ").toLowerCase();
+          if (normalizedOfferLabel && haystack.includes(normalizedOfferLabel)) return true;
+          if (normalizedTitle && haystack.includes(normalizedTitle)) return true;
+
+          return false;
+        }
       )
       .reduce((sum, entry) => sum + Number(entry.offerPlannedMinutes || entry.durationMinutes || 0), 0);
+  }
+
+  function getPlanningRecurrenceDates() {
+    if (editingPlanningEntryId || planningRecurrenceType === "once") return [planningEntryDate];
+    if (!planningRecurrenceUntil || planningRecurrenceUntil < planningEntryDate) return [planningEntryDate];
+
+    const dates: string[] = [];
+    const currentDate = parseProjectDate(planningEntryDate);
+    const untilDate = parseProjectDate(planningRecurrenceUntil);
+    if (!currentDate || !untilDate) return [planningEntryDate];
+
+    while (currentDate.getTime() <= untilDate.getTime() && dates.length < 120) {
+      const day = currentDate.getDay();
+      if (!planningRecurrenceSkipWeekends || (day !== 0 && day !== 6)) {
+        dates.push(formatDateKey(currentDate));
+      }
+
+      if (planningRecurrenceType === "weekly") {
+        currentDate.setDate(currentDate.getDate() + 7);
+      } else if (planningRecurrenceType === "biweekly") {
+        currentDate.setDate(currentDate.getDate() + 14);
+      } else {
+        currentDate.setMonth(currentDate.getMonth() + 1);
+      }
+    }
+
+    return dates.length > 0 ? dates : [planningEntryDate];
+  }
+
+  function getPlanningRecurrenceLabel() {
+    if (planningRecurrenceType === "weekly") return "wöchentlich";
+    if (planningRecurrenceType === "biweekly") return "alle 2 Wochen";
+    if (planningRecurrenceType === "monthly") return "monatlich";
+    return "einmalig";
   }
 
   async function savePlanningEntry(nextApprovalStatus = planningEntryApprovalStatus) {
@@ -6805,6 +8477,13 @@ export function DashboardPage() {
     const selectedAbsence = planningEntryUserId
       ? getUserAbsenceForDateKey(planningEntryUserId, planningEntryDate)
       : undefined;
+    const recurrenceDates = getPlanningRecurrenceDates();
+    const recurrenceId =
+      !editingPlanningEntryId && recurrenceDates.length > 1 ? crypto.randomUUID() : "";
+    const recurrenceRule =
+      recurrenceDates.length > 1
+        ? `${getPlanningRecurrenceLabel()} bis ${formatProjectDate(recurrenceDates.at(-1))}`
+        : "";
 
     if (doesAbsenceBlockTime(selectedAbsence, planningEntryStartTime, planningEntryEndTime)) {
       setPlanningEntryError(
@@ -6815,68 +8494,135 @@ export function DashboardPage() {
       return;
     }
 
+    if (recurrenceDates.length > 1 && planningEntryUserId) {
+      const blockedDate = recurrenceDates.find((dateKey) =>
+        doesAbsenceBlockTime(
+          getUserAbsenceForDateKey(planningEntryUserId, dateKey),
+          planningEntryStartTime,
+          planningEntryEndTime
+        )
+      );
+      if (blockedDate) {
+        setPlanningEntryError(
+          `${selectedUser?.name ?? "Der ausgewählte Mitarbeiter"} ist am ${formatDateOnly(blockedDate)} abwesend. Die Serie wurde nicht gespeichert.`
+        );
+        return;
+      }
+    }
+
+    if (selectedProject) {
+      const projectBudgetWarnings = Array.from(new Set(recurrenceDates.map((date) => date.slice(0, 7))))
+        .map((monthKey) => {
+          const monthBudgetHours = getProjectBudgetAllocationHours(selectedProject, monthKey);
+          if (monthBudgetHours <= 0) return null;
+
+          const alreadyPlannedMinutes = planningEntries
+            .filter(
+              (entry) =>
+                entry.projectId === selectedProject.id &&
+                entry.date.startsWith(monthKey) &&
+                entry.id !== editingPlanningEntryId &&
+                !entry.deletedAt
+            )
+            .reduce((sum, entry) => sum + Number(entry.durationMinutes || 0), 0);
+          const newPlannedMinutes = recurrenceDates.filter((date) => date.startsWith(monthKey)).length * durationMinutes;
+          const afterSaveHours = (alreadyPlannedMinutes + newPlannedMinutes) / 60;
+
+          return {
+            monthKey,
+            budgetHours: monthBudgetHours,
+            afterSaveHours,
+            overHours: Math.max(afterSaveHours - monthBudgetHours, 0),
+          };
+        })
+        .filter(Boolean) as Array<{
+        monthKey: string;
+        budgetHours: number;
+        afterSaveHours: number;
+        overHours: number;
+      }>;
+      const overplannedBudget = projectBudgetWarnings.find((warning) => warning.overHours > 0);
+
+      if (overplannedBudget) {
+        const confirmed = window.confirm(
+          `Achtung: Du willst im ${formatMonthLabel(overplannedBudget.monthKey)} ${formatHours(
+            overplannedBudget.afterSaveHours
+          )} Std. planen. Hinterlegt sind ${formatHours(
+            overplannedBudget.budgetHours
+          )} Std. Dadurch wird das Monatskontingent um ${formatHours(
+            overplannedBudget.overHours
+          )} Std. überschritten. Trotzdem speichern?`
+        );
+        if (!confirmed) return;
+      }
+    }
+
     if (planningEntrySource === "offer") {
       const alreadyPlannedMinutes = getAlreadyPlannedOfferMinutesForPlanningEntry();
       const remainingOfferMinutes = Math.max(offerTotalMinutes - alreadyPlannedMinutes, 0);
 
       if (durationMinutes > remainingOfferMinutes) {
         const confirmed = window.confirm(
-          `Du willst ${formatMinutes(durationMinutes)} planen, aus dem Angebot sind aber nur noch ${formatMinutes(
+          `Achtung: Du willst ${formatMinutes(durationMinutes)} planen, es sind aber nur noch ${formatMinutes(
             remainingOfferMinutes
-          )} offen. Trotzdem speichern?`
+          )} von ${formatMinutes(offerTotalMinutes)} offen. Dadurch wird das Kontingent überplant. Trotzdem speichern?`
         );
         if (!confirmed) return;
       }
     }
 
-    const res = await fetch("/api/planning-entries", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        source: planningEntrySource,
-        id: editingPlanningEntryId,
-        approvalStatus: nextApprovalStatus,
-        actorUserId: activeUserId,
-        actorName: activeUser?.name ?? "",
-        requestedByUserId:
-          nextApprovalStatus === "requested"
-            ? entryOrFallbackRequestedByUserId()
+    for (const date of recurrenceDates) {
+      const res = await fetch("/api/planning-entries", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          source: planningEntrySource,
+          id: editingPlanningEntryId,
+          approvalStatus: nextApprovalStatus,
+          actorUserId: activeUserId,
+          actorName: activeUser?.name ?? "",
+          requestedByUserId:
+            nextApprovalStatus === "requested"
+              ? entryOrFallbackRequestedByUserId()
+              : "",
+          requestedByName:
+            nextApprovalStatus === "requested"
+              ? entryOrFallbackRequestedByName()
+              : "",
+          approvedByUserId:
+            nextApprovalStatus === "confirmed" && editingPlanningEntryId
+              ? activeUserId
+              : "",
+          board: planningEntryBoard,
+          groupName: planningEntryGroup,
+          userId: planningEntryUserId,
+          employeeName: selectedUser?.name ?? "",
+          date,
+          startTime: planningEntryStartTime,
+          endTime: planningEntryEndTime,
+          durationMinutes,
+          title,
+          customer: selectedProject?.customer || planningEntryCustomer,
+          description: planningEntryDescription,
+          projectId: selectedProject?.id ?? "",
+          projectLabel: selectedProject
+            ? `${selectedProject.projectNumber} | ${selectedProject.title}`
             : "",
-        requestedByName:
-          nextApprovalStatus === "requested"
-            ? entryOrFallbackRequestedByName()
-            : "",
-        approvedByUserId:
-          nextApprovalStatus === "confirmed" && editingPlanningEntryId
-            ? activeUserId
-            : "",
-        board: planningEntryBoard,
-        groupName: planningEntryGroup,
-        userId: planningEntryUserId,
-        employeeName: selectedUser?.name ?? "",
-        date: planningEntryDate,
-        startTime: planningEntryStartTime,
-        endTime: planningEntryEndTime,
-        durationMinutes,
-        title,
-        customer: selectedProject?.customer || planningEntryCustomer,
-        description: planningEntryDescription,
-        projectId: selectedProject?.id ?? "",
-        projectLabel: selectedProject
-          ? `${selectedProject.projectNumber} | ${selectedProject.title}`
-          : "",
-        offerLabel: planningEntrySource === "offer" ? planningEntryOfferLabel : "",
-        offerTotalMinutes: planningEntrySource === "offer" ? offerTotalMinutes : 0,
-        offerPlannedMinutes: planningEntrySource === "offer" ? durationMinutes : 0,
-      }),
-    });
+          offerLabel: planningEntrySource === "offer" ? planningEntryOfferLabel : "",
+          offerTotalMinutes: planningEntrySource === "offer" ? offerTotalMinutes : 0,
+          offerPlannedMinutes: planningEntrySource === "offer" ? durationMinutes : 0,
+          recurrenceId,
+          recurrenceRule,
+        }),
+      });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => null);
-      setPlanningEntryError(data?.error ?? "Planung konnte nicht gespeichert werden.");
-      return;
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setPlanningEntryError(data?.error ?? "Planung konnte nicht gespeichert werden.");
+        return;
+      }
     }
 
     const logProjectId = selectedProject?.id ?? "";
@@ -7017,18 +8763,30 @@ export function DashboardPage() {
   }
 
   useEffect(() => {
+    if (previousOfferDraftRef.current === offerDraft) return;
+    previousOfferDraftRef.current = offerDraft;
+    if (offerError) {
+      setOfferError("");
+    }
+  }, [offerDraft, offerError]);
+
+  useEffect(() => {
     loadTasks();
     loadUsers();
     loadTeams();
     loadTrades();
+    loadBusinessAreaTargets();
+    loadUnits();
     loadEscalationRules();
     loadAbsences();
     loadPlanningEntries();
     loadContentItems();
     loadIdeaPosts();
     loadContacts();
+    loadHeroProjects();
     loadProjectTimeEntries();
     loadProjectLogbookEntries();
+    loadProjectPotentials();
     loadDocumentTypes();
     loadDocumentTexts();
     loadCatalogItems();
@@ -7054,11 +8812,23 @@ export function DashboardPage() {
 
   useEffect(() => {
     if (selectedProjectFileId) {
+      void loadProjectTimeEntries();
       void loadOffers(selectedProjectFileId);
       void loadInvoices(selectedProjectFileId);
       void loadOfferHistory(selectedProjectFileId);
     }
   }, [selectedProjectFileId]);
+
+  useEffect(() => {
+    if (!selectedProjectFileId) return;
+    if (!["hero", "projectsSolutions", "projectsImmocare"].includes(activeTab)) return;
+
+    const intervalId = window.setInterval(() => {
+      void loadProjectTimeEntries();
+    }, 5000);
+
+    return () => window.clearInterval(intervalId);
+  }, [activeTab, selectedProjectFileId]);
 
   useEffect(() => {
     if (!mayAccessEmployeeCosts && employeeTopTab === "costs") {
@@ -7080,14 +8850,14 @@ export function DashboardPage() {
   }, [activeUserId, employeeTopTab, mayAccessEmployeeCosts, selectedEmployeeId]);
 
   useEffect(() => {
-    if (!isOfferModalOpen || !mayAccessEmployeeCosts) return;
+    if ((!isOfferModalOpen && activeTab !== "laborCostRates") || !mayAccessEmployeeCosts) return;
 
     users
       .filter((user) => user.isActive && !employeeCostCalculations[user.id])
       .forEach((user) => {
         void loadEmployeeCost(user.id);
       });
-  }, [employeeCostCalculations, isOfferModalOpen, mayAccessEmployeeCosts, users]);
+  }, [activeTab, employeeCostCalculations, isOfferModalOpen, mayAccessEmployeeCosts, users]);
 
   useEffect(() => {
     if (!isOfferModalOpen) return;
@@ -7139,25 +8909,41 @@ export function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (Object.keys(runningTaskTimers).length === 0 && !stampSession) return;
+    if (!stampSession) return;
 
     const intervalId = window.setInterval(() => {
       setTimerNow(Date.now());
     }, 1000);
 
     return () => window.clearInterval(intervalId);
-  }, [runningTaskTimers, stampSession]);
+  }, [stampSession]);
 
   useEffect(() => {
     if (!activeUserId) return;
 
     hasLoadedNotifications.current = false;
+    void loadActiveStampSession({ silent: true });
+    void loadDashboardStampSessions();
     void loadNotifications(false);
     void loadIdeaPosts();
 
     const intervalId = window.setInterval(() => {
       void loadNotifications(true);
     }, 15000);
+
+    return () => window.clearInterval(intervalId);
+  }, [activeUserId]);
+
+  useEffect(() => {
+    if (!activeUserId) {
+      setStampSession(null);
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void loadActiveStampSession({ silent: true });
+      void loadDashboardStampSessions();
+    }, 5000);
 
     return () => window.clearInterval(intervalId);
   }, [activeUserId]);
@@ -7176,7 +8962,9 @@ export function DashboardPage() {
     if (
       (activeTab === "hero" ||
         activeTab === "projectsSolutions" ||
-        activeTab === "projectsImmocare") &&
+        activeTab === "projectsImmocare" ||
+        activeTab === "reports" ||
+        activeTab === "planningBoard") &&
       !hasLoadedHeroProjects
     ) {
       void loadHeroProjects();
@@ -7184,10 +8972,44 @@ export function DashboardPage() {
   }, [activeTab, hasLoadedHeroProjects]);
 
   useEffect(() => {
+    if (projectFileTab === "comparison" || projectFileTab === "time") {
+      setProjectFileTab("appointments");
+    }
+  }, [projectFileTab]);
+
+  useEffect(() => {
+    if (projectFileTab !== "budgets" || !selectedProjectFileId) return;
+
+    const project = heroProjects.find((item) => item.id === selectedProjectFileId);
+    if (!project) return;
+
+    const allocations = project.timeBudgetAllocations ?? [];
+    setProjectBudgetMode(allocations.length > 0 ? "custom" : "total");
+    setProjectBudgetTotalDraft(project.timeBudgetHours || "");
+    setProjectBudgetMonthDrafts(
+      Object.fromEntries(allocations.map((allocation) => [allocation.month, allocation.hours]))
+    );
+  }, [heroProjects, projectFileTab, selectedProjectFileId]);
+
+  useEffect(() => {
     if (!isModalOpen && errorMessage.includes("am geplanten Tag abwesend")) {
       setErrorMessage("");
     }
   }, [errorMessage, isModalOpen]);
+
+  useEffect(() => {
+    if (!errorMessage) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setErrorMessage("");
+    }, 8000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [errorMessage]);
+
+  useEffect(() => {
+    setErrorMessage("");
+  }, [activeTab, selectedProjectFileId, reportAnalyticsTab]);
 
   useEffect(() => {
     if (!isModalOpen || !editingTask || selectedHeroProjectId) return;
@@ -7221,11 +9043,17 @@ export function DashboardPage() {
     setPlanningEnabled(false);
     setPlanningAllocations([]);
     setKommentarText("");
+    setCommentRecipientUserId("");
+    setTaskParticipantUserId("");
+    setIsTaskHistoryOpen(false);
+    setIsTaskStatusConfirmOpen(false);
+    setTaskStatusConfirmValue(emptyTask.status);
   }
 
   function openCreateModal(date?: Date | string) {
     setIsQuickCreateOpen(false);
     setEditingTask(null);
+    setPendingPotentialFollowUp(null);
     setErrorMessage("");
     resetForm();
     if (date) {
@@ -7280,6 +9108,12 @@ export function DashboardPage() {
         project.billingInterval === "quartalsweise" || project.billingInterval === "jährlich"
           ? project.billingInterval
           : "monatlich",
+      forecastBillingType:
+        project.forecastBillingType === "wöchentlich" ||
+        project.forecastBillingType === "quartalsweise"
+          ? project.forecastBillingType
+          : "monatlich",
+      forecastNetAmount: project.forecastNetAmount || "",
       trade: project.trade || emptyProjectDraft.trade,
       branch:
         project.branch ||
@@ -7311,6 +9145,12 @@ export function DashboardPage() {
               value === "Projekt OK immocare" ? "OK immocare GmbH" : "OK solutions GmbH",
           }
         : {}),
+      ...(key === "projectKind" && value === "einmaliges Projekt"
+        ? {
+            forecastBillingType: "monatlich" as const,
+            forecastNetAmount: "",
+          }
+        : {}),
     }));
   }
 
@@ -7320,6 +9160,12 @@ export function DashboardPage() {
       contact.email ||
       contact.customerNumber
     );
+  }
+
+  function getContactTypeLabel(contact: Pick<ContactItem, "type">) {
+    if (contact.type === "company") return "Firma";
+    if (contact.type === "private") return "Privatperson";
+    return "Ansprechpartner";
   }
 
   function getContactDisplayName(contact: ContactItem) {
@@ -7619,6 +9465,151 @@ export function DashboardPage() {
     setProjectLogbookEntries((currentEntries) => [savedEntry, ...currentEntries]);
   }
 
+  async function createProjectPotential(project: HeroProjectPreview, description: string) {
+    const existingPotential = projectPotentials.find(
+      (potential) =>
+        potential.projectId === project.id &&
+        potential.description === description &&
+        ["open", "follow_up"].includes(potential.status)
+    );
+    if (existingPotential) return existingPotential;
+
+    const res = await fetch("/api/potentials", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contactId: project.contactId || "",
+        customerName: project.customer || "",
+        projectId: project.id,
+        projectLabel: `${project.projectNumber || project.id} | ${project.title}`,
+        description,
+        actorName: activeUser?.name || "",
+      }),
+    });
+
+    if (!res.ok) return null;
+
+    const savedPotential = (await res.json()) as ProjectPotential;
+    setProjectPotentials((currentPotentials) => [savedPotential, ...currentPotentials]);
+    return savedPotential;
+  }
+
+  async function updateProjectPotential(
+    potential: ProjectPotential,
+    status: ProjectPotentialStatus,
+    input: { note?: string; taskId?: string; followUpAt?: string } = {}
+  ) {
+    const res = await fetch("/api/potentials", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: potential.id,
+        status,
+        note: input.note || "",
+        taskId: input.taskId || "",
+        followUpAt: input.followUpAt || "",
+        actorName: activeUser?.name || "",
+      }),
+    });
+
+    if (!res.ok) {
+      setErrorMessage("Potenzial konnte nicht aktualisiert werden.");
+      return null;
+    }
+
+    const savedPotential = (await res.json()) as ProjectPotential;
+    setProjectPotentials((currentPotentials) => [
+      savedPotential,
+      ...currentPotentials.filter((currentPotential) => currentPotential.id !== savedPotential.id),
+    ]);
+    return savedPotential;
+  }
+
+  function getPotentialProject(potential: ProjectPotential) {
+    return heroProjects.find((project) => project.id === potential.projectId) ?? null;
+  }
+
+  function getPotentialStatusLabel(potential: ProjectPotential) {
+    if (potential.status === "offered") return "Angeboten";
+    if (potential.status === "lost") return "Kein Interesse";
+    if (potential.status === "follow_up") {
+      const followUpTime = potential.followUpAt ? new Date(potential.followUpAt).getTime() : NaN;
+      return Number.isFinite(followUpTime) && followUpTime <= Date.now()
+        ? "Nachfassen fällig"
+        : "Wiedervorlage geplant";
+    }
+
+    return "Offen";
+  }
+
+  async function offerPotential(potential: ProjectPotential) {
+    const project = getPotentialProject(potential);
+    if (!project) return;
+
+    setSelectedProjectFileId(project.id);
+    setUpsellOfferProjectId(project.id);
+    openOfferModal(project, { fromUpsell: true });
+  }
+
+  async function schedulePotentialFollowUp(potential: ProjectPotential) {
+    const project = getPotentialProject(potential);
+    if (!project) return;
+
+    setIsQuickCreateOpen(false);
+    setEditingTask(null);
+    setPendingPotentialFollowUp({ potentialId: potential.id, projectId: project.id });
+    setErrorMessage("");
+    resetForm();
+    setTitel(`Potenzial nachfassen: ${project.projectNumber || project.id}`);
+    setBeschreibung(
+      [
+        potential.description,
+        `Projekt: ${project.projectNumber || project.id} | ${project.title}`,
+        project.address ? `Projektanschrift: ${project.address}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    );
+    setPrioritaet("normal");
+    setKunde(project.customer || potential.customerName);
+    setSelectedHeroProjectId(project.id);
+    setFaelligkeit(potential.followUpAt || getDefaultDeadlineValue());
+
+    if (!hasLoadedHeroProjects) void loadHeroProjects();
+    setIsModalOpen(true);
+    setSelectedCalendarActionDate("");
+  }
+  async function closePotential(potential: ProjectPotential) {
+    const project = getPotentialProject(potential);
+    const note = window.prompt("Kurze Notiz zur Ablehnung", "Kunde wünscht gar nicht.") || "Kunde wünscht gar nicht.";
+
+    await updateProjectPotential(potential, "lost", { note });
+    if (project) {
+      await addProjectLogbookEntry(project.id, "Zusatzverkauf: Kein Interesse", note);
+    }
+  }
+
+  async function openAttachmentDataUrl(dataUrl?: string, fileName = "Dokument") {
+    if (!dataUrl) return;
+
+    try {
+      const blob = await fetch(dataUrl).then((response) => response.blob());
+      const objectUrl = URL.createObjectURL(blob);
+      const openedWindow = window.open(objectUrl, "_blank", "noopener,noreferrer");
+
+      if (!openedWindow) {
+        const link = document.createElement("a");
+        link.href = objectUrl;
+        link.download = fileName;
+        link.click();
+      }
+
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch {
+      window.open(dataUrl, "_blank", "noopener,noreferrer");
+    }
+  }
+
   async function uploadProjectDocumentCategory(category: CustomerDocumentType, files: FileList | null) {
     if (!selectedProjectFile || !files || files.length === 0) return;
 
@@ -7715,6 +9706,9 @@ export function DashboardPage() {
       projectDraft.projectKind === "Dauerläufer-Projekt"
         ? `Fakturierung: ${projectDraft.billingInterval}`
         : "",
+      projectDraft.projectKind === "Dauerläufer-Projekt" && projectDraft.forecastNetAmount
+        ? `Forecast: ${projectDraft.forecastNetAmount} EUR (${projectDraft.forecastBillingType})`
+        : "",
       projectDraft.volume ? `Volumen: ${projectDraft.volume} EUR` : "",
       projectDraft.timeBudgetHours ? `Zeitkontingent: ${projectDraft.timeBudgetHours} Std.` : "",
       projectDraft.source ? `Quelle: ${projectDraft.source}` : "",
@@ -7742,6 +9736,10 @@ export function DashboardPage() {
           projectDraft.projectKind === "Dauerläufer-Projekt" ? projectDraft.projectRuntimeUntil : "",
         billingInterval:
           projectDraft.projectKind === "Dauerläufer-Projekt" ? projectDraft.billingInterval : "",
+        forecastBillingType:
+          projectDraft.projectKind === "Dauerläufer-Projekt" ? projectDraft.forecastBillingType : "",
+        forecastNetAmount:
+          projectDraft.projectKind === "Dauerläufer-Projekt" ? projectDraft.forecastNetAmount : "",
         trade: projectDraft.trade,
         branch: projectDraft.branch,
         volume: projectDraft.volume,
@@ -7814,6 +9812,10 @@ export function DashboardPage() {
       projectRuntimeFrom: projectDraft.projectRuntimeFrom,
       projectRuntimeUntil: projectDraft.projectKind === "Dauerläufer-Projekt" ? projectDraft.projectRuntimeUntil : "",
       billingInterval: projectDraft.projectKind === "Dauerläufer-Projekt" ? projectDraft.billingInterval : "",
+      forecastBillingType:
+        projectDraft.projectKind === "Dauerläufer-Projekt" ? projectDraft.forecastBillingType : "",
+      forecastNetAmount:
+        projectDraft.projectKind === "Dauerläufer-Projekt" ? projectDraft.forecastNetAmount : "",
       trade: projectDraft.trade,
       branch: projectDraft.branch,
       volume: projectDraft.volume,
@@ -7877,6 +9879,9 @@ export function DashboardPage() {
   function closeTaskModal() {
     setIsModalOpen(false);
     setIsCreatingAbsenceHandoverTask(false);
+    setPendingPotentialFollowUp(null);
+    setIsTaskAcceptancePopupOpen(false);
+    setIsTaskStatusConfirmOpen(false);
     setErrorMessage("");
   }
 
@@ -7887,6 +9892,10 @@ export function DashboardPage() {
 
   function openEditModal(task: TaskItem) {
     setEditingTask(task);
+    setPendingPotentialFollowUp(null);
+    setIsTaskAcceptancePopupOpen(false);
+    setIsTaskStatusConfirmOpen(false);
+    setTaskStatusConfirmValue(task.status);
     setErrorMessage("");
     setTitel(task.titel);
     setBeschreibung(task.beschreibung);
@@ -7911,6 +9920,9 @@ export function DashboardPage() {
     setZeitNotiz("");
     setEditingTimeEntryId(null);
     setKommentarText("");
+    setCommentRecipientUserId("");
+    setTaskParticipantUserId("");
+    setIsTaskHistoryOpen(false);
     if (!hasLoadedHeroProjects) void loadHeroProjects();
     setIsModalOpen(true);
   }
@@ -8007,6 +10019,26 @@ export function DashboardPage() {
     });
   }
 
+  function getActiveUserParticipant(task: TaskItem | null) {
+    if (!task) return null;
+    return task.participants.find((participant) => participant.userId === activeUserId) ?? null;
+  }
+
+  function getTaskAcceptanceStatusForActiveUser(task: TaskItem | null) {
+    if (!task) return "accepted";
+    if (task.zustaendigId === activeUserId) return task.acceptanceStatus;
+    return getActiveUserParticipant(task)?.acceptanceStatus ?? "accepted";
+  }
+
+  function isTaskEditingLocked() {
+    return Boolean(editingTask && getTaskAcceptanceStatusForActiveUser(editingTask) !== "accepted");
+  }
+
+  function showTaskAcceptanceRequiredMessage() {
+    setErrorMessage("");
+    setIsTaskAcceptancePopupOpen(true);
+  }
+
   function getNormalizedPlanningAllocations() {
     return planningAllocations
       .filter((allocation) => allocation.date && allocation.minutes > 0)
@@ -8016,10 +10048,21 @@ export function DashboardPage() {
       }));
   }
 
-  async function saveTask() {
+  async function saveTask(confirmedStatus?: TaskStatus) {
     if (!titel.trim()) return;
+    if (editingTask && getTaskAcceptanceStatusForActiveUser(editingTask) !== "accepted") {
+      showTaskAcceptanceRequiredMessage();
+      return;
+    }
+    if (editingTask && !confirmedStatus) {
+      setTaskStatusConfirmValue(status);
+      setIsTaskStatusConfirmOpen(true);
+      return;
+    }
+
     const normalizedPlanningAllocations: TaskPlanningAllocation[] = [];
     const estimateMinutes = null;
+    const nextTaskStatus = confirmedStatus ?? status;
 
     const method = editingTask ? "PATCH" : "POST";
     const selectedOwnerId =
@@ -8062,7 +10105,7 @@ export function DashboardPage() {
       actorId: activeUserId,
       title: titel,
       description: beschreibung,
-      status,
+      status: nextTaskStatus,
       priority: prioritaet,
       tradeId: null,
       ownerId: selectedOwnerId,
@@ -8094,11 +10137,31 @@ export function DashboardPage() {
     }
 
     const savedTask = (await res.json()) as TaskItem;
+    setIsTaskStatusConfirmOpen(false);
+    setStatus(savedTask.status);
     if (isCreatingAbsenceHandoverTask) {
       setAbsenceHandoverTaskIds((current) =>
         current.includes(savedTask.id) ? current : [...current, savedTask.id]
       );
       setIsCreatingAbsenceHandoverTask(false);
+    }
+    if (pendingPotentialFollowUp && !editingTask) {
+      const potential = projectPotentials.find((item) => item.id === pendingPotentialFollowUp.potentialId);
+      const project = heroProjects.find((item) => item.id === pendingPotentialFollowUp.projectId);
+
+      if (potential && project) {
+        await updateProjectPotential(potential, "follow_up", {
+          followUpAt: savedTask.faelligkeit,
+          taskId: savedTask.id,
+          note: beschreibung || "Später nachfassen.",
+        });
+        await addProjectLogbookEntry(
+          project.id,
+          "Zusatzverkauf: Potenzial nachfassen",
+          `Kunde wünscht aktuell nicht. Nachfass-Aufgabe ${savedTask.titel} angelegt für ${formatDeadline(savedTask.faelligkeit)}.`
+        );
+      }
+      setPendingPotentialFollowUp(null);
     }
     await loadTasks();
     await loadNotifications(true);
@@ -8182,100 +10245,31 @@ export function DashboardPage() {
     setEditingTask((current) => (current?.id === taskId ? updateTask(current) : current));
   }
 
-  function startTaskTimer(event: MouseEvent<HTMLButtonElement>, task: TaskItem) {
-    event.stopPropagation();
-    if (task.status === "erledigt" || runningTaskTimers[task.id]) return;
-
-    const startedAt = Date.now();
-    setTimerNow(startedAt);
-    setRunningTaskTimers((current) => ({
-      ...current,
-      [task.id]: startedAt,
-    }));
-    setLastTaskTimerDurations((current) => {
-      const next = { ...current };
-      delete next[task.id];
-      return next;
-    });
-  }
-
-  async function stopTaskTimer(event: MouseEvent<HTMLButtonElement>, task: TaskItem) {
-    event.stopPropagation();
-
-    const startedAt = runningTaskTimers[task.id];
-    if (!startedAt) return;
-
-    const stoppedAt = Date.now();
-    const elapsedMilliseconds = Math.max(1000, stoppedAt - startedAt);
-    const durationMinutes = Math.max(1, Math.ceil(elapsedMilliseconds / 60_000));
-
-    setRunningTaskTimers((current) => {
-      const next = { ...current };
-      delete next[task.id];
-      return next;
-    });
-    setLastTaskTimerDurations((current) => ({
-      ...current,
-      [task.id]: elapsedMilliseconds,
-    }));
-
-    const res = await fetch(`/api/tasks/${task.id}/time-entries`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        startedAt: new Date(startedAt).toISOString(),
-        durationMinutes,
-        note: `Zeitstempelung per Start/Stopp (${formatStopwatch(elapsedMilliseconds)})`,
-      }),
-    });
-
-    if (!res.ok) {
-      setErrorMessage("Zeitstempelung konnte nicht gespeichert werden.");
-      return;
-    }
-
-    const entry = (await res.json()) as TimeEntryItem;
-    applyTimeEntryToTask(task.id, entry);
-  }
-
-  function getTaskTimerMilliseconds(task: TaskItem) {
-    return (
-      task.gesamtzeitMinuten * 60_000 +
-      (runningTaskTimers[task.id] ? timerNow - runningTaskTimers[task.id] : 0)
-    );
-  }
-
-  function getTaskTimerUsagePercent(task: TaskItem) {
-    if (!task.vorgabeMinuten || task.vorgabeMinuten <= 0) return 0;
-    return clampPercent(Math.round((getTaskTimerMilliseconds(task) / 60_000 / task.vorgabeMinuten) * 100));
-  }
-
-  function getTaskTimerUsageState(task: TaskItem) {
-    if (!task.vorgabeMinuten || task.vorgabeMinuten <= 0) return "empty";
-
-    const rawPercent = (getTaskTimerMilliseconds(task) / 60_000 / task.vorgabeMinuten) * 100;
-    if (rawPercent >= 100) return "over";
-    if (rawPercent >= 80) return "warning";
-    return "ok";
-  }
-
   function getStampElapsedMilliseconds(session = stampSession) {
     if (!session) return 0;
     if (session.pauseStartedAt) return session.accumulatedMs;
-    return session.accumulatedMs + (timerNow - session.startedAt);
+    const startedAt = normalizeStampTimestamp(session.startedAt, timerNow);
+    return session.accumulatedMs + Math.max(0, timerNow - startedAt);
   }
 
   function getStampPauseMilliseconds(session = stampSession) {
     if (!session) return 0;
-    return session.pauseMs + (session.pauseStartedAt ? timerNow - session.pauseStartedAt : 0);
+    const pauseStartedAt = session.pauseStartedAt ? normalizeStampTimestamp(session.pauseStartedAt, timerNow) : null;
+    return session.pauseMs + (pauseStartedAt ? Math.max(0, timerNow - pauseStartedAt) : 0);
   }
 
   function getStampProjectLabel(projectId: string) {
     const project = heroProjects.find((item) => String(item.id) === String(projectId));
     if (!project) return "Projekt nicht gefunden";
     return `${project.projectNumber} | ${project.title}`;
+  }
+
+  function resetStampCompletionState() {
+    setStampCompletionState("");
+    setFinalInspectionChecks(finalInspectionItems.map(() => false));
+    setFinalInspectionByColleague(false);
+    setFinalInspectionHasUpsell(false);
+    setFinalInspectionUpsellNotes("");
   }
 
   function openStampStartModal() {
@@ -8287,6 +10281,7 @@ export function DashboardPage() {
     setIsStampProjectSearchOpen(true);
     setStampComment("");
     setStampError("");
+    resetStampCompletionState();
     setIsStampModalOpen(true);
   }
 
@@ -8294,12 +10289,13 @@ export function DashboardPage() {
     if (!stampSession) return;
     if (!hasLoadedHeroProjects) void loadHeroProjects();
     setStampModalMode("change");
-    setStampSelectionMode(stampSession.mode);
+    setStampSelectionMode(stampSession.mode === "unproductive" ? "project" : stampSession.mode);
     setStampProjectId(stampSession.projectId || heroProjects[0]?.id || "");
     setStampProjectSearch("");
     setIsStampProjectSearchOpen(true);
     setStampComment("");
     setStampError("");
+    resetStampCompletionState();
     setIsStampModalOpen(true);
   }
 
@@ -8308,20 +10304,36 @@ export function DashboardPage() {
     setStampModalMode("stop");
     setStampComment("");
     setStampError("");
+    resetStampCompletionState();
     setIsStampModalOpen(true);
   }
 
-  function startStampSession(mode: StampMode, projectId: string) {
-    const now = Date.now();
-    setStampSession({
-      mode,
-      projectId: mode === "project" ? projectId : "",
-      startedAt: now,
-      accumulatedMs: 0,
-      pauseStartedAt: null,
-      pauseMs: 0,
+  async function startStampSession(mode: StampMode, projectId: string) {
+    const projectLabel = mode === "project" ? getStampProjectLabel(projectId) : "Unproduktiv";
+    const res = await fetch("/api/stamp-session", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        action: "start",
+        userId: activeUser?.id || activeUserId,
+        employee: activeUser?.name || "Aktueller Mitarbeiter",
+        mode,
+        projectId: mode === "project" ? projectId : "__unproductive__",
+        projectLabel,
+      }),
     });
-    setTimerNow(now);
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setStampError(data?.error ?? "Stempelung konnte nicht gestartet werden.");
+      throw new Error(data?.error ?? "Stempelung konnte nicht gestartet werden.");
+    }
+
+    const data = (await res.json()) as ActiveStampSessionResponse;
+    setStampSession(mapActiveStampSession(data));
+    setTimerNow(Date.now());
   }
 
   async function saveStampTimeEntry(entry: StampTimeEntry) {
@@ -8358,7 +10370,7 @@ export function DashboardPage() {
   async function approveOvertimeForDay(userId: string, dateKey: string) {
     if (!canManageAbsences(activeUser?.role)) return;
 
-    const entriesToApprove = stampEntries.filter((entry) => entry.userId === userId && entry.date === dateKey);
+    const entriesToApprove = stampEntries.filter((entry) => !entry.deletedAt && entry.userId === userId && entry.date === dateKey);
     if (entriesToApprove.length === 0) return;
 
     try {
@@ -8578,7 +10590,13 @@ export function DashboardPage() {
     const shouldDelete = window.confirm("Diesen Zeiteintrag wirklich löschen?");
     if (!shouldDelete) return;
 
-    const res = await fetch(`/api/project-time-entries?id=${encodeURIComponent(editingStampEntry.id)}`, {
+    const params = new URLSearchParams({
+      id: editingStampEntry.id,
+      actorUserId: activeUserId,
+      actorName: activeUser?.name ?? "",
+      note: stampEditComment.trim() || "Zeiteintrag gelöscht",
+    });
+    const res = await fetch(`/api/project-time-entries?${params.toString()}`, {
       method: "DELETE",
     });
 
@@ -8588,80 +10606,117 @@ export function DashboardPage() {
       return;
     }
 
+    const deletedEntry = (await res.json()) as StampTimeEntry;
     setStampEntries((currentEntries) =>
-      currentEntries.filter((entry) => entry.id !== editingStampEntry.id)
+      currentEntries.map((entry) => (entry.id === deletedEntry.id ? deletedEntry : entry))
     );
     closeStampEntryEditModal();
   }
 
   async function closeCurrentStampSession(comment: string) {
     if (!stampSession) return null;
-    const now = Date.now();
-    const durationMs = getStampElapsedMilliseconds(stampSession);
-    const closedProjectId = String(stampSession.projectId ?? "").trim();
-    const entry: StampTimeEntry = {
-      id: `stamp-${now}`,
-      mode: stampSession.mode,
-      projectId: stampSession.mode === "project" ? closedProjectId : "__unproductive__",
-      projectLabel:
-        stampSession.mode === "project" && closedProjectId
-          ? getStampProjectLabel(closedProjectId)
-          : "Unproduktiv",
-      userId: activeUser?.id || "",
-      employee: activeUser?.name || "Aktueller Mitarbeiter",
-      entrySource: "stamped",
-      date: new Intl.DateTimeFormat(APP_LOCALE, {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        timeZone: APP_TIME_ZONE,
-      }).format(new Date(stampSession.startedAt)),
-      startTime: new Intl.DateTimeFormat(APP_LOCALE, {
-        hour: "2-digit",
-        minute: "2-digit",
-        timeZone: APP_TIME_ZONE,
-      }).format(new Date(stampSession.startedAt)),
-      endTime: new Intl.DateTimeFormat(APP_LOCALE, {
-        hour: "2-digit",
-        minute: "2-digit",
-        timeZone: APP_TIME_ZONE,
-      }).format(new Date(now)),
-      durationMs,
-      pauseMs: getStampPauseMilliseconds(stampSession),
-      comment,
-    };
-    await saveStampTimeEntry(entry);
-    return entry;
+
+    const res = await fetch("/api/stamp-session", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        action: "stop",
+        userId: activeUser?.id || activeUserId,
+        comment,
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setStampError(data?.error ?? "Stempelung konnte nicht gespeichert werden.");
+      throw new Error(data?.error ?? "Stempelung konnte nicht gespeichert werden.");
+    }
+
+    const savedEntry = (await res.json()) as StampTimeEntry;
+    const normalizedSavedEntry = { ...savedEntry, date: normalizeDateKeyValue(savedEntry.date) };
+    setStampEntries((currentEntries) => [
+      normalizedSavedEntry,
+      ...currentEntries.filter((currentEntry) => currentEntry.id !== normalizedSavedEntry.id),
+    ]);
+    setStampSession(null);
+    return normalizedSavedEntry;
   }
 
-  function toggleStampTimer() {
+  async function saveFinalInspectionForStamp(entry: StampTimeEntry) {
+    if (entry.mode !== "project" || !entry.projectId) return;
+
+    const res = await fetch("/api/final-inspections", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        projectId: entry.projectId,
+        projectLabel: entry.projectLabel || getStampProjectLabel(entry.projectId),
+        employee: entry.employee || activeUser?.name || "",
+        comment: stampComment.trim(),
+        status: finalInspectionByColleague ? "colleague" : "completed",
+        checklist: finalInspectionItems.map((label, index) => ({
+          label,
+          done: finalInspectionChecks[index] ?? false,
+        })),
+        upsellNotes: finalInspectionHasUpsell ? finalInspectionUpsellNotes.trim() : "",
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      throw new Error(data?.error ?? "Endkontrolle konnte nicht gespeichert werden.");
+    }
+
+    await loadProjectLogbookEntries();
+    if (finalInspectionHasUpsell) {
+      const project = heroProjects.find((item) => item.id === entry.projectId);
+      if (project) {
+        await createProjectPotential(project, finalInspectionUpsellNotes.trim());
+      }
+      await loadNotifications(true);
+    }
+  }
+
+  async function toggleStampTimer() {
     if (!stampSession) {
       openStampStartModal();
       return;
     }
 
-    const now = Date.now();
-    setStampSession((currentSession) => {
-      if (!currentSession) return currentSession;
-      if (currentSession.pauseStartedAt) {
-        return {
-          ...currentSession,
-          startedAt: now,
-          pauseMs: currentSession.pauseMs + (now - currentSession.pauseStartedAt),
-          pauseStartedAt: null,
-        };
-      }
-
-      return {
-        ...currentSession,
-        accumulatedMs: getStampElapsedMilliseconds(currentSession),
-        pauseStartedAt: now,
-      };
+    const action = stampSession.pauseStartedAt ? "resume" : "pause";
+    const res = await fetch("/api/stamp-session", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        action,
+        userId: activeUser?.id || activeUserId,
+      }),
     });
-    setTimerNow(now);
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setErrorMessage(data?.error ?? "Stempelung konnte nicht aktualisiert werden.");
+      await loadActiveStampSession({ silent: true });
+      return;
+    }
+
+    const data = (await res.json()) as ActiveStampSessionResponse;
+    setStampSession(mapActiveStampSession(data));
+    setTimerNow(Date.now());
   }
 
   async function confirmStampModal() {
+    const requiresProjectCompletionState =
+      (stampModalMode === "change" || stampModalMode === "stop") &&
+      stampSession?.mode === "project";
+    const onlyProjectFollowUp =
+      stampModalMode === "change" && stampSession?.mode === "unproductive";
     const selectedNextProject =
       stampSelectionMode === "project"
         ? heroProjects.find((project) => project.id === stampProjectId)
@@ -8675,10 +10730,28 @@ export function DashboardPage() {
       setStampError("Bitte einen Kommentar zur abgeschlossenen Stempelung eingeben.");
       return;
     }
+    if (requiresProjectCompletionState) {
+      if (!stampCompletionState) {
+        setStampError("Bitte auswählen, ob die Arbeit fertig oder unterbrochen ist.");
+        return;
+      }
+      if (
+        stampCompletionState === "finished" &&
+        !finalInspectionByColleague &&
+        finalInspectionHasUpsell &&
+        !finalInspectionUpsellNotes.trim()
+      ) {
+        setStampError("Bitte kurz notieren, welche Zusatzverkaufsmöglichkeit erkannt wurde.");
+        return;
+      }
+    }
 
     if (stampModalMode === "change" || stampModalMode === "stop") {
       try {
-        await closeCurrentStampSession(stampComment.trim());
+        const closedEntry = await closeCurrentStampSession(stampComment.trim());
+        if (requiresProjectCompletionState && closedEntry && stampCompletionState === "finished") {
+          await saveFinalInspectionForStamp(closedEntry);
+        }
       } catch (error) {
         setStampError(
           error instanceof Error ? error.message : "Stempelung konnte nicht gespeichert werden."
@@ -8692,13 +10765,21 @@ export function DashboardPage() {
       setIsStampModalOpen(false);
       setStampComment("");
       setStampError("");
+      resetStampCompletionState();
       return;
     }
 
-    startStampSession(stampSelectionMode, nextProjectId);
-    setIsStampModalOpen(false);
-    setStampComment("");
-    setStampError("");
+    try {
+      await startStampSession(stampSelectionMode, nextProjectId);
+      setIsStampModalOpen(false);
+      setStampComment("");
+      setStampError("");
+      resetStampCompletionState();
+    } catch (error) {
+      setStampError(
+        error instanceof Error ? error.message : "Stempelung konnte nicht gestartet werden."
+      );
+    }
   }
 
   function startEditTimeEntry(entry: TimeEntryItem) {
@@ -8756,6 +10837,10 @@ export function DashboardPage() {
 
   async function addComment() {
     if (!editingTask || !kommentarText.trim()) return;
+    if (getTaskAcceptanceStatusForActiveUser(editingTask) !== "accepted") {
+      showTaskAcceptanceRequiredMessage();
+      return;
+    }
 
     const res = await fetch(`/api/tasks/${editingTask.id}/comments`, {
       method: "POST",
@@ -8765,6 +10850,7 @@ export function DashboardPage() {
       body: JSON.stringify({
         actorId: activeUserId,
         text: kommentarText,
+        recipientUserId: commentRecipientUserId || null,
       }),
     });
 
@@ -8781,10 +10867,28 @@ export function DashboardPage() {
       return {
         ...current,
         kommentare: [comment, ...(current.kommentare ?? [])],
+        history: [
+          ...(current.history ?? []),
+          {
+            id: `local-comment-${Date.now()}`,
+            event: "Kommentar hinzugefügt",
+            actorName: activeUser?.name ?? "Aktueller Benutzer",
+            note: commentRecipientUserId
+              ? `An ${
+                  editingTask.participants.find(
+                    (participant) => participant.userId === commentRecipientUserId
+                  )?.userName ?? "Beteiligten"
+                }: ${kommentarText.trim()}`
+              : kommentarText.trim(),
+            createdAt: new Date().toISOString(),
+          },
+        ],
       };
     });
     setKommentarText("");
+    setCommentRecipientUserId("");
     await loadTasks();
+    await loadNotifications(true);
   }
 
   async function deleteTask(
@@ -8869,7 +10973,10 @@ export function DashboardPage() {
     response: "accepted" | "rejected"
   ) {
     event.stopPropagation();
+    await respondToTaskAction(task, response);
+  }
 
+  async function respondToTaskAction(task: TaskItem, response: "accepted" | "rejected") {
     const reason =
       response === "rejected"
         ? window.prompt("Bitte Begründung für die Ablehnung angeben:")
@@ -8900,6 +11007,40 @@ export function DashboardPage() {
     }
 
     await loadTasks();
+    await loadNotifications(true);
+  }
+
+  async function addTaskParticipant() {
+    if (!editingTask || !taskParticipantUserId) return;
+    if (isTaskEditingLocked()) {
+      showTaskAcceptanceRequiredMessage();
+      return;
+    }
+
+    const res = await fetch("/api/tasks", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        id: editingTask.id,
+        actorId: activeUserId,
+        addParticipantUserId: taskParticipantUserId,
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setErrorMessage(data?.error ?? "Beteiligter konnte nicht hinzugefügt werden.");
+      return;
+    }
+
+    const updatedTask = (await res.json()) as TaskItem;
+    setEditingTask(updatedTask);
+    setTasks((currentTasks) =>
+      currentTasks.map((task) => (task.id === updatedTask.id ? updatedTask : task))
+    );
+    setTaskParticipantUserId("");
     await loadNotifications(true);
   }
 
@@ -8952,6 +11093,7 @@ export function DashboardPage() {
     setEmployeeSignatureHidden(false);
     setEmployeeSignature("<p>Mit freundlichen Gr&uuml;&szlig;en</p>");
     setEmployeePlanningBoard("OK solutions");
+    setEmployeeBranchAllocations(getDefaultBranchAllocations("OK solutions"));
     setEmployeePlanningGroup("Marketing");
     setEmployeeWeeklyCapacity(defaultWeeklyCapacity);
     setEmployeePlanningStartTime("08:00");
@@ -8959,7 +11101,9 @@ export function DashboardPage() {
     setEmployeePlanningTimeWindows(defaultWeeklyPlanningWindows);
     setEmployeePlanningBreakWindows(defaultWeeklyBreakWindows);
     setEmployeePlanningResponsibleFor([]);
+    setEmployeeIncludeInLaborCostRate(true);
     setEmployeeNotifyIdeaStore(true);
+    setEmployeeNotifyUpsell(false);
     setEmployeeMailAccount(emptyEmployeeMailAccount);
     setEmployeeMailMessage("");
     setEmployeePasswordMessage("");
@@ -8982,6 +11126,57 @@ export function DashboardPage() {
 
   function getPlanningResponsibilityKey(board: PlanningBoardCompany, group: string) {
     return `${board}:${group}`;
+  }
+
+  function getTeamIdsForPlanningBoard(board: PlanningBoardCompany) {
+    const boardNeedle = board.toLowerCase();
+    const matchingTeams = teams.filter((team) => team.name.toLowerCase().includes(boardNeedle));
+    return matchingTeams.length > 0 ? matchingTeams.map((team) => team.id) : [];
+  }
+
+  function getTeamIdsForBranchAllocations(allocations: BranchAllocations) {
+    return Array.from(
+      new Set([
+        ...(allocations.okSolutions > 0 ? getTeamIdsForPlanningBoard("OK solutions") : []),
+        ...(allocations.okImmocare > 0 ? getTeamIdsForPlanningBoard("OK immocare") : []),
+      ])
+    );
+  }
+
+  function updateEmployeeBranch(board: PlanningBoardCompany) {
+    const nextAllocations = getDefaultBranchAllocations(board);
+    const nextGroups = getPlanningGroupsForBoard(board);
+    setEmployeePlanningBoard(board);
+    setEmployeePlanningGroup(nextGroups[0]);
+    setEmployeeBranchAllocations(nextAllocations);
+    setUserTeamIds(getTeamIdsForBranchAllocations(nextAllocations));
+    setUserAllTeams(false);
+  }
+
+  function updateEmployeeBranchAllocations(patch: Partial<BranchAllocations>) {
+    const merged = {
+      ...employeeBranchAllocations,
+      ...patch,
+    };
+    const nextAllocations = normalizeBranchAllocations({
+      ...merged,
+      okImmocare: Number(merged.okImmocareVzk ?? 0) + Number(merged.okImmocareTzk ?? 0),
+    });
+    const nextBoard = getPrimaryBranchFromAllocations(nextAllocations);
+    const nextGroups = getPlanningGroupsForBoard(nextBoard);
+    setEmployeeBranchAllocations(nextAllocations);
+    setEmployeePlanningBoard(nextBoard);
+    setEmployeePlanningGroup((current) => (nextGroups.includes(current) ? current : nextGroups[0]));
+    setUserTeamIds(getTeamIdsForBranchAllocations(nextAllocations));
+    setUserAllTeams(false);
+  }
+
+  function setEmployeeBranchAllocationValue(
+    key: "okSolutions" | "okImmocareVzk" | "okImmocareTzk",
+    rawValue: number
+  ) {
+    const nextAllocations = createBoundedBranchAllocations(employeeBranchAllocations, key, rawValue);
+    updateEmployeeBranchAllocations(nextAllocations);
   }
 
   function togglePlanningResponsibility(key: string, enabled: boolean) {
@@ -9069,8 +11264,10 @@ export function DashboardPage() {
     setEmployeeSignatureHidden(Boolean(user.signatureHidden));
     setEmployeeSignature(user.signature || getDefaultSignatureSource(user));
     const planningBoard = (user.planningBoard === "OK immocare" ? "OK immocare" : "OK solutions") as PlanningBoardCompany;
+    const branchAllocations = normalizeBranchAllocations(user.branchAllocations, planningBoard);
     const planningGroups = getPlanningGroupsForBoard(planningBoard);
     setEmployeePlanningBoard(planningBoard);
+    setEmployeeBranchAllocations(branchAllocations);
     setEmployeePlanningGroup(
       user.planningGroup && planningGroups.includes(user.planningGroup)
         ? user.planningGroup
@@ -9090,12 +11287,14 @@ export function DashboardPage() {
       getSafePlanningTimeWindows(user.planningBreakWindows, "12:00", "12:30")
     );
     setEmployeePlanningResponsibleFor(user.planningResponsibleFor ?? []);
+    setEmployeeIncludeInLaborCostRate(user.includeInLaborCostRate !== false);
     setEmployeeNotifyIdeaStore(user.notifyIdeaStore ?? true);
+    setEmployeeNotifyUpsell(user.notifyUpsell ?? false);
     setEmployeeMailAccount(getSafeEmployeeMailAccount(user.mailAccount, user.email));
     setEmployeeMailMessage("");
     setEmployeePasswordMessage("");
-    setUserTeamIds(user.teamIds ?? []);
-    setUserAllTeams(teams.length > 0 && user.teamIds.length === teams.length);
+    setUserTeamIds(getTeamIdsForBranchAllocations(branchAllocations));
+    setUserAllTeams(false);
     setErrorMessage("");
   }
 
@@ -9234,6 +11433,16 @@ export function DashboardPage() {
       return false;
     }
 
+    const branchAllocationTotal =
+      getBranchAllocationTotal(employeeBranchAllocations);
+    if (Math.abs(branchAllocationTotal - 100) > 0.01) {
+      setErrorMessage("Bitte die Niederlassungsverteilung auf genau 100% setzen.");
+      return false;
+    }
+
+    const derivedPlanningBoard = getPrimaryBranchFromAllocations(employeeBranchAllocations);
+    const derivedTeamIds = getTeamIdsForBranchAllocations(employeeBranchAllocations);
+
     const res = await fetch("/api/users", {
       method: editingUserId ? "PATCH" : "POST",
       headers: {
@@ -9257,18 +11466,21 @@ export function DashboardPage() {
         city: employeeCity,
         signature: employeeSignature,
         signatureHidden: employeeSignatureHidden,
-        planningBoard: employeePlanningBoard,
+        planningBoard: derivedPlanningBoard,
         planningGroup: employeePlanningGroup,
+        branchAllocations: employeeBranchAllocations,
         weeklyCapacity: employeeWeeklyCapacity,
         planningStartTime: employeePlanningStartTime,
         planningEndTime: employeePlanningEndTime,
         planningTimeWindows: employeePlanningTimeWindows,
         planningBreakWindows: employeePlanningBreakWindows,
         planningResponsibleFor: employeePlanningResponsibleFor,
+        includeInLaborCostRate: employeeIncludeInLaborCostRate,
         notifyIdeaStore: employeeNotifyIdeaStore,
+        notifyUpsell: employeeNotifyUpsell,
         mailAccount: employeeMailAccount,
-        teamIds: userAllTeams ? teams.map((team) => team.id) : userTeamIds,
-        allTeams: userAllTeams,
+        teamIds: derivedTeamIds,
+        allTeams: false,
         actorId: activeUserId,
       }),
     });
@@ -9306,6 +11518,9 @@ export function DashboardPage() {
       return;
     }
 
+    const derivedPlanningBoard = getPrimaryBranchFromAllocations(employeeBranchAllocations);
+    const derivedTeamIds = getTeamIdsForBranchAllocations(employeeBranchAllocations);
+
     const res = await fetch("/api/users", {
       method: "PATCH",
       headers: {
@@ -9319,8 +11534,11 @@ export function DashboardPage() {
         password: nextPassword,
         dailyWorkHours: Number(userDailyWorkHours),
         profileImageDataUrl: userProfileImageDataUrl,
-        teamIds: userAllTeams ? teams.map((team) => team.id) : userTeamIds,
-        allTeams: userAllTeams,
+        planningBoard: derivedPlanningBoard,
+        branchAllocations: employeeBranchAllocations,
+        includeInLaborCostRate: employeeIncludeInLaborCostRate,
+        teamIds: derivedTeamIds,
+        allTeams: false,
         actorId: activeUserId,
       }),
     });
@@ -9507,12 +11725,14 @@ export function DashboardPage() {
     setEditingTradeId(null);
     setTradeName("");
     setTradePrefix("");
+    setTradeBusinessAreaId("");
   }
 
   function editTrade(trade: TradeOption) {
     setEditingTradeId(trade.id);
     setTradeName(trade.name);
     setTradePrefix(trade.projectPrefix);
+    setTradeBusinessAreaId(trade.businessAreaId);
   }
 
   async function saveTrade() {
@@ -9530,6 +11750,7 @@ export function DashboardPage() {
         tradeId: editingTradeId,
         name: tradeName,
         projectPrefix: normalizeProjectPrefixInput(tradePrefix),
+        businessAreaId: tradeBusinessAreaId,
         actorId: activeUserId,
       }),
     });
@@ -9675,10 +11896,33 @@ export function DashboardPage() {
   const holidayDateKeys = new Set(holidays.map((holiday) => holiday.date));
   const activeTasks = tasks.filter((task) => task.status !== "archiviert");
   const archivedTasks = tasks.filter((task) => task.status === "archiviert");
-  const offene = activeTasks.filter((task) => task.status === "offen").length;
-  const bearbeitung = activeTasks.filter((task) => task.status === "in Bearbeitung").length;
-  const erledigt = activeTasks.filter((task) => task.status === "erledigt").length;
-  const ueberfaellig = activeTasks.filter(
+  const isTaskEscalatedToActiveUser = (task: TaskItem) => {
+    if (!activeUser?.role || task.status === "erledigt" || task.status === "abgelehnt") return false;
+
+    const deadline = parseAppDateTime(task.faelligkeit);
+    if (!Number.isFinite(deadline.getTime())) return false;
+
+    const hoursAfterDue = (deadlineProgressTime - deadline.getTime()) / 3_600_000;
+    if (hoursAfterDue < 0) return false;
+
+    return escalationRules.some(
+      (rule) =>
+        rule.isActive &&
+        rule.targetRole === activeUser.role &&
+        hoursAfterDue >= rule.hoursAfterDue
+    );
+  };
+  const myRelevantTasks = activeTasks.filter(
+    (task) =>
+      task.zustaendigId === activeUserId ||
+      task.participants.some((participant) => participant.userId === activeUserId) ||
+      isTaskEscalatedToActiveUser(task)
+  );
+  const taskOverviewTasks = canAssignOther(activeUser?.role) ? activeTasks : myRelevantTasks;
+  const offene = taskOverviewTasks.filter((task) => task.status === "offen").length;
+  const bearbeitung = taskOverviewTasks.filter((task) => task.status === "in Bearbeitung").length;
+  const erledigt = taskOverviewTasks.filter((task) => task.status === "erledigt").length;
+  const ueberfaellig = taskOverviewTasks.filter(
     (task) => isTaskOverdueByWorkingTime(task, deadlineProgressTime, holidayDateKeys)
   ).length;
   const mayManageUsers = canManageUsers(activeUser?.role);
@@ -9704,6 +11948,14 @@ export function DashboardPage() {
     heroProjects.find((project) => project.id === selectedProjectFileId) ?? null;
   const activeProjectPipeline =
     projectPipelines.find((pipeline) => pipeline.tab === activeTab) ?? projectPipelines[0];
+  const getProjectPotentialEntries = (projectId: string) =>
+    projectPotentials.filter(
+      (potential) =>
+        String(potential.projectId) === String(projectId) &&
+        ["open", "follow_up"].includes(potential.status)
+    );
+  const hasProjectPotential = (project: HeroProjectPreview) =>
+    getProjectPotentialEntries(project.id).length > 0;
   const activePipelineProjects = heroProjects.filter((project) => {
     const projectType = (project.projectType ?? "").toLowerCase();
     const projectNumber = (project.projectNumber ?? "").toLowerCase();
@@ -9718,8 +11970,53 @@ export function DashboardPage() {
       (!projectType.includes("immocare") && !projectNumber.startsWith("oki"))
     );
   });
+  const activePipelineProjectIds = new Set(activePipelineProjects.map((project) => project.id));
+  const activePipelinePotentials = projectPotentials.filter((potential) =>
+    activePipelineProjectIds.has(potential.projectId)
+  );
+  const filteredPipelinePotentials = activePipelinePotentials.filter((potential) => {
+    if (potentialStatusFilter === "due") {
+      const followUpTime = potential.followUpAt ? new Date(potential.followUpAt).getTime() : NaN;
+      if (potential.status !== "follow_up" || !Number.isFinite(followUpTime) || followUpTime > Date.now()) {
+        return false;
+      }
+    } else if (potentialStatusFilter !== "all" && potential.status !== potentialStatusFilter) {
+      return false;
+    }
+
+    const project = getPotentialProject(potential);
+    const search = heroSearchTerm.trim().toLowerCase();
+    if (!search) return true;
+
+    return [
+      potential.description,
+      potential.customerName,
+      potential.projectLabel,
+      getPotentialStatusLabel(potential),
+      project?.projectNumber,
+      project?.title,
+      project?.customer,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(search);
+  });
+  const getPotentialStatusCount = (filter: typeof potentialStatusFilter) => {
+    if (filter === "all") {
+      return activePipelinePotentials.length;
+    }
+    if (filter === "due") {
+      return activePipelinePotentials.filter((potential) => {
+        const followUpTime = potential.followUpAt ? new Date(potential.followUpAt).getTime() : NaN;
+        return potential.status === "follow_up" && Number.isFinite(followUpTime) && followUpTime <= Date.now();
+      }).length;
+    }
+
+    return activePipelinePotentials.filter((potential) => potential.status === filter).length;
+  };
   const projectKindRows: Array<{
-    key: ProjectDraft["projectKind"];
+    key: ProjectKindFilter;
     label: string;
     count: number;
   }> = [
@@ -9737,9 +12034,16 @@ export function DashboardPage() {
         (project) => getProjectKind(project) === "einmaliges Projekt"
       ).length,
     },
+    {
+      key: "potentials",
+      label: "Potenziale",
+      count: getPotentialStatusCount("all"),
+    },
   ];
   const visibleHeroProjects = activePipelineProjects.filter((project) => {
-    if (selectedProjectKindFilter && getProjectKind(project) !== selectedProjectKindFilter) {
+    if (selectedProjectKindFilter === "potentials") {
+      if (!hasProjectPotential(project)) return false;
+    } else if (selectedProjectKindFilter && getProjectKind(project) !== selectedProjectKindFilter) {
       return false;
     }
 
@@ -9764,9 +12068,11 @@ export function DashboardPage() {
   });
   const getPipelineStatusCount = (statusLabel: string) => {
     const projectsForKind = selectedProjectKindFilter
-      ? activePipelineProjects.filter(
-          (project) => getProjectKind(project) === selectedProjectKindFilter
-        )
+      ? selectedProjectKindFilter === "potentials"
+        ? activePipelineProjects.filter(hasProjectPotential)
+        : activePipelineProjects.filter(
+            (project) => getProjectKind(project) === selectedProjectKindFilter
+          )
       : activePipelineProjects;
 
     if (statusLabel === "Alle Offenen") {
@@ -9784,12 +12090,16 @@ export function DashboardPage() {
       ? `Dauerläufer-Projekte ${activeProjectPipeline.company}`
       : selectedProjectKindFilter === "einmaliges Projekt"
         ? `Einmalige-Projekte ${activeProjectPipeline.company}`
+        : selectedProjectKindFilter === "potentials"
+          ? `Potenziale ${activeProjectPipeline.company}`
         : activeProjectPipeline.label;
   const projectPipelineSubline =
     selectedProjectKindFilter === "Dauerläufer-Projekt"
       ? "Hier werden Projekte mit längerer Laufzeit gemanagt"
       : selectedProjectKindFilter === "einmaliges Projekt"
         ? "Hier werden einmalige Projekte gemanagt"
+        : selectedProjectKindFilter === "potentials"
+          ? "Hier landen Zusatzverkaufschancen, bei denen der Kunde aktuell kein Angebot wünscht."
         : `Getrennte Pipeline für ${activeProjectPipeline.company} mit eigenen Status.`;
 
   async function updateSelectedProjectStatus(nextStatus: string) {
@@ -9977,8 +12287,19 @@ export function DashboardPage() {
         ),
       ]
     : [];
+  const selectedProjectContactPotentials = selectedProjectCompany
+    ? projectPotentials.filter(
+        (potential) =>
+          ["open", "follow_up"].includes(potential.status) &&
+          (potential.contactId === selectedProjectCompany.id ||
+            (!!selectedProjectCompany.companyName &&
+              potential.customerName.trim().toLowerCase() === selectedProjectCompany.companyName.trim().toLowerCase()))
+      )
+    : [];
+  const contactCompanyOptions = contacts
+    .filter((contact) => contact.type === "company")
+    .sort((first, second) => getContactDisplayName(first).localeCompare(getContactDisplayName(second), "de"));
   const projectContactPickerOptions = contacts
-    .filter((contact) => contact.category !== "Ansprechpartner")
     .filter((contact) => {
       const search = projectContactPickerSearch.trim().toLowerCase();
       if (!search) return true;
@@ -9993,6 +12314,18 @@ export function DashboardPage() {
         .some((value) => value.toLowerCase().includes(search));
     })
     .slice(0, 8);
+  function selectProjectContact(contact: ContactItem) {
+    const projectContact = contact.type === "person" ? getCustomerFileTarget(contact) : contact;
+
+    setProjectDraft((currentDraft) => ({
+      ...currentDraft,
+      contactId: projectContact.id,
+      contactPersonId: contact.type === "person" ? contact.id : "",
+      addressContactId: "",
+    }));
+    setIsProjectContactPickerOpen(false);
+    setProjectContactPickerSearch("");
+  }
   const normalizeStampSearchValue = (value: string) =>
     value
       .normalize("NFD")
@@ -10036,8 +12369,12 @@ export function DashboardPage() {
     "\u00fcberf\u00e4llig",
   ];
   const kanbanTasks = kanbanOwnerFilter
-    ? activeTasks.filter((task) => task.zustaendigId === kanbanOwnerFilter)
-    : activeTasks;
+    ? myRelevantTasks.filter(
+        (task) =>
+          task.zustaendigId === kanbanOwnerFilter ||
+          (kanbanOwnerFilter === activeUserId && isTaskEscalatedToActiveUser(task))
+      )
+    : myRelevantTasks;
   const calendarDays = getMonthDays(calendarDate);
   const calendarVisibleDateKeys = new Set(
     calendarDays.filter((day): day is Date => Boolean(day)).map(formatDateKey)
@@ -10057,10 +12394,12 @@ export function DashboardPage() {
     getTaskPlanningEntries(task)
       .filter((allocation) => allocation.date === dateKey)
       .reduce((total, allocation) => total + allocation.minutes, 0);
-  const planningTasks = activeTasks.filter(
+  const planningTasks = myRelevantTasks.filter(
     (task) =>
       task.status !== "erledigt" &&
-      (!effectivePlanningOwnerFilter || task.zustaendigId === effectivePlanningOwnerFilter)
+      (!effectivePlanningOwnerFilter ||
+        task.zustaendigId === effectivePlanningOwnerFilter ||
+        (effectivePlanningOwnerFilter === activeUserId && isTaskEscalatedToActiveUser(task)))
   );
   const tasksByDate = planningTasks.reduce<Record<string, TaskItem[]>>((groupedTasks, task) => {
     if (!task.faelligkeit) return groupedTasks;
@@ -10159,6 +12498,7 @@ export function DashboardPage() {
     planningEntries
       .filter(
         (entry) =>
+          !entry.deletedAt &&
           entry.date === dateKey &&
           entry.groupName === groupName &&
           entry.employeeName === employeeName
@@ -10417,7 +12757,7 @@ export function DashboardPage() {
   };
   const selectedDayTasks = tasksByDate[formatDateKey(calendarDate)] ?? [];
   const selectedDayAbsences = absencesByDate[formatDateKey(calendarDate)] ?? [];
-  const filteredTasks = activeTasks.filter((task) => {
+  const filteredTasks = taskOverviewTasks.filter((task) => {
     const search = searchTerm.trim().toLowerCase();
     const taskNumber = getTaskNumber(task.id, tasks).toLowerCase();
     const matchesSearch =
@@ -10425,7 +12765,8 @@ export function DashboardPage() {
       taskNumber.includes(search) ||
       task.titel.toLowerCase().includes(search) ||
       task.beschreibung.toLowerCase().includes(search) ||
-      task.zustaendig.toLowerCase().includes(search);
+      task.zustaendig.toLowerCase().includes(search) ||
+      task.participants.some((participant) => participant.userName.toLowerCase().includes(search));
     const matchesDeadlineFilter =
       !deadlineFilter ||
       (deadlineFilter === "due"
@@ -10437,13 +12778,25 @@ export function DashboardPage() {
       (!statusFilter || task.status === statusFilter) &&
       matchesDeadlineFilter &&
       (!priorityFilter || task.prioritaet === priorityFilter) &&
-      (!ownerFilter || task.zustaendigId === ownerFilter)
+      (!ownerFilter ||
+        task.zustaendigId === ownerFilter ||
+        task.participants.some((participant) => participant.userId === ownerFilter) ||
+        (ownerFilter === activeUserId && isTaskEscalatedToActiveUser(task)))
     );
   }).sort((first, second) => {
     const firstNumber = getTaskNumberValue(first.id, tasks);
     const secondNumber = getTaskNumberValue(second.id, tasks);
     return taskNumberSort === "asc" ? firstNumber - secondNumber : secondNumber - firstNumber;
   });
+  const taskOwnerFilterOptions = users.filter(
+    (user) =>
+      user.id === activeUserId ||
+      taskOverviewTasks.some(
+        (task) =>
+          task.zustaendigId === user.id ||
+          task.participants.some((participant) => participant.userId === user.id)
+      )
+  );
   const reportDays = Array.from({ length: 10 }, (_, index) => {
     const day = new Date();
     day.setHours(0, 0, 0, 0);
@@ -10559,7 +12912,7 @@ export function DashboardPage() {
       });
     });
 
-    activeTasks.forEach((task) => {
+    myRelevantTasks.forEach((task) => {
       const taskNumber = getTaskNumber(task.id, tasks);
       if (
         !matchesQuery([
@@ -10647,10 +13000,10 @@ export function DashboardPage() {
       id: "type",
       label: "Typ",
       filterType: "select",
-      options: ["Person", "Firma"],
-      value: (contact) => (contact.type === "company" ? "Firma" : "Person"),
+      options: ["Ansprechpartner", "Firma", "Privatperson"],
+      value: getContactTypeLabel,
       render: (contact) => (
-        <span className={styles.contactTypeBadge}>{contact.type === "company" ? "Firma" : "Person"}</span>
+        <span className={styles.contactTypeBadge}>{getContactTypeLabel(contact)}</span>
       ),
     },
     { id: "customerNumber", label: "Kundennummer", value: (contact) => contact.customerNumber },
@@ -10684,7 +13037,7 @@ export function DashboardPage() {
       id: "category",
       label: "Kategorie",
       filterType: "select",
-      options: ["Kunde", "Lieferant", "Partner", "Ansprechpartner"],
+      options: ["Kunde", "Privatkunde", "Lieferant", "Partner", "Ansprechpartner"],
       value: (contact) => contact.category,
     },
     {
@@ -10780,6 +13133,44 @@ export function DashboardPage() {
           return getContactDisplayName(first).localeCompare(getContactDisplayName(second), "de");
         })
     : [];
+  const dashboardEmployees = users.filter((user) => user.isActive);
+  const stampedDashboardEmployees = dashboardEmployees.filter((user) => dashboardStampSessions[user.id]);
+  const dashboardTodayKey = formatDateKey(new Date());
+  const dashboardAbsentEmployees = dashboardEmployees.filter((user) =>
+    absences.some(
+      (absence) =>
+        absence.userId === user.id &&
+        absence.status === "genehmigt" &&
+        normalizeDateKeyValue(absence.date) === dashboardTodayKey
+    )
+  );
+  const dashboardStampRows = dashboardEmployees.map((user) => {
+    const activeSession = mapActiveStampSession(dashboardStampSessions[user.id] ?? null);
+    const absenceToday = absences.find(
+      (absence) =>
+        absence.userId === user.id &&
+        absence.status === "genehmigt" &&
+        normalizeDateKeyValue(absence.date) === dashboardTodayKey
+    );
+    const absenceTodayLabel = absenceToday?.type === "krank" ? "Krank" : "Urlaub";
+    const activityLabel = activeSession
+      ? activeSession.mode === "project"
+        ? activeSession.projectLabel || getStampProjectLabel(activeSession.projectId)
+        : "Unproduktiv"
+      : absenceToday
+        ? absenceTodayLabel
+      : "Nicht eingestempelt";
+    const stampState = activeSession?.pauseStartedAt ? "pause" : activeSession ? "active" : absenceToday ? "absent" : "idle";
+
+    return {
+      user,
+      activeSession,
+      activityLabel,
+      durationLabel: activeSession ? formatStampDuration(getStampElapsedMilliseconds(activeSession)) : "-",
+      statusLabel: stampState === "pause" ? "Pause" : stampState === "active" ? "Aktiv" : stampState === "absent" ? absenceTodayLabel : "Offline",
+      stampState,
+    };
+  });
   const overviewModules: Array<{
     tab: AppTab;
     kicker: string;
@@ -10835,7 +13226,7 @@ export function DashboardPage() {
       tone: "blue",
     },
     {
-      tab: "accounting",
+      tab: "batchBilling",
       kicker: "Buchhaltung",
       title: "Offene Posten",
       value: `${openInvoiceCount}`,
@@ -10865,6 +13256,7 @@ export function DashboardPage() {
     accounting: "Buchhaltung",
     personalData: "Persönliche Daten",
     employees: "Mitarbeiter",
+    laborCostRates: "LK-Satz",
     absenceRequests: "Team-Kalender",
     timeTracking: "Zeiterfassung",
     timeCategories: "Zeitkategorien",
@@ -10982,6 +13374,2163 @@ export function DashboardPage() {
   const selectedPerformanceResult = selectedPerformancePeriod
     ? performancePeriods.find((entry) => entry.period === selectedPerformancePeriod)?.result
     : null;
+  const reportTabs: Array<{ id: ReportAnalyticsTab; label: string }> = [
+    { id: "forecast", label: "Forecast & OP Kontrolle" },
+    { id: "revenue", label: "Umsätze - Details" },
+    { id: "projects", label: "Projekte" },
+    { id: "customers", label: "Kunden" },
+    { id: "catalog", label: "Artikel & Leistungen" },
+    { id: "employees", label: "Mitarbeitende" },
+    { id: "overview", label: "Umsatz- und Projektübersicht" },
+    { id: "map", label: "Projektkarte" },
+  ];
+  const reportNow = new Date(timerNow);
+  const reportStartDate = new Date(reportNow.getFullYear(), reportNow.getMonth() - 11, 1);
+  const reportEndDate = new Date(reportNow.getFullYear(), reportNow.getMonth() + 1, 0, 23, 59, 59);
+  const forecastStartDate = new Date(reportNow.getFullYear(), reportNow.getMonth(), 1);
+  const forecastEndDate = new Date(
+    reportNow.getFullYear(),
+    reportNow.getMonth() + 13,
+    0,
+    23,
+    59,
+    59
+  );
+  const reportMonthKeys = Array.from({ length: 12 }, (_, index) => {
+    const date = new Date(reportStartDate.getFullYear(), reportStartDate.getMonth() + index, 1);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    return {
+      key,
+      label: new Intl.DateTimeFormat(APP_LOCALE, {
+        month: "short",
+        year: "2-digit",
+        timeZone: APP_TIME_ZONE,
+      }).format(date),
+    };
+  });
+  const forecastMonthKeys = Array.from({ length: 13 }, (_, index) => {
+    const date = new Date(forecastStartDate.getFullYear(), forecastStartDate.getMonth() + index, 1);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    return {
+      key,
+      label: new Intl.DateTimeFormat(APP_LOCALE, {
+        month: "short",
+        year: "2-digit",
+        timeZone: APP_TIME_ZONE,
+      }).format(date),
+    };
+  });
+  const isReportDate = (value: string) => {
+    const date = parseAppDateTime(value);
+    const time = date.getTime();
+    return Number.isFinite(time) && date >= reportStartDate && date <= reportEndDate;
+  };
+  const isForecastDate = (value: string) => {
+    const date = parseAppDateTime(value);
+    const time = date.getTime();
+    return Number.isFinite(time) && date >= forecastStartDate && date <= forecastEndDate;
+  };
+  const getReportMonthKey = (value: string) => {
+    const date = parseAppDateTime(value);
+    if (!Number.isFinite(date.getTime())) return "";
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  };
+  const parseReportAmount = (value?: string) => {
+    if (!value) return 0;
+    const match = String(value)
+      .replace(/\./g, "")
+      .replace(",", ".")
+      .match(/-?\d+(\.\d+)?/);
+    if (!match) return 0;
+    const parsed = Number(match[0]);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const getMonthDateRange = (monthKey: string) => {
+    const [year, month] = monthKey.split("-").map(Number);
+    return {
+      start: new Date(year, month - 1, 1, 0, 0, 0),
+      end: new Date(year, month, 0, 23, 59, 59),
+    };
+  };
+  const getForecastProjectStart = (project: HeroProjectPreview) =>
+    parseProjectDate(project.projectRuntimeFrom) ??
+    (project.createdAt ? parseAppDateTime(project.createdAt) : null) ??
+    reportStartDate;
+  const getForecastProjectEnd = (project: HeroProjectPreview) =>
+    parseProjectDate(project.projectRuntimeUntil) ?? reportEndDate;
+  const isProjectInForecastMonth = (project: HeroProjectPreview, monthKey: string) => {
+    const { start, end } = getMonthDateRange(monthKey);
+    const projectStart = getForecastProjectStart(project);
+    const projectEnd = getForecastProjectEnd(project);
+    if (!projectStart || !projectEnd) return false;
+    return projectStart <= end && projectEnd >= start;
+  };
+  const isRecurringForecastProject = (project: HeroProjectPreview) => {
+    const values = [
+      project.projectKind,
+      project.projectType,
+      project.billingInterval,
+      project.status,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return values.includes("dauer") || values.includes("monat") || values.includes("lauf");
+  };
+  const getProjectForecastValue = (project: HeroProjectPreview, monthKey?: string) => {
+    const forecastAmount = parseReportAmount(project.forecastNetAmount);
+    if (forecastAmount > 0) {
+      if (project.forecastBillingType === "wöchentlich") return (forecastAmount * 52) / 12;
+      if (project.forecastBillingType === "quartalsweise") {
+        if (!monthKey) return forecastAmount / 3;
+        const projectStart = getForecastProjectStart(project);
+        if (!projectStart) return forecastAmount / 3;
+        const [year, month] = monthKey.split("-").map(Number);
+        const monthOffset =
+          (year - projectStart.getFullYear()) * 12 + (month - 1 - projectStart.getMonth());
+        return monthOffset >= 0 && monthOffset % 3 === 0 ? forecastAmount : 0;
+      }
+      return forecastAmount;
+    }
+
+    const fromProject = parseReportAmount(project.volume);
+    if (fromProject > 0) return fromProject;
+    const relatedOffers = offers.filter((offer) => offer.projectId === project.id);
+    if (relatedOffers.length === 0) return 0;
+    return relatedOffers.reduce((sum, offer) => sum + offer.netTotal, 0) / relatedOffers.length;
+  };
+  const getProjectBusinessArea = (project?: HeroProjectPreview) => {
+    const trade = project?.trade ?? "";
+    const matchingTrade = trades.find(
+      (item) => normalizeTradeName(item.name) === normalizeTradeName(trade)
+    );
+    return {
+      id: matchingTrade?.businessAreaId ?? "",
+      name: matchingTrade?.businessAreaName || "Ohne Geschäftsbereich",
+    };
+  };
+  const getBusinessAreaTargetAmount = (businessAreaId: string, monthKey: string) => {
+    const recurringMonthKey = monthKey.slice(-2);
+    return (
+      businessAreaTargets.find(
+        (target) =>
+          target.businessAreaId === businessAreaId &&
+          (target.month === recurringMonthKey || target.month === monthKey)
+      )?.amount ?? 0
+    );
+  };
+  const isVisibleReportingBusinessArea = (businessAreaName: string) =>
+    businessAreaName.trim().toLowerCase() !== "interne arbeiten";
+  const reportingBusinessAreas = businessAreas.filter((businessArea) =>
+    isVisibleReportingBusinessArea(businessArea.name)
+  );
+  const getRecurringInvoiceAverage = (project: HeroProjectPreview, monthKey: string) => {
+    const { start } = getMonthDateRange(monthKey);
+    const previousInvoices = invoices
+      .filter((invoice) => {
+        const status = invoice.status.toLowerCase();
+        const invoiceDate = parseAppDateTime(invoice.createdAt);
+        return (
+          invoice.projectId === project.id &&
+          !isDeletedInvoice(invoice) &&
+          !status.includes("storniert") &&
+          !status.includes("storno") &&
+          invoiceDate < start
+        );
+      })
+      .sort((first, second) => parseAppDateTime(second.createdAt).getTime() - parseAppDateTime(first.createdAt).getTime())
+      .slice(0, 6);
+
+    if (previousInvoices.length === 0) return 0;
+    return previousInvoices.reduce((sum, invoice) => sum + invoice.netTotal, 0) / previousInvoices.length;
+  };
+  const isInvoicePaid = (invoice: InvoiceItem) =>
+    Boolean(invoice.isPaid) || invoice.status.toLowerCase().includes("bezahlt");
+  const reportSearchValue = normalizeStampSearchValue(reportSearch.trim());
+  const reportInvoices = invoices.filter((invoice) => {
+    const status = invoice.status.toLowerCase();
+    return (
+      isReportDate(invoice.createdAt) &&
+      !isDeletedInvoice(invoice) &&
+      !status.includes("storniert") &&
+      !status.includes("storno")
+    );
+  });
+  const reportOffers = offers.filter((offer) => isReportDate(offer.createdAt));
+  const isForecastInvoiceMonth = (invoice: InvoiceItem) => {
+    const invoiceMonth = getProjectInvoiceMonth(invoice);
+    return forecastMonthKeys.some((month) => month.key === invoiceMonth);
+  };
+  const forecastInvoices = invoices.filter((invoice) => {
+    const status = invoice.status.toLowerCase();
+    return (
+      isForecastInvoiceMonth(invoice) &&
+      !isDeletedInvoice(invoice) &&
+      !status.includes("storniert") &&
+      !status.includes("storno")
+    );
+  });
+  const forecastOffers = offers.filter((offer) => {
+    const status = offer.status.toLowerCase();
+    return !status.includes("abgelehnt") && !status.includes("storniert") && !status.includes("storno");
+  });
+  const forecastPeriodRows = forecastMonthKeys.flatMap((month) => {
+    const recurringRows = heroProjects
+      .filter((project) => isRecurringForecastProject(project) && isProjectInForecastMonth(project, month.key))
+      .map((project) => {
+        const monthInvoices = forecastInvoices.filter(
+          (invoice) => invoice.projectId === project.id && getProjectInvoiceMonth(invoice) === month.key
+        );
+        const forecastValue = getProjectForecastValue(project, month.key);
+        const invoiceValue = monthInvoices.reduce((sum, invoice) => sum + invoice.netTotal, 0);
+        return {
+          id: `recurring-${month.key}-${project.id}`,
+          month: month.key,
+          monthLabel: month.label,
+          source: "Dauerläufer",
+          certainty: "safe",
+          project,
+          customer: project.customer || "",
+          description: project.title,
+          forecastValue: invoiceValue || forecastValue,
+          invoiceValue,
+          invoiceNumbers: monthInvoices.map((invoice) => invoice.invoiceNumber).join(", "),
+          offerNumber: "",
+          status: monthInvoices.length > 0 ? "Fakturiert" : "Forecast",
+          note: project.billingInterval || "Monatlich aus Projektlaufzeit fortgeführt",
+        };
+      })
+      .filter((row) => row.forecastValue > 0 || row.invoiceValue > 0);
+    const oneTimeInvoiceRows = forecastInvoices
+      .filter((invoice) => getProjectInvoiceMonth(invoice) === month.key)
+      .filter((invoice) => {
+        const project = heroProjects.find((item) => item.id === invoice.projectId);
+        return !project || !isRecurringForecastProject(project);
+      })
+      .map((invoice) => {
+        const project = heroProjects.find((item) => item.id === invoice.projectId);
+        return {
+          id: `invoice-${invoice.id}`,
+          month: month.key,
+          monthLabel: month.label,
+          source: "Einmalig fakturiert",
+          certainty: "safe",
+          project,
+          customer: invoice.customerName || project?.customer || "",
+          description: invoice.projectTitle || project?.title || "Rechnung",
+          forecastValue: invoice.netTotal,
+          invoiceValue: invoice.netTotal,
+          invoiceNumbers: invoice.invoiceNumber,
+          offerNumber: "",
+          status: invoice.status || "Fakturiert",
+          note: "Aus vorhandener Rechnung ergänzt",
+        };
+      });
+    const offerRows = forecastOffers
+      .filter((offer) => {
+        const project = heroProjects.find((item) => item.id === offer.projectId);
+        const isRecurringOfferProject = project ? isRecurringForecastProject(project) : false;
+        const offerStartMonth = offer.plannedExecutionMonth;
+        const projectEndMonth = project?.projectRuntimeUntil ? project.projectRuntimeUntil.slice(0, 7) : "";
+        const offerEndMonth = offer.plannedExecutionEndMonth || projectEndMonth;
+        return isRecurringOfferProject
+          ? Boolean(offerStartMonth) && month.key >= offerStartMonth && (!offerEndMonth || month.key <= offerEndMonth)
+          : offerStartMonth === month.key;
+      })
+      .filter((offer) => !forecastInvoices.some((invoice) => invoice.projectId === offer.projectId))
+      .map((offer) => {
+        const project = heroProjects.find((item) => item.id === offer.projectId);
+        return {
+          id: `offer-${offer.id}`,
+          month: month.key,
+          monthLabel: month.label,
+          source: "Angebotschance",
+          certainty: "opportunity",
+          project,
+          customer: offer.customerName || project?.customer || "",
+          description: offer.projectTitle || project?.title || "Angebot",
+          forecastValue: offer.netTotal,
+          invoiceValue: 0,
+          invoiceNumbers: "",
+          offerNumber: offer.offerNumber,
+          status: "Angebot geplant",
+          note: "Monat aus geplantem Ausführungsmonat am Angebot",
+        };
+      });
+
+    return [...recurringRows, ...oneTimeInvoiceRows, ...offerRows];
+  });
+  const forecastNeedsDateRows = forecastOffers
+    .filter((offer) => !offer.plannedExecutionMonth)
+    .filter((offer) => !forecastInvoices.some((invoice) => invoice.projectId === offer.projectId))
+    .map((offer) => {
+      const project = heroProjects.find((item) => item.id === offer.projectId);
+      return {
+        id: `offer-needs-date-${offer.id}`,
+        month: "needs-date",
+        monthLabel: "Klärfall",
+        source: "Angebotschance",
+        certainty: "needs-date",
+        project,
+        customer: offer.customerName || project?.customer || "",
+        description: offer.projectTitle || project?.title || "Angebot",
+        forecastValue: offer.netTotal,
+        invoiceValue: 0,
+        invoiceNumbers: "",
+        offerNumber: offer.offerNumber,
+        status: "Ausführungsmonat fehlt",
+        note: "Altangebot muss einmal nachgepflegt werden",
+      };
+    });
+  const forecastRows = [...forecastPeriodRows, ...forecastNeedsDateRows].filter((row) => {
+    if (!reportSearchValue) return true;
+    return [
+      row.customer,
+      row.description,
+      row.project?.projectNumber,
+      row.invoiceNumbers,
+      row.offerNumber,
+      row.source,
+      row.status,
+      row.project?.trade,
+      row.project?.branch,
+      row.note,
+    ].some((value) => normalizeStampSearchValue(String(value ?? "")).includes(reportSearchValue));
+  });
+  const forecastMonthRows = forecastMonthKeys.map((month) => {
+    const rows = forecastRows.filter((row) => row.month === month.key);
+    const safe = rows
+      .filter((row) => row.certainty === "safe")
+      .reduce((sum, row) => sum + row.forecastValue, 0);
+    const opportunity = rows
+      .filter((row) => row.certainty !== "safe")
+      .reduce((sum, row) => sum + row.forecastValue, 0);
+    return {
+      ...month,
+      safe,
+      opportunity,
+      potential: safe + opportunity,
+      invoiced: rows.reduce((sum, row) => sum + row.invoiceValue, 0),
+      openItems: rows.filter((row) => row.invoiceValue > 0 && row.status.toLowerCase() !== "bezahlt").length,
+      count: rows.length,
+    };
+  });
+  const selectedForecastRows =
+    selectedForecastPeriod === "total"
+      ? forecastRows
+      : forecastRows.filter((row) => row.month === selectedForecastPeriod);
+  const forecastSafeTotal = selectedForecastRows
+    .filter((row) => row.certainty === "safe")
+    .reduce((sum, row) => sum + row.forecastValue, 0);
+  const forecastOpportunityTotal = selectedForecastRows
+    .filter((row) => row.certainty !== "safe")
+    .reduce((sum, row) => sum + row.forecastValue, 0);
+  const forecastInvoicedTotal = selectedForecastRows.reduce((sum, row) => sum + row.invoiceValue, 0);
+  const forecastBusinessRows = forecastRows
+    .filter((row) => !(row.certainty !== "safe" && row.project && isRecurringForecastProject(row.project)))
+    .map((row) => {
+      const businessArea = getProjectBusinessArea(row.project);
+      const rowInvoices = invoices.filter((invoice) =>
+        row.invoiceNumbers
+          .split(",")
+          .map((number) => number.trim())
+          .filter(Boolean)
+          .includes(invoice.invoiceNumber)
+      );
+      const paidValue = rowInvoices
+        .filter((invoice) => isInvoicePaid(invoice))
+        .reduce((sum, invoice) => sum + invoice.netTotal, 0);
+      const paidDates = rowInvoices
+        .filter((invoice) => isInvoicePaid(invoice))
+        .map((invoice) => invoice.paidAt)
+        .filter(Boolean);
+      const recurringForecast =
+        row.source.toLowerCase().includes("dauer") && row.project && row.invoiceValue === 0
+          ? getRecurringInvoiceAverage(row.project, row.month) || row.forecastValue
+          : row.forecastValue;
+
+      return {
+        ...row,
+        businessAreaId: businessArea.id,
+        businessAreaName: businessArea.name,
+        forecastValue: recurringForecast,
+        paidValue,
+        paidDates,
+        invoiceIds: rowInvoices.map((invoice) => invoice.id),
+        isRecurring: row.project ? isRecurringForecastProject(row.project) : false,
+        isOpportunity: row.certainty !== "safe",
+      };
+    })
+    .filter((row) => isVisibleReportingBusinessArea(row.businessAreaName));
+  const selectedForecastBusinessRows =
+    selectedForecastPeriod === "total"
+      ? forecastBusinessRows
+      : forecastBusinessRows.filter((row) => row.month === selectedForecastPeriod);
+  const selectedForecastBusinessMonths =
+    selectedForecastPeriod === "total" ? forecastMonthKeys : forecastMonthKeys.filter((month) => month.key === selectedForecastPeriod);
+  const forecastBusinessMonthRows = selectedForecastBusinessMonths.map((month) => {
+    const rows = forecastBusinessRows.filter((row) => row.month === month.key);
+    const recurring = rows
+      .filter((row) => row.isRecurring && !row.isOpportunity)
+      .reduce((sum, row) => sum + row.forecastValue, 0);
+    const oneTime = rows
+      .filter((row) => !row.isRecurring && !row.isOpportunity)
+      .reduce((sum, row) => sum + row.forecastValue, 0);
+    const opportunities = rows
+      .filter((row) => row.isOpportunity)
+      .reduce((sum, row) => sum + row.forecastValue, 0);
+    const invoiced = rows.reduce((sum, row) => sum + row.invoiceValue, 0);
+    const paid = rows.reduce((sum, row) => sum + row.paidValue, 0);
+    const target = reportingBusinessAreas.reduce(
+      (sum, businessArea) => sum + getBusinessAreaTargetAmount(businessArea.id, month.key),
+      0
+    );
+    const potential = recurring + oneTime + opportunities;
+
+    return {
+      ...month,
+      recurring,
+      oneTime,
+      opportunities,
+      potential,
+      invoiced,
+      paid,
+      target,
+      deviation: potential - target,
+      count: rows.length,
+    };
+  });
+  const forecastBusinessSummaryRows = reportingBusinessAreas.map((businessArea) => {
+    const rows = selectedForecastBusinessRows.filter((row) => row.businessAreaId === businessArea.id);
+    const recurring = rows
+      .filter((row) => row.isRecurring && !row.isOpportunity)
+      .reduce((sum, row) => sum + row.forecastValue, 0);
+    const oneTime = rows
+      .filter((row) => !row.isRecurring && !row.isOpportunity)
+      .reduce((sum, row) => sum + row.forecastValue, 0);
+    const opportunities = rows
+      .filter((row) => row.isOpportunity)
+      .reduce((sum, row) => sum + row.forecastValue, 0);
+    const invoiced = rows.reduce((sum, row) => sum + row.invoiceValue, 0);
+    const paid = rows.reduce((sum, row) => sum + row.paidValue, 0);
+    const target = selectedForecastBusinessMonths.reduce(
+      (sum, month) => sum + getBusinessAreaTargetAmount(businessArea.id, month.key),
+      0
+    );
+    const potential = recurring + oneTime + opportunities;
+
+    return {
+      businessArea,
+      recurring,
+      oneTime,
+      opportunities,
+      potential,
+      invoiced,
+      paid,
+      target,
+      deviation: potential - target,
+    };
+  });
+  const forecastBusinessSummaryTotal = forecastBusinessSummaryRows.reduce(
+    (sum, row) => ({
+      recurring: sum.recurring + row.recurring,
+      oneTime: sum.oneTime + row.oneTime,
+      opportunities: sum.opportunities + row.opportunities,
+      potential: sum.potential + row.potential,
+      invoiced: sum.invoiced + row.invoiced,
+      paid: sum.paid + row.paid,
+      target: sum.target + row.target,
+      deviation: sum.deviation + row.deviation,
+    }),
+    { recurring: 0, oneTime: 0, opportunities: 0, potential: 0, invoiced: 0, paid: 0, target: 0, deviation: 0 }
+  );
+  const forecastPotentialChartRows = forecastBusinessMonthRows;
+  const forecastPotentialTop = 120000;
+  const forecastPotentialBottom = 0;
+  const forecastPotentialChartRange = Math.max(1, forecastPotentialTop - forecastPotentialBottom);
+  const formatForecastChartMoney = (value: number) =>
+    `${Math.round(value).toLocaleString("de-DE", { maximumFractionDigits: 0 })} €`;
+  const formatForecastAxisMoney = (value: number) =>
+    `${Math.round(value).toLocaleString("de-DE", { maximumFractionDigits: 0 })} €`;
+  const forecastChartTopY = 1.25;
+  const forecastChartBottomY = 31.65;
+  const getForecastPotentialY = (value: number) =>
+    forecastChartBottomY - ((value - forecastPotentialBottom) / forecastPotentialChartRange) * (forecastChartBottomY - forecastChartTopY);
+  const forecastChartLeft = 10;
+  const forecastChartRight = 96.5;
+  const forecastChartBaselineY = 31.9;
+  const forecastPotentialPoints = forecastPotentialChartRows.map((row, index) => {
+    const monthCount = Math.max(1, forecastPotentialChartRows.length);
+    const x =
+      monthCount <= 1
+        ? 50
+        : forecastChartLeft + ((index + 0.5) / monthCount) * (forecastChartRight - forecastChartLeft);
+    const y = getForecastPotentialY(row.potential);
+    return { ...row, x, y };
+  });
+  const forecastPotentialPolyline = forecastPotentialPoints.map((point) => `${point.x},${point.y}`).join(" ");
+  const forecastPotentialAreaPath =
+    forecastPotentialPoints.length > 0
+      ? [
+          `M ${forecastPotentialPoints[0].x},${forecastChartBaselineY}`,
+          `L ${forecastPotentialPoints.map((point) => `${point.x},${point.y}`).join(" L ")}`,
+          `L ${forecastPotentialPoints[forecastPotentialPoints.length - 1].x},${forecastChartBaselineY}`,
+          "Z",
+        ].join(" ")
+      : "";
+  const forecastPotentialAxisRows = [120000, 100000, 80000, 60000, 40000, 20000, 0].map((value) => ({
+    value,
+    y: getForecastPotentialY(value),
+    labelY: Math.min(31.2, Math.max(2.05, getForecastPotentialY(value))),
+  }));
+  const forecastHighestPoint = forecastPotentialPoints.reduce<(typeof forecastPotentialPoints)[number] | null>(
+    (highest, point) => (!highest || point.potential > highest.potential ? point : highest),
+    null
+  );
+  const forecastLowestPoint = forecastPotentialPoints.reduce<(typeof forecastPotentialPoints)[number] | null>(
+    (lowest, point) => (!lowest || point.potential < lowest.potential ? point : lowest),
+    null
+  );
+  const forecastLatestPoint = forecastPotentialPoints[forecastPotentialPoints.length - 1] ?? null;
+  const forecastHighlightPoints = [forecastHighestPoint, forecastLowestPoint, forecastLatestPoint].reduce<
+    Array<(typeof forecastPotentialPoints)[number] & { badgeX: number; badgeY: number }>
+  >((points, point) => {
+    if (!point || points.some((existingPoint) => existingPoint.key === point.key)) return points;
+    points.push({
+      ...point,
+      badgeX: Math.min(90.5, Math.max(16, point.x)),
+      badgeY: Math.max(2.2, point.y - 2.05),
+    });
+    return points;
+  }, []);
+  const forecastTrendStats = forecastPotentialChartRows.reduce(
+    (sum, row, index) => ({
+      x: sum.x + index,
+      y: sum.y + row.potential,
+      xy: sum.xy + index * row.potential,
+      x2: sum.x2 + index * index,
+    }),
+    { x: 0, y: 0, xy: 0, x2: 0 }
+  );
+  const forecastTrendCount = Math.max(1, forecastPotentialChartRows.length);
+  const forecastTrendDenominator = forecastTrendCount * forecastTrendStats.x2 - forecastTrendStats.x * forecastTrendStats.x;
+  const forecastTrendSlope =
+    forecastTrendDenominator === 0
+      ? 0
+      : (forecastTrendCount * forecastTrendStats.xy - forecastTrendStats.x * forecastTrendStats.y) / forecastTrendDenominator;
+  const forecastTrendIntercept = (forecastTrendStats.y - forecastTrendSlope * forecastTrendStats.x) / forecastTrendCount;
+  const forecastTrendStartValue = forecastTrendIntercept;
+  const forecastTrendEndValue = forecastTrendIntercept + forecastTrendSlope * (forecastTrendCount - 1);
+  const forecastTrendStartX = forecastPotentialPoints[0]?.x ?? 0;
+  const forecastTrendEndX = forecastPotentialPoints.at(-1)?.x ?? 100;
+  const getForecastBusinessColor = (name: string) => {
+    const normalizedName = normalizeStampSearchValue(name);
+    if (normalizedName.includes("immocare")) return "#16a34a";
+    if (normalizedName.includes("marketing")) return "#ec4899";
+    if (normalizedName.includes("arbeitssicherheit")) return "#2563eb";
+    if (normalizedName === "hr" || normalizedName.includes("personal")) return "#f97316";
+    return "#64748b";
+  };
+  const forecastDistributionRows = forecastBusinessSummaryRows
+    .filter((row) => row.potential > 0)
+    .map((row) => ({
+      ...row,
+      color: getForecastBusinessColor(row.businessArea.name),
+    }));
+  const forecastDistributionTotal = forecastDistributionRows.reduce((sum, row) => sum + row.potential, 0);
+  let forecastDistributionOffset = 0;
+  const forecastDistributionGradient =
+    forecastDistributionTotal > 0
+      ? forecastDistributionRows
+          .map((row) => {
+            const start = forecastDistributionOffset;
+            const end = start + (row.potential / forecastDistributionTotal) * 100;
+            forecastDistributionOffset = end;
+            return `${row.color} ${start}% ${end}%`;
+          })
+          .join(", ")
+      : "#e2e8f0 0% 100%";
+  const getCatalogPurchasePriceForLine = (line: OfferLineDraft) => {
+    const catalogItem = catalogItems.find((item) => item.id === line.catalogItemId);
+    if (!catalogItem) return 0;
+    return getCatalogMaterialPurchasePrice(catalogItem);
+  };
+  const getLineInternalCost = (line: OfferLineDraft) =>
+    (getCatalogPurchasePriceForLine(line) + Number(line.laborCostRate || 0)) * line.quantity +
+    line.laborItems.reduce((sum, labor) => sum + labor.totalCost, 0);
+  const getDocumentInternalCost = (document: OfferItem | InvoiceItem) =>
+    document.lines.reduce((sum, line) => sum + getLineInternalCost(line), 0);
+  const invoiceRevenueTotal = reportInvoices.reduce((sum, invoice) => sum + invoice.netTotal, 0);
+  const invoiceCostTotal = reportInvoices.reduce(
+    (sum, invoice) => sum + getDocumentInternalCost(invoice),
+    0
+  );
+  const invoiceMarginTotal = invoiceRevenueTotal - invoiceCostTotal;
+  const invoiceMarginPercent = invoiceRevenueTotal > 0 ? (invoiceMarginTotal / invoiceRevenueTotal) * 100 : 0;
+  const offerVolumeTotal = reportOffers.reduce((sum, offer) => sum + offer.netTotal, 0);
+  const monthlyRevenueRows = reportMonthKeys.map((month) => {
+    const monthInvoices = reportInvoices.filter(
+      (invoice) => getReportMonthKey(invoice.createdAt) === month.key
+    );
+    const monthOffers = reportOffers.filter((offer) => getReportMonthKey(offer.createdAt) === month.key);
+    return {
+      ...month,
+      invoiceValue: monthInvoices.reduce((sum, invoice) => sum + invoice.netTotal, 0),
+      invoiceCount: monthInvoices.length,
+      offerValue: monthOffers.reduce((sum, offer) => sum + offer.netTotal, 0),
+      offerCount: monthOffers.length,
+    };
+  });
+  const maxMonthlyRevenue = Math.max(
+    1,
+    ...monthlyRevenueRows.map((row) => Math.max(row.invoiceValue, row.offerValue))
+  );
+  const invoiceStatusRows = [
+    {
+      label: "Bezahlt",
+      value: reportInvoices
+        .filter((invoice) => isInvoicePaid(invoice))
+        .reduce((sum, invoice) => sum + invoice.netTotal, 0),
+      count: reportInvoices.filter((invoice) => isInvoicePaid(invoice)).length,
+    },
+    {
+      label: "Offen",
+      value: reportInvoices
+        .filter((invoice) => !isInvoicePaid(invoice))
+        .reduce((sum, invoice) => sum + invoice.netTotal, 0),
+      count: reportInvoices.filter((invoice) => !isInvoicePaid(invoice)).length,
+    },
+  ];
+  const reportProjectRows = heroProjects
+    .map((project) => {
+      const projectInvoices = reportInvoices.filter((invoice) => invoice.projectId === project.id);
+      const projectOffers = reportOffers.filter((offer) => offer.projectId === project.id);
+      const stampedHours =
+        stampEntries
+          .filter((entry) => entry.mode === "project" && entry.projectId === project.id)
+          .reduce((sum, entry) => sum + entry.durationMs, 0) / 3600000;
+      const soldHours = projectInvoices.reduce(
+        (sum, invoice) =>
+          sum +
+          invoice.lines.reduce(
+            (lineSum, line) =>
+              lineSum + line.laborItems.reduce((laborSum, labor) => laborSum + labor.plannedHours, 0),
+            0
+          ),
+        0
+      );
+      const revenue = projectInvoices.reduce((sum, invoice) => sum + invoice.netTotal, 0);
+      const costs = projectInvoices.reduce((sum, invoice) => sum + getDocumentInternalCost(invoice), 0);
+      const margin = revenue - costs;
+      return {
+        project,
+        revenue,
+        offerVolume: projectOffers.reduce((sum, offer) => sum + offer.netTotal, 0),
+        invoiceCount: projectInvoices.length,
+        offerCount: projectOffers.length,
+        stampedHours,
+        soldHours,
+        openHours: soldHours - stampedHours,
+        margin,
+        marginPercent: revenue > 0 ? (margin / revenue) * 100 : 0,
+      };
+    })
+    .filter((row) => {
+      if (!reportSearchValue) return row.revenue > 0 || row.offerVolume > 0 || row.stampedHours > 0;
+      return [
+        row.project.projectNumber,
+        row.project.title,
+        row.project.customer,
+        row.project.status,
+        row.project.trade,
+        row.project.responsibleName,
+      ].some((value) => normalizeStampSearchValue(String(value ?? "")).includes(reportSearchValue));
+    })
+    .sort((first, second) => second.revenue + second.offerVolume - (first.revenue + first.offerVolume));
+  const projectRuntimeRows = heroProjects
+    .map((project) => {
+      const createdAt = project.createdAt ? parseAppDateTime(project.createdAt) : null;
+      const endDate = parseProjectDate(project.projectRuntimeUntil);
+      const runtimeDays =
+        createdAt && endDate && Number.isFinite(createdAt.getTime())
+          ? Math.max(0, Math.round((endDate.getTime() - createdAt.getTime()) / 86400000))
+          : 0;
+      return { project, runtimeDays };
+    })
+    .filter((row) => row.runtimeDays > 0)
+    .sort((first, second) => second.runtimeDays - first.runtimeDays)
+    .slice(0, 8);
+  const averageProjectRuntime =
+    projectRuntimeRows.length > 0
+      ? projectRuntimeRows.reduce((sum, row) => sum + row.runtimeDays, 0) / projectRuntimeRows.length
+      : 0;
+  const projectRowsByTrade = Object.values(
+    reportProjectRows.reduce<Record<string, { trade: string; count: number; revenue: number; margin: number }>>(
+      (groups, row) => {
+        const trade = row.project.trade || "Ohne Gewerk";
+        groups[trade] = groups[trade] ?? { trade, count: 0, revenue: 0, margin: 0 };
+        groups[trade].count += 1;
+        groups[trade].revenue += row.revenue;
+        groups[trade].margin += row.margin;
+        return groups;
+      },
+      {}
+    )
+  ).sort((first, second) => second.revenue - first.revenue);
+  const customerRows = Object.values(
+    reportInvoices.reduce<
+      Record<string, { name: string; revenue: number; invoiceCount: number; projectIds: Set<string> }>
+    >((groups, invoice) => {
+      const name = invoice.customerName || "Ohne Kunde";
+      groups[name] = groups[name] ?? { name, revenue: 0, invoiceCount: 0, projectIds: new Set<string>() };
+      groups[name].revenue += invoice.netTotal;
+      groups[name].invoiceCount += 1;
+      if (invoice.projectId) groups[name].projectIds.add(invoice.projectId);
+      return groups;
+    }, {})
+  )
+    .map((row) => ({
+      ...row,
+      projectCount: row.projectIds.size,
+      share: invoiceRevenueTotal > 0 ? (row.revenue / invoiceRevenueTotal) * 100 : 0,
+    }))
+    .filter((row) => !reportSearchValue || normalizeStampSearchValue(row.name).includes(reportSearchValue))
+    .sort((first, second) => second.revenue - first.revenue);
+  const catalogRows = Object.values(
+    reportInvoices.reduce<
+      Record<string, { title: string; quantity: number; revenue: number; cost: number; count: number }>
+    >((groups, invoice) => {
+      invoice.lines.forEach((line) => {
+        const title = line.title || "Freie Position";
+        groups[title] = groups[title] ?? { title, quantity: 0, revenue: 0, cost: 0, count: 0 };
+        groups[title].quantity += line.quantity;
+        groups[title].revenue += line.quantity * line.unitPrice;
+        groups[title].cost += getLineInternalCost(line);
+        groups[title].count += 1;
+      });
+      return groups;
+    }, {})
+  )
+    .map((row) => ({
+      ...row,
+      margin: row.revenue - row.cost,
+      marginPercent: row.revenue > 0 ? ((row.revenue - row.cost) / row.revenue) * 100 : 0,
+    }))
+    .filter((row) => !reportSearchValue || normalizeStampSearchValue(row.title).includes(reportSearchValue))
+    .sort((first, second) => second.revenue - first.revenue);
+  const getReportTargetHoursForUser = (user: UserOption) => {
+    let total = 0;
+    const cursor = new Date(reportStartDate);
+    while (cursor <= reportEndDate) {
+      total += getUserCapacityForDate(user, formatDateKey(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return total;
+  };
+  const employeeReportRows = visibleReportUsers
+    .map((user) => {
+      const userProjectEntries = stampEntries.filter(
+        (entry) => !entry.deletedAt && entry.mode === "project" && entry.userId === user.id && isReportDate(entry.date)
+      );
+      const userUnproductiveEntries = stampEntries.filter(
+        (entry) => !entry.deletedAt && entry.mode === "unproductive" && entry.userId === user.id && isReportDate(entry.date)
+      );
+      const stampedProjectHours = userProjectEntries.reduce((sum, entry) => sum + entry.durationMs, 0) / 3600000;
+      const unproductiveHours =
+        userUnproductiveEntries.reduce((sum, entry) => sum + entry.durationMs, 0) / 3600000;
+      const soldHours = reportInvoices.reduce(
+        (sum, invoice) =>
+          sum +
+          invoice.lines.reduce(
+            (lineSum, line) =>
+              lineSum +
+              line.laborItems
+                .filter((labor) => labor.userId === user.id || labor.employeeName === user.name)
+                .reduce((laborSum, labor) => laborSum + labor.plannedHours, 0),
+            0
+          ),
+        0
+      );
+      const targetHours = getReportTargetHoursForUser(user);
+      const performanceGrade = stampedProjectHours > 0 ? (soldHours / stampedProjectHours) * 100 : 0;
+      const productivity =
+        stampedProjectHours + unproductiveHours > 0
+          ? (soldHours / (stampedProjectHours + unproductiveHours)) * 100
+          : 0;
+      const attendance = targetHours > 0 ? ((stampedProjectHours + unproductiveHours) / targetHours) * 100 : 0;
+      const unproductiveShare = stampedProjectHours > 0 ? (unproductiveHours / stampedProjectHours) * 100 : 0;
+      return {
+        user,
+        soldHours,
+        stampedProjectHours,
+        unproductiveHours,
+        targetHours,
+        performanceGrade,
+        productivity,
+        attendance,
+        unproductiveShare,
+      };
+    })
+    .filter((row) => !reportSearchValue || normalizeStampSearchValue(row.user.name).includes(reportSearchValue));
+  const employeeSummary = employeeReportRows.reduce(
+    (summary, row) => ({
+      soldHours: summary.soldHours + row.soldHours,
+      stampedProjectHours: summary.stampedProjectHours + row.stampedProjectHours,
+      unproductiveHours: summary.unproductiveHours + row.unproductiveHours,
+      targetHours: summary.targetHours + row.targetHours,
+    }),
+    { soldHours: 0, stampedProjectHours: 0, unproductiveHours: 0, targetHours: 0 }
+  );
+  const employeeSummaryMetrics = {
+    performance:
+      employeeSummary.stampedProjectHours > 0
+        ? (employeeSummary.soldHours / employeeSummary.stampedProjectHours) * 100
+        : 0,
+    productivity:
+      employeeSummary.stampedProjectHours + employeeSummary.unproductiveHours > 0
+        ? (employeeSummary.soldHours /
+            (employeeSummary.stampedProjectHours + employeeSummary.unproductiveHours)) *
+          100
+        : 0,
+    attendance:
+      employeeSummary.targetHours > 0
+        ? ((employeeSummary.stampedProjectHours + employeeSummary.unproductiveHours) /
+            employeeSummary.targetHours) *
+          100
+        : 0,
+    unproductiveShare:
+      employeeSummary.stampedProjectHours > 0
+        ? (employeeSummary.unproductiveHours / employeeSummary.stampedProjectHours) * 100
+        : 0,
+  };
+  const getMetricState = (value: number, good: number, warning: number, lowerIsBetter = false) => {
+    if (lowerIsBetter) {
+      if (value < good) return "good";
+      if (value <= warning) return "ok";
+      return "low";
+    }
+    if (value >= good) return "good";
+    if (value >= warning) return "ok";
+    return "low";
+  };
+  const averageSoldHourlyRate =
+    employeeSummary.stampedProjectHours > 0 ? invoiceRevenueTotal / employeeSummary.stampedProjectHours : 0;
+  const projectMapRows = reportProjectRows
+    .filter((row) => row.project.address || row.project.customer)
+    .slice(0, 20)
+    .map((row, index) => {
+      const hash = Array.from(`${row.project.projectNumber}${row.project.address}${row.project.customer}`).reduce(
+        (sum, char) => sum + char.charCodeAt(0),
+        0
+      );
+      return {
+        ...row,
+        x: 12 + ((hash + index * 17) % 76),
+        y: 18 + ((hash * 3 + index * 11) % 62),
+      };
+    });
+  const renderReportMetric = (
+    label: string,
+    value: string,
+    hint: string,
+    state: "good" | "ok" | "low" | "neutral" = "neutral"
+  ) => (
+    <article className={styles.analyticsMetric} data-state={state}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{hint}</small>
+    </article>
+  );
+  const renderReportBarChart = (
+    rows: Array<{ key: string; label: string; value: number; secondary?: number }>
+  ) => (
+    <div className={styles.analyticsBarChart}>
+      {rows.map((row) => {
+        const primaryHeight = Math.max(3, (row.value / maxMonthlyRevenue) * 100);
+        const secondaryHeight = Math.max(3, ((row.secondary ?? 0) / maxMonthlyRevenue) * 100);
+        return (
+          <div key={row.key} className={styles.analyticsBarGroup}>
+            <div className={styles.analyticsBars}>
+              <span
+                className={styles.analyticsBarPrimary}
+                style={{ height: `${primaryHeight}%` }}
+                title={`Rechnungen: ${formatMoney(row.value)}`}
+              />
+              <span
+                className={styles.analyticsBarSecondary}
+                style={{ height: `${secondaryHeight}%` }}
+                title={`Angebote: ${formatMoney(row.secondary ?? 0)}`}
+              />
+            </div>
+            <small>{row.label}</small>
+          </div>
+        );
+      })}
+    </div>
+  );
+  const renderReportsAnalytics = () => (
+    <section className={styles.analyticsPage}>
+      <div className={styles.analyticsTabs} role="tablist" aria-label="Auswertungsbereiche">
+        {reportTabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            data-active={reportAnalyticsTab === tab.id}
+            onClick={() => setReportAnalyticsTab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      <div className={styles.analyticsFilters}>
+        {reportAnalyticsTab === "forecast" ? (
+          <>
+            <span>Zeitraum: Nächste 12 Monate</span>
+            <span>Start: {forecastMonthKeys[0]?.label}</span>
+          </>
+        ) : (
+          <>
+            <span>Dokumentendatum: Vorherige 12 Monate</span>
+            <span>Projekt-Erstellung: Vorherige 12 Monate</span>
+          </>
+        )}
+        <span>Gewerk: Alle</span>
+        <label>
+          Suche
+          <input
+            value={reportSearch}
+            onChange={(event) => setReportSearch(event.target.value)}
+            placeholder="Projekt, Kunde, Mitarbeiter, Position..."
+          />
+        </label>
+      </div>
+
+      {reportAnalyticsTab === "forecast" && (
+        <>
+          <div className={styles.forecastPeriodTabs} role="tablist" aria-label="Forecast-Zeitraum">
+            <button
+              type="button"
+              data-active={selectedForecastPeriod === "total"}
+              onClick={() => setSelectedForecastPeriod("total")}
+            >
+              <small>Gesamt</small>
+              <span>12 Monate</span>
+            </button>
+            {forecastMonthKeys.map((month) => (
+              <button
+                key={month.key}
+                type="button"
+                data-active={selectedForecastPeriod === month.key}
+                onClick={() => setSelectedForecastPeriod(month.key)}
+              >
+                <span>{month.label}</span>
+              </button>
+            ))}
+          </div>
+
+          <section className={`${styles.analyticsGrid} ${styles.forecastMetricGrid}`}>
+            {renderReportMetric("Sicherer Forecast", formatMoney(forecastBusinessSummaryTotal.recurring + forecastBusinessSummaryTotal.oneTime), "Dauerläufer + fakturierte Einmalprojekte", "good")}
+            {renderReportMetric("Chancen", formatMoney(forecastBusinessSummaryTotal.opportunities), "Offene Angebote einmaliger Projekte", "ok")}
+            {renderReportMetric("Gesamtpotenzial", formatMoney(forecastBusinessSummaryTotal.potential), "Sicherer Forecast + Chancen", "good")}
+            {renderReportMetric("Fakturiert", formatMoney(forecastBusinessSummaryTotal.invoiced), "Rechnungen im Forecast-Zeitraum")}
+            {renderReportMetric("Bezahlt", formatMoney(forecastBusinessSummaryTotal.paid), "Bereits bezahlte Rechnungen", "good")}
+            {renderReportMetric(
+              "Offene Posten",
+              formatMoney(forecastBusinessSummaryTotal.invoiced - forecastBusinessSummaryTotal.paid),
+              "Fakturiert, aber noch nicht bezahlt",
+              forecastBusinessSummaryTotal.invoiced - forecastBusinessSummaryTotal.paid > 0 ? "ok" : "good"
+            )}
+          </section>
+
+          <section className={styles.forecastChartGrid}>
+            <article className={styles.analyticsCard}>
+              <h2>Gesamtpotenzial nach Monat</h2>
+              <div className={styles.forecastLineChart}>
+                <svg viewBox="0 0 100 33.333" role="img" aria-label="Gesamtpotenzial nach Monat">
+                  <line x1={forecastChartLeft} y1={forecastChartTopY} x2={forecastChartLeft} y2={forecastChartBottomY} />
+                  <line x1={forecastChartLeft} y1={forecastChartBottomY} x2={forecastChartRight} y2={forecastChartBottomY} />
+                  {forecastPotentialAxisRows.map((axis) => (
+                    <g key={axis.value}>
+                      <rect className={styles.forecastAxisLabelBg} x="0.4" y={axis.labelY - 1.45} width="8.6" height="2.35" rx="0.55" />
+                      <text className={styles.forecastAxisLabel} x={forecastChartLeft - 1.4} y={axis.labelY + 0.18} textAnchor="end">
+                        {formatForecastAxisMoney(axis.value)}
+                      </text>
+                    </g>
+                  ))}
+                  <line
+                    className={styles.forecastTrendLine}
+                    x1={forecastTrendStartX}
+                    y1={getForecastPotentialY(forecastTrendStartValue)}
+                    x2={forecastTrendEndX}
+                    y2={getForecastPotentialY(forecastTrendEndValue)}
+                  />
+                  {forecastPotentialAreaPath ? <path className={styles.forecastAreaPath} d={forecastPotentialAreaPath} /> : null}
+                  <polyline points={forecastPotentialPolyline} />
+                  {forecastPotentialPoints.map((point) => (
+                    <g key={point.key}>
+                      <circle cx={point.x} cy={point.y} r="0.48">
+                        <title>{`${point.label}: ${formatMoney(point.potential)}`}</title>
+                      </circle>
+                    </g>
+                  ))}
+                  {forecastHighlightPoints.map((point) => (
+                    <g key={`highlight-${point.key}`}>
+                      <rect
+                        className={styles.forecastHighlightBadge}
+                        x={point.badgeX - 4.9}
+                        y={point.badgeY - 1.65}
+                        width="9.8"
+                        height="2.65"
+                        rx="1.25"
+                      />
+                      <text className={styles.forecastHighlightText} x={point.badgeX} y={point.badgeY + 0.1} textAnchor="middle">
+                        {formatForecastChartMoney(point.potential)}
+                      </text>
+                      <circle className={styles.forecastHighlightDot} cx={point.x} cy={point.y} r="0.78">
+                        <title>{`${point.label}: ${formatMoney(point.potential)}`}</title>
+                      </circle>
+                    </g>
+                  ))}
+                </svg>
+                <div className={styles.forecastChartLabels}>
+                  {forecastPotentialChartRows.map((row) => (
+                    <span key={row.key}>{row.label}</span>
+                  ))}
+                </div>
+              </div>
+            </article>
+
+            <article className={styles.analyticsCard}>
+              <h2>Verteilung nach Geschäftsbereich</h2>
+              <div className={styles.forecastDistributionChart}>
+                <div
+                  className={styles.forecastDonut}
+                  style={{ background: `conic-gradient(${forecastDistributionGradient})` }}
+                  aria-label="Verteilung Gesamtpotenzial"
+                >
+                  <strong>{formatMoney(forecastDistributionTotal)}</strong>
+                  <span>Gesamt</span>
+                </div>
+                <div className={styles.forecastDistributionLegend}>
+                  {forecastDistributionRows.length === 0 ? (
+                    <span>Keine Werte im gewählten Zeitraum.</span>
+                  ) : (
+                    forecastDistributionRows.map((row) => (
+                      <div key={row.businessArea.id}>
+                        <i style={{ background: row.color }} />
+                        <span>{row.businessArea.name}</span>
+                        <strong>{formatMoney(row.potential)}</strong>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </article>
+          </section>
+
+          <article className={styles.analyticsCard}>
+            <h2>Geschäftsbereiche</h2>
+            <table className={styles.analyticsTable}>
+              <thead>
+                <tr>
+                  <th>Geschäftsbereich</th>
+                  <th>Dauerläufer</th>
+                  <th>Einmalig</th>
+                  <th>Chancen</th>
+                  <th>Gesamtpotenzial</th>
+                  <th>Fakturiert</th>
+                  <th>Bezahlt</th>
+                  <th>Soll</th>
+                  <th>Abweichung</th>
+                </tr>
+              </thead>
+              <tbody>
+                {forecastBusinessSummaryRows.map((row) => (
+                  <tr key={row.businessArea.id}>
+                    <td>{row.businessArea.name}</td>
+                    <td>{formatMoney(row.recurring)}</td>
+                    <td>{formatMoney(row.oneTime)}</td>
+                    <td>{formatMoney(row.opportunities)}</td>
+                    <td>{formatMoney(row.potential)}</td>
+                    <td>{formatMoney(row.invoiced)}</td>
+                    <td>{formatMoney(row.paid)}</td>
+                    <td>{formatMoney(row.target)}</td>
+                    <td data-state={row.deviation >= 0 ? "good" : "low"}>{formatMoney(row.deviation)}</td>
+                  </tr>
+                ))}
+                <tr>
+                  <td><strong>Summe</strong></td>
+                  <td>{formatMoney(forecastBusinessSummaryTotal.recurring)}</td>
+                  <td>{formatMoney(forecastBusinessSummaryTotal.oneTime)}</td>
+                  <td>{formatMoney(forecastBusinessSummaryTotal.opportunities)}</td>
+                  <td>{formatMoney(forecastBusinessSummaryTotal.potential)}</td>
+                  <td>{formatMoney(forecastBusinessSummaryTotal.invoiced)}</td>
+                  <td>{formatMoney(forecastBusinessSummaryTotal.paid)}</td>
+                  <td>{formatMoney(forecastBusinessSummaryTotal.target)}</td>
+                  <td data-state={forecastBusinessSummaryTotal.deviation >= 0 ? "good" : "low"}>
+                    {formatMoney(forecastBusinessSummaryTotal.deviation)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </article>
+
+          <section>
+            <article className={styles.analyticsCard}>
+              <h2>Monats-Forecast</h2>
+              <table className={styles.analyticsTable}>
+                <thead>
+                  <tr>
+                    <th>Monat</th>
+                    <th>Dauerläufer</th>
+                    <th>Einmalig</th>
+                    <th>Chancen</th>
+                    <th>Gesamtpotenzial</th>
+                    <th>Fakturiert</th>
+                    <th>Bezahlt</th>
+                    <th>Soll</th>
+                    <th>Abweichung</th>
+                    <th>Einträge</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {forecastBusinessMonthRows.map((row) => (
+                    <tr key={row.key}>
+                      <td>{row.label}</td>
+                      <td>{formatMoney(row.recurring)}</td>
+                      <td>{formatMoney(row.oneTime)}</td>
+                      <td>{formatMoney(row.opportunities)}</td>
+                      <td>{formatMoney(row.potential)}</td>
+                      <td>{formatMoney(row.invoiced)}</td>
+                      <td>{formatMoney(row.paid)}</td>
+                      <td>{formatMoney(row.target)}</td>
+                      <td data-state={row.deviation >= 0 ? "good" : "low"}>{formatMoney(row.deviation)}</td>
+                      <td>{row.count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </article>
+          </section>
+
+          <article className={styles.analyticsCard}>
+            <div className={styles.forecastListHeader}>
+              <h2>Forecast & OP Liste</h2>
+              <label>
+                Suche
+                <input
+                  value={reportSearch}
+                  onChange={(event) => setReportSearch(event.target.value)}
+                  placeholder="Kunde, Projekt, Rechnung, Status..."
+                />
+              </label>
+            </div>
+            <table className={styles.analyticsTable}>
+              <thead>
+                <tr>
+                  <th>Monat</th>
+                  <th>Geschäftsbereich</th>
+                  <th>Quelle</th>
+                  <th>Kunde</th>
+                  <th>Projekt</th>
+                  <th>Forecast</th>
+                  <th>Fakturiert</th>
+                  <th>Bezahlt</th>
+                  <th>Rechnung</th>
+                  <th>Angebot</th>
+                  <th>Status</th>
+                  <th>Hinweis</th>
+                  <th>Aktion</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedForecastBusinessRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={13}>Keine Forecast-Einträge im gewählten Zeitraum.</td>
+                  </tr>
+                ) : (
+                  selectedForecastBusinessRows.slice(0, 120).map((row) => (
+                    <tr key={row.id}>
+                      <td>{row.monthLabel}</td>
+                      <td>{row.businessAreaName}</td>
+                      <td>{row.source}</td>
+                      <td>{row.customer || "-"}</td>
+                      <td>{row.project?.projectNumber || row.description}</td>
+                      <td>{formatMoney(row.forecastValue)}</td>
+                      <td>{row.invoiceValue > 0 ? formatMoney(row.invoiceValue) : "-"}</td>
+                      <td>
+                        {row.paidValue > 0 ? (
+                          <span className={styles.paidForecastBadge}>
+                            <span aria-hidden="true">✓</span>
+                            <span>
+                              {formatMoney(row.paidValue)}
+                              {row.paidDates.length > 0 ? (
+                                <small>bezahlt am {row.paidDates.map((date) => formatDateOnly(date)).join(", ")}</small>
+                              ) : null}
+                            </span>
+                          </span>
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                      <td>{row.invoiceNumbers || "-"}</td>
+                      <td>{row.offerNumber || "-"}</td>
+                      <td>
+                        <span
+                          className={styles.invoiceStatusChip}
+                          data-status={
+                            row.invoiceValue > 0 && row.paidValue + 0.01 >= row.invoiceValue
+                              ? "Bezahlt"
+                              : row.status
+                          }
+                        >
+                          {row.invoiceValue > 0 && row.paidValue + 0.01 >= row.invoiceValue
+                            ? "✓ Bezahlt"
+                            : row.status === "Fakturiert"
+                              ? "✓ Fakturiert"
+                              : row.status}
+                        </span>
+                      </td>
+                      <td>{row.note}</td>
+                      <td>
+                        {row.invoiceIds.length > 0 && row.paidValue + 0.01 < row.invoiceValue ? (
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            onClick={() => {
+                              const invoice = invoices.find((item) => item.id === row.invoiceIds[0]);
+                              if (invoice) void markInvoiceAsPaid(invoice);
+                            }}
+                          >
+                            Als bezahlt markieren
+                          </button>
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </article>
+
+          <article className={styles.analyticsCard}>
+            <h2>Logik, die Excel ersetzt</h2>
+            <div className={styles.forecastLogicList}>
+              <article>
+                <strong>Dauerläufer</strong>
+                <span>Werden automatisch bis Projektende monatlich fortgeführt. Sobald eine Monatsrechnung vorhanden ist, wird sie über Projekt und Rechnungsmonat angezeigt.</span>
+              </article>
+              <article>
+                <strong>Einmalige Projekte</strong>
+                <span>Erscheinen in dem Monat, in dem eine Rechnung erzeugt wurde. Vor Rechnung können sie über Angebote oder Forecast-Regeln auftauchen.</span>
+              </article>
+              <article>
+                <strong>Angebote</strong>
+                <span>Nutzen den geplanten Ausführungsmonat am Angebot. Neue Angebote können ohne diesen Monat nicht gespeichert werden; Altangebote ohne Monat bleiben als Klärfall sichtbar.</span>
+              </article>
+              <article>
+                <strong>Wiederkehrende Sonderleistungen</strong>
+                <span>Für Fälle wie Fensterreinigung 2x jährlich brauchen wir Forecast-Regeln pro Projekt: Rhythmus, Monate, Betrag und nächstes Fälligkeitsdatum.</span>
+              </article>
+            </div>
+          </article>
+        </>
+      )}
+
+      {reportAnalyticsTab === "revenue" && (
+        <>
+          <section className={styles.analyticsGrid}>
+            {renderReportMetric("Angebotsvolumen", formatMoney(offerVolumeTotal), `${reportOffers.length} Angebote`)}
+            {renderReportMetric("Rechnungsvolumen", formatMoney(invoiceRevenueTotal), `${reportInvoices.length} Rechnungen`)}
+            {renderReportMetric(
+              "Marge",
+              formatMoney(invoiceMarginTotal),
+              `${formatHours(invoiceMarginPercent)}% auf Rechnungsvolumen`,
+              getMetricState(invoiceMarginPercent, 30, 18)
+            )}
+            {renderReportMetric("Ø SVS", `${formatMoney(averageSoldHourlyRate)} / h`, "Umsatz je gestempelter Projektstunde")}
+          </section>
+
+          <section className={styles.analyticsTwoColumn}>
+            <article className={styles.analyticsCard}>
+              <h2>Umsatz und Angebotsvolumen pro Monat</h2>
+              {renderReportBarChart(
+                monthlyRevenueRows.map((row) => ({
+                  key: row.key,
+                  label: row.label,
+                  value: row.invoiceValue,
+                  secondary: row.offerValue,
+                }))
+              )}
+              <div className={styles.analyticsLegend}>
+                <span data-color="primary">Rechnungen</span>
+                <span data-color="secondary">Angebote</span>
+              </div>
+            </article>
+            <article className={styles.analyticsCard}>
+              <h2>Rechnungen nach Zahlstatus</h2>
+              <table className={styles.analyticsTable}>
+                <thead>
+                  <tr>
+                    <th>Zahlstatus</th>
+                    <th>Rechnungsvolumen</th>
+                    <th>Anzahl</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {invoiceStatusRows.map((row) => (
+                    <tr key={row.label}>
+                      <td>{row.label}</td>
+                      <td>{formatMoney(row.value)}</td>
+                      <td>{row.count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </article>
+          </section>
+
+          <article className={styles.analyticsCard}>
+            <h2>Angebote - Details</h2>
+            <table className={styles.analyticsTable}>
+              <thead>
+                <tr>
+                  <th>Dokumentennummer</th>
+                  <th>Datum</th>
+                  <th>VK</th>
+                  <th>Kosten intern</th>
+                  <th>Marge</th>
+                  <th>Projekt</th>
+                  <th>Kunde</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reportOffers.slice(0, 12).map((offer) => {
+                  const costs = getDocumentInternalCost(offer);
+                  const margin = offer.netTotal - costs;
+                  return (
+                    <tr key={offer.id}>
+                      <td>{offer.offerNumber}</td>
+                      <td>{formatDateOnly(offer.createdAt)}</td>
+                      <td>{formatMoney(offer.netTotal)}</td>
+                      <td>{formatMoney(costs)}</td>
+                      <td>{formatMoney(margin)}</td>
+                      <td>{offer.projectNumber}</td>
+                      <td>{offer.customerName}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </article>
+        </>
+      )}
+
+      {reportAnalyticsTab === "projects" && (
+        <>
+          <section className={styles.analyticsGrid}>
+            {renderReportMetric("Durchschnittliche Projektlaufzeit", `${formatHours(averageProjectRuntime)} Tage`, "Aus Erstellungsdatum bis Projektlaufzeit bis")}
+            {renderReportMetric("Projekte mit Umsatz", `${reportProjectRows.filter((row) => row.revenue > 0).length}`, "Im gewählten Zeitraum")}
+            {renderReportMetric("Gebuchte Projektstunden", `${formatHours(employeeSummary.stampedProjectHours)} Std.`, "Aus Stempelungen")}
+            {renderReportMetric("Offene Sollstunden", `${formatHours(Math.max(0, employeeSummary.soldHours - employeeSummary.stampedProjectHours))} Std.`, "Verkauft minus gestempelt")}
+          </section>
+
+          <article className={styles.analyticsCard}>
+            <h2>Offene Umsätze pro Projekt</h2>
+            <table className={styles.analyticsTable}>
+              <thead>
+                <tr>
+                  <th>Projekt-ID</th>
+                  <th>Kunde</th>
+                  <th>Projektstatus</th>
+                  <th>Gewerk</th>
+                  <th>Angebotsvolumen</th>
+                  <th>Rechnungsvolumen</th>
+                  <th>Marge %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reportProjectRows.slice(0, 18).map((row) => (
+                  <tr key={row.project.id}>
+                    <td>{row.project.projectNumber}</td>
+                    <td>{row.project.customer || row.project.title}</td>
+                    <td>{row.project.status}</td>
+                    <td>{row.project.trade || "-"}</td>
+                    <td>{formatMoney(row.offerVolume)}</td>
+                    <td>{formatMoney(row.revenue)}</td>
+                    <td data-state={getMetricState(row.marginPercent, 30, 18)}>{formatHours(row.marginPercent)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </article>
+
+          <section className={styles.analyticsTwoColumn}>
+            <article className={styles.analyticsCard}>
+              <h2>Marge pro Gewerk</h2>
+              <table className={styles.analyticsTable}>
+                <thead>
+                  <tr>
+                    <th>Gewerk</th>
+                    <th>Anzahl Projekte</th>
+                    <th>Rechnungsvolumen</th>
+                    <th>Marge</th>
+                    <th>Marge %</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {projectRowsByTrade.slice(0, 10).map((row) => (
+                    <tr key={row.trade}>
+                      <td>{row.trade}</td>
+                      <td>{row.count}</td>
+                      <td>{formatMoney(row.revenue)}</td>
+                      <td>{formatMoney(row.margin)}</td>
+                      <td data-state={getMetricState(row.revenue > 0 ? (row.margin / row.revenue) * 100 : 0, 30, 18)}>
+                        {formatHours(row.revenue > 0 ? (row.margin / row.revenue) * 100 : 0)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </article>
+            <article className={styles.analyticsCard}>
+              <h2>Projektlaufzeit</h2>
+              <table className={styles.analyticsTable}>
+                <thead>
+                  <tr>
+                    <th>Projekt</th>
+                    <th>Status</th>
+                    <th>Dauer</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {projectRuntimeRows.map((row) => (
+                    <tr key={row.project.id}>
+                      <td>{row.project.projectNumber}</td>
+                      <td>{row.project.status}</td>
+                      <td>{formatHours(row.runtimeDays)} Tage</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </article>
+          </section>
+        </>
+      )}
+
+      {reportAnalyticsTab === "customers" && (
+        <>
+          <section className={styles.analyticsTwoColumn}>
+            <article className={styles.analyticsCard}>
+              <h2>Umsatz pro Zeitraum</h2>
+              {renderReportBarChart(
+                monthlyRevenueRows.map((row) => ({
+                  key: row.key,
+                  label: row.label,
+                  value: row.invoiceValue,
+                }))
+              )}
+            </article>
+            <article className={styles.analyticsCard}>
+              <h2>Top-Kunden</h2>
+              <div className={styles.analyticsDonut}>
+                <strong>{formatMoney(invoiceRevenueTotal)}</strong>
+                <span>Gesamtumsatz</span>
+              </div>
+            </article>
+          </section>
+          <article className={styles.analyticsCard}>
+            <h2>Kundenübersicht</h2>
+            <table className={styles.analyticsTable}>
+              <thead>
+                <tr>
+                  <th>Kunde</th>
+                  <th>Rechnungsvolumen</th>
+                  <th>Anteil</th>
+                  <th>Projekte</th>
+                  <th>Rechnungen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {customerRows.slice(0, 20).map((row) => (
+                  <tr key={row.name}>
+                    <td>{row.name}</td>
+                    <td>{formatMoney(row.revenue)}</td>
+                    <td>{formatHours(row.share)}%</td>
+                    <td>{row.projectCount}</td>
+                    <td>{row.invoiceCount}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </article>
+        </>
+      )}
+
+      {reportAnalyticsTab === "catalog" && (
+        <>
+          <section className={styles.analyticsTwoColumn}>
+            <article className={styles.analyticsCard}>
+              <h2>Top 10 Positionen nach Marge %</h2>
+              <table className={styles.analyticsTable}>
+                <thead>
+                  <tr>
+                    <th>Position</th>
+                    <th>Marge %</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...catalogRows]
+                    .sort((first, second) => second.marginPercent - first.marginPercent)
+                    .slice(0, 10)
+                    .map((row) => (
+                      <tr key={row.title}>
+                        <td>{row.title}</td>
+                        <td data-state={getMetricState(row.marginPercent, 30, 18)}>{formatHours(row.marginPercent)}%</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </article>
+            <article className={styles.analyticsCard}>
+              <h2>Meistverkaufte Positionen</h2>
+              <div className={styles.analyticsRankBars}>
+                {[...catalogRows]
+                  .sort((first, second) => second.quantity - first.quantity)
+                  .slice(0, 10)
+                  .map((row) => (
+                    <div key={row.title}>
+                      <span>{row.title}</span>
+                      <b style={{ width: `${Math.max(4, (row.quantity / Math.max(1, catalogRows[0]?.quantity ?? 1)) * 100)}%` }} />
+                      <small>{formatHours(row.quantity)}</small>
+                    </div>
+                  ))}
+              </div>
+            </article>
+          </section>
+          <article className={styles.analyticsCard}>
+            <h2>Positionsübersicht</h2>
+            <table className={styles.analyticsTable}>
+              <thead>
+                <tr>
+                  <th>Position</th>
+                  <th>Anzahl</th>
+                  <th>VK</th>
+                  <th>EK/Kosten</th>
+                  <th>Marge</th>
+                  <th>Marge %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {catalogRows.slice(0, 20).map((row) => (
+                  <tr key={row.title}>
+                    <td>{row.title}</td>
+                    <td>{formatHours(row.quantity)}</td>
+                    <td>{formatMoney(row.revenue)}</td>
+                    <td>{formatMoney(row.cost)}</td>
+                    <td>{formatMoney(row.margin)}</td>
+                    <td data-state={getMetricState(row.marginPercent, 30, 18)}>{formatHours(row.marginPercent)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </article>
+        </>
+      )}
+
+      {reportAnalyticsTab === "employees" && (
+        <>
+          <section className={styles.analyticsGrid}>
+            {renderReportMetric(
+              "Leistungsgrad",
+              `${formatHours(employeeSummaryMetrics.performance)}%`,
+              "Verkaufte Stunden / gestempelte Projektstunden",
+              getMetricState(employeeSummaryMetrics.performance, 100, 90)
+            )}
+            {renderReportMetric(
+              "Produktivität",
+              `${formatHours(employeeSummaryMetrics.productivity)}%`,
+              "Verkaufte Stunden / Projekt- und unproduktive Stunden",
+              getMetricState(employeeSummaryMetrics.productivity, 100, 90)
+            )}
+            {renderReportMetric(
+              "Anwesenheitsgrad",
+              `${formatHours(employeeSummaryMetrics.attendance)}%`,
+              "Gestempelte Stunden / Soll-Anwesenheit",
+              getMetricState(employeeSummaryMetrics.attendance, 80, 70)
+            )}
+            {renderReportMetric(
+              "Unproduktive Stunden",
+              `${formatHours(employeeSummary.unproductiveHours)} Std.`,
+              `${formatHours(employeeSummaryMetrics.unproductiveShare)}% der Projektstunden`,
+              getMetricState(employeeSummaryMetrics.unproductiveShare, 5, 10, true)
+            )}
+          </section>
+          <article className={styles.analyticsCard}>
+            <h2>Mitarbeiterauswertung</h2>
+            <table className={styles.analyticsTable}>
+              <thead>
+                <tr>
+                  <th>Mitarbeiter</th>
+                  <th>Verkaufte Std.</th>
+                  <th>Projektstunden</th>
+                  <th>Unproduktiv</th>
+                  <th>Soll-Anwesenheit</th>
+                  <th>Leistungsgrad</th>
+                  <th>Produktivität</th>
+                  <th>Anwesenheit</th>
+                </tr>
+              </thead>
+              <tbody>
+                {employeeReportRows.map((row) => (
+                  <tr key={row.user.id}>
+                    <td>{row.user.name}</td>
+                    <td>{formatHours(row.soldHours)}</td>
+                    <td>{formatHours(row.stampedProjectHours)}</td>
+                    <td>{formatHours(row.unproductiveHours)}</td>
+                    <td>{formatHours(row.targetHours)}</td>
+                    <td data-state={getMetricState(row.performanceGrade, 100, 90)}>{formatHours(row.performanceGrade)}%</td>
+                    <td data-state={getMetricState(row.productivity, 100, 90)}>{formatHours(row.productivity)}%</td>
+                    <td data-state={getMetricState(row.attendance, 80, 70)}>{formatHours(row.attendance)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </article>
+        </>
+      )}
+
+      {reportAnalyticsTab === "overview" && (
+        <>
+          <section className={styles.analyticsGrid}>
+            {renderReportMetric("Umsatz", formatMoney(invoiceRevenueTotal), "Fakturierte Netto-Rechnungen")}
+            {renderReportMetric("Gewinn / Marge", formatMoney(invoiceMarginTotal), `${formatHours(invoiceMarginPercent)}% Rentabilität`, getMetricState(invoiceMarginPercent, 30, 18))}
+            {renderReportMetric("Projekte", `${reportProjectRows.length}`, "Mit Umsatz, Angebot oder Zeit")}
+            {renderReportMetric("Ø SVS", `${formatMoney(averageSoldHourlyRate)} / h`, "Ohne Materialtrennung angenähert")}
+          </section>
+          <section className={styles.analyticsTwoColumn}>
+            <article className={styles.analyticsCard}>
+              <h2>Umsatz pro Zeitraum</h2>
+              {renderReportBarChart(
+                monthlyRevenueRows.map((row) => ({ key: row.key, label: row.label, value: row.invoiceValue }))
+              )}
+            </article>
+            <article className={styles.analyticsCard}>
+              <h2>Rentabilität je Gewerk</h2>
+              <table className={styles.analyticsTable}>
+                <tbody>
+                  {projectRowsByTrade.slice(0, 8).map((row) => (
+                    <tr key={row.trade}>
+                      <td>{row.trade}</td>
+                      <td>{formatMoney(row.margin)}</td>
+                      <td>{formatHours(row.revenue > 0 ? (row.margin / row.revenue) * 100 : 0)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </article>
+          </section>
+        </>
+      )}
+
+      {reportAnalyticsTab === "map" && (
+        <article className={styles.analyticsCard}>
+          <h2>Projektkarte</h2>
+          <div className={styles.analyticsMap}>
+            {projectMapRows.map((row) => (
+              <button
+                key={row.project.id}
+                type="button"
+                style={{ left: `${row.x}%`, top: `${row.y}%` }}
+                title={`${row.project.projectNumber} - ${row.project.customer || row.project.title}`}
+                onClick={() => {
+                  const projectType = (row.project.projectType ?? "").toLowerCase();
+                  const projectNumber = (row.project.projectNumber ?? "").toLowerCase();
+                  setActiveTab(
+                    projectType.includes("immocare") || projectNumber.startsWith("oki")
+                      ? "projectsImmocare"
+                      : "projectsSolutions"
+                  );
+                  setSelectedProjectFileId(row.project.id);
+                  setProjectFileTab("logbook");
+                }}
+              >
+                <span />
+              </button>
+            ))}
+          </div>
+          <table className={styles.analyticsTable}>
+            <thead>
+              <tr>
+                <th>Projekt</th>
+                <th>Kunde</th>
+                <th>Adresse</th>
+                <th>Status</th>
+                <th>Umsatz</th>
+              </tr>
+            </thead>
+            <tbody>
+              {projectMapRows.slice(0, 12).map((row) => (
+                <tr key={row.project.id}>
+                  <td>{row.project.projectNumber}</td>
+                  <td>{row.project.customer || row.project.title}</td>
+                  <td>{row.project.address || "-"}</td>
+                  <td>{row.project.status}</td>
+                  <td>{formatMoney(row.revenue)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </article>
+      )}
+    </section>
+  );
+
+  function getBatchBillingRows() {
+    return heroProjects
+      .filter((project) => project.autoBillingEnabled && isRecurringForecastProject(project))
+      .filter((project) => isProjectActiveInBillingMonth(project, batchBillingMonth))
+      .map((project) => {
+        const amount = getAutoBillingNetAmount(project);
+        const template = getAutoBillingTemplateForProject(project);
+        const existingInvoice = invoices.find(
+          (invoice) =>
+            invoice.projectId === project.id &&
+            !isDeletedInvoice(invoice) &&
+            getProjectInvoiceMonth(invoice) === batchBillingMonth
+        );
+        const comparison = getAutoBillingComparison(project, batchBillingMonth);
+        const hasBlockingIssue = Boolean(existingInvoice) || amount <= 0 || !template;
+        const status = existingInvoice
+          ? existingInvoice.status === "Entwurf"
+            ? "Entwurf vorhanden"
+            : ["Fakturiert", "Bezahlt"].includes(existingInvoice.status)
+              ? "Bereits fakturiert"
+              : "Schon vorhanden"
+          : amount <= 0
+            ? "Betrag fehlt"
+            : !template
+              ? "Vorlage fehlt"
+              : comparison.previousInvoices.length < 3 || !comparison.stable
+                ? "Prüfen"
+                : "Bereit";
+        const billingSourceLabel = existingInvoice ? getInvoiceBillingSourceLabel(existingInvoice, project) : "";
+        const hint = existingInvoice
+          ? `${existingInvoice.invoiceNumber} (${existingInvoice.status}) · ${billingSourceLabel}`
+          : amount <= 0
+            ? "Monatlicher Nettobetrag fehlt."
+            : !template
+              ? "Keine Projektvorlage und keine Vormonatsrechnung vorhanden."
+              : comparison.previousInvoices.length < 3
+                ? "Weniger als 3 Vergleichsrechnungen vorhanden."
+                : comparison.stable
+                  ? "Letzte 3 Rechnungen identisch."
+                  : "Abweichende Rechnungsbeträge in den letzten 3 Monaten.";
+
+        return { project, amount, status, hint, canCreateDraft: !hasBlockingIssue, comparison, existingInvoice };
+      });
+  }
+
+  function getBatchBillingDraftInvoices() {
+    return invoices.filter(
+      (invoice) =>
+        invoice.status === "Entwurf" &&
+        !isDeletedInvoice(invoice) &&
+        getProjectInvoiceMonth(invoice) === batchBillingMonth
+    );
+  }
+
+  function getInvoiceBillingSourceLabel(invoice: Pick<InvoiceItem, "billingSource">, project?: HeroProjectPreview) {
+    if (invoice.billingSource === "batch") {
+      return "Stapelabrechnung";
+    }
+    if (project?.autoBillingEnabled && isRecurringForecastProject(project)) {
+      return "Stapelabrechnung";
+    }
+    return "manuell";
+  }
+
+  async function createBatchBillingDrafts() {
+    const rows = getBatchBillingRows().filter(
+      (row) => selectedBatchProjectIds.includes(row.project.id) && row.canCreateDraft
+    );
+
+    if (rows.length === 0) {
+      setBatchBillingError("Bitte mindestens ein abrechnungsfähiges Projekt auswählen.");
+      return;
+    }
+
+    setIsCreatingBatchDrafts(true);
+    setBatchBillingError("");
+    setBatchBillingMessage("");
+
+    try {
+      for (const row of rows) {
+        const draft = buildAutoBillingInvoiceDraft(row.project, batchBillingMonth);
+        const res = await fetch("/api/invoices", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...draft,
+            projectId: row.project.id,
+            projectNumber: row.project.projectNumber,
+            projectTitle: row.project.title,
+            saveAsDraft: true,
+            billingSource: "batch",
+          }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          throw new Error(data?.error ?? `Entwurf für ${row.project.projectNumber} konnte nicht erstellt werden.`);
+        }
+      }
+
+      setSelectedBatchProjectIds([]);
+      setSelectedBatchDraftInvoiceIds([]);
+      await loadInvoices();
+      setBatchBillingMessage(`${rows.length} Rechnungsentwurf${rows.length === 1 ? "" : "e"} erstellt.`);
+    } catch (error) {
+      setBatchBillingError(error instanceof Error ? error.message : "Stapelabrechnung konnte nicht erstellt werden.");
+    } finally {
+      setIsCreatingBatchDrafts(false);
+    }
+  }
+
+  async function finalizeBatchBillingInvoices() {
+    const draftInvoices = getBatchBillingDraftInvoices();
+    const invoicesToFinalize = draftInvoices.filter((invoice) => selectedBatchDraftInvoiceIds.includes(invoice.id));
+
+    if (draftInvoices.length === 0) {
+      setBatchBillingError("Es sind noch keine Rechnungsentwuerfe fuer diesen Monat vorhanden.");
+      return;
+    }
+
+    if (invoicesToFinalize.length === 0) {
+      setBatchBillingError("Bitte mindestens einen Rechnungsentwurf fuer die Faktura auswaehlen.");
+      return;
+    }
+
+    const projectsWithoutActualTimes = invoicesToFinalize
+      .map((invoice) => heroProjects.find((project) => project.id === invoice.projectId))
+      .filter((project): project is HeroProjectPreview => Boolean(project))
+      .filter((project) => getProjectStampEntriesForMonth(project.id, batchBillingMonth).length === 0);
+
+    if (projectsWithoutActualTimes.length > 0) {
+      const projectList = projectsWithoutActualTimes
+        .map((project) => `${project.projectNumber || project.id} - ${project.title}`)
+        .join("\n");
+      const confirmedMissingTimes = window.confirm(
+        `Achtung: Für folgende Projekte gibt es im Abrechnungsmonat ${formatMonthLabel(batchBillingMonth)} keine Ist-Zeiten:\n\n${projectList}\n\nBitte prüfen, ob die Abrechnung trotzdem korrekt ist. Trotzdem fakturieren?`
+      );
+      if (!confirmedMissingTimes) {
+        setBatchBillingError("Faktura abgebrochen: Es gibt Projekte ohne Ist-Zeiten im Abrechnungsmonat.");
+        return;
+      }
+    }
+
+    const confirmed = window.confirm(
+      `${invoicesToFinalize.length} ausgewaehlte Rechnungsentwuerfe jetzt final fakturieren?`
+    );
+    if (!confirmed) return;
+
+    const finalizedInvoices: InvoiceItem[] = [];
+    setIsFinalizingBatchInvoices(true);
+    setBatchBillingError("");
+    setBatchBillingMessage("");
+
+    try {
+      for (const invoice of invoicesToFinalize) {
+        const project = heroProjects.find((item) => item.id === invoice.projectId);
+        if (!project) {
+          throw new Error(`Projekt zu ${getInvoiceDisplayNumber(invoice)} wurde nicht gefunden.`);
+        }
+        const batchMonthStampEntries = getUnbilledProjectStampEntriesForMonth(project.id, batchBillingMonth);
+        const batchMonthStampEntryIds = batchMonthStampEntries.map((entry) => entry.id);
+
+        const res = await fetch("/api/invoices", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: invoice.id,
+            ...createInvoiceDraftFromInvoice(invoice),
+            saveAsDraft: false,
+            billingSource: "batch",
+            billedStampEntryIds: batchMonthStampEntryIds,
+            allowUnderbilledStampedHours: true,
+            suppressUnderbillingNotification: true,
+            projectId: project.id,
+            projectNumber: project.projectNumber || project.id,
+            projectTitle: project.title,
+          }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          throw new Error(data?.error ?? `${getInvoiceDisplayNumber(invoice)} konnte nicht fakturiert werden.`);
+        }
+
+        const savedInvoice = (await res.json()) as InvoiceItem;
+        finalizedInvoices.push(savedInvoice);
+        await addProjectLogbookEntry(
+          project.id,
+          "Rechnung",
+          `Rechnung fakturiert: ${savedInvoice.invoiceNumber} (${formatMoney(savedInvoice.grossTotal)} brutto).`
+        );
+      }
+
+      setSelectedBatchDraftInvoiceIds([]);
+      await loadInvoices();
+      await loadProjectTimeEntries();
+      setBatchBillingMessage(
+        `${finalizedInvoices.length} Rechnung${finalizedInvoices.length === 1 ? "" : "en"} fakturiert.`
+      );
+    } catch (error) {
+      if (finalizedInvoices.length > 0) {
+        setInvoices((currentInvoices) =>
+          currentInvoices.map(
+            (currentInvoice) =>
+              finalizedInvoices.find((invoice) => invoice.id === currentInvoice.id) || currentInvoice
+          )
+        );
+      }
+      setBatchBillingError(
+        error instanceof Error ? error.message : "Faktura konnte nicht vollstaendig durchgefuehrt werden."
+      );
+    } finally {
+      setIsFinalizingBatchInvoices(false);
+    }
+  }
+
+  function renderAccounting() {
+    const rows = getBatchBillingRows();
+    const selectableRows = rows.filter((row) => row.canCreateDraft);
+    const draftInvoices = getBatchBillingDraftInvoices();
+    const allDraftsSelected =
+      draftInvoices.length > 0 && draftInvoices.every((invoice) => selectedBatchDraftInvoiceIds.includes(invoice.id));
+
+    return (
+      <section>
+        <div className={styles.topline}>
+          <div>
+            <p className={styles.eyebrow}>Buchhaltung</p>
+            <h1>Stapelabrechnung</h1>
+            <p className={styles.subline}>Monatliche Dauerläufer als Rechnungsentwürfe vorbereiten und prüfen.</p>
+          </div>
+          <div className={styles.headerActions}>
+            <label className={styles.compactField}>
+              Monat
+              <input
+                type="month"
+                value={batchBillingMonth}
+                onChange={(event) => {
+                  setBatchBillingMonth(event.target.value);
+                  setSelectedBatchProjectIds([]);
+                  setSelectedBatchDraftInvoiceIds([]);
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              disabled={isCreatingBatchDrafts || selectedBatchProjectIds.length === 0}
+              onClick={() => void createBatchBillingDrafts()}
+            >
+              {isCreatingBatchDrafts ? "Erstelle..." : "Entwürfe erstellen"}
+            </button>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              disabled={
+                draftInvoices.length === 0 ||
+                isFinalizingBatchInvoices
+              }
+              onClick={() => void finalizeBatchBillingInvoices()}
+            >
+              {isFinalizingBatchInvoices ? "Fakturiere..." : "Faktura durchführen"}
+            </button>
+          </div>
+        </div>
+
+        {batchBillingError ? <p className={styles.modalWarning}>{batchBillingError}</p> : null}
+        {batchBillingMessage ? <p className={styles.modalSaveNotice}>{batchBillingMessage}</p> : null}
+
+        <section className={`${styles.tableCard} ${styles.batchBillingCard}`}>
+          <div className={styles.customerFileMainHeader}>
+            <h2>Dauerläufer für {formatMonthLabel(batchBillingMonth)}</h2>
+            <span>{selectableRows.length} abrechnungsfähig</span>
+          </div>
+          <div className={styles.batchBillingTableScroll}>
+            <table className={`${styles.table} ${styles.batchBillingTable}`}>
+              <thead>
+                <tr>
+                  <th>Auswahl</th>
+                  <th>Projekt</th>
+                  <th>Kunde</th>
+                  <th>Betrag netto</th>
+                  <th>Vorlage</th>
+                  <th>3-Monats-Prüfung</th>
+                  <th>Status</th>
+                  <th>Hinweis</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.length === 0 ? (
+                  <tr><td colSpan={8}>Keine aktiven Dauerläufer mit automatischer Abrechnung für diesen Monat.</td></tr>
+                ) : (
+                  rows.map((row) => (
+                    <tr key={row.project.id}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          disabled={!row.canCreateDraft}
+                          checked={selectedBatchProjectIds.includes(row.project.id)}
+                          onChange={(event) =>
+                            setSelectedBatchProjectIds((current) =>
+                              event.target.checked
+                                ? [...new Set([...current, row.project.id])]
+                                : current.filter((id) => id !== row.project.id)
+                            )
+                          }
+                        />
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className={styles.tableTextLink}
+                          onClick={() => {
+                            setSelectedProjectFileId(row.project.id);
+                            setProjectFileTab("automaticBilling");
+                            setActiveTab(row.project.projectType === "Projekt OK immocare" ? "projectsImmocare" : "projectsSolutions");
+                          }}
+                        >
+                          {row.project.projectNumber}
+                        </button>
+                        <br />{row.project.title}
+                      </td>
+                      <td>{row.project.customer || "-"}</td>
+                      <td>{row.amount > 0 ? formatMoney(row.amount) : "-"}</td>
+                      <td>{row.project.autoBillingTemplateMode === "project" ? "Projektvorlage" : "Vormonat"}</td>
+                      <td>
+                        {row.comparison.previousInvoices.length === 0
+                          ? "-"
+                          : row.comparison.previousInvoices.map((invoice) => formatMoney(invoice.netTotal)).join(" / ")}
+                      </td>
+                      <td data-state={row.status === "Bereit" ? "good" : row.status === "Prüfen" ? "ok" : undefined}>
+                        {row.status === "Bereits fakturiert" ? (
+                          <span className={styles.invoiceStatusChip} data-status="Fakturiert">
+                            ✓ Bereits fakturiert
+                          </span>
+                        ) : row.status === "Entwurf vorhanden" ? (
+                          <span className={styles.invoiceStatusChip} data-status="Entwurf">
+                            Entwurf vorhanden
+                          </span>
+                        ) : (
+                          row.status
+                        )}
+                      </td>
+                      <td>{row.hint}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className={`${styles.tableCard} ${styles.batchBillingCard}`}>
+          <div className={styles.customerFileMainHeader}>
+            <h2>Rechnungsentwürfe</h2>
+            <span>{draftInvoices.length} Entwurf{draftInvoices.length === 1 ? "" : "e"}</span>
+          </div>
+          <div className={styles.batchBillingTableScroll}>
+          <table className={`${styles.table} ${styles.batchBillingTable}`}>
+            <thead>
+              <tr>
+                <th>
+                  <input
+                    type="checkbox"
+                    aria-label="Alle Rechnungsentwuerfe auswaehlen"
+                    disabled={draftInvoices.length === 0}
+                    checked={allDraftsSelected}
+                    onChange={(event) =>
+                      setSelectedBatchDraftInvoiceIds(event.target.checked ? draftInvoices.map((invoice) => invoice.id) : [])
+                    }
+                  />
+                </th>
+                <th>Nummer</th>
+                <th>Projekt</th>
+                <th>Kunde</th>
+                <th>Monat</th>
+                <th>Netto</th>
+                <th>Aktion</th>
+              </tr>
+            </thead>
+            <tbody>
+              {draftInvoices.length === 0 ? (
+                <tr><td colSpan={7}>Keine Rechnungsentwürfe vorhanden.</td></tr>
+              ) : (
+                draftInvoices.map((invoice) => (
+                  <tr key={invoice.id}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={selectedBatchDraftInvoiceIds.includes(invoice.id)}
+                        onChange={(event) =>
+                          setSelectedBatchDraftInvoiceIds((current) =>
+                            event.target.checked
+                              ? [...new Set([...current, invoice.id])]
+                              : current.filter((id) => id !== invoice.id)
+                          )
+                        }
+                      />
+                    </td>
+                    <td>{getInvoiceDisplayNumber(invoice)}</td>
+                    <td>{invoice.projectNumber} | {invoice.projectTitle}</td>
+                    <td>{invoice.customerName}</td>
+                    <td>{invoice.plannedExecutionMonth ? formatMonthLabel(invoice.plannedExecutionMonth) : "-"}</td>
+                    <td>{formatMoney(invoice.netTotal)}</td>
+                    <td>
+                      <div className={styles.batchBillingDraftActions}>
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        disabled={!invoice.pdfAvailable}
+                        onClick={() => window.open(`/api/invoices?pdfId=${encodeURIComponent(invoice.id)}`, "_blank")}
+                      >
+                        PDF öffnen
+                      </button>
+                      <button type="button" className={styles.secondaryButton} onClick={() => openEditInvoiceModal(invoice)}>
+                        Prüfen
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.deleteButton}
+                        disabled={!canDeleteInvoices}
+                        onClick={() =>
+                          void deleteInvoice(
+                            invoice,
+                            heroProjects.find((project) => project.id === invoice.projectId)
+                          )
+                        }
+                      >
+                        Löschen
+                      </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+          </div>
+        </section>
+      </section>
+    );
+  }
 
   if (!authChecked) {
     return (
@@ -11137,7 +15686,8 @@ export function DashboardPage() {
       { id: "images", label: "Bilder", icon: "" },
       { id: "documents", label: "Dokumente", icon: "" },
       { id: "gaeb", label: "Ausschreibungen (GAEB)", icon: "" },
-      { id: "contacts", label: "Ansprechpartner", icon: "•" },
+      { id: "contacts", label: "Ansprechpartner", icon: "?" },
+      { id: "potentials", label: "Potenziale", icon: "" },
       { id: "tasks", label: "Aufgaben", icon: "?" },
       { id: "orders", label: "Aufträge", icon: "A" },
       { id: "projects", label: "Projekte", icon: "" },
@@ -11147,8 +15697,9 @@ export function DashboardPage() {
       "Allgemeine Dokumente",
       "Anfragen",
       "Angebote",
-      "Angebote: Sonderangebote",
+      "Angebote: Nachtragsangebote",
       "Tätigkeitsberichte",
+      "Endkontrolle",
       "Endkontrolle",
       "Mahnung",
       "Rechnungen",
@@ -11184,7 +15735,16 @@ export function DashboardPage() {
       customerProjectIds.has(entry.projectId)
     );
     const customerProjectOffers = offers.filter((offer) => customerProjectIds.has(offer.projectId));
-    const customerProjectInvoices = invoices.filter((invoice) => customerProjectIds.has(invoice.projectId));
+    const customerProjectInvoices = invoices.filter(
+      (invoice) => customerProjectIds.has(invoice.projectId) && !isDeletedInvoice(invoice)
+    );
+    const customerPotentials = projectPotentials.filter(
+      (potential) =>
+        customerProjectIds.has(potential.projectId) ||
+        potential.contactId === selectedCustomerFile.id ||
+        (!!selectedCustomerFile.companyName &&
+          potential.customerName.trim().toLowerCase() === selectedCustomerFile.companyName.trim().toLowerCase())
+    );
     const customerProjectDocumentEntries = customerProjectLogEntries.filter(
       (entry) =>
         entry.title === `Dokumente: ${selectedCustomerDocumentType}` &&
@@ -11418,10 +15978,10 @@ export function DashboardPage() {
                       <tbody>
                         {customerProjectInvoices.map((invoice) => (
                           <tr key={invoice.id}>
-                            <td className={styles.number}>{invoice.invoiceNumber}</td>
+                            <td className={styles.number}>{getInvoiceDisplayNumber(invoice)}</td>
                             <td>{invoice.projectNumber} | {invoice.projectTitle}</td>
                             <td>{invoice.company}</td>
-                            <td>{invoice.status}</td>
+                            <td>{renderInvoiceStatusChip(invoice.status)}</td>
                             <td>{formatMoney(invoice.netTotal)}</td>
                             <td>{formatMoney(invoice.grossTotal)}</td>
                             <td>
@@ -11429,6 +15989,23 @@ export function DashboardPage() {
                                 <button
                                   type="button"
                                   className={styles.timeEntryEditButton}
+                                  onClick={() => openEditInvoiceModal(invoice)}
+                                >
+                                  Bearbeiten
+                                </button>
+                                {invoice.status === "Entwurf" ? (
+                                  <button
+                                    type="button"
+                                    className={`${styles.timeEntryEditButton} ${styles.pulsingFinalizeButton}`}
+                                    onClick={() => setPendingFinalizeInvoice({ source: "list", invoice })}
+                                  >
+                                    Fakturieren
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  className={styles.timeEntryEditButton}
+                                  disabled={!invoice.pdfAvailable}
                                   onClick={() => window.open(`/api/invoices?pdfId=${encodeURIComponent(invoice.id)}`, "_blank")}
                                 >
                                   PDF öffnen
@@ -11440,13 +16017,22 @@ export function DashboardPage() {
                                 >
                                   Per E-Mail senden
                                 </button>
-                                {!["Storniert", "Stornorechnung", "Gelöscht"].includes(invoice.status) ? (
+                                {!["Entwurf", "Storniert", "Stornorechnung", "Gelöscht"].includes(invoice.status) ? (
                                   <button
                                     type="button"
                                     className={styles.timeEntryEditButton}
                                     onClick={() => cancelInvoice(invoice)}
                                   >
                                     Stornieren
+                                  </button>
+                                ) : null}
+                                {canDeleteInvoices && invoice.status !== "Gelöscht" ? (
+                                  <button
+                                    type="button"
+                                    className={styles.deleteButton}
+                                    onClick={() => deleteInvoice(invoice)}
+                                  >
+                                    Löschen
                                   </button>
                                 ) : null}
                               </div>
@@ -11529,6 +16115,56 @@ export function DashboardPage() {
                   </div>
                 )}
               </div>
+            ) : customerFileTab === "potentials" ? (
+              <div className={styles.customerDocumentModule}>
+                <div className={styles.customerFileMainHeader}>
+                  <h2>Potenziale</h2>
+                  <span>{customerPotentials.length} Potenzial{customerPotentials.length === 1 ? "" : "e"}</span>
+                </div>
+                {customerPotentials.length === 0 ? (
+                  <div className={styles.customerDocumentEmpty}>
+                    <strong>Noch keine Potenziale hinterlegt.</strong>
+                    <p>Erkannte Zusatzverkäufe aus Projekten erscheinen automatisch in dieser Kundenakte.</p>
+                  </div>
+                ) : (
+                  <div className={styles.projectTableScroll}>
+                    <table className={styles.projectTimeTable}>
+                      <thead>
+                        <tr>
+                          <th>Status</th>
+                          <th>Potenzial</th>
+                          <th>Projekt</th>
+                          <th>Wiedervorlage</th>
+                          <th>Historie</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {customerPotentials.map((potential) => (
+                          <tr key={potential.id}>
+                            <td>
+                              {potential.status === "follow_up"
+                                ? "Später nachfassen"
+                                : potential.status === "offered"
+                                  ? "Angeboten"
+                                  : potential.status === "lost"
+                                    ? "Kein Interesse"
+                                    : "Offen"}
+                            </td>
+                            <td>{potential.description}</td>
+                            <td>{potential.projectLabel || potential.projectId}</td>
+                            <td>{potential.followUpAt ? formatDeadline(potential.followUpAt) : "-"}</td>
+                            <td>
+                              {potential.history.length === 0
+                                ? "-"
+                                : potential.history.map((entry) => `${formatDeadline(entry.at)}: ${entry.note}`).join(" | ")}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             ) : customerFileTab === "projects" ? (
               <div className={styles.customerDocumentModule}>
                 <div className={styles.customerFileMainHeader}>
@@ -11541,6 +16177,7 @@ export function DashboardPage() {
                     <p>Projekte erscheinen hier automatisch, wenn der Kunde im Projekt hinterlegt ist.</p>
                   </div>
                 ) : (
+                  <div className={styles.projectTableScroll}>
                   <table className={styles.projectTimeTable}>
                     <thead>
                       <tr>
@@ -11584,6 +16221,7 @@ export function DashboardPage() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 )}
               </div>
             ) : (
@@ -11638,14 +16276,16 @@ export function DashboardPage() {
       "Allgemeine Dokumente",
       "Anfragen",
       "Angebote",
-      "Angebote: Sonderangebote",
+      "Angebote: Nachtragsangebote",
       "Tätigkeitsberichte",
       "Mahnung",
       "Rechnungen",
+      "Endkontrolle",
     ];
     const projectTabHelp: Partial<Record<ProjectFileTab, string>> = {
       time: "Hier stehen echte und manuell ergänzte Stempelzeiten. Unten werden Istzeiten gegen Sollzeiten aus Angeboten verglichen.",
-      appointments: "Hier stehen die konkret geplanten Termine mit Datum, Uhrzeit, Mitarbeiter und Planungsgruppe.",
+      appointments: "Hier werden Termine geplant und die gebuchten Stempelzeiten mit Zuordnung und Rechnungsstatus angezeigt.",
+      budgets: "Hier werden die monatlichen Projektzeitkontingente gepflegt. Diese Werte sind die Soll-Zeiten für Planung und Auswertung.",
       comparison: "Hier stehen die Vorgabezeiten aus Angeboten je Mitarbeiter und Position. Von hier aus werden offene Zeiten verplant.",
     };
     const renderProjectMenuLabel = (item: { id: ProjectFileTab; label: string; icon: string }) => (
@@ -11663,9 +16303,9 @@ export function DashboardPage() {
       { id: "logbook", label: "Logbuch", icon: "" },
       { id: "images", label: "Bilder", icon: "" },
       { id: "documents", label: "Dokumente", icon: "" },
-      { id: "comparison", label: "Vorgabezeiten aus Angebot", icon: "" },
-      { id: "appointments", label: "Geplante Termine", icon: "" },
-      { id: "time", label: "Stempelungen & Soll/Ist", icon: "" },
+      { id: "appointments", label: "Termine & Stempelungen", icon: "" },
+      { id: "budgets", label: "Projektzeitkontingente", icon: "" },
+      { id: "automaticBilling", label: "Automatische Abrechnung", icon: "" },
       { id: "tasks", label: "Aufgaben", icon: "" },
       { id: "material", label: "Material", icon: "" },
       { id: "participants", label: "Projektbeteiligte", icon: "" },
@@ -11706,6 +16346,48 @@ export function DashboardPage() {
     const projectLogEntries = projectLogbookEntries.filter(
       (entry) => String(entry.projectId) === String(selectedProjectFile.id)
     );
+    const projectUpsellSourceEntries = projectLogEntries.filter(
+      (entry) =>
+        entry.title === "Dokumente: Endkontrolle" &&
+        /zusatzverkauf:\s*(?!nein)/i.test(entry.text)
+    );
+    const projectUpsellResolutionEntries = projectLogEntries.filter((entry) =>
+      [
+        "Zusatzverkauf: Angebot erstellt",
+        "Zusatzverkauf: Potenzial nachfassen",
+        "Zusatzverkauf: Kein Interesse",
+      ].includes(entry.title)
+    );
+    const projectPotentialsForFile = projectPotentials.filter(
+      (potential) => String(potential.projectId) === String(selectedProjectFile.id)
+    );
+    const activeProjectPotential =
+      projectPotentialsForFile.find((potential) => ["open", "follow_up"].includes(potential.status)) ??
+      null;
+    const hasProjectUpsellOffer = projectPotentialsForFile.some((potential) => potential.status === "offered") ||
+      projectUpsellResolutionEntries.some(
+      (entry) => entry.title === "Zusatzverkauf: Angebot erstellt"
+    );
+    const hasProjectUpsellPotential = projectPotentialsForFile.some((potential) => potential.status === "follow_up") ||
+      projectUpsellResolutionEntries.some(
+      (entry) => entry.title === "Zusatzverkauf: Potenzial nachfassen"
+    );
+    const hasOpenProjectUpsell =
+      Boolean(activeProjectPotential && activeProjectPotential.status === "open") ||
+      projectUpsellSourceEntries.length > projectUpsellResolutionEntries.length;
+    const projectUpsellState = hasProjectUpsellOffer
+      ? "offered"
+      : hasProjectUpsellPotential
+        ? "potential"
+        : hasOpenProjectUpsell
+          ? "open"
+          : "";
+    const projectUpsellButtonLabel =
+      projectUpsellState === "offered"
+        ? "Zusatzverkauf angeboten"
+        : projectUpsellState === "potential"
+          ? "Hinterlegtes Potenzial"
+          : "Zusatzverkauf erkannt";
     const savedProjectLogEntries = projectLogEntries
       .filter((entry) => {
         if (!projectLogbookQuery) return true;
@@ -11733,12 +16415,18 @@ export function DashboardPage() {
           .includes(projectLogbookQuery);
       }),
     ];
-    const projectStampEntries = stampEntries.filter(
+    const projectStampHistoryEntries = stampEntries.filter(
       (entry) =>
         entry.mode === "project" && String(entry.projectId) === String(selectedProjectFile.id)
     );
+    const projectStampEntries = projectStampHistoryEntries.filter((entry) => !entry.deletedAt);
     const projectTrackedHours =
       projectStampEntries.reduce((sum, entry) => sum + entry.durationMs, 0) / 3_600_000;
+    const currentProjectMonthKey = formatInputDate(new Date()).slice(0, 7);
+    const projectTrackedMonthHours =
+      projectStampEntries
+        .filter((entry) => entry.date.startsWith(currentProjectMonthKey))
+        .reduce((sum, entry) => sum + entry.durationMs, 0) / 3_600_000;
     const projectPlanningHistoryEntries = planningEntries.filter(
       (entry) => String(entry.projectId) === String(selectedProjectFile.id)
     );
@@ -11750,6 +16438,19 @@ export function DashboardPage() {
       .sort((first, second) =>
         `${second.date} ${second.startTime}`.localeCompare(`${first.date} ${first.startTime}`)
       );
+    const projectFinalizedInvoicesByMonth = invoices
+      .filter(
+        (invoice) =>
+          String(invoice.projectId) === String(selectedProjectFile.id) &&
+          !isDeletedInvoice(invoice) &&
+          invoice.status !== "Entwurf"
+      )
+      .reduce<Record<string, string[]>>((groups, invoice) => {
+        const monthKey = getProjectInvoiceMonth(invoice);
+        if (!monthKey) return groups;
+        groups[monthKey] = [...(groups[monthKey] ?? []), invoice.invoiceNumber];
+        return groups;
+      }, {});
     const isTaskLinkedToSelectedProject = (task: TaskItem) => {
       if (task.projectId && String(task.projectId) === String(selectedProjectFile.id)) return true;
 
@@ -11783,133 +16484,644 @@ export function DashboardPage() {
         (first, second) =>
           parseAppDateTime(second.createdAt).getTime() - parseAppDateTime(first.createdAt).getTime()
       );
-    const projectBudgetHours = parseHoursInput(selectedProjectFile.timeBudgetHours);
+    const projectStampHistory = projectStampHistoryEntries
+      .map((entry) => {
+        const deleteHistory = entry.editHistory?.find(
+          (history) => history.event === "Zeiteintrag gelöscht"
+        );
+        const sortTime = entry.deletedAt
+          ? new Date(entry.deletedAt).getTime()
+          : new Date(`${entry.date}T${entry.endTime || entry.startTime || "00:00"}`).getTime();
+
+        return { entry, deleteHistory, sortTime };
+      })
+      .sort((first, second) => second.sortTime - first.sortTime);
+    const visibleProjectPlanningHistory = isProjectCombinedHistoryExpanded
+      ? projectPlanningHistory
+      : projectPlanningHistory.slice(0, 3);
+    const visibleProjectStampHistory = isProjectCombinedHistoryExpanded
+      ? projectStampHistory
+      : projectStampHistory.slice(0, 3);
+    const hasMoreProjectCombinedHistory =
+      projectPlanningHistory.length > 3 || projectStampHistory.length > 3;
+    const projectBudgetMonths = getProjectBudgetMonths(selectedProjectFile);
+    const projectHasBudgetAllocations = (selectedProjectFile.timeBudgetAllocations ?? []).length > 0;
+    const projectBudgetHours = projectHasBudgetAllocations
+      ? getProjectBudgetAllocationTotal(selectedProjectFile)
+      : 0;
+    const projectMonthBudgetHours = projectHasBudgetAllocations
+      ? getProjectBudgetAllocationHours(selectedProjectFile, currentProjectMonthKey)
+      : 0;
+    const projectMonthRemainingHours =
+      projectMonthBudgetHours > 0 ? projectMonthBudgetHours - projectTrackedMonthHours : 0;
+    const projectMonthBudgetUsagePercent =
+      projectMonthBudgetHours > 0 ? clampPercent((projectTrackedMonthHours / projectMonthBudgetHours) * 100) : 0;
     const projectRemainingHours = projectBudgetHours > 0 ? projectBudgetHours - projectTrackedHours : 0;
     const projectBudgetUsagePercent =
       projectBudgetHours > 0 ? clampPercent((projectTrackedHours / projectBudgetHours) * 100) : 0;
-    const projectOffers = offers.filter((offer) => offer.projectId === selectedProjectFile.id);
-    const projectInvoices = invoices.filter((invoice) => invoice.projectId === selectedProjectFile.id);
-    const projectComparisonOfferNumbers = projectOffers.map((offer) => offer.offerNumber);
-    const projectLaborComparisonRows = Array.from(
-      projectOffers
-        .flatMap((offer) =>
-          offer.lines.flatMap((line) =>
-            (() => {
-              const lineLaborTotalHours = (line.laborItems ?? []).reduce(
-                (sum, labor) => sum + Number(labor.plannedHours || 0),
-                0
-              );
-              const lineRevenue = Number(line.quantity || 0) * Number(line.unitPrice || 0);
+    const projectBudgetDraftTotal = projectBudgetMonths.reduce(
+      (sum, month) => sum + parseHoursInput(projectBudgetMonthDrafts[month]),
+      0
+    );
+    const projectBudgetTotalLimit = parseHoursInput(projectBudgetTotalDraft);
+    const projectBudgetExceedsTotal =
+      projectBudgetTotalLimit > 0 &&
+      projectBudgetDraftTotal > projectBudgetTotalLimit + 0.0001;
+    const projectBudgetRemainingFromTotal =
+      projectBudgetTotalLimit > 0
+        ? projectBudgetTotalLimit - projectBudgetDraftTotal
+        : 0;
+    const updateProjectBudgetMonthDraft = (month: string, value: string) => {
+      if (value === "") {
+        setProjectBudgetMonthDrafts((current) => ({
+          ...current,
+          [month]: "",
+        }));
+        return;
+      }
 
-              return (line.laborItems ?? []).map((labor) => ({
-                userId: labor.userId,
-                employeeName: labor.employeeName || users.find((user) => user.id === labor.userId)?.name || "-",
-                plannedHours: Number(labor.plannedHours || 0),
-                hourlyCostRate: Number(labor.hourlyCostRate || getEmployeeHourlyCostRate(labor.userId) || 0),
-                laborRevenue:
-                  lineLaborTotalHours > 0
-                    ? lineRevenue * (Number(labor.plannedHours || 0) / lineLaborTotalHours)
-                    : 0,
-                positionTitle: line.title,
-                offerNumber: offer.offerNumber,
-              }));
-            })()
-          )
-        )
-        .reduce((rows, labor) => {
-          const current = rows.get(labor.employeeName) ?? {
-            userId: labor.userId,
-            employeeName: labor.employeeName,
-            plannedHours: 0,
-            plannedPlanningHours: 0,
+      if (projectBudgetTotalLimit > 0) {
+        const otherMonthTotal = projectBudgetMonths
+          .filter((budgetMonth) => budgetMonth !== month)
+          .reduce((sum, budgetMonth) => sum + parseHoursInput(projectBudgetMonthDrafts[budgetMonth]), 0);
+        const maxForMonth = Math.max(projectBudgetTotalLimit - otherMonthTotal, 0);
+        const numericValue = parseHoursInput(value);
+
+        if (numericValue > maxForMonth) {
+          setProjectBudgetMonthDrafts((current) => ({
+            ...current,
+            [month]: String(Math.round(maxForMonth * 100) / 100),
+          }));
+          return;
+        }
+      }
+
+      setProjectBudgetMonthDrafts((current) => ({
+        ...current,
+        [month]: value,
+      }));
+    };
+    const distributeProjectBudgetTotal = () => {
+      const total = parseHoursInput(projectBudgetTotalDraft);
+      if (total <= 0 || projectBudgetMonths.length === 0) return;
+
+      const base = Math.floor((total / projectBudgetMonths.length) * 100) / 100;
+      let remaining = Math.round((total - base * projectBudgetMonths.length) * 100) / 100;
+      const nextDrafts = Object.fromEntries(
+        projectBudgetMonths.map((month, index) => {
+          const extra = index === projectBudgetMonths.length - 1 ? remaining : 0;
+          if (index === projectBudgetMonths.length - 1) remaining = 0;
+          return [month, String(Math.round((base + extra) * 100) / 100)];
+        })
+      );
+
+      setProjectBudgetMonthDrafts(nextDrafts);
+    };
+    const saveProjectBudgetAllocations = async () => {
+      const allocations = projectBudgetMonths
+        .map((month) => ({
+          id:
+            selectedProjectFile.timeBudgetAllocations?.find((allocation) => allocation.month === month)?.id ||
+            `budget-${selectedProjectFile.id}-${month}`,
+          month,
+          hours: projectBudgetMonthDrafts[month] || "",
+        }))
+        .filter((allocation) => parseHoursInput(allocation.hours) > 0);
+      const totalHours = allocations.reduce((sum, allocation) => sum + parseHoursInput(allocation.hours), 0);
+      if (projectBudgetTotalLimit > 0 && totalHours > projectBudgetTotalLimit + 0.0001) {
+        setErrorMessage("Die Monatskontingente dürfen das Gesamtprojektkontingent nicht überschreiten.");
+        return;
+      }
+
+      const updatedProject: HeroProjectPreview = {
+        ...selectedProjectFile,
+        timeBudgetHours: totalHours > 0 ? formatHours(totalHours) : "",
+        timeBudgetAllocations: allocations,
+      };
+
+      try {
+        const savedProject = await persistProject(updatedProject);
+        setHeroProjects((currentProjects) =>
+          currentProjects.map((project) => (project.id === savedProject.id ? savedProject : project))
+        );
+        setSelectedProjectFileId(savedProject.id);
+        await addProjectLogbookEntry(
+          savedProject.id,
+          "Projektzeitkontingente",
+          allocations.length > 0
+            ? `Projektzeitkontingente gespeichert: ${formatHours(totalHours)} Std. auf ${allocations.length} Monat(e).`
+            : "Projektzeitkontingente entfernt. Projekt wird nach tatsächlichen Stunden behandelt."
+        );
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : "Projektzeitkontingente konnten nicht gespeichert werden.");
+      }
+    };
+    const projectOffers = offers.filter((offer) => offer.projectId === selectedProjectFile.id);
+    const projectBaseOffers = projectOffers.filter((offer) => offer.offerType !== "addendum");
+    const projectAddendumOffers = projectOffers.filter((offer) => offer.offerType === "addendum");
+    const projectInvoices = invoices.filter(
+      (invoice) => invoice.projectId === selectedProjectFile.id && !isDeletedInvoice(invoice)
+    );
+    const activeProjectInvoices = projectInvoices;
+    const finalizedProjectInvoices = activeProjectInvoices.filter((invoice) => invoice.status !== "Entwurf");
+    const projectComparisonOfferNumbers = projectOffers.map((offer) => offer.offerNumber);
+    const comparisonMonthDate = (() => {
+      const [year, month] = projectComparisonMonth.split("-").map(Number);
+      return Number.isFinite(year) && Number.isFinite(month)
+        ? new Date(year, month - 1, 1)
+        : new Date();
+    })();
+    const comparisonMonthLabel = comparisonMonthDate.toLocaleString(APP_LOCALE, {
+      month: "long",
+      year: "numeric",
+    });
+    const shiftComparisonMonth = (offset: number) => {
+      const nextDate = new Date(comparisonMonthDate.getFullYear(), comparisonMonthDate.getMonth() + offset, 1);
+      setProjectComparisonMonth(
+        `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, "0")}`
+      );
+    };
+    const isSelectedProjectRecurring = getProjectKind(selectedProjectFile).startsWith("Dauer");
+    const projectComparisonMonthPlanningEntries = projectPlanningEntries.filter((entry) =>
+      entry.date.startsWith(projectComparisonMonth)
+    );
+    const projectComparisonMonthOfferPlanningEntries = projectComparisonMonthPlanningEntries.filter(
+      (entry) => entry.source === "offer" && entry.date.startsWith(projectComparisonMonth)
+    );
+    const projectComparisonMonthStampEntries = projectStampEntries.filter((entry) =>
+      entry.date.startsWith(projectComparisonMonth)
+    );
+    const formatPlanningAssignees = (entries: PlanningEntry[]) => {
+      if (entries.length === 0) return ["Noch nicht verplant"];
+      const groupedEntries = entries.reduce<Record<string, number>>((grouped, entry) => {
+        const employee = entry.employeeName || "Noch nicht zugewiesen";
+        grouped[employee] =
+          (grouped[employee] ?? 0) + Number(entry.offerPlannedMinutes || entry.durationMinutes || 0) / 60;
+        return grouped;
+      }, {});
+
+      return Object.entries(groupedEntries).map(
+        ([employee, hours]) => `${employee}: ${formatHours(hours)} Std.`
+      );
+    };
+    const offerLaborComparisonRows = projectOffers.flatMap((offer) =>
+      offer.lines
+        .flatMap((line, lineIndex) => {
+          if (!isOfferDueForPlanningMonth(offer, selectedProjectFile, projectComparisonMonth)) return [];
+          const lineLaborItems = (line.laborItems ?? []).filter((labor) => Number(labor.plannedHours || 0) > 0);
+          const plannedLineHours = lineLaborItems.reduce(
+            (sum, labor) => sum + Number(labor.plannedHours || 0),
+            0
+          );
+          const fallbackPlannedHours = plannedLineHours > 0 ? plannedLineHours : Number(line.quantity || 0);
+          const lineRevenue = Number(line.quantity || 0) * Number(line.unitPrice || 0);
+          const offerLabel = `${offer.offerNumber}${offer.offerType === "addendum" ? " (Nachtrag)" : ""}`;
+          const linePlanningEntries = projectComparisonMonthOfferPlanningEntries.filter((entry) => {
+            const haystack = [entry.title, entry.description, entry.offerLabel].join(" ").toLowerCase();
+            return (
+              haystack.includes(offer.offerNumber.toLowerCase()) ||
+              (line.title && haystack.includes(line.title.toLowerCase()))
+            );
+          });
+          const linePlanningHours =
+            linePlanningEntries.reduce(
+              (sum, entry) => sum + Number(entry.offerPlannedMinutes || entry.durationMinutes || 0),
+              0
+            ) / 60;
+          return [{
+            key: `${offer.id}-${line.id || lineIndex}-${projectComparisonMonth}`,
+            userId: "",
+            employeeName: "nicht personenbezogen",
+            plannedHours: fallbackPlannedHours,
+            plannedPlanningHours: linePlanningHours,
+            actualHours: 0,
+            laborRevenue: lineRevenue,
+            hourlyCostRate: 0,
+            positions: [`${offerLabel}: ${line.title || "Position"}`],
+            offerNumbers: [offer.offerNumber],
+            month: projectComparisonMonth,
+            positionTitle: line.title || "Planung aus Angebot",
+            assignees: formatPlanningAssignees(linePlanningEntries),
+            recurrenceLabel: isSelectedProjectRecurring
+              ? offer.plannedExecutionEndMonth
+                ? `monatlich bis ${offer.plannedExecutionEndMonth}`
+                : "monatlich bis Projektende"
+              : "einmalig",
+            sourceKind: "offer" as const,
+          }];
+        })
+    ) as Array<{
+      key: string;
+      userId: string;
+      employeeName: string;
+      plannedHours: number;
+      plannedPlanningHours: number;
+      actualHours: number;
+      laborRevenue: number;
+      hourlyCostRate: number;
+      positions: string[];
+      offerNumbers: string[];
+      month: string;
+      positionTitle: string;
+      assignees: string[];
+      recurrenceLabel: string;
+      sourceKind: "offer" | "projectBudget";
+    }>;
+    const unmappedProjectPlanningEntries = projectComparisonMonthPlanningEntries.filter(
+      (entry) => entry.source !== "offer"
+    );
+    const unmappedProjectPlanningHours =
+      unmappedProjectPlanningEntries.reduce((sum, entry) => sum + Number(entry.durationMinutes || 0), 0) / 60;
+    const offerRowsWithUnmappedProjectPlanning =
+      offerLaborComparisonRows.length === 1 && unmappedProjectPlanningHours > 0
+        ? offerLaborComparisonRows.map((row) => ({
+            ...row,
+            plannedPlanningHours: row.plannedPlanningHours + unmappedProjectPlanningHours,
+            assignees: formatPlanningAssignees([
+              ...projectComparisonMonthOfferPlanningEntries.filter((entry) => {
+                const haystack = [entry.title, entry.description, entry.offerLabel].join(" ").toLowerCase();
+                return row.offerNumbers.some((offerNumber) => haystack.includes(offerNumber.toLowerCase()));
+              }),
+              ...unmappedProjectPlanningEntries,
+            ]),
+          }))
+        : offerLaborComparisonRows;
+    const manualBudgetPlanningEntries = projectComparisonMonthOfferPlanningEntries.filter((entry) =>
+      [entry.title, entry.description, entry.offerLabel].join(" ").toLowerCase().includes("manuelles projektkontingent")
+    );
+    const projectComparisonMonthBudgetHours = getProjectBudgetAllocationHours(
+      selectedProjectFile,
+      projectComparisonMonth
+    );
+    const projectBudgetComparisonRows =
+      offerRowsWithUnmappedProjectPlanning.length === 0 &&
+      projectComparisonMonthBudgetHours > 0
+        ? [{
+            key: `project-budget-${selectedProjectFile.id}-${projectComparisonMonth}`,
+            userId: "",
+            employeeName: "nicht personenbezogen",
+            plannedHours: projectComparisonMonthBudgetHours,
+            plannedPlanningHours:
+              manualBudgetPlanningEntries.reduce(
+                (sum, entry) => sum + Number(entry.offerPlannedMinutes || entry.durationMinutes || 0),
+                0
+              ) / 60,
             actualHours: 0,
             laborRevenue: 0,
             hourlyCostRate: 0,
-            positions: [] as string[],
-            offerNumbers: [] as string[],
-          };
-          if (!current.userId && labor.userId) current.userId = labor.userId;
-          current.plannedHours += labor.plannedHours;
-          current.laborRevenue += labor.laborRevenue;
-          current.hourlyCostRate =
-            current.hourlyCostRate > 0 ? current.hourlyCostRate : labor.hourlyCostRate;
-          const positionLabel = `${labor.offerNumber}: ${labor.positionTitle}`;
-          if (!current.positions.includes(positionLabel)) {
-            current.positions.push(positionLabel);
-          }
-          if (!current.offerNumbers.includes(labor.offerNumber)) {
-            current.offerNumbers.push(labor.offerNumber);
-          }
-          rows.set(labor.employeeName, current);
-          return rows;
-        }, new Map<string, { userId: string; employeeName: string; plannedHours: number; plannedPlanningHours: number; actualHours: number; laborRevenue: number; hourlyCostRate: number; positions: string[]; offerNumbers: string[] }>())
-        .values()
-    ).map((row) => ({
-      ...row,
-      plannedPlanningHours:
-        planningEntries
-          .filter(
-            (entry) =>
-              entry.source === "offer" &&
-              entry.projectId === selectedProjectFile.id &&
-              (entry.userId === row.userId || entry.employeeName === row.employeeName) &&
-              !entry.deletedAt
-          )
-          .reduce((sum, entry) => sum + Number(entry.offerPlannedMinutes || entry.durationMinutes || 0), 0) / 60,
-      actualHours:
-        projectStampEntries
-          .filter((entry) => entry.employee === row.employeeName)
-          .reduce((sum, entry) => sum + entry.durationMs, 0) / 3_600_000,
-    }));
+            positions: ["Manuelles Projektkontingent"],
+            offerNumbers: ["ohne Angebot"],
+            month: projectComparisonMonth,
+            positionTitle: "Manuelles Projektkontingent",
+            assignees: formatPlanningAssignees(manualBudgetPlanningEntries),
+            recurrenceLabel: "Projektzeitkontingent",
+            sourceKind: "projectBudget" as const,
+          }]
+        : [];
+    const projectLaborComparisonRows = [...offerRowsWithUnmappedProjectPlanning, ...projectBudgetComparisonRows];
+    const projectLaborComparisonTotals = {
+      plannedHours: projectLaborComparisonRows.reduce((sum, row) => sum + row.plannedHours, 0),
+      plannedPlanningHours: projectLaborComparisonRows.reduce((sum, row) => sum + row.plannedPlanningHours, 0),
+      actualHours: projectComparisonMonthStampEntries.reduce((sum, entry) => sum + entry.durationMs, 0) / 3_600_000,
+      laborRevenue: projectLaborComparisonRows.reduce((sum, row) => sum + row.laborRevenue, 0),
+    };
     const projectLaborPerformanceRows = projectLaborComparisonRows.map((row) => {
-      const actualLaborCost = row.actualHours * row.hourlyCostRate;
-      const laborContribution = row.laborRevenue - actualLaborCost;
-      const laborMargin = row.laborRevenue > 0 ? (laborContribution / row.laborRevenue) * 100 : 0;
-      const performancePercent = row.actualHours > 0 ? (row.plannedHours / row.actualHours) * 100 : 0;
+      const actualShare =
+        projectLaborComparisonTotals.plannedHours > 0
+          ? projectLaborComparisonTotals.actualHours * (row.plannedHours / projectLaborComparisonTotals.plannedHours)
+          : 0;
+      const actualLaborCost = 0;
+      const laborContribution = row.laborRevenue;
+      const laborMargin = row.laborRevenue > 0 ? 100 : 0;
+      const performancePercent = actualShare > 0 ? (row.plannedHours / actualShare) * 100 : 0;
 
       return {
         ...row,
+        actualHours: actualShare,
         actualLaborCost,
         laborContribution,
         laborMargin,
         performancePercent,
       };
     });
+    const getProjectStampEntriesForPlanningEntry = (entry: PlanningEntry) =>
+      projectStampEntries.filter(
+        (stampEntry) =>
+          stampEntry.date === entry.date &&
+          Boolean(entry.employeeName) &&
+          stampEntry.employee === entry.employeeName
+      );
+    const projectTerminPlanningRows = projectPlanningEntries.map((entry) => {
+      const plannedHours = Number(entry.durationMinutes || 0) / 60;
+      const monthKey = entry.date.slice(0, 7);
+      const monthBudgetHours = getProjectBudgetAllocationHours(selectedProjectFile, monthKey);
+      const monthPlannedHours =
+        projectPlanningEntries
+          .filter((planningEntry) => planningEntry.date.startsWith(monthKey))
+          .reduce((sum, planningEntry) => sum + Number(planningEntry.durationMinutes || 0), 0) / 60;
+      const hasMonthBudget = monthBudgetHours > 0;
+      const budgetText = hasMonthBudget
+        ? `${formatHours(monthPlannedHours)} von ${formatHours(monthBudgetHours)} Std.`
+        : "-";
+      const remainingBudgetHours = hasMonthBudget ? monthBudgetHours - monthPlannedHours : 0;
+      const budgetClipState = hasMonthBudget
+        ? remainingBudgetHours > 0
+          ? "remaining"
+          : remainingBudgetHours === 0
+            ? "complete"
+            : "over"
+        : "";
+      const budgetClipLabel = hasMonthBudget
+        ? remainingBudgetHours > 0
+          ? `${formatHours(remainingBudgetHours)} Std. übrig`
+          : remainingBudgetHours === 0
+            ? "voll verplant"
+            : `${formatHours(Math.abs(remainingBudgetHours))} Std. zu viel`
+        : "";
+      const planningStatusLabel = hasMonthBudget
+        ? monthPlannedHours < monthBudgetHours
+          ? "teilweise verplant"
+          : monthPlannedHours === monthBudgetHours
+            ? "voll verplant"
+            : "zu viel geplant"
+        : "freie Planung";
+      const targetHours = hasMonthBudget ? monthBudgetHours : plannedHours;
+      const plannedAgainstTargetHours = hasMonthBudget ? monthPlannedHours : plannedHours;
+      const differenceHours = hasMonthBudget ? targetHours - plannedAgainstTargetHours : 0;
+      const planningStatus = hasMonthBudget
+        ? plannedAgainstTargetHours <= 0
+          ? "offen"
+          : plannedAgainstTargetHours < targetHours
+            ? "teilweise geplant"
+            : plannedAgainstTargetHours === targetHours
+              ? "voll geplant"
+              : "überplant"
+        : "terminbasiert";
+      const matchingStampEntries = getProjectStampEntriesForPlanningEntry(entry);
+      const actualHours = matchingStampEntries.reduce((sum, stampEntry) => sum + stampEntry.durationMs, 0) / 3_600_000;
+      const performancePercent = actualHours > 0 ? (targetHours / actualHours) * 100 : null;
+      const actualEmployees = Array.from(new Set(matchingStampEntries.map((stampEntry) => stampEntry.employee).filter(Boolean)));
+
+      return {
+        entry,
+        budgetText,
+        budgetClipLabel,
+        budgetClipState,
+        differenceHours,
+        hasMonthBudget,
+        planningStatus: planningStatusLabel,
+        plannedHours,
+        plannedAgainstTargetHours,
+        targetHours,
+        actualHours,
+        performancePercent,
+        actualEmployees,
+      };
+    });
+    const projectPlanningMatchedStampIds = new Set(
+      projectPlanningEntries.flatMap((entry) => getProjectStampEntriesForPlanningEntry(entry).map((stampEntry) => stampEntry.id))
+    );
+    const projectBudgetMatchedStampIds = new Set(
+      projectPlanningEntries.flatMap((entry) => {
+        const monthKey = entry.date.slice(0, 7);
+        const hasMonthBudget = getProjectBudgetAllocationHours(selectedProjectFile, monthKey) > 0;
+        return hasMonthBudget
+          ? projectStampEntries
+              .filter((stampEntry) => stampEntry.date.startsWith(monthKey))
+              .map((stampEntry) => stampEntry.id)
+          : [];
+      })
+    );
+    const projectUnmatchedStampEntries = projectStampEntries.filter(
+      (stampEntry) => !projectPlanningMatchedStampIds.has(stampEntry.id)
+    );
+    const projectExpectedStampRows = projectPlanningEntries.map((entry) => {
+      const matchingStampEntries = getProjectStampEntriesForPlanningEntry(entry);
+      const actualHours = matchingStampEntries.reduce((sum, stampEntry) => sum + stampEntry.durationMs, 0) / 3_600_000;
+      const targetHours = Number(entry.durationMinutes || 0) / 60;
+      const differenceHours = targetHours - actualHours;
+      const performancePercent = actualHours > 0 ? (targetHours / actualHours) * 100 : null;
+      const invoiceNumbers = Array.from(
+        new Set([
+          ...matchingStampEntries.map((stampEntry) => stampEntry.invoiceNumber).filter(Boolean),
+          ...(projectFinalizedInvoicesByMonth[entry.date.slice(0, 7)] ?? []),
+        ])
+      );
+      const status =
+        actualHours <= 0
+          ? "offen"
+          : actualHours < targetHours - 0.01
+            ? "schneller als Vorgabe"
+            : Math.abs(actualHours - targetHours) <= 0.01
+              ? "Vorgabe eingehalten"
+              : "Vorgabe nicht erreicht";
+      const statusTone =
+        status === "schneller als Vorgabe"
+          ? "fast"
+          : status === "Vorgabe eingehalten"
+            ? "met"
+            : status === "Vorgabe nicht erreicht"
+              ? "missed"
+              : "open";
+
+      return {
+        id: `expected-${entry.id}`,
+        employeeName: entry.employeeName || "Noch nicht zugewiesen",
+        date: entry.date,
+        timeRange: `${entry.startTime} - ${entry.endTime}`,
+        targetHours,
+        actualHours,
+        differenceHours,
+        performancePercent,
+        status,
+        statusTone,
+        invoiceLabel: invoiceNumbers.length > 0 ? `Fakturiert: ${invoiceNumbers.join(", ")}` : "Offen",
+        editEntry: matchingStampEntries[0],
+      };
+    });
+    const projectUnexpectedStampRows = projectUnmatchedStampEntries.map((entry) => ({
+      id: `unexpected-${entry.id}`,
+      employeeName: entry.employee || "Nicht zugewiesen",
+      date: entry.date,
+      timeRange: `${entry.startTime} - ${entry.endTime}`,
+      targetHours: 0,
+      actualHours: Number(entry.durationMs || 0) / 3_600_000,
+      differenceHours: -(Number(entry.durationMs || 0) / 3_600_000),
+      performancePercent: null,
+      status: "ungeplant gestempelt",
+      statusTone: "unplanned",
+      invoiceLabel: entry.invoiceNumber ? `Fakturiert: ${entry.invoiceNumber}` : "Offen",
+      editEntry: entry,
+    }));
+    const projectStampExpectationRows = [...projectExpectedStampRows, ...projectUnexpectedStampRows];
+    const transferPlanningToStampedEmployees = async (entry: PlanningEntry) => {
+      const matchingStampEntries = getProjectStampEntriesForPlanningEntry(entry);
+      const stampedByEmployee = matchingStampEntries.reduce<Record<string, { employee: string; userId: string; durationMs: number }>>(
+        (groups, stampEntry) => {
+          const employee = stampEntry.employee || "Nicht zugewiesen";
+          groups[employee] = groups[employee] ?? { employee, userId: stampEntry.userId || "", durationMs: 0 };
+          groups[employee].durationMs += Number(stampEntry.durationMs || 0);
+          if (!groups[employee].userId && stampEntry.userId) groups[employee].userId = stampEntry.userId;
+          return groups;
+        },
+        {}
+      );
+      const allocations = Object.values(stampedByEmployee).filter((allocation) => allocation.durationMs > 0);
+      const totalStampedMs = allocations.reduce((sum, allocation) => sum + allocation.durationMs, 0);
+
+      if (allocations.length === 0 || totalStampedMs <= 0) {
+        setErrorMessage("Es gibt keine passende Stempelzeit, auf die die Planung übertragen werden kann.");
+        return;
+      }
+
+      const confirmed = window.confirm(
+        allocations.length === 1
+          ? `Soll die geplante Zeit von ${entry.employeeName || "nicht zugewiesen"} auf ${allocations[0].employee} übertragen werden?`
+          : `Soll die geplante Zeit anteilig auf ${allocations.map((allocation) => allocation.employee).join(", ")} verteilt werden?`
+      );
+      if (!confirmed) return;
+
+      const plannedMinutes = Number(entry.durationMinutes || 0);
+      let assignedMinutes = 0;
+      const allocationRows = allocations.map((allocation, index) => {
+        const minutes =
+          index === allocations.length - 1
+            ? Math.max(plannedMinutes - assignedMinutes, 1)
+            : Math.max(Math.round(plannedMinutes * (allocation.durationMs / totalStampedMs)), 1);
+        assignedMinutes += minutes;
+        const user = users.find((candidate) => candidate.id === allocation.userId || candidate.name === allocation.employee);
+        return {
+          id: index === 0 ? entry.id : crypto.randomUUID(),
+          employeeName: allocation.employee,
+          userId: user?.id || allocation.userId || "",
+          durationMinutes: minutes,
+        };
+      });
+
+      try {
+        for (const allocation of allocationRows) {
+          const res = await fetch("/api/planning-entries", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              source: entry.source,
+              id: allocation.id,
+              approvalStatus: "confirmed",
+              actorUserId: activeUserId,
+              actorName: activeUser?.name ?? "",
+              board: entry.board,
+              groupName: entry.groupName,
+              userId: allocation.userId,
+              employeeName: allocation.employeeName,
+              date: entry.date,
+              startTime: entry.startTime,
+              endTime: entry.endTime,
+              durationMinutes: allocation.durationMinutes,
+              title: entry.title,
+              customer: entry.customer,
+              description: `${entry.description || ""}\nSoll-Zeit automatisch auf tatsächlich stempelnde Mitarbeiter übertragen.`.trim(),
+              projectId: entry.projectId,
+              projectLabel: entry.projectLabel,
+              offerId: entry.offerId,
+              offerLineId: entry.offerLineId,
+              offerLabel: entry.offerLabel,
+              offerTotalMinutes: entry.offerTotalMinutes,
+              offerPlannedMinutes: allocation.durationMinutes,
+              recurrenceId: "",
+              recurrenceRule: "",
+            }),
+          });
+
+          if (!res.ok) {
+            const data = await res.json().catch(() => null);
+            throw new Error(data?.error ?? "Soll-Zeit konnte nicht übertragen werden.");
+          }
+        }
+
+        await loadPlanningEntries();
+        await addProjectLogbookEntry(
+          selectedProjectFile.id,
+          "Planung",
+          `Soll-Zeit übertragen: ${entry.title} wurde auf ${allocationRows
+            .map((allocation) => `${allocation.employeeName} (${formatHours(allocation.durationMinutes / 60)} Std.)`)
+            .join(", ")} verteilt.`
+        );
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : "Soll-Zeit konnte nicht übertragen werden.");
+      }
+    };
     const openOfferPlanningFromComparison = (row: (typeof projectLaborComparisonRows)[number]) => {
-      const user = users.find((item) => item.id === row.userId || item.name === row.employeeName);
-      const board = (user?.planningBoard === "OK immocare" ? "OK immocare" : "OK solutions") as PlanningBoardCompany;
+      const projectBoard = (
+        selectedProjectFile.projectType === "Projekt OK immocare" ||
+        selectedProjectFile.branch === "OK immocare GmbH"
+          ? "OK immocare"
+          : "OK solutions"
+      ) as PlanningBoardCompany;
+      const board = projectBoard;
       const groups = getPlanningEntryGroups(board);
-      const groupName = user?.planningGroup && groups.includes(user.planningGroup) ? user.planningGroup : groups[0];
+      const groupName = groups[0];
       const remainingHours = Math.max(row.plannedHours - row.plannedPlanningHours, 0);
 
       resetPlanningEntryForm();
       setPlanningEntrySource("offer");
       setPlanningEntryBoard(board);
       setPlanningEntryGroup(groupName);
-      setPlanningEntryUserId(user?.id ?? row.userId ?? "");
+      setPlanningEntryUserId("");
       setPlanningEntryDate(selectedPlanningDateKey);
       setPlanningEntryStartTime("08:00");
       setPlanningEntryEndTime("09:00");
-      setPlanningEntryTitle(row.positions[0]?.replace(/^ANG-\d+:\s*/, "") || "Planung aus Angebot");
+      setPlanningEntryTitle(row.positionTitle || "Planung aus Angebot");
       setPlanningEntryCustomer(selectedProjectFile.customer || "");
       setPlanningEntryProjectId(selectedProjectFile.id);
       setPlanningEntryProjectSearch(`${selectedProjectFile.projectNumber || selectedProjectFile.id} | ${selectedProjectFile.title}`);
       setIsPlanningEntryProjectSearchOpen(false);
       setPlanningEntryDescription(
-        `Planung aus Angebot: ${row.offerNumbers.join(", ")}. Offene Vorgabezeit: ${formatHours(remainingHours)} Std.`
+        `${row.sourceKind === "projectBudget" ? "Planung aus manuellem Projektkontingent" : `Planung aus Angebot: ${row.offerNumbers.join(", ")}`}. Fälligkeit: ${comparisonMonthLabel}. Offene Vorgabezeit: ${formatHours(remainingHours)} Std. Mitarbeiter werden in diesem Planungstermin festgelegt.`
       );
       setPlanningEntryOfferLabel(row.positions.join(", "));
       setPlanningEntryOfferTotalHours(String(row.plannedHours));
+      if (isSelectedProjectRecurring && selectedProjectFile.projectRuntimeUntil) {
+        setPlanningRecurrenceType("monthly");
+        setPlanningRecurrenceUntil(selectedProjectFile.projectRuntimeUntil);
+      }
       setPlanningEntryApprovalStatus("confirmed");
       setEditingPlanningEntryId("");
       setIsPlanningEntryModalOpen(true);
     };
-    const projectOfferPlannedTotalHours = projectLaborComparisonRows.reduce(
-      (sum, row) => sum + Number(row.plannedPlanningHours || 0),
-      0
-    );
-    const projectOpenOfferPlanningHours = projectLaborComparisonRows.reduce(
-      (sum, row) => sum + Math.max(Number(row.plannedHours || 0) - Number(row.plannedPlanningHours || 0), 0),
+    const openManualProjectPlanning = (approvalStatus: PlanningEntryApprovalStatus = "confirmed") => {
+      const projectBoard = (
+        selectedProjectFile.projectType === "Projekt OK immocare" ||
+        selectedProjectFile.branch === "OK immocare GmbH"
+          ? "OK immocare"
+          : "OK solutions"
+      ) as PlanningBoardCompany;
+      const groupName = getPlanningEntryGroups(projectBoard)[0];
+
+      resetPlanningEntryForm();
+      setPlanningEntrySource("manual");
+      setPlanningEntryBoard(projectBoard);
+      setPlanningEntryGroup(groupName);
+      setPlanningEntryUserId("");
+      setPlanningEntryDate(selectedPlanningDateKey);
+      setPlanningEntryStartTime("08:00");
+      setPlanningEntryEndTime("09:00");
+      setPlanningEntryTitle("Freie Projektplanung");
+      setPlanningEntryCustomer(selectedProjectFile.customer || "");
+      setPlanningEntryProjectId(selectedProjectFile.id);
+      setPlanningEntryProjectSearch(`${selectedProjectFile.projectNumber || selectedProjectFile.id} | ${selectedProjectFile.title}`);
+      setIsPlanningEntryProjectSearchOpen(false);
+      setPlanningEntryDescription("Freie Planung ohne Angebotskontingent. Mitarbeiter und Dauer werden in diesem Termin festgelegt.");
+      setPlanningEntryOfferLabel("");
+      setPlanningEntryOfferTotalHours("0");
+      setPlanningEntryApprovalStatus(approvalStatus);
+      setEditingPlanningEntryId("");
+      setIsPlanningEntryModalOpen(true);
+    };
+    const projectOfferPlannedTotalHours = projectLaborComparisonTotals.plannedPlanningHours;
+    const projectOpenOfferPlanningHours = Math.max(
+      projectLaborComparisonTotals.plannedHours - projectLaborComparisonTotals.plannedPlanningHours,
       0
     );
     const projectPlanningButtonState =
@@ -11932,6 +17144,11 @@ export function DashboardPage() {
           entry.title === `Dokumente: ${category}` &&
           entry.attachments.some((attachment) => attachment.type === "Dokument")
       );
+    const projectEndCheckCount = getProjectDocumentEntries("Endkontrolle").reduce(
+      (sum, entry) =>
+        sum + entry.attachments.filter((attachment) => attachment.type === "Dokument").length,
+      0
+    );
     const hasProjectDocumentMarker = (keyword: string) =>
       projectLogEntries.some((entry) => {
         const haystack = [
@@ -11985,7 +17202,7 @@ export function DashboardPage() {
             : projectOpenOfferPlanningHours > 0
               ? `${formatHours(projectOpenOfferPlanningHours)} Std. noch offen`
               : "Alle Zeiten komplett verplant",
-        onClick: () => setProjectFileTab("comparison"),
+        onClick: () => setProjectFileTab("appointments"),
       },
       {
         id: "beforeImages",
@@ -12022,9 +17239,9 @@ export function DashboardPage() {
       {
         id: "invoice",
         label: "Rechnung",
-        state: projectInvoices.length > 0 || hasProjectDocumentMarker("rechnung") ? "done" : "open",
-        hint: projectInvoices.length > 0 || hasProjectDocumentMarker("rechnung")
-          ? "Rechnung abgelegt"
+        state: finalizedProjectInvoices.length > 0 ? "done" : "open",
+        hint: finalizedProjectInvoices.length > 0
+          ? `${finalizedProjectInvoices.length} Rechnung${finalizedProjectInvoices.length === 1 ? "" : "en"} vorhanden`
           : "Noch keine Rechnung abgelegt",
         onClick: () => {
           setProjectFileTab("documents");
@@ -12048,33 +17265,75 @@ export function DashboardPage() {
     ];
     const openProjectPlanningAction = () => {
       if (projectOpenOfferPlanningHours > 0) {
-        setProjectFileTab("comparison");
+        setProjectFileTab("appointments");
         return;
       }
 
       openProjectPlanningBoard();
     };
+    const openProjectUpsellLog = () => {
+      setProjectFileTab("logbook");
+      setProjectLogbookSearch("Zusatzverkauf");
+      setIsProjectUpsellMenuOpen(false);
+    };
+    const ensureSelectedProjectPotential = async () => {
+      if (activeProjectPotential) return activeProjectPotential;
+      const fallbackDescription =
+        projectUpsellSourceEntries[0]?.text.match(/Zusatzverkauf:\s*(.+)/i)?.[1]?.trim() ||
+        "Erkanntes Zusatzverkaufspotenzial";
+      return createProjectPotential(selectedProjectFile, fallbackDescription);
+    };
+    const createProjectUpsellOffer = async () => {
+      await ensureSelectedProjectPotential();
+      setIsProjectUpsellMenuOpen(false);
+      openOfferModal(selectedProjectFile, { fromUpsell: true });
+    };
+    const deferProjectUpsellPotential = async () => {
+      const potential = await ensureSelectedProjectPotential();
+      if (!potential) return;
+      await schedulePotentialFollowUp(potential);
+      setProjectFileTab("logbook");
+      setProjectLogbookSearch("Potenzial");
+      setIsProjectUpsellMenuOpen(false);
+    };
+    const closeProjectUpsellPotential = async () => {
+      const potential = await ensureSelectedProjectPotential();
+      if (!potential) return;
+      await closePotential(potential);
+      setIsProjectUpsellMenuOpen(false);
+    };
     const projectOfferHistory = offerHistory
       .filter((entry) => entry.projectId === selectedProjectFile.id)
       .sort((first, second) => parseAppDateTime(second.createdAt).getTime() - parseAppDateTime(first.createdAt).getTime());
+    const displayedProjectOffers =
+      selectedProjectDocumentType === "Angebote: Nachtragsangebote" ? projectAddendumOffers : projectBaseOffers;
     const projectResponsibleName = selectedProjectFile.responsibleName || activeUser?.name || "Christian Eid";
-    const projectStartDate = parseProjectDate(selectedProjectFile.projectRuntimeFrom);
-    const projectEndDate = parseProjectDate(selectedProjectFile.projectRuntimeUntil);
-    const projectRuntimeReferenceDate = parseProjectDate(selectedProjectFile.createdAt) ?? projectStartDate;
+    const normalizeProjectDay = (date: Date | null) => {
+      if (!date || !Number.isFinite(date.getTime())) return null;
+      const normalized = new Date(date);
+      normalized.setHours(0, 0, 0, 0);
+      return normalized;
+    };
+    const projectStartDate = normalizeProjectDay(parseProjectDate(selectedProjectFile.projectRuntimeFrom));
+    const projectEndDate = normalizeProjectDay(parseProjectDate(selectedProjectFile.projectRuntimeUntil));
+    const projectCreatedDate =
+      normalizeProjectDay(parseProjectDate(selectedProjectFile.createdAt)) ??
+      normalizeProjectDay(selectedProjectFile.createdAt ? parseAppDateTime(selectedProjectFile.createdAt) : null);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const dayMs = 24 * 60 * 60 * 1000;
+    const getDayDistance = (from: Date, to: Date) => Math.ceil((to.getTime() - from.getTime()) / dayMs);
     const projectRuntimeTotalDays =
-      projectRuntimeReferenceDate && projectEndDate && projectEndDate.getTime() >= projectRuntimeReferenceDate.getTime()
-        ? Math.ceil((projectEndDate.getTime() - projectRuntimeReferenceDate.getTime()) / dayMs)
+      projectStartDate && projectEndDate && projectEndDate.getTime() >= projectStartDate.getTime()
+        ? getDayDistance(projectStartDate, projectEndDate)
         : 0;
     const projectRuntimeElapsedDays =
-      projectRuntimeReferenceDate && projectEndDate && projectRuntimeTotalDays > 0
-        ? today.getTime() <= projectRuntimeReferenceDate.getTime()
+      projectStartDate && projectEndDate && projectRuntimeTotalDays > 0
+        ? today.getTime() <= projectStartDate.getTime()
           ? 0
           : today.getTime() >= projectEndDate.getTime()
             ? projectRuntimeTotalDays
-            : Math.ceil((today.getTime() - projectRuntimeReferenceDate.getTime()) / dayMs)
+            : getDayDistance(projectStartDate, today)
         : 0;
     const projectRuntimeRemainingDays =
       projectRuntimeTotalDays > 0
@@ -12088,31 +17347,176 @@ export function DashboardPage() {
       projectRuntimeTotalDays > 0
         ? clampPercent((projectRuntimeRemainingDays / projectRuntimeTotalDays) * 100)
         : 0;
+    const projectDaysSinceCreated =
+      projectCreatedDate && today.getTime() >= projectCreatedDate.getTime()
+        ? Math.max(1, getDayDistance(projectCreatedDate, today))
+        : 0;
+    const projectDaysUntilStart =
+      projectStartDate && today.getTime() < projectStartDate.getTime()
+        ? Math.max(0, getDayDistance(today, projectStartDate))
+        : 0;
+    const projectEndPhaseStartDate =
+      projectEndDate && projectRuntimeTotalDays > 0
+        ? new Date(projectEndDate.getTime() - 56 * dayMs)
+        : null;
+    const projectDaysUntilEndPhase =
+      projectEndPhaseStartDate && today.getTime() < projectEndPhaseStartDate.getTime()
+        ? Math.max(0, getDayDistance(today, projectEndPhaseStartDate))
+        : 0;
+    const isProjectEndPhase =
+      projectEndPhaseStartDate &&
+      projectEndDate &&
+      today.getTime() >= projectEndPhaseStartDate.getTime() &&
+      today.getTime() < projectEndDate.getTime();
+    const projectTimelineStartDate =
+      projectCreatedDate && projectStartDate && projectCreatedDate.getTime() < projectStartDate.getTime()
+        ? projectCreatedDate
+        : projectStartDate;
+    const projectTimelineTotalMs =
+      projectTimelineStartDate && projectEndDate
+        ? Math.max(0, projectEndDate.getTime() - projectTimelineStartDate.getTime())
+        : 0;
+    const formatRuntimeMarkerDate = (date: Date | null) =>
+      date
+        ? new Intl.DateTimeFormat(APP_LOCALE, {
+            day: "2-digit",
+            month: "2-digit",
+            year: "2-digit",
+            timeZone: APP_TIME_ZONE,
+          }).format(date)
+        : "-";
+    const projectCreatedMarkerPercent = 0;
+    const projectStartMarkerPercent = 24;
+    const projectEndPhaseMarkerPercent = 76;
+    const projectEndMarkerPercent = 100;
+    const getStaticTimelineSegmentPercent = (
+      fromDate: Date | null,
+      toDate: Date | null,
+      fromPercent: number,
+      toPercent: number
+    ) => {
+      if (!fromDate || !toDate || toDate.getTime() <= fromDate.getTime()) return fromPercent;
+      if (today.getTime() <= fromDate.getTime()) return fromPercent;
+      if (today.getTime() >= toDate.getTime()) return toPercent;
+      const segmentProgress =
+        (today.getTime() - fromDate.getTime()) / (toDate.getTime() - fromDate.getTime());
+      return fromPercent + (toPercent - fromPercent) * segmentProgress;
+    };
+    const projectTimelineTodayPercent =
+      projectTimelineStartDate && projectEndDate && projectTimelineTotalMs > 0
+        ? today.getTime() <= projectTimelineStartDate.getTime()
+          ? projectCreatedMarkerPercent
+          : today.getTime() >= projectEndDate.getTime()
+            ? projectEndMarkerPercent
+            : projectStartDate && today.getTime() < projectStartDate.getTime()
+              ? getStaticTimelineSegmentPercent(
+                  projectTimelineStartDate,
+                  projectStartDate,
+                  projectCreatedMarkerPercent,
+                  projectStartMarkerPercent
+                )
+              : projectEndPhaseStartDate && today.getTime() < projectEndPhaseStartDate.getTime()
+                ? getStaticTimelineSegmentPercent(
+                    projectStartDate,
+                    projectEndPhaseStartDate,
+                    projectStartMarkerPercent,
+                    projectEndPhaseMarkerPercent
+                  )
+                : getStaticTimelineSegmentPercent(
+                    projectEndPhaseStartDate,
+                    projectEndDate,
+                    projectEndPhaseMarkerPercent,
+                    projectEndMarkerPercent
+                  )
+        : 0;
+    const showProjectCreatedMarker =
+      projectCreatedDate &&
+      projectTimelineStartDate &&
+      projectEndDate &&
+      projectCreatedDate.getTime() >= projectTimelineStartDate.getTime() &&
+      projectCreatedDate.getTime() <= projectEndDate.getTime();
 
     return (
       <section className={styles.projectFile}>
         <header className={styles.projectFileHeader}>
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            onClick={() => setSelectedProjectFileId("")}
-          >
-            Zurück zur Pipeline
-          </button>
-          <div>
-            <h1>
-              {selectedProjectFile.projectNumber || selectedProjectFile.id} |{" "}
-              {selectedProjectFile.title}
-            </h1>
-            <p>
-              {selectedProjectFile.customer || "Kunde noch nicht gesetzt"} | {address}
-            </p>
+          <div className={styles.projectFileTitleBlock}>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => setSelectedProjectFileId("")}
+            >
+              Zurück zur Pipeline
+            </button>
+            <div>
+              <h1>
+                {selectedProjectFile.projectNumber || selectedProjectFile.id} |{" "}
+                {selectedProjectFile.title}
+              </h1>
+              <p>
+                {selectedProjectFile.customer || "Kunde noch nicht gesetzt"} | {address}
+              </p>
+            </div>
           </div>
           <div className={styles.projectFileActions}>
             <div className={styles.projectResponsibleBadge}>
               <span>Projektverantwortlicher</span>
               <strong>{projectResponsibleName}</strong>
             </div>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => openProjectTaskModal(selectedProjectFile, "task")}
+            >
+              Aufgabe anlegen
+            </button>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => printProjectOverview(selectedProjectFile, address)}
+            >
+              Projekt drucken
+            </button>
+            <button
+              type="button"
+              className={`${styles.secondaryButton} ${styles.projectOfferPlanningButton}`}
+              data-state={projectPlanningButtonState}
+              title={
+                projectOpenOfferPlanningHours > 0
+                  ? `${formatHours(projectOpenOfferPlanningHours)} Std. aus Angeboten offen`
+                  : undefined
+              }
+              onClick={openProjectPlanningAction}
+            >
+              {projectPlanningButtonLabel}
+            </button>
+            {projectUpsellState ? (
+              <div className={styles.projectStatusAction}>
+                <button
+                  type="button"
+                  className={`${styles.secondaryButton} ${styles.projectUpsellButton}`}
+                  data-state={projectUpsellState}
+                  onClick={() => setIsProjectUpsellMenuOpen((isOpen) => !isOpen)}
+                >
+                  {projectUpsellButtonLabel}
+                </button>
+                {isProjectUpsellMenuOpen ? (
+                  <div className={`${styles.projectStatusMenu} ${styles.projectUpsellMenu}`}>
+                    <button type="button" onClick={openProjectUpsellLog}>
+                      <span>Notiz ansehen</span>
+                    </button>
+                    <button type="button" onClick={createProjectUpsellOffer}>
+                      <span>Angebot erstellen</span>
+                    </button>
+                    <button type="button" onClick={deferProjectUpsellPotential}>
+                      <span>Später nachfassen</span>
+                    </button>
+                    <button type="button" onClick={closeProjectUpsellPotential}>
+                      <span>Kein Interesse</span>
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             <div className={styles.projectStatusAction}>
               <button
                 type="button"
@@ -12139,40 +17543,6 @@ export function DashboardPage() {
                 </div>
               ) : null}
             </div>
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={() => openProjectTaskModal(selectedProjectFile, "task")}
-            >
-              Aufgabe anlegen
-            </button>
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={openProjectPlanningBoard}
-            >
-              Erinnerung anlegen
-            </button>
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={() => printProjectOverview(selectedProjectFile, address)}
-            >
-              Projekt drucken
-            </button>
-            <button
-              type="button"
-              className={`${styles.secondaryButton} ${styles.projectOfferPlanningButton}`}
-              data-state={projectPlanningButtonState}
-              title={
-                projectOpenOfferPlanningHours > 0
-                  ? `${formatHours(projectOpenOfferPlanningHours)} Std. aus Angeboten offen`
-                  : undefined
-              }
-              onClick={openProjectPlanningAction}
-            >
-              {projectPlanningButtonLabel}
-            </button>
           </div>
         </header>
 
@@ -12186,7 +17556,7 @@ export function DashboardPage() {
               onClick={step.onClick}
             >
               <span className={styles.projectProgressNode}>
-                {step.state === "done" ? "?" : step.state === "partial" ? "!" : ""}
+                {step.state === "done" ? "✓" : step.state === "partial" ? "!" : ""}
               </span>
               <strong>{step.label}</strong>
               {index < projectProgressSteps.length - 1 ? (
@@ -12222,11 +17592,17 @@ export function DashboardPage() {
                           }}
                         >
                           {type}
-                          {type === "Angebote" && projectOffers.length > 0 && (
-                            <strong>{projectOffers.length}</strong>
+                          {type === "Angebote" && projectBaseOffers.length > 0 && (
+                            <strong>{projectBaseOffers.length}</strong>
+                          )}
+                          {type === "Angebote: Nachtragsangebote" && projectAddendumOffers.length > 0 && (
+                            <strong>{projectAddendumOffers.length}</strong>
                           )}
                           {type === "Rechnungen" && projectInvoices.length > 0 && (
                             <strong>{projectInvoices.length}</strong>
+                          )}
+                          {type === "Endkontrolle" && projectEndCheckCount > 0 && (
+                            <strong>{projectEndCheckCount}</strong>
                           )}
                         </button>
                       ))}
@@ -12264,7 +17640,13 @@ export function DashboardPage() {
             )}
           </aside>
 
-          <main className={styles.projectFileMain}>
+          <main
+            className={`${styles.projectFileMain} ${
+              projectFileTab === "appointments" || projectFileTab === "budgets" || projectFileTab === "automaticBilling"
+                ? styles.projectFileMainCompact
+                : ""
+            }`}
+          >
             {projectFileTab === "logbook" ? (
               <>
                 <div className={styles.customerLogToolbar}>
@@ -12409,6 +17791,14 @@ export function DashboardPage() {
                     >
                       + Angebot
                     </button>
+                  ) : selectedProjectDocumentType === "Angebote: Nachtragsangebote" ? (
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      onClick={() => openOfferModal(selectedProjectFile, { asAddendum: true })}
+                    >
+                      + Nachtragsangebot
+                    </button>
                   ) : selectedProjectDocumentType === "Rechnungen" ? (
                     <button
                       type="button"
@@ -12431,8 +17821,8 @@ export function DashboardPage() {
                     </label>
                   )}
                 </div>
-                {selectedProjectDocumentType === "Angebote" ? (
-                  projectOffers.length === 0 ? (
+                {selectedProjectDocumentType === "Angebote" || selectedProjectDocumentType === "Angebote: Nachtragsangebote" ? (
+                  displayedProjectOffers.length === 0 ? (
                     <div className={styles.customerDocumentEmpty}>
                       <strong>Noch keine Angebote vorhanden.</strong>
                       <p>
@@ -12441,10 +17831,12 @@ export function DashboardPage() {
                       </p>
                     </div>
                   ) : (
+                    <div className={styles.projectTableScroll}>
                     <table className={styles.projectTimeTable}>
                       <thead>
                         <tr>
                           <th>Nummer</th>
+                          <th>Art</th>
                           <th>Kunde</th>
                           <th>Firma</th>
                           <th>Status</th>
@@ -12454,9 +17846,14 @@ export function DashboardPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {projectOffers.map((offer) => (
+                        {displayedProjectOffers.map((offer) => (
                           <tr key={offer.id}>
                             <td className={styles.number}>{offer.offerNumber}</td>
+                            <td>
+                              {offer.offerType === "addendum"
+                                ? `Nachtrag (${offer.addendumMode === "replacement" ? "Ersatz" : offer.addendumMode === "reduction" ? "Reduzierung" : "Ergaenzung"})`
+                                : "Hauptangebot"}
+                            </td>
                             <td>{offer.customerName || "-"}</td>
                             <td>{offer.company}</td>
                             <td>{offer.status}</td>
@@ -12474,6 +17871,7 @@ export function DashboardPage() {
                                 <button
                                   type="button"
                                   className={styles.timeEntryEditButton}
+                                  disabled={offer.status === "Entwurf"}
                                   onClick={() => openInvoiceFromOffer(offer)}
                                 >
                                   Rechnung erstellen
@@ -12512,6 +17910,7 @@ export function DashboardPage() {
                         ))}
                       </tbody>
                     </table>
+                    </div>
                   )
                 ) : null}
                 {selectedProjectDocumentType === "Rechnungen" ? (
@@ -12538,10 +17937,10 @@ export function DashboardPage() {
                       <tbody>
                         {projectInvoices.map((invoice) => (
                           <tr key={invoice.id}>
-                            <td className={styles.number}>{invoice.invoiceNumber}</td>
+                            <td className={styles.number}>{getInvoiceDisplayNumber(invoice)}</td>
                             <td>{invoice.customerName || "-"}</td>
                             <td>{invoice.company}</td>
-                            <td>{invoice.status}</td>
+                            <td>{renderInvoiceStatusChip(invoice.status)}</td>
                             <td>{formatMoney(invoice.netTotal)}</td>
                             <td>{formatMoney(invoice.grossTotal)}</td>
                             <td>
@@ -12549,6 +17948,23 @@ export function DashboardPage() {
                                 <button
                                   type="button"
                                   className={styles.timeEntryEditButton}
+                                  onClick={() => openEditInvoiceModal(invoice)}
+                                >
+                                  Bearbeiten
+                                </button>
+                                {invoice.status === "Entwurf" ? (
+                                  <button
+                                    type="button"
+                                    className={`${styles.timeEntryEditButton} ${styles.pulsingFinalizeButton}`}
+                                    onClick={() => setPendingFinalizeInvoice({ source: "list", invoice })}
+                                  >
+                                    Fakturieren
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  className={styles.timeEntryEditButton}
+                                  disabled={!invoice.pdfAvailable}
                                   onClick={() => window.open(`/api/invoices?pdfId=${encodeURIComponent(invoice.id)}`, "_blank")}
                                 >
                                   PDF öffnen
@@ -12567,13 +17983,22 @@ export function DashboardPage() {
                                 >
                                   Per E-Mail senden
                                 </button>
-                                {!["Storniert", "Stornorechnung", "Gelöscht"].includes(invoice.status) ? (
+                                {!["Entwurf", "Storniert", "Stornorechnung", "Gelöscht"].includes(invoice.status) ? (
                                   <button
                                     type="button"
                                     className={styles.timeEntryEditButton}
                                     onClick={() => cancelInvoice(invoice)}
                                   >
                                     Stornieren
+                                  </button>
+                                ) : null}
+                                {canDeleteInvoices && invoice.status !== "Gelöscht" ? (
+                                  <button
+                                    type="button"
+                                    className={styles.deleteButton}
+                                    onClick={() => deleteInvoice(invoice)}
+                                  >
+                                    Löschen
                                   </button>
                                 ) : null}
                               </div>
@@ -12583,7 +18008,7 @@ export function DashboardPage() {
                       </tbody>
                     </table>
                   )
-                ) : selectedProjectDocumentType === "Angebote" ? (
+                ) : selectedProjectDocumentType === "Angebote" || selectedProjectDocumentType === "Angebote: Nachtragsangebote" ? (
                   <section className={styles.planningHistorySection}>
                     <h3>Angebotshistorie</h3>
                     {projectOfferHistory.length === 0 ? (
@@ -12637,9 +18062,13 @@ export function DashboardPage() {
                               <span>{document.date}</span>
                               <div className={styles.tableActionGroup}>
                                 {document.dataUrl ? (
-                                  <a href={document.dataUrl} target="_blank" rel="noreferrer">
+                                  <button
+                                    type="button"
+                                    className={styles.timeEntryEditButton}
+                                    onClick={() => void openAttachmentDataUrl(document.dataUrl, document.name)}
+                                  >
                                     Öffnen
-                                  </a>
+                                  </button>
                                 ) : null}
                                 <button
                                   type="button"
@@ -12691,6 +18120,7 @@ export function DashboardPage() {
                     </p>
                   </div>
                 ) : (
+                  <div className={styles.projectTableScroll}>
                   <table className={styles.projectTimeTable}>
                     <thead>
                       <tr>
@@ -12751,24 +18181,42 @@ export function DashboardPage() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 )}
               </div>
             ) : projectFileTab === "time" ? (
               <div className={styles.projectTimeModule}>
                 <div className={styles.customerFileMainHeader}>
-                  <h2>Stempelungen & Soll/Ist</h2>
+                  <h2>Stempelungen</h2>
                   <div className={styles.headerActions}>
-                    <span>{projectStampEntries.length} Zeiteinträge</span>
+                    <span>{projectComparisonMonthStampEntries.length} Zeiteinträge</span>
                     <button
                       type="button"
-                      className={styles.secondaryButton}
+                      className={styles.primaryButton}
                       onClick={openManualProjectTimeModal}
                     >
                       + Zeiteintrag
                     </button>
                   </div>
                 </div>
-                {projectStampEntries.length === 0 ? (
+                <div className={styles.reportFilterBar}>
+                  <button type="button" className={styles.secondaryButton} onClick={() => shiftComparisonMonth(-1)}>
+                    Vorheriger Monat
+                  </button>
+                  <label>
+                    Monat
+                    <input
+                      type="month"
+                      value={projectComparisonMonth}
+                      onChange={(event) => setProjectComparisonMonth(event.target.value)}
+                    />
+                  </label>
+                  <button type="button" className={styles.secondaryButton} onClick={() => shiftComparisonMonth(1)}>
+                    Nächster Monat
+                  </button>
+                  <span>Stempelungen und Soll/Ist werden für denselben Monat ausgewertet.</span>
+                </div>
+                {projectComparisonMonthStampEntries.length === 0 ? (
                   <div className={styles.customerDocumentEmpty}>
                     <strong>Noch keine Projektzeiten erfasst.</strong>
                     <p>
@@ -12777,6 +18225,7 @@ export function DashboardPage() {
                     </p>
                   </div>
                 ) : (
+                  <div className={styles.projectTableScroll}>
                   <table className={styles.projectTimeTable}>
                     <thead>
                       <tr>
@@ -12792,7 +18241,7 @@ export function DashboardPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {projectStampEntries.map((entry) => (
+                      {projectComparisonMonthStampEntries.map((entry) => (
                         <tr key={entry.id}>
                           <td>{entry.date}</td>
                           <td>
@@ -12823,69 +18272,89 @@ export function DashboardPage() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 )}
+                {false && (
                 <section className={styles.planningHistorySection}>
-                  <h3>Soll/Ist Abgleich</h3>
+                  <h3>Soll/Ist Abgleich {comparisonMonthLabel}</h3>
                   {projectLaborPerformanceRows.length === 0 ? (
                     <p>Noch keine Vorgabezeiten aus Angeboten vorhanden.</p>
                   ) : (
+                    <div className={styles.projectTableScroll}>
                     <table className={styles.projectTimeTable}>
                       <thead>
                         <tr>
-                          <th>Mitarbeiter</th>
-                          <th>Soll-Zeit in h</th>
-                          <th>Ist-Zeit in h</th>
-                          <th>Differenz in h</th>
-                          <th>Leistungsgrad in %</th>
-                          <th>Lohnkosten intern</th>
-                          <th>Lohnerlöse</th>
+                          <th>Leistung</th>
+                          <th>Soll-Zeit</th>
+                          <th>Ist-Zeit</th>
                           <th>Differenz</th>
-                          <th>Marge</th>
+                          <th>Leistungs-<br />grad</th>
+                          <th>Hinweis</th>
                         </tr>
                       </thead>
                       <tbody>
+                        <tr>
+                          <td><strong>Gesamt {comparisonMonthLabel}</strong></td>
+                          <td>{formatHourMinutes(projectLaborComparisonTotals.plannedHours)}</td>
+                          <td>{formatHourMinutes(projectLaborComparisonTotals.actualHours)}</td>
+                          <td>{formatHourMinutes(projectLaborComparisonTotals.actualHours - projectLaborComparisonTotals.plannedHours)}</td>
+                          <td>
+                            {projectLaborComparisonTotals.actualHours > 0
+                              ? formatPercent((projectLaborComparisonTotals.plannedHours / projectLaborComparisonTotals.actualHours) * 100)
+                              : "-"}
+                          </td>
+                          <td>Ist-Zeit umfasst alle Projektstempelungen im Monat.</td>
+                        </tr>
                         {projectLaborPerformanceRows.map((row) => (
-                          <tr key={`performance-${row.employeeName}`}>
-                            <td>{row.employeeName}</td>
+                          <tr key={`performance-${row.key}`}>
+                            <td>{row.positionTitle}</td>
                             <td>{formatHourMinutes(row.plannedHours)}</td>
                             <td>{formatHourMinutes(row.actualHours)}</td>
                             <td>{formatHourMinutes(row.actualHours - row.plannedHours)}</td>
                             <td>
                               {row.actualHours > 0 ? formatPercent(row.performancePercent) : "-"}
                             </td>
-                            <td>{formatMoney(row.actualLaborCost)}</td>
-                            <td>{formatMoney(row.laborRevenue)}</td>
-                            <td>{formatMoney(row.laborContribution)}</td>
-                            <td>{row.laborRevenue > 0 ? `${formatPercent(row.laborMargin)}%` : "-"}</td>
+                            <td>Ist anteilig aus Monatsgesamt verteilt.</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
+                    </div>
                   )}
                 </section>
+                )}
                 <section className={styles.planningHistorySection}>
                   <h3>Zeithistorie</h3>
-                  {projectStampEntries.length === 0 ? (
+                  {projectStampHistoryEntries.length === 0 ? (
                     <p>Noch keine Zeithistorie vorhanden.</p>
                   ) : (
                     <div className={styles.planningHistoryList}>
-                      {projectStampEntries.map((entry) => (
-                        <article key={`time-history-${entry.id}`}>
-                          <strong>
-                            {entry.entrySource === "manual"
-                              ? "Zeiteintrag manuell hinzugefügt"
-                              : "Zeit echt gestempelt"}
-                          </strong>
-                          <span>
-                            {entry.date} von {entry.startTime} bis {entry.endTime} | {entry.employee}
-                          </span>
-                          <p>
-                            {formatStampDuration(entry.durationMs)} produktiv gebucht
-                            {entry.invoiceNumber ? ` | fakturiert mit ${entry.invoiceNumber}` : " | noch nicht fakturiert"}
-                            {entry.comment ? ` | ${entry.comment}` : ""}
-                          </p>
-                        </article>
-                      ))}
+                      {projectStampHistoryEntries.map((entry) => {
+                        const deleteHistory = entry.editHistory?.find(
+                          (history) => history.event === "Zeiteintrag gelöscht"
+                        );
+                        return (
+                          <article key={`time-history-${entry.id}`}>
+                            <strong>
+                              {entry.deletedAt
+                                ? "Zeiteintrag gelöscht"
+                                : entry.entrySource === "manual"
+                                  ? "Zeiteintrag manuell hinzugefügt"
+                                  : "Zeit echt gestempelt"}
+                            </strong>
+                            <span>
+                              {entry.date} von {entry.startTime} bis {entry.endTime} | {entry.employee}
+                              {entry.deletedAt ? ` | gelöscht am ${formatInstantDateTime(entry.deletedAt)}` : ""}
+                            </span>
+                            <p>
+                              {formatStampDuration(entry.durationMs)} produktiv gebucht
+                              {entry.invoiceNumber ? ` | fakturiert mit ${entry.invoiceNumber}` : " | noch nicht fakturiert"}
+                              {entry.comment ? ` | ${entry.comment}` : ""}
+                              {deleteHistory?.note ? ` | ${deleteHistory.note}` : ""}
+                            </p>
+                          </article>
+                        );
+                      })}
                     </div>
                   )}
                 </section>
@@ -12899,23 +18368,60 @@ export function DashboardPage() {
                       ? `Basis ${projectComparisonOfferNumbers.length} Angebot${
                           projectComparisonOfferNumbers.length === 1 ? "" : "e"
                         }: ${projectComparisonOfferNumbers.join(", ")}`
-                      : "Noch keine Angebotszeiten"}
+                      : projectBudgetHours > 0
+                        ? `Basis Projektzeitkontingent: ${formatHours(projectBudgetHours)} Std.`
+                        : "Noch keine Angebotszeiten"}
+                  </span>
+                </div>
+                <div className={styles.reportFilterBar}>
+                  <button type="button" className={styles.secondaryButton} onClick={() => shiftComparisonMonth(-1)}>
+                    Vorheriger Monat
+                  </button>
+                  <label>
+                    Monat
+                    <input
+                      type="month"
+                      value={projectComparisonMonth}
+                      onChange={(event) => setProjectComparisonMonth(event.target.value)}
+                    />
+                  </label>
+                  <button type="button" className={styles.secondaryButton} onClick={() => shiftComparisonMonth(1)}>
+                    Nächster Monat
+                  </button>
+                  <span>
+                    {projectComparisonOfferNumbers.length > 0
+                      ? isSelectedProjectRecurring
+                        ? "Dauerläufer: Angebotspositionen werden monatlich bis Projektende fällig."
+                        : "Einmalprojekt: Angebotspositionen erscheinen im geplanten Ausführungsmonat."
+                      : projectBudgetHours > 0
+                        ? "Ohne Angebotszeiten: Das Projektzeitkontingent dient als manuelle Planungsgrundlage."
+                        : "Ohne Angebotszeiten: Termine können frei auf Mitarbeiter geplant werden."}
                   </span>
                 </div>
                 {projectLaborComparisonRows.length === 0 ? (
                   <div className={styles.customerDocumentEmpty}>
-                    <strong>Noch keine Vorgabezeiten aus Angebot vorhanden.</strong>
+                    <strong>Keine Vorgabezeiten für {comparisonMonthLabel} vorhanden.</strong>
                     <p>
-                      Hinterlege im Angebot pro Position die internen Mitarbeiterzeiten. Diese
-                      Zeiten erscheinen hier als Vorgabezeit je Mitarbeiter.
+                      Wenn es keine Angebotszeiten gibt, kann trotzdem frei auf Mitarbeiter geplant werden.
+                      Diese Termine laufen dann ohne Angebotskontingent.
                     </p>
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      onClick={() => openManualProjectPlanning()}
+                    >
+                      Freie Planung anlegen
+                    </button>
                   </div>
                 ) : (
-                  <table className={styles.projectTimeTable}>
+                  <div className={styles.projectTableScroll}>
+                  <table className={`${styles.projectTimeTable} ${styles.comparisonTimeTable}`}>
                     <thead>
                       <tr>
-                        <th>Mitarbeiter</th>
-                        <th>Positionen aus Angebot</th>
+                        <th>Monat</th>
+                        <th>Leistung</th>
+                        <th>Verplant auf</th>
+                        <th>Rhythmus</th>
                         <th>Sollzeit</th>
                         <th>Geplant</th>
                         <th>Offen</th>
@@ -12937,9 +18443,11 @@ export function DashboardPage() {
                               ? "Überplant"
                               : "Voll verplant";
                         return (
-                          <tr key={row.employeeName}>
-                            <td>{row.employeeName}</td>
+                          <tr key={row.key}>
+                            <td>{comparisonMonthLabel}</td>
                             <td>{row.positions.join(", ")}</td>
+                            <td>{row.assignees.join(", ")}</td>
+                            <td>{row.recurrenceLabel}</td>
                             <td>{formatHours(row.plannedHours)} Std.</td>
                             <td>{formatHours(row.plannedPlanningHours)} Std.</td>
                             <td>{formatHours(openPlanningHours)} Std.</td>
@@ -12967,6 +18475,7 @@ export function DashboardPage() {
                       })}
                     </tbody>
                   </table>
+                  </div>
                 )}
                 <section className={styles.planningHistorySection}>
                   <h3>Planungshistorie</h3>
@@ -13001,51 +18510,325 @@ export function DashboardPage() {
                   )}
                 </section>
               </div>
+            ) : projectFileTab === "automaticBilling" ? (
+              <div className={styles.projectTimeModule}>
+                <div className={styles.customerFileMainHeader}>
+                  <h2>Automatische Abrechnung</h2>
+                  <span>
+                    {selectedProjectFile.autoBillingEnabled
+                      ? "Aktiv für Stapelabrechnung"
+                      : "Noch nicht für Stapelabrechnung aktiviert"}
+                  </span>
+                </div>
+
+                <section className={styles.projectBudgetEditor}>
+                  <div className={styles.standardFormGrid}>
+                    <label className={styles.checkboxField}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(selectedProjectFile.autoBillingEnabled)}
+                        onChange={(event) =>
+                          void saveAutoBillingProjectPatch(selectedProjectFile, {
+                            autoBillingEnabled: event.target.checked,
+                          })
+                        }
+                      />
+                      Automatische monatliche Abrechnung aktiv
+                    </label>
+                    <label>
+                      Monatlicher Rechnungsbetrag netto
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={selectedProjectFile.autoBillingNetAmount || selectedProjectFile.forecastNetAmount || ""}
+                        onChange={(event) =>
+                          void saveAutoBillingProjectPatch(selectedProjectFile, {
+                            autoBillingNetAmount: event.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      MwSt. %
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={selectedProjectFile.autoBillingVatRate || "19"}
+                        onChange={(event) =>
+                          void saveAutoBillingProjectPatch(selectedProjectFile, {
+                            autoBillingVatRate: event.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      Ab Monat
+                      <input
+                        type="month"
+                        value={selectedProjectFile.autoBillingStartMonth || selectedProjectFile.projectRuntimeFrom?.slice(0, 7) || ""}
+                        onChange={(event) =>
+                          void saveAutoBillingProjectPatch(selectedProjectFile, {
+                            autoBillingStartMonth: event.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      Bis Monat
+                      <input
+                        type="month"
+                        value={selectedProjectFile.autoBillingEndMonth || selectedProjectFile.projectRuntimeUntil?.slice(0, 7) || ""}
+                        onChange={(event) =>
+                          void saveAutoBillingProjectPatch(selectedProjectFile, {
+                            autoBillingEndMonth: event.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      Vorlage
+                      <select
+                        value={selectedProjectFile.autoBillingTemplateMode || "previous"}
+                        onChange={(event) =>
+                          void saveAutoBillingProjectPatch(selectedProjectFile, {
+                            autoBillingTemplateMode: event.target.value,
+                          })
+                        }
+                      >
+                        <option value="previous">Vormonatsrechnung verwenden</option>
+                        <option value="project">Projektvorlage verwenden</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className={styles.projectBudgetSummary} data-state={selectedProjectFile.autoBillingTemplate ? "ok" : "over"}>
+                    <strong>
+                      {selectedProjectFile.autoBillingTemplate
+                        ? "Projektvorlage ist gespeichert"
+                        : "Noch keine Projektvorlage gespeichert"}
+                    </strong>
+                    <span>
+                      Ohne Projektvorlage nutzt die Stapelabrechnung die letzte Rechnung als Vorlage. Die letzten drei Monatsrechnungen werden trotzdem geprüft.
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => void createAutoBillingTemplateFromProject(selectedProjectFile)}
+                    >
+                      Projektvorlage erstellen
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => void createAutoBillingTemplateFromLatestInvoice(selectedProjectFile)}
+                    >
+                      Vorlage aus letzter Rechnung übernehmen
+                    </button>
+                  </div>
+                </section>
+              </div>
+            ) : projectFileTab === "budgets" ? (
+              <div className={styles.projectTimeModule}>
+                <div className={styles.customerFileMainHeader}>
+                  <h2>Projektzeitkontingente</h2>
+                  <span>
+                    {projectHasBudgetAllocations
+                      ? `${formatHours(projectBudgetHours)} Std. als Soll-Zeit hinterlegt`
+                      : "Keine Kontingente hinterlegt - Planung und Ist-Zeiten zählen direkt"}
+                  </span>
+                </div>
+
+                <section className={styles.projectBudgetEditor}>
+                  <div className={styles.projectBudgetModeGrid}>
+                    <button
+                      type="button"
+                      className={styles.projectBudgetModeButton}
+                      data-active={projectBudgetMode === "total"}
+                      onClick={() => setProjectBudgetMode("total")}
+                    >
+                      <strong>Gesamtprojektkontingent</strong>
+                      <span>Gesamtstunden gleichmäßig auf die Projektlaufzeit verteilen.</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.projectBudgetModeButton}
+                      data-active={projectBudgetMode === "custom"}
+                      onClick={() => setProjectBudgetMode("custom")}
+                    >
+                      <strong>Benutzerdefiniert</strong>
+                      <span>Monate individuell mit eigenen Soll-Stunden pflegen.</span>
+                    </button>
+                  </div>
+
+                  {projectBudgetMonths.length === 0 ? (
+                    <p className={styles.metaLine}>
+                      Bitte zuerst Projektstart und Projektende pflegen, damit Monatskontingente angelegt werden können.
+                    </p>
+                  ) : (
+                    <>
+                      {projectBudgetMode === "total" ? (
+                        <div className={styles.projectBudgetTotalRow}>
+                          <label>
+                            Gesamtstunden
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.25"
+                              value={projectBudgetTotalDraft}
+                              onChange={(event) => setProjectBudgetTotalDraft(event.target.value)}
+                              placeholder="z.B. 80"
+                            />
+                          </label>
+                          <button type="button" className={styles.secondaryButton} onClick={distributeProjectBudgetTotal}>
+                            Gleichmäßig verteilen
+                          </button>
+                        </div>
+                      ) : null}
+
+                      <div className={styles.projectTableScroll}>
+                        <table className={styles.projectTimeTable}>
+                          <thead>
+                            <tr>
+                              <th>Monat</th>
+                              <th>Soll-Zeit</th>
+                              <th>Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {projectBudgetMonths.map((month) => {
+                              const plannedHours =
+                                projectPlanningEntries
+                                  .filter((entry) => entry.date.startsWith(month))
+                                  .reduce((sum, entry) => sum + Number(entry.durationMinutes || 0), 0) / 60;
+                              const budgetHours = parseHoursInput(projectBudgetMonthDrafts[month]);
+                              return (
+                                <tr key={`project-budget-${month}`}>
+                                  <td>{formatMonthLabel(month)}</td>
+                                  <td>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.25"
+                                      value={projectBudgetMonthDrafts[month] || ""}
+                                      onChange={(event) => updateProjectBudgetMonthDraft(month, event.target.value)}
+                                    />
+                                  </td>
+                                  <td>
+                                    {budgetHours > 0
+                                      ? `${formatHours(plannedHours)} von ${formatHours(budgetHours)} Std. geplant`
+                                      : "Kein Soll hinterlegt"}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div
+                        className={styles.projectBudgetSummary}
+                        data-state={projectBudgetExceedsTotal ? "over" : "ok"}
+                      >
+                        <strong>
+                          {projectBudgetTotalLimit > 0
+                            ? `${formatHours(projectBudgetDraftTotal)} von ${formatHours(projectBudgetTotalLimit)} Std. verteilt`
+                            : `Summe: ${formatHours(projectBudgetDraftTotal)} Std.`}
+                        </strong>
+                        <span>
+                          Diese Monatswerte gelten als Soll-Zeiten. Ohne Einträge zählt das Projekt nach tatsächlich gebuchten Stunden.
+                        </span>
+                        <button
+                          type="button"
+                          className={styles.primaryButton}
+                          disabled={projectBudgetExceedsTotal}
+                          onClick={() => void saveProjectBudgetAllocations()}
+                        >
+                          Kontingente speichern
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </section>
+              </div>
             ) : projectFileTab === "appointments" ? (
               <div className={styles.projectTimeModule}>
                 <div className={styles.customerFileMainHeader}>
-                  <h2>Geplante Termine</h2>
-                  <span>{projectPlanningEntries.length} Planungstermine</span>
+                  <h2>Planungstermine</h2>
+                  <div className={styles.headerActions}>
+                    <span>{projectPlanningEntries.length} Termin{projectPlanningEntries.length === 1 ? "" : "e"}</span>
+                    <button type="button" className={styles.primaryButton} onClick={() => openManualProjectPlanning()}>
+                      + Termin
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.requestButton}
+                      onClick={() => openManualProjectPlanning("requested")}
+                    >
+                      + Terminwunsch
+                    </button>
+                  </div>
                 </div>
-                {projectPlanningEntries.length === 0 ? (
+                {false && projectPlanningEntries.length === 0 ? (
                   <div className={styles.customerDocumentEmpty}>
-                    <strong>Noch keine Planungstermine vorhanden.</strong>
+                    <strong>Noch keine Termine geplant.</strong>
                     <p>
                       Sobald eine Planung mit diesem Projekt verknüpft wird, erscheint sie hier.
                     </p>
                   </div>
                 ) : (
                   <>
-                    <table className={styles.projectTimeTable}>
-                      <thead>
-                        <tr>
-                          <th>Datum</th>
-                          <th>Uhrzeit</th>
-                          <th>Titel</th>
-                          <th>Mitarbeiter</th>
-                          <th>Gruppe</th>
-                          <th>Status</th>
-                          <th>Aktion</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {projectPlanningEntries.map((entry) => (
+                    <div className={styles.projectTableScroll}>
+                      <table className={`${styles.projectTimeTable} ${styles.appointmentPlanningTable}`}>
+                        <thead>
+                          <tr>
+                            <th>Termin</th>
+                            <th>Datum</th>
+                            <th>Uhrzeit</th>
+                            <th>Mitarbeiter</th>
+                            <th>Geplante Zeit</th>
+                            <th>Kontingent</th>
+                            <th>Status</th>
+                            <th>Aktionen</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                        {projectTerminPlanningRows.map(({
+                          entry,
+                          budgetClipLabel,
+                          budgetClipState,
+                          budgetText,
+                          planningStatus,
+                          plannedHours,
+                        }) => (
                           <tr key={entry.id} data-approval={entry.approvalStatus}>
+                            <td>
+                              <strong>{entry.title}</strong>
+                              <span className={styles.metaLine}>
+                                {entry.groupName || "-"}
+                              </span>
+                              {entry.recurrenceId ? (
+                                <span className={styles.planningSeriesBadge}>{entry.recurrenceRule || "Serie"}</span>
+                              ) : null}
+                            </td>
                             <td>{formatProjectDate(entry.date)}</td>
                             <td>
                               {entry.startTime} - {entry.endTime}
                             </td>
-                            <td>{entry.title}</td>
-                            <td>{entry.employeeName || "-"}</td>
-                            <td>{entry.groupName}</td>
+                            <td>{entry.employeeName || "Noch nicht zugewiesen"}</td>
                             <td>
-                              <span
-                                className={styles.planningStatusPill}
-                                data-status={entry.approvalStatus}
-                              >
-                                {entry.approvalStatus === "requested"
-                                  ? "Terminwunsch"
-                                  : "Bestätigt"}
+                              {formatHours(plannedHours)} Std.
+                              {budgetClipLabel ? (
+                                <span className={styles.planningBudgetClip} data-state={budgetClipState}>
+                                  {budgetClipLabel}
+                                </span>
+                              ) : null}
+                            </td>
+                            <td>{budgetText}</td>
+                            <td>
+                              <span className={styles.planningStatusPill} data-status={planningStatus === "zu viel geplant" ? "over" : "confirmed"}>
+                                {planningStatus}
                               </span>
                             </td>
                             <td>
@@ -13062,7 +18845,7 @@ export function DashboardPage() {
                                   className={styles.timeEntryEditButton}
                                   onClick={() => jumpToPlanningEntry(entry)}
                                 >
-                                  Zum Tag
+                                  Zur Planung
                                 </button>
                                 <button
                                   type="button"
@@ -13075,41 +18858,172 @@ export function DashboardPage() {
                             </td>
                           </tr>
                         ))}
-                      </tbody>
-                    </table>
+                        {projectTerminPlanningRows.length === 0 && (
+                          <tr>
+                              <td colSpan={8}>Noch keine Termine geplant.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
 
-                    <section className={styles.planningHistorySection}>
-                      <h3>Terminhistorie</h3>
-                      {projectPlanningHistory.length === 0 ? (
-                        <p>Noch keine Terminhistorie vorhanden.</p>
+
+                  </>
+                )}
+                <section className={styles.planningHistorySection}>
+                  <div className={styles.customerFileMainHeader}>
+                    <h3>Erwartete Stempelungen</h3>
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      onClick={openManualProjectTimeModal}
+                    >
+                      + Zeiteintrag
+                    </button>
+                  </div>
+                  {projectStampExpectationRows.length === 0 ? (
+                    <p>Noch keine erwarteten Stempelungen vorhanden.</p>
+                  ) : (
+                    <div className={styles.projectTableScroll}>
+                      <table className={styles.projectTimeTable}>
+                        <thead>
+                          <tr>
+                            <th>Mitarbeiter</th>
+                            <th>Datum</th>
+                            <th>Zeitraum</th>
+                            <th>Soll-Zeit</th>
+                            <th>Ist-Zeit</th>
+                            <th>Differenz</th>
+                            <th>Leistungsgrad</th>
+                            <th>Status</th>
+                            <th>Rechnung</th>
+                            <th>Aktion</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {projectStampExpectationRows.map((row) => (
+                            <tr key={row.id}>
+                              <td>{row.employeeName}</td>
+                              <td>{formatProjectDate(row.date)}</td>
+                              <td>{row.timeRange}</td>
+                              <td>{formatHours(row.targetHours)} Std.</td>
+                              <td>{row.actualHours > 0 ? `${formatHours(row.actualHours)} Std.` : "-"}</td>
+                              <td>{row.differenceHours < 0 ? "-" : ""}{formatHours(Math.abs(row.differenceHours))} Std.</td>
+                              <td>{row.performancePercent !== null ? formatPercent(row.performancePercent) : "-"}</td>
+                              <td>
+                                <span className={styles.stampStatusPill} data-status={row.statusTone}>
+                                  {row.status}
+                                </span>
+                              </td>
+                              <td>
+                                {row.invoiceLabel.startsWith("Fakturiert") ? (
+                                  <span className={styles.invoiceStatusDone}>
+                                    <span aria-hidden="true">✓</span>
+                                    {row.invoiceLabel}
+                                  </span>
+                                ) : (
+                                  row.invoiceLabel
+                                )}
+                              </td>
+                              <td>
+                                {row.editEntry ? (
+                                  <button
+                                    type="button"
+                                    className={styles.timeEntryEditButton}
+                                    disabled={!canManageProjectTimeEntries}
+                                    onClick={() => openStampEntryEditModal(row.editEntry)}
+                                  >
+                                    Bearbeiten
+                                  </button>
+                                ) : (
+                                  "-"
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+                <section className={styles.planningHistorySection}>
+                  <div className={styles.projectCombinedHistoryHeader}>
+                    <h3>Historie</h3>
+                    {hasMoreProjectCombinedHistory ? (
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() =>
+                          setIsProjectCombinedHistoryExpanded((isExpanded) => !isExpanded)
+                        }
+                      >
+                        {isProjectCombinedHistoryExpanded ? "Weniger anzeigen" : "Mehr anzeigen"}
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className={styles.projectCombinedHistoryGrid}>
+                    <div className={styles.projectCombinedHistoryColumn}>
+                      <h4>Termine</h4>
+                  {projectPlanningHistory.length === 0 ? (
+                    <p>Noch keine Termin-Historie vorhanden.</p>
+                  ) : (
+                    <div className={styles.planningHistoryList}>
+                      {visibleProjectPlanningHistory.map((history) => (
+                        <article key={history.id}>
+                          <strong>
+                            {history.eventType === "approved"
+                              ? "Termin freigegeben"
+                              : history.eventType === "requested"
+                                ? "Terminwunsch angelegt"
+                                : history.eventType === "deleted"
+                                  ? "Termin gelöscht"
+                                  : "Termin angelegt"}
+                          </strong>
+                          <span>
+                            {formatDeadline(history.createdAt)}
+                            {" "}von {history.actorName || "System"}
+                          </span>
+                          <p>
+                            {history.entryTitle} am {formatProjectDate(history.entryDate)} von{" "}
+                            {history.entryStartTime} bis {history.entryEndTime}
+                          </p>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                    </div>
+                    <div className={styles.projectCombinedHistoryColumn}>
+                      <h4>Stempelungen</h4>
+                      {projectStampHistory.length === 0 ? (
+                        <p>Noch keine Stempelungs-Historie vorhanden.</p>
                       ) : (
                         <div className={styles.planningHistoryList}>
-                          {projectPlanningHistory.map((history) => (
-                            <article key={history.id}>
+                          {visibleProjectStampHistory.map(({ entry, deleteHistory }) => (
+                            <article key={`appointment-stamp-history-${entry.id}`}>
                               <strong>
-                                {history.eventType === "approved"
-                                  ? "Termin freigegeben"
-                                  : history.eventType === "requested"
-                                    ? "Terminwunsch angelegt"
-                                    : history.eventType === "deleted"
-                                      ? "Termin gelöscht"
-                                      : "Termin angelegt"}
+                                {entry.deletedAt
+                                  ? "Zeiteintrag gel\u00f6scht"
+                                  : entry.entrySource === "manual"
+                                    ? "Zeiteintrag manuell hinzugef\u00fcgt"
+                                    : "Zeit echt gestempelt"}
                               </strong>
                               <span>
-                                {formatDeadline(history.createdAt)}
-                                {" "}von {history.actorName || "System"}
+                                {entry.date} von {entry.startTime} bis {entry.endTime} | {entry.employee}
+                                {entry.deletedAt ? ` | gel\u00f6scht am ${formatInstantDateTime(entry.deletedAt)}` : ""}
                               </span>
                               <p>
-                                {history.entryTitle} am {formatProjectDate(history.entryDate)} von{" "}
-                                {history.entryStartTime} bis {history.entryEndTime}
+                                {formatStampDuration(entry.durationMs)} produktiv gebucht
+                                {entry.invoiceNumber ? ` | fakturiert mit ${entry.invoiceNumber}` : " | noch nicht fakturiert"}
+                                {entry.comment ? ` | ${entry.comment}` : ""}
+                                {deleteHistory?.note ? ` | ${deleteHistory.note}` : ""}
                               </p>
                             </article>
                           ))}
                         </div>
                       )}
-                    </section>
-                  </>
-                )}
+                    </div>
+                  </div>
+                </section>
               </div>
             ) : (
               <div className={styles.customerEmptyModule}>
@@ -13124,13 +19038,28 @@ export function DashboardPage() {
               <h2>Verbrauchte Zeitkontingente</h2>
               <div className={styles.projectTimeBudget}>
                 <div>
-                  <span>Gebucht (durch Stempelungen)</span>
+                  <span>Gestempelt (Monat)</span>
+                  <strong>{formatHours(projectTrackedMonthHours)} Std.</strong>
+                </div>
+                <div>
+                  <span>Restliches Kontingent (Monat)</span>
+                  <strong data-state={projectMonthRemainingHours < 0 ? "over" : "ok"}>
+                    {projectMonthBudgetHours > 0 ? `${formatHours(projectMonthRemainingHours)} Std.` : "-"}
+                  </strong>
+                </div>
+                <div className={styles.projectTimeBudgetBar}>
+                  <span style={{ width: `${projectMonthBudgetUsagePercent}%` }} />
+                </div>
+              </div>
+              <div className={styles.projectTimeBudget}>
+                <div>
+                  <span>Gestempelt (Gesamt)</span>
                   <strong>{formatHours(projectTrackedHours)} Std.</strong>
                 </div>
                 <div>
-                  <span>Rest</span>
+                  <span>Restliches Kontingent (Gesamt)</span>
                   <strong data-state={projectRemainingHours < 0 ? "over" : "ok"}>
-                    {formatHours(projectRemainingHours)} Std.
+                    {projectHasBudgetAllocations ? `${formatHours(projectRemainingHours)} Std.` : "-"}
                   </strong>
                 </div>
                 <div className={styles.projectTimeBudgetBar}>
@@ -13143,19 +19072,108 @@ export function DashboardPage() {
               <h2>Restlaufzeit bis Projektende</h2>
               <div className={styles.projectTimeBudget}>
                 <div>
-                  <span>Verstrichen</span>
-                  <strong>{projectRuntimeElapsedDays} Tg.</strong>
+                  <span>Seit Anlage</span>
+                  <strong>{projectCreatedDate ? `${projectDaysSinceCreated} Tg.` : "-"}</strong>
                 </div>
                 <div>
-                  <span>Rest</span>
+                  <span>
+                    {projectDaysUntilStart > 0 ? "Bis Projektstart" : "Seit Projektstart"}
+                  </span>
+                  <strong>
+                    {projectDaysUntilStart > 0 ? projectDaysUntilStart : projectRuntimeElapsedDays} Tg.
+                  </strong>
+                </div>
+                <div>
+                  <span>{isProjectEndPhase ? "Endphase: Rest" : "Bis Endphase"}</span>
+                  <strong>
+                    {isProjectEndPhase
+                      ? `${projectRuntimeRemainingDays} Tg.`
+                      : projectDaysUntilEndPhase > 0
+                        ? `${projectDaysUntilEndPhase} Tg.`
+                        : "-"}
+                  </strong>
+                </div>
+                <div>
+                  <span>Rest bis Projektende</span>
                   <strong>{projectRuntimeRemainingDays} Tg.</strong>
                 </div>
-                <div
-                  className={styles.projectTimeBudgetBar}
-                  title={`${projectRuntimeUsagePercent.toFixed(0)}% verstrichen, ${projectRuntimeRemainingPercent.toFixed(0)}% Restlaufzeit`}
-                >
-                  <span style={{ width: `${projectRuntimeRemainingPercent}%` }} />
-                </div>
+                {projectTimelineStartDate && projectEndDate && projectTimelineTotalMs > 0 && (
+                  <div
+                    className={styles.projectRuntimeTimeline}
+                    title={`${projectRuntimeUsagePercent.toFixed(0)}% verstrichen, ${projectRuntimeRemainingPercent.toFixed(0)}% Restlaufzeit`}
+                  >
+                    <div className={styles.projectRuntimeTimelineTrack}>
+                      <span
+                        className={styles.projectRuntimeTimelineFill}
+                        style={{ width: `${projectTimelineTodayPercent}%` }}
+                      />
+                      {showProjectCreatedMarker && (
+                        <span
+                          className={styles.projectRuntimeMarker}
+                          style={{ left: `${projectCreatedMarkerPercent}%` }}
+                          title="Anlage"
+                        />
+                      )}
+                      {projectStartDate && (
+                        <span
+                          className={styles.projectRuntimeMarker}
+                          style={{ left: `${projectStartMarkerPercent}%` }}
+                          title="Projektstart"
+                        />
+                      )}
+                      {projectEndPhaseStartDate && (
+                        <span
+                          className={styles.projectRuntimeMarker}
+                          data-state={isProjectEndPhase ? "active" : undefined}
+                          style={{ left: `${projectEndPhaseMarkerPercent}%` }}
+                          title="Endphase"
+                        />
+                      )}
+                      <span className={styles.projectRuntimeMarker} style={{ left: "100%" }} title="Projektende" />
+                    </div>
+                    <div className={styles.projectRuntimeLegend}>
+                      <i style={{ left: "15%" }} />
+                      <i style={{ left: "86%" }} />
+                      {showProjectCreatedMarker && (
+                        <span
+                          data-edge="start"
+                          data-tooltip="Anlage ist das Erstellungsdatum des Projekts."
+                          style={{ left: `${projectCreatedMarkerPercent}%` }}
+                          tabIndex={0}
+                        >
+                          <em>Anlage</em>
+                          <strong>{formatRuntimeMarkerDate(projectCreatedDate)}</strong>
+                        </span>
+                      )}
+                      <span
+                        data-tooltip="Projektstart ist der geplante Beginn der Leistung."
+                        style={{ left: `${projectStartMarkerPercent}%` }}
+                        tabIndex={0}
+                      >
+                        <em>Start</em>
+                        <strong>{formatRuntimeMarkerDate(projectStartDate)}</strong>
+                      </span>
+                      <span
+                        data-state={isProjectEndPhase ? "active" : undefined}
+                        data-tooltip="Die Endphase beginnt acht Wochen vor dem Projektende."
+                        style={{ left: `${projectEndPhaseMarkerPercent}%` }}
+                        tabIndex={0}
+                      >
+                        <em>Endphase</em>
+                        <strong>{formatRuntimeMarkerDate(projectEndPhaseStartDate)}</strong>
+                      </span>
+                      <span
+                        data-edge="end"
+                        data-tooltip="Projektende ist das hinterlegte Laufzeitende des Projekts."
+                        style={{ left: `${projectEndMarkerPercent}%` }}
+                        tabIndex={0}
+                      >
+                        <em>Ende</em>
+                        <strong>{formatRuntimeMarkerDate(projectEndDate)}</strong>
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             </article>
 
@@ -13189,6 +19207,12 @@ export function DashboardPage() {
                     </dd>
                     <dt>Fakturierungsintervall</dt>
                     <dd>{selectedProjectFile.billingInterval || "-"}</dd>
+                    <dt>Forecast-Verrechnung</dt>
+                    <dd>
+                      {selectedProjectFile.forecastNetAmount
+                        ? `${selectedProjectFile.forecastNetAmount} € netto (${selectedProjectFile.forecastBillingType || "monatlich"})`
+                        : "-"}
+                    </dd>
                   </>
                 )}
                 <dt>Projektstatus</dt>
@@ -13236,38 +19260,6 @@ export function DashboardPage() {
           </aside>
         </div>
 
-        <section className={styles.projectFileFields}>
-          <div className={styles.customerFileMainHeader}>
-            <h2>Eigene Felder</h2>
-            <button type="button" className={styles.secondaryButton}>
-              Zu den Einstellungen
-            </button>
-          </div>
-          <div>
-            <label>
-              Projektlaufzeit (von/bis)
-              <input />
-            </label>
-            <label>
-              Nachfass-Info
-              <input />
-            </label>
-            <label>
-              Spezielle Kundenwünsche
-              <input />
-            </label>
-            <label>
-              Spezielle Abmachungen
-              <input />
-            </label>
-          </div>
-        </section>
-
-        <section className={styles.projectFileFields}>
-          <div className={styles.customerFileMainHeader}>
-            <h2>Datenerfassungsbogen</h2>
-          </div>
-        </section>
         {renderOfferModal()}
         {renderInvoiceSourcePicker()}
         {renderInvoiceModal()}
@@ -13277,7 +19269,9 @@ export function DashboardPage() {
 
   function renderInvoiceSourcePicker() {
     if (!isInvoiceSourcePickerOpen || !selectedProjectFile) return null;
-    const projectOffers = offers.filter((offer) => offer.projectId === selectedProjectFile.id);
+    const projectOffers = offers.filter(
+      (offer) => offer.projectId === selectedProjectFile.id && offer.status !== "Entwurf"
+    );
 
     return (
       <div className={styles.modalOverlay}>
@@ -13287,7 +19281,7 @@ export function DashboardPage() {
               <h2>Rechnung erstellen</h2>
               <p>{selectedProjectFile.projectNumber || selectedProjectFile.id} | {selectedProjectFile.title}</p>
             </div>
-            <button type="button" className={styles.iconButton} onClick={() => setIsInvoiceSourcePickerOpen(false)}>×</button>
+            <button type="button" className={styles.iconButton} onClick={() => setIsInvoiceSourcePickerOpen(false)}>X</button>
           </div>
           <div className={`${styles.standardModalBody} ${styles.offerModalBody}`}>
             <div className={styles.customerDocumentEmpty}>
@@ -13334,11 +19328,17 @@ export function DashboardPage() {
 
   function renderInvoiceModal() {
     if (!isInvoiceModalOpen || !selectedProjectFile) return null;
-    const invoiceNetTotal = invoiceDraft.lines.reduce(
-      (sum, line) => sum + Number(line.quantity || 0) * Number(line.unitPrice || 0),
-      0
-    );
-    const invoiceGrossTotal = invoiceNetTotal * (1 + Number(invoiceDraft.vatRate || 0) / 100);
+    const getInvoiceLineBaseNet = (line: OfferLineDraft) => Number(line.quantity || 0) * Number(line.unitPrice || 0);
+    const getInvoiceLineDiscountPercent = (line: OfferLineDraft) => clampPercent(Number(line.discountPercent || 0));
+    const getInvoiceLineDiscountAmount = (line: OfferLineDraft) =>
+      roundCurrencyValue(getInvoiceLineBaseNet(line) * (getInvoiceLineDiscountPercent(line) / 100));
+    const getInvoiceLineTotalNet = (line: OfferLineDraft) =>
+      roundCurrencyValue(getInvoiceLineBaseNet(line) - getInvoiceLineDiscountAmount(line));
+    const invoiceNetBeforeInvoiceDiscount = invoiceDraft.lines.reduce((sum, line) => sum + getInvoiceLineTotalNet(line), 0);
+    const invoiceDiscountPercent = clampPercent(Number(invoiceDraft.discountPercent || 0));
+    const invoiceDiscountAmount = roundCurrencyValue(invoiceNetBeforeInvoiceDiscount * (invoiceDiscountPercent / 100));
+    const invoiceNetTotal = roundCurrencyValue(invoiceNetBeforeInvoiceDiscount - invoiceDiscountAmount);
+    const invoiceGrossTotal = roundCurrencyValue(invoiceNetTotal * (1 + Number(invoiceDraft.vatRate || 0) / 100));
     const unbilledInvoiceStampEntries = getUnbilledProjectStampEntries(selectedProjectFile.id);
     const selectedInvoiceStampEntries = unbilledInvoiceStampEntries.filter((entry) =>
       invoiceStampEntryIds.includes(entry.id)
@@ -13351,9 +19351,7 @@ export function DashboardPage() {
       (sum, entry) => sum + Number(entry.durationMs || 0) / 3_600_000,
       0
     );
-    const selectedInvoiceBillableStampHours = selectedInvoiceStampEntries
-      .filter((entry) => invoiceBillableStampEntryIds.includes(entry.id))
-      .reduce((sum, entry) => sum + Number(entry.durationMs || 0) / 3_600_000, 0);
+    const editingInvoiceInModal = editingInvoiceId ? invoices.find((invoice) => invoice.id === editingInvoiceId) : null;
     const activeInvoiceCatalogItems = catalogItems.filter((item) => item.isActive);
     const getFilteredInvoiceCatalogItems = (line: OfferLineDraft) => {
       const search = (invoiceLineSearchTerms[line.id] ?? "").trim().toLowerCase();
@@ -13375,7 +19373,7 @@ export function DashboardPage() {
               <h2>{editingInvoiceId ? "Rechnung bearbeiten" : "Neue Rechnung erstellen"}</h2>
               <p>{selectedProjectFile.projectNumber || selectedProjectFile.id} | {selectedProjectFile.title}</p>
             </div>
-            <button type="button" className={styles.iconButton} onClick={() => setIsInvoiceModalOpen(false)}>×</button>
+            <button type="button" className={styles.iconButton} onClick={() => setIsInvoiceModalOpen(false)}>X</button>
           </div>
           <div className={`${styles.standardModalBody} ${styles.offerModalBody}`}>
             {invoiceError ? <p className={styles.formError}>{invoiceError}</p> : null}
@@ -13440,17 +19438,9 @@ export function DashboardPage() {
                           type="button"
                           className={styles.secondaryButton}
                           disabled={unbilledInvoiceStampEntries.length === 0}
-                          onClick={() => takeOverStampEntriesForInvoice(unbilledInvoiceStampEntries, true)}
-                        >
-                          Abrechnungswirksam übernehmen
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.secondaryButton}
-                          disabled={unbilledInvoiceStampEntries.length === 0}
                           onClick={() => takeOverStampEntriesForInvoice(unbilledInvoiceStampEntries, false)}
                         >
-                          Nur verknüpfen
+                          Alle als abgerechnet markieren
                         </button>
                       </div>
                     </div>
@@ -13463,22 +19453,44 @@ export function DashboardPage() {
                           {unbilledInvoiceStampEntries.length} Zeiteintrag
                           {unbilledInvoiceStampEntries.length === 1 ? "" : "en"}.
                           {selectedInvoiceStampEntries.length > 0
-                            ? ` Verknüpft: ${formatHours(selectedInvoiceStampHours)} Std. | abrechnungswirksam: ${formatHours(selectedInvoiceBillableStampHours)} Std.`
+                            ? ` Ausgewählt: ${formatHours(selectedInvoiceStampHours)} Std.`
                             : ""}
                         </small>
-                        <div className={styles.planningHistoryList}>
-                          {unbilledInvoiceStampEntries.slice(0, 4).map((entry) => (
-                            <article key={`invoice-stamp-${entry.id}`}>
-                              <strong>
-                                {entry.employee} | {formatStampDuration(entry.durationMs)}
-                              </strong>
-                              <span>
-                                {entry.date} von {entry.startTime} bis {entry.endTime} |{" "}
-                                {entry.entrySource === "manual" ? "Manuell" : "Gestempelt"}
-                              </span>
-                              <p>{entry.comment || "Ohne Kommentar"}</p>
-                            </article>
-                          ))}
+                        <div className={styles.projectTableScroll}>
+                          <table className={styles.projectTimeTable}>
+                            <thead>
+                              <tr>
+                                <th>Als abgerechnet markieren</th>
+                                <th>Datum</th>
+                                <th>Uhrzeit</th>
+                                <th>Mitarbeiter</th>
+                                <th>Dauer</th>
+                                <th>Kommentar</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {unbilledInvoiceStampEntries.map((entry) => {
+                                const isLinked = invoiceStampEntryIds.includes(entry.id);
+
+                                return (
+                                  <tr key={`invoice-stamp-${entry.id}`}>
+                                    <td>
+                                      <input
+                                        type="checkbox"
+                                        checked={isLinked}
+                                        onChange={(event) => toggleInvoiceStampEntry(entry.id, event.target.checked)}
+                                      />
+                                    </td>
+                                    <td>{entry.date}</td>
+                                    <td>{entry.startTime} - {entry.endTime}</td>
+                                    <td>{entry.employee}</td>
+                                    <td>{formatHours(Number(entry.durationMs || 0) / 3_600_000)} Std.</td>
+                                    <td>{entry.comment || "-"}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
                         </div>
                       </>
                     )}
@@ -13491,6 +19503,7 @@ export function DashboardPage() {
                           <th>Menge</th>
                           <th>Einheit</th>
                           <th>Einzelpreis</th>
+                          <th>Rabatt</th>
                           <th>Gesamt</th>
                         </tr>
                       </thead>
@@ -13550,6 +19563,7 @@ export function DashboardPage() {
                                     ) : null}
                                   </div>
                                 ) : null}
+
                               </div>
                               <input value={line.title} onChange={(event) => updateInvoiceLine(index, { title: event.target.value })} />
                               <textarea rows={2} value={line.description} onChange={(event) => updateInvoiceLine(index, { description: event.target.value })} />
@@ -13576,9 +19590,13 @@ export function DashboardPage() {
                                             type="number"
                                             min="0"
                                             step="0.25"
-                                            value={labor.plannedHours}
+                                            value={Number(labor.plannedHours || 0) > 0 ? labor.plannedHours : ""}
                                             onChange={(event) =>
-                                              updateInvoiceLineLabor(index, labor.id, Number(event.target.value))
+                                              updateInvoiceLineLabor(
+                                                index,
+                                                labor.id,
+                                                event.target.value === "" ? 0 : Number(event.target.value)
+                                              )
                                             }
                                           />
                                           <span>Std. fakturieren</span>
@@ -13588,7 +19606,7 @@ export function DashboardPage() {
                                             className={styles.iconButton}
                                             onClick={() => removeInvoiceLineLabor(index, labor.id)}
                                           >
-                                            ×
+                                            ?
                                           </button>
                                         </div>
                                       ))}
@@ -13602,9 +19620,34 @@ export function DashboardPage() {
                               ) : null}
                             </td>
                             <td><input type="number" min="0" step="0.25" value={line.quantity} disabled={canPlanOfferLineLabor(line)} onChange={(event) => updateInvoiceLine(index, { quantity: Number(event.target.value) })} /></td>
-                            <td><input value={line.unit} onChange={(event) => updateInvoiceLine(index, { unit: event.target.value })} /></td>
+                            <td>
+                              <select value={line.unit} onChange={(event) => updateInvoiceLine(index, { unit: event.target.value })}>
+                                {getUnitOptions(line.unit).map((unit) => (
+                                  <option key={unit} value={unit}>{unit}</option>
+                                ))}
+                              </select>
+                            </td>
                             <td><input type="number" step="0.01" value={line.unitPrice} onChange={(event) => updateInvoiceLine(index, { unitPrice: Number(event.target.value) })} /></td>
-                            <td>{formatMoney(Number(line.quantity || 0) * Number(line.unitPrice || 0))}</td>
+                            <td>
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.01"
+                                value={line.discountPercent ?? 0}
+                                onChange={(event) =>
+                                  updateInvoiceLine(index, { discountPercent: clampPercent(Number(event.target.value) || 0) })
+                                }
+                              />
+                            </td>
+                            <td>
+                              <strong>{formatMoney(getInvoiceLineTotalNet(line))}</strong>
+                              {getInvoiceLineDiscountAmount(line) > 0 ? (
+                                <small className={styles.offerLineDiscountHint}>
+                                  Rabatt {formatHours(getInvoiceLineDiscountPercent(line))}% / {formatMoney(getInvoiceLineDiscountAmount(line))}
+                                </small>
+                              ) : null}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -13612,6 +19655,34 @@ export function DashboardPage() {
                   </div>
                   <div className={styles.offerTotals}>
                     <div>
+                      <label className={styles.offerTotalDiscountField}>
+                        Rechnungsrabatt %
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          value={invoiceDraft.discountPercent}
+                          onChange={(event) =>
+                            setInvoiceDraft((current) => ({
+                              ...current,
+                              discountPercent: clampPercent(Number(event.target.value) || 0),
+                            }))
+                          }
+                        />
+                      </label>
+                      {invoiceDiscountAmount > 0 ? (
+                        <>
+                          <article>
+                            <span>Netto vor Rabatt</span>
+                            <strong>{formatMoney(invoiceNetBeforeInvoiceDiscount)}</strong>
+                          </article>
+                          <article>
+                            <span>Rabatt {formatHours(invoiceDiscountPercent)}%</span>
+                            <strong>-{formatMoney(invoiceDiscountAmount)}</strong>
+                          </article>
+                        </>
+                      ) : null}
                       <article><span>Netto</span><strong>{formatMoney(invoiceNetTotal)}</strong></article>
                       <article><span>MwSt.</span><strong>{formatMoney(invoiceGrossTotal - invoiceNetTotal)}</strong></article>
                       <article><span>Brutto</span><strong>{formatMoney(invoiceGrossTotal)}</strong></article>
@@ -13647,8 +19718,22 @@ export function DashboardPage() {
           <div className={styles.standardModalFooter}>
             <div className={styles.modalActions}>
               <button type="button" className={styles.secondaryButton} onClick={() => setIsInvoiceModalOpen(false)}>Abbrechen</button>
-              <button type="button" className={styles.primaryButton} onClick={saveInvoice} disabled={isSavingInvoice}>
-                {isSavingInvoice ? "Speichert..." : "Rechnung erstellen"}
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => saveInvoice({ asDraft: true })}
+                disabled={isSavingInvoice}
+              >
+                Entwurf speichern
+              </button>
+              <button type="button" className={styles.primaryButton} onClick={() => saveInvoice()} disabled={isSavingInvoice}>
+                {isSavingInvoice
+                  ? "Speichert..."
+                  : editingInvoiceInModal?.status === "Entwurf"
+                    ? "Jetzt fakturieren"
+                    : editingInvoiceId
+                      ? "Rechnung speichern"
+                      : "Rechnung erstellen"}
               </button>
             </div>
           </div>
@@ -13660,18 +19745,25 @@ export function DashboardPage() {
   function renderOfferModal() {
     if (!isOfferModalOpen || !selectedProjectFile) return null;
 
-    const offerNetTotal = offerDraft.lines.reduce(
-      (sum, line) => sum + Number(line.quantity || 0) * Number(line.unitPrice || 0),
-      0
-    );
-    const offerGrossTotal = offerNetTotal * (1 + Number(offerDraft.vatRate || 0) / 100);
+    const getOfferLineBaseNet = (line: OfferLineDraft) => Number(line.quantity || 0) * Number(line.unitPrice || 0);
+    const getOfferLineDiscountPercent = (line: OfferLineDraft) => clampPercent(Number(line.discountPercent || 0));
+    const getOfferLineDiscountAmount = (line: OfferLineDraft) =>
+      roundCurrencyValue(getOfferLineBaseNet(line) * (getOfferLineDiscountPercent(line) / 100));
+    const getOfferLineTotalNet = (line: OfferLineDraft) =>
+      roundCurrencyValue(getOfferLineBaseNet(line) - getOfferLineDiscountAmount(line));
+    const offerNetBeforeOfferDiscount = offerDraft.lines.reduce((sum, line) => sum + getOfferLineTotalNet(line), 0);
+    const offerDiscountPercent = clampPercent(Number(offerDraft.discountPercent || 0));
+    const offerDiscountAmount = roundCurrencyValue(offerNetBeforeOfferDiscount * (offerDiscountPercent / 100));
+    const offerNetTotal = roundCurrencyValue(offerNetBeforeOfferDiscount - offerDiscountAmount);
+    const offerGrossTotal = roundCurrencyValue(offerNetTotal * (1 + Number(offerDraft.vatRate || 0) / 100));
+    const getOfferLineOrientationLaborCost = (line: OfferLineDraft) =>
+      canPlanOfferLineLabor(line) ? Number(line.quantity || 0) * Number(line.laborCostRate || 0) : 0;
     const offerPurchaseTotal = offerDraft.lines.reduce((sum, line) => {
       const catalogItem = catalogItems.find((item) => item.id === line.catalogItemId);
-      return sum + (catalogItem ? getCatalogPackagePurchasePrice(catalogItem) : 0) * Number(line.quantity || 0);
+      return sum + (catalogItem ? getCatalogMaterialPurchasePrice(catalogItem) : 0) * Number(line.quantity || 0);
     }, 0);
     const offerLaborTotal = offerDraft.lines.reduce(
-      (sum, line) =>
-        sum + line.laborItems.reduce((lineSum, labor) => lineSum + Number(labor.totalCost || 0), 0),
+      (sum, line) => sum + getOfferLineOrientationLaborCost(line),
       0
     );
     const offerInternalCostTotal = offerPurchaseTotal + offerLaborTotal;
@@ -13682,13 +19774,22 @@ export function DashboardPage() {
     const getInternalMarginPercent = (revenue: number, cost: number) =>
       revenue > 0 ? ((revenue - cost) / revenue) * 100 : 0;
     const getInternalMarginState = (margin: number) => (margin >= 25 ? "good" : margin >= 15 ? "warn" : "bad");
+    const getOfferLineMarginPercent = (line: OfferLineDraft) => {
+      const quantity = Number(line.quantity || 0);
+      const revenue = getOfferLineTotalNet(line);
+      if (revenue <= 0) return 0;
+      const catalogItem = catalogItems.find((item) => item.id === line.catalogItemId);
+      const materialCost = (catalogItem ? getCatalogMaterialPurchasePrice(catalogItem) : 0) * quantity;
+      const laborCost = getOfferLineOrientationLaborCost(line);
+      return ((revenue - materialCost - laborCost) / revenue) * 100;
+    };
     const offerInternalBreakdown = offerDraft.lines.reduce(
       (breakdown, line) => {
         const quantity = Number(line.quantity || 0);
-        const revenue = quantity * Number(line.unitPrice || 0);
+        const revenue = getOfferLineTotalNet(line);
         const catalogItem = catalogItems.find((item) => item.id === line.catalogItemId);
-        const materialCost = (catalogItem ? getCatalogPackagePurchasePrice(catalogItem) : 0) * quantity;
-        const laborCost = line.laborItems.reduce((lineSum, labor) => lineSum + Number(labor.totalCost || 0), 0);
+        const materialCost = (catalogItem ? getCatalogMaterialPurchasePrice(catalogItem) : 0) * quantity;
+        const laborCost = getOfferLineOrientationLaborCost(line);
 
         if (line.catalogType === "service") {
           return {
@@ -13736,24 +19837,64 @@ export function DashboardPage() {
           .includes(search)
       );
     };
+    const offerSaveHint = offerError || getOfferSaveValidationMessage();
+    const offerExecutionMonthMatch = /^(\d{4})-(\d{2})$/.exec(offerDraft.plannedExecutionMonth);
+    const offerExecutionMonthLabel = offerExecutionMonthMatch
+      ? new Date(Number(offerExecutionMonthMatch[1]), Number(offerExecutionMonthMatch[2]) - 1, 1).toLocaleString(
+          APP_LOCALE,
+          { month: "long", year: "numeric" }
+        )
+      : "";
+    const offerExecutionMonthOptions = Array.from({ length: 12 }, (_, monthIndex) => ({
+      value: `${offerExecutionMonthPickerYear}-${String(monthIndex + 1).padStart(2, "0")}`,
+      label: new Date(offerExecutionMonthPickerYear, monthIndex, 1).toLocaleString(APP_LOCALE, {
+        month: "short",
+      }),
+    }));
+    const offerExecutionEndMonthOptions = Array.from({ length: 12 }, (_, monthIndex) => ({
+      value: `${offerExecutionEndMonthPickerYear}-${String(monthIndex + 1).padStart(2, "0")}`,
+      label: new Date(offerExecutionEndMonthPickerYear, monthIndex, 1).toLocaleString(APP_LOCALE, {
+        month: "short",
+      }),
+    }));
+    const isOfferRecurringProject = getProjectKind(selectedProjectFile).startsWith("Dauer");
+    const effectiveOfferEndMonth =
+      offerDraft.plannedExecutionEndMonth ||
+      (selectedProjectFile.projectRuntimeUntil ? selectedProjectFile.projectRuntimeUntil.slice(0, 7) : "");
+    const selectedOfferEndMonthLabel = offerDraft.plannedExecutionEndMonth
+      ? new Date(
+          Number(offerDraft.plannedExecutionEndMonth.slice(0, 4)),
+          Number(offerDraft.plannedExecutionEndMonth.slice(5, 7)) - 1,
+          1
+        ).toLocaleString(APP_LOCALE, { month: "long", year: "numeric" })
+      : "";
+    const offerEndMonthLabel = effectiveOfferEndMonth
+      ? new Date(Number(effectiveOfferEndMonth.slice(0, 4)), Number(effectiveOfferEndMonth.slice(5, 7)) - 1, 1)
+          .toLocaleString(APP_LOCALE, { month: "long", year: "numeric" })
+      : "bis Projektende";
 
     return (
       <div className={styles.modalOverlay}>
         <div className={`${styles.standardModal} ${styles.catalogModal} ${styles.offerModal}`}>
           <div className={styles.standardModalHeader}>
             <div>
-              <h2>{editingOfferId ? "Angebot bearbeiten" : "Neues Angebot anlegen"}</h2>
+              <h2>
+                {editingOfferId
+                  ? offerDraft.offerType === "addendum"
+                    ? "Nachtragsangebot bearbeiten"
+                    : "Angebot bearbeiten"
+                  : offerDraft.offerType === "addendum"
+                    ? "Neues Nachtragsangebot anlegen"
+                    : "Neues Angebot anlegen"}
+              </h2>
               <p>{selectedProjectFile.projectNumber || selectedProjectFile.id} | {selectedProjectFile.title}</p>
             </div>
             <button
               className={styles.iconButton}
               type="button"
-              onClick={() => {
-                setIsOfferModalOpen(false);
-                setEditingOfferId("");
-              }}
+              onClick={closeOfferModal}
             >
-              ×
+              ?
             </button>
           </div>
 
@@ -13844,6 +19985,173 @@ export function DashboardPage() {
                     }
                   />
                 </label>
+                <label>
+                  Angebotsart
+                  <select
+                    value={offerDraft.offerType}
+                    onChange={(event) =>
+                      setOfferDraft((current) => ({
+                        ...current,
+                        offerType: event.target.value === "addendum" ? "addendum" : "base",
+                      }))
+                    }
+                  >
+                    <option value="base">Hauptangebot</option>
+                    <option value="addendum">Nachtragsangebot</option>
+                  </select>
+                </label>
+                {offerDraft.offerType === "addendum" ? (
+                  <label>
+                    Nachtragsart
+                    <select
+                      value={offerDraft.addendumMode}
+                      onChange={(event) =>
+                        setOfferDraft((current) => ({
+                          ...current,
+                          addendumMode:
+                            event.target.value === "replacement" || event.target.value === "reduction"
+                              ? event.target.value
+                              : "addition",
+                        }))
+                      }
+                    >
+                      <option value="addition">Ergaenzung</option>
+                      <option value="replacement">Aenderung / Ersatz</option>
+                      <option value="reduction">Reduzierung</option>
+                    </select>
+                  </label>
+                ) : null}
+                <label
+                  className={`${styles.monthPickerField} ${
+                    isOfferRecurringProject ? styles.importantOfferField : ""
+                  }`}
+                >
+                  <span className={styles.fieldLabelWithHelp}>
+                    {isOfferRecurringProject ? "Ausführungszeitraum von *" : "Geplanter Ausführungsmonat *"}
+                    <span
+                      className={styles.fieldHelpIcon}
+                      title={
+                        isOfferRecurringProject
+                          ? "Dieser Zeitraum steuert, ab wann und bis wann die angebotenen Dauerlaeufer-Leistungen monatlich im Forecast, in den Vorgabezeiten und im Soll/Ist-Vergleich erscheinen."
+                          : "Dieser Monat steuert, in welchem Monat das Angebot im Forecast erscheint."
+                      }
+                    >
+                      ?
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    className={styles.monthPickerInput}
+                    data-empty={!offerDraft.plannedExecutionMonth}
+                    data-important={isOfferRecurringProject || undefined}
+                    onClick={() => setIsOfferExecutionMonthPickerOpen((current) => !current)}
+                  >
+                    {offerExecutionMonthLabel || "Monat und Jahr auswählen"}
+                  </button>
+                  {isOfferExecutionMonthPickerOpen ? (
+                    <div className={styles.monthPickerPopover}>
+                      <div className={styles.monthPickerHeader}>
+                        <button
+                          type="button"
+                          onClick={() => setOfferExecutionMonthPickerYear((year) => year - 1)}
+                          aria-label="Vorheriges Jahr"
+                        >
+                          ‹
+                        </button>
+                        <strong>{offerExecutionMonthPickerYear}</strong>
+                        <button
+                          type="button"
+                          onClick={() => setOfferExecutionMonthPickerYear((year) => year + 1)}
+                          aria-label="Nächstes Jahr"
+                        >
+                          ›
+                        </button>
+                      </div>
+                      <div className={styles.monthPickerGrid}>
+                        {offerExecutionMonthOptions.map((month) => (
+                          <button
+                            key={month.value}
+                            type="button"
+                            data-active={offerDraft.plannedExecutionMonth === month.value}
+                            onClick={() => {
+                              setOfferDraft((current) => ({
+                                ...current,
+                                plannedExecutionMonth: month.value,
+                              }));
+                              setOfferError("");
+                              setIsOfferExecutionMonthPickerOpen(false);
+                            }}
+                          >
+                            {month.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </label>
+                {isOfferRecurringProject ? (
+                  <label className={`${styles.monthPickerField} ${styles.importantOfferField}`}>
+                    <span className={styles.fieldLabelWithHelp}>
+                      Ausführungszeitraum bis *
+                      <span
+                        className={styles.fieldHelpIcon}
+                        title="Der Endmonat begrenzt, bis wann diese angebotenen Dauerläufer-Leistungen monatlich berücksichtigt werden. Standard ist der letzte Monat der Projektlaufzeit."
+                      >
+                        ?
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.monthPickerInput}
+                      data-empty={!offerDraft.plannedExecutionEndMonth}
+                      data-important
+                      onClick={() => setIsOfferExecutionEndMonthPickerOpen((current) => !current)}
+                    >
+                      {selectedOfferEndMonthLabel || "Monat und Jahr auswaehlen"}
+                    </button>
+                    {isOfferExecutionEndMonthPickerOpen ? (
+                      <div className={styles.monthPickerPopover}>
+                        <div className={styles.monthPickerHeader}>
+                          <button
+                            type="button"
+                            onClick={() => setOfferExecutionEndMonthPickerYear((year) => year - 1)}
+                            aria-label="Vorheriges Jahr"
+                          >
+                            ‹
+                          </button>
+                          <strong>{offerExecutionEndMonthPickerYear}</strong>
+                          <button
+                            type="button"
+                            onClick={() => setOfferExecutionEndMonthPickerYear((year) => year + 1)}
+                            aria-label="Naechstes Jahr"
+                          >
+                            ›
+                          </button>
+                        </div>
+                        <div className={styles.monthPickerGrid}>
+                          {offerExecutionEndMonthOptions.map((month) => (
+                            <button
+                              key={month.value}
+                              type="button"
+                              data-active={offerDraft.plannedExecutionEndMonth === month.value}
+                              onClick={() => {
+                                setOfferDraft((current) => ({
+                                  ...current,
+                                  plannedExecutionEndMonth: month.value,
+                                }));
+                                setOfferError("");
+                                setIsOfferExecutionEndMonthPickerOpen(false);
+                              }}
+                            >
+                              {month.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    <small>Standard ist der letzte Monat der Projektlaufzeit ({offerEndMonthLabel}).</small>
+                  </label>
+                ) : null}
                 <label className={styles.catalogWideField}>
                   Einleitung
                   <textarea
@@ -13864,7 +20172,7 @@ export function DashboardPage() {
             <section className={styles.offerSection}>
               <div className={styles.offerSectionHeader}>
                 <h3>Positionen</h3>
-                <button type="button" className={styles.secondaryButton} onClick={addOfferLine}>
+                <button type="button" className={styles.offerAddPositionButton} onClick={addOfferLine}>
                   + Position
                 </button>
               </div>
@@ -13876,6 +20184,16 @@ export function DashboardPage() {
                       <th>Menge</th>
                       <th>Einheit</th>
                       <th>Einzelpreis</th>
+                      <th>Rabatt</th>
+                      <th>
+                        Aufschlag{" "}
+                        <span
+                          className={styles.offerMarginHelp}
+                          title="Die Margenorientierung nutzt den durchschnittlichen LK-Satz der Niederlassung als kalkulatorische Grundlage. Sie zeigt eine Angebotsorientierung, nicht die echte Marge. Die tatsächliche Marge entsteht später im Soll/Ist anhand der wirklich eingesetzten Mitarbeiter und gestempelten Zeiten."
+                        >
+                          ?
+                        </span>
+                      </th>
                       <th>Gesamt</th>
                     </tr>
                   </thead>
@@ -13941,6 +20259,7 @@ export function DashboardPage() {
                                 {getFilteredOfferCatalogItems(line).length === 0 ? (
                                   <span>Keine Treffer</span>
                                 ) : null}
+
                               </div>
                             ) : null}
                           </div>
@@ -13955,77 +20274,54 @@ export function DashboardPage() {
                             placeholder="Beschreibung"
                           />
                           {canPlanOfferLineLabor(line) ? (
-                            <div className={styles.offerInternalCalculation}>
+                            <div className={styles.offerLaborCompact}>
                               <div className={styles.offerInternalHeader}>
-                                <strong>Interne Kalkulation</strong>
-                                <button
-                                  type="button"
-                                  className={styles.secondaryButton}
-                                  disabled={getOfferLineLaborHours(line) >= Number(line.quantity || 0)}
-                                  onClick={() => addOfferLineLabor(index)}
-                                >
-                                  + Mitarbeiterzeit
-                                </button>
+                                <strong>
+                                  Margenorientierung{" "}
+                                  <span
+                                    className={styles.fieldHelpIcon}
+                                    title="Die Margenorientierung nutzt den durchschnittlichen LK-Satz der Niederlassung als kalkulatorische Grundlage. Sie zeigt eine Angebotsorientierung, nicht die echte Marge. Die tatsächliche Marge entsteht später im Soll/Ist anhand der wirklich eingesetzten Mitarbeiter und gestempelten Zeiten."
+                                  >
+                                    ?
+                                  </span>
+                                </strong>
                               </div>
-                              <small>
-                                {formatHours(getOfferLineLaborHours(line))} von{" "}
-                                {formatHours(Number(line.quantity || 0))} Std. intern verplant
-                              </small>
-                              {line.laborItems.length === 0 ? (
-                                <p>Noch keine interne Vorgabezeit hinterlegt.</p>
-                              ) : (
-                                <div className={styles.offerLaborRows}>
-                                  {line.laborItems.map((labor) => (
-                                    <div key={labor.id} className={styles.offerLaborRow}>
-                                      <select
-                                        value={labor.userId}
-                                        onChange={(event) =>
-                                          updateOfferLineLabor(index, labor.id, {
-                                            userId: event.target.value,
-                                          })
-                                        }
-                                      >
-                                        <option value="">Mitarbeiter auswählen</option>
-                                        {users
-                                          .filter((user) => user.isActive)
-                                          .map((user) => (
-                                            <option key={user.id} value={user.id}>
-                                              {user.name}
-                                            </option>
-                                          ))}
-                                      </select>
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        max={
-                                          Number(line.quantity || 0) -
-                                          line.laborItems
-                                            .filter((item) => item.id !== labor.id)
-                                            .reduce((sum, item) => sum + Number(item.plannedHours || 0), 0)
-                                        }
-                                        step="0.25"
-                                        value={labor.plannedHours}
-                                        onChange={(event) =>
-                                          updateOfferLineLabor(index, labor.id, {
-                                            plannedHours: Number(event.target.value),
-                                          })
-                                        }
-                                        aria-label="Vorgabezeit in Stunden"
-                                      />
-                                      <span>{formatMoney(labor.hourlyCostRate)} / Std.</span>
-                                      <strong>{formatMoney(labor.totalCost)}</strong>
-                                      <button
-                                        type="button"
-                                        className={styles.iconButton}
-                                        onClick={() => removeOfferLineLabor(index, labor.id)}
-                                        aria-label="Mitarbeiterzeit löschen"
-                                      >
-                                        ×
-                                      </button>
-                                    </div>
+                              <label className={styles.offerLaborRateRow}>
+                                LK-Satz
+                                <select
+                                  value={line.laborCostRateKey}
+                                  onChange={(event) => {
+                                    const option = getLaborCostRateOption(event.target.value);
+                                    updateOfferLine(index, {
+                                      laborCostRateKey: event.target.value,
+                                      laborCostRate: roundCurrencyValue(option?.rate ?? line.laborCostRate ?? 0),
+                                    });
+                                  }}
+                                >
+                                  <option value="">Manuell</option>
+                                  {getLaborCostRateOptions().map((option) => (
+                                    <option key={option.key} value={option.key}>
+                                      {option.label}
+                                    </option>
                                   ))}
-                                </div>
-                              )}
+                                </select>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={formatCurrencyInputValue(line.laborCostRate ?? 0)}
+                                  onChange={(event) =>
+                                    updateOfferLine(index, {
+                                      laborCostRate: roundCurrencyValue(Number(event.target.value)),
+                                      laborCostRateKey: line.laborCostRateKey || "",
+                                    })
+                                  }
+                                />
+                              </label>
+                              <p>
+                                Kalkulatorische Lohnkosten:{" "}
+                                <strong>{formatMoney(getOfferLineOrientationLaborCost(line))}</strong>
+                              </p>
                             </div>
                           ) : null}
                         </td>
@@ -14039,10 +20335,11 @@ export function DashboardPage() {
                           />
                         </td>
                         <td>
-                          <input
-                            value={line.unit}
-                            onChange={(event) => updateOfferLine(index, { unit: event.target.value })}
-                          />
+                          <select value={line.unit} onChange={(event) => updateOfferLine(index, { unit: event.target.value })}>
+                            {getUnitOptions(line.unit).map((unit) => (
+                              <option key={unit} value={unit}>{unit}</option>
+                            ))}
+                          </select>
                         </td>
                         <td>
                           <input
@@ -14053,7 +20350,40 @@ export function DashboardPage() {
                             onChange={(event) => updateOfferLine(index, { unitPrice: Number(event.target.value) })}
                           />
                         </td>
-                        <td>{formatMoney(Number(line.quantity || 0) * Number(line.unitPrice || 0))}</td>
+                        <td>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.01"
+                            value={line.discountPercent ?? 0}
+                            onChange={(event) =>
+                              updateOfferLine(index, { discountPercent: clampPercent(Number(event.target.value) || 0) })
+                            }
+                          />
+                        </td>
+                        <td>
+                          {canPlanOfferLineLabor(line) ? (
+                            <div
+                              className={styles.offerMarginBar}
+                              data-state={getInternalMarginState(getOfferLineMarginPercent(line))}
+                              title={`Kalkulatorische Lohnkosten: ${formatMoney(getOfferLineOrientationLaborCost(line))}`}
+                            >
+                              <span style={{ width: `${Math.max(0, Math.min(100, getOfferLineMarginPercent(line)))}%` }} />
+                              <strong>{formatHours(getOfferLineMarginPercent(line))}%</strong>
+                            </div>
+                          ) : (
+                            <span className={styles.offerMarginEmpty}>-</span>
+                          )}
+                        </td>
+                        <td>
+                          <strong>{formatMoney(getOfferLineTotalNet(line))}</strong>
+                          {getOfferLineDiscountAmount(line) > 0 ? (
+                            <small className={styles.offerLineDiscountHint}>
+                              Rabatt {formatHours(getOfferLineDiscountPercent(line))}% / {formatMoney(getOfferLineDiscountAmount(line))}
+                            </small>
+                          ) : null}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -14063,6 +20393,34 @@ export function DashboardPage() {
 
             <section className={styles.offerTotals}>
               <div>
+                <label className={styles.offerTotalDiscountField}>
+                  Angebotsrabatt %
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={offerDraft.discountPercent}
+                    onChange={(event) =>
+                      setOfferDraft((current) => ({
+                        ...current,
+                        discountPercent: clampPercent(Number(event.target.value) || 0),
+                      }))
+                    }
+                  />
+                </label>
+                {offerDiscountAmount > 0 ? (
+                  <>
+                    <article>
+                      <span>Netto vor Rabatt</span>
+                      <strong>{formatMoney(offerNetBeforeOfferDiscount)}</strong>
+                    </article>
+                    <article>
+                      <span>Rabatt {formatHours(offerDiscountPercent)}%</span>
+                      <strong>-{formatMoney(offerDiscountAmount)}</strong>
+                    </article>
+                  </>
+                ) : null}
                 <article>
                   <span>Netto</span>
                   <strong>{formatMoney(offerNetTotal)}</strong>
@@ -14083,13 +20441,13 @@ export function DashboardPage() {
                       <th>Kosten</th>
                       <th>Erlöse</th>
                       <th>Differenz in €</th>
-                      <th>Marge in %</th>
+                      <th>Orientierung in %</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr>
                       <td>
-                        <span>Lohnkosten intern</span>
+                        <span>Kalk. Lohnkosten</span>
                         <strong>{formatMoney(offerLaborTotal)}</strong>
                       </td>
                       <td>
@@ -14117,7 +20475,7 @@ export function DashboardPage() {
                     </tr>
                     <tr>
                       <td>
-                        <span>Gesamtkosten intern</span>
+                        <span>Kalk. Gesamtkosten</span>
                         <strong>{formatMoney(offerInternalCostTotal)}</strong>
                       </td>
                       <td>
@@ -14175,18 +20533,32 @@ export function DashboardPage() {
           </div>
 
           <div className={styles.standardModalFooter}>
+            {offerSaveHint ? (
+              <p className={styles.modalFooterError} role="alert">
+                {offerSaveHint} Entwurf kann trotzdem gespeichert werden.
+              </p>
+            ) : (
+              <p className={styles.modalFooterHint}>
+                Angebot ist speicherbereit.
+              </p>
+            )}
             <div className={styles.modalActions}>
               <button
                 type="button"
                 className={styles.secondaryButton}
-                onClick={() => {
-                  setIsOfferModalOpen(false);
-                  setEditingOfferId("");
-                }}
+                onClick={closeOfferModal}
               >
                 Abbrechen
               </button>
-              <button type="button" className={styles.primaryButton} onClick={saveOffer} disabled={isSavingOffer}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => saveOffer({ asDraft: true })}
+                disabled={isSavingOffer}
+              >
+                Entwurf speichern
+              </button>
+              <button type="button" className={styles.primaryButton} onClick={() => saveOffer()} disabled={isSavingOffer}>
                 {isSavingOffer
                   ? editingOfferId
                     ? "Speichere PDF..."
@@ -14499,7 +20871,7 @@ export function DashboardPage() {
                   <div>
                     <strong>{disgTypeDetails[dimension].title}</strong>
                     <span>
-                      {result.scores[dimension].points} Punkte · Ø {formatAssessmentScore(result.scores[dimension].average)}
+                      {result.scores[dimension].points} Punkte · ? {formatAssessmentScore(result.scores[dimension].average)}
                     </span>
                   </div>
                   <div className={styles.assessmentBarGroup}>
@@ -14554,7 +20926,7 @@ export function DashboardPage() {
           <article key={area.id} className={styles.assessmentAreaCard}>
             <div className={styles.assessmentAreaHeader}>
               <strong>{area.label}</strong>
-              <span>Ø {formatAssessmentScore(getAssessmentAreaAverage(block.answers, area.id))}</span>
+              <span>? {formatAssessmentScore(getAssessmentAreaAverage(block.answers, area.id))}</span>
             </div>
             <div className={styles.assessmentQuestions}>
               {area.questions.map((question, index) => {
@@ -14997,7 +21369,7 @@ export function DashboardPage() {
       ["wartet_vertreter", "wartet_geschaeftsfuehrung"].includes(absence.status)
     );
     const personalStampEntries = stampEntries.filter(
-      (entry) => entry.userId === currentUser?.id || entry.employee === currentUser?.name
+      (entry) => !entry.deletedAt && (entry.userId === currentUser?.id || entry.employee === currentUser?.name)
     );
     const monthStampEntries = personalStampEntries.filter((entry) => entry.date.startsWith(currentMonthKey));
     const personalTimeMonthDays = Array.from(
@@ -15560,7 +21932,7 @@ export function DashboardPage() {
                 <small>Interne oder nicht projektbezogene Stempelungen</small>
               </article>
               <article>
-                <span>Ø Stunden pro Stempeltag</span>
+                <span>? Stunden pro Stempeltag</span>
                 <strong>{formatHours(averageDailyHours)} Std.</strong>
                 <small>Nur Tage mit erfasster Arbeitszeit</small>
               </article>
@@ -16077,6 +22449,87 @@ export function DashboardPage() {
 
   function renderPlanningBoard() {
     const allDetailGroups = planningBoardSections.flatMap((section) => section.detailGroups);
+    const openPlanningMonths = Array.from({ length: 7 }, (_, index) => {
+      const date = new Date();
+      date.setHours(12, 0, 0, 0);
+      date.setDate(1);
+      date.setMonth(date.getMonth() + index);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+
+      return {
+        key,
+        label: date.toLocaleDateString(APP_LOCALE, {
+          month: "short",
+          year: "2-digit",
+          timeZone: APP_TIME_ZONE,
+        }),
+      };
+    });
+    const getProjectPlanningCompany = (project: HeroProjectPreview) =>
+      project.projectType === "Projekt OK immocare" || project.branch === "OK immocare GmbH"
+        ? "OK immocare"
+        : "OK solutions";
+    const activePlanningProjects = heroProjects.filter(
+      (project) => project.status !== "Abgeschlossen" && project.status !== "Archiviert"
+    );
+    const getProjectMonthlyPlanningBasisHours = (project: HeroProjectPreview, monthKey: string) =>
+      getProjectBudgetAllocationHours(project, monthKey);
+    const getProjectDuePlanningHoursForMonth = (project: HeroProjectPreview, monthKey: string) => {
+      const basisHours = getProjectMonthlyPlanningBasisHours(project, monthKey);
+      return basisHours > 0 && isProjectBudgetDueForPlanningMonth(project, monthKey) ? basisHours : 0;
+    };
+    const hasProjectPlanningBasis = (project: HeroProjectPreview) =>
+      (project.timeBudgetAllocations ?? []).some((allocation) => parseHoursInput(allocation.hours) > 0);
+    const getProjectPlannedHoursForMonth = (projectId: string, monthKey: string) =>
+      planningEntries
+        .filter((entry) => !entry.deletedAt && entry.projectId === projectId && entry.date.startsWith(monthKey))
+        .reduce((sum, entry) => sum + Number(entry.durationMinutes || 0) / 60, 0);
+    const hasProjectPlanningInOpenMonths = (projectId: string) =>
+      planningEntries.some(
+        (entry) =>
+          !entry.deletedAt &&
+          entry.projectId === projectId &&
+          openPlanningMonths.some((month) => entry.date.startsWith(month.key))
+      );
+    const isProjectRelevantForOpenPlanningMonths = (project: HeroProjectPreview) =>
+      openPlanningMonths.some((month) => isProjectBudgetDueForPlanningMonth(project, month.key));
+    const openPlanningColumnsByCompany = (company: PlanningBoardCompany) =>
+      openPlanningMonths.map((month) => {
+        const rows = activePlanningProjects
+          .filter((project) => getProjectPlanningCompany(project) === company)
+          .map((project) => {
+            const dueHours = getProjectDuePlanningHoursForMonth(project, month.key);
+            const plannedHours = getProjectPlannedHoursForMonth(project.id, month.key);
+            const openHours = Math.max(dueHours - plannedHours, 0);
+
+            return {
+              project,
+              dueHours,
+              plannedHours,
+              openHours,
+              status: plannedHours <= 0 ? "open" : "partial",
+            };
+          })
+          .filter((row) => row.dueHours > 0 && row.openHours > 0)
+          .sort((first, second) =>
+            `${first.project.projectNumber || first.project.id} ${first.project.title}`.localeCompare(
+              `${second.project.projectNumber || second.project.id} ${second.project.title}`
+            )
+          );
+
+        return { ...month, rows };
+      });
+    const missingPlanningBasisProjectsByCompany = (company: PlanningBoardCompany) =>
+      activePlanningProjects
+        .filter((project) => getProjectPlanningCompany(project) === company)
+        .filter((project) => !hasProjectPlanningBasis(project))
+        .filter((project) => isProjectRelevantForOpenPlanningMonths(project))
+        .filter((project) => !hasProjectPlanningInOpenMonths(project.id))
+        .sort((first, second) =>
+          `${first.projectNumber || first.id} ${first.title}`.localeCompare(
+            `${second.projectNumber || second.id} ${second.title}`
+          )
+        );
 
     if (isPlanningDayOpen) {
       return (
@@ -16305,6 +22758,22 @@ export function DashboardPage() {
             </p>
           </div>
           <div className={styles.toplineActions}>
+            <div className={styles.segmentedControl}>
+              <button
+                type="button"
+                data-active={planningBoardView === "board"}
+                onClick={() => setPlanningBoardView("board")}
+              >
+                Board
+              </button>
+              <button
+                type="button"
+                data-active={planningBoardView === "open"}
+                onClick={() => setPlanningBoardView("open")}
+              >
+                Offene Planungstermine
+              </button>
+            </div>
             <button
               type="button"
               className={styles.primaryButton}
@@ -16322,6 +22791,105 @@ export function DashboardPage() {
           </div>
         </div>
 
+        {planningBoardView === "open" ? (
+          <div className={styles.planningBoardStack}>
+            {(["OK solutions", "OK immocare"] as PlanningBoardCompany[]).map((company) => {
+              const columns = openPlanningColumnsByCompany(company);
+              const openCount = columns.reduce((sum, column) => sum + column.rows.length, 0);
+              const missingBasisProjects = missingPlanningBasisProjectsByCompany(company);
+
+              return (
+                <section key={`open-${company}`} className={styles.planningOpenCard}>
+                  <div className={styles.planningOpenHeader}>
+                    <div>
+                      <h2>{company}</h2>
+                      <span>
+                        {openCount} offene oder teilgeplante Projektmonate ·{" "}
+                        {missingBasisProjects.length} ohne Planungsbasis
+                      </span>
+                    </div>
+                  </div>
+                  <div className={styles.planningOpenScroll}>
+                    <div
+                      className={styles.planningOpenMatrix}
+                      style={{ gridTemplateColumns: `repeat(${openPlanningMonths.length}, minmax(180px, 1fr))` }}
+                    >
+                      {columns.map((column) => (
+                        <section key={`${company}-${column.key}`} className={styles.planningOpenMonth}>
+                          <h3>{column.label}</h3>
+                          {column.rows.length === 0 ? (
+                            <p>Alles geplant</p>
+                          ) : (
+                            column.rows.map((row) => (
+                              <button
+                                key={`${column.key}-${row.project.id}`}
+                                type="button"
+                                className={styles.planningOpenProject}
+                                data-status={row.status}
+                                onClick={() => {
+                                  setSelectedProjectFileId(row.project.id);
+                                  setProjectFileTab("appointments");
+                                  setProjectComparisonMonth(column.key);
+                                  setActiveTab(company === "OK immocare" ? "projectsImmocare" : "projectsSolutions");
+                                  setOpenProjectNav({
+                                    projectsSolutions: company === "OK solutions",
+                                    projectsImmocare: company === "OK immocare",
+                                  });
+                                }}
+                              >
+                                <strong>{row.project.projectNumber || row.project.id}</strong>
+                                <span>{row.project.title}</span>
+                                <small>
+                                  {row.status === "open" ? "komplett offen" : "teilgeplant"} · offen{" "}
+                                  {formatHours(row.openHours)} Std.
+                                </small>
+                              </button>
+                            ))
+                          )}
+                        </section>
+                      ))}
+                    </div>
+                  </div>
+                  <div className={styles.planningMissingContingent}>
+                    <div className={styles.planningMissingHeader}>
+                      <h3>Projekte ohne Planungsbasis</h3>
+                      <span>{missingBasisProjects.length}</span>
+                    </div>
+                    {missingBasisProjects.length === 0 ? (
+                      <p>Alle relevanten Projekte haben eine planbare Basis oder bereits Termine.</p>
+                    ) : (
+                      <div className={styles.planningMissingList}>
+                        {missingBasisProjects.map((project) => (
+                          <button
+                            key={`missing-${company}-${project.id}`}
+                            type="button"
+                            className={styles.planningMissingProject}
+                            onClick={() => {
+                              setSelectedProjectFileId(project.id);
+                              setProjectFileTab("appointments");
+                              setProjectComparisonMonth(openPlanningMonths[0]?.key || projectComparisonMonth);
+                              setActiveTab(company === "OK immocare" ? "projectsImmocare" : "projectsSolutions");
+                              setOpenProjectNav({
+                                projectsSolutions: company === "OK solutions",
+                                projectsImmocare: company === "OK immocare",
+                              });
+                            }}
+                          >
+                            <strong>{project.projectNumber || project.id}</strong>
+                            <span>{project.title}</span>
+                            <small>
+                              {project.status || "ohne Status"} · kein Zeitkontingent hinterlegt
+                            </small>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        ) : (
         <div className={styles.planningBoardStack}>
           {planningBoardSections.map((section) => (
             <section key={section.company} className={styles.planningBoardCard}>
@@ -16439,6 +23007,7 @@ export function DashboardPage() {
             </section>
           ))}
         </div>
+        )}
 
       </section>
     );
@@ -16453,6 +23022,7 @@ export function DashboardPage() {
     const toDate = parseDateKeyValue(timeTrackingTo) ?? new Date();
     const visibleTimeEntries = stampEntries
       .filter((entry) => {
+        if (entry.deletedAt) return false;
         if (selectedUser && entry.userId !== selectedUser.id && entry.employee !== selectedUser.name) return false;
         const entryDate = parseDateKeyValue(entry.date);
         return entryDate ? isDateInRange(entryDate, fromDate, toDate) : false;
@@ -16627,6 +23197,104 @@ export function DashboardPage() {
     );
   }
 
+  function renderLaborCostRates() {
+    if (!mayAccessEmployeeCosts) {
+      return (
+        <section className={styles.settingsPanel}>
+          <div className={styles.topline}>
+            <div>
+              <p className={styles.eyebrow}>Mitarbeiter</p>
+              <h1>LK-Satz</h1>
+              <p className={styles.subline}>Kein Zugriff auf Lohnkosten.</p>
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    const boards = [
+      getAverageLaborCostRate("OK solutions"),
+      getAverageLaborCostRate("OK immocare", "VZK"),
+      getAverageLaborCostRate("OK immocare", "TZK"),
+    ];
+
+    return (
+      <section className={styles.settingsPanel}>
+        <div className={styles.topline}>
+          <div>
+            <p className={styles.eyebrow}>Mitarbeiter</p>
+            <h1>LK-Satz</h1>
+            <p className={styles.subline}>
+              Durchschnittlicher Lohnkostensatz je Niederlassung als Basis für die Margenorientierung in Angeboten.
+            </p>
+          </div>
+        </div>
+
+        <div className={styles.employeeCostSummary}>
+          {boards.map((board) => (
+            <article key={`${board.board}-${board.planningGroup || "gesamt"}`} className={styles.employeeCostHighlight}>
+              <span>{board.label}</span>
+              <strong>{formatMoney(board.average)} / Std.</strong>
+              <small>
+                {formatHours(board.allocationTotal)} Mitarbeiteranteile aus {board.count} Personen, gewichtete Summe{" "}
+                {formatMoney(board.total)}
+              </small>
+            </article>
+          ))}
+        </div>
+
+        {boards.map((board) => (
+          <section key={`table-${board.board}-${board.planningGroup || "gesamt"}`} className={styles.employeeCostPanel}>
+            <div className={styles.employeeSectionHeader}>
+              <div>
+              <h2>{board.label}</h2>
+                <p>
+                  Alle aktiven Mitarbeiter dieser Niederlassung fließen in den kalkulatorischen LK-Satz ein.
+                </p>
+              </div>
+            </div>
+            <div className={styles.projectTableScroll}>
+              <table className={styles.projectTimeTable}>
+                <thead>
+                  <tr>
+                    <th>Mitarbeiter</th>
+                    <th>Rolle</th>
+                    <th>Planungsgruppe</th>
+                    <th>Anteil</th>
+                    <th>Interner Kostensatz</th>
+                    <th>Wirksamer Anteil</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {board.users.map((user) => {
+                    const rate = getEmployeeHourlyCostRate(user.id);
+                    const share = getLaborCostAllocationShare(user, board.board, board.planningGroup) * 100;
+                    const effectiveRate = rate * (share / 100);
+                    return (
+                      <tr key={`${board.board}-${user.id}`}>
+                        <td>{user.name}</td>
+                        <td>{user.role === "MITARBEITER" ? "Mitarbeiter" : user.roleLabel}</td>
+                        <td>{user.planningGroup || "-"}</td>
+                        <td>{formatHours(share)}%</td>
+                        <td>{formatMoney(rate)} / Std.</td>
+                        <td>{formatMoney(effectiveRate)} / Std.</td>
+                      </tr>
+                    );
+                  })}
+                  {board.users.length === 0 ? (
+                    <tr>
+                      <td colSpan={6}>Keine aktiven Mitarbeiter in dieser Niederlassung.</td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ))}
+      </section>
+    );
+  }
+
   function renderEmployeeManagement() {
     const selectedEmployee =
       selectedEmployeeId && selectedEmployeeId !== "__new__"
@@ -16642,7 +23310,7 @@ export function DashboardPage() {
       const search = employeeSearchTerm.trim().toLowerCase();
       if (!search) return true;
 
-      return [user.name, user.email, user.roleLabel, user.teamIds.join(" ")]
+      return [user.name, user.email, user.roleLabel, formatBranchAllocations(user)]
         .filter(Boolean)
         .some((value) => value.toLowerCase().includes(search));
     });
@@ -16694,6 +23362,7 @@ export function DashboardPage() {
               ? new Date(employeeTimeTo)
               : now;
     const employeeTimeEntries = stampEntries.filter((entry) => {
+      if (entry.deletedAt) return false;
       if (!employeeName || entry.employee !== employeeName) return false;
       const entryDate = parseDateKeyValue(entry.date);
       return entryDate ? isDateInRange(entryDate, employeePeriodStart, employeePeriodEnd) : false;
@@ -16966,24 +23635,112 @@ export function DashboardPage() {
                       <h2>Berechtigungen</h2>
                     </div>
                     <div className={styles.employeeFormGrid}>
-                      <label className={styles.fullWidth}>
-                        Zugewiesene Niederlassungen *
-                        <select
-                          multiple
-                          value={userTeamIds}
-                          disabled={!mayManageUsers}
-                          onChange={(event) =>
-                            setUserTeamIds(
-                              Array.from(event.target.selectedOptions).map((option) => option.value)
-                            )
+                      <section className={`${styles.branchAllocationCard} ${styles.fullWidth}`}>
+                        <div className={styles.branchAllocationHeader}>
+                          <div>
+                            <strong>Niederlassungsverteilung *</strong>
+                            <span>Die Summe muss 100% ergeben. Diese Anteile steuern auch den LK-Satz.</span>
+                          </div>
+                          <div className={styles.branchAllocationActions}>
+                            <button
+                              type="button"
+                              disabled={!mayManageUsers}
+                              onClick={() => updateEmployeeBranch("OK solutions")}
+                            >
+                              100% OK solutions
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!mayManageUsers}
+                              onClick={() => updateEmployeeBranch("OK immocare")}
+                            >
+                              100% OK immocare
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!mayManageUsers}
+                              onClick={() =>
+                                updateEmployeeBranchAllocations({ okSolutions: 50, okImmocareVzk: 50, okImmocareTzk: 0 })
+                              }
+                            >
+                              50 / 50
+                            </button>
+                          </div>
+                        </div>
+                        <div className={styles.branchAllocationGrid}>
+                          <label>
+                            OK solutions
+                            <span>
+                              <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step={5}
+                                value={employeeBranchAllocations.okSolutions}
+                                disabled={!mayManageUsers}
+                                onChange={(event) => {
+                                  setEmployeeBranchAllocationValue("okSolutions", Number(event.target.value) || 0);
+                                }}
+                              />
+                              %
+                            </span>
+                          </label>
+                          <label>
+                            OK immocare VZK
+                            <span>
+                              <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step={5}
+                                value={employeeBranchAllocations.okImmocareVzk ?? 0}
+                                disabled={!mayManageUsers}
+                                onChange={(event) => {
+                                  setEmployeeBranchAllocationValue("okImmocareVzk", Number(event.target.value) || 0);
+                                }}
+                              />
+                              %
+                            </span>
+                          </label>
+                          <label>
+                            OK immocare TZK
+                            <span>
+                              <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step={5}
+                                value={employeeBranchAllocations.okImmocareTzk ?? 0}
+                                disabled={!mayManageUsers}
+                                onChange={(event) => {
+                                  setEmployeeBranchAllocationValue("okImmocareTzk", Number(event.target.value) || 0);
+                                }}
+                              />
+                              %
+                            </span>
+                          </label>
+                        </div>
+                        <small
+                          className={styles.branchAllocationTotal}
+                          data-state={
+                            Math.abs(
+                              getBranchAllocationTotal(employeeBranchAllocations) - 100
+                            ) < 0.01
+                              ? "ok"
+                              : "error"
                           }
                         >
-                          {teams.map((team) => (
-                            <option key={team.id} value={team.id}>
-                              {team.name}
-                            </option>
-                          ))}
-                        </select>
+                          Summe: {formatHours(getBranchAllocationTotal(employeeBranchAllocations))}%
+                        </small>
+                      </section>
+                      <label className={`${styles.checkboxField} ${styles.fullWidth}`}>
+                        <input
+                          type="checkbox"
+                          checked={employeeIncludeInLaborCostRate}
+                          disabled={!mayManageUsers}
+                          onChange={(event) => setEmployeeIncludeInLaborCostRate(event.target.checked)}
+                        />
+                        In LK-Satz-Berechnung einbeziehen
                       </label>
                       <label>
                         Benutzerrechte *
@@ -17014,6 +23771,15 @@ export function DashboardPage() {
                           onChange={(event) => setEmployeeNotifyIdeaStore(event.target.checked)}
                         />
                         Benachrichtigung bei neuen Ideen, Kommentaren und Reaktionen im Ideen-Feed
+                      </label>
+                      <label className={`${styles.checkboxField} ${styles.fullWidth}`}>
+                        <input
+                          type="checkbox"
+                          checked={employeeNotifyUpsell}
+                          disabled={!mayManageUsers}
+                          onChange={(event) => setEmployeeNotifyUpsell(event.target.checked)}
+                        />
+                        Benachrichtigung bei erkanntem Zusatzverkauf
                       </label>
                       <section className={`${styles.employeePlanningSettings} ${styles.fullWidth}`}>
                         <div>
@@ -17246,9 +24012,7 @@ export function DashboardPage() {
                           disabled={!mayManageUsers}
                           onChange={(event) => {
                             const nextBoard = event.target.value as PlanningBoardCompany;
-                            const nextGroups = getPlanningGroupsForBoard(nextBoard);
-                            setEmployeePlanningBoard(nextBoard);
-                            setEmployeePlanningGroup(nextGroups[0]);
+                            updateEmployeeBranch(nextBoard);
                           }}
                         >
                           <option>OK solutions</option>
@@ -17887,14 +24651,7 @@ export function DashboardPage() {
                     </td>
                     <td>{user.roleLabel}</td>
                     <td>{user.role === "MITARBEITER" ? "Mitarbeiter" : user.roleLabel}</td>
-                    <td>
-                      {user.teamIds.length === teams.length && teams.length > 0
-                        ? "2 Niederlassungen"
-                        : user.teamIds
-                            .map((teamId) => teams.find((team) => team.id === teamId)?.name)
-                            .filter(Boolean)
-                            .join(", ") || "-"}
-                    </td>
+                    <td>{formatBranchAllocations(user)}</td>
                     <td>-</td>
                     <td>
                       <div className={styles.employeeRowActions}>
@@ -18037,8 +24794,10 @@ export function DashboardPage() {
                     onClick={() => {
                       setTradeDraftName("");
                       setTradeDraftPrefix("");
+                      setTradeDraftBusinessAreaId("");
                       setTradeManagementError("");
                       setIsTradeManagementModalOpen(true);
+                      void loadTrades();
                     }}
                 >
                   Gewerke bearbeiten
@@ -18050,15 +24809,23 @@ export function DashboardPage() {
                     <tr>
                       <th>Name</th>
                       <th>Kürzel</th>
+                      <th>Geschäftsbereich</th>
                       <th>Beschreibung</th>
                       <th>Aktionen</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {(trades.length > 0 ? trades.map((trade) => trade.name) : serviceRows).map((service) => (
-                      <tr key={service}>
-                        <td className={styles.title}>{service}</td>
-                        <td>{trades.find((trade) => trade.name === service)?.projectPrefix || getProjectTradePrefix(service)}</td>
+                    {(trades.length > 0 ? trades : serviceRows.map((service) => ({
+                      id: service,
+                      name: service,
+                      projectPrefix: getProjectTradePrefix(service),
+                      businessAreaId: "",
+                      businessAreaName: "",
+                    }))).map((trade) => (
+                      <tr key={trade.id}>
+                        <td className={styles.title}>{trade.name}</td>
+                        <td>{trade.projectPrefix || getProjectTradePrefix(trade.name)}</td>
+                        <td>{trade.businessAreaName || "-"}</td>
                         <td />
                         <td>
                           <button type="button" className={styles.secondaryButton}>
@@ -18071,6 +24838,145 @@ export function DashboardPage() {
                 </table>
               </div>
             </article>
+          </section>
+        ) : firmSettingsTab === "units" ? (
+          <section className={styles.settingsCard}>
+            <div className={styles.settingsHeader}>
+              <div>
+                <h2>Einheitenverwaltung</h2>
+                <p>
+                  Diese Einheiten stehen zentral in Artikeln, Leistungen, Paketen, Angeboten und Rechnungen zur Verfuegung.
+                </p>
+              </div>
+            </div>
+            {unitError ? <p className={styles.modalWarning}>{unitError}</p> : null}
+            <div className={styles.companySettingsForm}>
+              <label>
+                Einheit
+                <input
+                  value={unitDraftName}
+                  onChange={(event) => setUnitDraftName(event.target.value)}
+                  placeholder="z.B. Std, Stk, m²"
+                />
+              </label>
+              <button type="button" className={styles.primaryButton} onClick={() => void saveUnit()}>
+                {editingUnitId ? "Speichern" : "+ Einheit"}
+              </button>
+              {editingUnitId ? (
+                <button type="button" className={styles.secondaryButton} onClick={resetUnitForm}>
+                  Abbrechen
+                </button>
+              ) : null}
+            </div>
+            <div className={styles.companySettingsTable}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Einheit</th>
+                    <th>Status</th>
+                    <th>Aktion</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {units.length === 0 ? (
+                    <tr>
+                      <td colSpan={3}>Noch keine Einheiten geladen.</td>
+                    </tr>
+                  ) : (
+                    units.map((unit) => (
+                      <tr key={unit.id}>
+                        <td className={styles.title}>{unit.name}</td>
+                        <td>{unit.isActive ? "Aktiv" : "Inaktiv"}</td>
+                        <td>
+                          <div className={styles.tableActionGroup}>
+                            <button type="button" className={styles.secondaryButton} onClick={() => editUnit(unit)}>
+                              Bearbeiten
+                            </button>
+                            {unit.isActive ? (
+                              <button type="button" className={styles.deleteButton} onClick={() => void deleteUnit(unit)}>
+                                Deaktivieren
+                              </button>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ) : firmSettingsTab === "businessAreaTargets" ? (
+          <section className={styles.settingsCard}>
+            <div className={styles.settingsHeader}>
+              <div>
+                <h2>Geschäftsbereich-Sollwerte</h2>
+                <p>
+                  Diese Monatsziele werden in der Forecast- und OP-Kontrolle gegen sicheren Forecast
+                  und Chancen gerechnet.
+                </p>
+              </div>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                disabled={!canDeleteInvoices}
+                onClick={() => void saveBusinessAreaTargets()}
+              >
+                Sollwerte speichern
+              </button>
+            </div>
+            {businessAreaTargetError ? (
+              <p className={styles.modalWarning}>{businessAreaTargetError}</p>
+            ) : null}
+            <div className={styles.companySettingsTable}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Geschäftsbereich</th>
+                    {getBusinessAreaTargetMonths().map((month) => (
+                      <th key={month}>
+                        {new Intl.DateTimeFormat(APP_LOCALE, {
+                          month: "long",
+                          timeZone: APP_TIME_ZONE,
+                        }).format(new Date(2026, Number(month) - 1, 1))}
+                      </th>
+                    ))}
+                    <th>Jahressumme</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportingBusinessAreas.map((businessArea) => (
+                    <tr key={businessArea.id}>
+                      <td className={styles.title}>{businessArea.name}</td>
+                      {getBusinessAreaTargetMonths().map((month) => {
+                        const key = `${businessArea.id}:${month}`;
+                        return (
+                          <td key={key}>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={businessAreaTargetDrafts[key] ?? ""}
+                              disabled={!canDeleteInvoices}
+                              onChange={(event) =>
+                                setBusinessAreaTargetDrafts((current) => ({
+                                  ...current,
+                                  [key]: event.target.value,
+                                }))
+                              }
+                              placeholder="0,00"
+                            />
+                          </td>
+                        );
+                      })}
+                      <td>
+                        <strong>{formatMoney(getBusinessAreaTargetYearTotal(businessArea.id))}</strong>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </section>
         ) : firmSettingsTab === "projectTypes" ? (
           <section className={styles.settingsCard}>
@@ -18577,9 +25483,9 @@ export function DashboardPage() {
 
         <div className={styles.contactPagination}>
           <span>Seite</span>
-          <button className={styles.iconButton} disabled={safePage <= 1} onClick={() => setCatalogPage((page) => Math.max(1, page - 1))}>‹</button>
+          <button className={styles.iconButton} disabled={safePage <= 1} onClick={() => setCatalogPage((page) => Math.max(1, page - 1))}>?</button>
           <input value={safePage} onChange={(event) => setCatalogPage(Number(event.target.value) || 1)} />
-          <button className={styles.iconButton} disabled={safePage >= pageCount} onClick={() => setCatalogPage((page) => Math.min(pageCount, page + 1))}>›</button>
+          <button className={styles.iconButton} disabled={safePage >= pageCount} onClick={() => setCatalogPage((page) => Math.min(pageCount, page + 1))}>?</button>
           <span>von {pageCount}</span>
           <span>Zeige</span>
           <select value={catalogPageSize} onChange={(event) => setCatalogPageSize(Number(event.target.value))}>
@@ -18695,6 +25601,7 @@ export function DashboardPage() {
     const getMarkupPercent = (purchasePrice: number, salesPrice: number) =>
       purchasePrice > 0 ? ((salesPrice - purchasePrice) / purchasePrice) * 100 : 0;
     const planningGroups = catalogDraft.defaultPlanningBoard === "OK immocare" ? ["VZK", "TZK"] : ["Marketing", "Arb.Sich.", "HR"];
+    const laborCostRateOptions = getLaborCostRateOptions();
     const catalogTypeLabel =
       catalogDraft.type === "service" ? "Leistung" : catalogDraft.type === "package" ? "Paket" : "Artikel";
     const catalogModalTitle = editingCatalogItemId
@@ -18713,7 +25620,7 @@ export function DashboardPage() {
               <h2>{catalogModalTitle}</h2>
               <p>{catalogTypeLabel} {catalogDraft.number}</p>
             </div>
-            <button className={styles.iconButton} onClick={() => setIsCatalogModalOpen(false)}>×</button>
+            <button className={styles.iconButton} onClick={() => setIsCatalogModalOpen(false)}>X</button>
           </div>
           <div className={styles.standardModalBody}>
           <div className={styles.contactFormTabs}>
@@ -18732,7 +25639,7 @@ export function DashboardPage() {
               <label>Nummer<input value={catalogDraft.number} onChange={(event) => updateCatalogDraft("number", event.target.value)} /></label>
               <label className={styles.catalogWideField}>Name<input value={catalogDraft.name} onChange={(event) => updateCatalogDraft("name", event.target.value)} /></label>
               <label>Kategorie<input value={catalogDraft.category} onChange={(event) => updateCatalogDraft("category", event.target.value)} /></label>
-              <label>Einheit<select value={catalogDraft.unit} onChange={(event) => updateCatalogDraft("unit", event.target.value)}>{catalogUnits.map((unit) => <option key={unit} value={unit}>{unit}</option>)}</select></label>
+              <label>Einheit<select value={catalogDraft.unit} onChange={(event) => updateCatalogDraft("unit", event.target.value)}>{getUnitOptions(catalogDraft.unit).map((unit) => <option key={unit} value={unit}>{unit}</option>)}</select></label>
               <label>Matchcode<input value={catalogDraft.matchcode} onChange={(event) => updateCatalogDraft("matchcode", event.target.value)} /></label>
               <label>EAN<input value={catalogDraft.ean} onChange={(event) => updateCatalogDraft("ean", event.target.value)} /></label>
               <label>Kostenstelle<input value={catalogDraft.costCenter} onChange={(event) => updateCatalogDraft("costCenter", event.target.value)} /></label>
@@ -18830,7 +25737,7 @@ export function DashboardPage() {
                         </td>
                         <td>
                           <button className={styles.iconButton} onClick={() => removeCatalogPackageItem(index)}>
-                            ×
+                            ?
                           </button>
                         </td>
                       </tr>
@@ -18906,7 +25813,7 @@ export function DashboardPage() {
                             </td>
                             <td>{formatHours(getMarkupPercent(item.componentPurchasePrice, unitSalesPrice))}</td>
                             <td>{formatMoney(unitSalesPrice * item.quantity)}</td>
-                            <td><button className={styles.iconButton} onClick={() => removeCatalogPackageItem(index)}>×</button></td>
+                            <td><button className={styles.iconButton} onClick={() => removeCatalogPackageItem(index)}>?</button></td>
                           </tr>
                         );
                       })
@@ -18977,7 +25884,7 @@ export function DashboardPage() {
                             </td>
                             <td>{formatHours(getMarkupPercent(item.componentPurchasePrice, unitSalesPrice))}</td>
                             <td>{formatMoney(unitSalesPrice * item.quantity)}</td>
-                            <td><button className={styles.iconButton} onClick={() => removeCatalogPackageItem(index)}>×</button></td>
+                            <td><button className={styles.iconButton} onClick={() => removeCatalogPackageItem(index)}>?</button></td>
                           </tr>
                         );
                       })
@@ -19061,7 +25968,30 @@ export function DashboardPage() {
           ) : null}
           {catalogFormTab === "calculation" && catalogDraft.type !== "package" ? (
             <div className={styles.catalogCalculationGrid}>
-              <label>Einkaufspreis<input type="number" value={catalogDraft.purchasePrice} onChange={(event) => updateCatalogDraft("purchasePrice", Number(event.target.value))} /></label>
+              {catalogDraft.type === "service" ? (
+                <>
+                  <label>
+                    LK-Satz
+                    <select
+                      value={catalogDraft.laborCostRateKey || getDefaultLaborCostRateKeyForCatalogItem(catalogDraft)}
+                      onChange={(event) => {
+                        const option = getLaborCostRateOption(event.target.value);
+                        updateCatalogDraft("laborCostRateKey", event.target.value);
+                        updateCatalogDraft("purchasePrice", roundCurrencyValue(option?.rate ?? 0));
+                      }}
+                    >
+                      {laborCostRateOptions.map((option) => (
+                        <option key={option.key} value={option.key}>
+                          {option.label} ({formatMoney(option.rate)} / Std.)
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>LK-Satz Wert<input type="number" step="0.01" value={formatCurrencyInputValue(catalogDraft.purchasePrice)} onChange={(event) => updateCatalogDraft("purchasePrice", roundCurrencyValue(Number(event.target.value)))} /></label>
+                </>
+              ) : (
+                <label>Einkaufspreis<input type="number" value={catalogDraft.purchasePrice} onChange={(event) => updateCatalogDraft("purchasePrice", Number(event.target.value))} /></label>
+              )}
               <label>Verkaufspreis<input type="number" value={catalogDraft.salesPrice} onChange={(event) => updateCatalogDraft("salesPrice", Number(event.target.value))} /></label>
               <label>MwSt. %<input type="number" value={catalogDraft.vatRate} onChange={(event) => updateCatalogDraft("vatRate", Number(event.target.value))} /></label>
               <article className={styles.catalogMetric}><span>Marge</span><strong>{formatHours(margin)}%</strong></article>
@@ -19126,7 +26056,7 @@ export function DashboardPage() {
               </p>
             </div>
             <button className={styles.iconButton} type="button" onClick={() => setDocumentMailDraft(null)}>
-              ×
+              ?
             </button>
           </div>
           <div className={styles.standardModalBody}>
@@ -19239,6 +26169,42 @@ export function DashboardPage() {
                 onClick={sendDocumentMail}
               >
                 {isSendingDocumentMail ? "Sende..." : "E-Mail senden"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderFinalizeInvoiceConfirmModal() {
+    if (!pendingFinalizeInvoice) return null;
+
+    return (
+      <div className={styles.modalOverlay}>
+        <div className={`${styles.standardModal} ${styles.finalizeConfirmModal}`}>
+          <div className={styles.standardModalHeader}>
+            <div>
+              <h2>Rechnung fakturieren</h2>
+              <p>Dieser Schritt erstellt die finale Rechnung.</p>
+            </div>
+            <button className={styles.iconButton} type="button" onClick={() => setPendingFinalizeInvoice(null)}>
+              X
+            </button>
+          </div>
+          <div className={styles.standardModalBody}>
+            <p className={styles.finalizeConfirmText}>
+              Wurde alles verrechnet? Möchten Sie das Projekt jetzt abrechnen?
+            </p>
+          </div>
+          <div className={styles.standardModalFooter}>
+            <span />
+            <div className={styles.modalActions}>
+              <button type="button" className={styles.secondaryButton} onClick={() => setPendingFinalizeInvoice(null)}>
+                Nein
+              </button>
+              <button type="button" className={styles.primaryButton} onClick={() => void confirmFinalizeInvoice()}>
+                Ja
               </button>
             </div>
           </div>
@@ -20107,7 +27073,7 @@ export function DashboardPage() {
                         aria-label="Daumen hoch"
                         onClick={() => updateIdeaPost(idea.id, "like")}
                       >
-                        <span aria-hidden="true">??</span>
+                        <span aria-hidden="true">?</span>
                         <strong>{idea.likeCount}</strong>
                       </button>
                       <button
@@ -20117,7 +27083,7 @@ export function DashboardPage() {
                         title="Daumen runter wird nur mit Kommentar gespeichert."
                         onClick={() => updateIdeaPost(idea.id, "dislike")}
                       >
-                        <span aria-hidden="true">??</span>
+                        <span aria-hidden="true">?</span>
                         <strong>{idea.dislikeCount}</strong>
                       </button>
                       {ideaFeedbackErrors[idea.id] ? (
@@ -20896,7 +27862,7 @@ export function DashboardPage() {
                   aria-label="Schliessen"
                   onClick={closeDocumentTextModal}
                 >
-                  Ã—
+                  ×
                 </button>
               </div>
 
@@ -21132,6 +28098,30 @@ export function DashboardPage() {
                 <div className={styles.userMenuPanel}>
                   <strong>{activeUser?.name}</strong>
                   <span>{activeUser?.roleLabel}</span>
+                  {canImpersonateUsers ? (
+                    <label className={styles.impersonationControl}>
+                      <span>Mitarbeiter emulieren</span>
+                      <select
+                        value={impersonatedUserId}
+                        onChange={(event) => startUserImpersonation(event.target.value)}
+                      >
+                        <option value="">Keine Emulation</option>
+                        {users
+                          .filter((user) => user.isActive && user.id !== authenticatedUserId)
+                          .filter((user) => user.id !== impersonationControllerUserId)
+                          .map((user) => (
+                            <option key={user.id} value={user.id}>
+                              {user.name} - {user.roleLabel}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                  ) : null}
+                  {isImpersonating ? (
+                    <button type="button" onClick={stopUserImpersonation}>
+                      Emulation beenden
+                    </button>
+                  ) : null}
                   <button onClick={openOwnSettings}>Eigene Einstellungen</button>
                   <button onClick={handleLogout}>Abmelden</button>
                 </div>
@@ -21250,6 +28240,18 @@ export function DashboardPage() {
           </div>
         </header>
 
+        {isImpersonating ? (
+          <div className={styles.impersonationBanner}>
+            <strong>Emulation aktiv</strong>
+            <span>
+              Ansicht als {impersonatedUser?.name}. Angemeldet bleibt {impersonationControllerUser?.name}.
+            </span>
+            <button type="button" onClick={stopUserImpersonation}>
+              Beenden
+            </button>
+          </div>
+        ) : null}
+
         <nav className={styles.tabs}>
           {navigationTabs.map(([tab, label]) => {
             const projectLogo =
@@ -21324,6 +28326,10 @@ export function DashboardPage() {
                     <span className={styles.navLabel}>
                       <SidebarIcon tab={tab} />
                       {label}
+                      <span className={styles.sidebarTaskBadges} aria-label={`${offene} offene Aufgaben, ${ueberfaellig} ueberfaellige Aufgaben`}>
+                        {offene > 0 && <span className={styles.sidebarTaskBadge} data-tone="open">{offene}</span>}
+                        {ueberfaellig > 0 && <span className={styles.sidebarTaskBadge} data-tone="overdue">{ueberfaellig}</span>}
+                      </span>
                     </span>
                     <b>{isOpen ? "^" : "v"}</b>
                   </button>
@@ -21354,6 +28360,7 @@ export function DashboardPage() {
               const isOpen = openSidebarMenus[tab] ?? false;
               const children: Array<{ id: AppTab; label: string }> = [
                 { id: "employees", label: "Mitarbeiter" },
+                { id: "laborCostRates", label: "LK-Satz" },
                 { id: "absenceRequests", label: "Team-Kalender" },
                 { id: "timeTracking", label: "Zeiterfassung" },
               ];
@@ -21405,6 +28412,7 @@ export function DashboardPage() {
               const projectKindLinks: Array<{ label: string; value: ProjectKindFilter }> = [
                 { label: "Dauerläufer-Projekte", value: "Dauerläufer-Projekt" },
                 { label: "Einmalige-Projekte", value: "einmaliges Projekt" },
+                { label: "Potenziale", value: "potentials" },
               ];
 
               return (
@@ -21518,6 +28526,7 @@ export function DashboardPage() {
             if (tab === "accounting") {
               const isOpen = openSidebarMenus[tab] ?? false;
               const children: Array<{ id: AppTab; label: string }> = [
+                { id: "batchBilling", label: "Stapelabrechnung" },
                 { id: "documents", label: "Dokumente" },
                 { id: "documentOverview", label: "Dokumentenübersicht" },
                 { id: "documentTexts", label: "Texte & Titel" },
@@ -21533,7 +28542,7 @@ export function DashboardPage() {
                   <button
                     className={`${styles.tab} ${isActiveGroup ? styles.activeTab : ""}`}
                     onClick={() => {
-                      openMainView(tab);
+                      openMainView("batchBilling");
                       setIsFirmSettingsNavOpen(false);
                       setOpenProjectNav({ projectsSolutions: false, projectsImmocare: false });
                       setOpenSidebarMenus({ [tab]: !isOpen });
@@ -21675,7 +28684,7 @@ export function DashboardPage() {
                   ? stampSession.pauseStartedAt
                     ? `Pause ${formatStampDuration(getStampPauseMilliseconds())}`
                     : stampSession.mode === "project"
-                      ? getStampProjectLabel(stampSession.projectId)
+                      ? stampSession.projectLabel || getStampProjectLabel(stampSession.projectId)
                       : "Unproduktiv"
                   : completedTodayStampMilliseconds > 0
                     ? "Heute gesamt"
@@ -21710,7 +28719,7 @@ export function DashboardPage() {
             <section className={styles.overviewPanel}>
               <div className={styles.overviewHero}>
                 <div>
-                  <p className={styles.eyebrow}>Übersicht</p>
+                  <p className={styles.eyebrow}>Dashboard</p>
                   <h1>
                     Hallo {activeUser?.name?.trim().split(/\s+/)[0] || "Benutzer"},
                     <span>willkommen zu deinem Dashboard</span>
@@ -21718,24 +28727,91 @@ export function DashboardPage() {
                 </div>
               </div>
 
-              <section className={styles.moduleGrid}>
-                {overviewModules.map((module) => (
-                  <article key={module.title} className={styles.moduleCard} data-tone={module.tone}>
-                    <div className={styles.moduleCardTop}>
-                      <span>{module.kicker}</span>
-                      <strong>{module.value}</strong>
+              <section className={styles.dashboardMainGrid}>
+                <section className={styles.employeeStampPanel}>
+                  <div className={styles.employeeStampSummary}>
+                    <article>
+                      <span>Angestempelt</span>
+                      <strong>{stampedDashboardEmployees.length}</strong>
+                    </article>
+                    <article>
+                      <span>Nicht eingestempelt</span>
+                      <strong>{Math.max(0, dashboardEmployees.length - stampedDashboardEmployees.length)}</strong>
+                    </article>
+                    <article>
+                      <span>Geplant abwesend</span>
+                      <strong>{dashboardAbsentEmployees.length}</strong>
+                    </article>
+                  </div>
+
+                  <div className={styles.employeeStampHeader}>
+                    <div>
+                      <p className={styles.eyebrow}>Team live</p>
+                      <h2>Aktuelle Stempelungen</h2>
                     </div>
-                    <h2>{module.title}</h2>
-                    <p>{module.body}</p>
-                    <button
-                      className={styles.moduleAction}
-                      type="button"
-                      onClick={() => setActiveTab(module.tab)}
-                    >
-                      {module.action}
-                    </button>
-                  </article>
-                ))}
+                    <span>Auto-Update alle 5 Sekunden</span>
+                  </div>
+
+                  <div className={styles.employeeStampTableWrap}>
+                    <table className={styles.employeeStampTable}>
+                      <thead>
+                        <tr>
+                          <th>Mitarbeiter</th>
+                          <th>Status</th>
+                          <th>Angestempelt auf</th>
+                          <th>Laufzeit</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dashboardStampRows.map(({ user, activityLabel, durationLabel, statusLabel, stampState }) => (
+                          <tr key={user.id}>
+                            <td>
+                              <div className={styles.employeeStampPerson}>
+                                <span className={styles.employeeStampLamp} data-state={stampState} />
+                                <div>
+                                  <span>{user.name}</span>
+                                  <small>{user.roleLabel}</small>
+                                </div>
+                              </div>
+                            </td>
+                            <td>
+                              <span
+                                className={styles.employeeStampStatus}
+                                data-state={stampState}
+                              >
+                                {statusLabel}
+                              </span>
+                            </td>
+                            <td>{activityLabel}</td>
+                            <td>
+                              <strong>{durationLabel}</strong>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+
+                <section className={styles.moduleGrid}>
+                  {overviewModules.slice(0, 4).map((module) => (
+                    <article key={module.title} className={styles.moduleCard} data-tone={module.tone}>
+                      <div className={styles.moduleCardTop}>
+                        <span>{module.kicker}</span>
+                        <strong>{module.value}</strong>
+                      </div>
+                      <h2>{module.title}</h2>
+                      <p>{module.body}</p>
+                      <button
+                        className={styles.moduleAction}
+                        type="button"
+                        onClick={() => setActiveTab(module.tab)}
+                      >
+                        {module.action}
+                      </button>
+                    </article>
+                  ))}
+                </section>
               </section>
 
               <section className={styles.nextBuildPanel}>
@@ -21934,6 +29010,16 @@ export function DashboardPage() {
                     ))}
                   </div>
 
+                  <label className={styles.checkboxField}>
+                    <input
+                      type="checkbox"
+                      checked={employeeNotifyUpsell}
+                      disabled={!mayManageUsers}
+                      onChange={(event) => setEmployeeNotifyUpsell(event.target.checked)}
+                    />
+                    Benachrichtigung bei erkanntem Zusatzverkauf
+                  </label>
+
                   <button
                     className={styles.primaryButton}
                     disabled={!mayManageUsers}
@@ -21997,25 +29083,18 @@ export function DashboardPage() {
                       <th>E-Mail</th>
                       <th>Rolle</th>
                       <th>Tagesarbeitszeit</th>
-                      <th>Team</th>
+                      <th>Niederlassung</th>
                       <th>Aktion</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {users.map((user) => (
+                    {taskOwnerFilterOptions.map((user) => (
                       <tr key={user.id}>
                         <td className={styles.title}>{user.name}</td>
                         <td>{user.email}</td>
                         <td>{user.roleLabel}</td>
                         <td>{user.dailyWorkHours} Std.</td>
-                        <td>
-                          {user.teamIds.length === teams.length && teams.length > 0
-                            ? "Alle Teams"
-                            : user.teamIds
-                                .map((teamId) => teams.find((team) => team.id === teamId)?.name)
-                                .filter(Boolean)
-                                .join(", ") || "-"}
-                        </td>
+                        <td>{formatBranchAllocations(user)}</td>
                         <td>
                           <div className={styles.actionGroup}>
                             <button
@@ -22072,6 +29151,21 @@ export function DashboardPage() {
                       placeholder="z.B. ASS"
                     />
                   </label>
+                  <label>
+                    Geschäftsbereich
+                    <select
+                      value={tradeBusinessAreaId}
+                      disabled={!mayManageUsers}
+                      onChange={(event) => setTradeBusinessAreaId(event.target.value)}
+                    >
+                      <option value="">Bitte auswählen</option>
+                      {businessAreas.map((businessArea) => (
+                        <option key={businessArea.id} value={businessArea.id}>
+                          {businessArea.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
                   <button
                     className={styles.primaryButton}
@@ -22089,19 +29183,21 @@ export function DashboardPage() {
                     <tr>
                       <th>Gewerk</th>
                       <th>Kürzel</th>
+                      <th>Geschäftsbereich</th>
                       <th>Aktion</th>
                     </tr>
                   </thead>
                   <tbody>
                     {trades.length === 0 ? (
                       <tr>
-                        <td colSpan={3}>Noch keine Gewerke angelegt.</td>
+                        <td colSpan={4}>Noch keine Gewerke angelegt.</td>
                       </tr>
                     ) : (
                       trades.map((trade) => (
                         <tr key={trade.id}>
                           <td className={styles.title}>{trade.name}</td>
                           <td>{trade.projectPrefix || getProjectTradePrefix(trade.name)}</td>
+                          <td>{trade.businessAreaName || "-"}</td>
                           <td>
                             <div className={styles.actionGroup}>
                               <button
@@ -22406,7 +29502,9 @@ export function DashboardPage() {
                   />
                 </label>
                 <span>
-                  {visibleHeroProjects.length} Projekte
+                  {selectedProjectKindFilter === "potentials"
+                    ? `${filteredPipelinePotentials.length} Potenziale`
+                    : `${visibleHeroProjects.length} Projekte`}
                   {selectedProjectKindFilter
                     ? ` in "${projectKindRows.find((row) => row.key === selectedProjectKindFilter)?.label}"`
                     : ` in "${activePipelineStatus.label}"`}
@@ -22414,6 +29512,128 @@ export function DashboardPage() {
               </section>
 
               <section className={styles.projectPipelineBoard}>
+                {selectedProjectKindFilter === "potentials" ? (
+                  <>
+                    <div className={styles.projectStatusStrip}>
+                      <div className={styles.projectStatusStripMeta}>
+                        <strong>Potenziale</strong>
+                        <span>{getPotentialStatusCount("all")} Potenziale</span>
+                      </div>
+                      <div className={`${styles.projectPipelineStatusList} ${styles.potentialStatusList}`}>
+                        {[
+                          { label: "Alle", value: "all" as const },
+                          { label: "Offen", value: "open" as const },
+                          { label: "Wiedervorlage", value: "follow_up" as const },
+                          { label: "Fällig", value: "due" as const },
+                          { label: "Angeboten", value: "offered" as const },
+                          { label: "Kein Interesse", value: "lost" as const },
+                        ].map((item) => {
+                          const count = getPotentialStatusCount(item.value);
+
+                          return (
+                            <button
+                              key={item.value}
+                              type="button"
+                              data-active={potentialStatusFilter === item.value}
+                              onClick={() => setPotentialStatusFilter(item.value)}
+                            >
+                              <span>{item.label}</span>
+                              {count > 0 ? <strong data-urgent={item.value === "due" ? "true" : undefined}>{count}</strong> : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className={styles.projectPipelineWorkspace}>
+                      <section className={`${styles.tableCard} ${styles.heroTableCard}`}>
+                        <div className={styles.heroTableScroll}>
+                          <table className={styles.table}>
+                            <thead>
+                              <tr>
+                                <th>Status</th>
+                                <th>Potenzial</th>
+                                <th>Kunde</th>
+                                <th>Projekt</th>
+                                <th>Erkannt am</th>
+                                <th>Wiedervorlage</th>
+                                <th>Zuständig</th>
+                                <th>Letzte Aktion</th>
+                                <th>Aktion</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filteredPipelinePotentials.length === 0 ? (
+                                <tr>
+                                  <td colSpan={9}>Keine Potenziale in dieser Auswahl.</td>
+                                </tr>
+                              ) : (
+                                filteredPipelinePotentials.map((potential) => {
+                                  const project = getPotentialProject(potential);
+                                  const linkedTask = tasks.find((task) => task.id === potential.taskId);
+                                  const lastHistory = potential.history.at(-1);
+
+                                  return (
+                                    <tr key={potential.id}>
+                                      <td>{getPotentialStatusLabel(potential)}</td>
+                                      <td className={styles.title}>{potential.description}</td>
+                                      <td>{potential.customerName || project?.customer || "-"}</td>
+                                      <td>{potential.projectLabel || project?.title || potential.projectId}</td>
+                                      <td>{formatDeadline(potential.createdAt)}</td>
+                                      <td>{potential.followUpAt ? formatDeadline(potential.followUpAt) : "-"}</td>
+                                      <td>{linkedTask?.zustaendig || activeUser?.name || "-"}</td>
+                                      <td>{lastHistory ? `${formatDeadline(lastHistory.at)}: ${lastHistory.note}` : "-"}</td>
+                                      <td>
+                                        <div className={styles.tableActionGroup}>
+                                          {["open", "follow_up"].includes(potential.status) ? (
+                                            <>
+                                              <button
+                                                type="button"
+                                                className={styles.timeEntryEditButton}
+                                                onClick={() => void offerPotential(potential)}
+                                              >
+                                                Angebot erstellen
+                                              </button>
+                                              <button
+                                                type="button"
+                                                className={styles.timeEntryEditButton}
+                                                onClick={() => void schedulePotentialFollowUp(potential)}
+                                              >
+                                                Später nachfassen
+                                              </button>
+                                              <button
+                                                type="button"
+                                                className={styles.timeEntryEditButton}
+                                                onClick={() => void closePotential(potential)}
+                                              >
+                                                Kein Interesse
+                                              </button>
+                                            </>
+                                          ) : null}
+                                          <button
+                                            type="button"
+                                            className={styles.timeEntryEditButton}
+                                            onClick={() => setHistoryPotential(potential)}
+                                          >
+                                            Historie
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                        <p className={styles.heroTableHint}>
+                          Alle {filteredPipelinePotentials.length} Potenziale sind geladen und auswertbar.
+                        </p>
+                      </section>
+                    </div>
+                  </>
+                ) : (
+                  <>
                 <div className={styles.projectStatusStrip}>
                   <div className={styles.projectStatusStripMeta}>
                     <strong>{activeProjectPipeline.company}</strong>
@@ -22482,30 +29702,32 @@ export function DashboardPage() {
                             <td colSpan={13}>Keine Projekte zur Suche gefunden.</td>
                           </tr>
                         ) : (
-                          visibleHeroProjects.map((project) => (
-                            <tr
-                              key={project.id}
-                              className={styles.clickableRow}
-                              onClick={() => {
-                                setSelectedProjectFileId(project.id);
-                                setProjectFileTab("logbook");
-                              }}
-                            >
-                              <td className={styles.number}>{getProjectNumberPrefix(project.projectNumber || project.id)}</td>
-                              <td className={styles.number}>{getProjectNumberSuffix(project.projectNumber || project.id)}</td>
-                              <td className={styles.title}>{project.customer || "-"}</td>
-                              <td>{project.title}</td>
-                              <td>{project.address || "-"}</td>
-                              <td>{project.source ? "Sonstige" : "-"}</td>
-                              <td>{project.branch || activeProjectPipeline.company}</td>
-                              <td>{project.source || "-"}</td>
-                              <td>-</td>
-                              <td>{project.status || "-"}</td>
-                              <td>{project.createdAt || "-"}</td>
-                              <td>-</td>
-                              <td>{project.volume ? `${project.volume} €` : "-"}</td>
-                            </tr>
-                          ))
+                          visibleHeroProjects.map((project) => {
+                            return (
+                              <tr
+                                key={project.id}
+                                className={styles.clickableRow}
+                                onClick={() => {
+                                  setSelectedProjectFileId(project.id);
+                                  setProjectFileTab("logbook");
+                                }}
+                              >
+                                <td className={styles.number}>{getProjectNumberPrefix(project.projectNumber || project.id)}</td>
+                                <td className={styles.number}>{getProjectNumberSuffix(project.projectNumber || project.id)}</td>
+                                <td className={styles.title}>{project.customer || "-"}</td>
+                                <td>{project.title}</td>
+                                <td>{project.address || "-"}</td>
+                                <td>{project.source ? "Sonstige" : "-"}</td>
+                                <td>{project.branch || activeProjectPipeline.company}</td>
+                                <td>{project.source || "-"}</td>
+                                <td>-</td>
+                                <td>{project.status || "-"}</td>
+                                <td>{project.createdAt || "-"}</td>
+                                <td>-</td>
+                                <td>{project.volume ? `${project.volume} €` : "-"}</td>
+                              </tr>
+                            );
+                          })
                         )}
                       </tbody>
                     </table>
@@ -22518,6 +29740,8 @@ export function DashboardPage() {
                 </section>
 
                 </div>
+                  </>
+                )}
               </section>
             </section>
             )
@@ -22584,6 +29808,7 @@ export function DashboardPage() {
                 {[
                   { label: "Alle", value: "", count: contacts.length },
                   { label: "Kunden", value: "Kunde", count: contactCategoryCounts.Kunde ?? 0 },
+                  { label: "Privatkunden", value: "Privatkunde", count: contactCategoryCounts.Privatkunde ?? 0 },
                   { label: "Lieferanten", value: "Lieferant", count: contactCategoryCounts.Lieferant ?? 0 },
                   { label: "Partner", value: "Partner", count: contactCategoryCounts.Partner ?? 0 },
                   { label: "Ansprechpartner", value: "Ansprechpartner", count: contactCategoryCounts.Ansprechpartner ?? 0 },
@@ -22617,6 +29842,7 @@ export function DashboardPage() {
                   >
                     <option value="">Alle</option>
                     <option value="Kunde">Kunden</option>
+                    <option value="Privatkunde">Privatkunden</option>
                     <option value="Lieferant">Lieferanten</option>
                     <option value="Partner">Partner</option>
                     <option value="Ansprechpartner">Ansprechpartner</option>
@@ -22700,8 +29926,9 @@ export function DashboardPage() {
                     className={styles.paginationButton}
                     disabled={activeContactPage <= 1}
                     onClick={() => setContactPage((page) => Math.max(1, page - 1))}
+                    aria-label="Vorherige Seite"
                   >
-                    ?
+                    &lt;
                   </button>
                   <input
                     aria-label="Kontaktseite"
@@ -22721,8 +29948,9 @@ export function DashboardPage() {
                     className={styles.paginationButton}
                     disabled={activeContactPage >= contactPageCount}
                     onClick={() => setContactPage((page) => Math.min(contactPageCount, page + 1))}
+                    aria-label="Nächste Seite"
                   >
-                    ?
+                    &gt;
                   </button>
                   <span>von {contactPageCount}</span>
                   <span>Zeige</span>
@@ -22821,8 +30049,9 @@ export function DashboardPage() {
                     className={styles.paginationButton}
                     disabled={activeContactPage <= 1}
                     onClick={() => setContactPage((page) => Math.max(1, page - 1))}
+                    aria-label="Vorherige Seite"
                   >
-                    ?
+                    &lt;
                   </button>
                   <input
                     aria-label="Kontaktseite unten"
@@ -22842,8 +30071,9 @@ export function DashboardPage() {
                     className={styles.paginationButton}
                     disabled={activeContactPage >= contactPageCount}
                     onClick={() => setContactPage((page) => Math.min(contactPageCount, page + 1))}
+                    aria-label="Nächste Seite"
                   >
-                    ?
+                    &gt;
                   </button>
                   <span>von {contactPageCount}</span>
                   <span>Zeige</span>
@@ -22864,12 +30094,16 @@ export function DashboardPage() {
             </section>
           ) : activeTab === "timeTracking" ? (
             renderTimeTrackingOverview()
+          ) : activeTab === "laborCostRates" ? (
+            renderLaborCostRates()
           ) : activeTab === "employees" ||
             activeTab === "timeCategories" ||
             activeTab === "breakManagement" ? (
             renderEmployeeManagement()
           ) : activeTab === "personalData" ? (
             renderPersonalData()
+          ) : activeTab === "batchBilling" ? (
+            renderAccounting()
           ) : plannedModuleLabels[activeTab] ? (
             <section className={styles.plannedModule}>
               <div>
@@ -23502,313 +30736,7 @@ export function DashboardPage() {
               )}
             </section>
           ) : activeTab === "reports" ? (
-            <section className={styles.settingsPanel}>
-              <div className={styles.topline}>
-                <div>
-                  <p className={styles.eyebrow}>Reports</p>
-                  <h1>Auslastung</h1>
-                  <p className={styles.subline}>
-                    Kapazität je Mitarbeiter aus Tagesarbeitszeit und geplanter Vorgabezeit.
-                  </p>
-                </div>
-              </div>
-
-              <section className={styles.reportHero}>
-                <div>
-                  <span>Heute</span>
-                  <h2>
-                    {todayUtilization.absence
-                      ? `${activeUser?.name ?? "Aktiver Benutzer"} ist heute ${absenceLabel(todayUtilization.absence.type)}`
-                      : `${activeUser?.name ?? "Aktiver Benutzer"} ist heute zu ${todayUtilization.utilization}% ausgelastet`}
-                  </h2>
-                  <p>
-                    {todayUtilization.absence
-                      ? "Der Tag wird in der Auslastung ohne verfügbare Kapazität gerechnet."
-                      : `${formatMinutes(todayUtilization.plannedMinutes)} geplant von ${formatMinutes(todayUtilization.capacityMinutes)} verfügbarer Tagesarbeitszeit.${
-                          todayUtilization.holiday ? ` Heute ist ${todayUtilization.holiday.name}.` : ""
-                        }`}
-                  </p>
-                </div>
-                <div className={styles.reportProgress} aria-label="Auslastung heute">
-                  <span style={{ width: `${clampPercent(todayUtilization.utilization)}%` }} />
-                </div>
-              </section>
-
-              <section className={styles.reportPanel}>
-                <div className={styles.reportHeader}>
-                  <div>
-                    <p className={styles.eyebrow}>Produktivität</p>
-                    <h2>Produktivität und offene Kapazität</h2>
-                  </div>
-                  <p>
-                    Zeigt, welcher Anteil der verfügbaren Arbeitszeit durch geplante Aufgaben
-                    produktiv gedeckt ist und welche Kapazität noch offen bleibt.
-                  </p>
-                </div>
-
-                <div className={styles.periodSelector} aria-label="Zeitraum Produktivität">
-                  {(["day", "week", "month", "quarter", "year"] as ProductivityPeriod[]).map(
-                    (period) => (
-                      <button
-                        key={period}
-                        type="button"
-                        className={productivityPeriod === period ? styles.activePeriod : ""}
-                        onClick={() => setProductivityPeriod(period)}
-                      >
-                        {productivityPeriodLabel(period)}
-                      </button>
-                    )
-                  )}
-                </div>
-
-                <div className={styles.unproductiveSummaryGrid}>
-                  <article>
-                    <span>Produktiv geplant</span>
-                    <strong>{formatMinutes(unproductiveSummary.productiveMinutes)}</strong>
-                    <small>{formatPercent(productiveSummaryPercent)}% der verfügbaren Zeit</small>
-                  </article>
-                  <article>
-                    <span>Offene Kapazität</span>
-                    <strong>{formatMinutes(unproductiveSummary.unproductiveMinutes)}</strong>
-                    <small>{formatPercent(unproductiveSummaryPercent)}% noch nicht verplant</small>
-                  </article>
-                  <article>
-                    <span>Verfügbare Zeit</span>
-                    <strong>{formatMinutes(unproductiveSummary.capacityMinutes)}</strong>
-                    <small>
-                      {visibleReportUsers.length} Benutzer · {productivityPeriodLabel(productivityPeriod)}
-                    </small>
-                  </article>
-                </div>
-
-                <div className={styles.unproductiveRows}>
-                  {unproductiveRows.map((row) => (
-                    <article key={row.user.id} className={styles.unproductiveRow}>
-                      <div className={styles.unproductiveUser}>
-                        <strong>{row.user.name}</strong>
-                        <span>
-                          {formatMinutes(row.productiveMinutes)} produktiv geplant ·{" "}
-                          {formatMinutes(row.unproductiveMinutes)} offen
-                        </span>
-                      </div>
-                      <div className={`${styles.productivityEndpoint} ${styles.productivityEndpointPositive}`}>
-                        <strong>{formatPercent(row.productivePercent)}%</strong>
-                        <span>produktiv</span>
-                      </div>
-                      <div
-                        className={styles.unproductiveBar}
-                        title={`${formatPercent(row.productivePercent)}% produktiv geplant, ${formatPercent(row.unproductivePercent)}% offen`}
-                      >
-                        <span
-                          className={styles.productiveSegment}
-                          style={{ width: `${clampPercent(row.productivePercent)}%` }}
-                        />
-                        <span
-                          className={styles.unproductiveSegment}
-                          style={{ width: `${clampPercent(row.unproductivePercent)}%` }}
-                        />
-                      </div>
-                      <div className={`${styles.productivityEndpoint} ${styles.productivityEndpointOpen}`}>
-                        <strong>{formatPercent(row.unproductivePercent)}%</strong>
-                        <span>offen</span>
-                      </div>
-                      {row.overbookedMinutes > 0 && (
-                        <span className={styles.overbookedBadge}>
-                          {formatMinutes(row.overbookedMinutes)} überplant
-                        </span>
-                      )}
-                    </article>
-                  ))}
-                </div>
-              </section>
-
-              <section className={styles.reportPanel}>
-                <div className={styles.reportHeader}>
-                  <div>
-                    <p className={styles.eyebrow}>Leistung</p>
-                    <h2>Leistungsgrad</h2>
-                  </div>
-                  <p>Vorgabezeit geteilt durch erfasste Zeit. Über 100% bedeutet schneller als Vorgabe.</p>
-                </div>
-
-                <div className={styles.performanceGaugeGrid}>
-                  {performancePeriods.map(({ period, label, result }) => (
-                    <button
-                      key={period}
-                      className={styles.performanceGauge}
-                      data-state={getPerformanceState(result.performanceGrade)}
-                      data-selected={selectedPerformancePeriod === period}
-                      style={getPerformanceGaugeStyle(result.performanceGrade)}
-                      onClick={() =>
-                        setSelectedPerformancePeriod((current) =>
-                          current === period ? null : period
-                        )
-                      }
-                    >
-                      <strong>{label}</strong>
-                      <div className={styles.gaugeDial}>
-                        <span className={styles.gaugeNeedle} />
-                      </div>
-                      <b>{result.performanceGrade === null ? "-" : `${result.performanceGrade}%`}</b>
-                      <small>
-                        <span>Vorgabezeit = {formatMinutes(result.totalEstimateMinutes)}</span>
-                        <span>Benötigte Zeit = {formatMinutes(result.totalTrackedMinutes)}</span>
-                      </small>
-                    </button>
-                  ))}
-                </div>
-
-                {selectedPerformancePeriod && selectedPerformanceResult && (
-                  <div className={styles.performanceDetail}>
-                    <div className={styles.reportHeader}>
-                      <div>
-                        <p className={styles.eyebrow}>Details</p>
-                        <h2>{performancePeriodLabel(selectedPerformancePeriod)} nachvollziehen</h2>
-                      </div>
-                      <p>Diese Aufgaben bilden den ausgewählten Leistungsgrad.</p>
-                    </div>
-
-                    <div className={styles.tableCard}>
-                      <table className={styles.table}>
-                        <thead>
-                          <tr>
-                            <th>Nr.</th>
-                            <th>Aufgabe</th>
-                            <th>Zuständig</th>
-                            <th>Vorgabe</th>
-                            <th>Erfasst</th>
-                            <th>Leistungsgrad</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {selectedPerformanceResult.rows.length === 0 ? (
-                            <tr>
-                              <td colSpan={6}>
-                                Keine passenden Aufgaben mit Vorgabezeit und Zeiteinträgen.
-                              </td>
-                            </tr>
-                          ) : (
-                            selectedPerformanceResult.rows.map(
-                              ({ task, estimateMinutes, trackedMinutes, performanceGrade }) => (
-                                <tr key={task.id}>
-                                  <td className={styles.number}>
-                                    {getTaskNumber(task.id, activeTasks)}
-                                  </td>
-                                  <td>
-                                    <div className={styles.title}>{task.titel}</div>
-                                    <span className={styles.description}>
-                                      {truncateText(task.beschreibung, 30)}
-                                    </span>
-                                  </td>
-                                  <td>
-                                    {task.zustaendig}
-                                    <span className={styles.metaLine}>{task.rolle}</span>
-                                  </td>
-                                  <td>{formatMinutes(estimateMinutes)}</td>
-                                  <td>{formatMinutes(trackedMinutes)}</td>
-                                  <td>
-                                    <span
-                                      className={styles.performanceBadge}
-                                      data-state={getPerformanceState(performanceGrade)}
-                                    >
-                                      {performanceGrade === null ? "-" : `${performanceGrade}%`}
-                                    </span>
-                                  </td>
-                                </tr>
-                              )
-                            )
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </section>
-
-              <section className={styles.reportPanel}>
-                <div className={styles.reportHeader}>
-                  <div>
-                    <p className={styles.eyebrow}>Planung</p>
-                    <h2>Auslastung für die nächsten Tage</h2>
-                  </div>
-                  <p>Urlaub und Krank werden ohne verfügbare Kapazität gerechnet. Feiertage bleiben planbar und zählen als verfügbare Zeit.</p>
-                </div>
-
-                <div className={styles.workloadGrid}>
-                  <div className={styles.workloadHeaderCell}>Mitarbeiter</div>
-                  {reportDays.map((day) => {
-                    const dateKey = formatDateKey(day);
-                    const holiday = getHolidayForDateKey(dateKey);
-
-                    return (
-                      <div
-                        key={dateKey}
-                        className={styles.workloadDayHeader}
-                        data-weekday={day.getDay() !== 0 && day.getDay() !== 6}
-                        data-holiday={Boolean(holiday)}
-                        title={holiday?.name ?? undefined}
-                      >
-                        {formatShortDate(day)}
-                      </div>
-                    );
-                  })}
-
-                  {visibleReportUsers.map((user) => (
-                    <div key={user.id} className={styles.workloadRowGroup}>
-                      <div className={styles.workloadUser}>
-                        <strong>{user.name}</strong>
-                        <span>{user.dailyWorkHours} Std./Tag</span>
-                      </div>
-                      {reportDays.map((day) => {
-                        const utilization = getUserUtilizationForDay(user.id, day);
-                        const state =
-                          utilization.utilization >= 100
-                            ? "over"
-                            : utilization.utilization >= 80
-                              ? "high"
-                              : utilization.utilization > 0
-                                ? "normal"
-                                : "empty";
-
-                        return (
-                          <div
-                            key={formatDateKey(day)}
-                            className={styles.workloadCell}
-                            data-state={state}
-                            data-weekday={day.getDay() !== 0 && day.getDay() !== 6}
-                            data-absence={utilization.absence?.type ?? ""}
-                            data-holiday={Boolean(utilization.holiday)}
-                          >
-                            {utilization.absence ? (
-                              <>
-                                <strong>{absenceLabel(utilization.absence.type)}</strong>
-                                <small>
-                                  {utilization.absence.representativeName
-                                    ? `Vertretung: ${utilization.absence.representativeName}`
-                                    : utilization.absence.note || "Abwesend"}
-                                </small>
-                              </>
-                            ) : (
-                              <>
-                                <strong>{utilization.utilization}%</strong>
-                                <div className={styles.workloadMiniBar}>
-                                  <span style={{ width: `${clampPercent(utilization.utilization)}%` }} />
-                                </div>
-                                <small>
-                                  {formatMinutes(utilization.plannedMinutes)} / {formatMinutes(utilization.capacityMinutes)}
-                                  {utilization.holiday ? ` · ${utilization.holiday.name}` : ""}
-                                </small>
-                              </>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-            </section>
+            renderReportsAnalytics()
           ) : (
             <>
               <div className={styles.topline}>
@@ -23830,11 +30758,11 @@ export function DashboardPage() {
                   className={`${styles.card} ${styles.clickableCard}`}
                   onClick={() => {
                     setStatusFilter("");
-                    setDeadlineFilter("");
-                  }}
-                >
-                  <span>Gesamt</span>
-                  <strong>{activeTasks.length}</strong>
+                  setDeadlineFilter("");
+                }}
+              >
+                <span>Gesamt</span>
+                  <strong>{taskOverviewTasks.length}</strong>
                 </button>
 
                 <button
@@ -23977,7 +30905,6 @@ export function DashboardPage() {
                 <table className={`${styles.table} ${styles.dashboardTaskTable}`}>
                   <thead>
                     <tr>
-                      <th>Timer</th>
                       <th>Nr.</th>
                       <th>Aufgabe</th>
                       <th>Status</th>
@@ -23996,37 +30923,6 @@ export function DashboardPage() {
                         className={styles.clickableRow}
                         data-status={task.status}
                       >
-                        <td>
-                          <div className={styles.timerCell}>
-                            <div className={styles.timerControl}>
-                              <button
-                                type="button"
-                                className={styles.timerButton}
-                                data-running={Boolean(runningTaskTimers[task.id])}
-                                disabled={task.status === "erledigt"}
-                                onClick={(event) =>
-                                  runningTaskTimers[task.id]
-                                    ? stopTaskTimer(event, task)
-                                    : startTaskTimer(event, task)
-                                }
-                                aria-label={
-                                  runningTaskTimers[task.id]
-                                    ? "Zeiterfassung stoppen"
-                                    : "Zeiterfassung starten"
-                                }
-                              >
-                                <span
-                                  className={
-                                    runningTaskTimers[task.id] ? styles.stopIcon : styles.playIcon
-                                  }
-                                />
-                              </button>
-                              <span className={styles.timerReadout}>
-                                {formatStopwatch(getTaskTimerMilliseconds(task))}
-                              </span>
-                            </div>
-                          </div>
-                        </td>
                         <td className={styles.number}>
                           <span className={styles.taskNumberStack}>
                             {task.status === "erledigt" && (
@@ -24042,12 +30938,12 @@ export function DashboardPage() {
                               {truncateText(task.beschreibung, 30)}
                             </span>
                           )}
-                          {task.acceptanceStatus === "pending" && (
+                          {getTaskAcceptanceStatusForActiveUser(task) === "pending" && (
                             <span className={styles.pendingHint}>wartet auf Annahme</span>
                           )}
-                          {task.acceptanceStatus === "rejected" && task.rejectionReason && (
+                          {getTaskAcceptanceStatusForActiveUser(task) === "rejected" && (
                             <span className={styles.pendingHint}>
-                              abgelehnt: {task.rejectionReason}
+                              abgelehnt
                             </span>
                           )}
                           <span className={styles.editHint}>bearbeiten</span>
@@ -24094,8 +30990,8 @@ export function DashboardPage() {
                           )}
                         </td>
                         <td>
-                          {task.acceptanceStatus === "pending" &&
-                          task.zustaendigId === activeUserId ? (
+                          {getTaskAcceptanceStatusForActiveUser(task) === "pending" &&
+                          (task.zustaendigId === activeUserId || getActiveUserParticipant(task)) ? (
                             <div className={styles.actionGroup}>
                               <button
                                 onClick={(event) => respondToTask(event, task, "accepted")}
@@ -24149,7 +31045,7 @@ export function DashboardPage() {
                 className={styles.iconButton}
                 onClick={() => setIsPlanningEntryModalOpen(false)}
               >
-                ×
+                ?
               </button>
             </div>
 
@@ -24168,23 +31064,6 @@ export function DashboardPage() {
                     ? "Der Termin wird gelb angezeigt, bis ein Planungsverantwortlicher ihn bestätigt."
                     : "Der Termin wird fest im Planungsboard geführt."}
                 </span>
-              </div>
-
-              <div className={styles.segmentedControl}>
-                <button
-                  type="button"
-                  data-active={planningEntrySource === "manual"}
-                  onClick={() => setPlanningEntrySource("manual")}
-                >
-                  Manuell
-                </button>
-                <button
-                  type="button"
-                  data-active={planningEntrySource === "offer"}
-                  onClick={() => setPlanningEntrySource("offer")}
-                >
-                  Aus Angebot
-                </button>
               </div>
 
               <div className={styles.planningEntryGrid}>
@@ -24353,6 +31232,96 @@ export function DashboardPage() {
                     )} Std.`}
                   />
                 </label>
+                {(() => {
+                  const selectedProject = heroProjects.find((project) => project.id === planningEntryProjectId);
+                  const monthKey = planningEntryDate.slice(0, 7);
+                  const monthBudgetHours = selectedProject ? getProjectBudgetAllocationHours(selectedProject, monthKey) : 0;
+                  if (!selectedProject || monthBudgetHours <= 0) return null;
+
+                  const currentMinutes = getPlanningNetMinutesBetween(
+                    planningEntryStartTime,
+                    planningEntryEndTime,
+                    getUserBreakWindowForDate(
+                      users.find((user) => user.id === planningEntryUserId),
+                      planningEntryDate
+                    )
+                  );
+                  const alreadyPlannedMinutes = planningEntries
+                    .filter(
+                      (entry) =>
+                        entry.projectId === selectedProject.id &&
+                        entry.date.startsWith(monthKey) &&
+                        entry.id !== editingPlanningEntryId &&
+                        !entry.deletedAt
+                    )
+                    .reduce((sum, entry) => sum + Number(entry.durationMinutes || 0), 0);
+                  const afterSaveHours = (alreadyPlannedMinutes + currentMinutes) / 60;
+                  const remainingAfterSaveHours = Math.max(monthBudgetHours - afterSaveHours, 0);
+                  const overAfterSaveHours = Math.max(afterSaveHours - monthBudgetHours, 0);
+
+                  return (
+                    <div
+                      className={`${styles.planningBudgetInfo} ${styles.fullWidth}`}
+                      data-state={overAfterSaveHours > 0 ? "over" : "ok"}
+                    >
+                      <span>Monatskontingent {formatMonthLabel(monthKey)}</span>
+                      <strong>
+                        {formatHours(afterSaveHours)} von {formatHours(monthBudgetHours)} Std. geplant
+                      </strong>
+                      <small>
+                        Bereits {formatHours(alreadyPlannedMinutes / 60)} Std. | Dieser Termin{" "}
+                        {formatHours(currentMinutes / 60)} Std. | Danach{" "}
+                        {overAfterSaveHours > 0
+                          ? `${formatHours(overAfterSaveHours)} Std. überplant`
+                          : `${formatHours(remainingAfterSaveHours)} Std. offen`}
+                      </small>
+                    </div>
+                  );
+                })()}
+                <section className={`${styles.planningRecurrencePanel} ${styles.fullWidth}`}>
+                  <div>
+                    <strong>Wiederholung</strong>
+                    <span>
+                      {editingPlanningEntryId
+                        ? "Serien werden beim Neuanlegen erzeugt."
+                        : `${getPlanningRecurrenceDates().length} Termin${getPlanningRecurrenceDates().length === 1 ? "" : "e"}`}
+                    </span>
+                  </div>
+                  <div className={styles.planningRecurrenceGrid}>
+                    <label>
+                      Rhythmus
+                      <select
+                        value={planningRecurrenceType}
+                        disabled={Boolean(editingPlanningEntryId)}
+                        onChange={(event) => setPlanningRecurrenceType(event.target.value as PlanningRecurrenceType)}
+                      >
+                        <option value="once">Einmalig</option>
+                        <option value="weekly">Wöchentlich</option>
+                        <option value="biweekly">Alle 2 Wochen</option>
+                        <option value="monthly">Monatlich</option>
+                      </select>
+                    </label>
+                    <label>
+                      Wiederholen bis
+                      <input
+                        type="date"
+                        value={planningRecurrenceUntil}
+                        disabled={Boolean(editingPlanningEntryId) || planningRecurrenceType === "once"}
+                        min={planningEntryDate}
+                        onChange={(event) => setPlanningRecurrenceUntil(event.target.value)}
+                      />
+                    </label>
+                    <label className={styles.checkboxLine}>
+                      <input
+                        type="checkbox"
+                        checked={planningRecurrenceSkipWeekends}
+                        disabled={Boolean(editingPlanningEntryId) || planningRecurrenceType === "once"}
+                        onChange={(event) => setPlanningRecurrenceSkipWeekends(event.target.checked)}
+                      />
+                      Wochenenden überspringen
+                    </label>
+                  </div>
+                </section>
                 {planningEntrySource === "offer" && (
                   <>
                     <label className={styles.fullWidth}>
@@ -24374,7 +31343,7 @@ export function DashboardPage() {
                       />
                     </label>
                     <div className={styles.planningOfferInfo}>
-                      <span>Angebot vorbereitet</span>
+                      <span>Kontingent vorbereitet</span>
                       {(() => {
                         const currentMinutes = getPlanningNetMinutesBetween(
                           planningEntryStartTime,
@@ -24480,7 +31449,7 @@ export function DashboardPage() {
                 onClick={() => setIsCompanyProfileModalOpen(false)}
                 aria-label="Firmendaten schließen"
               >
-                Ã—
+                ×
               </button>
             </div>
 
@@ -24681,7 +31650,7 @@ export function DashboardPage() {
                 onClick={() => setIsTradeManagementModalOpen(false)}
                 aria-label="Gewerke schließen"
               >
-                Ã—
+                ×
               </button>
             </div>
 
@@ -24718,6 +31687,18 @@ export function DashboardPage() {
                     }}
                     placeholder="Kürzel"
                   />
+                  <select
+                    value={tradeDraftBusinessAreaId}
+                    onChange={(event) => setTradeDraftBusinessAreaId(event.target.value)}
+                    aria-label="Geschäftsbereich"
+                  >
+                    <option value="">Geschäftsbereich</option>
+                    {businessAreas.map((businessArea) => (
+                      <option key={businessArea.id} value={businessArea.id}>
+                        {businessArea.name}
+                      </option>
+                    ))}
+                  </select>
                   <button type="button" className={styles.primaryButton} onClick={createTrade}>
                     + Gewerk
                   </button>
@@ -24730,20 +31711,85 @@ export function DashboardPage() {
 
               <div className={styles.tradeAssignmentBox}>
                 <span>Zugewiesene Gewerke</span>
-                <div className={styles.tradeChipList}>
-                  {trades.map((trade) => (
-                    <span key={trade.id} className={styles.tradeChip}>
-                      <button
-                        type="button"
-                        onClick={() => deleteCompanyProfileTrade(trade.id)}
-                        aria-label={`${trade.name} entfernen`}
-                      >
+                <div className={styles.tradeManagementTable}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Gewerk</th>
+                        <th>Kürzel</th>
+                        <th>Geschäftsbereich</th>
+                        <th>Aktion</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trades.map((trade) => {
+                        const draft = tradeInlineDrafts[trade.id] ?? {
+                          name: trade.name,
+                          projectPrefix: trade.projectPrefix,
+                          businessAreaId: trade.businessAreaId,
+                        };
 
-                      </button>
-                      {trade.name}
-                      <strong>{trade.projectPrefix || getProjectTradePrefix(trade.name)}</strong>
-                    </span>
-                  ))}
+                        return (
+                          <tr key={trade.id}>
+                            <td>
+                              <input
+                                value={draft.name}
+                                onChange={(event) =>
+                                  updateTradeInlineDraft(trade.id, { name: event.target.value })
+                                }
+                              />
+                            </td>
+                            <td>
+                              <input
+                                value={draft.projectPrefix}
+                                maxLength={5}
+                                onChange={(event) =>
+                                  updateTradeInlineDraft(trade.id, {
+                                    projectPrefix: normalizeProjectPrefixInput(event.target.value),
+                                  })
+                                }
+                              />
+                            </td>
+                            <td>
+                              <select
+                                value={draft.businessAreaId}
+                                onChange={(event) =>
+                                  updateTradeInlineDraft(trade.id, {
+                                    businessAreaId: event.target.value,
+                                  })
+                                }
+                              >
+                                <option value="">Bitte auswählen</option>
+                                {businessAreas.map((businessArea) => (
+                                  <option key={businessArea.id} value={businessArea.id}>
+                                    {businessArea.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td>
+                              <div className={styles.tradeRowActions}>
+                                <button
+                                  type="button"
+                                  className={styles.secondaryButton}
+                                  onClick={() => void saveCompanyProfileTrade(trade)}
+                                >
+                                  Speichern
+                                </button>
+                                <button
+                                  type="button"
+                                  className={styles.deleteButton}
+                                  onClick={() => void deleteCompanyProfileTrade(trade.id)}
+                                >
+                                  Löschen
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
@@ -24788,7 +31834,7 @@ export function DashboardPage() {
                 onClick={() => setIsLogbookModalOpen(false)}
                 aria-label="Nachricht schliessen"
               >
-                ×
+                ?
               </button>
             </div>
 
@@ -24940,7 +31986,7 @@ export function DashboardPage() {
                 onClick={() => setIsContactBulkModalOpen(false)}
                 aria-label="Gruppenaktion schließen"
               >
-                ×
+                ?
               </button>
             </div>
 
@@ -25011,48 +32057,52 @@ export function DashboardPage() {
                 <p>CRM-Kontakt mit Adresse, Konditionen und Zahlungsdaten pflegen</p>
               </div>
               <button className={styles.iconButton} type="button" onClick={() => setIsContactModalOpen(false)}>
-                ×
+                X
               </button>
             </div>
 
             <div className={`${styles.standardModalBody} ${styles.contactModalBody}`}>
               <section className={styles.contactFormTopGrid}>
-                {!editingContactId && (
-                  <label>
-                    Kategorie
-                    <select
-                      value={contactDraft.category}
-                      onChange={(event) => updateContactDraft("category", event.target.value)}
-                    >
-                      <option value="Kunde">Kunde</option>
-                      <option value="Lieferant">Lieferant</option>
-                      <option value="Partner">Partner</option>
-                      <option value="Ansprechpartner">Ansprechpartner</option>
-                    </select>
-                  </label>
-                )}
-
-                {!editingContactId && (
-                  <div className={styles.contactTypeSwitch}>
+                <div className={styles.contactTypeSwitch}>
                     <span>Typ</span>
                     <div>
                       <button
                         type="button"
-                        data-active={contactDraft.type === "person"}
-                        onClick={() => updateContactDraft("type", "person")}
-                      >
-                        Person
-                      </button>
-                      <button
-                        type="button"
-                        data-active={contactDraft.type === "company"}
-                        onClick={() => updateContactDraft("type", "company")}
+                        data-active={contactDraft.type === "company" && contactDraft.category === "Kunde"}
+                        onClick={() => updateContactType("company", "Kunde")}
                       >
                         Firma
                       </button>
+                      <button
+                        type="button"
+                        data-active={contactDraft.type === "private"}
+                        onClick={() => updateContactType("private")}
+                      >
+                        Privatkunde
+                      </button>
+                      <button
+                        type="button"
+                        data-active={contactDraft.type === "person"}
+                        onClick={() => updateContactType("person")}
+                      >
+                        Ansprechpartner
+                      </button>
+                      <button
+                        type="button"
+                        data-active={contactDraft.type === "company" && contactDraft.category === "Partner"}
+                        onClick={() => updateContactType("company", "Partner")}
+                      >
+                        Partner
+                      </button>
+                      <button
+                        type="button"
+                        data-active={contactDraft.type === "company" && contactDraft.category === "Lieferant"}
+                        onClick={() => updateContactType("company", "Lieferant")}
+                      >
+                        Lieferant
+                      </button>
                     </div>
-                  </div>
-                )}
+                </div>
 
               <label>
                 Kundennummer
@@ -25085,7 +32135,7 @@ export function DashboardPage() {
                 />
               </label>
 
-              <label>
+              <label className={contactDraft.type === "person" ? styles.contactPositionField : undefined}>
                 Position/Funktion
                 <input
                   value={contactDraft.position}
@@ -25093,7 +32143,30 @@ export function DashboardPage() {
                 />
               </label>
 
-              {(!editingContactId || contactDraft.type === "company") && (
+              {contactDraft.type === "person" && (
+                <label className={styles.contactCompanyAssignField}>
+                  Firma zuordnen
+                  <select
+                    value={contactDraft.parentCompanyId}
+                    onChange={(event) => {
+                      const selectedCompany = contactCompanyOptions.find(
+                        (contact) => contact.id === event.target.value
+                      );
+                      updateContactDraft("parentCompanyId", selectedCompany?.id || "");
+                      updateContactDraft("parentCompanyName", selectedCompany?.companyName || "");
+                    }}
+                  >
+                    <option value="">Bitte Firma auswählen</option>
+                    {contactCompanyOptions.map((contact) => (
+                      <option key={contact.id} value={contact.id}>
+                        {getContactDisplayName(contact)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              {contactDraft.type === "company" && (
                 <label>
                   Firmenname
                   <input
@@ -25427,7 +32500,7 @@ export function DashboardPage() {
                 <p>Urlaub, Krankheit und Vertreter regeln</p>
               </div>
               <button className={styles.iconButton} type="button" onClick={() => setIsAbsenceModalOpen(false)}>
-                Ã—
+                X
               </button>
             </div>
 
@@ -25719,7 +32792,7 @@ export function DashboardPage() {
                 <p>Profil, Arbeitszeit und Passwort pflegen</p>
               </div>
               <button className={styles.iconButton} type="button" onClick={() => setIsOwnSettingsOpen(false)}>
-                ×
+                X
               </button>
             </div>
 
@@ -25851,7 +32924,7 @@ export function DashboardPage() {
             onClick={() => setIsContentModalOpen(false)}
             aria-label="Content-Maske schließen"
           >
-            ×
+            ?
           </button>
         </div>
 
@@ -26229,7 +33302,7 @@ export function DashboardPage() {
                 <p>Kontakt, Projektdaten und kaufmännische Eckdaten pflegen</p>
               </div>
               <button className={styles.iconButton} type="button" onClick={closeProjectModal}>
-                ×
+                X
               </button>
             </div>
 
@@ -26261,7 +33334,6 @@ export function DashboardPage() {
                               setProjectContactPickerSearch(event.target.value)
                             }
                           />
-                          <span>R"</span>
                         </div>
                         <div className={styles.projectContactOptions}>
                           {projectContactPickerOptions.length === 0 ? (
@@ -26271,12 +33343,11 @@ export function DashboardPage() {
                               <button
                                 key={contact.id}
                                 type="button"
-                                data-active={projectDraft.contactId === contact.id}
-                                onClick={() => {
-                                  updateProjectDraft("contactId", contact.id);
-                                  setIsProjectContactPickerOpen(false);
-                                  setProjectContactPickerSearch("");
-                                }}
+                                data-active={
+                                  projectDraft.contactId === contact.id ||
+                                  projectDraft.contactPersonId === contact.id
+                                }
+                                onClick={() => selectProjectContact(contact)}
                               >
                                 <span>
                                   <strong>{getContactLabel(contact)}</strong>
@@ -26284,7 +33355,7 @@ export function DashboardPage() {
                                     <em>{getContactAddressLine(contact)}</em>
                                   )}
                                 </span>
-                                <small>{contact.customerNumber}</small>
+                                <small>{contact.type === "person" ? "Ansprechpartner" : contact.customerNumber}</small>
                               </button>
                             ))
                           )}
@@ -26297,6 +33368,13 @@ export function DashboardPage() {
                   </button>
                 </div>
               </label>
+
+              {selectedProjectContactPotentials.length > 0 && (
+                <div className={`${styles.modalWarning} ${styles.standardFormWide}`}>
+                  Achtung: vorhandenes Potenzial vorhanden:{" "}
+                  {selectedProjectContactPotentials.map((potential) => potential.description).join(", ")}
+                </div>
+              )}
 
               <strong className={`${styles.projectSectionTitle} ${styles.standardFormWide}`}>Projektdetails</strong>
 
@@ -26441,6 +33519,40 @@ export function DashboardPage() {
                       <option value="jährlich">jährlich</option>
                     </select>
                   </label>
+
+                  <label>
+                    Forecast-Betragstyp
+                    <select
+                      value={projectDraft.forecastBillingType}
+                      onChange={(event) =>
+                        updateProjectDraft(
+                          "forecastBillingType",
+                          event.target.value as ProjectDraft["forecastBillingType"]
+                        )
+                      }
+                    >
+                      <option value="monatlich">Monatlicher Betrag netto</option>
+                      <option value="wöchentlich">Wöchentlicher Betrag netto</option>
+                      <option value="quartalsweise">Quartalsbetrag netto</option>
+                    </select>
+                  </label>
+
+                  <label>
+                    Verrechnungsbetrag netto
+                    <div className={styles.moneyInput}>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={projectDraft.forecastNetAmount}
+                        onChange={(event) =>
+                          updateProjectDraft("forecastNetAmount", event.target.value)
+                        }
+                        placeholder="z.B. 2500"
+                      />
+                      <span>EUR</span>
+                    </div>
+                  </label>
                 </div>
               )}
 
@@ -26513,18 +33625,6 @@ export function DashboardPage() {
               </div>
 
               <label>
-                Projektzeitkontingent (Stunden)
-                <input
-                  type="number"
-                  min="0"
-                  step="0.25"
-                  value={projectDraft.timeBudgetHours}
-                  placeholder="z.B. 40"
-                  onChange={(event) => updateProjectDraft("timeBudgetHours", event.target.value)}
-                />
-              </label>
-
-              <label>
                 Zusätzliche Projektbeteiligte (optional)
                 <input
                   value={projectDraft.participants}
@@ -26569,7 +33669,7 @@ export function DashboardPage() {
                 onClick={closeManualProjectTimeModal}
                 aria-label="Zeiteintrag schließen"
               >
-                Ã—
+                ×
               </button>
             </div>
             <div className={`${styles.standardModalBody} ${styles.stampModalBody}`}>
@@ -26669,7 +33769,7 @@ export function DashboardPage() {
                 onClick={closeStampEntryEditModal}
                 aria-label="Zeiteintrag schließen"
               >
-                Ã—
+                ×
               </button>
             </div>
             <div className={`${styles.standardModalBody} ${styles.stampModalBody}`}>
@@ -26780,7 +33880,7 @@ export function DashboardPage() {
                 onClick={() => setIsStampModalOpen(false)}
                 aria-label="Stempelmaske schließen"
               >
-                Ã—
+                ×
               </button>
             </div>
             <div className={`${styles.standardModalBody} ${styles.stampModalBody}`}>
@@ -26796,7 +33896,102 @@ export function DashboardPage() {
                 </label>
               )}
 
-              {stampModalMode !== "stop" && (
+              {(stampModalMode === "change" || stampModalMode === "stop") && stampSession?.mode === "project" && (
+                <section className={styles.finalInspectionPanel}>
+                  <div className={styles.stampChoiceGrid}>
+                    <button
+                      type="button"
+                      data-active={stampCompletionState === "finished"}
+                      onClick={() => setStampCompletionState("finished")}
+                    >
+                      Arbeit fertig
+                    </button>
+                    <button
+                      type="button"
+                      data-active={stampCompletionState === "interrupted"}
+                      onClick={() => setStampCompletionState("interrupted")}
+                    >
+                      Arbeit unterbrochen
+                    </button>
+                  </div>
+
+                  {stampCompletionState === "finished" && stampSession?.mode === "project" ? (
+                    <div className={styles.finalInspectionChecklist}>
+                      <div>
+                        <h3>Endkontrolle</h3>
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          data-active={finalInspectionByColleague}
+                          onClick={() => setFinalInspectionByColleague((current) => !current)}
+                        >
+                          Endkontrolle wird vom Kollegen durchgeführt
+                        </button>
+                      </div>
+
+                      {!finalInspectionByColleague ? (
+                        <>
+                          {finalInspectionItems.map((item, index) => (
+                            <label key={item} className={styles.checkboxLine}>
+                              <input
+                                type="checkbox"
+                                checked={finalInspectionChecks[index] ?? false}
+                                onChange={(event) =>
+                                  setFinalInspectionChecks((current) =>
+                                    current.map((checked, currentIndex) =>
+                                      currentIndex === index ? event.target.checked : checked
+                                    )
+                                  )
+                                }
+                              />
+                              {item}
+                            </label>
+                          ))}
+                        </>
+                      ) : null}
+
+                      <div className={styles.finalInspectionUpsell}>
+                        <strong>Zusatzverkaufsmöglichkeiten vorhanden?</strong>
+                        <div>
+                          <label className={styles.checkboxLine}>
+                            <input
+                              type="checkbox"
+                              checked={!finalInspectionHasUpsell}
+                              onChange={() => {
+                                setFinalInspectionHasUpsell(false);
+                                setFinalInspectionUpsellNotes("");
+                              }}
+                            />
+                            Nein
+                          </label>
+                          <label className={styles.checkboxLine}>
+                            <input
+                              type="checkbox"
+                              checked={finalInspectionHasUpsell}
+                              onChange={() => setFinalInspectionHasUpsell(true)}
+                            />
+                            Ja
+                          </label>
+                        </div>
+                      </div>
+
+                      {finalInspectionHasUpsell ? (
+                        <label>
+                          Falls ja, welche?
+                          <textarea
+                            rows={3}
+                            value={finalInspectionUpsellNotes}
+                            onChange={(event) => setFinalInspectionUpsellNotes(event.target.value)}
+                            placeholder="Kurz notieren, welche Zusatzleistung oder welches Folgeangebot möglich ist."
+                          />
+                        </label>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </section>
+              )}
+
+              {stampModalMode !== "stop" && !(stampModalMode === "change" && stampSession?.mode === "unproductive") && (
                 <div className={styles.stampChoiceGrid}>
                   <button
                     type="button"
@@ -26901,11 +34096,139 @@ export function DashboardPage() {
         </div>
       )}
 
+      {historyPotential && (
+        <div className={styles.overlay} onClick={() => setHistoryPotential(null)}>
+          <div
+            className={`${styles.standardModal} ${styles.taskModal}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={styles.standardModalHeader}>
+              <div>
+                <h2>Potenzial-Historie</h2>
+                <p>{historyPotential.description}</p>
+              </div>
+              <button className={styles.iconButton} type="button" onClick={() => setHistoryPotential(null)}>
+                ?
+              </button>
+            </div>
+            <div className={styles.standardModalBody}>
+              <div className={styles.customerTimeline}>
+                {historyPotential.history.length === 0 ? (
+                  <p>Noch keine Historie vorhanden.</p>
+                ) : (
+                  historyPotential.history.map((entry, index) => (
+                    <article key={`${entry.at}-${index}`}>
+                      <div className={styles.customerAvatar}>{entry.actor.slice(0, 2).toUpperCase()}</div>
+                      <div>
+                        <a>{formatDeadline(entry.at)}</a>
+                        <p>{entry.note || entry.action}</p>
+                        <small className={styles.customerLogMeta}>{entry.actor}</small>
+                      </div>
+                    </article>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {renderFinalizeInvoiceConfirmModal()}
       {renderDocumentMailModal()}
 
       {isModalOpen && (
         <div className={styles.overlay} onClick={closeTaskModal}>
           <div className={`${styles.standardModal} ${styles.taskModal}`} onClick={(event) => event.stopPropagation()}>
+            {isTaskAcceptancePopupOpen && (
+              <div className={styles.taskAcceptancePopup} role="alertdialog" aria-modal="true">
+                <div>
+                  <strong>Aufgabe zuerst annehmen</strong>
+                  <p>{TASK_ACCEPTANCE_REQUIRED_MESSAGE}</p>
+                  <button
+                    type="button"
+                    className={styles.primaryButton}
+                    onClick={() => setIsTaskAcceptancePopupOpen(false)}
+                  >
+                    Verstanden
+                  </button>
+                </div>
+              </div>
+            )}
+            {isTaskStatusConfirmOpen && (
+              <div className={styles.taskAcceptancePopup} role="alertdialog" aria-modal="true">
+                <div className={styles.taskStatusConfirmDialog}>
+                  <strong>Ist der derzeitige Aufgabenstatus noch aktuell?</strong>
+                  <label>
+                    Status
+                    <select
+                      value={taskStatusConfirmValue}
+                      onChange={(event) =>
+                        setTaskStatusConfirmValue(event.target.value as TaskStatus)
+                      }
+                    >
+                      {statusOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className={styles.taskStatusConfirmActions}>
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      onClick={() => {
+                        setStatus(taskStatusConfirmValue);
+                        void saveTask(taskStatusConfirmValue);
+                      }}
+                    >
+                      Ja, speichern
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => setIsTaskStatusConfirmOpen(false)}
+                    >
+                      Abbrechen
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {editingTask && isTaskHistoryOpen && (
+              <div className={styles.taskAcceptancePopup} role="dialog" aria-modal="true">
+                <div className={styles.taskHistoryDialog}>
+                  <div className={styles.taskHistoryDialogHeader}>
+                    <strong>Historie</strong>
+                    <button
+                      type="button"
+                      className={styles.iconButton}
+                      onClick={() => setIsTaskHistoryOpen(false)}
+                    >
+                      X
+                    </button>
+                  </div>
+                  <div className={styles.taskHistoryList}>
+                    {editingTask.history.length === 0 ? (
+                      <p className={styles.emptyState}>Noch keine Historie vorhanden.</p>
+                    ) : (
+                      [...editingTask.history].reverse().map((entry) => (
+                        <article key={entry.id} className={styles.taskHistoryItem}>
+                          <div>
+                            <strong>{entry.event}</strong>
+                            <span>{formatInstantDateTime(entry.createdAt)}</span>
+                          </div>
+                          <p>
+                            {entry.actorName}
+                            {entry.note ? ` - ${entry.note}` : ""}
+                          </p>
+                        </article>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
             <div className={styles.standardModalHeader}>
               <div>
                 <h2>
@@ -26922,15 +34245,24 @@ export function DashboardPage() {
                 </p>
               </div>
               <button className={styles.iconButton} type="button" onClick={closeTaskModal}>
-                ×
+                X
               </button>
             </div>
 
             <div className={styles.standardModalBody}>
-            <div className={styles.standardFormGrid}>
+            <div
+              className={`${styles.standardFormGrid} ${isTaskEditingLocked() ? styles.taskLockedForm : ""}`}
+              onClickCapture={() => {
+                if (isTaskEditingLocked()) showTaskAcceptanceRequiredMessage();
+              }}
+            >
               <label className={styles.standardFormWide}>
                 Titel
-                <input value={titel} onChange={(event) => setTitel(event.target.value)} />
+                <input
+                  value={titel}
+                  readOnly={isTaskEditingLocked()}
+                  onChange={(event) => setTitel(event.target.value)}
+                />
               </label>
 
               <label className={styles.standardFormWide}>
@@ -26938,6 +34270,7 @@ export function DashboardPage() {
                 <textarea
                   rows={4}
                   value={beschreibung}
+                  readOnly={isTaskEditingLocked()}
                   onChange={(event) => setBeschreibung(event.target.value)}
                 />
               </label>
@@ -26946,6 +34279,7 @@ export function DashboardPage() {
                 Status
                 <select
                   value={status}
+                  disabled={isTaskEditingLocked()}
                   onChange={(event) => setStatus(event.target.value as TaskStatus)}
                 >
                   {statusOptions.map((option) => (
@@ -26960,6 +34294,7 @@ export function DashboardPage() {
                 Priorität
                 <select
                   value={prioritaet}
+                  disabled={isTaskEditingLocked()}
                   onChange={(event) => setPrioritaet(event.target.value as TaskPriority)}
                 >
                   {priorityOptions.map((option) => (
@@ -26974,7 +34309,7 @@ export function DashboardPage() {
                 Zuständig
                 <select
                   value={zustaendigId}
-                  disabled={!canAssignOther(activeUser?.role) && !isCreatingAbsenceHandoverTask}
+                  disabled={isTaskEditingLocked() || (!canAssignOther(activeUser?.role) && !isCreatingAbsenceHandoverTask)}
                   onChange={(event) => setZustaendigId(event.target.value)}
                 >
                   {assignableUsers.map((user) => (
@@ -26990,9 +34325,14 @@ export function DashboardPage() {
                 <input
                   type="datetime-local"
                   value={faelligkeit}
+                  readOnly={isTaskEditingLocked()}
                   onChange={(event) => setFaelligkeit(normalizeDeadlineInput(event.target.value))}
                   onBlur={(event) => setFaelligkeit(normalizeDeadlineInput(event.target.value))}
                   onFocus={() => {
+                    if (isTaskEditingLocked()) {
+                      showTaskAcceptanceRequiredMessage();
+                      return;
+                    }
                     if (!faelligkeit) setFaelligkeit(getDefaultDeadlineValue());
                   }}
                 />
@@ -27000,7 +34340,11 @@ export function DashboardPage() {
 
               <label>
                 Kunde
-                <select value={kunde} onChange={(event) => selectCustomer(event.target.value)}>
+                <select
+                  value={kunde}
+                  disabled={isTaskEditingLocked()}
+                  onChange={(event) => selectCustomer(event.target.value)}
+                >
                   <option value="">Kein Kunde ausgewählt</option>
                   {customerOptions.map((option) => (
                     <option key={option} value={option}>
@@ -27014,7 +34358,7 @@ export function DashboardPage() {
                 Projekt
                 <select
                   value={selectedHeroProjectId}
-                  disabled={!kunde}
+                  disabled={isTaskEditingLocked() || !kunde}
                   onChange={(event) => selectHeroProject(event.target.value)}
                 >
                   <option value="">
@@ -27028,6 +34372,88 @@ export function DashboardPage() {
                 </select>
               </label>
 
+              {editingTask && (
+                <section className={`${styles.taskMetaPanel} ${styles.standardFormWide}`}>
+                  <div>
+                    <span>Angelegt von</span>
+                    <strong>
+                      {editingTask.createdByName ||
+                        users.find((user) => user.id === editingTask.createdById)?.name ||
+                        editingTask.zustaendig}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Angelegt am</span>
+                    <strong>{formatInstantDateTime(editingTask.createdAt)}</strong>
+                  </div>
+                </section>
+              )}
+
+              {editingTask && (
+                <section className={`${styles.taskParticipantsBox} ${styles.standardFormWide}`}>
+                  <div className={styles.timeHeader}>
+                    <div>
+                      <h3>Aufgabenbeteiligte</h3>
+                      <p>{editingTask.participants.length} Beteiligte</p>
+                    </div>
+                  </div>
+
+                  <div className={styles.taskParticipantAdd}>
+                    <select
+                      value={taskParticipantUserId}
+                      disabled={isTaskEditingLocked()}
+                      onChange={(event) => setTaskParticipantUserId(event.target.value)}
+                    >
+                      <option value="">Kollegen hinzufügen</option>
+                      {users
+                        .filter(
+                          (user) =>
+                            user.isActive &&
+                            user.id !== editingTask.zustaendigId &&
+                            !editingTask.participants.some(
+                              (participant) => participant.userId === user.id
+                            )
+                        )
+                        .map((user) => (
+                          <option key={user.id} value={user.id}>
+                            {user.name} - {user.roleLabel}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      disabled={!taskParticipantUserId || isTaskEditingLocked()}
+                      onClick={addTaskParticipant}
+                    >
+                      Hinzufügen
+                    </button>
+                  </div>
+
+                  <div className={styles.taskParticipantList}>
+                    {editingTask.participants.length === 0 ? (
+                      <p className={styles.emptyState}>Noch keine Beteiligten vorhanden.</p>
+                    ) : (
+                      editingTask.participants.map((participant) => (
+                        <article key={participant.id} className={styles.taskParticipantItem}>
+                          <div>
+                            <strong>{participant.userName}</strong>
+                            <span>{participant.role}</span>
+                          </div>
+                          <span className={styles.taskParticipantStatus} data-status={participant.acceptanceStatus}>
+                            {participant.acceptanceStatus === "accepted"
+                              ? "Angenommen"
+                              : participant.acceptanceStatus === "rejected"
+                                ? "Abgelehnt"
+                                : "Wartet auf Annahme"}
+                          </span>
+                        </article>
+                      ))
+                    )}
+                  </div>
+                </section>
+              )}
+
             {editingTask && (
               <section className={`${styles.commentBox} ${styles.standardFormWide}`}>
                 <div className={styles.timeHeader}>
@@ -27038,16 +34464,29 @@ export function DashboardPage() {
                 </div>
 
                 <div className={styles.commentForm}>
+                  <select
+                    value={commentRecipientUserId}
+                    disabled={isTaskEditingLocked() || editingTask.participants.length === 0}
+                    onChange={(event) => setCommentRecipientUserId(event.target.value)}
+                  >
+                    <option value="">Kommentar an alle / ohne direkte Zuordnung</option>
+                    {editingTask.participants.map((participant) => (
+                      <option key={participant.id} value={participant.userId}>
+                        An {participant.userName}
+                      </option>
+                    ))}
+                  </select>
                   <textarea
                     rows={3}
                     value={kommentarText}
+                    readOnly={isTaskEditingLocked()}
                     onChange={(event) => setKommentarText(event.target.value)}
                     placeholder="Kommentar zur Aufgabe schreiben"
                   />
                   <button
                     className={styles.secondaryButton}
                     onClick={addComment}
-                    disabled={!kommentarText.trim()}
+                    disabled={!kommentarText.trim() || isTaskEditingLocked()}
                   >
                     Kommentar speichern
                   </button>
@@ -27063,6 +34502,11 @@ export function DashboardPage() {
                           <strong>{comment.autor}</strong>
                           <span>{formatDeadline(comment.erstelltAm)}</span>
                         </div>
+                        {comment.recipientName && (
+                          <small className={styles.commentRecipient}>
+                            An {comment.recipientName}
+                          </small>
+                        )}
                         <p>{comment.text}</p>
                       </article>
                     ))
@@ -27077,17 +34521,48 @@ export function DashboardPage() {
 
             <div className={styles.standardModalFooter}>
               <div className={styles.modalActions}>
-              <button className={styles.primaryButton} onClick={saveTask}>
+              <button className={styles.primaryButton} onClick={() => void saveTask()}>
                 Speichern
               </button>
               <button className={styles.secondaryButton} onClick={closeTaskModal}>
                 Abbrechen
               </button>
+              {editingTask && getTaskAcceptanceStatusForActiveUser(editingTask) === "pending" && (
+                <button
+                  type="button"
+                  className={styles.acceptPulseButton}
+                  onClick={async () => {
+                    await respondToTaskAction(editingTask, "accepted");
+                    setEditingTask((current) =>
+                      current?.zustaendigId === activeUserId
+                        ? { ...current, acceptanceStatus: "accepted", rejectionReason: "" }
+                        : current
+                          ? {
+                              ...current,
+                              participants: current.participants.map((participant) =>
+                                participant.userId === activeUserId
+                                  ? { ...participant, acceptanceStatus: "accepted", rejectionReason: "" }
+                                  : participant
+                              ),
+                            }
+                          : current
+                    );
+                    setIsTaskAcceptancePopupOpen(false);
+                  }}
+                >
+                  Aufgabe annehmen
+                </button>
+              )}
               </div>
-              {editingTask?.createdAt && (
-                <p className={styles.createdAtHint}>
-                  Aufgabe erstellt am: {formatInstantDateTime(editingTask.createdAt)}
-                </p>
+              {editingTask && (
+                <button
+                  type="button"
+                  className={styles.taskHistoryFooterButton}
+                  onClick={() => setIsTaskHistoryOpen(true)}
+                >
+                  Historie
+                  <span>{editingTask.history.length}</span>
+                </button>
               )}
             </div>
           </div>
@@ -27096,6 +34571,3 @@ export function DashboardPage() {
     </main>
   );
 }
-
-
-

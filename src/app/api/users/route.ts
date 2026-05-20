@@ -45,6 +45,13 @@ const planningGroupsByBoard: Record<string, string[]> = {
   "OK immocare": ["VZK", "TZK"],
 };
 
+type BranchAllocations = {
+  okSolutions: number;
+  okImmocare: number;
+  okImmocareVzk?: number;
+  okImmocareTzk?: number;
+};
+
 function canManageUsers(role: Role) {
   return role === Role.ADMIN || role === Role.GESCHAEFTSFUEHRER;
 }
@@ -55,6 +62,58 @@ function roleLabel(role: Role) {
   if (role === Role.MITARBEITER) return "Mitarbeiter";
   if (role === Role.GAST) return "Gast";
   return "Admin";
+}
+
+function roundAllocation(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function defaultBranchAllocations(planningBoard?: string | null): BranchAllocations {
+  return planningBoard === "OK immocare"
+    ? { okSolutions: 0, okImmocare: 100, okImmocareVzk: 100, okImmocareTzk: 0 }
+    : { okSolutions: 100, okImmocare: 0, okImmocareVzk: 0, okImmocareTzk: 0 };
+}
+
+function parseBranchAllocations(value: unknown, planningBoard?: string | null): BranchAllocations {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return defaultBranchAllocations(planningBoard);
+  }
+
+  const input = value as Record<string, unknown>;
+  const okSolutions = Number(input.okSolutions ?? 0);
+  const legacyImmocare = Number(input.okImmocare ?? 0);
+  const okImmocareVzk = Number(input.okImmocareVzk ?? (planningBoard === "OK immocare" ? legacyImmocare : 0));
+  const okImmocareTzk = Number(input.okImmocareTzk ?? 0);
+  const safeOkSolutions = Number.isFinite(okSolutions) ? Math.min(Math.max(okSolutions, 0), 100) : 0;
+  const safeOkImmocareVzk = Number.isFinite(okImmocareVzk) ? Math.min(Math.max(okImmocareVzk, 0), 100) : 0;
+  const safeOkImmocareTzk = Number.isFinite(okImmocareTzk) ? Math.min(Math.max(okImmocareTzk, 0), 100) : 0;
+  const safeOkImmocare = Math.min(safeOkImmocareVzk + safeOkImmocareTzk, 100);
+  const total = safeOkSolutions + safeOkImmocare;
+
+  if (total <= 0) {
+    return defaultBranchAllocations(planningBoard);
+  }
+
+  if (Math.abs(total - 100) > 0.01) {
+    const normalizedOkSolutions = roundAllocation((safeOkSolutions / total) * 100);
+    const immocareTotal = 100 - normalizedOkSolutions;
+    const immocareSourceTotal = safeOkImmocareVzk + safeOkImmocareTzk;
+    const normalizedVzk =
+      immocareSourceTotal > 0 ? roundAllocation((safeOkImmocareVzk / immocareSourceTotal) * immocareTotal) : immocareTotal;
+    return {
+      okSolutions: normalizedOkSolutions,
+      okImmocare: roundAllocation(immocareTotal),
+      okImmocareVzk: normalizedVzk,
+      okImmocareTzk: roundAllocation(immocareTotal - normalizedVzk),
+    };
+  }
+
+  return {
+    okSolutions: roundAllocation(safeOkSolutions),
+    okImmocare: roundAllocation(safeOkImmocare),
+    okImmocareVzk: roundAllocation(safeOkImmocareVzk),
+    okImmocareTzk: roundAllocation(safeOkImmocareTzk),
+  };
 }
 
 function formatUser(user: {
@@ -85,7 +144,10 @@ function formatUser(user: {
   planningTimeWindows?: Prisma.JsonValue | null;
   planningBreakWindows?: Prisma.JsonValue | null;
   planningResponsibleFor?: Prisma.JsonValue | null;
+  branchAllocations?: Prisma.JsonValue | null;
+  includeInLaborCostRate?: boolean | null;
   notifyIdeaStore?: boolean | null;
+  notifyUpsell?: boolean | null;
   mailAccount?: Prisma.JsonValue | null;
 }, teamIds: string[] = []) {
   const birthDate =
@@ -126,7 +188,10 @@ function formatUser(user: {
     ),
     planningBreakWindows: parsePlanningBreakWindows(user.planningBreakWindows),
     planningResponsibleFor: parsePlanningResponsibleFor(user.planningResponsibleFor),
+    branchAllocations: parseBranchAllocations(user.branchAllocations, user.planningBoard),
+    includeInLaborCostRate: user.includeInLaborCostRate ?? true,
     notifyIdeaStore: user.notifyIdeaStore ?? true,
+    notifyUpsell: user.notifyUpsell ?? false,
     mailAccount: parseMailAccount(user.mailAccount, user.email),
   };
 }
@@ -313,7 +378,10 @@ async function ensureUserProfileColumns() {
     ADD COLUMN IF NOT EXISTS "planningTimeWindows" JSONB DEFAULT '{"monday":{"start":"08:00","end":"17:00"},"tuesday":{"start":"08:00","end":"17:00"},"wednesday":{"start":"08:00","end":"17:00"},"thursday":{"start":"08:00","end":"17:00"},"friday":{"start":"08:00","end":"17:00"},"saturday":{"start":"08:00","end":"17:00"},"sunday":{"start":"08:00","end":"17:00"}}'::jsonb,
     ADD COLUMN IF NOT EXISTS "planningBreakWindows" JSONB DEFAULT '{"monday":{"start":"12:00","end":"12:30"},"tuesday":{"start":"12:00","end":"12:30"},"wednesday":{"start":"12:00","end":"12:30"},"thursday":{"start":"12:00","end":"12:30"},"friday":{"start":"12:00","end":"12:30"},"saturday":{"start":"","end":""},"sunday":{"start":"","end":""}}'::jsonb,
     ADD COLUMN IF NOT EXISTS "planningResponsibleFor" JSONB DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS "branchAllocations" JSONB,
+    ADD COLUMN IF NOT EXISTS "includeInLaborCostRate" BOOLEAN DEFAULT true,
     ADD COLUMN IF NOT EXISTS "notifyIdeaStore" BOOLEAN DEFAULT true,
+    ADD COLUMN IF NOT EXISTS "notifyUpsell" BOOLEAN DEFAULT false,
     ADD COLUMN IF NOT EXISTS "mailAccount" JSONB DEFAULT '{}'::jsonb
   `;
 }
@@ -338,7 +406,10 @@ type UserDetails = {
   planningTimeWindows: Record<string, { start: string; end: string }>;
   planningBreakWindows: Record<string, { start: string; end: string }>;
   planningResponsibleFor: string[];
+  branchAllocations: BranchAllocations;
+  includeInLaborCostRate: boolean;
   notifyIdeaStore: boolean;
+  notifyUpsell: boolean;
   mailAccount: ReturnType<typeof parseMailAccount>;
 };
 
@@ -369,7 +440,10 @@ async function getUserDetails(userIds: string[]) {
       planningTimeWindows: Prisma.JsonValue | null;
       planningBreakWindows: Prisma.JsonValue | null;
       planningResponsibleFor: Prisma.JsonValue | null;
+      branchAllocations: Prisma.JsonValue | null;
+      includeInLaborCostRate: boolean | null;
       notifyIdeaStore: boolean | null;
+      notifyUpsell: boolean | null;
       mailAccount: Prisma.JsonValue | null;
     }>
   >`
@@ -394,7 +468,10 @@ async function getUserDetails(userIds: string[]) {
       "planningTimeWindows",
       "planningBreakWindows",
       "planningResponsibleFor",
+      "branchAllocations",
+      "includeInLaborCostRate",
       "notifyIdeaStore",
+      "notifyUpsell",
       "mailAccount"
     FROM "User"
     WHERE id IN (${Prisma.join(userIds)})
@@ -427,7 +504,10 @@ async function getUserDetails(userIds: string[]) {
         ),
         planningBreakWindows: parsePlanningBreakWindows(row.planningBreakWindows),
         planningResponsibleFor: parsePlanningResponsibleFor(row.planningResponsibleFor),
+        branchAllocations: parseBranchAllocations(row.branchAllocations, row.planningBoard),
+        includeInLaborCostRate: row.includeInLaborCostRate ?? true,
         notifyIdeaStore: row.notifyIdeaStore ?? true,
+        notifyUpsell: row.notifyUpsell ?? false,
         mailAccount: parseMailAccount(row.mailAccount, ""),
       },
     ])
@@ -637,7 +717,10 @@ export async function PATCH(req: Request) {
   const hasPlanningTimeWindowsUpdate = Object.prototype.hasOwnProperty.call(body, "planningTimeWindows");
   const hasPlanningBreakWindowsUpdate = Object.prototype.hasOwnProperty.call(body, "planningBreakWindows");
   const hasPlanningResponsibleForUpdate = Object.prototype.hasOwnProperty.call(body, "planningResponsibleFor");
+  const hasBranchAllocationsUpdate = Object.prototype.hasOwnProperty.call(body, "branchAllocations");
+  const hasIncludeInLaborCostRateUpdate = Object.prototype.hasOwnProperty.call(body, "includeInLaborCostRate");
   const hasNotifyIdeaStoreUpdate = Object.prototype.hasOwnProperty.call(body, "notifyIdeaStore");
+  const hasNotifyUpsellUpdate = Object.prototype.hasOwnProperty.call(body, "notifyUpsell");
   const hasMailAccountUpdate = Object.prototype.hasOwnProperty.call(body, "mailAccount");
   const nextBirthDate = parseBirthDate(body.birthDate);
   const nextPlanningBoard = parsePlanningBoard(body.planningBoard);
@@ -652,6 +735,7 @@ export async function PATCH(req: Request) {
   );
   const nextPlanningBreakWindows = parsePlanningBreakWindows(body.planningBreakWindows);
   const nextPlanningResponsibleFor = parsePlanningResponsibleFor(body.planningResponsibleFor);
+  const nextBranchAllocations = parseBranchAllocations(body.branchAllocations, nextPlanningBoard);
   const nextMailAccount = parseMailAccount(body.mailAccount, body.email);
   const existingMailRows = await prisma.$queryRaw<Array<{ mailAccount: Prisma.JsonValue | null }>>`
     SELECT "mailAccount" FROM "User" WHERE id = ${updated.id} LIMIT 1
@@ -756,9 +840,21 @@ export async function PATCH(req: Request) {
         WHEN ${hasPlanningResponsibleForUpdate} THEN ${JSON.stringify(nextPlanningResponsibleFor)}::jsonb
         ELSE "planningResponsibleFor"
       END,
+      "branchAllocations" = CASE
+        WHEN ${hasBranchAllocationsUpdate} THEN ${JSON.stringify(nextBranchAllocations)}::jsonb
+        ELSE "branchAllocations"
+      END,
+      "includeInLaborCostRate" = CASE
+        WHEN ${hasIncludeInLaborCostRateUpdate} THEN ${Boolean(body.includeInLaborCostRate)}
+        ELSE "includeInLaborCostRate"
+      END,
       "notifyIdeaStore" = CASE
         WHEN ${hasNotifyIdeaStoreUpdate} THEN ${Boolean(body.notifyIdeaStore)}
         ELSE "notifyIdeaStore"
+      END,
+      "notifyUpsell" = CASE
+        WHEN ${hasNotifyUpsellUpdate} THEN ${Boolean(body.notifyUpsell)}
+        ELSE "notifyUpsell"
       END,
       "mailAccount" = CASE
         WHEN ${hasMailAccountUpdate} THEN ${JSON.stringify(mergedMailAccount)}::jsonb
@@ -847,7 +943,10 @@ export async function POST(req: Request) {
   );
   const planningBreakWindows = parsePlanningBreakWindows(body.planningBreakWindows);
   const planningResponsibleFor = parsePlanningResponsibleFor(body.planningResponsibleFor);
+  const branchAllocations = parseBranchAllocations(body.branchAllocations, planningBoard);
+  const includeInLaborCostRate = body.includeInLaborCostRate !== false;
   const notifyIdeaStore = body.notifyIdeaStore !== false;
+  const notifyUpsell = body.notifyUpsell === true;
   const mailAccount = parseMailAccount(body.mailAccount, body.email);
   const created = await prisma.user.create({
     data: {
@@ -886,7 +985,10 @@ export async function POST(req: Request) {
       "planningTimeWindows" = ${JSON.stringify(planningTimeWindows)}::jsonb,
       "planningBreakWindows" = ${JSON.stringify(planningBreakWindows)}::jsonb,
       "planningResponsibleFor" = ${JSON.stringify(planningResponsibleFor)}::jsonb,
+      "branchAllocations" = ${JSON.stringify(branchAllocations)}::jsonb,
+      "includeInLaborCostRate" = ${includeInLaborCostRate},
       "notifyIdeaStore" = ${notifyIdeaStore},
+      "notifyUpsell" = ${notifyUpsell},
       "mailAccount" = ${JSON.stringify(mailAccount)}::jsonb
     WHERE id = ${created.id}
   `;
@@ -915,7 +1017,10 @@ export async function POST(req: Request) {
         planningTimeWindows,
         planningBreakWindows,
         planningResponsibleFor,
+        branchAllocations,
+        includeInLaborCostRate,
         notifyIdeaStore,
+        notifyUpsell,
         mailAccount,
       },
       teamIds

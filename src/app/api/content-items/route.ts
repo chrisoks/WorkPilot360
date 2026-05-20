@@ -63,10 +63,10 @@ const statuses = new Set([
   "Fertig produziert",
   "Finale Freigabe offen",
   "Korrektur nötig",
-  "Korrektur nÃ¶tig",
+  "Korrektur nötig",
   "Freigegeben",
   "Veröffentlicht",
-  "VerÃ¶ffentlicht",
+  "Veröffentlicht",
 ]);
 
 function cleanString(value: unknown) {
@@ -109,7 +109,7 @@ function cleanStatus(value: unknown, approvalLevel: string) {
 }
 
 function isLockedContentStatus(status: string) {
-  return status === "Freigegeben" || status === "Veröffentlicht" || status === "VerÃ¶ffentlicht";
+  return status === "Freigegeben" || status === "Veröffentlicht" || status === "Veröffentlicht";
 }
 
 function formatHistory(row: ContentHistoryRow) {

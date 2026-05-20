@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import {
@@ -121,6 +122,51 @@ type TaskWithRelations = Task & {
   timeEntries: Array<TimeEntry & { user: User }>;
 };
 
+type TaskParticipantView = {
+  id: string;
+  taskId: string;
+  userId: string;
+  userName: string;
+  role: string;
+  acceptanceStatus: "pending" | "accepted" | "rejected";
+  acceptanceRespondedAt: string | null;
+  rejectionReason: string;
+  createdAt: string;
+};
+
+type TaskHistoryItem = {
+  id: string;
+  event: string;
+  actorName: string;
+  note: string;
+  createdAt: string;
+};
+
+type TaskParticipantRow = {
+  id: string;
+  taskId: string;
+  userId: string;
+  firstName: string | null;
+  lastName: string | null;
+  role: Role;
+  acceptanceStatus: string | null;
+  acceptanceRespondedAt: Date | null;
+  rejectionReason: string | null;
+  createdAt: Date;
+};
+
+type TaskHistoryRow = {
+  id: string;
+  history: unknown;
+};
+
+type TaskCommentRecipientRow = {
+  id: string;
+  recipientUserId: string | null;
+  recipientFirstName: string | null;
+  recipientLastName: string | null;
+};
+
 type TaskFeedbackSettings = {
   taskId: string;
   autoFeedbackEnabled: boolean;
@@ -187,11 +233,86 @@ function parsePlanningAllocations(
   return allocations;
 }
 
-function formatTask(task: TaskWithRelations, feedback?: TaskFeedbackSettings) {
+function createTaskHistoryItem(event: string, actorName: string, note = ""): TaskHistoryItem {
+  return {
+    id: randomUUID(),
+    event,
+    actorName,
+    note,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function normalizeTaskHistory(value: unknown): TaskHistoryItem[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const item = entry as Partial<TaskHistoryItem>;
+      if (!item.event || !item.createdAt) return null;
+
+      return {
+        id: item.id || randomUUID(),
+        event: String(item.event),
+        actorName: String(item.actorName || "System"),
+        note: String(item.note || ""),
+        createdAt: String(item.createdAt),
+      };
+    })
+    .filter((entry): entry is TaskHistoryItem => Boolean(entry));
+}
+
+async function ensureTaskCommentRecipientColumn() {
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "TaskComment"
+    ADD COLUMN IF NOT EXISTS "recipientUserId" TEXT
+  `);
+}
+
+async function getTaskCommentRecipients(commentIds: string[]) {
+  if (commentIds.length === 0) return new Map<string, { id: string; name: string } | null>();
+  await ensureTaskCommentRecipientColumn();
+
+  const rows = await prisma.$queryRaw<TaskCommentRecipientRow[]>`
+    SELECT
+      c.id,
+      c."recipientUserId",
+      u."firstName" as "recipientFirstName",
+      u."lastName" as "recipientLastName"
+    FROM "TaskComment" c
+    LEFT JOIN "User" u ON u.id = c."recipientUserId"
+    WHERE c.id IN (${Prisma.join(commentIds)})
+  `;
+
+  return new Map(
+    rows.map((row) => [
+      row.id,
+      row.recipientUserId
+        ? {
+            id: row.recipientUserId,
+            name: `${row.recipientFirstName ?? ""} ${row.recipientLastName ?? ""}`.trim(),
+          }
+        : null,
+    ])
+  );
+}
+
+function formatTask(
+  task: TaskWithRelations,
+  feedback?: TaskFeedbackSettings,
+  participants: TaskParticipantView[] = [],
+  history: TaskHistoryItem[] = [],
+  users: User[] = [],
+  commentRecipients = new Map<string, { id: string; name: string } | null>()
+) {
   const totalTrackedMinutes = task.timeEntries.reduce(
     (total, entry) => total + entry.durationMinutes,
     0
   );
+
+  const createdById = feedback?.createdById ?? task.ownerId;
+  const creator = users.find((demoUser) => demoUser.id === createdById);
 
   return {
     id: task.id,
@@ -213,7 +334,8 @@ function formatTask(task: TaskWithRelations, feedback?: TaskFeedbackSettings) {
     autoFeedbackRecipientId: feedback?.autoFeedbackRecipientId ?? "",
     recurrenceEnabled: feedback?.recurrenceEnabled ?? false,
     recurrenceInterval: feedback?.recurrenceInterval ?? "",
-    createdById: feedback?.createdById ?? task.ownerId,
+    createdById,
+    createdByName: creator ? `${creator.firstName} ${creator.lastName}` : "",
     acceptanceStatus: feedback?.acceptanceStatus ?? "accepted",
     acceptanceRespondedAt: feedback?.acceptanceRespondedAt?.toISOString() ?? null,
     rejectionReason: feedback?.rejectionReason ?? "",
@@ -224,11 +346,15 @@ function formatTask(task: TaskWithRelations, feedback?: TaskFeedbackSettings) {
     vorgabeMinuten: task.estimateMinutes,
     gesamtzeitMinuten: totalTrackedMinutes,
     planningAllocations: normalizeStoredPlanningAllocations(feedback?.planningAllocations),
+    participants,
+    history,
     kommentare: task.comments.map((comment) => ({
       id: comment.id,
       text: comment.body,
       erstelltAm: comment.createdAt.toISOString(),
       autor: `${comment.author.firstName} ${comment.author.lastName}`,
+      recipientUserId: commentRecipients.get(comment.id)?.id ?? "",
+      recipientName: commentRecipients.get(comment.id)?.name ?? "",
     })),
     zeiteintraege: task.timeEntries.map((entry) => ({
       id: entry.id,
@@ -339,6 +465,19 @@ async function ensureTaskPlanningColumn() {
   `);
 }
 
+async function ensureTaskCollaborationColumns() {
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "Task"
+    ADD COLUMN IF NOT EXISTS "history" JSONB NOT NULL DEFAULT '[]'::jsonb
+  `);
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "TaskParticipant"
+    ADD COLUMN IF NOT EXISTS "acceptanceStatus" TEXT NOT NULL DEFAULT 'pending',
+    ADD COLUMN IF NOT EXISTS "acceptanceRespondedAt" TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS "rejectionReason" TEXT
+  `);
+}
+
 async function ensureTaskProjectColumn() {
   await prisma.$executeRawUnsafe(`
     ALTER TABLE "Task"
@@ -367,6 +506,123 @@ async function updateTaskProjectId(taskId: string, projectId: string | null) {
     SET "projectId" = ${projectId}
     WHERE id = ${taskId}
   `;
+}
+
+async function appendTaskHistory(taskId: string, items: TaskHistoryItem[]) {
+  if (items.length === 0) return;
+  await ensureTaskCollaborationColumns();
+  await prisma.$executeRaw`
+    UPDATE "Task"
+    SET "history" = COALESCE("history", '[]'::jsonb) || ${JSON.stringify(items)}::jsonb
+    WHERE id = ${taskId}
+  `;
+}
+
+async function getTaskParticipants(taskIds: string[]) {
+  if (taskIds.length === 0) return new Map<string, TaskParticipantView[]>();
+  await ensureTaskCollaborationColumns();
+
+  const rows = await prisma.$queryRaw<TaskParticipantRow[]>`
+    SELECT
+      p.id,
+      p."taskId",
+      p."userId",
+      u."firstName",
+      u."lastName",
+      u.role,
+      p."acceptanceStatus",
+      p."acceptanceRespondedAt",
+      p."rejectionReason",
+      p."createdAt"
+    FROM "TaskParticipant" p
+    JOIN "User" u ON u.id = p."userId"
+    WHERE p."taskId" IN (${Prisma.join(taskIds)})
+    ORDER BY p."createdAt" ASC
+  `;
+
+  const grouped = new Map<string, TaskParticipantView[]>();
+  rows.forEach((row) => {
+    const participant: TaskParticipantView = {
+      id: row.id,
+      taskId: row.taskId,
+      userId: row.userId,
+      userName: `${row.firstName ?? ""} ${row.lastName ?? ""}`.trim(),
+      role: roleLabel(row.role),
+      acceptanceStatus:
+        row.acceptanceStatus === "accepted" || row.acceptanceStatus === "rejected"
+          ? row.acceptanceStatus
+          : "pending",
+      acceptanceRespondedAt: row.acceptanceRespondedAt?.toISOString() ?? null,
+      rejectionReason: row.rejectionReason ?? "",
+      createdAt: row.createdAt.toISOString(),
+    };
+
+    grouped.set(row.taskId, [...(grouped.get(row.taskId) ?? []), participant]);
+  });
+
+  return grouped;
+}
+
+async function getTaskHistories(taskIds: string[]) {
+  if (taskIds.length === 0) return new Map<string, TaskHistoryItem[]>();
+  await ensureTaskCollaborationColumns();
+
+  const rows = await prisma.$queryRaw<TaskHistoryRow[]>`
+    SELECT id, "history"
+    FROM "Task"
+    WHERE id IN (${Prisma.join(taskIds)})
+  `;
+
+  return new Map(rows.map((row) => [row.id, normalizeTaskHistory(row.history)]));
+}
+
+async function getFormattedTask(taskId: string, users: User[], projectId = "") {
+  const task = await prisma.task.findUnique({
+    where: {
+      id: taskId,
+    },
+    include: {
+      owner: true,
+      category: true,
+      comments: {
+        orderBy: {
+          createdAt: "desc",
+        },
+        include: {
+          author: true,
+        },
+      },
+      timeEntries: {
+        orderBy: {
+          startedAt: "desc",
+        },
+        include: {
+          user: true,
+        },
+      },
+    },
+  });
+
+  if (!task) return null;
+
+  const feedback = (await getTaskFeedbackSettings([task.id])).get(task.id);
+  const participantMap = await getTaskParticipants([task.id]);
+  const historyMap = await getTaskHistories([task.id]);
+  const commentRecipientsById = await getTaskCommentRecipients(
+    task.comments.map((comment) => comment.id)
+  );
+
+  return {
+    ...formatTask(
+      task,
+      feedback,
+      participantMap.get(task.id) ?? [],
+      historyMap.get(task.id) ?? [],
+      users,
+      commentRecipientsById
+    ),
+    projectId,
+  };
 }
 
 async function updateTaskPlanningAllocations(
@@ -515,8 +771,10 @@ async function createNextRecurringTask(
 }
 
 export async function GET() {
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureTaskProjectColumn();
+  await ensureTaskCollaborationColumns();
+  await ensureTaskCommentRecipientColumn();
   await autoArchiveExpiredTasks();
 
   const tasks = await prisma.task.findMany({
@@ -550,10 +808,22 @@ export async function GET() {
 
   const feedbackByTaskId = await getTaskFeedbackSettings(tasks.map((task) => task.id));
   const projectIdByTaskId = await getTaskProjectIds(tasks.map((task) => task.id));
+  const participantsByTaskId = await getTaskParticipants(tasks.map((task) => task.id));
+  const historyByTaskId = await getTaskHistories(tasks.map((task) => task.id));
+  const commentRecipientsById = await getTaskCommentRecipients(
+    tasks.flatMap((task) => task.comments.map((comment) => comment.id))
+  );
 
   return NextResponse.json(
     tasks.map((task) => ({
-      ...formatTask(task, feedbackByTaskId.get(task.id)),
+      ...formatTask(
+        task,
+        feedbackByTaskId.get(task.id),
+        participantsByTaskId.get(task.id) ?? [],
+        historyByTaskId.get(task.id) ?? [],
+        users,
+        commentRecipientsById
+      ),
       projectId: projectIdByTaskId.get(task.id) ?? "",
     }))
   );
@@ -563,6 +833,7 @@ export async function POST(req: Request) {
   const body = await req.json();
   const { organization, user, users } = await getDemoContext();
   await ensureTaskProjectColumn();
+  await ensureTaskCollaborationColumns();
   const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
   const requestedOwner = users.find((demoUser) => demoUser.id === body.ownerId);
   const owner = requestedOwner && (canAssignOther(actor.role) || body.absenceHandoverTask) ? requestedOwner : actor;
@@ -634,19 +905,21 @@ export async function POST(req: Request) {
     acceptanceStatus
   );
   feedback.planningAllocations = planningAllocations;
+  await appendTaskHistory(task.id, [
+    createTaskHistoryItem("Aufgabe angelegt", `${actor.firstName} ${actor.lastName}`),
+  ]);
   await createDoneFeedbackNotification(task, null, users, feedback);
   await createNextRecurringTask(task, null, feedback);
 
-  return NextResponse.json({
-    ...formatTask(task, feedback),
-    projectId: nextProjectId ?? "",
-  });
+  const formattedTask = await getFormattedTask(task.id, users, nextProjectId ?? "");
+  return NextResponse.json(formattedTask ?? { ...formatTask(task, feedback), projectId: nextProjectId ?? "" });
 }
 
 export async function PATCH(req: Request) {
   const body = await req.json();
   const { user, users } = await getDemoContext();
   await ensureTaskProjectColumn();
+  await ensureTaskCollaborationColumns();
   const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
   const requestedOwner = users.find((demoUser) => demoUser.id === body.ownerId);
   const nextStatus = mapStatus(body.status);
@@ -688,6 +961,72 @@ export async function PATCH(req: Request) {
     `;
 
     return NextResponse.json({ success: true });
+  }
+
+  if (body.addParticipantUserId) {
+    const existingTask = await prisma.task.findUnique({
+      where: {
+        id: body.id,
+      },
+    });
+
+    if (!existingTask) {
+      return NextResponse.json({ error: "Aufgabe wurde nicht gefunden." }, { status: 404 });
+    }
+
+    const canAddParticipant =
+      canAssignOther(actor.role) ||
+      existingTask.ownerId === actor.id ||
+      existingTask.createdById === actor.id;
+
+    if (!canAddParticipant) {
+      return NextResponse.json(
+        { error: "Du darfst keine Beteiligten zu dieser Aufgabe hinzufügen." },
+        { status: 403 }
+      );
+    }
+
+    const participant = users.find((demoUser) => demoUser.id === body.addParticipantUserId);
+    if (!participant) {
+      return NextResponse.json({ error: "Mitarbeiter wurde nicht gefunden." }, { status: 404 });
+    }
+
+    if (participant.id === existingTask.ownerId) {
+      return NextResponse.json(
+        { error: "Die zuständige Person ist bereits Teil der Aufgabe." },
+        { status: 400 }
+      );
+    }
+
+    await prisma.$executeRaw`
+      INSERT INTO "TaskParticipant" (id, "organizationId", "taskId", "userId", "acceptanceStatus")
+      VALUES (${randomUUID()}, ${existingTask.organizationId}, ${existingTask.id}, ${participant.id}, 'pending')
+      ON CONFLICT ("taskId", "userId") DO NOTHING
+    `;
+
+    await appendTaskHistory(existingTask.id, [
+      createTaskHistoryItem(
+        "Aufgabenbeteiligten hinzugefügt",
+        `${actor.firstName} ${actor.lastName}`,
+        `${participant.firstName} ${participant.lastName}`
+      ),
+    ]);
+
+    await prisma.notification.create({
+      data: {
+        organizationId: existingTask.organizationId,
+        taskId: existingTask.id,
+        userId: participant.id,
+        channel: "app",
+        subject: "Neue Aufgabenbeteiligung",
+        body: `${actor.firstName} ${actor.lastName} hat dich zur Aufgabe "${existingTask.title}" hinzugefügt.`,
+        sentAt: null,
+      },
+    });
+
+    const projectId = (await getTaskProjectIds([existingTask.id])).get(existingTask.id) ?? "";
+    const formattedTask = await getFormattedTask(existingTask.id, users, projectId);
+    return NextResponse.json(formattedTask);
   }
 
   if (requestedOwner && requestedOwner.id !== actor.id && !canAssignOther(actor.role)) {
@@ -767,13 +1106,31 @@ export async function PATCH(req: Request) {
     nextAcceptanceStatus
   );
   feedback.planningAllocations = planningAllocations;
+  const historyItems: TaskHistoryItem[] = [];
+  if (existingTask && existingTask.status !== nextStatus) {
+    historyItems.push(
+      createTaskHistoryItem(
+        "Status geändert",
+        `${actor.firstName} ${actor.lastName}`,
+        `${toUiStatus(existingTask.status)} -> ${toUiStatus(nextStatus)}`
+      )
+    );
+  }
+  if (existingTask && existingTask.ownerId !== owner.id) {
+    historyItems.push(
+      createTaskHistoryItem(
+        "Zuständigkeit geändert",
+        `${actor.firstName} ${actor.lastName}`,
+        `${owner.firstName} ${owner.lastName}`
+      )
+    );
+  }
+  await appendTaskHistory(task.id, historyItems);
   await createDoneFeedbackNotification(task, existingTask?.status ?? null, users, feedback);
   await createNextRecurringTask(task, existingTask?.status ?? null, feedback);
 
-  return NextResponse.json({
-    ...formatTask(task, feedback),
-    projectId: nextProjectId ?? "",
-  });
+  const formattedTask = await getFormattedTask(task.id, users, nextProjectId ?? "");
+  return NextResponse.json(formattedTask ?? { ...formatTask(task, feedback), projectId: nextProjectId ?? "" });
 }
 
 export async function DELETE(req: Request) {

@@ -202,7 +202,8 @@ export async function POST(req: Request) {
   const body = await req.json();
   const id = randomUUID();
   const category = cleanString(body.category) || "Kunde";
-  const type = cleanString(body.type) === "company" ? "company" : "person";
+  const requestedType = cleanString(body.type);
+  const type = requestedType === "company" || requestedType === "private" ? requestedType : "person";
   const customerNumber = cleanString(body.customerNumber) || (await getNextCustomerNumber(organization.id));
 
   const inserted = await prisma.$queryRaw<ContactRow[]>`
@@ -246,7 +247,8 @@ export async function PATCH(req: Request) {
   }
 
   const category = cleanString(body.category) || "Kunde";
-  const type = cleanString(body.type) === "company" ? "company" : "person";
+  const requestedType = cleanString(body.type);
+  const type = requestedType === "company" || requestedType === "private" ? requestedType : "person";
   const customerNumber = cleanString(body.customerNumber) || (await getNextCustomerNumber(organization.id));
 
   const updated = await prisma.$queryRaw<ContactRow[]>`

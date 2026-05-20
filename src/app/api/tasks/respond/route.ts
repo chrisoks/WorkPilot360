@@ -18,6 +18,11 @@ type AbsenceHandoverRow = {
   handoverTaskIds: unknown;
 };
 
+type ParticipantAcceptanceRow = {
+  id: string;
+  acceptanceStatus: string;
+};
+
 function createHistoryItem(event: string, actorName: string, note = "") {
   return {
     id: randomUUID(),
@@ -46,6 +51,16 @@ export async function POST(req: Request) {
     ADD COLUMN IF NOT EXISTS "linkTarget" TEXT,
     ADD COLUMN IF NOT EXISTS "linkTargetId" TEXT,
     ADD COLUMN IF NOT EXISTS "linkLabel" TEXT
+  `;
+  await prisma.$executeRaw`
+    ALTER TABLE "Task"
+    ADD COLUMN IF NOT EXISTS "history" JSONB NOT NULL DEFAULT '[]'::jsonb
+  `;
+  await prisma.$executeRaw`
+    ALTER TABLE "TaskParticipant"
+    ADD COLUMN IF NOT EXISTS "acceptanceStatus" TEXT NOT NULL DEFAULT 'pending',
+    ADD COLUMN IF NOT EXISTS "acceptanceRespondedAt" TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS "rejectionReason" TEXT
   `;
   const body = await req.json();
   const { user, users } = await getDemoContext();
@@ -76,6 +91,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Aufgabe wurde nicht gefunden." }, { status: 404 });
   }
 
+  let participantResponseId = "";
+
   if (task.ownerId !== actor.id) {
     const matchingAbsenceRows = await prisma.$queryRaw<Array<{ id: string }>>`
       SELECT id
@@ -95,27 +112,70 @@ export async function POST(req: Request) {
       task.ownerId = actor.id;
     }
 
-    if (task.ownerId !== actor.id) return NextResponse.json(
-      { error: "Nur der zuständige Benutzer kann die Aufgabe annehmen oder ablehnen." },
-      { status: 403 }
-    );
+    if (task.ownerId !== actor.id) {
+      const participantRows = await prisma.$queryRaw<ParticipantAcceptanceRow[]>`
+        SELECT id, "acceptanceStatus"
+        FROM "TaskParticipant"
+        WHERE "taskId" = ${task.id}
+          AND "userId" = ${actor.id}
+        LIMIT 1
+      `;
+
+      if (participantRows.length === 0) {
+        return NextResponse.json(
+          { error: "Nur zuständige Personen oder Beteiligte können die Aufgabe annehmen oder ablehnen." },
+          { status: 403 }
+        );
+      }
+
+      participantResponseId = participantRows[0].id;
+    }
   }
 
   const creator = users.find((demoUser) => demoUser.id === task.createdById);
   const respondedAt = new Date();
   const actorName = `${actor.firstName} ${actor.lastName}`;
 
-  await prisma.task.update({
-    where: {
-      id: task.id,
-    },
-    data: {
-      acceptanceStatus: response,
-      acceptanceRespondedAt: respondedAt,
-      rejectionReason: response === "rejected" ? reason : null,
-      status: response === "rejected" ? TaskStatus.ABGELEHNT : TaskStatus.OFFEN,
-    },
-  });
+  const taskHistoryItem = createHistoryItem(
+    participantResponseId
+      ? response === "accepted"
+        ? "Aufgabenbeteiligung angenommen"
+        : "Aufgabenbeteiligung abgelehnt"
+      : response === "accepted"
+        ? "Aufgabe angenommen"
+        : "Aufgabe abgelehnt",
+    actorName,
+    response === "rejected" ? reason : ""
+  );
+
+  if (participantResponseId) {
+    await prisma.$executeRaw`
+      UPDATE "TaskParticipant"
+      SET
+        "acceptanceStatus" = ${response},
+        "acceptanceRespondedAt" = ${respondedAt},
+        "rejectionReason" = ${response === "rejected" ? reason : null}
+      WHERE id = ${participantResponseId}
+    `;
+  } else {
+    await prisma.task.update({
+      where: {
+        id: task.id,
+      },
+      data: {
+        acceptanceStatus: response,
+        acceptanceRespondedAt: respondedAt,
+        rejectionReason: response === "rejected" ? reason : null,
+        status: response === "rejected" ? TaskStatus.ABGELEHNT : TaskStatus.OFFEN,
+      },
+    });
+  }
+
+  await prisma.$executeRaw`
+    UPDATE "Task"
+    SET "history" = COALESCE("history", '[]'::jsonb) || ${JSON.stringify([taskHistoryItem])}::jsonb
+    WHERE id = ${task.id}
+  `;
 
   const absenceRows = await prisma.$queryRaw<AbsenceHandoverRow[]>`
       SELECT "requestGroupId", id

@@ -26,6 +26,7 @@ type CatalogItemRow = {
   deliveryTime: string | null;
   stockQuantity: number | null;
   purchasePrice: number;
+  laborCostRateKey: string | null;
   listPrice: number;
   salesPrice: number;
   vatRate: number;
@@ -99,6 +100,7 @@ async function ensureCatalogTables() {
       "deliveryTime" TEXT,
       "stockQuantity" DOUBLE PRECISION,
       "purchasePrice" DOUBLE PRECISION NOT NULL DEFAULT 0,
+      "laborCostRateKey" TEXT NOT NULL DEFAULT '',
       "listPrice" DOUBLE PRECISION NOT NULL DEFAULT 0,
       "salesPrice" DOUBLE PRECISION NOT NULL DEFAULT 0,
       "vatRate" DOUBLE PRECISION NOT NULL DEFAULT 19,
@@ -111,6 +113,11 @@ async function ensureCatalogTables() {
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "CatalogItem"
+    ADD COLUMN IF NOT EXISTS "laborCostRateKey" TEXT NOT NULL DEFAULT ''
   `;
 
   await prisma.$executeRaw`
@@ -182,6 +189,24 @@ function cleanType(value: unknown) {
   return "article";
 }
 
+function normalizeUnit(value: unknown) {
+  const unit = cleanString(value);
+  const aliases: Record<string, string> = {
+    h: "Std",
+    std: "Std",
+    stunde: "Std",
+    stunden: "Std",
+    stk: "Stk",
+    stück: "Stk",
+    stueck: "Stk",
+    pauschale: "Pauschal",
+    pauschal: "Pauschal",
+    liter: "L",
+    ltr: "L",
+  };
+  return aliases[unit.toLowerCase()] ?? unit;
+}
+
 function formatPackageItem(item: CatalogPackageItemRow) {
   return {
     id: item.id,
@@ -229,6 +254,7 @@ function formatCatalogItem(
     deliveryTime: item.deliveryTime ?? "",
     stockQuantity: item.stockQuantity,
     purchasePrice: item.purchasePrice,
+    laborCostRateKey: item.laborCostRateKey ?? "",
     listPrice: item.listPrice,
     salesPrice: item.salesPrice,
     vatRate: item.vatRate,
@@ -349,6 +375,7 @@ async function writeChangeHistory(
     ["unit", "Einheit"],
     ["description", "Beschreibung"],
     ["purchasePrice", "Einkaufspreis"],
+    ["laborCostRateKey", "LK-Satz"],
     ["salesPrice", "Verkaufspreis"],
     ["vatRate", "MwSt."],
     ["isPlanningRelevant", "Planungsrelevant"],
@@ -448,17 +475,17 @@ export async function POST(req: Request) {
       "id", "organizationId", "type", "number", "name", "category", "unit",
       "description", "matchcode", "ean", "costCenter", "supplierName", "supplierNumber",
       "manufacturer", "manufacturerNumber", "manufacturerTypeName", "minimumOrderQuantity",
-      "quantityScale", "priceUnit", "deliveryTime", "stockQuantity", "purchasePrice",
+      "quantityScale", "priceUnit", "deliveryTime", "stockQuantity", "purchasePrice", "laborCostRateKey",
       "listPrice", "salesPrice", "vatRate", "isPlanningRelevant", "planningMinutesPerUnit",
       "defaultPlanningBoard", "defaultPlanningGroup", "isActive"
     )
     VALUES (
-      ${id}, ${organization.id}, ${type}, ${number}, ${name}, ${nullableString(body.category)}, ${cleanString(body.unit) || "Stk"},
+      ${id}, ${organization.id}, ${type}, ${number}, ${name}, ${nullableString(body.category)}, ${normalizeUnit(body.unit) || "Stk"},
       ${nullableString(body.description)}, ${nullableString(body.matchcode)}, ${nullableString(body.ean)}, ${nullableString(body.costCenter)},
       ${nullableString(body.supplierName)}, ${nullableString(body.supplierNumber)}, ${nullableString(body.manufacturer)},
       ${nullableString(body.manufacturerNumber)}, ${nullableString(body.manufacturerTypeName)}, ${parseNullableNumber(body.minimumOrderQuantity)},
       ${nullableString(body.quantityScale)}, ${nullableString(body.priceUnit)}, ${nullableString(body.deliveryTime)}, ${parseNullableNumber(body.stockQuantity)},
-      ${parseNumber(body.purchasePrice)}, 0, ${parseNumber(body.salesPrice)}, ${parseNumber(body.vatRate, 19)},
+      ${parseNumber(body.purchasePrice)}, ${cleanString(body.laborCostRateKey)}, 0, ${parseNumber(body.salesPrice)}, ${parseNumber(body.vatRate, 19)},
       ${Boolean(body.isPlanningRelevant)}, ${parseInteger(body.planningMinutesPerUnit)}, ${nullableString(body.defaultPlanningBoard)},
       ${nullableString(body.defaultPlanningGroup)}, ${body.isActive !== false}
     )
@@ -519,7 +546,7 @@ export async function PATCH(req: Request) {
       "number" = ${cleanString(body.number) || before.number},
       "name" = ${name},
       "category" = ${nullableString(body.category)},
-      "unit" = ${cleanString(body.unit) || "Stk"},
+      "unit" = ${normalizeUnit(body.unit) || "Stk"},
       "description" = ${nullableString(body.description)},
       "matchcode" = ${nullableString(body.matchcode)},
       "ean" = ${nullableString(body.ean)},
@@ -535,6 +562,7 @@ export async function PATCH(req: Request) {
       "deliveryTime" = ${nullableString(body.deliveryTime)},
       "stockQuantity" = ${parseNullableNumber(body.stockQuantity)},
       "purchasePrice" = ${parseNumber(body.purchasePrice)},
+      "laborCostRateKey" = ${cleanString(body.laborCostRateKey)},
       "listPrice" = 0,
       "salesPrice" = ${parseNumber(body.salesPrice)},
       "vatRate" = ${parseNumber(body.vatRate, 19)},

@@ -16,12 +16,15 @@ model Organization {
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
   auditLogs        AuditLog[]
+  businessAreas    BusinessArea[]
+  businessAreaTargets BusinessAreaTarget[]
   categories       Category[]
   departments      Department[]
   escalationRules  EscalationRule[]
   notifications    Notification[]
   catalogItems     CatalogItem[]
   catalogItemHistory CatalogItemHistory[]
+  unitOptions      UnitOption[]
   catalogPackageItems CatalogPackageItem[]
   contentApprovalHistory ContentApprovalHistory[]
   contentItems     ContentItem[]
@@ -79,7 +82,10 @@ model User {
   planningTimeWindows Json              @default("{\"monday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"tuesday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"wednesday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"thursday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"friday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"saturday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"sunday\":{\"start\":\"08:00\",\"end\":\"17:00\"}}")
   planningBreakWindows Json             @default("{\"monday\":{\"start\":\"12:00\",\"end\":\"12:30\"},\"tuesday\":{\"start\":\"12:00\",\"end\":\"12:30\"},\"wednesday\":{\"start\":\"12:00\",\"end\":\"12:30\"},\"thursday\":{\"start\":\"12:00\",\"end\":\"12:30\"},\"friday\":{\"start\":\"12:00\",\"end\":\"12:30\"},\"saturday\":{\"start\":\"\",\"end\":\"\"},\"sunday\":{\"start\":\"\",\"end\":\"\"}}")
   planningResponsibleFor Json           @default("[]")
+  branchAllocations Json?
+  includeInLaborCostRate Boolean        @default(true)
   notifyIdeaStore    Boolean           @default(true)
+  notifyUpsell       Boolean           @default(false)
   mailAccount        Json              @default("{}")
   employeeAssessment Json              @default("{}")
   costCalculations  EmployeeCostCalculation[]
@@ -169,6 +175,7 @@ model Task {
   archivedAt              DateTime?
   archiveReason           String?
   planningAllocations     Json                    @default("[]")
+  history                 Json                    @default("[]")
   auditLogs               AuditLog[]
   notifications           Notification[]
   category                Category?               @relation(fields: [categoryId], references: [id])
@@ -185,14 +192,17 @@ model Task {
 }
 
 model TaskParticipant {
-  id             String       @id @default(cuid())
-  organizationId String
-  taskId         String
-  userId         String
-  createdAt      DateTime     @default(now())
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  task           Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                    String       @id @default(cuid())
+  organizationId        String
+  taskId                String
+  userId                String
+  acceptanceStatus      String       @default("pending")
+  acceptanceRespondedAt DateTime?
+  rejectionReason       String?
+  createdAt             DateTime     @default(now())
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task                  Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([taskId, userId])
 }
@@ -202,6 +212,7 @@ model TaskComment {
   organizationId String
   taskId         String
   authorId       String
+  recipientUserId String?
   body           String
   createdAt      DateTime     @default(now())
   author         User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
@@ -236,11 +247,44 @@ model TaskLink {
 model Category {
   id             String        @id @default(cuid())
   organizationId String
+  businessAreaId String?
   name           String
   projectPrefix  String?
   organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  businessArea   BusinessArea? @relation(fields: [businessAreaId], references: [id], onDelete: SetNull)
   subcategories  Subcategory[]
   tasks          Task[]
+
+  @@index([organizationId, businessAreaId])
+}
+
+model BusinessArea {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  categories     Category[]
+  targets        BusinessAreaTarget[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model BusinessAreaTarget {
+  id             String       @id @default(cuid())
+  organizationId String
+  businessAreaId String
+  month          String
+  amount         Float        @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  businessArea   BusinessArea @relation(fields: [businessAreaId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, businessAreaId, month])
+  @@index([organizationId, month])
 }
 
 model Subcategory {
@@ -295,6 +339,7 @@ model CatalogItem {
   deliveryTime          String?
   stockQuantity         Float?
   purchasePrice         Float                @default(0)
+  laborCostRateKey      String               @default("")
   listPrice             Float                @default(0)
   salesPrice            Float                @default(0)
   vatRate               Float                @default(19)
@@ -352,6 +397,20 @@ model CatalogItemHistory {
 
   @@index([organizationId, catalogItemId])
   @@index([organizationId, createdAt])
+}
+
+model UnitOption {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  sortOrder      Int          @default(0)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+  @@index([organizationId, isActive, sortOrder])
 }
 
 model ContentItem {
@@ -419,6 +478,10 @@ model Offer {
   projectNumber       String       @default("")
   projectTitle        String       @default("")
   company             String       @default("OK solutions")
+  offerType           String       @default("base")
+  addendumMode        String       @default("addition")
+  plannedExecutionEndMonth String   @default("")
+  parentOfferId       String       @default("")
   offerNumber         String
   status              String       @default("Entwurf")
   customerName        String       @default("")
@@ -428,11 +491,13 @@ model Offer {
   internalContactName String       @default("")
   internalPhone       String       @default("")
   internalEmail       String       @default("")
+  plannedExecutionMonth String     @default("")
   introText           String       @default("")
   closingText         String       @default("")
   netTotal            Float        @default(0)
   vatRate             Float        @default(19)
   grossTotal          Float        @default(0)
+  discountPercent     Float        @default(0)
   pdfData             String?      @db.Text
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
@@ -455,6 +520,9 @@ model OfferLine {
   title          String       @default("")
   description    String      @default("")
   unitPrice      Float        @default(0)
+  discountPercent Float       @default(0)
+  laborCostRateKey String     @default("")
+  laborCostRate  Float        @default(0)
   vatRate        Float        @default(19)
   totalNet       Float        @default(0)
   createdAt      DateTime     @default(now())
@@ -512,6 +580,7 @@ model Invoice {
   company             String        @default("OK solutions")
   invoiceNumber       String
   status              String        @default("Entwurf")
+  billingSource       String        @default("manual")
   customerName        String        @default("")
   customerStreet      String        @default("")
   customerCity        String        @default("")
@@ -519,11 +588,15 @@ model Invoice {
   internalContactName String        @default("")
   internalPhone       String        @default("")
   internalEmail       String        @default("")
+  plannedExecutionMonth String      @default("")
   introText           String        @default("")
   closingText         String        @default("")
   netTotal            Float         @default(0)
   vatRate             Float         @default(19)
   grossTotal          Float         @default(0)
+  discountPercent     Float         @default(0)
+  isPaid              Boolean       @default(false)
+  paidAt              DateTime?
   pdfData             String?       @db.Text
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
@@ -546,6 +619,7 @@ model InvoiceLine {
   title          String             @default("")
   description    String             @default("")
   unitPrice      Float              @default(0)
+  discountPercent Float             @default(0)
   vatRate        Float              @default(19)
   totalNet       Float              @default(0)
   createdAt      DateTime           @default(now())
@@ -840,6 +914,7 @@ model ProjectTimeEntry {
   overtimeApprovedAt DateTime?
   editHistory    Json     @default("[]")
   createdAt      DateTime @default(now())
+  deletedAt      DateTime?
   mode           String   @default("project")
 }
 
@@ -865,6 +940,8 @@ model PlanningEntry {
   offerLabel           String?
   offerTotalMinutes    Int?
   offerPlannedMinutes  Int?
+  recurrenceId         String?
+  recurrenceRule       String?
   approvalStatus       String   @default("confirmed")
   requestedByUserId    String?
   requestedByName      String?
@@ -887,6 +964,28 @@ model PlanningEntryHistory {
   toStatus        String?
   note            String?
   createdAt       DateTime @default(now())
+}
+
+model ProjectPotential {
+  id             String   @id
+  organizationId String
+  contactId      String?
+  customerName   String?
+  projectId      String
+  projectLabel   String?
+  description    String
+  status         String   @default("open")
+  taskId         String?
+  followUpAt     DateTime?
+  offeredAt      DateTime?
+  closedAt       DateTime?
+  history        Json     @default("[]")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now())
+
+  @@index([organizationId, projectId])
+  @@index([organizationId, status])
+  @@index([organizationId, updatedAt])
 }
 
 model UserTeamMembership {
@@ -914,6 +1013,8 @@ model WorkPilotProject {
   projectRuntimeFrom  String?
   projectRuntimeUntil String?
   billingInterval     String?
+  forecastBillingType String?
+  forecastNetAmount   String?
   trade               String?
   branch              String?
   volume              String?
@@ -922,6 +1023,14 @@ model WorkPilotProject {
   participants        String?
   timeBudgetHours     String?
   timeBudgetHistory   Json     @default("[]")
+  timeBudgetAllocations Json    @default("[]")
+  autoBillingEnabled  Boolean  @default(false)
+  autoBillingNetAmount String?
+  autoBillingVatRate  String?
+  autoBillingStartMonth String?
+  autoBillingEndMonth String?
+  autoBillingTemplateMode String?
+  autoBillingTemplate Json?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @default(now())
   responsibleName     String?

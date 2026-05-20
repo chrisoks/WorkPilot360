@@ -24,6 +24,7 @@ type InvoiceLineInput = {
   title?: string;
   description?: string;
   unitPrice?: number;
+  discountPercent?: number;
   vatRate?: number;
   laborItems?: InvoiceLineLaborInput[];
 };
@@ -40,6 +41,8 @@ type InvoiceInput = {
   projectId?: string;
   projectNumber?: string;
   projectTitle?: string;
+  saveAsDraft?: boolean;
+  billingSource?: string;
   company?: InvoiceCompany;
   customerName?: string;
   customerStreet?: string;
@@ -48,12 +51,15 @@ type InvoiceInput = {
   internalContactName?: string;
   internalPhone?: string;
   internalEmail?: string;
+  plannedExecutionMonth?: string;
   introText?: string;
   closingText?: string;
   vatRate?: number;
+  discountPercent?: number;
   lines?: InvoiceLineInput[];
   billedStampEntryIds?: string[];
   allowUnderbilledStampedHours?: boolean;
+  suppressUnderbillingNotification?: boolean;
   documentTitle?: string;
 };
 
@@ -66,6 +72,7 @@ type InvoiceRow = {
   company: InvoiceCompany;
   invoiceNumber: string;
   status: string;
+  billingSource: string;
   customerName: string;
   customerStreet: string;
   customerCity: string;
@@ -73,11 +80,15 @@ type InvoiceRow = {
   internalContactName: string;
   internalPhone: string;
   internalEmail: string;
+  plannedExecutionMonth: string;
   introText: string;
   closingText: string;
   netTotal: number;
   vatRate: number;
   grossTotal: number;
+  discountPercent: number;
+  isPaid: boolean;
+  paidAt: Date | null;
   pdfData: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -94,6 +105,7 @@ type InvoiceLineRow = {
   title: string;
   description: string;
   unitPrice: number;
+  discountPercent: number;
   vatRate: number;
   totalNet: number;
 };
@@ -158,6 +170,7 @@ async function ensureInvoiceTables() {
       "company" TEXT NOT NULL DEFAULT 'OK solutions',
       "invoiceNumber" TEXT NOT NULL,
       "status" TEXT NOT NULL DEFAULT 'Entwurf',
+      "billingSource" TEXT NOT NULL DEFAULT 'manual',
       "customerName" TEXT NOT NULL DEFAULT '',
       "customerStreet" TEXT NOT NULL DEFAULT '',
       "customerCity" TEXT NOT NULL DEFAULT '',
@@ -165,15 +178,37 @@ async function ensureInvoiceTables() {
       "internalContactName" TEXT NOT NULL DEFAULT '',
       "internalPhone" TEXT NOT NULL DEFAULT '',
       "internalEmail" TEXT NOT NULL DEFAULT '',
+      "plannedExecutionMonth" TEXT NOT NULL DEFAULT '',
       "introText" TEXT NOT NULL DEFAULT '',
       "closingText" TEXT NOT NULL DEFAULT '',
       "netTotal" DOUBLE PRECISION NOT NULL DEFAULT 0,
       "vatRate" DOUBLE PRECISION NOT NULL DEFAULT 19,
       "grossTotal" DOUBLE PRECISION NOT NULL DEFAULT 0,
+      "discountPercent" DOUBLE PRECISION NOT NULL DEFAULT 0,
+      "isPaid" BOOLEAN NOT NULL DEFAULT false,
+      "paidAt" TIMESTAMP(3),
       "pdfData" TEXT,
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "Invoice"
+    ADD COLUMN IF NOT EXISTS "discountPercent" DOUBLE PRECISION NOT NULL DEFAULT 0
+  `;
+  await prisma.$executeRaw`
+    ALTER TABLE "Invoice"
+    ADD COLUMN IF NOT EXISTS "plannedExecutionMonth" TEXT NOT NULL DEFAULT ''
+  `;
+  await prisma.$executeRaw`
+    ALTER TABLE "Invoice"
+    ADD COLUMN IF NOT EXISTS "billingSource" TEXT NOT NULL DEFAULT 'manual'
+  `;
+  await prisma.$executeRaw`
+    ALTER TABLE "Invoice"
+    ADD COLUMN IF NOT EXISTS "isPaid" BOOLEAN NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS "paidAt" TIMESTAMP(3)
   `;
 
   await prisma.$executeRaw`
@@ -199,12 +234,18 @@ async function ensureInvoiceTables() {
       "title" TEXT NOT NULL DEFAULT '',
       "description" TEXT NOT NULL DEFAULT '',
       "unitPrice" DOUBLE PRECISION NOT NULL DEFAULT 0,
+      "discountPercent" DOUBLE PRECISION NOT NULL DEFAULT 0,
       "vatRate" DOUBLE PRECISION NOT NULL DEFAULT 19,
       "totalNet" DOUBLE PRECISION NOT NULL DEFAULT 0,
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT "InvoiceLine_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE CASCADE
     )
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "InvoiceLine"
+    ADD COLUMN IF NOT EXISTS "discountPercent" DOUBLE PRECISION NOT NULL DEFAULT 0
   `;
 
   await prisma.$executeRaw`
@@ -256,9 +297,23 @@ async function ensureInvoiceTables() {
   `;
 
   await prisma.$executeRaw`
-    UPDATE "Invoice"
-    SET "status" = 'Fakturiert', "updatedAt" = CURRENT_TIMESTAMP
-    WHERE "status" = 'Entwurf' AND "pdfData" IS NOT NULL
+    UPDATE "Invoice" invoice
+    SET "status" = 'Entwurf', "updatedAt" = CURRENT_TIMESTAMP
+    WHERE invoice."status" = 'Fakturiert'
+      AND EXISTS (
+        SELECT 1
+        FROM "InvoiceHistory" history
+        WHERE history."organizationId" = invoice."organizationId"
+          AND history."invoiceId" = invoice."id"
+          AND history."title" = 'Rechnungsentwurf gespeichert'
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM "InvoiceHistory" history
+        WHERE history."organizationId" = invoice."organizationId"
+          AND history."invoiceId" = invoice."id"
+          AND history."title" IN ('Rechnung angelegt', 'Rechnung bearbeitet', 'Rechnung fakturiert')
+      )
   `;
 }
 
@@ -415,6 +470,44 @@ function cleanString(value: unknown) {
 function cleanNumber(value: unknown, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
+}
+
+function cleanPercent(value: unknown) {
+  return Math.min(Math.max(cleanNumber(value, 0), 0), 100);
+}
+
+function roundMoney(value: number) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function normalizeUnit(value: unknown) {
+  const unit = cleanString(value);
+  const aliases: Record<string, string> = {
+    h: "Std",
+    std: "Std",
+    stunde: "Std",
+    stunden: "Std",
+    stk: "Stk",
+    stück: "Stk",
+    stueck: "Stk",
+    pauschale: "Pauschal",
+    pauschal: "Pauschal",
+    liter: "L",
+    ltr: "L",
+  };
+  return aliases[unit.toLowerCase()] ?? unit;
+}
+
+function getLineBaseNet(line: Pick<Required<InvoiceLineInput>, "quantity" | "unitPrice">) {
+  return line.quantity * line.unitPrice;
+}
+
+function getLineDiscountAmount(line: Pick<Required<InvoiceLineInput>, "quantity" | "unitPrice" | "discountPercent">) {
+  return roundMoney(getLineBaseNet(line) * (line.discountPercent / 100));
+}
+
+function getLineTotalNet(line: Pick<Required<InvoiceLineInput>, "quantity" | "unitPrice" | "discountPercent">) {
+  return roundMoney(getLineBaseNet(line) - getLineDiscountAmount(line));
 }
 
 function formatEuro(value: number) {
@@ -607,8 +700,14 @@ async function generateInvoicePdf(Invoice: InvoiceInput & { invoiceNumber: strin
   page.drawText(Invoice.customerCity || "", { x: 71, y: 648, size: 8.4, font: bold, color: INK });
 
   const documentTitle = cleanString(Invoice.documentTitle) || "Rechnung";
+  const isDraftDocument = documentTitle === "Rechnungsentwurf";
   const infoRows = [
-    [documentTitle === "Stornorechnung" ? "Stornonummer" : "Rechnungsnummer", Invoice.invoiceNumber],
+    [
+      documentTitle === "Stornorechnung"
+        ? "Stornonummer"
+        : "Rechnungsnummer",
+      isDraftDocument ? "-" : Invoice.invoiceNumber,
+    ],
     ["Kundennummer", Invoice.projectNumber || ""],
     ["Datum", formatDate()],
     ["Ansprechpartner", Invoice.internalContactName || ""],
@@ -622,7 +721,10 @@ async function generateInvoicePdf(Invoice: InvoiceInput & { invoiceNumber: strin
   });
 
   page.drawText(`Projekt: ${Invoice.projectTitle || "-"}`, { x: 71, y: 544, size: 10.7, font: bold, color: INK });
-  page.drawText(`${documentTitle} Nr. ${Invoice.invoiceNumber}`, { x: 71, y: 520, size: 10.7, font: bold, color: INK });
+  page.drawText(
+    isDraftDocument ? documentTitle : `${documentTitle} Nr. ${Invoice.invoiceNumber}`,
+    { x: 71, y: 520, size: 10.7, font: bold, color: INK }
+  );
   const greeting = Invoice.contactName ? `Sehr geehrte/r ${Invoice.contactName},` : "Sehr geehrte Damen und Herren,";
   page.drawText(greeting, { x: 71, y: 492, size: 8.8, font: regular, color: INK });
   drawTextBlock(
@@ -639,7 +741,12 @@ async function generateInvoicePdf(Invoice: InvoiceInput & { invoiceNumber: strin
   for (const [index, line] of lines.entries()) {
     const descriptionLines = wrapText(line.description || "", regular, descriptionSize, table.titleWidth - descriptionIndent);
     const titleLines = wrapText(line.title || "-", bold, titleSize, table.titleWidth);
-    const rowHeight = Math.max(31, 14 + titleLines.length * 10 + descriptionLines.length * 9);
+    const lineDiscountAmount = getLineDiscountAmount(line);
+    const lineTotalNet = getLineTotalNet(line);
+    const rowHeight = Math.max(
+      31,
+      14 + titleLines.length * 10 + descriptionLines.length * 9 + (line.discountPercent > 0 ? 10 : 0)
+    );
 
     if (y - rowHeight < bottomLimit) {
       await newPage();
@@ -673,34 +780,58 @@ async function generateInvoicePdf(Invoice: InvoiceInput & { invoiceNumber: strin
       size: rowSize,
       font: regular,
     });
-    drawRightAlignedText(page, formatEuro(line.quantity * line.unitPrice), table.totalRightX, y, {
+    drawRightAlignedText(page, formatEuro(lineTotalNet), table.totalRightX, y, {
       size: rowSize,
       font: regular,
     });
+    if (line.discountPercent > 0) {
+      drawRightAlignedText(
+        page,
+        `( Rabatt ${formatQuantity(line.discountPercent)}% ${formatEuro(lineDiscountAmount)} )`,
+        table.totalRightX,
+        y - 11,
+        { size: 6.6, font: regular, color: MUTED }
+      );
+    }
     y -= rowHeight;
   }
 
-  const netTotal = lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);
+  const netBeforeInvoiceDiscount = lines.reduce((sum, line) => sum + getLineTotalNet(line), 0);
+  const invoiceDiscountPercent = cleanPercent(Invoice.discountPercent);
+  const invoiceDiscountAmount = roundMoney(netBeforeInvoiceDiscount * (invoiceDiscountPercent / 100));
+  const netTotal = roundMoney(netBeforeInvoiceDiscount - invoiceDiscountAmount);
   const vatRate = cleanNumber(Invoice.vatRate, 19);
-  const grossTotal = netTotal * (1 + vatRate / 100);
+  const grossTotal = roundMoney(netTotal * (1 + vatRate / 100));
 
-  if (y < 165) {
+  if (y < (invoiceDiscountPercent > 0 ? 195 : 165)) {
     await newPage();
   }
 
   page.drawLine({ start: { x: 375, y: y + 12 }, end: { x: table.right, y: y + 12 }, thickness: 0.8, color: LINE });
-  page.drawText("Netto", { x: 385, y, size: 8.3, font: bold, color: INK });
-  drawRightAlignedText(page, formatEuro(netTotal), table.totalRightX, y, { size: 8.3, font: bold });
-  page.drawText(`MwSt. ${formatQuantity(vatRate)} %`, { x: 385, y: y - 15, size: 8.3, font: regular, color: INK });
-  drawRightAlignedText(page, formatEuro(grossTotal - netTotal), table.totalRightX, y - 15, {
+  let totalsY = y;
+  if (invoiceDiscountPercent > 0) {
+    page.drawText("Nettobetrag (ohne Rabatt)", { x: 385, y: totalsY, size: 8.3, font: bold, color: INK });
+    drawRightAlignedText(page, formatEuro(netBeforeInvoiceDiscount), table.totalRightX, totalsY, { size: 8.3, font: bold });
+    totalsY -= 15;
+    page.drawText(`Rabatt ${formatQuantity(invoiceDiscountPercent)}%`, { x: 385, y: totalsY, size: 8.3, font: regular, color: INK });
+    drawRightAlignedText(page, `-${formatEuro(invoiceDiscountAmount)}`, table.totalRightX, totalsY, {
+      size: 8.3,
+      font: regular,
+    });
+    totalsY -= 15;
+  }
+  page.drawText("Netto", { x: 385, y: totalsY, size: 8.3, font: bold, color: INK });
+  drawRightAlignedText(page, formatEuro(netTotal), table.totalRightX, totalsY, { size: 8.3, font: bold });
+  page.drawText(`MwSt. ${formatQuantity(vatRate)} %`, { x: 385, y: totalsY - 15, size: 8.3, font: regular, color: INK });
+  drawRightAlignedText(page, formatEuro(grossTotal - netTotal), table.totalRightX, totalsY - 15, {
     size: 8.3,
     font: regular,
   });
-  page.drawText("Gesamt brutto", { x: 385, y: y - 32, size: 9, font: bold, color: INK });
-  drawRightAlignedText(page, formatEuro(grossTotal), table.totalRightX, y - 32, { size: 9, font: bold });
+  page.drawText("Gesamt brutto", { x: 385, y: totalsY - 32, size: 9, font: bold, color: INK });
+  drawRightAlignedText(page, formatEuro(grossTotal), table.totalRightX, totalsY - 32, { size: 9, font: bold });
 
   if (Invoice.closingText) {
-    drawTextBlock(page, Invoice.closingText, 71, y - 66, {
+    drawTextBlock(page, Invoice.closingText, 71, totalsY - 66, {
       font: regular,
       size: 8.3,
       maxWidth: 330,
@@ -728,6 +859,7 @@ function normalizeInvoiceLines(lines: InvoiceLineInput[] = []) {
     .map((line) => {
       const quantity = Math.max(cleanNumber(line.quantity, 1), 0);
       const unitPrice = cleanNumber(line.unitPrice, 0);
+      const discountPercent = cleanPercent(line.discountPercent);
       const catalogType = cleanString(line.catalogType);
       const canPlanLabor = catalogType === "service" || catalogType === "package";
       const laborItems = canPlanLabor && Array.isArray(line.laborItems)
@@ -759,10 +891,11 @@ function normalizeInvoiceLines(lines: InvoiceLineInput[] = []) {
         catalogItemId: cleanString(line.catalogItemId),
         catalogType,
         quantity,
-        unit: cleanString(line.unit) || "Stk",
+        unit: normalizeUnit(line.unit) || "Stk",
         title: cleanString(line.title),
         description: cleanString(line.description),
         unitPrice,
+        discountPercent,
         vatRate: cleanNumber(line.vatRate, 19),
         laborItems,
       };
@@ -775,11 +908,17 @@ function serializeInvoice(
   lines: InvoiceLineRow[] = [],
   laborRows: InvoiceLineLaborRow[] = []
 ) {
+  const billingSource = cleanString(row.billingSource) || "manual";
   return {
     ...row,
+    billingSource,
     netTotal: Number(row.netTotal ?? 0),
     vatRate: Number(row.vatRate ?? 19),
     grossTotal: Number(row.grossTotal ?? 0),
+    discountPercent: Number(row.discountPercent ?? 0),
+    isPaid: Boolean(row.isPaid),
+    paidAt: row.paidAt?.toISOString?.() ?? row.paidAt ?? "",
+    plannedExecutionMonth: row.plannedExecutionMonth ?? "",
     pdfAvailable: Boolean(row.pdfData),
     pdfData: undefined,
     createdAt: row.createdAt?.toISOString?.() ?? row.createdAt,
@@ -788,6 +927,7 @@ function serializeInvoice(
       ...line,
       quantity: Number(line.quantity ?? 0),
       unitPrice: Number(line.unitPrice ?? 0),
+      discountPercent: Number(line.discountPercent ?? 0),
       vatRate: Number(line.vatRate ?? 19),
       totalNet: Number(line.totalNet ?? 0),
       laborItems: laborRows
@@ -885,6 +1025,7 @@ async function cancelInvoice(input: {
     title: line.title || "-",
     description: [line.description, `Storno zu Rechnung ${existingInvoice.invoiceNumber}`].filter(Boolean).join("\n"),
     unitPrice: -Math.abs(Number(line.unitPrice ?? 0)),
+    discountPercent: Number(line.discountPercent ?? 0),
     vatRate: Number(line.vatRate ?? existingInvoice.vatRate ?? 19),
     laborItems: [],
   })) as Required<InvoiceLineInput>[];
@@ -904,6 +1045,7 @@ async function cancelInvoice(input: {
       introText: `hiermit stornieren wir die Rechnung ${existingInvoice.invoiceNumber} vollständig.`,
       closingText: "Diese Stornorechnung hebt die ursprüngliche Rechnung auf.",
       vatRate: Number(existingInvoice.vatRate ?? 19),
+      discountPercent: Number(existingInvoice.discountPercent ?? 0),
       invoiceNumber: cancellationNumber,
       documentTitle: "Stornorechnung",
     },
@@ -915,15 +1057,15 @@ async function cancelInvoice(input: {
       "id", "organizationId", "projectId", "projectNumber", "projectTitle", "company",
       "invoiceNumber", "status", "customerName", "customerStreet", "customerCity",
       "contactName", "internalContactName", "internalPhone", "internalEmail",
-      "introText", "closingText", "netTotal", "vatRate", "grossTotal", "pdfData", "updatedAt"
+      "plannedExecutionMonth", "introText", "closingText", "discountPercent", "netTotal", "vatRate", "grossTotal", "pdfData", "updatedAt"
     ) VALUES (
       ${cancellationId}, ${input.organizationId}, ${existingInvoice.projectId}, ${existingInvoice.projectNumber},
       ${existingInvoice.projectTitle}, ${existingInvoice.company}, ${cancellationNumber}, ${"Stornorechnung"},
       ${existingInvoice.customerName}, ${existingInvoice.customerStreet}, ${existingInvoice.customerCity},
       ${existingInvoice.contactName}, ${existingInvoice.internalContactName}, ${existingInvoice.internalPhone},
-      ${existingInvoice.internalEmail}, ${`hiermit stornieren wir die Rechnung ${existingInvoice.invoiceNumber} vollständig.`},
+      ${existingInvoice.internalEmail}, ${existingInvoice.plannedExecutionMonth ?? ""}, ${`hiermit stornieren wir die Rechnung ${existingInvoice.invoiceNumber} vollständig.`},
       ${"Diese Stornorechnung hebt die ursprüngliche Rechnung auf."},
-      ${pdf.netTotal}, ${pdf.vatRate}, ${pdf.grossTotal}, ${pdf.pdfData}, CURRENT_TIMESTAMP
+      ${Number(existingInvoice.discountPercent ?? 0)}, ${pdf.netTotal}, ${pdf.vatRate}, ${pdf.grossTotal}, ${pdf.pdfData}, CURRENT_TIMESTAMP
     )
     RETURNING *
   `;
@@ -934,11 +1076,11 @@ async function cancelInvoice(input: {
     const lineRows = await prisma.$queryRaw<InvoiceLineRow[]>`
       INSERT INTO "InvoiceLine" (
         "id", "organizationId", "invoiceId", "catalogItemId", "catalogType", "position",
-        "quantity", "unit", "title", "description", "unitPrice", "vatRate", "totalNet", "updatedAt"
+        "quantity", "unit", "title", "description", "unitPrice", "discountPercent", "vatRate", "totalNet", "updatedAt"
       ) VALUES (
         ${randomUUID()}, ${input.organizationId}, ${cancellationId}, ${line.catalogItemId}, ${line.catalogType}, ${index + 1},
         ${line.quantity}, ${line.unit}, ${line.title}, ${line.description},
-        ${line.unitPrice}, ${line.vatRate}, ${line.quantity * line.unitPrice}, CURRENT_TIMESTAMP
+        ${line.unitPrice}, ${line.discountPercent}, ${line.vatRate}, ${getLineTotalNet(line)}, CURRENT_TIMESTAMP
       )
       RETURNING *
     `;
@@ -1018,14 +1160,62 @@ export async function GET(req: Request) {
   const historyProjectId = cleanString(searchParams.get("historyProjectId"));
 
   if (pdfId) {
-    const rows = await prisma.$queryRaw<Array<{ invoiceNumber: string; pdfData: string | null }>>`
-      SELECT "invoiceNumber", "pdfData"
+    const rows = await prisma.$queryRaw<InvoiceRow[]>`
+      SELECT *
       FROM "Invoice"
       WHERE "organizationId" = ${organization.id} AND "id" = ${pdfId}
       LIMIT 1
     `;
     const Invoice = rows[0];
-    if (!Invoice?.pdfData) {
+    if (!Invoice) {
+      return NextResponse.json({ error: "PDF wurde nicht gefunden." }, { status: 404 });
+    }
+    if (Invoice.status === "Entwurf") {
+      const lineRows = await getInvoiceLinesForInvoice(organization.id, Invoice.id);
+      const draftLines = lineRows.map((line) => ({
+        catalogItemId: line.catalogItemId,
+        catalogType: line.catalogType,
+        quantity: Number(line.quantity ?? 0),
+        unit: line.unit || "Stk",
+        title: line.title || "-",
+        description: line.description || "",
+        unitPrice: Number(line.unitPrice ?? 0),
+        discountPercent: Number(line.discountPercent ?? 0),
+        vatRate: Number(line.vatRate ?? Invoice.vatRate ?? 19),
+        laborItems: [],
+      })) as Required<InvoiceLineInput>[];
+      const draftPdf = await generateInvoicePdf(
+        {
+          projectId: Invoice.projectId,
+          projectNumber: Invoice.projectNumber,
+          projectTitle: Invoice.projectTitle,
+          company: Invoice.company,
+          customerName: Invoice.customerName,
+          customerStreet: Invoice.customerStreet,
+          customerCity: Invoice.customerCity,
+          contactName: Invoice.contactName,
+          internalContactName: Invoice.internalContactName,
+          internalPhone: Invoice.internalPhone,
+          internalEmail: Invoice.internalEmail,
+          plannedExecutionMonth: Invoice.plannedExecutionMonth,
+          introText: Invoice.introText,
+          closingText: Invoice.closingText,
+          vatRate: Number(Invoice.vatRate ?? 19),
+          discountPercent: Number(Invoice.discountPercent ?? 0),
+          invoiceNumber: Invoice.invoiceNumber,
+          documentTitle: "Rechnungsentwurf",
+        },
+        draftLines
+      );
+      const bytes = Buffer.from(draftPdf.pdfData ?? "", "base64");
+      return new Response(bytes, {
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `inline; filename="Rechnungsentwurf-${Invoice.projectNumber || Invoice.id}.pdf"`,
+        },
+      });
+    }
+    if (!Invoice.pdfData) {
       return NextResponse.json({ error: "PDF wurde nicht gefunden." }, { status: 404 });
     }
     const bytes = Buffer.from(Invoice.pdfData, "base64");
@@ -1098,22 +1288,25 @@ export async function POST(req: Request) {
   await ensureInvoiceTables();
   const body = (await req.json()) as InvoiceInput;
   const lines = normalizeInvoiceLines(body.lines);
+  const saveAsDraft = Boolean(body.saveAsDraft);
 
   if (!body.projectId) {
     return NextResponse.json({ error: "Projekt fehlt." }, { status: 400 });
   }
 
-  if (lines.length === 0) {
+  if (!saveAsDraft && lines.length === 0) {
     return NextResponse.json({ error: "Bitte mindestens eine Position hinzufügen." }, { status: 400 });
   }
 
-  const billedStampEntryIds = getBilledStampEntryIds(body.billedStampEntryIds);
-  const stampedHours = await getStampedHoursForInvoiceCheck({
-    organizationId: organization.id,
-    projectId: cleanString(body.projectId),
-    stampEntryIds: billedStampEntryIds,
-  });
-  const invoiceLaborHours = getInvoiceLaborHours(lines);
+  const billedStampEntryIds = saveAsDraft ? [] : getBilledStampEntryIds(body.billedStampEntryIds);
+  const stampedHours = saveAsDraft
+    ? 0
+    : await getStampedHoursForInvoiceCheck({
+        organizationId: organization.id,
+        projectId: cleanString(body.projectId),
+        stampEntryIds: billedStampEntryIds,
+      });
+  const invoiceLaborHours = saveAsDraft ? 0 : getInvoiceLaborHours(lines);
   const isUnderbilledStampedHours = stampedHours > 0 && invoiceLaborHours + 0.01 < stampedHours;
 
   if (isUnderbilledStampedHours && !body.allowUnderbilledStampedHours) {
@@ -1131,21 +1324,28 @@ export async function POST(req: Request) {
   const invoiceNumber = await getNextinvoiceNumber(organization.id);
   const id = randomUUID();
   const company = body.company === "OK immocare" ? "OK immocare" : "OK solutions";
-  const pdf = await generateInvoicePdf({ ...body, company, invoiceNumber }, lines);
+  const billingSource = cleanString(body.billingSource) === "batch" ? "batch" : "manual";
+  const pdf =
+    lines.length > 0
+      ? await generateInvoicePdf(
+          { ...body, company, invoiceNumber, documentTitle: saveAsDraft ? "Rechnungsentwurf" : "Rechnung" },
+          lines
+        )
+      : { netTotal: 0, vatRate: cleanNumber(body.vatRate, 19), grossTotal: 0, pdfData: null };
 
   const rows = await prisma.$queryRaw<InvoiceRow[]>`
     INSERT INTO "Invoice" (
       "id", "organizationId", "projectId", "projectNumber", "projectTitle", "company",
-      "invoiceNumber", "status", "customerName", "customerStreet", "customerCity",
+      "invoiceNumber", "status", "billingSource", "customerName", "customerStreet", "customerCity",
       "contactName", "internalContactName", "internalPhone", "internalEmail",
-      "introText", "closingText", "netTotal", "vatRate", "grossTotal", "pdfData", "updatedAt"
+      "plannedExecutionMonth", "introText", "closingText", "discountPercent", "netTotal", "vatRate", "grossTotal", "pdfData", "updatedAt"
     ) VALUES (
       ${id}, ${organization.id}, ${cleanString(body.projectId)}, ${cleanString(body.projectNumber)},
-      ${cleanString(body.projectTitle)}, ${company}, ${invoiceNumber}, ${"Fakturiert"},
+      ${cleanString(body.projectTitle)}, ${company}, ${invoiceNumber}, ${saveAsDraft ? "Entwurf" : "Fakturiert"}, ${billingSource},
       ${cleanString(body.customerName)}, ${cleanString(body.customerStreet)}, ${cleanString(body.customerCity)},
       ${cleanString(body.contactName)}, ${cleanString(body.internalContactName)}, ${cleanString(body.internalPhone)},
-      ${cleanString(body.internalEmail)}, ${cleanString(body.introText)}, ${cleanString(body.closingText)},
-      ${pdf.netTotal}, ${pdf.vatRate}, ${pdf.grossTotal}, ${pdf.pdfData}, CURRENT_TIMESTAMP
+      ${cleanString(body.internalEmail)}, ${cleanString(body.plannedExecutionMonth)}, ${cleanString(body.introText)}, ${cleanString(body.closingText)},
+      ${cleanPercent(body.discountPercent)}, ${pdf.netTotal}, ${pdf.vatRate}, ${pdf.grossTotal}, ${pdf.pdfData}, CURRENT_TIMESTAMP
     )
     RETURNING *
   `;
@@ -1156,11 +1356,11 @@ export async function POST(req: Request) {
     const lineRows = await prisma.$queryRaw<InvoiceLineRow[]>`
       INSERT INTO "InvoiceLine" (
         "id", "organizationId", "invoiceId", "catalogItemId", "catalogType", "position",
-        "quantity", "unit", "title", "description", "unitPrice", "vatRate", "totalNet", "updatedAt"
+        "quantity", "unit", "title", "description", "unitPrice", "discountPercent", "vatRate", "totalNet", "updatedAt"
       ) VALUES (
         ${randomUUID()}, ${organization.id}, ${id}, ${line.catalogItemId}, ${line.catalogType}, ${index + 1},
         ${line.quantity}, ${line.unit}, ${line.title}, ${line.description},
-        ${line.unitPrice}, ${line.vatRate}, ${line.quantity * line.unitPrice}, CURRENT_TIMESTAMP
+        ${line.unitPrice}, ${line.discountPercent}, ${line.vatRate}, ${getLineTotalNet(line)}, CURRENT_TIMESTAMP
       )
       RETURNING *
     `;
@@ -1181,26 +1381,29 @@ export async function POST(req: Request) {
     }
   }
 
+
   await addInvoiceHistory({
     organizationId: organization.id,
     invoiceId: id,
     projectId: cleanString(body.projectId),
     invoiceNumber,
     eventType: "created",
-    title: "Rechnung angelegt",
-    note: `${invoiceNumber} wurde erstellt.`,
+    title: saveAsDraft ? "Rechnungsentwurf gespeichert" : "Rechnung angelegt",
+    note: `${invoiceNumber} wurde ${saveAsDraft ? "als Entwurf gespeichert" : "erstellt"}.`,
     actorName: cleanString(body.internalContactName) || "System",
   });
 
-  await markStampedHoursAsInvoiced({
-    organizationId: organization.id,
-    projectId: cleanString(body.projectId),
-    invoiceId: id,
-    invoiceNumber,
-    stampEntryIds: billedStampEntryIds,
-  });
+  if (!saveAsDraft) {
+    await markStampedHoursAsInvoiced({
+      organizationId: organization.id,
+      projectId: cleanString(body.projectId),
+      invoiceId: id,
+      invoiceNumber,
+      stampEntryIds: billedStampEntryIds,
+    });
+  }
 
-  if (isUnderbilledStampedHours) {
+  if (!saveAsDraft && isUnderbilledStampedHours && !body.suppressUnderbillingNotification) {
     await notifyManagementAboutUnderbilling({
       organizationId: organization.id,
       projectId: cleanString(body.projectId),
@@ -1244,6 +1447,7 @@ export async function PATCH(req: Request) {
   await ensureInvoiceTables();
   const body = (await req.json()) as InvoiceInput & { id?: string; action?: string; actorName?: string };
   const id = cleanString(body.id);
+  const saveAsDraft = Boolean(body.saveAsDraft);
 
   if (!id) {
     return NextResponse.json({ error: "Rechnung fehlt." }, { status: 400 });
@@ -1257,19 +1461,53 @@ export async function PATCH(req: Request) {
     });
   }
 
+  if (cleanString(body.action) === "mark-paid") {
+    const rows = await prisma.$queryRaw<InvoiceRow[]>`
+      UPDATE "Invoice"
+      SET "isPaid" = true,
+          "paidAt" = COALESCE("paidAt", CURRENT_TIMESTAMP),
+          "status" = CASE
+            WHEN "status" = 'Fakturiert' THEN 'Bezahlt'
+            ELSE "status"
+          END,
+          "updatedAt" = CURRENT_TIMESTAMP
+      WHERE "organizationId" = ${organization.id} AND "id" = ${id}
+      RETURNING *
+    `;
+
+    if (!rows[0]) {
+      return NextResponse.json({ error: "Rechnung wurde nicht gefunden." }, { status: 404 });
+    }
+
+    await addInvoiceHistory({
+      organizationId: organization.id,
+      invoiceId: id,
+      projectId: rows[0].projectId,
+      invoiceNumber: rows[0].invoiceNumber,
+      eventType: "paid",
+      title: "Rechnung als bezahlt markiert",
+      note: `${rows[0].invoiceNumber} wurde als bezahlt markiert.`,
+      actorName: cleanString(body.actorName) || "System",
+    });
+
+    return NextResponse.json(serializeInvoice(rows[0], []));
+  }
+
   const lines = normalizeInvoiceLines(body.lines);
 
-  if (lines.length === 0) {
+  if (!saveAsDraft && lines.length === 0) {
     return NextResponse.json({ error: "Bitte mindestens eine Position hinzufügen." }, { status: 400 });
   }
 
-  const billedStampEntryIds = getBilledStampEntryIds(body.billedStampEntryIds);
-  const stampedHours = await getStampedHoursForInvoiceCheck({
-    organizationId: organization.id,
-    projectId: cleanString(body.projectId),
-    stampEntryIds: billedStampEntryIds,
-  });
-  const invoiceLaborHours = getInvoiceLaborHours(lines);
+  const billedStampEntryIds = saveAsDraft ? [] : getBilledStampEntryIds(body.billedStampEntryIds);
+  const stampedHours = saveAsDraft
+    ? 0
+    : await getStampedHoursForInvoiceCheck({
+        organizationId: organization.id,
+        projectId: cleanString(body.projectId),
+        stampEntryIds: billedStampEntryIds,
+      });
+  const invoiceLaborHours = saveAsDraft ? 0 : getInvoiceLaborHours(lines);
   const isUnderbilledStampedHours = stampedHours > 0 && invoiceLaborHours + 0.01 < stampedHours;
 
   if (isUnderbilledStampedHours && !body.allowUnderbilledStampedHours) {
@@ -1284,8 +1522,8 @@ export async function PATCH(req: Request) {
     );
   }
 
-  const existingRows = await prisma.$queryRaw<Array<{ invoiceNumber: string; status: string }>>`
-    SELECT "invoiceNumber", "status"
+  const existingRows = await prisma.$queryRaw<Array<{ invoiceNumber: string; status: string; billingSource: string }>>`
+    SELECT "invoiceNumber", "status", "billingSource"
     FROM "Invoice"
     WHERE "organizationId" = ${organization.id} AND "id" = ${id}
     LIMIT 1
@@ -1294,9 +1532,26 @@ export async function PATCH(req: Request) {
   if (!existingInvoice) {
     return NextResponse.json({ error: "Rechnung wurde nicht gefunden." }, { status: 404 });
   }
+  const finalizesDraft = !saveAsDraft && existingInvoice.status === "Entwurf";
 
   const company = body.company === "OK immocare" ? "OK immocare" : "OK solutions";
-  const pdf = await generateInvoicePdf({ ...body, company, invoiceNumber: existingInvoice.invoiceNumber }, lines);
+  const requestedBillingSource = cleanString(body.billingSource);
+  const billingSource =
+    requestedBillingSource === "batch" || requestedBillingSource === "manual"
+      ? requestedBillingSource
+      : cleanString(existingInvoice.billingSource) || "manual";
+  const pdf =
+    lines.length > 0
+      ? await generateInvoicePdf(
+          {
+            ...body,
+            company,
+            invoiceNumber: existingInvoice.invoiceNumber,
+            documentTitle: saveAsDraft ? "Rechnungsentwurf" : "Rechnung",
+          },
+          lines
+        )
+      : { netTotal: 0, vatRate: cleanNumber(body.vatRate, 19), grossTotal: 0, pdfData: null };
 
   const rows = await prisma.$queryRaw<InvoiceRow[]>`
     UPDATE "Invoice"
@@ -1305,6 +1560,7 @@ export async function PATCH(req: Request) {
       "projectNumber" = ${cleanString(body.projectNumber)},
       "projectTitle" = ${cleanString(body.projectTitle)},
       "company" = ${company},
+      "billingSource" = ${billingSource},
       "customerName" = ${cleanString(body.customerName)},
       "customerStreet" = ${cleanString(body.customerStreet)},
       "customerCity" = ${cleanString(body.customerCity)},
@@ -1312,13 +1568,19 @@ export async function PATCH(req: Request) {
       "internalContactName" = ${cleanString(body.internalContactName)},
       "internalPhone" = ${cleanString(body.internalPhone)},
       "internalEmail" = ${cleanString(body.internalEmail)},
+      "plannedExecutionMonth" = ${cleanString(body.plannedExecutionMonth)},
       "introText" = ${cleanString(body.introText)},
       "closingText" = ${cleanString(body.closingText)},
+      "discountPercent" = ${cleanPercent(body.discountPercent)},
       "netTotal" = ${pdf.netTotal},
       "vatRate" = ${pdf.vatRate},
       "grossTotal" = ${pdf.grossTotal},
       "pdfData" = ${pdf.pdfData},
-      "status" = CASE WHEN "status" = 'Entwurf' THEN 'Fakturiert' ELSE "status" END,
+      "status" = CASE
+        WHEN ${saveAsDraft} THEN 'Entwurf'
+        WHEN "status" = 'Entwurf' THEN 'Fakturiert'
+        ELSE "status"
+      END,
       "updatedAt" = CURRENT_TIMESTAMP
     WHERE "organizationId" = ${organization.id} AND "id" = ${id}
     RETURNING *
@@ -1335,11 +1597,11 @@ export async function PATCH(req: Request) {
     const lineRows = await prisma.$queryRaw<InvoiceLineRow[]>`
       INSERT INTO "InvoiceLine" (
         "id", "organizationId", "invoiceId", "catalogItemId", "catalogType", "position",
-        "quantity", "unit", "title", "description", "unitPrice", "vatRate", "totalNet", "updatedAt"
+        "quantity", "unit", "title", "description", "unitPrice", "discountPercent", "vatRate", "totalNet", "updatedAt"
       ) VALUES (
         ${randomUUID()}, ${organization.id}, ${id}, ${line.catalogItemId}, ${line.catalogType}, ${index + 1},
         ${line.quantity}, ${line.unit}, ${line.title}, ${line.description},
-        ${line.unitPrice}, ${line.vatRate}, ${line.quantity * line.unitPrice}, CURRENT_TIMESTAMP
+        ${line.unitPrice}, ${line.discountPercent}, ${line.vatRate}, ${getLineTotalNet(line)}, CURRENT_TIMESTAMP
       )
       RETURNING *
     `;
@@ -1360,26 +1622,35 @@ export async function PATCH(req: Request) {
     }
   }
 
+
   await addInvoiceHistory({
     organizationId: organization.id,
     invoiceId: id,
     projectId: cleanString(body.projectId),
     invoiceNumber: existingInvoice.invoiceNumber,
     eventType: "updated",
-    title: "Rechnung bearbeitet",
-    note: `${existingInvoice.invoiceNumber} wurde aktualisiert.`,
+    title: saveAsDraft
+      ? "Rechnungsentwurf gespeichert"
+      : finalizesDraft
+        ? "Rechnung fakturiert"
+        : "Rechnung bearbeitet",
+    note: `${existingInvoice.invoiceNumber} wurde ${
+      saveAsDraft ? "als Entwurf gespeichert" : finalizesDraft ? "fakturiert" : "aktualisiert"
+    }.`,
     actorName: cleanString(body.internalContactName) || "System",
   });
 
-  await markStampedHoursAsInvoiced({
-    organizationId: organization.id,
-    projectId: cleanString(body.projectId),
-    invoiceId: id,
-    invoiceNumber: existingInvoice.invoiceNumber,
-    stampEntryIds: billedStampEntryIds,
-  });
+  if (!saveAsDraft) {
+    await markStampedHoursAsInvoiced({
+      organizationId: organization.id,
+      projectId: cleanString(body.projectId),
+      invoiceId: id,
+      invoiceNumber: existingInvoice.invoiceNumber,
+      stampEntryIds: billedStampEntryIds,
+    });
+  }
 
-  if (isUnderbilledStampedHours) {
+  if (!saveAsDraft && isUnderbilledStampedHours && !body.suppressUnderbillingNotification) {
     await notifyManagementAboutUnderbilling({
       organizationId: organization.id,
       projectId: cleanString(body.projectId),
@@ -1398,10 +1669,30 @@ export async function DELETE(req: Request) {
   await ensureInvoiceTables();
   const body = await req.json().catch(() => ({}));
   const id = cleanString(body.id);
+  const actorId = cleanString(body.actorId);
   const actorName = cleanString(body.actorName) || "System";
 
   if (!id) {
     return NextResponse.json({ error: "Rechnung fehlt." }, { status: 400 });
+  }
+
+  if (!actorId) {
+    return NextResponse.json({ error: "Benutzer fehlt." }, { status: 403 });
+  }
+
+  const actorRows = await prisma.$queryRaw<Array<{ role: string }>>`
+    SELECT "role"
+    FROM "User"
+    WHERE "organizationId" = ${organization.id}
+      AND "id" = ${actorId}
+      AND "isActive" = true
+    LIMIT 1
+  `;
+  if (actorRows[0]?.role !== "GESCHAEFTSFUEHRER") {
+    return NextResponse.json(
+      { error: "Nur Geschäftsführer dürfen Rechnungen löschen." },
+      { status: 403 }
+    );
   }
 
   const existingRows = await prisma.$queryRaw<InvoiceRow[]>`
@@ -1420,6 +1711,17 @@ export async function DELETE(req: Request) {
     SET "status" = 'Gelöscht', "updatedAt" = CURRENT_TIMESTAMP
     WHERE "organizationId" = ${organization.id} AND "id" = ${id}
     RETURNING *
+  `;
+
+
+  await ensureInvoiceTimeEntryColumns();
+  await prisma.$executeRaw`
+    UPDATE "ProjectTimeEntry"
+    SET "invoiceId" = '',
+        "invoiceNumber" = '',
+        "invoicedAt" = NULL
+    WHERE "organizationId" = ${organization.id}
+      AND "invoiceId" = ${id}
   `;
 
   await addInvoiceHistory({
