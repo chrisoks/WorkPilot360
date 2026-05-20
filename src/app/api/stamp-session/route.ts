@@ -45,24 +45,33 @@ type ProjectTimeEntryRow = {
   createdAt: Date;
 };
 
-async function ensureActiveStampSessionTable() {
-  await prisma.$executeRaw`
-    CREATE TABLE IF NOT EXISTS "ActiveStampSession" (
-      "id" TEXT NOT NULL PRIMARY KEY,
-      "organizationId" TEXT NOT NULL,
-      "userId" TEXT NOT NULL,
-      "employee" TEXT,
-      "mode" TEXT NOT NULL DEFAULT 'project',
-      "projectId" TEXT NOT NULL,
-      "projectLabel" TEXT,
-      "startedAt" TIMESTAMP(3) NOT NULL,
-      "accumulatedMs" BIGINT NOT NULL DEFAULT 0,
-      "pauseStartedAt" TIMESTAMP(3),
-      "pauseMs" BIGINT NOT NULL DEFAULT 0,
-      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
+let activeStampSessionTablePromise: Promise<void> | null = null;
+let projectTimeEntryTablePromise: Promise<void> | null = null;
+
+async function ensureActiveStampSessionTableOnce() {
+  const existingTable = await prisma.$queryRaw<Array<{ exists: string | null }>>`
+    SELECT to_regclass('"ActiveStampSession"')::text as "exists"
   `;
+
+  if (!existingTable[0]?.exists) {
+    await prisma.$executeRaw`
+      CREATE TABLE "ActiveStampSession" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "organizationId" TEXT NOT NULL,
+        "userId" TEXT NOT NULL,
+        "employee" TEXT,
+        "mode" TEXT NOT NULL DEFAULT 'project',
+        "projectId" TEXT NOT NULL,
+        "projectLabel" TEXT,
+        "startedAt" TIMESTAMP(3) NOT NULL,
+        "accumulatedMs" BIGINT NOT NULL DEFAULT 0,
+        "pauseStartedAt" TIMESTAMP(3),
+        "pauseMs" BIGINT NOT NULL DEFAULT 0,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+  }
 
   await prisma.$executeRaw`
     ALTER TABLE "ActiveStampSession"
@@ -82,7 +91,16 @@ async function ensureActiveStampSessionTable() {
   `;
 }
 
-async function ensureProjectTimeEntryTable() {
+async function ensureActiveStampSessionTable() {
+  activeStampSessionTablePromise ??= ensureActiveStampSessionTableOnce().catch((error) => {
+    activeStampSessionTablePromise = null;
+    throw error;
+  });
+
+  return activeStampSessionTablePromise;
+}
+
+async function ensureProjectTimeEntryTableOnce() {
   await prisma.$executeRaw`
     CREATE TABLE IF NOT EXISTS "ProjectTimeEntry" (
       "id" TEXT NOT NULL PRIMARY KEY,
@@ -123,8 +141,18 @@ async function ensureProjectTimeEntryTable() {
     ADD COLUMN IF NOT EXISTS "overtimeApprovedByUserId" TEXT,
     ADD COLUMN IF NOT EXISTS "overtimeApprovedByName" TEXT,
     ADD COLUMN IF NOT EXISTS "overtimeApprovedAt" TIMESTAMP(3),
-    ADD COLUMN IF NOT EXISTS "editHistory" JSONB NOT NULL DEFAULT '[]'::jsonb
+    ADD COLUMN IF NOT EXISTS "editHistory" JSONB NOT NULL DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS "deletedAt" TIMESTAMP(3)
   `;
+}
+
+async function ensureProjectTimeEntryTable() {
+  projectTimeEntryTablePromise ??= ensureProjectTimeEntryTableOnce().catch((error) => {
+    projectTimeEntryTablePromise = null;
+    throw error;
+  });
+
+  return projectTimeEntryTablePromise;
 }
 
 function cleanString(value: unknown) {

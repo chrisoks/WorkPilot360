@@ -918,6 +918,25 @@ model ProjectTimeEntry {
   mode           String   @default("project")
 }
 
+model ActiveStampSession {
+  id             String   @id
+  organizationId String
+  userId         String
+  employee       String?
+  mode           String   @default("project")
+  projectId      String
+  projectLabel   String?
+  startedAt      DateTime
+  accumulatedMs  BigInt   @default(0)
+  pauseStartedAt DateTime?
+  pauseMs        BigInt   @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now())
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+}
+
 model PlanningEntry {
   id                   String   @id
   organizationId       String
