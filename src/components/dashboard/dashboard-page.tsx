@@ -28341,8 +28341,12 @@ export function DashboardPage() {
                     <span className={styles.navLabel}>
                       <SidebarIcon tab={tab} />
                       {label}
-                      <span className={styles.sidebarTaskBadges} aria-label={`${offene} offene Aufgaben, ${ueberfaellig} ueberfaellige Aufgaben`}>
+                      <span
+                        className={styles.sidebarTaskBadges}
+                        aria-label={`${offene} offene Aufgaben, ${bearbeitung} Aufgaben in Bearbeitung, ${ueberfaellig} ueberfaellige Aufgaben`}
+                      >
                         {offene > 0 && <span className={styles.sidebarTaskBadge} data-tone="open">{offene}</span>}
+                        {bearbeitung > 0 && <span className={styles.sidebarTaskBadge} data-tone="progress">{bearbeitung}</span>}
                         {ueberfaellig > 0 && <span className={styles.sidebarTaskBadge} data-tone="overdue">{ueberfaellig}</span>}
                       </span>
                     </span>
