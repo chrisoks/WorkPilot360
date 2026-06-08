@@ -58,23 +58,76 @@
   align-items: center;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 10px;
   justify-content: center;
-  min-height: 360px;
-  max-width: 720px;
+  min-height: calc(100vh - 68px);
+  max-width: none;
+  width: 100%;
 }
 
 .bootLogo {
   height: auto;
-  max-width: 320px;
-  width: 70%;
+  max-width: 700px;
+  object-fit: contain;
+  width: min(56vw, 700px);
 }
 
 .bootShell p {
   color: #64748b;
-  font-size: 1rem;
+  font-size: clamp(0.98rem, 1.2vw, 1.18rem);
   font-weight: 800;
-  margin: 0;
+  margin: -2px 0 0;
+  text-align: center;
+}
+
+.bootWave {
+  align-items: center;
+  display: inline-flex;
+  gap: 7px;
+  height: 20px;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.bootWave span {
+  animation: bootWaveDot 1.05s ease-in-out infinite;
+  background: #2563eb;
+  border-radius: 999px;
+  display: block;
+  height: 8px;
+  opacity: 0.92;
+  width: 8px;
+}
+
+.bootWave span:nth-child(2) {
+  animation-delay: 0.1s;
+  background: #0ea5e9;
+}
+
+.bootWave span:nth-child(3) {
+  animation-delay: 0.2s;
+  background: #2563eb;
+}
+
+.bootWave span:nth-child(4) {
+  animation-delay: 0.3s;
+  background: #7c3aed;
+}
+
+.bootWave span:nth-child(5) {
+  animation-delay: 0.4s;
+  background: #9333ea;
+}
+
+@keyframes bootWaveDot {
+  0%,
+  100% {
+    transform: translateY(5px) scale(0.82);
+  }
+
+  50% {
+    transform: translateY(-5px) scale(1.08);
+  }
 }
 
 .loginLayout {
@@ -3233,6 +3286,43 @@
   border-radius: 16px;
   margin-top: 10px;
   padding: 12px 14px;
+}
+
+.stampCommentClips {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.stampCommentClip {
+  align-items: center;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  color: #1d4ed8;
+  cursor: pointer;
+  display: inline-flex;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 850;
+  min-height: 28px;
+  padding: 5px 10px;
+  white-space: nowrap;
+}
+
+.stampCommentClip[data-empty="true"] {
+  background: #f8fafc;
+  border-color: #dbe3ee;
+  color: #64748b;
+  cursor: default;
+}
+
+.stampCommentClip[data-tone="manual"] {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #c2410c;
+  cursor: default;
 }
 
 .planningBox {
@@ -6709,6 +6799,11 @@
 
 .customerFileNavGroup > button b {
   margin-left: auto;
+  transition: transform 0.16s ease;
+}
+
+.customerFileNavGroup > button[data-expanded="true"] b {
+  transform: rotate(180deg);
 }
 
 .customerFileSubNav {
@@ -7125,25 +7220,76 @@
 }
 
 .projectOfferPlanningButton[data-state="open"],
-.projectOfferPlanningButton[data-state="partial"] {
+.projectOfferPlanningButton[data-state="partial"],
+.projectOfferPlanningButton[data-state="over"] {
   animation: projectPlanningPulse 1.35s ease-in-out infinite;
   color: #ffffff;
 }
 
 .projectOfferPlanningButton[data-state="open"] {
+  --project-planning-pulse-rgb: 10, 157, 163;
   background: #0a9da3;
   border-color: #0a9da3;
 }
 
 .projectOfferPlanningButton[data-state="partial"] {
+  --project-planning-pulse-rgb: 245, 158, 11;
   background: #f59e0b;
   border-color: #f59e0b;
 }
 
+.projectOfferPlanningButton[data-state="done"] {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.projectOfferPlanningButton[data-state="done"]:hover {
+  background: #bbf7d0;
+  border-color: #22c55e;
+  color: #14532d;
+}
+
+.projectOfferPlanningButton[data-state="over"] {
+  --project-planning-pulse-rgb: 220, 38, 38;
+  background: #dc2626;
+  border-color: #dc2626;
+}
+
 .projectOfferPlanningButton[data-state="open"]:hover,
-.projectOfferPlanningButton[data-state="partial"]:hover {
+.projectOfferPlanningButton[data-state="partial"]:hover,
+.projectOfferPlanningButton[data-state="over"]:hover {
   color: #ffffff;
   filter: brightness(0.96);
+}
+
+.projectPlanningOverlay {
+  align-items: center;
+  backdrop-filter: blur(7px);
+  background: rgba(15, 23, 42, 0.32);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 20px;
+  position: fixed;
+  z-index: 90;
+}
+
+.projectPlanningDialog {
+  background: #ffffff;
+  border: 1px solid #dbe3ee;
+  border-radius: 16px;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.22);
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  width: min(1500px, calc(100vw - 40px));
+}
+
+.projectPlanningDialog .planningDayPanel {
+  border: 0;
+  border-radius: 16px;
+  box-shadow: none;
+  min-width: 1120px;
 }
 
 .projectUpsellButton[data-state="open"] {
@@ -7191,94 +7337,216 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
-.projectProgressTracker {
-  align-items: flex-start;
+.projectMonthStrip {
+  align-items: center;
   background: #ffffff;
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
   display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(76px, 0.7fr) repeat(13, minmax(82px, 1fr)) minmax(76px, 0.7fr);
+  overflow-x: auto;
+  padding: 10px;
+}
+
+.projectMonthStrip button {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  color: #0f172a;
+  cursor: pointer;
+  display: inline-flex;
+  font-family: inherit;
+  font-size: 0.86rem;
+  font-weight: 850;
+  justify-content: center;
+  min-height: 34px;
+  padding: 7px 10px;
+  white-space: nowrap;
+}
+
+.projectMonthStrip button:hover {
+  border-color: #2563eb;
+  color: #1d4ed8;
+}
+
+.projectMonthStrip button[data-current="true"] {
+  border-color: #00a3c7;
+  box-shadow: 0 0 0 2px rgba(0, 163, 199, 0.2);
+}
+
+.projectMonthStrip button[data-active="true"] {
+  background: #2563eb;
+  border-color: #2563eb;
+  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.18);
+  color: #ffffff;
+}
+
+.projectMonthStrip button[data-active="true"][data-current="true"] {
+  box-shadow: 0 0 0 2px rgba(0, 163, 199, 0.28), 0 10px 22px rgba(37, 99, 235, 0.18);
+}
+
+.projectProgressTracker {
+  --progress-step-bg: linear-gradient(90deg, #00a3ad 0%, #2f80ed 68%, #7c3aed 100%);
+  align-items: stretch;
+  background: #ffffff;
+  border: 1px solid #dbe7f4;
+  border-radius: 999px;
+  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  display: flex;
   gap: 0;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  padding: 12px 20px 10px;
+  margin: 0 0 12px;
+  overflow-x: auto;
+  padding: 10px;
+  position: relative;
+  scrollbar-width: thin;
+}
+
+.projectProgressTracker::-webkit-scrollbar {
+  height: 6px;
 }
 
 .projectProgressTracker button {
   align-items: center;
-  background: transparent;
-  border: 0;
+  background: linear-gradient(90deg, #f8fbff, #eef4fb);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-left-width: 0;
   color: #0f172a;
   cursor: pointer;
-  display: grid;
+  display: inline-flex;
+  flex: 1 0 132px;
   font-family: inherit;
-  gap: 5px;
-  justify-items: center;
+  gap: 10px;
+  justify-content: center;
+  min-height: 46px;
   min-width: 0;
-  padding: 0;
+  padding: 8px 14px;
   position: relative;
+  white-space: nowrap;
 }
 
-.projectProgressTracker button i {
-  background: #111827;
-  height: 3px;
-  left: calc(50% + 16px);
-  position: absolute;
-  right: calc(-50% + 16px);
-  top: 16px;
-  z-index: 0;
+.projectProgressTracker button:first-child {
+  border-bottom-left-radius: 999px;
+  border-left-width: 1px;
+  border-top-left-radius: 999px;
+}
+
+.projectProgressTracker button:last-child {
+  border-bottom-right-radius: 999px;
+  border-top-right-radius: 999px;
+}
+
+.projectProgressTracker button[data-state="done"] {
+  background: var(--progress-step-bg);
+  border-color: rgba(255, 255, 255, 0.32);
+  color: #ffffff;
+}
+
+.projectProgressTracker button[data-state="done"]:nth-child(1) {
+  --progress-step-bg: linear-gradient(90deg, #00a3ad, #0aa9c5);
+  --progress-check-color: #00a3ad;
+}
+
+.projectProgressTracker button[data-state="done"]:nth-child(2) {
+  --progress-step-bg: linear-gradient(90deg, #0aa9c5, #1689dc);
+  --progress-check-color: #1689dc;
+}
+
+.projectProgressTracker button[data-state="done"]:nth-child(3) {
+  --progress-step-bg: linear-gradient(90deg, #1689dc, #2f6fe8);
+  --progress-check-color: #2f6fe8;
+}
+
+.projectProgressTracker button[data-state="done"]:nth-child(4) {
+  --progress-step-bg: linear-gradient(90deg, #2f6fe8, #4358ea);
+  --progress-check-color: #4358ea;
+}
+
+.projectProgressTracker button[data-state="done"]:nth-child(5) {
+  --progress-step-bg: linear-gradient(90deg, #4358ea, #623be5);
+  --progress-check-color: #623be5;
+}
+
+.projectProgressTracker button[data-state="done"]:nth-child(6),
+.projectProgressTracker button[data-state="done"]:nth-child(7) {
+  --progress-step-bg: linear-gradient(90deg, #623be5, #7c3aed);
+  --progress-check-color: #7c3aed;
+}
+
+.projectProgressTracker button[data-state="partial"] {
+  animation: projectWarningPulse 1.45s ease-out infinite;
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+  border-color: rgba(255, 255, 255, 0.42);
+  color: #ffffff;
 }
 
 .projectProgressNode {
   align-items: center;
-  background: #f8fafc;
-  border: 3px solid #111827;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
   border-radius: 999px;
-  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
+  color: #94a3b8;
+  flex: 0 0 auto;
   display: inline-flex;
-  font-size: 20px;
+  font-size: 14px;
   font-weight: 950;
-  height: 34px;
+  height: 26px;
   justify-content: center;
   position: relative;
-  width: 34px;
-  z-index: 1;
+  width: 26px;
 }
 
 .projectProgressTracker button[data-state="done"] .projectProgressNode {
   background: #ffffff;
-  border-color: #009b74;
-  color: #009b74;
+  border-color: rgba(255, 255, 255, 0.78);
+  color: var(--progress-check-color, #1689dc);
 }
 
 .projectProgressTracker button[data-state="partial"] .projectProgressNode {
-  background: #f59e0b;
-  border-color: #b45309;
-  color: #ffffff;
+  background: #ffffff;
+  border-color: rgba(255, 255, 255, 0.78);
+  color: #b45309;
+}
+
+@keyframes projectWarningPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.38);
+  }
+  70% {
+    box-shadow: 0 0 0 9px rgba(245, 158, 11, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+  }
 }
 
 .projectProgressTracker strong {
-  font-size: 0.82rem;
-  font-weight: 850;
+  color: inherit;
+  font-size: 0.86rem;
+  font-weight: 900;
   line-height: 1.1;
   text-align: center;
 }
 
 .projectProgressTracker button:hover strong {
-  color: #009ca6;
+  color: inherit;
 }
 
 @keyframes projectPlanningPulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(10, 157, 163, 0.36);
+    box-shadow: 0 0 0 0 rgba(var(--project-planning-pulse-rgb, 10, 157, 163), 0.36);
     transform: scale(1);
   }
   50% {
     transform: scale(1.025);
   }
   70% {
-    box-shadow: 0 0 0 12px rgba(10, 157, 163, 0);
+    box-shadow: 0 0 0 12px rgba(var(--project-planning-pulse-rgb, 10, 157, 163), 0);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(10, 157, 163, 0);
+    box-shadow: 0 0 0 0 rgba(var(--project-planning-pulse-rgb, 10, 157, 163), 0);
     transform: scale(1);
   }
 }
@@ -7401,12 +7669,17 @@
   justify-content: center;
   min-height: 38px;
   padding: 8px 14px;
+  position: relative;
   width: fit-content;
 }
 
 .projectImageUpload input,
 .projectDocumentUpload input {
-  display: none;
+  cursor: pointer;
+  inset: 0;
+  opacity: 0;
+  position: absolute;
+  width: 100%;
 }
 
 .projectImageEmpty {
@@ -7714,6 +7987,53 @@
   color: #92400e;
 }
 
+.invoiceStatusStack {
+  align-items: center;
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  min-width: 118px;
+  width: fit-content;
+}
+
+.invoiceStatusStack .invoiceStatusChip {
+  min-width: 118px;
+}
+
+.invoiceDispatchClips {
+  align-items: center;
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  width: 100%;
+}
+
+.invoiceDispatchClip {
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  color: #334155;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 900;
+  justify-content: center;
+  line-height: 1;
+  min-width: 118px;
+  padding: 7px 12px;
+  white-space: nowrap;
+}
+
+.invoiceDispatchClip[data-kind="sent"] {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+.invoiceDispatchClip[data-kind="printed"] {
+  background: #eef2f7;
+  border-color: #cbd5e1;
+  color: #1f2937;
+}
+
 .planningBudgetClip {
   align-items: center;
   border: 1px solid transparent;
@@ -7746,6 +8066,98 @@
   background: #fee2e2;
   border-color: #fca5a5;
   color: #b91c1c;
+}
+
+.projectPlanningCapacitySummary {
+  background: #f8fbff;
+  border: 1px solid #d7e2ee;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+}
+
+.projectPlanningCapacityCompact {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.projectPlanningCapacityCompact div {
+  display: grid;
+  gap: 3px;
+}
+
+.projectPlanningCapacityCompact strong {
+  color: #0f172a;
+  font-size: 0.95rem;
+  font-weight: 950;
+}
+
+.projectPlanningCapacityCompact span,
+.projectPlanningCapacitySummary p {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.projectPlanningCapacityCompact b {
+  align-items: center;
+  background: #dcfce7;
+  border: 1px solid #86efac;
+  border-radius: 999px;
+  color: #166534;
+  display: inline-flex;
+  font-size: 0.82rem;
+  font-weight: 950;
+  justify-content: center;
+  min-height: 30px;
+  padding: 7px 12px;
+  white-space: nowrap;
+}
+
+.projectPlanningCapacityCompact b[data-state="over"] {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #b91c1c;
+}
+
+.projectPlanningCapacityBar {
+  background: linear-gradient(90deg, #e8eef7, #f7fbff);
+  border: 1px solid #bfd4ec;
+  border-radius: 999px;
+  box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.12);
+  height: 18px;
+  overflow: hidden;
+  padding: 2px;
+}
+
+.projectPlanningCapacityBar span {
+  align-items: center;
+  background: linear-gradient(90deg, #00a3ad 0%, #2f80ed 72%, #7c3aed 100%);
+  border-radius: inherit;
+  box-shadow: 0 0 12px rgba(0, 163, 173, 0.28);
+  display: flex;
+  height: 100%;
+  justify-content: flex-end;
+  overflow: hidden;
+  transition: width 0.2s ease;
+}
+
+.projectPlanningCapacityBar i {
+  color: #ffffff;
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 950;
+  line-height: 1;
+  padding: 0 8px;
+  text-shadow: 0 1px 2px rgba(15, 23, 42, 0.22);
+}
+
+.projectPlanningCapacitySummary p {
+  margin: 0;
 }
 
 .planningHistorySection {
@@ -7823,6 +8235,17 @@
   min-height: 38px;
   padding: 7px 9px;
   width: 100%;
+}
+
+.projectTimeTable .invoiceStampCheckbox {
+  appearance: auto;
+  cursor: pointer;
+  display: block;
+  height: 18px;
+  margin: 0 auto;
+  min-height: 18px;
+  padding: 0;
+  width: 18px;
 }
 
 .projectBudgetSummary {
@@ -7990,45 +8413,70 @@
 }
 
 .projectTimeBudgetBar {
-  background: #e2e8f0;
+  background: linear-gradient(90deg, #e8eef7, #f8fbff);
+  border: 1px solid #bfd4ec;
   border-radius: 999px;
-  height: 8px;
+  box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.12);
+  height: 18px;
   overflow: hidden;
+  padding: 2px;
 }
 
 .projectTimeBudgetBar span {
-  background: #009ca6;
-  display: block;
+  align-items: center;
+  background: linear-gradient(90deg, #00a3ad 0%, #2f80ed 72%, #7c3aed 100%);
+  border-radius: inherit;
+  box-shadow: 0 0 12px rgba(0, 163, 173, 0.24);
+  display: flex;
   height: 100%;
+  justify-content: flex-end;
+  overflow: hidden;
+  transition: width 0.2s ease;
+}
+
+.projectTimeBudgetBar i {
+  color: #ffffff;
+  font-size: 0.66rem;
+  font-style: normal;
+  font-weight: 950;
+  line-height: 1;
+  padding: 0 7px;
+  text-shadow: 0 1px 2px rgba(15, 23, 42, 0.22);
 }
 
 .projectRuntimeTimeline {
   display: grid;
   gap: 12px;
-  padding: 7px 0 48px;
+  padding: 6px 0 50px;
   position: relative;
 }
 
 .projectRuntimeTimelineTrack {
-  background: #dbe5ee;
+  background: linear-gradient(90deg, #e8eef7, #f8fbff);
+  border: 1px solid #bfd4ec;
   border-radius: 999px;
-  height: 10px;
+  box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.12);
+  height: 18px;
+  overflow: visible;
+  padding: 2px;
   position: relative;
 }
 
 .projectRuntimeTimelineFill {
-  background: #009ca6;
+  background: linear-gradient(90deg, #00a3ad 0%, #2f80ed 72%, #7c3aed 100%);
   border-radius: inherit;
   display: block;
   height: 100%;
+  box-shadow: 0 0 12px rgba(0, 163, 173, 0.24);
 }
 
 .projectRuntimeMarker {
-  background: #009ca6;
+  background: #0f172a;
   border-radius: 999px;
-  bottom: -4px;
+  bottom: -5px;
+  box-shadow: 0 0 0 2px #ffffff, 0 4px 10px rgba(15, 23, 42, 0.18);
   display: block;
-  height: 18px;
+  height: 24px;
   position: absolute;
   transform: translateX(-50%);
   width: 3px;
@@ -8043,7 +8491,7 @@
   left: 0;
   position: absolute;
   right: 0;
-  top: 31px;
+  top: 39px;
 }
 
 .projectRuntimeLegend span {
@@ -12222,6 +12670,62 @@
   resize: vertical;
 }
 
+.potentialModal {
+  width: min(1060px, calc(100vw - 24px));
+}
+
+.potentialModalBody {
+  gap: 18px;
+}
+
+.potentialSummary {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.potentialSummary div {
+  background: #f8fbff;
+  border: 1px solid #dbe3ee;
+  border-radius: 10px;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+
+.potentialSummary span {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.potentialSummary strong {
+  color: #0f172a;
+  font-size: 1rem;
+  font-weight: 950;
+}
+
+.potentialHistorySection {
+  border-top: 1px solid #dbe3ee;
+  display: grid;
+  gap: 12px;
+  padding-top: 14px;
+}
+
+.potentialHistorySection h3 {
+  color: #0f172a;
+  font-size: 1rem;
+  font-weight: 950;
+  margin: 0;
+}
+
+.potentialHistorySection > p {
+  color: #64748b;
+  font-size: 0.9rem;
+  font-weight: 750;
+  margin: 0;
+}
+
 .absenceModal {
   width: min(760px, calc(100vw - 16px));
 }
@@ -13091,6 +13595,53 @@
   color: #64748b;
   font-size: 12px;
   font-weight: 850;
+}
+
+.invoiceStampLinkWarning {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.18);
+  animation: invoiceStampLinkPulse 1.45s ease-in-out infinite;
+}
+
+.invoiceStampLinkComplete {
+  border-color: #22c55e;
+  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.2);
+}
+
+.invoiceStampLinkNotice {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 9px;
+  color: #9a3412;
+  display: block;
+  font-size: 12px;
+  font-weight: 950;
+  padding: 8px 10px;
+}
+
+.invoiceStampLinkNotice[data-state="complete"] {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.invoiceStampLinkNotice[data-state="warning"] {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #9a3412;
+}
+
+@keyframes invoiceStampLinkPulse {
+  0%,
+  100% {
+    border-color: #f59e0b;
+    box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.18), 0 0 0 0 rgba(245, 158, 11, 0.28);
+  }
+
+  50% {
+    border-color: #f97316;
+    box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.28), 0 0 0 4px rgba(249, 115, 22, 0.12);
+  }
 }
 
 .offerLaborRateRow {
@@ -16362,6 +16913,35 @@
 .planningBoardStack {
   display: grid;
   gap: 28px;
+}
+
+.planningBoardDateNav {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #d7e2ee;
+  border-radius: 12px;
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+}
+
+.planningBoardDateNav button {
+  background: #ffffff;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: #0f172a;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 850;
+  min-height: 36px;
+  padding: 8px 12px;
+  white-space: nowrap;
+}
+
+.planningBoardDateNav button:hover {
+  border-color: #2563eb;
+  color: #1d4ed8;
 }
 
 .planningBoardCard,

@@ -30,6 +30,7 @@ type CatalogItemRow = {
   listPrice: number;
   salesPrice: number;
   vatRate: number;
+  isLaborPosition: boolean;
   isPlanningRelevant: boolean;
   planningMinutesPerUnit: number;
   defaultPlanningBoard: string | null;
@@ -104,6 +105,7 @@ async function ensureCatalogTables() {
       "listPrice" DOUBLE PRECISION NOT NULL DEFAULT 0,
       "salesPrice" DOUBLE PRECISION NOT NULL DEFAULT 0,
       "vatRate" DOUBLE PRECISION NOT NULL DEFAULT 19,
+      "isLaborPosition" BOOLEAN NOT NULL DEFAULT false,
       "isPlanningRelevant" BOOLEAN NOT NULL DEFAULT false,
       "planningMinutesPerUnit" INTEGER NOT NULL DEFAULT 0,
       "defaultPlanningBoard" TEXT,
@@ -118,6 +120,33 @@ async function ensureCatalogTables() {
   await prisma.$executeRaw`
     ALTER TABLE "CatalogItem"
     ADD COLUMN IF NOT EXISTS "laborCostRateKey" TEXT NOT NULL DEFAULT ''
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "CatalogItem"
+    ADD COLUMN IF NOT EXISTS "isLaborPosition" BOOLEAN NOT NULL DEFAULT false
+  `;
+
+  await prisma.$executeRaw`
+    CREATE TABLE IF NOT EXISTS "SchemaDataPatch" (
+      "key" TEXT NOT NULL PRIMARY KEY,
+      "appliedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
+
+  await prisma.$executeRaw`
+    UPDATE "CatalogItem"
+    SET "isLaborPosition" = true
+    WHERE "type" = 'service'
+      AND NOT EXISTS (
+        SELECT 1 FROM "SchemaDataPatch" WHERE "key" = 'catalog-items-labor-position-backfill'
+      )
+  `;
+
+  await prisma.$executeRaw`
+    INSERT INTO "SchemaDataPatch" ("key")
+    VALUES ('catalog-items-labor-position-backfill')
+    ON CONFLICT ("key") DO NOTHING
   `;
 
   await prisma.$executeRaw`
@@ -258,6 +287,7 @@ function formatCatalogItem(
     listPrice: item.listPrice,
     salesPrice: item.salesPrice,
     vatRate: item.vatRate,
+    isLaborPosition: item.isLaborPosition,
     isPlanningRelevant: item.isPlanningRelevant,
     planningMinutesPerUnit: item.planningMinutesPerUnit,
     defaultPlanningBoard: item.defaultPlanningBoard ?? "",
@@ -378,6 +408,7 @@ async function writeChangeHistory(
     ["laborCostRateKey", "LK-Satz"],
     ["salesPrice", "Verkaufspreis"],
     ["vatRate", "MwSt."],
+    ["isLaborPosition", "Arbeitsposition"],
     ["isPlanningRelevant", "Planungsrelevant"],
     ["planningMinutesPerUnit", "Planungszeit je Einheit"],
     ["isActive", "Status"],
@@ -465,6 +496,10 @@ export async function POST(req: Request) {
   const id = randomUUID();
   const number = cleanString(body.number) || (await getNextCatalogNumber(organization.id, type));
   const name = cleanString(body.name);
+  const isLaborPosition =
+    Object.prototype.hasOwnProperty.call(body, "isLaborPosition")
+      ? Boolean(body.isLaborPosition)
+      : type === "service";
 
   if (!name) {
     return NextResponse.json({ error: "Bitte einen Namen angeben." }, { status: 400 });
@@ -476,7 +511,7 @@ export async function POST(req: Request) {
       "description", "matchcode", "ean", "costCenter", "supplierName", "supplierNumber",
       "manufacturer", "manufacturerNumber", "manufacturerTypeName", "minimumOrderQuantity",
       "quantityScale", "priceUnit", "deliveryTime", "stockQuantity", "purchasePrice", "laborCostRateKey",
-      "listPrice", "salesPrice", "vatRate", "isPlanningRelevant", "planningMinutesPerUnit",
+      "listPrice", "salesPrice", "vatRate", "isLaborPosition", "isPlanningRelevant", "planningMinutesPerUnit",
       "defaultPlanningBoard", "defaultPlanningGroup", "isActive"
     )
     VALUES (
@@ -486,7 +521,7 @@ export async function POST(req: Request) {
       ${nullableString(body.manufacturerNumber)}, ${nullableString(body.manufacturerTypeName)}, ${parseNullableNumber(body.minimumOrderQuantity)},
       ${nullableString(body.quantityScale)}, ${nullableString(body.priceUnit)}, ${nullableString(body.deliveryTime)}, ${parseNullableNumber(body.stockQuantity)},
       ${parseNumber(body.purchasePrice)}, ${cleanString(body.laborCostRateKey)}, 0, ${parseNumber(body.salesPrice)}, ${parseNumber(body.vatRate, 19)},
-      ${Boolean(body.isPlanningRelevant)}, ${parseInteger(body.planningMinutesPerUnit)}, ${nullableString(body.defaultPlanningBoard)},
+      ${isLaborPosition}, ${Boolean(body.isPlanningRelevant)}, ${parseInteger(body.planningMinutesPerUnit)}, ${nullableString(body.defaultPlanningBoard)},
       ${nullableString(body.defaultPlanningGroup)}, ${body.isActive !== false}
     )
     RETURNING *
@@ -535,6 +570,10 @@ export async function PATCH(req: Request) {
 
   const type = cleanType(body.type);
   const name = cleanString(body.name);
+  const isLaborPosition =
+    Object.prototype.hasOwnProperty.call(body, "isLaborPosition")
+      ? Boolean(body.isLaborPosition)
+      : type === "service";
   if (!name) {
     return NextResponse.json({ error: "Bitte einen Namen angeben." }, { status: 400 });
   }
@@ -566,6 +605,7 @@ export async function PATCH(req: Request) {
       "listPrice" = 0,
       "salesPrice" = ${parseNumber(body.salesPrice)},
       "vatRate" = ${parseNumber(body.vatRate, 19)},
+      "isLaborPosition" = ${isLaborPosition},
       "isPlanningRelevant" = ${Boolean(body.isPlanningRelevant)},
       "planningMinutesPerUnit" = ${parseInteger(body.planningMinutesPerUnit)},
       "defaultPlanningBoard" = ${nullableString(body.defaultPlanningBoard)},

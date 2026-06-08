@@ -3,10 +3,12 @@ import { randomUUID } from "crypto";
 import { TaskStatus } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { recordStatusTransition } from "@/lib/status-tracking";
 
 type TaskAcceptanceRow = {
   id: string;
   title: string;
+  status: TaskStatus;
   ownerId: string;
   organizationId: string;
   createdById: string | null;
@@ -31,6 +33,16 @@ function createHistoryItem(event: string, actorName: string, note = "") {
     note,
     createdAt: new Date().toISOString(),
   };
+}
+
+function toUiStatus(status: TaskStatus) {
+  if (status === TaskStatus.IN_BEARBEITUNG) return "in Bearbeitung";
+  if (status === TaskStatus.WARTET_AUF_RUECKMELDUNG) return "wartet auf Rückmeldung";
+  if (status === TaskStatus.ERLEDIGT) return "erledigt";
+  if (status === TaskStatus.ABGELEHNT) return "abgelehnt";
+  if (status === TaskStatus.UEBERFAELLIG) return "überfällig";
+  if (status === TaskStatus.ARCHIVIERT) return "archiviert";
+  return "offen";
 }
 
 function formatResponseTimestamp(date: Date) {
@@ -80,7 +92,7 @@ export async function POST(req: Request) {
   }
 
   const tasks = await prisma.$queryRaw<TaskAcceptanceRow[]>`
-    SELECT id, title, "ownerId", "organizationId", "createdById"
+    SELECT id, title, status, "ownerId", "organizationId", "createdById"
     FROM "Task"
     WHERE id = ${body.taskId}
     LIMIT 1
@@ -158,6 +170,7 @@ export async function POST(req: Request) {
       WHERE id = ${participantResponseId}
     `;
   } else {
+    const nextStatus = response === "rejected" ? TaskStatus.ABGELEHNT : TaskStatus.OFFEN;
     await prisma.task.update({
       where: {
         id: task.id,
@@ -166,8 +179,20 @@ export async function POST(req: Request) {
         acceptanceStatus: response,
         acceptanceRespondedAt: respondedAt,
         rejectionReason: response === "rejected" ? reason : null,
-        status: response === "rejected" ? TaskStatus.ABGELEHNT : TaskStatus.OFFEN,
+        status: nextStatus,
       },
+    });
+
+    await recordStatusTransition({
+      organizationId: task.organizationId,
+      entityType: "task",
+      entityId: task.id,
+      entityLabel: task.title,
+      fromStatus: toUiStatus(task.status),
+      toStatus: toUiStatus(nextStatus),
+      actorUserId: actor.id,
+      actorName,
+      note: response === "rejected" ? "Aufgabe abgelehnt." : "Aufgabe angenommen.",
     });
   }
 

@@ -24,6 +24,7 @@ type ContactRow = {
   source: string | null;
   reachability: string | null;
   isInvoiceRecipient: boolean;
+  isActivityReportRecipient: boolean;
   parentCompanyId: string | null;
   parentCompanyName: string | null;
   mainContactName: string | null;
@@ -71,6 +72,7 @@ async function ensureContactsTable() {
       "source" TEXT,
       "reachability" TEXT,
       "isInvoiceRecipient" BOOLEAN NOT NULL DEFAULT false,
+      "isActivityReportRecipient" BOOLEAN NOT NULL DEFAULT false,
       "parentCompanyId" TEXT,
       "parentCompanyName" TEXT,
       "mainContactName" TEXT,
@@ -100,6 +102,7 @@ async function ensureContactsTable() {
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "mainContactName" TEXT`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "isMainContact" BOOLEAN NOT NULL DEFAULT false`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "legalForm" TEXT`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "isActivityReportRecipient" BOOLEAN NOT NULL DEFAULT false`;
 }
 
 function cleanString(value: unknown) {
@@ -144,6 +147,7 @@ function formatContact(contact: ContactRow) {
     source: contact.source ?? "",
     reachability: contact.reachability ?? "",
     isInvoiceRecipient: contact.isInvoiceRecipient,
+    isActivityReportRecipient: contact.isActivityReportRecipient,
     parentCompanyId: contact.parentCompanyId ?? "",
     parentCompanyName: contact.parentCompanyName ?? "",
     mainContactName: contact.mainContactName ?? "",
@@ -210,7 +214,7 @@ export async function POST(req: Request) {
     INSERT INTO "Contact" (
       "id", "organizationId", "category", "type", "legalForm", "customerNumber",
       "salutation", "additionalSalutation", "companyName", "firstName", "lastName", "position",
-      "email", "phone", "mobile", "fax", "website", "source", "reachability", "isInvoiceRecipient",
+      "email", "phone", "mobile", "fax", "website", "source", "reachability", "isInvoiceRecipient", "isActivityReportRecipient",
       "parentCompanyId", "parentCompanyName", "mainContactName", "isMainContact",
       "street", "addressLine1", "addressLine2", "postalCode", "city", "country",
       "paymentTermDays", "discountPercent", "discountTermDays", "priceGroup",
@@ -221,7 +225,7 @@ export async function POST(req: Request) {
       ${nullableString(body.salutation)}, ${nullableString(body.additionalSalutation)}, ${nullableString(body.companyName)},
       ${nullableString(body.firstName)}, ${nullableString(body.lastName)}, ${nullableString(body.position)},
       ${nullableString(body.email)}, ${nullableString(body.phone)}, ${nullableString(body.mobile)}, ${nullableString(body.fax)},
-      ${nullableString(body.website)}, ${nullableString(body.source)}, ${nullableString(body.reachability)}, ${Boolean(body.isInvoiceRecipient)},
+      ${nullableString(body.website)}, ${nullableString(body.source)}, ${nullableString(body.reachability)}, ${Boolean(body.isInvoiceRecipient)}, ${Boolean(body.isActivityReportRecipient)},
       ${nullableString(body.parentCompanyId)}, ${nullableString(body.parentCompanyName)}, ${nullableString(body.mainContactName)}, ${Boolean(body.isMainContact)},
       ${nullableString(body.street)}, ${nullableString(body.addressLine1)}, ${nullableString(body.addressLine2)},
       ${nullableString(body.postalCode)}, ${nullableString(body.city)}, ${nullableString(body.country)},
@@ -272,6 +276,7 @@ export async function PATCH(req: Request) {
       "source" = ${nullableString(body.source)},
       "reachability" = ${nullableString(body.reachability)},
       "isInvoiceRecipient" = ${Boolean(body.isInvoiceRecipient)},
+      "isActivityReportRecipient" = ${Boolean(body.isActivityReportRecipient)},
       "parentCompanyId" = ${nullableString(body.parentCompanyId)},
       "parentCompanyName" = ${nullableString(body.parentCompanyName)},
       "mainContactName" = ${nullableString(body.mainContactName)},

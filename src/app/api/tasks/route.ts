@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { recordStatusTransition, seedCurrentStatusTimeline } from "@/lib/status-tracking";
 import {
   CustomerClassification,
   Prisma,
@@ -66,6 +67,7 @@ function toUiPriority(priority: TaskPriority) {
 function roleLabel(role: Role) {
   if (role === Role.GESCHAEFTSFUEHRER) return "Gesch\u00e4ftsf\u00fchrung";
   if (role === Role.FUEHRUNGSKRAFT) return "F\u00fchrungskraft";
+  if (String(role) === "VERTRIEB") return "Vertrieb";
   if (role === Role.MITARBEITER) return "Mitarbeiter";
   if (role === Role.GAST) return "Gast";
   return "Admin";
@@ -678,6 +680,16 @@ async function updateTaskFeedbackSettings(
 }
 
 async function autoArchiveExpiredTasks() {
+  const expiredTasks = await prisma.$queryRaw<
+    Array<{ id: string; organizationId: string; title: string; status: TaskStatus }>
+  >`
+    SELECT id, "organizationId", title, status
+    FROM "Task"
+    WHERE status = 'ERLEDIGT'
+      AND "archiveDueAt" IS NOT NULL
+      AND "archiveDueAt" <= CURRENT_TIMESTAMP
+  `;
+
   await prisma.$executeRawUnsafe(`
     UPDATE "Task"
     SET
@@ -688,6 +700,19 @@ async function autoArchiveExpiredTasks() {
       AND "archiveDueAt" IS NOT NULL
       AND "archiveDueAt" <= CURRENT_TIMESTAMP
   `);
+
+  for (const task of expiredTasks) {
+    await recordStatusTransition({
+      organizationId: task.organizationId,
+      entityType: "task",
+      entityId: task.id,
+      entityLabel: task.title,
+      fromStatus: toUiStatus(task.status),
+      toStatus: toUiStatus(TaskStatus.ARCHIVIERT),
+      actorName: "System",
+      note: "Aufgabe automatisch archiviert.",
+    });
+  }
 }
 
 async function updateCompletionArchiveTimer(
@@ -890,6 +915,14 @@ export async function POST(req: Request) {
   await updateCompletionArchiveTimer(task.id, null, nextStatus);
   await updateTaskPlanningAllocations(task.id, planningAllocations);
   await updateTaskProjectId(task.id, nextProjectId);
+  await seedCurrentStatusTimeline({
+    organizationId: organization.id,
+    entityType: "task",
+    entityId: task.id,
+    entityLabel: task.title,
+    status: toUiStatus(task.status),
+    startedAt: task.createdAt,
+  });
 
   const feedback = await updateTaskFeedbackSettings(
     task.id,
@@ -959,6 +992,18 @@ export async function PATCH(req: Request) {
         "completedAt" = NULL
       WHERE id = ${body.id}
     `;
+
+    await recordStatusTransition({
+      organizationId: task.organizationId,
+      entityType: "task",
+      entityId: task.id,
+      entityLabel: task.title,
+      fromStatus: toUiStatus(task.status),
+      toStatus: toUiStatus(TaskStatus.OFFEN),
+      actorUserId: actor.id,
+      actorName: `${actor.firstName} ${actor.lastName}`.trim() || actor.email,
+      note: "Aufgabe wiederhergestellt.",
+    });
 
     return NextResponse.json({ success: true });
   }
@@ -1091,6 +1136,17 @@ export async function PATCH(req: Request) {
   await updateCompletionArchiveTimer(task.id, existingTask?.status ?? null, nextStatus);
   await updateTaskPlanningAllocations(task.id, planningAllocations);
   await updateTaskProjectId(task.id, nextProjectId);
+  await recordStatusTransition({
+    organizationId: task.organizationId,
+    entityType: "task",
+    entityId: task.id,
+    entityLabel: task.title,
+    fromStatus: existingTask ? toUiStatus(existingTask.status) : null,
+    toStatus: toUiStatus(nextStatus),
+    actorUserId: actor.id,
+    actorName: `${actor.firstName} ${actor.lastName}`.trim() || actor.email,
+    note: "Aufgabenstatus geändert.",
+  });
 
   const feedback = await updateTaskFeedbackSettings(
     task.id,
@@ -1187,6 +1243,18 @@ export async function DELETE(req: Request) {
       "archiveReason" = 'Manuell archiviert'
     WHERE id = ${body.id}
   `;
+
+  await recordStatusTransition({
+    organizationId: task.organizationId,
+    entityType: "task",
+    entityId: task.id,
+    entityLabel: task.title,
+    fromStatus: toUiStatus(task.status),
+    toStatus: toUiStatus(TaskStatus.ARCHIVIERT),
+    actorUserId: actor.id,
+    actorName: `${actor.firstName} ${actor.lastName}`.trim() || actor.email,
+    note: "Aufgabe manuell archiviert.",
+  });
 
   return NextResponse.json({ success: true });
 }

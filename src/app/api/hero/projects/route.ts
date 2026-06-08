@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { recordStatusTransition, seedCurrentStatusTimeline } from "@/lib/status-tracking";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,8 @@ type LocalProjectRow = {
   autoBillingEndMonth: string | null;
   autoBillingTemplateMode: string | null;
   autoBillingTemplate: unknown;
+  winterGritPackageItemId: string | null;
+  winterGritPushPackageItemId: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -83,6 +86,8 @@ async function ensureLocalProjectTable() {
       "autoBillingEndMonth" TEXT,
       "autoBillingTemplateMode" TEXT,
       "autoBillingTemplate" JSONB,
+      "winterGritPackageItemId" TEXT,
+      "winterGritPushPackageItemId" TEXT,
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
@@ -121,6 +126,8 @@ async function ensureLocalProjectTable() {
     ADD COLUMN IF NOT EXISTS "autoBillingEndMonth" TEXT,
     ADD COLUMN IF NOT EXISTS "autoBillingTemplateMode" TEXT,
     ADD COLUMN IF NOT EXISTS "autoBillingTemplate" JSONB,
+    ADD COLUMN IF NOT EXISTS "winterGritPackageItemId" TEXT,
+    ADD COLUMN IF NOT EXISTS "winterGritPushPackageItemId" TEXT,
     ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
   `;
@@ -216,6 +223,8 @@ function formatLocalProject(project: LocalProjectRow) {
     autoBillingEndMonth: project.autoBillingEndMonth ?? "",
     autoBillingTemplateMode: project.autoBillingTemplateMode ?? "previous",
     autoBillingTemplate: project.autoBillingTemplate ?? null,
+    winterGritPackageItemId: project.winterGritPackageItemId ?? "",
+    winterGritPushPackageItemId: project.winterGritPushPackageItemId ?? "",
   };
 }
 
@@ -272,7 +281,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { organization } = await getDemoContext();
+  const { organization, user } = await getDemoContext();
   await ensureLocalProjectTable();
 
   const id = cleanString(body.id) || randomUUID();
@@ -288,6 +297,14 @@ export async function POST(req: Request) {
   }
 
   const status = normalizeProjectStatus(cleanString(body.status));
+  const currentRows = await prisma.$queryRaw<Array<{ status: string; createdAt: Date }>>`
+    SELECT status, "createdAt"
+    FROM "WorkPilotProject"
+    WHERE id = ${id}
+      AND "organizationId" = ${organization.id}
+    LIMIT 1
+  `;
+  const currentProject = currentRows[0] ?? null;
 
   const rows = await prisma.$queryRaw<LocalProjectRow[]>`
     INSERT INTO "WorkPilotProject" (
@@ -325,7 +342,9 @@ export async function POST(req: Request) {
       "autoBillingStartMonth",
       "autoBillingEndMonth",
       "autoBillingTemplateMode",
-      "autoBillingTemplate"
+      "autoBillingTemplate",
+      "winterGritPackageItemId",
+      "winterGritPushPackageItemId"
     )
     VALUES (
       ${id},
@@ -362,7 +381,9 @@ export async function POST(req: Request) {
       ${cleanString(body.autoBillingStartMonth) || null},
       ${cleanString(body.autoBillingEndMonth) || null},
       ${cleanString(body.autoBillingTemplateMode) || "previous"},
-      ${JSON.stringify(body.autoBillingTemplate ?? null)}::jsonb
+      ${JSON.stringify(body.autoBillingTemplate ?? null)}::jsonb,
+      ${cleanString(body.winterGritPackageItemId) || null},
+      ${cleanString(body.winterGritPushPackageItemId) || null}
     )
     ON CONFLICT ("id") DO UPDATE SET
       "projectNumber" = EXCLUDED."projectNumber",
@@ -398,9 +419,36 @@ export async function POST(req: Request) {
       "autoBillingEndMonth" = EXCLUDED."autoBillingEndMonth",
       "autoBillingTemplateMode" = EXCLUDED."autoBillingTemplateMode",
       "autoBillingTemplate" = EXCLUDED."autoBillingTemplate",
+      "winterGritPackageItemId" = EXCLUDED."winterGritPackageItemId",
+      "winterGritPushPackageItemId" = EXCLUDED."winterGritPushPackageItemId",
       "updatedAt" = CURRENT_TIMESTAMP
     RETURNING *
   `;
+
+  const savedProject = rows[0];
+  const entityLabel = `${savedProject.projectNumber || savedProject.id} | ${savedProject.title}`;
+  if (currentProject) {
+    await recordStatusTransition({
+      organizationId: organization.id,
+      entityType: "project",
+      entityId: savedProject.id,
+      entityLabel,
+      fromStatus: currentProject.status,
+      toStatus: savedProject.status,
+      actorUserId: user.id,
+      actorName: [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "System",
+      note: "Projektstatus geändert.",
+    });
+  } else {
+    await seedCurrentStatusTimeline({
+      organizationId: organization.id,
+      entityType: "project",
+      entityId: savedProject.id,
+      entityLabel,
+      status: savedProject.status,
+      startedAt: savedProject.createdAt,
+    });
+  }
 
   return NextResponse.json(formatLocalProject(rows[0]), { status: 201 });
 }

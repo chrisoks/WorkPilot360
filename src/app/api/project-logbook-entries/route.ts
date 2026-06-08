@@ -21,6 +21,7 @@ type ProjectLogbookEntryRow = {
   colleague: string | null;
   visibleFor: unknown;
   attachments: unknown;
+  projectMonth: string | null;
   createdAt: Date;
 };
 
@@ -36,8 +37,14 @@ async function ensureProjectLogbookEntryTable() {
       "colleague" TEXT,
       "visibleFor" JSONB NOT NULL DEFAULT '[]'::jsonb,
       "attachments" JSONB NOT NULL DEFAULT '[]'::jsonb,
+      "projectMonth" TEXT,
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "ProjectLogbookEntry"
+    ADD COLUMN IF NOT EXISTS "projectMonth" TEXT
   `;
 }
 
@@ -93,6 +100,7 @@ function formatEntry(entry: ProjectLogbookEntryRow) {
     colleague: entry.colleague || "",
     visibleFor: cleanStringList(entry.visibleFor),
     attachments: cleanAttachments(entry.attachments),
+    projectMonth: entry.projectMonth || "",
   };
 }
 
@@ -132,8 +140,102 @@ export async function POST(req: Request) {
   const colleague = cleanString(body.colleague);
   const visibleFor = cleanStringList(body.visibleFor);
   const attachments = cleanAttachments(body.attachments);
+  const projectMonth = cleanString(body.projectMonth);
+  const requestedCreatedAt = cleanString(body.createdAt);
+  const createdAt = requestedCreatedAt ? new Date(requestedCreatedAt) : new Date();
+  const createdAtValue = Number.isNaN(createdAt.getTime()) ? new Date() : createdAt;
 
   const rows = await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
+    INSERT INTO "ProjectLogbookEntry" (
+      "id",
+      "organizationId",
+      "projectId",
+      "title",
+      "body",
+      "author",
+      "colleague",
+      "visibleFor",
+      "attachments",
+      "projectMonth",
+      "createdAt"
+    )
+    VALUES (
+      ${id},
+      ${organization.id},
+      ${projectId},
+      ${title},
+      ${text},
+      ${author || null},
+      ${colleague || null},
+      ${JSON.stringify(visibleFor)}::jsonb,
+      ${JSON.stringify(attachments)}::jsonb,
+      ${projectMonth || null},
+      ${createdAtValue}
+    )
+    RETURNING *
+  `;
+
+  return NextResponse.json(formatEntry(rows[0]), { status: 201 });
+}
+
+export async function PATCH(req: Request) {
+  const body = await req.json();
+  const entryId = cleanString(body.entryId);
+  const attachmentName = cleanString(body.attachmentName);
+  const attachmentIndex = Number(body.attachmentIndex);
+  const actorName = cleanString(body.actorName) || "System";
+
+  if (!entryId) {
+    return NextResponse.json({ error: "Logbucheintrag fehlt." }, { status: 400 });
+  }
+
+  const { organization } = await getDemoContext();
+  await ensureProjectLogbookEntryTable();
+
+  const rows = await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
+    SELECT *
+    FROM "ProjectLogbookEntry"
+    WHERE "id" = ${entryId}
+      AND "organizationId" = ${organization.id}
+    LIMIT 1
+  `;
+
+  const entry = rows[0];
+  if (!entry) {
+    return NextResponse.json({ error: "Logbucheintrag wurde nicht gefunden." }, { status: 404 });
+  }
+
+  const attachments = cleanAttachments(entry.attachments);
+  const targetIndex =
+    Number.isInteger(attachmentIndex) &&
+    attachmentIndex >= 0 &&
+    attachmentIndex < attachments.length &&
+    (!attachmentName || attachments[attachmentIndex]?.name === attachmentName)
+      ? attachmentIndex
+      : attachments.findIndex((attachment) => attachment.name === attachmentName);
+
+  if (targetIndex < 0) {
+    return NextResponse.json({ error: "Anhang wurde nicht gefunden." }, { status: 404 });
+  }
+
+  const removedAttachment = attachments[targetIndex];
+  const nextAttachments = attachments.filter((_, index) => index !== targetIndex);
+  const updatedRows = await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
+    UPDATE "ProjectLogbookEntry"
+    SET "attachments" = ${JSON.stringify(nextAttachments)}::jsonb
+    WHERE "id" = ${entry.id}
+      AND "organizationId" = ${organization.id}
+    RETURNING *
+  `;
+
+  const isActivityReport = entry.title === "Dokumente: Tätigkeitsberichte";
+  const historyTitle = isActivityReport ? "Tätigkeitsbericht: gelöscht" : "Projektanhang: gelöscht";
+  const sourceTitle = entry.title || "Projektakte";
+  const historyBody = isActivityReport
+    ? `Tätigkeitsbericht "${removedAttachment.name}" wurde gelöscht.`
+    : `${removedAttachment.type === "Bild" ? "Bild" : "Dokument"} "${removedAttachment.name}" wurde aus "${sourceTitle}" gelöscht.`;
+
+  const historyRows = await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
     INSERT INTO "ProjectLogbookEntry" (
       "id",
       "organizationId",
@@ -146,18 +248,21 @@ export async function POST(req: Request) {
       "attachments"
     )
     VALUES (
-      ${id},
+      ${randomUUID()},
       ${organization.id},
-      ${projectId},
-      ${title},
-      ${text},
-      ${author || null},
-      ${colleague || null},
-      ${JSON.stringify(visibleFor)}::jsonb,
-      ${JSON.stringify(attachments)}::jsonb
+      ${entry.projectId},
+      ${historyTitle},
+      ${historyBody},
+      ${actorName},
+      ${entry.colleague || null},
+      ${JSON.stringify(cleanStringList(entry.visibleFor))}::jsonb,
+      ${JSON.stringify([])}::jsonb
     )
     RETURNING *
   `;
 
-  return NextResponse.json(formatEntry(rows[0]), { status: 201 });
+  return NextResponse.json({
+    entry: formatEntry(updatedRows[0]),
+    history: formatEntry(historyRows[0]),
+  });
 }

@@ -10,6 +10,7 @@ const bcrypt = require("bcryptjs") as {
 function roleLabel(role: Role) {
   if (role === Role.GESCHAEFTSFUEHRER) return "Geschäftsführung";
   if (role === Role.FUEHRUNGSKRAFT) return "Führungskraft";
+  if (String(role) === "VERTRIEB") return "Vertrieb";
   if (role === Role.MITARBEITER) return "Mitarbeiter";
   if (role === Role.GAST) return "Gast";
   return "Admin";

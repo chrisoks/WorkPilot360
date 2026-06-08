@@ -20,6 +20,7 @@ type OfferAddendumMode = "addition" | "replacement" | "reduction";
 type OfferLineInput = {
   catalogItemId?: string;
   catalogType?: string;
+  isLaborPosition?: boolean;
   quantity?: number;
   unit?: string;
   title?: string;
@@ -102,6 +103,7 @@ type OfferLineRow = {
   offerId: string;
   catalogItemId: string;
   catalogType: string;
+  isLaborPosition: boolean;
   position: number;
   quantity: number;
   unit: string;
@@ -251,6 +253,7 @@ async function ensureOfferTables() {
       "offerId" TEXT NOT NULL,
       "catalogItemId" TEXT NOT NULL DEFAULT '',
       "catalogType" TEXT NOT NULL DEFAULT '',
+      "isLaborPosition" BOOLEAN NOT NULL DEFAULT false,
       "position" INTEGER NOT NULL DEFAULT 0,
       "quantity" DOUBLE PRECISION NOT NULL DEFAULT 1,
       "unit" TEXT NOT NULL DEFAULT 'Stk',
@@ -291,6 +294,33 @@ async function ensureOfferTables() {
   await prisma.$executeRaw`
     ALTER TABLE "OfferLine"
     ADD COLUMN IF NOT EXISTS "discountPercent" DOUBLE PRECISION NOT NULL DEFAULT 0
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "OfferLine"
+    ADD COLUMN IF NOT EXISTS "isLaborPosition" BOOLEAN NOT NULL DEFAULT false
+  `;
+
+  await prisma.$executeRaw`
+    CREATE TABLE IF NOT EXISTS "SchemaDataPatch" (
+      "key" TEXT NOT NULL PRIMARY KEY,
+      "appliedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
+
+  await prisma.$executeRaw`
+    UPDATE "OfferLine"
+    SET "isLaborPosition" = true
+    WHERE "catalogType" = 'service'
+      AND NOT EXISTS (
+        SELECT 1 FROM "SchemaDataPatch" WHERE "key" = 'offer-lines-labor-position-backfill'
+      )
+  `;
+
+  await prisma.$executeRaw`
+    INSERT INTO "SchemaDataPatch" ("key")
+    VALUES ('offer-lines-labor-position-backfill')
+    ON CONFLICT ("key") DO NOTHING
   `;
 
   await prisma.$executeRaw`
@@ -592,7 +622,7 @@ async function generateOfferPdf(offer: OfferInput & { offerNumber: string }, lin
 
   const infoRows = [
     ["Angebotsnummer", offer.offerNumber],
-    ["Kundennummer", offer.projectNumber || ""],
+    ["Projektnummer", offer.projectNumber || ""],
     ["Datum", formatDate()],
     ["Ansprechpartner", offer.internalContactName || ""],
     ["Telefon", offer.internalPhone || ""],
@@ -742,7 +772,9 @@ function normalizeOfferLines(lines: OfferLineInput[] = []) {
       const unitPrice = cleanNumber(line.unitPrice, 0);
       const discountPercent = cleanPercent(line.discountPercent);
       const catalogType = cleanString(line.catalogType);
-      const canPlanLabor = catalogType === "service" || catalogType === "package";
+      const isLaborPosition =
+        typeof line.isLaborPosition === "boolean" ? line.isLaborPosition : catalogType === "service";
+      const canPlanLabor = isLaborPosition;
       const laborItems = canPlanLabor && Array.isArray(line.laborItems)
         ? line.laborItems
             .reduce((items, labor) => {
@@ -771,6 +803,7 @@ function normalizeOfferLines(lines: OfferLineInput[] = []) {
       return {
         catalogItemId: cleanString(line.catalogItemId),
         catalogType,
+        isLaborPosition,
         quantity,
         unit: normalizeUnit(line.unit) || "Stk",
         title: cleanString(line.title),
@@ -836,6 +869,7 @@ function serializeOffer(
       quantity: Number(line.quantity ?? 0),
       unitPrice: Number(line.unitPrice ?? 0),
       discountPercent: Number(line.discountPercent ?? 0),
+      isLaborPosition: Boolean(line.isLaborPosition),
       laborCostRateKey: line.laborCostRateKey ?? "",
       laborCostRate: Number(line.laborCostRate ?? 0),
       vatRate: Number(line.vatRate ?? 19),
@@ -1029,10 +1063,10 @@ export async function POST(req: Request) {
     for (const [index, line] of lines.entries()) {
       const lineRows = await prisma.$queryRaw<OfferLineRow[]>`
         INSERT INTO "OfferLine" (
-          "id", "organizationId", "offerId", "catalogItemId", "catalogType", "position",
+          "id", "organizationId", "offerId", "catalogItemId", "catalogType", "isLaborPosition", "position",
           "quantity", "unit", "title", "description", "unitPrice", "discountPercent", "laborCostRateKey", "laborCostRate", "vatRate", "totalNet", "updatedAt"
         ) VALUES (
-          ${randomUUID()}, ${organization.id}, ${id}, ${line.catalogItemId}, ${line.catalogType}, ${index + 1},
+          ${randomUUID()}, ${organization.id}, ${id}, ${line.catalogItemId}, ${line.catalogType}, ${line.isLaborPosition}, ${index + 1},
           ${line.quantity}, ${line.unit}, ${line.title}, ${line.description},
           ${line.unitPrice}, ${line.discountPercent}, ${line.laborCostRateKey}, ${line.laborCostRate}, ${line.vatRate}, ${getLineTotalNet(line)}, CURRENT_TIMESTAMP
         )
@@ -1199,10 +1233,10 @@ export async function PATCH(req: Request) {
   for (const [index, line] of lines.entries()) {
     const lineRows = await prisma.$queryRaw<OfferLineRow[]>`
       INSERT INTO "OfferLine" (
-        "id", "organizationId", "offerId", "catalogItemId", "catalogType", "position",
+        "id", "organizationId", "offerId", "catalogItemId", "catalogType", "isLaborPosition", "position",
         "quantity", "unit", "title", "description", "unitPrice", "discountPercent", "laborCostRateKey", "laborCostRate", "vatRate", "totalNet", "updatedAt"
       ) VALUES (
-        ${randomUUID()}, ${organization.id}, ${id}, ${line.catalogItemId}, ${line.catalogType}, ${index + 1},
+        ${randomUUID()}, ${organization.id}, ${id}, ${line.catalogItemId}, ${line.catalogType}, ${line.isLaborPosition}, ${index + 1},
         ${line.quantity}, ${line.unit}, ${line.title}, ${line.description},
         ${line.unitPrice}, ${line.discountPercent}, ${line.laborCostRateKey}, ${line.laborCostRate}, ${line.vatRate}, ${getLineTotalNet(line)}, CURRENT_TIMESTAMP
       )

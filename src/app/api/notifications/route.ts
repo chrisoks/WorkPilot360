@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 
@@ -28,8 +29,19 @@ export async function GET(req: Request) {
   await ensureNotificationLinkColumns();
   const { searchParams } = new URL(req.url);
   const requestedUserId = searchParams.get("userId");
+  const isHistory = searchParams.get("history") === "true";
+  const search = (searchParams.get("search") || "").trim();
+  const limit = Math.min(Math.max(Number(searchParams.get("limit")) || 50, 1), 100);
+  const offset = Math.max(Number(searchParams.get("offset")) || 0, 0);
   const { user, users } = await getDemoContext();
   const activeUser = users.find((demoUser) => demoUser.id === requestedUserId) ?? user;
+  const searchFilter = search
+    ? Prisma.sql`AND (
+        LOWER("subject") LIKE ${`%${search.toLowerCase()}%`}
+        OR LOWER("body") LIKE ${`%${search.toLowerCase()}%`}
+        OR LOWER("channel") LIKE ${`%${search.toLowerCase()}%`}
+      )`
+    : Prisma.empty;
 
   const notifications = await prisma.$queryRaw<NotificationRow[]>`
     SELECT
@@ -45,12 +57,15 @@ export async function GET(req: Request) {
       "linkLabel"
     FROM "Notification"
     WHERE "userId" = ${activeUser.id}
+      ${isHistory ? Prisma.empty : Prisma.sql`AND "readAt" IS NULL`}
+      ${searchFilter}
     ORDER BY "createdAt" DESC
-    LIMIT 20
+    ${isHistory ? Prisma.sql`LIMIT ${limit + 1} OFFSET ${offset}` : Prisma.empty}
   `;
+  const hasMore = isHistory && notifications.length > limit;
+  const visibleNotifications = isHistory ? notifications.slice(0, limit) : notifications;
 
-  return NextResponse.json(
-    notifications.map((notification) => ({
+  const items = visibleNotifications.map((notification) => ({
       id: notification.id,
       subject: notification.subject,
       body: notification.body,
@@ -61,8 +76,17 @@ export async function GET(req: Request) {
       linkTarget: notification.linkTarget ?? "",
       linkTargetId: notification.linkTargetId ?? "",
       linkLabel: notification.linkLabel ?? "",
-    }))
-  );
+    }));
+
+  if (isHistory) {
+    return NextResponse.json({
+      items,
+      hasMore,
+      nextOffset: offset + items.length,
+    });
+  }
+
+  return NextResponse.json(items);
 }
 
 export async function PATCH(req: Request) {

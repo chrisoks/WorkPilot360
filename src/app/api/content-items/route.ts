@@ -14,6 +14,8 @@ type ContentItemRow = {
   ownerUserId: string | null;
   ownerName: string;
   plannedDate: string;
+  productionStartDate: string;
+  productionStartTime: string;
   productionDueDate: string;
   productionDueTime: string;
   approvalDueDate: string;
@@ -136,6 +138,8 @@ function formatItem(row: ContentItemRow, history: ContentHistoryRow[] = []) {
     ownerUserId: row.ownerUserId ?? "",
     ownerName: row.ownerName,
     plannedDate: row.plannedDate,
+    productionStartDate: row.productionStartDate,
+    productionStartTime: cleanTime(row.productionStartTime, "09:00"),
     productionDueDate: row.productionDueDate,
     productionDueTime: cleanTime(row.productionDueTime, "17:00"),
     approvalDueDate: row.approvalDueDate,
@@ -174,6 +178,8 @@ async function ensureContentTables() {
       "ownerUserId" TEXT,
       "ownerName" TEXT NOT NULL DEFAULT '',
       "plannedDate" TEXT NOT NULL,
+      "productionStartDate" TEXT NOT NULL DEFAULT '',
+      "productionStartTime" TEXT NOT NULL DEFAULT '09:00',
       "productionDueDate" TEXT NOT NULL DEFAULT '',
       "productionDueTime" TEXT NOT NULL DEFAULT '17:00',
       "approvalDueDate" TEXT NOT NULL DEFAULT '',
@@ -201,6 +207,8 @@ async function ensureContentTables() {
 
   await prisma.$executeRaw`
     ALTER TABLE "ContentItem"
+    ADD COLUMN IF NOT EXISTS "productionStartDate" TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS "productionStartTime" TEXT NOT NULL DEFAULT '09:00',
     ADD COLUMN IF NOT EXISTS "productionDueTime" TEXT NOT NULL DEFAULT '17:00',
     ADD COLUMN IF NOT EXISTS "approvalDueTime" TEXT NOT NULL DEFAULT '17:00',
     ADD COLUMN IF NOT EXISTS "plannedTime" TEXT NOT NULL DEFAULT '09:00',
@@ -493,6 +501,8 @@ export async function POST(req: Request) {
       "ownerUserId",
       "ownerName",
       "plannedDate",
+      "productionStartDate",
+      "productionStartTime",
       "productionDueDate",
       "productionDueTime",
       "approvalDueDate",
@@ -518,6 +528,8 @@ export async function POST(req: Request) {
       ${cleanString(body.ownerUserId) || null},
       ${ownerName},
       ${plannedDate},
+      ${cleanDate(body.productionStartDate) || plannedDate},
+      ${cleanTime(body.productionStartTime, "09:00")},
       ${cleanDate(body.productionDueDate) || getDefaultThursday(plannedDate)},
       ${cleanTime(body.productionDueTime, "17:00")},
       ${cleanDate(body.approvalDueDate) || getDefaultFriday(plannedDate)},
@@ -722,6 +734,8 @@ export async function PATCH(req: Request) {
   const format = cleanString(body.format) || "Post";
   const ownerUserId = cleanString(body.ownerUserId) || null;
   const ownerName = cleanString(body.ownerName);
+  const productionStartDate = cleanDate(body.productionStartDate) || existing.productionStartDate || plannedDate;
+  const productionStartTime = cleanTime(body.productionStartTime, existing.productionStartTime || "09:00");
   const productionDueDate = cleanDate(body.productionDueDate) || getDefaultThursday(plannedDate);
   const productionDueTime = cleanTime(body.productionDueTime, existing.productionDueTime || "17:00");
   const approvalDueDate = cleanDate(body.approvalDueDate) || getDefaultFriday(plannedDate);
@@ -738,6 +752,8 @@ export async function PATCH(req: Request) {
     format !== existing.format ||
     ownerUserId !== existing.ownerUserId ||
     plannedDate !== existing.plannedDate ||
+    productionStartDate !== existing.productionStartDate ||
+    productionStartTime !== existing.productionStartTime ||
     productionDueDate !== existing.productionDueDate ||
     productionDueTime !== existing.productionDueTime ||
     approvalDueDate !== existing.approvalDueDate ||
@@ -773,6 +789,8 @@ export async function PATCH(req: Request) {
       "ownerUserId" = ${ownerUserId},
       "ownerName" = ${ownerName},
       "plannedDate" = ${plannedDate},
+      "productionStartDate" = ${productionStartDate},
+      "productionStartTime" = ${productionStartTime},
       "productionDueDate" = ${productionDueDate},
       "productionDueTime" = ${productionDueTime},
       "approvalDueDate" = ${approvalDueDate},

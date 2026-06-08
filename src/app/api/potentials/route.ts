@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { recordStatusTransition, seedCurrentStatusTimeline } from "@/lib/status-tracking";
 
 type PotentialRow = {
   id: string;
@@ -12,6 +13,14 @@ type PotentialRow = {
   projectLabel: string | null;
   description: string;
   status: string;
+  ownerUserId: string | null;
+  ownerName: string | null;
+  estimatedValue: unknown;
+  priority: string | null;
+  nextStep: string | null;
+  lostReason: string | null;
+  sourceType: string | null;
+  sourceLogbookEntryId: string | null;
   taskId: string | null;
   followUpAt: Date | null;
   offeredAt: Date | null;
@@ -28,6 +37,18 @@ function cleanString(value: unknown) {
 function cleanStatus(value: unknown) {
   const status = cleanString(value);
   return ["open", "follow_up", "offered", "lost"].includes(status) ? status : "open";
+}
+
+function cleanPriority(value: unknown) {
+  const priority = cleanString(value);
+  return ["low", "normal", "high"].includes(priority) ? priority : "normal";
+}
+
+function cleanDecimal(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const normalized = typeof value === "string" ? value.replace(",", ".") : value;
+  const numericValue = Number(normalized);
+  return Number.isFinite(numericValue) && numericValue >= 0 ? numericValue : null;
 }
 
 function cleanHistory(value: unknown) {
@@ -49,6 +70,14 @@ async function ensurePotentialTable() {
       "projectLabel" TEXT,
       "description" TEXT NOT NULL,
       "status" TEXT NOT NULL DEFAULT 'open',
+      "ownerUserId" TEXT,
+      "ownerName" TEXT,
+      "estimatedValue" DECIMAL(12,2),
+      "priority" TEXT NOT NULL DEFAULT 'normal',
+      "nextStep" TEXT,
+      "lostReason" TEXT,
+      "sourceType" TEXT,
+      "sourceLogbookEntryId" TEXT,
       "taskId" TEXT,
       "followUpAt" TIMESTAMP(3),
       "offeredAt" TIMESTAMP(3),
@@ -65,6 +94,14 @@ async function ensurePotentialTable() {
     ADD COLUMN IF NOT EXISTS "customerName" TEXT,
     ADD COLUMN IF NOT EXISTS "projectLabel" TEXT,
     ADD COLUMN IF NOT EXISTS "status" TEXT NOT NULL DEFAULT 'open',
+    ADD COLUMN IF NOT EXISTS "ownerUserId" TEXT,
+    ADD COLUMN IF NOT EXISTS "ownerName" TEXT,
+    ADD COLUMN IF NOT EXISTS "estimatedValue" DECIMAL(12,2),
+    ADD COLUMN IF NOT EXISTS "priority" TEXT NOT NULL DEFAULT 'normal',
+    ADD COLUMN IF NOT EXISTS "nextStep" TEXT,
+    ADD COLUMN IF NOT EXISTS "lostReason" TEXT,
+    ADD COLUMN IF NOT EXISTS "sourceType" TEXT,
+    ADD COLUMN IF NOT EXISTS "sourceLogbookEntryId" TEXT,
     ADD COLUMN IF NOT EXISTS "taskId" TEXT,
     ADD COLUMN IF NOT EXISTS "followUpAt" TIMESTAMP(3),
     ADD COLUMN IF NOT EXISTS "offeredAt" TIMESTAMP(3),
@@ -83,6 +120,14 @@ function formatPotential(row: PotentialRow) {
     projectLabel: row.projectLabel ?? "",
     description: row.description,
     status: cleanStatus(row.status),
+    ownerUserId: row.ownerUserId ?? "",
+    ownerName: row.ownerName ?? "",
+    estimatedValue: row.estimatedValue === null || row.estimatedValue === undefined ? "" : String(row.estimatedValue),
+    priority: cleanPriority(row.priority),
+    nextStep: row.nextStep ?? "",
+    lostReason: row.lostReason ?? "",
+    sourceType: row.sourceType ?? "",
+    sourceLogbookEntryId: row.sourceLogbookEntryId ?? "",
     taskId: row.taskId ?? "",
     followUpAt: row.followUpAt?.toISOString() ?? "",
     offeredAt: row.offeredAt?.toISOString() ?? "",
@@ -125,12 +170,13 @@ export async function GET() {
       INSERT INTO "ProjectPotential" (
         "id",
         "organizationId",
-        "projectId",
-        "description",
-        "status",
-        "history",
-        "createdAt",
-        "updatedAt"
+      "projectId",
+      "description",
+      "status",
+      "priority",
+      "history",
+      "createdAt",
+      "updatedAt"
       )
       VALUES (
         ${randomUUID()},
@@ -138,6 +184,7 @@ export async function GET() {
         ${legacy.projectId},
         ${legacy.body || "Zusatzverkaufspotenzial"},
         'follow_up',
+        'normal',
         ${JSON.stringify(history)}::jsonb,
         ${legacy.createdAt},
         CURRENT_TIMESTAMP
@@ -174,6 +221,7 @@ export async function POST(req: Request) {
       note: "Potenzial erkannt.",
     },
   ];
+  const estimatedValue = cleanDecimal(body.estimatedValue);
 
   const rows = await prisma.$queryRaw<PotentialRow[]>`
     INSERT INTO "ProjectPotential" (
@@ -185,6 +233,13 @@ export async function POST(req: Request) {
       "projectLabel",
       "description",
       "status",
+      "ownerUserId",
+      "ownerName",
+      "estimatedValue",
+      "priority",
+      "nextStep",
+      "sourceType",
+      "sourceLogbookEntryId",
       "history"
     )
     VALUES (
@@ -196,10 +251,26 @@ export async function POST(req: Request) {
       ${cleanString(body.projectLabel) || null},
       ${description},
       'open',
+      ${cleanString(body.ownerUserId) || null},
+      ${cleanString(body.ownerName) || null},
+      ${estimatedValue},
+      ${cleanPriority(body.priority)},
+      ${cleanString(body.nextStep) || null},
+      ${cleanString(body.sourceType) || "final_inspection"},
+      ${cleanString(body.sourceLogbookEntryId) || null},
       ${JSON.stringify(history)}::jsonb
     )
     RETURNING *
   `;
+
+  await seedCurrentStatusTimeline({
+    organizationId: organization.id,
+    entityType: "potential",
+    entityId: rows[0].id,
+    entityLabel: rows[0].description,
+    status: rows[0].status,
+    startedAt: rows[0].createdAt,
+  });
 
   return NextResponse.json(formatPotential(rows[0]), { status: 201 });
 }
@@ -230,6 +301,14 @@ export async function PATCH(req: Request) {
   const note = cleanString(body.note);
   const actor = cleanString(body.actorName) || getUserName(user);
   const now = new Date();
+  const estimatedValue = cleanDecimal(body.estimatedValue);
+  const hasEstimatedValueUpdate = Object.prototype.hasOwnProperty.call(body, "estimatedValue");
+  const hasOwnerUserIdUpdate = Object.prototype.hasOwnProperty.call(body, "ownerUserId");
+  const hasOwnerNameUpdate = Object.prototype.hasOwnProperty.call(body, "ownerName");
+  const hasPriorityUpdate = Object.prototype.hasOwnProperty.call(body, "priority");
+  const hasNextStepUpdate = Object.prototype.hasOwnProperty.call(body, "nextStep");
+  const hasLostReasonUpdate = Object.prototype.hasOwnProperty.call(body, "lostReason");
+  const hasDescriptionUpdate = Object.prototype.hasOwnProperty.call(body, "description");
   const history = [
     ...cleanHistory(current.history),
     {
@@ -244,6 +323,17 @@ export async function PATCH(req: Request) {
     UPDATE "ProjectPotential"
     SET
       "status" = ${nextStatus},
+      "description" = CASE WHEN ${hasDescriptionUpdate} AND ${cleanString(body.description)} <> '' THEN ${cleanString(body.description)} ELSE "description" END,
+      "ownerUserId" = CASE WHEN ${hasOwnerUserIdUpdate} THEN ${cleanString(body.ownerUserId) || null} ELSE "ownerUserId" END,
+      "ownerName" = CASE WHEN ${hasOwnerNameUpdate} THEN ${cleanString(body.ownerName) || null} ELSE "ownerName" END,
+      "estimatedValue" = CASE WHEN ${hasEstimatedValueUpdate} THEN ${estimatedValue} ELSE "estimatedValue" END,
+      "priority" = CASE WHEN ${hasPriorityUpdate} THEN ${cleanPriority(body.priority)} ELSE "priority" END,
+      "nextStep" = CASE WHEN ${hasNextStepUpdate} THEN ${cleanString(body.nextStep) || null} ELSE "nextStep" END,
+      "lostReason" = CASE
+        WHEN ${nextStatus} = 'lost' AND ${hasLostReasonUpdate} THEN ${cleanString(body.lostReason) || null}
+        WHEN ${nextStatus} = 'lost' AND ${note} <> '' THEN ${note}
+        ELSE "lostReason"
+      END,
       "taskId" = COALESCE(${cleanString(body.taskId) || null}, "taskId"),
       "followUpAt" = CASE
         WHEN ${nextStatus} = 'follow_up' THEN ${cleanString(body.followUpAt) ? new Date(cleanString(body.followUpAt)) : null}
@@ -257,6 +347,19 @@ export async function PATCH(req: Request) {
       AND "organizationId" = ${organization.id}
     RETURNING *
   `;
+
+  await recordStatusTransition({
+    organizationId: organization.id,
+    entityType: "potential",
+    entityId: current.id,
+    entityLabel: current.description,
+    fromStatus: current.status,
+    toStatus: rows[0].status,
+    actorUserId: user.id,
+    actorName: actor,
+    note,
+    at: now,
+  });
 
   return NextResponse.json(formatPotential(rows[0]));
 }

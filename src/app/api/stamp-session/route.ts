@@ -11,6 +11,9 @@ type ActiveStampSessionRow = {
   mode: string;
   projectId: string;
   projectLabel: string | null;
+  marketingContentItemId: string | null;
+  marketingContentTitle: string | null;
+  marketingContentType: string | null;
   startedAt: Date;
   accumulatedMs: bigint | number;
   pauseStartedAt: Date | null;
@@ -37,6 +40,8 @@ type ProjectTimeEntryRow = {
   invoiceId: string | null;
   invoiceNumber: string | null;
   invoicedAt: Date | null;
+  marketingContentItemId: string | null;
+  marketingContentType: string | null;
   overtimeApprovalStatus: string | null;
   overtimeApprovedByUserId: string | null;
   overtimeApprovedByName: string | null;
@@ -78,6 +83,9 @@ async function ensureActiveStampSessionTableOnce() {
     ADD COLUMN IF NOT EXISTS "employee" TEXT,
     ADD COLUMN IF NOT EXISTS "mode" TEXT NOT NULL DEFAULT 'project',
     ADD COLUMN IF NOT EXISTS "projectLabel" TEXT,
+    ADD COLUMN IF NOT EXISTS "marketingContentItemId" TEXT,
+    ADD COLUMN IF NOT EXISTS "marketingContentTitle" TEXT,
+    ADD COLUMN IF NOT EXISTS "marketingContentType" TEXT,
     ADD COLUMN IF NOT EXISTS "accumulatedMs" BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS "pauseStartedAt" TIMESTAMP(3),
     ADD COLUMN IF NOT EXISTS "pauseMs" BIGINT NOT NULL DEFAULT 0,
@@ -137,6 +145,8 @@ async function ensureProjectTimeEntryTableOnce() {
     ADD COLUMN IF NOT EXISTS "invoiceId" TEXT,
     ADD COLUMN IF NOT EXISTS "invoiceNumber" TEXT,
     ADD COLUMN IF NOT EXISTS "invoicedAt" TIMESTAMP(3),
+    ADD COLUMN IF NOT EXISTS "marketingContentItemId" TEXT,
+    ADD COLUMN IF NOT EXISTS "marketingContentType" TEXT,
     ADD COLUMN IF NOT EXISTS "overtimeApprovalStatus" TEXT NOT NULL DEFAULT 'not_required',
     ADD COLUMN IF NOT EXISTS "overtimeApprovedByUserId" TEXT,
     ADD COLUMN IF NOT EXISTS "overtimeApprovedByName" TEXT,
@@ -229,6 +239,9 @@ function formatSession(row: ActiveStampSessionRow | null) {
     mode: row.mode === "unproductive" ? "unproductive" : "project",
     projectId: row.projectId,
     projectLabel: row.projectLabel ?? "",
+    marketingContentItemId: row.marketingContentItemId ?? "",
+    marketingContentTitle: row.marketingContentTitle ?? "",
+    marketingContentType: row.marketingContentType ?? "",
     startedAt: startedAt.toISOString(),
     accumulatedMs: toMillis(row.accumulatedMs),
     pauseStartedAt: pauseStartedAt?.toISOString() ?? null,
@@ -256,6 +269,8 @@ function formatEntry(entry: ProjectTimeEntryRow) {
     invoiceId: entry.invoiceId ?? "",
     invoiceNumber: entry.invoiceNumber ?? "",
     invoicedAt: entry.invoicedAt?.toISOString() ?? "",
+    marketingContentItemId: entry.marketingContentItemId ?? "",
+    marketingContentType: entry.marketingContentType ?? "",
     overtimeApprovalStatus:
       entry.overtimeApprovalStatus === "pending" || entry.overtimeApprovalStatus === "approved"
         ? entry.overtimeApprovalStatus
@@ -339,6 +354,9 @@ export async function POST(req: Request) {
       "mode",
       "projectId",
       "projectLabel",
+      "marketingContentItemId",
+      "marketingContentTitle",
+      "marketingContentType",
       "startedAt",
       "accumulatedMs",
       "pauseStartedAt",
@@ -354,6 +372,9 @@ export async function POST(req: Request) {
       ${mode},
       ${projectId},
       ${cleanString(body.projectLabel) || null},
+      ${cleanString(body.marketingContentItemId) || null},
+      ${cleanString(body.marketingContentTitle) || null},
+      ${cleanString(body.marketingContentType) || null},
       ${now},
       ${0},
       ${null},
@@ -367,6 +388,9 @@ export async function POST(req: Request) {
       "mode" = EXCLUDED."mode",
       "projectId" = EXCLUDED."projectId",
       "projectLabel" = EXCLUDED."projectLabel",
+      "marketingContentItemId" = EXCLUDED."marketingContentItemId",
+      "marketingContentTitle" = EXCLUDED."marketingContentTitle",
+      "marketingContentType" = EXCLUDED."marketingContentType",
       "startedAt" = EXCLUDED."startedAt",
       "accumulatedMs" = 0,
       "pauseStartedAt" = NULL,
@@ -493,6 +517,8 @@ async function stopSession(body: Record<string, unknown>) {
       "durationMs",
       "pauseMs",
       "comment",
+      "marketingContentItemId",
+      "marketingContentType",
       "overtimeApprovalStatus",
       "editHistory"
     )
@@ -511,6 +537,8 @@ async function stopSession(body: Record<string, unknown>) {
       ${durationMs},
       ${pauseMs},
       ${cleanString(body.comment) || null},
+      ${session.marketingContentItemId || null},
+      ${session.marketingContentType || null},
       ${"not_required"},
       CAST(${"[]"} AS jsonb)
     )

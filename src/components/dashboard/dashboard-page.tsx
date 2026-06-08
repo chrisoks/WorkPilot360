@@ -71,6 +71,11 @@ type AppTab =
   | "kanban"
   | "calendar"
   | "reports"
+  | "newsFeed"
+  | "salesHub"
+  | "salesOpportunities"
+  | "customerSatisfaction"
+  | "salesTargets"
   | "hero"
   | "projectsSolutions"
   | "projectsImmocare"
@@ -104,6 +109,8 @@ type AppTab =
   | "timeCategories"
   | "breakManagement"
   | "planningBoard"
+  | "processAutomation"
+  | "winterService"
   | "archive"
   | "settings";
 type CalendarView = "month" | "week" | "day";
@@ -932,6 +939,9 @@ type InvoiceItem = {
   internalPhone: string;
   internalEmail: string;
   plannedExecutionMonth: string;
+  serviceDate: string;
+  sourceOfferId: string;
+  sourceOfferNumber: string;
   introText: string;
   closingText: string;
   netTotal: number;
@@ -971,6 +981,17 @@ type OfferHistoryItem = {
   actorName: string;
   createdAt: string;
 };
+type InvoiceHistoryItem = {
+  id: string;
+  invoiceId: string;
+  projectId: string;
+  invoiceNumber: string;
+  eventType: string;
+  title: string;
+  note: string;
+  actorName: string;
+  createdAt: string;
+};
 type OfferDraft = {
   company: "OK solutions" | "OK immocare";
   offerType: "base" | "addendum";
@@ -990,6 +1011,12 @@ type OfferDraft = {
   vatRate: number;
   discountPercent: number;
   lines: OfferLineDraft[];
+};
+
+type InvoiceDraft = OfferDraft & {
+  serviceDate: string;
+  sourceOfferId: string;
+  sourceOfferNumber: string;
 };
 
 type TeamOption = {
@@ -1277,9 +1304,11 @@ type ProjectLogbookEntry = {
   colleague: string;
   visibleFor: string[];
   attachments: LogbookAttachment[];
+  projectMonth?: string;
 };
 
 type ProjectPotentialStatus = "open" | "follow_up" | "offered" | "lost";
+type ProjectPotentialPriority = "low" | "normal" | "high";
 
 type ProjectPotential = {
   id: string;
@@ -1289,6 +1318,14 @@ type ProjectPotential = {
   projectLabel: string;
   description: string;
   status: ProjectPotentialStatus;
+  ownerUserId: string;
+  ownerName: string;
+  estimatedValue: string;
+  priority: ProjectPotentialPriority;
+  nextStep: string;
+  lostReason: string;
+  sourceType: string;
+  sourceLogbookEntryId: string;
   taskId: string;
   followUpAt: string;
   offeredAt: string;
@@ -1757,6 +1794,12 @@ const emptyOfferDraft: OfferDraft = {
   discountPercent: 0,
   lines: [],
 };
+const emptyInvoiceDraft: InvoiceDraft = {
+  ...emptyOfferDraft,
+  serviceDate: "",
+  sourceOfferId: "",
+  sourceOfferNumber: "",
+};
 
 const emptyEmployeeMailAccount: EmployeeMailAccount = {
   provider: "microsoft365",
@@ -1840,17 +1883,125 @@ const navigationTabs: Array<[AppTab, string]> = [
   ["overview", "Dashboard"],
   ["reports", "Auswertungen"],
   ["contacts", "Kontakte"],
+  ["newsFeed", "News-Feed"],
+  ["salesHub", "Sales-Hub"],
   ["projectsSolutions", "Projekte OK solutions"],
   ["projectsImmocare", "Projekte OK immocare"],
   ["contentManagement", "Content-Management"],
   ["articles", "Artikel & Leistungen"],
+  ["salesOpportunities", "Potenziale"],
   ["dashboard", "Aufgaben"],
   ["planningBoard", "Planungsboard"],
+  ["processAutomation", "Prozess/Automation"],
   ["accounting", "Buchhaltung"],
   ["personalData", "Persönliche Daten"],
   ["employees", "Mitarbeiter"],
   ["settings", "Firmeneinstellungen"],
 ];
+
+const appTabs: AppTab[] = [
+  "overview",
+  "dashboard",
+  "kanban",
+  "calendar",
+  "reports",
+  "newsFeed",
+  "salesHub",
+  "salesOpportunities",
+  "customerSatisfaction",
+  "salesTargets",
+  "hero",
+  "projectsSolutions",
+  "projectsImmocare",
+  "contacts",
+  "documents",
+  "documentOverview",
+  "documentTexts",
+  "documentTemplates",
+  "documentConfigurator",
+  "documentGaeb",
+  "contentManagement",
+  "contentRound",
+  "editorialPlan",
+  "contentApprovals",
+  "contentCorrections",
+  "contentQuotas",
+  "ideaStore",
+  "orders",
+  "articles",
+  "services",
+  "packages",
+  "salesPrices",
+  "datanorm",
+  "accounting",
+  "batchBilling",
+  "personalData",
+  "employees",
+  "laborCostRates",
+  "absenceRequests",
+  "timeTracking",
+  "timeCategories",
+  "breakManagement",
+  "planningBoard",
+  "processAutomation",
+  "winterService",
+  "archive",
+  "settings",
+];
+
+const projectFileTabs: ProjectFileTab[] = [
+  "logbook",
+  "images",
+  "documents",
+  "gaeb",
+  "time",
+  "appointments",
+  "budgets",
+  "automaticBilling",
+  "tasks",
+  "material",
+  "comparison",
+  "participants",
+  "checklists",
+];
+
+const customerDocumentTypes: CustomerDocumentType[] = [
+  "Allgemeine Dokumente",
+  "Anfragen",
+  "Angebote",
+  "Angebote: Nachtragsangebote",
+  "Tätigkeitsberichte",
+  "Endkontrolle",
+  "Mahnung",
+  "Rechnungen",
+];
+
+function getStoredDashboardValue<T extends string>(key: string, allowedValues: readonly T[], fallback: T) {
+  if (typeof window === "undefined") return fallback;
+  const value = window.localStorage.getItem(key);
+  return allowedValues.includes(value as T) ? (value as T) : fallback;
+}
+
+function getStoredDashboardText(key: string) {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem(key) || "";
+}
+
+function getDashboardUrlValue<T extends string>(key: string, allowedValues: readonly T[], fallback: T) {
+  if (typeof window === "undefined") return fallback;
+  const value = new URLSearchParams(window.location.search).get(key);
+  return allowedValues.includes(value as T) ? (value as T) : fallback;
+}
+
+function getDashboardUrlText(key: string) {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get(key) || "";
+}
+
+function getCurrentMonthKey() {
+  const today = new Date();
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+}
 
 const preparedSidebarTabLabels: Record<SidebarPreparedTab, string> = {
   documents: "Dokumente",
@@ -1904,6 +2055,24 @@ function SidebarIcon({ tab }: { tab: AppTab }) {
         <circle cx="12" cy="10" r="2.2" fill="currentColor" />
         <path d="M8.3 16c.8-2 6.6-2 7.4 0" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
         <path d="M3.8 8h2M3.8 12h2M3.8 16h2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  if (tab === "newsFeed") {
+    return (
+      <svg {...common}>
+        <rect x="5" y="4" width="14" height="16" rx="2" />
+        <path d="M8 8h8M8 12h8M8 16h5" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  if (tab === "salesHub" || tab === "salesOpportunities" || tab === "customerSatisfaction" || tab === "salesTargets") {
+    return (
+      <svg {...common}>
+        <path d="M4 18V8m5 10V5m5 13v-7m5 7V9" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
+        <path d="m4 14 5-5 5 3 5-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     );
   }
@@ -1968,6 +2137,15 @@ function SidebarIcon({ tab }: { tab: AppTab }) {
       <svg {...common}>
         <path d="M5 7h14M5 12h14M5 17h14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
         <path d="M7 7h4M13 12h5M6 17h7" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  if (tab === "processAutomation" || tab === "winterService") {
+    return (
+      <svg {...common}>
+        <path d="M12 3v3M12 18v3M4.2 7.5l2.6 1.5M17.2 15l2.6 1.5M4.2 16.5l2.6-1.5M17.2 9l2.6-1.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <circle cx="12" cy="12" r="4" />
       </svg>
     );
   }
@@ -3658,6 +3836,8 @@ const defaultDocumentLayoutConfig: DocumentLayoutConfig = {
 };
 
 export function DashboardPage() {
+  const hasInitializedBrowserHistoryRef = useRef(false);
+  const isApplyingBrowserHistoryRef = useRef(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [loginEmail, setLoginEmail] = useState("");
@@ -3667,7 +3847,9 @@ export function DashboardPage() {
   const [isLoginSubmitting, setIsLoginSubmitting] = useState(false);
   const [authenticatedUserId, setAuthenticatedUserId] = useState("");
   const [impersonatedUserId, setImpersonatedUserId] = useState("");
-  const [activeTab, setActiveTab] = useState<AppTab>("overview");
+  const [activeTab, setActiveTab] = useState<AppTab>(() =>
+    getDashboardUrlValue("view", appTabs, getStoredDashboardValue("workpilot-active-tab", appTabs, "overview"))
+  );
   const [personalDataView, setPersonalDataView] = useState<PersonalDataView>("overview");
   const [selectedPersonalUserId, setSelectedPersonalUserId] = useState("");
   const [personalTimeDate, setPersonalTimeDate] = useState(() => new Date());
@@ -3738,6 +3920,7 @@ export function DashboardPage() {
   const [offers, setOffers] = useState<OfferItem[]>([]);
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
   const [offerHistory, setOfferHistory] = useState<OfferHistoryItem[]>([]);
+  const [invoiceHistory, setInvoiceHistory] = useState<InvoiceHistoryItem[]>([]);
   const [isOfferModalOpen, setIsOfferModalOpen] = useState(false);
   const [editingOfferId, setEditingOfferId] = useState("");
   const [offerDraft, setOfferDraft] = useState<OfferDraft>(emptyOfferDraft);
@@ -3755,7 +3938,7 @@ export function DashboardPage() {
   const previousOfferDraftRef = useRef(offerDraft);
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState("");
-  const [invoiceDraft, setInvoiceDraft] = useState<OfferDraft>(emptyOfferDraft);
+  const [invoiceDraft, setInvoiceDraft] = useState<InvoiceDraft>(emptyInvoiceDraft);
   const [invoiceError, setInvoiceError] = useState("");
   const [isSavingInvoice, setIsSavingInvoice] = useState(false);
   const [invoicePreviewDataUrl, setInvoicePreviewDataUrl] = useState("");
@@ -3860,12 +4043,32 @@ export function DashboardPage() {
   const [heroProjects, setHeroProjects] = useState<HeroProjectPreview[]>([]);
   const [heroSearchTerm, setHeroSearchTerm] = useState("");
   const [selectedHeroDetailId, setSelectedHeroDetailId] = useState("");
-  const [selectedProjectFileId, setSelectedProjectFileId] = useState("");
+  const [selectedProjectFileId, setSelectedProjectFileId] = useState(() =>
+    getDashboardUrlText("project") || getStoredDashboardText("workpilot-selected-project-file-id")
+  );
   const [isProjectStatusMenuOpen, setIsProjectStatusMenuOpen] = useState(false);
   const [isProjectUpsellMenuOpen, setIsProjectUpsellMenuOpen] = useState(false);
-  const [projectFileTab, setProjectFileTab] = useState<ProjectFileTab>("logbook");
+  const [projectFileTab, setProjectFileTab] = useState<ProjectFileTab>(() =>
+    getDashboardUrlValue(
+      "projectTab",
+      projectFileTabs,
+      getStoredDashboardValue("workpilot-project-file-tab", projectFileTabs, "logbook")
+    )
+  );
+  const [openProjectFileNavGroup, setOpenProjectFileNavGroup] = useState<"" | "documents" | "tasks">(() => {
+    const initialProjectFileTab = getDashboardUrlValue(
+      "projectTab",
+      projectFileTabs,
+      getStoredDashboardValue("workpilot-project-file-tab", projectFileTabs, "logbook")
+    );
+    return initialProjectFileTab === "documents" || initialProjectFileTab === "tasks" ? initialProjectFileTab : "";
+  });
+  const previousProjectFileTabRef = useRef<ProjectFileTab | null>(null);
   const [isProjectCombinedHistoryExpanded, setIsProjectCombinedHistoryExpanded] = useState(false);
   const [projectComparisonMonth, setProjectComparisonMonth] = useState(() => {
+    const storedMonth =
+      getDashboardUrlText("month") || getStoredDashboardText("workpilot-project-comparison-month");
+    if (/^\d{4}-\d{2}$/.test(storedMonth)) return storedMonth;
     const today = new Date();
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
   });
@@ -3873,7 +4076,13 @@ export function DashboardPage() {
   const [projectBudgetTotalDraft, setProjectBudgetTotalDraft] = useState("");
   const [projectBudgetMonthDrafts, setProjectBudgetMonthDrafts] = useState<Record<string, string>>({});
   const [selectedProjectDocumentType, setSelectedProjectDocumentType] =
-    useState<CustomerDocumentType>("Allgemeine Dokumente");
+    useState<CustomerDocumentType>(() =>
+      getDashboardUrlValue(
+        "doc",
+        customerDocumentTypes,
+        getStoredDashboardValue("workpilot-project-document-type", customerDocumentTypes, "Allgemeine Dokumente")
+      )
+    );
   const [selectedProjectPipelineStatus, setSelectedProjectPipelineStatus] =
     useState("Alle Offenen");
   const [selectedProjectKindFilter, setSelectedProjectKindFilter] =
@@ -3881,6 +4090,20 @@ export function DashboardPage() {
   const [potentialStatusFilter, setPotentialStatusFilter] =
     useState<"all" | ProjectPotentialStatus | "due">("all");
   const [historyPotential, setHistoryPotential] = useState<ProjectPotential | null>(null);
+  const [editingPotential, setEditingPotential] = useState<ProjectPotential | null>(null);
+  const [potentialDraft, setPotentialDraft] = useState({
+    description: "",
+    status: "open" as ProjectPotentialStatus,
+    ownerUserId: "",
+    ownerName: "",
+    estimatedValue: "",
+    priority: "normal" as ProjectPotentialPriority,
+    nextStep: "",
+    followUpAt: "",
+    lostReason: "",
+    note: "",
+  });
+  const [isCreatingActivityReport, setIsCreatingActivityReport] = useState(false);
   const [isQuickCreateOpen, setIsQuickCreateOpen] = useState(false);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [editingProjectDataId, setEditingProjectDataId] = useState("");
@@ -3953,6 +4176,9 @@ export function DashboardPage() {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isOwnSettingsOpen, setIsOwnSettingsOpen] = useState(false);
   const [desktopPermission, setDesktopPermission] = useState<NotificationPermission>("default");
+  const quickCreateRef = useRef<HTMLDivElement | null>(null);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
+  const notificationCenterRef = useRef<HTMLDivElement | null>(null);
   const hasLoadedNotifications = useRef(false);
 
   const [titel, setTitel] = useState(emptyTask.titel);
@@ -4102,6 +4328,8 @@ export function DashboardPage() {
   const [planningEntryApprovalStatus, setPlanningEntryApprovalStatus] =
     useState<PlanningEntryApprovalStatus>("confirmed");
   const [planningBoardView, setPlanningBoardView] = useState<"board" | "open">("board");
+  const [planningBoardStartDate, setPlanningBoardStartDate] = useState(() => formatDateKey(new Date()));
+  const [isProjectPlanningDayOverlayOpen, setIsProjectPlanningDayOverlayOpen] = useState(false);
   const [selectedCalendarActionDate, setSelectedCalendarActionDate] = useState("");
   const [absenceUserId, setAbsenceUserId] = useState("");
   const [absenceDateFrom, setAbsenceDateFrom] = useState(() => formatDateKey(new Date()));
@@ -4820,6 +5048,24 @@ export function DashboardPage() {
     });
   }
 
+  async function loadInvoiceHistory(projectId: string) {
+    if (!projectId) return;
+    const res = await fetch(`/api/invoices?historyProjectId=${encodeURIComponent(projectId)}`, {
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      setErrorMessage("Rechnungshistorie konnte nicht geladen werden.");
+      return;
+    }
+
+    const data = (await res.json()) as InvoiceHistoryItem[];
+    setInvoiceHistory((currentHistory) => {
+      const otherHistory = currentHistory.filter((entry) => entry.projectId !== projectId);
+      return [...data, ...otherHistory];
+    });
+  }
+
   function getCatalogPackageSalesPrice(item: CatalogItem) {
     if (item.type !== "package") return item.salesPrice;
     if (item.salesPrice > 0) return item.salesPrice;
@@ -5531,14 +5777,17 @@ export function DashboardPage() {
       (project.projectNumber ?? "").toLowerCase().startsWith("oki");
     const addressParts = (project.address || "").split(",").map((part) => part.trim()).filter(Boolean);
     const firstItem = catalogItems.find((item) => item.isActive);
+    const serviceDate = getProjectServiceDateSuggestion(project);
     setInvoiceDraft({
-      ...emptyOfferDraft,
+      ...emptyInvoiceDraft,
       company: isImmocare ? "OK immocare" : "OK solutions",
       customerName: project.customer || "",
       customerStreet: addressParts[0] || project.address || "",
       customerCity: addressParts.slice(1).join(", "),
       internalContactName: activeUser?.name || "Christian Eid",
       internalEmail: activeUser?.email || "",
+      plannedExecutionMonth: serviceDate.slice(0, 7),
+      serviceDate,
       introText: "wir stellen Ihnen folgende Leistungen in Rechnung.",
       closingText: "Bitte überweisen Sie den Rechnungsbetrag innerhalb der vereinbarten Zahlungsfrist.",
       lines: firstItem ? [createOfferLineFromCatalogItem(firstItem)] : [],
@@ -5664,7 +5913,39 @@ export function DashboardPage() {
   }
 
   function getProjectInvoiceMonth(invoice: InvoiceItem) {
-    return invoice.plannedExecutionMonth || getReportMonthKey(invoice.createdAt);
+    return (invoice.serviceDate || "").slice(0, 7) || invoice.plannedExecutionMonth || getReportMonthKey(invoice.createdAt);
+  }
+
+  function getLastDayOfMonthKey(monthKey: string) {
+    const [year, month] = monthKey.split("-").map(Number);
+    if (!year || !month) return formatDateKey(new Date());
+    return formatDateKey(new Date(year, month, 0, 12));
+  }
+
+  function getProjectServiceDateSuggestion(project: HeroProjectPreview, monthKey?: string) {
+    const isRecurringProject = getProjectKind(project).startsWith("Dauer");
+    if (isRecurringProject) {
+      return getLastDayOfMonthKey(monthKey || projectComparisonMonth || formatDateKey(new Date()).slice(0, 7));
+    }
+
+    const projectStampDates = stampEntries
+      .filter((entry) => entry.mode === "project" && entry.projectId === project.id && !entry.deletedAt)
+      .map((entry) => normalizeDateKeyValue(entry.date))
+      .filter(Boolean)
+      .sort();
+    const lastStampDate = projectStampDates.at(-1);
+    if (lastStampDate) return lastStampDate;
+
+    const projectPlanningDates = planningEntries
+      .filter((entry) => entry.projectId === project.id && !entry.deletedAt)
+      .map((entry) => normalizeDateKeyValue(entry.date))
+      .filter(Boolean)
+      .sort();
+    return projectPlanningDates.at(-1) || formatDateKey(new Date());
+  }
+
+  function getInvoiceServiceDateLabel(value: string) {
+    return formatProjectDate(value);
   }
 
   function isProjectActiveInBillingMonth(project: HeroProjectPreview, monthKey: string) {
@@ -5706,6 +5987,7 @@ export function DashboardPage() {
     const amount = getAutoBillingNetAmount(project);
     const template = getAutoBillingTemplateForProject(project);
     const monthLabel = formatMonthLabel(monthKey);
+    const serviceDate = getLastDayOfMonthKey(monthKey);
     const vatRate = parseReportAmount(project.autoBillingVatRate || "") || template?.vatRate || 19;
     const lines =
       template?.lines && template.lines.length > 0
@@ -5722,7 +6004,7 @@ export function DashboardPage() {
           ];
 
     return {
-      ...emptyOfferDraft,
+      ...emptyInvoiceDraft,
       company: template?.company || (isImmocare ? "OK immocare" : "OK solutions"),
       customerName: template?.customerName || project.customer || "",
       customerStreet: template?.customerStreet || addressParts[0] || project.address || "",
@@ -5732,6 +6014,9 @@ export function DashboardPage() {
       internalPhone: template?.internalPhone || "",
       internalEmail: activeUser?.email || template?.internalEmail || "",
       plannedExecutionMonth: monthKey,
+      serviceDate,
+      sourceOfferId: "",
+      sourceOfferNumber: "",
       introText: template?.introText || `wir stellen Ihnen die monatliche Leistung fuer ${monthLabel} in Rechnung.`,
       closingText: template?.closingText || "Bitte ueberweisen Sie den Rechnungsbetrag innerhalb der vereinbarten Zahlungsfrist.",
       vatRate,
@@ -5741,6 +6026,14 @@ export function DashboardPage() {
   }
 
   function openInvoiceFromOffer(offer: OfferItem) {
+    const project = heroProjects.find((item) => item.id === offer.projectId) || selectedProjectFile;
+    const isRecurringProject = project ? getProjectKind(project).startsWith("Dauer") : false;
+    const invoiceMonth = isRecurringProject
+      ? projectComparisonMonth || offer.plannedExecutionMonth || formatDateKey(new Date()).slice(0, 7)
+      : offer.plannedExecutionMonth || formatDateKey(new Date()).slice(0, 7);
+    const serviceDate = project
+      ? getProjectServiceDateSuggestion(project, invoiceMonth)
+      : getLastDayOfMonthKey(invoiceMonth);
     setInvoiceDraft({
       company: offer.company,
       offerType: "base",
@@ -5754,7 +6047,10 @@ export function DashboardPage() {
       internalContactName: activeUser?.name || offer.internalContactName,
       internalPhone: offer.internalPhone,
       internalEmail: activeUser?.email || offer.internalEmail,
-      plannedExecutionMonth: offer.plannedExecutionMonth || "",
+      plannedExecutionMonth: invoiceMonth,
+      serviceDate,
+      sourceOfferId: offer.id,
+      sourceOfferNumber: offer.offerNumber,
       discountPercent: offer.discountPercent ?? 0,
       introText: "wir stellen Ihnen folgende Leistungen aus dem Angebot in Rechnung.",
       closingText: "Bitte überweisen Sie den Rechnungsbetrag innerhalb der vereinbarten Zahlungsfrist.",
@@ -5806,6 +6102,9 @@ export function DashboardPage() {
       internalPhone: invoice.internalPhone,
       internalEmail: invoice.internalEmail,
       plannedExecutionMonth: invoice.plannedExecutionMonth || "",
+      serviceDate: invoice.serviceDate || "",
+      sourceOfferId: invoice.sourceOfferId || "",
+      sourceOfferNumber: invoice.sourceOfferNumber || "",
       discountPercent: invoice.discountPercent ?? 0,
       introText: invoice.introText,
       closingText: invoice.closingText,
@@ -6092,7 +6391,7 @@ export function DashboardPage() {
     }));
   }
 
-  function applyStampedHoursToInvoiceDraft(draft: OfferDraft, entries: StampTimeEntry[]) {
+  function applyStampedHoursToInvoiceDraft(draft: InvoiceDraft, entries: StampTimeEntry[]) {
     const laborItems = getStampedInvoiceLaborItems(entries);
     const stampedHours = laborItems.reduce((sum, labor) => sum + Number(labor.plannedHours || 0), 0);
     if (stampedHours <= 0) return draft;
@@ -6163,7 +6462,7 @@ export function DashboardPage() {
     );
   }
 
-  function createInvoiceDraftFromInvoice(invoice: InvoiceItem): OfferDraft {
+  function createInvoiceDraftFromInvoice(invoice: InvoiceItem): InvoiceDraft {
     return {
       company: invoice.company,
       offerType: "base",
@@ -6178,6 +6477,9 @@ export function DashboardPage() {
       internalPhone: invoice.internalPhone,
       internalEmail: invoice.internalEmail,
       plannedExecutionMonth: invoice.plannedExecutionMonth || "",
+      serviceDate: invoice.serviceDate || "",
+      sourceOfferId: invoice.sourceOfferId || "",
+      sourceOfferNumber: invoice.sourceOfferNumber || "",
       discountPercent: invoice.discountPercent ?? 0,
       introText: invoice.introText,
       closingText: invoice.closingText,
@@ -6216,9 +6518,26 @@ export function DashboardPage() {
       setPendingFinalizeInvoice({ source: "modal" });
       return;
     }
+    const normalizedServiceDate =
+      invoiceDraft.serviceDate || getProjectServiceDateSuggestion(selectedProjectFile, invoiceDraft.plannedExecutionMonth);
+    const normalizedInvoiceDraft = {
+      ...invoiceDraft,
+      serviceDate: normalizedServiceDate,
+      plannedExecutionMonth: normalizedServiceDate.slice(0, 7) || invoiceDraft.plannedExecutionMonth,
+    };
+    if (!saveAsDraft && !normalizedInvoiceDraft.serviceDate) {
+      setInvoiceError("Bitte ein Leistungsdatum setzen.");
+      return;
+    }
+    if (!saveAsDraft && !editingInvoiceId && !options.finalizeConfirmed) {
+      const confirmedServiceDate = window.confirm(
+        `Die Rechnung wird mit dem Leistungsdatum ${getInvoiceServiceDateLabel(normalizedInvoiceDraft.serviceDate)} erstellt. Ist das korrekt?`
+      );
+      if (!confirmedServiceDate) return;
+    }
     setIsSavingInvoice(true);
     setInvoiceError("");
-    let draftToSave = invoiceDraft;
+    let draftToSave = normalizedInvoiceDraft;
     let billedStampEntryIds = invoiceStampEntryIds;
     let allowUnderbilledStampedHours = false;
     const unbilledStampEntries = getUnbilledProjectStampEntries(selectedProjectFile.id);
@@ -6250,7 +6569,7 @@ export function DashboardPage() {
       );
 
       if (shouldTakeOverStampedHours) {
-        draftToSave = applyStampedHoursToInvoiceDraft(invoiceDraft, unbilledStampEntries);
+        draftToSave = applyStampedHoursToInvoiceDraft(draftToSave, unbilledStampEntries);
         billedStampEntryIds = unbilledStampEntries.map((entry) => entry.id);
         setInvoiceDraft(draftToSave);
         setInvoiceStampEntryIds(billedStampEntryIds);
@@ -6266,6 +6585,17 @@ export function DashboardPage() {
             return;
           }
         }
+      }
+    }
+
+    const unlinkedStampEntries = unbilledStampEntries.filter((entry) => !billedStampEntryIds.includes(entry.id));
+    if (!saveAsDraft && unlinkedStampEntries.length > 0) {
+      const confirmedWithoutStampLinks = window.confirm(
+        "Achtung, zu verknüpfende Stempelungen vorhanden! Wollen Sie diese sicher nicht mit der Rechnung verknüpfen?"
+      );
+      if (!confirmedWithoutStampLinks) {
+        setIsSavingInvoice(false);
+        return;
       }
     }
 
@@ -6345,13 +6675,19 @@ export function DashboardPage() {
 
     setIsSavingInvoice(true);
     setInvoiceError("");
+    const serviceDate = invoice.serviceDate || getProjectServiceDateSuggestion(project, invoice.plannedExecutionMonth);
+    const invoiceDraftForFinalize = {
+      ...createInvoiceDraftFromInvoice(invoice),
+      serviceDate,
+      plannedExecutionMonth: serviceDate.slice(0, 7) || invoice.plannedExecutionMonth,
+    };
 
     const res = await fetch("/api/invoices", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id: invoice.id,
-        ...createInvoiceDraftFromInvoice(invoice),
+        ...invoiceDraftForFinalize,
         saveAsDraft: false,
         billedStampEntryIds: [],
         allowUnderbilledStampedHours: false,
@@ -6491,6 +6827,7 @@ export function DashboardPage() {
       "Rechnung",
       `Rechnung gelöscht: ${invoice.invoiceNumber}.`
     );
+    await loadInvoiceHistory(invoiceProject.id);
   }
 
   function applyMailTemplate(kind: DocumentMailKind, documentNumber: string) {
@@ -6682,6 +7019,7 @@ export function DashboardPage() {
 
     setDocumentMailSuccess("E-Mail wurde für den Versand protokolliert.");
     await loadOfferHistory(documentMailDraft.projectId);
+    await loadInvoiceHistory(documentMailDraft.projectId);
     if (documentMailDraft.projectId) {
       await addProjectLogbookEntry(
         documentMailDraft.projectId,
@@ -7782,7 +8120,7 @@ export function DashboardPage() {
   }
 
   async function loadHeroProjects() {
-    setHasLoadedHeroProjects(true);
+    setHasLoadedHeroProjects(false);
     setIsHeroProjectsLoading(true);
 
     try {
@@ -7811,6 +8149,10 @@ export function DashboardPage() {
           ? currentProjectId
           : data[0]?.id ?? ""
       );
+      setHasLoadedHeroProjects(true);
+    } catch {
+      setErrorMessage("HERO-Projekte konnten nicht geladen werden.");
+      setHasLoadedHeroProjects(true);
     } finally {
       setIsHeroProjectsLoading(false);
     }
@@ -8062,10 +8404,15 @@ export function DashboardPage() {
 
     if (notification.linkTarget === "project-logbook" && notification.linkTargetId) {
       await loadProjectLogbookEntries();
-      setSelectedProjectFileId(notification.linkTargetId);
-      setProjectFileTab("logbook");
+      const notificationProject = heroProjects.find((project) => project.id === notification.linkTargetId);
+      if (notificationProject) {
+        openProjectFile(notificationProject, { tab: "logbook" });
+      } else {
+        setSelectedProjectFileId(notification.linkTargetId);
+        setProjectFileTab("logbook");
+        setActiveTab("projectsSolutions");
+      }
       setProjectLogbookSearch("Zusatzverkauf");
-      setActiveTab("projectsSolutions");
       setOpenSidebarMenus({ projectsSolutions: true });
       setIsNotificationsOpen(false);
     }
@@ -8816,6 +9163,7 @@ export function DashboardPage() {
       void loadOffers(selectedProjectFileId);
       void loadInvoices(selectedProjectFileId);
       void loadOfferHistory(selectedProjectFileId);
+      void loadInvoiceHistory(selectedProjectFileId);
     }
   }, [selectedProjectFileId]);
 
@@ -8901,6 +9249,30 @@ export function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    const closeHeaderMenusOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+
+      if (isQuickCreateOpen && quickCreateRef.current && !quickCreateRef.current.contains(target)) {
+        setIsQuickCreateOpen(false);
+      }
+      if (isUserMenuOpen && userMenuRef.current && !userMenuRef.current.contains(target)) {
+        setIsUserMenuOpen(false);
+      }
+      if (
+        isNotificationsOpen &&
+        notificationCenterRef.current &&
+        !notificationCenterRef.current.contains(target)
+      ) {
+        setIsNotificationsOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", closeHeaderMenusOnOutsidePointer);
+    return () => document.removeEventListener("pointerdown", closeHeaderMenusOnOutsidePointer);
+  }, [isNotificationsOpen, isQuickCreateOpen, isUserMenuOpen]);
+
+  useEffect(() => {
     const intervalId = window.setInterval(() => {
       setDeadlineProgressTime(Date.now());
     }, 60_000);
@@ -8949,14 +9321,6 @@ export function DashboardPage() {
   }, [activeUserId]);
 
   useEffect(() => {
-    const storedTab = window.localStorage.getItem("workpilot-active-tab");
-
-    if (navigationTabs.some(([tab]) => tab === storedTab)) {
-      setActiveTab(storedTab as AppTab);
-    }
-  }, []);
-
-  useEffect(() => {
     window.localStorage.setItem("workpilot-active-tab", activeTab);
 
     if (
@@ -8973,6 +9337,91 @@ export function DashboardPage() {
   }, [activeTab, hasLoadedHeroProjects]);
 
   useEffect(() => {
+    if (selectedProjectFileId) {
+      window.localStorage.setItem("workpilot-selected-project-file-id", selectedProjectFileId);
+    } else {
+      window.localStorage.removeItem("workpilot-selected-project-file-id");
+    }
+  }, [selectedProjectFileId]);
+
+  useEffect(() => {
+    window.localStorage.setItem("workpilot-project-file-tab", projectFileTab);
+  }, [projectFileTab]);
+
+  useEffect(() => {
+    if (previousProjectFileTabRef.current === projectFileTab) return;
+
+    previousProjectFileTabRef.current = projectFileTab;
+    setOpenProjectFileNavGroup(projectFileTab === "documents" || projectFileTab === "tasks" ? projectFileTab : "");
+  }, [projectFileTab]);
+
+  useEffect(() => {
+    window.localStorage.setItem("workpilot-project-document-type", selectedProjectDocumentType);
+  }, [selectedProjectDocumentType]);
+
+  useEffect(() => {
+    window.localStorage.setItem("workpilot-project-comparison-month", projectComparisonMonth);
+  }, [projectComparisonMonth]);
+
+  useEffect(() => {
+    const applyBrowserLocation = () => {
+      const params = new URLSearchParams(window.location.search);
+      const nextTab = appTabs.includes(params.get("view") as AppTab)
+        ? (params.get("view") as AppTab)
+        : "overview";
+      const nextProjectTab = projectFileTabs.includes(params.get("projectTab") as ProjectFileTab)
+        ? (params.get("projectTab") as ProjectFileTab)
+        : "logbook";
+      const nextDocumentType = customerDocumentTypes.includes(params.get("doc") as CustomerDocumentType)
+        ? (params.get("doc") as CustomerDocumentType)
+        : "Allgemeine Dokumente";
+      const nextMonth = params.get("month") || "";
+
+      isApplyingBrowserHistoryRef.current = true;
+      setActiveTab(nextTab);
+      setSelectedProjectFileId(params.get("project") || "");
+      setProjectFileTab(nextProjectTab);
+      setSelectedProjectDocumentType(nextDocumentType);
+      if (/^\d{4}-\d{2}$/.test(nextMonth)) {
+        setProjectComparisonMonth(nextMonth);
+      }
+      window.setTimeout(() => {
+        isApplyingBrowserHistoryRef.current = false;
+      }, 0);
+    };
+
+    window.addEventListener("popstate", applyBrowserLocation);
+    return () => window.removeEventListener("popstate", applyBrowserLocation);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || isApplyingBrowserHistoryRef.current) return;
+
+    const params = new URLSearchParams();
+    params.set("view", activeTab);
+    if (
+      selectedProjectFileId &&
+      (activeTab === "hero" || activeTab === "projectsSolutions" || activeTab === "projectsImmocare")
+    ) {
+      params.set("project", selectedProjectFileId);
+      params.set("projectTab", projectFileTab);
+      if (projectFileTab === "documents") params.set("doc", selectedProjectDocumentType);
+      if (/^\d{4}-\d{2}$/.test(projectComparisonMonth)) params.set("month", projectComparisonMonth);
+    }
+
+    const nextUrl = `${window.location.pathname}?${params.toString()}`;
+    const currentUrl = `${window.location.pathname}${window.location.search}`;
+    if (nextUrl === currentUrl) {
+      hasInitializedBrowserHistoryRef.current = true;
+      return;
+    }
+
+    const method = hasInitializedBrowserHistoryRef.current ? "pushState" : "replaceState";
+    window.history[method]({ workpilot: true }, "", nextUrl);
+    hasInitializedBrowserHistoryRef.current = true;
+  }, [activeTab, selectedProjectFileId, projectFileTab, selectedProjectDocumentType, projectComparisonMonth]);
+
+  useEffect(() => {
     if (projectFileTab === "comparison" || projectFileTab === "time") {
       setProjectFileTab("appointments");
     }
@@ -8983,6 +9432,10 @@ export function DashboardPage() {
 
     const project = heroProjects.find((item) => item.id === selectedProjectFileId);
     if (!project) return;
+    if (!isRecurringProject(project)) {
+      setProjectFileTab("appointments");
+      return;
+    }
 
     const allocations = project.timeBudgetAllocations ?? [];
     setProjectBudgetMode(allocations.length > 0 ? "custom" : "total");
@@ -9219,11 +9672,7 @@ export function DashboardPage() {
     if (result.target.kind === "project") {
       const project = heroProjects.find((item) => item.id === result.target.id);
       if (!project) return;
-      const projectType = (project.projectType ?? "").toLowerCase();
-      const projectNumber = (project.projectNumber ?? "").toLowerCase();
-      setActiveTab(projectType.includes("immocare") || projectNumber.startsWith("oki") ? "projectsImmocare" : "projectsSolutions");
-      setSelectedProjectFileId(project.id);
-      setProjectFileTab("logbook");
+      openProjectFile(project);
       return;
     }
 
@@ -9304,6 +9753,65 @@ export function DashboardPage() {
           size: file.size,
           dataUrl: String(reader.result ?? ""),
         });
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function readProjectImageAttachment(file: File) {
+    return new Promise<LogbookAttachment>((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onerror = () => reject(new Error(`Bild "${file.name}" konnte nicht gelesen werden.`));
+      reader.onload = () => {
+        const originalDataUrl = String(reader.result ?? "");
+        const image = new Image();
+
+        image.onerror = () =>
+          reject(new Error(`Bild "${file.name}" konnte nicht verarbeitet werden.`));
+        image.onload = () => {
+          const maxEdge = 1600;
+          const scale = Math.min(1, maxEdge / Math.max(image.width, image.height));
+          const width = Math.max(1, Math.round(image.width * scale));
+          const height = Math.max(1, Math.round(image.height * scale));
+
+          if (!scale || scale >= 1 && file.size <= 700_000) {
+            resolve({
+              name: file.name,
+              type: "Bild",
+              mimeType: file.type || "image/jpeg",
+              size: file.size,
+              dataUrl: originalDataUrl,
+            });
+            return;
+          }
+
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const context = canvas.getContext("2d");
+
+          if (!context) {
+            reject(new Error(`Bild "${file.name}" konnte nicht vorbereitet werden.`));
+            return;
+          }
+
+          context.drawImage(image, 0, 0, width, height);
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+          const base64Length = dataUrl.split(",")[1]?.length ?? 0;
+          const estimatedSize = Math.round((base64Length * 3) / 4);
+
+          resolve({
+            name: file.name.replace(/\.[^.]+$/, ".jpg"),
+            type: "Bild",
+            mimeType: "image/jpeg",
+            size: estimatedSize,
+            dataUrl,
+          });
+        };
+
+        image.src = originalDataUrl;
+      };
+
       reader.readAsDataURL(file);
     });
   }
@@ -9399,40 +9907,53 @@ export function DashboardPage() {
   async function uploadProjectImageCategory(category: string, files: FileList | null) {
     if (!selectedProjectFile || !files || files.length === 0) return;
 
-    const attachments = await Promise.all(
-      Array.from(files).map((file) => readLogbookAttachment(file, "Bild"))
-    );
-    const res = await fetch("/api/project-logbook-entries", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        projectId: selectedProjectFile.id,
-        title: `Bilder: ${category}`,
-        text: `${category} hochgeladen`,
-        author: activeUser?.name || "Christian Eid",
-        colleague: "",
-        visibleFor: [
-          "Geschaeftsfuehrer",
-          "Vertriebler",
-          "Niederlassungsleiter",
-          "Monteur",
-          "Buchhaltung",
-        ],
-        attachments,
-      }),
-    });
+    try {
+      setLogbookError("");
+      const createdAt = getProjectKind(selectedProjectFile).startsWith("Dauer")
+        ? `${projectComparisonMonth || formatDateKey(new Date()).slice(0, 7)}-01T12:00:00.000Z`
+        : "";
+      const projectMonth = getProjectKind(selectedProjectFile).startsWith("Dauer")
+        ? projectComparisonMonth || formatDateKey(new Date()).slice(0, 7)
+        : "";
+      const attachments = await Promise.all(
+        Array.from(files).map((file) => readProjectImageAttachment(file))
+      );
+      const res = await fetch("/api/project-logbook-entries", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          projectId: selectedProjectFile.id,
+          title: `Bilder: ${category}`,
+          text: `${category} hochgeladen`,
+          author: activeUser?.name || "Christian Eid",
+          colleague: "",
+          visibleFor: [
+            "Geschaeftsfuehrer",
+            "Vertriebler",
+            "Niederlassungsleiter",
+            "Monteur",
+            "Buchhaltung",
+          ],
+          attachments,
+          projectMonth,
+          createdAt,
+        }),
+      });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => null);
-      setLogbookError(data?.error ?? "Bilder konnten nicht gespeichert werden.");
-      return;
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setLogbookError(data?.error ?? `Bilder konnten nicht gespeichert werden. Status ${res.status}.`);
+        return;
+      }
+
+      const savedEntry = (await res.json()) as ProjectLogbookEntry;
+      setProjectLogbookEntries((currentEntries) => [savedEntry, ...currentEntries]);
+      setLogbookError("");
+    } catch (error) {
+      setLogbookError(error instanceof Error ? error.message : "Bilder konnten nicht hochgeladen werden.");
     }
-
-    const savedEntry = (await res.json()) as ProjectLogbookEntry;
-    setProjectLogbookEntries((currentEntries) => [savedEntry, ...currentEntries]);
-    setLogbookError("");
   }
 
   async function addProjectLogbookEntry(projectId: string, title: string, text: string, attachments: LogbookAttachment[] = []) {
@@ -9484,6 +10005,11 @@ export function DashboardPage() {
         projectId: project.id,
         projectLabel: `${project.projectNumber || project.id} | ${project.title}`,
         description,
+        ownerUserId: activeUser?.id || "",
+        ownerName: activeUser?.name || "",
+        priority: "normal",
+        nextStep: "Potenzial prüfen und nächsten Schritt festlegen.",
+        sourceType: "final_inspection",
         actorName: activeUser?.name || "",
       }),
     });
@@ -9498,7 +10024,18 @@ export function DashboardPage() {
   async function updateProjectPotential(
     potential: ProjectPotential,
     status: ProjectPotentialStatus,
-    input: { note?: string; taskId?: string; followUpAt?: string } = {}
+    input: {
+      note?: string;
+      taskId?: string;
+      followUpAt?: string;
+      ownerUserId?: string;
+      ownerName?: string;
+      estimatedValue?: string;
+      priority?: ProjectPotentialPriority;
+      nextStep?: string;
+      lostReason?: string;
+      description?: string;
+    } = {}
   ) {
     const res = await fetch("/api/potentials", {
       method: "PATCH",
@@ -9509,6 +10046,13 @@ export function DashboardPage() {
         note: input.note || "",
         taskId: input.taskId || "",
         followUpAt: input.followUpAt || "",
+        ownerUserId: input.ownerUserId,
+        ownerName: input.ownerName,
+        estimatedValue: input.estimatedValue,
+        priority: input.priority,
+        nextStep: input.nextStep,
+        lostReason: input.lostReason,
+        description: input.description,
         actorName: activeUser?.name || "",
       }),
     });
@@ -9541,6 +10085,50 @@ export function DashboardPage() {
     }
 
     return "Offen";
+  }
+
+  function getPotentialPriorityLabel(priority: ProjectPotentialPriority) {
+    if (priority === "high") return "Hoch";
+    if (priority === "low") return "Niedrig";
+    return "Normal";
+  }
+
+  function openPotentialDetail(potential: ProjectPotential) {
+    setEditingPotential(potential);
+    setPotentialDraft({
+      description: potential.description,
+      status: potential.status,
+      ownerUserId: potential.ownerUserId || "",
+      ownerName: potential.ownerName || "",
+      estimatedValue: potential.estimatedValue || "",
+      priority: potential.priority || "normal",
+      nextStep: potential.nextStep || "",
+      followUpAt: potential.followUpAt ? potential.followUpAt.slice(0, 10) : "",
+      lostReason: potential.lostReason || "",
+      note: "",
+    });
+  }
+
+  async function savePotentialDetail() {
+    if (!editingPotential) return;
+
+    const owner = users.find((user) => user.id === potentialDraft.ownerUserId);
+    const savedPotential = await updateProjectPotential(editingPotential, potentialDraft.status, {
+      ownerUserId: potentialDraft.ownerUserId,
+      ownerName: owner?.name || potentialDraft.ownerName,
+      estimatedValue: potentialDraft.estimatedValue,
+      priority: potentialDraft.priority,
+      nextStep: potentialDraft.nextStep,
+      followUpAt: potentialDraft.followUpAt,
+      lostReason: potentialDraft.lostReason,
+      description: potentialDraft.description,
+      note: potentialDraft.note || "Potenzial aktualisiert.",
+    });
+
+    if (savedPotential) {
+      setEditingPotential(savedPotential);
+      setPotentialDraft((currentDraft) => ({ ...currentDraft, note: "" }));
+    }
   }
 
   async function offerPotential(potential: ProjectPotential) {
@@ -9614,6 +10202,12 @@ export function DashboardPage() {
   async function uploadProjectDocumentCategory(category: CustomerDocumentType, files: FileList | null) {
     if (!selectedProjectFile || !files || files.length === 0) return;
 
+    const createdAt = getProjectKind(selectedProjectFile).startsWith("Dauer")
+      ? `${projectComparisonMonth || formatDateKey(new Date()).slice(0, 7)}-01T12:00:00.000Z`
+      : "";
+    const projectMonth = getProjectKind(selectedProjectFile).startsWith("Dauer")
+      ? projectComparisonMonth || formatDateKey(new Date()).slice(0, 7)
+      : "";
     const attachments = await Promise.all(
       Array.from(files).map((file) => readLogbookAttachment(file, "Dokument"))
     );
@@ -9636,6 +10230,8 @@ export function DashboardPage() {
           "Buchhaltung",
         ],
         attachments,
+        projectMonth,
+        createdAt,
       }),
     });
 
@@ -9647,6 +10243,73 @@ export function DashboardPage() {
 
     const savedEntry = (await res.json()) as ProjectLogbookEntry;
     setProjectLogbookEntries((currentEntries) => [savedEntry, ...currentEntries]);
+    setLogbookError("");
+  }
+
+  async function createActivityReportForSelectedProject() {
+    if (!selectedProjectFile || isCreatingActivityReport) return;
+
+    setIsCreatingActivityReport(true);
+    setLogbookError("");
+
+    const isRecurringProject = getProjectKind(selectedProjectFile).startsWith("Dauer");
+    const reportMonth = isRecurringProject
+      ? projectComparisonMonth || formatDateKey(new Date()).slice(0, 7)
+      : "";
+    const getProjectLogEntryMonthForReport = (entry: ProjectLogbookEntry) => {
+      if (/^\d{4}-\d{2}$/.test(entry.projectMonth || "")) return entry.projectMonth || "";
+      const rawDate = entry.date || "";
+      const isoMatch = rawDate.match(/^(\d{4})-(\d{2})/);
+      if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}`;
+      const germanMatch = rawDate.match(/^(\d{2})\.(\d{2})\.(\d{2}|\d{4})/);
+      if (germanMatch) {
+        const year = germanMatch[3].length === 2 ? `20${germanMatch[3]}` : germanMatch[3];
+        return `${year}-${germanMatch[2]}`;
+      }
+
+      const parsedDate = parseAppDateTime(rawDate);
+      return Number.isNaN(parsedDate.getTime()) ? "" : formatDateKey(parsedDate).slice(0, 7);
+    };
+    const getVisibleReportImageKeys = (category: "Vorherbilder" | "Nachherbilder") =>
+      projectLogbookEntries
+        .filter((entry) => String(entry.projectId) === String(selectedProjectFile.id))
+        .filter((entry) => entry.title === `Bilder: ${category}`)
+        .filter((entry) => !isRecurringProject || getProjectLogEntryMonthForReport(entry) === reportMonth)
+        .flatMap((entry) =>
+          entry.attachments.flatMap((attachment, attachmentIndex) =>
+            attachment.type === "Bild" && attachment.dataUrl
+              ? [`${entry.id}:${attachmentIndex}:${attachment.name}`]
+              : []
+          )
+        );
+
+    const res = await fetch("/api/activity-reports", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        projectId: selectedProjectFile.id,
+        month: reportMonth,
+        beforeImageKeys: getVisibleReportImageKeys("Vorherbilder"),
+        afterImageKeys: getVisibleReportImageKeys("Nachherbilder"),
+      }),
+    });
+
+    setIsCreatingActivityReport(false);
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      setLogbookError(data?.error ?? "Tätigkeitsbericht konnte nicht erstellt werden.");
+      return;
+    }
+
+    const savedEntry = data as ProjectLogbookEntry;
+    setProjectLogbookEntries((currentEntries) => [
+      savedEntry,
+      ...currentEntries.filter((entry) => entry.id !== savedEntry.id),
+    ]);
+    setSelectedProjectDocumentType("Tätigkeitsberichte");
     setLogbookError("");
   }
 
@@ -9785,10 +10448,9 @@ export function DashboardPage() {
         )
       );
       setSelectedHeroDetailId(savedProject.id);
-      setSelectedProjectFileId(savedProject.id);
+      openProjectFile(savedProject, { activeTab: targetPipeline.tab });
       setSelectedProjectPipelineStatus(savedProject.status || "Alle Offenen");
       setSelectedProjectKindFilter(projectDraft.projectKind);
-      setActiveTab(targetPipeline.tab);
       await addProjectLogbookEntry(
         savedProject.id,
         "Projekt",
@@ -9864,11 +10526,9 @@ export function DashboardPage() {
 
     setHeroProjects((currentProjects) => [savedProject, ...currentProjects]);
     setSelectedHeroDetailId(savedProject.id);
-    setSelectedProjectFileId(savedProject.id);
-    setProjectFileTab("logbook");
+    openProjectFile(savedProject, { activeTab: targetPipeline.tab });
     setSelectedProjectPipelineStatus("Lead / Klärung");
     setSelectedProjectKindFilter(projectDraft.projectKind);
-    setActiveTab(targetPipeline.tab);
     await addProjectLogbookEntry(
       savedProject.id,
       "Projekt",
@@ -11961,6 +12621,49 @@ export function DashboardPage() {
   const selectedHeroDetail = heroProjects.find((project) => project.id === selectedHeroDetailId);
   const selectedProjectFile =
     heroProjects.find((project) => project.id === selectedProjectFileId) ?? null;
+  function openProjectFile(
+    project: HeroProjectPreview,
+    options: {
+      tab?: ProjectFileTab;
+      activeTab?: AppTab;
+      documentType?: CustomerDocumentType;
+      month?: string;
+      keepMonth?: boolean;
+    } = {}
+  ) {
+    if (options.activeTab) {
+      setActiveTab(options.activeTab);
+    } else {
+      const projectType = (project.projectType ?? "").toLowerCase();
+      const projectNumber = (project.projectNumber ?? "").toLowerCase();
+      setActiveTab(
+        projectType.includes("immocare") || projectNumber.startsWith("oki")
+          ? "projectsImmocare"
+          : "projectsSolutions"
+      );
+    }
+
+    setSelectedProjectFileId(project.id);
+    setProjectFileTab(options.tab ?? "logbook");
+
+    if (options.documentType) {
+      setSelectedProjectDocumentType(options.documentType);
+    }
+
+    if (/^\d{4}-\d{2}$/.test(options.month ?? "")) {
+      setProjectComparisonMonth(options.month ?? "");
+      return;
+    }
+
+    if (!options.keepMonth && getProjectKind(project).startsWith("Dauer")) {
+      setProjectComparisonMonth(getCurrentMonthKey());
+    }
+  }
+  const isRestoringProjectFile =
+    Boolean(selectedProjectFileId) &&
+    (activeTab === "hero" || activeTab === "projectsSolutions" || activeTab === "projectsImmocare") &&
+    !selectedProjectFile &&
+    (!hasLoadedHeroProjects || isHeroProjectsLoading);
   const activeProjectPipeline =
     projectPipelines.find((pipeline) => pipeline.tab === activeTab) ?? projectPipelines[0];
   const getProjectPotentialEntries = (projectId: string) =>
@@ -11989,7 +12692,7 @@ export function DashboardPage() {
   const activePipelinePotentials = projectPotentials.filter((potential) =>
     activePipelineProjectIds.has(potential.projectId)
   );
-  const filteredPipelinePotentials = activePipelinePotentials.filter((potential) => {
+  const visiblePotentialRows = projectPotentials.filter((potential) => {
     if (potentialStatusFilter === "due") {
       const followUpTime = potential.followUpAt ? new Date(potential.followUpAt).getTime() : NaN;
       if (potential.status !== "follow_up" || !Number.isFinite(followUpTime) || followUpTime > Date.now()) {
@@ -12017,18 +12720,23 @@ export function DashboardPage() {
       .toLowerCase()
       .includes(search);
   });
+  const filteredPipelinePotentials = activePipelinePotentials.filter((potential) =>
+    visiblePotentialRows.some((visiblePotential) => visiblePotential.id === potential.id)
+  );
   const getPotentialStatusCount = (filter: typeof potentialStatusFilter) => {
+    const sourcePotentials = projectPotentials;
+
     if (filter === "all") {
-      return activePipelinePotentials.length;
+      return sourcePotentials.length;
     }
     if (filter === "due") {
-      return activePipelinePotentials.filter((potential) => {
+      return sourcePotentials.filter((potential) => {
         const followUpTime = potential.followUpAt ? new Date(potential.followUpAt).getTime() : NaN;
         return potential.status === "follow_up" && Number.isFinite(followUpTime) && followUpTime <= Date.now();
       }).length;
     }
 
-    return activePipelinePotentials.filter((potential) => potential.status === filter).length;
+    return sourcePotentials.filter((potential) => potential.status === filter).length;
   };
   const projectKindRows: Array<{
     key: ProjectKindFilter;
@@ -12180,11 +12888,33 @@ export function DashboardPage() {
     setSelectedCalendarActionDate("");
   }
 
-  function openProjectPlanningBoard() {
+  function openProjectPlanningBoard(options: { date?: string; groupName?: string } = {}) {
+    setIsProjectPlanningDayOverlayOpen(false);
     setSelectedProjectFileId("");
     setProjectFileTab("logbook");
     setPlanningOwnerFilter(activeUserId || "");
+    if (/^\d{4}-\d{2}-\d{2}$/.test(options.date ?? "")) {
+      setSelectedPlanningDateKey(options.date ?? "");
+      setPlanningBoardStartDate(options.date ?? "");
+      setIsPlanningDayOpen(true);
+    } else {
+      setIsPlanningDayOpen(false);
+    }
+    if (options.groupName) {
+      setSelectedPlanningGroup(options.groupName);
+    }
+    setPlanningBoardView("board");
     setActiveTab("planningBoard");
+  }
+
+  function openProjectPlanningDayOverlay(options: { date: string; groupName?: string }) {
+    setSelectedPlanningDateKey(options.date);
+    setPlanningBoardStartDate(options.date);
+    if (options.groupName) {
+      setSelectedPlanningGroup(options.groupName);
+    }
+    setPlanningBoardView("board");
+    setIsProjectPlanningDayOverlayOpen(true);
   }
 
   function printProjectOverview(project: HeroProjectPreview, address: string) {
@@ -12266,6 +12996,35 @@ export function DashboardPage() {
         setErrorMessage("PDF wurde geöffnet. Bitte den Druckdialog im Browser starten.");
       }
     }, 700);
+  }
+
+  async function printInvoiceDocument(invoice: InvoiceItem) {
+    printPdfDocument(`/api/invoices?pdfId=${encodeURIComponent(invoice.id)}`);
+
+    const res = await fetch("/api/invoices", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: invoice.id,
+        action: "mark-printed",
+        actorName: activeUser?.name || "System",
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setErrorMessage(data?.error ?? "Druck konnte nicht in der Rechnungshistorie markiert werden.");
+      return;
+    }
+
+    if (invoice.projectId) {
+      await loadInvoiceHistory(invoice.projectId);
+      await addProjectLogbookEntry(
+        invoice.projectId,
+        "Rechnung",
+        `Rechnung ${getInvoiceDisplayNumber(invoice)} wurde zum Drucken geöffnet.`
+      );
+    }
   }
 
   const selectedProjectContact = contacts.find((contact) => contact.id === projectDraft.contactId);
@@ -12444,11 +13203,16 @@ export function DashboardPage() {
     return day === 0 || day === 6;
   };
   const planningBoardDays = Array.from({ length: 29 }, (_, index) => {
-    const date = new Date();
+    const date = new Date(`${planningBoardStartDate}T12:00`);
     date.setHours(12, 0, 0, 0);
     date.setDate(date.getDate() + index);
     return date;
   });
+  const planningBoardEndDate = planningBoardDays[planningBoardDays.length - 1] ?? new Date(`${planningBoardStartDate}T12:00`);
+  const planningBoardRangeLabel = `${formatProjectDate(planningBoardStartDate)} - ${formatProjectDate(formatDateKey(planningBoardEndDate))}`;
+  const shiftPlanningBoardStart = (days: number) => {
+    setPlanningBoardStartDate((currentStart) => addDaysToDateKey(currentStart, days));
+  };
   const getPlanningBoardUsers = (company: string, groupName: string) =>
     users.filter((user) => {
       if ((user.planningBoard ?? "OK solutions") !== company) return false;
@@ -12685,6 +13449,7 @@ export function DashboardPage() {
     absences.find((absence) => absence.userId === userId && absence.date === formatDateKey(date) && isApprovedAbsence(absence));
   const getUserAbsenceForDateKey = (userId: string, dateKey: string) =>
     absences.find((absence) => absence.userId === userId && absence.date === dateKey && isApprovedAbsence(absence));
+  const allDetailGroups = planningBoardSections.flatMap((section) => section.detailGroups);
   const doesAbsenceBlockTime = (absence: AbsenceItem | undefined, startTime: string, endTime: string) => {
     if (!absence || !isApprovedAbsence(absence)) return false;
     if (absence.dayPart === "full") return true;
@@ -13261,6 +14026,11 @@ export function DashboardPage() {
   ];
   const plannedModuleLabels: Partial<Record<AppTab, string>> = {
     contacts: "Kontakte und CRM",
+    newsFeed: "News-Feed",
+    salesHub: "Sales-Hub",
+    salesOpportunities: "Potenziale",
+    customerSatisfaction: "KuZu / Kundenzufriedenheit",
+    salesTargets: "Sales-Ziele",
     documents: "Dokumente",
     contentRound: "Richtlinien",
     contentQuotas: "Kundenkontingente",
@@ -13276,6 +14046,8 @@ export function DashboardPage() {
     timeTracking: "Zeiterfassung",
     timeCategories: "Zeitkategorien",
     breakManagement: "Pausenverwaltung",
+    processAutomation: "Prozess/Automation",
+    winterService: "Winterdienst",
   };
   const visibleReportUsers = users.filter((user) => {
     if (!activeUser) return false;
@@ -13565,7 +14337,7 @@ export function DashboardPage() {
   const reportInvoices = invoices.filter((invoice) => {
     const status = invoice.status.toLowerCase();
     return (
-      isReportDate(invoice.createdAt) &&
+      isReportDate(invoice.serviceDate || invoice.createdAt) &&
       !isDeletedInvoice(invoice) &&
       !status.includes("storniert") &&
       !status.includes("storno")
@@ -13589,6 +14361,22 @@ export function DashboardPage() {
     const status = offer.status.toLowerCase();
     return !status.includes("abgelehnt") && !status.includes("storniert") && !status.includes("storno");
   });
+  const doesInvoiceReplaceOfferInMonth = (
+    invoice: InvoiceItem,
+    offer: OfferItem,
+    monthKey: string,
+    isRecurringOfferProject: boolean
+  ) => {
+    const invoiceMonth = getProjectInvoiceMonth(invoice);
+    const isLinkedInvoice = invoice.sourceOfferId
+      ? invoice.sourceOfferId === offer.id
+      : invoice.sourceOfferNumber
+        ? invoice.sourceOfferNumber === offer.offerNumber
+        : invoice.projectId === offer.projectId;
+
+    if (!isLinkedInvoice) return false;
+    return isRecurringOfferProject ? invoiceMonth === monthKey : true;
+  };
   const forecastPeriodRows = forecastMonthKeys.flatMap((month) => {
     const recurringRows = heroProjects
       .filter((project) => isRecurringForecastProject(project) && isProjectInForecastMonth(project, month.key))
@@ -13652,7 +14440,13 @@ export function DashboardPage() {
           ? Boolean(offerStartMonth) && month.key >= offerStartMonth && (!offerEndMonth || month.key <= offerEndMonth)
           : offerStartMonth === month.key;
       })
-      .filter((offer) => !forecastInvoices.some((invoice) => invoice.projectId === offer.projectId))
+      .filter((offer) => {
+        const project = heroProjects.find((item) => item.id === offer.projectId);
+        const isRecurringOfferProject = project ? isRecurringForecastProject(project) : false;
+        return !forecastInvoices.some((invoice) =>
+          doesInvoiceReplaceOfferInMonth(invoice, offer, month.key, isRecurringOfferProject)
+        );
+      })
       .map((offer) => {
         const project = heroProjects.find((item) => item.id === offer.projectId);
         return {
@@ -13985,7 +14779,7 @@ export function DashboardPage() {
   const offerVolumeTotal = reportOffers.reduce((sum, offer) => sum + offer.netTotal, 0);
   const monthlyRevenueRows = reportMonthKeys.map((month) => {
     const monthInvoices = reportInvoices.filter(
-      (invoice) => getReportMonthKey(invoice.createdAt) === month.key
+      (invoice) => getProjectInvoiceMonth(invoice) === month.key
     );
     const monthOffers = reportOffers.filter((offer) => getReportMonthKey(offer.createdAt) === month.key);
     return {
@@ -15062,15 +15856,7 @@ export function DashboardPage() {
                 style={{ left: `${row.x}%`, top: `${row.y}%` }}
                 title={`${row.project.projectNumber} - ${row.project.customer || row.project.title}`}
                 onClick={() => {
-                  const projectType = (row.project.projectType ?? "").toLowerCase();
-                  const projectNumber = (row.project.projectNumber ?? "").toLowerCase();
-                  setActiveTab(
-                    projectType.includes("immocare") || projectNumber.startsWith("oki")
-                      ? "projectsImmocare"
-                      : "projectsSolutions"
-                  );
-                  setSelectedProjectFileId(row.project.id);
-                  setProjectFileTab("logbook");
+                  openProjectFile(row.project);
                 }}
               >
                 <span />
@@ -15248,7 +16034,9 @@ export function DashboardPage() {
     }
 
     const confirmed = window.confirm(
-      `${invoicesToFinalize.length} ausgewaehlte Rechnungsentwuerfe jetzt final fakturieren?`
+      `${invoicesToFinalize.length} ausgewaehlte Rechnungsentwuerfe jetzt final mit Leistungsdatum ${getInvoiceServiceDateLabel(
+        getLastDayOfMonthKey(batchBillingMonth)
+      )} fakturieren?`
     );
     if (!confirmed) return;
 
@@ -15265,13 +16053,19 @@ export function DashboardPage() {
         }
         const batchMonthStampEntries = getUnbilledProjectStampEntriesForMonth(project.id, batchBillingMonth);
         const batchMonthStampEntryIds = batchMonthStampEntries.map((entry) => entry.id);
+        const serviceDate = invoice.serviceDate || getLastDayOfMonthKey(batchBillingMonth);
+        const invoiceDraftForFinalize = {
+          ...createInvoiceDraftFromInvoice(invoice),
+          serviceDate,
+          plannedExecutionMonth: serviceDate.slice(0, 7) || batchBillingMonth,
+        };
 
         const res = await fetch("/api/invoices", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             id: invoice.id,
-            ...createInvoiceDraftFromInvoice(invoice),
+            ...invoiceDraftForFinalize,
             saveAsDraft: false,
             billingSource: "batch",
             billedStampEntryIds: batchMonthStampEntryIds,
@@ -15417,9 +16211,10 @@ export function DashboardPage() {
                           type="button"
                           className={styles.tableTextLink}
                           onClick={() => {
-                            setSelectedProjectFileId(row.project.id);
-                            setProjectFileTab("automaticBilling");
-                            setActiveTab(row.project.projectType === "Projekt OK immocare" ? "projectsImmocare" : "projectsSolutions");
+                            openProjectFile(row.project, {
+                              tab: "automaticBilling",
+                              activeTab: row.project.projectType === "Projekt OK immocare" ? "projectsImmocare" : "projectsSolutions",
+                            });
                           }}
                         >
                           {row.project.projectNumber}
@@ -15547,12 +16342,19 @@ export function DashboardPage() {
     );
   }
 
-  if (!authChecked) {
+  if (!authChecked || isRestoringProjectFile) {
     return (
       <main className={styles.page}>
         <section className={`${styles.shell} ${styles.bootShell}`}>
-          <img className={styles.bootLogo} src="/workpilot-logo.png" alt="WorkPilot" />
-          <p>Sitzung wird geprüft...</p>
+          <img className={styles.bootLogo} src="/wp360-boot-logo.png" alt="WorkPilot360" />
+          <p>Einen Moment, ich lade gerade...</p>
+          <div className={styles.bootWave} aria-hidden="true">
+            <span />
+            <span />
+            <span />
+            <span />
+            <span />
+          </div>
         </section>
       </main>
     );
@@ -16149,8 +16951,10 @@ export function DashboardPage() {
                           <th>Status</th>
                           <th>Potenzial</th>
                           <th>Projekt</th>
+                          <th>Wert</th>
                           <th>Wiedervorlage</th>
                           <th>Historie</th>
+                          <th>Aktion</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -16167,11 +16971,21 @@ export function DashboardPage() {
                             </td>
                             <td>{potential.description}</td>
                             <td>{potential.projectLabel || potential.projectId}</td>
+                            <td>{potential.estimatedValue ? `${potential.estimatedValue} €` : "-"}</td>
                             <td>{potential.followUpAt ? formatDeadline(potential.followUpAt) : "-"}</td>
                             <td>
                               {potential.history.length === 0
                                 ? "-"
                                 : potential.history.map((entry) => `${formatDeadline(entry.at)}: ${entry.note}`).join(" | ")}
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                className={styles.timeEntryEditButton}
+                                onClick={() => openPotentialDetail(potential)}
+                              >
+                                Öffnen
+                              </button>
                             </td>
                           </tr>
                         ))}
@@ -16217,16 +17031,8 @@ export function DashboardPage() {
                               type="button"
                               className={styles.timeEntryEditButton}
                               onClick={() => {
-                                const projectType = (project.projectType ?? "").toLowerCase();
-                                const projectNumber = (project.projectNumber ?? "").toLowerCase();
-                                setActiveTab(
-                                  projectType.includes("immocare") || projectNumber.startsWith("oki")
-                                    ? "projectsImmocare"
-                                    : "projectsSolutions"
-                                );
                                 setSelectedCustomerFileId("");
-                                setSelectedProjectFileId(project.id);
-                                setProjectFileTab("logbook");
+                                openProjectFile(project);
                               }}
                             >
                               Öffnen
@@ -16284,9 +17090,169 @@ export function DashboardPage() {
     );
   }
 
+  function renderPotentialWorkspace() {
+    return (
+      <section className={styles.settingsPanel}>
+        <div className={styles.topline}>
+          <div>
+            <p className={styles.eyebrow}>Zusatzchancen</p>
+            <h1>Potenziale</h1>
+            <p className={styles.subline}>
+              Erkannte Zusatzverkaufschancen aus Endkontrollen. Forecast bleibt erst durch Angebote und Rechnungen messbar.
+            </p>
+          </div>
+        </div>
+
+        <section className={styles.heroSearchBar}>
+          <label>
+            Suche
+            <input
+              value={heroSearchTerm}
+              onChange={(event) => setHeroSearchTerm(event.target.value)}
+              placeholder="Potenzial, Projekt, Kunde oder Status"
+            />
+          </label>
+          <span>{visiblePotentialRows.length} Potenziale</span>
+        </section>
+
+        <section className={styles.projectPipelineBoard}>
+          <div className={styles.projectStatusStrip}>
+            <div className={styles.projectStatusStripMeta}>
+              <strong>Potenziale</strong>
+              <span>{getPotentialStatusCount("all")} Potenziale</span>
+            </div>
+            <div className={`${styles.projectPipelineStatusList} ${styles.potentialStatusList}`}>
+              {[
+                { label: "Alle", value: "all" as const },
+                { label: "Offen", value: "open" as const },
+                { label: "Wiedervorlage", value: "follow_up" as const },
+                { label: "Fällig", value: "due" as const },
+                { label: "Angeboten", value: "offered" as const },
+                { label: "Kein Interesse", value: "lost" as const },
+              ].map((item) => {
+                const count = getPotentialStatusCount(item.value);
+
+                return (
+                  <button
+                    key={item.value}
+                    type="button"
+                    data-active={potentialStatusFilter === item.value}
+                    onClick={() => setPotentialStatusFilter(item.value)}
+                  >
+                    <span>{item.label}</span>
+                    {count > 0 ? <strong data-urgent={item.value === "due" ? "true" : undefined}>{count}</strong> : null}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className={styles.projectPipelineWorkspace}>
+            <section className={`${styles.tableCard} ${styles.heroTableCard}`}>
+              <div className={styles.heroTableScroll}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Status</th>
+                      <th>Potenzial</th>
+                      <th>Kunde</th>
+                      <th>Projekt</th>
+                      <th>Priorität</th>
+                      <th>Wert</th>
+                      <th>Erkannt am</th>
+                      <th>Wiedervorlage</th>
+                      <th>Zuständig</th>
+                      <th>Letzte Aktion</th>
+                      <th>Aktion</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visiblePotentialRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={11}>Keine Potenziale in dieser Auswahl.</td>
+                      </tr>
+                    ) : (
+                      visiblePotentialRows.map((potential) => {
+                        const project = getPotentialProject(potential);
+                        const linkedTask = tasks.find((task) => task.id === potential.taskId);
+                        const lastHistory = potential.history.at(-1);
+
+                        return (
+                          <tr key={potential.id}>
+                            <td>{getPotentialStatusLabel(potential)}</td>
+                            <td className={styles.title}>{potential.description}</td>
+                            <td>{potential.customerName || project?.customer || "-"}</td>
+                            <td>{potential.projectLabel || project?.title || potential.projectId}</td>
+                            <td>{getPotentialPriorityLabel(potential.priority)}</td>
+                            <td>{potential.estimatedValue ? `${potential.estimatedValue} €` : "-"}</td>
+                            <td>{formatDeadline(potential.createdAt)}</td>
+                            <td>{potential.followUpAt ? formatDeadline(potential.followUpAt) : "-"}</td>
+                            <td>{potential.ownerName || linkedTask?.zustaendig || activeUser?.name || "-"}</td>
+                            <td>{lastHistory ? `${formatDeadline(lastHistory.at)}: ${lastHistory.note}` : "-"}</td>
+                            <td>
+                              <div className={styles.tableActionGroup}>
+                                <button
+                                  type="button"
+                                  className={styles.timeEntryEditButton}
+                                  onClick={() => openPotentialDetail(potential)}
+                                >
+                                  Öffnen
+                                </button>
+                                {["open", "follow_up"].includes(potential.status) ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className={styles.timeEntryEditButton}
+                                      onClick={() => void offerPotential(potential)}
+                                    >
+                                      Angebot erstellen
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={styles.timeEntryEditButton}
+                                      onClick={() => void schedulePotentialFollowUp(potential)}
+                                    >
+                                      Später nachfassen
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={styles.timeEntryEditButton}
+                                      onClick={() => void closePotential(potential)}
+                                    >
+                                      Kein Interesse
+                                    </button>
+                                  </>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  className={styles.timeEntryEditButton}
+                                  onClick={() => setHistoryPotential(potential)}
+                                >
+                                  Historie
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <p className={styles.heroTableHint}>
+                Alle {visiblePotentialRows.length} Potenziale sind geladen und auswertbar.
+              </p>
+            </section>
+          </div>
+        </section>
+      </section>
+    );
+  }
+
   function renderProjectFile() {
     if (!selectedProjectFile) return null;
 
+    const isSelectedProjectRecurring = getProjectKind(selectedProjectFile).startsWith("Dauer");
     const documentTypes: CustomerDocumentType[] = [
       "Allgemeine Dokumente",
       "Anfragen",
@@ -16319,7 +17285,9 @@ export function DashboardPage() {
       { id: "images", label: "Bilder", icon: "" },
       { id: "documents", label: "Dokumente", icon: "" },
       { id: "appointments", label: "Termine & Stempelungen", icon: "" },
-      { id: "budgets", label: "Projektzeitkontingente", icon: "" },
+      ...(isSelectedProjectRecurring
+        ? [{ id: "budgets" as ProjectFileTab, label: "Projektzeitkontingente", icon: "" }]
+        : []),
       { id: "automaticBilling", label: "Automatische Abrechnung", icon: "" },
       { id: "tasks", label: "Aufgaben", icon: "" },
       { id: "material", label: "Material", icon: "" },
@@ -16437,7 +17405,7 @@ export function DashboardPage() {
     const projectStampEntries = projectStampHistoryEntries.filter((entry) => !entry.deletedAt);
     const projectTrackedHours =
       projectStampEntries.reduce((sum, entry) => sum + entry.durationMs, 0) / 3_600_000;
-    const currentProjectMonthKey = formatInputDate(new Date()).slice(0, 7);
+    const currentProjectMonthKey = projectComparisonMonth || formatInputDate(new Date()).slice(0, 7);
     const projectTrackedMonthHours =
       projectStampEntries
         .filter((entry) => entry.date.startsWith(currentProjectMonthKey))
@@ -16453,6 +17421,9 @@ export function DashboardPage() {
       .sort((first, second) =>
         `${second.date} ${second.startTime}`.localeCompare(`${first.date} ${first.startTime}`)
       );
+    const projectCurrentMonthPlanningEntries = projectPlanningEntries.filter((entry) =>
+      entry.date.startsWith(currentProjectMonthKey)
+    );
     const projectFinalizedInvoicesByMonth = invoices
       .filter(
         (invoice) =>
@@ -16527,6 +17498,53 @@ export function DashboardPage() {
     const projectMonthBudgetHours = projectHasBudgetAllocations
       ? getProjectBudgetAllocationHours(selectedProjectFile, currentProjectMonthKey)
       : 0;
+    const projectMonthPlannedHours =
+      projectCurrentMonthPlanningEntries.reduce((sum, entry) => sum + Number(entry.durationMinutes || 0), 0) / 60;
+    const projectMonthHasPlanningBasis =
+      projectMonthBudgetHours > 0 && isProjectBudgetDueForPlanningMonth(selectedProjectFile, currentProjectMonthKey);
+    const projectMonthOpenPlanningHours = projectMonthHasPlanningBasis
+      ? Math.max(projectMonthBudgetHours - projectMonthPlannedHours, 0)
+      : 0;
+    const projectMonthPlanningRemainingHours =
+      projectMonthBudgetHours > 0 ? projectMonthBudgetHours - projectMonthPlannedHours : 0;
+    const projectMonthPlanningUsagePercent =
+      projectMonthBudgetHours > 0 ? clampPercent((projectMonthPlannedHours / projectMonthBudgetHours) * 100) : 0;
+    const projectPlanningTargetEntries = (isSelectedProjectRecurring
+      ? projectCurrentMonthPlanningEntries
+      : projectPlanningEntries
+    )
+      .filter((entry) => !entry.deletedAt)
+      .sort((first, second) =>
+        `${first.date} ${first.startTime}`.localeCompare(`${second.date} ${second.startTime}`)
+      );
+    const projectPlanningTargetEntry = projectPlanningTargetEntries[0] ?? null;
+    const projectProgressMonthKey = currentProjectMonthKey;
+    const projectProgressMonthPlanningEntries = projectPlanningEntries.filter((entry) =>
+      entry.date.startsWith(projectProgressMonthKey)
+    );
+    const projectProgressMonthBudgetHours = projectHasBudgetAllocations
+      ? getProjectBudgetAllocationHours(selectedProjectFile, projectProgressMonthKey)
+      : 0;
+    const projectProgressMonthPlannedHours =
+      projectProgressMonthPlanningEntries.reduce((sum, entry) => sum + Number(entry.durationMinutes || 0), 0) / 60;
+    const projectProgressMonthHasPlanningBasis = projectProgressMonthBudgetHours > 0;
+    const projectProgressMonthDifferenceHours =
+      projectProgressMonthPlannedHours - projectProgressMonthBudgetHours;
+    const projectProgressMonthIsFullyPlanned =
+      projectProgressMonthHasPlanningBasis &&
+      Math.abs(projectProgressMonthDifferenceHours) <= 0.01;
+    const projectProgressMonthState: "done" | "partial" =
+      projectProgressMonthIsFullyPlanned ? "done" : "partial";
+    const projectProgressMonthHint =
+      projectProgressMonthHasPlanningBasis
+        ? projectProgressMonthIsFullyPlanned
+          ? `Monatskontingent ${formatMonthLabel(projectProgressMonthKey)} komplett verplant`
+          : projectProgressMonthDifferenceHours < 0
+            ? `${formatHours(Math.abs(projectProgressMonthDifferenceHours))} Std. im ${formatMonthLabel(projectProgressMonthKey)} noch offen`
+            : `${formatHours(projectProgressMonthDifferenceHours)} Std. im ${formatMonthLabel(projectProgressMonthKey)} zu viel verplant`
+        : projectProgressMonthPlanningEntries.length > 0
+          ? `${projectProgressMonthPlanningEntries.length} Termin(e) im ${formatMonthLabel(projectProgressMonthKey)} vorhanden, aber kein passendes Monatskontingent gefunden`
+          : `Noch kein Terminwunsch oder Termin im ${formatMonthLabel(projectProgressMonthKey)} vorhanden`;
     const projectMonthRemainingHours =
       projectMonthBudgetHours > 0 ? projectMonthBudgetHours - projectTrackedMonthHours : 0;
     const projectMonthBudgetUsagePercent =
@@ -16534,6 +17552,14 @@ export function DashboardPage() {
     const projectRemainingHours = projectBudgetHours > 0 ? projectBudgetHours - projectTrackedHours : 0;
     const projectBudgetUsagePercent =
       projectBudgetHours > 0 ? clampPercent((projectTrackedHours / projectBudgetHours) * 100) : 0;
+    const projectPlannedAppointmentHours =
+      projectPlanningEntries.reduce((sum, entry) => sum + Number(entry.durationMinutes || 0), 0) / 60;
+    const projectAppointmentRemainingHours =
+      projectPlannedAppointmentHours > 0 ? projectPlannedAppointmentHours - projectTrackedHours : 0;
+    const projectAppointmentUsagePercent =
+      projectPlannedAppointmentHours > 0
+        ? clampPercent((projectTrackedHours / projectPlannedAppointmentHours) * 100)
+        : 0;
     const projectBudgetDraftTotal = projectBudgetMonths.reduce(
       (sum, month) => sum + parseHoursInput(projectBudgetMonthDrafts[month]),
       0
@@ -16637,7 +17663,10 @@ export function DashboardPage() {
     const projectInvoices = invoices.filter(
       (invoice) => invoice.projectId === selectedProjectFile.id && !isDeletedInvoice(invoice)
     );
-    const activeProjectInvoices = projectInvoices;
+    const visibleProjectInvoices = isSelectedProjectRecurring
+      ? projectInvoices.filter((invoice) => getProjectInvoiceMonth(invoice) === projectComparisonMonth)
+      : projectInvoices;
+    const activeProjectInvoices = visibleProjectInvoices;
     const finalizedProjectInvoices = activeProjectInvoices.filter((invoice) => invoice.status !== "Entwurf");
     const projectComparisonOfferNumbers = projectOffers.map((offer) => offer.offerNumber);
     const comparisonMonthDate = (() => {
@@ -16650,13 +17679,25 @@ export function DashboardPage() {
       month: "long",
       year: "numeric",
     });
+    const currentCalendarMonthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
     const shiftComparisonMonth = (offset: number) => {
       const nextDate = new Date(comparisonMonthDate.getFullYear(), comparisonMonthDate.getMonth() + offset, 1);
       setProjectComparisonMonth(
         `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, "0")}`
       );
     };
-    const isSelectedProjectRecurring = getProjectKind(selectedProjectFile).startsWith("Dauer");
+    const projectMonthStripMonths = Array.from({ length: 13 }, (_, index) => {
+      const monthDate = new Date(comparisonMonthDate.getFullYear(), comparisonMonthDate.getMonth() - 3 + index, 1);
+      const monthKey = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, "0")}`;
+      return {
+        key: monthKey,
+        label: monthDate.toLocaleDateString(APP_LOCALE, {
+          month: "short",
+          year: "2-digit",
+          timeZone: APP_TIME_ZONE,
+        }),
+      };
+    });
     const projectComparisonMonthPlanningEntries = projectPlanningEntries.filter((entry) =>
       entry.date.startsWith(projectComparisonMonth)
     );
@@ -16666,6 +17707,12 @@ export function DashboardPage() {
     const projectComparisonMonthStampEntries = projectStampEntries.filter((entry) =>
       entry.date.startsWith(projectComparisonMonth)
     );
+    const projectVisiblePlanningEntries = isSelectedProjectRecurring
+      ? projectComparisonMonthPlanningEntries
+      : projectPlanningEntries;
+    const projectVisibleStampEntries = isSelectedProjectRecurring
+      ? projectComparisonMonthStampEntries
+      : projectStampEntries;
     const formatPlanningAssignees = (entries: PlanningEntry[]) => {
       if (entries.length === 0) return ["Noch nicht verplant"];
       const groupedEntries = entries.reduce<Record<string, number>>((grouped, entry) => {
@@ -16826,7 +17873,15 @@ export function DashboardPage() {
           Boolean(entry.employeeName) &&
           stampEntry.employee === entry.employeeName
       );
-    const projectTerminPlanningRows = projectPlanningEntries.map((entry) => {
+    const getRealStampComment = (entry?: StampTimeEntry | null) => {
+      const comment = entry?.comment?.trim() ?? "";
+      return comment === "Manuell hinzugefügt" ? "" : comment;
+    };
+    const getStampCommentSummary = (entries: StampTimeEntry[]) =>
+      Array.from(new Set(entries.map(getRealStampComment).filter(Boolean))).join("\n\n");
+    const hasManualStampEntry = (entries: StampTimeEntry[]) =>
+      entries.some((entry) => entry.entrySource === "manual");
+    const projectTerminPlanningRows = projectVisiblePlanningEntries.map((entry) => {
       const plannedHours = Number(entry.durationMinutes || 0) / 60;
       const monthKey = entry.date.slice(0, 7);
       const monthBudgetHours = getProjectBudgetAllocationHours(selectedProjectFile, monthKey);
@@ -16894,24 +17949,17 @@ export function DashboardPage() {
       };
     });
     const projectPlanningMatchedStampIds = new Set(
-      projectPlanningEntries.flatMap((entry) => getProjectStampEntriesForPlanningEntry(entry).map((stampEntry) => stampEntry.id))
+      projectVisiblePlanningEntries.flatMap((entry) =>
+        getProjectStampEntriesForPlanningEntry(entry).map((stampEntry) => stampEntry.id)
+      )
     );
-    const projectBudgetMatchedStampIds = new Set(
-      projectPlanningEntries.flatMap((entry) => {
-        const monthKey = entry.date.slice(0, 7);
-        const hasMonthBudget = getProjectBudgetAllocationHours(selectedProjectFile, monthKey) > 0;
-        return hasMonthBudget
-          ? projectStampEntries
-              .filter((stampEntry) => stampEntry.date.startsWith(monthKey))
-              .map((stampEntry) => stampEntry.id)
-          : [];
-      })
-    );
-    const projectUnmatchedStampEntries = projectStampEntries.filter(
+    const projectUnmatchedStampEntries = projectVisibleStampEntries.filter(
       (stampEntry) => !projectPlanningMatchedStampIds.has(stampEntry.id)
     );
-    const projectExpectedStampRows = projectPlanningEntries.map((entry) => {
+    const projectExpectedStampRows = projectVisiblePlanningEntries.map((entry) => {
       const matchingStampEntries = getProjectStampEntriesForPlanningEntry(entry);
+      const commentSummary = getStampCommentSummary(matchingStampEntries);
+      const isManualStamp = hasManualStampEntry(matchingStampEntries);
       const actualHours = matchingStampEntries.reduce((sum, stampEntry) => sum + stampEntry.durationMs, 0) / 3_600_000;
       const targetHours = Number(entry.durationMinutes || 0) / 60;
       const differenceHours = targetHours - actualHours;
@@ -16952,6 +18000,8 @@ export function DashboardPage() {
         statusTone,
         invoiceLabel: invoiceNumbers.length > 0 ? `Fakturiert: ${invoiceNumbers.join(", ")}` : "Offen",
         editEntry: matchingStampEntries[0],
+        commentSummary,
+        isManualStamp,
       };
     });
     const projectUnexpectedStampRows = projectUnmatchedStampEntries.map((entry) => ({
@@ -16967,6 +18017,8 @@ export function DashboardPage() {
       statusTone: "unplanned",
       invoiceLabel: entry.invoiceNumber ? `Fakturiert: ${entry.invoiceNumber}` : "Offen",
       editEntry: entry,
+      commentSummary: getRealStampComment(entry),
+      isManualStamp: entry.entrySource === "manual",
     }));
     const projectStampExpectationRows = [...projectExpectedStampRows, ...projectUnexpectedStampRows];
     const transferPlanningToStampedEmployees = async (entry: PlanningEntry) => {
@@ -17140,23 +18192,75 @@ export function DashboardPage() {
       0
     );
     const projectPlanningButtonState =
-      projectOpenOfferPlanningHours <= 0 ? "normal" : projectOfferPlannedTotalHours > 0 ? "partial" : "open";
+      projectMonthHasPlanningBasis
+        ? projectMonthPlanningRemainingHours < -0.01
+          ? "over"
+          : projectMonthOpenPlanningHours <= 0
+            ? "done"
+          : projectMonthPlannedHours > 0
+            ? "partial"
+            : "open"
+        : isSelectedProjectRecurring
+          ? projectCurrentMonthPlanningEntries.length > 0
+            ? "done"
+            : "open"
+        : projectOpenOfferPlanningHours <= 0
+          ? projectPlanningTargetEntry
+            ? "done"
+            : "open"
+          : projectOfferPlannedTotalHours > 0 ? "partial" : "open";
     const projectPlanningButtonLabel =
       projectPlanningButtonState === "open"
-        ? "Termin/Zeiten planbar"
+        ? "Alle Zeiten planen"
         : projectPlanningButtonState === "partial"
-          ? "Restzeit planen"
-          : "Termin einplanen";
+          ? "Restliche Zeiten planen"
+          : projectPlanningButtonState === "over"
+            ? "Überplanung prüfen"
+            : "Alle Zeiten verplant";
+    const projectPlanningButtonTitle =
+      projectPlanningTargetEntry &&
+      (projectPlanningButtonState === "done" ||
+        projectPlanningButtonState === "partial" ||
+        projectPlanningButtonState === "over")
+        ? `Zur Tagesplanung am ${formatDateOnly(projectPlanningTargetEntry.date)} springen`
+        : projectMonthHasPlanningBasis
+          ? `${formatHours(projectMonthOpenPlanningHours)} Std. im ${formatMonthLabel(currentProjectMonthKey)} planbar`
+          : projectOpenOfferPlanningHours > 0
+            ? `${formatHours(projectOpenOfferPlanningHours)} Std. aus Angeboten offen`
+            : undefined;
+    const getProjectLogEntryMonth = (entry: { date?: string; projectMonth?: string }) => {
+      if (/^\d{4}-\d{2}$/.test(entry.projectMonth || "")) return entry.projectMonth || "";
+      const rawDate = entry.date || "";
+      const isoMatch = rawDate.match(/^(\d{4})-(\d{2})/);
+      if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}`;
+      const germanMatch = rawDate.match(/^(\d{2})\.(\d{2})\.(\d{2}|\d{4})/);
+      if (germanMatch) {
+        const year = germanMatch[3].length === 2 ? `20${germanMatch[3]}` : germanMatch[3];
+        return `${year}-${germanMatch[2]}`;
+      }
+
+      const parsedDate = parseAppDateTime(rawDate);
+      return Number.isNaN(parsedDate.getTime()) ? "" : formatDateKey(parsedDate).slice(0, 7);
+    };
+    const shouldShowProjectDocumentInSelectedMonth = (category: CustomerDocumentType, entry: { date?: string }) => {
+      if (!isSelectedProjectRecurring) return true;
+      if (category === "Angebote" || category === "Angebote: Nachtragsangebote") return true;
+      return getProjectLogEntryMonth(entry) === projectComparisonMonth;
+    };
+    const shouldShowProjectImageInSelectedMonth = (entry: { date?: string }) =>
+      !isSelectedProjectRecurring || getProjectLogEntryMonth(entry) === projectComparisonMonth;
     const getProjectImageEntries = (category: string) =>
       projectLogEntries.filter(
         (entry) =>
           entry.title === `Bilder: ${category}` &&
+          shouldShowProjectImageInSelectedMonth(entry) &&
           entry.attachments.some((attachment) => attachment.type === "Bild")
       );
     const getProjectDocumentEntries = (category: CustomerDocumentType) =>
       projectLogEntries.filter(
         (entry) =>
           entry.title === `Dokumente: ${category}` &&
+          shouldShowProjectDocumentInSelectedMonth(category, entry) &&
           entry.attachments.some((attachment) => attachment.type === "Dokument")
       );
     const projectEndCheckCount = getProjectDocumentEntries("Endkontrolle").reduce(
@@ -17164,20 +18268,6 @@ export function DashboardPage() {
         sum + entry.attachments.filter((attachment) => attachment.type === "Dokument").length,
       0
     );
-    const hasProjectDocumentMarker = (keyword: string) =>
-      projectLogEntries.some((entry) => {
-        const haystack = [
-          entry.title,
-          entry.text,
-          ...entry.attachments
-            .filter((attachment) => attachment.type === "Dokument")
-            .map((attachment) => attachment.name),
-        ]
-          .join(" ")
-          .toLowerCase();
-
-        return haystack.includes(keyword.toLowerCase());
-      });
     const projectProgressSteps = [
       {
         id: "offer",
@@ -17195,25 +18285,39 @@ export function DashboardPage() {
       {
         id: "appointment",
         label: "TerWu",
-        state: projectPlanningEntries.length > 0 ? "done" : "open",
+        state: projectHasBudgetAllocations
+          ? projectProgressMonthState
+          : projectPlanningEntries.length > 0
+            ? "done"
+            : "open",
         hint:
-          projectPlanningEntries.length > 0
-            ? "Terminwunsch oder Termin vorhanden"
-            : "Noch kein Terminwunsch oder Termin vorhanden",
+          projectHasBudgetAllocations
+            ? projectProgressMonthState === "done"
+              ? `${projectProgressMonthPlanningEntries.length} Termin(e) im ${formatMonthLabel(projectProgressMonthKey)} decken das Monatskontingent ab`
+              : projectProgressMonthHint
+            : projectPlanningEntries.length > 0
+              ? `${projectPlanningEntries.length} Termin(e) im Projekt vorhanden`
+              : "Noch kein Terminwunsch oder Termin vorhanden",
         onClick: () => setProjectFileTab("appointments"),
       },
       {
         id: "planning",
         label: "Planung",
-        state:
-          projectLaborComparisonRows.length === 0
-            ? "open"
+        state: projectHasBudgetAllocations
+          ? projectProgressMonthState
+          : projectLaborComparisonRows.length === 0
+            ? projectPlanningEntries.length > 0
+              ? "done"
+              : "open"
             : projectOpenOfferPlanningHours > 0
               ? "partial"
               : "done",
-        hint:
-          projectLaborComparisonRows.length === 0
-            ? "Noch keine Angebotszeiten vorhanden"
+        hint: projectHasBudgetAllocations
+          ? projectProgressMonthHint
+          : projectLaborComparisonRows.length === 0
+            ? projectPlanningEntries.length > 0
+              ? "Projekttermine vorhanden"
+              : "Noch keine Angebotszeiten oder Termine vorhanden"
             : projectOpenOfferPlanningHours > 0
               ? `${formatHours(projectOpenOfferPlanningHours)} Std. noch offen`
               : "Alle Zeiten komplett verplant",
@@ -17242,10 +18346,14 @@ export function DashboardPage() {
       {
         id: "finalCheck",
         label: "Endkontr.",
-        state: hasProjectDocumentMarker("endkontrolle") ? "done" : "open",
-        hint: hasProjectDocumentMarker("endkontrolle")
-          ? "Endkontrolle abgelegt"
-          : "Noch keine Endkontrolle abgelegt",
+        state: projectEndCheckCount > 0 ? "done" : "open",
+        hint: projectEndCheckCount > 0
+          ? isSelectedProjectRecurring
+            ? `Endkontrolle im ${comparisonMonthLabel} abgelegt`
+            : "Endkontrolle abgelegt"
+          : isSelectedProjectRecurring
+            ? `Noch keine Endkontrolle im ${comparisonMonthLabel} abgelegt`
+            : "Noch keine Endkontrolle abgelegt",
         onClick: () => {
           setProjectFileTab("documents");
           setSelectedProjectDocumentType("Endkontrolle");
@@ -17256,8 +18364,10 @@ export function DashboardPage() {
         label: "Rechnung",
         state: finalizedProjectInvoices.length > 0 ? "done" : "open",
         hint: finalizedProjectInvoices.length > 0
-          ? `${finalizedProjectInvoices.length} Rechnung${finalizedProjectInvoices.length === 1 ? "" : "en"} vorhanden`
-          : "Noch keine Rechnung abgelegt",
+          ? `${finalizedProjectInvoices.length} Rechnung${finalizedProjectInvoices.length === 1 ? "" : "en"} ${isSelectedProjectRecurring ? `im ${comparisonMonthLabel}` : "vorhanden"}`
+          : isSelectedProjectRecurring
+            ? `Noch keine Rechnung im ${comparisonMonthLabel} abgelegt`
+            : "Noch keine Rechnung abgelegt",
         onClick: () => {
           setProjectFileTab("documents");
           setSelectedProjectDocumentType("Rechnungen");
@@ -17279,7 +18389,20 @@ export function DashboardPage() {
       },
     ];
     const openProjectPlanningAction = () => {
-      if (projectOpenOfferPlanningHours > 0) {
+      if (
+        projectPlanningTargetEntry &&
+        (projectPlanningButtonState === "done" ||
+          projectPlanningButtonState === "partial" ||
+          projectPlanningButtonState === "over")
+      ) {
+        openProjectPlanningDayOverlay({
+          date: projectPlanningTargetEntry.date,
+          groupName: projectPlanningTargetEntry.groupName,
+        });
+        return;
+      }
+
+      if (projectMonthHasPlanningBasis || projectOpenOfferPlanningHours > 0) {
         setProjectFileTab("appointments");
         return;
       }
@@ -17297,6 +18420,11 @@ export function DashboardPage() {
         projectUpsellSourceEntries[0]?.text.match(/Zusatzverkauf:\s*(.+)/i)?.[1]?.trim() ||
         "Erkanntes Zusatzverkaufspotenzial";
       return createProjectPotential(selectedProjectFile, fallbackDescription);
+    };
+    const openProjectUpsellDetail = async () => {
+      const potential = activeProjectPotential ?? projectPotentialsForFile[0] ?? (await ensureSelectedProjectPotential());
+      if (potential) openPotentialDetail(potential);
+      setIsProjectUpsellMenuOpen(false);
     };
     const createProjectUpsellOffer = async () => {
       await ensureSelectedProjectPotential();
@@ -17320,6 +18448,17 @@ export function DashboardPage() {
     const projectOfferHistory = offerHistory
       .filter((entry) => entry.projectId === selectedProjectFile.id)
       .sort((first, second) => parseAppDateTime(second.createdAt).getTime() - parseAppDateTime(first.createdAt).getTime());
+    const projectInvoiceHistory = invoiceHistory
+      .filter((entry) => entry.projectId === selectedProjectFile.id)
+      .sort((first, second) => parseAppDateTime(second.createdAt).getTime() - parseAppDateTime(first.createdAt).getTime());
+    const getInvoiceDispatchState = (invoice: InvoiceItem) => {
+      const history = projectInvoiceHistory.filter((entry) => entry.invoiceId === invoice.id);
+      return {
+        history,
+        wasPrinted: history.some((entry) => entry.eventType === "printed"),
+        wasSent: history.some((entry) => entry.eventType === "email_sent"),
+      };
+    };
     const displayedProjectOffers =
       selectedProjectDocumentType === "Angebote: Nachtragsangebote" ? projectAddendumOffers : projectBaseOffers;
     const projectResponsibleName = selectedProjectFile.responsibleName || activeUser?.name || "Christian Eid";
@@ -17495,11 +18634,7 @@ export function DashboardPage() {
               type="button"
               className={`${styles.secondaryButton} ${styles.projectOfferPlanningButton}`}
               data-state={projectPlanningButtonState}
-              title={
-                projectOpenOfferPlanningHours > 0
-                  ? `${formatHours(projectOpenOfferPlanningHours)} Std. aus Angeboten offen`
-                  : undefined
-              }
+              title={projectPlanningButtonTitle}
               onClick={openProjectPlanningAction}
             >
               {projectPlanningButtonLabel}
@@ -17510,14 +18645,14 @@ export function DashboardPage() {
                   type="button"
                   className={`${styles.secondaryButton} ${styles.projectUpsellButton}`}
                   data-state={projectUpsellState}
-                  onClick={() => setIsProjectUpsellMenuOpen((isOpen) => !isOpen)}
+                  onClick={() => void openProjectUpsellDetail()}
                 >
                   {projectUpsellButtonLabel}
                 </button>
                 {isProjectUpsellMenuOpen ? (
                   <div className={`${styles.projectStatusMenu} ${styles.projectUpsellMenu}`}>
-                    <button type="button" onClick={openProjectUpsellLog}>
-                      <span>Notiz ansehen</span>
+                    <button type="button" onClick={() => void openProjectUpsellDetail()}>
+                      <span>Potenzial öffnen</span>
                     </button>
                     <button type="button" onClick={createProjectUpsellOffer}>
                       <span>Angebot erstellen</span>
@@ -17561,8 +18696,51 @@ export function DashboardPage() {
           </div>
         </header>
 
+        {isProjectPlanningDayOverlayOpen ? (
+          <div
+            className={styles.projectPlanningOverlay}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Tagesplanung"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) {
+                setIsProjectPlanningDayOverlayOpen(false);
+              }
+            }}
+          >
+            <div className={styles.projectPlanningDialog}>
+              {renderPlanningDayPanel({
+                closeLabel: "ZurÃ¼ck zum Projekt",
+                onClose: () => setIsProjectPlanningDayOverlayOpen(false),
+              })}
+            </div>
+          </div>
+        ) : null}
+
+        {isSelectedProjectRecurring ? (
+          <nav className={styles.projectMonthStrip} aria-label="Projektmonat">
+            <button type="button" onClick={() => shiftComparisonMonth(-13)}>
+              &lt; Monat
+            </button>
+            {projectMonthStripMonths.map((month) => (
+              <button
+                key={month.key}
+                type="button"
+                data-active={month.key === projectComparisonMonth}
+                data-current={month.key === currentCalendarMonthKey}
+                onClick={() => setProjectComparisonMonth(month.key)}
+              >
+                {month.label}
+              </button>
+            ))}
+            <button type="button" onClick={() => shiftComparisonMonth(13)}>
+              Monat &gt;
+            </button>
+          </nav>
+        ) : null}
+
         <nav className={styles.projectProgressTracker} aria-label="Projektfortschritt">
-          {projectProgressSteps.map((step, index) => (
+          {projectProgressSteps.map((step) => (
             <button
               key={step.id}
               type="button"
@@ -17574,9 +18752,6 @@ export function DashboardPage() {
                 {step.state === "done" ? "✓" : step.state === "partial" ? "!" : ""}
               </span>
               <strong>{step.label}</strong>
-              {index < projectProgressSteps.length - 1 ? (
-                <i aria-hidden="true" />
-              ) : null}
             </button>
           ))}
         </nav>
@@ -17589,12 +18764,17 @@ export function DashboardPage() {
                   <button
                     type="button"
                     data-active={projectFileTab === item.id}
-                    onClick={() => setProjectFileTab(item.id)}
+                    data-expanded={openProjectFileNavGroup === "documents"}
+                    aria-expanded={openProjectFileNavGroup === "documents"}
+                    onClick={() => {
+                      setProjectFileTab(item.id);
+                      setOpenProjectFileNavGroup((current) => (current === "documents" ? "" : "documents"));
+                    }}
                   >
                     {renderProjectMenuLabel(item)}
                     <b>v</b>
                   </button>
-                  {projectFileTab === "documents" && (
+                  {openProjectFileNavGroup === "documents" && (
                     <div className={styles.customerFileSubNav}>
                       {documentTypes.map((type) => (
                         <button
@@ -17603,6 +18783,7 @@ export function DashboardPage() {
                           data-active={selectedProjectDocumentType === type}
                           onClick={() => {
                             setProjectFileTab("documents");
+                            setOpenProjectFileNavGroup("documents");
                             setSelectedProjectDocumentType(type);
                           }}
                         >
@@ -17613,8 +18794,11 @@ export function DashboardPage() {
                           {type === "Angebote: Nachtragsangebote" && projectAddendumOffers.length > 0 && (
                             <strong>{projectAddendumOffers.length}</strong>
                           )}
-                          {type === "Rechnungen" && projectInvoices.length > 0 && (
-                            <strong>{projectInvoices.length}</strong>
+                          {type === "Rechnungen" && visibleProjectInvoices.length > 0 && (
+                            <strong>{visibleProjectInvoices.length}</strong>
+                          )}
+                          {type === "Tätigkeitsberichte" && getProjectDocumentEntries(type).length > 0 && (
+                            <strong>{getProjectDocumentEntries(type).length}</strong>
                           )}
                           {type === "Endkontrolle" && projectEndCheckCount > 0 && (
                             <strong>{projectEndCheckCount}</strong>
@@ -17629,13 +18813,18 @@ export function DashboardPage() {
                   <button
                     type="button"
                     data-active={projectFileTab === item.id}
-                    onClick={() => setProjectFileTab(item.id)}
+                    data-expanded={openProjectFileNavGroup === "tasks"}
+                    aria-expanded={openProjectFileNavGroup === "tasks"}
+                    onClick={() => {
+                      setProjectFileTab(item.id);
+                      setOpenProjectFileNavGroup((current) => (current === "tasks" ? "" : "tasks"));
+                    }}
                   >
                     <span>{item.icon}</span>
                     {item.label}
                     <b>v</b>
                   </button>
-                  {projectFileTab === "tasks" && (
+                  {openProjectFileNavGroup === "tasks" && (
                     <div className={styles.customerFileSubNav}>
                       <button type="button">Offene Aufgaben</button>
                       <button type="button">Erledigte Aufgaben</button>
@@ -17647,7 +18836,10 @@ export function DashboardPage() {
                   key={item.id}
                   type="button"
                   data-active={projectFileTab === item.id}
-                  onClick={() => setProjectFileTab(item.id)}
+                  onClick={() => {
+                    setProjectFileTab(item.id);
+                    setOpenProjectFileNavGroup("");
+                  }}
                 >
                   {renderProjectMenuLabel(item)}
                 </button>
@@ -17822,6 +19014,28 @@ export function DashboardPage() {
                     >
                       + Rechnung
                     </button>
+                  ) : selectedProjectDocumentType === "Tätigkeitsberichte" ? (
+                    <div className={styles.headerActions}>
+                      <button
+                        type="button"
+                        className={styles.primaryButton}
+                        disabled={isCreatingActivityReport}
+                        onClick={() => void createActivityReportForSelectedProject()}
+                      >
+                        {isCreatingActivityReport ? "Erstelle..." : "Tätigkeitsbericht erstellen"}
+                      </button>
+                      <label className={styles.projectDocumentUpload}>
+                        Dokument hochladen
+                        <input
+                          type="file"
+                          multiple
+                          onChange={(event) => {
+                            void uploadProjectDocumentCategory(selectedProjectDocumentType, event.target.files);
+                            event.currentTarget.value = "";
+                          }}
+                        />
+                      </label>
+                    </div>
                   ) : (
                     <label className={styles.projectDocumentUpload}>
                       Dokument hochladen
@@ -17929,7 +19143,7 @@ export function DashboardPage() {
                   )
                 ) : null}
                 {selectedProjectDocumentType === "Rechnungen" ? (
-                  projectInvoices.length === 0 ? (
+                  visibleProjectInvoices.length === 0 ? (
                     <div className={styles.customerDocumentEmpty}>
                       <strong>Noch keine Rechnungen vorhanden.</strong>
                       <p>
@@ -17937,6 +19151,7 @@ export function DashboardPage() {
                       </p>
                     </div>
                   ) : (
+                    <>
                     <table className={styles.projectTimeTable}>
                       <thead>
                         <tr>
@@ -17950,16 +19165,35 @@ export function DashboardPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {projectInvoices.map((invoice) => (
-                          <tr key={invoice.id}>
-                            <td className={styles.number}>{getInvoiceDisplayNumber(invoice)}</td>
-                            <td>{invoice.customerName || "-"}</td>
-                            <td>{invoice.company}</td>
-                            <td>{renderInvoiceStatusChip(invoice.status)}</td>
-                            <td>{formatMoney(invoice.netTotal)}</td>
-                            <td>{formatMoney(invoice.grossTotal)}</td>
-                            <td>
-                              <div className={styles.tableActionGroup}>
+                        {visibleProjectInvoices.map((invoice) => {
+                          const dispatchState = getInvoiceDispatchState(invoice);
+
+                          return (
+                            <tr key={invoice.id}>
+                              <td className={styles.number}>{getInvoiceDisplayNumber(invoice)}</td>
+                              <td>{invoice.customerName || "-"}</td>
+                              <td>{invoice.company}</td>
+                              <td>
+                                <div className={styles.invoiceStatusStack}>
+                                  {renderInvoiceStatusChip(invoice.status)}
+                                  <div className={styles.invoiceDispatchClips}>
+                                    {dispatchState.wasSent ? (
+                                      <span className={styles.invoiceDispatchClip} data-kind="sent">
+                                        E-Mail versendet
+                                      </span>
+                                    ) : null}
+                                    {dispatchState.wasPrinted ? (
+                                      <span className={styles.invoiceDispatchClip} data-kind="printed">
+                                        Gedruckt
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              </td>
+                              <td>{formatMoney(invoice.netTotal)}</td>
+                              <td>{formatMoney(invoice.grossTotal)}</td>
+                              <td>
+                                <div className={styles.tableActionGroup}>
                                 <button
                                   type="button"
                                   className={styles.timeEntryEditButton}
@@ -17987,7 +19221,7 @@ export function DashboardPage() {
                                 <button
                                   type="button"
                                   className={styles.timeEntryEditButton}
-                                  onClick={() => printPdfDocument(`/api/invoices?pdfId=${encodeURIComponent(invoice.id)}`)}
+                                  onClick={() => void printInvoiceDocument(invoice)}
                                 >
                                   Drucken
                                 </button>
@@ -18016,12 +19250,26 @@ export function DashboardPage() {
                                     Löschen
                                   </button>
                                 ) : null}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
+                    {projectInvoiceHistory.length > 0 ? (
+                      <section className={styles.invoiceHistoryPanel}>
+                        <h3>Rechnungshistorie</h3>
+                        <div>
+                          {projectInvoiceHistory.slice(0, 6).map((history) => (
+                            <span key={history.id}>
+                              {formatDeadline(history.createdAt)} · {history.invoiceNumber} · {history.title}
+                            </span>
+                          ))}
+                        </div>
+                      </section>
+                    ) : null}
+                    </>
                   )
                 ) : selectedProjectDocumentType === "Angebote" || selectedProjectDocumentType === "Angebote: Nachtragsangebote" ? (
                   <section className={styles.planningHistorySection}>
@@ -18065,45 +19313,60 @@ export function DashboardPage() {
                         </p>
                       </div>
                     ) : (
-                      <div className={styles.projectDocumentList}>
-                        {documents.map((document, index) => {
-                          const mailKind: DocumentMailKind =
-                            selectedProjectDocumentType === "Tätigkeitsberichte" ? "activityReport" : "document";
-                          const documentNumber = document.name || `${selectedProjectDocumentType} ${index + 1}`;
+                      <div className={styles.projectTableScroll}>
+                        <table className={styles.projectTimeTable}>
+                          <thead>
+                            <tr>
+                              <th>Dokument</th>
+                              <th>Datum</th>
+                              <th>Typ</th>
+                              <th>Aktion</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {documents.map((document, index) => {
+                              const mailKind: DocumentMailKind =
+                                selectedProjectDocumentType === "Tätigkeitsberichte" ? "activityReport" : "document";
+                              const documentNumber = document.name || `${selectedProjectDocumentType} ${index + 1}`;
 
-                          return (
-                            <article key={`${document.entryId}-${document.name}-${index}`}>
-                              <strong>{document.name}</strong>
-                              <span>{document.date}</span>
-                              <div className={styles.tableActionGroup}>
-                                {document.dataUrl ? (
-                                  <button
-                                    type="button"
-                                    className={styles.timeEntryEditButton}
-                                    onClick={() => void openAttachmentDataUrl(document.dataUrl, document.name)}
-                                  >
-                                    Öffnen
-                                  </button>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  className={styles.timeEntryEditButton}
-                                  onClick={() =>
-                                    openGenericDocumentMailDialog({
-                                      kind: mailKind,
-                                      documentId: `${document.entryId}-${index}`,
-                                      documentNumber,
-                                      attachmentName: document.name,
-                                      attachmentDataUrl: document.dataUrl,
-                                    })
-                                  }
-                                >
-                                  Per E-Mail senden
-                                </button>
-                              </div>
-                            </article>
-                          );
-                        })}
+                              return (
+                                <tr key={`${document.entryId}-${document.name}-${index}`}>
+                                  <td className={styles.number}>{document.name || documentNumber}</td>
+                                  <td>{formatDeadline(document.date)}</td>
+                                  <td>{selectedProjectDocumentType}</td>
+                                  <td>
+                                    <div className={styles.tableActionGroup}>
+                                      {document.dataUrl ? (
+                                        <button
+                                          type="button"
+                                          className={styles.timeEntryEditButton}
+                                          onClick={() => void openAttachmentDataUrl(document.dataUrl, document.name)}
+                                        >
+                                          Öffnen
+                                        </button>
+                                      ) : null}
+                                      <button
+                                        type="button"
+                                        className={styles.timeEntryEditButton}
+                                        onClick={() =>
+                                          openGenericDocumentMailDialog({
+                                            kind: mailKind,
+                                            documentId: `${document.entryId}-${index}`,
+                                            documentNumber,
+                                            attachmentName: document.name,
+                                            attachmentDataUrl: document.dataUrl,
+                                          })
+                                        }
+                                      >
+                                        Per E-Mail senden
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
                       </div>
                     );
                   })()
@@ -18772,7 +20035,10 @@ export function DashboardPage() {
                 <div className={styles.customerFileMainHeader}>
                   <h2>Planungstermine</h2>
                   <div className={styles.headerActions}>
-                    <span>{projectPlanningEntries.length} Termin{projectPlanningEntries.length === 1 ? "" : "e"}</span>
+                    <span>
+                      {projectVisiblePlanningEntries.length} Termin
+                      {projectVisiblePlanningEntries.length === 1 ? "" : "e"}
+                    </span>
                     <button type="button" className={styles.primaryButton} onClick={() => openManualProjectPlanning()}>
                       + Termin
                     </button>
@@ -18785,9 +20051,41 @@ export function DashboardPage() {
                     </button>
                   </div>
                 </div>
-                {false && projectPlanningEntries.length === 0 ? (
+                {isSelectedProjectRecurring ? (
+                  <section className={styles.projectPlanningCapacitySummary}>
+                    <div className={styles.projectPlanningCapacityCompact}>
+                      <div>
+                        <strong>Planbare Stunden im {comparisonMonthLabel}</strong>
+                        <span>
+                          Geplant: {formatHours(projectMonthPlannedHours)} von{" "}
+                          {projectMonthBudgetHours > 0 ? formatHours(projectMonthBudgetHours) : "-"} Std.
+                        </span>
+                      </div>
+                      <b data-state={projectMonthPlanningRemainingHours < 0 ? "over" : "ok"}>
+                        {projectMonthBudgetHours > 0
+                          ? `${formatHours(Math.max(projectMonthPlanningRemainingHours, 0))} Std. planbar`
+                          : "Kein Monatskontingent"}
+                      </b>
+                    </div>
+                    <div className={styles.projectPlanningCapacityBar}>
+                      <span style={{ width: `${projectMonthPlanningUsagePercent}%` }}>
+                        <i>{projectMonthPlanningUsagePercent.toFixed(0)}%</i>
+                      </span>
+                    </div>
+                    {projectMonthPlanningRemainingHours < 0 ? (
+                      <p>Dieser Monat ist um {formatHours(Math.abs(projectMonthPlanningRemainingHours))} Std. überplant.</p>
+                    ) : projectMonthBudgetHours <= 0 ? (
+                      <p>Für diesen Monat ist noch kein Projektzeitkontingent hinterlegt.</p>
+                    ) : null}
+                  </section>
+                ) : null}
+                {projectVisiblePlanningEntries.length === 0 ? (
                   <div className={styles.customerDocumentEmpty}>
-                    <strong>Noch keine Termine geplant.</strong>
+                    <strong>
+                      {isSelectedProjectRecurring
+                        ? `Noch keine Termine im ${comparisonMonthLabel} geplant.`
+                        : "Noch keine Termine geplant."}
+                    </strong>
                     <p>
                       Sobald eine Planung mit diesem Projekt verknüpft wird, erscheint sie hier.
                     </p>
@@ -18912,6 +20210,7 @@ export function DashboardPage() {
                             <th>Leistungsgrad</th>
                             <th>Status</th>
                             <th>Rechnung</th>
+                            <th>Kommentar</th>
                             <th>Aktion</th>
                           </tr>
                         </thead>
@@ -18939,6 +20238,28 @@ export function DashboardPage() {
                                 ) : (
                                   row.invoiceLabel
                                 )}
+                              </td>
+                              <td>
+                                <div className={styles.stampCommentClips}>
+                                  {row.isManualStamp ? (
+                                    <span className={styles.stampCommentClip} data-tone="manual">
+                                      Manuelle Stempelung
+                                    </span>
+                                  ) : null}
+                                {row.commentSummary ? (
+                                  <button
+                                    type="button"
+                                    className={styles.stampCommentClip}
+                                    onClick={() => window.alert(row.commentSummary)}
+                                  >
+                                    Kommentar
+                                  </button>
+                                ) : (
+                                  <span className={styles.stampCommentClip} data-empty="true">
+                                    Kein Kommentar
+                                  </span>
+                                )}
+                                </div>
                               </td>
                               <td>
                                 {row.editEntry ? (
@@ -19051,36 +20372,62 @@ export function DashboardPage() {
           <aside className={styles.projectFileAside}>
             <article className={styles.projectMetricCard}>
               <h2>Verbrauchte Zeitkontingente</h2>
-              <div className={styles.projectTimeBudget}>
-                <div>
-                  <span>Gestempelt (Monat)</span>
-                  <strong>{formatHours(projectTrackedMonthHours)} Std.</strong>
+              {isSelectedProjectRecurring ? (
+                <>
+                  <div className={styles.projectTimeBudget}>
+                    <div>
+                      <span>Gestempelt (Monat)</span>
+                      <strong>{formatHours(projectTrackedMonthHours)} Std.</strong>
+                    </div>
+                    <div>
+                      <span>Restliches Kontingent (Monat)</span>
+                      <strong data-state={projectMonthRemainingHours < 0 ? "over" : "ok"}>
+                        {projectMonthBudgetHours > 0 ? `${formatHours(projectMonthRemainingHours)} Std.` : "-"}
+                      </strong>
+                    </div>
+                    <div className={styles.projectTimeBudgetBar}>
+                      <span style={{ width: `${projectMonthBudgetUsagePercent}%` }}>
+                        <i>{projectMonthBudgetUsagePercent.toFixed(0)}%</i>
+                      </span>
+                    </div>
+                  </div>
+                  <div className={styles.projectTimeBudget}>
+                    <div>
+                      <span>Gestempelt (Gesamt)</span>
+                      <strong>{formatHours(projectTrackedHours)} Std.</strong>
+                    </div>
+                    <div>
+                      <span>Restliches Kontingent (Gesamt)</span>
+                      <strong data-state={projectRemainingHours < 0 ? "over" : "ok"}>
+                        {projectHasBudgetAllocations ? `${formatHours(projectRemainingHours)} Std.` : "-"}
+                      </strong>
+                    </div>
+                    <div className={styles.projectTimeBudgetBar}>
+                      <span style={{ width: `${projectBudgetUsagePercent}%` }}>
+                        <i>{projectBudgetUsagePercent.toFixed(0)}%</i>
+                      </span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className={styles.projectTimeBudget}>
+                  <div>
+                    <span>Gebucht (durch Stempelungen)</span>
+                    <strong>{formatHours(projectTrackedHours)} Std.</strong>
+                  </div>
+                  <div>
+                    <span>Rest</span>
+                    <strong data-state={projectAppointmentRemainingHours < 0 ? "over" : "ok"}>
+                      {projectPlannedAppointmentHours > 0 ? `${formatHours(projectAppointmentRemainingHours)} Std.` : "-"}
+                    </strong>
+                  </div>
+                  <div className={styles.projectTimeBudgetBar}>
+                    <span style={{ width: `${projectAppointmentUsagePercent}%` }}>
+                      <i>{projectAppointmentUsagePercent.toFixed(0)}%</i>
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <span>Restliches Kontingent (Monat)</span>
-                  <strong data-state={projectMonthRemainingHours < 0 ? "over" : "ok"}>
-                    {projectMonthBudgetHours > 0 ? `${formatHours(projectMonthRemainingHours)} Std.` : "-"}
-                  </strong>
-                </div>
-                <div className={styles.projectTimeBudgetBar}>
-                  <span style={{ width: `${projectMonthBudgetUsagePercent}%` }} />
-                </div>
-              </div>
-              <div className={styles.projectTimeBudget}>
-                <div>
-                  <span>Gestempelt (Gesamt)</span>
-                  <strong>{formatHours(projectTrackedHours)} Std.</strong>
-                </div>
-                <div>
-                  <span>Restliches Kontingent (Gesamt)</span>
-                  <strong data-state={projectRemainingHours < 0 ? "over" : "ok"}>
-                    {projectHasBudgetAllocations ? `${formatHours(projectRemainingHours)} Std.` : "-"}
-                  </strong>
-                </div>
-                <div className={styles.projectTimeBudgetBar}>
-                  <span style={{ width: `${projectBudgetUsagePercent}%` }} />
-                </div>
-              </div>
+              )}
             </article>
 
             <article className={styles.projectMetricCard}>
@@ -19358,6 +20705,11 @@ export function DashboardPage() {
     const selectedInvoiceStampEntries = unbilledInvoiceStampEntries.filter((entry) =>
       invoiceStampEntryIds.includes(entry.id)
     );
+    const hasUnlinkedInvoiceStampEntries =
+      unbilledInvoiceStampEntries.length > selectedInvoiceStampEntries.length;
+    const hasAllInvoiceStampEntriesLinked =
+      unbilledInvoiceStampEntries.length > 0 &&
+      selectedInvoiceStampEntries.length === unbilledInvoiceStampEntries.length;
     const unbilledInvoiceStampHours = unbilledInvoiceStampEntries.reduce(
       (sum, entry) => sum + Number(entry.durationMs || 0) / 3_600_000,
       0
@@ -19430,6 +20782,20 @@ export function DashboardPage() {
                       MwSt. %
                       <input type="number" value={invoiceDraft.vatRate} onChange={(event) => setInvoiceDraft((current) => ({ ...current, vatRate: Number(event.target.value) }))} />
                     </label>
+                    <label>
+                      Leistungsdatum
+                      <input
+                        type="date"
+                        value={invoiceDraft.serviceDate}
+                        onChange={(event) =>
+                          setInvoiceDraft((current) => ({
+                            ...current,
+                            serviceDate: event.target.value,
+                            plannedExecutionMonth: event.target.value.slice(0, 7),
+                          }))
+                        }
+                      />
+                    </label>
                     <label className={styles.fullWidth}>
                       Einleitung
                       <textarea rows={2} value={invoiceDraft.introText} onChange={(event) => setInvoiceDraft((current) => ({ ...current, introText: event.target.value }))} />
@@ -19445,7 +20811,15 @@ export function DashboardPage() {
                     <h3>Positionen</h3>
                     <button type="button" className={styles.secondaryButton} onClick={addInvoiceLine}>+ Position</button>
                   </div>
-                  <div className={styles.offerInternalCalculation}>
+                  <div
+                    className={`${styles.offerInternalCalculation} ${
+                      hasAllInvoiceStampEntriesLinked
+                        ? styles.invoiceStampLinkComplete
+                        : hasUnlinkedInvoiceStampEntries
+                          ? styles.invoiceStampLinkWarning
+                          : ""
+                    }`}
+                  >
                     <div className={styles.offerInternalHeader}>
                       <strong>Offene Zeiteinträge</strong>
                       <div className={styles.tableActionGroup}>
@@ -19471,6 +20845,15 @@ export function DashboardPage() {
                             ? ` Ausgewählt: ${formatHours(selectedInvoiceStampHours)} Std.`
                             : ""}
                         </small>
+                        {hasAllInvoiceStampEntriesLinked ? (
+                          <strong className={styles.invoiceStampLinkNotice} data-state="complete">
+                            Alle offenen Stempelungen sind mit dieser Rechnung verknüpft.
+                          </strong>
+                        ) : hasUnlinkedInvoiceStampEntries ? (
+                          <strong className={styles.invoiceStampLinkNotice} data-state="warning">
+                            Bitte Stempelungen mit der Rechnung verknüpfen oder bewusst ohne Verknüpfung abrechnen.
+                          </strong>
+                        ) : null}
                         <div className={styles.projectTableScroll}>
                           <table className={styles.projectTimeTable}>
                             <thead>
@@ -19491,6 +20874,7 @@ export function DashboardPage() {
                                   <tr key={`invoice-stamp-${entry.id}`}>
                                     <td>
                                       <input
+                                        className={styles.invoiceStampCheckbox}
                                         type="checkbox"
                                         checked={isLinked}
                                         onChange={(event) => toggleInvoiceStampEntry(entry.id, event.target.checked)}
@@ -22462,8 +23846,208 @@ export function DashboardPage() {
     setIsModalOpen(true);
   }
 
+  function renderPlanningDayPanel(options: { closeLabel: string; onClose: () => void }) {
+    return (
+      <section className={styles.planningDayPanel}>
+        <div className={styles.planningDayHeader}>
+          <div>
+            <p className={styles.eyebrow}>Tagesplanung</p>
+            <h1>
+              {selectedPlanningDate.toLocaleDateString(APP_LOCALE, {
+                weekday: "long",
+                day: "2-digit",
+                month: "2-digit",
+                year: "numeric",
+                timeZone: APP_TIME_ZONE,
+              })}
+            </h1>
+            <p>
+              {selectedPlanningHoliday
+                ? `Feiertag: ${selectedPlanningHoliday.name}`
+                : selectedPlanningIsWeekend
+                  ? "Wochenende"
+                  : `Planungsgruppe ${selectedPlanningGroup}`}
+            </p>
+          </div>
+          <div className={styles.planningDayActions}>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={() =>
+                openPlanningEntryModal({
+                  date: selectedPlanningDateKey,
+                  groupName: selectedPlanningGroup,
+                  board:
+                    selectedPlanningGroup === "VZK" || selectedPlanningGroup === "TZK"
+                      ? "OK immocare"
+                      : "OK solutions",
+                })
+              }
+            >
+              + Planung
+            </button>
+            <button
+              type="button"
+              className={styles.requestButton}
+              onClick={() =>
+                openPlanningEntryModal({
+                  date: selectedPlanningDateKey,
+                  groupName: selectedPlanningGroup,
+                  approvalStatus: "requested",
+                  board:
+                    selectedPlanningGroup === "VZK" || selectedPlanningGroup === "TZK"
+                      ? "OK immocare"
+                      : "OK solutions",
+                })
+              }
+            >
+              + Terminwunsch
+            </button>
+            <button type="button" className={styles.secondaryButton} onClick={options.onClose}>
+              {options.closeLabel}
+            </button>
+            <div className={styles.planningGroupSwitch}>
+              {allDetailGroups.map((group) => (
+                <button
+                  key={group.name}
+                  type="button"
+                  data-active={selectedPlanningGroup === group.name}
+                  onClick={() => setSelectedPlanningGroup(group.name)}
+                >
+                  {group.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className={styles.planningTimelineWrap}>
+          <div className={styles.planningTimelineBoard}>
+            <div className={styles.planningWorkerHead}>Worker</div>
+            <div
+              className={styles.planningHourScale}
+              style={{
+                gridTemplateColumns: `repeat(${planningSlotColumnCount}, minmax(24px, 1fr))`,
+              }}
+            >
+              {planningHourLabels.map((hour, index) => (
+                <span
+                  key={hour}
+                  style={{
+                    gridColumn: `${index * 4 + 1} / span 4`,
+                  }}
+                >
+                  {hour}
+                </span>
+              ))}
+            </div>
+
+            {selectedPlanningGroupEmployees.length === 0 && (
+              <div className={styles.planningEmptyRow}>
+                FÃ¼r diese Planungsgruppe ist noch kein Mitarbeiter hinterlegt.
+              </div>
+            )}
+
+            {selectedPlanningGroupEmployees.map((employee) => {
+              const employeeUser = users.find((user) => user.name === employee);
+              const employeeCapacity = employeeUser
+                ? getUserCapacityForDate(employeeUser, selectedPlanningDateKey)
+                : 0;
+              const employeeUtilization = getEmployeePlanningUtilization(
+                employee,
+                employeeCapacity,
+                selectedPlanningGroup,
+                selectedPlanningDateKey
+              );
+              const employeeBreakWindow = getUserBreakWindowForDate(employeeUser, selectedPlanningDateKey);
+              const employeeAbsence = employeeUser
+                ? getUserAbsenceForDateKey(employeeUser.id, selectedPlanningDateKey)
+                : undefined;
+              const employeeBreakStartColumn = employeeBreakWindow.start
+                ? getPlanningSlotIndex(employeeBreakWindow.start) + 1
+                : 1;
+              const employeeBreakEndColumn = employeeBreakWindow.end
+                ? getPlanningSlotIndex(employeeBreakWindow.end) + 1
+                : 1;
+              const assignments = getPlanningAssignmentsForEmployee(employee);
+
+              return (
+                <div key={employee} className={styles.planningWorkerRow}>
+                  <div
+                    className={styles.planningWorkerCell}
+                    data-overloaded={employeeUtilization.percent > 100}
+                  >
+                    <strong>{employee}</strong>
+                    <small>{employeeUtilization.percent}% ausgelastet</small>
+                    <em>
+                      {formatHours(employeeUtilization.plannedHours)}h von {formatHours(employeeCapacity)}h verplant
+                    </em>
+                    {employeeAbsence ? (
+                      <small>
+                        {absenceLabel(employeeAbsence.type)} Â· {absenceDayPartLabel(employeeAbsence.dayPart)}
+                      </small>
+                    ) : null}
+                  </div>
+                  <div
+                    className={styles.planningTimelineLane}
+                    data-muted={selectedPlanningIsWeekend || Boolean(selectedPlanningHoliday)}
+                    style={{
+                      gridTemplateColumns: `repeat(${planningSlotColumnCount}, minmax(24px, 1fr))`,
+                      ...getPlanningWindowStyle(employeeUser),
+                    }}
+                  >
+                    <span className={styles.planningUnavailableWindow} data-side="before" />
+                    <span className={styles.planningUnavailableWindow} data-side="after" />
+                    {employeeAbsence ? (
+                      <span
+                        className={styles.planningAbsenceWindow}
+                        data-type={employeeAbsence.type}
+                        data-part={employeeAbsence.dayPart}
+                      >
+                        {absenceLabel(employeeAbsence.type)}
+                      </span>
+                    ) : null}
+                    {employeeBreakWindow.start && employeeBreakWindow.end && (
+                      <span
+                        className={styles.planningBreakWindow}
+                        style={{
+                          gridColumn: `${employeeBreakStartColumn} / ${employeeBreakEndColumn}`,
+                        }}
+                      >
+                        Pause
+                      </span>
+                    )}
+                    {assignments.map((assignment) => (
+                      <button
+                        type="button"
+                        key={`${employee}-${assignment.label}-${assignment.start}`}
+                        className={styles.planningTimelineBlock}
+                        data-pause={assignment.label === "Pause"}
+                        data-source={assignment.source}
+                        data-approval={assignment.approvalStatus}
+                        data-conflict={assignment.hasConflict}
+                        onClick={() => {
+                          const entry = planningEntries.find((item) => item.id === assignment.id);
+                          if (entry) openEditPlanningEntryModal(entry);
+                        }}
+                        style={{
+                          gridColumn: `${assignment.startColumn} / ${assignment.endColumn}`,
+                        }}
+                      >
+                        {assignment.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   function renderPlanningBoard() {
-    const allDetailGroups = planningBoardSections.flatMap((section) => section.detailGroups);
     const openPlanningMonths = Array.from({ length: 7 }, (_, index) => {
       const date = new Date();
       date.setHours(12, 0, 0, 0);
@@ -22773,6 +24357,17 @@ export function DashboardPage() {
             </p>
           </div>
           <div className={styles.toplineActions}>
+            <div className={styles.planningBoardDateNav} aria-label="Planungszeitraum">
+              <button type="button" onClick={() => shiftPlanningBoardStart(-28)}>
+                &lt; 4 Wochen
+              </button>
+              <button type="button" onClick={() => setPlanningBoardStartDate(formatDateKey(new Date()))}>
+                Heute
+              </button>
+              <button type="button" onClick={() => shiftPlanningBoardStart(28)}>
+                4 Wochen &gt;
+              </button>
+            </div>
             <div className={styles.segmentedControl}>
               <button
                 type="button"
@@ -22842,10 +24437,11 @@ export function DashboardPage() {
                                 className={styles.planningOpenProject}
                                 data-status={row.status}
                                 onClick={() => {
-                                  setSelectedProjectFileId(row.project.id);
-                                  setProjectFileTab("appointments");
-                                  setProjectComparisonMonth(column.key);
-                                  setActiveTab(company === "OK immocare" ? "projectsImmocare" : "projectsSolutions");
+                                  openProjectFile(row.project, {
+                                    tab: "appointments",
+                                    month: column.key,
+                                    activeTab: company === "OK immocare" ? "projectsImmocare" : "projectsSolutions",
+                                  });
                                   setOpenProjectNav({
                                     projectsSolutions: company === "OK solutions",
                                     projectsImmocare: company === "OK immocare",
@@ -22880,10 +24476,11 @@ export function DashboardPage() {
                             type="button"
                             className={styles.planningMissingProject}
                             onClick={() => {
-                              setSelectedProjectFileId(project.id);
-                              setProjectFileTab("appointments");
-                              setProjectComparisonMonth(openPlanningMonths[0]?.key || projectComparisonMonth);
-                              setActiveTab(company === "OK immocare" ? "projectsImmocare" : "projectsSolutions");
+                              openProjectFile(project, {
+                                tab: "appointments",
+                                month: openPlanningMonths[0]?.key || projectComparisonMonth,
+                                activeTab: company === "OK immocare" ? "projectsImmocare" : "projectsSolutions",
+                              });
                               setOpenProjectNav({
                                 projectsSolutions: company === "OK solutions",
                                 projectsImmocare: company === "OK immocare",
@@ -26194,6 +27791,18 @@ export function DashboardPage() {
 
   function renderFinalizeInvoiceConfirmModal() {
     if (!pendingFinalizeInvoice) return null;
+    const pendingProject =
+      pendingFinalizeInvoice.source === "list"
+        ? heroProjects.find((project) => project.id === pendingFinalizeInvoice.invoice.projectId) || selectedProjectFile
+        : selectedProjectFile;
+    const pendingServiceDate =
+      pendingFinalizeInvoice.source === "list"
+        ? pendingFinalizeInvoice.invoice.serviceDate ||
+          (pendingProject
+            ? getProjectServiceDateSuggestion(pendingProject, pendingFinalizeInvoice.invoice.plannedExecutionMonth)
+            : "")
+        : invoiceDraft.serviceDate ||
+          (pendingProject ? getProjectServiceDateSuggestion(pendingProject, invoiceDraft.plannedExecutionMonth) : "");
 
     return (
       <div className={styles.modalOverlay}>
@@ -26209,7 +27818,8 @@ export function DashboardPage() {
           </div>
           <div className={styles.standardModalBody}>
             <p className={styles.finalizeConfirmText}>
-              Wurde alles verrechnet? Möchten Sie das Projekt jetzt abrechnen?
+              Die Rechnung wird mit dem Leistungsdatum {getInvoiceServiceDateLabel(pendingServiceDate)} erstellt.
+              Ist das korrekt?
             </p>
           </div>
           <div className={styles.standardModalFooter}>
@@ -28032,7 +29642,7 @@ export function DashboardPage() {
           </label>
 
           <div className={styles.headerActions}>
-            <div className={styles.quickCreate}>
+            <div className={styles.quickCreate} ref={quickCreateRef}>
               <button
                 className={styles.quickCreateButton}
                 onClick={() => {
@@ -28093,11 +29703,12 @@ export function DashboardPage() {
                 </div>
               )}
             </div>
-            <div className={styles.userMenu}>
+            <div className={styles.userMenu} ref={userMenuRef}>
               <button
                 className={styles.userMenuButton}
                 onClick={() => {
                   setIsUserMenuOpen((current) => !current);
+                  setIsQuickCreateOpen(false);
                   setIsNotificationsOpen(false);
                 }}
                 aria-label="Benutzermenü"
@@ -28143,13 +29754,14 @@ export function DashboardPage() {
               )}
             </div>
 
-          <div className={styles.notificationCenter}>
+          <div className={styles.notificationCenter} ref={notificationCenterRef}>
             <button
               className={`${styles.notificationBell} ${
                 unreadNotifications.length > 0 ? styles.notificationBellActive : ""
               }`}
               onClick={() => {
                 setIsNotificationsOpen((current) => !current);
+                setIsQuickCreateOpen(false);
                 setIsUserMenuOpen(false);
                 setShowNotificationHistory(false);
                 setNotificationSearchTerm("");
@@ -28431,7 +30043,6 @@ export function DashboardPage() {
               const projectKindLinks: Array<{ label: string; value: ProjectKindFilter }> = [
                 { label: "Dauerläufer-Projekte", value: "Dauerläufer-Projekt" },
                 { label: "Einmalige-Projekte", value: "einmaliges Projekt" },
-                { label: "Potenziale", value: "potentials" },
               ];
 
               return (
@@ -28508,6 +30119,104 @@ export function DashboardPage() {
                     className={`${styles.tab} ${isActiveGroup ? styles.activeTab : ""}`}
                     onClick={() => {
                       openMainView("contentRound");
+                      setIsFirmSettingsNavOpen(false);
+                      setOpenProjectNav({ projectsSolutions: false, projectsImmocare: false });
+                      setOpenSidebarMenus({ [tab]: !isOpen });
+                    }}
+                  >
+                    <span className={styles.navLabel}>
+                      <SidebarIcon tab={tab} />
+                      {label}
+                    </span>
+                    <b>{isOpen ? "^" : "v"}</b>
+                  </button>
+                  {isOpen && (
+                    <div className={styles.sidebarSubTabs}>
+                      {children.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          data-active={activeTab === item.id}
+                          onClick={() => {
+                            openMainView(item.id);
+                            setIsFirmSettingsNavOpen(false);
+                            setOpenProjectNav({ projectsSolutions: false, projectsImmocare: false });
+                            setOpenSidebarMenus({ [tab]: true });
+                          }}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            if (tab === "salesHub") {
+              const isOpen = openSidebarMenus[tab] ?? false;
+              const children: Array<{ id: AppTab; label: string }> = [
+                { id: "salesHub", label: "Uebersicht" },
+                { id: "customerSatisfaction", label: "KuZu" },
+                { id: "salesTargets", label: "Sales-Ziele" },
+              ];
+              const isActiveGroup =
+                activeTab === tab || children.some((item) => item.id === activeTab);
+
+              return (
+                <div key={tab} className={styles.sidebarGroup}>
+                  <button
+                    className={`${styles.tab} ${isActiveGroup ? styles.activeTab : ""}`}
+                    onClick={() => {
+                      openMainView("salesHub");
+                      setIsFirmSettingsNavOpen(false);
+                      setOpenProjectNav({ projectsSolutions: false, projectsImmocare: false });
+                      setOpenSidebarMenus({ [tab]: !isOpen });
+                    }}
+                  >
+                    <span className={styles.navLabel}>
+                      <SidebarIcon tab={tab} />
+                      {label}
+                    </span>
+                    <b>{isOpen ? "^" : "v"}</b>
+                  </button>
+                  {isOpen && (
+                    <div className={styles.sidebarSubTabs}>
+                      {children.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          data-active={activeTab === item.id}
+                          onClick={() => {
+                            openMainView(item.id);
+                            setIsFirmSettingsNavOpen(false);
+                            setOpenProjectNav({ projectsSolutions: false, projectsImmocare: false });
+                            setOpenSidebarMenus({ [tab]: true });
+                          }}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            if (tab === "processAutomation") {
+              const isOpen = openSidebarMenus[tab] ?? false;
+              const children: Array<{ id: AppTab; label: string }> = [
+                { id: "winterService", label: "Winterdienst" },
+              ];
+              const isActiveGroup =
+                activeTab === tab || children.some((item) => item.id === activeTab);
+
+              return (
+                <div key={tab} className={styles.sidebarGroup}>
+                  <button
+                    className={`${styles.tab} ${isActiveGroup ? styles.activeTab : ""}`}
+                    onClick={() => {
+                      openMainView("processAutomation");
                       setIsFirmSettingsNavOpen(false);
                       setOpenProjectNav({ projectsSolutions: false, projectsImmocare: false });
                       setOpenSidebarMenus({ [tab]: !isOpen });
@@ -29574,6 +31283,8 @@ export function DashboardPage() {
                                 <th>Potenzial</th>
                                 <th>Kunde</th>
                                 <th>Projekt</th>
+                                <th>PrioritÃ¤t</th>
+                                <th>Wert</th>
                                 <th>Erkannt am</th>
                                 <th>Wiedervorlage</th>
                                 <th>Zuständig</th>
@@ -29584,7 +31295,7 @@ export function DashboardPage() {
                             <tbody>
                               {filteredPipelinePotentials.length === 0 ? (
                                 <tr>
-                                  <td colSpan={9}>Keine Potenziale in dieser Auswahl.</td>
+                                  <td colSpan={11}>Keine Potenziale in dieser Auswahl.</td>
                                 </tr>
                               ) : (
                                 filteredPipelinePotentials.map((potential) => {
@@ -29598,12 +31309,21 @@ export function DashboardPage() {
                                       <td className={styles.title}>{potential.description}</td>
                                       <td>{potential.customerName || project?.customer || "-"}</td>
                                       <td>{potential.projectLabel || project?.title || potential.projectId}</td>
+                                      <td>{getPotentialPriorityLabel(potential.priority)}</td>
+                                      <td>{potential.estimatedValue ? `${potential.estimatedValue} €` : "-"}</td>
                                       <td>{formatDeadline(potential.createdAt)}</td>
                                       <td>{potential.followUpAt ? formatDeadline(potential.followUpAt) : "-"}</td>
-                                      <td>{linkedTask?.zustaendig || activeUser?.name || "-"}</td>
+                                      <td>{potential.ownerName || linkedTask?.zustaendig || activeUser?.name || "-"}</td>
                                       <td>{lastHistory ? `${formatDeadline(lastHistory.at)}: ${lastHistory.note}` : "-"}</td>
                                       <td>
                                         <div className={styles.tableActionGroup}>
+                                          <button
+                                            type="button"
+                                            className={styles.timeEntryEditButton}
+                                            onClick={() => openPotentialDetail(potential)}
+                                          >
+                                            Öffnen
+                                          </button>
                                           {["open", "follow_up"].includes(potential.status) ? (
                                             <>
                                               <button
@@ -29727,8 +31447,7 @@ export function DashboardPage() {
                                 key={project.id}
                                 className={styles.clickableRow}
                                 onClick={() => {
-                                  setSelectedProjectFileId(project.id);
-                                  setProjectFileTab("logbook");
+                                  openProjectFile(project, { activeTab: activeProjectPipeline.tab });
                                 }}
                               >
                                 <td className={styles.number}>{getProjectNumberPrefix(project.projectNumber || project.id)}</td>
@@ -29764,6 +31483,8 @@ export function DashboardPage() {
               </section>
             </section>
             )
+          ) : activeTab === "salesOpportunities" ? (
+            renderPotentialWorkspace()
           ) : activeTab === "absenceRequests" ? (
             renderTeamCalendar()
           ) : activeTab === "planningBoard" ? (
@@ -34108,6 +35829,249 @@ export function DashboardPage() {
                     : stampModalMode === "stop"
                       ? "Stoppen"
                       : "Wechseln"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingPotential && (
+        <div className={styles.overlay} onClick={() => setEditingPotential(null)}>
+          <div
+            className={`${styles.standardModal} ${styles.potentialModal}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={styles.standardModalHeader}>
+              <div>
+                <h2>Potenzial bearbeiten</h2>
+                <p>{editingPotential.projectLabel || editingPotential.customerName || "Zusatzverkauf"}</p>
+              </div>
+              <button className={styles.iconButton} type="button" onClick={() => setEditingPotential(null)}>
+                ×
+              </button>
+            </div>
+            <div className={`${styles.standardModalBody} ${styles.potentialModalBody}`}>
+              <section className={styles.potentialSummary}>
+                <div>
+                  <span>Status</span>
+                  <strong>{getPotentialStatusLabel({ ...editingPotential, status: potentialDraft.status })}</strong>
+                </div>
+                <div>
+                  <span>Priorität</span>
+                  <strong>{getPotentialPriorityLabel(potentialDraft.priority)}</strong>
+                </div>
+                <div>
+                  <span>Geschätzter Wert</span>
+                  <strong>{potentialDraft.estimatedValue ? `${potentialDraft.estimatedValue} €` : "-"}</strong>
+                </div>
+              </section>
+
+              <div className={styles.formGrid}>
+                <label className={styles.fullWidth}>
+                  Potenzial
+                  <textarea
+                    value={potentialDraft.description}
+                    onChange={(event) =>
+                      setPotentialDraft((currentDraft) => ({
+                        ...currentDraft,
+                        description: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  Status
+                  <select
+                    value={potentialDraft.status}
+                    onChange={(event) =>
+                      setPotentialDraft((currentDraft) => ({
+                        ...currentDraft,
+                        status: event.target.value as ProjectPotentialStatus,
+                      }))
+                    }
+                  >
+                    <option value="open">Offen</option>
+                    <option value="follow_up">Wiedervorlage</option>
+                    <option value="offered">Angeboten</option>
+                    <option value="lost">Kein Interesse</option>
+                  </select>
+                </label>
+                <label>
+                  Verantwortlich
+                  <select
+                    value={potentialDraft.ownerUserId}
+                    onChange={(event) => {
+                      const owner = users.find((user) => user.id === event.target.value);
+                      setPotentialDraft((currentDraft) => ({
+                        ...currentDraft,
+                        ownerUserId: event.target.value,
+                        ownerName: owner?.name || "",
+                      }));
+                    }}
+                  >
+                    <option value="">Nicht zugeordnet</option>
+                    {users
+                      .filter((user) => user.isActive)
+                      .map((user) => (
+                        <option key={user.id} value={user.id}>
+                          {user.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label>
+                  Geschätzter Wert
+                  <input
+                    value={potentialDraft.estimatedValue}
+                    onChange={(event) =>
+                      setPotentialDraft((currentDraft) => ({
+                        ...currentDraft,
+                        estimatedValue: event.target.value,
+                      }))
+                    }
+                    placeholder="0,00"
+                  />
+                </label>
+                <label>
+                  Priorität
+                  <select
+                    value={potentialDraft.priority}
+                    onChange={(event) =>
+                      setPotentialDraft((currentDraft) => ({
+                        ...currentDraft,
+                        priority: event.target.value as ProjectPotentialPriority,
+                      }))
+                    }
+                  >
+                    <option value="low">Niedrig</option>
+                    <option value="normal">Normal</option>
+                    <option value="high">Hoch</option>
+                  </select>
+                </label>
+                <label>
+                  Wiedervorlage
+                  <input
+                    type="date"
+                    value={potentialDraft.followUpAt}
+                    onChange={(event) =>
+                      setPotentialDraft((currentDraft) => ({
+                        ...currentDraft,
+                        followUpAt: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label className={styles.fullWidth}>
+                  Nächster Schritt
+                  <textarea
+                    value={potentialDraft.nextStep}
+                    onChange={(event) =>
+                      setPotentialDraft((currentDraft) => ({
+                        ...currentDraft,
+                        nextStep: event.target.value,
+                      }))
+                    }
+                    placeholder="Was soll als Nächstes passieren?"
+                  />
+                </label>
+                {potentialDraft.status === "lost" ? (
+                  <label className={styles.fullWidth}>
+                    Grund bei Kein Interesse
+                    <textarea
+                      value={potentialDraft.lostReason}
+                      onChange={(event) =>
+                        setPotentialDraft((currentDraft) => ({
+                          ...currentDraft,
+                          lostReason: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                ) : null}
+                <label className={styles.fullWidth}>
+                  Notiz zur Änderung
+                  <textarea
+                    value={potentialDraft.note}
+                    onChange={(event) =>
+                      setPotentialDraft((currentDraft) => ({
+                        ...currentDraft,
+                        note: event.target.value,
+                      }))
+                    }
+                    placeholder="Optionaler Eintrag für die Historie"
+                  />
+                </label>
+              </div>
+
+              <section className={styles.potentialHistorySection}>
+                <h3>Historie</h3>
+                {editingPotential.history.length === 0 ? (
+                  <p>Noch keine Historie vorhanden.</p>
+                ) : (
+                  <div className={styles.customerTimeline}>
+                    {editingPotential.history.map((entry, index) => (
+                      <article key={`${entry.at}-${index}`}>
+                        <div className={styles.customerAvatar}>{entry.actor.slice(0, 2).toUpperCase()}</div>
+                        <div>
+                          <a>{formatDeadline(entry.at)}</a>
+                          <p>{entry.note || entry.action}</p>
+                          <small className={styles.customerLogMeta}>{entry.actor}</small>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </div>
+            <div className={styles.standardModalFooter}>
+              <div className={styles.modalActions}>
+                <button type="button" className={styles.secondaryButton} onClick={() => setEditingPotential(null)}>
+                  Schließen
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => {
+                    setEditingPotential(null);
+                    void offerPotential(editingPotential);
+                  }}
+                >
+                  Angebot erstellen
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => {
+                    const currentPotential = editingPotential;
+                    setEditingPotential(null);
+                    void schedulePotentialFollowUp(currentPotential);
+                  }}
+                >
+                  Aufgabe / Wiedervorlage
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={async () => {
+                    const savedPotential = await updateProjectPotential(editingPotential, "lost", {
+                      lostReason: potentialDraft.lostReason || potentialDraft.note,
+                      note: potentialDraft.note || potentialDraft.lostReason || "Kein Interesse.",
+                    });
+                    if (savedPotential) {
+                      setEditingPotential(savedPotential);
+                      setPotentialDraft((currentDraft) => ({
+                        ...currentDraft,
+                        status: "lost",
+                        note: "",
+                      }));
+                    }
+                  }}
+                >
+                  Kein Interesse
+                </button>
+                <button type="button" className={styles.primaryButton} onClick={() => void savePotentialDetail()}>
+                  Speichern
                 </button>
               </div>
             </div>

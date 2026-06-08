@@ -316,6 +316,194 @@ model Notification {
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+model UnbilledTimeAlert {
+  id             String    @id
+  organizationId String
+  alertKey       String
+  projectId      String
+  periodKey      String
+  stage          String
+  notificationId String?
+  createdAt      DateTime  @default(now())
+  resolvedAt     DateTime?
+
+  @@unique([organizationId, alertKey, stage], map: "UnbilledTimeAlert_org_alert_stage_key")
+  @@index([organizationId, projectId])
+}
+
+model NewsPost {
+  id             String   @id
+  organizationId String
+  title          String
+  body           String   @default("")
+  authorUserId   String?
+  authorName     String   @default("")
+  visibility     String   @default("all")
+  departmentIds  Json     @default("[]")
+  teamIds        Json     @default("[]")
+  userIds        Json     @default("[]")
+  attachments    Json     @default("[]")
+  pollQuestion   String   @default("")
+  pollOptions    Json     @default("[]")
+  pollAllowMultiple Boolean @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+}
+
+model NewsPollVote {
+  organizationId String
+  postId         String
+  optionId       String
+  userId         String
+  createdAt      DateTime @default(now())
+
+  @@id([postId, optionId, userId])
+  @@index([organizationId, postId])
+  @@index([organizationId, userId])
+}
+
+model NewsComment {
+  id             String   @id
+  organizationId String
+  postId         String
+  body           String
+  authorUserId   String?
+  authorName     String   @default("")
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, postId])
+}
+
+model NewsReaction {
+  organizationId String
+  postId         String
+  userId         String
+  reaction       String   @default("up")
+  createdAt      DateTime @default(now())
+
+  @@id([postId, userId])
+  @@index([organizationId, postId])
+}
+
+model NewsReadState {
+  organizationId String
+  postId         String
+  userId         String
+  readAt         DateTime @default(now())
+
+  @@id([postId, userId])
+  @@index([organizationId, userId])
+}
+
+model SalesOpportunity {
+  id              String   @id
+  organizationId  String
+  title           String
+  customerName    String   @default("")
+  contactId       String?
+  projectId       String?
+  offerId         String?
+  ownerUserId     String?
+  ownerName       String   @default("")
+  stage           String   @default("lead")
+  estimatedValue  Float    @default(0)
+  probability     Int      @default(0)
+  nextAction      String   @default("")
+  nextActionAt    DateTime?
+  source          String   @default("")
+  notes           String   @default("")
+  history         Json     @default("[]")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now())
+
+  @@index([organizationId, stage])
+  @@index([organizationId, ownerUserId])
+}
+
+model SalesActivity {
+  id             String   @id
+  organizationId String
+  opportunityId  String
+  type           String   @default("note")
+  body           String
+  actorUserId    String?
+  actorName      String   @default("")
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, opportunityId])
+}
+
+model SalesTarget {
+  id             String    @id
+  organizationId String
+  contactId      String?
+  projectId      String?
+  customerName   String   @default("")
+  projectLabel   String   @default("")
+  title          String
+  description    String   @default("")
+  ownerUserId    String?
+  ownerName      String   @default("")
+  priority       String   @default("normal")
+  targetMonth    String   @default("")
+  followUpAt     DateTime?
+  status         String   @default("open")
+  history        Json     @default("[]")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now())
+
+  @@index([organizationId, status])
+  @@index([organizationId, ownerUserId])
+  @@index([organizationId, followUpAt])
+}
+
+model CustomerFeedbackRequest {
+  id             String    @id
+  organizationId String
+  token          String    @unique
+  invoiceId      String?
+  invoiceNumber  String   @default("")
+  projectId      String?
+  contactId      String?
+  customerName   String   @default("")
+  recipientEmail String   @default("")
+  salesUserId    String?
+  salesUserName  String   @default("")
+  status         String   @default("open")
+  sentAt         DateTime?
+  respondedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now())
+
+  @@index([organizationId, invoiceId])
+  @@index([organizationId, status])
+}
+
+model CustomerFeedback {
+  id             String   @id
+  organizationId String
+  requestId      String?
+  invoiceId      String?
+  invoiceNumber  String   @default("")
+  projectId      String?
+  contactId      String?
+  customerName   String   @default("")
+  rating         Int
+  comment        String   @default("")
+  wantsContact   Boolean  @default(false)
+  source         String   @default("manual")
+  salesUserId    String?
+  salesUserName  String   @default("")
+  hotAlert       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, rating])
+  @@index([organizationId, hotAlert])
+  @@index([organizationId, createdAt])
+}
+
 model CatalogItem {
   id                    String               @id @default(cuid())
   organizationId        String
@@ -343,6 +531,7 @@ model CatalogItem {
   listPrice             Float                @default(0)
   salesPrice            Float                @default(0)
   vatRate               Float                @default(19)
+  isLaborPosition       Boolean              @default(false)
   isPlanningRelevant    Boolean              @default(false)
   planningMinutesPerUnit Int                 @default(0)
   defaultPlanningBoard  String?
@@ -423,6 +612,8 @@ model ContentItem {
   ownerUserId           String?
   ownerName             String                   @default("")
   plannedDate           String
+  productionStartDate   String                   @default("")
+  productionStartTime   String                   @default("09:00")
   productionDueDate     String                   @default("")
   productionDueTime     String                   @default("17:00")
   approvalDueDate       String                   @default("")
@@ -521,6 +712,7 @@ model OfferLine {
   description    String      @default("")
   unitPrice      Float        @default(0)
   discountPercent Float       @default(0)
+  isLaborPosition Boolean     @default(false)
   laborCostRateKey String     @default("")
   laborCostRate  Float        @default(0)
   vatRate        Float        @default(19)
@@ -589,6 +781,9 @@ model Invoice {
   internalPhone       String        @default("")
   internalEmail       String        @default("")
   plannedExecutionMonth String      @default("")
+  serviceDate         String        @default("")
+  sourceOfferId       String        @default("")
+  sourceOfferNumber   String        @default("")
   introText           String        @default("")
   closingText         String        @default("")
   netTotal            Float         @default(0)
@@ -620,6 +815,7 @@ model InvoiceLine {
   description    String             @default("")
   unitPrice      Float              @default(0)
   discountPercent Float             @default(0)
+  isLaborPosition Boolean           @default(false)
   vatRate        Float              @default(19)
   totalNet       Float              @default(0)
   createdAt      DateTime           @default(now())
@@ -668,6 +864,35 @@ model InvoiceHistory {
   @@index([organizationId, projectId, createdAt])
 }
 
+model LegacyInvoice {
+  id             String   @id
+  organizationId String
+  source         String   @default("HERO")
+  sourceRow      Int      @default(0)
+  importKey      String
+  invoiceNumber  String   @default("")
+  fileName       String   @default("")
+  documentType   String   @default("")
+  folder         String   @default("")
+  customerName   String   @default("")
+  projectAddress String   @default("")
+  netTotal       Float    @default(0)
+  invoiceDate    String   @default("")
+  company        String   @default("Unbekannt")
+  status         String   @default("Importiert")
+  isEvaluable    Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, importKey])
+  @@index([organizationId, invoiceDate])
+}
+
+model SchemaDataPatch {
+  key       String   @id
+  appliedAt DateTime @default(now())
+}
+
 model AuditLog {
   id             String       @id @default(cuid())
   organizationId String
@@ -692,6 +917,66 @@ model EscalationRule {
   emailEnabled    Boolean      @default(false)
   emailRecipients String       @default("")
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model StatusTimelineEntry {
+  id             String    @id
+  organizationId String
+  entityType     String
+  entityId       String
+  entityLabel    String    @default("")
+  fromStatus     String?
+  toStatus       String
+  startedAt      DateTime  @default(now())
+  endedAt        DateTime?
+  durationMinutes Int?
+  actorUserId    String?
+  actorName      String    @default("")
+  note           String    @default("")
+  createdAt      DateTime  @default(now())
+
+  @@index([organizationId, entityType, entityId])
+  @@index([organizationId, entityType, toStatus])
+  @@index([organizationId, startedAt])
+}
+
+model StatusEscalationRule {
+  id                  String   @id
+  organizationId      String
+  entityType          String
+  status              String
+  name                String
+  thresholdHours      Int      @default(24)
+  notifyResponsible   Boolean  @default(true)
+  notifyProjectOwner  Boolean  @default(false)
+  notifyManagement    Boolean  @default(true)
+  notificationEnabled Boolean  @default(true)
+  dailyReportEnabled  Boolean  @default(true)
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @default(now())
+
+  @@index([organizationId, entityType, status])
+}
+
+model StatusEscalationEvent {
+  id             String    @id
+  organizationId String
+  ruleId         String
+  entityType     String
+  entityId       String
+  entityLabel    String   @default("")
+  status         String
+  thresholdHours Int
+  actualHours    Int
+  recipientUserId String?
+  notificationId String?
+  dailyReportDate String?
+  resolvedAt     DateTime?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, ruleId, entityType, entityId, resolvedAt])
+  @@index([organizationId, dailyReportDate])
 }
 
 model TaskTemplate {
@@ -825,6 +1110,7 @@ model Contact {
   source                String?
   reachability          String?
   isInvoiceRecipient    Boolean  @default(false)
+  isActivityReportRecipient Boolean @default(false)
   street                String?
   addressLine1          String?
   addressLine2          String?
@@ -888,6 +1174,7 @@ model ProjectLogbookEntry {
   colleague      String?
   visibleFor     Json     @default("[]")
   attachments    Json     @default("[]")
+  projectMonth   String?
   createdAt      DateTime @default(now())
 }
 
@@ -908,6 +1195,8 @@ model ProjectTimeEntry {
   invoiceId      String?
   invoiceNumber  String?
   invoicedAt     DateTime?
+  marketingContentItemId String?
+  marketingContentType String?
   overtimeApprovalStatus String @default("not_required")
   overtimeApprovedByUserId String?
   overtimeApprovedByName String?
@@ -926,6 +1215,9 @@ model ActiveStampSession {
   mode           String   @default("project")
   projectId      String
   projectLabel   String?
+  marketingContentItemId String?
+  marketingContentTitle String?
+  marketingContentType String?
   startedAt      DateTime
   accumulatedMs  BigInt   @default(0)
   pauseStartedAt DateTime?
@@ -959,6 +1251,8 @@ model PlanningEntry {
   offerLabel           String?
   offerTotalMinutes    Int?
   offerPlannedMinutes  Int?
+  marketingContentItemId String?
+  marketingContentScheduleId String?
   recurrenceId         String?
   recurrenceRule       String?
   approvalStatus       String   @default("confirmed")
@@ -985,6 +1279,78 @@ model PlanningEntryHistory {
   createdAt       DateTime @default(now())
 }
 
+model MarketingContentQuota {
+  id                     String   @id
+  organizationId         String
+  projectId              String
+  month                  String
+  catalogItemId          String
+  serviceName            String
+  category               String   @default("Sonstiges")
+  unit                   String   @default("Stk")
+  targetQuantity         Float    @default(0)
+  planningMinutesPerUnit Int      @default(0)
+  allowAdditional        Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @default(now())
+
+  @@unique([organizationId, projectId, month, catalogItemId])
+  @@index([organizationId, projectId, month])
+}
+
+model MarketingContentItem {
+  id                String   @id
+  organizationId    String
+  projectId         String
+  projectLabel      String   @default("")
+  customerName      String   @default("")
+  month             String
+  quotaId           String?
+  catalogItemId     String?
+  serviceName       String
+  category          String   @default("Sonstiges")
+  unit              String   @default("Stk")
+  title             String
+  status            String   @default("Offen")
+  responsibleUserId String?
+  responsibleName   String   @default("")
+  platform          String   @default("")
+  formatDetails     String   @default("")
+  plannedDate       String   @default("")
+  dueDate           String   @default("")
+  assetLink         String   @default("")
+  isAdditional      Boolean  @default(false)
+  sortOrder         Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @default(now())
+
+  @@index([organizationId, projectId, month])
+  @@index([organizationId, status])
+}
+
+model MarketingContentSchedule {
+  id              String   @id
+  organizationId  String
+  contentItemId   String
+  projectId       String
+  planningEntryId String?
+  title           String
+  phase           String   @default("Arbeit")
+  userId          String?
+  employeeName    String   @default("")
+  date            String
+  startTime       String
+  endTime         String
+  durationMinutes Int      @default(0)
+  note            String   @default("")
+  deletedAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now())
+
+  @@index([organizationId, contentItemId])
+  @@index([organizationId, projectId, date])
+}
+
 model ProjectPotential {
   id             String   @id
   organizationId String
@@ -994,6 +1360,14 @@ model ProjectPotential {
   projectLabel   String?
   description    String
   status         String   @default("open")
+  ownerUserId    String?
+  ownerName      String?
+  estimatedValue Decimal? @db.Decimal(12, 2)
+  priority       String   @default("normal")
+  nextStep       String?
+  lostReason     String?
+  sourceType     String?
+  sourceLogbookEntryId String?
   taskId         String?
   followUpAt     DateTime?
   offeredAt      DateTime?
@@ -1050,15 +1424,51 @@ model WorkPilotProject {
   autoBillingEndMonth String?
   autoBillingTemplateMode String?
   autoBillingTemplate Json?
+  winterGritPackageItemId String?
+  winterGritPushPackageItemId String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @default(now())
   responsibleName     String?
+}
+
+model WinterServiceRun {
+  id                  String   @id
+  organizationId      String
+  projectId           String
+  projectNumber       String   @default("")
+  projectTitle        String   @default("")
+  customerName        String   @default("")
+  contactId           String   @default("")
+  contactPersonId     String   @default("")
+  serviceDate         String
+  month               String
+  serviceType         String   @default("")
+  status              String   @default("offen")
+  beforeImages        Json     @default("[]")
+  afterImages         Json     @default("[]")
+  reportStatus        String   @default("offen")
+  reportNumber        String   @default("")
+  reportPdfData       String?  @db.Text
+  reportGeneratedAt   DateTime?
+  sentStatus          String   @default("offen")
+  sentAt              DateTime?
+  sentTo              String   @default("")
+  invoiceId           String   @default("")
+  invoiceNumber       String   @default("")
+  invoiceLineId       String   @default("")
+  billingAction       String   @default("")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @default(now())
+
+  @@index([organizationId, month])
+  @@index([organizationId, projectId])
 }
 
 enum Role {
   ADMIN
   GESCHAEFTSFUEHRER
   FUEHRUNGSKRAFT
+  VERTRIEB
   MITARBEITER
   GAST
 }

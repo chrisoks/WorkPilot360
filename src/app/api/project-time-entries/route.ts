@@ -21,6 +21,8 @@ type ProjectTimeEntryRow = {
   invoiceId: string | null;
   invoiceNumber: string | null;
   invoicedAt: Date | null;
+  marketingContentItemId: string | null;
+  marketingContentType: string | null;
   overtimeApprovalStatus: string | null;
   overtimeApprovedByUserId: string | null;
   overtimeApprovedByName: string | null;
@@ -68,6 +70,8 @@ async function ensureProjectTimeEntryTable() {
     ADD COLUMN IF NOT EXISTS "invoiceId" TEXT,
     ADD COLUMN IF NOT EXISTS "invoiceNumber" TEXT,
     ADD COLUMN IF NOT EXISTS "invoicedAt" TIMESTAMP(3),
+    ADD COLUMN IF NOT EXISTS "marketingContentItemId" TEXT,
+    ADD COLUMN IF NOT EXISTS "marketingContentType" TEXT,
     ADD COLUMN IF NOT EXISTS "overtimeApprovalStatus" TEXT NOT NULL DEFAULT 'not_required',
     ADD COLUMN IF NOT EXISTS "overtimeApprovedByUserId" TEXT,
     ADD COLUMN IF NOT EXISTS "overtimeApprovedByName" TEXT,
@@ -79,6 +83,12 @@ async function ensureProjectTimeEntryTable() {
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function formatDateKeyDisplay(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return value || "-";
+  return `${match[3]}.${match[2]}.${match[1]}`;
 }
 
 function parseMilliseconds(value: unknown) {
@@ -104,6 +114,8 @@ function formatEntry(entry: ProjectTimeEntryRow) {
     invoiceId: entry.invoiceId ?? "",
     invoiceNumber: entry.invoiceNumber ?? "",
     invoicedAt: entry.invoicedAt?.toISOString() ?? "",
+    marketingContentItemId: entry.marketingContentItemId ?? "",
+    marketingContentType: entry.marketingContentType ?? "",
     overtimeApprovalStatus:
       entry.overtimeApprovalStatus === "pending" || entry.overtimeApprovalStatus === "approved"
         ? entry.overtimeApprovalStatus
@@ -158,6 +170,8 @@ export async function POST(req: Request) {
   const endTime = cleanString(body.endTime);
   const pauseMs = parseMilliseconds(body.pauseMs);
   const comment = cleanString(body.comment);
+  const marketingContentItemId = cleanString(body.marketingContentItemId);
+  const marketingContentType = cleanString(body.marketingContentType);
   const overtimeApprovalStatus = ["pending", "approved"].includes(cleanString(body.overtimeApprovalStatus))
     ? cleanString(body.overtimeApprovalStatus)
     : "not_required";
@@ -186,6 +200,8 @@ export async function POST(req: Request) {
       "durationMs",
       "pauseMs",
       "comment",
+      "marketingContentItemId",
+      "marketingContentType",
       "overtimeApprovalStatus",
       "overtimeApprovedByUserId",
       "overtimeApprovedByName",
@@ -207,6 +223,8 @@ export async function POST(req: Request) {
       ${durationMs},
       ${pauseMs},
       ${comment || null},
+      ${marketingContentItemId || null},
+      ${marketingContentType || null},
       ${overtimeApprovalStatus},
       ${overtimeApprovedByUserId || null},
       ${overtimeApprovedByName || null},
@@ -225,6 +243,8 @@ export async function POST(req: Request) {
       "durationMs" = EXCLUDED."durationMs",
       "pauseMs" = EXCLUDED."pauseMs",
       "comment" = EXCLUDED."comment",
+      "marketingContentItemId" = EXCLUDED."marketingContentItemId",
+      "marketingContentType" = EXCLUDED."marketingContentType",
       "overtimeApprovalStatus" = EXCLUDED."overtimeApprovalStatus",
       "overtimeApprovedByUserId" = EXCLUDED."overtimeApprovedByUserId",
       "overtimeApprovedByName" = EXCLUDED."overtimeApprovedByName",
@@ -269,7 +289,7 @@ export async function DELETE(req: Request) {
     actorName,
     event: "Zeiteintrag gelöscht",
     note,
-    previousValue: `${existingEntry.date} ${existingEntry.startTime}-${existingEntry.endTime}, ${Number(existingEntry.durationMs)} ms`,
+    previousValue: `${formatDateKeyDisplay(existingEntry.date)} ${existingEntry.startTime}-${existingEntry.endTime}, ${Number(existingEntry.durationMs)} ms`,
     nextValue: "Gelöscht",
     createdAt: new Date().toISOString(),
   };

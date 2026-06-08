@@ -26,6 +26,8 @@ type PlanningEntryRow = {
   offerLabel: string | null;
   offerTotalMinutes: number | null;
   offerPlannedMinutes: number | null;
+  marketingContentItemId: string | null;
+  marketingContentScheduleId: string | null;
   recurrenceId: string | null;
   recurrenceRule: string | null;
   approvalStatus: string | null;
@@ -51,6 +53,12 @@ type PlanningEntryHistoryRow = {
   note: string | null;
   createdAt: Date;
 };
+
+function formatDateKeyDisplay(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return value || "-";
+  return `${match[3]}.${match[2]}.${match[1]}`;
+}
 
 async function ensurePlanningEntryTable() {
   await prisma.$executeRaw`
@@ -98,6 +106,8 @@ async function ensurePlanningEntryTable() {
     ADD COLUMN IF NOT EXISTS "requestedByName" TEXT,
     ADD COLUMN IF NOT EXISTS "approvedByUserId" TEXT,
     ADD COLUMN IF NOT EXISTS "approvedAt" TIMESTAMP(3),
+    ADD COLUMN IF NOT EXISTS "marketingContentItemId" TEXT,
+    ADD COLUMN IF NOT EXISTS "marketingContentScheduleId" TEXT,
     ADD COLUMN IF NOT EXISTS "deletedAt" TIMESTAMP(3)
   `;
 
@@ -190,7 +200,7 @@ function formatHistoryEntry(entry: PlanningEntryHistoryRow) {
 function formatEntry(entry: PlanningEntryRow, histories: PlanningEntryHistoryRow[] = []) {
   return {
     id: entry.id,
-    source: entry.source === "offer" ? "offer" : "manual",
+    source: entry.source === "offer" ? "offer" : entry.source === "marketingContent" ? "marketingContent" : "manual",
     board: entry.board,
     groupName: entry.groupName,
     userId: entry.userId ?? "",
@@ -209,6 +219,8 @@ function formatEntry(entry: PlanningEntryRow, histories: PlanningEntryHistoryRow
     offerLabel: entry.offerLabel ?? "",
     offerTotalMinutes: entry.offerTotalMinutes ?? 0,
     offerPlannedMinutes: entry.offerPlannedMinutes ?? 0,
+    marketingContentItemId: entry.marketingContentItemId ?? "",
+    marketingContentScheduleId: entry.marketingContentScheduleId ?? "",
     recurrenceId: entry.recurrenceId ?? "",
     recurrenceRule: entry.recurrenceRule ?? "",
     approvalStatus: entry.approvalStatus === "requested" ? "requested" : "confirmed",
@@ -315,7 +327,7 @@ async function notifyPlanningResponsibles(entry: PlanningEntryRow, organizationI
         NULL,
         'app_email',
         'Terminwunsch freigeben',
-        ${`Für ${entry.groupName} ist ein Terminwunsch am ${entry.date} von ${entry.startTime} bis ${entry.endTime} freizugeben: ${entry.title}. E-Mail an ${recipient.email} wurde vorgemerkt.`},
+        ${`Für ${entry.groupName} ist ein Terminwunsch am ${formatDateKeyDisplay(entry.date)} von ${entry.startTime} bis ${entry.endTime} freizugeben: ${entry.title}. E-Mail an ${recipient.email} wurde vorgemerkt.`},
         'planning-entry',
         ${entry.id},
         'Termin öffnen',
@@ -405,7 +417,7 @@ async function notifyPlanningOverlap(entry: PlanningEntryRow, organizationId: st
         NULL,
         'app_email',
         'Achtung ein Mitarbeiter ist doppelt verplant - bitte prüfen',
-        ${`${entry.employeeName ?? "Ein Mitarbeiter"} ist am ${entry.date} von ${entry.startTime} bis ${entry.endTime} parallel verplant. Bitte prüfen.`},
+        ${`${entry.employeeName ?? "Ein Mitarbeiter"} ist am ${formatDateKeyDisplay(entry.date)} von ${entry.startTime} bis ${entry.endTime} parallel verplant. Bitte prüfen.`},
         'planning-entry-overlap',
         ${entry.id},
         'Konflikt öffnen',
@@ -456,7 +468,8 @@ export async function POST(req: Request) {
   await ensurePlanningEntryTable();
 
   const id = cleanString(body.id) || randomUUID();
-  const source = cleanString(body.source) === "offer" ? "offer" : "manual";
+  const rawSource = cleanString(body.source);
+  const source = rawSource === "offer" || rawSource === "marketingContent" ? rawSource : "manual";
   const board = cleanString(body.board);
   const groupName = cleanString(body.groupName);
   const userId = cleanString(body.userId);
@@ -475,6 +488,8 @@ export async function POST(req: Request) {
   const offerLabel = cleanString(body.offerLabel);
   const offerTotalMinutes = cleanMinutes(body.offerTotalMinutes);
   const offerPlannedMinutes = cleanMinutes(body.offerPlannedMinutes);
+  const marketingContentItemId = cleanString(body.marketingContentItemId);
+  const marketingContentScheduleId = cleanString(body.marketingContentScheduleId);
   const recurrenceId = cleanString(body.recurrenceId);
   const recurrenceRule = cleanString(body.recurrenceRule);
   const approvalStatus = cleanApprovalStatus(body.approvalStatus);
@@ -496,6 +511,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Bitte einen Titel angeben." }, { status: 400 });
   }
 
+  if (!userId || !employeeName) {
+    return NextResponse.json({ error: "Bitte einen Mitarbeiter zuweisen, bevor der Termin gespeichert wird." }, { status: 400 });
+  }
+
   const existingRows = await prisma.$queryRaw<PlanningEntryRow[]>`
     SELECT *
     FROM "PlanningEntry"
@@ -504,6 +523,27 @@ export async function POST(req: Request) {
     LIMIT 1
   `;
   const existingEntry = existingRows[0] ?? null;
+
+  if (projectId && !marketingContentScheduleId) {
+    const duplicateRows = await prisma.$queryRaw<PlanningEntryRow[]>`
+      SELECT *
+      FROM "PlanningEntry"
+      WHERE "organizationId" = ${organization.id}
+        AND "id" <> ${id}
+        AND "projectId" = ${projectId}
+        AND "userId" = ${userId}
+        AND "date" = ${date}
+        AND "deletedAt" IS NULL
+      LIMIT 1
+    `;
+
+    if (duplicateRows.length > 0) {
+      return NextResponse.json(
+        { error: "Dieser Mitarbeiter ist an diesem Tag bereits auf dieses Projekt geplant. Bitte den bestehenden Termin bearbeiten statt einen zweiten Termin anzulegen." },
+        { status: 409 }
+      );
+    }
+  }
 
   const rows = await prisma.$queryRaw<PlanningEntryRow[]>`
     INSERT INTO "PlanningEntry" (
@@ -528,6 +568,8 @@ export async function POST(req: Request) {
       "offerLabel",
       "offerTotalMinutes",
       "offerPlannedMinutes",
+      "marketingContentItemId",
+      "marketingContentScheduleId",
       "recurrenceId",
       "recurrenceRule",
       "approvalStatus",
@@ -558,6 +600,8 @@ export async function POST(req: Request) {
       ${offerLabel || null},
       ${offerTotalMinutes || null},
       ${offerPlannedMinutes || null},
+      ${marketingContentItemId || null},
+      ${marketingContentScheduleId || null},
       ${recurrenceId || null},
       ${recurrenceRule || null},
       ${approvalStatus},
@@ -586,6 +630,8 @@ export async function POST(req: Request) {
       "offerLabel" = EXCLUDED."offerLabel",
       "offerTotalMinutes" = EXCLUDED."offerTotalMinutes",
       "offerPlannedMinutes" = EXCLUDED."offerPlannedMinutes",
+      "marketingContentItemId" = EXCLUDED."marketingContentItemId",
+      "marketingContentScheduleId" = EXCLUDED."marketingContentScheduleId",
       "recurrenceId" = EXCLUDED."recurrenceId",
       "recurrenceRule" = EXCLUDED."recurrenceRule",
       "approvalStatus" = EXCLUDED."approvalStatus",

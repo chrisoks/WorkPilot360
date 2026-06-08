@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getStoredMailAccount, refreshMicrosoftAccessToken } from "@/lib/mail/microsoft";
+import { ensureSalesHubTables } from "@/lib/sales-hub/ensure";
 
 type MailAccount = {
   provider?: string;
@@ -43,6 +44,16 @@ function getDataUrlAttachment(name: string, dataUrl: string) {
   };
 }
 
+function getAdditionalDataUrlAttachments(value: unknown) {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item) => (item && typeof item === "object" ? (item as Record<string, unknown>) : null))
+    .filter(Boolean)
+    .map((item) => getDataUrlAttachment(cleanText(item?.name), cleanText(item?.dataUrl)))
+    .filter((item): item is NonNullable<ReturnType<typeof getDataUrlAttachment>> => Boolean(item));
+}
+
 function escapeHtml(value: string) {
   return value
     .replaceAll("&", "&amp;")
@@ -58,6 +69,22 @@ function textToHtml(value: string) {
     .map((paragraph) => paragraph.replace(/\r?\n/g, "<br>"))
     .map((paragraph) => `<p>${paragraph || "&nbsp;"}</p>`)
     .join("");
+}
+
+function stripTrailingClosing(value: string) {
+  return value.replace(/\n{2,}Mit freundlichen Gr(?:ü|ue|Ã¼)ßen\s*\n+[^\n]+\s*$/i, "");
+}
+
+function getFeedbackMailBlockHtml(link: string) {
+  const safeLink = escapeHtml(link);
+  return [
+    '<div style="margin:22px 0 18px;padding:16px 18px;border:1px solid #cbd8e6;border-radius:14px;background:#f8fbff;max-width:520px;">',
+    '<p style="margin:0 0 8px;color:#0f172a;font-weight:800;">Wie zufrieden waren Sie mit unserer Leistung?</p>',
+    '<div style="color:#f5b800;font-size:24px;letter-spacing:2px;line-height:1;margin:0 0 12px;">&#9733;&#9733;&#9733;&#9733;&#9733;</div>',
+    `<a href="${safeLink}" target="_blank" rel="noreferrer" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:800;border-radius:10px;padding:10px 16px;">Jetzt bewerten</a>`,
+    '<p style="margin:10px 0 0;color:#64748b;font-size:12px;line-height:1.4;">Ihre Rückmeldung hilft uns, unseren Service weiter zu verbessern.</p>',
+    "</div>",
+  ].join("");
 }
 
 function sanitizeSignatureHtml(value: string) {
@@ -83,6 +110,52 @@ async function getSenderSignature(userId: string) {
   const row = rows[0];
   if (!row || row.signatureHidden) return "";
   return normalizeSignatureHtml(row.signature ?? "");
+}
+
+function getBaseUrl(req: Request) {
+  const url = new URL(req.url);
+  return `${url.protocol}//${url.host}`;
+}
+
+async function getOrCreateFeedbackRequestLink(req: Request, body: Record<string, unknown>, _actor: { id: string; firstName?: string | null; lastName?: string | null; email?: string | null }) {
+  if (cleanText(body.kind) !== "invoice") return "";
+  if (body.includeFeedbackLink === false) return "";
+  const invoiceId = cleanText(body.documentId);
+  if (!invoiceId) return "";
+
+  await ensureSalesHubTables();
+  const existing = await prisma.$queryRaw<Array<{ token: string }>>`
+    SELECT token
+    FROM "CustomerFeedbackRequest"
+    WHERE "invoiceId" = ${invoiceId}
+    ORDER BY "createdAt" DESC
+    LIMIT 1
+  `;
+  if (existing[0]?.token) {
+    await prisma.$executeRaw`
+      UPDATE "CustomerFeedbackRequest"
+      SET "recipientEmail" = ${parseRecipients(body.to)[0] ?? ""},
+          "status" = CASE WHEN "status" = 'answered' THEN "status" ELSE 'sent' END,
+          "sentAt" = COALESCE("sentAt", CURRENT_TIMESTAMP),
+          "updatedAt" = CURRENT_TIMESTAMP
+      WHERE token = ${existing[0].token}
+    `;
+    return `${getBaseUrl(req)}/feedback/${existing[0].token}`;
+  }
+
+  const token = randomUUID().replaceAll("-", "");
+  await prisma.$executeRaw`
+    INSERT INTO "CustomerFeedbackRequest" (
+      "id", "organizationId", "token", "invoiceId", "invoiceNumber", "projectId",
+      "customerName", "recipientEmail", "salesUserId", "salesUserName", "status", "sentAt"
+    ) VALUES (
+      ${randomUUID()}, ${cleanText(body.organizationId) || (await getDemoContext()).organization.id}, ${token},
+      ${invoiceId}, ${cleanText(body.documentNumber)}, ${cleanText(body.projectId) || null},
+      ${cleanText(body.customerName)}, ${parseRecipients(body.to)[0] ?? ""},
+      ${null}, ${"WorkPilot"}, 'sent', CURRENT_TIMESTAMP
+    )
+  `;
+  return `${getBaseUrl(req)}/feedback/${token}`;
 }
 
 async function ensureDocumentMailTables() {
@@ -182,6 +255,37 @@ async function getPdfAttachment(kind: string, documentId: string, documentNumber
       : [];
   }
 
+  if (kind === "activityReport") {
+    try {
+      const rows = await prisma.$queryRaw<Array<{ reportPdfData: string | null }>>`
+        SELECT "reportPdfData" FROM "WinterServiceRun" WHERE id = ${documentId} LIMIT 1
+      `;
+      if (rows[0]?.reportPdfData) {
+        return [{ "@odata.type": "#microsoft.graph.fileAttachment", name: `${documentNumber}.pdf`, contentType: "application/pdf", contentBytes: rows[0].reportPdfData }];
+      }
+    } catch {
+      // Project activity reports are stored in the project logbook instead of WinterServiceRun.
+    }
+
+    const logbookEntryId = documentId.replace(/-\d+$/, "");
+    const logbookRows = await prisma.$queryRaw<Array<{ attachments: unknown }>>`
+      SELECT "attachments" FROM "ProjectLogbookEntry" WHERE id = ${logbookEntryId} LIMIT 1
+    `;
+    const attachments = Array.isArray(logbookRows[0]?.attachments) ? logbookRows[0].attachments : [];
+    const reportAttachment = attachments
+      .map((attachment) => (attachment && typeof attachment === "object" ? attachment as Record<string, unknown> : null))
+      .filter(Boolean)
+      .find((attachment) => {
+        const name = cleanText(attachment?.name);
+        const dataUrl = cleanText(attachment?.dataUrl);
+        return name.toLowerCase().includes(documentNumber.toLowerCase()) && dataUrl.startsWith("data:application/pdf");
+      });
+    const dataUrlAttachment = reportAttachment
+      ? getDataUrlAttachment(cleanText(reportAttachment.name) || `${documentNumber}.pdf`, cleanText(reportAttachment.dataUrl))
+      : null;
+    return dataUrlAttachment ? [dataUrlAttachment] : [];
+  }
+
   const rows = await prisma.$queryRaw<Array<{ pdfData: string | null }>>`
     SELECT "pdfData" FROM "Invoice" WHERE id = ${documentId} LIMIT 1
   `;
@@ -266,9 +370,22 @@ export async function POST(req: Request) {
           cleanText(body.attachmentDataUrl)
         )
       : null;
-  const attachments = uploadedAttachment ? [...storedAttachments, uploadedAttachment] : storedAttachments;
+  const additionalAttachments = Boolean(body.attachActivityReports)
+    ? getAdditionalDataUrlAttachments(body.additionalAttachments)
+    : [];
+  const attachments = [
+    ...storedAttachments,
+    ...(uploadedAttachment ? [uploadedAttachment] : []),
+    ...additionalAttachments,
+  ];
+  const feedbackLink = await getOrCreateFeedbackRequestLink(req, { ...body, organizationId: organization.id }, actor);
   const signatureHtml = await getSenderSignature(actor.id);
-  const messageHtml = `${textToHtml(cleanText(body.body))}${signatureHtml ? signatureHtml : ""}`;
+  const messageBody = stripTrailingClosing(cleanText(body.body));
+  const feedbackHtml = feedbackLink ? getFeedbackMailBlockHtml(feedbackLink) : "";
+  const feedbackText = feedbackLink
+    ? `\n\nWie zufrieden waren Sie mit unserer Leistung? Jetzt bewerten: ${feedbackLink}`
+    : "";
+  const messageHtml = `${textToHtml(messageBody)}${feedbackHtml}${signatureHtml ? signatureHtml : ""}`;
 
   try {
     await sendViaMicrosoftGraph({
@@ -300,7 +417,7 @@ export async function POST(req: Request) {
       ${cleanText(body.projectId)}, ${cleanText(body.projectNumber)}, ${cleanText(body.projectTitle)},
       ${cleanText(body.customerName)}, ${actor.id}, ${actorName}, ${senderEmail},
       ${recipients.join(", ")}, ${ccRecipients.join(", ")}, ${bccRecipients.join(", ")},
-      ${cleanText(body.subject)}, ${cleanText(body.body)}, ${Boolean(body.attachPdf)},
+      ${cleanText(body.subject)}, ${`${messageBody}${feedbackText}`}, ${Boolean(body.attachPdf)},
       ${"microsoft365"}, ${"sent"}, ${`ms365-${id}`}
     )
   `;

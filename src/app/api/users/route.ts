@@ -59,9 +59,32 @@ function canManageUsers(role: Role) {
 function roleLabel(role: Role) {
   if (role === Role.GESCHAEFTSFUEHRER) return "Gesch\u00e4ftsf\u00fchrung";
   if (role === Role.FUEHRUNGSKRAFT) return "F\u00fchrungskraft";
+  if (String(role) === "VERTRIEB") return "Vertrieb";
   if (role === Role.MITARBEITER) return "Mitarbeiter";
   if (role === Role.GAST) return "Gast";
   return "Admin";
+}
+
+function isValidRole(value: unknown): value is Role {
+  return Object.values(Role).includes(value as Role) || value === "VERTRIEB";
+}
+
+async function ensureRoleEnumValues() {
+  await prisma.$executeRawUnsafe(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_enum enum_value
+        JOIN pg_type enum_type ON enum_type.oid = enum_value.enumtypid
+        WHERE enum_type.typname = 'Role'
+          AND enum_value.enumlabel = 'VERTRIEB'
+      ) THEN
+        ALTER TYPE "Role" ADD VALUE 'VERTRIEB';
+      END IF;
+    END
+    $$;
+  `);
 }
 
 function roundAllocation(value: number) {
@@ -574,6 +597,7 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
+  await ensureRoleEnumValues();
   await ensureUserProfileColumns();
   const body = await req.json();
   const { organization, department, user, users } = await getDemoContext();
@@ -635,7 +659,7 @@ export async function PATCH(req: Request) {
     );
   }
 
-  if (isManagedUpdate && !Object.values(Role).includes(body.role)) {
+  if (isManagedUpdate && !isValidRole(body.role)) {
     return NextResponse.json(
       { error: "Die ausgew\u00e4hlte Rolle ist ung\u00fcltig." },
       { status: 400 }
@@ -882,6 +906,7 @@ export async function PATCH(req: Request) {
 }
 
 export async function POST(req: Request) {
+  await ensureRoleEnumValues();
   await ensureUserProfileColumns();
   const body = await req.json();
   const { organization, department, user, users } = await getDemoContext();
@@ -894,7 +919,7 @@ export async function POST(req: Request) {
     );
   }
 
-  if (!Object.values(Role).includes(body.role)) {
+  if (!isValidRole(body.role)) {
     return NextResponse.json(
       { error: "Die ausgewählte Rolle ist ungültig." },
       { status: 400 }

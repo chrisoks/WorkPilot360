@@ -44,6 +44,12 @@ function formatDateKey(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
+function formatDateKeyDisplay(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return value || "-";
+  return `${match[3]}.${match[2]}.${match[1]}`;
+}
+
 function formatAbsence(row: AbsenceRow) {
   const dateKey = row.date instanceof Date ? formatDateKey(row.date) : row.date.slice(0, 10);
   const history = Array.isArray(row.history)
@@ -399,7 +405,7 @@ export async function POST(req: Request) {
     createHistoryItem(
       "Antrag erstellt",
       `${actor.firstName} ${actor.lastName}`,
-      `${getAbsenceTypeLabel(type)} vom ${dateFrom} bis ${dateTo}. Vertreter: ${representative.firstName} ${representative.lastName}.`
+      `${getAbsenceTypeLabel(type)} vom ${formatDateKeyDisplay(dateFrom)} bis ${formatDateKeyDisplay(dateTo)}. Vertreter: ${representative.firstName} ${representative.lastName}.`
     ),
   ];
 
@@ -442,7 +448,7 @@ export async function POST(req: Request) {
 
   const absenceTypeLabel = type === "urlaub" ? "Urlaub" : "Krank";
   const targetUserName = `${targetUser.firstName} ${targetUser.lastName}`;
-  const notificationBody = `${targetUserName}: ${absenceTypeLabel} vom ${dateFrom} bis ${dateTo}. Vertreter: ${representative.firstName} ${representative.lastName}.`;
+  const notificationBody = `${targetUserName}: ${absenceTypeLabel} vom ${formatDateKeyDisplay(dateFrom)} bis ${formatDateKeyDisplay(dateTo)}. Vertreter: ${representative.firstName} ${representative.lastName}.`;
   const adminRecipients = users.filter(
     (demoUser) => demoUser.role === Role.ADMIN || demoUser.role === Role.GESCHAEFTSFUEHRER
   );
@@ -458,7 +464,7 @@ export async function POST(req: Request) {
     {
       userId: representative.id,
       subject: "Vertretung freigeben",
-      body: `Bitte pr\u00fcfe die Vertretung f\u00fcr ${targetUserName}: ${absenceTypeLabel} vom ${dateFrom} bis ${dateTo}.`,
+      body: `Bitte pr\u00fcfe die Vertretung f\u00fcr ${targetUserName}: ${absenceTypeLabel} vom ${formatDateKeyDisplay(dateFrom)} bis ${formatDateKeyDisplay(dateTo)}.`,
       linkTarget: "absence-request",
       linkTargetId: requestGroupId,
       linkLabel: "Vertretung pr\u00fcfen",
@@ -773,7 +779,7 @@ export async function PATCH(req: Request) {
   const editHistoryItem = createHistoryItem(
     "Antrag bearbeitet",
     `${actor.firstName} ${actor.lastName}`,
-    `${getAbsenceTypeLabel(type)} vom ${dateFrom} bis ${dateTo}. Vertreter: ${representative.firstName} ${representative.lastName}.`
+    `${getAbsenceTypeLabel(type)} vom ${formatDateKeyDisplay(dateFrom)} bis ${formatDateKeyDisplay(dateTo)}. Vertreter: ${representative.firstName} ${representative.lastName}.`
   );
 
   for (const currentDate = new Date(startDate); currentDate <= endDate; currentDate.setDate(currentDate.getDate() + 1)) {
@@ -822,7 +828,7 @@ export async function PATCH(req: Request) {
     organization.id,
     users,
     "Abwesenheit bearbeitet",
-    `${actor.firstName} ${actor.lastName} hat eine Abwesenheit bearbeitet: ${targetUser.firstName} ${targetUser.lastName}, ${getAbsenceTypeLabel(type)} vom ${dateFrom} bis ${dateTo}.`
+    `${actor.firstName} ${actor.lastName} hat eine Abwesenheit bearbeitet: ${targetUser.firstName} ${targetUser.lastName}, ${getAbsenceTypeLabel(type)} vom ${formatDateKeyDisplay(dateFrom)} bis ${formatDateKeyDisplay(dateTo)}.`
   );
 
   return NextResponse.json({ success: true });
@@ -882,7 +888,7 @@ export async function DELETE(req: Request) {
     organization.id,
     users,
     "Abwesenheit gelöscht",
-    `${actor.firstName} ${actor.lastName} hat eine Abwesenheit gelöscht: ${targetUser ? `${targetUser.firstName} ${targetUser.lastName}` : "Benutzer"}, ${getAbsenceTypeLabel(absence.type)} vom ${deleteStart} bis ${deleteEnd}.`
+    `${actor.firstName} ${actor.lastName} hat eine Abwesenheit gelöscht: ${targetUser ? `${targetUser.firstName} ${targetUser.lastName}` : "Benutzer"}, ${getAbsenceTypeLabel(absence.type)} vom ${formatDateKeyDisplay(deleteStart)} bis ${formatDateKeyDisplay(deleteEnd)}.`
   );
 
   return NextResponse.json({ success: true });
