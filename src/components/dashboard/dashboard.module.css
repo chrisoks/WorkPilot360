@@ -9926,9 +9926,14 @@
 }
 
 .projectImageLink {
+  background: transparent;
+  border: 0;
   color: inherit;
+  cursor: pointer;
   display: grid;
   gap: 6px;
+  padding: 0;
+  text-align: left;
   text-decoration: none;
 }
 

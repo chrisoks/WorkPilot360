@@ -13689,6 +13689,29 @@ export function DashboardPage() {
   async function openAttachmentDataUrl(dataUrl?: string, fileName = "Dokument") {
     if (!dataUrl) return;
 
+    const renderAttachmentPreview = (openedWindow: Window, sourceUrl: string) => {
+      const safeTitle = fileName.replaceAll('"', "&quot;");
+      const isImage = dataUrl.startsWith("data:image/");
+      openedWindow.document.title = fileName;
+      openedWindow.document.body.style.margin = "0";
+      openedWindow.document.body.style.background = isImage ? "#0f172a" : "";
+      openedWindow.document.body.innerHTML = isImage
+        ? `
+          <img
+            src="${sourceUrl}"
+            alt="${safeTitle}"
+            style="display:block;max-width:100vw;max-height:100vh;margin:auto;object-fit:contain"
+          />
+        `
+        : `
+          <iframe
+            src="${sourceUrl}"
+            title="${safeTitle}"
+            style="border:0;height:100vh;width:100vw"
+          ></iframe>
+        `;
+    };
+
     try {
       const blob = await fetch(dataUrl).then((response) => response.blob());
       const objectUrl = URL.createObjectURL(blob);
@@ -13700,15 +13723,7 @@ export function DashboardPage() {
         return;
       }
 
-      openedWindow.document.title = fileName;
-      openedWindow.document.body.style.margin = "0";
-      openedWindow.document.body.innerHTML = `
-        <iframe
-          src="${objectUrl}"
-          title="${fileName.replaceAll('"', "&quot;")}"
-          style="border:0;height:100vh;width:100vw"
-        ></iframe>
-      `;
+      renderAttachmentPreview(openedWindow, objectUrl);
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
     } catch {
       const openedWindow = window.open("", "workpilot-document-viewer", "width=1200,height=900");
@@ -13717,15 +13732,7 @@ export function DashboardPage() {
         return;
       }
 
-      openedWindow.document.title = fileName;
-      openedWindow.document.body.style.margin = "0";
-      openedWindow.document.body.innerHTML = `
-        <iframe
-          src="${dataUrl}"
-          title="${fileName.replaceAll('"', "&quot;")}"
-          style="border:0;height:100vh;width:100vw"
-        ></iframe>
-      `;
+      renderAttachmentPreview(openedWindow, dataUrl);
     }
   }
 
@@ -28111,16 +28118,15 @@ await addProjectLogbookEntry(
                                   key={`${image.entryId}-${image.name}-${index}`}
                                   className={styles.projectImageCard}
                                 >
-                                  <a
-                                    href={image.dataUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
+                                  <button
+                                    type="button"
                                     title={`${image.name} (${image.date})`}
                                     className={styles.projectImageLink}
+                                    onClick={() => void openAttachmentDataUrl(image.dataUrl, image.name)}
                                   >
                                     <img src={image.dataUrl} alt={image.name} />
                                     <span>{image.name}</span>
-                                  </a>
+                                  </button>
                                   <div className={styles.projectImageActions}>
                                     {moveTargets.map((targetCategory) => (
                                       <button
