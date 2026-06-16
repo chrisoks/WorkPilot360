@@ -27090,7 +27090,9 @@ await addProjectLogbookEntry(
       );
     const selectedProjectCompany = getProjectCompany(selectedProjectFile);
     const selectedProjectIsImmocare = selectedProjectCompany === "OK immocare";
-    const selectedProjectVisibleDocumentTypes = selectedProjectIsImmocare
+    const selectedProjectSupportsProofImages =
+      selectedProjectIsImmocare || getProjectKind(selectedProjectFile) === ONE_TIME_PROJECT_KIND;
+    const selectedProjectVisibleDocumentTypes = selectedProjectSupportsProofImages
       ? customerDocumentTypes
       : customerDocumentTypes.filter((type) => type !== "Tätigkeitsberichte");
     const activityReportDocumentEntries = getProjectDocumentEntries("Tätigkeitsberichte");
@@ -27355,7 +27357,7 @@ await addProjectLogbookEntry(
           setSelectedProjectDocumentType("Rechnungen");
         },
       },
-    ].filter((step) => selectedProjectIsImmocare || !["beforeImages", "afterImages", "activityReport"].includes(step.id)) as Array<{ id: string; label: string; state: "done" | "partial" | "open"; hint: string; onClick: () => void }>;
+    ].filter((step) => selectedProjectSupportsProofImages || !["beforeImages", "afterImages", "activityReport"].includes(step.id)) as Array<{ id: string; label: string; state: "done" | "partial" | "open"; hint: string; onClick: () => void }>;
     const projectImageCategories = [
       {
         label: "Objektbesichtigungen",
@@ -27372,7 +27374,7 @@ await addProjectLogbookEntry(
         shortLabel: "Nachher",
         description: "Dokumentation nach Fertigstellung.",
       },
-    ].filter((category) => selectedProjectIsImmocare || category.label === "Objektbesichtigungen");
+    ].filter((category) => selectedProjectSupportsProofImages || category.label === "Objektbesichtigungen");
     const projectImageCount = projectImageCategories.reduce(
       (sum, category) =>
         sum +
