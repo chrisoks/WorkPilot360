@@ -17,12 +17,16 @@ type ProjectTimeEntryRow = {
   endTime: string;
   durationMs: bigint | number;
   pauseMs: bigint | number;
+  laborCostRateSnapshot: number;
+  laborCostSnapshot: number;
+  costSnapshotAt: Date | null;
   comment: string | null;
   invoiceId: string | null;
   invoiceNumber: string | null;
   invoicedAt: Date | null;
   marketingContentItemId: string | null;
   marketingContentType: string | null;
+  completionStatus: string | null;
   overtimeApprovalStatus: string | null;
   overtimeApprovedByUserId: string | null;
   overtimeApprovedByName: string | null;
@@ -48,10 +52,14 @@ async function ensureProjectTimeEntryTable() {
       "endTime" TEXT NOT NULL,
       "durationMs" BIGINT NOT NULL DEFAULT 0,
       "pauseMs" BIGINT NOT NULL DEFAULT 0,
+      "laborCostRateSnapshot" DOUBLE PRECISION NOT NULL DEFAULT 0,
+      "laborCostSnapshot" DOUBLE PRECISION NOT NULL DEFAULT 0,
+      "costSnapshotAt" TIMESTAMP(3),
       "comment" TEXT,
       "invoiceId" TEXT,
       "invoiceNumber" TEXT,
       "invoicedAt" TIMESTAMP(3),
+      "completionStatus" TEXT,
       "overtimeApprovalStatus" TEXT NOT NULL DEFAULT 'not_required',
       "overtimeApprovedByUserId" TEXT,
       "overtimeApprovedByName" TEXT,
@@ -70,8 +78,12 @@ async function ensureProjectTimeEntryTable() {
     ADD COLUMN IF NOT EXISTS "invoiceId" TEXT,
     ADD COLUMN IF NOT EXISTS "invoiceNumber" TEXT,
     ADD COLUMN IF NOT EXISTS "invoicedAt" TIMESTAMP(3),
+    ADD COLUMN IF NOT EXISTS "laborCostRateSnapshot" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS "laborCostSnapshot" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS "costSnapshotAt" TIMESTAMP(3),
     ADD COLUMN IF NOT EXISTS "marketingContentItemId" TEXT,
     ADD COLUMN IF NOT EXISTS "marketingContentType" TEXT,
+    ADD COLUMN IF NOT EXISTS "completionStatus" TEXT,
     ADD COLUMN IF NOT EXISTS "overtimeApprovalStatus" TEXT NOT NULL DEFAULT 'not_required',
     ADD COLUMN IF NOT EXISTS "overtimeApprovedByUserId" TEXT,
     ADD COLUMN IF NOT EXISTS "overtimeApprovedByName" TEXT,
@@ -96,6 +108,50 @@ function parseMilliseconds(value: unknown) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : 0;
 }
 
+function roundMoney(value: number) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+async function getEmployeeHourlyCostRateSnapshot(organizationId: string, userId: string) {
+  if (!userId) return 0;
+  const rows = await prisma.$queryRaw<Array<{
+    monthlySalary: number;
+    fullCostFactor: number;
+    annualHours: number;
+    vacationDays: number;
+    trainingDays: number;
+    sickDays: number;
+    hoursPerDay: number;
+  }>>`
+    SELECT "monthlySalary", "fullCostFactor", "annualHours", "vacationDays", "trainingDays", "sickDays", "hoursPerDay"
+    FROM "EmployeeCostCalculation"
+    WHERE "organizationId" = ${organizationId} AND "userId" = ${userId}
+    LIMIT 1
+  `;
+  const cost = rows[0];
+  if (!cost) return 0;
+  const deductionHours =
+    (Number(cost.vacationDays || 0) + Number(cost.trainingDays || 0) + Number(cost.sickDays || 0)) *
+    Number(cost.hoursPerDay || 0);
+  const sellableAnnualHours = Math.max(0, Number(cost.annualHours || 0) - deductionHours);
+  if (sellableAnnualHours <= 0) return 0;
+  return roundMoney((Number(cost.monthlySalary || 0) * 12 * Number(cost.fullCostFactor || 0)) / sellableAnnualHours);
+}
+
+function normalizeDateKeyValue(value: string) {
+  const trimmedValue = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmedValue)) return trimmedValue;
+
+  const germanMatch = trimmedValue.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4}|\d{2})/);
+  if (!germanMatch) return trimmedValue;
+
+  const [, dayValue, monthValue, yearValue] = germanMatch;
+  const parsedYear = Number(yearValue);
+  const year = parsedYear < 100 ? 2000 + parsedYear : parsedYear;
+
+  return `${year}-${monthValue.padStart(2, "0")}-${dayValue.padStart(2, "0")}`;
+}
+
 function formatEntry(entry: ProjectTimeEntryRow) {
   return {
     id: entry.id,
@@ -105,17 +161,24 @@ function formatEntry(entry: ProjectTimeEntryRow) {
     userId: entry.userId ?? "",
     employee: entry.employee ?? "",
     entrySource: entry.entrySource === "manual" ? "manual" : "stamped",
-    date: entry.date,
+    date: normalizeDateKeyValue(entry.date),
     startTime: entry.startTime,
     endTime: entry.endTime,
     durationMs: Number(entry.durationMs),
     pauseMs: Number(entry.pauseMs),
+    laborCostRateSnapshot: Number(entry.laborCostRateSnapshot ?? 0),
+    laborCostSnapshot: Number(entry.laborCostSnapshot ?? 0),
+    costSnapshotAt: entry.costSnapshotAt?.toISOString() ?? "",
     comment: entry.comment ?? "",
     invoiceId: entry.invoiceId ?? "",
     invoiceNumber: entry.invoiceNumber ?? "",
     invoicedAt: entry.invoicedAt?.toISOString() ?? "",
     marketingContentItemId: entry.marketingContentItemId ?? "",
     marketingContentType: entry.marketingContentType ?? "",
+    completionStatus:
+      entry.completionStatus === "finished" || entry.completionStatus === "interrupted"
+        ? entry.completionStatus
+        : "",
     overtimeApprovalStatus:
       entry.overtimeApprovalStatus === "pending" || entry.overtimeApprovalStatus === "approved"
         ? entry.overtimeApprovalStatus
@@ -165,13 +228,17 @@ export async function POST(req: Request) {
   const userId = cleanString(body.userId);
   const employee = cleanString(body.employee);
   const entrySource = cleanString(body.entrySource) === "manual" ? "manual" : "stamped";
-  const date = cleanString(body.date);
+  const date = normalizeDateKeyValue(cleanString(body.date));
   const startTime = cleanString(body.startTime);
   const endTime = cleanString(body.endTime);
   const pauseMs = parseMilliseconds(body.pauseMs);
   const comment = cleanString(body.comment);
   const marketingContentItemId = cleanString(body.marketingContentItemId);
   const marketingContentType = cleanString(body.marketingContentType);
+  const completionStatus =
+    mode === "project" && ["finished", "interrupted"].includes(cleanString(body.completionStatus))
+      ? cleanString(body.completionStatus)
+      : "";
   const overtimeApprovalStatus = ["pending", "approved"].includes(cleanString(body.overtimeApprovalStatus))
     ? cleanString(body.overtimeApprovalStatus)
     : "not_required";
@@ -179,6 +246,8 @@ export async function POST(req: Request) {
   const overtimeApprovedByName = cleanString(body.overtimeApprovedByName);
   const overtimeApprovedAt = cleanString(body.overtimeApprovedAt);
   const editHistory = Array.isArray(body.editHistory) ? body.editHistory : [];
+  const laborCostRateSnapshot = await getEmployeeHourlyCostRateSnapshot(organization.id, userId);
+  const laborCostSnapshot = roundMoney((durationMs / 3_600_000) * laborCostRateSnapshot);
 
   if (!date || !startTime || !endTime) {
     return NextResponse.json({ error: "Datum und Uhrzeit fehlen." }, { status: 400 });
@@ -199,9 +268,13 @@ export async function POST(req: Request) {
       "endTime",
       "durationMs",
       "pauseMs",
+      "laborCostRateSnapshot",
+      "laborCostSnapshot",
+      "costSnapshotAt",
       "comment",
       "marketingContentItemId",
       "marketingContentType",
+      "completionStatus",
       "overtimeApprovalStatus",
       "overtimeApprovedByUserId",
       "overtimeApprovedByName",
@@ -222,9 +295,13 @@ export async function POST(req: Request) {
       ${endTime},
       ${durationMs},
       ${pauseMs},
+      ${laborCostRateSnapshot},
+      ${laborCostSnapshot},
+      CURRENT_TIMESTAMP,
       ${comment || null},
       ${marketingContentItemId || null},
       ${marketingContentType || null},
+      ${completionStatus || null},
       ${overtimeApprovalStatus},
       ${overtimeApprovedByUserId || null},
       ${overtimeApprovedByName || null},
@@ -242,9 +319,13 @@ export async function POST(req: Request) {
       "endTime" = EXCLUDED."endTime",
       "durationMs" = EXCLUDED."durationMs",
       "pauseMs" = EXCLUDED."pauseMs",
+      "laborCostRateSnapshot" = EXCLUDED."laborCostRateSnapshot",
+      "laborCostSnapshot" = EXCLUDED."laborCostSnapshot",
+      "costSnapshotAt" = EXCLUDED."costSnapshotAt",
       "comment" = EXCLUDED."comment",
       "marketingContentItemId" = EXCLUDED."marketingContentItemId",
       "marketingContentType" = EXCLUDED."marketingContentType",
+      "completionStatus" = EXCLUDED."completionStatus",
       "overtimeApprovalStatus" = EXCLUDED."overtimeApprovalStatus",
       "overtimeApprovedByUserId" = EXCLUDED."overtimeApprovedByUserId",
       "overtimeApprovedByName" = EXCLUDED."overtimeApprovedByName",

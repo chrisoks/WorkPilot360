@@ -14,6 +14,7 @@ type ActiveStampSessionRow = {
   marketingContentItemId: string | null;
   marketingContentTitle: string | null;
   marketingContentType: string | null;
+  comment: string | null;
   startedAt: Date;
   accumulatedMs: bigint | number;
   pauseStartedAt: Date | null;
@@ -36,12 +37,16 @@ type ProjectTimeEntryRow = {
   endTime: string;
   durationMs: bigint | number;
   pauseMs: bigint | number;
+  laborCostRateSnapshot: number;
+  laborCostSnapshot: number;
+  costSnapshotAt: Date | null;
   comment: string | null;
   invoiceId: string | null;
   invoiceNumber: string | null;
   invoicedAt: Date | null;
   marketingContentItemId: string | null;
   marketingContentType: string | null;
+  completionStatus: string | null;
   overtimeApprovalStatus: string | null;
   overtimeApprovedByUserId: string | null;
   overtimeApprovedByName: string | null;
@@ -86,6 +91,7 @@ async function ensureActiveStampSessionTableOnce() {
     ADD COLUMN IF NOT EXISTS "marketingContentItemId" TEXT,
     ADD COLUMN IF NOT EXISTS "marketingContentTitle" TEXT,
     ADD COLUMN IF NOT EXISTS "marketingContentType" TEXT,
+    ADD COLUMN IF NOT EXISTS "comment" TEXT,
     ADD COLUMN IF NOT EXISTS "accumulatedMs" BIGINT NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS "pauseStartedAt" TIMESTAMP(3),
     ADD COLUMN IF NOT EXISTS "pauseMs" BIGINT NOT NULL DEFAULT 0,
@@ -124,10 +130,14 @@ async function ensureProjectTimeEntryTableOnce() {
       "endTime" TEXT NOT NULL,
       "durationMs" BIGINT NOT NULL DEFAULT 0,
       "pauseMs" BIGINT NOT NULL DEFAULT 0,
+      "laborCostRateSnapshot" DOUBLE PRECISION NOT NULL DEFAULT 0,
+      "laborCostSnapshot" DOUBLE PRECISION NOT NULL DEFAULT 0,
+      "costSnapshotAt" TIMESTAMP(3),
       "comment" TEXT,
       "invoiceId" TEXT,
       "invoiceNumber" TEXT,
       "invoicedAt" TIMESTAMP(3),
+      "completionStatus" TEXT,
       "overtimeApprovalStatus" TEXT NOT NULL DEFAULT 'not_required',
       "overtimeApprovedByUserId" TEXT,
       "overtimeApprovedByName" TEXT,
@@ -145,8 +155,12 @@ async function ensureProjectTimeEntryTableOnce() {
     ADD COLUMN IF NOT EXISTS "invoiceId" TEXT,
     ADD COLUMN IF NOT EXISTS "invoiceNumber" TEXT,
     ADD COLUMN IF NOT EXISTS "invoicedAt" TIMESTAMP(3),
+    ADD COLUMN IF NOT EXISTS "laborCostRateSnapshot" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS "laborCostSnapshot" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS "costSnapshotAt" TIMESTAMP(3),
     ADD COLUMN IF NOT EXISTS "marketingContentItemId" TEXT,
     ADD COLUMN IF NOT EXISTS "marketingContentType" TEXT,
+    ADD COLUMN IF NOT EXISTS "completionStatus" TEXT,
     ADD COLUMN IF NOT EXISTS "overtimeApprovalStatus" TEXT NOT NULL DEFAULT 'not_required',
     ADD COLUMN IF NOT EXISTS "overtimeApprovedByUserId" TEXT,
     ADD COLUMN IF NOT EXISTS "overtimeApprovedByName" TEXT,
@@ -173,13 +187,48 @@ function toMillis(value: bigint | number) {
   return Number(value);
 }
 
+function roundMoney(value: number) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+async function getEmployeeHourlyCostRateSnapshot(organizationId: string, userId: string) {
+  if (!userId) return 0;
+  const rows = await prisma.$queryRaw<Array<{
+    monthlySalary: number;
+    fullCostFactor: number;
+    annualHours: number;
+    vacationDays: number;
+    trainingDays: number;
+    sickDays: number;
+    hoursPerDay: number;
+  }>>`
+    SELECT "monthlySalary", "fullCostFactor", "annualHours", "vacationDays", "trainingDays", "sickDays", "hoursPerDay"
+    FROM "EmployeeCostCalculation"
+    WHERE "organizationId" = ${organizationId} AND "userId" = ${userId}
+    LIMIT 1
+  `;
+  const cost = rows[0];
+  if (!cost) return 0;
+  const deductionHours =
+    (Number(cost.vacationDays || 0) + Number(cost.trainingDays || 0) + Number(cost.sickDays || 0)) *
+    Number(cost.hoursPerDay || 0);
+  const sellableAnnualHours = Math.max(0, Number(cost.annualHours || 0) - deductionHours);
+  if (sellableAnnualHours <= 0) return 0;
+  return roundMoney((Number(cost.monthlySalary || 0) * 12 * Number(cost.fullCostFactor || 0)) / sellableAnnualHours);
+}
+
 function formatDateKey(date: Date) {
-  return new Intl.DateTimeFormat("de-DE", {
+  const parts = new Intl.DateTimeFormat("en-CA", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
     timeZone: "Europe/Berlin",
-  }).format(date);
+  }).formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value ?? "";
+  const month = parts.find((part) => part.type === "month")?.value ?? "";
+  const day = parts.find((part) => part.type === "day")?.value ?? "";
+
+  return `${year}-${month}-${day}`;
 }
 
 function formatTime(date: Date) {
@@ -242,6 +291,7 @@ function formatSession(row: ActiveStampSessionRow | null) {
     marketingContentItemId: row.marketingContentItemId ?? "",
     marketingContentTitle: row.marketingContentTitle ?? "",
     marketingContentType: row.marketingContentType ?? "",
+    comment: row.comment ?? "",
     startedAt: startedAt.toISOString(),
     accumulatedMs: toMillis(row.accumulatedMs),
     pauseStartedAt: pauseStartedAt?.toISOString() ?? null,
@@ -265,12 +315,19 @@ function formatEntry(entry: ProjectTimeEntryRow) {
     endTime: entry.endTime,
     durationMs: toMillis(entry.durationMs),
     pauseMs: toMillis(entry.pauseMs),
+    laborCostRateSnapshot: Number(entry.laborCostRateSnapshot ?? 0),
+    laborCostSnapshot: Number(entry.laborCostSnapshot ?? 0),
+    costSnapshotAt: entry.costSnapshotAt?.toISOString() ?? "",
     comment: entry.comment ?? "",
     invoiceId: entry.invoiceId ?? "",
     invoiceNumber: entry.invoiceNumber ?? "",
     invoicedAt: entry.invoicedAt?.toISOString() ?? "",
     marketingContentItemId: entry.marketingContentItemId ?? "",
     marketingContentType: entry.marketingContentType ?? "",
+    completionStatus:
+      entry.completionStatus === "finished" || entry.completionStatus === "interrupted"
+        ? entry.completionStatus
+        : "",
     overtimeApprovalStatus:
       entry.overtimeApprovalStatus === "pending" || entry.overtimeApprovalStatus === "approved"
         ? entry.overtimeApprovalStatus
@@ -333,6 +390,7 @@ export async function POST(req: Request) {
   const userId = cleanString(body.userId);
   const mode = cleanString(body.mode) === "unproductive" ? "unproductive" : "project";
   const projectId = cleanString(body.projectId) || (mode === "unproductive" ? "__unproductive__" : "");
+  const comment = cleanString(body.comment);
 
   if (!userId) {
     return NextResponse.json({ error: "Mitarbeiter fehlt." }, { status: 400 });
@@ -342,8 +400,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Bitte ein Projekt angeben." }, { status: 400 });
   }
 
+  if (!comment) {
+    return NextResponse.json({ error: "Bitte kurz eintragen, was du gerade machst." }, { status: 400 });
+  }
+
   const { organization } = await getDemoContext();
   await ensureActiveStampSessionTable();
+  const existingSession = await getActiveSession(organization.id, userId);
+
+  if (existingSession) {
+    return NextResponse.json(
+      {
+        error:
+          "Es läuft bereits eine Stempelung. Bitte zuerst über Wechsel oder Stop abschließen und Arbeit fertig/unterbrochen auswählen.",
+      },
+      { status: 409 }
+    );
+  }
+
   const now = new Date();
   const rows = await prisma.$queryRaw<ActiveStampSessionRow[]>`
     INSERT INTO "ActiveStampSession" (
@@ -357,6 +431,7 @@ export async function POST(req: Request) {
       "marketingContentItemId",
       "marketingContentTitle",
       "marketingContentType",
+      "comment",
       "startedAt",
       "accumulatedMs",
       "pauseStartedAt",
@@ -375,6 +450,7 @@ export async function POST(req: Request) {
       ${cleanString(body.marketingContentItemId) || null},
       ${cleanString(body.marketingContentTitle) || null},
       ${cleanString(body.marketingContentType) || null},
+      ${comment},
       ${now},
       ${0},
       ${null},
@@ -382,21 +458,6 @@ export async function POST(req: Request) {
       ${now},
       ${now}
     )
-    ON CONFLICT ("organizationId", "userId") DO UPDATE SET
-      "id" = EXCLUDED."id",
-      "employee" = EXCLUDED."employee",
-      "mode" = EXCLUDED."mode",
-      "projectId" = EXCLUDED."projectId",
-      "projectLabel" = EXCLUDED."projectLabel",
-      "marketingContentItemId" = EXCLUDED."marketingContentItemId",
-      "marketingContentTitle" = EXCLUDED."marketingContentTitle",
-      "marketingContentType" = EXCLUDED."marketingContentType",
-      "startedAt" = EXCLUDED."startedAt",
-      "accumulatedMs" = 0,
-      "pauseStartedAt" = NULL,
-      "pauseMs" = 0,
-      "createdAt" = EXCLUDED."createdAt",
-      "updatedAt" = EXCLUDED."updatedAt"
     RETURNING *
   `;
 
@@ -496,10 +557,29 @@ async function stopSession(body: Record<string, unknown>) {
     toMillis(session.accumulatedMs) + (isPaused ? 0 : Math.max(0, now.getTime() - sessionStartedAt.getTime()));
   const pauseMs =
     toMillis(session.pauseMs) + (pauseStartedAt ? Math.max(0, now.getTime() - pauseStartedAt.getTime()) : 0);
+  const finalComment = cleanString(body.comment) || cleanString(session.comment) || "";
+  const requestedCompletionStatus = cleanString(body.completionStatus);
+  const completionStatus =
+    session.mode === "project" && ["finished", "interrupted"].includes(requestedCompletionStatus)
+      ? requestedCompletionStatus
+      : "";
+
+  if (session.mode === "project" && !completionStatus) {
+    return NextResponse.json(
+      {
+        error:
+          "Projektstempelungen können nur über Arbeit fertig oder Arbeit unterbrochen abgeschlossen werden.",
+      },
+      { status: 400 }
+    );
+  }
 
   if (durationMs <= 0) {
     return NextResponse.json({ error: "Die Laufzeit muss größer als 0 sein." }, { status: 400 });
   }
+
+  const laborCostRateSnapshot = await getEmployeeHourlyCostRateSnapshot(organization.id, session.userId);
+  const laborCostSnapshot = roundMoney((durationMs / 3_600_000) * laborCostRateSnapshot);
 
   const rows = await prisma.$queryRaw<ProjectTimeEntryRow[]>`
     INSERT INTO "ProjectTimeEntry" (
@@ -516,9 +596,13 @@ async function stopSession(body: Record<string, unknown>) {
       "endTime",
       "durationMs",
       "pauseMs",
+      "laborCostRateSnapshot",
+      "laborCostSnapshot",
+      "costSnapshotAt",
       "comment",
       "marketingContentItemId",
       "marketingContentType",
+      "completionStatus",
       "overtimeApprovalStatus",
       "editHistory"
     )
@@ -536,9 +620,13 @@ async function stopSession(body: Record<string, unknown>) {
       ${formatTime(now)},
       ${durationMs},
       ${pauseMs},
-      ${cleanString(body.comment) || null},
+      ${laborCostRateSnapshot},
+      ${laborCostSnapshot},
+      CURRENT_TIMESTAMP,
+      ${finalComment || null},
       ${session.marketingContentItemId || null},
       ${session.marketingContentType || null},
+      ${completionStatus || null},
       ${"not_required"},
       CAST(${"[]"} AS jsonb)
     )

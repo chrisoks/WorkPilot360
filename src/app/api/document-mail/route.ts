@@ -28,8 +28,14 @@ function getDocumentKindLabel(kind: string) {
   if (kind === "offer") return "Angebot";
   if (kind === "invoice") return "Rechnung";
   if (kind === "cancellation") return "Stornorechnung";
+  if (kind === "reminder") return "Mahnung";
   if (kind === "activityReport") return "Tätigkeitsbericht";
   return "Dokument";
+}
+
+function getReminderInvoiceNumber(documentNumber: string) {
+  const normalized = documentNumber.replace(/\.pdf$/i, "");
+  return normalized.match(/^MA-(.+)-\d+$/i)?.[1] ?? "";
 }
 
 function getDataUrlAttachment(name: string, dataUrl: string) {
@@ -72,7 +78,13 @@ function textToHtml(value: string) {
 }
 
 function stripTrailingClosing(value: string) {
-  return value.replace(/\n{2,}Mit freundlichen Gr(?:ü|ue|Ã¼)ßen\s*\n+[^\n]+\s*$/i, "");
+  return value.replace(/\n{2,}Mit freundlichen Gr(?:ü|ue|\u00c3\u00bc)ßen\s*\n+[^\n]+\s*$/i, "");
+}
+
+function stripTrailingMailClosing(value: string) {
+  return value
+    .replace(/\s*(?:\r?\n){1,}Mit freundlichen Gr(?:\u00fc|ue)(?:\u00df|ss)en\s*(?:\r?\n)+[^\r\n]+\s*$/i, "")
+    .trimEnd();
 }
 
 function getFeedbackMailBlockHtml(link: string) {
@@ -195,13 +207,23 @@ async function ensureDocumentMailTables() {
 
 async function addDocumentMailHistory(body: Record<string, unknown>, actorName: string, recipients: string[]) {
   const kind = cleanText(body.kind);
-  if (kind !== "offer" && kind !== "invoice" && kind !== "cancellation") return;
+  if (kind !== "offer" && kind !== "invoice" && kind !== "cancellation" && kind !== "reminder") return;
 
-  if (kind === "invoice" || kind === "cancellation") {
-    const rows = await prisma.$queryRaw<Array<{ organizationId: string }>>`
-      SELECT "organizationId"
+  if (kind === "invoice" || kind === "cancellation" || kind === "reminder") {
+    const documentId = cleanText(body.documentId);
+    const projectId = cleanText(body.projectId);
+    const documentNumber = cleanText(body.documentNumber);
+    const reminderInvoiceNumber = kind === "reminder" ? getReminderInvoiceNumber(documentNumber) : "";
+    const rows = await prisma.$queryRaw<Array<{ id: string; organizationId: string; invoiceNumber: string }>>`
+      SELECT "id", "organizationId", "invoiceNumber"
       FROM "Invoice"
-      WHERE id = ${cleanText(body.documentId)}
+      WHERE id = ${documentId}
+        OR (
+          ${kind === "reminder"}
+          AND ${reminderInvoiceNumber} <> ''
+          AND "projectId" = ${projectId}
+          AND "invoiceNumber" = ${reminderInvoiceNumber}
+        )
       LIMIT 1
     `;
     const invoice = rows[0];
@@ -212,10 +234,10 @@ async function addDocumentMailHistory(body: Record<string, unknown>, actorName: 
         "id", "organizationId", "invoiceId", "projectId", "invoiceNumber",
         "eventType", "title", "note", "actorName"
       ) VALUES (
-        ${randomUUID()}, ${invoice.organizationId}, ${cleanText(body.documentId)},
-        ${cleanText(body.projectId)}, ${cleanText(body.documentNumber)},
-        ${"email_sent"}, ${`${getDocumentKindLabel(kind)} per E-Mail versendet`},
-        ${`Gesendet an ${recipients.join(", ")}. Betreff: ${cleanText(body.subject)}`},
+        ${randomUUID()}, ${invoice.organizationId}, ${invoice.id},
+        ${projectId}, ${invoice.invoiceNumber},
+        ${kind === "reminder" ? "reminder_email_sent" : "email_sent"}, ${`${getDocumentKindLabel(kind)} per E-Mail versendet`},
+        ${`Gesendet an ${recipients.join(", ")}. Betreff: ${cleanText(body.subject)}${kind === "reminder" ? `. Dokument: ${documentNumber}` : ""}`},
         ${actorName}
       )
     `;
@@ -243,6 +265,28 @@ async function addDocumentMailHistory(body: Record<string, unknown>, actorName: 
       ${actorName}
     )
   `;
+}
+
+function formatDispatch(row: {
+  id: string;
+  documentKind: string;
+  documentId: string;
+  documentNumber: string;
+  projectId: string;
+  projectNumber: string;
+  projectTitle: string;
+  customerName: string;
+  toRecipients: string;
+  subject: string;
+  body: string;
+  attachPdf: boolean;
+  status: string;
+  createdAt: Date;
+}) {
+  return {
+    ...row,
+    createdAt: row.createdAt.toISOString(),
+  };
 }
 
 async function getPdfAttachment(kind: string, documentId: string, documentNumber: string) {
@@ -345,7 +389,7 @@ export async function POST(req: Request) {
   const bccRecipients = parseRecipients(body.bcc);
   const kind = cleanText(body.kind);
 
-  if (!["offer", "invoice", "cancellation", "activityReport", "document"].includes(kind)) {
+  if (!["offer", "invoice", "cancellation", "reminder", "activityReport", "document"].includes(kind)) {
     return NextResponse.json({ error: "Dokumenttyp ist ungültig." }, { status: 400 });
   }
 
@@ -373,14 +417,17 @@ export async function POST(req: Request) {
   const additionalAttachments = Boolean(body.attachActivityReports)
     ? getAdditionalDataUrlAttachments(body.additionalAttachments)
     : [];
+  const manualAttachments = getAdditionalDataUrlAttachments(body.manualAttachments);
   const attachments = [
     ...storedAttachments,
     ...(uploadedAttachment ? [uploadedAttachment] : []),
     ...additionalAttachments,
+    ...manualAttachments,
   ];
   const feedbackLink = await getOrCreateFeedbackRequestLink(req, { ...body, organizationId: organization.id }, actor);
   const signatureHtml = await getSenderSignature(actor.id);
-  const messageBody = stripTrailingClosing(cleanText(body.body));
+  const rawMessageBody = cleanText(body.body);
+  const messageBody = signatureHtml ? stripTrailingMailClosing(rawMessageBody) : rawMessageBody;
   const feedbackHtml = feedbackLink ? getFeedbackMailBlockHtml(feedbackLink) : "";
   const feedbackText = feedbackLink
     ? `\n\nWie zufrieden waren Sie mit unserer Leistung? Jetzt bewerten: ${feedbackLink}`
@@ -422,6 +469,29 @@ export async function POST(req: Request) {
     )
   `;
 
+  if (kind === "invoice" && Boolean(body.attachActivityReports)) {
+    const activityReportAttachments = getAdditionalDataUrlAttachments(body.additionalAttachments);
+    for (const attachment of activityReportAttachments) {
+      const attachmentName = cleanText(attachment.name).replace(/\.pdf$/i, "");
+      await prisma.$executeRaw`
+        INSERT INTO "DocumentMailDispatch" (
+          "id", "organizationId", "documentKind", "documentId", "documentNumber",
+          "projectId", "projectNumber", "projectTitle", "customerName",
+          "senderUserId", "senderName", "senderEmail", "toRecipients",
+          "ccRecipients", "bccRecipients", "subject", "body", "attachPdf",
+          "provider", "status", "providerMessageId"
+        ) VALUES (
+          ${randomUUID()}, ${organization.id}, ${"activityReport"}, ${`${cleanText(body.documentId)}:${cleanText(attachment.name)}`}, ${attachmentName || "Tätigkeitsbericht"},
+          ${cleanText(body.projectId)}, ${cleanText(body.projectNumber)}, ${cleanText(body.projectTitle)},
+          ${cleanText(body.customerName)}, ${actor.id}, ${actorName}, ${senderEmail},
+          ${recipients.join(", ")}, ${ccRecipients.join(", ")}, ${bccRecipients.join(", ")},
+          ${cleanText(body.subject)}, ${`Als Anhang mit Rechnung ${cleanText(body.documentNumber)} versendet.`}, ${true},
+          ${"microsoft365"}, ${"sent"}, ${`ms365-${id}`}
+        )
+      `;
+    }
+  }
+
   await addDocumentMailHistory(body, actorName, recipients);
 
   return NextResponse.json({
@@ -431,4 +501,30 @@ export async function POST(req: Request) {
     senderEmail,
     recipients,
   });
+}
+
+export async function GET(req: Request) {
+  await ensureDocumentMailTables();
+  const { searchParams } = new URL(req.url);
+  const projectId = cleanText(searchParams.get("projectId"));
+  const { organization } = await getDemoContext();
+
+  const rows = projectId
+    ? await prisma.$queryRaw<Array<Parameters<typeof formatDispatch>[0]>>`
+        SELECT "id", "documentKind", "documentId", "documentNumber", "projectId", "projectNumber",
+               "projectTitle", "customerName", "toRecipients", "subject", "body", "attachPdf", "status", "createdAt"
+        FROM "DocumentMailDispatch"
+        WHERE "organizationId" = ${organization.id}
+          AND "projectId" = ${projectId}
+        ORDER BY "createdAt" DESC
+      `
+    : await prisma.$queryRaw<Array<Parameters<typeof formatDispatch>[0]>>`
+        SELECT "id", "documentKind", "documentId", "documentNumber", "projectId", "projectNumber",
+               "projectTitle", "customerName", "toRecipients", "subject", "body", "attachPdf", "status", "createdAt"
+        FROM "DocumentMailDispatch"
+        WHERE "organizationId" = ${organization.id}
+        ORDER BY "createdAt" DESC
+      `;
+
+  return NextResponse.json(rows.map(formatDispatch));
 }

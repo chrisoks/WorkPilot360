@@ -32,6 +32,9 @@ type LocalProjectRow = {
   address: string | null;
   participants: string | null;
   responsibleName: string | null;
+  deputyName: string | null;
+  deputyFrom: string | null;
+  deputyUntil: string | null;
   timeBudgetHours: string | null;
   timeBudgetHistory: unknown;
   timeBudgetAllocations: unknown;
@@ -76,6 +79,9 @@ async function ensureLocalProjectTable() {
       "address" TEXT,
       "participants" TEXT,
       "responsibleName" TEXT,
+      "deputyName" TEXT,
+      "deputyFrom" TEXT,
+      "deputyUntil" TEXT,
       "timeBudgetHours" TEXT,
       "timeBudgetHistory" JSONB NOT NULL DEFAULT '[]'::jsonb,
       "timeBudgetAllocations" JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -116,6 +122,9 @@ async function ensureLocalProjectTable() {
     ADD COLUMN IF NOT EXISTS "address" TEXT,
     ADD COLUMN IF NOT EXISTS "participants" TEXT,
     ADD COLUMN IF NOT EXISTS "responsibleName" TEXT,
+    ADD COLUMN IF NOT EXISTS "deputyName" TEXT,
+    ADD COLUMN IF NOT EXISTS "deputyFrom" TEXT,
+    ADD COLUMN IF NOT EXISTS "deputyUntil" TEXT,
     ADD COLUMN IF NOT EXISTS "timeBudgetHours" TEXT,
     ADD COLUMN IF NOT EXISTS "timeBudgetHistory" JSONB NOT NULL DEFAULT '[]'::jsonb,
     ADD COLUMN IF NOT EXISTS "timeBudgetAllocations" JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -212,6 +221,9 @@ function formatLocalProject(project: LocalProjectRow) {
     address: project.address ?? "",
     participants: project.participants ?? "",
     responsibleName: project.responsibleName ?? "",
+    deputyName: project.deputyName ?? "",
+    deputyFrom: project.deputyFrom ?? "",
+    deputyUntil: project.deputyUntil ?? "",
     createdAt: formatDateTime(project.createdAt),
     timeBudgetHours: project.timeBudgetHours ?? "",
     timeBudgetHistory: cleanBudgetHistory(project.timeBudgetHistory),
@@ -246,6 +258,14 @@ function normalizeProjectStatus(status: string) {
   ) {
     return "Zur Planung bereit";
   }
+  if (
+    normalized === "geplant" ||
+    normalized.includes("fest geplant") ||
+    normalized.includes("planungstermin")
+  ) {
+    return "Geplant";
+  }
+  if (normalized.includes("in umsetzung")) return "Umsetzung";
   if (normalized.includes("umsetzung")) return "Umsetzung";
   if (normalized.includes("abnahme") || normalized.includes("endkontrolle")) return "Endkontrolle";
   if (normalized.includes("kundenrechnung") || normalized.includes("abrechnung")) {
@@ -333,6 +353,9 @@ export async function POST(req: Request) {
       "address",
       "participants",
       "responsibleName",
+      "deputyName",
+      "deputyFrom",
+      "deputyUntil",
       "timeBudgetHours",
       "timeBudgetHistory",
       "timeBudgetAllocations",
@@ -372,6 +395,9 @@ export async function POST(req: Request) {
       ${cleanString(body.address) || null},
       ${cleanString(body.participants) || null},
       ${cleanString(body.responsibleName) || null},
+      ${cleanString(body.deputyName) || null},
+      ${cleanString(body.deputyFrom) || null},
+      ${cleanString(body.deputyUntil) || null},
       ${cleanString(body.timeBudgetHours) || null},
       ${JSON.stringify(cleanBudgetHistory(body.timeBudgetHistory))}::jsonb,
       ${JSON.stringify(cleanBudgetAllocations(body.timeBudgetAllocations))}::jsonb,
@@ -409,6 +435,9 @@ export async function POST(req: Request) {
       "address" = EXCLUDED."address",
       "participants" = EXCLUDED."participants",
       "responsibleName" = EXCLUDED."responsibleName",
+      "deputyName" = EXCLUDED."deputyName",
+      "deputyFrom" = EXCLUDED."deputyFrom",
+      "deputyUntil" = EXCLUDED."deputyUntil",
       "timeBudgetHours" = EXCLUDED."timeBudgetHours",
       "timeBudgetHistory" = EXCLUDED."timeBudgetHistory",
       "timeBudgetAllocations" = EXCLUDED."timeBudgetAllocations",

@@ -291,16 +291,57 @@ function formatDate(value: Date) {
   }).format(value);
 }
 
-function buildActivityReportNumber(entries: ProjectLogbookEntryRow[]) {
-  const highestNumber = entries.reduce((highest, entry) => {
-    const entryNumbers = cleanAttachments(entry.attachments)
-      .map((attachment) => attachment.name.match(/^DOK-(\d{4,})\.pdf$/i)?.[1])
-      .filter(Boolean)
-      .map((value) => Number(value));
-    return Math.max(highest, 0, ...entryNumbers);
-  }, 0);
+function sanitizeActivityReportNamePart(value: string, fallback: string) {
+  const sanitized = cleanString(value)
+    .replace(/[\\/:*?"<>|]+/g, "_")
+    .replace(/\s+/g, "_")
+    .replace(/[^\p{L}\p{N}._-]+/gu, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
 
-  return `DOK-${String(highestNumber + 1).padStart(4, "0")}`;
+  return sanitized || fallback;
+}
+
+function getActivityReportServiceDate(images: ReportImage[], fallback: Date) {
+  return images.reduce((latestDate, image) => {
+    const entryDate = image.entryDate;
+    return entryDate instanceof Date && Number.isFinite(entryDate.getTime()) && entryDate > latestDate
+      ? entryDate
+      : latestDate;
+  }, fallback);
+}
+
+function buildActivityReportName(input: {
+  project: ProjectRow;
+  customerContact?: ContactRow | null;
+  serviceDate: Date;
+  entries: ProjectLogbookEntryRow[];
+  existingReportId?: string;
+}) {
+  const customerName = sanitizeActivityReportNamePart(
+    contactCompanyOrName(input.customerContact) || input.project.customer || "Kunde",
+    "Kunde"
+  );
+  const projectNumber = sanitizeActivityReportNamePart(input.project.projectNumber || input.project.title, "Projekt");
+  const serviceDate = formatDate(input.serviceDate);
+  const baseName = `TB_${customerName}_${projectNumber}_${serviceDate}`;
+  const usedNames = new Set(
+    input.entries
+      .filter((entry) => entry.id !== input.existingReportId)
+      .flatMap((entry) => cleanAttachments(entry.attachments))
+      .filter((attachment) => attachment.type === "Dokument")
+      .map((attachment) => cleanString(attachment.name).replace(/\.pdf$/i, "").toLowerCase())
+      .filter(Boolean)
+  );
+
+  if (!usedNames.has(baseName.toLowerCase())) return baseName;
+
+  for (let suffix = 2; suffix < 100; suffix += 1) {
+    const candidate = `${baseName}_${String(suffix).padStart(2, "0")}`;
+    if (!usedNames.has(candidate.toLowerCase())) return candidate;
+  }
+
+  return `${baseName}_${Date.now()}`;
 }
 
 function formatProjectAddress(project: ProjectRow) {
@@ -544,6 +585,7 @@ async function generateActivityReportPdf(input: {
   reportName: string;
   month: string;
   useMonth: boolean;
+  reportContextLabel?: string;
 }) {
   const company = input.project.branch || "";
   const templateBytes = await readFile(getTemplatePath(company));
@@ -565,8 +607,9 @@ async function generateActivityReportPdf(input: {
 
   const documentDate = formatDate(today);
   const infoRows = [
-    ["Dokumentennummer", input.reportName],
+    ["Dokumentenbezeichnung", input.reportName],
     ["Projektnummer", input.project.projectNumber],
+    ...(input.reportContextLabel ? [["Zuordnung", input.reportContextLabel]] : []),
     ["Datum", documentDate],
     ["Ansprechpartner", input.project.responsibleName || contactName(input.contactPerson)],
     ["Telefon", input.contactPerson?.phone || input.contactPerson?.mobile || ""],
@@ -667,6 +710,8 @@ export async function POST(req: Request) {
   const afterImageKeys = Array.isArray(body.afterImageKeys)
     ? body.afterImageKeys.map((key) => cleanString(key)).filter(Boolean)
     : [];
+  const reportContextKey = cleanString(body.reportContextKey);
+  const reportContextLabel = cleanString(body.reportContextLabel);
 
   if (!projectId) {
     return NextResponse.json({ error: "Projekt fehlt." }, { status: 400 });
@@ -711,22 +756,29 @@ export async function POST(req: Request) {
   const useMonth = cleanString(project.projectKind).toLowerCase().includes("dauer") && /^\d{4}-\d{2}$/.test(month);
   const beforeImages = getReportImages(entries, "Vorherbilder", month, useMonth, beforeImageKeys);
   const afterImages = getReportImages(entries, "Nachherbilder", month, useMonth, afterImageKeys);
-  const existingReport = entries.find((entry) =>
+  const legacyExistingReport = entries.find((entry) =>
     entry.title === "Dokumente: Tätigkeitsberichte" &&
     (!useMonth || entry.projectMonth === month || (!entry.projectMonth && getMonthKey(entry.createdAt) === month)) &&
     cleanAttachments(entry.attachments).some((attachment) =>
       attachment.type === "Dokument" &&
-      /^DOK-\d{4,}\.pdf$/i.test(attachment.name) &&
       attachment.dataUrl?.startsWith("data:application/pdf")
     )
   );
-  const existingReportAttachment = existingReport
-    ? cleanAttachments(existingReport.attachments).find((attachment) =>
-        attachment.type === "Dokument" &&
-        /^DOK-\d{4,}\.pdf$/i.test(attachment.name) &&
-        attachment.dataUrl?.startsWith("data:application/pdf")
-      )
+
+  const contextExistingReport = reportContextKey
+    ? entries.find((entry) => {
+        const isActivityReportEntry = entry.title === "Dokumente: Tätigkeitsberichte";
+        const isSamePeriod =
+          !useMonth || entry.projectMonth === month || (!entry.projectMonth && getMonthKey(entry.createdAt) === month);
+        const isSameContext = entry.body.includes(`Zuordnung: ${reportContextKey}`);
+        const hasPdf = cleanAttachments(entry.attachments).some((attachment) =>
+          attachment.type === "Dokument" &&
+          attachment.dataUrl?.startsWith("data:application/pdf")
+        );
+        return isActivityReportEntry && isSamePeriod && isSameContext && hasPdf;
+      })
     : null;
+  const existingReport = contextExistingReport || (reportContextKey ? undefined : legacyExistingReport);
 
   if (beforeImages.length === 0 || afterImages.length === 0) {
     return NextResponse.json(
@@ -735,9 +787,14 @@ export async function POST(req: Request) {
     );
   }
 
-  const reportName =
-    cleanString(existingReportAttachment?.name).replace(/\.pdf$/i, "") ||
-    buildActivityReportNumber(entries);
+  const serviceDate = getActivityReportServiceDate([...beforeImages, ...afterImages], useMonth ? new Date(`${month}-01T12:00:00`) : new Date());
+  const reportName = buildActivityReportName({
+    project,
+    customerContact,
+    serviceDate,
+    entries,
+    existingReportId: existingReport?.id,
+  });
   let pdfData = "";
   try {
     pdfData = await generateActivityReportPdf({
@@ -749,6 +806,7 @@ export async function POST(req: Request) {
       reportName,
       month,
       useMonth,
+      reportContextLabel,
     });
   } catch (error) {
     return NextResponse.json(
@@ -764,12 +822,15 @@ export async function POST(req: Request) {
     dataUrl: `data:application/pdf;base64,${pdfData}`,
   };
   const reportCreatedAt = useMonth ? new Date(`${month}-01T12:00:00`) : new Date();
+  const contextNote = reportContextKey
+    ? ` Zuordnung: ${reportContextKey}${reportContextLabel ? ` (${reportContextLabel})` : ""}.`
+    : "";
 
   if (existingReport) {
     const rows = await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
       UPDATE "ProjectLogbookEntry"
       SET "attachments" = ${JSON.stringify([attachment])}::jsonb,
-          "body" = ${`${reportName} automatisch aktualisiert.`},
+          "body" = ${`${reportName} automatisch aktualisiert.${contextNote}`},
           "projectMonth" = ${useMonth ? month : null}
       WHERE "id" = ${existingReport.id}
         AND "organizationId" = ${organization.id}
@@ -784,7 +845,7 @@ export async function POST(req: Request) {
       "id", "organizationId", "projectId", "title", "body", "author", "colleague", "visibleFor", "attachments", "projectMonth", "createdAt"
     ) VALUES (
       ${randomUUID()}, ${organization.id}, ${projectId}, ${"Dokumente: Tätigkeitsberichte"},
-      ${`${reportName} automatisch erstellt.`}, ${"System"}, ${""},
+      ${`${reportName} automatisch erstellt.${contextNote}`}, ${"System"}, ${""},
       ${JSON.stringify(["Geschaeftsfuehrer", "Vertriebler", "Niederlassungsleiter", "Buchhaltung"])}::jsonb,
       ${JSON.stringify([attachment])}::jsonb,
       ${useMonth ? month : null},

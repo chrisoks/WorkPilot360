@@ -62,7 +62,7 @@ async function createHotAlert(input: {
       ) VALUES (
         ${randomUUID()}, ${input.organizationId}, ${recipient.id}, NULL, 'app',
         'KuZu Hot-Alert',
-        ${`${input.customerName || "Ein Kunde"} hat ${input.rating} Sterne vergeben${input.wantsContact ? " und Kontakt gewuenscht" : ""}.`},
+        ${`${input.customerName || "Ein Kunde"} hat ${input.rating} Sterne vergeben${input.wantsContact ? " und Kontakt gewünscht" : ""}.`},
         'customer-feedback', ${input.feedbackId}, 'Bewertung ansehen', NULL, CURRENT_TIMESTAMP
       )
     `;

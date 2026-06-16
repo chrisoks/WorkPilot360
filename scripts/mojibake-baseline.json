@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "updatedAt": "2026-06-11T15:42:06.781Z",
+  "description": "Known Mojibake/icon-placeholder baseline. The check fails only when new occurrences appear above this baseline.",
+  "totalFindings": 0,
+  "entries": {}
+}

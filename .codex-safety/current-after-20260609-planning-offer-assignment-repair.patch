@@ -1,0 +1,3033 @@
+﻿diff --git a/AGENTS.md b/AGENTS.md
+index ec10e26..854ca0e 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -2060,6 +2060,55 @@ Wiederaufbau begonnen 2026-06-05:
+   gegenseitig exklusiv: Beim Oeffnen eines Menues werden die anderen
+   Kopfbereich-Menues geschlossen, damit nie mehrere Popover parallel offen
+   bleiben.
++- Planungsboard-Wiederholung 2026-06-08: Die Terminmaske erzeugt Serien nicht
++  mehr ueber einen monatlichen Kalendertag plus `Wochenenden ueberspringen`.
++  Wiederholungen werden jetzt ueber Intervall (`woechentlich`, `alle 2 Wochen`,
++  `monatlich`) und anklickbare Wochentage Montag bis Sonntag gesteuert. `Monatlich`
++  ist bewusst kein 4-Wochen-Rhythmus, sondern nimmt den Starttermin als Muster
++  (z.B. zweiter Montag im Monat) und plant diesen Wochentag je Monat einmal.
++  Der Termintzaehler bleibt erhalten und berechnet die Anzahl aus Startdatum,
++  Enddatum, Intervall und ausgewaehlten Wochentagen. Wochenenden werden nur
++  geplant, wenn Samstag/Sonntag explizit ausgewaehlt sind. Der alte separate
++  Schalter `Wochenenden ueberspringen` gehoert nicht mehr in die Maske, weil die
++  Wochentagsauswahl diese Entscheidung direkt abbildet. Das UI-Wording lautet
++  `Terminserie anlegen` und `Serienende`, nicht technisch `Wiederholung`.
++- Planungsmaske Pflichtfelder 2026-06-08: Bei normaler Planung und
++  Terminwunsch starten `Titel` und `Beschreibung` leer und sind Pflichtfelder.
++  `Mitarbeiter` muss ein echter vorhandener Mitarbeiter sein; `Noch nicht
++  zugewiesen` darf nicht speicherbar sein. Fehlende Pflichtfelder werden in der
++  Maske mit dem bekannten orangefarbenen Pulsrahmen markiert. Angebots- oder
++  Kontingentkontext darf nicht mehr als automatisch gespeicherter Ersatz-Titel
++  oder Ersatz-Beschreibung dienen.
++- Einmalprojekte Planungsbasis 2026-06-08: Einmalige Projekte haben weiterhin
++  keine Monatsakte und keine Projektzeitkontingente. Planbare Stunden kommen
++  projektweit aus den Arbeitspositionen finaler Angebote/Nachtragsangebote. In
++  `Termine & Stempelungen` wird fuer jedes finale Angebot mit Arbeitsstunden
++  eine eigene Leiste angezeigt: Angebotsnummer, Angebotsart, geplante Stunden,
++  offene Stunden und geplanter Ausfuehrungsmonat. Planung fuer Einmalprojekte
++  mit Angebotsstunden muss bewusst einem Angebot zugeordnet werden; freie
++  Planung ohne Angebotsbezug ist dort nicht speicherbar. Wird ein Termin fuer
++  ein Angebot in einem anderen Monat als dessen Ausfuehrungsmonat gespeichert,
++  fragt die UI nach Bestaetigung und setzt dann genau dieses Angebot auf den
++  neuen Ausfuehrungsmonat, damit der Forecast nicht im alten Monat stehen
++  bleibt. Die Angebotsleisten sind reine Status-/Kontingentleisten ohne eigene
++  Aktionsbuttons; neue Planung laeuft ueber `+ Termin` bzw. `+ Terminwunsch`
++  und die Angebotszuordnung in der Terminmaske. Altbestand ohne gespeicherte
++  `offerId` darf defensiv ueber Angebotsnummer im Text oder, wenn eindeutig,
++  ueber den Ausfuehrungsmonat genau einem Angebot zugeordnet werden. Dauerlaeufer
++  bleiben unveraendert monats-/kontingentbasiert.
++- Nachkorrektur Planungsmaske Einmalprojekte 2026-06-09: In der Terminmaske
++  werden bei Einmalprojekten mit Angebotszuordnung keine editierbaren Felder
++  `Angebotsposition` oder `Angebotene Stunden` mehr angezeigt. Die Zuordnung
++  laeuft bewusst auf Angebotsebene. Die Kontingentbox zeigt den Stand nach dem
++  Speichern (`Bisher`, `Dieser Termin`, `Danach offen/ueberplant`) statt nur
++  den Vorabstand, damit eine Ueberplanung sofort sichtbar ist.
++- Nachkorrektur Einmalprojekt-Leisten 2026-06-09: Angebotsleisten fuer
++  Einmalprojekte duerfen nicht mehr faktisch am ausgewaehlten Monat haengen.
++  Sie zaehlen projektweit alle Planungseintraege mit Angebotsbezug; Altbestand
++  ohne `source = offer`, aber mit eindeutiger Angebotszuordnung ueber
++  Angebotsmonat, wird ebenfalls beruecksichtigt. Neue Einmalprojekt-Termine mit
++  Angebotszuordnung werden auch dann als `source = offer` gespeichert, wenn sie
++  ueber den allgemeinen `+ Termin` Einstieg angelegt wurden.
+ - Potenzialprozess 2026-06-08: Zusatzverkaufs-Potenziale entstehen weiterhin
+   aus der Endkontrolle/Stempelung, wenn dort `Zusatzverkauf` erfasst wird.
+   Daraus wird ein `ProjectPotential`. Der Projektkopf-Button
+@@ -2080,6 +2129,104 @@ Wiederaufbau begonnen 2026-06-05:
+   suchen muessen. Die Potenziale bleiben fachlich weiterhin mit Projekt und Kunde
+   verknuepft und nutzen dieselbe Detailmaske. Der Forecast bleibt unveraendert:
+   Potenziale speisen ihn nicht, erst Angebote und Rechnungen zaehlen.
++- Potenziale-UI 2026-06-08: Die Potenzialuebersicht soll nicht mehr wie eine
++  technische Pipeline-Tabelle mit vielen Schnellaktionen wirken. Sichtbar bleibt
++  in der Liste nur `Bearbeiten`; dieser Button oeffnet die Potenzialakte. Aktionen
++  wie Angebot erstellen, Nachfassen oder Kein Interesse gehoeren in die Maske,
++  damit Entscheidungen nachvollziehbar aus der Potenzialakte heraus passieren.
++- Potenziale-Status 2026-06-08: Statuswerte in der Potenzialuebersicht werden
++  wie andere WorkPilot-Statusanzeigen als ruhige Clips/Pills dargestellt, nicht
++  als reiner Tabellentext. Die Tabelle soll optisch als Arbeitsliste wirken:
++  weisse Zeilenkarten, wenig harte Linien, rechts ein klarer Bearbeiten-Button.
++  Der Tabellenkopf in dieser Ansicht ist bewusst hell und zurueckhaltend; der
++  dunkle Standard-Tabellenkopf der Pipeline-/Datentabellen soll hier nicht
++  greifen.
++- Artikel & Leistungen UI 2026-06-08: Die Stammdatentabellen fuer Artikel,
++  Leistungen, Pakete und Verkaufspreise gehoeren zur dichten WorkPilot-
++  Tabellenfamilie wie Planungstermine/Stempelungen: kompakter dunkler
++  Tabellenkopf, flache Zeilen mit klaren Trennlinien, ruhige Filterzeile,
++  Status als Clip (`Aktiv`/`Inaktiv`) und Aktionen als beschriftete Buttons
++  (`Bearbeiten`, `Duplizieren`, `Deaktivieren`), keine Fragezeichen-Buttons.
++  Die Katalogansicht nutzt nur die obere Freitextsuche plus Statusfilter; keine
++  zweite Spaltenfilterzeile im Tabellenkopf, damit Suche und Filterung nicht
++  doppelt wirken oder unsichtbar alte Filter aktiv bleiben.
++  Die Freitextsuche normalisiert Gross-/Kleinschreibung, Leerraeume und
++  Akzent-/Umlautzeichen. Pagination-Buttons zeigen echte Pfeile statt
++  Platzhalter-/Fragezeichen.
++- Potenzialhistorie 2026-06-08: Historieneintraege in Potenzialmaske und
++  separatem Historie-Dialog werden newest-first angezeigt. Beim Speichern der
++  Potenzialakte darf nicht nur pauschal `Potenzial aktualisiert.` geschrieben
++  werden; neue Historieneintraege sollen die geaenderten Felder nennen
++  (z.B. Status, Verantwortlich, Wert, Prioritaet, Wiedervorlage, naechster
++  Schritt, Verlustgrund oder freie Notiz).
++- Verkaufschancen-Begriff 2026-06-08: Der fuehrende sichtbare Begriff in der
++  UI ist ab jetzt `Verkaufschance` bzw. `Verkaufschancen`, nicht mehr
++  `Potenzial`. Das gilt fuer Sidebar, Uebersichten, Kundenakte, Projektkopf
++  und Detailmaske. Technische Namen wie `ProjectPotential`, `/api/potentials`
++  und Datenbankfelder bleiben bewusst unveraendert, damit keine Datenmigration
++  oder API-Risiken entstehen.
++- Verkaufschancen-Nachfassen 2026-06-08: Die Wiedervorlage ist fachlich keine
++  zweite Erinnerungsebene in der Verkaufschance. Nachfassen gehoert ins
++  Aufgabenmodul. Die Verkaufschance zeigt deshalb nur noch den Status bzw. die
++  verknuepfte Nachfass-Aufgabe an. Wenn bereits eine Aufgabe verknuepft ist,
++  oeffnet der Button diese Aufgabe; nur ohne verknuepfte Aufgabe wird eine neue
++  Nachfass-Aufgabe angelegt. Alte `followUpAt`-Daten bleiben als Fallback
++  erhalten, werden aber nicht mehr als eigenes Datumsfeld in der Maske gepflegt.
++- Verkaufschancen-Tabelle 2026-06-08: Die Hauptuebersicht der Verkaufschancen
++  nutzt wieder die dichte WorkPilot-Tabellenfamilie mit dunklem Kopf, flachen
++  Zeilen, klaren Rasterlinien, Status-Clips und einem einzelnen
++  Einstieg ueber die Verkaufschancen-Nummer. Eine separate Aktionsspalte mit
++  `Bearbeiten` ist bewusst entfernt, weil die Nummer die Detailmaske oeffnet
++  und die eigentlichen Aktionen in der Maske liegen.
++- Verkaufschancen-Nummernkreis 2026-06-08: Verkaufschancen haben einen
++  gespeicherten Nummernkreis im Format `VC-xxxx`. Technisch bleibt die Tabelle
++  `ProjectPotential` bestehen; ergaenzt wurde das optionale Feld `number`.
++  Die API `/api/potentials` fuehrt defensiv `ALTER TABLE ... ADD COLUMN IF NOT
++  EXISTS` aus, setzt einen eindeutigen Index pro Organisation und vergibt neue
++  Nummern fortlaufend ab `VC-1001`. Altbestand ohne Nummer wird beim Laden in
++  Erstellreihenfolge nachnummeriert. Die UI nutzt die gespeicherte Nummer als
++  Einstieg in die Verkaufschancen-Maske; nur falls Altbestand noch keine Nummer
++  geliefert hat, bleibt ein Anzeige-Fallback aktiv.
++- Verkaufschancen-Maske 2026-06-08: Die Maske soll bewusst einfach bleiben.
++  Sichtbar bleiben Status, Verantwortlich, geschaetzter Wert, Nachfass-Aufgabe,
++  Grund bei `Kein Interesse`, `Notiz fuer Historie` und Historie. Prioritaet,
++  `Naechster Schritt` und der extra Button `Kein Interesse` wurden aus der
++  Maske entfernt. `Kein Interesse` wird ueber den Status gesteuert; die
++  fachlichen Aktionen laufen ueber `Angebot erstellen`, `Nachfass-Aufgabe`
++  und `Speichern`.
++- Nachkorrektur Verkaufschancen-Maske 2026-06-08: `Speichern` fragt vor dem
++  Sichern kurz, ob der sichtbare Status korrekt ist, und schliesst die Maske
++  danach. Ohne echte Feld-/Notizaenderung wird kein kuenstlicher Historieneintrag
++  mehr geschrieben. Die verknuepfte Nachfass-Aufgabe ist direkt im Feld
++  anklickbar und oeffnet die Aufgabenmaske. Verkaufschancen-Historienzeiten
++  muessen als echte Zeitpunkte mit `formatInstantDateTime` angezeigt werden,
++  nicht mit deadline-/app-datebasierter Formatierung, damit kein UTC-Versatz
++  von zwei Stunden entsteht.
++- Angebots-Nachfassen 2026-06-08: Finale Angebote erzeugen automatisch eine
++  Nachfass-Aufgabe im Aufgabenmodul. Entwuerfe erzeugen keine Aufgabe; wird ein
++  Entwurf spaeter finalisiert, wird die Aufgabe dann angelegt. Die Standardfrist
++  ist `5 Werkstage` und wird unter `Firmeneinstellungen > Zeitfristen` gepflegt.
++  Die automatisch erzeugte Aufgabe startet mit Status `in Bearbeitung`, ist mit
++  Projekt/Kunde und Angebotsnummer vorbelegt und speist den Forecast nicht.
++  Wird ein Angebot aus einer Verkaufschance erstellt, wird die Verkaufschance
++  auf `Angeboten` gesetzt und mit der neuen Angebots-Nachfassaufgabe verknuepft.
++  Eine alte eindeutig erkennbare Verkaufschance-/Potenzial-Nachfassaufgabe wird
++  dabei erledigt, damit nicht zwei parallele Nachfassaufgaben fuer denselben
++  Vorgang offen bleiben. Forecast bleibt weiterhin nur durch Angebote und
++  Rechnungen gespeist, nicht durch Verkaufschancen oder Aufgaben.
++- Nachkorrektur Aufgaben-API 2026-06-08: Neue Aufgaben duerfen beim POST den
++  uebergebenen Status respektieren. Vorher setzte die API neue Aufgaben hart
++  auf `offen`; dadurch wurden automatisch angelegte Angebots-Nachfassaufgaben
++  trotz UI-Vorgabe nicht mit `in Bearbeitung` gespeichert. Ohne uebergebenen
++  Status bleibt `offen` weiterhin der Fallback.
++- Manuelle Verkaufschance 2026-06-08: Verkaufschancen koennen in der
++  Verkaufschancen-Uebersicht manuell angelegt werden, aber nur mit vorhandenem
++  Projekt als Pflichtgrundlage. Pflichtfelder sind Projekt und Beschreibung;
++  geschaetzter Wert ist optional. Neue manuelle Verkaufschancen starten mit
++  Status `Offen`, bekommen eine `VC-xxxx` Nummer, erzeugen einen Projektlogbuch-
++  Eintrag und oeffnen danach die normale Verkaufschancen-Maske. Auch manuelle
++  Verkaufschancen speisen den Forecast nicht; erst ein daraus erstelltes Angebot
++  bzw. spaeter eine Rechnung zaehlt.
+ - Wenn nach einem Refresh eine Projektakte gespeichert ist, die Projektliste
+   aber noch asynchron laedt, darf nicht kurz die Projektpipeline gerendert
+   werden. In diesem Zwischenzustand einen Ladehinweis fuer die Projektakte
+@@ -2196,3 +2343,76 @@ Wiederaufbau begonnen 2026-06-05:
+   Loeschen einer Rechnung wird die Rechnungshistorie sofort neu geladen, damit
+   die Historie inklusive Loesch-Eintrag sichtbar bleibt, obwohl die Rechnung
+   aus der aktiven Rechnungsliste entfernt wird.
++- Nachkorrektur Angebots-Nachfassaufgaben 2026-06-09: Automatisch erzeugte
++  Nachfass-Aufgaben fuer finale Angebote speichern jetzt zusaetzlich
++  `Task.sourceOfferId` und `Task.sourceOfferNumber`. Beim Loeschen eines
++  Angebots wird eine aktive verknuepfte Angebots-Nachfassaufgabe nicht hart
++  geloescht, sondern in das Aufgabenarchiv verschoben. Fuer Altbestand ohne
++  technische Verknuepfung bleibt ein enger Fallback ueber Projekt-ID,
++  Angebotsnummer und Titel `Angebot nachfassen` bestehen.
++- Nachkorrektur Planung bearbeiten / Stempelungsrechnung 2026-06-09:
++  `Planung bearbeiten` darf bei Einmalprojekten mit Angebotsstunden nicht
++  pauschal als freie Planung behandelt werden. Vorhandene Angebotsreferenzen
++  oder ein Einmalprojekt mit Angebots-Planungsbasis zeigen die
++  Angebotszuordnung und nutzen dieselben Pflichtfeld-/Ausfuehrungsmonat-Regeln
++  wie `+ Termin`. In der erwarteten Stempelungsanzeige darf `Fakturiert:` nicht
++  pauschal alle Rechnungen des Monats listen; angezeigt wird nur die letzte
++  wirklich mit der passenden Stempelung verknuepfte Rechnung.
++- Nachkorrektur Projektkopf / Prozesspipeline 2026-06-09: Sichtbare
++  Encoding-Reste im Projektkopf und in der Planungsmaske wurden nur gezielt
++  korrigiert (`Zurueck`, `Status aendern`, `oeffnen`, `woechentlich`,
++  `bestaetigen`). Die Prozesspipeline rendert abgeschlossene Schritte jetzt
++  mit einer HTML-Entity fuer den Haken, damit das Symbol nicht erneut durch
++  Encoding-Probleme zerfaellt.
++- Encoding-Schutz 2026-06-09: Es gibt jetzt `npm.cmd run check:mojibake`
++  (`scripts/check-mojibake.js`). Der Check durchsucht aktive Quellbereiche
++  `src` und `prisma` nach typischen kaputten UTF-8-/Mojibake-Zeichen wie
++  `Ã`, `Â`, `â` und Replacement-Zeichen. Nach UI-Textaenderungen soll dieser
++  Check zusaetzlich zu `npx.cmd tsc --noEmit` und `git diff --check` laufen.
++  Korrekturen bleiben gezielt; keine globale Datei-Neukodierung oder
++  blindes Umschreiben ganzer Dateien. Fuer notwendige Altkompatibilitaet mit
++  historisch kaputten Datenwerten Unicode-Escapes verwenden, damit im
++  Quelltext keine sichtbaren Mojibake-Zeichen stehen.
++- Der Mojibake-Check prueft zusaetzlich verdächtige `iconButton`-Platzhalter,
++  bei denen nur ein Fragezeichen gerendert wird. Schliessen-/Aktionsbuttons
++  sollen semantisch beschriftet sein (`aria-label`) und ein echtes Icon oder
++  eine stabile HTML-Entity wie `&times;` verwenden, nicht ein rohes
++  Fragezeichen als Ersatz.
++- Rueckfall Terminmaske 2026-06-09: Nach der Encoding-Rekonstruktion waren
++  Teile der Planungsmaske wieder auf altem Stand (`Wiederholung`,
++  `Wochenenden ueberspringen`, vorbefuellte Freitexte). Wiederhergestellt:
++  `Terminserie anlegen`, Intervall plus anklickbare Wochentage,
++  `Serienende`, leere Pflichtfelder fuer Titel/Beschreibung und echte
++  Mitarbeiterauswahl mit orange pulsierendem Pflichtfeldrahmen. Diese Regeln
++  gelten fuer normale Planung und Terminwunsch; bei Dauerlaeufern ist die
++  Terminserie fachlich besonders relevant.
++- Rueckfall-Reparatur Verkaufschancen / Angebotsplanung 2026-06-09:
++  Nach der Mojibake-Rekonstruktion waren mehrere UI-/Logikstaende wieder
++  aelter: `Verkaufschancen` hiess sichtbar wieder `Potenziale`, der
++  `VC-xxxx` Nummernkreis fehlte technisch, die Verkaufschancen-Maske/
++  Tabellenlogik war teilweise zurueckgefallen und die Einmalprojekt-
++  Angebotsplanung verlor Marker wie `singleProjectOfferPlanningRows` und
++  `planningEntryOfferId`. Wiederhergestellt wurden Verkaufschancen-Begriff,
++  manuelle Verkaufschance, verknuepfte Nachfass-Aufgabe, VC-Nummer in
++  Schema/API, projektweite Angebots-Planungsleisten fuer Einmalprojekte und
++  das Respektieren des uebergebenen Aufgabenstatus beim Anlegen.
++- Regressionsschutz 2026-06-09: Es gibt jetzt
++  `npm.cmd run check:regressions` (`scripts/check-regressions.js`). Der Check
++  prueft zentrale Entwicklungsmarker, die nicht unbemerkt verschwinden
++  duerfen: Verkaufschancen-Begriff, manuelle Verkaufschance, VC-Nummer,
++  Nachfass-Aufgaben-Verknuepfung, Einmalprojekt-Angebotsplanung,
++  Terminserie/Pflichtfeld-Pulsierung, ProjectPotential-Nummer und Tasks-API-
++  Status beim Anlegen. Wenn der Check fehlschlaegt, nicht einfach
++  weiterarbeiten oder Marker entfernen. Erst mit dem Nutzer klaeren, ob der
++  Verlust fachlich gewollt ist; nur mit ausdruecklicher Freigabe darf ein
++  Marker angepasst oder entfernt werden.
++- Nachkorrektur Regressionsschutz Planung 2026-06-09: Der erste
++  Regressionscheck war fuer Einmalprojekt-Angebotsplanung zu grob. Er prueft
++  jetzt zusaetzlich, dass `+ Termin`, `+ Terminwunsch` und
++  `Planung bearbeiten` bei Einmalprojekten mit Angebotsstunden die
++  Angebotszuordnung zeigen koennen. Technische Marker dafuer sind
++  `shouldShowPlanningOfferAssignment`, `entryProjectHasOfferPlanning`,
++  `Zuordnung Angebot` und `Kontingent vorbereitet`. Beim Bearbeiten eines
++  vorhandenen Planungseintrags wird ein Einmalprojekt mit finalem Angebot und
++  Arbeitsstunden wieder als Angebotsplanung behandelt, auch wenn der alte
++  Eintrag noch keine gespeicherte Angebotsreferenz hatte.
+diff --git a/package.json b/package.json
+index 1fb02a2..bc4ff3b 100644
+--- a/package.json
++++ b/package.json
+@@ -9,6 +9,8 @@
+     "build": "next build",
+     "start": "next start",
+     "lint": "next lint",
++    "check:mojibake": "node scripts/check-mojibake.js",
++    "check:regressions": "node scripts/check-regressions.js",
+     "test": "vitest run",
+     "test:watch": "vitest"
+   },
+diff --git a/prisma/schema.prisma b/prisma/schema.prisma
+index 5a0ef17..91d795d 100644
+--- a/prisma/schema.prisma
++++ b/prisma/schema.prisma
+@@ -1354,6 +1354,7 @@ model MarketingContentSchedule {
+ model ProjectPotential {
+   id             String   @id
+   organizationId String
++  number         String?
+   contactId      String?
+   customerName   String?
+   projectId      String
+@@ -1377,6 +1378,7 @@ model ProjectPotential {
+   updatedAt      DateTime @default(now())
+ 
+   @@index([organizationId, projectId])
++  @@index([organizationId, number])
+   @@index([organizationId, status])
+   @@index([organizationId, updatedAt])
+ }
+diff --git a/src/app/api/document-mail/route.ts b/src/app/api/document-mail/route.ts
+index ad3b410..5e88a53 100644
+--- a/src/app/api/document-mail/route.ts
++++ b/src/app/api/document-mail/route.ts
+@@ -72,7 +72,7 @@ function textToHtml(value: string) {
+ }
+ 
+ function stripTrailingClosing(value: string) {
+-  return value.replace(/\n{2,}Mit freundlichen Gr(?:ü|ue|Ã¼)ßen\s*\n+[^\n]+\s*$/i, "");
++  return value.replace(/\n{2,}Mit freundlichen Gr(?:ü|ue|\u00c3\u00bc)ßen\s*\n+[^\n]+\s*$/i, "");
+ }
+ 
+ function getFeedbackMailBlockHtml(link: string) {
+diff --git a/src/app/api/invoices/route.ts b/src/app/api/invoices/route.ts
+index 5ede00a..9a3aae1 100644
+--- a/src/app/api/invoices/route.ts
++++ b/src/app/api/invoices/route.ts
+@@ -147,6 +147,8 @@ const A4_HEIGHT = 841.89;
+ const INK = rgb(0.08, 0.1, 0.14);
+ const MUTED = rgb(0.25, 0.29, 0.34);
+ const LINE = rgb(0.38, 0.38, 0.38);
++const DELETED_INVOICE_STATUS = "Gelöscht";
++const LEGACY_DELETED_INVOICE_STATUS = "Gel\u00c3\u00b6scht";
+ 
+ async function embedInvoiceFonts(pdfDoc: PDFDocument) {
+   try {
+@@ -500,7 +502,7 @@ async function notifyManagementAboutUnderbilling(input: {
+         ${`${input.projectLabel}: In ${input.invoiceNumber} wurden ${input.invoiceHours.toFixed(2)} Std. fakturiert, aber ${input.stampedHours.toFixed(2)} Std. produktiv gestempelt.`},
+         'project',
+         ${input.projectId},
+-        'Projekt Ã¶ffnen',
++        'Projekt öffnen',
+         NULL,
+         CURRENT_TIMESTAMP
+       )
+@@ -1079,7 +1081,7 @@ async function cancelInvoice(input: {
+   if (!existingInvoice) {
+     return NextResponse.json({ error: "Rechnung wurde nicht gefunden." }, { status: 404 });
+   }
+-  if (["Storniert", "Stornorechnung", "GelÃ¶scht"].includes(existingInvoice.status)) {
++  if (["Storniert", "Stornorechnung", DELETED_INVOICE_STATUS, LEGACY_DELETED_INVOICE_STATUS].includes(existingInvoice.status)) {
+     return NextResponse.json({ error: "Diese Rechnung kann nicht storniert werden." }, { status: 400 });
+   }
+ 
+@@ -1328,13 +1330,13 @@ export async function GET(req: Request) {
+     ? await prisma.$queryRaw<InvoiceRow[]>`
+         SELECT *
+         FROM "Invoice"
+-        WHERE "organizationId" = ${organization.id} AND "projectId" = ${projectId} AND "status" <> 'GelÃ¶scht'
++        WHERE "organizationId" = ${organization.id} AND "projectId" = ${projectId} AND "status" NOT IN (${DELETED_INVOICE_STATUS}, ${LEGACY_DELETED_INVOICE_STATUS})
+         ORDER BY "createdAt" DESC
+       `
+     : await prisma.$queryRaw<InvoiceRow[]>`
+         SELECT *
+         FROM "Invoice"
+-        WHERE "organizationId" = ${organization.id} AND "status" <> 'GelÃ¶scht'
++        WHERE "organizationId" = ${organization.id} AND "status" NOT IN (${DELETED_INVOICE_STATUS}, ${LEGACY_DELETED_INVOICE_STATUS})
+         ORDER BY "createdAt" DESC
+       `;
+ 
+@@ -1381,7 +1383,7 @@ export async function POST(req: Request) {
+   }
+ 
+   if (!saveAsDraft && lines.length === 0) {
+-    return NextResponse.json({ error: "Bitte mindestens eine Position hinzufÃ¼gen." }, { status: 400 });
++    return NextResponse.json({ error: "Bitte mindestens eine Position hinzufügen." }, { status: 400 });
+   }
+ 
+   const billedStampEntryIds = saveAsDraft ? [] : getBilledStampEntryIds(body.billedStampEntryIds);
+@@ -1514,7 +1516,7 @@ export async function PUT(req: Request) {
+   const lines = normalizeInvoiceLines(body.lines);
+ 
+   if (lines.length === 0) {
+-    return NextResponse.json({ error: "Bitte mindestens eine Position hinzufÃ¼gen." }, { status: 400 });
++    return NextResponse.json({ error: "Bitte mindestens eine Position hinzufügen." }, { status: 400 });
+   }
+ 
+   const company = body.company === "OK immocare" ? "OK immocare" : "OK solutions";
+@@ -1613,7 +1615,7 @@ export async function PATCH(req: Request) {
+   const lines = normalizeInvoiceLines(body.lines);
+ 
+   if (!saveAsDraft && lines.length === 0) {
+-    return NextResponse.json({ error: "Bitte mindestens eine Position hinzufÃ¼gen." }, { status: 400 });
++    return NextResponse.json({ error: "Bitte mindestens eine Position hinzufügen." }, { status: 400 });
+   }
+ 
+   const billedStampEntryIds = saveAsDraft ? [] : getBilledStampEntryIds(body.billedStampEntryIds);
+@@ -1830,7 +1832,7 @@ export async function DELETE(req: Request) {
+ 
+   const rows = await prisma.$queryRaw<InvoiceRow[]>`
+     UPDATE "Invoice"
+-    SET "status" = 'GelÃ¶scht', "updatedAt" = CURRENT_TIMESTAMP
++    SET "status" = ${DELETED_INVOICE_STATUS}, "updatedAt" = CURRENT_TIMESTAMP
+     WHERE "organizationId" = ${organization.id} AND "id" = ${id}
+     RETURNING *
+   `;
+diff --git a/src/app/api/potentials/route.ts b/src/app/api/potentials/route.ts
+index f09200b..d0d2d37 100644
+--- a/src/app/api/potentials/route.ts
++++ b/src/app/api/potentials/route.ts
+@@ -7,6 +7,7 @@ import { recordStatusTransition, seedCurrentStatusTimeline } from "@/lib/status-
+ type PotentialRow = {
+   id: string;
+   organizationId: string;
++  number: string | null;
+   contactId: string | null;
+   customerName: string | null;
+   projectId: string;
+@@ -55,6 +56,10 @@ function cleanHistory(value: unknown) {
+   return Array.isArray(value) ? value : [];
+ }
+ 
++function formatPotentialNumber(value: number) {
++  return `VC-${String(value).padStart(4, "0")}`;
++}
++
+ function getUserName(user: { firstName?: string | null; lastName?: string | null; email?: string | null }) {
+   return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "System";
+ }
+@@ -64,6 +69,7 @@ async function ensurePotentialTable() {
+     CREATE TABLE IF NOT EXISTS "ProjectPotential" (
+       "id" TEXT NOT NULL PRIMARY KEY,
+       "organizationId" TEXT NOT NULL,
++      "number" TEXT,
+       "contactId" TEXT,
+       "customerName" TEXT,
+       "projectId" TEXT NOT NULL,
+@@ -90,6 +96,7 @@ async function ensurePotentialTable() {
+ 
+   await prisma.$executeRaw`
+     ALTER TABLE "ProjectPotential"
++    ADD COLUMN IF NOT EXISTS "number" TEXT,
+     ADD COLUMN IF NOT EXISTS "contactId" TEXT,
+     ADD COLUMN IF NOT EXISTS "customerName" TEXT,
+     ADD COLUMN IF NOT EXISTS "projectLabel" TEXT,
+@@ -109,11 +116,54 @@ async function ensurePotentialTable() {
+     ADD COLUMN IF NOT EXISTS "history" JSONB NOT NULL DEFAULT '[]'::jsonb,
+     ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+   `;
++
++  await prisma.$executeRaw`
++    CREATE UNIQUE INDEX IF NOT EXISTS "ProjectPotential_organizationId_number_key"
++    ON "ProjectPotential" ("organizationId", "number")
++    WHERE "number" IS NOT NULL
++  `;
++}
++
++async function getNextPotentialNumberValue(organizationId: string) {
++  const rows = await prisma.$queryRaw<Array<{ nextValue: number | bigint | null }>>`
++    SELECT COALESCE(MAX((SUBSTRING("number" FROM 4))::int), 1000) + 1 AS "nextValue"
++    FROM "ProjectPotential"
++    WHERE "organizationId" = ${organizationId}
++      AND "number" ~ '^VC-[0-9]+$'
++  `;
++
++  return Number(rows[0]?.nextValue ?? 1001);
++}
++
++async function ensurePotentialNumbers(organizationId: string) {
++  const rows = await prisma.$queryRaw<Array<{ id: string }>>`
++    SELECT "id"
++    FROM "ProjectPotential"
++    WHERE "organizationId" = ${organizationId}
++      AND ("number" IS NULL OR "number" = '')
++    ORDER BY "createdAt" ASC, "id" ASC
++  `;
++
++  let nextValue = await getNextPotentialNumberValue(organizationId);
++
++  for (const row of rows) {
++    const nextNumber = formatPotentialNumber(nextValue);
++    nextValue += 1;
++
++    await prisma.$executeRaw`
++      UPDATE "ProjectPotential"
++      SET "number" = ${nextNumber}
++      WHERE "id" = ${row.id}
++        AND "organizationId" = ${organizationId}
++        AND ("number" IS NULL OR "number" = '')
++    `;
++  }
+ }
+ 
+ function formatPotential(row: PotentialRow) {
+   return {
+     id: row.id,
++    number: row.number ?? "",
+     contactId: row.contactId ?? "",
+     customerName: row.customerName ?? "",
+     projectId: row.projectId,
+@@ -141,6 +191,7 @@ function formatPotential(row: PotentialRow) {
+ export async function GET() {
+   const { organization } = await getDemoContext();
+   await ensurePotentialTable();
++  await ensurePotentialNumbers(organization.id);
+ 
+   const legacyRows = await prisma.$queryRaw<Array<{ projectId: string; body: string; author: string | null; createdAt: Date }>>`
+     SELECT "projectId", "body", "author", "createdAt"
+@@ -192,6 +243,8 @@ export async function GET() {
+     `;
+   }
+ 
++  await ensurePotentialNumbers(organization.id);
++
+   const rows = await prisma.$queryRaw<PotentialRow[]>`
+     SELECT *
+     FROM "ProjectPotential"
+@@ -222,11 +275,14 @@ export async function POST(req: Request) {
+     },
+   ];
+   const estimatedValue = cleanDecimal(body.estimatedValue);
++  await ensurePotentialNumbers(organization.id);
++  const nextNumber = formatPotentialNumber(await getNextPotentialNumberValue(organization.id));
+ 
+   const rows = await prisma.$queryRaw<PotentialRow[]>`
+     INSERT INTO "ProjectPotential" (
+       "id",
+       "organizationId",
++      "number",
+       "contactId",
+       "customerName",
+       "projectId",
+@@ -245,6 +301,7 @@ export async function POST(req: Request) {
+     VALUES (
+       ${randomUUID()},
+       ${organization.id},
++      ${nextNumber},
+       ${cleanString(body.contactId) || null},
+       ${cleanString(body.customerName) || null},
+       ${projectId},
+diff --git a/src/app/api/tasks/route.ts b/src/app/api/tasks/route.ts
+index 23ae321..06d21d2 100644
+--- a/src/app/api/tasks/route.ts
++++ b/src/app/api/tasks/route.ts
+@@ -867,7 +867,7 @@ export async function POST(req: Request) {
+     : owner.id === actor.id
+       ? "accepted"
+       : "pending";
+-  const nextStatus = TaskStatus.OFFEN;
++  const nextStatus = body.status ? mapStatus(body.status) : TaskStatus.OFFEN;
+   const nextEstimate = parseEstimate(body.estimateMinutes);
+   const nextProjectId = normalizeProjectId(body.projectId);
+   const planningAllocations = parsePlanningAllocations(body.planningAllocations, nextEstimate);
+diff --git a/src/components/dashboard/dashboard-page.tsx b/src/components/dashboard/dashboard-page.tsx
+index aba35cb..97dc45d 100644
+--- a/src/components/dashboard/dashboard-page.tsx
++++ b/src/components/dashboard/dashboard-page.tsx
+@@ -176,6 +176,7 @@ type FirmSettingsTab =
+   | "profile"
+   | "units"
+   | "businessAreaTargets"
++  | "deadlines"
+   | "appearance"
+   | "branches"
+   | "emailTemplates"
+@@ -872,6 +873,7 @@ type OfferLineDraft = {
+   id: string;
+   catalogItemId: string;
+   catalogType: CatalogItemType | "";
++  isLaborPosition?: boolean;
+   quantity: number;
+   unit: string;
+   title: string;
+@@ -1312,6 +1314,7 @@ type ProjectPotentialPriority = "low" | "normal" | "high";
+ 
+ type ProjectPotential = {
+   id: string;
++  number: string;
+   contactId: string;
+   customerName: string;
+   projectId: string;
+@@ -1889,7 +1892,7 @@ const navigationTabs: Array<[AppTab, string]> = [
+   ["projectsImmocare", "Projekte OK immocare"],
+   ["contentManagement", "Content-Management"],
+   ["articles", "Artikel & Leistungen"],
+-  ["salesOpportunities", "Potenziale"],
++  ["salesOpportunities", "Verkaufschancen"],
+   ["dashboard", "Aufgaben"],
+   ["planningBoard", "Planungsboard"],
+   ["processAutomation", "Prozess/Automation"],
+@@ -1987,6 +1990,12 @@ function getStoredDashboardText(key: string) {
+   return window.localStorage.getItem(key) || "";
+ }
+ 
++function getStoredDashboardNumber(key: string, fallback: number) {
++  if (typeof window === "undefined") return fallback;
++  const value = Number(window.localStorage.getItem(key));
++  return Number.isFinite(value) && value > 0 ? value : fallback;
++}
++
+ function getDashboardUrlValue<T extends string>(key: string, allowedValues: readonly T[], fallback: T) {
+   if (typeof window === "undefined") return fallback;
+   const value = new URLSearchParams(window.location.search).get(key);
+@@ -2194,6 +2203,7 @@ const firmSettingsTabs: Array<{ id: FirmSettingsTab; label: string }> = [
+   { id: "profile", label: "Firmenprofil" },
+   { id: "units", label: "Einheiten" },
+   { id: "businessAreaTargets", label: "Geschäftsbereich-Soll" },
++  { id: "deadlines", label: "Zeitfristen" },
+   { id: "appearance", label: "Seitendarstellung" },
+   { id: "branches", label: "Niederlassungen" },
+   { id: "emailTemplates", label: "Email-Templates" },
+@@ -2297,6 +2307,16 @@ const finalInspectionItems = [
+ const TASK_ACCEPTANCE_REQUIRED_MESSAGE =
+   "Sie müssen zuerst die Aufgabe annehmen, bevor Sie die Aufgabe bearbeiten.";
+ 
++const planningWeekdayOptions = [
++  { value: 1, label: "Mo" },
++  { value: 2, label: "Di" },
++  { value: 3, label: "Mi" },
++  { value: 4, label: "Do" },
++  { value: 5, label: "Fr" },
++  { value: 6, label: "Sa" },
++  { value: 0, label: "So" },
++];
++
+ type TaskItem = {
+   id: string;
+   createdAt: string;
+@@ -2761,6 +2781,15 @@ function formatHours(value: number) {
+   });
+ }
+ 
++function normalizeSearchText(value: string) {
++  return value
++    .normalize("NFD")
++    .replace(/[\u0300-\u036f]/g, "")
++    .toLowerCase()
++    .replace(/\s+/g, " ")
++    .trim();
++}
++
+ function formatHourMinutes(value: number) {
+   const sign = value < 0 ? "-" : "";
+   const totalMinutes = Math.round(Math.abs(value) * 60);
+@@ -3494,6 +3523,23 @@ function isProjectBudgetDueForPlanningMonth(project: HeroProjectPreview, monthKe
+   return monthKey >= startMonth && (!endMonth || monthKey <= endMonth);
+ }
+ 
++function isOfferLineLaborPlanningLine(line: Pick<OfferLineDraft, "catalogType" | "isLaborPosition">) {
++  return typeof line.isLaborPosition === "boolean"
++    ? line.isLaborPosition
++    : line.catalogType === "service" || line.catalogType === "package";
++}
++
++function getOfferLaborPlanningHours(offer: Pick<OfferItem, "lines">) {
++  return offer.lines.reduce((offerSum, line) => {
++    if (!isOfferLineLaborPlanningLine(line)) return offerSum;
++    const laborHours = (line.laborItems ?? []).reduce(
++      (lineSum, labor) => lineSum + Number(labor.plannedHours || 0),
++      0
++    );
++    return offerSum + (laborHours > 0 ? laborHours : Number(line.quantity || 0));
++  }, 0);
++}
++
+ function clampPercent(value: number) {
+   return Math.max(0, Math.min(100, value));
+ }
+@@ -3905,13 +3951,6 @@ export function DashboardPage() {
+   const [catalogStatusFilter, setCatalogStatusFilter] = useState<"active" | "inactive" | "all">("active");
+   const [catalogPageSize, setCatalogPageSize] = useState(25);
+   const [catalogPage, setCatalogPage] = useState(1);
+-  const [catalogColumnFilters, setCatalogColumnFilters] = useState({
+-    number: "",
+-    name: "",
+-    category: "",
+-    unit: "",
+-    supplierName: "",
+-  });
+   const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
+   const [editingCatalogItemId, setEditingCatalogItemId] = useState("");
+   const [catalogFormTab, setCatalogFormTab] = useState<CatalogFormTab>("information");
+@@ -3929,6 +3968,9 @@ export function DashboardPage() {
+   const [upsellOfferProjectId, setUpsellOfferProjectId] = useState("");
+   const [offerPreviewDataUrl, setOfferPreviewDataUrl] = useState("");
+   const [isGeneratingOfferPreview, setIsGeneratingOfferPreview] = useState(false);
++  const [offerFollowUpWorkdays, setOfferFollowUpWorkdays] = useState(() =>
++    getStoredDashboardNumber("workpilot-offer-follow-up-workdays", 5)
++  );
+   const [offerLineSearchTerms, setOfferLineSearchTerms] = useState<Record<string, string>>({});
+   const [openOfferLinePickerId, setOpenOfferLinePickerId] = useState("");
+   const [isOfferExecutionMonthPickerOpen, setIsOfferExecutionMonthPickerOpen] = useState(false);
+@@ -4091,6 +4133,11 @@ export function DashboardPage() {
+     useState<"all" | ProjectPotentialStatus | "due">("all");
+   const [historyPotential, setHistoryPotential] = useState<ProjectPotential | null>(null);
+   const [editingPotential, setEditingPotential] = useState<ProjectPotential | null>(null);
++  const [isManualPotentialModalOpen, setIsManualPotentialModalOpen] = useState(false);
++  const [manualPotentialProjectId, setManualPotentialProjectId] = useState("");
++  const [manualPotentialDescription, setManualPotentialDescription] = useState("");
++  const [manualPotentialEstimatedValue, setManualPotentialEstimatedValue] = useState("");
++  const [manualPotentialError, setManualPotentialError] = useState("");
+   const [potentialDraft, setPotentialDraft] = useState({
+     description: "",
+     status: "open" as ProjectPotentialStatus,
+@@ -4321,10 +4368,12 @@ export function DashboardPage() {
+   const [planningEntryDescription, setPlanningEntryDescription] = useState("");
+   const [planningEntryError, setPlanningEntryError] = useState("");
+   const [planningEntryOfferLabel, setPlanningEntryOfferLabel] = useState("");
++  const [planningEntryOfferId, setPlanningEntryOfferId] = useState("");
++  const [planningEntryOfferLineId, setPlanningEntryOfferLineId] = useState("");
+   const [planningEntryOfferTotalHours, setPlanningEntryOfferTotalHours] = useState("5");
+   const [planningRecurrenceType, setPlanningRecurrenceType] = useState<PlanningRecurrenceType>("once");
+   const [planningRecurrenceUntil, setPlanningRecurrenceUntil] = useState("");
+-  const [planningRecurrenceSkipWeekends, setPlanningRecurrenceSkipWeekends] = useState(true);
++  const [planningRecurrenceWeekdays, setPlanningRecurrenceWeekdays] = useState<number[]>([]);
+   const [planningEntryApprovalStatus, setPlanningEntryApprovalStatus] =
+     useState<PlanningEntryApprovalStatus>("confirmed");
+   const [planningBoardView, setPlanningBoardView] = useState<"board" | "open">("board");
+@@ -4434,6 +4483,12 @@ export function DashboardPage() {
+       })
+     : unreadNotifications;
+ 
++  useEffect(() => {
++    if (typeof window === "undefined") return;
++    const normalizedWorkdays = Math.max(1, Math.min(30, Math.round(Number(offerFollowUpWorkdays) || 5)));
++    window.localStorage.setItem("workpilot-offer-follow-up-workdays", String(normalizedWorkdays));
++  }, [offerFollowUpWorkdays]);
++
+   async function loadTasks() {
+     const res = await fetch("/api/tasks", { cache: "no-store" });
+ 
+@@ -5645,6 +5700,9 @@ export function DashboardPage() {
+     }
+     setIsSavingOffer(true);
+     setOfferError("");
++    const editingOfferBeforeSave = offers.find((offer) => offer.id === editingOfferId);
++    const shouldCreateFinalOfferFollowUp =
++      !saveAsDraft && (!editingOfferId || editingOfferBeforeSave?.status === "Entwurf");
+     const offerPayload = {
+       ...offerDraft,
+       lines: offerDraft.lines.map((line) => ({
+@@ -5685,15 +5743,18 @@ export function DashboardPage() {
+         savedOffer.grossTotal
+       )} brutto).`
+     );
+-    if (!saveAsDraft && !editingOfferId && upsellOfferProjectId === selectedProjectFile.id) {
+-      const potential = projectPotentials.find(
++    const linkedPotential =
++      shouldCreateFinalOfferFollowUp && upsellOfferProjectId === selectedProjectFile.id
++        ? projectPotentials.find(
+         (item) => item.projectId === selectedProjectFile.id && ["open", "follow_up"].includes(item.status)
+-      );
+-      if (potential) {
+-        await updateProjectPotential(potential, "offered", {
+-          note: `Angebot ${savedOffer.offerNumber} erstellt.`,
+-        });
+-      }
++          ) ?? null
++        : null;
++
++    if (shouldCreateFinalOfferFollowUp) {
++      await createOfferFollowUpTask(savedOffer, selectedProjectFile, linkedPotential);
++    }
++
++    if (linkedPotential) {
+       await addProjectLogbookEntry(
+         selectedProjectFile.id,
+         "Zusatzverkauf: Angebot erstellt",
+@@ -8272,7 +8333,7 @@ export function DashboardPage() {
+     const res = await fetch("/api/potentials", { cache: "no-store" });
+ 
+     if (!res.ok) {
+-      setErrorMessage("Potenziale konnten nicht geladen werden.");
++      setErrorMessage("Verkaufschancen konnten nicht geladen werden.");
+       return;
+     }
+ 
+@@ -8664,10 +8725,12 @@ export function DashboardPage() {
+     setPlanningEntryDescription("");
+     setPlanningEntryError("");
+     setPlanningEntryOfferLabel("");
++    setPlanningEntryOfferId("");
++    setPlanningEntryOfferLineId("");
+     setPlanningEntryOfferTotalHours("5");
+     setPlanningRecurrenceType("once");
+     setPlanningRecurrenceUntil("");
+-    setPlanningRecurrenceSkipWeekends(true);
++    setPlanningRecurrenceWeekdays([getWeekdayFromDateKey(formatDateKey(new Date()))]);
+   }
+ 
+   function openPlanningEntryModal(options: Partial<{
+@@ -8695,7 +8758,9 @@ export function DashboardPage() {
+     setPlanningEntryApprovalStatus(options.approvalStatus ?? "confirmed");
+     setPlanningEntryBoard(board);
+     setPlanningEntryGroup(groupName);
+-    setPlanningEntryDate(options.date ?? selectedPlanningDateKey);
++    const nextPlanningDate = options.date ?? selectedPlanningDateKey;
++    setPlanningEntryDate(nextPlanningDate);
++    setPlanningRecurrenceWeekdays([getWeekdayFromDateKey(nextPlanningDate)]);
+     setPlanningEntryUserId(defaultUserId);
+     setPlanningEntryStartTime(startTime);
+     setPlanningEntryEndTime(startTime === "08:00" ? "09:00" : startTime);
+@@ -8709,13 +8774,26 @@ export function DashboardPage() {
+     const groups = getPlanningEntryGroups(board);
+     const groupName = groups.includes(entry.groupName) ? entry.groupName : groups[0];
+ 
++    const entryProject = heroProjects.find((project) => project.id === entry.projectId);
++    const entryProjectHasOfferPlanning =
++      entryProject &&
++      !getProjectKind(entryProject).startsWith("Dauer") &&
++      offers.some(
++        (offer) =>
++          offer.projectId === entryProject.id &&
++          offer.status !== "Entwurf" &&
++          getOfferLaborPlanningHours(offer) > 0
++      );
++    const entryHasOfferReference = entry.source === "offer" || Boolean(entry.offerId || entry.offerLabel);
++
+     setEditingPlanningEntryId(entry.id);
+     setPlanningEntryApprovalStatus(entry.approvalStatus);
+-    setPlanningEntrySource("manual");
++    setPlanningEntrySource(entryHasOfferReference || entryProjectHasOfferPlanning ? "offer" : "manual");
+     setPlanningEntryBoard(board);
+     setPlanningEntryGroup(groupName);
+     setPlanningEntryUserId(entry.userId);
+     setPlanningEntryDate(entry.date);
++    setPlanningRecurrenceWeekdays([getWeekdayFromDateKey(entry.date)]);
+     setPlanningEntryStartTime(entry.startTime);
+     setPlanningEntryEndTime(entry.endTime);
+     setPlanningEntryTitle(entry.title);
+@@ -8725,12 +8803,13 @@ export function DashboardPage() {
+     setIsPlanningEntryProjectSearchOpen(false);
+     setPlanningEntryDescription(entry.description);
+     setPlanningEntryOfferLabel(entry.offerLabel);
++    setPlanningEntryOfferId(entry.offerId);
++    setPlanningEntryOfferLineId(entry.offerLineId);
+     setPlanningEntryOfferTotalHours(
+       entry.offerTotalMinutes > 0 ? String(entry.offerTotalMinutes / 60) : "5"
+     );
+     setPlanningRecurrenceType("once");
+     setPlanningRecurrenceUntil("");
+-    setPlanningRecurrenceSkipWeekends(true);
+     setErrorMessage("");
+     setPlanningEntryError("");
+     setIsPlanningEntryModalOpen(true);
+@@ -8746,15 +8825,28 @@ export function DashboardPage() {
+     return planningEntries.find((entry) => entry.id === editingPlanningEntryId)?.requestedByName || activeUser?.name || "";
+   }
+ 
++  function shouldShowPlanningOfferAssignment() {
++    const selectedProject = heroProjects.find((project) => project.id === planningEntryProjectId);
++    if (!selectedProject || getProjectKind(selectedProject).startsWith("Dauer")) return false;
++    return offers.some(
++      (offer) =>
++        offer.projectId === selectedProject.id &&
++        offer.status !== "Entwurf" &&
++        getOfferLaborPlanningHours(offer) > 0
++    );
++  }
++
+   function getAlreadyPlannedOfferMinutesForPlanningEntry() {
+     const normalizedOfferLabel = planningEntryOfferLabel.trim().toLowerCase();
+     const normalizedTitle = planningEntryTitle.trim().toLowerCase();
++    const selectedOffer = planningEntryOfferId
++      ? offers.find((offer) => offer.id === planningEntryOfferId)
++      : null;
+ 
+     return planningEntries
+       .filter(
+         (entry) => {
+           if (
+-            entry.source !== "offer" ||
+             entry.projectId !== planningEntryProjectId ||
+             entry.id === editingPlanningEntryId ||
+             entry.deletedAt
+@@ -8762,6 +8854,22 @@ export function DashboardPage() {
+             return false;
+           }
+ 
++          if (planningEntryOfferId) {
++            if (entry.offerId === planningEntryOfferId) return true;
++            if (!selectedOffer) return false;
++            const haystack = [entry.title, entry.description, entry.offerLabel].join(" ").toLowerCase();
++            if (haystack.includes(selectedOffer.offerNumber.toLowerCase())) return true;
++            if (entry.offerId || entry.offerLabel) return false;
++            const offersInEntryMonth = offers.filter(
++              (offer) =>
++                offer.projectId === planningEntryProjectId &&
++                offer.status !== "Entwurf" &&
++                offer.plannedExecutionMonth === entry.date.slice(0, 7) &&
++                getOfferLaborPlanningHours(offer) > 0
++            );
++            return offersInEntryMonth.length === 1 && offersInEntryMonth[0].id === selectedOffer.id;
++          }
++
+           const haystack = [entry.title, entry.description, entry.offerLabel].join(" ").toLowerCase();
+           if (normalizedOfferLabel && haystack.includes(normalizedOfferLabel)) return true;
+           if (normalizedTitle && haystack.includes(normalizedTitle)) return true;
+@@ -8772,34 +8880,124 @@ export function DashboardPage() {
+       .reduce((sum, entry) => sum + Number(entry.offerPlannedMinutes || entry.durationMinutes || 0), 0);
+   }
+ 
++  function getWeekdayFromDateKey(dateKey: string) {
++    return parseProjectDate(dateKey)?.getDay() ?? 1;
++  }
++
++  function setPlanningDateAndDefaultWeekday(dateKey: string) {
++    setPlanningEntryDate(dateKey);
++    if (planningRecurrenceType === "once" || planningRecurrenceWeekdays.length === 0) {
++      setPlanningRecurrenceWeekdays([getWeekdayFromDateKey(dateKey)]);
++    }
++  }
++
++  function togglePlanningRecurrenceWeekday(weekday: number) {
++    if (editingPlanningEntryId || planningRecurrenceType === "once") return;
++    setPlanningRecurrenceWeekdays((currentWeekdays) => {
++      if (currentWeekdays.includes(weekday)) {
++        const nextWeekdays = currentWeekdays.filter((currentWeekday) => currentWeekday !== weekday);
++        return nextWeekdays.length > 0 ? nextWeekdays : currentWeekdays;
++      }
++
++      return [...currentWeekdays, weekday].sort((first, second) => {
++        const firstIndex = planningWeekdayOptions.findIndex((option) => option.value === first);
++        const secondIndex = planningWeekdayOptions.findIndex((option) => option.value === second);
++        return firstIndex - secondIndex;
++      });
++    });
++  }
++
++  function getPlanningRecurrenceWeekdayOccurrence(date: Date) {
++    let occurrence = 0;
++    for (let day = 1; day <= date.getDate(); day += 1) {
++      const currentDate = new Date(date.getFullYear(), date.getMonth(), day);
++      if (currentDate.getDay() === date.getDay()) {
++        occurrence += 1;
++      }
++    }
++    return Math.max(1, occurrence);
++  }
++
++  function getMonthlyPlanningDate(year: number, month: number, weekday: number, occurrence: number) {
++    let matchingDate: Date | null = null;
++    let matchCount = 0;
++    const lastDay = new Date(year, month + 1, 0).getDate();
++
++    for (let day = 1; day <= lastDay; day += 1) {
++      const currentDate = new Date(year, month, day);
++      if (currentDate.getDay() !== weekday) continue;
++      matchCount += 1;
++      matchingDate = currentDate;
++      if (matchCount === occurrence) {
++        return currentDate;
++      }
++    }
++
++    return matchingDate;
++  }
++
+   function getPlanningRecurrenceDates() {
+     if (editingPlanningEntryId || planningRecurrenceType === "once") return [planningEntryDate];
+     if (!planningRecurrenceUntil || planningRecurrenceUntil < planningEntryDate) return [planningEntryDate];
+ 
+     const dates: string[] = [];
++    const startDate = parseProjectDate(planningEntryDate);
+     const currentDate = parseProjectDate(planningEntryDate);
+     const untilDate = parseProjectDate(planningRecurrenceUntil);
+-    if (!currentDate || !untilDate) return [planningEntryDate];
++    if (!startDate || !currentDate || !untilDate) return [planningEntryDate];
++
++    const selectedWeekdays =
++      planningRecurrenceWeekdays.length > 0 ? planningRecurrenceWeekdays : [startDate.getDay()];
++
++    if (planningRecurrenceType === "monthly") {
++      const occurrence = getPlanningRecurrenceWeekdayOccurrence(startDate);
++      const currentMonth = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
++
++      while (currentMonth.getTime() <= untilDate.getTime() && dates.length < 120) {
++        selectedWeekdays.forEach((weekday) => {
++          const monthlyDate = getMonthlyPlanningDate(
++            currentMonth.getFullYear(),
++            currentMonth.getMonth(),
++            weekday,
++            occurrence
++          );
++          if (!monthlyDate) return;
++          if (monthlyDate.getTime() < startDate.getTime() || monthlyDate.getTime() > untilDate.getTime()) return;
++          dates.push(formatDateKey(monthlyDate));
++        });
++        currentMonth.setMonth(currentMonth.getMonth() + 1);
++      }
++
++      return dates.length > 0 ? Array.from(new Set(dates)).sort() : [planningEntryDate];
++    }
++
++    const intervalWeeks = planningRecurrenceType === "biweekly" ? 2 : 1;
+ 
+     while (currentDate.getTime() <= untilDate.getTime() && dates.length < 120) {
+-      const day = currentDate.getDay();
+-      if (!planningRecurrenceSkipWeekends || (day !== 0 && day !== 6)) {
++      const daysSinceStart = Math.floor((currentDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000));
++      const weeksSinceStart = Math.floor(daysSinceStart / 7);
++      if (weeksSinceStart % intervalWeeks === 0 && selectedWeekdays.includes(currentDate.getDay())) {
+         dates.push(formatDateKey(currentDate));
+       }
+ 
+-      if (planningRecurrenceType === "weekly") {
+-        currentDate.setDate(currentDate.getDate() + 7);
+-      } else if (planningRecurrenceType === "biweekly") {
+-        currentDate.setDate(currentDate.getDate() + 14);
+-      } else {
+-        currentDate.setMonth(currentDate.getMonth() + 1);
+-      }
++      currentDate.setDate(currentDate.getDate() + 1);
+     }
+ 
+     return dates.length > 0 ? dates : [planningEntryDate];
+   }
+ 
+   function getPlanningRecurrenceLabel() {
++    const recurrenceTypeForLabel: PlanningRecurrenceType = planningRecurrenceType;
++    const weekdayLabel = (planningRecurrenceWeekdays.length > 0
++      ? planningRecurrenceWeekdays
++      : [getWeekdayFromDateKey(planningEntryDate)]
++    )
++      .map((weekday) => planningWeekdayOptions.find((option) => option.value === weekday)?.label)
++      .filter(Boolean)
++      .join(", ");
++    if (recurrenceTypeForLabel === "weekly") return `woechentlich ${weekdayLabel}`;
++    if (recurrenceTypeForLabel === "biweekly") return `alle 2 Wochen ${weekdayLabel}`;
++    if (recurrenceTypeForLabel === "monthly") return `monatlich ${weekdayLabel}`;
+     if (planningRecurrenceType === "weekly") return "wöchentlich";
+     if (planningRecurrenceType === "biweekly") return "alle 2 Wochen";
+     if (planningRecurrenceType === "monthly") return "monatlich";
+@@ -8817,10 +9015,8 @@ export function DashboardPage() {
+       getUserBreakWindowForDate(selectedUser, planningEntryDate)
+     );
+     const offerTotalMinutes = Math.round(Number(planningEntryOfferTotalHours) * 60);
+-    const title =
+-      planningEntrySource === "offer"
+-        ? planningEntryTitle.trim() || planningEntryOfferLabel.trim() || "Planung aus Angebot"
+-        : planningEntryTitle.trim();
++    const title = planningEntryTitle.trim();
++    const description = planningEntryDescription.trim();
+     const selectedAbsence = planningEntryUserId
+       ? getUserAbsenceForDateKey(planningEntryUserId, planningEntryDate)
+       : undefined;
+@@ -8832,6 +9028,85 @@ export function DashboardPage() {
+         ? `${getPlanningRecurrenceLabel()} bis ${formatProjectDate(recurrenceDates.at(-1))}`
+         : "";
+ 
++    if (!selectedUser) {
++      setPlanningEntryError("Bitte einen Mitarbeiter zuweisen.");
++      return;
++    }
++
++    if (!title) {
++      setPlanningEntryError("Bitte einen Titel eintragen.");
++      return;
++    }
++
++    if (!description) {
++      setPlanningEntryError("Bitte eine Beschreibung eintragen.");
++      return;
++    }
++
++    const isSingleProjectWithOfferPlanning =
++      selectedProject &&
++      !getProjectKind(selectedProject).startsWith("Dauer") &&
++      offers.some((offer) => {
++        if (offer.projectId !== selectedProject.id || offer.status === "Entwurf") return false;
++        return getOfferLaborPlanningHours(offer) > 0;
++      });
++    const selectedPlanningOffer = planningEntryOfferId
++      ? offers.find((offer) => offer.id === planningEntryOfferId)
++      : null;
++
++    if (isSingleProjectWithOfferPlanning && !selectedPlanningOffer) {
++      setPlanningEntryError("Bitte ein Angebot für diese Planung auswählen.");
++      return;
++    }
++
++    if (selectedProject && selectedPlanningOffer && !getProjectKind(selectedProject).startsWith("Dauer")) {
++      const targetExecutionMonth = planningEntryDate.slice(0, 7);
++      const currentExecutionMonth = selectedPlanningOffer.plannedExecutionMonth || "";
++      if (targetExecutionMonth && currentExecutionMonth && targetExecutionMonth !== currentExecutionMonth) {
++        const confirmed = window.confirm(
++          `Achtung: Du planst Angebot ${selectedPlanningOffer.offerNumber} nicht im hinterlegten Ausführungsmonat ${formatMonthLabel(
++            currentExecutionMonth
++          )}, sondern im ${formatMonthLabel(targetExecutionMonth)}. Soll der Ausführungsmonat auf ${formatMonthLabel(
++            targetExecutionMonth
++          )} geändert und die Planung gespeichert werden?`
++        );
++        if (!confirmed) return;
++
++        const res = await fetch("/api/offers", {
++          method: "PATCH",
++          headers: { "Content-Type": "application/json" },
++          body: JSON.stringify({
++            ...selectedPlanningOffer,
++            plannedExecutionMonth: targetExecutionMonth,
++            saveAsDraft: false,
++            projectId: selectedProject.id,
++            projectNumber: selectedProject.projectNumber || selectedProject.id,
++            projectTitle: selectedProject.title,
++          }),
++        });
++
++        if (!res.ok) {
++          const data = await res.json().catch(() => null);
++          setPlanningEntryError(data?.error ?? "Ausführungsmonat konnte nicht geändert werden.");
++          return;
++        }
++
++        const updatedOffer = (await res.json()) as OfferItem;
++        setOffers((currentOffers) =>
++          currentOffers.map((offer) => (offer.id === updatedOffer.id ? updatedOffer : offer))
++        );
++        await addProjectLogbookEntry(
++          selectedProject.id,
++          "Angebot",
++          `Ausführungsmonat ${updatedOffer.offerNumber} von ${formatMonthLabel(
++            currentExecutionMonth
++          )} auf ${formatMonthLabel(targetExecutionMonth)} geändert, weil eine Planung am ${formatDateOnly(
++            planningEntryDate
++          )} gespeichert wurde.`
++        );
++      }
++    }
++
+     if (doesAbsenceBlockTime(selectedAbsence, planningEntryStartTime, planningEntryEndTime)) {
+       setPlanningEntryError(
+         `${selectedUser?.name ?? "Der ausgewählte Mitarbeiter"} ist am ${formatDateOnly(planningEntryDate)} ${absenceLabel(
+@@ -8918,6 +9193,11 @@ export function DashboardPage() {
+       }
+     }
+ 
++    const storedPlanningEntrySource: PlanningEntrySource =
++      planningEntrySource === "offer" || (isSingleProjectWithOfferPlanning && planningEntryOfferId)
++        ? "offer"
++        : "manual";
++
+     for (const date of recurrenceDates) {
+       const res = await fetch("/api/planning-entries", {
+         method: "POST",
+@@ -8925,7 +9205,7 @@ export function DashboardPage() {
+           "Content-Type": "application/json",
+         },
+         body: JSON.stringify({
+-          source: planningEntrySource,
++          source: storedPlanningEntrySource,
+           id: editingPlanningEntryId,
+           approvalStatus: nextApprovalStatus,
+           actorUserId: activeUserId,
+@@ -8952,14 +9232,16 @@ export function DashboardPage() {
+           durationMinutes,
+           title,
+           customer: selectedProject?.customer || planningEntryCustomer,
+-          description: planningEntryDescription,
++          description,
+           projectId: selectedProject?.id ?? "",
+           projectLabel: selectedProject
+             ? `${selectedProject.projectNumber} | ${selectedProject.title}`
+             : "",
+-          offerLabel: planningEntrySource === "offer" ? planningEntryOfferLabel : "",
+-          offerTotalMinutes: planningEntrySource === "offer" ? offerTotalMinutes : 0,
+-          offerPlannedMinutes: planningEntrySource === "offer" ? durationMinutes : 0,
++          offerId: storedPlanningEntrySource === "offer" ? planningEntryOfferId : "",
++          offerLineId: storedPlanningEntrySource === "offer" ? planningEntryOfferLineId : "",
++          offerLabel: storedPlanningEntrySource === "offer" ? planningEntryOfferLabel : "",
++          offerTotalMinutes: storedPlanningEntrySource === "offer" ? offerTotalMinutes : 0,
++          offerPlannedMinutes: storedPlanningEntrySource === "offer" ? durationMinutes : 0,
+           recurrenceId,
+           recurrenceRule,
+         }),
+@@ -9155,7 +9437,7 @@ export function DashboardPage() {
+ 
+   useEffect(() => {
+     setCatalogPage(1);
+-  }, [catalogSearchTerm, catalogStatusFilter, catalogColumnFilters, catalogPageSize, activeTab]);
++  }, [catalogSearchTerm, catalogStatusFilter, catalogPageSize, activeTab]);
+ 
+   useEffect(() => {
+     if (selectedProjectFileId) {
+@@ -9987,6 +10269,155 @@ export function DashboardPage() {
+     setProjectLogbookEntries((currentEntries) => [savedEntry, ...currentEntries]);
+   }
+ 
++  function getOfferFollowUpDeadline() {
++    const workdays = Math.max(1, Math.min(30, Math.round(Number(offerFollowUpWorkdays) || 5)));
++    const deadlineDate = new Date();
++    deadlineDate.setHours(12, 0, 0, 0);
++    let remainingWorkdays = workdays;
++
++    while (remainingWorkdays > 0) {
++      deadlineDate.setDate(deadlineDate.getDate() + 1);
++      const weekday = deadlineDate.getDay();
++      const dateKey = formatDateKey(deadlineDate);
++      if (weekday !== 0 && weekday !== 6 && !getHolidayForDateKey(dateKey)) {
++        remainingWorkdays -= 1;
++      }
++    }
++
++    return getDefaultDeadlineValue(deadlineDate);
++  }
++
++  async function updateTaskStatus(task: TaskItem, nextStatus: TaskStatus) {
++    const res = await fetch("/api/tasks", {
++      method: "PATCH",
++      headers: {
++        "Content-Type": "application/json",
++      },
++      body: JSON.stringify({
++        id: task.id,
++        actorId: activeUserId,
++        title: task.titel,
++        description: task.beschreibung,
++        status: nextStatus,
++        priority: task.prioritaet,
++        tradeId: null,
++        ownerId: task.zustaendigId || activeUserId,
++        deadline: normalizeDeadlineInput(task.faelligkeit) || getDefaultDeadlineValue(),
++        customer: task.kunde,
++        customerClass: null,
++        projectId: task.projectId,
++        autoFeedbackEnabled: false,
++        autoFeedbackRecipientId: null,
++        recurrenceEnabled: false,
++        recurrenceInterval: null,
++        estimateMinutes: null,
++        planningAllocations: task.planningAllocations.map((allocation) => ({
++          date: allocation.date,
++          minutes: allocation.minutes,
++        })),
++        absenceHandoverTask: false,
++      }),
++    });
++
++    if (!res.ok) return null;
++    return (await res.json()) as TaskItem;
++  }
++
++  async function createOfferFollowUpTask(
++    savedOffer: OfferItem,
++    project: HeroProjectPreview,
++    potential?: ProjectPotential | null
++  ) {
++    const existingTask = tasks.find(
++      (task) =>
++        task.projectId === project.id &&
++        task.titel.includes(savedOffer.offerNumber) &&
++        task.titel.toLowerCase().includes("angebot nachfassen") &&
++        !["erledigt", "archiviert", "abgelehnt"].includes(task.status)
++    );
++
++    if (existingTask) return existingTask;
++
++    const deadline = getOfferFollowUpDeadline();
++    const title = `Angebot nachfassen: ${savedOffer.offerNumber}`;
++    const description = [
++      `Angebot ${savedOffer.offerNumber} nachfassen.`,
++      `Projekt: ${project.projectNumber || project.id} | ${project.title}`,
++      project.customer ? `Kunde: ${project.customer}` : "",
++      `Angebotswert: ${formatMoney(savedOffer.grossTotal)} brutto`,
++      potential ? `Verkaufschance: ${getPotentialNumber(potential)} | ${potential.description}` : "",
++    ]
++      .filter(Boolean)
++      .join("\n");
++
++    const res = await fetch("/api/tasks", {
++      method: "POST",
++      headers: {
++        "Content-Type": "application/json",
++      },
++      body: JSON.stringify({
++        actorId: activeUserId,
++        title,
++        description,
++        status: "in Bearbeitung",
++        priority: "normal",
++        tradeId: null,
++        ownerId: activeUser?.id || activeUserId,
++        deadline,
++        customer: project.customer || savedOffer.customerName,
++        customerClass: null,
++        projectId: project.id,
++        autoFeedbackEnabled: false,
++        autoFeedbackRecipientId: null,
++        recurrenceEnabled: false,
++        recurrenceInterval: null,
++        estimateMinutes: null,
++        planningAllocations: [],
++        absenceHandoverTask: false,
++      }),
++    });
++
++    if (!res.ok) {
++      setErrorMessage("Nachfass-Aufgabe zum Angebot konnte nicht automatisch angelegt werden.");
++      return null;
++    }
++
++    const savedTask = (await res.json()) as TaskItem;
++    setTasks((currentTasks) => [savedTask, ...currentTasks.filter((task) => task.id !== savedTask.id)]);
++    await addProjectLogbookEntry(
++      project.id,
++      "Angebot: Nachfass-Aufgabe",
++      `Nachfass-Aufgabe für Angebot ${savedOffer.offerNumber} angelegt, fällig am ${formatDeadline(
++        savedTask.faelligkeit
++      )}.`
++    );
++
++    if (potential) {
++      const linkedTask = getPotentialLinkedTask(potential);
++      const isPotentialFollowUpTask =
++        linkedTask &&
++        linkedTask.id !== savedTask.id &&
++        ["Verkaufschance nachfassen", "Potenzial nachfassen"].some((prefix) =>
++          linkedTask.titel.toLowerCase().startsWith(prefix.toLowerCase())
++        ) &&
++        !["erledigt", "archiviert", "abgelehnt"].includes(linkedTask.status);
++
++      if (isPotentialFollowUpTask) {
++        await updateTaskStatus(linkedTask, "erledigt");
++      }
++
++      await updateProjectPotential(potential, "offered", {
++        taskId: savedTask.id,
++        followUpAt: savedTask.faelligkeit,
++        note: `Angebot ${savedOffer.offerNumber} erstellt. Nachfass-Aufgabe angelegt.`,
++      });
++    }
++
++    await loadTasks();
++    await loadNotifications(true);
++    return savedTask;
++  }
++
+   async function createProjectPotential(project: HeroProjectPreview, description: string) {
+     const existingPotential = projectPotentials.find(
+       (potential) =>
+@@ -10008,7 +10439,7 @@ export function DashboardPage() {
+         ownerUserId: activeUser?.id || "",
+         ownerName: activeUser?.name || "",
+         priority: "normal",
+-        nextStep: "Potenzial prüfen und nächsten Schritt festlegen.",
++        nextStep: "Verkaufschance prüfen und nächsten Schritt festlegen.",
+         sourceType: "final_inspection",
+         actorName: activeUser?.name || "",
+       }),
+@@ -10021,6 +10452,66 @@ export function DashboardPage() {
+     return savedPotential;
+   }
+ 
++  function openManualPotentialModal() {
++    setManualPotentialProjectId("");
++    setManualPotentialDescription("");
++    setManualPotentialEstimatedValue("");
++    setManualPotentialError("");
++    setIsManualPotentialModalOpen(true);
++    if (!hasLoadedHeroProjects) void loadHeroProjects();
++  }
++
++  async function saveManualPotential() {
++    const project = heroProjects.find((item) => item.id === manualPotentialProjectId);
++    const description = manualPotentialDescription.trim();
++
++    if (!project) {
++      setManualPotentialError("Bitte ein vorhandenes Projekt auswählen.");
++      return;
++    }
++
++    if (!description) {
++      setManualPotentialError("Bitte die Verkaufschance kurz beschreiben.");
++      return;
++    }
++
++    const res = await fetch("/api/potentials", {
++      method: "POST",
++      headers: { "Content-Type": "application/json" },
++      body: JSON.stringify({
++        contactId: project.contactId || "",
++        customerName: project.customer || "",
++        projectId: project.id,
++        projectLabel: `${project.projectNumber || project.id} | ${project.title}`,
++        description,
++        ownerUserId: activeUser?.id || "",
++        ownerName: activeUser?.name || "",
++        estimatedValue: manualPotentialEstimatedValue,
++        priority: "normal",
++        nextStep: "",
++        sourceType: "manual",
++        actorName: activeUser?.name || "",
++      }),
++    });
++
++    if (!res.ok) {
++      const data = await res.json().catch(() => null);
++      setManualPotentialError(data?.error ?? "Verkaufschance konnte nicht angelegt werden.");
++      return;
++    }
++
++    const savedPotential = (await res.json()) as ProjectPotential;
++    setProjectPotentials((currentPotentials) => [savedPotential, ...currentPotentials]);
++    await addProjectLogbookEntry(
++      project.id,
++      "Verkaufschance angelegt",
++      `Verkaufschance ${getPotentialNumber(savedPotential)} manuell angelegt: ${description}.`
++    );
++    setPotentialStatusFilter("all");
++    setIsManualPotentialModalOpen(false);
++    openPotentialDetail(savedPotential);
++  }
++
+   async function updateProjectPotential(
+     potential: ProjectPotential,
+     status: ProjectPotentialStatus,
+@@ -10058,7 +10549,7 @@ export function DashboardPage() {
+     });
+ 
+     if (!res.ok) {
+-      setErrorMessage("Potenzial konnte nicht aktualisiert werden.");
++      setErrorMessage("Verkaufschance konnte nicht aktualisiert werden.");
+       return null;
+     }
+ 
+@@ -10081,7 +10572,7 @@ export function DashboardPage() {
+       const followUpTime = potential.followUpAt ? new Date(potential.followUpAt).getTime() : NaN;
+       return Number.isFinite(followUpTime) && followUpTime <= Date.now()
+         ? "Nachfassen fällig"
+-        : "Wiedervorlage geplant";
++        : "Nachfassen geplant";
+     }
+ 
+     return "Offen";
+@@ -10093,6 +10584,54 @@ export function DashboardPage() {
+     return "Normal";
+   }
+ 
++  function getPotentialLinkedTask(potential: ProjectPotential) {
++    return potential.taskId ? tasks.find((task) => task.id === potential.taskId) ?? null : null;
++  }
++
++  function getPotentialNumber(potential: ProjectPotential) {
++    if (potential.number) return potential.number;
++
++    const sortedPotentials = [...projectPotentials].sort((firstPotential, secondPotential) => {
++      const firstTime = new Date(firstPotential.createdAt).getTime();
++      const secondTime = new Date(secondPotential.createdAt).getTime();
++      if (firstTime !== secondTime) return firstTime - secondTime;
++      return firstPotential.id.localeCompare(secondPotential.id);
++    });
++    const index = sortedPotentials.findIndex((item) => item.id === potential.id);
++    return `VC-${String(index >= 0 ? 1001 + index : 1000).padStart(4, "0")}`;
++  }
++
++  function getPotentialFollowUpInfo(potential: ProjectPotential) {
++    const linkedTask = getPotentialLinkedTask(potential);
++
++    if (linkedTask) {
++      return {
++        title: `${getTaskNumber(linkedTask.id, tasks)} | ${linkedTask.titel}`,
++        detail: `${linkedTask.status} - fällig am ${formatDeadline(linkedTask.faelligkeit)}`,
++      };
++    }
++
++    if (potential.followUpAt) {
++      return {
++        title: "Nachfassdatum ohne verknüpfte Aufgabe",
++        detail: `${formatDeadline(potential.followUpAt)} - bitte bei Bedarf eine Nachfass-Aufgabe anlegen.`,
++      };
++    }
++
++    return {
++      title: "Keine Nachfass-Aufgabe geplant",
++      detail: "Nachfassen wird über das Aufgabenmodul gesteuert.",
++    };
++  }
++
++  function openPotentialLinkedTask(potential: ProjectPotential) {
++    const linkedTask = getPotentialLinkedTask(potential);
++    if (!linkedTask) return;
++
++    setEditingPotential(null);
++    openEditModal(linkedTask);
++  }
++
+   function openPotentialDetail(potential: ProjectPotential) {
+     setEditingPotential(potential);
+     setPotentialDraft({
+@@ -10109,24 +10648,85 @@ export function DashboardPage() {
+     });
+   }
+ 
++  function buildPotentialChangeNote(potential: ProjectPotential, ownerName: string) {
++    const changes: string[] = [];
++    const nextStatusLabel = getPotentialStatusLabel({ ...potential, status: potentialDraft.status, followUpAt: potentialDraft.followUpAt });
++    const previousOwner = potential.ownerName || "-";
++    const nextOwner = ownerName || "-";
++    const previousEstimatedValue = potential.estimatedValue || "-";
++    const nextEstimatedValue = potentialDraft.estimatedValue || "-";
++
++    if (potential.description !== potentialDraft.description) changes.push("Beschreibung");
++    if (potential.status !== potentialDraft.status) {
++      changes.push(`Status: ${getPotentialStatusLabel(potential)} -> ${nextStatusLabel}`);
++    }
++    if ((potential.ownerUserId || "") !== potentialDraft.ownerUserId || previousOwner !== nextOwner) {
++      changes.push(`Verantwortlich: ${previousOwner} -> ${nextOwner}`);
++    }
++    if ((potential.estimatedValue || "") !== potentialDraft.estimatedValue) {
++      changes.push(`Wert: ${previousEstimatedValue} -> ${nextEstimatedValue}`);
++    }
++    if ((potential.priority || "normal") !== potentialDraft.priority) {
++      changes.push(`Prioritaet: ${getPotentialPriorityLabel(potential.priority)} -> ${getPotentialPriorityLabel(potentialDraft.priority)}`);
++    }
++    if ((potential.nextStep || "") !== potentialDraft.nextStep) changes.push("Naechster Schritt");
++    if ((potential.lostReason || "") !== potentialDraft.lostReason) changes.push("Grund bei Kein Interesse");
++
++    if (potentialDraft.note.trim()) {
++      changes.push(`Notiz: ${potentialDraft.note.trim()}`);
++    }
++
++    return changes.length > 0
++      ? `Verkaufschance aktualisiert: ${changes.join("; ")}.`
++      : "Verkaufschance aktualisiert: keine Feldänderung erkannt.";
++  }
++
++  function hasPotentialDraftChanges(potential: ProjectPotential, ownerName: string) {
++    return (
++      potential.description !== potentialDraft.description ||
++      potential.status !== potentialDraft.status ||
++      (potential.ownerUserId || "") !== potentialDraft.ownerUserId ||
++      (potential.ownerName || "") !== (ownerName || "") ||
++      (potential.estimatedValue || "") !== potentialDraft.estimatedValue ||
++      (potential.lostReason || "") !== potentialDraft.lostReason ||
++      potentialDraft.note.trim().length > 0
++    );
++  }
++
+   async function savePotentialDetail() {
+     if (!editingPotential) return;
+ 
+     const owner = users.find((user) => user.id === potentialDraft.ownerUserId);
++    const ownerName = owner?.name || potentialDraft.ownerName;
++    const nextStatusLabel = getPotentialStatusLabel({
++      ...editingPotential,
++      status: potentialDraft.status,
++      followUpAt: potentialDraft.followUpAt,
++    });
++    const confirmed = window.confirm(
++      `Die Verkaufschance wird mit dem Status "${nextStatusLabel}" gespeichert. Ist das korrekt?`
++    );
++    if (!confirmed) return;
++
++    if (!hasPotentialDraftChanges(editingPotential, ownerName)) {
++      setEditingPotential(null);
++      return;
++    }
++
+     const savedPotential = await updateProjectPotential(editingPotential, potentialDraft.status, {
+       ownerUserId: potentialDraft.ownerUserId,
+-      ownerName: owner?.name || potentialDraft.ownerName,
++      ownerName,
+       estimatedValue: potentialDraft.estimatedValue,
+       priority: potentialDraft.priority,
+       nextStep: potentialDraft.nextStep,
+-      followUpAt: potentialDraft.followUpAt,
++      followUpAt: editingPotential.followUpAt || potentialDraft.followUpAt,
+       lostReason: potentialDraft.lostReason,
+       description: potentialDraft.description,
+-      note: potentialDraft.note || "Potenzial aktualisiert.",
++      note: buildPotentialChangeNote(editingPotential, ownerName),
+     });
+ 
+     if (savedPotential) {
+-      setEditingPotential(savedPotential);
++      setEditingPotential(null);
+       setPotentialDraft((currentDraft) => ({ ...currentDraft, note: "" }));
+     }
+   }
+@@ -10143,13 +10743,20 @@ export function DashboardPage() {
+   async function schedulePotentialFollowUp(potential: ProjectPotential) {
+     const project = getPotentialProject(potential);
+     if (!project) return;
++    const linkedTask = getPotentialLinkedTask(potential);
++
++    if (linkedTask) {
++      setEditingPotential(null);
++      openEditModal(linkedTask);
++      return;
++    }
+ 
+     setIsQuickCreateOpen(false);
+     setEditingTask(null);
+     setPendingPotentialFollowUp({ potentialId: potential.id, projectId: project.id });
+     setErrorMessage("");
+     resetForm();
+-    setTitel(`Potenzial nachfassen: ${project.projectNumber || project.id}`);
++    setTitel(`Verkaufschance nachfassen: ${project.projectNumber || project.id}`);
+     setBeschreibung(
+       [
+         potential.description,
+@@ -10818,8 +11425,8 @@ export function DashboardPage() {
+         });
+         await addProjectLogbookEntry(
+           project.id,
+-          "Zusatzverkauf: Potenzial nachfassen",
+-          `Kunde wünscht aktuell nicht. Nachfass-Aufgabe ${savedTask.titel} angelegt für ${formatDeadline(savedTask.faelligkeit)}.`
++          "Zusatzverkauf: Verkaufschance nachfassen",
++          `Nachfass-Aufgabe ${savedTask.titel} angelegt für ${formatDeadline(savedTask.faelligkeit)}.`
+         );
+       }
+       setPendingPotentialFollowUp(null);
+@@ -12759,7 +13366,7 @@ export function DashboardPage() {
+     },
+     {
+       key: "potentials",
+-      label: "Potenziale",
++      label: "Verkaufschancen",
+       count: getPotentialStatusCount("all"),
+     },
+   ];
+@@ -12814,7 +13421,7 @@ export function DashboardPage() {
+       : selectedProjectKindFilter === "einmaliges Projekt"
+         ? `Einmalige-Projekte ${activeProjectPipeline.company}`
+         : selectedProjectKindFilter === "potentials"
+-          ? `Potenziale ${activeProjectPipeline.company}`
++          ? `Verkaufschancen ${activeProjectPipeline.company}`
+         : activeProjectPipeline.label;
+   const projectPipelineSubline =
+     selectedProjectKindFilter === "Dauerläufer-Projekt"
+@@ -14028,7 +14635,7 @@ export function DashboardPage() {
+     contacts: "Kontakte und CRM",
+     newsFeed: "News-Feed",
+     salesHub: "Sales-Hub",
+-    salesOpportunities: "Potenziale",
++    salesOpportunities: "Verkaufschancen",
+     customerSatisfaction: "KuZu / Kundenzufriedenheit",
+     salesTargets: "Sales-Ziele",
+     documents: "Dokumente",
+@@ -16504,7 +17111,7 @@ export function DashboardPage() {
+       { id: "documents", label: "Dokumente", icon: "" },
+       { id: "gaeb", label: "Ausschreibungen (GAEB)", icon: "" },
+       { id: "contacts", label: "Ansprechpartner", icon: "?" },
+-      { id: "potentials", label: "Potenziale", icon: "" },
++      { id: "potentials", label: "Verkaufschancen", icon: "" },
+       { id: "tasks", label: "Aufgaben", icon: "?" },
+       { id: "orders", label: "Aufträge", icon: "A" },
+       { id: "projects", label: "Projekte", icon: "" },
+@@ -16935,12 +17542,12 @@ export function DashboardPage() {
+             ) : customerFileTab === "potentials" ? (
+               <div className={styles.customerDocumentModule}>
+                 <div className={styles.customerFileMainHeader}>
+-                  <h2>Potenziale</h2>
+-                  <span>{customerPotentials.length} Potenzial{customerPotentials.length === 1 ? "" : "e"}</span>
++                  <h2>Verkaufschancen</h2>
++                  <span>{customerPotentials.length} Verkaufschance{customerPotentials.length === 1 ? "" : "n"}</span>
+                 </div>
+                 {customerPotentials.length === 0 ? (
+                   <div className={styles.customerDocumentEmpty}>
+-                    <strong>Noch keine Potenziale hinterlegt.</strong>
++                    <strong>Noch keine Verkaufschancen hinterlegt.</strong>
+                     <p>Erkannte Zusatzverkäufe aus Projekten erscheinen automatisch in dieser Kundenakte.</p>
+                   </div>
+                 ) : (
+@@ -16949,10 +17556,10 @@ export function DashboardPage() {
+                       <thead>
+                         <tr>
+                           <th>Status</th>
+-                          <th>Potenzial</th>
++                          <th>Verkaufschance</th>
+                           <th>Projekt</th>
+                           <th>Wert</th>
+-                          <th>Wiedervorlage</th>
++                          <th>Nachfassen</th>
+                           <th>Historie</th>
+                           <th>Aktion</th>
+                         </tr>
+@@ -16962,7 +17569,7 @@ export function DashboardPage() {
+                           <tr key={potential.id}>
+                             <td>
+                               {potential.status === "follow_up"
+-                                ? "Später nachfassen"
++                                ? "Nachfassen geplant"
+                                 : potential.status === "offered"
+                                   ? "Angeboten"
+                                   : potential.status === "lost"
+@@ -17095,12 +17702,15 @@ export function DashboardPage() {
+       <section className={styles.settingsPanel}>
+         <div className={styles.topline}>
+           <div>
+-            <p className={styles.eyebrow}>Zusatzchancen</p>
+-            <h1>Potenziale</h1>
++            <p className={styles.eyebrow}>Zusatzverkauf</p>
++            <h1>Verkaufschancen</h1>
+             <p className={styles.subline}>
+-              Erkannte Zusatzverkaufschancen aus Endkontrollen. Forecast bleibt erst durch Angebote und Rechnungen messbar.
++              Erkannte Verkaufschancen aus Endkontrollen. Forecast bleibt erst durch Angebote und Rechnungen messbar.
+             </p>
+           </div>
++          <button type="button" className={styles.primaryButton} onClick={openManualPotentialModal}>
++            + Verkaufschance
++          </button>
+         </div>
+ 
+         <section className={styles.heroSearchBar}>
+@@ -17109,23 +17719,23 @@ export function DashboardPage() {
+             <input
+               value={heroSearchTerm}
+               onChange={(event) => setHeroSearchTerm(event.target.value)}
+-              placeholder="Potenzial, Projekt, Kunde oder Status"
++              placeholder="Verkaufschance, Projekt, Kunde oder Status"
+             />
+           </label>
+-          <span>{visiblePotentialRows.length} Potenziale</span>
++          <span>{visiblePotentialRows.length} Verkaufschancen</span>
+         </section>
+ 
+         <section className={styles.projectPipelineBoard}>
+           <div className={styles.projectStatusStrip}>
+             <div className={styles.projectStatusStripMeta}>
+-              <strong>Potenziale</strong>
+-              <span>{getPotentialStatusCount("all")} Potenziale</span>
++              <strong>Verkaufschancen</strong>
++              <span>{getPotentialStatusCount("all")} Verkaufschancen</span>
+             </div>
+             <div className={`${styles.projectPipelineStatusList} ${styles.potentialStatusList}`}>
+               {[
+                 { label: "Alle", value: "all" as const },
+                 { label: "Offen", value: "open" as const },
+-                { label: "Wiedervorlage", value: "follow_up" as const },
++                { label: "Nachfassen", value: "follow_up" as const },
+                 { label: "Fällig", value: "due" as const },
+                 { label: "Angeboten", value: "offered" as const },
+                 { label: "Kein Interesse", value: "lost" as const },
+@@ -17148,90 +17758,61 @@ export function DashboardPage() {
+           </div>
+ 
+           <div className={styles.projectPipelineWorkspace}>
+-            <section className={`${styles.tableCard} ${styles.heroTableCard}`}>
++            <section className={`${styles.tableCard} ${styles.heroTableCard} ${styles.potentialOverviewCard}`}>
+               <div className={styles.heroTableScroll}>
+                 <table className={styles.table}>
+                   <thead>
+                     <tr>
++                      <th>Nr.</th>
+                       <th>Status</th>
+-                      <th>Potenzial</th>
++                      <th>Verkaufschance</th>
+                       <th>Kunde</th>
+                       <th>Projekt</th>
+                       <th>Priorität</th>
+                       <th>Wert</th>
+                       <th>Erkannt am</th>
+-                      <th>Wiedervorlage</th>
++                      <th>Nachfass-Aufgabe</th>
+                       <th>Zuständig</th>
+                       <th>Letzte Aktion</th>
+-                      <th>Aktion</th>
+                     </tr>
+                   </thead>
+                   <tbody>
+                     {visiblePotentialRows.length === 0 ? (
+                       <tr>
+-                        <td colSpan={11}>Keine Potenziale in dieser Auswahl.</td>
++                        <td colSpan={11}>Keine Verkaufschancen in dieser Auswahl.</td>
+                       </tr>
+                     ) : (
+                       visiblePotentialRows.map((potential) => {
+                         const project = getPotentialProject(potential);
+-                        const linkedTask = tasks.find((task) => task.id === potential.taskId);
++                        const linkedTask = getPotentialLinkedTask(potential);
++                        const followUpInfo = getPotentialFollowUpInfo(potential);
+                         const lastHistory = potential.history.at(-1);
+ 
+                         return (
+                           <tr key={potential.id}>
+-                            <td>{getPotentialStatusLabel(potential)}</td>
++                            <td>
++                              <button
++                                type="button"
++                                className={styles.potentialNumberButton}
++                                onClick={() => openPotentialDetail(potential)}
++                              >
++                                {getPotentialNumber(potential)}
++                              </button>
++                            </td>
++                            <td>
++                              <span className={styles.potentialStatusClip} data-status={potential.status}>
++                                {getPotentialStatusLabel(potential)}
++                              </span>
++                            </td>
+                             <td className={styles.title}>{potential.description}</td>
+                             <td>{potential.customerName || project?.customer || "-"}</td>
+                             <td>{potential.projectLabel || project?.title || potential.projectId}</td>
+                             <td>{getPotentialPriorityLabel(potential.priority)}</td>
+                             <td>{potential.estimatedValue ? `${potential.estimatedValue} €` : "-"}</td>
+                             <td>{formatDeadline(potential.createdAt)}</td>
+-                            <td>{potential.followUpAt ? formatDeadline(potential.followUpAt) : "-"}</td>
++                            <td title={followUpInfo.detail}>{followUpInfo.title}</td>
+                             <td>{potential.ownerName || linkedTask?.zustaendig || activeUser?.name || "-"}</td>
+                             <td>{lastHistory ? `${formatDeadline(lastHistory.at)}: ${lastHistory.note}` : "-"}</td>
+-                            <td>
+-                              <div className={styles.tableActionGroup}>
+-                                <button
+-                                  type="button"
+-                                  className={styles.timeEntryEditButton}
+-                                  onClick={() => openPotentialDetail(potential)}
+-                                >
+-                                  Öffnen
+-                                </button>
+-                                {["open", "follow_up"].includes(potential.status) ? (
+-                                  <>
+-                                    <button
+-                                      type="button"
+-                                      className={styles.timeEntryEditButton}
+-                                      onClick={() => void offerPotential(potential)}
+-                                    >
+-                                      Angebot erstellen
+-                                    </button>
+-                                    <button
+-                                      type="button"
+-                                      className={styles.timeEntryEditButton}
+-                                      onClick={() => void schedulePotentialFollowUp(potential)}
+-                                    >
+-                                      Später nachfassen
+-                                    </button>
+-                                    <button
+-                                      type="button"
+-                                      className={styles.timeEntryEditButton}
+-                                      onClick={() => void closePotential(potential)}
+-                                    >
+-                                      Kein Interesse
+-                                    </button>
+-                                  </>
+-                                ) : null}
+-                                <button
+-                                  type="button"
+-                                  className={styles.timeEntryEditButton}
+-                                  onClick={() => setHistoryPotential(potential)}
+-                                >
+-                                  Historie
+-                                </button>
+-                              </div>
+-                            </td>
+                           </tr>
+                         );
+                       })
+@@ -17240,7 +17821,7 @@ export function DashboardPage() {
+                 </table>
+               </div>
+               <p className={styles.heroTableHint}>
+-                Alle {visiblePotentialRows.length} Potenziale sind geladen und auswertbar.
++                Alle {visiblePotentialRows.length} Verkaufschancen sind geladen und auswertbar.
+               </p>
+             </section>
+           </div>
+@@ -17338,6 +17919,7 @@ export function DashboardPage() {
+       [
+         "Zusatzverkauf: Angebot erstellt",
+         "Zusatzverkauf: Potenzial nachfassen",
++        "Zusatzverkauf: Verkaufschance nachfassen",
+         "Zusatzverkauf: Kein Interesse",
+       ].includes(entry.title)
+     );
+@@ -17353,7 +17935,9 @@ export function DashboardPage() {
+     );
+     const hasProjectUpsellPotential = projectPotentialsForFile.some((potential) => potential.status === "follow_up") ||
+       projectUpsellResolutionEntries.some(
+-      (entry) => entry.title === "Zusatzverkauf: Potenzial nachfassen"
++      (entry) =>
++        entry.title === "Zusatzverkauf: Potenzial nachfassen" ||
++        entry.title === "Zusatzverkauf: Verkaufschance nachfassen"
+     );
+     const hasOpenProjectUpsell =
+       Boolean(activeProjectPotential && activeProjectPotential.status === "open") ||
+@@ -17369,7 +17953,7 @@ export function DashboardPage() {
+       projectUpsellState === "offered"
+         ? "Zusatzverkauf angeboten"
+         : projectUpsellState === "potential"
+-          ? "Hinterlegtes Potenzial"
++          ? "Hinterlegte Verkaufschance"
+           : "Zusatzverkauf erkannt";
+     const savedProjectLogEntries = projectLogEntries
+       .filter((entry) => {
+@@ -17658,6 +18242,7 @@ export function DashboardPage() {
+       }
+     };
+     const projectOffers = offers.filter((offer) => offer.projectId === selectedProjectFile.id);
++    const projectFinalOffers = projectOffers.filter((offer) => offer.status !== "Entwurf");
+     const projectBaseOffers = projectOffers.filter((offer) => offer.offerType !== "addendum");
+     const projectAddendumOffers = projectOffers.filter((offer) => offer.offerType === "addendum");
+     const projectInvoices = invoices.filter(
+@@ -17704,6 +18289,18 @@ export function DashboardPage() {
+     const projectComparisonMonthOfferPlanningEntries = projectComparisonMonthPlanningEntries.filter(
+       (entry) => entry.source === "offer" && entry.date.startsWith(projectComparisonMonth)
+     );
++    const isSingleProjectEntryLinkedToOffer = (entry: PlanningEntry) => {
++      if (entry.source === "offer" || entry.offerId || entry.offerLabel) return true;
++      const offersInEntryMonth = projectFinalOffers.filter(
++        (offer) =>
++          offer.plannedExecutionMonth === entry.date.slice(0, 7) &&
++          getOfferLaborPlanningHours(offer) > 0
++      );
++      return offersInEntryMonth.length === 1;
++    };
++    const projectOfferPlanningEntries = isSelectedProjectRecurring
++      ? projectComparisonMonthOfferPlanningEntries
++      : projectPlanningEntries.filter(isSingleProjectEntryLinkedToOffer);
+     const projectComparisonMonthStampEntries = projectStampEntries.filter((entry) =>
+       entry.date.startsWith(projectComparisonMonth)
+     );
+@@ -17726,10 +18323,11 @@ export function DashboardPage() {
+         ([employee, hours]) => `${employee}: ${formatHours(hours)} Std.`
+       );
+     };
+-    const offerLaborComparisonRows = projectOffers.flatMap((offer) =>
++    const offerLaborComparisonRows = projectFinalOffers.flatMap((offer) =>
+       offer.lines
+         .flatMap((line, lineIndex) => {
+-          if (!isOfferDueForPlanningMonth(offer, selectedProjectFile, projectComparisonMonth)) return [];
++          if (isSelectedProjectRecurring && !isOfferDueForPlanningMonth(offer, selectedProjectFile, projectComparisonMonth)) return [];
++          if (!isOfferLineLaborPlanningLine(line)) return [];
+           const lineLaborItems = (line.laborItems ?? []).filter((labor) => Number(labor.plannedHours || 0) > 0);
+           const plannedLineHours = lineLaborItems.reduce(
+             (sum, labor) => sum + Number(labor.plannedHours || 0),
+@@ -17738,7 +18336,10 @@ export function DashboardPage() {
+           const fallbackPlannedHours = plannedLineHours > 0 ? plannedLineHours : Number(line.quantity || 0);
+           const lineRevenue = Number(line.quantity || 0) * Number(line.unitPrice || 0);
+           const offerLabel = `${offer.offerNumber}${offer.offerType === "addendum" ? " (Nachtrag)" : ""}`;
+-          const linePlanningEntries = projectComparisonMonthOfferPlanningEntries.filter((entry) => {
++          const linePlanningEntries = projectOfferPlanningEntries.filter((entry) => {
++            if (entry.offerId) {
++              return entry.offerId === offer.id && entry.offerLineId === line.id;
++            }
+             const haystack = [entry.title, entry.description, entry.offerLabel].join(" ").toLowerCase();
+             return (
+               haystack.includes(offer.offerNumber.toLowerCase()) ||
+@@ -17752,6 +18353,8 @@ export function DashboardPage() {
+             ) / 60;
+           return [{
+             key: `${offer.id}-${line.id || lineIndex}-${projectComparisonMonth}`,
++            offerId: offer.id,
++            offerLineId: line.id,
+             userId: "",
+             employeeName: "nicht personenbezogen",
+             plannedHours: fallbackPlannedHours,
+@@ -17774,6 +18377,8 @@ export function DashboardPage() {
+         })
+     ) as Array<{
+       key: string;
++      offerId: string;
++      offerLineId: string;
+       userId: string;
+       employeeName: string;
+       plannedHours: number;
+@@ -17820,6 +18425,8 @@ export function DashboardPage() {
+       projectComparisonMonthBudgetHours > 0
+         ? [{
+             key: `project-budget-${selectedProjectFile.id}-${projectComparisonMonth}`,
++            offerId: "",
++            offerLineId: "",
+             userId: "",
+             employeeName: "nicht personenbezogen",
+             plannedHours: projectComparisonMonthBudgetHours,
+@@ -17847,6 +18454,46 @@ export function DashboardPage() {
+       actualHours: projectComparisonMonthStampEntries.reduce((sum, entry) => sum + entry.durationMs, 0) / 3_600_000,
+       laborRevenue: projectLaborComparisonRows.reduce((sum, row) => sum + row.laborRevenue, 0),
+     };
++    const singleProjectOfferPlanningRows = projectFinalOffers
++      .map((offer) => {
++        const offerRows = projectLaborComparisonRows.filter((row) => row.offerId === offer.id);
++        const plannedHours = offerRows.reduce((sum, row) => sum + row.plannedHours, 0);
++        const offerPlanningEntries = projectOfferPlanningEntries.filter((entry) => {
++          if (entry.offerId) return entry.offerId === offer.id;
++          const haystack = [entry.title, entry.description, entry.offerLabel].join(" ").toLowerCase();
++          if (haystack.includes(offer.offerNumber.toLowerCase())) return true;
++          if (entry.offerLabel) return false;
++          const offersInEntryMonth = projectFinalOffers.filter(
++            (candidate) =>
++              candidate.plannedExecutionMonth === entry.date.slice(0, 7) &&
++              getOfferLaborPlanningHours(candidate) > 0
++          );
++          return offersInEntryMonth.length === 1 && offersInEntryMonth[0].id === offer.id;
++        });
++        const plannedPlanningHours =
++          offerPlanningEntries.reduce(
++            (sum, entry) => sum + Number(entry.offerPlannedMinutes || entry.durationMinutes || 0),
++            0
++          ) / 60;
++        const firstOfferRow = offerRows[0] ?? null;
++
++        return {
++          offer,
++          offerRows,
++          firstOfferRow,
++          plannedHours,
++          plannedPlanningHours,
++          openHours: Math.max(plannedHours - plannedPlanningHours, 0),
++          remainingHours: plannedHours - plannedPlanningHours,
++          usagePercent: plannedHours > 0 ? clampPercent((plannedPlanningHours / plannedHours) * 100) : 0,
++          planningEntries: offerPlanningEntries,
++        };
++      })
++      .filter((row) => row.plannedHours > 0);
++    const singleProjectOfferPlanningTotals = {
++      plannedHours: singleProjectOfferPlanningRows.reduce((sum, row) => sum + row.plannedHours, 0),
++      plannedPlanningHours: singleProjectOfferPlanningRows.reduce((sum, row) => sum + row.plannedPlanningHours, 0),
++    };
+     const projectLaborPerformanceRows = projectLaborComparisonRows.map((row) => {
+       const actualShare =
+         projectLaborComparisonTotals.plannedHours > 0
+@@ -18137,20 +18784,33 @@ export function DashboardPage() {
+       setPlanningEntryGroup(groupName);
+       setPlanningEntryUserId("");
+       setPlanningEntryDate(selectedPlanningDateKey);
++      setPlanningRecurrenceWeekdays([getWeekdayFromDateKey(selectedPlanningDateKey)]);
+       setPlanningEntryStartTime("08:00");
+       setPlanningEntryEndTime("09:00");
+-      setPlanningEntryTitle(row.positionTitle || "Planung aus Angebot");
++      setPlanningEntryTitle("");
+       setPlanningEntryCustomer(selectedProjectFile.customer || "");
+       setPlanningEntryProjectId(selectedProjectFile.id);
+       setPlanningEntryProjectSearch(`${selectedProjectFile.projectNumber || selectedProjectFile.id} | ${selectedProjectFile.title}`);
+       setIsPlanningEntryProjectSearchOpen(false);
+-      setPlanningEntryDescription(
+-        `${row.sourceKind === "projectBudget" ? "Planung aus manuellem Projektkontingent" : `Planung aus Angebot: ${row.offerNumbers.join(", ")}`}. Fälligkeit: ${comparisonMonthLabel}. Offene Vorgabezeit: ${formatHours(remainingHours)} Std. Mitarbeiter werden in diesem Planungstermin festgelegt.`
++      setPlanningEntryDescription("");
++      setPlanningEntryOfferId(row.offerId);
++      setPlanningEntryOfferLineId(isSelectedProjectRecurring ? row.offerLineId : "");
++      setPlanningEntryOfferLabel(
++        !isSelectedProjectRecurring && row.offerId
++          ? projectFinalOffers.find((offer) => offer.id === row.offerId)?.offerNumber || row.positions.join(", ")
++          : row.positions.join(", ")
++      );
++      setPlanningEntryOfferTotalHours(
++        !isSelectedProjectRecurring && row.offerId
++          ? String(
++              getOfferLaborPlanningHours(
++                projectFinalOffers.find((offer) => offer.id === row.offerId) ?? { lines: [] }
++              )
++            )
++          : String(row.plannedHours)
+       );
+-      setPlanningEntryOfferLabel(row.positions.join(", "));
+-      setPlanningEntryOfferTotalHours(String(row.plannedHours));
+       if (isSelectedProjectRecurring && selectedProjectFile.projectRuntimeUntil) {
+-        setPlanningRecurrenceType("monthly");
++        setPlanningRecurrenceType("weekly");
+         setPlanningRecurrenceUntil(selectedProjectFile.projectRuntimeUntil);
+       }
+       setPlanningEntryApprovalStatus("confirmed");
+@@ -18167,28 +18827,34 @@ export function DashboardPage() {
+       const groupName = getPlanningEntryGroups(projectBoard)[0];
+ 
+       resetPlanningEntryForm();
+-      setPlanningEntrySource("manual");
++      setPlanningEntrySource(!isSelectedProjectRecurring && singleProjectOfferPlanningRows.length > 0 ? "offer" : "manual");
+       setPlanningEntryBoard(projectBoard);
+       setPlanningEntryGroup(groupName);
+       setPlanningEntryUserId("");
+       setPlanningEntryDate(selectedPlanningDateKey);
++      setPlanningRecurrenceWeekdays([getWeekdayFromDateKey(selectedPlanningDateKey)]);
+       setPlanningEntryStartTime("08:00");
+       setPlanningEntryEndTime("09:00");
+-      setPlanningEntryTitle("Freie Projektplanung");
++      setPlanningEntryTitle("");
+       setPlanningEntryCustomer(selectedProjectFile.customer || "");
+       setPlanningEntryProjectId(selectedProjectFile.id);
+       setPlanningEntryProjectSearch(`${selectedProjectFile.projectNumber || selectedProjectFile.id} | ${selectedProjectFile.title}`);
+       setIsPlanningEntryProjectSearchOpen(false);
+-      setPlanningEntryDescription("Freie Planung ohne Angebotskontingent. Mitarbeiter und Dauer werden in diesem Termin festgelegt.");
++      setPlanningEntryDescription("");
++      setPlanningEntryOfferId("");
++      setPlanningEntryOfferLineId("");
+       setPlanningEntryOfferLabel("");
+       setPlanningEntryOfferTotalHours("0");
+       setPlanningEntryApprovalStatus(approvalStatus);
+       setEditingPlanningEntryId("");
+       setIsPlanningEntryModalOpen(true);
+     };
+-    const projectOfferPlannedTotalHours = projectLaborComparisonTotals.plannedPlanningHours;
++    const projectOfferPlannedTotalHours = isSelectedProjectRecurring
++      ? projectLaborComparisonTotals.plannedPlanningHours
++      : singleProjectOfferPlanningTotals.plannedPlanningHours;
+     const projectOpenOfferPlanningHours = Math.max(
+-      projectLaborComparisonTotals.plannedHours - projectLaborComparisonTotals.plannedPlanningHours,
++      (isSelectedProjectRecurring ? projectLaborComparisonTotals.plannedHours : singleProjectOfferPlanningTotals.plannedHours) -
++        projectOfferPlannedTotalHours,
+       0
+     );
+     const projectPlanningButtonState =
+@@ -18436,7 +19102,7 @@ export function DashboardPage() {
+       if (!potential) return;
+       await schedulePotentialFollowUp(potential);
+       setProjectFileTab("logbook");
+-      setProjectLogbookSearch("Potenzial");
++      setProjectLogbookSearch("Nachfass");
+       setIsProjectUpsellMenuOpen(false);
+     };
+     const closeProjectUpsellPotential = async () => {
+@@ -18652,13 +19318,13 @@ export function DashboardPage() {
+                 {isProjectUpsellMenuOpen ? (
+                   <div className={`${styles.projectStatusMenu} ${styles.projectUpsellMenu}`}>
+                     <button type="button" onClick={() => void openProjectUpsellDetail()}>
+-                      <span>Potenzial öffnen</span>
++                      <span>Verkaufschance öffnen</span>
+                     </button>
+                     <button type="button" onClick={createProjectUpsellOffer}>
+                       <span>Angebot erstellen</span>
+                     </button>
+                     <button type="button" onClick={deferProjectUpsellPotential}>
+-                      <span>Später nachfassen</span>
++                      <span>Nachfass-Aufgabe</span>
+                     </button>
+                     <button type="button" onClick={closeProjectUpsellPotential}>
+                       <span>Kein Interesse</span>
+@@ -18710,7 +19376,7 @@ export function DashboardPage() {
+           >
+             <div className={styles.projectPlanningDialog}>
+               {renderPlanningDayPanel({
+-                closeLabel: "ZurÃ¼ck zum Projekt",
++                closeLabel: "Zurück zum Projekt",
+                 onClose: () => setIsProjectPlanningDayOverlayOpen(false),
+               })}
+             </div>
+@@ -20078,6 +20744,36 @@ export function DashboardPage() {
+                       <p>Für diesen Monat ist noch kein Projektzeitkontingent hinterlegt.</p>
+                     ) : null}
+                   </section>
++                ) : singleProjectOfferPlanningRows.length > 0 ? (
++                  <div className={styles.projectOfferPlanningSummaryList}>
++                    {singleProjectOfferPlanningRows.map((row) => {
++                      const offerTypeLabel = row.offer.offerType === "addendum" ? "Nachtragsangebot" : "Basisangebot";
++                      return (
++                        <section key={row.offer.id} className={styles.projectPlanningCapacitySummary}>
++                          <div className={styles.projectPlanningCapacityCompact}>
++                            <div>
++                              <strong>{row.offer.offerNumber} | {offerTypeLabel}</strong>
++                              <span>
++                                Geplant: {formatHours(row.plannedPlanningHours)} von {formatHours(row.plannedHours)} Std. |{" "}
++                                Ausführungsmonat: {" "}
++                                {row.offer.plannedExecutionMonth ? formatMonthLabel(row.offer.plannedExecutionMonth) : "-"}
++                              </span>
++                            </div>
++                            <b data-state={row.remainingHours < -0.01 ? "over" : "ok"}>
++                              {row.remainingHours < -0.01
++                                ? `${formatHours(Math.abs(row.remainingHours))} Std. überplant`
++                                : `${formatHours(row.openHours)} Std. planbar`}
++                            </b>
++                          </div>
++                          <div className={styles.projectPlanningCapacityBar}>
++                            <span style={{ width: `${row.usagePercent}%` }}>
++                              <i>{row.usagePercent.toFixed(0)}%</i>
++                            </span>
++                          </div>
++                        </section>
++                      );
++                    })}
++                  </div>
+                 ) : null}
+                 {projectVisiblePlanningEntries.length === 0 ? (
+                   <div className={styles.customerDocumentEmpty}>
+@@ -21005,7 +21701,7 @@ export function DashboardPage() {
+                                             className={styles.iconButton}
+                                             onClick={() => removeInvoiceLineLabor(index, labor.id)}
+                                           >
+-                                            ?
++                                            ×
+                                           </button>
+                                         </div>
+                                       ))}
+@@ -21293,7 +21989,7 @@ export function DashboardPage() {
+               type="button"
+               onClick={closeOfferModal}
+             >
+-              ?
++              ×
+             </button>
+           </div>
+ 
+@@ -23944,7 +24640,7 @@ export function DashboardPage() {
+ 
+             {selectedPlanningGroupEmployees.length === 0 && (
+               <div className={styles.planningEmptyRow}>
+-                FÃ¼r diese Planungsgruppe ist noch kein Mitarbeiter hinterlegt.
++                Für diese Planungsgruppe ist noch kein Mitarbeiter hinterlegt.
+               </div>
+             )}
+ 
+@@ -23984,7 +24680,7 @@ export function DashboardPage() {
+                     </em>
+                     {employeeAbsence ? (
+                       <small>
+-                        {absenceLabel(employeeAbsence.type)} Â· {absenceDayPartLabel(employeeAbsence.dayPart)}
++                        {absenceLabel(employeeAbsence.type)} · {absenceDayPartLabel(employeeAbsence.dayPart)}
+                       </small>
+                     ) : null}
+                   </div>
+@@ -26590,6 +27286,55 @@ export function DashboardPage() {
+               </table>
+             </div>
+           </section>
++        ) : firmSettingsTab === "deadlines" ? (
++          <section className={styles.settingsCard}>
++            <div className={styles.settingsHeader}>
++              <div>
++                <h2>Zeitfristen</h2>
++                <p>
++                  Hier steuerst du automatische Fristen, die WorkPilot beim Erstellen von Dokumenten
++                  und Aufgaben nutzt.
++                </p>
++              </div>
++            </div>
++            <div className={styles.companySettingsForm}>
++              <label>
++                Angebote nachfassen nach
++                <input
++                  type="number"
++                  min="1"
++                  max="30"
++                  step="1"
++                  value={offerFollowUpWorkdays}
++                  onChange={(event) =>
++                    setOfferFollowUpWorkdays(
++                      Math.max(1, Math.min(30, Math.round(Number(event.target.value) || 5)))
++                    )
++                  }
++                />
++              </label>
++              <span className={styles.companySettingsHint}>Werkstage</span>
++            </div>
++            <div className={styles.plannedModuleGrid}>
++              <article>
++                <strong>Finale Angebote</strong>
++                <span>
++                  Beim finalen Speichern wird automatisch eine Nachfass-Aufgabe mit Status
++                  in Bearbeitung angelegt.
++                </span>
++              </article>
++              <article>
++                <strong>Entwürfe</strong>
++                <span>Entwürfe erzeugen keine Nachfass-Aufgabe, bis sie finalisiert werden.</span>
++              </article>
++              <article>
++                <strong>Verkaufschancen</strong>
++                <span>
++                  Beim Angebot aus einer Verkaufschance wird die neue Aufgabe dort verlinkt.
++                </span>
++              </article>
++            </div>
++          </section>
+         ) : firmSettingsTab === "projectTypes" ? (
+           <section className={styles.settingsCard}>
+             <div className={styles.settingsHeader}>
+@@ -26966,7 +27711,7 @@ export function DashboardPage() {
+ 
+   function renderCatalogItems() {
+     const viewType = getCatalogViewType();
+-    const search = catalogSearchTerm.trim().toLowerCase();
++    const search = normalizeSearchText(catalogSearchTerm);
+     const filteredItems = catalogItems.filter((item) => {
+       if (viewType && item.type !== viewType) return false;
+       if (catalogStatusFilter === "active" && !item.isActive) return false;
+@@ -26980,15 +27725,10 @@ export function DashboardPage() {
+         item.matchcode,
+         item.supplierName,
+         item.manufacturer,
+-      ].join(" ").toLowerCase();
+-      if (search && !haystack.includes(search)) return false;
+-      return (
+-        item.number.toLowerCase().includes(catalogColumnFilters.number.toLowerCase()) &&
+-        item.name.toLowerCase().includes(catalogColumnFilters.name.toLowerCase()) &&
+-        item.category.toLowerCase().includes(catalogColumnFilters.category.toLowerCase()) &&
+-        item.unit.toLowerCase().includes(catalogColumnFilters.unit.toLowerCase()) &&
+-        item.supplierName.toLowerCase().includes(catalogColumnFilters.supplierName.toLowerCase())
+-      );
++      ].join(" ");
++      const normalizedHaystack = normalizeSearchText(haystack);
++      if (search && !normalizedHaystack.includes(search)) return false;
++      return true;
+     });
+     const pageCount = Math.max(1, Math.ceil(filteredItems.length / catalogPageSize));
+     const safePage = Math.min(catalogPage, pageCount);
+@@ -27095,9 +27835,23 @@ export function DashboardPage() {
+ 
+         <div className={styles.contactPagination}>
+           <span>Seite</span>
+-          <button className={styles.iconButton} disabled={safePage <= 1} onClick={() => setCatalogPage((page) => Math.max(1, page - 1))}>?</button>
++          <button
++            className={styles.iconButton}
++            disabled={safePage <= 1}
++            aria-label="Vorherige Seite"
++            onClick={() => setCatalogPage((page) => Math.max(1, page - 1))}
++          >
++            {"<"}
++          </button>
+           <input value={safePage} onChange={(event) => setCatalogPage(Number(event.target.value) || 1)} />
+-          <button className={styles.iconButton} disabled={safePage >= pageCount} onClick={() => setCatalogPage((page) => Math.min(pageCount, page + 1))}>?</button>
++          <button
++            className={styles.iconButton}
++            disabled={safePage >= pageCount}
++            aria-label="Nächste Seite"
++            onClick={() => setCatalogPage((page) => Math.min(pageCount, page + 1))}
++          >
++            {">"}
++          </button>
+           <span>von {pageCount}</span>
+           <span>Zeige</span>
+           <select value={catalogPageSize} onChange={(event) => setCatalogPageSize(Number(event.target.value))}>
+@@ -27123,15 +27877,6 @@ export function DashboardPage() {
+                 <th>Status</th>
+                 <th>Aktionen</th>
+               </tr>
+-              <tr className={styles.contactFilterRow}>
+-                <th><input value={catalogColumnFilters.number} onChange={(event) => setCatalogColumnFilters((current) => ({ ...current, number: event.target.value }))} /></th>
+-                <th><input value={catalogColumnFilters.name} onChange={(event) => setCatalogColumnFilters((current) => ({ ...current, name: event.target.value }))} /></th>
+-                <th />
+-                <th><input value={catalogColumnFilters.category} onChange={(event) => setCatalogColumnFilters((current) => ({ ...current, category: event.target.value }))} /></th>
+-                <th><input value={catalogColumnFilters.unit} onChange={(event) => setCatalogColumnFilters((current) => ({ ...current, unit: event.target.value }))} /></th>
+-                <th><input value={catalogColumnFilters.supplierName} onChange={(event) => setCatalogColumnFilters((current) => ({ ...current, supplierName: event.target.value }))} /></th>
+-                <th colSpan={6} />
+-              </tr>
+             </thead>
+             <tbody>
+               {pagedItems.length === 0 ? (
+@@ -27148,12 +27893,22 @@ export function DashboardPage() {
+                   <td>{formatMoney(item.purchasePrice)}</td>
+                   <td>{formatMoney(item.salesPrice)}</td>
+                   <td>{formatHours(item.vatRate)}%</td>
+-                  <td>{item.isActive ? "Aktiv" : "Inaktiv"}</td>
+                   <td>
+-                    <div className={styles.tableActionGroup}>
+-                      <button className={styles.iconButton} onClick={() => openEditCatalogModal(item)} title="Bearbeiten">?</button>
+-                      <button className={styles.iconButton} onClick={() => duplicateCatalogItem(item)} title="Duplizieren">?</button>
+-                      <button className={styles.iconButton} onClick={() => deactivateCatalogItem(item)} title="Deaktivieren">?</button>
++                    <span className={styles.catalogStatusClip} data-status={item.isActive ? "active" : "inactive"}>
++                      {item.isActive ? "Aktiv" : "Inaktiv"}
++                    </span>
++                  </td>
++                  <td>
++                    <div className={`${styles.tableActionGroup} ${styles.catalogActionGroup}`}>
++                      <button className={styles.secondaryButton} onClick={() => openEditCatalogModal(item)}>
++                        Bearbeiten
++                      </button>
++                      <button className={styles.secondaryButton} onClick={() => duplicateCatalogItem(item)}>
++                        Duplizieren
++                      </button>
++                      <button className={styles.secondaryButton} disabled={!item.isActive} onClick={() => deactivateCatalogItem(item)}>
++                        Deaktivieren
++                      </button>
+                     </div>
+                   </td>
+                 </tr>
+@@ -27349,7 +28104,7 @@ export function DashboardPage() {
+                         </td>
+                         <td>
+                           <button className={styles.iconButton} onClick={() => removeCatalogPackageItem(index)}>
+-                            ?
++                            ×
+                           </button>
+                         </td>
+                       </tr>
+@@ -27425,7 +28180,7 @@ export function DashboardPage() {
+                             </td>
+                             <td>{formatHours(getMarkupPercent(item.componentPurchasePrice, unitSalesPrice))}</td>
+                             <td>{formatMoney(unitSalesPrice * item.quantity)}</td>
+-                            <td><button className={styles.iconButton} onClick={() => removeCatalogPackageItem(index)}>?</button></td>
++                            <td><button className={styles.iconButton} onClick={() => removeCatalogPackageItem(index)}>×</button></td>
+                           </tr>
+                         );
+                       })
+@@ -27496,7 +28251,7 @@ export function DashboardPage() {
+                             </td>
+                             <td>{formatHours(getMarkupPercent(item.componentPurchasePrice, unitSalesPrice))}</td>
+                             <td>{formatMoney(unitSalesPrice * item.quantity)}</td>
+-                            <td><button className={styles.iconButton} onClick={() => removeCatalogPackageItem(index)}>?</button></td>
++                            <td><button className={styles.iconButton} onClick={() => removeCatalogPackageItem(index)}>×</button></td>
+                           </tr>
+                         );
+                       })
+@@ -27668,7 +28423,7 @@ export function DashboardPage() {
+               </p>
+             </div>
+             <button className={styles.iconButton} type="button" onClick={() => setDocumentMailDraft(null)}>
+-              ?
++              ×
+             </button>
+           </div>
+           <div className={styles.standardModalBody}>
+@@ -31231,7 +31986,7 @@ export function DashboardPage() {
+                 </label>
+                 <span>
+                   {selectedProjectKindFilter === "potentials"
+-                    ? `${filteredPipelinePotentials.length} Potenziale`
++                    ? `${filteredPipelinePotentials.length} Verkaufschancen`
+                     : `${visibleHeroProjects.length} Projekte`}
+                   {selectedProjectKindFilter
+                     ? ` in "${projectKindRows.find((row) => row.key === selectedProjectKindFilter)?.label}"`
+@@ -31244,14 +31999,14 @@ export function DashboardPage() {
+                   <>
+                     <div className={styles.projectStatusStrip}>
+                       <div className={styles.projectStatusStripMeta}>
+-                        <strong>Potenziale</strong>
+-                        <span>{getPotentialStatusCount("all")} Potenziale</span>
++                        <strong>Verkaufschancen</strong>
++                        <span>{getPotentialStatusCount("all")} Verkaufschancen</span>
+                       </div>
+                       <div className={`${styles.projectPipelineStatusList} ${styles.potentialStatusList}`}>
+                         {[
+                           { label: "Alle", value: "all" as const },
+                           { label: "Offen", value: "open" as const },
+-                          { label: "Wiedervorlage", value: "follow_up" as const },
++                          { label: "Nachfassen", value: "follow_up" as const },
+                           { label: "Fällig", value: "due" as const },
+                           { label: "Angeboten", value: "offered" as const },
+                           { label: "Kein Interesse", value: "lost" as const },
+@@ -31280,13 +32035,13 @@ export function DashboardPage() {
+                             <thead>
+                               <tr>
+                                 <th>Status</th>
+-                                <th>Potenzial</th>
++                                <th>Verkaufschance</th>
+                                 <th>Kunde</th>
+                                 <th>Projekt</th>
+-                                <th>PrioritÃ¤t</th>
++                                <th>Priorität</th>
+                                 <th>Wert</th>
+                                 <th>Erkannt am</th>
+-                                <th>Wiedervorlage</th>
++                                <th>Nachfass-Aufgabe</th>
+                                 <th>Zuständig</th>
+                                 <th>Letzte Aktion</th>
+                                 <th>Aktion</th>
+@@ -31295,7 +32050,7 @@ export function DashboardPage() {
+                             <tbody>
+                               {filteredPipelinePotentials.length === 0 ? (
+                                 <tr>
+-                                  <td colSpan={11}>Keine Potenziale in dieser Auswahl.</td>
++                                  <td colSpan={11}>Keine Verkaufschancen in dieser Auswahl.</td>
+                                 </tr>
+                               ) : (
+                                 filteredPipelinePotentials.map((potential) => {
+@@ -31338,7 +32093,7 @@ export function DashboardPage() {
+                                                 className={styles.timeEntryEditButton}
+                                                 onClick={() => void schedulePotentialFollowUp(potential)}
+                                               >
+-                                                Später nachfassen
++                                                Nachfass-Aufgabe
+                                               </button>
+                                               <button
+                                                 type="button"
+@@ -31366,7 +32121,7 @@ export function DashboardPage() {
+                           </table>
+                         </div>
+                         <p className={styles.heroTableHint}>
+-                          Alle {filteredPipelinePotentials.length} Potenziale sind geladen und auswertbar.
++                          Alle {filteredPipelinePotentials.length} Verkaufschancen sind geladen und auswertbar.
+                         </p>
+                       </section>
+                     </div>
+@@ -32785,7 +33540,7 @@ export function DashboardPage() {
+                 className={styles.iconButton}
+                 onClick={() => setIsPlanningEntryModalOpen(false)}
+               >
+-                ?
++                ×
+               </button>
+             </div>
+ 
+@@ -32850,7 +33605,10 @@ export function DashboardPage() {
+                     ))}
+                   </select>
+                 </label>
+-                <label>
++                <label
++                  className={styles.requiredPlanningField}
++                  data-required-missing={!users.some((user) => user.id === planningEntryUserId)}
++                >
+                   Mitarbeiter
+                   <select
+                     value={planningEntryUserId}
+@@ -32875,7 +33633,7 @@ export function DashboardPage() {
+                   <input
+                     type="date"
+                     value={planningEntryDate}
+-                    onChange={(event) => setPlanningEntryDate(event.target.value)}
++                    onChange={(event) => setPlanningDateAndDefaultWeekday(event.target.value)}
+                   />
+                 </label>
+                 <label>
+@@ -32904,7 +33662,10 @@ export function DashboardPage() {
+                     ))}
+                   </select>
+                 </label>
+-                <label className={styles.fullWidth}>
++                <label
++                  className={`${styles.fullWidth} ${styles.requiredPlanningField}`}
++                  data-required-missing={!planningEntryTitle.trim()}
++                >
+                   Titel
+                   <input
+                     value={planningEntryTitle}
+@@ -33020,7 +33781,7 @@ export function DashboardPage() {
+                 })()}
+                 <section className={`${styles.planningRecurrencePanel} ${styles.fullWidth}`}>
+                   <div>
+-                    <strong>Wiederholung</strong>
++                    <strong>Terminserie anlegen</strong>
+                     <span>
+                       {editingPlanningEntryId
+                         ? "Serien werden beim Neuanlegen erzeugt."
+@@ -33029,11 +33790,17 @@ export function DashboardPage() {
+                   </div>
+                   <div className={styles.planningRecurrenceGrid}>
+                     <label>
+-                      Rhythmus
++                      Intervall
+                       <select
+                         value={planningRecurrenceType}
+                         disabled={Boolean(editingPlanningEntryId)}
+-                        onChange={(event) => setPlanningRecurrenceType(event.target.value as PlanningRecurrenceType)}
++                        onChange={(event) => {
++                          const nextType = event.target.value as PlanningRecurrenceType;
++                          setPlanningRecurrenceType(nextType);
++                          if (nextType !== "once" && planningRecurrenceWeekdays.length === 0) {
++                            setPlanningRecurrenceWeekdays([getWeekdayFromDateKey(planningEntryDate)]);
++                          }
++                        }}
+                       >
+                         <option value="once">Einmalig</option>
+                         <option value="weekly">Wöchentlich</option>
+@@ -33042,7 +33809,7 @@ export function DashboardPage() {
+                       </select>
+                     </label>
+                     <label>
+-                      Wiederholen bis
++                      Serienende
+                       <input
+                         type="date"
+                         value={planningRecurrenceUntil}
+@@ -33051,37 +33818,77 @@ export function DashboardPage() {
+                         onChange={(event) => setPlanningRecurrenceUntil(event.target.value)}
+                       />
+                     </label>
+-                    <label className={styles.checkboxLine}>
+-                      <input
+-                        type="checkbox"
+-                        checked={planningRecurrenceSkipWeekends}
+-                        disabled={Boolean(editingPlanningEntryId) || planningRecurrenceType === "once"}
+-                        onChange={(event) => setPlanningRecurrenceSkipWeekends(event.target.checked)}
+-                      />
+-                      Wochenenden überspringen
+-                    </label>
++                    <div className={styles.planningWeekdayPicker}>
++                      <span>Wochentage</span>
++                      <div>
++                        {planningWeekdayOptions.map((weekday) => (
++                          <button
++                            key={weekday.value}
++                            type="button"
++                            data-active={planningRecurrenceWeekdays.includes(weekday.value)}
++                            disabled={Boolean(editingPlanningEntryId) || planningRecurrenceType === "once"}
++                            onClick={() => togglePlanningRecurrenceWeekday(weekday.value)}
++                          >
++                            {weekday.label}
++                          </button>
++                        ))}
++                      </div>
++                    </div>
+                   </div>
+                 </section>
+-                {planningEntrySource === "offer" && (
++                {(planningEntrySource === "offer" || shouldShowPlanningOfferAssignment()) && (
+                   <>
+-                    <label className={styles.fullWidth}>
+-                      Angebotsposition
+-                      <input
+-                        value={planningEntryOfferLabel}
+-                        onChange={(event) => setPlanningEntryOfferLabel(event.target.value)}
+-                        placeholder="z.B. Rasenmähen - 5 Std."
+-                      />
+-                    </label>
+-                    <label>
+-                      Angebotene Stunden
+-                      <input
+-                        type="number"
+-                        min="0"
+-                        step="0.25"
+-                        value={planningEntryOfferTotalHours}
+-                        onChange={(event) => setPlanningEntryOfferTotalHours(event.target.value)}
+-                      />
+-                    </label>
++                    {(() => {
++                      const selectedPlanningProject = heroProjects.find((project) => project.id === planningEntryProjectId);
++                      const isSinglePlanningProject =
++                        selectedPlanningProject && !getProjectKind(selectedPlanningProject).startsWith("Dauer");
++                      const planningOfferOptions = selectedPlanningProject
++                        ? offers.filter(
++                            (offer) =>
++                              offer.projectId === selectedPlanningProject.id &&
++                              offer.status !== "Entwurf" &&
++                              getOfferLaborPlanningHours(offer) > 0
++                          )
++                        : [];
++                      if (!isSinglePlanningProject || planningOfferOptions.length === 0) return null;
++
++                      return (
++                        <label
++                          className={`${styles.fullWidth} ${styles.requiredPlanningField}`}
++                          data-required-missing={!planningEntryOfferId}
++                        >
++                          Zuordnung Angebot
++                          <select
++                            value={planningEntryOfferId}
++                            onChange={(event) => {
++                              const selectedOffer = planningOfferOptions.find(
++                                (offer) => offer.id === event.target.value
++                              );
++                              setPlanningEntryOfferId(selectedOffer?.id ?? "");
++                              setPlanningEntryOfferLineId("");
++                              setPlanningEntryOfferLabel(
++                                selectedOffer
++                                  ? `${selectedOffer.offerNumber} | ${
++                                      selectedOffer.offerType === "addendum" ? "Nachtragsangebot" : "Basisangebot"
++                                    }`
++                                  : ""
++                              );
++                              setPlanningEntryOfferTotalHours(
++                                selectedOffer ? String(getOfferLaborPlanningHours(selectedOffer)) : "0"
++                              );
++                            }}
++                          >
++                            <option value="">Angebot auswählen</option>
++                            {planningOfferOptions.map((offer) => (
++                              <option key={offer.id} value={offer.id}>
++                                {offer.offerNumber} | {offer.offerType === "addendum" ? "Nachtragsangebot" : "Basisangebot"} |{" "}
++                                {formatHours(getOfferLaborPlanningHours(offer))} Std.
++                              </option>
++                            ))}
++                          </select>
++                        </label>
++                      );
++                    })()}
+                     <div className={styles.planningOfferInfo}>
+                       <span>Kontingent vorbereitet</span>
+                       {(() => {
+@@ -33095,27 +33902,36 @@ export function DashboardPage() {
+                         );
+                         const alreadyPlannedMinutes = getAlreadyPlannedOfferMinutesForPlanningEntry();
+                         const offerTotalMinutes = Math.round((Number(planningEntryOfferTotalHours) || 0) * 60);
++                        const remainingBeforeSaveMinutes = Math.max(offerTotalMinutes - alreadyPlannedMinutes, 0);
+                         const plannedAfterSaveMinutes = alreadyPlannedMinutes + currentMinutes;
+-                        const remainingAfterSaveMinutes = Math.max(offerTotalMinutes - plannedAfterSaveMinutes, 0);
++                        const remainingAfterSaveMinutes = offerTotalMinutes - plannedAfterSaveMinutes;
+ 
+                         return (
+                           <>
+                             <strong>
+-                              {formatHours(plannedAfterSaveMinutes / 60)} von{" "}
++                              Nach Speichern: {formatHours(plannedAfterSaveMinutes / 60)} von{" "}
+                               {formatHours(offerTotalMinutes / 60)} Std. verplant
+                             </strong>
+                             <small>
+-                              Bereits {formatHours(alreadyPlannedMinutes / 60)} Std. | Dieser Termin{" "}
+-                              {formatHours(currentMinutes / 60)} Std. | Danach offen{" "}
+-                              {formatHours(remainingAfterSaveMinutes / 60)} Std.
++                              Bisher {formatHours(alreadyPlannedMinutes / 60)} Std. | Dieser Termin{" "}
++                              {formatHours(currentMinutes / 60)} Std. |{" "}
++                              {remainingAfterSaveMinutes < -0.01
++                                ? `Danach ${formatHours(Math.abs(remainingAfterSaveMinutes) / 60)} Std. überplant`
++                                : `Danach offen ${formatHours(Math.max(remainingAfterSaveMinutes, 0) / 60)} Std.`}
+                             </small>
++                            {remainingBeforeSaveMinutes <= 0 && currentMinutes > 0 ? (
++                              <small>Hinweis: Dieses Angebot ist vor dem Speichern bereits voll verplant.</small>
++                            ) : null}
+                           </>
+                         );
+                       })()}
+                     </div>
+                   </>
+                 )}
+-                <label className={styles.fullWidth}>
++                <label
++                  className={`${styles.fullWidth} ${styles.requiredPlanningField}`}
++                  data-required-missing={!planningEntryDescription.trim()}
++                >
+                   Beschreibung
+                   <textarea
+                     rows={4}
+@@ -33574,7 +34390,7 @@ export function DashboardPage() {
+                 onClick={() => setIsLogbookModalOpen(false)}
+                 aria-label="Nachricht schliessen"
+               >
+-                ?
++                ×
+               </button>
+             </div>
+ 
+@@ -33726,7 +34542,7 @@ export function DashboardPage() {
+                 onClick={() => setIsContactBulkModalOpen(false)}
+                 aria-label="Gruppenaktion schließen"
+               >
+-                ?
++                ×
+               </button>
+             </div>
+ 
+@@ -34664,7 +35480,7 @@ export function DashboardPage() {
+             onClick={() => setIsContentModalOpen(false)}
+             aria-label="Content-Maske schließen"
+           >
+-            ?
++            ×
+           </button>
+         </div>
+ 
+@@ -35111,7 +35927,7 @@ export function DashboardPage() {
+ 
+               {selectedProjectContactPotentials.length > 0 && (
+                 <div className={`${styles.modalWarning} ${styles.standardFormWide}`}>
+-                  Achtung: vorhandenes Potenzial vorhanden:{" "}
++                  Achtung: vorhandene Verkaufschance vorhanden:{" "}
+                   {selectedProjectContactPotentials.map((potential) => potential.description).join(", ")}
+                 </div>
+               )}
+@@ -35836,6 +36652,87 @@ export function DashboardPage() {
+         </div>
+       )}
+ 
++      {isManualPotentialModalOpen && (
++        <div className={styles.overlay} onClick={() => setIsManualPotentialModalOpen(false)}>
++          <div
++            className={`${styles.standardModal} ${styles.manualPotentialModal}`}
++            onClick={(event) => event.stopPropagation()}
++          >
++            <div className={styles.standardModalHeader}>
++              <div>
++                <h2>Verkaufschance anlegen</h2>
++                <p>Eine manuelle Verkaufschance braucht immer ein vorhandenes Projekt.</p>
++              </div>
++              <button
++                className={styles.iconButton}
++                type="button"
++                onClick={() => setIsManualPotentialModalOpen(false)}
++                aria-label="Verkaufschance schließen"
++              >
++                ×
++              </button>
++            </div>
++            <div className={styles.standardModalBody}>
++              <div className={styles.formGrid}>
++                <label className={styles.fullWidth}>
++                  Projekt
++                  <select
++                    value={manualPotentialProjectId}
++                    onChange={(event) => {
++                      setManualPotentialProjectId(event.target.value);
++                      setManualPotentialError("");
++                    }}
++                  >
++                    <option value="">Projekt auswählen</option>
++                    {heroProjects.map((project) => (
++                      <option key={project.id} value={project.id}>
++                        {project.projectNumber || project.id} | {project.customer || "Kein Kunde"} | {project.title}
++                      </option>
++                    ))}
++                  </select>
++                </label>
++                <label className={styles.fullWidth}>
++                  Verkaufschance
++                  <textarea
++                    rows={4}
++                    value={manualPotentialDescription}
++                    onChange={(event) => {
++                      setManualPotentialDescription(event.target.value);
++                      setManualPotentialError("");
++                    }}
++                    placeholder="Welche Zusatzleistung oder Folgechance wurde erkannt?"
++                  />
++                </label>
++                <label>
++                  Geschätzter Wert
++                  <input
++                    value={manualPotentialEstimatedValue}
++                    onChange={(event) => setManualPotentialEstimatedValue(event.target.value)}
++                    placeholder="0,00"
++                  />
++                </label>
++              </div>
++              {manualPotentialError ? <p className={styles.modalWarning}>{manualPotentialError}</p> : null}
++            </div>
++            <div className={styles.standardModalFooter}>
++              <span />
++              <div className={styles.modalActions}>
++                <button
++                  type="button"
++                  className={styles.secondaryButton}
++                  onClick={() => setIsManualPotentialModalOpen(false)}
++                >
++                  Abbrechen
++                </button>
++                <button type="button" className={styles.primaryButton} onClick={() => void saveManualPotential()}>
++                  Verkaufschance anlegen
++                </button>
++              </div>
++            </div>
++          </div>
++        </div>
++      )}
++
+       {editingPotential && (
+         <div className={styles.overlay} onClick={() => setEditingPotential(null)}>
+           <div
+@@ -35844,7 +36741,7 @@ export function DashboardPage() {
+           >
+             <div className={styles.standardModalHeader}>
+               <div>
+-                <h2>Potenzial bearbeiten</h2>
++                <h2>Verkaufschance bearbeiten</h2>
+                 <p>{editingPotential.projectLabel || editingPotential.customerName || "Zusatzverkauf"}</p>
+               </div>
+               <button className={styles.iconButton} type="button" onClick={() => setEditingPotential(null)}>
+@@ -35857,10 +36754,6 @@ export function DashboardPage() {
+                   <span>Status</span>
+                   <strong>{getPotentialStatusLabel({ ...editingPotential, status: potentialDraft.status })}</strong>
+                 </div>
+-                <div>
+-                  <span>Priorität</span>
+-                  <strong>{getPotentialPriorityLabel(potentialDraft.priority)}</strong>
+-                </div>
+                 <div>
+                   <span>Geschätzter Wert</span>
+                   <strong>{potentialDraft.estimatedValue ? `${potentialDraft.estimatedValue} €` : "-"}</strong>
+@@ -35869,7 +36762,7 @@ export function DashboardPage() {
+ 
+               <div className={styles.formGrid}>
+                 <label className={styles.fullWidth}>
+-                  Potenzial
++                  Verkaufschance
+                   <textarea
+                     value={potentialDraft.description}
+                     onChange={(event) =>
+@@ -35892,7 +36785,7 @@ export function DashboardPage() {
+                     }
+                   >
+                     <option value="open">Offen</option>
+-                    <option value="follow_up">Wiedervorlage</option>
++                    <option value="follow_up">Nachfassen geplant</option>
+                     <option value="offered">Angeboten</option>
+                     <option value="lost">Kein Interesse</option>
+                   </select>
+@@ -35934,46 +36827,17 @@ export function DashboardPage() {
+                   />
+                 </label>
+                 <label>
+-                  Priorität
+-                  <select
+-                    value={potentialDraft.priority}
+-                    onChange={(event) =>
+-                      setPotentialDraft((currentDraft) => ({
+-                        ...currentDraft,
+-                        priority: event.target.value as ProjectPotentialPriority,
+-                      }))
+-                    }
++                  Nachfass-Aufgabe
++                  <button
++                    type="button"
++                    className={styles.potentialTaskInfo}
++                    data-clickable={getPotentialLinkedTask(editingPotential) ? "true" : "false"}
++                    onClick={() => openPotentialLinkedTask(editingPotential)}
++                    disabled={!getPotentialLinkedTask(editingPotential)}
+                   >
+-                    <option value="low">Niedrig</option>
+-                    <option value="normal">Normal</option>
+-                    <option value="high">Hoch</option>
+-                  </select>
+-                </label>
+-                <label>
+-                  Wiedervorlage
+-                  <input
+-                    type="date"
+-                    value={potentialDraft.followUpAt}
+-                    onChange={(event) =>
+-                      setPotentialDraft((currentDraft) => ({
+-                        ...currentDraft,
+-                        followUpAt: event.target.value,
+-                      }))
+-                    }
+-                  />
+-                </label>
+-                <label className={styles.fullWidth}>
+-                  Nächster Schritt
+-                  <textarea
+-                    value={potentialDraft.nextStep}
+-                    onChange={(event) =>
+-                      setPotentialDraft((currentDraft) => ({
+-                        ...currentDraft,
+-                        nextStep: event.target.value,
+-                      }))
+-                    }
+-                    placeholder="Was soll als Nächstes passieren?"
+-                  />
++                    <strong>{getPotentialFollowUpInfo(editingPotential).title}</strong>
++                    <span>{getPotentialFollowUpInfo(editingPotential).detail}</span>
++                  </button>
+                 </label>
+                 {potentialDraft.status === "lost" ? (
+                   <label className={styles.fullWidth}>
+@@ -35990,7 +36854,7 @@ export function DashboardPage() {
+                   </label>
+                 ) : null}
+                 <label className={styles.fullWidth}>
+-                  Notiz zur Änderung
++                  Notiz für Historie
+                   <textarea
+                     value={potentialDraft.note}
+                     onChange={(event) =>
+@@ -36010,11 +36874,13 @@ export function DashboardPage() {
+                   <p>Noch keine Historie vorhanden.</p>
+                 ) : (
+                   <div className={styles.customerTimeline}>
+-                    {editingPotential.history.map((entry, index) => (
++                    {[...editingPotential.history]
++                      .sort((firstEntry, secondEntry) => new Date(secondEntry.at).getTime() - new Date(firstEntry.at).getTime())
++                      .map((entry, index) => (
+                       <article key={`${entry.at}-${index}`}>
+                         <div className={styles.customerAvatar}>{entry.actor.slice(0, 2).toUpperCase()}</div>
+                         <div>
+-                          <a>{formatDeadline(entry.at)}</a>
++                          <a>{formatInstantDateTime(entry.at)}</a>
+                           <p>{entry.note || entry.action}</p>
+                           <small className={styles.customerLogMeta}>{entry.actor}</small>
+                         </div>
+@@ -36048,27 +36914,7 @@ export function DashboardPage() {
+                     void schedulePotentialFollowUp(currentPotential);
+                   }}
+                 >
+-                  Aufgabe / Wiedervorlage
+-                </button>
+-                <button
+-                  type="button"
+-                  className={styles.secondaryButton}
+-                  onClick={async () => {
+-                    const savedPotential = await updateProjectPotential(editingPotential, "lost", {
+-                      lostReason: potentialDraft.lostReason || potentialDraft.note,
+-                      note: potentialDraft.note || potentialDraft.lostReason || "Kein Interesse.",
+-                    });
+-                    if (savedPotential) {
+-                      setEditingPotential(savedPotential);
+-                      setPotentialDraft((currentDraft) => ({
+-                        ...currentDraft,
+-                        status: "lost",
+-                        note: "",
+-                      }));
+-                    }
+-                  }}
+-                >
+-                  Kein Interesse
++                  {getPotentialLinkedTask(editingPotential) ? "Nachfass-Aufgabe öffnen" : "Nachfass-Aufgabe anlegen"}
+                 </button>
+                 <button type="button" className={styles.primaryButton} onClick={() => void savePotentialDetail()}>
+                   Speichern
+@@ -36087,11 +36933,11 @@ export function DashboardPage() {
+           >
+             <div className={styles.standardModalHeader}>
+               <div>
+-                <h2>Potenzial-Historie</h2>
++                <h2>Verkaufschance-Historie</h2>
+                 <p>{historyPotential.description}</p>
+               </div>
+               <button className={styles.iconButton} type="button" onClick={() => setHistoryPotential(null)}>
+-                ?
++                X
+               </button>
+             </div>
+             <div className={styles.standardModalBody}>
+@@ -36099,11 +36945,13 @@ export function DashboardPage() {
+                 {historyPotential.history.length === 0 ? (
+                   <p>Noch keine Historie vorhanden.</p>
+                 ) : (
+-                  historyPotential.history.map((entry, index) => (
++                  [...historyPotential.history]
++                    .sort((firstEntry, secondEntry) => new Date(secondEntry.at).getTime() - new Date(firstEntry.at).getTime())
++                    .map((entry, index) => (
+                     <article key={`${entry.at}-${index}`}>
+                       <div className={styles.customerAvatar}>{entry.actor.slice(0, 2).toUpperCase()}</div>
+                       <div>
+-                        <a>{formatDeadline(entry.at)}</a>
++                        <a>{formatInstantDateTime(entry.at)}</a>
+                         <p>{entry.note || entry.action}</p>
+                         <small className={styles.customerLogMeta}>{entry.actor}</small>
+                       </div>
+diff --git a/src/components/dashboard/dashboard.module.css b/src/components/dashboard/dashboard.module.css
+index 534eaec..7e52a0b 100644
+--- a/src/components/dashboard/dashboard.module.css
++++ b/src/components/dashboard/dashboard.module.css
+@@ -12674,6 +12674,10 @@
+   width: min(1060px, calc(100vw - 24px));
+ }
+ 
++.manualPotentialModal {
++  width: min(820px, calc(100vw - 16px));
++}
++
+ .potentialModalBody {
+   gap: 18px;
+ }
+@@ -13243,6 +13247,16 @@
+   color: #9a3412;
+ }
+ 
++.requiredPlanningField[data-required-missing="true"] input,
++.requiredPlanningField[data-required-missing="true"] select,
++.requiredPlanningField[data-required-missing="true"] textarea {
++  animation: requiredPulse 1.4s ease-in-out infinite;
++  background: #fff7ed;
++  border-color: #fb923c;
++  box-shadow: 0 0 0 3px rgba(251, 146, 60, 0.18);
++  color: #9a3412;
++}
++
+ @keyframes requiredPulse {
+   0%,
+   100% {
+@@ -17825,6 +17839,44 @@
+   grid-template-columns: repeat(3, minmax(0, 1fr));
+ }
+ 
++.planningWeekdayPicker {
++  color: #334155;
++  display: grid;
++  font-size: 0.82rem;
++  font-weight: 800;
++  gap: 8px;
++}
++
++.planningWeekdayPicker > div {
++  display: grid;
++  gap: 6px;
++  grid-template-columns: repeat(7, minmax(0, 1fr));
++}
++
++.planningWeekdayPicker button {
++  align-items: center;
++  background: #ffffff;
++  border: 1px solid #d8e0ea;
++  border-radius: 10px;
++  color: #334155;
++  cursor: pointer;
++  display: inline-flex;
++  font-weight: 900;
++  justify-content: center;
++  min-height: 38px;
++}
++
++.planningWeekdayPicker button[data-active="true"] {
++  background: #e6f8fa;
++  border-color: #00a6b3;
++  color: #008b96;
++}
++
++.planningWeekdayPicker button:disabled {
++  cursor: not-allowed;
++  opacity: 0.58;
++}
++
+ .planningSeriesBadge {
+   background: #eef6ff;
+   border: 1px solid #cfe0f5;

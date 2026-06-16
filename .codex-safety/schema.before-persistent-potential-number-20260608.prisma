@@ -1,0 +1,1497 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id               String              @id @default(cuid())
+  name             String
+  slug             String              @unique
+  locale           String              @default("de")
+  timezone         String              @default("Europe/Berlin")
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  auditLogs        AuditLog[]
+  businessAreas    BusinessArea[]
+  businessAreaTargets BusinessAreaTarget[]
+  categories       Category[]
+  departments      Department[]
+  escalationRules  EscalationRule[]
+  notifications    Notification[]
+  catalogItems     CatalogItem[]
+  catalogItemHistory CatalogItemHistory[]
+  unitOptions      UnitOption[]
+  catalogPackageItems CatalogPackageItem[]
+  contentApprovalHistory ContentApprovalHistory[]
+  contentItems     ContentItem[]
+  offers           Offer[]
+  offerLines       OfferLine[]
+  offerLineLabor   OfferLineLabor[]
+  offerHistory     OfferHistory[]
+  invoices         Invoice[]
+  invoiceLines     InvoiceLine[]
+  invoiceLineLabor InvoiceLineLabor[]
+  invoiceHistory   InvoiceHistory[]
+  employeeCostCalculations EmployeeCostCalculation[]
+  recurringRules   RecurringTaskRule[]
+  subcategories    Subcategory[]
+  tasks            Task[]
+  taskComments     TaskComment[]
+  taskLinks        TaskLink[]
+  taskParticipants TaskParticipant[]
+  taskTemplates    TaskTemplate[]
+  teams            Team[]
+  timeEntries      TimeEntry[]
+  users            User[]
+}
+
+model User {
+  id                  String            @id @default(cuid())
+  organizationId      String
+  email               String
+  passwordHash        String
+  firstName           String
+  lastName            String
+  role                Role
+  isActive            Boolean           @default(true)
+  teamId              String?
+  departmentId        String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  dailyWorkHours      Float             @default(8)
+  profileImageDataUrl String?
+  salutation          String?
+  birthDate           DateTime?
+  language            String?
+  phone               String?
+  mobile              String?
+  street              String?
+  postalCode          String?
+  city                String?
+  signature           String?
+  signatureHidden     Boolean?          @default(false)
+  planningBoard       String?
+  planningGroup       String?
+  weeklyCapacity      Json              @default("{\"monday\":8,\"tuesday\":8,\"wednesday\":8,\"thursday\":8,\"friday\":8,\"saturday\":0,\"sunday\":0}")
+  planningStartTime   String            @default("08:00")
+  planningEndTime     String            @default("17:00")
+  planningTimeWindows Json              @default("{\"monday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"tuesday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"wednesday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"thursday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"friday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"saturday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"sunday\":{\"start\":\"08:00\",\"end\":\"17:00\"}}")
+  planningBreakWindows Json             @default("{\"monday\":{\"start\":\"12:00\",\"end\":\"12:30\"},\"tuesday\":{\"start\":\"12:00\",\"end\":\"12:30\"},\"wednesday\":{\"start\":\"12:00\",\"end\":\"12:30\"},\"thursday\":{\"start\":\"12:00\",\"end\":\"12:30\"},\"friday\":{\"start\":\"12:00\",\"end\":\"12:30\"},\"saturday\":{\"start\":\"\",\"end\":\"\"},\"sunday\":{\"start\":\"\",\"end\":\"\"}}")
+  planningResponsibleFor Json           @default("[]")
+  branchAllocations Json?
+  includeInLaborCostRate Boolean        @default(true)
+  notifyIdeaStore    Boolean           @default(true)
+  notifyUpsell       Boolean           @default(false)
+  mailAccount        Json              @default("{}")
+  employeeAssessment Json              @default("{}")
+  costCalculations  EmployeeCostCalculation[]
+  notifications       Notification[]
+  ownedTasks          Task[]            @relation("TaskOwner")
+  taskComments        TaskComment[]
+  taskParticipations  TaskParticipant[]
+  timeEntries         TimeEntry[]
+  department          Department?       @relation(fields: [departmentId], references: [id])
+  organization        Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team                Team?             @relation(fields: [teamId], references: [id])
+
+  @@unique([organizationId, email])
+}
+
+model EmployeeCostCalculation {
+  id                 String       @id @default(cuid())
+  organizationId     String
+  userId             String
+  monthlySalary      Float        @default(0)
+  fullCostFactor     Float        @default(1.35)
+  annualHours        Float        @default(2080)
+  vacationDays       Float        @default(30)
+  trainingDays       Float        @default(0)
+  sickDays           Float        @default(10)
+  hoursPerDay        Float        @default(8)
+  updatedByUserId    String?
+  updatedByName      String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user               User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([organizationId, userId])
+}
+
+model Department {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  teams          Team[]
+  users          User[]
+}
+
+model Team {
+  id             String       @id @default(cuid())
+  organizationId String
+  departmentId   String?
+  name           String
+  tasks          Task[]
+  department     Department?  @relation(fields: [departmentId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  users          User[]
+}
+
+model Task {
+  id                      String                  @id @default(cuid())
+  organizationId          String
+  title                   String
+  description             String
+  status                  TaskStatus              @default(OFFEN)
+  priority                TaskPriority            @default(NORMAL)
+  deadline                DateTime
+  customer                String?
+  customerClass           CustomerClassification?
+  projectId               String?
+  categoryId              String?
+  subcategoryId           String?
+  estimateMinutes         Int?
+  ownerId                 String
+  teamId                  String?
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
+  autoFeedbackEnabled     Boolean                 @default(false)
+  autoFeedbackRecipientId String?
+  recurrenceEnabled       Boolean                 @default(false)
+  recurrenceInterval      String?
+  recurrenceParentTaskId  String?
+  createdById             String?
+  acceptanceStatus        String                  @default("accepted")
+  acceptanceRespondedAt   DateTime?
+  rejectionReason         String?
+  completedAt             DateTime?
+  archiveDueAt            DateTime?
+  archivedAt              DateTime?
+  archiveReason           String?
+  planningAllocations     Json                    @default("[]")
+  history                 Json                    @default("[]")
+  auditLogs               AuditLog[]
+  notifications           Notification[]
+  category                Category?               @relation(fields: [categoryId], references: [id])
+  organization            Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner                   User                    @relation("TaskOwner", fields: [ownerId], references: [id])
+  subcategory             Subcategory?            @relation(fields: [subcategoryId], references: [id])
+  team                    Team?                   @relation(fields: [teamId], references: [id])
+  comments                TaskComment[]
+  links                   TaskLink[]
+  participants            TaskParticipant[]
+  timeEntries             TimeEntry[]
+
+  @@index([organizationId, projectId])
+}
+
+model TaskParticipant {
+  id                    String       @id @default(cuid())
+  organizationId        String
+  taskId                String
+  userId                String
+  acceptanceStatus      String       @default("pending")
+  acceptanceRespondedAt DateTime?
+  rejectionReason       String?
+  createdAt             DateTime     @default(now())
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task                  Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+}
+
+model TaskComment {
+  id             String       @id @default(cuid())
+  organizationId String
+  taskId         String
+  authorId       String
+  recipientUserId String?
+  body           String
+  createdAt      DateTime     @default(now())
+  author         User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task           Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model TimeEntry {
+  id              String       @id @default(cuid())
+  organizationId  String
+  taskId          String
+  userId          String
+  startedAt       DateTime
+  stoppedAt       DateTime?
+  durationMinutes Int          @default(0)
+  note            String?
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task            Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TaskLink {
+  id             String       @id @default(cuid())
+  organizationId String
+  taskId         String
+  label          String
+  url            String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task           Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model Category {
+  id             String        @id @default(cuid())
+  organizationId String
+  businessAreaId String?
+  name           String
+  projectPrefix  String?
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  businessArea   BusinessArea? @relation(fields: [businessAreaId], references: [id], onDelete: SetNull)
+  subcategories  Subcategory[]
+  tasks          Task[]
+
+  @@index([organizationId, businessAreaId])
+}
+
+model BusinessArea {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  categories     Category[]
+  targets        BusinessAreaTarget[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model BusinessAreaTarget {
+  id             String       @id @default(cuid())
+  organizationId String
+  businessAreaId String
+  month          String
+  amount         Float        @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  businessArea   BusinessArea @relation(fields: [businessAreaId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, businessAreaId, month])
+  @@index([organizationId, month])
+}
+
+model Subcategory {
+  id             String       @id @default(cuid())
+  organizationId String
+  categoryId     String
+  name           String
+  category       Category     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tasks          Task[]
+}
+
+model Notification {
+  id             String       @id @default(cuid())
+  organizationId String
+  userId         String
+  taskId         String?
+  channel        String
+  subject        String
+  body           String
+  linkTarget     String?
+  linkTargetId   String?
+  linkLabel      String?
+  sentAt         DateTime?
+  createdAt      DateTime     @default(now())
+  readAt         DateTime?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task           Task?        @relation(fields: [taskId], references: [id])
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UnbilledTimeAlert {
+  id             String    @id
+  organizationId String
+  alertKey       String
+  projectId      String
+  periodKey      String
+  stage          String
+  notificationId String?
+  createdAt      DateTime  @default(now())
+  resolvedAt     DateTime?
+
+  @@unique([organizationId, alertKey, stage], map: "UnbilledTimeAlert_org_alert_stage_key")
+  @@index([organizationId, projectId])
+}
+
+model NewsPost {
+  id             String   @id
+  organizationId String
+  title          String
+  body           String   @default("")
+  authorUserId   String?
+  authorName     String   @default("")
+  visibility     String   @default("all")
+  departmentIds  Json     @default("[]")
+  teamIds        Json     @default("[]")
+  userIds        Json     @default("[]")
+  attachments    Json     @default("[]")
+  pollQuestion   String   @default("")
+  pollOptions    Json     @default("[]")
+  pollAllowMultiple Boolean @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+}
+
+model NewsPollVote {
+  organizationId String
+  postId         String
+  optionId       String
+  userId         String
+  createdAt      DateTime @default(now())
+
+  @@id([postId, optionId, userId])
+  @@index([organizationId, postId])
+  @@index([organizationId, userId])
+}
+
+model NewsComment {
+  id             String   @id
+  organizationId String
+  postId         String
+  body           String
+  authorUserId   String?
+  authorName     String   @default("")
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, postId])
+}
+
+model NewsReaction {
+  organizationId String
+  postId         String
+  userId         String
+  reaction       String   @default("up")
+  createdAt      DateTime @default(now())
+
+  @@id([postId, userId])
+  @@index([organizationId, postId])
+}
+
+model NewsReadState {
+  organizationId String
+  postId         String
+  userId         String
+  readAt         DateTime @default(now())
+
+  @@id([postId, userId])
+  @@index([organizationId, userId])
+}
+
+model SalesOpportunity {
+  id              String   @id
+  organizationId  String
+  title           String
+  customerName    String   @default("")
+  contactId       String?
+  projectId       String?
+  offerId         String?
+  ownerUserId     String?
+  ownerName       String   @default("")
+  stage           String   @default("lead")
+  estimatedValue  Float    @default(0)
+  probability     Int      @default(0)
+  nextAction      String   @default("")
+  nextActionAt    DateTime?
+  source          String   @default("")
+  notes           String   @default("")
+  history         Json     @default("[]")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now())
+
+  @@index([organizationId, stage])
+  @@index([organizationId, ownerUserId])
+}
+
+model SalesActivity {
+  id             String   @id
+  organizationId String
+  opportunityId  String
+  type           String   @default("note")
+  body           String
+  actorUserId    String?
+  actorName      String   @default("")
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, opportunityId])
+}
+
+model SalesTarget {
+  id             String    @id
+  organizationId String
+  contactId      String?
+  projectId      String?
+  customerName   String   @default("")
+  projectLabel   String   @default("")
+  title          String
+  description    String   @default("")
+  ownerUserId    String?
+  ownerName      String   @default("")
+  priority       String   @default("normal")
+  targetMonth    String   @default("")
+  followUpAt     DateTime?
+  status         String   @default("open")
+  history        Json     @default("[]")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now())
+
+  @@index([organizationId, status])
+  @@index([organizationId, ownerUserId])
+  @@index([organizationId, followUpAt])
+}
+
+model CustomerFeedbackRequest {
+  id             String    @id
+  organizationId String
+  token          String    @unique
+  invoiceId      String?
+  invoiceNumber  String   @default("")
+  projectId      String?
+  contactId      String?
+  customerName   String   @default("")
+  recipientEmail String   @default("")
+  salesUserId    String?
+  salesUserName  String   @default("")
+  status         String   @default("open")
+  sentAt         DateTime?
+  respondedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now())
+
+  @@index([organizationId, invoiceId])
+  @@index([organizationId, status])
+}
+
+model CustomerFeedback {
+  id             String   @id
+  organizationId String
+  requestId      String?
+  invoiceId      String?
+  invoiceNumber  String   @default("")
+  projectId      String?
+  contactId      String?
+  customerName   String   @default("")
+  rating         Int
+  comment        String   @default("")
+  wantsContact   Boolean  @default(false)
+  source         String   @default("manual")
+  salesUserId    String?
+  salesUserName  String   @default("")
+  hotAlert       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, rating])
+  @@index([organizationId, hotAlert])
+  @@index([organizationId, createdAt])
+}
+
+model CatalogItem {
+  id                    String               @id @default(cuid())
+  organizationId        String
+  type                  String               @default("article")
+  number                String
+  name                  String
+  category              String?
+  unit                  String               @default("Stk")
+  description           String?
+  matchcode             String?
+  ean                   String?
+  costCenter            String?
+  supplierName          String?
+  supplierNumber        String?
+  manufacturer          String?
+  manufacturerNumber    String?
+  manufacturerTypeName  String?
+  minimumOrderQuantity  Float?
+  quantityScale         String?
+  priceUnit             String?
+  deliveryTime          String?
+  stockQuantity         Float?
+  purchasePrice         Float                @default(0)
+  laborCostRateKey      String               @default("")
+  listPrice             Float                @default(0)
+  salesPrice            Float                @default(0)
+  vatRate               Float                @default(19)
+  isLaborPosition       Boolean              @default(false)
+  isPlanningRelevant    Boolean              @default(false)
+  planningMinutesPerUnit Int                 @default(0)
+  defaultPlanningBoard  String?
+  defaultPlanningGroup  String?
+  isActive              Boolean              @default(true)
+  usedCount             Int                  @default(0)
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  organization          Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  history               CatalogItemHistory[]
+  packageItems          CatalogPackageItem[] @relation("CatalogPackage")
+  usedInPackages        CatalogPackageItem[] @relation("CatalogPackageComponent")
+
+  @@unique([organizationId, number])
+  @@index([organizationId, type])
+  @@index([organizationId, isActive])
+}
+
+model CatalogPackageItem {
+  id                  String       @id @default(cuid())
+  organizationId      String
+  packageId           String
+  componentItemId     String
+  quantity            Float        @default(1)
+  position            Int          @default(0)
+  descriptionOverride String?
+  priceOverride       Float?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  package             CatalogItem  @relation("CatalogPackage", fields: [packageId], references: [id], onDelete: Cascade)
+  componentItem        CatalogItem  @relation("CatalogPackageComponent", fields: [componentItemId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, packageId])
+  @@index([organizationId, componentItemId])
+}
+
+model CatalogItemHistory {
+  id             String       @id @default(cuid())
+  organizationId String
+  catalogItemId  String
+  eventType      String
+  fieldName      String?
+  oldValue       String?
+  newValue       String?
+  actorUserId    String?
+  actorName      String?
+  note           String?
+  createdAt      DateTime     @default(now())
+  catalogItem    CatalogItem  @relation(fields: [catalogItemId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, catalogItemId])
+  @@index([organizationId, createdAt])
+}
+
+model UnitOption {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  sortOrder      Int          @default(0)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+  @@index([organizationId, isActive, sortOrder])
+}
+
+model ContentItem {
+  id                    String                   @id @default(cuid())
+  organizationId        String
+  title                 String
+  description           String                   @default("")
+  channel               String                   @default("Instagram")
+  format                String                   @default("Post")
+  ownerUserId           String?
+  ownerName             String                   @default("")
+  plannedDate           String
+  productionStartDate   String                   @default("")
+  productionStartTime   String                   @default("09:00")
+  productionDueDate     String                   @default("")
+  productionDueTime     String                   @default("17:00")
+  approvalDueDate       String                   @default("")
+  approvalDueTime       String                   @default("17:00")
+  plannedTime           String                   @default("09:00")
+  approvalLevel         String                   @default("gruen")
+  status                String                   @default("Idee")
+  directionApprovedById String?
+  directionApprovedByName String?
+  directionApprovedAt   DateTime?
+  finalApprovedById     String?
+  finalApprovedByName   String?
+  finalApprovedAt       DateTime?
+  correctionNote        String                   @default("")
+  assetLink             String                   @default("")
+  imageDataUrl          String                   @default("")
+  sourceIdeaId          String?
+  sourceIdeaTitle       String                   @default("")
+  createdByUserId       String?
+  createdByName         String                   @default("")
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  organization          Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  history               ContentApprovalHistory[]
+
+  @@index([organizationId, plannedDate])
+  @@index([organizationId, status])
+  @@index([organizationId, approvalLevel])
+}
+
+model ContentApprovalHistory {
+  id             String       @id @default(cuid())
+  organizationId String
+  contentItemId  String
+  eventType      String
+  fromStatus     String?
+  toStatus       String?
+  actorUserId    String?
+  actorName      String       @default("")
+  note           String       @default("")
+  createdAt      DateTime     @default(now())
+  contentItem    ContentItem  @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, contentItemId])
+  @@index([organizationId, createdAt])
+}
+
+model Offer {
+  id                  String       @id @default(cuid())
+  organizationId      String
+  projectId           String
+  projectNumber       String       @default("")
+  projectTitle        String       @default("")
+  company             String       @default("OK solutions")
+  offerType           String       @default("base")
+  addendumMode        String       @default("addition")
+  plannedExecutionEndMonth String   @default("")
+  parentOfferId       String       @default("")
+  offerNumber         String
+  status              String       @default("Entwurf")
+  customerName        String       @default("")
+  customerStreet      String       @default("")
+  customerCity        String       @default("")
+  contactName         String       @default("")
+  internalContactName String       @default("")
+  internalPhone       String       @default("")
+  internalEmail       String       @default("")
+  plannedExecutionMonth String     @default("")
+  introText           String       @default("")
+  closingText         String       @default("")
+  netTotal            Float        @default(0)
+  vatRate             Float        @default(19)
+  grossTotal          Float        @default(0)
+  discountPercent     Float        @default(0)
+  pdfData             String?      @db.Text
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lines               OfferLine[]
+
+  @@unique([organizationId, offerNumber])
+  @@index([organizationId, projectId])
+}
+
+model OfferLine {
+  id             String       @id @default(cuid())
+  organizationId String
+  offerId        String
+  catalogItemId  String       @default("")
+  catalogType    String       @default("")
+  position       Int          @default(0)
+  quantity       Float        @default(1)
+  unit           String       @default("Stk")
+  title          String       @default("")
+  description    String      @default("")
+  unitPrice      Float        @default(0)
+  discountPercent Float       @default(0)
+  isLaborPosition Boolean     @default(false)
+  laborCostRateKey String     @default("")
+  laborCostRate  Float        @default(0)
+  vatRate        Float        @default(19)
+  totalNet       Float        @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  offer          Offer        @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  laborItems     OfferLineLabor[]
+
+  @@index([organizationId, offerId])
+}
+
+model OfferLineLabor {
+  id             String       @id @default(cuid())
+  organizationId String
+  offerId        String
+  offerLineId    String
+  userId         String       @default("")
+  employeeName   String       @default("")
+  plannedHours   Float        @default(0)
+  hourlyCostRate Float        @default(0)
+  totalCost      Float        @default(0)
+  position       Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  offerLine      OfferLine    @relation(fields: [offerLineId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, offerId])
+  @@index([organizationId, offerLineId])
+  @@index([organizationId, userId])
+}
+
+model OfferHistory {
+  id             String       @id @default(cuid())
+  organizationId String
+  offerId        String
+  projectId      String
+  offerNumber    String       @default("")
+  eventType      String       @default("")
+  title          String       @default("")
+  note           String       @default("")
+  actorName      String       @default("")
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, projectId, createdAt])
+}
+
+model Invoice {
+  id                  String        @id @default(cuid())
+  organizationId      String
+  projectId           String
+  projectNumber       String        @default("")
+  projectTitle        String        @default("")
+  company             String        @default("OK solutions")
+  invoiceNumber       String
+  status              String        @default("Entwurf")
+  billingSource       String        @default("manual")
+  customerName        String        @default("")
+  customerStreet      String        @default("")
+  customerCity        String        @default("")
+  contactName         String        @default("")
+  internalContactName String        @default("")
+  internalPhone       String        @default("")
+  internalEmail       String        @default("")
+  plannedExecutionMonth String      @default("")
+  serviceDate         String        @default("")
+  sourceOfferId       String        @default("")
+  sourceOfferNumber   String        @default("")
+  introText           String        @default("")
+  closingText         String        @default("")
+  netTotal            Float         @default(0)
+  vatRate             Float         @default(19)
+  grossTotal          Float         @default(0)
+  discountPercent     Float         @default(0)
+  isPaid              Boolean       @default(false)
+  paidAt              DateTime?
+  pdfData             String?       @db.Text
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  organization        Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lines               InvoiceLine[]
+
+  @@unique([organizationId, invoiceNumber])
+  @@index([organizationId, projectId])
+}
+
+model InvoiceLine {
+  id             String             @id @default(cuid())
+  organizationId String
+  invoiceId      String
+  catalogItemId  String             @default("")
+  catalogType    String             @default("")
+  position       Int                @default(0)
+  quantity       Float              @default(1)
+  unit           String             @default("Stk")
+  title          String             @default("")
+  description    String             @default("")
+  unitPrice      Float              @default(0)
+  discountPercent Float             @default(0)
+  isLaborPosition Boolean           @default(false)
+  vatRate        Float              @default(19)
+  totalNet       Float              @default(0)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice        Invoice            @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  laborItems     InvoiceLineLabor[]
+
+  @@index([organizationId, invoiceId])
+}
+
+model InvoiceLineLabor {
+  id             String       @id @default(cuid())
+  organizationId String
+  invoiceId      String
+  invoiceLineId  String
+  userId         String       @default("")
+  employeeName   String       @default("")
+  plannedHours   Float        @default(0)
+  hourlyCostRate Float        @default(0)
+  totalCost      Float        @default(0)
+  position       Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoiceLine    InvoiceLine  @relation(fields: [invoiceLineId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, invoiceId])
+  @@index([organizationId, invoiceLineId])
+  @@index([organizationId, userId])
+}
+
+model InvoiceHistory {
+  id             String       @id @default(cuid())
+  organizationId String
+  invoiceId      String
+  projectId      String
+  invoiceNumber  String       @default("")
+  eventType      String       @default("")
+  title          String       @default("")
+  note           String       @default("")
+  actorName      String       @default("")
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, projectId, createdAt])
+}
+
+model LegacyInvoice {
+  id             String   @id
+  organizationId String
+  source         String   @default("HERO")
+  sourceRow      Int      @default(0)
+  importKey      String
+  invoiceNumber  String   @default("")
+  fileName       String   @default("")
+  documentType   String   @default("")
+  folder         String   @default("")
+  customerName   String   @default("")
+  projectAddress String   @default("")
+  netTotal       Float    @default(0)
+  invoiceDate    String   @default("")
+  company        String   @default("Unbekannt")
+  status         String   @default("Importiert")
+  isEvaluable    Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, importKey])
+  @@index([organizationId, invoiceDate])
+}
+
+model SchemaDataPatch {
+  key       String   @id
+  appliedAt DateTime @default(now())
+}
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  taskId         String?
+  actorId        String?
+  action         String
+  entityType     String
+  entityId       String
+  payload        Json?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task           Task?        @relation(fields: [taskId], references: [id])
+}
+
+model EscalationRule {
+  id              String       @id @default(cuid())
+  organizationId  String
+  name            String
+  hoursAfterDue   Int          @default(0)
+  targetRole      Role
+  isActive        Boolean      @default(true)
+  emailEnabled    Boolean      @default(false)
+  emailRecipients String       @default("")
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model StatusTimelineEntry {
+  id             String    @id
+  organizationId String
+  entityType     String
+  entityId       String
+  entityLabel    String    @default("")
+  fromStatus     String?
+  toStatus       String
+  startedAt      DateTime  @default(now())
+  endedAt        DateTime?
+  durationMinutes Int?
+  actorUserId    String?
+  actorName      String    @default("")
+  note           String    @default("")
+  createdAt      DateTime  @default(now())
+
+  @@index([organizationId, entityType, entityId])
+  @@index([organizationId, entityType, toStatus])
+  @@index([organizationId, startedAt])
+}
+
+model StatusEscalationRule {
+  id                  String   @id
+  organizationId      String
+  entityType          String
+  status              String
+  name                String
+  thresholdHours      Int      @default(24)
+  notifyResponsible   Boolean  @default(true)
+  notifyProjectOwner  Boolean  @default(false)
+  notifyManagement    Boolean  @default(true)
+  notificationEnabled Boolean  @default(true)
+  dailyReportEnabled  Boolean  @default(true)
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @default(now())
+
+  @@index([organizationId, entityType, status])
+}
+
+model StatusEscalationEvent {
+  id             String    @id
+  organizationId String
+  ruleId         String
+  entityType     String
+  entityId       String
+  entityLabel    String   @default("")
+  status         String
+  thresholdHours Int
+  actualHours    Int
+  recipientUserId String?
+  notificationId String?
+  dailyReportDate String?
+  resolvedAt     DateTime?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, ruleId, entityType, entityId, resolvedAt])
+  @@index([organizationId, dailyReportDate])
+}
+
+model TaskTemplate {
+  id              String       @id @default(cuid())
+  organizationId  String
+  name            String
+  description     String?
+  defaultPriority TaskPriority @default(NORMAL)
+  defaultEstimate Int?
+  categoryId      String?
+  subcategoryId   String?
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model RecurringTaskRule {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  cronExpression String
+  isActive       Boolean      @default(true)
+  templateId     String?
+  nextRunAt      DateTime?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model Absence {
+  id                   String   @id
+  organizationId       String
+  userId               String
+  requestGroupId       String?
+  type                 String
+  dayPart              String   @default("full")
+  status               String   @default("genehmigt")
+  date                 DateTime @db.Date
+  representativeUserId String?
+  note                 String?
+  handoverTaskIds      Json     @default("[]")
+  rejectionReason      String?
+  history              Json     @default("[]")
+  createdAt            DateTime @default(now())
+
+  @@unique([userId, date])
+}
+
+model IdeaPost {
+  id                   String   @id
+  organizationId       String
+  title                String
+  body                 String   @default("")
+  authorUserId         String?
+  authorName           String   @default("")
+  pinned               Boolean  @default(false)
+  plannedContentItemId String?
+  plannedContentTitle  String   @default("")
+  plannedContentStatus String   @default("")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+}
+
+model IdeaComment {
+  id             String   @id
+  organizationId String
+  ideaId         String
+  body           String
+  authorUserId   String?
+  authorName     String   @default("")
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, ideaId])
+}
+
+model IdeaLike {
+  organizationId String
+  ideaId         String
+  userId         String
+  reaction       String   @default("up")
+  createdAt      DateTime @default(now())
+
+  @@id([ideaId, userId])
+  @@index([organizationId, ideaId])
+}
+
+model DocumentMailDispatch {
+  id                String   @id
+  organizationId    String
+  documentKind      String
+  documentId        String
+  documentNumber    String
+  projectId         String   @default("")
+  projectNumber     String   @default("")
+  projectTitle      String   @default("")
+  customerName      String   @default("")
+  senderUserId      String
+  senderName        String
+  senderEmail       String
+  toRecipients      String
+  ccRecipients      String   @default("")
+  bccRecipients     String   @default("")
+  subject           String
+  body              String
+  attachPdf         Boolean  @default(true)
+  provider          String   @default("microsoft365")
+  status            String   @default("queued")
+  providerMessageId String   @default("")
+  errorMessage      String   @default("")
+  createdAt         DateTime @default(now())
+
+  @@index([organizationId, documentKind, documentId])
+  @@index([organizationId, createdAt])
+}
+
+model Contact {
+  id                    String   @id
+  organizationId        String
+  category              String   @default("Kunde")
+  type                  String   @default("person")
+  customerNumber        String
+  salutation            String?
+  additionalSalutation  String?
+  companyName           String?
+  firstName             String?
+  lastName              String?
+  position              String?
+  email                 String?
+  phone                 String?
+  mobile                String?
+  fax                   String?
+  website               String?
+  source                String?
+  reachability          String?
+  isInvoiceRecipient    Boolean  @default(false)
+  isActivityReportRecipient Boolean @default(false)
+  street                String?
+  addressLine1          String?
+  addressLine2          String?
+  postalCode            String?
+  city                  String?
+  country               String?
+  paymentTermDays       Int?
+  discountPercent       Float?
+  discountTermDays      Int?
+  priceGroup            String?
+  iban                  String?
+  bic                   String?
+  bankName              String?
+  taxId                 String?
+  debtorCreditorAccount String?
+  leitwegId             String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @default(now())
+  parentCompanyId       String?
+  parentCompanyName     String?
+  mainContactName       String?
+  isMainContact         Boolean  @default(false)
+  legalForm             String?
+}
+
+model DocumentTextTemplate {
+  id             String   @id
+  organizationId String
+  source         String   @default("Eigene")
+  kind           String   @default("text")
+  title          String
+  body           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now())
+
+  @@unique([organizationId, title], map: "DocumentTextTemplate_org_title_key")
+}
+
+model DocumentTypeConfig {
+  id             String    @id
+  organizationId String
+  name           String
+  baseType       String    @default("Dokument")
+  folder         String    @default("Allgemein")
+  status         String    @default("Aktiv")
+  config         Json      @default("{}")
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @default(now())
+
+  @@unique([organizationId, name], map: "DocumentTypeConfig_org_name_key")
+}
+
+model ProjectLogbookEntry {
+  id             String   @id
+  organizationId String
+  projectId      String
+  title          String?
+  body           String
+  author         String?
+  colleague      String?
+  visibleFor     Json     @default("[]")
+  attachments    Json     @default("[]")
+  projectMonth   String?
+  createdAt      DateTime @default(now())
+}
+
+model ProjectTimeEntry {
+  id             String   @id
+  organizationId String
+  projectId      String
+  projectLabel   String?
+  userId         String?
+  employee       String?
+  entrySource    String   @default("stamped")
+  date           String
+  startTime      String
+  endTime        String
+  durationMs     BigInt   @default(0)
+  pauseMs        BigInt   @default(0)
+  comment        String?
+  invoiceId      String?
+  invoiceNumber  String?
+  invoicedAt     DateTime?
+  marketingContentItemId String?
+  marketingContentType String?
+  overtimeApprovalStatus String @default("not_required")
+  overtimeApprovedByUserId String?
+  overtimeApprovedByName String?
+  overtimeApprovedAt DateTime?
+  editHistory    Json     @default("[]")
+  createdAt      DateTime @default(now())
+  deletedAt      DateTime?
+  mode           String   @default("project")
+}
+
+model ActiveStampSession {
+  id             String   @id
+  organizationId String
+  userId         String
+  employee       String?
+  mode           String   @default("project")
+  projectId      String
+  projectLabel   String?
+  marketingContentItemId String?
+  marketingContentTitle String?
+  marketingContentType String?
+  startedAt      DateTime
+  accumulatedMs  BigInt   @default(0)
+  pauseStartedAt DateTime?
+  pauseMs        BigInt   @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now())
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+}
+
+model PlanningEntry {
+  id                   String   @id
+  organizationId       String
+  source               String   @default("manual")
+  board                String
+  groupName            String
+  userId               String?
+  employeeName         String?
+  date                 String
+  startTime            String
+  endTime              String
+  durationMinutes      Int      @default(0)
+  title                String
+  description          String?
+  customer             String?
+  projectId            String?
+  projectLabel         String?
+  offerId              String?
+  offerLineId          String?
+  offerLabel           String?
+  offerTotalMinutes    Int?
+  offerPlannedMinutes  Int?
+  marketingContentItemId String?
+  marketingContentScheduleId String?
+  recurrenceId         String?
+  recurrenceRule       String?
+  approvalStatus       String   @default("confirmed")
+  requestedByUserId    String?
+  requestedByName      String?
+  approvedByUserId     String?
+  approvedAt           DateTime?
+  deletedAt            DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @default(now())
+}
+
+model PlanningEntryHistory {
+  id              String   @id
+  organizationId  String
+  planningEntryId String
+  projectId       String?
+  eventType       String
+  actorUserId     String?
+  actorName       String?
+  fromStatus      String?
+  toStatus        String?
+  note            String?
+  createdAt       DateTime @default(now())
+}
+
+model MarketingContentQuota {
+  id                     String   @id
+  organizationId         String
+  projectId              String
+  month                  String
+  catalogItemId          String
+  serviceName            String
+  category               String   @default("Sonstiges")
+  unit                   String   @default("Stk")
+  targetQuantity         Float    @default(0)
+  planningMinutesPerUnit Int      @default(0)
+  allowAdditional        Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @default(now())
+
+  @@unique([organizationId, projectId, month, catalogItemId])
+  @@index([organizationId, projectId, month])
+}
+
+model MarketingContentItem {
+  id                String   @id
+  organizationId    String
+  projectId         String
+  projectLabel      String   @default("")
+  customerName      String   @default("")
+  month             String
+  quotaId           String?
+  catalogItemId     String?
+  serviceName       String
+  category          String   @default("Sonstiges")
+  unit              String   @default("Stk")
+  title             String
+  status            String   @default("Offen")
+  responsibleUserId String?
+  responsibleName   String   @default("")
+  platform          String   @default("")
+  formatDetails     String   @default("")
+  plannedDate       String   @default("")
+  dueDate           String   @default("")
+  assetLink         String   @default("")
+  isAdditional      Boolean  @default(false)
+  sortOrder         Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @default(now())
+
+  @@index([organizationId, projectId, month])
+  @@index([organizationId, status])
+}
+
+model MarketingContentSchedule {
+  id              String   @id
+  organizationId  String
+  contentItemId   String
+  projectId       String
+  planningEntryId String?
+  title           String
+  phase           String   @default("Arbeit")
+  userId          String?
+  employeeName    String   @default("")
+  date            String
+  startTime       String
+  endTime         String
+  durationMinutes Int      @default(0)
+  note            String   @default("")
+  deletedAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now())
+
+  @@index([organizationId, contentItemId])
+  @@index([organizationId, projectId, date])
+}
+
+model ProjectPotential {
+  id             String   @id
+  organizationId String
+  contactId      String?
+  customerName   String?
+  projectId      String
+  projectLabel   String?
+  description    String
+  status         String   @default("open")
+  ownerUserId    String?
+  ownerName      String?
+  estimatedValue Decimal? @db.Decimal(12, 2)
+  priority       String   @default("normal")
+  nextStep       String?
+  lostReason     String?
+  sourceType     String?
+  sourceLogbookEntryId String?
+  taskId         String?
+  followUpAt     DateTime?
+  offeredAt      DateTime?
+  closedAt       DateTime?
+  history        Json     @default("[]")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now())
+
+  @@index([organizationId, projectId])
+  @@index([organizationId, status])
+  @@index([organizationId, updatedAt])
+}
+
+model UserTeamMembership {
+  userId    String
+  teamId    String
+  createdAt DateTime @default(now())
+
+  @@id([userId, teamId])
+}
+
+model WorkPilotProject {
+  id                  String   @id
+  organizationId      String
+  projectNumber       String
+  title               String
+  customer            String?
+  status              String   @default("Lead / Kl├ñrung")
+  statusCode          String?
+  description         String?
+  contactId           String?
+  contactPersonId     String?
+  addressContactId    String?
+  projectType         String?
+  projectKind         String?
+  projectRuntimeFrom  String?
+  projectRuntimeUntil String?
+  billingInterval     String?
+  forecastBillingType String?
+  forecastNetAmount   String?
+  trade               String?
+  branch              String?
+  volume              String?
+  source              String?
+  address             String?
+  participants        String?
+  timeBudgetHours     String?
+  timeBudgetHistory   Json     @default("[]")
+  timeBudgetAllocations Json    @default("[]")
+  autoBillingEnabled  Boolean  @default(false)
+  autoBillingNetAmount String?
+  autoBillingVatRate  String?
+  autoBillingStartMonth String?
+  autoBillingEndMonth String?
+  autoBillingTemplateMode String?
+  autoBillingTemplate Json?
+  winterGritPackageItemId String?
+  winterGritPushPackageItemId String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @default(now())
+  responsibleName     String?
+}
+
+model WinterServiceRun {
+  id                  String   @id
+  organizationId      String
+  projectId           String
+  projectNumber       String   @default("")
+  projectTitle        String   @default("")
+  customerName        String   @default("")
+  contactId           String   @default("")
+  contactPersonId     String   @default("")
+  serviceDate         String
+  month               String
+  serviceType         String   @default("")
+  status              String   @default("offen")
+  beforeImages        Json     @default("[]")
+  afterImages         Json     @default("[]")
+  reportStatus        String   @default("offen")
+  reportNumber        String   @default("")
+  reportPdfData       String?  @db.Text
+  reportGeneratedAt   DateTime?
+  sentStatus          String   @default("offen")
+  sentAt              DateTime?
+  sentTo              String   @default("")
+  invoiceId           String   @default("")
+  invoiceNumber       String   @default("")
+  invoiceLineId       String   @default("")
+  billingAction       String   @default("")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @default(now())
+
+  @@index([organizationId, month])
+  @@index([organizationId, projectId])
+}
+
+enum Role {
+  ADMIN
+  GESCHAEFTSFUEHRER
+  FUEHRUNGSKRAFT
+  VERTRIEB
+  MITARBEITER
+  GAST
+}
+
+enum TaskStatus {
+  OFFEN
+  IN_BEARBEITUNG
+  WARTET_AUF_RUECKMELDUNG
+  ERLEDIGT
+  ABGELEHNT
+  UEBERFAELLIG
+  ARCHIVIERT
+}
+
+enum TaskPriority {
+  NIEDRIG
+  NORMAL
+  HOCH
+  KRITISCH
+}
+
+enum CustomerClassification {
+  A
+  B
+  C
+}

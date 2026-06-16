@@ -11,6 +11,7 @@ function roleLabel(role: Role) {
   if (role === Role.GESCHAEFTSFUEHRER) return "Geschäftsführung";
   if (role === Role.FUEHRUNGSKRAFT) return "Führungskraft";
   if (String(role) === "VERTRIEB") return "Vertrieb";
+  if (String(role) === "BUCHHALTUNG") return "Buchhaltung";
   if (role === Role.MITARBEITER) return "Mitarbeiter";
   if (role === Role.GAST) return "Gast";
   return "Admin";
@@ -19,7 +20,8 @@ function roleLabel(role: Role) {
 async function ensureUserProfileColumns() {
   await prisma.$executeRaw`
     ALTER TABLE "User"
-    ADD COLUMN IF NOT EXISTS "profileImageDataUrl" TEXT
+    ADD COLUMN IF NOT EXISTS "profileImageDataUrl" TEXT,
+    ADD COLUMN IF NOT EXISTS "personalNumber" TEXT
   `;
 }
 
@@ -48,6 +50,7 @@ export async function POST(req: Request) {
       teamId: string | null;
       dailyWorkHours: number | null;
       profileImageDataUrl: string | null;
+      personalNumber: string | null;
       passwordHash: string;
     }>
   >`
@@ -60,6 +63,7 @@ export async function POST(req: Request) {
       "teamId",
       "dailyWorkHours",
       "profileImageDataUrl",
+      "personalNumber",
       "passwordHash"
     FROM "User"
     WHERE "organizationId" = ${organization.id}
@@ -92,6 +96,7 @@ export async function POST(req: Request) {
     teamIds: await getUserTeamIds(user.id),
     dailyWorkHours: user.dailyWorkHours ?? 8,
     profileImageDataUrl: user.profileImageDataUrl ?? "",
+    personalNumber: user.personalNumber ?? "",
   });
 }
 

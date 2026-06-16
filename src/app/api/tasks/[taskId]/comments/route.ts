@@ -63,6 +63,12 @@ export async function POST(
     recipientName = `${participantRows[0].firstName} ${participantRows[0].lastName}`;
   }
 
+  const taskParticipantRows = await prisma.$queryRaw<Array<{ userId: string }>>`
+    SELECT "userId"
+    FROM "TaskParticipant"
+    WHERE "taskId" = ${task.id}
+  `;
+
   const comment = await prisma.taskComment.create({
     data: {
       organizationId: organization.id,
@@ -81,24 +87,33 @@ export async function POST(
       SET "recipientUserId" = ${recipientUserId}
       WHERE id = ${comment.id}
     `;
-
-    if (recipientUserId !== actor.id) {
-      await prisma.notification.create({
-        data: {
-          organizationId: organization.id,
-          taskId: task.id,
-          userId: recipientUserId,
-          channel: "app",
-          subject: "Neuer Kommentar zur Aufgabe",
-          body: `${actor.firstName} ${actor.lastName} hat dich in der Aufgabe "${task.title}" kommentiert: ${text}`,
-          sentAt: null,
-          linkTarget: "task",
-          linkTargetId: task.id,
-          linkLabel: "Aufgabe öffnen",
-        },
-      });
-    }
   }
+
+  const notificationRecipientIds = new Set<string>([
+    task.ownerId,
+    ...taskParticipantRows.map((participant) => participant.userId),
+  ]);
+  notificationRecipientIds.delete(actor.id);
+
+  for (const userId of notificationRecipientIds) {
+    await prisma.notification.create({
+      data: {
+        organizationId: organization.id,
+        taskId: task.id,
+        userId,
+        channel: "app",
+        subject: "Neuer Kommentar zur Aufgabe",
+        body: recipientName
+          ? `${actor.firstName} ${actor.lastName} hat in der Aufgabe "${task.title}" einen Kommentar an ${recipientName} geschrieben: ${text}`
+          : `${actor.firstName} ${actor.lastName} hat die Aufgabe "${task.title}" kommentiert: ${text}`,
+        sentAt: null,
+        linkTarget: "task",
+        linkTargetId: task.id,
+        linkLabel: "Aufgabe öffnen",
+      },
+    });
+  }
+
 
   await prisma.$executeRaw`
     UPDATE "Task"

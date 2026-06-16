@@ -68,6 +68,7 @@ function roleLabel(role: Role) {
   if (role === Role.GESCHAEFTSFUEHRER) return "Gesch\u00e4ftsf\u00fchrung";
   if (role === Role.FUEHRUNGSKRAFT) return "F\u00fchrungskraft";
   if (String(role) === "VERTRIEB") return "Vertrieb";
+  if (String(role) === "BUCHHALTUNG") return "Buchhaltung";
   if (role === Role.MITARBEITER) return "Mitarbeiter";
   if (role === Role.GAST) return "Gast";
   return "Admin";
@@ -867,7 +868,7 @@ export async function POST(req: Request) {
     : owner.id === actor.id
       ? "accepted"
       : "pending";
-  const nextStatus = TaskStatus.OFFEN;
+  const nextStatus = body.status ? mapStatus(body.status) : TaskStatus.OFFEN;
   const nextEstimate = parseEstimate(body.estimateMinutes);
   const nextProjectId = normalizeProjectId(body.projectId);
   const planningAllocations = parsePlanningAllocations(body.planningAllocations, nextEstimate);

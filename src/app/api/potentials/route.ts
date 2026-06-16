@@ -7,6 +7,7 @@ import { recordStatusTransition, seedCurrentStatusTimeline } from "@/lib/status-
 type PotentialRow = {
   id: string;
   organizationId: string;
+  number: string | null;
   contactId: string | null;
   customerName: string | null;
   projectId: string;
@@ -34,6 +35,14 @@ function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function isNoUpsellDescription(value: string) {
+  const normalized = value.trim().toLowerCase().replace(/[.!?]+$/g, "").replace(/\s+/g, " ");
+  return (
+    /^(nein|nein danke|keine|kein|keine verkaufschance|kein zusatzverkauf|nicht vorhanden)$/i.test(normalized) ||
+    /^nein\b/i.test(normalized)
+  );
+}
+
 function cleanStatus(value: unknown) {
   const status = cleanString(value);
   return ["open", "follow_up", "offered", "lost"].includes(status) ? status : "open";
@@ -55,6 +64,10 @@ function cleanHistory(value: unknown) {
   return Array.isArray(value) ? value : [];
 }
 
+function formatPotentialNumber(value: number) {
+  return `VC-${String(value).padStart(4, "0")}`;
+}
+
 function getUserName(user: { firstName?: string | null; lastName?: string | null; email?: string | null }) {
   return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "System";
 }
@@ -64,6 +77,7 @@ async function ensurePotentialTable() {
     CREATE TABLE IF NOT EXISTS "ProjectPotential" (
       "id" TEXT NOT NULL PRIMARY KEY,
       "organizationId" TEXT NOT NULL,
+      "number" TEXT,
       "contactId" TEXT,
       "customerName" TEXT,
       "projectId" TEXT NOT NULL,
@@ -90,6 +104,7 @@ async function ensurePotentialTable() {
 
   await prisma.$executeRaw`
     ALTER TABLE "ProjectPotential"
+    ADD COLUMN IF NOT EXISTS "number" TEXT,
     ADD COLUMN IF NOT EXISTS "contactId" TEXT,
     ADD COLUMN IF NOT EXISTS "customerName" TEXT,
     ADD COLUMN IF NOT EXISTS "projectLabel" TEXT,
@@ -109,11 +124,54 @@ async function ensurePotentialTable() {
     ADD COLUMN IF NOT EXISTS "history" JSONB NOT NULL DEFAULT '[]'::jsonb,
     ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
   `;
+
+  await prisma.$executeRaw`
+    CREATE UNIQUE INDEX IF NOT EXISTS "ProjectPotential_organizationId_number_key"
+    ON "ProjectPotential" ("organizationId", "number")
+    WHERE "number" IS NOT NULL
+  `;
+}
+
+async function getNextPotentialNumberValue(organizationId: string) {
+  const rows = await prisma.$queryRaw<Array<{ nextValue: number | bigint | null }>>`
+    SELECT COALESCE(MAX((SUBSTRING("number" FROM 4))::int), 1000) + 1 AS "nextValue"
+    FROM "ProjectPotential"
+    WHERE "organizationId" = ${organizationId}
+      AND "number" ~ '^VC-[0-9]+$'
+  `;
+
+  return Number(rows[0]?.nextValue ?? 1001);
+}
+
+async function ensurePotentialNumbers(organizationId: string) {
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT "id"
+    FROM "ProjectPotential"
+    WHERE "organizationId" = ${organizationId}
+      AND ("number" IS NULL OR "number" = '')
+    ORDER BY "createdAt" ASC, "id" ASC
+  `;
+
+  let nextValue = await getNextPotentialNumberValue(organizationId);
+
+  for (const row of rows) {
+    const nextNumber = formatPotentialNumber(nextValue);
+    nextValue += 1;
+
+    await prisma.$executeRaw`
+      UPDATE "ProjectPotential"
+      SET "number" = ${nextNumber}
+      WHERE "id" = ${row.id}
+        AND "organizationId" = ${organizationId}
+        AND ("number" IS NULL OR "number" = '')
+    `;
+  }
 }
 
 function formatPotential(row: PotentialRow) {
   return {
     id: row.id,
+    number: row.number ?? "",
     contactId: row.contactId ?? "",
     customerName: row.customerName ?? "",
     projectId: row.projectId,
@@ -141,6 +199,7 @@ function formatPotential(row: PotentialRow) {
 export async function GET() {
   const { organization } = await getDemoContext();
   await ensurePotentialTable();
+  await ensurePotentialNumbers(organization.id);
 
   const legacyRows = await prisma.$queryRaw<Array<{ projectId: string; body: string; author: string | null; createdAt: Date }>>`
     SELECT "projectId", "body", "author", "createdAt"
@@ -192,6 +251,8 @@ export async function GET() {
     `;
   }
 
+  await ensurePotentialNumbers(organization.id);
+
   const rows = await prisma.$queryRaw<PotentialRow[]>`
     SELECT *
     FROM "ProjectPotential"
@@ -199,7 +260,7 @@ export async function GET() {
     ORDER BY "updatedAt" DESC, "createdAt" DESC
   `;
 
-  return NextResponse.json(rows.map(formatPotential));
+  return NextResponse.json(rows.filter((row) => !isNoUpsellDescription(row.description)).map(formatPotential));
 }
 
 export async function POST(req: Request) {
@@ -212,6 +273,9 @@ export async function POST(req: Request) {
   if (!projectId || !description) {
     return NextResponse.json({ error: "Projekt und Potenzialbeschreibung sind erforderlich." }, { status: 400 });
   }
+  if (isNoUpsellDescription(description)) {
+    return NextResponse.json({ error: "Ohne echte Zusatzverkaufsmöglichkeit wird kein Zusatzverkauf angelegt." }, { status: 400 });
+  }
 
   const history = [
     {
@@ -222,11 +286,14 @@ export async function POST(req: Request) {
     },
   ];
   const estimatedValue = cleanDecimal(body.estimatedValue);
+  await ensurePotentialNumbers(organization.id);
+  const nextNumber = formatPotentialNumber(await getNextPotentialNumberValue(organization.id));
 
   const rows = await prisma.$queryRaw<PotentialRow[]>`
     INSERT INTO "ProjectPotential" (
       "id",
       "organizationId",
+      "number",
       "contactId",
       "customerName",
       "projectId",
@@ -245,6 +312,7 @@ export async function POST(req: Request) {
     VALUES (
       ${randomUUID()},
       ${organization.id},
+      ${nextNumber},
       ${cleanString(body.contactId) || null},
       ${cleanString(body.customerName) || null},
       ${projectId},

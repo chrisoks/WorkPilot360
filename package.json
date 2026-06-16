@@ -9,6 +9,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "check:mojibake": "node scripts/check-mojibake.js",
+    "check:regressions": "node scripts/check-regressions.js",
+    "check:kosit": "node scripts/check-kosit-validator.js",
+    "setup:kosit": "node scripts/setup-kosit-validator.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },

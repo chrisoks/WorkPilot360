@@ -32,6 +32,10 @@ export function FeedbackForm({ token }: { token: string }) {
   }, [token]);
 
   async function submitFeedback() {
+    if (meta?.status === "answered") {
+      setError("Diese Bewertung wurde bereits abgegeben.");
+      return;
+    }
     setIsSending(true);
     setError("");
     setMessage("");
@@ -57,6 +61,9 @@ export function FeedbackForm({ token }: { token: string }) {
     );
   }
 
+  const isAnswered = meta?.status === "answered";
+  const isLocked = isAnswered || Boolean(message);
+
   return (
     <main className="feedback-shell">
       <section className="feedback-card">
@@ -64,7 +71,7 @@ export function FeedbackForm({ token }: { token: string }) {
         <h1>Wie zufrieden sind Sie?</h1>
         <span>
           {meta?.customerName || "Ihre Bewertung"}
-          {meta?.invoiceNumber ? ` · ${meta.invoiceNumber}` : ""}
+          {meta?.invoiceNumber ? ` \u00b7 ${meta.invoiceNumber}` : ""}
         </span>
 
         <div className="stars" aria-label="Bewertung">
@@ -74,31 +81,34 @@ export function FeedbackForm({ token }: { token: string }) {
               type="button"
               aria-label={`${star} Sterne`}
               data-active={star <= rating}
+              disabled={isLocked}
               onClick={() => setRating(star)}
             >
-              ★
+              {"\u2605"}
             </button>
           ))}
         </div>
 
         <label>
           Kommentar
-          <textarea value={comment} onChange={(event) => setComment(event.target.value)} />
+          <textarea value={comment} disabled={isLocked} onChange={(event) => setComment(event.target.value)} />
         </label>
 
         <label className="check-row">
           <input
             type="checkbox"
             checked={wantsContact}
+            disabled={isLocked}
             onChange={(event) => setWantsContact(event.target.checked)}
           />
-          Ich wünsche eine Kontaktaufnahme.
+          {"Ich w\u00fcnsche eine Kontaktaufnahme."}
         </label>
 
         {error ? <strong className="feedback-error">{error}</strong> : null}
+        {isAnswered ? <strong className="feedback-success">Diese Bewertung wurde bereits abgegeben.</strong> : null}
         {message ? <strong className="feedback-success">{message}</strong> : null}
 
-        <button type="button" disabled={isSending || Boolean(message)} onClick={submitFeedback}>
+        <button type="button" disabled={isSending || isLocked} onClick={submitFeedback}>
           Bewertung senden
         </button>
       </section>

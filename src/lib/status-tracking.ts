@@ -125,6 +125,7 @@ export async function ensureDefaultStatusEscalationRules(organizationId: string)
     { entityType: "project", status: "Lead / Klärung", name: "Projekt in Lead / Klärung", thresholdHours: 168 },
     { entityType: "project", status: "Angebot", name: "Projekt im Angebotsstatus", thresholdHours: 168 },
     { entityType: "project", status: "Zur Planung bereit", name: "Projekt bereit zur Planung", thresholdHours: 72 },
+    { entityType: "project", status: "Geplant", name: "Projekt fest geplant", thresholdHours: 168 },
     { entityType: "project", status: "Umsetzung", name: "Projekt in Umsetzung", thresholdHours: 336 },
     { entityType: "project", status: "Endkontrolle", name: "Projekt in Endkontrolle", thresholdHours: 72 },
     { entityType: "project", status: "Zur Abrechnung bereit", name: "Projekt bereit zur Abrechnung", thresholdHours: 72 },

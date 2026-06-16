@@ -74,7 +74,6 @@ type AppTab =
   | "newsFeed"
   | "salesHub"
   | "salesOpportunities"
-  | "customerSatisfaction"
   | "salesTargets"
   | "hero"
   | "projectsSolutions"
@@ -111,6 +110,7 @@ type AppTab =
   | "planningBoard"
   | "processAutomation"
   | "winterService"
+  | "generalActivityReports"
   | "archive"
   | "settings";
 type CalendarView = "month" | "week" | "day";
@@ -119,12 +119,38 @@ type ProductivityPeriod = "day" | "week" | "month" | "quarter" | "year";
 type ReportAnalyticsTab =
   | "forecast"
   | "revenue"
+  | "sales"
+  | "svs"
   | "projects"
   | "customers"
+  | "kuzu"
   | "catalog"
   | "employees"
   | "overview"
   | "map";
+const allReportTabs: Array<{ id: ReportAnalyticsTab; label: string }> = [
+  { id: "forecast", label: "Forecast & OP Kontrolle" },
+  { id: "revenue", label: "Umsätze - Details" },
+  { id: "sales", label: "Sales" },
+  { id: "svs", label: "SVS Analyse" },
+  { id: "projects", label: "Projekte" },
+  { id: "customers", label: "Kunden" },
+  { id: "kuzu", label: "KuZu" },
+  { id: "catalog", label: "Artikel & Leistungen" },
+  { id: "employees", label: "Mitarbeitende" },
+  { id: "overview", label: "Umsatz- und Projektübersicht" },
+  { id: "map", label: "Projektkarte" },
+];
+type ReportPeriodPreset = "currentMonth" | "previousMonth" | "currentYear" | "last12" | "custom";
+type ForecastPeriodPreset =
+  | "currentMonth"
+  | "previousMonth"
+  | "currentYear"
+  | "previousYear"
+  | "last12"
+  | "next12"
+  | "custom";
+type ReportProjectKindFilter = "all" | "oneTime" | "recurring";
 type ContactFormTab = "details" | "address" | "terms" | "payment" | "zugferd";
 type CustomerFileTab =
   | "logbook"
@@ -143,6 +169,7 @@ type CustomerDocumentType =
   | "Angebote"
   | "Angebote: Nachtragsangebote"
   | "Tätigkeitsberichte"
+  | "Checklisten"
   | "Endkontrolle"
   | "Mahnung"
   | "Rechnungen";
@@ -153,8 +180,11 @@ type ProjectFileTab =
   | "gaeb"
   | "time"
   | "appointments"
+  | "forecast"
   | "budgets"
   | "automaticBilling"
+  | "profit"
+  | "potentials"
   | "tasks"
   | "material"
   | "comparison"
@@ -176,6 +206,7 @@ type FirmSettingsTab =
   | "profile"
   | "units"
   | "businessAreaTargets"
+  | "deadlines"
   | "appearance"
   | "branches"
   | "emailTemplates"
@@ -360,7 +391,14 @@ type GlobalSearchResult = {
     | { kind: "documentType"; id: string }
     | { kind: "documentText"; id: string };
 };
-type UserRole = "ADMIN" | "GESCHAEFTSFUEHRER" | "FUEHRUNGSKRAFT" | "MITARBEITER" | "GAST";
+type UserRole =
+  | "ADMIN"
+  | "GESCHAEFTSFUEHRER"
+  | "FUEHRUNGSKRAFT"
+  | "VERTRIEB"
+  | "BUCHHALTUNG"
+  | "MITARBEITER"
+  | "GAST";
 type TaskStatus =
   | "offen"
   | "in Bearbeitung"
@@ -477,6 +515,7 @@ type UserOption = {
   teamIds: string[];
   dailyWorkHours: number;
   profileImageDataUrl: string;
+  personalNumber?: string;
   salutation?: string;
   birthDate?: string;
   language?: string;
@@ -520,7 +559,29 @@ type EmployeeMailAccount = {
   lastTestAt: string;
 };
 
-type DocumentMailKind = "offer" | "invoice" | "cancellation" | "activityReport" | "document";
+type DocumentMailKind = "offer" | "invoice" | "cancellation" | "reminder" | "activityReport" | "document";
+type EInvoiceFormat = "pdf" | "xrechnung" | "zugferd" | "pdf-xrechnung";
+type XRechnungValidationIssue = {
+  severity: "error" | "warning" | "info";
+  code: string;
+  message: string;
+};
+type XRechnungValidationResponse = {
+  invoiceId: string;
+  invoiceNumber: string;
+  validation: {
+    valid: boolean;
+    mode: "technical-minimum";
+    issues: XRechnungValidationIssue[];
+  };
+  kositValidation?: {
+    available: boolean;
+    valid: boolean;
+    status: "not-configured" | "accepted" | "rejected" | "failed";
+    message: string;
+    issues: XRechnungValidationIssue[];
+  };
+};
 
 type DocumentMailDraft = {
   kind: DocumentMailKind;
@@ -538,6 +599,84 @@ type DocumentMailDraft = {
   subject: string;
   body: string;
   attachPdf: boolean;
+  eInvoiceFormat?: EInvoiceFormat;
+  includeFeedbackLink?: boolean;
+  attachActivityReports?: boolean;
+  additionalAttachments?: Array<{ name: string; dataUrl: string }>;
+  manualAttachments?: Array<{ name: string; dataUrl: string }>;
+};
+
+type EInvoiceReadiness = {
+  invoice: InvoiceItem | null;
+  recipientContact: ContactItem | null;
+  missingRequired: string[];
+  missingRecommended: string[];
+};
+
+type LeitwegIdValidation = {
+  normalized: string;
+  isEmpty: boolean;
+  isValid: boolean;
+  message: string;
+};
+
+type DocumentMailDispatchItem = {
+  id: string;
+  documentKind: DocumentMailKind;
+  documentId: string;
+  documentNumber: string;
+  projectId: string;
+  projectNumber: string;
+  projectTitle: string;
+  customerName: string;
+  toRecipients: string;
+  subject: string;
+  body: string;
+  attachPdf: boolean;
+  status: string;
+  createdAt: string;
+};
+
+type WinterServiceAutomationSettings = {
+  enabled: boolean;
+  senderUserId: string;
+  notificationUserIds: string[];
+};
+
+type CustomerFeedbackItem = {
+  id: string;
+  requestId: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  projectId: string;
+  contactId: string;
+  customerName: string;
+  rating: number;
+  comment: string;
+  wantsContact: boolean;
+  source: string;
+  salesUserId: string;
+  salesUserName: string;
+  hotAlert: boolean;
+  createdAt: string;
+};
+
+type CustomerFeedbackRequestItem = {
+  id: string;
+  token: string;
+  url: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  projectId: string;
+  contactId: string;
+  customerName: string;
+  recipientEmail: string;
+  salesUserId: string;
+  salesUserName: string;
+  status: string;
+  sentAt: string;
+  respondedAt: string;
+  createdAt: string;
 };
 
 type EmployeeCostCalculation = {
@@ -840,6 +979,7 @@ type CatalogItem = {
   listPrice: number;
   salesPrice: number;
   vatRate: number;
+  isLaborPosition: boolean;
   isPlanningRelevant: boolean;
   planningMinutesPerUnit: number;
   defaultPlanningBoard: string;
@@ -872,12 +1012,16 @@ type OfferLineDraft = {
   id: string;
   catalogItemId: string;
   catalogType: CatalogItemType | "";
+  isLaborPosition?: boolean;
   quantity: number;
   unit: string;
   title: string;
   description: string;
   unitPrice: number;
   discountPercent?: number;
+  materialUnitCostSnapshot?: number;
+  materialCostSnapshot?: number;
+  costSnapshotAt?: string;
   laborCostRateKey?: string;
   laborCostRate?: number;
   vatRate: number;
@@ -917,6 +1061,12 @@ type OfferItem = {
   vatRate: number;
   grossTotal: number;
   discountPercent?: number;
+  lostReason?: string;
+  lostNote?: string;
+  lostAt?: string;
+  wonAt?: string;
+  wonByName?: string;
+  wonReason?: string;
   pdfAvailable: boolean;
   createdAt: string;
   updatedAt: string;
@@ -948,12 +1098,50 @@ type InvoiceItem = {
   vatRate: number;
   grossTotal: number;
   discountPercent: number;
+  paymentTermDays: number;
+  dueDate: string;
+  reminderLevel: number;
+  lastReminderAt: string;
   isPaid: boolean;
   paidAt: string;
   pdfAvailable: boolean;
   createdAt: string;
   updatedAt: string;
   lines: OfferLineDraft[];
+};
+type LegacyInvoiceItem = {
+  id: string;
+  source: string;
+  sourceRow: number;
+  importKey: string;
+  invoiceNumber: string;
+  fileName: string;
+  documentType: string;
+  folder: string;
+  customerName: string;
+  projectAddress: string;
+  netTotal: number;
+  invoiceDate: string;
+  company: string;
+  status: string;
+  isEvaluable: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+type AccountingDocumentTypeFilter = "all" | "offers" | "invoices" | "cancellations" | "legacy";
+type AccountingDocumentRow = {
+  id: string;
+  type: "Angebot" | "Rechnung" | "Storno" | "Rechnung ALT";
+  number: string;
+  customerName: string;
+  projectLabel: string;
+  date: string;
+  amount: number;
+  status: string;
+  source: string;
+  project?: HeroProjectPreview;
+  projectDocumentType?: CustomerDocumentType;
+  searchText: string;
 };
 type AutoBillingTemplate = {
   company: "OK solutions" | "OK immocare";
@@ -1017,6 +1205,8 @@ type InvoiceDraft = OfferDraft & {
   serviceDate: string;
   sourceOfferId: string;
   sourceOfferNumber: string;
+  paymentTermDays: number;
+  dueDate: string;
 };
 
 type TeamOption = {
@@ -1097,6 +1287,9 @@ type HeroProjectPreview = {
   address?: string;
   participants?: string;
   responsibleName?: string;
+  deputyName?: string;
+  deputyFrom?: string;
+  deputyUntil?: string;
   createdAt?: string;
   timeBudgetHours?: string;
   timeBudgetHistory?: Array<{
@@ -1114,6 +1307,23 @@ type HeroProjectPreview = {
   autoBillingEndMonth?: string;
   autoBillingTemplateMode?: string;
   autoBillingTemplate?: AutoBillingTemplate | null;
+};
+
+type StatusTimelineEntry = {
+  id: string;
+  entityType: string;
+  entityId: string;
+  entityLabel: string;
+  fromStatus: string;
+  toStatus: string;
+  startedAt: string;
+  endedAt: string;
+  durationMinutes: number;
+  durationHours: number;
+  actorUserId: string;
+  actorName: string;
+  note: string;
+  createdAt: string;
 };
 
 type ProjectTimeBudgetAllocation = {
@@ -1178,6 +1388,9 @@ type ContactItem = {
   source: string;
   reachability: string;
   isInvoiceRecipient: boolean;
+  isActivityReportRecipient: boolean;
+  eInvoiceRequired: boolean;
+  eInvoiceRecipientType: "business" | "public";
   parentCompanyId: string;
   parentCompanyName: string;
   mainContactName: string;
@@ -1254,16 +1467,37 @@ type ProjectPipeline = {
   statuses: ProjectPipelineStatus[];
 };
 
+type ProjectKindValue = "einmaliges Projekt" | "Dauerläufer-Projekt" | "Dauerl\u00c3\u00a4ufer-Projekt";
+
+const ONE_TIME_PROJECT_KIND = "einmaliges Projekt";
+const RECURRING_PROJECT_KIND = "Dauerläufer-Projekt";
+const LEGACY_RECURRING_PROJECT_KIND = "Dauerl\u00c3\u00a4ufer-Projekt";
+const DELETED_STATUS_VALUES = new Set(["Gelöscht", "Gel\u00c3\u00b6scht"]);
+
+function normalizeProjectKindValue(value?: string | null): Exclude<ProjectKindValue, "Dauerl\u00c3\u00a4ufer-Projekt"> {
+  return value === RECURRING_PROJECT_KIND || value === LEGACY_RECURRING_PROJECT_KIND
+    ? RECURRING_PROJECT_KIND
+    : ONE_TIME_PROJECT_KIND;
+}
+
+function isRecurringProjectKindValue(value?: string | null) {
+  return normalizeProjectKindValue(value) === RECURRING_PROJECT_KIND;
+}
+
+function isDeletedStatus(value?: string | null) {
+  return DELETED_STATUS_VALUES.has(value || "");
+}
+
 type ProjectDraft = {
   contactId: string;
   contactPersonId: string;
   addressContactId: string;
   projectType: "Projekt OK solutions" | "Projekt OK immocare";
-  projectKind: "einmaliges Projekt" | "Dauerläufer-Projekt";
+  projectKind: ProjectKindValue;
   projectRuntimeFrom: string;
   projectRuntimeUntil: string;
-  billingInterval: "monatlich" | "quartalsweise" | "jährlich";
-  forecastBillingType: "monatlich" | "wöchentlich" | "quartalsweise";
+  billingInterval: "monatlich" | "quartalsweise" | "jährlich" | "j\u00c3\u00a4hrlich";
+  forecastBillingType: "monatlich" | "wöchentlich" | "w\u00c3\u00b6chentlich" | "quartalsweise";
   forecastNetAmount: string;
   trade: string;
   branch: string;
@@ -1272,6 +1506,10 @@ type ProjectDraft = {
   timeBudgetHours: string;
   source: string;
   participants: string;
+  responsibleName: string;
+  deputyName: string;
+  deputyFrom: string;
+  deputyUntil: string;
 };
 type ProjectKindFilter = "" | ProjectDraft["projectKind"] | "potentials";
 
@@ -1294,6 +1532,30 @@ type LogbookAttachment = {
   dataUrl?: string;
 };
 
+type SmokeDetectorDeviceDraft = {
+  id: string;
+  building: string;
+  floor: string;
+  unit: string;
+  room: string;
+  manufacturer: string;
+  model: string;
+  serialNumber: string;
+  manufactureDate: string;
+  battery: string;
+  radioLinked: boolean;
+  detectorType: string;
+  ceilingPosition: string;
+  distanceNotes: string;
+  specialNotes: string;
+  locationCompliant: boolean;
+  functionTestPassed: boolean;
+  visualInspectionPassed: boolean;
+  signalTestDone: boolean;
+  mountedSecurely: boolean;
+  images: LogbookAttachment[];
+};
+
 type ProjectLogbookEntry = {
   id: string;
   projectId: string;
@@ -1301,10 +1563,17 @@ type ProjectLogbookEntry = {
   title: string;
   text: string;
   author: string;
+  authorUserId?: string;
   colleague: string;
   visibleFor: string[];
   attachments: LogbookAttachment[];
   projectMonth?: string;
+};
+
+type ProjectLogbookAttachmentPatchResponse = {
+  entry: ProjectLogbookEntry;
+  targetEntry?: ProjectLogbookEntry;
+  history?: ProjectLogbookEntry;
 };
 
 type ProjectPotentialStatus = "open" | "follow_up" | "offered" | "lost";
@@ -1312,6 +1581,7 @@ type ProjectPotentialPriority = "low" | "normal" | "high";
 
 type ProjectPotential = {
   id: string;
+  number: string;
   contactId: string;
   customerName: string;
   projectId: string;
@@ -1335,12 +1605,124 @@ type ProjectPotential = {
   updatedAt: string;
 };
 
+function isNoUpsellDescription(value: string) {
+  const normalized = value.trim().toLowerCase().replace(/[.!?]+$/g, "").replace(/\s+/g, " ");
+  return (
+    /^(nein|nein danke|keine|kein|keine verkaufschance|kein zusatzverkauf|nicht vorhanden)$/i.test(normalized) ||
+    /^nein\b/i.test(normalized)
+  );
+}
+
+function getPositiveUpsellNoteFromLogText(value: string) {
+  const match = value.match(/zusatzverkauf:\s*([^\r\n]+)/i);
+  const note = match?.[1]?.trim() || "";
+  return note && !isNoUpsellDescription(note) ? note : "";
+}
+
+type GoalMetricKey =
+  | "offers_count"
+  | "offers_value"
+  | "won_offers_count"
+  | "won_offers_value"
+  | "offer_service_value"
+  | "offer_material_value"
+  | "offer_package_value"
+  | "lost_offers_count"
+  | "lost_offers_value"
+  | "invoices_count"
+  | "invoices_value"
+  | "invoice_service_value"
+  | "invoice_material_value"
+  | "invoice_package_value"
+  | "paid_invoices_count"
+  | "paid_invoices_value"
+  | "open_tasks"
+  | "overdue_tasks"
+  | "tasks_done"
+  | "sales_opportunities_count"
+  | "sales_opportunities_value"
+  | "project_hours"
+  | "unproductive_hours"
+  | "attendance_hours"
+  | "performance_grade"
+  | "productivity_rate"
+  | "logbook_entries"
+  | "activity_reports_count"
+  | "customer_feedback_average";
+
+type SalesGoal = {
+  id: string;
+  title: string;
+  description: string;
+  ownerUserId: string;
+  ownerName: string;
+  priority: ProjectPotentialPriority;
+  metricKey: GoalMetricKey | "";
+  targetValue: number;
+  periodStart: string;
+  periodEnd: string;
+  targetMonth: string;
+  followUpAt: string;
+  status: "open" | "in_contact" | "done" | "discarded";
+  createdAt: string;
+  updatedAt: string;
+};
+
+const goalMetricOptions: Array<{
+  key: GoalMetricKey;
+  label: string;
+  unit: "count" | "currency" | "percent";
+  hint: string;
+}> = [
+  { key: "offers_count", label: "Anzahl Angebote", unit: "count", hint: "Erstellte Angebote im Zeitraum." },
+  { key: "offers_value", label: "Angebotswert", unit: "currency", hint: "Netto-Summe erstellter Angebote." },
+  { key: "won_offers_count", label: "Gewonnene Angebote", unit: "count", hint: "Angebote mit Gewonnen-Markierung." },
+  { key: "won_offers_value", label: "Wert gewonnener Angebote", unit: "currency", hint: "Netto-Summe gewonnener Angebote." },
+  { key: "offer_service_value", label: "Angebotene Leistungen", unit: "currency", hint: "Netto-Angebotswert von Leistungspositionen." },
+  { key: "offer_material_value", label: "Angebotenes Material", unit: "currency", hint: "Netto-Angebotswert von Materialpositionen." },
+  { key: "offer_package_value", label: "Angebotene Pakete", unit: "currency", hint: "Netto-Angebotswert von Paketpositionen." },
+  { key: "lost_offers_count", label: "Verlorene Angebote", unit: "count", hint: "Angebote mit Verlust-Markierung." },
+  { key: "lost_offers_value", label: "Wert verlorener Angebote", unit: "currency", hint: "Netto-Summe verlorener Angebote." },
+  { key: "invoices_count", label: "Anzahl Rechnungen", unit: "count", hint: "Erstellte Rechnungen ohne Entwuerfe." },
+  { key: "invoices_value", label: "Fakturierter Umsatz", unit: "currency", hint: "Netto-Rechnungswert ohne Entwuerfe." },
+  { key: "invoice_service_value", label: "Fakturierte Leistungen", unit: "currency", hint: "Netto-Rechnungswert von Leistungspositionen." },
+  { key: "invoice_material_value", label: "Fakturiertes Material", unit: "currency", hint: "Netto-Rechnungswert von Materialpositionen." },
+  { key: "invoice_package_value", label: "Fakturierte Pakete", unit: "currency", hint: "Netto-Rechnungswert von Paketpositionen." },
+  { key: "paid_invoices_count", label: "Bezahlte Rechnungen", unit: "count", hint: "Rechnungen mit Zahlungseingang." },
+  { key: "paid_invoices_value", label: "Bezahlter Umsatz", unit: "currency", hint: "Bezahlte Netto-Rechnungen." },
+  { key: "open_tasks", label: "Offene Aufgaben", unit: "count", hint: "Noch nicht erledigte Aufgaben." },
+  { key: "overdue_tasks", label: "Ueberfaellige Aufgaben", unit: "count", hint: "Offene Aufgaben mit ueberschrittener Faelligkeit." },
+  { key: "tasks_done", label: "Erledigte Aufgaben", unit: "count", hint: "Abgeschlossene Aufgaben im Zeitraum." },
+  { key: "sales_opportunities_count", label: "Zusatzverkäufe", unit: "count", hint: "Angelegte aktive Zusatzverkäufe." },
+  { key: "sales_opportunities_value", label: "Potenzialwert", unit: "currency", hint: "Summe der Potenzialwerte." },
+  { key: "project_hours", label: "Produktive Stunden", unit: "count", hint: "Projektbezogene Stempelstunden." },
+  { key: "unproductive_hours", label: "Unproduktive Stunden", unit: "count", hint: "Unproduktive Stempelstunden." },
+  { key: "attendance_hours", label: "Anwesenheitsstunden", unit: "count", hint: "Produktive plus unproduktive Stunden." },
+  { key: "performance_grade", label: "Leistungsgrad", unit: "percent", hint: "Verkaufte Stunden im Verhaeltnis zu produktiven Stunden." },
+  { key: "productivity_rate", label: "Produktivitaet", unit: "percent", hint: "Verkaufte Stunden im Verhaeltnis zur Anwesenheit." },
+  { key: "logbook_entries", label: "Logbucheintraege", unit: "count", hint: "Erfasste Logbucheintraege." },
+  { key: "activity_reports_count", label: "Taetigkeitsberichte", unit: "count", hint: "Erstellte Taetigkeitsberichte im Zeitraum." },
+  { key: "customer_feedback_average", label: "Kundenzufriedenheit", unit: "percent", hint: "Durchschnittliche Bewertung als Prozentwert." },
+];
+
 type StampMode = "project" | "unproductive";
+
+const defaultUnproductiveStampLabels = [
+  "Pause / Wartezeit",
+  "Ruestzeit",
+  "Fahrt ohne Projekt",
+  "Besprechung intern",
+  "Wartung / Pflege",
+  "Schulung",
+  "Buerotaetigkeit",
+  "Sonstiges",
+];
 
 type StampSession = {
   mode: StampMode;
   projectId: string;
   projectLabel?: string;
+  comment?: string;
   startedAt: number;
   accumulatedMs: number;
   pauseStartedAt: number | null;
@@ -1354,6 +1736,7 @@ type ActiveStampSessionResponse = {
   mode: StampMode;
   projectId: string;
   projectLabel: string;
+  comment: string;
   startedAt: string;
   accumulatedMs: number;
   pauseStartedAt: string | null;
@@ -1375,10 +1758,14 @@ type StampTimeEntry = {
   endTime: string;
   durationMs: number;
   pauseMs: number;
+  laborCostRateSnapshot?: number;
+  laborCostSnapshot?: number;
+  costSnapshotAt?: string;
   comment: string;
   invoiceId?: string;
   invoiceNumber?: string;
   invoicedAt?: string;
+  completionStatus?: "" | "finished" | "interrupted";
   overtimeApprovalStatus?: "not_required" | "pending" | "approved";
   overtimeApprovedByUserId?: string;
   overtimeApprovedByName?: string;
@@ -1429,7 +1816,20 @@ const emptyProjectDraft: ProjectDraft = {
   timeBudgetHours: "",
   source: "",
   participants: "",
+  responsibleName: "",
+  deputyName: "",
+  deputyFrom: "",
+  deputyUntil: "",
 };
+
+function combineStampComments(startComment: string, endComment: string) {
+  const cleanedStartComment = startComment.trim();
+  const cleanedEndComment = endComment.trim();
+  if (!cleanedStartComment) return cleanedEndComment;
+  if (!cleanedEndComment) return cleanedStartComment;
+  if (cleanedStartComment === cleanedEndComment) return cleanedStartComment;
+  return `${cleanedStartComment}\n\nErgaenzung: ${cleanedEndComment}`;
+}
 
 const projectTradeOptions = [
   "Wartung",
@@ -1479,12 +1879,17 @@ const projectLifecycleStatuses: ProjectPipelineStatus[] = [
   { label: "Angebot", icon: "2", count: 0 },
   { label: "Warten auf Kunde", icon: "3", count: 0 },
   { label: "Zur Planung bereit", icon: "4", count: 0 },
-  { label: "Umsetzung", icon: "5", count: 0 },
-  { label: "Endkontrolle", icon: "6", count: 0 },
-  { label: "Zur Abrechnung bereit", icon: "7", count: 0 },
-  { label: "Abgeschlossen", icon: "8", count: 0 },
-  { label: "Archiviert", icon: "9", count: 0 },
+  { label: "Geplant", icon: "5", count: 0 },
+  { label: "Umsetzung", icon: "6", count: 0 },
+  { label: "Endkontrolle", icon: "7", count: 0 },
+  { label: "Zur Abrechnung bereit", icon: "8", count: 0 },
+  { label: "Abgeschlossen", icon: "9", count: 0 },
+  { label: "Archiviert", icon: "10", count: 0 },
 ];
+
+const projectOperationalLifecycleStatuses = projectLifecycleStatuses.filter(
+  (status) => status.label !== "Archiviert"
+);
 
 const projectAutomationRules: Array<{
   status: string;
@@ -1503,12 +1908,17 @@ const projectAutomationRules: Array<{
   },
   {
     status: "Zur Planung bereit",
-    trigger: "Beim Wechsel von Warten auf Kunde zu Zur Planung bereit",
+    trigger: "Wenn ein Terminwunsch oder Planungsbedarf vorhanden ist",
     action: "Notification und E-Mail an den Planungsbeauftragten",
   },
   {
+    status: "Geplant",
+    trigger: "Wenn ein fester Planungstermin vorhanden ist",
+    action: "Projekt ist geplant, aber noch nicht in Ausführung",
+  },
+  {
     status: "Umsetzung",
-    trigger: "Sobald das Projekt in Umsetzung ist",
+    trigger: "Sobald ein Termin erreicht wurde, gestempelt oder ein Ausführungsnachweis erfasst wurde",
     action: "Sichtbar für die ausführenden Mitarbeiter in App und PC",
   },
   {
@@ -1519,7 +1929,79 @@ const projectAutomationRules: Array<{
   {
     status: "Dauerläufer-Faktura",
     trigger: "Nach Faktura bei Dauerläufer-Projekten",
-    action: "Automatisch zurück auf Zur Planung bereit",
+    action: "Monat zurück auf Umsetzung, solange der Dauerläufer aktiv ist",
+  },
+];
+
+const projectPipelineAutomationBlueprint: Array<{
+  event: string;
+  oneTimeStatus: string;
+  recurringStatus: string;
+  behavior: "Automatisch" | "Vorschlag" | "Monatslogik";
+  note: string;
+}> = [
+  {
+    event: "Projekt wird angelegt",
+    oneTimeStatus: "Lead / Klärung",
+    recurringStatus: "Lead / Klärung",
+    behavior: "Automatisch",
+    note: "Startstatus fuer neue Projekte, damit kein Projekt ohne Pipeline-Zuordnung entsteht.",
+  },
+  {
+    event: "Angebotsentwurf ist vorhanden",
+    oneTimeStatus: "Angebot",
+    recurringStatus: "Angebot",
+    behavior: "Vorschlag",
+    note: "Entwurf bedeutet Angebotserstellung, aber noch kein Warten auf den Kunden.",
+  },
+  {
+    event: "Finales Angebot wurde versendet oder bewusst ausgegeben",
+    oneTimeStatus: "Warten auf Kunde",
+    recurringStatus: "Warten auf Kunde",
+    behavior: "Vorschlag",
+    note: "Erst der echte Versand oder die Ausgabe an den Kunden startet die Wartephase.",
+  },
+  {
+    event: "Terminwunsch oder Planungsbedarf ist vorhanden",
+    oneTimeStatus: "Zur Planung bereit",
+    recurringStatus: "Zur Planung bereit",
+    behavior: "Vorschlag",
+    note: "Terminwunsch ist noch kein fester Termin und bleibt deshalb vor Geplant.",
+  },
+  {
+    event: "Fester Planungstermin ist eingetragen",
+    oneTimeStatus: "Geplant",
+    recurringStatus: "Geplant",
+    behavior: "Vorschlag",
+    note: "Das Projekt ist geplant, aber die Ausfuehrung hat noch nicht begonnen.",
+  },
+  {
+    event: "Termin erreicht, Stempelung gestartet oder Ausfuehrungsnachweis vorhanden",
+    oneTimeStatus: "Umsetzung",
+    recurringStatus: "Umsetzung",
+    behavior: "Vorschlag",
+    note: "Umsetzung beginnt erst mit echter Ausfuehrung, nicht schon mit einem Zukunftstermin.",
+  },
+  {
+    event: "Endkontrolle liegt vor",
+    oneTimeStatus: "Endkontrolle",
+    recurringStatus: "Umsetzung",
+    behavior: "Vorschlag",
+    note: "Bei Dauerlaeufern ist Endkontrolle meist ein Monatsnachweis, nicht zwingend Projektstatus.",
+  },
+  {
+    event: "Monatsende: Pflichtnachweise vollstaendig und noch keine Monatsrechnung",
+    oneTimeStatus: "Zur Abrechnung bereit",
+    recurringStatus: "Zur Abrechnung bereit",
+    behavior: "Monatslogik",
+    note: "Dauerlaeufer springen monatsbezogen in die Faktura, nicht in den Projektabschluss.",
+  },
+  {
+    event: "Rechnung fuer den Monat wurde erstellt oder versendet",
+    oneTimeStatus: "Abgeschlossen",
+    recurringStatus: "Umsetzung",
+    behavior: "Monatslogik",
+    note: "Einmalprojekte koennen abschliessen; aktive Dauerlaeufer laufen nach der Faktura weiter.",
   },
 ];
 
@@ -1528,12 +2010,21 @@ function getProjectStatusStripLabel(label: string) {
     "Alle Offenen": "Alle offenen",
     "Lead / Klärung": "Lead & Klärung",
     Angebot: "Angebotserstellung",
+    Geplant: "Geplant",
     Umsetzung: "In Umsetzung",
     Endkontrolle: "Endkontrolle",
     "Zur Abrechnung bereit": "Abrechnungbereit",
   };
 
   return labelMap[label] ?? label;
+}
+
+function normalizeProjectPipelineStatus(status?: string | null) {
+  if (status === "Lead / Kl\u00c3\u00a4rung") return "Lead / Klärung";
+  if (status === "Dauerl\u00c3\u00a4ufer-Faktura") return "Dauerläufer-Faktura";
+  if (status === "In Umsetzung") return "Umsetzung";
+  if (status === "Geplant") return "Geplant";
+  return status || "";
 }
 
 function getProjectNumberPrefix(projectNumber: string) {
@@ -1634,7 +2125,7 @@ const projectPipelines: ProjectPipeline[] = [
     label: "Projekte OK solutions",
     company: "OK solutions",
     total: 47,
-    statuses: projectLifecycleStatuses,
+    statuses: projectOperationalLifecycleStatuses,
   },
   {
     id: "immocare",
@@ -1642,7 +2133,7 @@ const projectPipelines: ProjectPipeline[] = [
     label: "Projekte OK immocare",
     company: "OK immocare",
     total: 80,
-    statuses: projectLifecycleStatuses,
+    statuses: projectOperationalLifecycleStatuses,
   },
 ];
 
@@ -1766,6 +2257,7 @@ const emptyCatalogItemDraft: Omit<CatalogItem, "id" | "createdAt" | "updatedAt" 
   listPrice: 0,
   salesPrice: 0,
   vatRate: 19,
+  isLaborPosition: false,
   isPlanningRelevant: false,
   planningMinutesPerUnit: 0,
   defaultPlanningBoard: "",
@@ -1799,6 +2291,8 @@ const emptyInvoiceDraft: InvoiceDraft = {
   serviceDate: "",
   sourceOfferId: "",
   sourceOfferNumber: "",
+  paymentTermDays: 14,
+  dueDate: "",
 };
 
 const emptyEmployeeMailAccount: EmployeeMailAccount = {
@@ -1827,6 +2321,11 @@ const defaultDocumentMailTemplates: Record<DocumentMailKind, { subject: string; 
     subject: "Stornorechnung {{number}}",
     body:
       "Hallo,\n\nanbei senden wir Ihnen die Stornorechnung {{number}} als PDF.\n\nBei Rückfragen stehen wir gern zur Verfügung.\n\nMit freundlichen Grüßen\n{{sender}}",
+  },
+  reminder: {
+    subject: "Mahnung {{number}}",
+    body:
+      "Hallo,\n\nanbei senden wir Ihnen unsere Mahnung {{number}} als PDF.\n\nBitte prüfen Sie den offenen Betrag und die Zahlungsfrist. Bei Rückfragen stehen wir gern zur Verfügung.\n\nMit freundlichen Grüßen\n{{sender}}",
   },
   activityReport: {
     subject: "Tätigkeitsbericht {{number}}",
@@ -1884,12 +2383,12 @@ const navigationTabs: Array<[AppTab, string]> = [
   ["reports", "Auswertungen"],
   ["contacts", "Kontakte"],
   ["newsFeed", "News-Feed"],
-  ["salesHub", "Sales-Hub"],
+  ["salesHub", "Meine Ziele"],
   ["projectsSolutions", "Projekte OK solutions"],
   ["projectsImmocare", "Projekte OK immocare"],
   ["contentManagement", "Content-Management"],
   ["articles", "Artikel & Leistungen"],
-  ["salesOpportunities", "Potenziale"],
+  ["salesOpportunities", "Zusatzverkäufe"],
   ["dashboard", "Aufgaben"],
   ["planningBoard", "Planungsboard"],
   ["processAutomation", "Prozess/Automation"],
@@ -1898,6 +2397,33 @@ const navigationTabs: Array<[AppTab, string]> = [
   ["employees", "Mitarbeiter"],
   ["settings", "Firmeneinstellungen"],
 ];
+
+function isAccountingRole(role?: string) {
+  return role === "BUCHHALTUNG";
+}
+
+function isTabAllowedForRole(tab: AppTab, role?: string) {
+  if (isAccountingRole(role)) return tab === "reports";
+  return true;
+}
+
+function getVisibleNavigationTabs(role?: string) {
+  return navigationTabs.filter(([tab]) => isTabAllowedForRole(tab, role));
+}
+
+function getVisibleReportTabs(role?: string) {
+  const allowedTabsByRole: Record<string, ReportAnalyticsTab[]> = {
+    ADMIN: allReportTabs.map((tab) => tab.id),
+    GESCHAEFTSFUEHRER: allReportTabs.map((tab) => tab.id),
+    FUEHRUNGSKRAFT: ["overview", "projects", "svs", "kuzu", "employees", "map"],
+    MITARBEITER: ["overview", "employees"],
+    VERTRIEB: ["overview", "sales", "projects", "customers", "kuzu"],
+    BUCHHALTUNG: ["forecast", "revenue", "customers", "overview"],
+    GAST: ["overview"],
+  };
+  const allowedTabs = allowedTabsByRole[role || ""] ?? ["overview"];
+  return allReportTabs.filter((tab) => allowedTabs.includes(tab.id));
+}
 
 const appTabs: AppTab[] = [
   "overview",
@@ -1908,7 +2434,6 @@ const appTabs: AppTab[] = [
   "newsFeed",
   "salesHub",
   "salesOpportunities",
-  "customerSatisfaction",
   "salesTargets",
   "hero",
   "projectsSolutions",
@@ -1945,6 +2470,7 @@ const appTabs: AppTab[] = [
   "planningBoard",
   "processAutomation",
   "winterService",
+  "generalActivityReports",
   "archive",
   "settings",
 ];
@@ -1956,12 +2482,13 @@ const projectFileTabs: ProjectFileTab[] = [
   "gaeb",
   "time",
   "appointments",
+  "forecast",
   "budgets",
   "automaticBilling",
+  "profit",
+  "potentials",
   "tasks",
-  "material",
   "comparison",
-  "participants",
   "checklists",
 ];
 
@@ -1971,6 +2498,7 @@ const customerDocumentTypes: CustomerDocumentType[] = [
   "Angebote",
   "Angebote: Nachtragsangebote",
   "Tätigkeitsberichte",
+  "Checklisten",
   "Endkontrolle",
   "Mahnung",
   "Rechnungen",
@@ -1987,6 +2515,12 @@ function getStoredDashboardText(key: string) {
   return window.localStorage.getItem(key) || "";
 }
 
+function getStoredDashboardNumber(key: string, fallback: number) {
+  if (typeof window === "undefined") return fallback;
+  const value = Number(window.localStorage.getItem(key));
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
 function getDashboardUrlValue<T extends string>(key: string, allowedValues: readonly T[], fallback: T) {
   if (typeof window === "undefined") return fallback;
   const value = new URLSearchParams(window.location.search).get(key);
@@ -2001,6 +2535,16 @@ function getDashboardUrlText(key: string) {
 function getCurrentMonthKey() {
   const today = new Date();
   return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getCurrentMonthStartDisplay() {
+  const today = new Date();
+  return formatDateForFileName(new Date(today.getFullYear(), today.getMonth(), 1, 12));
+}
+
+function getCurrentMonthEndDisplay() {
+  const today = new Date();
+  return formatDateForFileName(new Date(today.getFullYear(), today.getMonth() + 1, 0, 12));
 }
 
 const preparedSidebarTabLabels: Record<SidebarPreparedTab, string> = {
@@ -2068,7 +2612,7 @@ function SidebarIcon({ tab }: { tab: AppTab }) {
     );
   }
 
-  if (tab === "salesHub" || tab === "salesOpportunities" || tab === "customerSatisfaction" || tab === "salesTargets") {
+  if (tab === "salesHub" || tab === "salesOpportunities" || tab === "salesTargets") {
     return (
       <svg {...common}>
         <path d="M4 18V8m5 10V5m5 13v-7m5 7V9" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
@@ -2141,7 +2685,7 @@ function SidebarIcon({ tab }: { tab: AppTab }) {
     );
   }
 
-  if (tab === "processAutomation" || tab === "winterService") {
+  if (tab === "processAutomation" || tab === "winterService" || tab === "generalActivityReports") {
     return (
       <svg {...common}>
         <path d="M12 3v3M12 18v3M4.2 7.5l2.6 1.5M17.2 15l2.6 1.5M4.2 16.5l2.6-1.5M17.2 9l2.6-1.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
@@ -2194,6 +2738,7 @@ const firmSettingsTabs: Array<{ id: FirmSettingsTab; label: string }> = [
   { id: "profile", label: "Firmenprofil" },
   { id: "units", label: "Einheiten" },
   { id: "businessAreaTargets", label: "Geschäftsbereich-Soll" },
+  { id: "deadlines", label: "Zeitfristen" },
   { id: "appearance", label: "Seitendarstellung" },
   { id: "branches", label: "Niederlassungen" },
   { id: "emailTemplates", label: "Email-Templates" },
@@ -2264,6 +2809,9 @@ const emptyContact: Omit<ContactItem, "id" | "createdAt" | "updatedAt"> = {
   source: "E-Mail",
   reachability: "Sonstige",
   isInvoiceRecipient: false,
+  isActivityReportRecipient: false,
+  eInvoiceRequired: false,
+  eInvoiceRecipientType: "business",
   parentCompanyId: "",
   parentCompanyName: "",
   mainContactName: "",
@@ -2294,8 +2842,45 @@ const finalInspectionItems = [
   "Material / Geräte mitgenommen",
   "Besonderheiten oder Schäden gemeldet",
 ];
+
+function createSmokeDetectorDeviceDraft(): SmokeDetectorDeviceDraft {
+  return {
+    id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `smoke-${Date.now()}`,
+    building: "",
+    floor: "",
+    unit: "",
+    room: "",
+    manufacturer: "",
+    model: "",
+    serialNumber: "",
+    manufactureDate: "",
+    battery: "",
+    radioLinked: false,
+    detectorType: "Rauchwarnmelder",
+    ceilingPosition: "",
+    distanceNotes: "",
+    specialNotes: "",
+    locationCompliant: true,
+    functionTestPassed: true,
+    visualInspectionPassed: true,
+    signalTestDone: true,
+    mountedSecurely: true,
+    images: [],
+  };
+}
+
 const TASK_ACCEPTANCE_REQUIRED_MESSAGE =
   "Sie müssen zuerst die Aufgabe annehmen, bevor Sie die Aufgabe bearbeiten.";
+
+const planningWeekdayOptions = [
+  { value: 1, label: "Mo" },
+  { value: 2, label: "Di" },
+  { value: 3, label: "Mi" },
+  { value: 4, label: "Do" },
+  { value: 5, label: "Fr" },
+  { value: 6, label: "Sa" },
+  { value: 0, label: "So" },
+];
 
 type TaskItem = {
   id: string;
@@ -2431,6 +3016,7 @@ const roleOptions: Array<{ value: UserRole; label: string }> = [
   { value: "ADMIN", label: "Admin" },
   { value: "GESCHAEFTSFUEHRER", label: "Gesch\u00e4ftsf\u00fchrung" },
   { value: "FUEHRUNGSKRAFT", label: "F\u00fchrungskraft" },
+  { value: "BUCHHALTUNG", label: "Buchhaltung" },
   { value: "MITARBEITER", label: "Mitarbeiter" },
   { value: "GAST", label: "Gast" },
 ];
@@ -2754,11 +3340,45 @@ function parseHoursInput(value?: string) {
   return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
 }
 
+function parseMoneyInput(value?: string | number | null) {
+  if (value === null || value === undefined || value === "") return 0;
+  const match = String(value)
+    .replace(/\./g, "")
+    .replace(",", ".")
+    .match(/-?\d+(\.\d+)?/);
+  if (!match) return 0;
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function formatHours(value: number) {
   return value.toLocaleString(APP_LOCALE, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+function normalizeSearchText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeVisibleMojibakeText(value: string) {
+  return value
+    .replaceAll("\u00c3\u00a4", "ä")
+    .replaceAll("\u00c3\u00b6", "ö")
+    .replaceAll("\u00c3\u00bc", "ü")
+    .replaceAll("\u00c3\u0084", "Ä")
+    .replaceAll("\u00c3\u0096", "Ö")
+    .replaceAll("\u00c3\u009c", "Ü")
+    .replaceAll("\u00c3\u009f", "ß")
+    .replaceAll("\u00c2\u00b7", "·")
+    .replaceAll("\u00e2\u201a\u00ac", "€")
+    .replaceAll("\u00e2\u0153\u201c", "✓");
 }
 
 function formatHourMinutes(value: number) {
@@ -2819,28 +3439,34 @@ function getEmployeeCostMetrics(cost: EmployeeCostCalculation) {
 
 function formatDeadline(value: string) {
   if (!value) return "-";
+  const date = parseAppDateTime(value);
+  if (!Number.isFinite(date.getTime())) return "-";
   return new Intl.DateTimeFormat(APP_LOCALE, {
     dateStyle: "medium",
     timeStyle: "short",
     timeZone: APP_TIME_ZONE,
-  }).format(parseAppDateTime(value));
+  }).format(date);
 }
 
 function formatInstantDateTime(value: string) {
   if (!value) return "-";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "-";
   return new Intl.DateTimeFormat(APP_LOCALE, {
     dateStyle: "medium",
     timeStyle: "short",
     timeZone: APP_TIME_ZONE,
-  }).format(new Date(value));
+  }).format(date);
 }
 
 function formatDateOnly(value: string) {
   if (!value) return "-";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "-";
   return new Intl.DateTimeFormat(APP_LOCALE, {
     dateStyle: "medium",
     timeZone: APP_TIME_ZONE,
-  }).format(new Date(value));
+  }).format(date);
 }
 
 function formatCalendarTitle(date: Date) {
@@ -2856,6 +3482,19 @@ function formatDateKey(date: Date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function formatDateForFileName(date = new Date()) {
+  const [year, month, day] = formatDateKey(date).split("-");
+  return `${day}.${month}.${year}`;
+}
+
+function sanitizeFileNamePart(value: string) {
+  return value
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "")
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_");
 }
 
 function normalizeDateKeyValue(value: string) {
@@ -2886,7 +3525,7 @@ function parseProjectDate(value?: string) {
     return Number.isFinite(date.getTime()) ? date : null;
   }
 
-  const germanMatch = normalizedValue.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})/);
+  const germanMatch = normalizedValue.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4}|\d{2})/);
   if (germanMatch) {
     const [, dayValue, monthValue, yearValue] = germanMatch;
     const parsedYear = Number(yearValue);
@@ -3306,6 +3945,14 @@ function addDaysToDateKey(dateKey: string, days: number) {
   return formatDateKey(date);
 }
 
+function getWeekStartDateKey(dateKey: string) {
+  const date = new Date(`${dateKey}T12:00`);
+  const day = date.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + mondayOffset);
+  return formatDateKey(date);
+}
+
 function getEasterSunday(year: number) {
   const a = year % 19;
   const b = Math.floor(year / 100);
@@ -3367,7 +4014,7 @@ function calculateGermanHolidays(state: GermanStateCode, startYear: number, year
       addHoliday(year, 10, 31, "Reformationstag");
     }
     if (["BW", "BY", "NW", "RP", "SL"].includes(state)) addHoliday(year, 11, 1, "Allerheiligen");
-    if (state === "SN") addHolidayByDate(getPrayerAndRepentanceDay(year), "Bux- und Bettag");
+    if (state === "SN") addHolidayByDate(getPrayerAndRepentanceDay(year), "Buß- und Bettag");
   }
 
   return holidays.sort((first, second) => first.date.localeCompare(second.date));
@@ -3381,8 +4028,12 @@ function buildGermanHolidayCatalog(startYear: number, years: number) {
 }
 
 function getProjectKind(project: HeroProjectPreview): ProjectDraft["projectKind"] {
-  if (project.projectKind === "Dauerläufer-Projekt" || project.projectKind === "einmaliges Projekt") {
-    return project.projectKind;
+  if (
+    project.projectKind === RECURRING_PROJECT_KIND ||
+    project.projectKind === LEGACY_RECURRING_PROJECT_KIND ||
+    project.projectKind === ONE_TIME_PROJECT_KIND
+  ) {
+    return normalizeProjectKindValue(project.projectKind);
   }
 
   const searchableText = [
@@ -3396,11 +4047,36 @@ function getProjectKind(project: HeroProjectPreview): ProjectDraft["projectKind"
     .join(" ")
     .toLowerCase();
 
-  return ["monatlich", "jährlich", "jaehrlich", "quartal", "dauer"].some((token) =>
+  return ["monatlich", "jährlich", "j\u00c3\u00a4hrlich", "jaehrlich", "quartal", "dauer"].some((token) =>
     searchableText.includes(token)
   )
-    ? "Dauerläufer-Projekt"
-    : "einmaliges Projekt";
+    ? RECURRING_PROJECT_KIND
+    : ONE_TIME_PROJECT_KIND;
+}
+
+function getProjectCompany(project?: Pick<HeroProjectPreview, "projectType" | "branch" | "projectNumber"> | null): PlanningBoardCompany {
+  const projectType = (project?.projectType ?? "").toLowerCase();
+  const branch = (project?.branch ?? "").toLowerCase();
+  const projectNumber = (project?.projectNumber ?? "").toLowerCase();
+  return projectType.includes("immocare") || branch.includes("immocare") || projectNumber.startsWith("oki")
+    ? "OK immocare"
+    : "OK solutions";
+}
+
+function isImmocareProject(project?: HeroProjectPreview | null) {
+  return getProjectCompany(project) === "OK immocare";
+}
+
+function isWinterServiceProject(project?: Pick<HeroProjectPreview, "trade"> | null) {
+  return (project?.trade ?? "").trim().toLowerCase().includes("winterdienst");
+}
+
+function isAnnualBillingInterval(value?: string | null) {
+  return value === "jährlich" || value === "j\u00c3\u00a4hrlich";
+}
+
+function isWeeklyForecastBillingType(value?: string | null) {
+  return value === "wöchentlich" || value === "w\u00c3\u00b6chentlich";
 }
 
 function getProjectPlanningMonthKey(value?: string | null) {
@@ -3456,6 +4132,18 @@ function formatMonthLabel(monthKey: string) {
   });
 }
 
+function openNativeDatePicker(inputId: string) {
+  const input = document.getElementById(inputId) as (HTMLInputElement & { showPicker?: () => void }) | null;
+  if (!input) return;
+
+  if (typeof input.showPicker === "function") {
+    input.showPicker();
+    return;
+  }
+
+  input.focus();
+}
+
 function getProjectBudgetAllocationHours(project: HeroProjectPreview, monthKey: string) {
   const allocation = (project.timeBudgetAllocations ?? []).find((entry) => entry.month === monthKey);
   return allocation ? parseHoursInput(allocation.hours) : 0;
@@ -3494,6 +4182,23 @@ function isProjectBudgetDueForPlanningMonth(project: HeroProjectPreview, monthKe
   return monthKey >= startMonth && (!endMonth || monthKey <= endMonth);
 }
 
+function isOfferLineLaborPlanningLine(line: Pick<OfferLineDraft, "catalogType" | "isLaborPosition">) {
+  return typeof line.isLaborPosition === "boolean"
+    ? line.isLaborPosition
+    : line.catalogType === "service" || line.catalogType === "package";
+}
+
+function getOfferLaborPlanningHours(offer: Pick<OfferItem, "lines">) {
+  return offer.lines.reduce((offerSum, line) => {
+    if (!isOfferLineLaborPlanningLine(line)) return offerSum;
+    const laborHours = (line.laborItems ?? []).reduce(
+      (lineSum, labor) => lineSum + Number(labor.plannedHours || 0),
+      0
+    );
+    return offerSum + (laborHours > 0 ? laborHours : Number(line.quantity || 0));
+  }, 0);
+}
+
 function clampPercent(value: number) {
   return Math.max(0, Math.min(100, value));
 }
@@ -3504,10 +4209,15 @@ function getPercent(part: number, total: number) {
 
 function formatPercent(value: number) {
   const rounded = Math.round(value * 10) / 10;
-  return rounded.toLocaleString(APP_LOCALE, {
+  const formattedValue = rounded.toLocaleString(APP_LOCALE, {
     maximumFractionDigits: Number.isInteger(rounded) ? 0 : 1,
     minimumFractionDigits: Number.isInteger(rounded) ? 0 : 1,
   });
+  return `${formattedValue} %`;
+}
+
+function formatMarginPercent(value: number) {
+  return formatPercent(value);
 }
 
 function getPerformanceGrade(estimateMinutes: number | null, trackedMinutes: number) {
@@ -3853,6 +4563,11 @@ export function DashboardPage() {
   const [personalDataView, setPersonalDataView] = useState<PersonalDataView>("overview");
   const [selectedPersonalUserId, setSelectedPersonalUserId] = useState("");
   const [personalTimeDate, setPersonalTimeDate] = useState(() => new Date());
+  const [personalStampPeriod, setPersonalStampPeriod] = useState<EmployeeTimePeriod>("year");
+  const [personalStampFrom, setPersonalStampFrom] = useState(() => formatInputDate(new Date()));
+  const [personalStampTo, setPersonalStampTo] = useState(() => formatInputDate(new Date()));
+  const [personalStampProjectFilter, setPersonalStampProjectFilter] = useState("");
+  const [personalStampSearch, setPersonalStampSearch] = useState("");
   const [employeeAssessment, setEmployeeAssessment] =
     useState<EmployeeAssessmentState>(emptyEmployeeAssessment);
   const [assessmentLoadedUserId, setAssessmentLoadedUserId] = useState("");
@@ -3905,13 +4620,6 @@ export function DashboardPage() {
   const [catalogStatusFilter, setCatalogStatusFilter] = useState<"active" | "inactive" | "all">("active");
   const [catalogPageSize, setCatalogPageSize] = useState(25);
   const [catalogPage, setCatalogPage] = useState(1);
-  const [catalogColumnFilters, setCatalogColumnFilters] = useState({
-    number: "",
-    name: "",
-    category: "",
-    unit: "",
-    supplierName: "",
-  });
   const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
   const [editingCatalogItemId, setEditingCatalogItemId] = useState("");
   const [catalogFormTab, setCatalogFormTab] = useState<CatalogFormTab>("information");
@@ -3919,6 +4627,11 @@ export function DashboardPage() {
   const [catalogError, setCatalogError] = useState("");
   const [offers, setOffers] = useState<OfferItem[]>([]);
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
+  const [legacyInvoices, setLegacyInvoices] = useState<LegacyInvoiceItem[]>([]);
+  const [accountingDocumentSearch, setAccountingDocumentSearch] = useState("");
+  const [accountingDocumentCustomerProjectFilter, setAccountingDocumentCustomerProjectFilter] = useState("");
+  const [accountingDocumentTypeFilter, setAccountingDocumentTypeFilter] =
+    useState<AccountingDocumentTypeFilter>("all");
   const [offerHistory, setOfferHistory] = useState<OfferHistoryItem[]>([]);
   const [invoiceHistory, setInvoiceHistory] = useState<InvoiceHistoryItem[]>([]);
   const [isOfferModalOpen, setIsOfferModalOpen] = useState(false);
@@ -3926,9 +4639,19 @@ export function DashboardPage() {
   const [offerDraft, setOfferDraft] = useState<OfferDraft>(emptyOfferDraft);
   const [offerError, setOfferError] = useState("");
   const [isSavingOffer, setIsSavingOffer] = useState(false);
+  const [lostOfferDraft, setLostOfferDraft] = useState<{
+    offerId: string;
+    reason: string;
+    note: string;
+    error: string;
+    isSaving: boolean;
+  } | null>(null);
   const [upsellOfferProjectId, setUpsellOfferProjectId] = useState("");
   const [offerPreviewDataUrl, setOfferPreviewDataUrl] = useState("");
   const [isGeneratingOfferPreview, setIsGeneratingOfferPreview] = useState(false);
+  const [offerFollowUpWorkdays, setOfferFollowUpWorkdays] = useState(() =>
+    getStoredDashboardNumber("workpilot-offer-follow-up-workdays", 5)
+  );
   const [offerLineSearchTerms, setOfferLineSearchTerms] = useState<Record<string, string>>({});
   const [openOfferLinePickerId, setOpenOfferLinePickerId] = useState("");
   const [isOfferExecutionMonthPickerOpen, setIsOfferExecutionMonthPickerOpen] = useState(false);
@@ -3955,6 +4678,23 @@ export function DashboardPage() {
   const [documentMailError, setDocumentMailError] = useState("");
   const [documentMailSuccess, setDocumentMailSuccess] = useState("");
   const [isSendingDocumentMail, setIsSendingDocumentMail] = useState(false);
+  const [xrechnungValidationResult, setXrechnungValidationResult] =
+    useState<XRechnungValidationResponse | null>(null);
+  const [isValidatingXrechnung, setIsValidatingXrechnung] = useState(false);
+  const [isWinterServiceAutoSendEnabled, setIsWinterServiceAutoSendEnabled] = useState(false);
+  const [winterServiceAutomationSettings, setWinterServiceAutomationSettings] =
+    useState<WinterServiceAutomationSettings>({
+      enabled: false,
+      senderUserId: "",
+      notificationUserIds: [],
+    });
+  const [winterServiceAutomationMessage, setWinterServiceAutomationMessage] = useState("");
+  const [isWinterServiceAutomationRunning, setIsWinterServiceAutomationRunning] = useState(false);
+  const [isDocumentMailProjectAttachmentPickerOpen, setIsDocumentMailProjectAttachmentPickerOpen] = useState(false);
+  const [selectedDocumentMailProjectAttachmentKeys, setSelectedDocumentMailProjectAttachmentKeys] = useState<string[]>([]);
+  const [documentMailDispatches, setDocumentMailDispatches] = useState<DocumentMailDispatchItem[]>([]);
+  const [customerFeedback, setCustomerFeedback] = useState<CustomerFeedbackItem[]>([]);
+  const [customerFeedbackRequests, setCustomerFeedbackRequests] = useState<CustomerFeedbackRequestItem[]>([]);
   const [mailTemplates, setMailTemplates] =
     useState<Record<DocumentMailKind, { subject: string; body: string }>>(defaultDocumentMailTemplates);
   const letterheadUploadRef = useRef<HTMLInputElement | null>(null);
@@ -3963,7 +4703,35 @@ export function DashboardPage() {
   const [firmSettingsTab, setFirmSettingsTab] = useState<FirmSettingsTab>("profile");
   const [reportAnalyticsTab, setReportAnalyticsTab] = useState<ReportAnalyticsTab>("forecast");
   const [selectedForecastPeriod, setSelectedForecastPeriod] = useState("total");
+  const [forecastPeriodPreset, setForecastPeriodPreset] = useState<ForecastPeriodPreset>("next12");
+  const [forecastCustomStartDate, setForecastCustomStartDate] = useState(() => {
+    const today = new Date();
+    return formatDateKey(new Date(today.getFullYear(), today.getMonth(), 1));
+  });
+  const [forecastCustomEndDate, setForecastCustomEndDate] = useState(() => {
+    const today = new Date();
+    return formatDateKey(new Date(today.getFullYear(), today.getMonth() + 12, 0));
+  });
+  const [reportPeriodPreset, setReportPeriodPreset] = useState<ReportPeriodPreset>("last12");
+  const [isForecastQualityExpanded, setIsForecastQualityExpanded] = useState(false);
+  const [selectedForecastQualityId, setSelectedForecastQualityId] = useState("");
+  const [projectForecastDraft, setProjectForecastDraft] = useState({
+    projectId: "",
+    forecastBillingType: "monatlich",
+    forecastNetAmount: "",
+  });
+  const [projectForecastMessage, setProjectForecastMessage] = useState("");
+  const [projectForecastError, setProjectForecastError] = useState("");
+  const [isSavingProjectForecast, setIsSavingProjectForecast] = useState(false);
+  const [reportCustomStartDate, setReportCustomStartDate] = useState(() => {
+    const today = new Date();
+    return formatDateKey(new Date(today.getFullYear(), today.getMonth(), 1));
+  });
+  const [reportCustomEndDate, setReportCustomEndDate] = useState(() => formatDateKey(new Date()));
   const [reportSearch, setReportSearch] = useState("");
+  const [svsTradeFilter, setSvsTradeFilter] = useState("all");
+  const [reportProjectKindFilter, setReportProjectKindFilter] = useState<ReportProjectKindFilter>("all");
+  const [expandedEmployeeAnalyticsGroups, setExpandedEmployeeAnalyticsGroups] = useState<string[]>([]);
   const [batchBillingMonth, setBatchBillingMonth] = useState(() => formatInputDate(new Date()).slice(0, 7));
   const [selectedBatchProjectIds, setSelectedBatchProjectIds] = useState<string[]>([]);
   const [selectedBatchDraftInvoiceIds, setSelectedBatchDraftInvoiceIds] = useState<string[]>([]);
@@ -4019,7 +4787,10 @@ export function DashboardPage() {
   const [stampProjectId, setStampProjectId] = useState("");
   const [stampProjectSearch, setStampProjectSearch] = useState("");
   const [isStampProjectSearchOpen, setIsStampProjectSearchOpen] = useState(true);
+  const [isStampManualProjectPickerOpen, setIsStampManualProjectPickerOpen] = useState(false);
+  const [stampUnproductiveLabel, setStampUnproductiveLabel] = useState("");
   const [stampComment, setStampComment] = useState("");
+  const [stampNextComment, setStampNextComment] = useState("");
   const [stampError, setStampError] = useState("");
   const [stampCompletionState, setStampCompletionState] = useState<"" | "finished" | "interrupted">("");
   const [finalInspectionChecks, setFinalInspectionChecks] = useState<boolean[]>(
@@ -4028,6 +4799,7 @@ export function DashboardPage() {
   const [finalInspectionByColleague, setFinalInspectionByColleague] = useState(false);
   const [finalInspectionHasUpsell, setFinalInspectionHasUpsell] = useState(false);
   const [finalInspectionUpsellNotes, setFinalInspectionUpsellNotes] = useState("");
+  const [finalInspectionOptionalOpen, setFinalInspectionOptionalOpen] = useState(false);
   const [editingStampEntry, setEditingStampEntry] = useState<StampTimeEntry | null>(null);
   const [isManualProjectTimeModalOpen, setIsManualProjectTimeModalOpen] = useState(false);
   const [manualProjectTimeUserId, setManualProjectTimeUserId] = useState("");
@@ -4048,6 +4820,7 @@ export function DashboardPage() {
   );
   const [isProjectStatusMenuOpen, setIsProjectStatusMenuOpen] = useState(false);
   const [isProjectUpsellMenuOpen, setIsProjectUpsellMenuOpen] = useState(false);
+  const projectStatusActionRef = useRef<HTMLDivElement | null>(null);
   const [projectFileTab, setProjectFileTab] = useState<ProjectFileTab>(() =>
     getDashboardUrlValue(
       "projectTab",
@@ -4091,6 +4864,23 @@ export function DashboardPage() {
     useState<"all" | ProjectPotentialStatus | "due">("all");
   const [historyPotential, setHistoryPotential] = useState<ProjectPotential | null>(null);
   const [editingPotential, setEditingPotential] = useState<ProjectPotential | null>(null);
+  const [isManualPotentialModalOpen, setIsManualPotentialModalOpen] = useState(false);
+  const [manualPotentialProjectId, setManualPotentialProjectId] = useState("");
+  const [manualPotentialDescription, setManualPotentialDescription] = useState("");
+  const [manualPotentialEstimatedValue, setManualPotentialEstimatedValue] = useState("");
+  const [manualPotentialError, setManualPotentialError] = useState("");
+  const [salesGoals, setSalesGoals] = useState<SalesGoal[]>([]);
+  const [isGoalSaving, setIsGoalSaving] = useState(false);
+  const [goalError, setGoalError] = useState("");
+  const [goalDraft, setGoalDraft] = useState({
+    ownerUserId: "",
+    metricKey: "offers_count" as GoalMetricKey,
+    targetValue: "",
+    periodStart: getCurrentMonthStartDisplay(),
+    periodEnd: getCurrentMonthEndDisplay(),
+    title: "",
+    description: "",
+  });
   const [potentialDraft, setPotentialDraft] = useState({
     description: "",
     status: "open" as ProjectPotentialStatus,
@@ -4104,6 +4894,7 @@ export function DashboardPage() {
     note: "",
   });
   const [isCreatingActivityReport, setIsCreatingActivityReport] = useState(false);
+  const isCreatingActivityReportRef = useRef(false);
   const [isQuickCreateOpen, setIsQuickCreateOpen] = useState(false);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [editingProjectDataId, setEditingProjectDataId] = useState("");
@@ -4144,6 +4935,7 @@ export function DashboardPage() {
   const [customerLogbookEntries, setCustomerLogbookEntries] = useState<CustomerLogbookEntry[]>([]);
   const [projectLogbookEntries, setProjectLogbookEntries] = useState<ProjectLogbookEntry[]>([]);
   const [projectPotentials, setProjectPotentials] = useState<ProjectPotential[]>([]);
+  const [projectStatusTimelineEntries, setProjectStatusTimelineEntries] = useState<StatusTimelineEntry[]>([]);
   const [projectLogbookSearch, setProjectLogbookSearch] = useState("");
   const [logbookTarget, setLogbookTarget] = useState<"customer" | "project">("customer");
   const [logbookError, setLogbookError] = useState("");
@@ -4160,6 +4952,18 @@ export function DashboardPage() {
   const [logbookAttachments, setLogbookAttachments] = useState<LogbookAttachment[]>([]);
   const [logbookCreateTask, setLogbookCreateTask] = useState(false);
   const [logbookTaskTitle, setLogbookTaskTitle] = useState("");
+  const [activeChecklistView, setActiveChecklistView] = useState<"overview" | "smokeInstallation">("overview");
+  const [checklistSearchTerm, setChecklistSearchTerm] = useState("");
+  const [openChecklistArea, setOpenChecklistArea] = useState("");
+  const [smokeDetectorInstallationDate, setSmokeDetectorInstallationDate] = useState(() => formatDateKey(new Date()));
+  const [smokeDetectorInstaller, setSmokeDetectorInstaller] = useState("");
+  const [smokeDetectorObjectNotes, setSmokeDetectorObjectNotes] = useState("");
+  const [smokeDetectorDeviations, setSmokeDetectorDeviations] = useState("");
+  const [smokeDetectorObjectImages, setSmokeDetectorObjectImages] = useState<LogbookAttachment[]>([]);
+  const [smokeDetectorDevices, setSmokeDetectorDevices] = useState<SmokeDetectorDeviceDraft[]>(() => [
+    createSmokeDetectorDeviceDraft(),
+  ]);
+  const [isSavingSmokeDetectorReport, setIsSavingSmokeDetectorReport] = useState(false);
   const [activeUserId, setActiveUserId] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAbsenceModalOpen, setIsAbsenceModalOpen] = useState(false);
@@ -4220,6 +5024,7 @@ export function DashboardPage() {
   const [userDailyWorkHours, setUserDailyWorkHours] = useState("8");
   const [userPassword, setUserPassword] = useState("");
   const [userProfileImageDataUrl, setUserProfileImageDataUrl] = useState("");
+  const [employeePersonalNumber, setEmployeePersonalNumber] = useState("");
   const [employeeSalutation, setEmployeeSalutation] = useState("Herr");
   const [employeeBirthDate, setEmployeeBirthDate] = useState("");
   const [employeeLanguage, setEmployeeLanguage] = useState("Deutsch (Deutschland)");
@@ -4273,6 +5078,8 @@ export function DashboardPage() {
   const [employeeTimePeriod, setEmployeeTimePeriod] = useState<EmployeeTimePeriod>("day");
   const [employeeTimeFrom, setEmployeeTimeFrom] = useState(() => formatInputDate(new Date()));
   const [employeeTimeTo, setEmployeeTimeTo] = useState(() => formatInputDate(new Date()));
+  const [employeeTimeProjectFilter, setEmployeeTimeProjectFilter] = useState("");
+  const [employeeTimeSearch, setEmployeeTimeSearch] = useState("");
   const [timeTrackingEmployeeId, setTimeTrackingEmployeeId] = useState("");
   const [timeTrackingFrom, setTimeTrackingFrom] = useState(() => formatInputDate(new Date()));
   const [timeTrackingTo, setTimeTrackingTo] = useState(() => formatInputDate(new Date()));
@@ -4307,7 +5114,7 @@ export function DashboardPage() {
   const [editingPlanningEntryId, setEditingPlanningEntryId] = useState("");
   const [planningEntrySource, setPlanningEntrySource] = useState<PlanningEntrySource>("manual");
   const [planningEntryBoard, setPlanningEntryBoard] =
-    useState<PlanningBoardCompany>("OK solutions");
+    useState<PlanningBoardCompany | "">("OK solutions");
   const [planningEntryGroup, setPlanningEntryGroup] = useState("Marketing");
   const [planningEntryUserId, setPlanningEntryUserId] = useState("");
   const [planningEntryDate, setPlanningEntryDate] = useState(() => formatDateKey(new Date()));
@@ -4321,15 +5128,31 @@ export function DashboardPage() {
   const [planningEntryDescription, setPlanningEntryDescription] = useState("");
   const [planningEntryError, setPlanningEntryError] = useState("");
   const [planningEntryOfferLabel, setPlanningEntryOfferLabel] = useState("");
+  const [planningEntryOfferId, setPlanningEntryOfferId] = useState("");
+  const [planningEntryOfferLineId, setPlanningEntryOfferLineId] = useState("");
   const [planningEntryOfferTotalHours, setPlanningEntryOfferTotalHours] = useState("5");
   const [planningRecurrenceType, setPlanningRecurrenceType] = useState<PlanningRecurrenceType>("once");
   const [planningRecurrenceUntil, setPlanningRecurrenceUntil] = useState("");
-  const [planningRecurrenceSkipWeekends, setPlanningRecurrenceSkipWeekends] = useState(true);
+  const [planningRecurrenceWeekdays, setPlanningRecurrenceWeekdays] = useState<number[]>([]);
   const [planningEntryApprovalStatus, setPlanningEntryApprovalStatus] =
     useState<PlanningEntryApprovalStatus>("confirmed");
   const [planningBoardView, setPlanningBoardView] = useState<"board" | "open">("board");
-  const [planningBoardStartDate, setPlanningBoardStartDate] = useState(() => formatDateKey(new Date()));
+  const [planningBoardStartDate, setPlanningBoardStartDate] = useState(() =>
+    getWeekStartDateKey(formatDateKey(new Date()))
+  );
+  const [planningSlotAction, setPlanningSlotAction] = useState<{
+    date: string;
+    board: PlanningBoardCompany;
+    groupName: string;
+    userId: string;
+    employeeName: string;
+    startTime: string;
+    approvalStatus: PlanningEntryApprovalStatus | "";
+    projectSearch: string;
+  } | null>(null);
   const [isProjectPlanningDayOverlayOpen, setIsProjectPlanningDayOverlayOpen] = useState(false);
+  const [projectPlanningChoiceMenuKey, setProjectPlanningChoiceMenuKey] = useState("");
+  const [projectPlanningEditMenuKey, setProjectPlanningEditMenuKey] = useState("");
   const [selectedCalendarActionDate, setSelectedCalendarActionDate] = useState("");
   const [absenceUserId, setAbsenceUserId] = useState("");
   const [absenceDateFrom, setAbsenceDateFrom] = useState(() => formatDateKey(new Date()));
@@ -4367,6 +5190,14 @@ export function DashboardPage() {
     () => users.find((user) => user.id === activeUserId),
     [activeUserId, users]
   );
+  const visibleNavigationTabs = useMemo(
+    () => getVisibleNavigationTabs(activeUser?.role),
+    [activeUser?.role]
+  );
+  const visibleReportTabs = useMemo(
+    () => getVisibleReportTabs(activeUser?.role),
+    [activeUser?.role]
+  );
   const authenticatedUser = useMemo(
     () => users.find((user) => user.id === authenticatedUserId),
     [authenticatedUserId, users]
@@ -4382,6 +5213,15 @@ export function DashboardPage() {
     impersonationControllerUser?.role === "GESCHAEFTSFUEHRER";
   const isImpersonating = Boolean(impersonatedUserId && impersonatedUser);
   const canManageEmployeeAssessments = canManageUsers(activeUser?.role);
+  const canUseReportDrilldowns = !isAccountingRole(activeUser?.role);
+  const canUseReportWriteActions = !isAccountingRole(activeUser?.role);
+  const canViewFullOverviewAnalytics =
+    activeUser?.role === "ADMIN" || activeUser?.role === "GESCHAEFTSFUEHRER";
+  const canViewOperationalOverviewAnalytics =
+    canViewFullOverviewAnalytics || activeUser?.role === "FUEHRUNGSKRAFT";
+  const canViewAccountingOverviewAnalytics =
+    canViewFullOverviewAnalytics || activeUser?.role === "BUCHHALTUNG";
+  const canViewSensitiveOverviewFinancials = canViewFullOverviewAnalytics;
   const personalAssessmentTargetUserId =
     canManageEmployeeAssessments && selectedPersonalUserId ? selectedPersonalUserId : activeUserId;
   const editingContentItem = useMemo(
@@ -4394,10 +5234,27 @@ export function DashboardPage() {
   const canManageProjectTimeEntries =
     activeUser?.role === "ADMIN" ||
     activeUser?.role === "GESCHAEFTSFUEHRER" ||
-    /gesch[aä]ftsf[uü]hrer|geschaeftsfuehrer|ceo/i.test(activeUser?.roleLabel ?? "") ||
+    /geschäftsführer|gesch\u00c3\u00a4ftsf\u00c3\u00bchrer|geschaeftsfuehrer|ceo/i.test(activeUser?.roleLabel ?? "") ||
     /ceo/i.test(activeUser?.name ?? "");
   const canDeleteInvoices = activeUser?.role === "GESCHAEFTSFUEHRER";
-  const isDeletedInvoice = (invoice: InvoiceItem) => invoice.status === "Gelöscht";
+  const isLostOffer = (offer: Pick<OfferItem, "status">) => offer.status === "Verloren" || offer.status === "Angebot verloren";
+  const isDeletedOffer = (offer: Pick<OfferItem, "status">) => isDeletedStatus(offer.status);
+  const isDeletedInvoice = (invoice: InvoiceItem) => isDeletedStatus(invoice.status);
+  const isOfferWonByInvoice = (offer: Pick<OfferItem, "id" | "offerNumber">) =>
+    invoices.some(
+      (invoice) =>
+        !isDeletedInvoice(invoice) &&
+        invoice.status !== "Entwurf" &&
+        (invoice.sourceOfferId === offer.id || invoice.sourceOfferNumber === offer.offerNumber)
+    );
+  const isWonOffer = (offer: OfferItem) => Boolean(offer.wonAt) || isOfferWonByInvoice(offer);
+  const getOfferStatusLabel = (offer: OfferItem) => {
+    if (isWonOffer(offer)) return "Angebot gewonnen";
+    if (isLostOffer(offer)) return "Angebot verloren";
+    return offer.status;
+  };
+  const isActiveFinalOffer = (offer: OfferItem) =>
+    offer.status !== "Entwurf" && !isDeletedOffer(offer) && !isLostOffer(offer);
   const getInvoiceDisplayNumber = (invoice: InvoiceItem) =>
     invoice.status === "Entwurf" ? "Entwurf" : invoice.invoiceNumber;
   const renderInvoiceStatusChip = (status: string) => (
@@ -4405,6 +5262,16 @@ export function DashboardPage() {
       {status}
     </span>
   );
+  const renderOfferStatusChip = (offer: OfferItem) => (
+    <span className={styles.invoiceStatusChip} data-status={isWonOffer(offer) ? "Gewonnen" : isLostOffer(offer) ? "Verloren" : offer.status}>
+      {getOfferStatusLabel(offer)}
+    </span>
+  );
+  const openOfferLostComment = (offer: OfferItem) => {
+    const comment = offer.lostNote?.trim();
+    if (!comment) return;
+    window.alert(`Kommentar zu ${offer.offerNumber}:\n\n${comment}`);
+  };
   const isVacationHandoverComplete =
     absenceType !== "urlaub" ||
     absenceHandoverMode === "none" ||
@@ -4433,6 +5300,12 @@ export function DashboardPage() {
           .some((value) => value.toLowerCase().includes(normalizedSearchTerm));
       })
     : unreadNotifications;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const normalizedWorkdays = Math.max(1, Math.min(30, Math.round(Number(offerFollowUpWorkdays) || 5)));
+    window.localStorage.setItem("workpilot-offer-follow-up-workdays", String(normalizedWorkdays));
+  }, [offerFollowUpWorkdays]);
 
   async function loadTasks() {
     const res = await fetch("/api/tasks", { cache: "no-store" });
@@ -4755,7 +5628,8 @@ export function DashboardPage() {
   }
 
   function isContentLockedAfterApproval(contentItem?: ContentItem) {
-    return contentItem?.status === "Freigegeben" || contentItem?.status === "Veröffentlicht";
+    const status = getReadableContentStatus(contentItem?.status ?? "");
+    return status === "Freigegeben" || status === "Veröffentlicht";
   }
 
   function openContentModal(contentItem?: ContentItem, mode: "content" | "week" = "content") {
@@ -5009,7 +5883,24 @@ export function DashboardPage() {
     });
   }
 
+  async function loadLegacyInvoices() {
+    const res = await fetch("/api/legacy-invoices", { cache: "no-store" });
+
+    if (!res.ok) {
+      setErrorMessage("Altrechnungen konnten nicht geladen werden.");
+      return;
+    }
+
+    const data = (await res.json()) as LegacyInvoiceItem[];
+    setLegacyInvoices(data);
+  }
+
   async function markInvoiceAsPaid(invoice: InvoiceItem) {
+    if (!canUseReportWriteActions) {
+      setErrorMessage("Buchhaltung hat in Auswertungen nur Leserechte.");
+      return;
+    }
+
     const res = await fetch("/api/invoices", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -5028,6 +5919,41 @@ export function DashboardPage() {
 
     await loadInvoices();
     if (selectedProjectFileId) await loadInvoices(selectedProjectFileId);
+  }
+
+  async function createInvoiceReminderDocument(invoice: InvoiceItem) {
+    if (!canUseReportWriteActions) {
+      setErrorMessage("Buchhaltung hat in Auswertungen nur Leserechte.");
+      return;
+    }
+
+    const confirmed = window.confirm(`Mahnung für ${invoice.invoiceNumber} erstellen und in der Projektakte ablegen?`);
+    if (!confirmed) return;
+
+    const res = await fetch("/api/invoices", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: invoice.id,
+        action: "create-reminder-document",
+        actorName: activeUser?.name ?? "System",
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setErrorMessage(data?.error ?? "Mahnung konnte nicht erfasst werden.");
+      return;
+    }
+
+    await loadInvoices();
+    await loadProjectLogbookEntries();
+    if (selectedProjectFileId) {
+      await loadInvoices(selectedProjectFileId);
+      await loadInvoiceHistory(selectedProjectFileId);
+    } else {
+      await loadInvoiceHistory(invoice.projectId);
+    }
   }
 
   async function loadOfferHistory(projectId: string) {
@@ -5064,6 +5990,64 @@ export function DashboardPage() {
       const otherHistory = currentHistory.filter((entry) => entry.projectId !== projectId);
       return [...data, ...otherHistory];
     });
+  }
+
+  async function loadDocumentMailDispatches(projectId?: string) {
+    const url = projectId
+      ? `/api/document-mail?projectId=${encodeURIComponent(projectId)}`
+      : "/api/document-mail";
+    const res = await fetch(url, { cache: "no-store" });
+
+    if (!res.ok) return;
+
+    const data = (await res.json()) as DocumentMailDispatchItem[];
+    setDocumentMailDispatches((currentDispatches) => {
+      if (!projectId) return data;
+      const otherDispatches = currentDispatches.filter((dispatch) => dispatch.projectId !== projectId);
+      return [...data, ...otherDispatches];
+    });
+  }
+
+  async function loadWinterServiceAutomationSettings() {
+    const res = await fetch("/api/winter-service-automation", { cache: "no-store" });
+    if (!res.ok) return;
+    const data = (await res.json()) as WinterServiceAutomationSettings;
+    setWinterServiceAutomationSettings(data);
+    setIsWinterServiceAutoSendEnabled(Boolean(data.enabled));
+  }
+
+  async function saveWinterServiceAutomationSettings(nextSettings: WinterServiceAutomationSettings) {
+    const res = await fetch("/api/winter-service-automation", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(nextSettings),
+    });
+    if (!res.ok) {
+      setErrorMessage("Winterdienst-Automatik konnte nicht gespeichert werden.");
+      return null;
+    }
+    const data = (await res.json()) as WinterServiceAutomationSettings;
+    setWinterServiceAutomationSettings(data);
+    setIsWinterServiceAutoSendEnabled(Boolean(data.enabled));
+    return data;
+  }
+
+  async function loadCustomerFeedback() {
+    const res = await fetch("/api/customer-feedback", { cache: "no-store" });
+
+    if (!res.ok) return;
+
+    const data = (await res.json()) as CustomerFeedbackItem[];
+    setCustomerFeedback(data);
+  }
+
+  async function loadCustomerFeedbackRequests() {
+    const res = await fetch("/api/customer-feedback-requests", { cache: "no-store" });
+
+    if (!res.ok) return;
+
+    const data = (await res.json()) as CustomerFeedbackRequestItem[];
+    setCustomerFeedbackRequests(data);
   }
 
   function getCatalogPackageSalesPrice(item: CatalogItem) {
@@ -5113,6 +6097,7 @@ export function DashboardPage() {
       id: crypto.randomUUID(),
       catalogItemId: item.id,
       catalogType: item.type,
+      isLaborPosition: item.isLaborPosition,
       quantity: 1,
       unit: item.unit || "Stk",
       title: item.name,
@@ -5295,9 +6280,7 @@ export function DashboardPage() {
   }
 
   function getProjectLaborCostBoard(project?: HeroProjectPreview | null): PlanningBoardCompany {
-    return project?.projectType === "Projekt OK immocare" || project?.branch === "OK immocare GmbH"
-      ? "OK immocare"
-      : "OK solutions";
+    return getProjectCompany(project);
   }
 
   function getOfferDraftLaborCostRate() {
@@ -5645,6 +6628,9 @@ export function DashboardPage() {
     }
     setIsSavingOffer(true);
     setOfferError("");
+    const editingOfferBeforeSave = offers.find((offer) => offer.id === editingOfferId);
+    const shouldCreateFinalOfferFollowUp =
+      !saveAsDraft && (!editingOfferId || editingOfferBeforeSave?.status === "Entwurf");
     const offerPayload = {
       ...offerDraft,
       lines: offerDraft.lines.map((line) => ({
@@ -5685,15 +6671,34 @@ export function DashboardPage() {
         savedOffer.grossTotal
       )} brutto).`
     );
-    if (!saveAsDraft && !editingOfferId && upsellOfferProjectId === selectedProjectFile.id) {
-      const potential = projectPotentials.find(
+    const linkedPotential =
+      shouldCreateFinalOfferFollowUp && upsellOfferProjectId === selectedProjectFile.id
+        ? projectPotentials.find(
         (item) => item.projectId === selectedProjectFile.id && ["open", "follow_up"].includes(item.status)
-      );
-      if (potential) {
-        await updateProjectPotential(potential, "offered", {
-          note: `Angebot ${savedOffer.offerNumber} erstellt.`,
-        });
-      }
+          ) ?? null
+        : null;
+
+    if (shouldCreateFinalOfferFollowUp) {
+      await createOfferFollowUpTask(savedOffer, selectedProjectFile, linkedPotential);
+    }
+
+    if (saveAsDraft) {
+      await confirmAndApplyProjectStatus({
+        project: selectedProjectFile,
+        nextStatus: "Angebot",
+        reason: `Angebotsentwurf ${savedOffer.offerNumber} gespeichert`,
+        question: `Angebotsentwurf ${savedOffer.offerNumber} wurde gespeichert. Soll der Projektstatus auf „Angebotserstellung“ gesetzt werden?`,
+      });
+    } else if (shouldCreateFinalOfferFollowUp) {
+      await confirmAndApplyProjectStatus({
+        project: selectedProjectFile,
+        nextStatus: "Warten auf Kunde",
+        reason: `Finales Angebot ${savedOffer.offerNumber} erstellt`,
+        question: `Finales Angebot ${savedOffer.offerNumber} wurde erstellt. Soll der Projektstatus auf „Warten auf Kunde“ gesetzt werden?`,
+      });
+    }
+
+    if (linkedPotential) {
       await addProjectLogbookEntry(
         selectedProjectFile.id,
         "Zusatzverkauf: Angebot erstellt",
@@ -5771,6 +6776,151 @@ export function DashboardPage() {
     );
   }
 
+  function openMarkOfferLostDialog(offer: OfferItem) {
+    if (isLostOffer(offer) || offer.status === "Entwurf") return;
+    if (isWonOffer(offer)) {
+      setErrorMessage(`Angebot ${offer.offerNumber} ist bereits gewonnen und kann nicht als verloren markiert werden.`);
+      return;
+    }
+    const linkedInvoice = invoices.find(
+      (invoice) =>
+        !isDeletedInvoice(invoice) &&
+        invoice.status !== "Entwurf" &&
+        (invoice.sourceOfferId === offer.id || invoice.sourceOfferNumber === offer.offerNumber)
+    );
+    if (linkedInvoice) {
+      setErrorMessage(
+        `Angebot ${offer.offerNumber} ist bereits mit Rechnung ${getInvoiceDisplayNumber(linkedInvoice)} verknüpft und kann nicht als verloren markiert werden.`
+      );
+      return;
+    }
+    setLostOfferDraft({
+      offerId: offer.id,
+      reason: "",
+      note: "",
+      error: "",
+      isSaving: false,
+    });
+  }
+
+  async function saveLostOfferStatus() {
+    if (!selectedProjectFile || !lostOfferDraft) return;
+    const offer = offers.find((item) => item.id === lostOfferDraft.offerId);
+    if (!offer) return;
+    const reason = lostOfferDraft.reason.trim();
+    const note = lostOfferDraft.note.trim();
+
+    if (!reason) {
+      setLostOfferDraft((current) =>
+        current ? { ...current, error: "Bitte einen Grund angeben, warum das Angebot verloren ist." } : current
+      );
+      return;
+    }
+    if (!note) {
+      setLostOfferDraft((current) =>
+        current ? { ...current, error: "Bitte einen Kommentar zum verlorenen Angebot angeben." } : current
+      );
+      return;
+    }
+
+    setLostOfferDraft((current) => (current ? { ...current, error: "", isSaving: true } : current));
+    const res = await fetch("/api/offers", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: offer.id,
+        action: "markLost",
+        lostReason: reason,
+        lostNote: note,
+        actorName: activeUser?.name || "Christian Eid",
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setLostOfferDraft((current) =>
+        current
+          ? { ...current, isSaving: false, error: data?.error ?? "Angebot konnte nicht als verloren markiert werden." }
+          : current
+      );
+      return;
+    }
+
+    const savedOffer = (await res.json()) as OfferItem;
+    setOffers((currentOffers) => [savedOffer, ...currentOffers.filter((currentOffer) => currentOffer.id !== savedOffer.id)]);
+    await loadOfferHistory(selectedProjectFile.id);
+    await addProjectLogbookEntry(
+      selectedProjectFile.id,
+      "Angebot verloren",
+      `Angebot ${savedOffer.offerNumber} wurde als verloren markiert. Grund: ${reason}. Kommentar: ${note}.`
+    );
+    setLostOfferDraft(null);
+  }
+
+  async function markOfferWon(offer: OfferItem, reason: string, projectId = offer.projectId) {
+    const res = await fetch("/api/offers", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: offer.id,
+        action: "markWon",
+        wonReason: reason,
+        actorName: activeUser?.name || "Christian Eid",
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setErrorMessage(data?.error ?? "Angebot konnte nicht als gewonnen markiert werden.");
+      return false;
+    }
+
+    const savedOffer = (await res.json()) as OfferItem;
+    setOffers((currentOffers) => [savedOffer, ...currentOffers.filter((currentOffer) => currentOffer.id !== savedOffer.id)]);
+    if (projectId) {
+      await loadOfferHistory(projectId);
+      await addProjectLogbookEntry(
+        projectId,
+        "Angebot gewonnen",
+        `Angebot ${savedOffer.offerNumber} wurde als gewonnen markiert. Grund: ${reason}.`
+      );
+    }
+    return true;
+  }
+
+  async function restoreLostOfferStatus(offer: OfferItem) {
+    if (!selectedProjectFile || !isLostOffer(offer)) return;
+    const confirmed = window.confirm(
+      `Angebot ${offer.offerNumber} wieder aktivieren? Es erscheint danach wieder in Planung und Forecast.`
+    );
+    if (!confirmed) return;
+
+    const res = await fetch("/api/offers", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: offer.id,
+        action: "restoreLost",
+        actorName: activeUser?.name || "Christian Eid",
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setErrorMessage(data?.error ?? "Angebot konnte nicht wieder aktiviert werden.");
+      return;
+    }
+
+    const savedOffer = (await res.json()) as OfferItem;
+    setOffers((currentOffers) => [savedOffer, ...currentOffers.filter((currentOffer) => currentOffer.id !== savedOffer.id)]);
+    await loadOfferHistory(selectedProjectFile.id);
+    await addProjectLogbookEntry(
+      selectedProjectFile.id,
+      "Angebot wieder aktiviert",
+      `Angebot ${savedOffer.offerNumber} wurde wieder als aktives Angebot markiert.`
+    );
+  }
+
   function openFreeInvoiceModal(project: HeroProjectPreview) {
     const isImmocare =
       (project.projectType ?? "").toLowerCase().includes("immocare") ||
@@ -5778,6 +6928,7 @@ export function DashboardPage() {
     const addressParts = (project.address || "").split(",").map((part) => part.trim()).filter(Boolean);
     const firstItem = catalogItems.find((item) => item.isActive);
     const serviceDate = getProjectServiceDateSuggestion(project);
+    const paymentTermDays = getInvoicePaymentTermDaysForProject(project);
     setInvoiceDraft({
       ...emptyInvoiceDraft,
       company: isImmocare ? "OK immocare" : "OK solutions",
@@ -5788,6 +6939,8 @@ export function DashboardPage() {
       internalEmail: activeUser?.email || "",
       plannedExecutionMonth: serviceDate.slice(0, 7),
       serviceDate,
+      paymentTermDays,
+      dueDate: getInvoiceDueDate(serviceDate, paymentTermDays),
       introText: "wir stellen Ihnen folgende Leistungen in Rechnung.",
       closingText: "Bitte überweisen Sie den Rechnungsbetrag innerhalb der vereinbarten Zahlungsfrist.",
       lines: firstItem ? [createOfferLineFromCatalogItem(firstItem)] : [],
@@ -5852,68 +7005,56 @@ export function DashboardPage() {
     });
   }
 
-  async function createAutoBillingTemplateFromLatestInvoice(project: HeroProjectPreview) {
-    const latestInvoice = getProjectInvoicesSorted(project.id)[0];
-    if (!latestInvoice) {
-      setErrorMessage("Für dieses Projekt gibt es noch keine Rechnung als Vorlage.");
+  async function saveProjectForecastSettings(project: HeroProjectPreview) {
+    if (!isRecurringProject(project)) return;
+    const forecastNetAmount = projectForecastDraft.forecastNetAmount.trim();
+    const forecastBillingType = projectForecastDraft.forecastBillingType;
+    const parsedAmount = parseReportAmount(forecastNetAmount);
+
+    if (forecastNetAmount && parsedAmount <= 0) {
+      setProjectForecastError("Bitte einen gültigen Forecastbetrag netto eintragen.");
       return;
     }
 
-    await saveAutoBillingProjectPatch(project, {
-      autoBillingTemplateMode: "project",
-      autoBillingTemplate: invoiceToAutoBillingTemplate(latestInvoice),
-      autoBillingNetAmount: project.autoBillingNetAmount || String(latestInvoice.netTotal).replace(".", ","),
-      autoBillingVatRate: project.autoBillingVatRate || String(latestInvoice.vatRate || 19).replace(".", ","),
-    });
-  }
-
-  async function createAutoBillingTemplateFromProject(project: HeroProjectPreview) {
-    const amount = getAutoBillingNetAmount(project);
-    if (amount <= 0) {
-      setErrorMessage("Bitte zuerst einen monatlichen Nettobetrag fuer die automatische Abrechnung eintragen.");
-      return;
-    }
-
-    const isImmocare =
-      (project.projectType ?? "").toLowerCase().includes("immocare") ||
-      (project.projectNumber ?? "").toLowerCase().startsWith("oki");
-    const addressParts = (project.address || "").split(",").map((part) => part.trim()).filter(Boolean);
-    const vatRate = parseReportAmount(project.autoBillingVatRate || "") || 19;
-    const template: AutoBillingTemplate = {
-      company: isImmocare ? "OK immocare" : "OK solutions",
-      customerName: project.customer || "",
-      customerStreet: addressParts[0] || project.address || "",
-      customerCity: addressParts.slice(1).join(", "),
-      contactName: "",
-      internalContactName: "",
-      internalPhone: "",
-      internalEmail: "",
-      introText: "wir berechnen Ihnen vereinbarungsgemaess die monatliche Leistung.",
-      closingText: "Vielen Dank fuer Ihren Auftrag.",
-      vatRate,
-      discountPercent: 0,
-      lines: [
-        {
-          ...createEmptyOfferLine(vatRate),
-          title: "Monatliche Pauschale",
-          description: project.title,
-          quantity: 1,
-          unit: "Pauschale",
-          unitPrice: amount,
-        },
-      ],
+    const nextProject = {
+      ...project,
+      forecastBillingType: forecastNetAmount ? forecastBillingType : "",
+      forecastNetAmount,
     };
 
-    await saveAutoBillingProjectPatch(project, {
-      autoBillingTemplateMode: "project",
-      autoBillingTemplate: template,
-      autoBillingNetAmount: project.autoBillingNetAmount || String(amount).replace(".", ","),
-      autoBillingVatRate: project.autoBillingVatRate || String(vatRate).replace(".", ","),
-    });
+    setIsSavingProjectForecast(true);
+    setProjectForecastError("");
+    setProjectForecastMessage("");
+
+    try {
+      const savedProject = await persistProject(nextProject);
+      setHeroProjects((currentProjects) =>
+        currentProjects.map((currentProject) => (currentProject.id === savedProject.id ? savedProject : currentProject))
+      );
+      await addProjectLogbookEntry(
+        savedProject.id,
+        "Forecast",
+        forecastNetAmount
+          ? `Forecast-Einstellung gespeichert: ${forecastNetAmount} EUR netto (${forecastBillingType}).`
+          : "Forecast-Einstellung entfernt."
+      );
+      setProjectForecastMessage("Forecast-Einstellung gespeichert.");
+    } catch (error) {
+      setProjectForecastError(error instanceof Error ? error.message : "Forecast-Einstellung konnte nicht gespeichert werden.");
+    } finally {
+      setIsSavingProjectForecast(false);
+    }
   }
 
   function getProjectInvoiceMonth(invoice: InvoiceItem) {
     return (invoice.serviceDate || "").slice(0, 7) || invoice.plannedExecutionMonth || getReportMonthKey(invoice.createdAt);
+  }
+
+  function getPreviousMonthKey(monthKey: string) {
+    const [year, month] = monthKey.split("-").map(Number);
+    if (!year || !month) return "";
+    const previousMonthDate = new Date(year, month - 2, 1, 12);
+    return `${previousMonthDate.getFullYear()}-${String(previousMonthDate.getMonth() + 1).padStart(2, "0")}`;
   }
 
   function getLastDayOfMonthKey(monthKey: string) {
@@ -5948,14 +7089,474 @@ export function DashboardPage() {
     return formatProjectDate(value);
   }
 
+  function getInvoicePaymentTermDaysForProject(project: HeroProjectPreview) {
+    const relatedContact = contacts.find((contact) => contact.id === project.contactId || contact.id === project.addressContactId);
+    const paymentTermDays = Number(relatedContact?.paymentTermDays ?? 14);
+    return Number.isFinite(paymentTermDays) ? Math.min(Math.max(Math.round(paymentTermDays), 0), 365) : 14;
+  }
+
+  function getInvoiceDueDate(serviceDate: string, paymentTermDays: number) {
+    const dateKey = normalizeDateKeyValue(serviceDate);
+    if (!dateKey) return "";
+    const [year, month, day] = dateKey.split("-").map(Number);
+    const date = new Date(year, month - 1, day, 12);
+    date.setDate(date.getDate() + paymentTermDays);
+    return formatDateKey(date);
+  }
+
+  function getProjectLogEntryMonthForProcess(entry: ProjectLogbookEntry) {
+    if (/^\d{4}-\d{2}$/.test(entry.projectMonth || "")) return entry.projectMonth || "";
+    const rawDate = entry.date || "";
+    const isoMatch = rawDate.match(/^(\d{4})-(\d{2})/);
+    if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}`;
+    const germanMatch = rawDate.match(/^(\d{2})\.(\d{2})\.(\d{4}|\d{2})/);
+    if (germanMatch) {
+      const year = germanMatch[3].length === 2 ? `20${germanMatch[3]}` : germanMatch[3];
+      return `${year}-${germanMatch[2]}`;
+    }
+
+    const parsedDate = parseAppDateTime(rawDate);
+    return Number.isNaN(parsedDate.getTime()) ? "" : formatDateKey(parsedDate).slice(0, 7);
+  }
+
+  function getProjectLogEntryDayForProcess(entry: Pick<ProjectLogbookEntry, "date">) {
+    const rawDate = entry.date || "";
+    const isoMatch = rawDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+    const germanMatch = rawDate.match(/^(\d{2})\.(\d{2})\.(\d{4}|\d{2})/);
+    if (germanMatch) {
+      const year = germanMatch[3].length === 2 ? `20${germanMatch[3]}` : germanMatch[3];
+      return `${year}-${germanMatch[2]}-${germanMatch[1]}`;
+    }
+
+    const parsedDate = parseAppDateTime(rawDate);
+    return Number.isNaN(parsedDate.getTime()) ? "" : formatDateKey(parsedDate);
+  }
+
+  function shouldUseProjectMonthForProcess(project: HeroProjectPreview) {
+    return isRecurringProjectKindValue(getProjectKind(project));
+  }
+
+  function getProjectProcessLogEntries(project: HeroProjectPreview, category: string, monthKey: string, dayKey = "") {
+    const useMonth = shouldUseProjectMonthForProcess(project);
+    const monthEntries = projectLogbookEntries.filter((entry) => {
+      if (String(entry.projectId) !== String(project.id)) return false;
+      if (entry.title !== category) return false;
+      return !useMonth || getProjectLogEntryMonthForProcess(entry) === monthKey;
+    });
+    if (!dayKey || !isWinterServiceProject(project)) return monthEntries;
+
+    const dayEntries = monthEntries.filter((entry) => getProjectLogEntryDayForProcess(entry) === dayKey);
+    const hasDayAttachments = dayEntries.some((entry) => entry.attachments.length > 0);
+    return hasDayAttachments ? dayEntries : monthEntries;
+  }
+
+  function getProjectProcessAttachmentCount(
+    project: HeroProjectPreview,
+    title: string,
+    attachmentType: LogbookAttachment["type"],
+    monthKey: string,
+    dayKey = ""
+  ) {
+    return getProjectProcessLogEntries(project, title, monthKey, dayKey).reduce(
+      (sum, entry) => sum + entry.attachments.filter((attachment) => attachment.type === attachmentType).length,
+      0
+    );
+  }
+
+  function getActivityReportProcessEntries(project: HeroProjectPreview, monthKey: string, dayKey = "") {
+    return getProjectProcessLogEntries(project, "Dokumente: Tätigkeitsberichte", monthKey, dayKey).filter((entry) =>
+      entry.attachments.some((attachment) => attachment.type === "Dokument")
+    );
+  }
+
+  function getActivityReportLinkText(entry: ProjectLogbookEntry) {
+    return [
+      entry.text,
+      ...entry.attachments.map((attachment) => attachment.name),
+    ]
+      .join(" ")
+      .toLowerCase();
+  }
+
+  function getMatchingActivityReportCount(project: HeroProjectPreview, monthKey: string, sourceOfferNumber?: string, contextKey?: string, dayKey = "") {
+    const reportEntries = getActivityReportProcessEntries(project, monthKey, dayKey);
+    if (contextKey) {
+      const contextToken = contextKey.trim().toLowerCase();
+      return reportEntries
+        .filter((entry) => getActivityReportLinkText(entry).includes(contextToken))
+        .reduce(
+          (sum, entry) => sum + entry.attachments.filter((attachment) => attachment.type === "Dokument").length,
+          0
+        );
+    }
+
+    if (shouldUseProjectMonthForProcess(project) || !sourceOfferNumber) {
+      return reportEntries.reduce(
+        (sum, entry) => sum + entry.attachments.filter((attachment) => attachment.type === "Dokument").length,
+        0
+      );
+    }
+
+    const sourceToken = sourceOfferNumber.trim().toLowerCase();
+    const linkedReportEntries = reportEntries.filter((entry) => getActivityReportLinkText(entry).includes(sourceToken));
+    const fallbackEntries = linkedReportEntries.length > 0 ? linkedReportEntries : reportEntries.length === 1 ? reportEntries : [];
+
+    return fallbackEntries.reduce(
+      (sum, entry) => sum + entry.attachments.filter((attachment) => attachment.type === "Dokument").length,
+      0
+    );
+  }
+
+  function getActivityReportImageKeys(project: HeroProjectPreview, category: "Vorherbilder" | "Nachherbilder", monthKey: string, dayKey = "") {
+    return getProjectProcessLogEntries(project, `Bilder: ${category}`, monthKey, dayKey).flatMap((entry) =>
+      entry.attachments.flatMap((attachment, attachmentIndex) =>
+        attachment.type === "Bild" && attachment.dataUrl
+          ? [`${entry.id}:${attachmentIndex}:${attachment.name}`]
+          : []
+      )
+    );
+  }
+
+  async function createActivityReportForProject(
+    project: HeroProjectPreview,
+    monthKey: string,
+    options: { sourceOfferNumber?: string; contextKey?: string; contextLabel?: string; dayKey?: string } = {}
+  ) {
+    const reportContextKey = options.contextKey || (options.sourceOfferNumber ? `Angebot:${options.sourceOfferNumber}` : "");
+    const reportContextLabel = options.contextLabel || (options.sourceOfferNumber ? `Angebot ${options.sourceOfferNumber}` : "");
+    const res = await fetch("/api/activity-reports", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        projectId: project.id,
+        month: shouldUseProjectMonthForProcess(project) ? monthKey : "",
+        beforeImageKeys: getActivityReportImageKeys(project, "Vorherbilder", monthKey, options.dayKey),
+        afterImageKeys: getActivityReportImageKeys(project, "Nachherbilder", monthKey, options.dayKey),
+        reportContextKey,
+        reportContextLabel,
+      }),
+    });
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(data?.error ?? "Tätigkeitsbericht konnte nicht erstellt werden.");
+    }
+
+    const savedEntry = data as ProjectLogbookEntry;
+    setProjectLogbookEntries((currentEntries) => [
+      savedEntry,
+      ...currentEntries.filter((entry) => entry.id !== savedEntry.id),
+    ]);
+    void notifyProjectBillingReady(project, monthKey);
+    return savedEntry;
+  }
+
+  function getProjectBillingReadyRecipients(project: HeroProjectPreview) {
+    const responsibility = getEffectiveProjectResponsibility(project);
+    const responsibleUser = getUserByDisplayName(responsibility.name);
+    if (responsibleUser) return [responsibleUser.id];
+
+    return users
+      .filter((user) => user.isActive && (user.role === "ADMIN" || user.role === "GESCHAEFTSFUEHRER"))
+      .map((user) => user.id);
+  }
+
+  function getActiveProjectDeputyName(project?: HeroProjectPreview | null, dateKey = formatDateKey(new Date())) {
+    if (!project?.deputyName) return "";
+    const fromKey = normalizeDateKeyValue(project.deputyFrom || "");
+    const untilKey = normalizeDateKeyValue(project.deputyUntil || "");
+    if (fromKey && dateKey < fromKey) return "";
+    if (untilKey && dateKey > untilKey) return "";
+    return project.deputyName;
+  }
+
+  function getActiveAbsenceDeputyName(project?: HeroProjectPreview | null, dateKey = formatDateKey(new Date())) {
+    if (!project?.responsibleName) return "";
+    const responsibleName = normalizeReportPersonValue(project.responsibleName);
+    const responsibleUser = users.find((user) => user.isActive && normalizeReportPersonValue(user.name) === responsibleName);
+    if (!responsibleUser) return "";
+
+    const activeAbsence = absences.find(
+      (absence) =>
+        absence.userId === responsibleUser.id &&
+        absence.status === "genehmigt" &&
+        absence.date === dateKey &&
+        Boolean(absence.representativeUserId)
+    );
+    if (!activeAbsence) return "";
+
+    const representativeUser = users.find((user) => user.id === activeAbsence.representativeUserId && user.isActive);
+    return representativeUser?.name || activeAbsence.representativeName || "";
+  }
+
+  function getEffectiveProjectResponsibility(project?: HeroProjectPreview | null, dateKey = formatDateKey(new Date())) {
+    const absenceDeputyName = getActiveAbsenceDeputyName(project, dateKey);
+    if (absenceDeputyName) {
+      return {
+        label: "Abwesenheitsvertretung aktiv",
+        name: absenceDeputyName,
+        state: "absenceDeputy" as const,
+      };
+    }
+
+    const projectDeputyName = getActiveProjectDeputyName(project, dateKey);
+    if (projectDeputyName) {
+      return {
+        label: "Vertretung aktiv",
+        name: projectDeputyName,
+        state: "projectDeputy" as const,
+      };
+    }
+
+    return {
+      label: "Projektverantwortlicher",
+      name: project?.responsibleName || activeUser?.name || "Christian Eid",
+      state: "responsible" as const,
+    };
+  }
+
+  function getUserByDisplayName(name?: string | null) {
+    const normalizedName = normalizeReportPersonValue(name || "");
+    if (!normalizedName) return null;
+    return users.find((user) => user.isActive && normalizeReportPersonValue(user.name) === normalizedName) ?? null;
+  }
+
+  function getBillingReadyEscalationRecipients(project: HeroProjectPreview) {
+    const responsibility = getEffectiveProjectResponsibility(project);
+    const responsibleUser = getUserByDisplayName(responsibility.name);
+    const planningGroup = normalizeReportPersonValue(responsibleUser?.planningGroup || "");
+    const managementUserIds = users
+      .filter((user) => user.isActive && (user.role === "ADMIN" || user.role === "GESCHAEFTSFUEHRER"))
+      .map((user) => user.id);
+    const leadershipUserIds = users
+      .filter((user) => {
+        if (!user.isActive || user.role !== "FUEHRUNGSKRAFT") return false;
+        if (responsibleUser && user.id === responsibleUser.id) return false;
+        if (!planningGroup) return true;
+        return normalizeReportPersonValue(user.planningGroup || "") === planningGroup;
+      })
+      .map((user) => user.id);
+
+    return {
+      leadershipUserIds: leadershipUserIds.length > 0 ? leadershipUserIds : managementUserIds,
+      managementUserIds,
+    };
+  }
+
+  function getOneTimeProjectBillingReadyState(project: HeroProjectPreview, monthKey: string) {
+    if (isRecurringProjectKindValue(getProjectKind(project))) {
+      return { ready: false, reason: "Dauerlaeufer werden monatsbezogen bewertet." };
+    }
+
+    const hasFinalInvoice = invoices.some(
+      (invoice) =>
+        String(invoice.projectId) === String(project.id) &&
+        !isDeletedInvoice(invoice) &&
+        invoice.status !== "Entwurf"
+    );
+    if (hasFinalInvoice) return { ready: false, reason: "Rechnung ist bereits erstellt." };
+
+    const finalInspectionCount = getProjectProcessAttachmentCount(project, "Dokumente: Endkontrolle", "Dokument", monthKey);
+    if (finalInspectionCount === 0) return { ready: false, reason: "Endkontrolle fehlt." };
+
+    if (!isImmocareProject(project)) return { ready: true, reason: "" };
+
+    const beforeImageCount = getProjectProcessAttachmentCount(project, "Bilder: Vorherbilder", "Bild", monthKey);
+    const afterImageCount = getProjectProcessAttachmentCount(project, "Bilder: Nachherbilder", "Bild", monthKey);
+    const activityReportCount = getMatchingActivityReportCount(project, monthKey);
+    if (beforeImageCount === 0) return { ready: false, reason: "Vorherbild fehlt." };
+    if (afterImageCount === 0) return { ready: false, reason: "Nachherbild fehlt." };
+    if (activityReportCount === 0) return { ready: false, reason: "Taetigkeitsbericht fehlt." };
+
+    return { ready: true, reason: "" };
+  }
+
+  function getRecurringProjectBillingReadyState(project: HeroProjectPreview, monthKey: string) {
+    if (!isRecurringProjectKindValue(getProjectKind(project))) {
+      return { ready: false, reason: "Einmalprojekte werden projektbezogen bewertet." };
+    }
+    if (isWinterServiceProject(project)) {
+      return { ready: false, reason: "Winterdienst laeuft einsatzbezogen." };
+    }
+    if (!isProjectActiveInBillingMonth(project, monthKey)) {
+      return { ready: false, reason: "Projekt ist in diesem Monat nicht aktiv." };
+    }
+
+    const hasFinalMonthlyInvoice = invoices.some(
+      (invoice) =>
+        String(invoice.projectId) === String(project.id) &&
+        !isDeletedInvoice(invoice) &&
+        invoice.status !== "Entwurf" &&
+        getProjectInvoiceMonth(invoice) === monthKey
+    );
+    if (hasFinalMonthlyInvoice) return { ready: false, reason: "Monatsrechnung ist bereits erstellt." };
+
+    const finalInspectionCount = getProjectProcessAttachmentCount(project, "Dokumente: Endkontrolle", "Dokument", monthKey);
+    if (finalInspectionCount === 0) return { ready: false, reason: "Endkontrolle fehlt." };
+
+    if (!isImmocareProject(project)) return { ready: true, reason: "" };
+
+    const activityReportCount = getMatchingActivityReportCount(project, monthKey);
+    if (activityReportCount === 0) return { ready: false, reason: "Taetigkeitsbericht fehlt." };
+
+    return { ready: true, reason: "" };
+  }
+
+  async function notifyProjectBillingReady(project?: HeroProjectPreview | null, monthKey = getCurrentMonthKey()) {
+    if (!project) return false;
+
+    const isRecurring = isRecurringProjectKindValue(getProjectKind(project));
+    const state = isRecurring
+      ? getRecurringProjectBillingReadyState(project, monthKey)
+      : getOneTimeProjectBillingReadyState(project, monthKey);
+    if (!state.ready) return false;
+
+    const recipientUserIds = getProjectBillingReadyRecipients(project);
+    if (recipientUserIds.length === 0) return false;
+    const escalationRecipients = getBillingReadyEscalationRecipients(project);
+
+    const projectLabel = [project.projectNumber, project.title].filter(Boolean).join(" | ") || "Projekt ohne Nummer";
+    const subject = isRecurring
+      ? `Dauerläufer abrechnungsbereit: ${formatMonthLabel(monthKey)}`
+      : "Projekt abrechnungsbereit";
+    const body = isRecurring
+      ? `${projectLabel}: Für ${formatMonthLabel(monthKey)} sind die Pflichtnachweise vorhanden. Bitte Monatsrechnung erstellen oder prüfen.`
+      : `${projectLabel}: Alle Pflichtnachweise sind vorhanden. Bitte Rechnung erstellen oder prüfen.`;
+    const res = await fetch("/api/notifications", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userIds: recipientUserIds,
+        subject,
+        body,
+        linkTarget: "project",
+        linkTargetId: project.id,
+        linkLabel: "Projekt öffnen",
+        escalations: [
+          {
+            afterBusinessDays: 1.5,
+            userIds: escalationRecipients.leadershipUserIds,
+            subjectPrefix: "Führungskraft",
+            bodySuffix: "Der Hinweis ist seit mindestens 1,5 Arbeitstagen offen.",
+          },
+          {
+            afterBusinessDays: 2.5,
+            userIds: escalationRecipients.managementUserIds,
+            subjectPrefix: "Geschäftsführung",
+            bodySuffix: "Der Hinweis ist nach der Führungskraft-Eskalation weiterhin offen.",
+          },
+        ],
+      }),
+    });
+
+    if (!res.ok) return false;
+    await loadNotifications(true);
+    return true;
+  }
+
+  async function scanBillingReadyNotifications(monthKey = getCurrentMonthKey()) {
+    const candidates = heroProjects.filter((project) => {
+      if (isRecurringProjectKindValue(getProjectKind(project))) {
+        return getRecurringProjectBillingReadyState(project, monthKey).ready;
+      }
+      return getOneTimeProjectBillingReadyState(project, monthKey).ready;
+    });
+
+    for (const project of candidates) {
+      await notifyProjectBillingReady(project, monthKey);
+    }
+  }
+
+  async function runInvoiceProcessPreflight(
+    project: HeroProjectPreview,
+    draft: Pick<InvoiceDraft, "serviceDate" | "plannedExecutionMonth" | "sourceOfferNumber">,
+    options: { skipConfirmation?: boolean; source: "create" | "finalize" }
+  ) {
+    if (options.skipConfirmation) return true;
+
+    const invoiceMonth =
+      (draft.serviceDate || "").slice(0, 7) ||
+      draft.plannedExecutionMonth ||
+      projectComparisonMonth ||
+      formatDateKey(new Date()).slice(0, 7);
+    const issues: string[] = [];
+    const warnings: string[] = [];
+    const beforeImageCount = getProjectProcessAttachmentCount(project, "Bilder: Vorherbilder", "Bild", invoiceMonth);
+    const afterImageCount = getProjectProcessAttachmentCount(project, "Bilder: Nachherbilder", "Bild", invoiceMonth);
+    const activityReportCount = getMatchingActivityReportCount(project, invoiceMonth, draft.sourceOfferNumber);
+    const finalInspectionCount = getProjectProcessAttachmentCount(project, "Dokumente: Endkontrolle", "Dokument", invoiceMonth);
+    const requiresActivityReport = isImmocareProject(project);
+    const isWinterService = isWinterServiceProject(project);
+
+    if (requiresActivityReport && activityReportCount === 0) {
+      if (beforeImageCount > 0 && afterImageCount > 0) {
+        const context =
+          isWinterService
+            ? "Für diesen Winterdienst-Einsatz sind Vorher- und Nachherbilder vorhanden."
+            : isRecurringProjectKindValue(getProjectKind(project))
+              ? `Für ${formatMonthLabel(invoiceMonth)} sind Vorher- und Nachherbilder vorhanden.`
+              : draft.sourceOfferNumber
+                ? `Für das Angebot ${draft.sourceOfferNumber} sind Vorher- und Nachherbilder vorhanden.`
+                : "Vorher- und Nachherbilder sind vorhanden.";
+        const createNow = window.confirm(
+          `${context}\n\nEs gibt aber noch keinen Tätigkeitsbericht. Soll der Tätigkeitsbericht jetzt vor der Rechnung erstellt werden?`
+        );
+        if (createNow) {
+          try {
+            await createActivityReportForProject(project, invoiceMonth, { sourceOfferNumber: draft.sourceOfferNumber });
+            setSelectedProjectFileId(project.id);
+            setProjectComparisonMonth(invoiceMonth);
+            setProjectFileTab("documents");
+            setOpenProjectFileNavGroup("documents");
+            setSelectedProjectDocumentType("Tätigkeitsberichte");
+            setInvoiceError("Tätigkeitsbericht wurde erstellt. Bitte die Rechnung anschließend erneut fakturieren.");
+          } catch (error) {
+            setInvoiceError(error instanceof Error ? error.message : "Tätigkeitsbericht konnte nicht erstellt werden.");
+          }
+          return false;
+        }
+
+        warnings.push("Tätigkeitsbericht fehlt, obwohl Vorher- und Nachherbilder vorhanden sind.");
+      } else {
+        const missing = [
+          beforeImageCount === 0 ? "Vorherbild" : "",
+          afterImageCount === 0 ? "Nachherbild" : "",
+        ].filter(Boolean);
+        issues.push(`Tätigkeitsbericht fehlt; Voraussetzung fehlt: ${missing.join(" und ")}.`);
+      }
+    }
+
+    if (finalInspectionCount === 0) {
+      issues.push(
+        isRecurringProjectKindValue(getProjectKind(project))
+          ? `Endkontrolle für ${formatMonthLabel(invoiceMonth)} fehlt.`
+          : "Endkontrolle fehlt."
+      );
+    }
+
+    if (issues.length === 0 && warnings.length === 0) return true;
+
+    const projectCompanyText = isImmocareProject(project) ? "OK immocare" : "OK solutions";
+    const message = [
+      "Vor dem Fakturieren ist der Prozess noch nicht vollständig:",
+      "",
+      ...issues.map((issue) => `- ${issue}`),
+      ...warnings.map((warning) => `- ${warning}`),
+      "",
+      `Projektart: ${projectCompanyText}${isWinterService ? " / Winterdienst" : ""}`,
+      "Soll die Rechnung trotzdem erstellt bzw. fakturiert werden?",
+    ].join("\n");
+
+    return window.confirm(message);
+  }
+
   function isProjectActiveInBillingMonth(project: HeroProjectPreview, monthKey: string) {
     const startMonth = (project.autoBillingStartMonth || project.projectRuntimeFrom || "").slice(0, 7);
     const endMonth = (project.autoBillingEndMonth || project.projectRuntimeUntil || "").slice(0, 7);
     return (!startMonth || monthKey >= startMonth) && (!endMonth || monthKey <= endMonth);
-  }
-
-  function getAutoBillingNetAmount(project: HeroProjectPreview) {
-    return parseReportAmount(project.autoBillingNetAmount || project.forecastNetAmount);
   }
 
   function getAutoBillingComparison(project: HeroProjectPreview, monthKey: string) {
@@ -5971,11 +7572,18 @@ export function DashboardPage() {
     return { previousInvoices, stable };
   }
 
-  function getAutoBillingTemplateForProject(project: HeroProjectPreview): AutoBillingTemplate | null {
-    if (project.autoBillingTemplateMode === "project" && project.autoBillingTemplate) {
-      return project.autoBillingTemplate;
-    }
-    const previousInvoice = getProjectInvoicesSorted(project.id)[0];
+  function getAutoBillingPreviousInvoice(project: HeroProjectPreview, monthKey: string) {
+    const previousMonthKey = getPreviousMonthKey(monthKey);
+    if (!previousMonthKey) return null;
+
+    return (
+      getProjectInvoicesSorted(project.id).find((invoice) => getProjectInvoiceMonth(invoice) === previousMonthKey) ??
+      null
+    );
+  }
+
+  function getAutoBillingTemplateForProject(project: HeroProjectPreview, monthKey: string): AutoBillingTemplate | null {
+    const previousInvoice = getAutoBillingPreviousInvoice(project, monthKey);
     return previousInvoice ? invoiceToAutoBillingTemplate(previousInvoice) : null;
   }
 
@@ -5984,11 +7592,13 @@ export function DashboardPage() {
       (project.projectType ?? "").toLowerCase().includes("immocare") ||
       (project.projectNumber ?? "").toLowerCase().startsWith("oki");
     const addressParts = (project.address || "").split(",").map((part) => part.trim()).filter(Boolean);
-    const amount = getAutoBillingNetAmount(project);
-    const template = getAutoBillingTemplateForProject(project);
+    const previousInvoice = getAutoBillingPreviousInvoice(project, monthKey);
+    const amount = previousInvoice ? roundCurrencyValue(previousInvoice.netTotal) : 0;
+    const template = getAutoBillingTemplateForProject(project, monthKey);
     const monthLabel = formatMonthLabel(monthKey);
     const serviceDate = getLastDayOfMonthKey(monthKey);
-    const vatRate = parseReportAmount(project.autoBillingVatRate || "") || template?.vatRate || 19;
+    const paymentTermDays = getInvoicePaymentTermDaysForProject(project);
+    const vatRate = template?.vatRate || 19;
     const lines =
       template?.lines && template.lines.length > 0
         ? template.lines.map((line) => ({ ...line, id: crypto.randomUUID(), laborItems: [] }))
@@ -6015,6 +7625,8 @@ export function DashboardPage() {
       internalEmail: activeUser?.email || template?.internalEmail || "",
       plannedExecutionMonth: monthKey,
       serviceDate,
+      paymentTermDays,
+      dueDate: getInvoiceDueDate(serviceDate, paymentTermDays),
       sourceOfferId: "",
       sourceOfferNumber: "",
       introText: template?.introText || `wir stellen Ihnen die monatliche Leistung fuer ${monthLabel} in Rechnung.`,
@@ -6026,6 +7638,10 @@ export function DashboardPage() {
   }
 
   function openInvoiceFromOffer(offer: OfferItem) {
+    if (!isActiveFinalOffer(offer)) {
+      setErrorMessage("Nur aktive finale Angebote können als Rechnungsgrundlage verwendet werden.");
+      return;
+    }
     const project = heroProjects.find((item) => item.id === offer.projectId) || selectedProjectFile;
     const isRecurringProject = project ? getProjectKind(project).startsWith("Dauer") : false;
     const invoiceMonth = isRecurringProject
@@ -6034,6 +7650,7 @@ export function DashboardPage() {
     const serviceDate = project
       ? getProjectServiceDateSuggestion(project, invoiceMonth)
       : getLastDayOfMonthKey(invoiceMonth);
+    const paymentTermDays = project ? getInvoicePaymentTermDaysForProject(project) : 14;
     setInvoiceDraft({
       company: offer.company,
       offerType: "base",
@@ -6049,6 +7666,8 @@ export function DashboardPage() {
       internalEmail: activeUser?.email || offer.internalEmail,
       plannedExecutionMonth: invoiceMonth,
       serviceDate,
+      paymentTermDays,
+      dueDate: getInvoiceDueDate(serviceDate, paymentTermDays),
       sourceOfferId: offer.id,
       sourceOfferNumber: offer.offerNumber,
       discountPercent: offer.discountPercent ?? 0,
@@ -6103,6 +7722,8 @@ export function DashboardPage() {
       internalEmail: invoice.internalEmail,
       plannedExecutionMonth: invoice.plannedExecutionMonth || "",
       serviceDate: invoice.serviceDate || "",
+      paymentTermDays: invoice.paymentTermDays ?? 14,
+      dueDate: invoice.dueDate || "",
       sourceOfferId: invoice.sourceOfferId || "",
       sourceOfferNumber: invoice.sourceOfferNumber || "",
       discountPercent: invoice.discountPercent ?? 0,
@@ -6478,6 +8099,8 @@ export function DashboardPage() {
       internalEmail: invoice.internalEmail,
       plannedExecutionMonth: invoice.plannedExecutionMonth || "",
       serviceDate: invoice.serviceDate || "",
+      paymentTermDays: invoice.paymentTermDays ?? 14,
+      dueDate: invoice.dueDate || "",
       sourceOfferId: invoice.sourceOfferId || "",
       sourceOfferNumber: invoice.sourceOfferNumber || "",
       discountPercent: invoice.discountPercent ?? 0,
@@ -6510,7 +8133,7 @@ export function DashboardPage() {
     };
   }
 
-  async function saveInvoice(options: { asDraft?: boolean; finalizeConfirmed?: boolean } = {}) {
+  async function saveInvoice(options: { asDraft?: boolean; finalizeConfirmed?: boolean; processPreflightConfirmed?: boolean } = {}) {
     if (!selectedProjectFile) return;
     const saveAsDraft = Boolean(options.asDraft);
     const editingInvoice = editingInvoiceId ? invoices.find((invoice) => invoice.id === editingInvoiceId) : null;
@@ -6524,10 +8147,22 @@ export function DashboardPage() {
       ...invoiceDraft,
       serviceDate: normalizedServiceDate,
       plannedExecutionMonth: normalizedServiceDate.slice(0, 7) || invoiceDraft.plannedExecutionMonth,
+      dueDate: invoiceDraft.dueDate || getInvoiceDueDate(normalizedServiceDate, invoiceDraft.paymentTermDays),
     };
     if (!saveAsDraft && !normalizedInvoiceDraft.serviceDate) {
       setInvoiceError("Bitte ein Leistungsdatum setzen.");
       return;
+    }
+    if (!saveAsDraft) {
+      const processPreflightOk = await runInvoiceProcessPreflight(
+        selectedProjectFile,
+        normalizedInvoiceDraft,
+        {
+          skipConfirmation: options.processPreflightConfirmed,
+          source: "create",
+        }
+      );
+      if (!processPreflightOk) return;
     }
     if (!saveAsDraft && !editingInvoiceId && !options.finalizeConfirmed) {
       const confirmedServiceDate = window.confirm(
@@ -6622,7 +8257,7 @@ export function DashboardPage() {
         setIsSavingInvoice(false);
         if (confirmed) {
           setTimeout(() => {
-            void saveInvoice();
+            void saveInvoice({ processPreflightConfirmed: true });
           }, 0);
         }
         return;
@@ -6673,7 +8308,6 @@ export function DashboardPage() {
       return;
     }
 
-    setIsSavingInvoice(true);
     setInvoiceError("");
     const serviceDate = invoice.serviceDate || getProjectServiceDateSuggestion(project, invoice.plannedExecutionMonth);
     const invoiceDraftForFinalize = {
@@ -6681,7 +8315,12 @@ export function DashboardPage() {
       serviceDate,
       plannedExecutionMonth: serviceDate.slice(0, 7) || invoice.plannedExecutionMonth,
     };
+    const processPreflightOk = await runInvoiceProcessPreflight(project, invoiceDraftForFinalize, {
+      source: "finalize",
+    });
+    if (!processPreflightOk) return;
 
+    setIsSavingInvoice(true);
     const res = await fetch("/api/invoices", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -6729,7 +8368,7 @@ export function DashboardPage() {
 
   async function cancelInvoice(invoice: InvoiceItem) {
     if (!selectedProjectFile) return;
-    if (["Storniert", "Stornorechnung", "Gelöscht"].includes(invoice.status)) return;
+    if (["Storniert", "Stornorechnung"].includes(invoice.status) || isDeletedStatus(invoice.status)) return;
 
     const confirmed = window.confirm(
       `Soll ${invoice.invoiceNumber} wirklich storniert werden? Es wird automatisch eine neue Stornorechnung mit eigener Rechnungsnummer erstellt.`
@@ -6785,7 +8424,7 @@ export function DashboardPage() {
   async function deleteInvoice(invoice: InvoiceItem, projectOverride?: HeroProjectPreview) {
     const invoiceProject = projectOverride ?? selectedProjectFile ?? heroProjects.find((project) => project.id === invoice.projectId);
     if (!invoiceProject || !canDeleteInvoices) return;
-    if (invoice.status === "Gelöscht") return;
+    if (isDeletedStatus(invoice.status)) return;
 
     const confirmed = window.confirm(
       `Rechnung ${invoice.invoiceNumber} wirklich löschen? Sie wird als gelöscht markiert und aus verknüpften Stempelzeiten gelöst.`
@@ -6867,6 +8506,12 @@ export function DashboardPage() {
       .join("");
   }
 
+  function stripTrailingMailClosing(value: string) {
+    return value
+      .replace(/\s*(?:\r?\n){1,}Mit freundlichen Gr(?:\u00fc|ue)(?:\u00df|ss)en\s*(?:\r?\n)+[^\r\n]+\s*$/i, "")
+      .trimEnd();
+  }
+
   function sanitizeMailSignatureHtml(value: string) {
     return value
       .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
@@ -6887,10 +8532,35 @@ export function DashboardPage() {
     return normalizeMailSignatureHtml(activeUser?.signature || "");
   }
 
+  function getDocumentMailFeedbackPreviewHtml() {
+    const testButtonHtml =
+      activeUser?.role === "GESCHAEFTSFUEHRER"
+        ? '<a href="/feedback/preview" target="_blank" rel="noreferrer" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:800;border-radius:10px;padding:10px 16px;">Jetzt bewerten</a>'
+        : '<span style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:800;border-radius:10px;padding:10px 16px;">Jetzt bewerten</span>';
+    const hintText =
+      activeUser?.role === "GESCHAEFTSFUEHRER"
+        ? "Testansicht: Es wird kein echter Kundenlink erzeugt und nichts gespeichert."
+        : "Der persönliche Bewertungslink wird beim Versand erzeugt.";
+
+    return [
+      '<div style="margin:22px 0 18px;padding:16px 18px;border:1px solid #cbd8e6;border-radius:14px;background:#f8fbff;max-width:520px;">',
+      '<p style="margin:0 0 8px;color:#0f172a;font-weight:800;">Wie zufrieden waren Sie mit unserer Leistung?</p>',
+      '<div style="color:#f5b800;font-size:24px;letter-spacing:2px;line-height:1;margin:0 0 12px;">&#9733;&#9733;&#9733;&#9733;&#9733;</div>',
+      testButtonHtml,
+      `<p style="margin:10px 0 0;color:#64748b;font-size:12px;line-height:1.4;">${hintText}</p>`,
+      "</div>",
+    ].join("");
+  }
+
   function getDocumentMailPreviewHtml() {
     if (!documentMailDraft) return "";
     const signatureHtml = getActiveUserSignatureHtml();
-    return `${textToMailHtml(documentMailDraft.body)}${signatureHtml ? signatureHtml : ""}`;
+    const messageBody = signatureHtml ? stripTrailingMailClosing(documentMailDraft.body) : documentMailDraft.body;
+    const feedbackHtml =
+      documentMailDraft.kind === "invoice" && documentMailDraft.includeFeedbackLink !== false
+        ? getDocumentMailFeedbackPreviewHtml()
+        : "";
+    return `${textToMailHtml(messageBody)}${feedbackHtml}${signatureHtml ? signatureHtml : ""}`;
   }
 
   function getDefaultSignatureSource(user: UserOption) {
@@ -6908,8 +8578,183 @@ export function DashboardPage() {
     if (kind === "offer") return "Angebot";
     if (kind === "invoice") return "Rechnung";
     if (kind === "cancellation") return "Stornorechnung";
+    if (kind === "reminder") return "Mahnung";
     if (kind === "activityReport") return "Tätigkeitsbericht";
     return "Dokument";
+  }
+
+  function getDocumentMailPrimaryAttachmentLabel(draft: DocumentMailDraft) {
+    const fallbackName = draft.attachmentName || `${draft.documentNumber}.pdf`;
+    if (draft.kind === "invoice") return `Rechnung ${draft.documentNumber} als PDF anhängen`;
+    if (draft.kind === "offer") return `Angebot ${draft.documentNumber} als PDF anhängen`;
+    if (draft.kind === "cancellation") return `Stornorechnung ${draft.documentNumber} als PDF anhängen`;
+    if (draft.kind === "reminder") return `Mahnung ${draft.documentNumber} als PDF anhängen`;
+    if (draft.kind === "activityReport") return `Tätigkeitsbericht ${fallbackName} anhängen`;
+    return `${fallbackName} anhängen`;
+  }
+
+  function getDocumentMailInvoice(draft: DocumentMailDraft | null) {
+    if (!draft || draft.kind !== "invoice") return null;
+    return invoices.find((invoice) => invoice.id === draft.documentId) ?? null;
+  }
+
+  function getInvoiceRecipientContact(invoice: InvoiceItem | null) {
+    if (!invoice) return null;
+    const project = heroProjects.find((item) => item.id === invoice.projectId) ?? null;
+    const relatedContacts = contacts.filter((contact) => {
+      if (project && [project.contactId, project.contactPersonId, project.addressContactId].includes(contact.id)) return true;
+      if (project?.contactId && contact.parentCompanyId === project.contactId) return true;
+      return contact.companyName === invoice.customerName || getContactDisplayName(contact) === invoice.customerName;
+    });
+
+    return (
+      relatedContacts.find((contact) => contact.isInvoiceRecipient) ??
+      relatedContacts.find((contact) => contact.isMainContact) ??
+      relatedContacts[0] ??
+      null
+    );
+  }
+
+  function getLeitwegIdModulo97(value: string) {
+    let remainder = 0;
+    for (const character of value) {
+      remainder = (remainder * 10 + Number(character)) % 97;
+    }
+    return remainder;
+  }
+
+  function expandLeitwegIdForChecksum(value: string) {
+    return value
+      .replace(/-/g, "")
+      .toUpperCase()
+      .replace(/[A-Z]/g, (character) => String(character.charCodeAt(0) - 55));
+  }
+
+  function validateLeitwegId(value: string): LeitwegIdValidation {
+    const normalized = value.trim().toUpperCase();
+    if (!normalized) {
+      return {
+        normalized,
+        isEmpty: true,
+        isValid: false,
+        message: "Keine Leitweg-ID gepflegt.",
+      };
+    }
+
+    const formatMatch = normalized.match(/^([0-9]{2,12})(?:-([A-Z0-9]{1,30}))?-([0-9]{2})$/);
+    if (!formatMatch) {
+      return {
+        normalized,
+        isEmpty: false,
+        isValid: false,
+        message: "Format ungültig. Erwartet wird Grobadressierung, optional Feinadressierung und zweistellige Prüfziffer.",
+      };
+    }
+
+    const expanded = expandLeitwegIdForChecksum(normalized);
+    if (!/^[0-9]+$/.test(expanded) || getLeitwegIdModulo97(expanded) !== 1) {
+      return {
+        normalized,
+        isEmpty: false,
+        isValid: false,
+        message: "Prüfziffer ungültig. Bitte Leitweg-ID beim öffentlichen Auftraggeber abgleichen.",
+      };
+    }
+
+    return {
+      normalized,
+      isEmpty: false,
+      isValid: true,
+      message: "Leitweg-ID ist formal gültig.",
+    };
+  }
+
+  function getEInvoiceReadiness(draft: DocumentMailDraft | null): EInvoiceReadiness {
+    const invoice = getDocumentMailInvoice(draft);
+    const recipientContact = getInvoiceRecipientContact(invoice);
+    const missingRequired: string[] = [];
+    const missingRecommended: string[] = [];
+
+    if (!invoice) {
+      return {
+        invoice,
+        recipientContact,
+        missingRequired: ["Rechnungsdatensatz konnte im aktuellen Stand nicht geladen werden."],
+        missingRecommended,
+      };
+    }
+
+    const hasInvoiceAddress = Boolean(invoice.customerStreet.trim() && invoice.customerCity.trim());
+    const hasRecipientAddress = Boolean(
+      recipientContact?.street?.trim() && [recipientContact?.postalCode, recipientContact?.city].filter(Boolean).join(" ").trim()
+    );
+    const validLines = invoice.lines.filter((line) => {
+      const quantity = Number(line.quantity ?? 0);
+      const unitPrice = Number(line.unitPrice ?? 0);
+      const vatRate = Number(line.vatRate ?? invoice.vatRate ?? 19);
+      return line.title.trim() && Number.isFinite(quantity) && quantity > 0 && line.unit.trim() && Number.isFinite(unitPrice) && Number.isFinite(vatRate);
+    });
+    const isPublicRecipient = recipientContact?.eInvoiceRecipientType === "public";
+    const leitwegValidation = validateLeitwegId(recipientContact?.leitwegId ?? "");
+
+    if (invoice.status === "Entwurf") missingRequired.push("Rechnung ist noch ein Entwurf.");
+    if (!invoice.invoiceNumber.trim()) missingRequired.push("Rechnungsnummer fehlt.");
+    if (!invoice.serviceDate.trim()) missingRequired.push("Leistungsdatum fehlt.");
+    if (!invoice.dueDate.trim()) missingRequired.push("Fälligkeitsdatum fehlt.");
+    if (!invoice.customerName.trim()) missingRequired.push("Rechnungsempfänger/Kunde fehlt.");
+    if (!hasInvoiceAddress && !hasRecipientAddress) missingRequired.push("Vollständige Empfängeradresse fehlt.");
+    if (!invoice.lines.length) missingRequired.push("Rechnungspositionen fehlen.");
+    if (invoice.lines.length && validLines.length !== invoice.lines.length) {
+      missingRequired.push("Mindestens eine Rechnungsposition ist unvollständig.");
+    }
+    if (!(Number(invoice.netTotal) > 0) || !(Number(invoice.grossTotal) > 0)) {
+      missingRequired.push("Rechnungssummen sind nicht plausibel.");
+    }
+    if (isPublicRecipient && leitwegValidation.isEmpty) {
+      missingRequired.push("Leitweg-ID fehlt. Für XRechnung an öffentliche Auftraggeber ist sie erforderlich.");
+    }
+    if (isPublicRecipient && !leitwegValidation.isEmpty && !leitwegValidation.isValid) {
+      missingRequired.push(`Leitweg-ID ist ungültig: ${leitwegValidation.message}`);
+    }
+
+    if (!isPublicRecipient && leitwegValidation.isEmpty) {
+      missingRecommended.push("Leitweg-ID ist bei Firmenkunden nur nötig, wenn der Empfänger sie ausdrücklich verlangt.");
+    }
+    if (!isPublicRecipient && !leitwegValidation.isEmpty && !leitwegValidation.isValid) {
+      missingRecommended.push(`Leitweg-ID ist eingetragen, aber ungültig: ${leitwegValidation.message}`);
+    }
+    if (!recipientContact?.taxId?.trim()) {
+      missingRecommended.push("Steuer-/USt-ID des Empfängers ist nicht gepflegt.");
+    }
+    if (!recipientContact?.isInvoiceRecipient) {
+      missingRecommended.push("Kein Kontakt ist ausdrücklich als Rechnungsempfänger markiert.");
+    }
+    if (!recipientContact?.eInvoiceRequired) {
+      missingRecommended.push("E-Rechnung ist beim Empfänger noch nicht als erforderlich markiert.");
+    }
+
+    return { invoice, recipientContact, missingRequired, missingRecommended };
+  }
+
+  async function validateDocumentMailXRechnung(draft: DocumentMailDraft) {
+    setIsValidatingXrechnung(true);
+    setXrechnungValidationResult(null);
+    try {
+      const res = await fetch(`/api/invoices?xrechnungValidationId=${encodeURIComponent(draft.documentId)}`);
+      const data = (await res.json()) as XRechnungValidationResponse | { error?: string };
+      if (!res.ok || !("validation" in data)) {
+        setDocumentMailError(
+          "error" in data && data.error ? data.error : "XRechnung-Prüfung konnte nicht ausgeführt werden."
+        );
+        return;
+      }
+      setDocumentMailError("");
+      setXrechnungValidationResult(data);
+    } catch {
+      setDocumentMailError("XRechnung-Prüfung konnte nicht ausgeführt werden.");
+    } finally {
+      setIsValidatingXrechnung(false);
+    }
   }
 
   function getInvoiceDocumentMailKind(invoice: InvoiceItem): DocumentMailKind {
@@ -6918,14 +8763,50 @@ export function DashboardPage() {
       : "invoice";
   }
 
+  function getLogbookEntryMonthKey(entry: { date?: string; projectMonth?: string }) {
+    if (/^\d{4}-\d{2}$/.test(entry.projectMonth || "")) return entry.projectMonth || "";
+    const rawDate = entry.date || "";
+    const isoMatch = rawDate.match(/^(\d{4})-(\d{2})/);
+    if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}`;
+    const germanMatch = rawDate.match(/^(\d{2})\.(\d{2})\.(\d{4}|\d{2})/);
+    if (germanMatch) {
+      const year = germanMatch[3].length === 2 ? `20${germanMatch[3]}` : germanMatch[3];
+      return `${year}-${germanMatch[2]}`;
+    }
+
+    const parsedDate = parseAppDateTime(rawDate);
+    return Number.isNaN(parsedDate.getTime()) ? "" : formatDateKey(parsedDate).slice(0, 7);
+  }
+
+  function getActivityReportMailAttachmentsForProject(projectId: string, monthKey = "") {
+    const project = heroProjects.find((item) => item.id === projectId);
+    const isRecurring = project ? getProjectKind(project).startsWith("Dauer") : false;
+
+    return projectLogbookEntries
+      .filter((entry) => entry.projectId === projectId)
+      .filter((entry) => entry.title === "Dokumente: Tätigkeitsberichte")
+      .filter((entry) => !isRecurring || !monthKey || getLogbookEntryMonthKey(entry) === monthKey)
+      .flatMap((entry) =>
+        entry.attachments.flatMap((attachment) =>
+          attachment.type === "Dokument" && attachment.dataUrl
+            ? [{ name: attachment.name, dataUrl: attachment.dataUrl }]
+            : []
+        )
+      );
+  }
+
   function openDocumentMailDialog(kind: DocumentMailKind, document: OfferItem | InvoiceItem) {
     if (kind === "invoice" && (document as InvoiceItem).status === "Entwurf") {
-      const confirmed = window.confirm("Sie möchten einen Entwurf versenden. Sind Sie sicher?");
+    const confirmed = window.confirm("Sie möchten einen Entwurf versenden. Sind Sie sicher?");
       if (!confirmed) return;
     }
     const activeMailAccount = getSafeEmployeeMailAccount(activeUser?.mailAccount, activeUser?.email || "");
     const documentNumber = kind === "offer" ? (document as OfferItem).offerNumber : getInvoiceDisplayNumber(document as InvoiceItem);
     const template = applyMailTemplate(kind, documentNumber);
+    const activityReportAttachments =
+      kind === "invoice"
+        ? getActivityReportMailAttachmentsForProject(document.projectId, getProjectInvoiceMonth(document as InvoiceItem))
+        : [];
 
     setDocumentMailDraft({
       kind,
@@ -6941,7 +8822,12 @@ export function DashboardPage() {
       subject: template.subject,
       body: template.body,
       attachPdf: true,
+      eInvoiceFormat: kind === "invoice" ? "pdf" : undefined,
+      includeFeedbackLink: kind === "invoice",
+      attachActivityReports: activityReportAttachments.length > 0,
+      additionalAttachments: activityReportAttachments,
     });
+    closeDocumentMailProjectAttachmentPicker();
     setDocumentMailError(
       activeMailAccount.status === "connected"
         ? ""
@@ -6980,7 +8866,10 @@ export function DashboardPage() {
       subject: template.subject,
       body: template.body,
       attachPdf: Boolean(input.attachmentDataUrl),
+      eInvoiceFormat: input.kind === "invoice" ? "pdf" : undefined,
+      includeFeedbackLink: input.kind === "invoice",
     });
+    closeDocumentMailProjectAttachmentPicker();
     setDocumentMailError(
       activeMailAccount.status === "connected"
         ? ""
@@ -7020,6 +8909,10 @@ export function DashboardPage() {
     setDocumentMailSuccess("E-Mail wurde für den Versand protokolliert.");
     await loadOfferHistory(documentMailDraft.projectId);
     await loadInvoiceHistory(documentMailDraft.projectId);
+    await loadDocumentMailDispatches(documentMailDraft.projectId);
+    if (documentMailDraft.kind === "invoice") {
+      await loadCustomerFeedbackRequests();
+    }
     if (documentMailDraft.projectId) {
       await addProjectLogbookEntry(
         documentMailDraft.projectId,
@@ -7028,6 +8921,124 @@ export function DashboardPage() {
       );
     }
     window.setTimeout(() => setDocumentMailDraft(null), 700);
+  }
+
+  function readMailAttachmentFile(file: File) {
+    return new Promise<{ name: string; dataUrl: string }>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === "string") {
+          resolve({ name: file.name, dataUrl: reader.result });
+          return;
+        }
+        reject(new Error("Datei konnte nicht gelesen werden."));
+      };
+      reader.onerror = () => reject(new Error("Datei konnte nicht gelesen werden."));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function addManualDocumentMailAttachments(files: FileList | null) {
+    if (!files?.length) return;
+    const selectedFiles = Array.from(files);
+    const totalBytes = selectedFiles.reduce((sum, file) => sum + file.size, 0);
+    const maxBytes = 15 * 1024 * 1024;
+
+    if (totalBytes > maxBytes) {
+      setDocumentMailError("Die ausgewählten Zusatzanhänge sind größer als 15 MB.");
+      return;
+    }
+
+    try {
+      const attachments = await Promise.all(selectedFiles.map(readMailAttachmentFile));
+      setDocumentMailDraft((current) =>
+        current
+          ? {
+              ...current,
+              manualAttachments: [...(current.manualAttachments || []), ...attachments],
+            }
+          : current
+      );
+      setDocumentMailError("");
+    } catch (error) {
+      setDocumentMailError(error instanceof Error ? error.message : "Zusatzanhang konnte nicht gelesen werden.");
+    }
+  }
+
+  function removeManualDocumentMailAttachment(index: number) {
+    setDocumentMailDraft((current) =>
+      current
+        ? {
+            ...current,
+            manualAttachments: (current.manualAttachments || []).filter((_, itemIndex) => itemIndex !== index),
+          }
+        : current
+    );
+  }
+
+  function getDocumentMailProjectAttachmentOptions(draft: DocumentMailDraft | null) {
+    if (!draft?.projectId) return [];
+
+    const selectedAttachments = [
+      ...(draft.manualAttachments || []),
+      ...(draft.attachActivityReports ? draft.additionalAttachments || [] : []),
+    ];
+
+    return projectLogbookEntries
+      .filter((entry) => entry.projectId === draft.projectId)
+      .flatMap((entry) =>
+        entry.attachments.flatMap((attachment, attachmentIndex) => {
+          if (!attachment.dataUrl) return [];
+          const alreadySelected = selectedAttachments.some(
+            (selectedAttachment) =>
+              selectedAttachment.name === attachment.name && selectedAttachment.dataUrl === attachment.dataUrl
+          );
+          if (alreadySelected) return [];
+
+          const category = entry.title.replace(/^(Dokumente|Bilder):\s*/i, "") || "Projektanhang";
+          const typeLabel = attachment.type === "Bild" ? "Bild" : "Dokument";
+          return [
+            {
+              key: `${entry.id}:${attachmentIndex}`,
+              name: attachment.name,
+              dataUrl: attachment.dataUrl,
+              type: attachment.type,
+              category: `${typeLabel}: ${category}`,
+            },
+          ];
+        })
+      );
+  }
+
+  function toggleDocumentMailProjectAttachmentSelection(key: string) {
+    setSelectedDocumentMailProjectAttachmentKeys((current) =>
+      current.includes(key) ? current.filter((item) => item !== key) : [...current, key]
+    );
+  }
+
+  function closeDocumentMailProjectAttachmentPicker() {
+    setIsDocumentMailProjectAttachmentPickerOpen(false);
+    setSelectedDocumentMailProjectAttachmentKeys([]);
+  }
+
+  function addSelectedProjectDocumentMailAttachments() {
+    const options = getDocumentMailProjectAttachmentOptions(documentMailDraft);
+    const selectedOptions = options.filter((item) => selectedDocumentMailProjectAttachmentKeys.includes(item.key));
+    if (!selectedOptions.length) return;
+
+    setDocumentMailDraft((current) =>
+      current
+        ? {
+            ...current,
+            manualAttachments: [
+              ...(current.manualAttachments || []),
+              ...selectedOptions.map((option) => ({ name: option.name, dataUrl: option.dataUrl })),
+            ],
+          }
+        : current
+    );
+    closeDocumentMailProjectAttachmentPicker();
+    setDocumentMailError("");
   }
 
   function getNextCatalogNumber(type: CatalogItemType) {
@@ -8214,6 +10225,7 @@ export function DashboardPage() {
       mode: session.mode === "unproductive" ? "unproductive" : "project",
       projectId: session.mode === "project" ? session.projectId : "",
       projectLabel: session.projectLabel,
+      comment: session.comment || "",
       startedAt,
       accumulatedMs: Number(session.accumulatedMs || 0),
       pauseStartedAt,
@@ -8272,12 +10284,34 @@ export function DashboardPage() {
     const res = await fetch("/api/potentials", { cache: "no-store" });
 
     if (!res.ok) {
-      setErrorMessage("Potenziale konnten nicht geladen werden.");
+      setErrorMessage("Zusatzverkäufe konnten nicht geladen werden.");
       return;
     }
 
     const data = (await res.json()) as ProjectPotential[];
     setProjectPotentials(data);
+  }
+
+  async function loadSalesGoals() {
+    const res = await fetch("/api/sales-targets", { cache: "no-store" });
+
+    if (!res.ok) {
+      setGoalError("Ziele konnten nicht geladen werden.");
+      return;
+    }
+
+    const data = (await res.json()) as SalesGoal[];
+    setSalesGoals(data);
+    setGoalError("");
+  }
+
+  async function loadProjectStatusTimelineEntries() {
+    const res = await fetch("/api/status-timeline?entityType=project", { cache: "no-store" });
+
+    if (!res.ok) return;
+
+    const data = (await res.json()) as StatusTimelineEntry[];
+    setProjectStatusTimelineEntries(data);
   }
 
   async function loadNotifications(showDesktopNotice = false) {
@@ -8369,7 +10403,7 @@ export function DashboardPage() {
       }
       if (entry) {
         const targetTab =
-          entry.status === "Korrektur nötig"
+          getReadableContentStatus(entry.status) === "Korrektur nötig"
             ? "contentCorrections"
             : entry.status === "Richtungsfreigabe offen" || entry.status === "Finale Freigabe offen"
               ? "contentApprovals"
@@ -8414,6 +10448,19 @@ export function DashboardPage() {
       }
       setProjectLogbookSearch("Zusatzverkauf");
       setOpenSidebarMenus({ projectsSolutions: true });
+      setIsNotificationsOpen(false);
+    }
+
+    if (notification.linkTarget === "project" && notification.linkTargetId) {
+      const notificationProject = heroProjects.find((project) => project.id === notification.linkTargetId);
+      if (notificationProject) {
+        openProjectFile(notificationProject, { tab: "documents", documentType: "Rechnungen" });
+      } else {
+        setSelectedProjectFileId(notification.linkTargetId);
+        setProjectFileTab("documents");
+        setSelectedProjectDocumentType("Rechnungen");
+        setActiveTab("projectsSolutions");
+      }
       setIsNotificationsOpen(false);
     }
 
@@ -8642,8 +10689,8 @@ export function DashboardPage() {
     setSelectedCalendarActionDate("");
   }
 
-  function getPlanningEntryGroups(board: PlanningBoardCompany) {
-    return planningBoardGroupsByCompany[board];
+  function getPlanningEntryGroups(board: PlanningBoardCompany | "") {
+    return board ? planningBoardGroupsByCompany[board] : [];
   }
 
   function resetPlanningEntryForm() {
@@ -8664,10 +10711,12 @@ export function DashboardPage() {
     setPlanningEntryDescription("");
     setPlanningEntryError("");
     setPlanningEntryOfferLabel("");
+    setPlanningEntryOfferId("");
+    setPlanningEntryOfferLineId("");
     setPlanningEntryOfferTotalHours("5");
     setPlanningRecurrenceType("once");
     setPlanningRecurrenceUntil("");
-    setPlanningRecurrenceSkipWeekends(true);
+    setPlanningRecurrenceWeekdays([getWeekdayFromDateKey(formatDateKey(new Date()))]);
   }
 
   function openPlanningEntryModal(options: Partial<{
@@ -8676,29 +10725,32 @@ export function DashboardPage() {
     date: string;
     userId: string;
     startTime: string;
+    endTime: string;
     approvalStatus: PlanningEntryApprovalStatus;
+    requireManualAssignment: boolean;
   }> = {}) {
-    const board = options.board ?? "OK solutions";
+    const shouldRequireManualAssignment = options.requireManualAssignment === true;
+    const board = shouldRequireManualAssignment ? "" : options.board ?? "OK solutions";
     const groups = getPlanningEntryGroups(board);
-    const groupName = options.groupName && groups.includes(options.groupName) ? options.groupName : groups[0];
+    const groupName = options.groupName && groups.includes(options.groupName) ? options.groupName : groups[0] ?? "";
     const startTime = options.startTime ?? "08:00";
-    const defaultUserId =
-      options.userId ??
-      users.find(
-        (user) =>
-          (user.planningBoard ?? "OK solutions") === board &&
-          (user.planningGroup ?? "") === groupName
-      )?.id ??
-      "";
+    const startTimeIndex = planningTimelineSlots.indexOf(startTime);
+    const endTime =
+      options.endTime ??
+      planningTimelineSlots[Math.min(startTimeIndex >= 0 ? startTimeIndex + 4 : 4, planningTimelineSlots.length - 1)] ??
+      "09:00";
+    const defaultUserId = options.userId ?? "";
 
     resetPlanningEntryForm();
     setPlanningEntryApprovalStatus(options.approvalStatus ?? "confirmed");
     setPlanningEntryBoard(board);
     setPlanningEntryGroup(groupName);
-    setPlanningEntryDate(options.date ?? selectedPlanningDateKey);
+    const nextPlanningDate = options.date ?? formatDateKey(new Date());
+    setPlanningEntryDate(nextPlanningDate);
+    setPlanningRecurrenceWeekdays([getWeekdayFromDateKey(nextPlanningDate)]);
     setPlanningEntryUserId(defaultUserId);
     setPlanningEntryStartTime(startTime);
-    setPlanningEntryEndTime(startTime === "08:00" ? "09:00" : startTime);
+    setPlanningEntryEndTime(endTime);
     setErrorMessage("");
     setPlanningEntryError("");
     setIsPlanningEntryModalOpen(true);
@@ -8709,13 +10761,26 @@ export function DashboardPage() {
     const groups = getPlanningEntryGroups(board);
     const groupName = groups.includes(entry.groupName) ? entry.groupName : groups[0];
 
+    const entryProject = heroProjects.find((project) => project.id === entry.projectId);
+    const entryProjectHasOfferPlanning =
+      entryProject &&
+      !getProjectKind(entryProject).startsWith("Dauer") &&
+      offers.some(
+        (offer) =>
+          offer.projectId === entryProject.id &&
+          offer.status !== "Entwurf" &&
+          getOfferLaborPlanningHours(offer) > 0
+      );
+    const entryHasOfferReference = entry.source === "offer" || Boolean(entry.offerId || entry.offerLabel);
+
     setEditingPlanningEntryId(entry.id);
     setPlanningEntryApprovalStatus(entry.approvalStatus);
-    setPlanningEntrySource("manual");
+    setPlanningEntrySource(entryHasOfferReference || entryProjectHasOfferPlanning ? "offer" : "manual");
     setPlanningEntryBoard(board);
     setPlanningEntryGroup(groupName);
     setPlanningEntryUserId(entry.userId);
     setPlanningEntryDate(entry.date);
+    setPlanningRecurrenceWeekdays([getWeekdayFromDateKey(entry.date)]);
     setPlanningEntryStartTime(entry.startTime);
     setPlanningEntryEndTime(entry.endTime);
     setPlanningEntryTitle(entry.title);
@@ -8725,15 +10790,101 @@ export function DashboardPage() {
     setIsPlanningEntryProjectSearchOpen(false);
     setPlanningEntryDescription(entry.description);
     setPlanningEntryOfferLabel(entry.offerLabel);
+    setPlanningEntryOfferId(entry.offerId);
+    setPlanningEntryOfferLineId(entry.offerLineId);
     setPlanningEntryOfferTotalHours(
       entry.offerTotalMinutes > 0 ? String(entry.offerTotalMinutes / 60) : "5"
     );
     setPlanningRecurrenceType("once");
     setPlanningRecurrenceUntil("");
-    setPlanningRecurrenceSkipWeekends(true);
     setErrorMessage("");
     setPlanningEntryError("");
     setIsPlanningEntryModalOpen(true);
+  }
+
+  function getPlanningBoardForGroup(groupName: string): PlanningBoardCompany {
+    return groupName === "VZK" || groupName === "TZK" ? "OK immocare" : "OK solutions";
+  }
+
+  function getPlanningSlotTimeFromClick(event: MouseEvent<HTMLDivElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const relativeX = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
+    const slotIndex = Math.max(
+      0,
+      Math.min(planningSlotColumnCount - 1, Math.floor((relativeX / rect.width) * planningSlotColumnCount))
+    );
+    const totalMinutes = 6 * 60 + slotIndex * 15;
+    return `${String(Math.floor(totalMinutes / 60)).padStart(2, "0")}:${String(totalMinutes % 60).padStart(2, "0")}`;
+  }
+
+  function openPlanningSlotAction(event: MouseEvent<HTMLDivElement>, employeeUser?: UserOption) {
+    if (selectedPlanningIsWeekend || selectedPlanningHoliday) return;
+
+    setPlanningSlotAction({
+      date: selectedPlanningDateKey,
+      board: getPlanningBoardForGroup(selectedPlanningGroup),
+      groupName: selectedPlanningGroup,
+      userId: employeeUser?.id ?? "",
+      employeeName: employeeUser?.name ?? "",
+      startTime: getPlanningSlotTimeFromClick(event),
+      approvalStatus: "",
+      projectSearch: "",
+    });
+  }
+
+  function openPlanningEntryFromSlot(project?: HeroProjectPreview | null) {
+    if (!planningSlotAction || !planningSlotAction.approvalStatus) return;
+
+    const projectBoard = project ? getProjectCompany(project) : planningSlotAction.board;
+    const groupOptions = getPlanningEntryGroups(projectBoard);
+    const groupName = groupOptions.includes(planningSlotAction.groupName)
+      ? planningSlotAction.groupName
+      : groupOptions[0];
+    const selectedUser =
+      users.find(
+        (user) =>
+          user.isActive &&
+          user.id === planningSlotAction.userId &&
+          (user.planningBoard ?? "OK solutions") === projectBoard &&
+          (user.planningGroup ?? "") === groupName
+      ) ??
+      users.find(
+        (user) =>
+          user.isActive &&
+          (user.planningBoard ?? "OK solutions") === projectBoard &&
+          (user.planningGroup ?? "") === groupName
+      );
+    const projectHasOfferPlanning =
+      project &&
+      !getProjectKind(project).startsWith("Dauer") &&
+      offers.some(
+        (offer) =>
+          offer.projectId === project.id &&
+          offer.status !== "Entwurf" &&
+          getOfferLaborPlanningHours(offer) > 0
+      );
+
+    openPlanningEntryModal({
+      board: projectBoard,
+      groupName,
+      date: planningSlotAction.date,
+      userId: selectedUser?.id ?? planningSlotAction.userId,
+      startTime: planningSlotAction.startTime,
+      approvalStatus: planningSlotAction.approvalStatus,
+    });
+
+    setPlanningEntrySource(projectHasOfferPlanning ? "offer" : "manual");
+    if (project) {
+      setPlanningEntryProjectId(project.id);
+      setPlanningEntryCustomer(project.customer || "");
+      setPlanningEntryProjectSearch(`${project.projectNumber || project.id} | ${project.title}`);
+    } else {
+      setPlanningEntryProjectId("");
+      setPlanningEntryCustomer("");
+      setPlanningEntryProjectSearch("");
+    }
+    setIsPlanningEntryProjectSearchOpen(false);
+    setPlanningSlotAction(null);
   }
 
   function entryOrFallbackRequestedByUserId() {
@@ -8746,20 +10897,49 @@ export function DashboardPage() {
     return planningEntries.find((entry) => entry.id === editingPlanningEntryId)?.requestedByName || activeUser?.name || "";
   }
 
+  function shouldShowPlanningOfferAssignment() {
+    const selectedProject = heroProjects.find((project) => project.id === planningEntryProjectId);
+    if (!selectedProject || getProjectKind(selectedProject).startsWith("Dauer")) return false;
+    return offers.some(
+      (offer) =>
+        offer.projectId === selectedProject.id &&
+        offer.status !== "Entwurf" &&
+        getOfferLaborPlanningHours(offer) > 0
+    );
+  }
+
   function getAlreadyPlannedOfferMinutesForPlanningEntry() {
     const normalizedOfferLabel = planningEntryOfferLabel.trim().toLowerCase();
     const normalizedTitle = planningEntryTitle.trim().toLowerCase();
+    const selectedOffer = planningEntryOfferId
+      ? offers.find((offer) => offer.id === planningEntryOfferId)
+      : null;
 
     return planningEntries
       .filter(
         (entry) => {
           if (
-            entry.source !== "offer" ||
             entry.projectId !== planningEntryProjectId ||
             entry.id === editingPlanningEntryId ||
             entry.deletedAt
           ) {
             return false;
+          }
+
+          if (planningEntryOfferId) {
+            if (entry.offerId === planningEntryOfferId) return true;
+            if (!selectedOffer) return false;
+            const haystack = [entry.title, entry.description, entry.offerLabel].join(" ").toLowerCase();
+            if (haystack.includes(selectedOffer.offerNumber.toLowerCase())) return true;
+            if (entry.offerId || entry.offerLabel) return false;
+            const offersInEntryMonth = offers.filter(
+              (offer) =>
+                offer.projectId === planningEntryProjectId &&
+                offer.status !== "Entwurf" &&
+                offer.plannedExecutionMonth === entry.date.slice(0, 7) &&
+                getOfferLaborPlanningHours(offer) > 0
+            );
+            return offersInEntryMonth.length === 1 && offersInEntryMonth[0].id === selectedOffer.id;
           }
 
           const haystack = [entry.title, entry.description, entry.offerLabel].join(" ").toLowerCase();
@@ -8772,34 +10952,124 @@ export function DashboardPage() {
       .reduce((sum, entry) => sum + Number(entry.offerPlannedMinutes || entry.durationMinutes || 0), 0);
   }
 
+  function getWeekdayFromDateKey(dateKey: string) {
+    return parseProjectDate(dateKey)?.getDay() ?? 1;
+  }
+
+  function setPlanningDateAndDefaultWeekday(dateKey: string) {
+    setPlanningEntryDate(dateKey);
+    if (planningRecurrenceType === "once" || planningRecurrenceWeekdays.length === 0) {
+      setPlanningRecurrenceWeekdays([getWeekdayFromDateKey(dateKey)]);
+    }
+  }
+
+  function togglePlanningRecurrenceWeekday(weekday: number) {
+    if (editingPlanningEntryId || planningRecurrenceType === "once") return;
+    setPlanningRecurrenceWeekdays((currentWeekdays) => {
+      if (currentWeekdays.includes(weekday)) {
+        const nextWeekdays = currentWeekdays.filter((currentWeekday) => currentWeekday !== weekday);
+        return nextWeekdays.length > 0 ? nextWeekdays : currentWeekdays;
+      }
+
+      return [...currentWeekdays, weekday].sort((first, second) => {
+        const firstIndex = planningWeekdayOptions.findIndex((option) => option.value === first);
+        const secondIndex = planningWeekdayOptions.findIndex((option) => option.value === second);
+        return firstIndex - secondIndex;
+      });
+    });
+  }
+
+  function getPlanningRecurrenceWeekdayOccurrence(date: Date) {
+    let occurrence = 0;
+    for (let day = 1; day <= date.getDate(); day += 1) {
+      const currentDate = new Date(date.getFullYear(), date.getMonth(), day);
+      if (currentDate.getDay() === date.getDay()) {
+        occurrence += 1;
+      }
+    }
+    return Math.max(1, occurrence);
+  }
+
+  function getMonthlyPlanningDate(year: number, month: number, weekday: number, occurrence: number) {
+    let matchingDate: Date | null = null;
+    let matchCount = 0;
+    const lastDay = new Date(year, month + 1, 0).getDate();
+
+    for (let day = 1; day <= lastDay; day += 1) {
+      const currentDate = new Date(year, month, day);
+      if (currentDate.getDay() !== weekday) continue;
+      matchCount += 1;
+      matchingDate = currentDate;
+      if (matchCount === occurrence) {
+        return currentDate;
+      }
+    }
+
+    return matchingDate;
+  }
+
   function getPlanningRecurrenceDates() {
     if (editingPlanningEntryId || planningRecurrenceType === "once") return [planningEntryDate];
     if (!planningRecurrenceUntil || planningRecurrenceUntil < planningEntryDate) return [planningEntryDate];
 
     const dates: string[] = [];
+    const startDate = parseProjectDate(planningEntryDate);
     const currentDate = parseProjectDate(planningEntryDate);
     const untilDate = parseProjectDate(planningRecurrenceUntil);
-    if (!currentDate || !untilDate) return [planningEntryDate];
+    if (!startDate || !currentDate || !untilDate) return [planningEntryDate];
+
+    const selectedWeekdays =
+      planningRecurrenceWeekdays.length > 0 ? planningRecurrenceWeekdays : [startDate.getDay()];
+
+    if (planningRecurrenceType === "monthly") {
+      const occurrence = getPlanningRecurrenceWeekdayOccurrence(startDate);
+      const currentMonth = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+
+      while (currentMonth.getTime() <= untilDate.getTime() && dates.length < 120) {
+        selectedWeekdays.forEach((weekday) => {
+          const monthlyDate = getMonthlyPlanningDate(
+            currentMonth.getFullYear(),
+            currentMonth.getMonth(),
+            weekday,
+            occurrence
+          );
+          if (!monthlyDate) return;
+          if (monthlyDate.getTime() < startDate.getTime() || monthlyDate.getTime() > untilDate.getTime()) return;
+          dates.push(formatDateKey(monthlyDate));
+        });
+        currentMonth.setMonth(currentMonth.getMonth() + 1);
+      }
+
+      return dates.length > 0 ? Array.from(new Set(dates)).sort() : [planningEntryDate];
+    }
+
+    const intervalWeeks = planningRecurrenceType === "biweekly" ? 2 : 1;
 
     while (currentDate.getTime() <= untilDate.getTime() && dates.length < 120) {
-      const day = currentDate.getDay();
-      if (!planningRecurrenceSkipWeekends || (day !== 0 && day !== 6)) {
+      const daysSinceStart = Math.floor((currentDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000));
+      const weeksSinceStart = Math.floor(daysSinceStart / 7);
+      if (weeksSinceStart % intervalWeeks === 0 && selectedWeekdays.includes(currentDate.getDay())) {
         dates.push(formatDateKey(currentDate));
       }
 
-      if (planningRecurrenceType === "weekly") {
-        currentDate.setDate(currentDate.getDate() + 7);
-      } else if (planningRecurrenceType === "biweekly") {
-        currentDate.setDate(currentDate.getDate() + 14);
-      } else {
-        currentDate.setMonth(currentDate.getMonth() + 1);
-      }
+      currentDate.setDate(currentDate.getDate() + 1);
     }
 
     return dates.length > 0 ? dates : [planningEntryDate];
   }
 
   function getPlanningRecurrenceLabel() {
+    const recurrenceTypeForLabel: PlanningRecurrenceType = planningRecurrenceType;
+    const weekdayLabel = (planningRecurrenceWeekdays.length > 0
+      ? planningRecurrenceWeekdays
+      : [getWeekdayFromDateKey(planningEntryDate)]
+    )
+      .map((weekday) => planningWeekdayOptions.find((option) => option.value === weekday)?.label)
+      .filter(Boolean)
+      .join(", ");
+    if (recurrenceTypeForLabel === "weekly") return `woechentlich ${weekdayLabel}`;
+    if (recurrenceTypeForLabel === "biweekly") return `alle 2 Wochen ${weekdayLabel}`;
+    if (recurrenceTypeForLabel === "monthly") return `monatlich ${weekdayLabel}`;
     if (planningRecurrenceType === "weekly") return "wöchentlich";
     if (planningRecurrenceType === "biweekly") return "alle 2 Wochen";
     if (planningRecurrenceType === "monthly") return "monatlich";
@@ -8817,10 +11087,8 @@ export function DashboardPage() {
       getUserBreakWindowForDate(selectedUser, planningEntryDate)
     );
     const offerTotalMinutes = Math.round(Number(planningEntryOfferTotalHours) * 60);
-    const title =
-      planningEntrySource === "offer"
-        ? planningEntryTitle.trim() || planningEntryOfferLabel.trim() || "Planung aus Angebot"
-        : planningEntryTitle.trim();
+    const title = planningEntryTitle.trim();
+    const description = planningEntryDescription.trim();
     const selectedAbsence = planningEntryUserId
       ? getUserAbsenceForDateKey(planningEntryUserId, planningEntryDate)
       : undefined;
@@ -8831,6 +11099,98 @@ export function DashboardPage() {
       recurrenceDates.length > 1
         ? `${getPlanningRecurrenceLabel()} bis ${formatProjectDate(recurrenceDates.at(-1))}`
         : "";
+
+    if (!planningEntryBoard) {
+      setPlanningEntryError("Bitte ein Planungsboard auswählen.");
+      return;
+    }
+
+    if (!planningEntryGroup) {
+      setPlanningEntryError("Bitte eine Planungsgruppe auswählen.");
+      return;
+    }
+
+    if (!selectedUser) {
+      setPlanningEntryError("Bitte einen Mitarbeiter zuweisen.");
+      return;
+    }
+
+    if (!title) {
+      setPlanningEntryError("Bitte einen Titel eintragen.");
+      return;
+    }
+
+    if (!description) {
+      setPlanningEntryError("Bitte eine Beschreibung eintragen.");
+      return;
+    }
+
+    const isSingleProjectWithOfferPlanning =
+      selectedProject &&
+      !getProjectKind(selectedProject).startsWith("Dauer") &&
+      offers.some((offer) => {
+        if (offer.projectId !== selectedProject.id || offer.status === "Entwurf") return false;
+        return getOfferLaborPlanningHours(offer) > 0;
+      });
+    const selectedPlanningOffer = planningEntryOfferId
+      ? offers.find((offer) => offer.id === planningEntryOfferId)
+      : null;
+    const previousPlanningEntry = editingPlanningEntryId
+      ? planningEntries.find((entry) => entry.id === editingPlanningEntryId)
+      : null;
+
+    if (isSingleProjectWithOfferPlanning && !selectedPlanningOffer) {
+      setPlanningEntryError("Bitte ein Angebot für diese Planung auswählen.");
+      return;
+    }
+
+    if (selectedProject && selectedPlanningOffer && !getProjectKind(selectedProject).startsWith("Dauer")) {
+      const targetExecutionMonth = planningEntryDate.slice(0, 7);
+      const currentExecutionMonth = selectedPlanningOffer.plannedExecutionMonth || "";
+      if (targetExecutionMonth && currentExecutionMonth && targetExecutionMonth !== currentExecutionMonth) {
+        const confirmed = window.confirm(
+          `Achtung: Du planst Angebot ${selectedPlanningOffer.offerNumber} nicht im hinterlegten Ausführungsmonat ${formatMonthLabel(
+            currentExecutionMonth
+          )}, sondern im ${formatMonthLabel(targetExecutionMonth)}. Soll der Ausführungsmonat auf ${formatMonthLabel(
+            targetExecutionMonth
+          )} geändert und die Planung gespeichert werden?`
+        );
+        if (!confirmed) return;
+
+        const res = await fetch("/api/offers", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...selectedPlanningOffer,
+            plannedExecutionMonth: targetExecutionMonth,
+            saveAsDraft: false,
+            projectId: selectedProject.id,
+            projectNumber: selectedProject.projectNumber || selectedProject.id,
+            projectTitle: selectedProject.title,
+          }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          setPlanningEntryError(data?.error ?? "Ausführungsmonat konnte nicht geändert werden.");
+          return;
+        }
+
+        const updatedOffer = (await res.json()) as OfferItem;
+        setOffers((currentOffers) =>
+          currentOffers.map((offer) => (offer.id === updatedOffer.id ? updatedOffer : offer))
+        );
+        await addProjectLogbookEntry(
+          selectedProject.id,
+          "Angebot",
+          `Ausführungsmonat ${updatedOffer.offerNumber} von ${formatMonthLabel(
+            currentExecutionMonth
+          )} auf ${formatMonthLabel(targetExecutionMonth)} geändert, weil eine Planung am ${formatDateOnly(
+            planningEntryDate
+          )} gespeichert wurde.`
+        );
+      }
+    }
 
     if (doesAbsenceBlockTime(selectedAbsence, planningEntryStartTime, planningEntryEndTime)) {
       setPlanningEntryError(
@@ -8918,6 +11278,22 @@ export function DashboardPage() {
       }
     }
 
+    const storedPlanningEntrySource: PlanningEntrySource =
+      planningEntrySource === "offer" || (isSingleProjectWithOfferPlanning && planningEntryOfferId)
+        ? "offer"
+        : "manual";
+    const shouldAskOfferWon =
+      selectedPlanningOffer &&
+      storedPlanningEntrySource === "offer" &&
+      isActiveFinalOffer(selectedPlanningOffer) &&
+      !isWonOffer(selectedPlanningOffer) &&
+      ((!editingPlanningEntryId && nextApprovalStatus === "requested") ||
+        (nextApprovalStatus === "confirmed" && previousPlanningEntry?.approvalStatus === "requested"));
+    const offerWonReason =
+      nextApprovalStatus === "requested"
+        ? `Terminwunsch aus Angebot ${selectedPlanningOffer?.offerNumber ?? ""}`
+        : `Termin aus Angebot ${selectedPlanningOffer?.offerNumber ?? ""} bestaetigt`;
+
     for (const date of recurrenceDates) {
       const res = await fetch("/api/planning-entries", {
         method: "POST",
@@ -8925,7 +11301,7 @@ export function DashboardPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          source: planningEntrySource,
+          source: storedPlanningEntrySource,
           id: editingPlanningEntryId,
           approvalStatus: nextApprovalStatus,
           actorUserId: activeUserId,
@@ -8952,14 +11328,16 @@ export function DashboardPage() {
           durationMinutes,
           title,
           customer: selectedProject?.customer || planningEntryCustomer,
-          description: planningEntryDescription,
+          description,
           projectId: selectedProject?.id ?? "",
           projectLabel: selectedProject
             ? `${selectedProject.projectNumber} | ${selectedProject.title}`
             : "",
-          offerLabel: planningEntrySource === "offer" ? planningEntryOfferLabel : "",
-          offerTotalMinutes: planningEntrySource === "offer" ? offerTotalMinutes : 0,
-          offerPlannedMinutes: planningEntrySource === "offer" ? durationMinutes : 0,
+          offerId: storedPlanningEntrySource === "offer" ? planningEntryOfferId : "",
+          offerLineId: storedPlanningEntrySource === "offer" ? planningEntryOfferLineId : "",
+          offerLabel: storedPlanningEntrySource === "offer" ? planningEntryOfferLabel : "",
+          offerTotalMinutes: storedPlanningEntrySource === "offer" ? offerTotalMinutes : 0,
+          offerPlannedMinutes: storedPlanningEntrySource === "offer" ? durationMinutes : 0,
           recurrenceId,
           recurrenceRule,
         }),
@@ -8969,6 +11347,35 @@ export function DashboardPage() {
         const data = await res.json().catch(() => null);
         setPlanningEntryError(data?.error ?? "Planung konnte nicht gespeichert werden.");
         return;
+      }
+    }
+
+    if (selectedProject) {
+      const statusAutomationTarget =
+        nextApprovalStatus === "requested"
+          ? {
+              nextStatus: "Zur Planung bereit",
+              reason: `Terminwunsch ${title} am ${formatDateOnly(planningEntryDate)} gespeichert`,
+              question: `Terminwunsch wurde gespeichert. Soll der Projektstatus auf „Zur Planung bereit“ gesetzt werden?`,
+            }
+          : {
+              nextStatus: "Geplant",
+              reason: `Fester Termin ${title} am ${formatDateOnly(planningEntryDate)} gespeichert`,
+              question: `Fester Termin wurde gespeichert. Soll der Projektstatus auf „Geplant“ gesetzt werden?`,
+            };
+
+      await confirmAndApplyProjectStatus({
+        project: selectedProject,
+        ...statusAutomationTarget,
+      });
+    }
+
+    if (shouldAskOfferWon && selectedPlanningOffer) {
+      const confirmed = window.confirm(
+        `Soll Angebot ${selectedPlanningOffer.offerNumber} jetzt als gewonnen markiert werden?`
+      );
+      if (confirmed) {
+        await markOfferWon(selectedPlanningOffer, offerWonReason, selectedProject?.id);
       }
     }
 
@@ -9064,6 +11471,9 @@ export function DashboardPage() {
     }
 
     if (tab === "planningBoard") {
+      const todayKey = formatDateKey(new Date());
+      setPlanningBoardStartDate(getWeekStartDateKey(todayKey));
+      setSelectedPlanningDateKey(todayKey);
       setIsPlanningDayOpen(false);
       setIsPlanningEntryModalOpen(false);
       setEditingPlanningEntryId("");
@@ -9072,6 +11482,382 @@ export function DashboardPage() {
     if (tab === "articles" || tab === "services" || tab === "packages" || tab === "salesPrices" || tab === "datanorm") {
       setIsCatalogModalOpen(false);
       setEditingCatalogItemId("");
+    }
+  }
+
+  function normalizeGoalPerson(value?: string | null) {
+    return String(value || "").trim().toLowerCase();
+  }
+
+  function normalizeGoalPeriodStart(value: string) {
+    if (/^\d{4}-\d{2}$/.test(value)) return `${value}-01`;
+    return normalizeDateKeyValue(value);
+  }
+
+  function normalizeGoalPeriodEnd(value: string) {
+    if (/^\d{4}-\d{2}$/.test(value)) {
+      const [year, month] = value.split("-").map(Number);
+      return formatDateKey(new Date(year, month, 0, 12));
+    }
+    return normalizeDateKeyValue(value);
+  }
+
+  function normalizeGoalDateValue(value: string) {
+    const trimmedValue = String(value || "").trim();
+    const isoPrefix = trimmedValue.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (isoPrefix) return isoPrefix[1];
+    return normalizeDateKeyValue(trimmedValue);
+  }
+
+  function isGoalDateInPeriod(value: string | undefined, periodStart: string, periodEnd: string) {
+    const dateKey = normalizeGoalDateValue(value || "");
+    if (!dateKey) return false;
+    const startKey = normalizeGoalPeriodStart(periodStart);
+    const endKey = normalizeGoalPeriodEnd(periodEnd);
+    if (!startKey || !endKey) return false;
+    return dateKey >= startKey && dateKey <= endKey;
+  }
+
+  function isGoalItemAssignedToUser(user: UserOption, value?: string | null, fallbackId?: string | null) {
+    if (fallbackId && fallbackId === user.id) return true;
+    return normalizeGoalPerson(value) === normalizeGoalPerson(user.name);
+  }
+
+  function getGoalMetricOption(metricKey: GoalMetricKey | "") {
+    return goalMetricOptions.find((option) => option.key === metricKey) ?? goalMetricOptions[0];
+  }
+
+  function formatGoalValue(value: number, metricKey: GoalMetricKey | "") {
+    const metric = getGoalMetricOption(metricKey);
+    if (metric.unit === "currency") return formatMoney(value);
+    if (metric.unit === "percent") return `${value.toLocaleString("de-DE", { maximumFractionDigits: 1 })}%`;
+    if (["project_hours", "unproductive_hours", "attendance_hours"].includes(metricKey)) {
+      return `${value.toLocaleString("de-DE", { maximumFractionDigits: 2 })} Std.`;
+    }
+    return value.toLocaleString("de-DE", { maximumFractionDigits: 0 });
+  }
+
+  function formatGoalPeriodLabel(value: string) {
+    const normalizedValue = /^\d{4}-\d{2}$/.test(value) ? `${value}-01` : normalizeGoalDateValue(value);
+    return normalizedValue ? formatDateOnly(normalizedValue) : "-";
+  }
+
+  function getGoalActualValue(goal: SalesGoal) {
+    const owner = users.find((user) => user.id === goal.ownerUserId) ??
+      users.find((user) => normalizeGoalPerson(user.name) === normalizeGoalPerson(goal.ownerName));
+    if (!owner || !goal.metricKey || !goal.periodStart || !goal.periodEnd) return 0;
+    const userProjectStampEntries = stampEntries.filter(
+      (entry) =>
+        entry.mode === "project" &&
+        entry.userId === owner.id &&
+        isGoalDateInPeriod(entry.date, goal.periodStart, goal.periodEnd)
+    );
+    const userUnproductiveStampEntries = stampEntries.filter(
+      (entry) =>
+        entry.mode === "unproductive" &&
+        entry.userId === owner.id &&
+        isGoalDateInPeriod(entry.date, goal.periodStart, goal.periodEnd)
+    );
+    const projectHours =
+      userProjectStampEntries.reduce((sum, entry) => sum + Math.max(0, Number(entry.durationMs) || 0), 0) / 3600000;
+    const unproductiveHours =
+      userUnproductiveStampEntries.reduce((sum, entry) => sum + Math.max(0, Number(entry.durationMs) || 0), 0) / 3600000;
+    const attendanceHours = projectHours + unproductiveHours;
+    const assignedInvoices = invoices.filter(
+      (invoice) =>
+        invoice.status !== "Entwurf" &&
+        isGoalDateInPeriod(invoice.serviceDate || invoice.createdAt, goal.periodStart, goal.periodEnd) &&
+        isGoalItemAssignedToUser(owner, invoice.internalContactName)
+    );
+    const soldHours = assignedInvoices.reduce(
+      (sum, invoice) =>
+        sum +
+        invoice.lines.reduce(
+          (lineSum, line) =>
+            lineSum + line.laborItems.reduce((laborSum, labor) => laborSum + (Number(labor.plannedHours) || 0), 0),
+          0
+        ),
+      0
+    );
+    const getLineNetValue = (line: OfferLineDraft) => {
+      const quantity = Number(line.quantity) || 0;
+      const unitPrice = Number(line.unitPrice) || 0;
+      const discountPercent = Math.max(0, Math.min(100, Number(line.discountPercent) || 0));
+      return quantity * unitPrice * (1 - discountPercent / 100);
+    };
+    const sumLineValuesByType = (lines: OfferLineDraft[], catalogType: CatalogItemType) =>
+      lines
+        .filter((line) => line.catalogType === catalogType)
+        .reduce((sum, line) => sum + getLineNetValue(line), 0);
+
+    if (goal.metricKey === "offers_count") {
+      return offers.filter(
+        (offer) =>
+          isGoalDateInPeriod(offer.createdAt, goal.periodStart, goal.periodEnd) &&
+          isGoalItemAssignedToUser(owner, offer.internalContactName)
+      ).length;
+    }
+
+    if (goal.metricKey === "offers_value") {
+      return offers
+        .filter(
+          (offer) =>
+            isGoalDateInPeriod(offer.createdAt, goal.periodStart, goal.periodEnd) &&
+            isGoalItemAssignedToUser(owner, offer.internalContactName)
+        )
+        .reduce((sum, offer) => sum + (Number(offer.netTotal) || 0), 0);
+    }
+
+    if (goal.metricKey === "offer_service_value") {
+      return offers
+        .filter(
+          (offer) =>
+            isGoalDateInPeriod(offer.createdAt, goal.periodStart, goal.periodEnd) &&
+            isGoalItemAssignedToUser(owner, offer.internalContactName)
+        )
+        .reduce((sum, offer) => sum + sumLineValuesByType(offer.lines, "service"), 0);
+    }
+
+    if (goal.metricKey === "offer_material_value") {
+      return offers
+        .filter(
+          (offer) =>
+            isGoalDateInPeriod(offer.createdAt, goal.periodStart, goal.periodEnd) &&
+            isGoalItemAssignedToUser(owner, offer.internalContactName)
+        )
+        .reduce((sum, offer) => sum + sumLineValuesByType(offer.lines, "article"), 0);
+    }
+
+    if (goal.metricKey === "offer_package_value") {
+      return offers
+        .filter(
+          (offer) =>
+            isGoalDateInPeriod(offer.createdAt, goal.periodStart, goal.periodEnd) &&
+            isGoalItemAssignedToUser(owner, offer.internalContactName)
+        )
+        .reduce((sum, offer) => sum + sumLineValuesByType(offer.lines, "package"), 0);
+    }
+
+    if (goal.metricKey === "won_offers_count") {
+      return offers.filter(
+        (offer) =>
+          Boolean(offer.wonAt) &&
+          isGoalDateInPeriod(offer.wonAt || offer.updatedAt, goal.periodStart, goal.periodEnd) &&
+          isGoalItemAssignedToUser(owner, offer.wonByName || offer.internalContactName)
+      ).length;
+    }
+
+    if (goal.metricKey === "won_offers_value") {
+      return offers
+        .filter(
+          (offer) =>
+            Boolean(offer.wonAt) &&
+            isGoalDateInPeriod(offer.wonAt || offer.updatedAt, goal.periodStart, goal.periodEnd) &&
+            isGoalItemAssignedToUser(owner, offer.wonByName || offer.internalContactName)
+        )
+        .reduce((sum, offer) => sum + (Number(offer.netTotal) || 0), 0);
+    }
+
+    if (goal.metricKey === "lost_offers_count") {
+      return offers.filter(
+        (offer) =>
+          Boolean(offer.lostAt || offer.lostReason) &&
+          isGoalDateInPeriod(offer.lostAt || offer.updatedAt, goal.periodStart, goal.periodEnd) &&
+          isGoalItemAssignedToUser(owner, offer.internalContactName)
+      ).length;
+    }
+
+    if (goal.metricKey === "lost_offers_value") {
+      return offers
+        .filter(
+          (offer) =>
+            Boolean(offer.lostAt || offer.lostReason) &&
+            isGoalDateInPeriod(offer.lostAt || offer.updatedAt, goal.periodStart, goal.periodEnd) &&
+            isGoalItemAssignedToUser(owner, offer.internalContactName)
+        )
+        .reduce((sum, offer) => sum + (Number(offer.netTotal) || 0), 0);
+    }
+
+    if (goal.metricKey === "invoices_count") {
+      return assignedInvoices.length;
+    }
+
+    if (goal.metricKey === "invoices_value") {
+      return assignedInvoices.reduce((sum, invoice) => sum + (Number(invoice.netTotal) || 0), 0);
+    }
+
+    if (goal.metricKey === "invoice_service_value") {
+      return assignedInvoices.reduce((sum, invoice) => sum + sumLineValuesByType(invoice.lines, "service"), 0);
+    }
+
+    if (goal.metricKey === "invoice_material_value") {
+      return assignedInvoices.reduce((sum, invoice) => sum + sumLineValuesByType(invoice.lines, "article"), 0);
+    }
+
+    if (goal.metricKey === "invoice_package_value") {
+      return assignedInvoices.reduce((sum, invoice) => sum + sumLineValuesByType(invoice.lines, "package"), 0);
+    }
+
+    if (goal.metricKey === "paid_invoices_count") {
+      return assignedInvoices.filter(
+        (invoice) => invoice.isPaid && isGoalDateInPeriod(invoice.paidAt || invoice.serviceDate || invoice.createdAt, goal.periodStart, goal.periodEnd)
+      ).length;
+    }
+
+    if (goal.metricKey === "paid_invoices_value") {
+      return assignedInvoices
+        .filter((invoice) => invoice.isPaid && isGoalDateInPeriod(invoice.paidAt || invoice.serviceDate || invoice.createdAt, goal.periodStart, goal.periodEnd))
+        .reduce((sum, invoice) => sum + (Number(invoice.netTotal) || 0), 0);
+    }
+
+    if (goal.metricKey === "open_tasks") {
+      return tasks.filter(
+        (task) =>
+          task.status !== "erledigt" &&
+          task.status !== "archiviert" &&
+          task.zustaendigId === owner.id &&
+          isGoalDateInPeriod(task.createdAt, goal.periodStart, goal.periodEnd)
+      ).length;
+    }
+
+    if (goal.metricKey === "overdue_tasks") {
+      const todayKey = formatDateKey(new Date());
+      return tasks.filter(
+        (task) =>
+          task.status !== "erledigt" &&
+          task.status !== "archiviert" &&
+          task.zustaendigId === owner.id &&
+          normalizeGoalDateValue(task.faelligkeit || "") < todayKey &&
+          isGoalDateInPeriod(task.faelligkeit || task.createdAt, goal.periodStart, goal.periodEnd)
+      ).length;
+    }
+
+    if (goal.metricKey === "tasks_done") {
+      return tasks.filter(
+        (task) =>
+          task.status === "erledigt" &&
+          isGoalDateInPeriod(task.completedAt || task.archiveDueAt || task.createdAt, goal.periodStart, goal.periodEnd) &&
+          task.zustaendigId === owner.id
+      ).length;
+    }
+
+    if (goal.metricKey === "sales_opportunities_count") {
+      return projectPotentials.filter(
+        (potential) =>
+          potential.status !== "lost" &&
+          isGoalDateInPeriod(potential.createdAt, goal.periodStart, goal.periodEnd) &&
+          isGoalItemAssignedToUser(owner, potential.ownerName, potential.ownerUserId)
+      ).length;
+    }
+
+    if (goal.metricKey === "sales_opportunities_value") {
+      return projectPotentials
+        .filter(
+          (potential) =>
+            potential.status !== "lost" &&
+            isGoalDateInPeriod(potential.createdAt, goal.periodStart, goal.periodEnd) &&
+            isGoalItemAssignedToUser(owner, potential.ownerName, potential.ownerUserId)
+        )
+        .reduce((sum, potential) => sum + (Number(String(potential.estimatedValue).replace(",", ".")) || 0), 0);
+    }
+
+    if (goal.metricKey === "project_hours") return projectHours;
+    if (goal.metricKey === "unproductive_hours") return unproductiveHours;
+    if (goal.metricKey === "attendance_hours") return attendanceHours;
+    if (goal.metricKey === "performance_grade") return projectHours > 0 ? (soldHours / projectHours) * 100 : 0;
+    if (goal.metricKey === "productivity_rate") return attendanceHours > 0 ? (soldHours / attendanceHours) * 100 : 0;
+
+    if (goal.metricKey === "logbook_entries") {
+      return projectLogbookEntries.filter(
+        (entry) =>
+          isGoalDateInPeriod(entry.date, goal.periodStart, goal.periodEnd) &&
+          (entry.authorUserId === owner.id || normalizeGoalPerson(entry.author) === normalizeGoalPerson(owner.name))
+      ).length;
+    }
+
+    if (goal.metricKey === "activity_reports_count") {
+      return projectLogbookEntries.filter(
+        (entry) =>
+          isGoalDateInPeriod(entry.date, goal.periodStart, goal.periodEnd) &&
+          (entry.authorUserId === owner.id || normalizeGoalPerson(entry.author) === normalizeGoalPerson(owner.name)) &&
+          normalizeStampSearchValue(entry.title).includes("tatigkeitsbericht")
+      ).length;
+    }
+
+    if (goal.metricKey === "customer_feedback_average") {
+      const ratings = customerFeedback.filter(
+        (feedback) =>
+          isGoalDateInPeriod(feedback.createdAt, goal.periodStart, goal.periodEnd) &&
+          isGoalItemAssignedToUser(owner, feedback.salesUserName, feedback.salesUserId)
+      );
+      if (ratings.length === 0) return 0;
+      const averageRating = ratings.reduce((sum, feedback) => sum + feedback.rating, 0) / ratings.length;
+      return (averageRating / 5) * 100;
+    }
+
+    return 0;
+  }
+
+  async function saveGoal() {
+    if (!activeUser || !["ADMIN", "GESCHAEFTSFUEHRER"].includes(activeUser.role)) return;
+    const owner = users.find((user) => user.id === goalDraft.ownerUserId && user.isActive);
+    if (!owner) {
+      setGoalError("Bitte einen aktiven Mitarbeiter auswaehlen.");
+      return;
+    }
+    const targetValue = Number(String(goalDraft.targetValue).replace(",", "."));
+    if (!Number.isFinite(targetValue) || targetValue <= 0) {
+      setGoalError("Bitte einen Zielwert groesser 0 eintragen.");
+      return;
+    }
+    const periodStart = normalizeGoalPeriodStart(goalDraft.periodStart);
+    const periodEnd = normalizeGoalPeriodEnd(goalDraft.periodEnd);
+    if (!periodStart || !periodEnd || periodEnd < periodStart) {
+      setGoalError("Bitte einen gueltigen Zeitraum auswaehlen.");
+      return;
+    }
+
+    const metric = getGoalMetricOption(goalDraft.metricKey);
+    const title = goalDraft.title.trim() || metric.label;
+    setIsGoalSaving(true);
+    setGoalError("");
+
+    try {
+      const res = await fetch("/api/sales-targets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          description: goalDraft.description,
+          ownerUserId: owner.id,
+          priority: "normal",
+          metricKey: goalDraft.metricKey,
+          targetValue,
+          periodStart,
+          periodEnd,
+          targetMonth: periodStart.slice(0, 7),
+          status: "open",
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setGoalError(data?.error ?? "Ziel konnte nicht gespeichert werden.");
+        return;
+      }
+
+      await loadSalesGoals();
+      setGoalDraft({
+        ownerUserId: owner.id,
+        metricKey: "offers_count",
+        targetValue: "",
+        periodStart: getCurrentMonthStartDisplay(),
+        periodEnd: getCurrentMonthEndDisplay(),
+        title: "",
+        description: "",
+      });
+    } finally {
+      setIsGoalSaving(false);
     }
   }
 
@@ -9118,6 +11904,10 @@ export function DashboardPage() {
   }, [offerDraft, offerError]);
 
   useEffect(() => {
+    setSelectedForecastPeriod("total");
+  }, [forecastPeriodPreset, forecastCustomStartDate, forecastCustomEndDate]);
+
+  useEffect(() => {
     loadTasks();
     loadUsers();
     loadTeams();
@@ -9134,12 +11924,26 @@ export function DashboardPage() {
     loadProjectTimeEntries();
     loadProjectLogbookEntries();
     loadProjectPotentials();
+    loadSalesGoals();
+    loadProjectStatusTimelineEntries();
     loadDocumentTypes();
     loadDocumentTexts();
     loadCatalogItems();
     loadOffers();
     loadInvoices();
+    loadLegacyInvoices();
+    loadDocumentMailDispatches();
+    loadWinterServiceAutomationSettings();
+    loadCustomerFeedback();
+    loadCustomerFeedbackRequests();
   }, []);
+
+  useEffect(() => {
+    if (goalDraft.ownerUserId || users.length === 0) return;
+    const firstActiveUser = users.find((user) => user.isActive);
+    if (!firstActiveUser) return;
+    setGoalDraft((current) => ({ ...current, ownerUserId: firstActiveUser.id }));
+  }, [goalDraft.ownerUserId, users]);
 
   useEffect(() => {
     if (activeTab !== "personalData" || !["development", "disg"].includes(personalDataView)) return;
@@ -9155,7 +11959,7 @@ export function DashboardPage() {
 
   useEffect(() => {
     setCatalogPage(1);
-  }, [catalogSearchTerm, catalogStatusFilter, catalogColumnFilters, catalogPageSize, activeTab]);
+  }, [catalogSearchTerm, catalogStatusFilter, catalogPageSize, activeTab]);
 
   useEffect(() => {
     if (selectedProjectFileId) {
@@ -9164,8 +11968,16 @@ export function DashboardPage() {
       void loadInvoices(selectedProjectFileId);
       void loadOfferHistory(selectedProjectFileId);
       void loadInvoiceHistory(selectedProjectFileId);
+      void loadDocumentMailDispatches(selectedProjectFileId);
     }
   }, [selectedProjectFileId]);
+
+  useEffect(() => {
+    if (!hasLoadedHeroProjects || heroProjects.length === 0) return;
+    if (users.length === 0) return;
+
+    void scanBillingReadyNotifications(getCurrentMonthKey());
+  }, [hasLoadedHeroProjects, heroProjects, invoices, projectLogbookEntries, users]);
 
   useEffect(() => {
     if (!selectedProjectFileId) return;
@@ -9198,14 +12010,15 @@ export function DashboardPage() {
   }, [activeUserId, employeeTopTab, mayAccessEmployeeCosts, selectedEmployeeId]);
 
   useEffect(() => {
-    if ((!isOfferModalOpen && activeTab !== "laborCostRates") || !mayAccessEmployeeCosts) return;
+    const needsEmployeeCosts = isOfferModalOpen || activeTab === "laborCostRates" || projectFileTab === "profit";
+    if (!needsEmployeeCosts || !mayAccessEmployeeCosts) return;
 
     users
       .filter((user) => user.isActive && !employeeCostCalculations[user.id])
       .forEach((user) => {
         void loadEmployeeCost(user.id);
       });
-  }, [activeTab, employeeCostCalculations, isOfferModalOpen, mayAccessEmployeeCosts, users]);
+  }, [activeTab, employeeCostCalculations, isOfferModalOpen, mayAccessEmployeeCosts, projectFileTab, users]);
 
   useEffect(() => {
     if (!isOfferModalOpen) return;
@@ -9266,11 +12079,34 @@ export function DashboardPage() {
       ) {
         setIsNotificationsOpen(false);
       }
+      if (
+        isProjectStatusMenuOpen &&
+        projectStatusActionRef.current &&
+        !projectStatusActionRef.current.contains(target)
+      ) {
+        setIsProjectStatusMenuOpen(false);
+      }
     };
 
     document.addEventListener("pointerdown", closeHeaderMenusOnOutsidePointer);
     return () => document.removeEventListener("pointerdown", closeHeaderMenusOnOutsidePointer);
-  }, [isNotificationsOpen, isQuickCreateOpen, isUserMenuOpen]);
+  }, [isNotificationsOpen, isProjectStatusMenuOpen, isQuickCreateOpen, isUserMenuOpen]);
+
+  useEffect(() => {
+    if (!projectPlanningChoiceMenuKey && !projectPlanningEditMenuKey) return;
+
+    const closeProjectPlanningMenusOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest(`.${styles.projectPlanningCapacityAction}`)) return;
+
+      setProjectPlanningChoiceMenuKey("");
+      setProjectPlanningEditMenuKey("");
+    };
+
+    document.addEventListener("pointerdown", closeProjectPlanningMenusOnOutsidePointer);
+    return () => document.removeEventListener("pointerdown", closeProjectPlanningMenusOnOutsidePointer);
+  }, [projectPlanningChoiceMenuKey, projectPlanningEditMenuKey]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -9321,6 +12157,21 @@ export function DashboardPage() {
   }, [activeUserId]);
 
   useEffect(() => {
+    if (!isTabAllowedForRole(activeTab, activeUser?.role)) {
+      setActiveTab("reports");
+      setOpenSidebarMenus({});
+      setOpenProjectNav({ projectsSolutions: false, projectsImmocare: false });
+      setIsFirmSettingsNavOpen(false);
+    }
+  }, [activeTab, activeUser?.role]);
+
+  useEffect(() => {
+    if (activeTab !== "reports" || visibleReportTabs.length === 0) return;
+    if (visibleReportTabs.some((tab) => tab.id === reportAnalyticsTab)) return;
+    setReportAnalyticsTab(visibleReportTabs[0].id);
+  }, [activeTab, reportAnalyticsTab, visibleReportTabs]);
+
+  useEffect(() => {
     window.localStorage.setItem("workpilot-active-tab", activeTab);
 
     if (
@@ -9352,7 +12203,7 @@ export function DashboardPage() {
     if (previousProjectFileTabRef.current === projectFileTab) return;
 
     previousProjectFileTabRef.current = projectFileTab;
-    setOpenProjectFileNavGroup(projectFileTab === "documents" || projectFileTab === "tasks" ? projectFileTab : "");
+    setOpenProjectFileNavGroup(projectFileTab === "documents" ? projectFileTab : "");
   }, [projectFileTab]);
 
   useEffect(() => {
@@ -9364,11 +12215,16 @@ export function DashboardPage() {
   }, [projectComparisonMonth]);
 
   useEffect(() => {
+    setLogbookError("");
+  }, [selectedProjectFileId, projectFileTab, selectedProjectDocumentType, projectComparisonMonth]);
+
+  useEffect(() => {
     const applyBrowserLocation = () => {
       const params = new URLSearchParams(window.location.search);
       const nextTab = appTabs.includes(params.get("view") as AppTab)
         ? (params.get("view") as AppTab)
         : "overview";
+      const allowedNextTab = isTabAllowedForRole(nextTab, activeUser?.role) ? nextTab : "reports";
       const nextProjectTab = projectFileTabs.includes(params.get("projectTab") as ProjectFileTab)
         ? (params.get("projectTab") as ProjectFileTab)
         : "logbook";
@@ -9378,7 +12234,7 @@ export function DashboardPage() {
       const nextMonth = params.get("month") || "";
 
       isApplyingBrowserHistoryRef.current = true;
-      setActiveTab(nextTab);
+      setActiveTab(allowedNextTab);
       setSelectedProjectFileId(params.get("project") || "");
       setProjectFileTab(nextProjectTab);
       setSelectedProjectDocumentType(nextDocumentType);
@@ -9392,7 +12248,7 @@ export function DashboardPage() {
 
     window.addEventListener("popstate", applyBrowserLocation);
     return () => window.removeEventListener("popstate", applyBrowserLocation);
-  }, []);
+  }, [activeUser?.role]);
 
   useEffect(() => {
     if (typeof window === "undefined" || isApplyingBrowserHistoryRef.current) return;
@@ -9428,7 +12284,7 @@ export function DashboardPage() {
   }, [projectFileTab]);
 
   useEffect(() => {
-    if (projectFileTab !== "budgets" || !selectedProjectFileId) return;
+    if (!["budgets", "forecast"].includes(projectFileTab) || !selectedProjectFileId) return;
 
     const project = heroProjects.find((item) => item.id === selectedProjectFileId);
     if (!project) return;
@@ -9436,6 +12292,7 @@ export function DashboardPage() {
       setProjectFileTab("appointments");
       return;
     }
+    if (projectFileTab === "forecast") return;
 
     const allocations = project.timeBudgetAllocations ?? [];
     setProjectBudgetMode(allocations.length > 0 ? "custom" : "total");
@@ -9444,6 +12301,21 @@ export function DashboardPage() {
       Object.fromEntries(allocations.map((allocation) => [allocation.month, allocation.hours]))
     );
   }, [heroProjects, projectFileTab, selectedProjectFileId]);
+
+  useEffect(() => {
+    const project = heroProjects.find((item) => item.id === selectedProjectFileId);
+    if (!project) return;
+    setProjectForecastDraft({
+      projectId: project.id,
+      forecastBillingType:
+        isWeeklyForecastBillingType(project.forecastBillingType) || project.forecastBillingType === "quartalsweise"
+          ? project.forecastBillingType || "monatlich"
+          : "monatlich",
+      forecastNetAmount: project.forecastNetAmount || "",
+    });
+    setProjectForecastMessage("");
+    setProjectForecastError("");
+  }, [heroProjects, selectedProjectFileId]);
 
   useEffect(() => {
     if (!isModalOpen && errorMessage.includes("am geplanten Tag abwesend")) {
@@ -9527,6 +12399,7 @@ export function DashboardPage() {
       ...emptyProjectDraft,
       projectType: nextPipelineType,
       branch: nextPipelineType === "Projekt OK immocare" ? "OK immocare GmbH" : "OK solutions GmbH",
+      responsibleName: activeUser?.name || "Christian Eid",
     });
     setIsQuickCreateOpen(false);
     setIsProjectContactPickerOpen(false);
@@ -9552,18 +12425,15 @@ export function DashboardPage() {
         project.projectType === "Projekt OK immocare"
           ? "Projekt OK immocare"
           : "Projekt OK solutions",
-      projectKind:
-        project.projectKind === "Dauerläufer-Projekt"
-          ? "Dauerläufer-Projekt"
-          : "einmaliges Projekt",
+      projectKind: normalizeProjectKindValue(project.projectKind),
       projectRuntimeFrom: project.projectRuntimeFrom || "",
       projectRuntimeUntil: project.projectRuntimeUntil || "",
       billingInterval:
-        project.billingInterval === "quartalsweise" || project.billingInterval === "jährlich"
+        project.billingInterval === "quartalsweise" || isAnnualBillingInterval(project.billingInterval)
           ? project.billingInterval
           : "monatlich",
       forecastBillingType:
-        project.forecastBillingType === "wöchentlich" ||
+        isWeeklyForecastBillingType(project.forecastBillingType) ||
         project.forecastBillingType === "quartalsweise"
           ? project.forecastBillingType
           : "monatlich",
@@ -9577,6 +12447,10 @@ export function DashboardPage() {
       timeBudgetHours: project.timeBudgetHours || "",
       source: project.source || "",
       participants: project.participants || "",
+      responsibleName: project.responsibleName || activeUser?.name || "Christian Eid",
+      deputyName: project.deputyName || "",
+      deputyFrom: project.deputyFrom || "",
+      deputyUntil: project.deputyUntil || "",
     });
     setIsProjectContactPickerOpen(false);
     setProjectContactPickerSearch("");
@@ -9587,6 +12461,12 @@ export function DashboardPage() {
     setProjectDraft((currentDraft) => ({
       ...currentDraft,
       [key]: value,
+      ...(key === "responsibleName" && currentDraft.deputyName === value
+        ? { deputyName: "", deputyFrom: "", deputyUntil: "" }
+        : {}),
+      ...(key === "deputyName" && !value
+        ? { deputyFrom: "", deputyUntil: "" }
+        : {}),
       ...(key === "contactId"
         ? {
             contactPersonId: "",
@@ -9757,9 +12637,14 @@ export function DashboardPage() {
     });
   }
 
-  function readProjectImageAttachment(file: File) {
+  function readProjectImageAttachment(file: File, displayNameBase?: string) {
     return new Promise<LogbookAttachment>((resolve, reject) => {
       const reader = new FileReader();
+      const originalExtension = file.name.match(/\.[^.]+$/)?.[0]?.toLowerCase() || ".jpg";
+      const safeOriginalExtension = [".jpg", ".jpeg", ".png", ".webp"].includes(originalExtension)
+        ? originalExtension.replace(".jpeg", ".jpg")
+        : ".jpg";
+      const safeNameBase = displayNameBase ? sanitizeFileNamePart(displayNameBase) : file.name.replace(/\.[^.]+$/, "");
 
       reader.onerror = () => reject(new Error(`Bild "${file.name}" konnte nicht gelesen werden.`));
       reader.onload = () => {
@@ -9774,9 +12659,9 @@ export function DashboardPage() {
           const width = Math.max(1, Math.round(image.width * scale));
           const height = Math.max(1, Math.round(image.height * scale));
 
-          if (!scale || scale >= 1 && file.size <= 700_000) {
+          if (!scale || (scale >= 1 && file.size <= 700_000)) {
             resolve({
-              name: file.name,
+              name: `${safeNameBase}${safeOriginalExtension}`,
               type: "Bild",
               mimeType: file.type || "image/jpeg",
               size: file.size,
@@ -9801,7 +12686,7 @@ export function DashboardPage() {
           const estimatedSize = Math.round((base64Length * 3) / 4);
 
           resolve({
-            name: file.name.replace(/\.[^.]+$/, ".jpg"),
+            name: `${safeNameBase}.jpg`,
             type: "Bild",
             mimeType: "image/jpeg",
             size: estimatedSize,
@@ -9823,6 +12708,70 @@ export function DashboardPage() {
       Array.from(files).map((file) => readLogbookAttachment(file, type))
     );
     setLogbookAttachments((currentAttachments) => [...currentAttachments, ...nextAttachments]);
+  }
+
+  function getProjectLogbookAuthorUser(entry: ProjectLogbookEntry) {
+    if (entry.authorUserId) {
+      const userById = users.find((user) => user.id === entry.authorUserId);
+      if (userById) return userById;
+    }
+
+    const authorName = entry.author.trim().toLowerCase();
+    return authorName ? users.find((user) => user.name.trim().toLowerCase() === authorName) : undefined;
+  }
+
+  function isSystemLogbookAuthor(entry: ProjectLogbookEntry) {
+    const author = entry.author.trim();
+    return !author || /^system$/i.test(author);
+  }
+
+  function renderSystemLogbookAvatar() {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 3.5v2" />
+        <rect x="5" y="7" width="14" height="11" rx="4" />
+        <path d="M8 11.5h.01M16 11.5h.01" />
+        <path d="M9.5 16h5" />
+      </svg>
+    );
+  }
+
+  function getProjectLogbookFallbackAuthorUser(actor: string) {
+    const normalizedActor = actor.trim().toLowerCase();
+    if (!normalizedActor || /^system$/i.test(normalizedActor)) return undefined;
+
+    return users.find((user) => {
+      const normalizedName = user.name.trim().toLowerCase();
+      const normalizedInitials = getInitials(user.name).toLowerCase();
+      return normalizedName === normalizedActor || normalizedInitials === normalizedActor;
+    });
+  }
+
+  function renderProjectLogbookAvatar(entry: ProjectLogbookEntry) {
+    const authorUser = getProjectLogbookAuthorUser(entry);
+    if (authorUser?.profileImageDataUrl) {
+      return <img src={authorUser.profileImageDataUrl} alt="" />;
+    }
+
+    if (isSystemLogbookAuthor(entry)) {
+      return renderSystemLogbookAvatar();
+    }
+
+    return getInitials(authorUser?.name || entry.author || activeUser?.name || "MA");
+  }
+
+  function renderProjectLogbookFallbackAvatar(actor: string) {
+    const fallbackUser = getProjectLogbookFallbackAuthorUser(actor);
+    if (fallbackUser?.profileImageDataUrl) {
+      return <img src={fallbackUser.profileImageDataUrl} alt="" />;
+    }
+
+    const normalizedActor = actor.trim();
+    if (!normalizedActor || /^system$/i.test(normalizedActor)) {
+      return renderSystemLogbookAvatar();
+    }
+
+    return getInitials(fallbackUser?.name || normalizedActor || activeUser?.name || "MA");
   }
 
   async function saveLogbookEntry() {
@@ -9854,6 +12803,7 @@ export function DashboardPage() {
           title: "Eintrag",
           text: logbookMessage.trim(),
           author: activeUser?.name || "Christian Eid",
+          authorUserId: activeUserId,
           colleague: logbookColleague.trim(),
           visibleFor: logbookVisibleFor,
           attachments: logbookAttachments,
@@ -9909,14 +12859,30 @@ export function DashboardPage() {
 
     try {
       setLogbookError("");
-      const createdAt = getProjectKind(selectedProjectFile).startsWith("Dauer")
-        ? `${projectComparisonMonth || formatDateKey(new Date()).slice(0, 7)}-01T12:00:00.000Z`
-        : "";
-      const projectMonth = getProjectKind(selectedProjectFile).startsWith("Dauer")
+      const isRecurringProject = getProjectKind(selectedProjectFile).startsWith("Dauer");
+      const projectMonth = isRecurringProject
         ? projectComparisonMonth || formatDateKey(new Date()).slice(0, 7)
         : "";
+      const imageNamePrefix =
+        category === "Vorherbilder"
+          ? "Vorherbild"
+          : category === "Nachherbilder"
+            ? "Nachherbild"
+            : "Objektbild";
+      const existingImageCount = projectLogbookEntries
+        .filter((entry) => String(entry.projectId) === String(selectedProjectFile.id))
+        .filter((entry) => entry.title === `Bilder: ${category}`)
+        .filter((entry) => !projectMonth || entry.projectMonth === projectMonth)
+        .reduce(
+          (sum: number, entry: ProjectLogbookEntry) =>
+            sum + entry.attachments.filter((attachment: LogbookAttachment) => attachment.type === "Bild").length,
+          0
+        );
+      const uploadDate = formatDateForFileName(new Date());
       const attachments = await Promise.all(
-        Array.from(files).map((file) => readProjectImageAttachment(file))
+        Array.from(files).map((file, fileIndex) =>
+          readProjectImageAttachment(file, `${imageNamePrefix}_${existingImageCount + fileIndex + 1}_${uploadDate}`)
+        )
       );
       const res = await fetch("/api/project-logbook-entries", {
         method: "POST",
@@ -9928,6 +12894,7 @@ export function DashboardPage() {
           title: `Bilder: ${category}`,
           text: `${category} hochgeladen`,
           author: activeUser?.name || "Christian Eid",
+          authorUserId: activeUserId,
           colleague: "",
           visibleFor: [
             "Geschaeftsfuehrer",
@@ -9938,7 +12905,6 @@ export function DashboardPage() {
           ],
           attachments,
           projectMonth,
-          createdAt,
         }),
       });
 
@@ -9951,8 +12917,112 @@ export function DashboardPage() {
       const savedEntry = (await res.json()) as ProjectLogbookEntry;
       setProjectLogbookEntries((currentEntries) => [savedEntry, ...currentEntries]);
       setLogbookError("");
+      if (category === "Vorherbilder" || category === "Nachherbilder") {
+        await confirmImplementationStatus(
+          selectedProjectFile,
+          `Ausfuehrungsnachweis hochgeladen: ${category}`
+        );
+        await notifyProjectBillingReady(selectedProjectFile, projectMonth || getCurrentMonthKey());
+      }
     } catch (error) {
       setLogbookError(error instanceof Error ? error.message : "Bilder konnten nicht hochgeladen werden.");
+    }
+  }
+
+  function applyProjectLogbookAttachmentPatch(data: ProjectLogbookAttachmentPatchResponse) {
+    setProjectLogbookEntries((currentEntries) => {
+      const upsertEntry = (entries: ProjectLogbookEntry[], nextEntry?: ProjectLogbookEntry) => {
+        if (!nextEntry) return entries;
+        const exists = entries.some((entry) => entry.id === nextEntry.id);
+        return exists
+          ? entries.map((entry) => (entry.id === nextEntry.id ? nextEntry : entry))
+          : [nextEntry, ...entries];
+      };
+
+      let nextEntries = upsertEntry(currentEntries, data.entry);
+      nextEntries = upsertEntry(nextEntries, data.targetEntry);
+      nextEntries = upsertEntry(nextEntries, data.history);
+      return nextEntries;
+    });
+  }
+
+  async function updateProjectImageAttachment(
+    entryId: string,
+    attachmentIndex: number,
+    attachmentName: string,
+    action: "delete" | "move",
+    targetCategory?: string
+  ) {
+    if (!selectedProjectFile) return;
+    if (action === "delete" && !window.confirm(`Bild "${attachmentName}" wirklich löschen?`)) return;
+
+    try {
+      setLogbookError("");
+      const res = await fetch("/api/project-logbook-entries", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          entryId,
+          attachmentIndex,
+          attachmentName,
+          action,
+          targetTitle: targetCategory ? `Bilder: ${targetCategory}` : "",
+          actorUserId: activeUserId,
+          actorName: activeUser?.name || "Christian Eid",
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setLogbookError(data?.error ?? "Bild konnte nicht aktualisiert werden.");
+        return;
+      }
+
+      const data = (await res.json()) as ProjectLogbookAttachmentPatchResponse;
+      applyProjectLogbookAttachmentPatch(data);
+    } catch (error) {
+      setLogbookError(error instanceof Error ? error.message : "Bild konnte nicht aktualisiert werden.");
+    }
+  }
+
+  async function deleteProjectDocumentAttachment(
+    entryId: string,
+    attachmentIndex: number,
+    attachmentName: string,
+    documentLabel = "Dokument"
+  ) {
+    if (!selectedProjectFile) return;
+    if (!window.confirm(`${documentLabel} "${attachmentName}" wirklich löschen?`)) return;
+
+    try {
+      setLogbookError("");
+      const res = await fetch("/api/project-logbook-entries", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          entryId,
+          attachmentIndex,
+          attachmentName,
+          action: "delete",
+          actorUserId: activeUserId,
+          actorName: activeUser?.name || "Christian Eid",
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setLogbookError(data?.error ?? `${documentLabel} konnte nicht gelöscht werden.`);
+        return;
+      }
+
+      const data = (await res.json()) as ProjectLogbookAttachmentPatchResponse;
+      applyProjectLogbookAttachmentPatch(data);
+    } catch (error) {
+      setLogbookError(error instanceof Error ? error.message : `${documentLabel} konnte nicht gelöscht werden.`);
     }
   }
 
@@ -9969,6 +13039,7 @@ export function DashboardPage() {
         title,
         text,
         author: activeUser?.name || "Christian Eid",
+        authorUserId: activeUserId,
         colleague: "",
         visibleFor: [
           "Geschaeftsfuehrer",
@@ -9985,6 +13056,155 @@ export function DashboardPage() {
 
     const savedEntry = (await res.json()) as ProjectLogbookEntry;
     setProjectLogbookEntries((currentEntries) => [savedEntry, ...currentEntries]);
+  }
+
+  function getOfferFollowUpDeadline() {
+    const workdays = Math.max(1, Math.min(30, Math.round(Number(offerFollowUpWorkdays) || 5)));
+    const deadlineDate = new Date();
+    deadlineDate.setHours(12, 0, 0, 0);
+    let remainingWorkdays = workdays;
+
+    while (remainingWorkdays > 0) {
+      deadlineDate.setDate(deadlineDate.getDate() + 1);
+      const weekday = deadlineDate.getDay();
+      const dateKey = formatDateKey(deadlineDate);
+      if (weekday !== 0 && weekday !== 6 && !getHolidayForDateKey(dateKey)) {
+        remainingWorkdays -= 1;
+      }
+    }
+
+    return getDefaultDeadlineValue(deadlineDate);
+  }
+
+  async function updateTaskStatus(task: TaskItem, nextStatus: TaskStatus) {
+    const res = await fetch("/api/tasks", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        id: task.id,
+        actorId: activeUserId,
+        title: task.titel,
+        description: task.beschreibung,
+        status: nextStatus,
+        priority: task.prioritaet,
+        tradeId: null,
+        ownerId: task.zustaendigId || activeUserId,
+        deadline: normalizeDeadlineInput(task.faelligkeit) || getDefaultDeadlineValue(),
+        customer: task.kunde,
+        customerClass: null,
+        projectId: task.projectId,
+        autoFeedbackEnabled: false,
+        autoFeedbackRecipientId: null,
+        recurrenceEnabled: false,
+        recurrenceInterval: null,
+        estimateMinutes: null,
+        planningAllocations: task.planningAllocations.map((allocation) => ({
+          date: allocation.date,
+          minutes: allocation.minutes,
+        })),
+        absenceHandoverTask: false,
+      }),
+    });
+
+    if (!res.ok) return null;
+    return (await res.json()) as TaskItem;
+  }
+
+  async function createOfferFollowUpTask(
+    savedOffer: OfferItem,
+    project: HeroProjectPreview,
+    potential?: ProjectPotential | null
+  ) {
+    const existingTask = tasks.find(
+      (task) =>
+        task.projectId === project.id &&
+        task.titel.includes(savedOffer.offerNumber) &&
+        task.titel.toLowerCase().includes("angebot nachfassen") &&
+        !["erledigt", "archiviert", "abgelehnt"].includes(task.status)
+    );
+
+    if (existingTask) return existingTask;
+
+    const deadline = getOfferFollowUpDeadline();
+    const title = `Angebot nachfassen: ${savedOffer.offerNumber}`;
+    const description = [
+      `Angebot ${savedOffer.offerNumber} nachfassen.`,
+      `Projekt: ${project.projectNumber || project.id} | ${project.title}`,
+      project.customer ? `Kunde: ${project.customer}` : "",
+      `Angebotswert: ${formatMoney(savedOffer.grossTotal)} brutto`,
+      potential ? `Zusatzverkauf: ${getPotentialNumber(potential)} | ${potential.description}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const res = await fetch("/api/tasks", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorId: activeUserId,
+        title,
+        description,
+        status: "in Bearbeitung",
+        priority: "normal",
+        tradeId: null,
+        ownerId: activeUser?.id || activeUserId,
+        deadline,
+        customer: project.customer || savedOffer.customerName,
+        customerClass: null,
+        projectId: project.id,
+        autoFeedbackEnabled: false,
+        autoFeedbackRecipientId: null,
+        recurrenceEnabled: false,
+        recurrenceInterval: null,
+        estimateMinutes: null,
+        planningAllocations: [],
+        absenceHandoverTask: false,
+      }),
+    });
+
+    if (!res.ok) {
+      setErrorMessage("Nachfass-Aufgabe zum Angebot konnte nicht automatisch angelegt werden.");
+      return null;
+    }
+
+    const savedTask = (await res.json()) as TaskItem;
+    setTasks((currentTasks) => [savedTask, ...currentTasks.filter((task) => task.id !== savedTask.id)]);
+    await addProjectLogbookEntry(
+      project.id,
+      "Angebot: Nachfass-Aufgabe",
+      `Nachfass-Aufgabe für Angebot ${savedOffer.offerNumber} angelegt, fällig am ${formatDeadline(
+        savedTask.faelligkeit
+      )}.`
+    );
+
+    if (potential) {
+      const linkedTask = getPotentialLinkedTask(potential);
+      const isPotentialFollowUpTask =
+        linkedTask &&
+        linkedTask.id !== savedTask.id &&
+        ["Zusatzverkauf nachfassen", "Potenzial nachfassen"].some((prefix) =>
+          linkedTask.titel.toLowerCase().startsWith(prefix.toLowerCase())
+        ) &&
+        !["erledigt", "archiviert", "abgelehnt"].includes(linkedTask.status);
+
+      if (isPotentialFollowUpTask) {
+        await updateTaskStatus(linkedTask, "erledigt");
+      }
+
+      await updateProjectPotential(potential, "offered", {
+        taskId: savedTask.id,
+        followUpAt: savedTask.faelligkeit,
+        note: `Angebot ${savedOffer.offerNumber} erstellt. Nachfass-Aufgabe angelegt.`,
+      });
+    }
+
+    await loadTasks();
+    await loadNotifications(true);
+    return savedTask;
   }
 
   async function createProjectPotential(project: HeroProjectPreview, description: string) {
@@ -10008,7 +13228,7 @@ export function DashboardPage() {
         ownerUserId: activeUser?.id || "",
         ownerName: activeUser?.name || "",
         priority: "normal",
-        nextStep: "Potenzial prüfen und nächsten Schritt festlegen.",
+        nextStep: "Zusatzverkauf prüfen und nächsten Schritt festlegen.",
         sourceType: "final_inspection",
         actorName: activeUser?.name || "",
       }),
@@ -10019,6 +13239,66 @@ export function DashboardPage() {
     const savedPotential = (await res.json()) as ProjectPotential;
     setProjectPotentials((currentPotentials) => [savedPotential, ...currentPotentials]);
     return savedPotential;
+  }
+
+  function openManualPotentialModal() {
+    setManualPotentialProjectId("");
+    setManualPotentialDescription("");
+    setManualPotentialEstimatedValue("");
+    setManualPotentialError("");
+    setIsManualPotentialModalOpen(true);
+    if (!hasLoadedHeroProjects) void loadHeroProjects();
+  }
+
+  async function saveManualPotential() {
+    const project = heroProjects.find((item) => item.id === manualPotentialProjectId);
+    const description = manualPotentialDescription.trim();
+
+    if (!project) {
+      setManualPotentialError("Bitte ein vorhandenes Projekt auswählen.");
+      return;
+    }
+
+    if (!description) {
+      setManualPotentialError("Bitte den Zusatzverkauf kurz beschreiben.");
+      return;
+    }
+
+    const res = await fetch("/api/potentials", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contactId: project.contactId || "",
+        customerName: project.customer || "",
+        projectId: project.id,
+        projectLabel: `${project.projectNumber || project.id} | ${project.title}`,
+        description,
+        ownerUserId: activeUser?.id || "",
+        ownerName: activeUser?.name || "",
+        estimatedValue: manualPotentialEstimatedValue,
+        priority: "normal",
+        nextStep: "",
+        sourceType: "manual",
+        actorName: activeUser?.name || "",
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setManualPotentialError(data?.error ?? "Zusatzverkauf konnte nicht angelegt werden.");
+      return;
+    }
+
+    const savedPotential = (await res.json()) as ProjectPotential;
+    setProjectPotentials((currentPotentials) => [savedPotential, ...currentPotentials]);
+    await addProjectLogbookEntry(
+      project.id,
+      "Zusatzverkauf angelegt",
+      `Zusatzverkauf ${getPotentialNumber(savedPotential)} manuell angelegt: ${description}.`
+    );
+    setPotentialStatusFilter("all");
+    setIsManualPotentialModalOpen(false);
+    openPotentialDetail(savedPotential);
   }
 
   async function updateProjectPotential(
@@ -10058,7 +13338,7 @@ export function DashboardPage() {
     });
 
     if (!res.ok) {
-      setErrorMessage("Potenzial konnte nicht aktualisiert werden.");
+      setErrorMessage("Zusatzverkauf konnte nicht aktualisiert werden.");
       return null;
     }
 
@@ -10081,7 +13361,7 @@ export function DashboardPage() {
       const followUpTime = potential.followUpAt ? new Date(potential.followUpAt).getTime() : NaN;
       return Number.isFinite(followUpTime) && followUpTime <= Date.now()
         ? "Nachfassen fällig"
-        : "Wiedervorlage geplant";
+        : "Nachfassen geplant";
     }
 
     return "Offen";
@@ -10091,6 +13371,54 @@ export function DashboardPage() {
     if (priority === "high") return "Hoch";
     if (priority === "low") return "Niedrig";
     return "Normal";
+  }
+
+  function getPotentialLinkedTask(potential: ProjectPotential) {
+    return potential.taskId ? tasks.find((task) => task.id === potential.taskId) ?? null : null;
+  }
+
+  function getPotentialNumber(potential: ProjectPotential) {
+    if (potential.number) return potential.number;
+
+    const sortedPotentials = [...projectPotentials].sort((firstPotential, secondPotential) => {
+      const firstTime = new Date(firstPotential.createdAt).getTime();
+      const secondTime = new Date(secondPotential.createdAt).getTime();
+      if (firstTime !== secondTime) return firstTime - secondTime;
+      return firstPotential.id.localeCompare(secondPotential.id);
+    });
+    const index = sortedPotentials.findIndex((item) => item.id === potential.id);
+    return `VC-${String(index >= 0 ? 1001 + index : 1000).padStart(4, "0")}`;
+  }
+
+  function getPotentialFollowUpInfo(potential: ProjectPotential) {
+    const linkedTask = getPotentialLinkedTask(potential);
+
+    if (linkedTask) {
+      return {
+        title: `${getTaskNumber(linkedTask.id, tasks)} | ${linkedTask.titel}`,
+        detail: `${linkedTask.status} - fällig am ${formatDeadline(linkedTask.faelligkeit)}`,
+      };
+    }
+
+    if (potential.followUpAt) {
+      return {
+        title: "Nachfassdatum ohne verknüpfte Aufgabe",
+        detail: `${formatDeadline(potential.followUpAt)} - bitte bei Bedarf eine Nachfass-Aufgabe anlegen.`,
+      };
+    }
+
+    return {
+      title: "Keine Nachfass-Aufgabe geplant",
+      detail: "Nachfassen wird über das Aufgabenmodul gesteuert.",
+    };
+  }
+
+  function openPotentialLinkedTask(potential: ProjectPotential) {
+    const linkedTask = getPotentialLinkedTask(potential);
+    if (!linkedTask) return;
+
+    setEditingPotential(null);
+    openEditModal(linkedTask);
   }
 
   function openPotentialDetail(potential: ProjectPotential) {
@@ -10109,24 +13437,85 @@ export function DashboardPage() {
     });
   }
 
+  function buildPotentialChangeNote(potential: ProjectPotential, ownerName: string) {
+    const changes: string[] = [];
+    const nextStatusLabel = getPotentialStatusLabel({ ...potential, status: potentialDraft.status, followUpAt: potentialDraft.followUpAt });
+    const previousOwner = potential.ownerName || "-";
+    const nextOwner = ownerName || "-";
+    const previousEstimatedValue = potential.estimatedValue || "-";
+    const nextEstimatedValue = potentialDraft.estimatedValue || "-";
+
+    if (potential.description !== potentialDraft.description) changes.push("Beschreibung");
+    if (potential.status !== potentialDraft.status) {
+      changes.push(`Status: ${getPotentialStatusLabel(potential)} -> ${nextStatusLabel}`);
+    }
+    if ((potential.ownerUserId || "") !== potentialDraft.ownerUserId || previousOwner !== nextOwner) {
+      changes.push(`Verantwortlich: ${previousOwner} -> ${nextOwner}`);
+    }
+    if ((potential.estimatedValue || "") !== potentialDraft.estimatedValue) {
+      changes.push(`Wert: ${previousEstimatedValue} -> ${nextEstimatedValue}`);
+    }
+    if ((potential.priority || "normal") !== potentialDraft.priority) {
+      changes.push(`Prioritaet: ${getPotentialPriorityLabel(potential.priority)} -> ${getPotentialPriorityLabel(potentialDraft.priority)}`);
+    }
+    if ((potential.nextStep || "") !== potentialDraft.nextStep) changes.push("Naechster Schritt");
+    if ((potential.lostReason || "") !== potentialDraft.lostReason) changes.push("Grund bei Kein Interesse");
+
+    if (potentialDraft.note.trim()) {
+      changes.push(`Notiz: ${potentialDraft.note.trim()}`);
+    }
+
+    return changes.length > 0
+      ? `Zusatzverkauf aktualisiert: ${changes.join("; ")}.`
+      : "Zusatzverkauf aktualisiert: keine Feldänderung erkannt.";
+  }
+
+  function hasPotentialDraftChanges(potential: ProjectPotential, ownerName: string) {
+    return (
+      potential.description !== potentialDraft.description ||
+      potential.status !== potentialDraft.status ||
+      (potential.ownerUserId || "") !== potentialDraft.ownerUserId ||
+      (potential.ownerName || "") !== (ownerName || "") ||
+      (potential.estimatedValue || "") !== potentialDraft.estimatedValue ||
+      (potential.lostReason || "") !== potentialDraft.lostReason ||
+      potentialDraft.note.trim().length > 0
+    );
+  }
+
   async function savePotentialDetail() {
     if (!editingPotential) return;
 
     const owner = users.find((user) => user.id === potentialDraft.ownerUserId);
+    const ownerName = owner?.name || potentialDraft.ownerName;
+    const nextStatusLabel = getPotentialStatusLabel({
+      ...editingPotential,
+      status: potentialDraft.status,
+      followUpAt: potentialDraft.followUpAt,
+    });
+    const confirmed = window.confirm(
+      `Der Zusatzverkauf wird mit dem Status "${nextStatusLabel}" gespeichert. Ist das korrekt?`
+    );
+    if (!confirmed) return;
+
+    if (!hasPotentialDraftChanges(editingPotential, ownerName)) {
+      setEditingPotential(null);
+      return;
+    }
+
     const savedPotential = await updateProjectPotential(editingPotential, potentialDraft.status, {
       ownerUserId: potentialDraft.ownerUserId,
-      ownerName: owner?.name || potentialDraft.ownerName,
+      ownerName,
       estimatedValue: potentialDraft.estimatedValue,
       priority: potentialDraft.priority,
       nextStep: potentialDraft.nextStep,
-      followUpAt: potentialDraft.followUpAt,
+      followUpAt: editingPotential.followUpAt || potentialDraft.followUpAt,
       lostReason: potentialDraft.lostReason,
       description: potentialDraft.description,
-      note: potentialDraft.note || "Potenzial aktualisiert.",
+      note: buildPotentialChangeNote(editingPotential, ownerName),
     });
 
     if (savedPotential) {
-      setEditingPotential(savedPotential);
+      setEditingPotential(null);
       setPotentialDraft((currentDraft) => ({ ...currentDraft, note: "" }));
     }
   }
@@ -10143,13 +13532,20 @@ export function DashboardPage() {
   async function schedulePotentialFollowUp(potential: ProjectPotential) {
     const project = getPotentialProject(potential);
     if (!project) return;
+    const linkedTask = getPotentialLinkedTask(potential);
+
+    if (linkedTask) {
+      setEditingPotential(null);
+      openEditModal(linkedTask);
+      return;
+    }
 
     setIsQuickCreateOpen(false);
     setEditingTask(null);
     setPendingPotentialFollowUp({ potentialId: potential.id, projectId: project.id });
     setErrorMessage("");
     resetForm();
-    setTitel(`Potenzial nachfassen: ${project.projectNumber || project.id}`);
+    setTitel(`Zusatzverkauf nachfassen: ${project.projectNumber || project.id}`);
     setBeschreibung(
       [
         potential.description,
@@ -10184,18 +13580,40 @@ export function DashboardPage() {
     try {
       const blob = await fetch(dataUrl).then((response) => response.blob());
       const objectUrl = URL.createObjectURL(blob);
-      const openedWindow = window.open(objectUrl, "_blank", "noopener,noreferrer");
+      const openedWindow = window.open("", "workpilot-document-viewer", "width=1200,height=900");
 
       if (!openedWindow) {
-        const link = document.createElement("a");
-        link.href = objectUrl;
-        link.download = fileName;
-        link.click();
+        setLogbookError("Dokument konnte nicht geöffnet werden. Bitte Popups für WorkPilot360 erlauben.");
+        URL.revokeObjectURL(objectUrl);
+        return;
       }
 
+      openedWindow.document.title = fileName;
+      openedWindow.document.body.style.margin = "0";
+      openedWindow.document.body.innerHTML = `
+        <iframe
+          src="${objectUrl}"
+          title="${fileName.replaceAll('"', "&quot;")}"
+          style="border:0;height:100vh;width:100vw"
+        ></iframe>
+      `;
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
     } catch {
-      window.open(dataUrl, "_blank", "noopener,noreferrer");
+      const openedWindow = window.open("", "workpilot-document-viewer", "width=1200,height=900");
+      if (!openedWindow) {
+        setLogbookError("Dokument konnte nicht geöffnet werden. Bitte Popups für WorkPilot360 erlauben.");
+        return;
+      }
+
+      openedWindow.document.title = fileName;
+      openedWindow.document.body.style.margin = "0";
+      openedWindow.document.body.innerHTML = `
+        <iframe
+          src="${dataUrl}"
+          title="${fileName.replaceAll('"', "&quot;")}"
+          style="border:0;height:100vh;width:100vw"
+        ></iframe>
+      `;
     }
   }
 
@@ -10221,6 +13639,7 @@ export function DashboardPage() {
         title: `Dokumente: ${category}`,
         text: `${category} abgelegt`,
         author: activeUser?.name || "Christian Eid",
+        authorUserId: activeUserId,
         colleague: "",
         visibleFor: [
           "Geschaeftsfuehrer",
@@ -10246,71 +13665,188 @@ export function DashboardPage() {
     setLogbookError("");
   }
 
-  async function createActivityReportForSelectedProject() {
-    if (!selectedProjectFile || isCreatingActivityReport) return;
-
-    setIsCreatingActivityReport(true);
+  function resetSmokeDetectorInstallationDraft() {
+    setSmokeDetectorInstallationDate(formatDateKey(new Date()));
+    setSmokeDetectorInstaller(activeUser?.name || "");
+    setSmokeDetectorObjectNotes("");
+    setSmokeDetectorDeviations("");
+    setSmokeDetectorObjectImages([]);
+    setSmokeDetectorDevices([createSmokeDetectorDeviceDraft()]);
     setLogbookError("");
+  }
 
-    const isRecurringProject = getProjectKind(selectedProjectFile).startsWith("Dauer");
-    const reportMonth = isRecurringProject
-      ? projectComparisonMonth || formatDateKey(new Date()).slice(0, 7)
-      : "";
-    const getProjectLogEntryMonthForReport = (entry: ProjectLogbookEntry) => {
-      if (/^\d{4}-\d{2}$/.test(entry.projectMonth || "")) return entry.projectMonth || "";
-      const rawDate = entry.date || "";
-      const isoMatch = rawDate.match(/^(\d{4})-(\d{2})/);
-      if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}`;
-      const germanMatch = rawDate.match(/^(\d{2})\.(\d{2})\.(\d{2}|\d{4})/);
-      if (germanMatch) {
-        const year = germanMatch[3].length === 2 ? `20${germanMatch[3]}` : germanMatch[3];
-        return `${year}-${germanMatch[2]}`;
-      }
+  function openSmokeDetectorInstallationChecklist() {
+    resetSmokeDetectorInstallationDraft();
+    setActiveChecklistView("smokeInstallation");
+  }
 
-      const parsedDate = parseAppDateTime(rawDate);
-      return Number.isNaN(parsedDate.getTime()) ? "" : formatDateKey(parsedDate).slice(0, 7);
-    };
-    const getVisibleReportImageKeys = (category: "Vorherbilder" | "Nachherbilder") =>
-      projectLogbookEntries
-        .filter((entry) => String(entry.projectId) === String(selectedProjectFile.id))
-        .filter((entry) => entry.title === `Bilder: ${category}`)
-        .filter((entry) => !isRecurringProject || getProjectLogEntryMonthForReport(entry) === reportMonth)
-        .flatMap((entry) =>
-          entry.attachments.flatMap((attachment, attachmentIndex) =>
-            attachment.type === "Bild" && attachment.dataUrl
-              ? [`${entry.id}:${attachmentIndex}:${attachment.name}`]
-              : []
+  function updateSmokeDetectorDevice(
+    deviceId: string,
+    patch: Partial<Omit<SmokeDetectorDeviceDraft, "id" | "images">>
+  ) {
+    setSmokeDetectorDevices((currentDevices) =>
+      currentDevices.map((device) => (device.id === deviceId ? { ...device, ...patch } : device))
+    );
+  }
+
+  async function addSmokeDetectorImages(files: FileList | null, targetDeviceId?: string) {
+    if (!files || files.length === 0) return;
+
+    try {
+      setLogbookError("");
+      const attachments = await Promise.all(
+        Array.from(files).map((file) => readProjectImageAttachment(file))
+      );
+
+      if (targetDeviceId) {
+        setSmokeDetectorDevices((currentDevices) =>
+          currentDevices.map((device) =>
+            device.id === targetDeviceId
+              ? { ...device, images: [...device.images, ...attachments] }
+              : device
           )
         );
+        return;
+      }
 
-    const res = await fetch("/api/activity-reports", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        projectId: selectedProjectFile.id,
-        month: reportMonth,
-        beforeImageKeys: getVisibleReportImageKeys("Vorherbilder"),
-        afterImageKeys: getVisibleReportImageKeys("Nachherbilder"),
-      }),
-    });
+      setSmokeDetectorObjectImages((currentImages) => [...currentImages, ...attachments]);
+    } catch (error) {
+      setLogbookError(error instanceof Error ? error.message : "Bilder konnten nicht gelesen werden.");
+    }
+  }
 
-    setIsCreatingActivityReport(false);
-
-    const data = await res.json().catch(() => null);
-    if (!res.ok) {
-      setLogbookError(data?.error ?? "Tätigkeitsbericht konnte nicht erstellt werden.");
+  function removeSmokeDetectorImage(targetDeviceId: string | undefined, imageIndex: number) {
+    if (targetDeviceId) {
+      setSmokeDetectorDevices((currentDevices) =>
+        currentDevices.map((device) =>
+          device.id === targetDeviceId
+            ? { ...device, images: device.images.filter((_, index) => index !== imageIndex) }
+            : device
+        )
+      );
       return;
     }
 
-    const savedEntry = data as ProjectLogbookEntry;
-    setProjectLogbookEntries((currentEntries) => [
-      savedEntry,
-      ...currentEntries.filter((entry) => entry.id !== savedEntry.id),
-    ]);
-    setSelectedProjectDocumentType("Tätigkeitsberichte");
+    setSmokeDetectorObjectImages((currentImages) => currentImages.filter((_, index) => index !== imageIndex));
+  }
+
+  async function saveSmokeDetectorInstallationReport() {
+    if (!selectedProjectFile || isSavingSmokeDetectorReport) return;
+
+    setIsSavingSmokeDetectorReport(true);
     setLogbookError("");
+
+    try {
+      const res = await fetch("/api/smoke-detector-reports", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          projectId: selectedProjectFile.id,
+          installationDate: smokeDetectorInstallationDate,
+          installer: smokeDetectorInstaller.trim() || activeUser?.name || "",
+          objectNotes: smokeDetectorObjectNotes.trim(),
+          deviations: smokeDetectorDeviations.trim(),
+          objectImages: smokeDetectorObjectImages,
+          devices: smokeDetectorDevices,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setLogbookError(data?.error ?? "Rauchmelder-Installationsnachweis konnte nicht erstellt werden.");
+        return;
+      }
+
+      const savedEntry = (await res.json()) as ProjectLogbookEntry;
+      setProjectLogbookEntries((currentEntries) => {
+        const exists = currentEntries.some((entry) => entry.id === savedEntry.id);
+        return exists
+          ? currentEntries.map((entry) => (entry.id === savedEntry.id ? savedEntry : entry))
+          : [savedEntry, ...currentEntries];
+      });
+      setSelectedProjectDocumentType("Checklisten");
+      setActiveChecklistView("overview");
+      resetSmokeDetectorInstallationDraft();
+    } catch (error) {
+      setLogbookError(
+        error instanceof Error ? error.message : "Rauchmelder-Installationsnachweis konnte nicht erstellt werden."
+      );
+    } finally {
+      setIsSavingSmokeDetectorReport(false);
+    }
+  }
+
+  async function createActivityReportForSelectedProject() {
+    if (!selectedProjectFile || isCreatingActivityReport || isCreatingActivityReportRef.current) return;
+
+    isCreatingActivityReportRef.current = true;
+    setIsCreatingActivityReport(true);
+    setLogbookError("");
+
+    try {
+      const isRecurringProject = getProjectKind(selectedProjectFile).startsWith("Dauer");
+      const reportMonth = isRecurringProject
+        ? projectComparisonMonth || formatDateKey(new Date()).slice(0, 7)
+        : "";
+      const getProjectLogEntryMonthForReport = (entry: ProjectLogbookEntry) => {
+        if (/^\d{4}-\d{2}$/.test(entry.projectMonth || "")) return entry.projectMonth || "";
+        const rawDate = entry.date || "";
+        const isoMatch = rawDate.match(/^(\d{4})-(\d{2})/);
+        if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}`;
+        const germanMatch = rawDate.match(/^(\d{2})\.(\d{2})\.(\d{4}|\d{2})/);
+        if (germanMatch) {
+          const year = germanMatch[3].length === 2 ? `20${germanMatch[3]}` : germanMatch[3];
+          return `${year}-${germanMatch[2]}`;
+        }
+
+        const parsedDate = parseAppDateTime(rawDate);
+        return Number.isNaN(parsedDate.getTime()) ? "" : formatDateKey(parsedDate).slice(0, 7);
+      };
+      const getVisibleReportImageKeys = (category: "Vorherbilder" | "Nachherbilder") =>
+        projectLogbookEntries
+          .filter((entry) => String(entry.projectId) === String(selectedProjectFile.id))
+          .filter((entry) => entry.title === `Bilder: ${category}`)
+          .filter((entry) => !isRecurringProject || getProjectLogEntryMonthForReport(entry) === reportMonth)
+          .flatMap((entry) =>
+            entry.attachments.flatMap((attachment, attachmentIndex) =>
+              attachment.type === "Bild" && attachment.dataUrl
+                ? [`${entry.id}:${attachmentIndex}:${attachment.name}`]
+                : []
+            )
+          );
+
+      const res = await fetch("/api/activity-reports", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          projectId: selectedProjectFile.id,
+          month: reportMonth,
+          beforeImageKeys: getVisibleReportImageKeys("Vorherbilder"),
+          afterImageKeys: getVisibleReportImageKeys("Nachherbilder"),
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setLogbookError(data?.error ?? "Tätigkeitsbericht konnte nicht erstellt werden.");
+        return;
+      }
+
+      const savedEntry = data as ProjectLogbookEntry;
+      setProjectLogbookEntries((currentEntries) => [
+        savedEntry,
+        ...currentEntries.filter((entry) => entry.id !== savedEntry.id),
+      ]);
+      setSelectedProjectDocumentType("Tätigkeitsberichte");
+      setLogbookError("");
+    } finally {
+      isCreatingActivityReportRef.current = false;
+      setIsCreatingActivityReport(false);
+    }
   }
 
   function getContactAddressLine(contact: ContactItem) {
@@ -10334,6 +13870,65 @@ export function DashboardPage() {
     }
 
     return (await res.json()) as HeroProjectPreview;
+  }
+
+  async function confirmAndApplyProjectStatus(input: {
+    project?: HeroProjectPreview | null;
+    nextStatus: string;
+    reason: string;
+    question: string;
+  }) {
+    const project = input.project;
+    if (!project || !input.nextStatus || normalizeProjectPipelineStatus(project.status) === input.nextStatus) {
+      return false;
+    }
+
+    const confirmed = window.confirm(input.question);
+    if (!confirmed) return false;
+
+    const previousStatus = project.status || "-";
+    const updatedProject = { ...project, status: input.nextStatus };
+    try {
+      const savedProject = await persistProject(updatedProject);
+      setHeroProjects((currentProjects) =>
+        currentProjects.map((currentProject) =>
+          currentProject.id === savedProject.id ? savedProject : currentProject
+        )
+      );
+      if (selectedProjectFileId === savedProject.id) {
+        setSelectedProjectPipelineStatus(savedProject.status);
+        setSelectedHeroDetailId(savedProject.id);
+      }
+      await addProjectLogbookEntry(
+        savedProject.id,
+        "Projektstatus",
+        `Projektstatus per bestätigter Automatik geändert: ${previousStatus} -> ${savedProject.status}. Auslöser: ${input.reason}.`
+      );
+      return true;
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Projektstatus konnte nicht gespeichert werden.");
+      return false;
+    }
+  }
+
+  async function confirmImplementationStatus(project?: HeroProjectPreview | null, reason = "Echte Ausfuehrung erkannt") {
+    return confirmAndApplyProjectStatus({
+      project,
+      nextStatus: "Umsetzung",
+      reason,
+      question: `Für das Projekt "${project?.projectNumber || project?.title || "ohne Nummer"}" wurde eine echte Ausführung erkannt. Soll der Projektstatus auf "In Umsetzung" gesetzt werden?`,
+    });
+  }
+
+  async function confirmFinalInspectionStatus(project?: HeroProjectPreview | null) {
+    if (!project || getProjectKind(project).startsWith("Dauer")) return false;
+
+    return confirmAndApplyProjectStatus({
+      project,
+      nextStatus: "Endkontrolle",
+      reason: "Endkontrolle liegt vor",
+      question: `Für das Projekt "${project.projectNumber || project.title || "ohne Nummer"}" wurde eine Endkontrolle gespeichert. Soll der Projektstatus auf "Endkontrolle" gesetzt werden?`,
+    });
   }
 
   async function saveProjectDraft() {
@@ -10361,16 +13956,16 @@ export function DashboardPage() {
         : editingProject?.address || "";
     const projectDescription = [
       projectDraft.projectType,
-      projectDraft.projectKind,
+      normalizeProjectKindValue(projectDraft.projectKind),
       projectDraft.trade,
       projectDraft.projectRuntimeFrom ? `Start: ${projectDraft.projectRuntimeFrom}` : "",
-      projectDraft.projectKind === "Dauerläufer-Projekt" && projectDraft.projectRuntimeUntil
+      isRecurringProjectKindValue(projectDraft.projectKind) && projectDraft.projectRuntimeUntil
         ? `Laufzeit bis: ${projectDraft.projectRuntimeUntil}`
         : "",
-      projectDraft.projectKind === "Dauerläufer-Projekt"
+      isRecurringProjectKindValue(projectDraft.projectKind)
         ? `Fakturierung: ${projectDraft.billingInterval}`
         : "",
-      projectDraft.projectKind === "Dauerläufer-Projekt" && projectDraft.forecastNetAmount
+      isRecurringProjectKindValue(projectDraft.projectKind) && projectDraft.forecastNetAmount
         ? `Forecast: ${projectDraft.forecastNetAmount} EUR (${projectDraft.forecastBillingType})`
         : "",
       projectDraft.volume ? `Volumen: ${projectDraft.volume} EUR` : "",
@@ -10394,16 +13989,16 @@ export function DashboardPage() {
         contactPersonId: selectedContactPerson?.id || "",
         addressContactId: selectedAddressContact?.id || "",
         projectType: projectDraft.projectType,
-        projectKind: projectDraft.projectKind,
+        projectKind: normalizeProjectKindValue(projectDraft.projectKind),
         projectRuntimeFrom: projectDraft.projectRuntimeFrom,
         projectRuntimeUntil:
-          projectDraft.projectKind === "Dauerläufer-Projekt" ? projectDraft.projectRuntimeUntil : "",
+          isRecurringProjectKindValue(projectDraft.projectKind) ? projectDraft.projectRuntimeUntil : "",
         billingInterval:
-          projectDraft.projectKind === "Dauerläufer-Projekt" ? projectDraft.billingInterval : "",
+          isRecurringProjectKindValue(projectDraft.projectKind) ? projectDraft.billingInterval : "",
         forecastBillingType:
-          projectDraft.projectKind === "Dauerläufer-Projekt" ? projectDraft.forecastBillingType : "",
+          isRecurringProjectKindValue(projectDraft.projectKind) ? projectDraft.forecastBillingType : "",
         forecastNetAmount:
-          projectDraft.projectKind === "Dauerläufer-Projekt" ? projectDraft.forecastNetAmount : "",
+          isRecurringProjectKindValue(projectDraft.projectKind) ? projectDraft.forecastNetAmount : "",
         trade: projectDraft.trade,
         branch: projectDraft.branch,
         volume: projectDraft.volume,
@@ -10430,7 +14025,10 @@ export function DashboardPage() {
         source: projectDraft.source,
         address: projectAddress,
         participants: projectDraft.participants,
-        responsibleName: editingProject.responsibleName || activeUser?.name || "Christian Eid",
+        responsibleName: projectDraft.responsibleName || activeUser?.name || "Christian Eid",
+        deputyName: projectDraft.deputyName,
+        deputyFrom: projectDraft.deputyFrom,
+        deputyUntil: projectDraft.deputyUntil,
         description: projectDescription,
       };
 
@@ -10450,12 +14048,12 @@ export function DashboardPage() {
       setSelectedHeroDetailId(savedProject.id);
       openProjectFile(savedProject, { activeTab: targetPipeline.tab });
       setSelectedProjectPipelineStatus(savedProject.status || "Alle Offenen");
-      setSelectedProjectKindFilter(projectDraft.projectKind);
-      await addProjectLogbookEntry(
-        savedProject.id,
-        "Projekt",
-        `Projektdaten geändert: ${savedProject.projectNumber || savedProject.id} | ${savedProject.title}.`
-      );
+      setSelectedProjectKindFilter(normalizeProjectKindValue(projectDraft.projectKind));
+await addProjectLogbookEntry(
+  savedProject.id,
+  "Projekt",
+  `Projektdaten geändert: ${savedProject.projectNumber || savedProject.id} | ${savedProject.title}.`
+);
       closeProjectModal();
       return;
     }
@@ -10471,14 +14069,14 @@ export function DashboardPage() {
       contactPersonId: selectedContactPerson?.id,
       addressContactId: selectedAddressContact?.id,
       projectType: projectDraft.projectType,
-      projectKind: projectDraft.projectKind,
+      projectKind: normalizeProjectKindValue(projectDraft.projectKind),
       projectRuntimeFrom: projectDraft.projectRuntimeFrom,
-      projectRuntimeUntil: projectDraft.projectKind === "Dauerläufer-Projekt" ? projectDraft.projectRuntimeUntil : "",
-      billingInterval: projectDraft.projectKind === "Dauerläufer-Projekt" ? projectDraft.billingInterval : "",
+      projectRuntimeUntil: isRecurringProjectKindValue(projectDraft.projectKind) ? projectDraft.projectRuntimeUntil : "",
+      billingInterval: isRecurringProjectKindValue(projectDraft.projectKind) ? projectDraft.billingInterval : "",
       forecastBillingType:
-        projectDraft.projectKind === "Dauerläufer-Projekt" ? projectDraft.forecastBillingType : "",
+        isRecurringProjectKindValue(projectDraft.projectKind) ? projectDraft.forecastBillingType : "",
       forecastNetAmount:
-        projectDraft.projectKind === "Dauerläufer-Projekt" ? projectDraft.forecastNetAmount : "",
+        isRecurringProjectKindValue(projectDraft.projectKind) ? projectDraft.forecastNetAmount : "",
       trade: projectDraft.trade,
       branch: projectDraft.branch,
       volume: projectDraft.volume,
@@ -10504,7 +14102,10 @@ export function DashboardPage() {
       source: projectDraft.source,
       address: projectAddress,
       participants: projectDraft.participants,
-      responsibleName: activeUser?.name || "Christian Eid",
+      responsibleName: projectDraft.responsibleName || activeUser?.name || "Christian Eid",
+      deputyName: projectDraft.deputyName,
+      deputyFrom: projectDraft.deputyFrom,
+      deputyUntil: projectDraft.deputyUntil,
       createdAt: new Intl.DateTimeFormat(APP_LOCALE, {
         day: "2-digit",
         month: "2-digit",
@@ -10528,7 +14129,7 @@ export function DashboardPage() {
     setSelectedHeroDetailId(savedProject.id);
     openProjectFile(savedProject, { activeTab: targetPipeline.tab });
     setSelectedProjectPipelineStatus("Lead / Klärung");
-    setSelectedProjectKindFilter(projectDraft.projectKind);
+    setSelectedProjectKindFilter(normalizeProjectKindValue(projectDraft.projectKind));
     await addProjectLogbookEntry(
       savedProject.id,
       "Projekt",
@@ -10818,8 +14419,8 @@ export function DashboardPage() {
         });
         await addProjectLogbookEntry(
           project.id,
-          "Zusatzverkauf: Potenzial nachfassen",
-          `Kunde wünscht aktuell nicht. Nachfass-Aufgabe ${savedTask.titel} angelegt für ${formatDeadline(savedTask.faelligkeit)}.`
+          "Zusatzverkauf: Nachfassen",
+          `Nachfass-Aufgabe ${savedTask.titel} angelegt für ${formatDeadline(savedTask.faelligkeit)}.`
         );
       }
       setPendingPotentialFollowUp(null);
@@ -10925,22 +14526,138 @@ export function DashboardPage() {
     return `${project.projectNumber} | ${project.title}`;
   }
 
+  function getPlanningEntryStampLabel(entry: PlanningEntry) {
+    const project = entry.projectId ? heroProjects.find((item) => item.id === entry.projectId) : null;
+    if (project) return `${project.projectNumber} | ${project.title}`;
+    return entry.projectLabel || entry.title || "Termin ohne Projekt";
+  }
+
+  function getTodayStampPlanningEntries() {
+    const todayKey = formatDateKey(new Date(timerNow));
+    const activeUserName = activeUser?.name ?? "";
+    return planningEntries
+      .filter((entry) => {
+        if (entry.deletedAt) return false;
+        if (entry.approvalStatus !== "confirmed") return false;
+        if (entry.date !== todayKey) return false;
+        if (entry.userId && activeUserId && entry.userId === activeUserId) return true;
+        return Boolean(activeUserName && entry.employeeName === activeUserName);
+      })
+      .sort((first, second) => first.startTime.localeCompare(second.startTime));
+  }
+
+  function isPlanningEntryAlreadyStamped(entry: PlanningEntry) {
+    return stampEntries.some((stampEntry) => {
+      if (stampEntry.deletedAt) return false;
+      if (stampEntry.date !== entry.date) return false;
+      if (entry.userId && stampEntry.userId && stampEntry.userId !== entry.userId) return false;
+      if (entry.employeeName && stampEntry.employee && stampEntry.employee !== entry.employeeName) return false;
+      if (!doPlanningTimesOverlap(entry.startTime, entry.endTime, stampEntry.startTime, stampEntry.endTime)) {
+        return false;
+      }
+
+      if (stampEntry.mode === "project") {
+        if (entry.projectId && stampEntry.projectId === entry.projectId) return true;
+        const entryLabel = normalizeStampSearchValue(getPlanningEntryStampLabel(entry));
+        const stampLabel = normalizeStampSearchValue(stampEntry.projectLabel || "");
+        return Boolean(entryLabel && stampLabel && entryLabel === stampLabel);
+      }
+
+      const entryActivityLabel = normalizeStampSearchValue(entry.projectLabel || entry.title || "");
+      const stampActivityLabel = normalizeStampSearchValue(stampEntry.projectLabel || "");
+      return Boolean(entryActivityLabel && stampActivityLabel && entryActivityLabel === stampActivityLabel);
+    });
+  }
+
+  function getStampPlanningEntryStatus(entry: PlanningEntry) {
+    const activeSession = stampSession;
+    const nowMinutes = new Date(timerNow).getHours() * 60 + new Date(timerNow).getMinutes();
+    const startMinutes = parseStampTimeToMinutes(entry.startTime) ?? 0;
+    const endMinutes = parseStampTimeToMinutes(entry.endTime) ?? startMinutes;
+
+    if (activeSession && doesPlanningEntryMatchStampSession(entry, activeSession)) {
+      return { label: "Aktiv", state: "active" as const };
+    }
+
+    if (isPlanningEntryAlreadyStamped(entry)) {
+      return { label: "Erledigt", state: "done" as const };
+    }
+
+    if (endMinutes < nowMinutes) {
+      return { label: "Vorbei", state: "past" as const };
+    }
+
+    return { label: "Offen", state: "open" as const };
+  }
+
+  function getRecommendedStampPlanningEntry(entries: PlanningEntry[]) {
+    const nowMinutes = new Date(timerNow).getHours() * 60 + new Date(timerNow).getMinutes();
+    return (
+      entries.find((entry) => {
+        if (isPlanningEntryAlreadyStamped(entry)) return false;
+        const startMinutes = parseStampTimeToMinutes(entry.startTime) ?? 0;
+        const endMinutes = parseStampTimeToMinutes(entry.endTime) ?? startMinutes;
+        return nowMinutes >= startMinutes && nowMinutes <= endMinutes;
+      }) ??
+      entries.find((entry) => {
+        if (isPlanningEntryAlreadyStamped(entry)) return false;
+        const startMinutes = parseStampTimeToMinutes(entry.startTime) ?? 0;
+        return startMinutes >= nowMinutes;
+      }) ?? null
+    );
+  }
+
+  function selectPlanningEntryForStamp(entry: PlanningEntry) {
+    if (!entry.projectId) {
+      setStampSelectionMode("unproductive");
+      setStampUnproductiveLabel(entry.title || "Termin ohne Projekt");
+      setStampProjectId("");
+      setStampProjectSearch("");
+      setIsStampProjectSearchOpen(true);
+      setIsStampManualProjectPickerOpen(false);
+      if (stampModalMode === "change") {
+        setStampNextComment("");
+      } else {
+        setStampComment("");
+      }
+      setStampError("");
+      return;
+    }
+
+    setStampSelectionMode("project");
+    setStampProjectId(entry.projectId || "");
+    setStampProjectSearch(getPlanningEntryStampLabel(entry));
+    setStampUnproductiveLabel("");
+    setIsStampProjectSearchOpen(false);
+    setIsStampManualProjectPickerOpen(false);
+    if (stampModalMode === "change") {
+      setStampNextComment("");
+    } else {
+      setStampComment("");
+    }
+    setStampError("");
+  }
+
   function resetStampCompletionState() {
     setStampCompletionState("");
     setFinalInspectionChecks(finalInspectionItems.map(() => false));
     setFinalInspectionByColleague(false);
     setFinalInspectionHasUpsell(false);
     setFinalInspectionUpsellNotes("");
+    setFinalInspectionOptionalOpen(false);
   }
 
   function openStampStartModal() {
     if (!hasLoadedHeroProjects) void loadHeroProjects();
     setStampModalMode("start");
     setStampSelectionMode("project");
-    setStampProjectId(heroProjects[0]?.id || "");
+    setStampProjectId("");
     setStampProjectSearch("");
-    setIsStampProjectSearchOpen(true);
+    setIsStampProjectSearchOpen(false);
+    setIsStampManualProjectPickerOpen(false);
+    setStampUnproductiveLabel("");
     setStampComment("");
+    setStampNextComment("");
     setStampError("");
     resetStampCompletionState();
     setIsStampModalOpen(true);
@@ -10950,11 +14667,14 @@ export function DashboardPage() {
     if (!stampSession) return;
     if (!hasLoadedHeroProjects) void loadHeroProjects();
     setStampModalMode("change");
-    setStampSelectionMode(stampSession.mode === "unproductive" ? "project" : stampSession.mode);
-    setStampProjectId(stampSession.projectId || heroProjects[0]?.id || "");
+    setStampSelectionMode(stampSession.mode);
+    setStampProjectId("");
     setStampProjectSearch("");
-    setIsStampProjectSearchOpen(true);
+    setIsStampProjectSearchOpen(false);
+    setIsStampManualProjectPickerOpen(false);
+    setStampUnproductiveLabel("");
     setStampComment("");
+    setStampNextComment("");
     setStampError("");
     resetStampCompletionState();
     setIsStampModalOpen(true);
@@ -10964,13 +14684,16 @@ export function DashboardPage() {
     if (!stampSession) return;
     setStampModalMode("stop");
     setStampComment("");
+    setStampNextComment("");
     setStampError("");
     resetStampCompletionState();
     setIsStampModalOpen(true);
   }
 
-  async function startStampSession(mode: StampMode, projectId: string) {
-    const projectLabel = mode === "project" ? getStampProjectLabel(projectId) : "Unproduktiv";
+  async function startStampSession(mode: StampMode, projectId: string, comment: string, unproductiveLabel = "") {
+    const normalizedUnproductiveLabel = unproductiveLabel.trim();
+    const projectLabel =
+      mode === "project" ? getStampProjectLabel(projectId) : normalizedUnproductiveLabel || "Unproduktiv";
     const res = await fetch("/api/stamp-session", {
       method: "POST",
       headers: {
@@ -10983,6 +14706,7 @@ export function DashboardPage() {
         mode,
         projectId: mode === "project" ? projectId : "__unproductive__",
         projectLabel,
+        comment,
       }),
     });
 
@@ -11091,7 +14815,7 @@ export function DashboardPage() {
   function openStampEntryEditModal(entry: StampTimeEntry) {
     if (!canManageProjectTimeEntries) return;
     setEditingStampEntry(entry);
-    setStampEditDate(entry.date);
+    setStampEditDate(normalizeDateKeyValue(entry.date));
     setStampEditStartTime(entry.startTime);
     setStampEditEndTime(entry.endTime);
     setStampEditPause(formatStampDuration(entry.pauseMs));
@@ -11103,14 +14827,7 @@ export function DashboardPage() {
     if (!selectedProjectFile) return;
     const now = new Date();
     setManualProjectTimeUserId(activeUser?.id || users.find((user) => user.isActive)?.id || "");
-    setStampEditDate(
-      new Intl.DateTimeFormat(APP_LOCALE, {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        timeZone: APP_TIME_ZONE,
-      }).format(now)
-    );
+    setStampEditDate(formatDateKey(now));
     setStampEditStartTime("08:00");
     setStampEditEndTime("09:00");
     setStampEditPause("0:00:00");
@@ -11173,7 +14890,9 @@ export function DashboardPage() {
       await addProjectLogbookEntry(
         selectedProjectFile.id,
         "Zeit & Lohn",
-        `Manueller Zeiteintrag: ${selectedUser.name}, ${stampEditDate.trim()} ${stampEditStartTime}-${stampEditEndTime}, ${formatStampDuration(rawDurationMs)}.`
+        `Manueller Zeiteintrag: ${selectedUser.name}, ${formatProjectDate(
+          normalizeDateKeyValue(stampEditDate.trim())
+        )} ${stampEditStartTime}-${stampEditEndTime}, ${formatStampDuration(rawDurationMs)}.`
       );
       closeManualProjectTimeModal();
     } catch (error) {
@@ -11207,12 +14926,12 @@ export function DashboardPage() {
 
     const rawDurationMs = (endMinutes - startMinutes) * 60_000 - pauseMs;
     if (rawDurationMs <= 0) {
-      setStampEditError("Die Laufzeit muss gröxer als 0 sein.");
+      setStampEditError("Die Laufzeit muss größer als 0 sein.");
       return;
     }
 
-    const previousSummary = `${editingStampEntry.date} ${editingStampEntry.startTime}-${editingStampEntry.endTime}, Pause ${formatStampDuration(editingStampEntry.pauseMs)}, ${formatStampDuration(editingStampEntry.durationMs)}`;
-    const nextSummary = `${normalizeDateKeyValue(stampEditDate.trim())} ${stampEditStartTime}-${stampEditEndTime}, Pause ${formatStampDuration(pauseMs)}, ${formatStampDuration(rawDurationMs)}`;
+    const previousSummary = `${formatProjectDate(editingStampEntry.date)} ${editingStampEntry.startTime}-${editingStampEntry.endTime}, Pause ${formatStampDuration(editingStampEntry.pauseMs)}, ${formatStampDuration(editingStampEntry.durationMs)}`;
+    const nextSummary = `${formatProjectDate(normalizeDateKeyValue(stampEditDate.trim()))} ${stampEditStartTime}-${stampEditEndTime}, Pause ${formatStampDuration(pauseMs)}, ${formatStampDuration(rawDurationMs)}`;
     const updatedEntry: StampTimeEntry = {
       ...editingStampEntry,
       date: normalizeDateKeyValue(stampEditDate.trim()),
@@ -11274,8 +14993,16 @@ export function DashboardPage() {
     closeStampEntryEditModal();
   }
 
-  async function closeCurrentStampSession(comment: string) {
+  async function closeCurrentStampSession(
+    comment: string,
+    completionStatus: "" | "finished" | "interrupted" = ""
+  ) {
     if (!stampSession) return null;
+    const finalComment = combineStampComments(stampSession.comment || "", comment);
+    const normalizedCompletionStatus =
+      stampSession.mode === "project" && (completionStatus === "finished" || completionStatus === "interrupted")
+        ? completionStatus
+        : "";
 
     const res = await fetch("/api/stamp-session", {
       method: "POST",
@@ -11285,7 +15012,8 @@ export function DashboardPage() {
       body: JSON.stringify({
         action: "stop",
         userId: activeUser?.id || activeUserId,
-        comment,
+        comment: finalComment,
+        completionStatus: normalizedCompletionStatus,
       }),
     });
 
@@ -11333,8 +15061,10 @@ export function DashboardPage() {
     }
 
     await loadProjectLogbookEntries();
+    const project = heroProjects.find((item) => item.id === entry.projectId);
+    await confirmFinalInspectionStatus(project);
+    await notifyProjectBillingReady(project, normalizeDateKeyValue(entry.date).slice(0, 7) || getCurrentMonthKey());
     if (finalInspectionHasUpsell) {
-      const project = heroProjects.find((item) => item.id === entry.projectId);
       if (project) {
         await createProjectPotential(project, finalInspectionUpsellNotes.trim());
       }
@@ -11376,19 +15106,24 @@ export function DashboardPage() {
     const requiresProjectCompletionState =
       (stampModalMode === "change" || stampModalMode === "stop") &&
       stampSession?.mode === "project";
-    const onlyProjectFollowUp =
-      stampModalMode === "change" && stampSession?.mode === "unproductive";
     const selectedNextProject =
       stampSelectionMode === "project"
         ? heroProjects.find((project) => project.id === stampProjectId)
         : null;
     const nextProjectId = selectedNextProject?.id ?? "";
+    const nextUnproductiveLabel = stampUnproductiveLabel.trim();
     if (stampModalMode !== "stop" && stampSelectionMode === "project" && !selectedNextProject) {
       setStampError("Bitte ein Projekt auswählen.");
       return;
     }
-    if ((stampModalMode === "change" || stampModalMode === "stop") && !stampComment.trim()) {
-      setStampError("Bitte einen Kommentar zur abgeschlossenen Stempelung eingeben.");
+    if (stampModalMode !== "stop" && stampSelectionMode === "unproductive" && !nextUnproductiveLabel) {
+      setStampError("Bitte eine unproduktive Taetigkeit auswaehlen oder eintragen.");
+      return;
+    }
+    const nextStampComment = stampModalMode === "change" ? stampNextComment.trim() : stampComment.trim();
+    const startsNextStamp = stampModalMode === "start" || stampModalMode === "change";
+    if (startsNextStamp && !nextStampComment) {
+      setStampError("Bitte kurz eintragen, was du gerade machst.");
       return;
     }
     if (requiresProjectCompletionState) {
@@ -11398,6 +15133,7 @@ export function DashboardPage() {
       }
       if (
         stampCompletionState === "finished" &&
+        shouldShowFinalInspectionChecklist &&
         !finalInspectionByColleague &&
         finalInspectionHasUpsell &&
         !finalInspectionUpsellNotes.trim()
@@ -11409,8 +15145,13 @@ export function DashboardPage() {
 
     if (stampModalMode === "change" || stampModalMode === "stop") {
       try {
-        const closedEntry = await closeCurrentStampSession(stampComment.trim());
-        if (requiresProjectCompletionState && closedEntry && stampCompletionState === "finished") {
+        const closedEntry = await closeCurrentStampSession(stampComment.trim(), stampCompletionState);
+        if (
+          requiresProjectCompletionState &&
+          closedEntry &&
+          stampCompletionState === "finished" &&
+          shouldShowFinalInspectionChecklist
+        ) {
           await saveFinalInspectionForStamp(closedEntry);
         }
       } catch (error) {
@@ -11425,15 +15166,22 @@ export function DashboardPage() {
       setStampSession(null);
       setIsStampModalOpen(false);
       setStampComment("");
+      setStampNextComment("");
+      setStampUnproductiveLabel("");
       setStampError("");
       resetStampCompletionState();
       return;
     }
 
     try {
-      await startStampSession(stampSelectionMode, nextProjectId);
+      await startStampSession(stampSelectionMode, nextProjectId, nextStampComment, nextUnproductiveLabel);
+      if (stampSelectionMode === "project" && selectedNextProject) {
+        await confirmImplementationStatus(selectedNextProject, "Projektbezogene Stempelung gestartet");
+      }
       setIsStampModalOpen(false);
       setStampComment("");
+      setStampNextComment("");
+      setStampUnproductiveLabel("");
       setStampError("");
       resetStampCompletionState();
     } catch (error) {
@@ -11743,6 +15491,7 @@ export function DashboardPage() {
     setUserDailyWorkHours("8");
     setUserPassword("");
     setUserProfileImageDataUrl("");
+    setEmployeePersonalNumber("");
     setEmployeeSalutation("Herr");
     setEmployeeBirthDate("");
     setEmployeeLanguage("Deutsch (Deutschland)");
@@ -11914,6 +15663,7 @@ export function DashboardPage() {
     setUserDailyWorkHours(user.dailyWorkHours.toString());
     setUserPassword("");
     setUserProfileImageDataUrl(user.profileImageDataUrl ?? "");
+    setEmployeePersonalNumber(user.personalNumber ?? "");
     setEmployeeSalutation(user.salutation || "Herr");
     setEmployeeBirthDate(user.birthDate || "");
     setEmployeeLanguage(user.language || "Deutsch (Deutschland)");
@@ -12117,6 +15867,9 @@ export function DashboardPage() {
         password: userPassword,
         dailyWorkHours: Number(userDailyWorkHours),
         profileImageDataUrl: userProfileImageDataUrl,
+        ...(activeUser?.role === "GESCHAEFTSFUEHRER"
+          ? { personalNumber: employeePersonalNumber }
+          : {}),
         salutation: employeeSalutation,
         birthDate: employeeBirthDate,
         language: employeeLanguage,
@@ -12589,6 +16342,7 @@ export function DashboardPage() {
   };
   const myRelevantTasks = activeTasks.filter(
     (task) =>
+      task.createdById === activeUserId ||
       task.zustaendigId === activeUserId ||
       task.participants.some((participant) => participant.userId === activeUserId) ||
       isTaskEscalatedToActiveUser(task)
@@ -12631,6 +16385,10 @@ export function DashboardPage() {
       keepMonth?: boolean;
     } = {}
   ) {
+    if (isAccountingRole(activeUser?.role)) {
+      return;
+    }
+
     if (options.activeTab) {
       setActiveTab(options.activeTab);
     } else {
@@ -12674,6 +16432,273 @@ export function DashboardPage() {
     );
   const hasProjectPotential = (project: HeroProjectPreview) =>
     getProjectPotentialEntries(project.id).length > 0;
+  const buildAccountingDocumentSearchText = (parts: Array<string | number | undefined>) =>
+    parts
+      .filter((part) => part !== undefined && part !== null && String(part).trim().length > 0)
+      .join(" ")
+      .toLocaleLowerCase(APP_LOCALE);
+  const accountingDocumentRows: AccountingDocumentRow[] = [
+    ...offers.map((offer) => {
+      const project = heroProjects.find((item) => item.id === offer.projectId);
+      const type: AccountingDocumentRow["type"] = offer.offerType === "addendum" ? "Angebot" : "Angebot";
+      const projectLabel = [offer.projectNumber, offer.projectTitle].filter(Boolean).join(" | ");
+
+      return {
+        id: `offer-${offer.id}`,
+        type,
+        number: offer.offerNumber,
+        customerName: offer.customerName,
+        projectLabel,
+        date: offer.createdAt,
+        amount: Number(offer.netTotal) || 0,
+        status: offer.status,
+        source: "WorkPilot",
+        project,
+        projectDocumentType: "Angebote" as CustomerDocumentType,
+        searchText: buildAccountingDocumentSearchText([
+          type,
+          offer.offerNumber,
+          offer.customerName,
+          projectLabel,
+          offer.status,
+          offer.company,
+          Number(offer.netTotal) || 0,
+        ]),
+      };
+    }),
+    ...invoices.map((invoice) => {
+      const project = heroProjects.find((item) => item.id === invoice.projectId);
+      const lowerStatus = invoice.status.toLocaleLowerCase(APP_LOCALE);
+      const lowerNumber = invoice.invoiceNumber.toLocaleLowerCase(APP_LOCALE);
+      const type: AccountingDocumentRow["type"] =
+        lowerStatus.includes("storno") || lowerNumber.includes("storno") ? "Storno" : "Rechnung";
+      const projectLabel = [invoice.projectNumber, invoice.projectTitle].filter(Boolean).join(" | ");
+
+      return {
+        id: `invoice-${invoice.id}`,
+        type,
+        number: invoice.invoiceNumber,
+        customerName: invoice.customerName,
+        projectLabel,
+        date: invoice.serviceDate || invoice.createdAt,
+        amount: Number(invoice.netTotal) || 0,
+        status: invoice.status,
+        source: invoice.billingSource === "batch" ? "WorkPilot Stapel" : "WorkPilot",
+        project,
+        projectDocumentType: "Rechnungen" as CustomerDocumentType,
+        searchText: buildAccountingDocumentSearchText([
+          type,
+          invoice.invoiceNumber,
+          invoice.customerName,
+          projectLabel,
+          invoice.status,
+          invoice.company,
+          Number(invoice.netTotal) || 0,
+        ]),
+      };
+    }),
+    ...legacyInvoices.map((invoice) => {
+      const type: AccountingDocumentRow["type"] = "Rechnung ALT";
+
+      return {
+        id: `legacy-${invoice.id}`,
+        type,
+        number: invoice.invoiceNumber,
+        customerName: invoice.customerName,
+        projectLabel: invoice.projectAddress,
+        date: invoice.invoiceDate,
+        amount: Number(invoice.netTotal) || 0,
+        status: invoice.status,
+        source: invoice.source || "HERO",
+        searchText: buildAccountingDocumentSearchText([
+          type,
+          invoice.invoiceNumber,
+          invoice.fileName,
+          invoice.customerName,
+          invoice.projectAddress,
+          invoice.status,
+          invoice.company,
+          Number(invoice.netTotal) || 0,
+        ]),
+      };
+    }),
+  ].sort((first, second) => {
+    const firstDate = parseProjectDate(first.date)?.getTime() ?? 0;
+    const secondDate = parseProjectDate(second.date)?.getTime() ?? 0;
+    return secondDate - firstDate;
+  });
+  const filteredAccountingDocumentRows = accountingDocumentRows.filter((row) => {
+    if (accountingDocumentTypeFilter === "offers" && row.type !== "Angebot") return false;
+    if (accountingDocumentTypeFilter === "invoices" && row.type !== "Rechnung") return false;
+    if (accountingDocumentTypeFilter === "cancellations" && row.type !== "Storno") return false;
+    if (accountingDocumentTypeFilter === "legacy" && row.type !== "Rechnung ALT") return false;
+
+    const customerProjectQuery = accountingDocumentCustomerProjectFilter.trim().toLocaleLowerCase(APP_LOCALE);
+    if (
+      customerProjectQuery &&
+      !buildAccountingDocumentSearchText([row.customerName, row.projectLabel]).includes(customerProjectQuery)
+    ) {
+      return false;
+    }
+
+    const fullTextQuery = accountingDocumentSearch.trim().toLocaleLowerCase(APP_LOCALE);
+    return !fullTextQuery || row.searchText.includes(fullTextQuery);
+  });
+  const accountingDocumentSummary = {
+    total: accountingDocumentRows.length,
+    offers: accountingDocumentRows.filter((row) => row.type === "Angebot").length,
+    invoices: accountingDocumentRows.filter((row) => row.type === "Rechnung").length,
+    cancellations: accountingDocumentRows.filter((row) => row.type === "Storno").length,
+    legacy: accountingDocumentRows.filter((row) => row.type === "Rechnung ALT").length,
+  };
+  const resetAccountingDocumentFilters = () => {
+    setAccountingDocumentSearch("");
+    setAccountingDocumentCustomerProjectFilter("");
+    setAccountingDocumentTypeFilter("all");
+  };
+  function renderAccountingDocuments() {
+    return (
+      <section className={styles.settingsPanel}>
+        <div className={styles.topline}>
+          <div>
+            <p className={styles.eyebrow}>Buchhaltung</p>
+            <h1>Dokumente</h1>
+            <p className={styles.subline}>
+              Zentrale Ablage für erzeugte kaufmännische Dokumente inklusive HERO-Altrechnungen.
+            </p>
+          </div>
+        </div>
+
+        <section className={styles.accountingDocumentSummaryGrid}>
+          <article>
+            <span>Gesamt</span>
+            <strong>{accountingDocumentSummary.total}</strong>
+            <small>Dokumente</small>
+          </article>
+          <article>
+            <span>Angebote</span>
+            <strong>{accountingDocumentSummary.offers}</strong>
+            <small>inkl. Nachträge</small>
+          </article>
+          <article>
+            <span>Rechnungen</span>
+            <strong>{accountingDocumentSummary.invoices}</strong>
+            <small>WorkPilot</small>
+          </article>
+          <article>
+            <span>Stornos</span>
+            <strong>{accountingDocumentSummary.cancellations}</strong>
+            <small>Gutschriften / Storno</small>
+          </article>
+          <article>
+            <span>Rechnung ALT</span>
+            <strong>{accountingDocumentSummary.legacy}</strong>
+            <small>HERO-Import</small>
+          </article>
+        </section>
+
+        <section className={`${styles.stampSearchBar} ${styles.accountingDocumentFilters}`}>
+          <label>
+            Kunde / Projekt
+            <input
+              type="search"
+              value={accountingDocumentCustomerProjectFilter}
+              onChange={(event) => setAccountingDocumentCustomerProjectFilter(event.target.value)}
+              placeholder="Kunde, Projekt oder Adresse suchen..."
+            />
+          </label>
+          <label>
+            Volltextsuche
+            <input
+              type="search"
+              value={accountingDocumentSearch}
+              onChange={(event) => setAccountingDocumentSearch(event.target.value)}
+              placeholder="Dokumentnummer, Status, Datei, Betrag..."
+            />
+          </label>
+          <label>
+            Dokumenttyp
+            <select
+              value={accountingDocumentTypeFilter}
+              onChange={(event) => setAccountingDocumentTypeFilter(event.target.value as AccountingDocumentTypeFilter)}
+            >
+              <option value="all">Alle Dokumente</option>
+              <option value="offers">Angebote</option>
+              <option value="invoices">Rechnungen</option>
+              <option value="cancellations">Stornos</option>
+              <option value="legacy">Rechnung ALT</option>
+            </select>
+          </label>
+          <button type="button" className={styles.secondaryButton} onClick={resetAccountingDocumentFilters}>
+            Zurücksetzen
+          </button>
+          <span className={styles.stampSearchResult}>{filteredAccountingDocumentRows.length} Treffer</span>
+        </section>
+
+        <section className={styles.tableCard}>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>Dokument</th>
+                <th>Typ</th>
+                <th>Kunde</th>
+                <th>Projekt / Bezug</th>
+                <th>Datum</th>
+                <th>Betrag netto</th>
+                <th>Status</th>
+                <th>Quelle</th>
+                <th>Aktion</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredAccountingDocumentRows.length === 0 ? (
+                <tr>
+                  <td colSpan={9}>Keine Dokumente gefunden.</td>
+                </tr>
+              ) : (
+                filteredAccountingDocumentRows.map((row) => (
+                  <tr key={row.id}>
+                    <td>
+                      <strong>{row.number || "-"}</strong>
+                    </td>
+                    <td>{row.type}</td>
+                    <td>{row.customerName || "-"}</td>
+                    <td>{row.projectLabel || "-"}</td>
+                    <td>{formatProjectDate(row.date)}</td>
+                    <td>{formatMoney(row.amount)}</td>
+                    <td>
+                      <span className={styles.invoiceStatusChip} data-status={row.status}>
+                        {row.status || "-"}
+                      </span>
+                    </td>
+                    <td>{row.source}</td>
+                    <td>
+                      {row.project && row.projectDocumentType ? (
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          onClick={() =>
+                            openProjectFile(row.project as HeroProjectPreview, {
+                              tab: "documents",
+                              documentType: row.projectDocumentType,
+                            })
+                          }
+                        >
+                          Projekt öffnen
+                        </button>
+                      ) : (
+                        <span className={styles.accountingDocumentMuted}>Kein Projekt verknüpft</span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </section>
+      </section>
+    );
+  }
   const activePipelineProjects = heroProjects.filter((project) => {
     const projectType = (project.projectType ?? "").toLowerCase();
     const projectNumber = (project.projectNumber ?? "").toLowerCase();
@@ -12744,35 +16769,38 @@ export function DashboardPage() {
     count: number;
   }> = [
     {
-      key: "Dauerläufer-Projekt",
+      key: RECURRING_PROJECT_KIND,
       label: "Dauerläufer-Projekte",
       count: activePipelineProjects.filter(
-        (project) => getProjectKind(project) === "Dauerläufer-Projekt"
+        (project) => isRecurringProjectKindValue(getProjectKind(project))
       ).length,
     },
     {
-      key: "einmaliges Projekt",
+      key: ONE_TIME_PROJECT_KIND,
       label: "Einmalige-Projekte",
       count: activePipelineProjects.filter(
-        (project) => getProjectKind(project) === "einmaliges Projekt"
+        (project) => normalizeProjectKindValue(getProjectKind(project)) === ONE_TIME_PROJECT_KIND
       ).length,
     },
     {
       key: "potentials",
-      label: "Potenziale",
+      label: "Zusatzverkäufe",
       count: getPotentialStatusCount("all"),
     },
   ];
   const visibleHeroProjects = activePipelineProjects.filter((project) => {
     if (selectedProjectKindFilter === "potentials") {
       if (!hasProjectPotential(project)) return false;
-    } else if (selectedProjectKindFilter && getProjectKind(project) !== selectedProjectKindFilter) {
+    } else if (
+      selectedProjectKindFilter &&
+      normalizeProjectKindValue(getProjectKind(project)) !== normalizeProjectKindValue(selectedProjectKindFilter)
+    ) {
       return false;
     }
 
     if (
       selectedProjectPipelineStatus !== "Alle Offenen" &&
-      project.status !== selectedProjectPipelineStatus
+      normalizeProjectPipelineStatus(project.status) !== normalizeProjectPipelineStatus(selectedProjectPipelineStatus)
     ) {
       return false;
     }
@@ -12794,7 +16822,9 @@ export function DashboardPage() {
       ? selectedProjectKindFilter === "potentials"
         ? activePipelineProjects.filter(hasProjectPotential)
         : activePipelineProjects.filter(
-            (project) => getProjectKind(project) === selectedProjectKindFilter
+            (project) =>
+              normalizeProjectKindValue(getProjectKind(project)) ===
+              normalizeProjectKindValue(selectedProjectKindFilter)
           )
       : activePipelineProjects;
 
@@ -12802,27 +16832,30 @@ export function DashboardPage() {
       return projectsForKind.length;
     }
 
-    return projectsForKind.filter((project) => project.status === statusLabel).length;
+    return projectsForKind.filter(
+      (project) => normalizeProjectPipelineStatus(project.status) === normalizeProjectPipelineStatus(statusLabel)
+    ).length;
   };
   const activePipelineStatus =
-    activeProjectPipeline.statuses.find(
-      (statusItem) => statusItem.label === selectedProjectPipelineStatus
+    projectLifecycleStatuses.find(
+      (statusItem) =>
+        normalizeProjectPipelineStatus(statusItem.label) === normalizeProjectPipelineStatus(selectedProjectPipelineStatus)
     ) ?? activeProjectPipeline.statuses[1];
   const projectPipelineTitle =
-    selectedProjectKindFilter === "Dauerläufer-Projekt"
+    isRecurringProjectKindValue(selectedProjectKindFilter)
       ? `Dauerläufer-Projekte ${activeProjectPipeline.company}`
-      : selectedProjectKindFilter === "einmaliges Projekt"
+      : selectedProjectKindFilter && normalizeProjectKindValue(selectedProjectKindFilter) === ONE_TIME_PROJECT_KIND
         ? `Einmalige-Projekte ${activeProjectPipeline.company}`
         : selectedProjectKindFilter === "potentials"
-          ? `Potenziale ${activeProjectPipeline.company}`
+          ? `Zusatzverkäufe ${activeProjectPipeline.company}`
         : activeProjectPipeline.label;
   const projectPipelineSubline =
-    selectedProjectKindFilter === "Dauerläufer-Projekt"
+    isRecurringProjectKindValue(selectedProjectKindFilter)
       ? "Hier werden Projekte mit längerer Laufzeit gemanagt"
-      : selectedProjectKindFilter === "einmaliges Projekt"
+      : selectedProjectKindFilter && normalizeProjectKindValue(selectedProjectKindFilter) === ONE_TIME_PROJECT_KIND
         ? "Hier werden einmalige Projekte gemanagt"
         : selectedProjectKindFilter === "potentials"
-          ? "Hier landen Zusatzverkaufschancen, bei denen der Kunde aktuell kein Angebot wünscht."
+          ? "Hier landen Zusatzverkäufe, bei denen der Kunde aktuell kein Angebot wünscht."
         : `Getrennte Pipeline für ${activeProjectPipeline.company} mit eigenen Status.`;
 
   async function updateSelectedProjectStatus(nextStatus: string) {
@@ -13105,6 +17138,58 @@ export function DashboardPage() {
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase();
+  const getStampProjectFilterKey = (entry: StampTimeEntry) => {
+    if (entry.mode === "unproductive") return "__unproductive__";
+    return entry.projectId || entry.projectLabel || "";
+  };
+  const getStampProjectFilterLabel = (entry: StampTimeEntry) => {
+    if (entry.mode === "unproductive") return entry.projectLabel || "Unproduktiv";
+    const project = entry.projectId ? heroProjects.find((item) => item.id === entry.projectId) : undefined;
+    if (project) {
+      return [project.projectNumber, project.customer].filter(Boolean).join(" | ") || project.title;
+    }
+    return entry.projectLabel || "Projekt ohne Bezeichnung";
+  };
+  const filterStampEntriesForSearch = (entries: StampTimeEntry[], projectFilter: string, searchValue: string) => {
+    const normalizedProjectFilter = normalizeStampSearchValue(projectFilter.trim());
+    const normalizedSearch = normalizeStampSearchValue(searchValue.trim());
+    return entries.filter((entry) => {
+      const project = entry.projectId ? heroProjects.find((item) => item.id === entry.projectId) : undefined;
+      if (normalizedProjectFilter) {
+        const projectHaystack = [
+          getStampProjectFilterLabel(entry),
+          getStampProjectFilterKey(entry),
+          entry.projectLabel,
+          entry.mode === "project" ? "Produktiv" : "Unproduktiv",
+          project?.projectNumber,
+          project?.title,
+          project?.customer,
+        ];
+        const matchesProject = projectHaystack
+          .filter(Boolean)
+          .some((value) => normalizeStampSearchValue(String(value)).includes(normalizedProjectFilter));
+        if (!matchesProject) return false;
+      }
+      if (!normalizedSearch) return true;
+
+      return [
+        entry.date,
+        entry.startTime,
+        entry.endTime,
+        entry.mode === "project" ? "Produktiv" : "Unproduktiv",
+        entry.entrySource === "manual" ? "Manuell" : "Gestempelt",
+        entry.projectLabel,
+        project?.projectNumber,
+        project?.title,
+        project?.customer,
+        entry.employee,
+        entry.comment,
+        entry.invoiceNumber,
+      ]
+        .filter(Boolean)
+        .some((value) => normalizeStampSearchValue(String(value)).includes(normalizedSearch));
+    });
+  };
   const openStampProjects = heroProjects.filter(
     (project) => project.status !== "Abgeschlossen" && project.status !== "Archiviert"
   );
@@ -13122,6 +17207,19 @@ export function DashboardPage() {
     })
     .slice(0, 10);
   const selectedStampProject = heroProjects.find((project) => project.id === stampProjectId);
+  const currentStampProject =
+    stampSession?.mode === "project"
+      ? heroProjects.find((project) => String(project.id) === String(stampSession.projectId))
+      : null;
+  const isCurrentStampProjectImmocare =
+    Boolean(currentStampProject) && getProjectCompany(currentStampProject) === "OK immocare";
+  const shouldShowFinalInspectionChecklist =
+    stampCompletionState === "finished" &&
+    stampSession?.mode === "project" &&
+    (isCurrentStampProjectImmocare || finalInspectionOptionalOpen);
+  const stampNeedsCompletionDecision =
+    stampModalMode === "change" && stampSession?.mode === "project" && !stampCompletionState;
+  const stampCanChooseFollowUp = stampModalMode !== "stop" && !stampNeedsCompletionDecision;
   const todayStampDate = new Intl.DateTimeFormat(APP_LOCALE, {
     day: "2-digit",
     month: "2-digit",
@@ -13215,6 +17313,7 @@ export function DashboardPage() {
   };
   const getPlanningBoardUsers = (company: string, groupName: string) =>
     users.filter((user) => {
+      if (!user.isActive) return false;
       if ((user.planningBoard ?? "OK solutions") !== company) return false;
       return groupName === "Gesamt" || (user.planningGroup ?? "") === groupName;
     });
@@ -13299,7 +17398,7 @@ export function DashboardPage() {
   };
   const selectedPlanningGroupEmployees =
     users
-      .filter((user) => (user.planningGroup ?? "") === selectedPlanningGroup)
+      .filter((user) => user.isActive && (user.planningGroup ?? "") === selectedPlanningGroup)
       .map((user) => user.name);
   const selectedPlanningDate = new Date(`${selectedPlanningDateKey}T12:00`);
   const selectedPlanningHoliday = getHolidayForDateKey(selectedPlanningDateKey);
@@ -13355,6 +17454,24 @@ export function DashboardPage() {
   const filteredPlanningProjects = openPlanningProjects
     .filter((project) => {
       const search = normalizeStampSearchValue(planningEntryProjectSearch);
+      if (!search) return true;
+
+      return [
+        project.projectNumber,
+        project.title,
+        project.customer,
+        project.status,
+        project.trade,
+        project.address,
+        project.responsibleName,
+      ]
+        .filter(Boolean)
+        .some((value) => normalizeStampSearchValue(String(value)).includes(search));
+    })
+    .slice(0, 12);
+  const filteredPlanningSlotProjects = openPlanningProjects
+    .filter((project) => {
+      const search = normalizeStampSearchValue(planningSlotAction?.projectSearch ?? "");
       if (!search) return true;
 
       return [
@@ -13443,6 +17560,208 @@ export function DashboardPage() {
         startColumn: getPlanningSlotIndex(entry.startTime) + 1,
         endColumn: getPlanningSlotIndex(entry.endTime) + 1,
       }));
+  };
+  const getPlanningActiveStampForUser = (user: UserOption | undefined) => {
+    if (!user) return null;
+    if (selectedPlanningDateKey !== formatDateKey(new Date(timerNow))) return null;
+
+    const activeSession =
+      user.id === activeUserId && stampSession
+        ? stampSession
+        : mapActiveStampSession(dashboardStampSessions[user.id] ?? null);
+
+    return activeSession;
+  };
+  const doesPlanningEntryTargetMatchStampSession = (entry: PlanningEntry, session: StampSession) => {
+    if (session.mode === "project") {
+      if (entry.projectId && session.projectId && String(entry.projectId) === String(session.projectId)) {
+        return true;
+      }
+
+      const entryLabel = normalizeStampSearchValue(getPlanningEntryStampLabel(entry));
+      const sessionLabel = normalizeStampSearchValue(session.projectLabel || "");
+      return Boolean(entryLabel && sessionLabel && entryLabel === sessionLabel);
+    }
+
+    const entryActivityLabel = normalizeStampSearchValue(entry.projectLabel || entry.title || "");
+    const sessionActivityLabel = normalizeStampSearchValue(session.projectLabel || "");
+    return Boolean(entryActivityLabel && sessionActivityLabel && entryActivityLabel === sessionActivityLabel);
+  };
+  const doesPlanningEntryTargetMatchStampEntry = (entry: PlanningEntry, stampEntry: StampTimeEntry) => {
+    if (stampEntry.mode === "project") {
+      if (entry.projectId && stampEntry.projectId && String(entry.projectId) === String(stampEntry.projectId)) {
+        return true;
+      }
+
+      const entryLabel = normalizeStampSearchValue(getPlanningEntryStampLabel(entry));
+      const stampLabel = normalizeStampSearchValue(stampEntry.projectLabel || "");
+      return Boolean(entryLabel && stampLabel && entryLabel === stampLabel);
+    }
+
+    const entryActivityLabel = normalizeStampSearchValue(entry.projectLabel || entry.title || "");
+    const stampActivityLabel = normalizeStampSearchValue(stampEntry.projectLabel || "");
+    return Boolean(entryActivityLabel && stampActivityLabel && entryActivityLabel === stampActivityLabel);
+  };
+  const doesPlanningEntryMatchStampSession = (entry: PlanningEntry, session: StampSession) => {
+    const todayKey = formatDateKey(new Date(timerNow));
+    if (entry.date !== todayKey) return false;
+    if (!doesPlanningEntryTargetMatchStampSession(entry, session)) return false;
+
+    const now = new Date(timerNow);
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const sessionStart = new Date(normalizeStampTimestamp(session.startedAt, timerNow));
+    const sessionStartMinutes = sessionStart.getHours() * 60 + sessionStart.getMinutes();
+    const entryStartMinutes = parseStampTimeToMinutes(entry.startTime) ?? 0;
+    const entryEndMinutes = parseStampTimeToMinutes(entry.endTime) ?? entryStartMinutes;
+    const sessionTouchesEntry =
+      (sessionStartMinutes >= entryStartMinutes && sessionStartMinutes < entryEndMinutes) ||
+      (nowMinutes >= entryStartMinutes && nowMinutes <= entryEndMinutes);
+
+    if (sessionTouchesEntry) return true;
+
+    const cutoffMinutes = Math.max(nowMinutes, sessionStartMinutes);
+    const latestMatchingPastEntry = planningEntries
+      .filter((candidate) => {
+        if (candidate.deletedAt) return false;
+        if (candidate.date !== todayKey) return false;
+        if (candidate.employeeName && entry.employeeName && candidate.employeeName !== entry.employeeName) return false;
+        if (!doesPlanningEntryTargetMatchStampSession(candidate, session)) return false;
+        const candidateEndMinutes = parseStampTimeToMinutes(candidate.endTime) ?? 0;
+        return candidateEndMinutes <= cutoffMinutes;
+      })
+      .sort((first, second) => {
+        const firstEnd = parseStampTimeToMinutes(first.endTime) ?? 0;
+        const secondEnd = parseStampTimeToMinutes(second.endTime) ?? 0;
+        return secondEnd - firstEnd;
+      })[0];
+
+    return latestMatchingPastEntry?.id === entry.id;
+  };
+  const doesPlanningEntryMatchStampEntry = (
+    entry: PlanningEntry,
+    stampEntry: StampTimeEntry,
+    user: UserOption | undefined,
+    options: { includeInterrupted?: boolean } = {}
+  ) => {
+    if (stampEntry.deletedAt) return false;
+    if (
+      stampEntry.mode === "project" &&
+      stampEntry.completionStatus === "interrupted" &&
+      !options.includeInterrupted
+    ) {
+      return false;
+    }
+    const entryDate = normalizeDateKeyValue(entry.date);
+    const stampEntryDate = normalizeDateKeyValue(stampEntry.date);
+    if (entryDate !== selectedPlanningDateKey || stampEntryDate !== selectedPlanningDateKey) return false;
+    if (user?.id && stampEntry.userId && stampEntry.userId !== user.id) return false;
+    if (user?.name && stampEntry.employee && stampEntry.employee !== user.name) return false;
+    if (!doesPlanningEntryTargetMatchStampEntry(entry, stampEntry)) return false;
+
+    if (doPlanningTimesOverlap(entry.startTime, entry.endTime, stampEntry.startTime, stampEntry.endTime)) {
+      return true;
+    }
+
+    const stampStartMinutes = parseStampTimeToMinutes(stampEntry.startTime) ?? 0;
+    const stampEndMinutes = parseStampTimeToMinutes(stampEntry.endTime) ?? stampStartMinutes;
+    const cutoffMinutes = Math.max(stampStartMinutes, stampEndMinutes);
+    const latestMatchingPastEntry = planningEntries
+      .filter((candidate) => {
+        if (candidate.deletedAt) return false;
+        if (normalizeDateKeyValue(candidate.date) !== selectedPlanningDateKey) return false;
+        if (candidate.employeeName && entry.employeeName && candidate.employeeName !== entry.employeeName) return false;
+        if (!doesPlanningEntryTargetMatchStampEntry(candidate, stampEntry)) return false;
+        const candidateEndMinutes = parseStampTimeToMinutes(candidate.endTime) ?? 0;
+        return candidateEndMinutes <= cutoffMinutes;
+      })
+      .sort((first, second) => {
+        const firstEnd = parseStampTimeToMinutes(first.endTime) ?? 0;
+        const secondEnd = parseStampTimeToMinutes(second.endTime) ?? 0;
+        return secondEnd - firstEnd;
+      })[0];
+
+    return latestMatchingPastEntry?.id === entry.id;
+  };
+  const getPlanningAssignmentStampProgress = (
+    assignmentId: string,
+    user: UserOption | undefined
+  ) => {
+    const entry = planningEntries.find((item) => item.id === assignmentId);
+    const activeSession = getPlanningActiveStampForUser(user);
+
+    if (!entry) return null;
+
+    const plannedMs = Math.max(
+      1,
+      getPlanningNetMinutesBetween(
+        entry.startTime,
+        entry.endTime,
+        getUserBreakWindowForDate(user, entry.date)
+      ) * 60_000
+    );
+    const matchingStampEntries = stampEntries.filter((stampEntry) =>
+      doesPlanningEntryMatchStampEntry(entry, stampEntry, user, { includeInterrupted: true })
+    );
+    const stampedMs = matchingStampEntries.reduce((sum, stampEntry) => {
+      const durationMs =
+        Number(stampEntry.durationMs || 0) > 0
+          ? Number(stampEntry.durationMs || 0)
+          : getPlanningMinutesBetween(stampEntry.startTime, stampEntry.endTime) * 60_000;
+
+      return sum + Math.max(0, durationMs);
+    }, 0);
+    const getProgressPercent = (additionalMs = 0) =>
+      Math.min(100, Math.max(2, ((stampedMs + additionalMs) / plannedMs) * 100));
+
+    if (activeSession && doesPlanningEntryMatchStampSession(entry, activeSession)) {
+      const progressPercent = getProgressPercent(getStampElapsedMilliseconds(activeSession));
+
+      return {
+        label: `${Math.round(progressPercent)}%`,
+        paused: Boolean(activeSession.pauseStartedAt),
+        completed: false,
+        active: true,
+        interrupted: false,
+        style: {
+          "--planning-progress-width": `${progressPercent}%`,
+        } as CSSProperties,
+      };
+    }
+
+    const latestMatchingStampEntry = matchingStampEntries
+      .sort((first, second) => {
+        const firstDate = normalizeDateKeyValue(first.date);
+        const secondDate = normalizeDateKeyValue(second.date);
+        const firstTime = first.endTime || first.startTime || "00:00";
+        const secondTime = second.endTime || second.startTime || "00:00";
+        return `${secondDate} ${secondTime}`.localeCompare(`${firstDate} ${firstTime}`);
+      })[0];
+
+    if (latestMatchingStampEntry?.completionStatus === "interrupted") {
+      return {
+        label: "Unterbrochen",
+        paused: false,
+        completed: false,
+        active: false,
+        interrupted: true,
+        style: {
+          "--planning-progress-width": "100%",
+        } as CSSProperties,
+      };
+    }
+
+    if (!latestMatchingStampEntry) return null;
+
+    return {
+      label: "Erledigt",
+      paused: false,
+      completed: true,
+      active: false,
+      interrupted: false,
+      style: {
+        "--planning-progress-width": "100%",
+      } as CSSProperties,
+    };
   };
   const isApprovedAbsence = (absence: AbsenceItem) => absence.status === "genehmigt";
   const getUserAbsenceForDay = (userId: string, date: Date) =>
@@ -13559,6 +17878,7 @@ export function DashboardPage() {
       matchesDeadlineFilter &&
       (!priorityFilter || task.prioritaet === priorityFilter) &&
       (!ownerFilter ||
+        task.createdById === ownerFilter ||
         task.zustaendigId === ownerFilter ||
         task.participants.some((participant) => participant.userId === ownerFilter) ||
         (ownerFilter === activeUserId && isTaskEscalatedToActiveUser(task)))
@@ -13570,12 +17890,13 @@ export function DashboardPage() {
   });
   const taskOwnerFilterOptions = users.filter(
     (user) =>
-      user.id === activeUserId ||
-      taskOverviewTasks.some(
-        (task) =>
-          task.zustaendigId === user.id ||
-          task.participants.some((participant) => participant.userId === user.id)
-      )
+      user.isActive &&
+      (user.id === activeUserId ||
+        taskOverviewTasks.some(
+          (task) =>
+            task.zustaendigId === user.id ||
+            task.participants.some((participant) => participant.userId === user.id)
+        ))
   );
   const reportDays = Array.from({ length: 10 }, (_, index) => {
     const day = new Date();
@@ -13936,16 +18257,18 @@ export function DashboardPage() {
     const activityLabel = activeSession
       ? activeSession.mode === "project"
         ? activeSession.projectLabel || getStampProjectLabel(activeSession.projectId)
-        : "Unproduktiv"
+        : activeSession.projectLabel || "Unproduktiv"
       : absenceToday
         ? absenceTodayLabel
       : "Nicht eingestempelt";
+    const activityComment = activeSession?.comment?.trim() || "";
     const stampState = activeSession?.pauseStartedAt ? "pause" : activeSession ? "active" : absenceToday ? "absent" : "idle";
 
     return {
       user,
       activeSession,
       activityLabel,
+      activityComment,
       durationLabel: activeSession ? formatStampDuration(getStampElapsedMilliseconds(activeSession)) : "-",
       statusLabel: stampState === "pause" ? "Pause" : stampState === "active" ? "Aktiv" : stampState === "absent" ? absenceTodayLabel : "Offline",
       stampState,
@@ -14027,10 +18350,9 @@ export function DashboardPage() {
   const plannedModuleLabels: Partial<Record<AppTab, string>> = {
     contacts: "Kontakte und CRM",
     newsFeed: "News-Feed",
-    salesHub: "Sales-Hub",
-    salesOpportunities: "Potenziale",
-    customerSatisfaction: "KuZu / Kundenzufriedenheit",
-    salesTargets: "Sales-Ziele",
+    salesHub: "Meine Ziele",
+    salesOpportunities: "Zusatzverkäufe",
+    salesTargets: "Zielverwaltung",
     documents: "Dokumente",
     contentRound: "Richtlinien",
     contentQuotas: "Kundenkontingente",
@@ -14048,9 +18370,220 @@ export function DashboardPage() {
     breakManagement: "Pausenverwaltung",
     processAutomation: "Prozess/Automation",
     winterService: "Winterdienst",
+    generalActivityReports: "Allg. T-Berichte",
   };
+
+  const canManageGoals = activeUser?.role === "ADMIN" || activeUser?.role === "GESCHAEFTSFUEHRER";
+  const visibleSalesGoals = salesGoals.filter((goal) => {
+    if (canManageGoals) return true;
+    if (!activeUser) return false;
+    return goal.ownerUserId === activeUser.id || normalizeGoalPerson(goal.ownerName) === normalizeGoalPerson(activeUser.name);
+  });
+  const openSalesGoals = visibleSalesGoals.filter((goal) => goal.status !== "done" && goal.status !== "discarded");
+
+  function renderMyGoals() {
+    const selectedMetric = getGoalMetricOption(goalDraft.metricKey);
+    const goalSummary = {
+      total: visibleSalesGoals.length,
+      open: openSalesGoals.length,
+      reached: visibleSalesGoals.filter((goal) => {
+        const targetValue = Number(goal.targetValue) || 0;
+        return targetValue > 0 && getGoalActualValue(goal) >= targetValue;
+      }).length,
+    };
+
+    return (
+      <section className={styles.settingsPanel}>
+        <div className={styles.topline}>
+          <div>
+            <p className={styles.eyebrow}>Ziele</p>
+            <h1>Meine Ziele</h1>
+            <p className={styles.subline}>
+              Ziele werden mit messbaren Kennzahlen verglichen. Die Ist-Werte kommen aus Angeboten,
+              Rechnungen, Aufgaben, Zusatzverkäufe und Kundenbewertungen.
+            </p>
+          </div>
+        </div>
+
+        <section className={styles.goalSummaryGrid}>
+          <article>
+            <span>Aktive Ziele</span>
+            <strong>{goalSummary.open}</strong>
+            <small>{goalSummary.total} Ziele insgesamt sichtbar</small>
+          </article>
+          <article>
+            <span>Erreicht</span>
+            <strong>{goalSummary.reached}</strong>
+            <small>Ist-Wert liegt mindestens beim Zielwert</small>
+          </article>
+          <article>
+            <span>KPI-Katalog</span>
+            <strong>{goalMetricOptions.length}</strong>
+            <small>Messbare Kennzahlen verfügbar</small>
+          </article>
+        </section>
+
+        {canManageGoals ? (
+          <section className={styles.goalCreatePanel}>
+            <div>
+              <h2>Ziel anlegen</h2>
+              <p>Geschäftsführung kann Ziele für aktive Mitarbeiter definieren.</p>
+            </div>
+            <div className={styles.goalCreateGrid}>
+              <label>
+                Mitarbeiter
+                <select
+                  value={goalDraft.ownerUserId}
+                  onChange={(event) => setGoalDraft((current) => ({ ...current, ownerUserId: event.target.value }))}
+                >
+                  {users.filter((user) => user.isActive).map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                KPI
+                <select
+                  value={goalDraft.metricKey}
+                  onChange={(event) =>
+                    setGoalDraft((current) => ({ ...current, metricKey: event.target.value as GoalMetricKey }))
+                  }
+                >
+                  {goalMetricOptions.map((metric) => (
+                    <option key={metric.key} value={metric.key}>
+                      {metric.label}
+                    </option>
+                  ))}
+                </select>
+                <small>{selectedMetric.hint}</small>
+              </label>
+              <label>
+                Zielwert
+                <input
+                  value={goalDraft.targetValue}
+                  onChange={(event) => setGoalDraft((current) => ({ ...current, targetValue: event.target.value }))}
+                  placeholder={selectedMetric.unit === "currency" ? "z.B. 25000" : "z.B. 10"}
+                />
+              </label>
+              <label>
+                Von
+                <input
+                  value={goalDraft.periodStart}
+                  onChange={(event) => setGoalDraft((current) => ({ ...current, periodStart: event.target.value }))}
+                  onBlur={(event) =>
+                    setGoalDraft((current) => ({
+                      ...current,
+                      periodStart: formatGoalPeriodLabel(event.target.value) === "-" ? event.target.value : formatGoalPeriodLabel(event.target.value),
+                    }))
+                  }
+                  placeholder="01.06.2026"
+                />
+              </label>
+              <label>
+                Bis
+                <input
+                  value={goalDraft.periodEnd}
+                  onChange={(event) => setGoalDraft((current) => ({ ...current, periodEnd: event.target.value }))}
+                  onBlur={(event) =>
+                    setGoalDraft((current) => ({
+                      ...current,
+                      periodEnd: formatGoalPeriodLabel(event.target.value) === "-" ? event.target.value : formatGoalPeriodLabel(event.target.value),
+                    }))
+                  }
+                  placeholder="30.06.2026"
+                />
+              </label>
+              <label>
+                Titel
+                <input
+                  value={goalDraft.title}
+                  onChange={(event) => setGoalDraft((current) => ({ ...current, title: event.target.value }))}
+                  placeholder={selectedMetric.label}
+                />
+              </label>
+            </div>
+            <label className={styles.goalDescriptionField}>
+              Notiz
+              <textarea
+                value={goalDraft.description}
+                onChange={(event) => setGoalDraft((current) => ({ ...current, description: event.target.value }))}
+                placeholder="Optionaler Hinweis zum Ziel"
+              />
+            </label>
+            {goalError ? <p className={styles.formError}>{goalError}</p> : null}
+            <button className={styles.primaryButton} type="button" onClick={saveGoal} disabled={isGoalSaving}>
+              {isGoalSaving ? "Speichere..." : "+ Ziel anlegen"}
+            </button>
+          </section>
+        ) : null}
+
+        <section className={styles.goalListPanel}>
+          <div className={styles.goalListHeader}>
+            <div>
+              <h2>{canManageGoals ? "Zielübersicht" : "Meine Zielkarten"}</h2>
+              <p>Jede Karte zeigt Zielwert, Ist-Wert und Fortschritt im gewählten Zeitraum.</p>
+            </div>
+          </div>
+
+          {visibleSalesGoals.length === 0 ? (
+            <div className={styles.emptyState}>
+              <strong>Noch keine Ziele vorhanden.</strong>
+              <span>Neue Ziele erscheinen hier, sobald sie angelegt wurden.</span>
+            </div>
+          ) : (
+            <div className={styles.goalCardsGrid}>
+              {visibleSalesGoals.map((goal) => {
+                const metric = getGoalMetricOption(goal.metricKey);
+                const actualValue = getGoalActualValue(goal);
+                const targetValue = Number(goal.targetValue) || 0;
+                const progress = targetValue > 0 ? Math.min(100, Math.round((actualValue / targetValue) * 100)) : 0;
+                const owner = users.find((user) => user.id === goal.ownerUserId);
+
+                return (
+                  <article key={goal.id} className={styles.goalCard} data-reached={actualValue >= targetValue && targetValue > 0}>
+                    <div className={styles.goalCardHeader}>
+                      <div>
+                        <span>{metric.label}</span>
+                        <h3>{goal.title || metric.label}</h3>
+                      </div>
+                      <b>{progress}%</b>
+                    </div>
+                    <div className={styles.goalProgressBar}>
+                      <span style={{ width: `${progress}%` }} />
+                    </div>
+                    <dl>
+                      <div>
+                        <dt>Ist</dt>
+                        <dd>{formatGoalValue(actualValue, goal.metricKey)}</dd>
+                      </div>
+                      <div>
+                        <dt>Ziel</dt>
+                        <dd>{formatGoalValue(targetValue, goal.metricKey)}</dd>
+                      </div>
+                      <div>
+                        <dt>Mitarbeiter</dt>
+                        <dd>{owner?.name || goal.ownerName || "-"}</dd>
+                      </div>
+                      <div>
+                        <dt>Zeitraum</dt>
+                        <dd>{formatGoalPeriodLabel(goal.periodStart || goal.targetMonth)} bis {formatGoalPeriodLabel(goal.periodEnd || goal.targetMonth)}</dd>
+                      </div>
+                    </dl>
+                    {goal.description ? <p>{goal.description}</p> : null}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      </section>
+    );
+  }
   const visibleReportUsers = users.filter((user) => {
     if (!activeUser) return false;
+    if (!user.isActive) return false;
     if (activeUser.role === "ADMIN" || activeUser.role === "GESCHAEFTSFUEHRER") return true;
     if (activeUser.role === "FUEHRUNGSKRAFT") {
       const activeTeamIds = activeUser.teamIds.length > 0 ? activeUser.teamIds : [activeUser.teamId].filter(Boolean);
@@ -14161,29 +18694,104 @@ export function DashboardPage() {
   const selectedPerformanceResult = selectedPerformancePeriod
     ? performancePeriods.find((entry) => entry.period === selectedPerformancePeriod)?.result
     : null;
-  const reportTabs: Array<{ id: ReportAnalyticsTab; label: string }> = [
-    { id: "forecast", label: "Forecast & OP Kontrolle" },
-    { id: "revenue", label: "Umsätze - Details" },
-    { id: "projects", label: "Projekte" },
-    { id: "customers", label: "Kunden" },
-    { id: "catalog", label: "Artikel & Leistungen" },
-    { id: "employees", label: "Mitarbeitende" },
-    { id: "overview", label: "Umsatz- und Projektübersicht" },
-    { id: "map", label: "Projektkarte" },
-  ];
   const reportNow = new Date(timerNow);
-  const reportStartDate = new Date(reportNow.getFullYear(), reportNow.getMonth() - 11, 1);
-  const reportEndDate = new Date(reportNow.getFullYear(), reportNow.getMonth() + 1, 0, 23, 59, 59);
-  const forecastStartDate = new Date(reportNow.getFullYear(), reportNow.getMonth(), 1);
-  const forecastEndDate = new Date(
-    reportNow.getFullYear(),
-    reportNow.getMonth() + 13,
-    0,
-    23,
-    59,
-    59
+  const getReportCustomDate = (value: string, fallback: Date, isEnd = false) => {
+    const parsed = parseProjectDate(value);
+    if (!parsed || Number.isNaN(parsed.getTime())) return fallback;
+    return isEnd
+      ? new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 23, 59, 59)
+      : new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 0, 0, 0);
+  };
+  const reportPeriodRange = (() => {
+    if (reportPeriodPreset === "currentMonth") {
+      return {
+        start: new Date(reportNow.getFullYear(), reportNow.getMonth(), 1, 0, 0, 0),
+        end: new Date(reportNow.getFullYear(), reportNow.getMonth() + 1, 0, 23, 59, 59),
+      };
+    }
+    if (reportPeriodPreset === "previousMonth") {
+      return {
+        start: new Date(reportNow.getFullYear(), reportNow.getMonth() - 1, 1, 0, 0, 0),
+        end: new Date(reportNow.getFullYear(), reportNow.getMonth(), 0, 23, 59, 59),
+      };
+    }
+    if (reportPeriodPreset === "currentYear") {
+      return {
+        start: new Date(reportNow.getFullYear(), 0, 1, 0, 0, 0),
+        end: new Date(reportNow.getFullYear(), 11, 31, 23, 59, 59),
+      };
+    }
+    if (reportPeriodPreset === "custom") {
+      const fallbackStart = new Date(reportNow.getFullYear(), reportNow.getMonth(), 1, 0, 0, 0);
+      const fallbackEnd = new Date(reportNow.getFullYear(), reportNow.getMonth() + 1, 0, 23, 59, 59);
+      const start = getReportCustomDate(reportCustomStartDate, fallbackStart);
+      const end = getReportCustomDate(reportCustomEndDate, fallbackEnd, true);
+      return start <= end ? { start, end } : { start: end, end: start };
+    }
+    return {
+      start: new Date(reportNow.getFullYear(), reportNow.getMonth() - 11, 1, 0, 0, 0),
+      end: new Date(reportNow.getFullYear(), reportNow.getMonth() + 1, 0, 23, 59, 59),
+    };
+  })();
+  const reportStartDate = reportPeriodRange.start;
+  const reportEndDate = reportPeriodRange.end;
+  const reportPeriodLabel = `${formatDateOnly(formatDateKey(reportStartDate))} - ${formatDateOnly(formatDateKey(reportEndDate))}`;
+  const forecastPeriodRange = (() => {
+    if (forecastPeriodPreset === "currentMonth") {
+      return {
+        start: new Date(reportNow.getFullYear(), reportNow.getMonth(), 1, 0, 0, 0),
+        end: new Date(reportNow.getFullYear(), reportNow.getMonth() + 1, 0, 23, 59, 59),
+      };
+    }
+    if (forecastPeriodPreset === "previousMonth") {
+      return {
+        start: new Date(reportNow.getFullYear(), reportNow.getMonth() - 1, 1, 0, 0, 0),
+        end: new Date(reportNow.getFullYear(), reportNow.getMonth(), 0, 23, 59, 59),
+      };
+    }
+    if (forecastPeriodPreset === "currentYear") {
+      return {
+        start: new Date(reportNow.getFullYear(), 0, 1, 0, 0, 0),
+        end: new Date(reportNow.getFullYear(), 11, 31, 23, 59, 59),
+      };
+    }
+    if (forecastPeriodPreset === "previousYear") {
+      return {
+        start: new Date(reportNow.getFullYear() - 1, 0, 1, 0, 0, 0),
+        end: new Date(reportNow.getFullYear() - 1, 11, 31, 23, 59, 59),
+      };
+    }
+    if (forecastPeriodPreset === "last12") {
+      return {
+        start: new Date(reportNow.getFullYear(), reportNow.getMonth() - 11, 1, 0, 0, 0),
+        end: new Date(reportNow.getFullYear(), reportNow.getMonth() + 1, 0, 23, 59, 59),
+      };
+    }
+    if (forecastPeriodPreset === "custom") {
+      const fallbackStart = new Date(reportNow.getFullYear(), reportNow.getMonth(), 1, 0, 0, 0);
+      const fallbackEnd = new Date(reportNow.getFullYear(), reportNow.getMonth() + 12, 0, 23, 59, 59);
+      const start = getReportCustomDate(forecastCustomStartDate, fallbackStart);
+      const end = getReportCustomDate(forecastCustomEndDate, fallbackEnd, true);
+      return start <= end ? { start, end } : { start: end, end: start };
+    }
+    return {
+      start: new Date(reportNow.getFullYear(), reportNow.getMonth(), 1, 0, 0, 0),
+      end: new Date(reportNow.getFullYear(), reportNow.getMonth() + 12, 0, 23, 59, 59),
+    };
+  })();
+  const forecastStartDate = forecastPeriodRange.start;
+  const forecastEndDate = forecastPeriodRange.end;
+  const forecastPeriodLabel = `${formatDateOnly(formatDateKey(forecastStartDate))} - ${formatDateOnly(formatDateKey(forecastEndDate))}`;
+  const reportMonthCount = Math.min(
+    36,
+    Math.max(
+      1,
+      (reportEndDate.getFullYear() - reportStartDate.getFullYear()) * 12 +
+        (reportEndDate.getMonth() - reportStartDate.getMonth()) +
+        1
+    )
   );
-  const reportMonthKeys = Array.from({ length: 12 }, (_, index) => {
+  const reportMonthKeys = Array.from({ length: reportMonthCount }, (_, index) => {
     const date = new Date(reportStartDate.getFullYear(), reportStartDate.getMonth() + index, 1);
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
     return {
@@ -14195,7 +18803,16 @@ export function DashboardPage() {
       }).format(date),
     };
   });
-  const forecastMonthKeys = Array.from({ length: 13 }, (_, index) => {
+  const forecastMonthCount = Math.min(
+    36,
+    Math.max(
+      1,
+      (forecastEndDate.getFullYear() - forecastStartDate.getFullYear()) * 12 +
+        (forecastEndDate.getMonth() - forecastStartDate.getMonth()) +
+        1
+    )
+  );
+  const forecastMonthKeys = Array.from({ length: forecastMonthCount }, (_, index) => {
     const date = new Date(forecastStartDate.getFullYear(), forecastStartDate.getMonth() + index, 1);
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
     return {
@@ -14267,7 +18884,7 @@ export function DashboardPage() {
   const getProjectForecastValue = (project: HeroProjectPreview, monthKey?: string) => {
     const forecastAmount = parseReportAmount(project.forecastNetAmount);
     if (forecastAmount > 0) {
-      if (project.forecastBillingType === "wöchentlich") return (forecastAmount * 52) / 12;
+      if (isWeeklyForecastBillingType(project.forecastBillingType)) return (forecastAmount * 52) / 12;
       if (project.forecastBillingType === "quartalsweise") {
         if (!monthKey) return forecastAmount / 3;
         const projectStart = getForecastProjectStart(project);
@@ -14279,12 +18896,7 @@ export function DashboardPage() {
       }
       return forecastAmount;
     }
-
-    const fromProject = parseReportAmount(project.volume);
-    if (fromProject > 0) return fromProject;
-    const relatedOffers = offers.filter((offer) => offer.projectId === project.id);
-    if (relatedOffers.length === 0) return 0;
-    return relatedOffers.reduce((sum, offer) => sum + offer.netTotal, 0) / relatedOffers.length;
+    return 0;
   };
   const getProjectBusinessArea = (project?: HeroProjectPreview) => {
     const trade = project?.trade ?? "";
@@ -14315,15 +18927,8 @@ export function DashboardPage() {
     const { start } = getMonthDateRange(monthKey);
     const previousInvoices = invoices
       .filter((invoice) => {
-        const status = invoice.status.toLowerCase();
         const invoiceDate = parseAppDateTime(invoice.createdAt);
-        return (
-          invoice.projectId === project.id &&
-          !isDeletedInvoice(invoice) &&
-          !status.includes("storniert") &&
-          !status.includes("storno") &&
-          invoiceDate < start
-        );
+        return invoice.projectId === project.id && isForecastRelevantInvoice(invoice) && invoiceDate < start;
       })
       .sort((first, second) => parseAppDateTime(second.createdAt).getTime() - parseAppDateTime(first.createdAt).getTime())
       .slice(0, 6);
@@ -14333,6 +18938,70 @@ export function DashboardPage() {
   };
   const isInvoicePaid = (invoice: InvoiceItem) =>
     Boolean(invoice.isPaid) || invoice.status.toLowerCase().includes("bezahlt");
+  const isForecastRelevantInvoice = (invoice: InvoiceItem) => {
+    const status = invoice.status.toLowerCase();
+    return (
+      invoice.status !== "Entwurf" &&
+      !isDeletedInvoice(invoice) &&
+      !status.includes("storniert") &&
+      !status.includes("storno")
+    );
+  };
+  const getInvoiceDueState = (invoice: InvoiceItem) => {
+    if (isInvoicePaid(invoice)) return { label: "Bezahlt", state: "good" as const, overdueDays: 0 };
+    const dueDate = parseProjectDate(invoice.dueDate);
+    if (!dueDate) return { label: "Fälligkeit fehlt", state: "low" as const, overdueDays: 0 };
+    const today = new Date(reportNow.getFullYear(), reportNow.getMonth(), reportNow.getDate());
+    const dueDay = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
+    const diffDays = Math.floor((today.getTime() - dueDay.getTime()) / 86_400_000);
+    if (diffDays > 0) return { label: `Überfällig ${diffDays} Tg.`, state: "low" as const, overdueDays: diffDays };
+    if (diffDays === 0) return { label: "Heute fällig", state: "ok" as const, overdueDays: 0 };
+    return { label: "Noch nicht fällig", state: "good" as const, overdueDays: 0 };
+  };
+  const normalizeReportPersonValue = (value?: string | null) =>
+    normalizeStampSearchValue(String(value ?? ""));
+  const isProjectLinkedToUser = (project: HeroProjectPreview, user?: UserOption | null) => {
+    if (!user) return false;
+    const haystack = normalizeReportPersonValue([project.responsibleName, project.participants].filter(Boolean).join(" "));
+    const userName = normalizeReportPersonValue(user.name);
+    const userEmail = normalizeReportPersonValue(user.email);
+    return Boolean((userName && haystack.includes(userName)) || (userEmail && haystack.includes(userEmail)));
+  };
+  const isProjectLinkedToPlanningGroup = (project: HeroProjectPreview, planningGroup?: string | null) => {
+    const normalizedPlanningGroup = normalizeReportPersonValue(planningGroup);
+    if (!normalizedPlanningGroup) return false;
+    const groupUsers = users.filter(
+      (user) => user.isActive && normalizeReportPersonValue(user.planningGroup || "Ohne Planungsgruppe") === normalizedPlanningGroup
+    );
+    if (groupUsers.some((user) => isProjectLinkedToUser(project, user))) return true;
+    return stampEntries.some((entry) => {
+      if (entry.deletedAt || entry.mode !== "project" || entry.projectId !== project.id) return false;
+      const stampUser = users.find((user) => user.id === entry.userId);
+      return normalizeReportPersonValue(stampUser?.planningGroup || "Ohne Planungsgruppe") === normalizedPlanningGroup;
+    });
+  };
+  const canViewAllProjectScopedAnalytics =
+    activeUser?.role === "ADMIN" || activeUser?.role === "GESCHAEFTSFUEHRER" || activeUser?.role === "BUCHHALTUNG";
+  const isProjectVisibleInProjectScopedAnalytics = (project?: HeroProjectPreview | null) => {
+    if (!project) return canViewAllProjectScopedAnalytics;
+    if (canViewAllProjectScopedAnalytics) return true;
+    if (activeUser?.role === "FUEHRUNGSKRAFT") {
+      return isProjectLinkedToUser(project, activeUser) || isProjectLinkedToPlanningGroup(project, activeUser.planningGroup);
+    }
+    if (activeUser?.role === "VERTRIEB") {
+      return isProjectLinkedToUser(project, activeUser);
+    }
+    return false;
+  };
+  const isCustomerFeedbackLinkedToActiveSalesUser = (
+    item: Pick<CustomerFeedbackItem, "salesUserId" | "salesUserName"> | Pick<CustomerFeedbackRequestItem, "salesUserId" | "salesUserName">
+  ) => {
+    if (activeUser?.role !== "VERTRIEB") return false;
+    return (
+      Boolean(item.salesUserId && item.salesUserId === activeUser.id) ||
+      normalizeReportPersonValue(item.salesUserName) === normalizeReportPersonValue(activeUser.name)
+    );
+  };
   const reportSearchValue = normalizeStampSearchValue(reportSearch.trim());
   const reportInvoices = invoices.filter((invoice) => {
     const status = invoice.status.toLowerCase();
@@ -14344,22 +19013,67 @@ export function DashboardPage() {
     );
   });
   const reportOffers = offers.filter((offer) => isReportDate(offer.createdAt));
+  const reportCustomerFeedback = customerFeedback
+    .filter((feedback) => isReportDate(feedback.createdAt))
+    .filter((feedback) => {
+      const project = feedback.projectId ? heroProjects.find((item) => item.id === feedback.projectId) : null;
+      return isProjectVisibleInProjectScopedAnalytics(project) || isCustomerFeedbackLinkedToActiveSalesUser(feedback);
+    })
+    .filter((feedback) => {
+      if (!reportSearchValue) return true;
+      return [
+        feedback.customerName,
+        feedback.invoiceNumber,
+        feedback.comment,
+        feedback.salesUserName,
+        feedback.source,
+      ].some((value) => normalizeStampSearchValue(String(value ?? "")).includes(reportSearchValue));
+    });
+  const reportCustomerFeedbackRequests = customerFeedbackRequests.filter((request) => {
+    const requestProject = request.projectId ? heroProjects.find((project) => project.id === request.projectId) : null;
+    if (!isProjectVisibleInProjectScopedAnalytics(requestProject) && !isCustomerFeedbackLinkedToActiveSalesUser(request)) return false;
+    const sentAt = parseAppDateTime(request.sentAt);
+    const respondedAt = parseAppDateTime(request.respondedAt);
+    const isInReportPeriod =
+      isReportDate(request.createdAt) ||
+      (!Number.isNaN(sentAt.getTime()) && sentAt >= reportStartDate && sentAt <= reportEndDate) ||
+      (!Number.isNaN(respondedAt.getTime()) && respondedAt >= reportStartDate && respondedAt <= reportEndDate);
+
+    if (!isInReportPeriod) return false;
+    if (!reportSearchValue) return true;
+    return [
+      request.customerName,
+      request.invoiceNumber,
+      request.recipientEmail,
+      request.salesUserName,
+      request.status,
+    ].some((value) => normalizeStampSearchValue(String(value ?? "")).includes(reportSearchValue));
+  });
+  const averageCustomerFeedbackRating =
+    reportCustomerFeedback.length > 0
+      ? reportCustomerFeedback.reduce((sum, feedback) => sum + feedback.rating, 0) / reportCustomerFeedback.length
+      : 0;
+  const publicCustomerFeedbackCount = reportCustomerFeedback.filter((feedback) => feedback.source === "public").length;
+  const manualCustomerFeedbackCount = reportCustomerFeedback.filter((feedback) => feedback.source !== "public").length;
+  const hotCustomerFeedbackCount = reportCustomerFeedback.filter((feedback) => feedback.hotAlert).length;
+  const openCustomerFeedbackRequestCount = reportCustomerFeedbackRequests.filter(
+    (request) => request.status !== "answered"
+  ).length;
   const isForecastInvoiceMonth = (invoice: InvoiceItem) => {
     const invoiceMonth = getProjectInvoiceMonth(invoice);
     return forecastMonthKeys.some((month) => month.key === invoiceMonth);
   };
-  const forecastInvoices = invoices.filter((invoice) => {
-    const status = invoice.status.toLowerCase();
+  const forecastInvoices = invoices.filter(
+    (invoice) => isForecastInvoiceMonth(invoice) && isForecastRelevantInvoice(invoice)
+  );
+  const forecastOffers = offers.filter((offer) => {
+    const status = offer.status.toLowerCase();
     return (
-      isForecastInvoiceMonth(invoice) &&
-      !isDeletedInvoice(invoice) &&
+      isActiveFinalOffer(offer) &&
+      !status.includes("abgelehnt") &&
       !status.includes("storniert") &&
       !status.includes("storno")
     );
-  });
-  const forecastOffers = offers.filter((offer) => {
-    const status = offer.status.toLowerCase();
-    return !status.includes("abgelehnt") && !status.includes("storniert") && !status.includes("storno");
   });
   const doesInvoiceReplaceOfferInMonth = (
     invoice: InvoiceItem,
@@ -14384,8 +19098,10 @@ export function DashboardPage() {
         const monthInvoices = forecastInvoices.filter(
           (invoice) => invoice.projectId === project.id && getProjectInvoiceMonth(invoice) === month.key
         );
-        const forecastValue = getProjectForecastValue(project, month.key);
+        const projectForecastValue = getProjectForecastValue(project, month.key);
+        const historyForecastValue = getRecurringInvoiceAverage(project, month.key);
         const invoiceValue = monthInvoices.reduce((sum, invoice) => sum + invoice.netTotal, 0);
+        const forecastValue = invoiceValue || projectForecastValue || historyForecastValue;
         return {
           id: `recurring-${month.key}-${project.id}`,
           month: month.key,
@@ -14400,7 +19116,12 @@ export function DashboardPage() {
           invoiceNumbers: monthInvoices.map((invoice) => invoice.invoiceNumber).join(", "),
           offerNumber: "",
           status: monthInvoices.length > 0 ? "Fakturiert" : "Forecast",
-          note: project.billingInterval || "Monatlich aus Projektlaufzeit fortgeführt",
+          note:
+            monthInvoices.length > 0
+              ? "Monatsrechnung ersetzt den geplanten Forecastwert"
+              : projectForecastValue > 0
+                ? `Forecastbetrag am Projekt (${project.forecastBillingType || "monatlich"})`
+                : "Aus Durchschnitt der letzten Rechnungen fortgeführt",
         };
       })
       .filter((row) => row.forecastValue > 0 || row.invoiceValue > 0);
@@ -14539,13 +19260,11 @@ export function DashboardPage() {
     .filter((row) => !(row.certainty !== "safe" && row.project && isRecurringForecastProject(row.project)))
     .map((row) => {
       const businessArea = getProjectBusinessArea(row.project);
-      const rowInvoices = invoices.filter((invoice) =>
-        row.invoiceNumbers
-          .split(",")
-          .map((number) => number.trim())
-          .filter(Boolean)
-          .includes(invoice.invoiceNumber)
-      );
+      const rowInvoiceNumbers = row.invoiceNumbers
+        .split(",")
+        .map((number) => number.trim())
+        .filter(Boolean);
+      const rowInvoices = forecastInvoices.filter((invoice) => rowInvoiceNumbers.includes(invoice.invoiceNumber));
       const paidValue = rowInvoices
         .filter((invoice) => isInvoicePaid(invoice))
         .reduce((sum, invoice) => sum + invoice.netTotal, 0);
@@ -14553,16 +19272,11 @@ export function DashboardPage() {
         .filter((invoice) => isInvoicePaid(invoice))
         .map((invoice) => invoice.paidAt)
         .filter(Boolean);
-      const recurringForecast =
-        row.source.toLowerCase().includes("dauer") && row.project && row.invoiceValue === 0
-          ? getRecurringInvoiceAverage(row.project, row.month) || row.forecastValue
-          : row.forecastValue;
-
       return {
         ...row,
         businessAreaId: businessArea.id,
         businessAreaName: businessArea.name,
-        forecastValue: recurringForecast,
+        forecastValue: row.forecastValue,
         paidValue,
         paidDates,
         invoiceIds: rowInvoices.map((invoice) => invoice.id),
@@ -14609,8 +19323,11 @@ export function DashboardPage() {
       count: rows.length,
     };
   });
-  const forecastBusinessSummaryRows = reportingBusinessAreas.map((businessArea) => {
-    const rows = selectedForecastBusinessRows.filter((row) => row.businessAreaId === businessArea.id);
+  const buildForecastBusinessSummaryRow = (
+    businessArea: { id: string; name: string },
+    rows: typeof selectedForecastBusinessRows,
+    target: number
+  ) => {
     const recurring = rows
       .filter((row) => row.isRecurring && !row.isOpportunity)
       .reduce((sum, row) => sum + row.forecastValue, 0);
@@ -14622,10 +19339,6 @@ export function DashboardPage() {
       .reduce((sum, row) => sum + row.forecastValue, 0);
     const invoiced = rows.reduce((sum, row) => sum + row.invoiceValue, 0);
     const paid = rows.reduce((sum, row) => sum + row.paidValue, 0);
-    const target = selectedForecastBusinessMonths.reduce(
-      (sum, month) => sum + getBusinessAreaTargetAmount(businessArea.id, month.key),
-      0
-    );
     const potential = recurring + oneTime + opportunities;
 
     return {
@@ -14639,7 +19352,28 @@ export function DashboardPage() {
       target,
       deviation: potential - target,
     };
-  });
+  };
+  const forecastBusinessSummaryRows = [
+    ...reportingBusinessAreas.map((businessArea) =>
+      buildForecastBusinessSummaryRow(
+        businessArea,
+        selectedForecastBusinessRows.filter((row) => row.businessAreaId === businessArea.id),
+        selectedForecastBusinessMonths.reduce(
+          (sum, month) => sum + getBusinessAreaTargetAmount(businessArea.id, month.key),
+          0
+        )
+      )
+    ),
+    ...(selectedForecastBusinessRows.some((row) => !row.businessAreaId)
+      ? [
+          buildForecastBusinessSummaryRow(
+            { id: "", name: "Ohne Geschäftsbereich" },
+            selectedForecastBusinessRows.filter((row) => !row.businessAreaId),
+            0
+          ),
+        ]
+      : []),
+  ];
   const forecastBusinessSummaryTotal = forecastBusinessSummaryRows.reduce(
     (sum, row) => ({
       recurring: sum.recurring + row.recurring,
@@ -14747,6 +19481,259 @@ export function DashboardPage() {
       color: getForecastBusinessColor(row.businessArea.name),
     }));
   const forecastDistributionTotal = forecastDistributionRows.reduce((sum, row) => sum + row.potential, 0);
+  const forecastOpenInvoiceRows = forecastInvoices
+    .filter((invoice) => !isInvoicePaid(invoice))
+    .map((invoice) => {
+      const project = heroProjects.find((item) => item.id === invoice.projectId);
+      const businessArea = getProjectBusinessArea(project);
+      const monthKey = getProjectInvoiceMonth(invoice);
+      const monthLabel = forecastMonthKeys.find((month) => month.key === monthKey)?.label ?? monthKey;
+      const dueState = getInvoiceDueState(invoice);
+
+      return {
+        invoice,
+        project,
+        businessArea,
+        monthKey,
+        monthLabel,
+        dueState,
+        openAmount: invoice.netTotal,
+      };
+    })
+    .filter((row) => isVisibleReportingBusinessArea(row.businessArea.name))
+    .filter((row) => selectedForecastPeriod === "total" || row.monthKey === selectedForecastPeriod)
+    .filter((row) => {
+      if (!reportSearchValue) return true;
+      return [
+        row.invoice.invoiceNumber,
+        row.invoice.customerName,
+        row.invoice.projectTitle,
+        row.project?.projectNumber,
+        row.businessArea.name,
+        row.invoice.status,
+      ].some((value) => normalizeStampSearchValue(String(value ?? "")).includes(reportSearchValue));
+    })
+    .sort((first, second) => {
+      const getDueSortWeight = (row: { dueState: { label: string; overdueDays: number }; monthKey: string }) => {
+        if (row.dueState.overdueDays > 0) return 0;
+        if (row.dueState.label === "Heute fällig") return 1;
+        if (row.dueState.label === "Fälligkeit fehlt") return 2;
+        return 3;
+      };
+      const weightDiff = getDueSortWeight(first) - getDueSortWeight(second);
+      if (weightDiff !== 0) return weightDiff;
+      if (first.dueState.overdueDays !== second.dueState.overdueDays) {
+        return second.dueState.overdueDays - first.dueState.overdueDays;
+      }
+      return first.monthKey.localeCompare(second.monthKey);
+    });
+  const forecastOpenInvoiceTotal = forecastOpenInvoiceRows.reduce((sum, row) => sum + row.openAmount, 0);
+  const forecastOpenInvoiceDueBuckets = {
+    notDue: forecastOpenInvoiceRows.filter((row) => row.dueState.label === "Noch nicht fällig"),
+    dueToday: forecastOpenInvoiceRows.filter((row) => row.dueState.label === "Heute fällig"),
+    overdue: forecastOpenInvoiceRows.filter((row) => row.dueState.overdueDays > 0),
+    missingDueDate: forecastOpenInvoiceRows.filter((row) => row.dueState.label === "Fälligkeit fehlt"),
+  };
+  const forecastOpenInvoiceBucketTotals = {
+    notDue: forecastOpenInvoiceDueBuckets.notDue.reduce((sum, row) => sum + row.openAmount, 0),
+    dueToday: forecastOpenInvoiceDueBuckets.dueToday.reduce((sum, row) => sum + row.openAmount, 0),
+    overdue: forecastOpenInvoiceDueBuckets.overdue.reduce((sum, row) => sum + row.openAmount, 0),
+    missingDueDate: forecastOpenInvoiceDueBuckets.missingDueDate.reduce((sum, row) => sum + row.openAmount, 0),
+  };
+  const selectedForecastQualityMonths =
+    selectedForecastPeriod === "total" ? forecastMonthKeys : forecastMonthKeys.filter((month) => month.key === selectedForecastPeriod);
+  const recurringForecastMissingSourceRows = selectedForecastQualityMonths.flatMap((month) =>
+    heroProjects
+      .filter((project) => isRecurringForecastProject(project) && isProjectInForecastMonth(project, month.key))
+      .filter((project) => isVisibleReportingBusinessArea(getProjectBusinessArea(project).name))
+      .filter((project) => {
+        const invoiceValue = forecastInvoices
+          .filter((invoice) => invoice.projectId === project.id && getProjectInvoiceMonth(invoice) === month.key)
+          .reduce((sum, invoice) => sum + invoice.netTotal, 0);
+        return invoiceValue <= 0 && getProjectForecastValue(project, month.key) <= 0 && getRecurringInvoiceAverage(project, month.key) <= 0;
+      })
+      .map((project) => ({ project, month }))
+  );
+  const forecastNeedsDateQualityRows =
+    selectedForecastPeriod === "total"
+      ? forecastNeedsDateRows.filter((row) => isVisibleReportingBusinessArea(getProjectBusinessArea(row.project).name))
+      : [];
+  const forecastMissingBusinessRows = selectedForecastBusinessRows.filter((row) => !row.businessAreaId);
+  const forecastHistorySourceRows = selectedForecastBusinessRows.filter((row) => row.note === "Aus Durchschnitt der letzten Rechnungen fortgeführt");
+  const forecastRecurringDeviationRows = selectedForecastBusinessRows.filter((row) => {
+    if (!row.project || !row.isRecurring || row.invoiceValue <= 0) return false;
+    const plannedValue = getProjectForecastValue(row.project, row.month);
+    if (plannedValue <= 0) return false;
+    return Math.abs(row.invoiceValue - plannedValue) > Math.max(10, plannedValue * 0.1);
+  });
+  const overdueWithoutReminderRows = forecastOpenInvoiceDueBuckets.overdue.filter(
+    (row) => Number(row.invoice.reminderLevel ?? 0) <= 0
+  );
+  const forecastQualityRows = [
+    {
+      id: "recurring-source",
+      title: "Dauerläufer ohne Forecast-Quelle",
+      status: recurringForecastMissingSourceRows.length > 0 ? "low" : "good",
+      count: recurringForecastMissingSourceRows.length,
+      amount: 0,
+      detail:
+        recurringForecastMissingSourceRows.length > 0
+          ? "Kein Projektforecast, keine Monatsrechnung und keine nutzbare Rechnungshistorie."
+          : "Alle sichtbaren Dauerläufer haben eine belastbare Monatsquelle.",
+      action: "Forecastbetrag pflegen oder erste Monatsrechnung erstellen.",
+      items: recurringForecastMissingSourceRows.map((row) => ({
+        key: `${row.month.key}-${row.project.id}`,
+        title: row.project.projectNumber || row.project.title,
+        meta: `${row.project.customer || "Ohne Kunde"} · ${row.month.label}`,
+        detail: row.project.title,
+        amount: 0,
+        actionLabel: "Projekt öffnen",
+        onOpen: () => openProjectFile(row.project, { tab: "logbook", month: row.month.key }),
+      })),
+    },
+    {
+      id: "needs-date",
+      title: "Angebote ohne Ausführungsmonat",
+      status: forecastNeedsDateQualityRows.length > 0 ? "ok" : "good",
+      count: forecastNeedsDateQualityRows.length,
+      amount: forecastNeedsDateQualityRows.reduce((sum, row) => sum + row.forecastValue, 0),
+      detail:
+        forecastNeedsDateQualityRows.length > 0
+          ? "Diese Chancen sind vorhanden, aber keinem Forecast-Monat zugeordnet."
+          : "Alle sichtbaren Angebotschancen sind zeitlich zugeordnet.",
+      action: "Ausführungsmonat am Angebot nachpflegen.",
+      items: forecastNeedsDateQualityRows.map((row) => ({
+        key: row.id,
+        title: row.offerNumber || "Angebot",
+        meta: `${row.customer || "Ohne Kunde"} · ${row.description}`,
+        detail: "Ausführungsmonat fehlt",
+        amount: row.forecastValue,
+        actionLabel: row.project ? "Angebote öffnen" : "Kein Projekt",
+        onOpen: row.project
+          ? () => openProjectFile(row.project as HeroProjectPreview, { tab: "documents", documentType: "Angebote" })
+          : undefined,
+      })),
+    },
+    {
+      id: "missing-due-date",
+      title: "Offene Posten ohne Fälligkeit",
+      status: forecastOpenInvoiceDueBuckets.missingDueDate.length > 0 ? "low" : "good",
+      count: forecastOpenInvoiceDueBuckets.missingDueDate.length,
+      amount: forecastOpenInvoiceBucketTotals.missingDueDate,
+      detail:
+        forecastOpenInvoiceDueBuckets.missingDueDate.length > 0
+          ? "Diese Rechnungen können im Mahnwesen nicht sicher bewertet werden."
+          : "Alle offenen Posten haben ein Fälligkeitsdatum.",
+      action: "Zahlungsziel oder Fälligkeitsdatum an der Rechnung prüfen.",
+      items: forecastOpenInvoiceDueBuckets.missingDueDate.map((row) => ({
+        key: row.invoice.id,
+        title: row.invoice.invoiceNumber,
+        meta: `${row.invoice.customerName || "Ohne Kunde"} · ${row.monthLabel}`,
+        detail: row.invoice.projectTitle || row.project?.title || "Rechnung",
+        amount: row.openAmount,
+        actionLabel: row.project ? "Rechnungen öffnen" : "Kein Projekt",
+        onOpen: row.project
+          ? () => openProjectFile(row.project as HeroProjectPreview, { tab: "documents", documentType: "Rechnungen", month: row.monthKey })
+          : undefined,
+      })),
+    },
+    {
+      id: "overdue-without-reminder",
+      title: "Überfällig ohne Mahnstufe",
+      status: overdueWithoutReminderRows.length > 0 ? "low" : "good",
+      count: overdueWithoutReminderRows.length,
+      amount: overdueWithoutReminderRows.reduce((sum, row) => sum + row.openAmount, 0),
+      detail:
+        overdueWithoutReminderRows.length > 0
+          ? "Überfällige offene Posten wurden noch nicht angemahnt."
+          : "Überfällige offene Posten sind mahnseitig eingeordnet.",
+      action: "Mahnung erstellen oder Zahlungseingang klären.",
+      items: overdueWithoutReminderRows.map((row) => ({
+        key: row.invoice.id,
+        title: row.invoice.invoiceNumber,
+        meta: `${row.invoice.customerName || "Ohne Kunde"} · ${row.dueState.label}`,
+        detail: row.invoice.projectTitle || row.project?.title || "Rechnung",
+        amount: row.openAmount,
+        actionLabel: row.project ? "Mahnung öffnen" : "Kein Projekt",
+        onOpen: row.project
+          ? () => openProjectFile(row.project as HeroProjectPreview, { tab: "documents", documentType: "Mahnung", month: row.monthKey })
+          : undefined,
+      })),
+    },
+    {
+      id: "missing-business-area",
+      title: "Ohne Geschäftsbereich",
+      status: forecastMissingBusinessRows.length > 0 ? "ok" : "good",
+      count: forecastMissingBusinessRows.length,
+      amount: forecastMissingBusinessRows.reduce((sum, row) => sum + row.forecastValue, 0),
+      detail:
+        forecastMissingBusinessRows.length > 0
+          ? "Werte bleiben sichtbar, sind aber keinem Geschäftsbereich zugeordnet."
+          : "Alle sichtbaren Forecast-Werte sind einem Geschäftsbereich zugeordnet.",
+      action: "Gewerk oder Geschäftsbereich am Gewerk pflegen.",
+      items: forecastMissingBusinessRows.map((row) => ({
+        key: row.id,
+        title: row.project?.projectNumber || row.invoiceNumbers || row.offerNumber || row.description,
+        meta: `${row.customer || "Ohne Kunde"} · ${row.monthLabel}`,
+        detail: row.project?.title || row.description,
+        amount: row.forecastValue,
+        actionLabel: row.project ? "Projekt öffnen" : "Kein Projekt",
+        onOpen: row.project ? () => openProjectFile(row.project as HeroProjectPreview, { tab: "logbook" }) : undefined,
+      })),
+    },
+    {
+      id: "history-source",
+      title: "Forecast aus Rechnungshistorie",
+      status: forecastHistorySourceRows.length > 0 ? "ok" : "good",
+      count: forecastHistorySourceRows.length,
+      amount: forecastHistorySourceRows.reduce((sum, row) => sum + row.forecastValue, 0),
+      detail:
+        forecastHistorySourceRows.length > 0
+          ? "Belastbarer als leer, aber weniger eindeutig als gepflegter Projektforecast."
+          : "Keine sichtbaren Forecast-Werte müssen aus Historie fortgeführt werden.",
+      action: "Bei wichtigen Dauerläufern festen Forecastbetrag pflegen.",
+      items: forecastHistorySourceRows.map((row) => ({
+        key: row.id,
+        title: row.project?.projectNumber || row.description,
+        meta: `${row.customer || "Ohne Kunde"} · ${row.monthLabel}`,
+        detail: row.project?.title || row.description,
+        amount: row.forecastValue,
+        actionLabel: row.project ? "Projekt öffnen" : "Kein Projekt",
+        onOpen: row.project ? () => openProjectFile(row.project as HeroProjectPreview, { tab: "logbook", month: row.month }) : undefined,
+      })),
+    },
+    {
+      id: "recurring-deviation",
+      title: "Planforecast weicht von Rechnung ab",
+      status: forecastRecurringDeviationRows.length > 0 ? "ok" : "good",
+      count: forecastRecurringDeviationRows.length,
+      amount: forecastRecurringDeviationRows.reduce(
+        (sum, row) => sum + Math.abs(row.invoiceValue - (row.project ? getProjectForecastValue(row.project, row.month) : 0)),
+        0
+      ),
+      detail:
+        forecastRecurringDeviationRows.length > 0
+          ? "Monatsrechnung und gepflegter Forecastbetrag liegen mehr als 10% auseinander."
+          : "Keine auffälligen Abweichungen zwischen Planforecast und Rechnung.",
+      action: "Forecastbetrag prüfen oder echte Abweichung akzeptieren.",
+      items: forecastRecurringDeviationRows.map((row) => {
+        const plannedValue = row.project ? getProjectForecastValue(row.project, row.month) : 0;
+        return {
+          key: row.id,
+          title: row.project?.projectNumber || row.invoiceNumbers || row.description,
+          meta: `${row.customer || "Ohne Kunde"} · ${row.monthLabel}`,
+          detail: `Plan: ${formatMoney(plannedValue)} · Rechnung: ${formatMoney(row.invoiceValue)}`,
+          amount: Math.abs(row.invoiceValue - plannedValue),
+          actionLabel: row.project ? "Projekt öffnen" : "Kein Projekt",
+          onOpen: row.project ? () => openProjectFile(row.project as HeroProjectPreview, { tab: "logbook", month: row.month }) : undefined,
+        };
+      }),
+    },
+  ];
+  const forecastQualityProblemCount = forecastQualityRows.filter((row) => row.status !== "good").length;
+  const forecastQualityCriticalCount = forecastQualityRows.filter((row) => row.status === "low").length;
+  const selectedForecastQualityRow =
+    forecastQualityRows.find((row) => row.id === selectedForecastQualityId) ?? null;
   let forecastDistributionOffset = 0;
   const forecastDistributionGradient =
     forecastDistributionTotal > 0
@@ -14769,6 +19756,73 @@ export function DashboardPage() {
     line.laborItems.reduce((sum, labor) => sum + labor.totalCost, 0);
   const getDocumentInternalCost = (document: OfferItem | InvoiceItem) =>
     document.lines.reduce((sum, line) => sum + getLineInternalCost(line), 0);
+  const getLineCatalogItem = (line: OfferLineDraft) =>
+    line.catalogItemId ? catalogItems.find((item) => item.id === line.catalogItemId) : undefined;
+  const getPackageComponentSalesUnitPrice = (packageItem: CatalogPackageItem) =>
+    packageItem.priceOverride ?? packageItem.componentSalesPrice;
+  const getPackageComponentSalesTotal = (packageItem: CatalogPackageItem) =>
+    getPackageComponentSalesUnitPrice(packageItem) * packageItem.quantity;
+  const getInvoiceLineComponentRows = (line: OfferLineDraft) => {
+    const catalogItem = getLineCatalogItem(line);
+    const lineRevenue = line.quantity * line.unitPrice;
+    const lineCost = getLineInternalCost(line);
+    if (!catalogItem) {
+      return [
+        {
+          id: line.catalogItemId || line.title || "free-line",
+          title: line.title || "Freie Position",
+          type: "unknown" as CatalogItemType | "unknown",
+          unit: line.unit || "",
+          quantity: line.quantity,
+          revenue: lineRevenue,
+          cost: lineCost,
+          source: "direct" as const,
+        },
+      ];
+    }
+    if (catalogItem.type !== "package") {
+      return [
+        {
+          id: catalogItem.id,
+          title: catalogItem.name || line.title,
+          type: catalogItem.type,
+          unit: catalogItem.unit || line.unit || "",
+          quantity: line.quantity,
+          revenue: lineRevenue,
+          cost: lineCost,
+          source: "direct" as const,
+        },
+      ];
+    }
+
+    const packageSalesTotal = catalogItem.packageItems.reduce(
+      (sum, packageItem) => sum + getPackageComponentSalesTotal(packageItem),
+      0
+    );
+    const packagePurchaseTotal = catalogItem.packageItems.reduce(
+      (sum, packageItem) => sum + packageItem.componentPurchasePrice * packageItem.quantity,
+      0
+    );
+
+    return catalogItem.packageItems.map((packageItem) => {
+      const componentRevenueShare =
+        packageSalesTotal > 0 ? getPackageComponentSalesTotal(packageItem) / packageSalesTotal : 0;
+      const componentCostShare =
+        packagePurchaseTotal > 0
+          ? (packageItem.componentPurchasePrice * packageItem.quantity) / packagePurchaseTotal
+          : componentRevenueShare;
+      return {
+        id: packageItem.componentItemId,
+        title: packageItem.componentName,
+        type: packageItem.componentType,
+        unit: packageItem.componentUnit,
+        quantity: line.quantity * packageItem.quantity,
+        revenue: lineRevenue * componentRevenueShare,
+        cost: lineCost * componentCostShare,
+        source: "package" as const,
+      };
+    });
+  };
   const invoiceRevenueTotal = reportInvoices.reduce((sum, invoice) => sum + invoice.netTotal, 0);
   const invoiceCostTotal = reportInvoices.reduce(
     (sum, invoice) => sum + getDocumentInternalCost(invoice),
@@ -14777,6 +19831,115 @@ export function DashboardPage() {
   const invoiceMarginTotal = invoiceRevenueTotal - invoiceCostTotal;
   const invoiceMarginPercent = invoiceRevenueTotal > 0 ? (invoiceMarginTotal / invoiceRevenueTotal) * 100 : 0;
   const offerVolumeTotal = reportOffers.reduce((sum, offer) => sum + offer.netTotal, 0);
+  const svsAllInvoiceRows = reportInvoices
+    .filter((invoice) => invoice.status !== "Entwurf")
+    .map((invoice) => {
+      const project = heroProjects.find((item) => item.id === invoice.projectId);
+      const trade = project?.trade || "Ohne Gewerk";
+      const linkedStampEntries = stampEntries.filter(
+        (entry) =>
+          !entry.deletedAt &&
+          entry.mode === "project" &&
+          (entry.invoiceId === invoice.id ||
+            (!!entry.invoiceNumber && entry.invoiceNumber === invoice.invoiceNumber))
+      );
+      const stampedHours =
+        linkedStampEntries.reduce((sum, entry) => sum + Math.max(0, entry.durationMs), 0) / 3600000;
+      const svs = stampedHours > 0 ? invoice.netTotal / stampedHours : 0;
+      return {
+        invoice,
+        project,
+        trade,
+        linkedStampEntries,
+        stampedHours,
+        svs,
+        status: stampedHours > 0 ? "ok" : "missing",
+      };
+    })
+    .filter((row) => isProjectVisibleInProjectScopedAnalytics(row.project))
+    .filter((row) => {
+      if (!reportSearchValue) return true;
+      return [
+        row.invoice.invoiceNumber,
+        row.invoice.customerName,
+        row.invoice.projectNumber,
+        row.invoice.projectTitle,
+        row.invoice.status,
+        row.trade,
+      ].some((value) => normalizeStampSearchValue(String(value ?? "")).includes(reportSearchValue));
+    })
+    .sort((first, second) => second.svs - first.svs);
+  const svsTradeOptions = Array.from(new Set(svsAllInvoiceRows.map((row) => row.trade))).sort((first, second) =>
+    first.localeCompare(second, "de")
+  );
+  const activeSvsTradeFilter = svsTradeOptions.includes(svsTradeFilter) ? svsTradeFilter : "all";
+  const svsInvoiceRows = svsAllInvoiceRows.filter(
+    (row) => activeSvsTradeFilter === "all" || row.trade === activeSvsTradeFilter
+  );
+  const svsEvaluableRows = svsInvoiceRows.filter((row) => row.status === "ok");
+  const svsNotEvaluableRows = svsInvoiceRows.filter((row) => row.status === "missing");
+  const svsTotalRevenue = svsEvaluableRows.reduce((sum, row) => sum + row.invoice.netTotal, 0);
+  const svsTotalHours = svsEvaluableRows.reduce((sum, row) => sum + row.stampedHours, 0);
+  const svsAverage = svsTotalHours > 0 ? svsTotalRevenue / svsTotalHours : 0;
+  const svsEvaluableShare =
+    svsInvoiceRows.length > 0 ? (svsEvaluableRows.length / svsInvoiceRows.length) * 100 : 0;
+  const svsDataQualityState =
+    svsInvoiceRows.length === 0
+      ? "neutral"
+      : svsEvaluableShare >= 85
+        ? "good"
+        : svsEvaluableShare >= 60
+          ? "ok"
+          : "low";
+  const svsDataQualityLabel =
+    svsInvoiceRows.length === 0
+      ? "Keine Daten"
+      : svsEvaluableShare >= 85
+        ? "Belastbar"
+        : svsEvaluableShare >= 60
+          ? "Prüfen"
+          : "Lückenhaft";
+  const svsRowsByTrade = Object.values(
+    svsInvoiceRows.reduce<
+      Record<
+        string,
+        {
+          trade: string;
+          invoiceCount: number;
+          evaluableCount: number;
+          missingCount: number;
+          revenue: number;
+          stampedHours: number;
+          svs: number;
+        }
+      >
+    >((groups, row) => {
+      groups[row.trade] = groups[row.trade] ?? {
+        trade: row.trade,
+        invoiceCount: 0,
+        evaluableCount: 0,
+        missingCount: 0,
+        revenue: 0,
+        stampedHours: 0,
+        svs: 0,
+      };
+      const group = groups[row.trade];
+      group.invoiceCount += 1;
+      if (row.status === "ok") {
+        group.evaluableCount += 1;
+        group.revenue += row.invoice.netTotal;
+        group.stampedHours += row.stampedHours;
+      } else {
+        group.missingCount += 1;
+      }
+      return groups;
+    }, {})
+  )
+    .map((row) => ({
+      ...row,
+      svs: row.stampedHours > 0 ? row.revenue / row.stampedHours : 0,
+    }))
+    .sort((first, second) => second.revenue - first.revenue);
   const monthlyRevenueRows = reportMonthKeys.map((month) => {
     const monthInvoices = reportInvoices.filter(
       (invoice) => getProjectInvoiceMonth(invoice) === month.key
@@ -14810,7 +19973,163 @@ export function DashboardPage() {
       count: reportInvoices.filter((invoice) => !isInvoicePaid(invoice)).length,
     },
   ];
+  const isSalesOfferVisibleForRole = (offer: OfferItem) => {
+    const project = heroProjects.find((item) => item.id === offer.projectId);
+    if (isProjectVisibleInProjectScopedAnalytics(project)) return true;
+    if (activeUser?.role !== "VERTRIEB") return false;
+    return normalizeReportPersonValue(offer.internalContactName) === normalizeReportPersonValue(activeUser.name);
+  };
+  const getOfferLinkedInvoices = (offer: OfferItem) =>
+    invoices.filter(
+      (invoice) =>
+        !isDeletedInvoice(invoice) &&
+        invoice.status !== "Entwurf" &&
+        (invoice.sourceOfferId === offer.id || invoice.sourceOfferNumber === offer.offerNumber)
+    );
+  const getOfferWonDateValue = (offer: OfferItem, linkedInvoices: InvoiceItem[]) =>
+    offer.wonAt || linkedInvoices[0]?.createdAt || "";
+  const isSalesOfferInReportPeriod = (offer: OfferItem, linkedInvoices: InvoiceItem[]) =>
+    isReportDate(offer.createdAt) ||
+    Boolean(offer.wonAt && isReportDate(offer.wonAt)) ||
+    Boolean(offer.lostAt && isReportDate(offer.lostAt)) ||
+    linkedInvoices.some((invoice) => isReportDate(invoice.createdAt) || isReportDate(invoice.serviceDate));
+  const salesOfferRows = offers
+    .filter((offer) => !isDeletedOffer(offer))
+    .map((offer) => {
+      const linkedInvoices = getOfferLinkedInvoices(offer);
+      const project = heroProjects.find((item) => item.id === offer.projectId) ?? null;
+      const won = isWonOffer(offer);
+      const lost = isLostOffer(offer);
+      const statusGroup = won ? "won" : lost ? "lost" : offer.status === "Entwurf" ? "draft" : "open";
+      return {
+        offer,
+        project,
+        linkedInvoices,
+        linkedInvoiceValue: linkedInvoices.reduce((sum, invoice) => sum + invoice.netTotal, 0),
+        wonDate: getOfferWonDateValue(offer, linkedInvoices),
+        statusGroup,
+      };
+    })
+    .filter((row) => isSalesOfferVisibleForRole(row.offer))
+    .filter((row) => isSalesOfferInReportPeriod(row.offer, row.linkedInvoices))
+    .filter((row) => {
+      if (!reportSearchValue) return true;
+      return [
+        row.offer.offerNumber,
+        row.offer.customerName,
+        row.offer.projectNumber,
+        row.offer.projectTitle,
+        row.offer.internalContactName,
+        row.offer.lostReason,
+        row.offer.wonReason,
+        row.project?.trade,
+        row.project?.responsibleName,
+      ].some((value) => normalizeStampSearchValue(String(value ?? "")).includes(reportSearchValue));
+    })
+    .sort((first, second) => parseAppDateTime(second.offer.createdAt).getTime() - parseAppDateTime(first.offer.createdAt).getTime());
+  const salesOpenOfferRows = salesOfferRows.filter((row) => row.statusGroup === "open");
+  const salesWonOfferRows = salesOfferRows.filter((row) => row.statusGroup === "won");
+  const salesLostOfferRows = salesOfferRows.filter((row) => row.statusGroup === "lost");
+  const salesWonValue = salesWonOfferRows.reduce(
+    (sum, row) => sum + (row.linkedInvoiceValue > 0 ? row.linkedInvoiceValue : row.offer.netTotal),
+    0
+  );
+  const salesOpenValue = salesOpenOfferRows.reduce((sum, row) => sum + row.offer.netTotal, 0);
+  const salesLostValue = salesLostOfferRows.reduce((sum, row) => sum + row.offer.netTotal, 0);
+  const salesDecisionCount = salesWonOfferRows.length + salesLostOfferRows.length;
+  const salesWinRate = salesDecisionCount > 0 ? (salesWonOfferRows.length / salesDecisionCount) * 100 : 0;
+  const isSalesPotentialVisibleForRole = (potential: ProjectPotential) => {
+    const project = getPotentialProject(potential);
+    if (isProjectVisibleInProjectScopedAnalytics(project)) return true;
+    if (activeUser?.role !== "VERTRIEB") return false;
+    return (
+      Boolean(potential.ownerUserId && potential.ownerUserId === activeUser.id) ||
+      normalizeReportPersonValue(potential.ownerName) === normalizeReportPersonValue(activeUser.name)
+    );
+  };
+  const salesPotentialRows = projectPotentials
+    .filter(isSalesPotentialVisibleForRole)
+    .filter((potential) => isReportDate(potential.createdAt) || Boolean(potential.updatedAt && isReportDate(potential.updatedAt)))
+    .filter((potential) => {
+      if (!reportSearchValue) return true;
+      return [
+        getPotentialNumber(potential),
+        potential.description,
+        potential.customerName,
+        potential.projectLabel,
+        potential.ownerName,
+        getPotentialStatusLabel(potential),
+        potential.lostReason,
+      ].some((value) => normalizeStampSearchValue(String(value ?? "")).includes(reportSearchValue));
+    });
+  const salesPotentialValue = salesPotentialRows.reduce((sum, potential) => sum + parseReportAmount(potential.estimatedValue), 0);
+  const salesDueFollowUps = salesPotentialRows.filter((potential) => {
+    const followUpTime = potential.followUpAt ? new Date(potential.followUpAt).getTime() : NaN;
+    return potential.status === "follow_up" && Number.isFinite(followUpTime) && followUpTime <= reportNow.getTime();
+  });
+  const salesPotentialStatusRows = (["open", "follow_up", "offered", "lost"] as ProjectPotentialStatus[])
+    .map((status) => {
+      const rows = salesPotentialRows.filter((potential) => potential.status === status);
+      return {
+        status,
+        label:
+          status === "offered"
+            ? "Angeboten"
+            : status === "lost"
+              ? "Kein Interesse"
+              : status === "follow_up"
+                ? "Nachfassen"
+                : "Offen",
+        count: rows.length,
+        value: rows.reduce((sum, potential) => sum + parseReportAmount(potential.estimatedValue), 0),
+      };
+    })
+    .filter((row) => row.count > 0);
+  const salesLostReasonRows = Object.values(
+    [
+      ...salesLostOfferRows.map((row) => ({
+        reason: row.offer.lostReason || "Ohne Grund",
+        value: row.offer.netTotal,
+        source: "Angebot",
+      })),
+      ...salesPotentialRows
+        .filter((potential) => potential.status === "lost")
+        .map((potential) => ({
+          reason: potential.lostReason || "Ohne Grund",
+          value: parseReportAmount(potential.estimatedValue),
+          source: "Zusatzverkauf",
+        })),
+    ].reduce<Record<string, { reason: string; count: number; value: number; offerCount: number; potentialCount: number }>>(
+      (groups, row) => {
+        groups[row.reason] = groups[row.reason] ?? {
+          reason: row.reason,
+          count: 0,
+          value: 0,
+          offerCount: 0,
+          potentialCount: 0,
+        };
+        groups[row.reason].count += 1;
+        groups[row.reason].value += row.value;
+        if (row.source === "Angebot") groups[row.reason].offerCount += 1;
+        if (row.source === "Zusatzverkauf") groups[row.reason].potentialCount += 1;
+        return groups;
+      },
+      {}
+    )
+  ).sort((first, second) => second.count - first.count || second.value - first.value);
+  const monthlySalesRows = reportMonthKeys.map((month) => {
+    const monthOpenOffers = salesOfferRows.filter((row) => getReportMonthKey(row.offer.createdAt) === month.key);
+    const monthWonOffers = salesWonOfferRows.filter((row) => getReportMonthKey(row.wonDate || row.offer.createdAt) === month.key);
+    const monthLostOffers = salesLostOfferRows.filter((row) => getReportMonthKey(row.offer.lostAt || row.offer.createdAt) === month.key);
+    return {
+      ...month,
+      offerValue: monthOpenOffers.reduce((sum, row) => sum + row.offer.netTotal, 0),
+      wonValue: monthWonOffers.reduce((sum, row) => sum + (row.linkedInvoiceValue > 0 ? row.linkedInvoiceValue : row.offer.netTotal), 0),
+      lostValue: monthLostOffers.reduce((sum, row) => sum + row.offer.netTotal, 0),
+    };
+  });
   const reportProjectRows = heroProjects
+    .filter((project) => isProjectVisibleInProjectScopedAnalytics(project))
     .map((project) => {
       const projectInvoices = reportInvoices.filter((invoice) => invoice.projectId === project.id);
       const projectOffers = reportOffers.filter((offer) => offer.projectId === project.id);
@@ -14856,23 +20175,137 @@ export function DashboardPage() {
       ].some((value) => normalizeStampSearchValue(String(value ?? "")).includes(reportSearchValue));
     })
     .sort((first, second) => second.revenue + second.offerVolume - (first.revenue + first.offerVolume));
-  const projectRuntimeRows = heroProjects
+  const projectTimelineEntriesByProject = projectStatusTimelineEntries.reduce<Record<string, StatusTimelineEntry[]>>(
+    (groups, entry) => {
+      if (entry.entityType !== "project") return groups;
+      groups[entry.entityId] = groups[entry.entityId] ?? [];
+      groups[entry.entityId].push(entry);
+      return groups;
+    },
+    {}
+  );
+  const getPipelineDurationDays = (from: Date | null, to: Date) =>
+    from && Number.isFinite(from.getTime())
+      ? Math.max(0, Math.floor((to.getTime() - from.getTime()) / 86400000))
+      : 0;
+  const formatPipelineDays = (days: number) => `${days.toLocaleString(APP_LOCALE)} Tg.`;
+  const formatPipelineMinutesAsDays = (minutes: number) =>
+    formatPipelineDays(Math.max(0, Math.round(minutes / 1440)));
+  const getPipelinePhaseDurationMinutes = (entry: StatusTimelineEntry) => {
+    if (entry.durationMinutes > 0) return entry.durationMinutes;
+    const startedAt = parseAppDateTime(entry.startedAt);
+    const endedAt = entry.endedAt ? parseAppDateTime(entry.endedAt) : reportNow;
+    if (!Number.isFinite(startedAt.getTime()) || !Number.isFinite(endedAt.getTime())) return 0;
+    return Math.max(0, Math.floor((endedAt.getTime() - startedAt.getTime()) / 60000));
+  };
+  const isProjectInReportKindFilter = (project?: HeroProjectPreview | null) => {
+    if (!project) return reportProjectKindFilter === "all";
+    if (reportProjectKindFilter === "recurring") return isRecurringProjectKindValue(getProjectKind(project));
+    if (reportProjectKindFilter === "oneTime") return !isRecurringProjectKindValue(getProjectKind(project));
+    return true;
+  };
+  const reportProjectKindLabel =
+    reportProjectKindFilter === "recurring"
+      ? "Dauerläufer"
+      : reportProjectKindFilter === "oneTime"
+        ? "Einmalige Projekte"
+        : "Alle Projektarten";
+  const pipelineProjects = heroProjects
+    .filter((project) => isProjectVisibleInProjectScopedAnalytics(project))
+    .filter((project) => isProjectInReportKindFilter(project));
+  const pipelinePhaseRows = Object.values(
+    projectStatusTimelineEntries.reduce<
+      Record<
+        string,
+        {
+          status: string;
+          phaseCount: number;
+          projectIds: Set<string>;
+          totalMinutes: number;
+          longestMinutes: number;
+          openCount: number;
+        }
+      >
+    >((groups, entry) => {
+      if (entry.entityType !== "project" || !entry.toStatus || entry.toStatus === "Alle Offenen") return groups;
+      const project = heroProjects.find((item) => item.id === entry.entityId);
+      if (!isProjectVisibleInProjectScopedAnalytics(project)) return groups;
+      if (!isProjectInReportKindFilter(project)) return groups;
+      if (reportSearchValue) {
+        const isSearchMatch = [
+          entry.toStatus,
+          entry.entityLabel,
+          project?.projectNumber,
+          project?.title,
+          project?.customer,
+          project?.trade,
+        ].some((value) => normalizeStampSearchValue(String(value ?? "")).includes(reportSearchValue));
+        if (!isSearchMatch) return groups;
+      }
+      const durationMinutes = getPipelinePhaseDurationMinutes(entry);
+      groups[entry.toStatus] = groups[entry.toStatus] ?? {
+        status: entry.toStatus,
+        phaseCount: 0,
+        projectIds: new Set<string>(),
+        totalMinutes: 0,
+        longestMinutes: 0,
+        openCount: 0,
+      };
+      const group = groups[entry.toStatus];
+      group.phaseCount += 1;
+      group.projectIds.add(entry.entityId);
+      group.totalMinutes += durationMinutes;
+      group.longestMinutes = Math.max(group.longestMinutes, durationMinutes);
+      if (!entry.endedAt) group.openCount += 1;
+      return groups;
+    }, {})
+  );
+  const pipelinePhaseTotalMinutes = pipelinePhaseRows.reduce((sum, row) => sum + row.totalMinutes, 0);
+  const pipelineBottleneckRows = pipelinePhaseRows
+    .map((row) => ({
+      ...row,
+      projectCount: row.projectIds.size,
+      averageMinutes: row.phaseCount > 0 ? row.totalMinutes / row.phaseCount : 0,
+      share: pipelinePhaseTotalMinutes > 0 ? (row.totalMinutes / pipelinePhaseTotalMinutes) * 100 : 0,
+    }))
+    .sort((first, second) => second.totalMinutes - first.totalMinutes);
+  const largestPipelineBottleneck = pipelineBottleneckRows[0];
+  const pipelineDurationRows = pipelineProjects
     .map((project) => {
       const createdAt = project.createdAt ? parseAppDateTime(project.createdAt) : null;
-      const endDate = parseProjectDate(project.projectRuntimeUntil);
-      const runtimeDays =
-        createdAt && endDate && Number.isFinite(createdAt.getTime())
-          ? Math.max(0, Math.round((endDate.getTime() - createdAt.getTime()) / 86400000))
-          : 0;
-      return { project, runtimeDays };
+      const projectEntries = [...(projectTimelineEntriesByProject[project.id] ?? [])].sort(
+        (first, second) => parseAppDateTime(first.startedAt).getTime() - parseAppDateTime(second.startedAt).getTime()
+      );
+      const activeStatusEntry = projectEntries.find((entry) => !entry.endedAt && entry.toStatus === project.status);
+      const statusStartedAt = activeStatusEntry ? parseAppDateTime(activeStatusEntry.startedAt) : createdAt;
+      const statusDurationDays = getPipelineDurationDays(statusStartedAt, reportNow);
+      const totalDurationDays = getPipelineDurationDays(createdAt, reportNow);
+      const completedStatusCount = projectEntries.filter((entry) => entry.endedAt).length;
+      return {
+        project,
+        statusStartedAt,
+        statusDurationDays,
+        totalDurationDays,
+        completedStatusCount,
+        source: activeStatusEntry ? "Statushistorie" : "Fallback: Erstellungsdatum",
+      };
     })
-    .filter((row) => row.runtimeDays > 0)
-    .sort((first, second) => second.runtimeDays - first.runtimeDays)
-    .slice(0, 8);
+    .filter((row) => {
+      if (!reportSearchValue) return row.project.status !== "Archiviert" && row.project.status !== "Abgeschlossen";
+      return [
+        row.project.projectNumber,
+        row.project.title,
+        row.project.customer,
+        row.project.status,
+        row.project.trade,
+      ].some((value) => normalizeStampSearchValue(String(value ?? "")).includes(reportSearchValue));
+    })
+    .sort((first, second) => second.statusDurationDays - first.statusDurationDays);
   const averageProjectRuntime =
-    projectRuntimeRows.length > 0
-      ? projectRuntimeRows.reduce((sum, row) => sum + row.runtimeDays, 0) / projectRuntimeRows.length
+    pipelineDurationRows.length > 0
+      ? pipelineDurationRows.reduce((sum, row) => sum + row.totalDurationDays, 0) / pipelineDurationRows.length
       : 0;
+  const longPipelineStatusRows = pipelineDurationRows.filter((row) => row.statusDurationDays >= 14);
   const projectRowsByTrade = Object.values(
     reportProjectRows.reduce<Record<string, { trade: string; count: number; revenue: number; margin: number }>>(
       (groups, row) => {
@@ -14888,34 +20321,202 @@ export function DashboardPage() {
   ).sort((first, second) => second.revenue - first.revenue);
   const customerRows = Object.values(
     reportInvoices.reduce<
-      Record<string, { name: string; revenue: number; invoiceCount: number; projectIds: Set<string> }>
+      Record<
+        string,
+        {
+          name: string;
+          revenue: number;
+          paidRevenue: number;
+          openRevenue: number;
+          overdueRevenue: number;
+          invoiceCount: number;
+          paidInvoiceCount: number;
+          openInvoiceCount: number;
+          overdueInvoiceCount: number;
+          reminderCount: number;
+          highestReminderLevel: number;
+          paymentDaysTotal: number;
+          paidWithDateCount: number;
+          projectIds: Set<string>;
+        }
+      >
     >((groups, invoice) => {
       const name = invoice.customerName || "Ohne Kunde";
-      groups[name] = groups[name] ?? { name, revenue: 0, invoiceCount: 0, projectIds: new Set<string>() };
+      groups[name] = groups[name] ?? {
+        name,
+        revenue: 0,
+        paidRevenue: 0,
+        openRevenue: 0,
+        overdueRevenue: 0,
+        invoiceCount: 0,
+        paidInvoiceCount: 0,
+        openInvoiceCount: 0,
+        overdueInvoiceCount: 0,
+        reminderCount: 0,
+        highestReminderLevel: 0,
+        paymentDaysTotal: 0,
+        paidWithDateCount: 0,
+        projectIds: new Set<string>(),
+      };
+      const paid = isInvoicePaid(invoice);
+      const dueState = getInvoiceDueState(invoice);
       groups[name].revenue += invoice.netTotal;
       groups[name].invoiceCount += 1;
+      if (paid) {
+        groups[name].paidRevenue += invoice.netTotal;
+        groups[name].paidInvoiceCount += 1;
+        const paidAt = parseAppDateTime(invoice.paidAt || "");
+        const invoiceDate = parseAppDateTime(invoice.serviceDate || invoice.createdAt);
+        if (Number.isFinite(paidAt.getTime()) && Number.isFinite(invoiceDate.getTime())) {
+          groups[name].paymentDaysTotal += Math.max(
+            0,
+            Math.round((paidAt.getTime() - invoiceDate.getTime()) / 86_400_000)
+          );
+          groups[name].paidWithDateCount += 1;
+        }
+      } else {
+        groups[name].openRevenue += invoice.netTotal;
+        groups[name].openInvoiceCount += 1;
+        if (dueState.overdueDays > 0) {
+          groups[name].overdueRevenue += invoice.netTotal;
+          groups[name].overdueInvoiceCount += 1;
+        }
+      }
+      if (Number(invoice.reminderLevel ?? 0) > 0) {
+        groups[name].reminderCount += 1;
+        groups[name].highestReminderLevel = Math.max(groups[name].highestReminderLevel, Number(invoice.reminderLevel ?? 0));
+      }
       if (invoice.projectId) groups[name].projectIds.add(invoice.projectId);
       return groups;
     }, {})
   )
-    .map((row) => ({
-      ...row,
-      projectCount: row.projectIds.size,
-      share: invoiceRevenueTotal > 0 ? (row.revenue / invoiceRevenueTotal) * 100 : 0,
-    }))
+    .map((row) => {
+      const feedbackRows = reportCustomerFeedback.filter(
+        (feedback) => normalizeStampSearchValue(feedback.customerName) === normalizeStampSearchValue(row.name)
+      );
+      const averageRating =
+        feedbackRows.length > 0
+          ? feedbackRows.reduce((sum, feedback) => sum + feedback.rating, 0) / feedbackRows.length
+          : 0;
+      const hotAlertCount = feedbackRows.filter((feedback) => feedback.hotAlert).length;
+      const paymentDays =
+        row.paidWithDateCount > 0 ? row.paymentDaysTotal / row.paidWithDateCount : 0;
+      const riskScore =
+        row.overdueInvoiceCount * 3 +
+        row.highestReminderLevel * 2 +
+        hotAlertCount * 2 +
+        (row.openRevenue > 0 && row.revenue > 0 && row.openRevenue / row.revenue > 0.5 ? 1 : 0);
+
+      return {
+        ...row,
+        projectCount: row.projectIds.size,
+        share: invoiceRevenueTotal > 0 ? (row.revenue / invoiceRevenueTotal) * 100 : 0,
+        paymentDays,
+        feedbackCount: feedbackRows.length,
+        averageRating,
+        hotAlertCount,
+        riskLabel: riskScore >= 5 ? "Kritisch" : riskScore >= 2 ? "Prüfen" : "Stabil",
+        riskState: (riskScore >= 5 ? "low" : riskScore >= 2 ? "ok" : "good") as "low" | "ok" | "good",
+      };
+    })
     .filter((row) => !reportSearchValue || normalizeStampSearchValue(row.name).includes(reportSearchValue))
     .sort((first, second) => second.revenue - first.revenue);
+  const customerSummary = customerRows.reduce(
+    (summary, row) => ({
+      revenue: summary.revenue + row.revenue,
+      paidRevenue: summary.paidRevenue + row.paidRevenue,
+      openRevenue: summary.openRevenue + row.openRevenue,
+      overdueRevenue: summary.overdueRevenue + row.overdueRevenue,
+      invoiceCount: summary.invoiceCount + row.invoiceCount,
+      customerCount: summary.customerCount + 1,
+      hotAlertCount: summary.hotAlertCount + row.hotAlertCount,
+    }),
+    { revenue: 0, paidRevenue: 0, openRevenue: 0, overdueRevenue: 0, invoiceCount: 0, customerCount: 0, hotAlertCount: 0 }
+  );
+  const customerRiskRows = [...customerRows].sort((first, second) => {
+    const stateWeight = { low: 0, ok: 1, good: 2 } as const;
+    const stateDiff = stateWeight[first.riskState] - stateWeight[second.riskState];
+    if (stateDiff !== 0) return stateDiff;
+    return second.openRevenue - first.openRevenue;
+  });
+  const overviewRecurringProjectCount = reportProjectRows.filter((row) => isRecurringProject(row.project)).length;
+  const overviewOneTimeProjectCount = reportProjectRows.filter((row) => !isRecurringProject(row.project)).length;
+  const overviewPaidTotal = reportInvoices
+    .filter((invoice) => isInvoicePaid(invoice))
+    .reduce((sum, invoice) => sum + invoice.netTotal, 0);
+  const overviewOpenTotal = reportInvoices
+    .filter((invoice) => !isInvoicePaid(invoice))
+    .reduce((sum, invoice) => sum + invoice.netTotal, 0);
+  const overviewOverdueRows = reportInvoices
+    .filter((invoice) => !isInvoicePaid(invoice))
+    .map((invoice) => ({ invoice, dueState: getInvoiceDueState(invoice) }))
+    .filter((row) => row.dueState.overdueDays > 0)
+    .sort((first, second) => second.dueState.overdueDays - first.dueState.overdueDays);
+  const overviewOverdueTotal = overviewOverdueRows.reduce((sum, row) => sum + row.invoice.netTotal, 0);
+  const overviewProjectStatusRows = Object.values(
+    reportProjectRows.reduce<Record<string, { status: string; count: number; revenue: number }>>((groups, row) => {
+      const status = row.project.status || "Ohne Status";
+      groups[status] = groups[status] ?? { status, count: 0, revenue: 0 };
+      groups[status].count += 1;
+      groups[status].revenue += row.revenue;
+      return groups;
+    }, {})
+  ).sort((first, second) => second.count - first.count);
+  const overviewBusinessAreaRows = Object.values(
+    reportProjectRows.reduce<Record<string, { name: string; count: number; revenue: number; margin: number }>>(
+      (groups, row) => {
+        const businessArea = getProjectBusinessArea(row.project);
+        const name = businessArea.name;
+        groups[name] = groups[name] ?? { name, count: 0, revenue: 0, margin: 0 };
+        groups[name].count += 1;
+        groups[name].revenue += row.revenue;
+        groups[name].margin += row.margin;
+        return groups;
+      },
+      {}
+    )
+  ).sort((first, second) => second.revenue - first.revenue);
+  const overviewRiskRows = [
+    ...overviewOverdueRows.slice(0, 4).map((row) => ({
+      key: `op-${row.invoice.id}`,
+      type: "OP überfällig",
+      title: row.invoice.invoiceNumber,
+      detail: row.invoice.customerName || "Ohne Kunde",
+      days: row.dueState.overdueDays,
+      amount: row.invoice.netTotal,
+      state: "low" as const,
+    })),
+    ...longPipelineStatusRows.slice(0, 4).map((row) => ({
+      key: `status-${row.project.id}`,
+      type: "Projektstatus",
+      title: row.project.projectNumber || row.project.title,
+      detail: `${row.project.customer || "Ohne Kunde"} · ${row.project.status || "Ohne Status"}`,
+      days: row.statusDurationDays,
+      amount: 0,
+      state: row.statusDurationDays >= 30 ? "low" as const : "ok" as const,
+    })),
+    ...recurringForecastMissingSourceRows.slice(0, 4).map((row) => ({
+      key: `forecast-${row.month.key}-${row.project.id}`,
+      type: "Forecast fehlt",
+      title: row.project.projectNumber || row.project.title,
+      detail: `${row.project.customer || "Ohne Kunde"} · ${row.month.label}`,
+      days: 0,
+      amount: 0,
+      state: "ok" as const,
+    })),
+  ].slice(0, 8);
   const catalogRows = Object.values(
     reportInvoices.reduce<
-      Record<string, { title: string; quantity: number; revenue: number; cost: number; count: number }>
+      Record<string, { title: string; catalogType: CatalogItemType | ""; quantity: number; revenue: number; cost: number; count: number }>
     >((groups, invoice) => {
       invoice.lines.forEach((line) => {
         const title = line.title || "Freie Position";
-        groups[title] = groups[title] ?? { title, quantity: 0, revenue: 0, cost: 0, count: 0 };
-        groups[title].quantity += line.quantity;
-        groups[title].revenue += line.quantity * line.unitPrice;
-        groups[title].cost += getLineInternalCost(line);
-        groups[title].count += 1;
+        const key = `${line.catalogType || "free"}:${line.catalogItemId || title}`;
+        groups[key] = groups[key] ?? { title, catalogType: line.catalogType, quantity: 0, revenue: 0, cost: 0, count: 0 };
+        groups[key].quantity += line.quantity;
+        groups[key].revenue += line.quantity * line.unitPrice;
+        groups[key].cost += getLineInternalCost(line);
+        groups[key].count += 1;
       });
       return groups;
     }, {})
@@ -14927,6 +20528,63 @@ export function DashboardPage() {
     }))
     .filter((row) => !reportSearchValue || normalizeStampSearchValue(row.title).includes(reportSearchValue))
     .sort((first, second) => second.revenue - first.revenue);
+  const catalogComponentRows = Object.values(
+    reportInvoices.reduce<
+      Record<
+        string,
+        {
+          id: string;
+          title: string;
+          type: CatalogItemType | "unknown";
+          unit: string;
+          quantity: number;
+          revenue: number;
+          cost: number;
+          count: number;
+          directCount: number;
+          packageCount: number;
+        }
+      >
+    >((groups, invoice) => {
+      invoice.lines.forEach((line) => {
+        getInvoiceLineComponentRows(line).forEach((component) => {
+          const key = `${component.type}:${component.id}:${component.title}`;
+          groups[key] = groups[key] ?? {
+            id: component.id,
+            title: component.title,
+            type: component.type,
+            unit: component.unit,
+            quantity: 0,
+            revenue: 0,
+            cost: 0,
+            count: 0,
+            directCount: 0,
+            packageCount: 0,
+          };
+          groups[key].quantity += component.quantity;
+          groups[key].revenue += component.revenue;
+          groups[key].cost += component.cost;
+          groups[key].count += 1;
+          if (component.source === "package") {
+            groups[key].packageCount += 1;
+          } else {
+            groups[key].directCount += 1;
+          }
+        });
+      });
+      return groups;
+    }, {})
+  )
+    .map((row) => ({
+      ...row,
+      margin: row.revenue - row.cost,
+      marginPercent: row.revenue > 0 ? ((row.revenue - row.cost) / row.revenue) * 100 : 0,
+    }))
+    .filter((row) => !reportSearchValue || normalizeStampSearchValue(row.title).includes(reportSearchValue))
+    .sort((first, second) => second.quantity - first.quantity);
+  const serviceSalesRows = catalogComponentRows.filter((row) => row.type === "service");
+  const materialSalesRows = catalogComponentRows.filter((row) => row.type === "article");
+  const packageSalesRows = catalogRows.filter((row) => row.catalogType === "package");
   const getReportTargetHoursForUser = (user: UserOption) => {
     let total = 0;
     const cursor = new Date(reportStartDate);
@@ -14936,8 +20594,7 @@ export function DashboardPage() {
     }
     return total;
   };
-  const employeeReportRows = visibleReportUsers
-    .map((user) => {
+  const employeeAllReportRows = visibleReportUsers.map((user) => {
       const userProjectEntries = stampEntries.filter(
         (entry) => !entry.deletedAt && entry.mode === "project" && entry.userId === user.id && isReportDate(entry.date)
       );
@@ -14979,9 +20636,23 @@ export function DashboardPage() {
         attendance,
         unproductiveShare,
       };
-    })
-    .filter((row) => !reportSearchValue || normalizeStampSearchValue(row.user.name).includes(reportSearchValue));
-  const employeeSummary = employeeReportRows.reduce(
+    });
+  const employeeReportRows = employeeAllReportRows.filter(
+    (row) =>
+      !reportSearchValue ||
+      [row.user.name, row.user.planningGroup, row.user.planningBoard]
+        .some((value) => normalizeStampSearchValue(String(value ?? "")).includes(reportSearchValue))
+  );
+  const employeeAnalyticsOwnGroup = activeUser?.planningGroup || "Ohne Planungsgruppe";
+  const canViewAllEmployeeAnalytics =
+    activeUser?.role === "ADMIN" || activeUser?.role === "GESCHAEFTSFUEHRER";
+  const canViewEmployeeTeamMemberDetails =
+    canViewAllEmployeeAnalytics || activeUser?.role === "FUEHRUNGSKRAFT";
+  const visibleEmployeeReportRows = employeeReportRows.filter((row) => {
+    if (canViewAllEmployeeAnalytics) return true;
+    return (row.user.planningGroup || "Ohne Planungsgruppe") === employeeAnalyticsOwnGroup;
+  });
+  const employeeSummary = visibleEmployeeReportRows.reduce(
     (summary, row) => ({
       soldHours: summary.soldHours + row.soldHours,
       stampedProjectHours: summary.stampedProjectHours + row.stampedProjectHours,
@@ -15012,6 +20683,67 @@ export function DashboardPage() {
         ? (employeeSummary.unproductiveHours / employeeSummary.stampedProjectHours) * 100
         : 0,
   };
+  const getEmployeePerformanceMetrics = (summary: {
+    soldHours: number;
+    stampedProjectHours: number;
+    unproductiveHours: number;
+    targetHours: number;
+  }) => ({
+    performance:
+      summary.stampedProjectHours > 0 ? (summary.soldHours / summary.stampedProjectHours) * 100 : 0,
+    productivity:
+      summary.stampedProjectHours + summary.unproductiveHours > 0
+        ? (summary.soldHours / (summary.stampedProjectHours + summary.unproductiveHours)) * 100
+        : 0,
+    attendance:
+      summary.targetHours > 0
+        ? ((summary.stampedProjectHours + summary.unproductiveHours) / summary.targetHours) * 100
+        : 0,
+  });
+  const employeeGroupRows = Object.values(
+    visibleEmployeeReportRows.reduce<
+      Record<
+        string,
+        {
+          groupName: string;
+          users: typeof visibleEmployeeReportRows;
+          soldHours: number;
+          stampedProjectHours: number;
+          unproductiveHours: number;
+          targetHours: number;
+        }
+      >
+    >((groups, row) => {
+      const groupName = row.user.planningGroup || "Ohne Planungsgruppe";
+      groups[groupName] = groups[groupName] ?? {
+        groupName,
+        users: [],
+        soldHours: 0,
+        stampedProjectHours: 0,
+        unproductiveHours: 0,
+        targetHours: 0,
+      };
+      groups[groupName].users.push(row);
+      groups[groupName].soldHours += row.soldHours;
+      groups[groupName].stampedProjectHours += row.stampedProjectHours;
+      groups[groupName].unproductiveHours += row.unproductiveHours;
+      groups[groupName].targetHours += row.targetHours;
+      return groups;
+    }, {})
+  )
+    .map((row) => ({
+      ...row,
+      metrics: getEmployeePerformanceMetrics(row),
+    }))
+    .sort((first, second) => first.groupName.localeCompare(second.groupName, "de"));
+  const ownEmployeeAnalyticsRow = employeeAllReportRows.find((row) => row.user.id === activeUserId);
+  const toggleEmployeeAnalyticsGroup = (groupName: string) => {
+    setExpandedEmployeeAnalyticsGroups((currentGroups) =>
+      currentGroups.includes(groupName)
+        ? currentGroups.filter((currentGroup) => currentGroup !== groupName)
+        : [...currentGroups, groupName]
+    );
+  };
   const getMetricState = (value: number, good: number, warning: number, lowerIsBetter = false) => {
     if (lowerIsBetter) {
       if (value < good) return "good";
@@ -15021,6 +20753,34 @@ export function DashboardPage() {
     if (value >= good) return "good";
     if (value >= warning) return "ok";
     return "low";
+  };
+  const renderEmployeeAnalyticsGauge = (value: number, state: "good" | "ok" | "low" | "neutral") => {
+    const clampedValue = Math.max(0, Math.min(120, value));
+    const rotation = -90 + (clampedValue / 120) * 180;
+
+    return (
+      <div className={styles.employeeAnalyticsGauge} data-state={state}>
+        <svg viewBox="0 0 140 86" aria-hidden="true" focusable="false">
+          <path className={styles.employeeAnalyticsGaugeTrack} d="M18 72 A52 52 0 0 1 122 72" />
+          <path
+            className={styles.employeeAnalyticsGaugeValue}
+            d="M18 72 A52 52 0 0 1 122 72"
+            pathLength={120}
+            style={{ strokeDasharray: `${clampedValue} 120` }}
+          />
+          <line
+            className={styles.employeeAnalyticsGaugeNeedle}
+            x1="70"
+            y1="72"
+            x2="70"
+            y2="30"
+            transform={`rotate(${rotation} 70 72)`}
+          />
+          <circle className={styles.employeeAnalyticsGaugeHub} cx="70" cy="72" r="4" />
+        </svg>
+        <strong>{value > 120 ? ">120%" : `${formatHours(value)}%`}</strong>
+      </div>
+    );
   };
   const averageSoldHourlyRate =
     employeeSummary.stampedProjectHours > 0 ? invoiceRevenueTotal / employeeSummary.stampedProjectHours : 0;
@@ -15038,6 +20798,25 @@ export function DashboardPage() {
         y: 18 + ((hash * 3 + index * 11) % 62),
       };
     });
+  const projectMapRegionRows = Object.values(
+    reportProjectRows.reduce<Record<string, { region: string; count: number; revenue: number; openProjects: number }>>(
+      (groups, row) => {
+        const address = row.project.address || "";
+        const postalMatch = address.match(/\b(\d{5})\b/);
+        const region = postalMatch ? postalMatch[1].slice(0, 2) : "Ohne PLZ";
+        groups[region] = groups[region] ?? { region, count: 0, revenue: 0, openProjects: 0 };
+        groups[region].count += 1;
+        groups[region].revenue += row.revenue;
+        if (row.project.status !== "Archiviert" && row.project.status !== "Abgeschlossen") {
+          groups[region].openProjects += 1;
+        }
+        return groups;
+      },
+      {}
+    )
+  ).sort((first, second) => second.count - first.count);
+  const projectMapWithAddressCount = reportProjectRows.filter((row) => row.project.address).length;
+  const projectMapWithoutAddressCount = Math.max(0, reportProjectRows.length - projectMapWithAddressCount);
   const renderReportMetric = (
     label: string,
     value: string,
@@ -15077,10 +20856,17 @@ export function DashboardPage() {
       })}
     </div>
   );
+  const renderKuzuStars = (rating: number) => "★".repeat(Math.max(1, Math.min(5, rating)));
+  const getKuzuSourceLabel = (source: string) => (source === "public" ? "Bewertungslink" : "Manuell");
+  const getKuzuRequestStatusLabel = (status: string) => {
+    if (status === "answered") return "Beantwortet";
+    if (status === "sent") return "Versendet";
+    return "Offen";
+  };
   const renderReportsAnalytics = () => (
     <section className={styles.analyticsPage}>
       <div className={styles.analyticsTabs} role="tablist" aria-label="Auswertungsbereiche">
-        {reportTabs.map((tab) => (
+        {visibleReportTabs.map((tab) => (
           <button
             key={tab.id}
             type="button"
@@ -15092,19 +20878,111 @@ export function DashboardPage() {
         ))}
       </div>
 
+      {visibleReportTabs.length === 0 ? (
+        <p className={styles.emptyState}>Für diese Rolle sind aktuell keine Auswertungen freigegeben.</p>
+      ) : null}
+
       <div className={styles.analyticsFilters}>
         {reportAnalyticsTab === "forecast" ? (
           <>
-            <span>Zeitraum: Nächste 12 Monate</span>
-            <span>Start: {forecastMonthKeys[0]?.label}</span>
+            <label>
+              Zeitraum
+              <select
+                value={forecastPeriodPreset}
+                onChange={(event) => setForecastPeriodPreset(event.target.value as ForecastPeriodPreset)}
+              >
+                <option value="currentMonth">Aktueller Monat</option>
+                <option value="previousMonth">Vormonat</option>
+                <option value="currentYear">Aktuelles Jahr</option>
+                <option value="previousYear">Vorjahr</option>
+                <option value="last12">Letzte 12 Monate</option>
+                <option value="next12">Nächste 12 Monate</option>
+                <option value="custom">Individuell</option>
+              </select>
+            </label>
+            <label>
+              Von
+              <input
+                type="date"
+                value={forecastPeriodPreset === "custom" ? forecastCustomStartDate : formatDateKey(forecastStartDate)}
+                disabled={forecastPeriodPreset !== "custom"}
+                onChange={(event) => setForecastCustomStartDate(event.target.value)}
+              />
+            </label>
+            <label>
+              Bis
+              <input
+                type="date"
+                value={forecastPeriodPreset === "custom" ? forecastCustomEndDate : formatDateKey(forecastEndDate)}
+                disabled={forecastPeriodPreset !== "custom"}
+                onChange={(event) => setForecastCustomEndDate(event.target.value)}
+              />
+            </label>
+            <span>Aktiv: {forecastPeriodLabel}</span>
           </>
         ) : (
           <>
-            <span>Dokumentendatum: Vorherige 12 Monate</span>
-            <span>Projekt-Erstellung: Vorherige 12 Monate</span>
+            <label>
+              Zeitraum
+              <select
+                value={reportPeriodPreset}
+                onChange={(event) => setReportPeriodPreset(event.target.value as ReportPeriodPreset)}
+              >
+                <option value="currentMonth">Aktueller Monat</option>
+                <option value="previousMonth">Vormonat</option>
+                <option value="currentYear">Aktuelles Jahr</option>
+                <option value="last12">Letzte 12 Monate</option>
+                <option value="custom">Individuell</option>
+              </select>
+            </label>
+            <label>
+              Von
+              <input
+                type="date"
+                value={reportPeriodPreset === "custom" ? reportCustomStartDate : formatDateKey(reportStartDate)}
+                disabled={reportPeriodPreset !== "custom"}
+                onChange={(event) => setReportCustomStartDate(event.target.value)}
+              />
+            </label>
+            <label>
+              Bis
+              <input
+                type="date"
+                value={reportPeriodPreset === "custom" ? reportCustomEndDate : formatDateKey(reportEndDate)}
+                disabled={reportPeriodPreset !== "custom"}
+                onChange={(event) => setReportCustomEndDate(event.target.value)}
+              />
+            </label>
+            <span>Aktiv: {reportPeriodLabel}</span>
           </>
         )}
-        <span>Gewerk: Alle</span>
+        {reportAnalyticsTab === "svs" ? (
+          <label>
+            Gewerk
+            <select value={activeSvsTradeFilter} onChange={(event) => setSvsTradeFilter(event.target.value)}>
+              <option value="all">Alle Gewerke</option>
+              {svsTradeOptions.map((trade) => (
+                <option key={trade} value={trade}>
+                  {trade}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : reportAnalyticsTab === "projects" ? (
+          <label>
+            Projektart
+            <select
+              value={reportProjectKindFilter}
+              onChange={(event) => setReportProjectKindFilter(event.target.value as ReportProjectKindFilter)}
+            >
+              <option value="all">Alle Projektarten</option>
+              <option value="oneTime">Einmalige Projekte</option>
+              <option value="recurring">Dauerläufer</option>
+            </select>
+          </label>
+        ) : (
+          <span>Gewerk: Alle</span>
+        )}
         <label>
           Suche
           <input
@@ -15124,7 +21002,7 @@ export function DashboardPage() {
               onClick={() => setSelectedForecastPeriod("total")}
             >
               <small>Gesamt</small>
-              <span>12 Monate</span>
+              <span>{forecastMonthCount === 1 ? "1 Monat" : `${forecastMonthCount} Monate`}</span>
             </button>
             {forecastMonthKeys.map((month) => (
               <button
@@ -15138,19 +21016,301 @@ export function DashboardPage() {
             ))}
           </div>
 
-          <section className={`${styles.analyticsGrid} ${styles.forecastMetricGrid}`}>
-            {renderReportMetric("Sicherer Forecast", formatMoney(forecastBusinessSummaryTotal.recurring + forecastBusinessSummaryTotal.oneTime), "Dauerläufer + fakturierte Einmalprojekte", "good")}
-            {renderReportMetric("Chancen", formatMoney(forecastBusinessSummaryTotal.opportunities), "Offene Angebote einmaliger Projekte", "ok")}
-            {renderReportMetric("Gesamtpotenzial", formatMoney(forecastBusinessSummaryTotal.potential), "Sicherer Forecast + Chancen", "good")}
-            {renderReportMetric("Fakturiert", formatMoney(forecastBusinessSummaryTotal.invoiced), "Rechnungen im Forecast-Zeitraum")}
-            {renderReportMetric("Bezahlt", formatMoney(forecastBusinessSummaryTotal.paid), "Bereits bezahlte Rechnungen", "good")}
-            {renderReportMetric(
-              "Offene Posten",
-              formatMoney(forecastBusinessSummaryTotal.invoiced - forecastBusinessSummaryTotal.paid),
-              "Fakturiert, aber noch nicht bezahlt",
-              forecastBusinessSummaryTotal.invoiced - forecastBusinessSummaryTotal.paid > 0 ? "ok" : "good"
-            )}
+          <section className={styles.forecastSummaryGroups}>
+            <article className={styles.forecastSummaryGroup} data-state="good">
+              <div>
+                <span>Forecast</span>
+                <small>Sicherer Forecast und Chancen</small>
+              </div>
+              <strong>{formatMoney(forecastBusinessSummaryTotal.potential)}</strong>
+              <div className={styles.forecastSummaryDetails}>
+                <span>
+                  <small>Sicher</small>
+                  <b>{formatMoney(forecastBusinessSummaryTotal.recurring + forecastBusinessSummaryTotal.oneTime)}</b>
+                </span>
+                <span>
+                  <small>Chancen</small>
+                  <b>{formatMoney(forecastBusinessSummaryTotal.opportunities)}</b>
+                </span>
+              </div>
+            </article>
+
+            <article
+              className={styles.forecastSummaryGroup}
+              data-state={forecastBusinessSummaryTotal.invoiced - forecastBusinessSummaryTotal.paid > 0 ? "ok" : "good"}
+            >
+              <div>
+                <span>Rechnungen</span>
+                <small>Faktura und Zahlungseingang</small>
+              </div>
+              <strong>{formatMoney(forecastBusinessSummaryTotal.invoiced - forecastBusinessSummaryTotal.paid)}</strong>
+              <div className={styles.forecastSummaryDetails}>
+                <span>
+                  <small>Fakturiert</small>
+                  <b>{formatMoney(forecastBusinessSummaryTotal.invoiced)}</b>
+                </span>
+                <span>
+                  <small>Bezahlt</small>
+                  <b>{formatMoney(forecastBusinessSummaryTotal.paid)}</b>
+                </span>
+              </div>
+            </article>
+
+            <article
+              className={styles.forecastSummaryGroup}
+              data-state={
+                forecastOpenInvoiceBucketTotals.overdue > 0 || forecastOpenInvoiceBucketTotals.missingDueDate > 0
+                  ? "low"
+                  : forecastOpenInvoiceBucketTotals.dueToday > 0
+                    ? "ok"
+                    : "good"
+              }
+            >
+              <div>
+                <span>Fälligkeit</span>
+                <small>Offene Posten nach Zahlungsziel</small>
+              </div>
+              <strong>
+                {formatMoney(
+                  forecastOpenInvoiceBucketTotals.overdue +
+                    forecastOpenInvoiceBucketTotals.missingDueDate +
+                    forecastOpenInvoiceBucketTotals.dueToday
+                )}
+              </strong>
+              <div className={styles.forecastSummaryDetails}>
+                <span>
+                  <small>Nicht fällig</small>
+                  <b>{formatMoney(forecastOpenInvoiceBucketTotals.notDue)}</b>
+                </span>
+                <span>
+                  <small>Heute</small>
+                  <b>{formatMoney(forecastOpenInvoiceBucketTotals.dueToday)}</b>
+                </span>
+                <span>
+                  <small>Überfällig</small>
+                  <b>{formatMoney(forecastOpenInvoiceBucketTotals.overdue)}</b>
+                </span>
+                <span>
+                  <small>Fälligkeit fehlt</small>
+                  <b>{formatMoney(forecastOpenInvoiceBucketTotals.missingDueDate)}</b>
+                </span>
+              </div>
+            </article>
           </section>
+
+          <article className={`${styles.analyticsCard} ${styles.forecastQualityPanel}`}>
+            <button
+              type="button"
+              className={styles.forecastQualityToggle}
+              onClick={() => setIsForecastQualityExpanded((current) => !current)}
+              aria-expanded={isForecastQualityExpanded}
+            >
+              <div>
+                <h2>Forecast-Qualitätsprüfung</h2>
+                <p className={styles.forecastQualityIntro}>
+                  Prüft die Datenbasis für Forecast, offene Posten und Mahnwesen im gewählten Zeitraum.
+                </p>
+              </div>
+              <span className={styles.forecastQualityHeaderActions}>
+                <span className={styles.forecastQualitySummary} data-state={forecastQualityCriticalCount > 0 ? "low" : forecastQualityProblemCount > 0 ? "ok" : "good"}>
+                  {forecastQualityProblemCount === 0
+                    ? "Alles plausibel"
+                    : forecastQualityCriticalCount > 0
+                      ? `${forecastQualityCriticalCount} kritisch`
+                      : `${forecastQualityProblemCount} Prüfpunkte offen`}
+                </span>
+                <span className={styles.forecastQualityToggleIcon} aria-hidden="true">
+                  {isForecastQualityExpanded ? "-" : "+"}
+                </span>
+              </span>
+            </button>
+            {isForecastQualityExpanded ? (
+              <div className={styles.forecastQualityGrid}>
+                {forecastQualityRows.map((row) => (
+                  <section key={row.id} className={styles.forecastQualityCard} data-state={row.status}>
+                    <div>
+                      <span>{row.status === "good" ? "OK" : row.status === "low" ? "Kritisch" : "Prüfen"}</span>
+                      <strong>{row.title}</strong>
+                    </div>
+                    <p>{row.detail}</p>
+                    <div className={styles.forecastQualityFacts}>
+                      {row.count > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedForecastQualityId(row.id)}
+                        >
+                          {row.count} Treffer
+                        </button>
+                      ) : (
+                        <span>{row.count} Treffer</span>
+                      )}
+                      {row.amount > 0 ? <span>{formatMoney(row.amount)}</span> : null}
+                    </div>
+                    <small>{row.action}</small>
+                  </section>
+                ))}
+              </div>
+            ) : forecastQualityProblemCount > 0 ? (
+              <div className={styles.forecastQualityCollapsedHint}>
+                <span>
+                  {forecastQualityCriticalCount > 0
+                    ? `${forecastQualityCriticalCount} kritische Prüfpunkte brauchen Aufmerksamkeit.`
+                    : `${forecastQualityProblemCount} Prüfpunkte sind offen.`}
+                </span>
+                <button type="button" onClick={() => setIsForecastQualityExpanded(true)}>
+                  Details anzeigen
+                </button>
+              </div>
+            ) : null}
+          </article>
+
+          {selectedForecastQualityRow ? (
+            <div
+              className={styles.modalOverlay}
+              role="dialog"
+              aria-modal="true"
+              aria-label={selectedForecastQualityRow.title}
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget) {
+                  setSelectedForecastQualityId("");
+                }
+              }}
+            >
+              <div className={`${styles.standardModal} ${styles.forecastQualityModal}`}>
+                <header className={styles.standardModalHeader}>
+                  <div>
+                    <h2>{selectedForecastQualityRow.title}</h2>
+                    <p>{selectedForecastQualityRow.action}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.iconButton}
+                    aria-label="Schließen"
+                    onClick={() => setSelectedForecastQualityId("")}
+                  >
+                    -
+                  </button>
+                </header>
+                <div className={styles.standardModalBody}>
+                  <div className={styles.forecastQualityModalSummary}>
+                    <span>{selectedForecastQualityRow.count} Treffer</span>
+                    {selectedForecastQualityRow.amount > 0 ? (
+                      <span>{formatMoney(selectedForecastQualityRow.amount)}</span>
+                    ) : null}
+                    <p>{selectedForecastQualityRow.detail}</p>
+                  </div>
+                  <div className={styles.forecastQualityModalList}>
+                    {selectedForecastQualityRow.items.map((item) => (
+                      <article key={item.key} className={styles.forecastQualityModalRow}>
+                        <div>
+                          <strong>{item.title}</strong>
+                          <span>{item.meta}</span>
+                          <small>{item.detail}</small>
+                        </div>
+                        <div>
+                          {item.amount > 0 ? <span>{formatMoney(item.amount)}</span> : null}
+                          <button
+                            type="button"
+                            disabled={!item.onOpen || !canUseReportDrilldowns}
+                            onClick={() => {
+                              if (!canUseReportDrilldowns) return;
+                              item.onOpen?.();
+                              setSelectedForecastQualityId("");
+                            }}
+                          >
+                            {canUseReportDrilldowns ? item.actionLabel : "Nur Hinweis"}
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <article className={styles.analyticsCard}>
+            <div className={styles.forecastListHeader}>
+              <h2>Offene Posten Detailkontrolle</h2>
+              <strong>{formatMoney(forecastOpenInvoiceTotal)}</strong>
+            </div>
+            <table className={styles.analyticsTable}>
+              <thead>
+                <tr>
+                  <th>Monat</th>
+                  <th>Geschäftsbereich</th>
+                  <th>Rechnung</th>
+                  <th>Kunde</th>
+                  <th>Projekt</th>
+                  <th>Leistungsdatum</th>
+                  <th>Fällig am</th>
+                  <th>Status</th>
+                  <th>Mahnung</th>
+                  <th>Offen netto</th>
+                  <th>Aktion</th>
+                </tr>
+              </thead>
+              <tbody>
+                {forecastOpenInvoiceRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={11}>Keine offenen Posten im gewählten Forecast-Zeitraum.</td>
+                  </tr>
+                ) : (
+                  forecastOpenInvoiceRows.slice(0, 80).map((row) => (
+                    <tr key={row.invoice.id}>
+                      <td>{row.monthLabel}</td>
+                      <td>{row.businessArea.name}</td>
+                      <td>{row.invoice.invoiceNumber}</td>
+                      <td>{row.invoice.customerName || "-"}</td>
+                      <td>{row.project?.projectNumber || row.invoice.projectTitle || "-"}</td>
+                      <td>{row.invoice.serviceDate ? formatDateOnly(row.invoice.serviceDate) : "-"}</td>
+                      <td>{row.invoice.dueDate ? formatDateOnly(row.invoice.dueDate) : "-"}</td>
+                      <td>
+                        <span className={styles.invoiceStatusChip} data-status={row.dueState.state === "good" ? "Bezahlt" : "Fakturiert"}>
+                          {row.dueState.label}
+                        </span>
+                      </td>
+                      <td>
+                        {row.invoice.reminderLevel > 0 ? (
+                          <span className={styles.invoiceStatusChip} data-status="Fakturiert">
+                            Mahnstufe {row.invoice.reminderLevel}
+                            {row.invoice.lastReminderAt ? ` | ${formatDateOnly(row.invoice.lastReminderAt)}` : ""}
+                          </span>
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                      <td>{formatMoney(row.openAmount)}</td>
+                      <td>
+                        {canUseReportWriteActions ? (
+                          <div className={styles.tableActionGroup}>
+                            {row.dueState.overdueDays > 0 ? (
+                              <button
+                                type="button"
+                                className={styles.secondaryButton}
+                                onClick={() => void createInvoiceReminderDocument(row.invoice)}
+                              >
+                                Mahnung erstellen
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              className={styles.secondaryButton}
+                              onClick={() => void markInvoiceAsPaid(row.invoice)}
+                            >
+                              Als bezahlt markieren
+                            </button>
+                          </div>
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </article>
 
           <section className={styles.forecastChartGrid}>
             <article className={styles.analyticsCard}>
@@ -15371,7 +21531,7 @@ export function DashboardPage() {
                       <td>
                         {row.paidValue > 0 ? (
                           <span className={styles.paidForecastBadge}>
-                            <span aria-hidden="true">✓</span>
+                                    <span aria-hidden="true">{"\u2713"}</span>
                             <span>
                               {formatMoney(row.paidValue)}
                               {row.paidDates.length > 0 ? (
@@ -15403,7 +21563,7 @@ export function DashboardPage() {
                       </td>
                       <td>{row.note}</td>
                       <td>
-                        {row.invoiceIds.length > 0 && row.paidValue + 0.01 < row.invoiceValue ? (
+                        {canUseReportWriteActions && row.invoiceIds.length > 0 && row.paidValue + 0.01 < row.invoiceValue ? (
                           <button
                             type="button"
                             className={styles.secondaryButton}
@@ -15454,13 +21614,17 @@ export function DashboardPage() {
           <section className={styles.analyticsGrid}>
             {renderReportMetric("Angebotsvolumen", formatMoney(offerVolumeTotal), `${reportOffers.length} Angebote`)}
             {renderReportMetric("Rechnungsvolumen", formatMoney(invoiceRevenueTotal), `${reportInvoices.length} Rechnungen`)}
-            {renderReportMetric(
-              "Marge",
-              formatMoney(invoiceMarginTotal),
-              `${formatHours(invoiceMarginPercent)}% auf Rechnungsvolumen`,
-              getMetricState(invoiceMarginPercent, 30, 18)
-            )}
-            {renderReportMetric("Ø SVS", `${formatMoney(averageSoldHourlyRate)} / h`, "Umsatz je gestempelter Projektstunde")}
+            {canViewSensitiveOverviewFinancials
+              ? renderReportMetric(
+                  "Marge",
+                  formatMoney(invoiceMarginTotal),
+                  `${formatHours(invoiceMarginPercent)}% auf Rechnungsvolumen`,
+                  getMetricState(invoiceMarginPercent, 30, 18)
+                )
+              : null}
+            {canViewSensitiveOverviewFinancials
+              ? renderReportMetric("SVS", `${formatMoney(averageSoldHourlyRate)} / h`, "Umsatz je gestempelter Projektstunde")
+              : null}
           </section>
 
           <section className={styles.analyticsTwoColumn}>
@@ -15510,8 +21674,8 @@ export function DashboardPage() {
                   <th>Dokumentennummer</th>
                   <th>Datum</th>
                   <th>VK</th>
-                  <th>Kosten intern</th>
-                  <th>Marge</th>
+                  {canViewSensitiveOverviewFinancials ? <th>Kosten intern</th> : null}
+                  {canViewSensitiveOverviewFinancials ? <th>Marge</th> : null}
                   <th>Projekt</th>
                   <th>Kunde</th>
                 </tr>
@@ -15525,8 +21689,8 @@ export function DashboardPage() {
                       <td>{offer.offerNumber}</td>
                       <td>{formatDateOnly(offer.createdAt)}</td>
                       <td>{formatMoney(offer.netTotal)}</td>
-                      <td>{formatMoney(costs)}</td>
-                      <td>{formatMoney(margin)}</td>
+                      {canViewSensitiveOverviewFinancials ? <td>{formatMoney(costs)}</td> : null}
+                      {canViewSensitiveOverviewFinancials ? <td>{formatMoney(margin)}</td> : null}
                       <td>{offer.projectNumber}</td>
                       <td>{offer.customerName}</td>
                     </tr>
@@ -15538,13 +21702,285 @@ export function DashboardPage() {
         </>
       )}
 
+      {reportAnalyticsTab === "sales" && (
+        <>
+          <section className={styles.analyticsGrid}>
+            {renderReportMetric("Offene Angebote", formatMoney(salesOpenValue), `${salesOpenOfferRows.length} Angebot${salesOpenOfferRows.length === 1 ? "" : "e"}`, salesOpenValue > 0 ? "ok" : "neutral")}
+            {renderReportMetric("Gewonnen", formatMoney(salesWonValue), `${salesWonOfferRows.length} Angebot${salesWonOfferRows.length === 1 ? "" : "e"}`, "good")}
+            {renderReportMetric("Verloren", formatMoney(salesLostValue), `${salesLostOfferRows.length} Angebot${salesLostOfferRows.length === 1 ? "" : "e"}`, salesLostOfferRows.length > 0 ? "low" : "good")}
+            {renderReportMetric("Abschlussquote", `${formatHours(salesWinRate)}%`, `${salesDecisionCount} entschiedene Angebote`, getMetricState(salesWinRate, 55, 35))}
+            {renderReportMetric("Zusatzverkäufe", formatMoney(salesPotentialValue), `${salesPotentialRows.length} Zusatzverkauf${salesPotentialRows.length === 1 ? "" : "e"}`, "ok")}
+            {renderReportMetric("Nachfassen", `${salesDueFollowUps.length}`, "Fällige Zusatzverkäufe", salesDueFollowUps.length > 0 ? "ok" : "good")}
+          </section>
+
+          <section className={styles.analyticsTwoColumn}>
+            <article className={styles.analyticsCard}>
+              <h2>Sales-Verlauf</h2>
+              {renderReportBarChart(
+                monthlySalesRows.map((row) => ({
+                  key: row.key,
+                  label: row.label,
+                  value: row.wonValue,
+                  secondary: row.offerValue,
+                }))
+              )}
+              <div className={styles.analyticsLegend}>
+                <span data-color="primary">Gewonnen</span>
+                <span data-color="secondary">Angebotsvolumen</span>
+              </div>
+            </article>
+            <article className={styles.analyticsCard}>
+              <h2>Zusatzverkäufe nach Status</h2>
+              <table className={styles.analyticsTable}>
+                <thead>
+                  <tr>
+                    <th>Status</th>
+                    <th>Anzahl</th>
+                    <th>Wert</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {salesPotentialStatusRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={3}>Keine Zusatzverkäufe im gewählten Zeitraum.</td>
+                    </tr>
+                  ) : (
+                    salesPotentialStatusRows.map((row) => (
+                      <tr key={row.status}>
+                        <td>{row.label}</td>
+                        <td>{row.count}</td>
+                        <td>{formatMoney(row.value)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </article>
+          </section>
+
+          <article className={styles.analyticsCard}>
+            <h2>Angebote nach Sales-Status</h2>
+            <table className={styles.analyticsTable}>
+              <thead>
+                <tr>
+                  <th>Angebot</th>
+                  <th>Status</th>
+                  <th>Kunde</th>
+                  <th>Projekt</th>
+                  <th>Verantwortlich</th>
+                  <th>Erstellt</th>
+                  <th>Entschieden</th>
+                  <th>Angebot</th>
+                  <th>Rechnung</th>
+                  <th>Grund</th>
+                </tr>
+              </thead>
+              <tbody>
+                {salesOfferRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={10}>Keine Angebote im gewählten Zeitraum.</td>
+                  </tr>
+                ) : (
+                  salesOfferRows.slice(0, 80).map((row) => (
+                    <tr key={row.offer.id}>
+                      <td>{row.offer.offerNumber}</td>
+                      <td>{renderOfferStatusChip(row.offer)}</td>
+                      <td>{row.offer.customerName || row.project?.customer || "-"}</td>
+                      <td>{row.project?.projectNumber || row.offer.projectNumber || row.offer.projectTitle}</td>
+                      <td>{row.offer.internalContactName || row.project?.responsibleName || "-"}</td>
+                      <td>{formatDateOnly(row.offer.createdAt)}</td>
+                      <td>
+                        {row.statusGroup === "won" && row.wonDate
+                          ? formatDateOnly(row.wonDate)
+                          : row.statusGroup === "lost" && row.offer.lostAt
+                            ? formatDateOnly(row.offer.lostAt)
+                            : "-"}
+                      </td>
+                      <td>{formatMoney(row.offer.netTotal)}</td>
+                      <td>{row.linkedInvoiceValue > 0 ? formatMoney(row.linkedInvoiceValue) : "-"}</td>
+                      <td>{row.offer.wonReason || row.offer.lostReason || "-"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </article>
+
+          <section className={styles.analyticsTwoColumn}>
+            <article className={styles.analyticsCard}>
+              <h2>Verlustgründe</h2>
+              <table className={styles.analyticsTable}>
+                <thead>
+                  <tr>
+                    <th>Grund</th>
+                    <th>Fälle</th>
+                    <th>Angebote</th>
+                    <th>Chancen</th>
+                    <th>Wert</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {salesLostReasonRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={5}>Keine verlorenen Angebote oder Chancen im gewählten Zeitraum.</td>
+                    </tr>
+                  ) : (
+                    salesLostReasonRows.map((row) => (
+                      <tr key={row.reason}>
+                        <td>{row.reason}</td>
+                        <td>{row.count}</td>
+                        <td>{row.offerCount}</td>
+                        <td>{row.potentialCount}</td>
+                        <td>{formatMoney(row.value)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </article>
+
+            <article className={styles.analyticsCard}>
+              <h2>Fällige Nachfasspunkte</h2>
+              <table className={styles.analyticsTable}>
+                <thead>
+                  <tr>
+                    <th>Zusatzverkauf</th>
+                    <th>Kunde</th>
+                    <th>Projekt</th>
+                    <th>Fällig</th>
+                    <th>Wert</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {salesDueFollowUps.length === 0 ? (
+                    <tr>
+                      <td colSpan={5}>Keine fälligen Nachfasspunkte.</td>
+                    </tr>
+                  ) : (
+                    salesDueFollowUps.slice(0, 12).map((potential) => (
+                      <tr key={potential.id}>
+                        <td>{getPotentialNumber(potential)} · {potential.description}</td>
+                        <td>{potential.customerName || "-"}</td>
+                        <td>{potential.projectLabel || potential.projectId}</td>
+                        <td>{potential.followUpAt ? formatDeadline(potential.followUpAt) : "-"}</td>
+                        <td>{formatMoney(parseReportAmount(potential.estimatedValue))}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </article>
+          </section>
+        </>
+      )}
+
+      {reportAnalyticsTab === "svs" && (
+        <>
+          <section className={styles.analyticsGrid}>
+            {renderReportMetric("SVS Durchschnitt", `${formatMoney(svsAverage)} / h`, "Netto-Rechnungswert / verknüpfte Stempelstunden", svsAverage > 0 ? "good" : "low")}
+            {renderReportMetric("Datenbasis", svsDataQualityLabel, `${formatPercent(svsEvaluableShare)} auswertbare Rechnungen`, svsDataQualityState)}
+            {renderReportMetric("Auswertbar", `${svsEvaluableRows.length}`, "Rechnungen mit verknüpften Stempelzeiten", svsNotEvaluableRows.length === 0 ? "good" : "ok")}
+            {renderReportMetric("Nicht auswertbar", `${svsNotEvaluableRows.length}`, "Rechnungen ohne verknüpfte Stempelzeiten", svsNotEvaluableRows.length === 0 ? "good" : "low")}
+            {renderReportMetric("Verknüpfte Stunden", `${formatHours(svsTotalHours)} Std.`, `${formatMoney(svsTotalRevenue)} ausgewerteter Umsatz`)}
+          </section>
+
+          <article className={styles.analyticsCard}>
+            <h2>SVS nach Gewerk</h2>
+            <table className={styles.analyticsTable}>
+              <thead>
+                <tr>
+                  <th>Gewerk</th>
+                  <th>Rechnungen</th>
+                  <th>Auswertbar</th>
+                  <th>Nicht auswertbar</th>
+                  <th>Netto</th>
+                  <th>Stempelstunden</th>
+                  <th>SVS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {svsRowsByTrade.length === 0 ? (
+                  <tr>
+                    <td colSpan={7}>Keine Gewerke im gewählten Zeitraum.</td>
+                  </tr>
+                ) : (
+                  svsRowsByTrade.map((row) => (
+                    <tr key={row.trade}>
+                      <td>{row.trade}</td>
+                      <td>{row.invoiceCount}</td>
+                      <td>{row.evaluableCount}</td>
+                      <td>{row.missingCount}</td>
+                      <td>{formatMoney(row.revenue)}</td>
+                      <td>{row.stampedHours > 0 ? `${formatHours(row.stampedHours)} Std.` : "-"}</td>
+                      <td>{row.stampedHours > 0 ? `${formatMoney(row.svs)} / h` : "-"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </article>
+
+          <article className={styles.analyticsCard}>
+            <h2>SVS je Rechnung</h2>
+            <table className={styles.analyticsTable}>
+              <thead>
+                <tr>
+                  <th>Rechnung</th>
+                  <th>Kunde</th>
+                  <th>Projekt</th>
+                  <th>Gewerk</th>
+                  <th>Leistungsdatum</th>
+                  <th>Netto</th>
+                  <th>Stempelstunden</th>
+                  <th>SVS</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {svsInvoiceRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={9}>Keine Rechnungen im gewählten Zeitraum.</td>
+                  </tr>
+                ) : (
+                  svsInvoiceRows.map((row) => (
+                    <tr key={row.invoice.id}>
+                      <td>{row.invoice.invoiceNumber}</td>
+                      <td>{row.invoice.customerName || "-"}</td>
+                      <td>{row.invoice.projectNumber || row.invoice.projectTitle || "-"}</td>
+                      <td>{row.trade}</td>
+                      <td>{formatDateOnly(row.invoice.serviceDate || row.invoice.createdAt)}</td>
+                      <td>{formatMoney(row.invoice.netTotal)}</td>
+                      <td>{row.stampedHours > 0 ? `${formatHours(row.stampedHours)} Std.` : "-"}</td>
+                      <td>{row.stampedHours > 0 ? `${formatMoney(row.svs)} / h` : "-"}</td>
+                      <td>
+                        <span className={styles.invoiceStatusChip} data-status={row.status === "ok" ? "Bezahlt" : "Entwurf"}>
+                          {row.status === "ok" ? "auswertung i.O." : "nicht auswertbar"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </article>
+        </>
+      )}
+
       {reportAnalyticsTab === "projects" && (
         <>
           <section className={styles.analyticsGrid}>
-            {renderReportMetric("Durchschnittliche Projektlaufzeit", `${formatHours(averageProjectRuntime)} Tage`, "Aus Erstellungsdatum bis Projektlaufzeit bis")}
+            {renderReportMetric("Ø Projektalter", formatPipelineDays(Math.round(averageProjectRuntime)), `${reportProjectKindLabel} seit Anlage`)}
+            {renderReportMetric(
+              "Größter Engpass",
+              largestPipelineBottleneck?.status ?? "-",
+              largestPipelineBottleneck
+                ? `${formatPipelineMinutesAsDays(largestPipelineBottleneck.totalMinutes)} Gesamtzeit (${reportProjectKindLabel})`
+                : "Noch keine Statushistorie",
+              largestPipelineBottleneck ? "ok" : "neutral"
+            )}
+            {renderReportMetric("Status > 14 Tage", `${longPipelineStatusRows.length}`, `${reportProjectKindLabel} mit langer aktueller Phase`, longPipelineStatusRows.length === 0 ? "good" : "ok")}
             {renderReportMetric("Projekte mit Umsatz", `${reportProjectRows.filter((row) => row.revenue > 0).length}`, "Im gewählten Zeitraum")}
             {renderReportMetric("Gebuchte Projektstunden", `${formatHours(employeeSummary.stampedProjectHours)} Std.`, "Aus Stempelungen")}
-            {renderReportMetric("Offene Sollstunden", `${formatHours(Math.max(0, employeeSummary.soldHours - employeeSummary.stampedProjectHours))} Std.`, "Verkauft minus gestempelt")}
           </section>
 
           <article className={styles.analyticsCard}>
@@ -15577,8 +22013,7 @@ export function DashboardPage() {
             </table>
           </article>
 
-          <section className={styles.analyticsTwoColumn}>
-            <article className={styles.analyticsCard}>
+          <article className={styles.analyticsCard}>
               <h2>Marge pro Gewerk</h2>
               <table className={styles.analyticsTable}>
                 <thead>
@@ -15604,34 +22039,112 @@ export function DashboardPage() {
                   ))}
                 </tbody>
               </table>
-            </article>
-            <article className={styles.analyticsCard}>
-              <h2>Projektlaufzeit</h2>
+          </article>
+          <article className={styles.analyticsCard}>
+              <h2>Pipeline-Engpässe</h2>
+              <table className={styles.analyticsTable}>
+                <thead>
+                  <tr>
+                    <th>Phase</th>
+                    <th>Projekte</th>
+                    <th>Phasen</th>
+                    <th>Aktuell offen</th>
+                    <th>Gesamtzeit</th>
+                    <th>Ø Dauer</th>
+                    <th>Längste Dauer</th>
+                    <th>Anteil</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pipelineBottleneckRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={8}>Noch keine Statushistorie für Pipeline-Engpässe vorhanden.</td>
+                    </tr>
+                  ) : (
+                    pipelineBottleneckRows.map((row) => (
+                      <tr key={row.status}>
+                        <td>{row.status}</td>
+                        <td>{row.projectCount}</td>
+                        <td>{row.phaseCount}</td>
+                        <td>{row.openCount}</td>
+                        <td>{formatPipelineMinutesAsDays(row.totalMinutes)}</td>
+                        <td>{formatPipelineMinutesAsDays(row.averageMinutes)}</td>
+                        <td data-state={row.longestMinutes >= 43200 ? "low" : row.longestMinutes >= 20160 ? "ok" : "good"}>
+                          {formatPipelineMinutesAsDays(row.longestMinutes)}
+                        </td>
+                        <td>{formatPercent(row.share)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+          </article>
+
+          <article className={styles.analyticsCard}>
+              <h2>Pipeline-Dauer</h2>
               <table className={styles.analyticsTable}>
                 <thead>
                   <tr>
                     <th>Projekt</th>
+                    <th>Kunde</th>
                     <th>Status</th>
-                    <th>Dauer</th>
+                    <th>Im Status seit</th>
+                    <th>Dauer Status</th>
+                    <th>Seit Anlage</th>
+                    <th>Basis</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {projectRuntimeRows.map((row) => (
+                  {pipelineDurationRows.slice(0, 12).map((row) => (
                     <tr key={row.project.id}>
-                      <td>{row.project.projectNumber}</td>
+                      <td>{row.project.projectNumber || row.project.id}</td>
+                      <td>{row.project.customer || row.project.title}</td>
                       <td>{row.project.status}</td>
-                      <td>{formatHours(row.runtimeDays)} Tage</td>
+                      <td>{row.statusStartedAt ? formatDateOnly(row.statusStartedAt.toISOString()) : "-"}</td>
+                      <td data-state={row.statusDurationDays >= 30 ? "low" : row.statusDurationDays >= 14 ? "ok" : "good"}>
+                        {formatPipelineDays(row.statusDurationDays)}
+                      </td>
+                      <td>{formatPipelineDays(row.totalDurationDays)}</td>
+                      <td>{row.source}</td>
                     </tr>
                   ))}
+                  {pipelineDurationRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={7}>Keine passenden Projekte gefunden.</td>
+                    </tr>
+                  ) : null}
                 </tbody>
               </table>
-            </article>
-          </section>
+          </article>
         </>
       )}
 
       {reportAnalyticsTab === "customers" && (
         <>
+          <section className={styles.analyticsGrid}>
+            {renderReportMetric("Kunden", `${customerSummary.customerCount}`, "Mit Rechnungen im Zeitraum")}
+            {renderReportMetric("Umsatz", formatMoney(customerSummary.revenue), `${customerSummary.invoiceCount} Rechnungen`, "good")}
+            {renderReportMetric("Bezahlt", formatMoney(customerSummary.paidRevenue), "Bereits bezahlter Umsatz", "good")}
+            {renderReportMetric(
+              "Offene Posten",
+              formatMoney(customerSummary.openRevenue),
+              "Noch nicht bezahlte Rechnungen",
+              customerSummary.openRevenue > 0 ? "ok" : "good"
+            )}
+            {renderReportMetric(
+              "Überfällig",
+              formatMoney(customerSummary.overdueRevenue),
+              "Überfällige offene Posten",
+              customerSummary.overdueRevenue > 0 ? "low" : "good"
+            )}
+            {renderReportMetric(
+              "KuZu-Hot-Alerts",
+              `${customerSummary.hotAlertCount}`,
+              "Bewertungen mit Handlungsbedarf",
+              customerSummary.hotAlertCount > 0 ? "low" : "good"
+            )}
+          </section>
+
           <section className={styles.analyticsTwoColumn}>
             <article className={styles.analyticsCard}>
               <h2>Umsatz pro Zeitraum</h2>
@@ -15644,11 +22157,35 @@ export function DashboardPage() {
               )}
             </article>
             <article className={styles.analyticsCard}>
-              <h2>Top-Kunden</h2>
-              <div className={styles.analyticsDonut}>
-                <strong>{formatMoney(invoiceRevenueTotal)}</strong>
-                <span>Gesamtumsatz</span>
-              </div>
+              <h2>Kunden mit Handlungsbedarf</h2>
+              <table className={styles.analyticsTable}>
+                <thead>
+                  <tr>
+                    <th>Kunde</th>
+                    <th>Risiko</th>
+                    <th>Offen</th>
+                    <th>Überfällig</th>
+                    <th>Mahnung</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {customerRiskRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={5}>Keine Kunden im gewählten Zeitraum.</td>
+                    </tr>
+                  ) : (
+                    customerRiskRows.slice(0, 8).map((row) => (
+                      <tr key={row.name}>
+                        <td>{row.name}</td>
+                        <td data-state={row.riskState}>{row.riskLabel}</td>
+                        <td>{formatMoney(row.openRevenue)}</td>
+                        <td>{row.overdueInvoiceCount > 0 ? formatMoney(row.overdueRevenue) : "-"}</td>
+                        <td>{row.highestReminderLevel > 0 ? `Stufe ${row.highestReminderLevel}` : "-"}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </article>
           </section>
           <article className={styles.analyticsCard}>
@@ -15658,24 +22195,145 @@ export function DashboardPage() {
                 <tr>
                   <th>Kunde</th>
                   <th>Rechnungsvolumen</th>
+                  <th>Bezahlt</th>
+                  <th>Offen</th>
                   <th>Anteil</th>
                   <th>Projekte</th>
                   <th>Rechnungen</th>
+                  <th>Ø Zahlungsdauer</th>
+                  <th>KuZu</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {customerRows.slice(0, 20).map((row) => (
-                  <tr key={row.name}>
-                    <td>{row.name}</td>
-                    <td>{formatMoney(row.revenue)}</td>
-                    <td>{formatHours(row.share)}%</td>
-                    <td>{row.projectCount}</td>
-                    <td>{row.invoiceCount}</td>
+                {customerRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={10}>Keine Kunden im gewählten Zeitraum.</td>
                   </tr>
-                ))}
+                ) : (
+                  customerRows.slice(0, 30).map((row) => (
+                    <tr key={row.name}>
+                      <td>{row.name}</td>
+                      <td>{formatMoney(row.revenue)}</td>
+                      <td>{formatMoney(row.paidRevenue)}</td>
+                      <td>{row.openRevenue > 0 ? formatMoney(row.openRevenue) : "-"}</td>
+                      <td>{formatHours(row.share)}%</td>
+                      <td>{row.projectCount}</td>
+                      <td>{row.invoiceCount}</td>
+                      <td>{row.paymentDays > 0 ? `${formatHours(row.paymentDays)} Tg.` : "-"}</td>
+                      <td>
+                        {row.feedbackCount > 0
+                          ? `${formatHours(row.averageRating)} / 5 (${row.feedbackCount})`
+                          : "-"}
+                      </td>
+                      <td data-state={row.riskState}>{row.riskLabel}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </article>
+        </>
+      )}
+
+      {reportAnalyticsTab === "kuzu" && (
+        <>
+          <section className={styles.analyticsGrid}>
+            {renderReportMetric(
+              "Durchschnitt",
+              reportCustomerFeedback.length > 0 ? `${formatHours(averageCustomerFeedbackRating)} / 5` : "-",
+              `${reportCustomerFeedback.length} Bewertungen`,
+              averageCustomerFeedbackRating >= 4.5 ? "good" : averageCustomerFeedbackRating >= 4 ? "ok" : "low"
+            )}
+            {renderReportMetric(
+              "Bewertungslinks",
+              `${reportCustomerFeedbackRequests.length}`,
+              `${openCustomerFeedbackRequestCount} offen oder versendet`
+            )}
+            {renderReportMetric(
+              "Hot-Alerts",
+              `${hotCustomerFeedbackCount}`,
+              "4 Sterne oder weniger / Kontaktwunsch",
+              hotCustomerFeedbackCount === 0 ? "good" : "low"
+            )}
+            {renderReportMetric(
+              "Quellen",
+              `${publicCustomerFeedbackCount} / ${manualCustomerFeedbackCount}`,
+              "Link / manuell"
+            )}
+          </section>
+
+          <section className={styles.analyticsTwoColumn}>
+            <article className={styles.analyticsCard}>
+              <h2>Bewertungen</h2>
+              <table className={styles.analyticsTable}>
+                <thead>
+                  <tr>
+                    <th>Kunde</th>
+                    <th>Bewertung</th>
+                    <th>Quelle</th>
+                    <th>Rechnung</th>
+                    <th>Kommentar</th>
+                    <th>Datum</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportCustomerFeedback.length === 0 ? (
+                    <tr>
+                      <td colSpan={6}>Noch keine Bewertungen im gewählten Zeitraum.</td>
+                    </tr>
+                  ) : (
+                    reportCustomerFeedback.slice(0, 20).map((feedback) => (
+                      <tr key={feedback.id}>
+                        <td>{feedback.customerName || "-"}</td>
+                        <td data-state={feedback.hotAlert ? "low" : "good"}>
+                          {renderKuzuStars(feedback.rating)}
+                        </td>
+                        <td>{getKuzuSourceLabel(feedback.source)}</td>
+                        <td>{feedback.invoiceNumber || "-"}</td>
+                        <td>{feedback.comment || (feedback.wantsContact ? "Kontaktwunsch" : "-")}</td>
+                        <td>{formatDeadline(feedback.createdAt)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </article>
+
+            <article className={styles.analyticsCard}>
+              <h2>Bewertungslinks</h2>
+              <table className={styles.analyticsTable}>
+                <thead>
+                  <tr>
+                    <th>Kunde</th>
+                    <th>Rechnung</th>
+                    <th>Status</th>
+                    <th>Empfänger</th>
+                    <th>Versendet</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportCustomerFeedbackRequests.length === 0 ? (
+                    <tr>
+                      <td colSpan={5}>Noch keine Bewertungslinks im gewählten Zeitraum.</td>
+                    </tr>
+                  ) : (
+                    reportCustomerFeedbackRequests.slice(0, 20).map((request) => (
+                      <tr key={request.id}>
+                        <td>{request.customerName || "-"}</td>
+                        <td>{request.invoiceNumber || "-"}</td>
+                        <td data-state={request.status === "answered" ? "good" : "ok"}>
+                          {getKuzuRequestStatusLabel(request.status)}
+                        </td>
+                        <td>{request.recipientEmail || "-"}</td>
+                        <td>{request.sentAt ? formatDeadline(request.sentAt) : "-"}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </article>
+          </section>
         </>
       )}
 
@@ -15683,45 +22341,136 @@ export function DashboardPage() {
         <>
           <section className={styles.analyticsTwoColumn}>
             <article className={styles.analyticsCard}>
-              <h2>Top 10 Positionen nach Marge %</h2>
+              <h2>Meistverkaufte Leistungen</h2>
               <table className={styles.analyticsTable}>
                 <thead>
                   <tr>
-                    <th>Position</th>
-                    <th>Marge %</th>
+                    <th>Leistung</th>
+                    <th>Menge</th>
+                    <th>VK</th>
+                    <th>Marge</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {[...catalogRows]
-                    .sort((first, second) => second.marginPercent - first.marginPercent)
-                    .slice(0, 10)
-                    .map((row) => (
+                  {serviceSalesRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={4}>Keine Leistungen im gewählten Zeitraum.</td>
+                    </tr>
+                  ) : (
+                    serviceSalesRows.slice(0, 10).map((row) => (
                       <tr key={row.title}>
                         <td>{row.title}</td>
-                        <td data-state={getMetricState(row.marginPercent, 30, 18)}>{formatHours(row.marginPercent)}%</td>
+                        <td>{formatHours(row.quantity)} {row.unit}</td>
+                        <td>{formatMoney(row.revenue)}</td>
+                        <td data-state={getMetricState(row.marginPercent, 30, 18)}>{formatMoney(row.margin)}</td>
                       </tr>
-                    ))}
+                    ))
+                  )}
                 </tbody>
               </table>
             </article>
             <article className={styles.analyticsCard}>
-              <h2>Meistverkaufte Positionen</h2>
-              <div className={styles.analyticsRankBars}>
-                {[...catalogRows]
-                  .sort((first, second) => second.quantity - first.quantity)
-                  .slice(0, 10)
-                  .map((row) => (
-                    <div key={row.title}>
-                      <span>{row.title}</span>
-                      <b style={{ width: `${Math.max(4, (row.quantity / Math.max(1, catalogRows[0]?.quantity ?? 1)) * 100)}%` }} />
-                      <small>{formatHours(row.quantity)}</small>
-                    </div>
-                  ))}
-              </div>
+              <h2>Meistverkaufte Materialien</h2>
+              <table className={styles.analyticsTable}>
+                <thead>
+                  <tr>
+                    <th>Material</th>
+                    <th>Menge</th>
+                    <th>VK</th>
+                    <th>Marge</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {materialSalesRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={4}>Keine Materialien im gewählten Zeitraum.</td>
+                    </tr>
+                  ) : (
+                    materialSalesRows.slice(0, 10).map((row) => (
+                      <tr key={row.title}>
+                        <td>{row.title}</td>
+                        <td>{formatHours(row.quantity)} {row.unit}</td>
+                        <td>{formatMoney(row.revenue)}</td>
+                        <td data-state={getMetricState(row.marginPercent, 30, 18)}>{formatMoney(row.margin)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </article>
           </section>
           <article className={styles.analyticsCard}>
-            <h2>Positionsübersicht</h2>
+            <h2>Meistverkaufte Pakete</h2>
+            <table className={styles.analyticsTable}>
+              <thead>
+                <tr>
+                  <th>Paket</th>
+                  <th>Anzahl</th>
+                  <th>VK</th>
+                  <th>EK/Kosten</th>
+                  <th>Marge</th>
+                  <th>Marge %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {packageSalesRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={6}>Keine Pakete im gewählten Zeitraum.</td>
+                  </tr>
+                ) : (
+                  packageSalesRows.slice(0, 12).map((row) => (
+                    <tr key={row.title}>
+                      <td>{row.title}</td>
+                      <td>{formatHours(row.quantity)}</td>
+                      <td>{formatMoney(row.revenue)}</td>
+                      <td>{formatMoney(row.cost)}</td>
+                      <td>{formatMoney(row.margin)}</td>
+                      <td data-state={getMetricState(row.marginPercent, 30, 18)}>{formatHours(row.marginPercent)}%</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </article>
+          <article className={styles.analyticsCard}>
+            <h2>Leistungen & Materialien inkl. Paketbestandteilen</h2>
+            <table className={styles.analyticsTable}>
+              <thead>
+                <tr>
+                  <th>Position</th>
+                  <th>Typ</th>
+                  <th>Menge</th>
+                  <th>Aus Paketen</th>
+                  <th>VK</th>
+                  <th>EK/Kosten</th>
+                  <th>Marge</th>
+                  <th>Marge %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {catalogComponentRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={8}>Keine Leistungen oder Materialien im gewählten Zeitraum.</td>
+                  </tr>
+                ) : (
+                  catalogComponentRows.slice(0, 24).map((row) => (
+                    <tr key={`${row.type}-${row.id}-${row.title}`}>
+                      <td>{row.title}</td>
+                      <td>{row.type === "service" ? "Leistung" : row.type === "article" ? "Material" : "-"}</td>
+                      <td>{formatHours(row.quantity)} {row.unit}</td>
+                      <td>{row.packageCount > 0 ? `${row.packageCount}x` : "-"}</td>
+                      <td>{formatMoney(row.revenue)}</td>
+                      <td>{formatMoney(row.cost)}</td>
+                      <td>{formatMoney(row.margin)}</td>
+                      <td data-state={getMetricState(row.marginPercent, 30, 18)}>{formatHours(row.marginPercent)}%</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </article>
+          <article className={styles.analyticsCard}>
+            <h2>Rechnungspositionen gesamt</h2>
             <table className={styles.analyticsTable}>
               <thead>
                 <tr>
@@ -15779,113 +22528,410 @@ export function DashboardPage() {
             )}
           </section>
           <article className={styles.analyticsCard}>
-            <h2>Mitarbeiterauswertung</h2>
-            <table className={styles.analyticsTable}>
-              <thead>
-                <tr>
-                  <th>Mitarbeiter</th>
-                  <th>Verkaufte Std.</th>
-                  <th>Projektstunden</th>
-                  <th>Unproduktiv</th>
-                  <th>Soll-Anwesenheit</th>
-                  <th>Leistungsgrad</th>
-                  <th>Produktivität</th>
-                  <th>Anwesenheit</th>
-                </tr>
-              </thead>
-              <tbody>
-                {employeeReportRows.map((row) => (
-                  <tr key={row.user.id}>
-                    <td>{row.user.name}</td>
-                    <td>{formatHours(row.soldHours)}</td>
-                    <td>{formatHours(row.stampedProjectHours)}</td>
-                    <td>{formatHours(row.unproductiveHours)}</td>
-                    <td>{formatHours(row.targetHours)}</td>
-                    <td data-state={getMetricState(row.performanceGrade, 100, 90)}>{formatHours(row.performanceGrade)}%</td>
-                    <td data-state={getMetricState(row.productivity, 100, 90)}>{formatHours(row.productivity)}%</td>
-                    <td data-state={getMetricState(row.attendance, 80, 70)}>{formatHours(row.attendance)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <h2>Kennzahlen nach Planungsgruppe</h2>
+            <div className={styles.employeeAnalyticsCards}>
+              {employeeGroupRows.length === 0 ? (
+                <p className={styles.employeeAnalyticsEmpty}>Keine Mitarbeitenden-Kennzahlen im gewählten Zeitraum.</p>
+              ) : (
+                employeeGroupRows.map((group) => {
+                  const isExpanded = expandedEmployeeAnalyticsGroups.includes(group.groupName);
+                  return (
+                    <section key={group.groupName} className={styles.employeeAnalyticsGroupCard}>
+                      <div className={styles.employeeAnalyticsCardHeader}>
+                        <div>
+                          <span>Planungsgruppe</span>
+                          <strong>{group.groupName}</strong>
+                          <small>{group.users.length} Mitarbeitende</small>
+                        </div>
+                        {canViewEmployeeTeamMemberDetails ? (
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            onClick={() => toggleEmployeeAnalyticsGroup(group.groupName)}
+                          >
+                            {isExpanded ? "Mitarbeitende ausblenden" : "Mitarbeitende anzeigen"}
+                          </button>
+                        ) : null}
+                      </div>
+                      <div className={styles.employeeAnalyticsMetricGrid}>
+                        <article data-state={getMetricState(group.metrics.performance, 100, 90)}>
+                          <span>Leistungsgrad</span>
+                          {renderEmployeeAnalyticsGauge(group.metrics.performance, getMetricState(group.metrics.performance, 100, 90))}
+                          <small>Verkaufte Std. / produktive Std.</small>
+                        </article>
+                        <article data-state={getMetricState(group.metrics.productivity, 100, 90)}>
+                          <span>Produktivität</span>
+                          {renderEmployeeAnalyticsGauge(group.metrics.productivity, getMetricState(group.metrics.productivity, 100, 90))}
+                          <small>Verkaufte Std. / Anwesenheit</small>
+                        </article>
+                        <article data-state={getMetricState(group.metrics.attendance, 80, 70)}>
+                          <span>Anwesenheitsgrad</span>
+                          {renderEmployeeAnalyticsGauge(group.metrics.attendance, getMetricState(group.metrics.attendance, 80, 70))}
+                          <small>Anwesenheit / Sollzeit</small>
+                        </article>
+                        <article>
+                          <span>Unproduktive Std.</span>
+                          <strong>{formatHours(group.unproductiveHours)}</strong>
+                          <small>Stundenwert, keine Quote</small>
+                        </article>
+                      </div>
+                      <div className={styles.employeeAnalyticsFacts}>
+                        <span>Verkauft: {formatHours(group.soldHours)} Std.</span>
+                        <span>Produktiv: {formatHours(group.stampedProjectHours)} Std.</span>
+                        <span>Sollzeit: {formatHours(group.targetHours)} Std.</span>
+                      </div>
+                      {isExpanded && canViewEmployeeTeamMemberDetails ? (
+                        <div className={styles.employeeAnalyticsMemberGrid}>
+                          {group.users.map((row) => (
+                            <article key={row.user.id} className={styles.employeeAnalyticsMemberCard}>
+                              <div className={styles.employeeAnalyticsMemberHeader}>
+                                <div>
+                                  <strong>{row.user.name}</strong>
+                                  <small>{row.user.roleLabel || row.user.role}</small>
+                                </div>
+                                <span>{row.user.planningGroup || group.groupName}</span>
+                              </div>
+                              <div className={styles.employeeAnalyticsMemberKpis}>
+                                <div data-state={getMetricState(row.performanceGrade, 100, 90)}>
+                                  <span>Leistungsgrad</span>
+                                  <strong>{formatHours(row.performanceGrade)}%</strong>
+                                </div>
+                                <div data-state={getMetricState(row.productivity, 100, 90)}>
+                                  <span>Produktivität</span>
+                                  <strong>{formatHours(row.productivity)}%</strong>
+                                </div>
+                                <div data-state={getMetricState(row.attendance, 80, 70)}>
+                                  <span>Anwesenheit</span>
+                                  <strong>{formatHours(row.attendance)}%</strong>
+                                </div>
+                              </div>
+                              <dl>
+                                <div><dt>Verkauft</dt><dd>{formatHours(row.soldHours)} Std.</dd></div>
+                                <div><dt>Produktiv</dt><dd>{formatHours(row.stampedProjectHours)} Std.</dd></div>
+                                <div><dt>Unproduktiv</dt><dd>{formatHours(row.unproductiveHours)} Std.</dd></div>
+                                <div><dt>Sollzeit</dt><dd>{formatHours(row.targetHours)} Std.</dd></div>
+                              </dl>
+                            </article>
+                          ))}
+                        </div>
+                      ) : null}
+                    </section>
+                  );
+                })
+              )}
+            </div>
           </article>
+          {ownEmployeeAnalyticsRow ? (
+            <article className={styles.analyticsCard}>
+              <h2>Meine Kennzahlen</h2>
+              <section className={styles.employeeAnalyticsGroupCard}>
+                <div className={styles.employeeAnalyticsCardHeader}>
+                  <div>
+                    <span>{ownEmployeeAnalyticsRow.user.planningGroup || "Ohne Planungsgruppe"}</span>
+                    <strong>{ownEmployeeAnalyticsRow.user.name}</strong>
+                    <small>Eigene Auswertung im gewählten Zeitraum</small>
+                  </div>
+                </div>
+                <div className={styles.employeeAnalyticsMetricGrid}>
+                  <article data-state={getMetricState(ownEmployeeAnalyticsRow.performanceGrade, 100, 90)}>
+                    <span>Leistungsgrad</span>
+                    <strong>{formatHours(ownEmployeeAnalyticsRow.performanceGrade)}%</strong>
+                    <small>Verkaufte Std. / produktive Std.</small>
+                  </article>
+                  <article data-state={getMetricState(ownEmployeeAnalyticsRow.productivity, 100, 90)}>
+                    <span>Produktivität</span>
+                    <strong>{formatHours(ownEmployeeAnalyticsRow.productivity)}%</strong>
+                    <small>Verkaufte Std. / Anwesenheit</small>
+                  </article>
+                  <article data-state={getMetricState(ownEmployeeAnalyticsRow.attendance, 80, 70)}>
+                    <span>Anwesenheitsgrad</span>
+                    <strong>{formatHours(ownEmployeeAnalyticsRow.attendance)}%</strong>
+                    <small>Anwesenheit / Sollzeit</small>
+                  </article>
+                  <article>
+                    <span>Unproduktive Std.</span>
+                    <strong>{formatHours(ownEmployeeAnalyticsRow.unproductiveHours)}</strong>
+                    <small>Stundenwert, keine Quote</small>
+                  </article>
+                </div>
+                <div className={styles.employeeAnalyticsFacts}>
+                  <span>Verkauft: {formatHours(ownEmployeeAnalyticsRow.soldHours)} Std.</span>
+                  <span>Produktiv: {formatHours(ownEmployeeAnalyticsRow.stampedProjectHours)} Std.</span>
+                  <span>Sollzeit: {formatHours(ownEmployeeAnalyticsRow.targetHours)} Std.</span>
+                </div>
+              </section>
+            </article>
+          ) : null}
         </>
       )}
 
       {reportAnalyticsTab === "overview" && (
         <>
           <section className={styles.analyticsGrid}>
-            {renderReportMetric("Umsatz", formatMoney(invoiceRevenueTotal), "Fakturierte Netto-Rechnungen")}
-            {renderReportMetric("Gewinn / Marge", formatMoney(invoiceMarginTotal), `${formatHours(invoiceMarginPercent)}% Rentabilität`, getMetricState(invoiceMarginPercent, 30, 18))}
-            {renderReportMetric("Projekte", `${reportProjectRows.length}`, "Mit Umsatz, Angebot oder Zeit")}
-            {renderReportMetric("Ø SVS", `${formatMoney(averageSoldHourlyRate)} / h`, "Ohne Materialtrennung angenähert")}
+            {renderReportMetric("Umsatz", formatMoney(invoiceRevenueTotal), `${reportInvoices.length} fakturierte Rechnungen`, "good")}
+            {canViewAccountingOverviewAnalytics
+              ? renderReportMetric("Bezahlt", formatMoney(overviewPaidTotal), "Bereits bezahlter Umsatz", "good")
+              : null}
+            {canViewAccountingOverviewAnalytics
+              ? renderReportMetric("Offen", formatMoney(overviewOpenTotal), "Noch nicht bezahlt", overviewOpenTotal > 0 ? "ok" : "good")
+              : null}
+            {canViewAccountingOverviewAnalytics
+              ? renderReportMetric("Überfällig", formatMoney(overviewOverdueTotal), `${overviewOverdueRows.length} Rechnung${overviewOverdueRows.length === 1 ? "" : "en"}`, overviewOverdueTotal > 0 ? "low" : "good")
+              : null}
+            {canViewOperationalOverviewAnalytics || canViewAccountingOverviewAnalytics
+              ? renderReportMetric("Forecast", formatMoney(forecastBusinessSummaryTotal.potential), "Gesamtpotenzial im Forecast-Zeitraum", "good")
+              : null}
+            {canViewSensitiveOverviewFinancials
+              ? renderReportMetric("Marge", `${formatHours(invoiceMarginPercent)}%`, formatMoney(invoiceMarginTotal), getMetricState(invoiceMarginPercent, 30, 18))
+              : null}
           </section>
+
+          {canViewOperationalOverviewAnalytics || canViewAccountingOverviewAnalytics ? (
+            <section className={styles.analyticsGrid}>
+              {canViewOperationalOverviewAnalytics
+                ? renderReportMetric("Projekte", `${reportProjectRows.length}`, "Mit Umsatz, Angebot oder Zeit")
+                : null}
+              {canViewOperationalOverviewAnalytics
+                ? renderReportMetric("Einmalig", `${overviewOneTimeProjectCount}`, "Einmalige Projekte im Zeitraum")
+                : null}
+              {canViewOperationalOverviewAnalytics
+                ? renderReportMetric("Dauerläufer", `${overviewRecurringProjectCount}`, "Wiederkehrende Projekte im Zeitraum")
+                : null}
+              {canViewOperationalOverviewAnalytics
+                ? renderReportMetric("Status > 14 Tage", `${longPipelineStatusRows.length}`, "Projekte mit langer aktueller Phase", longPipelineStatusRows.length > 0 ? "ok" : "good")
+                : null}
+              {canViewFullOverviewAnalytics
+                ? renderReportMetric("SVS", `${formatMoney(averageSoldHourlyRate)} / h`, "Umsatz je gestempelter Projektstunde")
+                : null}
+              {canViewAccountingOverviewAnalytics
+                ? renderReportMetric("Kundenrisiko", `${customerRiskRows.filter((row) => row.riskState !== "good").length}`, "Kunden mit Prüfbedarf", customerRiskRows.some((row) => row.riskState === "low") ? "low" : "ok")
+                : null}
+            </section>
+          ) : null}
+
           <section className={styles.analyticsTwoColumn}>
             <article className={styles.analyticsCard}>
-              <h2>Umsatz pro Zeitraum</h2>
+              <h2>Umsatztrend</h2>
               {renderReportBarChart(
                 monthlyRevenueRows.map((row) => ({ key: row.key, label: row.label, value: row.invoiceValue }))
               )}
+              <div className={styles.analyticsLegend}>
+                <span data-color="primary">Fakturierte Rechnungen</span>
+              </div>
             </article>
-            <article className={styles.analyticsCard}>
-              <h2>Rentabilität je Gewerk</h2>
-              <table className={styles.analyticsTable}>
-                <tbody>
-                  {projectRowsByTrade.slice(0, 8).map((row) => (
-                    <tr key={row.trade}>
-                      <td>{row.trade}</td>
-                      <td>{formatMoney(row.margin)}</td>
-                      <td>{formatHours(row.revenue > 0 ? (row.margin / row.revenue) * 100 : 0)}%</td>
+            {canViewFullOverviewAnalytics || canViewAccountingOverviewAnalytics ? (
+              <article className={styles.analyticsCard}>
+                <h2>Top-Risiken</h2>
+                <table className={styles.analyticsTable}>
+                  <thead>
+                    <tr>
+                      <th>Typ</th>
+                      <th>Eintrag</th>
+                      <th>Hinweis</th>
+                      <th>Tage</th>
+                      <th>Betrag</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </article>
+                  </thead>
+                  <tbody>
+                    {overviewRiskRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={5}>Keine akuten Risiken im gewählten Zeitraum.</td>
+                      </tr>
+                    ) : (
+                      overviewRiskRows.map((row) => (
+                        <tr key={row.key}>
+                          <td data-state={row.state}>{row.type}</td>
+                          <td>{row.title}</td>
+                          <td>{row.detail}</td>
+                          <td>{row.days > 0 ? `${formatHours(row.days)} Tg.` : "-"}</td>
+                          <td>{row.amount > 0 ? formatMoney(row.amount) : "-"}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </article>
+            ) : null}
           </section>
+
+          {canViewOperationalOverviewAnalytics || canViewFullOverviewAnalytics ? (
+            <section className={styles.analyticsTwoColumn}>
+              {canViewOperationalOverviewAnalytics ? (
+                <article className={styles.analyticsCard}>
+                  <h2>Projektstatus-Verteilung</h2>
+                  <table className={styles.analyticsTable}>
+                    <thead>
+                      <tr>
+                        <th>Status</th>
+                        <th>Projekte</th>
+                        <th>Umsatz</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {overviewProjectStatusRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={3}>Keine Projekte im gewählten Zeitraum.</td>
+                        </tr>
+                      ) : (
+                        overviewProjectStatusRows.slice(0, 10).map((row) => (
+                          <tr key={row.status}>
+                            <td>{row.status}</td>
+                            <td>{row.count}</td>
+                            <td>{formatMoney(row.revenue)}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </article>
+              ) : null}
+
+              {canViewOperationalOverviewAnalytics || canViewFullOverviewAnalytics ? (
+                <article className={styles.analyticsCard}>
+                  <h2>Geschäftsbereiche</h2>
+                  <table className={styles.analyticsTable}>
+                    <thead>
+                      <tr>
+                        <th>Geschäftsbereich</th>
+                        <th>Projekte</th>
+                        <th>Umsatz</th>
+                        {canViewSensitiveOverviewFinancials ? <th>Marge</th> : null}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {overviewBusinessAreaRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={canViewSensitiveOverviewFinancials ? 4 : 3}>Keine Geschäftsbereiche im gewählten Zeitraum.</td>
+                        </tr>
+                      ) : (
+                        overviewBusinessAreaRows.slice(0, 10).map((row) => (
+                          <tr key={row.name}>
+                            <td>{row.name}</td>
+                            <td>{row.count}</td>
+                            <td>{formatMoney(row.revenue)}</td>
+                            {canViewSensitiveOverviewFinancials ? <td>{formatMoney(row.margin)}</td> : null}
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </article>
+              ) : null}
+            </section>
+          ) : null}
         </>
       )}
 
       {reportAnalyticsTab === "map" && (
-        <article className={styles.analyticsCard}>
-          <h2>Projektkarte</h2>
-          <div className={styles.analyticsMap}>
-            {projectMapRows.map((row) => (
-              <button
-                key={row.project.id}
-                type="button"
-                style={{ left: `${row.x}%`, top: `${row.y}%` }}
-                title={`${row.project.projectNumber} - ${row.project.customer || row.project.title}`}
-                onClick={() => {
-                  openProjectFile(row.project);
-                }}
-              >
-                <span />
-              </button>
-            ))}
-          </div>
-          <table className={styles.analyticsTable}>
-            <thead>
-              <tr>
-                <th>Projekt</th>
-                <th>Kunde</th>
-                <th>Adresse</th>
-                <th>Status</th>
-                <th>Umsatz</th>
-              </tr>
-            </thead>
-            <tbody>
-              {projectMapRows.slice(0, 12).map((row) => (
-                <tr key={row.project.id}>
-                  <td>{row.project.projectNumber}</td>
-                  <td>{row.project.customer || row.project.title}</td>
-                  <td>{row.project.address || "-"}</td>
-                  <td>{row.project.status}</td>
-                  <td>{formatMoney(row.revenue)}</td>
+        <>
+          <section className={styles.analyticsGrid}>
+            {renderReportMetric("Projekte", `${reportProjectRows.length}`, "Im gewählten Zeitraum")}
+            {renderReportMetric("Mit Adresse", `${projectMapWithAddressCount}`, "Für Projektkarte auswertbar", projectMapWithoutAddressCount > 0 ? "ok" : "good")}
+            {renderReportMetric("Ohne Adresse", `${projectMapWithoutAddressCount}`, "Fehlende Projektanschrift", projectMapWithoutAddressCount > 0 ? "ok" : "good")}
+            {renderReportMetric("Regionen", `${projectMapRegionRows.length}`, "Nach PLZ-Bereich gruppiert")}
+            {renderReportMetric("Kartenumsatz", formatMoney(projectMapRows.reduce((sum, row) => sum + row.revenue, 0)), "Pins in der Kartenfläche")}
+          </section>
+
+          <section className={styles.analyticsTwoColumn}>
+            <article className={styles.analyticsCard}>
+              <div className={styles.forecastListHeader}>
+                <div>
+                  <h2>Projektkarte</h2>
+                  <p className={styles.forecastQualityIntro}>
+                    Schematische Projektübersicht ohne Geocoding. Exakte Kartenpositionen folgen erst mit echten Koordinaten.
+                  </p>
+                </div>
+              </div>
+              <div className={styles.analyticsMap}>
+                {projectMapRows.map((row) => (
+                  <button
+                    key={row.project.id}
+                    type="button"
+                    style={{ left: `${row.x}%`, top: `${row.y}%` }}
+                    title={`${row.project.projectNumber} - ${row.project.customer || row.project.title}`}
+                    data-state={row.revenue > 0 ? "revenue" : row.offerVolume > 0 ? "offer" : "neutral"}
+                    onClick={() => {
+                      openProjectFile(row.project);
+                    }}
+                  >
+                    <span />
+                    <strong>{row.project.projectNumber}</strong>
+                  </button>
+                ))}
+              </div>
+            </article>
+
+            <article className={styles.analyticsCard}>
+              <h2>Regionen nach PLZ</h2>
+              <table className={styles.analyticsTable}>
+                <thead>
+                  <tr>
+                    <th>Region</th>
+                    <th>Projekte</th>
+                    <th>Offen</th>
+                    <th>Umsatz</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {projectMapRegionRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={4}>Keine Projektadressen im gewählten Zeitraum.</td>
+                    </tr>
+                  ) : (
+                    projectMapRegionRows.slice(0, 12).map((row) => (
+                      <tr key={row.region}>
+                        <td>{row.region === "Ohne PLZ" ? "Ohne PLZ" : `PLZ ${row.region}xxx`}</td>
+                        <td>{row.count}</td>
+                        <td>{row.openProjects}</td>
+                        <td>{formatMoney(row.revenue)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </article>
+          </section>
+
+          <article className={styles.analyticsCard}>
+            <h2>Projektliste</h2>
+            <table className={styles.analyticsTable}>
+              <thead>
+                <tr>
+                  <th>Projekt</th>
+                  <th>Kunde</th>
+                  <th>Adresse</th>
+                  <th>Status</th>
+                  <th>Projektart</th>
+                  <th>Umsatz</th>
+                  <th>Aktion</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </article>
+              </thead>
+              <tbody>
+                {projectMapRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={7}>Keine Projekte mit Adresse oder Kunde im gewählten Zeitraum.</td>
+                  </tr>
+                ) : (
+                  projectMapRows.map((row) => (
+                    <tr key={row.project.id}>
+                      <td>{row.project.projectNumber}</td>
+                      <td>{row.project.customer || row.project.title}</td>
+                      <td>{row.project.address || "-"}</td>
+                      <td>{row.project.status}</td>
+                      <td>{isRecurringProject(row.project) ? "Dauerläufer" : "Einmalig"}</td>
+                      <td>{formatMoney(row.revenue)}</td>
+                      <td>
+                        <button type="button" className={styles.secondaryButton} onClick={() => openProjectFile(row.project)}>
+                          Öffnen
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </article>
+        </>
       )}
     </section>
   );
@@ -15895,8 +22941,9 @@ export function DashboardPage() {
       .filter((project) => project.autoBillingEnabled && isRecurringForecastProject(project))
       .filter((project) => isProjectActiveInBillingMonth(project, batchBillingMonth))
       .map((project) => {
-        const amount = getAutoBillingNetAmount(project);
-        const template = getAutoBillingTemplateForProject(project);
+        const previousInvoice = getAutoBillingPreviousInvoice(project, batchBillingMonth);
+        const amount = previousInvoice ? roundCurrencyValue(previousInvoice.netTotal) : 0;
+        const template = getAutoBillingTemplateForProject(project, batchBillingMonth);
         const existingInvoice = invoices.find(
           (invoice) =>
             invoice.projectId === project.id &&
@@ -15904,34 +22951,30 @@ export function DashboardPage() {
             getProjectInvoiceMonth(invoice) === batchBillingMonth
         );
         const comparison = getAutoBillingComparison(project, batchBillingMonth);
-        const hasBlockingIssue = Boolean(existingInvoice) || amount <= 0 || !template;
+        const hasBlockingIssue = Boolean(existingInvoice) || !previousInvoice || !template;
         const status = existingInvoice
           ? existingInvoice.status === "Entwurf"
             ? "Entwurf vorhanden"
             : ["Fakturiert", "Bezahlt"].includes(existingInvoice.status)
               ? "Bereits fakturiert"
               : "Schon vorhanden"
-          : amount <= 0
-            ? "Betrag fehlt"
-            : !template
-              ? "Vorlage fehlt"
+          : !previousInvoice || !template
+              ? "Vormonatsrechnung fehlt"
               : comparison.previousInvoices.length < 3 || !comparison.stable
                 ? "Prüfen"
                 : "Bereit";
         const billingSourceLabel = existingInvoice ? getInvoiceBillingSourceLabel(existingInvoice, project) : "";
         const hint = existingInvoice
           ? `${existingInvoice.invoiceNumber} (${existingInvoice.status}) · ${billingSourceLabel}`
-          : amount <= 0
-            ? "Monatlicher Nettobetrag fehlt."
-            : !template
-              ? "Keine Projektvorlage und keine Vormonatsrechnung vorhanden."
+          : !previousInvoice || !template
+              ? `Keine aktive Vormonatsrechnung für ${formatMonthLabel(getPreviousMonthKey(batchBillingMonth))} vorhanden.`
               : comparison.previousInvoices.length < 3
                 ? "Weniger als 3 Vergleichsrechnungen vorhanden."
                 : comparison.stable
                   ? "Letzte 3 Rechnungen identisch."
                   : "Abweichende Rechnungsbeträge in den letzten 3 Monaten.";
 
-        return { project, amount, status, hint, canCreateDraft: !hasBlockingIssue, comparison, existingInvoice };
+        return { project, amount, status, hint, canCreateDraft: !hasBlockingIssue, comparison, existingInvoice, previousInvoice };
       });
   }
 
@@ -16180,7 +23223,6 @@ export function DashboardPage() {
                   <th>Projekt</th>
                   <th>Kunde</th>
                   <th>Betrag netto</th>
-                  <th>Vorlage</th>
                   <th>3-Monats-Prüfung</th>
                   <th>Status</th>
                   <th>Hinweis</th>
@@ -16188,7 +23230,7 @@ export function DashboardPage() {
               </thead>
               <tbody>
                 {rows.length === 0 ? (
-                  <tr><td colSpan={8}>Keine aktiven Dauerläufer mit automatischer Abrechnung für diesen Monat.</td></tr>
+                  <tr><td colSpan={7}>Keine aktiven Dauerläufer mit automatischer Abrechnung für diesen Monat.</td></tr>
                 ) : (
                   rows.map((row) => (
                     <tr key={row.project.id}>
@@ -16223,7 +23265,6 @@ export function DashboardPage() {
                       </td>
                       <td>{row.project.customer || "-"}</td>
                       <td>{row.amount > 0 ? formatMoney(row.amount) : "-"}</td>
-                      <td>{row.project.autoBillingTemplateMode === "project" ? "Projektvorlage" : "Vormonat"}</td>
                       <td>
                         {row.comparison.previousInvoices.length === 0
                           ? "-"
@@ -16495,6 +23536,1289 @@ export function DashboardPage() {
     );
   }
 
+  function renderWinterServiceAutomation() {
+    const winterServiceProjects = heroProjects.filter(isWinterServiceProject);
+    const winterServiceProjectIds = new Set(winterServiceProjects.map((project) => project.id));
+    const normalizeDispatchDocumentName = (value: string) =>
+      normalizeVisibleMojibakeText(value).replace(/\.pdf$/i, "").trim().toLowerCase();
+    const getWinterServiceRunContextKey = (projectId: string, dateKey: string) => `Winterdienst:${projectId}:${dateKey}`;
+    const getLatestWinterServiceAttachmentDate = (
+      project: HeroProjectPreview,
+      category: string,
+      monthKey: string,
+      dayKey: string,
+      attachmentType: LogbookAttachment["type"]
+    ) =>
+      getProjectProcessLogEntries(project, category, monthKey, dayKey).reduce<Date | null>((latest, entry) => {
+        if (!entry.attachments.some((attachment) => attachment.type === attachmentType)) return latest;
+        const parsedDate = parseAppDateTime(entry.date);
+        if (Number.isNaN(parsedDate.getTime())) return latest;
+        return !latest || parsedDate.getTime() > latest.getTime() ? parsedDate : latest;
+      }, null);
+    const isWinterServiceRunApproved = (projectId: string, contextKey: string) =>
+      projectLogbookEntries.some(
+        (entry) =>
+          entry.projectId === projectId &&
+          entry.title === "Winterdienst: Tätigkeitsbericht freigegeben" &&
+          getActivityReportLinkText(entry).includes(contextKey.toLowerCase())
+      );
+    const getWinterServiceActivityReportRecipient = (project: HeroProjectPreview) => {
+      const projectContact = contacts.find((contact) => contact.id === project.contactId);
+      const projectContactPerson = contacts.find((contact) => contact.id === project.contactPersonId);
+      const projectAddressContact = contacts.find((contact) => contact.id === project.addressContactId);
+      const relatedContacts = contacts.filter((contact) => {
+        if ([project.contactId, project.contactPersonId, project.addressContactId].includes(contact.id)) return true;
+        if (projectContact?.companyName && contact.parentCompanyName === projectContact.companyName) return true;
+        if (project.contactId && contact.parentCompanyId === project.contactId) return true;
+        return false;
+      });
+      const candidates = [
+        ...relatedContacts.filter((contact) => contact.isActivityReportRecipient),
+        ...relatedContacts.filter((contact) => contact.isInvoiceRecipient),
+        ...relatedContacts.filter((contact) => contact.isMainContact),
+        projectContactPerson,
+        projectAddressContact,
+        projectContact,
+      ].filter((contact): contact is ContactItem => Boolean(contact?.email));
+      return candidates[0] ?? null;
+    };
+    const approveWinterServiceActivityReport = async (run: {
+      project: HeroProjectPreview;
+      dateKey: string;
+      contextKey: string;
+    }) => {
+      await addProjectLogbookEntry(
+        run.project.id,
+        "Winterdienst: Tätigkeitsbericht freigegeben",
+        `Tätigkeitsbericht freigegeben. Zuordnung: ${run.contextKey}. Einsatzdatum: ${formatDateOnly(run.dateKey)}.`
+      );
+    };
+    const sendWinterServiceActivityReport = async (run: {
+      project: HeroProjectPreview;
+      dateKey: string;
+      contextKey: string;
+      recipient: ContactItem | null;
+      reportAttachment?: { name: string; dataUrl: string } | null;
+    }) => {
+      if (isSendingDocumentMail) return;
+      if (!run.recipient?.email) {
+        setErrorMessage("Für diesen Winterdienstbericht ist kein Tätigkeitsberichtempfänger mit E-Mail hinterlegt.");
+        return;
+      }
+      if (!run.reportAttachment?.dataUrl) {
+        setErrorMessage("Für diesen Winterdiensteinsatz wurde kein Tätigkeitsbericht-PDF gefunden.");
+        return;
+      }
+
+      setIsSendingDocumentMail(true);
+      setErrorMessage("");
+      const documentNumber = run.reportAttachment.name.replace(/\.pdf$/i, "");
+      const template = applyMailTemplate("activityReport", documentNumber);
+      const res = await fetch("/api/document-mail", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "activityReport",
+          documentId: `${run.contextKey}:${run.reportAttachment.name}`,
+          documentNumber,
+          projectId: run.project.id,
+          projectNumber: run.project.projectNumber || run.project.id,
+          projectTitle: run.project.title,
+          customerName: run.project.customer,
+          to: run.recipient.email,
+          cc: "",
+          bcc: getSafeEmployeeMailAccount(activeUser?.mailAccount, activeUser?.email || "").bcc,
+          subject: template.subject,
+          body: template.body,
+          attachPdf: false,
+          manualAttachments: [run.reportAttachment],
+          actorId: activeUserId,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      setIsSendingDocumentMail(false);
+
+      if (!res.ok) {
+        setErrorMessage(data?.error ?? "Winterdienstbericht konnte nicht versendet werden.");
+        return;
+      }
+
+      await loadDocumentMailDispatches(run.project.id);
+      await addProjectLogbookEntry(
+        run.project.id,
+        "Winterdienst: Tätigkeitsbericht versendet",
+        `Tätigkeitsbericht versendet. Zuordnung: ${run.contextKey}. Empfänger: ${run.recipient.email}. Einsatzdatum: ${formatDateOnly(run.dateKey)}.`
+      );
+    };
+    const createWinterServiceActivityReport = async (run: {
+      project: HeroProjectPreview;
+      monthKey: string;
+      dateKey: string;
+    }) => {
+      if (isCreatingActivityReport || isCreatingActivityReportRef.current) return;
+
+      isCreatingActivityReportRef.current = true;
+      setIsCreatingActivityReport(true);
+      setErrorMessage("");
+
+      try {
+        const contextKey = getWinterServiceRunContextKey(run.project.id, run.dateKey);
+        await createActivityReportForProject(run.project, run.monthKey, {
+          contextKey,
+          contextLabel: `Winterdienst ${formatDateOnly(run.dateKey)}`,
+          dayKey: run.dateKey,
+        });
+        openProjectFile(run.project, {
+          tab: "documents",
+          documentType: "Tätigkeitsberichte",
+          month: run.monthKey,
+        });
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : "Tätigkeitsbericht konnte nicht erstellt werden.");
+      } finally {
+        isCreatingActivityReportRef.current = false;
+        setIsCreatingActivityReport(false);
+      }
+    };
+    const winterServiceRuns = Array.from(
+      stampEntries
+        .filter((entry) => entry.mode === "project" && !entry.deletedAt && winterServiceProjectIds.has(entry.projectId))
+        .reduce((groups, entry) => {
+          const project = winterServiceProjects.find((item) => item.id === entry.projectId);
+          if (!project) return groups;
+          const dateKey = normalizeDateKeyValue(entry.date) || entry.date;
+          const key = `${entry.projectId}:${dateKey}`;
+          const existing = groups.get(key);
+          if (existing) {
+            existing.entries.push(entry);
+            existing.durationMs += Number(entry.durationMs || 0);
+            return groups;
+          }
+          groups.set(key, {
+            key,
+            project,
+            dateKey,
+            monthKey: dateKey.slice(0, 7) || formatDateKey(new Date()).slice(0, 7),
+            entries: [entry],
+            durationMs: Number(entry.durationMs || 0),
+          });
+          return groups;
+        }, new Map<string, {
+          key: string;
+          project: HeroProjectPreview;
+          dateKey: string;
+          monthKey: string;
+          entries: StampTimeEntry[];
+          durationMs: number;
+        }>())
+        .values()
+    )
+      .map((run) => {
+        const contextKey = getWinterServiceRunContextKey(run.project.id, run.dateKey);
+        const beforeImageCount = getProjectProcessAttachmentCount(run.project, "Bilder: Vorherbilder", "Bild", run.monthKey, run.dateKey);
+        const afterImageCount = getProjectProcessAttachmentCount(run.project, "Bilder: Nachherbilder", "Bild", run.monthKey, run.dateKey);
+        const latestAfterImageDate = getLatestWinterServiceAttachmentDate(
+          run.project,
+          "Bilder: Nachherbilder",
+          run.monthKey,
+          run.dateKey,
+          "Bild"
+        );
+        const reportEntries = getActivityReportProcessEntries(run.project, run.monthKey, run.dateKey).filter((entry) =>
+          getActivityReportLinkText(entry).includes(contextKey.toLowerCase())
+        );
+        const reportAttachments = reportEntries.flatMap((entry) =>
+          entry.attachments.flatMap((attachment) =>
+            attachment.type === "Dokument" && attachment.dataUrl
+              ? [{ name: attachment.name, dataUrl: attachment.dataUrl }]
+              : []
+          )
+        );
+        const reportAttachment = reportAttachments[0] ?? null;
+        const reportNames = new Set(
+          reportAttachments.map((attachment) => normalizeDispatchDocumentName(attachment.name))
+        );
+        const sentCount = documentMailDispatches.filter((dispatch) => {
+          if (dispatch.projectId !== run.project.id) return false;
+          if (dispatch.documentKind !== "activityReport" || dispatch.status !== "sent") return false;
+          const dispatchName = normalizeDispatchDocumentName(dispatch.documentNumber);
+          return reportNames.size === 0 ? dispatch.createdAt.slice(0, 7) === run.monthKey : reportNames.has(dispatchName);
+        }).length;
+        const reportCount = reportEntries.reduce(
+          (sum, entry) => sum + entry.attachments.filter((attachment) => attachment.type === "Dokument").length,
+          0
+        );
+        const isApproved = isWinterServiceRunApproved(run.project.id, contextKey);
+        const recipient = getWinterServiceActivityReportRecipient(run.project);
+        const isAutomationCandidate =
+          sentCount === 0 &&
+          reportCount === 0 &&
+          beforeImageCount > 0 &&
+          afterImageCount > 0 &&
+          Boolean(latestAfterImageDate && Date.now() - latestAfterImageDate.getTime() >= 60 * 60 * 1000);
+        const status =
+          sentCount > 0
+            ? "Versendet/erledigt"
+            : isApproved && !recipient?.email
+              ? "Empfänger fehlt"
+            : isApproved
+              ? "Versandbereit"
+            : reportCount > 0
+              ? "Bereit zur Prüfung"
+              : beforeImageCount === 0 || afterImageCount === 0
+                ? "Bilder fehlen"
+                : "Bericht fehlt";
+        const winterServiceStatus =
+          isAutomationCandidate && status === "Bericht fehlt" ? "Automatik bereit" : status;
+
+        return {
+          ...run,
+          contextKey,
+          beforeImageCount,
+          afterImageCount,
+          reportCount,
+          sentCount,
+          isApproved,
+          isAutomationCandidate,
+          latestAfterImageDate: latestAfterImageDate?.toISOString() ?? "",
+          recipient,
+          reportAttachment,
+          status: winterServiceStatus,
+          isDone: sentCount > 0,
+        };
+      })
+      .sort((first, second) => second.dateKey.localeCompare(first.dateKey) || first.project.projectNumber.localeCompare(second.project.projectNumber));
+    const openRuns = winterServiceRuns.filter((run) => !run.isDone);
+    const readyRuns = openRuns.filter((run) => run.status === "Versandbereit");
+    const automationCandidateRuns = openRuns.filter((run) => run.isAutomationCandidate);
+    const pendingRuns = openRuns.filter((run) => run.status !== "Versandbereit");
+    const doneRuns = winterServiceRuns.filter((run) => run.isDone);
+    const staleReadyRuns = readyRuns.filter((run) => {
+      const runDate = new Date(`${run.dateKey}T00:00:00`);
+      if (!Number.isFinite(runDate.getTime())) return false;
+      return Date.now() - runDate.getTime() > 24 * 60 * 60 * 1000;
+    });
+    const qualityChecks = [
+      {
+        label: "Stempelungen ohne vollständige Bilder",
+        count: openRuns.filter((run) => run.beforeImageCount === 0 || run.afterImageCount === 0).length,
+        hint: "Mindestens ein Vorher- und ein Nachherbild je Einsatz.",
+      },
+      {
+        label: "Berichte ohne Freigabe",
+        count: openRuns.filter((run) => run.reportCount > 0 && !run.isApproved).length,
+        hint: "Vor dem Versand fachlich prüfen und freigeben.",
+      },
+      {
+        label: "Freigaben ohne Empfänger",
+        count: openRuns.filter((run) => run.isApproved && !run.recipient?.email).length,
+        hint: "Tätigkeitsberichtempfänger in der Kundenakte pflegen.",
+      },
+      {
+        label: "Versandbereit älter als 1 Tag",
+        count: staleReadyRuns.length,
+        hint: "Freigegebene Berichte zeitnah versenden.",
+      },
+      {
+        label: "Versendet, aber noch offen",
+        count: winterServiceRuns.filter((run) => run.sentCount > 0 && !run.isDone).length,
+        hint: "Sollte im Normalfall 0 sein.",
+      },
+    ];
+    const openQualityIssues = qualityChecks.reduce((sum, check) => sum + check.count, 0);
+    const automationNotificationUsers = users.filter((user) => user.isActive);
+    const updateWinterServiceNotificationUser = (userId: string, checked: boolean) => {
+      const nextUserIds = checked
+        ? Array.from(new Set([...winterServiceAutomationSettings.notificationUserIds, userId]))
+        : winterServiceAutomationSettings.notificationUserIds.filter((id) => id !== userId);
+      void saveWinterServiceAutomationSettings({
+        ...winterServiceAutomationSettings,
+        notificationUserIds: nextUserIds,
+        senderUserId: winterServiceAutomationSettings.senderUserId || activeUserId,
+      });
+    };
+    const runWinterServiceAutomationNow = async () => {
+      if (isWinterServiceAutomationRunning || automationCandidateRuns.length === 0) return;
+      setIsWinterServiceAutomationRunning(true);
+      setWinterServiceAutomationMessage("");
+      setErrorMessage("");
+
+      const res = await fetch("/api/winter-service-automation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: activeUserId,
+          runs: automationCandidateRuns.map((run) => ({
+            projectId: run.project.id,
+            projectNumber: run.project.projectNumber || run.project.id,
+            projectTitle: run.project.title,
+            customerName: run.project.customer,
+            monthKey: run.monthKey,
+            dateKey: run.dateKey,
+            contextKey: run.contextKey,
+            recipientEmail: run.recipient?.email || "",
+            beforeImageKeys: getActivityReportImageKeys(run.project, "Vorherbilder", run.monthKey, run.dateKey),
+            afterImageKeys: getActivityReportImageKeys(run.project, "Nachherbilder", run.monthKey, run.dateKey),
+          })),
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      setIsWinterServiceAutomationRunning(false);
+
+      if (!res.ok) {
+        setErrorMessage(data?.error ?? "Winterdienst-Automatik konnte nicht ausgeführt werden.");
+        return;
+      }
+
+      setWinterServiceAutomationMessage(
+        `Automatiklauf abgeschlossen: ${data.sent ?? 0} versendet, ${data.failed ?? 0} Fehler.`
+      );
+      await Promise.all([
+        loadProjectLogbookEntries(),
+        loadDocumentMailDispatches(),
+        loadNotifications(true),
+      ]);
+    };
+    const toggleWinterServiceAutoSend = async () => {
+      const nextValue = !isWinterServiceAutoSendEnabled;
+      const savedSettings = await saveWinterServiceAutomationSettings({
+        ...winterServiceAutomationSettings,
+        enabled: nextValue,
+        senderUserId: winterServiceAutomationSettings.senderUserId || activeUserId,
+      });
+      if (savedSettings?.enabled) {
+        void runWinterServiceAutomationNow();
+      }
+    };
+    const sendReadyWinterServiceActivityReports = async () => {
+      if (isSendingDocumentMail || readyRuns.length === 0) return;
+      const confirmed = window.confirm(
+        `${readyRuns.length} freigegebene Winterdienstberichte jetzt versenden? Es werden nur Berichte mit PDF und Empfänger gesendet.`
+      );
+      if (!confirmed) return;
+
+      setIsSendingDocumentMail(true);
+      setErrorMessage("");
+
+      const failedRuns: string[] = [];
+      const touchedProjectIds = new Set<string>();
+
+      for (const run of readyRuns) {
+        if (!run.recipient?.email || !run.reportAttachment?.dataUrl) {
+          failedRuns.push(`${run.project.projectNumber || run.project.id} ${formatDateOnly(run.dateKey)}`);
+          continue;
+        }
+
+        const documentNumber = run.reportAttachment.name.replace(/\.pdf$/i, "");
+        const template = applyMailTemplate("activityReport", documentNumber);
+        const res = await fetch("/api/document-mail", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            kind: "activityReport",
+            documentId: `${run.contextKey}:${run.reportAttachment.name}`,
+            documentNumber,
+            projectId: run.project.id,
+            projectNumber: run.project.projectNumber || run.project.id,
+            projectTitle: run.project.title,
+            customerName: run.project.customer,
+            to: run.recipient.email,
+            cc: "",
+            bcc: getSafeEmployeeMailAccount(activeUser?.mailAccount, activeUser?.email || "").bcc,
+            subject: template.subject,
+            body: template.body,
+            attachPdf: false,
+            manualAttachments: [run.reportAttachment],
+            actorId: activeUserId,
+          }),
+        });
+        if (!res.ok) {
+          failedRuns.push(`${run.project.projectNumber || run.project.id} ${formatDateOnly(run.dateKey)}`);
+          continue;
+        }
+
+        touchedProjectIds.add(run.project.id);
+        await addProjectLogbookEntry(
+          run.project.id,
+          "Winterdienst: Tätigkeitsbericht versendet",
+          `Tätigkeitsbericht versendet. Zuordnung: ${run.contextKey}. Empfänger: ${run.recipient.email}. Einsatzdatum: ${formatDateOnly(run.dateKey)}.`
+        );
+      }
+
+      await Promise.all(Array.from(touchedProjectIds).map((projectId) => loadDocumentMailDispatches(projectId)));
+      setIsSendingDocumentMail(false);
+
+      if (failedRuns.length > 0) {
+        setErrorMessage(`Nicht alle Winterdienstberichte konnten versendet werden: ${failedRuns.join(", ")}`);
+      }
+    };
+    const renderRunTable = (rows: typeof winterServiceRuns, emptyText: string) => (
+      <table className={styles.table}>
+        <thead>
+          <tr>
+            <th>Datum</th>
+            <th>Projekt</th>
+            <th>Stempelungen</th>
+            <th>V-Bilder</th>
+            <th>N-Bilder</th>
+            <th>T-Bericht</th>
+            <th>PDF</th>
+            <th>Empfänger</th>
+            <th>Versand</th>
+            <th>Status</th>
+            <th>Aktion</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={11}>{emptyText}</td>
+            </tr>
+          ) : (
+            rows.map((run) => (
+              <tr key={run.key}>
+                <td>{formatDateOnly(run.dateKey)}</td>
+                <td className={styles.title}>
+                  {run.project.projectNumber || run.project.id}
+                  <span className={styles.metaLine}>{run.project.customer || run.project.title || "-"}</span>
+                </td>
+                <td>
+                  {run.entries.length}
+                  <span className={styles.metaLine}>{formatHours(run.durationMs / 3_600_000)} Std.</span>
+                </td>
+                <td>{run.beforeImageCount}</td>
+                <td>{run.afterImageCount}</td>
+                <td>{run.reportCount}</td>
+                <td>
+                  {run.reportAttachment?.name ? (
+                    <>
+                      {run.reportAttachment.name}
+                      <span className={styles.metaLine}>wird versendet</span>
+                    </>
+                  ) : (
+                    <span className={styles.metaLine}>Keine PDF gefunden</span>
+                  )}
+                </td>
+                <td>
+                  {run.recipient?.email ? (
+                    <>
+                      {[run.recipient.firstName, run.recipient.lastName].filter(Boolean).join(" ") ||
+                        run.recipient.companyName ||
+                        "Empfänger"}
+                      <span className={styles.metaLine}>{run.recipient.email}</span>
+                    </>
+                  ) : (
+                    <>
+                      Kein Empfänger
+                      <span className={styles.metaLine}>Tätigkeitsberichtempfänger in Kundenakte prüfen</span>
+                    </>
+                  )}
+                </td>
+                <td>{run.sentCount}</td>
+                <td>{run.status}</td>
+                <td>
+                  {run.reportCount === 0 && run.beforeImageCount > 0 && run.afterImageCount > 0 ? (
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      disabled={isCreatingActivityReport}
+                      onClick={() => void createWinterServiceActivityReport(run)}
+                    >
+                      {run.isAutomationCandidate ? "Automatik-Bericht erstellen" : "T-Bericht erstellen"}
+                    </button>
+                  ) : null}
+                  {run.reportCount > 0 && !run.isApproved && run.sentCount === 0 ? (
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => void approveWinterServiceActivityReport(run)}
+                    >
+                      Freigeben
+                    </button>
+                  ) : null}
+                  {run.isApproved && run.sentCount === 0 && run.recipient?.email && run.reportAttachment ? (
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      disabled={isSendingDocumentMail}
+                      onClick={() => void sendWinterServiceActivityReport(run)}
+                    >
+                      Senden
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() =>
+                      openProjectFile(run.project, {
+                        tab: "documents",
+                        documentType: run.reportCount > 0 ? "Tätigkeitsberichte" : "Allgemeine Dokumente",
+                        month: run.monthKey,
+                      })
+                    }
+                  >
+                    Öffnen
+                  </button>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    );
+
+    return (
+      <section className={`${styles.dashboardSection} ${styles.winterServicePage}`}>
+        <div className={styles.topline}>
+          <div>
+            <p className={styles.eyebrow}>Prozess/Automation</p>
+            <h1>Winterdienst</h1>
+            <p className={styles.subline}>
+              Kontrollliste fuer Winterdienst-Einsaetze mit erwarteten Taetigkeitsberichten.
+            </p>
+          </div>
+          <button
+            type="button"
+            className={styles.automationStatusButton}
+            data-state={isWinterServiceAutoSendEnabled ? "active" : "inactive"}
+            onClick={toggleWinterServiceAutoSend}
+          >
+            <span className={styles.automationStatusLight} aria-hidden="true" />
+            {isWinterServiceAutoSendEnabled
+              ? "Automatischer Versand aktiviert"
+              : "Automatischer Versand deaktiviert"}
+          </button>
+        </div>
+
+        <div className={`${styles.analyticsGrid} ${styles.winterServiceMetricGrid}`}>
+          <article className={styles.analyticsMetric} data-state="ok">
+            <span>Winterdienst-Projekte</span>
+            <strong>{winterServiceProjects.length}</strong>
+            <small>Gewerk Winterdienst</small>
+          </article>
+          <article className={styles.analyticsMetric} data-state={openRuns.length > 0 ? "low" : "good"}>
+            <span>Offene Einsaetze</span>
+            <strong>{openRuns.length}</strong>
+            <small>Bilder, Bericht oder Versand offen</small>
+          </article>
+          <article className={styles.analyticsMetric} data-state={readyRuns.length > 0 ? "ok" : "good"}>
+            <span>Versandbereit</span>
+            <strong>{readyRuns.length}</strong>
+            <small>Freigegeben mit Empfänger und PDF</small>
+          </article>
+          <article className={styles.analyticsMetric} data-state={automationCandidateRuns.length > 0 ? "ok" : "good"}>
+            <span>Automatik bereit</span>
+            <strong>{automationCandidateRuns.length}</strong>
+            <small>Nachherbild älter als 1 Stunde, Bericht fehlt</small>
+          </article>
+          <article className={styles.analyticsMetric} data-state="good">
+            <span>Erledigt</span>
+            <strong>{doneRuns.length}</strong>
+            <small>Bericht versendet</small>
+          </article>
+        </div>
+
+        <section className={`${styles.tableCard} ${styles.winterServicePanel} ${styles.winterServiceAutomationPanel}`}>
+          <div className={styles.reportHeader}>
+            <div>
+              <h2>Automatik-Einstellungen</h2>
+              <p>
+                Bei aktivem Schalter erstellt und versendet der Automatiklauf erkannte Winterdienstberichte mit vollständigen Voraussetzungen.
+              </p>
+              {winterServiceAutomationMessage ? <p>{winterServiceAutomationMessage}</p> : null}
+            </div>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              disabled={
+                !isWinterServiceAutoSendEnabled ||
+                isWinterServiceAutomationRunning ||
+                automationCandidateRuns.length === 0
+              }
+              onClick={() => void runWinterServiceAutomationNow()}
+            >
+              {isWinterServiceAutomationRunning ? "Automatik läuft..." : "Automatiklauf jetzt starten"}
+            </button>
+          </div>
+          <div className={styles.automationSettingsGrid}>
+            <label>
+              <span>Versandkonto</span>
+              <select
+                value={winterServiceAutomationSettings.senderUserId || activeUserId}
+                onChange={(event) =>
+                  void saveWinterServiceAutomationSettings({
+                    ...winterServiceAutomationSettings,
+                    senderUserId: event.target.value,
+                  })
+                }
+              >
+                {automationNotificationUsers.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name || user.email}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div>
+              <span>Benachrichtigung bei Fehlern</span>
+              <div className={styles.automationRecipientList}>
+                {automationNotificationUsers.map((user) => (
+                  <label key={user.id}>
+                    <input
+                      type="checkbox"
+                      checked={winterServiceAutomationSettings.notificationUserIds.includes(user.id)}
+                      onChange={(event) => updateWinterServiceNotificationUser(user.id, event.target.checked)}
+                    />
+                    {user.name || user.email}
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className={`${styles.tableCard} ${styles.winterServicePanel} ${styles.winterServiceQualityPanel}`}>
+          <div className={styles.reportHeader}>
+            <div>
+              <h2>Qualitätsprüfung</h2>
+              <p>
+                {openQualityIssues === 0
+                  ? "Alles sauber: Keine offenen Prüfpunkte im Winterdienst."
+                  : `${openQualityIssues} offene Prüfpunkte im Winterdienst.`}
+              </p>
+            </div>
+          </div>
+          <div className={`${styles.analyticsGrid} ${styles.winterServiceQualityGrid}`}>
+            {qualityChecks.map((check) => (
+              <article
+                key={check.label}
+                className={styles.analyticsMetric}
+                data-state={check.count > 0 ? "low" : "good"}
+              >
+                <span>{check.label}</span>
+                <strong>{check.count}</strong>
+                <small>{check.hint}</small>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className={`${styles.tableCard} ${styles.winterServicePanel} ${styles.winterServiceTablePanel}`}>
+          <div className={styles.reportHeader}>
+            <div>
+              <h2>Versandbereit</h2>
+              <p>Diese Berichte sind freigegeben und zeigen vor dem Versand Empfänger und PDF-Datei.</p>
+              <p>
+                {readyRuns.length} Bericht{readyRuns.length === 1 ? "" : "e"} mit Empfänger und PDF bereit.
+              </p>
+            </div>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              disabled={isSendingDocumentMail || readyRuns.length === 0}
+              onClick={() => void sendReadyWinterServiceActivityReports()}
+            >
+              Alle versandbereiten senden
+            </button>
+          </div>
+          {renderRunTable(readyRuns, "Keine versandbereiten Winterdienst-Berichte.")}
+        </section>
+
+        <section className={`${styles.tableCard} ${styles.winterServicePanel} ${styles.winterServiceTablePanel}`}>
+          <div className={styles.reportHeader}>
+            <div>
+              <h2>Offene Prüfpunkte</h2>
+              <p>Stempelungen erzeugen hier den erwarteten Nachweis. Fehlende Bilder, Berichte, Freigaben oder Empfänger bleiben sichtbar.</p>
+            </div>
+          </div>
+          {renderRunTable(pendingRuns, "Keine offenen Winterdienst-Prüfpunkte.")}
+        </section>
+
+        <section className={`${styles.tableCard} ${styles.winterServicePanel} ${styles.winterServiceTablePanel}`}>
+          <div className={styles.reportHeader}>
+            <div>
+              <h2>Versendet / erledigt</h2>
+              <p>Versendete Berichte laufen aus der offenen Arbeitsliste heraus.</p>
+            </div>
+          </div>
+          {renderRunTable(doneRuns, "Noch keine versendeten Winterdienst-Berichte.")}
+        </section>
+      </section>
+    );
+  }
+
+  function renderGeneralActivityReportAutomation() {
+    const monthKey = projectComparisonMonth || formatDateKey(new Date()).slice(0, 7);
+    const monthLabel = formatMonthLabel(monthKey);
+    const monthDate = (() => {
+      const [year, month] = monthKey.split("-").map(Number);
+      return Number.isFinite(year) && Number.isFinite(month) ? new Date(year, month - 1, 1) : new Date();
+    })();
+    const currentCalendarMonthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+    const shiftGeneralActivityReportMonth = (offset: number) => {
+      const nextDate = new Date(monthDate.getFullYear(), monthDate.getMonth() + offset, 1);
+      setProjectComparisonMonth(`${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, "0")}`);
+    };
+    const generalActivityReportMonths = Array.from({ length: 13 }, (_, index) => {
+      const itemDate = new Date(monthDate.getFullYear(), monthDate.getMonth() - 3 + index, 1);
+      const key = `${itemDate.getFullYear()}-${String(itemDate.getMonth() + 1).padStart(2, "0")}`;
+      return {
+        key,
+        label: itemDate.toLocaleDateString(APP_LOCALE, {
+          month: "short",
+          year: "2-digit",
+          timeZone: APP_TIME_ZONE,
+        }),
+      };
+    });
+    const normalizeReportDocumentName = (value: string) =>
+      normalizeVisibleMojibakeText(value).replace(/\.pdf$/i, "").trim().toLowerCase();
+    const recurringProjects = heroProjects.filter(
+      (project) =>
+        isRecurringProjectKindValue(getProjectKind(project)) &&
+        isImmocareProject(project) &&
+        !isWinterServiceProject(project)
+    );
+    const getActivityReportRecipient = (project: HeroProjectPreview) => {
+      const projectContact = contacts.find((contact) => contact.id === project.contactId);
+      const projectContactPerson = contacts.find((contact) => contact.id === project.contactPersonId);
+      const projectAddressContact = contacts.find((contact) => contact.id === project.addressContactId);
+      const relatedContacts = contacts.filter((contact) => {
+        if ([project.contactId, project.contactPersonId, project.addressContactId].includes(contact.id)) return true;
+        if (projectContact?.companyName && contact.parentCompanyName === projectContact.companyName) return true;
+        if (project.contactId && contact.parentCompanyId === project.contactId) return true;
+        return false;
+      });
+      const candidates = [
+        ...relatedContacts.filter((contact) => contact.isActivityReportRecipient),
+        ...relatedContacts.filter((contact) => contact.isInvoiceRecipient),
+        ...relatedContacts.filter((contact) => contact.isMainContact),
+        projectContactPerson,
+        projectAddressContact,
+        projectContact,
+      ].filter((contact): contact is ContactItem => Boolean(contact?.email));
+      return candidates[0] ?? null;
+    };
+    const rows = recurringProjects
+      .map((project) => {
+        const reportEntries = getActivityReportProcessEntries(project, monthKey);
+        const reportAttachments = reportEntries.flatMap((entry) =>
+          entry.attachments.flatMap((attachment) =>
+            attachment.type === "Dokument" && attachment.dataUrl
+              ? [{ name: attachment.name, dataUrl: attachment.dataUrl }]
+              : []
+          )
+        );
+        const reportNames = new Set(reportAttachments.map((attachment) => normalizeReportDocumentName(attachment.name)));
+        const projectInvoices = invoices
+          .filter((invoice) => invoice.projectId === project.id)
+          .filter((invoice) => invoice.status !== "Entwurf" && invoice.status !== "Gelöscht")
+          .filter((invoice) => getProjectInvoiceMonth(invoice) === monthKey);
+        const invoiceMailDispatches = documentMailDispatches.filter(
+          (dispatch) =>
+            dispatch.projectId === project.id &&
+            dispatch.documentKind === "invoice" &&
+            dispatch.status === "sent" &&
+            projectInvoices.some((invoice) => invoice.id === dispatch.documentId)
+        );
+        const sentReportDispatches = documentMailDispatches.filter((dispatch) => {
+          if (dispatch.projectId !== project.id) return false;
+          if (dispatch.documentKind !== "activityReport" || dispatch.status !== "sent") return false;
+          const dispatchName = normalizeReportDocumentName(dispatch.documentNumber);
+          return reportNames.size > 0 ? reportNames.has(dispatchName) : dispatch.createdAt.slice(0, 7) === monthKey;
+        });
+        const sentWithInvoiceCount = sentReportDispatches.filter((dispatch) =>
+          dispatch.body?.toLowerCase().includes("als anhang mit rechnung")
+        ).length;
+        const recipient = getActivityReportRecipient(project);
+        const selectedReport = reportAttachments[0] ?? null;
+        const status =
+          sentReportDispatches.length > 0
+            ? sentWithInvoiceCount > 0
+              ? "Mit Rechnung versendet"
+              : "Manuell versendet"
+            : reportAttachments.length === 0
+              ? "T-Bericht fehlt"
+              : !recipient?.email
+                ? "Empfänger fehlt"
+                : projectInvoices.length === 0
+                  ? "Rechnung fehlt"
+                  : "Versandbereit";
+
+        return {
+          key: `${project.id}-${monthKey}`,
+          project,
+          monthKey,
+          reportAttachments,
+          reportCount: reportAttachments.length,
+          selectedReport,
+          projectInvoices,
+          invoiceMailCount: invoiceMailDispatches.length,
+          sentReportDispatches,
+          sentWithInvoiceCount,
+          recipient,
+          status,
+        };
+      })
+      .sort((first, second) =>
+        first.status.localeCompare(second.status) ||
+        (first.project.projectNumber || first.project.id).localeCompare(second.project.projectNumber || second.project.id)
+      );
+    const openRows = rows.filter((row) => row.sentReportDispatches.length === 0);
+    const readyRows = rows.filter((row) => row.status === "Versandbereit");
+    const doneRows = rows.filter((row) => row.sentReportDispatches.length > 0);
+    const missingInvoiceRows = rows.filter((row) => row.reportCount > 0 && row.projectInvoices.length === 0);
+    const sendGeneralActivityReport = async (row: (typeof rows)[number]) => {
+      if (isSendingDocumentMail) return;
+      if (!row.recipient?.email) {
+        setErrorMessage("Für diesen Tätigkeitsbericht ist kein Empfänger mit E-Mail hinterlegt.");
+        return;
+      }
+      if (!row.selectedReport?.dataUrl) {
+        setErrorMessage("Für diesen Tätigkeitsbericht wurde keine PDF gefunden.");
+        return;
+      }
+
+      setIsSendingDocumentMail(true);
+      setErrorMessage("");
+      const documentNumber = row.selectedReport.name.replace(/\.pdf$/i, "");
+      const template = applyMailTemplate("activityReport", documentNumber);
+      const res = await fetch("/api/document-mail", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "activityReport",
+          documentId: `${row.project.id}:${row.monthKey}:${row.selectedReport.name}`,
+          documentNumber,
+          projectId: row.project.id,
+          projectNumber: row.project.projectNumber || row.project.id,
+          projectTitle: row.project.title,
+          customerName: row.project.customer,
+          to: row.recipient.email,
+          cc: "",
+          bcc: getSafeEmployeeMailAccount(activeUser?.mailAccount, activeUser?.email || "").bcc,
+          subject: template.subject,
+          body: template.body,
+          attachPdf: false,
+          manualAttachments: [row.selectedReport],
+          actorId: activeUserId,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      setIsSendingDocumentMail(false);
+
+      if (!res.ok) {
+        setErrorMessage(data?.error ?? "Tätigkeitsbericht konnte nicht versendet werden.");
+        return;
+      }
+
+      await loadDocumentMailDispatches(row.project.id);
+      await addProjectLogbookEntry(
+        row.project.id,
+        "Tätigkeitsbericht: versendet",
+        `Tätigkeitsbericht ${documentNumber} für ${monthLabel} manuell versendet. Empfänger: ${row.recipient.email}.`
+      );
+    };
+    const sendReadyGeneralActivityReports = async () => {
+      if (isSendingDocumentMail || readyRows.length === 0) return;
+      const confirmed = window.confirm(
+        `${readyRows.length} allgemeine Tätigkeitsberichte für ${monthLabel} jetzt senden? Es werden nur Einträge mit PDF, Rechnung und Empfänger gesendet.`
+      );
+      if (!confirmed) return;
+
+      for (const row of readyRows) {
+        await sendGeneralActivityReport(row);
+      }
+    };
+    const renderRowsTable = (tableRows: typeof rows, emptyText: string) => (
+      <table className={styles.table}>
+        <thead>
+          <tr>
+            <th>Monat</th>
+            <th>Projekt</th>
+            <th>T-Berichte</th>
+            <th>Rechnung</th>
+            <th>Empfänger</th>
+            <th>Versand</th>
+            <th>Status</th>
+            <th>Aktion</th>
+          </tr>
+        </thead>
+        <tbody>
+          {tableRows.length === 0 ? (
+            <tr>
+              <td colSpan={8}>{emptyText}</td>
+            </tr>
+          ) : (
+            tableRows.map((row) => (
+              <tr key={row.key}>
+                <td>{formatMonthLabel(row.monthKey)}</td>
+                <td className={styles.title}>
+                  {row.project.projectNumber || row.project.id}
+                  <span className={styles.metaLine}>{row.project.customer || row.project.title || "-"}</span>
+                </td>
+                <td>
+                  {row.reportCount}
+                  {row.selectedReport ? <span className={styles.metaLine}>{row.selectedReport.name}</span> : null}
+                </td>
+                <td>
+                  {row.projectInvoices.length > 0 ? (
+                    <>
+                      {row.projectInvoices.map((invoice) => getInvoiceDisplayNumber(invoice)).join(", ")}
+                      <span className={styles.metaLine}>
+                        {row.invoiceMailCount > 0 ? "Rechnung per E-Mail versendet" : "Rechnung vorhanden"}
+                      </span>
+                    </>
+                  ) : (
+                    <span className={styles.metaLine}>Keine Rechnung im Monat</span>
+                  )}
+                </td>
+                <td>
+                  {row.recipient?.email ? (
+                    <>
+                      {[row.recipient.firstName, row.recipient.lastName].filter(Boolean).join(" ") ||
+                        row.recipient.companyName ||
+                        "Empfänger"}
+                      <span className={styles.metaLine}>{row.recipient.email}</span>
+                    </>
+                  ) : (
+                    <span className={styles.metaLine}>Tätigkeitsberichtempfänger fehlt</span>
+                  )}
+                </td>
+                <td>
+                  {row.sentReportDispatches.length}
+                  {row.sentReportDispatches[0] ? (
+                    <span className={styles.metaLine}>{formatInstantDateTime(row.sentReportDispatches[0].createdAt)}</span>
+                  ) : null}
+                </td>
+                <td>{row.status}</td>
+                <td>
+                  {row.status === "Versandbereit" ? (
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      disabled={isSendingDocumentMail}
+                      onClick={() => void sendGeneralActivityReport(row)}
+                    >
+                      Senden
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() =>
+                      openProjectFile(row.project, {
+                        tab: "documents",
+                        documentType: row.reportCount > 0 ? "Tätigkeitsberichte" : "Rechnungen",
+                        month: row.monthKey,
+                      })
+                    }
+                  >
+                    Öffnen
+                  </button>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    );
+
+    return (
+      <section className={`${styles.dashboardSection} ${styles.winterServicePage}`}>
+        <div className={styles.topline}>
+          <div>
+            <p className={styles.eyebrow}>Prozess/Automation</p>
+            <h1>Allg. T-Berichte</h1>
+            <p className={styles.subline}>
+              Kontroll- und Versandzentrale für Tätigkeitsberichte aus Dauerläuferprojekten ohne Winterdienst.
+            </p>
+          </div>
+        </div>
+
+        <nav className={`${styles.projectMonthStrip} ${styles.generalActivityReportMonthStrip}`} aria-label="T-Bericht-Monat">
+          <button type="button" onClick={() => shiftGeneralActivityReportMonth(-13)}>
+            &lt; Monat
+          </button>
+          {generalActivityReportMonths.map((month) => (
+            <button
+              key={month.key}
+              type="button"
+              data-active={month.key === monthKey}
+              data-current={month.key === currentCalendarMonthKey}
+              onClick={() => setProjectComparisonMonth(month.key)}
+            >
+              {month.label}
+            </button>
+          ))}
+          <button type="button" onClick={() => shiftGeneralActivityReportMonth(13)}>
+            Monat &gt;
+          </button>
+        </nav>
+
+        <div className={`${styles.analyticsGrid} ${styles.winterServiceMetricGrid}`}>
+          <article className={styles.analyticsMetric} data-state="ok">
+            <span>Dauerläufer</span>
+            <strong>{recurringProjects.length}</strong>
+            <small>Ohne Winterdienst</small>
+          </article>
+          <article className={styles.analyticsMetric} data-state={openRows.length > 0 ? "low" : "good"}>
+            <span>Offen</span>
+            <strong>{openRows.length}</strong>
+            <small>Bericht, Rechnung, Empfänger oder Versand offen</small>
+          </article>
+          <article className={styles.analyticsMetric} data-state={readyRows.length > 0 ? "ok" : "good"}>
+            <span>Versandbereit</span>
+            <strong>{readyRows.length}</strong>
+            <small>PDF, Rechnung und Empfänger vorhanden</small>
+          </article>
+          <article className={styles.analyticsMetric} data-state={missingInvoiceRows.length > 0 ? "low" : "good"}>
+            <span>Rechnung fehlt</span>
+            <strong>{missingInvoiceRows.length}</strong>
+            <small>T-Bericht vorhanden, Rechnung fehlt</small>
+          </article>
+          <article className={styles.analyticsMetric} data-state="good">
+            <span>Erledigt</span>
+            <strong>{doneRows.length}</strong>
+            <small>Manuell oder mit Rechnung versendet</small>
+          </article>
+        </div>
+
+        <section className={`${styles.tableCard} ${styles.winterServicePanel} ${styles.winterServiceTablePanel}`}>
+          <div className={styles.reportHeader}>
+            <div>
+              <h2>Versandbereit</h2>
+              <p>Diese Tätigkeitsberichte haben eine Monatsrechnung, eine PDF und einen Empfänger.</p>
+            </div>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              disabled={isSendingDocumentMail || readyRows.length === 0}
+              onClick={() => void sendReadyGeneralActivityReports()}
+            >
+              Alle versandbereiten senden
+            </button>
+          </div>
+          {renderRowsTable(readyRows, "Keine versandbereiten allgemeinen Tätigkeitsberichte.")}
+        </section>
+
+        <section className={`${styles.tableCard} ${styles.winterServicePanel} ${styles.winterServiceTablePanel}`}>
+          <div className={styles.reportHeader}>
+            <div>
+              <h2>Offene Prüfpunkte</h2>
+              <p>Hier bleiben Tätigkeitsberichte sichtbar, bei denen Rechnung, Empfänger, PDF oder Versand noch fehlen.</p>
+            </div>
+          </div>
+          {renderRowsTable(openRows.filter((row) => row.status !== "Versandbereit"), "Keine offenen Prüfpunkte.")}
+        </section>
+
+        <section className={`${styles.tableCard} ${styles.winterServicePanel} ${styles.winterServiceTablePanel}`}>
+          <div className={styles.reportHeader}>
+            <div>
+              <h2>Versendet / erledigt</h2>
+              <p>Erledigt bedeutet: Der Tätigkeitsbericht wurde separat versendet oder als Rechnungsanhang protokolliert.</p>
+            </div>
+          </div>
+          {renderRowsTable(doneRows, "Noch keine erledigten allgemeinen Tätigkeitsberichte.")}
+        </section>
+      </section>
+    );
+  }
+
+  function renderProcessAutomation() {
+    const regularRules = projectPipelineAutomationBlueprint.filter((rule) => rule.behavior !== "Monatslogik");
+    const monthlyRules = projectPipelineAutomationBlueprint.filter((rule) => rule.behavior === "Monatslogik");
+    const automaticRuleCount = projectPipelineAutomationBlueprint.filter((rule) => rule.behavior === "Automatisch").length;
+    const confirmedAutomationEvents = new Set([
+      "Angebotsentwurf ist vorhanden",
+      "Finales Angebot wurde versendet oder bewusst ausgegeben",
+      "Terminwunsch oder Planungsbedarf ist vorhanden",
+      "Fester Planungstermin ist eingetragen",
+      "Termin erreicht, Stempelung gestartet oder Ausfuehrungsnachweis vorhanden",
+      "Endkontrolle liegt vor",
+    ]);
+    const confirmedAutomationRuleCount = projectPipelineAutomationBlueprint.filter((rule) =>
+      confirmedAutomationEvents.has(rule.event)
+    ).length;
+    const getProcessAutomationModeLabel = (rule: (typeof projectPipelineAutomationBlueprint)[number]) => {
+      if (rule.behavior === "Automatisch") return "Automatisch";
+      if (rule.behavior === "Monatslogik") return "Monatslogik";
+      return confirmedAutomationEvents.has(rule.event) ? "Bestätigung aktiv" : "Vorbereitet";
+    };
+    const renderAutomationRuleCard = (
+      rule: (typeof projectPipelineAutomationBlueprint)[number],
+      variant: "single" | "recurring" | "both"
+    ) => {
+      const oneTimeStatus = getProjectStatusStripLabel(rule.oneTimeStatus);
+      const recurringStatus = getProjectStatusStripLabel(rule.recurringStatus);
+      const targetLabel =
+        variant === "single"
+          ? oneTimeStatus
+          : variant === "recurring"
+            ? recurringStatus
+            : oneTimeStatus === recurringStatus
+              ? oneTimeStatus
+              : `${oneTimeStatus} / ${recurringStatus}`;
+
+      return (
+        <article
+          key={`${variant}-${rule.event}`}
+          className={styles.processAutomationRuleCard}
+          data-mode={getProcessAutomationModeLabel(rule)}
+        >
+          <div>
+            <span>{getProcessAutomationModeLabel(rule)}</span>
+            <strong>{rule.event}</strong>
+          </div>
+          <p>{rule.note}</p>
+          <footer>
+            <small>Zielstatus</small>
+            <b>{targetLabel}</b>
+          </footer>
+        </article>
+      );
+    };
+
+    return (
+      <section className={`${styles.dashboardSection} ${styles.processAutomationPage}`}>
+        <div className={styles.topline}>
+          <div>
+            <p className={styles.eyebrow}>Prozess/Automation</p>
+            <h1>Status-Automatisierung</h1>
+            <p className={styles.subline}>
+              Regelgrundlage für Projektstatus, getrennt nach einmaligen Projekten und Dauerläufern.
+            </p>
+          </div>
+        </div>
+
+        <section className={`${styles.tableCard} ${styles.processAutomationIntro}`}>
+          <article>
+            <span>Grundsatz</span>
+            <strong>Automatik nur dort, wo sie fachlich eindeutig ist.</strong>
+            <p>Alles andere bleibt ein sichtbarer Vorschlag, bis die Regel separat freigeschaltet wird.</p>
+          </article>
+          <article>
+            <span>Statuslogik</span>
+            <strong>Terminwunsch und fester Termin sind getrennt.</strong>
+            <p>„Zur Planung bereit“ bedeutet Bedarf. „Geplant“ bedeutet fester Termin, aber noch keine Ausführung.</p>
+          </article>
+          <article>
+            <span>Monatslogik</span>
+            <strong>Dauerläufer schließen nicht nach jeder Rechnung ab.</strong>
+            <p>Nach der Monatsfaktura laufen aktive Dauerläufer wieder in der Umsetzung weiter.</p>
+          </article>
+        </section>
+
+        <section className={`${styles.tableCard} ${styles.processAutomationPanel} ${styles.processAutomationRulesPanel}`}>
+          <div className={styles.reportHeader}>
+            <div>
+              <h2>Regeln nach Projektart</h2>
+              <p>Die Karten zeigen Auslöser, Zielstatus und ob WorkPilot automatisch setzt oder nur vorschlägt.</p>
+            </div>
+          </div>
+          <div className={styles.processAutomationRuleColumns}>
+            <div>
+              <h3>Einmalige Projekte</h3>
+              <div className={styles.processAutomationRuleList}>
+                {regularRules.map((rule) => renderAutomationRuleCard(rule, "single"))}
+              </div>
+            </div>
+            <div>
+              <h3>Dauerläufer</h3>
+              <div className={styles.processAutomationRuleList}>
+                {regularRules.map((rule) => renderAutomationRuleCard(rule, "recurring"))}
+              </div>
+            </div>
+          </div>
+          <details className={styles.processAutomationDetails}>
+            <summary>Technische Regelübersicht anzeigen</summary>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>Ereignis</th>
+                <th>Einmaliges Projekt</th>
+                <th>Dauerläufer</th>
+                <th>Art</th>
+                <th>Hinweis</th>
+              </tr>
+            </thead>
+            <tbody>
+              {projectPipelineAutomationBlueprint.map((rule) => (
+                <tr key={rule.event}>
+                  <td className={styles.title}>{rule.event}</td>
+                  <td>{getProjectStatusStripLabel(rule.oneTimeStatus)}</td>
+                  <td>{getProjectStatusStripLabel(rule.recurringStatus)}</td>
+                  <td>{rule.behavior}</td>
+                  <td>{rule.note}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          </details>
+        </section>
+
+        <section className={`${styles.tableCard} ${styles.processAutomationPanel} ${styles.processAutomationFlowPanel}`}>
+          <div className={styles.reportHeader}>
+            <div>
+              <h2>Status-Strecke</h2>
+              <p>Die Strecke zeigt den normalen Weg durch ein Projekt. „Geplant“ liegt bewusst zwischen Terminwunsch und echter Ausführung.</p>
+            </div>
+          </div>
+          <div className={`${styles.projectStatusStrip} ${styles.processAutomationStatusStrip}`}>
+            <div className={styles.projectStatusStripMeta}>
+              <strong>Projektstatus</strong>
+              <span>{projectOperationalLifecycleStatuses.length - 1} aktive Statusschritte</span>
+            </div>
+            <div className={styles.projectPipelineStatusList}>
+              {projectOperationalLifecycleStatuses
+                .filter((statusItem) => statusItem.label !== "Alle Offenen")
+                .map((statusItem) => (
+                  <button key={statusItem.label} type="button" disabled>
+                    <span>
+                      {statusItem.icon ? (
+                        <em data-numbered={/^\d+$/.test(statusItem.icon) ? "true" : undefined}>{statusItem.icon}</em>
+                      ) : null}
+                      {getProjectStatusStripLabel(statusItem.label)}
+                    </span>
+                  </button>
+                ))}
+            </div>
+          </div>
+        </section>
+
+        <div className={styles.processAutomationSummaryGrid}>
+          <article className={styles.analyticsMetric} data-state="good">
+            <span>Automatisch</span>
+            <strong>{automaticRuleCount}</strong>
+            <small>Startstatus beim Anlegen</small>
+          </article>
+          <article className={styles.analyticsMetric} data-state="ok">
+            <span>Bestätigung aktiv</span>
+            <strong>{confirmedAutomationRuleCount}</strong>
+            <small>Popup setzt Status nach Zustimmung</small>
+          </article>
+          <article className={styles.analyticsMetric} data-state="ok">
+            <span>Monatslogik</span>
+            <strong>{monthlyRules.length}</strong>
+            <small>Dauerläufer-Faktura separat betrachtet</small>
+          </article>
+        </div>
+
+        <section className={`${styles.tableCard} ${styles.processAutomationPanel} ${styles.processAutomationMonthlyPanel}`}>
+          <div className={styles.reportHeader}>
+            <div>
+              <h2>Dauerläufer-Monatslogik</h2>
+              <p>Diese Regeln behandeln den Monatsabschluss. Sie dürfen Dauerläufer nicht versehentlich in den Projektabschluss schieben.</p>
+            </div>
+          </div>
+          <div className={styles.processAutomationRuleList}>
+            {monthlyRules.map((rule) => renderAutomationRuleCard(rule, "both"))}
+          </div>
+        </section>
+      </section>
+    );
+  }
+
   function renderCustomerFile() {
     if (!selectedCustomerFile) return null;
 
@@ -16504,7 +24828,7 @@ export function DashboardPage() {
       { id: "documents", label: "Dokumente", icon: "" },
       { id: "gaeb", label: "Ausschreibungen (GAEB)", icon: "" },
       { id: "contacts", label: "Ansprechpartner", icon: "?" },
-      { id: "potentials", label: "Potenziale", icon: "" },
+      { id: "potentials", label: "Zusatzverkäufe", icon: "" },
       { id: "tasks", label: "Aufgaben", icon: "?" },
       { id: "orders", label: "Aufträge", icon: "A" },
       { id: "projects", label: "Projekte", icon: "" },
@@ -16834,7 +25158,7 @@ export function DashboardPage() {
                                 >
                                   Per E-Mail senden
                                 </button>
-                                {!["Entwurf", "Storniert", "Stornorechnung", "Gelöscht"].includes(invoice.status) ? (
+                                {!["Entwurf", "Storniert", "Stornorechnung"].includes(invoice.status) && !isDeletedStatus(invoice.status) ? (
                                   <button
                                     type="button"
                                     className={styles.timeEntryEditButton}
@@ -16843,7 +25167,7 @@ export function DashboardPage() {
                                     Stornieren
                                   </button>
                                 ) : null}
-                                {canDeleteInvoices && invoice.status !== "Gelöscht" ? (
+                                {canDeleteInvoices && !isDeletedStatus(invoice.status) ? (
                                   <button
                                     type="button"
                                     className={styles.deleteButton}
@@ -16884,7 +25208,23 @@ export function DashboardPage() {
                             <td className={styles.number}>{offer.offerNumber}</td>
                             <td>{offer.projectNumber} | {offer.projectTitle}</td>
                             <td>{offer.company}</td>
-                            <td>{offer.status}</td>
+                            <td>
+                              <div className={styles.invoiceStatusStack}>
+                                {renderOfferStatusChip(offer)}
+                                {isLostOffer(offer) && offer.lostReason ? (
+                                  <small>{offer.lostReason}</small>
+                                ) : null}
+                                {isLostOffer(offer) && offer.lostNote?.trim() ? (
+                                  <button
+                                    type="button"
+                                    className={styles.offerStatusCommentClip}
+                                    onClick={() => openOfferLostComment(offer)}
+                                  >
+                                    Kommentar
+                                  </button>
+                                ) : null}
+                              </div>
+                            </td>
                             <td>{formatMoney(offer.netTotal)}</td>
                             <td>{formatMoney(offer.grossTotal)}</td>
                             <td>
@@ -16935,12 +25275,12 @@ export function DashboardPage() {
             ) : customerFileTab === "potentials" ? (
               <div className={styles.customerDocumentModule}>
                 <div className={styles.customerFileMainHeader}>
-                  <h2>Potenziale</h2>
-                  <span>{customerPotentials.length} Potenzial{customerPotentials.length === 1 ? "" : "e"}</span>
+                  <h2>Zusatzverkäufe</h2>
+                  <span>{customerPotentials.length} Zusatzverkauf{customerPotentials.length === 1 ? "" : "e"}</span>
                 </div>
                 {customerPotentials.length === 0 ? (
                   <div className={styles.customerDocumentEmpty}>
-                    <strong>Noch keine Potenziale hinterlegt.</strong>
+                    <strong>Noch keine Zusatzverkäufe hinterlegt.</strong>
                     <p>Erkannte Zusatzverkäufe aus Projekten erscheinen automatisch in dieser Kundenakte.</p>
                   </div>
                 ) : (
@@ -16949,10 +25289,10 @@ export function DashboardPage() {
                       <thead>
                         <tr>
                           <th>Status</th>
-                          <th>Potenzial</th>
+                          <th>Zusatzverkauf</th>
                           <th>Projekt</th>
                           <th>Wert</th>
-                          <th>Wiedervorlage</th>
+                          <th>Nachfassen</th>
                           <th>Historie</th>
                           <th>Aktion</th>
                         </tr>
@@ -16962,7 +25302,7 @@ export function DashboardPage() {
                           <tr key={potential.id}>
                             <td>
                               {potential.status === "follow_up"
-                                ? "Später nachfassen"
+                                ? "Nachfassen geplant"
                                 : potential.status === "offered"
                                   ? "Angeboten"
                                   : potential.status === "lost"
@@ -17095,12 +25435,15 @@ export function DashboardPage() {
       <section className={styles.settingsPanel}>
         <div className={styles.topline}>
           <div>
-            <p className={styles.eyebrow}>Zusatzchancen</p>
-            <h1>Potenziale</h1>
+            <p className={styles.eyebrow}>Zusatzverkauf</p>
+            <h1>Zusatzverkäufe</h1>
             <p className={styles.subline}>
-              Erkannte Zusatzverkaufschancen aus Endkontrollen. Forecast bleibt erst durch Angebote und Rechnungen messbar.
+              Erkannte Zusatzverkäufe aus Endkontrollen. Forecast bleibt erst durch Angebote und Rechnungen messbar.
             </p>
           </div>
+          <button type="button" className={styles.primaryButton} onClick={openManualPotentialModal}>
+            + Zusatzverkauf
+          </button>
         </div>
 
         <section className={styles.heroSearchBar}>
@@ -17109,23 +25452,23 @@ export function DashboardPage() {
             <input
               value={heroSearchTerm}
               onChange={(event) => setHeroSearchTerm(event.target.value)}
-              placeholder="Potenzial, Projekt, Kunde oder Status"
+              placeholder="Zusatzverkauf, Projekt, Kunde oder Status"
             />
           </label>
-          <span>{visiblePotentialRows.length} Potenziale</span>
+          <span>{visiblePotentialRows.length} Zusatzverkäufe</span>
         </section>
 
         <section className={styles.projectPipelineBoard}>
           <div className={styles.projectStatusStrip}>
             <div className={styles.projectStatusStripMeta}>
-              <strong>Potenziale</strong>
-              <span>{getPotentialStatusCount("all")} Potenziale</span>
+              <strong>Zusatzverkäufe</strong>
+              <span>{getPotentialStatusCount("all")} Zusatzverkäufe</span>
             </div>
             <div className={`${styles.projectPipelineStatusList} ${styles.potentialStatusList}`}>
               {[
                 { label: "Alle", value: "all" as const },
                 { label: "Offen", value: "open" as const },
-                { label: "Wiedervorlage", value: "follow_up" as const },
+                { label: "Nachfassen", value: "follow_up" as const },
                 { label: "Fällig", value: "due" as const },
                 { label: "Angeboten", value: "offered" as const },
                 { label: "Kein Interesse", value: "lost" as const },
@@ -17148,90 +25491,61 @@ export function DashboardPage() {
           </div>
 
           <div className={styles.projectPipelineWorkspace}>
-            <section className={`${styles.tableCard} ${styles.heroTableCard}`}>
+            <section className={`${styles.tableCard} ${styles.heroTableCard} ${styles.potentialOverviewCard}`}>
               <div className={styles.heroTableScroll}>
                 <table className={styles.table}>
                   <thead>
                     <tr>
+                      <th>Nr.</th>
                       <th>Status</th>
-                      <th>Potenzial</th>
+                      <th>Zusatzverkauf</th>
                       <th>Kunde</th>
                       <th>Projekt</th>
                       <th>Priorität</th>
                       <th>Wert</th>
                       <th>Erkannt am</th>
-                      <th>Wiedervorlage</th>
+                      <th>Nachfass-Aufgabe</th>
                       <th>Zuständig</th>
                       <th>Letzte Aktion</th>
-                      <th>Aktion</th>
                     </tr>
                   </thead>
                   <tbody>
                     {visiblePotentialRows.length === 0 ? (
                       <tr>
-                        <td colSpan={11}>Keine Potenziale in dieser Auswahl.</td>
+                        <td colSpan={11}>Keine Zusatzverkäufe in dieser Auswahl.</td>
                       </tr>
                     ) : (
                       visiblePotentialRows.map((potential) => {
                         const project = getPotentialProject(potential);
-                        const linkedTask = tasks.find((task) => task.id === potential.taskId);
+                        const linkedTask = getPotentialLinkedTask(potential);
+                        const followUpInfo = getPotentialFollowUpInfo(potential);
                         const lastHistory = potential.history.at(-1);
 
                         return (
                           <tr key={potential.id}>
-                            <td>{getPotentialStatusLabel(potential)}</td>
+                            <td>
+                              <button
+                                type="button"
+                                className={styles.potentialNumberButton}
+                                onClick={() => openPotentialDetail(potential)}
+                              >
+                                {getPotentialNumber(potential)}
+                              </button>
+                            </td>
+                            <td>
+                              <span className={styles.potentialStatusClip} data-status={potential.status}>
+                                {getPotentialStatusLabel(potential)}
+                              </span>
+                            </td>
                             <td className={styles.title}>{potential.description}</td>
                             <td>{potential.customerName || project?.customer || "-"}</td>
                             <td>{potential.projectLabel || project?.title || potential.projectId}</td>
                             <td>{getPotentialPriorityLabel(potential.priority)}</td>
                             <td>{potential.estimatedValue ? `${potential.estimatedValue} €` : "-"}</td>
                             <td>{formatDeadline(potential.createdAt)}</td>
-                            <td>{potential.followUpAt ? formatDeadline(potential.followUpAt) : "-"}</td>
+                            <td title={followUpInfo.detail}>{followUpInfo.title}</td>
                             <td>{potential.ownerName || linkedTask?.zustaendig || activeUser?.name || "-"}</td>
                             <td>{lastHistory ? `${formatDeadline(lastHistory.at)}: ${lastHistory.note}` : "-"}</td>
-                            <td>
-                              <div className={styles.tableActionGroup}>
-                                <button
-                                  type="button"
-                                  className={styles.timeEntryEditButton}
-                                  onClick={() => openPotentialDetail(potential)}
-                                >
-                                  Öffnen
-                                </button>
-                                {["open", "follow_up"].includes(potential.status) ? (
-                                  <>
-                                    <button
-                                      type="button"
-                                      className={styles.timeEntryEditButton}
-                                      onClick={() => void offerPotential(potential)}
-                                    >
-                                      Angebot erstellen
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className={styles.timeEntryEditButton}
-                                      onClick={() => void schedulePotentialFollowUp(potential)}
-                                    >
-                                      Später nachfassen
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className={styles.timeEntryEditButton}
-                                      onClick={() => void closePotential(potential)}
-                                    >
-                                      Kein Interesse
-                                    </button>
-                                  </>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  className={styles.timeEntryEditButton}
-                                  onClick={() => setHistoryPotential(potential)}
-                                >
-                                  Historie
-                                </button>
-                              </div>
-                            </td>
                           </tr>
                         );
                       })
@@ -17240,7 +25554,7 @@ export function DashboardPage() {
                 </table>
               </div>
               <p className={styles.heroTableHint}>
-                Alle {visiblePotentialRows.length} Potenziale sind geladen und auswertbar.
+                Alle {visiblePotentialRows.length} Zusatzverkäufe sind geladen und auswertbar.
               </p>
             </section>
           </div>
@@ -17266,7 +25580,9 @@ export function DashboardPage() {
     const projectTabHelp: Partial<Record<ProjectFileTab, string>> = {
       time: "Hier stehen echte und manuell ergänzte Stempelzeiten. Unten werden Istzeiten gegen Sollzeiten aus Angeboten verglichen.",
       appointments: "Hier werden Termine geplant und die gebuchten Stempelzeiten mit Zuordnung und Rechnungsstatus angezeigt.",
+      forecast: "Hier wird der kaufmännische Forecastbetrag für Dauerläufer gepflegt, solange noch keine echte Monatsrechnung vorhanden ist.",
       budgets: "Hier werden die monatlichen Projektzeitkontingente gepflegt. Diese Werte sind die Soll-Zeiten für Planung und Auswertung.",
+      profit: "Hier wird der geschätzte Projektgewinn aus Rechnungen, Stempelzeiten und Materialkosten ausgewertet.",
       comparison: "Hier stehen die Vorgabezeiten aus Angeboten je Mitarbeiter und Position. Von hier aus werden offene Zeiten verplant.",
     };
     const renderProjectMenuLabel = (item: { id: ProjectFileTab; label: string; icon: string }) => (
@@ -17286,12 +25602,15 @@ export function DashboardPage() {
       { id: "documents", label: "Dokumente", icon: "" },
       { id: "appointments", label: "Termine & Stempelungen", icon: "" },
       ...(isSelectedProjectRecurring
-        ? [{ id: "budgets" as ProjectFileTab, label: "Projektzeitkontingente", icon: "" }]
+        ? [
+            { id: "forecast" as ProjectFileTab, label: "Forecast", icon: "" },
+            { id: "budgets" as ProjectFileTab, label: "Projektzeitkontingente", icon: "" },
+          ]
         : []),
       { id: "automaticBilling", label: "Automatische Abrechnung", icon: "" },
+      { id: "profit", label: "Projektgewinn", icon: "" },
+      { id: "potentials", label: "Zusatzverkäufe", icon: "" },
       { id: "tasks", label: "Aufgaben", icon: "" },
-      { id: "material", label: "Material", icon: "" },
-      { id: "participants", label: "Projektbeteiligte", icon: "" },
       { id: "checklists", label: "Checklisten", icon: "" },
       { id: "gaeb", label: "Ausschreibungen (GAEB)", icon: "" },
     ];
@@ -17305,12 +25624,13 @@ export function DashboardPage() {
       selectedProjectFile.address ||
       (selectedContact ? getContactAddressLine(selectedContact) : "") ||
       "Projektanschrift noch nicht hinterlegt";
+    const fallbackProjectResponsible = selectedProjectFile.responsibleName || activeUser?.name || "Christian Eid";
     const logEntries = [
       {
-        actor: "CG",
+        actor: fallbackProjectResponsible,
         date: selectedProjectFile.createdAt || "29.04.2026 08:13",
         title: "Projekt zugewiesen",
-        text: `${activeUser?.name || "Christine Giesswein"} wurde dem Projekt hinzugefügt.`,
+        text: `${fallbackProjectResponsible} wurde dem Projekt hinzugefügt.`,
       },
       {
         actor: "System",
@@ -17332,17 +25652,23 @@ export function DashboardPage() {
     const projectUpsellSourceEntries = projectLogEntries.filter(
       (entry) =>
         entry.title === "Dokumente: Endkontrolle" &&
-        /zusatzverkauf:\s*(?!nein)/i.test(entry.text)
+        Boolean(getPositiveUpsellNoteFromLogText(entry.text))
     );
     const projectUpsellResolutionEntries = projectLogEntries.filter((entry) =>
       [
         "Zusatzverkauf: Angebot erstellt",
         "Zusatzverkauf: Potenzial nachfassen",
+        "Zusatzverkauf: Nachfassen",
+        "Zusatzverkauf: Zusatzverkauf nachfassen",
+        // Legacy title from the earlier UI label; keep it so old logbook entries still resolve the upsell state.
+        "Zusatzverkauf: Verkaufschance nachfassen",
         "Zusatzverkauf: Kein Interesse",
       ].includes(entry.title)
     );
     const projectPotentialsForFile = projectPotentials.filter(
-      (potential) => String(potential.projectId) === String(selectedProjectFile.id)
+      (potential) =>
+        String(potential.projectId) === String(selectedProjectFile.id) &&
+        !isNoUpsellDescription(potential.description)
     );
     const activeProjectPotential =
       projectPotentialsForFile.find((potential) => ["open", "follow_up"].includes(potential.status)) ??
@@ -17353,7 +25679,12 @@ export function DashboardPage() {
     );
     const hasProjectUpsellPotential = projectPotentialsForFile.some((potential) => potential.status === "follow_up") ||
       projectUpsellResolutionEntries.some(
-      (entry) => entry.title === "Zusatzverkauf: Potenzial nachfassen"
+      (entry) =>
+        entry.title === "Zusatzverkauf: Potenzial nachfassen" ||
+        entry.title === "Zusatzverkauf: Nachfassen" ||
+        entry.title === "Zusatzverkauf: Zusatzverkauf nachfassen" ||
+        // Legacy title from the earlier UI label; keep it so old logbook entries still resolve the upsell state.
+        entry.title === "Zusatzverkauf: Verkaufschance nachfassen"
     );
     const hasOpenProjectUpsell =
       Boolean(activeProjectPotential && activeProjectPotential.status === "open") ||
@@ -17366,10 +25697,12 @@ export function DashboardPage() {
           ? "open"
           : "";
     const projectUpsellButtonLabel =
-      projectUpsellState === "offered"
+      !projectUpsellState
+        ? "Kein Zusatzverkauf"
+        : projectUpsellState === "offered"
         ? "Zusatzverkauf angeboten"
         : projectUpsellState === "potential"
-          ? "Hinterlegtes Potenzial"
+          ? "Hinterlegter Zusatzverkauf"
           : "Zusatzverkauf erkannt";
     const savedProjectLogEntries = projectLogEntries
       .filter((entry) => {
@@ -17437,6 +25770,19 @@ export function DashboardPage() {
         groups[monthKey] = [...(groups[monthKey] ?? []), invoice.invoiceNumber];
         return groups;
       }, {});
+    const projectActiveInvoiceNumbersByMonth = invoices
+      .filter(
+        (invoice) =>
+          String(invoice.projectId) === String(selectedProjectFile.id) &&
+          !isDeletedInvoice(invoice) &&
+          !["Entwurf", "Storniert", "Stornorechnung"].includes(invoice.status)
+      )
+      .reduce<Record<string, string[]>>((groups, invoice) => {
+        const monthKey = getProjectInvoiceMonth(invoice);
+        if (!monthKey) return groups;
+        groups[monthKey] = [...(groups[monthKey] ?? []), invoice.invoiceNumber];
+        return groups;
+      }, {});
     const isTaskLinkedToSelectedProject = (task: TaskItem) => {
       if (task.projectId && String(task.projectId) === String(selectedProjectFile.id)) return true;
 
@@ -17456,6 +25802,12 @@ export function DashboardPage() {
       (task) => task.status !== "erledigt" && task.status !== "archiviert"
     );
     const completedProjectTasks = projectTasks.filter((task) => task.status === "erledigt");
+    const activeProjectPotentialsForFile = projectPotentialsForFile.filter((potential) =>
+      ["open", "follow_up"].includes(potential.status)
+    );
+    const completedProjectPotentialsForFile = projectPotentialsForFile.filter((potential) =>
+      ["offered", "lost"].includes(potential.status)
+    );
     const projectPlanningHistory = projectPlanningHistoryEntries
       .flatMap((entry) =>
         (entry.history ?? []).map((history) => ({
@@ -17473,7 +25825,7 @@ export function DashboardPage() {
     const projectStampHistory = projectStampHistoryEntries
       .map((entry) => {
         const deleteHistory = entry.editHistory?.find(
-          (history) => history.event === "Zeiteintrag gelöscht"
+      (history) => history.event === "Zeiteintrag gelöscht"
         );
         const sortTime = entry.deletedAt
           ? new Date(entry.deletedAt).getTime()
@@ -17630,7 +25982,7 @@ export function DashboardPage() {
         .filter((allocation) => parseHoursInput(allocation.hours) > 0);
       const totalHours = allocations.reduce((sum, allocation) => sum + parseHoursInput(allocation.hours), 0);
       if (projectBudgetTotalLimit > 0 && totalHours > projectBudgetTotalLimit + 0.0001) {
-        setErrorMessage("Die Monatskontingente dürfen das Gesamtprojektkontingent nicht überschreiten.");
+      setErrorMessage("Die Monatskontingente dürfen das Gesamtprojektkontingent nicht überschreiten.");
         return;
       }
 
@@ -17651,13 +26003,20 @@ export function DashboardPage() {
           "Projektzeitkontingente",
           allocations.length > 0
             ? `Projektzeitkontingente gespeichert: ${formatHours(totalHours)} Std. auf ${allocations.length} Monat(e).`
-            : "Projektzeitkontingente entfernt. Projekt wird nach tatsächlichen Stunden behandelt."
+          : "Projektzeitkontingente entfernt. Projekt wird nach tatsächlichen Stunden behandelt."
         );
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : "Projektzeitkontingente konnten nicht gespeichert werden.");
       }
     };
     const projectOffers = offers.filter((offer) => offer.projectId === selectedProjectFile.id);
+    const projectFinalOffers = projectOffers.filter(isActiveFinalOffer);
+    const projectLostOffers = projectOffers.filter(isLostOffer);
+    const projectHasAnyNonDraftOffer = projectOffers.some(
+      (offer) => offer.status !== "Entwurf" && !isDeletedOffer(offer)
+    );
+    const projectHasOnlyLostOffers =
+      projectHasAnyNonDraftOffer && projectFinalOffers.length === 0 && projectLostOffers.length > 0;
     const projectBaseOffers = projectOffers.filter((offer) => offer.offerType !== "addendum");
     const projectAddendumOffers = projectOffers.filter((offer) => offer.offerType === "addendum");
     const projectInvoices = invoices.filter(
@@ -17667,7 +26026,178 @@ export function DashboardPage() {
       ? projectInvoices.filter((invoice) => getProjectInvoiceMonth(invoice) === projectComparisonMonth)
       : projectInvoices;
     const activeProjectInvoices = visibleProjectInvoices;
+    const projectReminderCandidates = activeProjectInvoices
+      .filter((invoice) => isForecastRelevantInvoice(invoice) && !isInvoicePaid(invoice))
+      .map((invoice) => ({ invoice, dueState: getInvoiceDueState(invoice) }))
+      .filter((row) => row.dueState.overdueDays > 0)
+      .sort((first, second) => second.dueState.overdueDays - first.dueState.overdueDays);
+    const nextProjectReminderCandidate = projectReminderCandidates[0] ?? null;
     const finalizedProjectInvoices = activeProjectInvoices.filter((invoice) => invoice.status !== "Entwurf");
+    const projectProfitInvoices = projectInvoices.filter(
+      (invoice) => !["Entwurf", "Storniert", "Stornorechnung"].includes(invoice.status)
+    );
+    const projectProfitMonthAllInvoices = projectInvoices.filter(
+      (invoice) => getProjectInvoiceMonth(invoice) === projectComparisonMonth
+    );
+    const projectProfitMonthInvoices = projectProfitInvoices.filter(
+      (invoice) => getProjectInvoiceMonth(invoice) === projectComparisonMonth
+    );
+    const getLineNetValue = (line: OfferLineDraft) => {
+      const baseNet = Number(line.quantity || 0) * Number(line.unitPrice || 0);
+      const discountAmount = baseNet * (clampPercent(Number(line.discountPercent || 0)) / 100);
+      return roundCurrencyValue(baseNet - discountAmount);
+    };
+    const getCatalogItemForLine = (line: OfferLineDraft) =>
+      line.catalogItemId ? catalogItems.find((item) => item.id === line.catalogItemId) : undefined;
+    const isInvoiceLaborRevenueLine = (line: OfferLineDraft) => {
+      if (typeof line.isLaborPosition === "boolean") return line.isLaborPosition;
+      return line.catalogType === "service";
+    };
+    const getPackageRevenueShare = (line: OfferLineDraft, componentType: CatalogItemType) => {
+      const catalogItem = getCatalogItemForLine(line);
+      if (!catalogItem || catalogItem.type !== "package") return 0;
+      const componentSalesTotal = catalogItem.packageItems.reduce(
+        (sum, packageItem) =>
+          sum + (packageItem.priceOverride ?? packageItem.componentSalesPrice) * packageItem.quantity,
+        0
+      );
+      if (componentSalesTotal <= 0) return 0;
+      const componentTypeSalesTotal = catalogItem.packageItems
+        .filter((packageItem) => packageItem.componentType === componentType)
+        .reduce(
+          (sum, packageItem) =>
+            sum + (packageItem.priceOverride ?? packageItem.componentSalesPrice) * packageItem.quantity,
+          0
+        );
+      return getLineNetValue(line) * (componentTypeSalesTotal / componentSalesTotal);
+    };
+    const getInvoiceLaborRevenue = (invoice: InvoiceItem) =>
+      invoice.lines.reduce((sum, line) => {
+        if (isInvoiceLaborRevenueLine(line)) return sum + getLineNetValue(line);
+        if (line.catalogType === "package") return sum + getPackageRevenueShare(line, "service");
+        return sum;
+      }, 0);
+    const getInvoiceMaterialRevenue = (invoice: InvoiceItem) =>
+      invoice.lines.reduce((sum, line) => {
+        if (isInvoiceLaborRevenueLine(line)) return sum;
+        if (line.catalogType === "article") return sum + getLineNetValue(line);
+        if (line.catalogType === "package") return sum + getPackageRevenueShare(line, "article");
+        return sum;
+      }, 0);
+    const getInvoiceLineFallbackMaterialCost = (line: OfferLineDraft) => {
+        const catalogItem = getCatalogItemForLine(line);
+        if (!catalogItem) return 0;
+        return getCatalogMaterialPurchasePrice(catalogItem) * Number(line.quantity || 0);
+    };
+    const getInvoiceMaterialCost = (invoice: InvoiceItem) =>
+      invoice.lines.reduce((sum, line) => {
+        if (line.costSnapshotAt) return sum + Number(line.materialCostSnapshot || 0);
+        return sum + getInvoiceLineFallbackMaterialCost(line);
+      }, 0);
+    const hasInvoiceMaterialFallback = (invoice: InvoiceItem) =>
+      invoice.lines.some((line) => {
+        if (line.costSnapshotAt) return false;
+        if (line.catalogType === "service" || line.isLaborPosition) return false;
+        return Boolean(line.catalogItemId);
+      });
+    const getInvoiceMaterialRevenueWithoutCost = (invoice: InvoiceItem) =>
+      invoice.lines.reduce((sum, line) => {
+        if (!line.costSnapshotAt && line.catalogItemId && line.catalogType !== "service" && !line.isLaborPosition) {
+          return sum + getLineNetValue(line);
+        }
+        const catalogItem = catalogItems.find((item) => item.id === line.catalogItemId);
+        if (catalogItem || line.catalogType === "service" || line.isLaborPosition) return sum;
+        return sum + getLineNetValue(line);
+      }, 0);
+    const getStampLaborCost = (entry: StampTimeEntry) => {
+      if (entry.costSnapshotAt) return Number(entry.laborCostSnapshot || 0);
+      const hours = Number(entry.durationMs || 0) / 3_600_000;
+      const hourlyCostRate = entry.userId ? getEmployeeHourlyCostRate(entry.userId) : 0;
+      return hours * hourlyCostRate;
+    };
+    const hasStampLaborFallback = (entry: StampTimeEntry) => !entry.costSnapshotAt;
+    const getUnratedStampHours = (entries: StampTimeEntry[]) =>
+      entries.reduce((sum, entry) => {
+        const hourlyCostRate = entry.costSnapshotAt
+          ? Number(entry.laborCostRateSnapshot || 0)
+          : entry.userId
+            ? getEmployeeHourlyCostRate(entry.userId)
+            : 0;
+        return hourlyCostRate > 0 ? sum : sum + Number(entry.durationMs || 0) / 3_600_000;
+      }, 0);
+    const getProjectProfitSummary = (
+      scopeInvoices: InvoiceItem[],
+      scopeStampEntries: StampTimeEntry[],
+      scopeAllInvoices: InvoiceItem[],
+      options?: { finalBlockReason?: string }
+    ) => {
+      const revenue = scopeInvoices.reduce((sum, invoice) => sum + Number(invoice.netTotal || 0), 0);
+      const materialRevenue = roundCurrencyValue(
+        scopeInvoices.reduce((sum, invoice) => sum + getInvoiceMaterialRevenue(invoice), 0)
+      );
+      const laborRevenue = roundCurrencyValue(
+        scopeInvoices.reduce((sum, invoice) => sum + getInvoiceLaborRevenue(invoice), 0)
+      );
+      const unassignedRevenue = roundCurrencyValue(Math.max(0, revenue - materialRevenue - laborRevenue));
+      const materialCost = scopeInvoices.reduce((sum, invoice) => sum + getInvoiceMaterialCost(invoice), 0);
+      const laborCost = scopeStampEntries.reduce((sum, entry) => sum + getStampLaborCost(entry), 0);
+      const totalCost = materialCost + laborCost;
+      const profit = revenue - totalCost;
+      const fallbackInvoiceCount = scopeInvoices.filter(hasInvoiceMaterialFallback).length;
+      const fallbackStampCount = scopeStampEntries.filter(hasStampLaborFallback).length;
+      const unratedStampHours = getUnratedStampHours(scopeStampEntries);
+      const hasCancelledInvoice = scopeAllInvoices.some((invoice) =>
+        ["Storniert", "Stornorechnung"].includes(invoice.status)
+      );
+      const isSnapshotFinal =
+        revenue > 0 &&
+        fallbackInvoiceCount === 0 &&
+        fallbackStampCount === 0 &&
+        unratedStampHours <= 0;
+      const status =
+        isSnapshotFinal && !options?.finalBlockReason
+          ? "final"
+          : "preliminary";
+      const statusLabel = isSnapshotFinal && options?.finalBlockReason
+        ? options.finalBlockReason
+        : status === "final"
+          ? "final"
+          : revenue <= 0 && hasCancelledInvoice
+            ? "vorläufig - Rechnung storniert / keine aktive Rechnung"
+            : revenue <= 0
+              ? "vorläufig - keine aktive Rechnung"
+              : fallbackStampCount > 0
+                ? "vorläufig - Stempelungen ohne Kostensnapshot"
+                : fallbackInvoiceCount > 0
+                  ? "vorläufig - Rechnungspositionen ohne Kostensnapshot"
+                  : unratedStampHours > 0
+                    ? "vorläufig - Stunden ohne Kostensatz"
+                    : "vorläufig";
+      return {
+        revenue,
+        materialRevenue,
+        materialGrossProfit: roundCurrencyValue(materialRevenue - materialCost),
+        laborRevenue,
+        laborGrossProfit: roundCurrencyValue(laborRevenue - laborCost),
+        unassignedRevenue,
+        materialCost,
+        laborCost,
+        totalCost,
+        profit,
+        marginPercent: revenue > 0 ? (profit / revenue) * 100 : 0,
+        status,
+        statusLabel,
+        invoiceCount: scopeInvoices.length,
+        stampHours: scopeStampEntries.reduce((sum, entry) => sum + Number(entry.durationMs || 0) / 3_600_000, 0),
+        unratedStampHours,
+        fallbackInvoiceCount,
+        fallbackStampCount,
+        materialRevenueWithoutCost: scopeInvoices.reduce(
+          (sum, invoice) => sum + getInvoiceMaterialRevenueWithoutCost(invoice),
+          0
+        ),
+      };
+    };
     const projectComparisonOfferNumbers = projectOffers.map((offer) => offer.offerNumber);
     const comparisonMonthDate = (() => {
       const [year, month] = projectComparisonMonth.split("-").map(Number);
@@ -17704,6 +26234,18 @@ export function DashboardPage() {
     const projectComparisonMonthOfferPlanningEntries = projectComparisonMonthPlanningEntries.filter(
       (entry) => entry.source === "offer" && entry.date.startsWith(projectComparisonMonth)
     );
+    const isSingleProjectEntryLinkedToOffer = (entry: PlanningEntry) => {
+      if (entry.source === "offer" || entry.offerId || entry.offerLabel) return true;
+      const offersInEntryMonth = projectFinalOffers.filter(
+        (offer) =>
+          offer.plannedExecutionMonth === entry.date.slice(0, 7) &&
+          getOfferLaborPlanningHours(offer) > 0
+      );
+      return offersInEntryMonth.length === 1;
+    };
+    const projectOfferPlanningEntries = isSelectedProjectRecurring
+      ? projectComparisonMonthOfferPlanningEntries
+      : projectPlanningEntries.filter(isSingleProjectEntryLinkedToOffer);
     const projectComparisonMonthStampEntries = projectStampEntries.filter((entry) =>
       entry.date.startsWith(projectComparisonMonth)
     );
@@ -17713,6 +26255,52 @@ export function DashboardPage() {
     const projectVisibleStampEntries = isSelectedProjectRecurring
       ? projectComparisonMonthStampEntries
       : projectStampEntries;
+    const normalizeProfitDate = (date: Date | null) => {
+      if (!date || !Number.isFinite(date.getTime())) return null;
+      const normalized = new Date(date);
+      normalized.setHours(0, 0, 0, 0);
+      return normalized;
+    };
+    const projectProfitToday = normalizeProfitDate(new Date());
+    const projectProfitRuntimeEndDate = normalizeProfitDate(parseProjectDate(selectedProjectFile.projectRuntimeUntil));
+    const recurringProjectTotalFinalBlockReason = isSelectedProjectRecurring
+      ? !projectProfitRuntimeEndDate
+        ? "vorläufig - Projektende nicht festgelegt"
+        : projectProfitToday && projectProfitToday.getTime() <= projectProfitRuntimeEndDate.getTime()
+          ? "vorläufig - Projektlaufzeit noch nicht abgeschlossen"
+          : ""
+      : "";
+    const projectProfitMonthSummary = getProjectProfitSummary(
+      projectProfitMonthInvoices,
+      projectComparisonMonthStampEntries,
+      projectProfitMonthAllInvoices
+    );
+    const projectProfitTotalSummary = getProjectProfitSummary(projectProfitInvoices, projectStampEntries, projectInvoices, {
+      finalBlockReason: recurringProjectTotalFinalBlockReason,
+    });
+    const projectProfitScopes = isSelectedProjectRecurring
+      ? [
+          {
+            key: "month",
+            label: `Ausgewählter Monat (${comparisonMonthLabel})`,
+            summary: projectProfitMonthSummary,
+          },
+          {
+            key: "total",
+            label: "Gesamtprojekt",
+            summary: projectProfitTotalSummary,
+          },
+        ]
+      : [
+          {
+            key: "total",
+            label: "Gesamtprojekt",
+            summary: projectProfitTotalSummary,
+          },
+        ];
+    const showUnassignedProjectProfitRevenue = projectProfitScopes.some(
+      ({ summary }) => summary.unassignedRevenue > 0
+    );
     const formatPlanningAssignees = (entries: PlanningEntry[]) => {
       if (entries.length === 0) return ["Noch nicht verplant"];
       const groupedEntries = entries.reduce<Record<string, number>>((grouped, entry) => {
@@ -17726,10 +26314,11 @@ export function DashboardPage() {
         ([employee, hours]) => `${employee}: ${formatHours(hours)} Std.`
       );
     };
-    const offerLaborComparisonRows = projectOffers.flatMap((offer) =>
+    const offerLaborComparisonRows = projectFinalOffers.flatMap((offer) =>
       offer.lines
         .flatMap((line, lineIndex) => {
-          if (!isOfferDueForPlanningMonth(offer, selectedProjectFile, projectComparisonMonth)) return [];
+          if (isSelectedProjectRecurring && !isOfferDueForPlanningMonth(offer, selectedProjectFile, projectComparisonMonth)) return [];
+          if (!isOfferLineLaborPlanningLine(line)) return [];
           const lineLaborItems = (line.laborItems ?? []).filter((labor) => Number(labor.plannedHours || 0) > 0);
           const plannedLineHours = lineLaborItems.reduce(
             (sum, labor) => sum + Number(labor.plannedHours || 0),
@@ -17738,7 +26327,10 @@ export function DashboardPage() {
           const fallbackPlannedHours = plannedLineHours > 0 ? plannedLineHours : Number(line.quantity || 0);
           const lineRevenue = Number(line.quantity || 0) * Number(line.unitPrice || 0);
           const offerLabel = `${offer.offerNumber}${offer.offerType === "addendum" ? " (Nachtrag)" : ""}`;
-          const linePlanningEntries = projectComparisonMonthOfferPlanningEntries.filter((entry) => {
+          const linePlanningEntries = projectOfferPlanningEntries.filter((entry) => {
+            if (entry.offerId) {
+              return entry.offerId === offer.id && entry.offerLineId === line.id;
+            }
             const haystack = [entry.title, entry.description, entry.offerLabel].join(" ").toLowerCase();
             return (
               haystack.includes(offer.offerNumber.toLowerCase()) ||
@@ -17752,6 +26344,8 @@ export function DashboardPage() {
             ) / 60;
           return [{
             key: `${offer.id}-${line.id || lineIndex}-${projectComparisonMonth}`,
+            offerId: offer.id,
+            offerLineId: line.id,
             userId: "",
             employeeName: "nicht personenbezogen",
             plannedHours: fallbackPlannedHours,
@@ -17774,6 +26368,8 @@ export function DashboardPage() {
         })
     ) as Array<{
       key: string;
+      offerId: string;
+      offerLineId: string;
       userId: string;
       employeeName: string;
       plannedHours: number;
@@ -17820,6 +26416,8 @@ export function DashboardPage() {
       projectComparisonMonthBudgetHours > 0
         ? [{
             key: `project-budget-${selectedProjectFile.id}-${projectComparisonMonth}`,
+            offerId: "",
+            offerLineId: "",
             userId: "",
             employeeName: "nicht personenbezogen",
             plannedHours: projectComparisonMonthBudgetHours,
@@ -17847,6 +26445,77 @@ export function DashboardPage() {
       actualHours: projectComparisonMonthStampEntries.reduce((sum, entry) => sum + entry.durationMs, 0) / 3_600_000,
       laborRevenue: projectLaborComparisonRows.reduce((sum, row) => sum + row.laborRevenue, 0),
     };
+    const singleProjectOfferPlanningRows = projectFinalOffers
+      .map((offer) => {
+        const offerRows = projectLaborComparisonRows.filter((row) => row.offerId === offer.id);
+        const plannedHours = offerRows.reduce((sum, row) => sum + row.plannedHours, 0);
+        const offerPlanningEntries = projectOfferPlanningEntries.filter((entry) => {
+          if (entry.offerId) return entry.offerId === offer.id;
+          const haystack = [entry.title, entry.description, entry.offerLabel].join(" ").toLowerCase();
+          if (haystack.includes(offer.offerNumber.toLowerCase())) return true;
+          if (entry.offerLabel) return false;
+          const offersInEntryMonth = projectFinalOffers.filter(
+            (candidate) =>
+              candidate.plannedExecutionMonth === entry.date.slice(0, 7) &&
+              getOfferLaborPlanningHours(candidate) > 0
+          );
+          return offersInEntryMonth.length === 1 && offersInEntryMonth[0].id === offer.id;
+        });
+        const plannedPlanningHours =
+          offerPlanningEntries.reduce(
+            (sum, entry) => sum + Number(entry.offerPlannedMinutes || entry.durationMinutes || 0),
+            0
+          ) / 60;
+        const firstOfferRow = offerRows[0] ?? null;
+
+        return {
+          offer,
+          offerRows,
+          firstOfferRow,
+          plannedHours,
+          plannedPlanningHours,
+          openHours: Math.max(plannedHours - plannedPlanningHours, 0),
+          remainingHours: plannedHours - plannedPlanningHours,
+          usagePercent: plannedHours > 0 ? clampPercent((plannedPlanningHours / plannedHours) * 100) : 0,
+          planningEntries: offerPlanningEntries,
+        };
+      })
+      .filter((row) => row.plannedHours > 0);
+    const singleProjectOfferPlanningTotals = {
+      plannedHours: singleProjectOfferPlanningRows.reduce((sum, row) => sum + row.plannedHours, 0),
+      plannedPlanningHours: singleProjectOfferPlanningRows.reduce((sum, row) => sum + row.plannedPlanningHours, 0),
+    };
+    const singleProjectOfferRowsWithoutAppointment = singleProjectOfferPlanningRows.filter(
+      (row) => row.planningEntries.length === 0
+    );
+    const singleProjectOfferRowsWithAppointment =
+      singleProjectOfferPlanningRows.length - singleProjectOfferRowsWithoutAppointment.length;
+    const singleProjectOfferAppointmentState: "done" | "partial" | "open" =
+      projectHasOnlyLostOffers
+        ? "open"
+        : singleProjectOfferPlanningRows.length === 0
+        ? projectPlanningEntries.length > 0
+          ? "done"
+          : "open"
+        : singleProjectOfferRowsWithoutAppointment.length === 0
+          ? "done"
+          : singleProjectOfferRowsWithAppointment > 0
+            ? "partial"
+            : "open";
+    const singleProjectOfferAppointmentHint =
+      projectHasOnlyLostOffers
+        ? "Keine aktive Angebotsgrundlage für Terminwünsche oder Planung"
+        : singleProjectOfferPlanningRows.length === 0
+        ? projectPlanningEntries.length > 0
+          ? `${projectPlanningEntries.length} Termin(e) im Projekt vorhanden`
+          : "Noch kein Terminwunsch oder Termin vorhanden"
+        : singleProjectOfferRowsWithoutAppointment.length === 0
+          ? "Alle Angebote mit Arbeitsstunden haben einen Termin oder Terminwunsch"
+          : singleProjectOfferRowsWithAppointment > 0
+            ? `${singleProjectOfferRowsWithoutAppointment
+                .map((row) => row.offer.offerNumber)
+                .join(", ")} noch ohne Termin/Terminwunsch`
+            : "Noch kein Angebot mit Arbeitsstunden hat einen Termin oder Terminwunsch";
     const projectLaborPerformanceRows = projectLaborComparisonRows.map((row) => {
       const actualShare =
         projectLaborComparisonTotals.plannedHours > 0
@@ -17867,15 +26536,74 @@ export function DashboardPage() {
       };
     });
     const getProjectStampEntriesForPlanningEntry = (entry: PlanningEntry) =>
-      projectStampEntries.filter(
-        (stampEntry) =>
-          stampEntry.date === entry.date &&
-          Boolean(entry.employeeName) &&
-          stampEntry.employee === entry.employeeName
-      );
+      projectStampEntries.filter((stampEntry) => {
+        if (!entry.employeeName || stampEntry.employee !== entry.employeeName) return false;
+        if (normalizeDateKeyValue(stampEntry.date) !== normalizeDateKeyValue(entry.date)) return false;
+
+        const sameDayEmployeePlanningEntries = projectVisiblePlanningEntries.filter(
+          (candidate) =>
+            !candidate.deletedAt &&
+            candidate.employeeName === entry.employeeName &&
+            normalizeDateKeyValue(candidate.date) === normalizeDateKeyValue(entry.date)
+        );
+        const stampStartMinutes = parseStampTimeToMinutes(stampEntry.startTime) ?? 0;
+        const stampEndMinutes = parseStampTimeToMinutes(stampEntry.endTime) ?? stampStartMinutes;
+        const overlappingPlanningEntries = sameDayEmployeePlanningEntries
+          .map((candidate) => {
+            const candidateStartMinutes = parseStampTimeToMinutes(candidate.startTime) ?? 0;
+            const candidateEndMinutes = parseStampTimeToMinutes(candidate.endTime) ?? candidateStartMinutes;
+            return {
+              candidate,
+              overlapMinutes: Math.max(
+                0,
+                Math.min(candidateEndMinutes, stampEndMinutes) - Math.max(candidateStartMinutes, stampStartMinutes)
+              ),
+            };
+          })
+          .filter((candidate) => candidate.overlapMinutes > 0)
+          .sort((first, second) => second.overlapMinutes - first.overlapMinutes);
+
+        if (overlappingPlanningEntries.length > 0) {
+          return overlappingPlanningEntries[0].candidate.id === entry.id;
+        }
+
+        const cutoffMinutes = Math.max(stampStartMinutes, stampEndMinutes);
+        const latestPastPlanningEntry = sameDayEmployeePlanningEntries
+          .filter((candidate) => (parseStampTimeToMinutes(candidate.endTime) ?? 0) <= cutoffMinutes)
+          .sort(
+            (first, second) =>
+              (parseStampTimeToMinutes(second.endTime) ?? 0) - (parseStampTimeToMinutes(first.endTime) ?? 0)
+          )[0];
+
+        return latestPastPlanningEntry?.id === entry.id;
+      });
+    const singleProjectOfferTimeUsageRows = singleProjectOfferPlanningRows.map((row) => {
+      const stampedEntriesById = new Map<string, StampTimeEntry>();
+      row.planningEntries.forEach((entry) => {
+        getProjectStampEntriesForPlanningEntry(entry).forEach((stampEntry) => {
+          stampedEntriesById.set(stampEntry.id, stampEntry);
+        });
+      });
+      const stampedHours =
+        Array.from(stampedEntriesById.values()).reduce(
+          (sum, stampEntry) => sum + Number(stampEntry.durationMs || 0),
+          0
+        ) / 3_600_000;
+      const remainingPlannedHours = row.plannedPlanningHours - stampedHours;
+
+      return {
+        ...row,
+        stampedHours,
+        remainingPlannedHours,
+        usagePercent:
+          row.plannedPlanningHours > 0
+            ? clampPercent((stampedHours / row.plannedPlanningHours) * 100)
+            : 0,
+      };
+    });
     const getRealStampComment = (entry?: StampTimeEntry | null) => {
       const comment = entry?.comment?.trim() ?? "";
-      return comment === "Manuell hinzugefügt" ? "" : comment;
+    return comment === "Manuell hinzugefügt" ? "" : comment;
     };
     const getStampCommentSummary = (entries: StampTimeEntry[]) =>
       Array.from(new Set(entries.map(getRealStampComment).filter(Boolean))).join("\n\n");
@@ -17903,7 +26631,7 @@ export function DashboardPage() {
         : "";
       const budgetClipLabel = hasMonthBudget
         ? remainingBudgetHours > 0
-          ? `${formatHours(remainingBudgetHours)} Std. übrig`
+        ? `${formatHours(remainingBudgetHours)} Std. übrig`
           : remainingBudgetHours === 0
             ? "voll verplant"
             : `${formatHours(Math.abs(remainingBudgetHours))} Std. zu viel`
@@ -18037,13 +26765,13 @@ export function DashboardPage() {
       const totalStampedMs = allocations.reduce((sum, allocation) => sum + allocation.durationMs, 0);
 
       if (allocations.length === 0 || totalStampedMs <= 0) {
-        setErrorMessage("Es gibt keine passende Stempelzeit, auf die die Planung übertragen werden kann.");
+      setErrorMessage("Es gibt keine passende Stempelzeit, auf die die Planung übertragen werden kann.");
         return;
       }
 
       const confirmed = window.confirm(
         allocations.length === 1
-          ? `Soll die geplante Zeit von ${entry.employeeName || "nicht zugewiesen"} auf ${allocations[0].employee} übertragen werden?`
+      ? `Soll die geplante Zeit von ${entry.employeeName || "nicht zugewiesen"} auf ${allocations[0].employee} übertragen werden?`
           : `Soll die geplante Zeit anteilig auf ${allocations.map((allocation) => allocation.employee).join(", ")} verteilt werden?`
       );
       if (!confirmed) return;
@@ -18088,7 +26816,7 @@ export function DashboardPage() {
               durationMinutes: allocation.durationMinutes,
               title: entry.title,
               customer: entry.customer,
-              description: `${entry.description || ""}\nSoll-Zeit automatisch auf tatsächlich stempelnde Mitarbeiter übertragen.`.trim(),
+      description: `${entry.description || ""}\nSoll-Zeit automatisch auf tatsächlich stempelnde Mitarbeiter übertragen.`.trim(),
               projectId: entry.projectId,
               projectLabel: entry.projectLabel,
               offerId: entry.offerId,
@@ -18103,7 +26831,7 @@ export function DashboardPage() {
 
           if (!res.ok) {
             const data = await res.json().catch(() => null);
-            throw new Error(data?.error ?? "Soll-Zeit konnte nicht übertragen werden.");
+      throw new Error(data?.error ?? "Soll-Zeit konnte nicht übertragen werden.");
           }
         }
 
@@ -18111,15 +26839,18 @@ export function DashboardPage() {
         await addProjectLogbookEntry(
           selectedProjectFile.id,
           "Planung",
-          `Soll-Zeit übertragen: ${entry.title} wurde auf ${allocationRows
+      `Soll-Zeit übertragen: ${entry.title} wurde auf ${allocationRows
             .map((allocation) => `${allocation.employeeName} (${formatHours(allocation.durationMinutes / 60)} Std.)`)
             .join(", ")} verteilt.`
         );
       } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : "Soll-Zeit konnte nicht übertragen werden.");
+      setErrorMessage(error instanceof Error ? error.message : "Soll-Zeit konnte nicht übertragen werden.");
       }
     };
-    const openOfferPlanningFromComparison = (row: (typeof projectLaborComparisonRows)[number]) => {
+    const openOfferPlanningFromComparison = (
+      row: (typeof projectLaborComparisonRows)[number],
+      approvalStatus: PlanningEntryApprovalStatus = "confirmed"
+    ) => {
       const projectBoard = (
         selectedProjectFile.projectType === "Projekt OK immocare" ||
         selectedProjectFile.branch === "OK immocare GmbH"
@@ -18130,30 +26861,44 @@ export function DashboardPage() {
       const groups = getPlanningEntryGroups(board);
       const groupName = groups[0];
       const remainingHours = Math.max(row.plannedHours - row.plannedPlanningHours, 0);
+      const defaultPlanningDate = formatDateKey(new Date());
 
       resetPlanningEntryForm();
       setPlanningEntrySource("offer");
       setPlanningEntryBoard(board);
       setPlanningEntryGroup(groupName);
       setPlanningEntryUserId("");
-      setPlanningEntryDate(selectedPlanningDateKey);
+      setPlanningEntryDate(defaultPlanningDate);
+      setPlanningRecurrenceWeekdays([getWeekdayFromDateKey(defaultPlanningDate)]);
       setPlanningEntryStartTime("08:00");
       setPlanningEntryEndTime("09:00");
-      setPlanningEntryTitle(row.positionTitle || "Planung aus Angebot");
+      setPlanningEntryTitle("");
       setPlanningEntryCustomer(selectedProjectFile.customer || "");
       setPlanningEntryProjectId(selectedProjectFile.id);
       setPlanningEntryProjectSearch(`${selectedProjectFile.projectNumber || selectedProjectFile.id} | ${selectedProjectFile.title}`);
       setIsPlanningEntryProjectSearchOpen(false);
-      setPlanningEntryDescription(
-        `${row.sourceKind === "projectBudget" ? "Planung aus manuellem Projektkontingent" : `Planung aus Angebot: ${row.offerNumbers.join(", ")}`}. Fälligkeit: ${comparisonMonthLabel}. Offene Vorgabezeit: ${formatHours(remainingHours)} Std. Mitarbeiter werden in diesem Planungstermin festgelegt.`
+      setPlanningEntryDescription("");
+      setPlanningEntryOfferId(row.offerId);
+      setPlanningEntryOfferLineId(isSelectedProjectRecurring ? row.offerLineId : "");
+      setPlanningEntryOfferLabel(
+        !isSelectedProjectRecurring && row.offerId
+          ? projectFinalOffers.find((offer) => offer.id === row.offerId)?.offerNumber || row.positions.join(", ")
+          : row.positions.join(", ")
       );
-      setPlanningEntryOfferLabel(row.positions.join(", "));
-      setPlanningEntryOfferTotalHours(String(row.plannedHours));
+      setPlanningEntryOfferTotalHours(
+        !isSelectedProjectRecurring && row.offerId
+          ? String(
+              getOfferLaborPlanningHours(
+                projectFinalOffers.find((offer) => offer.id === row.offerId) ?? { lines: [] }
+              )
+            )
+          : String(row.plannedHours)
+      );
       if (isSelectedProjectRecurring && selectedProjectFile.projectRuntimeUntil) {
-        setPlanningRecurrenceType("monthly");
+        setPlanningRecurrenceType("weekly");
         setPlanningRecurrenceUntil(selectedProjectFile.projectRuntimeUntil);
       }
-      setPlanningEntryApprovalStatus("confirmed");
+      setPlanningEntryApprovalStatus(approvalStatus);
       setEditingPlanningEntryId("");
       setIsPlanningEntryModalOpen(true);
     };
@@ -18165,34 +26910,109 @@ export function DashboardPage() {
           : "OK solutions"
       ) as PlanningBoardCompany;
       const groupName = getPlanningEntryGroups(projectBoard)[0];
+      const defaultPlanningDate = formatDateKey(new Date());
 
       resetPlanningEntryForm();
-      setPlanningEntrySource("manual");
+      setPlanningEntrySource(!isSelectedProjectRecurring && singleProjectOfferPlanningRows.length > 0 ? "offer" : "manual");
       setPlanningEntryBoard(projectBoard);
       setPlanningEntryGroup(groupName);
       setPlanningEntryUserId("");
-      setPlanningEntryDate(selectedPlanningDateKey);
+      setPlanningEntryDate(defaultPlanningDate);
+      setPlanningRecurrenceWeekdays([getWeekdayFromDateKey(defaultPlanningDate)]);
       setPlanningEntryStartTime("08:00");
       setPlanningEntryEndTime("09:00");
-      setPlanningEntryTitle("Freie Projektplanung");
+      setPlanningEntryTitle("");
       setPlanningEntryCustomer(selectedProjectFile.customer || "");
       setPlanningEntryProjectId(selectedProjectFile.id);
       setPlanningEntryProjectSearch(`${selectedProjectFile.projectNumber || selectedProjectFile.id} | ${selectedProjectFile.title}`);
       setIsPlanningEntryProjectSearchOpen(false);
-      setPlanningEntryDescription("Freie Planung ohne Angebotskontingent. Mitarbeiter und Dauer werden in diesem Termin festgelegt.");
+      setPlanningEntryDescription("");
+      setPlanningEntryOfferId("");
+      setPlanningEntryOfferLineId("");
       setPlanningEntryOfferLabel("");
       setPlanningEntryOfferTotalHours("0");
       setPlanningEntryApprovalStatus(approvalStatus);
       setEditingPlanningEntryId("");
       setIsPlanningEntryModalOpen(true);
     };
-    const projectOfferPlannedTotalHours = projectLaborComparisonTotals.plannedPlanningHours;
+    const closeProjectPlanningCapacityMenus = () => {
+      setProjectPlanningChoiceMenuKey("");
+      setProjectPlanningEditMenuKey("");
+    };
+    const toggleProjectPlanningChoiceMenu = (menuKey: string) => {
+      setProjectPlanningEditMenuKey("");
+      setProjectPlanningChoiceMenuKey((currentKey) => (currentKey === menuKey ? "" : menuKey));
+    };
+    const openProjectPlanningEntrySelection = (menuKey: string, entries: PlanningEntry[]) => {
+      setProjectPlanningChoiceMenuKey("");
+      if (entries.length === 1) {
+        closeProjectPlanningCapacityMenus();
+        openEditPlanningEntryModal(entries[0]);
+        return;
+      }
+      setProjectPlanningEditMenuKey((currentKey) => (currentKey === menuKey ? "" : menuKey));
+    };
+    const openOfferCapacityPlanning = (
+      row: (typeof singleProjectOfferPlanningRows)[number],
+      approvalStatus: PlanningEntryApprovalStatus
+    ) => {
+      const sourceRow = row.firstOfferRow ?? row.offerRows[0];
+      closeProjectPlanningCapacityMenus();
+      if (sourceRow) {
+        openOfferPlanningFromComparison(sourceRow, approvalStatus);
+        return;
+      }
+      openManualProjectPlanning(approvalStatus);
+    };
+    const renderProjectPlanningChoiceMenu = (
+      menuKey: string,
+      onConfirmed: () => void,
+      onRequested: () => void
+    ) =>
+      projectPlanningChoiceMenuKey === menuKey ? (
+        <div className={styles.projectPlanningCapacityMenu} data-kind="choice">
+          <button type="button" onClick={onConfirmed}>
+            + Termin
+          </button>
+          <button type="button" onClick={onRequested}>
+            + Terminwunsch
+          </button>
+        </div>
+      ) : null;
+    const renderProjectPlanningEditMenu = (menuKey: string, entries: PlanningEntry[]) =>
+      projectPlanningEditMenuKey === menuKey ? (
+        <div className={styles.projectPlanningCapacityMenu} data-kind="edit">
+          {entries.length === 0 ? (
+            <span>Keine Planung gefunden.</span>
+          ) : (
+            entries.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                onClick={() => {
+                  closeProjectPlanningCapacityMenus();
+                  openEditPlanningEntryModal(entry);
+                }}
+              >
+              <strong>{formatProjectDate(entry.date)} · {entry.startTime}-{entry.endTime}</strong>
+              <small>{entry.employeeName || "Noch nicht zugewiesen"} · {entry.title || "Ohne Titel"}</small>
+              </button>
+            ))
+          )}
+        </div>
+      ) : null;
+    const projectOfferPlannedTotalHours = isSelectedProjectRecurring
+      ? projectLaborComparisonTotals.plannedPlanningHours
+      : singleProjectOfferPlanningTotals.plannedPlanningHours;
     const projectOpenOfferPlanningHours = Math.max(
-      projectLaborComparisonTotals.plannedHours - projectLaborComparisonTotals.plannedPlanningHours,
+      (isSelectedProjectRecurring ? projectLaborComparisonTotals.plannedHours : singleProjectOfferPlanningTotals.plannedHours) -
+        projectOfferPlannedTotalHours,
       0
     );
     const projectPlanningButtonState =
-      projectMonthHasPlanningBasis
+      projectHasOnlyLostOffers
+        ? "blocked"
+        : projectMonthHasPlanningBasis
         ? projectMonthPlanningRemainingHours < -0.01
           ? "over"
           : projectMonthOpenPlanningHours <= 0
@@ -18215,10 +27035,14 @@ export function DashboardPage() {
         : projectPlanningButtonState === "partial"
           ? "Restliche Zeiten planen"
           : projectPlanningButtonState === "over"
-            ? "Überplanung prüfen"
-            : "Alle Zeiten verplant";
+        ? "Überplanung prüfen"
+            : projectPlanningButtonState === "blocked"
+              ? "Kein aktives Angebot"
+              : "Alle Zeiten verplant";
     const projectPlanningButtonTitle =
-      projectPlanningTargetEntry &&
+      projectPlanningButtonState === "blocked"
+        ? "Alle Angebote sind als verloren markiert. Neues Angebot erstellen oder Verlust zurücknehmen."
+        : projectPlanningTargetEntry &&
       (projectPlanningButtonState === "done" ||
         projectPlanningButtonState === "partial" ||
         projectPlanningButtonState === "over")
@@ -18233,7 +27057,7 @@ export function DashboardPage() {
       const rawDate = entry.date || "";
       const isoMatch = rawDate.match(/^(\d{4})-(\d{2})/);
       if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}`;
-      const germanMatch = rawDate.match(/^(\d{2})\.(\d{2})\.(\d{2}|\d{4})/);
+      const germanMatch = rawDate.match(/^(\d{2})\.(\d{2})\.(\d{4}|\d{2})/);
       if (germanMatch) {
         const year = germanMatch[3].length === 2 ? `20${germanMatch[3]}` : germanMatch[3];
         return `${year}-${germanMatch[2]}`;
@@ -18259,10 +27083,152 @@ export function DashboardPage() {
     const getProjectDocumentEntries = (category: CustomerDocumentType) =>
       projectLogEntries.filter(
         (entry) =>
-          entry.title === `Dokumente: ${category}` &&
+          (entry.title === `Dokumente: ${category}` ||
+            (category === "Checklisten" && entry.title === "Dokumente: Rauchmelder-Nachweise")) &&
           shouldShowProjectDocumentInSelectedMonth(category, entry) &&
           entry.attachments.some((attachment) => attachment.type === "Dokument")
       );
+    const selectedProjectCompany = getProjectCompany(selectedProjectFile);
+    const selectedProjectIsImmocare = selectedProjectCompany === "OK immocare";
+    const selectedProjectVisibleDocumentTypes = selectedProjectIsImmocare
+      ? customerDocumentTypes
+      : customerDocumentTypes.filter((type) => type !== "Tätigkeitsberichte");
+    const activityReportDocumentEntries = getProjectDocumentEntries("Tätigkeitsberichte");
+    const checklistDocumentEntries = getProjectDocumentEntries("Checklisten");
+    const checklistDocumentCount = checklistDocumentEntries.reduce(
+      (sum, entry) =>
+        sum + entry.attachments.filter((attachment) => attachment.type === "Dokument").length,
+      0
+    );
+    const getChecklistAreaDocumentCount = (areaName: string) => {
+      const keywordPattern =
+        areaName === "Brandschutz"
+          ? /rauchmelder|rauchwarnmelder|brandschutz|feuer|flucht|notbeleuchtung|brand/i
+          : areaName === "Arbeitsschutz"
+            ? /arbeitsschutz|psa|leiter|tritt|arbeitsmittel|maschine|gerät|einsatzstelle|erste-hilfe|unfall|unterweisung|fremdfirmen/i
+            : /gefahrstoff|sicherheitsdatenblatt|kennzeichnung|betriebsanweisung|zusammenlagerung|auffangwanne|leckage|entsorgung/i;
+
+      return checklistDocumentEntries.reduce((sum, entry) => {
+        const entryText = [
+          entry.title,
+          entry.text,
+          ...entry.attachments.map((attachment) => attachment.name),
+        ].join(" ");
+        if (!keywordPattern.test(entryText)) return sum;
+        return sum + entry.attachments.filter((attachment) => attachment.type === "Dokument").length;
+      }, 0);
+    };
+    const checklistAreas = [
+      {
+        name: "Arbeitsschutz",
+        description: "Sichere Arbeit, PSA, Arbeitsmittel und Einsatzstellen.",
+        existingCount: getChecklistAreaDocumentCount("Arbeitsschutz"),
+        items: [
+          "Arbeitsplatz-/Objektbegehung",
+          "PSA-Prüfung",
+          "Leiterprüfung",
+          "Tritt-/Arbeitsmittelprüfung",
+          "Maschinen-/Geräteprüfung",
+          "Einsatzstellenkontrolle",
+          "Erste-Hilfe-Ausstattung",
+          "Unfall-/Beinaheunfall-Dokumentation",
+          "Sicherheitsunterweisung",
+          "Fremdfirmen-Einweisung",
+        ].map((name) => ({ name, description: "Vorlage vorbereitet.", status: "planned" as const })),
+      },
+      {
+        name: "Brandschutz",
+        description: "Vorbeugender Brandschutz, Melder, Fluchtwege und Brandschutztechnik.",
+        existingCount: getChecklistAreaDocumentCount("Brandschutz"),
+        items: [
+          {
+            name: "Rauchmelder-Installationsnachweis",
+            description: "Gerätedaten, Montageorte, Prüfpunkte und Bildnachweise erfassen.",
+            status: "active" as const,
+            actionLabel: "Öffnen",
+            onOpen: openSmokeDetectorInstallationChecklist,
+          },
+          {
+            name: "Rauchmelderprüfung",
+            description: "Prüf- und Wartungsnachweis für bestehende Melder.",
+            status: "planned" as const,
+          },
+          {
+            name: "Rauchmelderliste",
+            description: "Gemeinsame Melderliste für Installation und Prüfung.",
+            status: "planned" as const,
+          },
+          "Feuerlöscher-Sichtprüfung",
+          "Flucht- und Rettungswege",
+          "Notbeleuchtung",
+          "Brandschutztüren",
+          "Brandabschottungen",
+          "Feuerwehrzufahrt",
+          "Brandschutzordnung / Aushänge",
+          "Evakuierungsübung",
+        ].map((item) =>
+          typeof item === "string"
+            ? { name: item, description: "Vorlage vorbereitet.", status: "planned" as const }
+            : item
+        ),
+      },
+      {
+        name: "Gefahrstoffe",
+        description: "Lagerung, Kennzeichnung, Betriebsanweisungen und Schutzmaßnahmen.",
+        existingCount: getChecklistAreaDocumentCount("Gefahrstoffe"),
+        items: [
+          "Gefahrstofflager-Prüfung",
+          "Sicherheitsdatenblatt vorhanden",
+          "Kennzeichnung / Etikettierung",
+          "Betriebsanweisung vorhanden",
+          "Unterweisung Gefahrstoffe",
+          "Zusammenlagerung geprüft",
+          "Auffangwannen / Leckageschutz",
+          "PSA für Gefahrstoffe",
+          "Entsorgung / Reststoffe",
+          "Gefahrstoffverzeichnis-Abgleich",
+        ].map((name) => ({ name, description: "Vorlage vorbereitet.", status: "planned" as const })),
+      },
+    ];
+    const normalizedChecklistSearch = checklistSearchTerm.trim().toLowerCase();
+    const visibleChecklistAreas = checklistAreas
+      .map((area) => ({
+        ...area,
+        items: normalizedChecklistSearch
+          ? area.items.filter((item) =>
+              [area.name, item.name, item.description].join(" ").toLowerCase().includes(normalizedChecklistSearch)
+            )
+          : area.items,
+      }))
+      .filter((area) => !normalizedChecklistSearch || area.items.length > 0);
+    const normalizeActivityReportDocumentName = (value: string) =>
+      normalizeVisibleMojibakeText(value).replace(/\.pdf$/i, "").trim().toLowerCase();
+    const visibleActivityReportNames = new Set(
+      activityReportDocumentEntries.flatMap((entry) =>
+        entry.attachments.flatMap((attachment) =>
+          attachment.type === "Dokument" ? [normalizeActivityReportDocumentName(attachment.name)] : []
+        )
+      )
+    );
+    const sentActivityReportDispatches = documentMailDispatches.filter(
+      (dispatch) =>
+        dispatch.projectId === selectedProjectFile.id &&
+        dispatch.documentKind === "activityReport" &&
+        dispatch.status === "sent" &&
+        visibleActivityReportNames.has(normalizeActivityReportDocumentName(dispatch.documentNumber))
+    );
+    const hasSentActivityReport = sentActivityReportDispatches.length > 0;
+    const activityReportHistoryEntries = projectLogEntries
+      .filter((entry) => shouldShowProjectDocumentInSelectedMonth("Tätigkeitsberichte", entry))
+      .filter((entry) => {
+        const normalizedTitle = normalizeVisibleMojibakeText(entry.title)
+          .replaceAll("Taetigkeitsbericht", "Tätigkeitsbericht");
+        return (
+          normalizedTitle === "Dokumente: Tätigkeitsberichte" ||
+          normalizedTitle === "Tätigkeitsbericht: gelöscht"
+        );
+      })
+      .sort((first, second) => parseAppDateTime(second.date).getTime() - parseAppDateTime(first.date).getTime());
     const projectEndCheckCount = getProjectDocumentEntries("Endkontrolle").reduce(
       (sum, entry) =>
         sum + entry.attachments.filter((attachment) => attachment.type === "Dokument").length,
@@ -18285,19 +27251,15 @@ export function DashboardPage() {
       {
         id: "appointment",
         label: "TerWu",
-        state: projectHasBudgetAllocations
+        state: isSelectedProjectRecurring && projectHasBudgetAllocations
           ? projectProgressMonthState
-          : projectPlanningEntries.length > 0
-            ? "done"
-            : "open",
+          : singleProjectOfferAppointmentState,
         hint:
-          projectHasBudgetAllocations
+          isSelectedProjectRecurring && projectHasBudgetAllocations
             ? projectProgressMonthState === "done"
               ? `${projectProgressMonthPlanningEntries.length} Termin(e) im ${formatMonthLabel(projectProgressMonthKey)} decken das Monatskontingent ab`
               : projectProgressMonthHint
-            : projectPlanningEntries.length > 0
-              ? `${projectPlanningEntries.length} Termin(e) im Projekt vorhanden`
-              : "Noch kein Terminwunsch oder Termin vorhanden",
+            : singleProjectOfferAppointmentHint,
         onClick: () => setProjectFileTab("appointments"),
       },
       {
@@ -18305,6 +27267,8 @@ export function DashboardPage() {
         label: "Planung",
         state: projectHasBudgetAllocations
           ? projectProgressMonthState
+          : projectHasOnlyLostOffers
+            ? "open"
           : projectLaborComparisonRows.length === 0
             ? projectPlanningEntries.length > 0
               ? "done"
@@ -18314,6 +27278,8 @@ export function DashboardPage() {
               : "done",
         hint: projectHasBudgetAllocations
           ? projectProgressMonthHint
+          : projectHasOnlyLostOffers
+        ? "Keine aktive Angebotsgrundlage für die Planung"
           : projectLaborComparisonRows.length === 0
             ? projectPlanningEntries.length > 0
               ? "Projekttermine vorhanden"
@@ -18360,6 +27326,22 @@ export function DashboardPage() {
         },
       },
       {
+        id: "activityReport",
+        label: "T-Bericht",
+        state: hasSentActivityReport ? "done" : "open",
+        hint: hasSentActivityReport
+          ? `${sentActivityReportDispatches.length} Tätigkeitsbericht${sentActivityReportDispatches.length === 1 ? "" : "e"} ${isSelectedProjectRecurring ? `im ${comparisonMonthLabel}` : ""} versendet`
+          : activityReportDocumentEntries.length > 0
+            ? "Tätigkeitsbericht vorhanden, aber noch nicht versendet"
+            : isSelectedProjectRecurring
+              ? `Noch kein Tätigkeitsbericht im ${comparisonMonthLabel} vorhanden`
+              : "Noch kein Tätigkeitsbericht vorhanden",
+        onClick: () => {
+          setProjectFileTab("documents");
+          setSelectedProjectDocumentType("Tätigkeitsberichte");
+        },
+      },
+      {
         id: "invoice",
         label: "Rechnung",
         state: finalizedProjectInvoices.length > 0 ? "done" : "open",
@@ -18373,22 +27355,41 @@ export function DashboardPage() {
           setSelectedProjectDocumentType("Rechnungen");
         },
       },
-    ] as Array<{ id: string; label: string; state: "done" | "partial" | "open"; hint: string; onClick: () => void }>;
+    ].filter((step) => selectedProjectIsImmocare || !["beforeImages", "afterImages", "activityReport"].includes(step.id)) as Array<{ id: string; label: string; state: "done" | "partial" | "open"; hint: string; onClick: () => void }>;
     const projectImageCategories = [
       {
         label: "Objektbesichtigungen",
+        shortLabel: "Objekt",
         description: "Bilder aus Besichtigung, Aufmaß oder Erstaufnahme.",
       },
       {
         label: "Vorherbilder",
+        shortLabel: "Vorher",
         description: "Dokumentation vor Ausführung der Leistung.",
       },
       {
         label: "Nachherbilder",
+        shortLabel: "Nachher",
         description: "Dokumentation nach Fertigstellung.",
       },
-    ];
+    ].filter((category) => selectedProjectIsImmocare || category.label === "Objektbesichtigungen");
+    const projectImageCount = projectImageCategories.reduce(
+      (sum, category) =>
+        sum +
+        getProjectImageEntries(category.label).reduce(
+          (entrySum, entry) =>
+            entrySum + entry.attachments.filter((attachment) => attachment.type === "Bild").length,
+          0
+        ),
+      0
+    );
     const openProjectPlanningAction = () => {
+      if (projectPlanningButtonState === "blocked") {
+        setProjectFileTab("documents");
+        setSelectedProjectDocumentType("Angebote");
+        return;
+      }
+
       if (
         projectPlanningTargetEntry &&
         (projectPlanningButtonState === "done" ||
@@ -18436,7 +27437,7 @@ export function DashboardPage() {
       if (!potential) return;
       await schedulePotentialFollowUp(potential);
       setProjectFileTab("logbook");
-      setProjectLogbookSearch("Potenzial");
+      setProjectLogbookSearch("Nachfass");
       setIsProjectUpsellMenuOpen(false);
     };
     const closeProjectUpsellPotential = async () => {
@@ -18461,7 +27462,10 @@ export function DashboardPage() {
     };
     const displayedProjectOffers =
       selectedProjectDocumentType === "Angebote: Nachtragsangebote" ? projectAddendumOffers : projectBaseOffers;
+    const projectResponsibility = getEffectiveProjectResponsibility(selectedProjectFile);
     const projectResponsibleName = selectedProjectFile.responsibleName || activeUser?.name || "Christian Eid";
+    const projectResponsibilityPillLabel = projectResponsibility.label;
+    const projectResponsibilityPillName = projectResponsibility.name;
     const normalizeProjectDay = (date: Date | null) => {
       if (!date || !Number.isFinite(date.getTime())) return null;
       const normalized = new Date(date);
@@ -18589,6 +27593,31 @@ export function DashboardPage() {
       projectEndDate &&
       projectCreatedDate.getTime() >= projectTimelineStartDate.getTime() &&
       projectCreatedDate.getTime() <= projectEndDate.getTime();
+    const singleProjectPlanningDates = projectVisiblePlanningEntries
+      .map((entry) => normalizeProjectDay(parseProjectDate(entry.date)))
+      .filter((date): date is Date => Boolean(date))
+      .sort((first, second) => first.getTime() - second.getTime());
+    const singleProjectNextPlanningDate =
+      singleProjectPlanningDates.find((date) => date.getTime() >= today.getTime()) ?? null;
+    const singleProjectExecutionMonths = Array.from(
+      new Set(singleProjectOfferPlanningRows.map((row) => row.offer.plannedExecutionMonth).filter(Boolean))
+    ).sort();
+    const singleProjectExecutionMonthLabel =
+      singleProjectExecutionMonths.length === 0
+        ? "-"
+        : singleProjectExecutionMonths.length === 1
+          ? formatMonthLabel(singleProjectExecutionMonths[0])
+          : singleProjectExecutionMonths.map(formatMonthLabel).join(", ");
+    const singleProjectPlanningStatusLabel =
+      singleProjectOfferPlanningRows.length === 0
+        ? "Keine Angebotsbasis"
+        : singleProjectOfferPlanningTotals.plannedPlanningHours <= 0
+          ? "Noch nicht geplant"
+          : singleProjectOfferPlanningTotals.plannedPlanningHours < singleProjectOfferPlanningTotals.plannedHours
+            ? "Teilweise geplant"
+            : singleProjectOfferPlanningTotals.plannedPlanningHours === singleProjectOfferPlanningTotals.plannedHours
+              ? "Voll verplant"
+              : "Überplant";
 
     return (
       <section className={styles.projectFile}>
@@ -18609,13 +27638,42 @@ export function DashboardPage() {
               <p>
                 {selectedProjectFile.customer || "Kunde noch nicht gesetzt"} | {address}
               </p>
+              <div className={styles.projectHeaderChips}>
+                <button
+                  type="button"
+                  className={styles.projectHeaderChip}
+                  data-state={projectResponsibility.state === "responsible" ? undefined : projectResponsibility.state}
+                  title="Projektverantwortung bearbeiten"
+                  onClick={() => openProjectDataModal(selectedProjectFile)}
+                >
+                  <small>{projectResponsibilityPillLabel}</small>
+                  <strong>{projectResponsibilityPillName}</strong>
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.projectHeaderChip} ${styles.projectOfferPlanningButton}`}
+                  data-state={projectPlanningButtonState}
+                  title={projectPlanningButtonTitle}
+                  onClick={openProjectPlanningAction}
+                >
+                  {projectPlanningButtonLabel}
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.projectHeaderChip} ${styles.projectUpsellButton}`}
+                  data-state={projectUpsellState || "none"}
+                  disabled={!projectUpsellState}
+                  onClick={() => {
+                    if (!projectUpsellState) return;
+                    void openProjectUpsellDetail();
+                  }}
+                >
+                  {projectUpsellButtonLabel}
+                </button>
+              </div>
             </div>
           </div>
           <div className={styles.projectFileActions}>
-            <div className={styles.projectResponsibleBadge}>
-              <span>Projektverantwortlicher</span>
-              <strong>{projectResponsibleName}</strong>
-            </div>
             <button
               type="button"
               className={styles.secondaryButton}
@@ -18630,44 +27688,7 @@ export function DashboardPage() {
             >
               Projekt drucken
             </button>
-            <button
-              type="button"
-              className={`${styles.secondaryButton} ${styles.projectOfferPlanningButton}`}
-              data-state={projectPlanningButtonState}
-              title={projectPlanningButtonTitle}
-              onClick={openProjectPlanningAction}
-            >
-              {projectPlanningButtonLabel}
-            </button>
-            {projectUpsellState ? (
-              <div className={styles.projectStatusAction}>
-                <button
-                  type="button"
-                  className={`${styles.secondaryButton} ${styles.projectUpsellButton}`}
-                  data-state={projectUpsellState}
-                  onClick={() => void openProjectUpsellDetail()}
-                >
-                  {projectUpsellButtonLabel}
-                </button>
-                {isProjectUpsellMenuOpen ? (
-                  <div className={`${styles.projectStatusMenu} ${styles.projectUpsellMenu}`}>
-                    <button type="button" onClick={() => void openProjectUpsellDetail()}>
-                      <span>Potenzial öffnen</span>
-                    </button>
-                    <button type="button" onClick={createProjectUpsellOffer}>
-                      <span>Angebot erstellen</span>
-                    </button>
-                    <button type="button" onClick={deferProjectUpsellPotential}>
-                      <span>Später nachfassen</span>
-                    </button>
-                    <button type="button" onClick={closeProjectUpsellPotential}>
-                      <span>Kein Interesse</span>
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-            <div className={styles.projectStatusAction}>
+            <div className={styles.projectStatusAction} ref={projectStatusActionRef}>
               <button
                 type="button"
                 className={styles.secondaryButton}
@@ -18710,7 +27731,7 @@ export function DashboardPage() {
           >
             <div className={styles.projectPlanningDialog}>
               {renderPlanningDayPanel({
-                closeLabel: "ZurÃ¼ck zum Projekt",
+      closeLabel: "Zurück zum Projekt",
                 onClose: () => setIsProjectPlanningDayOverlayOpen(false),
               })}
             </div>
@@ -18749,7 +27770,7 @@ export function DashboardPage() {
               onClick={step.onClick}
             >
               <span className={styles.projectProgressNode}>
-                {step.state === "done" ? "✓" : step.state === "partial" ? "!" : ""}
+                {step.state === "done" ? "\u2713" : step.state === "partial" ? "!" : ""}
               </span>
               <strong>{step.label}</strong>
             </button>
@@ -18776,7 +27797,7 @@ export function DashboardPage() {
                   </button>
                   {openProjectFileNavGroup === "documents" && (
                     <div className={styles.customerFileSubNav}>
-                      {documentTypes.map((type) => (
+                      {selectedProjectVisibleDocumentTypes.map((type) => (
                         <button
                           key={type}
                           type="button"
@@ -18808,29 +27829,24 @@ export function DashboardPage() {
                     </div>
                   )}
                 </div>
-              ) : item.id === "tasks" ? (
-                <div key={item.id} className={styles.customerFileNavGroup}>
-                  <button
-                    type="button"
-                    data-active={projectFileTab === item.id}
-                    data-expanded={openProjectFileNavGroup === "tasks"}
-                    aria-expanded={openProjectFileNavGroup === "tasks"}
-                    onClick={() => {
-                      setProjectFileTab(item.id);
-                      setOpenProjectFileNavGroup((current) => (current === "tasks" ? "" : "tasks"));
-                    }}
-                  >
-                    <span>{item.icon}</span>
-                    {item.label}
-                    <b>v</b>
-                  </button>
-                  {openProjectFileNavGroup === "tasks" && (
-                    <div className={styles.customerFileSubNav}>
-                      <button type="button">Offene Aufgaben</button>
-                      <button type="button">Erledigte Aufgaben</button>
-                    </div>
+              ) : item.id === "potentials" || item.id === "tasks" ? (
+                <button
+                  key={item.id}
+                  type="button"
+                  data-active={projectFileTab === item.id}
+                  onClick={() => {
+                    setProjectFileTab(item.id);
+                    setOpenProjectFileNavGroup("");
+                  }}
+                >
+                  {renderProjectMenuLabel(item)}
+                  {item.id === "potentials" && projectPotentialsForFile.length > 0 && (
+                    <strong className={styles.projectNavCount}>{projectPotentialsForFile.length}</strong>
                   )}
-                </div>
+                  {item.id === "tasks" && projectTasks.length > 0 && (
+                    <strong className={styles.projectNavCount}>{projectTasks.length}</strong>
+                  )}
+                </button>
               ) : (
                 <button
                   key={item.id}
@@ -18842,6 +27858,9 @@ export function DashboardPage() {
                   }}
                 >
                   {renderProjectMenuLabel(item)}
+                  {item.id === "images" && projectImageCount > 0 && (
+                    <strong className={styles.projectNavCount}>{projectImageCount}</strong>
+                  )}
                 </button>
               )
             )}
@@ -18852,7 +27871,7 @@ export function DashboardPage() {
               projectFileTab === "appointments" || projectFileTab === "budgets" || projectFileTab === "automaticBilling"
                 ? styles.projectFileMainCompact
                 : ""
-            }`}
+            } ${projectFileTab === "logbook" ? styles.projectFileMainLogbook : ""}`}
           >
             {projectFileTab === "logbook" ? (
               <>
@@ -18879,14 +27898,14 @@ export function DashboardPage() {
                       <article key={`${entry.title}-${entry.date}-${"id" in entry ? entry.id : entry.actor}`}>
                         <div className={styles.customerAvatar}>
                           {"author" in entry
-                            ? getInitials(entry.author || activeUser?.name || "CE")
-                            : entry.actor}
+                            ? renderProjectLogbookAvatar(entry)
+                            : renderProjectLogbookFallbackAvatar(entry.actor)}
                         </div>
-                        <div>
+                        <div className={styles.customerLogEntryBody}>
                           <a>
-                            {entry.title} {entry.date}
+                            {normalizeVisibleMojibakeText(entry.title)} {entry.date}
                           </a>
-                          <p>{entry.text}</p>
+                          <p>{normalizeVisibleMojibakeText(entry.text)}</p>
                           {"author" in entry && entry.author ? (
                             <small className={styles.customerLogMeta}>Erfasst von: {entry.author}</small>
                           ) : null}
@@ -18919,6 +27938,9 @@ export function DashboardPage() {
                       </article>
                     ))
                   )}
+                  {visibleProjectLogEntries.length > 0 ? (
+                    <p className={styles.customerTimelineEnd}>Keine weiteren Einträge in dieser Ansicht.</p>
+                  ) : null}
                 </div>
               </>
             ) : projectFileTab === "images" ? (
@@ -18931,14 +27953,20 @@ export function DashboardPage() {
                 <div className={styles.projectImageGrid}>
                   {projectImageCategories.map((category) => {
                     const entries = getProjectImageEntries(category.label);
+                    const moveTargets = projectImageCategories.filter((targetCategory) => targetCategory.label !== category.label);
                     const images = entries.flatMap((entry) =>
-                      entry.attachments
-                        .filter((attachment) => attachment.type === "Bild")
-                        .map((attachment) => ({
-                          ...attachment,
-                          entryId: entry.id,
-                          date: entry.date,
-                        }))
+                      entry.attachments.flatMap((attachment, attachmentIndex) =>
+                        attachment.type === "Bild"
+                          ? [
+                              {
+                                ...attachment,
+                                attachmentIndex,
+                                entryId: entry.id,
+                                date: entry.date,
+                              },
+                            ]
+                          : []
+                      )
                     );
 
                     return (
@@ -18965,16 +27993,55 @@ export function DashboardPage() {
                           <div className={styles.projectImageThumbs}>
                             {images.map((image, index) =>
                               image.dataUrl ? (
-                                <a
+                                <article
                                   key={`${image.entryId}-${image.name}-${index}`}
-                                  href={image.dataUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  title={`${image.name} (${image.date})`}
+                                  className={styles.projectImageCard}
                                 >
-                                  <img src={image.dataUrl} alt={image.name} />
-                                  <span>{image.name}</span>
-                                </a>
+                                  <a
+                                    href={image.dataUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    title={`${image.name} (${image.date})`}
+                                    className={styles.projectImageLink}
+                                  >
+                                    <img src={image.dataUrl} alt={image.name} />
+                                    <span>{image.name}</span>
+                                  </a>
+                                  <div className={styles.projectImageActions}>
+                                    {moveTargets.map((targetCategory) => (
+                                      <button
+                                        key={targetCategory.label}
+                                        type="button"
+                                        data-variant="move"
+                                        onClick={() =>
+                                          void updateProjectImageAttachment(
+                                            image.entryId,
+                                            image.attachmentIndex,
+                                            image.name,
+                                            "move",
+                                            targetCategory.label
+                                          )
+                                        }
+                                      >
+                                        Zu {targetCategory.shortLabel}
+                                      </button>
+                                    ))}
+                                    <button
+                                      type="button"
+                                      data-variant="danger"
+                                      onClick={() =>
+                                        void updateProjectImageAttachment(
+                                          image.entryId,
+                                          image.attachmentIndex,
+                                          image.name,
+                                          "delete"
+                                        )
+                                      }
+                                    >
+                                      Löschen
+                                    </button>
+                                  </div>
+                                </article>
                               ) : (
                                 <span key={`${image.entryId}-${image.name}-${index}`}>{image.name}</span>
                               )
@@ -19014,6 +28081,24 @@ export function DashboardPage() {
                     >
                       + Rechnung
                     </button>
+                  ) : selectedProjectDocumentType === "Mahnung" ? (
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      disabled={!nextProjectReminderCandidate}
+                      title={
+                        nextProjectReminderCandidate
+                          ? `Mahnung für ${nextProjectReminderCandidate.invoice.invoiceNumber} erstellen`
+                          : "Keine überfällige offene Rechnung vorhanden"
+                      }
+                      onClick={() => {
+                        if (nextProjectReminderCandidate) {
+                          void createInvoiceReminderDocument(nextProjectReminderCandidate.invoice);
+                        }
+                      }}
+                    >
+                      {nextProjectReminderCandidate ? "+ Mahnung" : "Keine Mahnung fällig"}
+                    </button>
                   ) : selectedProjectDocumentType === "Tätigkeitsberichte" ? (
                     <div className={styles.headerActions}>
                       <button
@@ -19050,6 +28135,14 @@ export function DashboardPage() {
                     </label>
                   )}
                 </div>
+                {selectedProjectDocumentType === "Mahnung" ? (
+                  <p className={styles.documentSectionHint}>
+                    {nextProjectReminderCandidate
+                      ? `${projectReminderCandidates.length} überfällige offene Rechnung${projectReminderCandidates.length === 1 ? "" : "en"} mahnfähig. Nächste Mahnung: ${nextProjectReminderCandidate.invoice.invoiceNumber}.`
+                      : "Mahnung ist erst möglich, wenn mindestens eine offene Rechnung überfällig ist."}
+                  </p>
+                ) : null}
+                {logbookError ? <p className={styles.stampError}>{logbookError}</p> : null}
                 {selectedProjectDocumentType === "Angebote" || selectedProjectDocumentType === "Angebote: Nachtragsangebote" ? (
                   displayedProjectOffers.length === 0 ? (
                     <div className={styles.customerDocumentEmpty}>
@@ -19075,7 +28168,15 @@ export function DashboardPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {displayedProjectOffers.map((offer) => (
+                        {displayedProjectOffers.map((offer) => {
+                          const linkedInvoice = projectInvoices.find(
+                            (invoice) =>
+                              !isDeletedInvoice(invoice) &&
+                              invoice.status !== "Entwurf" &&
+                              (invoice.sourceOfferId === offer.id || invoice.sourceOfferNumber === offer.offerNumber)
+                          );
+
+                          return (
                           <tr key={offer.id}>
                             <td className={styles.number}>{offer.offerNumber}</td>
                             <td>
@@ -19085,7 +28186,23 @@ export function DashboardPage() {
                             </td>
                             <td>{offer.customerName || "-"}</td>
                             <td>{offer.company}</td>
-                            <td>{offer.status}</td>
+                            <td>
+                              <div className={styles.invoiceStatusStack}>
+                                {renderOfferStatusChip(offer)}
+                                {isLostOffer(offer) && offer.lostReason ? (
+                                  <small>{offer.lostReason}</small>
+                                ) : null}
+                                {isLostOffer(offer) && offer.lostNote?.trim() ? (
+                                  <button
+                                    type="button"
+                                    className={styles.offerStatusCommentClip}
+                                    onClick={() => openOfferLostComment(offer)}
+                                  >
+                                    Kommentar
+                                  </button>
+                                ) : null}
+                              </div>
+                            </td>
                             <td>{formatMoney(offer.netTotal)}</td>
                             <td>{formatMoney(offer.grossTotal)}</td>
                             <td>
@@ -19097,14 +28214,37 @@ export function DashboardPage() {
                                 >
                                   Bearbeiten
                                 </button>
-                                <button
-                                  type="button"
-                                  className={styles.timeEntryEditButton}
-                                  disabled={offer.status === "Entwurf"}
-                                  onClick={() => openInvoiceFromOffer(offer)}
-                                >
-                                  Rechnung erstellen
-                                </button>
+                                {isActiveFinalOffer(offer) ? (
+                                  <>
+                                    {!linkedInvoice ? (
+                                      <button
+                                        type="button"
+                                        className={styles.timeEntryEditButton}
+                                        onClick={() => openInvoiceFromOffer(offer)}
+                                      >
+                                        Rechnung erstellen
+                                      </button>
+                                    ) : null}
+                                    {!linkedInvoice ? (
+                                      <button
+                                        type="button"
+                                        className={styles.timeEntryEditButton}
+                                        onClick={() => openMarkOfferLostDialog(offer)}
+                                      >
+                                        Angebot verloren
+                                      </button>
+                                    ) : null}
+                                  </>
+                                ) : null}
+                                {isLostOffer(offer) ? (
+                                  <button
+                                    type="button"
+                                    className={styles.timeEntryEditButton}
+                                    onClick={() => void restoreLostOfferStatus(offer)}
+                                  >
+                                    Verlust zurücknehmen
+                                  </button>
+                                ) : null}
                                 <button
                                   type="button"
                                   className={styles.timeEntryEditButton}
@@ -19136,7 +28276,8 @@ export function DashboardPage() {
                               </div>
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                     </div>
@@ -19187,6 +28328,11 @@ export function DashboardPage() {
                                         Gedruckt
                                       </span>
                                     ) : null}
+                                    {invoice.reminderLevel > 0 ? (
+                                      <span className={styles.invoiceDispatchClip} data-kind="printed">
+                                        Mahnstufe {invoice.reminderLevel}
+                                      </span>
+                                    ) : null}
                                   </div>
                                 </div>
                               </td>
@@ -19232,7 +28378,7 @@ export function DashboardPage() {
                                 >
                                   Per E-Mail senden
                                 </button>
-                                {!["Entwurf", "Storniert", "Stornorechnung", "Gelöscht"].includes(invoice.status) ? (
+                                {!["Entwurf", "Storniert", "Stornorechnung"].includes(invoice.status) && !isDeletedStatus(invoice.status) ? (
                                   <button
                                     type="button"
                                     className={styles.timeEntryEditButton}
@@ -19241,7 +28387,7 @@ export function DashboardPage() {
                                     Stornieren
                                   </button>
                                 ) : null}
-                                {canDeleteInvoices && invoice.status !== "Gelöscht" ? (
+                                {canDeleteInvoices && !isDeletedStatus(invoice.status) ? (
                                   <button
                                     type="button"
                                     className={styles.deleteButton}
@@ -19258,13 +28404,21 @@ export function DashboardPage() {
                       </tbody>
                     </table>
                     {projectInvoiceHistory.length > 0 ? (
-                      <section className={styles.invoiceHistoryPanel}>
+                      <section className={styles.planningHistorySection}>
                         <h3>Rechnungshistorie</h3>
-                        <div>
+                        <div className={styles.planningHistoryList}>
                           {projectInvoiceHistory.slice(0, 6).map((history) => (
-                            <span key={history.id}>
-                              {formatDeadline(history.createdAt)} · {history.invoiceNumber} · {history.title}
-                            </span>
+                            <article key={history.id}>
+                              <strong>{history.title || "Rechnungshistorie"}</strong>
+                              <span>
+                                {formatDeadline(history.createdAt)}
+                                {" "}von {history.actorName || "System"}
+                              </span>
+                              <p>
+                                {history.invoiceNumber}
+                                {history.note ? `: ${history.note}` : ""}
+                              </p>
+                            </article>
                           ))}
                         </div>
                       </section>
@@ -19296,15 +28450,15 @@ export function DashboardPage() {
                     const entries = getProjectDocumentEntries(selectedProjectDocumentType);
                     const documents = entries.flatMap((entry) =>
                       entry.attachments
-                        .filter((attachment) => attachment.type === "Dokument")
-                        .map((attachment) => ({
+                        .flatMap((attachment, attachmentIndex) => attachment.type === "Dokument" ? [{
                           ...attachment,
+                          attachmentIndex,
                           entryId: entry.id,
                           date: entry.date,
-                        }))
+                        }] : [])
                     );
 
-                    return documents.length === 0 ? (
+                    const documentList = documents.length === 0 ? (
                       <div className={styles.customerDocumentEmpty}>
                         <strong>Noch keine Projektdokumente vorhanden.</strong>
                         <p>
@@ -19326,8 +28480,25 @@ export function DashboardPage() {
                           <tbody>
                             {documents.map((document, index) => {
                               const mailKind: DocumentMailKind =
-                                selectedProjectDocumentType === "Tätigkeitsberichte" ? "activityReport" : "document";
-                              const documentNumber = document.name || `${selectedProjectDocumentType} ${index + 1}`;
+                                selectedProjectDocumentType === "Tätigkeitsberichte"
+                                  ? "activityReport"
+                                  : selectedProjectDocumentType === "Mahnung"
+                                    ? "reminder"
+                                    : "document";
+                              const documentName = document.name || `${selectedProjectDocumentType} ${index + 1}`;
+                              const documentNumber =
+                                mailKind === "reminder" ? documentName.replace(/\.pdf$/i, "") : documentName;
+                              const reminderInvoiceNumber =
+                                mailKind === "reminder"
+                                  ? documentNumber.match(/^MA-(.+)-\d+$/i)?.[1] || ""
+                                  : "";
+                              const reminderInvoice = reminderInvoiceNumber
+                                ? invoices.find(
+                                    (invoice) =>
+                                      invoice.projectId === selectedProjectFile?.id &&
+                                      invoice.invoiceNumber === reminderInvoiceNumber
+                                  )
+                                : null;
 
                               return (
                                 <tr key={`${document.entryId}-${document.name}-${index}`}>
@@ -19351,7 +28522,7 @@ export function DashboardPage() {
                                         onClick={() =>
                                           openGenericDocumentMailDialog({
                                             kind: mailKind,
-                                            documentId: `${document.entryId}-${index}`,
+                                            documentId: reminderInvoice?.id || `${document.entryId}-${index}`,
                                             documentNumber,
                                             attachmentName: document.name,
                                             attachmentDataUrl: document.dataUrl,
@@ -19360,6 +28531,22 @@ export function DashboardPage() {
                                       >
                                         Per E-Mail senden
                                       </button>
+                                      {selectedProjectDocumentType === "Tätigkeitsberichte" ? (
+                                        <button
+                                          type="button"
+                                          className={styles.dangerButton}
+                                          onClick={() =>
+                                            void deleteProjectDocumentAttachment(
+                                              document.entryId,
+                                              document.attachmentIndex,
+                                              document.name || documentNumber,
+                                              "Tätigkeitsbericht"
+                                            )
+                                          }
+                                        >
+                                          Löschen
+                                        </button>
+                                      ) : null}
                                     </div>
                                   </td>
                                 </tr>
@@ -19369,7 +28556,294 @@ export function DashboardPage() {
                         </table>
                       </div>
                     );
+
+                    return (
+                      <>
+                        {documentList}
+                        {selectedProjectDocumentType === "Tätigkeitsberichte" ? (
+                          <section className={styles.planningHistorySection}>
+                            <h3>Tätigkeitsbericht-Historie</h3>
+                            {activityReportHistoryEntries.length === 0 ? (
+                              <p>Noch keine Historie vorhanden.</p>
+                            ) : (
+                              <div className={styles.planningHistoryList}>
+                                {activityReportHistoryEntries.map((entry) => {
+                                  const title = normalizeVisibleMojibakeText(entry.title)
+                                    .replaceAll("Taetigkeitsbericht", "Tätigkeitsbericht");
+                                  const body = normalizeVisibleMojibakeText(entry.text || "");
+                                  const attachmentNames = entry.attachments
+                                    .filter((attachment) => attachment.type === "Dokument")
+                                    .map((attachment) => attachment.name)
+                                    .join(", ");
+
+                                  return (
+                                    <article key={`activity-report-history-${entry.id}`}>
+                                      <strong>
+                                        {title === "Dokumente: Tätigkeitsberichte"
+                                          ? "Tätigkeitsbericht abgelegt"
+                                          : title || "Tätigkeitsbericht geändert"}
+                                      </strong>
+                                      <span>
+                                        {formatDeadline(entry.date)}
+                                        {" "}von {entry.author || "System"}
+                                      </span>
+                                      <p>{body || attachmentNames || "Tätigkeitsbericht wurde aktualisiert."}</p>
+                                    </article>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </section>
+                        ) : null}
+                      </>
+                    );
                   })()
+                )}
+              </div>
+            ) : projectFileTab === "profit" ? (
+              <div className={styles.projectTimeModule}>
+                <div className={styles.customerFileMainHeader}>
+                  <div>
+                    <h2>Projektgewinn</h2>
+                    <span>Finaler Projektgewinn aus Rechnungen, Stempelzeiten und Materialkosten.</span>
+                  </div>
+                </div>
+                <div className={styles.projectProfitSummaryGrid}>
+                  {projectProfitScopes.map(({ key, label, summary }) => (
+                    <article
+                      key={key}
+                      className={styles.projectProfitSummaryCard}
+                      data-state={summary.profit >= 0 ? "positive" : "negative"}
+                    >
+                      <span>{label}</span>
+                      <strong>{formatMoney(summary.profit)}</strong>
+                      <small>
+                        {summary.revenue > 0
+                          ? `${summary.statusLabel} · ${formatMarginPercent(summary.marginPercent)} Marge`
+                          : summary.statusLabel}
+                      </small>
+                    </article>
+                  ))}
+                </div>
+                <div className={styles.projectTableScroll}>
+                  <table className={`${styles.projectTimeTable} ${styles.projectProfitTable}`}>
+                    <thead>
+                      <tr>
+                        <th>Bereich</th>
+                        <th>Umsatz netto</th>
+                        <th>Lohnkosten</th>
+                        <th>Materialkosten</th>
+                        <th>Gesamtkosten</th>
+                        <th>Gewinn</th>
+                        <th>Marge</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {projectProfitScopes.map(({ key, label, summary }) => (
+                        <tr key={key}>
+                          <td>{label}</td>
+                          <td className={styles.projectProfitMoneyCell}>{formatMoney(summary.revenue)}</td>
+                          <td className={styles.projectProfitMoneyCell}>{formatMoney(summary.laborCost)}</td>
+                          <td className={styles.projectProfitMoneyCell}>{formatMoney(summary.materialCost)}</td>
+                          <td className={styles.projectProfitMoneyCell}>{formatMoney(summary.totalCost)}</td>
+                          <td>
+                            <span
+                              className={styles.projectProfitResultClip}
+                              data-state={summary.profit >= 0 ? "positive" : "negative"}
+                            >
+                              {formatMoney(summary.profit)}
+                            </span>
+                          </td>
+                          <td className={styles.projectProfitPercentCell}>
+                            {summary.revenue > 0 ? formatMarginPercent(summary.marginPercent) : "-"}
+                          </td>
+                          <td>
+                            <span
+                              className={styles.projectProfitResultClip}
+                              data-state={summary.status === "final" ? "positive" : "preliminary"}
+                            >
+                              {summary.statusLabel}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className={styles.projectTableScroll}>
+                  <table className={`${styles.projectTimeTable} ${styles.projectProfitTable}`}>
+                    <thead>
+                      <tr>
+                        <th>Bereich</th>
+                        <th>Material VK</th>
+                        <th>Material EK</th>
+                        <th>Material-Ertrag</th>
+                        <th>Lohn VK</th>
+                        <th>Lohn EK</th>
+                        <th>Lohn-Ertrag</th>
+                        {showUnassignedProjectProfitRevenue && (
+                          <th>
+                            <span className={styles.projectProfitHeaderHelp}>
+                              <span>Nicht zugeordneter Umsatz</span>
+                              <span
+                                aria-label="Erklärung nicht zugeordneter Umsatz"
+                                className={styles.projectProfitHelpIcon}
+                                data-tooltip="Umsatz, der keiner Lohn- oder Materialposition sicher zugeordnet werden kann."
+                                tabIndex={0}
+                              >
+                                ?
+                              </span>
+                            </span>
+                          </th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {projectProfitScopes.map(({ key, label, summary }) => (
+                        <tr key={key}>
+                          <td>{label}</td>
+                          <td className={styles.projectProfitMoneyCell}>{formatMoney(summary.materialRevenue)}</td>
+                          <td className={styles.projectProfitMoneyCell}>{formatMoney(summary.materialCost)}</td>
+                          <td className={styles.projectProfitMoneyCell}>{formatMoney(summary.materialGrossProfit)}</td>
+                          <td className={styles.projectProfitMoneyCell}>{formatMoney(summary.laborRevenue)}</td>
+                          <td className={styles.projectProfitMoneyCell}>{formatMoney(summary.laborCost)}</td>
+                          <td className={styles.projectProfitMoneyCell}>{formatMoney(summary.laborGrossProfit)}</td>
+                          {showUnassignedProjectProfitRevenue && (
+                            <td className={styles.projectProfitMoneyCell}>{formatMoney(summary.unassignedRevenue)}</td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {showUnassignedProjectProfitRevenue && (
+                  <p className={styles.inlineHint}>
+                    Nicht zugeordneter Umsatz enthält Freitext- oder nicht klassifizierte Rechnungspositionen.
+                  </p>
+                )}
+              </div>
+            ) : projectFileTab === "potentials" ? (
+              <div className={styles.projectTimeModule}>
+                <div className={styles.customerFileMainHeader}>
+                  <h2>Zusatzverkäufe</h2>
+                  <div className={styles.headerActions}>
+                    <span>
+                      {activeProjectPotentialsForFile.length} offen / {completedProjectPotentialsForFile.length} abgeschlossen
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      onClick={() => {
+                        setManualPotentialProjectId(selectedProjectFile.id);
+                        setManualPotentialDescription("");
+                        setManualPotentialEstimatedValue("");
+                        setManualPotentialError("");
+                        setIsManualPotentialModalOpen(true);
+                      }}
+                    >
+                      + Zusatzverkauf
+                    </button>
+                  </div>
+                </div>
+                {projectPotentialsForFile.length === 0 ? (
+                  <div className={styles.customerDocumentEmpty}>
+                    <strong>Noch keine Zusatzverkäufe mit diesem Projekt verknüpft.</strong>
+                    <p>
+                      Erkannte Zusatzverkäufe aus Endkontrollen oder manuell angelegte Zusatzverkäufe erscheinen hier.
+                    </p>
+                  </div>
+                ) : (
+                  <div className={styles.projectTableScroll}>
+                    <table className={styles.projectTimeTable}>
+                      <thead>
+                        <tr>
+                          <th>Nr.</th>
+                          <th>Zusatzverkauf</th>
+                          <th>Status</th>
+                          <th>Wert</th>
+                          <th>Zuständig</th>
+                          <th>Nachfassen</th>
+                          <th>Aufgabe</th>
+                          <th>Aktion</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {projectPotentialsForFile.map((potential) => {
+                          const linkedTask = getPotentialLinkedTask(potential);
+
+                          return (
+                            <tr key={potential.id}>
+                              <td className={styles.number}>{getPotentialNumber(potential)}</td>
+                              <td>
+                                <strong>{potential.description}</strong>
+                                <span className={styles.metaLine}>
+                                  {potential.createdAt ? `Erfasst am ${formatDeadline(potential.createdAt)}` : "Erfasst"}
+                                </span>
+                              </td>
+                              <td>
+                                <span className={styles.potentialStatusClip} data-status={potential.status}>
+                                  {getPotentialStatusLabel(potential)}
+                                </span>
+                              </td>
+                              <td>{potential.estimatedValue ? `${potential.estimatedValue} €` : "-"}</td>
+                              <td>{potential.ownerName || activeUser?.name || "-"}</td>
+                              <td>{potential.followUpAt ? formatDeadline(potential.followUpAt) : "-"}</td>
+                              <td>
+                                {linkedTask ? (
+                                  <button
+                                    type="button"
+                                    className={styles.timeEntryEditButton}
+                                    onClick={() => openEditModal(linkedTask)}
+                                  >
+                                    {getTaskNumber(linkedTask.id, tasks)}
+                                  </button>
+                                ) : (
+                                  "-"
+                                )}
+                              </td>
+                              <td>
+                                <div className={styles.tableActionGroup}>
+                                  <button
+                                    type="button"
+                                    className={styles.timeEntryEditButton}
+                                    onClick={() => openPotentialDetail(potential)}
+                                  >
+                                    Öffnen
+                                  </button>
+                                  {["open", "follow_up"].includes(potential.status) ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        className={styles.timeEntryEditButton}
+                                        onClick={() => void offerPotential(potential)}
+                                      >
+                                        Angebot
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className={styles.timeEntryEditButton}
+                                        onClick={() => void schedulePotentialFollowUp(potential)}
+                                      >
+                                        Nachfassen
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className={styles.timeEntryDeleteButton}
+                                        onClick={() => void closePotential(potential)}
+                                      >
+                                        Kein Interesse
+                                      </button>
+                                    </>
+                                  ) : null}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </div>
             ) : projectFileTab === "tasks" ? (
@@ -19378,7 +28852,7 @@ export function DashboardPage() {
                   <h2>Aufgaben</h2>
                   <div className={styles.headerActions}>
                     <span>
-                      {openProjectTasks.length} offen · {completedProjectTasks.length} erledigt
+                      {openProjectTasks.length} offen / {completedProjectTasks.length} erledigt
                     </span>
                     <button
                       type="button"
@@ -19788,6 +29262,92 @@ export function DashboardPage() {
                   )}
                 </section>
               </div>
+            ) : projectFileTab === "forecast" ? (
+              <div className={styles.projectTimeModule}>
+                <div className={styles.customerFileMainHeader}>
+                  <h2>Forecast</h2>
+                  <span>
+                    {selectedProjectFile.forecastNetAmount
+                      ? `${selectedProjectFile.forecastNetAmount} € netto (${selectedProjectFile.forecastBillingType || "monatlich"})`
+                      : "Kein Forecastbetrag hinterlegt"}
+                  </span>
+                </div>
+
+                <section className={`${styles.projectBudgetEditor} ${styles.projectForecastEditor}`}>
+                  <div className={styles.projectForecastSummaryGrid}>
+                    <article>
+                      <span>Monatswert für Forecast</span>
+                      <strong>
+                        {formatMoney(
+                          projectForecastDraft.forecastBillingType === "quartalsweise"
+                            ? parseReportAmount(projectForecastDraft.forecastNetAmount) / 3
+                            : isWeeklyForecastBillingType(projectForecastDraft.forecastBillingType)
+                              ? (parseReportAmount(projectForecastDraft.forecastNetAmount) * 52) / 12
+                              : parseReportAmount(projectForecastDraft.forecastNetAmount)
+                        )}
+                      </strong>
+                      <small>So wird der Wert in der Forecast-Auswertung monatlich berücksichtigt.</small>
+                    </article>
+                    <article>
+                      <span>Quelle im Forecast</span>
+                      <strong>{selectedProjectFile.forecastNetAmount ? "Projektforecast" : "Nicht gepflegt"}</strong>
+                      <small>Eine echte Monatsrechnung ersetzt diesen Planwert automatisch.</small>
+                    </article>
+                  </div>
+
+                  <div className={styles.standardFormGrid}>
+                    <label>
+                      Forecastbetrag netto
+                      <input
+                        value={projectForecastDraft.forecastNetAmount}
+                        placeholder="z.B. 1250,00"
+                        onChange={(event) =>
+                          setProjectForecastDraft((current) => ({
+                            ...current,
+                            forecastNetAmount: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Rhythmus
+                      <select
+                        value={projectForecastDraft.forecastBillingType}
+                        onChange={(event) =>
+                          setProjectForecastDraft((current) => ({
+                            ...current,
+                            forecastBillingType: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="monatlich">monatlich</option>
+                        <option value="wöchentlich">wöchentlich</option>
+                        <option value="quartalsweise">quartalsweise</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <p className={styles.autoBillingHint}>
+                    Dieser Wert ist die kaufmännische Planquelle für Dauerläufer, solange im jeweiligen Monat
+                    noch keine echte Rechnung vorhanden ist. Leere Werte führen dazu, dass die Forecast-Qualitätsprüfung
+                    diesen Dauerläufer als fehlende Forecast-Quelle meldet.
+                  </p>
+
+                  {projectForecastError ? <p className={styles.stampError}>{projectForecastError}</p> : null}
+                  {projectForecastMessage ? <p className={styles.stampSuccess}>{projectForecastMessage}</p> : null}
+
+                  <div className={styles.projectForecastActions}>
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      disabled={isSavingProjectForecast}
+                      onClick={() => void saveProjectForecastSettings(selectedProjectFile)}
+                    >
+                      {isSavingProjectForecast ? "Speichert..." : "Forecast speichern"}
+                    </button>
+                  </div>
+                </section>
+              </div>
             ) : projectFileTab === "automaticBilling" ? (
               <div className={styles.projectTimeModule}>
                 <div className={styles.customerFileMainHeader}>
@@ -19799,8 +29359,8 @@ export function DashboardPage() {
                   </span>
                 </div>
 
-                <section className={styles.projectBudgetEditor}>
-                  <div className={styles.standardFormGrid}>
+                <section className={`${styles.projectBudgetEditor} ${styles.autoBillingEditor}`}>
+                  <div className={`${styles.standardFormGrid} ${styles.autoBillingFormGrid}`}>
                     <label className={styles.checkboxField}>
                       <input
                         type="checkbox"
@@ -19813,98 +29373,60 @@ export function DashboardPage() {
                       />
                       Automatische monatliche Abrechnung aktiv
                     </label>
-                    <label>
-                      Monatlicher Rechnungsbetrag netto
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={selectedProjectFile.autoBillingNetAmount || selectedProjectFile.forecastNetAmount || ""}
-                        onChange={(event) =>
-                          void saveAutoBillingProjectPatch(selectedProjectFile, {
-                            autoBillingNetAmount: event.target.value,
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      MwSt. %
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={selectedProjectFile.autoBillingVatRate || "19"}
-                        onChange={(event) =>
-                          void saveAutoBillingProjectPatch(selectedProjectFile, {
-                            autoBillingVatRate: event.target.value,
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
+                    <label className={styles.monthPickerField}>
                       Ab Monat
-                      <input
-                        type="month"
-                        value={selectedProjectFile.autoBillingStartMonth || selectedProjectFile.projectRuntimeFrom?.slice(0, 7) || ""}
-                        onChange={(event) =>
-                          void saveAutoBillingProjectPatch(selectedProjectFile, {
-                            autoBillingStartMonth: event.target.value,
-                          })
-                        }
-                      />
+                      <span className={styles.monthPickerControl}>
+                        <button
+                          type="button"
+                          onClick={() => openNativeDatePicker("auto-billing-start-month")}
+                        >
+                          {formatMonthLabel(
+                            selectedProjectFile.autoBillingStartMonth || selectedProjectFile.projectRuntimeFrom?.slice(0, 7) || ""
+                          ) || "Monat auswählen"}
+                        </button>
+                        <input
+                          id="auto-billing-start-month"
+                          className={styles.monthPickerNative}
+                          type="month"
+                          value={selectedProjectFile.autoBillingStartMonth || selectedProjectFile.projectRuntimeFrom?.slice(0, 7) || ""}
+                          onChange={(event) =>
+                            void saveAutoBillingProjectPatch(selectedProjectFile, {
+                              autoBillingStartMonth: event.target.value,
+                            })
+                          }
+                        />
+                      </span>
                     </label>
-                    <label>
+                    <label className={styles.monthPickerField}>
                       Bis Monat
-                      <input
-                        type="month"
-                        value={selectedProjectFile.autoBillingEndMonth || selectedProjectFile.projectRuntimeUntil?.slice(0, 7) || ""}
-                        onChange={(event) =>
-                          void saveAutoBillingProjectPatch(selectedProjectFile, {
-                            autoBillingEndMonth: event.target.value,
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      Vorlage
-                      <select
-                        value={selectedProjectFile.autoBillingTemplateMode || "previous"}
-                        onChange={(event) =>
-                          void saveAutoBillingProjectPatch(selectedProjectFile, {
-                            autoBillingTemplateMode: event.target.value,
-                          })
-                        }
-                      >
-                        <option value="previous">Vormonatsrechnung verwenden</option>
-                        <option value="project">Projektvorlage verwenden</option>
-                      </select>
+                      <span className={styles.monthPickerControl}>
+                        <button
+                          type="button"
+                          onClick={() => openNativeDatePicker("auto-billing-end-month")}
+                        >
+                          {formatMonthLabel(
+                            selectedProjectFile.autoBillingEndMonth || selectedProjectFile.projectRuntimeUntil?.slice(0, 7) || ""
+                          ) || "Monat auswählen"}
+                        </button>
+                        <input
+                          id="auto-billing-end-month"
+                          className={styles.monthPickerNative}
+                          type="month"
+                          value={selectedProjectFile.autoBillingEndMonth || selectedProjectFile.projectRuntimeUntil?.slice(0, 7) || ""}
+                          onChange={(event) =>
+                            void saveAutoBillingProjectPatch(selectedProjectFile, {
+                              autoBillingEndMonth: event.target.value,
+                            })
+                          }
+                        />
+                      </span>
                     </label>
                   </div>
 
-                  <div className={styles.projectBudgetSummary} data-state={selectedProjectFile.autoBillingTemplate ? "ok" : "over"}>
-                    <strong>
-                      {selectedProjectFile.autoBillingTemplate
-                        ? "Projektvorlage ist gespeichert"
-                        : "Noch keine Projektvorlage gespeichert"}
-                    </strong>
-                    <span>
-                      Ohne Projektvorlage nutzt die Stapelabrechnung die letzte Rechnung als Vorlage. Die letzten drei Monatsrechnungen werden trotzdem geprüft.
-                    </span>
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      onClick={() => void createAutoBillingTemplateFromProject(selectedProjectFile)}
-                    >
-                      Projektvorlage erstellen
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      onClick={() => void createAutoBillingTemplateFromLatestInvoice(selectedProjectFile)}
-                    >
-                      Vorlage aus letzter Rechnung übernehmen
-                    </button>
-                  </div>
+                  <p className={styles.autoBillingHint}>
+                    Die Stapelabrechnung nutzt immer die aktive Rechnung aus dem direkten Vormonat als Vorlage.
+                    Ohne Vormonatsrechnung wird das Projekt in der Stapelabrechnung zur Prüfung blockiert.
+                  </p>
                 </section>
               </div>
             ) : projectFileTab === "budgets" ? (
@@ -19960,7 +29482,7 @@ export function DashboardPage() {
                             />
                           </label>
                           <button type="button" className={styles.secondaryButton} onClick={distributeProjectBudgetTotal}>
-                            Gleichmäßig verteilen
+                    Gleichmäßig verteilen
                           </button>
                         </div>
                       ) : null}
@@ -19981,6 +29503,24 @@ export function DashboardPage() {
                                   .filter((entry) => entry.date.startsWith(month))
                                   .reduce((sum, entry) => sum + Number(entry.durationMinutes || 0), 0) / 60;
                               const budgetHours = parseHoursInput(projectBudgetMonthDrafts[month]);
+                              const remainingHours = budgetHours - plannedHours;
+                              const budgetClipState =
+                                budgetHours > 0
+                                  ? remainingHours > 0.01
+                                    ? "remaining"
+                                    : remainingHours < -0.01
+                                      ? "over"
+                                      : "complete"
+                                  : "";
+                              const budgetClipLabel =
+                                budgetHours > 0
+                                  ? remainingHours > 0.01
+                                    ? `${formatHours(remainingHours)} Std. offen`
+                                    : remainingHours < -0.01
+                                      ? `${formatHours(Math.abs(remainingHours))} Std. zu viel`
+                                      : "voll verplant"
+                                  : "";
+                              const activeInvoiceNumbers = projectActiveInvoiceNumbersByMonth[month] ?? [];
                               return (
                                 <tr key={`project-budget-${month}`}>
                                   <td>{formatMonthLabel(month)}</td>
@@ -19994,9 +29534,28 @@ export function DashboardPage() {
                                     />
                                   </td>
                                   <td>
-                                    {budgetHours > 0
-                                      ? `${formatHours(plannedHours)} von ${formatHours(budgetHours)} Std. geplant`
-                                      : "Kein Soll hinterlegt"}
+                                    <div className={styles.projectBudgetStatusCell}>
+                                      <span>
+                                        {budgetHours > 0
+                                          ? `${formatHours(plannedHours)} von ${formatHours(budgetHours)} Std. geplant`
+                                          : "Kein Soll hinterlegt"}
+                                      </span>
+                                      {budgetClipLabel || activeInvoiceNumbers.length > 0 ? (
+                                        <div className={styles.projectBudgetStatusClips}>
+                                          {budgetClipLabel ? (
+                                            <span className={styles.planningBudgetClip} data-state={budgetClipState}>
+                                              {budgetClipLabel}
+                                            </span>
+                                          ) : null}
+                                          {activeInvoiceNumbers.length > 0 ? (
+                                            <span className={styles.invoiceStatusDone}>
+                                              <span aria-hidden="true">{"\u2713"}</span>
+                                              Fakturiert: {activeInvoiceNumbers.join(", ")}
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                      ) : null}
+                                    </div>
                                   </td>
                                 </tr>
                               );
@@ -20015,7 +29574,7 @@ export function DashboardPage() {
                             : `Summe: ${formatHours(projectBudgetDraftTotal)} Std.`}
                         </strong>
                         <span>
-                          Diese Monatswerte gelten als Soll-Zeiten. Ohne Einträge zählt das Projekt nach tatsächlich gebuchten Stunden.
+                  Diese Monatswerte gelten als Soll-Zeiten. Ohne Einträge zählt das Projekt nach tatsächlich gebuchten Stunden.
                         </span>
                         <button
                           type="button"
@@ -20061,11 +29620,40 @@ export function DashboardPage() {
                           {projectMonthBudgetHours > 0 ? formatHours(projectMonthBudgetHours) : "-"} Std.
                         </span>
                       </div>
-                      <b data-state={projectMonthPlanningRemainingHours < 0 ? "over" : "ok"}>
-                        {projectMonthBudgetHours > 0
-                          ? `${formatHours(Math.max(projectMonthPlanningRemainingHours, 0))} Std. planbar`
-                          : "Kein Monatskontingent"}
-                      </b>
+                      <div className={styles.projectPlanningCapacityAction}>
+                        <button
+                          type="button"
+                          className={styles.projectPlanningCapacityPill}
+                          data-state={projectMonthPlanningRemainingHours < 0 ? "over" : "ok"}
+                          onClick={() => {
+                            const menuKey = `recurring-${projectComparisonMonth}`;
+                            if (projectMonthPlannedHours > 0 || projectVisiblePlanningEntries.length > 0) {
+                              openProjectPlanningEntrySelection(menuKey, projectVisiblePlanningEntries);
+                              return;
+                            }
+                            if (projectMonthBudgetHours > 0) toggleProjectPlanningChoiceMenu(menuKey);
+                          }}
+                        >
+                          {projectMonthBudgetHours > 0
+                            ? `${formatHours(Math.max(projectMonthPlanningRemainingHours, 0))} Std. planbar`
+                            : "Kein Monatskontingent"}
+                        </button>
+                        {renderProjectPlanningChoiceMenu(
+                          `recurring-${projectComparisonMonth}`,
+                          () => {
+                            closeProjectPlanningCapacityMenus();
+                            openManualProjectPlanning();
+                          },
+                          () => {
+                            closeProjectPlanningCapacityMenus();
+                            openManualProjectPlanning("requested");
+                          }
+                        )}
+                        {renderProjectPlanningEditMenu(
+                          `recurring-${projectComparisonMonth}`,
+                          projectVisiblePlanningEntries
+                        )}
+                      </div>
                     </div>
                     <div className={styles.projectPlanningCapacityBar}>
                       <span style={{ width: `${projectMonthPlanningUsagePercent}%` }}>
@@ -20075,9 +29663,67 @@ export function DashboardPage() {
                     {projectMonthPlanningRemainingHours < 0 ? (
                       <p>Dieser Monat ist um {formatHours(Math.abs(projectMonthPlanningRemainingHours))} Std. überplant.</p>
                     ) : projectMonthBudgetHours <= 0 ? (
-                      <p>Für diesen Monat ist noch kein Projektzeitkontingent hinterlegt.</p>
+                  <p>Für diesen Monat ist noch kein Projektzeitkontingent hinterlegt.</p>
                     ) : null}
                   </section>
+                ) : singleProjectOfferPlanningRows.length > 0 ? (
+                  <div className={styles.projectOfferPlanningSummaryList}>
+                    {singleProjectOfferPlanningRows.map((row) => {
+                      const offerTypeLabel = row.offer.offerType === "addendum" ? "Nachtragsangebot" : "Basisangebot";
+                      return (
+                        <section key={row.offer.id} className={styles.projectPlanningCapacitySummary}>
+                          <div className={styles.projectPlanningCapacityCompact}>
+                            <div>
+                              <strong>{row.offer.offerNumber} | {offerTypeLabel}</strong>
+                              <span>
+                                Geplant: {formatHours(row.plannedPlanningHours)} von {formatHours(row.plannedHours)} Std. |{" "}
+                                Ausführungsmonat: {" "}
+                                {row.offer.plannedExecutionMonth ? formatMonthLabel(row.offer.plannedExecutionMonth) : "-"}
+                              </span>
+                            </div>
+                            <div className={styles.projectPlanningCapacityAction}>
+                              <button
+                                type="button"
+                                className={styles.projectPlanningCapacityPill}
+                                data-state={row.remainingHours < -0.01 ? "over" : "ok"}
+                                onClick={() => {
+                                  const menuKey = `offer-${row.offer.id}`;
+                                  if (row.planningEntries.length > 0 || row.plannedPlanningHours > 0) {
+                                    openProjectPlanningEntrySelection(menuKey, row.planningEntries);
+                                    return;
+                                  }
+                                  toggleProjectPlanningChoiceMenu(menuKey);
+                                }}
+                              >
+                              {row.remainingHours < -0.01
+                                ? `${formatHours(Math.abs(row.remainingHours))} Std. überplant`
+                                : `${formatHours(row.openHours)} Std. planbar`}
+                              </button>
+                              {renderProjectPlanningChoiceMenu(
+                                `offer-${row.offer.id}`,
+                                () => openOfferCapacityPlanning(row, "confirmed"),
+                                () => openOfferCapacityPlanning(row, "requested")
+                              )}
+                              {renderProjectPlanningEditMenu(`offer-${row.offer.id}`, row.planningEntries)}
+                            </div>
+                          </div>
+                          <div className={styles.projectPlanningCapacityBar}>
+                            <span style={{ width: `${row.usagePercent}%` }}>
+                              <i>{row.usagePercent.toFixed(0)}%</i>
+                            </span>
+                          </div>
+                        </section>
+                      );
+                    })}
+                  </div>
+                ) : projectHasOnlyLostOffers ? (
+                  <div className={styles.projectOfferBasisNotice}>
+                    <strong>Keine aktive Angebotsgrundlage.</strong>
+                    <span>
+                      Alle Angebote sind als verloren markiert. Nimm den Verlust zurück oder erstelle ein neues Angebot,
+                      damit Planung, Forecast und Kontingente wieder eine Grundlage haben.
+                    </span>
+                  </div>
                 ) : null}
                 {projectVisiblePlanningEntries.length === 0 ? (
                   <div className={styles.customerDocumentEmpty}>
@@ -20232,7 +29878,7 @@ export function DashboardPage() {
                               <td>
                                 {row.invoiceLabel.startsWith("Fakturiert") ? (
                                   <span className={styles.invoiceStatusDone}>
-                                    <span aria-hidden="true">✓</span>
+                                    <span aria-hidden="true">{"\u2713"}</span>
                                     {row.invoiceLabel}
                                   </span>
                                 ) : (
@@ -20344,7 +29990,7 @@ export function DashboardPage() {
                                     : "Zeit echt gestempelt"}
                               </strong>
                               <span>
-                                {entry.date} von {entry.startTime} bis {entry.endTime} | {entry.employee}
+                                {formatDateOnly(entry.date)} von {entry.startTime} bis {entry.endTime} | {entry.employee}
                                 {entry.deletedAt ? ` | gel\u00f6scht am ${formatInstantDateTime(entry.deletedAt)}` : ""}
                               </span>
                               <p>
@@ -20360,6 +30006,350 @@ export function DashboardPage() {
                     </div>
                   </div>
                 </section>
+              </div>
+            ) : projectFileTab === "checklists" ? (
+              <div className={styles.checklistModule}>
+                {activeChecklistView === "overview" ? (
+                  <>
+                    <div className={styles.customerFileMainHeader}>
+                      <div>
+                        <h2>Checklisten</h2>
+                        <p>Fachliche Nachweise werden hier ausgefüllt und als PDF unter Dokumente &gt; Checklisten abgelegt.</p>
+                      </div>
+                    </div>
+                    <div className={styles.checklistSearchBar}>
+                      <input
+                        value={checklistSearchTerm}
+                        onChange={(event) => setChecklistSearchTerm(event.target.value)}
+                        placeholder="Checkliste suchen..."
+                      />
+                      {checklistSearchTerm ? (
+                        <button type="button" className={styles.secondaryButton} onClick={() => setChecklistSearchTerm("")}>
+                          Suche löschen
+                        </button>
+                      ) : null}
+                    </div>
+                    <div className={styles.checklistAreaGrid}>
+                      {visibleChecklistAreas.map((area) => {
+                        const isAreaOpen = normalizedChecklistSearch || openChecklistArea === area.name;
+
+                        return (
+                          <article key={area.name} className={styles.checklistAreaCard}>
+                            <div className={styles.checklistAreaHeader}>
+                              <div>
+                                <strong>{area.name}</strong>
+                                <p>{area.description}</p>
+                              </div>
+                              <div className={styles.checklistAreaMeta}>
+                                <span data-state={area.existingCount > 0 ? "done" : "empty"}>
+                                  {area.existingCount > 0
+                                    ? `${area.existingCount} erstellt`
+                                    : "Noch kein Nachweis"}
+                                </span>
+                                <span>
+                                  {area.items.length} Checkliste{area.items.length === 1 ? "" : "n"}
+                                </span>
+                                <button
+                                  type="button"
+                                  className={isAreaOpen && !normalizedChecklistSearch ? styles.secondaryButton : styles.primaryButton}
+                                  onClick={() =>
+                                    setOpenChecklistArea((currentArea) =>
+                                      currentArea === area.name && !normalizedChecklistSearch ? "" : area.name
+                                    )
+                                  }
+                                >
+                                  {isAreaOpen && !normalizedChecklistSearch ? "Zuklappen" : "+ Checkliste"}
+                                </button>
+                              </div>
+                            </div>
+                            {isAreaOpen ? (
+                              <div className={styles.checklistSelectionList}>
+                                {area.items.map((item) => (
+                                  <div key={`${area.name}-${item.name}`} className={styles.checklistSelectionRow}>
+                                    <div>
+                                      <strong>{item.name}</strong>
+                                      <span>{item.description}</span>
+                                    </div>
+                                    {item.status === "active" ? (
+                                      <button type="button" className={styles.secondaryButton} onClick={item.onOpen}>
+                                        {item.actionLabel || "Öffnen"}
+                                      </button>
+                                    ) : (
+                                      <span data-state="planned">In Vorbereitung</span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
+                          </article>
+                        );
+                      })}
+                      {visibleChecklistAreas.length === 0 ? (
+                        <div className={styles.customerDocumentEmpty}>
+                          <strong>Keine Checkliste gefunden.</strong>
+                          <p>Bitte Suchbegriff anpassen oder über einen Fachbereich auswählen.</p>
+                        </div>
+                      ) : null}
+                    </div>
+                    <section className={styles.checklistDocumentSection}>
+                      <h3>Abgelegte Checklistennachweise</h3>
+                      {checklistDocumentCount === 0 ? (
+                        <p>Noch keine Checklistennachweise abgelegt.</p>
+                      ) : (
+                        <div className={styles.projectDocumentList}>
+                          {checklistDocumentEntries.flatMap((entry) =>
+                            entry.attachments
+                              .filter((attachment) => attachment.type === "Dokument")
+                              .map((attachment, index) =>
+                                attachment.dataUrl ? (
+                                  <button
+                                    key={`${entry.id}-${attachment.name}-${index}`}
+                                    type="button"
+                                    onClick={() => void openAttachmentDataUrl(attachment.dataUrl, attachment.name)}
+                                  >
+                                    <strong>{attachment.name}</strong>
+                                    <span>{entry.date}</span>
+                                  </button>
+                                ) : (
+                                  <span key={`${entry.id}-${attachment.name}-${index}`}>{attachment.name}</span>
+                                )
+                              )
+                          )}
+                        </div>
+                      )}
+                    </section>
+                  </>
+                ) : (
+                  <>
+                    <div className={styles.customerFileMainHeader}>
+                      <div>
+                        <h2>Rauchmelder-Installationsnachweis</h2>
+                        <p>Erfasse die installierten Rauchwarnmelder. Der fertige PDF-Nachweis landet automatisch im Dokumentordner Checklisten.</p>
+                      </div>
+                      <button type="button" className={styles.secondaryButton} onClick={() => setActiveChecklistView("overview")}>
+                        Zurück
+                      </button>
+                    </div>
+                    {logbookError ? <p className={styles.stampError}>{logbookError}</p> : null}
+                    <div className={styles.checklistFormGrid}>
+                      <label>
+                        Installationsdatum
+                        <input
+                          type="date"
+                          value={smokeDetectorInstallationDate}
+                          onChange={(event) => setSmokeDetectorInstallationDate(event.target.value)}
+                        />
+                      </label>
+                      <label>
+                        Monteur/Fachkraft
+                        <input
+                          value={smokeDetectorInstaller}
+                          onChange={(event) => setSmokeDetectorInstaller(event.target.value)}
+                          placeholder={activeUser?.name || "Name"}
+                        />
+                      </label>
+                      <label className={styles.checklistWideField}>
+                        Objekt / Nutzungseinheit
+                        <textarea
+                          rows={3}
+                          value={smokeDetectorObjectNotes}
+                          onChange={(event) => setSmokeDetectorObjectNotes(event.target.value)}
+                          placeholder="z.B. Treppenhaus, Wohnung EG links, Kellerbereich"
+                        />
+                      </label>
+                      <label className={styles.checklistWideField}>
+                        Abweichungen / Hinweise
+                        <textarea
+                          rows={3}
+                          value={smokeDetectorDeviations}
+                          onChange={(event) => setSmokeDetectorDeviations(event.target.value)}
+                          placeholder="Pflicht, falls z.B. Seriennummern fehlen oder Montagebedingungen abweichen."
+                        />
+                      </label>
+                    </div>
+
+                    <section className={styles.checklistUploadSection}>
+                      <div>
+                        <h3>Objektbilder</h3>
+                        <p>Optional, z.B. Übersicht des Flurs oder der Nutzungseinheit.</p>
+                      </div>
+                      <label className={styles.projectDocumentUpload}>
+                        Bilder hinzufügen
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={(event) => void addSmokeDetectorImages(event.target.files)}
+                        />
+                      </label>
+                      {smokeDetectorObjectImages.length > 0 ? (
+                        <div className={styles.checklistAttachmentList}>
+                          {smokeDetectorObjectImages.map((image, index) => (
+                            <span key={`${image.name}-${index}`}>
+                              {image.name}
+                              <button type="button" onClick={() => removeSmokeDetectorImage(undefined, index)}>
+                                Entfernen
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </section>
+
+                    <section className={styles.checklistDevicesSection}>
+                      <div className={styles.customerFileMainHeader}>
+                        <h3>Dokumentierte Rauchwarnmelder</h3>
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          onClick={() =>
+                            setSmokeDetectorDevices((currentDevices) => [
+                              ...currentDevices,
+                              createSmokeDetectorDeviceDraft(),
+                            ])
+                          }
+                        >
+                          Melder hinzufügen
+                        </button>
+                      </div>
+                      {smokeDetectorDevices.map((device, deviceIndex) => (
+                        <article key={device.id} className={styles.checklistDeviceCard}>
+                          <div className={styles.checklistDeviceHeader}>
+                            <strong>Melder {deviceIndex + 1}</strong>
+                            {smokeDetectorDevices.length > 1 ? (
+                              <button
+                                type="button"
+                                className={styles.secondaryButton}
+                                onClick={() =>
+                                  setSmokeDetectorDevices((currentDevices) =>
+                                    currentDevices.filter((item) => item.id !== device.id)
+                                  )
+                                }
+                              >
+                                Entfernen
+                              </button>
+                            ) : null}
+                          </div>
+                          <div className={styles.checklistFormGrid}>
+                            <label>
+                              Raum
+                              <input value={device.room} onChange={(event) => updateSmokeDetectorDevice(device.id, { room: event.target.value })} />
+                            </label>
+                            <label>
+                              Gebäude
+                              <input value={device.building} onChange={(event) => updateSmokeDetectorDevice(device.id, { building: event.target.value })} />
+                            </label>
+                            <label>
+                              Etage
+                              <input value={device.floor} onChange={(event) => updateSmokeDetectorDevice(device.id, { floor: event.target.value })} />
+                            </label>
+                            <label>
+                              Einheit
+                              <input value={device.unit} onChange={(event) => updateSmokeDetectorDevice(device.id, { unit: event.target.value })} />
+                            </label>
+                            <label>
+                              Hersteller
+                              <input value={device.manufacturer} onChange={(event) => updateSmokeDetectorDevice(device.id, { manufacturer: event.target.value })} />
+                            </label>
+                            <label>
+                              Modell
+                              <input value={device.model} onChange={(event) => updateSmokeDetectorDevice(device.id, { model: event.target.value })} />
+                            </label>
+                            <label>
+                              Seriennummer
+                              <input value={device.serialNumber} onChange={(event) => updateSmokeDetectorDevice(device.id, { serialNumber: event.target.value })} />
+                            </label>
+                            <label>
+                              Herstellungsdatum
+                              <input value={device.manufactureDate} onChange={(event) => updateSmokeDetectorDevice(device.id, { manufactureDate: event.target.value })} />
+                            </label>
+                            <label>
+                              Batterie
+                              <input value={device.battery} onChange={(event) => updateSmokeDetectorDevice(device.id, { battery: event.target.value })} />
+                            </label>
+                            <label>
+                              Meldertyp
+                              <input value={device.detectorType} onChange={(event) => updateSmokeDetectorDevice(device.id, { detectorType: event.target.value })} />
+                            </label>
+                            <label>
+                              Deckenposition
+                              <input value={device.ceilingPosition} onChange={(event) => updateSmokeDetectorDevice(device.id, { ceilingPosition: event.target.value })} />
+                            </label>
+                            <label>
+                              Abstände / Montagehinweise
+                              <input value={device.distanceNotes} onChange={(event) => updateSmokeDetectorDevice(device.id, { distanceNotes: event.target.value })} />
+                            </label>
+                            <label className={styles.checkboxLine}>
+                              <input type="checkbox" checked={device.radioLinked} onChange={(event) => updateSmokeDetectorDevice(device.id, { radioLinked: event.target.checked })} />
+                              Funkvernetzt
+                            </label>
+                            <label className={styles.checkboxLine}>
+                              <input type="checkbox" checked={device.locationCompliant} onChange={(event) => updateSmokeDetectorDevice(device.id, { locationCompliant: event.target.checked })} />
+                              Montageort geeignet
+                            </label>
+                            <label className={styles.checkboxLine}>
+                              <input type="checkbox" checked={device.functionTestPassed} onChange={(event) => updateSmokeDetectorDevice(device.id, { functionTestPassed: event.target.checked })} />
+                              Funktionstest bestanden
+                            </label>
+                            <label className={styles.checkboxLine}>
+                              <input type="checkbox" checked={device.visualInspectionPassed} onChange={(event) => updateSmokeDetectorDevice(device.id, { visualInspectionPassed: event.target.checked })} />
+                              Sichtprüfung bestanden
+                            </label>
+                            <label className={styles.checkboxLine}>
+                              <input type="checkbox" checked={device.signalTestDone} onChange={(event) => updateSmokeDetectorDevice(device.id, { signalTestDone: event.target.checked })} />
+                              Signaltest durchgeführt
+                            </label>
+                            <label className={styles.checkboxLine}>
+                              <input type="checkbox" checked={device.mountedSecurely} onChange={(event) => updateSmokeDetectorDevice(device.id, { mountedSecurely: event.target.checked })} />
+                              Melder fest montiert
+                            </label>
+                            <label className={styles.checklistWideField}>
+                              Besonderheiten
+                              <textarea rows={2} value={device.specialNotes} onChange={(event) => updateSmokeDetectorDevice(device.id, { specialNotes: event.target.value })} />
+                            </label>
+                          </div>
+                          <div className={styles.checklistUploadSection}>
+                            <label className={styles.projectDocumentUpload}>
+                              Melderbilder hinzufügen
+                              <input
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                onChange={(event) => void addSmokeDetectorImages(event.target.files, device.id)}
+                              />
+                            </label>
+                            {device.images.length > 0 ? (
+                              <div className={styles.checklistAttachmentList}>
+                                {device.images.map((image, imageIndex) => (
+                                  <span key={`${device.id}-${image.name}-${imageIndex}`}>
+                                    {image.name}
+                                    <button type="button" onClick={() => removeSmokeDetectorImage(device.id, imageIndex)}>
+                                      Entfernen
+                                    </button>
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        </article>
+                      ))}
+                    </section>
+
+                    <div className={styles.checklistActionRow}>
+                      <button type="button" className={styles.secondaryButton} onClick={resetSmokeDetectorInstallationDraft}>
+                        Formular leeren
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.primaryButton}
+                        disabled={isSavingSmokeDetectorReport}
+                        onClick={() => void saveSmokeDetectorInstallationReport()}
+                      >
+                        {isSavingSmokeDetectorReport ? "Nachweis wird erstellt..." : "PDF-Nachweis erstellen"}
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             ) : (
               <div className={styles.customerEmptyModule}>
@@ -20409,6 +30399,39 @@ export function DashboardPage() {
                     </div>
                   </div>
                 </>
+              ) : singleProjectOfferTimeUsageRows.length > 0 ? (
+                <div className={styles.projectOfferTimeBudgets}>
+                  {singleProjectOfferTimeUsageRows.map((row) => (
+                    <div key={`offer-usage-${row.offer.id}`} className={styles.projectTimeBudget}>
+                      <div className={styles.projectTimeBudgetHeader}>
+                        <strong>
+                          {row.offer.offerNumber} |{" "}
+                          {row.offer.offerType === "addendum" ? "Nachtragsangebot" : "Basisangebot"}
+                        </strong>
+                        <span>{formatHours(row.plannedHours)} Std. Angebot</span>
+                      </div>
+                      <div>
+                        <span>Verplant</span>
+                        <strong>{formatHours(row.plannedPlanningHours)} Std.</strong>
+                      </div>
+                      <div>
+                        <span>Gebucht (durch Stempelungen)</span>
+                        <strong>{formatHours(row.stampedHours)} Std.</strong>
+                      </div>
+                      <div>
+                        <span>Rest aus Planung</span>
+                        <strong data-state={row.remainingPlannedHours < 0 ? "over" : "ok"}>
+                          {row.plannedPlanningHours > 0 ? `${formatHours(row.remainingPlannedHours)} Std.` : "-"}
+                        </strong>
+                      </div>
+                      <div className={styles.projectTimeBudgetBar}>
+                        <span style={{ width: `${row.usagePercent}%` }}>
+                          <i>{row.usagePercent.toFixed(0)}%</i>
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               ) : (
                 <div className={styles.projectTimeBudget}>
                   <div>
@@ -20430,114 +30453,138 @@ export function DashboardPage() {
               )}
             </article>
 
-            <article className={styles.projectMetricCard}>
-              <h2>Restlaufzeit bis Projektende</h2>
-              <div className={styles.projectTimeBudget}>
-                <div>
-                  <span>Seit Anlage</span>
-                  <strong>{projectCreatedDate ? `${projectDaysSinceCreated} Tg.` : "-"}</strong>
-                </div>
-                <div>
-                  <span>
-                    {projectDaysUntilStart > 0 ? "Bis Projektstart" : "Seit Projektstart"}
-                  </span>
-                  <strong>
-                    {projectDaysUntilStart > 0 ? projectDaysUntilStart : projectRuntimeElapsedDays} Tg.
-                  </strong>
-                </div>
-                <div>
-                  <span>{isProjectEndPhase ? "Endphase: Rest" : "Bis Endphase"}</span>
-                  <strong>
-                    {isProjectEndPhase
-                      ? `${projectRuntimeRemainingDays} Tg.`
-                      : projectDaysUntilEndPhase > 0
-                        ? `${projectDaysUntilEndPhase} Tg.`
-                        : "-"}
-                  </strong>
-                </div>
-                <div>
-                  <span>Rest bis Projektende</span>
-                  <strong>{projectRuntimeRemainingDays} Tg.</strong>
-                </div>
-                {projectTimelineStartDate && projectEndDate && projectTimelineTotalMs > 0 && (
-                  <div
-                    className={styles.projectRuntimeTimeline}
-                    title={`${projectRuntimeUsagePercent.toFixed(0)}% verstrichen, ${projectRuntimeRemainingPercent.toFixed(0)}% Restlaufzeit`}
-                  >
-                    <div className={styles.projectRuntimeTimelineTrack}>
-                      <span
-                        className={styles.projectRuntimeTimelineFill}
-                        style={{ width: `${projectTimelineTodayPercent}%` }}
-                      />
-                      {showProjectCreatedMarker && (
+            {isSelectedProjectRecurring ? (
+              <article className={styles.projectMetricCard}>
+                <h2>Restlaufzeit bis Projektende</h2>
+                <div className={styles.projectTimeBudget}>
+                  <div>
+                    <span>Seit Anlage</span>
+                    <strong>{projectCreatedDate ? `${projectDaysSinceCreated} Tg.` : "-"}</strong>
+                  </div>
+                  <div>
+                    <span>
+                      {projectDaysUntilStart > 0 ? "Bis Projektstart" : "Seit Projektstart"}
+                    </span>
+                    <strong>
+                      {projectDaysUntilStart > 0 ? projectDaysUntilStart : projectRuntimeElapsedDays} Tg.
+                    </strong>
+                  </div>
+                  <div>
+                    <span>{isProjectEndPhase ? "Endphase: Rest" : "Bis Endphase"}</span>
+                    <strong>
+                      {isProjectEndPhase
+                        ? `${projectRuntimeRemainingDays} Tg.`
+                        : projectDaysUntilEndPhase > 0
+                          ? `${projectDaysUntilEndPhase} Tg.`
+                          : "-"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Rest bis Projektende</span>
+                    <strong>{projectRuntimeRemainingDays} Tg.</strong>
+                  </div>
+                  {projectTimelineStartDate && projectEndDate && projectTimelineTotalMs > 0 && (
+                    <div
+                      className={styles.projectRuntimeTimeline}
+                      title={`${projectRuntimeUsagePercent.toFixed(0)}% verstrichen, ${projectRuntimeRemainingPercent.toFixed(0)}% Restlaufzeit`}
+                    >
+                      <div className={styles.projectRuntimeTimelineTrack}>
                         <span
-                          className={styles.projectRuntimeMarker}
-                          style={{ left: `${projectCreatedMarkerPercent}%` }}
-                          title="Anlage"
+                          className={styles.projectRuntimeTimelineFill}
+                          style={{ width: `${projectTimelineTodayPercent}%` }}
                         />
-                      )}
-                      {projectStartDate && (
+                        {showProjectCreatedMarker && (
+                          <span
+                            className={styles.projectRuntimeMarker}
+                            style={{ left: `${projectCreatedMarkerPercent}%` }}
+                            title="Anlage"
+                          />
+                        )}
+                        {projectStartDate && (
+                          <span
+                            className={styles.projectRuntimeMarker}
+                            style={{ left: `${projectStartMarkerPercent}%` }}
+                            title="Projektstart"
+                          />
+                        )}
+                        {projectEndPhaseStartDate && (
+                          <span
+                            className={styles.projectRuntimeMarker}
+                            data-state={isProjectEndPhase ? "active" : undefined}
+                            style={{ left: `${projectEndPhaseMarkerPercent}%` }}
+                            title="Endphase"
+                          />
+                        )}
+                        <span className={styles.projectRuntimeMarker} style={{ left: "100%" }} title="Projektende" />
+                      </div>
+                      <div className={styles.projectRuntimeLegend}>
+                        <i style={{ left: "15%" }} />
+                        <i style={{ left: "86%" }} />
+                        {showProjectCreatedMarker && (
+                          <span
+                            data-edge="start"
+                            data-tooltip="Anlage ist das Erstellungsdatum des Projekts."
+                            style={{ left: `${projectCreatedMarkerPercent}%` }}
+                            tabIndex={0}
+                          >
+                            <em>Anlage</em>
+                            <strong>{formatRuntimeMarkerDate(projectCreatedDate)}</strong>
+                          </span>
+                        )}
                         <span
-                          className={styles.projectRuntimeMarker}
+                          data-tooltip="Projektstart ist der geplante Beginn der Leistung."
                           style={{ left: `${projectStartMarkerPercent}%` }}
-                          title="Projektstart"
-                        />
-                      )}
-                      {projectEndPhaseStartDate && (
-                        <span
-                          className={styles.projectRuntimeMarker}
-                          data-state={isProjectEndPhase ? "active" : undefined}
-                          style={{ left: `${projectEndPhaseMarkerPercent}%` }}
-                          title="Endphase"
-                        />
-                      )}
-                      <span className={styles.projectRuntimeMarker} style={{ left: "100%" }} title="Projektende" />
-                    </div>
-                    <div className={styles.projectRuntimeLegend}>
-                      <i style={{ left: "15%" }} />
-                      <i style={{ left: "86%" }} />
-                      {showProjectCreatedMarker && (
-                        <span
-                          data-edge="start"
-                          data-tooltip="Anlage ist das Erstellungsdatum des Projekts."
-                          style={{ left: `${projectCreatedMarkerPercent}%` }}
                           tabIndex={0}
                         >
-                          <em>Anlage</em>
-                          <strong>{formatRuntimeMarkerDate(projectCreatedDate)}</strong>
+                          <em>Start</em>
+                          <strong>{formatRuntimeMarkerDate(projectStartDate)}</strong>
                         </span>
-                      )}
-                      <span
-                        data-tooltip="Projektstart ist der geplante Beginn der Leistung."
-                        style={{ left: `${projectStartMarkerPercent}%` }}
-                        tabIndex={0}
-                      >
-                        <em>Start</em>
-                        <strong>{formatRuntimeMarkerDate(projectStartDate)}</strong>
-                      </span>
-                      <span
-                        data-state={isProjectEndPhase ? "active" : undefined}
-                        data-tooltip="Die Endphase beginnt acht Wochen vor dem Projektende."
-                        style={{ left: `${projectEndPhaseMarkerPercent}%` }}
-                        tabIndex={0}
-                      >
-                        <em>Endphase</em>
-                        <strong>{formatRuntimeMarkerDate(projectEndPhaseStartDate)}</strong>
-                      </span>
-                      <span
-                        data-edge="end"
-                        data-tooltip="Projektende ist das hinterlegte Laufzeitende des Projekts."
-                        style={{ left: `${projectEndMarkerPercent}%` }}
-                        tabIndex={0}
-                      >
-                        <em>Ende</em>
-                        <strong>{formatRuntimeMarkerDate(projectEndDate)}</strong>
-                      </span>
+                        <span
+                          data-state={isProjectEndPhase ? "active" : undefined}
+                          data-tooltip="Die Endphase beginnt acht Wochen vor dem Projektende."
+                          style={{ left: `${projectEndPhaseMarkerPercent}%` }}
+                          tabIndex={0}
+                        >
+                          <em>Endphase</em>
+                          <strong>{formatRuntimeMarkerDate(projectEndPhaseStartDate)}</strong>
+                        </span>
+                        <span
+                          data-edge="end"
+                          data-tooltip="Projektende ist das hinterlegte Laufzeitende des Projekts."
+                          style={{ left: `${projectEndMarkerPercent}%` }}
+                          tabIndex={0}
+                        >
+                          <em>Ende</em>
+                          <strong>{formatRuntimeMarkerDate(projectEndDate)}</strong>
+                        </span>
+                      </div>
                     </div>
+                  )}
+                </div>
+              </article>
+            ) : (
+              <article className={styles.projectMetricCard}>
+                <h2>Ausführungsplanung</h2>
+                <div className={styles.projectTimeBudget}>
+                  <div>
+                    <span>Seit Anlage</span>
+                    <strong>{projectCreatedDate ? `${projectDaysSinceCreated} Tg.` : "-"}</strong>
                   </div>
-                )}
-              </div>
-            </article>
+                  <div>
+                    <span>Ausführungsmonat</span>
+                    <strong>{singleProjectExecutionMonthLabel}</strong>
+                  </div>
+                  <div>
+                    <span>Nächster Termin</span>
+                    <strong>{singleProjectNextPlanningDate ? formatRuntimeMarkerDate(singleProjectNextPlanningDate) : "-"}</strong>
+                  </div>
+                  <div>
+                    <span>Planungsstand</span>
+                    <strong>{singleProjectPlanningStatusLabel}</strong>
+                  </div>
+                </div>
+              </article>
+            )}
 
             <article className={styles.customerInfoCard}>
               <h2>Projektdaten</h2>
@@ -20553,8 +30600,8 @@ export function DashboardPage() {
                 <dt>Projekttyp</dt>
                 <dd>{selectedProjectFile.projectType || "Projekt OK solutions"}</dd>
                 <dt>Projektart</dt>
-                <dd>{selectedProjectFile.projectKind || "einmaliges Projekt"}</dd>
-                {selectedProjectFile.projectKind === "Dauerläufer-Projekt" && (
+                <dd>{normalizeProjectKindValue(selectedProjectFile.projectKind)}</dd>
+                {isRecurringProjectKindValue(selectedProjectFile.projectKind) && (
                   <>
                     <dt>Projektstart</dt>
                     <dd>{formatProjectDate(selectedProjectFile.projectRuntimeFrom)}</dd>
@@ -20586,11 +30633,22 @@ export function DashboardPage() {
                 <dt>Quelle</dt>
                 <dd>{selectedProjectFile.source || "-"}</dd>
                 <dt>Projektvolumen</dt>
-                <dd>{selectedProjectFile.volume ? `${selectedProjectFile.volume} €` : "0,00 €"}</dd>
+                <dd>{formatMoney(parseMoneyInput(selectedProjectFile.volume))}</dd>
                 <dt>Projektzeitkontingent</dt>
                 <dd>{projectBudgetHours > 0 ? `${formatHours(projectBudgetHours)} Std.` : "-"}</dd>
-                <dt>Projektbeteiligte</dt>
-                <dd>{selectedProjectFile.participants || "-"}</dd>
+                <dt>Projektverantwortlicher</dt>
+                <dd>{selectedProjectFile.responsibleName || "-"}</dd>
+                <dt>Vertretung</dt>
+                <dd>
+                  {selectedProjectFile.deputyName
+                    ? [
+                        selectedProjectFile.deputyName,
+                        selectedProjectFile.deputyFrom || selectedProjectFile.deputyUntil
+                          ? `${formatProjectDate(selectedProjectFile.deputyFrom || "") || "offen"} bis ${formatProjectDate(selectedProjectFile.deputyUntil || "") || "offen"}`
+                          : "",
+                      ].filter(Boolean).join(" | ")
+                    : "-"}
+                </dd>
                 <dt>Erstellungsdatum</dt>
                 <dd>{selectedProjectFile.createdAt || "-"}</dd>
               </dl>
@@ -20623,16 +30681,94 @@ export function DashboardPage() {
         </div>
 
         {renderOfferModal()}
+        {renderLostOfferModal()}
         {renderInvoiceSourcePicker()}
         {renderInvoiceModal()}
       </section>
     );
   }
 
+  function renderLostOfferModal() {
+    if (!lostOfferDraft) return null;
+    const offer = offers.find((item) => item.id === lostOfferDraft.offerId);
+    if (!offer) return null;
+    const lostReasonOptions = [
+      "Preis",
+      "Kunde wünscht nicht",
+      "Wettbewerber",
+      "Leistung entfällt",
+      "Zeitpunkt passt nicht",
+      "Sonstiges",
+    ];
+
+    return (
+      <div className={styles.modalOverlay}>
+        <div className={`${styles.standardModal} ${styles.catalogModal}`}>
+          <div className={styles.standardModalHeader}>
+            <div>
+              <h2>Angebot verloren markieren</h2>
+              <p>{offer.offerNumber} | {offer.projectTitle || selectedProjectFile?.title || "Projekt"}</p>
+            </div>
+            <button type="button" className={styles.iconButton} onClick={() => setLostOfferDraft(null)}>&times;</button>
+          </div>
+          <div className={styles.standardModalBody}>
+            {lostOfferDraft.error ? <p className={styles.formError}>{lostOfferDraft.error}</p> : null}
+            <div className={styles.customerDocumentEmpty}>
+              <strong>Dieses Angebot wird aus Planung und Forecast entfernt.</strong>
+              <p>Es bleibt als Dokument und in der Angebotshistorie sichtbar, damit die Auswertung nachvollziehbar bleibt.</p>
+            </div>
+            <div className={styles.formGrid}>
+              <label>
+                Grund
+                <select
+                  value={lostOfferDraft.reason}
+                  onChange={(event) =>
+                    setLostOfferDraft((current) => current ? { ...current, reason: event.target.value, error: "" } : current)
+                  }
+                >
+                    <option value="">Grund auswählen</option>
+                  {lostReasonOptions.map((reason) => (
+                    <option key={reason} value={reason}>{reason}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Kommentar
+                <textarea
+                  rows={4}
+                  value={lostOfferDraft.note}
+                  onChange={(event) =>
+                    setLostOfferDraft((current) => current ? { ...current, note: event.target.value } : current)
+                  }
+                  placeholder="Pflichtkommentar für Historie und Auswertung"
+                />
+              </label>
+            </div>
+          </div>
+          <div className={styles.standardModalFooter}>
+            <div className={styles.modalActions}>
+              <button type="button" className={styles.secondaryButton} onClick={() => setLostOfferDraft(null)}>
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                className={styles.dangerButton}
+                disabled={lostOfferDraft.isSaving}
+                onClick={() => void saveLostOfferStatus()}
+              >
+                {lostOfferDraft.isSaving ? "Speichern..." : "Angebot verloren"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   function renderInvoiceSourcePicker() {
     if (!isInvoiceSourcePickerOpen || !selectedProjectFile) return null;
     const projectOffers = offers.filter(
-      (offer) => offer.projectId === selectedProjectFile.id && offer.status !== "Entwurf"
+      (offer) => offer.projectId === selectedProjectFile.id && isActiveFinalOffer(offer)
     );
 
     return (
@@ -20648,7 +30784,7 @@ export function DashboardPage() {
           <div className={`${styles.standardModalBody} ${styles.offerModalBody}`}>
             <div className={styles.customerDocumentEmpty}>
               <strong>Aus Angebot fakturieren?</strong>
-              <p>Es gibt Angebote in diesem Projekt. Wähle ein Angebot aus oder erstelle bewusst eine freie Rechnung.</p>
+                <p>Es gibt Angebote in diesem Projekt. Wähle ein Angebot aus oder erstelle bewusst eine freie Rechnung.</p>
             </div>
             <table className={styles.projectTimeTable}>
               <thead>
@@ -20669,7 +30805,7 @@ export function DashboardPage() {
                     <td>{formatMoney(offer.grossTotal)}</td>
                     <td>
                       <button type="button" className={styles.timeEntryEditButton} onClick={() => openInvoiceFromOffer(offer)}>
-                        Übernehmen
+                    Übernehmen
                       </button>
                     </td>
                   </tr>
@@ -20753,7 +30889,7 @@ export function DashboardPage() {
                   </div>
                   <div className={styles.catalogFormGrid}>
                     <label>
-                      Geschäftspapier
+                    Geschäftspapier
                       <select
                         value={invoiceDraft.company}
                         onChange={(event) => setInvoiceDraft((current) => ({ ...current, company: event.target.value as OfferDraft["company"] }))}
@@ -20771,7 +30907,7 @@ export function DashboardPage() {
                       <input value={invoiceDraft.internalContactName} onChange={(event) => setInvoiceDraft((current) => ({ ...current, internalContactName: event.target.value }))} />
                     </label>
                     <label>
-                      Straße
+                    Straße
                       <input value={invoiceDraft.customerStreet} onChange={(event) => setInvoiceDraft((current) => ({ ...current, customerStreet: event.target.value }))} />
                     </label>
                     <label>
@@ -20792,8 +30928,34 @@ export function DashboardPage() {
                             ...current,
                             serviceDate: event.target.value,
                             plannedExecutionMonth: event.target.value.slice(0, 7),
+                            dueDate: getInvoiceDueDate(event.target.value, current.paymentTermDays),
                           }))
                         }
+                      />
+                    </label>
+                    <label>
+                      Zahlungsziel Tage
+                      <input
+                        type="number"
+                        min="0"
+                        max="365"
+                        value={invoiceDraft.paymentTermDays}
+                        onChange={(event) => {
+                          const paymentTermDays = Math.min(Math.max(Math.round(Number(event.target.value) || 0), 0), 365);
+                          setInvoiceDraft((current) => ({
+                            ...current,
+                            paymentTermDays,
+                            dueDate: getInvoiceDueDate(current.serviceDate, paymentTermDays),
+                          }));
+                        }}
+                      />
+                    </label>
+                    <label>
+                      Fällig am
+                      <input
+                        type="date"
+                        value={invoiceDraft.dueDate}
+                        onChange={(event) => setInvoiceDraft((current) => ({ ...current, dueDate: event.target.value }))}
                       />
                     </label>
                     <label className={styles.fullWidth}>
@@ -20821,7 +30983,7 @@ export function DashboardPage() {
                     }`}
                   >
                     <div className={styles.offerInternalHeader}>
-                      <strong>Offene Zeiteinträge</strong>
+                    <strong>Offene Zeiteinträge</strong>
                       <div className={styles.tableActionGroup}>
                         <button
                           type="button"
@@ -20834,7 +30996,7 @@ export function DashboardPage() {
                       </div>
                     </div>
                     {unbilledInvoiceStampEntries.length === 0 ? (
-                      <p>Keine offenen produktiven Zeiteinträge für dieses Projekt.</p>
+                    <p>Keine offenen produktiven Zeiteinträge für dieses Projekt.</p>
                     ) : (
                       <>
                         <small>
@@ -20847,11 +31009,11 @@ export function DashboardPage() {
                         </small>
                         {hasAllInvoiceStampEntriesLinked ? (
                           <strong className={styles.invoiceStampLinkNotice} data-state="complete">
-                            Alle offenen Stempelungen sind mit dieser Rechnung verknüpft.
+                    Alle offenen Stempelungen sind mit dieser Rechnung verknüpft.
                           </strong>
                         ) : hasUnlinkedInvoiceStampEntries ? (
                           <strong className={styles.invoiceStampLinkNotice} data-state="warning">
-                            Bitte Stempelungen mit der Rechnung verknüpfen oder bewusst ohne Verknüpfung abrechnen.
+                    Bitte Stempelungen mit der Rechnung verknüpfen oder bewusst ohne Verknüpfung abrechnen.
                           </strong>
                         ) : null}
                         <div className={styles.projectTableScroll}>
@@ -21005,7 +31167,7 @@ export function DashboardPage() {
                                             className={styles.iconButton}
                                             onClick={() => removeInvoiceLineLabor(index, labor.id)}
                                           >
-                                            ?
+                                            -
                                           </button>
                                         </div>
                                       ))}
@@ -21097,7 +31259,7 @@ export function DashboardPage() {
                       {isGeneratingInvoicePreview ? "Aktualisiere..." : "Vorschau aktualisieren"}
                     </button>
                     {invoicePreviewDataUrl ? (
-                      <button type="button" className={styles.secondaryButton} onClick={() => window.open(invoicePreviewDataUrl, "_blank")}>Groß öffnen</button>
+            <button type="button" className={styles.secondaryButton} onClick={() => window.open(invoicePreviewDataUrl, "_blank")}>Groß öffnen</button>
                     ) : null}
                   </div>
                 </div>
@@ -21107,7 +31269,7 @@ export function DashboardPage() {
                   <div className={styles.offerPreviewEmpty}>
                     <div>
                       <strong>Noch keine Vorschau.</strong>
-                      <p>Aktualisiere die Vorschau, um die Rechnung auf Geschäftspapier zu prüfen.</p>
+              <p>Aktualisiere die Vorschau, um die Rechnung auf Geschäftspapier zu prüfen.</p>
                     </div>
                   </div>
                 )}
@@ -21293,7 +31455,7 @@ export function DashboardPage() {
               type="button"
               onClick={closeOfferModal}
             >
-              ?
+              &times;
             </button>
           </div>
 
@@ -21506,7 +31668,7 @@ export function DashboardPage() {
                       data-important
                       onClick={() => setIsOfferExecutionEndMonthPickerOpen((current) => !current)}
                     >
-                      {selectedOfferEndMonthLabel || "Monat und Jahr auswaehlen"}
+                      {selectedOfferEndMonthLabel || "Monat und Jahr auswählen"}
                     </button>
                     {isOfferExecutionEndMonthPickerOpen ? (
                       <div className={styles.monthPickerPopover}>
@@ -21522,7 +31684,7 @@ export function DashboardPage() {
                           <button
                             type="button"
                             onClick={() => setOfferExecutionEndMonthPickerYear((year) => year + 1)}
-                            aria-label="Naechstes Jahr"
+                            aria-label="Nächstes Jahr"
                           >
                             ›
                           </button>
@@ -21588,7 +31750,7 @@ export function DashboardPage() {
                         Aufschlag{" "}
                         <span
                           className={styles.offerMarginHelp}
-                          title="Die Margenorientierung nutzt den durchschnittlichen LK-Satz der Niederlassung als kalkulatorische Grundlage. Sie zeigt eine Angebotsorientierung, nicht die echte Marge. Die tatsächliche Marge entsteht später im Soll/Ist anhand der wirklich eingesetzten Mitarbeiter und gestempelten Zeiten."
+                           title="Die Margenorientierung nutzt den durchschnittlichen LK-Satz der Niederlassung als kalkulatorische Grundlage. Sie zeigt eine Angebotsorientierung, nicht die echte Marge. Die tatsächliche Marge entsteht später im Soll/Ist anhand der wirklich eingesetzten Mitarbeiter und gestempelten Zeiten."
                         >
                           ?
                         </span>
@@ -21679,7 +31841,7 @@ export function DashboardPage() {
                                   Margenorientierung{" "}
                                   <span
                                     className={styles.fieldHelpIcon}
-                                    title="Die Margenorientierung nutzt den durchschnittlichen LK-Satz der Niederlassung als kalkulatorische Grundlage. Sie zeigt eine Angebotsorientierung, nicht die echte Marge. Die tatsächliche Marge entsteht später im Soll/Ist anhand der wirklich eingesetzten Mitarbeiter und gestempelten Zeiten."
+                                     title="Die Margenorientierung nutzt den durchschnittlichen LK-Satz der Niederlassung als kalkulatorische Grundlage. Sie zeigt eine Angebotsorientierung, nicht die echte Marge. Die tatsächliche Marge entsteht später im Soll/Ist anhand der wirklich eingesetzten Mitarbeiter und gestempelten Zeiten."
                                   >
                                     ?
                                   </span>
@@ -22270,7 +32432,7 @@ export function DashboardPage() {
                   <div>
                     <strong>{disgTypeDetails[dimension].title}</strong>
                     <span>
-                      {result.scores[dimension].points} Punkte · ? {formatAssessmentScore(result.scores[dimension].average)}
+                      {result.scores[dimension].points} Punkte · Ø {formatAssessmentScore(result.scores[dimension].average)}
                     </span>
                   </div>
                   <div className={styles.assessmentBarGroup}>
@@ -22465,8 +32627,8 @@ export function DashboardPage() {
                   <div>
                     <strong>{item.label}</strong>
                     <span>
-                      Selbst {formatAssessmentScore(item.selfAverage)} · Fremd{" "}
-                      {formatAssessmentScore(item.managerAverage)}
+                        Selbst {formatAssessmentScore(item.selfAverage ?? null)}
+                        {isManagerView ? ` ? Fremd ${formatAssessmentScore(item.managerAverage ?? null)}` : ""}
                     </span>
                   </div>
                   <div className={styles.assessmentBarGroup}>
@@ -22543,8 +32705,8 @@ export function DashboardPage() {
                     <div>
                       <strong>{item.completedAt ? formatInstantDateTime(item.completedAt) : "Abgeschlossener Fall"}</strong>
                       <span>
-                        Selbst Ø {formatAssessmentScore(item.selfAverage ?? null)}
-                        {isManagerView ? ` · Fremd Ø ${formatAssessmentScore(item.managerAverage ?? null)}` : ""}
+                        Selbst {formatAssessmentScore(item.selfAverage ?? null)}
+                        {isManagerView ? ` ? Fremd ${formatAssessmentScore(item.managerAverage ?? null)}` : ""}
                       </span>
                     </div>
                     {isManagerView ? (
@@ -22655,7 +32817,7 @@ export function DashboardPage() {
           <section className={styles.personalPanel}>
             <div className={styles.personalPanelHeader}>
               <div>
-                <p className={styles.eyebrow}>Gesprächsergebnis</p>
+              <p className={styles.eyebrow}>Gesprächsergebnis</p>
                 <h2>Interne Zusammenfassung</h2>
               </div>
               <button
@@ -22767,10 +32929,40 @@ export function DashboardPage() {
     const pendingAbsenceGroups = personalAbsenceGroups.filter(([absence]) =>
       ["wartet_vertreter", "wartet_geschaeftsfuehrung"].includes(absence.status)
     );
-    const personalStampEntries = stampEntries.filter(
+    const personalStampBaseEntries = stampEntries.filter(
       (entry) => !entry.deletedAt && (entry.userId === currentUser?.id || entry.employee === currentUser?.name)
     );
-    const monthStampEntries = personalStampEntries.filter((entry) => entry.date.startsWith(currentMonthKey));
+    const personalStampNow = new Date(timerNow);
+    const personalStampPeriodStart =
+      personalStampPeriod === "day"
+        ? personalStampNow
+        : personalStampPeriod === "month"
+          ? new Date(personalStampNow.getFullYear(), personalStampNow.getMonth(), 1)
+          : personalStampPeriod === "year"
+            ? new Date(personalStampNow.getFullYear(), 0, 1)
+            : personalStampFrom
+              ? parseDateKeyValue(personalStampFrom) ?? personalStampNow
+              : personalStampNow;
+    const personalStampPeriodEnd =
+      personalStampPeriod === "day"
+        ? personalStampNow
+        : personalStampPeriod === "month"
+          ? new Date(personalStampNow.getFullYear(), personalStampNow.getMonth() + 1, 0)
+          : personalStampPeriod === "year"
+            ? new Date(personalStampNow.getFullYear(), 11, 31)
+            : personalStampTo
+              ? parseDateKeyValue(personalStampTo) ?? personalStampNow
+              : personalStampNow;
+    const personalStampPeriodEntries = personalStampBaseEntries.filter((entry) => {
+      const entryDate = parseDateKeyValue(entry.date);
+      return entryDate ? isDateInRange(entryDate, personalStampPeriodStart, personalStampPeriodEnd) : false;
+    });
+    const personalStampEntries = filterStampEntriesForSearch(
+      personalStampPeriodEntries,
+      personalStampProjectFilter,
+      personalStampSearch
+    );
+    const monthStampEntries = personalStampBaseEntries.filter((entry) => entry.date.startsWith(currentMonthKey));
     const personalTimeMonthDays = Array.from(
       { length: new Date(personalTimeYear, personalTimeMonth + 1, 0).getDate() },
       (_, index) => new Date(personalTimeYear, personalTimeMonth, index + 1, 12)
@@ -22779,7 +32971,7 @@ export function DashboardPage() {
       (sum, entry) => sum + Math.max(0, entry.durationMs - entry.pauseMs),
       0
     );
-    const yearProductiveMs = personalStampEntries
+    const yearProductiveMs = personalStampBaseEntries
       .filter((entry) => entry.date.startsWith(String(currentYear)))
       .reduce((sum, entry) => sum + Math.max(0, entry.durationMs - entry.pauseMs), 0);
     const getPersonalTargetHoursForDate = (dateKey: string) => {
@@ -22828,7 +33020,7 @@ export function DashboardPage() {
         endTime: dayEntries.at(-1)?.endTime ?? "",
       };
     });
-    const firstPersonalStampDateKey = personalStampEntries
+    const firstPersonalStampDateKey = personalStampBaseEntries
       .map((entry) => entry.date)
       .filter(Boolean)
       .sort((first, second) => first.localeCompare(second))[0];
@@ -22854,7 +33046,7 @@ export function DashboardPage() {
     }
     const accountStartDateKey = formatDateKey(accountStartDate);
     const accountEndDateKey = formatDateKey(accountEndDate);
-    const cumulativeProductiveMs = personalStampEntries
+    const cumulativeProductiveMs = personalStampBaseEntries
       .filter((entry) => entry.date >= accountStartDateKey && entry.date <= accountEndDateKey)
       .reduce((sum, entry) => sum + Math.max(0, entry.durationMs - entry.pauseMs), 0);
     const cumulativeTargetHours = accountDateKeys.reduce(
@@ -23189,7 +33381,7 @@ export function DashboardPage() {
                         {holiday ? <small>{holiday.name}</small> : null}
                       </td>
                       <td>{row.startTime || "-"}</td>
-                      <td>→</td>
+                      <td>-</td>
                       <td>{row.endTime || "-"}</td>
                       <td>
                         {row.productiveMs > 0 ? (
@@ -23261,6 +33453,76 @@ export function DashboardPage() {
                 Zeiterfassung öffnen
               </button>
             </div>
+            <div className={styles.employeeTimeFilters}>
+              <div className={styles.segmentedControl}>
+                {[
+                  ["day", "Tag"],
+                  ["month", "Monat"],
+                  ["year", "Jahr"],
+                  ["custom", "Zeitraum"],
+                ].map(([period, label]) => (
+                  <button
+                    key={period}
+                    type="button"
+                    data-active={personalStampPeriod === period}
+                    onClick={() => setPersonalStampPeriod(period as EmployeeTimePeriod)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {personalStampPeriod === "custom" && (
+                <div className={styles.employeeTimeRange}>
+                  <label>
+                    Von
+                    <input
+                      type="date"
+                      value={personalStampFrom}
+                      onChange={(event) => setPersonalStampFrom(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Bis
+                    <input
+                      type="date"
+                      value={personalStampTo}
+                      onChange={(event) => setPersonalStampTo(event.target.value)}
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
+            <div className={styles.stampSearchBar}>
+              <label>
+                Projekt / Kunde
+                <input
+                  type="search"
+                  value={personalStampProjectFilter}
+                  onChange={(event) => setPersonalStampProjectFilter(event.target.value)}
+                  placeholder="Projekt, Kunde oder Bereich suchen..."
+                />
+              </label>
+              <label>
+                Volltextsuche
+                <input
+                  type="search"
+                  value={personalStampSearch}
+                  onChange={(event) => setPersonalStampSearch(event.target.value)}
+                  placeholder="Kommentar, Stempelung oder Projekt suchen..."
+                />
+              </label>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => {
+                  setPersonalStampProjectFilter("");
+                  setPersonalStampSearch("");
+                }}
+              >
+                Zurücksetzen
+              </button>
+              <span className={styles.stampSearchResult}>{personalStampEntries.length} Treffer</span>
+            </div>
             <table className={styles.personalTable}>
               <thead>
                 <tr>
@@ -23331,7 +33593,7 @@ export function DashboardPage() {
                 <small>Interne oder nicht projektbezogene Stempelungen</small>
               </article>
               <article>
-                <span>? Stunden pro Stempeltag</span>
+                <span>Ø Stunden pro Stempeltag</span>
                 <strong>{formatHours(averageDailyHours)} Std.</strong>
                 <small>Nur Tage mit erfasster Arbeitszeit</small>
               </article>
@@ -23850,7 +34112,10 @@ export function DashboardPage() {
     return (
       <section className={styles.planningDayPanel}>
         <div className={styles.planningDayHeader}>
-          <div>
+          <div className={styles.planningDayTitleBlock}>
+            <button type="button" className={styles.secondaryButton} onClick={options.onClose}>
+              {options.closeLabel}
+            </button>
             <p className={styles.eyebrow}>Tagesplanung</p>
             <h1>
               {selectedPlanningDate.toLocaleDateString(APP_LOCALE, {
@@ -23870,6 +34135,24 @@ export function DashboardPage() {
             </p>
           </div>
           <div className={styles.planningDayActions}>
+            <div className={styles.planningDayPrimaryActions}>
+              <button
+                type="button"
+                className={styles.requestButton}
+                onClick={() =>
+                  openPlanningEntryModal({
+                    date: selectedPlanningDateKey,
+                    groupName: selectedPlanningGroup,
+                    approvalStatus: "requested",
+                    board:
+                      selectedPlanningGroup === "VZK" || selectedPlanningGroup === "TZK"
+                        ? "OK immocare"
+                        : "OK solutions",
+                  })
+                }
+              >
+                + Terminwunsch
+              </button>
             <button
               type="button"
               className={styles.primaryButton}
@@ -23886,26 +34169,7 @@ export function DashboardPage() {
             >
               + Planung
             </button>
-            <button
-              type="button"
-              className={styles.requestButton}
-              onClick={() =>
-                openPlanningEntryModal({
-                  date: selectedPlanningDateKey,
-                  groupName: selectedPlanningGroup,
-                  approvalStatus: "requested",
-                  board:
-                    selectedPlanningGroup === "VZK" || selectedPlanningGroup === "TZK"
-                      ? "OK immocare"
-                      : "OK solutions",
-                })
-              }
-            >
-              + Terminwunsch
-            </button>
-            <button type="button" className={styles.secondaryButton} onClick={options.onClose}>
-              {options.closeLabel}
-            </button>
+            </div>
             <div className={styles.planningGroupSwitch}>
               {allDetailGroups.map((group) => (
                 <button
@@ -23934,7 +34198,7 @@ export function DashboardPage() {
                 <span
                   key={hour}
                   style={{
-                    gridColumn: `${index * 4 + 1} / span 4`,
+                    gridColumn: `${Math.min(index * 4 + 1, planningSlotColumnCount)} / span 1`,
                   }}
                 >
                   {hour}
@@ -23944,7 +34208,7 @@ export function DashboardPage() {
 
             {selectedPlanningGroupEmployees.length === 0 && (
               <div className={styles.planningEmptyRow}>
-                FÃ¼r diese Planungsgruppe ist noch kein Mitarbeiter hinterlegt.
+                Für diese Planungsgruppe ist noch kein Mitarbeiter hinterlegt.
               </div>
             )}
 
@@ -23984,13 +34248,14 @@ export function DashboardPage() {
                     </em>
                     {employeeAbsence ? (
                       <small>
-                        {absenceLabel(employeeAbsence.type)} Â· {absenceDayPartLabel(employeeAbsence.dayPart)}
+                        {absenceLabel(employeeAbsence.type)} · {absenceDayPartLabel(employeeAbsence.dayPart)}
                       </small>
                     ) : null}
                   </div>
                   <div
                     className={styles.planningTimelineLane}
                     data-muted={selectedPlanningIsWeekend || Boolean(selectedPlanningHoliday)}
+                    onClick={(event) => openPlanningSlotAction(event, employeeUser)}
                     style={{
                       gridTemplateColumns: `repeat(${planningSlotColumnCount}, minmax(24px, 1fr))`,
                       ...getPlanningWindowStyle(employeeUser),
@@ -24017,26 +34282,42 @@ export function DashboardPage() {
                         Pause
                       </span>
                     )}
-                    {assignments.map((assignment) => (
-                      <button
-                        type="button"
-                        key={`${employee}-${assignment.label}-${assignment.start}`}
-                        className={styles.planningTimelineBlock}
-                        data-pause={assignment.label === "Pause"}
-                        data-source={assignment.source}
-                        data-approval={assignment.approvalStatus}
-                        data-conflict={assignment.hasConflict}
-                        onClick={() => {
-                          const entry = planningEntries.find((item) => item.id === assignment.id);
-                          if (entry) openEditPlanningEntryModal(entry);
-                        }}
-                        style={{
-                          gridColumn: `${assignment.startColumn} / ${assignment.endColumn}`,
-                        }}
-                      >
-                        {assignment.label}
-                      </button>
-                    ))}
+                    {assignments.map((assignment) => {
+                      const stampProgress = getPlanningAssignmentStampProgress(assignment.id, employeeUser);
+
+                      return (
+                        <button
+                          type="button"
+                          key={`${employee}-${assignment.label}-${assignment.start}`}
+                          className={styles.planningTimelineBlock}
+                          data-pause={assignment.label === "Pause"}
+                          data-source={assignment.source}
+                          data-approval={assignment.approvalStatus}
+                          data-conflict={assignment.hasConflict}
+                          data-stamped={Boolean(stampProgress)}
+                          data-stamp-active={stampProgress?.active ?? false}
+                          data-stamp-completed={stampProgress?.completed ?? false}
+                          data-stamp-interrupted={stampProgress?.interrupted ?? false}
+                          data-stamp-paused={stampProgress?.paused ?? false}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            const entry = planningEntries.find((item) => item.id === assignment.id);
+                            if (entry) openEditPlanningEntryModal(entry);
+                          }}
+                          style={{
+                            gridColumn: `${assignment.startColumn} / ${assignment.endColumn}`,
+                            ...stampProgress?.style,
+                          }}
+                        >
+                          <span className={styles.planningTimelineBlockLabel}>{assignment.label}</span>
+                          {stampProgress ? (
+                            <span className={styles.planningTimelineProgressLabel}>
+                              {stampProgress.label}
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -24135,7 +34416,14 @@ export function DashboardPage() {
         <section className={styles.planningBoardPage}>
           <section className={styles.planningDayPanel}>
             <div className={styles.planningDayHeader}>
-              <div>
+              <div className={styles.planningDayTitleBlock}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => setIsPlanningDayOpen(false)}
+                >
+                  Zurück zum Planungsboard
+                </button>
                 <p className={styles.eyebrow}>Tagesplanung</p>
                 <h1>
                   {selectedPlanningDate.toLocaleDateString(APP_LOCALE, {
@@ -24155,6 +34443,7 @@ export function DashboardPage() {
                 </p>
               </div>
               <div className={styles.planningDayActions}>
+                <div className={styles.planningDayPrimaryActions}>
                 <button
                   type="button"
                   className={styles.primaryButton}
@@ -24188,6 +34477,7 @@ export function DashboardPage() {
                 >
                   + Terminwunsch
                 </button>
+                </div>
                 <button
                   type="button"
                   className={styles.secondaryButton}
@@ -24223,7 +34513,7 @@ export function DashboardPage() {
                     <span
                       key={hour}
                       style={{
-                        gridColumn: `${index * 4 + 1} / span 4`,
+                        gridColumn: `${Math.min(index * 4 + 1, planningSlotColumnCount)} / span 1`,
                       }}
                     >
                       {hour}
@@ -24288,6 +34578,7 @@ export function DashboardPage() {
                       <div
                         className={styles.planningTimelineLane}
                         data-muted={selectedPlanningIsWeekend || Boolean(selectedPlanningHoliday)}
+                        onClick={(event) => openPlanningSlotAction(event, employeeUser)}
                         style={{
                           gridTemplateColumns: `repeat(${planningSlotColumnCount}, minmax(24px, 1fr))`,
                           ...getPlanningWindowStyle(employeeUser),
@@ -24314,26 +34605,42 @@ export function DashboardPage() {
                             Pause
                           </span>
                         )}
-                        {assignments.map((assignment) => (
-                          <button
-                            type="button"
-                            key={`${employee}-${assignment.label}-${assignment.start}`}
-                            className={styles.planningTimelineBlock}
-                            data-pause={assignment.label === "Pause"}
-                            data-source={assignment.source}
-                            data-approval={assignment.approvalStatus}
-                            data-conflict={assignment.hasConflict}
-                            onClick={() => {
-                              const entry = planningEntries.find((item) => item.id === assignment.id);
-                              if (entry) openEditPlanningEntryModal(entry);
-                            }}
-                            style={{
-                              gridColumn: `${assignment.startColumn} / ${assignment.endColumn}`,
-                            }}
-                          >
-                            {assignment.label}
-                          </button>
-                        ))}
+                        {assignments.map((assignment) => {
+                          const stampProgress = getPlanningAssignmentStampProgress(assignment.id, employeeUser);
+
+                          return (
+                            <button
+                              type="button"
+                              key={`${employee}-${assignment.label}-${assignment.start}`}
+                              className={styles.planningTimelineBlock}
+                              data-pause={assignment.label === "Pause"}
+                              data-source={assignment.source}
+                              data-approval={assignment.approvalStatus}
+                              data-conflict={assignment.hasConflict}
+                              data-stamped={Boolean(stampProgress)}
+                              data-stamp-active={stampProgress?.active ?? false}
+                              data-stamp-completed={stampProgress?.completed ?? false}
+                              data-stamp-interrupted={stampProgress?.interrupted ?? false}
+                              data-stamp-paused={stampProgress?.paused ?? false}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                const entry = planningEntries.find((item) => item.id === assignment.id);
+                                if (entry) openEditPlanningEntryModal(entry);
+                              }}
+                              style={{
+                                gridColumn: `${assignment.startColumn} / ${assignment.endColumn}`,
+                                ...stampProgress?.style,
+                              }}
+                            >
+                              <span className={styles.planningTimelineBlockLabel}>{assignment.label}</span>
+                              {stampProgress ? (
+                                <span className={styles.planningTimelineProgressLabel}>
+                                  {stampProgress.label}
+                                </span>
+                              ) : null}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   );
@@ -24352,20 +34659,27 @@ export function DashboardPage() {
             <p className={styles.eyebrow}>Planung</p>
             <h1>Planungsboard</h1>
             <p className={styles.subline}>
-              Ansicht ab heute für vier Wochen. Wochenenden sind ausgegraut, Feiertage werden
+              Ansicht ab Wochenbeginn für vier Wochen. Wochenenden sind ausgegraut, Feiertage werden
               markiert.
             </p>
           </div>
           <div className={styles.toplineActions}>
             <div className={styles.planningBoardDateNav} aria-label="Planungszeitraum">
-              <button type="button" onClick={() => shiftPlanningBoardStart(-28)}>
-                &lt; 4 Wochen
+              <button type="button" onClick={() => shiftPlanningBoardStart(-7)}>
+                &lt; 1 Woche
               </button>
-              <button type="button" onClick={() => setPlanningBoardStartDate(formatDateKey(new Date()))}>
+              <button
+                type="button"
+                onClick={() => {
+                  const todayKey = formatDateKey(new Date());
+                  setPlanningBoardStartDate(getWeekStartDateKey(todayKey));
+                  setSelectedPlanningDateKey(todayKey);
+                }}
+              >
                 Heute
               </button>
-              <button type="button" onClick={() => shiftPlanningBoardStart(28)}>
-                4 Wochen &gt;
+              <button type="button" onClick={() => shiftPlanningBoardStart(7)}>
+                1 Woche &gt;
               </button>
             </div>
             <div className={styles.segmentedControl}>
@@ -24387,14 +34701,14 @@ export function DashboardPage() {
             <button
               type="button"
               className={styles.primaryButton}
-              onClick={() => openPlanningEntryModal()}
+              onClick={() => openPlanningEntryModal({ requireManualAssignment: true })}
             >
               + Planung
             </button>
             <button
               type="button"
               className={styles.requestButton}
-              onClick={() => openPlanningEntryModal({ approvalStatus: "requested" })}
+              onClick={() => openPlanningEntryModal({ approvalStatus: "requested", requireManualAssignment: true })}
             >
               + Terminwunsch
             </button>
@@ -24973,16 +35287,21 @@ export function DashboardPage() {
             : employeeTimeTo
               ? new Date(employeeTimeTo)
               : now;
-    const employeeTimeEntries = stampEntries.filter((entry) => {
+    const employeeTimeBaseEntries = stampEntries.filter((entry) => {
       if (entry.deletedAt) return false;
       if (!employeeName || entry.employee !== employeeName) return false;
       const entryDate = parseDateKeyValue(entry.date);
       return entryDate ? isDateInRange(entryDate, employeePeriodStart, employeePeriodEnd) : false;
     });
-    const employeeProductiveMs = employeeTimeEntries
+    const employeeTimeEntries = filterStampEntriesForSearch(
+      employeeTimeBaseEntries,
+      employeeTimeProjectFilter,
+      employeeTimeSearch
+    );
+    const employeeProductiveMs = employeeTimeBaseEntries
       .filter((entry) => entry.mode === "project")
       .reduce((sum, entry) => sum + entry.durationMs, 0);
-    const employeeUnproductiveMs = employeeTimeEntries
+    const employeeUnproductiveMs = employeeTimeBaseEntries
       .filter((entry) => entry.mode === "unproductive")
       .reduce((sum, entry) => sum + entry.durationMs, 0);
     const employeeTotalTimeMs = employeeProductiveMs + employeeUnproductiveMs;
@@ -25120,6 +35439,15 @@ export function DashboardPage() {
                         />
                       </label>
                       <label>
+                        Personalnummer
+                        <input
+                          value={employeePersonalNumber}
+                          disabled={activeUser?.role !== "GESCHAEFTSFUEHRER"}
+                          onChange={(event) => setEmployeePersonalNumber(event.target.value)}
+                          placeholder="z. B. P-1001"
+                        />
+                      </label>
+                      <label>
                         Vorname
                         <input value={employeeFirstName} readOnly />
                       </label>
@@ -25217,7 +35545,7 @@ export function DashboardPage() {
                           >
                             Vorlage
                           </button>
-                          <span>HTML aus Outlook/HERO kann hier eingef?gt werden.</span>
+                          <span>HTML aus Outlook/HERO kann hier eingefügt werden.</span>
                         </div>
                         <textarea
                           rows={10}
@@ -25910,6 +36238,37 @@ export function DashboardPage() {
                       </div>
                     )}
                   </div>
+                  <div className={styles.stampSearchBar}>
+                    <label>
+                      Projekt / Kunde
+                      <input
+                        type="search"
+                        value={employeeTimeProjectFilter}
+                        onChange={(event) => setEmployeeTimeProjectFilter(event.target.value)}
+                        placeholder="Projekt, Kunde oder Bereich suchen..."
+                      />
+                    </label>
+                    <label>
+                      Volltextsuche
+                      <input
+                        type="search"
+                        value={employeeTimeSearch}
+                        onChange={(event) => setEmployeeTimeSearch(event.target.value)}
+                        placeholder="Kommentar, Stempelung oder Projekt suchen..."
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => {
+                        setEmployeeTimeProjectFilter("");
+                        setEmployeeTimeSearch("");
+                      }}
+                    >
+                      Zurücksetzen
+                    </button>
+                    <span className={styles.stampSearchResult}>{employeeTimeEntries.length} Treffer</span>
+                  </div>
                   <div className={styles.employeeKpiGrid}>
                     <article>
                       <span>Ist Gesamt</span>
@@ -25961,7 +36320,7 @@ export function DashboardPage() {
                               <td>{entry.mode === "project" ? "Produktiv" : "Unproduktiv"}</td>
                               <td>{formatStampDuration(entry.durationMs)}</td>
                               <td>{formatStampDuration(entry.pauseMs)}</td>
-                              <td>{entry.mode === "project" ? entry.projectLabel : "Unproduktiv"}</td>
+                              <td>{entry.projectLabel || (entry.mode === "unproductive" ? "Unproduktiv" : "-")}</td>
                               <td>{entry.comment || "-"}</td>
                             </tr>
                           ))
@@ -26590,6 +36949,55 @@ export function DashboardPage() {
               </table>
             </div>
           </section>
+        ) : firmSettingsTab === "deadlines" ? (
+          <section className={styles.settingsCard}>
+            <div className={styles.settingsHeader}>
+              <div>
+                <h2>Zeitfristen</h2>
+                <p>
+                  Hier steuerst du automatische Fristen, die WorkPilot beim Erstellen von Dokumenten
+                  und Aufgaben nutzt.
+                </p>
+              </div>
+            </div>
+            <div className={styles.companySettingsForm}>
+              <label>
+                Angebote nachfassen nach
+                <input
+                  type="number"
+                  min="1"
+                  max="30"
+                  step="1"
+                  value={offerFollowUpWorkdays}
+                  onChange={(event) =>
+                    setOfferFollowUpWorkdays(
+                      Math.max(1, Math.min(30, Math.round(Number(event.target.value) || 5)))
+                    )
+                  }
+                />
+              </label>
+              <span className={styles.companySettingsHint}>Werkstage</span>
+            </div>
+            <div className={styles.plannedModuleGrid}>
+              <article>
+                <strong>Finale Angebote</strong>
+                <span>
+                  Beim finalen Speichern wird automatisch eine Nachfass-Aufgabe mit Status
+                  in Bearbeitung angelegt.
+                </span>
+              </article>
+              <article>
+                <strong>Entwürfe</strong>
+                <span>Entwürfe erzeugen keine Nachfass-Aufgabe, bis sie finalisiert werden.</span>
+              </article>
+              <article>
+                <strong>Zusatzverkäufe</strong>
+                <span>
+                  Beim Angebot aus einem Zusatzverkauf wird die neue Aufgabe dort verlinkt.
+                </span>
+              </article>
+            </div>
+          </section>
         ) : firmSettingsTab === "projectTypes" ? (
           <section className={styles.settingsCard}>
             <div className={styles.settingsHeader}>
@@ -26719,7 +37127,7 @@ export function DashboardPage() {
               </div>
             </div>
             <div className={styles.employeeFormGrid}>
-              {(["offer", "invoice", "cancellation", "activityReport", "document"] as DocumentMailKind[]).map((kind) => (
+              {(["offer", "invoice", "cancellation", "reminder", "activityReport", "document"] as DocumentMailKind[]).map((kind) => (
                 <section key={kind} className={`${styles.offerSection} ${styles.fullWidth}`}>
                   <div className={styles.offerSectionHeader}>
                     <h3>{getDocumentMailKindLabel(kind)} versenden</h3>
@@ -26966,7 +37374,7 @@ export function DashboardPage() {
 
   function renderCatalogItems() {
     const viewType = getCatalogViewType();
-    const search = catalogSearchTerm.trim().toLowerCase();
+    const search = normalizeSearchText(catalogSearchTerm);
     const filteredItems = catalogItems.filter((item) => {
       if (viewType && item.type !== viewType) return false;
       if (catalogStatusFilter === "active" && !item.isActive) return false;
@@ -26980,15 +37388,10 @@ export function DashboardPage() {
         item.matchcode,
         item.supplierName,
         item.manufacturer,
-      ].join(" ").toLowerCase();
-      if (search && !haystack.includes(search)) return false;
-      return (
-        item.number.toLowerCase().includes(catalogColumnFilters.number.toLowerCase()) &&
-        item.name.toLowerCase().includes(catalogColumnFilters.name.toLowerCase()) &&
-        item.category.toLowerCase().includes(catalogColumnFilters.category.toLowerCase()) &&
-        item.unit.toLowerCase().includes(catalogColumnFilters.unit.toLowerCase()) &&
-        item.supplierName.toLowerCase().includes(catalogColumnFilters.supplierName.toLowerCase())
-      );
+      ].join(" ");
+      const normalizedHaystack = normalizeSearchText(haystack);
+      if (search && !normalizedHaystack.includes(search)) return false;
+      return true;
     });
     const pageCount = Math.max(1, Math.ceil(filteredItems.length / catalogPageSize));
     const safePage = Math.min(catalogPage, pageCount);
@@ -27095,9 +37498,23 @@ export function DashboardPage() {
 
         <div className={styles.contactPagination}>
           <span>Seite</span>
-          <button className={styles.iconButton} disabled={safePage <= 1} onClick={() => setCatalogPage((page) => Math.max(1, page - 1))}>?</button>
+          <button
+            className={styles.iconButton}
+            disabled={safePage <= 1}
+            aria-label="Vorherige Seite"
+            onClick={() => setCatalogPage((page) => Math.max(1, page - 1))}
+          >
+            {"<"}
+          </button>
           <input value={safePage} onChange={(event) => setCatalogPage(Number(event.target.value) || 1)} />
-          <button className={styles.iconButton} disabled={safePage >= pageCount} onClick={() => setCatalogPage((page) => Math.min(pageCount, page + 1))}>?</button>
+          <button
+            className={styles.iconButton}
+            disabled={safePage >= pageCount}
+            aria-label="Nächste Seite"
+            onClick={() => setCatalogPage((page) => Math.min(pageCount, page + 1))}
+          >
+            {">"}
+          </button>
           <span>von {pageCount}</span>
           <span>Zeige</span>
           <select value={catalogPageSize} onChange={(event) => setCatalogPageSize(Number(event.target.value))}>
@@ -27106,8 +37523,8 @@ export function DashboardPage() {
           <strong>{filteredItems.length} Einträge gefunden</strong>
         </div>
 
-        <section className={`${styles.contactsTableCard} ${styles.catalogTableCard}`}>
-          <table className={`${styles.contactsTable} ${styles.catalogTable}`}>
+        <section className={`${styles.tableCard} ${styles.catalogTableCard}`}>
+          <table className={`${styles.table} ${styles.catalogTable}`}>
             <thead>
               <tr>
                 <th>Nummer</th>
@@ -27122,15 +37539,6 @@ export function DashboardPage() {
                 <th>MwSt.</th>
                 <th>Status</th>
                 <th>Aktionen</th>
-              </tr>
-              <tr className={styles.contactFilterRow}>
-                <th><input value={catalogColumnFilters.number} onChange={(event) => setCatalogColumnFilters((current) => ({ ...current, number: event.target.value }))} /></th>
-                <th><input value={catalogColumnFilters.name} onChange={(event) => setCatalogColumnFilters((current) => ({ ...current, name: event.target.value }))} /></th>
-                <th />
-                <th><input value={catalogColumnFilters.category} onChange={(event) => setCatalogColumnFilters((current) => ({ ...current, category: event.target.value }))} /></th>
-                <th><input value={catalogColumnFilters.unit} onChange={(event) => setCatalogColumnFilters((current) => ({ ...current, unit: event.target.value }))} /></th>
-                <th><input value={catalogColumnFilters.supplierName} onChange={(event) => setCatalogColumnFilters((current) => ({ ...current, supplierName: event.target.value }))} /></th>
-                <th colSpan={6} />
               </tr>
             </thead>
             <tbody>
@@ -27148,12 +37556,22 @@ export function DashboardPage() {
                   <td>{formatMoney(item.purchasePrice)}</td>
                   <td>{formatMoney(item.salesPrice)}</td>
                   <td>{formatHours(item.vatRate)}%</td>
-                  <td>{item.isActive ? "Aktiv" : "Inaktiv"}</td>
                   <td>
-                    <div className={styles.tableActionGroup}>
-                      <button className={styles.iconButton} onClick={() => openEditCatalogModal(item)} title="Bearbeiten">?</button>
-                      <button className={styles.iconButton} onClick={() => duplicateCatalogItem(item)} title="Duplizieren">?</button>
-                      <button className={styles.iconButton} onClick={() => deactivateCatalogItem(item)} title="Deaktivieren">?</button>
+                    <span className={styles.catalogStatusClip} data-status={item.isActive ? "active" : "inactive"}>
+                      {item.isActive ? "Aktiv" : "Inaktiv"}
+                    </span>
+                  </td>
+                  <td>
+                    <div className={`${styles.tableActionGroup} ${styles.catalogActionGroup}`}>
+                      <button className={styles.secondaryButton} onClick={() => openEditCatalogModal(item)}>
+                        Bearbeiten
+                      </button>
+                      <button className={styles.secondaryButton} onClick={() => duplicateCatalogItem(item)}>
+                        Duplizieren
+                      </button>
+                      <button className={styles.secondaryButton} disabled={!item.isActive} onClick={() => deactivateCatalogItem(item)}>
+                        Deaktivieren
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -27349,7 +37767,7 @@ export function DashboardPage() {
                         </td>
                         <td>
                           <button className={styles.iconButton} onClick={() => removeCatalogPackageItem(index)}>
-                            ?
+                            -
                           </button>
                         </td>
                       </tr>
@@ -27425,7 +37843,7 @@ export function DashboardPage() {
                             </td>
                             <td>{formatHours(getMarkupPercent(item.componentPurchasePrice, unitSalesPrice))}</td>
                             <td>{formatMoney(unitSalesPrice * item.quantity)}</td>
-                            <td><button className={styles.iconButton} onClick={() => removeCatalogPackageItem(index)}>?</button></td>
+                            <td><button className={styles.iconButton} onClick={() => removeCatalogPackageItem(index)}>-</button></td>
                           </tr>
                         );
                       })
@@ -27496,7 +37914,7 @@ export function DashboardPage() {
                             </td>
                             <td>{formatHours(getMarkupPercent(item.componentPurchasePrice, unitSalesPrice))}</td>
                             <td>{formatMoney(unitSalesPrice * item.quantity)}</td>
-                            <td><button className={styles.iconButton} onClick={() => removeCatalogPackageItem(index)}>?</button></td>
+                            <td><button className={styles.iconButton} onClick={() => removeCatalogPackageItem(index)}>-</button></td>
                           </tr>
                         );
                       })
@@ -27656,6 +38074,16 @@ export function DashboardPage() {
     const activeMailAccount = getSafeEmployeeMailAccount(activeUser?.mailAccount, activeUser?.email || "");
     const canSendMail = activeMailAccount.status === "connected";
     const documentLabel = getDocumentMailKindLabel(documentMailDraft.kind);
+    const isInvoiceMail = documentMailDraft.kind === "invoice";
+    const canManageFeedbackLink = activeUser?.role === "GESCHAEFTSFUEHRER";
+    const projectAttachmentOptions = getDocumentMailProjectAttachmentOptions(documentMailDraft);
+    const eInvoiceReadiness = isInvoiceMail ? getEInvoiceReadiness(documentMailDraft) : null;
+    const eInvoiceStatus =
+      eInvoiceReadiness && eInvoiceReadiness.missingRequired.length > 0
+        ? "blocked"
+        : eInvoiceReadiness && eInvoiceReadiness.missingRecommended.length > 0
+          ? "warning"
+          : "ready";
 
     return (
       <div className={styles.modalOverlay}>
@@ -27668,7 +38096,7 @@ export function DashboardPage() {
               </p>
             </div>
             <button className={styles.iconButton} type="button" onClick={() => setDocumentMailDraft(null)}>
-              ?
+              -
             </button>
           </div>
           <div className={styles.standardModalBody}>
@@ -27764,10 +38192,306 @@ export function DashboardPage() {
                     )
                   }
                 />
-                {documentMailDraft.attachmentName || "PDF"} automatisch anhängen
+                <span className={styles.attachmentCheckboxText}>
+                  <strong>{getDocumentMailPrimaryAttachmentLabel(documentMailDraft)}</strong>
+                  <small>Hauptdokument der E-Mail</small>
+                </span>
               </label>
+              {isInvoiceMail && eInvoiceReadiness ? (
+                <section className={`${styles.standardFormWide} ${styles.eInvoiceReadinessCard}`} data-status={eInvoiceStatus}>
+                  <div className={styles.eInvoiceReadinessHeader}>
+                    <div>
+                      <span>E-Rechnung Datenprüfung</span>
+                      <strong>XRechnung und ZUGFeRD vorbereiten</strong>
+                    </div>
+                    <em>
+                      {eInvoiceStatus === "ready"
+                        ? "Basisdaten vollständig"
+                        : eInvoiceStatus === "warning"
+                          ? "Stammdaten prüfen"
+                          : "Nicht bereit"}
+                    </em>
+                  </div>
+                  <p>
+                    Diese Prüfung verändert den Versand nicht. Sie zeigt, ob die Rechnung strukturell für elektronische Rechnungsformate vorbereitet ist.
+                  </p>
+                  {eInvoiceReadiness.recipientContact ? (
+                    <div className={styles.eInvoiceReadinessMeta}>
+                      <span>Rechnungsempfänger</span>
+                      <strong>{getContactDisplayName(eInvoiceReadiness.recipientContact)}</strong>
+                      <span>Leitweg-ID</span>
+                      <strong>{eInvoiceReadiness.recipientContact.leitwegId || "Nicht gepflegt"}</strong>
+                    </div>
+                  ) : null}
+                  {eInvoiceReadiness.missingRequired.length ? (
+                    <ul>
+                      {eInvoiceReadiness.missingRequired.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {eInvoiceReadiness.missingRecommended.length ? (
+                    <details>
+                      <summary>Empfohlene Stammdaten anzeigen</summary>
+                      <ul>
+                        {eInvoiceReadiness.missingRecommended.map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    </details>
+                  ) : null}
+                  <small>Die eigentliche XML-/ZUGFeRD-Datei wird im nächsten Ausbauschritt angebunden.</small>
+                </section>
+              ) : null}
+              {isInvoiceMail ? (
+                <section className={`${styles.standardFormWide} ${styles.eInvoiceFormatCard}`}>
+                  <div>
+                    <span>E-Rechnungsformat</span>
+                    <strong>Versandformat vorbereiten</strong>
+                  </div>
+                  <div className={styles.eInvoiceFormatOptions}>
+                    {[
+                      ["pdf", "PDF", "Aktiv"],
+                      ["xrechnung", "XRechnung XML", "Vorbereitet"],
+                      ["zugferd", "ZUGFeRD PDF", "Vorbereitet"],
+                      ["pdf-xrechnung", "PDF + XRechnung", "Vorbereitet"],
+                    ].map(([value, label, state]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        data-active={(documentMailDraft.eInvoiceFormat ?? "pdf") === value}
+                        data-disabled={value !== "pdf"}
+                        onClick={() =>
+                          setDocumentMailDraft((current) =>
+                            current ? { ...current, eInvoiceFormat: value as EInvoiceFormat } : current
+                          )
+                        }
+                      >
+                        <strong>{label}</strong>
+                        <small>{state}</small>
+                      </button>
+                    ))}
+                  </div>
+                  {(documentMailDraft.eInvoiceFormat ?? "pdf") !== "pdf" ? (
+                    <p>Dieses Format ist fachlich vorbereitet. Der Versand bleibt bis zur Generator-Anbindung beim PDF.</p>
+                  ) : null}
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    disabled={isValidatingXrechnung}
+                    onClick={() => void validateDocumentMailXRechnung(documentMailDraft)}
+                  >
+                    {isValidatingXrechnung ? "XRechnung wird geprüft..." : "XRechnung prüfen"}
+                  </button>
+                  {xrechnungValidationResult?.invoiceId === documentMailDraft.documentId ? (
+                    <div className={styles.eInvoiceReadinessMeta}>
+                      <span>Prüfstatus</span>
+                      <strong>
+                        {xrechnungValidationResult.validation.valid
+                          ? "Technische Mindestprüfung bestanden"
+                          : "Validierungsfehler gefunden"}
+                      </strong>
+                      <span>KoSIT</span>
+                      <strong>
+                        {xrechnungValidationResult.kositValidation?.available
+                          ? xrechnungValidationResult.kositValidation.valid
+                            ? "Bestanden"
+                            : "Nicht bestanden"
+                          : "Nicht konfiguriert"}
+                      </strong>
+                    </div>
+                  ) : null}
+                  {xrechnungValidationResult?.invoiceId === documentMailDraft.documentId &&
+                  xrechnungValidationResult.kositValidation?.message ? (
+                    <p>{xrechnungValidationResult.kositValidation.message}</p>
+                  ) : null}
+                  {xrechnungValidationResult?.invoiceId === documentMailDraft.documentId &&
+                  xrechnungValidationResult.validation.issues.length ? (
+                    <ul>
+                      {xrechnungValidationResult.validation.issues.map((issue) => (
+                        <li key={`${issue.code}-${issue.message}`}>{issue.message}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {xrechnungValidationResult?.invoiceId === documentMailDraft.documentId &&
+                  xrechnungValidationResult.kositValidation?.issues.length ? (
+                    <ul>
+                      {xrechnungValidationResult.kositValidation.issues.map((issue) => (
+                        <li key={`kosit-${issue.message}`}>{issue.message}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {["xrechnung", "pdf-xrechnung"].includes(documentMailDraft.eInvoiceFormat ?? "") ? (
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      disabled={eInvoiceStatus === "blocked"}
+                      onClick={() =>
+                        window.open(`/api/invoices?xrechnungId=${encodeURIComponent(documentMailDraft.documentId)}`, "_blank")
+                      }
+                    >
+                      XRechnung XML herunterladen
+                    </button>
+                  ) : null}
+                </section>
+              ) : null}
+              {isInvoiceMail ? (
+                <label className={`${styles.checkboxField} ${styles.standardFormWide}`}>
+                  <input
+                    type="checkbox"
+                    checked={documentMailDraft.includeFeedbackLink !== false}
+                    disabled={!canManageFeedbackLink}
+                    onChange={(event) =>
+                      setDocumentMailDraft((current) =>
+                        current ? { ...current, includeFeedbackLink: event.target.checked } : current
+                      )
+                    }
+                  />
+                  <span className={styles.attachmentCheckboxText}>
+                    <strong>Bewertungsbox mit Bewertungslink mitsenden</strong>
+                    <small>
+                      {canManageFeedbackLink
+                        ? "Kunden können nach dem Versand genau einmal bewerten."
+                        : "Aktiv. Nur Geschäftsführung kann diese Box deaktivieren."}
+                    </small>
+                  </span>
+                </label>
+              ) : null}
+              {isInvoiceMail && documentMailDraft.additionalAttachments?.length ? (
+                <label className={`${styles.checkboxField} ${styles.standardFormWide}`}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(documentMailDraft.attachActivityReports)}
+                    onChange={(event) =>
+                      setDocumentMailDraft((current) =>
+                        current ? { ...current, attachActivityReports: event.target.checked } : current
+                      )
+                    }
+                  />
+                  <span className={styles.attachmentCheckboxText}>
+                    <strong>
+                      {documentMailDraft.additionalAttachments.length} Tätigkeitsbericht
+                      {documentMailDraft.additionalAttachments.length === 1 ? "" : "e"} als PDF anhängen
+                    </strong>
+                    <small>Bereits ausgewählter Zusatzanhang zur Rechnung</small>
+                    <span className={styles.attachmentNameList}>
+                      {documentMailDraft.additionalAttachments.map((attachment) => attachment.name).join(", ")}
+                    </span>
+                  </span>
+                </label>
+              ) : null}
+              <div className={`${styles.standardFormWide} ${styles.mailAdditionalAttachments}`}>
+                <div>
+                  <span>Zusätzliche Anhänge</span>
+                  <small>Dateien vom PC oder aus der Projektakte werden nur mit dieser E-Mail versendet.</small>
+                </div>
+                <div className={styles.mailAttachmentActions}>
+                  <label className={styles.secondaryButton}>
+                    + Datei vom PC
+                    <input
+                      type="file"
+                      multiple
+                      onChange={(event) => {
+                        void addManualDocumentMailAttachments(event.target.files);
+                        event.target.value = "";
+                      }}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    disabled={!projectAttachmentOptions.length}
+                    onClick={() => {
+                      setSelectedDocumentMailProjectAttachmentKeys([]);
+                      setIsDocumentMailProjectAttachmentPickerOpen(true);
+                    }}
+                  >
+                    + Aus Projektakte
+                  </button>
+                </div>
+                {!projectAttachmentOptions.length ? <p>Keine weiteren Projektanhänge verfügbar.</p> : null}
+                {documentMailDraft.manualAttachments?.length ? (
+                  <div className={styles.mailAttachmentList}>
+                    {documentMailDraft.manualAttachments.map((attachment, index) => (
+                      <span key={`${attachment.name}-${index}`}>
+                        {attachment.name}
+                        <button
+                          type="button"
+                          aria-label={`${attachment.name} entfernen`}
+                          onClick={() => removeManualDocumentMailAttachment(index)}
+                        >
+                          Entfernen
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p>Noch keine zusätzlichen Dateien ausgewählt.</p>
+                )}
+              </div>
             </div>
           </div>
+          {isDocumentMailProjectAttachmentPickerOpen ? (
+            <>
+              <button
+                type="button"
+                className={styles.mailProjectAttachmentBackdrop}
+                aria-label="Projektanhang-Auswahl schließen"
+                onClick={closeDocumentMailProjectAttachmentPicker}
+              />
+              <div className={styles.mailProjectAttachmentModal}>
+                <div className={styles.mailProjectAttachmentModalHeader}>
+                  <div>
+                    <strong>Aus Projektakte anhängen</strong>
+                    <span>{projectAttachmentOptions.length} verfügbare Anhänge</span>
+                  </div>
+                  <button type="button" className={styles.iconButton} onClick={closeDocumentMailProjectAttachmentPicker}>
+                    -
+                  </button>
+                </div>
+                <div className={styles.mailProjectAttachmentModalList}>
+                  {projectAttachmentOptions.length ? (
+                    projectAttachmentOptions.map((option) => {
+                      const selected = selectedDocumentMailProjectAttachmentKeys.includes(option.key);
+                      return (
+                        <label key={option.key} className={styles.mailProjectAttachmentOption} data-selected={selected}>
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={() => toggleDocumentMailProjectAttachmentSelection(option.key)}
+                          />
+                          {option.type === "Bild" ? (
+                            <img src={option.dataUrl} alt={option.name} />
+                          ) : (
+                            <span className={styles.mailProjectAttachmentFileIcon}>PDF</span>
+                          )}
+                          <span>
+                            <strong>{option.name}</strong>
+                            <small>{option.category}</small>
+                          </span>
+                        </label>
+                      );
+                    })
+                  ) : (
+                    <p>Keine weiteren Projektanhänge verfügbar.</p>
+                  )}
+                </div>
+                <div className={styles.mailProjectAttachmentModalFooter}>
+                  <button type="button" className={styles.secondaryButton} onClick={closeDocumentMailProjectAttachmentPicker}>
+                    Abbrechen
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.primaryButton}
+                    disabled={!selectedDocumentMailProjectAttachmentKeys.length}
+                    onClick={addSelectedProjectDocumentMailAttachments}
+                  >
+                    Auswahl anhängen
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : null}
           <div className={styles.standardModalFooter}>
             <span />
             <div className={styles.modalActions}>
@@ -27960,6 +38684,9 @@ export function DashboardPage() {
                 "Angebot",
                 "Warten auf Kunde",
                 "Zur Planung bereit",
+                "Geplant",
+                "Umsetzung",
+                "Endkontrolle",
                 "Abrechnungsbereit",
               ],
             })}
@@ -28780,7 +39507,7 @@ export function DashboardPage() {
     }
 
     if (activeTab === "contentCorrections") {
-      const correctionEntries = editorialEntries.filter((entry) => entry.status === "Korrektur nötig");
+      const correctionEntries = editorialEntries.filter((entry) => getReadableContentStatus(entry.status) === "Korrektur nötig");
       const canResubmitContent = (entry: ContentItem) =>
         mayApproveContent || !entry.ownerUserId || entry.ownerUserId === activeUserId;
       const getCorrectionNote = (entry: ContentItem) =>
@@ -29487,7 +40214,7 @@ export function DashboardPage() {
                   aria-label="Schliessen"
                   onClick={closeDocumentTextModal}
                 >
-                  ×
+                  -
                 </button>
               </div>
 
@@ -29880,7 +40607,7 @@ export function DashboardPage() {
         ) : null}
 
         <nav className={styles.tabs}>
-          {navigationTabs.map(([tab, label]) => {
+          {visibleNavigationTabs.map(([tab, label]) => {
             const projectLogo =
               tab === "projectsSolutions"
                 ? "/oks-logo.png"
@@ -30041,8 +40768,8 @@ export function DashboardPage() {
             if (projectLogo) {
               const isProjectNavOpen = openProjectNav[tab] ?? false;
               const projectKindLinks: Array<{ label: string; value: ProjectKindFilter }> = [
-                { label: "Dauerläufer-Projekte", value: "Dauerläufer-Projekt" },
-                { label: "Einmalige-Projekte", value: "einmaliges Projekt" },
+                { label: "Dauerläufer-Projekte", value: RECURRING_PROJECT_KIND },
+                { label: "Einmalige-Projekte", value: ONE_TIME_PROJECT_KIND },
               ];
 
               return (
@@ -30079,7 +40806,12 @@ export function DashboardPage() {
                         <button
                           key={item.value}
                           type="button"
-                          data-active={activeTab === tab && selectedProjectKindFilter === item.value}
+                          data-active={
+                            activeTab === tab &&
+                            Boolean(selectedProjectKindFilter) &&
+                            normalizeProjectKindValue(selectedProjectKindFilter) ===
+                              normalizeProjectKindValue(item.value)
+                          }
                           onClick={() => {
                             openMainView(tab);
                             setSelectedProjectKindFilter(item.value);
@@ -30156,9 +40888,8 @@ export function DashboardPage() {
             if (tab === "salesHub") {
               const isOpen = openSidebarMenus[tab] ?? false;
               const children: Array<{ id: AppTab; label: string }> = [
-                { id: "salesHub", label: "Uebersicht" },
-                { id: "customerSatisfaction", label: "KuZu" },
-                { id: "salesTargets", label: "Sales-Ziele" },
+                { id: "salesHub", label: "Meine Ziele" },
+                { id: "salesTargets", label: "Zielverwaltung" },
               ];
               const isActiveGroup =
                 activeTab === tab || children.some((item) => item.id === activeTab);
@@ -30207,6 +40938,7 @@ export function DashboardPage() {
               const isOpen = openSidebarMenus[tab] ?? false;
               const children: Array<{ id: AppTab; label: string }> = [
                 { id: "winterService", label: "Winterdienst" },
+                { id: "generalActivityReports", label: "Allg. T-Berichte" },
               ];
               const isActiveGroup =
                 activeTab === tab || children.some((item) => item.id === activeTab);
@@ -30256,10 +40988,6 @@ export function DashboardPage() {
               const children: Array<{ id: AppTab; label: string }> = [
                 { id: "batchBilling", label: "Stapelabrechnung" },
                 { id: "documents", label: "Dokumente" },
-                { id: "documentOverview", label: "Dokumentenübersicht" },
-                { id: "documentTexts", label: "Texte & Titel" },
-                { id: "documentTemplates", label: "Vorlagen" },
-                { id: "documentConfigurator", label: "Konfigurator" },
                 { id: "documentGaeb", label: "Ausschreibungen (GAEB)" },
               ];
               const isActiveGroup =
@@ -30413,7 +41141,7 @@ export function DashboardPage() {
                     ? `Pause ${formatStampDuration(getStampPauseMilliseconds())}`
                     : stampSession.mode === "project"
                       ? stampSession.projectLabel || getStampProjectLabel(stampSession.projectId)
-                      : "Unproduktiv"
+                      : stampSession.projectLabel || "Unproduktiv"
                   : completedTodayStampMilliseconds > 0
                     ? "Heute gesamt"
                     : "Nicht eingestempelt"}
@@ -30491,7 +41219,7 @@ export function DashboardPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {dashboardStampRows.map(({ user, activityLabel, durationLabel, statusLabel, stampState }) => (
+                        {dashboardStampRows.map(({ user, activityLabel, activityComment, durationLabel, statusLabel, stampState }) => (
                           <tr key={user.id}>
                             <td>
                               <div className={styles.employeeStampPerson}>
@@ -30510,7 +41238,12 @@ export function DashboardPage() {
                                 {statusLabel}
                               </span>
                             </td>
-                            <td>{activityLabel}</td>
+                            <td>
+                              <div className={styles.employeeStampActivity}>
+                                <strong>{activityLabel}</strong>
+                                {activityComment ? <span>{activityComment}</span> : null}
+                              </div>
+                            </td>
                             <td>
                               <strong>{durationLabel}</strong>
                             </td>
@@ -31231,10 +41964,18 @@ export function DashboardPage() {
                 </label>
                 <span>
                   {selectedProjectKindFilter === "potentials"
-                    ? `${filteredPipelinePotentials.length} Potenziale`
+                    ? `${filteredPipelinePotentials.length} Zusatzverkäufe`
                     : `${visibleHeroProjects.length} Projekte`}
                   {selectedProjectKindFilter
-                    ? ` in "${projectKindRows.find((row) => row.key === selectedProjectKindFilter)?.label}"`
+                    ? ` in "${
+                        projectKindRows.find(
+                          (row) =>
+                            row.key === selectedProjectKindFilter ||
+                            (selectedProjectKindFilter !== "potentials" &&
+                              row.key !== "potentials" &&
+                              normalizeProjectKindValue(row.key) === normalizeProjectKindValue(selectedProjectKindFilter))
+                        )?.label
+                      }"`
                     : ` in "${activePipelineStatus.label}"`}
                 </span>
               </section>
@@ -31244,14 +41985,14 @@ export function DashboardPage() {
                   <>
                     <div className={styles.projectStatusStrip}>
                       <div className={styles.projectStatusStripMeta}>
-                        <strong>Potenziale</strong>
-                        <span>{getPotentialStatusCount("all")} Potenziale</span>
+                        <strong>Zusatzverkäufe</strong>
+                        <span>{getPotentialStatusCount("all")} Zusatzverkäufe</span>
                       </div>
                       <div className={`${styles.projectPipelineStatusList} ${styles.potentialStatusList}`}>
                         {[
                           { label: "Alle", value: "all" as const },
                           { label: "Offen", value: "open" as const },
-                          { label: "Wiedervorlage", value: "follow_up" as const },
+                          { label: "Nachfassen", value: "follow_up" as const },
                           { label: "Fällig", value: "due" as const },
                           { label: "Angeboten", value: "offered" as const },
                           { label: "Kein Interesse", value: "lost" as const },
@@ -31280,13 +42021,13 @@ export function DashboardPage() {
                             <thead>
                               <tr>
                                 <th>Status</th>
-                                <th>Potenzial</th>
+                                <th>Zusatzverkauf</th>
                                 <th>Kunde</th>
                                 <th>Projekt</th>
-                                <th>PrioritÃ¤t</th>
+                                <th>Priorität</th>
                                 <th>Wert</th>
                                 <th>Erkannt am</th>
-                                <th>Wiedervorlage</th>
+                                <th>Nachfass-Aufgabe</th>
                                 <th>Zuständig</th>
                                 <th>Letzte Aktion</th>
                                 <th>Aktion</th>
@@ -31295,7 +42036,7 @@ export function DashboardPage() {
                             <tbody>
                               {filteredPipelinePotentials.length === 0 ? (
                                 <tr>
-                                  <td colSpan={11}>Keine Potenziale in dieser Auswahl.</td>
+                                  <td colSpan={11}>Keine Zusatzverkäufe in dieser Auswahl.</td>
                                 </tr>
                               ) : (
                                 filteredPipelinePotentials.map((potential) => {
@@ -31338,7 +42079,7 @@ export function DashboardPage() {
                                                 className={styles.timeEntryEditButton}
                                                 onClick={() => void schedulePotentialFollowUp(potential)}
                                               >
-                                                Später nachfassen
+                                                Nachfass-Aufgabe
                                               </button>
                                               <button
                                                 type="button"
@@ -31366,7 +42107,7 @@ export function DashboardPage() {
                           </table>
                         </div>
                         <p className={styles.heroTableHint}>
-                          Alle {filteredPipelinePotentials.length} Potenziale sind geladen und auswertbar.
+                          Alle {filteredPipelinePotentials.length} Zusatzverkäufe sind geladen und auswertbar.
                         </p>
                       </section>
                     </div>
@@ -31404,6 +42145,17 @@ export function DashboardPage() {
                       );
                     })}
                   </div>
+                  <button
+                    type="button"
+                    className={styles.projectArchiveArrowButton}
+                    data-active={normalizeProjectPipelineStatus(selectedProjectPipelineStatus) === "Archiviert"}
+                    onClick={() => setSelectedProjectPipelineStatus("Archiviert")}
+                    title="Archivierte Projekte anzeigen"
+                    aria-label="Archivierte Projekte anzeigen"
+                  >
+                    <span aria-hidden="true">A</span>
+                    {getPipelineStatusCount("Archiviert") > 0 ? <strong>{getPipelineStatusCount("Archiviert")}</strong> : null}
+                  </button>
                 </div>
 
                 <div className={styles.projectPipelineWorkspace}>
@@ -31483,6 +42235,8 @@ export function DashboardPage() {
               </section>
             </section>
             )
+          ) : activeTab === "salesHub" || activeTab === "salesTargets" ? (
+            renderMyGoals()
           ) : activeTab === "salesOpportunities" ? (
             renderPotentialWorkspace()
           ) : activeTab === "absenceRequests" ? (
@@ -31501,6 +42255,8 @@ export function DashboardPage() {
             renderDocumentConfigurator()
           ) : activeTab === "documentTexts" ? (
             renderDocumentTextsAndTitles()
+          ) : activeTab === "documents" ? (
+            renderAccountingDocuments()
           ) : activeTab === "articles" ||
             activeTab === "services" ||
             activeTab === "packages" ||
@@ -31512,7 +42268,7 @@ export function DashboardPage() {
               <div className={styles.topline}>
                 <div>
                   <p className={styles.eyebrow}>
-                    {activeTab.startsWith("document") || activeTab === "documents"
+                    {activeTab.startsWith("document")
                       ? "Dokumente"
                       : "Artikel & Leistungen"}
                   </p>
@@ -31844,6 +42600,12 @@ export function DashboardPage() {
             renderPersonalData()
           ) : activeTab === "batchBilling" ? (
             renderAccounting()
+          ) : activeTab === "processAutomation" ? (
+            renderProcessAutomation()
+          ) : activeTab === "winterService" ? (
+            renderWinterServiceAutomation()
+          ) : activeTab === "generalActivityReports" ? (
+            renderGeneralActivityReportAutomation()
           ) : plannedModuleLabels[activeTab] ? (
             <section className={styles.plannedModule}>
               <div>
@@ -32601,7 +43363,7 @@ export function DashboardPage() {
                 </label>
 
                 <label>
-                  Zuständig
+                  Zuständig / beteiligt
                   <select
                     value={ownerFilter}
                     onChange={(event) => setOwnerFilter(event.target.value)}
@@ -32767,6 +43529,108 @@ export function DashboardPage() {
         </section>
       </section>
 
+      {planningSlotAction && (
+        <div className={styles.overlay} onClick={() => setPlanningSlotAction(null)}>
+          <div
+            className={`${styles.standardModal} ${styles.planningSlotActionModal}`}
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={styles.standardModalHeader}>
+              <div>
+                <h2>Planung vorbereiten</h2>
+                <p>
+                  {formatProjectDate(planningSlotAction.date)} · {planningSlotAction.startTime} Uhr
+                  {planningSlotAction.employeeName ? ` · ${planningSlotAction.employeeName}` : ""}
+                </p>
+              </div>
+              <button
+                type="button"
+                className={styles.iconButton}
+                onClick={() => setPlanningSlotAction(null)}
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className={`${styles.standardModalBody} ${styles.planningSlotActionBody}`}>
+              <div className={styles.planningSlotActionChoices}>
+                <button
+                  type="button"
+                  data-active={planningSlotAction.approvalStatus === "confirmed"}
+                  onClick={() =>
+                    setPlanningSlotAction((current) =>
+                      current ? { ...current, approvalStatus: "confirmed", projectSearch: "" } : current
+                    )
+                  }
+                >
+                  + Termin
+                </button>
+                <button
+                  type="button"
+                  data-active={planningSlotAction.approvalStatus === "requested"}
+                  onClick={() =>
+                    setPlanningSlotAction((current) =>
+                      current ? { ...current, approvalStatus: "requested", projectSearch: "" } : current
+                    )
+                  }
+                >
+                  + Terminwunsch
+                </button>
+              </div>
+
+              {planningSlotAction.approvalStatus ? (
+                <section className={styles.planningSlotProjectStep}>
+                  <button
+                    type="button"
+                    className={styles.planningSlotNoProjectButton}
+                    onClick={() => openPlanningEntryFromSlot(null)}
+                  >
+                    <strong>Ohne Projekt fortfahren</strong>
+                    <span>Für Objektbesichtigung, interne Arbeit oder Wartung ohne Projektakte</span>
+                  </button>
+                  <label>
+                    Projekt auswählen
+                    <input
+                      value={planningSlotAction.projectSearch}
+                      onChange={(event) =>
+                        setPlanningSlotAction((current) =>
+                          current ? { ...current, projectSearch: event.target.value } : current
+                        )
+                      }
+                      placeholder="Projekt, Kunde, Projekt-ID suchen..."
+                    />
+                  </label>
+                  <div className={styles.planningSlotProjectResults}>
+                    {filteredPlanningSlotProjects.length === 0 ? (
+                      <button type="button" disabled>
+                        Kein offenes Projekt gefunden
+                      </button>
+                    ) : (
+                      filteredPlanningSlotProjects.map((project) => (
+                        <button
+                          key={project.id}
+                          type="button"
+                          onClick={() => openPlanningEntryFromSlot(project)}
+                        >
+                          <strong>{project.projectNumber || project.id} | {project.title}</strong>
+                          <span>{project.customer || "-"} · {project.status}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </section>
+              ) : (
+                <p className={styles.modalInfoText}>
+                  Wähle zuerst, ob ein fester Termin oder ein Terminwunsch angelegt werden soll.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {isPlanningEntryModalOpen && (
         <div className={styles.overlay} onClick={() => setIsPlanningEntryModalOpen(false)}>
           <div
@@ -32785,7 +43649,7 @@ export function DashboardPage() {
                 className={styles.iconButton}
                 onClick={() => setIsPlanningEntryModalOpen(false)}
               >
-                ?
+                &times;
               </button>
             </div>
 
@@ -32807,50 +43671,48 @@ export function DashboardPage() {
               </div>
 
               <div className={styles.planningEntryGrid}>
-                <label>
+                <label
+                  className={styles.requiredPlanningField}
+                  data-required-missing={!planningEntryBoard}
+                >
                   Planungsboard
                   <select
                     value={planningEntryBoard}
                     onChange={(event) => {
-                      const nextBoard = event.target.value as PlanningBoardCompany;
-                      const nextGroup = getPlanningEntryGroups(nextBoard)[0];
+                      const nextBoard = event.target.value as PlanningBoardCompany | "";
                       setPlanningEntryBoard(nextBoard);
-                      setPlanningEntryGroup(nextGroup);
-                      setPlanningEntryUserId(
-                        users.find(
-                          (user) =>
-                            (user.planningBoard ?? "OK solutions") === nextBoard &&
-                            (user.planningGroup ?? "") === nextGroup
-                        )?.id ?? ""
-                      );
+                      setPlanningEntryGroup("");
+                      setPlanningEntryUserId("");
                     }}
                   >
-                    <option>OK solutions</option>
-                    <option>OK immocare</option>
+                    <option value="">Planungsboard auswählen</option>
+                    <option value="OK solutions">OK solutions</option>
+                    <option value="OK immocare">OK immocare</option>
                   </select>
                 </label>
-                <label>
+                <label
+                  className={styles.requiredPlanningField}
+                  data-required-missing={!planningEntryGroup}
+                >
                   Planungsgruppe
                   <select
                     value={planningEntryGroup}
                     onChange={(event) => {
                       const nextGroup = event.target.value;
                       setPlanningEntryGroup(nextGroup);
-                      setPlanningEntryUserId(
-                        users.find(
-                          (user) =>
-                            (user.planningBoard ?? "OK solutions") === planningEntryBoard &&
-                            (user.planningGroup ?? "") === nextGroup
-                        )?.id ?? ""
-                      );
+                      setPlanningEntryUserId("");
                     }}
                   >
+                    <option value="">Planungsgruppe auswählen</option>
                     {getPlanningEntryGroups(planningEntryBoard).map((group) => (
                       <option key={group}>{group}</option>
                     ))}
                   </select>
                 </label>
-                <label>
+                <label
+                  className={styles.requiredPlanningField}
+                  data-required-missing={!users.some((user) => user.id === planningEntryUserId)}
+                >
                   Mitarbeiter
                   <select
                     value={planningEntryUserId}
@@ -32860,6 +43722,7 @@ export function DashboardPage() {
                     {users
                       .filter(
                         (user) =>
+                          user.isActive &&
                           (user.planningBoard ?? "OK solutions") === planningEntryBoard &&
                           (user.planningGroup ?? "") === planningEntryGroup
                       )
@@ -32875,7 +43738,7 @@ export function DashboardPage() {
                   <input
                     type="date"
                     value={planningEntryDate}
-                    onChange={(event) => setPlanningEntryDate(event.target.value)}
+                    onChange={(event) => setPlanningDateAndDefaultWeekday(event.target.value)}
                   />
                 </label>
                 <label>
@@ -32904,7 +43767,10 @@ export function DashboardPage() {
                     ))}
                   </select>
                 </label>
-                <label className={styles.fullWidth}>
+                <label
+                  className={`${styles.fullWidth} ${styles.requiredPlanningField}`}
+                  data-required-missing={!planningEntryTitle.trim()}
+                >
                   Titel
                   <input
                     value={planningEntryTitle}
@@ -32915,21 +43781,37 @@ export function DashboardPage() {
                 <label>
                   Kunde / Projekt
                   <div className={styles.planningProjectSearch}>
-                    <input
-                      value={planningEntryProjectSearch}
-                      onFocus={() => {
-                        if (!hasLoadedHeroProjects && !isHeroProjectsLoading) void loadHeroProjects();
-                        setIsPlanningEntryProjectSearchOpen(true);
-                      }}
-                      onChange={(event) => {
-                        setPlanningEntryProjectSearch(event.target.value);
-                        setPlanningEntryProjectId("");
-                        setPlanningEntryCustomer(event.target.value);
-                        setIsPlanningEntryProjectSearchOpen(true);
-                        if (!hasLoadedHeroProjects && !isHeroProjectsLoading) void loadHeroProjects();
-                      }}
-                      placeholder="Projekt, Kunde, Projekt-ID suchen..."
-                    />
+                    {planningEntryProjectId ? (
+                      <button
+                        type="button"
+                        className={styles.planningProjectLinkButton}
+                        onClick={() => {
+                          const project = heroProjects.find((item) => item.id === planningEntryProjectId);
+                          if (!project) return;
+
+                          setIsPlanningEntryModalOpen(false);
+                          openProjectFile(project, { tab: "time", keepMonth: true });
+                        }}
+                      >
+                        {planningEntryProjectSearch || "Projekt öffnen"}
+                      </button>
+                    ) : (
+                      <input
+                        value={planningEntryProjectSearch}
+                        onFocus={() => {
+                          if (!hasLoadedHeroProjects && !isHeroProjectsLoading) void loadHeroProjects();
+                          setIsPlanningEntryProjectSearchOpen(true);
+                        }}
+                        onChange={(event) => {
+                          setPlanningEntryProjectSearch(event.target.value);
+                          setPlanningEntryProjectId("");
+                          setPlanningEntryCustomer(event.target.value);
+                          setIsPlanningEntryProjectSearchOpen(true);
+                          if (!hasLoadedHeroProjects && !isHeroProjectsLoading) void loadHeroProjects();
+                        }}
+                        placeholder="Projekt, Kunde, Projekt-ID suchen..."
+                      />
+                    )}
                     {isPlanningEntryProjectSearchOpen && (
                       <div className={styles.planningProjectResults}>
                         {isHeroProjectsLoading ? (
@@ -32948,7 +43830,7 @@ export function DashboardPage() {
                               onClick={() => selectPlanningProject(project)}
                             >
                               <strong>{project.projectNumber} | {project.title}</strong>
-                              <span>{project.customer || "-"} · {project.status}</span>
+                               <span>{project.customer || "-"} · {project.status}</span>
                             </button>
                           ))
                         )}
@@ -33020,7 +43902,7 @@ export function DashboardPage() {
                 })()}
                 <section className={`${styles.planningRecurrencePanel} ${styles.fullWidth}`}>
                   <div>
-                    <strong>Wiederholung</strong>
+                    <strong>Terminserie anlegen</strong>
                     <span>
                       {editingPlanningEntryId
                         ? "Serien werden beim Neuanlegen erzeugt."
@@ -33029,11 +43911,17 @@ export function DashboardPage() {
                   </div>
                   <div className={styles.planningRecurrenceGrid}>
                     <label>
-                      Rhythmus
+                      Intervall
                       <select
                         value={planningRecurrenceType}
                         disabled={Boolean(editingPlanningEntryId)}
-                        onChange={(event) => setPlanningRecurrenceType(event.target.value as PlanningRecurrenceType)}
+                        onChange={(event) => {
+                          const nextType = event.target.value as PlanningRecurrenceType;
+                          setPlanningRecurrenceType(nextType);
+                          if (nextType !== "once" && planningRecurrenceWeekdays.length === 0) {
+                            setPlanningRecurrenceWeekdays([getWeekdayFromDateKey(planningEntryDate)]);
+                          }
+                        }}
                       >
                         <option value="once">Einmalig</option>
                         <option value="weekly">Wöchentlich</option>
@@ -33042,7 +43930,7 @@ export function DashboardPage() {
                       </select>
                     </label>
                     <label>
-                      Wiederholen bis
+                      Serienende
                       <input
                         type="date"
                         value={planningRecurrenceUntil}
@@ -33051,37 +43939,77 @@ export function DashboardPage() {
                         onChange={(event) => setPlanningRecurrenceUntil(event.target.value)}
                       />
                     </label>
-                    <label className={styles.checkboxLine}>
-                      <input
-                        type="checkbox"
-                        checked={planningRecurrenceSkipWeekends}
-                        disabled={Boolean(editingPlanningEntryId) || planningRecurrenceType === "once"}
-                        onChange={(event) => setPlanningRecurrenceSkipWeekends(event.target.checked)}
-                      />
-                      Wochenenden überspringen
-                    </label>
+                    <div className={styles.planningWeekdayPicker}>
+                      <span>Wochentage</span>
+                      <div>
+                        {planningWeekdayOptions.map((weekday) => (
+                          <button
+                            key={weekday.value}
+                            type="button"
+                            data-active={planningRecurrenceWeekdays.includes(weekday.value)}
+                            disabled={Boolean(editingPlanningEntryId) || planningRecurrenceType === "once"}
+                            onClick={() => togglePlanningRecurrenceWeekday(weekday.value)}
+                          >
+                            {weekday.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </section>
-                {planningEntrySource === "offer" && (
+                {(planningEntrySource === "offer" || shouldShowPlanningOfferAssignment()) && (
                   <>
-                    <label className={styles.fullWidth}>
-                      Angebotsposition
-                      <input
-                        value={planningEntryOfferLabel}
-                        onChange={(event) => setPlanningEntryOfferLabel(event.target.value)}
-                        placeholder="z.B. Rasenmähen - 5 Std."
-                      />
-                    </label>
-                    <label>
-                      Angebotene Stunden
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.25"
-                        value={planningEntryOfferTotalHours}
-                        onChange={(event) => setPlanningEntryOfferTotalHours(event.target.value)}
-                      />
-                    </label>
+                    {(() => {
+                      const selectedPlanningProject = heroProjects.find((project) => project.id === planningEntryProjectId);
+                      const isSinglePlanningProject =
+                        selectedPlanningProject && !getProjectKind(selectedPlanningProject).startsWith("Dauer");
+                      const planningOfferOptions = selectedPlanningProject
+                        ? offers.filter(
+                            (offer) =>
+                              offer.projectId === selectedPlanningProject.id &&
+                              offer.status !== "Entwurf" &&
+                              getOfferLaborPlanningHours(offer) > 0
+                          )
+                        : [];
+                      if (!isSinglePlanningProject || planningOfferOptions.length === 0) return null;
+
+                      return (
+                        <label
+                          className={`${styles.fullWidth} ${styles.requiredPlanningField}`}
+                          data-required-missing={!planningEntryOfferId}
+                        >
+                          Zuordnung Angebot
+                          <select
+                            value={planningEntryOfferId}
+                            onChange={(event) => {
+                              const selectedOffer = planningOfferOptions.find(
+                                (offer) => offer.id === event.target.value
+                              );
+                              setPlanningEntryOfferId(selectedOffer?.id ?? "");
+                              setPlanningEntryOfferLineId("");
+                              setPlanningEntryOfferLabel(
+                                selectedOffer
+                                  ? `${selectedOffer.offerNumber} | ${
+                                      selectedOffer.offerType === "addendum" ? "Nachtragsangebot" : "Basisangebot"
+                                    }`
+                                  : ""
+                              );
+                              setPlanningEntryOfferTotalHours(
+                                selectedOffer ? String(getOfferLaborPlanningHours(selectedOffer)) : "0"
+                              );
+                            }}
+                          >
+                            <option value="">Angebot auswählen</option>
+                            {planningOfferOptions.map((offer) => (
+                              <option key={offer.id} value={offer.id}>
+                                {offer.offerNumber} | {offer.offerType === "addendum" ? "Nachtragsangebot" : "Basisangebot"} |{" "}
+                                {formatHours(getOfferLaborPlanningHours(offer))} Std.
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      );
+                    })()}
                     <div className={styles.planningOfferInfo}>
                       <span>Kontingent vorbereitet</span>
                       {(() => {
@@ -33095,27 +44023,36 @@ export function DashboardPage() {
                         );
                         const alreadyPlannedMinutes = getAlreadyPlannedOfferMinutesForPlanningEntry();
                         const offerTotalMinutes = Math.round((Number(planningEntryOfferTotalHours) || 0) * 60);
+                        const remainingBeforeSaveMinutes = Math.max(offerTotalMinutes - alreadyPlannedMinutes, 0);
                         const plannedAfterSaveMinutes = alreadyPlannedMinutes + currentMinutes;
-                        const remainingAfterSaveMinutes = Math.max(offerTotalMinutes - plannedAfterSaveMinutes, 0);
+                        const remainingAfterSaveMinutes = offerTotalMinutes - plannedAfterSaveMinutes;
 
                         return (
                           <>
                             <strong>
-                              {formatHours(plannedAfterSaveMinutes / 60)} von{" "}
+                              Nach Speichern: {formatHours(plannedAfterSaveMinutes / 60)} von{" "}
                               {formatHours(offerTotalMinutes / 60)} Std. verplant
                             </strong>
                             <small>
-                              Bereits {formatHours(alreadyPlannedMinutes / 60)} Std. | Dieser Termin{" "}
-                              {formatHours(currentMinutes / 60)} Std. | Danach offen{" "}
-                              {formatHours(remainingAfterSaveMinutes / 60)} Std.
+                              Bisher {formatHours(alreadyPlannedMinutes / 60)} Std. | Dieser Termin{" "}
+                              {formatHours(currentMinutes / 60)} Std. |{" "}
+                              {remainingAfterSaveMinutes < -0.01
+                                ? `Danach ${formatHours(Math.abs(remainingAfterSaveMinutes) / 60)} Std. überplant`
+                                : `Danach offen ${formatHours(Math.max(remainingAfterSaveMinutes, 0) / 60)} Std.`}
                             </small>
+                            {remainingBeforeSaveMinutes <= 0 && currentMinutes > 0 ? (
+                              <small>Hinweis: Dieses Angebot ist vor dem Speichern bereits voll verplant.</small>
+                            ) : null}
                           </>
                         );
                       })()}
                     </div>
                   </>
                 )}
-                <label className={styles.fullWidth}>
+                <label
+                  className={`${styles.fullWidth} ${styles.requiredPlanningField}`}
+                  data-required-missing={!planningEntryDescription.trim()}
+                >
                   Beschreibung
                   <textarea
                     rows={4}
@@ -33189,7 +44126,7 @@ export function DashboardPage() {
                 onClick={() => setIsCompanyProfileModalOpen(false)}
                 aria-label="Firmendaten schließen"
               >
-                ×
+                -
               </button>
             </div>
 
@@ -33390,7 +44327,7 @@ export function DashboardPage() {
                 onClick={() => setIsTradeManagementModalOpen(false)}
                 aria-label="Gewerke schließen"
               >
-                ×
+                -
               </button>
             </div>
 
@@ -33574,7 +44511,7 @@ export function DashboardPage() {
                 onClick={() => setIsLogbookModalOpen(false)}
                 aria-label="Nachricht schliessen"
               >
-                ?
+                -
               </button>
             </div>
 
@@ -33726,7 +44663,7 @@ export function DashboardPage() {
                 onClick={() => setIsContactBulkModalOpen(false)}
                 aria-label="Gruppenaktion schließen"
               >
-                ?
+                -
               </button>
             </div>
 
@@ -33956,7 +44893,7 @@ export function DashboardPage() {
                 ["address", "Adresse"],
                 ["terms", "Konditionen"],
                 ["payment", "Zahlungsdaten"],
-                ["zugferd", "ZUGFeRD 2.0"],
+                ["zugferd", "E-Rechnung"],
               ].map(([tab, label]) => (
                 <button
                   key={tab}
@@ -34192,18 +45129,56 @@ export function DashboardPage() {
 
               {contactFormTab === "zugferd" && (
               <section className={styles.contactFormGrid}>
+                <label className={styles.checkboxField}>
+                  <input
+                    type="checkbox"
+                    checked={contactDraft.eInvoiceRequired}
+                    onChange={(event) => updateContactDraft("eInvoiceRequired", event.target.checked)}
+                  />
+                  <span>E-Rechnung für diesen Empfänger erforderlich</span>
+                </label>
+                <label>
+                  Empfängerart
+                  <select
+                    value={contactDraft.eInvoiceRecipientType}
+                    onChange={(event) =>
+                      updateContactDraft(
+                        "eInvoiceRecipientType",
+                        event.target.value === "public" ? "public" : "business"
+                      )
+                    }
+                  >
+                    <option value="business">Unternehmen / Privatwirtschaft</option>
+                    <option value="public">Öffentlicher Auftraggeber / Behörde</option>
+                  </select>
+                </label>
                 <label>
                   Leitweg-ID / Leitwegsnummer
                   <input
                     value={contactDraft.leitwegId}
                     onChange={(event) => updateContactDraft("leitwegId", event.target.value)}
                   />
+                  {contactDraft.leitwegId.trim() ? (
+                    <small
+                      className={styles.leitwegValidationHint}
+                      data-status={validateLeitwegId(contactDraft.leitwegId).isValid ? "valid" : "invalid"}
+                    >
+                      {validateLeitwegId(contactDraft.leitwegId).message}
+                    </small>
+                  ) : contactDraft.eInvoiceRecipientType === "public" ? (
+                    <small className={styles.leitwegValidationHint} data-status="invalid">
+                      Für öffentliche Auftraggeber ist die Leitweg-ID erforderlich.
+                    </small>
+                  ) : (
+                    <small className={styles.leitwegValidationHint} data-status="neutral">
+                      Für Firmenkunden nur ausfüllen, wenn der Empfänger sie verlangt.
+                    </small>
+                  )}
                 </label>
                 <div className={styles.contactInfoBox}>
-                  <strong>ZUGFeRD 2.0 Standard</strong>
+                  <strong>XRechnung und ZUGFeRD</strong>
                   <p>
-                    Diese Information wird später für elektronische Rechnungen an öffentliche
-                    Auftraggeber verwendet.
+                    Die Leitweg-ID ist nur bei öffentlichen Auftraggebern erforderlich. Bei normalen Firmenkunden ist sie optional, sofern der Empfänger sie nicht ausdrücklich verlangt.
                   </p>
                 </div>
               </section>
@@ -34326,6 +45301,9 @@ export function DashboardPage() {
                       </option>
                     ))}
                 </select>
+                <small className={styles.projectSelectHint}>
+                  Der Vertreter wird während einer genehmigten Abwesenheit auch in Projekten als aktive Vertretung genutzt.
+                </small>
               </label>
 
               <label className={styles.fullWidth}>
@@ -34664,7 +45642,7 @@ export function DashboardPage() {
             onClick={() => setIsContentModalOpen(false)}
             aria-label="Content-Maske schließen"
           >
-            ?
+            -
           </button>
         </div>
 
@@ -35111,7 +46089,7 @@ export function DashboardPage() {
 
               {selectedProjectContactPotentials.length > 0 && (
                 <div className={`${styles.modalWarning} ${styles.standardFormWide}`}>
-                  Achtung: vorhandenes Potenzial vorhanden:{" "}
+                  Achtung: Zusatzverkauf vorhanden:{" "}
                   {selectedProjectContactPotentials.map((potential) => potential.description).join(", ")}
                 </div>
               )}
@@ -35207,11 +46185,11 @@ export function DashboardPage() {
                   }
                 >
                   <option value="einmaliges Projekt">einmaliges Projekt</option>
-                  <option value="Dauerläufer-Projekt">Dauerläufer-Projekt</option>
+                  <option value={RECURRING_PROJECT_KIND}>Dauerläufer-Projekt</option>
                 </select>
               </label>
 
-              {projectDraft.projectKind === "Dauerläufer-Projekt" && (
+              {isRecurringProjectKindValue(projectDraft.projectKind) && (
                 <div className={`${styles.projectTwoColumn} ${styles.standardFormWide}`}>
                   <label>
                     Geplanter Projektstart
@@ -35364,14 +46342,61 @@ export function DashboardPage() {
                 </label>
               </div>
 
-              <label>
-                Zusätzliche Projektbeteiligte (optional)
-                <input
-                  value={projectDraft.participants}
-                  placeholder="Bitte auswählen"
-                  onChange={(event) => updateProjectDraft("participants", event.target.value)}
-                />
-              </label>
+              <div className={`${styles.projectTwoColumn} ${styles.standardFormWide}`}>
+                <label>
+                  Projektverantwortlicher
+                  <select
+                    value={projectDraft.responsibleName}
+                    onChange={(event) => updateProjectDraft("responsibleName", event.target.value)}
+                  >
+                    <option value="">Bitte auswählen</option>
+                    {users.filter((user) => user.isActive).map((user) => (
+                      <option key={user.id} value={user.name}>
+                        {user.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  Vertretung (optional)
+                  <select
+                    value={projectDraft.deputyName}
+                    onChange={(event) => updateProjectDraft("deputyName", event.target.value)}
+                  >
+                    <option value="">Keine Vertretung</option>
+                    {users
+                      .filter((user) => user.isActive && user.name !== projectDraft.responsibleName)
+                      .map((user) => (
+                        <option key={user.id} value={user.name}>
+                          {user.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              </div>
+
+              {projectDraft.deputyName ? (
+                <div className={`${styles.projectTwoColumn} ${styles.standardFormWide}`}>
+                  <label>
+                    Vertretung von
+                    <input
+                      type="date"
+                      value={projectDraft.deputyFrom}
+                      onChange={(event) => updateProjectDraft("deputyFrom", event.target.value)}
+                    />
+                  </label>
+
+                  <label>
+                    Vertretung bis
+                    <input
+                      type="date"
+                      value={projectDraft.deputyUntil}
+                      onChange={(event) => updateProjectDraft("deputyUntil", event.target.value)}
+                    />
+                  </label>
+                </div>
+              ) : null}
             </div>
 
             </div>
@@ -35409,7 +46434,7 @@ export function DashboardPage() {
                 onClick={closeManualProjectTimeModal}
                 aria-label="Zeiteintrag schließen"
               >
-                ×
+                &times;
               </button>
             </div>
             <div className={`${styles.standardModalBody} ${styles.stampModalBody}`}>
@@ -35433,9 +46458,9 @@ export function DashboardPage() {
                 <label>
                   Datum
                   <input
+                    type="date"
                     value={stampEditDate}
                     onChange={(event) => setStampEditDate(event.target.value)}
-                    placeholder="TT.MM.JJJJ"
                   />
                 </label>
                 <label>
@@ -35507,9 +46532,9 @@ export function DashboardPage() {
                 className={styles.iconButton}
                 type="button"
                 onClick={closeStampEntryEditModal}
-                aria-label="Zeiteintrag schließen"
+                 aria-label="Zeiteintrag schließen"
               >
-                ×
+                &times;
               </button>
             </div>
             <div className={`${styles.standardModalBody} ${styles.stampModalBody}`}>
@@ -35517,9 +46542,9 @@ export function DashboardPage() {
                 <label>
                   Datum
                   <input
+                    type="date"
                     value={stampEditDate}
                     onChange={(event) => setStampEditDate(event.target.value)}
-                    placeholder="TT.MM.JJJJ"
                   />
                 </label>
                 <label>
@@ -35566,7 +46591,7 @@ export function DashboardPage() {
                     <article key={history.id}>
                       <strong>{history.event}</strong>
                       <span>
-                        {history.actorName || "-"} · {formatInstantDateTime(history.createdAt)}
+                         {history.actorName || "-"} · {formatInstantDateTime(history.createdAt)}
                       </span>
                       <p>
                         Vorher: {history.previousValue}
@@ -35612,32 +46637,60 @@ export function DashboardPage() {
                   ? "Stempelung starten"
                   : stampModalMode === "stop"
                     ? "Stempelung stoppen"
-                    : "Folgetätigkeit auswählen"}
+                     : "Folgetätigkeit auswählen"}
               </h2>
               <button
                 className={styles.iconButton}
                 type="button"
                 onClick={() => setIsStampModalOpen(false)}
-                aria-label="Stempelmaske schließen"
+                 aria-label="Stempelmaske schließen"
               >
-                ×
+                &times;
               </button>
             </div>
             <div className={`${styles.standardModalBody} ${styles.stampModalBody}`}>
               {(stampModalMode === "change" || stampModalMode === "stop") && (
+                <div className={styles.stampCapturedComment}>
+                  <span>Bereits beim Start erfasst</span>
+                  <strong>{stampSession?.comment || "Keine Startnotiz vorhanden."}</strong>
+                </div>
+              )}
+
+              {stampModalMode === "stop" && (
                 <label>
-                  Kommentar zur abgeschlossenen Tätigkeit
+                  Möchtest du noch etwas ergänzen?
                   <textarea
                     rows={4}
                     value={stampComment}
                     onChange={(event) => setStampComment(event.target.value)}
-                    placeholder="Was wurde gemacht?"
+                    placeholder="Optional: Ergänzung zur abgeschlossenen Tätigkeit"
+                  />
+                </label>
+              )}
+
+              {stampModalMode === "change" && (
+                <label>
+                  Optional: Ergänzung zur abgeschlossenen Tätigkeit
+                  <textarea
+                    rows={3}
+                    value={stampComment}
+                    onChange={(event) => setStampComment(event.target.value)}
+                    placeholder="Nur ausfüllen, wenn zur bisherigen Tätigkeit noch etwas fehlt."
                   />
                 </label>
               )}
 
               {(stampModalMode === "change" || stampModalMode === "stop") && stampSession?.mode === "project" && (
                 <section className={styles.finalInspectionPanel}>
+                  {stampModalMode === "change" ? (
+                    <div className={styles.stampStepIntro}>
+                      <span>1</span>
+                      <div>
+                        <strong>Bisherige Tätigkeit bewerten</strong>
+                        <p>Erst danach wählst du aus, worauf du als Nächstes stempelst.</p>
+                      </div>
+                    </div>
+                  ) : null}
                   <div className={styles.stampChoiceGrid}>
                     <button
                       type="button"
@@ -35655,7 +46708,22 @@ export function DashboardPage() {
                     </button>
                   </div>
 
-                  {stampCompletionState === "finished" && stampSession?.mode === "project" ? (
+                  {stampCompletionState === "finished" &&
+                  stampSession?.mode === "project" &&
+                  !isCurrentStampProjectImmocare ? (
+                    <button
+                      type="button"
+                      className={styles.finalInspectionOptionalToggle}
+                      data-active={finalInspectionOptionalOpen}
+                      onClick={() => setFinalInspectionOptionalOpen((current) => !current)}
+                    >
+                      {finalInspectionOptionalOpen
+                        ? "Optionale Endkontrolle ausblenden"
+                        : "Optionale Endkontrolle erfassen"}
+                    </button>
+                  ) : null}
+
+                  {shouldShowFinalInspectionChecklist ? (
                     <div className={styles.finalInspectionChecklist}>
                       <div>
                         <h3>Endkontrolle</h3>
@@ -35731,26 +46799,198 @@ export function DashboardPage() {
                 </section>
               )}
 
-              {stampModalMode !== "stop" && !(stampModalMode === "change" && stampSession?.mode === "unproductive") && (
+              {stampNeedsCompletionDecision ? (
+                <div className={styles.stampStepLocked}>
+                  Bitte zuerst auswählen, ob die bisherige Arbeit fertig oder unterbrochen ist.
+                </div>
+              ) : null}
+
+              {stampCanChooseFollowUp && stampModalMode === "change" ? (
+                <div className={styles.stampStepIntro}>
+                  <span>2</span>
+                  <div>
+                    <strong>Folgetätigkeit wählen</strong>
+                    <p>Jetzt kannst du einen geplanten Termin übernehmen oder bewusst etwas anderes stempeln.</p>
+                  </div>
+                </div>
+              ) : null}
+
+              {stampCanChooseFollowUp && (
+                <div className={styles.stampPlanningSuggestions}>
+                  <div className={styles.stampPlanningHeader}>
+                    <div>
+                      <strong>Heutige Planung</strong>
+                      <span>Geplanten Auftrag übernehmen oder unten etwas anderes auswählen.</span>
+                    </div>
+                  </div>
+                  {(() => {
+                    const todayPlanningEntries = getTodayStampPlanningEntries();
+                    const recommendedEntry = getRecommendedStampPlanningEntry(todayPlanningEntries);
+                    const otherPlanningEntries = todayPlanningEntries.filter((entry) => entry.id !== recommendedEntry?.id);
+
+                    if (todayPlanningEntries.length === 0) {
+                      return <p>Keine bestätigten Termine für heute. Wähle unten ein Projekt oder eine unproduktive Tätigkeit.</p>;
+                    }
+
+                    return (
+                      <div className={styles.stampPlanningList}>
+                        {!recommendedEntry ? (
+                          <p>
+                            Keine weiteren geplanten Termine heute. Du kannst die Tagestermine ansehen oder unten bewusst ein Projekt bzw. eine unproduktive Tätigkeit wählen.
+                          </p>
+                        ) : null}
+                        {(recommendedEntry ? [recommendedEntry] : []).map((entry) => {
+                          const entryStatus = getStampPlanningEntryStatus(entry);
+
+                          return (
+                            <button
+                              key={entry.id}
+                              type="button"
+                              data-recommended="true"
+                              data-status={entryStatus.state}
+                              data-done={entryStatus.state === "done"}
+                              onClick={() => selectPlanningEntryForStamp(entry)}
+                            >
+                              <strong>
+                                {entry.startTime} - {entry.endTime}
+                                <em>{entryStatus.label}</em>
+                              </strong>
+                              <span>{entry.title || getPlanningEntryStampLabel(entry)}</span>
+                              <small>
+                                {entry.projectId ? getPlanningEntryStampLabel(entry) : "Ohne Projekt"} - Vorschlag
+                              </small>
+                            </button>
+                          );
+                        })}
+                        {otherPlanningEntries.length > 0 && (
+                          <details className={styles.stampPlanningMore}>
+                            <summary>{otherPlanningEntries.length} weitere Termine anzeigen</summary>
+                            <div>
+                              {otherPlanningEntries.map((entry) => {
+                                const entryStatus = getStampPlanningEntryStatus(entry);
+
+                                return (
+                                  <button
+                                    key={entry.id}
+                                    type="button"
+                                    data-status={entryStatus.state}
+                                    data-done={entryStatus.state === "done"}
+                                    onClick={() => selectPlanningEntryForStamp(entry)}
+                                  >
+                                    <strong>
+                                      {entry.startTime} - {entry.endTime}
+                                      <em>{entryStatus.label}</em>
+                                    </strong>
+                                    <span>{entry.title || getPlanningEntryStampLabel(entry)}</span>
+                                    <small>
+                                      {entry.projectId ? getPlanningEntryStampLabel(entry) : "Ohne Projekt"}
+                                    </small>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </details>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {stampCanChooseFollowUp && (
                 <div className={styles.stampChoiceGrid}>
                   <button
                     type="button"
                     data-active={stampSelectionMode === "project"}
-                    onClick={() => setStampSelectionMode("project")}
+                    onClick={() => {
+                      setStampSelectionMode("project");
+                      setIsStampManualProjectPickerOpen(true);
+                      setIsStampProjectSearchOpen(true);
+                    }}
                   >
-                    Projekt
+                    Anderes Projekt
                   </button>
                   <button
                     type="button"
                     data-active={stampSelectionMode === "unproductive"}
-                    onClick={() => setStampSelectionMode("unproductive")}
+                    onClick={() => {
+                      setStampSelectionMode("unproductive");
+                      setIsStampManualProjectPickerOpen(false);
+                    }}
                   >
                     Ich bin unproduktiv
                   </button>
                 </div>
               )}
 
-              {stampModalMode !== "stop" && stampSelectionMode === "project" && (
+              {stampModalMode === "start" && (
+                <label>
+                  Was machst du gerade? *
+                  <textarea
+                    rows={3}
+                    value={stampComment}
+                    onChange={(event) => {
+                      setStampComment(event.target.value);
+                      setStampError("");
+                    }}
+                    placeholder="Kurz beschreiben, woran du jetzt arbeitest."
+                  />
+                </label>
+              )}
+
+              {stampModalMode === "change" && stampCanChooseFollowUp && (
+                <label>
+                  Was machst du als Nächstes? *
+                  <textarea
+                    rows={3}
+                    value={stampNextComment}
+                    onChange={(event) => {
+                      setStampNextComment(event.target.value);
+                      setStampError("");
+                    }}
+                    placeholder="Kurz beschreiben, woran du jetzt weiterarbeitest."
+                  />
+                </label>
+              )}
+
+              {stampCanChooseFollowUp && stampSelectionMode === "unproductive" && (
+                <div className={styles.stampUnproductivePicker}>
+                  <label>
+                    Unproduktive Tätigkeit *
+                    <input
+                      list="stamp-unproductive-options"
+                      value={stampUnproductiveLabel}
+                      onChange={(event) => {
+                        setStampUnproductiveLabel(event.target.value);
+                        setStampError("");
+                      }}
+                      placeholder="z. B. Besprechung intern, Wartung, Wartezeit..."
+                    />
+                  </label>
+                  <datalist id="stamp-unproductive-options">
+                    {defaultUnproductiveStampLabels.map((label) => (
+                      <option key={label} value={label} />
+                    ))}
+                  </datalist>
+                  <div className={styles.stampQuickChoices}>
+                    {defaultUnproductiveStampLabels.map((label) => (
+                      <button
+                        key={label}
+                        type="button"
+                        data-active={stampUnproductiveLabel === label}
+                        onClick={() => {
+                          setStampUnproductiveLabel(label);
+                          setStampError("");
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {stampCanChooseFollowUp && stampSelectionMode === "project" && isStampManualProjectPickerOpen && (
                 <div className={styles.stampProjectPicker}>
                   <label>
                     Projekt auswählen
@@ -35836,6 +47076,87 @@ export function DashboardPage() {
         </div>
       )}
 
+      {isManualPotentialModalOpen && (
+        <div className={styles.overlay} onClick={() => setIsManualPotentialModalOpen(false)}>
+          <div
+            className={`${styles.standardModal} ${styles.manualPotentialModal}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={styles.standardModalHeader}>
+              <div>
+                <h2>Zusatzverkauf anlegen</h2>
+                <p>Ein manueller Zusatzverkauf braucht immer ein vorhandenes Projekt.</p>
+              </div>
+              <button
+                className={styles.iconButton}
+                type="button"
+                onClick={() => setIsManualPotentialModalOpen(false)}
+                 aria-label="Zusatzverkauf schließen"
+              >
+                &times;
+              </button>
+            </div>
+            <div className={styles.standardModalBody}>
+              <div className={styles.formGrid}>
+                <label className={styles.fullWidth}>
+                  Projekt
+                  <select
+                    value={manualPotentialProjectId}
+                    onChange={(event) => {
+                      setManualPotentialProjectId(event.target.value);
+                      setManualPotentialError("");
+                    }}
+                  >
+                    <option value="">Projekt auswählen</option>
+                    {heroProjects.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.projectNumber || project.id} | {project.customer || "Kein Kunde"} | {project.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className={styles.fullWidth}>
+                  Zusatzverkauf
+                  <textarea
+                    rows={4}
+                    value={manualPotentialDescription}
+                    onChange={(event) => {
+                      setManualPotentialDescription(event.target.value);
+                      setManualPotentialError("");
+                    }}
+                    placeholder="Welche Zusatzleistung oder Folgechance wurde erkannt?"
+                  />
+                </label>
+                <label>
+                  Geschätzter Wert
+                  <input
+                    value={manualPotentialEstimatedValue}
+                    onChange={(event) => setManualPotentialEstimatedValue(event.target.value)}
+                    placeholder="0,00"
+                  />
+                </label>
+              </div>
+              {manualPotentialError ? <p className={styles.modalWarning}>{manualPotentialError}</p> : null}
+            </div>
+            <div className={styles.standardModalFooter}>
+              <span />
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => setIsManualPotentialModalOpen(false)}
+                >
+                  Abbrechen
+                </button>
+                <button type="button" className={styles.primaryButton} onClick={() => void saveManualPotential()}>
+                  Zusatzverkauf anlegen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {editingPotential && (
         <div className={styles.overlay} onClick={() => setEditingPotential(null)}>
           <div
@@ -35844,11 +47165,11 @@ export function DashboardPage() {
           >
             <div className={styles.standardModalHeader}>
               <div>
-                <h2>Potenzial bearbeiten</h2>
+                <h2>Zusatzverkauf bearbeiten</h2>
                 <p>{editingPotential.projectLabel || editingPotential.customerName || "Zusatzverkauf"}</p>
               </div>
               <button className={styles.iconButton} type="button" onClick={() => setEditingPotential(null)}>
-                ×
+                &times;
               </button>
             </div>
             <div className={`${styles.standardModalBody} ${styles.potentialModalBody}`}>
@@ -35858,10 +47179,6 @@ export function DashboardPage() {
                   <strong>{getPotentialStatusLabel({ ...editingPotential, status: potentialDraft.status })}</strong>
                 </div>
                 <div>
-                  <span>Priorität</span>
-                  <strong>{getPotentialPriorityLabel(potentialDraft.priority)}</strong>
-                </div>
-                <div>
                   <span>Geschätzter Wert</span>
                   <strong>{potentialDraft.estimatedValue ? `${potentialDraft.estimatedValue} €` : "-"}</strong>
                 </div>
@@ -35869,7 +47186,7 @@ export function DashboardPage() {
 
               <div className={styles.formGrid}>
                 <label className={styles.fullWidth}>
-                  Potenzial
+                  Zusatzverkauf
                   <textarea
                     value={potentialDraft.description}
                     onChange={(event) =>
@@ -35892,7 +47209,7 @@ export function DashboardPage() {
                     }
                   >
                     <option value="open">Offen</option>
-                    <option value="follow_up">Wiedervorlage</option>
+                    <option value="follow_up">Nachfassen geplant</option>
                     <option value="offered">Angeboten</option>
                     <option value="lost">Kein Interesse</option>
                   </select>
@@ -35934,46 +47251,17 @@ export function DashboardPage() {
                   />
                 </label>
                 <label>
-                  Priorität
-                  <select
-                    value={potentialDraft.priority}
-                    onChange={(event) =>
-                      setPotentialDraft((currentDraft) => ({
-                        ...currentDraft,
-                        priority: event.target.value as ProjectPotentialPriority,
-                      }))
-                    }
+                  Nachfass-Aufgabe
+                  <button
+                    type="button"
+                    className={styles.potentialTaskInfo}
+                    data-clickable={getPotentialLinkedTask(editingPotential) ? "true" : "false"}
+                    onClick={() => openPotentialLinkedTask(editingPotential)}
+                    disabled={!getPotentialLinkedTask(editingPotential)}
                   >
-                    <option value="low">Niedrig</option>
-                    <option value="normal">Normal</option>
-                    <option value="high">Hoch</option>
-                  </select>
-                </label>
-                <label>
-                  Wiedervorlage
-                  <input
-                    type="date"
-                    value={potentialDraft.followUpAt}
-                    onChange={(event) =>
-                      setPotentialDraft((currentDraft) => ({
-                        ...currentDraft,
-                        followUpAt: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label className={styles.fullWidth}>
-                  Nächster Schritt
-                  <textarea
-                    value={potentialDraft.nextStep}
-                    onChange={(event) =>
-                      setPotentialDraft((currentDraft) => ({
-                        ...currentDraft,
-                        nextStep: event.target.value,
-                      }))
-                    }
-                    placeholder="Was soll als Nächstes passieren?"
-                  />
+                    <strong>{getPotentialFollowUpInfo(editingPotential).title}</strong>
+                    <span>{getPotentialFollowUpInfo(editingPotential).detail}</span>
+                  </button>
                 </label>
                 {potentialDraft.status === "lost" ? (
                   <label className={styles.fullWidth}>
@@ -35990,7 +47278,7 @@ export function DashboardPage() {
                   </label>
                 ) : null}
                 <label className={styles.fullWidth}>
-                  Notiz zur Änderung
+                  Notiz für Historie
                   <textarea
                     value={potentialDraft.note}
                     onChange={(event) =>
@@ -36010,11 +47298,13 @@ export function DashboardPage() {
                   <p>Noch keine Historie vorhanden.</p>
                 ) : (
                   <div className={styles.customerTimeline}>
-                    {editingPotential.history.map((entry, index) => (
+                    {[...editingPotential.history]
+                      .sort((firstEntry, secondEntry) => new Date(secondEntry.at).getTime() - new Date(firstEntry.at).getTime())
+                      .map((entry, index) => (
                       <article key={`${entry.at}-${index}`}>
                         <div className={styles.customerAvatar}>{entry.actor.slice(0, 2).toUpperCase()}</div>
                         <div>
-                          <a>{formatDeadline(entry.at)}</a>
+                          <a>{formatInstantDateTime(entry.at)}</a>
                           <p>{entry.note || entry.action}</p>
                           <small className={styles.customerLogMeta}>{entry.actor}</small>
                         </div>
@@ -36048,27 +47338,7 @@ export function DashboardPage() {
                     void schedulePotentialFollowUp(currentPotential);
                   }}
                 >
-                  Aufgabe / Wiedervorlage
-                </button>
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={async () => {
-                    const savedPotential = await updateProjectPotential(editingPotential, "lost", {
-                      lostReason: potentialDraft.lostReason || potentialDraft.note,
-                      note: potentialDraft.note || potentialDraft.lostReason || "Kein Interesse.",
-                    });
-                    if (savedPotential) {
-                      setEditingPotential(savedPotential);
-                      setPotentialDraft((currentDraft) => ({
-                        ...currentDraft,
-                        status: "lost",
-                        note: "",
-                      }));
-                    }
-                  }}
-                >
-                  Kein Interesse
+                  {getPotentialLinkedTask(editingPotential) ? "Nachfass-Aufgabe öffnen" : "Nachfass-Aufgabe anlegen"}
                 </button>
                 <button type="button" className={styles.primaryButton} onClick={() => void savePotentialDetail()}>
                   Speichern
@@ -36087,11 +47357,11 @@ export function DashboardPage() {
           >
             <div className={styles.standardModalHeader}>
               <div>
-                <h2>Potenzial-Historie</h2>
+                <h2>Zusatzverkauf-Historie</h2>
                 <p>{historyPotential.description}</p>
               </div>
               <button className={styles.iconButton} type="button" onClick={() => setHistoryPotential(null)}>
-                ?
+                X
               </button>
             </div>
             <div className={styles.standardModalBody}>
@@ -36099,11 +47369,13 @@ export function DashboardPage() {
                 {historyPotential.history.length === 0 ? (
                   <p>Noch keine Historie vorhanden.</p>
                 ) : (
-                  historyPotential.history.map((entry, index) => (
+                  [...historyPotential.history]
+                    .sort((firstEntry, secondEntry) => new Date(secondEntry.at).getTime() - new Date(firstEntry.at).getTime())
+                    .map((entry, index) => (
                     <article key={`${entry.at}-${index}`}>
                       <div className={styles.customerAvatar}>{entry.actor.slice(0, 2).toUpperCase()}</div>
                       <div>
-                        <a>{formatDeadline(entry.at)}</a>
+                        <a>{formatInstantDateTime(entry.at)}</a>
                         <p>{entry.note || entry.action}</p>
                         <small className={styles.customerLogMeta}>{entry.actor}</small>
                       </div>
@@ -36218,12 +47490,12 @@ export function DashboardPage() {
                   {editingTask
                     ? "Aufgabe bearbeiten"
                     : isCreatingAbsenceHandoverTask
-                      ? "Übergabe-Aufgabe erstellen"
+                       ? "Übergabe-Aufgabe erstellen"
                       : "Neue Aufgabe erstellen"}
                 </h2>
                 <p>
                   {editingTask
-                    ? "Aufgabe, Zuständigkeit und Kommentare bearbeiten"
+                     ? "Aufgabe, Zuständigkeit und Kommentare bearbeiten"
                     : "Neue Aufgabe mit Kunde, Projekt und Deadline anlegen"}
                 </p>
               </div>
@@ -36377,7 +47649,7 @@ export function DashboardPage() {
                   <div className={styles.timeHeader}>
                     <div>
                       <h3>Aufgabenbeteiligte</h3>
-                      <p>{editingTask.participants.length} Beteiligte</p>
+                      <p>{editingTask.participants.length} Beteiligte. Zuständig bleibt {editingTask.zustaendig}.</p>
                     </div>
                   </div>
 

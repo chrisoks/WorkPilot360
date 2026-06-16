@@ -13,6 +13,9 @@ import {
 import { Prisma } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { generateXRechnungXml, type XRechnungSeller } from "@/lib/e-invoice/xrechnung";
+import { validateXRechnungWithKosit } from "@/lib/e-invoice/kosit-validator";
+import { validateXRechnungPayload } from "@/lib/e-invoice/xrechnung-validation";
 
 type InvoiceCompany = "OK solutions" | "OK immocare";
 
@@ -26,6 +29,8 @@ type InvoiceLineInput = {
   description?: string;
   unitPrice?: number;
   discountPercent?: number;
+  materialUnitCostSnapshot?: number;
+  materialCostSnapshot?: number;
   vatRate?: number;
   laborItems?: InvoiceLineLaborInput[];
 };
@@ -60,6 +65,8 @@ type InvoiceInput = {
   closingText?: string;
   vatRate?: number;
   discountPercent?: number;
+  paymentTermDays?: number | null;
+  dueDate?: string;
   lines?: InvoiceLineInput[];
   billedStampEntryIds?: string[];
   allowUnderbilledStampedHours?: boolean;
@@ -94,6 +101,10 @@ type InvoiceRow = {
   vatRate: number;
   grossTotal: number;
   discountPercent: number;
+  paymentTermDays: number;
+  dueDate: string;
+  reminderLevel: number;
+  lastReminderAt: Date | null;
   isPaid: boolean;
   paidAt: Date | null;
   pdfData: string | null;
@@ -114,6 +125,9 @@ type InvoiceLineRow = {
   description: string;
   unitPrice: number;
   discountPercent: number;
+  materialUnitCostSnapshot: number;
+  materialCostSnapshot: number;
+  costSnapshotAt: Date | null;
   vatRate: number;
   totalNet: number;
 };
@@ -147,6 +161,38 @@ const A4_HEIGHT = 841.89;
 const INK = rgb(0.08, 0.1, 0.14);
 const MUTED = rgb(0.25, 0.29, 0.34);
 const LINE = rgb(0.38, 0.38, 0.38);
+const DELETED_INVOICE_STATUS = "Gelöscht";
+const LEGACY_DELETED_INVOICE_STATUS = "Gel\u00c3\u00b6scht";
+
+function getXRechnungSellerProfile(company: InvoiceCompany): XRechnungSeller {
+  return {
+    name: "OK solutions GmbH",
+    street: "Im Krötenteich 3/4",
+    postalCode: "74722",
+    city: "Buchen",
+    country: "DE",
+    endpoint: "rechnung@ok-solutions.com",
+    vatId: "DE367346374",
+    iban: "DE85674500480004369971",
+    bic: "SOLADES1MOS",
+    bankName: "Sparkasse Neckartal-Odenwald",
+  };
+}
+
+function getMissingXRechnungSellerFields(seller: XRechnungSeller) {
+  return [
+    ["Firmenname", seller.name],
+    ["Straße", seller.street],
+    ["PLZ", seller.postalCode],
+    ["Ort", seller.city],
+    ["Land", seller.country],
+    ["E-Mail/Endpoint", seller.endpoint],
+    ["USt-ID oder Steuernummer", seller.vatId || seller.taxNumber],
+    ["IBAN", seller.iban],
+  ]
+    .filter(([, value]) => !String(value ?? "").trim())
+    .map(([label]) => label);
+}
 
 async function embedInvoiceFonts(pdfDoc: PDFDocument) {
   try {
@@ -196,6 +242,10 @@ async function ensureInvoiceTables() {
       "vatRate" DOUBLE PRECISION NOT NULL DEFAULT 19,
       "grossTotal" DOUBLE PRECISION NOT NULL DEFAULT 0,
       "discountPercent" DOUBLE PRECISION NOT NULL DEFAULT 0,
+      "paymentTermDays" INTEGER NOT NULL DEFAULT 14,
+      "dueDate" TEXT NOT NULL DEFAULT '',
+      "reminderLevel" INTEGER NOT NULL DEFAULT 0,
+      "lastReminderAt" TIMESTAMP(3),
       "isPaid" BOOLEAN NOT NULL DEFAULT false,
       "paidAt" TIMESTAMP(3),
       "pdfData" TEXT,
@@ -207,6 +257,16 @@ async function ensureInvoiceTables() {
   await prisma.$executeRaw`
     ALTER TABLE "Invoice"
     ADD COLUMN IF NOT EXISTS "discountPercent" DOUBLE PRECISION NOT NULL DEFAULT 0
+  `;
+  await prisma.$executeRaw`
+    ALTER TABLE "Invoice"
+    ADD COLUMN IF NOT EXISTS "paymentTermDays" INTEGER NOT NULL DEFAULT 14,
+    ADD COLUMN IF NOT EXISTS "dueDate" TEXT NOT NULL DEFAULT ''
+  `;
+  await prisma.$executeRaw`
+    ALTER TABLE "Invoice"
+    ADD COLUMN IF NOT EXISTS "reminderLevel" INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS "lastReminderAt" TIMESTAMP(3)
   `;
   await prisma.$executeRaw`
     ALTER TABLE "Invoice"
@@ -269,6 +329,13 @@ async function ensureInvoiceTables() {
   await prisma.$executeRaw`
     ALTER TABLE "InvoiceLine"
     ADD COLUMN IF NOT EXISTS "isLaborPosition" BOOLEAN NOT NULL DEFAULT false
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "InvoiceLine"
+    ADD COLUMN IF NOT EXISTS "materialUnitCostSnapshot" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS "materialCostSnapshot" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS "costSnapshotAt" TIMESTAMP(3)
   `;
 
   await prisma.$executeRaw`
@@ -389,7 +456,10 @@ async function ensureInvoiceTimeEntryColumns() {
     ADD COLUMN IF NOT EXISTS "entrySource" TEXT NOT NULL DEFAULT 'stamped',
     ADD COLUMN IF NOT EXISTS "invoiceId" TEXT,
     ADD COLUMN IF NOT EXISTS "invoiceNumber" TEXT,
-    ADD COLUMN IF NOT EXISTS "invoicedAt" TIMESTAMP(3)
+    ADD COLUMN IF NOT EXISTS "invoicedAt" TIMESTAMP(3),
+    ADD COLUMN IF NOT EXISTS "laborCostRateSnapshot" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS "laborCostSnapshot" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS "costSnapshotAt" TIMESTAMP(3)
   `;
 }
 
@@ -399,7 +469,7 @@ function getBilledStampEntryIds(input: unknown) {
     : [];
 }
 
-function getInvoiceLaborHours(lines: Array<{ laborItems: Array<{ plannedHours: number }> }>) {
+function getInvoiceLaborHours(lines: Array<{ laborItems: Array<{ plannedHours?: number }> }>) {
   return lines.reduce(
     (sum, line) =>
       sum + line.laborItems.reduce((lineSum, labor) => lineSum + Number(labor.plannedHours || 0), 0),
@@ -435,6 +505,29 @@ async function markStampedHoursAsInvoiced(input: {
 }) {
   if (input.stampEntryIds.length === 0) return;
   await ensureInvoiceTimeEntryColumns();
+  await prisma.$executeRaw`
+    UPDATE "ProjectTimeEntry" entry
+    SET "laborCostRateSnapshot" = COALESCE(cost."hourlyCostRate", 0),
+        "laborCostSnapshot" = ROUND(((entry."durationMs"::double precision / 3600000) * COALESCE(cost."hourlyCostRate", 0))::numeric, 2)::double precision,
+        "costSnapshotAt" = CURRENT_TIMESTAMP
+    FROM (
+      SELECT
+        "userId",
+        CASE
+          WHEN GREATEST("annualHours" - (("vacationDays" + "trainingDays" + "sickDays") * "hoursPerDay"), 0) > 0
+          THEN ROUND((("monthlySalary" * 12 * "fullCostFactor") / GREATEST("annualHours" - (("vacationDays" + "trainingDays" + "sickDays") * "hoursPerDay"), 0))::numeric, 2)::double precision
+          ELSE 0
+        END AS "hourlyCostRate"
+      FROM "EmployeeCostCalculation"
+      WHERE "organizationId" = ${input.organizationId}
+    ) cost
+    WHERE entry."organizationId" = ${input.organizationId}
+      AND entry."projectId" = ${input.projectId}
+      AND entry."mode" = 'project'
+      AND entry."id" IN (${Prisma.join(input.stampEntryIds)})
+      AND entry."userId" = cost."userId"
+      AND COALESCE(entry."laborCostRateSnapshot", 0) = 0
+  `;
   await prisma.$executeRaw`
     UPDATE "ProjectTimeEntry"
     SET "invoiceId" = ${input.invoiceId},
@@ -500,7 +593,7 @@ async function notifyManagementAboutUnderbilling(input: {
         ${`${input.projectLabel}: In ${input.invoiceNumber} wurden ${input.invoiceHours.toFixed(2)} Std. fakturiert, aber ${input.stampedHours.toFixed(2)} Std. produktiv gestempelt.`},
         'project',
         ${input.projectId},
-        'Projekt Ã¶ffnen',
+        'Projekt öffnen',
         NULL,
         CURRENT_TIMESTAMP
       )
@@ -520,6 +613,25 @@ function cleanDateKey(value: unknown) {
 function getInvoiceMonthFromInput(input: InvoiceInput) {
   const serviceDate = cleanDateKey(input.serviceDate);
   return serviceDate ? serviceDate.slice(0, 7) : cleanString(input.plannedExecutionMonth);
+}
+
+function cleanPaymentTermDays(value: unknown) {
+  const parsed = Math.round(cleanNumber(value, 14));
+  if (!Number.isFinite(parsed)) return 14;
+  return Math.min(Math.max(parsed, 0), 365);
+}
+
+function addDaysToDateKey(dateKey: string, days: number) {
+  const cleanDate = cleanDateKey(dateKey);
+  if (!cleanDate) return "";
+  const [year, month, day] = cleanDate.split("-").map(Number);
+  const date = new Date(year, month - 1, day, 12, 0, 0);
+  date.setDate(date.getDate() + cleanPaymentTermDays(days));
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function getInvoiceDueDate(input: InvoiceInput, serviceDate: string, paymentTermDays: number) {
+  return cleanDateKey(input.dueDate) || addDaysToDateKey(serviceDate, paymentTermDays);
 }
 
 function cleanNumber(value: unknown, fallback = 0) {
@@ -563,6 +675,52 @@ function getLineDiscountAmount(line: Pick<Required<InvoiceLineInput>, "quantity"
 
 function getLineTotalNet(line: Pick<Required<InvoiceLineInput>, "quantity" | "unitPrice" | "discountPercent">) {
   return roundMoney(getLineBaseNet(line) - getLineDiscountAmount(line));
+}
+
+async function getCatalogMaterialUnitCostSnapshot(organizationId: string, line: Required<InvoiceLineInput>) {
+  if (!line.catalogItemId || line.isLaborPosition || line.catalogType === "service") return 0;
+
+  const catalogRows = await prisma.$queryRaw<Array<{ type: string; purchasePrice: number }>>`
+    SELECT "type", "purchasePrice"
+    FROM "CatalogItem"
+    WHERE "organizationId" = ${organizationId} AND "id" = ${line.catalogItemId}
+    LIMIT 1
+  `;
+  const catalogItem = catalogRows[0];
+  if (!catalogItem) return 0;
+  if (catalogItem.type !== "package") return roundMoney(Number(catalogItem.purchasePrice ?? 0));
+
+  const packageRows = await prisma.$queryRaw<Array<{ quantity: number; componentType: string; componentPurchasePrice: number }>>`
+    SELECT
+      package_item."quantity",
+      component."type" AS "componentType",
+      component."purchasePrice" AS "componentPurchasePrice"
+    FROM "CatalogPackageItem" package_item
+    JOIN "CatalogItem" component
+      ON component."organizationId" = package_item."organizationId"
+      AND component."id" = package_item."componentItemId"
+    WHERE package_item."organizationId" = ${organizationId}
+      AND package_item."packageId" = ${line.catalogItemId}
+  `;
+
+  return roundMoney(
+    packageRows
+      .filter((row) => row.componentType !== "service")
+      .reduce((sum, row) => sum + Number(row.componentPurchasePrice ?? 0) * Number(row.quantity ?? 0), 0)
+  );
+}
+
+async function withInvoiceLineCostSnapshots(organizationId: string, lines: Required<InvoiceLineInput>[]) {
+  return Promise.all(
+    lines.map(async (line) => {
+      const materialUnitCostSnapshot = roundMoney(await getCatalogMaterialUnitCostSnapshot(organizationId, line));
+      return {
+        ...line,
+        materialUnitCostSnapshot,
+        materialCostSnapshot: roundMoney(materialUnitCostSnapshot * Number(line.quantity || 0)),
+      };
+    })
+  );
 }
 
 function formatEuro(value: number) {
@@ -921,6 +1079,115 @@ async function generateInvoicePdf(Invoice: InvoiceInput & { invoiceNumber: strin
   };
 }
 
+async function createReminderDocument(input: {
+  organizationId: string;
+  invoice: InvoiceRow;
+  actorName: string;
+}) {
+  const nextReminderLevel = Math.min(Number(input.invoice.reminderLevel ?? 0) + 1, 3);
+  const company = input.invoice.company === "OK immocare" ? "OK immocare" : "OK solutions";
+  const templateBytes = await readFile(getTemplatePath(company));
+  const templateDoc = await PDFDocument.load(templateBytes);
+  const pdfDoc = await PDFDocument.create();
+  const { regular, bold } = await embedInvoiceFonts(pdfDoc);
+  const page = await addTemplatePage(pdfDoc, templateDoc, 0);
+  const reminderDate = formatDate();
+  const paymentDeadline = addDaysToDateKey(cleanDateKey(new Date().toISOString().slice(0, 10)), 7);
+  const documentNumber = `MA-${input.invoice.invoiceNumber}-${nextReminderLevel}`;
+
+  page.drawText(input.invoice.customerName || "-", { x: 71, y: 672, size: 8.7, font: bold, color: INK });
+  page.drawText(input.invoice.customerStreet || "", { x: 71, y: 660, size: 8.4, font: bold, color: INK });
+  page.drawText(input.invoice.customerCity || "", { x: 71, y: 648, size: 8.4, font: bold, color: INK });
+
+  const infoRows = [
+    ["Mahnung", documentNumber],
+    ["Referenzrechnung", input.invoice.invoiceNumber],
+    ["Datum", reminderDate],
+    ["Fällig am", formatDateValue(input.invoice.dueDate) || "-"],
+    ["Mahnstufe", String(nextReminderLevel)],
+    ["Neue Zahlungsfrist", formatDateValue(paymentDeadline) || "-"],
+  ];
+  infoRows.forEach(([label, value], index) => {
+    const rowY = 676 - index * 13;
+    page.drawText(label, { x: 313, y: rowY, size: 8.5, font: bold, color: MUTED });
+    drawRightAlignedText(page, value || "-", 552, rowY, { size: 8.5, font: regular, color: INK });
+  });
+
+  page.drawText(`Mahnung zu Rechnung ${input.invoice.invoiceNumber}`, {
+    x: 71,
+    y: 520,
+    size: 11,
+    font: bold,
+    color: INK,
+  });
+  const greeting = input.invoice.contactName ? `Sehr geehrte/r ${input.invoice.contactName},` : "Sehr geehrte Damen und Herren,";
+  page.drawText(greeting, { x: 71, y: 492, size: 8.8, font: regular, color: INK });
+  drawTextBlock(
+    page,
+    [
+      `unsere Rechnung ${input.invoice.invoiceNumber} über ${formatEuro(Number(input.invoice.grossTotal ?? 0))} war am ${
+        formatDateValue(input.invoice.dueDate) || "-"
+      } zur Zahlung fällig.`,
+      "Leider konnten wir bislang keinen Zahlungseingang feststellen.",
+      `Bitte überweisen Sie den offenen Betrag bis spätestens ${formatDateValue(paymentDeadline) || "-"} unter Angabe der Rechnungsnummer.`,
+    ].join("\n\n"),
+    71,
+    468,
+    { font: regular, size: 8.8, maxWidth: 480, lineHeight: 13 }
+  );
+  drawTextBlock(
+    page,
+    "Sollte sich Ihre Zahlung mit diesem Schreiben überschneiden, betrachten Sie diese Mahnung bitte als gegenstandslos.\n\nMit freundlichen Grüßen\n\n" +
+      (input.invoice.internalContactName || input.actorName || "System"),
+    71,
+    348,
+    { font: regular, size: 8.8, maxWidth: 480, lineHeight: 13 }
+  );
+
+  pdfDoc.setTitle(`${documentNumber} ${input.invoice.customerName || "Mahnung"}`);
+  const pdfBytes = await pdfDoc.save();
+  const dataUrl = `data:application/pdf;base64,${Buffer.from(pdfBytes).toString("base64")}`;
+  const fileName = `${documentNumber}.pdf`;
+  const attachment = {
+    name: fileName,
+    type: "Dokument",
+    mimeType: "application/pdf",
+    size: dataUrl.length,
+    dataUrl,
+  };
+
+  await prisma.$executeRaw`
+    CREATE TABLE IF NOT EXISTS "ProjectLogbookEntry" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "organizationId" TEXT NOT NULL,
+      "projectId" TEXT NOT NULL,
+      "title" TEXT,
+      "body" TEXT NOT NULL,
+      "author" TEXT,
+      "authorUserId" TEXT,
+      "colleague" TEXT,
+      "visibleFor" JSONB NOT NULL DEFAULT '[]'::jsonb,
+      "attachments" JSONB NOT NULL DEFAULT '[]'::jsonb,
+      "projectMonth" TEXT,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
+
+  await prisma.$queryRaw`
+    INSERT INTO "ProjectLogbookEntry" (
+      "id", "organizationId", "projectId", "title", "body", "author", "visibleFor", "attachments", "createdAt"
+    )
+    VALUES (
+      ${randomUUID()}, ${input.organizationId}, ${input.invoice.projectId}, ${"Dokumente: Mahnung"},
+      ${`Mahnung ${documentNumber} zu Rechnung ${input.invoice.invoiceNumber} erstellt.`},
+      ${input.actorName || "System"}, ${JSON.stringify(["GF", "Büro", "Mitarbeiter"])}::jsonb,
+      ${JSON.stringify([attachment])}::jsonb, CURRENT_TIMESTAMP
+    )
+  `;
+
+  return { documentNumber, fileName };
+}
+
 function normalizeInvoiceLines(lines: InvoiceLineInput[] = []) {
   return lines
     .map((line) => {
@@ -966,6 +1233,8 @@ function normalizeInvoiceLines(lines: InvoiceLineInput[] = []) {
         description: cleanString(line.description),
         unitPrice,
         discountPercent,
+        materialUnitCostSnapshot: cleanNumber(line.materialUnitCostSnapshot, 0),
+        materialCostSnapshot: cleanNumber(line.materialCostSnapshot, 0),
         vatRate: cleanNumber(line.vatRate, 19),
         laborItems,
       };
@@ -986,6 +1255,10 @@ function serializeInvoice(
     vatRate: Number(row.vatRate ?? 19),
     grossTotal: Number(row.grossTotal ?? 0),
     discountPercent: Number(row.discountPercent ?? 0),
+    paymentTermDays: Number(row.paymentTermDays ?? 14),
+    dueDate: row.dueDate ?? "",
+    reminderLevel: Number(row.reminderLevel ?? 0),
+    lastReminderAt: row.lastReminderAt?.toISOString?.() ?? row.lastReminderAt ?? "",
     isPaid: Boolean(row.isPaid),
     paidAt: row.paidAt?.toISOString?.() ?? row.paidAt ?? "",
     plannedExecutionMonth: row.plannedExecutionMonth ?? "",
@@ -1001,6 +1274,9 @@ function serializeInvoice(
       quantity: Number(line.quantity ?? 0),
       unitPrice: Number(line.unitPrice ?? 0),
       discountPercent: Number(line.discountPercent ?? 0),
+      materialUnitCostSnapshot: Number(line.materialUnitCostSnapshot ?? 0),
+      materialCostSnapshot: Number(line.materialCostSnapshot ?? 0),
+      costSnapshotAt: line.costSnapshotAt?.toISOString?.() ?? line.costSnapshotAt ?? "",
       isLaborPosition: Boolean(line.isLaborPosition),
       vatRate: Number(line.vatRate ?? 19),
       totalNet: Number(line.totalNet ?? 0),
@@ -1042,6 +1318,28 @@ async function getInvoiceLaborRowsForInvoice(organizationId: string, invoiceId: 
   `;
 }
 
+async function getInvoiceBuyerReference(organizationId: string, projectId: string) {
+  if (!projectId) return "";
+  const rows = await prisma.$queryRaw<Array<{ leitwegId: string | null }>>`
+    SELECT c."leitwegId"
+    FROM "WorkPilotProject" p
+    JOIN "Contact" c
+      ON c."organizationId" = p."organizationId"
+     AND (
+       c."id" = p."contactId"
+       OR c."id" = p."contactPersonId"
+       OR c."id" = p."addressContactId"
+       OR c."parentCompanyId" = p."contactId"
+     )
+    WHERE p."organizationId" = ${organizationId}
+      AND p."id" = ${projectId}
+      AND COALESCE(c."leitwegId", '') <> ''
+    ORDER BY c."isInvoiceRecipient" DESC, c."isMainContact" DESC, c."updatedAt" DESC
+    LIMIT 1
+  `;
+  return cleanString(rows[0]?.leitwegId);
+}
+
 async function addInvoiceHistory(input: {
   organizationId: string;
   invoiceId: string;
@@ -1079,7 +1377,7 @@ async function cancelInvoice(input: {
   if (!existingInvoice) {
     return NextResponse.json({ error: "Rechnung wurde nicht gefunden." }, { status: 404 });
   }
-  if (["Storniert", "Stornorechnung", "GelÃ¶scht"].includes(existingInvoice.status)) {
+  if (["Storniert", "Stornorechnung", DELETED_INVOICE_STATUS, LEGACY_DELETED_INVOICE_STATUS].includes(existingInvoice.status)) {
     return NextResponse.json({ error: "Diese Rechnung kann nicht storniert werden." }, { status: 400 });
   }
 
@@ -1101,6 +1399,8 @@ async function cancelInvoice(input: {
     description: [line.description, `Storno zu Rechnung ${existingInvoice.invoiceNumber}`].filter(Boolean).join("\n"),
     unitPrice: -Math.abs(Number(line.unitPrice ?? 0)),
     discountPercent: Number(line.discountPercent ?? 0),
+    materialUnitCostSnapshot: Number(line.materialUnitCostSnapshot ?? 0),
+    materialCostSnapshot: -Math.abs(Number(line.materialCostSnapshot ?? 0)),
     vatRate: Number(line.vatRate ?? existingInvoice.vatRate ?? 19),
     laborItems: [],
   })) as Required<InvoiceLineInput>[];
@@ -1239,7 +1539,106 @@ export async function GET(req: Request) {
   await ensureInvoiceTables();
   const { searchParams } = new URL(req.url);
   const pdfId = cleanString(searchParams.get("pdfId"));
+  const xrechnungId = cleanString(searchParams.get("xrechnungId"));
+  const xrechnungValidationId = cleanString(searchParams.get("xrechnungValidationId"));
   const historyProjectId = cleanString(searchParams.get("historyProjectId"));
+
+  if (xrechnungId || xrechnungValidationId) {
+    const targetInvoiceId = xrechnungId || xrechnungValidationId;
+    const rows = await prisma.$queryRaw<InvoiceRow[]>`
+      SELECT *
+      FROM "Invoice"
+      WHERE "organizationId" = ${organization.id} AND "id" = ${targetInvoiceId}
+      LIMIT 1
+    `;
+    const invoice = rows[0];
+    if (!invoice) {
+      return NextResponse.json({ error: "Rechnung wurde nicht gefunden." }, { status: 404 });
+    }
+
+    const lineRows = await getInvoiceLinesForInvoice(organization.id, invoice.id);
+    if (!lineRows.length) {
+      return NextResponse.json({ error: "XRechnung kann ohne Rechnungspositionen nicht erzeugt werden." }, { status: 400 });
+    }
+
+    const buyerReference = await getInvoiceBuyerReference(organization.id, invoice.projectId);
+    const seller = getXRechnungSellerProfile(invoice.company);
+    const missingSellerFields = getMissingXRechnungSellerFields(seller);
+    if (missingSellerFields.length > 0) {
+      return NextResponse.json(
+        {
+          error: `XRechnung kann nicht erzeugt werden, weil Firmendaten fehlen: ${missingSellerFields.join(", ")}.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    const xrechnungInvoice = {
+      invoiceNumber: invoice.invoiceNumber,
+      issueDate: invoice.createdAt?.toISOString?.().slice(0, 10) || new Date().toISOString().slice(0, 10),
+      serviceDate: invoice.serviceDate,
+      dueDate: invoice.dueDate,
+      seller,
+      customerName: invoice.customerName,
+      customerStreet: invoice.customerStreet,
+      customerCity: invoice.customerCity,
+      contactName: invoice.contactName,
+      netTotal: Number(invoice.netTotal ?? 0),
+      vatRate: Number(invoice.vatRate ?? 19),
+      grossTotal: Number(invoice.grossTotal ?? 0),
+      paymentTermDays: Number(invoice.paymentTermDays ?? 14),
+      buyerReference,
+    };
+    const xrechnungLines = lineRows.map((line, index) => ({
+      position: Number(line.position ?? index + 1),
+      quantity: Number(line.quantity ?? 0),
+      unit: line.unit || "Stk",
+      title: line.title || "Position",
+      description: line.description || "",
+      unitPrice: Number(line.unitPrice ?? 0),
+      discountPercent: Number(line.discountPercent ?? 0),
+      vatRate: Number(line.vatRate ?? invoice.vatRate ?? 19),
+      totalNet: Number(line.totalNet ?? 0),
+    }));
+    const validation = validateXRechnungPayload(xrechnungInvoice, xrechnungLines);
+    const xml = generateXRechnungXml(xrechnungInvoice, xrechnungLines);
+    const kositValidation = validation.valid
+      ? await validateXRechnungWithKosit(xml)
+      : {
+          available: false,
+          valid: false,
+          status: "not-configured" as const,
+          message: "KoSIT-Validierung wurde wegen technischer Mindestfehler nicht ausgeführt.",
+          issues: [],
+        };
+
+    if (xrechnungValidationId) {
+      return NextResponse.json({
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        validation,
+        kositValidation,
+      });
+    }
+
+    if (!validation.valid || (kositValidation.available && !kositValidation.valid)) {
+      return NextResponse.json(
+        {
+          error: "XRechnung kann wegen Validierungsfehlern nicht erzeugt werden.",
+          validation,
+          kositValidation,
+        },
+        { status: 400 }
+      );
+    }
+
+    return new Response(xml, {
+      headers: {
+        "Content-Type": "application/xml; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${invoice.invoiceNumber}-xrechnung.xml"`,
+      },
+    });
+  }
 
   if (pdfId) {
     const rows = await prisma.$queryRaw<InvoiceRow[]>`
@@ -1264,6 +1663,8 @@ export async function GET(req: Request) {
         description: line.description || "",
         unitPrice: Number(line.unitPrice ?? 0),
         discountPercent: Number(line.discountPercent ?? 0),
+        materialUnitCostSnapshot: Number(line.materialUnitCostSnapshot ?? 0),
+        materialCostSnapshot: Number(line.materialCostSnapshot ?? 0),
         vatRate: Number(line.vatRate ?? Invoice.vatRate ?? 19),
         laborItems: [],
       })) as Required<InvoiceLineInput>[];
@@ -1328,13 +1729,13 @@ export async function GET(req: Request) {
     ? await prisma.$queryRaw<InvoiceRow[]>`
         SELECT *
         FROM "Invoice"
-        WHERE "organizationId" = ${organization.id} AND "projectId" = ${projectId} AND "status" <> 'GelÃ¶scht'
+        WHERE "organizationId" = ${organization.id} AND "projectId" = ${projectId} AND "status" NOT IN (${DELETED_INVOICE_STATUS}, ${LEGACY_DELETED_INVOICE_STATUS})
         ORDER BY "createdAt" DESC
       `
     : await prisma.$queryRaw<InvoiceRow[]>`
         SELECT *
         FROM "Invoice"
-        WHERE "organizationId" = ${organization.id} AND "status" <> 'GelÃ¶scht'
+        WHERE "organizationId" = ${organization.id} AND "status" NOT IN (${DELETED_INVOICE_STATUS}, ${LEGACY_DELETED_INVOICE_STATUS})
         ORDER BY "createdAt" DESC
       `;
 
@@ -1373,7 +1774,7 @@ export async function POST(req: Request) {
   const { organization } = await getDemoContext();
   await ensureInvoiceTables();
   const body = (await req.json()) as InvoiceInput;
-  const lines = normalizeInvoiceLines(body.lines);
+  const lines = await withInvoiceLineCostSnapshots(organization.id, normalizeInvoiceLines(body.lines));
   const saveAsDraft = Boolean(body.saveAsDraft);
 
   if (!body.projectId) {
@@ -1381,7 +1782,7 @@ export async function POST(req: Request) {
   }
 
   if (!saveAsDraft && lines.length === 0) {
-    return NextResponse.json({ error: "Bitte mindestens eine Position hinzufÃ¼gen." }, { status: 400 });
+    return NextResponse.json({ error: "Bitte mindestens eine Position hinzufügen." }, { status: 400 });
   }
 
   const billedStampEntryIds = saveAsDraft ? [] : getBilledStampEntryIds(body.billedStampEntryIds);
@@ -1412,6 +1813,8 @@ export async function POST(req: Request) {
   const company = body.company === "OK immocare" ? "OK immocare" : "OK solutions";
   const billingSource = cleanString(body.billingSource) === "batch" ? "batch" : "manual";
   const serviceDate = cleanDateKey(body.serviceDate);
+  const paymentTermDays = cleanPaymentTermDays(body.paymentTermDays);
+  const dueDate = getInvoiceDueDate(body, serviceDate, paymentTermDays);
   const plannedExecutionMonth = getInvoiceMonthFromInput(body);
   const pdf =
     lines.length > 0
@@ -1427,7 +1830,8 @@ export async function POST(req: Request) {
       "invoiceNumber", "status", "billingSource", "customerName", "customerStreet", "customerCity",
       "contactName", "internalContactName", "internalPhone", "internalEmail",
       "plannedExecutionMonth", "serviceDate", "sourceOfferId", "sourceOfferNumber",
-      "introText", "closingText", "discountPercent", "netTotal", "vatRate", "grossTotal", "pdfData", "updatedAt"
+      "introText", "closingText", "discountPercent", "paymentTermDays", "dueDate",
+      "netTotal", "vatRate", "grossTotal", "pdfData", "updatedAt"
     ) VALUES (
       ${id}, ${organization.id}, ${cleanString(body.projectId)}, ${cleanString(body.projectNumber)},
       ${cleanString(body.projectTitle)}, ${company}, ${invoiceNumber}, ${saveAsDraft ? "Entwurf" : "Fakturiert"}, ${billingSource},
@@ -1436,7 +1840,8 @@ export async function POST(req: Request) {
       ${cleanString(body.internalEmail)}, ${plannedExecutionMonth}, ${serviceDate},
       ${cleanString(body.sourceOfferId)}, ${cleanString(body.sourceOfferNumber)},
       ${cleanString(body.introText)}, ${cleanString(body.closingText)},
-      ${cleanPercent(body.discountPercent)}, ${pdf.netTotal}, ${pdf.vatRate}, ${pdf.grossTotal}, ${pdf.pdfData}, CURRENT_TIMESTAMP
+      ${cleanPercent(body.discountPercent)}, ${paymentTermDays}, ${dueDate},
+      ${pdf.netTotal}, ${pdf.vatRate}, ${pdf.grossTotal}, ${pdf.pdfData}, CURRENT_TIMESTAMP
     )
     RETURNING *
   `;
@@ -1447,11 +1852,15 @@ export async function POST(req: Request) {
     const lineRows = await prisma.$queryRaw<InvoiceLineRow[]>`
       INSERT INTO "InvoiceLine" (
         "id", "organizationId", "invoiceId", "catalogItemId", "catalogType", "isLaborPosition", "position",
-        "quantity", "unit", "title", "description", "unitPrice", "discountPercent", "vatRate", "totalNet", "updatedAt"
+        "quantity", "unit", "title", "description", "unitPrice", "discountPercent",
+        "materialUnitCostSnapshot", "materialCostSnapshot", "costSnapshotAt",
+        "vatRate", "totalNet", "updatedAt"
       ) VALUES (
         ${randomUUID()}, ${organization.id}, ${id}, ${line.catalogItemId}, ${line.catalogType}, ${line.isLaborPosition}, ${index + 1},
         ${line.quantity}, ${line.unit}, ${line.title}, ${line.description},
-        ${line.unitPrice}, ${line.discountPercent}, ${line.vatRate}, ${getLineTotalNet(line)}, CURRENT_TIMESTAMP
+        ${line.unitPrice}, ${line.discountPercent},
+        ${line.materialUnitCostSnapshot}, ${line.materialCostSnapshot}, CURRENT_TIMESTAMP,
+        ${line.vatRate}, ${getLineTotalNet(line)}, CURRENT_TIMESTAMP
       )
       RETURNING *
     `;
@@ -1514,7 +1923,7 @@ export async function PUT(req: Request) {
   const lines = normalizeInvoiceLines(body.lines);
 
   if (lines.length === 0) {
-    return NextResponse.json({ error: "Bitte mindestens eine Position hinzufÃ¼gen." }, { status: 400 });
+    return NextResponse.json({ error: "Bitte mindestens eine Position hinzufügen." }, { status: 400 });
   }
 
   const company = body.company === "OK immocare" ? "OK immocare" : "OK solutions";
@@ -1584,6 +1993,83 @@ export async function PATCH(req: Request) {
     return NextResponse.json(serializeInvoice(rows[0], []));
   }
 
+  if (cleanString(body.action) === "record-reminder") {
+    const rows = await prisma.$queryRaw<InvoiceRow[]>`
+      UPDATE "Invoice"
+      SET "reminderLevel" = LEAST(COALESCE("reminderLevel", 0) + 1, 3),
+          "lastReminderAt" = CURRENT_TIMESTAMP,
+          "updatedAt" = CURRENT_TIMESTAMP
+      WHERE "organizationId" = ${organization.id}
+        AND "id" = ${id}
+        AND "status" NOT IN ('Entwurf', 'Storniert', 'Stornorechnung')
+        AND "isPaid" = false
+      RETURNING *
+    `;
+
+    if (!rows[0]) {
+      return NextResponse.json({ error: "Mahnung konnte nicht erfasst werden." }, { status: 404 });
+    }
+
+    await addInvoiceHistory({
+      organizationId: organization.id,
+      invoiceId: id,
+      projectId: rows[0].projectId,
+      invoiceNumber: rows[0].invoiceNumber,
+      eventType: "reminder",
+      title: `Mahnstufe ${rows[0].reminderLevel} erfasst`,
+      note: `${rows[0].invoiceNumber} wurde auf Mahnstufe ${rows[0].reminderLevel} gesetzt.`,
+      actorName: cleanString(body.actorName) || "System",
+    });
+
+    return NextResponse.json(serializeInvoice(rows[0], []));
+  }
+
+  if (cleanString(body.action) === "create-reminder-document") {
+    const existingRows = await prisma.$queryRaw<InvoiceRow[]>`
+      SELECT *
+      FROM "Invoice"
+      WHERE "organizationId" = ${organization.id}
+        AND "id" = ${id}
+        AND "status" NOT IN ('Entwurf', 'Storniert', 'Stornorechnung')
+        AND "isPaid" = false
+      LIMIT 1
+    `;
+    const invoice = existingRows[0];
+    if (!invoice) {
+      return NextResponse.json({ error: "Mahnung konnte nicht erstellt werden." }, { status: 404 });
+    }
+
+    const reminderDocument = await createReminderDocument({
+      organizationId: organization.id,
+      invoice,
+      actorName: cleanString(body.actorName) || "System",
+    });
+    const rows = await prisma.$queryRaw<InvoiceRow[]>`
+      UPDATE "Invoice"
+      SET "reminderLevel" = LEAST(COALESCE("reminderLevel", 0) + 1, 3),
+          "lastReminderAt" = CURRENT_TIMESTAMP,
+          "updatedAt" = CURRENT_TIMESTAMP
+      WHERE "organizationId" = ${organization.id} AND "id" = ${id}
+      RETURNING *
+    `;
+
+    await addInvoiceHistory({
+      organizationId: organization.id,
+      invoiceId: id,
+      projectId: rows[0].projectId,
+      invoiceNumber: rows[0].invoiceNumber,
+      eventType: "reminder-document",
+      title: `Mahnung ${reminderDocument.documentNumber} erstellt`,
+      note: `${reminderDocument.fileName} wurde unter Dokumente: Mahnung abgelegt.`,
+      actorName: cleanString(body.actorName) || "System",
+    });
+
+    return NextResponse.json({
+      invoice: serializeInvoice(rows[0], []),
+      reminderDocument,
+    });
+  }
+
   if (cleanString(body.action) === "mark-printed") {
     const rows = await prisma.$queryRaw<InvoiceRow[]>`
       SELECT *
@@ -1610,10 +2096,10 @@ export async function PATCH(req: Request) {
     return NextResponse.json(serializeInvoice(rows[0], []));
   }
 
-  const lines = normalizeInvoiceLines(body.lines);
+  const lines = await withInvoiceLineCostSnapshots(organization.id, normalizeInvoiceLines(body.lines));
 
   if (!saveAsDraft && lines.length === 0) {
-    return NextResponse.json({ error: "Bitte mindestens eine Position hinzufÃ¼gen." }, { status: 400 });
+    return NextResponse.json({ error: "Bitte mindestens eine Position hinzufügen." }, { status: 400 });
   }
 
   const billedStampEntryIds = saveAsDraft ? [] : getBilledStampEntryIds(body.billedStampEntryIds);
@@ -1658,6 +2144,8 @@ export async function PATCH(req: Request) {
       ? requestedBillingSource
       : cleanString(existingInvoice.billingSource) || "manual";
   const serviceDate = cleanDateKey(body.serviceDate);
+  const paymentTermDays = cleanPaymentTermDays(body.paymentTermDays);
+  const dueDate = getInvoiceDueDate(body, serviceDate, paymentTermDays);
   const plannedExecutionMonth = getInvoiceMonthFromInput(body);
   const pdf =
     lines.length > 0
@@ -1694,6 +2182,8 @@ export async function PATCH(req: Request) {
       "introText" = ${cleanString(body.introText)},
       "closingText" = ${cleanString(body.closingText)},
       "discountPercent" = ${cleanPercent(body.discountPercent)},
+      "paymentTermDays" = ${paymentTermDays},
+      "dueDate" = ${dueDate},
       "netTotal" = ${pdf.netTotal},
       "vatRate" = ${pdf.vatRate},
       "grossTotal" = ${pdf.grossTotal},
@@ -1719,11 +2209,15 @@ export async function PATCH(req: Request) {
     const lineRows = await prisma.$queryRaw<InvoiceLineRow[]>`
       INSERT INTO "InvoiceLine" (
         "id", "organizationId", "invoiceId", "catalogItemId", "catalogType", "isLaborPosition", "position",
-        "quantity", "unit", "title", "description", "unitPrice", "discountPercent", "vatRate", "totalNet", "updatedAt"
+        "quantity", "unit", "title", "description", "unitPrice", "discountPercent",
+        "materialUnitCostSnapshot", "materialCostSnapshot", "costSnapshotAt",
+        "vatRate", "totalNet", "updatedAt"
       ) VALUES (
         ${randomUUID()}, ${organization.id}, ${id}, ${line.catalogItemId}, ${line.catalogType}, ${line.isLaborPosition}, ${index + 1},
         ${line.quantity}, ${line.unit}, ${line.title}, ${line.description},
-        ${line.unitPrice}, ${line.discountPercent}, ${line.vatRate}, ${getLineTotalNet(line)}, CURRENT_TIMESTAMP
+        ${line.unitPrice}, ${line.discountPercent},
+        ${line.materialUnitCostSnapshot}, ${line.materialCostSnapshot}, CURRENT_TIMESTAMP,
+        ${line.vatRate}, ${getLineTotalNet(line)}, CURRENT_TIMESTAMP
       )
       RETURNING *
     `;
@@ -1830,7 +2324,7 @@ export async function DELETE(req: Request) {
 
   const rows = await prisma.$queryRaw<InvoiceRow[]>`
     UPDATE "Invoice"
-    SET "status" = 'GelÃ¶scht', "updatedAt" = CURRENT_TIMESTAMP
+    SET "status" = ${DELETED_INVOICE_STATUS}, "updatedAt" = CURRENT_TIMESTAMP
     WHERE "organizationId" = ${organization.id} AND "id" = ${id}
     RETURNING *
   `;

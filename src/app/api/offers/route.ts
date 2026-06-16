@@ -42,6 +42,9 @@ type OfferLineLaborInput = {
 };
 
 type OfferInput = {
+  id?: string;
+  action?: "markLost" | "markWon" | "restoreLost";
+  actorName?: string;
   projectId?: string;
   projectNumber?: string;
   projectTitle?: string;
@@ -63,6 +66,9 @@ type OfferInput = {
   closingText?: string;
   vatRate?: number;
   discountPercent?: number;
+  lostReason?: string;
+  lostNote?: string;
+  wonReason?: string;
   lines?: OfferLineInput[];
 };
 
@@ -93,6 +99,12 @@ type OfferRow = {
   vatRate: number;
   grossTotal: number;
   discountPercent: number;
+  lostReason: string;
+  lostNote: string;
+  lostAt: Date | null;
+  wonAt: Date | null;
+  wonByName: string;
+  wonReason: string;
   pdfData: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -195,6 +207,12 @@ async function ensureOfferTables() {
       "vatRate" DOUBLE PRECISION NOT NULL DEFAULT 19,
       "grossTotal" DOUBLE PRECISION NOT NULL DEFAULT 0,
       "discountPercent" DOUBLE PRECISION NOT NULL DEFAULT 0,
+      "lostReason" TEXT NOT NULL DEFAULT '',
+      "lostNote" TEXT NOT NULL DEFAULT '',
+      "lostAt" TIMESTAMP(3),
+      "wonAt" TIMESTAMP(3),
+      "wonByName" TEXT NOT NULL DEFAULT '',
+      "wonReason" TEXT NOT NULL DEFAULT '',
       "pdfData" TEXT,
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -229,6 +247,28 @@ async function ensureOfferTables() {
   await prisma.$executeRaw`
     ALTER TABLE "Offer"
     ADD COLUMN IF NOT EXISTS "discountPercent" DOUBLE PRECISION NOT NULL DEFAULT 0
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "Offer"
+    ADD COLUMN IF NOT EXISTS "lostReason" TEXT NOT NULL DEFAULT ''
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "Offer"
+    ADD COLUMN IF NOT EXISTS "lostNote" TEXT NOT NULL DEFAULT ''
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "Offer"
+    ADD COLUMN IF NOT EXISTS "lostAt" TIMESTAMP(3)
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "Offer"
+    ADD COLUMN IF NOT EXISTS "wonAt" TIMESTAMP(3),
+    ADD COLUMN IF NOT EXISTS "wonByName" TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS "wonReason" TEXT NOT NULL DEFAULT ''
   `;
 
   await prisma.$executeRaw`
@@ -857,6 +897,12 @@ function serializeOffer(
     plannedExecutionEndMonth: row.plannedExecutionEndMonth || "",
     parentOfferId: row.parentOfferId || "",
     discountPercent: Number(row.discountPercent ?? 0),
+    lostReason: row.lostReason || "",
+    lostNote: row.lostNote || "",
+    lostAt: row.lostAt?.toISOString?.() ?? row.lostAt ?? "",
+    wonAt: row.wonAt?.toISOString?.() ?? row.wonAt ?? "",
+    wonByName: row.wonByName || "",
+    wonReason: row.wonReason || "",
     netTotal: Number(row.netTotal ?? 0),
     vatRate: Number(row.vatRate ?? 19),
     grossTotal: Number(row.grossTotal ?? 0),
@@ -1140,13 +1186,201 @@ export async function PUT(req: Request) {
 export async function PATCH(req: Request) {
   const { organization } = await getDemoContext();
   await ensureOfferTables();
-  const body = (await req.json()) as OfferInput & { id?: string };
+  const body = (await req.json()) as OfferInput;
   const id = cleanString(body.id);
+  const action = cleanString(body.action);
   const lines = normalizeOfferLines(body.lines);
   const saveAsDraft = Boolean(body.saveAsDraft);
 
   if (!id) {
     return NextResponse.json({ error: "Angebot fehlt." }, { status: 400 });
+  }
+
+  if (action === "markLost") {
+    const lostReason = cleanString(body.lostReason);
+    const lostNote = cleanString(body.lostNote);
+    if (!lostReason) {
+      return NextResponse.json({ error: "Bitte einen Grund für das verlorene Angebot angeben." }, { status: 400 });
+    }
+    if (!lostNote) {
+      return NextResponse.json({ error: "Bitte einen Kommentar für das verlorene Angebot angeben." }, { status: 400 });
+    }
+
+    const existingRows = await prisma.$queryRaw<Array<{ offerNumber: string; status: string; projectId: string; wonAt: Date | null }>>`
+      SELECT "offerNumber", "status", "projectId", "wonAt"
+      FROM "Offer"
+      WHERE "organizationId" = ${organization.id} AND "id" = ${id}
+      LIMIT 1
+    `;
+    const existingOffer = existingRows[0];
+    if (!existingOffer) {
+      return NextResponse.json({ error: "Angebot wurde nicht gefunden." }, { status: 404 });
+    }
+    if (existingOffer.status === "Gelöscht") {
+      return NextResponse.json({ error: "Gelöschte Angebote können nicht als verloren markiert werden." }, { status: 400 });
+    }
+
+    if (existingOffer.wonAt) {
+      return NextResponse.json({ error: "Gewonnene Angebote koennen nicht als verloren markiert werden." }, { status: 400 });
+    }
+
+    const rows = await prisma.$queryRaw<OfferRow[]>`
+      UPDATE "Offer"
+      SET
+        "status" = 'Verloren',
+        "lostReason" = ${lostReason},
+        "lostNote" = ${lostNote},
+        "lostAt" = CURRENT_TIMESTAMP,
+        "wonAt" = NULL,
+        "wonByName" = '',
+        "wonReason" = '',
+        "updatedAt" = CURRENT_TIMESTAMP
+      WHERE "organizationId" = ${organization.id} AND "id" = ${id}
+      RETURNING *
+    `;
+
+    const savedLines = await prisma.$queryRaw<OfferLineRow[]>`
+      SELECT *
+      FROM "OfferLine"
+      WHERE "organizationId" = ${organization.id} AND "offerId" = ${id}
+      ORDER BY "position" ASC
+    `;
+    const savedLaborRows = await prisma.$queryRaw<OfferLineLaborRow[]>`
+      SELECT *
+      FROM "OfferLineLabor"
+      WHERE "organizationId" = ${organization.id} AND "offerId" = ${id}
+      ORDER BY "position" ASC
+    `;
+
+    await addOfferHistory({
+      organizationId: organization.id,
+      offerId: id,
+      projectId: rows[0]?.projectId || existingOffer.projectId,
+      offerNumber: existingOffer.offerNumber,
+      eventType: "lost",
+      title: "Angebot verloren",
+      note: `${existingOffer.offerNumber} wurde als verloren markiert. Grund: ${lostReason}. Kommentar: ${lostNote}.`,
+      actorName: cleanString(body.actorName) || "System",
+    });
+
+    return NextResponse.json(serializeOffer(rows[0], savedLines, savedLaborRows));
+  }
+
+  if (action === "markWon") {
+    const wonReason = cleanString(body.wonReason) || "Angebot gewonnen";
+    const actorName = cleanString(body.actorName) || "System";
+    const existingRows = await prisma.$queryRaw<
+      Array<{ offerNumber: string; status: string; projectId: string; lostAt: Date | null }>
+    >`
+      SELECT "offerNumber", "status", "projectId", "lostAt"
+      FROM "Offer"
+      WHERE "organizationId" = ${organization.id} AND "id" = ${id}
+      LIMIT 1
+    `;
+    const existingOffer = existingRows[0];
+    if (!existingOffer) {
+      return NextResponse.json({ error: "Angebot wurde nicht gefunden." }, { status: 404 });
+    }
+    if (existingOffer.status === "Entwurf") {
+      return NextResponse.json({ error: "Angebotsentwuerfe koennen nicht als gewonnen markiert werden." }, { status: 400 });
+    }
+    if (existingOffer.status === "Gel\u00f6scht") {
+      return NextResponse.json({ error: "Geloeschte Angebote koennen nicht als gewonnen markiert werden." }, { status: 400 });
+    }
+    if (existingOffer.status === "Verloren" || existingOffer.status === "Angebot verloren" || existingOffer.lostAt) {
+      return NextResponse.json({ error: "Verlorene Angebote koennen nicht als gewonnen markiert werden." }, { status: 400 });
+    }
+
+    const rows = await prisma.$queryRaw<OfferRow[]>`
+      UPDATE "Offer"
+      SET
+        "wonAt" = COALESCE("wonAt", CURRENT_TIMESTAMP),
+        "wonByName" = CASE WHEN COALESCE("wonByName", '') = '' THEN ${actorName} ELSE "wonByName" END,
+        "wonReason" = CASE WHEN COALESCE("wonReason", '') = '' THEN ${wonReason} ELSE "wonReason" END,
+        "updatedAt" = CURRENT_TIMESTAMP
+      WHERE "organizationId" = ${organization.id} AND "id" = ${id}
+      RETURNING *
+    `;
+
+    const savedLines = await prisma.$queryRaw<OfferLineRow[]>`
+      SELECT *
+      FROM "OfferLine"
+      WHERE "organizationId" = ${organization.id} AND "offerId" = ${id}
+      ORDER BY "position" ASC
+    `;
+    const savedLaborRows = await prisma.$queryRaw<OfferLineLaborRow[]>`
+      SELECT *
+      FROM "OfferLineLabor"
+      WHERE "organizationId" = ${organization.id} AND "offerId" = ${id}
+      ORDER BY "position" ASC
+    `;
+
+    await addOfferHistory({
+      organizationId: organization.id,
+      offerId: id,
+      projectId: rows[0]?.projectId || existingOffer.projectId,
+      offerNumber: existingOffer.offerNumber,
+      eventType: "won",
+      title: "Angebot gewonnen",
+      note: `${existingOffer.offerNumber} wurde als gewonnen markiert. Grund: ${wonReason}.`,
+      actorName,
+    });
+
+    return NextResponse.json(serializeOffer(rows[0], savedLines, savedLaborRows));
+  }
+
+  if (action === "restoreLost") {
+    const existingRows = await prisma.$queryRaw<Array<{ offerNumber: string; status: string; projectId: string }>>`
+      SELECT "offerNumber", "status", "projectId"
+      FROM "Offer"
+      WHERE "organizationId" = ${organization.id} AND "id" = ${id}
+      LIMIT 1
+    `;
+    const existingOffer = existingRows[0];
+    if (!existingOffer) {
+      return NextResponse.json({ error: "Angebot wurde nicht gefunden." }, { status: 404 });
+    }
+    if (existingOffer.status !== "Verloren" && existingOffer.status !== "Angebot verloren") {
+      return NextResponse.json({ error: "Nur verlorene Angebote können wieder aktiviert werden." }, { status: 400 });
+    }
+
+    const rows = await prisma.$queryRaw<OfferRow[]>`
+      UPDATE "Offer"
+      SET
+        "status" = 'Erstellt',
+        "lostReason" = '',
+        "lostNote" = '',
+        "lostAt" = NULL,
+        "updatedAt" = CURRENT_TIMESTAMP
+      WHERE "organizationId" = ${organization.id} AND "id" = ${id}
+      RETURNING *
+    `;
+
+    const savedLines = await prisma.$queryRaw<OfferLineRow[]>`
+      SELECT *
+      FROM "OfferLine"
+      WHERE "organizationId" = ${organization.id} AND "offerId" = ${id}
+      ORDER BY "position" ASC
+    `;
+    const savedLaborRows = await prisma.$queryRaw<OfferLineLaborRow[]>`
+      SELECT *
+      FROM "OfferLineLabor"
+      WHERE "organizationId" = ${organization.id} AND "offerId" = ${id}
+      ORDER BY "position" ASC
+    `;
+
+    await addOfferHistory({
+      organizationId: organization.id,
+      offerId: id,
+      projectId: rows[0]?.projectId || existingOffer.projectId,
+      offerNumber: existingOffer.offerNumber,
+      eventType: "restored",
+      title: "Angebot wieder aktiviert",
+      note: `${existingOffer.offerNumber} wurde wieder als aktives Angebot markiert.`,
+      actorName: cleanString(body.actorName) || "System",
+    });
+
+    return NextResponse.json(serializeOffer(rows[0], savedLines, savedLaborRows));
   }
 
   if (!saveAsDraft && lines.length === 0) {

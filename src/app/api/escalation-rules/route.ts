@@ -10,6 +10,7 @@ function canManageEscalations(role: Role) {
 function roleLabel(role: Role) {
   if (role === Role.GESCHAEFTSFUEHRER) return "Geschäftsführung";
   if (role === Role.FUEHRUNGSKRAFT) return "Führungskraft";
+  if (String(role) === "BUCHHALTUNG") return "Buchhaltung";
   if (role === Role.MITARBEITER) return "Mitarbeiter";
   if (role === Role.GAST) return "Gast";
   return "Admin";

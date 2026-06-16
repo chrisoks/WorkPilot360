@@ -1,0 +1,401 @@
+﻿diff --git a/AGENTS.md b/AGENTS.md
+index ec10e26..4b95ee2 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -1971,9 +1971,14 @@ Wiederaufbau begonnen 2026-06-05:
+ - Rechte Projektseitenleiste `Verbrauchte Zeitkontingente`: Dauerlaeufer zeigen
+   die Monats-/Gesamt-Aufteilung (`Gestempelt Monat`, `Restliches Kontingent
+   Monat`, `Gestempelt Gesamt`, `Restliches Kontingent Gesamt`). Einmalige
+-  Projekte zeigen die kompakte Gesamtprojekt-Ansicht mit `Gebucht (durch
+-  Stempelungen)`, `Rest` und einem Fortschrittsbalken. Bei Einmalprojekten
+-  keine Monats-/Gesamt-Dauerlaeuferkarte anzeigen.
++  Projekte mit Angebotsplanung zeigen je Angebot eine kompakte Verbrauchsbox:
++  Angebotsstunden, verplante Stunden, gebuchte Stunden aus den zugeordneten
++  Stempelungen und Rest aus der Planung. Die Stempelungen werden nicht
++  projektweit pauschal verteilt, sondern ueber die zugeordneten
++  Planungseintraege des Angebots ermittelt. Einmalprojekte ohne Angebotsplanung
++  behalten als Fallback die kompakte Gesamtprojekt-Ansicht mit `Gebucht (durch
++  Stempelungen)`, `Rest` und Fortschrittsbalken. Bei Einmalprojekten keine
++  Monats-/Gesamt-Dauerlaeuferkarte anzeigen.
+ - Projektakte > Termine & Stempelungen: Die obere Planungstermin-Tabelle zeigt
+   bei Dauerlaeufern wieder nur Termine/Terminwuensche des ausgewaehlten
+   Projektmonats. Leere Monate zeigen einen kompakten Leerhinweis statt einer
+@@ -2060,6 +2065,55 @@ Wiederaufbau begonnen 2026-06-05:
+   gegenseitig exklusiv: Beim Oeffnen eines Menues werden die anderen
+   Kopfbereich-Menues geschlossen, damit nie mehrere Popover parallel offen
+   bleiben.
++- Planungsboard-Wiederholung 2026-06-08: Die Terminmaske erzeugt Serien nicht
++  mehr ueber einen monatlichen Kalendertag plus `Wochenenden ueberspringen`.
++  Wiederholungen werden jetzt ueber Intervall (`woechentlich`, `alle 2 Wochen`,
++  `monatlich`) und anklickbare Wochentage Montag bis Sonntag gesteuert. `Monatlich`
++  ist bewusst kein 4-Wochen-Rhythmus, sondern nimmt den Starttermin als Muster
++  (z.B. zweiter Montag im Monat) und plant diesen Wochentag je Monat einmal.
++  Der Termintzaehler bleibt erhalten und berechnet die Anzahl aus Startdatum,
++  Enddatum, Intervall und ausgewaehlten Wochentagen. Wochenenden werden nur
++  geplant, wenn Samstag/Sonntag explizit ausgewaehlt sind. Der alte separate
++  Schalter `Wochenenden ueberspringen` gehoert nicht mehr in die Maske, weil die
++  Wochentagsauswahl diese Entscheidung direkt abbildet. Das UI-Wording lautet
++  `Terminserie anlegen` und `Serienende`, nicht technisch `Wiederholung`.
++- Planungsmaske Pflichtfelder 2026-06-08: Bei normaler Planung und
++  Terminwunsch starten `Titel` und `Beschreibung` leer und sind Pflichtfelder.
++  `Mitarbeiter` muss ein echter vorhandener Mitarbeiter sein; `Noch nicht
++  zugewiesen` darf nicht speicherbar sein. Fehlende Pflichtfelder werden in der
++  Maske mit dem bekannten orangefarbenen Pulsrahmen markiert. Angebots- oder
++  Kontingentkontext darf nicht mehr als automatisch gespeicherter Ersatz-Titel
++  oder Ersatz-Beschreibung dienen.
++- Einmalprojekte Planungsbasis 2026-06-08: Einmalige Projekte haben weiterhin
++  keine Monatsakte und keine Projektzeitkontingente. Planbare Stunden kommen
++  projektweit aus den Arbeitspositionen finaler Angebote/Nachtragsangebote. In
++  `Termine & Stempelungen` wird fuer jedes finale Angebot mit Arbeitsstunden
++  eine eigene Leiste angezeigt: Angebotsnummer, Angebotsart, geplante Stunden,
++  offene Stunden und geplanter Ausfuehrungsmonat. Planung fuer Einmalprojekte
++  mit Angebotsstunden muss bewusst einem Angebot zugeordnet werden; freie
++  Planung ohne Angebotsbezug ist dort nicht speicherbar. Wird ein Termin fuer
++  ein Angebot in einem anderen Monat als dessen Ausfuehrungsmonat gespeichert,
++  fragt die UI nach Bestaetigung und setzt dann genau dieses Angebot auf den
++  neuen Ausfuehrungsmonat, damit der Forecast nicht im alten Monat stehen
++  bleibt. Die Angebotsleisten sind reine Status-/Kontingentleisten ohne eigene
++  Aktionsbuttons; neue Planung laeuft ueber `+ Termin` bzw. `+ Terminwunsch`
++  und die Angebotszuordnung in der Terminmaske. Altbestand ohne gespeicherte
++  `offerId` darf defensiv ueber Angebotsnummer im Text oder, wenn eindeutig,
++  ueber den Ausfuehrungsmonat genau einem Angebot zugeordnet werden. Dauerlaeufer
++  bleiben unveraendert monats-/kontingentbasiert.
++- Nachkorrektur Planungsmaske Einmalprojekte 2026-06-09: In der Terminmaske
++  werden bei Einmalprojekten mit Angebotszuordnung keine editierbaren Felder
++  `Angebotsposition` oder `Angebotene Stunden` mehr angezeigt. Die Zuordnung
++  laeuft bewusst auf Angebotsebene. Die Kontingentbox zeigt den Stand nach dem
++  Speichern (`Bisher`, `Dieser Termin`, `Danach offen/ueberplant`) statt nur
++  den Vorabstand, damit eine Ueberplanung sofort sichtbar ist.
++- Nachkorrektur Einmalprojekt-Leisten 2026-06-09: Angebotsleisten fuer
++  Einmalprojekte duerfen nicht mehr faktisch am ausgewaehlten Monat haengen.
++  Sie zaehlen projektweit alle Planungseintraege mit Angebotsbezug; Altbestand
++  ohne `source = offer`, aber mit eindeutiger Angebotszuordnung ueber
++  Angebotsmonat, wird ebenfalls beruecksichtigt. Neue Einmalprojekt-Termine mit
++  Angebotszuordnung werden auch dann als `source = offer` gespeichert, wenn sie
++  ueber den allgemeinen `+ Termin` Einstieg angelegt wurden.
+ - Potenzialprozess 2026-06-08: Zusatzverkaufs-Potenziale entstehen weiterhin
+   aus der Endkontrolle/Stempelung, wenn dort `Zusatzverkauf` erfasst wird.
+   Daraus wird ein `ProjectPotential`. Der Projektkopf-Button
+@@ -2080,6 +2134,104 @@ Wiederaufbau begonnen 2026-06-05:
+   suchen muessen. Die Potenziale bleiben fachlich weiterhin mit Projekt und Kunde
+   verknuepft und nutzen dieselbe Detailmaske. Der Forecast bleibt unveraendert:
+   Potenziale speisen ihn nicht, erst Angebote und Rechnungen zaehlen.
++- Potenziale-UI 2026-06-08: Die Potenzialuebersicht soll nicht mehr wie eine
++  technische Pipeline-Tabelle mit vielen Schnellaktionen wirken. Sichtbar bleibt
++  in der Liste nur `Bearbeiten`; dieser Button oeffnet die Potenzialakte. Aktionen
++  wie Angebot erstellen, Nachfassen oder Kein Interesse gehoeren in die Maske,
++  damit Entscheidungen nachvollziehbar aus der Potenzialakte heraus passieren.
++- Potenziale-Status 2026-06-08: Statuswerte in der Potenzialuebersicht werden
++  wie andere WorkPilot-Statusanzeigen als ruhige Clips/Pills dargestellt, nicht
++  als reiner Tabellentext. Die Tabelle soll optisch als Arbeitsliste wirken:
++  weisse Zeilenkarten, wenig harte Linien, rechts ein klarer Bearbeiten-Button.
++  Der Tabellenkopf in dieser Ansicht ist bewusst hell und zurueckhaltend; der
++  dunkle Standard-Tabellenkopf der Pipeline-/Datentabellen soll hier nicht
++  greifen.
++- Artikel & Leistungen UI 2026-06-08: Die Stammdatentabellen fuer Artikel,
++  Leistungen, Pakete und Verkaufspreise gehoeren zur dichten WorkPilot-
++  Tabellenfamilie wie Planungstermine/Stempelungen: kompakter dunkler
++  Tabellenkopf, flache Zeilen mit klaren Trennlinien, ruhige Filterzeile,
++  Status als Clip (`Aktiv`/`Inaktiv`) und Aktionen als beschriftete Buttons
++  (`Bearbeiten`, `Duplizieren`, `Deaktivieren`), keine Fragezeichen-Buttons.
++  Die Katalogansicht nutzt nur die obere Freitextsuche plus Statusfilter; keine
++  zweite Spaltenfilterzeile im Tabellenkopf, damit Suche und Filterung nicht
++  doppelt wirken oder unsichtbar alte Filter aktiv bleiben.
++  Die Freitextsuche normalisiert Gross-/Kleinschreibung, Leerraeume und
++  Akzent-/Umlautzeichen. Pagination-Buttons zeigen echte Pfeile statt
++  Platzhalter-/Fragezeichen.
++- Potenzialhistorie 2026-06-08: Historieneintraege in Potenzialmaske und
++  separatem Historie-Dialog werden newest-first angezeigt. Beim Speichern der
++  Potenzialakte darf nicht nur pauschal `Potenzial aktualisiert.` geschrieben
++  werden; neue Historieneintraege sollen die geaenderten Felder nennen
++  (z.B. Status, Verantwortlich, Wert, Prioritaet, Wiedervorlage, naechster
++  Schritt, Verlustgrund oder freie Notiz).
++- Verkaufschancen-Begriff 2026-06-08: Der fuehrende sichtbare Begriff in der
++  UI ist ab jetzt `Verkaufschance` bzw. `Verkaufschancen`, nicht mehr
++  `Potenzial`. Das gilt fuer Sidebar, Uebersichten, Kundenakte, Projektkopf
++  und Detailmaske. Technische Namen wie `ProjectPotential`, `/api/potentials`
++  und Datenbankfelder bleiben bewusst unveraendert, damit keine Datenmigration
++  oder API-Risiken entstehen.
++- Verkaufschancen-Nachfassen 2026-06-08: Die Wiedervorlage ist fachlich keine
++  zweite Erinnerungsebene in der Verkaufschance. Nachfassen gehoert ins
++  Aufgabenmodul. Die Verkaufschance zeigt deshalb nur noch den Status bzw. die
++  verknuepfte Nachfass-Aufgabe an. Wenn bereits eine Aufgabe verknuepft ist,
++  oeffnet der Button diese Aufgabe; nur ohne verknuepfte Aufgabe wird eine neue
++  Nachfass-Aufgabe angelegt. Alte `followUpAt`-Daten bleiben als Fallback
++  erhalten, werden aber nicht mehr als eigenes Datumsfeld in der Maske gepflegt.
++- Verkaufschancen-Tabelle 2026-06-08: Die Hauptuebersicht der Verkaufschancen
++  nutzt wieder die dichte WorkPilot-Tabellenfamilie mit dunklem Kopf, flachen
++  Zeilen, klaren Rasterlinien, Status-Clips und einem einzelnen
++  Einstieg ueber die Verkaufschancen-Nummer. Eine separate Aktionsspalte mit
++  `Bearbeiten` ist bewusst entfernt, weil die Nummer die Detailmaske oeffnet
++  und die eigentlichen Aktionen in der Maske liegen.
++- Verkaufschancen-Nummernkreis 2026-06-08: Verkaufschancen haben einen
++  gespeicherten Nummernkreis im Format `VC-xxxx`. Technisch bleibt die Tabelle
++  `ProjectPotential` bestehen; ergaenzt wurde das optionale Feld `number`.
++  Die API `/api/potentials` fuehrt defensiv `ALTER TABLE ... ADD COLUMN IF NOT
++  EXISTS` aus, setzt einen eindeutigen Index pro Organisation und vergibt neue
++  Nummern fortlaufend ab `VC-1001`. Altbestand ohne Nummer wird beim Laden in
++  Erstellreihenfolge nachnummeriert. Die UI nutzt die gespeicherte Nummer als
++  Einstieg in die Verkaufschancen-Maske; nur falls Altbestand noch keine Nummer
++  geliefert hat, bleibt ein Anzeige-Fallback aktiv.
++- Verkaufschancen-Maske 2026-06-08: Die Maske soll bewusst einfach bleiben.
++  Sichtbar bleiben Status, Verantwortlich, geschaetzter Wert, Nachfass-Aufgabe,
++  Grund bei `Kein Interesse`, `Notiz fuer Historie` und Historie. Prioritaet,
++  `Naechster Schritt` und der extra Button `Kein Interesse` wurden aus der
++  Maske entfernt. `Kein Interesse` wird ueber den Status gesteuert; die
++  fachlichen Aktionen laufen ueber `Angebot erstellen`, `Nachfass-Aufgabe`
++  und `Speichern`.
++- Nachkorrektur Verkaufschancen-Maske 2026-06-08: `Speichern` fragt vor dem
++  Sichern kurz, ob der sichtbare Status korrekt ist, und schliesst die Maske
++  danach. Ohne echte Feld-/Notizaenderung wird kein kuenstlicher Historieneintrag
++  mehr geschrieben. Die verknuepfte Nachfass-Aufgabe ist direkt im Feld
++  anklickbar und oeffnet die Aufgabenmaske. Verkaufschancen-Historienzeiten
++  muessen als echte Zeitpunkte mit `formatInstantDateTime` angezeigt werden,
++  nicht mit deadline-/app-datebasierter Formatierung, damit kein UTC-Versatz
++  von zwei Stunden entsteht.
++- Angebots-Nachfassen 2026-06-08: Finale Angebote erzeugen automatisch eine
++  Nachfass-Aufgabe im Aufgabenmodul. Entwuerfe erzeugen keine Aufgabe; wird ein
++  Entwurf spaeter finalisiert, wird die Aufgabe dann angelegt. Die Standardfrist
++  ist `5 Werkstage` und wird unter `Firmeneinstellungen > Zeitfristen` gepflegt.
++  Die automatisch erzeugte Aufgabe startet mit Status `in Bearbeitung`, ist mit
++  Projekt/Kunde und Angebotsnummer vorbelegt und speist den Forecast nicht.
++  Wird ein Angebot aus einer Verkaufschance erstellt, wird die Verkaufschance
++  auf `Angeboten` gesetzt und mit der neuen Angebots-Nachfassaufgabe verknuepft.
++  Eine alte eindeutig erkennbare Verkaufschance-/Potenzial-Nachfassaufgabe wird
++  dabei erledigt, damit nicht zwei parallele Nachfassaufgaben fuer denselben
++  Vorgang offen bleiben. Forecast bleibt weiterhin nur durch Angebote und
++  Rechnungen gespeist, nicht durch Verkaufschancen oder Aufgaben.
++- Nachkorrektur Aufgaben-API 2026-06-08: Neue Aufgaben duerfen beim POST den
++  uebergebenen Status respektieren. Vorher setzte die API neue Aufgaben hart
++  auf `offen`; dadurch wurden automatisch angelegte Angebots-Nachfassaufgaben
++  trotz UI-Vorgabe nicht mit `in Bearbeitung` gespeichert. Ohne uebergebenen
++  Status bleibt `offen` weiterhin der Fallback.
++- Manuelle Verkaufschance 2026-06-08: Verkaufschancen koennen in der
++  Verkaufschancen-Uebersicht manuell angelegt werden, aber nur mit vorhandenem
++  Projekt als Pflichtgrundlage. Pflichtfelder sind Projekt und Beschreibung;
++  geschaetzter Wert ist optional. Neue manuelle Verkaufschancen starten mit
++  Status `Offen`, bekommen eine `VC-xxxx` Nummer, erzeugen einen Projektlogbuch-
++  Eintrag und oeffnen danach die normale Verkaufschancen-Maske. Auch manuelle
++  Verkaufschancen speisen den Forecast nicht; erst ein daraus erstelltes Angebot
++  bzw. spaeter eine Rechnung zaehlt.
+ - Wenn nach einem Refresh eine Projektakte gespeichert ist, die Projektliste
+   aber noch asynchron laedt, darf nicht kurz die Projektpipeline gerendert
+   werden. In diesem Zwischenzustand einen Ladehinweis fuer die Projektakte
+@@ -2196,3 +2348,217 @@ Wiederaufbau begonnen 2026-06-05:
+   Loeschen einer Rechnung wird die Rechnungshistorie sofort neu geladen, damit
+   die Historie inklusive Loesch-Eintrag sichtbar bleibt, obwohl die Rechnung
+   aus der aktiven Rechnungsliste entfernt wird.
++- Nachkorrektur Angebots-Nachfassaufgaben 2026-06-09: Automatisch erzeugte
++  Nachfass-Aufgaben fuer finale Angebote speichern jetzt zusaetzlich
++  `Task.sourceOfferId` und `Task.sourceOfferNumber`. Beim Loeschen eines
++  Angebots wird eine aktive verknuepfte Angebots-Nachfassaufgabe nicht hart
++  geloescht, sondern in das Aufgabenarchiv verschoben. Fuer Altbestand ohne
++  technische Verknuepfung bleibt ein enger Fallback ueber Projekt-ID,
++  Angebotsnummer und Titel `Angebot nachfassen` bestehen.
++- Nachkorrektur Planung bearbeiten / Stempelungsrechnung 2026-06-09:
++  `Planung bearbeiten` darf bei Einmalprojekten mit Angebotsstunden nicht
++  pauschal als freie Planung behandelt werden. Vorhandene Angebotsreferenzen
++  oder ein Einmalprojekt mit Angebots-Planungsbasis zeigen die
++  Angebotszuordnung und nutzen dieselben Pflichtfeld-/Ausfuehrungsmonat-Regeln
++  wie `+ Termin`. In der erwarteten Stempelungsanzeige darf `Fakturiert:` nicht
++  pauschal alle Rechnungen des Monats listen; angezeigt wird nur die letzte
++  wirklich mit der passenden Stempelung verknuepfte Rechnung.
++- Nachkorrektur Projektkopf / Prozesspipeline 2026-06-09: Sichtbare
++  Encoding-Reste im Projektkopf und in der Planungsmaske wurden nur gezielt
++  korrigiert (`Zurueck`, `Status aendern`, `oeffnen`, `woechentlich`,
++  `bestaetigen`). Die Prozesspipeline rendert abgeschlossene Schritte jetzt
++  mit einer HTML-Entity fuer den Haken, damit das Symbol nicht erneut durch
++  Encoding-Probleme zerfaellt.
++- Encoding-Schutz 2026-06-09: Es gibt jetzt `npm.cmd run check:mojibake`
++  (`scripts/check-mojibake.js`). Der Check durchsucht aktive Quellbereiche
++  `src` und `prisma` nach typischen kaputten UTF-8-/Mojibake-Zeichen wie
++  `Ã`, `Â`, `â` und Replacement-Zeichen. Nach UI-Textaenderungen soll dieser
++  Check zusaetzlich zu `npx.cmd tsc --noEmit` und `git diff --check` laufen.
++  Korrekturen bleiben gezielt; keine globale Datei-Neukodierung oder
++  blindes Umschreiben ganzer Dateien. Fuer notwendige Altkompatibilitaet mit
++  historisch kaputten Datenwerten Unicode-Escapes verwenden, damit im
++  Quelltext keine sichtbaren Mojibake-Zeichen stehen.
++- Der Mojibake-Check prueft zusaetzlich verdächtige `iconButton`-Platzhalter,
++  bei denen nur ein Fragezeichen gerendert wird. Schliessen-/Aktionsbuttons
++  sollen semantisch beschriftet sein (`aria-label`) und ein echtes Icon oder
++  eine stabile HTML-Entity wie `&times;` verwenden, nicht ein rohes
++  Fragezeichen als Ersatz.
++- Rueckfall Terminmaske 2026-06-09: Nach der Encoding-Rekonstruktion waren
++  Teile der Planungsmaske wieder auf altem Stand (`Wiederholung`,
++  `Wochenenden ueberspringen`, vorbefuellte Freitexte). Wiederhergestellt:
++  `Terminserie anlegen`, Intervall plus anklickbare Wochentage,
++  `Serienende`, leere Pflichtfelder fuer Titel/Beschreibung und echte
++  Mitarbeiterauswahl mit orange pulsierendem Pflichtfeldrahmen. Diese Regeln
++  gelten fuer normale Planung und Terminwunsch; bei Dauerlaeufern ist die
++  Terminserie fachlich besonders relevant.
++- Rueckfall-Reparatur Verkaufschancen / Angebotsplanung 2026-06-09:
++  Nach der Mojibake-Rekonstruktion waren mehrere UI-/Logikstaende wieder
++  aelter: `Verkaufschancen` hiess sichtbar wieder `Potenziale`, der
++  `VC-xxxx` Nummernkreis fehlte technisch, die Verkaufschancen-Maske/
++  Tabellenlogik war teilweise zurueckgefallen und die Einmalprojekt-
++  Angebotsplanung verlor Marker wie `singleProjectOfferPlanningRows` und
++  `planningEntryOfferId`. Wiederhergestellt wurden Verkaufschancen-Begriff,
++  manuelle Verkaufschance, verknuepfte Nachfass-Aufgabe, VC-Nummer in
++  Schema/API, projektweite Angebots-Planungsleisten fuer Einmalprojekte und
++  das Respektieren des uebergebenen Aufgabenstatus beim Anlegen.
++- Regressionsschutz 2026-06-09: Es gibt jetzt
++  `npm.cmd run check:regressions` (`scripts/check-regressions.js`). Der Check
++  prueft zentrale Entwicklungsmarker, die nicht unbemerkt verschwinden
++  duerfen: Verkaufschancen-Begriff, manuelle Verkaufschance, VC-Nummer,
++  Nachfass-Aufgaben-Verknuepfung, Einmalprojekt-Angebotsplanung,
++  Terminserie/Pflichtfeld-Pulsierung, ProjectPotential-Nummer und Tasks-API-
++  Status beim Anlegen. Wenn der Check fehlschlaegt, nicht einfach
++  weiterarbeiten oder Marker entfernen. Erst mit dem Nutzer klaeren, ob der
++  Verlust fachlich gewollt ist; nur mit ausdruecklicher Freigabe darf ein
++  Marker angepasst oder entfernt werden.
++- Nachkorrektur Regressionsschutz Planung 2026-06-09: Der erste
++  Regressionscheck war fuer Einmalprojekt-Angebotsplanung zu grob. Er prueft
++  jetzt zusaetzlich, dass `+ Termin`, `+ Terminwunsch` und
++  `Planung bearbeiten` bei Einmalprojekten mit Angebotsstunden die
++  Angebotszuordnung zeigen koennen. Technische Marker dafuer sind
++  `shouldShowPlanningOfferAssignment`, `entryProjectHasOfferPlanning`,
++  `Zuordnung Angebot` und `Kontingent vorbereitet`. Beim Bearbeiten eines
++  vorhandenen Planungseintrags wird ein Einmalprojekt mit finalem Angebot und
++  Arbeitsstunden wieder als Angebotsplanung behandelt, auch wenn der alte
++  Eintrag noch keine gespeicherte Angebotsreferenz hatte.
++- Nachkorrektur Planungsdatum 2026-06-09: Neue Planungstermine aus
++  `+ Termin` und `+ Terminwunsch` starten ohne explizit uebergebenes Datum
++  wieder mit dem aktuellen Tag, nicht mit dem zuletzt im Planungsboard
++  ausgewaehlten `selectedPlanningDateKey`. Die bestehende Warn-/Bestaetigungs-
++  logik fuer Einmalprojekte bleibt unveraendert: Weicht der Planungstermin vom
++  Angebots-Ausfuehrungsmonat ab, muss der Nutzer bestaetigen; danach wird der
++  Ausfuehrungsmonat am Angebot und damit die Forecast-Zuordnung aktualisiert.
++- Nachkorrektur Planungsboard-Start 2026-06-09: Der normale Einstieg ins
++  Planungsboard und der Button `Heute` setzen sowohl den sichtbaren
++  Planungszeitraum als auch den ausgewaehlten Planungstag auf den aktuellen Tag.
++  Gezielte Spruenge `Zur Planung` bleiben davon unberuehrt und duerfen weiterhin
++  einen konkreten Termin-Tag oeffnen. Dadurch bleibt der 18.05. oder ein anderer
++  alter Arbeitstag nicht mehr als Startdatum fuer neue normale Planungen haengen.
++- Nachkorrektur Artikel-/Leistungstabelle 2026-06-09: Die Kataloglisten fuer
++  Artikel, Leistungen und Pakete gehoeren optisch zur bestehenden
++  Standard-Tabellenfamilie (`tableCard`/`table`) und nicht zur
++  Kontakt-Sondertabelle. Der Kopf bleibt dunkel, Zeilen sind flach mit klaren
++  Rasterlinien, Status wird als Clip angezeigt und Aktionsbuttons bleiben
++  kompakt. Die Aktionsspalte muss breit genug fuer drei Buttons bleiben; Button-
++  text wird mittig ausgerichtet und Header-Trennlinien bleiben hell sichtbar.
++  Der Regressionscheck prueft diesen Marker, damit die Ansicht nicht unbemerkt
++  wieder in ein abweichendes Tabellenlayout zurueckfaellt.
++- Nachkorrektur Zeiteintrag-Datum 2026-06-09: In den Masken
++  `Zeiteintrag bearbeiten` und `Zeiteintrag hinzufuegen` nutzt das Datum
++  dasselbe native Tagesdatumsfeld wie die Planungsmaske (`type=date` mit
++  Kalenderbutton). Intern bleibt die Speicherung unveraendert im normalisierten
++  Date-Key `yyyy-mm-dd`; Logbuch und Bearbeitungshistorie formatieren die
++  Anzeige wieder deutsch. Datums-/Uhrzeitfelder bleiben von dieser
++  Vereinheitlichung bewusst ausgenommen.
++- Nachkorrektur Einmalprojekt-Seitenleiste 2026-06-09: Die Box
++  `Restlaufzeit bis Projektende` bleibt Dauerlaeufer-Projekten vorbehalten,
++  weil sie auf Projektlaufzeit, Endphase und Projektende basiert. Einmalige
++  Projekte zeigen stattdessen `Ausfuehrungsplanung` mit projektweiter Sicht auf
++  Ausfuehrungsmonat(e), naechsten Planungstermin und Planungsstand. Stunden-
++  und Restwerte nicht dort doppeln; diese gehoeren in die Angebotsleisten und
++  die Verbrauchsboxen je Angebot. Diese Logik darf nicht an die Monatsakte
++  gekoppelt werden; Einmalprojekte bleiben projektweit. Der Regressionscheck
++  prueft den sichtbaren Marker `Ausführungsplanung`.
++- Nachkorrektur Planungsleisten-Klick 2026-06-09: Die gruenen/orangen
++  Planbar-Badges in den Planungsleisten sind bewusst klickbare Arbeits-
++  Einstiege. Bei noch nicht geplanter Leiste oeffnet ein kleines Menue mit
++  `+ Termin` und `+ Terminwunsch`; bei Einmalprojekten wird das jeweilige
++  Angebot direkt vorbelegt. Sobald eine Leiste teilweise oder voll geplant ist,
++  fuehrt der Klick in die bestehende Planung: ein einzelner Termin oeffnet
++  direkt `Planung bearbeiten`, mehrere Termine zeigen zuerst eine kleine
++  Terminauswahl. Klicks ausserhalb der kleinen Leistenmenues schliessen diese
++  wieder. Dauerlaeufer nutzen dieselbe Bedienlogik auf den aktuell gewaehlten
++  Projektmonat bezogen.
++- Nachkorrektur Prozessleiste TerWu 2026-06-09: Bei Einmalprojekten mit
++  mehreren Angeboten darf der Schritt `TerWu` nicht mehr erledigt sein, nur weil
++  irgendwo im Projekt ein Termin oder Terminwunsch existiert. Der Schritt wird
++  angebotsbezogen bewertet: Jedes finale Angebot mit Arbeitsstunden muss
++  mindestens einen zugeordneten Termin/Terminwunsch haben. Sind nur einzelne
++  Angebote bedient, bleibt `TerWu` teilweise/orange. Dauerlaeufer behalten die
++  Monats-/Kontingentlogik des aktuell ausgewaehlten Projektmonats.
++- Angebot verloren 2026-06-09: Angebote koennen mit Pflichtgrund als
++  `Verloren` markiert werden. Der Grund, eine optionale Notiz und der Zeitpunkt
++  werden am Angebot gespeichert und in der Angebotshistorie/Projektlogbuch
++  dokumentiert. Verlorene Angebote bleiben als Dokument sichtbar, duerfen aber
++  nicht mehr als aktive Planungsgrundlage, Rechnungsvorlage oder Forecast-Chance
++  zaehlen. Die zentrale UI-Logik nutzt dafuer `isActiveFinalOffer`; diese Logik
++  nicht durch pauschale Filter wie `status !== "Entwurf"` ersetzen. Bereits
++  fakturierte/verknuepfte Angebote duerfen nicht nachtraeglich als verloren
++  markiert werden, weil das Rechnung und Auswertung widerspruechlich machen
++  wuerde. Versehentlich verlorene Angebote koennen ueber `Verlust
++  zuruecknehmen` wieder als `Erstellt` aktiviert werden; dabei werden die
++  Verlustfelder geleert und Historie/Projektlogbuch geschrieben. Diese
++  Ruecknahme ist bewusst explizit, damit Planung und Forecast nachvollziehbar
++  wieder auf das Angebot reagieren.
++- Folgeentscheidung Angebot verloren 2026-06-09: Wenn in einem Einmalprojekt
++  alle nicht geloeschten finalen Angebote als verloren markiert sind, darf die
++  Projektakte nicht mehr so wirken, als seien TerWu/Planung erledigt. In diesem
++  Zustand zeigt der Projektkopf `Kein aktives Angebot`, der Klick springt in
++  den Angebotsordner, TerWu/Planung bleiben offen und die Terminansicht erklaert
++  die fehlende aktive Angebotsgrundlage. Verlorene Angebote bleiben sichtbar,
++  bekommen Status-Clip, Pflichtgrund und bei vorhandener Notiz einen kompakten
++  Kommentar-Clip. Forecast, Planungsleisten und Verbrauchsboxen duerfen weiter
++  nur aktive finale Angebote nutzen.
++- Nachkorrektur Angebot verloren 2026-06-09: Der Kommentar zum verlorenen
++  Angebot ist Pflicht, nicht optional. UI und Offers-API muessen beide
++  verhindern, dass ein Angebot nur mit Grund, aber ohne Kommentar als verloren
++  gespeichert wird. Ist ein Angebot technisch mit einer finalen Rechnung
++  verknuepft, darf `Angebot verloren` weiterhin nicht angeboten/ausgefuehrt
++  werden; in diesem Fall ist die Rechnung die belastbare kaufmaennische
++  Entscheidung und der Verlust waere fachlich widerspruechlich.
++- Projektkopf-Aktionsraster 2026-06-09: Der Verkaufschancen-/Zusatzverkauf-
++  Button bleibt im Projektkopf immer als Rasterplatz erhalten. Wenn keine
++  Verkaufschance vorhanden ist, zeigt er deaktiviert `Keine Verkaufschance`.
++  Dadurch bleiben Dauerlaeufer- und Einmalprojekt-Koepfe in Hoehe und
++  Button-Anordnung konsistent. Nur bei echtem `projectUpsellState` darf der
++  Button aktiv sein und die Verkaufschancen-Aktion oeffnen.
++- Nachkorrektur Rechnungshistorie 2026-06-09: Die Rechnungshistorie in der
++  Projektakte darf nicht als einfache Inline-Span-Liste gerendert werden. Sie
++  nutzt wie die Angebotshistorie das Standard-Historiendesign
++  `planningHistorySection` / `planningHistoryList` mit separaten Eintraegen fuer
++  Titel, Datum/Akteur und Notiz. Das gilt fuer Dauerlaeufer und Einmalprojekte.
++- Projektgewinn 2026-06-10: Die Projektakte hat den Reiter `Projektgewinn`.
++  Die fuehrende Bezeichnung in der UI ist `Finaler Projektgewinn`, aber mit
++  einem eigenen Status pro Auswertung: `final`, wenn alle verwendeten
++  Rechnungspositionen und Stempelungen gespeicherte Kostensnapshots haben,
++  sonst `vorlaeufig`. Umsatz kommt aus finalen, nicht geloeschten Rechnungen;
++  stornierte Rechnungen und Stornorechnungen zaehlen nicht in den
++  Projektgewinn. Materialkosten werden beim Speichern/Fakturieren der
++  Rechnungsposition als `materialUnitCostSnapshot` und `materialCostSnapshot`
++  festgeschrieben. Lohnkosten werden beim Speichern/Stoppen von
++  Projekt-Stempelungen als `laborCostRateSnapshot` und `laborCostSnapshot`
++  festgeschrieben; beim Verknuepfen alter Stempelungen mit einer Rechnung wird
++  ein fehlender Snapshot defensiv nachgefuellt. Einmalprojekte zeigen
++  projektweit, Dauerlaeufer zeigen den ausgewaehlten Projektmonat plus
++  Gesamtprojekt. Altbestand ohne Snapshot bleibt sichtbar und nutzt aktuelle
++  Werte als Fallback, wird aber als `vorlaeufig` markiert.
++- Projektgewinn-Stornohinweis 2026-06-10: Wenn ein betrachteter
++  Projektgewinn-Bereich keine aktive Rechnung mehr hat, aber eine stornierte
++  Rechnung oder Stornorechnung im selben Bereich existiert, zeigt der Status
++  nicht nur pauschal `vorlaeufig`, sondern `vorlaeufig - Rechnung storniert /
++  keine aktive Rechnung`. So bleibt nachvollziehbar, warum ein zuvor finaler
++  Bereich nach Storno wieder offen ist.
++- Projektgewinn-Dauerlaeufer 2026-06-10: Bei Dauerlaeuferprojekten darf der
++  ausgewaehlte Monat eigenstaendig final werden, sobald Rechnung und
++  Kostensnapshots vollstaendig sind. Das `Gesamtprojekt` darf aber erst nach
++  erreichtem Projektlaufzeitende final werden. Vorher wird ein ansonsten
++  snapshot-sauberer Gesamtwert als `vorlaeufig - Projektlaufzeit noch nicht
++  abgeschlossen` markiert; fehlt das Projektende, als `vorlaeufig -
++  Projektende nicht festgelegt`.
++- Altbestand-Abgleich Projektgewinn 2026-06-10: Bereits mit Rechnungen
++  verknuepfte Stempelungen ohne Lohnkosten-Snapshot wurden einmalig und
++  kontrolliert nachbefuellt, sofern ein technischer Mitarbeiterbezug und ein
++  Mitarbeitersatz vorhanden waren. Vorher-/Nachher-Daten wurden unter
++  `.codex-safety/db-before-20260610-backfill-linked-stamp-cost-snapshots.json`
++  und
++  `.codex-safety/db-after-20260610-backfill-linked-stamp-cost-snapshots.json`
++  gesichert. Nicht automatisch befuellt werden Altzeilen ohne `userId` oder
++  ohne passenden `EmployeeCostCalculation`-Datensatz; diese bleiben bewusst
++  `vorlaeufig`, bis ein Kostensatz fachlich geklaert ist.
++- Regressionsschutz Taetigkeitsbericht 2026-06-10: Der Button
++  `Taetigkeitsbericht erstellen` in Projektakte > Dokumente >
++  Taetigkeitsberichte ist eine wiederhergestellte Projektakten-Funktion und
++  darf nicht wieder unbemerkt verschwinden. `npm.cmd run check:regressions`
++  prueft jetzt den Buttontext, den Dokumentordner `Taetigkeitsberichte` und
++  die Anbindung an `/api/activity-reports`. Bei fehlgeschlagenem Marker nicht
++  blind entfernen, sondern erst fachlich klaeren.

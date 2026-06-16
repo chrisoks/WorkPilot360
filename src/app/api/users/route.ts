@@ -56,10 +56,15 @@ function canManageUsers(role: Role) {
   return role === Role.ADMIN || role === Role.GESCHAEFTSFUEHRER;
 }
 
+function canManagePersonalNumber(role: Role) {
+  return role === Role.GESCHAEFTSFUEHRER;
+}
+
 function roleLabel(role: Role) {
   if (role === Role.GESCHAEFTSFUEHRER) return "Gesch\u00e4ftsf\u00fchrung";
   if (role === Role.FUEHRUNGSKRAFT) return "F\u00fchrungskraft";
   if (String(role) === "VERTRIEB") return "Vertrieb";
+  if (String(role) === "BUCHHALTUNG") return "Buchhaltung";
   if (role === Role.MITARBEITER) return "Mitarbeiter";
   if (role === Role.GAST) return "Gast";
   return "Admin";
@@ -81,6 +86,15 @@ async function ensureRoleEnumValues() {
           AND enum_value.enumlabel = 'VERTRIEB'
       ) THEN
         ALTER TYPE "Role" ADD VALUE 'VERTRIEB';
+      END IF;
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_enum enum_value
+        JOIN pg_type enum_type ON enum_type.oid = enum_value.enumtypid
+        WHERE enum_type.typname = 'Role'
+          AND enum_value.enumlabel = 'BUCHHALTUNG'
+      ) THEN
+        ALTER TYPE "Role" ADD VALUE 'BUCHHALTUNG';
       END IF;
     END
     $$;
@@ -149,6 +163,7 @@ function formatUser(user: {
   teamId: string | null;
   dailyWorkHours?: number | null;
   profileImageDataUrl?: string | null;
+  personalNumber?: string | null;
   salutation?: string | null;
   birthDate?: Date | string | null;
   language?: string | null;
@@ -189,6 +204,7 @@ function formatUser(user: {
     teamIds,
     dailyWorkHours: user.dailyWorkHours ?? 8,
     profileImageDataUrl: user.profileImageDataUrl ?? "",
+    personalNumber: user.personalNumber ?? "",
     salutation: user.salutation ?? "Herr",
     birthDate,
     language: user.language ?? "Deutsch (Deutschland)",
@@ -383,6 +399,7 @@ async function ensureUserProfileColumns() {
   await prisma.$executeRaw`
     ALTER TABLE "User"
     ADD COLUMN IF NOT EXISTS "profileImageDataUrl" TEXT,
+    ADD COLUMN IF NOT EXISTS "personalNumber" TEXT,
     ADD COLUMN IF NOT EXISTS "salutation" TEXT,
     ADD COLUMN IF NOT EXISTS "birthDate" TIMESTAMP(3),
     ADD COLUMN IF NOT EXISTS "language" TEXT,
@@ -411,6 +428,7 @@ async function ensureUserProfileColumns() {
 
 type UserDetails = {
   profileImageDataUrl: string;
+  personalNumber: string;
   salutation: string;
   birthDate: string;
   language: string;
@@ -445,6 +463,7 @@ async function getUserDetails(userIds: string[]) {
     Array<{
       id: string;
       profileImageDataUrl: string | null;
+      personalNumber: string | null;
       salutation: string | null;
       birthDate: Date | null;
       language: string | null;
@@ -473,6 +492,7 @@ async function getUserDetails(userIds: string[]) {
     SELECT
       id,
       "profileImageDataUrl",
+      "personalNumber",
       "salutation",
       "birthDate",
       "language",
@@ -505,6 +525,7 @@ async function getUserDetails(userIds: string[]) {
       row.id,
       {
         profileImageDataUrl: row.profileImageDataUrl ?? "",
+        personalNumber: row.personalNumber ?? "",
         salutation: row.salutation ?? "Herr",
         birthDate: row.birthDate ? row.birthDate.toISOString().slice(0, 10) : "",
         language: row.language ?? "Deutsch (Deutschland)",
@@ -723,6 +744,14 @@ export async function PATCH(req: Request) {
     hasProfileImageUpdate && typeof body.profileImageDataUrl === "string"
       ? body.profileImageDataUrl
       : "";
+  const hasPersonalNumberUpdate = Object.prototype.hasOwnProperty.call(body, "personalNumber");
+  if (hasPersonalNumberUpdate && !canManagePersonalNumber(actor.role)) {
+    return NextResponse.json(
+      { error: "Nur Geschäftsführung darf die Personalnummer ändern." },
+      { status: 403 }
+    );
+  }
+  const nextPersonalNumber = parseText(body.personalNumber);
   const hasSalutationUpdate = Object.prototype.hasOwnProperty.call(body, "salutation");
   const hasBirthDateUpdate = Object.prototype.hasOwnProperty.call(body, "birthDate");
   const hasLanguageUpdate = Object.prototype.hasOwnProperty.call(body, "language");
@@ -831,6 +860,10 @@ export async function PATCH(req: Request) {
       "profileImageDataUrl" = CASE
         WHEN ${hasProfileImageUpdate} THEN ${nextProfileImageDataUrl || null}
         ELSE "profileImageDataUrl"
+      END,
+      "personalNumber" = CASE
+        WHEN ${hasPersonalNumberUpdate} THEN ${nextPersonalNumber || null}
+        ELSE "personalNumber"
       END,
       "planningBoard" = CASE
         WHEN ${hasPlanningBoardUpdate} THEN ${nextPlanningBoard}
@@ -955,6 +988,7 @@ export async function POST(req: Request) {
   const primaryTeamId = teamIds[0] ?? null;
   const profileImageDataUrl =
     typeof body.profileImageDataUrl === "string" ? body.profileImageDataUrl : "";
+  const personalNumber = canManagePersonalNumber(actor.role) ? parseText(body.personalNumber) : "";
   const birthDate = parseBirthDate(body.birthDate);
   const planningBoard = parsePlanningBoard(body.planningBoard);
   const planningGroup = parsePlanningGroup(planningBoard, body.planningGroup);
@@ -992,6 +1026,7 @@ export async function POST(req: Request) {
     SET
       "dailyWorkHours" = ${parseDailyWorkHours(body.dailyWorkHours)},
       "profileImageDataUrl" = ${profileImageDataUrl || null},
+      "personalNumber" = ${personalNumber || null},
       "salutation" = ${parseText(body.salutation) || null},
       "birthDate" = ${birthDate},
       "language" = ${parseText(body.language) || "Deutsch (Deutschland)"},
@@ -1024,6 +1059,7 @@ export async function POST(req: Request) {
         ...created,
         dailyWorkHours: parseDailyWorkHours(body.dailyWorkHours),
         profileImageDataUrl,
+        personalNumber,
         salutation: parseText(body.salutation) || "Herr",
         birthDate: body.birthDate ?? "",
         language: parseText(body.language) || "Deutsch (Deutschland)",

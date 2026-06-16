@@ -64,6 +64,7 @@ model User {
   updatedAt           DateTime          @updatedAt
   dailyWorkHours      Float             @default(8)
   profileImageDataUrl String?
+  personalNumber      String?
   salutation          String?
   birthDate           DateTime?
   language            String?
@@ -447,6 +448,10 @@ model SalesTarget {
   ownerUserId    String?
   ownerName      String   @default("")
   priority       String   @default("normal")
+  metricKey      String   @default("")
+  targetValue    Float    @default(0)
+  periodStart    String   @default("")
+  periodEnd      String   @default("")
   targetMonth    String   @default("")
   followUpAt     DateTime?
   status         String   @default("open")
@@ -689,6 +694,12 @@ model Offer {
   vatRate             Float        @default(19)
   grossTotal          Float        @default(0)
   discountPercent     Float        @default(0)
+  lostReason          String       @default("")
+  lostNote            String       @default("")
+  lostAt              DateTime?
+  wonAt               DateTime?
+  wonByName           String       @default("")
+  wonReason           String       @default("")
   pdfData             String?      @db.Text
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
@@ -790,6 +801,10 @@ model Invoice {
   vatRate             Float         @default(19)
   grossTotal          Float         @default(0)
   discountPercent     Float         @default(0)
+  paymentTermDays     Int           @default(14)
+  dueDate             String        @default("")
+  reminderLevel       Int           @default(0)
+  lastReminderAt      DateTime?
   isPaid              Boolean       @default(false)
   paidAt              DateTime?
   pdfData             String?       @db.Text
@@ -816,6 +831,9 @@ model InvoiceLine {
   unitPrice      Float              @default(0)
   discountPercent Float             @default(0)
   isLaborPosition Boolean           @default(false)
+  materialUnitCostSnapshot Float     @default(0)
+  materialCostSnapshot Float         @default(0)
+  costSnapshotAt DateTime?
   vatRate        Float              @default(19)
   totalNet       Float              @default(0)
   createdAt      DateTime           @default(now())
@@ -1111,6 +1129,8 @@ model Contact {
   reachability          String?
   isInvoiceRecipient    Boolean  @default(false)
   isActivityReportRecipient Boolean @default(false)
+  eInvoiceRequired      Boolean  @default(false)
+  eInvoiceRecipientType String   @default("business")
   street                String?
   addressLine1          String?
   addressLine2          String?
@@ -1171,6 +1191,7 @@ model ProjectLogbookEntry {
   title          String?
   body           String
   author         String?
+  authorUserId   String?
   colleague      String?
   visibleFor     Json     @default("[]")
   attachments    Json     @default("[]")
@@ -1191,12 +1212,16 @@ model ProjectTimeEntry {
   endTime        String
   durationMs     BigInt   @default(0)
   pauseMs        BigInt   @default(0)
+  laborCostRateSnapshot Float @default(0)
+  laborCostSnapshot Float @default(0)
+  costSnapshotAt DateTime?
   comment        String?
   invoiceId      String?
   invoiceNumber  String?
   invoicedAt     DateTime?
   marketingContentItemId String?
   marketingContentType String?
+  completionStatus String?
   overtimeApprovalStatus String @default("not_required")
   overtimeApprovedByUserId String?
   overtimeApprovedByName String?
@@ -1218,6 +1243,7 @@ model ActiveStampSession {
   marketingContentItemId String?
   marketingContentTitle String?
   marketingContentType String?
+  comment        String?
   startedAt      DateTime
   accumulatedMs  BigInt   @default(0)
   pauseStartedAt DateTime?
@@ -1354,6 +1380,7 @@ model MarketingContentSchedule {
 model ProjectPotential {
   id             String   @id
   organizationId String
+  number         String?
   contactId      String?
   customerName   String?
   projectId      String
@@ -1377,6 +1404,7 @@ model ProjectPotential {
   updatedAt      DateTime @default(now())
 
   @@index([organizationId, projectId])
+  @@index([organizationId, number])
   @@index([organizationId, status])
   @@index([organizationId, updatedAt])
 }
@@ -1414,6 +1442,9 @@ model WorkPilotProject {
   source              String?
   address             String?
   participants        String?
+  deputyName          String?
+  deputyFrom          String?
+  deputyUntil         String?
   timeBudgetHours     String?
   timeBudgetHistory   Json     @default("[]")
   timeBudgetAllocations Json    @default("[]")
@@ -1464,11 +1495,22 @@ model WinterServiceRun {
   @@index([organizationId, projectId])
 }
 
+model WinterServiceAutomationSetting {
+  id                  String   @id
+  organizationId      String   @unique
+  enabled             Boolean  @default(false)
+  senderUserId        String   @default("")
+  notificationUserIds Json     @default("[]")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @default(now())
+}
+
 enum Role {
   ADMIN
   GESCHAEFTSFUEHRER
   FUEHRUNGSKRAFT
   VERTRIEB
+  BUCHHALTUNG
   MITARBEITER
   GAST
 }

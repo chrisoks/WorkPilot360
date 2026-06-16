@@ -1,0 +1,638 @@
+const fs = require("fs");
+const path = require("path");
+
+const root = process.cwd();
+
+function read(relativePath) {
+  return fs.readFileSync(path.join(root, relativePath), "utf8");
+}
+
+function count(content, needle) {
+  return content.split(needle).length - 1;
+}
+
+const files = {
+  page: read("src/components/dashboard/dashboard-page.tsx"),
+  css: read("src/components/dashboard/dashboard.module.css"),
+  schema: read("prisma/schema.prisma"),
+  activityReportsRoute: read("src/app/api/activity-reports/route.ts"),
+  finalInspectionsRoute: read("src/app/api/final-inspections/route.ts"),
+  invoicesRoute: read("src/app/api/invoices/route.ts"),
+  potentialsRoute: read("src/app/api/potentials/route.ts"),
+  offersRoute: read("src/app/api/offers/route.ts"),
+  heroProjectsRoute: read("src/app/api/hero/projects/route.ts"),
+  projectLogbookRoute: read("src/app/api/project-logbook-entries/route.ts"),
+  projectTimeEntriesRoute: read("src/app/api/project-time-entries/route.ts"),
+  smokeDetectorReportsRoute: read("src/app/api/smoke-detector-reports/route.ts"),
+  tasksRoute: read("src/app/api/tasks/route.ts"),
+  packageJson: read("package.json"),
+};
+
+const required = [
+  {
+    label: "Sidebar/Ansichten verwenden Zusatzverkäufe statt Potenziale",
+    file: "page",
+    needle: "Zusatzverkäufe",
+    min: 10,
+  },
+  {
+    label: "Manueller Zusatzverkauf kann angelegt werden",
+    file: "page",
+    needle: "Zusatzverkauf anlegen",
+    min: 2,
+  },
+  {
+    label: "Zusatzverkauf-Nummer wird in der UI berechnet/angezeigt",
+    file: "page",
+    needle: "getPotentialNumber",
+    min: 3,
+  },
+  {
+    label: "Zusatzverkauf-Nachfassaufgabe ist verknuepft",
+    file: "page",
+    needle: "getPotentialLinkedTask",
+    min: 3,
+  },
+  {
+    label: "Einmalprojekt-Angebotsplanung hat projektweite Angebotsleisten",
+    file: "page",
+    needle: "singleProjectOfferPlanningRows",
+    min: 3,
+  },
+  {
+    label: "Terminmaske kann Angebot zuordnen",
+    file: "page",
+    needle: "planningEntryOfferId",
+    min: 5,
+  },
+  {
+    label: "Terminmaske zeigt Angebotszuordnung auch bei Einmalprojekt-Angebotsbasis",
+    file: "page",
+    needle: "shouldShowPlanningOfferAssignment",
+    min: 2,
+  },
+  {
+    label: "Planung bearbeiten erkennt vorhandene Angebotsplanung",
+    file: "page",
+    needle: "entryProjectHasOfferPlanning",
+    min: 2,
+  },
+  {
+    label: "Angebots-Kontingentbox bleibt in der Planungsmaske sichtbar",
+    file: "page",
+    needle: "Kontingent vorbereitet",
+    min: 1,
+  },
+  {
+    label: "Einmalprojekt-Verbrauch wird je Angebot in der Seitenleiste angezeigt",
+    file: "page",
+    needle: "singleProjectOfferTimeUsageRows",
+    min: 2,
+  },
+  {
+    label: "Einmalprojekte nutzen Ausfuehrungsplanung statt Restlaufzeit-Endphase",
+    file: "page",
+    needle: "Ausführungsplanung",
+    min: 1,
+  },
+  {
+    label: "Planbare Stunden-Leisten haben Termin-/Bearbeiten-Auswahl",
+    file: "page",
+    needle: "projectPlanningCapacityMenu",
+    min: 2,
+  },
+  {
+    label: "TerWu-Prozessschritt prueft Einmalprojekte angebotsbezogen",
+    file: "page",
+    needle: "singleProjectOfferAppointmentState",
+    min: 2,
+  },
+  {
+    label: "Dauerlaeufer behalten Monatsleiste in der Projektakte",
+    file: "page",
+    needle: "projectMonthStripMonths",
+    min: 2,
+  },
+  {
+    label: "Dauerlaeufer-Planung bleibt monatsbezogen",
+    file: "page",
+    needle: "projectComparisonMonthPlanningEntries",
+    min: 3,
+  },
+  {
+    label: "Dauerlaeufer-Stempelungen bleiben monatsbezogen",
+    file: "page",
+    needle: "projectComparisonMonthStampEntries",
+    min: 3,
+  },
+  {
+    label: "Dauerlaeufer-Kontingente bleiben Monatsbasis fuer Planung",
+    file: "page",
+    needle: "projectMonthBudgetHours",
+    min: 5,
+  },
+  {
+    label: "Projektlogbuch speichert Monatsakte defensiv",
+    file: "projectLogbookRoute",
+    needle: "projectMonth",
+    min: 5,
+  },
+  {
+    label: "Projektbilder werden vor Upload normalisiert/verkleinert",
+    file: "page",
+    needle: "canvas.toDataURL(\"image/jpeg\", 0.82)",
+    min: 1,
+  },
+  {
+    label: "Projektbilder-Upload schreibt bei Dauerlaeufern in den ausgewaehlten Monat",
+    file: "page",
+    needle: "uploadProjectImageCategory",
+    min: 2,
+  },
+  {
+    label: "Vorher-/Nachherbilder bleiben eigene Projektbild-Kategorien",
+    file: "page",
+    needle: "Vorherbilder",
+    min: 5,
+  },
+  {
+    label: "Nachherbilder bleiben eigene Projektbild-Kategorie",
+    file: "page",
+    needle: "Nachherbilder",
+    min: 5,
+  },
+  {
+    label: "Verlorene Angebote werden als eigener Status gefuehrt",
+    file: "offersRoute",
+    needle: "lostReason",
+    min: 4,
+  },
+  {
+    label: "Verlorene Angebote werden aus aktiven Angebotsgrundlagen ausgeschlossen",
+    file: "page",
+    needle: "isActiveFinalOffer",
+    min: 4,
+  },
+  {
+    label: "Angebot-verloren-Dialog bleibt vorhanden",
+    file: "page",
+    needle: "Angebot verloren",
+    min: 4,
+  },
+  {
+    label: "Verlorene Angebote koennen wieder aktiviert werden",
+    file: "page",
+    needle: "Verlust zurücknehmen",
+    min: 1,
+  },
+  {
+    label: "Offers-API kann verlorene Angebote wieder aktivieren",
+    file: "offersRoute",
+    needle: "restoreLost",
+    min: 2,
+  },
+  {
+    label: "Angebote speichern Gewinnmerkmal",
+    file: "schema",
+    needle: "wonAt",
+    min: 1,
+  },
+  {
+    label: "Angebote koennen per API als gewonnen markiert werden",
+    file: "offersRoute",
+    needle: "markWon",
+    min: 1,
+  },
+  {
+    label: "Angebot gewonnen kann per Planung markiert werden",
+    file: "page",
+    needle: "markOfferWon",
+    min: 2,
+  },
+  {
+    label: "Projektakte erkennt, wenn alle Angebotsgrundlagen verloren sind",
+    file: "page",
+    needle: "projectHasOnlyLostOffers",
+    min: 5,
+  },
+  {
+    label: "Verlorene Angebote zeigen einen Kommentarclip",
+    file: "page",
+    needle: "offerStatusCommentClip",
+    min: 2,
+  },
+  {
+    label: "Verlorene Angebote brauchen einen Pflichtkommentar",
+    file: "page",
+    needle: "Bitte einen Kommentar zum verlorenen Angebot angeben.",
+    min: 1,
+  },
+  {
+    label: "Offers-API erzwingt Pflichtkommentar fuer verlorene Angebote",
+    file: "offersRoute",
+    needle: "Bitte einen Kommentar",
+    min: 1,
+  },
+  {
+    label: "Planungsbutton zeigt ohne aktive Angebotsgrundlage keinen Fertig-Zustand",
+    file: "page",
+    needle: "Kein aktives Angebot",
+    min: 1,
+  },
+  {
+    label: "Projektkopf behält Zusatzverkauf-Platzhalter ohne Leerraum",
+    file: "page",
+    needle: "Kein Zusatzverkauf",
+    min: 1,
+  },
+  {
+    label: "Zusatzverkauf-Platzhalter im Projektkopf ist deaktiviert",
+    file: "page",
+    needle: "disabled={!projectUpsellState}",
+    min: 1,
+  },
+  {
+    label: "Rechnungshistorie nutzt das Standard-Historiendesign",
+    file: "page",
+    needle: "projectInvoiceHistory.slice(0, 6).map",
+    min: 1,
+  },
+  {
+    label: "Mojibake-Kompatibilitaet schuetzt Dauerlaeufer-Projekttypen",
+    file: "page",
+    needle: "LEGACY_RECURRING_PROJECT_KIND",
+    min: 2,
+  },
+  {
+    label: "Mojibake-Kompatibilitaet schuetzt geloeschte Statuswerte",
+    file: "page",
+    needle: "isDeletedStatus",
+    min: 3,
+  },
+  {
+    label: "Mojibake-Kompatibilitaet schuetzt Taetigkeitsbericht-Titel",
+    file: "projectLogbookRoute",
+    needle: "ACTIVITY_REPORT_TITLES",
+    min: 2,
+  },
+  {
+    label: "Projektakte kann Taetigkeitsberichte erstellen",
+    file: "page",
+    needle: "Tätigkeitsbericht erstellen",
+    min: 1,
+  },
+  {
+    label: "Taetigkeitsbericht-Erstellung nutzt die Activity-Reports-API",
+    file: "page",
+    needle: "/api/activity-reports",
+    min: 1,
+  },
+  {
+    label: "Taetigkeitsbericht-Button haengt am richtigen Dokumentordner",
+    file: "page",
+    needle: 'selectedProjectDocumentType === "Tätigkeitsberichte"',
+    min: 2,
+  },
+  {
+    label: "Taetigkeitsbericht nutzt nur sichtbare Vorher-/Nachherbild-Schluessel",
+    file: "page",
+    needle: "getVisibleReportImageKeys",
+    min: 3,
+  },
+  {
+    label: "Activity-Reports-API filtert Berichte nach Projektmonat",
+    file: "activityReportsRoute",
+    needle: "projectMonth",
+    min: 8,
+  },
+  {
+    label: "Activity-Reports-API akzeptiert sichtbare Bildauswahl",
+    file: "activityReportsRoute",
+    needle: "beforeImageKeys",
+    min: 2,
+  },
+  {
+    label: "Rauchmelder-Nachweise bleiben unter Checklisten abgelegt",
+    file: "smokeDetectorReportsRoute",
+    needle: "Dokumente: Checklisten",
+    min: 2,
+  },
+  {
+    label: "Alte Rauchmelder-Nachweise bleiben lesbar",
+    file: "smokeDetectorReportsRoute",
+    needle: "Dokumente: Rauchmelder-Nachweise",
+    min: 1,
+  },
+  {
+    label: "Endkontrolle bleibt als eigener Dokument-/Statusbereich vorhanden",
+    file: "finalInspectionsRoute",
+    needle: "Dokumente: Endkontrolle",
+    min: 1,
+  },
+  {
+    label: "Projektakte zaehlt Endkontrolle fuer Fortschritt",
+    file: "page",
+    needle: "projectEndCheckCount",
+    min: 2,
+  },
+  {
+    label: "Projektpipeline enthaelt Geplant als eigenen Status",
+    file: "page",
+    needle: 'label: "Geplant"',
+    min: 1,
+  },
+  {
+    label: "Projektstatus-Normalisierung kennt Geplant",
+    file: "heroProjectsRoute",
+    needle: 'return "Geplant"',
+    min: 1,
+  },
+  {
+    label: "Projektakte enthaelt Projektgewinn-Reiter",
+    file: "page",
+    needle: "Projektgewinn",
+    min: 3,
+  },
+  {
+    label: "Projektgewinn bleibt als finaler Projektgewinn vorhanden",
+    file: "page",
+    needle: "projectProfitScopes",
+    min: 2,
+  },
+  {
+    label: "Projektgewinn nutzt gespeicherte Materialkosten-Snapshots",
+    file: "page",
+    needle: "materialCostSnapshot",
+    min: 2,
+  },
+  {
+    label: "Projektgewinn nutzt gespeicherte Lohnkosten-Snapshots",
+    file: "page",
+    needle: "laborCostSnapshot",
+    min: 2,
+  },
+  {
+    label: "Projektgewinn zeigt finalen/vorlaeufigen Status",
+    file: "page",
+    needle: "vorläufig",
+    min: 2,
+  },
+  {
+    label: "Projektgewinn erklaert Storno ohne aktive Rechnung",
+    file: "page",
+    needle: "Rechnung storniert / keine aktive Rechnung",
+    min: 1,
+  },
+  {
+    label: "Rechnungen fuehren ein Leistungsdatum",
+    file: "invoicesRoute",
+    needle: "serviceDate",
+    min: 10,
+  },
+  {
+    label: "Rechnungsmaske bestaetigt Leistungsdatum vor finaler Erstellung",
+    file: "page",
+    needle: "getInvoiceServiceDateLabel",
+    min: 3,
+  },
+  {
+    label: "Stempelungen koennen technisch mit Rechnungen verknuepft werden",
+    file: "invoicesRoute",
+    needle: "markStampedHoursAsInvoiced",
+    min: 2,
+  },
+  {
+    label: "Storno loest verknuepfte Stempelungen wieder von der Rechnung",
+    file: "invoicesRoute",
+    needle: "SET \"invoiceId\" = NULL, \"invoiceNumber\" = NULL, \"invoicedAt\" = NULL",
+    min: 1,
+  },
+  {
+    label: "Zeiteintraege speichern Rechnungsverknuepfung",
+    file: "projectTimeEntriesRoute",
+    needle: "invoiceId",
+    min: 4,
+  },
+  {
+    label: "Terminserie nutzt neues Wording",
+    file: "page",
+    needle: "Terminserie anlegen",
+    min: 1,
+  },
+  {
+    label: "Terminmaske markiert Pflichtfelder",
+    file: "page",
+    needle: "data-required-missing",
+    min: 3,
+  },
+  {
+    label: "CSS-Pulsierung fuer Pflichtfelder ist vorhanden",
+    file: "css",
+    needle: "requiredPulse",
+    min: 2,
+  },
+  {
+    label: "Manueller Zusatzverkauf hat eigene Modalbreite",
+    file: "css",
+    needle: "manualPotentialModal",
+    min: 1,
+  },
+  {
+    label: "ProjectPotential speichert VC-Nummer",
+    file: "schema",
+    needle: "number         String?",
+    min: 1,
+  },
+  {
+    label: "ProjectPotential Nummer ist indexiert",
+    file: "schema",
+    needle: "@@index([organizationId, number])",
+    min: 1,
+  },
+  {
+    label: "Potentials-API erzeugt VC-Nummern",
+    file: "potentialsRoute",
+    needle: "VC-",
+    min: 2,
+  },
+  {
+    label: "Potentials-API ergaenzt fehlende Nummern defensiv",
+    file: "potentialsRoute",
+    needle: "ensurePotentialNumbers",
+    min: 1,
+  },
+  {
+    label: "Tasks-API respektiert Status beim Anlegen",
+    file: "tasksRoute",
+    needle: "const nextStatus = body.status ? mapStatus(body.status) : TaskStatus.OFFEN",
+    min: 1,
+  },
+  {
+    label: "Mojibake-Check ist im Paket registriert",
+    file: "packageJson",
+    needle: "\"check:mojibake\"",
+    min: 1,
+  },
+  {
+    label: "Artikel & Leistungen nutzt die Standard-Tabellenfamilie",
+    file: "page",
+    needle: "styles.table} ${styles.catalogTable",
+    min: 1,
+  },
+  {
+    label: "Artikel & Leistungen hat Status-Clips",
+    file: "css",
+    needle: "catalogStatusClip",
+    min: 3,
+  },
+  {
+    label: "Buchhaltung ist als eigene Rolle im Schema vorhanden",
+    file: "schema",
+    needle: "BUCHHALTUNG",
+    min: 1,
+  },
+  {
+    label: "Auswertungsreiter werden rollenbasiert gefiltert",
+    file: "page",
+    needle: "getVisibleReportTabs",
+    min: 2,
+  },
+  {
+    label: "Buchhaltung faellt bei gesperrter Navigation auf Auswertungen zurueck",
+    file: "page",
+    needle: "isAccountingRole",
+    min: 2,
+  },
+  {
+    label: "Buchhaltung darf aus Auswertungen nicht in Projektakten drilldownen",
+    file: "page",
+    needle: "canUseReportDrilldowns",
+    min: 3,
+  },
+  {
+    label: "Buchhaltung hat in Auswertungen reine Leserechte",
+    file: "page",
+    needle: "canUseReportWriteActions",
+    min: 4,
+  },
+  {
+    label: "Mitarbeitenden-Auswertung nutzt rollenbezogene sichtbare Datenbasis",
+    file: "page",
+    needle: "visibleEmployeeReportRows",
+    min: 3,
+  },
+  {
+    label: "Normale Mitarbeitende sehen keine fremden Mitarbeiter-Einzelkarten",
+    file: "page",
+    needle: "canViewEmployeeTeamMemberDetails",
+    min: 3,
+  },
+  {
+    label: "Umsatz- und Projektuebersicht hat rollenabhaengige Inhaltstiefe",
+    file: "page",
+    needle: "canViewFullOverviewAnalytics",
+    min: 4,
+  },
+  {
+    label: "Umsatz- und Projektuebersicht schuetzt sensible Finanzkennzahlen",
+    file: "page",
+    needle: "canViewSensitiveOverviewFinancials",
+    min: 7,
+  },
+  {
+    label: "Sales-Auswertung bleibt eigener Reports-Reiter",
+    file: "page",
+    needle: "salesOfferRows",
+    min: 5,
+  },
+  {
+    label: "Sales-Auswertung nutzt Angebot-gewonnen-Logik",
+    file: "page",
+    needle: "salesWonOfferRows",
+    min: 4,
+  },
+  {
+    label: "Vertrieb sieht Sales-Auswertung",
+    file: "page",
+    needle: "\"sales\"",
+    min: 3,
+  },
+  {
+    label: "Projekt-/SVS-/KuZu-Auswertungen nutzen rollenbezogene Projektbasis",
+    file: "page",
+    needle: "isProjectVisibleInProjectScopedAnalytics",
+    min: 6,
+  },
+  {
+    label: "KuZu beruecksichtigt eigene Vertriebszuordnung",
+    file: "page",
+    needle: "isCustomerFeedbackLinkedToActiveSalesUser",
+    min: 3,
+  },
+];
+
+const forbidden = [
+  {
+    label: "Alte sichtbare Hauptnavigation darf nicht wieder Potenziale heissen",
+    file: "page",
+    needle: "[\"salesOpportunities\", \"Potenziale\"]",
+  },
+  {
+    label: "Alte Tab-Beschriftung darf nicht wieder Potenziale heissen",
+    file: "page",
+    needle: "salesOpportunities: \"Potenziale\"",
+  },
+  {
+    label: "Terminmaske darf nicht wieder mit Freie Projektplanung vorbefuellt sein",
+    file: "page",
+    needle: "setPlanningEntryTitle(\"Freie Projektplanung\")",
+  },
+  {
+    label: "Terminmaske darf nicht wieder mit alter Beschreibung vorbefuellt sein",
+    file: "page",
+    needle: "setPlanningEntryDescription(\"Freie Planung ohne Angebotskontingent",
+  },
+  {
+    label: "Wochenenden-Checkbox darf nicht zurueckkommen",
+    file: "page",
+    needle: "Wochenenden überspringen",
+  },
+  {
+    label: "Icon-Buttons duerfen nicht nur ein Fragezeichen rendern",
+    file: "page",
+    needle: ">?</button>",
+  },
+  {
+    label: "Projektakten-Planung darf neue Termine nicht mit dem zuletzt gewaehlten Planungsboard-Tag vorbelegen",
+    file: "page",
+    needle: "setPlanningEntryDate(selectedPlanningDateKey);",
+  },
+  {
+    label: "Rechnungshistorie darf nicht wieder als Inline-Panel gerendert werden",
+    file: "page",
+    needle: "invoiceHistoryPanel",
+  },
+];
+
+const failures = [];
+
+for (const check of required) {
+  const actual = count(files[check.file], check.needle);
+  if (actual < check.min) {
+    failures.push(`${check.label}: erwartet mindestens ${check.min}, gefunden ${actual}.`);
+  }
+}
+
+for (const check of forbidden) {
+  if (files[check.file].includes(check.needle)) {
+    failures.push(`${check.label}: verbotener Marker gefunden.`);
+  }
+}
+
+if (failures.length > 0) {
+  console.error("Regressionscheck fehlgeschlagen:");
+  for (const failure of failures) console.error(`- ${failure}`);
+  process.exit(1);
+}
+
+console.log("Regressionscheck bestanden: zentrale Entwicklungsmarker sind vorhanden.");

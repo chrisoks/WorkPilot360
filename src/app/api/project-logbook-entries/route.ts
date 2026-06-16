@@ -18,12 +18,20 @@ type ProjectLogbookEntryRow = {
   title: string | null;
   body: string;
   author: string | null;
+  authorUserId: string | null;
   colleague: string | null;
   visibleFor: unknown;
   attachments: unknown;
   projectMonth: string | null;
   createdAt: Date;
 };
+
+const ACTIVITY_REPORT_TITLES = new Set([
+  "Dokumente: Tätigkeitsberichte",
+  "Dokumente: T\u00c3\u00a4tigkeitsberichte",
+]);
+const ACTIVITY_REPORT_DELETE_TITLE = "Tätigkeitsbericht: gelöscht";
+const PROJECT_ATTACHMENT_DELETE_TITLE = "Projektanhang: gelöscht";
 
 async function ensureProjectLogbookEntryTable() {
   await prisma.$executeRaw`
@@ -34,6 +42,7 @@ async function ensureProjectLogbookEntryTable() {
       "title" TEXT,
       "body" TEXT NOT NULL,
       "author" TEXT,
+      "authorUserId" TEXT,
       "colleague" TEXT,
       "visibleFor" JSONB NOT NULL DEFAULT '[]'::jsonb,
       "attachments" JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -44,7 +53,8 @@ async function ensureProjectLogbookEntryTable() {
 
   await prisma.$executeRaw`
     ALTER TABLE "ProjectLogbookEntry"
-    ADD COLUMN IF NOT EXISTS "projectMonth" TEXT
+    ADD COLUMN IF NOT EXISTS "projectMonth" TEXT,
+    ADD COLUMN IF NOT EXISTS "authorUserId" TEXT
   `;
 }
 
@@ -97,6 +107,7 @@ function formatEntry(entry: ProjectLogbookEntryRow) {
     title: entry.title || "Eintrag",
     text: entry.body,
     author: entry.author || "",
+    authorUserId: entry.authorUserId || "",
     colleague: entry.colleague || "",
     visibleFor: cleanStringList(entry.visibleFor),
     attachments: cleanAttachments(entry.attachments),
@@ -137,6 +148,7 @@ export async function POST(req: Request) {
   const id = cleanString(body.id) || randomUUID();
   const title = cleanString(body.title) || "Eintrag";
   const author = cleanString(body.author);
+  const authorUserId = cleanString(body.authorUserId);
   const colleague = cleanString(body.colleague);
   const visibleFor = cleanStringList(body.visibleFor);
   const attachments = cleanAttachments(body.attachments);
@@ -153,6 +165,7 @@ export async function POST(req: Request) {
       "title",
       "body",
       "author",
+      "authorUserId",
       "colleague",
       "visibleFor",
       "attachments",
@@ -166,6 +179,7 @@ export async function POST(req: Request) {
       ${title},
       ${text},
       ${author || null},
+      ${authorUserId || null},
       ${colleague || null},
       ${JSON.stringify(visibleFor)}::jsonb,
       ${JSON.stringify(attachments)}::jsonb,
@@ -184,6 +198,9 @@ export async function PATCH(req: Request) {
   const attachmentName = cleanString(body.attachmentName);
   const attachmentIndex = Number(body.attachmentIndex);
   const actorName = cleanString(body.actorName) || "System";
+  const actorUserId = cleanString(body.actorUserId);
+  const action = cleanString(body.action) || "delete";
+  const targetTitle = cleanString(body.targetTitle);
 
   if (!entryId) {
     return NextResponse.json({ error: "Logbucheintrag fehlt." }, { status: 400 });
@@ -219,6 +236,15 @@ export async function PATCH(req: Request) {
   }
 
   const removedAttachment = attachments[targetIndex];
+  if (action === "move") {
+    if (removedAttachment.type !== "Bild") {
+      return NextResponse.json({ error: "Nur Bilder können verschoben werden." }, { status: 400 });
+    }
+    if (!targetTitle || !targetTitle.startsWith("Bilder: ")) {
+      return NextResponse.json({ error: "Bild-Zielordner fehlt." }, { status: 400 });
+    }
+  }
+
   const nextAttachments = attachments.filter((_, index) => index !== targetIndex);
   const updatedRows = await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
     UPDATE "ProjectLogbookEntry"
@@ -228,9 +254,99 @@ export async function PATCH(req: Request) {
     RETURNING *
   `;
 
-  const isActivityReport = entry.title === "Dokumente: Tätigkeitsberichte";
-  const historyTitle = isActivityReport ? "Tätigkeitsbericht: gelöscht" : "Projektanhang: gelöscht";
+  const normalizedEntryTitle = (entry.title || "")
+    .replaceAll("Taetigkeitsbericht", "Tätigkeitsbericht")
+    .replaceAll("T\u00c3\u00a4tigkeitsbericht", "Tätigkeitsbericht");
+  const isActivityReport =
+    ACTIVITY_REPORT_TITLES.has(entry.title || "") ||
+    normalizedEntryTitle === "Dokumente: Tätigkeitsberichte" ||
+    normalizedEntryTitle.includes("Tätigkeitsbericht");
+  const historyTitle = isActivityReport ? ACTIVITY_REPORT_DELETE_TITLE : PROJECT_ATTACHMENT_DELETE_TITLE;
   const sourceTitle = entry.title || "Projektakte";
+  if (action === "move") {
+    const targetRows = await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
+      SELECT *
+      FROM "ProjectLogbookEntry"
+      WHERE "organizationId" = ${organization.id}
+        AND "projectId" = ${entry.projectId}
+        AND "title" = ${targetTitle}
+      ORDER BY "createdAt" DESC
+    `;
+    const targetEntry = targetRows.find((row) => (row.projectMonth || "") === (entry.projectMonth || ""));
+    const movedRows = targetEntry
+      ? await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
+          UPDATE "ProjectLogbookEntry"
+          SET "attachments" = ${JSON.stringify([...cleanAttachments(targetEntry.attachments), removedAttachment])}::jsonb
+          WHERE "id" = ${targetEntry.id}
+            AND "organizationId" = ${organization.id}
+          RETURNING *
+        `
+      : await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
+          INSERT INTO "ProjectLogbookEntry" (
+            "id",
+            "organizationId",
+            "projectId",
+            "title",
+            "body",
+            "author",
+            "authorUserId",
+            "colleague",
+            "visibleFor",
+            "attachments",
+            "projectMonth"
+          )
+          VALUES (
+            ${randomUUID()},
+            ${organization.id},
+            ${entry.projectId},
+            ${targetTitle},
+            ${`Bild "${removedAttachment.name}" verschoben.`},
+            ${actorName},
+            ${actorUserId || null},
+            ${entry.colleague || null},
+            ${JSON.stringify(cleanStringList(entry.visibleFor))}::jsonb,
+            ${JSON.stringify([removedAttachment])}::jsonb,
+            ${entry.projectMonth || null}
+          )
+          RETURNING *
+        `;
+
+    const historyRows = await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
+      INSERT INTO "ProjectLogbookEntry" (
+        "id",
+        "organizationId",
+        "projectId",
+        "title",
+        "body",
+        "author",
+        "authorUserId",
+        "colleague",
+        "visibleFor",
+        "attachments",
+        "projectMonth"
+      )
+      VALUES (
+        ${randomUUID()},
+        ${organization.id},
+        ${entry.projectId},
+        ${"Projektbild: verschoben"},
+        ${`Bild "${removedAttachment.name}" wurde aus "${sourceTitle}" nach "${targetTitle}" verschoben.`},
+        ${actorName},
+        ${actorUserId || null},
+        ${entry.colleague || null},
+        ${JSON.stringify(cleanStringList(entry.visibleFor))}::jsonb,
+        ${JSON.stringify([])}::jsonb,
+        ${entry.projectMonth || null}
+      )
+      RETURNING *
+    `;
+
+    return NextResponse.json({
+      entry: formatEntry(updatedRows[0]),
+      targetEntry: formatEntry(movedRows[0]),
+      history: formatEntry(historyRows[0]),
+    });
+  }
   const historyBody = isActivityReport
     ? `Tätigkeitsbericht "${removedAttachment.name}" wurde gelöscht.`
     : `${removedAttachment.type === "Bild" ? "Bild" : "Dokument"} "${removedAttachment.name}" wurde aus "${sourceTitle}" gelöscht.`;
@@ -243,9 +359,11 @@ export async function PATCH(req: Request) {
       "title",
       "body",
       "author",
+      "authorUserId",
       "colleague",
       "visibleFor",
-      "attachments"
+      "attachments",
+      "projectMonth"
     )
     VALUES (
       ${randomUUID()},
@@ -254,9 +372,11 @@ export async function PATCH(req: Request) {
       ${historyTitle},
       ${historyBody},
       ${actorName},
+      ${actorUserId || null},
       ${entry.colleague || null},
       ${JSON.stringify(cleanStringList(entry.visibleFor))}::jsonb,
-      ${JSON.stringify([])}::jsonb
+      ${JSON.stringify([])}::jsonb,
+      ${entry.projectMonth || null}
     )
     RETURNING *
   `;

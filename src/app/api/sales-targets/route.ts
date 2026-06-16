@@ -17,6 +17,10 @@ type SalesTargetRow = {
   ownerUserId: string | null;
   ownerName: string;
   priority: string;
+  metricKey: string;
+  targetValue: number;
+  periodStart: string;
+  periodEnd: string;
   targetMonth: string;
   followUpAt: Date | null;
   status: string;
@@ -55,6 +59,10 @@ function formatSalesTarget(row: SalesTargetRow) {
     ownerUserId: row.ownerUserId ?? "",
     ownerName: row.ownerName ?? "",
     priority: cleanPriority(row.priority),
+    metricKey: row.metricKey ?? "",
+    targetValue: Number(row.targetValue) || 0,
+    periodStart: row.periodStart ?? "",
+    periodEnd: row.periodEnd ?? "",
     targetMonth: row.targetMonth ?? "",
     followUpAt: row.followUpAt?.toISOString() ?? "",
     status: cleanStatus(row.status),
@@ -87,7 +95,7 @@ export async function POST(req: Request) {
   const now = new Date();
 
   if (!title) {
-    return NextResponse.json({ error: "Bitte ein Sales-Ziel angeben." }, { status: 400 });
+    return NextResponse.json({ error: "Bitte ein Ziel angeben." }, { status: 400 });
   }
 
   const history = [
@@ -95,7 +103,7 @@ export async function POST(req: Request) {
       at: now.toISOString(),
       actor: getUserName(user),
       action: "created",
-      note: "Sales-Ziel angelegt.",
+      note: "Ziel angelegt.",
     },
   ];
 
@@ -112,6 +120,10 @@ export async function POST(req: Request) {
       "ownerUserId",
       "ownerName",
       "priority",
+      "metricKey",
+      "targetValue",
+      "periodStart",
+      "periodEnd",
       "targetMonth",
       "followUpAt",
       "status",
@@ -129,6 +141,10 @@ export async function POST(req: Request) {
       ${owner.id},
       ${getUserName(owner)},
       ${cleanPriority(body.priority)},
+      ${cleanString(body.metricKey)},
+      ${Math.max(0, Number(body.targetValue) || 0)},
+      ${cleanString(body.periodStart)},
+      ${cleanString(body.periodEnd)},
       ${cleanString(body.targetMonth)},
       ${cleanString(body.followUpAt) ? new Date(cleanString(body.followUpAt)) : null},
       ${cleanStatus(body.status)},
@@ -157,7 +173,7 @@ export async function PATCH(req: Request) {
   const now = new Date();
 
   if (!id) {
-    return NextResponse.json({ error: "Sales-Ziel fehlt." }, { status: 400 });
+    return NextResponse.json({ error: "Ziel fehlt." }, { status: 400 });
   }
 
   const currentRows = await prisma.$queryRaw<SalesTargetRow[]>`
@@ -169,7 +185,7 @@ export async function PATCH(req: Request) {
   `;
   const current = currentRows[0];
   if (!current) {
-    return NextResponse.json({ error: "Sales-Ziel wurde nicht gefunden." }, { status: 404 });
+    return NextResponse.json({ error: "Ziel wurde nicht gefunden." }, { status: 404 });
   }
 
   const owner = users.find((candidate) => candidate.id === cleanString(body.ownerUserId)) ?? null;
@@ -180,7 +196,7 @@ export async function PATCH(req: Request) {
       at: now.toISOString(),
       actor: getUserName(user),
       action: nextStatus,
-      note: cleanString(body.note) || "Sales-Ziel aktualisiert.",
+      note: cleanString(body.note) || "Ziel aktualisiert.",
     },
   ];
 
@@ -196,6 +212,10 @@ export async function PATCH(req: Request) {
       "ownerUserId" = ${owner?.id ?? current.ownerUserId},
       "ownerName" = ${owner ? getUserName(owner) : current.ownerName},
       "priority" = ${cleanPriority(body.priority)},
+      "metricKey" = ${cleanString(body.metricKey)},
+      "targetValue" = ${Math.max(0, Number(body.targetValue) || 0)},
+      "periodStart" = ${cleanString(body.periodStart)},
+      "periodEnd" = ${cleanString(body.periodEnd)},
       "targetMonth" = ${cleanString(body.targetMonth)},
       "followUpAt" = ${cleanString(body.followUpAt) ? new Date(cleanString(body.followUpAt)) : null},
       "status" = ${nextStatus},
@@ -215,7 +235,7 @@ export async function PATCH(req: Request) {
     toStatus: rows[0].status,
     actorUserId: user.id,
     actorName: getUserName(user),
-    note: cleanString(body.note) || "Sales-Ziel aktualisiert.",
+    note: cleanString(body.note) || "Ziel aktualisiert.",
     at: now,
   });
 

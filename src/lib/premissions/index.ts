@@ -5,6 +5,7 @@ export const roleHierarchy: Record<Role, number> = {
   GAST: 10,
   MITARBEITER: 20,
   VERTRIEB: 20,
+  BUCHHALTUNG: 20,
   FUEHRUNGSKRAFT: 30,
   GESCHAEFTSFUEHRER: 40,
   ADMIN: 50

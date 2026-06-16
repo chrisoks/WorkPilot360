@@ -25,6 +25,8 @@ type ContactRow = {
   reachability: string | null;
   isInvoiceRecipient: boolean;
   isActivityReportRecipient: boolean;
+  eInvoiceRequired: boolean;
+  eInvoiceRecipientType: string | null;
   parentCompanyId: string | null;
   parentCompanyName: string | null;
   mainContactName: string | null;
@@ -73,6 +75,8 @@ async function ensureContactsTable() {
       "reachability" TEXT,
       "isInvoiceRecipient" BOOLEAN NOT NULL DEFAULT false,
       "isActivityReportRecipient" BOOLEAN NOT NULL DEFAULT false,
+      "eInvoiceRequired" BOOLEAN NOT NULL DEFAULT false,
+      "eInvoiceRecipientType" TEXT NOT NULL DEFAULT 'business',
       "parentCompanyId" TEXT,
       "parentCompanyName" TEXT,
       "mainContactName" TEXT,
@@ -103,6 +107,8 @@ async function ensureContactsTable() {
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "isMainContact" BOOLEAN NOT NULL DEFAULT false`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "legalForm" TEXT`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "isActivityReportRecipient" BOOLEAN NOT NULL DEFAULT false`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "eInvoiceRequired" BOOLEAN NOT NULL DEFAULT false`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "eInvoiceRecipientType" TEXT NOT NULL DEFAULT 'business'`;
 }
 
 function cleanString(value: unknown) {
@@ -118,6 +124,11 @@ function parseInteger(value: unknown) {
   if (value === "" || value === null || value === undefined) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.round(parsed) : null;
+}
+
+function cleanEInvoiceRecipientType(value: unknown) {
+  const cleaned = cleanString(value);
+  return cleaned === "public" ? "public" : "business";
 }
 
 function parseNumber(value: unknown) {
@@ -148,6 +159,8 @@ function formatContact(contact: ContactRow) {
     reachability: contact.reachability ?? "",
     isInvoiceRecipient: contact.isInvoiceRecipient,
     isActivityReportRecipient: contact.isActivityReportRecipient,
+    eInvoiceRequired: Boolean(contact.eInvoiceRequired),
+    eInvoiceRecipientType: cleanEInvoiceRecipientType(contact.eInvoiceRecipientType),
     parentCompanyId: contact.parentCompanyId ?? "",
     parentCompanyName: contact.parentCompanyName ?? "",
     mainContactName: contact.mainContactName ?? "",
@@ -215,6 +228,7 @@ export async function POST(req: Request) {
       "id", "organizationId", "category", "type", "legalForm", "customerNumber",
       "salutation", "additionalSalutation", "companyName", "firstName", "lastName", "position",
       "email", "phone", "mobile", "fax", "website", "source", "reachability", "isInvoiceRecipient", "isActivityReportRecipient",
+      "eInvoiceRequired", "eInvoiceRecipientType",
       "parentCompanyId", "parentCompanyName", "mainContactName", "isMainContact",
       "street", "addressLine1", "addressLine2", "postalCode", "city", "country",
       "paymentTermDays", "discountPercent", "discountTermDays", "priceGroup",
@@ -226,6 +240,7 @@ export async function POST(req: Request) {
       ${nullableString(body.firstName)}, ${nullableString(body.lastName)}, ${nullableString(body.position)},
       ${nullableString(body.email)}, ${nullableString(body.phone)}, ${nullableString(body.mobile)}, ${nullableString(body.fax)},
       ${nullableString(body.website)}, ${nullableString(body.source)}, ${nullableString(body.reachability)}, ${Boolean(body.isInvoiceRecipient)}, ${Boolean(body.isActivityReportRecipient)},
+      ${Boolean(body.eInvoiceRequired)}, ${cleanEInvoiceRecipientType(body.eInvoiceRecipientType)},
       ${nullableString(body.parentCompanyId)}, ${nullableString(body.parentCompanyName)}, ${nullableString(body.mainContactName)}, ${Boolean(body.isMainContact)},
       ${nullableString(body.street)}, ${nullableString(body.addressLine1)}, ${nullableString(body.addressLine2)},
       ${nullableString(body.postalCode)}, ${nullableString(body.city)}, ${nullableString(body.country)},
@@ -277,6 +292,8 @@ export async function PATCH(req: Request) {
       "reachability" = ${nullableString(body.reachability)},
       "isInvoiceRecipient" = ${Boolean(body.isInvoiceRecipient)},
       "isActivityReportRecipient" = ${Boolean(body.isActivityReportRecipient)},
+      "eInvoiceRequired" = ${Boolean(body.eInvoiceRequired)},
+      "eInvoiceRecipientType" = ${cleanEInvoiceRecipientType(body.eInvoiceRecipientType)},
       "parentCompanyId" = ${nullableString(body.parentCompanyId)},
       "parentCompanyName" = ${nullableString(body.parentCompanyName)},
       "mainContactName" = ${nullableString(body.mainContactName)},

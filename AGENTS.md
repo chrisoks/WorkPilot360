@@ -1,5 +1,661 @@
 # WorkPilot360 Agent Handover
 
+- Planungsboard-Zeitleistenklick 2026-06-15: In der Tagesansicht des
+  Planungsboards oeffnet ein Klick in eine freie Zeitleistenstelle wieder eine
+  Vorschaltmaske. Dort wird zwischen `+ Termin` und `+ Terminwunsch`
+  gewaehlt, danach ein Projekt ausgewaehlt oder bewusst `Ohne Projekt
+  fortfahren` genutzt. Datum, angeklickte 15-Minuten-Uhrzeit, Mitarbeiter,
+  Planungsgruppe und Board werden in die bestehende Planungsmaske
+  uebernommen. Bei Einmalprojekten mit planbaren Angebotsstunden erzwingt die
+  bestehende Maske weiter die Angebotszuordnung; ohne Projekt bleibt es eine
+  manuelle Planung fuer interne Arbeiten, Wartungen oder Objektbesichtigungen.
+- Aufgabenbeteiligte/Kommentare 2026-06-15: Aufgabenbeteiligte bleiben
+  Beteiligte und ersetzen nicht die zustaendige Person. Aufgaben bleiben fuer
+  den Ersteller sichtbar, auch wenn er nicht zustaendig oder beteiligt ist.
+  Neue Aufgabenkommentare erzeugen App-Notifications an die zustaendige Person
+  und alle Aufgabenbeteiligten; der Kommentar-Autor wird dabei bewusst
+  ausgeschlossen.
+- Pflichtkommentar Stempelung 2026-06-15: Beim Start einer Stempelung ist ein
+  kurzer Kommentar Pflicht und wird direkt an der aktiven `ActiveStampSession`
+  gespeichert. Die Team-Live-Ansicht zeigt Projekt/Unproduktiv plus
+  Startkommentar. Beim Stoppen oder Wechseln wird die Startnotiz angezeigt; die
+  Abschluss-Ergaenzung ist optional und wird nur bei Eingabe an den Kommentar
+  angehaengt.
+- Stempelung Wechsel-Reihenfolge 2026-06-15: Beim Wechseln einer produktiven
+  Projektstempelung muss zuerst entschieden werden, ob die bisherige Arbeit
+  fertig oder unterbrochen ist. Erst danach werden Tagesplanung, anderes
+  Projekt, unproduktive Taetigkeit und der Pflichtkommentar fuer die
+  Folgetaetigkeit angezeigt. Unproduktive Stempelungen haben weiterhin keine
+  Arbeit-fertig/unterbrochen-Abfrage.
+- Stempelung Abschlussstatus 2026-06-15: `ProjectTimeEntry.completionStatus`
+  speichert bei produktiven Projektstempelungen dauerhaft `finished` oder
+  `interrupted`. Der Status wird beim Stoppen/Wechseln aus der Auswahl
+  `Arbeit fertig`/`Arbeit unterbrochen` an `/api/stamp-session` uebergeben und
+  nicht fuer unproduktive Stempelungen gesetzt. `finished` bleibt der Trigger
+  fuer Endkontrolle; `interrupted` schliesst nur die aktuelle Stempelung.
+- Stempelung Prozessschutz 2026-06-15: Eine aktive Stempelung darf serverseitig
+  nicht durch einen neuen direkten Start ueberschrieben werden. Erst muss der
+  bestehende Lauf ueber Wechsel oder Stop beendet werden. Projektstempelungen
+  duerfen zudem nicht ohne `completionStatus` beendet werden; direkte Stop-
+  oder Delete-Aufrufe ohne `finished`/`interrupted` werden abgelehnt.
+- Stempelung Endkontrolle nach Projekttyp 2026-06-15: Bei `Arbeit fertig`
+  bleibt die Endkontrolle fuer OK-immocare-Projekte direkt sichtbar. Bei
+  OK-solutions-Projekten ist sie in der Stempelmaske nur optional und
+  standardmaessig geschlossen; ohne bewusstes Oeffnen wird keine
+  Endkontrolle gespeichert.
+- Planungsboard aktiver Zeitbalken 2026-06-15: Eine laufende Stempelung bleibt
+  im Tagesplan auch nach Ende des geplanten Terminfensters am zuletzt passenden
+  Termin sichtbar. Bei mehreren Terminen desselben Projekts gewinnt der Termin,
+  dessen Zeitfenster aktuell beruehrt wird; danach der letzte passende
+  vergangene Termin. So wird nicht jeder Termin desselben Projekts markiert.
+- Meine Ziele 2026-06-14: Der bisherige Sidebar-Bereich `Sales-Hub` heisst in
+  der UI jetzt `Meine Ziele`. Die interne Tab-ID bleibt `salesHub`, damit alte
+  Links/gespeicherte Tabs nicht brechen. Die bestehende `SalesTarget`-Tabelle
+  wurde um `metricKey`, `targetValue`, `periodStart` und `periodEnd`
+  erweitert. Geschaeftsfuehrung/Admin kann Ziele fuer aktive Mitarbeiter aus
+  einem KPI-Katalog anlegen; Mitarbeiter sehen ihre eigenen Zielkarten mit
+  Soll/Ist-Fortschritt. Ist-Werte werden clientseitig aus Angeboten,
+  Rechnungen, Aufgaben, Verkaufschancen und KuZu-Bewertungen berechnet.
+- Meine-Ziele-KPI-Erweiterung 2026-06-14: Der KPI-Katalog umfasst jetzt
+  Vertrieb, Angebote, verlorene/gewonnene Angebote, Angebotswerte nach
+  Leistung/Material/Paket, Rechnungen, bezahlte Rechnungen, fakturierte
+  Leistung/Material/Paket-Werte, Aufgaben, Stempelstunden, Leistungsgrad,
+  Produktivitaet, Logbucheintraege, Taetigkeitsberichte und KuZu. Die
+  Zielanlage nutzt sichtbare deutsche Datumsfelder (`TT.MM.JJJJ`) und speichert
+  intern normalisierte Datumswerte, damit alte Monatsziele weiter lesbar sind.
+- Projektverantwortung/Vertretung 2026-06-14: Projekte haben neben
+  `responsibleName` jetzt `deputyName`, `deputyFrom` und `deputyUntil`. Im
+  Projektdaten-Dialog sind Projektverantwortlicher und Vertretung als aktive
+  Mitarbeiter auswaehlbar; die Vertretung hat einen Zeitraum. Die
+  Kopf-Pille oeffnet den Projektdaten-Dialog und zeigt bei aktivem
+  Vertretungszeitraum `Vertretung aktiv: Name`, sonst
+  `Projektverantwortlicher: Name`. Das Freitextfeld fuer Projektbeteiligte ist
+  aus der UI entfernt, bleibt technisch nur zur Bestandssicherung erhalten.
+  Bei Abrechnungsbereit-Hinweisen wird die aktuell fachlich zustaendige Person
+  benachrichtigt. Wenn Hauptverantwortlicher und Vertretung identisch wuerden,
+  wird die Vertretung inkl. Zeitraum geleert.
+- Abwesenheitsvertretung in Projekten 2026-06-14: Eine genehmigte
+  Abwesenheit des Projektverantwortlichen mit Vertreter hat Vorrang vor der
+  projektbezogenen Vertretung. Die Projektkopf-Pille zeigt dann
+  `Abwesenheitsvertretung aktiv: Name`; Abrechnungsbereit-Hinweise gehen an
+  diesen Vertreter statt an den abwesenden Projektverantwortlichen. In der
+  Abwesenheitsmaske steht am Vertreterfeld ein Hinweis auf diese Verknuepfung.
+- Eskalation Abrechnungsbereit 2026-06-14: Die Erstmitteilung geht an die
+  aktuell zustaendige Person: Abwesenheitsvertretung, sonst aktive
+  Projektvertretung, sonst Projektverantwortlicher. Bleibt der fachliche
+  Hinweis 1,5 Arbeitstage bestehen, erzeugt der Notification-Endpunkt eine
+  `Fuehrungskraft:`-Eskalation an aktive Fuehrungskraefte der Planungsgruppe.
+  Gibt es keine passende Fuehrungskraft, geht diese Stufe an
+  Geschaeftsfuehrung/Admin. Nach insgesamt 2,5 Arbeitstagen erzeugt er eine
+  `Geschaeftsfuehrung:`-Eskalation. Gelesene Hinweise setzen die Eskalation
+  nicht zurueck; massgeblich ist, ob das Projekt weiterhin abrechnungsbereit
+  und nicht fakturiert ist.
+- Abrechnungsbereit-Erinnerung 2026-06-14: Beim Laden/Arbeiten scannt die UI
+  aktuelle abrechnungsbereite Projekte im aktuellen Monat und ruft die
+  deduplizierte Notification-Erzeugung auf. Das ist ein App-interner Scan,
+  kein externer Cronjob.
+- Dauerlaeufer-Abrechnungsbereit-Notification 2026-06-14:
+  Normale Dauerlaeufer erzeugen monatsbezogene App-Notifications, sobald fuer
+  den Monat noch keine finale Rechnung existiert und die Pflichtnachweise
+  vollstaendig sind. OK immocare verlangt Endkontrolle und
+  Taetigkeitsbericht; OK solutions verlangt die Endkontrolle. Winterdienst ist
+  bewusst ausgeschlossen, weil er einsatzbezogen ueber
+  `Prozess/Automation > Winterdienst` laeuft. Empfaenger ist die aktuell
+  fachlich zustaendige Person, nicht die Buchhaltung. Deduplizierung erfolgt
+  ueber Betreff inkl. Monat und Projekt-Link.
+- Abrechnungsbereit-Notification 2026-06-14: Einmalprojekte erzeugen keinen
+  Popup-Statuswechsel, sondern eine deduplizierte App-Notification `Projekt
+  abrechnungsbereit`, sobald noch keine finale Rechnung existiert und die
+  Pflichtnachweise vollstaendig sind. OK immocare verlangt Endkontrolle,
+  Vorherbild, Nachherbild und Taetigkeitsbericht; OK solutions verlangt nur
+  die Endkontrolle. Empfaenger ist die aktuell fachlich zustaendige Person,
+  nicht die Buchhaltung. Der Notification-Endpunkt kann dafuer jetzt kleine
+  Projekt-Hinweise per POST erzeugen; Klickziel `project` oeffnet die
+  Projektakte bei Rechnungen.
+- Bestaetigte Endkontrolle-Automatik 2026-06-14: Nach einer gespeicherten
+  Endkontrolle fragt WorkPilot bei Einmalprojekten, ob der Projektstatus auf
+  `Endkontrolle` gesetzt werden soll. Dauerlaeufer werden bewusst
+  uebersprungen, weil Endkontrollen dort meist Monats-/Einsatznachweise sind.
+  Ist der Status bereits passend, wird nicht erneut gefragt.
+- Bestaetigte Umsetzung-Automatik 2026-06-14: Eine projektbezogene
+  Stempelung und hochgeladene Vorher-/Nachherbilder gelten als echte
+  Ausfuehrung. WorkPilot fragt dann rollenunabhaengig, ob der Projektstatus
+  auf `Umsetzung`/In Umsetzung gesetzt werden soll. Ist der Status bereits
+  passend, wird nicht erneut gefragt.
+- Bestaetigte Projektstatus-Automatik 2026-06-14: Die ersten
+  Pipeline-Regeln sind als bestaetigte Automatik aktiv und nicht auf
+  Fuehrungskraefte beschraenkt. Nach einem gespeicherten Angebotsentwurf fragt
+  WorkPilot, ob der Projektstatus auf `Angebot`/Angebotserstellung gesetzt
+  werden soll. Nach einem neu finalisierten Angebot fragt WorkPilot nach
+  `Warten auf Kunde`. Nach einem Terminwunsch fragt WorkPilot nach `Zur
+  Planung bereit`; nach einem festen Termin nach `Geplant`. Bei Zustimmung
+  wird der Projektstatus gespeichert und ein Logbucheintrag
+  `Projektstatus per bestaetigter Automatik geaendert` geschrieben. Ist der
+  Status bereits passend, wird nicht erneut gefragt.
+- Prozess-Automation-Optik 2026-06-14: `Prozess/Automation >
+  Status-Automatisierung` ist als erklaerende Arbeitsansicht aufgebaut, nicht
+  mehr als fuehrende Roh-Tabelle. Oben stehen drei kurze Grundsaetze, danach
+  die Status-Strecke, Kennzahlen zu Automatik/Vorschlag/Monatslogik,
+  Regelkarten getrennt nach Einmalprojekt und Dauerlaeufer sowie eine separate
+  Dauerlaeufer-Monatslogik. Die technische Tabelle bleibt nur als aufklappbare
+  Detailuebersicht erhalten.
+- Allgemeine Taetigkeitsberichte 2026-06-14: Unter `Prozess/Automation >
+  Allg. T-Berichte` gibt es eine manuelle Kontroll- und Versandzentrale fuer
+  OK-immocare-Dauerlaeufer ohne Winterdienst. Die Ansicht nutzt den gewaehlten
+  Monatskontext, zeigt T-Berichte, Monatsrechnungen, Empfaenger und
+  Versandstatus und kann versandbereite Berichte separat senden. Winterdienst
+  bleibt bewusst ausgeschlossen, weil diese Berichte einsatzbezogen ueber
+  `Prozess/Automation > Winterdienst` laufen. Als erledigt gelten
+  Taetigkeitsberichte, wenn ein `activityReport`-Versandeintrag existiert;
+  mit Rechnung versendete T-Berichte werden ueber den bestehenden
+  Dokument-Mail-Zusatzanhang als eigener `activityReport` protokolliert.
+- Winterdienst-Scheduler 2026-06-13: `/api/winter-service-automation` kann
+  Kandidaten jetzt serverseitig selbst erkennen, wenn kein `runs`-Array
+  uebergeben wird. Er prueft Winterdienst-Projekte mit Stempelung,
+  tagesgenaue Vorher-/Nachherbilder, Nachherbild aelter als 1 Stunde,
+  keinen vorhandenen Kontext-Bericht, keinen Kontext-Versand und vorhandenen
+  Taetigkeitsbericht-Empfaenger. Bei aktivierter Einstellung startet im
+  laufenden Next-Prozess ein 10-Minuten-Intervall. Das ist ein interner
+  Scheduler, keine externe Cron-Infrastruktur; nach Serverneustart startet er
+  wieder, sobald die Einstellung/Route geladen wird.
+- Winterdienst-Automatiklauf 2026-06-13: `Prozess/Automation >
+  Winterdienst` nutzt jetzt `/api/winter-service-automation` fuer zentrale
+  Einstellungen und den echten Automatiklauf. Einstellungen: aktiv/inaktiv,
+  Versandkonto und Benachrichtigungs-Mitarbeiter. Bei aktivierter Automatik
+  kann die UI erkannte Kandidaten serverseitig verarbeiten lassen: Bericht
+  erstellen, per Dokument-Mail als `activityReport` senden, Versand im
+  Projektlogbuch protokollieren. Fehler erzeugen In-App-Notifications fuer die
+  hinterlegten Mitarbeiter und versuchen zusaetzlich eine Fehler-E-Mail ueber
+  das Versandkonto. Voraussetzung fuer echte E-Mail ist ein verbundenes
+  Microsoft-365-Konto beim Versandkonto.
+- Winterdienst-Automatik-Kandidaten 2026-06-13: Das Winterdienst-Modul zeigt
+  `Automatik bereit`, wenn ein Einsatz eine Stempelung, mindestens ein
+  Vorherbild, mindestens ein Nachherbild, kein Taetigkeitsbericht-PDF und ein
+  Nachherbild aelter als 1 Stunde hat. Der Button im Kopf speichert lokal den
+  Zustand `Automatischer Versand aktiviert/deaktiviert` und zeigt rot/gruen
+  mit pulsierender Statusleuchte. In dieser Stufe wird dadurch noch kein
+  Hintergrundversand gestartet.
+- Winterdienst-Qualitaetspruefung 2026-06-13: In `Prozess/Automation >
+  Winterdienst` zeigt eine reine Kontrollkarte offene Qualitaetspunkte:
+  fehlende Vorher-/Nachherbilder, Berichte ohne Freigabe, Freigaben ohne
+  Empfaenger, versandbereite Berichte aelter als 1 Tag und theoretisch
+  versendete aber noch offene Eintraege. Die Pruefung veraendert keine Daten.
+- Winterdienst-Mehrfachversand 2026-06-13: In `Prozess/Automation >
+  Winterdienst` gibt es im Bereich `Versandbereit` den Button `Alle
+  versandbereiten senden`. Er fragt vor dem Versand nach und versendet nur
+  freigegebene Eintraege mit PDF und Empfaenger. Fehlgeschlagene Eintraege
+  bleiben nachvollziehbar in der Fehlermeldung; erfolgreiche Eintraege werden
+  wie beim Einzelversand im Projektlogbuch protokolliert.
+- Winterdienst-Versandkontrolle 2026-06-13: In `Prozess/Automation >
+  Winterdienst` sind die Einsaetze jetzt in `Versandbereit`, `Offene
+  Pruefpunkte` und `Versendet / erledigt` getrennt. Vor dem Einzelversand
+  zeigt die Liste den konkret genutzten Empfaenger und die PDF-Datei an, damit
+  kein Bericht blind versendet wird.
+- Winterdienst-Einzelversand 2026-06-13: In `Prozess/Automation >
+  Winterdienst` wird ein freigegebener Bericht erst versandbereit, wenn ein
+  Taetigkeitsberichtempfaenger mit E-Mail ermittelt werden kann. Reihenfolge:
+  markierter Taetigkeitsberichtempfaenger, Rechnungsempfaenger, Hauptkontakt,
+  Projekt-Ansprechpartner, Projektkontakt. Der Button `Senden` verschickt den
+  einzelnen Bericht ueber den bestehenden Dokument-Mail-Endpunkt als
+  `activityReport` und protokolliert den Versand. Kein Massenversand in dieser
+  Stufe.
+- Winterdienst-Freigabe 2026-06-13: In `Prozess/Automation > Winterdienst`
+  kann ein vorhandener, noch nicht versendeter Taetigkeitsbericht pro Einsatz
+  freigegeben werden. Die Freigabe wird als Projektlogbuch-Eintrag
+  `Winterdienst: Taetigkeitsbericht freigegeben` mit demselben
+  `Winterdienst:<ProjektId>:<YYYY-MM-DD>`-Kontext gespeichert. Die Liste zeigt
+  danach `Freigegeben`; der Versand wird erst im naechsten Schritt angebunden.
+- Winterdienst-Bericht manuell 2026-06-13: In `Prozess/Automation >
+  Winterdienst` kann pro offenem Einsatz ein Taetigkeitsbericht manuell
+  erstellt werden, wenn mindestens ein Vorherbild und ein Nachherbild fuer den
+  Einsatztag vorhanden sind. Der Bericht nutzt den Kontext
+  `Winterdienst:<ProjektId>:<YYYY-MM-DD>` und oeffnet danach die Projektakte
+  im Reiter `Taetigkeitsberichte`. Kein Versand, kein Timer und keine
+  Automatik in dieser Stufe.
+- Winterdienst-Tageskopplung 2026-06-13: Projektbilder speichern ab jetzt
+  wieder den echten Uploadzeitpunkt. Bei Dauerlaeufern bleibt `projectMonth`
+  parallel als fachliche Monatszuordnung erhalten. Die Winterdienstliste
+  prueft Bilder bevorzugt tagesgenau zum Stempeldatum und nutzt Monatsbilder
+  nur als Fallback fuer Altbestand. Winterdienst-Taetigkeitsberichte sollen pro
+  Einsatz den Kontext `Winterdienst:<ProjektId>:<YYYY-MM-DD>` tragen, damit ein
+  Bericht nicht mehrere Einsatztage faelschlich abdeckt.
+
+## Aktuelle Zusatznotizen
+
+- Rechnungsprozess-VorprÃ¼fung 2026-06-13: Beim finalen Erstellen/Fakturieren
+  von Rechnungen gibt es eine ProzessvorprÃ¼fung. EntwÃ¼rfe bleiben frei.
+  TÃ¤tigkeitsberichte sind nur fÃ¼r `OK immocare` relevant; bei `OK solutions`
+  werden Vorherbilder, Nachherbilder und T-Bericht in der Projektakte nicht als
+  Prozesspflicht angezeigt. Endkontrolle bleibt als separater PrÃ¼fpunkt
+  bestehen. Fehlen Voraussetzungen, zeigt die UI konkret, was fehlt, erlaubt
+  aber eine bewusste Fortsetzung. Sind Vorher- und Nachherbilder vorhanden,
+  kann vor der Rechnung ein TÃ¤tigkeitsbericht erzeugt werden. Winterdienst wird
+  Ã¼ber das Gewerk erkannt und nutzt dieselbe Grundlage fÃ¼r den spÃ¤teren Ausbau
+  unter `Prozess/Automation > Winterdienst`.
+- TÃ¤tigkeitsbericht-Zuordnung 2026-06-13: Wird ein TÃ¤tigkeitsbericht aus der
+  Rechnungs-VorprÃ¼fung fÃ¼r ein OK-immocare-Einmalprojekt erzeugt, wird der
+  Angebotsbezug als interne Zuordnung `Angebot:<Angebotsnummer>` am
+  Logbucheintrag gespeichert und im PDF als Zuordnung angezeigt. Die
+  Rechnungs-VorprÃ¼fung bevorzugt diesen Angebotsbezug. Altbestand ohne
+  Zuordnung bleibt als Fallback nutzbar, wenn im Projekt nur ein passender
+  TÃ¤tigkeitsbericht vorhanden ist. DauerlÃ¤ufer bleiben vorerst monatsbezogen.
+- Auswertungen Sales 2026-06-13: `Auswertungen > Sales` ist ein eigener
+  Vertriebsreiter und bleibt fachlich von `Forecast & OP Kontrolle` getrennt.
+  Er nutzt Angebote, Angebots-Gewinnmerkmale/Rechnungsverknuepfungen,
+  verlorene Angebote und Verkaufschancen. Kennzahlen sind offene Angebote,
+  gewonnene Angebote, verlorene Angebote, Abschlussquote, Verkaufschancen,
+  faellige Nachfasspunkte, Sales-Verlauf, Verlustgruende und Chancenstatus.
+  `VERTRIEB` darf diesen Reiter sehen; Buchhaltung nicht.
+- Angebot gewonnen 2026-06-13: Ein Angebot gilt hart als gewonnen, wenn eine
+  nicht geloeschte und nicht als Entwurf gefuehrte Rechnung ueber
+  `sourceOfferId` oder `sourceOfferNumber` daran haengt. Zusaetzlich kann ein
+  Angebot aktiv mit `wonAt`, `wonByName` und `wonReason` als gewonnen markiert
+  werden. Die Planungsmaske fragt beim neuen Terminwunsch aus einem Angebot
+  und bei der Bestaetigung eines Terminwunsches zum festen Termin nach, ob das
+  Angebot als gewonnen markiert werden soll. Gewonnene und verlorene Angebote
+  duerfen sich gegenseitig ausschliessen.
+- Projektstatus-Automatisierung 2026-06-13: Die Projektpipeline enthaelt den
+  Status `Geplant` zwischen `Zur Planung bereit` und `Umsetzung`. `Zur Planung
+  bereit` bedeutet Terminwunsch/Planungsbedarf ohne festen Termin. `Geplant`
+  bedeutet fester Planungstermin vorhanden, aber Ausfuehrung noch nicht
+  gestartet. `Umsetzung` beginnt erst, wenn ein Termin erreicht wurde,
+  gestempelt wurde oder ein Ausfuehrungsnachweis vorliegt. Bei Dauerlaeufern
+  ist `Zur Abrechnung bereit` ein monatsbezogener Faktura-Zustand; nach
+  Faktura soll ein weiterlaufender Dauerlaeufer wieder in `Umsetzung` stehen
+  und nur bei Vertragsende/Kuendigung auf `Abgeschlossen` wechseln.
+- Rollen/Auswertungen 2026-06-13: Die Rolle `BUCHHALTUNG` ist eine
+  Auswertungsrolle. Sie darf in der Hauptnavigation nur `Auswertungen` sehen;
+  gespeicherte oder direkte Reiterwechsel muessen fuer diese Rolle automatisch
+  wieder auf `reports`/`Auswertungen` zurueckfallen. Die Rolle ist nicht als
+  normale Mitarbeiter-/Fuehrungskraftrolle zu behandeln und darf keine
+  Projekt-, Aufgaben-, Kontakt-, Planungsboard- oder Mitarbeiterverwaltungs-
+  Navigation erhalten. Feingranulare Auswertungsreiter und Sprunglinks werden
+  separat rollenbasiert nachgezogen.
+- Auswertungsreiter-Rollenmatrix 2026-06-13: `ADMIN` und
+  `GESCHAEFTSFUEHRER` sehen alle Auswertungsreiter. `BUCHHALTUNG` sieht nur
+  `Forecast & OP Kontrolle`, `Umsaetze - Details`, `Kunden` und
+  `Umsatz- und Projektuebersicht`. `FUEHRUNGSKRAFT` sieht `Umsatz- und
+  Projektuebersicht`, `Projekte`, `SVS Analyse`, `KuZu`, `Mitarbeitende` und
+  `Projektkarte`. `MITARBEITER` sieht vorerst `Umsatz- und Projektuebersicht`
+  und `Mitarbeitende`; weitere Reiter erst freischalten, wenn deren Inhalte
+  auf eigene/teambezogene Daten begrenzt sind. `VERTRIEB` sieht
+  `Umsatz- und Projektuebersicht`, `Projekte`, `Kunden` und `KuZu`; `GAST`
+  nur die Uebersicht. Wenn ein nicht erlaubter Reiter aktiv ist, muss die UI auf
+  den ersten erlaubten Reiter zurueckfallen.
+- Buchhaltung-Drilldowns 2026-06-13: `BUCHHALTUNG` bleibt im gesamten Programm
+  auf `Auswertungen` begrenzt. Auswertungslisten duerfen fuer diese Rolle keine
+  aktiven Spruenge in Projektakten, operative Projektbereiche, Kontakte,
+  Aufgaben oder Mitarbeiterverwaltung anbieten. Forecast-Qualitaets-Treffer
+  duerfen sichtbar bleiben, aber Projekt-/Angebots-/Rechnungs-/Mahnungs-
+  Drilldowns muessen deaktiviert sein (`Nur Hinweis`) und `openProjectFile`
+  muss fuer diese Rolle defensiv abbrechen.
+- Buchhaltung-Leserechte 2026-06-13: `BUCHHALTUNG` hat in `Auswertungen` reine
+  Leserechte. Schreibaktionen wie `Als bezahlt markieren` oder
+  `Mahnung erstellen` duerfen fuer diese Rolle nicht sichtbar ausfuehrbar sein
+  und muessen zusaetzlich in den Aktionsfunktionen defensiv abbrechen. Im
+  Reiter `Umsaetze - Details` darf `BUCHHALTUNG` keine internen Kosten,
+  Margen oder SVS-Kennzahlen sehen; diese Tiefe bleibt `ADMIN` und
+  `GESCHAEFTSFUEHRER` vorbehalten.
+- Auswertungen Mitarbeitende Rollentiefe 2026-06-13: Im Reiter
+  `Mitarbeitende` muessen Kopfkennzahlen und Gruppenkarten dieselbe
+  rollenabhaengige Datenbasis nutzen. `ADMIN` und `GESCHAEFTSFUEHRER` sehen
+  alle aktiven Mitarbeitenden und alle Planungsgruppen. `FUEHRUNGSKRAFT` sieht
+  nur die eigene Planungsgruppe inklusive aufklappbarer Einzelkarten.
+  `MITARBEITER` sieht die eigene Planungsgruppe nur als Teamkennzahlen plus
+  die eigene Kennzahlenkarte; fremde Mitarbeiter-Einzelkarten duerfen fuer
+  normale Mitarbeitende nicht aufklappbar sein.
+- Auswertungen Umsatz-/Projektuebersicht Rollentiefe 2026-06-13:
+  `Umsatz- und Projektuebersicht` ist fuer mehrere Rollen sichtbar, muss aber
+  abgestuft bleiben. Gesamtumsatz darf sichtbar bleiben. `ADMIN` und
+  `GESCHAEFTSFUEHRER` sehen vollstaendige Steuerungsdaten inklusive Marge,
+  SVS, Kundenrisiko, Top-Risiken, Projektstatus und Geschaeftsbereich-Marge.
+  `BUCHHALTUNG` sieht Finanz-/OP-orientierte Lesedaten wie bezahlt, offen,
+  ueberfaellig, Forecast, Kundenrisiko und Top-Risiken, aber keine Margen oder
+  operative Projektsteuerung. `FUEHRUNGSKRAFT` sieht operative Projektzahlen,
+  Status und Geschaeftsbereiche ohne Margen/Kundenrisiko. `MITARBEITER` sieht
+  eine reduzierte Uebersicht mit Gesamtumsatz/Umsatztrend, aber keine Margen,
+  Kundenrisiken, Top-Risiken oder fremde operative Projektsteuerungsdetails.
+- Auswertungen Projekt/SVS/KuZu Rollenscope 2026-06-13: Die Reiter
+  `Projekte`, `SVS Analyse`, `KuZu` und `Projektkarte` muessen fuer
+  `FUEHRUNGSKRAFT` und `VERTRIEB` mit einer rollenbezogenen Projektbasis
+  arbeiten. `ADMIN`, `GESCHAEFTSFUEHRER` und `BUCHHALTUNG` duerfen die
+  technische Vollbasis behalten, soweit der jeweilige Reiter sichtbar ist.
+  `FUEHRUNGSKRAFT` sieht Projekte, wenn sie selbst beteiligt/verantwortlich
+  ist oder wenn aktive Mitarbeitende der eigenen Planungsgruppe im Projekt
+  beteiligt sind bzw. darauf gestempelt haben. `VERTRIEB` sieht eigene
+  verantwortete/beteiligte Projekte; KuZu-Bewertungen und Bewertungslinks
+  bleiben zusaetzlich sichtbar, wenn sie dem aktiven Vertriebsmitarbeiter
+  zugeordnet sind. Pipeline-Engpaesse muessen dieselbe Projektbasis nutzen wie
+  die Projektliste.
+- Auswertungen Projektkarte 2026-06-12: Der Reiter `Projektkarte` ist eine
+  schematische Projektuebersicht ohne echtes Geocoding. Sie zeigt Kennzahlen zu
+  Projekten mit/ohne Adresse, regionale PLZ-Cluster, Karten-Pins mit
+  Projektnummern und eine Projektliste mit direktem Einstieg in die Projektakte.
+  Pin-Positionen sind bewusst nur schematisch, bis echte Koordinaten/Geocoding
+  vorhanden sind; die Ansicht darf keine exakte geografische Lage suggerieren.
+- Auswertungen Umsatz-/Projektuebersicht 2026-06-12: Der Reiter
+  `Umsatz- und Projektuebersicht` ist als Management-Uebersicht aufgebaut. Er
+  zeigt Umsatz, bezahlt, offen, ueberfaellig, Forecast-Potenzial, Marge,
+  Projektanzahl, Einmal-/Dauerlaeufer-Aufteilung, lange Projektstatusphasen,
+  SVS, Kundenrisiko, Umsatztrend, Top-Risiken, Projektstatus-Verteilung und
+  Geschaeftsbereiche. In `Top-Risiken` steht die Dauer/ÃœberfÃ¤lligkeit in einer
+  eigenen Spalte `Tage`, nicht im Hinweistext. Die Ansicht verwendet vorhandene
+  Auswertungsdaten und ist eine Steuerungs-/Anzeigeebene; sie darf keine
+  Forecast-, Zahlungs-, Mahn- oder Projektstatuslogik veraendern.
+- Auswertungen Kunden 2026-06-12: Der Reiter `Kunden` wertet Kunden im
+  gewaehlten Auswertungszeitraum nicht mehr nur nach Rechnungsvolumen aus,
+  sondern zeigt Umsatz, bezahlten Umsatz, offene Posten, ueberfaellige offene
+  Posten, Projekt- und Rechnungsanzahl, durchschnittliche Zahlungsdauer,
+  Mahnstufe/Risiko sowie KuZu-Bewertungen/Hot-Alerts je Kunde. Die
+  Risikobewertung ist eine Anzeigehilfe aus OP, Ueberfaelligkeit, Mahnstufe
+  und KuZu-Hot-Alerts; sie darf keine Zahlungs- oder Mahnlogik veraendern.
+- Forecast-Zeitraumfilter 2026-06-12: `Auswertungen > Forecast & OP
+  Kontrolle` hat einen eigenen Zeitraumfilter mit `Aktueller Monat`,
+  `Vormonat`, `Aktuelles Jahr`, `Vorjahr`, `Letzte 12 Monate`,
+  `Naechste 12 Monate` und `Individuell`. Der Monatsstrahl bleibt bestehen,
+  zeigt aber die Monate des gewaehlten Forecast-Zeitraums; `Gesamt` bezieht
+  sich immer auf genau diesen Zeitraum. Beim Wechsel des Forecast-Zeitraums
+  wird automatisch wieder `Gesamt` gewaehlt, damit keine alte Monatsauswahl in
+  einem neuen Zeitraum stehen bleibt.
+- Projektakte Forecast-Reiter 2026-06-12: Dauerlaeufer-Projekte haben in der
+  Projektakte einen eigenen Reiter `Forecast`. Dort werden die vorhandenen
+  Projektfelder `forecastNetAmount` und `forecastBillingType` gepflegt. Der
+  Reiter zeigt den daraus berechneten Monatswert und weist darauf hin, dass
+  eine echte Monatsrechnung diesen Planwert im Forecast ersetzt. Einmalprojekte
+  zeigen diesen Reiter nicht, weil sie weiterhin ueber Angebot/Rechnung in den
+  Forecast laufen. Forecast-Aenderungen werden ueber die bestehende
+  Projekt-API gespeichert und im Projektlogbuch protokolliert.
+- Forecast-Qualitaetspruefung 2026-06-12: `Auswertungen > Forecast & OP
+  Kontrolle` zeigt zusaetzlich eine kompakte Forecast-Qualitaetspruefung. Sie
+  bewertet im gewaehlten Forecast-Zeitraum Dauerlaeufer ohne belastbare
+  Forecast-Quelle, Angebote ohne Ausfuehrungsmonat, offene Posten ohne
+  Faelligkeit, ueberfaellige offene Posten ohne Mahnstufe, Werte ohne
+  Geschaeftsbereich, Forecast-Werte aus Rechnungshistorie und auffaellige
+  Abweichungen zwischen gepflegtem Dauerlaeufer-Forecast und Monatsrechnung.
+  Trefferzahlen groesser 0 oeffnen ein Modal mit kompakter Arbeitsliste und
+  direktem Einstieg in Projektakte, Angebots-, Rechnungs- oder Mahnungsbereich;
+  die Qualitaetskarten selbst bleiben kompakt und duerfen keine langen
+  Inline-Listen rendern. Diese Pruefung ist eine Anzeige-/Kontrollschicht und darf
+  die bestehenden Forecast- und OP-Summen nicht eigenstaendig veraendern.
+- Mahnungsmail 2026-06-12: Mahnungen sind im Dokument-Mail-Versand ein eigener
+  Typ `reminder` mit eigener Vorlage und Beschriftung. Mahnungs-PDFs aus der
+  Projektakte > Dokumente > Mahnung werden beim Klick auf `Per E-Mail senden`
+  als `Mahnung ... als PDF anhaengen` vorbereitet. Wenn die Datei dem Muster
+  `MA-Rechnungsnummer-Stufe.pdf` folgt, wird der Versand in der Historie der
+  Originalrechnung als `reminder_email_sent` protokolliert; andernfalls bleibt
+  der Versand als Dokument-Mail-Dispatch erhalten, ohne eine falsche
+  Rechnungshistorie zu schreiben.
+- Auswertungen Forecast/OP Detailkontrolle 2026-06-12: Forecast & OP darf
+  fuer `Fakturiert`, `Bezahlt` und `Offene Posten` keine Rechnungsentwuerfe,
+  Stornos, Stornorechnungen oder geloeschte Rechnungen einrechnen. Offene
+  Posten werden zusaetzlich als eigene Detailkontrolle mit Rechnung, Kunde,
+  Projekt, Leistungsdatum, Status und offenem Nettobetrag gezeigt. Eintraege
+  ohne gepflegten Geschaeftsbereich bleiben unter `Ohne Geschaeftsbereich` in
+  Summen und Detailtabellen sichtbar, damit Forecast-/OP-Werte nicht leise aus
+  den Kopfkennzahlen verschwinden.
+- Auswertungen Dauerlaeufer-Forecastquelle 2026-06-12: Geplante
+  Dauerlaeufer-Monate duerfen nicht mehr aus Projektvolumen oder
+  Angebotsdurchschnitt erzeugt werden. Vorrang hat eine echte Monatsrechnung;
+  danach ein gepflegter `forecastNetAmount` am Projekt; danach nur noch eine
+  belastbare Rechnungshistorie aus vorherigen echten Rechnungen. Fehlt beides,
+  erzeugt der Monat keinen kuenstlichen Forecastwert.
+- Rechnungsfaelligkeit 2026-06-12: Rechnungen speichern ab jetzt
+  `paymentTermDays` und `dueDate` direkt am Rechnungsdatensatz. Das
+  Zahlungsziel wird beim Erstellen aus dem verknuepften Kunden/Kontakt
+  vorbelegt und danach als Rechnungswert eingefroren, damit spaetere
+  Aenderungen am Kundenstamm alte Rechnungen nicht rueckwirkend veraendern.
+  Die OP-Detailkontrolle zeigt FÃ¤lligkeitsdatum und Status (`Noch nicht
+  faellig`, `Heute faellig`, `Ueberfaellig`, `Faelligkeit fehlt`).
+- OP-Auswertung FÃ¤lligkeitsgruppen 2026-06-12: Forecast & OP trennt offene
+  Posten zusaetzlich nach `Noch nicht faellig`, `Heute faellig`,
+  `Ueberfaellig` und `Faelligkeit fehlt`. Die Detailtabelle sortiert kritische
+  Rechnungen zuerst: ueberfaellig, heute faellig, fehlende Faelligkeit, danach
+  noch nicht faellige Rechnungen.
+- Mahnwesen Grundlage 2026-06-12: Rechnungen fuehren `reminderLevel` und
+  `lastReminderAt`. Eine Mahnstufe darf nur fuer nicht bezahlte, nicht
+  stornierte und nicht geloeschte Rechnungen erfasst werden. Das Erfassen
+  erhoeht die Mahnstufe maximal bis 3, setzt `lastReminderAt` und schreibt einen
+  `InvoiceHistory`-Eintrag mit `eventType=reminder`. Mahnungs-PDF und
+  Mahnungs-E-Mail sind bewusst noch nicht Teil dieser Stufe.
+- Mahnungsdokument 2026-06-12: Ueberfaellige offene Rechnungen koennen in
+  Forecast & OP ueber `Mahnung erstellen` ein Mahnungs-PDF erzeugen. Das PDF
+  nutzt die bestehende Firmenvorlage, referenziert Originalrechnung,
+  Faelligkeit, Mahnstufe und neue Zahlungsfrist und wird in der Projektakte als
+  `Dokumente: Mahnung` abgelegt. Die Aktion erhoeht die Mahnstufe, setzt
+  `lastReminderAt` und schreibt einen `InvoiceHistory`-Eintrag
+  `eventType=reminder-document`. E-Mail-Versand fuer Mahnungen bleibt ein
+  separater Folgeschritt.
+- Projektakte Mahnungsreiter 2026-06-12: Im Dokumentenreiter `Mahnung` gibt es
+  einen `+ Mahnung`-Einstieg. Er ist nur aktiv, wenn im aktuellen Projekt-/
+  Monatskontext mindestens eine offene, ueberfaellige, mahnfaehige Rechnung
+  existiert. Ohne mahnfaehige Rechnung bleibt der Button deaktiviert und zeigt
+  `Keine Mahnung faellig`.
+- Logbuch-Autoren/Personalnummer 2026-06-12: Projektlogbuch-Eintraege
+  speichern neben dem sichtbaren Autorennamen optional `authorUserId`. Neue
+  UI-Schreibstellen sollen die aktuelle Benutzer-ID mitsenden; Altbestand ohne
+  ID faellt fuer die Anzeige auf den Autorennamen zurueck. Das Logbuch zeigt
+  Mitarbeiter-Profilbilder, falls vorhanden, sonst Initialen; echte
+  Systemeintraege bekommen ein System-Icon. Die Mitarbeiterverwaltung hat das
+  Stammdatenfeld `Personalnummer`; aendern darf es nur die Rolle
+  `GESCHAEFTSFUEHRER`. Die Personalnummer ist fachlich fuer Buchhaltung, nicht
+  der technische Logbuch-Schluessel.
+- Projektlogbuch-Fallback-Avatare 2026-06-12: Die automatisch angezeigten
+  Projektbasis-Eintraege `Projekt zugewiesen`, `Projekt erstellt` und `Status`
+  sind Anzeigehilfen, keine gespeicherten Logbuchdaten. Sie muessen trotzdem
+  dieselbe Avatar-Logik wie gespeicherte Projektlogbucheintraege nutzen:
+  Projektverantwortliche mit Profilbild/Initialen, Systemeintraege mit
+  System-Icon. Keine alten Textkreise wie `System` oder feste Kuerzel mehr
+  direkt in den Avatar rendern.
+- Projektlogbuch-UI 2026-06-12: Die Projektakte > Logbuch soll als ruhige
+  Chronik/Timeline wirken, nicht als einfache Liste. Eintraege nutzen flache
+  helle Karten mit Avatar, dezenten Meta-Zeilen und Anhang-Pills; der
+  Logbuchbereich bekommt eine zurueckhaltende Abschlusszeile, damit wenig Inhalt
+  in der hohen Projektaktenflaeche nicht unfertig wirkt. Keine bunten grossen
+  Kacheln oder harte Tabellenoptik fuer neue Logbuch-Elemente.
+- KuZu/Auswertungen 2026-06-12: KuZu steht fachlich fuer
+  Kundenzufriedenheit und soll nicht mehr im Sales-Hub weiter ausgebaut werden,
+  weil dieser Bereich umbenannt/umfunktioniert werden soll. Die vorhandene
+  Backend-Strecke mit `CustomerFeedback`, `CustomerFeedbackRequest`,
+  `/feedback/[token]` und dem Bewertungslink in Rechnungsmails bleibt erhalten.
+  Die sichtbare Wiedereinbindung erfolgt unter `Auswertungen > KuZu` mit
+  Bewertungen, Bewertungslinks, Durchschnitt und Hot-Alerts.
+- KuZu/Rechnungsmail 2026-06-12: Rechnungsmails zeigen im Versanddialog eine
+  Bewertungsbox in der Vorschau. Der persoenliche Bewertungslink wird erst beim
+  Versand erzeugt. Standard ist `Bewertungslink mitsenden`; deaktivieren darf
+  das nur die Rolle `GESCHAEFTSFUEHRER`. Oeffentliche Bewertungslinks duerfen
+  nur einmal beantwortet werden und die Feedback-Seite sperrt bereits
+  beantwortete Links sichtbar gegen erneutes Absenden. In der Vorschau darf
+  nur die Geschaeftsfuehrung ueber `Jetzt bewerten` eine reine Testansicht
+  oeffnen; diese erzeugt keinen `CustomerFeedbackRequest` und speichert keine
+  Kundenbewertung. Wenn eine Mitarbeitersignatur angehaengt wird, entfernen
+  Vorschau und Versand eine abschliessende einfache Grussformel aus dem
+  Nachrichtentext, damit `Mit freundlichen Gruessen` nicht doppelt erscheint.
+  Der Versanddialog benennt Hauptanhaenge spezifisch, z.B. `Rechnung RE-... als
+  PDF anhaengen`. Vorhandene Taetigkeitsberichte im passenden Projekt-/
+  Monatskontext werden bei Rechnungsmails automatisch als vorausgewaehlte
+  Zusatzanhaenge gezeigt, bleiben aber bewusst separat deaktivierbar. Zusaetzliche
+  Dateien vom PC werden als manuelle Mailanhaenge nur fuer den aktuellen Versand
+  aufgenommen und nicht automatisch in der Projektakte gespeichert. Zusaetzliche
+  Anhaenge aus der Projektakte koennen aus vorhandenen Projektdokumenten mit
+  Dateiinhalt sowie vorhandenen Projektbildern ausgewaehlt werden; sie werden
+  nur kopiert mitgesendet und in der Projektakte nicht veraendert. Die Auswahl
+  erfolgt ueber ein eigenes Mehrfachauswahl-Fenster; bereits ausgewaehlte
+  Anhaenge werden darin ausgeblendet.
+- Auswertungen Zeitraumfilter 2026-06-12: Normale Auswertungsreiter nutzen
+  einen gemeinsamen oberen Zeitraumfilter mit `Aktueller Monat`, `Vormonat`,
+  `Aktuelles Jahr`, `Letzte 12 Monate` und `Individuell`. Forecast & OP behaelt
+  seine eigene 12-Monats-/Monatsnavigation und wird von diesem Filter nicht
+  gesteuert.
+- Auswertungen SVS 2026-06-12: `SVS Analyse` ist ein eigener Reiter. Basis ist
+  pro Rechnung `Netto-Rechnungswert / verknuepfte Projekt-Stempelstunden`.
+  Verknuepfung erfolgt ueber `StampTimeEntry.invoiceId` mit Fallback auf
+  `invoiceNumber`. Rechnungen ohne verknuepfte Stempelzeiten bleiben sichtbar
+  und bekommen den Status `nicht auswertbar`; auswertbare Rechnungen zeigen
+  `auswertung i.O.`.
+- Auswertungen SVS nach Gewerk 2026-06-12: Die SVS-Analyse zeigt zusaetzlich
+  eine Zusammenfassung nach Projekt-Gewerk. Der Gewerk-SVS wird gewichtet
+  berechnet: Summe auswertbarer Netto-Rechnungswerte / Summe verknuepfter
+  Stempelstunden des Gewerks. Rechnungen ohne verknuepfte Stempelzeiten werden
+  je Gewerk als `nicht auswertbar` gezaehlt, aber nicht in den SVS-Wert
+  eingerechnet.
+- Auswertungen SVS Filter/Datenbasis 2026-06-12: Der Reiter `SVS Analyse` hat
+  einen eigenen Gewerkfilter. Dieser Filter wirkt nur auf die SVS-Kennzahlen,
+  `SVS nach Gewerk` und `SVS je Rechnung`; die uebrigen Auswertungsreiter
+  behalten ihre bestehende Suche/Zeitraumlogik. Die Datenbasis-Ampel bewertet
+  den Anteil auswertbarer Rechnungen: ab 85% `Belastbar`, ab 60% `Pruefen`,
+  darunter `Lueckenhaft`.
+- Auswertungen Projekt-Pipeline-Dauer 2026-06-12: Der Reiter `Projekte` nutzt
+  fuer die Tabelle `Pipeline-Dauer` die Statushistorie aus `/api/status-timeline`
+  mit `entityType=project`. Echte aktuelle Statusdauer wird nur aus offenen
+  Timeline-Eintraegen (`endedAt` leer) berechnet. Fehlt ein passender offener
+  Eintrag, faellt die Anzeige sichtbar auf das Projekt-Erstellungsdatum zurueck
+  und markiert die Basis als `Fallback: Erstellungsdatum`.
+- Auswertungen Pipeline-Engpaesse 2026-06-12: Der Reiter `Projekte` zeigt
+  zusaetzlich `Pipeline-Engpaesse`. Grundlage sind alle Projekt-
+  Statushistorien aus `StatusTimelineEntry`, gruppiert nach `toStatus`.
+  Abgeschlossene Phasen nutzen `durationMinutes`; offene Phasen werden von
+  `startedAt` bis zum aktuellen Zeitpunkt gerechnet. Die Tabelle zeigt
+  Projekte, Phasen, aktuell offene Phasen, Gesamtzeit, Durchschnitt, laengste
+  Dauer und Anteil an der gesamten Pipelinezeit.
+- Auswertungen Projektart-Filter Pipeline 2026-06-12: Im Reiter `Projekte`
+  trennt ein eigener Projektart-Filter `Alle Projektarten`, `Einmalige
+  Projekte` und `Dauerlaeufer`. Dieser Filter steuert die Pipeline-Kennzahlen,
+  `Pipeline-Engpaesse` und `Pipeline-Dauer`, damit Dauerlaeufer die
+  Prozesszeiten einmaliger Projekte nicht verfaelschen.
+- Auswertungen Artikel/Leistungen Paketbestandteile 2026-06-12: Der Reiter
+  `Artikel & Leistungen` muss verkaufte Leistungen und Materialien aus
+  fakturierten Rechnungen auch dann auswerten, wenn sie Bestandteil eines
+  Pakets sind. Paketpositionen werden fuer Top-Pakete separat gezeigt; fuer
+  `Meistverkaufte Leistungen`, `Meistverkaufte Materialien` und die
+  Komponentenuebersicht werden Paketbestandteile mit Rechnungsmenge *
+  Bestandteilmenge aufgeloest. Umsatz/Kosten werden anteilig nach Paket-
+  Bestandteilwerten verteilt, damit z.B. Streugut aus Winterdienst-Paketen als
+  Materialmenge sichtbar wird und Pakete nicht doppelt gezaehlt werden.
+- Auswertungen Mitarbeitende 2026-06-12: Der Reiter `Mitarbeitende` nutzt
+  Karten statt Tabellen. Planungsgruppen zeigen Leistungsgrad, Produktivitaet,
+  Anwesenheitsgrad und `Unproduktive Std.` als Stundenwert, nicht als Quote.
+  Geschaeftsfuehrung sieht alle Planungsgruppen und kann Mitarbeiterkarten
+  aufklappen. Fuehrungskraft und normale Mitarbeitende sehen die eigene
+  Planungsgruppe als Teamaufschluesselung; normale Mitarbeitende sehen
+  zusaetzlich immer die eigene Kennzahlenkarte. Keine Kostenwerte in diesen
+  Karten anzeigen.
+- Auswertungen Mitarbeitende Kartenoptik 2026-06-12: Einzelne
+  Mitarbeiterkarten duerfen nicht auf volle Inhaltsbreite wachsen. Die
+  Mitarbeiterkarten nutzen ein kompaktes Auto-Fill-Raster mit begrenzter
+  Kartenbreite, KPI-Chips oben und Stundenwerte darunter. Keine einfache
+  Listenoptik und keine gestreckten Einzelkarten.
+- Auswertungen Mitarbeitende Gauges 2026-06-12: In Planungsgruppen-Karten
+  werden Leistungsgrad, Produktivitaet und Anwesenheitsgrad als kompakte
+  Half-Gauge-SVGs visualisiert. Die Mitarbeiter-Einzelkarten bleiben bei
+  kompakten KPI-Chips, damit die Detailansicht ruhig bleibt. Keine neue
+  Chart-Bibliothek fuer diese Gauges verwenden. Die Gauge-Nadel muss per SVG-
+  `transform="rotate(angle 70 72)"` um den Hubpunkt rotiert werden; keine CSS-
+  `transform-origin` auf der Linie verwenden, weil das die Nadel versetzen kann.
+- Auswertungen aktive Mitarbeitende 2026-06-12: Mitarbeitendenbezogene
+  Auswertungen und Planungsboard-Kapazitaeten duerfen nur aktive Mitarbeitende
+  fuehren. Inaktive Mitarbeitende bleiben in historischen Daten erhalten, sollen
+  aber nicht als aktuelle Mitarbeiter-/Team-/Planungsgruppenzeilen in
+  Auswertungen oder Filteroptionen auftauchen.
+- Taetigkeitsberichte 2026-06-12: In der Projektakte koennen
+  Taetigkeitsbericht-PDFs im Dokumentordner `Taetigkeitsberichte` geloescht
+  werden. Die Funktion nutzt die bestehende Logbuch-Anhang-API und schreibt
+  einen eigenen Historieneintrag `Taetigkeitsbericht: geloescht`; bei
+  Dauerlaeufern bleibt die Historie im jeweiligen Projektmonat. Im
+  Taetigkeitsberichte-Reiter wird unter der Dokumentliste eine eigene
+  Historie angezeigt, auch wenn nach einer Loeschung keine Datei mehr im
+  Ordner liegt. Die Anhang-API validiert Bild-Verschiebungen vor dem Entfernen
+  aus dem Ursprungseintrag.
+- Taetigkeitsbericht-Namen 2026-06-12: Neue und aktualisierte
+  Taetigkeitsbericht-PDFs verwenden keine abstrakten `DOK-0001`-Namen mehr,
+  sondern suchbare Namen nach dem Muster
+  `TB_Kundenname_Projektnummer_Leistungsdatum.pdf`, z.B.
+  `TB_MÃ¼ller_Hausverwaltung_HAS-1_12.06.2026.pdf`. Woerter werden mit
+  Unterstrichen getrennt; echte Umlaute bleiben im Dateinamen erhalten. Nur
+  dateisystemkritische Zeichen wie `/ \ : * ? " < > |` und sonstige
+  Sondertrennzeichen werden durch Unterstriche ersetzt. Bestehende alte
+  `DOK-...`-Berichte muessen weiterhin als vorhandene Berichte erkannt werden,
+  damit Aktualisierungen keine Duplikate erzeugen.
+- Dokumente oeffnen 2026-06-12: Der `Oeffnen`-Button fuer hochgeladene
+  Projektdokumente/Taetigkeitsberichte soll genau ein wiederverwendbares
+  Browserfenster `workpilot-document-viewer` nutzen. Kein automatischer
+  Download-Fallback, weil dieser je nach Windows-/Browser-Einstellung zusaetzlich
+  Acrobat Reader starten kann.
+- Taetigkeitsbericht-Fehler 2026-06-12: Fehler aus der
+  Taetigkeitsbericht-Erstellung, z.B. fehlende Vorher-/Nachherbilder oder
+  nicht einbettbare Bildformate, werden im Dokumente-/Taetigkeitsberichte-
+  Bereich sichtbar als roter Hinweis direkt unter dem Kopfbereich angezeigt.
+  Beim Wechsel von Projekt, Projektakten-Reiter, Dokumentordner oder
+  Projektmonat wird dieser Hinweis zurueckgesetzt, damit eine Fehlermeldung
+  aus einem anderen Monat nicht im neuen Kontext stehen bleibt.
+- Projektfortschritt Taetigkeitsbericht 2026-06-12: Die obere
+  Projektfortschrittsleiste enthaelt zwischen `Endkontr.` und `Rechnung` den
+  Schritt `T-Bericht`. Dieser Schritt bekommt die Abschlussfarbe nur, wenn ein
+  sichtbarer Taetigkeitsbericht im aktuellen Projekt-/Monatskontext tatsaechlich
+  versendet wurde. Reines Erstellen/ Ablegen des PDFs reicht nicht. Versand
+  zaehlt entweder als direkter `activityReport`-E-Mail-Versand oder als
+  Taetigkeitsbericht-Anhang beim Rechnungsversand; in letzterem Fall wird
+  zusaetzlich ein `activityReport`-Versandprotokoll geschrieben. Die
+  Farbsegmente der Leiste sind auf acht Schritte abgestimmt.
+- Projektfortschrittsleiste offene Schritte 2026-06-12: Unerfuellte und
+  teilweise erfuellte Schritte (`open`/`partial`) sollen in der oberen
+  Prozessleiste flach orange pulsieren, ohne Farbverlauf. Der Verlauf bleibt
+  nur fuer abgeschlossene Schritte (`done`) erhalten.
+- Projektzeitkontingente 2026-06-11: Die Monatszeilen zeigen im Status jetzt
+  zusaetzlich Planungs-Chips (`voll verplant`, offene/ueberplante Stunden) und
+  aktive Monatsrechnungen als `Fakturiert: RE-...`. Beruecksichtigt werden nur
+  aktive Rechnungen des jeweiligen Projektmonats; Entwuerfe, Storno-,
+  Stornorechnungen und geloeschte Rechnungen bleiben aus der Anzeige heraus.
+  Die Soll-Zeit-/Kontingentlogik wurde nicht veraendert.
+- UI-Designregel Clips 2026-06-11: Neue Status-/Hinweisclips sollen einheitlich
+  als kompakte Pills gebaut werden: `border-radius: 999px`, ca. 26-28 px
+  Mindesthoehe, kurze einzeilige Beschriftung, starke Schrift und ruhige
+  Statusfarben. Gruen = erledigt/fakturiert/positiv, Gelb/Orange = offen oder
+  Aufmerksamkeit, Rot = kritisch/Fehler/verloren, Blau = Info/Verknuepfung,
+  Grau = inaktiv. Abgeschlossene Aussagen duerfen einen kleinen Haken links
+  tragen; offene Hinweise nicht. Keine rechteckigen zweizeiligen Sonderclips
+  mehr fuer neue UI-Ergaenzungen.
+- Clip-Vereinheitlichung Paket 1 2026-06-11: In der Projektakte wurden
+  `planningStatusPill`, `stampStatusPill` und `invoiceStatusDone` auf den
+  gemeinsamen Pill-Standard gebracht. Das betrifft nur die Darstellung von
+  Planungsstatus, Stempelstatus und `Fakturiert:`-Anzeige; Berechnung,
+  Rechnungszuordnung und Stempelungslogik bleiben unveraendert.
+- Clip-Vereinheitlichung Paket 2 2026-06-11: Aufgaben-Status- und
+  Prioritaetsclips (`badge`, `status`, `priority`) wurden auf den gemeinsamen
+  Pill-Grundstil mit Rahmen, Mindesthoehe und einheitlicher starker Schrift
+  gebracht. Deadline-Pills bleiben bewusst eigenstaendige Komponenten, weil
+  sie Fortschrittslogik und Zeitverlauf visualisieren.
+- Projektakte Historie 2026-06-11: In `Termine & Stempelungen` muessen
+  Historieneintraege deutsch formatierte Datumswerte anzeigen und lange
+  Kommentare/Notizen innerhalb der Karten umbrechen. Historienkarten duerfen
+  nicht ueber den Spalten- oder Modulrahmen hinausragen.
+- Automatische Abrechnung 2026-06-11: Die Projektakten-Maske zeigt
+  Abrechnungsmonate sichtbar als deutsche Monatswerte wie `Mai 2026`, speichert
+  intern aber weiter die technischen Month-Keys `yyyy-mm`. Die Vorlage-Karte
+  wurde optisch gekapselt; Stapelabrechnungslogik, API-Werte und gespeicherte
+  Felder wurden nicht veraendert.
+- Stapelabrechnung 2026-06-11: Die automatische Stapelabrechnung nutzt fachlich
+  nur noch die aktive Rechnung aus dem direkten Vormonat als Vorlage. Eine
+  gespeicherte Projektvorlage, `autoBillingTemplateMode`, `autoBillingTemplate`,
+  `autoBillingNetAmount` und `autoBillingVatRate` bleiben aus Gruenden der
+  Daten-/Altkompatibilitaet erhalten, werden aber in der Projektakten-Maske und
+  bei neuen Stapelabrechnungsentwuerfen nicht mehr als Quelle verwendet. Fehlt
+  die direkte Vormonatsrechnung, wird das Projekt in der Stapelabrechnung
+  blockiert und zur Pruefung markiert.
+- Projektgewinn EK/VK-Aufteilung 2026-06-11: Artikel-/Leistungspositionen
+  reichen die vorhandene Arbeitspositions-Markierung `isLaborPosition` jetzt
+  verlaesslich in neue Angebots-/Rechnungspositionen durch. Die zweite
+  Projektgewinn-Tabelle zeigt keine rein technische Fallback-Pruefliste mehr,
+  sondern eine fachliche Aufteilung nach Material VK/EK, Lohn VK/EK und nicht
+  zugeordnetem Umsatz. Die UI-Spalte heisst `Nicht zugeordneter Umsatz`, wird
+  nur bei einem Wert groesser 0 angezeigt und erklaert per Hilfe-Icon, dass
+  dieser Umsatz keiner Lohn- oder Materialposition sicher zugeordnet werden
+  kann. Pakete werden anteilig ueber ihre Artikel- und
+  Leistungsbestandteile verteilt; Freitext oder nicht klassifizierte
+  Rechnungspositionen bleiben sichtbar unter `Nicht zugeordnet`. Geldwerte in
+  den Projektgewinn-Tabellen sollen nicht zwischen Betrag und Eurozeichen
+  umbrechen; Prozentwerte wie Marge und Leistungsgrad werden sichtbar mit
+  Prozentzeichen ausgegeben.
+
 Diese Datei ist die zentrale Uebergabe fuer neue Codex-/Agenten-Chats im Projekt
 WorkPilot360. Sie soll verhindern, dass fachliche Entscheidungen, technische
 Details oder Entwicklungsstand verloren gehen.
@@ -254,12 +910,35 @@ Projektstatus/Pipeline wurde mehrfach angepasst. Wichtige Entscheidungen:
   - Projektzeitkontingente
   - Automatische Abrechnung
   - Aufgaben
-  - Material
-  - Projektbeteiligte
   - Checklisten
   - Ausschreibungen (GAEB)
-- Projektakten-Sidebar 2026-06-08: Aufklappbare Gruppen wie `Dokumente` und
-  `Aufgaben` haben wieder einen eigenen Offen-/Geschlossen-Zustand. Klick auf
+- Projektakten-Reiter 2026-06-11: `Material` und `Projektbeteiligte` werden in
+  der Projektakte nicht mehr als eigene Reiter angezeigt. Die zugrunde
+  liegenden Projektdaten/Felder bleiben erhalten; nur die Navigation wird
+  verschlankt, weil die Punkte operativ aktuell nicht benoetigt werden.
+- Projektbild-Benennung / Taetigkeitsbericht 2026-06-11: Neue Projektbilder
+  werden beim Upload sprechend benannt, z.B. `Vorherbild_1_11.06.2026.jpg`,
+  `Nachherbild_1_11.06.2026.jpg` oder `Objektbild_1_11.06.2026.jpg`. Das gilt
+  nur fuer neue Uploads; Altbilder werden nicht umbenannt. Die
+  Taetigkeitsbericht-Erstellung hat zusaetzlich eine technische Doppelklick-
+  Sperre per Ref, damit ein schneller zweiter Klick keinen weiteren
+  Erstellvorgang ausloest.
+- Projektbild-Korrektur 2026-06-11: Hochgeladene Projektbilder koennen in der
+  Projektakte einzeln geloescht oder zwischen `Objektbesichtigungen`,
+  `Vorherbilder` und `Nachherbilder` verschoben werden. Die Funktion nutzt die
+  bestehende Logbuch-Anhang-API und schreibt bei Verschiebungen einen
+  Projektlogbuch-Historieneintrag. Bei Dauerlaeufern bleibt der Zielordner im
+  gleichen Projektmonat, damit Bilder nicht versehentlich monatsuebergreifend
+  wandern. Der Projektakten-Reiter `Bilder` zeigt einen normalen Zaehler mit
+  der Gesamtzahl sichtbarer Projektbilder; Bildkarten-Aktionen sollen kompakt,
+  aber voll lesbar bleiben.
+- Projektakten-Aufgaben 2026-06-11: Der Reiter `Aufgaben` wird nicht mehr in
+  die Unterpunkte `Offene Aufgaben` und `Erledigte Aufgaben` aufgeteilt. Die
+  Projektakte fuehrt alle Projektaufgaben gemeinsam im Reiter `Aufgaben`; ein
+  normaler Zaehler am Reiter zeigt die Gesamtanzahl. Erledigte Aufgaben bleiben
+  in der Tabelle sichtbar und verschwinden nicht in einer separaten Navigation.
+- Projektakten-Sidebar 2026-06-08: Aufklappbare Gruppen wie `Dokumente` haben
+  einen eigenen Offen-/Geschlossen-Zustand. Klick auf
   dieselbe Gruppe klappt sie zu, Klick auf einen anderen Hauptreiter schliesst
   offene Gruppen. Der aktive Projektakten-Reiter bleibt davon getrennt, damit
   z.B. die Dokumentansicht sichtbar bleiben kann, waehrend die Unterpunkte
@@ -278,12 +957,40 @@ Projektstatus/Pipeline wurde mehrfach angepasst. Wichtige Entscheidungen:
   Fachliche Checklisten wie Rauchmelder werden zuerst als Karte/Zeile
   angeboten und oeffnen ihr Detailformular erst nach Auswahl. Dieses Muster
   beibehalten, wenn weitere Checklisten hinzukommen.
+- Checklisten Wiederanschluss 2026-06-12: Projektakte > Checklisten zeigt wieder
+  ein Cockpit. `Rauchmelder-Installationsnachweis` nutzt den vorhandenen
+  Endpunkt `/api/smoke-detector-reports`, erzeugt ein PDF und legt es unter
+  `Dokumente: Checklisten` ab. Alte Eintraege `Dokumente:
+  Rauchmelder-Nachweise` werden bei Checklisten-Dokumenten mit angezeigt.
+  `Rauchmelderpruefung` bleibt fachlich separat und wird nicht mit dem
+  Installationsnachweis vermischt.
+- Checklisten-Fachbereiche 2026-06-12: Das Checklisten-Cockpit ist nach
+  `Arbeitsschutz`, `Brandschutz` und `Gefahrstoffe` strukturiert. Unter
+  `Brandschutz` ist `Rauchmelder` der erste aktive Fachbereich mit
+  `Installation`; `Pruefung` und die gemeinsame Melderliste sollen separat
+  folgen. Neue Checklisten sollen in diese Fachbereiche einsortiert werden,
+  statt wieder einen flachen Kartenstapel zu bilden.
+- Checklisten-UI 2026-06-12: Die Fachbereichsuebersicht soll ruhig und
+  listenartig bleiben: Suchfeld oben, pro Fachbereich nur Kopfzeile mit
+  `+ Checkliste`, danach kompakte Auswahlzeilen. Keine grossen
+  unterschiedlich hohen Kartenstapel fuer jede vorbereitete Checkliste.
+  Fachbereiche sind standardmaessig zugeklappt und zeigen im Kopf, ob fuer
+  diesen Bereich bereits Checklistennachweise abgelegt sind.
 - Eigene Felder / Datenerfassungsbogen wurden unten aus Projekt entfernt.
 - Projektdaten rechts weiss hinterlegt.
 - Projekt-Header:
   - Zurueck zur Pipeline
   - Projektdaten links
   - rechts kompakte Aktionsbuttons
+  - Update 2026-06-12: Der Projektaktenkopf nutzt einen dunklen, ruhigen
+    Identitaetsbereich. Projektverantwortlicher und Statushinweise stehen als
+    kompakte Chips im Kopf, echte Aktionen bleiben rechts als helle Buttons mit
+    unveraenderten Funktionen. Keine neuen Aktionsbuttons ohne fachliche
+    Funktion nur fuer die Optik ergaenzen.
+  - Planungs- und Verkaufschancen-Chips im Projektkopf sind die fuehrenden
+    Einstiege fuer diese Funktionen. Sie muessen die bestehende Dauerlaeufer-/
+    Einmalprojekt-Logik (`projectPlanningButtonState`, `openProjectPlanningAction`)
+    und den deaktivierten `Keine Verkaufschance`-Platzhalter behalten.
   - Projektverantwortlicher ist direkt im Projektkopf aenderbar, aber nur auf
     angelegte aktive Mitarbeitende. Freitext ist bewusst nicht erlaubt, damit
     keine Phantom-Verantwortlichen oder Tippfehler entstehen. Aenderungen werden
@@ -1330,12 +2037,12 @@ umgesetzt/entschieden. Diese Punkte sind fuer naechste Chats besonders wichtig.
   - Projekt
   - Erkannt am
   - Nachfassen
-  - Zuständig
+  - ZustÃ¤ndig
   - Statusdauer
   - Letzte Aktion
   - Aktion
 - Aktionen in der Potenzialtabelle sollen platzsparend als Dropdown
-  `Aktion auswählen` erscheinen.
+  `Aktion auswÃ¤hlen` erscheinen.
 - Statusdauer als Clip anzeigen, nicht als gequetschter Fliesstext.
 - Zeitformat beachten:
   - Gespeicherte ISO-/UTC-Zeiten mit `Z` muessen als Berliner Lokalzeit
@@ -1357,7 +2064,7 @@ umgesetzt/entschieden. Diese Punkte sind fuer naechste Chats besonders wichtig.
   - `StatusEscalationRule`
   - `StatusEscalationEvent`
 - Regeln gehoeren in Firmeneinstellungen > Status-Regeln.
-- Warnclips wie `seit 3 Tg.` oder `Toleranz überschritten`.
+- Warnclips wie `seit 3 Tg.` oder `Toleranz Ã¼berschritten`.
 - Keine Meldungsflut: Eskalationsereignisse deduplizieren.
 
 - Update 2026-06-04:
@@ -1419,7 +2126,7 @@ umgesetzt/entschieden. Diese Punkte sind fuer naechste Chats besonders wichtig.
 ### KuZu / Kundenzufriedenheit
 
 - `KuZu` bedeutet Kundenzufriedenheit.
-- Sales-Hub > KuZu:
+- Auswertungen > KuZu, frueher Sales-Hub > KuZu:
   - keine grosse feste Erfassungsmaske auf der Seite.
   - Button `+ Bewertung` oeffnet Standardmodal.
   - Sterne als 5 anklickbare Sterne, kein schlichtes Select.
@@ -1607,7 +2314,7 @@ Wichtig fuer naechste Chats:
   TypeScript-Operatoren wie `?`, `??`, `?.` und JSX-Ternaries beschaedigen.
   Stattdessen nur konkrete Mojibake-Sequenzen in sichtbaren Texten ersetzen
   und danach immer `npx.cmd tsc --noEmit` sowie eine gezielte `rg`-Suche auf
-  `Ã|Â|â|�` in den betroffenen UI-Dateien laufen lassen.
+  `Ãƒ|Ã‚|Ã¢|ï¿½` in den betroffenen UI-Dateien laufen lassen.
 - Incident 2026-06-05: Bei einer Encoding-Korrektur wurden uncommitted
   Dashboard-/Marketing-UI-Aenderungen in `dashboard-page.tsx` und
   `dashboard.module.css` durch Wiederherstellung aus dem Git-Stand
@@ -1971,9 +2678,14 @@ Wiederaufbau begonnen 2026-06-05:
 - Rechte Projektseitenleiste `Verbrauchte Zeitkontingente`: Dauerlaeufer zeigen
   die Monats-/Gesamt-Aufteilung (`Gestempelt Monat`, `Restliches Kontingent
   Monat`, `Gestempelt Gesamt`, `Restliches Kontingent Gesamt`). Einmalige
-  Projekte zeigen die kompakte Gesamtprojekt-Ansicht mit `Gebucht (durch
-  Stempelungen)`, `Rest` und einem Fortschrittsbalken. Bei Einmalprojekten
-  keine Monats-/Gesamt-Dauerlaeuferkarte anzeigen.
+  Projekte mit Angebotsplanung zeigen je Angebot eine kompakte Verbrauchsbox:
+  Angebotsstunden, verplante Stunden, gebuchte Stunden aus den zugeordneten
+  Stempelungen und Rest aus der Planung. Die Stempelungen werden nicht
+  projektweit pauschal verteilt, sondern ueber die zugeordneten
+  Planungseintraege des Angebots ermittelt. Einmalprojekte ohne Angebotsplanung
+  behalten als Fallback die kompakte Gesamtprojekt-Ansicht mit `Gebucht (durch
+  Stempelungen)`, `Rest` und Fortschrittsbalken. Bei Einmalprojekten keine
+  Monats-/Gesamt-Dauerlaeuferkarte anzeigen.
 - Projektakte > Termine & Stempelungen: Die obere Planungstermin-Tabelle zeigt
   bei Dauerlaeufern wieder nur Termine/Terminwuensche des ausgewaehlten
   Projektmonats. Leere Monate zeigen einen kompakten Leerhinweis statt einer
@@ -2060,6 +2772,55 @@ Wiederaufbau begonnen 2026-06-05:
   gegenseitig exklusiv: Beim Oeffnen eines Menues werden die anderen
   Kopfbereich-Menues geschlossen, damit nie mehrere Popover parallel offen
   bleiben.
+- Planungsboard-Wiederholung 2026-06-08: Die Terminmaske erzeugt Serien nicht
+  mehr ueber einen monatlichen Kalendertag plus `Wochenenden ueberspringen`.
+  Wiederholungen werden jetzt ueber Intervall (`woechentlich`, `alle 2 Wochen`,
+  `monatlich`) und anklickbare Wochentage Montag bis Sonntag gesteuert. `Monatlich`
+  ist bewusst kein 4-Wochen-Rhythmus, sondern nimmt den Starttermin als Muster
+  (z.B. zweiter Montag im Monat) und plant diesen Wochentag je Monat einmal.
+  Der Termintzaehler bleibt erhalten und berechnet die Anzahl aus Startdatum,
+  Enddatum, Intervall und ausgewaehlten Wochentagen. Wochenenden werden nur
+  geplant, wenn Samstag/Sonntag explizit ausgewaehlt sind. Der alte separate
+  Schalter `Wochenenden ueberspringen` gehoert nicht mehr in die Maske, weil die
+  Wochentagsauswahl diese Entscheidung direkt abbildet. Das UI-Wording lautet
+  `Terminserie anlegen` und `Serienende`, nicht technisch `Wiederholung`.
+- Planungsmaske Pflichtfelder 2026-06-08: Bei normaler Planung und
+  Terminwunsch starten `Titel` und `Beschreibung` leer und sind Pflichtfelder.
+  `Mitarbeiter` muss ein echter vorhandener Mitarbeiter sein; `Noch nicht
+  zugewiesen` darf nicht speicherbar sein. Fehlende Pflichtfelder werden in der
+  Maske mit dem bekannten orangefarbenen Pulsrahmen markiert. Angebots- oder
+  Kontingentkontext darf nicht mehr als automatisch gespeicherter Ersatz-Titel
+  oder Ersatz-Beschreibung dienen.
+- Einmalprojekte Planungsbasis 2026-06-08: Einmalige Projekte haben weiterhin
+  keine Monatsakte und keine Projektzeitkontingente. Planbare Stunden kommen
+  projektweit aus den Arbeitspositionen finaler Angebote/Nachtragsangebote. In
+  `Termine & Stempelungen` wird fuer jedes finale Angebot mit Arbeitsstunden
+  eine eigene Leiste angezeigt: Angebotsnummer, Angebotsart, geplante Stunden,
+  offene Stunden und geplanter Ausfuehrungsmonat. Planung fuer Einmalprojekte
+  mit Angebotsstunden muss bewusst einem Angebot zugeordnet werden; freie
+  Planung ohne Angebotsbezug ist dort nicht speicherbar. Wird ein Termin fuer
+  ein Angebot in einem anderen Monat als dessen Ausfuehrungsmonat gespeichert,
+  fragt die UI nach Bestaetigung und setzt dann genau dieses Angebot auf den
+  neuen Ausfuehrungsmonat, damit der Forecast nicht im alten Monat stehen
+  bleibt. Die Angebotsleisten sind reine Status-/Kontingentleisten ohne eigene
+  Aktionsbuttons; neue Planung laeuft ueber `+ Termin` bzw. `+ Terminwunsch`
+  und die Angebotszuordnung in der Terminmaske. Altbestand ohne gespeicherte
+  `offerId` darf defensiv ueber Angebotsnummer im Text oder, wenn eindeutig,
+  ueber den Ausfuehrungsmonat genau einem Angebot zugeordnet werden. Dauerlaeufer
+  bleiben unveraendert monats-/kontingentbasiert.
+- Nachkorrektur Planungsmaske Einmalprojekte 2026-06-09: In der Terminmaske
+  werden bei Einmalprojekten mit Angebotszuordnung keine editierbaren Felder
+  `Angebotsposition` oder `Angebotene Stunden` mehr angezeigt. Die Zuordnung
+  laeuft bewusst auf Angebotsebene. Die Kontingentbox zeigt den Stand nach dem
+  Speichern (`Bisher`, `Dieser Termin`, `Danach offen/ueberplant`) statt nur
+  den Vorabstand, damit eine Ueberplanung sofort sichtbar ist.
+- Nachkorrektur Einmalprojekt-Leisten 2026-06-09: Angebotsleisten fuer
+  Einmalprojekte duerfen nicht mehr faktisch am ausgewaehlten Monat haengen.
+  Sie zaehlen projektweit alle Planungseintraege mit Angebotsbezug; Altbestand
+  ohne `source = offer`, aber mit eindeutiger Angebotszuordnung ueber
+  Angebotsmonat, wird ebenfalls beruecksichtigt. Neue Einmalprojekt-Termine mit
+  Angebotszuordnung werden auch dann als `source = offer` gespeichert, wenn sie
+  ueber den allgemeinen `+ Termin` Einstieg angelegt wurden.
 - Potenzialprozess 2026-06-08: Zusatzverkaufs-Potenziale entstehen weiterhin
   aus der Endkontrolle/Stempelung, wenn dort `Zusatzverkauf` erfasst wird.
   Daraus wird ein `ProjectPotential`. Der Projektkopf-Button
@@ -2080,6 +2841,104 @@ Wiederaufbau begonnen 2026-06-05:
   suchen muessen. Die Potenziale bleiben fachlich weiterhin mit Projekt und Kunde
   verknuepft und nutzen dieselbe Detailmaske. Der Forecast bleibt unveraendert:
   Potenziale speisen ihn nicht, erst Angebote und Rechnungen zaehlen.
+- Potenziale-UI 2026-06-08: Die Potenzialuebersicht soll nicht mehr wie eine
+  technische Pipeline-Tabelle mit vielen Schnellaktionen wirken. Sichtbar bleibt
+  in der Liste nur `Bearbeiten`; dieser Button oeffnet die Potenzialakte. Aktionen
+  wie Angebot erstellen, Nachfassen oder Kein Interesse gehoeren in die Maske,
+  damit Entscheidungen nachvollziehbar aus der Potenzialakte heraus passieren.
+- Potenziale-Status 2026-06-08: Statuswerte in der Potenzialuebersicht werden
+  wie andere WorkPilot-Statusanzeigen als ruhige Clips/Pills dargestellt, nicht
+  als reiner Tabellentext. Die Tabelle soll optisch als Arbeitsliste wirken:
+  weisse Zeilenkarten, wenig harte Linien, rechts ein klarer Bearbeiten-Button.
+  Der Tabellenkopf in dieser Ansicht ist bewusst hell und zurueckhaltend; der
+  dunkle Standard-Tabellenkopf der Pipeline-/Datentabellen soll hier nicht
+  greifen.
+- Artikel & Leistungen UI 2026-06-08: Die Stammdatentabellen fuer Artikel,
+  Leistungen, Pakete und Verkaufspreise gehoeren zur dichten WorkPilot-
+  Tabellenfamilie wie Planungstermine/Stempelungen: kompakter dunkler
+  Tabellenkopf, flache Zeilen mit klaren Trennlinien, ruhige Filterzeile,
+  Status als Clip (`Aktiv`/`Inaktiv`) und Aktionen als beschriftete Buttons
+  (`Bearbeiten`, `Duplizieren`, `Deaktivieren`), keine Fragezeichen-Buttons.
+  Die Katalogansicht nutzt nur die obere Freitextsuche plus Statusfilter; keine
+  zweite Spaltenfilterzeile im Tabellenkopf, damit Suche und Filterung nicht
+  doppelt wirken oder unsichtbar alte Filter aktiv bleiben.
+  Die Freitextsuche normalisiert Gross-/Kleinschreibung, Leerraeume und
+  Akzent-/Umlautzeichen. Pagination-Buttons zeigen echte Pfeile statt
+  Platzhalter-/Fragezeichen.
+- Potenzialhistorie 2026-06-08: Historieneintraege in Potenzialmaske und
+  separatem Historie-Dialog werden newest-first angezeigt. Beim Speichern der
+  Potenzialakte darf nicht nur pauschal `Potenzial aktualisiert.` geschrieben
+  werden; neue Historieneintraege sollen die geaenderten Felder nennen
+  (z.B. Status, Verantwortlich, Wert, Prioritaet, Wiedervorlage, naechster
+  Schritt, Verlustgrund oder freie Notiz).
+- Verkaufschancen-Begriff 2026-06-08: Der fuehrende sichtbare Begriff in der
+  UI ist ab jetzt `Verkaufschance` bzw. `Verkaufschancen`, nicht mehr
+  `Potenzial`. Das gilt fuer Sidebar, Uebersichten, Kundenakte, Projektkopf
+  und Detailmaske. Technische Namen wie `ProjectPotential`, `/api/potentials`
+  und Datenbankfelder bleiben bewusst unveraendert, damit keine Datenmigration
+  oder API-Risiken entstehen.
+- Verkaufschancen-Nachfassen 2026-06-08: Die Wiedervorlage ist fachlich keine
+  zweite Erinnerungsebene in der Verkaufschance. Nachfassen gehoert ins
+  Aufgabenmodul. Die Verkaufschance zeigt deshalb nur noch den Status bzw. die
+  verknuepfte Nachfass-Aufgabe an. Wenn bereits eine Aufgabe verknuepft ist,
+  oeffnet der Button diese Aufgabe; nur ohne verknuepfte Aufgabe wird eine neue
+  Nachfass-Aufgabe angelegt. Alte `followUpAt`-Daten bleiben als Fallback
+  erhalten, werden aber nicht mehr als eigenes Datumsfeld in der Maske gepflegt.
+- Verkaufschancen-Tabelle 2026-06-08: Die Hauptuebersicht der Verkaufschancen
+  nutzt wieder die dichte WorkPilot-Tabellenfamilie mit dunklem Kopf, flachen
+  Zeilen, klaren Rasterlinien, Status-Clips und einem einzelnen
+  Einstieg ueber die Verkaufschancen-Nummer. Eine separate Aktionsspalte mit
+  `Bearbeiten` ist bewusst entfernt, weil die Nummer die Detailmaske oeffnet
+  und die eigentlichen Aktionen in der Maske liegen.
+- Verkaufschancen-Nummernkreis 2026-06-08: Verkaufschancen haben einen
+  gespeicherten Nummernkreis im Format `VC-xxxx`. Technisch bleibt die Tabelle
+  `ProjectPotential` bestehen; ergaenzt wurde das optionale Feld `number`.
+  Die API `/api/potentials` fuehrt defensiv `ALTER TABLE ... ADD COLUMN IF NOT
+  EXISTS` aus, setzt einen eindeutigen Index pro Organisation und vergibt neue
+  Nummern fortlaufend ab `VC-1001`. Altbestand ohne Nummer wird beim Laden in
+  Erstellreihenfolge nachnummeriert. Die UI nutzt die gespeicherte Nummer als
+  Einstieg in die Verkaufschancen-Maske; nur falls Altbestand noch keine Nummer
+  geliefert hat, bleibt ein Anzeige-Fallback aktiv.
+- Verkaufschancen-Maske 2026-06-08: Die Maske soll bewusst einfach bleiben.
+  Sichtbar bleiben Status, Verantwortlich, geschaetzter Wert, Nachfass-Aufgabe,
+  Grund bei `Kein Interesse`, `Notiz fuer Historie` und Historie. Prioritaet,
+  `Naechster Schritt` und der extra Button `Kein Interesse` wurden aus der
+  Maske entfernt. `Kein Interesse` wird ueber den Status gesteuert; die
+  fachlichen Aktionen laufen ueber `Angebot erstellen`, `Nachfass-Aufgabe`
+  und `Speichern`.
+- Nachkorrektur Verkaufschancen-Maske 2026-06-08: `Speichern` fragt vor dem
+  Sichern kurz, ob der sichtbare Status korrekt ist, und schliesst die Maske
+  danach. Ohne echte Feld-/Notizaenderung wird kein kuenstlicher Historieneintrag
+  mehr geschrieben. Die verknuepfte Nachfass-Aufgabe ist direkt im Feld
+  anklickbar und oeffnet die Aufgabenmaske. Verkaufschancen-Historienzeiten
+  muessen als echte Zeitpunkte mit `formatInstantDateTime` angezeigt werden,
+  nicht mit deadline-/app-datebasierter Formatierung, damit kein UTC-Versatz
+  von zwei Stunden entsteht.
+- Angebots-Nachfassen 2026-06-08: Finale Angebote erzeugen automatisch eine
+  Nachfass-Aufgabe im Aufgabenmodul. Entwuerfe erzeugen keine Aufgabe; wird ein
+  Entwurf spaeter finalisiert, wird die Aufgabe dann angelegt. Die Standardfrist
+  ist `5 Werkstage` und wird unter `Firmeneinstellungen > Zeitfristen` gepflegt.
+  Die automatisch erzeugte Aufgabe startet mit Status `in Bearbeitung`, ist mit
+  Projekt/Kunde und Angebotsnummer vorbelegt und speist den Forecast nicht.
+  Wird ein Angebot aus einer Verkaufschance erstellt, wird die Verkaufschance
+  auf `Angeboten` gesetzt und mit der neuen Angebots-Nachfassaufgabe verknuepft.
+  Eine alte eindeutig erkennbare Verkaufschance-/Potenzial-Nachfassaufgabe wird
+  dabei erledigt, damit nicht zwei parallele Nachfassaufgaben fuer denselben
+  Vorgang offen bleiben. Forecast bleibt weiterhin nur durch Angebote und
+  Rechnungen gespeist, nicht durch Verkaufschancen oder Aufgaben.
+- Nachkorrektur Aufgaben-API 2026-06-08: Neue Aufgaben duerfen beim POST den
+  uebergebenen Status respektieren. Vorher setzte die API neue Aufgaben hart
+  auf `offen`; dadurch wurden automatisch angelegte Angebots-Nachfassaufgaben
+  trotz UI-Vorgabe nicht mit `in Bearbeitung` gespeichert. Ohne uebergebenen
+  Status bleibt `offen` weiterhin der Fallback.
+- Manuelle Verkaufschance 2026-06-08: Verkaufschancen koennen in der
+  Verkaufschancen-Uebersicht manuell angelegt werden, aber nur mit vorhandenem
+  Projekt als Pflichtgrundlage. Pflichtfelder sind Projekt und Beschreibung;
+  geschaetzter Wert ist optional. Neue manuelle Verkaufschancen starten mit
+  Status `Offen`, bekommen eine `VC-xxxx` Nummer, erzeugen einen Projektlogbuch-
+  Eintrag und oeffnen danach die normale Verkaufschancen-Maske. Auch manuelle
+  Verkaufschancen speisen den Forecast nicht; erst ein daraus erstelltes Angebot
+  bzw. spaeter eine Rechnung zaehlt.
 - Wenn nach einem Refresh eine Projektakte gespeichert ist, die Projektliste
   aber noch asynchron laedt, darf nicht kurz die Projektpipeline gerendert
   werden. In diesem Zwischenzustand einen Ladehinweis fuer die Projektakte
@@ -2196,3 +3055,383 @@ Wiederaufbau begonnen 2026-06-05:
   Loeschen einer Rechnung wird die Rechnungshistorie sofort neu geladen, damit
   die Historie inklusive Loesch-Eintrag sichtbar bleibt, obwohl die Rechnung
   aus der aktiven Rechnungsliste entfernt wird.
+- Nachkorrektur Angebots-Nachfassaufgaben 2026-06-09: Automatisch erzeugte
+  Nachfass-Aufgaben fuer finale Angebote speichern jetzt zusaetzlich
+  `Task.sourceOfferId` und `Task.sourceOfferNumber`. Beim Loeschen eines
+  Angebots wird eine aktive verknuepfte Angebots-Nachfassaufgabe nicht hart
+  geloescht, sondern in das Aufgabenarchiv verschoben. Fuer Altbestand ohne
+  technische Verknuepfung bleibt ein enger Fallback ueber Projekt-ID,
+  Angebotsnummer und Titel `Angebot nachfassen` bestehen.
+- Nachkorrektur Planung bearbeiten / Stempelungsrechnung 2026-06-09:
+  `Planung bearbeiten` darf bei Einmalprojekten mit Angebotsstunden nicht
+  pauschal als freie Planung behandelt werden. Vorhandene Angebotsreferenzen
+  oder ein Einmalprojekt mit Angebots-Planungsbasis zeigen die
+  Angebotszuordnung und nutzen dieselben Pflichtfeld-/Ausfuehrungsmonat-Regeln
+  wie `+ Termin`. In der erwarteten Stempelungsanzeige darf `Fakturiert:` nicht
+  pauschal alle Rechnungen des Monats listen; angezeigt wird nur die letzte
+  wirklich mit der passenden Stempelung verknuepfte Rechnung.
+- Nachkorrektur Projektkopf / Prozesspipeline 2026-06-09: Sichtbare
+  Encoding-Reste im Projektkopf und in der Planungsmaske wurden nur gezielt
+  korrigiert (`Zurueck`, `Status aendern`, `oeffnen`, `woechentlich`,
+  `bestaetigen`). Die Prozesspipeline rendert abgeschlossene Schritte jetzt
+  mit einer HTML-Entity fuer den Haken, damit das Symbol nicht erneut durch
+  Encoding-Probleme zerfaellt.
+- Encoding-Schutz 2026-06-09: Es gibt jetzt `npm.cmd run check:mojibake`
+  (`scripts/check-mojibake.js`). Der Check durchsucht aktive Quellbereiche
+  `src` und `prisma` nach typischen kaputten UTF-8-/Mojibake-Zeichen wie
+  `Ãƒ`, `Ã‚`, `Ã¢` und Replacement-Zeichen. Nach UI-Textaenderungen soll dieser
+  Check zusaetzlich zu `npx.cmd tsc --noEmit` und `git diff --check` laufen.
+  Korrekturen bleiben gezielt; keine globale Datei-Neukodierung oder
+  blindes Umschreiben ganzer Dateien. Fuer notwendige Altkompatibilitaet mit
+  historisch kaputten Datenwerten Unicode-Escapes verwenden, damit im
+  Quelltext keine sichtbaren Mojibake-Zeichen stehen.
+- Mojibake-Baseline 2026-06-11: Der Mojibake-Check arbeitet jetzt mit
+  `scripts/mojibake-baseline.json`. Der aktuelle Altbestand von 815 bekannten
+  Trefferstellen ist eingefroren; `npm.cmd run check:mojibake` schlaegt nur
+  noch fehl, wenn neue Mojibake-/Icon-Platzhalter oberhalb dieser Baseline
+  hinzukommen. Wird eine Altstelle gezielt bereinigt, darf die Baseline erst
+  nach bestandenen Regressions-/TypeScript-/Diff-Checks mit
+  `npm.cmd run check:mojibake -- --update-baseline` aktualisiert werden.
+  Diese Baseline ist kein Freibrief fuer kaputte UI-Texte, sondern ein
+  Schutzgitter gegen neue Encoding-Schaeden waehrend der weiteren Entwicklung.
+- Mojibake-Korrektur Paket 1 Projektakte 2026-06-11: Gezielt bereinigt wurden
+  sichtbare Texte in der Projektakte rund um Angebots-/Dokumentleerstaende,
+  Planung, Aufgaben, Stempelungen, Vorgabezeiten, automatische Abrechnung und
+  Projektzeitkontingente. Dabei wurden auch Fragezeichen-Platzhalter wie
+  `?berplant`, `?ffnen`, `Gesch?ftspapier` korrigiert, die nicht verlaesslich
+  als klassische Mojibake-Zeichen erkannt werden. Keine globale
+  Datei-Rekodierung und keine funktionale Ruecksetzung vorgenommen.
+- Der Mojibake-Check prueft zusaetzlich verdÃ¤chtige `iconButton`-Platzhalter,
+  bei denen nur ein Fragezeichen gerendert wird. Schliessen-/Aktionsbuttons
+  sollen semantisch beschriftet sein (`aria-label`) und ein echtes Icon oder
+  eine stabile HTML-Entity wie `&times;` verwenden, nicht ein rohes
+  Fragezeichen als Ersatz.
+- Rueckfall Terminmaske 2026-06-09: Nach der Encoding-Rekonstruktion waren
+  Teile der Planungsmaske wieder auf altem Stand (`Wiederholung`,
+  `Wochenenden ueberspringen`, vorbefuellte Freitexte). Wiederhergestellt:
+  `Terminserie anlegen`, Intervall plus anklickbare Wochentage,
+  `Serienende`, leere Pflichtfelder fuer Titel/Beschreibung und echte
+  Mitarbeiterauswahl mit orange pulsierendem Pflichtfeldrahmen. Diese Regeln
+  gelten fuer normale Planung und Terminwunsch; bei Dauerlaeufern ist die
+  Terminserie fachlich besonders relevant.
+- Rueckfall-Reparatur Verkaufschancen / Angebotsplanung 2026-06-09:
+  Nach der Mojibake-Rekonstruktion waren mehrere UI-/Logikstaende wieder
+  aelter: `Verkaufschancen` hiess sichtbar wieder `Potenziale`, der
+  `VC-xxxx` Nummernkreis fehlte technisch, die Verkaufschancen-Maske/
+  Tabellenlogik war teilweise zurueckgefallen und die Einmalprojekt-
+  Angebotsplanung verlor Marker wie `singleProjectOfferPlanningRows` und
+  `planningEntryOfferId`. Wiederhergestellt wurden Verkaufschancen-Begriff,
+  manuelle Verkaufschance, verknuepfte Nachfass-Aufgabe, VC-Nummer in
+  Schema/API, projektweite Angebots-Planungsleisten fuer Einmalprojekte und
+  das Respektieren des uebergebenen Aufgabenstatus beim Anlegen.
+- Regressionsschutz 2026-06-09: Es gibt jetzt
+  `npm.cmd run check:regressions` (`scripts/check-regressions.js`). Der Check
+  prueft zentrale Entwicklungsmarker, die nicht unbemerkt verschwinden
+  duerfen: Verkaufschancen-Begriff, manuelle Verkaufschance, VC-Nummer,
+  Nachfass-Aufgaben-Verknuepfung, Einmalprojekt-Angebotsplanung,
+  Terminserie/Pflichtfeld-Pulsierung, ProjectPotential-Nummer und Tasks-API-
+  Status beim Anlegen. Wenn der Check fehlschlaegt, nicht einfach
+  weiterarbeiten oder Marker entfernen. Erst mit dem Nutzer klaeren, ob der
+  Verlust fachlich gewollt ist; nur mit ausdruecklicher Freigabe darf ein
+  Marker angepasst oder entfernt werden.
+- Nachkorrektur Regressionsschutz Planung 2026-06-09: Der erste
+  Regressionscheck war fuer Einmalprojekt-Angebotsplanung zu grob. Er prueft
+  jetzt zusaetzlich, dass `+ Termin`, `+ Terminwunsch` und
+  `Planung bearbeiten` bei Einmalprojekten mit Angebotsstunden die
+  Angebotszuordnung zeigen koennen. Technische Marker dafuer sind
+  `shouldShowPlanningOfferAssignment`, `entryProjectHasOfferPlanning`,
+  `Zuordnung Angebot` und `Kontingent vorbereitet`. Beim Bearbeiten eines
+  vorhandenen Planungseintrags wird ein Einmalprojekt mit finalem Angebot und
+  Arbeitsstunden wieder als Angebotsplanung behandelt, auch wenn der alte
+  Eintrag noch keine gespeicherte Angebotsreferenz hatte.
+- Nachkorrektur Planungsdatum 2026-06-09: Neue Planungstermine aus
+  `+ Termin` und `+ Terminwunsch` starten ohne explizit uebergebenes Datum
+  wieder mit dem aktuellen Tag, nicht mit dem zuletzt im Planungsboard
+  ausgewaehlten `selectedPlanningDateKey`. Die bestehende Warn-/Bestaetigungs-
+  logik fuer Einmalprojekte bleibt unveraendert: Weicht der Planungstermin vom
+  Angebots-Ausfuehrungsmonat ab, muss der Nutzer bestaetigen; danach wird der
+  Ausfuehrungsmonat am Angebot und damit die Forecast-Zuordnung aktualisiert.
+- Nachkorrektur Planungsboard-Start 2026-06-09: Der normale Einstieg ins
+  Planungsboard und der Button `Heute` setzen sowohl den sichtbaren
+  Planungszeitraum als auch den ausgewaehlten Planungstag auf den aktuellen Tag.
+  Gezielte Spruenge `Zur Planung` bleiben davon unberuehrt und duerfen weiterhin
+  einen konkreten Termin-Tag oeffnen. Dadurch bleibt der 18.05. oder ein anderer
+  alter Arbeitstag nicht mehr als Startdatum fuer neue normale Planungen haengen.
+- Nachkorrektur Artikel-/Leistungstabelle 2026-06-09: Die Kataloglisten fuer
+  Artikel, Leistungen und Pakete gehoeren optisch zur bestehenden
+  Standard-Tabellenfamilie (`tableCard`/`table`) und nicht zur
+  Kontakt-Sondertabelle. Der Kopf bleibt dunkel, Zeilen sind flach mit klaren
+  Rasterlinien, Status wird als Clip angezeigt und Aktionsbuttons bleiben
+  kompakt. Die Aktionsspalte muss breit genug fuer drei Buttons bleiben; Button-
+  text wird mittig ausgerichtet und Header-Trennlinien bleiben hell sichtbar.
+  Der Regressionscheck prueft diesen Marker, damit die Ansicht nicht unbemerkt
+  wieder in ein abweichendes Tabellenlayout zurueckfaellt.
+- Nachkorrektur Zeiteintrag-Datum 2026-06-09: In den Masken
+  `Zeiteintrag bearbeiten` und `Zeiteintrag hinzufuegen` nutzt das Datum
+  dasselbe native Tagesdatumsfeld wie die Planungsmaske (`type=date` mit
+  Kalenderbutton). Intern bleibt die Speicherung unveraendert im normalisierten
+  Date-Key `yyyy-mm-dd`; Logbuch und Bearbeitungshistorie formatieren die
+  Anzeige wieder deutsch. Datums-/Uhrzeitfelder bleiben von dieser
+  Vereinheitlichung bewusst ausgenommen.
+- Nachkorrektur Einmalprojekt-Seitenleiste 2026-06-09: Die Box
+  `Restlaufzeit bis Projektende` bleibt Dauerlaeufer-Projekten vorbehalten,
+  weil sie auf Projektlaufzeit, Endphase und Projektende basiert. Einmalige
+  Projekte zeigen stattdessen `Ausfuehrungsplanung` mit projektweiter Sicht auf
+  Ausfuehrungsmonat(e), naechsten Planungstermin und Planungsstand. Stunden-
+  und Restwerte nicht dort doppeln; diese gehoeren in die Angebotsleisten und
+  die Verbrauchsboxen je Angebot. Diese Logik darf nicht an die Monatsakte
+  gekoppelt werden; Einmalprojekte bleiben projektweit. Der Regressionscheck
+  prueft den sichtbaren Marker `AusfÃ¼hrungsplanung`.
+- Nachkorrektur Planungsleisten-Klick 2026-06-09: Die gruenen/orangen
+  Planbar-Badges in den Planungsleisten sind bewusst klickbare Arbeits-
+  Einstiege. Bei noch nicht geplanter Leiste oeffnet ein kleines Menue mit
+  `+ Termin` und `+ Terminwunsch`; bei Einmalprojekten wird das jeweilige
+  Angebot direkt vorbelegt. Sobald eine Leiste teilweise oder voll geplant ist,
+  fuehrt der Klick in die bestehende Planung: ein einzelner Termin oeffnet
+  direkt `Planung bearbeiten`, mehrere Termine zeigen zuerst eine kleine
+  Terminauswahl. Klicks ausserhalb der kleinen Leistenmenues schliessen diese
+  wieder. Dauerlaeufer nutzen dieselbe Bedienlogik auf den aktuell gewaehlten
+  Projektmonat bezogen.
+- Nachkorrektur Prozessleiste TerWu 2026-06-09: Bei Einmalprojekten mit
+  mehreren Angeboten darf der Schritt `TerWu` nicht mehr erledigt sein, nur weil
+  irgendwo im Projekt ein Termin oder Terminwunsch existiert. Der Schritt wird
+  angebotsbezogen bewertet: Jedes finale Angebot mit Arbeitsstunden muss
+  mindestens einen zugeordneten Termin/Terminwunsch haben. Sind nur einzelne
+  Angebote bedient, bleibt `TerWu` teilweise/orange. Dauerlaeufer behalten die
+  Monats-/Kontingentlogik des aktuell ausgewaehlten Projektmonats.
+- Angebot verloren 2026-06-09: Angebote koennen mit Pflichtgrund als
+  `Verloren` markiert werden. Der Grund, eine optionale Notiz und der Zeitpunkt
+  werden am Angebot gespeichert und in der Angebotshistorie/Projektlogbuch
+  dokumentiert. Verlorene Angebote bleiben als Dokument sichtbar, duerfen aber
+  nicht mehr als aktive Planungsgrundlage, Rechnungsvorlage oder Forecast-Chance
+  zaehlen. Die zentrale UI-Logik nutzt dafuer `isActiveFinalOffer`; diese Logik
+  nicht durch pauschale Filter wie `status !== "Entwurf"` ersetzen. Bereits
+  fakturierte/verknuepfte Angebote duerfen nicht nachtraeglich als verloren
+  markiert werden, weil das Rechnung und Auswertung widerspruechlich machen
+  wuerde. Versehentlich verlorene Angebote koennen ueber `Verlust
+  zuruecknehmen` wieder als `Erstellt` aktiviert werden; dabei werden die
+  Verlustfelder geleert und Historie/Projektlogbuch geschrieben. Diese
+  Ruecknahme ist bewusst explizit, damit Planung und Forecast nachvollziehbar
+  wieder auf das Angebot reagieren.
+- Folgeentscheidung Angebot verloren 2026-06-09: Wenn in einem Einmalprojekt
+  alle nicht geloeschten finalen Angebote als verloren markiert sind, darf die
+  Projektakte nicht mehr so wirken, als seien TerWu/Planung erledigt. In diesem
+  Zustand zeigt der Projektkopf `Kein aktives Angebot`, der Klick springt in
+  den Angebotsordner, TerWu/Planung bleiben offen und die Terminansicht erklaert
+  die fehlende aktive Angebotsgrundlage. Verlorene Angebote bleiben sichtbar,
+  bekommen Status-Clip, Pflichtgrund und bei vorhandener Notiz einen kompakten
+  Kommentar-Clip. Forecast, Planungsleisten und Verbrauchsboxen duerfen weiter
+  nur aktive finale Angebote nutzen.
+- Nachkorrektur Angebot verloren 2026-06-09: Der Kommentar zum verlorenen
+  Angebot ist Pflicht, nicht optional. UI und Offers-API muessen beide
+  verhindern, dass ein Angebot nur mit Grund, aber ohne Kommentar als verloren
+  gespeichert wird. Ist ein Angebot technisch mit einer finalen Rechnung
+  verknuepft, darf `Angebot verloren` weiterhin nicht angeboten/ausgefuehrt
+  werden; in diesem Fall ist die Rechnung die belastbare kaufmaennische
+  Entscheidung und der Verlust waere fachlich widerspruechlich.
+- Projektkopf-Aktionsraster 2026-06-09: Der Verkaufschancen-/Zusatzverkauf-
+  Button bleibt im Projektkopf immer als Rasterplatz erhalten. Wenn keine
+  Verkaufschance vorhanden ist, zeigt er deaktiviert `Keine Verkaufschance`.
+  Dadurch bleiben Dauerlaeufer- und Einmalprojekt-Koepfe in Hoehe und
+  Button-Anordnung konsistent. Nur bei echtem `projectUpsellState` darf der
+  Button aktiv sein und die Verkaufschancen-Aktion oeffnen.
+- Nachkorrektur Rechnungshistorie 2026-06-09: Die Rechnungshistorie in der
+  Projektakte darf nicht als einfache Inline-Span-Liste gerendert werden. Sie
+  nutzt wie die Angebotshistorie das Standard-Historiendesign
+  `planningHistorySection` / `planningHistoryList` mit separaten Eintraegen fuer
+  Titel, Datum/Akteur und Notiz. Das gilt fuer Dauerlaeufer und Einmalprojekte.
+- Projektgewinn 2026-06-10: Die Projektakte hat den Reiter `Projektgewinn`.
+  Die fuehrende Bezeichnung in der UI ist `Finaler Projektgewinn`, aber mit
+  einem eigenen Status pro Auswertung: `final`, wenn alle verwendeten
+  Rechnungspositionen und Stempelungen gespeicherte Kostensnapshots haben,
+  sonst `vorlaeufig`. Umsatz kommt aus finalen, nicht geloeschten Rechnungen;
+  stornierte Rechnungen und Stornorechnungen zaehlen nicht in den
+  Projektgewinn. Materialkosten werden beim Speichern/Fakturieren der
+  Rechnungsposition als `materialUnitCostSnapshot` und `materialCostSnapshot`
+  festgeschrieben. Lohnkosten werden beim Speichern/Stoppen von
+  Projekt-Stempelungen als `laborCostRateSnapshot` und `laborCostSnapshot`
+  festgeschrieben; beim Verknuepfen alter Stempelungen mit einer Rechnung wird
+  ein fehlender Snapshot defensiv nachgefuellt. Einmalprojekte zeigen
+  projektweit, Dauerlaeufer zeigen den ausgewaehlten Projektmonat plus
+  Gesamtprojekt. Altbestand ohne Snapshot bleibt sichtbar und nutzt aktuelle
+  Werte als Fallback, wird aber als `vorlaeufig` markiert.
+- Projektgewinn-Stornohinweis 2026-06-10: Wenn ein betrachteter
+  Projektgewinn-Bereich keine aktive Rechnung mehr hat, aber eine stornierte
+  Rechnung oder Stornorechnung im selben Bereich existiert, zeigt der Status
+  nicht nur pauschal `vorlaeufig`, sondern `vorlaeufig - Rechnung storniert /
+  keine aktive Rechnung`. So bleibt nachvollziehbar, warum ein zuvor finaler
+  Bereich nach Storno wieder offen ist.
+- Projektgewinn-Dauerlaeufer 2026-06-10: Bei Dauerlaeuferprojekten darf der
+  ausgewaehlte Monat eigenstaendig final werden, sobald Rechnung und
+  Kostensnapshots vollstaendig sind. Das `Gesamtprojekt` darf aber erst nach
+  erreichtem Projektlaufzeitende final werden. Vorher wird ein ansonsten
+  snapshot-sauberer Gesamtwert als `vorlaeufig - Projektlaufzeit noch nicht
+  abgeschlossen` markiert; fehlt das Projektende, als `vorlaeufig -
+  Projektende nicht festgelegt`.
+- Altbestand-Abgleich Projektgewinn 2026-06-10: Bereits mit Rechnungen
+  verknuepfte Stempelungen ohne Lohnkosten-Snapshot wurden einmalig und
+  kontrolliert nachbefuellt, sofern ein technischer Mitarbeiterbezug und ein
+  Mitarbeitersatz vorhanden waren. Vorher-/Nachher-Daten wurden unter
+  `.codex-safety/db-before-20260610-backfill-linked-stamp-cost-snapshots.json`
+  und
+  `.codex-safety/db-after-20260610-backfill-linked-stamp-cost-snapshots.json`
+  gesichert. Nicht automatisch befuellt werden Altzeilen ohne `userId` oder
+  ohne passenden `EmployeeCostCalculation`-Datensatz; diese bleiben bewusst
+  `vorlaeufig`, bis ein Kostensatz fachlich geklaert ist.
+- Regressionsschutz Taetigkeitsbericht 2026-06-10: Der Button
+  `Taetigkeitsbericht erstellen` in Projektakte > Dokumente >
+  Taetigkeitsberichte ist eine wiederhergestellte Projektakten-Funktion und
+  darf nicht wieder unbemerkt verschwinden. `npm.cmd run check:regressions`
+  prueft jetzt den Buttontext, den Dokumentordner `Taetigkeitsberichte` und
+  die Anbindung an `/api/activity-reports`. Bei fehlgeschlagenem Marker nicht
+  blind entfernen, sondern erst fachlich klaeren.
+- Erweiterter Regressionsschutz 2026-06-10: Kritische rekonstruierte
+  Funktionen sollen nach Aufbau oder Reparatur mit stabilen Markern in
+  `scripts/check-regressions.js` geschuetzt werden. Der Check prueft jetzt
+  zusaetzlich Dauerlaeufer-Monatsakte, monatsbezogene Planung/Stempelungen,
+  Projektbild-Normalisierung und Monatsablage, Taetigkeitsbericht-Bildauswahl,
+  Rauchmelder/Checklisten, Endkontrolle, Leistungsdatum, Rechnungs-
+  Stempelungsverknuepfung und Storno-Entkopplung. Keine Marker entfernen oder
+  abschwaechen, nur damit der Check gruen wird; erst fachlich klaeren, ob die
+  betroffene Funktion bewusst geaendert wurde.
+- Sichtbare Logbuch-Mojibake 2026-06-10: Projektlogbuch-Texte koennen aus
+  Altbestand noch kaputte UTF-8-Folgen enthalten. Diese werden in der Anzeige
+  eng normalisiert, ohne Datenbankeintraege breit umzuschreiben. Neue
+  Projektdaten-Logbucheintraege muessen korrekt `geÃ¤ndert` schreiben; feste
+  UI-Hinweise wie `Dokumente fÃ¼r ...` werden direkt im Quelltext korrigiert.
+- Mojibake-Korrektur Paket 1 Projektakte 2026-06-10: Sichtbare Texte in der
+  Projektakte wurden gezielt korrigiert: Projektakten-Hilfetexte,
+  Dokument-/Angebots-/Rechnungsbereiche, Aufgabenblock, Stempelungs- und
+  Planungsansichten, Budget-/Kontingenttexte sowie der Rechnungsdialog aus der
+  Projektakte. Altkompatibilitaetsvergleiche wie alter Rechnungsstatus
+  `GelÃƒÂ¶scht` bleiben bewusst erhalten, damit historische Daten weiter erkannt
+  werden. Keine globale Datei-Rekodierung vorgenommen.
+- Mojibake-Logikkompatibilitaet 2026-06-11: Sichtbare Begriffe duerfen
+  korrigiert werden, aber fachliche Logik darf nicht nur an einer Schreibweise
+  haengen. Alte mojibake-belastete Werte und neue saubere Werte werden deshalb
+  parallel erkannt, u.a. fuer Dauerlaeufer-Projektart, geloeschte Statuswerte
+  und Taetigkeitsbericht-Dokumenttitel. Neue Werte sollen sauber geschrieben
+  werden; historische Daten bleiben lesbar. Der Regressionscheck prueft diese
+  Schutzmarker.
+- Mojibake-Korrektur Paket 2 aktive Masken 2026-06-11: Gezielt bereinigt
+  wurden sichtbare UI-Texte in Planungsmaske, Projektmaske,
+  Verkaufschancenmasken, Zeiteintrags-/Stempelmaske und Aufgabenmaske. Es
+  wurden nur Labels, Platzhalter, Hinweistexte und stabile Schliessen-Icons
+  korrigiert; fachliche Statuswerte und Altkompatibilitaetslogik wurden nicht
+  breit umgeschrieben. Die Mojibake-Baseline wurde nach bestandenen
+  Regressionspruefungen entsprechend reduziert.
+- Mojibake-Korrektur Paket 3 Projektakte 2026-06-11: Gezielt bereinigt wurden
+  weitere sichtbare Texte im Projektakten-Kontext, vor allem Planungsbasis-
+  Hinweise, Angebots-/Rechnungsdialoge, Monatsauswahl, Geschaeftspapier,
+  Strasse, Erloese und Vorschau-Aktionen. Der Projektgewinn- und
+  Projektseitenleisten-Code wurde geprueft; die Geldformatierung `formatMoney`
+  gibt im Code ein korrektes Eurozeichen aus. Keine breite Daten- oder
+  Statuslogik wurde geaendert.
+- Mojibake-Korrektur Paket 4 haeufige UI-Bereiche 2026-06-11: Gezielt
+  bereinigt wurden sichtbare Texte in haeufig genutzten Bereichen ausserhalb
+  der Projektakte, vor allem Artikel & Leistungen, Kontakte/Aufgaben,
+  Benutzermenue, Kalender-/Dokumentenuebersicht, Mitarbeiter-/Gewerk-
+  Hinweise und Dokument-Mail. Auch hier wurden nur UI-Labels, Hinweise,
+  Platzhalter und Aria-Beschriftungen korrigiert; keine Funktionslogik und
+  keine fachlichen Datenwerte wurden breit umgeschrieben.
+- Mojibake-Korrektur Paket 5 Mitarbeiter/Firmeneinstellungen 2026-06-11:
+  Gezielt bereinigt wurden sichtbare Texte in Mitarbeiterakte und
+  Firmeneinstellungen, u.a. `Uebersicht`, Signatur-Hinweis, Abwesenheits-
+  Hinweis, Firmenanschrift, Gruendung, Gruenflaechen, Geschaeftsbereiche,
+  Einheiten, Entwuerfe, Projektarten, Nummernkreise, Bundeslaender,
+  Mailserver und E-Mail-Vorlagen. Die Baseline wurde nach bestandenen
+  Regressions- und Mojibake-Checks von 647 auf 591 bekannte Altlasten
+  reduziert. Keine globale Datei-Rekodierung und keine fachliche Logik-
+  Aenderung vorgenommen.
+- Mojibake-Korrektur Paket 6 Persoenlicher Bereich/Abwesenheiten 2026-06-11:
+  Gezielt bereinigt wurden sichtbare Texte im persoenlichen Bereich, in
+  Abwesenheitsantraegen, Team-Kalender, Planungsboard-Hinweisen,
+  Mitarbeiter-Stempelungsuebersicht und Lohnkostenhinweisen. Neben Umlauten
+  wurden auch kaputte Trennerpunkte und der sichtbare Platzhalter bei
+  `Ã˜ Stunden pro Stempeltag` korrigiert. Die Baseline wurde nach bestandenem
+  Regressionscheck von 591 auf 514 bekannte Altlasten reduziert. Keine
+  Aenderung an Abwesenheits-, Planungs-, Stempelungs- oder Kostenlogik.
+- Mojibake-Korrektur Paket 7 Content/Marketing 2026-06-11: Gezielt bereinigt
+  wurden sichtbare Texte im Content-Management/Marketingbereich, u.a.
+  Wochenplaene, Ampel-/Freigabehinweise, Marketingkontingente, Ideen-Feed,
+  Korrektur-/Freigabeansichten, Kalenderhinweise und Trennzeichen. Ein
+  technischer Statusvergleich auf historische Content-Statuswerte wurde bewusst
+  nicht geaendert, um keine Datenkompatibilitaet zu brechen. Die Baseline wurde
+  nach bestandenen Checks von 514 auf 475 bekannte Altlasten reduziert.
+- Mojibake-Korrektur Paket 8 Auswertungen/Forecast/Abrechnung 2026-06-11:
+  Gezielt bereinigt wurden sichtbare Texte in Dashboard-Kacheln,
+  Auswertungen, Forecast-Ansichten und automatischer Abrechnung, u.a.
+  Umsatz-/Projektuebersicht, Geschaeftsbereich-Tabellen, Dauerlaeufer-
+  Hinweise, Forecast-Erklaerungen, Rechnungsentwuerfe und Pruefhinweise.
+  Fachliche Vergleichs-/Datenwerte wie historische Status- oder
+  Abrechnungsintervall-Strings wurden bewusst nicht breit umgeschrieben, damit
+  Altkompatibilitaet erhalten bleibt. Die Baseline wurde nach bestandenen
+  Checks von 475 auf 423 bekannte Altlasten reduziert.
+- Mojibake-Korrektur Paket 9 Login/Kundenakte 2026-06-11: Gezielt bereinigt
+  wurden sichtbare Texte im Login-/Startbereich und in der Kundenakte,
+  u.a. ZustÃ¤ndigkeiten, ProjektstÃ¤nde, Anmeldung lÃ¤uft, AuftrÃ¤ge,
+  Kundenlogbuch, RechnungsempfÃ¤nger, verknÃ¼pfte Projekte, ZusatzverkÃ¤ufe,
+  Ã–ffnen, FÃ¤llig, PrioritÃ¤t und ZustÃ¤ndig. Es wurden nur UI-Texte und
+  Logbuch-Beispieltexte korrigiert; keine Kundenakten-, Kontakt- oder
+  Aufgabenlogik wurde geÃ¤ndert. Die Baseline wurde nach bestandenen Checks von
+  423 auf 398 bekannte Altlasten reduziert.
+- Mojibake-Korrektur Paket 10 Admin/Aufgaben/Kalender 2026-06-11: Gezielt
+  bereinigt wurden sichtbare Texte in Team-/Eskalationseinstellungen,
+  Aufgabenlisten, KalenderÃ¼bersicht, Firmendaten-/Gewerkdialog,
+  Kontakt-Gruppenaktion, RechnungsempfÃ¤nger-Feldern, Abwesenheits-Ãœbergabe
+  und Passwortdialog. Technische KompatibilitÃ¤tswerte wie alte Rollen- oder
+  Statusschreibweisen wurden nicht breit umgeschrieben. Die Baseline wurde
+  nach bestandenen Checks von 398 auf 334 bekannte Altlasten reduziert.
+- Mojibake-Korrektur Paket 11 Content-Endblock/DISG 2026-06-11: Gezielt
+  bereinigt wurden sichtbare Texte im Content-Bearbeitungsdialog sowie im
+  DISG-/Mitarbeiterentwicklungsbereich, u.a. nachtrÃ¤gliche Bearbeitung,
+  VerÃ¶ffentlichung, Korrektur nÃ¶tig, kaufmÃ¤nnische Daten,
+  SelbsteinschÃ¤tzung, FremdeinschÃ¤tzung, GesprÃ¤chspunkte,
+  EntwicklungsmaÃŸnahmen, UnterstÃ¼tzung und ÃœberprÃ¼fungstermin. Der Statuswert
+  `gruen` blieb als technischer Optionswert erhalten; korrigiert wurde nur die
+  sichtbare Beschriftung. Die Baseline wurde nach bestandenen Checks von 334
+  auf 260 bekannte Altlasten reduziert.
+- Mojibake-Korrektur Paket 12 Konstanten/Fragebogen/Meldungen 2026-06-11:
+  Gezielt bereinigt wurden sichtbare Standardtexte, E-Mail-Vorlagen,
+  Katalogeinheiten, Feiertagsnamen, DISG-Fragen, Profilbeschreibungen,
+  Mitarbeiter-EinschÃ¤tzungsfragen sowie Angebots-/Rechnungs-/Kontakt- und
+  Dokument-Mail-Meldungen. Status-, Intervall- und Regex-KompatibilitÃ¤tswerte
+  mit Alt-Mojibake wurden bewusst noch nicht breit geÃ¤ndert; sie werden nur in
+  einem eigenen KompatibilitÃ¤tsblock angefasst, damit historische Daten und
+  Filterlogiken nicht unbemerkt brechen. Die Baseline wurde nach bestandenen
+  Checks von 260 auf 106 bekannte Altlasten reduziert.
+- Mojibake-Korrektur Paket 13 Laufzeitmeldungen/Logtexte 2026-06-11:
+  Gezielt bereinigt wurden sichtbare Laufzeitmeldungen, Warnungen,
+  BestÃ¤tigungsdialoge, Logtexte und Hinweise in GeschÃ¤ftsbereichs-,
+  Logbuch-, Abwesenheits-, Planungs-, Verkaufschancen-, Stempelungs-,
+  Aufgaben-, Mitarbeiter-, Team-/Gewerk-, Druck-/PDF-, Forecast-,
+  Import- und Dokument-Mail-Bereichen. Der lokal berechnete Anzeigenstatus
+  `PrÃ¼fen` wurde inklusive Vergleichsstelle korrigiert. Verblieben sind nur
+  Status-, Intervall- und Regex-KompatibilitÃ¤tswerte wie alte Content-,
+  Pipeline- und Abrechnungswerte; diese dÃ¼rfen nur in einem eigenen
+  KompatibilitÃ¤tsblock geÃ¤ndert werden. Die Baseline wurde nach bestandenen
+  Checks von 106 auf 29 bekannte Altlasten reduziert.
+- Mojibake-Korrektur Paket 14 KompatibilitÃ¤tswerte 2026-06-11:
+  Die verbliebenen Status-, Intervall- und Regex-Mojibake-Stellen wurden
+  bereinigt. Neue sichtbare und neu geschriebene Werte sind sauber, u.a.
+  `Korrektur nÃ¶tig`, `VerÃ¶ffentlicht`, `Lead / KlÃ¤rung`, `DauerlÃ¤ufer-Faktura`,
+  `jÃ¤hrlich` und `wÃ¶chentlich`. Alte gespeicherte Mojibake-Werte werden
+  weiterhin Ã¼ber Normalisierer oder Unicode-Escape-KompatibilitÃ¤tsvergleiche
+  erkannt, damit historische Content-, Pipeline-, Rollen- und Abrechnungsdaten
+  nicht aus Filtern oder Auswertungen fallen. Der Mojibake-Check steht nach
+  bestandenen Checks auf 0 bekannte Altlasten.
+- Stempelungs-Suche 2026-06-15: In `Persoenliche Daten > Stempelungen` und
+  `Mitarbeiter > Zeiterfassung` gibt es eine Projekt-/Kundensuche plus
+  Volltextsuche ueber Stempelungsdaten, Projektbezug und Kommentare. Die
+  Filter grenzen nur die Tabellenanzeige ein; Zeit-Summen und KPI-Karten
+  bleiben auf Basis des gewaehlten Zeitraums berechnet. Die persoenliche
+  Stempelungsansicht hat dafuer denselben Zeitraumkopf wie die Mitarbeiterakte
+  und startet bewusst in der Jahresansicht.
+- Unproduktive Stempelungen 2026-06-15: Unproduktive Zeiten sind nicht mehr nur Sammelwert Unproduktiv; beim Start oder Wechsel muss eine konkrete unproduktive Taetigkeit ausgewaehlt oder eingetragen werden. Die Bezeichnung wird ueber projectLabel gespeichert und in aktiver Stempelung, Team-Live und Zeittabellen angezeigt. Wechsel von unproduktiv zu unproduktiv ist erlaubt.
+- Stempelung Tagesplanung 2026-06-15: Beim Starten oder Wechseln einer Stempelung wird die bestaetigte Tagesplanung des angemeldeten Mitarbeiters vorgeschlagen. Der naechste sinnvolle Termin wird hervorgehoben; Klick uebernimmt Projekt oder Taetigkeit, aber keinen Kommentar. Die Auswahl ist nur Vorschlag: anderes Projekt und unproduktive Taetigkeit bleiben jederzeit moeglich. Termine ohne Projekt werden als unproduktive Taetigkeit vorbelegt.
+- Stempelmaske Aufraeumung 2026-06-15: Die Tagesplanung in der Stempelmaske zeigt nur den empfohlenen Termin direkt; weitere Termine sind einklappbar. Die Projektsuche wird erst nach Klick auf Anderes Projekt angezeigt. Unproduktiv bleibt als separater Weg sichtbar.
+- Stempelung Kommentar 2026-06-15: Ein Klick auf einen geplanten Termin waehlt nur Projekt/Termin vor. Das Pflichtfeld Was machst du gerade? bzw. Was machst du als Naechstes? bleibt leer und muss vom Mitarbeiter selbst beschrieben werden.
+- Planungsboard Stempel-Fortschritt 2026-06-15: Die Tagesplanung zeigt am aktuellen Datum keinen allgemeinen Live-Zeitbalken. Stattdessen bekommt nur der Terminbalken eine Fortschrittsfuellung, dessen Projekt/Taetigkeit zur aktiven Stempelung des Mitarbeiters passt. Der Fortschritt berechnet sich aus gestempelter Zeit im Verhaeltnis zur geplanten Terminlaenge; andere Termine bleiben unveraendert.
+- Planungsboard aktive Mitarbeiter 2026-06-15: Tagesplanung und Terminanlage zeigen nur aktive Mitarbeiter. Inaktive Mitarbeiter werden nicht mehr als Zeile oder automatische Vorbelegung angeboten; bestehende historische Planungseintraege bleiben unveraendert in den Daten erhalten.
+- Planungsboard Farblogik 2026-06-15: Feste bestaetigte Termine sind blau, Terminwuensche sind hellgrau mit gelbem pulsierendem Rand, Pausen grau, abgeschlossene Stempelungen auf einem Termin gruen, aktive Stempelungen zeigen den bekannten Verlauf innerhalb des passenden Terminbalkens. Abwesenheiten und Konflikte behalten ihre bestehende Sonderdarstellung.
+- Stempelung Termin-Vorschlag 2026-06-15: Beim Starten/Wechseln wird nur ein aktuell laufender oder zukuenftiger offener bestaetigter Tagestermin vorgeschlagen. Sind alle heutigen Termine vorbei, gibt es keinen automatischen Vorschlag mehr; die Tagestermine bleiben aber einsehbar. In der Stempelmaske tragen Tagestermine Statuslabels `Aktiv`, `Erledigt`, `Offen` oder `Vorbei`. Bereits erledigte Termine werden nicht erneut als naechster Vorschlag genutzt.

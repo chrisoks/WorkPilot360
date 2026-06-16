@@ -1,5 +1,6 @@
 node_modules
 .next
+.codex-tools/
 .next_broken_*
 .env
 tsconfig.tsbuildinfo

@@ -1,0 +1,293 @@
+﻿diff --git a/src/app/api/winter-service-automation/route.ts b/src/app/api/winter-service-automation/route.ts
+new file mode 100644
+index 0000000..4afee68
+--- /dev/null
++++ b/src/app/api/winter-service-automation/route.ts
+@@ -0,0 +1,287 @@
++import { randomUUID } from "crypto";
++import { NextResponse } from "next/server";
++import { Prisma } from "@prisma/client";
++import { getDemoContext } from "@/lib/demo/context";
++import { prisma } from "@/lib/db/client";
++
++type AutomationRunInput = {
++  projectId?: string;
++  projectNumber?: string;
++  projectTitle?: string;
++  customerName?: string;
++  monthKey?: string;
++  dateKey?: string;
++  contextKey?: string;
++  recipientEmail?: string;
++  beforeImageKeys?: string[];
++  afterImageKeys?: string[];
++};
++
++function cleanText(value: unknown) {
++  return typeof value === "string" ? value.trim() : "";
++}
++
++function cleanStringList(value: unknown) {
++  return Array.isArray(value) ? value.map((item) => cleanText(item)).filter(Boolean) : [];
++}
++
++async function ensureWinterServiceAutomationTable() {
++  await prisma.$executeRaw`
++    CREATE TABLE IF NOT EXISTS "WinterServiceAutomationSetting" (
++      "id" TEXT NOT NULL PRIMARY KEY,
++      "organizationId" TEXT NOT NULL UNIQUE,
++      "enabled" BOOLEAN NOT NULL DEFAULT false,
++      "senderUserId" TEXT NOT NULL DEFAULT '',
++      "notificationUserIds" JSONB NOT NULL DEFAULT '[]'::jsonb,
++      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
++      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
++    )
++  `;
++}
++
++async function getSettings(organizationId: string) {
++  await ensureWinterServiceAutomationTable();
++  const rows = await prisma.$queryRaw<Array<{
++    enabled: boolean;
++    senderUserId: string;
++    notificationUserIds: unknown;
++  }>>`
++    SELECT "enabled", "senderUserId", "notificationUserIds"
++    FROM "WinterServiceAutomationSetting"
++    WHERE "organizationId" = ${organizationId}
++    LIMIT 1
++  `;
++  return {
++    enabled: Boolean(rows[0]?.enabled),
++    senderUserId: cleanText(rows[0]?.senderUserId),
++    notificationUserIds: cleanStringList(rows[0]?.notificationUserIds),
++  };
++}
++
++async function upsertSettings(organizationId: string, input: Record<string, unknown>) {
++  await ensureWinterServiceAutomationTable();
++  const enabled = Boolean(input.enabled);
++  const senderUserId = cleanText(input.senderUserId);
++  const notificationUserIds = cleanStringList(input.notificationUserIds);
++
++  await prisma.$executeRaw`
++    INSERT INTO "WinterServiceAutomationSetting" (
++      "id", "organizationId", "enabled", "senderUserId", "notificationUserIds", "updatedAt"
++    ) VALUES (
++      ${randomUUID()}, ${organizationId}, ${enabled}, ${senderUserId}, ${JSON.stringify(notificationUserIds)}::jsonb, CURRENT_TIMESTAMP
++    )
++    ON CONFLICT ("organizationId") DO UPDATE SET
++      "enabled" = EXCLUDED."enabled",
++      "senderUserId" = EXCLUDED."senderUserId",
++      "notificationUserIds" = EXCLUDED."notificationUserIds",
++      "updatedAt" = CURRENT_TIMESTAMP
++  `;
++
++  return getSettings(organizationId);
++}
++
++async function ensureNotificationLinkColumns() {
++  await prisma.$executeRaw`
++    ALTER TABLE "Notification"
++    ADD COLUMN IF NOT EXISTS "linkTarget" TEXT,
++    ADD COLUMN IF NOT EXISTS "linkTargetId" TEXT,
++    ADD COLUMN IF NOT EXISTS "linkLabel" TEXT
++  `;
++}
++
++async function addProjectLogbookEntry(input: {
++  organizationId: string;
++  projectId: string;
++  title: string;
++  body: string;
++}) {
++  await prisma.$executeRaw`
++    INSERT INTO "ProjectLogbookEntry" (
++      "id", "organizationId", "projectId", "title", "body", "author", "colleague", "visibleFor", "attachments"
++    ) VALUES (
++      ${randomUUID()}, ${input.organizationId}, ${input.projectId}, ${input.title}, ${input.body},
++      ${"System"}, ${""}, ${JSON.stringify(["Geschaeftsfuehrer", "Vertriebler", "Niederlassungsleiter", "Buchhaltung"])}::jsonb,
++      ${JSON.stringify([])}::jsonb
++    )
++  `;
++}
++
++async function notifyAutomationFailure(input: {
++  organizationId: string;
++  userIds: string[];
++  subject: string;
++  body: string;
++}) {
++  await ensureNotificationLinkColumns();
++  for (const userId of input.userIds) {
++    await prisma.$executeRaw`
++      INSERT INTO "Notification" (
++        "id", "organizationId", "userId", "channel", "subject", "body", "linkTarget", "linkLabel"
++      ) VALUES (
++        ${randomUUID()}, ${input.organizationId}, ${userId}, ${"system"},
++        ${input.subject}, ${input.body}, ${"winterService"}, ${"Winterdienst öffnen"}
++      )
++    `;
++  }
++}
++
++async function getUserEmails(userIds: string[]) {
++  if (userIds.length === 0) return [];
++  const rows = await prisma.$queryRaw<Array<{ email: string }>>`
++    SELECT email
++    FROM "User"
++    WHERE id IN (${Prisma.join(userIds)})
++      AND "isActive" = true
++  `;
++  return rows.map((row) => cleanText(row.email)).filter(Boolean);
++}
++
++export async function GET() {
++  const { organization } = await getDemoContext();
++  return NextResponse.json(await getSettings(organization.id));
++}
++
++export async function PUT(req: Request) {
++  const { organization } = await getDemoContext();
++  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
++  return NextResponse.json(await upsertSettings(organization.id, body));
++}
++
++export async function POST(req: Request) {
++  const { organization, user } = await getDemoContext();
++  const settings = await getSettings(organization.id);
++  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
++  const runs = Array.isArray(body.runs) ? (body.runs as AutomationRunInput[]) : [];
++  const actorId = settings.senderUserId || cleanText(body.actorId) || user.id;
++
++  if (!settings.enabled) {
++    return NextResponse.json({ processed: 0, sent: 0, failed: 0, failures: [], skipped: "disabled" });
++  }
++
++  const failures: string[] = [];
++  let sent = 0;
++
++  for (const run of runs) {
++    const projectId = cleanText(run.projectId);
++    const dateKey = cleanText(run.dateKey);
++    const monthKey = cleanText(run.monthKey);
++    const contextKey = cleanText(run.contextKey);
++    const recipientEmail = cleanText(run.recipientEmail);
++    const projectNumber = cleanText(run.projectNumber);
++
++    if (!projectId || !dateKey || !monthKey || !contextKey || !recipientEmail) {
++      failures.push(`${projectNumber || projectId || "Unbekannt"} ${dateKey || ""}: Daten unvollständig`);
++      continue;
++    }
++
++    try {
++      const reportResponse = await fetch(new URL("/api/activity-reports", req.url), {
++        method: "POST",
++        headers: { "Content-Type": "application/json" },
++        body: JSON.stringify({
++          projectId,
++          month: monthKey,
++          reportContextKey: contextKey,
++          reportContextLabel: `Winterdienst ${dateKey}`,
++          beforeImageKeys: cleanStringList(run.beforeImageKeys),
++          afterImageKeys: cleanStringList(run.afterImageKeys),
++        }),
++      });
++      const reportData = await reportResponse.json().catch(() => null);
++      if (!reportResponse.ok) {
++        throw new Error(reportData?.error || "Tätigkeitsbericht konnte nicht erstellt werden.");
++      }
++
++      const reportAttachment = Array.isArray(reportData?.attachments)
++        ? reportData.attachments.find((attachment: Record<string, unknown>) =>
++            cleanText(attachment?.type) === "Dokument" && cleanText(attachment?.dataUrl)
++          )
++        : null;
++      if (!reportAttachment) {
++        throw new Error("Tätigkeitsbericht-PDF wurde nicht gefunden.");
++      }
++
++      const attachmentName = cleanText(reportAttachment.name);
++      const documentNumber = attachmentName.replace(/\.pdf$/i, "") || `Winterdienst ${dateKey}`;
++      const mailResponse = await fetch(new URL("/api/document-mail", req.url), {
++        method: "POST",
++        headers: { "Content-Type": "application/json" },
++        body: JSON.stringify({
++          kind: "activityReport",
++          documentId: `${contextKey}:${attachmentName}`,
++          documentNumber,
++          projectId,
++          projectNumber,
++          projectTitle: cleanText(run.projectTitle),
++          customerName: cleanText(run.customerName),
++          to: recipientEmail,
++          cc: "",
++          bcc: "",
++          subject: `Tätigkeitsbericht Winterdienst ${dateKey}`,
++          body: `Hallo,\n\nanbei erhalten Sie den Tätigkeitsbericht zum Winterdiensteinsatz vom ${dateKey}.\n\nMit freundlichen Grüßen`,
++          attachPdf: false,
++          manualAttachments: [{ name: attachmentName, dataUrl: cleanText(reportAttachment.dataUrl) }],
++          actorId,
++        }),
++      });
++      const mailData = await mailResponse.json().catch(() => null);
++      if (!mailResponse.ok) {
++        throw new Error(mailData?.error || "Tätigkeitsbericht konnte nicht versendet werden.");
++      }
++
++      sent += 1;
++      await addProjectLogbookEntry({
++        organizationId: organization.id,
++        projectId,
++        title: "Winterdienst: Tätigkeitsbericht versendet",
++        body: `Tätigkeitsbericht automatisch versendet. Zuordnung: ${contextKey}. Empfänger: ${recipientEmail}. Einsatzdatum: ${dateKey}.`,
++      });
++    } catch (error) {
++      failures.push(
++        `${projectNumber || projectId} ${dateKey}: ${error instanceof Error ? error.message : "Unbekannter Fehler"}`
++      );
++    }
++  }
++
++  if (failures.length > 0 && settings.notificationUserIds.length > 0) {
++    const subject = "Winterdienst-Automatik: Fehler beim Versand";
++    const failureBody = failures.join("\n");
++    await notifyAutomationFailure({
++      organizationId: organization.id,
++      userIds: settings.notificationUserIds,
++      subject,
++      body: failureBody,
++    });
++    const notificationEmails = await getUserEmails(settings.notificationUserIds);
++    if (notificationEmails.length > 0) {
++      await fetch(new URL("/api/document-mail", req.url), {
++        method: "POST",
++        headers: { "Content-Type": "application/json" },
++        body: JSON.stringify({
++          kind: "document",
++          documentId: `winter-service-automation:${Date.now()}`,
++          documentNumber: "Winterdienst-Automatik",
++          projectId: "",
++          projectNumber: "",
++          projectTitle: "Winterdienst-Automatik",
++          customerName: "",
++          to: notificationEmails.join(", "),
++          cc: "",
++          bcc: "",
++          subject,
++          body: `Hallo,\n\nbei der Winterdienst-Automatik sind Fehler aufgetreten:\n\n${failureBody}\n\nBitte in WorkPilot360 unter Prozess/Automation > Winterdienst prüfen.`,
++          attachPdf: false,
++          manualAttachments: [],
++          actorId,
++        }),
++      }).catch(() => null);
++    }
++  }
++
++  return NextResponse.json({
++    processed: runs.length,
++    sent,
++    failed: failures.length,
++    failures,
++  });
++}
