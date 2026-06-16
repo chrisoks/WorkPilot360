@@ -119,11 +119,30 @@ function formatEntry(entry: ProjectLogbookEntryRow) {
   };
 }
 
+function formatEntrySummary(entry: ProjectLogbookEntryRow) {
+  const attachments = cleanAttachments(entry.attachments);
+
+  return {
+    id: entry.id,
+    projectId: entry.projectId,
+    title: entry.title || "Eintrag",
+    projectMonth: entry.projectMonth || "",
+    updatedAt: entry.updatedAt.toISOString(),
+    attachments: attachments.map((attachment) => ({
+      name: attachment.name,
+      type: attachment.type,
+      size: attachment.size || 0,
+    })),
+  };
+}
+
 export async function GET(req: Request) {
   const { organization } = await getDemoContext();
   await ensureProjectLogbookEntryTable();
-  const projectId = cleanString(new URL(req.url).searchParams.get("projectId"));
-  const updatedAfterValue = cleanString(new URL(req.url).searchParams.get("updatedAfter"));
+  const url = new URL(req.url);
+  const projectId = cleanString(url.searchParams.get("projectId"));
+  const updatedAfterValue = cleanString(url.searchParams.get("updatedAfter"));
+  const summaryOnly = cleanString(url.searchParams.get("summary")) === "1";
   const updatedAfter = updatedAfterValue ? new Date(updatedAfterValue) : null;
   const hasUpdatedAfter = Boolean(updatedAfter && !Number.isNaN(updatedAfter.getTime()));
 
@@ -145,7 +164,7 @@ export async function GET(req: Request) {
           ORDER BY "createdAt" DESC
         `;
 
-    return NextResponse.json(entries.map(formatEntry));
+    return NextResponse.json(summaryOnly ? entries.map(formatEntrySummary) : entries.map(formatEntry));
   }
 
   const entries = await prisma.$queryRaw<ProjectLogbookEntryRow[]>`

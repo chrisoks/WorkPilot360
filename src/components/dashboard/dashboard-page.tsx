@@ -1577,6 +1577,19 @@ type ProjectLogbookAttachmentPatchResponse = {
   history?: ProjectLogbookEntry;
 };
 
+type ProjectLogbookEntrySummary = {
+  id: string;
+  projectId: string;
+  title: string;
+  projectMonth?: string;
+  updatedAt?: string;
+  attachments: Array<{
+    name: string;
+    type: LogbookAttachment["type"];
+    size?: number;
+  }>;
+};
+
 type ProjectPotentialStatus = "open" | "follow_up" | "offered" | "lost";
 type ProjectPotentialPriority = "low" | "normal" | "high";
 
@@ -10314,6 +10327,39 @@ export function DashboardPage() {
     ]);
   }
 
+  function getProjectLogbookSignature(entries: Array<ProjectLogbookEntry | ProjectLogbookEntrySummary>) {
+    return entries
+      .map((entry) => {
+        const attachments = entry.attachments
+          .map((attachment) => `${attachment.type}:${attachment.name}:${attachment.size || 0}`)
+          .sort()
+          .join(",");
+        return `${entry.id}|${entry.title}|${entry.projectMonth || ""}|${entry.updatedAt || ""}|${attachments}`;
+      })
+      .sort()
+      .join(";");
+  }
+
+  async function syncOpenProjectLogbookEntries(projectId: string) {
+    if (!projectId) return;
+
+    const res = await fetch(
+      `/api/project-logbook-entries?projectId=${encodeURIComponent(projectId)}&summary=1`,
+      { cache: "no-store" }
+    );
+
+    if (!res.ok) return;
+
+    const serverSummary = (await res.json()) as ProjectLogbookEntrySummary[];
+    const currentProjectEntries = projectLogbookEntriesRef.current.filter(
+      (entry) => String(entry.projectId) === String(projectId)
+    );
+
+    if (getProjectLogbookSignature(serverSummary) !== getProjectLogbookSignature(currentProjectEntries)) {
+      await loadProjectLogbookEntriesForProject(projectId);
+    }
+  }
+
   async function loadProjectPotentials() {
     const res = await fetch("/api/potentials", { cache: "no-store" });
 
@@ -12033,10 +12079,27 @@ export function DashboardPage() {
     if (!selectedProjectFileId) return;
 
     const intervalId = window.setInterval(() => {
-      void loadProjectLogbookEntriesForProject(selectedProjectFileId, { onlyChanged: true });
+      void syncOpenProjectLogbookEntries(selectedProjectFileId);
     }, 15000);
 
     return () => window.clearInterval(intervalId);
+  }, [selectedProjectFileId]);
+
+  useEffect(() => {
+    if (!selectedProjectFileId) return;
+
+    const syncWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        void syncOpenProjectLogbookEntries(selectedProjectFileId);
+      }
+    };
+
+    window.addEventListener("focus", syncWhenVisible);
+    document.addEventListener("visibilitychange", syncWhenVisible);
+    return () => {
+      window.removeEventListener("focus", syncWhenVisible);
+      document.removeEventListener("visibilitychange", syncWhenVisible);
+    };
   }, [selectedProjectFileId]);
 
   useEffect(() => {
