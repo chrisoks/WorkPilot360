@@ -12031,14 +12031,13 @@ export function DashboardPage() {
 
   useEffect(() => {
     if (!selectedProjectFileId) return;
-    if (!["hero", "projectsSolutions", "projectsImmocare"].includes(activeTab)) return;
 
     const intervalId = window.setInterval(() => {
       void loadProjectLogbookEntriesForProject(selectedProjectFileId, { onlyChanged: true });
     }, 15000);
 
     return () => window.clearInterval(intervalId);
-  }, [activeTab, selectedProjectFileId]);
+  }, [selectedProjectFileId]);
 
   useEffect(() => {
     if (!mayAccessEmployeeCosts && employeeTopTab === "costs") {
