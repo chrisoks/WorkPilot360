@@ -1568,6 +1568,7 @@ type ProjectLogbookEntry = {
   visibleFor: string[];
   attachments: LogbookAttachment[];
   projectMonth?: string;
+  updatedAt?: string;
 };
 
 type ProjectLogbookAttachmentPatchResponse = {
@@ -4934,6 +4935,7 @@ export function DashboardPage() {
     useState<CustomerDocumentType>("Allgemeine Dokumente");
   const [customerLogbookEntries, setCustomerLogbookEntries] = useState<CustomerLogbookEntry[]>([]);
   const [projectLogbookEntries, setProjectLogbookEntries] = useState<ProjectLogbookEntry[]>([]);
+  const projectLogbookEntriesRef = useRef<ProjectLogbookEntry[]>([]);
   const [projectPotentials, setProjectPotentials] = useState<ProjectPotential[]>([]);
   const [projectStatusTimelineEntries, setProjectStatusTimelineEntries] = useState<StatusTimelineEntry[]>([]);
   const [projectLogbookSearch, setProjectLogbookSearch] = useState("");
@@ -10280,6 +10282,38 @@ export function DashboardPage() {
     setLogbookError("");
   }
 
+  function getProjectLogbookUpdatedAfter(projectId: string) {
+    return projectLogbookEntriesRef.current
+      .filter((entry) => String(entry.projectId) === String(projectId))
+      .map((entry) => new Date(entry.updatedAt || "").getTime())
+      .filter(Number.isFinite)
+      .sort((first, second) => second - first)[0];
+  }
+
+  async function loadProjectLogbookEntriesForProject(projectId: string, options: { onlyChanged?: boolean } = {}) {
+    if (!projectId) return;
+
+    const updatedAfter = options.onlyChanged ? getProjectLogbookUpdatedAfter(projectId) : undefined;
+    const params = new URLSearchParams({ projectId });
+    if (updatedAfter) params.set("updatedAfter", new Date(updatedAfter).toISOString());
+
+    const res = await fetch(`/api/project-logbook-entries?${params.toString()}`, { cache: "no-store" });
+
+    if (!res.ok) return;
+
+    const data = (await res.json()) as ProjectLogbookEntry[];
+    if (options.onlyChanged && data.length === 0) return;
+
+    setProjectLogbookEntries((currentEntries) => [
+      ...data,
+      ...currentEntries.filter((entry) =>
+        options.onlyChanged
+          ? !data.some((updatedEntry) => updatedEntry.id === entry.id)
+          : String(entry.projectId) !== String(projectId)
+      ),
+    ]);
+  }
+
   async function loadProjectPotentials() {
     const res = await fetch("/api/potentials", { cache: "no-store" });
 
@@ -11908,6 +11942,10 @@ export function DashboardPage() {
   }, [forecastPeriodPreset, forecastCustomStartDate, forecastCustomEndDate]);
 
   useEffect(() => {
+    projectLogbookEntriesRef.current = projectLogbookEntries;
+  }, [projectLogbookEntries]);
+
+  useEffect(() => {
     loadTasks();
     loadUsers();
     loadTeams();
@@ -11963,6 +12001,7 @@ export function DashboardPage() {
 
   useEffect(() => {
     if (selectedProjectFileId) {
+      void loadProjectLogbookEntriesForProject(selectedProjectFileId);
       void loadProjectTimeEntries();
       void loadOffers(selectedProjectFileId);
       void loadInvoices(selectedProjectFileId);
@@ -11986,6 +12025,17 @@ export function DashboardPage() {
     const intervalId = window.setInterval(() => {
       void loadProjectTimeEntries();
     }, 5000);
+
+    return () => window.clearInterval(intervalId);
+  }, [activeTab, selectedProjectFileId]);
+
+  useEffect(() => {
+    if (!selectedProjectFileId) return;
+    if (!["hero", "projectsSolutions", "projectsImmocare"].includes(activeTab)) return;
+
+    const intervalId = window.setInterval(() => {
+      void loadProjectLogbookEntriesForProject(selectedProjectFileId, { onlyChanged: true });
+    }, 15000);
 
     return () => window.clearInterval(intervalId);
   }, [activeTab, selectedProjectFileId]);

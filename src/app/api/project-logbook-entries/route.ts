@@ -24,6 +24,7 @@ type ProjectLogbookEntryRow = {
   attachments: unknown;
   projectMonth: string | null;
   createdAt: Date;
+  updatedAt: Date;
 };
 
 const ACTIVITY_REPORT_TITLES = new Set([
@@ -47,14 +48,16 @@ async function ensureProjectLogbookEntryTable() {
       "visibleFor" JSONB NOT NULL DEFAULT '[]'::jsonb,
       "attachments" JSONB NOT NULL DEFAULT '[]'::jsonb,
       "projectMonth" TEXT,
-      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `;
 
   await prisma.$executeRaw`
     ALTER TABLE "ProjectLogbookEntry"
     ADD COLUMN IF NOT EXISTS "projectMonth" TEXT,
-    ADD COLUMN IF NOT EXISTS "authorUserId" TEXT
+    ADD COLUMN IF NOT EXISTS "authorUserId" TEXT,
+    ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
   `;
 }
 
@@ -112,12 +115,38 @@ function formatEntry(entry: ProjectLogbookEntryRow) {
     visibleFor: cleanStringList(entry.visibleFor),
     attachments: cleanAttachments(entry.attachments),
     projectMonth: entry.projectMonth || "",
+    updatedAt: entry.updatedAt.toISOString(),
   };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const { organization } = await getDemoContext();
   await ensureProjectLogbookEntryTable();
+  const projectId = cleanString(new URL(req.url).searchParams.get("projectId"));
+  const updatedAfterValue = cleanString(new URL(req.url).searchParams.get("updatedAfter"));
+  const updatedAfter = updatedAfterValue ? new Date(updatedAfterValue) : null;
+  const hasUpdatedAfter = Boolean(updatedAfter && !Number.isNaN(updatedAfter.getTime()));
+
+  if (projectId) {
+    const entries = hasUpdatedAfter
+      ? await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
+          SELECT *
+          FROM "ProjectLogbookEntry"
+          WHERE "organizationId" = ${organization.id}
+            AND "projectId" = ${projectId}
+            AND "updatedAt" > ${updatedAfter}
+          ORDER BY "createdAt" DESC
+        `
+      : await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
+          SELECT *
+          FROM "ProjectLogbookEntry"
+          WHERE "organizationId" = ${organization.id}
+            AND "projectId" = ${projectId}
+          ORDER BY "createdAt" DESC
+        `;
+
+    return NextResponse.json(entries.map(formatEntry));
+  }
 
   const entries = await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
     SELECT *
@@ -248,7 +277,8 @@ export async function PATCH(req: Request) {
   const nextAttachments = attachments.filter((_, index) => index !== targetIndex);
   const updatedRows = await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
     UPDATE "ProjectLogbookEntry"
-    SET "attachments" = ${JSON.stringify(nextAttachments)}::jsonb
+    SET "attachments" = ${JSON.stringify(nextAttachments)}::jsonb,
+        "updatedAt" = CURRENT_TIMESTAMP
     WHERE "id" = ${entry.id}
       AND "organizationId" = ${organization.id}
     RETURNING *
@@ -276,7 +306,8 @@ export async function PATCH(req: Request) {
     const movedRows = targetEntry
       ? await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
           UPDATE "ProjectLogbookEntry"
-          SET "attachments" = ${JSON.stringify([...cleanAttachments(targetEntry.attachments), removedAttachment])}::jsonb
+          SET "attachments" = ${JSON.stringify([...cleanAttachments(targetEntry.attachments), removedAttachment])}::jsonb,
+              "updatedAt" = CURRENT_TIMESTAMP
           WHERE "id" = ${targetEntry.id}
             AND "organizationId" = ${organization.id}
           RETURNING *
