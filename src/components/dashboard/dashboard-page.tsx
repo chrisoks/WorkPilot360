@@ -27406,8 +27406,7 @@ await addProjectLogbookEntry(
       .filter(
         (invoice) =>
           String(invoice.projectId) === String(selectedProjectFile.id) &&
-          !isDeletedInvoice(invoice) &&
-          invoice.status !== "Entwurf"
+          isFinanciallyActiveInvoice(invoice)
       )
       .reduce<Record<string, string[]>>((groups, invoice) => {
         const monthKey = getProjectInvoiceMonth(invoice);
@@ -27419,8 +27418,7 @@ await addProjectLogbookEntry(
       .filter(
         (invoice) =>
           String(invoice.projectId) === String(selectedProjectFile.id) &&
-          !isDeletedInvoice(invoice) &&
-          !["Entwurf", "Storniert", "Stornorechnung"].includes(invoice.status)
+          isFinanciallyActiveInvoice(invoice)
       )
       .reduce<Record<string, string[]>>((groups, invoice) => {
         const monthKey = getProjectInvoiceMonth(invoice);
@@ -27728,7 +27726,7 @@ await addProjectLogbookEntry(
       .filter((row) => row.dueState.overdueDays > 0)
       .sort((first, second) => second.dueState.overdueDays - first.dueState.overdueDays);
     const nextProjectReminderCandidate = projectReminderCandidates[0] ?? null;
-    const finalizedProjectInvoices = activeProjectInvoices.filter((invoice) => invoice.status !== "Entwurf");
+    const finalizedProjectInvoices = activeProjectInvoices.filter(isFinanciallyActiveInvoice);
     const projectProfitInvoices = projectInvoices.filter(isFinanciallyActiveInvoice);
     const projectProfitMonthAllInvoices = projectInvoices.filter(
       (invoice) => getProjectInvoiceMonth(invoice) === projectComparisonMonth
@@ -29869,8 +29867,7 @@ await addProjectLogbookEntry(
                         {displayedProjectOffers.map((offer) => {
                           const linkedInvoice = projectInvoices.find(
                             (invoice) =>
-                              !isDeletedInvoice(invoice) &&
-                              invoice.status !== "Entwurf" &&
+                              isFinanciallyActiveInvoice(invoice) &&
                               (invoice.sourceOfferId === offer.id || invoice.sourceOfferNumber === offer.offerNumber)
                           );
 
