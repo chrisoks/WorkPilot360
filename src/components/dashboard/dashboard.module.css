@@ -226,7 +226,7 @@
   border: 1px solid #d8e0ea;
   border-radius: 16px;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   min-height: 46px;
   padding: 0 14px;
   transition:
@@ -247,15 +247,6 @@
   box-shadow: 0 0 0 4px rgba(30, 94, 255, 0.12);
 }
 
-.loginInputShell > span,
-.loginPasswordField > span {
-  color: #94a3b8;
-  font-size: 1rem;
-  font-weight: 900;
-  line-height: 1;
-  margin-right: 13px;
-}
-
 .loginCard input {
   background: transparent;
   border: 0;
@@ -269,7 +260,7 @@
 }
 
 .loginPasswordField {
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   position: relative;
 }
 

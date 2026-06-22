@@ -24928,7 +24928,6 @@ await addProjectLogbookEntry(
                 <label className={styles.loginFieldGroup}>
                   <span>E-Mail</span>
                   <div className={styles.loginInputShell}>
-                    <span aria-hidden="true">?</span>
                     <input
                       type="email"
                       value={loginEmail}
@@ -24942,7 +24941,6 @@ await addProjectLogbookEntry(
                 <label className={styles.loginFieldGroup}>
                   <span>Passwort</span>
                   <div className={styles.loginPasswordField}>
-                    <span aria-hidden="true">?</span>
                     <input
                       type={showLoginPassword ? "text" : "password"}
                       value={loginPassword}
@@ -24975,7 +24973,6 @@ await addProjectLogbookEntry(
                   disabled={!loginEmail.trim() || !loginPassword || isLoginSubmitting}
                 >
                   <span>{isLoginSubmitting ? "Anmeldung läuft..." : "Einloggen"}</span>
-                  <strong aria-hidden="true">?</strong>
                 </button>
 
                 <p className={styles.loginContactHint}>
