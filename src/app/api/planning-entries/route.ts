@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { Prisma, Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
-import { getAuthenticatedSessionUser } from "@/lib/auth/session";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canManagePlanningEntries } from "@/lib/permissions";
 
 type DemoUser = {
@@ -163,33 +163,6 @@ function cleanApprovalStatus(value: unknown) {
 
 function getUserName(user: Pick<DemoUser, "firstName" | "lastName" | "email">) {
   return `${user.firstName} ${user.lastName}`.trim() || user.email;
-}
-
-function getRequestActor(users: DemoUser[], actorId: unknown) {
-  if (typeof actorId !== "string" || !actorId.trim()) {
-    return null;
-  }
-
-  return users.find((user) => user.id === actorId.trim() && user.isActive) ?? null;
-}
-
-async function getRequestActorOrSessionUser(req: Request, users: DemoUser[], actorId: unknown) {
-  const requestedActor = getRequestActor(users, actorId);
-  if (requestedActor) return requestedActor;
-
-  if (typeof actorId === "string" && actorId.trim()) return null;
-
-  const sessionUser = await getAuthenticatedSessionUser(req);
-  if (!sessionUser) return null;
-
-  return users.find((user) => user.id === sessionUser.id && user.isActive) ?? null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
 }
 
 function getMinutesBetween(startTime: string, endTime: string) {
@@ -477,14 +450,15 @@ export async function GET(req: Request) {
   await ensurePlanningEntryTable();
   const { searchParams } = new URL(req.url);
   const requestedActorId = searchParams.get("actorUserId") ?? searchParams.get("actorId");
-  const actor = await getRequestActorOrSessionUser(req, users, requestedActorId);
-  if (!actor) {
-    if (!requestedActorId) {
+  const actorResult = await getSessionBoundActor(req, users, requestedActorId);
+  if (!actorResult.ok) {
+    if (!requestedActorId && actorResult.status === 401) {
       return NextResponse.json([]);
     }
 
-    return unauthorizedActorResponse();
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   const entries = await prisma.$queryRaw<PlanningEntryRow[]>`
     SELECT *
@@ -521,10 +495,11 @@ export async function POST(req: Request) {
   const { organization, users } = await getDemoContext();
   await ensurePlanningEntryTable();
 
-  const actor = getRequestActor(users, body.actorUserId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorUserId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   const actorUserId = actor.id;
   const actorName = getUserName(actor);
@@ -813,10 +788,11 @@ export async function DELETE(req: Request) {
   const { organization, users } = await getDemoContext();
   await ensurePlanningEntryTable();
 
-  const actor = getRequestActor(users, searchParams.get("actorUserId"));
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, searchParams.get("actorUserId"));
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   const actorUserId = actor.id;
   const actorName = getUserName(actor);
