@@ -46,7 +46,7 @@ type OfferLineLaborInput = {
 
 type OfferInput = {
   id?: string;
-  action?: "markLost" | "markWon" | "restoreLost";
+  action?: "markLost" | "markWon" | "restoreLost" | "markPrinted";
   actorId?: string;
   actorName?: string;
   projectId?: string;
@@ -1239,22 +1239,67 @@ export async function PATCH(req: Request) {
   const { organization, users } = await getDemoContext();
   await ensureOfferTables();
   const body = (await req.json()) as OfferInput;
+  const action = cleanString(body.action);
   const actorResult = await getSessionBoundActor(req, users, body.actorId);
   if (!actorResult.ok) {
     return sessionBoundActorResponse(actorResult);
   }
   const actor = actorResult.actor;
-  if (!canManageOffers(actor)) {
+  if (!canManageOffers(actor) && !(action === "markPrinted" && canSendDocumentMails(actor))) {
     return forbiddenOfferResponse();
   }
   const actorName = getUserName(actor);
   const id = cleanString(body.id);
-  const action = cleanString(body.action);
   const lines = normalizeOfferLines(body.lines);
   const saveAsDraft = Boolean(body.saveAsDraft);
 
   if (!id) {
     return NextResponse.json({ error: "Angebot fehlt." }, { status: 400 });
+  }
+
+  if (action === "markPrinted") {
+    const existingRows = await prisma.$queryRaw<Array<{ offerNumber: string; projectId: string }>>`
+      SELECT "offerNumber", "projectId"
+      FROM "Offer"
+      WHERE "organizationId" = ${organization.id} AND "id" = ${id}
+      LIMIT 1
+    `;
+    const existingOffer = existingRows[0];
+    if (!existingOffer) {
+      return NextResponse.json({ error: "Angebot wurde nicht gefunden." }, { status: 404 });
+    }
+
+    await addOfferHistory({
+      organizationId: organization.id,
+      offerId: id,
+      projectId: existingOffer.projectId,
+      offerNumber: existingOffer.offerNumber,
+      eventType: "printed",
+      title: "Angebot gedruckt",
+      note: `${existingOffer.offerNumber} wurde gedruckt bzw. zum Drucken geöffnet.`,
+      actorName,
+    });
+
+    const savedOfferRows = await prisma.$queryRaw<OfferRow[]>`
+      SELECT *
+      FROM "Offer"
+      WHERE "organizationId" = ${organization.id} AND "id" = ${id}
+      LIMIT 1
+    `;
+    const savedLines = await prisma.$queryRaw<OfferLineRow[]>`
+      SELECT *
+      FROM "OfferLine"
+      WHERE "organizationId" = ${organization.id} AND "offerId" = ${id}
+      ORDER BY "position" ASC
+    `;
+    const savedLaborRows = await prisma.$queryRaw<OfferLineLaborRow[]>`
+      SELECT *
+      FROM "OfferLineLabor"
+      WHERE "organizationId" = ${organization.id} AND "offerId" = ${id}
+      ORDER BY "position" ASC
+    `;
+
+    return NextResponse.json(serializeOffer(savedOfferRows[0], savedLines, savedLaborRows));
   }
 
   if (action === "markLost") {

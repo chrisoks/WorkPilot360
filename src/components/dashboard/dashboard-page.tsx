@@ -9358,7 +9358,7 @@ export function DashboardPage() {
     setDocumentMailError(
       activeMailAccount.status === "connected"
         ? ""
-        : "F?r deinen Benutzer ist noch kein Microsoft 365 Konto verbunden. Du kannst den Versanddialog vorbereiten, aber noch nicht senden."
+        : "Für deinen Benutzer ist noch kein Microsoft 365 Konto verbunden. Du kannst den Versanddialog vorbereiten, aber noch nicht senden."
     );
     setDocumentMailSuccess("");
   }
@@ -9423,13 +9423,24 @@ export function DashboardPage() {
     });
   }
 
+  function getDataUrlByteSize(dataUrl: string) {
+    const base64 = dataUrl.split(",", 2)[1] ?? "";
+    const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+    return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
+  }
+
+  function getDocumentMailManualAttachmentBytes(attachments: Array<{ dataUrl: string }>) {
+    return attachments.reduce((sum, attachment) => sum + getDataUrlByteSize(attachment.dataUrl), 0);
+  }
+
   async function addManualDocumentMailAttachments(files: FileList | null) {
     if (!files?.length) return;
     const selectedFiles = Array.from(files);
     const totalBytes = selectedFiles.reduce((sum, file) => sum + file.size, 0);
+    const existingBytes = getDocumentMailManualAttachmentBytes(documentMailDraft?.manualAttachments || []);
     const maxBytes = 15 * 1024 * 1024;
 
-    if (totalBytes > maxBytes) {
+    if (existingBytes + totalBytes > maxBytes) {
       setDocumentMailError("Die ausgewählten Zusatzanhänge sind größer als 15 MB.");
       return;
     }
@@ -9510,6 +9521,15 @@ export function DashboardPage() {
     const options = getDocumentMailProjectAttachmentOptions(documentMailDraft);
     const selectedOptions = options.filter((item) => selectedDocumentMailProjectAttachmentKeys.includes(item.key));
     if (!selectedOptions.length) return;
+    const existingAttachments = documentMailDraft?.manualAttachments || [];
+    const selectedAttachments = selectedOptions.map((option) => ({ name: option.name, dataUrl: option.dataUrl }));
+    const totalBytes = getDocumentMailManualAttachmentBytes([...existingAttachments, ...selectedAttachments]);
+    const maxBytes = 15 * 1024 * 1024;
+
+    if (totalBytes > maxBytes) {
+      setDocumentMailError("Die ausgewählten Projektanhänge sind zusammen größer als 15 MB.");
+      return;
+    }
 
     setDocumentMailDraft((current) =>
       current
@@ -9517,7 +9537,7 @@ export function DashboardPage() {
             ...current,
             manualAttachments: [
               ...(current.manualAttachments || []),
-              ...selectedOptions.map((option) => ({ name: option.name, dataUrl: option.dataUrl })),
+              ...selectedAttachments,
             ],
           }
         : current
@@ -18295,6 +18315,35 @@ await addProjectLogbookEntry(
         setErrorMessage("PDF wurde geöffnet. Bitte den Druckdialog im Browser starten.");
       }
     }, 700);
+  }
+
+  async function printOfferDocument(offer: OfferItem) {
+    printPdfDocument(getOfferPdfUrl(offer.id));
+
+    const res = await fetch("/api/offers", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: offer.id,
+        action: "markPrinted",
+        actorId: activeUserId,
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setErrorMessage(data?.error ?? "Druck konnte nicht in der Angebotshistorie markiert werden.");
+      return;
+    }
+
+    if (offer.projectId) {
+      await loadOfferHistory(offer.projectId);
+      await addProjectLogbookEntry(
+        offer.projectId,
+        "Angebot",
+        `Angebot ${offer.offerNumber} wurde zum Drucken geöffnet.`
+      );
+    }
   }
 
   async function printInvoiceDocument(invoice: InvoiceItem) {
@@ -29950,7 +29999,7 @@ await addProjectLogbookEntry(
                                 <button
                                   type="button"
                                   className={styles.timeEntryEditButton}
-                                  onClick={() => printPdfDocument(getOfferPdfUrl(offer.id))}
+                                  onClick={() => void printOfferDocument(offer)}
                                 >
                                   Drucken
                                 </button>
