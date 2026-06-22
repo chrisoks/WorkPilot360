@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { Prisma, type User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getAuthenticatedSessionUser } from "@/lib/auth/session";
 import { canCreateNotifications } from "@/lib/permissions";
 
 type NotificationRow = {
@@ -65,10 +66,13 @@ export async function GET(req: Request) {
   const limit = Math.min(Math.max(Number(searchParams.get("limit")) || 50, 1), 100);
   const offset = Math.max(Number(searchParams.get("offset")) || 0, 0);
   const { users } = await getDemoContext();
-  const activeUser = getRequestUser(users, requestedUserId);
+  const sessionUser = requestedUserId ? null : await getAuthenticatedSessionUser(req);
+  const activeUser =
+    getRequestUser(users, requestedUserId) ??
+    (!requestedUserId && sessionUser ? getRequestUser(users, sessionUser.id) : null);
 
   if (!activeUser) {
-    return unauthorizedUserResponse();
+    return requestedUserId ? unauthorizedUserResponse() : NextResponse.json(isHistory ? { items: [], hasMore: false } : []);
   }
 
   const searchFilter = search
