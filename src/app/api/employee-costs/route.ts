@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canAccessEmployeeCosts } from "@/lib/permissions";
 
 type EmployeeCostRow = {
@@ -81,35 +82,12 @@ async function ensureEmployeeCostTable() {
   `;
 }
 
-function unauthorizedActorResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
-}
-
 async function readJsonBody(request: Request) {
   try {
     return await request.json();
   } catch {
     return {};
   }
-}
-
-async function getRequestActor(organizationId: string, actorId: string) {
-  if (!actorId) return null;
-
-  const rows = await prisma.$queryRaw<
-    Array<{ id: string; firstName: string; lastName: string; isActive: boolean }>
-  >`
-    SELECT id, "firstName", "lastName", "isActive"
-    FROM "User"
-    WHERE id = ${actorId}
-      AND "organizationId" = ${organizationId}
-      AND "isActive" = true
-    LIMIT 1
-  `;
-  return rows[0] ?? null;
 }
 
 function getActorName(actor: { firstName: string; lastName: string }) {
@@ -124,7 +102,7 @@ async function assertTargetEmployee(organizationId: string, userId: string) {
 }
 
 export async function GET(request: Request) {
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureEmployeeCostTable();
 
   const url = new URL(request.url);
@@ -135,10 +113,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Mitarbeiter fehlt." }, { status: 400 });
   }
 
-  const actor = await getRequestActor(organization.id, actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(request, users, actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   if (!canAccessEmployeeCosts(actor)) {
     return NextResponse.json({ error: "Kein Zugriff auf Lohnkosten." }, { status: 403 });
@@ -160,7 +139,7 @@ export async function GET(request: Request) {
 }
 
 export async function PUT(request: Request) {
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureEmployeeCostTable();
 
   const body = await readJsonBody(request);
@@ -171,10 +150,11 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "Mitarbeiter fehlt." }, { status: 400 });
   }
 
-  const actor = await getRequestActor(organization.id, actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(request, users, actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   if (!canAccessEmployeeCosts(actor)) {
     return NextResponse.json({ error: "Kein Zugriff auf Lohnkosten." }, { status: 403 });

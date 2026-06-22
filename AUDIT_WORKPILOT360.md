@@ -3154,3 +3154,16 @@ Warum:
 Bewusst noch offen:
 - Weitere Fach-APIs sollten in eigenen kleinen Schnitten auf denselben Helfer umgestellt werden.
 - Fuer Produktion sollte weiterhin ein explizites `WORKPILOT_SESSION_SECRET` oder `NEXTAUTH_SECRET` gesetzt werden.
+
+## Folgeblock Auth/Session: Mitarbeiter-Sensitivdaten
+
+Stand: 2026-06-22
+
+Umgesetzt:
+- `employee-costs` nutzt fuer Lesen und Speichern der Lohnkosten jetzt die serverseitig gepruefte Session-Actor-Bindung.
+- `employee-assessments` nutzt fuer Lesen und Speichern von Mitarbeiterbewertungen/DISG-Daten jetzt die serverseitig gepruefte Session-Actor-Bindung.
+- Eigene Bewertungsansicht bleibt ohne explizite Zielperson weiterhin auf den angemeldeten Benutzer bezogen.
+- Fremde Actor-Werte bleiben nur im Rahmen der zentral erlaubten Emulation moeglich; fachliche Rollenregeln greifen danach weiter.
+
+Warum:
+- Lohnkosten und Mitarbeiterbewertungen sind besonders sensible Mitarbeiterdaten und sollten nicht nur ueber frei mitsendbare Actor-Parameter geschuetzt sein.

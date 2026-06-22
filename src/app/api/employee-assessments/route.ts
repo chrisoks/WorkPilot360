@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Prisma, Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canManageEmployeeAssessments } from "@/lib/permissions";
 
 type DisgDimension = "D" | "I" | "S" | "G";
@@ -177,13 +178,6 @@ type AssessmentUser = {
   isActive: boolean;
 };
 
-function unauthorizedActorResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
-}
-
 async function readJsonBody(request: Request) {
   try {
     return await request.json();
@@ -202,14 +196,6 @@ async function getUserById(userId: string) {
   return user;
 }
 
-function getRequestActor(user: AssessmentUser | undefined, organizationId: string) {
-  if (!user || user.organizationId !== organizationId || !user.isActive) {
-    return null;
-  }
-
-  return user;
-}
-
 async function readAssessment(userId: string) {
   const [row] = await prisma.$queryRaw<Array<{ employeeAssessment: Prisma.JsonValue | null }>>`
     SELECT "employeeAssessment"
@@ -223,14 +209,15 @@ async function readAssessment(userId: string) {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const actorId = searchParams.get("actorId") ?? "";
-  const userId = searchParams.get("userId") ?? actorId;
-  const { organization } = await getDemoContext();
+  const requestedUserId = searchParams.get("userId") ?? "";
+  const { organization, users } = await getDemoContext();
   await ensureAssessmentColumn();
-  const [actor, target] = await Promise.all([getUserById(actorId), getUserById(userId)]);
-  const requestActor = getRequestActor(actor, organization.id);
-  if (!requestActor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(request, users, actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const requestActor = actorResult.actor;
+  const target = await getUserById(requestedUserId || requestActor.id);
 
   if (!target || target.organizationId !== organization.id) {
     return NextResponse.json({ error: "Benutzer nicht gefunden." }, { status: 404 });
@@ -246,16 +233,17 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const body = await readJsonBody(request);
   const actorId = typeof body?.actorId === "string" ? body.actorId : "";
-  const userId = typeof body?.userId === "string" ? body.userId : "";
+  const requestedUserId = typeof body?.userId === "string" ? body.userId : "";
   const section = typeof body?.section === "string" ? body.section : "";
   const payload = body?.data ?? null;
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureAssessmentColumn();
-  const [actor, target] = await Promise.all([getUserById(actorId), getUserById(userId)]);
-  const requestActor = getRequestActor(actor, organization.id);
-  if (!requestActor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(request, users, actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const requestActor = actorResult.actor;
+  const target = await getUserById(requestedUserId || requestActor.id);
 
   if (!target || target.organizationId !== organization.id) {
     return NextResponse.json({ error: "Benutzer nicht gefunden." }, { status: 404 });
