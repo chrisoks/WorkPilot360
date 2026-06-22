@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
-import { getSessionUserActor } from "@/lib/auth/actor";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import {
   canArchiveProjects,
   canCreateProjectLogbookEntries,
@@ -94,20 +94,6 @@ function cleanString(value: unknown) {
 
 function getActorName(actor: User) {
   return [actor.firstName, actor.lastName].filter(Boolean).join(" ") || actor.email || "System";
-}
-
-function getRequestActor(users: User[], actorId: unknown) {
-  const requestedActorId = cleanString(actorId);
-  if (!requestedActorId) return null;
-
-  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
 }
 
 function forbiddenLogbookResponse() {
@@ -328,12 +314,11 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const { organization, users } = await getDemoContext();
   const requestedActorId = url.searchParams.get("actorId");
-  const actor =
-    getRequestActor(users, requestedActorId) ??
-    (!cleanString(requestedActorId) ? await getSessionUserActor(req, users) : null);
-  if (!actor) {
-    return cleanString(requestedActorId) ? unauthorizedActorResponse() : NextResponse.json([]);
+  const actorResult = await getSessionBoundActor(req, users, requestedActorId);
+  if (!actorResult.ok) {
+    return cleanString(requestedActorId) ? sessionBoundActorResponse(actorResult) : NextResponse.json([]);
   }
+  const actor = actorResult.actor;
 
   await ensureProjectLogbookEntryTable();
   const projectId = cleanString(url.searchParams.get("projectId"));
@@ -378,10 +363,11 @@ export async function POST(req: Request) {
   const projectId = cleanString(body.projectId);
   const text = cleanString(body.text);
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
   if (!canCreateProjectLogbookEntries(actor)) {
     return forbiddenLogbookResponse();
   }
@@ -459,10 +445,11 @@ export async function PATCH(req: Request) {
   const action = cleanString(body.action) || "delete";
   const targetTitle = cleanString(body.targetTitle);
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
   const actorName = getActorName(actor);
   const actorUserId = actor.id;
 
