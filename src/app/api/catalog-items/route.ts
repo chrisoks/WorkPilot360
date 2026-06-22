@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
-import { getSessionUserActor } from "@/lib/auth/actor";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canManageCatalogItems } from "@/lib/permissions";
 
 type CatalogItemRow = {
@@ -195,22 +195,6 @@ function cleanString(value: unknown) {
 
 function getActorName(actor: User) {
   return `${actor.firstName} ${actor.lastName}`.trim() || actor.email;
-}
-
-function getRequestActor(users: User[], actorId: unknown) {
-  const requestedActorId = cleanString(actorId);
-  if (!requestedActorId) {
-    return null;
-  }
-
-  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
 }
 
 function forbiddenCatalogManagementResponse() {
@@ -526,12 +510,11 @@ export async function GET(req: Request) {
   const { organization, users } = await getDemoContext();
   const { searchParams } = new URL(req.url);
   const requestedActorId = searchParams.get("actorId");
-  const actor =
-    getRequestActor(users, requestedActorId) ??
-    (!cleanString(requestedActorId) ? await getSessionUserActor(req, users) : null);
-  if (!actor) {
-    return cleanString(requestedActorId) ? unauthorizedActorResponse() : NextResponse.json([]);
+  const actorResult = await getSessionBoundActor(req, users, requestedActorId);
+  if (!actorResult.ok) {
+    return cleanString(requestedActorId) ? sessionBoundActorResponse(actorResult) : NextResponse.json([]);
   }
+  const actor = actorResult.actor;
 
   return getCatalogItemsResponse(organization.id);
 }
@@ -541,10 +524,11 @@ export async function POST(req: Request) {
   await ensureCatalogTables();
 
   const body = await req.json();
-  const actor = getRequestActor(users, body.actorId ?? body.actorUserId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId ?? body.actorUserId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
   if (!canManageCatalogItems(actor)) {
     return forbiddenCatalogManagementResponse();
   }
@@ -620,10 +604,11 @@ export async function PATCH(req: Request) {
   await ensureCatalogTables();
 
   const body = await req.json();
-  const actor = getRequestActor(users, body.actorId ?? body.actorUserId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId ?? body.actorUserId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
   if (!canManageCatalogItems(actor)) {
     return forbiddenCatalogManagementResponse();
   }
@@ -745,10 +730,11 @@ export async function DELETE(req: Request) {
   }
 
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, searchParams.get("actorId") ?? searchParams.get("actorUserId"));
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, searchParams.get("actorId") ?? searchParams.get("actorUserId"));
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
   if (!canManageCatalogItems(actor)) {
     return forbiddenCatalogManagementResponse();
   }
