@@ -2,11 +2,12 @@ import { randomUUID } from "crypto";
 import { readFile } from "fs/promises";
 import path from "path";
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { Prisma, type User } from "@prisma/client";
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canArchiveProjects, canCreateProjectLogbookEntries } from "@/lib/permissions";
 
 type LogbookAttachment = {
   name: string;
@@ -21,6 +22,7 @@ type ProjectRow = {
   organizationId: string;
   projectNumber: string;
   title: string;
+  status: string;
   customer: string | null;
   contactId: string | null;
   contactPersonId: string | null;
@@ -69,9 +71,45 @@ const INK = rgb(0.08, 0.1, 0.14);
 const MUTED = rgb(0.35, 0.4, 0.48);
 const LINE = rgb(0.78, 0.82, 0.88);
 const BLUE = rgb(0.02, 0.38, 0.95);
+const MAX_REPORT_ATTACHMENT_BYTES = 12 * 1024 * 1024;
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function getRequestActor(users: User[], actorId: unknown) {
+  const requestedActorId = cleanString(actorId);
+  if (!requestedActorId) {
+    return null;
+  }
+
+  return users.find((demoUser) => demoUser.id === requestedActorId && demoUser.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
+
+function forbiddenReportResponse() {
+  return NextResponse.json(
+    { error: "Du darfst fuer dieses Projekt keinen Taetigkeitsbericht erstellen." },
+    { status: 403 }
+  );
+}
+
+function getUserName(user: Pick<User, "firstName" | "lastName" | "email">) {
+  return `${user.firstName} ${user.lastName}`.trim() || user.email;
+}
+
+function isArchivedProjectStatus(status: string) {
+  return status.trim().toLowerCase().includes("archiviert");
+}
+
+function formatFileSize(bytes: number) {
+  return `${Math.round(bytes / 1024 / 1024)} MB`;
 }
 
 function cleanAttachments(value: unknown): LogbookAttachment[] {
@@ -154,6 +192,7 @@ async function ensureActivityReportReadTables() {
       "contactId" TEXT,
       "contactPersonId" TEXT,
       "projectKind" TEXT,
+      "status" TEXT NOT NULL DEFAULT '',
       "branch" TEXT,
       "address" TEXT,
       "responsibleName" TEXT,
@@ -169,6 +208,7 @@ async function ensureActivityReportReadTables() {
     ADD COLUMN IF NOT EXISTS "contactId" TEXT,
     ADD COLUMN IF NOT EXISTS "contactPersonId" TEXT,
     ADD COLUMN IF NOT EXISTS "projectKind" TEXT,
+    ADD COLUMN IF NOT EXISTS "status" TEXT NOT NULL DEFAULT '',
     ADD COLUMN IF NOT EXISTS "branch" TEXT,
     ADD COLUMN IF NOT EXISTS "address" TEXT,
     ADD COLUMN IF NOT EXISTS "responsibleName" TEXT
@@ -717,12 +757,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Projekt fehlt." }, { status: 400 });
   }
 
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canCreateProjectLogbookEntries(actor)) {
+    return forbiddenReportResponse();
+  }
+
   await ensureActivityReportReadTables();
   await ensureProjectLogbookEntryTable();
 
   const projects = await prisma.$queryRaw<ProjectRow[]>`
-    SELECT id, "organizationId", "projectNumber", title, customer, "contactId", "contactPersonId",
+    SELECT id, "organizationId", "projectNumber", title, status, customer, "contactId", "contactPersonId",
            "projectKind", branch, address, "responsibleName"
     FROM "WorkPilotProject"
     WHERE id = ${projectId} AND "organizationId" = ${organization.id}
@@ -732,6 +780,12 @@ export async function POST(req: Request) {
 
   if (!project) {
     return NextResponse.json({ error: "Projekt wurde nicht gefunden." }, { status: 404 });
+  }
+  if (isArchivedProjectStatus(project.status) && !canArchiveProjects(actor)) {
+    return NextResponse.json(
+      { error: "Archivierte Projekte duerfen nicht mehr im Logbuch veraendert werden." },
+      { status: 403 }
+    );
   }
 
   const contactIds = [project.contactId, project.contactPersonId].map((id) => cleanString(id)).filter(Boolean);
@@ -821,6 +875,16 @@ export async function POST(req: Request) {
     size: Math.round((pdfData.length * 3) / 4),
     dataUrl: `data:application/pdf;base64,${pdfData}`,
   };
+  if (attachment.size > MAX_REPORT_ATTACHMENT_BYTES) {
+    return NextResponse.json(
+      {
+        error: `Taetigkeitsbericht ist zu gross. Erlaubt sind maximal ${formatFileSize(
+          MAX_REPORT_ATTACHMENT_BYTES
+        )} pro Datei.`,
+      },
+      { status: 413 }
+    );
+  }
   const reportCreatedAt = useMonth ? new Date(`${month}-01T12:00:00`) : new Date();
   const contextNote = reportContextKey
     ? ` Zuordnung: ${reportContextKey}${reportContextLabel ? ` (${reportContextLabel})` : ""}.`
@@ -831,6 +895,7 @@ export async function POST(req: Request) {
       UPDATE "ProjectLogbookEntry"
       SET "attachments" = ${JSON.stringify([attachment])}::jsonb,
           "body" = ${`${reportName} automatisch aktualisiert.${contextNote}`},
+          "author" = ${getUserName(actor)},
           "projectMonth" = ${useMonth ? month : null}
       WHERE "id" = ${existingReport.id}
         AND "organizationId" = ${organization.id}
@@ -845,7 +910,7 @@ export async function POST(req: Request) {
       "id", "organizationId", "projectId", "title", "body", "author", "colleague", "visibleFor", "attachments", "projectMonth", "createdAt"
     ) VALUES (
       ${randomUUID()}, ${organization.id}, ${projectId}, ${"Dokumente: Tätigkeitsberichte"},
-      ${`${reportName} automatisch erstellt.${contextNote}`}, ${"System"}, ${""},
+      ${`${reportName} automatisch erstellt.${contextNote}`}, ${getUserName(actor)}, ${""},
       ${JSON.stringify(["Geschaeftsfuehrer", "Vertriebler", "Niederlassungsleiter", "Buchhaltung"])}::jsonb,
       ${JSON.stringify([attachment])}::jsonb,
       ${useMonth ? month : null},

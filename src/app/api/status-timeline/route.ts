@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { ensureDefaultStatusEscalationRules, ensureStatusTrackingTables, seedCurrentStatusTimeline } from "@/lib/status-tracking";
+import { canMaintainStatusTimeline } from "@/lib/permissions";
 
 type TimelineRow = {
   id: string;
@@ -21,6 +23,29 @@ type TimelineRow = {
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function getRequestActor(users: User[], actorId: unknown) {
+  if (typeof actorId !== "string" || !actorId.trim()) {
+    return null;
+  }
+
+  return users.find((demoUser) => demoUser.id === actorId.trim() && demoUser.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
+
+async function readJsonBody(req: Request) {
+  try {
+    return await req.json();
+  } catch {
+    return {};
+  }
 }
 
 function getStatusStartedAtFromHistory(
@@ -205,8 +230,21 @@ export async function GET(req: Request) {
   return NextResponse.json(rows.map(formatEntry));
 }
 
-export async function POST() {
-  const { organization } = await getDemoContext();
+export async function POST(req: Request) {
+  const body = await readJsonBody(req);
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
+  if (!canMaintainStatusTimeline(actor)) {
+    return NextResponse.json(
+      { error: "Du darfst die Statusmessung nicht neu aufbauen." },
+      { status: 403 }
+    );
+  }
+
   await ensureStatusTrackingTables();
   await seedCurrentStatuses(organization.id);
   return NextResponse.json({ success: true });

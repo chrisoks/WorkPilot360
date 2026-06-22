@@ -1,9 +1,11 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { ensureSalesHubTables } from "@/lib/sales-hub/ensure";
 import { recordStatusTransition, seedCurrentStatusTimeline } from "@/lib/status-tracking";
+import { canAssignSalesItemsToOthers, canManageOwnedSalesItem, canManageSalesPipeline } from "@/lib/permissions";
 
 type SalesTargetRow = {
   id: string;
@@ -47,6 +49,27 @@ function getUserName(user: { firstName?: string | null; lastName?: string | null
   return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "System";
 }
 
+function getRequestActor(users: User[], actorId: unknown) {
+  const requestedActorId = cleanString(actorId);
+  if (!requestedActorId) return null;
+
+  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
+
+function forbiddenSalesResponse() {
+  return NextResponse.json(
+    { error: "Du darfst diese Vertriebsziele nicht bearbeiten." },
+    { status: 403 }
+  );
+}
+
 function formatSalesTarget(row: SalesTargetRow) {
   return {
     id: row.id,
@@ -72,9 +95,14 @@ function formatSalesTarget(row: SalesTargetRow) {
   };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   await ensureSalesHubTables();
-  const { organization } = await getDemoContext();
+  const url = new URL(req.url);
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, url.searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
 
   const rows = await prisma.$queryRaw<SalesTargetRow[]>`
     SELECT *
@@ -88,9 +116,17 @@ export async function GET() {
 
 export async function POST(req: Request) {
   await ensureSalesHubTables();
-  const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
-  const owner = users.find((candidate) => candidate.id === cleanString(body.ownerUserId)) ?? user;
+  const body = await req.json().catch(() => ({}));
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canManageSalesPipeline(actor)) {
+    return forbiddenSalesResponse();
+  }
+  const requestedOwner = users.find((candidate) => candidate.id === cleanString(body.ownerUserId) && candidate.isActive);
+  const owner = requestedOwner && canAssignSalesItemsToOthers(actor) ? requestedOwner : actor;
   const title = cleanString(body.title);
   const now = new Date();
 
@@ -101,7 +137,7 @@ export async function POST(req: Request) {
   const history = [
     {
       at: now.toISOString(),
-      actor: getUserName(user),
+      actor: getUserName(actor),
       action: "created",
       note: "Ziel angelegt.",
     },
@@ -167,8 +203,15 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   await ensureSalesHubTables();
-  const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
+  const body = await req.json().catch(() => ({}));
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canManageSalesPipeline(actor)) {
+    return forbiddenSalesResponse();
+  }
   const id = cleanString(body.id);
   const now = new Date();
 
@@ -187,14 +230,18 @@ export async function PATCH(req: Request) {
   if (!current) {
     return NextResponse.json({ error: "Ziel wurde nicht gefunden." }, { status: 404 });
   }
+  if (!canManageOwnedSalesItem(actor, current)) {
+    return forbiddenSalesResponse();
+  }
 
-  const owner = users.find((candidate) => candidate.id === cleanString(body.ownerUserId)) ?? null;
+  const requestedOwner = users.find((candidate) => candidate.id === cleanString(body.ownerUserId) && candidate.isActive);
+  const owner = requestedOwner && canAssignSalesItemsToOthers(actor) ? requestedOwner : null;
   const nextStatus = cleanStatus(body.status || current.status);
   const history = [
     ...(Array.isArray(current.history) ? current.history : []),
     {
       at: now.toISOString(),
-      actor: getUserName(user),
+      actor: getUserName(actor),
       action: nextStatus,
       note: cleanString(body.note) || "Ziel aktualisiert.",
     },
@@ -233,8 +280,8 @@ export async function PATCH(req: Request) {
     entityLabel: current.title,
     fromStatus: current.status,
     toStatus: rows[0].status,
-    actorUserId: user.id,
-    actorName: getUserName(user),
+    actorUserId: actor.id,
+    actorName: getUserName(actor),
     note: cleanString(body.note) || "Ziel aktualisiert.",
     at: now,
   });

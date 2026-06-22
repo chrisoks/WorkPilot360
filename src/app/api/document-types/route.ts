@@ -1,7 +1,9 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canManageDocumentTypes } from "@/lib/permissions";
 
 type DocumentTypeRow = {
   id: string;
@@ -145,6 +147,33 @@ function formatDocumentType(row: DocumentTypeRow) {
   };
 }
 
+function cleanString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function getRequestActor(users: User[], actorId: unknown) {
+  const requestedActorId = cleanString(actorId);
+  if (!requestedActorId) {
+    return null;
+  }
+
+  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
+
+function forbiddenDocumentTypeManagementResponse() {
+  return NextResponse.json(
+    { error: "Nur Admins und Geschaeftsfuehrung duerfen Dokumenttypen verwalten." },
+    { status: 403 }
+  );
+}
+
 async function ensureDocumentTypeTable() {
   await prisma.$executeRaw`
     CREATE TABLE IF NOT EXISTS "DocumentTypeConfig" (
@@ -194,10 +223,9 @@ async function ensureDefaultOfferDocumentType(organizationId: string) {
   `;
 }
 
-export async function GET() {
-  const { organization } = await getDemoContext();
+async function getDocumentTypesResponse(organizationId: string) {
   await ensureDocumentTypeTable();
-  await ensureDefaultOfferDocumentType(organization.id);
+  await ensureDefaultOfferDocumentType(organizationId);
 
   const rows = await prisma.$queryRaw<DocumentTypeRow[]>`
     SELECT
@@ -211,19 +239,37 @@ export async function GET() {
       "createdAt",
       "updatedAt"
     FROM "DocumentTypeConfig"
-    WHERE "organizationId" = ${organization.id}
+    WHERE "organizationId" = ${organizationId}
     ORDER BY "name" ASC
   `;
 
   return NextResponse.json(rows.map(formatDocumentType));
 }
 
+export async function GET(req: Request) {
+  const { organization, users } = await getDemoContext();
+  const { searchParams } = new URL(req.url);
+  const actor = getRequestActor(users, searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
+  return getDocumentTypesResponse(organization.id);
+}
+
 export async function POST(req: Request) {
   const body = await req.json();
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canManageDocumentTypes(actor)) {
+    return forbiddenDocumentTypeManagementResponse();
+  }
   await ensureDocumentTypeTable();
 
-  const name = String(body.name ?? body.config?.name ?? "").trim();
+  const name = cleanString(body.name ?? body.config?.name);
   if (!name) {
     return NextResponse.json({ error: "Bitte einen Namen fuer den Dokumententyp angeben." }, { status: 400 });
   }
@@ -251,9 +297,9 @@ export async function POST(req: Request) {
         ${randomUUID()},
         ${organization.id},
         ${name},
-        ${String(body.baseType ?? config.baseType ?? "Dokument")},
-        ${String(body.folder ?? config.folder ?? "Allgemein")},
-        ${String(body.status ?? config.status ?? "Aktiv")},
+        ${cleanString(body.baseType ?? config.baseType) || "Dokument"},
+        ${cleanString(body.folder ?? config.folder) || "Allgemein"},
+        ${cleanString(body.status ?? config.status) || "Aktiv"},
         ${configJson}::jsonb,
         CURRENT_TIMESTAMP
       )
@@ -265,16 +311,23 @@ export async function POST(req: Request) {
     );
   }
 
-  return GET();
+  return getDocumentTypesResponse(organization.id);
 }
 
 export async function PATCH(req: Request) {
   const body = await req.json();
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canManageDocumentTypes(actor)) {
+    return forbiddenDocumentTypeManagementResponse();
+  }
   await ensureDocumentTypeTable();
 
-  const id = String(body.id ?? "");
-  const name = String(body.name ?? body.config?.name ?? "").trim();
+  const id = cleanString(body.id);
+  const name = cleanString(body.name ?? body.config?.name);
   if (!id || !name) {
     return NextResponse.json({ error: "Dokumententyp oder Name fehlt." }, { status: 400 });
   }
@@ -286,27 +339,45 @@ export async function PATCH(req: Request) {
   };
   const configJson = JSON.stringify(config);
 
-  await prisma.$executeRaw`
-    UPDATE "DocumentTypeConfig"
-    SET
-      "name" = ${name},
-      "baseType" = ${String(body.baseType ?? config.baseType ?? "Dokument")},
-      "folder" = ${String(body.folder ?? config.folder ?? "Allgemein")},
-      "status" = ${String(body.status ?? config.status ?? "Aktiv")},
-      "config" = ${configJson}::jsonb,
-      "archivedAt" = CASE WHEN ${String(body.status ?? config.status) === "Archiviert"} THEN CURRENT_TIMESTAMP ELSE "archivedAt" END,
-      "updatedAt" = CURRENT_TIMESTAMP
-    WHERE "id" = ${id}
-      AND "organizationId" = ${organization.id}
-  `;
+  try {
+    await prisma.$executeRaw`
+      UPDATE "DocumentTypeConfig"
+      SET
+        "name" = ${name},
+        "baseType" = ${cleanString(body.baseType ?? config.baseType) || "Dokument"},
+        "folder" = ${cleanString(body.folder ?? config.folder) || "Allgemein"},
+        "status" = ${cleanString(body.status ?? config.status) || "Aktiv"},
+        "config" = ${configJson}::jsonb,
+        "archivedAt" = CASE WHEN ${cleanString(body.status ?? config.status) === "Archiviert"} THEN CURRENT_TIMESTAMP ELSE "archivedAt" END,
+        "updatedAt" = CURRENT_TIMESTAMP
+      WHERE "id" = ${id}
+        AND "organizationId" = ${organization.id}
+    `;
+  } catch {
+    return NextResponse.json(
+      { error: "Ein Dokumententyp mit diesem Namen ist bereits vorhanden." },
+      { status: 409 }
+    );
+  }
 
-  return GET();
+  return getDocumentTypesResponse(organization.id);
 }
 
 export async function DELETE(req: Request) {
   const body = await req.json();
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canManageDocumentTypes(actor)) {
+    return forbiddenDocumentTypeManagementResponse();
+  }
   await ensureDocumentTypeTable();
+  const id = cleanString(body.id);
+  if (!id) {
+    return NextResponse.json({ error: "Dokumententyp fehlt." }, { status: 400 });
+  }
 
   await prisma.$executeRaw`
     UPDATE "DocumentTypeConfig"
@@ -314,9 +385,9 @@ export async function DELETE(req: Request) {
       "status" = 'Archiviert',
       "archivedAt" = CURRENT_TIMESTAMP,
       "updatedAt" = CURRENT_TIMESTAMP
-    WHERE "id" = ${String(body.id ?? "")}
+    WHERE "id" = ${id}
       AND "organizationId" = ${organization.id}
   `;
 
-  return GET();
+  return getDocumentTypesResponse(organization.id);
 }

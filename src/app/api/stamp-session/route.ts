@@ -3,6 +3,14 @@ import { NextResponse } from "next/server";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 
+type DemoUser = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  isActive: boolean;
+};
+
 type ActiveStampSessionRow = {
   id: string;
   organizationId: string;
@@ -181,6 +189,25 @@ async function ensureProjectTimeEntryTable() {
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function getUserName(user: Pick<DemoUser, "firstName" | "lastName" | "email">) {
+  return `${user.firstName} ${user.lastName}`.trim() || user.email;
+}
+
+function getRequestUser(users: DemoUser[], userId: unknown) {
+  if (typeof userId !== "string" || !userId.trim()) {
+    return null;
+  }
+
+  return users.find((user) => user.id === userId.trim() && user.isActive) ?? null;
+}
+
+function unauthorizedUserResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
 }
 
 function toMillis(value: bigint | number) {
@@ -404,8 +431,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Bitte kurz eintragen, was du gerade machst." }, { status: 400 });
   }
 
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureActiveStampSessionTable();
+
+  const stampUser = getRequestUser(users, userId);
+  if (!stampUser) {
+    return unauthorizedUserResponse();
+  }
   const existingSession = await getActiveSession(organization.id, userId);
 
   if (existingSession) {
@@ -443,7 +475,7 @@ export async function POST(req: Request) {
       ${randomUUID()},
       ${organization.id},
       ${userId},
-      ${cleanString(body.employee) || null},
+      ${getUserName(stampUser)},
       ${mode},
       ${projectId},
       ${cleanString(body.projectLabel) || null},
@@ -477,8 +509,12 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Unbekannte Stempelaktion." }, { status: 400 });
   }
 
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureActiveStampSessionTable();
+  const stampUser = getRequestUser(users, userId);
+  if (!stampUser) {
+    return unauthorizedUserResponse();
+  }
   const session = await getActiveSession(organization.id, userId);
 
   if (!session) {
@@ -539,9 +575,14 @@ async function stopSession(body: Record<string, unknown>) {
     return NextResponse.json({ error: "Mitarbeiter fehlt." }, { status: 400 });
   }
 
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureActiveStampSessionTable();
   await ensureProjectTimeEntryTable();
+
+  const stampUser = getRequestUser(users, userId);
+  if (!stampUser) {
+    return unauthorizedUserResponse();
+  }
 
   const session = await getActiveSession(organization.id, userId);
 

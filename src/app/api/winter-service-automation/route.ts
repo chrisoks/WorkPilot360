@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { Prisma, type User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 
@@ -73,6 +73,17 @@ const schedulerState = (globalThis as typeof globalThis & { [WINTER_SERVICE_SCHE
 
 function cleanText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function getRequestActor(users: User[], actorId: unknown) {
+  const cleanActorId = cleanText(actorId);
+  if (!cleanActorId) return null;
+  const actor = users.find((candidate) => candidate.id === cleanActorId);
+  return actor?.isActive ? actor : null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json({ error: "Aktiver Benutzer erforderlich." }, { status: 401 });
 }
 
 function cleanStringList(value: unknown) {
@@ -403,32 +414,46 @@ function syncScheduler(settings: { enabled: boolean }, baseUrl: string) {
 }
 
 export async function GET(req: Request) {
-  const { organization } = await getDemoContext();
+  const { searchParams } = new URL(req.url);
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
   const settings = await getSettings(organization.id);
   syncScheduler(settings, getBaseUrl(req));
   return NextResponse.json(settings);
 }
 
 export async function PUT(req: Request) {
-  const { organization } = await getDemoContext();
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
   const settings = await upsertSettings(organization.id, body);
   syncScheduler(settings, getBaseUrl(req));
   return NextResponse.json(settings);
 }
 
 export async function POST(req: Request) {
-  const { organization, user } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   const settings = await getSettings(organization.id);
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const submittedRuns = Array.isArray(body.runs) ? (body.runs as AutomationRunInput[]) : [];
   const runs = submittedRuns.length > 0 ? submittedRuns : await discoverAutomationRuns(organization.id);
-  const actorId = settings.senderUserId || cleanText(body.actorId) || user.id;
   syncScheduler(settings, getBaseUrl(req));
 
   if (!settings.enabled) {
     return NextResponse.json({ processed: 0, sent: 0, failed: 0, failures: [], skipped: "disabled" });
   }
+
+  const actor = getRequestActor(users, settings.senderUserId) ?? getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  const actorId = actor.id;
 
   const failures: string[] = [];
   let sent = 0;
@@ -451,6 +476,7 @@ export async function POST(req: Request) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          actorId,
           projectId,
           month: monthKey,
           reportContextKey: contextKey,

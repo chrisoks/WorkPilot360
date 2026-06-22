@@ -2,6 +2,26 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import type { User } from "@prisma/client";
+
+function getRequestActor(users: User[], actorId: unknown) {
+  if (typeof actorId !== "string" || !actorId.trim()) {
+    return null;
+  }
+
+  return users.find((demoUser) => demoUser.id === actorId.trim() && demoUser.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
+
+function getUserName(user: Pick<User, "firstName" | "lastName" | "email">) {
+  return `${user.firstName} ${user.lastName}`.trim() || user.email;
+}
 
 export async function POST(
   req: Request,
@@ -18,8 +38,12 @@ export async function POST(
     );
   }
 
-  const { organization, user, users } = await getDemoContext();
-  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
   await prisma.$executeRaw`
     ALTER TABLE "Task"
     ADD COLUMN IF NOT EXISTS "history" JSONB NOT NULL DEFAULT '[]'::jsonb
@@ -42,6 +66,25 @@ export async function POST(
     );
   }
 
+  const actorParticipantRows = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT id
+    FROM "TaskParticipant"
+    WHERE "taskId" = ${task.id}
+      AND "userId" = ${actor.id}
+    LIMIT 1
+  `;
+  const canComment =
+    task.ownerId === actor.id ||
+    task.createdById === actor.id ||
+    actorParticipantRows.length > 0;
+
+  if (!canComment) {
+    return NextResponse.json(
+      { error: "Du darfst diese Aufgabe nicht kommentieren." },
+      { status: 403 }
+    );
+  }
+
   let recipientName = "";
   if (recipientUserId) {
     const participantRows = await prisma.$queryRaw<Array<{ firstName: string; lastName: string }>>`
@@ -60,7 +103,7 @@ export async function POST(
       );
     }
 
-    recipientName = `${participantRows[0].firstName} ${participantRows[0].lastName}`;
+    recipientName = `${participantRows[0].firstName} ${participantRows[0].lastName}`.trim();
   }
 
   const taskParticipantRows = await prisma.$queryRaw<Array<{ userId: string }>>`
@@ -104,8 +147,8 @@ export async function POST(
         channel: "app",
         subject: "Neuer Kommentar zur Aufgabe",
         body: recipientName
-          ? `${actor.firstName} ${actor.lastName} hat in der Aufgabe "${task.title}" einen Kommentar an ${recipientName} geschrieben: ${text}`
-          : `${actor.firstName} ${actor.lastName} hat die Aufgabe "${task.title}" kommentiert: ${text}`,
+          ? `${getUserName(actor)} hat in der Aufgabe "${task.title}" einen Kommentar an ${recipientName} geschrieben: ${text}`
+          : `${getUserName(actor)} hat die Aufgabe "${task.title}" kommentiert: ${text}`,
         sentAt: null,
         linkTarget: "task",
         linkTargetId: task.id,
@@ -121,7 +164,7 @@ export async function POST(
       {
         id: randomUUID(),
         event: "Kommentar hinzugefügt",
-        actorName: `${actor.firstName} ${actor.lastName}`,
+        actorName: getUserName(actor),
         note: recipientName ? `An ${recipientName}: ${text}` : text,
         createdAt: new Date().toISOString(),
       },
@@ -133,7 +176,7 @@ export async function POST(
     id: comment.id,
     text: comment.body,
     erstelltAm: comment.createdAt.toISOString(),
-    autor: `${comment.author.firstName} ${comment.author.lastName}`,
+    autor: getUserName(comment.author),
     recipientUserId,
     recipientName,
   }, { status: 201 });

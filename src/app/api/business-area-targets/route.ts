@@ -3,6 +3,7 @@ import { Role } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canManageBusinessAreaTargets } from "@/lib/permissions";
 
 const defaultBusinessAreas = ["Marketing", "Arbeitssicherheit", "HR", "immocare"];
 const defaultTargetMonths = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, "0"));
@@ -16,7 +17,7 @@ type BusinessAreaTargetRow = {
 };
 
 function cleanString(value: unknown) {
-  return String(value ?? "").trim();
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function cleanAmount(value: unknown) {
@@ -24,8 +25,20 @@ function cleanAmount(value: unknown) {
   return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
 }
 
-function canManageTargets(role: Role) {
-  return role === Role.ADMIN || role === Role.GESCHAEFTSFUEHRER;
+function getRequestActor(users: Array<{ id: string; isActive: boolean; role: Role }>, actorId: unknown) {
+  const requestedActorId = cleanString(actorId);
+  if (!requestedActorId) {
+    return null;
+  }
+
+  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
 }
 
 async function ensureBusinessAreaTargetTables() {
@@ -139,10 +152,14 @@ async function getTargetRows(organizationId: string, months: string[]) {
 }
 
 export async function GET(req: Request) {
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
+  const { searchParams } = new URL(req.url);
+  const actor = getRequestActor(users, searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
   await ensureBusinessAreas(organization.id);
   await migrateYearlyTargetsToRecurringMonths(organization.id);
-  const { searchParams } = new URL(req.url);
   const months = cleanString(searchParams.get("months"))
     .split(",")
     .map((month) => month.trim())
@@ -153,10 +170,13 @@ export async function GET(req: Request) {
 
 export async function PUT(req: Request) {
   const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
-  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
 
-  if (!canManageTargets(actor.role)) {
+  if (!canManageBusinessAreaTargets(actor)) {
     return NextResponse.json(
       { error: "Nur Admins und Geschaeftsfuehrung duerfen Geschaeftsbereich-Sollwerte pflegen." },
       { status: 403 }

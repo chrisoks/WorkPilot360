@@ -1,7 +1,9 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canDeleteCustomerFeedback, canManageCustomerFeedback, canReadCustomerFeedback } from "@/lib/permissions";
 import { ensureSalesHubTables } from "@/lib/sales-hub/ensure";
 
 type FeedbackRow = {
@@ -33,6 +35,27 @@ function cleanRating(value: unknown) {
 
 function getUserName(user: { firstName?: string | null; lastName?: string | null; email?: string | null }) {
   return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "System";
+}
+
+function getRequestActor(users: User[], actorId: unknown) {
+  const requestedActorId = cleanString(actorId);
+  if (!requestedActorId) return null;
+
+  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
+
+function forbiddenCustomerFeedbackResponse() {
+  return NextResponse.json(
+    { error: "Du darfst Kundenfeedback nicht verwalten." },
+    { status: 403 }
+  );
 }
 
 async function createHotAlert(input: {
@@ -89,9 +112,18 @@ function formatFeedback(row: FeedbackRow) {
   };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   await ensureSalesHubTables();
-  const { organization } = await getDemoContext();
+  const url = new URL(req.url);
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, url.searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canReadCustomerFeedback(actor)) {
+    return forbiddenCustomerFeedbackResponse();
+  }
+
   const rows = await prisma.$queryRaw<FeedbackRow[]>`
     SELECT *
     FROM "CustomerFeedback"
@@ -103,9 +135,17 @@ export async function GET() {
 
 export async function POST(req: Request) {
   await ensureSalesHubTables();
-  const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
-  const salesUser = users.find((candidate) => candidate.id === cleanString(body.salesUserId)) ?? user;
+  const body = await req.json().catch(() => ({}));
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canManageCustomerFeedback(actor)) {
+    return forbiddenCustomerFeedbackResponse();
+  }
+
+  const salesUser = users.find((candidate) => candidate.id === cleanString(body.salesUserId)) ?? actor;
   const rating = cleanRating(body.rating);
   const wantsContact = Boolean(body.wantsContact);
   const hotAlert = rating <= 4 || wantsContact;
@@ -143,14 +183,17 @@ export async function DELETE(req: Request) {
   const body = await req.json().catch(() => ({}));
   const { organization, users } = await getDemoContext();
   const id = cleanString(body.id);
-  const actorId = cleanString(body.actorId);
-  const actor = users.find((candidate) => candidate.id === actorId);
+  const actor = getRequestActor(users, body.actorId);
 
   if (!id) {
     return NextResponse.json({ error: "Bewertung fehlt." }, { status: 400 });
   }
 
-  if (actor?.role !== "GESCHAEFTSFUEHRER") {
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
+  if (!canDeleteCustomerFeedback(actor)) {
     return NextResponse.json({ error: "Nur die Geschäftsführung darf Bewertungen löschen." }, { status: 403 });
   }
 

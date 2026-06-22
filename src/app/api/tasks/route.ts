@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { recordStatusTransition, seedCurrentStatusTimeline } from "@/lib/status-tracking";
+import { canAssignTasksToOthers, canDeleteTasks } from "@/lib/permissions";
 import {
   CustomerClassification,
   Prisma,
@@ -15,12 +16,23 @@ import {
   type User,
 } from "@prisma/client";
 
-function canAssignOther(role: Role) {
-  return role === Role.ADMIN || role === Role.GESCHAEFTSFUEHRER || role === Role.FUEHRUNGSKRAFT;
+function getRequestActor(users: User[], actorId: unknown) {
+  if (typeof actorId !== "string" || !actorId.trim()) {
+    return null;
+  }
+
+  return users.find((demoUser) => demoUser.id === actorId.trim() && demoUser.isActive) ?? null;
 }
 
-function canDeleteTask(role: Role) {
-  return role === Role.ADMIN || role === Role.GESCHAEFTSFUEHRER;
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
+
+function getUserName(user: Pick<User, "firstName" | "lastName" | "email">) {
+  return `${user.firstName} ${user.lastName}`.trim() || user.email;
 }
 
 function mapStatus(status: string): TaskStatus {
@@ -857,12 +869,16 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureTaskProjectColumn();
   await ensureTaskCollaborationColumns();
-  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
   const requestedOwner = users.find((demoUser) => demoUser.id === body.ownerId);
-  const owner = requestedOwner && (canAssignOther(actor.role) || body.absenceHandoverTask) ? requestedOwner : actor;
+  const owner = requestedOwner && (canAssignTasksToOthers(actor) || body.absenceHandoverTask) ? requestedOwner : actor;
   const acceptanceStatus = body.absenceHandoverTask
     ? "pending"
     : owner.id === actor.id
@@ -940,7 +956,7 @@ export async function POST(req: Request) {
   );
   feedback.planningAllocations = planningAllocations;
   await appendTaskHistory(task.id, [
-    createTaskHistoryItem("Aufgabe angelegt", `${actor.firstName} ${actor.lastName}`),
+    createTaskHistoryItem("Aufgabe angelegt", getUserName(actor)),
   ]);
   await createDoneFeedbackNotification(task, null, users, feedback);
   await createNextRecurringTask(task, null, feedback);
@@ -951,10 +967,14 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   const body = await req.json();
-  const { user, users } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureTaskProjectColumn();
   await ensureTaskCollaborationColumns();
-  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
   const requestedOwner = users.find((demoUser) => demoUser.id === body.ownerId);
   const nextStatus = mapStatus(body.status);
   const nextEstimate = parseEstimate(body.estimateMinutes);
@@ -966,9 +986,10 @@ export async function PATCH(req: Request) {
   }
 
   if (body.restore) {
-    const task = await prisma.task.findUnique({
+    const task = await prisma.task.findFirst({
       where: {
         id: body.id,
+        organizationId: organization.id,
       },
     });
 
@@ -976,7 +997,7 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Aufgabe wurde nicht gefunden." }, { status: 404 });
     }
 
-    if (!canDeleteTask(actor.role)) {
+    if (!canDeleteTasks(actor)) {
       return NextResponse.json(
         { error: "Nur Admins und Geschäftsführung dürfen Aufgaben wiederherstellen." },
         { status: 403 }
@@ -1002,7 +1023,7 @@ export async function PATCH(req: Request) {
       fromStatus: toUiStatus(task.status),
       toStatus: toUiStatus(TaskStatus.OFFEN),
       actorUserId: actor.id,
-      actorName: `${actor.firstName} ${actor.lastName}`.trim() || actor.email,
+      actorName: getUserName(actor),
       note: "Aufgabe wiederhergestellt.",
     });
 
@@ -1010,9 +1031,10 @@ export async function PATCH(req: Request) {
   }
 
   if (body.addParticipantUserId) {
-    const existingTask = await prisma.task.findUnique({
+    const existingTask = await prisma.task.findFirst({
       where: {
         id: body.id,
+        organizationId: organization.id,
       },
     });
 
@@ -1021,7 +1043,7 @@ export async function PATCH(req: Request) {
     }
 
     const canAddParticipant =
-      canAssignOther(actor.role) ||
+      canAssignTasksToOthers(actor) ||
       existingTask.ownerId === actor.id ||
       existingTask.createdById === actor.id;
 
@@ -1053,7 +1075,7 @@ export async function PATCH(req: Request) {
     await appendTaskHistory(existingTask.id, [
       createTaskHistoryItem(
         "Aufgabenbeteiligten hinzugefügt",
-        `${actor.firstName} ${actor.lastName}`,
+        getUserName(actor),
         `${participant.firstName} ${participant.lastName}`
       ),
     ]);
@@ -1075,7 +1097,7 @@ export async function PATCH(req: Request) {
     return NextResponse.json(formattedTask);
   }
 
-  if (requestedOwner && requestedOwner.id !== actor.id && !canAssignOther(actor.role)) {
+  if (requestedOwner && requestedOwner.id !== actor.id && !canAssignTasksToOthers(actor)) {
     return NextResponse.json(
       { error: "Du darfst Aufgaben nicht anderen Personen zuweisen." },
       { status: 403 }
@@ -1083,11 +1105,16 @@ export async function PATCH(req: Request) {
   }
 
   const owner = requestedOwner ?? actor;
-  const existingTask = await prisma.task.findUnique({
+  const existingTask = await prisma.task.findFirst({
     where: {
       id: body.id,
+      organizationId: organization.id,
     },
   });
+
+  if (!existingTask) {
+    return NextResponse.json({ error: "Aufgabe wurde nicht gefunden." }, { status: 404 });
+  }
   const existingFeedback = body.id
     ? (await getTaskFeedbackSettings([body.id])).get(body.id)
     : undefined;
@@ -1145,7 +1172,7 @@ export async function PATCH(req: Request) {
     fromStatus: existingTask ? toUiStatus(existingTask.status) : null,
     toStatus: toUiStatus(nextStatus),
     actorUserId: actor.id,
-    actorName: `${actor.firstName} ${actor.lastName}`.trim() || actor.email,
+    actorName: getUserName(actor),
     note: "Aufgabenstatus geändert.",
   });
 
@@ -1168,7 +1195,7 @@ export async function PATCH(req: Request) {
     historyItems.push(
       createTaskHistoryItem(
         "Status geändert",
-        `${actor.firstName} ${actor.lastName}`,
+        getUserName(actor),
         `${toUiStatus(existingTask.status)} -> ${toUiStatus(nextStatus)}`
       )
     );
@@ -1177,7 +1204,7 @@ export async function PATCH(req: Request) {
     historyItems.push(
       createTaskHistoryItem(
         "Zuständigkeit geändert",
-        `${actor.firstName} ${actor.lastName}`,
+        getUserName(actor),
         `${owner.firstName} ${owner.lastName}`
       )
     );
@@ -1192,8 +1219,11 @@ export async function PATCH(req: Request) {
 
 export async function DELETE(req: Request) {
   const body = await req.json();
-  const { user, users } = await getDemoContext();
-  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
 
   if (!body.id) {
     return NextResponse.json(
@@ -1202,16 +1232,17 @@ export async function DELETE(req: Request) {
     );
   }
 
-  if (!canDeleteTask(actor.role)) {
+  if (!canDeleteTasks(actor)) {
     return NextResponse.json(
       { error: "Nur Admins und Gesch\u00e4ftsf\u00fchrung d\u00fcrfen Aufgaben l\u00f6schen." },
       { status: 403 }
     );
   }
 
-  const task = await prisma.task.findUnique({
+  const task = await prisma.task.findFirst({
     where: {
       id: body.id,
+      organizationId: organization.id,
     },
   });
 
@@ -1253,7 +1284,7 @@ export async function DELETE(req: Request) {
     fromStatus: toUiStatus(task.status),
     toStatus: toUiStatus(TaskStatus.ARCHIVIERT),
     actorUserId: actor.id,
-    actorName: `${actor.firstName} ${actor.lastName}`.trim() || actor.email,
+    actorName: getUserName(actor),
     note: "Aufgabe manuell archiviert.",
   });
 

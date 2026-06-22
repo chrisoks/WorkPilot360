@@ -1,8 +1,9 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { Prisma, type User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canSeeNewsPost } from "@/lib/news-feed/visibility";
 import { ensureNewsFeedTables } from "@/lib/sales-hub/ensure";
 
 type NewsPostRow = {
@@ -90,19 +91,15 @@ function getUserName(user: { firstName?: string | null; lastName?: string | null
   return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "System";
 }
 
-function canSeePost(
-  post: NewsPostRow,
-  user: { id: string; departmentId?: string | null; teamId?: string | null }
-) {
-  if (post.visibility === "all") return true;
-  const departmentIds = jsonArray(post.departmentIds).map(String);
-  const teamIds = jsonArray(post.teamIds).map(String);
-  const userIds = jsonArray(post.userIds).map(String);
-  return (
-    userIds.includes(user.id) ||
-    Boolean(user.departmentId && departmentIds.includes(user.departmentId)) ||
-    Boolean(user.teamId && teamIds.includes(user.teamId))
-  );
+function getRequestActor(users: User[], actorId: unknown) {
+  const cleanActorId = cleanString(actorId);
+  if (!cleanActorId) return null;
+  const actor = users.find((candidate) => candidate.id === cleanActorId);
+  return actor?.isActive ? actor : null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json({ error: "Aktiver Benutzer erforderlich." }, { status: 401 });
 }
 
 function formatPost(
@@ -167,8 +164,11 @@ function formatPost(
 export async function GET(req: Request) {
   await ensureNewsFeedTables();
   const { searchParams } = new URL(req.url);
-  const { organization, user, users } = await getDemoContext();
-  const activeUser = users.find((candidate) => candidate.id === searchParams.get("userId")) ?? user;
+  const { organization, users } = await getDemoContext();
+  const activeUser = getRequestActor(users, searchParams.get("actorId") ?? searchParams.get("userId"));
+  if (!activeUser) {
+    return unauthorizedActorResponse();
+  }
 
   const rows = await prisma.$queryRaw<NewsPostRow[]>`
     SELECT p.*, r."readAt"
@@ -180,7 +180,7 @@ export async function GET(req: Request) {
     LIMIT 80
   `;
 
-  const visibleRows = rows.filter((post) => canSeePost(post, activeUser));
+  const visibleRows = rows.filter((post) => canSeeNewsPost(post, activeUser));
   const ids = visibleRows.map((post) => post.id);
   const comments = ids.length
     ? await prisma.$queryRaw<NewsCommentRow[]>`
@@ -213,9 +213,12 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   await ensureNewsFeedTables();
-  const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
-  const actor = users.find((candidate) => candidate.id === cleanString(body.actorId)) ?? user;
+  const body = await req.json().catch(() => ({}));
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
   const title = cleanString(body.title);
   const text = cleanString(body.body);
   const visibility = ["all", "departments", "teams", "users"].includes(cleanString(body.visibility))
@@ -255,13 +258,33 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   await ensureNewsFeedTables();
-  const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
-  const activeUser = users.find((candidate) => candidate.id === cleanString(body.userId)) ?? user;
+  const body = await req.json().catch(() => ({}));
+  const { organization, users } = await getDemoContext();
+  const activeUser = getRequestActor(users, body.actorId ?? body.userId);
+  if (!activeUser) {
+    return unauthorizedActorResponse();
+  }
   const postId = cleanString(body.postId);
 
   if (!postId) {
     return NextResponse.json({ error: "Keine News-ID uebergeben." }, { status: 400 });
+  }
+
+  const posts = await prisma.$queryRaw<
+    Array<{ id: string; visibility: string; departmentIds: unknown; teamIds: unknown; userIds: unknown }>
+  >`
+    SELECT id, visibility, "departmentIds", "teamIds", "userIds"
+    FROM "NewsPost"
+    WHERE "organizationId" = ${organization.id}
+      AND id = ${postId}
+    LIMIT 1
+  `;
+  const post = posts[0];
+  if (!post) {
+    return NextResponse.json({ error: "Beitrag nicht gefunden." }, { status: 404 });
+  }
+  if (!canSeeNewsPost(post, activeUser)) {
+    return NextResponse.json({ error: "Du darfst diesen Beitrag nicht sehen." }, { status: 403 });
   }
 
   await prisma.$executeRaw`

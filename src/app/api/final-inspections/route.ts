@@ -1,10 +1,29 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function getActorName(actor: User) {
+  return [actor.firstName, actor.lastName].filter(Boolean).join(" ") || actor.email || "System";
+}
+
+function getRequestActor(users: User[], actorId: unknown) {
+  const requestedActorId = cleanString(actorId);
+  if (!requestedActorId) return null;
+
+  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
 }
 
 function cleanChecklist(value: unknown) {
@@ -34,11 +53,20 @@ async function ensureTables() {
       "title" TEXT,
       "body" TEXT NOT NULL,
       "author" TEXT,
+      "authorUserId" TEXT,
       "colleague" TEXT,
       "visibleFor" JSONB NOT NULL DEFAULT '[]'::jsonb,
       "attachments" JSONB NOT NULL DEFAULT '[]'::jsonb,
+      "projectMonth" TEXT,
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "ProjectLogbookEntry"
+    ADD COLUMN IF NOT EXISTS "authorUserId" TEXT,
+    ADD COLUMN IF NOT EXISTS "projectMonth" TEXT,
+    ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
   `;
 
   await prisma.$executeRaw`
@@ -55,10 +83,9 @@ async function ensureTables() {
 }
 
 export async function POST(req: Request) {
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
   const projectId = cleanString(body.projectId);
   const projectLabel = cleanString(body.projectLabel);
-  const employee = cleanString(body.employee);
   const comment = cleanString(body.comment);
   const status = cleanString(body.status) === "colleague" ? "colleague" : "completed";
   const upsellNotes = cleanString(body.upsellNotes);
@@ -68,7 +95,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Projekt fehlt." }, { status: 400 });
   }
 
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  const employee = getActorName(actor);
+
   await ensureTables();
 
   const checkedLines =
@@ -109,6 +142,7 @@ export async function POST(req: Request) {
       "title",
       "body",
       "author",
+      "authorUserId",
       "colleague",
       "visibleFor",
       "attachments"
@@ -120,6 +154,7 @@ export async function POST(req: Request) {
       ${"Dokumente: Endkontrolle"},
       ${text},
       ${employee || "System"},
+      ${actor.id},
       ${status === "colleague" ? "Endkontrolle durch Kollegen" : ""},
       ${JSON.stringify(["Geschaeftsfuehrer", "Vertriebler", "Niederlassungsleiter", "Monteur", "Buchhaltung"])}::jsonb,
       ${JSON.stringify(attachments)}::jsonb

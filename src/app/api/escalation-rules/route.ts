@@ -1,10 +1,35 @@
 import { NextResponse } from "next/server";
-import { Role } from "@prisma/client";
+import { Role, type User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canManageEscalationRules } from "@/lib/permissions";
 
-function canManageEscalations(role: Role) {
-  return role === Role.ADMIN || role === Role.GESCHAEFTSFUEHRER;
+function cleanString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function getRequestActor(users: User[], actorId: unknown) {
+  const requestedActorId = cleanString(actorId);
+  if (!requestedActorId) {
+    return null;
+  }
+
+  return users.find((demoUser) => demoUser.id === requestedActorId && demoUser.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
+
+async function readJsonBody(req: Request) {
+  try {
+    return await req.json();
+  } catch {
+    return {};
+  }
 }
 
 function roleLabel(role: Role) {
@@ -78,13 +103,17 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
+  const body = await readJsonBody(req);
+  const { organization, users } = await getDemoContext();
   await ensureEscalationEmailColumns();
-  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
   const hoursAfterDue = parseHours(body.hoursAfterDue);
 
-  if (!canManageEscalations(actor.role)) {
+  if (!canManageEscalationRules(actor)) {
     return NextResponse.json(
       { error: "Nur Admins und Geschäftsführung dürfen Eskalationen verwalten." },
       { status: 403 }
@@ -126,13 +155,17 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
+  const body = await readJsonBody(req);
+  const { organization, users } = await getDemoContext();
   await ensureEscalationEmailColumns();
-  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
   const hoursAfterDue = parseHours(body.hoursAfterDue);
 
-  if (!canManageEscalations(actor.role)) {
+  if (!canManageEscalationRules(actor)) {
     return NextResponse.json(
       { error: "Nur Admins und Geschäftsführung dürfen Eskalationen verwalten." },
       { status: 403 }
@@ -146,9 +179,23 @@ export async function PATCH(req: Request) {
     );
   }
 
+  const existingRule = await prisma.escalationRule.findFirst({
+    where: {
+      id: cleanString(body.ruleId),
+      organizationId: organization.id,
+    },
+  });
+
+  if (!existingRule) {
+    return NextResponse.json(
+      { error: "Regel wurde nicht gefunden." },
+      { status: 404 }
+    );
+  }
+
   const rule = await prisma.escalationRule.update({
     where: {
-      id: body.ruleId,
+      id: existingRule.id,
     },
     data: {
       name: body.name.trim(),
@@ -182,12 +229,15 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
+  const body = await readJsonBody(req);
+  const { organization, users } = await getDemoContext();
   await ensureEscalationEmailColumns();
-  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
 
-  if (!canManageEscalations(actor.role)) {
+  if (!canManageEscalationRules(actor)) {
     return NextResponse.json(
       { error: "Nur Admins und Geschäftsführung dürfen Eskalationen verwalten." },
       { status: 403 }
@@ -196,7 +246,7 @@ export async function DELETE(req: Request) {
 
   const rule = await prisma.escalationRule.findFirst({
     where: {
-      id: body.ruleId,
+      id: cleanString(body.ruleId),
       organizationId: organization.id,
     },
   });

@@ -1,10 +1,11 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { Prisma, type User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getStoredMailAccount, refreshMicrosoftAccessToken } from "@/lib/mail/microsoft";
 import { ensureSalesHubTables } from "@/lib/sales-hub/ensure";
+import { canSendDocumentMails, canSendInvoiceDocuments, canSendOfferDocuments } from "@/lib/permissions";
 
 type MailAccount = {
   provider?: string;
@@ -15,6 +16,43 @@ type MailAccount = {
 
 function cleanText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function parseBoundedPositiveInt(value: unknown, fallback: number, max: number) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) return fallback;
+  return Math.min(parsed, max);
+}
+
+function getRequestActor(users: User[], actorId: unknown) {
+  const requestedActorId = cleanText(actorId);
+  if (!requestedActorId) {
+    return null;
+  }
+
+  return users.find((demoUser) => demoUser.id === requestedActorId && demoUser.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
+
+function forbiddenDocumentMailResponse() {
+  return NextResponse.json(
+    { error: "Du darfst dieses Dokument nicht per E-Mail versenden." },
+    { status: 403 }
+  );
+}
+
+function canSendDocumentKind(actor: User, kind: string) {
+  if (kind === "offer") return canSendOfferDocuments(actor);
+  if (kind === "invoice" || kind === "cancellation" || kind === "reminder") {
+    return canSendInvoiceDocuments(actor);
+  }
+  return canSendDocumentMails(actor);
 }
 
 function parseRecipients(value: unknown) {
@@ -134,12 +172,15 @@ async function getOrCreateFeedbackRequestLink(req: Request, body: Record<string,
   if (body.includeFeedbackLink === false) return "";
   const invoiceId = cleanText(body.documentId);
   if (!invoiceId) return "";
+  const organizationId = cleanText(body.organizationId);
+  if (!organizationId) return "";
 
   await ensureSalesHubTables();
   const existing = await prisma.$queryRaw<Array<{ token: string }>>`
     SELECT token
     FROM "CustomerFeedbackRequest"
-    WHERE "invoiceId" = ${invoiceId}
+    WHERE "organizationId" = ${organizationId}
+      AND "invoiceId" = ${invoiceId}
     ORDER BY "createdAt" DESC
     LIMIT 1
   `;
@@ -151,6 +192,7 @@ async function getOrCreateFeedbackRequestLink(req: Request, body: Record<string,
           "sentAt" = COALESCE("sentAt", CURRENT_TIMESTAMP),
           "updatedAt" = CURRENT_TIMESTAMP
       WHERE token = ${existing[0].token}
+        AND "organizationId" = ${organizationId}
     `;
     return `${getBaseUrl(req)}/feedback/${existing[0].token}`;
   }
@@ -161,7 +203,7 @@ async function getOrCreateFeedbackRequestLink(req: Request, body: Record<string,
       "id", "organizationId", "token", "invoiceId", "invoiceNumber", "projectId",
       "customerName", "recipientEmail", "salesUserId", "salesUserName", "status", "sentAt"
     ) VALUES (
-      ${randomUUID()}, ${cleanText(body.organizationId) || (await getDemoContext()).organization.id}, ${token},
+      ${randomUUID()}, ${organizationId}, ${token},
       ${invoiceId}, ${cleanText(body.documentNumber)}, ${cleanText(body.projectId) || null},
       ${cleanText(body.customerName)}, ${parseRecipients(body.to)[0] ?? ""},
       ${null}, ${"WorkPilot"}, 'sent', CURRENT_TIMESTAMP
@@ -205,7 +247,12 @@ async function ensureDocumentMailTables() {
   `;
 }
 
-async function addDocumentMailHistory(body: Record<string, unknown>, actorName: string, recipients: string[]) {
+async function addDocumentMailHistory(
+  organizationId: string,
+  body: Record<string, unknown>,
+  actorName: string,
+  recipients: string[]
+) {
   const kind = cleanText(body.kind);
   if (kind !== "offer" && kind !== "invoice" && kind !== "cancellation" && kind !== "reminder") return;
 
@@ -217,12 +264,15 @@ async function addDocumentMailHistory(body: Record<string, unknown>, actorName: 
     const rows = await prisma.$queryRaw<Array<{ id: string; organizationId: string; invoiceNumber: string }>>`
       SELECT "id", "organizationId", "invoiceNumber"
       FROM "Invoice"
-      WHERE id = ${documentId}
-        OR (
-          ${kind === "reminder"}
-          AND ${reminderInvoiceNumber} <> ''
-          AND "projectId" = ${projectId}
-          AND "invoiceNumber" = ${reminderInvoiceNumber}
+      WHERE "organizationId" = ${organizationId}
+        AND (
+          id = ${documentId}
+          OR (
+            ${kind === "reminder"}
+            AND ${reminderInvoiceNumber} <> ''
+            AND "projectId" = ${projectId}
+            AND "invoiceNumber" = ${reminderInvoiceNumber}
+          )
         )
       LIMIT 1
     `;
@@ -248,6 +298,7 @@ async function addDocumentMailHistory(body: Record<string, unknown>, actorName: 
     SELECT "organizationId"
     FROM "Offer"
     WHERE id = ${cleanText(body.documentId)}
+      AND "organizationId" = ${organizationId}
     LIMIT 1
   `;
   const offer = rows[0];
@@ -265,6 +316,76 @@ async function addDocumentMailHistory(body: Record<string, unknown>, actorName: 
       ${actorName}
     )
   `;
+}
+
+async function documentBelongsToOrganization(
+  organizationId: string,
+  kind: string,
+  documentId: string,
+  projectId: string,
+  documentNumber: string
+) {
+  if (!documentId && !projectId) return false;
+
+  if (kind === "offer") {
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Offer"
+      WHERE id = ${documentId}
+        AND "organizationId" = ${organizationId}
+      LIMIT 1
+    `;
+    return Boolean(rows[0]);
+  }
+
+  if (kind === "invoice" || kind === "cancellation" || kind === "reminder") {
+    const reminderInvoiceNumber = kind === "reminder" ? getReminderInvoiceNumber(documentNumber) : "";
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Invoice"
+      WHERE "organizationId" = ${organizationId}
+        AND (
+          id = ${documentId}
+          OR (
+            ${kind === "reminder"}
+            AND ${reminderInvoiceNumber} <> ''
+            AND "projectId" = ${projectId}
+            AND "invoiceNumber" = ${reminderInvoiceNumber}
+          )
+        )
+      LIMIT 1
+    `;
+    return Boolean(rows[0]);
+  }
+
+  if (kind === "activityReport") {
+    const winterRuns = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "WinterServiceRun"
+      WHERE id = ${documentId}
+        AND "organizationId" = ${organizationId}
+      LIMIT 1
+    `;
+    if (winterRuns[0]) return true;
+
+    const logbookEntryId = documentId.replace(/-\d+$/, "");
+    const logbookEntries = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "ProjectLogbookEntry"
+      WHERE id = ${logbookEntryId}
+        AND "organizationId" = ${organizationId}
+      LIMIT 1
+    `;
+    return Boolean(logbookEntries[0]);
+  }
+
+  if (projectId) {
+    const projects = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "WorkPilotProject"
+      WHERE id = ${projectId}
+        AND "organizationId" = ${organizationId}
+      LIMIT 1
+    `;
+    return Boolean(projects[0]);
+  }
+
+  return kind === "document";
 }
 
 function formatDispatch(row: {
@@ -378,8 +499,12 @@ async function sendViaMicrosoftGraph(input: {
 export async function POST(req: Request) {
   await ensureDocumentMailTables();
   const body = (await req.json()) as Record<string, unknown>;
-  const { organization, user, users } = await getDemoContext();
-  const actor = users.find((demoUser) => demoUser.id === cleanText(body.actorId)) ?? user;
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
   const actorName = `${actor.firstName ?? ""} ${actor.lastName ?? ""}`.trim() || actor.email;
   let mailAccount = await getStoredMailAccount(actor.id);
   mailAccount = await refreshMicrosoftAccessToken(actor.id, mailAccount, req);
@@ -391,6 +516,17 @@ export async function POST(req: Request) {
 
   if (!["offer", "invoice", "cancellation", "reminder", "activityReport", "document"].includes(kind)) {
     return NextResponse.json({ error: "Dokumenttyp ist ungültig." }, { status: 400 });
+  }
+
+  if (!canSendDocumentKind(actor, kind)) {
+    return forbiddenDocumentMailResponse();
+  }
+
+  const documentId = cleanText(body.documentId);
+  const projectId = cleanText(body.projectId);
+  const documentNumber = cleanText(body.documentNumber);
+  if (!(await documentBelongsToOrganization(organization.id, kind, documentId, projectId, documentNumber))) {
+    return NextResponse.json({ error: "Dokument wurde nicht gefunden." }, { status: 404 });
   }
 
   if (recipients.length === 0) {
@@ -492,7 +628,7 @@ export async function POST(req: Request) {
     }
   }
 
-  await addDocumentMailHistory(body, actorName, recipients);
+  await addDocumentMailHistory(organization.id, body, actorName, recipients);
 
   return NextResponse.json({
     id,
@@ -507,7 +643,12 @@ export async function GET(req: Request) {
   await ensureDocumentMailTables();
   const { searchParams } = new URL(req.url);
   const projectId = cleanText(searchParams.get("projectId"));
-  const { organization } = await getDemoContext();
+  const overviewLimit = parseBoundedPositiveInt(searchParams.get("limit"), 500, 1000);
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
 
   const rows = projectId
     ? await prisma.$queryRaw<Array<Parameters<typeof formatDispatch>[0]>>`
@@ -524,6 +665,7 @@ export async function GET(req: Request) {
         FROM "DocumentMailDispatch"
         WHERE "organizationId" = ${organization.id}
         ORDER BY "createdAt" DESC
+        LIMIT ${overviewLimit}
       `;
 
   return NextResponse.json(rows.map(formatDispatch));

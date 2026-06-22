@@ -1,9 +1,10 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { Prisma, type User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { ensureSalesHubTables } from "@/lib/sales-hub/ensure";
+import { canAssignSalesItemsToOthers, canManageOwnedSalesItem, canManageSalesPipeline } from "@/lib/permissions";
 
 type OpportunityRow = {
   id: string;
@@ -55,6 +56,27 @@ function getUserName(user: { firstName?: string | null; lastName?: string | null
   return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "System";
 }
 
+function getRequestActor(users: User[], actorId: unknown) {
+  const requestedActorId = cleanString(actorId);
+  if (!requestedActorId) return null;
+
+  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
+
+function forbiddenSalesResponse() {
+  return NextResponse.json(
+    { error: "Du darfst diese Vertriebsdaten nicht bearbeiten." },
+    { status: 403 }
+  );
+}
+
 function formatOpportunity(row: OpportunityRow, activities: ActivityRow[]) {
   return {
     id: row.id,
@@ -88,9 +110,15 @@ function formatOpportunity(row: OpportunityRow, activities: ActivityRow[]) {
   };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   await ensureSalesHubTables();
-  const { organization } = await getDemoContext();
+  const url = new URL(req.url);
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, url.searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
   const rows = await prisma.$queryRaw<OpportunityRow[]>`
     SELECT *
     FROM "SalesOpportunity"
@@ -112,10 +140,18 @@ export async function GET() {
 
 export async function POST(req: Request) {
   await ensureSalesHubTables();
-  const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
-  const actor = users.find((candidate) => candidate.id === cleanString(body.actorId)) ?? user;
-  const owner = users.find((candidate) => candidate.id === cleanString(body.ownerUserId));
+  const body = await req.json().catch(() => ({}));
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canManageSalesPipeline(actor)) {
+    return forbiddenSalesResponse();
+  }
+
+  const requestedOwner = users.find((candidate) => candidate.id === cleanString(body.ownerUserId) && candidate.isActive);
+  const owner = requestedOwner && canAssignSalesItemsToOthers(actor) ? requestedOwner : actor;
   const title = cleanString(body.title);
 
   if (!title) {
@@ -140,7 +176,7 @@ export async function POST(req: Request) {
     ) VALUES (
       ${id}, ${organization.id}, ${title}, ${cleanString(body.customerName)}, ${cleanString(body.contactId) || null},
       ${cleanString(body.projectId) || null}, ${cleanString(body.offerId) || null},
-      ${owner?.id ?? actor.id}, ${owner ? getUserName(owner) : getUserName(actor)},
+      ${owner.id}, ${getUserName(owner)},
       ${cleanStage(body.stage)}, ${cleanNumber(body.estimatedValue)}, ${Math.max(0, Math.min(100, Math.round(cleanNumber(body.probability))))},
       ${cleanString(body.nextAction)}, ${cleanString(body.nextActionAt) ? new Date(cleanString(body.nextActionAt)) : null},
       ${cleanString(body.source)}, ${cleanString(body.notes)}, ${JSON.stringify(history)}::jsonb
@@ -157,16 +193,40 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   await ensureSalesHubTables();
-  const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
-  const actor = users.find((candidate) => candidate.id === cleanString(body.actorId)) ?? user;
+  const body = await req.json().catch(() => ({}));
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canManageSalesPipeline(actor)) {
+    return forbiddenSalesResponse();
+  }
+
   const id = cleanString(body.id);
-  const owner = users.find((candidate) => candidate.id === cleanString(body.ownerUserId));
   const title = cleanString(body.title);
 
   if (!id || !title) {
     return NextResponse.json({ error: "Bitte Chance und Titel angeben." }, { status: 400 });
   }
+
+  const currentRows = await prisma.$queryRaw<OpportunityRow[]>`
+    SELECT *
+    FROM "SalesOpportunity"
+    WHERE "organizationId" = ${organization.id}
+      AND id = ${id}
+    LIMIT 1
+  `;
+  const current = currentRows[0];
+  if (!current) {
+    return NextResponse.json({ error: "Chance wurde nicht gefunden." }, { status: 404 });
+  }
+  if (!canManageOwnedSalesItem(actor, current)) {
+    return forbiddenSalesResponse();
+  }
+
+  const requestedOwner = users.find((candidate) => candidate.id === cleanString(body.ownerUserId) && candidate.isActive);
+  const owner = requestedOwner && canAssignSalesItemsToOthers(actor) ? requestedOwner : null;
 
   await prisma.$executeRaw`
     UPDATE "SalesOpportunity"
@@ -176,8 +236,8 @@ export async function PATCH(req: Request) {
       "contactId" = ${cleanString(body.contactId) || null},
       "projectId" = ${cleanString(body.projectId) || null},
       "offerId" = ${cleanString(body.offerId) || null},
-      "ownerUserId" = ${owner?.id ?? (cleanString(body.ownerUserId) || null)},
-      "ownerName" = ${owner ? getUserName(owner) : cleanString(body.ownerName)},
+      "ownerUserId" = ${owner?.id ?? current.ownerUserId},
+      "ownerName" = ${owner ? getUserName(owner) : current.ownerName},
       "stage" = ${cleanStage(body.stage)},
       "estimatedValue" = ${cleanNumber(body.estimatedValue)},
       "probability" = ${Math.max(0, Math.min(100, Math.round(cleanNumber(body.probability))))},

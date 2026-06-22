@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canAccessEmployeeCosts } from "@/lib/permissions";
 
 type EmployeeCostRow = {
   id: string;
@@ -19,8 +20,6 @@ type EmployeeCostRow = {
   createdAt: Date;
   updatedAt: Date;
 };
-
-const allowedNames = new Set(["ramona eid", "christian eid"]);
 
 const defaultCost = {
   monthlySalary: 0,
@@ -82,18 +81,39 @@ async function ensureEmployeeCostTable() {
   `;
 }
 
-async function getAllowedActor(organizationId: string, actorId: string) {
-  const rows = await prisma.$queryRaw<Array<{ id: string; firstName: string; lastName: string }>>`
-    SELECT id, "firstName", "lastName"
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
+
+async function readJsonBody(request: Request) {
+  try {
+    return await request.json();
+  } catch {
+    return {};
+  }
+}
+
+async function getRequestActor(organizationId: string, actorId: string) {
+  if (!actorId) return null;
+
+  const rows = await prisma.$queryRaw<
+    Array<{ id: string; firstName: string; lastName: string; isActive: boolean }>
+  >`
+    SELECT id, "firstName", "lastName", "isActive"
     FROM "User"
-    WHERE id = ${actorId} AND "organizationId" = ${organizationId}
+    WHERE id = ${actorId}
+      AND "organizationId" = ${organizationId}
+      AND "isActive" = true
     LIMIT 1
   `;
-  const actor = rows[0];
-  if (!actor) return null;
+  return rows[0] ?? null;
+}
 
-  const normalizedName = `${actor.firstName} ${actor.lastName}`.trim().toLowerCase();
-  return allowedNames.has(normalizedName) ? { ...actor, name: `${actor.firstName} ${actor.lastName}` } : null;
+function getActorName(actor: { firstName: string; lastName: string }) {
+  return `${actor.firstName} ${actor.lastName}`.trim();
 }
 
 async function assertTargetEmployee(organizationId: string, userId: string) {
@@ -111,12 +131,16 @@ export async function GET(request: Request) {
   const userId = url.searchParams.get("userId") ?? "";
   const actorId = url.searchParams.get("actorId") ?? "";
 
-  if (!userId || !actorId) {
-    return NextResponse.json({ error: "Mitarbeiter und Benutzer fehlen." }, { status: 400 });
+  if (!userId) {
+    return NextResponse.json({ error: "Mitarbeiter fehlt." }, { status: 400 });
   }
 
-  const actor = await getAllowedActor(organization.id, actorId);
+  const actor = await getRequestActor(organization.id, actorId);
   if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
+  if (!canAccessEmployeeCosts(actor)) {
     return NextResponse.json({ error: "Kein Zugriff auf Lohnkosten." }, { status: 403 });
   }
 
@@ -139,16 +163,20 @@ export async function PUT(request: Request) {
   const { organization } = await getDemoContext();
   await ensureEmployeeCostTable();
 
-  const body = await request.json().catch(() => ({}));
+  const body = await readJsonBody(request);
   const userId = typeof body.userId === "string" ? body.userId : "";
   const actorId = typeof body.actorId === "string" ? body.actorId : "";
 
-  if (!userId || !actorId) {
-    return NextResponse.json({ error: "Mitarbeiter und Benutzer fehlen." }, { status: 400 });
+  if (!userId) {
+    return NextResponse.json({ error: "Mitarbeiter fehlt." }, { status: 400 });
   }
 
-  const actor = await getAllowedActor(organization.id, actorId);
+  const actor = await getRequestActor(organization.id, actorId);
   if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
+  if (!canAccessEmployeeCosts(actor)) {
     return NextResponse.json({ error: "Kein Zugriff auf Lohnkosten." }, { status: 403 });
   }
 
@@ -194,7 +222,7 @@ export async function PUT(request: Request) {
       ${sickDays},
       ${hoursPerDay},
       ${actor.id},
-      ${actor.name},
+      ${getActorName(actor)},
       CURRENT_TIMESTAMP,
       CURRENT_TIMESTAMP
     )

@@ -1,7 +1,9 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import { Prisma, type User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canArchiveProjects, canManageProjects } from "@/lib/permissions";
 import { recordStatusTransition, seedCurrentStatusTimeline } from "@/lib/status-tracking";
 
 export const dynamic = "force-dynamic";
@@ -146,6 +148,44 @@ function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function getActorName(actor: User) {
+  return [actor.firstName, actor.lastName].filter(Boolean).join(" ") || actor.email || "System";
+}
+
+function getRequestActor(users: User[], actorId: unknown) {
+  const requestedActorId = cleanString(actorId);
+  if (!requestedActorId) {
+    return null;
+  }
+
+  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
+
+function forbiddenProjectResponse() {
+  return NextResponse.json(
+    { error: "Du darfst Projekte nicht verwalten." },
+    { status: 403 }
+  );
+}
+
+function forbiddenProjectArchiveResponse() {
+  return NextResponse.json(
+    { error: "Du darfst Projekte nicht archivieren." },
+    { status: 403 }
+  );
+}
+
+function isArchivedProjectStatus(status: string) {
+  return normalizeProjectStatus(status) === "Archiviert";
+}
+
 function cleanBudgetHistory(value: unknown) {
   if (!Array.isArray(value)) return [];
 
@@ -281,27 +321,80 @@ function normalizeProjectStatus(status: string) {
   return status || "Lead / Klärung";
 }
 
-async function getLocalProjects() {
-  const { organization } = await getDemoContext();
+async function getLocalProjects(organizationId: string) {
   await ensureLocalProjectTable();
 
   const projects = await prisma.$queryRaw<LocalProjectRow[]>`
     SELECT *
     FROM "WorkPilotProject"
-    WHERE "organizationId" = ${organization.id}
+    WHERE "organizationId" = ${organizationId}
     ORDER BY "createdAt" DESC
   `;
 
   return projects.map(formatLocalProject);
 }
 
-export async function GET() {
-  return NextResponse.json(await getLocalProjects());
+async function validateProjectContactReferences(
+  organizationId: string,
+  input: {
+    contactId: string;
+    contactPersonId: string;
+    addressContactId: string;
+  }
+) {
+  const contactIds = Array.from(
+    new Set([input.contactId, input.contactPersonId, input.addressContactId].map(cleanString).filter(Boolean))
+  );
+  if (contactIds.length === 0) return null;
+
+  const rows = await prisma.$queryRaw<Array<{ id: string; parentCompanyId: string | null }>>`
+    SELECT "id", "parentCompanyId"
+    FROM "Contact"
+    WHERE "organizationId" = ${organizationId}
+      AND "id" IN (${Prisma.join(contactIds)})
+  `;
+  const foundIds = new Set(rows.map((row) => row.id));
+  const missingIds = contactIds.filter((id) => !foundIds.has(id));
+  if (missingIds.length > 0) {
+    return `Kontaktbezug ist ungueltig oder gehoert nicht zur Organisation: ${missingIds.join(", ")}`;
+  }
+
+  const mainContactId = cleanString(input.contactId);
+  const linkedContactIds = [cleanString(input.contactPersonId), cleanString(input.addressContactId)].filter(Boolean);
+  if (mainContactId && linkedContactIds.length > 0) {
+    const invalidLinkedIds = linkedContactIds.filter((id) => {
+      const row = rows.find((candidate) => candidate.id === id);
+      return row?.parentCompanyId && row.parentCompanyId !== mainContactId;
+    });
+    if (invalidLinkedIds.length > 0) {
+      return `Ansprechpartner oder Adresskontakt passt nicht zum ausgewaehlten Hauptkontakt: ${invalidLinkedIds.join(", ")}`;
+    }
+  }
+
+  return null;
+}
+
+export async function GET(req: Request) {
+  const { organization, users } = await getDemoContext();
+  const { searchParams } = new URL(req.url);
+  const actor = getRequestActor(users, searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
+  return NextResponse.json(await getLocalProjects(organization.id));
 }
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { organization, user } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canManageProjects(actor)) {
+    return forbiddenProjectResponse();
+  }
   await ensureLocalProjectTable();
 
   const id = cleanString(body.id) || randomUUID();
@@ -317,6 +410,17 @@ export async function POST(req: Request) {
   }
 
   const status = normalizeProjectStatus(cleanString(body.status));
+  if (isArchivedProjectStatus(status) && !canArchiveProjects(actor)) {
+    return forbiddenProjectArchiveResponse();
+  }
+  const contactReferenceError = await validateProjectContactReferences(organization.id, {
+    contactId: cleanString(body.contactId),
+    contactPersonId: cleanString(body.contactPersonId),
+    addressContactId: cleanString(body.addressContactId),
+  });
+  if (contactReferenceError) {
+    return NextResponse.json({ error: contactReferenceError }, { status: 400 });
+  }
   const currentRows = await prisma.$queryRaw<Array<{ status: string; createdAt: Date }>>`
     SELECT status, "createdAt"
     FROM "WorkPilotProject"
@@ -464,8 +568,8 @@ export async function POST(req: Request) {
       entityLabel,
       fromStatus: currentProject.status,
       toStatus: savedProject.status,
-      actorUserId: user.id,
-      actorName: [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "System",
+      actorUserId: actor.id,
+      actorName: getActorName(actor),
       note: "Projektstatus geändert.",
     });
   } else {

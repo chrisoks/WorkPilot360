@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { TaskStatus } from "@prisma/client";
+import { TaskStatus, type User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { recordStatusTransition } from "@/lib/status-tracking";
@@ -33,6 +33,25 @@ function createHistoryItem(event: string, actorName: string, note = "") {
     note,
     createdAt: new Date().toISOString(),
   };
+}
+
+function getRequestActor(users: User[], actorId: unknown) {
+  if (typeof actorId !== "string" || !actorId.trim()) {
+    return null;
+  }
+
+  return users.find((demoUser) => demoUser.id === actorId.trim() && demoUser.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
+
+function getUserName(user: Pick<User, "firstName" | "lastName" | "email">) {
+  return `${user.firstName} ${user.lastName}`.trim() || user.email;
 }
 
 function toUiStatus(status: TaskStatus) {
@@ -75,8 +94,12 @@ export async function POST(req: Request) {
     ADD COLUMN IF NOT EXISTS "rejectionReason" TEXT
   `;
   const body = await req.json();
-  const { user, users } = await getDemoContext();
-  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
   const response = body.response === "rejected" ? "rejected" : "accepted";
   const reason = typeof body.reason === "string" ? body.reason.trim() : "";
 
@@ -95,6 +118,7 @@ export async function POST(req: Request) {
     SELECT id, title, status, "ownerId", "organizationId", "createdById"
     FROM "Task"
     WHERE id = ${body.taskId}
+      AND "organizationId" = ${organization.id}
     LIMIT 1
   `;
   const task = tasks[0];
@@ -146,7 +170,7 @@ export async function POST(req: Request) {
 
   const creator = users.find((demoUser) => demoUser.id === task.createdById);
   const respondedAt = new Date();
-  const actorName = `${actor.firstName} ${actor.lastName}`;
+  const actorName = getUserName(actor);
 
   const taskHistoryItem = createHistoryItem(
     participantResponseId

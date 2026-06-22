@@ -1,11 +1,72 @@
 import { NextResponse } from "next/server";
-import { Role } from "@prisma/client";
+import { Role, type Task, type TimeEntry, type User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canManageTaskTimeEntries } from "@/lib/permissions";
+
+function getRequestActor(users: User[], actorId: unknown) {
+  if (typeof actorId !== "string" || !actorId.trim()) {
+    return null;
+  }
+
+  return users.find((demoUser) => demoUser.id === actorId.trim() && demoUser.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
+
+function getUserName(user: Pick<User, "firstName" | "lastName" | "email">) {
+  return `${user.firstName} ${user.lastName}`.trim() || user.email;
+}
+
+async function isTaskParticipant(taskId: string, userId: string) {
+  const participant = await prisma.taskParticipant.findFirst({
+    where: {
+      taskId,
+      userId,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  return Boolean(participant);
+}
+
+async function canAddTimeEntry(task: Pick<Task, "id" | "ownerId" | "createdById">, actor: User) {
+  return (
+    canManageTaskTimeEntries(actor) ||
+    task.ownerId === actor.id ||
+    task.createdById === actor.id ||
+    await isTaskParticipant(task.id, actor.id)
+  );
+}
+
+function canChangeTimeEntry(entry: Pick<TimeEntry, "userId">, actor: User) {
+  return canManageTaskTimeEntries(actor) || entry.userId === actor.id;
+}
 
 function parseDuration(durationMinutes: unknown) {
   const value = Number(durationMinutes);
   return Number.isFinite(value) && value > 0 ? Math.round(value) : null;
+}
+
+function parseStartedAt(startedAt: unknown) {
+  if (!startedAt) return new Date();
+
+  const parsed = new Date(String(startedAt));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseOptionalStartedAt(startedAt: unknown) {
+  if (!startedAt) return undefined;
+
+  const parsed = new Date(String(startedAt));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 function toLocalDateTimeInputValue(date: Date) {
@@ -24,6 +85,7 @@ export async function POST(
 ) {
   const body = await req.json();
   const durationMinutes = parseDuration(body.durationMinutes);
+  const startedAt = parseStartedAt(body.startedAt);
 
   if (!durationMinutes) {
     return NextResponse.json(
@@ -32,7 +94,18 @@ export async function POST(
     );
   }
 
-  const { organization, user } = await getDemoContext();
+  if (!startedAt) {
+    return NextResponse.json(
+      { error: "Bitte einen g\u00fcltigen Startzeitpunkt angeben." },
+      { status: 400 }
+    );
+  }
+
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
 
   const task = await prisma.task.findFirst({
     where: {
@@ -48,17 +121,22 @@ export async function POST(
     );
   }
 
-  const startedAt = body.startedAt ? new Date(body.startedAt) : new Date();
+  if (!(await canAddTimeEntry(task, actor))) {
+    return NextResponse.json(
+      { error: "Du darfst f\u00fcr diese Aufgabe keine Zeit erfassen." },
+      { status: 403 }
+    );
+  }
 
   const entry = await prisma.timeEntry.create({
     data: {
       organizationId: organization.id,
       taskId: task.id,
-      userId: user.id,
+      userId: actor.id,
       startedAt,
       stoppedAt: new Date(startedAt.getTime() + durationMinutes * 60_000),
       durationMinutes,
-      note: body.note || null,
+      note: typeof body.note === "string" && body.note.trim() ? body.note.trim() : null,
     },
     include: {
       user: true,
@@ -80,6 +158,7 @@ export async function PATCH(
 ) {
   const body = await req.json();
   const durationMinutes = parseDuration(body.durationMinutes);
+  const requestedStartedAt = parseOptionalStartedAt(body.startedAt);
 
   if (!body.entryId) {
     return NextResponse.json({ error: "Zeiteintrag wurde nicht gefunden." }, { status: 400 });
@@ -92,7 +171,19 @@ export async function PATCH(
     );
   }
 
-  const { organization } = await getDemoContext();
+  if (requestedStartedAt === null) {
+    return NextResponse.json(
+      { error: "Bitte einen g\u00fcltigen Startzeitpunkt angeben." },
+      { status: 400 }
+    );
+  }
+
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
   const existingEntry = await prisma.timeEntry.findFirst({
     where: {
       id: body.entryId,
@@ -108,14 +199,24 @@ export async function PATCH(
     );
   }
 
+  const startedAt = requestedStartedAt ?? existingEntry.startedAt;
+
+  if (!canChangeTimeEntry(existingEntry, actor)) {
+    return NextResponse.json(
+      { error: "Du darfst diesen Zeiteintrag nicht bearbeiten." },
+      { status: 403 }
+    );
+  }
+
   const entry = await prisma.timeEntry.update({
     where: {
       id: existingEntry.id,
     },
     data: {
-      stoppedAt: new Date(existingEntry.startedAt.getTime() + durationMinutes * 60_000),
+      startedAt,
+      stoppedAt: new Date(startedAt.getTime() + durationMinutes * 60_000),
       durationMinutes,
-      note: body.note || null,
+      note: typeof body.note === "string" && body.note.trim() ? body.note.trim() : null,
     },
     include: {
       user: true,
@@ -149,8 +250,12 @@ export async function DELETE(
     );
   }
 
-  const { organization, user, users } = await getDemoContext();
-  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
   const existingEntry = await prisma.timeEntry.findFirst({
     where: {
       id: body.entryId,
@@ -170,6 +275,13 @@ export async function DELETE(
     );
   }
 
+  if (!canChangeTimeEntry(existingEntry, actor)) {
+    return NextResponse.json(
+      { error: "Du darfst diesen Zeiteintrag nicht l\u00f6schen." },
+      { status: 403 }
+    );
+  }
+
   await prisma.timeEntry.delete({
     where: {
       id: existingEntry.id,
@@ -177,7 +289,9 @@ export async function DELETE(
   });
 
   const recipients = users.filter(
-    (demoUser) => demoUser.role === Role.ADMIN || demoUser.role === Role.GESCHAEFTSFUEHRER
+    (demoUser) =>
+      demoUser.isActive &&
+      (demoUser.role === Role.ADMIN || demoUser.role === Role.GESCHAEFTSFUEHRER)
   );
 
   await Promise.all(
@@ -189,7 +303,7 @@ export async function DELETE(
           taskId: existingEntry.taskId,
           channel: "app",
           subject: "Zeiteintrag gel\u00f6scht",
-          body: `${actor.firstName} ${actor.lastName} hat einen Zeiteintrag gel\u00f6scht: ${existingEntry.durationMinutes} Min. bei "${existingEntry.task.title}". Begr\u00fcndung: ${reason}`,
+          body: `${getUserName(actor)} hat einen Zeiteintrag gel\u00f6scht: ${existingEntry.durationMinutes} Min. bei "${existingEntry.task.title}". Begr\u00fcndung: ${reason}`,
         },
       })
     )

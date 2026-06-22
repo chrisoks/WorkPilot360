@@ -2,9 +2,24 @@ import { NextResponse } from "next/server";
 import { Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canManageTeams } from "@/lib/permissions";
 
-function canManageTeams(role: Role) {
-  return role === Role.ADMIN || role === Role.GESCHAEFTSFUEHRER;
+function getRequestActor(
+  users: Array<{ id: string; role: Role }>,
+  actorId: unknown
+) {
+  if (typeof actorId !== "string" || !actorId.trim()) {
+    return null;
+  }
+
+  return users.find((demoUser) => demoUser.id === actorId.trim()) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
 }
 
 async function formatTeam(team: { id: string; name: string; departmentId: string | null }) {
@@ -49,10 +64,14 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { organization, department, user, users } = await getDemoContext();
-  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const { organization, department, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
 
-  if (!canManageTeams(actor.role)) {
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
+  if (!canManageTeams(actor)) {
     return NextResponse.json(
       { error: "Nur Admins und Geschäftsführung dürfen Teams anlegen." },
       { status: 403 }
@@ -79,10 +98,14 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
-  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
 
-  if (!canManageTeams(actor.role)) {
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
+  if (!canManageTeams(actor)) {
     return NextResponse.json(
       { error: "Nur Admins und Geschäftsführung dürfen Teams bearbeiten." },
       { status: 403 }
@@ -96,31 +119,42 @@ export async function PATCH(req: Request) {
     );
   }
 
-  const team = await prisma.team.update({
+  const existingTeam = await prisma.team.findFirst({
     where: {
       id: body.teamId,
+      organizationId: organization.id,
+    },
+  });
+
+  if (!existingTeam) {
+    return NextResponse.json(
+      { error: "Team wurde nicht gefunden." },
+      { status: 404 }
+    );
+  }
+
+  const team = await prisma.team.update({
+    where: {
+      id: existingTeam.id,
     },
     data: {
       name: body.name.trim(),
     },
   });
 
-  if (team.organizationId !== organization.id) {
-    return NextResponse.json(
-      { error: "Team gehört nicht zur Demo-Organisation." },
-      { status: 403 }
-    );
-  }
-
   return NextResponse.json(await formatTeam(team));
 }
 
 export async function DELETE(req: Request) {
   const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
-  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
 
-  if (!canManageTeams(actor.role)) {
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
+  if (!canManageTeams(actor)) {
     return NextResponse.json(
       { error: "Nur Admins und Geschäftsführung dürfen Teams löschen." },
       { status: 403 }

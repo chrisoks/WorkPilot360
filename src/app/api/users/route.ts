@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Prisma, Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canManagePersonalNumber, canManageUsers } from "@/lib/permissions";
 
 const bcrypt = require("bcryptjs") as {
   hashSync(password: string, saltRounds: number): string;
@@ -52,12 +53,22 @@ type BranchAllocations = {
   okImmocareTzk?: number;
 };
 
-function canManageUsers(role: Role) {
-  return role === Role.ADMIN || role === Role.GESCHAEFTSFUEHRER;
+function getRequestActor(
+  users: Array<{ id: string; role: Role }>,
+  actorId: unknown
+) {
+  if (typeof actorId !== "string" || !actorId.trim()) {
+    return null;
+  }
+
+  return users.find((demoUser) => demoUser.id === actorId.trim()) ?? null;
 }
 
-function canManagePersonalNumber(role: Role) {
-  return role === Role.GESCHAEFTSFUEHRER;
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
 }
 
 function roleLabel(role: Role) {
@@ -621,10 +632,15 @@ export async function PATCH(req: Request) {
   await ensureRoleEnumValues();
   await ensureUserProfileColumns();
   const body = await req.json();
-  const { organization, department, user, users } = await getDemoContext();
-  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const { organization, department, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
   const isSelfUpdate = body.userId === actor.id;
-  const isManagedUpdate = canManageUsers(actor.role);
+  const isManagedUpdate = canManageUsers(actor);
 
   if (!isManagedUpdate && !isSelfUpdate) {
     return NextResponse.json(
@@ -696,10 +712,27 @@ export async function PATCH(req: Request) {
       id: true,
     },
   });
-  const requestedTeamIds = Array.isArray(body.teamIds) ? body.teamIds : [];
-  const teamIds = body.allTeams ? allTeams.map((team) => team.id) : requestedTeamIds;
+  const requestedTeamIds = Array.isArray(body.teamIds)
+    ? body.teamIds.filter((teamId: unknown): teamId is string => typeof teamId === "string")
+    : [];
+  const teamIds: string[] = body.allTeams ? allTeams.map((team) => team.id) : requestedTeamIds;
+  const validTeamIds = new Set(allTeams.map((team) => team.id));
+  const invalidTeamIds = teamIds.filter((teamId) => !validTeamIds.has(teamId));
+
+  if (invalidTeamIds.length > 0) {
+    return NextResponse.json(
+      { error: "Mindestens ein Team wurde nicht gefunden." },
+      { status: 400 }
+    );
+  }
+
   const primaryTeamId = teamIds[0] ?? null;
-  const existingUser = users.find((demoUser) => demoUser.id === body.userId);
+  const existingUser = await prisma.user.findFirst({
+    where: {
+      id: body.userId,
+      organizationId: organization.id,
+    },
+  });
 
   if (!existingUser) {
     return NextResponse.json({ error: "Benutzer wurde nicht gefunden." }, { status: 404 });
@@ -745,7 +778,7 @@ export async function PATCH(req: Request) {
       ? body.profileImageDataUrl
       : "";
   const hasPersonalNumberUpdate = Object.prototype.hasOwnProperty.call(body, "personalNumber");
-  if (hasPersonalNumberUpdate && !canManagePersonalNumber(actor.role)) {
+  if (hasPersonalNumberUpdate && !canManagePersonalNumber(actor)) {
     return NextResponse.json(
       { error: "Nur Geschäftsführung darf die Personalnummer ändern." },
       { status: 403 }
@@ -942,10 +975,14 @@ export async function POST(req: Request) {
   await ensureRoleEnumValues();
   await ensureUserProfileColumns();
   const body = await req.json();
-  const { organization, department, user, users } = await getDemoContext();
-  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const { organization, department, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
 
-  if (!canManageUsers(actor.role)) {
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
+  if (!canManageUsers(actor)) {
     return NextResponse.json(
       { error: "Nur Admins und Geschäftsführung dürfen Benutzer anlegen." },
       { status: 403 }
@@ -983,12 +1020,24 @@ export async function POST(req: Request) {
       id: true,
     },
   });
-  const requestedTeamIds = Array.isArray(body.teamIds) ? body.teamIds : [];
-  const teamIds = body.allTeams ? allTeams.map((team) => team.id) : requestedTeamIds;
+  const requestedTeamIds = Array.isArray(body.teamIds)
+    ? body.teamIds.filter((teamId: unknown): teamId is string => typeof teamId === "string")
+    : [];
+  const teamIds: string[] = body.allTeams ? allTeams.map((team) => team.id) : requestedTeamIds;
+  const validTeamIds = new Set(allTeams.map((team) => team.id));
+  const invalidTeamIds = teamIds.filter((teamId) => !validTeamIds.has(teamId));
+
+  if (invalidTeamIds.length > 0) {
+    return NextResponse.json(
+      { error: "Mindestens ein Team wurde nicht gefunden." },
+      { status: 400 }
+    );
+  }
+
   const primaryTeamId = teamIds[0] ?? null;
   const profileImageDataUrl =
     typeof body.profileImageDataUrl === "string" ? body.profileImageDataUrl : "";
-  const personalNumber = canManagePersonalNumber(actor.role) ? parseText(body.personalNumber) : "";
+  const personalNumber = canManagePersonalNumber(actor) ? parseText(body.personalNumber) : "";
   const birthDate = parseBirthDate(body.birthDate);
   const planningBoard = parsePlanningBoard(body.planningBoard);
   const planningGroup = parsePlanningGroup(planningBoard, body.planningGroup);
@@ -1092,10 +1141,14 @@ export async function POST(req: Request) {
 
 export async function DELETE(req: Request) {
   const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
-  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
 
-  if (!canManageUsers(actor.role)) {
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
+  if (!canManageUsers(actor)) {
     return NextResponse.json(
       { error: "Nur Admins und Geschäftsführung dürfen Benutzer entfernen." },
       { status: 403 }

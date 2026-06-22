@@ -3,6 +3,7 @@ import { readFile } from "fs/promises";
 import path from "path";
 import { NextResponse } from "next/server";
 import fontkit from "@pdf-lib/fontkit";
+import type { User } from "@prisma/client";
 import {
   PDFDocument,
   StandardFonts,
@@ -12,6 +13,7 @@ import {
 } from "pdf-lib";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canDeleteOffers, canManageOffers, canSendDocumentMails } from "@/lib/permissions";
 
 type OfferCompany = "OK solutions" | "OK immocare";
 type OfferType = "base" | "addendum";
@@ -44,6 +46,7 @@ type OfferLineLaborInput = {
 type OfferInput = {
   id?: string;
   action?: "markLost" | "markWon" | "restoreLost";
+  actorId?: string;
   actorName?: string;
   projectId?: string;
   projectNumber?: string;
@@ -472,6 +475,33 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error && error.message
     ? error.message
     : "Unbekannter Fehler";
+}
+
+function getUserName(user: Pick<User, "firstName" | "lastName" | "email">) {
+  return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "System";
+}
+
+function getRequestActor(users: User[], actorId: unknown) {
+  const requestedActorId = cleanString(actorId);
+  if (!requestedActorId) {
+    return null;
+  }
+
+  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
+
+function forbiddenOfferResponse() {
+  return NextResponse.json(
+    { error: "Keine Berechtigung fuer diese Angebotsaktion." },
+    { status: 403 }
+  );
 }
 
 function formatEuro(value: number) {
@@ -962,9 +992,17 @@ async function addOfferHistory(input: {
 }
 
 export async function GET(req: Request) {
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureOfferTables();
   const { searchParams } = new URL(req.url);
+  const actor = getRequestActor(users, searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canSendDocumentMails(actor)) {
+    return forbiddenOfferResponse();
+  }
+
   const pdfId = cleanString(searchParams.get("pdfId"));
   const historyProjectId = cleanString(searchParams.get("historyProjectId"));
 
@@ -1001,13 +1039,29 @@ export async function GET(req: Request) {
   const projectId = cleanString(searchParams.get("projectId"));
   const rows = projectId
     ? await prisma.$queryRaw<OfferRow[]>`
-        SELECT *
+        SELECT "id", "organizationId", "projectId", "projectNumber", "projectTitle", "company",
+               "offerType", "addendumMode", "plannedExecutionEndMonth", "parentOfferId",
+               "offerNumber", "status", "customerName", "customerStreet", "customerCity",
+               "contactName", "internalContactName", "internalPhone", "internalEmail",
+               "plannedExecutionMonth", "introText", "closingText", "netTotal", "vatRate",
+               "grossTotal", "discountPercent", "lostReason", "lostNote", "lostAt",
+               "wonAt", "wonByName", "wonReason",
+               CASE WHEN "pdfData" IS NULL THEN NULL ELSE 'available' END AS "pdfData",
+               "createdAt", "updatedAt"
         FROM "Offer"
         WHERE "organizationId" = ${organization.id} AND "projectId" = ${projectId} AND "status" <> 'Gelöscht'
         ORDER BY "createdAt" DESC
       `
     : await prisma.$queryRaw<OfferRow[]>`
-        SELECT *
+        SELECT "id", "organizationId", "projectId", "projectNumber", "projectTitle", "company",
+               "offerType", "addendumMode", "plannedExecutionEndMonth", "parentOfferId",
+               "offerNumber", "status", "customerName", "customerStreet", "customerCity",
+               "contactName", "internalContactName", "internalPhone", "internalEmail",
+               "plannedExecutionMonth", "introText", "closingText", "netTotal", "vatRate",
+               "grossTotal", "discountPercent", "lostReason", "lostNote", "lostAt",
+               "wonAt", "wonByName", "wonReason",
+               CASE WHEN "pdfData" IS NULL THEN NULL ELSE 'available' END AS "pdfData",
+               "createdAt", "updatedAt"
         FROM "Offer"
         WHERE "organizationId" = ${organization.id} AND "status" <> 'Gelöscht'
         ORDER BY "createdAt" DESC
@@ -1045,9 +1099,17 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureOfferTables();
   const body = (await req.json()) as OfferInput;
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canManageOffers(actor)) {
+    return forbiddenOfferResponse();
+  }
+  const actorName = getUserName(actor);
   const lines = normalizeOfferLines(body.lines);
   const saveAsDraft = Boolean(body.saveAsDraft);
 
@@ -1145,7 +1207,7 @@ export async function POST(req: Request) {
       note: `${offerType === "addendum" ? "Nachtragsangebot" : "Angebot"} ${offerNumber} wurde ${
         saveAsDraft ? "als Entwurf gespeichert" : "erstellt"
       }.`,
-      actorName: cleanString(body.internalContactName) || "System",
+      actorName,
     });
 
     return NextResponse.json(serializeOffer(rows[0], savedLines, savedLaborRows));
@@ -1184,9 +1246,17 @@ export async function PUT(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureOfferTables();
   const body = (await req.json()) as OfferInput;
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canManageOffers(actor)) {
+    return forbiddenOfferResponse();
+  }
+  const actorName = getUserName(actor);
   const id = cleanString(body.id);
   const action = cleanString(body.action);
   const lines = normalizeOfferLines(body.lines);
@@ -1260,7 +1330,7 @@ export async function PATCH(req: Request) {
       eventType: "lost",
       title: "Angebot verloren",
       note: `${existingOffer.offerNumber} wurde als verloren markiert. Grund: ${lostReason}. Kommentar: ${lostNote}.`,
-      actorName: cleanString(body.actorName) || "System",
+      actorName,
     });
 
     return NextResponse.json(serializeOffer(rows[0], savedLines, savedLaborRows));
@@ -1268,7 +1338,6 @@ export async function PATCH(req: Request) {
 
   if (action === "markWon") {
     const wonReason = cleanString(body.wonReason) || "Angebot gewonnen";
-    const actorName = cleanString(body.actorName) || "System";
     const existingRows = await prisma.$queryRaw<
       Array<{ offerNumber: string; status: string; projectId: string; lostAt: Date | null }>
     >`
@@ -1377,7 +1446,7 @@ export async function PATCH(req: Request) {
       eventType: "restored",
       title: "Angebot wieder aktiviert",
       note: `${existingOffer.offerNumber} wurde wieder als aktives Angebot markiert.`,
-      actorName: cleanString(body.actorName) || "System",
+      actorName,
     });
 
     return NextResponse.json(serializeOffer(rows[0], savedLines, savedLaborRows));
@@ -1501,18 +1570,25 @@ export async function PATCH(req: Request) {
     eventType: "updated",
     title: saveAsDraft ? "Angebotsentwurf gespeichert" : "Angebot bearbeitet",
     note: `${existingOffer.offerNumber} wurde ${saveAsDraft ? "als Entwurf gespeichert" : "aktualisiert"}.`,
-    actorName: cleanString(body.internalContactName) || "System",
+    actorName,
   });
 
   return NextResponse.json(serializeOffer(rows[0], savedLines, savedLaborRows));
 }
 
 export async function DELETE(req: Request) {
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureOfferTables();
   const body = await req.json().catch(() => ({}));
   const id = cleanString(body.id);
-  const actorName = cleanString(body.actorName) || "System";
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canDeleteOffers(actor)) {
+    return forbiddenOfferResponse();
+  }
+  const actorName = getUserName(actor);
 
   if (!id) {
     return NextResponse.json({ error: "Angebot fehlt." }, { status: 400 });

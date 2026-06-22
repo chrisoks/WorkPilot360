@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Prisma, Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canManageEmployeeAssessments } from "@/lib/permissions";
 
 type DisgDimension = "D" | "I" | "S" | "G";
 
@@ -35,10 +36,6 @@ const disgQuestionDimensions: Record<string, DisgDimension> = {
   q33: "D", q34: "S", q35: "I", q36: "G", q37: "D", q38: "I", q39: "S", q40: "G",
 };
 const defaultDisgOrder = Object.keys(disgQuestionDimensions);
-
-function canManageAssessments(role?: Role) {
-  return role === Role.ADMIN || role === Role.GESCHAEFTSFUEHRER;
-}
 
 async function ensureAssessmentColumn() {
   await prisma.$executeRaw`
@@ -173,13 +170,43 @@ function calculateDisgResult(answers: Record<string, number>) {
   };
 }
 
+type AssessmentUser = {
+  id: string;
+  organizationId: string;
+  role: Role;
+  isActive: boolean;
+};
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
+
+async function readJsonBody(request: Request) {
+  try {
+    return await request.json();
+  } catch {
+    return {};
+  }
+}
+
 async function getUserById(userId: string) {
-  const [user] = await prisma.$queryRaw<Array<{ id: string; organizationId: string; role: Role }>>`
-    SELECT "id", "organizationId", "role"
+  const [user] = await prisma.$queryRaw<AssessmentUser[]>`
+    SELECT "id", "organizationId", "role", "isActive"
     FROM "User"
     WHERE "id" = ${userId}
     LIMIT 1
   `;
+  return user;
+}
+
+function getRequestActor(user: AssessmentUser | undefined, organizationId: string) {
+  if (!user || user.organizationId !== organizationId || !user.isActive) {
+    return null;
+  }
+
   return user;
 }
 
@@ -200,11 +227,16 @@ export async function GET(request: Request) {
   const { organization } = await getDemoContext();
   await ensureAssessmentColumn();
   const [actor, target] = await Promise.all([getUserById(actorId), getUserById(userId)]);
-  if (!actor || !target || actor.organizationId !== organization.id || target.organizationId !== organization.id) {
+  const requestActor = getRequestActor(actor, organization.id);
+  if (!requestActor) {
+    return unauthorizedActorResponse();
+  }
+
+  if (!target || target.organizationId !== organization.id) {
     return NextResponse.json({ error: "Benutzer nicht gefunden." }, { status: 404 });
   }
-  const isManager = canManageAssessments(actor.role);
-  if (!isManager && actor.id !== target.id) {
+  const isManager = canManageEmployeeAssessments(requestActor);
+  if (!isManager && requestActor.id !== target.id) {
     return NextResponse.json({ error: "Keine Berechtigung." }, { status: 403 });
   }
   const data = await readAssessment(target.id);
@@ -212,7 +244,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null);
+  const body = await readJsonBody(request);
   const actorId = typeof body?.actorId === "string" ? body.actorId : "";
   const userId = typeof body?.userId === "string" ? body.userId : "";
   const section = typeof body?.section === "string" ? body.section : "";
@@ -220,14 +252,19 @@ export async function POST(request: Request) {
   const { organization } = await getDemoContext();
   await ensureAssessmentColumn();
   const [actor, target] = await Promise.all([getUserById(actorId), getUserById(userId)]);
-  if (!actor || !target || actor.organizationId !== organization.id || target.organizationId !== organization.id) {
+  const requestActor = getRequestActor(actor, organization.id);
+  if (!requestActor) {
+    return unauthorizedActorResponse();
+  }
+
+  if (!target || target.organizationId !== organization.id) {
     return NextResponse.json({ error: "Benutzer nicht gefunden." }, { status: 404 });
   }
-  const isManager = canManageAssessments(actor.role);
+  const isManager = canManageEmployeeAssessments(requestActor);
   const existing = await readAssessment(target.id);
   const existingDisg = normalizeDisg(existing.disg);
 
-  if (section === "self" && actor.id !== target.id) {
+  if (section === "self" && requestActor.id !== target.id) {
     return NextResponse.json({ error: "Nur der Mitarbeiter kann die eigene Selbsteinschätzung speichern." }, { status: 403 });
   }
   if (section === "self" && existing.selfLocked && !isManager) {
@@ -236,10 +273,10 @@ export async function POST(request: Request) {
   if (["manager", "measures", "conversation", "unlock-self", "disg-unlock"].includes(section) && !isManager) {
     return NextResponse.json({ error: "Keine Berechtigung." }, { status: 403 });
   }
-  if (["disg-save", "disg-complete"].includes(section) && actor.id !== target.id) {
+  if (["disg-save", "disg-complete"].includes(section) && requestActor.id !== target.id) {
     return NextResponse.json({ error: "DISG kann nur vom jeweiligen Mitarbeiter selbst bearbeitet werden." }, { status: 403 });
   }
-  if (section === "disg-reset" && actor.id !== target.id && !isManager) {
+  if (section === "disg-reset" && requestActor.id !== target.id && !isManager) {
     return NextResponse.json({ error: "Keine Berechtigung." }, { status: 403 });
   }
   if (!["self", "manager", "measures", "conversation", "unlock-self", "disg-save", "disg-complete", "disg-unlock", "disg-reset"].includes(section)) {

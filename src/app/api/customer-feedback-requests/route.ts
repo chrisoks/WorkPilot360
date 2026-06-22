@@ -1,7 +1,9 @@
 import { randomBytes, randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canManageCustomerFeedbackRequests, canReadCustomerFeedbackRequests } from "@/lib/permissions";
 import { ensureSalesHubTables } from "@/lib/sales-hub/ensure";
 
 type FeedbackRequestRow = {
@@ -34,6 +36,27 @@ function getUserName(user: { firstName?: string | null; lastName?: string | null
   return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "System";
 }
 
+function getRequestActor(users: User[], actorId: unknown) {
+  const requestedActorId = cleanString(actorId);
+  if (!requestedActorId) return null;
+
+  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
+
+function forbiddenFeedbackRequestResponse() {
+  return NextResponse.json(
+    { error: "Du darfst Feedback-Anfragen nicht verwalten." },
+    { status: 403 }
+  );
+}
+
 function formatRequest(row: FeedbackRequestRow, req: Request) {
   return {
     id: row.id,
@@ -56,7 +79,16 @@ function formatRequest(row: FeedbackRequestRow, req: Request) {
 
 export async function GET(req: Request) {
   await ensureSalesHubTables();
-  const { organization } = await getDemoContext();
+  const url = new URL(req.url);
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, url.searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canReadCustomerFeedbackRequests(actor)) {
+    return forbiddenFeedbackRequestResponse();
+  }
+
   const rows = await prisma.$queryRaw<FeedbackRequestRow[]>`
     SELECT *
     FROM "CustomerFeedbackRequest"
@@ -68,8 +100,16 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   await ensureSalesHubTables();
-  const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
+  const body = await req.json().catch(() => ({}));
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canManageCustomerFeedbackRequests(actor)) {
+    return forbiddenFeedbackRequestResponse();
+  }
+
   const invoiceId = cleanString(body.invoiceId);
   if (invoiceId) {
     const existing = await prisma.$queryRaw<FeedbackRequestRow[]>`
@@ -85,7 +125,7 @@ export async function POST(req: Request) {
     }
   }
   const requestedUserId = cleanString(body.salesUserId);
-  const salesUser = requestedUserId ? users.find((candidate) => candidate.id === requestedUserId) ?? user : null;
+  const salesUser = requestedUserId ? users.find((candidate) => candidate.id === requestedUserId) ?? actor : null;
   const interviewerName = salesUser ? getUserName(salesUser) : "WorkPilot";
   const token = randomBytes(18).toString("hex");
   const id = randomUUID();

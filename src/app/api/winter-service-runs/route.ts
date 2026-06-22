@@ -1,9 +1,11 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import type { User } from "@prisma/client";
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canArchiveProjects, canCreateProjectLogbookEntries } from "@/lib/permissions";
 
 type WinterServiceImage = {
   name: string;
@@ -43,11 +45,78 @@ type WinterServiceRunRow = {
   updatedAt: Date;
 };
 
+type ProjectReferenceRow = {
+  id: string;
+  status: string;
+};
+
 const A4_WIDTH = 595.28;
 const A4_HEIGHT = 841.89;
+const MAX_WINTER_SERVICE_IMAGE_BYTES = 12 * 1024 * 1024;
+const MAX_WINTER_SERVICE_IMAGE_TOTAL_BYTES = 48 * 1024 * 1024;
+const MAX_WINTER_SERVICE_REPORT_BYTES = 12 * 1024 * 1024;
+const ALLOWED_WINTER_SERVICE_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const ALLOWED_WINTER_SERVICE_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function getRequestActor(users: User[], actorId: unknown) {
+  const cleanActorId = cleanString(actorId);
+  if (!cleanActorId) return null;
+  const actor = users.find((candidate) => candidate.id === cleanActorId);
+  return actor?.isActive ? actor : null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json({ error: "Aktiver Benutzer erforderlich." }, { status: 401 });
+}
+
+function forbiddenWinterServiceResponse() {
+  return NextResponse.json(
+    { error: "Du darfst diesen Winterdienst-Einsatz nicht veraendern." },
+    { status: 403 }
+  );
+}
+
+function isArchivedProjectStatus(status: string) {
+  return status.trim().toLowerCase().includes("archiviert");
+}
+
+function formatFileSize(bytes: number) {
+  return `${Math.round(bytes / 1024 / 1024)} MB`;
+}
+
+function getAttachmentExtension(name: string) {
+  return name.match(/\.[^.]+$/)?.[0]?.toLowerCase() || "";
+}
+
+function estimateDataUrlBytes(dataUrl: string) {
+  const separatorIndex = dataUrl.indexOf(",");
+  const payload = separatorIndex >= 0 ? dataUrl.slice(separatorIndex + 1) : dataUrl;
+  if (!payload) return 0;
+  if (dataUrl.slice(0, separatorIndex).toLowerCase().includes(";base64")) {
+    return Math.ceil((payload.length * 3) / 4);
+  }
+  return payload.length;
+}
+
+function getImageBytes(image: WinterServiceImage) {
+  return Math.max(
+    Number.isFinite(image.size) ? Number(image.size) : 0,
+    image.dataUrl ? estimateDataUrlBytes(image.dataUrl) : 0
+  );
+}
+
+function isAllowedWinterServiceImage(image: WinterServiceImage) {
+  const mimeType = (image.mimeType || "").toLowerCase();
+  const extension = getAttachmentExtension(image.name);
+  return (
+    ALLOWED_WINTER_SERVICE_IMAGE_MIME_TYPES.has(mimeType) ||
+    (!mimeType && ALLOWED_WINTER_SERVICE_IMAGE_EXTENSIONS.has(extension)) ||
+    ALLOWED_WINTER_SERVICE_IMAGE_EXTENSIONS.has(extension)
+  );
 }
 
 function cleanImages(value: unknown): WinterServiceImage[] {
@@ -67,6 +136,74 @@ function cleanImages(value: unknown): WinterServiceImage[] {
     });
     return images;
   }, []);
+}
+
+function validateWinterServiceImages(images: WinterServiceImage[]) {
+  let totalBytes = 0;
+
+  for (const image of images) {
+    if (!image.dataUrl?.startsWith("data:")) {
+      return {
+        status: 400,
+        error: `Bild "${image.name}" hat ein ungueltiges Datenformat.`,
+      };
+    }
+
+    if (!isAllowedWinterServiceImage(image)) {
+      return {
+        status: 400,
+        error: `Bildtyp von "${image.name}" ist nicht erlaubt.`,
+      };
+    }
+
+    const imageBytes = getImageBytes(image);
+    if (imageBytes > MAX_WINTER_SERVICE_IMAGE_BYTES) {
+      return {
+        status: 413,
+        error: `Bild "${image.name}" ist zu gross. Erlaubt sind maximal ${formatFileSize(
+          MAX_WINTER_SERVICE_IMAGE_BYTES
+        )} pro Bild.`,
+      };
+    }
+
+    totalBytes += imageBytes;
+  }
+
+  if (totalBytes > MAX_WINTER_SERVICE_IMAGE_TOTAL_BYTES) {
+    return {
+      status: 413,
+      error: `Die Winterdienst-Bilder sind zusammen zu gross. Erlaubt sind maximal ${formatFileSize(
+        MAX_WINTER_SERVICE_IMAGE_TOTAL_BYTES
+      )} pro Einsatz.`,
+    };
+  }
+
+  return null;
+}
+
+async function getProjectReference(organizationId: string, projectId: string) {
+  const rows = await prisma.$queryRaw<ProjectReferenceRow[]>`
+    SELECT "id", "status"
+    FROM "WorkPilotProject"
+    WHERE "organizationId" = ${organizationId}
+      AND "id" = ${projectId}
+    LIMIT 1
+  `;
+  return rows[0] ?? null;
+}
+
+async function assertWritableProject(organizationId: string, projectId: string, actor: User) {
+  const project = await getProjectReference(organizationId, projectId);
+  if (!project) {
+    return NextResponse.json({ error: "Projekt wurde nicht gefunden." }, { status: 404 });
+  }
+  if (isArchivedProjectStatus(project.status) && !canArchiveProjects(actor)) {
+    return NextResponse.json(
+      { error: "Archivierte Projekte duerfen nicht mehr im Logbuch veraendert werden." },
+      { status: 403 }
+    );
+  }
+  return null;
 }
 
 function getMonthFromDate(value: string) {
@@ -297,7 +434,8 @@ async function ensureProjectLogbookEntryTable() {
   `;
 }
 
-async function addProjectDocumentLogbookEntry(row: WinterServiceRunRow, reportNumber: string, pdfData: string) {
+async function addProjectDocumentLogbookEntry(row: WinterServiceRunRow, reportNumber: string, pdfData: string, actor: User) {
+  const actorName = [actor.firstName, actor.lastName].filter(Boolean).join(" ") || actor.email || "System";
   await ensureProjectLogbookEntryTable();
   const existing = await prisma.$queryRaw<Array<{ id: string }>>`
     SELECT id
@@ -315,7 +453,7 @@ async function addProjectDocumentLogbookEntry(row: WinterServiceRunRow, reportNu
       "id", "organizationId", "projectId", "title", "body", "author", "colleague", "visibleFor", "attachments"
     ) VALUES (
       ${randomUUID()}, ${row.organizationId}, ${row.projectId}, ${"Dokumente: Tätigkeitsberichte"},
-      ${`Tätigkeitsbericht ${reportNumber} automatisch erstellt.`}, ${"System"}, ${""},
+      ${`Tätigkeitsbericht ${reportNumber} automatisch erstellt.`}, ${actorName}, ${""},
       ${JSON.stringify(["Geschaeftsfuehrer", "Vertriebler", "Niederlassungsleiter", "Buchhaltung"])}::jsonb,
       ${JSON.stringify([
         {
@@ -331,9 +469,13 @@ async function addProjectDocumentLogbookEntry(row: WinterServiceRunRow, reportNu
 }
 
 export async function GET(req: Request) {
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureWinterServiceRunTable();
   const { searchParams } = new URL(req.url);
+  const actor = getRequestActor(users, searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
   const pdfId = cleanString(searchParams.get("pdfId"));
 
   if (pdfId) {
@@ -371,17 +513,35 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureWinterServiceRunTable();
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canCreateProjectLogbookEntries(actor)) {
+    return forbiddenWinterServiceResponse();
+  }
   const serviceDate = cleanString(body.serviceDate);
   const month = cleanString(body.month) || getMonthFromDate(serviceDate);
+  const projectId = cleanString(body.projectId);
 
-  if (!cleanString(body.projectId)) {
+  if (!projectId) {
     return NextResponse.json({ error: "Projekt fehlt." }, { status: 400 });
   }
   if (!serviceDate || !month) {
     return NextResponse.json({ error: "Einsatzdatum fehlt." }, { status: 400 });
+  }
+  const projectError = await assertWritableProject(organization.id, projectId, actor);
+  if (projectError) {
+    return projectError;
+  }
+  const beforeImages = cleanImages(body.beforeImages);
+  const afterImages = cleanImages(body.afterImages);
+  const imageError = validateWinterServiceImages([...beforeImages, ...afterImages]);
+  if (imageError) {
+    return NextResponse.json({ error: imageError.error }, { status: imageError.status });
   }
 
   const id = cleanString(body.id) || randomUUID();
@@ -391,11 +551,11 @@ export async function POST(req: Request) {
       "contactId", "contactPersonId", "serviceDate", "month", "serviceType",
       "beforeImages", "afterImages", "updatedAt"
     ) VALUES (
-      ${id}, ${organization.id}, ${cleanString(body.projectId)}, ${cleanString(body.projectNumber)},
+      ${id}, ${organization.id}, ${projectId}, ${cleanString(body.projectNumber)},
       ${cleanString(body.projectTitle)}, ${cleanString(body.customerName)}, ${cleanString(body.contactId)},
       ${cleanString(body.contactPersonId)}, ${serviceDate}, ${month}, ${cleanString(body.serviceType)},
-      ${JSON.stringify(cleanImages(body.beforeImages))}::jsonb,
-      ${JSON.stringify(cleanImages(body.afterImages))}::jsonb,
+      ${JSON.stringify(beforeImages)}::jsonb,
+      ${JSON.stringify(afterImages)}::jsonb,
       CURRENT_TIMESTAMP
     )
     ON CONFLICT ("id") DO UPDATE SET
@@ -418,9 +578,16 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureWinterServiceRunTable();
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canCreateProjectLogbookEntries(actor)) {
+    return forbiddenWinterServiceResponse();
+  }
   const id = cleanString(body.id);
   const action = cleanString(body.action);
 
@@ -433,6 +600,10 @@ export async function PATCH(req: Request) {
   `;
   const current = currentRows[0];
   if (!current) return NextResponse.json({ error: "Einsatz wurde nicht gefunden." }, { status: 404 });
+  const projectError = await assertWritableProject(organization.id, current.projectId, actor);
+  if (projectError) {
+    return projectError;
+  }
 
   if (action === "generate-report") {
     if (current.reportStatus === "erstellt" && current.reportPdfData) {
@@ -450,6 +621,17 @@ export async function PATCH(req: Request) {
 
     const reportNumber = current.reportNumber || (await getNextReportNumber(organization.id));
     const reportPdfData = await generateActivityReportPdf(current, reportNumber);
+    const reportBytes = Math.round((reportPdfData.length * 3) / 4);
+    if (reportBytes > MAX_WINTER_SERVICE_REPORT_BYTES) {
+      return NextResponse.json(
+        {
+          error: `Winterdienst-Taetigkeitsbericht ist zu gross. Erlaubt sind maximal ${formatFileSize(
+            MAX_WINTER_SERVICE_REPORT_BYTES
+          )} pro Datei.`,
+        },
+        { status: 413 }
+      );
+    }
     const rows = await prisma.$queryRaw<WinterServiceRunRow[]>`
       UPDATE "WinterServiceRun"
       SET "reportStatus" = 'erstellt',
@@ -460,7 +642,7 @@ export async function PATCH(req: Request) {
       WHERE "organizationId" = ${organization.id} AND "id" = ${id}
       RETURNING *
     `;
-    await addProjectDocumentLogbookEntry(rows[0], reportNumber, reportPdfData);
+    await addProjectDocumentLogbookEntry(rows[0], reportNumber, reportPdfData, actor);
     return NextResponse.json(formatRun(rows[0]));
   }
 

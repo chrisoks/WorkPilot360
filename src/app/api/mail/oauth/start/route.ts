@@ -1,15 +1,27 @@
 import { randomBytes } from "crypto";
 import { NextResponse } from "next/server";
+import { getDemoContext } from "@/lib/demo/context";
 import { getMicrosoftOAuthConfig } from "@/lib/mail/microsoft";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const userId = url.searchParams.get("userId") || "";
+  const actorId = url.searchParams.get("actorId") || "";
   const returnTo = url.searchParams.get("returnTo") || "/";
   const config = getMicrosoftOAuthConfig(req);
 
   if (!userId) {
     return NextResponse.json({ error: "Mitarbeiter fehlt." }, { status: 400 });
+  }
+  if (!actorId) {
+    return NextResponse.json({ error: "Aktiver Benutzer erforderlich." }, { status: 401 });
+  }
+
+  const { users } = await getDemoContext();
+  const actor = users.find((user) => user.id === actorId);
+  const targetUser = users.find((user) => user.id === userId);
+  if (!actor?.isActive || !targetUser?.isActive) {
+    return NextResponse.json({ error: "Aktiver Benutzer erforderlich." }, { status: 401 });
   }
 
   if (!config.clientId || !config.clientSecret) {
@@ -23,7 +35,7 @@ export async function GET(req: Request) {
   }
 
   const nonce = randomBytes(16).toString("hex");
-  const state = Buffer.from(JSON.stringify({ userId, returnTo, nonce })).toString("base64url");
+  const state = Buffer.from(JSON.stringify({ userId, actorId, returnTo, nonce })).toString("base64url");
   const authorizeUrl = new URL(config.authorizeUrl);
   authorizeUrl.searchParams.set("client_id", config.clientId);
   authorizeUrl.searchParams.set("response_type", "code");

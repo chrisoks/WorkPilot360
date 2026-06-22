@@ -3,6 +3,7 @@ import { Role } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canManageTrades } from "@/lib/permissions";
 
 const defaultBusinessAreas = ["Marketing", "Arbeitssicherheit", "HR", "immocare", "interne Arbeiten"];
 
@@ -43,13 +44,28 @@ type TradeRow = {
   businessAreaName: string | null;
 };
 
-function canManageTrades(role: Role) {
-  return role === Role.ADMIN || role === Role.GESCHAEFTSFUEHRER;
+function cleanString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function getRequestActor(users: Array<{ id: string; isActive: boolean; role: Role }>, actorId: unknown) {
+  const requestedActorId = cleanString(actorId);
+  if (!requestedActorId) {
+    return null;
+  }
+
+  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
 }
 
 function normalizeProjectPrefix(value: unknown) {
-  return String(value ?? "")
-    .trim()
+  return cleanString(value)
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "")
     .slice(0, 5);
@@ -138,7 +154,7 @@ async function ensureDefaultBusinessAreas(organizationId: string) {
 }
 
 async function resolveBusinessAreaId(organizationId: string, businessAreaId: unknown) {
-  const normalizedId = String(businessAreaId ?? "").trim();
+  const normalizedId = cleanString(businessAreaId);
   if (!normalizedId) return null;
 
   const [area] = await prisma.$queryRaw<BusinessAreaRow[]>`
@@ -258,10 +274,14 @@ async function ensureDefaultTrades(organizationId: string) {
 }
 
 export async function GET(req: Request) {
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
+  const url = new URL(req.url);
+  const actor = getRequestActor(users, url.searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
   await ensureDefaultTrades(organization.id);
 
-  const url = new URL(req.url);
   if (url.searchParams.get("businessAreas") === "1") {
     return NextResponse.json(await ensureDefaultBusinessAreas(organization.id));
   }
@@ -272,21 +292,24 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
-  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
 
-  if (!canManageTrades(actor.role)) {
+  if (!canManageTrades(actor)) {
     return NextResponse.json(
       { error: "Nur Admins und Geschaeftsfuehrung duerfen Gewerke verwalten." },
       { status: 403 }
     );
   }
 
-  if (!body.name?.trim()) {
+  const name = cleanString(body.name);
+  if (!name) {
     return NextResponse.json({ error: "Bitte einen Gewerknamen angeben." }, { status: 400 });
   }
 
-  const name = body.name.trim();
   const projectPrefix = normalizeProjectPrefix(body.projectPrefix);
   await ensureDefaultBusinessAreas(organization.id);
   const businessAreaId = await resolveBusinessAreaId(organization.id, body.businessAreaId);
@@ -337,17 +360,21 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
-  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
 
-  if (!canManageTrades(actor.role)) {
+  if (!canManageTrades(actor)) {
     return NextResponse.json(
       { error: "Nur Admins und Geschaeftsfuehrung duerfen Gewerke verwalten." },
       { status: 403 }
     );
   }
 
-  if (!body.name?.trim()) {
+  const name = cleanString(body.name);
+  if (!name) {
     return NextResponse.json({ error: "Bitte einen Gewerknamen angeben." }, { status: 400 });
   }
   const projectPrefix = normalizeProjectPrefix(body.projectPrefix);
@@ -362,7 +389,7 @@ export async function PATCH(req: Request) {
 
   const trade = await prisma.category.findFirst({
     where: {
-      id: body.tradeId,
+      id: cleanString(body.tradeId),
       organizationId: organization.id,
     },
   });
@@ -376,7 +403,7 @@ export async function PATCH(req: Request) {
       id: trade.id,
     },
     data: {
-      name: body.name.trim(),
+      name,
       projectPrefix: projectPrefix || null,
     },
   });
@@ -403,10 +430,13 @@ export async function PATCH(req: Request) {
 
 export async function DELETE(req: Request) {
   const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
-  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
 
-  if (!canManageTrades(actor.role)) {
+  if (!canManageTrades(actor)) {
     return NextResponse.json(
       { error: "Nur Admins und Geschaeftsfuehrung duerfen Gewerke verwalten." },
       { status: 403 }
@@ -415,7 +445,7 @@ export async function DELETE(req: Request) {
 
   const trade = await prisma.category.findFirst({
     where: {
-      id: body.tradeId,
+      id: cleanString(body.tradeId),
       organizationId: organization.id,
     },
   });

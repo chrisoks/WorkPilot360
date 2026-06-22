@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { Prisma, type User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import legacyInvoiceSeed from "@/data/hero-legacy-invoices.json";
@@ -28,6 +28,21 @@ type LegacyInvoiceRow = LegacyInvoiceSeedRow & {
   createdAt: Date;
   updatedAt: Date;
 };
+
+function cleanString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function getRequestActor(users: User[], actorId: unknown) {
+  const cleanActorId = cleanString(actorId);
+  if (!cleanActorId) return null;
+  const actor = users.find((candidate) => candidate.id === cleanActorId);
+  return actor?.isActive ? actor : null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json({ error: "Aktiver Benutzer erforderlich." }, { status: 401 });
+}
 
 function getLegacyInvoiceCents(value: number) {
   return Math.round(Number(value || 0) * 100);
@@ -160,11 +175,15 @@ async function seedLegacyInvoices(organizationId: string) {
 
 export async function GET(request: Request) {
   await ensureLegacyInvoiceTable();
-  const { organization } = await getDemoContext();
+  const { searchParams } = new URL(request.url);
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
   await seedLegacyInvoices(organization.id);
 
-  const { searchParams } = new URL(request.url);
-  const source = searchParams.get("source") || "HERO";
+  const source = cleanString(searchParams.get("source")) || "HERO";
   const rows = await prisma.$queryRaw<LegacyInvoiceRow[]>`
     SELECT *
     FROM "LegacyInvoice"
@@ -176,9 +195,14 @@ export async function GET(request: Request) {
   return NextResponse.json(classifyLegacyInvoices(rows).map(serializeLegacyInvoice));
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
   await ensureLegacyInvoiceTable();
-  const { organization } = await getDemoContext();
+  const { searchParams } = new URL(request.url);
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
   await prisma.$executeRaw(
     Prisma.sql`DELETE FROM "LegacyInvoice" WHERE "organizationId" = ${organization.id} AND "source" = 'HERO'`
   );

@@ -1,8 +1,9 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import { Role } from "@prisma/client";
+import { Role, type User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canRunUnbilledTimeAlerts } from "@/lib/permissions";
 
 type ProjectRow = {
   id: string;
@@ -69,6 +70,30 @@ const ESCALATION_AFTER_WARNING_DAYS = 2;
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function getRequestActor(users: User[], actorId: unknown) {
+  const requestedActorId = cleanString(actorId);
+  if (!requestedActorId) {
+    return null;
+  }
+
+  return users.find((demoUser) => demoUser.id === requestedActorId && demoUser.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
+
+async function readJsonBody(req: Request) {
+  try {
+    return await req.json();
+  } catch {
+    return {};
+  }
 }
 
 function toDateKey(date: Date) {
@@ -257,14 +282,40 @@ function findResponsibleUserId(users: UserRow[], responsibleName: string) {
   );
 }
 
-export async function GET() {
-  const { organization } = await getDemoContext();
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
+  if (!canRunUnbilledTimeAlerts(actor)) {
+    return NextResponse.json(
+      { error: "Du darfst Warnungen zu offenen Abrechnungszeiten nicht anzeigen." },
+      { status: 403 }
+    );
+  }
+
   const groups = await getGroups(organization.id);
   return NextResponse.json(groups);
 }
 
-export async function POST() {
+export async function POST(req: Request) {
+  const body = await readJsonBody(req);
   const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
+  if (!canRunUnbilledTimeAlerts(actor)) {
+    return NextResponse.json(
+      { error: "Du darfst Warnungen zu offenen Abrechnungszeiten nicht ausl\u00f6sen." },
+      { status: 403 }
+    );
+  }
+
   await ensureNotificationLinkColumns();
   const groups = await getGroups(organization.id);
   const userRows = users as UserRow[];

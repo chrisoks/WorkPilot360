@@ -1,8 +1,9 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { Prisma, type User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canManageContentItems } from "@/lib/permissions";
 
 type ContentItemRow = {
   id: string;
@@ -73,6 +74,26 @@ const statuses = new Set([
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function getRequestActor(users: User[], actorId: unknown) {
+  const requestedActorId = cleanString(actorId);
+  if (!requestedActorId) return null;
+  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
+
+function forbiddenContentResponse() {
+  return NextResponse.json(
+    { error: "Du darfst Content-Inhalte nicht verwalten." },
+    { status: 403 }
+  );
 }
 
 function cleanDate(value: unknown) {
@@ -432,11 +453,6 @@ async function notifyContentAction(input: {
   }
 }
 
-async function getActor(actorId: unknown) {
-  const { user, users } = await getDemoContext();
-  return users.find((candidate) => candidate.id === actorId) ?? user;
-}
-
 async function listContentItems() {
   const { organization } = await getDemoContext();
   await ensureContentTables();
@@ -469,14 +485,28 @@ async function listContentItems() {
   return rows.map((row) => formatItem(row, historyByItemId.get(row.id) ?? []));
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const { users } = await getDemoContext();
+  const actor = getRequestActor(users, searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
   return NextResponse.json(await listContentItems());
 }
 
 export async function POST(req: Request) {
-  const body = await req.json();
-  const { organization } = await getDemoContext();
-  const actor = await getActor(body.actorId);
+  const body = await req.json().catch(() => ({}));
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canManageContentItems(actor)) {
+    return forbiddenContentResponse();
+  }
+
   await ensureContentTables();
 
   const title = cleanString(body.title);
@@ -599,9 +629,16 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  const body = await req.json();
-  const { organization } = await getDemoContext();
-  const actor = await getActor(body.actorId);
+  const body = await req.json().catch(() => ({}));
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canManageContentItems(actor)) {
+    return forbiddenContentResponse();
+  }
+
   await ensureContentTables();
 
   const id = cleanString(body.id);
@@ -872,9 +909,16 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const body = await req.json();
-  const { organization } = await getDemoContext();
-  const actor = await getActor(body.actorId);
+  const body = await req.json().catch(() => ({}));
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canManageContentItems(actor)) {
+    return forbiddenContentResponse();
+  }
+
   await ensureContentTables();
 
   const id = cleanString(body.id);

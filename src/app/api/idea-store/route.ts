@@ -1,8 +1,9 @@
 ﻿import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { Prisma, type User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canManageIdeaStore, canUseIdeaStore } from "@/lib/permissions";
 
 type IdeaRow = {
   id: string;
@@ -34,6 +35,26 @@ type IdeaLikeRow = {
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function getRequestActor(users: User[], actorId: unknown) {
+  const requestedActorId = cleanString(actorId);
+  if (!requestedActorId) return null;
+  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
+
+function forbiddenIdeaStoreResponse() {
+  return NextResponse.json(
+    { error: "Du darfst den Ideenbereich nicht verwenden." },
+    { status: 403 }
+  );
 }
 
 async function ensureIdeaTables() {
@@ -101,11 +122,6 @@ async function ensureIdeaTables() {
     ADD COLUMN IF NOT EXISTS "linkTargetId" TEXT,
     ADD COLUMN IF NOT EXISTS "linkLabel" TEXT
   `;
-}
-
-async function getActor(actorId: unknown) {
-  const { user, users } = await getDemoContext();
-  return users.find((candidate) => candidate.id === actorId) ?? user;
 }
 
 async function listIdeas(activeUserId = "") {
@@ -216,14 +232,30 @@ async function notifyIdeaStore(input: {
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  return NextResponse.json(await listIdeas(searchParams.get("userId") ?? ""));
+  const { users } = await getDemoContext();
+  const actor = getRequestActor(users, searchParams.get("actorId") ?? searchParams.get("userId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canUseIdeaStore(actor)) {
+    return forbiddenIdeaStoreResponse();
+  }
+
+  return NextResponse.json(await listIdeas(actor.id));
 }
 
 export async function POST(req: Request) {
   await ensureIdeaTables();
-  const body = await req.json();
-  const { organization } = await getDemoContext();
-  const actor = await getActor(body.actorId);
+  const body = await req.json().catch(() => ({}));
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canUseIdeaStore(actor)) {
+    return forbiddenIdeaStoreResponse();
+  }
+
   const actorName = `${actor.firstName} ${actor.lastName}`.trim();
   const title = cleanString(body.title);
   const text = cleanString(body.body);
@@ -250,9 +282,16 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   await ensureIdeaTables();
-  const body = await req.json();
-  const { organization } = await getDemoContext();
-  const actor = await getActor(body.actorId);
+  const body = await req.json().catch(() => ({}));
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canUseIdeaStore(actor)) {
+    return forbiddenIdeaStoreResponse();
+  }
+
   const actorName = `${actor.firstName} ${actor.lastName}`.trim();
   const ideaId = cleanString(body.ideaId);
   const action = cleanString(body.action);
@@ -354,6 +393,10 @@ export async function PATCH(req: Request) {
   }
 
   if (action === "pin") {
+    if (!canManageIdeaStore(actor)) {
+      return NextResponse.json({ error: "Du darfst Ideen nicht anheften." }, { status: 403 });
+    }
+
     await prisma.$executeRaw`
       UPDATE "IdeaPost"
       SET "pinned" = ${!Boolean(idea.pinned)},

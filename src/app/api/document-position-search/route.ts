@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 
@@ -28,6 +29,22 @@ function cleanString(value: unknown) {
 
 function normalizeSearch(value: string) {
   return value.trim().toLowerCase();
+}
+
+function getRequestActor(users: User[], actorId: unknown) {
+  const requestedActorId = cleanString(actorId);
+  if (!requestedActorId) {
+    return null;
+  }
+
+  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
 }
 
 function includesSearch(row: PositionSearchRow, search: string) {
@@ -81,10 +98,15 @@ function serializeRow(row: PositionSearchRow) {
 
 const MIN_QUERY_LENGTH = 3;
 const RESULT_LIMIT = 50;
+const DELETED_DOCUMENT_STATUSES = ["Gelöscht", "Gel\u00c3\u00b6scht"];
 
 export async function GET(req: Request) {
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   const { searchParams } = new URL(req.url);
+  const actor = getRequestActor(users, searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
   const query = normalizeSearch(cleanString(searchParams.get("q")));
 
   if (query.length < MIN_QUERY_LENGTH) {
@@ -120,7 +142,7 @@ export async function GET(req: Request) {
     FROM "OfferLine" l
     INNER JOIN "Offer" o ON o."id" = l."offerId" AND o."organizationId" = l."organizationId"
     WHERE l."organizationId" = ${organization.id}
-      AND o."status" <> 'Gelöscht'
+      AND o."status" NOT IN (${DELETED_DOCUMENT_STATUSES[0]}, ${DELETED_DOCUMENT_STATUSES[1]})
   `;
 
   const invoiceRows = await prisma.$queryRaw<PositionSearchRow[]>`
@@ -145,7 +167,7 @@ export async function GET(req: Request) {
     FROM "InvoiceLine" l
     INNER JOIN "Invoice" i ON i."id" = l."invoiceId" AND i."organizationId" = l."organizationId"
     WHERE l."organizationId" = ${organization.id}
-      AND i."status" <> 'Gelöscht'
+      AND i."status" NOT IN (${DELETED_DOCUMENT_STATUSES[0]}, ${DELETED_DOCUMENT_STATUSES[1]})
   `;
 
   const matchedRows = [...offerRows, ...invoiceRows]

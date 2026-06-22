@@ -35,7 +35,7 @@ async function getUserTeamIds(userId: string) {
 
 export async function POST(req: Request) {
   await ensureUserProfileColumns();
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
   const { organization } = await getDemoContext();
   const email = String(body.email ?? "").trim().toLowerCase();
   const password = String(body.password ?? "");

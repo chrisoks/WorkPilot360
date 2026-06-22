@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import {
@@ -13,6 +14,24 @@ export const dynamic = "force-dynamic";
 type ImportedProjectRow = {
   id: string;
 };
+
+function cleanString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function getRequestActor(users: User[], actorId: unknown) {
+  const requestedActorId = cleanString(actorId);
+  if (!requestedActorId) return null;
+
+  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
 
 async function ensureLocalProjectTable() {
   await prisma.$executeRaw`
@@ -114,8 +133,14 @@ function normalizeProjectStatus(status: string) {
   return status || "Lead / Klärung";
 }
 
-export async function POST() {
-  const { organization } = await getDemoContext();
+export async function POST(req: Request) {
+  const body = await req.json().catch(() => ({}));
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
   await ensureLocalProjectTable();
 
   const heroProjects = await listHeroProjects();

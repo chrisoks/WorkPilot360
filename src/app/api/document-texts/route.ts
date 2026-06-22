@@ -1,7 +1,9 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canManageDocumentTexts } from "@/lib/permissions";
 
 type DocumentTextRow = {
   id: string;
@@ -136,6 +138,33 @@ function formatRow(row: DocumentTextRow) {
   };
 }
 
+function cleanString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function getRequestActor(users: User[], actorId: unknown) {
+  const requestedActorId = cleanString(actorId);
+  if (!requestedActorId) {
+    return null;
+  }
+
+  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
+
+function forbiddenDocumentTextManagementResponse() {
+  return NextResponse.json(
+    { error: "Nur Admins und Geschaeftsfuehrung duerfen Dokumenttexte verwalten." },
+    { status: 403 }
+  );
+}
+
 async function ensureTable() {
   await prisma.$executeRaw`
     CREATE TABLE IF NOT EXISTS "DocumentTextTemplate" (
@@ -166,15 +195,14 @@ async function ensureSeed(organizationId: string) {
   }
 }
 
-export async function GET() {
-  const { organization } = await getDemoContext();
+async function getDocumentTextsResponse(organizationId: string) {
   await ensureTable();
-  await ensureSeed(organization.id);
+  await ensureSeed(organizationId);
 
   const rows = await prisma.$queryRaw<DocumentTextRow[]>`
     SELECT "id", "source", "kind", "title", "body", "createdAt", "updatedAt"
     FROM "DocumentTextTemplate"
-    WHERE "organizationId" = ${organization.id}
+    WHERE "organizationId" = ${organizationId}
     ORDER BY "title" ASC
   `;
 
@@ -184,15 +212,33 @@ export async function GET() {
   });
 }
 
+export async function GET(req: Request) {
+  const { organization, users } = await getDemoContext();
+  const { searchParams } = new URL(req.url);
+  const actor = getRequestActor(users, searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
+  return getDocumentTextsResponse(organization.id);
+}
+
 export async function POST(req: Request) {
   const body = await req.json();
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canManageDocumentTexts(actor)) {
+    return forbiddenDocumentTextManagementResponse();
+  }
   await ensureTable();
 
-  const title = String(body.title ?? "").trim();
-  const textBody = String(body.body ?? "").trim();
-  const kind = String(body.kind ?? "text") === "title" ? "title" : "text";
-  const source = String(body.source ?? "Eigene").trim() || "Eigene";
+  const title = cleanString(body.title);
+  const textBody = cleanString(body.body);
+  const kind = cleanString(body.kind) === "title" ? "title" : "text";
+  const source = cleanString(body.source) || "Eigene";
 
   if (!title || !textBody) {
     return NextResponse.json({ error: "Bitte Titel und Text angeben." }, { status: 400 });
@@ -210,19 +256,26 @@ export async function POST(req: Request) {
     );
   }
 
-  return GET();
+  return getDocumentTextsResponse(organization.id);
 }
 
 export async function PATCH(req: Request) {
   const body = await req.json();
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canManageDocumentTexts(actor)) {
+    return forbiddenDocumentTextManagementResponse();
+  }
   await ensureTable();
 
-  const id = String(body.id ?? "");
-  const title = String(body.title ?? "").trim();
-  const textBody = String(body.body ?? "").trim();
-  const kind = String(body.kind ?? "text") === "title" ? "title" : "text";
-  const source = String(body.source ?? "Eigene").trim() || "Eigene";
+  const id = cleanString(body.id);
+  const title = cleanString(body.title);
+  const textBody = cleanString(body.body);
+  const kind = cleanString(body.kind) === "title" ? "title" : "text";
+  const source = cleanString(body.source) || "Eigene";
 
   if (!id || !title || !textBody) {
     return NextResponse.json({ error: "Bitte Titel und Text angeben." }, { status: 400 });
@@ -247,19 +300,26 @@ export async function PATCH(req: Request) {
     );
   }
 
-  return GET();
+  return getDocumentTextsResponse(organization.id);
 }
 
 export async function DELETE(req: Request) {
   const body = await req.json();
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canManageDocumentTexts(actor)) {
+    return forbiddenDocumentTextManagementResponse();
+  }
   await ensureTable();
 
   await prisma.$executeRaw`
     DELETE FROM "DocumentTextTemplate"
-    WHERE "id" = ${String(body.id ?? "")}
+    WHERE "id" = ${cleanString(body.id)}
       AND "organizationId" = ${organization.id}
   `;
 
-  return GET();
+  return getDocumentTextsResponse(organization.id);
 }

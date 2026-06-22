@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { Prisma, Role, TaskPriority, TaskStatus } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canManageAbsences } from "@/lib/permissions";
 
 type AbsenceType = "urlaub" | "krank";
 type AbsenceDayPart = "full" | "first-half" | "second-half";
@@ -33,8 +34,22 @@ type AbsenceHistoryItem = {
   createdAt: string;
 };
 
-function canManageAbsences(role: Role) {
-  return role === Role.ADMIN || role === Role.GESCHAEFTSFUEHRER || role === Role.FUEHRUNGSKRAFT;
+function getRequestActor<T extends { id: string; isActive?: boolean | null }>(
+  users: T[],
+  actorId: unknown
+) {
+  if (typeof actorId !== "string" || !actorId.trim()) {
+    return null;
+  }
+
+  return users.find((demoUser) => demoUser.id === actorId.trim() && demoUser.isActive !== false) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
 }
 
 function formatDateKey(date: Date) {
@@ -124,7 +139,9 @@ async function notifyAbsenceChange(
   body: string
 ) {
   const recipients = users.filter(
-    (demoUser) => demoUser.role === Role.GESCHAEFTSFUEHRER || demoUser.role === Role.FUEHRUNGSKRAFT
+    (demoUser) =>
+      demoUser.isActive !== false &&
+      (demoUser.role === Role.GESCHAEFTSFUEHRER || demoUser.role === Role.FUEHRUNGSKRAFT)
   );
 
   for (const recipient of recipients) {
@@ -262,8 +279,13 @@ async function createHandoverTasks(input: {
 
 export async function GET(req: Request) {
   await ensureAbsenceTable();
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   const { searchParams } = new URL(req.url);
+  const actor = getRequestActor(users, searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
   const from = searchParams.get("from") ?? "1900-01-01";
   const to = searchParams.get("to") ?? "2999-12-31";
 
@@ -302,8 +324,13 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   await ensureAbsenceTable();
   const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
-  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
   const targetUserId = String(body.userId ?? "");
   const dateFrom = String(body.dateFrom ?? body.date ?? "");
   const dateTo = String(body.dateTo ?? body.date ?? dateFrom);
@@ -353,14 +380,14 @@ export async function POST(req: Request) {
     );
   }
 
-  if (targetUserId !== actor.id && !canManageAbsences(actor.role)) {
+  if (targetUserId !== actor.id && !canManageAbsences(actor)) {
     return NextResponse.json(
       { error: "Du darfst nur eigene Abwesenheiten eintragen." },
       { status: 403 }
     );
   }
 
-  const targetUser = users.find((demoUser) => demoUser.id === targetUserId);
+  const targetUser = users.find((demoUser) => demoUser.id === targetUserId && demoUser.isActive !== false);
   if (!targetUser) {
     return NextResponse.json(
       { error: "Benutzer wurde nicht gefunden." },
@@ -368,7 +395,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const representative = users.find((demoUser) => demoUser.id === representativeUserId) ?? null;
+  const representative = users.find((demoUser) => demoUser.id === representativeUserId && demoUser.isActive !== false) ?? null;
 
   if (!representative || representative.id === targetUser.id) {
     return NextResponse.json(
@@ -450,7 +477,9 @@ export async function POST(req: Request) {
   const targetUserName = `${targetUser.firstName} ${targetUser.lastName}`;
   const notificationBody = `${targetUserName}: ${absenceTypeLabel} vom ${formatDateKeyDisplay(dateFrom)} bis ${formatDateKeyDisplay(dateTo)}. Vertreter: ${representative.firstName} ${representative.lastName}.`;
   const adminRecipients = users.filter(
-    (demoUser) => demoUser.role === Role.ADMIN || demoUser.role === Role.GESCHAEFTSFUEHRER
+    (demoUser) =>
+      demoUser.isActive !== false &&
+      (demoUser.role === Role.ADMIN || demoUser.role === Role.GESCHAEFTSFUEHRER)
   );
 
   const notificationRecipients: Array<{
@@ -543,8 +572,13 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
   await ensureAbsenceTable();
   const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
-  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
   const action = String(body.action ?? "");
   const absenceId = String(body.absenceId ?? "");
   const targetUserId = String(body.userId ?? "");
@@ -616,13 +650,13 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Nur der Vertreter darf die Vertretung akzeptieren." }, { status: 403 });
     }
 
-    if (action === "final-approve" && !canManageAbsences(actor.role)) {
+    if (action === "final-approve" && !canManageAbsences(actor)) {
       return NextResponse.json({ error: "Nur Führungskräfte dürfen den Antrag final bearbeiten." }, { status: 403 });
     }
 
     if (
       action === "reject" &&
-      !canManageAbsences(actor.role) &&
+      !canManageAbsences(actor) &&
       existingAbsence.representativeUserId !== actor.id
     ) {
       return NextResponse.json({ error: "Nur der Vertreter oder eine Führungskraft darf den Antrag ablehnen." }, { status: 403 });
@@ -706,7 +740,7 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ success: true });
   }
 
-  if (existingAbsence.userId !== actor.id && !canManageAbsences(actor.role)) {
+  if (existingAbsence.userId !== actor.id && !canManageAbsences(actor)) {
     return NextResponse.json(
       { error: "Du darfst diese Abwesenheit nicht bearbeiten." },
       { status: 403 }
@@ -744,8 +778,9 @@ export async function PATCH(req: Request) {
     );
   }
 
-  const targetUser = users.find((demoUser) => demoUser.id === targetUserId);
-  const representative = users.find((demoUser) => demoUser.id === representativeUserId) ?? null;
+  const effectiveTargetUserId = canManageAbsences(actor) ? targetUserId : existingAbsence.userId;
+  const targetUser = users.find((demoUser) => demoUser.id === effectiveTargetUserId && demoUser.isActive !== false);
+  const representative = users.find((demoUser) => demoUser.id === representativeUserId && demoUser.isActive !== false) ?? null;
 
   if (!targetUser || !representative || representative.id === targetUser.id) {
     return NextResponse.json({ error: "Bitte einen Vertreter ausw\u00e4hlen." }, { status: 400 });
@@ -795,7 +830,7 @@ export async function PATCH(req: Request) {
         ${randomUUID()},
         ${organization.id},
         ${existingAbsence.requestGroupId ?? randomUUID()},
-        ${targetUserId},
+        ${effectiveTargetUserId},
         ${type},
         ${dayPart},
         ${cleanStatus(existingAbsence.status)},
@@ -837,8 +872,13 @@ export async function PATCH(req: Request) {
 export async function DELETE(req: Request) {
   await ensureAbsenceTable();
   const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
-  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
   const absenceId = String(body.absenceId ?? "");
   const dateFrom = String(body.dateFrom ?? "");
   const dateTo = String(body.dateTo ?? dateFrom);
@@ -862,7 +902,7 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: "Abwesenheit wurde nicht gefunden." }, { status: 404 });
   }
 
-  if (absence.userId !== actor.id && !canManageAbsences(actor.role)) {
+  if (absence.userId !== actor.id && !canManageAbsences(actor)) {
     return NextResponse.json(
       { error: "Du darfst diese Abwesenheit nicht l\u00f6schen." },
       { status: 403 }

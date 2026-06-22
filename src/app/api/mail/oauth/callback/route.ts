@@ -6,6 +6,7 @@ function decodeState(value: string) {
   try {
     return JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as {
       userId?: string;
+      actorId?: string;
       returnTo?: string;
       nonce?: string;
     };
@@ -24,9 +25,28 @@ export async function GET(req: Request) {
   const returnTo = decodedState.returnTo?.startsWith("/") ? decodedState.returnTo : "/";
   const redirectUrl = new URL(returnTo, config.appOrigin || url.origin);
 
-  if (!code || !state || decodeURIComponent(expectedState) !== state || !decodedState.userId) {
+  if (!code || !state || decodeURIComponent(expectedState) !== state || !decodedState.userId || !decodedState.actorId) {
     redirectUrl.searchParams.set("mailOAuth", "error");
     redirectUrl.searchParams.set("reason", "ungueltiger_status");
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  const users = await prisma.user.findMany({
+    where: {
+      id: {
+        in: [decodedState.userId, decodedState.actorId],
+      },
+    },
+    select: {
+      id: true,
+      isActive: true,
+    },
+  });
+  const targetUser = users.find((user) => user.id === decodedState.userId);
+  const actor = users.find((user) => user.id === decodedState.actorId);
+  if (!targetUser?.isActive || !actor?.isActive) {
+    redirectUrl.searchParams.set("mailOAuth", "error");
+    redirectUrl.searchParams.set("reason", "benutzer_inaktiv");
     return NextResponse.redirect(redirectUrl);
   }
 
@@ -86,7 +106,7 @@ export async function GET(req: Request) {
   await prisma.$executeRaw`
     UPDATE "User"
     SET "mailAccount" = ${connectedAccount}::jsonb
-    WHERE id = ${decodedState.userId}
+    WHERE id = ${decodedState.userId} AND "isActive" = true
   `;
 
   redirectUrl.searchParams.set("mailOAuth", "connected");

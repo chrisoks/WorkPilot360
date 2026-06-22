@@ -1,5 +1,1641 @@
 # WorkPilot360 Agent Handover
 
+- Phase-2-Dokumentversandrechte 2026-06-20: Als elfter kleiner Schritt der
+  Rollen-/Berechtigungsmatrix wurden Dokumentversandrechte in
+  `src/lib/permissions/index.ts` zentralisiert und in
+  `src/app/api/document-mail/route.ts` genutzt. Einfach gesagt: Angebote per
+  Mail versenden duerfen die Angebotsrollen Admin, Geschaeftsfuehrung,
+  Fuehrungskraft und Vertrieb; Rechnungen, Stornos und Mahnungen versenden
+  duerfen Admin, Geschaeftsfuehrung, Fuehrungskraft und Buchhaltung;
+  allgemeine Dokumente/Taetigkeitsberichte versenden duerfen Admin,
+  Geschaeftsfuehrung, Fuehrungskraft, Vertrieb und Buchhaltung. Vor dem
+  Versand prueft die API jetzt, ob das Dokument bzw. Projekt zur
+  Demo-Organisation gehoert. Versandhistorie (`GET /api/document-mail`) verlangt
+  jetzt ebenfalls einen aktiven Actor; der Dashboard-Loader sendet dafuer
+  `activeUserId` als `actorId` mit. Mail-OAuth-Start/Callback wurden in diesem
+  Block nicht umgebaut, weil sie bereits im Phase-1-OAuth-Block abgesichert
+  wurden. Sicherungen:
+  `.codex-safety/*_before_phase2_document_mail_permissions_20260620_*.ts`
+  und `.codex-safety/AGENTS_before_phase2_document_mail_permissions_20260620_*.md`.
+  Checks bestanden: `git diff --check -- src/lib/permissions/index.ts src/app/api/document-mail/route.ts src/components/dashboard/dashboard-page.tsx`,
+  `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`.
+- Phase-2-Dokumentkonfigurationsrechte 2026-06-20: Als zehnter kleiner
+  Schritt der Rollen-/Berechtigungsmatrix wurden Dokumentkonfigurationsrechte
+  in `src/lib/permissions/index.ts` zentralisiert und in
+  `src/app/api/document-types/route.ts` sowie
+  `src/app/api/document-texts/route.ts` genutzt. Einfach gesagt:
+  Dokumenttypen sowie Dokumenttexte/Titel lesen duerfen aktive Benutzer weiter
+  wie bisher; anlegen, bearbeiten, archivieren oder loeschen duerfen nur Admin
+  und Geschaeftsfuehrung. `src/app/api/document-position-search/route.ts`
+  blieb bewusst unveraendert, weil es eine Lesesuche ist.
+  `src/app/api/document-mail/route.ts` wurde in diesem Block ebenfalls nicht
+  umgebaut, weil das Dokumentversand und nicht Text-/Typ-Konfiguration ist.
+  Sicherungen:
+  `.codex-safety/*_before_phase2_document_config_permissions_20260620_*.ts`
+  und `.codex-safety/AGENTS_before_phase2_document_config_permissions_20260620_*.md`.
+  Checks bestanden: `git diff --check -- src/lib/permissions/index.ts src/app/api/document-types/route.ts src/app/api/document-texts/route.ts`,
+  `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`.
+- Phase-2-Salesrechte 2026-06-20: Als neunter kleiner Schritt der
+  Rollen-/Berechtigungsmatrix wurden Sales-/Vertriebsrechte in
+  `src/lib/permissions/index.ts` zentralisiert und in
+  `src/app/api/potentials/route.ts`, `src/app/api/sales-targets/route.ts`,
+  `src/app/api/sales-opportunities/route.ts` sowie
+  `src/app/api/sales-opportunities/activities/route.ts` genutzt. Einfach
+  gesagt: Sales-Ziele, Verkaufschancen und Verkaufschancen-Aktivitaeten
+  bearbeiten duerfen Admin, Geschaeftsfuehrung, Fuehrungskraft und Vertrieb;
+  Vertrieb darf dabei eigene Datensaetze bearbeiten, Admin/GF/Fuehrungskraft
+  duerfen uebergreifend steuern und anderen Personen zuweisen. Potenziale
+  anlegen bleibt fuer aktive Nicht-Gast-Benutzer moeglich, damit operative
+  Zusatzverkaufs-Hinweise aus Projekten/Abnahmen nicht verloren gehen.
+  Potenziale bearbeiten duerfen Sales-Rollen uebergreifend bzw. der
+  zustaendige Sales-Owner. Aktivitaeten zu Verkaufschancen pruefen jetzt auch,
+  ob die Chance in derselben Organisation existiert. Sicherungen:
+  `.codex-safety/*_before_phase2_sales_permissions_20260620_*.ts` und
+  `.codex-safety/AGENTS_before_phase2_sales_permissions_20260620_*.md`.
+  Checks bestanden: `git diff --check -- src/lib/permissions/index.ts src/app/api/potentials/route.ts src/app/api/sales-targets/route.ts src/app/api/sales-opportunities/route.ts src/app/api/sales-opportunities/activities/route.ts`,
+  `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`.
+- Phase-2-Projekt-Planungsregeln 2026-06-20: Als achter kleiner Schritt der
+  Rollen-/Berechtigungsmatrix wurden Projekt-/Planungsregel-Rechte in
+  `src/lib/permissions/index.ts` zentralisiert und in
+  `src/app/api/business-area-targets/route.ts`,
+  `src/app/api/project-marketing-quotas/route.ts`,
+  `src/app/api/planning-entries/route.ts`,
+  `src/app/api/status-rules/route.ts`,
+  `src/app/api/escalation-rules/route.ts`,
+  `src/app/api/status-escalations/route.ts` und
+  `src/app/api/status-timeline/route.ts` genutzt. Einfach gesagt:
+  Geschaeftsbereich-Sollwerte, Marketing-Kontingent-Konfiguration,
+  Status-Regeln und Eskalationsregeln duerfen serverseitig nur Admin und
+  Geschaeftsfuehrung pflegen. Planungsverwaltung, Status-Eskalationslauf und
+  Status-Zeitlinie neu aufbauen duerfen Admin, Geschaeftsfuehrung und
+  Fuehrungskraft. Das operative Abhaken/Zuruecksetzen von
+  Projekt-Marketing-Kontingenten blieb fachlich unveraendert; gebremst wurde
+  nur die Konfiguration der Kontingent-Stammdaten. Sicherungen:
+  `.codex-safety/*_before_phase2_project_planning_permissions_20260620_*.ts`
+  und `.codex-safety/AGENTS_before_phase2_project_planning_permissions_20260620_*.md`.
+  Checks bestanden: `git diff --check -- src/lib/permissions/index.ts src/app/api/business-area-targets/route.ts src/app/api/project-marketing-quotas/route.ts src/app/api/planning-entries/route.ts src/app/api/status-rules/route.ts src/app/api/escalation-rules/route.ts src/app/api/status-escalations/route.ts src/app/api/status-timeline/route.ts`,
+  `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`.
+- Phase-2-Stammdatenrechte 2026-06-20: Als siebter kleiner Schritt der
+  Rollen-/Berechtigungsmatrix wurden Stammdatenrechte in
+  `src/lib/permissions/index.ts` zentralisiert und in
+  `src/app/api/catalog-items/route.ts`, `src/app/api/units/route.ts` sowie
+  `src/app/api/trades/route.ts` genutzt. Einfach gesagt: Katalogartikel,
+  Einheiten und Gewerke lesen duerfen aktive Benutzer weiter wie bisher; diese
+  Stammdaten anlegen, bearbeiten oder deaktivieren duerfen serverseitig nur
+  Admin und Geschaeftsfuehrung. Besonders wichtig: Katalogartikel hatten vor
+  diesem Block bereits eine Actor-Pruefung, aber noch keine Rollenbremse fuer
+  Schreibaktionen. Einheiten und Gewerke hatten die gleiche Regel bereits
+  lokal; sie wurde nur in die zentrale Matrix gezogen. Sicherungen:
+  `.codex-safety/permissions_index_before_phase2_masterdata_permissions_20260620_*.ts`,
+  `.codex-safety/catalog_items_route_before_phase2_masterdata_permissions_20260620_*.ts`,
+  `.codex-safety/units_route_before_phase2_masterdata_permissions_20260620_*.ts`,
+  `.codex-safety/trades_route_before_phase2_masterdata_permissions_20260620_*.ts`,
+  `.codex-safety/AGENTS_before_phase2_masterdata_permissions_20260620_*.md`.
+  Checks bestanden: `git diff --check -- src/lib/permissions/index.ts src/app/api/catalog-items/route.ts src/app/api/units/route.ts src/app/api/trades/route.ts`,
+  `npm.cmd run build`, `npx.cmd prisma validate`.
+- Phase-2-Aufgabenrechte 2026-06-20: Als sechster kleiner Schritt der
+  Rollen-/Berechtigungsmatrix wurden Aufgabenrechte in
+  `src/lib/permissions/index.ts` zentralisiert und in
+  `src/app/api/tasks/route.ts` sowie
+  `src/app/api/tasks/[taskId]/time-entries/route.ts` genutzt. Einfach gesagt:
+  Aufgaben anderen Personen zuweisen duerfen weiter Admin,
+  Geschaeftsfuehrung und Fuehrungskraft; Aufgaben loeschen oder
+  wiederherstellen duerfen Admin und Geschaeftsfuehrung; Aufgabenzeiten
+  verwalten duerfen Admin, Geschaeftsfuehrung und Fuehrungskraft. Eigene bzw.
+  beteiligte Aufgabenzeiten, Aufgabenannahme/-ablehnung und Kommentare fuer
+  Owner/Ersteller/Beteiligte blieben fachlich erhalten. Sicherungen:
+  `.codex-safety/permissions_index_before_phase2_task_permissions_20260620_170453.ts`,
+  `.codex-safety/tasks_route_before_phase2_task_permissions_20260620_170453.ts`,
+  `.codex-safety/task_time_entries_route_before_phase2_task_permissions_20260620_170453.ts`,
+  `.codex-safety/AGENTS_before_phase2_task_permissions_20260620_170453.md`.
+  Checks bestanden: `git diff --check -- src/lib/permissions/index.ts src/app/api/tasks/route.ts src/app/api/tasks/[taskId]/time-entries/route.ts src/app/api/tasks/[taskId]/comments/route.ts src/app/api/tasks/respond/route.ts`,
+  `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`.
+- Phase-2-Zeitrechte 2026-06-20: Als fuenfter kleiner Schritt der
+  Rollen-/Berechtigungsmatrix wurden Projektzeit- und
+  Ueberstundenfreigabe-Rechte in `src/lib/permissions/index.ts`
+  zentralisiert und in `src/app/api/project-time-entries/route.ts` genutzt.
+  Einfach gesagt: Projektzeiten fuer andere Personen bzw. verwaltete
+  Korrekturen duerfen weiter Admin, Geschaeftsfuehrung, Fuehrungskraft und
+  Buchhaltung bearbeiten; Ueberstundenfreigaben duerfen Admin,
+  Geschaeftsfuehrung und Fuehrungskraft. Normale Nutzer duerfen weiterhin nur
+  eigene manuelle Zeiteintraege anlegen, bearbeiten oder loeschen. Die
+  eigentliche Stempel-Start/Pause/Stop-Logik in `src/app/api/stamp-session/route.ts`
+  wurde in diesem Block nicht fachlich veraendert. Sicherungen:
+  `.codex-safety/permissions_index_before_phase2_time_permissions_20260620_145925.ts`,
+  `.codex-safety/project_time_entries_route_before_phase2_time_permissions_20260620_145925.ts`,
+  `.codex-safety/AGENTS_before_phase2_time_permissions_20260620_145925.md`.
+  Checks bestanden: `git diff --check -- src/lib/permissions/index.ts src/app/api/project-time-entries/route.ts src/app/api/stamp-session/route.ts`,
+  `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`.
+- Phase-2-Sensible-Personaldaten 2026-06-20: Als vierter kleiner Schritt der
+  Rollen-/Berechtigungsmatrix wurden die Rechte fuer
+  `src/app/api/employee-assessments/route.ts` und
+  `src/app/api/employee-costs/route.ts` in `src/lib/permissions/index.ts`
+  zentralisiert. Einfach gesagt: Mitarbeiterbeurteilungen nutzen jetzt die
+  zentrale Managerregel `canManageEmployeeAssessments` fuer Admin und
+  Geschaeftsfuehrung. Lohnkosten nutzen jetzt zentral
+  `canAccessEmployeeCosts`; die bisherige enge Namensfreigabe fuer Ramona Eid
+  und Christian Eid wurde bewusst beibehalten und nicht auf weitere Rollen
+  ausgeweitet, damit Gehaltsdaten nicht versehentlich breiter sichtbar werden.
+  Die vorhandenen Selbstbearbeitungsregeln fuer Selbsteinschaetzung und DISG
+  blieben erhalten. Sicherungen:
+  `.codex-safety/permissions_index_before_phase2_employee_sensitive_20260620_145517.ts`,
+  `.codex-safety/employee_costs_route_before_phase2_employee_sensitive_20260620_145517.ts`,
+  `.codex-safety/employee_assessments_route_before_phase2_employee_sensitive_20260620_145517.ts`,
+  `.codex-safety/AGENTS_before_phase2_employee_sensitive_20260620_145517.md`.
+  Checks bestanden: `git diff --check -- src/lib/permissions/index.ts src/app/api/employee-costs/route.ts src/app/api/employee-assessments/route.ts`,
+  `npx.cmd prisma validate`, `npm.cmd run check:mojibake` und
+  `npm.cmd run build`. Der erste Buildlauf brach einmal ohne konkrete
+  Codezeile mit einem Next/Jest-Worker-Fehler ab; der direkte Wiederholungslauf
+  bestand vollstaendig.
+- Phase-2-Benutzer-Team-Rechte 2026-06-20: Als dritter kleiner Schritt der
+  Rollen-/Berechtigungsmatrix wurden die bereits vorhandenen Regeln fuer
+  Benutzer, Teams und Personalnummern in `src/lib/permissions/index.ts`
+  zentralisiert und in `src/app/api/users/route.ts` sowie
+  `src/app/api/teams/route.ts` genutzt. Einfach gesagt: Benutzer und Teams
+  verwalten duerfen weiterhin nur Admin und Geschaeftsfuehrung; die
+  Personalnummer darf weiterhin nur Geschaeftsfuehrung aendern. Die
+  Selbstbearbeitung eigener Einstellungen bleibt erhalten, und die
+  Mitarbeiter-Emulation im Dashboard wurde nicht veraendert. Der Block ist
+  bewusst kein UI-Umbau und keine Erweiterung der Rechte, sondern zieht die
+  bestehenden Serverregeln in die zentrale Rollenmatrix. Sicherungen:
+  `.codex-safety/permissions_index_before_phase2_user_team_permissions_20260620_145056.ts`,
+  `.codex-safety/users_route_before_phase2_user_team_permissions_20260620_145056.ts`,
+  `.codex-safety/teams_route_before_phase2_user_team_permissions_20260620_145056.ts`,
+  `.codex-safety/AGENTS_before_phase2_user_team_permissions_20260620_145056.md`.
+  Checks bestanden: `git diff --check -- src/lib/permissions/index.ts src/app/api/users/route.ts src/app/api/teams/route.ts`,
+  `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`.
+- Phase-2-Rechnungsrechte 2026-06-20: Als zweiter kleiner Schritt der
+  Rollen-/Berechtigungsmatrix wurden zentrale Rechnungsrechte in
+  `src/lib/permissions/index.ts` ergaenzt und in
+  `src/app/api/invoices/route.ts` fuer schreibende Rechnungsaktionen genutzt.
+  Einfach gesagt: Rechnungen anlegen, bearbeiten, fakturieren, stornieren,
+  als bezahlt markieren, Mahnungen erfassen/erstellen und Druckhistorie
+  schreiben duerfen serverseitig nur Admin, Geschaeftsfuehrung,
+  Fuehrungskraft und Buchhaltung. Vertrieb, normale Mitarbeitende und Gast
+  werden bei diesen Finanzaktionen mit `403` geblockt. Die bestehende
+  Loeschregel wurde nicht gelockert: Rechnungen loeschen darf weiterhin nur
+  Geschaeftsfuehrung. Lesen, PDF-Oeffnen, XRechnung-Download und
+  Vorschau-PDF wurden nicht umgebaut. Die Historie nutzt jetzt auch bei
+  Rechnungen konsequent den geprueften Actor-Namen statt frei mitgesendeter
+  Namen. Sicherungen:
+  `.codex-safety/permissions_index_before_phase2_invoice_permissions_20260620_144358.ts`,
+  `.codex-safety/invoices_route_before_phase2_invoice_permissions_20260620_144358.ts`,
+  `.codex-safety/AGENTS_before_phase2_invoice_permissions_20260620_144358.md`.
+  Checks bestanden: `git diff --check -- src/lib/permissions/index.ts src/app/api/invoices/route.ts`,
+  `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`.
+- Phase-2-Angebotsrechte 2026-06-20: Als erster kleiner Schritt der
+  Rollen-/Berechtigungsmatrix wurden zentrale Angebotsrechte in
+  `src/lib/permissions/index.ts` ergaenzt und in
+  `src/app/api/offers/route.ts` fuer schreibende Aktionen genutzt. Einfach
+  gesagt: Angebote anlegen, bearbeiten, gewinnen/verloren setzen und
+  wiederherstellen duerfen jetzt serverseitig nur noch Admin,
+  Geschaeftsfuehrung, Fuehrungskraft und Vertrieb; Angebote loeschen duerfen
+  nur Admin und Geschaeftsfuehrung. Lesen und PDF-/Vorschauwege wurden nicht
+  umgebaut. Die UI sendet bei den betroffenen Schreibaktionen bereits
+  `actorId: activeUserId`, deshalb bleibt die normale Bedienung fuer
+  berechtigte Rollen erhalten; unberechtigte Rollen erhalten sauber `403`
+  statt unkontrollierter Aenderung. Sicherungen:
+  `.codex-safety/permissions_index_before_phase2_accounting_20260620_143748.ts`,
+  `.codex-safety/offers_route_before_phase2_accounting_20260620_143748.ts`,
+  `.codex-safety/AGENTS_before_phase2_offers_permissions_20260620_144032.md`.
+  Checks bestanden: `git diff --check -- src/lib/permissions/index.ts src/app/api/offers/route.ts`,
+  `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`.
+- Phase-1-Abschlusscheck 2026-06-20: Die Rechte-/Actor-ID-Roadmap wurde nach
+  den Einzelbloecken technisch gegengeprueft. Restmuster-Suchen ueber
+  `src/app/api` zeigen keine weitere aktive produktive Route, die im Rahmen
+  dieser Phase noch ungesteuert auf einen Demo-User-Fallback setzen muss. Die
+  verbleibenden auffaelligen Treffer sind entweder bereits abgesicherte
+  `getRequestActor`-/`getRequestUser`-Hilfsfunktionen, bewusst behandelte
+  Sonderfaelle (`auth/login`, `public-feedback/[token]`, Mail-OAuth) oder der
+  deaktivierte Content-Management-Legacybereich (`content-items`,
+  `idea-store`, `marketing-content`). Abschlusschecks bestanden:
+  `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake` und `git diff --check`. `prisma db push` wurde
+  im Abschluss nicht ausgefuehrt, weil keine neue Schemaaenderung Teil dieses
+  Abschlussvermerks war. Sicherung:
+  `.codex-safety/AGENTS_before_phase1_completion_note_20260620.md`.
+- Phase-1-Auth-Public-Feedback-Sonderfaelle 2026-06-20: `src/app/api/auth/login/route.ts`
+  und `src/app/api/public-feedback/[token]/route.ts` wurden als bewusste
+  Sonderfaelle der Rechte-/Actor-ID-Roadmap behandelt. Einfach gesagt: Login
+  kann vor der Anmeldung noch keinen Actor haben, und oeffentliches
+  Kundenfeedback muss weiter per Token ohne internen Actor funktionieren.
+  Deshalb wurde keine Actor-Pflicht eingebaut. Stattdessen wurde nur die
+  defensive JSON-Behandlung nachgezogen: kaputtes JSON im Login wird wie
+  fehlende/falsche Zugangsdaten behandelt, kaputtes JSON im oeffentlichen
+  Feedback laesst die bestehende Token- und Statuspruefung sauber greifen.
+  Bestehende Login-Regeln fuer aktive Benutzer, Passwortvergleich,
+  Team-/Profilrueckgabe, Feedback-Tokenpruefung, Einmalbeantwortung,
+  Rating-Normalisierung, Hot-Alert-Erzeugung und Request-Statusupdate blieben
+  fachlich erhalten. Sicherungen:
+  `.codex-safety/auth_login_route_20260620_phase1_special_before.ts`,
+  `.codex-safety/public_feedback_token_route_20260620_phase1_special_before.ts`
+  und `.codex-safety/AGENTS_before_auth_public_feedback_special_cases_20260620.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/auth/login/route.ts src/app/api/public-feedback/[token]/route.ts`.
+  Gezielter lokaler HTTP-Test ueber separaten Server auf Port 3210:
+  Login-`POST` mit kaputtem JSON 401 und Public-Feedback-`POST` mit kaputtem
+  JSON plus ungueltigem Token 404. Es wurden keine Login-Daten, Feedbackdaten
+  oder Benachrichtigungen erzeugt.
+- Phase-1-Mail-OAuth-API 2026-06-20: Als achtundvierzigster kleiner Fix aus
+  der Rechte-/Actor-ID-Roadmap wurden
+  `src/app/api/mail/oauth/start/route.ts` und
+  `src/app/api/mail/oauth/callback/route.ts` abgesichert. Einfach gesagt
+  betrifft das die Microsoft-365-Verbindung eines Mitarbeiter-Mailkontos. Der
+  OAuth-Start verlangt jetzt neben dem Ziel-`userId` auch einen aktiven
+  `actorId`; Zielbenutzer und Actor muessen in der Demo-Organisation aktiv
+  sein. Der OAuth-State enthaelt jetzt `userId` und `actorId`, und der Callback
+  prueft beide erneut, bevor Token getauscht oder ein Mailkonto in den
+  Benutzer geschrieben wird. Das abschliessende `UPDATE "User"` ist zusaetzlich
+  auf aktive Benutzer begrenzt. Bestehende OAuth-Konfiguration,
+  State-Cookie-Pruefung, ReturnTo-Redirect, Microsoft-Tokenaustausch,
+  Graph-Profilabruf und Cookie-Cleanup blieben fachlich erhalten. In
+  `src/components/dashboard/dashboard-page.tsx` sendet die Oberflaeche beim
+  Start der Microsoft-365-Verbindung nun `activeUserId` als `actorId` mit; ohne
+  aktiven Benutzer oder ohne gespeicherten Zielmitarbeiter wird lokal gestoppt.
+  Sicherungen:
+  `.codex-safety/mail_oauth_start_route_20260620_phase1_before.ts`,
+  `.codex-safety/mail_oauth_callback_route_20260620_phase1_before.ts`,
+  `.codex-safety/dashboard_page_before_mail_oauth_phase1_20260620.tsx` und
+  `.codex-safety/AGENTS_before_mail_oauth_phase1_20260620.md`. Checks
+  bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/mail/oauth/start/route.ts src/app/api/mail/oauth/callback/route.ts src/components/dashboard/dashboard-page.tsx`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter lokaler HTTP-Test ueber
+  separaten Server auf Port 3210: OAuth-Start ohne Zielbenutzer 400, ohne
+  Actor 401, mit ungueltigem Actor 401, mit aktivem Zielbenutzer und aktivem
+  Actor 307 zu Microsoft, sowie Callback mit ungueltigem State 307 zur App mit
+  `mailOAuth=error&reason=ungueltiger_status`. Es wurde kein externer
+  Microsoft-Login ausgefuehrt, kein Token getauscht und kein Mailkonto
+  geschrieben.
+- Phase-1-Content-Management-Legacy-Notiz 2026-06-20: Die Routen
+  `src/app/api/content-items/route.ts`, `src/app/api/idea-store/route.ts` und
+  `src/app/api/marketing-content/route.ts` wurden im Rahmen der
+  Rechte-/Actor-ID-Roadmap bewusst nicht weiter angefasst. Einfach gesagt ist
+  das der alte/deaktivierte Content-Management-Bereich. In
+  `src/components/dashboard/dashboard-page.tsx` steht
+  `CONTENT_MANAGEMENT_ENABLED = false`; die Content-Management-Tabs werden
+  ueber `isContentManagementTab` ausgefiltert, Benachrichtigungsnavigation zum
+  Ideen-Feed wird bei deaktiviertem Content-Management abgefangen, und das
+  initiale Laden der Content-/Ideen-Daten laeuft nur innerhalb des
+  Feature-Flags. Deshalb gibt es aktuell keinen produktiven UI-Pfad, der diese
+  Routen regulaer nutzt. Diese Routen zaehlen fuer Phase 1 nicht als fertig
+  abgesicherter produktiver Bereich, sondern als Legacy-/Reaktivierungsblock.
+  Falls Content-Management spaeter wieder aktiviert werden soll, muss es vor
+  Freischaltung als eigener Block behandelt werden: UI-Pfade pruefen,
+  Datenmodell/Tabellenmigration pruefen, Actor-ID-Pflicht in den betroffenen
+  APIs nachziehen, bestehende Benachrichtigungen/Ideenplanung pruefen und
+  End-to-End testen. Sicherung:
+  `.codex-safety/AGENTS_before_content_management_legacy_note_20260620.md`.
+  Checks: lokale Codepruefung der Feature-Flag-Stellen und
+  `git diff --check -- AGENTS.md`. Es wurden keine Routen- oder UI-
+  Verhaltensaenderungen vorgenommen.
+- Phase-1-Smoke-Detector-Reports-API 2026-06-20: Als siebenundvierzigster
+  kleiner Fix aus der Rechte-/Actor-ID-Roadmap wurde
+  `src/app/api/smoke-detector-reports/route.ts` abgesichert. Einfach gesagt
+  betrifft das den Rauchmelder-Installationsnachweis, der ein PDF erzeugt und
+  im Projektlogbuch unter Checklisten ablegt. `POST` verlangt jetzt einen
+  aktiven Actor aus der Demo-Organisation; fehlender, ungueltiger oder
+  inaktiver `actorId` fuehrt kontrolliert zu 401. Fehlerhaftes JSON wird
+  defensiv wie fehlende Daten behandelt. Der Autor des Logbucheintrags wird
+  jetzt serverseitig aus dem geprueften Actor gesetzt; frei mitgesendete
+  Installer-/Browserwerte koennen den Autor nicht mehr ersetzen. Bestehende
+  Projekt-/Kontaktabfrage, Pflichtpruefungen, Seriennummern-Abweichungsregel,
+  PDF-Template-Erzeugung, Bildverarbeitung, Dublettenpruefung nach Dateiname
+  und Logbuchablage blieben fachlich erhalten. In
+  `src/components/dashboard/dashboard-page.tsx` sendet die Oberflaeche beim
+  Erstellen des Rauchmelder-Nachweises nun `activeUserId` als `actorId` mit;
+  ohne aktiven Benutzer wird lokal gestoppt. Sicherungen:
+  `.codex-safety/smoke_detector_reports_route_20260620_phase1_before.ts`,
+  `.codex-safety/dashboard_page_before_smoke_detector_reports_phase1_20260620.tsx`
+  und `.codex-safety/AGENTS_before_smoke_detector_reports_phase1_20260620.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/smoke-detector-reports/route.ts src/components/dashboard/dashboard-page.tsx`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210: fehlender Actor bei `POST` 401, ungueltiger
+  Actor bei `POST` 401 und aktiver Actor mit bewusst unvollstaendigen
+  Fachdaten 400. Es wurde bewusst kein PDF erzeugt und kein Logbucheintrag
+  geschrieben.
+- Phase-1-Labor-Hour-Metrics-API 2026-06-20: Als sechsundvierzigster kleiner
+  Fix aus der Rechte-/Actor-ID-Roadmap wurde
+  `src/app/api/labor-hour-metrics/route.ts` abgesichert. Einfach gesagt
+  betrifft das interne Stundenkennzahlen aus Stempelungen, Angebotspositionen,
+  Planungseintraegen und Rechnungspositionen. `GET` verlangt jetzt einen
+  aktiven Actor aus der Demo-Organisation; fehlender, ungueltiger oder
+  inaktiver `actorId` fuehrt kontrolliert zu 401. Bestehende
+  Tabellen-/Spaltenabsicherung, Organisationsfilter, Zusammenfuehrung nach
+  Projekt/Mitarbeiter, Quellenzaehler, Rundung und Summenbildung blieben
+  fachlich erhalten. Es wurde kein aktiver Dashboard-Fetch auf
+  `/api/labor-hour-metrics` gefunden; deshalb war keine UI-Aenderung noetig.
+  Sicherungen:
+  `.codex-safety/labor_hour_metrics_route_20260620_phase1_before.ts`,
+  `.codex-safety/dashboard_page_before_labor_hour_metrics_phase1_20260620.tsx`
+  und `.codex-safety/AGENTS_before_labor_hour_metrics_phase1_20260620.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/labor-hour-metrics/route.ts`. `prisma db
+  push` wurde bewusst nicht ausgefuehrt, weil keine Schemaaenderung Teil dieses
+  Fixes war. Gezielter HTTP-Test ueber separaten lokalen Server auf Port 3210:
+  fehlender Actor bei `GET` 401, ungueltiger Actor bei `GET` 401 und aktiver
+  Actor bei `GET` 200 mit 14 Auswertungszeilen. Es wurden keine Daten
+  veraendert.
+- Phase-1-Legacy-Invoices-API 2026-06-20: Als fuenfundvierzigster kleiner
+  Fix aus der Rechte-/Actor-ID-Roadmap wurde
+  `src/app/api/legacy-invoices/route.ts` abgesichert. Einfach gesagt betrifft
+  das importierte HERO-Altrechnungen und die Route zum Zuruecksetzen dieser
+  Importdaten. `GET` und `DELETE` verlangen jetzt einen aktiven Actor aus der
+  Demo-Organisation; fehlender, ungueltiger oder inaktiver `actorId` fuehrt
+  kontrolliert zu 401. Bestehende Tabellenabsicherung, Seed der HERO-
+  Altrechnungen, Quellenfilter, Storno-Klassifizierung und Serialisierung
+  blieben fachlich erhalten. In `src/components/dashboard/dashboard-page.tsx`
+  sendet die Oberflaeche beim Laden der Altrechnungen nun `activeUserId` als
+  `actorId` mit; ohne aktiven Benutzer wird lokal gestoppt. Sicherungen:
+  `.codex-safety/legacy_invoices_route_20260620_phase1_before.ts`,
+  `.codex-safety/dashboard_page_before_legacy_invoices_phase1_20260620.tsx`
+  und `.codex-safety/AGENTS_before_legacy_invoices_phase1_20260620.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/legacy-invoices/route.ts src/components/dashboard/dashboard-page.tsx`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210: fehlender Actor bei `GET` 401, ungueltiger
+  Actor bei `GET` 401, aktiver Actor bei `GET` 200 mit 596 Zeilen,
+  fehlender Actor bei `DELETE` 401 und ungueltiger Actor bei `DELETE` 401.
+  Ein erfolgreicher `DELETE` wurde bewusst nicht getestet, damit keine
+  echten Altrechnungsdaten geloescht werden.
+- Phase-1-Monthly-Financial-Report-API 2026-06-20: Als vierundvierzigster
+  kleiner Fix aus der Rechte-/Actor-ID-Roadmap wurde
+  `src/app/api/monthly-financial-report/route.ts` abgesichert. Einfach gesagt
+  betrifft das Monatsbericht-/BWA-Ergaenzungswerte wie sonstige Ertraege,
+  Kosten, Steuern, Gewinnvortrag, Ausschuettung und Ruecklagen. `GET` und
+  `POST` verlangen jetzt einen aktiven Actor aus der Demo-Organisation;
+  fehlender, ungueltiger oder inaktiver `actorId` fuehrt kontrolliert zu 401.
+  Beim Speichern werden `updatedByUserId` und `updatedByName` jetzt
+  serverseitig aus dem geprueften Actor gesetzt; frei mitgesendete Namen oder
+  Benutzer-IDs aus der Oberflaeche werden nicht mehr uebernommen.
+  Fehlerhaftes JSON wird defensiv wie fehlende Daten behandelt. Bestehende
+  Tabellenabsicherung, Zeilenschluessel-Whitelist, Monatsvalidierung,
+  Betragsnormalisierung und Upsert je Organisation/Zeile/Monat blieben
+  fachlich erhalten. In `src/components/dashboard/dashboard-page.tsx` sendet
+  die Oberflaeche beim Laden und Speichern der Monatsberichtswerte nun
+  `activeUserId` als `actorId` mit; ohne aktiven Benutzer wird lokal gestoppt.
+  Sicherungen:
+  `.codex-safety/monthly_financial_report_route_20260620_phase1_before.ts`,
+  `.codex-safety/dashboard_page_before_monthly_financial_report_phase1_20260620.tsx`
+  und `.codex-safety/AGENTS_before_monthly_financial_report_phase1_20260620.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/monthly-financial-report/route.ts src/components/dashboard/dashboard-page.tsx`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210: fehlender Actor bei `GET` 401, ungueltiger
+  Actor bei `GET` 401, aktiver Actor bei `GET` 200, ungueltiger Actor bei
+  `POST` 401 und aktiver Actor bei `POST` 200; der Test bestaetigte, dass
+  gefaelschte `updatedBy...`-Werte nicht uebernommen werden. Der temporaere
+  Testwert fuer `other_operating_income` im Monat `2099-12` wurde bereinigt.
+- Phase-1-Winter-Service-Runs-API 2026-06-20: Als dreiundvierzigster kleiner
+  Fix aus der Rechte-/Actor-ID-Roadmap wurde
+  `src/app/api/winter-service-runs/route.ts` abgesichert. Einfach gesagt
+  betrifft das Winterdienst-Einsaetze, PDF-Abruf, Einsatzanlage und
+  Statuswechsel wie versendet oder abgerechnet. `GET`, `POST` und `PATCH`
+  verlangen jetzt einen aktiven Actor aus der Demo-Organisation; fehlender,
+  ungueltiger oder inaktiver `actorId` fuehrt kontrolliert zu 401. Fehlerhaftes
+  JSON wird defensiv wie fehlende Daten behandelt. Bestehende
+  Tabellenabsicherung, Monatsfilter, PDF-Rueckgabe, PDF-Erzeugung,
+  Bildnormalisierung, Reportnummernvergabe, Statuswechsel und
+  Logbuchablage blieben fachlich erhalten. Es wurde kein direkter
+  Dashboard-Aufruf auf `/api/winter-service-runs` gefunden; deshalb war keine
+  UI-Aenderung noetig. Sicherungen:
+  `.codex-safety/winter_service_runs_route_20260620_phase1_before.ts` und
+  `.codex-safety/AGENTS_before_winter_service_runs_phase1_20260620.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/winter-service-runs/route.ts`. `prisma db
+  push` wurde bewusst nicht ausgefuehrt, weil keine Schemaaenderung Teil dieses
+  Fixes war. Gezielter HTTP-Test ueber separaten lokalen Server auf Port 3210:
+  fehlender Actor bei `GET` 401, ungueltiger Actor bei `GET` 401, aktiver Actor
+  bei `GET` 200, ungueltiger Actor bei `POST` 401, aktiver Actor mit
+  temporaerem Einsatz 201, ungueltiger Actor bei `PATCH` 401,
+  `PATCH mark-sent` mit aktivem Actor 200 und `PATCH mark-billed` mit aktivem
+  Actor 200; der temporaere Einsatz wurde bereinigt. Es wurde bewusst keine
+  PDF-Erzeugung und kein Mailversand angestossen.
+- Phase-1-Winter-Service-Automation-API 2026-06-20: Als zweiundvierzigster
+  kleiner Fix aus der Rechte-/Actor-ID-Roadmap wurde
+  `src/app/api/winter-service-automation/route.ts` abgesichert. Einfach gesagt
+  betrifft das die Winterdienst-Automatik-Einstellungen und den automatischen
+  Versandlauf fuer Taetigkeitsberichte. `GET` und `PUT` verlangen jetzt einen
+  aktiven Actor aus der Demo-Organisation; fehlender, ungueltiger oder
+  inaktiver `actorId` fuehrt kontrolliert zu 401. Der Versandlauf verwendet
+  bei aktiver Automatik den gespeicherten aktiven Absender oder, falls kein
+  gueltiger Absender gespeichert ist, den mitgesendeten aktiven Actor; der
+  bisherige Demo-User-Fallback wurde entfernt. Ein deaktivierter Automatiklauf
+  darf weiter ohne Actor sauber mit `skipped: "disabled"` enden, damit der
+  Hintergrund-Timer im ausgeschalteten Zustand keine Fehlermeldungen erzeugt.
+  Bestehende Tabellenabsicherung, Lauf-Erkennung, PDF-Erstellung ueber
+  Activity-Reports, Versand ueber Document-Mail, Fehlerbenachrichtigungen und
+  Scheduler-Synchronisierung blieben fachlich erhalten. In
+  `src/components/dashboard/dashboard-page.tsx` sendet die Oberflaeche beim
+  Laden und Speichern der Winterdienst-Automatik nun `activeUserId` als
+  `actorId` mit; ohne aktiven Benutzer wird lokal gestoppt. Sicherungen:
+  `.codex-safety/winter_service_automation_route_20260620_phase1_before.ts`,
+  `.codex-safety/dashboard_page_before_winter_service_automation_phase1_20260620.tsx`
+  und `.codex-safety/AGENTS_before_winter_service_automation_phase1_20260620.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/winter-service-automation/route.ts src/components/dashboard/dashboard-page.tsx`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210: fehlender Actor bei `GET` 401, ungueltiger
+  Actor bei `GET` 401, aktiver Actor bei `GET` 200, ungueltiger Actor bei
+  `PUT` 401, aktiver Actor bei `PUT` 200 und deaktivierter `POST`-Trockenlauf
+  ohne Actor 200; die vorherigen Einstellungen wurden wiederhergestellt und es
+  wurde kein echter Versandlauf gestartet.
+- Phase-1-News-Feed-API 2026-06-20: Als einundvierzigster kleiner Fix aus der
+  Rechte-/Actor-ID-Roadmap wurden `src/app/api/news-feed/route.ts`,
+  `src/app/api/news-feed/comments/route.ts`,
+  `src/app/api/news-feed/reactions/route.ts` und
+  `src/app/api/news-feed/votes/route.ts` abgesichert. Einfach gesagt betrifft
+  das News-Beitraege, Lesen/als gelesen markieren, Kommentare, Reaktionen und
+  Abstimmungen. Die Routen verlangen jetzt einen aktiven Actor aus der
+  Demo-Organisation; fehlender, ungueltiger oder inaktiver `actorId` fuehrt
+  kontrolliert zu 401. Der bisherige Demo-User-Fallback wurde entfernt.
+  Reaktionen, Abstimmungen und Gelesen-Markierungen akzeptieren aus
+  Kompatibilitaetsgruenden weiterhin `userId`, pruefen ihn aber serverseitig
+  wie einen Actor. Fehlerhaftes JSON wird defensiv wie fehlende Daten
+  behandelt. Bestehende Tabellenabsicherung, Organisationsfilter,
+  Sichtbarkeitslogik, Attachment-/Poll-Normalisierung, Reaktionswechsel,
+  Vote-Ersetzung und Lesestatus-Upsert blieben fachlich erhalten. In
+  `src/components/dashboard/dashboard-page.tsx` wurde bewusst nichts geaendert,
+  weil fuer `/api/news-feed` kein aktiver Dashboard-Aufruf gefunden wurde; die
+  abgeschalteten Content-Management-Bereiche wurden ebenfalls nicht breit
+  angefasst. Sicherungen:
+  `.codex-safety/news_feed_route_20260620_phase1_before.ts`,
+  `.codex-safety/news_feed_comments_route_20260620_phase1_before.ts`,
+  `.codex-safety/news_feed_reactions_route_20260620_phase1_before.ts`,
+  `.codex-safety/news_feed_votes_route_20260620_phase1_before.ts`,
+  `.codex-safety/dashboard_page_before_news_feed_phase1_20260620.tsx` und
+  `.codex-safety/AGENTS_before_news_feed_phase1_20260620.md`. Checks
+  bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/news-feed/route.ts src/app/api/news-feed/comments/route.ts src/app/api/news-feed/reactions/route.ts src/app/api/news-feed/votes/route.ts`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210: fehlender/ungueltiger Actor bei News-`GET`
+  401, aktiver Actor bei News-`GET` 200, ungueltiger Actor bei News-`POST`
+  401, aktiver Actor mit temporaerem Beitrag 201, Lesestatus-`PATCH` 200,
+  Kommentar mit ungueltigem Actor 401, Kommentar mit aktivem Actor 201,
+  Reaktion mit ungueltigem Actor 401, Reaktion mit aktivem Actor 200,
+  Abstimmung mit ungueltigem Actor 401 und Abstimmung mit aktivem Actor 200;
+  temporaerer Beitrag samt Kommentar, Reaktion, Vote und Lesestatus wurde
+  bereinigt.
+- Phase-1-Customer-Feedback-APIs 2026-06-20: Als vierzigster kleiner Fix aus
+  der Rechte-/Actor-ID-Roadmap wurden die internen Feedback-Routen
+  `src/app/api/customer-feedback/route.ts` und
+  `src/app/api/customer-feedback-requests/route.ts` abgesichert. Einfach
+  gesagt betrifft das interne KuZu-Bewertungen, Feedback-Anfragen, Hot-Alerts
+  und das Loeschen von Bewertungen. Interne `GET`-/`POST`-Aufrufe und
+  Feedback-`DELETE` verlangen jetzt einen aktiven Actor aus der
+  Demo-Organisation; fehlender, ungueltiger oder inaktiver `actorId` fuehrt
+  kontrolliert zu 401. Der Demo-User-Fallback beim internen Anlegen wurde
+  entfernt; Sales-User-Fallback ist jetzt der serverseitig gepruefte Actor.
+  Die bestehende Geschaeftsfuehrungsregel beim Loeschen bleibt erhalten:
+  nicht berechtigte aktive Benutzer erhalten weiter 403. Fehlerhaftes JSON wird
+  defensiv wie fehlende Daten behandelt. Bestehende Sales-Hub-
+  Tabellenabsicherung, Organisationsfilter, Rating-Normalisierung, Hot-Alert-
+  Empfaenger, Token-/URL-Erzeugung fuer Feedback-Anfragen, vorhandene
+  Anfrage-Wiederverwendung je Rechnung und Ruecksetzung einer Anfrage nach
+  geloeschtem Feedback blieben fachlich erhalten. Die oeffentliche
+  Kundenbewertung `src/app/api/public-feedback/[token]/route.ts` wurde bewusst
+  nicht mit Actor-Pflicht versehen, damit externe Kunden weiterhin ueber Token
+  bewerten koennen. In `src/components/dashboard/dashboard-page.tsx` sendet die
+  Oberflaeche beim Laden interner Feedbacks und Feedback-Anfragen nun
+  `activeUserId` als `actorId` mit; ohne aktiven Benutzer wird lokal gestoppt.
+  Sicherungen:
+  `.codex-safety/customer_feedback_route_20260620_phase1_before.ts`,
+  `.codex-safety/customer_feedback_requests_route_20260620_phase1_before.ts`,
+  `.codex-safety/dashboard_page_before_customer_feedback_phase1_20260620.tsx`
+  und `.codex-safety/AGENTS_before_customer_feedback_phase1_20260620.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/customer-feedback/route.ts src/app/api/customer-feedback-requests/route.ts src/components/dashboard/dashboard-page.tsx`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210: fehlender/ungueltiger Actor bei beiden
+  internen `GET`-Routen 401, aktiver Actor bei beiden `GET`-Routen 200,
+  ungueltiger Actor bei Feedback-Request-`POST` 401, aktiver Actor mit
+  temporaerer Feedback-Anfrage 201, ungueltiger Actor bei Feedback-`POST` 401,
+  aktiver Actor mit temporaerem Feedback 201 und Feedback-`DELETE` mit
+  ungueltigem Actor 401; temporaere Feedback-Anfrage und temporaeres Feedback
+  wurden bereinigt und der Testserver beendet.
+- Phase-1-Sales-Opportunities-API 2026-06-20: Als neununddreissigster
+  kleiner Fix aus der Rechte-/Actor-ID-Roadmap wurden
+  `src/app/api/sales-opportunities/route.ts` und
+  `src/app/api/sales-opportunities/activities/route.ts` abgesichert. Einfach
+  gesagt betrifft das Verkaufschancen und deren Aktivitaeten/Notizen. `GET`,
+  `POST` und `PATCH` der Chancen sowie `POST` der Aktivitaeten verlangen jetzt
+  einen aktiven Actor aus der Demo-Organisation; fehlender, ungueltiger oder
+  inaktiver `actorId` fuehrt kontrolliert zu 401. Der bisherige Demo-User-
+  Fallback wurde entfernt, damit History und Aktivitaeten immer den
+  serverseitig geprueften Actor verwenden. Fehlerhaftes JSON wird defensiv wie
+  fehlende Daten behandelt. Bestehende Sales-Hub-Tabellenabsicherung,
+  Organisationsfilter, Owner-Zuordnung, Stage-/Wert-/Wahrscheinlichkeits-
+  Normalisierung, Aktivitaetsrueckgabe je Chance, Created-/Updated-History und
+  Aktualisierung des Opportunity-Zeitstempels durch Aktivitaeten blieben
+  fachlich erhalten. Es gab keinen sichtbaren Dashboard-Aufrufer fuer diese
+  Routen, daher war keine UI-Aenderung noetig. Sicherungen:
+  `.codex-safety/sales_opportunities_route_20260620_phase1_before.ts`,
+  `.codex-safety/sales_opportunities_activities_route_20260620_phase1_before.ts`
+  und `.codex-safety/AGENTS_before_sales_opportunities_phase1_20260620.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/sales-opportunities/route.ts src/app/api/sales-opportunities/activities/route.ts`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210: fehlender Actor bei `GET` 401, ungueltiger
+  Actor bei `GET` 401, aktiver Actor bei `GET` 200, ungueltiger Actor bei
+  `POST` 401, aktiver Actor mit temporaerer Chance 201, `PATCH` 200,
+  Aktivitaet mit ungueltigem Actor 401 und Aktivitaet mit aktivem Actor 201;
+  temporaere Chance und drei erzeugte Aktivitaeten wurden bereinigt und der
+  Testserver beendet.
+- Phase-1-Sales-Targets-API 2026-06-20: Als achtunddreissigster kleiner Fix
+  aus der Rechte-/Actor-ID-Roadmap wurde `src/app/api/sales-targets/route.ts`
+  abgesichert. Einfach gesagt betrifft das Vertriebs-/Kennzahlenziele,
+  Zielanlage, Zielbearbeitung, Zielstatus und Status-Historie. `GET`, `POST`
+  und `PATCH` verlangen jetzt einen aktiven Actor aus der Demo-Organisation;
+  fehlender, ungueltiger oder inaktiver `actorId` fuehrt kontrolliert zu 401.
+  History und Status-Timeline verwenden jetzt den serverseitig geprueften Actor
+  statt Demo-User-Fallback. Fehlerhaftes JSON wird defensiv wie fehlende Daten
+  behandelt. Bestehende Sales-Hub-Tabellenabsicherung, Organisationsfilter,
+  Owner-Zuordnung, Pflichtfeld Titel, Status-/Prioritaetsnormalisierung,
+  Zielwertnormalisierung, Periodenfelder, Follow-up-Datum, Timeline-Seeding und
+  Statuswechsel-Protokollierung blieben fachlich erhalten. In
+  `src/components/dashboard/dashboard-page.tsx` sendet die Oberflaeche beim
+  Laden und Speichern von Zielen nun `activeUserId` als `actorId` mit; ohne
+  aktiven Benutzer wird lokal gestoppt. Sicherungen:
+  `.codex-safety/sales_targets_route_20260620_phase1_before.ts`,
+  `.codex-safety/dashboard_page_before_sales_targets_phase1_20260620.tsx` und
+  `.codex-safety/AGENTS_before_sales_targets_phase1_20260620.md`. Checks
+  bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/sales-targets/route.ts src/components/dashboard/dashboard-page.tsx`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210: fehlender Actor bei `GET` 401, ungueltiger
+  Actor bei `GET` 401, aktiver Actor bei `GET` 200, ungueltiger Actor bei
+  `POST` 401, aktiver Actor mit temporaerem Ziel 201 und anschliessendes
+  `PATCH done` 200; temporaeres Ziel und zwei Status-Timeline-Eintraege wurden
+  bereinigt und der Testserver beendet.
+- Phase-1-Potentials-API 2026-06-20: Als siebenunddreissigster kleiner Fix
+  aus der Rechte-/Actor-ID-Roadmap wurde `src/app/api/potentials/route.ts`
+  abgesichert. Einfach gesagt betrifft das Zusatzverkaufspotenziale aus
+  Endkontrollen, manuell angelegte Zusatzverkaeufe, Nachfass-Status,
+  Angebot-/Verloren-Status und Status-Historie. `GET`, `POST` und `PATCH`
+  verlangen jetzt einen aktiven Actor aus der Demo-Organisation; fehlender,
+  ungueltiger oder inaktiver `actorId` fuehrt kontrolliert zu 401. Historie
+  und Status-Timeline verwenden jetzt den serverseitig geprueften Actor statt
+  frei aus der Oberflaeche gelieferter Namen bzw. Demo-User-Fallback. Fehlerhaftes
+  JSON wird defensiv wie fehlende Daten behandelt. Bestehende Tabellenanlage,
+  Organisationsfilter, Migration alter Logbuch-Potenziale, Nummernvergabe
+  `VC-####`, Ausschluss von "kein/nein"-Beschreibungen, Pflichtfelder,
+  Status-/Prioritaetsnormalisierung, Wertnormalisierung, Follow-up-/Offered-/
+  Lost-Zeitpunkte und Timeline-Seeding blieben fachlich erhalten. In
+  `src/components/dashboard/dashboard-page.tsx` sendet die Oberflaeche beim
+  Laden, automatischen Anlegen aus Endkontrollen, manuellen Anlegen und
+  Aktualisieren von Zusatzverkaeufen nun `activeUserId` als `actorId` mit;
+  ohne aktiven Benutzer wird lokal gestoppt. Sicherungen:
+  `.codex-safety/potentials_route_20260620_phase1_before.ts`,
+  `.codex-safety/dashboard_page_before_potentials_phase1_20260620.tsx` und
+  `.codex-safety/AGENTS_before_potentials_phase1_20260620.md`. Checks
+  bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/potentials/route.ts src/components/dashboard/dashboard-page.tsx`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210: fehlender Actor bei `GET` 401, ungueltiger
+  Actor bei `GET` 401, aktiver Actor bei `GET` 200, ungueltiger Actor bei
+  `POST` 401, aktiver Actor mit temporaerem Zusatzverkauf 201 und
+  anschliessendes `PATCH follow_up` 200; temporaerer Zusatzverkauf und zwei
+  Status-Timeline-Eintraege wurden bereinigt und der Testserver beendet.
+- Phase-1-Final-Inspections-API 2026-06-20: Als sechsunddreissigster kleiner
+  Fix aus der Rechte-/Actor-ID-Roadmap wurde
+  `src/app/api/final-inspections/route.ts` abgesichert. Einfach gesagt
+  betrifft das Endkontroll-Dokumente, die als Projektlogbuch-Eintrag abgelegt
+  werden, sowie optionale Zusatzverkauf-Benachrichtigungen. `POST` verlangt
+  jetzt einen aktiven Actor aus der Demo-Organisation; fehlender, ungueltiger
+  oder inaktiver `actorId` fuehrt kontrolliert zu 401. Der Autor und
+  `authorUserId` des erzeugten Projektlogbuch-Eintrags werden jetzt
+  serverseitig aus dem geprueften Actor gesetzt statt aus frei uebergebenem
+  Mitarbeitertext. Fehlerhaftes JSON wird defensiv wie fehlende Daten
+  behandelt. Die lokale Tabellenabsicherung fuer `ProjectLogbookEntry` wurde
+  um `authorUserId`, `projectMonth` und `updatedAt` ergaenzt, damit frische
+  Datenbanken zur bestehenden Logbuchstruktur passen. Bestehende
+  Projektpflichtpruefung, Checklisten-Textgenerierung, Kollegen-Status,
+  Endkontroll-Anhang, Sichtbarkeitsliste und Upsell-Benachrichtigungen an
+  `notifyUpsell`-Empfaenger blieben fachlich erhalten. In
+  `src/components/dashboard/dashboard-page.tsx` sendet die Oberflaeche beim
+  Speichern der Endkontrolle nun `activeUserId` als `actorId` mit; ohne
+  aktiven Benutzer wird die Aktion lokal gestoppt. Sicherungen:
+  `.codex-safety/final_inspections_route_20260620_phase1_before.ts`,
+  `.codex-safety/dashboard_page_before_final_inspections_phase1_20260620.tsx`
+  und `.codex-safety/AGENTS_before_final_inspections_phase1_20260620.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/final-inspections/route.ts src/components/dashboard/dashboard-page.tsx`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210: fehlender Actor bei `POST` 401, ungueltiger
+  Actor bei `POST` 401 und aktiver Actor mit temporaerem Endkontroll-
+  Logbucheintrag 201; temporaerer Logbucheintrag wurde bereinigt und der
+  Testserver beendet.
+- Phase-1-Customer-Project-Notes-API 2026-06-20: Als fuenfunddreissigster
+  kleiner Fix aus der Rechte-/Actor-ID-Roadmap wurde
+  `src/app/api/customer-project-notes/route.ts` abgesichert. Einfach gesagt
+  betrifft das Kunden- und Projekthinweise inklusive Anzeige vor Stempelung,
+  Anzeige bei Projektanlage, Archivieren und Bestaetigungen. `GET`, `POST` und
+  `PATCH` verlangen jetzt einen aktiven Actor aus der Demo-Organisation;
+  fehlender, ungueltiger oder inaktiver `actorId` fuehrt kontrolliert zu 401.
+  Beim Anlegen und Bestaetigen werden `createdByUserId`/`createdByName` bzw.
+  `userId`/`userName` jetzt aus dem serverseitig geprueften Actor gebildet,
+  statt frei aus der Oberflaeche geliefert zu werden. Fehlerhaftes JSON wird
+  defensiv wie fehlende Daten behandelt. Bestehende Tabellenanlage,
+  Organisationsfilter, Kunden-/Projektfilter, Aktiv-/Archivlogik,
+  Gueltigkeitszeitraeume, Prioritaeten, Bestätigungshaeufigkeiten
+  `always`/`once_per_user`/`daily`, Kontextfilter fuer `stamp` und
+  `projectCreate` sowie Acknowledgement-Protokollierung blieben fachlich
+  erhalten. In `src/components/dashboard/dashboard-page.tsx` sendet die
+  Oberflaeche beim Laden, Speichern, Archivieren und Bestaetigen von
+  Kunden-/Projekthinweisen nun `activeUserId` als `actorId` mit; ohne aktiven
+  Benutzer wird lokal gestoppt. Die Mitarbeiter-Emulation bleibt erhalten,
+  weil `activeUserId` weiterhin der aktive bzw. emulierte Benutzer ist.
+  Sicherungen:
+  `.codex-safety/customer_project_notes_route_20260620_phase1_before.ts`,
+  `.codex-safety/dashboard_page_before_customer_project_notes_phase1_20260620.tsx`
+  und `.codex-safety/AGENTS_before_customer_project_notes_phase1_20260620.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/customer-project-notes/route.ts src/components/dashboard/dashboard-page.tsx`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210 mit temporaerem Hinweis: fehlender Actor bei
+  `GET` 401, ungueltiger Actor bei `GET` 401, aktiver Actor bei `GET` 200,
+  ungueltiger Actor bei `POST` 401, aktiver Actor mit temporaerem Hinweis 201,
+  `PATCH acknowledge` 200 und `PATCH archive` 200; temporaerer Hinweis und
+  Bestaetigung wurden bereinigt und der Testserver beendet.
+- Phase-1-Project-Marketing-Quotas-API 2026-06-20: Als vierunddreissigster
+  kleiner Fix aus der Rechte-/Actor-ID-Roadmap wurde
+  `src/app/api/project-marketing-quotas/route.ts` abgesichert. Einfach gesagt
+  betrifft das monatliche Marketing-Kontingente in Marketing-Projekten,
+  inklusive Anlegen/Bearbeiten von Marketingstuecken, Erledigt-Markierung,
+  Zuruecksetzen und automatisch erzeugten Logbucheintraegen. `GET`, `POST` und
+  `PATCH` verlangen jetzt einen aktiven Actor aus der Demo-Organisation;
+  fehlender, ungueltiger oder inaktiver `actorId` fuehrt kontrolliert zu 401.
+  Erledigt- und Zurueckgesetzt-Historie sowie die dazugehoerigen
+  Projektlogbuch-Eintraege verwenden jetzt den serverseitig geprueften Actor
+  statt frei aus der Oberflaeche gelieferter Namen. Fehlerhaftes JSON wird
+  defensiv wie fehlende Daten behandelt. Bestehende Tabellenanlage,
+  Organisationsfilter, Projektfilter, Marketing-Gewerk-Pruefung,
+  Monatsvalidierung, Mengenlimit, Aktiv/Inaktiv-Status,
+  `ON CONFLICT`-Update fuer Kontingent-Stammdaten, Monatskontingent-Grenze,
+  Revert des letzten offenen Erledigt-Eintrags und Logbuch-Protokollierung
+  blieben fachlich erhalten. In
+  `src/components/dashboard/dashboard-page.tsx` sendet die Oberflaeche beim
+  Laden, Speichern, Erledigen und Zuruecksetzen von Marketing-Kontingenten nun
+  `activeUserId` als `actorId` mit; ohne aktiven Benutzer wird die Aktion lokal
+  gestoppt. Sicherungen:
+  `.codex-safety/project_marketing_quotas_route_20260620_phase1_before.ts`,
+  `.codex-safety/dashboard_page_before_project_marketing_quotas_phase1_20260620.tsx`
+  und `.codex-safety/AGENTS_before_project_marketing_quotas_phase1_20260620.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/project-marketing-quotas/route.ts src/components/dashboard/dashboard-page.tsx`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210 mit temporaerem Marketing-Projekt: fehlender
+  Actor bei `GET` 401, ungueltiger Actor bei `GET` 401, aktiver Actor bei
+  `GET` 200, ungueltiger Actor bei `POST` 401, aktiver Actor mit temporaerem
+  Marketingstueck 201, `PATCH complete` 200 und `PATCH revert-latest` 200;
+  temporaeres Projekt, Marketingstueck, Completion und zwei erzeugte
+  Logbucheintraege wurden bereinigt und der Testserver beendet.
+- Phase-1-Project-Logbook-Entries-API 2026-06-20: Als dreiunddreissigster
+  kleiner Fix aus der Rechte-/Actor-ID-Roadmap wurde
+  `src/app/api/project-logbook-entries/route.ts` abgesichert. Einfach gesagt
+  betrifft das Projekttagebuch-Eintraege, Projektbilder, Projektdokumente,
+  Anhang-Loeschungen und Bildverschiebungen innerhalb der Projektakte. `GET`,
+  `POST` und `PATCH` verlangen jetzt einen aktiven Actor aus der
+  Demo-Organisation; fehlender, ungueltiger oder inaktiver `actorId` fuehrt
+  kontrolliert zu 401. Neue Logbucheintraege und automatisch erzeugte
+  Historieneintraege fuer geloeschte/verschobene Anhaenge verwenden jetzt den
+  serverseitig geprueften Actor fuer `author`/`authorUserId` statt frei aus der
+  Oberflaeche gelieferter Namen. Fehlerhaftes JSON wird defensiv wie fehlende
+  Daten behandelt und verursacht keinen ungefangenen 500er. Bestehende
+  Organisationsfilter, Projektfilter, `updatedAfter`-Synchronisation,
+  Summary-Modus, Sichtbarkeitslisten, Anhang-Normalisierung, Monatsbezug fuer
+  Dauerprojekte, Bild-Zielordner-Pruefung und Historieneintraege fuer
+  geloeschte Taetigkeitsberichte/Projektanhaenge blieben fachlich erhalten. In
+  `src/components/dashboard/dashboard-page.tsx` sendet die Oberflaeche beim
+  Laden, Nachladen, Synchronisieren, manuellen Speichern, Bild-/Dokumentupload
+  sowie beim Loeschen/Verschieben von Anhaengen nun `activeUserId` als
+  `actorId` mit; ohne aktiven Benutzer wird die Aktion lokal gestoppt.
+  Sicherungen:
+  `.codex-safety/project_logbook_entries_route_20260620_phase1_before.ts`,
+  `.codex-safety/dashboard_page_before_project_logbook_entries_phase1_20260620.tsx`
+  und `.codex-safety/AGENTS_before_project_logbook_entries_phase1_20260620.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/project-logbook-entries/route.ts src/components/dashboard/dashboard-page.tsx`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210: fehlender Actor bei `GET` 401, ungueltiger
+  Actor bei `GET` 401, aktiver Actor bei `GET` 200, ungueltiger Actor bei
+  `POST` 401, aktiver Actor mit temporaerem Logbucheintrag 201 und
+  anschliessendes `PATCH` zum Loeschen eines temporaeren Anhangs 200;
+  temporaerer Logbucheintrag und zugehoeriger Historieneintrag wurden geloescht
+  und der Testserver beendet.
+- Phase-1-Hero-Import-Projects-API 2026-06-20: Als zweiunddreissigster
+  kleiner Fix aus der Rechte-/Actor-ID-Roadmap wurde
+  `src/app/api/hero/import-projects/route.ts` abgesichert. Einfach gesagt
+  betrifft das den Import alter Hero-Projekte in die lokale
+  WorkPilot-Projektliste. `POST` verlangt jetzt einen aktiven Actor aus der
+  Demo-Organisation; fehlender, ungueltiger oder inaktiver `actorId` fuehrt
+  kontrolliert zu 401, bevor Projektimport, Tabellenanlage oder externe
+  Hero-Projektabfrage starten. Bestehende Importlogik, Organisationsbindung,
+  Projektstatus-Normalisierung, `ON CONFLICT DO NOTHING` gegen doppelte
+  Projekt-IDs und die Rueckgabe von `imported`, `skipped` und `total` blieben
+  fachlich unveraendert. Es gab keinen sichtbaren Dashboard-Aufrufer fuer diese
+  Route, daher war keine UI-Aenderung noetig. Sicherungen:
+  `.codex-safety/hero_import_projects_route_20260620_phase1_before.ts` und
+  `.codex-safety/AGENTS_before_hero_import_projects_phase1_20260620.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/hero/import-projects/route.ts`. `prisma db
+  push` wurde bewusst nicht ausgefuehrt, weil keine Schemaaenderung Teil
+  dieses Fixes war. Gezielter HTTP-Test ueber separaten lokalen Server auf
+  Port 3210: fehlender Actor 401 und ungueltiger Actor 401; ein echter Import
+  mit aktivem Actor wurde bewusst nicht gestartet, damit keine Projektdaten
+  angelegt oder veraendert werden. Testserver wurde beendet.
+- Phase-1-Hero-Projects-API 2026-06-20: Als einunddreissigster kleiner Fix
+  aus der Rechte-/Actor-ID-Roadmap wurde
+  `src/app/api/hero/projects/route.ts` abgesichert. Einfach gesagt betrifft
+  das lokale WorkPilot-Projekte inklusive Projektstatus, Laufzeit,
+  Kontaktverknuepfung, Budgetfeldern, Auto-Fakturierung und Winterdienst-
+  Paketfeldern. `GET`, `POST` und `PATCH` verlangen jetzt einen aktiven Actor
+  aus der Demo-Organisation; fehlender, ungueltiger oder inaktiver `actorId`
+  fuehrt kontrolliert zu 401. Die Status-Historie bei Projektstatuswechseln
+  nutzt jetzt den serverseitig geprueften Actor statt des Demo-Users. Bestehende
+  Organisationsfilter, Projektformatierung, Upsert per Projekt-ID,
+  Pflichtfelder Projektnummer/Projektname, Statusnormalisierung,
+  Budget-History/Budget-Allokationen und das Seed-Verhalten fuer neue
+  Status-Timelines blieben fachlich erhalten. In
+  `src/components/dashboard/dashboard-page.tsx` sendet die Oberflaeche beim
+  Laden und Speichern von Projekten nun `activeUserId` mit; nach gesetztem
+  aktivem Benutzer werden Projekte erneut geladen. Sicherungen:
+  `.codex-safety/hero_projects_route_20260620_phase1_before.ts`,
+  `.codex-safety/dashboard_page_before_hero_projects_phase1_20260620.tsx` und
+  `.codex-safety/AGENTS_before_hero_projects_phase1_20260620.md`. Checks
+  bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/hero/projects/route.ts src/components/dashboard/dashboard-page.tsx`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210: fehlender Actor 401, ungueltiger Actor 401,
+  aktiver Actor bei `GET` 200, ungueltiger Actor bei `POST` 401, aktiver Actor
+  ohne Titel 400, aktiver Actor mit temporaerem Projekt 201 und anschliessendes
+  `PATCH` 201; temporaeres Projekt und zugehoerige Status-Historie wurden
+  bereinigt und der Testserver beendet.
+- Phase-1-Contacts-API 2026-06-20: Als dreissigster kleiner Fix aus der
+  Rechte-/Actor-ID-Roadmap wurde `src/app/api/contacts/route.ts` abgesichert.
+  Einfach gesagt betrifft das Kunden, Firmen, Ansprechpartner, Privatkunden,
+  Lieferanten und Zahlungs-/Adressdaten. `GET`, `POST`, `PATCH` und `DELETE`
+  verlangen jetzt einen aktiven Actor aus der Demo-Organisation; fehlender,
+  ungueltiger oder inaktiver `actorId` fuehrt kontrolliert zu 401, bevor
+  Kontakte gelesen, angelegt, bearbeitet oder geloescht werden. Es wurden
+  bewusst keine neuen Rollenregeln eingefuehrt, damit bestehende CRM-Workflows
+  nicht eingeschraenkt werden. Bestehende Organisationsfilter,
+  Kontaktformatierung, Kundennummernlogik, E-Rechnungsfelder,
+  Ansprechpartner/Firmen-Zuordnung, Zahlungsbedingungen und echtes Loeschen
+  blieben fachlich erhalten. In
+  `src/components/dashboard/dashboard-page.tsx` sendet die Oberflaeche beim
+  Laden, Speichern, Loeschen und bei der Sammelaktion Archivieren nun
+  `activeUserId` mit; nach gesetztem aktivem Benutzer werden Kontakte erneut
+  geladen. Sicherungen:
+  `.codex-safety/contacts_route_20260620_phase1_before.ts`,
+  `.codex-safety/dashboard_page_before_contacts_phase1_20260620.tsx` und
+  `.codex-safety/AGENTS_before_contacts_phase1_20260620.md`. Checks
+  bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/contacts/route.ts src/components/dashboard/dashboard-page.tsx`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210: fehlender Actor 401, ungueltiger Actor 401,
+  aktiver Actor bei `GET` 200, ungueltiger Actor bei `POST` 401, aktiver Actor
+  mit temporaerem Kontakt 200, anschliessendes `PATCH` 200 und `DELETE` 200;
+  temporaerer Kontakt wurde bereinigt und der Testserver beendet.
+- Phase-1-Business-Area-Targets-API 2026-06-20: Als neunundzwanzigster
+  kleiner Fix aus der Rechte-/Actor-ID-Roadmap wurde
+  `src/app/api/business-area-targets/route.ts` abgesichert. Einfach gesagt
+  betrifft das monatliche Sollwerte je Geschaeftsbereich. `GET` und `PUT`
+  verlangen jetzt einen aktiven Actor aus der Demo-Organisation; fehlender,
+  ungueltiger oder inaktiver `actorId` fuehrt kontrolliert zu 401. Der
+  bisherige Fallback auf den Demo-Admin bei fehlendem/falschem Actor in `PUT`
+  wurde entfernt, damit niemand versehentlich Admin-/Geschaeftsfuehrungsrechte
+  erhaelt. Die bestehende Rollenregel blieb erhalten: nur Admins und
+  Geschaeftsfuehrung duerfen Sollwerte speichern; normale Mitarbeitende
+  erhalten 403. Bestehende Default-Geschaeftsbereiche, Monatsvalidierung,
+  Jahresziel-Migration auf wiederkehrende Monate, Organisationsfilter,
+  Betragsnormalisierung und Upsert je Geschaeftsbereich/Monat blieben fachlich
+  erhalten. In `src/components/dashboard/dashboard-page.tsx` sendet die
+  Oberflaeche beim Laden der Sollwerte nun `activeUserId` mit; nach gesetztem
+  aktivem Benutzer werden Sollwerte erneut geladen. Sicherungen:
+  `.codex-safety/business_area_targets_route_20260620_phase1_before.ts`,
+  `.codex-safety/dashboard_page_before_business_area_targets_phase1_20260620.tsx`
+  und `.codex-safety/AGENTS_before_business_area_targets_phase1_20260620.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/business-area-targets/route.ts src/components/dashboard/dashboard-page.tsx`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210: fehlender Actor 401, ungueltiger Actor 401,
+  aktiver Actor bei `GET` 200, aktiver Mitarbeiter bei `PUT` 403, ungueltiger
+  Actor bei `PUT` 401 und aktiver Admin/GF bei `PUT` 200 mit unveraendertem
+  Zielwert; Testserver wurde beendet.
+- Phase-1-Trades-API 2026-06-20: Als achtundzwanzigster kleiner Fix aus der
+  Rechte-/Actor-ID-Roadmap wurde `src/app/api/trades/route.ts` abgesichert.
+  Einfach gesagt betrifft das Gewerke, Projektkuerzel und die Zuordnung zu
+  Geschaeftsbereichen. `GET`, `POST`, `PATCH` und `DELETE` verlangen jetzt
+  einen aktiven Actor aus der Demo-Organisation; fehlender, ungueltiger oder
+  inaktiver `actorId` fuehrt kontrolliert zu 401. Der bisherige Fallback auf
+  den Demo-Admin bei fehlendem/falschem Actor wurde entfernt, damit niemand
+  versehentlich Admin-/Geschaeftsfuehrungsrechte erhaelt. Die bestehende
+  Rollenregel blieb erhalten: nur Admins und Geschaeftsfuehrung duerfen
+  Gewerke anlegen, bearbeiten oder loeschen; normale Mitarbeitende erhalten
+  403. Bestehende Default-Gewerke, Default-Geschaeftsbereiche,
+  Projektkuerzel-Normalisierung, Organisationsfilter, Dublettenpruefung,
+  Geschaeftsbereichsvalidierung und das Entfernen der Gewerkzuordnung aus
+  Aufgaben vor dem Loeschen blieben fachlich erhalten. In
+  `src/components/dashboard/dashboard-page.tsx` sendet die Oberflaeche beim
+  Laden der Gewerke und Geschaeftsbereiche nun `activeUserId` mit; nach
+  gesetztem aktivem Benutzer werden Gewerke erneut geladen. Sicherungen:
+  `.codex-safety/trades_route_20260620_phase1_before.ts`,
+  `.codex-safety/dashboard_page_before_trades_phase1_20260620.tsx` und
+  `.codex-safety/AGENTS_before_trades_phase1_20260620.md`. Checks bestanden:
+  `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/trades/route.ts src/components/dashboard/dashboard-page.tsx`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210: fehlender Actor 401, ungueltiger Actor 401,
+  aktiver Actor bei `GET` 200, Geschaeftsbereiche bei aktivem Actor 200,
+  aktiver Mitarbeiter bei `POST` 403, ungueltiger Actor bei `POST` 401,
+  aktiver Admin/GF mit leerem Namen 400, aktiver Admin/GF mit temporaerem
+  Gewerk 201 und anschliessendes `DELETE` 200; temporaeres Gewerk wurde
+  geloescht und der Testserver beendet.
+- Phase-1-Units-API 2026-06-20: Als siebenundzwanzigster kleiner Fix aus der
+  Rechte-/Actor-ID-Roadmap wurde `src/app/api/units/route.ts` abgesichert.
+  Einfach gesagt betrifft das die Einheiten-Stammdaten wie Std, Stk, Pauschal,
+  Meter oder Liter. `GET`, `POST`, `PATCH` und `DELETE` verlangen jetzt einen
+  aktiven Actor aus der Demo-Organisation; fehlender, ungueltiger oder
+  inaktiver `actorId` fuehrt kontrolliert zu 401. Der bisherige Fallback auf
+  den Demo-Admin bei fehlendem/falschem Actor wurde entfernt, damit niemand
+  versehentlich Admin-/Geschaeftsfuehrungsrechte erhaelt. Die bestehende
+  Rollenregel blieb erhalten: nur Admins und Geschaeftsfuehrung duerfen
+  Einheiten anlegen, bearbeiten oder deaktivieren; normale Mitarbeitende
+  erhalten 403. Bestehende Standard-Einheiten, Alias-Normalisierung,
+  Organisationsfilter, Reaktivierung per `ON CONFLICT` und Soft-Delete ueber
+  `isActive = false` blieben fachlich erhalten. In
+  `src/components/dashboard/dashboard-page.tsx` sendet die Oberflaeche beim
+  Laden der Einheiten nun `activeUserId` mit; nach gesetztem aktivem Benutzer
+  werden Einheiten erneut geladen. Sicherungen:
+  `.codex-safety/units_route_20260620_phase1_before.ts`,
+  `.codex-safety/dashboard_page_before_units_phase1_20260620.tsx` und
+  `.codex-safety/AGENTS_before_units_phase1_20260620.md`. Checks bestanden:
+  `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/units/route.ts src/components/dashboard/dashboard-page.tsx`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210: fehlender Actor 401, ungueltiger Actor 401,
+  aktiver Actor bei `GET` 200, aktiver Mitarbeiter bei `POST` 403,
+  ungueltiger Actor bei `POST` 401, aktiver Admin/GF mit leerem Namen 400,
+  aktiver Admin/GF mit temporaerer Einheit 201 und anschliessendes `DELETE`
+  200; temporaere Einheit wurde deaktiviert und der Testserver beendet.
+- Phase-1-Catalog-Items-API 2026-06-20: Als sechsundzwanzigster kleiner Fix
+  aus der Rechte-/Actor-ID-Roadmap wurde
+  `src/app/api/catalog-items/route.ts` abgesichert. Einfach gesagt betrifft
+  das Artikel, Leistungen und Pakete im Katalog inklusive Katalog-Historie.
+  `GET`, `POST`, `PATCH` und `DELETE` verlangen jetzt einen aktiven Actor aus
+  der Demo-Organisation; fehlender, ungueltiger oder inaktiver `actorId`
+  fuehrt kontrolliert zu 401, bevor Katalogdaten gelesen oder veraendert
+  werden. Die Historie nutzt beim Anlegen, Bearbeiten, Paketbestandteil-Update
+  und Deaktivieren jetzt den serverseitig geprueften Benutzer statt frei aus
+  dem Browser gelieferter Namen. Doppelte Katalognummern werden gezielt als
+  409 behandelt; unerwartete Datenbankfehler werden nicht mehr faelschlich als
+  Nummernkonflikt ausgegeben. Beim Anlegen wird `updatedAt` explizit gesetzt,
+  wodurch ein vorhandener 500er bei aelteren Tabellenstaenden behoben wurde.
+  Bestehende Organisationsfilter, Katalognummernlogik, Paketbestandteile,
+  Aktiv/Inaktiv-Soft-Delete, Preis-/Planungsfelder und History-Felder blieben
+  fachlich erhalten. In `src/components/dashboard/dashboard-page.tsx` sendet
+  die Oberflaeche beim Laden, Speichern und Deaktivieren der Katalogpositionen
+  nun `activeUserId` als `actorId` mit; nach gesetztem aktivem Benutzer werden
+  Katalogdaten erneut geladen. Sicherungen:
+  `.codex-safety/catalog_items_route_20260620_phase1_before.ts`,
+  `.codex-safety/dashboard_page_before_catalog_items_phase1_20260620.tsx` und
+  `.codex-safety/AGENTS_before_catalog_items_phase1_20260620.md`. Checks
+  bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/catalog-items/route.ts src/components/dashboard/dashboard-page.tsx`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210: fehlender Actor 401, ungueltiger Actor 401,
+  aktiver Actor bei `GET` 200, ungueltiger Actor bei `POST` 401, aktiver Actor
+  mit leerem Namen 400, aktiver Actor mit temporaerem Katalogartikel 201 und
+  anschliessendes `DELETE` 200; temporaerer Artikel wurde deaktiviert und der
+  Testserver beendet. Der Test deckte zunaechst einen alten 500er beim Anlegen
+  wegen fehlendem `updatedAt` auf; dieser wurde in diesem Schritt behoben und
+  anschliessend erfolgreich erneut getestet.
+- Phase-1-Document-Types-API 2026-06-19: Als fuenfundzwanzigster kleiner
+  Fix aus der Rechte-/Actor-ID-Roadmap wurde
+  `src/app/api/document-types/route.ts` abgesichert. Einfach gesagt betrifft
+  das Dokumentarten und deren Layout-/Konfigurationsvorlagen. `GET`, `POST`,
+  `PATCH` und `DELETE` verlangen jetzt einen aktiven Actor aus der
+  Demo-Organisation; fehlender, ungueltiger oder inaktiver `actorId` fuehrt
+  kontrolliert zu 401, bevor Dokumenttypen gelesen, gespeichert oder
+  archiviert werden. Doppelte Namen werden auch beim Bearbeiten kontrolliert
+  als 409 behandelt, und Archivieren ohne Dokumenttyp-ID liefert 400 statt
+  stiller No-Op. Die bestehende Standard-Angebotsvorlage, Organisationsbindung,
+  Sortierung nach Name, Archivierung per Status/`archivedAt` und
+  Layout-Konfiguration blieben fachlich unveraendert. In
+  `src/components/dashboard/dashboard-page.tsx` sendet die Oberflaeche beim
+  Laden, Speichern und Archivieren der Dokumenttypen nun `activeUserId` mit;
+  nach gesetztem aktivem Benutzer werden Dokumenttypen erneut geladen.
+  Sicherungen:
+  `.codex-safety/document_types_route_20260619_phase1_before.ts`,
+  `.codex-safety/dashboard_page_before_document_types_phase1_20260619.tsx` und
+  `.codex-safety/AGENTS_before_document_types_phase1_20260619.md`. Checks
+  bestanden: `npm.cmd run build` im zweiten Lauf, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/document-types/route.ts src/components/dashboard/dashboard-page.tsx`.
+  Der erste Build-Lauf scheiterte beim Page-Data-Sammeln mit einem
+  transienten Next-Fehler zu `/api/activity-reports`; der direkte zweite Lauf
+  war vollstaendig gruen, daher kein Codefehler aus diesem Schritt. `prisma db
+  push` wurde bewusst nicht ausgefuehrt, weil keine Schemaaenderung Teil
+  dieses Fixes war. Gezielter HTTP-Test ueber separaten lokalen Server auf
+  Port 3210: fehlender Actor 401, ungueltiger Actor 401, aktiver Actor bei
+  `GET` 200, ungueltiger Actor bei `POST` 401, aktiver Actor mit leerem Namen
+  400, aktiver Actor mit temporaerem Dokumenttyp 200 und anschliessendes
+  `DELETE` 200; temporaerer Dokumenttyp wurde archiviert und der Testserver
+  beendet.
+- Phase-1-Document-Texts-API 2026-06-19: Als vierundzwanzigster kleiner Fix
+  aus der Rechte-/Actor-ID-Roadmap wurde
+  `src/app/api/document-texts/route.ts` abgesichert. Einfach gesagt betrifft
+  das die Textbausteine/Vorlagen fuer Dokumente. `GET`, `POST`, `PATCH` und
+  `DELETE` verlangen jetzt einen aktiven Actor aus der Demo-Organisation;
+  fehlender, ungueltiger oder inaktiver `actorId` fuehrt kontrolliert zu 401,
+  bevor Vorlagen gelesen, gespeichert oder geloescht werden. Die bestehende
+  Seed-Logik, Organisationsbindung, Sortierung nach Titel, Pflichtfelder
+  Titel/Text und die Unique-Title-Pruefung blieben fachlich unveraendert. In
+  `src/components/dashboard/dashboard-page.tsx` sendet die Oberflaeche beim
+  Laden, Speichern und Loeschen der Dokumenttexte nun `activeUserId` mit; nach
+  gesetztem aktivem Benutzer werden die Vorlagen erneut geladen, damit der
+  erste sichere Aufruf nicht ins Leere laeuft. Sicherungen:
+  `.codex-safety/document_texts_route_20260619_phase1_before.ts`,
+  `.codex-safety/dashboard_page_before_document_texts_phase1_20260619.tsx` und
+  `.codex-safety/AGENTS_before_document_texts_phase1_20260619.md`. Checks
+  bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/document-texts/route.ts src/components/dashboard/dashboard-page.tsx`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210: fehlender Actor 401, ungueltiger Actor 401,
+  aktiver Actor bei `GET` 200, ungueltiger Actor bei `POST` 401, aktiver Actor
+  mit leerem Inhalt 400, aktiver Actor mit temporaerem Text 200 und
+  anschliessendes `DELETE` 200; temporaerer Text wurde bereinigt und der
+  Testserver beendet.
+- Phase-1-Document-Position-Search-API 2026-06-19: Als dreiundzwanzigster
+  kleiner Fix aus der Rechte-/Actor-ID-Roadmap wurde
+  `src/app/api/document-position-search/route.ts` abgesichert. Einfach gesagt
+  betrifft das die Suche ueber Angebots- und Rechnungspositionen inklusive
+  Dokumentnummer, Kunde, Projekt, Positionstext und Netto-Werten. Die
+  lesende `GET`-Route verlangt jetzt einen aktiven Actor aus der
+  Demo-Organisation per `actorId`; fehlender, ungueltiger oder inaktiver
+  Actor fuehrt zu 401, bevor Dokumentpositionen ausgegeben werden. Es gab
+  keine sichtbaren Dashboard-Aufrufer fuer diese Route, daher war keine
+  UI-Aenderung noetig. Der bestehende Organisationsfilter blieb erhalten.
+  Zusaetzlich werden geloeschte Angebote/Rechnungen jetzt sowohl mit aktueller
+  als auch mit alter Status-Schreibweise ausgeschlossen. Bestehende
+  Suchlogik, Mindestlaenge 3, Ergebnislimit 50, PDF-Links und Sortierung nach
+  Erstellzeit blieben erhalten. Sicherungen:
+  `.codex-safety/document_position_search_route_20260619_phase1_before.ts`
+  und `.codex-safety/AGENTS_before_document_position_search_phase1_20260619.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/document-position-search/route.ts`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210 mit temporaerem inaktivem Testnutzer: fehlender
+  Actor 401, inaktiver Actor 401, aktiver Actor mit zu kurzer Suche 200/leer,
+  aktiver Actor mit normaler Suche 200; Testnutzer wurde bereinigt und der
+  Testserver beendet.
+- Phase-1-Invoices-API 2026-06-19: Als zweiundzwanzigster kleiner Fix aus
+  der Rechte-/Actor-ID-Roadmap wurde `src/app/api/invoices/route.ts`
+  abgesichert. Einfach gesagt betrifft das Rechnungen, Rechnungsentwuerfe,
+  Fakturierung, Bezahlt-Markierung, Mahnungen, Druck-Historie, Storno,
+  Stapelabrechnung und Rechnungsloeschung. `POST`, `PATCH` und `DELETE`
+  verlangen jetzt einen aktiven Actor aus der Demo-Organisation; fehlender,
+  ungueltiger oder inaktiver `actorId` fuehrt zu 401 statt Protokollierung
+  ueber Formularnamen oder `System`. Der Actor-Name fuer Invoice-History,
+  Mahnungsdokumente und Storno-Historie wird serverseitig aus dem geprueften
+  Benutzer gebildet. Die bestehende Sonderregel fuer `DELETE` blieb erhalten:
+  nur aktive Geschaeftsfuehrung darf Rechnungen loeschen. Die PDF-Vorschau per
+  `PUT`, PDF-/XRechnung-Abrufe per `GET`, Rechnungsberechnung,
+  Stempelzeit-Verknuepfung, Unterfakturierungswarnung, Materialkosten-Snapshots
+  und Stornoerzeugung blieben fachlich unveraendert. In
+  `src/components/dashboard/dashboard-page.tsx` senden Bezahlt-Markierung,
+  Mahnungserzeugung, Rechnung speichern/bearbeiten/fakturieren, Storno,
+  Loeschung, Druck-Historie sowie Stapelentwurf und Stapelfaktura nun
+  `actorId: activeUserId` mit. Sicherungen:
+  `.codex-safety/invoices_route_20260619_phase1_before.ts`,
+  `.codex-safety/dashboard_page_before_invoices_phase1_20260619.tsx` und
+  `.codex-safety/AGENTS_before_invoices_phase1_20260619.md`. Checks
+  bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/invoices/route.ts src/components/dashboard/dashboard-page.tsx`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210 mit temporaerem inaktivem Testnutzer:
+  ungueltiger Actor bei `POST` 401, inaktiver Actor bei `PATCH` 401, aktiver
+  Actor bei `POST` ohne Projekt erreicht normale Fachvalidierung 400, aktiver
+  Actor bei `PATCH` ohne Rechnungs-ID erreicht normale Fachvalidierung 400,
+  aktiver Nicht-GF-Actor bei `DELETE` 403, aktive Geschaeftsfuehrung bei
+  `DELETE` ohne Rechnungs-ID erreicht normale Fachvalidierung 400; Testnutzer
+  wurde bereinigt und der Testserver beendet.
+- Phase-1-Offers-API 2026-06-19: Als einundzwanzigster kleiner Fix aus der
+  Rechte-/Actor-ID-Roadmap wurde `src/app/api/offers/route.ts` abgesichert.
+  Einfach gesagt betrifft das Angebote, Angebotsentwuerfe, Statuswechsel
+  gewonnen/verloren/wieder aktiv und Angebotsloeschungen. `POST`, `PATCH` und
+  `DELETE` verlangen jetzt einen aktiven Actor aus der Demo-Organisation;
+  fehlender, ungueltiger oder inaktiver `actorId` fuehrt zu 401 statt
+  Protokollierung ueber Formularnamen oder `System`. Der Actor-Name fuer
+  Offer-History und `wonByName` wird serverseitig aus dem geprueften Benutzer
+  gebildet. Die PDF-Vorschau per `PUT` blieb bewusst unveraendert, weil sie
+  nichts speichert. In `src/components/dashboard/dashboard-page.tsx` senden
+  Angebot erstellen/bearbeiten, loeschen, verloren markieren, gewonnen
+  markieren, wieder aktivieren und die Planungs-Korrektur des
+  Ausfuehrungsmonats nun `actorId: activeUserId` mit. Bestehende
+  Angebotsvalidierung, PDF-Erzeugung, Positions-/Mitarbeiterzeilen,
+  Organisationsfilter und History-Texte blieben erhalten. Sicherungen:
+  `.codex-safety/offers_route_20260619_phase1_before.ts`,
+  `.codex-safety/dashboard_page_before_offers_phase1_20260619.tsx` und
+  `.codex-safety/AGENTS_before_offers_phase1_20260619.md`. Checks bestanden:
+  `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/offers/route.ts src/components/dashboard/dashboard-page.tsx`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210 mit temporaerem inaktivem Testnutzer:
+  ungueltiger Actor bei `POST` 401, inaktiver Actor bei `POST` 401, aktiver
+  Actor bei `POST` erreicht normale Projektvalidierung 400, aktiver Actor bei
+  `PATCH`/`DELETE` ohne Angebots-ID erreicht normale Fachvalidierung 400;
+  Testnutzer wurde bereinigt und der Testserver beendet.
+- Phase-1-Document-Mail-API 2026-06-19: Als zwanzigster kleiner Fix aus der
+  Rechte-/Actor-ID-Roadmap wurde `src/app/api/document-mail/route.ts`
+  abgesichert. Einfach gesagt betrifft das den Versand und die Protokollierung
+  von Angeboten, Rechnungen, Stornos, Mahnungen, Taetigkeitsberichten und
+  allgemeinen Dokumenten. Der schreibende `POST` nutzt jetzt einen lokalen
+  `getRequestActor`-Helper und bricht bei fehlendem, ungueltigem oder
+  inaktivem `actorId` mit 401 ab, statt auf den Demo-User aus
+  `getDemoContext()` zurueckzufallen. Der gepruefte Actor bleibt Senderbasis
+  fuer Microsoft-Account, Signatur, Versandprotokoll, Feedback-Link und
+  Angebots-/Rechnungshistorie. Die sichtbaren Dashboard-Aufrufer und die
+  Winterdienst-Automation senden bereits `actorId`; daher war keine UI-Aenderung
+  noetig. Bestehende Fachlogik blieb erhalten: Empfaengerpruefung,
+  Dokumenttypvalidierung, Microsoft-365-Verbindungspruefung, PDF-/Zusatzanhang-
+  Logik, Feedback-Request-Link bei Rechnungen, Versand via Graph,
+  `DocumentMailDispatch`-Eintraege, separate Activity-Report-Dispatches fuer
+  Rechnungsanhaenge und Offer-/Invoice-History. Sicherungen:
+  `.codex-safety/document_mail_route_20260619_225254.ts` und
+  `.codex-safety/AGENTS_before_document_mail_phase1_20260619_225537.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/document-mail/route.ts`. `prisma db push`
+  wurde bewusst nicht ausgefuehrt, weil keine Schemaaenderung Teil dieses
+  Fixes war. Gezielter HTTP-Test ueber separaten lokalen Server auf Port 3210
+  mit temporaeren Testnutzern ohne echten Mailversand: ungueltiger Actor bei
+  `POST` 401, inaktiver Actor bei `POST` 401, aktiver Actor erreicht die
+  normale Empfaenger-Validierung 400; Testnutzer wurden bereinigt und der
+  Testserver beendet.
+- Phase-1-Activity-Reports-API 2026-06-19: Als neunzehnter kleiner Fix aus
+  der Rechte-/Actor-ID-Roadmap wurde `src/app/api/activity-reports/route.ts`
+  abgesichert. Einfach gesagt betrifft das die Erzeugung von
+  Taetigkeitsbericht-PDFs und deren Ablage im Projekt-Logbuch. Der
+  schreibende `POST` verlangt jetzt einen aktiven Actor aus der Demo-
+  Organisation; fehlender, ungueltiger oder inaktiver `actorId` fuehrt zu
+  401. Es wurde bewusst keine neue Rollenbeschraenkung eingefuehrt, damit die
+  bestehende Bedienlogik fuer normale Erstellung, Rechnungsvorbereitung und
+  Winterdienst-Automation erhalten bleibt. Bei Erstellung und Aktualisierung
+  wird der Logbuch-Autor jetzt aus dem geprueften Actor serverseitig gesetzt
+  statt pauschal `System`. Die bestehenden PDF-, Bildauswahl-, Monats-,
+  Kontext- und Upsert-Regeln blieben erhalten. In
+  `src/components/dashboard/dashboard-page.tsx` senden beide
+  Activity-Report-Aufrufe nun `actorId: activeUserId` mit. In
+  `src/app/api/winter-service-automation/route.ts` wird der bereits ermittelte
+  `actorId` an `/api/activity-reports` weitergereicht, damit die Automation
+  nicht anonym laeuft. Sicherungen:
+  `.codex-safety/activity_reports_route_20260619_224438.ts` und
+  `.codex-safety/AGENTS_before_activity_reports_phase1_20260619_224935.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/activity-reports/route.ts src/components/dashboard/dashboard-page.tsx src/app/api/winter-service-automation/route.ts`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210 mit temporaeren Testnutzern: ungueltiger Actor
+  bei `POST` 401, inaktiver Actor bei `POST` 401, aktiver Actor erreicht die
+  normale Projektvalidierung 404; Testnutzer wurden bereinigt und der
+  Testserver beendet. Ein direkter PDF-/Bild-Erzeugungstest wurde nicht
+  erzwungen, weil die PDF-Logik selbst unveraendert blieb und Build/Typcheck
+  die Integration prueften.
+- Phase-1-Employee-Assessments-API 2026-06-19: Als achtzehnter kleiner Fix
+  aus der Rechte-/Actor-ID-Roadmap wurde
+  `src/app/api/employee-assessments/route.ts` abgesichert. Einfach gesagt
+  betrifft das personenbezogene Mitarbeiterbewertungen inklusive
+  Selbsteinschaetzung, Fuehrungskraftbewertung, Massnahmen, Gespraechsnotizen
+  und DISG-Fragebogen. Die bestehende Emulations-/Managerlogik blieb erhalten:
+  Mitarbeiter koennen eigene Bewertungen laden/speichern, Admin und
+  Geschaeftsfuehrung koennen fremde Bewertungen laden und Managerbereiche
+  bearbeiten/entsperren, normale Mitarbeiter koennen fremde Bewertungen nicht
+  lesen oder schreiben. Neu ist die konsistente Actor-Pruefung: `GET` und
+  `POST` laden den Actor jetzt inklusive `isActive`; fehlender, ungueltiger,
+  organisationsfremder oder inaktiver Actor fuehrt zu 401 statt unscharfem
+  404. Nicht gefundene Zielnutzer bleiben 404, fehlende Fachberechtigung
+  bleibt 403. Bestehende Sanitizing-Regeln fuer Mitarbeitersicht,
+  History-Reduktion, Self-Lock, DISG-Lock/Unlock/Reset/Complete und
+  Fall-History blieben erhalten. Sicherungen:
+  `.codex-safety/employee_assessments_route_20260619_223823.ts` und
+  `.codex-safety/AGENTS_before_employee_assessments_phase1_20260619_224222.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/employee-assessments/route.ts`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210 mit temporaeren Testnutzern: ungueltiger Actor
+  bei `GET`/`POST` 401, Mitarbeiter eigene Bewertung `GET` 200, Mitarbeiter
+  fremde Bewertung `GET` 403, Admin fremde Bewertung `GET` 200, Mitarbeiter
+  fremde Self-Speicherung 403, Mitarbeiter eigene Self-Speicherung 200, Admin
+  Unlock 200; Testnutzer wurden bereinigt und der Testserver beendet.
+- Phase-1-Employee-Costs-API 2026-06-19: Als siebzehnter kleiner Fix aus der
+  Rechte-/Actor-ID-Roadmap wurde `src/app/api/employee-costs/route.ts`
+  abgesichert. Einfach gesagt betrifft das die sensiblen Lohn-/Kostenwerte
+  pro Mitarbeiter. Die bestehende enge Fachberechtigung wurde bewusst nicht
+  erweitert: Zugriff bleibt auf die namentlich freigegebenen Nutzer
+  Ramona Eid und Christian Eid begrenzt. `GET` und `PUT` pruefen jetzt zuerst
+  einen aktiven Actor in der Organisation; fehlender, ungueltiger oder
+  inaktiver `actorId` fuehrt zu 401. Aktive, aber nicht namentlich
+  freigegebene Nutzer erhalten 403. Fehlende Ziel-Mitarbeiter-ID bleibt 400,
+  nicht gefundene Ziel-Mitarbeiter bleiben 404. `PUT` nutzt denselben
+  geprueften Actor fuer `updatedByUserId` und `updatedByName`; die bestehende
+  Upsert-/Default-/Zahlenlogik fuer Monatsgehalt, Vollkostenfaktor,
+  Jahresstunden, Urlaub, Schulung, Krankheit und Tagesstunden blieb erhalten.
+  Sicherungen: `.codex-safety/employee_costs_route_20260619_161044.ts` und
+  `.codex-safety/AGENTS_before_employee_costs_phase1_20260619_161312.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/employee-costs/route.ts`. `prisma db push`
+  wurde bewusst nicht ausgefuehrt, weil keine Schemaaenderung Teil dieses
+  Fixes war. Gezielter HTTP-Test ueber separaten lokalen Server auf Port 3210
+  mit temporaeren Testnutzern/Testkosten: ungueltiger Actor bei `GET`/`PUT`
+  401, aktiver aber nicht berechtigter Actor bei `GET`/`PUT` 403,
+  erlaubter Actor `GET` 200 und `PUT` 200, `updatedByUserId` wurde korrekt
+  gespeichert; Testkosten/Testnutzer wurden bereinigt und der Testserver
+  beendet.
+- Phase-1-Unbilled-Time-Alerts-API 2026-06-19: Als sechzehnter kleiner Fix
+  aus der Rechte-/Actor-ID-Roadmap wurde
+  `src/app/api/unbilled-time-alerts/route.ts` abgesichert. Einfach gesagt
+  betrifft das die Warnungen/Eskalationen fuer offene, noch nicht abgerechnete
+  Projektzeiten. `GET` blieb bewusst unveraendert lesbar, damit die Auswertung
+  weiter ohne UI-Umbau laden kann. Der schreibende `POST`, der Notifications
+  und `UnbilledTimeAlert`-Eintraege erzeugt, nutzt jetzt einen lokalen
+  `getRequestActor`-Helper und bricht bei fehlendem, ungueltigem oder
+  inaktivem `actorId` mit 401 ab, statt anonym ueber den Demo-Kontext zu
+  laufen. Ausloesen duerfen Admin, Geschaeftsfuehrung, Fuehrungskraft und
+  Buchhaltung; normale Mitarbeiter erhalten 403. Buchhaltung wurde bewusst
+  zugelassen, weil es sich um einen Abrechnungs-/Kontrolllauf fuer offene
+  Zeiten handelt. Bestehende Fachlogik blieb erhalten: offene Projektzeiten
+  werden nach Projekt/Monat gruppiert, Warn-/Eskalationsschwellen fuer
+  Einmalprojekte und Dauerlaeufer werden berechnet, verantwortliche Nutzer und
+  Management werden als Empfaenger ermittelt, doppelte offene Alerts werden
+  verhindert und Notifications behalten ihren Projekt-Link. Sicherungen:
+  `.codex-safety/unbilled_time_alerts_route_20260619_160632.ts` und
+  `.codex-safety/AGENTS_before_unbilled_time_alerts_phase1_20260619_160842.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/unbilled-time-alerts/route.ts`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210 mit temporaeren Testnutzern: `GET` bleibt 200,
+  ungueltiger Actor bei `POST` 401, Mitarbeiter-`POST` 403,
+  Buchhaltung-`POST` 200; Testnutzer wurden bereinigt und der Testserver
+  beendet.
+- Phase-1-Escalation-Rules-API 2026-06-19: Als fuenfzehnter kleiner Fix aus
+  der Rechte-/Actor-ID-Roadmap wurde
+  `src/app/api/escalation-rules/route.ts` abgesichert. Einfach gesagt
+  betrifft das die klassische Eskalationsstufen-Verwaltung fuer
+  Aufgaben-/Fristenregeln. `GET` blieb bewusst unveraendert lesbar, damit die
+  bestehende Einstellungsansicht weiter ohne UI-Umbau laden kann. `POST`,
+  `PATCH` und `DELETE` nutzen jetzt einen lokalen `getRequestActor`-Helper
+  und brechen bei fehlendem, ungueltigem oder inaktivem `actorId` mit 401 ab,
+  statt auf den Demo-Admin aus `getDemoContext()` zurueckzufallen. Die
+  bestehende Fachberechtigung wurde bewusst nicht erweitert: Verwalten
+  duerfen weiterhin nur Admin und Geschaeftsfuehrung; normale Mitarbeiter
+  erhalten 403. `PATCH` laedt die Zielregel jetzt vor dem Schreiben
+  organisationsgebunden per `ruleId` plus `organizationId`; `DELETE` nutzt
+  ebenfalls bereinigte `ruleId`-Pruefung. Bestehende Logik fuer
+  E-Mail-Spalten, Rollenlabels, Stundenvalidierung, Aktiv-Flag und
+  E-Mail-Empfaenger blieb erhalten. Sicherungen:
+  `.codex-safety/escalation_rules_route_20260619_155820.ts` und
+  `.codex-safety/AGENTS_before_escalation_rules_phase1_20260619_160315.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/escalation-rules/route.ts`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210 mit temporaeren Testnutzern/Testregel:
+  `GET` bleibt 200, ungueltiger Actor bei `POST`/`DELETE` 401,
+  Mitarbeiter-`POST`/`PATCH` 403, Admin-`POST` 201, Admin-`PATCH` 200,
+  Admin-`DELETE` 200; Testregel/Testnutzer wurden bereinigt und der
+  Testserver beendet.
+- Phase-1-Status-Rules-API 2026-06-19: Als vierzehnter kleiner Fix aus der
+  Rechte-/Actor-ID-Roadmap wurde `src/app/api/status-rules/route.ts`
+  abgesichert. Einfach gesagt betrifft das die Regeln, nach denen
+  Status-Eskalationen und Benachrichtigungen ausgeloest werden. `GET` blieb
+  bewusst unveraendert lesbar, damit bestehende Auswertungen weiterhin ohne
+  UI-Umbau laden. `POST`, `PATCH` und `DELETE` nutzen jetzt einen lokalen
+  `getRequestActor`-Helper und brechen bei fehlendem, ungueltigem oder
+  inaktivem `actorId` mit 401 ab, statt auf den Demo-Admin aus
+  `getDemoContext()` zurueckzufallen. Die bestehende Fachberechtigung wurde
+  bewusst nicht erweitert: Status-Regeln duerfen weiterhin nur Admin und
+  Geschaeftsfuehrung verwalten; normale Mitarbeiter erhalten 403.
+  Bestehende Regel-Logik blieb erhalten: Default-/Tracking-Tabellen werden
+  sichergestellt, Entity-Type/Status/Name/Schwellwert/Empfaengerflags werden
+  wie vorher normalisiert, Regeln werden organisationsgebunden angelegt,
+  aktualisiert und geloescht. Sicherungen:
+  `.codex-safety/status_rules_route_20260619_155332.ts` und
+  `.codex-safety/AGENTS_before_status_rules_phase1_20260619_155603.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/status-rules/route.ts`. `prisma db push`
+  wurde bewusst nicht ausgefuehrt, weil keine Schemaaenderung Teil dieses
+  Fixes war. Gezielter HTTP-Test ueber separaten lokalen Server auf Port 3210
+  mit temporaeren Testnutzern/Testregel: `GET` bleibt 200, ungueltiger Actor
+  bei `POST`/`DELETE` 401, Mitarbeiter-`POST`/`PATCH` 403, Admin-`POST` 201,
+  Admin-`PATCH` 200, Admin-`DELETE` 200; Testregel/Testnutzer wurden
+  bereinigt und der Testserver beendet.
+- Phase-1-Status-Escalations-API 2026-06-19: Als dreizehnter kleiner Fix
+  aus der Rechte-/Actor-ID-Roadmap wurde
+  `src/app/api/status-escalations/route.ts` abgesichert. Einfach gesagt
+  betrifft das den Lauf, der Status-Toleranzen prueft und daraus
+  Benachrichtigungen/Eskalationsereignisse erzeugt. `GET` blieb bewusst
+  unveraendert lesbar, damit bestehende Auswertungen weiterhin ohne UI-Umbau
+  laden. Der schreibende `POST` nutzt jetzt einen lokalen
+  `getRequestActor`-Helper und bricht bei fehlendem, ungueltigem oder
+  inaktivem `actorId` mit 401 ab, statt anonym ueber den Demo-Kontext zu
+  laufen. Ausloesen duerfen nur Admin, Geschaeftsfuehrung und Fuehrungskraft;
+  normale Mitarbeiter erhalten 403. Bestehende Fachlogik blieb erhalten:
+  Default-Regeln werden sichergestellt, offene Status werden gegen aktive
+  Regeln geprueft, Verantwortliche/Projektverantwortliche/Management werden
+  als Empfaenger ermittelt, App-/Daily-Report-/E-Mail-Notifications und
+  StatusEscalationEvent-Eintraege werden wie vorher erzeugt und doppelte
+  offene Events verhindert. Sicherungen:
+  `.codex-safety/status_escalations_route_20260619_154405.ts` und
+  `.codex-safety/AGENTS_before_status_escalations_phase1_20260619_154614.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/status-escalations/route.ts`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210 mit temporaeren Testnutzern: `GET` bleibt 200,
+  ungueltiger Actor bei `POST` 401, Mitarbeiter-`POST` 403,
+  Fuehrungskraft-`POST` 200; Testnutzer wurden bereinigt und der Testserver
+  beendet.
+- Phase-1-Status-Timeline-API 2026-06-19: Als zwoelfter kleiner Fix aus der
+  Rechte-/Actor-ID-Roadmap wurde `src/app/api/status-timeline/route.ts`
+  abgesichert. Einfach gesagt betrifft das die Status-Verlaufsanzeige und den
+  Wartungs-/Neuaufbau-Endpunkt fuer Statusmessung. `GET` blieb bewusst
+  unveraendert lesbar, damit die bestehende Auswertung im Dashboard weiter
+  ohne neuen UI-Umbau geladen werden kann. Der schreibende `POST` nutzt jetzt
+  einen lokalen `getRequestActor`-Helper und bricht bei fehlendem,
+  ungueltigem oder inaktivem `actorId` mit 401 ab, statt anonym ueber den
+  Demo-Kontext zu laufen. Den Neuaufbau duerfen nur Admin,
+  Geschaeftsfuehrung und Fuehrungskraft ausloesen; normale Mitarbeiter
+  erhalten 403. Die bestehende Seed-/Korrekturlogik fuer Projekte, Aufgaben,
+  Potenziale und Sales-Ziele blieb erhalten. Sicherungen:
+  `.codex-safety/status_timeline_route_20260619_153511.ts` und
+  `.codex-safety/AGENTS_before_status_timeline_phase1_20260619_153836.md`.
+  Checks bestanden: `npm.cmd run build` nach einmaliger Wiederholung wegen
+  transientem Next-PageData/ENOENT-Cachefehler ohne TypeScript-Fehlerstelle,
+  `npx.cmd prisma validate`, `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/status-timeline/route.ts`. `prisma db push`
+  wurde bewusst nicht ausgefuehrt, weil keine Schemaaenderung Teil dieses
+  Fixes war. Gezielter HTTP-Test ueber separaten lokalen Server auf Port 3210
+  mit temporaeren Testnutzern: `GET` bleibt 200, ungueltiger Actor bei `POST`
+  401, Mitarbeiter-`POST` 403, Fuehrungskraft-`POST` 200; Testnutzer wurden
+  bereinigt und der Testserver beendet.
+- Phase-1-Task-Time-Entries-API 2026-06-19: Als elfter kleiner Fix aus der
+  Rechte-/Actor-ID-Roadmap wurde
+  `src/app/api/tasks/[taskId]/time-entries/route.ts` abgesichert. Einfach
+  gesagt betrifft das Zeiteintraege direkt in der Aufgabenmaske. `POST`,
+  `PATCH` und `DELETE` nutzen jetzt einen lokalen `getRequestActor`-Helper
+  und brechen bei fehlendem, ungueltigem oder inaktivem `actorId` mit 401 ab,
+  statt auf den Demo-User aus `getDemoContext()` zurueckzufallen.
+  Zeiterfassung ist fuer Aufgaben-Owner, Ersteller, Beteiligte sowie Admin,
+  Geschaeftsfuehrung und Fuehrungskraft erlaubt; fremde normale Nutzer
+  erhalten 403. Bearbeiten/Loeschen eigener Eintraege bleibt fuer normale
+  Nutzer moeglich, Admin/Geschaeftsfuehrung/Fuehrungskraft koennen
+  verwalten. Beim Bearbeiten bleibt der vorhandene Startzeitpunkt erhalten,
+  wenn kein neuer Startzeitpunkt uebergeben wird. Loesch-Benachrichtigungen
+  verwenden jetzt den serverseitig geprueften Actor-Namen und gehen nur an
+  aktive Admin-/Geschaeftsfuehrungsnutzer. In
+  `src/components/dashboard/dashboard-page.tsx` sendet der Speichern-Klick
+  fuer Aufgaben-Zeiteintraege jetzt `actorId: activeUserId` mit; die
+  bestehende Loesch-UI hatte das bereits. Sicherungen:
+  `.codex-safety/task_time_entries_route_20260619_152554.ts` und
+  `.codex-safety/AGENTS_before_task_time_entries_phase1_20260619_153115.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/tasks/[taskId]/time-entries/route.ts src/components/dashboard/dashboard-page.tsx`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber separaten
+  lokalen Server auf Port 3210 mit temporaeren Testnutzern/Testaufgabe:
+  ungueltiger Actor bei POST 401, unbeteiligter Nutzer bei POST 403, Owner
+  POST 200, unbeteiligter Nutzer bei PATCH/DELETE 403, Owner PATCH 200,
+  Admin DELETE 200; Testdaten wurden bereinigt und der Testserver beendet.
+- Phase-1-Tasks-Respond-API 2026-06-19: Als zehnter kleiner Fix aus der
+  Rechte-/Actor-ID-Roadmap wurde `src/app/api/tasks/respond/route.ts`
+  abgesichert. Einfach gesagt betrifft das den Klick auf Aufgabe annehmen oder
+  ablehnen. `POST` nutzt jetzt einen lokalen `getRequestActor`-Helper und
+  bricht bei fehlendem, ungueltigem oder inaktivem `actorId` mit 401 ab,
+  statt auf den Demo-User aus `getDemoContext()` zurueckzufallen. Die Aufgabe
+  wird jetzt zusaetzlich organisationsgebunden per `taskId` plus
+  `organizationId` geladen. Actor-Name fuer Task-History,
+  Status-Timeline, Abwesenheits-History und Notifications wird serverseitig
+  aus dem geprueften Actor abgeleitet. Bestehende Fachlogik blieb erhalten:
+  Owner kann Aufgabe annehmen/ablehnen, Beteiligte koennen ihre Beteiligung
+  annehmen/ablehnen, unbeteiligte Nutzer erhalten 403, Ablehnung braucht Grund,
+  Vertreter-Sonderfall fuer Abwesenheitsuebergaben kann weiterhin Owner
+  uebernehmen, Abwesenheitsstatus/History und Notifications laufen weiter.
+  Sicherungen: `.codex-safety/tasks_respond_route_20260619_115223.ts` und
+  `.codex-safety/AGENTS_before_tasks_respond_phase1_20260619_115509.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/tasks/respond/route.ts`. `prisma db push`
+  wurde bewusst nicht ausgefuehrt, weil keine Schemaaenderung Teil dieses
+  Fixes war. Gezielter HTTP-Test ueber lokalen Server mit temporaeren
+  Testnutzern/Testaufgaben: ungueltiger Actor 401, unbeteiligter Nutzer 403,
+  Ablehnung ohne Grund 400, Owner-Annahme 200, Beteiligten-Ablehnung 200;
+  Testdaten wurden bereinigt.
+- Phase-1-Task-Comments-API 2026-06-19: Als neunter kleiner Fix aus der
+  Rechte-/Actor-ID-Roadmap wurde
+  `src/app/api/tasks/[taskId]/comments/route.ts` abgesichert. `POST` nutzt
+  jetzt einen lokalen `getRequestActor`-Helper und bricht bei fehlendem,
+  ungueltigem oder inaktivem `actorId` mit 401 ab, statt auf den Demo-User aus
+  `getDemoContext()` zurueckzufallen. Kommentieren duerfen nur noch
+  Aufgaben-Owner, Task-Ersteller oder Aufgabenbeteiligte; andere aktive Nutzer
+  erhalten 403. Die bestehende Empfaengerpruefung bleibt erhalten:
+  `recipientUserId` muss zu einem Aufgabenbeteiligten gehoeren. Author-ID,
+  Notification-Text, History-Actor und Rueckgabe-Autor werden aus dem
+  geprueften Actor serverseitig abgeleitet. Tabellen-/Spaltensicherung fuer
+  `Task.history` und `TaskComment.recipientUserId`, Kommentarerzeugung,
+  Notifications an Owner/Beteiligte ohne Autor und lokale History-Ergaenzung
+  blieben erhalten. Sicherungen:
+  `.codex-safety/task_comments_route_20260619_114555.ts` und
+  `.codex-safety/AGENTS_before_task_comments_phase1_20260619_114935.md`.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/tasks/[taskId]/comments/route.ts`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber lokalen
+  Server mit temporaeren Testnutzern/Testaufgabe: ungueltiger Actor 401,
+  unbeteiligter Nutzer 403, ungueltiger Empfaenger 400, Owner-Kommentar 201,
+  Beteiligten-Kommentar mit Empfaenger 201, zwei Kommentare gespeichert,
+  Notifications nur an Owner/Beteiligte; Testdaten wurden bereinigt.
+- Phase-1-Tasks-API 2026-06-19: Als achter kleiner Fix aus der
+  Rechte-/Actor-ID-Roadmap wurde `src/app/api/tasks/route.ts` abgesichert.
+  `POST`, `PATCH` und `DELETE` nutzen jetzt einen lokalen
+  `getRequestActor`-Helper und brechen bei fehlendem, ungueltigem oder
+  inaktivem `actorId` mit 401 ab, statt auf den Demo-User aus
+  `getDemoContext()` zurueckzufallen. Restore, Teilnehmer-Hinzufuegen,
+  normale Bearbeitung und Loeschen laden Aufgaben jetzt organisationsgebunden
+  per `id` plus `organizationId`, bevor geschrieben wird. Bestehende
+  Fachregeln blieben erhalten: Mitarbeiter duerfen beim Anlegen nicht
+  wirksam fremd zuweisen, Fremdzuweisung beim Bearbeiten bleibt auf Admin,
+  Geschaeftsfuehrung und Fuehrungskraft begrenzt, Loeschen/Archivieren bleibt
+  auf Admin/Geschaeftsfuehrung begrenzt. History- und Status-Timeline-Actor
+  werden aus dem geprueften Actor serverseitig benannt. `GET`, Formatierung,
+  Kommentare/Zeiteintraege im Task, Teilnehmerlogik, Akzeptanzstatus,
+  Planning-Allocations, Auto-Feedback, Recurrence, Status-Tracking,
+  Benachrichtigungen und Auto-Archivierung blieben erhalten. Sicherungen:
+  `.codex-safety/tasks_route_20260619_113346.ts` und
+  `.codex-safety/AGENTS_before_tasks_phase1_20260619_113917.md`.
+  Checks bestanden: `npm.cmd run build` nach einmaliger Wiederholung wegen
+  transientem Next/Jest-Worker-Fehler ohne TypeScript-Fehlerstelle,
+  `npx.cmd prisma validate`, `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/tasks/route.ts`. `prisma db push` wurde
+  bewusst nicht ausgefuehrt, weil keine Schemaaenderung Teil dieses Fixes war.
+  Gezielter HTTP-Test ueber lokalen Server mit temporaeren Testnutzern:
+  ungueltiger Actor bei POST/PATCH/DELETE 401, eigener Mitarbeiter-Task 200,
+  Mitarbeiter-Fremdzuweisung bei POST blieb Self-Fallback, Fuehrungskraft
+  konnte fremd zuweisen, Mitarbeiter-Fremdzuweisung bei PATCH 403,
+  Fuehrungskraft-PATCH 200, Mitarbeiter-DELETE 403,
+  Geschaeftsfuehrung-DELETE 200; Testnutzer, Testaufgaben,
+  Teilnehmer/Notifications/Status-Timeline wurden bereinigt.
+- Phase-1-Project-Time-Entries-API 2026-06-19: Als siebter kleiner Fix aus der
+  Rechte-/Actor-ID-Roadmap wurde `src/app/api/project-time-entries/route.ts`
+  abgesichert. `POST` und `DELETE` trennen jetzt serverseitig zwischen Actor
+  und Zielnutzer: `actorUserId` muss zu einem aktiven Organisationsnutzer
+  gehoeren, der Zielnutzer fuer den Zeiteintrag muss ebenfalls aktiv sein.
+  `employee`, `overtimeApprovedByUserId`, `overtimeApprovedByName` und der
+  neue oberste `editHistory`-Actor werden serverseitig aus aktiven Nutzern
+  abgeleitet, statt frei aus dem Request uebernommen zu werden. Normale
+  Mitarbeiter duerfen nur eigene manuelle Eintraege anlegen/bearbeiten/
+  loeschen und koennen keine `stamped`-Eintraege vortaeuschen. Admin,
+  Geschaeftsfuehrung, Fuehrungskraft und Buchhaltung duerfen fremde
+  Projektzeiten fachlich nachtragen/bearbeiten; Ueberstundenfreigabe bleibt
+  auf Admin/Geschaeftsfuehrung/Fuehrungskraft begrenzt. Im zentralen
+  Frontend-Speicherhelper in `src/components/dashboard/dashboard-page.tsx`
+  wird `actorUserId`/`actorName` mitgesendet; Buchhaltung ist dort fuer
+  Projektzeit-Bearbeitung sichtbar freigeschaltet. `GET`, Tabellen-/
+  Spaltensicherung, Kosten-Snapshot, Marketing-Felder, Completion-Status,
+  Soft-Delete und bestehende Stempelzeit-Erzeugung aus `stamp-session` blieben
+  erhalten. Sicherungen:
+  `.codex-safety/project_time_entries_route_20260619_111956.ts` und
+  `.codex-safety/AGENTS_before_project_time_entries_phase1_20260619_112829.md`.
+  Before/After-Snapshot bestaetigte Exporte, Helper, entfernten Employee-/
+  ActorName-Trust, erhaltene ProjectTimeEntry-Erzeugung und Soft-Delete.
+  Checks bestanden: `npm.cmd run build` nach TypeScript-Typkorrektur fuer
+  `editHistory`, `npx.cmd prisma validate`, `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/project-time-entries/route.ts src/components/dashboard/dashboard-page.tsx`.
+  `prisma db push` wurde bewusst nicht ausgefuehrt, weil keine
+  Schemaaenderung Teil dieses Fixes war. Gezielter HTTP-Test ueber lokalen
+  Server mit temporaeren Testnutzern: ungueltiger Actor 401, Mitarbeiter
+  eigener manueller Eintrag 201, Mitarbeiter eigener `stamped`-Eintrag 403,
+  Mitarbeiter fuer anderen 403, Buchhaltung fuer anderen 201, Buchhaltung kann
+  keine Ueberstundenfreigabe setzen, Fuehrungskraft setzt Freigabe serverseitig
+  korrekt, Mitarbeiter-Fremdloeschung 403, eigene manuelle Loeschung 200,
+  Buchhaltung-Loeschung 200; Testnutzer und Testzeiten wurden bereinigt.
+- Phase-1-Stamp-Session-API 2026-06-19: Als sechster kleiner Fix aus der
+  Rechte-/Actor-ID-Roadmap wurde `src/app/api/stamp-session/route.ts`
+  abgesichert. Start, Pause, Resume und Stop pruefen jetzt per lokalem
+  `getRequestUser`-Helper, ob die uebergebene `userId` zu einem aktiven
+  Organisationsnutzer gehoert; fehlt dieser Nutzer oder ist er ungueltig/
+  inaktiv, antwortet die Route mit 401 statt eine Stempelung fuer eine
+  beliebige ID zu starten, zu pausieren oder abzuschliessen. Beim Start wird
+  `employee` serverseitig aus dem aktiven Nutzer abgeleitet, statt frei aus
+  dem Request uebernommen zu werden. Die Dashboard-Uebersicht `GET` ohne
+  `userId`, Einzel-GET, Tabellen-/Spaltensicherung, Pausenrechnung,
+  Abschlussstatus `finished`/`interrupted`, Projektzeit-Erzeugung inklusive
+  Kosten-Snapshot, Marketing-Felder und Loeschen der aktiven Session nach Stop
+  blieben erhalten. Manuelle Zeiteintraege bleiben bewusst Aufgabe von
+  `src/app/api/project-time-entries/route.ts` und wurden hier nicht
+  eingeschraenkt. Sicherungen:
+  `.codex-safety/stamp_session_route_20260619_110646.ts` und
+  `.codex-safety/AGENTS_before_stamp_session_phase1_20260619_110941.md`.
+  Before/After-Snapshot bestaetigte Exporte, Helper, entfernten Employee-Trust
+  beim Start und erhaltene Stop-/ProjectTimeEntry-Nebenlogik. Checks bestanden:
+  `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/stamp-session/route.ts`. `prisma db push`
+  wurde bewusst nicht ausgefuehrt, weil keine Schemaaenderung Teil dieses
+  Fixes war. Gezielter HTTP-Test ueber lokalen Server mit temporaerem
+  Testnutzer: ungueltiger Start 401, Start 201 mit serverseitigem Employee,
+  doppelter Start 409, ungueltiges Pause/Resume 401, Pause 200, Resume 200,
+  ungueltiger Stop 401, Stop 201 mit gestempeltem ProjectTimeEntry; Testnutzer,
+  aktive Session und Testzeit wurden bereinigt.
+- Phase-1-Planning-Entries-API 2026-06-19: Als fuenfter kleiner Fix aus der
+  Rechte-/Actor-ID-Roadmap wurde `src/app/api/planning-entries/route.ts`
+  abgesichert. `POST` und `DELETE` nutzen jetzt einen lokalen
+  `getRequestActor`-Helper und brechen bei fehlendem, ungueltigem oder
+  inaktivem `actorUserId` mit 401 ab. `actorName`, `requestedByName`,
+  `requestedByUserId`, `approvedByUserId` und `employeeName` werden fuer
+  Schreiboperationen serverseitig aus aktiven Organisationsnutzern abgeleitet,
+  statt frei aus dem Request uebernommen zu werden. Nicht-Fuehrungsrollen
+  duerfen nur eigene Terminwuensche im Status `requested` anlegen/bearbeiten
+  und nur eigene offene Terminwuensche loeschen; Admin, Geschaeftsfuehrung und
+  Fuehrungskraft duerfen weiterhin bestaetigte/fremde Planung fachlich
+  verwalten. `GET`, `formatEntry`, Tabellen-/Spaltensicherung,
+  Duplicate-Check, History-Erzeugung, Verantwortlichen-Notification,
+  Overlap-Notification, Angebots-/Marketing-/Recurrence-Felder und Soft-Delete
+  blieben erhalten. Sicherungen:
+  `.codex-safety/planning_entries_route_20260619_105008.ts` und
+  `.codex-safety/AGENTS_before_planning_entries_phase1_20260619_105343.md`.
+  Before/After-Snapshot bestaetigte Route, Exporte, Helper, entfernten
+  Actor-Name-Trust aus Body/Query und erhaltene Planungsnebenfunktionen.
+  Checks bestanden: `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/planning-entries/route.ts`. `prisma db push`
+  wurde bewusst nicht ausgefuehrt, weil keine Schemaaenderung Teil dieses
+  Fixes war. Gezielter HTTP-Test ueber lokalen Server: ungueltiger Actor 401,
+  Mitarbeiter-bestaetigt 403, Mitarbeiter-fuer-anderen 403, eigener
+  Terminwunsch 201 mit serverseitigem Namen/Requester/History-Actor, eigener
+  Wunsch-DELETE 200, Manager-bestaetigt 201, Manager-DELETE 200 und Testdaten
+  wurden bereinigt.
+- Phase-1-Abwesenheits-API 2026-06-19: Als vierter kleiner Fix aus der
+  Rechte-/Actor-ID-Roadmap wurde `src/app/api/absences/route.ts` abgesichert.
+  `POST`, `PATCH` und `DELETE` nutzen jetzt einen lokalen `getRequestActor`-
+  Helper und brechen bei fehlender, ungueltiger oder inaktiver `actorId` mit
+  401 ab, statt auf den Demo-User/Admin aus `getDemoContext()` zurueckzufallen.
+  Zielnutzer und Vertreter muessen bei Anlage/Bearbeitung aktiv sein. Beim
+  normalen Bearbeiten bleibt fuer Nicht-Fuehrungsrollen der urspruengliche
+  Antragsteller fest auf `existingAbsence.userId`, sodass ein eigener Antrag
+  nicht durch geaendertes `userId`-Feld auf einen anderen Mitarbeiter
+  umgeschrieben werden kann; Fuehrung/Admin darf weiter fachlich fremde
+  Abwesenheiten bearbeiten. `GET`, `formatAbsence`, `canManageAbsences`,
+  `notifyAbsenceChange`, `ensureAbsenceTable`, Aktionsfluss fuer
+  Vertretungsannahme/finale Freigabe/Ablehnung und DELETE-SQL blieben erhalten.
+  Sicherungen: `.codex-safety/absences_route_20260619_103005.ts` und
+  `.codex-safety/AGENTS_before_absences_phase1_20260619_103506.md`.
+  Before/After-Snapshot bestaetigte Route, Exporte, Helper, entfernten
+  Actor-Fallback, erhaltenen Aktionsfluss und DELETE-Pfad. Checks bestanden:
+  `npm.cmd run build` nach einmaliger Wiederholung wegen temporaerem
+  Next-Cache/Page-Data-Fehler bei `/api/contacts`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/absences/route.ts`. `prisma db push` wurde
+  bewusst nicht ausgefuehrt, weil keine Schemaaenderung Teil dieses Fixes war.
+  Gezielter HTTP-Test ueber lokalen Server: ungueltiger Actor bei POST/PATCH/
+  DELETE 401, Mitarbeiter-Fremdanlage 403, Selbstanlage 201, eigener
+  Umhaengeversuch blieb beim Originalnutzer, DELETE 200 und Testdaten wurden
+  bereinigt.
+- Phase-1-Notifications-API 2026-06-19: Als dritter kleiner Fix aus der
+  Rechte-/Actor-ID-Roadmap wurde `src/app/api/notifications/route.ts`
+  abgesichert. `GET` und `PATCH` nutzen jetzt einen lokalen `getRequestUser`-
+  Helper und brechen bei fehlender, ungueltiger oder inaktiver `userId` mit
+  401 ab, statt auf den Demo-User aus `getDemoContext()` zurueckzufallen.
+  Damit kann ein fehlender/falscher Request-User nicht mehr versehentlich
+  offene Meldungen des Demo-Users laden oder als gelesen markieren. Die
+  bestehende POST-Erzeugung, Linkspalten-Sicherung, Historien-/Suchlogik und
+  das Markieren offener Meldungen per `readAt IS NULL` blieben erhalten.
+  Sicherungen: `.codex-safety/notifications_route_20260619_102407.ts` und
+  `.codex-safety/AGENTS_before_notifications_phase1_20260619_102651.md`.
+  Before/After-Snapshot bestaetigte Route, Exporte, Helper, entfernten
+  User-Fallback und erhaltene POST-Erzeugung. Checks bestanden:
+  `npm.cmd run build`, `npx.cmd prisma validate`,
+  `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/notifications/route.ts`. `prisma db push`
+  wurde bewusst nicht ausgefuehrt, weil keine Schemaaenderung Teil dieses Fixes
+  war. Gezielter HTTP-Test ueber lokalen Server: ungueltige `userId` bei GET
+  401, gueltige `userId` 200, ungueltige `userId` bei PATCH 401 ohne
+  Aenderung offener Meldungen.
+- Phase-1-Users-API 2026-06-19: Im zweiten kleinen Fix aus der
+  Rechte-/Actor-ID-Roadmap wurde `src/app/api/users/route.ts` abgesichert.
+  `POST`, `PATCH` und `DELETE` nutzen jetzt einen lokalen `getRequestActor`-
+  Helper und brechen bei fehlender oder ungueltiger `actorId` mit 401 ab,
+  statt auf den Demo-Admin aus `getDemoContext()` zurueckzufallen. Das normale
+  `PATCH` laedt den Zielbenutzer jetzt vor dem Schreiben per `id` plus
+  `organizationId`; `set-active` und `DELETE` hatten dieses Muster bereits.
+  Bei `POST` und `PATCH` werden uebergebene `teamIds` jetzt gegen Teams der
+  aktuellen Organisation geprueft, damit keine fremden oder ungueltigen
+  Team-IDs in `User.teamId` oder `UserTeamMembership` landen. `GET`,
+  `formatUser`, `canManageUsers`, `canManagePersonalNumber`, `setUserTeams`
+  und der Soft-Delete ueber `isActive: false` blieben erhalten. Sicherungen:
+  `.codex-safety/users_route_20260619_100839.ts` und
+  `.codex-safety/AGENTS_before_users_phase1_20260619_101418.md`. Before/After-
+  Snapshot bestaetigte Route, Exporte, Helper, entfernten Admin-Fallback,
+  vorgeschalteten Organisations-Lookup, Team-ID-Validierung und erhaltenen
+  Soft-Delete. Checks bestanden: `npm.cmd run build`,
+  `npx.cmd prisma validate`, `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/users/route.ts`. `prisma db push` wurde
+  bewusst nicht ausgefuehrt, weil keine Schemaaenderung Teil dieses Fixes war.
+  Gezielter HTTP-Test ueber lokalen Server: ungueltiger Actor 401,
+  Mitarbeiter bei Anlage/Bearbeitung/Entfernung 403, ungueltige Team-ID 400,
+  Geschaeftsfuehrung 201/200/200 fuer Anlegen/Bearbeiten/Soft-Delete; der
+  Testbenutzer wurde anschliessend bereinigt.
+- Phase-1-Teams-API 2026-06-19: Als erster kleiner Fix aus der Audit-Roadmap
+  wurde `src/app/api/teams/route.ts` abgesichert. `POST`, `PATCH` und
+  `DELETE` nutzen jetzt einen lokalen `getRequestActor`-Helper und brechen bei
+  fehlender oder ungueltiger `actorId` mit 401 ab, statt auf den Demo-Admin
+  aus `getDemoContext()` zurueckzufallen. `PATCH` laedt das Team jetzt vor dem
+  Schreiben per `id` plus `organizationId`; eine falsche Team-ID schreibt
+  nichts. `GET`, `formatTeam`, `canManageTeams` und die DELETE-Loeschfolge
+  fuer `UserTeamMembership`, `User.teamId`, `Task.teamId` und `Team` blieben
+  erhalten. Sicherungen: `.codex-safety/teams_route_20260619_094736.ts` und
+  `.codex-safety/AGENTS_before_teams_phase1_20260619_095308.md`. Before/After-
+  Snapshot bestaetigte Route, Exporte, Helper, entfernten Admin-Fallback und
+  erhaltene Loeschfolge. Checks bestanden: `npm.cmd run build`,
+  `npx.cmd prisma validate`, `npm.cmd run check:mojibake`,
+  `git diff --check -- src/app/api/teams/route.ts`. `prisma db push` wurde
+  bewusst nicht ausgefuehrt, weil keine Schemaaenderung Teil dieses Fixes war.
+  Gezielter HTTP-Test ueber lokalen Server: ungueltiger Actor 401, Mitarbeiter
+  403, Geschaeftsfuehrung 201/200/200 fuer Anlegen/Bearbeiten/Loeschen,
+  falsche Team-ID 404 ohne Schreibeffekt.
 - Planungsboard-Zeitleistenklick 2026-06-15: In der Tagesansicht des
   Planungsboards oeffnet ein Klick in eine freie Zeitleistenstelle wieder eine
   Vorschaltmaske. Dort wird zwischen `+ Termin` und `+ Terminwunsch`
@@ -3435,3 +5071,24 @@ Wiederaufbau begonnen 2026-06-05:
 - Planungsboard aktive Mitarbeiter 2026-06-15: Tagesplanung und Terminanlage zeigen nur aktive Mitarbeiter. Inaktive Mitarbeiter werden nicht mehr als Zeile oder automatische Vorbelegung angeboten; bestehende historische Planungseintraege bleiben unveraendert in den Daten erhalten.
 - Planungsboard Farblogik 2026-06-15: Feste bestaetigte Termine sind blau, Terminwuensche sind hellgrau mit gelbem pulsierendem Rand, Pausen grau, abgeschlossene Stempelungen auf einem Termin gruen, aktive Stempelungen zeigen den bekannten Verlauf innerhalb des passenden Terminbalkens. Abwesenheiten und Konflikte behalten ihre bestehende Sonderdarstellung.
 - Stempelung Termin-Vorschlag 2026-06-15: Beim Starten/Wechseln wird nur ein aktuell laufender oder zukuenftiger offener bestaetigter Tagestermin vorgeschlagen. Sind alle heutigen Termine vorbei, gibt es keinen automatischen Vorschlag mehr; die Tagestermine bleiben aber einsehbar. In der Stempelmaske tragen Tagestermine Statuslabels `Aktiv`, `Erledigt`, `Offen` oder `Vorbei`. Bereits erledigte Termine werden nicht erneut als naechster Vorschlag genutzt.
+- Phase-2-Audit Kundenfeedback 2026-06-20: Interne Kundenfeedback- und Feedback-Request-Wege wurden mit zentralen Rollenregeln abgesichert. Lesen, manuelles Erfassen und Feedback-Anfragen sind fuer Admin, Geschaeftsfuehrung, Fuehrungskraft, Vertrieb und Buchhaltung erlaubt; Loeschen bleibt Geschaeftsfuehrung. Der oeffentliche Token-Weg `public-feedback/[token]` bleibt bewusst ohne internen Actor, damit Kunden ohne Anmeldung antworten koennen. Beim Rechnungsversand wird die automatische Feedback-Link-Suche jetzt organisationsgebunden.
+- Phase-2-Audit News/Benachrichtigungen 2026-06-20: News-Sichtbarkeit wurde in `src/lib/news-feed/visibility.ts` zentralisiert und fuer Laden, Gelesen-Markierung, Kommentare, Reaktionen und Abstimmungen genutzt. Interaktionen sind nur noch fuer Beitraege erlaubt, die der aktive Benutzer sehen darf. Der freie Notification-POST verlangt jetzt einen aktiven Actor; neue Benachrichtigungen erzeugen duerfen Admin, Geschaeftsfuehrung, Fuehrungskraft und Buchhaltung. Die automatische Abrechnungsbereit-Meldung sendet den Actor aus dem Dashboard mit.
+- Phase-2-Audit Abwesenheiten/Planung 2026-06-20: Abwesenheits-Manager-Regel wurde zentralisiert. Abwesenheiten und Planungsboard verlangen jetzt auch beim Lesen einen aktiven Actor; Dashboard-Loads senden `activeUserId` mit. Abwesenheits-Schreibwege nutzen die zentrale Regel, Ziel-/Vertreter-/Benachrichtigungsempfaenger werden auf aktive Benutzer begrenzt. Planungsbenachrichtigungen pruefen vorhandene Duplikate organisationsgebunden. Fachliche Leseeinschraenkung nach Rolle wurde bewusst noch nicht eingefuehrt, um Kalender- und Board-Workflows nicht zu verengen.
+- Phase-2-Audit Ideen/Content/Abrechnungswarnungen 2026-06-21: Ideen-Store, Content-Altbereich und offene Abrechnungszeit-Warnungen verlangen jetzt aktive Actors ohne Demo-Fallback. Ideen sind fuer Gaeste gesperrt; Anheften ist auf Admin, Geschaeftsfuehrung und Fuehrungskraft begrenzt. Content-Verwaltung ist auf Admin, Geschaeftsfuehrung und Fuehrungskraft begrenzt. Abrechnungszeit-Warnungen lesen/ausloesen duerfen Admin, Geschaeftsfuehrung, Fuehrungskraft und Buchhaltung. Dashboard-Aufrufe senden den Actor mit bzw. brechen ohne aktiven Benutzer sauber ab. Content bleibt bewusst als Legacy-/Altbereich dokumentiert.
+- Phase-2-Abschluss Rechte-Quercheck 2026-06-21: Marketing-Content verlangt jetzt aktive Actors. Kontingent-Konfiguration ist auf Admin/Geschaeftsfuehrung begrenzt; operative Marketing-Content-/Planungsaktionen sind auf Admin/Geschaeftsfuehrung/Fuehrungskraft begrenzt. Monatsberichtswerte schreiben nutzt die bestehende Rechnungs-/Buchhaltungsberechtigung. Typische Demo-Fallback-Muster wurden erneut gesucht; keine neuen Treffer. Phase 2 gilt fuer die priorisierten Rechte-/Actor-Luecken als abgeschlossen; groessere Restthemen sind Architektur-/Produktentscheidungen.
+- Phase-2-Stabilisierung 2026-06-21: Frischer Testserver auf Port 3002 lud `/` und `/dashboard` mit HTTP 200. API-Smoke-Tests fuer Ideen, Content, Abrechnungswarnungen, Marketing-Content und Monatsfinanzbericht lieferten erwartete Schutzantworten: 401 ohne Actor, 403 fuer unberechtigte Rollen, 400 fuer fachlich ungueltige berechtigte Eingaben. Der alte 500er auf Port 3001 lag am alten laufenden Serverprozess, nicht am aktuellen Code.
+- Phase-3-Start Kontaktloeschung 2026-06-21: Kontaktanlage/-bearbeitung ist serverseitig auf Admin, Geschaeftsfuehrung, Fuehrungskraft, Vertrieb und Buchhaltung begrenzt. Endgueltiges Kontaktloeschen ist auf Admin/Geschaeftsfuehrung begrenzt und wird mit HTTP 409 blockiert, wenn Projekte, Unterkontakte, aktive Kundenhinweise, Potenziale, Verkaufschancen, Sales-Ziele, Feedbacks oder Winterdienstlaeufe auf den Kontakt zeigen. UI bricht Kontaktaktionen ohne aktiven Benutzer ab. API-Smoke-Test bestaetigte 401/403/409/200-Verhalten inklusive Cleanup.
+- Phase-3 Projektpflege/Archivierung 2026-06-21: Projektanlage/-bearbeitung ist serverseitig auf Admin, Geschaeftsfuehrung, Fuehrungskraft und Vertrieb begrenzt; Archivierung ueber Status `Archiviert` ist auf Admin/Geschaeftsfuehrung/Fuehrungskraft begrenzt. Projekt-Kontakt-IDs werden gegen Kontakte derselben Organisation validiert, inklusive grober Hauptkontakt-Zuordnung fuer Ansprechpartner/Adresskontakt. Es gibt weiterhin keinen harten Projekt-DELETE; Archivierung erhaelt Belege, Zeiten, Aufgaben, Hinweise, Dokumente und Logbuchdaten.
+- Phase-3 Projektlogbuch/Anhaenge 2026-06-21: Projektlogbuch-Schreibwege validieren jetzt Projekt/Organisation und Archivstatus. Normale Eintraege/Uploads bleiben fuer aktive Nicht-Gast-Benutzer moeglich. Anhang-Verschieben/-Loeschen ist auf Projektverwaltungsrollen oder den urspruenglichen Autor begrenzt. Archivierte Projekte blockieren normale Logbuch- und Anhangveraenderungen. API-Smoke-Test bestaetigte 401/201/403/200-Verhalten inklusive Testdaten-Cleanup.
+- Phase-3 Anhanggroessen/Data-URL-Schutz 2026-06-21: Projektlogbuch-Anhaenge haben serverseitig 12 MB pro Datei und 48 MB pro Eintrag als Grenze. Erlaubt sind uebliche Bildformate sowie PDF, Word, Excel, CSV und TXT; ungueltige Data-URLs und unerlaubte Typen werden blockiert. Die Dashboard-Uploadwege pruefen dieselben Grenzen vor dem Senden. API-Smoke-Test bestaetigte 413 fuer zu grosse Datei, 400 fuer unerlaubten Typ und 201 fuer kleine erlaubte Datei inklusive Cleanup.
+- Phase-3 Berichtsendpunkte/Data-URL-Direktpfade 2026-06-21: Taetigkeitsberichte und Rauchmelderberichte verlangen jetzt aktiven Actor, Logbuch-Schreibrecht und respektieren archivierte Projekte. Direkt erzeugte PDF-Anhaenge werden auf 12 MB begrenzt; Rauchmelderbilder werden vor der PDF-Erstellung auf Typ, Data-URL-Format, 12 MB pro Bild und 48 MB pro Nachweis begrenzt. API-Smoke-Test bestaetigte 401 ohne Actor, 413 fuer zu grosses Rauchmelderbild und 403 auf archiviertem Projekt inklusive Cleanup.
+- Phase-3 Abschluss-Quercheck Logbuch/Data-URL 2026-06-21: Direkte Logbuch- und Data-URL-Speicherpfade wurden erneut gesucht. Winterdienst-Einsaetze waren der relevante Restpfad und verlangen jetzt aktiven Actor, Logbuch-Schreibrecht, gueltiges Projekt und Archivschutz. Winterdienstbilder sind auf erlaubte Bildtypen, gueltige Data-URLs, 12 MB pro Bild und 48 MB pro Einsatz begrenzt; erzeugte Winterdienst-PDFs auf 12 MB. API-Smoke-Test bestaetigte 401/413/201/403 inklusive Cleanup.
+- Phase-3-Abschluss 2026-06-21: Phase 3 gilt fuer priorisierte Referenz-, Archiv-, Logbuch- und Anhangschutzrisiken als abgeschlossen. Komplettes Audit ca. 76-78%, kritische Rechte-/Crash-/Datenverlustschutzthemen ca. 90-92%. Offene Punkte sind jetzt vor allem Architektur-/Produktentscheidungen: echte Session statt request-basierter actorId, Datei-/Objektspeicher statt Data-URL-JSON, Migrationen statt Runtime-DDL, globales Archivierungs-/Loeschmodell und finaler Stabilitaets-/UI-Smoke.
+- Stabilitaets-/Performanceblock Logbuch-Startladung 2026-06-21: Globale `project-logbook-entries?summary=1` liefert jetzt leichte Metadaten ohne `dataUrl`; Dashboard-Start nutzt diese Summary. Projektbezogene Detailabfragen laden weiterhin volle Anhaenge. Lokaler API-Smoke-Test mit 257 Eintraegen reduzierte die globale Antwort von ca. 32 MB auf ca. 117 KB, Summary ohne `dataUrl`; Build/Prisma/Mojibake/Regression bestanden.
+- Stabilitaets-/Performanceblock Dokument-Mail-Uebersicht 2026-06-21: Globale Dokument-Mail-Historie wird beim Dashboard-Start mit `limit=500` geladen; die API erzwingt fuer globale Abfragen Standard 500/maximal 1000. Projektbezogene Historie bleibt vollstaendig. Build/Prisma/Mojibake/Regression bestanden; lokaler API-Smoke auf Port 3002 lieferte HTTP 200 bei leerer lokaler Historie.
+- Stabilitaets-/Performanceblock Angebots-/Rechnungslisten 2026-06-21: Listenabfragen fuer Angebote und Rechnungen verwenden jetzt konkrete Spalten statt `SELECT *`; gespeicherte PDF-Base64-Daten werden dabei nicht mehr aus der DB mitgelesen. `pdfAvailable` bleibt erhalten, PDF-Abruf per `pdfId` unveraendert. Build/Prisma/Mojibake/Regression und lokaler API-Smoke auf Port 3002 bestanden.
+- Stabilitaets-/Rechteblock Projektzeiten-Lesen 2026-06-21: `project-time-entries` GET verlangt jetzt `actorUserId`; ohne Actor 401, Managerrollen sehen alle Zeiten, normale Benutzer nur eigene Zeiten. Dashboard sendet den aktiven Benutzer mit und laedt beim aktiven Benutzerwechsel erneut. Mitarbeiter-Emulation bleibt dadurch als eingeschraenkte Mitarbeitersicht erhalten. Build/Prisma/Mojibake/Regression und API-Smoke auf Port 3002 bestanden.
+- Stabilitaets-/Rechteblock Angebote/Rechnungen-Lesen 2026-06-21: `offers` und `invoices` GET verlangen jetzt `actorId`; ohne Actor 401, Lesen fuer Admin/Geschaeftsfuehrung/Fuehrungskraft/Vertrieb/Buchhaltung. Dashboard haengt Actor an Listen, Historien, PDF- und XRechnung-Links und laedt bei aktivem Benutzerwechsel neu. Build/Prisma/Mojibake/Regression und API-Smoke auf Port 3002 bestanden.
+- Abschluss-Smoke Kernpfade 2026-06-21: Lokaler Testserver Port 3002 pruefte Dashboard, Projekte, Logbuch-Summary, Projektzeiten, Angebote, Rechnungen, Dokument-Mail, Kontakte, Kundenfeedback, PDF-Abrufe und XRechnung-Validierung. Alle relevanten Actor-Pfade HTTP 200, Schutzfaelle ohne Actor erwartbar 401, keine 500er im Smoke. Groesster verbleibender Startdatenblock: Kontakte ca. 291 KB bei 291 Eintraegen.
+- Auditabschluss-Vorbereitung 2026-06-21: Operatives Audit steht bei ca. 88-90%, kritische Rechte-/Crash-/Datenverlust-/Startlastthemen ca. 94-95%. Keine bekannten akuten 500er-Blocker nach Abschluss-Smoke. Offene Themen sind vor allem Architektur-/Produktentscheidungen: echte Session/Auth, Datei-/Objektspeicher, Migrationen statt Runtime-DDL, globales Archiv-/Loeschmodell und spaetere Pagination/Summaries fuer Kontakte/Projekte.
+- Operativer Auditabschluss 2026-06-21: Audit fuer priorisierten operativen Umfang als abgeschlossen markiert. Final bestanden: Prisma validate, Mojibake, Regression, diff-check und Build. Stand ca. 90% Gesamt-Audit, ca. 95% kritische Rechte-/Crash-/Datenverlust-/Startlastthemen. Weitere Arbeiten nur noch als eigene Folgeblocks: Auth/Session, Datei-/Objektspeicher, Runtime-DDL-Migrationen, Kontakte/Projekte-Performance, Archiv-/Loeschkonzept.

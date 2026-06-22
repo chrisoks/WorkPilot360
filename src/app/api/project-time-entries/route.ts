@@ -1,7 +1,18 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import { Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canApproveProjectOvertime, canManageProjectTimeEntries } from "@/lib/permissions";
+
+type DemoUser = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: Role;
+  isActive: boolean;
+};
 
 type ProjectTimeEntryRow = {
   id: string;
@@ -95,6 +106,25 @@ async function ensureProjectTimeEntryTable() {
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function getUserName(user: Pick<DemoUser, "firstName" | "lastName" | "email">) {
+  return `${user.firstName} ${user.lastName}`.trim() || user.email;
+}
+
+function getRequestUser(users: DemoUser[], userId: unknown) {
+  if (typeof userId !== "string" || !userId.trim()) {
+    return null;
+  }
+
+  return users.find((user) => user.id === userId.trim() && user.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
 }
 
 function formatDateKeyDisplay(value: string) {
@@ -192,16 +222,30 @@ function formatEntry(entry: ProjectTimeEntryRow) {
   };
 }
 
-export async function GET() {
-  const { organization } = await getDemoContext();
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const { organization, users } = await getDemoContext();
   await ensureProjectTimeEntryTable();
 
-  const entries = await prisma.$queryRaw<ProjectTimeEntryRow[]>`
-    SELECT *
-    FROM "ProjectTimeEntry"
-    WHERE "organizationId" = ${organization.id}
-    ORDER BY "createdAt" DESC
-  `;
+  const actor = getRequestUser(users, searchParams.get("actorUserId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
+  const entries = canManageProjectTimeEntries(actor)
+    ? await prisma.$queryRaw<ProjectTimeEntryRow[]>`
+        SELECT *
+        FROM "ProjectTimeEntry"
+        WHERE "organizationId" = ${organization.id}
+        ORDER BY "createdAt" DESC
+      `
+    : await prisma.$queryRaw<ProjectTimeEntryRow[]>`
+        SELECT *
+        FROM "ProjectTimeEntry"
+        WHERE "organizationId" = ${organization.id}
+          AND "userId" = ${actor.id}
+        ORDER BY "createdAt" DESC
+      `;
 
   return NextResponse.json(entries.map(formatEntry));
 }
@@ -220,13 +264,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Bitte eine Laufzeit angeben." }, { status: 400 });
   }
 
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureProjectTimeEntryTable();
 
+  const actor = getRequestUser(users, body.actorUserId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
+  const actorName = getUserName(actor);
+  const actorCanManageProjectTime = canManageProjectTimeEntries(actor);
+  const actorCanApproveOvertime = canApproveProjectOvertime(actor);
   const id = cleanString(body.id) || randomUUID();
   const projectLabel = cleanString(body.projectLabel);
   const userId = cleanString(body.userId);
-  const employee = cleanString(body.employee);
+  const targetUser = getRequestUser(users, userId);
+  if (!targetUser) {
+    return NextResponse.json({ error: "Bitte einen aktiven Mitarbeiter zuweisen." }, { status: 400 });
+  }
+
+  const employee = getUserName(targetUser);
   const entrySource = cleanString(body.entrySource) === "manual" ? "manual" : "stamped";
   const date = normalizeDateKeyValue(cleanString(body.date));
   const startTime = cleanString(body.startTime);
@@ -239,14 +296,52 @@ export async function POST(req: Request) {
     mode === "project" && ["finished", "interrupted"].includes(cleanString(body.completionStatus))
       ? cleanString(body.completionStatus)
       : "";
-  const overtimeApprovalStatus = ["pending", "approved"].includes(cleanString(body.overtimeApprovalStatus))
+  const requestedOvertimeApprovalStatus = ["pending", "approved"].includes(cleanString(body.overtimeApprovalStatus))
     ? cleanString(body.overtimeApprovalStatus)
     : "not_required";
-  const overtimeApprovedByUserId = cleanString(body.overtimeApprovedByUserId);
-  const overtimeApprovedByName = cleanString(body.overtimeApprovedByName);
-  const overtimeApprovedAt = cleanString(body.overtimeApprovedAt);
-  const editHistory = Array.isArray(body.editHistory) ? body.editHistory : [];
-  const laborCostRateSnapshot = await getEmployeeHourlyCostRateSnapshot(organization.id, userId);
+  const incomingEditHistory: unknown[] = Array.isArray(body.editHistory) ? body.editHistory : [];
+
+  const existingRows = await prisma.$queryRaw<ProjectTimeEntryRow[]>`
+    SELECT *
+    FROM "ProjectTimeEntry"
+    WHERE "id" = ${id}
+      AND "organizationId" = ${organization.id}
+    LIMIT 1
+  `;
+  const existingEntry = existingRows[0] ?? null;
+
+  if (!actorCanManageProjectTime) {
+    const isOwnManualEntry =
+      targetUser.id === actor.id && entrySource === "manual" && (!existingEntry || existingEntry.entrySource === "manual");
+    if (!isOwnManualEntry) {
+      return NextResponse.json(
+        { error: "Du darfst nur eigene manuelle Zeiteintraege anlegen oder bearbeiten." },
+        { status: 403 }
+      );
+    }
+  }
+
+  const overtimeApprovalStatus = actorCanApproveOvertime
+    ? requestedOvertimeApprovalStatus
+    : existingEntry?.overtimeApprovalStatus ?? "not_required";
+  const overtimeApprovedByUserId =
+    actorCanApproveOvertime && overtimeApprovalStatus === "approved"
+      ? actor.id
+      : existingEntry?.overtimeApprovedByUserId ?? "";
+  const overtimeApprovedByName =
+    actorCanApproveOvertime && overtimeApprovalStatus === "approved"
+      ? actorName
+      : existingEntry?.overtimeApprovedByName ?? "";
+  const overtimeApprovedAt =
+    actorCanApproveOvertime && overtimeApprovalStatus === "approved"
+      ? cleanString(body.overtimeApprovedAt) || new Date().toISOString()
+      : existingEntry?.overtimeApprovedAt?.toISOString() ?? "";
+  const editHistory = incomingEditHistory.map((entry, index) =>
+    index === 0 && entry && typeof entry === "object"
+      ? { ...(entry as Record<string, unknown>), actorUserId: actor.id, actorName }
+      : entry
+  );
+  const laborCostRateSnapshot = await getEmployeeHourlyCostRateSnapshot(organization.id, targetUser.id);
   const laborCostSnapshot = roundMoney((durationMs / 3_600_000) * laborCostRateSnapshot);
 
   if (!date || !startTime || !endTime) {
@@ -287,7 +382,7 @@ export async function POST(req: Request) {
       ${mode},
       ${projectId},
       ${projectLabel || null},
-      ${userId || null},
+      ${targetUser.id},
       ${employee || null},
       ${entrySource},
       ${date},
@@ -340,16 +435,22 @@ export async function POST(req: Request) {
 export async function DELETE(req: Request) {
   const { searchParams } = new URL(req.url);
   const id = cleanString(searchParams.get("id"));
-  const actorUserId = cleanString(searchParams.get("actorUserId"));
-  const actorName = cleanString(searchParams.get("actorName"));
   const note = cleanString(searchParams.get("note")) || "Zeiteintrag gelöscht";
 
   if (!id) {
     return NextResponse.json({ error: "Zeiteintrag fehlt." }, { status: 400 });
   }
 
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureProjectTimeEntryTable();
+
+  const actor = getRequestUser(users, searchParams.get("actorUserId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
+  const actorName = getUserName(actor);
+  const actorCanManageProjectTime = canManageProjectTimeEntries(actor);
 
   const existingRows = await prisma.$queryRaw<ProjectTimeEntryRow[]>`
     SELECT *
@@ -363,10 +464,20 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
+  if (
+    !actorCanManageProjectTime &&
+    (existingEntry.entrySource !== "manual" || existingEntry.userId !== actor.id)
+  ) {
+    return NextResponse.json(
+      { error: "Du darfst diesen Zeiteintrag nicht loeschen." },
+      { status: 403 }
+    );
+  }
+
   const currentHistory = Array.isArray(existingEntry.editHistory) ? existingEntry.editHistory : [];
   const deleteHistory = {
     id: randomUUID(),
-    actorUserId,
+    actorUserId: actor.id,
     actorName,
     event: "Zeiteintrag gelöscht",
     note,

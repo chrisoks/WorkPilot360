@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 
@@ -35,6 +36,21 @@ type LaborMetricRow = {
 function cleanNumber(value: unknown) {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function cleanString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function getRequestActor(users: User[], actorId: unknown) {
+  const cleanActorId = cleanString(actorId);
+  if (!cleanActorId) return null;
+  const actor = users.find((candidate) => candidate.id === cleanActorId);
+  return actor?.isActive ? actor : null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json({ error: "Aktiver Benutzer erforderlich." }, { status: 401 });
 }
 
 async function tableExists(tableName: string) {
@@ -91,8 +107,13 @@ function ensureMetric(metrics: Map<string, LaborMetricRow>, row: MetricSourceRow
   return metric;
 }
 
-export async function GET() {
-  const { organization } = await getDemoContext();
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
   await ensureReportingColumns();
 
   const metrics = new Map<string, LaborMetricRow>();

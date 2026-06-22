@@ -1,7 +1,9 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canDeleteContacts, canManageContacts } from "@/lib/permissions";
 
 type ContactRow = {
   id: string;
@@ -49,6 +51,16 @@ type ContactRow = {
   leitwegId: string | null;
   createdAt: Date;
   updatedAt: Date;
+};
+
+type ContactReferenceCountRow = {
+  count: number;
+};
+
+type ContactReferenceSummary = {
+  key: string;
+  label: string;
+  count: number;
 };
 
 async function ensureContactsTable() {
@@ -113,6 +125,36 @@ async function ensureContactsTable() {
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function getRequestActor(users: User[], actorId: unknown) {
+  const requestedActorId = cleanString(actorId);
+  if (!requestedActorId) {
+    return null;
+  }
+
+  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
+
+function forbiddenContactResponse() {
+  return NextResponse.json(
+    { error: "Du darfst Kontakte nicht verwalten." },
+    { status: 403 }
+  );
+}
+
+function forbiddenContactDeleteResponse() {
+  return NextResponse.json(
+    { error: "Du darfst Kontakte nicht endgueltig loeschen." },
+    { status: 403 }
+  );
 }
 
 function nullableString(value: unknown) {
@@ -198,8 +240,99 @@ async function getNextCustomerNumber(organizationId: string) {
   return String(Number.isFinite(currentNumber) ? currentNumber + 1 : 7000049);
 }
 
-export async function GET() {
-  const { organization } = await getDemoContext();
+function getReferenceCount(row: ContactReferenceCountRow | undefined) {
+  return Number(row?.count ?? 0);
+}
+
+async function getContactReferences(organizationId: string, contactId: string): Promise<ContactReferenceSummary[]> {
+  const [
+    projects,
+    childContacts,
+    customerNotes,
+    potentials,
+    salesOpportunities,
+    salesTargets,
+    feedbackRequests,
+    feedbacks,
+    winterServiceRuns,
+  ] = await Promise.all([
+    prisma.$queryRaw<ContactReferenceCountRow[]>`
+      SELECT COUNT(*)::int AS count
+      FROM "WorkPilotProject"
+      WHERE "organizationId" = ${organizationId}
+        AND ("contactId" = ${contactId} OR "contactPersonId" = ${contactId} OR "addressContactId" = ${contactId})
+    `,
+    prisma.$queryRaw<ContactReferenceCountRow[]>`
+      SELECT COUNT(*)::int AS count
+      FROM "Contact"
+      WHERE "organizationId" = ${organizationId}
+        AND "parentCompanyId" = ${contactId}
+    `,
+    prisma.$queryRaw<ContactReferenceCountRow[]>`
+      SELECT COUNT(*)::int AS count
+      FROM "CustomerProjectNote"
+      WHERE "organizationId" = ${organizationId}
+        AND "customerId" = ${contactId}
+        AND "archivedAt" IS NULL
+    `,
+    prisma.$queryRaw<ContactReferenceCountRow[]>`
+      SELECT COUNT(*)::int AS count
+      FROM "ProjectPotential"
+      WHERE "organizationId" = ${organizationId}
+        AND "contactId" = ${contactId}
+    `,
+    prisma.$queryRaw<ContactReferenceCountRow[]>`
+      SELECT COUNT(*)::int AS count
+      FROM "SalesOpportunity"
+      WHERE "organizationId" = ${organizationId}
+        AND "contactId" = ${contactId}
+    `,
+    prisma.$queryRaw<ContactReferenceCountRow[]>`
+      SELECT COUNT(*)::int AS count
+      FROM "SalesTarget"
+      WHERE "organizationId" = ${organizationId}
+        AND "contactId" = ${contactId}
+    `,
+    prisma.$queryRaw<ContactReferenceCountRow[]>`
+      SELECT COUNT(*)::int AS count
+      FROM "CustomerFeedbackRequest"
+      WHERE "organizationId" = ${organizationId}
+        AND "contactId" = ${contactId}
+    `,
+    prisma.$queryRaw<ContactReferenceCountRow[]>`
+      SELECT COUNT(*)::int AS count
+      FROM "CustomerFeedback"
+      WHERE "organizationId" = ${organizationId}
+        AND "contactId" = ${contactId}
+    `,
+    prisma.$queryRaw<ContactReferenceCountRow[]>`
+      SELECT COUNT(*)::int AS count
+      FROM "WinterServiceRun"
+      WHERE "organizationId" = ${organizationId}
+        AND ("contactId" = ${contactId} OR "contactPersonId" = ${contactId})
+    `,
+  ]);
+
+  return [
+    { key: "projects", label: "Projekte", count: getReferenceCount(projects[0]) },
+    { key: "childContacts", label: "Ansprechpartner/Unterkontakte", count: getReferenceCount(childContacts[0]) },
+    { key: "customerNotes", label: "aktive Kundenhinweise", count: getReferenceCount(customerNotes[0]) },
+    { key: "potentials", label: "Zusatzverkaufs-Potenziale", count: getReferenceCount(potentials[0]) },
+    { key: "salesOpportunities", label: "Verkaufschancen", count: getReferenceCount(salesOpportunities[0]) },
+    { key: "salesTargets", label: "Sales-Ziele", count: getReferenceCount(salesTargets[0]) },
+    { key: "feedbackRequests", label: "Feedback-Anfragen", count: getReferenceCount(feedbackRequests[0]) },
+    { key: "feedbacks", label: "Kundenfeedbacks", count: getReferenceCount(feedbacks[0]) },
+    { key: "winterServiceRuns", label: "Winterdienstlaeufe", count: getReferenceCount(winterServiceRuns[0]) },
+  ].filter((item) => item.count > 0);
+}
+
+export async function GET(req: Request) {
+  const { organization, users } = await getDemoContext();
+  const { searchParams } = new URL(req.url);
+  const actor = getRequestActor(users, searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
   await ensureContactsTable();
 
   const contacts = await prisma.$queryRaw<ContactRow[]>`
@@ -213,10 +346,17 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureContactsTable();
 
   const body = await req.json();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canManageContacts(actor)) {
+    return forbiddenContactResponse();
+  }
   const id = randomUUID();
   const category = cleanString(body.category) || "Kunde";
   const requestedType = cleanString(body.type);
@@ -255,10 +395,17 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureContactsTable();
 
   const body = await req.json();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canManageContacts(actor)) {
+    return forbiddenContactResponse();
+  }
   const id = cleanString(body.id);
 
   if (!id) {
@@ -328,26 +475,52 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureContactsTable();
 
   const body = await req.json();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canDeleteContacts(actor)) {
+    return forbiddenContactDeleteResponse();
+  }
   const id = cleanString(body.id);
 
   if (!id) {
     return NextResponse.json({ error: "Keine Kontakt-ID übergeben." }, { status: 400 });
   }
 
-  const deleted = await prisma.$queryRaw<Array<{ id: string }>>`
+  const existing = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT "id"
+    FROM "Contact"
+    WHERE "id" = ${id}
+      AND "organizationId" = ${organization.id}
+    LIMIT 1
+  `;
+
+  if (existing.length === 0) {
+    return NextResponse.json({ error: "Kontakt wurde nicht gefunden." }, { status: 404 });
+  }
+
+  const references = await getContactReferences(organization.id, id);
+  if (references.length > 0) {
+    const referenceText = references.map((item) => `${item.label}: ${item.count}`).join(", ");
+    return NextResponse.json(
+      {
+        error: `Kontakt kann nicht geloescht werden, weil noch Verknuepfungen bestehen. Bitte zuerst archivieren oder Bezuege klaeren. (${referenceText})`,
+        references,
+      },
+      { status: 409 }
+    );
+  }
+
+  await prisma.$executeRaw`
     DELETE FROM "Contact"
     WHERE "id" = ${id}
       AND "organizationId" = ${organization.id}
-    RETURNING "id"
   `;
-
-  if (deleted.length === 0) {
-    return NextResponse.json({ error: "Kontakt wurde nicht gefunden." }, { status: 404 });
-  }
 
   return NextResponse.json({ success: true });
 }

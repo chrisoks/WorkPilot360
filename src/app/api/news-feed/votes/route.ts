@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
+import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canSeeNewsPost } from "@/lib/news-feed/visibility";
 import { ensureNewsFeedTables } from "@/lib/sales-hub/ensure";
 
 type PostPollRow = {
+  id: string;
+  visibility: string;
+  departmentIds: unknown;
+  teamIds: unknown;
+  userIds: unknown;
   pollAllowMultiple: boolean | null;
   pollOptions: unknown;
 };
@@ -20,11 +27,25 @@ function jsonArray(value: unknown) {
   return Array.isArray(value) ? value : [];
 }
 
+function getRequestActor(users: User[], actorId: unknown) {
+  const cleanActorId = cleanString(actorId);
+  if (!cleanActorId) return null;
+  const actor = users.find((candidate) => candidate.id === cleanActorId);
+  return actor?.isActive ? actor : null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json({ error: "Aktiver Benutzer erforderlich." }, { status: 401 });
+}
+
 export async function POST(req: Request) {
   await ensureNewsFeedTables();
-  const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
-  const activeUser = users.find((candidate) => candidate.id === cleanString(body.userId)) ?? user;
+  const body = await req.json().catch(() => ({}));
+  const { organization, users } = await getDemoContext();
+  const activeUser = getRequestActor(users, body.actorId ?? body.userId);
+  if (!activeUser) {
+    return unauthorizedActorResponse();
+  }
   const postId = cleanString(body.postId);
   const selectedOptionIds = cleanStringArray(body.optionIds);
 
@@ -33,7 +54,7 @@ export async function POST(req: Request) {
   }
 
   const rows = await prisma.$queryRaw<PostPollRow[]>`
-    SELECT "pollAllowMultiple", "pollOptions"
+    SELECT id, visibility, "departmentIds", "teamIds", "userIds", "pollAllowMultiple", "pollOptions"
     FROM "NewsPost"
     WHERE "organizationId" = ${organization.id}
       AND id = ${postId}
@@ -42,6 +63,9 @@ export async function POST(req: Request) {
   const post = rows[0];
   if (!post) {
     return NextResponse.json({ error: "Beitrag nicht gefunden." }, { status: 404 });
+  }
+  if (!canSeeNewsPost(post, activeUser)) {
+    return NextResponse.json({ error: "Du darfst bei diesem Beitrag nicht abstimmen." }, { status: 403 });
   }
 
   const allowedOptionIds = jsonArray(post.pollOptions)

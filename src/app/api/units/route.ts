@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canManageUnits } from "@/lib/permissions";
 
 type UnitRow = {
   id: string;
@@ -15,12 +16,28 @@ type UnitRow = {
 
 const defaultUnits = ["Std", "Stk", "Pauschal", "Paket", "m", "m²", "m³", "km", "kg", "L", "Tag", "Monat"];
 
-function canManageUnits(role: Role) {
-  return role === Role.ADMIN || role === Role.GESCHAEFTSFUEHRER;
+function cleanString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function getRequestActor(users: Array<{ id: string; isActive: boolean; role: Role }>, actorId: unknown) {
+  const requestedActorId = cleanString(actorId);
+  if (!requestedActorId) {
+    return null;
+  }
+
+  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
 }
 
 function normalizeUnitName(value: unknown) {
-  const normalized = String(value ?? "").trim();
+  const normalized = cleanString(value);
   const lower = normalized.toLowerCase();
   const aliases: Record<string, string> = {
     h: "Std",
@@ -86,8 +103,13 @@ async function ensureDefaultUnits(organizationId: string) {
   }
 }
 
-export async function GET() {
-  const { organization } = await getDemoContext();
+export async function GET(req: Request) {
+  const { organization, users } = await getDemoContext();
+  const { searchParams } = new URL(req.url);
+  const actor = getRequestActor(users, searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
   await ensureUnitTables();
   await ensureDefaultUnits(organization.id);
 
@@ -103,11 +125,14 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
-  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
   await ensureUnitTables();
 
-  if (!canManageUnits(actor.role)) {
+  if (!canManageUnits(actor)) {
     return NextResponse.json({ error: "Nur Admins und Geschäftsführung dürfen Einheiten verwalten." }, { status: 403 });
   }
 
@@ -129,15 +154,18 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
-  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
   await ensureUnitTables();
 
-  if (!canManageUnits(actor.role)) {
+  if (!canManageUnits(actor)) {
     return NextResponse.json({ error: "Nur Admins und Geschäftsführung dürfen Einheiten verwalten." }, { status: 403 });
   }
 
-  const id = String(body.id ?? "").trim();
+  const id = cleanString(body.id);
   const name = normalizeUnitName(body.name);
   if (!id || !name) {
     return NextResponse.json({ error: "Bitte eine Einheit angeben." }, { status: 400 });
@@ -159,15 +187,18 @@ export async function PATCH(req: Request) {
 
 export async function DELETE(req: Request) {
   const body = await req.json();
-  const { organization, user, users } = await getDemoContext();
-  const actor = users.find((demoUser) => demoUser.id === body.actorId) ?? user;
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
   await ensureUnitTables();
 
-  if (!canManageUnits(actor.role)) {
+  if (!canManageUnits(actor)) {
     return NextResponse.json({ error: "Nur Admins und Geschäftsführung dürfen Einheiten verwalten." }, { status: 403 });
   }
 
-  const id = String(body.id ?? "").trim();
+  const id = cleanString(body.id);
   if (!id) {
     return NextResponse.json({ error: "Einheit fehlt." }, { status: 400 });
   }

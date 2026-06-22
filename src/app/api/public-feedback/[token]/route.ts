@@ -83,7 +83,7 @@ export async function GET(_req: Request, { params }: { params: { token: string }
 
 export async function POST(req: Request, { params }: { params: { token: string } }) {
   await ensureSalesHubTables();
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
   const rows = await prisma.$queryRaw<RequestRow[]>`
     SELECT *
     FROM "CustomerFeedbackRequest"

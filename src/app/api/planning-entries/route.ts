@@ -1,8 +1,18 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { Prisma, Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canManagePlanningEntries } from "@/lib/permissions";
+
+type DemoUser = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: Role;
+  isActive: boolean;
+};
 
 type PlanningEntryRow = {
   id: string;
@@ -148,6 +158,25 @@ function cleanMinutes(value: unknown) {
 
 function cleanApprovalStatus(value: unknown) {
   return cleanString(value) === "requested" ? "requested" : "confirmed";
+}
+
+function getUserName(user: Pick<DemoUser, "firstName" | "lastName" | "email">) {
+  return `${user.firstName} ${user.lastName}`.trim() || user.email;
+}
+
+function getRequestActor(users: DemoUser[], actorId: unknown) {
+  if (typeof actorId !== "string" || !actorId.trim()) {
+    return null;
+  }
+
+  return users.find((user) => user.id === actorId.trim() && user.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
 }
 
 function getMinutesBetween(startTime: string, endTime: string) {
@@ -297,7 +326,8 @@ async function notifyPlanningResponsibles(entry: PlanningEntryRow, organizationI
     const existing = await prisma.$queryRaw<Array<{ id: string }>>`
       SELECT id
       FROM "Notification"
-      WHERE "userId" = ${recipient.id}
+      WHERE "organizationId" = ${organizationId}
+        AND "userId" = ${recipient.id}
         AND "linkTarget" = 'planning-entry'
         AND "linkTargetId" = ${entry.id}
       LIMIT 1
@@ -386,7 +416,8 @@ async function notifyPlanningOverlap(entry: PlanningEntryRow, organizationId: st
     const existing = await prisma.$queryRaw<Array<{ id: string }>>`
       SELECT id
       FROM "Notification"
-      WHERE "userId" = ${recipient.id}
+      WHERE "organizationId" = ${organizationId}
+        AND "userId" = ${recipient.id}
         AND "linkTarget" = 'planning-entry-overlap'
         AND "linkTargetId" = ${entry.id}
         AND "readAt" IS NULL
@@ -428,9 +459,14 @@ async function notifyPlanningOverlap(entry: PlanningEntryRow, organizationId: st
   }
 }
 
-export async function GET() {
-  const { organization } = await getDemoContext();
+export async function GET(req: Request) {
+  const { organization, users } = await getDemoContext();
   await ensurePlanningEntryTable();
+  const { searchParams } = new URL(req.url);
+  const actor = getRequestActor(users, searchParams.get("actorUserId") ?? searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
 
   const entries = await prisma.$queryRaw<PlanningEntryRow[]>`
     SELECT *
@@ -464,16 +500,23 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensurePlanningEntryTable();
 
+  const actor = getRequestActor(users, body.actorUserId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
+  const actorUserId = actor.id;
+  const actorName = getUserName(actor);
+  const actorCanManagePlanning = canManagePlanningEntries(actor);
   const id = cleanString(body.id) || randomUUID();
   const rawSource = cleanString(body.source);
   const source = rawSource === "offer" || rawSource === "marketingContent" ? rawSource : "manual";
   const board = cleanString(body.board);
   const groupName = cleanString(body.groupName);
   const userId = cleanString(body.userId);
-  const employeeName = cleanString(body.employeeName);
   const date = cleanString(body.date);
   const startTime = cleanString(body.startTime);
   const endTime = cleanString(body.endTime);
@@ -493,11 +536,6 @@ export async function POST(req: Request) {
   const recurrenceId = cleanString(body.recurrenceId);
   const recurrenceRule = cleanString(body.recurrenceRule);
   const approvalStatus = cleanApprovalStatus(body.approvalStatus);
-  const requestedByUserId = cleanString(body.requestedByUserId);
-  const requestedByName = cleanString(body.requestedByName);
-  const approvedByUserId = cleanString(body.approvedByUserId);
-  const actorUserId = cleanString(body.actorUserId);
-  const actorName = cleanString(body.actorName);
 
   if (!board || !groupName || !date || !isValidTime(startTime) || !isValidTime(endTime)) {
     return NextResponse.json({ error: "Planungsboard, Gruppe, Datum und Uhrzeit sind Pflicht." }, { status: 400 });
@@ -511,9 +549,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Bitte einen Titel angeben." }, { status: 400 });
   }
 
-  if (!userId || !employeeName) {
+  if (!userId) {
     return NextResponse.json({ error: "Bitte einen Mitarbeiter zuweisen, bevor der Termin gespeichert wird." }, { status: 400 });
   }
+
+  const plannedUser = users.find((user) => user.id === userId && user.isActive);
+  if (!plannedUser) {
+    return NextResponse.json({ error: "Der gewaehlte Mitarbeiter ist nicht aktiv oder gehoert nicht zur Organisation." }, { status: 400 });
+  }
+
+  const employeeName = getUserName(plannedUser);
 
   const existingRows = await prisma.$queryRaw<PlanningEntryRow[]>`
     SELECT *
@@ -523,6 +568,36 @@ export async function POST(req: Request) {
     LIMIT 1
   `;
   const existingEntry = existingRows[0] ?? null;
+
+  if (!actorCanManagePlanning) {
+    const ownsExistingEntry =
+      existingEntry && (existingEntry.userId === actor.id || existingEntry.requestedByUserId === actor.id);
+
+    if (approvalStatus !== "requested" || userId !== actor.id) {
+      return NextResponse.json(
+        { error: "Du darfst nur eigene Terminwuensche anlegen oder bearbeiten." },
+        { status: 403 }
+      );
+    }
+
+    if (existingEntry && (!ownsExistingEntry || existingEntry.approvalStatus !== "requested")) {
+      return NextResponse.json(
+        { error: "Du darfst diesen Planungstermin nicht bearbeiten." },
+        { status: 403 }
+      );
+    }
+  }
+
+  const requestUser = cleanString(body.requestedByUserId)
+    ? users.find((user) => user.id === cleanString(body.requestedByUserId) && user.isActive) ?? null
+    : null;
+  const existingRequestUser = existingEntry?.requestedByUserId
+    ? users.find((user) => user.id === existingEntry.requestedByUserId && user.isActive) ?? null
+    : null;
+  const requestedByUser = approvalStatus === "requested" ? actor : existingRequestUser ?? requestUser ?? actor;
+  const requestedByUserId = requestedByUser.id;
+  const requestedByName = getUserName(requestedByUser);
+  const approvedByUserId = approvalStatus === "confirmed" ? actor.id : "";
 
   if (projectId && !marketingContentScheduleId) {
     const duplicateRows = await prisma.$queryRaw<PlanningEntryRow[]>`
@@ -655,8 +730,8 @@ export async function POST(req: Request) {
       planningEntryId: savedEntry.id,
       projectId,
       eventType: approvalStatus === "requested" ? "requested" : "created",
-      actorUserId: actorUserId || requestedByUserId || approvedByUserId,
-      actorName: actorName || requestedByName,
+      actorUserId,
+      actorName,
       toStatus: approvalStatus,
       note:
         approvalStatus === "requested"
@@ -675,7 +750,7 @@ export async function POST(req: Request) {
       planningEntryId: savedEntry.id,
       projectId: savedEntry.projectId ?? "",
       eventType: "approved",
-      actorUserId: actorUserId || approvedByUserId,
+      actorUserId,
       actorName,
       fromStatus: "requested",
       toStatus: "confirmed",
@@ -712,15 +787,22 @@ export async function POST(req: Request) {
 export async function DELETE(req: Request) {
   const { searchParams } = new URL(req.url);
   const id = cleanString(searchParams.get("id"));
-  const actorUserId = cleanString(searchParams.get("actorUserId"));
-  const actorName = cleanString(searchParams.get("actorName"));
 
   if (!id) {
     return NextResponse.json({ error: "Planung fehlt." }, { status: 400 });
   }
 
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensurePlanningEntryTable();
+
+  const actor = getRequestActor(users, searchParams.get("actorUserId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
+  const actorUserId = actor.id;
+  const actorName = getUserName(actor);
+  const actorCanManagePlanning = canManagePlanningEntries(actor);
 
   const entries = await prisma.$queryRaw<PlanningEntryRow[]>`
     SELECT *
@@ -733,6 +815,16 @@ export async function DELETE(req: Request) {
 
   if (!entry) {
     return NextResponse.json({ ok: true });
+  }
+
+  if (
+    !actorCanManagePlanning &&
+    (entry.approvalStatus !== "requested" || (entry.userId !== actor.id && entry.requestedByUserId !== actor.id))
+  ) {
+    return NextResponse.json(
+      { error: "Du darfst diesen Planungstermin nicht loeschen." },
+      { status: 403 }
+    );
   }
 
   if (!entry.deletedAt) {

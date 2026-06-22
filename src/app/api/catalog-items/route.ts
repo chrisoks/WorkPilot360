@@ -1,7 +1,9 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canManageCatalogItems } from "@/lib/permissions";
 
 type CatalogItemRow = {
   id: string;
@@ -188,6 +190,39 @@ async function ensureCatalogTables() {
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function getActorName(actor: User) {
+  return `${actor.firstName} ${actor.lastName}`.trim() || actor.email;
+}
+
+function getRequestActor(users: User[], actorId: unknown) {
+  const requestedActorId = cleanString(actorId);
+  if (!requestedActorId) {
+    return null;
+  }
+
+  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
+
+function forbiddenCatalogManagementResponse() {
+  return NextResponse.json(
+    { error: "Nur Admins und Geschaeftsfuehrung duerfen Katalog-Stammdaten verwalten." },
+    { status: 403 }
+  );
+}
+
+function isUniqueConstraintError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; meta?: { code?: unknown } };
+  return candidate.code === "P2002" || (candidate.code === "P2010" && candidate.meta?.code === "23505");
 }
 
 function nullableString(value: unknown) {
@@ -429,20 +464,19 @@ async function writeChangeHistory(
   }
 }
 
-export async function GET() {
-  const { organization } = await getDemoContext();
+async function getCatalogItemsResponse(organizationId: string) {
   await ensureCatalogTables();
 
   const items = await prisma.$queryRaw<CatalogItemRow[]>`
     SELECT *
     FROM "CatalogItem"
-    WHERE "organizationId" = ${organization.id}
+    WHERE "organizationId" = ${organizationId}
     ORDER BY "createdAt" DESC
   `;
   const histories = await prisma.$queryRaw<CatalogHistoryRow[]>`
     SELECT *
     FROM "CatalogItemHistory"
-    WHERE "organizationId" = ${organization.id}
+    WHERE "organizationId" = ${organizationId}
     ORDER BY "createdAt" DESC
   `;
   const packageItems = await prisma.$queryRaw<CatalogPackageItemRow[]>`
@@ -458,7 +492,7 @@ export async function GET() {
       ci."isActive" AS "componentIsActive"
     FROM "CatalogPackageItem" pi
     JOIN "CatalogItem" ci ON ci."id" = pi."componentItemId"
-    WHERE pi."organizationId" = ${organization.id}
+    WHERE pi."organizationId" = ${organizationId}
     ORDER BY pi."position" ASC, pi."createdAt" ASC
   `;
   const historyByItemId = new Map<string, CatalogHistoryRow[]>();
@@ -487,11 +521,30 @@ export async function GET() {
   );
 }
 
+export async function GET(req: Request) {
+  const { organization, users } = await getDemoContext();
+  const { searchParams } = new URL(req.url);
+  const actor = getRequestActor(users, searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
+  return getCatalogItemsResponse(organization.id);
+}
+
 export async function POST(req: Request) {
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureCatalogTables();
 
   const body = await req.json();
+  const actor = getRequestActor(users, body.actorId ?? body.actorUserId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canManageCatalogItems(actor)) {
+    return forbiddenCatalogManagementResponse();
+  }
+  const actorName = getActorName(actor);
   const type = cleanType(body.type);
   const id = randomUUID();
   const number = cleanString(body.number) || (await getNextCatalogNumber(organization.id, type));
@@ -505,34 +558,46 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Bitte einen Namen angeben." }, { status: 400 });
   }
 
-  const rows = await prisma.$queryRaw<CatalogItemRow[]>`
-    INSERT INTO "CatalogItem" (
-      "id", "organizationId", "type", "number", "name", "category", "unit",
-      "description", "matchcode", "ean", "costCenter", "supplierName", "supplierNumber",
-      "manufacturer", "manufacturerNumber", "manufacturerTypeName", "minimumOrderQuantity",
-      "quantityScale", "priceUnit", "deliveryTime", "stockQuantity", "purchasePrice", "laborCostRateKey",
-      "listPrice", "salesPrice", "vatRate", "isLaborPosition", "isPlanningRelevant", "planningMinutesPerUnit",
-      "defaultPlanningBoard", "defaultPlanningGroup", "isActive"
-    )
-    VALUES (
-      ${id}, ${organization.id}, ${type}, ${number}, ${name}, ${nullableString(body.category)}, ${normalizeUnit(body.unit) || "Stk"},
-      ${nullableString(body.description)}, ${nullableString(body.matchcode)}, ${nullableString(body.ean)}, ${nullableString(body.costCenter)},
-      ${nullableString(body.supplierName)}, ${nullableString(body.supplierNumber)}, ${nullableString(body.manufacturer)},
-      ${nullableString(body.manufacturerNumber)}, ${nullableString(body.manufacturerTypeName)}, ${parseNullableNumber(body.minimumOrderQuantity)},
-      ${nullableString(body.quantityScale)}, ${nullableString(body.priceUnit)}, ${nullableString(body.deliveryTime)}, ${parseNullableNumber(body.stockQuantity)},
-      ${parseNumber(body.purchasePrice)}, ${cleanString(body.laborCostRateKey)}, 0, ${parseNumber(body.salesPrice)}, ${parseNumber(body.vatRate, 19)},
-      ${isLaborPosition}, ${Boolean(body.isPlanningRelevant)}, ${parseInteger(body.planningMinutesPerUnit)}, ${nullableString(body.defaultPlanningBoard)},
-      ${nullableString(body.defaultPlanningGroup)}, ${body.isActive !== false}
-    )
-    RETURNING *
-  `;
+  let rows: CatalogItemRow[];
+  try {
+    rows = await prisma.$queryRaw<CatalogItemRow[]>`
+      INSERT INTO "CatalogItem" (
+        "id", "organizationId", "type", "number", "name", "category", "unit",
+        "description", "matchcode", "ean", "costCenter", "supplierName", "supplierNumber",
+        "manufacturer", "manufacturerNumber", "manufacturerTypeName", "minimumOrderQuantity",
+        "quantityScale", "priceUnit", "deliveryTime", "stockQuantity", "purchasePrice", "laborCostRateKey",
+        "listPrice", "salesPrice", "vatRate", "isLaborPosition", "isPlanningRelevant", "planningMinutesPerUnit",
+        "defaultPlanningBoard", "defaultPlanningGroup", "isActive", "updatedAt"
+      )
+      VALUES (
+        ${id}, ${organization.id}, ${type}, ${number}, ${name}, ${nullableString(body.category)}, ${normalizeUnit(body.unit) || "Stk"},
+        ${nullableString(body.description)}, ${nullableString(body.matchcode)}, ${nullableString(body.ean)}, ${nullableString(body.costCenter)},
+        ${nullableString(body.supplierName)}, ${nullableString(body.supplierNumber)}, ${nullableString(body.manufacturer)},
+        ${nullableString(body.manufacturerNumber)}, ${nullableString(body.manufacturerTypeName)}, ${parseNullableNumber(body.minimumOrderQuantity)},
+        ${nullableString(body.quantityScale)}, ${nullableString(body.priceUnit)}, ${nullableString(body.deliveryTime)}, ${parseNullableNumber(body.stockQuantity)},
+        ${parseNumber(body.purchasePrice)}, ${cleanString(body.laborCostRateKey)}, 0, ${parseNumber(body.salesPrice)}, ${parseNumber(body.vatRate, 19)},
+        ${isLaborPosition}, ${Boolean(body.isPlanningRelevant)}, ${parseInteger(body.planningMinutesPerUnit)}, ${nullableString(body.defaultPlanningBoard)},
+        ${nullableString(body.defaultPlanningGroup)}, ${body.isActive !== false}, CURRENT_TIMESTAMP
+      )
+      RETURNING *
+    `;
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) {
+      throw error;
+    }
+
+    return NextResponse.json(
+      { error: "Eine Position mit dieser Nummer ist bereits vorhanden." },
+      { status: 409 }
+    );
+  }
 
   await createHistory({
     organizationId: organization.id,
     catalogItemId: id,
     eventType: "created",
-    actorUserId: cleanString(body.actorUserId),
-    actorName: cleanString(body.actorName),
+    actorUserId: actor.id,
+    actorName,
     note: "Stammdatensatz angelegt",
   });
   if (type === "package") {
@@ -547,10 +612,18 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureCatalogTables();
 
   const body = await req.json();
+  const actor = getRequestActor(users, body.actorId ?? body.actorUserId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canManageCatalogItems(actor)) {
+    return forbiddenCatalogManagementResponse();
+  }
+  const actorName = getActorName(actor);
   const id = cleanString(body.id);
   if (!id) {
     return NextResponse.json({ error: "Artikel/Leistung fehlt." }, { status: 400 });
@@ -578,44 +651,56 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Bitte einen Namen angeben." }, { status: 400 });
   }
 
-  const rows = await prisma.$queryRaw<CatalogItemRow[]>`
-    UPDATE "CatalogItem"
-    SET
-      "type" = ${type},
-      "number" = ${cleanString(body.number) || before.number},
-      "name" = ${name},
-      "category" = ${nullableString(body.category)},
-      "unit" = ${normalizeUnit(body.unit) || "Stk"},
-      "description" = ${nullableString(body.description)},
-      "matchcode" = ${nullableString(body.matchcode)},
-      "ean" = ${nullableString(body.ean)},
-      "costCenter" = ${nullableString(body.costCenter)},
-      "supplierName" = ${nullableString(body.supplierName)},
-      "supplierNumber" = ${nullableString(body.supplierNumber)},
-      "manufacturer" = ${nullableString(body.manufacturer)},
-      "manufacturerNumber" = ${nullableString(body.manufacturerNumber)},
-      "manufacturerTypeName" = ${nullableString(body.manufacturerTypeName)},
-      "minimumOrderQuantity" = ${parseNullableNumber(body.minimumOrderQuantity)},
-      "quantityScale" = ${nullableString(body.quantityScale)},
-      "priceUnit" = ${nullableString(body.priceUnit)},
-      "deliveryTime" = ${nullableString(body.deliveryTime)},
-      "stockQuantity" = ${parseNullableNumber(body.stockQuantity)},
-      "purchasePrice" = ${parseNumber(body.purchasePrice)},
-      "laborCostRateKey" = ${cleanString(body.laborCostRateKey)},
-      "listPrice" = 0,
-      "salesPrice" = ${parseNumber(body.salesPrice)},
-      "vatRate" = ${parseNumber(body.vatRate, 19)},
-      "isLaborPosition" = ${isLaborPosition},
-      "isPlanningRelevant" = ${Boolean(body.isPlanningRelevant)},
-      "planningMinutesPerUnit" = ${parseInteger(body.planningMinutesPerUnit)},
-      "defaultPlanningBoard" = ${nullableString(body.defaultPlanningBoard)},
-      "defaultPlanningGroup" = ${nullableString(body.defaultPlanningGroup)},
-      "isActive" = ${body.isActive !== false},
-      "updatedAt" = CURRENT_TIMESTAMP
-    WHERE "id" = ${id}
-      AND "organizationId" = ${organization.id}
-    RETURNING *
-  `;
+  let rows: CatalogItemRow[];
+  try {
+    rows = await prisma.$queryRaw<CatalogItemRow[]>`
+      UPDATE "CatalogItem"
+      SET
+        "type" = ${type},
+        "number" = ${cleanString(body.number) || before.number},
+        "name" = ${name},
+        "category" = ${nullableString(body.category)},
+        "unit" = ${normalizeUnit(body.unit) || "Stk"},
+        "description" = ${nullableString(body.description)},
+        "matchcode" = ${nullableString(body.matchcode)},
+        "ean" = ${nullableString(body.ean)},
+        "costCenter" = ${nullableString(body.costCenter)},
+        "supplierName" = ${nullableString(body.supplierName)},
+        "supplierNumber" = ${nullableString(body.supplierNumber)},
+        "manufacturer" = ${nullableString(body.manufacturer)},
+        "manufacturerNumber" = ${nullableString(body.manufacturerNumber)},
+        "manufacturerTypeName" = ${nullableString(body.manufacturerTypeName)},
+        "minimumOrderQuantity" = ${parseNullableNumber(body.minimumOrderQuantity)},
+        "quantityScale" = ${nullableString(body.quantityScale)},
+        "priceUnit" = ${nullableString(body.priceUnit)},
+        "deliveryTime" = ${nullableString(body.deliveryTime)},
+        "stockQuantity" = ${parseNullableNumber(body.stockQuantity)},
+        "purchasePrice" = ${parseNumber(body.purchasePrice)},
+        "laborCostRateKey" = ${cleanString(body.laborCostRateKey)},
+        "listPrice" = 0,
+        "salesPrice" = ${parseNumber(body.salesPrice)},
+        "vatRate" = ${parseNumber(body.vatRate, 19)},
+        "isLaborPosition" = ${isLaborPosition},
+        "isPlanningRelevant" = ${Boolean(body.isPlanningRelevant)},
+        "planningMinutesPerUnit" = ${parseInteger(body.planningMinutesPerUnit)},
+        "defaultPlanningBoard" = ${nullableString(body.defaultPlanningBoard)},
+        "defaultPlanningGroup" = ${nullableString(body.defaultPlanningGroup)},
+        "isActive" = ${body.isActive !== false},
+        "updatedAt" = CURRENT_TIMESTAMP
+      WHERE "id" = ${id}
+        AND "organizationId" = ${organization.id}
+      RETURNING *
+    `;
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) {
+      throw error;
+    }
+
+    return NextResponse.json(
+      { error: "Eine Position mit dieser Nummer ist bereits vorhanden." },
+      { status: 409 }
+    );
+  }
   const after = rows[0];
   if (type === "package") {
     await replacePackageItems({
@@ -628,8 +713,8 @@ export async function PATCH(req: Request) {
     organization.id,
     before,
     after,
-    cleanString(body.actorUserId),
-    cleanString(body.actorName)
+    actor.id,
+    actorName
   );
 
   if (type === "package") {
@@ -638,8 +723,8 @@ export async function PATCH(req: Request) {
       catalogItemId: after.id,
       eventType: "package_items_updated",
       fieldName: "Bestandteile",
-      actorUserId: cleanString(body.actorUserId),
-      actorName: cleanString(body.actorName),
+      actorUserId: actor.id,
+      actorName,
       note: "Paketbestandteile aktualisiert",
     });
   }
@@ -650,14 +735,20 @@ export async function PATCH(req: Request) {
 export async function DELETE(req: Request) {
   const { searchParams } = new URL(req.url);
   const id = cleanString(searchParams.get("id"));
-  const actorUserId = cleanString(searchParams.get("actorUserId"));
-  const actorName = cleanString(searchParams.get("actorName"));
 
   if (!id) {
     return NextResponse.json({ error: "Artikel/Leistung fehlt." }, { status: 400 });
   }
 
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, searchParams.get("actorId") ?? searchParams.get("actorUserId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canManageCatalogItems(actor)) {
+    return forbiddenCatalogManagementResponse();
+  }
+  const actorName = getActorName(actor);
   await ensureCatalogTables();
 
   const rows = await prisma.$queryRaw<CatalogItemRow[]>`
@@ -680,7 +771,7 @@ export async function DELETE(req: Request) {
     fieldName: "Status",
     oldValue: "aktiv",
     newValue: "inaktiv",
-    actorUserId,
+    actorUserId: actor.id,
     actorName,
     note: "Stammdatensatz deaktiviert",
   });

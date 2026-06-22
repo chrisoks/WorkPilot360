@@ -18,6 +18,7 @@ model Organization {
   auditLogs        AuditLog[]
   businessAreas    BusinessArea[]
   businessAreaTargets BusinessAreaTarget[]
+  monthlyFinancialReportValues MonthlyFinancialReportValue[]
   categories       Category[]
   departments      Department[]
   escalationRules  EscalationRule[]
@@ -1198,6 +1199,102 @@ model ProjectLogbookEntry {
   projectMonth   String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @default(now())
+}
+
+model MonthlyFinancialReportValue {
+  id             String       @id @default(cuid())
+  organizationId String
+  lineKey        String
+  effectiveMonth String
+  amount         Float?
+  updatedByUserId String?
+  updatedByName String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, lineKey, effectiveMonth])
+  @@index([organizationId, effectiveMonth])
+}
+
+model ProjectMarketingQuotaItem {
+  id             String   @id
+  organizationId String
+  projectId      String
+  name           String
+  itemType       String?
+  quantityPerMonth Int    @default(0)
+  description    String?
+  zohoLink       String?
+  isActive       Boolean  @default(true)
+  startMonth     String?
+  endMonth       String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now())
+
+  @@index([organizationId, projectId])
+}
+
+model ProjectMarketingQuotaCompletion {
+  id             String   @id
+  organizationId String
+  projectId      String
+  itemId         String
+  month          String
+  completedByUserId String?
+  completedByName String?
+  completedAt    DateTime @default(now())
+  note           String?
+  revertedAt     DateTime?
+  revertedByUserId String?
+  revertedByName String?
+
+  @@index([organizationId, projectId, month])
+  @@index([organizationId, itemId])
+}
+
+model CustomerProjectNote {
+  id             String   @id
+  organizationId String
+  scope          String   @default("customer")
+  customerId     String?
+  customerName   String?
+  projectId      String?
+  projectTitle   String?
+  title          String
+  body           String
+  category       String   @default("Allgemein")
+  priority       String   @default("normal")
+  isActive       Boolean  @default(true)
+  requiresStampConfirmation Boolean @default(false)
+  requiresProjectCreateConfirmation Boolean @default(false)
+  confirmationFrequency String @default("always")
+  validFrom      String?
+  validUntil     String?
+  createdByUserId String?
+  createdByName String?
+  archivedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now())
+
+  @@index([organizationId, customerId])
+  @@index([organizationId, projectId])
+}
+
+model CustomerProjectNoteAcknowledgement {
+  id             String   @id
+  organizationId String
+  noteId         String
+  customerId     String?
+  projectId      String?
+  userId         String?
+  userName       String?
+  context        String
+  acknowledgedAt DateTime @default(now())
+  noteTitle      String?
+
+  @@index([organizationId, noteId])
+  @@index([organizationId, userId, context])
 }
 
 model ProjectTimeEntry {

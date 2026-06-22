@@ -15,6 +15,20 @@ const DOCUMENT_PREVIEW_WIDTH = 595;
 const DOCUMENT_PREVIEW_HEIGHT = 842;
 const APP_LOCALE = "de-DE";
 const APP_TIME_ZONE = "Europe/Berlin";
+const MAX_LOGBOOK_ATTACHMENT_BYTES = 12 * 1024 * 1024;
+const MAX_LOGBOOK_ENTRY_ATTACHMENT_BYTES = 48 * 1024 * 1024;
+const ALLOWED_LOGBOOK_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const ALLOWED_LOGBOOK_DOCUMENT_MIME_TYPES = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/csv",
+  "text/plain",
+]);
+const ALLOWED_LOGBOOK_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
+const ALLOWED_LOGBOOK_DOCUMENT_EXTENSIONS = new Set([".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".txt"]);
 
 function getTimeZoneOffsetMs(date: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -113,6 +127,22 @@ type AppTab =
   | "generalActivityReports"
   | "archive"
   | "settings";
+
+const CONTENT_MANAGEMENT_ENABLED = false;
+const contentManagementTabs: AppTab[] = [
+  "contentManagement",
+  "contentRound",
+  "editorialPlan",
+  "contentApprovals",
+  "contentCorrections",
+  "contentQuotas",
+  "ideaStore",
+];
+
+function isContentManagementTab(tab: AppTab) {
+  return contentManagementTabs.includes(tab);
+}
+
 type CalendarView = "month" | "week" | "day";
 type PerformancePeriod = "day" | "month" | "year";
 type ProductivityPeriod = "day" | "week" | "month" | "quarter" | "year";
@@ -127,10 +157,12 @@ type ReportAnalyticsTab =
   | "catalog"
   | "employees"
   | "overview"
+  | "monthlyReport"
   | "map";
 const allReportTabs: Array<{ id: ReportAnalyticsTab; label: string }> = [
   { id: "forecast", label: "Forecast & OP Kontrolle" },
   { id: "revenue", label: "Umsätze - Details" },
+  { id: "monthlyReport", label: "Monatsbericht" },
   { id: "sales", label: "Sales" },
   { id: "svs", label: "SVS Analyse" },
   { id: "projects", label: "Projekte" },
@@ -141,7 +173,14 @@ const allReportTabs: Array<{ id: ReportAnalyticsTab; label: string }> = [
   { id: "overview", label: "Umsatz- und Projektübersicht" },
   { id: "map", label: "Projektkarte" },
 ];
-type ReportPeriodPreset = "currentMonth" | "previousMonth" | "currentYear" | "last12" | "custom";
+type ReportPeriodPreset =
+  | "currentMonth"
+  | "previousMonth"
+  | "currentYear"
+  | "currentFiscalYear"
+  | "previousFiscalYear"
+  | "last12"
+  | "custom";
 type ForecastPeriodPreset =
   | "currentMonth"
   | "previousMonth"
@@ -154,6 +193,7 @@ type ReportProjectKindFilter = "all" | "oneTime" | "recurring";
 type ContactFormTab = "details" | "address" | "terms" | "payment" | "zugferd";
 type CustomerFileTab =
   | "logbook"
+  | "notes"
   | "images"
   | "documents"
   | "gaeb"
@@ -175,6 +215,7 @@ type CustomerDocumentType =
   | "Rechnungen";
 type ProjectFileTab =
   | "logbook"
+  | "notes"
   | "images"
   | "documents"
   | "gaeb"
@@ -182,6 +223,7 @@ type ProjectFileTab =
   | "appointments"
   | "forecast"
   | "budgets"
+  | "marketingQuotas"
   | "automaticBilling"
   | "profit"
   | "potentials"
@@ -1143,6 +1185,56 @@ type AccountingDocumentRow = {
   projectDocumentType?: CustomerDocumentType;
   searchText: string;
 };
+type MonthlyFinancialReportValue = {
+  id: string;
+  lineKey: string;
+  effectiveMonth: string;
+  amount: number | null;
+  updatedByUserId: string;
+  updatedByName: string;
+  createdAt: string;
+  updatedAt: string;
+};
+type MonthlyFinancialReportLine = {
+  key: string;
+  label: string;
+  kind: "revenue" | "manual" | "subtotal" | "result";
+  sign?: 1 | -1;
+  level?: number;
+  note: string;
+};
+const monthlyFinancialReportLines: MonthlyFinancialReportLine[] = [
+  { key: "revenue", label: "1. Umsatzerlöse", kind: "revenue", note: "Automatisch aus fakturierten, nicht stornierten Netto-Rechnungen." },
+  { key: "activated_own_work", label: "2. Aktivierte Eigenleistungen", kind: "manual", sign: 1, note: "Manuell pflegbar, wird ab Änderungsmonat fortgeschrieben." },
+  { key: "inventory_changes", label: "3. Bestandsveränderungen", kind: "manual", sign: 1, note: "Manuell pflegbar, wird ab Änderungsmonat fortgeschrieben." },
+  { key: "total_output", label: "4. Gesamtleistung", kind: "subtotal", note: "Summe aus Umsatzerlösen, aktivierten Eigenleistungen und Bestandsveränderungen." },
+  { key: "other_operating_income", label: "5. Sonstige betriebliche Erträge", kind: "manual", sign: 1, note: "Manuell pflegbar, wird ab Änderungsmonat fortgeschrieben." },
+  { key: "material_expenses", label: "6. Materialaufwand", kind: "manual", sign: -1, note: "Manuell pflegbar, wird ab Änderungsmonat fortgeschrieben." },
+  { key: "gross_profit", label: "7. Rohertrag", kind: "subtotal", note: "Gesamtleistung plus sonstige betriebliche Erträge abzüglich Materialaufwand." },
+  { key: "personnel_expenses", label: "8. Personalaufwand", kind: "manual", sign: -1, note: "Manuell pflegbar, wird ab Änderungsmonat fortgeschrieben." },
+  { key: "depreciation", label: "9. Abschreibungen", kind: "manual", sign: -1, note: "Manuell pflegbar, wird ab Änderungsmonat fortgeschrieben." },
+  { key: "other_operating_expenses", label: "10. Sonstige betriebliche Aufwendungen", kind: "subtotal", note: "Summe aus Betriebs-, Vertriebs- und Verwaltungskosten." },
+  { key: "operating_costs", label: "Betriebskosten", kind: "manual", sign: -1, level: 1, note: "Manuell pflegbar, wird ab Änderungsmonat fortgeschrieben." },
+  { key: "sales_costs", label: "Vertriebskosten", kind: "manual", sign: -1, level: 1, note: "Manuell pflegbar, wird ab Änderungsmonat fortgeschrieben." },
+  { key: "administration_costs", label: "Verwaltungskosten", kind: "manual", sign: -1, level: 1, note: "Manuell pflegbar, wird ab Änderungsmonat fortgeschrieben." },
+  { key: "operating_result", label: "11. Betriebsergebnis", kind: "result", note: "Rohertrag abzüglich Personalaufwand, Abschreibungen und sonstiger betrieblicher Aufwendungen." },
+  { key: "participation_income", label: "12. Erträge aus Beteiligungen", kind: "manual", sign: 1, note: "Manuell pflegbar, wird ab Änderungsmonat fortgeschrieben." },
+  { key: "securities_income", label: "13. Erträge aus Wertpapieren und Ausleihungen", kind: "manual", sign: 1, note: "Manuell pflegbar, wird ab Änderungsmonat fortgeschrieben." },
+  { key: "interest_income", label: "14. Sonstige Zinsen und ähnliche Erträge", kind: "manual", sign: 1, note: "Manuell pflegbar, wird ab Änderungsmonat fortgeschrieben." },
+  { key: "financial_depreciation", label: "15. Abschreibungen Finanzanlagen/Wertpapiere", kind: "manual", sign: -1, note: "Manuell pflegbar, wird ab Änderungsmonat fortgeschrieben." },
+  { key: "interest_expenses", label: "16. Zinsen und ähnliche Aufwendungen", kind: "manual", sign: -1, note: "Manuell pflegbar, wird ab Änderungsmonat fortgeschrieben." },
+  { key: "ordinary_result", label: "17. Ergebnis der gewöhnlichen Geschäftstätigkeit", kind: "result", note: "Betriebsergebnis plus Finanzerträge abzüglich Finanzaufwendungen." },
+  { key: "extraordinary_income", label: "18. Außerordentliche Erträge", kind: "manual", sign: 1, note: "Manuell pflegbar, wird ab Änderungsmonat fortgeschrieben." },
+  { key: "extraordinary_expenses", label: "19. Außerordentliche Aufwendungen", kind: "manual", sign: -1, note: "Manuell pflegbar, wird ab Änderungsmonat fortgeschrieben." },
+  { key: "extraordinary_result", label: "20. Außerordentliches Ergebnis", kind: "subtotal", note: "Außerordentliche Erträge abzüglich außerordentlicher Aufwendungen." },
+  { key: "income_taxes", label: "21. Steuern vom Einkommen und Ertrag", kind: "manual", sign: -1, note: "Manuell pflegbar, wird ab Änderungsmonat fortgeschrieben." },
+  { key: "other_taxes", label: "22. Sonstige Steuern", kind: "manual", sign: -1, note: "Manuell pflegbar, wird ab Änderungsmonat fortgeschrieben." },
+  { key: "annual_result", label: "23. Jahresüberschuss / Fehlbetrag", kind: "result", note: "Ergebnis nach außerordentlichem Ergebnis und Steuern." },
+  { key: "profit_carryforward", label: "24. Gewinnvortrag", kind: "manual", sign: 1, note: "Manuell pflegbar, wird ab Änderungsmonat fortgeschrieben." },
+  { key: "distribution", label: "25. Ausschüttung", kind: "manual", sign: -1, note: "Manuell pflegbar, wird ab Änderungsmonat fortgeschrieben." },
+  { key: "reserve_change", label: "26. Zuführung/Auflösung von Rücklagen", kind: "manual", sign: 1, note: "Manuell pflegbar. Negative Werte können mit Minus eingetragen werden." },
+  { key: "balance_profit", label: "27. Bilanzgewinn", kind: "result", note: "Jahresüberschuss plus Gewinnvortrag, Ausschüttung und Rücklagenveränderung." },
+];
 type AutoBillingTemplate = {
   company: "OK solutions" | "OK immocare";
   customerName: string;
@@ -1330,6 +1422,104 @@ type ProjectTimeBudgetAllocation = {
   id: string;
   month: string;
   hours: string;
+};
+
+type ProjectMarketingQuotaCompletion = {
+  id: string;
+  itemId: string;
+  projectId: string;
+  month: string;
+  completedByUserId: string;
+  completedByName: string;
+  completedAt: string;
+  note: string;
+  revertedAt: string;
+  revertedByUserId: string;
+  revertedByName: string;
+};
+
+type ProjectMarketingQuotaItem = {
+  id: string;
+  projectId: string;
+  name: string;
+  itemType: string;
+  quantityPerMonth: number;
+  description: string;
+  zohoLink: string;
+  isActive: boolean;
+  startMonth: string;
+  endMonth: string;
+  createdAt: string;
+  updatedAt: string;
+  completions: ProjectMarketingQuotaCompletion[];
+};
+
+type ProjectMarketingQuotaDraft = {
+  id: string;
+  name: string;
+  itemType: string;
+  quantityPerMonth: string;
+  description: string;
+  zohoLink: string;
+  isActive: boolean;
+  startMonth: string;
+  endMonth: string;
+};
+
+type CustomerProjectNoteAcknowledgement = {
+  id: string;
+  noteId: string;
+  customerId: string;
+  projectId: string;
+  userId: string;
+  userName: string;
+  context: string;
+  acknowledgedAt: string;
+  noteTitle: string;
+};
+
+type CustomerProjectNote = {
+  id: string;
+  scope: "customer" | "project";
+  customerId: string;
+  customerName: string;
+  projectId: string;
+  projectTitle: string;
+  title: string;
+  body: string;
+  category: string;
+  priority: string;
+  isActive: boolean;
+  requiresStampConfirmation: boolean;
+  requiresProjectCreateConfirmation: boolean;
+  confirmationFrequency: string;
+  validFrom: string;
+  validUntil: string;
+  createdByUserId: string;
+  createdByName: string;
+  archivedAt: string;
+  createdAt: string;
+  updatedAt: string;
+  acknowledgements: CustomerProjectNoteAcknowledgement[];
+};
+
+type CustomerProjectNoteDraft = {
+  id: string;
+  scope: "customer" | "project";
+  customerId: string;
+  customerName: string;
+  projectId: string;
+  projectTitle: string;
+  title: string;
+  body: string;
+  category: string;
+  priority: string;
+  isActive: boolean;
+  requiresStampConfirmation: boolean;
+  requiresProjectCreateConfirmation: boolean;
+  confirmationFrequency: string;
+  validFrom: string;
+  validUntil: string;
 };
 
 type AppNotification = {
@@ -1580,12 +1770,19 @@ type ProjectLogbookAttachmentPatchResponse = {
 type ProjectLogbookEntrySummary = {
   id: string;
   projectId: string;
+  date: string;
   title: string;
+  text: string;
+  author: string;
+  authorUserId?: string;
+  colleague: string;
+  visibleFor: string[];
   projectMonth?: string;
   updatedAt?: string;
   attachments: Array<{
     name: string;
     type: LogbookAttachment["type"];
+    mimeType?: string;
     size?: number;
   }>;
 };
@@ -2392,7 +2589,7 @@ const contentStatusOptions: ContentStatus[] = [
   "Veröffentlicht",
 ];
 
-const navigationTabs: Array<[AppTab, string]> = [
+const allNavigationTabs: Array<[AppTab, string]> = [
   ["overview", "Dashboard"],
   ["reports", "Auswertungen"],
   ["contacts", "Kontakte"],
@@ -2411,6 +2608,10 @@ const navigationTabs: Array<[AppTab, string]> = [
   ["employees", "Mitarbeiter"],
   ["settings", "Firmeneinstellungen"],
 ];
+
+const navigationTabs: Array<[AppTab, string]> = allNavigationTabs.filter(
+  ([tab]) => CONTENT_MANAGEMENT_ENABLED || !isContentManagementTab(tab)
+);
 
 function isAccountingRole(role?: string) {
   return role === "BUCHHALTUNG";
@@ -2432,14 +2633,14 @@ function getVisibleReportTabs(role?: string) {
     FUEHRUNGSKRAFT: ["overview", "projects", "svs", "kuzu", "employees", "map"],
     MITARBEITER: ["overview", "employees"],
     VERTRIEB: ["overview", "sales", "projects", "customers", "kuzu"],
-    BUCHHALTUNG: ["forecast", "revenue", "customers", "overview"],
+    BUCHHALTUNG: ["forecast", "revenue", "monthlyReport", "customers", "overview"],
     GAST: ["overview"],
   };
   const allowedTabs = allowedTabsByRole[role || ""] ?? ["overview"];
   return allReportTabs.filter((tab) => allowedTabs.includes(tab.id));
 }
 
-const appTabs: AppTab[] = [
+const allAppTabs: AppTab[] = [
   "overview",
   "dashboard",
   "kanban",
@@ -2489,8 +2690,13 @@ const appTabs: AppTab[] = [
   "settings",
 ];
 
+const appTabs: AppTab[] = allAppTabs.filter(
+  (tab) => CONTENT_MANAGEMENT_ENABLED || !isContentManagementTab(tab)
+);
+
 const projectFileTabs: ProjectFileTab[] = [
   "logbook",
+  "notes",
   "images",
   "documents",
   "gaeb",
@@ -2498,12 +2704,91 @@ const projectFileTabs: ProjectFileTab[] = [
   "appointments",
   "forecast",
   "budgets",
+  "marketingQuotas",
   "automaticBilling",
   "profit",
   "potentials",
   "tasks",
   "comparison",
   "checklists",
+];
+
+const emptyMarketingQuotaDraft: ProjectMarketingQuotaDraft = {
+  id: "",
+  name: "",
+  itemType: "",
+  quantityPerMonth: "1",
+  description: "",
+  zohoLink: "",
+  isActive: true,
+  startMonth: "",
+  endMonth: "",
+};
+
+const emptyCustomerProjectNoteDraft: CustomerProjectNoteDraft = {
+  id: "",
+  scope: "customer",
+  customerId: "",
+  customerName: "",
+  projectId: "",
+  projectTitle: "",
+  title: "",
+  body: "",
+  category: "Allgemein",
+  priority: "normal",
+  isActive: true,
+  requiresStampConfirmation: false,
+  requiresProjectCreateConfirmation: false,
+  confirmationFrequency: "always",
+  validFrom: "",
+  validUntil: "",
+};
+
+const customerProjectNoteCategories = ["Allgemein", "Abrechnung", "Zugang", "Objekt", "Kommunikation", "Sicherheit"];
+const customerProjectNotePriorities = [
+  { value: "normal", label: "Normal" },
+  { value: "important", label: "Wichtig" },
+  { value: "critical", label: "Kritisch" },
+];
+const customerProjectNoteFrequencies = [
+  { value: "always", label: "Jedes Mal" },
+  { value: "daily", label: "Einmal pro Tag" },
+  { value: "once_per_user", label: "Einmal pro Mitarbeiter" },
+];
+
+const marketingQuotaItemTypeOptions = [
+  "Reels (Social Media)",
+  "Beiträge (Social Media)",
+  "Storys (Social Media)",
+  "Flyer",
+  "Broschüren",
+  "Plakate",
+  "Anzeigen",
+  "E-Mail-Newsletter",
+  "Landingpages",
+  "Produktkataloge",
+  "Werbevideos",
+  "Banner",
+  "Messeaufsteller",
+  "Roll-ups",
+  "Visitenkarten",
+  "Gutscheine",
+  "Rabattaktionen",
+  "Kundenmagazine",
+  "Pressemitteilungen",
+  "Case Studies",
+  "Whitepaper",
+  "Infografiken",
+  "Produktdatenblätter",
+  "Verpackungen",
+  "Werbegeschenke",
+  "Präsentationen",
+  "Testimonials",
+  "Blogartikel",
+  "Podcasts",
+  "Webinare",
+  "Direct-Mailings",
+  "Werbespots",
 ];
 
 const customerDocumentTypes: CustomerDocumentType[] = [
@@ -4085,6 +4370,10 @@ function isWinterServiceProject(project?: Pick<HeroProjectPreview, "trade"> | nu
   return (project?.trade ?? "").trim().toLowerCase().includes("winterdienst");
 }
 
+function isMarketingProject(project?: Pick<HeroProjectPreview, "trade"> | null) {
+  return (project?.trade ?? "").trim().toLowerCase().includes("marketing");
+}
+
 function isAnnualBillingInterval(value?: string | null) {
   return value === "jährlich" || value === "j\u00c3\u00a4hrlich";
 }
@@ -4729,6 +5018,11 @@ export function DashboardPage() {
   const [reportPeriodPreset, setReportPeriodPreset] = useState<ReportPeriodPreset>("last12");
   const [isForecastQualityExpanded, setIsForecastQualityExpanded] = useState(false);
   const [selectedForecastQualityId, setSelectedForecastQualityId] = useState("");
+  const [monthlyFinancialReportValues, setMonthlyFinancialReportValues] = useState<MonthlyFinancialReportValue[]>([]);
+  const [monthlyFinancialReportDrafts, setMonthlyFinancialReportDrafts] = useState<Record<string, string>>({});
+  const [monthlyFinancialReportMessage, setMonthlyFinancialReportMessage] = useState("");
+  const [monthlyFinancialReportError, setMonthlyFinancialReportError] = useState("");
+  const [isSavingMonthlyFinancialReport, setIsSavingMonthlyFinancialReport] = useState(false);
   const [projectForecastDraft, setProjectForecastDraft] = useState({
     projectId: "",
     forecastBillingType: "monatlich",
@@ -4862,6 +5156,13 @@ export function DashboardPage() {
   const [projectBudgetMode, setProjectBudgetMode] = useState<"total" | "custom">("total");
   const [projectBudgetTotalDraft, setProjectBudgetTotalDraft] = useState("");
   const [projectBudgetMonthDrafts, setProjectBudgetMonthDrafts] = useState<Record<string, string>>({});
+  const [projectMarketingQuotaItems, setProjectMarketingQuotaItems] = useState<ProjectMarketingQuotaItem[]>([]);
+  const [marketingQuotaDraft, setMarketingQuotaDraft] =
+    useState<ProjectMarketingQuotaDraft>(emptyMarketingQuotaDraft);
+  const [isMarketingQuotaEditorOpen, setIsMarketingQuotaEditorOpen] = useState(false);
+  const [marketingQuotaMessage, setMarketingQuotaMessage] = useState("");
+  const [marketingQuotaError, setMarketingQuotaError] = useState("");
+  const [isMarketingQuotaSaving, setIsMarketingQuotaSaving] = useState(false);
   const [selectedProjectDocumentType, setSelectedProjectDocumentType] =
     useState<CustomerDocumentType>(() =>
       getDashboardUrlValue(
@@ -4949,6 +5250,26 @@ export function DashboardPage() {
   const [customerLogbookEntries, setCustomerLogbookEntries] = useState<CustomerLogbookEntry[]>([]);
   const [projectLogbookEntries, setProjectLogbookEntries] = useState<ProjectLogbookEntry[]>([]);
   const projectLogbookEntriesRef = useRef<ProjectLogbookEntry[]>([]);
+  const [customerProjectNotes, setCustomerProjectNotes] = useState<CustomerProjectNote[]>([]);
+  const [notesViewScope, setNotesViewScope] = useState<"customer" | "project">("customer");
+  const [noteDraft, setNoteDraft] = useState<CustomerProjectNoteDraft>(emptyCustomerProjectNoteDraft);
+  const [isNoteEditorOpen, setIsNoteEditorOpen] = useState(false);
+  const [noteError, setNoteError] = useState("");
+  const [noteMessage, setNoteMessage] = useState("");
+  const [isNoteSaving, setIsNoteSaving] = useState(false);
+  const [pendingStampNoteConfirm, setPendingStampNoteConfirm] = useState<{
+    notes: CustomerProjectNote[];
+    mode: StampMode;
+    projectId: string;
+    comment: string;
+    unproductiveLabel: string;
+  } | null>(null);
+  const [pendingProjectCreateNoteConfirm, setPendingProjectCreateNoteConfirm] = useState<{
+    notes: CustomerProjectNote[];
+    projectId: string;
+    customerId: string;
+  } | null>(null);
+  const skipNextStampNoteCheckRef = useRef(false);
   const [projectPotentials, setProjectPotentials] = useState<ProjectPotential[]>([]);
   const [projectStatusTimelineEntries, setProjectStatusTimelineEntries] = useState<StatusTimelineEntry[]>([]);
   const [projectLogbookSearch, setProjectLogbookSearch] = useState("");
@@ -5249,17 +5570,26 @@ export function DashboardPage() {
   const canManageProjectTimeEntries =
     activeUser?.role === "ADMIN" ||
     activeUser?.role === "GESCHAEFTSFUEHRER" ||
+    activeUser?.role === "BUCHHALTUNG" ||
     /geschäftsführer|gesch\u00c3\u00a4ftsf\u00c3\u00bchrer|geschaeftsfuehrer|ceo/i.test(activeUser?.roleLabel ?? "") ||
     /ceo/i.test(activeUser?.name ?? "");
   const canDeleteInvoices = activeUser?.role === "GESCHAEFTSFUEHRER";
   const isLostOffer = (offer: Pick<OfferItem, "status">) => offer.status === "Verloren" || offer.status === "Angebot verloren";
   const isDeletedOffer = (offer: Pick<OfferItem, "status">) => isDeletedStatus(offer.status);
   const isDeletedInvoice = (invoice: InvoiceItem) => isDeletedStatus(invoice.status);
+  const isFinanciallyActiveInvoice = (invoice: InvoiceItem) => {
+    const status = invoice.status.toLowerCase();
+    return (
+      invoice.status !== "Entwurf" &&
+      !isDeletedInvoice(invoice) &&
+      !status.includes("storniert") &&
+      !status.includes("storno")
+    );
+  };
   const isOfferWonByInvoice = (offer: Pick<OfferItem, "id" | "offerNumber">) =>
     invoices.some(
       (invoice) =>
-        !isDeletedInvoice(invoice) &&
-        invoice.status !== "Entwurf" &&
+        isFinanciallyActiveInvoice(invoice) &&
         (invoice.sourceOfferId === offer.id || invoice.sourceOfferNumber === offer.offerNumber)
     );
   const isWonOffer = (offer: OfferItem) => Boolean(offer.wonAt) || isOfferWonByInvoice(offer);
@@ -5456,7 +5786,9 @@ export function DashboardPage() {
   }
 
   async function loadPlanningEntries() {
-    const res = await fetch("/api/planning-entries", { cache: "no-store" });
+    if (!activeUserId) return;
+
+    const res = await fetch(`/api/planning-entries?actorUserId=${encodeURIComponent(activeUserId)}`, { cache: "no-store" });
 
     if (!res.ok) {
       setErrorMessage("Planungen konnten nicht geladen werden.");
@@ -5468,7 +5800,9 @@ export function DashboardPage() {
   }
 
   async function loadContentItems() {
-    const res = await fetch("/api/content-items", { cache: "no-store" });
+    if (!activeUserId) return [];
+
+    const res = await fetch(`/api/content-items?actorId=${encodeURIComponent(activeUserId)}`, { cache: "no-store" });
 
     if (!res.ok) {
       setErrorMessage("Content-Inhalte konnten nicht geladen werden.");
@@ -5494,6 +5828,11 @@ export function DashboardPage() {
   }
 
   async function createIdeaPost() {
+    if (!activeUserId) {
+      setIdeaStoreError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
+
     if (!ideaTitle.trim() || !ideaBody.trim()) {
       setIdeaStoreError("Bitte Titel und Beschreibung der Idee ausfüllen.");
       return;
@@ -5517,6 +5856,11 @@ export function DashboardPage() {
   }
 
   async function updateIdeaPost(ideaId: string, action: "comment" | "like" | "dislike" | "pin") {
+    if (!activeUserId) {
+      setIdeaStoreError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
+
     if ((action === "comment" || action === "dislike") && !ideaCommentDrafts[ideaId]?.trim()) {
       setIdeaFeedbackErrors((current) => ({
         ...current,
@@ -5729,6 +6073,11 @@ export function DashboardPage() {
   }
 
   async function saveContentItem() {
+    if (!activeUserId) {
+      setContentError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
+
     const owner = users.find((user) => user.id === contentDraft.ownerUserId);
     const method = editingContentItemId ? "PATCH" : "POST";
     const res = await fetch("/api/content-items", {
@@ -5774,6 +6123,11 @@ export function DashboardPage() {
       | "unlock-post-approval-edit",
     note = ""
   ) {
+    if (!activeUserId) {
+      setContentError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
+
     const res = await fetch("/api/content-items", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -5818,6 +6172,11 @@ export function DashboardPage() {
 
   async function deleteContentItem() {
     if (!editingContentItemId) return;
+    if (!activeUserId) {
+      setContentError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
+
     if (!window.confirm("Diesen Inhalt wirklich löschen?")) return;
 
     const res = await fetch("/api/content-items", {
@@ -5841,7 +6200,8 @@ export function DashboardPage() {
   }
 
   async function loadContacts() {
-    const res = await fetch("/api/contacts", { cache: "no-store" });
+    if (!activeUserId) return;
+    const res = await fetch(`/api/contacts?actorId=${encodeURIComponent(activeUserId)}`, { cache: "no-store" });
 
     if (!res.ok) {
       setErrorMessage("Kontakte konnten nicht geladen werden.");
@@ -5853,7 +6213,8 @@ export function DashboardPage() {
   }
 
   async function loadCatalogItems() {
-    const res = await fetch("/api/catalog-items", { cache: "no-store" });
+    if (!activeUserId) return;
+    const res = await fetch(`/api/catalog-items?actorId=${encodeURIComponent(activeUserId)}`, { cache: "no-store" });
 
     if (!res.ok) {
       setErrorMessage("Artikel & Leistungen konnten nicht geladen werden.");
@@ -5864,9 +6225,29 @@ export function DashboardPage() {
     setCatalogItems(data);
   }
 
+  function buildActorApiUrl(path: string, params: Record<string, string>) {
+    const query = new URLSearchParams({ ...params, actorId: activeUserId });
+    return `${path}?${query.toString()}`;
+  }
+
+  function getOfferPdfUrl(offerId: string) {
+    return buildActorApiUrl("/api/offers", { pdfId: offerId });
+  }
+
+  function getInvoicePdfUrl(invoiceId: string) {
+    return buildActorApiUrl("/api/invoices", { pdfId: invoiceId });
+  }
+
+  function getInvoiceXrechnungUrl(invoiceId: string) {
+    return buildActorApiUrl("/api/invoices", { xrechnungId: invoiceId });
+  }
+
   async function loadOffers(projectId = "") {
-    const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
-    const res = await fetch(`/api/offers${query}`, { cache: "no-store" });
+    if (!activeUserId) return;
+
+    const params: Record<string, string> = {};
+    if (projectId) params.projectId = projectId;
+    const res = await fetch(buildActorApiUrl("/api/offers", params), { cache: "no-store" });
 
     if (!res.ok) {
       setErrorMessage("Angebote konnten nicht geladen werden.");
@@ -5882,8 +6263,11 @@ export function DashboardPage() {
   }
 
   async function loadInvoices(projectId = "") {
-    const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
-    const res = await fetch(`/api/invoices${query}`, { cache: "no-store" });
+    if (!activeUserId) return;
+
+    const params: Record<string, string> = {};
+    if (projectId) params.projectId = projectId;
+    const res = await fetch(buildActorApiUrl("/api/invoices", params), { cache: "no-store" });
 
     if (!res.ok) {
       setErrorMessage("Rechnungen konnten nicht geladen werden.");
@@ -5899,7 +6283,9 @@ export function DashboardPage() {
   }
 
   async function loadLegacyInvoices() {
-    const res = await fetch("/api/legacy-invoices", { cache: "no-store" });
+    if (!activeUserId) return;
+
+    const res = await fetch(`/api/legacy-invoices?actorId=${encodeURIComponent(activeUserId)}`, { cache: "no-store" });
 
     if (!res.ok) {
       setErrorMessage("Altrechnungen konnten nicht geladen werden.");
@@ -5908,6 +6294,61 @@ export function DashboardPage() {
 
     const data = (await res.json()) as LegacyInvoiceItem[];
     setLegacyInvoices(data);
+  }
+
+  async function loadMonthlyFinancialReportValues() {
+    if (!activeUserId) return;
+
+    const res = await fetch(`/api/monthly-financial-report?actorId=${encodeURIComponent(activeUserId)}`, {
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      setErrorMessage("Monatsbericht konnte nicht geladen werden.");
+      return;
+    }
+
+    const data = (await res.json()) as MonthlyFinancialReportValue[];
+    setMonthlyFinancialReportValues(data);
+  }
+
+  async function saveMonthlyFinancialReportValue(lineKey: string, monthKey: string, rawValue: string) {
+    if (!activeUserId) return;
+
+    setIsSavingMonthlyFinancialReport(true);
+    setMonthlyFinancialReportMessage("");
+    setMonthlyFinancialReportError("");
+
+    const trimmed = rawValue.trim();
+    const amount = trimmed === "" ? null : parseReportAmount(trimmed);
+
+    const res = await fetch("/api/monthly-financial-report", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        actorId: activeUserId,
+        lineKey,
+        effectiveMonth: monthKey,
+        amount,
+      }),
+    });
+
+    setIsSavingMonthlyFinancialReport(false);
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setMonthlyFinancialReportError(data?.error ?? "Wert konnte nicht gespeichert werden.");
+      return;
+    }
+
+    const saved = (await res.json()) as MonthlyFinancialReportValue;
+    setMonthlyFinancialReportValues((currentValues) => [
+      saved,
+      ...currentValues.filter(
+        (value) => !(value.lineKey === saved.lineKey && value.effectiveMonth === saved.effectiveMonth)
+      ),
+    ]);
+    setMonthlyFinancialReportMessage("Wert ab diesem Monat gespeichert.");
   }
 
   async function markInvoiceAsPaid(invoice: InvoiceItem) {
@@ -5922,7 +6363,7 @@ export function DashboardPage() {
       body: JSON.stringify({
         id: invoice.id,
         action: "mark-paid",
-        actorName: activeUser?.name ?? "System",
+        actorId: activeUserId,
       }),
     });
 
@@ -5951,7 +6392,7 @@ export function DashboardPage() {
       body: JSON.stringify({
         id: invoice.id,
         action: "create-reminder-document",
-        actorName: activeUser?.name ?? "System",
+        actorId: activeUserId,
       }),
     });
 
@@ -5972,8 +6413,8 @@ export function DashboardPage() {
   }
 
   async function loadOfferHistory(projectId: string) {
-    if (!projectId) return;
-    const res = await fetch(`/api/offers?historyProjectId=${encodeURIComponent(projectId)}`, {
+    if (!projectId || !activeUserId) return;
+    const res = await fetch(buildActorApiUrl("/api/offers", { historyProjectId: projectId }), {
       cache: "no-store",
     });
 
@@ -5990,8 +6431,8 @@ export function DashboardPage() {
   }
 
   async function loadInvoiceHistory(projectId: string) {
-    if (!projectId) return;
-    const res = await fetch(`/api/invoices?historyProjectId=${encodeURIComponent(projectId)}`, {
+    if (!projectId || !activeUserId) return;
+    const res = await fetch(buildActorApiUrl("/api/invoices", { historyProjectId: projectId }), {
       cache: "no-store",
     });
 
@@ -6008,9 +6449,12 @@ export function DashboardPage() {
   }
 
   async function loadDocumentMailDispatches(projectId?: string) {
-    const url = projectId
-      ? `/api/document-mail?projectId=${encodeURIComponent(projectId)}`
-      : "/api/document-mail";
+    if (!activeUserId) return;
+
+    const params = new URLSearchParams({ actorId: activeUserId });
+    if (projectId) params.set("projectId", projectId);
+    if (!projectId) params.set("limit", "500");
+    const url = `/api/document-mail?${params.toString()}`;
     const res = await fetch(url, { cache: "no-store" });
 
     if (!res.ok) return;
@@ -6024,7 +6468,11 @@ export function DashboardPage() {
   }
 
   async function loadWinterServiceAutomationSettings() {
-    const res = await fetch("/api/winter-service-automation", { cache: "no-store" });
+    if (!activeUserId) return;
+
+    const res = await fetch(`/api/winter-service-automation?actorId=${encodeURIComponent(activeUserId)}`, {
+      cache: "no-store",
+    });
     if (!res.ok) return;
     const data = (await res.json()) as WinterServiceAutomationSettings;
     setWinterServiceAutomationSettings(data);
@@ -6032,10 +6480,12 @@ export function DashboardPage() {
   }
 
   async function saveWinterServiceAutomationSettings(nextSettings: WinterServiceAutomationSettings) {
+    if (!activeUserId) return null;
+
     const res = await fetch("/api/winter-service-automation", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(nextSettings),
+      body: JSON.stringify({ ...nextSettings, actorId: activeUserId }),
     });
     if (!res.ok) {
       setErrorMessage("Winterdienst-Automatik konnte nicht gespeichert werden.");
@@ -6048,7 +6498,9 @@ export function DashboardPage() {
   }
 
   async function loadCustomerFeedback() {
-    const res = await fetch("/api/customer-feedback", { cache: "no-store" });
+    if (!activeUserId) return;
+
+    const res = await fetch(`/api/customer-feedback?actorId=${encodeURIComponent(activeUserId)}`, { cache: "no-store" });
 
     if (!res.ok) return;
 
@@ -6057,7 +6509,11 @@ export function DashboardPage() {
   }
 
   async function loadCustomerFeedbackRequests() {
-    const res = await fetch("/api/customer-feedback-requests", { cache: "no-store" });
+    if (!activeUserId) return;
+
+    const res = await fetch(`/api/customer-feedback-requests?actorId=${encodeURIComponent(activeUserId)}`, {
+      cache: "no-store",
+    });
 
     if (!res.ok) return;
 
@@ -6580,7 +7036,7 @@ export function DashboardPage() {
     });
     setEditingOfferId(offer.id);
     setOfferError("");
-    setOfferPreviewDataUrl(offer.pdfAvailable ? `/api/offers?pdfId=${encodeURIComponent(offer.id)}` : "");
+    setOfferPreviewDataUrl(offer.pdfAvailable ? getOfferPdfUrl(offer.id) : "");
     setOfferLineSearchTerms({});
     setOpenOfferLinePickerId("");
     setIsOfferExecutionMonthPickerOpen(false);
@@ -6660,6 +7116,7 @@ export function DashboardPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id: editingOfferId,
+        actorId: activeUserId,
         ...offerPayload,
         saveAsDraft,
         projectId: selectedProjectFile.id,
@@ -6726,7 +7183,7 @@ export function DashboardPage() {
     setIsOfferModalOpen(false);
     setEditingOfferId("");
     if (!saveAsDraft && savedOffer.pdfAvailable) {
-      window.open(`/api/offers?pdfId=${encodeURIComponent(savedOffer.id)}`, "_blank");
+      window.open(getOfferPdfUrl(savedOffer.id), "_blank");
     }
   }
 
@@ -6772,7 +7229,7 @@ export function DashboardPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id: offer.id,
-        actorName: activeUser?.name || "Christian Eid",
+        actorId: activeUserId,
       }),
     });
 
@@ -6847,7 +7304,7 @@ export function DashboardPage() {
         action: "markLost",
         lostReason: reason,
         lostNote: note,
-        actorName: activeUser?.name || "Christian Eid",
+        actorId: activeUserId,
       }),
     });
 
@@ -6880,7 +7337,7 @@ export function DashboardPage() {
         id: offer.id,
         action: "markWon",
         wonReason: reason,
-        actorName: activeUser?.name || "Christian Eid",
+        actorId: activeUserId,
       }),
     });
 
@@ -6916,7 +7373,7 @@ export function DashboardPage() {
       body: JSON.stringify({
         id: offer.id,
         action: "restoreLost",
-        actorName: activeUser?.name || "Christian Eid",
+        actorId: activeUserId,
       }),
     });
 
@@ -7246,6 +7703,7 @@ export function DashboardPage() {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
+        actorId: activeUserId,
         projectId: project.id,
         month: shouldUseProjectMonthForProcess(project) ? monthKey : "",
         beforeImageKeys: getActivityReportImageKeys(project, "Vorherbilder", monthKey, options.dayKey),
@@ -7421,6 +7879,7 @@ export function DashboardPage() {
   }
 
   async function notifyProjectBillingReady(project?: HeroProjectPreview | null, monthKey = getCurrentMonthKey()) {
+    if (!activeUserId) return false;
     if (!project) return false;
 
     const isRecurring = isRecurringProjectKindValue(getProjectKind(project));
@@ -7444,6 +7903,7 @@ export function DashboardPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        actorId: activeUserId,
         userIds: recipientUserIds,
         subject,
         body,
@@ -7770,7 +8230,7 @@ export function DashboardPage() {
           : [createEmptyOfferLine(invoice.vatRate || 19)],
     });
     setEditingInvoiceId(invoice.id);
-    setInvoicePreviewDataUrl(invoice.pdfAvailable ? `/api/invoices?pdfId=${encodeURIComponent(invoice.id)}` : "");
+    setInvoicePreviewDataUrl(invoice.pdfAvailable ? getInvoicePdfUrl(invoice.id) : "");
     setInvoiceError("");
     setInvoiceLineSearchTerms({});
     setOpenInvoiceLinePickerId("");
@@ -8254,6 +8714,7 @@ export function DashboardPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id: editingInvoiceId,
+        actorId: activeUserId,
         ...draftToSave,
         saveAsDraft,
         billedStampEntryIds,
@@ -8311,7 +8772,7 @@ export function DashboardPage() {
     setInvoiceStampEntryIds([]);
     setInvoiceBillableStampEntryIds([]);
     if (!saveAsDraft && savedInvoice.pdfAvailable) {
-      window.open(`/api/invoices?pdfId=${encodeURIComponent(savedInvoice.id)}`, "_blank");
+      window.open(getInvoicePdfUrl(savedInvoice.id), "_blank");
     }
   }
 
@@ -8341,6 +8802,7 @@ export function DashboardPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         id: invoice.id,
+        actorId: activeUserId,
         ...invoiceDraftForFinalize,
         saveAsDraft: false,
         billedStampEntryIds: [],
@@ -8396,7 +8858,7 @@ export function DashboardPage() {
       body: JSON.stringify({
         id: invoice.id,
         action: "cancel",
-        actorName: activeUser?.name || "System",
+        actorId: activeUserId,
       }),
     });
 
@@ -8433,7 +8895,7 @@ export function DashboardPage() {
       "Rechnung",
       `Rechnung storniert: ${invoice.invoiceNumber}. Stornorechnung ${data.cancellationInvoice.invoiceNumber} wurde erstellt.`
     );
-    window.open(`/api/invoices?pdfId=${encodeURIComponent(data.cancellationInvoice.id)}`, "_blank");
+    window.open(getInvoicePdfUrl(data.cancellationInvoice.id), "_blank");
   }
 
   async function deleteInvoice(invoice: InvoiceItem, projectOverride?: HeroProjectPreview) {
@@ -8452,7 +8914,6 @@ export function DashboardPage() {
       body: JSON.stringify({
         id: invoice.id,
         actorId: activeUserId,
-        actorName: activeUser?.name || "System",
       }),
     });
 
@@ -8755,7 +9216,7 @@ export function DashboardPage() {
     setIsValidatingXrechnung(true);
     setXrechnungValidationResult(null);
     try {
-      const res = await fetch(`/api/invoices?xrechnungValidationId=${encodeURIComponent(draft.documentId)}`);
+      const res = await fetch(buildActorApiUrl("/api/invoices", { xrechnungValidationId: draft.documentId }));
       const data = (await res.json()) as XRechnungValidationResponse | { error?: string };
       if (!res.ok || !("validation" in data)) {
         setDocumentMailError(
@@ -9190,8 +9651,7 @@ export function DashboardPage() {
             ? roundCurrencyValue(catalogDraft.purchasePrice)
             : catalogDraft.purchasePrice,
         id: editingCatalogItemId,
-        actorUserId: activeUserId,
-        actorName: activeUser?.name ?? "",
+        actorId: activeUserId,
       }),
     });
 
@@ -9227,8 +9687,7 @@ export function DashboardPage() {
 
     const params = new URLSearchParams({
       id: item.id,
-      actorUserId: activeUserId,
-      actorName: activeUser?.name ?? "",
+      actorId: activeUserId,
     });
     const res = await fetch(`/api/catalog-items?${params.toString()}`, { method: "DELETE" });
 
@@ -9298,6 +9757,11 @@ export function DashboardPage() {
   }
 
   async function saveContact() {
+    if (!activeUserId) {
+      setErrorMessage("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
+
     const normalizedContactDraft = {
       ...contactDraft,
       category:
@@ -9319,6 +9783,7 @@ export function DashboardPage() {
       body: JSON.stringify({
         ...normalizedContactDraft,
         id: editingContactId,
+        actorId: activeUserId,
       }),
     });
 
@@ -9353,6 +9818,10 @@ export function DashboardPage() {
 
   async function deleteContact() {
     if (!editingContactId) return;
+    if (!activeUserId) {
+      setErrorMessage("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
 
     const contactName = [contactDraft.firstName, contactDraft.lastName].filter(Boolean).join(" ");
     const confirmed = window.confirm(
@@ -9365,7 +9834,7 @@ export function DashboardPage() {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ id: editingContactId }),
+      body: JSON.stringify({ id: editingContactId, actorId: activeUserId }),
     });
 
     if (!res.ok) {
@@ -9518,7 +9987,7 @@ export function DashboardPage() {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ ...contact, category: "Archiv" }),
+          body: JSON.stringify({ ...contact, category: "Archiv", actorId: activeUserId }),
         });
 
         if (!res.ok) {
@@ -9746,7 +10215,9 @@ export function DashboardPage() {
   }
 
   async function loadTrades() {
-    const res = await fetch("/api/trades", { cache: "no-store" });
+    if (!activeUserId) return;
+    const actorQuery = `actorId=${encodeURIComponent(activeUserId)}`;
+    const res = await fetch(`/api/trades?${actorQuery}`, { cache: "no-store" });
 
     if (!res.ok) {
       setErrorMessage("Gewerke konnten nicht geladen werden.");
@@ -9754,7 +10225,7 @@ export function DashboardPage() {
     }
 
     const data = await res.json();
-    const businessAreasRes = await fetch("/api/trades?businessAreas=1", { cache: "no-store" });
+    const businessAreasRes = await fetch(`/api/trades?businessAreas=1&${actorQuery}`, { cache: "no-store" });
     if (!businessAreasRes.ok) {
       setErrorMessage("Geschäftsbereiche konnten nicht geladen werden.");
       return;
@@ -9793,8 +10264,13 @@ export function DashboardPage() {
   }
 
   async function loadBusinessAreaTargets() {
+    if (!activeUserId) return;
     const months = getBusinessAreaTargetMonths();
-    const res = await fetch(`/api/business-area-targets?months=${encodeURIComponent(months.join(","))}`, {
+    const params = new URLSearchParams({
+      months: months.join(","),
+      actorId: activeUserId,
+    });
+    const res = await fetch(`/api/business-area-targets?${params.toString()}`, {
       cache: "no-store",
     });
 
@@ -9837,7 +10313,8 @@ export function DashboardPage() {
   }
 
   async function loadUnits() {
-    const res = await fetch("/api/units", { cache: "no-store" });
+    if (!activeUserId) return;
+    const res = await fetch(`/api/units?actorId=${encodeURIComponent(activeUserId)}`, { cache: "no-store" });
 
     if (!res.ok) {
       setErrorMessage("Einheiten konnten nicht geladen werden.");
@@ -10034,7 +10511,8 @@ export function DashboardPage() {
   }
 
   async function loadDocumentTypes() {
-    const res = await fetch("/api/document-types", { cache: "no-store" });
+    if (!activeUserId) return;
+    const res = await fetch(`/api/document-types?actorId=${encodeURIComponent(activeUserId)}`, { cache: "no-store" });
 
     if (!res.ok) {
       setDocumentTypeError("Dokumenttypen konnten nicht geladen werden.");
@@ -10047,7 +10525,8 @@ export function DashboardPage() {
   }
 
   async function loadDocumentTexts() {
-    const res = await fetch("/api/document-texts", { cache: "no-store" });
+    if (!activeUserId) return;
+    const res = await fetch(`/api/document-texts?actorId=${encodeURIComponent(activeUserId)}`, { cache: "no-store" });
 
     if (!res.ok) return;
 
@@ -10091,6 +10570,7 @@ export function DashboardPage() {
         kind: documentTextDraftKind,
         title,
         body,
+        actorId: activeUserId,
       }),
     });
 
@@ -10117,7 +10597,7 @@ export function DashboardPage() {
     const res = await fetch("/api/document-texts", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: item.id }),
+      body: JSON.stringify({ id: item.id, actorId: activeUserId }),
     });
 
     const data = (await res.json()) as { texts?: DocumentTextItem[]; error?: string };
@@ -10133,7 +10613,9 @@ export function DashboardPage() {
   }
 
   async function loadAbsences() {
-    const res = await fetch("/api/absences", { cache: "no-store" });
+    if (!activeUserId) return [];
+
+    const res = await fetch(`/api/absences?actorId=${encodeURIComponent(activeUserId)}`, { cache: "no-store" });
 
     if (!res.ok) {
       setErrorMessage("Abwesenheiten konnten nicht geladen werden.");
@@ -10146,11 +10628,12 @@ export function DashboardPage() {
   }
 
   async function loadHeroProjects() {
+    if (!activeUserId) return;
     setHasLoadedHeroProjects(false);
     setIsHeroProjectsLoading(true);
 
     try {
-      const res = await fetch("/api/hero/projects", { cache: "no-store" });
+      const res = await fetch(`/api/hero/projects?actorId=${encodeURIComponent(activeUserId)}`, { cache: "no-store" });
 
       if (!res.ok) {
         const data = await res.json().catch(() => null);
@@ -10185,7 +10668,10 @@ export function DashboardPage() {
   }
 
   async function loadProjectTimeEntries() {
-    const res = await fetch("/api/project-time-entries", { cache: "no-store" });
+    if (!activeUserId) return;
+
+    const params = new URLSearchParams({ actorUserId: activeUserId });
+    const res = await fetch(`/api/project-time-entries?${params.toString()}`, { cache: "no-store" });
 
     if (!res.ok) {
       setErrorMessage("Projektzeiten konnten nicht geladen werden.");
@@ -10194,6 +10680,371 @@ export function DashboardPage() {
 
     const data = (await res.json()) as StampTimeEntry[];
     setStampEntries(data.map((entry) => ({ ...entry, date: normalizeDateKeyValue(entry.date) })));
+  }
+
+  async function loadProjectMarketingQuotas(projectId: string) {
+    if (!projectId || !activeUserId) return [];
+
+    const params = new URLSearchParams({ projectId, actorId: activeUserId });
+    const res = await fetch(`/api/project-marketing-quotas?${params.toString()}`, {
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setMarketingQuotaError(data?.error ?? "Marketing-Kontingente konnten nicht geladen werden.");
+      return [];
+    }
+
+    const data = (await res.json()) as ProjectMarketingQuotaItem[];
+    setProjectMarketingQuotaItems(data);
+    return data;
+  }
+
+  function getProjectCustomerContact(project: HeroProjectPreview | null | undefined) {
+    if (!project) return null;
+    const projectCustomer = (project.customer || "").trim().toLowerCase();
+    return (
+      contacts.find((contact) => contact.id === project.contactId) ||
+      contacts.find((contact) => getContactLabel(contact).trim().toLowerCase() === projectCustomer) ||
+      contacts.find((contact) => getContactDisplayName(contact).trim().toLowerCase() === projectCustomer) ||
+      null
+    );
+  }
+
+  async function loadCustomerProjectNotes(input: { customerId?: string; projectId?: string; context?: string; userId?: string }) {
+    if (!activeUserId) return [];
+
+    const params = new URLSearchParams();
+    if (input.customerId) params.set("customerId", input.customerId);
+    if (input.projectId) params.set("projectId", input.projectId);
+    if (input.context) params.set("context", input.context);
+    if (input.userId) params.set("userId", input.userId);
+    params.set("actorId", activeUserId);
+    if (!params.has("customerId") && !params.has("projectId")) return [];
+
+    const res = await fetch(`/api/customer-project-notes?${params.toString()}`, { cache: "no-store" });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      setNoteError(data?.error ?? "Hinweise konnten nicht geladen werden.");
+      return [];
+    }
+
+    const notes = (data ?? []) as CustomerProjectNote[];
+    if (!input.context) setCustomerProjectNotes(notes);
+    return notes;
+  }
+
+  function openCustomerProjectNoteDraft(scope: "customer" | "project", note?: CustomerProjectNote) {
+    const customer =
+      selectedCustomerFile ||
+      getProjectCustomerContact(selectedProjectFile) ||
+      contacts.find((contact) => contact.id === note?.customerId) ||
+      null;
+    setNoteError("");
+    setNoteMessage("");
+    setNoteDraft(
+      note
+        ? {
+            id: note.id,
+            scope: note.scope,
+            customerId: note.customerId,
+            customerName: note.customerName,
+            projectId: note.projectId,
+            projectTitle: note.projectTitle,
+            title: note.title,
+            body: note.body,
+            category: note.category,
+            priority: note.priority,
+            isActive: note.isActive,
+            requiresStampConfirmation: note.requiresStampConfirmation,
+            requiresProjectCreateConfirmation: note.requiresProjectCreateConfirmation,
+            confirmationFrequency: note.confirmationFrequency,
+            validFrom: note.validFrom,
+            validUntil: note.validUntil,
+          }
+        : {
+            ...emptyCustomerProjectNoteDraft,
+            scope,
+            customerId: customer?.id || "",
+            customerName: customer ? getContactLabel(customer) : "",
+            projectId: scope === "project" ? selectedProjectFile?.id || "" : "",
+            projectTitle: scope === "project" ? selectedProjectFile?.title || "" : "",
+          }
+    );
+    setIsNoteEditorOpen(true);
+  }
+
+  async function saveCustomerProjectNote() {
+    const title = noteDraft.title.trim();
+    const body = noteDraft.body.trim();
+    if (!title || !body) {
+      setNoteError("Bitte Titel und Hinweistext eintragen.");
+      return;
+    }
+    if (noteDraft.scope === "customer" && !noteDraft.customerId) {
+      setNoteError("Bitte einen Kundenbezug auswaehlen.");
+      return;
+    }
+    if (noteDraft.scope === "project" && !noteDraft.projectId) {
+      setNoteError("Bitte einen Projektbezug auswaehlen.");
+      return;
+    }
+    if (!activeUserId) {
+      setNoteError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
+
+    setIsNoteSaving(true);
+    const res = await fetch("/api/customer-project-notes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...noteDraft,
+        actorId: activeUserId,
+        title,
+        body,
+        createdByUserId: activeUserId,
+        createdByName: activeUser?.name || "",
+      }),
+    });
+    const data = await res.json().catch(() => null);
+    setIsNoteSaving(false);
+
+    if (!res.ok) {
+      setNoteError(data?.error ?? "Hinweis konnte nicht gespeichert werden.");
+      return;
+    }
+
+    setIsNoteEditorOpen(false);
+    setNoteMessage("Hinweis gespeichert.");
+    if (selectedProjectFile) {
+      const customer = getProjectCustomerContact(selectedProjectFile);
+      await loadCustomerProjectNotes({ customerId: customer?.id || selectedProjectFile.contactId || "", projectId: selectedProjectFile.id });
+    } else if (selectedCustomerFile) {
+      await loadCustomerProjectNotes({ customerId: selectedCustomerFile.id });
+    }
+  }
+
+  async function archiveCustomerProjectNote(note: CustomerProjectNote) {
+    if (!activeUserId) {
+      setNoteError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
+    const confirmed = window.confirm(`Hinweis "${note.title}" archivieren?`);
+    if (!confirmed) return;
+    const res = await fetch("/api/customer-project-notes", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "archive", id: note.id, actorId: activeUserId }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setNoteError(data?.error ?? "Hinweis konnte nicht archiviert werden.");
+      return;
+    }
+    setCustomerProjectNotes((current) => current.filter((item) => item.id !== note.id));
+  }
+
+  async function acknowledgeCustomerProjectNotes(input: {
+    notes: CustomerProjectNote[];
+    context: "stamp" | "projectCreate";
+    customerId?: string;
+    projectId?: string;
+  }) {
+    if (input.notes.length === 0) return;
+    if (!activeUserId) {
+      throw new Error("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+    }
+    const res = await fetch("/api/customer-project-notes", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "acknowledge",
+        actorId: activeUserId,
+        noteIds: input.notes.map((note) => note.id),
+        context: input.context,
+        customerId: input.customerId || "",
+        projectId: input.projectId || "",
+        userId: activeUserId,
+        userName: activeUser?.name || "",
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      throw new Error(data?.error ?? "Hinweise konnten nicht bestaetigt werden.");
+    }
+  }
+
+  async function confirmPendingStampNotes() {
+    if (!pendingStampNoteConfirm) return;
+    const project = heroProjects.find((item) => item.id === pendingStampNoteConfirm.projectId);
+    const customer = getProjectCustomerContact(project);
+    try {
+      await acknowledgeCustomerProjectNotes({
+        notes: pendingStampNoteConfirm.notes,
+        context: "stamp",
+        customerId: customer?.id || project?.contactId || "",
+        projectId: pendingStampNoteConfirm.projectId,
+      });
+      setPendingStampNoteConfirm(null);
+      skipNextStampNoteCheckRef.current = true;
+      await confirmStampModal();
+    } catch (error) {
+      setNoteError(error instanceof Error ? error.message : "Hinweise konnten nicht bestaetigt werden.");
+    }
+  }
+
+  async function confirmPendingProjectCreateNotes() {
+    if (!pendingProjectCreateNoteConfirm) return;
+    try {
+      await acknowledgeCustomerProjectNotes({
+        notes: pendingProjectCreateNoteConfirm.notes,
+        context: "projectCreate",
+        customerId: pendingProjectCreateNoteConfirm.customerId,
+        projectId: pendingProjectCreateNoteConfirm.projectId,
+      });
+      setPendingProjectCreateNoteConfirm(null);
+    } catch (error) {
+      setNoteError(error instanceof Error ? error.message : "Hinweise konnten nicht bestaetigt werden.");
+    }
+  }
+
+  function openMarketingQuotaDraft(item?: ProjectMarketingQuotaItem) {
+    setMarketingQuotaError("");
+    setMarketingQuotaMessage("");
+    setIsMarketingQuotaEditorOpen(true);
+    setMarketingQuotaDraft(
+      item
+        ? {
+            id: item.id,
+            name: item.name,
+            itemType: item.itemType || item.name,
+            quantityPerMonth: String(item.quantityPerMonth || 1),
+            description: item.description,
+            zohoLink: item.zohoLink,
+            isActive: item.isActive,
+            startMonth: item.startMonth,
+            endMonth: item.endMonth,
+          }
+        : {
+            ...emptyMarketingQuotaDraft,
+            startMonth: selectedProjectFile?.projectRuntimeFrom?.slice(0, 7) || "",
+            endMonth: selectedProjectFile?.projectRuntimeUntil?.slice(0, 7) || "",
+          }
+    );
+  }
+
+  async function saveMarketingQuotaItem() {
+    if (!selectedProjectFile) return;
+    if (!activeUserId) {
+      setMarketingQuotaError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
+
+    setIsMarketingQuotaSaving(true);
+    setMarketingQuotaError("");
+    setMarketingQuotaMessage("");
+
+    try {
+      const res = await fetch("/api/project-marketing-quotas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...marketingQuotaDraft,
+          actorId: activeUserId,
+          projectId: selectedProjectFile.id,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setMarketingQuotaError(data?.error ?? "Marketingstueck konnte nicht gespeichert werden.");
+        return;
+      }
+
+      const data = (await res.json()) as ProjectMarketingQuotaItem[];
+      setProjectMarketingQuotaItems(data);
+      setMarketingQuotaDraft(emptyMarketingQuotaDraft);
+      setIsMarketingQuotaEditorOpen(false);
+      setMarketingQuotaMessage("Marketingstueck gespeichert.");
+    } catch (error) {
+      setMarketingQuotaError(error instanceof Error ? error.message : "Marketingstueck konnte nicht gespeichert werden.");
+    } finally {
+      setIsMarketingQuotaSaving(false);
+    }
+  }
+
+  async function completeMarketingQuotaItem(item: ProjectMarketingQuotaItem, month: string) {
+    if (!selectedProjectFile) return;
+    if (!activeUserId) {
+      setMarketingQuotaError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
+
+    setMarketingQuotaError("");
+    setMarketingQuotaMessage("");
+
+    const res = await fetch("/api/project-marketing-quotas", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "complete",
+        actorId: activeUserId,
+        projectId: selectedProjectFile.id,
+        itemId: item.id,
+        month,
+        actorUserId: activeUserId,
+        actorName: activeUser?.name || "Christian Eid",
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setMarketingQuotaError(data?.error ?? "Marketingstueck konnte nicht erledigt werden.");
+      return;
+    }
+
+    const data = (await res.json()) as ProjectMarketingQuotaItem[];
+    setProjectMarketingQuotaItems(data);
+    setMarketingQuotaMessage(`${item.name} als erledigt erfasst.`);
+    await loadProjectLogbookEntries();
+  }
+
+  async function revertLatestMarketingQuotaCompletion(item: ProjectMarketingQuotaItem, month: string) {
+    if (!selectedProjectFile) return;
+    if (!activeUserId) {
+      setMarketingQuotaError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
+
+    setMarketingQuotaError("");
+    setMarketingQuotaMessage("");
+
+    const res = await fetch("/api/project-marketing-quotas", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "revert-latest",
+        actorId: activeUserId,
+        projectId: selectedProjectFile.id,
+        itemId: item.id,
+        month,
+        actorUserId: activeUserId,
+        actorName: activeUser?.name || "Christian Eid",
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setMarketingQuotaError(data?.error ?? "Erledigt-Status konnte nicht zurueckgesetzt werden.");
+      return;
+    }
+
+    const data = (await res.json()) as ProjectMarketingQuotaItem[];
+    setProjectMarketingQuotaItems(data);
+    setMarketingQuotaMessage(`${item.name} wurde zurueckgesetzt.`);
+    await loadProjectLogbookEntries();
   }
 
   function getBerlinOffsetMs(timestampMs: number) {
@@ -10283,15 +11134,20 @@ export function DashboardPage() {
   }
 
   async function loadProjectLogbookEntries() {
-    const res = await fetch("/api/project-logbook-entries", { cache: "no-store" });
+    if (!activeUserId) return;
+
+    const params = new URLSearchParams({ actorId: activeUserId, summary: "1" });
+    const res = await fetch(`/api/project-logbook-entries?${params.toString()}`, {
+      cache: "no-store",
+    });
 
     if (!res.ok) {
       setLogbookError("Projekt-Logbucheinträge konnten nicht geladen werden.");
       return;
     }
 
-    const data = (await res.json()) as ProjectLogbookEntry[];
-    setProjectLogbookEntries(data);
+    const data = (await res.json()) as ProjectLogbookEntrySummary[];
+    setProjectLogbookEntries(data as ProjectLogbookEntry[]);
     setLogbookError("");
   }
 
@@ -10304,10 +11160,10 @@ export function DashboardPage() {
   }
 
   async function loadProjectLogbookEntriesForProject(projectId: string, options: { onlyChanged?: boolean } = {}) {
-    if (!projectId) return;
+    if (!projectId || !activeUserId) return;
 
     const updatedAfter = options.onlyChanged ? getProjectLogbookUpdatedAfter(projectId) : undefined;
-    const params = new URLSearchParams({ projectId });
+    const params = new URLSearchParams({ projectId, actorId: activeUserId });
     if (updatedAfter) params.set("updatedAfter", new Date(updatedAfter).toISOString());
 
     const res = await fetch(`/api/project-logbook-entries?${params.toString()}`, { cache: "no-store" });
@@ -10341,12 +11197,10 @@ export function DashboardPage() {
   }
 
   async function syncOpenProjectLogbookEntries(projectId: string) {
-    if (!projectId) return;
+    if (!projectId || !activeUserId) return;
 
-    const res = await fetch(
-      `/api/project-logbook-entries?projectId=${encodeURIComponent(projectId)}&summary=1`,
-      { cache: "no-store" }
-    );
+    const params = new URLSearchParams({ projectId, actorId: activeUserId, summary: "1" });
+    const res = await fetch(`/api/project-logbook-entries?${params.toString()}`, { cache: "no-store" });
 
     if (!res.ok) return;
 
@@ -10361,7 +11215,9 @@ export function DashboardPage() {
   }
 
   async function loadProjectPotentials() {
-    const res = await fetch("/api/potentials", { cache: "no-store" });
+    if (!activeUserId) return;
+
+    const res = await fetch(`/api/potentials?actorId=${encodeURIComponent(activeUserId)}`, { cache: "no-store" });
 
     if (!res.ok) {
       setErrorMessage("Zusatzverkäufe konnten nicht geladen werden.");
@@ -10373,7 +11229,9 @@ export function DashboardPage() {
   }
 
   async function loadSalesGoals() {
-    const res = await fetch("/api/sales-targets", { cache: "no-store" });
+    if (!activeUserId) return;
+
+    const res = await fetch(`/api/sales-targets?actorId=${encodeURIComponent(activeUserId)}`, { cache: "no-store" });
 
     if (!res.ok) {
       setGoalError("Ziele konnten nicht geladen werden.");
@@ -10476,6 +11334,11 @@ export function DashboardPage() {
     }
 
     if (notification.linkTarget === "content-item" && notification.linkTargetId) {
+      if (!CONTENT_MANAGEMENT_ENABLED) {
+        setIsNotificationsOpen(false);
+        return;
+      }
+
       let entry = contentItems.find((item) => item.id === notification.linkTargetId);
       if (!entry) {
         const loadedItems = await loadContentItems();
@@ -10496,6 +11359,11 @@ export function DashboardPage() {
     }
 
     if (notification.linkTarget === "idea-store") {
+      if (!CONTENT_MANAGEMENT_ENABLED) {
+        setIsNotificationsOpen(false);
+        return;
+      }
+
       await loadIdeaPosts();
       setActiveTab("ideaStore");
       setOpenSidebarMenus({ contentManagement: true });
@@ -11242,6 +12110,7 @@ export function DashboardPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             ...selectedPlanningOffer,
+            actorId: activeUserId,
             plannedExecutionMonth: targetExecutionMonth,
             saveAsDraft: false,
             projectId: selectedProject.id,
@@ -11527,6 +12396,11 @@ export function DashboardPage() {
   }
 
   function openMainView(tab: AppTab) {
+    if (!CONTENT_MANAGEMENT_ENABLED && isContentManagementTab(tab)) {
+      setActiveTab("overview");
+      return;
+    }
+
     setActiveTab(tab);
 
     if (tab === "contacts") {
@@ -11645,7 +12519,7 @@ export function DashboardPage() {
     const attendanceHours = projectHours + unproductiveHours;
     const assignedInvoices = invoices.filter(
       (invoice) =>
-        invoice.status !== "Entwurf" &&
+        isFinanciallyActiveInvoice(invoice) &&
         isGoalDateInPeriod(invoice.serviceDate || invoice.createdAt, goal.periodStart, goal.periodEnd) &&
         isGoalItemAssignedToUser(owner, invoice.internalContactName)
     );
@@ -11880,6 +12754,10 @@ export function DashboardPage() {
 
   async function saveGoal() {
     if (!activeUser || !["ADMIN", "GESCHAEFTSFUEHRER"].includes(activeUser.role)) return;
+    if (!activeUserId) {
+      setGoalError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
     const owner = users.find((user) => user.id === goalDraft.ownerUserId && user.isActive);
     if (!owner) {
       setGoalError("Bitte einen aktiven Mitarbeiter auswaehlen.");
@@ -11907,6 +12785,7 @@ export function DashboardPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          actorId: activeUserId,
           title,
           description: goalDraft.description,
           ownerUserId: owner.id,
@@ -12001,8 +12880,10 @@ export function DashboardPage() {
     loadEscalationRules();
     loadAbsences();
     loadPlanningEntries();
-    loadContentItems();
-    loadIdeaPosts();
+    if (CONTENT_MANAGEMENT_ENABLED) {
+      loadContentItems();
+      loadIdeaPosts();
+    }
     loadContacts();
     loadHeroProjects();
     loadProjectTimeEntries();
@@ -12016,6 +12897,7 @@ export function DashboardPage() {
     loadOffers();
     loadInvoices();
     loadLegacyInvoices();
+    loadMonthlyFinancialReportValues();
     loadDocumentMailDispatches();
     loadWinterServiceAutomationSettings();
     loadCustomerFeedback();
@@ -12028,6 +12910,21 @@ export function DashboardPage() {
     if (!firstActiveUser) return;
     setGoalDraft((current) => ({ ...current, ownerUserId: firstActiveUser.id }));
   }, [goalDraft.ownerUserId, users]);
+
+  useEffect(() => {
+    if (!activeUserId) return;
+    void loadTrades();
+    void loadBusinessAreaTargets();
+    void loadUnits();
+    void loadContacts();
+    void loadHeroProjects();
+    void loadProjectTimeEntries();
+    void loadDocumentTypes();
+    void loadDocumentTexts();
+    void loadCatalogItems();
+    void loadOffers();
+    void loadInvoices();
+  }, [activeUserId]);
 
   useEffect(() => {
     if (activeTab !== "personalData" || !["development", "disg"].includes(personalDataView)) return;
@@ -12056,6 +12953,18 @@ export function DashboardPage() {
       void loadDocumentMailDispatches(selectedProjectFileId);
     }
   }, [selectedProjectFileId]);
+
+  useEffect(() => {
+    if (projectFileTab !== "notes" || !selectedProjectFileId) return;
+    const project = heroProjects.find((item) => item.id === selectedProjectFileId);
+    const customer = getProjectCustomerContact(project);
+    void loadCustomerProjectNotes({ customerId: customer?.id || project?.contactId || "", projectId: selectedProjectFileId });
+  }, [contacts, heroProjects, projectFileTab, selectedProjectFileId]);
+
+  useEffect(() => {
+    if (customerFileTab !== "notes" || !selectedCustomerFileId) return;
+    void loadCustomerProjectNotes({ customerId: selectedCustomerFileId });
+  }, [customerFileTab, selectedCustomerFileId]);
 
   useEffect(() => {
     if (!hasLoadedHeroProjects || heroProjects.length === 0) return;
@@ -12396,6 +13305,22 @@ export function DashboardPage() {
   }, [projectFileTab]);
 
   useEffect(() => {
+    const project = heroProjects.find((item) => item.id === selectedProjectFileId);
+    if (!project) return;
+    if (projectFileTab === "marketingQuotas" && !isMarketingProject(project)) {
+      setProjectFileTab("logbook");
+    }
+  }, [heroProjects, projectFileTab, selectedProjectFileId]);
+
+  useEffect(() => {
+    const project = heroProjects.find((item) => item.id === selectedProjectFileId);
+    if (!project || projectFileTab !== "marketingQuotas") return;
+    if (!isMarketingProject(project)) return;
+
+    void loadProjectMarketingQuotas(project.id);
+  }, [heroProjects, projectFileTab, selectedProjectFileId]);
+
+  useEffect(() => {
     if (!["budgets", "forecast"].includes(projectFileTab) || !selectedProjectFileId) return;
 
     const project = heroProjects.find((item) => item.id === selectedProjectFileId);
@@ -12732,8 +13657,75 @@ export function DashboardPage() {
     );
   }
 
+  function formatLogbookFileSize(bytes: number) {
+    return `${Math.round(bytes / 1024 / 1024)} MB`;
+  }
+
+  function getLogbookFileExtension(fileName: string) {
+    return fileName.match(/\.[^.]+$/)?.[0]?.toLowerCase() || "";
+  }
+
+  function getLogbookAttachmentBytes(attachment: LogbookAttachment) {
+    const dataUrlPayload = attachment.dataUrl?.split(",")[1] || "";
+    const estimatedDataUrlBytes = dataUrlPayload ? Math.ceil((dataUrlPayload.length * 3) / 4) : 0;
+    return Math.max(attachment.size || 0, estimatedDataUrlBytes);
+  }
+
+  function getLogbookFileValidationMessage(file: File, type: "Bild" | "Dokument") {
+    if (file.size > MAX_LOGBOOK_ATTACHMENT_BYTES) {
+      return `"${file.name}" ist zu gross. Erlaubt sind maximal ${formatLogbookFileSize(
+        MAX_LOGBOOK_ATTACHMENT_BYTES
+      )} pro Datei.`;
+    }
+
+    const mimeType = file.type.toLowerCase();
+    const extension = getLogbookFileExtension(file.name);
+    const isImage =
+      ALLOWED_LOGBOOK_IMAGE_MIME_TYPES.has(mimeType) ||
+      (!mimeType && ALLOWED_LOGBOOK_IMAGE_EXTENSIONS.has(extension)) ||
+      ALLOWED_LOGBOOK_IMAGE_EXTENSIONS.has(extension);
+
+    if (type === "Bild") {
+      return isImage ? "" : `"${file.name}" ist kein erlaubtes Bildformat.`;
+    }
+
+    const isDocument =
+      ALLOWED_LOGBOOK_DOCUMENT_MIME_TYPES.has(mimeType) ||
+      (!mimeType && ALLOWED_LOGBOOK_DOCUMENT_EXTENSIONS.has(extension)) ||
+      ALLOWED_LOGBOOK_DOCUMENT_EXTENSIONS.has(extension);
+
+    return isImage || isDocument ? "" : `"${file.name}" ist kein erlaubter Dokumenttyp.`;
+  }
+
+  function getLogbookAttachmentsValidationMessage(attachments: LogbookAttachment[]) {
+    const totalBytes = attachments.reduce((sum, attachment) => sum + getLogbookAttachmentBytes(attachment), 0);
+    const oversizedAttachment = attachments.find(
+      (attachment) => getLogbookAttachmentBytes(attachment) > MAX_LOGBOOK_ATTACHMENT_BYTES
+    );
+
+    if (oversizedAttachment) {
+      return `"${oversizedAttachment.name}" ist zu gross. Erlaubt sind maximal ${formatLogbookFileSize(
+        MAX_LOGBOOK_ATTACHMENT_BYTES
+      )} pro Datei.`;
+    }
+
+    if (totalBytes > MAX_LOGBOOK_ENTRY_ATTACHMENT_BYTES) {
+      return `Die Anhaenge sind zusammen zu gross. Erlaubt sind maximal ${formatLogbookFileSize(
+        MAX_LOGBOOK_ENTRY_ATTACHMENT_BYTES
+      )} pro Eintrag.`;
+    }
+
+    return "";
+  }
+
   function readLogbookAttachment(file: File, type: "Bild" | "Dokument") {
     return new Promise<LogbookAttachment>((resolve, reject) => {
+      const validationMessage = getLogbookFileValidationMessage(file, type);
+      if (validationMessage) {
+        reject(new Error(validationMessage));
+        return;
+      }
+
       const reader = new FileReader();
 
       reader.onerror = () => reject(new Error("Anhang konnte nicht gelesen werden."));
@@ -12751,6 +13743,12 @@ export function DashboardPage() {
 
   function readProjectImageAttachment(file: File, displayNameBase?: string) {
     return new Promise<LogbookAttachment>((resolve, reject) => {
+      const validationMessage = getLogbookFileValidationMessage(file, "Bild");
+      if (validationMessage) {
+        reject(new Error(validationMessage));
+        return;
+      }
+
       const reader = new FileReader();
       const originalExtension = file.name.match(/\.[^.]+$/)?.[0]?.toLowerCase() || ".jpg";
       const safeOriginalExtension = [".jpg", ".jpeg", ".png", ".webp"].includes(originalExtension)
@@ -12816,10 +13814,25 @@ export function DashboardPage() {
   async function addLogbookAttachments(files: FileList | null, type: "Bild" | "Dokument") {
     if (!files) return;
 
-    const nextAttachments = await Promise.all(
-      Array.from(files).map((file) => readLogbookAttachment(file, type))
-    );
-    setLogbookAttachments((currentAttachments) => [...currentAttachments, ...nextAttachments]);
+    try {
+      const nextAttachments = await Promise.all(
+        Array.from(files).map((file) => readLogbookAttachment(file, type))
+      );
+      const validationMessage = getLogbookAttachmentsValidationMessage([
+        ...logbookAttachments,
+        ...nextAttachments,
+      ]);
+
+      if (validationMessage) {
+        setLogbookError(validationMessage);
+        return;
+      }
+
+      setLogbookAttachments((currentAttachments) => [...currentAttachments, ...nextAttachments]);
+      setLogbookError("");
+    } catch (error) {
+      setLogbookError(error instanceof Error ? error.message : "Anhang konnte nicht gelesen werden.");
+    }
   }
 
   function getProjectLogbookAuthorUser(entry: ProjectLogbookEntry) {
@@ -12901,9 +13914,18 @@ export function DashboardPage() {
     const taskTitle = logbookCreateTask
       ? logbookTaskTitle.trim() || logbookMessage.trim().slice(0, 80)
       : "";
+    const validationMessage = getLogbookAttachmentsValidationMessage(logbookAttachments);
+    if (validationMessage) {
+      setLogbookError(validationMessage);
+      return;
+    }
 
     if (logbookTarget === "project") {
       if (!selectedProjectFile) return;
+      if (!activeUserId) {
+        setLogbookError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+        return;
+      }
 
       const res = await fetch("/api/project-logbook-entries", {
         method: "POST",
@@ -12911,6 +13933,7 @@ export function DashboardPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          actorId: activeUserId,
           projectId: selectedProjectFile.id,
           title: "Eintrag",
           text: logbookMessage.trim(),
@@ -12968,6 +13991,10 @@ export function DashboardPage() {
 
   async function uploadProjectImageCategory(category: string, files: FileList | null) {
     if (!selectedProjectFile || !files || files.length === 0) return;
+    if (!activeUserId) {
+      setLogbookError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
 
     try {
       setLogbookError("");
@@ -12996,12 +14023,19 @@ export function DashboardPage() {
           readProjectImageAttachment(file, `${imageNamePrefix}_${existingImageCount + fileIndex + 1}_${uploadDate}`)
         )
       );
+      const validationMessage = getLogbookAttachmentsValidationMessage(attachments);
+      if (validationMessage) {
+        setLogbookError(validationMessage);
+        return;
+      }
+
       const res = await fetch("/api/project-logbook-entries", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          actorId: activeUserId,
           projectId: selectedProjectFile.id,
           title: `Bilder: ${category}`,
           text: `${category} hochgeladen`,
@@ -13066,6 +14100,10 @@ export function DashboardPage() {
     targetCategory?: string
   ) {
     if (!selectedProjectFile) return;
+    if (!activeUserId) {
+      setLogbookError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
     if (action === "delete" && !window.confirm(`Bild "${attachmentName}" wirklich löschen?`)) return;
 
     try {
@@ -13076,6 +14114,7 @@ export function DashboardPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          actorId: activeUserId,
           entryId,
           attachmentIndex,
           attachmentName,
@@ -13106,6 +14145,10 @@ export function DashboardPage() {
     documentLabel = "Dokument"
   ) {
     if (!selectedProjectFile) return;
+    if (!activeUserId) {
+      setLogbookError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
     if (!window.confirm(`${documentLabel} "${attachmentName}" wirklich löschen?`)) return;
 
     try {
@@ -13116,6 +14159,7 @@ export function DashboardPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          actorId: activeUserId,
           entryId,
           attachmentIndex,
           attachmentName,
@@ -13140,6 +14184,15 @@ export function DashboardPage() {
 
   async function addProjectLogbookEntry(projectId: string, title: string, text: string, attachments: LogbookAttachment[] = []) {
     if (!projectId || !text.trim()) return;
+    if (!activeUserId) {
+      setLogbookError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
+    const validationMessage = getLogbookAttachmentsValidationMessage(attachments);
+    if (validationMessage) {
+      setLogbookError(validationMessage);
+      return;
+    }
 
     const res = await fetch("/api/project-logbook-entries", {
       method: "POST",
@@ -13147,6 +14200,7 @@ export function DashboardPage() {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
+        actorId: activeUserId,
         projectId,
         title,
         text,
@@ -13164,7 +14218,11 @@ export function DashboardPage() {
       }),
     });
 
-    if (!res.ok) return;
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setLogbookError(data?.error ?? "Logbucheintrag konnte nicht gespeichert werden.");
+      return;
+    }
 
     const savedEntry = (await res.json()) as ProjectLogbookEntry;
     setProjectLogbookEntries((currentEntries) => [savedEntry, ...currentEntries]);
@@ -13320,6 +14378,8 @@ export function DashboardPage() {
   }
 
   async function createProjectPotential(project: HeroProjectPreview, description: string) {
+    if (!activeUserId) return null;
+
     const existingPotential = projectPotentials.find(
       (potential) =>
         potential.projectId === project.id &&
@@ -13332,6 +14392,7 @@ export function DashboardPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        actorId: activeUserId,
         contactId: project.contactId || "",
         customerName: project.customer || "",
         projectId: project.id,
@@ -13375,11 +14436,16 @@ export function DashboardPage() {
       setManualPotentialError("Bitte den Zusatzverkauf kurz beschreiben.");
       return;
     }
+    if (!activeUserId) {
+      setManualPotentialError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
 
     const res = await fetch("/api/potentials", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        actorId: activeUserId,
         contactId: project.contactId || "",
         customerName: project.customer || "",
         projectId: project.id,
@@ -13429,10 +14495,16 @@ export function DashboardPage() {
       description?: string;
     } = {}
   ) {
+    if (!activeUserId) {
+      setErrorMessage("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return null;
+    }
+
     const res = await fetch("/api/potentials", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        actorId: activeUserId,
         id: potential.id,
         status,
         note: input.note || "",
@@ -13738,6 +14810,10 @@ export function DashboardPage() {
 
   async function uploadProjectDocumentCategory(category: CustomerDocumentType, files: FileList | null) {
     if (!selectedProjectFile || !files || files.length === 0) return;
+    if (!activeUserId) {
+      setLogbookError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
 
     const createdAt = getProjectKind(selectedProjectFile).startsWith("Dauer")
       ? `${projectComparisonMonth || formatDateKey(new Date()).slice(0, 7)}-01T12:00:00.000Z`
@@ -13745,15 +14821,28 @@ export function DashboardPage() {
     const projectMonth = getProjectKind(selectedProjectFile).startsWith("Dauer")
       ? projectComparisonMonth || formatDateKey(new Date()).slice(0, 7)
       : "";
-    const attachments = await Promise.all(
-      Array.from(files).map((file) => readLogbookAttachment(file, "Dokument"))
-    );
+    let attachments: LogbookAttachment[];
+    try {
+      attachments = await Promise.all(
+        Array.from(files).map((file) => readLogbookAttachment(file, "Dokument"))
+      );
+      const validationMessage = getLogbookAttachmentsValidationMessage(attachments);
+      if (validationMessage) {
+        setLogbookError(validationMessage);
+        return;
+      }
+    } catch (error) {
+      setLogbookError(error instanceof Error ? error.message : "Dokumente konnten nicht gelesen werden.");
+      return;
+    }
+
     const res = await fetch("/api/project-logbook-entries", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
+        actorId: activeUserId,
         projectId: selectedProjectFile.id,
         title: `Dokumente: ${category}`,
         text: `${category} abgelegt`,
@@ -13850,7 +14939,7 @@ export function DashboardPage() {
   }
 
   async function saveSmokeDetectorInstallationReport() {
-    if (!selectedProjectFile || isSavingSmokeDetectorReport) return;
+    if (!selectedProjectFile || isSavingSmokeDetectorReport || !activeUserId) return;
 
     setIsSavingSmokeDetectorReport(true);
     setLogbookError("");
@@ -13862,6 +14951,7 @@ export function DashboardPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          actorId: activeUserId,
           projectId: selectedProjectFile.id,
           installationDate: smokeDetectorInstallationDate,
           installer: smokeDetectorInstaller.trim() || activeUser?.name || "",
@@ -13942,6 +15032,7 @@ export function DashboardPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          actorId: activeUserId,
           projectId: selectedProjectFile.id,
           month: reportMonth,
           beforeImageKeys: getVisibleReportImageKeys("Vorherbilder"),
@@ -13975,12 +15066,16 @@ export function DashboardPage() {
   }
 
   async function persistProject(project: HeroProjectPreview) {
+    if (!activeUserId) {
+      throw new Error("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+    }
+
     const res = await fetch("/api/hero/projects", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(project),
+      body: JSON.stringify({ ...project, actorId: activeUserId }),
     });
 
     if (!res.ok) {
@@ -14254,6 +15349,19 @@ await addProjectLogbookEntry(
       "Projekt",
       `Projekt angelegt: ${savedProject.projectNumber || savedProject.id} | ${savedProject.title}.`
     );
+    const projectCreateNotes = await loadCustomerProjectNotes({
+      customerId: selectedContact?.id || savedProject.contactId || "",
+      projectId: savedProject.id,
+      context: "projectCreate",
+      userId: activeUserId,
+    });
+    if (projectCreateNotes.length > 0) {
+      setPendingProjectCreateNoteConfirm({
+        notes: projectCreateNotes,
+        projectId: savedProject.id,
+        customerId: selectedContact?.id || savedProject.contactId || "",
+      });
+    }
     closeProjectModal();
   }
 
@@ -14560,6 +15668,7 @@ await addProjectLogbookEntry(
       },
       body: JSON.stringify({
         entryId: editingTimeEntryId,
+        actorId: activeUserId,
         durationMinutes: Number(zeitDauer),
         note: zeitNotiz,
       }),
@@ -14854,6 +15963,8 @@ await addProjectLogbookEntry(
       body: JSON.stringify({
         ...entry,
         projectId,
+        actorUserId: activeUserId,
+        actorName: activeUser?.name ?? "",
       }),
     });
 
@@ -15154,6 +16265,9 @@ await addProjectLogbookEntry(
 
   async function saveFinalInspectionForStamp(entry: StampTimeEntry) {
     if (entry.mode !== "project" || !entry.projectId) return;
+    if (!activeUserId) {
+      throw new Error("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+    }
 
     const res = await fetch("/api/final-inspections", {
       method: "POST",
@@ -15161,6 +16275,7 @@ await addProjectLogbookEntry(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
+        actorId: activeUserId,
         projectId: entry.projectId,
         projectLabel: entry.projectLabel || getStampProjectLabel(entry.projectId),
         employee: entry.employee || activeUser?.name || "",
@@ -15261,6 +16376,33 @@ await addProjectLogbookEntry(
         return;
       }
     }
+
+    if (
+      startsNextStamp &&
+      stampSelectionMode === "project" &&
+      selectedNextProject &&
+      !skipNextStampNoteCheckRef.current
+    ) {
+      const customer = getProjectCustomerContact(selectedNextProject);
+      const notes = await loadCustomerProjectNotes({
+        customerId: customer?.id || selectedNextProject.contactId || "",
+        projectId: selectedNextProject.id,
+        context: "stamp",
+        userId: activeUserId,
+      });
+      if (notes.length > 0) {
+        setPendingStampNoteConfirm({
+          notes,
+          mode: stampSelectionMode,
+          projectId: nextProjectId,
+          comment: nextStampComment,
+          unproductiveLabel: nextUnproductiveLabel,
+        });
+        setStampError("");
+        return;
+      }
+    }
+    skipNextStampNoteCheckRef.current = false;
 
     if (stampModalMode === "change" || stampModalMode === "stop") {
       try {
@@ -15879,7 +17021,7 @@ await addProjectLogbookEntry(
 
   function connectEmployeeMicrosoftMail() {
     const targetUserId = editingUserId || selectedEmployeeId;
-    if (!targetUserId || targetUserId === "__new__") {
+    if (!targetUserId || targetUserId === "__new__" || !activeUserId) {
       setEmployeeMailMessage("Bitte den Mitarbeiter zuerst speichern, danach kann Microsoft 365 verbunden werden.");
       return;
     }
@@ -15888,7 +17030,7 @@ await addProjectLogbookEntry(
       typeof window !== "undefined"
         ? `${window.location.pathname}${window.location.search}`
         : "/dashboard";
-    window.location.href = `/api/mail/oauth/start?userId=${encodeURIComponent(targetUserId)}&returnTo=${encodeURIComponent(returnTo)}`;
+    window.location.href = `/api/mail/oauth/start?userId=${encodeURIComponent(targetUserId)}&actorId=${encodeURIComponent(activeUserId)}&returnTo=${encodeURIComponent(returnTo)}`;
   }
 
   function disconnectEmployeeMicrosoftMail() {
@@ -17151,7 +18293,7 @@ await addProjectLogbookEntry(
   }
 
   async function printInvoiceDocument(invoice: InvoiceItem) {
-    printPdfDocument(`/api/invoices?pdfId=${encodeURIComponent(invoice.id)}`);
+    printPdfDocument(getInvoicePdfUrl(invoice.id));
 
     const res = await fetch("/api/invoices", {
       method: "PATCH",
@@ -17159,7 +18301,7 @@ await addProjectLogbookEntry(
       body: JSON.stringify({
         id: invoice.id,
         action: "mark-printed",
-        actorName: activeUser?.name || "System",
+        actorId: activeUserId,
       }),
     });
 
@@ -18393,7 +19535,7 @@ await addProjectLogbookEntry(
       stampState,
     };
   });
-  const overviewModules: Array<{
+  type OverviewModule = {
     tab: AppTab;
     kicker: string;
     title: string;
@@ -18401,7 +19543,8 @@ await addProjectLogbookEntry(
     body: string;
     action: string;
     tone: "blue" | "teal" | "amber" | "rose" | "slate";
-  }> = [
+  };
+  const allOverviewModules: OverviewModule[] = [
     {
       tab: "projectsSolutions",
       kicker: "Projekte",
@@ -18466,6 +19609,9 @@ await addProjectLogbookEntry(
       tone: "teal",
     },
   ];
+  const overviewModules = allOverviewModules.filter(
+    (module) => CONTENT_MANAGEMENT_ENABLED || !isContentManagementTab(module.tab)
+  );
   const plannedModuleLabels: Partial<Record<AppTab, string>> = {
     contacts: "Kontakte und CRM",
     newsFeed: "News-Feed",
@@ -18822,6 +19968,11 @@ await addProjectLogbookEntry(
       : new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 0, 0, 0);
   };
   const reportPeriodRange = (() => {
+    const fiscalYearStartMonth = 5;
+    const fiscalYearStart = (offset = 0) => {
+      const fiscalYear = reportNow.getMonth() >= fiscalYearStartMonth ? reportNow.getFullYear() : reportNow.getFullYear() - 1;
+      return new Date(fiscalYear + offset, fiscalYearStartMonth, 1, 0, 0, 0);
+    };
     if (reportPeriodPreset === "currentMonth") {
       return {
         start: new Date(reportNow.getFullYear(), reportNow.getMonth(), 1, 0, 0, 0),
@@ -18838,6 +19989,20 @@ await addProjectLogbookEntry(
       return {
         start: new Date(reportNow.getFullYear(), 0, 1, 0, 0, 0),
         end: new Date(reportNow.getFullYear(), 11, 31, 23, 59, 59),
+      };
+    }
+    if (reportPeriodPreset === "currentFiscalYear") {
+      const start = fiscalYearStart();
+      return {
+        start,
+        end: new Date(start.getFullYear() + 1, fiscalYearStartMonth, 0, 23, 59, 59),
+      };
+    }
+    if (reportPeriodPreset === "previousFiscalYear") {
+      const start = fiscalYearStart(-1);
+      return {
+        start,
+        end: new Date(start.getFullYear() + 1, fiscalYearStartMonth, 0, 23, 59, 59),
       };
     }
     if (reportPeriodPreset === "custom") {
@@ -19057,15 +20222,8 @@ await addProjectLogbookEntry(
   };
   const isInvoicePaid = (invoice: InvoiceItem) =>
     Boolean(invoice.isPaid) || invoice.status.toLowerCase().includes("bezahlt");
-  const isForecastRelevantInvoice = (invoice: InvoiceItem) => {
-    const status = invoice.status.toLowerCase();
-    return (
-      invoice.status !== "Entwurf" &&
-      !isDeletedInvoice(invoice) &&
-      !status.includes("storniert") &&
-      !status.includes("storno")
-    );
-  };
+  const isForecastRelevantInvoice = (invoice: InvoiceItem) => isFinanciallyActiveInvoice(invoice);
+  const isReportRevenueInvoice = (invoice: InvoiceItem) => isForecastRelevantInvoice(invoice);
   const getInvoiceDueState = (invoice: InvoiceItem) => {
     if (isInvoicePaid(invoice)) return { label: "Bezahlt", state: "good" as const, overdueDays: 0 };
     const dueDate = parseProjectDate(invoice.dueDate);
@@ -19123,12 +20281,9 @@ await addProjectLogbookEntry(
   };
   const reportSearchValue = normalizeStampSearchValue(reportSearch.trim());
   const reportInvoices = invoices.filter((invoice) => {
-    const status = invoice.status.toLowerCase();
     return (
       isReportDate(invoice.serviceDate || invoice.createdAt) &&
-      !isDeletedInvoice(invoice) &&
-      !status.includes("storniert") &&
-      !status.includes("storno")
+      isReportRevenueInvoice(invoice)
     );
   });
   const reportOffers = offers.filter((offer) => isReportDate(offer.createdAt));
@@ -20092,6 +21247,106 @@ await addProjectLogbookEntry(
       count: reportInvoices.filter((invoice) => !isInvoicePaid(invoice)).length,
     },
   ];
+  const getMonthlyFinancialManualValue = (lineKey: string, monthKey: string) => {
+    const matchingValues = monthlyFinancialReportValues
+      .filter((value) => value.lineKey === lineKey && value.effectiveMonth <= monthKey)
+      .sort((first, second) => second.effectiveMonth.localeCompare(first.effectiveMonth));
+    return matchingValues[0]?.amount ?? null;
+  };
+  const getMonthlyFinancialDraftKey = (lineKey: string, monthKey: string) => `${lineKey}:${monthKey}`;
+  const getMonthlyFinancialInputValue = (lineKey: string, monthKey: string) => {
+    const draftKey = getMonthlyFinancialDraftKey(lineKey, monthKey);
+    if (Object.prototype.hasOwnProperty.call(monthlyFinancialReportDrafts, draftKey)) {
+      return monthlyFinancialReportDrafts[draftKey];
+    }
+    const value = getMonthlyFinancialManualValue(lineKey, monthKey);
+    return value === null ? "" : formatCurrencyInputValue(value);
+  };
+  const monthlyFinancialRevenueByMonth = reportMonthKeys.reduce<Record<string, number>>((totals, month) => {
+    totals[month.key] = reportInvoices
+      .filter((invoice) => getProjectInvoiceMonth(invoice) === month.key)
+      .reduce((sum, invoice) => sum + Number(invoice.netTotal || 0), 0);
+    return totals;
+  }, {});
+  const isMonthlyFinancialSingleMonth = reportMonthKeys.length === 1;
+  const monthlyFinancialEditMonth = reportMonthKeys[0] ?? {
+    key: formatDateKey(reportStartDate).slice(0, 7),
+    label: reportPeriodLabel,
+  };
+  const monthlyFinancialPeriodLabel = isMonthlyFinancialSingleMonth ? monthlyFinancialEditMonth.label : reportPeriodLabel;
+  const getMonthlyFinancialSignedManualValue = (lineKey: string, monthKey: string) => {
+    const line = monthlyFinancialReportLines.find((item) => item.key === lineKey);
+    const value = getMonthlyFinancialManualValue(lineKey, monthKey);
+    return value === null ? null : (line?.sign ?? 1) * value;
+  };
+  const getMonthlyFinancialAmount = (lineKey: string, monthKey: string) =>
+    getMonthlyFinancialSignedManualValue(lineKey, monthKey) ?? 0;
+  const monthlyFinancialReportCellValue = (line: MonthlyFinancialReportLine, monthKey: string) => {
+    if (line.kind === "revenue") return monthlyFinancialRevenueByMonth[monthKey] ?? 0;
+    if (line.kind === "manual") {
+      return getMonthlyFinancialSignedManualValue(line.key, monthKey);
+    }
+    const revenue = monthlyFinancialRevenueByMonth[monthKey] ?? 0;
+    const totalOutput =
+      revenue + getMonthlyFinancialAmount("activated_own_work", monthKey) + getMonthlyFinancialAmount("inventory_changes", monthKey);
+    const grossProfit =
+      totalOutput +
+      getMonthlyFinancialAmount("other_operating_income", monthKey) +
+      getMonthlyFinancialAmount("material_expenses", monthKey);
+    const otherOperatingExpenses =
+      getMonthlyFinancialAmount("operating_costs", monthKey) +
+      getMonthlyFinancialAmount("sales_costs", monthKey) +
+      getMonthlyFinancialAmount("administration_costs", monthKey);
+    const operatingResult =
+      grossProfit +
+      getMonthlyFinancialAmount("personnel_expenses", monthKey) +
+      getMonthlyFinancialAmount("depreciation", monthKey) +
+      otherOperatingExpenses;
+    const ordinaryResult =
+      operatingResult +
+      getMonthlyFinancialAmount("participation_income", monthKey) +
+      getMonthlyFinancialAmount("securities_income", monthKey) +
+      getMonthlyFinancialAmount("interest_income", monthKey) +
+      getMonthlyFinancialAmount("financial_depreciation", monthKey) +
+      getMonthlyFinancialAmount("interest_expenses", monthKey);
+    const extraordinaryResult =
+      getMonthlyFinancialAmount("extraordinary_income", monthKey) + getMonthlyFinancialAmount("extraordinary_expenses", monthKey);
+    const annualResult =
+      ordinaryResult +
+      extraordinaryResult +
+      getMonthlyFinancialAmount("income_taxes", monthKey) +
+      getMonthlyFinancialAmount("other_taxes", monthKey);
+    const balanceProfit =
+      annualResult +
+      getMonthlyFinancialAmount("profit_carryforward", monthKey) +
+      getMonthlyFinancialAmount("distribution", monthKey) +
+      getMonthlyFinancialAmount("reserve_change", monthKey);
+
+    if (line.key === "total_output") return totalOutput;
+    if (line.key === "gross_profit") return grossProfit;
+    if (line.key === "other_operating_expenses") return otherOperatingExpenses;
+    if (line.key === "operating_result") return operatingResult;
+    if (line.key === "ordinary_result") return ordinaryResult;
+    if (line.key === "extraordinary_result") return extraordinaryResult;
+    if (line.key === "annual_result") return annualResult;
+    if (line.key === "balance_profit") return balanceProfit;
+    return null;
+  };
+  const monthlyFinancialReportPeriodValue = (line: MonthlyFinancialReportLine) => {
+    const values = reportMonthKeys.map((month) => monthlyFinancialReportCellValue(line, month.key));
+    return values.some((value) => value !== null)
+      ? values.reduce<number>((sum, value) => sum + (value ?? 0), 0)
+      : null;
+  };
+  const monthlyFinancialReportTotals = monthlyFinancialReportLines.reduce<Record<string, number | null>>((totals, line) => {
+    totals[line.key] = monthlyFinancialReportPeriodValue(line);
+    return totals;
+  }, {});
+  const monthlyFinancialRevenueTotal = monthlyFinancialReportTotals.revenue ?? 0;
+  const monthlyFinancialResultTotal = monthlyFinancialReportTotals.annual_result ?? 0;
+  const monthlyFinancialBalanceProfitTotal = monthlyFinancialReportTotals.balance_profit ?? 0;
+  const monthlyFinancialResultPercent =
+    monthlyFinancialRevenueTotal > 0 ? (monthlyFinancialResultTotal / monthlyFinancialRevenueTotal) * 100 : 0;
   const isSalesOfferVisibleForRole = (offer: OfferItem) => {
     const project = heroProjects.find((item) => item.id === offer.projectId);
     if (isProjectVisibleInProjectScopedAnalytics(project)) return true;
@@ -20101,8 +21356,7 @@ await addProjectLogbookEntry(
   const getOfferLinkedInvoices = (offer: OfferItem) =>
     invoices.filter(
       (invoice) =>
-        !isDeletedInvoice(invoice) &&
-        invoice.status !== "Entwurf" &&
+        isReportRevenueInvoice(invoice) &&
         (invoice.sourceOfferId === offer.id || invoice.sourceOfferNumber === offer.offerNumber)
     );
   const getOfferWonDateValue = (offer: OfferItem, linkedInvoices: InvoiceItem[]) =>
@@ -21050,6 +22304,8 @@ await addProjectLogbookEntry(
                 <option value="currentMonth">Aktueller Monat</option>
                 <option value="previousMonth">Vormonat</option>
                 <option value="currentYear">Aktuelles Jahr</option>
+                <option value="currentFiscalYear">Aktuelles Geschäftsjahr</option>
+                <option value="previousFiscalYear">Vorheriges Geschäftsjahr</option>
                 <option value="last12">Letzte 12 Monate</option>
                 <option value="custom">Individuell</option>
               </select>
@@ -21728,6 +22984,90 @@ await addProjectLogbookEntry(
         </>
       )}
 
+      {reportAnalyticsTab === "monthlyReport" && (
+        <section className={styles.monthlyFinancialShell}>
+          <div className={styles.monthlyFinancialMetrics}>
+            {renderReportMetric("Erlöse", formatMoney(monthlyFinancialRevenueTotal), "Aus aktiven Netto-Rechnungen")}
+            {renderReportMetric(
+              "Jahresüberschuss / Fehlbetrag",
+              formatMoney(monthlyFinancialResultTotal),
+              `${formatPercent(monthlyFinancialResultPercent)} vom Umsatz`,
+              monthlyFinancialResultTotal >= 0 ? "good" : "low"
+            )}
+            {renderReportMetric("Bilanzgewinn", formatMoney(monthlyFinancialBalanceProfitTotal), "Nach Gewinnvortrag, Ausschüttung und Rücklagen")}
+          </div>
+
+          <article className={`${styles.analyticsCard} ${styles.monthlyFinancialCard}`}>
+            <div className={styles.monthlyFinancialHeader}>
+              <div>
+                <h2>Monatsbericht Gewinn- und Verlustrechnung</h2>
+                <p>
+                  Erlöse kommen automatisch aus Rechnungen. Manuelle Werte gelten ab dem bearbeiteten Monat
+                  für alle Folgemonate, bis ein neuer Wert gesetzt wird.
+                  {!isMonthlyFinancialSingleMonth ? " Im Zeitraumfilter werden die Monatswerte summiert; bearbeiten kannst du die Werte in einem Einzelmonat." : ""}
+                </p>
+              </div>
+              <span>{isSavingMonthlyFinancialReport ? "Speichert..." : monthlyFinancialPeriodLabel}</span>
+            </div>
+            {monthlyFinancialReportMessage ? <p className={styles.stampSuccess}>{monthlyFinancialReportMessage}</p> : null}
+            {monthlyFinancialReportError ? <p className={styles.stampError}>{monthlyFinancialReportError}</p> : null}
+            <div className={styles.monthlyFinancialList}>
+              {monthlyFinancialReportLines.map((line) => {
+                const value = monthlyFinancialReportPeriodValue(line);
+                return (
+                  <div
+                    key={line.key}
+                    className={styles.monthlyFinancialRow}
+                    data-kind={line.kind}
+                    data-level={line.level ?? 0}
+                    data-state={typeof value === "number" && value < 0 ? "low" : typeof value === "number" && value > 0 ? "good" : "neutral"}
+                  >
+                    <div>
+                      <span>{line.label}</span>
+                      <small>{line.note}</small>
+                    </div>
+                    <div>
+                      {line.kind === "manual" && isMonthlyFinancialSingleMonth ? (
+                        <input
+                          inputMode="decimal"
+                          value={getMonthlyFinancialInputValue(line.key, monthlyFinancialEditMonth.key)}
+                          placeholder="-"
+                          onChange={(event) => {
+                            const draftKey = getMonthlyFinancialDraftKey(line.key, monthlyFinancialEditMonth.key);
+                            setMonthlyFinancialReportDrafts((current) => ({
+                              ...current,
+                              [draftKey]: event.target.value,
+                            }));
+                          }}
+                          onBlur={(event) => {
+                            const draftKey = getMonthlyFinancialDraftKey(line.key, monthlyFinancialEditMonth.key);
+                            const nextValue = event.target.value.trim();
+                            const currentValue = getMonthlyFinancialManualValue(line.key, monthlyFinancialEditMonth.key);
+                            const normalizedCurrent = currentValue === null ? "" : formatCurrencyInputValue(currentValue);
+                            if (nextValue === normalizedCurrent) {
+                              setMonthlyFinancialReportDrafts((current) => {
+                                const nextDrafts = { ...current };
+                                delete nextDrafts[draftKey];
+                                return nextDrafts;
+                              });
+                              return;
+                            }
+                            void saveMonthlyFinancialReportValue(line.key, monthlyFinancialEditMonth.key, nextValue);
+                          }}
+                        />
+                      ) : value === null ? (
+                        <strong>-</strong>
+                      ) : (
+                        <strong>{formatMoney(value)}</strong>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </article>
+        </section>
+      )}
       {reportAnalyticsTab === "revenue" && (
         <>
           <section className={styles.analyticsGrid}>
@@ -23137,6 +24477,7 @@ await addProjectLogbookEntry(
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            actorId: activeUserId,
             ...draft,
             projectId: row.project.id,
             projectNumber: row.project.projectNumber,
@@ -23227,6 +24568,7 @@ await addProjectLogbookEntry(
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             id: invoice.id,
+            actorId: activeUserId,
             ...invoiceDraftForFinalize,
             saveAsDraft: false,
             billingSource: "batch",
@@ -23469,7 +24811,7 @@ await addProjectLogbookEntry(
                         type="button"
                         className={styles.secondaryButton}
                         disabled={!invoice.pdfAvailable}
-                        onClick={() => window.open(`/api/invoices?pdfId=${encodeURIComponent(invoice.id)}`, "_blank")}
+                        onClick={() => window.open(getInvoicePdfUrl(invoice.id), "_blank")}
                       >
                         PDF öffnen
                       </button>
@@ -24938,18 +26280,133 @@ await addProjectLogbookEntry(
     );
   }
 
+  function renderCustomerProjectNotesPanel(context: "customer" | "project") {
+    const activeScope = notesViewScope;
+    const visibleNotes = customerProjectNotes
+      .filter((note) => note.scope === activeScope)
+      .sort((first, second) => {
+        const priorityOrder: Record<string, number> = { critical: 3, important: 2, normal: 1 };
+        return (
+          (priorityOrder[second.priority] ?? 0) - (priorityOrder[first.priority] ?? 0) ||
+          second.createdAt.localeCompare(first.createdAt)
+        );
+      });
+    const activeCustomer =
+      context === "customer"
+        ? selectedCustomerFile
+        : getProjectCustomerContact(selectedProjectFile);
+    const canCreateProjectNote = context === "project" && Boolean(selectedProjectFile);
+
+    return (
+      <section className={styles.notesPanel}>
+        <div className={styles.notesHeader}>
+          <div>
+            <h2>Hinweise</h2>
+            <p>
+              CRM-Hinweise fuer Kunde und Projekt. Pflicht-Hinweise koennen vor Stempelung oder Projektanlage bestaetigt werden.
+            </p>
+          </div>
+          <div className={styles.notesActions}>
+            <button type="button" className={styles.secondaryButton} onClick={() => openCustomerProjectNoteDraft("customer")}>
+              + Kundenhinweis
+            </button>
+            {canCreateProjectNote ? (
+              <button type="button" className={styles.primaryButton} onClick={() => openCustomerProjectNoteDraft("project")}>
+                + Projekthinweis
+              </button>
+            ) : null}
+          </div>
+        </div>
+        <div className={styles.notesScopeTabs}>
+          <button type="button" data-active={activeScope === "customer"} onClick={() => setNotesViewScope("customer")}>
+            Kundenhinweise
+          </button>
+          <button type="button" data-active={activeScope === "project"} onClick={() => setNotesViewScope("project")}>
+            Projekthinweise
+          </button>
+        </div>
+        {noteMessage ? <p className={styles.successMessage}>{noteMessage}</p> : null}
+        {noteError ? <p className={styles.emptyState}>{noteError}</p> : null}
+        {activeScope === "customer" && !activeCustomer ? (
+          <p className={styles.emptyState}>Fuer dieses Projekt ist noch kein eindeutiger Kunde verknuepft.</p>
+        ) : null}
+        <div className={styles.notesGrid}>
+          {visibleNotes.length === 0 ? (
+            <p className={styles.emptyState}>
+              Noch keine {activeScope === "customer" ? "Kundenhinweise" : "Projekthinweise"} angelegt.
+            </p>
+          ) : (
+            visibleNotes.map((note) => {
+              const lastAck = note.acknowledgements[0];
+              return (
+                <article
+                  key={note.id}
+                  className={styles.noteCard}
+                  data-priority={note.priority}
+                  onClick={() => openCustomerProjectNoteDraft(note.scope, note)}
+                >
+                  <header>
+                    <span>{note.category}</span>
+                    <strong>{note.title}</strong>
+                  </header>
+                  <p>{note.body}</p>
+                  <div className={styles.noteBadges}>
+                    {note.requiresStampConfirmation ? <span>Stempelung</span> : null}
+                    {note.requiresProjectCreateConfirmation ? <span>Projektanlage</span> : null}
+                    {!note.isActive ? <span>Inaktiv</span> : null}
+                  </div>
+                  {note.projectTitle && activeScope === "project" ? (
+                    <small>Projekt: {note.projectTitle}</small>
+                  ) : null}
+                  {lastAck ? (
+                    <small>
+                      Zuletzt bestaetigt von {lastAck.userName || "Mitarbeiter"} am {formatInstantDateTime(lastAck.acknowledgedAt)}
+                    </small>
+                  ) : null}
+                  <footer>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openCustomerProjectNoteDraft(note.scope, note);
+                      }}
+                    >
+                      Bearbeiten
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void archiveCustomerProjectNote(note);
+                      }}
+                    >
+                      Archivieren
+                    </button>
+                  </footer>
+                </article>
+              );
+            })
+          )}
+        </div>
+      </section>
+    );
+  }
+
   function renderCustomerFile() {
     if (!selectedCustomerFile) return null;
 
     const menuItems: Array<{ id: CustomerFileTab; label: string; icon: string }> = [
       { id: "logbook", label: "Logbuch", icon: "" },
+      { id: "notes", label: "Hinweise", icon: "" },
       { id: "images", label: "Bilder", icon: "" },
       { id: "documents", label: "Dokumente", icon: "" },
       { id: "gaeb", label: "Ausschreibungen (GAEB)", icon: "" },
-      { id: "contacts", label: "Ansprechpartner", icon: "?" },
+      { id: "contacts", label: "Ansprechpartner", icon: "" },
       { id: "potentials", label: "Zusatzverkäufe", icon: "" },
-      { id: "tasks", label: "Aufgaben", icon: "?" },
-      { id: "orders", label: "Aufträge", icon: "A" },
+      { id: "tasks", label: "Aufgaben", icon: "" },
+      { id: "orders", label: "Aufträge", icon: "" },
       { id: "projects", label: "Projekte", icon: "" },
       { id: "addresses", label: "Objektadressen", icon: "" },
     ];
@@ -24998,6 +26455,8 @@ await addProjectLogbookEntry(
     const customerProjectInvoices = invoices.filter(
       (invoice) => customerProjectIds.has(invoice.projectId) && !isDeletedInvoice(invoice)
     );
+    const customerProjectBaseOffers = customerProjectOffers.filter((offer) => offer.offerType !== "addendum");
+    const customerProjectAddendumOffers = customerProjectOffers.filter((offer) => offer.offerType === "addendum");
     const customerPotentials = projectPotentials.filter(
       (potential) =>
         customerProjectIds.has(potential.projectId) ||
@@ -25010,6 +26469,55 @@ await addProjectLogbookEntry(
         entry.title === `Dokumente: ${selectedCustomerDocumentType}` &&
         entry.attachments.some((attachment) => attachment.type === "Dokument")
     );
+    const uniqueCustomerDocumentTypes = Array.from(new Set(documentTypes));
+    const getCustomerDocumentCount = (type: CustomerDocumentType) => {
+      if (type === "Angebote") return customerProjectBaseOffers.length;
+      if (type === "Angebote: Nachtragsangebote") return customerProjectAddendumOffers.length;
+      if (type === "Rechnungen") return customerProjectInvoices.length;
+      return customerProjectLogEntries
+        .filter(
+          (entry) =>
+            (entry.title === `Dokumente: ${type}` ||
+              (type === "Checklisten" && entry.title === "Dokumente: Rauchmelder-Nachweise")) &&
+            entry.attachments.some((attachment) => attachment.type === "Dokument")
+        )
+        .reduce(
+          (sum, entry) => sum + entry.attachments.filter((attachment) => attachment.type === "Dokument").length,
+          0
+        );
+    };
+    const customerDocumentCountByType = Object.fromEntries(
+      uniqueCustomerDocumentTypes.map((type) => [type, getCustomerDocumentCount(type)])
+    ) as Record<CustomerDocumentType, number>;
+    const customerDocumentTotalCount = uniqueCustomerDocumentTypes.reduce(
+      (sum, type) => sum + (customerDocumentCountByType[type] || 0),
+      0
+    );
+    const customerImageCount = customerProjectLogEntries
+      .filter((entry) => entry.title?.startsWith("Bilder:"))
+      .reduce((sum, entry) => sum + entry.attachments.filter((attachment) => attachment.type === "Bild").length, 0);
+    const customerTaskCount = tasks.filter((task) => {
+      if (task.projectId && customerProjectIds.has(String(task.projectId))) return true;
+      const haystack = [task.kunde, task.titel, task.beschreibung].join(" ").toLowerCase();
+      const customerMarkers = [
+        selectedCustomerLabel,
+        selectedCustomerDisplayName,
+        selectedCustomerFile.companyName,
+        selectedCustomerFile.customerNumber,
+      ]
+        .filter(Boolean)
+        .map((value) => String(value).toLowerCase());
+      return customerMarkers.some((marker) => marker && haystack.includes(marker));
+    }).length;
+    const getCustomerMenuCount = (id: CustomerFileTab) => {
+      if (id === "images") return customerImageCount;
+      if (id === "documents") return customerDocumentTotalCount;
+      if (id === "contacts") return customerFileContacts.length;
+      if (id === "potentials") return customerPotentials.length;
+      if (id === "tasks") return customerTaskCount;
+      if (id === "projects") return customerProjects.length;
+      return 0;
+    };
     const logbookEntries = [
       ...customerLogbookEntries
         .filter((entry) => entry.customerId === selectedCustomerFile.id)
@@ -25073,11 +26581,14 @@ await addProjectLogbookEntry(
                   >
                     <span>{item.icon}</span>
                     {item.label}
+                    {getCustomerMenuCount(item.id) > 0 ? (
+                      <strong className={styles.projectNavCount}>{getCustomerMenuCount(item.id)}</strong>
+                    ) : null}
                     <b>v</b>
                   </button>
                   {customerFileTab === "documents" && (
                     <div className={styles.customerFileSubNav}>
-                      {documentTypes.map((type) => (
+                      {uniqueCustomerDocumentTypes.map((type) => (
                         <button
                           key={type}
                           type="button"
@@ -25088,6 +26599,9 @@ await addProjectLogbookEntry(
                           }}
                         >
                           {type}
+                          {customerDocumentCountByType[type] > 0 ? (
+                            <strong>{customerDocumentCountByType[type]}</strong>
+                          ) : null}
                         </button>
                       ))}
                     </div>
@@ -25102,6 +26616,9 @@ await addProjectLogbookEntry(
                 >
                   <span>{item.icon}</span>
                   {item.label}
+                  {getCustomerMenuCount(item.id) > 0 ? (
+                    <strong className={styles.projectNavCount}>{getCustomerMenuCount(item.id)}</strong>
+                  ) : null}
                 </button>
               )
             )}
@@ -25210,6 +26727,8 @@ await addProjectLogbookEntry(
                   ))}
                 </div>
               </>
+            ) : customerFileTab === "notes" ? (
+              renderCustomerProjectNotesPanel("customer")
             ) : customerFileTab === "documents" ? (
               <div className={styles.customerDocumentModule}>
                 <div className={styles.customerFileMainHeader}>
@@ -25266,7 +26785,7 @@ await addProjectLogbookEntry(
                                   type="button"
                                   className={styles.timeEntryEditButton}
                                   disabled={!invoice.pdfAvailable}
-                                  onClick={() => window.open(`/api/invoices?pdfId=${encodeURIComponent(invoice.id)}`, "_blank")}
+                                  onClick={() => window.open(getInvoicePdfUrl(invoice.id), "_blank")}
                                 >
                                   PDF öffnen
                                 </button>
@@ -25350,7 +26869,7 @@ await addProjectLogbookEntry(
                               <button
                                 type="button"
                                 className={styles.timeEntryEditButton}
-                                onClick={() => window.open(`/api/offers?pdfId=${encodeURIComponent(offer.id)}`, "_blank")}
+                                onClick={() => window.open(getOfferPdfUrl(offer.id), "_blank")}
                               >
                                 PDF öffnen
                               </button>
@@ -25701,6 +27220,7 @@ await addProjectLogbookEntry(
       appointments: "Hier werden Termine geplant und die gebuchten Stempelzeiten mit Zuordnung und Rechnungsstatus angezeigt.",
       forecast: "Hier wird der kaufmännische Forecastbetrag für Dauerläufer gepflegt, solange noch keine echte Monatsrechnung vorhanden ist.",
       budgets: "Hier werden die monatlichen Projektzeitkontingente gepflegt. Diese Werte sind die Soll-Zeiten für Planung und Auswertung.",
+      marketingQuotas: "Hier werden die monatlich vereinbarten Marketingstücke gezählt.",
       profit: "Hier wird der geschätzte Projektgewinn aus Rechnungen, Stempelzeiten und Materialkosten ausgewertet.",
       comparison: "Hier stehen die Vorgabezeiten aus Angeboten je Mitarbeiter und Position. Von hier aus werden offene Zeiten verplant.",
     };
@@ -25717,6 +27237,7 @@ await addProjectLogbookEntry(
     );
     const menuItems: Array<{ id: ProjectFileTab; label: string; icon: string }> = [
       { id: "logbook", label: "Logbuch", icon: "" },
+      { id: "notes", label: "Hinweise", icon: "!" },
       { id: "images", label: "Bilder", icon: "" },
       { id: "documents", label: "Dokumente", icon: "" },
       { id: "appointments", label: "Termine & Stempelungen", icon: "" },
@@ -25725,6 +27246,9 @@ await addProjectLogbookEntry(
             { id: "forecast" as ProjectFileTab, label: "Forecast", icon: "" },
             { id: "budgets" as ProjectFileTab, label: "Projektzeitkontingente", icon: "" },
           ]
+        : []),
+      ...(isMarketingProject(selectedProjectFile)
+        ? [{ id: "marketingQuotas" as ProjectFileTab, label: "Marketing-Kontingente", icon: "" }]
         : []),
       { id: "automaticBilling", label: "Automatische Abrechnung", icon: "" },
       { id: "profit", label: "Projektgewinn", icon: "" },
@@ -26128,6 +27652,57 @@ await addProjectLogbookEntry(
         setErrorMessage(error instanceof Error ? error.message : "Projektzeitkontingente konnten nicht gespeichert werden.");
       }
     };
+    const marketingQuotaMonth = currentProjectMonthKey;
+    const activeMarketingQuotaItems = projectMarketingQuotaItems.filter((item) => {
+      if (!item.isActive) return false;
+      if (item.startMonth && marketingQuotaMonth < item.startMonth) return false;
+      if (item.endMonth && marketingQuotaMonth > item.endMonth) return false;
+      return true;
+    });
+    const marketingQuotaDoneTotal = activeMarketingQuotaItems.reduce(
+      (sum, item) =>
+        sum + item.completions.filter((completion) => completion.month === marketingQuotaMonth && !completion.revertedAt).length,
+      0
+    );
+    const marketingQuotaTargetTotal = activeMarketingQuotaItems.reduce(
+      (sum, item) => sum + Number(item.quantityPerMonth || 0),
+      0
+    );
+    const getMarketingQuotaCategoryLabel = (itemType: string) => {
+      const baseLabel = (itemType || "Sonstige Marketingstücke").replace(/\s*\([^)]*\)\s*/g, "").trim();
+      if (baseLabel === "Reels") return "Reels";
+      if (baseLabel === "Beiträge") return "Beiträge";
+      if (baseLabel === "Storys") return "Storys";
+      return baseLabel || "Sonstige Marketingstücke";
+    };
+    const getMarketingQuotaUnitLabel = (item: ProjectMarketingQuotaItem, index: number) => {
+      const customName = item.name.trim();
+      if (customName) return `${customName} ${index + 1}`;
+      const category = getMarketingQuotaCategoryLabel(item.itemType);
+      if (category === "Reels") return `Reel ${index + 1}`;
+      if (category === "Beiträge") return `Beitrag ${index + 1}`;
+      if (category === "Storys") return `Story ${index + 1}`;
+      return `${category} ${index + 1}`;
+    };
+    const marketingQuotaGroups = activeMarketingQuotaItems.reduce<
+      Array<{ label: string; items: ProjectMarketingQuotaItem[] }>
+    >((groups, item) => {
+      const label = getMarketingQuotaCategoryLabel(item.itemType);
+      const existingGroup = groups.find((group) => group.label === label);
+      if (existingGroup) {
+        existingGroup.items.push(item);
+      } else {
+        groups.push({ label, items: [item] });
+      }
+      return groups;
+    }, []);
+    const editingMarketingQuotaItem = marketingQuotaDraft.id
+      ? projectMarketingQuotaItems.find((item) => item.id === marketingQuotaDraft.id)
+      : null;
+    const editingMarketingQuotaMonthDoneCount =
+      editingMarketingQuotaItem?.completions.filter(
+        (completion) => completion.month === marketingQuotaMonth && !completion.revertedAt
+      ).length ?? 0;
     const projectOffers = offers.filter((offer) => offer.projectId === selectedProjectFile.id);
     const projectFinalOffers = projectOffers.filter(isActiveFinalOffer);
     const projectLostOffers = projectOffers.filter(isLostOffer);
@@ -26152,9 +27727,7 @@ await addProjectLogbookEntry(
       .sort((first, second) => second.dueState.overdueDays - first.dueState.overdueDays);
     const nextProjectReminderCandidate = projectReminderCandidates[0] ?? null;
     const finalizedProjectInvoices = activeProjectInvoices.filter((invoice) => invoice.status !== "Entwurf");
-    const projectProfitInvoices = projectInvoices.filter(
-      (invoice) => !["Entwurf", "Storniert", "Stornorechnung"].includes(invoice.status)
-    );
+    const projectProfitInvoices = projectInvoices.filter(isFinanciallyActiveInvoice);
     const projectProfitMonthAllInvoices = projectInvoices.filter(
       (invoice) => getProjectInvoiceMonth(invoice) === projectComparisonMonth
     );
@@ -27215,6 +28788,16 @@ await addProjectLogbookEntry(
       ? customerDocumentTypes
       : customerDocumentTypes.filter((type) => type !== "Tätigkeitsberichte");
     const activityReportDocumentEntries = getProjectDocumentEntries("Tätigkeitsberichte");
+    const getProjectDocumentCount = (type: CustomerDocumentType) => {
+      if (type === "Angebote") return projectBaseOffers.length;
+      if (type === "Angebote: Nachtragsangebote") return projectAddendumOffers.length;
+      if (type === "Rechnungen") return visibleProjectInvoices.length;
+      if (type === "Endkontrolle") return projectEndCheckCount;
+      return getProjectDocumentEntries(type).reduce(
+        (sum, entry) => sum + entry.attachments.filter((attachment) => attachment.type === "Dokument").length,
+        0
+      );
+    };
     const checklistDocumentEntries = getProjectDocumentEntries("Checklisten");
     const checklistDocumentCount = checklistDocumentEntries.reduce(
       (sum, entry) =>
@@ -27891,7 +29474,7 @@ await addProjectLogbookEntry(
               onClick={step.onClick}
             >
               <span className={styles.projectProgressNode}>
-                {step.state === "done" ? "\u2713" : step.state === "partial" ? "!" : ""}
+                {step.state === "done" ? "\u2713" : "!"}
               </span>
               <strong>{step.label}</strong>
             </button>
@@ -27930,20 +29513,8 @@ await addProjectLogbookEntry(
                           }}
                         >
                           {type}
-                          {type === "Angebote" && projectBaseOffers.length > 0 && (
-                            <strong>{projectBaseOffers.length}</strong>
-                          )}
-                          {type === "Angebote: Nachtragsangebote" && projectAddendumOffers.length > 0 && (
-                            <strong>{projectAddendumOffers.length}</strong>
-                          )}
-                          {type === "Rechnungen" && visibleProjectInvoices.length > 0 && (
-                            <strong>{visibleProjectInvoices.length}</strong>
-                          )}
-                          {type === "Tätigkeitsberichte" && getProjectDocumentEntries(type).length > 0 && (
-                            <strong>{getProjectDocumentEntries(type).length}</strong>
-                          )}
-                          {type === "Endkontrolle" && projectEndCheckCount > 0 && (
-                            <strong>{projectEndCheckCount}</strong>
+                          {getProjectDocumentCount(type) > 0 && (
+                            <strong>{getProjectDocumentCount(type)}</strong>
                           )}
                         </button>
                       ))}
@@ -27989,7 +29560,10 @@ await addProjectLogbookEntry(
 
           <main
             className={`${styles.projectFileMain} ${
-              projectFileTab === "appointments" || projectFileTab === "budgets" || projectFileTab === "automaticBilling"
+              projectFileTab === "appointments" ||
+              projectFileTab === "budgets" ||
+              projectFileTab === "marketingQuotas" ||
+              projectFileTab === "automaticBilling"
                 ? styles.projectFileMainCompact
                 : ""
             } ${projectFileTab === "logbook" ? styles.projectFileMainLogbook : ""}`}
@@ -28064,6 +29638,8 @@ await addProjectLogbookEntry(
                   ) : null}
                 </div>
               </>
+            ) : projectFileTab === "notes" ? (
+              renderCustomerProjectNotesPanel("project")
             ) : projectFileTab === "images" ? (
               <div className={styles.projectImageModule}>
                 <div className={styles.customerFileMainHeader}>
@@ -28368,14 +29944,14 @@ await addProjectLogbookEntry(
                                 <button
                                   type="button"
                                   className={styles.timeEntryEditButton}
-                                  onClick={() => window.open(`/api/offers?pdfId=${encodeURIComponent(offer.id)}`, "_blank")}
+                                  onClick={() => window.open(getOfferPdfUrl(offer.id), "_blank")}
                                 >
                                   PDF öffnen
                                 </button>
                                 <button
                                   type="button"
                                   className={styles.timeEntryEditButton}
-                                  onClick={() => printPdfDocument(`/api/offers?pdfId=${encodeURIComponent(offer.id)}`)}
+                                  onClick={() => printPdfDocument(getOfferPdfUrl(offer.id))}
                                 >
                                   Drucken
                                 </button>
@@ -28480,7 +30056,7 @@ await addProjectLogbookEntry(
                                   type="button"
                                   className={styles.timeEntryEditButton}
                                   disabled={!invoice.pdfAvailable}
-                                  onClick={() => window.open(`/api/invoices?pdfId=${encodeURIComponent(invoice.id)}`, "_blank")}
+                                  onClick={() => window.open(getInvoicePdfUrl(invoice.id), "_blank")}
                                 >
                                   PDF öffnen
                                 </button>
@@ -29707,6 +31283,324 @@ await addProjectLogbookEntry(
                       </div>
                     </>
                   )}
+                </section>
+              </div>
+            ) : projectFileTab === "marketingQuotas" ? (
+              <div className={styles.projectTimeModule}>
+                <div className={styles.customerFileMainHeader}>
+                  <h2>Marketing-Kontingente</h2>
+                  <div className={styles.headerActions}>
+                    <span>
+                      {formatMonthLabel(marketingQuotaMonth)}: {marketingQuotaDoneTotal}/{marketingQuotaTargetTotal || 0} erledigt
+                    </span>
+                    <button type="button" className={styles.primaryButton} onClick={() => openMarketingQuotaDraft()}>
+                      + Marketingstück
+                    </button>
+                  </div>
+                </div>
+
+                {marketingQuotaError ? <p className={styles.stampError}>{marketingQuotaError}</p> : null}
+                {marketingQuotaMessage ? <p className={styles.stampSuccess}>{marketingQuotaMessage}</p> : null}
+
+                <section className={styles.marketingQuotaShell}>
+                  <div className={styles.marketingQuotaToolbar}>
+                    <div className={styles.marketingQuotaSummaryCard}>
+                      <span>Monatsstand</span>
+                      <strong>
+                        {marketingQuotaDoneTotal}/{marketingQuotaTargetTotal || 0}
+                      </strong>
+                      <small>
+                        {marketingQuotaTargetTotal > 0
+                          ? `${Math.max(marketingQuotaTargetTotal - marketingQuotaDoneTotal, 0)} offen`
+                          : "Noch keine Stücke angelegt"}
+                      </small>
+                    </div>
+                  </div>
+
+                  <div className={styles.marketingQuotaGrid}>
+                    {activeMarketingQuotaItems.length === 0 ? (
+                      <p className={styles.emptyState}>
+                        Noch keine aktiven Marketingstücke für diesen Monat angelegt.
+                      </p>
+                    ) : (
+                      marketingQuotaGroups.map((group) => {
+                        const groupDoneCount = group.items.reduce(
+                          (sum, item) =>
+                            sum +
+                            item.completions.filter(
+                              (completion) => completion.month === marketingQuotaMonth && !completion.revertedAt
+                            ).length,
+                          0
+                        );
+                        const groupTargetCount = group.items.reduce(
+                          (sum, item) => sum + Number(item.quantityPerMonth || 0),
+                          0
+                        );
+
+                        return (
+                          <section key={group.label} className={styles.marketingQuotaGroup}>
+                            <div className={styles.marketingQuotaGroupHeader}>
+                              <strong>{group.label}</strong>
+                              <span>
+                                {groupDoneCount}/{groupTargetCount} erledigt
+                              </span>
+                            </div>
+                            <div className={styles.marketingQuotaUnitGrid}>
+                              {group.items.flatMap((item) => {
+                        const monthCompletions = item.completions
+                          .filter((completion) => completion.month === marketingQuotaMonth && !completion.revertedAt)
+                          .sort((first, second) => second.completedAt.localeCompare(first.completedAt));
+                        const doneCount = monthCompletions.length;
+                        const targetCount = Number(item.quantityPerMonth || 0);
+                        const quotaTitle = item.name || item.itemType || "Marketingstück";
+                        const openCount = Math.max(targetCount - doneCount, 0);
+                        const isDone = targetCount > 0 && doneCount >= targetCount;
+                        const latestCompletion = monthCompletions[0];
+
+                        return Array.from({ length: Math.max(targetCount, 1) }, (_, index) => {
+                                const completion = monthCompletions[index];
+                                const unitDone = Boolean(completion);
+
+                                return (
+                                  <article
+                                    key={`${item.id}-${marketingQuotaMonth}-${index}`}
+                                    className={styles.marketingQuotaUnitCard}
+                                    data-state={unitDone ? "done" : "open"}
+                                    onClick={() => openMarketingQuotaDraft(item)}
+                                  >
+                                    <span className={styles.marketingQuotaUnitIcon} aria-hidden="true">
+                                      {unitDone ? "✓" : "↻"}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      className={styles.marketingQuotaUnitMain}
+                                      onClick={() => openMarketingQuotaDraft(item)}
+                                    >
+                                      <strong>
+                                        {quotaTitle} {index + 1}
+                                      </strong>
+                                      <span>{item.itemType || "Marketing"}</span>
+                                    </button>
+                                    <div className={styles.marketingQuotaUnitNote}>
+                                      {item.description || "Notiz Feld.."}
+                                    </div>
+                                    <div className={styles.marketingQuotaUnitMeta}>
+                                      {completion ? (
+                                        <>
+                                          <span>{completion.completedByName || "System"}</span>
+                                          <strong>{formatDeadline(completion.completedAt)}</strong>
+                                        </>
+                                      ) : (
+                                        <span>Noch nicht erledigt</span>
+                                      )}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      className={styles.marketingQuotaDoneButton}
+                                      data-state={unitDone ? "done" : "open"}
+                                      disabled={unitDone}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        void completeMarketingQuotaItem(item, marketingQuotaMonth);
+                                      }}
+                                    >
+                                      {unitDone ? "erledigt" : "erledigt?"}
+                                    </button>
+                                  </article>
+                                );
+                              });
+                              })}
+                            </div>
+                          </section>
+                        );
+
+                      })
+                    )}
+                  </div>
+
+                  {isMarketingQuotaEditorOpen ? (
+                    <div className={styles.overlay} onClick={() => setIsMarketingQuotaEditorOpen(false)}>
+                      <section
+                        className={`${styles.standardModal} ${styles.marketingQuotaModal}`}
+                        role="dialog"
+                        aria-modal="true"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <div className={styles.standardModalHeader}>
+                          <div>
+                            <h2>{marketingQuotaDraft.id ? "Marketingstück bearbeiten" : "Marketingstück anlegen"}</h2>
+                            <p>Gilt monatlich innerhalb der Projektlaufzeit</p>
+                          </div>
+                          <button
+                            type="button"
+                            className={styles.iconButton}
+                            onClick={() => setIsMarketingQuotaEditorOpen(false)}
+                            aria-label="Marketingstück schließen"
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <div className={`${styles.standardModalBody} ${styles.marketingQuotaModalBody}`}>
+                          <div className={styles.standardFormGrid}>
+                      <label>
+                        Art des Marketingstückes
+                        <select
+                          value={marketingQuotaDraft.itemType}
+                          onChange={(event) => {
+                            const nextType = event.target.value;
+                            setMarketingQuotaDraft((current) => ({
+                              ...current,
+                              itemType: nextType,
+                            }));
+                          }}
+                        >
+                          <option value="">Bitte auswählen</option>
+                          {marketingQuotaDraft.itemType &&
+                          !marketingQuotaItemTypeOptions.includes(marketingQuotaDraft.itemType) ? (
+                            <option value={marketingQuotaDraft.itemType}>{marketingQuotaDraft.itemType}</option>
+                          ) : null}
+                          {marketingQuotaItemTypeOptions.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Name
+                        <input
+                          value={marketingQuotaDraft.name}
+                          onChange={(event) =>
+                            setMarketingQuotaDraft((current) => ({ ...current, name: event.target.value }))
+                          }
+                          placeholder="z.B. Reel"
+                        />
+                      </label>
+                      <label>
+                        Menge pro Monat
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={marketingQuotaDraft.quantityPerMonth}
+                          onChange={(event) =>
+                            setMarketingQuotaDraft((current) => ({
+                              ...current,
+                              quantityPerMonth: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <label>
+                        Startmonat
+                        <span className={styles.monthPickerControl}>
+                          <button type="button" onClick={() => openNativeDatePicker("marketing-quota-start-month")}>
+                            {formatMonthLabel(marketingQuotaDraft.startMonth) || "Startmonat auswählen"}
+                          </button>
+                          <input
+                            id="marketing-quota-start-month"
+                            className={styles.monthPickerNative}
+                            type="month"
+                            value={marketingQuotaDraft.startMonth}
+                            onChange={(event) =>
+                              setMarketingQuotaDraft((current) => ({ ...current, startMonth: event.target.value }))
+                            }
+                          />
+                        </span>
+                      </label>
+                      <label>
+                        Endmonat
+                        <span className={styles.monthPickerControl}>
+                          <button type="button" onClick={() => openNativeDatePicker("marketing-quota-end-month")}>
+                            {formatMonthLabel(marketingQuotaDraft.endMonth) || "Endmonat auswählen"}
+                          </button>
+                          <input
+                            id="marketing-quota-end-month"
+                            className={styles.monthPickerNative}
+                            type="month"
+                            value={marketingQuotaDraft.endMonth}
+                            onChange={(event) =>
+                              setMarketingQuotaDraft((current) => ({ ...current, endMonth: event.target.value }))
+                            }
+                          />
+                        </span>
+                      </label>
+                      <label>
+                        Zoho-Link
+                        <input
+                          value={marketingQuotaDraft.zohoLink}
+                          onChange={(event) =>
+                            setMarketingQuotaDraft((current) => ({ ...current, zohoLink: event.target.value }))
+                          }
+                          placeholder="https://..."
+                        />
+                      </label>
+                      <label className={`${styles.checkboxField} ${styles.marketingQuotaActiveField}`}>
+                        <input
+                          type="checkbox"
+                          checked={marketingQuotaDraft.isActive}
+                          onChange={(event) =>
+                            setMarketingQuotaDraft((current) => ({ ...current, isActive: event.target.checked }))
+                          }
+                        />
+                        Aktiv
+                      </label>
+                      <label>
+                        Notiz
+                        <textarea
+                          value={marketingQuotaDraft.description}
+                          onChange={(event) =>
+                            setMarketingQuotaDraft((current) => ({ ...current, description: event.target.value }))
+                          }
+                          placeholder="Optional: kurze Info, was gemeint ist"
+                        />
+                      </label>
+                      {editingMarketingQuotaItem && editingMarketingQuotaMonthDoneCount > 0 ? (
+                        <div className={styles.marketingQuotaResetBox}>
+                          <div>
+                            <span>Aktueller Monat</span>
+                            <strong>
+                              {editingMarketingQuotaMonthDoneCount} erledigt in {formatMonthLabel(marketingQuotaMonth)}
+                            </strong>
+                          </div>
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            onClick={() =>
+                              void revertLatestMarketingQuotaCompletion(editingMarketingQuotaItem, marketingQuotaMonth)
+                            }
+                          >
+                            Letztes erledigt zurücksetzen
+                          </button>
+                        </div>
+                      ) : null}
+                          </div>
+                        </div>
+                        <div className={styles.standardModalFooter}>
+                          <div className={styles.modalActions}>
+                      <button
+                        type="button"
+                        className={styles.primaryButton}
+                        disabled={isMarketingQuotaSaving}
+                        onClick={() => void saveMarketingQuotaItem()}
+                      >
+                        {isMarketingQuotaSaving ? "Speichert..." : "Speichern"}
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() => {
+                          setMarketingQuotaDraft(emptyMarketingQuotaDraft);
+                          setIsMarketingQuotaEditorOpen(false);
+                        }}
+                      >
+                        Schließen
+                      </button>
+                          </div>
+                        </div>
+                      </section>
+                    </div>
+                  ) : null}
                 </section>
               </div>
             ) : projectFileTab === "appointments" ? (
@@ -37403,6 +39297,11 @@ await addProjectLogbookEntry(
 
   async function saveDocumentLayoutConfig() {
     const method = editingDocumentTypeId ? "PATCH" : "POST";
+    if (!activeUserId) {
+      setDocumentTypeError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
+
     const res = await fetch("/api/document-types", {
       method,
       headers: {
@@ -37415,6 +39314,7 @@ await addProjectLogbookEntry(
         folder: documentLayoutConfig.folder,
         status: documentLayoutConfig.status,
         config: documentLayoutConfig,
+        actorId: activeUserId,
       }),
     });
 
@@ -37433,12 +39333,17 @@ await addProjectLogbookEntry(
   }
 
   async function archiveDocumentType(documentTypeId: string) {
+    if (!activeUserId) {
+      setDocumentTypeError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
+
     const res = await fetch("/api/document-types", {
       method: "DELETE",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ id: documentTypeId }),
+      body: JSON.stringify({ id: documentTypeId, actorId: activeUserId }),
     });
 
     if (!res.ok) {
@@ -38447,7 +40352,7 @@ await addProjectLogbookEntry(
                       className={styles.secondaryButton}
                       disabled={eInvoiceStatus === "blocked"}
                       onClick={() =>
-                        window.open(`/api/invoices?xrechnungId=${encodeURIComponent(documentMailDraft.documentId)}`, "_blank")
+                        window.open(getInvoiceXrechnungUrl(documentMailDraft.documentId), "_blank")
                       }
                     >
                       XRechnung XML herunterladen
@@ -45744,6 +47649,206 @@ await addProjectLogbookEntry(
           </div>
         </div>
       )}
+
+      {isNoteEditorOpen && (
+        <div className={styles.overlay} onClick={() => setIsNoteEditorOpen(false)}>
+          <div className={`${styles.standardModal} ${styles.noteEditorModal}`} onClick={(event) => event.stopPropagation()}>
+            <div className={styles.standardModalHeader}>
+              <div>
+                <h2>{noteDraft.id ? "Hinweis bearbeiten" : "Hinweis anlegen"}</h2>
+                <p>{noteDraft.scope === "customer" ? "Kundenhinweis" : "Projekthinweis"}</p>
+              </div>
+              <button type="button" className={styles.iconButton} onClick={() => setIsNoteEditorOpen(false)}>
+                X
+              </button>
+            </div>
+            <div className={styles.standardModalBody}>
+              {noteError ? <p className={styles.emptyState}>{noteError}</p> : null}
+              <div className={styles.formGrid}>
+                <label>
+                  Bezug
+                  <select
+                    value={noteDraft.scope}
+                    onChange={(event) =>
+                      setNoteDraft((current) => ({
+                        ...current,
+                        scope: event.target.value === "project" ? "project" : "customer",
+                        projectId: event.target.value === "project" ? selectedProjectFile?.id || current.projectId : "",
+                        projectTitle: event.target.value === "project" ? selectedProjectFile?.title || current.projectTitle : "",
+                      }))
+                    }
+                  >
+                    <option value="customer">Kundenhinweis</option>
+                    <option value="project" disabled={!selectedProjectFile && noteDraft.scope !== "project"}>
+                      Projekthinweis
+                    </option>
+                  </select>
+                </label>
+                <label>
+                  Kategorie
+                  <select
+                    value={noteDraft.category}
+                    onChange={(event) => setNoteDraft((current) => ({ ...current, category: event.target.value }))}
+                  >
+                    {customerProjectNoteCategories.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Wichtigkeit
+                  <select
+                    value={noteDraft.priority}
+                    onChange={(event) => setNoteDraft((current) => ({ ...current, priority: event.target.value }))}
+                  >
+                    {customerProjectNotePriorities.map((priority) => (
+                      <option key={priority.value} value={priority.value}>
+                        {priority.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Wie oft bestätigen?
+                  <select
+                    value={noteDraft.confirmationFrequency}
+                    onChange={(event) =>
+                      setNoteDraft((current) => ({ ...current, confirmationFrequency: event.target.value }))
+                    }
+                  >
+                    {customerProjectNoteFrequencies.map((frequency) => (
+                      <option key={frequency.value} value={frequency.value}>
+                        {frequency.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className={styles.fullWidth}>
+                  Titel
+                  <input
+                    value={noteDraft.title}
+                    onChange={(event) => setNoteDraft((current) => ({ ...current, title: event.target.value }))}
+                    placeholder="z.B. Zugang nur über Hausmeister"
+                  />
+                </label>
+                <label className={styles.fullWidth}>
+                  Hinweistext
+                  <textarea
+                    value={noteDraft.body}
+                    onChange={(event) => setNoteDraft((current) => ({ ...current, body: event.target.value }))}
+                    placeholder="Was muss das Team wissen?"
+                  />
+                </label>
+                <label>
+                  Gültig von
+                  <input
+                    type="date"
+                    value={noteDraft.validFrom}
+                    onChange={(event) => setNoteDraft((current) => ({ ...current, validFrom: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  Gültig bis
+                  <input
+                    type="date"
+                    value={noteDraft.validUntil}
+                    onChange={(event) => setNoteDraft((current) => ({ ...current, validUntil: event.target.value }))}
+                  />
+                </label>
+                <div className={`${styles.noteOptionGrid} ${styles.fullWidth}`}>
+                  <label className={styles.noteCheckboxLine}>
+                    <input
+                      type="checkbox"
+                      checked={noteDraft.isActive}
+                      onChange={(event) => setNoteDraft((current) => ({ ...current, isActive: event.target.checked }))}
+                    />
+                    <span>Aktiv</span>
+                  </label>
+                  <label className={styles.noteCheckboxLine}>
+                    <input
+                      type="checkbox"
+                      checked={noteDraft.requiresStampConfirmation}
+                      onChange={(event) =>
+                        setNoteDraft((current) => ({ ...current, requiresStampConfirmation: event.target.checked }))
+                      }
+                    />
+                    <span>Vor Stempelung anzeigen und bestätigen lassen</span>
+                  </label>
+                  <label className={styles.noteCheckboxLine}>
+                    <input
+                      type="checkbox"
+                      checked={noteDraft.requiresProjectCreateConfirmation}
+                      onChange={(event) =>
+                        setNoteDraft((current) => ({
+                          ...current,
+                          requiresProjectCreateConfirmation: event.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Bei neuer Projektanlage anzeigen und bestätigen lassen</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div className={styles.standardModalFooter}>
+              <div className={styles.modalActions}>
+                <button type="button" className={styles.primaryButton} disabled={isNoteSaving} onClick={() => void saveCustomerProjectNote()}>
+                  Speichern
+                </button>
+                <button type="button" className={styles.secondaryButton} onClick={() => setIsNoteEditorOpen(false)}>
+                  Schließen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingStampNoteConfirm || pendingProjectCreateNoteConfirm ? (
+        <div className={styles.overlay}>
+          <div className={`${styles.standardModal} ${styles.noteConfirmModal}`}>
+            <div className={styles.standardModalHeader}>
+              <div>
+                <h2>Hinweise bestätigen</h2>
+                <p>
+                  {pendingStampNoteConfirm
+                    ? "Vor der Stempelung bitte lesen und bestätigen."
+                    : "Zur neuen Projektanlage bitte lesen und bestätigen."}
+                </p>
+              </div>
+            </div>
+            <div className={styles.standardModalBody}>
+              {noteError ? <p className={styles.emptyState}>{noteError}</p> : null}
+              <div className={styles.noteConfirmList}>
+                {(pendingStampNoteConfirm?.notes || pendingProjectCreateNoteConfirm?.notes || []).map((note) => (
+                  <article key={note.id} className={styles.noteConfirmCard} data-priority={note.priority}>
+                    <span>{note.scope === "customer" ? "Kundenhinweis" : "Projekthinweis"} · {note.category}</span>
+                    <strong>{note.title}</strong>
+                    <p>{note.body}</p>
+                  </article>
+                ))}
+              </div>
+            </div>
+            <div className={styles.standardModalFooter}>
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  onClick={() =>
+                    pendingStampNoteConfirm
+                      ? void confirmPendingStampNotes()
+                      : void confirmPendingProjectCreateNotes()
+                  }
+                >
+                  Gelesen und bestätigt
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {isContentModalOpen && (
         <div className={styles.overlay} onClick={() => setIsContentModalOpen(false)}>

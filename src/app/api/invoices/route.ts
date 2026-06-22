@@ -10,12 +10,13 @@ import {
   type PDFPage,
   rgb,
 } from "pdf-lib";
-import { Prisma } from "@prisma/client";
+import { Prisma, type User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { generateXRechnungXml, type XRechnungSeller } from "@/lib/e-invoice/xrechnung";
 import { validateXRechnungWithKosit } from "@/lib/e-invoice/kosit-validator";
 import { validateXRechnungPayload } from "@/lib/e-invoice/xrechnung-validation";
+import { canDeleteInvoices, canManageInvoices, canSendDocumentMails } from "@/lib/permissions";
 
 type InvoiceCompany = "OK solutions" | "OK immocare";
 
@@ -44,6 +45,7 @@ type InvoiceLineLaborInput = {
 };
 
 type InvoiceInput = {
+  actorId?: string;
   projectId?: string;
   projectNumber?: string;
   projectTitle?: string;
@@ -603,6 +605,33 @@ async function notifyManagementAboutUnderbilling(input: {
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function getUserName(user: Pick<User, "firstName" | "lastName" | "email">) {
+  return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "System";
+}
+
+function getRequestActor(users: User[], actorId: unknown) {
+  const requestedActorId = cleanString(actorId);
+  if (!requestedActorId) {
+    return null;
+  }
+
+  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
+
+function forbiddenInvoiceResponse() {
+  return NextResponse.json(
+    { error: "Keine Berechtigung fuer diese Rechnungsaktion." },
+    { status: 403 }
+  );
 }
 
 function cleanDateKey(value: unknown) {
@@ -1535,9 +1564,17 @@ async function cancelInvoice(input: {
 }
 
 export async function GET(req: Request) {
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureInvoiceTables();
   const { searchParams } = new URL(req.url);
+  const actor = getRequestActor(users, searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canSendDocumentMails(actor)) {
+    return forbiddenInvoiceResponse();
+  }
+
   const pdfId = cleanString(searchParams.get("pdfId"));
   const xrechnungId = cleanString(searchParams.get("xrechnungId"));
   const xrechnungValidationId = cleanString(searchParams.get("xrechnungValidationId"));
@@ -1727,13 +1764,29 @@ export async function GET(req: Request) {
   const projectId = cleanString(searchParams.get("projectId"));
   const rows = projectId
     ? await prisma.$queryRaw<InvoiceRow[]>`
-        SELECT *
+        SELECT "id", "organizationId", "projectId", "projectNumber", "projectTitle", "company",
+               "invoiceNumber", "status", "billingSource", "customerName", "customerStreet",
+               "customerCity", "contactName", "internalContactName", "internalPhone",
+               "internalEmail", "plannedExecutionMonth", "serviceDate", "sourceOfferId",
+               "sourceOfferNumber", "introText", "closingText", "netTotal", "vatRate",
+               "grossTotal", "discountPercent", "paymentTermDays", "dueDate",
+               "reminderLevel", "lastReminderAt", "isPaid", "paidAt",
+               CASE WHEN "pdfData" IS NULL THEN NULL ELSE 'available' END AS "pdfData",
+               "createdAt", "updatedAt"
         FROM "Invoice"
         WHERE "organizationId" = ${organization.id} AND "projectId" = ${projectId} AND "status" NOT IN (${DELETED_INVOICE_STATUS}, ${LEGACY_DELETED_INVOICE_STATUS})
         ORDER BY "createdAt" DESC
       `
     : await prisma.$queryRaw<InvoiceRow[]>`
-        SELECT *
+        SELECT "id", "organizationId", "projectId", "projectNumber", "projectTitle", "company",
+               "invoiceNumber", "status", "billingSource", "customerName", "customerStreet",
+               "customerCity", "contactName", "internalContactName", "internalPhone",
+               "internalEmail", "plannedExecutionMonth", "serviceDate", "sourceOfferId",
+               "sourceOfferNumber", "introText", "closingText", "netTotal", "vatRate",
+               "grossTotal", "discountPercent", "paymentTermDays", "dueDate",
+               "reminderLevel", "lastReminderAt", "isPaid", "paidAt",
+               CASE WHEN "pdfData" IS NULL THEN NULL ELSE 'available' END AS "pdfData",
+               "createdAt", "updatedAt"
         FROM "Invoice"
         WHERE "organizationId" = ${organization.id} AND "status" NOT IN (${DELETED_INVOICE_STATUS}, ${LEGACY_DELETED_INVOICE_STATUS})
         ORDER BY "createdAt" DESC
@@ -1771,9 +1824,17 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureInvoiceTables();
   const body = (await req.json()) as InvoiceInput;
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canManageInvoices(actor)) {
+    return forbiddenInvoiceResponse();
+  }
+  const actorName = getUserName(actor);
   const lines = await withInvoiceLineCostSnapshots(organization.id, normalizeInvoiceLines(body.lines));
   const saveAsDraft = Boolean(body.saveAsDraft);
 
@@ -1890,7 +1951,7 @@ export async function POST(req: Request) {
     eventType: "created",
     title: saveAsDraft ? "Rechnungsentwurf gespeichert" : "Rechnung angelegt",
     note: `${invoiceNumber} wurde ${saveAsDraft ? "als Entwurf gespeichert" : "erstellt"}.`,
-    actorName: cleanString(body.internalContactName) || "System",
+    actorName,
   });
 
   if (!saveAsDraft) {
@@ -1943,9 +2004,17 @@ export async function PUT(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureInvoiceTables();
   const body = (await req.json()) as InvoiceInput & { id?: string; action?: string; actorName?: string };
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canManageInvoices(actor)) {
+    return forbiddenInvoiceResponse();
+  }
+  const actorName = getUserName(actor);
   const id = cleanString(body.id);
   const saveAsDraft = Boolean(body.saveAsDraft);
 
@@ -1957,7 +2026,7 @@ export async function PATCH(req: Request) {
     return cancelInvoice({
       organizationId: organization.id,
       invoiceId: id,
-      actorName: cleanString(body.actorName) || "System",
+      actorName,
     });
   }
 
@@ -1987,7 +2056,7 @@ export async function PATCH(req: Request) {
       eventType: "paid",
       title: "Rechnung als bezahlt markiert",
       note: `${rows[0].invoiceNumber} wurde als bezahlt markiert.`,
-      actorName: cleanString(body.actorName) || "System",
+      actorName,
     });
 
     return NextResponse.json(serializeInvoice(rows[0], []));
@@ -2018,7 +2087,7 @@ export async function PATCH(req: Request) {
       eventType: "reminder",
       title: `Mahnstufe ${rows[0].reminderLevel} erfasst`,
       note: `${rows[0].invoiceNumber} wurde auf Mahnstufe ${rows[0].reminderLevel} gesetzt.`,
-      actorName: cleanString(body.actorName) || "System",
+      actorName,
     });
 
     return NextResponse.json(serializeInvoice(rows[0], []));
@@ -2042,7 +2111,7 @@ export async function PATCH(req: Request) {
     const reminderDocument = await createReminderDocument({
       organizationId: organization.id,
       invoice,
-      actorName: cleanString(body.actorName) || "System",
+      actorName,
     });
     const rows = await prisma.$queryRaw<InvoiceRow[]>`
       UPDATE "Invoice"
@@ -2061,7 +2130,7 @@ export async function PATCH(req: Request) {
       eventType: "reminder-document",
       title: `Mahnung ${reminderDocument.documentNumber} erstellt`,
       note: `${reminderDocument.fileName} wurde unter Dokumente: Mahnung abgelegt.`,
-      actorName: cleanString(body.actorName) || "System",
+      actorName,
     });
 
     return NextResponse.json({
@@ -2090,7 +2159,7 @@ export async function PATCH(req: Request) {
       eventType: "printed",
       title: "Rechnung gedruckt",
       note: `${rows[0].invoiceNumber} wurde gedruckt bzw. zum Drucken geöffnet.`,
-      actorName: cleanString(body.actorName) || "System",
+      actorName,
     });
 
     return NextResponse.json(serializeInvoice(rows[0], []));
@@ -2253,7 +2322,7 @@ export async function PATCH(req: Request) {
     note: `${existingInvoice.invoiceNumber} wurde ${
       saveAsDraft ? "als Entwurf gespeichert" : finalizesDraft ? "fakturiert" : "aktualisiert"
     }.`,
-    actorName: cleanString(body.internalContactName) || "System",
+    actorName,
   });
 
   if (!saveAsDraft) {
@@ -2281,30 +2350,21 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureInvoiceTables();
   const body = await req.json().catch(() => ({}));
   const id = cleanString(body.id);
-  const actorId = cleanString(body.actorId);
-  const actorName = cleanString(body.actorName) || "System";
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  const actorName = getUserName(actor);
 
   if (!id) {
     return NextResponse.json({ error: "Rechnung fehlt." }, { status: 400 });
   }
 
-  if (!actorId) {
-    return NextResponse.json({ error: "Benutzer fehlt." }, { status: 403 });
-  }
-
-  const actorRows = await prisma.$queryRaw<Array<{ role: string }>>`
-    SELECT "role"
-    FROM "User"
-    WHERE "organizationId" = ${organization.id}
-      AND "id" = ${actorId}
-      AND "isActive" = true
-    LIMIT 1
-  `;
-  if (actorRows[0]?.role !== "GESCHAEFTSFUEHRER") {
+  if (!canDeleteInvoices(actor)) {
     return NextResponse.json(
       { error: "Nur Gesch\u00e4ftsf\u00fchrer d\u00fcrfen Rechnungen l\u00f6schen." },
       { status: 403 }

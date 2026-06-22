@@ -1,8 +1,14 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { recordStatusTransition, seedCurrentStatusTimeline } from "@/lib/status-tracking";
+import {
+  canAssignSalesItemsToOthers,
+  canCreateProjectPotentials,
+  canManageOwnedSalesItem,
+} from "@/lib/permissions";
 
 type PotentialRow = {
   id: string;
@@ -70,6 +76,27 @@ function formatPotentialNumber(value: number) {
 
 function getUserName(user: { firstName?: string | null; lastName?: string | null; email?: string | null }) {
   return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "System";
+}
+
+function getRequestActor(users: User[], actorId: unknown) {
+  const requestedActorId = cleanString(actorId);
+  if (!requestedActorId) return null;
+
+  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json(
+    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
+    { status: 401 }
+  );
+}
+
+function forbiddenPotentialResponse() {
+  return NextResponse.json(
+    { error: "Du darfst diesen Zusatzverkauf nicht bearbeiten." },
+    { status: 403 }
+  );
 }
 
 async function ensurePotentialTable() {
@@ -196,8 +223,14 @@ function formatPotential(row: PotentialRow) {
   };
 }
 
-export async function GET() {
-  const { organization } = await getDemoContext();
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, url.searchParams.get("actorId"));
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+
   await ensurePotentialTable();
   await ensurePotentialNumbers(organization.id);
 
@@ -264,8 +297,16 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const body = await req.json();
-  const { organization, user } = await getDemoContext();
+  const body = await req.json().catch(() => ({}));
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canCreateProjectPotentials(actor)) {
+    return forbiddenPotentialResponse();
+  }
+
   await ensurePotentialTable();
 
   const projectId = cleanString(body.projectId);
@@ -280,12 +321,14 @@ export async function POST(req: Request) {
   const history = [
     {
       at: new Date().toISOString(),
-      actor: cleanString(body.actorName) || getUserName(user),
+      actor: getUserName(actor),
       action: "created",
       note: "Potenzial erkannt.",
     },
   ];
   const estimatedValue = cleanDecimal(body.estimatedValue);
+  const requestedOwner = users.find((candidate) => candidate.id === cleanString(body.ownerUserId) && candidate.isActive);
+  const owner = requestedOwner && canAssignSalesItemsToOthers(actor) ? requestedOwner : actor;
   await ensurePotentialNumbers(organization.id);
   const nextNumber = formatPotentialNumber(await getNextPotentialNumberValue(organization.id));
 
@@ -319,8 +362,8 @@ export async function POST(req: Request) {
       ${cleanString(body.projectLabel) || null},
       ${description},
       'open',
-      ${cleanString(body.ownerUserId) || null},
-      ${cleanString(body.ownerName) || null},
+      ${owner.id},
+      ${getUserName(owner)},
       ${estimatedValue},
       ${cleanPriority(body.priority)},
       ${cleanString(body.nextStep) || null},
@@ -344,8 +387,13 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  const body = await req.json();
-  const { organization, user } = await getDemoContext();
+  const body = await req.json().catch(() => ({}));
+  const { organization, users } = await getDemoContext();
+  const actorUser = getRequestActor(users, body.actorId);
+  if (!actorUser) {
+    return unauthorizedActorResponse();
+  }
+
   await ensurePotentialTable();
 
   const id = cleanString(body.id);
@@ -364,10 +412,13 @@ export async function PATCH(req: Request) {
   if (!current) {
     return NextResponse.json({ error: "Potenzial wurde nicht gefunden." }, { status: 404 });
   }
+  if (!canManageOwnedSalesItem(actorUser, current)) {
+    return forbiddenPotentialResponse();
+  }
 
   const nextStatus = cleanStatus(body.status || current.status);
   const note = cleanString(body.note);
-  const actor = cleanString(body.actorName) || getUserName(user);
+  const actor = getUserName(actorUser);
   const now = new Date();
   const estimatedValue = cleanDecimal(body.estimatedValue);
   const hasEstimatedValueUpdate = Object.prototype.hasOwnProperty.call(body, "estimatedValue");
@@ -377,6 +428,8 @@ export async function PATCH(req: Request) {
   const hasNextStepUpdate = Object.prototype.hasOwnProperty.call(body, "nextStep");
   const hasLostReasonUpdate = Object.prototype.hasOwnProperty.call(body, "lostReason");
   const hasDescriptionUpdate = Object.prototype.hasOwnProperty.call(body, "description");
+  const requestedOwner = users.find((candidate) => candidate.id === cleanString(body.ownerUserId) && candidate.isActive);
+  const owner = requestedOwner && canAssignSalesItemsToOthers(actorUser) ? requestedOwner : null;
   const history = [
     ...cleanHistory(current.history),
     {
@@ -392,8 +445,8 @@ export async function PATCH(req: Request) {
     SET
       "status" = ${nextStatus},
       "description" = CASE WHEN ${hasDescriptionUpdate} AND ${cleanString(body.description)} <> '' THEN ${cleanString(body.description)} ELSE "description" END,
-      "ownerUserId" = CASE WHEN ${hasOwnerUserIdUpdate} THEN ${cleanString(body.ownerUserId) || null} ELSE "ownerUserId" END,
-      "ownerName" = CASE WHEN ${hasOwnerNameUpdate} THEN ${cleanString(body.ownerName) || null} ELSE "ownerName" END,
+      "ownerUserId" = CASE WHEN ${hasOwnerUserIdUpdate} AND ${canAssignSalesItemsToOthers(actorUser)} THEN ${owner?.id ?? null} ELSE "ownerUserId" END,
+      "ownerName" = CASE WHEN ${hasOwnerNameUpdate} AND ${canAssignSalesItemsToOthers(actorUser)} THEN ${owner ? getUserName(owner) : null} ELSE "ownerName" END,
       "estimatedValue" = CASE WHEN ${hasEstimatedValueUpdate} THEN ${estimatedValue} ELSE "estimatedValue" END,
       "priority" = CASE WHEN ${hasPriorityUpdate} THEN ${cleanPriority(body.priority)} ELSE "priority" END,
       "nextStep" = CASE WHEN ${hasNextStepUpdate} THEN ${cleanString(body.nextStep) || null} ELSE "nextStep" END,
@@ -423,7 +476,7 @@ export async function PATCH(req: Request) {
     entityLabel: current.description,
     fromStatus: current.status,
     toStatus: rows[0].status,
-    actorUserId: user.id,
+    actorUserId: actorUser.id,
     actorName: actor,
     note,
     at: now,

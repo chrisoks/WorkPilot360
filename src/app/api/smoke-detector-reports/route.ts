@@ -2,11 +2,12 @@ import { randomUUID } from "crypto";
 import { readFile } from "fs/promises";
 import path from "path";
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { Prisma, type User } from "@prisma/client";
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { canArchiveProjects, canCreateProjectLogbookEntries } from "@/lib/permissions";
 
 type LogbookAttachment = {
   name: string;
@@ -21,6 +22,7 @@ type ProjectRow = {
   organizationId: string;
   projectNumber: string;
   title: string;
+  status: string;
   customer: string | null;
   contactId: string | null;
   contactPersonId: string | null;
@@ -97,9 +99,75 @@ const MUTED = rgb(0.35, 0.4, 0.48);
 const LINE = rgb(0.78, 0.82, 0.88);
 const BLUE = rgb(0.04, 0.38, 0.82);
 const GREEN = rgb(0.02, 0.55, 0.32);
+const MAX_REPORT_ATTACHMENT_BYTES = 12 * 1024 * 1024;
+const MAX_REPORT_SOURCE_IMAGE_BYTES = 12 * 1024 * 1024;
+const MAX_REPORT_SOURCE_IMAGE_TOTAL_BYTES = 48 * 1024 * 1024;
+const ALLOWED_REPORT_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const ALLOWED_REPORT_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function getRequestActor(users: User[], actorId: unknown) {
+  const cleanActorId = cleanString(actorId);
+  if (!cleanActorId) return null;
+  const actor = users.find((candidate) => candidate.id === cleanActorId);
+  return actor?.isActive ? actor : null;
+}
+
+function unauthorizedActorResponse() {
+  return NextResponse.json({ error: "Aktiver Benutzer erforderlich." }, { status: 401 });
+}
+
+function forbiddenReportResponse() {
+  return NextResponse.json(
+    { error: "Du darfst fuer dieses Projekt keinen Rauchmelder-Nachweis erstellen." },
+    { status: 403 }
+  );
+}
+
+function getUserName(user: { firstName?: string | null; lastName?: string | null; email?: string | null }) {
+  return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "System";
+}
+
+function isArchivedProjectStatus(status: string) {
+  return status.trim().toLowerCase().includes("archiviert");
+}
+
+function formatFileSize(bytes: number) {
+  return `${Math.round(bytes / 1024 / 1024)} MB`;
+}
+
+function getAttachmentExtension(name: string) {
+  return name.match(/\.[^.]+$/)?.[0]?.toLowerCase() || "";
+}
+
+function estimateDataUrlBytes(dataUrl: string) {
+  const separatorIndex = dataUrl.indexOf(",");
+  const payload = separatorIndex >= 0 ? dataUrl.slice(separatorIndex + 1) : dataUrl;
+  if (!payload) return 0;
+  if (dataUrl.slice(0, separatorIndex).toLowerCase().includes(";base64")) {
+    return Math.ceil((payload.length * 3) / 4);
+  }
+  return payload.length;
+}
+
+function getAttachmentBytes(attachment: LogbookAttachment) {
+  return Math.max(
+    Number.isFinite(attachment.size) ? Number(attachment.size) : 0,
+    attachment.dataUrl ? estimateDataUrlBytes(attachment.dataUrl) : 0
+  );
+}
+
+function isAllowedReportImage(attachment: LogbookAttachment) {
+  const mimeType = (attachment.mimeType || "").toLowerCase();
+  const extension = getAttachmentExtension(attachment.name);
+  return (
+    ALLOWED_REPORT_IMAGE_MIME_TYPES.has(mimeType) ||
+    (!mimeType && ALLOWED_REPORT_IMAGE_EXTENSIONS.has(extension)) ||
+    ALLOWED_REPORT_IMAGE_EXTENSIONS.has(extension)
+  );
 }
 
 function cleanBoolean(value: unknown) {
@@ -175,6 +243,56 @@ function cleanPayload(body: Record<string, unknown>): SmokeDetectorPayload {
   };
 }
 
+function getSmokeDetectorImages(payload: SmokeDetectorPayload) {
+  return [
+    ...payload.objectImages,
+    ...payload.devices.flatMap((device) => device.images),
+  ];
+}
+
+function validateSmokeDetectorImages(payload: SmokeDetectorPayload) {
+  const images = getSmokeDetectorImages(payload);
+  let totalBytes = 0;
+
+  for (const image of images) {
+    if (!image.dataUrl?.startsWith("data:")) {
+      return {
+        status: 400,
+        error: `Bild "${image.name}" hat ein ungueltiges Datenformat.`,
+      };
+    }
+
+    if (!isAllowedReportImage(image)) {
+      return {
+        status: 400,
+        error: `Bildtyp von "${image.name}" ist nicht erlaubt.`,
+      };
+    }
+
+    const imageBytes = getAttachmentBytes(image);
+    if (imageBytes > MAX_REPORT_SOURCE_IMAGE_BYTES) {
+      return {
+        status: 413,
+        error: `Bild "${image.name}" ist zu gross. Erlaubt sind maximal ${formatFileSize(
+          MAX_REPORT_SOURCE_IMAGE_BYTES
+        )} pro Bild.`,
+      };
+    }
+    totalBytes += imageBytes;
+  }
+
+  if (totalBytes > MAX_REPORT_SOURCE_IMAGE_TOTAL_BYTES) {
+    return {
+      status: 413,
+      error: `Die Bilder sind zusammen zu gross. Erlaubt sind maximal ${formatFileSize(
+        MAX_REPORT_SOURCE_IMAGE_TOTAL_BYTES
+      )} pro Nachweis.`,
+    };
+  }
+
+  return null;
+}
+
 function cleanStringList(value: unknown) {
   return Array.isArray(value) ? value.map((item) => cleanString(item)).filter(Boolean) : [];
 }
@@ -220,6 +338,7 @@ async function ensureReadTables() {
       "organizationId" TEXT NOT NULL,
       "projectNumber" TEXT NOT NULL DEFAULT '',
       "title" TEXT NOT NULL DEFAULT '',
+      "status" TEXT NOT NULL DEFAULT '',
       "customer" TEXT,
       "contactId" TEXT,
       "contactPersonId" TEXT,
@@ -234,6 +353,7 @@ async function ensureReadTables() {
     ALTER TABLE "WorkPilotProject"
     ADD COLUMN IF NOT EXISTS "projectNumber" TEXT NOT NULL DEFAULT '',
     ADD COLUMN IF NOT EXISTS "title" TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS "status" TEXT NOT NULL DEFAULT '',
     ADD COLUMN IF NOT EXISTS "customer" TEXT,
     ADD COLUMN IF NOT EXISTS "contactId" TEXT,
     ADD COLUMN IF NOT EXISTS "contactPersonId" TEXT,
@@ -597,8 +717,16 @@ async function generateSmokeDetectorReportPdf(input: {
 }
 
 export async function POST(req: Request) {
-  const body = (await req.json()) as Record<string, unknown>;
+  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const payload = cleanPayload(body);
+  const { organization, users } = await getDemoContext();
+  const actor = getRequestActor(users, body.actorId);
+  if (!actor) {
+    return unauthorizedActorResponse();
+  }
+  if (!canCreateProjectLogbookEntries(actor)) {
+    return forbiddenReportResponse();
+  }
 
   if (!payload.projectId) {
     return NextResponse.json({ error: "Projekt fehlt." }, { status: 400 });
@@ -613,12 +741,15 @@ export async function POST(req: Request) {
       { status: 400 }
     );
   }
+  const imageError = validateSmokeDetectorImages(payload);
+  if (imageError) {
+    return NextResponse.json({ error: imageError.error }, { status: imageError.status });
+  }
 
-  const { organization } = await getDemoContext();
   await ensureReadTables();
 
   const projects = await prisma.$queryRaw<ProjectRow[]>`
-    SELECT id, "organizationId", "projectNumber", title, customer, "contactId", "contactPersonId", branch, address, "responsibleName"
+    SELECT id, "organizationId", "projectNumber", title, status, customer, "contactId", "contactPersonId", branch, address, "responsibleName"
     FROM "WorkPilotProject"
     WHERE id = ${payload.projectId} AND "organizationId" = ${organization.id}
     LIMIT 1
@@ -626,6 +757,12 @@ export async function POST(req: Request) {
   const project = projects[0];
   if (!project) {
     return NextResponse.json({ error: "Projekt wurde nicht gefunden." }, { status: 404 });
+  }
+  if (isArchivedProjectStatus(project.status) && !canArchiveProjects(actor)) {
+    return NextResponse.json(
+      { error: "Archivierte Projekte duerfen nicht mehr im Logbuch veraendert werden." },
+      { status: 403 }
+    );
   }
 
   const contactIds = [project.contactId, project.contactPersonId].map((id) => cleanString(id)).filter(Boolean);
@@ -686,12 +823,22 @@ export async function POST(req: Request) {
     size: Math.round((pdfData.length * 3) / 4),
     dataUrl: `data:application/pdf;base64,${pdfData}`,
   };
+  if (attachment.size > MAX_REPORT_ATTACHMENT_BYTES) {
+    return NextResponse.json(
+      {
+        error: `Rauchmelder-Nachweis ist zu gross. Erlaubt sind maximal ${formatFileSize(
+          MAX_REPORT_ATTACHMENT_BYTES
+        )} pro Datei.`,
+      },
+      { status: 413 }
+    );
+  }
   const rows = await prisma.$queryRaw<ProjectLogbookEntryRow[]>`
     INSERT INTO "ProjectLogbookEntry" (
       "id", "organizationId", "projectId", "title", "body", "author", "colleague", "visibleFor", "attachments", "createdAt"
     ) VALUES (
       ${randomUUID()}, ${organization.id}, ${project.id}, ${"Dokumente: Checklisten"},
-      ${`${reportName} erstellt. ${payload.devices.length} Rauchwarnmelder dokumentiert.`}, ${payload.installer || "System"}, ${""},
+      ${`${reportName} erstellt. ${payload.devices.length} Rauchwarnmelder dokumentiert.`}, ${getUserName(actor)}, ${""},
       ${JSON.stringify(["Geschaeftsfuehrer", "Vertriebler", "Niederlassungsleiter", "Monteur", "Buchhaltung"])}::jsonb,
       ${JSON.stringify([attachment])}::jsonb,
       ${installationDate}
