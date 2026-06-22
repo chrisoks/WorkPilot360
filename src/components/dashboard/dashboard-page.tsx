@@ -12878,8 +12878,13 @@ export function DashboardPage() {
   }, [projectLogbookEntries]);
 
   useEffect(() => {
-    loadTasks();
     loadUsers();
+  }, []);
+
+  useEffect(() => {
+    if (!authChecked || !isAuthenticated || !activeUserId) return;
+
+    loadTasks();
     loadTeams();
     loadTrades();
     loadBusinessAreaTargets();
@@ -12909,7 +12914,7 @@ export function DashboardPage() {
     loadWinterServiceAutomationSettings();
     loadCustomerFeedback();
     loadCustomerFeedbackRequests();
-  }, []);
+  }, [authChecked, isAuthenticated, activeUserId]);
 
   useEffect(() => {
     if (goalDraft.ownerUserId || users.length === 0) return;
@@ -12917,21 +12922,6 @@ export function DashboardPage() {
     if (!firstActiveUser) return;
     setGoalDraft((current) => ({ ...current, ownerUserId: firstActiveUser.id }));
   }, [goalDraft.ownerUserId, users]);
-
-  useEffect(() => {
-    if (!activeUserId) return;
-    void loadTrades();
-    void loadBusinessAreaTargets();
-    void loadUnits();
-    void loadContacts();
-    void loadHeroProjects();
-    void loadProjectTimeEntries();
-    void loadDocumentTypes();
-    void loadDocumentTexts();
-    void loadCatalogItems();
-    void loadOffers();
-    void loadInvoices();
-  }, [activeUserId]);
 
   useEffect(() => {
     if (activeTab !== "personalData" || !["development", "disg"].includes(personalDataView)) return;
@@ -24851,7 +24841,7 @@ await addProjectLogbookEntry(
     );
   }
 
-  if (!authChecked || isRestoringProjectFile) {
+  if (!authChecked || (isAuthenticated && isRestoringProjectFile)) {
     return (
       <main className={styles.page}>
         <section className={`${styles.shell} ${styles.bootShell}`}>

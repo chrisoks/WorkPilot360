@@ -3167,3 +3167,16 @@ Umgesetzt:
 
 Warum:
 - Lohnkosten und Mitarbeiterbewertungen sind besonders sensible Mitarbeiterdaten und sollten nicht nur ueber frei mitsendbare Actor-Parameter geschuetzt sein.
+
+## Folgeblock Auth/Session: Dashboard-Start ohne Session
+
+Stand: 2026-06-22
+
+Umgesetzt:
+- Dashboard-Massendaten werden erst nach bestaetigter Server-Session und aktivem Benutzer geladen.
+- Direkte Projektakten-Links blockieren den Login nicht mehr, wenn keine gueltige Session vorhanden ist.
+- Der Boot-Ladebildschirm wartet nur noch auf Projektakten-Wiederherstellung, wenn der Benutzer tatsaechlich angemeldet ist.
+
+Warum:
+- Nach der Session-Umstellung kann eine alte lokale Browser-ID keine echte Anmeldung mehr ersetzen.
+- Ohne diesen Fix konnte ein direkter Projektlink bei fehlender Session im Ladebildschirm haengen bleiben, statt sauber die Loginseite zu zeigen.
