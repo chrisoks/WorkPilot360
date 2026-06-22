@@ -1,9 +1,8 @@
 import { randomBytes, randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
-import { getSessionUserActor } from "@/lib/auth/actor";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canManageCustomerFeedbackRequests, canReadCustomerFeedbackRequests } from "@/lib/permissions";
 import { ensureSalesHubTables } from "@/lib/sales-hub/ensure";
 
@@ -35,20 +34,6 @@ function getBaseUrl(req: Request) {
 
 function getUserName(user: { firstName?: string | null; lastName?: string | null; email?: string | null }) {
   return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "System";
-}
-
-function getRequestActor(users: User[], actorId: unknown) {
-  const requestedActorId = cleanString(actorId);
-  if (!requestedActorId) return null;
-
-  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
 }
 
 function forbiddenFeedbackRequestResponse() {
@@ -83,12 +68,12 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const { organization, users } = await getDemoContext();
   const requestedActorId = url.searchParams.get("actorId");
-  const actor =
-    getRequestActor(users, requestedActorId) ??
-    (!cleanString(requestedActorId) ? await getSessionUserActor(req, users) : null);
-  if (!actor) {
-    return cleanString(requestedActorId) ? unauthorizedActorResponse() : NextResponse.json([]);
+  const actorResult = await getSessionBoundActor(req, users, requestedActorId);
+  if (!actorResult.ok) {
+    return cleanString(requestedActorId) ? sessionBoundActorResponse(actorResult) : NextResponse.json([]);
   }
+  const actor = actorResult.actor;
+
   if (!canReadCustomerFeedbackRequests(actor)) {
     return forbiddenFeedbackRequestResponse();
   }
@@ -106,10 +91,12 @@ export async function POST(req: Request) {
   await ensureSalesHubTables();
   const body = await req.json().catch(() => ({}));
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
+
   if (!canManageCustomerFeedbackRequests(actor)) {
     return forbiddenFeedbackRequestResponse();
   }
