@@ -3180,3 +3180,74 @@ Umgesetzt:
 Warum:
 - Nach der Session-Umstellung kann eine alte lokale Browser-ID keine echte Anmeldung mehr ersetzen.
 - Ohne diesen Fix konnte ein direkter Projektlink bei fehlender Session im Ladebildschirm haengen bleiben, statt sauber die Loginseite zu zeigen.
+
+## Folgeblock Auditabschluss: Stabilitaets-Smoke und aktueller Stand
+
+Stand: 2026-06-22
+
+Status:
+- Operativer Auditstand: ca. 90%.
+- Kritische Rechte-, Crash-, Datenverlust- und Startlastthemen in den priorisierten Kernpfaden: ca. 95%.
+- Der aktuelle Arbeitsstand ist als audit-stabil fuer die geprueften Kernpfade einzustufen.
+
+Zuletzt umgesetzte Absicherungen:
+- Startup- und optionale Leseendpunkte wurden gegen fehlende Session und unvollstaendige Startzustaende beruhigt.
+- Dashboard-Refreshes fuer Projektakte, Logbuch, Notizen, Status-Scans und regelmaessige Syncs starten erst nach bestaetigter Anmeldung und aktivem Benutzer.
+- Dokumentenversand wurde stabilisiert: Angebotsdruck wird in Historie/Logbuch protokolliert, Zusatzanhaenge pruefen die Gesamtgroesse.
+- Projektgewinn/Billing-Status behandelt stornierte bzw. finanziell inaktive Rechnungen nicht mehr als aktive Rechnungen.
+- Geloeschte Projektzeiten werden bei Ziel-/Stundenberechnungen nicht mehr mitgezaehlt.
+- Login-Zeichenfehler wurden bereinigt.
+
+Praktischer Smoke-Test:
+- Testumgebung: lokaler Dev-Server auf `http://localhost:3001`.
+- Test-Actor: `christian.eid@ok-solutions.com`, Rolle `GESCHAEFTSFUEHRER`.
+- Gepruefte Kernbereiche:
+  - Dashboard
+  - Session/Login-Zustand
+  - Benutzer, Aufgaben, Teams, Gewerke
+  - Planung
+  - Projektzeiten
+  - Stempel-Session einzeln und global
+  - Kontakte
+  - HERO-Projekte
+  - Abwesenheiten
+  - Benachrichtigungen
+  - Angebote und Rechnungen
+  - Dokument-Mail
+  - Dokumenttypen und Dokumenttexte
+  - Artikel/Katalog
+  - Sales-Ziele
+  - Status-Timeline
+  - Projektbezogene Logbuch-, Angebots-, Rechnungs-, Historien- und Dokument-Mail-Aufrufe
+
+Smoke-Ergebnis:
+- Alle echten Lese-/Startpfade im Smoke-Test lieferten `200`.
+- Der bewusst ungueltige Test-Actor `does-not-exist` lieferte korrekt `401`.
+- Keine unerwarteten `404` oder `500` im geprueften Smoke-Umfang.
+- Ein zwischenzeitlicher `MODULE_NOT_FOUND`/500-Zustand war auf einen laufenden Dev-Server mit altem `.next`-Zwischenstand nach Build zurueckzufuehren; nach kontrolliertem Serverneustart war der Smoke-Test sauber.
+
+Checks im aktuellen Auditstand:
+- `git diff --check`: bestanden.
+- `npm run check:mojibake`: bestanden.
+- `npm run check:regressions`: bestanden.
+- `npx prisma validate`: bestanden.
+- `npx tsc --noEmit --pretty false`: bestanden.
+- `npm run build`: bestanden.
+- Praktischer API-Smoke auf Port 3001: bestanden.
+
+Bewusst offene Restrisiken:
+- Die request-basierten Actor-Parameter sind in sensiblen Bereichen bereits session-gebunden, aber noch nicht ueber das komplette System final durchmodelliert.
+- Mitarbeiter-Emulation funktioniert weiter, sollte aber in einem eigenen Folgeblock vollstaendig serverseitig modelliert und dokumentiert werden.
+- Runtime-DDL in API-Routen bleibt ein Architekturthema fuer einen separaten Migrationsblock.
+- Grosse Dateien/PDFs/Anhaenge liegen teilweise weiterhin als Base64/Data-URL in Datenbankfeldern; langfristig ist Datei-/Objektspeicher sinnvoll.
+- Alte oder kaum noch genutzte UI-Bereiche wurden nicht breit umgebaut, um keine unnoetigen Nebenwirkungen zu erzeugen.
+
+Empfehlung fuer den weiteren Ablauf:
+1. Audit nicht weiter mit neuen Feature-Umbauten vermischen.
+2. Nur noch echte Blocker oder klar sichtbare UI-/Textfehler im aktuellen Stand beheben.
+3. Danach eigene Folgeblocks planen:
+   - Auth/Session finalisieren.
+   - Datei-/Objektspeicher fuer Anhaenge und PDFs.
+   - Runtime-DDL durch saubere Migrationen ersetzen.
+   - Performance fuer grosse Kontakt-/Projekt-/Dokumentmengen weiter ausbauen.
+   - Globales Archivierungs-/Loeschkonzept als Produktentscheidung.
