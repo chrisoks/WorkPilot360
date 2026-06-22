@@ -59,6 +59,16 @@ export async function getSessionBoundActor<TActor extends ActorCandidate>(
   };
 }
 
+export async function getSessionUserActor<TActor extends { id: string; isActive?: boolean | null }>(
+  req: Request,
+  users: TActor[]
+) {
+  const sessionUser = await getAuthenticatedSessionUser(req);
+  if (!sessionUser) return null;
+
+  return users.find((candidate) => candidate.id === sessionUser.id && candidate.isActive !== false) ?? null;
+}
+
 export function sessionBoundActorResponse(result: SessionBoundActorFailure) {
   return NextResponse.json({ error: result.error }, { status: result.status });
 }

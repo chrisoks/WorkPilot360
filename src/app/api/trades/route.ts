@@ -3,6 +3,7 @@ import { Role } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getSessionUserActor } from "@/lib/auth/actor";
 import { canManageTrades } from "@/lib/permissions";
 
 const defaultBusinessAreas = ["Marketing", "Arbeitssicherheit", "HR", "immocare", "interne Arbeiten"];
@@ -276,9 +277,12 @@ async function ensureDefaultTrades(organizationId: string) {
 export async function GET(req: Request) {
   const { organization, users } = await getDemoContext();
   const url = new URL(req.url);
-  const actor = getRequestActor(users, url.searchParams.get("actorId"));
+  const requestedActorId = url.searchParams.get("actorId");
+  const actor =
+    getRequestActor(users, requestedActorId) ??
+    (!cleanString(requestedActorId) ? await getSessionUserActor(req, users) : null);
   if (!actor) {
-    return unauthorizedActorResponse();
+    return cleanString(requestedActorId) ? unauthorizedActorResponse() : NextResponse.json([]);
   }
   await ensureDefaultTrades(organization.id);
 

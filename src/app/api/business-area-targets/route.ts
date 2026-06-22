@@ -3,6 +3,7 @@ import { Role } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getSessionUserActor } from "@/lib/auth/actor";
 import { canManageBusinessAreaTargets } from "@/lib/permissions";
 
 const defaultBusinessAreas = ["Marketing", "Arbeitssicherheit", "HR", "immocare"];
@@ -154,9 +155,12 @@ async function getTargetRows(organizationId: string, months: string[]) {
 export async function GET(req: Request) {
   const { organization, users } = await getDemoContext();
   const { searchParams } = new URL(req.url);
-  const actor = getRequestActor(users, searchParams.get("actorId"));
+  const requestedActorId = searchParams.get("actorId");
+  const actor =
+    getRequestActor(users, requestedActorId) ??
+    (!cleanString(requestedActorId) ? await getSessionUserActor(req, users) : null);
   if (!actor) {
-    return unauthorizedActorResponse();
+    return cleanString(requestedActorId) ? unauthorizedActorResponse() : NextResponse.json([]);
   }
   await ensureBusinessAreas(organization.id);
   await migrateYearlyTargetsToRecurringMonths(organization.id);
