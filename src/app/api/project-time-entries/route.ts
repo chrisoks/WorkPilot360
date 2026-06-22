@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canApproveProjectOvertime, canManageProjectTimeEntries } from "@/lib/permissions";
 
 type DemoUser = {
@@ -120,13 +121,6 @@ function getRequestUser(users: DemoUser[], userId: unknown) {
   return users.find((user) => user.id === userId.trim() && user.isActive) ?? null;
 }
 
-function unauthorizedActorResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
-}
-
 function formatDateKeyDisplay(value: string) {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!match) return value || "-";
@@ -227,10 +221,11 @@ export async function GET(req: Request) {
   const { organization, users } = await getDemoContext();
   await ensureProjectTimeEntryTable();
 
-  const actor = getRequestUser(users, searchParams.get("actorUserId"));
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, searchParams.get("actorUserId"));
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   const entries = canManageProjectTimeEntries(actor)
     ? await prisma.$queryRaw<ProjectTimeEntryRow[]>`
@@ -267,10 +262,11 @@ export async function POST(req: Request) {
   const { organization, users } = await getDemoContext();
   await ensureProjectTimeEntryTable();
 
-  const actor = getRequestUser(users, body.actorUserId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorUserId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   const actorName = getUserName(actor);
   const actorCanManageProjectTime = canManageProjectTimeEntries(actor);
@@ -444,10 +440,11 @@ export async function DELETE(req: Request) {
   const { organization, users } = await getDemoContext();
   await ensureProjectTimeEntryTable();
 
-  const actor = getRequestUser(users, searchParams.get("actorUserId"));
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, searchParams.get("actorUserId"));
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   const actorName = getUserName(actor);
   const actorCanManageProjectTime = canManageProjectTimeEntries(actor);

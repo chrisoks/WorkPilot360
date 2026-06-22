@@ -13,6 +13,7 @@ import {
 } from "pdf-lib";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canDeleteOffers, canManageOffers, canSendDocumentMails } from "@/lib/permissions";
 
 type OfferCompany = "OK solutions" | "OK immocare";
@@ -479,22 +480,6 @@ function getErrorMessage(error: unknown) {
 
 function getUserName(user: Pick<User, "firstName" | "lastName" | "email">) {
   return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "System";
-}
-
-function getRequestActor(users: User[], actorId: unknown) {
-  const requestedActorId = cleanString(actorId);
-  if (!requestedActorId) {
-    return null;
-  }
-
-  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
 }
 
 function forbiddenOfferResponse() {
@@ -995,10 +980,11 @@ export async function GET(req: Request) {
   const { organization, users } = await getDemoContext();
   await ensureOfferTables();
   const { searchParams } = new URL(req.url);
-  const actor = getRequestActor(users, searchParams.get("actorId"));
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, searchParams.get("actorId"));
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
   if (!canSendDocumentMails(actor)) {
     return forbiddenOfferResponse();
   }
@@ -1102,10 +1088,11 @@ export async function POST(req: Request) {
   const { organization, users } = await getDemoContext();
   await ensureOfferTables();
   const body = (await req.json()) as OfferInput;
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
   if (!canManageOffers(actor)) {
     return forbiddenOfferResponse();
   }
@@ -1249,10 +1236,11 @@ export async function PATCH(req: Request) {
   const { organization, users } = await getDemoContext();
   await ensureOfferTables();
   const body = (await req.json()) as OfferInput;
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
   if (!canManageOffers(actor)) {
     return forbiddenOfferResponse();
   }
@@ -1581,10 +1569,11 @@ export async function DELETE(req: Request) {
   await ensureOfferTables();
   const body = await req.json().catch(() => ({}));
   const id = cleanString(body.id);
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
   if (!canDeleteOffers(actor)) {
     return forbiddenOfferResponse();
   }

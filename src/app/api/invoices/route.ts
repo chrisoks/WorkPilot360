@@ -16,6 +16,7 @@ import { prisma } from "@/lib/db/client";
 import { generateXRechnungXml, type XRechnungSeller } from "@/lib/e-invoice/xrechnung";
 import { validateXRechnungWithKosit } from "@/lib/e-invoice/kosit-validator";
 import { validateXRechnungPayload } from "@/lib/e-invoice/xrechnung-validation";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canDeleteInvoices, canManageInvoices, canSendDocumentMails } from "@/lib/permissions";
 
 type InvoiceCompany = "OK solutions" | "OK immocare";
@@ -609,22 +610,6 @@ function cleanString(value: unknown) {
 
 function getUserName(user: Pick<User, "firstName" | "lastName" | "email">) {
   return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "System";
-}
-
-function getRequestActor(users: User[], actorId: unknown) {
-  const requestedActorId = cleanString(actorId);
-  if (!requestedActorId) {
-    return null;
-  }
-
-  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
 }
 
 function forbiddenInvoiceResponse() {
@@ -1567,10 +1552,11 @@ export async function GET(req: Request) {
   const { organization, users } = await getDemoContext();
   await ensureInvoiceTables();
   const { searchParams } = new URL(req.url);
-  const actor = getRequestActor(users, searchParams.get("actorId"));
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, searchParams.get("actorId"));
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
   if (!canSendDocumentMails(actor)) {
     return forbiddenInvoiceResponse();
   }
@@ -1827,10 +1813,11 @@ export async function POST(req: Request) {
   const { organization, users } = await getDemoContext();
   await ensureInvoiceTables();
   const body = (await req.json()) as InvoiceInput;
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
   if (!canManageInvoices(actor)) {
     return forbiddenInvoiceResponse();
   }
@@ -2007,10 +1994,11 @@ export async function PATCH(req: Request) {
   const { organization, users } = await getDemoContext();
   await ensureInvoiceTables();
   const body = (await req.json()) as InvoiceInput & { id?: string; action?: string; actorName?: string };
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
   if (!canManageInvoices(actor)) {
     return forbiddenInvoiceResponse();
   }
@@ -2354,10 +2342,11 @@ export async function DELETE(req: Request) {
   await ensureInvoiceTables();
   const body = await req.json().catch(() => ({}));
   const id = cleanString(body.id);
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
   const actorName = getUserName(actor);
 
   if (!id) {

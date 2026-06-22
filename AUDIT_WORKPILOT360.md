@@ -3135,3 +3135,22 @@ Bewusst noch nicht geaendert:
 - Interne Fach-APIs pruefen noch nicht durchgaengig die Session direkt.
 - Mitarbeiter-Emulation bleibt weiterhin UI-gesteuert und muss im naechsten Auth-Schnitt serverseitig modelliert werden.
 - Fuer Produktion sollte `WORKPILOT_SESSION_SECRET` oder `NEXTAUTH_SECRET` explizit gesetzt werden.
+
+## Folgeblock Auth/Session: Session-gebundene Actor-Pruefung
+
+Stand: 2026-06-22
+
+Umgesetzt:
+- Neuer gemeinsamer Helfer `src/lib/auth/actor.ts` bindet angeforderte `actorId`/`actorUserId` an die echte Server-Session.
+- Angebote, Rechnungen, Projektzeiten und Dokumenten-Mail akzeptieren Actor-Werte nicht mehr allein aus der Anfrage.
+- Ohne aktive Session antworten diese Fach-APIs mit 401.
+- Fremde Actor-Werte sind nur noch fuer Admin und Geschaeftsfuehrung als bewusste Emulation erlaubt.
+- Das Dashboard nutzt keine alte lokale Benutzer-ID mehr als echte Anmeldung, wenn keine Server-Session vorhanden ist.
+
+Warum:
+- Damit ein Browser-Klick oder manipulierte Anfrage nicht beliebig als anderer Mitarbeiter handeln kann.
+- Die bestehende Mitarbeiter-Emulation bleibt erhalten, ist aber fuer diese sensiblen Pfade serverseitig begrenzt.
+
+Bewusst noch offen:
+- Weitere Fach-APIs sollten in eigenen kleinen Schnitten auf denselben Helfer umgestellt werden.
+- Fuer Produktion sollte weiterhin ein explizites `WORKPILOT_SESSION_SECRET` oder `NEXTAUTH_SECRET` gesetzt werden.

@@ -5684,7 +5684,7 @@ export function DashboardPage() {
       typeof window !== "undefined" ? window.localStorage.getItem("workpilot-user-id") : null;
     const storedImpersonatedUserId =
       typeof window !== "undefined" ? window.localStorage.getItem("workpilot-impersonated-user-id") : null;
-    const storedUser = sessionUser || data.find((demoUser: UserOption) => demoUser.id === storedUserId);
+    const storedUser = sessionUser;
     const storedCanImpersonate =
       storedUser?.role === "ADMIN" || storedUser?.role === "GESCHAEFTSFUEHRER";
     const storedImpersonatedUser =

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { Prisma, type User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { getStoredMailAccount, refreshMicrosoftAccessToken } from "@/lib/mail/microsoft";
 import { ensureSalesHubTables } from "@/lib/sales-hub/ensure";
 import { canSendDocumentMails, canSendInvoiceDocuments, canSendOfferDocuments } from "@/lib/permissions";
@@ -22,22 +23,6 @@ function parseBoundedPositiveInt(value: unknown, fallback: number, max: number) 
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) return fallback;
   return Math.min(parsed, max);
-}
-
-function getRequestActor(users: User[], actorId: unknown) {
-  const requestedActorId = cleanText(actorId);
-  if (!requestedActorId) {
-    return null;
-  }
-
-  return users.find((demoUser) => demoUser.id === requestedActorId && demoUser.isActive) ?? null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
 }
 
 function forbiddenDocumentMailResponse() {
@@ -500,10 +485,11 @@ export async function POST(req: Request) {
   await ensureDocumentMailTables();
   const body = (await req.json()) as Record<string, unknown>;
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   const actorName = `${actor.firstName ?? ""} ${actor.lastName ?? ""}`.trim() || actor.email;
   let mailAccount = await getStoredMailAccount(actor.id);
@@ -645,10 +631,11 @@ export async function GET(req: Request) {
   const projectId = cleanText(searchParams.get("projectId"));
   const overviewLimit = parseBoundedPositiveInt(searchParams.get("limit"), 500, 1000);
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, searchParams.get("actorId"));
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, searchParams.get("actorId"));
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   const rows = projectId
     ? await prisma.$queryRaw<Array<Parameters<typeof formatDispatch>[0]>>`
