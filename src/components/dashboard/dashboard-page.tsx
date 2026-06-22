@@ -5675,11 +5675,16 @@ export function DashboardPage() {
     }
 
     const data = await res.json();
+    const sessionResponse = await fetch("/api/auth/session", { cache: "no-store" }).catch(() => null);
+    const sessionData = sessionResponse?.ok
+      ? ((await sessionResponse.json().catch(() => null)) as { user?: UserOption } | null)
+      : null;
+    const sessionUser = sessionData?.user ? data.find((demoUser: UserOption) => demoUser.id === sessionData.user?.id) : undefined;
     const storedUserId =
       typeof window !== "undefined" ? window.localStorage.getItem("workpilot-user-id") : null;
     const storedImpersonatedUserId =
       typeof window !== "undefined" ? window.localStorage.getItem("workpilot-impersonated-user-id") : null;
-    const storedUser = data.find((demoUser: UserOption) => demoUser.id === storedUserId);
+    const storedUser = sessionUser || data.find((demoUser: UserOption) => demoUser.id === storedUserId);
     const storedCanImpersonate =
       storedUser?.role === "ADMIN" || storedUser?.role === "GESCHAEFTSFUEHRER";
     const storedImpersonatedUser =
@@ -5693,6 +5698,7 @@ export function DashboardPage() {
     setAbsenceUserId((current) => current || effectiveUser?.id || data[0]?.id || "");
 
     if (storedUser) {
+      window.localStorage.setItem("workpilot-user-id", storedUser.id);
       setAuthenticatedUserId(storedUser.id);
       setImpersonatedUserId(storedImpersonatedUser?.id || "");
       setActiveUserId(effectiveUser?.id || storedUser.id);
@@ -10064,6 +10070,7 @@ export function DashboardPage() {
   }
 
   function handleLogout() {
+    void fetch("/api/auth/logout", { method: "POST" });
     window.localStorage.removeItem("workpilot-user-id");
     window.localStorage.removeItem("workpilot-impersonated-user-id");
     setIsAuthenticated(false);

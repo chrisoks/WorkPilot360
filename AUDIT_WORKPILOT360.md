@@ -3114,3 +3114,24 @@ Abschlussregel:
 Praktische Einordnung:
 - Fuer die geprueften Kernfluesse ist der Stand stabil genug, um das Audit operativ zu schliessen.
 - Offene Punkte sind bekannt, dokumentiert und nicht als verdeckte Sofortfehler eingestuft.
+
+## Folgeblock Auth/Session: Session-Grundlage
+
+Stand: 2026-06-22
+
+Umgesetzt:
+- Login setzt jetzt zusaetzlich zur bisherigen UI-Benutzerlogik ein httpOnly Session-Cookie.
+- Neue Session-Hilfe in `src/lib/auth/session.ts` signiert und prueft Session-Tokens serverseitig.
+- Neuer Endpunkt `/api/auth/session` liefert den angemeldeten Benutzer aus der Session.
+- Neuer Endpunkt `/api/auth/logout` loescht das Session-Cookie.
+- Das Dashboard prueft beim Benutzerladen bevorzugt die Server-Session und synchronisiert danach die bestehende UI-Auswahl.
+- Logout ruft nun zusaetzlich den Server-Logout auf.
+
+Warum:
+- Das ist die sichere Grundlage fuer den spaeteren Umbau weg von `actorId`/`actorUserId` als Vertrauensanker.
+- Die bestehenden Actor-Parameter bleiben in diesem ersten Schnitt bewusst erhalten, damit keine breite API-Migration mitten im Grundlagenblock passiert.
+
+Bewusst noch nicht geaendert:
+- Interne Fach-APIs pruefen noch nicht durchgaengig die Session direkt.
+- Mitarbeiter-Emulation bleibt weiterhin UI-gesteuert und muss im naechsten Auth-Schnitt serverseitig modelliert werden.
+- Fuer Produktion sollte `WORKPILOT_SESSION_SECRET` oder `NEXTAUTH_SECRET` explizit gesetzt werden.

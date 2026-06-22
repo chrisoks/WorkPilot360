@@ -2,6 +2,7 @@
 import { Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { createSessionToken, getSessionCookieOptions, WORKPILOT_SESSION_COOKIE } from "@/lib/auth/session";
 
 const bcrypt = require("bcryptjs") as {
   compareSync(password: string, hash: string): boolean;
@@ -86,7 +87,7 @@ export async function POST(req: Request) {
     );
   }
 
-  return NextResponse.json({
+  const response = NextResponse.json({
     id: user.id,
     name: `${user.firstName} ${user.lastName}`,
     email: user.email,
@@ -98,5 +99,7 @@ export async function POST(req: Request) {
     profileImageDataUrl: user.profileImageDataUrl ?? "",
     personalNumber: user.personalNumber ?? "",
   });
+  response.cookies.set(WORKPILOT_SESSION_COOKIE, createSessionToken(user.id), getSessionCookieOptions());
+  return response;
 }
 
