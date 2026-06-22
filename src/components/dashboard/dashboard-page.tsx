@@ -12515,12 +12515,14 @@ export function DashboardPage() {
     if (!owner || !goal.metricKey || !goal.periodStart || !goal.periodEnd) return 0;
     const userProjectStampEntries = stampEntries.filter(
       (entry) =>
+        !entry.deletedAt &&
         entry.mode === "project" &&
         entry.userId === owner.id &&
         isGoalDateInPeriod(entry.date, goal.periodStart, goal.periodEnd)
     );
     const userUnproductiveStampEntries = stampEntries.filter(
       (entry) =>
+        !entry.deletedAt &&
         entry.mode === "unproductive" &&
         entry.userId === owner.id &&
         isGoalDateInPeriod(entry.date, goal.periodStart, goal.periodEnd)
