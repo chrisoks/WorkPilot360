@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getSessionUserActor } from "@/lib/auth/actor";
 
 export const dynamic = "force-dynamic";
 
@@ -110,9 +111,12 @@ function ensureMetric(metrics: Map<string, LaborMetricRow>, row: MetricSourceRow
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, searchParams.get("actorId"));
+  const requestedActorId = searchParams.get("actorId");
+  const actor =
+    getRequestActor(users, requestedActorId) ??
+    (!cleanString(requestedActorId) ? await getSessionUserActor(req, users) : null);
   if (!actor) {
-    return unauthorizedActorResponse();
+    return cleanString(requestedActorId) ? unauthorizedActorResponse() : NextResponse.json([]);
   }
   await ensureReportingColumns();
 

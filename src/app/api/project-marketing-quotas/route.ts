@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getSessionUserActor } from "@/lib/auth/actor";
 import { canManageProjectMarketingQuotas } from "@/lib/permissions";
 
 type MarketingQuotaItemRow = {
@@ -261,9 +262,12 @@ async function insertLogbookEntry(input: {
 export async function GET(req: Request) {
   const { organization, users } = await getDemoContext();
   const url = new URL(req.url);
-  const actor = getRequestActor(users, url.searchParams.get("actorId"));
+  const requestedActorId = url.searchParams.get("actorId");
+  const actor =
+    getRequestActor(users, requestedActorId) ??
+    (!cleanString(requestedActorId) ? await getSessionUserActor(req, users) : null);
   if (!actor) {
-    return unauthorizedActorResponse();
+    return cleanString(requestedActorId) ? unauthorizedActorResponse() : NextResponse.json([]);
   }
 
   await ensureMarketingQuotaTables();

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getSessionUserActor } from "@/lib/auth/actor";
 import { recordStatusTransition, seedCurrentStatusTimeline } from "@/lib/status-tracking";
 import {
   canAssignSalesItemsToOthers,
@@ -226,9 +227,12 @@ function formatPotential(row: PotentialRow) {
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, url.searchParams.get("actorId"));
+  const requestedActorId = url.searchParams.get("actorId");
+  const actor =
+    getRequestActor(users, requestedActorId) ??
+    (!cleanString(requestedActorId) ? await getSessionUserActor(req, users) : null);
   if (!actor) {
-    return unauthorizedActorResponse();
+    return cleanString(requestedActorId) ? unauthorizedActorResponse() : NextResponse.json([]);
   }
 
   await ensurePotentialTable();

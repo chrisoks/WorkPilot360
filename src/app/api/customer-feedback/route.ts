@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getSessionUserActor } from "@/lib/auth/actor";
 import { canDeleteCustomerFeedback, canManageCustomerFeedback, canReadCustomerFeedback } from "@/lib/permissions";
 import { ensureSalesHubTables } from "@/lib/sales-hub/ensure";
 
@@ -116,9 +117,12 @@ export async function GET(req: Request) {
   await ensureSalesHubTables();
   const url = new URL(req.url);
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, url.searchParams.get("actorId"));
+  const requestedActorId = url.searchParams.get("actorId");
+  const actor =
+    getRequestActor(users, requestedActorId) ??
+    (!cleanString(requestedActorId) ? await getSessionUserActor(req, users) : null);
   if (!actor) {
-    return unauthorizedActorResponse();
+    return cleanString(requestedActorId) ? unauthorizedActorResponse() : NextResponse.json([]);
   }
   if (!canReadCustomerFeedback(actor)) {
     return forbiddenCustomerFeedbackResponse();

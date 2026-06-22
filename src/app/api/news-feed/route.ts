@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { Prisma, type User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getSessionUserActor } from "@/lib/auth/actor";
 import { canSeeNewsPost } from "@/lib/news-feed/visibility";
 import { ensureNewsFeedTables } from "@/lib/sales-hub/ensure";
 
@@ -165,9 +166,12 @@ export async function GET(req: Request) {
   await ensureNewsFeedTables();
   const { searchParams } = new URL(req.url);
   const { organization, users } = await getDemoContext();
-  const activeUser = getRequestActor(users, searchParams.get("actorId") ?? searchParams.get("userId"));
+  const requestedActorId = searchParams.get("actorId") ?? searchParams.get("userId");
+  const activeUser =
+    getRequestActor(users, requestedActorId) ??
+    (!cleanString(requestedActorId) ? await getSessionUserActor(req, users) : null);
   if (!activeUser) {
-    return unauthorizedActorResponse();
+    return cleanString(requestedActorId) ? unauthorizedActorResponse() : NextResponse.json([]);
   }
 
   const rows = await prisma.$queryRaw<NewsPostRow[]>`
