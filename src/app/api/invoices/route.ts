@@ -1552,19 +1552,29 @@ export async function GET(req: Request) {
   const { organization, users } = await getDemoContext();
   await ensureInvoiceTables();
   const { searchParams } = new URL(req.url);
-  const actorResult = await getSessionBoundActor(req, users, searchParams.get("actorId"));
+  const requestedActorId = searchParams.get("actorId");
+  const pdfId = cleanString(searchParams.get("pdfId"));
+  const xrechnungId = cleanString(searchParams.get("xrechnungId"));
+  const xrechnungValidationId = cleanString(searchParams.get("xrechnungValidationId"));
+  const historyProjectId = cleanString(searchParams.get("historyProjectId"));
+  const actorResult = await getSessionBoundActor(req, users, requestedActorId);
   if (!actorResult.ok) {
+    if (
+      actorResult.status === 401 &&
+      !cleanString(requestedActorId) &&
+      !pdfId &&
+      !xrechnungId &&
+      !xrechnungValidationId &&
+      !historyProjectId
+    ) {
+      return NextResponse.json([]);
+    }
     return sessionBoundActorResponse(actorResult);
   }
   const actor = actorResult.actor;
   if (!canSendDocumentMails(actor)) {
     return forbiddenInvoiceResponse();
   }
-
-  const pdfId = cleanString(searchParams.get("pdfId"));
-  const xrechnungId = cleanString(searchParams.get("xrechnungId"));
-  const xrechnungValidationId = cleanString(searchParams.get("xrechnungValidationId"));
-  const historyProjectId = cleanString(searchParams.get("historyProjectId"));
 
   if (xrechnungId || xrechnungValidationId) {
     const targetInvoiceId = xrechnungId || xrechnungValidationId;

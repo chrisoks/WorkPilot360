@@ -980,17 +980,20 @@ export async function GET(req: Request) {
   const { organization, users } = await getDemoContext();
   await ensureOfferTables();
   const { searchParams } = new URL(req.url);
-  const actorResult = await getSessionBoundActor(req, users, searchParams.get("actorId"));
+  const requestedActorId = searchParams.get("actorId");
+  const pdfId = cleanString(searchParams.get("pdfId"));
+  const historyProjectId = cleanString(searchParams.get("historyProjectId"));
+  const actorResult = await getSessionBoundActor(req, users, requestedActorId);
   if (!actorResult.ok) {
+    if (actorResult.status === 401 && !cleanString(requestedActorId) && !pdfId && !historyProjectId) {
+      return NextResponse.json([]);
+    }
     return sessionBoundActorResponse(actorResult);
   }
   const actor = actorResult.actor;
   if (!canSendDocumentMails(actor)) {
     return forbiddenOfferResponse();
   }
-
-  const pdfId = cleanString(searchParams.get("pdfId"));
-  const historyProjectId = cleanString(searchParams.get("historyProjectId"));
 
   if (pdfId) {
     const rows = await prisma.$queryRaw<Array<{ offerNumber: string; pdfData: string | null }>>`

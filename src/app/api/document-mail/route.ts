@@ -631,8 +631,12 @@ export async function GET(req: Request) {
   const projectId = cleanText(searchParams.get("projectId"));
   const overviewLimit = parseBoundedPositiveInt(searchParams.get("limit"), 500, 1000);
   const { organization, users } = await getDemoContext();
-  const actorResult = await getSessionBoundActor(req, users, searchParams.get("actorId"));
+  const requestedActorId = searchParams.get("actorId");
+  const actorResult = await getSessionBoundActor(req, users, requestedActorId);
   if (!actorResult.ok) {
+    if (actorResult.status === 401 && !cleanText(requestedActorId)) {
+      return NextResponse.json([]);
+    }
     return sessionBoundActorResponse(actorResult);
   }
   const actor = actorResult.actor;
