@@ -12968,6 +12968,7 @@ export function DashboardPage() {
   }, [catalogSearchTerm, catalogStatusFilter, catalogPageSize, activeTab]);
 
   useEffect(() => {
+    if (!authChecked || !isAuthenticated || !activeUserId) return;
     if (selectedProjectFileId) {
       void loadProjectLogbookEntriesForProject(selectedProjectFileId);
       void loadProjectTimeEntries();
@@ -12977,28 +12978,32 @@ export function DashboardPage() {
       void loadInvoiceHistory(selectedProjectFileId);
       void loadDocumentMailDispatches(selectedProjectFileId);
     }
-  }, [selectedProjectFileId]);
+  }, [activeUserId, authChecked, isAuthenticated, selectedProjectFileId]);
 
   useEffect(() => {
+    if (!authChecked || !isAuthenticated || !activeUserId) return;
     if (projectFileTab !== "notes" || !selectedProjectFileId) return;
     const project = heroProjects.find((item) => item.id === selectedProjectFileId);
     const customer = getProjectCustomerContact(project);
     void loadCustomerProjectNotes({ customerId: customer?.id || project?.contactId || "", projectId: selectedProjectFileId });
-  }, [contacts, heroProjects, projectFileTab, selectedProjectFileId]);
+  }, [activeUserId, authChecked, contacts, heroProjects, isAuthenticated, projectFileTab, selectedProjectFileId]);
 
   useEffect(() => {
+    if (!authChecked || !isAuthenticated || !activeUserId) return;
     if (customerFileTab !== "notes" || !selectedCustomerFileId) return;
     void loadCustomerProjectNotes({ customerId: selectedCustomerFileId });
-  }, [customerFileTab, selectedCustomerFileId]);
+  }, [activeUserId, authChecked, customerFileTab, isAuthenticated, selectedCustomerFileId]);
 
   useEffect(() => {
+    if (!authChecked || !isAuthenticated || !activeUserId) return;
     if (!hasLoadedHeroProjects || heroProjects.length === 0) return;
     if (users.length === 0) return;
 
     void scanBillingReadyNotifications(getCurrentMonthKey());
-  }, [hasLoadedHeroProjects, heroProjects, invoices, projectLogbookEntries, users]);
+  }, [activeUserId, authChecked, hasLoadedHeroProjects, heroProjects, invoices, isAuthenticated, projectLogbookEntries, users]);
 
   useEffect(() => {
+    if (!authChecked || !isAuthenticated || !activeUserId) return;
     if (!selectedProjectFileId) return;
     if (!["hero", "projectsSolutions", "projectsImmocare"].includes(activeTab)) return;
 
@@ -13007,9 +13012,10 @@ export function DashboardPage() {
     }, 5000);
 
     return () => window.clearInterval(intervalId);
-  }, [activeTab, selectedProjectFileId]);
+  }, [activeTab, activeUserId, authChecked, isAuthenticated, selectedProjectFileId]);
 
   useEffect(() => {
+    if (!authChecked || !isAuthenticated || !activeUserId) return;
     if (!selectedProjectFileId) return;
 
     const intervalId = window.setInterval(() => {
@@ -13017,9 +13023,10 @@ export function DashboardPage() {
     }, 15000);
 
     return () => window.clearInterval(intervalId);
-  }, [selectedProjectFileId]);
+  }, [activeUserId, authChecked, isAuthenticated, selectedProjectFileId]);
 
   useEffect(() => {
+    if (!authChecked || !isAuthenticated || !activeUserId) return;
     if (!selectedProjectFileId) return;
 
     const syncWhenVisible = () => {
@@ -13034,7 +13041,7 @@ export function DashboardPage() {
       window.removeEventListener("focus", syncWhenVisible);
       document.removeEventListener("visibilitychange", syncWhenVisible);
     };
-  }, [selectedProjectFileId]);
+  }, [activeUserId, authChecked, isAuthenticated, selectedProjectFileId]);
 
   useEffect(() => {
     if (!mayAccessEmployeeCosts && employeeTopTab === "costs") {
