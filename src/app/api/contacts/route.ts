@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
-import { getAuthenticatedSessionUser } from "@/lib/auth/session";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canDeleteContacts, canManageContacts } from "@/lib/permissions";
 
 type ContactRow = {
@@ -126,34 +126,6 @@ async function ensureContactsTable() {
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function getRequestActor(users: User[], actorId: unknown) {
-  const requestedActorId = cleanString(actorId);
-  if (!requestedActorId) {
-    return null;
-  }
-
-  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
-}
-
-async function getRequestActorOrSessionUser(req: Request, users: User[], actorId: unknown) {
-  const requestedActor = getRequestActor(users, actorId);
-  if (requestedActor) return requestedActor;
-
-  if (cleanString(actorId)) return null;
-
-  const sessionUser = await getAuthenticatedSessionUser(req);
-  if (!sessionUser) return null;
-
-  return users.find((candidate) => candidate.id === sessionUser.id && candidate.isActive) ?? null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
 }
 
 function forbiddenContactResponse() {
@@ -343,14 +315,15 @@ export async function GET(req: Request) {
   const { organization, users } = await getDemoContext();
   const { searchParams } = new URL(req.url);
   const requestedActorId = searchParams.get("actorId");
-  const actor = await getRequestActorOrSessionUser(req, users, requestedActorId);
-  if (!actor) {
-    if (!requestedActorId) {
+  const actorResult = await getSessionBoundActor(req, users, requestedActorId);
+  if (!actorResult.ok) {
+    if (!requestedActorId && actorResult.status === 401) {
       return NextResponse.json([]);
     }
 
-    return unauthorizedActorResponse();
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
   await ensureContactsTable();
 
   const contacts = await prisma.$queryRaw<ContactRow[]>`
@@ -368,10 +341,11 @@ export async function POST(req: Request) {
   await ensureContactsTable();
 
   const body = await req.json();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
   if (!canManageContacts(actor)) {
     return forbiddenContactResponse();
   }
@@ -417,10 +391,11 @@ export async function PATCH(req: Request) {
   await ensureContactsTable();
 
   const body = await req.json();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
   if (!canManageContacts(actor)) {
     return forbiddenContactResponse();
   }
@@ -497,10 +472,11 @@ export async function DELETE(req: Request) {
   await ensureContactsTable();
 
   const body = await req.json();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
   if (!canDeleteContacts(actor)) {
     return forbiddenContactDeleteResponse();
   }
