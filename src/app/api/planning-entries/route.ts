@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { Prisma, Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getAuthenticatedSessionUser } from "@/lib/auth/session";
 import { canManagePlanningEntries } from "@/lib/permissions";
 
 type DemoUser = {
@@ -170,6 +171,18 @@ function getRequestActor(users: DemoUser[], actorId: unknown) {
   }
 
   return users.find((user) => user.id === actorId.trim() && user.isActive) ?? null;
+}
+
+async function getRequestActorOrSessionUser(req: Request, users: DemoUser[], actorId: unknown) {
+  const requestedActor = getRequestActor(users, actorId);
+  if (requestedActor) return requestedActor;
+
+  if (typeof actorId === "string" && actorId.trim()) return null;
+
+  const sessionUser = await getAuthenticatedSessionUser(req);
+  if (!sessionUser) return null;
+
+  return users.find((user) => user.id === sessionUser.id && user.isActive) ?? null;
 }
 
 function unauthorizedActorResponse() {
@@ -463,8 +476,13 @@ export async function GET(req: Request) {
   const { organization, users } = await getDemoContext();
   await ensurePlanningEntryTable();
   const { searchParams } = new URL(req.url);
-  const actor = getRequestActor(users, searchParams.get("actorUserId") ?? searchParams.get("actorId"));
+  const requestedActorId = searchParams.get("actorUserId") ?? searchParams.get("actorId");
+  const actor = await getRequestActorOrSessionUser(req, users, requestedActorId);
   if (!actor) {
+    if (!requestedActorId) {
+      return NextResponse.json([]);
+    }
+
     return unauthorizedActorResponse();
   }
 

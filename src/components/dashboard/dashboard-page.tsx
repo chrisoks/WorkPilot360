@@ -5803,6 +5803,9 @@ export function DashboardPage() {
 
     const data = (await res.json()) as PlanningEntry[];
     setPlanningEntries(data);
+    setErrorMessage((currentMessage) =>
+      currentMessage === "Planungen konnten nicht geladen werden." ? "" : currentMessage
+    );
   }
 
   async function loadContentItems() {
@@ -10687,6 +10690,9 @@ export function DashboardPage() {
 
     const data = (await res.json()) as StampTimeEntry[];
     setStampEntries(data.map((entry) => ({ ...entry, date: normalizeDateKeyValue(entry.date) })));
+    setErrorMessage((currentMessage) =>
+      currentMessage === "Projektzeiten konnten nicht geladen werden." ? "" : currentMessage
+    );
   }
 
   async function loadProjectMarketingQuotas(projectId: string) {

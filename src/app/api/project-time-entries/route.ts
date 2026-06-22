@@ -221,8 +221,13 @@ export async function GET(req: Request) {
   const { organization, users } = await getDemoContext();
   await ensureProjectTimeEntryTable();
 
-  const actorResult = await getSessionBoundActor(req, users, searchParams.get("actorUserId"));
+  const requestedActorId = searchParams.get("actorUserId");
+  const actorResult = await getSessionBoundActor(req, users, requestedActorId);
   if (!actorResult.ok) {
+    if (!requestedActorId && actorResult.status === 401) {
+      return NextResponse.json([]);
+    }
+
     return sessionBoundActorResponse(actorResult);
   }
   const actor = actorResult.actor;

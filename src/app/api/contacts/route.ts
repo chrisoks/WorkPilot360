@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getAuthenticatedSessionUser } from "@/lib/auth/session";
 import { canDeleteContacts, canManageContacts } from "@/lib/permissions";
 
 type ContactRow = {
@@ -134,6 +135,18 @@ function getRequestActor(users: User[], actorId: unknown) {
   }
 
   return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
+}
+
+async function getRequestActorOrSessionUser(req: Request, users: User[], actorId: unknown) {
+  const requestedActor = getRequestActor(users, actorId);
+  if (requestedActor) return requestedActor;
+
+  if (cleanString(actorId)) return null;
+
+  const sessionUser = await getAuthenticatedSessionUser(req);
+  if (!sessionUser) return null;
+
+  return users.find((candidate) => candidate.id === sessionUser.id && candidate.isActive) ?? null;
 }
 
 function unauthorizedActorResponse() {
@@ -329,8 +342,13 @@ async function getContactReferences(organizationId: string, contactId: string): 
 export async function GET(req: Request) {
   const { organization, users } = await getDemoContext();
   const { searchParams } = new URL(req.url);
-  const actor = getRequestActor(users, searchParams.get("actorId"));
+  const requestedActorId = searchParams.get("actorId");
+  const actor = await getRequestActorOrSessionUser(req, users, requestedActorId);
   if (!actor) {
+    if (!requestedActorId) {
+      return NextResponse.json([]);
+    }
+
     return unauthorizedActorResponse();
   }
   await ensureContactsTable();

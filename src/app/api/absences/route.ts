@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { Prisma, Role, TaskPriority, TaskStatus } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getAuthenticatedSessionUser } from "@/lib/auth/session";
 import { canManageAbsences } from "@/lib/permissions";
 
 type AbsenceType = "urlaub" | "krank";
@@ -43,6 +44,22 @@ function getRequestActor<T extends { id: string; isActive?: boolean | null }>(
   }
 
   return users.find((demoUser) => demoUser.id === actorId.trim() && demoUser.isActive !== false) ?? null;
+}
+
+async function getRequestActorOrSessionUser<T extends { id: string; isActive?: boolean | null }>(
+  req: Request,
+  users: T[],
+  actorId: unknown
+) {
+  const requestedActor = getRequestActor(users, actorId);
+  if (requestedActor) return requestedActor;
+
+  if (typeof actorId === "string" && actorId.trim()) return null;
+
+  const sessionUser = await getAuthenticatedSessionUser(req);
+  if (!sessionUser) return null;
+
+  return users.find((demoUser) => demoUser.id === sessionUser.id && demoUser.isActive !== false) ?? null;
 }
 
 function unauthorizedActorResponse() {
@@ -281,8 +298,13 @@ export async function GET(req: Request) {
   await ensureAbsenceTable();
   const { organization, users } = await getDemoContext();
   const { searchParams } = new URL(req.url);
-  const actor = getRequestActor(users, searchParams.get("actorId"));
+  const requestedActorId = searchParams.get("actorId");
+  const actor = await getRequestActorOrSessionUser(req, users, requestedActorId);
   if (!actor) {
+    if (!requestedActorId) {
+      return NextResponse.json([]);
+    }
+
     return unauthorizedActorResponse();
   }
 
