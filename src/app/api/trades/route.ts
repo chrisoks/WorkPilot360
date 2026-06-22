@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { Role } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
-import { getSessionUserActor } from "@/lib/auth/actor";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canManageTrades } from "@/lib/permissions";
 
 const defaultBusinessAreas = ["Marketing", "Arbeitssicherheit", "HR", "immocare", "interne Arbeiten"];
@@ -47,22 +46,6 @@ type TradeRow = {
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function getRequestActor(users: Array<{ id: string; isActive: boolean; role: Role }>, actorId: unknown) {
-  const requestedActorId = cleanString(actorId);
-  if (!requestedActorId) {
-    return null;
-  }
-
-  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
 }
 
 function normalizeProjectPrefix(value: unknown) {
@@ -278,11 +261,9 @@ export async function GET(req: Request) {
   const { organization, users } = await getDemoContext();
   const url = new URL(req.url);
   const requestedActorId = url.searchParams.get("actorId");
-  const actor =
-    getRequestActor(users, requestedActorId) ??
-    (!cleanString(requestedActorId) ? await getSessionUserActor(req, users) : null);
-  if (!actor) {
-    return cleanString(requestedActorId) ? unauthorizedActorResponse() : NextResponse.json([]);
+  const actorResult = await getSessionBoundActor(req, users, requestedActorId);
+  if (!actorResult.ok) {
+    return cleanString(requestedActorId) ? sessionBoundActorResponse(actorResult) : NextResponse.json([]);
   }
   await ensureDefaultTrades(organization.id);
 
@@ -297,10 +278,11 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const body = await req.json();
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   if (!canManageTrades(actor)) {
     return NextResponse.json(
@@ -365,10 +347,11 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
   const body = await req.json();
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   if (!canManageTrades(actor)) {
     return NextResponse.json(
@@ -435,10 +418,11 @@ export async function PATCH(req: Request) {
 export async function DELETE(req: Request) {
   const body = await req.json();
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   if (!canManageTrades(actor)) {
     return NextResponse.json(
