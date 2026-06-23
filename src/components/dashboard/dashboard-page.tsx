@@ -12912,36 +12912,47 @@ export function DashboardPage() {
   useEffect(() => {
     if (!authChecked || !isAuthenticated || !activeUserId) return;
 
-    loadTasks();
-    loadTeams();
-    loadTrades();
-    loadBusinessAreaTargets();
-    loadUnits();
-    loadEscalationRules();
-    loadAbsences();
-    loadPlanningEntries();
-    if (CONTENT_MANAGEMENT_ENABLED) {
-      loadContentItems();
-      loadIdeaPosts();
-    }
-    loadContacts();
-    loadHeroProjects();
-    loadProjectTimeEntries();
-    loadProjectLogbookEntries();
-    loadProjectPotentials();
-    loadSalesGoals();
-    loadProjectStatusTimelineEntries();
-    loadDocumentTypes();
-    loadDocumentTexts();
-    loadCatalogItems();
-    loadOffers();
-    loadInvoices();
-    loadLegacyInvoices();
-    loadMonthlyFinancialReportValues();
-    loadDocumentMailDispatches();
-    loadWinterServiceAutomationSettings();
-    loadCustomerFeedback();
-    loadCustomerFeedbackRequests();
+    void loadTasks();
+    void loadTeams();
+    void loadPlanningEntries();
+    void loadAbsences();
+    void loadHeroProjects();
+    void loadProjectTimeEntries();
+
+    const operationalLoadTimer = window.setTimeout(() => {
+      void loadContacts();
+      void loadCatalogItems();
+      void loadOffers();
+      void loadInvoices();
+      void loadProjectLogbookEntries();
+      void loadProjectStatusTimelineEntries();
+      void loadDocumentMailDispatches();
+    }, 150);
+
+    const secondaryLoadTimer = window.setTimeout(() => {
+      void loadTrades();
+      void loadBusinessAreaTargets();
+      void loadUnits();
+      void loadEscalationRules();
+      void loadProjectPotentials();
+      void loadSalesGoals();
+      void loadDocumentTypes();
+      void loadDocumentTexts();
+      void loadLegacyInvoices();
+      void loadMonthlyFinancialReportValues();
+      void loadWinterServiceAutomationSettings();
+      void loadCustomerFeedback();
+      void loadCustomerFeedbackRequests();
+      if (CONTENT_MANAGEMENT_ENABLED) {
+        void loadContentItems();
+        void loadIdeaPosts();
+      }
+    }, 600);
+
+    return () => {
+      window.clearTimeout(operationalLoadTimer);
+      window.clearTimeout(secondaryLoadTimer);
+    };
   }, [authChecked, isAuthenticated, activeUserId]);
 
   useEffect(() => {
