@@ -22,6 +22,7 @@ type ActiveStampSessionRow = {
   mode: string;
   projectId: string;
   projectLabel: string | null;
+  trade: string | null;
   marketingContentItemId: string | null;
   marketingContentTitle: string | null;
   marketingContentType: string | null;
@@ -40,6 +41,7 @@ type ProjectTimeEntryRow = {
   mode: string | null;
   projectId: string;
   projectLabel: string | null;
+  trade: string | null;
   userId: string | null;
   employee: string | null;
   entrySource: string | null;
@@ -84,6 +86,7 @@ async function ensureActiveStampSessionTableOnce() {
         "mode" TEXT NOT NULL DEFAULT 'project',
         "projectId" TEXT NOT NULL,
         "projectLabel" TEXT,
+        "trade" TEXT,
         "startedAt" TIMESTAMP(3) NOT NULL,
         "accumulatedMs" BIGINT NOT NULL DEFAULT 0,
         "pauseStartedAt" TIMESTAMP(3),
@@ -99,6 +102,7 @@ async function ensureActiveStampSessionTableOnce() {
     ADD COLUMN IF NOT EXISTS "employee" TEXT,
     ADD COLUMN IF NOT EXISTS "mode" TEXT NOT NULL DEFAULT 'project',
     ADD COLUMN IF NOT EXISTS "projectLabel" TEXT,
+    ADD COLUMN IF NOT EXISTS "trade" TEXT,
     ADD COLUMN IF NOT EXISTS "marketingContentItemId" TEXT,
     ADD COLUMN IF NOT EXISTS "marketingContentTitle" TEXT,
     ADD COLUMN IF NOT EXISTS "marketingContentType" TEXT,
@@ -133,6 +137,7 @@ async function ensureProjectTimeEntryTableOnce() {
       "mode" TEXT NOT NULL DEFAULT 'project',
       "projectId" TEXT NOT NULL,
       "projectLabel" TEXT,
+      "trade" TEXT,
       "userId" TEXT,
       "employee" TEXT,
       "entrySource" TEXT NOT NULL DEFAULT 'stamped',
@@ -162,6 +167,7 @@ async function ensureProjectTimeEntryTableOnce() {
     ALTER TABLE "ProjectTimeEntry"
     ADD COLUMN IF NOT EXISTS "mode" TEXT NOT NULL DEFAULT 'project',
     ADD COLUMN IF NOT EXISTS "userId" TEXT,
+    ADD COLUMN IF NOT EXISTS "trade" TEXT,
     ADD COLUMN IF NOT EXISTS "entrySource" TEXT NOT NULL DEFAULT 'stamped',
     ADD COLUMN IF NOT EXISTS "invoiceId" TEXT,
     ADD COLUMN IF NOT EXISTS "invoiceNumber" TEXT,
@@ -204,6 +210,25 @@ function toMillis(value: bigint | number) {
 
 function roundMoney(value: number) {
   return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+async function isHourlyRecurringProject(organizationId: string, projectId: string) {
+  if (!projectId || projectId === "__unproductive__") return false;
+
+  const rows = await prisma.$queryRaw<Array<{ projectKind: string | null; recurringBillingMode: string | null }>>`
+    SELECT "projectKind", "recurringBillingMode"
+    FROM "WorkPilotProject"
+    WHERE "organizationId" = ${organizationId}
+      AND "id" = ${projectId}
+    LIMIT 1
+  `;
+  const project = rows[0];
+  if (!project) return false;
+
+  return (
+    project.recurringBillingMode === "hourly" &&
+    (project.projectKind ?? "").toLowerCase().includes("dauerl")
+  );
 }
 
 async function getEmployeeHourlyCostRateSnapshot(organizationId: string, userId: string) {
@@ -303,6 +328,7 @@ function formatSession(row: ActiveStampSessionRow | null) {
     mode: row.mode === "unproductive" ? "unproductive" : "project",
     projectId: row.projectId,
     projectLabel: row.projectLabel ?? "",
+    trade: row.trade ?? "",
     marketingContentItemId: row.marketingContentItemId ?? "",
     marketingContentTitle: row.marketingContentTitle ?? "",
     marketingContentType: row.marketingContentType ?? "",
@@ -322,6 +348,7 @@ function formatEntry(entry: ProjectTimeEntryRow) {
     mode: entry.mode === "unproductive" ? "unproductive" : "project",
     projectId: entry.projectId,
     projectLabel: entry.projectLabel ?? "",
+    trade: entry.trade ?? "",
     userId: entry.userId ?? "",
     employee: entry.employee ?? "",
     entrySource: entry.entrySource === "manual" ? "manual" : "stamped",
@@ -415,6 +442,7 @@ export async function POST(req: Request) {
   const userId = cleanString(body.userId);
   const mode = cleanString(body.mode) === "unproductive" ? "unproductive" : "project";
   const projectId = cleanString(body.projectId) || (mode === "unproductive" ? "__unproductive__" : "");
+  const trade = mode === "project" ? cleanString(body.trade) : "";
   const comment = cleanString(body.comment);
 
   if (!userId) {
@@ -439,6 +467,13 @@ export async function POST(req: Request) {
   const stampUser = stampUserResult.actor;
   const existingSession = await getActiveSession(organization.id, userId);
 
+  if (mode === "project" && !trade && (await isHourlyRecurringProject(organization.id, projectId))) {
+    return NextResponse.json(
+      { error: "Bitte fuer diese Stundenabrechnung ein Gewerk auswaehlen." },
+      { status: 400 }
+    );
+  }
+
   if (existingSession) {
     return NextResponse.json(
       {
@@ -459,6 +494,7 @@ export async function POST(req: Request) {
       "mode",
       "projectId",
       "projectLabel",
+      "trade",
       "marketingContentItemId",
       "marketingContentTitle",
       "marketingContentType",
@@ -478,6 +514,7 @@ export async function POST(req: Request) {
       ${mode},
       ${projectId},
       ${cleanString(body.projectLabel) || null},
+      ${trade || null},
       ${cleanString(body.marketingContentItemId) || null},
       ${cleanString(body.marketingContentTitle) || null},
       ${cleanString(body.marketingContentType) || null},
@@ -628,6 +665,7 @@ async function stopSession(req: Request, body: Record<string, unknown>) {
       "mode",
       "projectId",
       "projectLabel",
+      "trade",
       "userId",
       "employee",
       "entrySource",
@@ -652,6 +690,7 @@ async function stopSession(req: Request, body: Record<string, unknown>) {
       ${session.mode === "unproductive" ? "unproductive" : "project"},
       ${session.mode === "unproductive" ? "__unproductive__" : session.projectId},
       ${session.projectLabel || (session.mode === "unproductive" ? "Unproduktiv" : null)},
+      ${session.trade || null},
       ${session.userId},
       ${session.employee || null},
       ${"stamped"},

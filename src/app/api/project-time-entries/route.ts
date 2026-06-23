@@ -21,6 +21,7 @@ type ProjectTimeEntryRow = {
   mode: string | null;
   projectId: string;
   projectLabel: string | null;
+  trade: string | null;
   userId: string | null;
   employee: string | null;
   entrySource: string | null;
@@ -56,6 +57,7 @@ async function ensureProjectTimeEntryTable() {
       "mode" TEXT NOT NULL DEFAULT 'project',
       "projectId" TEXT NOT NULL,
       "projectLabel" TEXT,
+      "trade" TEXT,
       "userId" TEXT,
       "employee" TEXT,
       "entrySource" TEXT NOT NULL DEFAULT 'stamped',
@@ -86,6 +88,7 @@ async function ensureProjectTimeEntryTable() {
     ALTER TABLE "ProjectTimeEntry"
     ADD COLUMN IF NOT EXISTS "mode" TEXT NOT NULL DEFAULT 'project',
     ADD COLUMN IF NOT EXISTS "userId" TEXT,
+    ADD COLUMN IF NOT EXISTS "trade" TEXT,
     ADD COLUMN IF NOT EXISTS "entrySource" TEXT NOT NULL DEFAULT 'stamped',
     ADD COLUMN IF NOT EXISTS "invoiceId" TEXT,
     ADD COLUMN IF NOT EXISTS "invoiceNumber" TEXT,
@@ -136,6 +139,25 @@ function roundMoney(value: number) {
   return Math.round((Number(value) || 0) * 100) / 100;
 }
 
+async function isHourlyRecurringProject(organizationId: string, projectId: string) {
+  if (!projectId || projectId === "__unproductive__") return false;
+
+  const rows = await prisma.$queryRaw<Array<{ projectKind: string | null; recurringBillingMode: string | null }>>`
+    SELECT "projectKind", "recurringBillingMode"
+    FROM "WorkPilotProject"
+    WHERE "organizationId" = ${organizationId}
+      AND "id" = ${projectId}
+    LIMIT 1
+  `;
+  const project = rows[0];
+  if (!project) return false;
+
+  return (
+    project.recurringBillingMode === "hourly" &&
+    (project.projectKind ?? "").toLowerCase().includes("dauerl")
+  );
+}
+
 async function getEmployeeHourlyCostRateSnapshot(organizationId: string, userId: string) {
   if (!userId) return 0;
   const rows = await prisma.$queryRaw<Array<{
@@ -182,6 +204,7 @@ function formatEntry(entry: ProjectTimeEntryRow) {
     mode: entry.mode === "unproductive" ? "unproductive" : "project",
     projectId: entry.projectId,
     projectLabel: entry.projectLabel ?? "",
+    trade: entry.trade ?? "",
     userId: entry.userId ?? "",
     employee: entry.employee ?? "",
     entrySource: entry.entrySource === "manual" ? "manual" : "stamped",
@@ -280,6 +303,7 @@ export async function POST(req: Request) {
   const actorCanApproveOvertime = canApproveProjectOvertime(actor);
   const id = cleanString(body.id) || randomUUID();
   const projectLabel = cleanString(body.projectLabel);
+  const trade = mode === "project" ? cleanString(body.trade) : "";
   const userId = cleanString(body.userId);
   const targetUser = getRequestUser(users, userId);
   if (!targetUser) {
@@ -351,6 +375,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Datum und Uhrzeit fehlen." }, { status: 400 });
   }
 
+  if (mode === "project" && !trade && (await isHourlyRecurringProject(organization.id, projectId))) {
+    return NextResponse.json(
+      { error: "Bitte fuer diese Stundenabrechnung ein Gewerk auswaehlen." },
+      { status: 400 }
+    );
+  }
+
   const rows = await prisma.$queryRaw<ProjectTimeEntryRow[]>`
     INSERT INTO "ProjectTimeEntry" (
       "id",
@@ -358,6 +389,7 @@ export async function POST(req: Request) {
       "mode",
       "projectId",
       "projectLabel",
+      "trade",
       "userId",
       "employee",
       "entrySource",
@@ -385,6 +417,7 @@ export async function POST(req: Request) {
       ${mode},
       ${projectId},
       ${projectLabel || null},
+      ${trade || null},
       ${targetUser.id},
       ${employee || null},
       ${entrySource},
@@ -409,6 +442,7 @@ export async function POST(req: Request) {
     ON CONFLICT ("id") DO UPDATE SET
       "mode" = EXCLUDED."mode",
       "projectLabel" = EXCLUDED."projectLabel",
+      "trade" = EXCLUDED."trade",
       "userId" = EXCLUDED."userId",
       "employee" = EXCLUDED."employee",
       "entrySource" = EXCLUDED."entrySource",

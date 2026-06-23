@@ -1954,6 +1954,7 @@ type StampSession = {
   mode: StampMode;
   projectId: string;
   projectLabel?: string;
+  trade?: string;
   comment?: string;
   startedAt: number;
   accumulatedMs: number;
@@ -1968,6 +1969,7 @@ type ActiveStampSessionResponse = {
   mode: StampMode;
   projectId: string;
   projectLabel: string;
+  trade: string;
   comment: string;
   startedAt: string;
   accumulatedMs: number;
@@ -1982,6 +1984,7 @@ type StampTimeEntry = {
   mode: StampMode;
   projectId: string;
   projectLabel: string;
+  trade?: string;
   userId: string;
   employee: string;
   entrySource?: "stamped" | "manual";
@@ -5117,6 +5120,7 @@ export function DashboardPage() {
   const [stampSelectionMode, setStampSelectionMode] = useState<StampMode>("project");
   const [stampProjectId, setStampProjectId] = useState("");
   const [stampProjectSearch, setStampProjectSearch] = useState("");
+  const [stampTrade, setStampTrade] = useState("");
   const [isStampProjectSearchOpen, setIsStampProjectSearchOpen] = useState(true);
   const [isStampManualProjectPickerOpen, setIsStampManualProjectPickerOpen] = useState(false);
   const [stampUnproductiveLabel, setStampUnproductiveLabel] = useState("");
@@ -11169,6 +11173,7 @@ export function DashboardPage() {
       mode: session.mode === "unproductive" ? "unproductive" : "project",
       projectId: session.mode === "project" ? session.projectId : "",
       projectLabel: session.projectLabel,
+      trade: session.trade || "",
       comment: session.comment || "",
       startedAt,
       accumulatedMs: Number(session.accumulatedMs || 0),
@@ -15947,6 +15952,7 @@ await addProjectLogbookEntry(
       setStampUnproductiveLabel(entry.title || "Termin ohne Projekt");
       setStampProjectId("");
       setStampProjectSearch("");
+      setStampTrade("");
       setIsStampProjectSearchOpen(true);
       setIsStampManualProjectPickerOpen(false);
       if (stampModalMode === "change") {
@@ -15959,8 +15965,10 @@ await addProjectLogbookEntry(
     }
 
     setStampSelectionMode("project");
+    const selectedProject = heroProjects.find((project) => project.id === entry.projectId);
     setStampProjectId(entry.projectId || "");
     setStampProjectSearch(getPlanningEntryStampLabel(entry));
+    setStampTrade(selectedProject?.trade || "");
     setStampUnproductiveLabel("");
     setIsStampProjectSearchOpen(false);
     setIsStampManualProjectPickerOpen(false);
@@ -15987,6 +15995,7 @@ await addProjectLogbookEntry(
     setStampSelectionMode("project");
     setStampProjectId("");
     setStampProjectSearch("");
+    setStampTrade("");
     setIsStampProjectSearchOpen(false);
     setIsStampManualProjectPickerOpen(false);
     setStampUnproductiveLabel("");
@@ -16004,6 +16013,7 @@ await addProjectLogbookEntry(
     setStampSelectionMode(stampSession.mode);
     setStampProjectId("");
     setStampProjectSearch("");
+    setStampTrade("");
     setIsStampProjectSearchOpen(false);
     setIsStampManualProjectPickerOpen(false);
     setStampUnproductiveLabel("");
@@ -16024,7 +16034,7 @@ await addProjectLogbookEntry(
     setIsStampModalOpen(true);
   }
 
-  async function startStampSession(mode: StampMode, projectId: string, comment: string, unproductiveLabel = "") {
+  async function startStampSession(mode: StampMode, projectId: string, comment: string, unproductiveLabel = "", trade = "") {
     const normalizedUnproductiveLabel = unproductiveLabel.trim();
     const projectLabel =
       mode === "project" ? getStampProjectLabel(projectId) : normalizedUnproductiveLabel || "Unproduktiv";
@@ -16040,6 +16050,7 @@ await addProjectLogbookEntry(
         mode,
         projectId: mode === "project" ? projectId : "__unproductive__",
         projectLabel,
+        trade: mode === "project" ? trade : "",
         comment,
       }),
     });
@@ -16210,6 +16221,7 @@ await addProjectLogbookEntry(
       mode: "project",
       projectId: selectedProjectFile.id,
       projectLabel: selectedProjectFile.title,
+      trade: selectedProjectFile.trade || "",
       userId: selectedUser.id,
       employee: selectedUser.name,
       entrySource: "manual",
@@ -16270,6 +16282,10 @@ await addProjectLogbookEntry(
     const nextSummary = `${formatProjectDate(normalizeDateKeyValue(stampEditDate.trim()))} ${stampEditStartTime}-${stampEditEndTime}, Pause ${formatStampDuration(pauseMs)}, ${formatStampDuration(rawDurationMs)}`;
     const updatedEntry: StampTimeEntry = {
       ...editingStampEntry,
+      trade:
+        editingStampEntry.trade ||
+        heroProjects.find((project) => project.id === editingStampEntry.projectId)?.trade ||
+        "",
       date: normalizeDateKeyValue(stampEditDate.trim()),
       startTime: stampEditStartTime,
       endTime: stampEditEndTime,
@@ -16451,6 +16467,7 @@ await addProjectLogbookEntry(
         ? heroProjects.find((project) => project.id === stampProjectId)
         : null;
     const nextProjectId = selectedNextProject?.id ?? "";
+    const nextStampTrade = stampTrade.trim() || selectedNextProject?.trade || "";
     const nextUnproductiveLabel = stampUnproductiveLabel.trim();
     if (stampModalMode !== "stop" && stampSelectionMode === "project" && !selectedNextProject) {
       setStampError("Bitte ein Projekt auswählen.");
@@ -16464,6 +16481,16 @@ await addProjectLogbookEntry(
     const startsNextStamp = stampModalMode === "start" || stampModalMode === "change";
     if (startsNextStamp && !nextStampComment) {
       setStampError("Bitte kurz eintragen, was du gerade machst.");
+      return;
+    }
+    if (
+      startsNextStamp &&
+      stampSelectionMode === "project" &&
+      selectedNextProject &&
+      getProjectRecurringBillingMode(selectedNextProject) === RECURRING_BILLING_HOURLY &&
+      !nextStampTrade
+    ) {
+      setStampError("Bitte fuer diese Stundenabrechnung ein Gewerk auswaehlen.");
       return;
     }
     if (requiresProjectCompletionState) {
@@ -16535,13 +16562,14 @@ await addProjectLogbookEntry(
       setStampComment("");
       setStampNextComment("");
       setStampUnproductiveLabel("");
+      setStampTrade("");
       setStampError("");
       resetStampCompletionState();
       return;
     }
 
     try {
-      await startStampSession(stampSelectionMode, nextProjectId, nextStampComment, nextUnproductiveLabel);
+      await startStampSession(stampSelectionMode, nextProjectId, nextStampComment, nextUnproductiveLabel, nextStampTrade);
       if (stampSelectionMode === "project" && selectedNextProject) {
         await confirmImplementationStatus(selectedNextProject, "Projektbezogene Stempelung gestartet");
       }
@@ -16549,6 +16577,7 @@ await addProjectLogbookEntry(
       setStampComment("");
       setStampNextComment("");
       setStampUnproductiveLabel("");
+      setStampTrade("");
       setStampError("");
       resetStampCompletionState();
     } catch (error) {
@@ -18609,6 +18638,10 @@ await addProjectLogbookEntry(
     })
     .slice(0, 10);
   const selectedStampProject = heroProjects.find((project) => project.id === stampProjectId);
+  const selectedStampProjectNeedsTrade =
+    stampSelectionMode === "project" &&
+    Boolean(selectedStampProject) &&
+    getProjectRecurringBillingMode(selectedStampProject) === RECURRING_BILLING_HOURLY;
   const currentStampProject =
     stampSession?.mode === "project"
       ? heroProjects.find((project) => String(project.id) === String(stampSession.projectId))
@@ -49354,6 +49387,7 @@ await addProjectLogbookEntry(
                       setStampSelectionMode("project");
                       setIsStampManualProjectPickerOpen(true);
                       setIsStampProjectSearchOpen(true);
+                      setStampTrade("");
                     }}
                   >
                     Anderes Projekt
@@ -49364,6 +49398,7 @@ await addProjectLogbookEntry(
                     onClick={() => {
                       setStampSelectionMode("unproductive");
                       setIsStampManualProjectPickerOpen(false);
+                      setStampTrade("");
                     }}
                   >
                     Ich bin unproduktiv
@@ -49447,6 +49482,7 @@ await addProjectLogbookEntry(
                       onChange={(event) => {
                         setStampProjectSearch(event.target.value);
                         setStampProjectId("");
+                        setStampTrade("");
                         setStampError("");
                         setIsStampProjectSearchOpen(true);
                       }}
@@ -49463,6 +49499,7 @@ await addProjectLogbookEntry(
                         type="button"
                         onClick={() => {
                           setStampProjectSearch("");
+                          setStampTrade("");
                           setIsStampProjectSearchOpen(true);
                         }}
                       >
@@ -49484,6 +49521,7 @@ await addProjectLogbookEntry(
                             onClick={() => {
                               setStampProjectId(project.id);
                               setStampProjectSearch(`${project.projectNumber} | ${project.title}`);
+                              setStampTrade(project.trade || "");
                               setStampError("");
                               setIsStampProjectSearchOpen(false);
                             }}
@@ -49496,6 +49534,34 @@ await addProjectLogbookEntry(
                       )}
                     </div>
                   )}
+                </div>
+              )}
+
+              {stampCanChooseFollowUp && selectedStampProjectNeedsTrade && (
+                <div className={styles.stampTradePicker}>
+                  <label>
+                    Gewerk fuer diese Stempelung *
+                    <select
+                      value={stampTrade}
+                      onChange={(event) => {
+                        setStampTrade(event.target.value);
+                        setStampError("");
+                      }}
+                    >
+                      <option value="">Bitte auswaehlen</option>
+                      {stampTrade && !projectTradeSelectOptions.includes(stampTrade) && (
+                        <option value={stampTrade}>{stampTrade}</option>
+                      )}
+                      {projectTradeSelectOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <p>
+                    Dieses Gewerk wird spaeter fuer Forecast und Abrechnung der Stunden verwendet.
+                  </p>
                 </div>
               )}
 

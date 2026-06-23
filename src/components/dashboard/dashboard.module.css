@@ -12378,6 +12378,24 @@
   padding: 12px;
 }
 
+.stampTradePicker {
+  background: #f8fafc;
+  border: 1px solid #d8e0ea;
+  border-left: 4px solid #0891b2;
+  border-radius: 14px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.stampTradePicker p {
+  color: #64748b;
+  font-size: 0.8rem;
+  font-weight: 750;
+  line-height: 1.35;
+  margin: 0;
+}
+
 .stampQuickChoices {
   display: flex;
   flex-wrap: wrap;
