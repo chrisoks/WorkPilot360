@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { Prisma, Role, TaskPriority, TaskStatus } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
-import { getAuthenticatedSessionUser } from "@/lib/auth/session";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canManageAbsences } from "@/lib/permissions";
 
 type AbsenceType = "urlaub" | "krank";
@@ -35,38 +35,8 @@ type AbsenceHistoryItem = {
   createdAt: string;
 };
 
-function getRequestActor<T extends { id: string; isActive?: boolean | null }>(
-  users: T[],
-  actorId: unknown
-) {
-  if (typeof actorId !== "string" || !actorId.trim()) {
-    return null;
-  }
-
-  return users.find((demoUser) => demoUser.id === actorId.trim() && demoUser.isActive !== false) ?? null;
-}
-
-async function getRequestActorOrSessionUser<T extends { id: string; isActive?: boolean | null }>(
-  req: Request,
-  users: T[],
-  actorId: unknown
-) {
-  const requestedActor = getRequestActor(users, actorId);
-  if (requestedActor) return requestedActor;
-
-  if (typeof actorId === "string" && actorId.trim()) return null;
-
-  const sessionUser = await getAuthenticatedSessionUser(req);
-  if (!sessionUser) return null;
-
-  return users.find((demoUser) => demoUser.id === sessionUser.id && demoUser.isActive !== false) ?? null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
+function cleanActorId(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function formatDateKey(date: Date) {
@@ -299,13 +269,9 @@ export async function GET(req: Request) {
   const { organization, users } = await getDemoContext();
   const { searchParams } = new URL(req.url);
   const requestedActorId = searchParams.get("actorId");
-  const actor = await getRequestActorOrSessionUser(req, users, requestedActorId);
-  if (!actor) {
-    if (!requestedActorId) {
-      return NextResponse.json([]);
-    }
-
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, requestedActorId);
+  if (!actorResult.ok) {
+    return cleanActorId(requestedActorId) ? sessionBoundActorResponse(actorResult) : NextResponse.json([]);
   }
 
   const from = searchParams.get("from") ?? "1900-01-01";
@@ -347,11 +313,11 @@ export async function POST(req: Request) {
   await ensureAbsenceTable();
   const body = await req.json();
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
-
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   const targetUserId = String(body.userId ?? "");
   const dateFrom = String(body.dateFrom ?? body.date ?? "");
@@ -595,11 +561,11 @@ export async function PATCH(req: Request) {
   await ensureAbsenceTable();
   const body = await req.json();
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
-
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   const action = String(body.action ?? "");
   const absenceId = String(body.absenceId ?? "");
@@ -895,11 +861,11 @@ export async function DELETE(req: Request) {
   await ensureAbsenceTable();
   const body = await req.json();
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
-
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   const absenceId = String(body.absenceId ?? "");
   const dateFrom = String(body.dateFrom ?? "");
