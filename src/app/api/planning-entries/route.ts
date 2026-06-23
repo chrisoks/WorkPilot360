@@ -452,10 +452,6 @@ export async function GET(req: Request) {
   const requestedActorId = searchParams.get("actorUserId") ?? searchParams.get("actorId");
   const actorResult = await getSessionBoundActor(req, users, requestedActorId);
   if (!actorResult.ok) {
-    if (!requestedActorId && actorResult.status === 401) {
-      return NextResponse.json([]);
-    }
-
     return sessionBoundActorResponse(actorResult);
   }
   const actor = actorResult.actor;

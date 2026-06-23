@@ -54,9 +54,7 @@ export async function GET(req: Request) {
   const actorResult = await getSessionBoundActor(req, users, requestedUserId);
 
   if (!actorResult.ok) {
-    return requestedUserId
-      ? sessionBoundActorResponse(actorResult)
-      : NextResponse.json(isHistory ? { items: [], hasMore: false } : []);
+    return sessionBoundActorResponse(actorResult);
   }
   const activeUser = actorResult.actor;
 

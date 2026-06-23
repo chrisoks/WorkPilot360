@@ -271,7 +271,7 @@ export async function GET(req: Request) {
   const requestedActorId = searchParams.get("actorId");
   const actorResult = await getSessionBoundActor(req, users, requestedActorId);
   if (!actorResult.ok) {
-    return cleanActorId(requestedActorId) ? sessionBoundActorResponse(actorResult) : NextResponse.json([]);
+    return sessionBoundActorResponse(actorResult);
   }
 
   const from = searchParams.get("from") ?? "1900-01-01";
