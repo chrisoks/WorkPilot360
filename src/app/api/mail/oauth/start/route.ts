@@ -1,7 +1,9 @@
 import { randomBytes } from "crypto";
 import { NextResponse } from "next/server";
 import { getDemoContext } from "@/lib/demo/context";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { getMicrosoftOAuthConfig } from "@/lib/mail/microsoft";
+import { canManageUsers } from "@/lib/permissions";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -18,10 +20,17 @@ export async function GET(req: Request) {
   }
 
   const { users } = await getDemoContext();
-  const actor = users.find((user) => user.id === actorId);
+  const actorResult = await getSessionBoundActor(req, users, actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
+  }
+  const actor = actorResult.actor;
   const targetUser = users.find((user) => user.id === userId);
-  if (!actor?.isActive || !targetUser?.isActive) {
+  if (!targetUser?.isActive) {
     return NextResponse.json({ error: "Aktiver Benutzer erforderlich." }, { status: 401 });
+  }
+  if (targetUser.id !== actor.id && !canManageUsers(actor)) {
+    return NextResponse.json({ error: "Du darfst dieses Mailkonto nicht verbinden." }, { status: 403 });
   }
 
   if (!config.clientId || !config.clientSecret) {
