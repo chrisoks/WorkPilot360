@@ -5658,7 +5658,9 @@ export function DashboardPage() {
     const res = await fetch("/api/tasks", { cache: "no-store" });
 
     if (!res.ok) {
-      setErrorMessage("Aufgaben konnten nicht geladen werden.");
+      if (res.status !== 401) {
+        setErrorMessage("Aufgaben konnten nicht geladen werden.");
+      }
       return [];
     }
 

@@ -794,8 +794,14 @@ async function createNextRecurringTask(
   `;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const { organization, users } = await getDemoContext();
+  const actorResult = await getSessionBoundActor(req, users, null);
+
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
+  }
+
   await ensureTaskProjectColumn();
   await ensureTaskCollaborationColumns();
   await ensureTaskCommentRecipientColumn();
