@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 
 type PositionSearchRow = {
   documentId: string;
@@ -29,22 +29,6 @@ function cleanString(value: unknown) {
 
 function normalizeSearch(value: string) {
   return value.trim().toLowerCase();
-}
-
-function getRequestActor(users: User[], actorId: unknown) {
-  const requestedActorId = cleanString(actorId);
-  if (!requestedActorId) {
-    return null;
-  }
-
-  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
 }
 
 function includesSearch(row: PositionSearchRow, search: string) {
@@ -103,9 +87,9 @@ const DELETED_DOCUMENT_STATUSES = ["Gelöscht", "Gel\u00c3\u00b6scht"];
 export async function GET(req: Request) {
   const { organization, users } = await getDemoContext();
   const { searchParams } = new URL(req.url);
-  const actor = getRequestActor(users, searchParams.get("actorId"));
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, searchParams.get("actorId"));
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
   const query = normalizeSearch(cleanString(searchParams.get("q")));
 

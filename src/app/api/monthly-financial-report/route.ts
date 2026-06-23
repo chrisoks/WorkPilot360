@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
-import { getSessionUserActor } from "@/lib/auth/actor";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canManageInvoices } from "@/lib/permissions";
 
 type MonthlyFinancialReportValueRow = {
@@ -80,17 +80,6 @@ function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function getRequestActor(users: User[], actorId: unknown) {
-  const cleanActorId = cleanString(actorId);
-  if (!cleanActorId) return null;
-  const actor = users.find((candidate) => candidate.id === cleanActorId);
-  return actor?.isActive ? actor : null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json({ error: "Aktiver Benutzer erforderlich." }, { status: 401 });
-}
-
 function forbiddenFinancialReportResponse() {
   return NextResponse.json({ error: "Du darfst Monatsberichtswerte nicht bearbeiten." }, { status: 403 });
 }
@@ -127,11 +116,9 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const { organization, users } = await getDemoContext();
   const requestedActorId = searchParams.get("actorId");
-  const actor =
-    getRequestActor(users, requestedActorId) ??
-    (!cleanString(requestedActorId) ? await getSessionUserActor(req, users) : null);
-  if (!actor) {
-    return cleanString(requestedActorId) ? unauthorizedActorResponse() : NextResponse.json([]);
+  const actorResult = await getSessionBoundActor(req, users, requestedActorId);
+  if (!actorResult.ok) {
+    return cleanString(requestedActorId) ? sessionBoundActorResponse(actorResult) : NextResponse.json([]);
   }
   await ensureMonthlyFinancialReportTable();
 
@@ -150,10 +137,11 @@ export async function POST(req: Request) {
   await ensureMonthlyFinancialReportTable();
 
   const body = await req.json().catch(() => ({}));
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
   if (!canManageInvoices(actor)) {
     return forbiddenFinancialReportResponse();
   }

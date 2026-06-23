@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -10,20 +11,6 @@ function cleanString(value: unknown) {
 
 function getActorName(actor: User) {
   return [actor.firstName, actor.lastName].filter(Boolean).join(" ") || actor.email || "System";
-}
-
-function getRequestActor(users: User[], actorId: unknown) {
-  const requestedActorId = cleanString(actorId);
-  if (!requestedActorId) return null;
-
-  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
 }
 
 function cleanChecklist(value: unknown) {
@@ -96,10 +83,11 @@ export async function POST(req: Request) {
   }
 
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
   const employee = getActorName(actor);
 
   await ensureTables();

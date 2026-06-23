@@ -1,8 +1,9 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import { Prisma, type User } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import legacyInvoiceSeed from "@/data/hero-legacy-invoices.json";
 
 type LegacyInvoiceSeedRow = {
@@ -31,17 +32,6 @@ type LegacyInvoiceRow = LegacyInvoiceSeedRow & {
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function getRequestActor(users: User[], actorId: unknown) {
-  const cleanActorId = cleanString(actorId);
-  if (!cleanActorId) return null;
-  const actor = users.find((candidate) => candidate.id === cleanActorId);
-  return actor?.isActive ? actor : null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json({ error: "Aktiver Benutzer erforderlich." }, { status: 401 });
 }
 
 function getLegacyInvoiceCents(value: number) {
@@ -177,9 +167,9 @@ export async function GET(request: Request) {
   await ensureLegacyInvoiceTable();
   const { searchParams } = new URL(request.url);
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, searchParams.get("actorId"));
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(request, users, searchParams.get("actorId"));
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
   await seedLegacyInvoices(organization.id);
 
@@ -199,9 +189,9 @@ export async function DELETE(request: Request) {
   await ensureLegacyInvoiceTable();
   const { searchParams } = new URL(request.url);
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, searchParams.get("actorId"));
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(request, users, searchParams.get("actorId"));
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
   await prisma.$executeRaw(
     Prisma.sql`DELETE FROM "LegacyInvoice" WHERE "organizationId" = ${organization.id} AND "source" = 'HERO'`
