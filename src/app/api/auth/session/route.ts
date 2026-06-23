@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/db/client";
 import { getAuthenticatedSessionUser } from "@/lib/auth/session";
 
 function roleLabel(role: string) {
@@ -9,6 +10,14 @@ function roleLabel(role: string) {
   if (role === "MITARBEITER") return "Mitarbeiter";
   if (role === "GAST") return "Gast";
   return "Admin";
+}
+
+async function getUserTeamIds(userId: string) {
+  const memberships = await prisma.$queryRaw<Array<{ teamId: string }>>`
+    SELECT "teamId" FROM "UserTeamMembership" WHERE "userId" = ${userId}
+  `;
+
+  return memberships.map((membership) => membership.teamId);
 }
 
 export async function GET(req: Request) {
@@ -26,7 +35,7 @@ export async function GET(req: Request) {
       role: user.role,
       roleLabel: roleLabel(user.role),
       teamId: user.teamId,
-      teamIds: [],
+      teamIds: await getUserTeamIds(user.id),
       dailyWorkHours: user.dailyWorkHours ?? 8,
       profileImageDataUrl: user.profileImageDataUrl ?? "",
       personalNumber: user.personalNumber ?? "",
