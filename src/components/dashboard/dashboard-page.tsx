@@ -5321,6 +5321,7 @@ export function DashboardPage() {
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const notificationCenterRef = useRef<HTMLDivElement | null>(null);
   const hasLoadedNotifications = useRef(false);
+  const isProjectTimeEntriesLoadingRef = useRef(false);
 
   const [titel, setTitel] = useState(emptyTask.titel);
   const [beschreibung, setBeschreibung] = useState(emptyTask.beschreibung);
@@ -10710,20 +10711,26 @@ export function DashboardPage() {
 
   async function loadProjectTimeEntries() {
     if (!activeUserId) return;
+    if (isProjectTimeEntriesLoadingRef.current) return;
 
-    const params = new URLSearchParams({ actorUserId: activeUserId });
-    const res = await fetch(`/api/project-time-entries?${params.toString()}`, { cache: "no-store" });
+    isProjectTimeEntriesLoadingRef.current = true;
+    try {
+      const params = new URLSearchParams({ actorUserId: activeUserId });
+      const res = await fetch(`/api/project-time-entries?${params.toString()}`, { cache: "no-store" });
 
-    if (!res.ok) {
-      setErrorMessage("Projektzeiten konnten nicht geladen werden.");
-      return;
+      if (!res.ok) {
+        setErrorMessage("Projektzeiten konnten nicht geladen werden.");
+        return;
+      }
+
+      const data = (await res.json()) as StampTimeEntry[];
+      setStampEntries(data.map((entry) => ({ ...entry, date: normalizeDateKeyValue(entry.date) })));
+      setErrorMessage((currentMessage) =>
+        currentMessage === "Projektzeiten konnten nicht geladen werden." ? "" : currentMessage
+      );
+    } finally {
+      isProjectTimeEntriesLoadingRef.current = false;
     }
-
-    const data = (await res.json()) as StampTimeEntry[];
-    setStampEntries(data.map((entry) => ({ ...entry, date: normalizeDateKeyValue(entry.date) })));
-    setErrorMessage((currentMessage) =>
-      currentMessage === "Projektzeiten konnten nicht geladen werden." ? "" : currentMessage
-    );
   }
 
   async function loadProjectMarketingQuotas(projectId: string) {
