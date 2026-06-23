@@ -1,9 +1,8 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
-import { getSessionUserActor } from "@/lib/auth/actor";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canManagePlanningEntries, canManageProjectMarketingQuotas } from "@/lib/permissions";
 
 type MarketingQuotaRow = {
@@ -68,17 +67,6 @@ type MarketingScheduleRow = {
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function getRequestActor(users: User[], actorId: unknown) {
-  const cleanActorId = cleanString(actorId);
-  if (!cleanActorId) return null;
-  const actor = users.find((candidate) => candidate.id === cleanActorId);
-  return actor?.isActive ? actor : null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json({ error: "Aktiver Benutzer erforderlich." }, { status: 401 });
 }
 
 function forbiddenMarketingContentResponse() {
@@ -312,12 +300,10 @@ export async function GET(req: Request) {
   await ensureMarketingTables();
   const { searchParams } = new URL(req.url);
   const requestedActorId = searchParams.get("actorId");
-  const actor =
-    getRequestActor(users, requestedActorId) ??
-    (!cleanString(requestedActorId) ? await getSessionUserActor(req, users) : null);
-  if (!actor) {
+  const actorResult = await getSessionBoundActor(req, users, requestedActorId);
+  if (!actorResult.ok) {
     return cleanString(requestedActorId)
-      ? unauthorizedActorResponse()
+      ? sessionBoundActorResponse(actorResult)
       : NextResponse.json({ quotas: [], items: [], schedules: [] });
   }
   return NextResponse.json(
@@ -334,10 +320,11 @@ export async function POST(req: Request) {
   const action = cleanString(body.action);
   const { organization, users } = await getDemoContext();
   await ensureMarketingTables();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   if (action === "saveQuota") {
     if (!canManageProjectMarketingQuotas(actor)) {
