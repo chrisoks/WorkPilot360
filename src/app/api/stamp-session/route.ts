@@ -1,6 +1,8 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import { Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { prisma } from "@/lib/db/client";
 
 type DemoUser = {
@@ -8,6 +10,7 @@ type DemoUser = {
   firstName: string;
   lastName: string;
   email: string;
+  role: Role;
   isActive: boolean;
 };
 
@@ -193,21 +196,6 @@ function cleanString(value: unknown) {
 
 function getUserName(user: Pick<DemoUser, "firstName" | "lastName" | "email">) {
   return `${user.firstName} ${user.lastName}`.trim() || user.email;
-}
-
-function getRequestUser(users: DemoUser[], userId: unknown) {
-  if (typeof userId !== "string" || !userId.trim()) {
-    return null;
-  }
-
-  return users.find((user) => user.id === userId.trim() && user.isActive) ?? null;
-}
-
-function unauthorizedUserResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
 }
 
 function toMillis(value: bigint | number) {
@@ -407,7 +395,7 @@ export async function POST(req: Request) {
   const action = cleanString(body.action);
 
   if (action === "stop") {
-    return stopSession(body);
+    return stopSession(req, body);
   }
 
   if (action !== "start") {
@@ -434,10 +422,11 @@ export async function POST(req: Request) {
   const { organization, users } = await getDemoContext();
   await ensureActiveStampSessionTable();
 
-  const stampUser = getRequestUser(users, userId);
-  if (!stampUser) {
-    return unauthorizedUserResponse();
+  const stampUserResult = await getSessionBoundActor(req, users, userId);
+  if (!stampUserResult.ok) {
+    return sessionBoundActorResponse(stampUserResult);
   }
+  const stampUser = stampUserResult.actor;
   const existingSession = await getActiveSession(organization.id, userId);
 
   if (existingSession) {
@@ -511,9 +500,9 @@ export async function PATCH(req: Request) {
 
   const { organization, users } = await getDemoContext();
   await ensureActiveStampSessionTable();
-  const stampUser = getRequestUser(users, userId);
-  if (!stampUser) {
-    return unauthorizedUserResponse();
+  const stampUserResult = await getSessionBoundActor(req, users, userId);
+  if (!stampUserResult.ok) {
+    return sessionBoundActorResponse(stampUserResult);
   }
   const session = await getActiveSession(organization.id, userId);
 
@@ -565,10 +554,10 @@ export async function PATCH(req: Request) {
 
 export async function DELETE(req: Request) {
   const body = await req.json().catch(() => ({}));
-  return stopSession(body);
+  return stopSession(req, body);
 }
 
-async function stopSession(body: Record<string, unknown>) {
+async function stopSession(req: Request, body: Record<string, unknown>) {
   const userId = cleanString(body.userId);
 
   if (!userId) {
@@ -579,9 +568,9 @@ async function stopSession(body: Record<string, unknown>) {
   await ensureActiveStampSessionTable();
   await ensureProjectTimeEntryTable();
 
-  const stampUser = getRequestUser(users, userId);
-  if (!stampUser) {
-    return unauthorizedUserResponse();
+  const stampUserResult = await getSessionBoundActor(req, users, userId);
+  if (!stampUserResult.ok) {
+    return sessionBoundActorResponse(stampUserResult);
   }
 
   const session = await getActiveSession(organization.id, userId);
