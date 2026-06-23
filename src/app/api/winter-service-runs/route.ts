@@ -4,6 +4,7 @@ import type { User } from "@prisma/client";
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { getDemoContext } from "@/lib/demo/context";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { prisma } from "@/lib/db/client";
 import { canArchiveProjects, canCreateProjectLogbookEntries } from "@/lib/permissions";
 
@@ -60,17 +61,6 @@ const ALLOWED_WINTER_SERVICE_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png"
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function getRequestActor(users: User[], actorId: unknown) {
-  const cleanActorId = cleanString(actorId);
-  if (!cleanActorId) return null;
-  const actor = users.find((candidate) => candidate.id === cleanActorId);
-  return actor?.isActive ? actor : null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json({ error: "Aktiver Benutzer erforderlich." }, { status: 401 });
 }
 
 function forbiddenWinterServiceResponse() {
@@ -472,11 +462,12 @@ export async function GET(req: Request) {
   const { organization, users } = await getDemoContext();
   await ensureWinterServiceRunTable();
   const { searchParams } = new URL(req.url);
-  const actor = getRequestActor(users, searchParams.get("actorId"));
-  if (!actor) {
-    return unauthorizedActorResponse();
-  }
+  const requestedActorId = searchParams.get("actorId");
   const pdfId = cleanString(searchParams.get("pdfId"));
+  const actorResult = await getSessionBoundActor(req, users, requestedActorId);
+  if (!actorResult.ok) {
+    return !cleanString(requestedActorId) && !pdfId ? NextResponse.json([]) : sessionBoundActorResponse(actorResult);
+  }
 
   if (pdfId) {
     const rows = await prisma.$queryRaw<WinterServiceRunRow[]>`
@@ -516,10 +507,11 @@ export async function POST(req: Request) {
   const { organization, users } = await getDemoContext();
   await ensureWinterServiceRunTable();
   const body = await req.json().catch(() => ({}));
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
   if (!canCreateProjectLogbookEntries(actor)) {
     return forbiddenWinterServiceResponse();
   }
@@ -581,10 +573,11 @@ export async function PATCH(req: Request) {
   const { organization, users } = await getDemoContext();
   await ensureWinterServiceRunTable();
   const body = await req.json().catch(() => ({}));
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
   if (!canCreateProjectLogbookEntries(actor)) {
     return forbiddenWinterServiceResponse();
   }

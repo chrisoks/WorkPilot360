@@ -2,10 +2,11 @@ import { randomUUID } from "crypto";
 import { readFile } from "fs/promises";
 import path from "path";
 import { NextResponse } from "next/server";
-import { Prisma, type User } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 import { getDemoContext } from "@/lib/demo/context";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { prisma } from "@/lib/db/client";
 import { canArchiveProjects, canCreateProjectLogbookEntries } from "@/lib/permissions";
 
@@ -107,17 +108,6 @@ const ALLOWED_REPORT_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function getRequestActor(users: User[], actorId: unknown) {
-  const cleanActorId = cleanString(actorId);
-  if (!cleanActorId) return null;
-  const actor = users.find((candidate) => candidate.id === cleanActorId);
-  return actor?.isActive ? actor : null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json({ error: "Aktiver Benutzer erforderlich." }, { status: 401 });
 }
 
 function forbiddenReportResponse() {
@@ -720,10 +710,11 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const payload = cleanPayload(body);
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
   if (!canCreateProjectLogbookEntries(actor)) {
     return forbiddenReportResponse();
   }

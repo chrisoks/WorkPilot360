@@ -1,7 +1,8 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import { Prisma, type User } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { prisma } from "@/lib/db/client";
 
 type AutomationRunInput = {
@@ -73,17 +74,6 @@ const schedulerState = (globalThis as typeof globalThis & { [WINTER_SERVICE_SCHE
 
 function cleanText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function getRequestActor(users: User[], actorId: unknown) {
-  const cleanActorId = cleanText(actorId);
-  if (!cleanActorId) return null;
-  const actor = users.find((candidate) => candidate.id === cleanActorId);
-  return actor?.isActive ? actor : null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json({ error: "Aktiver Benutzer erforderlich." }, { status: 401 });
 }
 
 function cleanStringList(value: unknown) {
@@ -416,9 +406,14 @@ function syncScheduler(settings: { enabled: boolean }, baseUrl: string) {
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, searchParams.get("actorId"));
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const requestedActorId = searchParams.get("actorId");
+  const actorResult = await getSessionBoundActor(req, users, requestedActorId);
+  if (!actorResult.ok) {
+    return cleanText(requestedActorId) ? sessionBoundActorResponse(actorResult) : NextResponse.json({
+      enabled: false,
+      senderUserId: "",
+      notificationUserIds: [],
+    });
   }
   const settings = await getSettings(organization.id);
   syncScheduler(settings, getBaseUrl(req));
@@ -428,9 +423,9 @@ export async function GET(req: Request) {
 export async function PUT(req: Request) {
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
   const settings = await upsertSettings(organization.id, body);
   syncScheduler(settings, getBaseUrl(req));
@@ -445,15 +440,17 @@ export async function POST(req: Request) {
   const runs = submittedRuns.length > 0 ? submittedRuns : await discoverAutomationRuns(organization.id);
   syncScheduler(settings, getBaseUrl(req));
 
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
+  }
+  const configuredSender = users.find((candidate) => candidate.id === settings.senderUserId && candidate.isActive);
+  const actor = configuredSender ?? actorResult.actor;
+  const actorId = actor.id;
+
   if (!settings.enabled) {
     return NextResponse.json({ processed: 0, sent: 0, failed: 0, failures: [], skipped: "disabled" });
   }
-
-  const actor = getRequestActor(users, settings.senderUserId) ?? getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
-  }
-  const actorId = actor.id;
 
   const failures: string[] = [];
   let sent = 0;
