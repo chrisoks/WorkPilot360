@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { Role } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
-import { getSessionUserActor } from "@/lib/auth/actor";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canManageBusinessAreaTargets } from "@/lib/permissions";
 
 const defaultBusinessAreas = ["Marketing", "Arbeitssicherheit", "HR", "immocare"];
@@ -24,22 +23,6 @@ function cleanString(value: unknown) {
 function cleanAmount(value: unknown) {
   const parsed = Number(String(value ?? "0").replace(/\./g, "").replace(",", "."));
   return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
-}
-
-function getRequestActor(users: Array<{ id: string; isActive: boolean; role: Role }>, actorId: unknown) {
-  const requestedActorId = cleanString(actorId);
-  if (!requestedActorId) {
-    return null;
-  }
-
-  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
 }
 
 async function ensureBusinessAreaTargetTables() {
@@ -156,11 +139,9 @@ export async function GET(req: Request) {
   const { organization, users } = await getDemoContext();
   const { searchParams } = new URL(req.url);
   const requestedActorId = searchParams.get("actorId");
-  const actor =
-    getRequestActor(users, requestedActorId) ??
-    (!cleanString(requestedActorId) ? await getSessionUserActor(req, users) : null);
-  if (!actor) {
-    return cleanString(requestedActorId) ? unauthorizedActorResponse() : NextResponse.json([]);
+  const actorResult = await getSessionBoundActor(req, users, requestedActorId);
+  if (!actorResult.ok) {
+    return cleanString(requestedActorId) ? sessionBoundActorResponse(actorResult) : NextResponse.json([]);
   }
   await ensureBusinessAreas(organization.id);
   await migrateYearlyTargetsToRecurringMonths(organization.id);
@@ -175,10 +156,11 @@ export async function GET(req: Request) {
 export async function PUT(req: Request) {
   const body = await req.json();
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   if (!canManageBusinessAreaTargets(actor)) {
     return NextResponse.json(
