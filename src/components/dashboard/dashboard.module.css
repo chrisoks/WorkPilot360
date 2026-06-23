@@ -12396,6 +12396,27 @@
   margin: 0;
 }
 
+.stampTradeConfirm {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #d8e0ea;
+  border-radius: 10px;
+  display: flex;
+  gap: 8px;
+  padding: 9px 10px;
+}
+
+.stampTradeConfirm input {
+  height: 16px;
+  width: 16px;
+}
+
+.stampTradeConfirm span {
+  color: #0f172a;
+  font-size: 0.84rem;
+  font-weight: 850;
+}
+
 .stampQuickChoices {
   display: flex;
   flex-wrap: wrap;
