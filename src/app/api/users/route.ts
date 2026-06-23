@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Prisma, Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { prisma } from "@/lib/db/client";
 import { canManagePersonalNumber, canManageUsers } from "@/lib/permissions";
 
@@ -52,24 +53,6 @@ type BranchAllocations = {
   okImmocareVzk?: number;
   okImmocareTzk?: number;
 };
-
-function getRequestActor(
-  users: Array<{ id: string; role: Role }>,
-  actorId: unknown
-) {
-  if (typeof actorId !== "string" || !actorId.trim()) {
-    return null;
-  }
-
-  return users.find((demoUser) => demoUser.id === actorId.trim()) ?? null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
-}
 
 function roleLabel(role: Role) {
   if (role === Role.GESCHAEFTSFUEHRER) return "Gesch\u00e4ftsf\u00fchrung";
@@ -633,11 +616,12 @@ export async function PATCH(req: Request) {
   await ensureUserProfileColumns();
   const body = await req.json();
   const { organization, department, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
 
-  if (!actor) {
-    return unauthorizedActorResponse();
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   const isSelfUpdate = body.userId === actor.id;
   const isManagedUpdate = canManageUsers(actor);
@@ -976,11 +960,12 @@ export async function POST(req: Request) {
   await ensureUserProfileColumns();
   const body = await req.json();
   const { organization, department, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
 
-  if (!actor) {
-    return unauthorizedActorResponse();
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   if (!canManageUsers(actor)) {
     return NextResponse.json(
@@ -1142,11 +1127,12 @@ export async function POST(req: Request) {
 export async function DELETE(req: Request) {
   const body = await req.json();
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
 
-  if (!actor) {
-    return unauthorizedActorResponse();
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   if (!canManageUsers(actor)) {
     return NextResponse.json(

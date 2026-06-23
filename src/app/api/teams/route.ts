@@ -1,26 +1,8 @@
 import { NextResponse } from "next/server";
-import { Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { prisma } from "@/lib/db/client";
 import { canManageTeams } from "@/lib/permissions";
-
-function getRequestActor(
-  users: Array<{ id: string; role: Role }>,
-  actorId: unknown
-) {
-  if (typeof actorId !== "string" || !actorId.trim()) {
-    return null;
-  }
-
-  return users.find((demoUser) => demoUser.id === actorId.trim()) ?? null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
-}
 
 async function formatTeam(team: { id: string; name: string; departmentId: string | null }) {
   const [memberships, tasks] = await Promise.all([
@@ -65,11 +47,12 @@ export async function GET() {
 export async function POST(req: Request) {
   const body = await req.json();
   const { organization, department, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
 
-  if (!actor) {
-    return unauthorizedActorResponse();
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   if (!canManageTeams(actor)) {
     return NextResponse.json(
@@ -99,11 +82,12 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
   const body = await req.json();
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
 
-  if (!actor) {
-    return unauthorizedActorResponse();
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   if (!canManageTeams(actor)) {
     return NextResponse.json(
@@ -148,11 +132,12 @@ export async function PATCH(req: Request) {
 export async function DELETE(req: Request) {
   const body = await req.json();
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
 
-  if (!actor) {
-    return unauthorizedActorResponse();
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   if (!canManageTeams(actor)) {
     return NextResponse.json(
