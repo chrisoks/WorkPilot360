@@ -5671,7 +5671,9 @@ export function DashboardPage() {
     const res = await fetch("/api/users", { cache: "no-store" });
 
     if (!res.ok) {
-      setErrorMessage("Benutzer konnten nicht geladen werden.");
+      if (res.status !== 401) {
+        setErrorMessage("Benutzer konnten nicht geladen werden.");
+      }
       setAuthChecked(true);
       return;
     }
@@ -10092,6 +10094,7 @@ export function DashboardPage() {
     setShowLoginPassword(false);
     setIsLoginSubmitting(false);
     setIsAuthenticated(true);
+    void loadUsers();
   }
 
   function performLogout() {

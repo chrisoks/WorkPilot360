@@ -574,8 +574,14 @@ function splitName(name: string) {
   return { firstName, lastName };
 }
 
-export async function GET() {
-  const { organization } = await getDemoContext();
+export async function GET(req: Request) {
+  const { organization, users: demoUsers } = await getDemoContext();
+  const actorResult = await getSessionBoundActor(req, demoUsers, null);
+
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
+  }
+
   const users = await prisma.user.findMany({
     where: {
       organizationId: organization.id,
