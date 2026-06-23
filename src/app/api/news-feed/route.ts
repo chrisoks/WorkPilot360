@@ -1,9 +1,9 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import { Prisma, type User } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
-import { getSessionUserActor } from "@/lib/auth/actor";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canSeeNewsPost } from "@/lib/news-feed/visibility";
 import { ensureNewsFeedTables } from "@/lib/sales-hub/ensure";
 
@@ -92,17 +92,6 @@ function getUserName(user: { firstName?: string | null; lastName?: string | null
   return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "System";
 }
 
-function getRequestActor(users: User[], actorId: unknown) {
-  const cleanActorId = cleanString(actorId);
-  if (!cleanActorId) return null;
-  const actor = users.find((candidate) => candidate.id === cleanActorId);
-  return actor?.isActive ? actor : null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json({ error: "Aktiver Benutzer erforderlich." }, { status: 401 });
-}
-
 function formatPost(
   post: NewsPostRow,
   comments: NewsCommentRow[],
@@ -167,12 +156,11 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const { organization, users } = await getDemoContext();
   const requestedActorId = searchParams.get("actorId") ?? searchParams.get("userId");
-  const activeUser =
-    getRequestActor(users, requestedActorId) ??
-    (!cleanString(requestedActorId) ? await getSessionUserActor(req, users) : null);
-  if (!activeUser) {
-    return cleanString(requestedActorId) ? unauthorizedActorResponse() : NextResponse.json([]);
+  const actorResult = await getSessionBoundActor(req, users, requestedActorId);
+  if (!actorResult.ok) {
+    return cleanString(requestedActorId) ? sessionBoundActorResponse(actorResult) : NextResponse.json([]);
   }
+  const activeUser = actorResult.actor;
 
   const rows = await prisma.$queryRaw<NewsPostRow[]>`
     SELECT p.*, r."readAt"
@@ -219,10 +207,11 @@ export async function POST(req: Request) {
   await ensureNewsFeedTables();
   const body = await req.json().catch(() => ({}));
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
   const title = cleanString(body.title);
   const text = cleanString(body.body);
   const visibility = ["all", "departments", "teams", "users"].includes(cleanString(body.visibility))
@@ -264,10 +253,11 @@ export async function PATCH(req: Request) {
   await ensureNewsFeedTables();
   const body = await req.json().catch(() => ({}));
   const { organization, users } = await getDemoContext();
-  const activeUser = getRequestActor(users, body.actorId ?? body.userId);
-  if (!activeUser) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId ?? body.userId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const activeUser = actorResult.actor;
   const postId = cleanString(body.postId);
 
   if (!postId) {

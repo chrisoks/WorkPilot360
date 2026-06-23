@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { Prisma, type User } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
-import { getAuthenticatedSessionUser } from "@/lib/auth/session";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canCreateNotifications } from "@/lib/permissions";
 
 type NotificationRow = {
@@ -35,21 +35,6 @@ async function ensureNotificationLinkColumns() {
   `;
 }
 
-function getRequestUser(users: User[], userId: unknown) {
-  if (typeof userId !== "string" || !userId.trim()) {
-    return null;
-  }
-
-  return users.find((demoUser) => demoUser.id === userId.trim() && demoUser.isActive !== false) ?? null;
-}
-
-function unauthorizedUserResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
-}
-
 function forbiddenNotificationResponse() {
   return NextResponse.json(
     { error: "Du darfst keine Benachrichtigungen erzeugen." },
@@ -66,14 +51,14 @@ export async function GET(req: Request) {
   const limit = Math.min(Math.max(Number(searchParams.get("limit")) || 50, 1), 100);
   const offset = Math.max(Number(searchParams.get("offset")) || 0, 0);
   const { users } = await getDemoContext();
-  const sessionUser = requestedUserId ? null : await getAuthenticatedSessionUser(req);
-  const activeUser =
-    getRequestUser(users, requestedUserId) ??
-    (!requestedUserId && sessionUser ? getRequestUser(users, sessionUser.id) : null);
+  const actorResult = await getSessionBoundActor(req, users, requestedUserId);
 
-  if (!activeUser) {
-    return requestedUserId ? unauthorizedUserResponse() : NextResponse.json(isHistory ? { items: [], hasMore: false } : []);
+  if (!actorResult.ok) {
+    return requestedUserId
+      ? sessionBoundActorResponse(actorResult)
+      : NextResponse.json(isHistory ? { items: [], hasMore: false } : []);
   }
+  const activeUser = actorResult.actor;
 
   const searchFilter = search
     ? Prisma.sql`AND (
@@ -132,11 +117,12 @@ export async function GET(req: Request) {
 export async function PATCH(req: Request) {
   const body = await req.json();
   const { users } = await getDemoContext();
-  const activeUser = getRequestUser(users, body.userId);
+  const actorResult = await getSessionBoundActor(req, users, body.userId);
 
-  if (!activeUser) {
-    return unauthorizedUserResponse();
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const activeUser = actorResult.actor;
 
   await prisma.$executeRaw`
     UPDATE "Notification"
@@ -190,10 +176,11 @@ export async function POST(req: Request) {
   await ensureNotificationLinkColumns();
   const body = await req.json().catch(() => ({}));
   const { organization, users } = await getDemoContext();
-  const actor = getRequestUser(users, body.actorId);
-  if (!actor) {
-    return unauthorizedUserResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
   if (!canCreateNotifications(actor)) {
     return forbiddenNotificationResponse();
   }

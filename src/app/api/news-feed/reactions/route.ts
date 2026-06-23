@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canSeeNewsPost } from "@/lib/news-feed/visibility";
 import { ensureNewsFeedTables } from "@/lib/sales-hub/ensure";
 
@@ -9,25 +9,15 @@ function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function getRequestActor(users: User[], actorId: unknown) {
-  const cleanActorId = cleanString(actorId);
-  if (!cleanActorId) return null;
-  const actor = users.find((candidate) => candidate.id === cleanActorId);
-  return actor?.isActive ? actor : null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json({ error: "Aktiver Benutzer erforderlich." }, { status: 401 });
-}
-
 export async function POST(req: Request) {
   await ensureNewsFeedTables();
   const body = await req.json().catch(() => ({}));
   const { organization, users } = await getDemoContext();
-  const activeUser = getRequestActor(users, body.actorId ?? body.userId);
-  if (!activeUser) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId ?? body.userId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const activeUser = actorResult.actor;
   const postId = cleanString(body.postId);
   const reaction = ["up", "heart", "celebrate", "idea", "wow"].includes(cleanString(body.reaction))
     ? cleanString(body.reaction)
