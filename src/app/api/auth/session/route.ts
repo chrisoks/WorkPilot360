@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { getAuthenticatedSessionUser } from "@/lib/auth/session";
 
 function roleLabel(role: string) {
-  if (role === "GESCHAEFTSFUEHRER") return "Geschäftsführung";
-  if (role === "FUEHRUNGSKRAFT") return "Führungskraft";
+  if (role === "GESCHAEFTSFUEHRER") return "Gesch\u00e4ftsf\u00fchrung";
+  if (role === "FUEHRUNGSKRAFT") return "F\u00fchrungskraft";
   if (role === "VERTRIEB") return "Vertrieb";
   if (role === "BUCHHALTUNG") return "Buchhaltung";
   if (role === "MITARBEITER") return "Mitarbeiter";
