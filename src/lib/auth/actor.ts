@@ -42,13 +42,13 @@ export async function getSessionBoundActor<TActor extends ActorCandidate>(
   }
 
   const requestedId = cleanText(requestedActorId) || sessionUser.id;
-  if (requestedId !== sessionUser.id && !canUseSessionImpersonation(sessionUser)) {
-    return { ok: false, status: 403, error: "Du darfst nicht als dieser Benutzer handeln." };
-  }
-
   const actor = users.find((candidate) => candidate.id === requestedId && candidate.isActive !== false);
   if (!actor) {
     return { ok: false, status: 401, error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." };
+  }
+
+  if (requestedId !== sessionUser.id && !canUseSessionImpersonation(sessionUser)) {
+    return { ok: false, status: 403, error: "Du darfst nicht als dieser Benutzer handeln." };
   }
 
   return {

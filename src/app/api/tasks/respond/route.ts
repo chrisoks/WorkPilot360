@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { TaskStatus, type User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { recordStatusTransition } from "@/lib/status-tracking";
 
 type TaskAcceptanceRow = {
@@ -33,21 +34,6 @@ function createHistoryItem(event: string, actorName: string, note = "") {
     note,
     createdAt: new Date().toISOString(),
   };
-}
-
-function getRequestActor(users: User[], actorId: unknown) {
-  if (typeof actorId !== "string" || !actorId.trim()) {
-    return null;
-  }
-
-  return users.find((demoUser) => demoUser.id === actorId.trim() && demoUser.isActive) ?? null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
 }
 
 function getUserName(user: Pick<User, "firstName" | "lastName" | "email">) {
@@ -95,10 +81,11 @@ export async function POST(req: Request) {
   `;
   const body = await req.json();
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   const response = body.response === "rejected" ? "rejected" : "accepted";
   const reason = typeof body.reason === "string" ? body.reason.trim() : "";

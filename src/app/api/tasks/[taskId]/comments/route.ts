@@ -2,22 +2,8 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import type { User } from "@prisma/client";
-
-function getRequestActor(users: User[], actorId: unknown) {
-  if (typeof actorId !== "string" || !actorId.trim()) {
-    return null;
-  }
-
-  return users.find((demoUser) => demoUser.id === actorId.trim() && demoUser.isActive) ?? null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
-}
 
 function getUserName(user: Pick<User, "firstName" | "lastName" | "email">) {
   return `${user.firstName} ${user.lastName}`.trim() || user.email;
@@ -39,10 +25,11 @@ export async function POST(
   }
 
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   await prisma.$executeRaw`
     ALTER TABLE "Task"
