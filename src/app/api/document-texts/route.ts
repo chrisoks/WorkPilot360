@@ -202,7 +202,7 @@ export async function GET(req: Request) {
   const requestedActorId = searchParams.get("actorId");
   const actorResult = await getSessionBoundActor(req, users, requestedActorId);
   if (!actorResult.ok) {
-    return cleanString(requestedActorId) ? sessionBoundActorResponse(actorResult) : NextResponse.json({ texts: [], syntax: [] });
+    return sessionBoundActorResponse(actorResult);
   }
 
   return getDocumentTextsResponse(organization.id);
