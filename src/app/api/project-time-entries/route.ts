@@ -237,6 +237,7 @@ export async function GET(req: Request) {
         SELECT *
         FROM "ProjectTimeEntry"
         WHERE "organizationId" = ${organization.id}
+          AND "deletedAt" IS NULL
         ORDER BY "createdAt" DESC
       `
     : await prisma.$queryRaw<ProjectTimeEntryRow[]>`
@@ -244,6 +245,7 @@ export async function GET(req: Request) {
         FROM "ProjectTimeEntry"
         WHERE "organizationId" = ${organization.id}
           AND "userId" = ${actor.id}
+          AND "deletedAt" IS NULL
         ORDER BY "createdAt" DESC
       `;
 

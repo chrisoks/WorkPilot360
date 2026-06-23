@@ -464,6 +464,7 @@ export async function GET(req: Request) {
     SELECT *
     FROM "PlanningEntry"
     WHERE "organizationId" = ${organization.id}
+      AND "deletedAt" IS NULL
     ORDER BY "date" ASC, "startTime" ASC
   `;
   const entryIds = entries.map((entry) => entry.id);
