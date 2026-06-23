@@ -141,7 +141,7 @@ export async function GET(req: Request) {
   const requestedActorId = searchParams.get("actorId");
   const actorResult = await getSessionBoundActor(req, users, requestedActorId);
   if (!actorResult.ok) {
-    return cleanString(requestedActorId) ? sessionBoundActorResponse(actorResult) : NextResponse.json([]);
+    return sessionBoundActorResponse(actorResult);
   }
   await ensureBusinessAreas(organization.id);
   await migrateYearlyTargetsToRecurringMonths(organization.id);

@@ -63,8 +63,13 @@ function parseHours(value: unknown) {
   return Number.isFinite(hours) && hours >= 0 ? Math.round(hours) : null;
 }
 
-export async function GET() {
-  const { organization } = await getDemoContext();
+export async function GET(req: Request) {
+  const { organization, users } = await getDemoContext();
+  const actorResult = await getSessionBoundActor(req, users, null);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
+  }
+
   await ensureEscalationEmailColumns();
 
   const rules = await prisma.$queryRaw<

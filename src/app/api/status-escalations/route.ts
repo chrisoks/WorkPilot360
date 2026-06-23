@@ -117,8 +117,13 @@ async function getResponsibleUserIds(organizationId: string, item: OpenStatusRow
   return recipients;
 }
 
-export async function GET() {
-  const { organization } = await getDemoContext();
+export async function GET(req: Request) {
+  const { organization, users } = await getDemoContext();
+  const actorResult = await getSessionBoundActor(req, users, null);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
+  }
+
   await ensureDefaultStatusEscalationRules(organization.id);
 
   const events = await prisma.$queryRaw<

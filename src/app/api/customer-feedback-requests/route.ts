@@ -70,7 +70,7 @@ export async function GET(req: Request) {
   const requestedActorId = url.searchParams.get("actorId");
   const actorResult = await getSessionBoundActor(req, users, requestedActorId);
   if (!actorResult.ok) {
-    return cleanString(requestedActorId) ? sessionBoundActorResponse(actorResult) : NextResponse.json([]);
+    return sessionBoundActorResponse(actorResult);
   }
   const actor = actorResult.actor;
 

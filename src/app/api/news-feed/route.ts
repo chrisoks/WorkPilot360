@@ -158,7 +158,7 @@ export async function GET(req: Request) {
   const requestedActorId = searchParams.get("actorId") ?? searchParams.get("userId");
   const actorResult = await getSessionBoundActor(req, users, requestedActorId);
   if (!actorResult.ok) {
-    return cleanString(requestedActorId) ? sessionBoundActorResponse(actorResult) : NextResponse.json([]);
+    return sessionBoundActorResponse(actorResult);
   }
   const activeUser = actorResult.actor;
 
