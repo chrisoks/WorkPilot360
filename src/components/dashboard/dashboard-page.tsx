@@ -15283,7 +15283,7 @@ export function DashboardPage() {
       isRecurringProjectKindValue(projectDraft.projectKind)
         ? `Fakturierung: ${projectDraft.billingInterval}`
         : "",
-      isRecurringProjectKindValue(projectDraft.projectKind) && projectDraft.forecastNetAmount
+      recurringBillingMode === RECURRING_BILLING_MONTHLY_FLAT && projectDraft.forecastNetAmount
         ? `Forecast: ${projectDraft.forecastNetAmount} EUR (${projectDraft.forecastBillingType})`
         : "",
       projectDraft.volume ? `Volumen: ${projectDraft.volume} EUR` : "",
@@ -15315,9 +15315,9 @@ export function DashboardPage() {
           isRecurringProjectKindValue(projectDraft.projectKind) ? projectDraft.billingInterval : "",
         recurringBillingMode,
         forecastBillingType:
-          isRecurringProjectKindValue(projectDraft.projectKind) ? projectDraft.forecastBillingType : "",
+          recurringBillingMode === RECURRING_BILLING_MONTHLY_FLAT ? projectDraft.forecastBillingType : "",
         forecastNetAmount:
-          isRecurringProjectKindValue(projectDraft.projectKind) ? projectDraft.forecastNetAmount : "",
+          recurringBillingMode === RECURRING_BILLING_MONTHLY_FLAT ? projectDraft.forecastNetAmount : "",
         trade: projectDraft.trade,
         branch: projectDraft.branch,
         volume: projectDraft.volume,
@@ -15394,9 +15394,9 @@ await addProjectLogbookEntry(
       billingInterval: isRecurringProjectKindValue(projectDraft.projectKind) ? projectDraft.billingInterval : "",
       recurringBillingMode,
       forecastBillingType:
-        isRecurringProjectKindValue(projectDraft.projectKind) ? projectDraft.forecastBillingType : "",
+        recurringBillingMode === RECURRING_BILLING_MONTHLY_FLAT ? projectDraft.forecastBillingType : "",
       forecastNetAmount:
-        isRecurringProjectKindValue(projectDraft.projectKind) ? projectDraft.forecastNetAmount : "",
+        recurringBillingMode === RECURRING_BILLING_MONTHLY_FLAT ? projectDraft.forecastNetAmount : "",
       trade: projectDraft.trade,
       branch: projectDraft.branch,
       volume: projectDraft.volume,
@@ -48629,6 +48629,17 @@ await addProjectLogbookEntry(
                     </select>
                   </label>
 
+                  {projectDraft.recurringBillingMode === RECURRING_BILLING_HOURLY ? (
+                    <div className={`${styles.recurringHourlyHint} ${styles.standardFormWide}`}>
+                      <strong>Forecast ueber Stempelstunden</strong>
+                      <span>
+                        Bei Stundenabrechnung entsteht der Forecast spaeter aus gestempelten Stunden und dem
+                        durchschnittlichen SVS des jeweils gewaehlten Gewerks. Ein fester Monatsbetrag wird hier
+                        nicht gepflegt.
+                      </span>
+                    </div>
+                  ) : (
+                    <>
                   <label>
                     Forecast-Betragstyp
                     <select
@@ -48662,12 +48673,16 @@ await addProjectLogbookEntry(
                       <span>EUR</span>
                     </div>
                   </label>
+                    </>
+                  )}
                 </div>
               )}
 
               <div className={`${styles.projectTwoColumn} ${styles.standardFormWide}`}>
                 <label>
-                  Gewerk
+                  {projectDraft.recurringBillingMode === RECURRING_BILLING_HOURLY
+                    ? "Standard-Gewerk fuer Stempelungen"
+                    : "Gewerk"}
                   <select
                     value={projectDraft.trade}
                     onChange={(event) => updateProjectDraft("trade", event.target.value)}

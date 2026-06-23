@@ -13536,6 +13536,30 @@
   box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.16);
 }
 
+.recurringHourlyHint {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-left: 4px solid #0891b2;
+  border-radius: 12px;
+  color: #334155;
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+}
+
+.recurringHourlyHint strong {
+  color: #0f172a;
+  font-size: 0.92rem;
+  font-weight: 950;
+}
+
+.recurringHourlyHint span {
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
 @keyframes recurringBillingRequiredPulse {
   0%,
   100% {
