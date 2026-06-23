@@ -26,6 +26,7 @@ type LocalProjectRow = {
   projectRuntimeFrom: string | null;
   projectRuntimeUntil: string | null;
   billingInterval: string | null;
+  recurringBillingMode: string | null;
   forecastBillingType: string | null;
   forecastNetAmount: string | null;
   trade: string | null;
@@ -73,6 +74,7 @@ async function ensureLocalProjectTable() {
       "projectRuntimeFrom" TEXT,
       "projectRuntimeUntil" TEXT,
       "billingInterval" TEXT,
+      "recurringBillingMode" TEXT,
       "forecastBillingType" TEXT,
       "forecastNetAmount" TEXT,
       "trade" TEXT,
@@ -116,6 +118,7 @@ async function ensureLocalProjectTable() {
     ADD COLUMN IF NOT EXISTS "projectRuntimeFrom" TEXT,
     ADD COLUMN IF NOT EXISTS "projectRuntimeUntil" TEXT,
     ADD COLUMN IF NOT EXISTS "billingInterval" TEXT,
+    ADD COLUMN IF NOT EXISTS "recurringBillingMode" TEXT,
     ADD COLUMN IF NOT EXISTS "forecastBillingType" TEXT,
     ADD COLUMN IF NOT EXISTS "forecastNetAmount" TEXT,
     ADD COLUMN IF NOT EXISTS "trade" TEXT,
@@ -147,6 +150,16 @@ async function ensureLocalProjectTable() {
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function isRecurringProjectKind(value: string) {
+  const normalized = value.toLowerCase();
+  return normalized.includes("dauerl") && normalized.includes("projekt");
+}
+
+function cleanRecurringBillingMode(value: unknown) {
+  const cleaned = cleanString(value);
+  return cleaned === "monthlyFlat" || cleaned === "hourly" ? cleaned : "";
 }
 
 function getActorName(actor: User) {
@@ -221,6 +234,10 @@ function formatDateTime(value: Date) {
 }
 
 function formatLocalProject(project: LocalProjectRow) {
+  const isRecurringProject = isRecurringProjectKind(project.projectKind ?? "");
+  const recurringBillingMode =
+    cleanRecurringBillingMode(project.recurringBillingMode) || (isRecurringProject ? "monthlyFlat" : "");
+
   return {
     id: project.id,
     projectNumber: project.projectNumber,
@@ -237,6 +254,7 @@ function formatLocalProject(project: LocalProjectRow) {
     projectRuntimeFrom: project.projectRuntimeFrom ?? "",
     projectRuntimeUntil: project.projectRuntimeUntil ?? "",
     billingInterval: project.billingInterval ?? "",
+    recurringBillingMode,
     forecastBillingType: project.forecastBillingType ?? "",
     forecastNetAmount: project.forecastNetAmount ?? "",
     trade: project.trade ?? "",
@@ -416,6 +434,16 @@ export async function POST(req: Request) {
     LIMIT 1
   `;
   const currentProject = currentRows[0] ?? null;
+  const projectKind = cleanString(body.projectKind);
+  const incomingRecurringBillingMode = cleanRecurringBillingMode(body.recurringBillingMode);
+  if (isRecurringProjectKind(projectKind) && !incomingRecurringBillingMode && !currentProject) {
+    return NextResponse.json(
+      { error: "Bitte waehle das Abrechnungsmodell fuer diesen Dauerlaeufer aus." },
+      { status: 400 }
+    );
+  }
+  const recurringBillingMode =
+    isRecurringProjectKind(projectKind) && !incomingRecurringBillingMode ? "monthlyFlat" : incomingRecurringBillingMode;
 
   const rows = await prisma.$queryRaw<LocalProjectRow[]>`
     INSERT INTO "WorkPilotProject" (
@@ -435,6 +463,7 @@ export async function POST(req: Request) {
       "projectRuntimeFrom",
       "projectRuntimeUntil",
       "billingInterval",
+      "recurringBillingMode",
       "forecastBillingType",
       "forecastNetAmount",
       "trade",
@@ -473,10 +502,11 @@ export async function POST(req: Request) {
       ${cleanString(body.contactPersonId) || null},
       ${cleanString(body.addressContactId) || null},
       ${cleanString(body.projectType) || null},
-      ${cleanString(body.projectKind) || null},
+      ${projectKind || null},
       ${cleanString(body.projectRuntimeFrom) || null},
       ${cleanString(body.projectRuntimeUntil) || null},
       ${cleanString(body.billingInterval) || null},
+      ${recurringBillingMode || null},
       ${cleanString(body.forecastBillingType) || null},
       ${cleanString(body.forecastNetAmount) || null},
       ${cleanString(body.trade) || null},
@@ -517,6 +547,7 @@ export async function POST(req: Request) {
       "projectRuntimeFrom" = EXCLUDED."projectRuntimeFrom",
       "projectRuntimeUntil" = EXCLUDED."projectRuntimeUntil",
       "billingInterval" = EXCLUDED."billingInterval",
+      "recurringBillingMode" = EXCLUDED."recurringBillingMode",
       "forecastBillingType" = EXCLUDED."forecastBillingType",
       "forecastNetAmount" = EXCLUDED."forecastNetAmount",
       "trade" = EXCLUDED."trade",

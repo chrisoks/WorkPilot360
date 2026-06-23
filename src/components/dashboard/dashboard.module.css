@@ -13471,6 +13471,84 @@
   padding: 9px 10px;
 }
 
+.recurringBillingModeField {
+  display: grid;
+  gap: 8px;
+}
+
+.recurringBillingModeField > span {
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.recurringBillingModeOptions {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.recurringBillingModeOptions button {
+  background: #ffffff;
+  border: 1px solid #d8e0ea;
+  border-radius: 12px;
+  color: #0f172a;
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  gap: 4px;
+  min-height: 78px;
+  padding: 12px;
+  text-align: left;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.recurringBillingModeOptions button:hover {
+  border-color: #93c5fd;
+  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.12);
+  transform: translateY(-1px);
+}
+
+.recurringBillingModeOptions button[data-active="true"] {
+  background: #eff6ff;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+}
+
+.recurringBillingModeOptions button strong {
+  font-size: 0.94rem;
+  font-weight: 950;
+}
+
+.recurringBillingModeOptions button small {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.recurringBillingModeOptions[data-required="true"] button {
+  animation: recurringBillingRequiredPulse 1.35s ease-in-out infinite;
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.16);
+}
+
+@keyframes recurringBillingRequiredPulse {
+  0%,
+  100% {
+    background: #fff7ed;
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.14);
+  }
+
+  50% {
+    background: #fffbeb;
+    box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.22);
+  }
+}
+
 .moneyInput {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 40px;

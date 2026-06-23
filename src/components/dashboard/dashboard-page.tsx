@@ -1370,6 +1370,7 @@ type HeroProjectPreview = {
   projectRuntimeFrom?: string;
   projectRuntimeUntil?: string;
   billingInterval?: string;
+  recurringBillingMode?: string;
   forecastBillingType?: string;
   forecastNetAmount?: string;
   trade?: string;
@@ -1658,10 +1659,13 @@ type ProjectPipeline = {
 };
 
 type ProjectKindValue = "einmaliges Projekt" | "Dauerläufer-Projekt" | "Dauerl\u00c3\u00a4ufer-Projekt";
+type RecurringBillingMode = "" | "monthlyFlat" | "hourly";
 
 const ONE_TIME_PROJECT_KIND = "einmaliges Projekt";
 const RECURRING_PROJECT_KIND = "Dauerläufer-Projekt";
 const LEGACY_RECURRING_PROJECT_KIND = "Dauerl\u00c3\u00a4ufer-Projekt";
+const RECURRING_BILLING_MONTHLY_FLAT: RecurringBillingMode = "monthlyFlat";
+const RECURRING_BILLING_HOURLY: RecurringBillingMode = "hourly";
 const DELETED_STATUS_VALUES = new Set(["Gelöscht", "Gel\u00c3\u00b6scht"]);
 
 function normalizeProjectKindValue(value?: string | null): Exclude<ProjectKindValue, "Dauerl\u00c3\u00a4ufer-Projekt"> {
@@ -1672,6 +1676,22 @@ function normalizeProjectKindValue(value?: string | null): Exclude<ProjectKindVa
 
 function isRecurringProjectKindValue(value?: string | null) {
   return normalizeProjectKindValue(value) === RECURRING_PROJECT_KIND;
+}
+
+function normalizeRecurringBillingMode(value?: string | null): RecurringBillingMode {
+  return value === RECURRING_BILLING_MONTHLY_FLAT || value === RECURRING_BILLING_HOURLY
+    ? value
+    : "";
+}
+
+function getProjectRecurringBillingMode(project?: Pick<HeroProjectPreview, "projectKind" | "recurringBillingMode"> | null) {
+  const mode = normalizeRecurringBillingMode(project?.recurringBillingMode);
+  if (mode) return mode;
+  return isRecurringProjectKindValue(project?.projectKind) ? RECURRING_BILLING_MONTHLY_FLAT : "";
+}
+
+function formatRecurringBillingModeLabel(mode?: string | null) {
+  return normalizeRecurringBillingMode(mode) === RECURRING_BILLING_HOURLY ? "Stundenabrechnung" : "Monatspauschale";
 }
 
 function isDeletedStatus(value?: string | null) {
@@ -1687,6 +1707,7 @@ type ProjectDraft = {
   projectRuntimeFrom: string;
   projectRuntimeUntil: string;
   billingInterval: "monatlich" | "quartalsweise" | "jährlich" | "j\u00c3\u00a4hrlich";
+  recurringBillingMode: RecurringBillingMode;
   forecastBillingType: "monatlich" | "wöchentlich" | "w\u00c3\u00b6chentlich" | "quartalsweise";
   forecastNetAmount: string;
   trade: string;
@@ -2018,6 +2039,7 @@ const emptyProjectDraft: ProjectDraft = {
   projectRuntimeFrom: "",
   projectRuntimeUntil: "",
   billingInterval: "monatlich",
+  recurringBillingMode: "",
   forecastBillingType: "monatlich",
   forecastNetAmount: "",
   trade: "Winterdienst",
@@ -13535,6 +13557,7 @@ export function DashboardPage() {
         project.billingInterval === "quartalsweise" || isAnnualBillingInterval(project.billingInterval)
           ? project.billingInterval
           : "monatlich",
+      recurringBillingMode: getProjectRecurringBillingMode(project),
       forecastBillingType:
         isWeeklyForecastBillingType(project.forecastBillingType) ||
         project.forecastBillingType === "quartalsweise"
@@ -13584,6 +13607,7 @@ export function DashboardPage() {
         : {}),
       ...(key === "projectKind" && value === "einmaliges Projekt"
         ? {
+            recurringBillingMode: "" as const,
             forecastBillingType: "monatlich" as const,
             forecastNetAmount: "",
           }
@@ -15229,6 +15253,17 @@ export function DashboardPage() {
       projectDraft.name ||
       [`Projekt ${projectNumber}`, projectDraft.trade].filter(Boolean).join(" - ") ||
       "Neues Projekt";
+    const recurringBillingMode = isRecurringProjectKindValue(projectDraft.projectKind)
+      ? normalizeRecurringBillingMode(projectDraft.recurringBillingMode)
+      : "";
+
+    if (isRecurringProjectKindValue(projectDraft.projectKind) && !recurringBillingMode) {
+      const message = "Bitte waehle das Abrechnungsmodell fuer diesen Dauerlaeufer aus.";
+      setErrorMessage(message);
+      window.alert(message);
+      return;
+    }
+
     const projectAddress = selectedAddressContact
       ? getContactAddressLine(selectedAddressContact)
       : selectedContact
@@ -15241,6 +15276,9 @@ export function DashboardPage() {
       projectDraft.projectRuntimeFrom ? `Start: ${projectDraft.projectRuntimeFrom}` : "",
       isRecurringProjectKindValue(projectDraft.projectKind) && projectDraft.projectRuntimeUntil
         ? `Laufzeit bis: ${projectDraft.projectRuntimeUntil}`
+        : "",
+      isRecurringProjectKindValue(projectDraft.projectKind)
+        ? `Abrechnungsmodell: ${formatRecurringBillingModeLabel(recurringBillingMode)}`
         : "",
       isRecurringProjectKindValue(projectDraft.projectKind)
         ? `Fakturierung: ${projectDraft.billingInterval}`
@@ -15275,6 +15313,7 @@ export function DashboardPage() {
           isRecurringProjectKindValue(projectDraft.projectKind) ? projectDraft.projectRuntimeUntil : "",
         billingInterval:
           isRecurringProjectKindValue(projectDraft.projectKind) ? projectDraft.billingInterval : "",
+        recurringBillingMode,
         forecastBillingType:
           isRecurringProjectKindValue(projectDraft.projectKind) ? projectDraft.forecastBillingType : "",
         forecastNetAmount:
@@ -15353,6 +15392,7 @@ await addProjectLogbookEntry(
       projectRuntimeFrom: projectDraft.projectRuntimeFrom,
       projectRuntimeUntil: isRecurringProjectKindValue(projectDraft.projectKind) ? projectDraft.projectRuntimeUntil : "",
       billingInterval: isRecurringProjectKindValue(projectDraft.projectKind) ? projectDraft.billingInterval : "",
+      recurringBillingMode,
       forecastBillingType:
         isRecurringProjectKindValue(projectDraft.projectKind) ? projectDraft.forecastBillingType : "",
       forecastNetAmount:
@@ -18294,6 +18334,12 @@ await addProjectLogbookEntry(
       ["Projektstatus", project.status || "-"],
       ["Projektstart", project.projectRuntimeFrom || "-"],
       ["Projektlaufzeit bis", project.projectRuntimeUntil || "-"],
+      [
+        "Abrechnungsmodell",
+        isRecurringProjectKindValue(project.projectKind)
+          ? formatRecurringBillingModeLabel(getProjectRecurringBillingMode(project))
+          : "-",
+      ],
       ["Fakturierungsintervall", project.billingInterval || "-"],
       ["Gewerk", project.trade || "-"],
       ["Niederlassung", project.branch || "-"],
@@ -32717,6 +32763,8 @@ await addProjectLogbookEntry(
                         selectedProjectFile.projectRuntimeUntil
                       )}
                     </dd>
+                    <dt>Abrechnungsmodell</dt>
+                    <dd>{formatRecurringBillingModeLabel(getProjectRecurringBillingMode(selectedProjectFile))}</dd>
                     <dt>Fakturierungsintervall</dt>
                     <dd>{selectedProjectFile.billingInterval || "-"}</dd>
                     <dt>Forecast-Verrechnung</dt>
@@ -48505,6 +48553,35 @@ await addProjectLogbookEntry(
 
               {isRecurringProjectKindValue(projectDraft.projectKind) && (
                 <div className={`${styles.projectTwoColumn} ${styles.standardFormWide}`}>
+                  <div className={`${styles.recurringBillingModeField} ${styles.standardFormWide}`}>
+                    <span>Abrechnungsmodell</span>
+                    <div
+                      className={styles.recurringBillingModeOptions}
+                      data-required={!projectDraft.recurringBillingMode}
+                    >
+                      <button
+                        type="button"
+                        data-active={projectDraft.recurringBillingMode === RECURRING_BILLING_MONTHLY_FLAT}
+                        onClick={() =>
+                          updateProjectDraft("recurringBillingMode", RECURRING_BILLING_MONTHLY_FLAT)
+                        }
+                      >
+                        <strong>Monatspauschale</strong>
+                        <small>Jeden Monat gleicher Grundbetrag, optionale Zusatzpositionen separat.</small>
+                      </button>
+                      <button
+                        type="button"
+                        data-active={projectDraft.recurringBillingMode === RECURRING_BILLING_HOURLY}
+                        onClick={() =>
+                          updateProjectDraft("recurringBillingMode", RECURRING_BILLING_HOURLY)
+                        }
+                      >
+                        <strong>Stundenabrechnung</strong>
+                        <small>Monatsrechnung nach angefallenen Stunden und spaeterer Positionsbildung.</small>
+                      </button>
+                    </div>
+                  </div>
+
                   <label>
                     Geplanter Projektstart
                     <input
