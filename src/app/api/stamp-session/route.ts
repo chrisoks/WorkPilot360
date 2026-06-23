@@ -371,10 +371,15 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const userId = cleanString(searchParams.get("userId"));
 
-  const { organization } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   await ensureActiveStampSessionTable();
 
   if (!userId) {
+    const actorResult = await getSessionBoundActor(req, users, null);
+    if (!actorResult.ok) {
+      return sessionBoundActorResponse(actorResult);
+    }
+
     const sessions = await prisma.$queryRaw<ActiveStampSessionRow[]>`
       SELECT *
       FROM "ActiveStampSession"
@@ -385,7 +390,12 @@ export async function GET(req: Request) {
     return NextResponse.json(sessions.map(formatSession));
   }
 
-  const session = await getActiveSession(organization.id, userId);
+  const actorResult = await getSessionBoundActor(req, users, userId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
+  }
+
+  const session = await getActiveSession(organization.id, actorResult.actor.id);
 
   return NextResponse.json(formatSession(session));
 }
