@@ -5085,6 +5085,7 @@ export function DashboardPage() {
   const [deadlineProgressTime, setDeadlineProgressTime] = useState(() => Date.now());
   const [timerNow, setTimerNow] = useState(() => Date.now());
   const [stampSession, setStampSession] = useState<StampSession | null>(null);
+  const [isLogoutStampWarningOpen, setIsLogoutStampWarningOpen] = useState(false);
   const [dashboardStampSessions, setDashboardStampSessions] = useState<
     Record<string, ActiveStampSessionResponse>
   >({});
@@ -10092,10 +10093,11 @@ export function DashboardPage() {
     setIsAuthenticated(true);
   }
 
-  function handleLogout() {
+  function performLogout() {
     void fetch("/api/auth/logout", { method: "POST" });
     window.localStorage.removeItem("workpilot-user-id");
     window.localStorage.removeItem("workpilot-impersonated-user-id");
+    setIsLogoutStampWarningOpen(false);
     setIsAuthenticated(false);
     setAuthenticatedUserId("");
     setImpersonatedUserId("");
@@ -10110,6 +10112,15 @@ export function DashboardPage() {
     setIsUserMenuOpen(false);
     setIsNotificationsOpen(false);
     setNotifications([]);
+  }
+
+  function handleLogout() {
+    if (stampSession) {
+      setIsLogoutStampWarningOpen(true);
+      return;
+    }
+
+    performLogout();
   }
 
   function applyEffectiveUser(userId: string) {
@@ -48911,6 +48922,48 @@ await addProjectLogbookEntry(
                   Speichern
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isLogoutStampWarningOpen && (
+        <div className={styles.overlay} onClick={() => setIsLogoutStampWarningOpen(false)}>
+          <div
+            className={styles.standardModal}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={styles.standardModalHeader}>
+              <h2>Laufende Stempelung</h2>
+              <button
+                className={styles.iconButton}
+                type="button"
+                onClick={() => setIsLogoutStampWarningOpen(false)}
+                aria-label="Abmeldewarnung schliessen"
+              >
+                &times;
+              </button>
+            </div>
+            <div className={styles.standardModalBody}>
+              <p>
+                Es l&auml;uft noch eine Stempelung. Bitte stoppe sie zuerst oder melde dich bewusst ab.
+              </p>
+              <p>
+                Wenn du dich trotzdem abmeldest, bleibt die Stempelung offen und kann nach dem n&auml;chsten
+                Login weiter bearbeitet werden.
+              </p>
+            </div>
+            <div className={styles.standardModalFooter}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => setIsLogoutStampWarningOpen(false)}
+              >
+                Zur Stempelung zur&uuml;ck
+              </button>
+              <button type="button" className={styles.primaryButton} onClick={performLogout}>
+                Trotzdem abmelden
+              </button>
             </div>
           </div>
         </div>
