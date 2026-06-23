@@ -1,8 +1,9 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import { Role, type User } from "@prisma/client";
+import { Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { ensureDefaultStatusEscalationRules } from "@/lib/status-tracking";
 import { canRunStatusEscalations } from "@/lib/permissions";
 
@@ -38,21 +39,6 @@ type UserRow = {
 
 function getUserName(user: { firstName?: string | null; lastName?: string | null; email?: string | null }) {
   return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "System";
-}
-
-function getRequestActor(users: User[], actorId: unknown) {
-  if (typeof actorId !== "string" || !actorId.trim()) {
-    return null;
-  }
-
-  return users.find((demoUser) => demoUser.id === actorId.trim() && demoUser.isActive) ?? null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
 }
 
 async function readJsonBody(req: Request) {
@@ -170,10 +156,11 @@ export async function GET() {
 export async function POST(req: Request) {
   const body = await readJsonBody(req);
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   if (!canRunStatusEscalations(actor)) {
     return NextResponse.json(

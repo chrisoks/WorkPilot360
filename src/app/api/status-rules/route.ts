@@ -1,8 +1,8 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { ensureDefaultStatusEscalationRules, ensureStatusTrackingTables } from "@/lib/status-tracking";
 import { canManageStatusRules } from "@/lib/permissions";
 
@@ -21,22 +21,6 @@ type StatusRuleRow = {
   createdAt: Date;
   updatedAt: Date;
 };
-
-function getRequestActor(users: User[], actorId: unknown) {
-  const requestedActorId = cleanString(actorId);
-  if (!requestedActorId) {
-    return null;
-  }
-
-  return users.find((candidate) => candidate.id === requestedActorId && candidate.isActive) ?? null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
-}
 
 async function readJsonBody(req: Request) {
   try {
@@ -95,10 +79,11 @@ export async function GET() {
 export async function POST(req: Request) {
   const body = await readJsonBody(req);
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   if (!canManageStatusRules(actor)) {
     return NextResponse.json(
@@ -159,10 +144,11 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
   const body = await readJsonBody(req);
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   if (!canManageStatusRules(actor)) {
     return NextResponse.json(
@@ -207,10 +193,11 @@ export async function PATCH(req: Request) {
 export async function DELETE(req: Request) {
   const body = await readJsonBody(req);
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   if (!canManageStatusRules(actor)) {
     return NextResponse.json(

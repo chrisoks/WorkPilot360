@@ -1,27 +1,12 @@
 import { NextResponse } from "next/server";
-import { Role, type User } from "@prisma/client";
+import { Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canManageEscalationRules } from "@/lib/permissions";
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function getRequestActor(users: User[], actorId: unknown) {
-  const requestedActorId = cleanString(actorId);
-  if (!requestedActorId) {
-    return null;
-  }
-
-  return users.find((demoUser) => demoUser.id === requestedActorId && demoUser.isActive) ?? null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
 }
 
 async function readJsonBody(req: Request) {
@@ -106,10 +91,11 @@ export async function POST(req: Request) {
   const body = await readJsonBody(req);
   const { organization, users } = await getDemoContext();
   await ensureEscalationEmailColumns();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   const hoursAfterDue = parseHours(body.hoursAfterDue);
 
@@ -158,10 +144,11 @@ export async function PATCH(req: Request) {
   const body = await readJsonBody(req);
   const { organization, users } = await getDemoContext();
   await ensureEscalationEmailColumns();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   const hoursAfterDue = parseHours(body.hoursAfterDue);
 
@@ -232,10 +219,11 @@ export async function DELETE(req: Request) {
   const body = await readJsonBody(req);
   const { organization, users } = await getDemoContext();
   await ensureEscalationEmailColumns();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   if (!canManageEscalationRules(actor)) {
     return NextResponse.json(

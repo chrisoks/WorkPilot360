@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
+import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { ensureDefaultStatusEscalationRules, ensureStatusTrackingTables, seedCurrentStatusTimeline } from "@/lib/status-tracking";
 import { canMaintainStatusTimeline } from "@/lib/permissions";
 
@@ -23,21 +23,6 @@ type TimelineRow = {
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function getRequestActor(users: User[], actorId: unknown) {
-  if (typeof actorId !== "string" || !actorId.trim()) {
-    return null;
-  }
-
-  return users.find((demoUser) => demoUser.id === actorId.trim() && demoUser.isActive) ?? null;
-}
-
-function unauthorizedActorResponse() {
-  return NextResponse.json(
-    { error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." },
-    { status: 401 }
-  );
 }
 
 async function readJsonBody(req: Request) {
@@ -233,10 +218,11 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const body = await readJsonBody(req);
   const { organization, users } = await getDemoContext();
-  const actor = getRequestActor(users, body.actorId);
-  if (!actor) {
-    return unauthorizedActorResponse();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
 
   if (!canMaintainStatusTimeline(actor)) {
     return NextResponse.json(
