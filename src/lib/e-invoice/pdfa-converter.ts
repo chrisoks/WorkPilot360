@@ -117,7 +117,7 @@ function getConversionFailureDetails(error: unknown) {
   const stderr = cleanText(processError.stderr);
   const stdout = cleanText(processError.stdout);
   const message = cleanText(processError.message);
-  const detail = stderr || stdout || message;
+  const detail = [stdout, stderr, message].filter(Boolean).join("\n\n");
 
   return detail.slice(0, 4000);
 }
@@ -155,6 +155,7 @@ export async function convertPdfToPdfA3(pdfBytes: Buffer): Promise<PdfA3Conversi
       "-dSubsetFonts=true",
       "-sColorConversionStrategy=RGB",
       "-sProcessColorModel=DeviceRGB",
+      ...(iccProfilePath ? [`--permit-file-read=${iccProfilePath}`] : []),
       ...(iccProfilePath ? [`-sOutputICCProfile=${iccProfilePath}`] : []),
       `-sOutputFile=${outputPath}`,
       ...(iccProfilePath ? [pdfaDefinitionPath] : []),
