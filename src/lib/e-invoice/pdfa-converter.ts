@@ -73,6 +73,30 @@ function findGhostscriptIccProfile() {
   return "";
 }
 
+function escapePostScriptString(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+}
+
+function createPdfADefinition(iccProfilePath: string) {
+  return [
+    "%!",
+    `/ICCProfile (${escapePostScriptString(iccProfilePath)}) def`,
+    "[/_objdef {icc_PDFA} /type /stream /OBJ pdfmark",
+    "[{icc_PDFA} << /N 3 >> /PUT pdfmark",
+    "[{icc_PDFA} ICCProfile (r) file /PUT pdfmark",
+    "[/_objdef {OutputIntent_PDFA} /type /dict /OBJ pdfmark",
+    "[{OutputIntent_PDFA} <<",
+    "  /Type /OutputIntent",
+    "  /S /GTS_PDFA1",
+    "  /OutputConditionIdentifier (sRGB)",
+    "  /Info (sRGB IEC61966-2.1)",
+    "  /DestOutputProfile {icc_PDFA}",
+    ">> /PUT pdfmark",
+    "[{Catalog} << /OutputIntents [ {OutputIntent_PDFA} ] >> /PUT pdfmark",
+    "",
+  ].join("\n");
+}
+
 function getReadableConversionFailureMessage(error: unknown) {
   const rawMessage = error instanceof Error ? error.message : "";
   if (/timed out|timeout/i.test(rawMessage)) {
@@ -98,10 +122,14 @@ export async function convertPdfToPdfA3(pdfBytes: Buffer): Promise<PdfA3Conversi
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "workpilot-pdfa3-"));
   const inputPath = path.join(tempDir, "input.pdf");
   const outputPath = path.join(tempDir, "output.pdf");
+  const pdfaDefinitionPath = path.join(tempDir, "PDFA_def.ps");
   const iccProfilePath = findGhostscriptIccProfile();
 
   try {
     await writeFile(inputPath, pdfBytes);
+    if (iccProfilePath) {
+      await writeFile(pdfaDefinitionPath, createPdfADefinition(iccProfilePath), "utf8");
+    }
     const args = [
       "-dPDFA=3",
       "-dBATCH",
@@ -115,6 +143,7 @@ export async function convertPdfToPdfA3(pdfBytes: Buffer): Promise<PdfA3Conversi
       "-sProcessColorModel=DeviceRGB",
       ...(iccProfilePath ? [`-sOutputICCProfile=${iccProfilePath}`] : []),
       `-sOutputFile=${outputPath}`,
+      ...(iccProfilePath ? [pdfaDefinitionPath] : []),
       inputPath,
     ];
     const command = getGhostscriptCommand(executable, args);
