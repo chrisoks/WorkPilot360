@@ -19,12 +19,14 @@ export type PdfA3ConversionResult =
       converted: false;
       pdfBytes: null;
       message: string;
+      details?: string;
     }
   | {
       available: true;
       converted: false;
       pdfBytes: null;
       message: string;
+      details?: string;
     };
 
 function cleanText(value: unknown) {
@@ -108,6 +110,18 @@ function getReadableConversionFailureMessage(error: unknown) {
   return "PDF/A-3-Konvertierung konnte nicht erfolgreich abgeschlossen werden.";
 }
 
+function getConversionFailureDetails(error: unknown) {
+  if (!error || typeof error !== "object") return "";
+
+  const processError = error as { stderr?: unknown; stdout?: unknown; message?: unknown };
+  const stderr = cleanText(processError.stderr);
+  const stdout = cleanText(processError.stdout);
+  const message = cleanText(processError.message);
+  const detail = stderr || stdout || message;
+
+  return detail.slice(0, 4000);
+}
+
 export async function convertPdfToPdfA3(pdfBytes: Buffer): Promise<PdfA3ConversionResult> {
   const executable = getPdfA3ConverterExecutable();
   if (!executable) {
@@ -166,6 +180,7 @@ export async function convertPdfToPdfA3(pdfBytes: Buffer): Promise<PdfA3Conversi
       converted: false,
       pdfBytes: null,
       message: getReadableConversionFailureMessage(error),
+      details: getConversionFailureDetails(error),
     };
   } finally {
     await rm(tempDir, { recursive: true, force: true });
