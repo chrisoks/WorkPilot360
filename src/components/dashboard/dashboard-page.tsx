@@ -9667,11 +9667,12 @@ export function DashboardPage() {
     });
     const isPublicRecipient = recipientContact?.eInvoiceRecipientType === "public";
     const leitwegValidation = validateLeitwegId(recipientContact?.leitwegId ?? "");
+    const effectiveDueDate = invoice.dueDate.trim() || getInvoiceDueDate(invoice.serviceDate, invoice.paymentTermDays ?? 14);
 
     if (invoice.status === "Entwurf") missingRequired.push("Rechnung ist noch ein Entwurf.");
     if (!invoice.invoiceNumber.trim()) missingRequired.push("Rechnungsnummer fehlt.");
     if (!invoice.serviceDate.trim()) missingRequired.push("Leistungsdatum fehlt.");
-    if (!invoice.dueDate.trim()) missingRequired.push("Fälligkeitsdatum fehlt.");
+    if (!effectiveDueDate) missingRequired.push("Fälligkeitsdatum fehlt.");
     if (!invoice.customerName.trim()) missingRequired.push("Rechnungsempfänger/Kunde fehlt.");
     if (!hasInvoiceAddress && !hasRecipientAddress) missingRequired.push("Vollständige Empfängeradresse fehlt.");
     if (!invoice.lines.length) missingRequired.push("Rechnungspositionen fehlen.");
