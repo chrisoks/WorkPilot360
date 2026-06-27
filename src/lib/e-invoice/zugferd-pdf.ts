@@ -12,7 +12,16 @@ export async function buildValidatedZugferdPdf(input: {
   invoicePdfBytes: Buffer;
   xrechnungXml: Buffer;
 }): Promise<ZugferdPdfBuildResult> {
-  const pdfDoc = await PDFDocument.load(input.invoicePdfBytes);
+  const conversion = await convertPdfToPdfA3(input.invoicePdfBytes);
+  if (!conversion.converted || !conversion.pdfBytes) {
+    return {
+      pdfBytes: null,
+      conversion,
+      validation: null,
+    };
+  }
+
+  const pdfDoc = await PDFDocument.load(conversion.pdfBytes);
   await pdfDoc.attach(input.xrechnungXml, "factur-x.xml", {
     mimeType: "application/xml",
     description: "ZUGFeRD-Rechnungsdaten",
@@ -23,19 +32,10 @@ export async function buildValidatedZugferdPdf(input: {
   pdfDoc.setProducer("WorkPilot360");
   pdfDoc.setCreator("WorkPilot360");
 
-  const embeddedPdfBytes = Buffer.from(await pdfDoc.save());
-  const conversion = await convertPdfToPdfA3(embeddedPdfBytes);
-  if (!conversion.converted || !conversion.pdfBytes) {
-    return {
-      pdfBytes: null,
-      conversion,
-      validation: null,
-    };
-  }
-
-  const validation = await validateZugferdPdfA3(conversion.pdfBytes);
+  const zugferdPdfBytes = Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
+  const validation = await validateZugferdPdfA3(zugferdPdfBytes);
   return {
-    pdfBytes: validation.valid ? conversion.pdfBytes : null,
+    pdfBytes: validation.valid ? zugferdPdfBytes : null,
     conversion,
     validation,
   };
