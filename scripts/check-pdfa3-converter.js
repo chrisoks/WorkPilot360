@@ -1,4 +1,4 @@
-const { existsSync } = require("fs");
+const { existsSync, readdirSync } = require("fs");
 const { spawnSync } = require("child_process");
 const { join } = require("path");
 
@@ -32,6 +32,38 @@ function getConfiguredPath() {
   ).trim();
 }
 
+function getConfiguredIccProfile() {
+  const envFile = readEnvFile(join(process.cwd(), ".env"));
+  const configured = (
+    process.env.PDFA3_ICC_PROFILE_PATH ||
+    process.env.ZUGFERD_ICC_PROFILE_PATH ||
+    envFile.PDFA3_ICC_PROFILE_PATH ||
+    envFile.ZUGFERD_ICC_PROFILE_PATH ||
+    ""
+  ).trim();
+  if (configured) return configured;
+
+  const directCandidates = [
+    "/usr/share/color/icc/ghostscript/srgb.icc",
+    "/usr/share/color/icc/sRGB.icc",
+    "/usr/share/color/icc/srgb.icc",
+    "/usr/share/ghostscript/iccprofiles/srgb.icc",
+  ];
+  const directMatch = directCandidates.find((candidate) => existsSync(candidate));
+  if (directMatch) return directMatch;
+
+  const ghostscriptRoot = "/usr/share/ghostscript";
+  if (existsSync(ghostscriptRoot)) {
+    for (const entry of readdirSync(ghostscriptRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const candidate = join(ghostscriptRoot, entry.name, "iccprofiles", "srgb.icc");
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+
+  return "";
+}
+
 function run(command, args) {
   if (process.platform === "win32" && /\.bat$/i.test(command)) {
     return spawnSync("cmd.exe", ["/c", command, ...args], { encoding: "utf8", windowsHide: true });
@@ -59,3 +91,9 @@ if (result.error || result.status !== 0) {
 }
 
 console.log(`PDF/A-3-Konverter ist verfuegbar: ${executable}`);
+const iccProfile = getConfiguredIccProfile();
+if (iccProfile) {
+  console.log(`sRGB-ICC-Profil ist verfuegbar: ${iccProfile}`);
+} else {
+  console.warn("Hinweis: Kein sRGB-ICC-Profil gefunden. ZUGFeRD/PDF-A-3 kann an OutputIntent scheitern.");
+}

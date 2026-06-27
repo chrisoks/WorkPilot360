@@ -1,4 +1,5 @@
 import { execFile } from "child_process";
+import { existsSync, readdirSync } from "fs";
 import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import os from "os";
 import path from "path";
@@ -46,6 +47,32 @@ function getGhostscriptCommand(executable: string, args: string[]) {
   return { command: executable, args };
 }
 
+function findGhostscriptIccProfile() {
+  const configured = cleanText(process.env.PDFA3_ICC_PROFILE_PATH || process.env.ZUGFERD_ICC_PROFILE_PATH);
+  if (configured) return configured;
+
+  const directCandidates = [
+    "/usr/share/color/icc/ghostscript/srgb.icc",
+    "/usr/share/color/icc/sRGB.icc",
+    "/usr/share/color/icc/srgb.icc",
+    "/usr/share/ghostscript/iccprofiles/srgb.icc",
+    "C:\\Program Files\\gs\\iccprofiles\\srgb.icc",
+  ];
+  const directMatch = directCandidates.find((candidate) => existsSync(candidate));
+  if (directMatch) return directMatch;
+
+  const ghostscriptRoot = "/usr/share/ghostscript";
+  if (existsSync(ghostscriptRoot)) {
+    for (const entry of readdirSync(ghostscriptRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const candidate = path.join(ghostscriptRoot, entry.name, "iccprofiles", "srgb.icc");
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+
+  return "";
+}
+
 function getReadableConversionFailureMessage(error: unknown) {
   const rawMessage = error instanceof Error ? error.message : "";
   if (/timed out|timeout/i.test(rawMessage)) {
@@ -71,7 +98,7 @@ export async function convertPdfToPdfA3(pdfBytes: Buffer): Promise<PdfA3Conversi
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "workpilot-pdfa3-"));
   const inputPath = path.join(tempDir, "input.pdf");
   const outputPath = path.join(tempDir, "output.pdf");
-  const iccProfilePath = cleanText(process.env.PDFA3_ICC_PROFILE_PATH || process.env.ZUGFERD_ICC_PROFILE_PATH);
+  const iccProfilePath = findGhostscriptIccProfile();
 
   try {
     await writeFile(inputPath, pdfBytes);
@@ -85,7 +112,7 @@ export async function convertPdfToPdfA3(pdfBytes: Buffer): Promise<PdfA3Conversi
       "-dEmbedAllFonts=true",
       "-dSubsetFonts=true",
       "-sColorConversionStrategy=RGB",
-      "-dProcessColorModel=/DeviceRGB",
+      "-sProcessColorModel=DeviceRGB",
       ...(iccProfilePath ? [`-sOutputICCProfile=${iccProfilePath}`] : []),
       `-sOutputFile=${outputPath}`,
       inputPath,
