@@ -471,8 +471,25 @@ function didPlanningTimeChange(existingEntry: PlanningEntryRow | null, savedEntr
   );
 }
 
+function formatPlanningTimeChangeBody(existingEntry: PlanningEntryRow | null, savedEntry: PlanningEntryRow) {
+  const title = savedEntry.title;
+  const oldDate = cleanString(existingEntry?.date);
+  const oldStartTime = cleanString(existingEntry?.startTime);
+  const oldEndTime = cleanString(existingEntry?.endTime);
+  const newDate = cleanString(savedEntry.date);
+  const newStartTime = cleanString(savedEntry.startTime);
+  const newEndTime = cleanString(savedEntry.endTime);
+
+  if (oldDate && oldStartTime && oldEndTime && newDate && newStartTime && newEndTime) {
+    return `Dein Termin „${title}“ wurde von ${formatDateKeyDisplay(oldDate)}, ${oldStartTime}-${oldEndTime} auf ${formatDateKeyDisplay(newDate)}, ${newStartTime}-${newEndTime} geändert.`;
+  }
+
+  return `Dein Termin „${title}“ wurde auf ${formatDateKeyDisplay(savedEntry.date)}, ${savedEntry.startTime}-${savedEntry.endTime} geändert.`;
+}
+
 async function notifyPlannedEmployeeAboutTimeChange(input: {
   organizationId: string;
+  existingEntry: PlanningEntryRow | null;
   entry: PlanningEntryRow;
   actorUserId: string;
 }) {
@@ -482,7 +499,7 @@ async function notifyPlannedEmployeeAboutTimeChange(input: {
   await ensureNotificationLinkColumns();
 
   const title = "Termin geändert";
-  const body = `Dein Termin „${input.entry.title}“ wurde auf ${formatDateKeyDisplay(input.entry.date)}, ${input.entry.startTime}-${input.entry.endTime} geändert.`;
+  const body = formatPlanningTimeChangeBody(input.existingEntry, input.entry);
   const notification = await prisma.notification.create({
     data: {
       id: randomUUID(),
@@ -867,6 +884,7 @@ export async function POST(req: Request) {
   if (actorCanManagePlanning && didPlanningTimeChange(existingEntry, savedEntry)) {
     await notifyPlannedEmployeeAboutTimeChange({
       organizationId: organization.id,
+      existingEntry,
       entry: savedEntry,
       actorUserId,
     });
