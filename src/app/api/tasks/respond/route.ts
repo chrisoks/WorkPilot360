@@ -48,31 +48,27 @@ async function createTaskNotificationPair(input: {
   subject: string;
   body: string;
 }) {
-  for (const channel of ["app", "email"]) {
-    const notification = await prisma.notification.create({
-      data: {
-        organizationId: input.organizationId,
-        taskId: input.taskId,
-        userId: input.userId,
-        channel,
-        subject: input.subject,
-        body: input.body,
-        sentAt: null,
-        linkTarget: "task",
-        linkTargetId: input.taskId,
-        linkLabel: "Aufgabe \u00f6ffnen",
-      },
-    });
+  const notification = await prisma.notification.create({
+    data: {
+      organizationId: input.organizationId,
+      taskId: input.taskId,
+      userId: input.userId,
+      channel: "app",
+      subject: input.subject,
+      body: input.body,
+      sentAt: null,
+      linkTarget: "task",
+      linkTargetId: input.taskId,
+      linkLabel: "Aufgabe \u00f6ffnen",
+    },
+  });
 
-    if (channel === "email") {
-      await sendTaskNotificationMailSafely({
-        notificationId: notification.id,
-        userId: input.userId,
-        subject: input.subject,
-        body: input.body,
-      });
-    }
-  }
+  await sendTaskNotificationMailSafely({
+    notificationId: notification.id,
+    userId: input.userId,
+    subject: input.subject,
+    body: input.body,
+  });
 }
 
 function toUiStatus(status: TaskStatus) {
