@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { getDeadlineSettings } from "@/lib/company-settings/deadlines";
 import { canCreateNotifications } from "@/lib/permissions";
+import { sendTaskNotificationMailSafely } from "@/lib/mail/task-notifications";
 
 type NotificationRow = {
   id: string;
@@ -204,36 +205,28 @@ async function createNotificationIfMissing(input: {
   `;
   if (existing.length > 0) return;
 
-  await prisma.$executeRaw`
-    INSERT INTO "Notification" (
-      "id",
-      "organizationId",
-      "userId",
-      "taskId",
-      "channel",
-      "subject",
-      "body",
-      "linkTarget",
-      "linkTargetId",
-      "linkLabel",
-      "sentAt",
-      "createdAt"
-    )
-    VALUES (
-      ${randomUUID()},
-      ${input.organizationId},
-      ${input.userId},
-      ${input.taskId},
-      'app',
-      ${input.subject},
-      ${input.body},
-      'task',
-      ${input.taskId},
-      ${input.stage},
-      NULL,
-      CURRENT_TIMESTAMP
-    )
-  `;
+  const notification = await prisma.notification.create({
+    data: {
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      userId: input.userId,
+      taskId: input.taskId,
+      channel: "app",
+      subject: input.subject,
+      body: input.body,
+      linkTarget: "task",
+      linkTargetId: input.taskId,
+      linkLabel: input.stage,
+      sentAt: null,
+    },
+  });
+
+  await sendTaskNotificationMailSafely({
+    notificationId: notification.id,
+    userId: input.userId,
+    subject: input.subject,
+    body: input.body,
+  });
 }
 
 async function ensureInterruptedWorkNotifications(organizationId: string, users: Array<{ id: string; role: string; isActive: boolean }>) {
