@@ -14195,9 +14195,7 @@ export function DashboardPage() {
   }, [editingTask, heroProjects, isModalOpen, selectedHeroProjectId]);
 
   function resetForm() {
-    const fallbackOwnerId = canAssignOther(activeUser?.role)
-      ? users[0]?.id || ""
-      : activeUserId;
+    const fallbackOwnerId = activeUserId || users.find((user) => user.isActive)?.id || "";
 
     setTitel(emptyTask.titel);
     setBeschreibung(emptyTask.beschreibung);
