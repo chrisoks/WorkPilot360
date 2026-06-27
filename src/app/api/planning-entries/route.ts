@@ -186,6 +186,10 @@ function getMinutesBetween(startTime: string, endTime: string) {
   return Math.max(0, end - start);
 }
 
+function formatPlanningRequestBody(entry: PlanningEntryRow) {
+  return `Für ${entry.groupName} ist ein Terminwunsch am ${formatDateKeyDisplay(entry.date)} von ${entry.startTime} bis ${entry.endTime} freizugeben: ${entry.title}.`;
+}
+
 function isValidTime(value: string) {
   return /^\d{2}:\d{2}$/.test(value);
 }
@@ -338,6 +342,8 @@ async function notifyPlanningResponsibles(entry: PlanningEntryRow, organizationI
 
     if (existing.length > 0) continue;
 
+    const title = "Terminwunsch freigeben";
+    const body = formatPlanningRequestBody(entry);
     await prisma.$executeRaw`
       INSERT INTO "Notification" (
         "id",
@@ -359,8 +365,8 @@ async function notifyPlanningResponsibles(entry: PlanningEntryRow, organizationI
         ${recipient.id},
         NULL,
         'app_email',
-        'Terminwunsch freigeben',
-        ${`Für ${entry.groupName} ist ein Terminwunsch am ${formatDateKeyDisplay(entry.date)} von ${entry.startTime} bis ${entry.endTime} freizugeben: ${entry.title}. E-Mail an ${recipient.email} wurde vorgemerkt.`},
+        ${title},
+        ${body},
         'planning-entry',
         ${entry.id},
         'Termin öffnen',
@@ -382,8 +388,6 @@ async function notifyPlanningResponsibles(entry: PlanningEntryRow, organizationI
     const notificationId = notificationRows[0]?.id ?? "";
     if (!notificationId) continue;
 
-    const title = "Terminwunsch freigeben";
-    const body = `Fuer ${entry.groupName} ist ein Terminwunsch am ${formatDateKeyDisplay(entry.date)} von ${entry.startTime} bis ${entry.endTime} freizugeben: ${entry.title}.`;
     await sendPushToUserSafely({
       organizationId,
       userId: recipient.id,
@@ -700,7 +704,7 @@ export async function POST(req: Request) {
 
     if (approvalStatus !== "requested" || userId !== actor.id) {
       return NextResponse.json(
-        { error: "Du darfst nur eigene Terminwuensche anlegen oder bearbeiten." },
+        { error: "Du darfst nur eigene Terminwünsche anlegen oder bearbeiten." },
         { status: 403 }
       );
     }
@@ -986,7 +990,7 @@ export async function DELETE(req: Request) {
     (entry.approvalStatus !== "requested" || (entry.userId !== actor.id && entry.requestedByUserId !== actor.id))
   ) {
     return NextResponse.json(
-      { error: "Du darfst diesen Planungstermin nicht loeschen." },
+      { error: "Du darfst diesen Planungstermin nicht löschen." },
       { status: 403 }
     );
   }

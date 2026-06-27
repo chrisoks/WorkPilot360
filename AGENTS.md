@@ -35,6 +35,15 @@
   `npm.cmd run build` im zweiten Lauf. Der erste Buildlauf hatte einen
   transienten Next-Cache-Fehler `Cannot find module './1682.js'`, der direkte
   Wiederholungslauf war erfolgreich.
+- Planung-Push-Texte 2026-06-28: In `src/app/api/planning-entries/route.ts`
+  wurden die deutschen Texte fuer Terminwunsch-, Terminverschiebungs-,
+  Konflikt- und Planungs-Historienmeldungen geprueft und korrigiert. Push und
+  In-App-Notification fuer Terminwuensche nutzen jetzt denselben Body mit
+  korrektem `Für`; Mojibake-/ASCII-Umschreibungen wie `Fuer`,
+  `geÃ¤ndert`, `â€ž` oder `oeffnen` wurden in diesem Bereich bereinigt.
+  Checks bestanden: `git diff --check`, `npm.cmd run check:mojibake`,
+  `npm.cmd run check:regressions`, `npx.cmd prisma validate` und
+  `npm.cmd run build`.
 - Laufender Funktionsblock 2026-06-26: Dauerlaeufer wurden fachlich in
   Monatspauschale und Stundenabrechnung getrennt. Bei Dauerlaeufer-Projekten
   muss das Abrechnungsmodell aktiv gewaehlt werden; Stundenabrechnung nutzt
