@@ -319,6 +319,21 @@ model Notification {
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+model PushSubscription {
+  id             String   @id
+  organizationId String
+  userId         String
+  endpoint       String
+  p256dh         String
+  auth           String
+  userAgent      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, endpoint], map: "PushSubscription_user_endpoint_key")
+  @@index([organizationId, userId])
+}
+
 model UnbilledTimeAlert {
   id             String    @id
   organizationId String

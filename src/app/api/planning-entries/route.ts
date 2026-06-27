@@ -5,6 +5,7 @@ import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canManagePlanningEntries } from "@/lib/permissions";
+import { sendPushToUserSafely } from "@/lib/push/web-push";
 
 type DemoUser = {
   id: string;
@@ -461,6 +462,57 @@ async function notifyPlanningOverlap(entry: PlanningEntryRow, organizationId: st
   }
 }
 
+function didPlanningTimeChange(existingEntry: PlanningEntryRow | null, savedEntry: PlanningEntryRow) {
+  if (!existingEntry) return false;
+  return (
+    cleanString(existingEntry.date) !== cleanString(savedEntry.date) ||
+    cleanString(existingEntry.startTime) !== cleanString(savedEntry.startTime) ||
+    cleanString(existingEntry.endTime) !== cleanString(savedEntry.endTime)
+  );
+}
+
+async function notifyPlannedEmployeeAboutTimeChange(input: {
+  organizationId: string;
+  entry: PlanningEntryRow;
+  actorUserId: string;
+}) {
+  const targetUserId = cleanString(input.entry.userId);
+  if (!targetUserId || targetUserId === input.actorUserId) return;
+
+  await ensureNotificationLinkColumns();
+
+  const title = "Termin geändert";
+  const body = `Dein Termin „${input.entry.title}“ wurde auf ${formatDateKeyDisplay(input.entry.date)}, ${input.entry.startTime}-${input.entry.endTime} geändert.`;
+  const notification = await prisma.notification.create({
+    data: {
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      userId: targetUserId,
+      taskId: null,
+      channel: "app",
+      subject: title,
+      body,
+      linkTarget: "planning-entry",
+      linkTargetId: input.entry.id,
+      linkLabel: "Termin öffnen",
+      sentAt: null,
+    },
+  });
+
+  await sendPushToUserSafely({
+    organizationId: input.organizationId,
+    userId: targetUserId,
+    payload: {
+      title,
+      body,
+      notificationId: notification.id,
+      linkTarget: "planning-entry",
+      linkTargetId: input.entry.id,
+      url: `/?target=planning-entry&targetId=${encodeURIComponent(input.entry.id)}`,
+    },
+  });
+}
+
 export async function GET(req: Request) {
   const { organization, users } = await getDemoContext();
   await ensurePlanningEntryTable();
@@ -812,6 +864,13 @@ export async function POST(req: Request) {
 
   await notifyPlanningResponsibles(savedEntry, organization.id);
   await notifyPlanningOverlap(savedEntry, organization.id, actorUserId);
+  if (actorCanManagePlanning && didPlanningTimeChange(existingEntry, savedEntry)) {
+    await notifyPlannedEmployeeAboutTimeChange({
+      organizationId: organization.id,
+      entry: savedEntry,
+      actorUserId,
+    });
+  }
 
   const history = await prisma.$queryRaw<PlanningEntryHistoryRow[]>`
     SELECT *
