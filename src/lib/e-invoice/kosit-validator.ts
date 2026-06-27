@@ -1,4 +1,4 @@
-import { execFile } from "child_process";
+﻿import { execFile } from "child_process";
 import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import os from "os";
 import path from "path";
@@ -22,7 +22,6 @@ export type KositValidationResult = {
 function cleanText(value: unknown) {
   return String(value ?? "").trim();
 }
-
 function getKositSettings() {
   const validatorJar = cleanText(process.env.KOSIT_VALIDATOR_JAR);
   return {
@@ -59,6 +58,17 @@ async function readReportXml(outputDirectory: string, inputBaseName: string) {
   } catch {
     return "";
   }
+}
+
+function getReadableKositFailureMessage(error: unknown) {
+  const rawMessage = error instanceof Error ? error.message : "";
+  if (/timed out|timeout/i.test(rawMessage)) {
+    return "KoSIT-Validierung hat zu lange gedauert.";
+  }
+  if (/ENOENT|not found|cannot find/i.test(rawMessage)) {
+    return "KoSIT-Validierung konnte nicht gestartet werden. Bitte Java- und KoSIT-Pfade pruefen.";
+  }
+  return "KoSIT-Validierung konnte nicht erfolgreich abgeschlossen werden.";
 }
 
 export async function validateXRechnungWithKosit(xml: string): Promise<KositValidationResult> {
@@ -109,10 +119,21 @@ export async function validateXRechnungWithKosit(xml: string): Promise<KositVali
       valid: accepted,
       status: accepted ? "accepted" : "rejected",
       message: accepted ? "KoSIT-Validierung bestanden." : "KoSIT-Validierung hat die XRechnung abgelehnt.",
-      issues,
+      issues: accepted ? [] : issues,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "KoSIT-Validierung konnte nicht ausgeführt werden.";
+    const reportXml = await readReportXml(outputDir, inputBaseName);
+    const issues = reportXml ? extractReportIssues(reportXml) : [];
+    if (issues.length > 0) {
+      return {
+        available: true,
+        valid: false,
+        status: "rejected",
+        message: "KoSIT-Validierung hat die XRechnung abgelehnt.",
+        issues,
+      };
+    }
+    const message = getReadableKositFailureMessage(error);
     return {
       available: true,
       valid: false,

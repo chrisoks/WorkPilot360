@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Fragment,
   useEffect,
   useMemo,
   useRef,
@@ -261,6 +262,13 @@ type FirmSettingsTab =
   | "sources"
   | "mailServer"
   | "customFields";
+type DeadlineSettingsSection =
+  | "offers"
+  | "tasks"
+  | "projectStatus"
+  | "stampInterruptions"
+  | "punctuality"
+  | "billing";
 type CompanyProfileEditTab = "general" | "contact" | "bank";
 type EmployeeTopTab = "overview" | "absence" | "time" | "balance" | "documents" | "costs";
 type EmployeeTimePeriod = "day" | "month" | "year" | "custom";
@@ -528,6 +536,7 @@ function DocumentLetterheadCanvas({
 type TaskPriority = "niedrig" | "normal" | "hoch" | "kritisch";
 type CustomerClass = "A" | "B" | "C" | "";
 type RecurrenceInterval = "daily" | "weekly" | "monthly" | "yearly";
+type EmployeeKpiDetailMetric = "performance" | "productivity" | "attendance" | "punctuality";
 type GermanStateCode =
   | "BW"
   | "BY"
@@ -865,6 +874,10 @@ type PlanningEntry = {
   customer: string;
   projectId: string;
   projectLabel: string;
+  planningTrade: string;
+  billingCatalogItemId: string;
+  billingCatalogItemLabel: string;
+  billingGroupId: string;
   offerId: string;
   offerLineId: string;
   offerLabel: string;
@@ -1001,6 +1014,7 @@ type CatalogItem = {
   number: string;
   name: string;
   category: string;
+  trade: string;
   unit: string;
   description: string;
   matchcode: string;
@@ -1122,7 +1136,7 @@ type InvoiceItem = {
   company: "OK solutions" | "OK immocare";
   invoiceNumber: string;
   status: string;
-  billingSource: "manual" | "batch";
+  billingSource: "manual" | "batch" | "hourly-recurring";
   customerName: string;
   customerStreet: string;
   customerCity: string;
@@ -1384,6 +1398,7 @@ type HeroProjectPreview = {
   deputyFrom?: string;
   deputyUntil?: string;
   createdAt?: string;
+  timeBudgetEnabled?: boolean;
   timeBudgetHours?: string;
   timeBudgetHistory?: Array<{
     id: string;
@@ -1550,6 +1565,7 @@ type AbsenceItem = {
   note: string;
   handoverTaskIds: string[];
   rejectionReason: string;
+  deletedAt?: string;
   history: Array<{
     id: string;
     event: string;
@@ -1688,6 +1704,10 @@ function getProjectRecurringBillingMode(project?: Pick<HeroProjectPreview, "proj
   const mode = normalizeRecurringBillingMode(project?.recurringBillingMode);
   if (mode) return mode;
   return isRecurringProjectKindValue(project?.projectKind) ? RECURRING_BILLING_MONTHLY_FLAT : "";
+}
+
+function isHourlyRecurringProject(project?: Pick<HeroProjectPreview, "projectKind" | "recurringBillingMode"> | null) {
+  return getProjectRecurringBillingMode(project) === RECURRING_BILLING_HOURLY;
 }
 
 function formatRecurringBillingModeLabel(mode?: string | null) {
@@ -1955,6 +1975,10 @@ type StampSession = {
   projectId: string;
   projectLabel?: string;
   trade?: string;
+  planningEntryId?: string;
+  planningBillingGroupId?: string;
+  billingCatalogItemId?: string;
+  billingCatalogItemLabel?: string;
   comment?: string;
   startedAt: number;
   accumulatedMs: number;
@@ -1970,6 +1994,10 @@ type ActiveStampSessionResponse = {
   projectId: string;
   projectLabel: string;
   trade: string;
+  planningEntryId: string;
+  planningBillingGroupId: string;
+  billingCatalogItemId: string;
+  billingCatalogItemLabel: string;
   comment: string;
   startedAt: string;
   accumulatedMs: number;
@@ -1985,6 +2013,10 @@ type StampTimeEntry = {
   projectId: string;
   projectLabel: string;
   trade?: string;
+  planningEntryId?: string;
+  planningBillingGroupId?: string;
+  billingCatalogItemId?: string;
+  billingCatalogItemLabel?: string;
   userId: string;
   employee: string;
   entrySource?: "stamped" | "manual";
@@ -2473,6 +2505,7 @@ const emptyCatalogItemDraft: Omit<CatalogItem, "id" | "createdAt" | "updatedAt" 
   number: "",
   name: "",
   category: "",
+  trade: "",
   unit: "Stk",
   description: "",
   matchcode: "",
@@ -2546,32 +2579,32 @@ const defaultDocumentMailTemplates: Record<DocumentMailKind, { subject: string; 
   offer: {
     subject: "Angebot {{number}}",
     body:
-      "Hallo,\n\nanbei senden wir Ihnen unser Angebot {{number}} als PDF.\n\nBei Fragen melden Sie sich gern.\n\nMit freundlichen Grüßen\n{{sender}}",
+      "Hallo,\n\nanbei senden wir Ihnen unser Angebot {{number}} als PDF.\n\nBei Fragen melden Sie sich gern.",
   },
   invoice: {
     subject: "Rechnung {{number}}",
     body:
-      "Hallo,\n\nanbei senden wir Ihnen unsere Rechnung {{number}} als PDF.\n\nBitte prüfen Sie die Unterlagen. Bei Rückfragen stehen wir gern zur Verfügung.\n\nMit freundlichen Grüßen\n{{sender}}",
+      "Hallo,\n\nanbei senden wir Ihnen unsere Rechnung {{number}} als PDF.\n\nBitte prüfen Sie die Unterlagen. Bei Rückfragen stehen wir gern zur Verfügung.",
   },
   cancellation: {
     subject: "Stornorechnung {{number}}",
     body:
-      "Hallo,\n\nanbei senden wir Ihnen die Stornorechnung {{number}} als PDF.\n\nBei Rückfragen stehen wir gern zur Verfügung.\n\nMit freundlichen Grüßen\n{{sender}}",
+      "Hallo,\n\nanbei senden wir Ihnen die Stornorechnung {{number}} als PDF.\n\nBei Rückfragen stehen wir gern zur Verfügung.",
   },
   reminder: {
     subject: "Mahnung {{number}}",
     body:
-      "Hallo,\n\nanbei senden wir Ihnen unsere Mahnung {{number}} als PDF.\n\nBitte prüfen Sie den offenen Betrag und die Zahlungsfrist. Bei Rückfragen stehen wir gern zur Verfügung.\n\nMit freundlichen Grüßen\n{{sender}}",
+      "Hallo,\n\nanbei senden wir Ihnen unsere Mahnung {{number}} als PDF.\n\nBitte prüfen Sie den offenen Betrag und die Zahlungsfrist. Bei Rückfragen stehen wir gern zur Verfügung.",
   },
   activityReport: {
     subject: "Tätigkeitsbericht {{number}}",
     body:
-      "Hallo,\n\nanbei senden wir Ihnen den Tätigkeitsbericht {{number}}.\n\nBei Fragen melden Sie sich gern.\n\nMit freundlichen Grüßen\n{{sender}}",
+      "Hallo,\n\nanbei senden wir Ihnen den Tätigkeitsbericht {{number}}.\n\nBei Fragen melden Sie sich gern.",
   },
   document: {
     subject: "Dokument {{number}}",
     body:
-      "Hallo,\n\nanbei senden wir Ihnen das Dokument {{number}}.\n\nBei Fragen melden Sie sich gern.\n\nMit freundlichen Grüßen\n{{sender}}",
+      "Hallo,\n\nanbei senden wir Ihnen das Dokument {{number}}.\n\nBei Fragen melden Sie sich gern.",
   },
 };
 const emptyContentDraft: ContentDraft = {
@@ -3063,18 +3096,12 @@ const firmSettingsTabs: Array<{ id: FirmSettingsTab; label: string }> = [
   { id: "units", label: "Einheiten" },
   { id: "businessAreaTargets", label: "Geschäftsbereich-Soll" },
   { id: "deadlines", label: "Zeitfristen" },
-  { id: "appearance", label: "Seitendarstellung" },
   { id: "branches", label: "Niederlassungen" },
   { id: "emailTemplates", label: "Email-Templates" },
-  { id: "infoDocuments", label: "Informationsdokumente" },
   { id: "interfaces", label: "Schnittstellen" },
-  { id: "accessRights", label: "Zugriffsrechte" },
   { id: "projectTypes", label: "Projekttypen" },
-  { id: "documentFolders", label: "Dokumentenordner" },
   { id: "checklists", label: "Checklisten" },
-  { id: "sources", label: "Quellen" },
   { id: "mailServer", label: "Mailserver" },
-  { id: "customFields", label: "Eigene Felder" },
 ];
 
 const germanStateOptions: Array<{ value: GermanStateCode; label: string }> = [
@@ -4544,6 +4571,18 @@ function formatPercent(value: number) {
   return `${formattedValue} %`;
 }
 
+const MAX_PLAUSIBLE_PERFORMANCE_PERCENT = 300;
+
+function isPlausiblePerformancePercent(value: number | null | undefined) {
+  if (value === null || value === undefined) return true;
+  return Number.isFinite(value) && value >= 0 && value <= MAX_PLAUSIBLE_PERFORMANCE_PERCENT;
+}
+
+function getImplausiblePerformanceDescription(value: number | null | undefined) {
+  const formattedValue = value === null || value === undefined ? "kein Wert" : formatPercent(value);
+  return `Dieser Leistungsgrad (${formattedValue}) liegt über der Plausibilitätsgrenze von ${MAX_PLAUSIBLE_PERFORMANCE_PERCENT} %. Er wird markiert und nicht als belastbarer Leistungsgrad gewertet.`;
+}
+
 function formatMarginPercent(value: number) {
   return formatPercent(value);
 }
@@ -4977,9 +5016,16 @@ export function DashboardPage() {
   const [upsellOfferProjectId, setUpsellOfferProjectId] = useState("");
   const [offerPreviewDataUrl, setOfferPreviewDataUrl] = useState("");
   const [isGeneratingOfferPreview, setIsGeneratingOfferPreview] = useState(false);
-  const [offerFollowUpWorkdays, setOfferFollowUpWorkdays] = useState(() =>
-    getStoredDashboardNumber("workpilot-offer-follow-up-workdays", 5)
-  );
+  const [offerFollowUpWorkdays, setOfferFollowUpWorkdays] = useState(5);
+  const [completedTaskArchiveDays, setCompletedTaskArchiveDays] = useState(5);
+  const [interruptedWorkFollowUpDays, setInterruptedWorkFollowUpDays] = useState(2);
+  const [interruptedWorkManagementEscalationDays, setInterruptedWorkManagementEscalationDays] = useState(7);
+  const [punctualityStartToleranceMinutes, setPunctualityStartToleranceMinutes] = useState(10);
+  const [punctualityEndToleranceMinutes, setPunctualityEndToleranceMinutes] = useState(10);
+  const [hourlyBillingRoundingFactorHours, setHourlyBillingRoundingFactorHours] = useState(0.5);
+  const [deadlineSettingsSection, setDeadlineSettingsSection] = useState<DeadlineSettingsSection>("offers");
+  const [deadlineSettingsMessage, setDeadlineSettingsMessage] = useState("");
+  const [isSavingDeadlineSettings, setIsSavingDeadlineSettings] = useState(false);
   const [offerLineSearchTerms, setOfferLineSearchTerms] = useState<Record<string, string>>({});
   const [openOfferLinePickerId, setOpenOfferLinePickerId] = useState("");
   const [isOfferExecutionMonthPickerOpen, setIsOfferExecutionMonthPickerOpen] = useState(false);
@@ -5061,10 +5107,19 @@ export function DashboardPage() {
     return formatDateKey(new Date(today.getFullYear(), today.getMonth(), 1));
   });
   const [reportCustomEndDate, setReportCustomEndDate] = useState(() => formatDateKey(new Date()));
+  const [employeeKpiDetailPeriodPreset, setEmployeeKpiDetailPeriodPreset] = useState<ReportPeriodPreset>("custom");
+  const [employeeKpiDetailCustomStartDate, setEmployeeKpiDetailCustomStartDate] = useState("");
+  const [employeeKpiDetailCustomEndDate, setEmployeeKpiDetailCustomEndDate] = useState("");
   const [reportSearch, setReportSearch] = useState("");
   const [svsTradeFilter, setSvsTradeFilter] = useState("all");
   const [reportProjectKindFilter, setReportProjectKindFilter] = useState<ReportProjectKindFilter>("all");
   const [expandedEmployeeAnalyticsGroups, setExpandedEmployeeAnalyticsGroups] = useState<string[]>([]);
+  const [employeeKpiDetail, setEmployeeKpiDetail] = useState<{
+    userId: string;
+    metric: EmployeeKpiDetailMetric;
+  } | null>(null);
+  const [employeeKpiDetailSearch, setEmployeeKpiDetailSearch] = useState("");
+  const [employeeKpiDetailStatus, setEmployeeKpiDetailStatus] = useState("all");
   const [batchBillingMonth, setBatchBillingMonth] = useState(() => formatInputDate(new Date()).slice(0, 7));
   const [selectedBatchProjectIds, setSelectedBatchProjectIds] = useState<string[]>([]);
   const [selectedBatchDraftInvoiceIds, setSelectedBatchDraftInvoiceIds] = useState<string[]>([]);
@@ -5115,6 +5170,7 @@ export function DashboardPage() {
     Record<string, ActiveStampSessionResponse>
   >({});
   const [stampEntries, setStampEntries] = useState<StampTimeEntry[]>([]);
+  const [projectHistoryStampEntries, setProjectHistoryStampEntries] = useState<StampTimeEntry[]>([]);
   const [isStampModalOpen, setIsStampModalOpen] = useState(false);
   const [stampModalMode, setStampModalMode] = useState<"start" | "change" | "stop">("start");
   const [stampSelectionMode, setStampSelectionMode] = useState<StampMode>("project");
@@ -5122,6 +5178,10 @@ export function DashboardPage() {
   const [stampProjectSearch, setStampProjectSearch] = useState("");
   const [stampTrade, setStampTrade] = useState("");
   const [stampTradeConfirmed, setStampTradeConfirmed] = useState(false);
+  const [stampPlanningEntryId, setStampPlanningEntryId] = useState("");
+  const [stampPlanningBillingGroupId, setStampPlanningBillingGroupId] = useState("");
+  const [stampBillingCatalogItemId, setStampBillingCatalogItemId] = useState("");
+  const [stampBillingCatalogItemLabel, setStampBillingCatalogItemLabel] = useState("");
   const [isStampProjectSearchOpen, setIsStampProjectSearchOpen] = useState(true);
   const [isStampManualProjectPickerOpen, setIsStampManualProjectPickerOpen] = useState(false);
   const [stampUnproductiveLabel, setStampUnproductiveLabel] = useState("");
@@ -5139,6 +5199,9 @@ export function DashboardPage() {
   const [editingStampEntry, setEditingStampEntry] = useState<StampTimeEntry | null>(null);
   const [isManualProjectTimeModalOpen, setIsManualProjectTimeModalOpen] = useState(false);
   const [manualProjectTimeUserId, setManualProjectTimeUserId] = useState("");
+  const [manualProjectTimeTrade, setManualProjectTimeTrade] = useState("");
+  const [manualProjectTimeBillingCatalogItemId, setManualProjectTimeBillingCatalogItemId] = useState("");
+  const [manualProjectTimeBillingCatalogItemLabel, setManualProjectTimeBillingCatalogItemLabel] = useState("");
   const [stampEditDate, setStampEditDate] = useState("");
   const [stampEditStartTime, setStampEditStartTime] = useState("");
   const [stampEditEndTime, setStampEditEndTime] = useState("");
@@ -5146,6 +5209,7 @@ export function DashboardPage() {
   const [stampEditComment, setStampEditComment] = useState("");
   const [stampEditError, setStampEditError] = useState("");
   const [absences, setAbsences] = useState<AbsenceItem[]>([]);
+  const [absenceHistoryEntries, setAbsenceHistoryEntries] = useState<AbsenceItem[]>([]);
   const [holidayState, setHolidayState] = useState<GermanStateCode>("BW");
   const [holidays, setHolidays] = useState<HolidayItem[]>([]);
   const [heroProjects, setHeroProjects] = useState<HeroProjectPreview[]>([]);
@@ -5278,6 +5342,7 @@ export function DashboardPage() {
   const [customerLogbookEntries, setCustomerLogbookEntries] = useState<CustomerLogbookEntry[]>([]);
   const [projectLogbookEntries, setProjectLogbookEntries] = useState<ProjectLogbookEntry[]>([]);
   const projectLogbookEntriesRef = useRef<ProjectLogbookEntry[]>([]);
+  const projectImagePreviewReloadRef = useRef("");
   const [customerProjectNotes, setCustomerProjectNotes] = useState<CustomerProjectNote[]>([]);
   const [notesViewScope, setNotesViewScope] = useState<"customer" | "project">("customer");
   const [noteDraft, setNoteDraft] = useState<CustomerProjectNoteDraft>(emptyCustomerProjectNoteDraft);
@@ -5357,6 +5422,7 @@ export function DashboardPage() {
   const [gewerkId, setGewerkId] = useState("");
   const [zustaendigId, setZustaendigId] = useState("");
   const [selectedHeroProjectId, setSelectedHeroProjectId] = useState("");
+  const [isTaskProjectLocked, setIsTaskProjectLocked] = useState(false);
   const [faelligkeit, setFaelligkeit] = useState(emptyTask.faelligkeit);
   const [kunde, setKunde] = useState(emptyTask.kunde);
   const [kundenklasse, setKundenklasse] = useState<CustomerClass>(emptyTask.kundenklasse);
@@ -5381,6 +5447,7 @@ export function DashboardPage() {
   const [taskStatusConfirmValue, setTaskStatusConfirmValue] =
     useState<TaskStatus>(emptyTask.status);
   const [taskParticipantUserId, setTaskParticipantUserId] = useState("");
+  const [newTaskParticipantUserIds, setNewTaskParticipantUserIds] = useState<string[]>([]);
   const [isTaskHistoryOpen, setIsTaskHistoryOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [userName, setUserName] = useState("");
@@ -5475,6 +5542,7 @@ export function DashboardPage() {
   const [selectedPlanningGroup, setSelectedPlanningGroup] = useState("Marketing");
   const [isPlanningDayOpen, setIsPlanningDayOpen] = useState(false);
   const [planningEntries, setPlanningEntries] = useState<PlanningEntry[]>([]);
+  const [projectHistoryPlanningEntries, setProjectHistoryPlanningEntries] = useState<PlanningEntry[]>([]);
   const [isPlanningEntryModalOpen, setIsPlanningEntryModalOpen] = useState(false);
   const [editingPlanningEntryId, setEditingPlanningEntryId] = useState("");
   const [planningEntrySource, setPlanningEntrySource] = useState<PlanningEntrySource>("manual");
@@ -5490,6 +5558,10 @@ export function DashboardPage() {
   const [planningEntryProjectSearch, setPlanningEntryProjectSearch] = useState("");
   const [isPlanningEntryProjectSearchOpen, setIsPlanningEntryProjectSearchOpen] = useState(false);
   const [planningEntryProjectId, setPlanningEntryProjectId] = useState("");
+  const [planningEntryTrade, setPlanningEntryTrade] = useState("");
+  const [planningEntryBillingCatalogItemId, setPlanningEntryBillingCatalogItemId] = useState("");
+  const [planningEntryHasAdditionalEmployees, setPlanningEntryHasAdditionalEmployees] = useState<"" | "yes" | "no">("");
+  const [planningEntryAdditionalUserIds, setPlanningEntryAdditionalUserIds] = useState<string[]>([]);
   const [planningEntryDescription, setPlanningEntryDescription] = useState("");
   const [planningEntryError, setPlanningEntryError] = useState("");
   const [planningEntryOfferLabel, setPlanningEntryOfferLabel] = useState("");
@@ -5603,6 +5675,7 @@ export function DashboardPage() {
     /geschäftsführer|gesch\u00c3\u00a4ftsf\u00c3\u00bchrer|geschaeftsfuehrer|ceo/i.test(activeUser?.roleLabel ?? "") ||
     /ceo/i.test(activeUser?.name ?? "");
   const canDeleteInvoices = activeUser?.role === "GESCHAEFTSFUEHRER";
+  const canDeleteHistoryEntries = activeUser?.role === "GESCHAEFTSFUEHRER";
   const isLostOffer = (offer: Pick<OfferItem, "status">) => offer.status === "Verloren" || offer.status === "Angebot verloren";
   const isDeletedOffer = (offer: Pick<OfferItem, "status">) => isDeletedStatus(offer.status);
   const isDeletedInvoice = (invoice: InvoiceItem) => isDeletedStatus(invoice.status);
@@ -5675,12 +5748,6 @@ export function DashboardPage() {
       })
     : unreadNotifications;
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const normalizedWorkdays = Math.max(1, Math.min(30, Math.round(Number(offerFollowUpWorkdays) || 5)));
-    window.localStorage.setItem("workpilot-offer-follow-up-workdays", String(normalizedWorkdays));
-  }, [offerFollowUpWorkdays]);
-
   async function loadTasks() {
     const res = await fetch("/api/tasks", { cache: "no-store" });
 
@@ -5708,7 +5775,10 @@ export function DashboardPage() {
     }
 
     const data = await res.json();
-    const sessionResponse = await fetch("/api/auth/session", { cache: "no-store" }).catch(() => null);
+    const sessionResponse = await fetch("/api/auth/session", {
+      cache: "no-store",
+      credentials: "same-origin",
+    }).catch(() => null);
     const sessionData = sessionResponse?.ok
       ? ((await sessionResponse.json().catch(() => null)) as { user?: UserOption } | null)
       : null;
@@ -5827,7 +5897,10 @@ export function DashboardPage() {
   async function loadPlanningEntries() {
     if (!activeUserId) return;
 
-    const res = await fetch(`/api/planning-entries?actorUserId=${encodeURIComponent(activeUserId)}`, { cache: "no-store" });
+    const res = await fetch(`/api/planning-entries?actorUserId=${encodeURIComponent(activeUserId)}`, {
+      cache: "no-store",
+      credentials: "same-origin",
+    });
 
     if (!res.ok) {
       setErrorMessage("Planungen konnten nicht geladen werden.");
@@ -5839,6 +5912,28 @@ export function DashboardPage() {
     setErrorMessage((currentMessage) =>
       currentMessage === "Planungen konnten nicht geladen werden." ? "" : currentMessage
     );
+  }
+
+  async function loadProjectHistoryPlanningEntries(projectId: string) {
+    if (!activeUserId || !projectId) return;
+
+    const params = new URLSearchParams({
+      actorUserId: activeUserId,
+      projectId,
+      includeDeleted: "1",
+    });
+    const res = await fetch(`/api/planning-entries?${params.toString()}`, {
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+
+    if (!res.ok) return;
+
+    const data = (await res.json()) as PlanningEntry[];
+    setProjectHistoryPlanningEntries((currentEntries) => [
+      ...data,
+      ...currentEntries.filter((entry) => String(entry.projectId) !== String(projectId)),
+    ]);
   }
 
   async function loadContentItems() {
@@ -6284,6 +6379,10 @@ export function DashboardPage() {
     return buildActorApiUrl("/api/invoices", { xrechnungId: invoiceId });
   }
 
+  function getInvoiceZugferdUrl(invoiceId: string) {
+    return buildActorApiUrl("/api/invoices", { zugferdId: invoiceId });
+  }
+
   async function loadOffers(projectId = "") {
     if (!activeUserId) return;
 
@@ -6537,6 +6636,128 @@ export function DashboardPage() {
     setWinterServiceAutomationSettings(data);
     setIsWinterServiceAutoSendEnabled(Boolean(data.enabled));
     return data;
+  }
+
+  async function loadDeadlineSettings() {
+    const res = await fetch("/api/company-settings/deadlines", {
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+
+    if (!res.ok) {
+      if (res.status !== 401) {
+        setDeadlineSettingsMessage("Zeitfristen konnten nicht geladen werden.");
+      }
+      return;
+    }
+
+    const data = (await res.json()) as {
+      offerFollowUpWorkdays?: number;
+      completedTaskArchiveDays?: number;
+      interruptedWorkFollowUpDays?: number;
+      interruptedWorkManagementEscalationDays?: number;
+      punctualityStartToleranceMinutes?: number;
+      punctualityEndToleranceMinutes?: number;
+      hourlyBillingRoundingFactorHours?: number;
+    };
+    setOfferFollowUpWorkdays(Math.max(1, Math.min(30, Math.round(Number(data.offerFollowUpWorkdays) || 5))));
+    setCompletedTaskArchiveDays(Math.max(1, Math.min(30, Math.round(Number(data.completedTaskArchiveDays) || 5))));
+    setInterruptedWorkFollowUpDays(Math.max(1, Math.min(30, Math.round(Number(data.interruptedWorkFollowUpDays) || 2))));
+    setInterruptedWorkManagementEscalationDays(
+      Math.max(1, Math.min(60, Math.round(Number(data.interruptedWorkManagementEscalationDays) || 7)))
+    );
+    const loadedStartTolerance = Number(data.punctualityStartToleranceMinutes);
+    const loadedEndTolerance = Number(data.punctualityEndToleranceMinutes);
+    setPunctualityStartToleranceMinutes(
+      Math.max(0, Math.min(120, Math.round(Number.isFinite(loadedStartTolerance) ? loadedStartTolerance : 10)))
+    );
+    setPunctualityEndToleranceMinutes(
+      Math.max(0, Math.min(120, Math.round(Number.isFinite(loadedEndTolerance) ? loadedEndTolerance : 10)))
+    );
+    const loadedRoundingFactor = Number(data.hourlyBillingRoundingFactorHours);
+    setHourlyBillingRoundingFactorHours([0.25, 0.5, 1].includes(loadedRoundingFactor) ? loadedRoundingFactor : 0.5);
+    setDeadlineSettingsMessage("");
+  }
+
+  async function saveDeadlineSettings() {
+    if (!activeUserId) return;
+
+    setIsSavingDeadlineSettings(true);
+    setDeadlineSettingsMessage("");
+
+    try {
+      const normalizedWorkdays = Math.max(1, Math.min(30, Math.round(Number(offerFollowUpWorkdays) || 5)));
+      const normalizedArchiveDays = Math.max(1, Math.min(30, Math.round(Number(completedTaskArchiveDays) || 5)));
+      const normalizedInterruptedDays = Math.max(1, Math.min(30, Math.round(Number(interruptedWorkFollowUpDays) || 2)));
+      const normalizedManagementEscalationDays = Math.max(
+        1,
+        Math.min(60, Math.round(Number(interruptedWorkManagementEscalationDays) || 7))
+      );
+      const rawPunctualityStartTolerance = Number(punctualityStartToleranceMinutes);
+      const rawPunctualityEndTolerance = Number(punctualityEndToleranceMinutes);
+      const normalizedPunctualityStartToleranceMinutes = Math.max(
+        0,
+        Math.min(120, Math.round(Number.isFinite(rawPunctualityStartTolerance) ? rawPunctualityStartTolerance : 10))
+      );
+      const normalizedPunctualityEndToleranceMinutes = Math.max(
+        0,
+        Math.min(120, Math.round(Number.isFinite(rawPunctualityEndTolerance) ? rawPunctualityEndTolerance : 10))
+      );
+      const normalizedHourlyBillingRoundingFactorHours = [0.25, 0.5, 1].includes(
+        Number(hourlyBillingRoundingFactorHours)
+      )
+        ? Number(hourlyBillingRoundingFactorHours)
+        : 0.5;
+      const res = await fetch("/api/company-settings/deadlines", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          actorId: activeUserId,
+          offerFollowUpWorkdays: normalizedWorkdays,
+          completedTaskArchiveDays: normalizedArchiveDays,
+          interruptedWorkFollowUpDays: normalizedInterruptedDays,
+          interruptedWorkManagementEscalationDays: normalizedManagementEscalationDays,
+          punctualityStartToleranceMinutes: normalizedPunctualityStartToleranceMinutes,
+          punctualityEndToleranceMinutes: normalizedPunctualityEndToleranceMinutes,
+          hourlyBillingRoundingFactorHours: normalizedHourlyBillingRoundingFactorHours,
+        }),
+      });
+
+      if (!res.ok) {
+        setDeadlineSettingsMessage("Zeitfristen konnten nicht gespeichert werden.");
+        return;
+      }
+
+      const data = (await res.json()) as {
+        offerFollowUpWorkdays?: number;
+        completedTaskArchiveDays?: number;
+        interruptedWorkFollowUpDays?: number;
+        interruptedWorkManagementEscalationDays?: number;
+        punctualityStartToleranceMinutes?: number;
+        punctualityEndToleranceMinutes?: number;
+        hourlyBillingRoundingFactorHours?: number;
+      };
+      setOfferFollowUpWorkdays(Math.max(1, Math.min(30, Math.round(Number(data.offerFollowUpWorkdays) || 5))));
+      setCompletedTaskArchiveDays(Math.max(1, Math.min(30, Math.round(Number(data.completedTaskArchiveDays) || 5))));
+      setInterruptedWorkFollowUpDays(Math.max(1, Math.min(30, Math.round(Number(data.interruptedWorkFollowUpDays) || 2))));
+      setInterruptedWorkManagementEscalationDays(
+        Math.max(1, Math.min(60, Math.round(Number(data.interruptedWorkManagementEscalationDays) || 7)))
+      );
+      const savedStartTolerance = Number(data.punctualityStartToleranceMinutes);
+      const savedEndTolerance = Number(data.punctualityEndToleranceMinutes);
+      setPunctualityStartToleranceMinutes(
+        Math.max(0, Math.min(120, Math.round(Number.isFinite(savedStartTolerance) ? savedStartTolerance : 10)))
+      );
+      setPunctualityEndToleranceMinutes(
+        Math.max(0, Math.min(120, Math.round(Number.isFinite(savedEndTolerance) ? savedEndTolerance : 10)))
+      );
+      const savedRoundingFactor = Number(data.hourlyBillingRoundingFactorHours);
+      setHourlyBillingRoundingFactorHours([0.25, 0.5, 1].includes(savedRoundingFactor) ? savedRoundingFactor : 0.5);
+      setDeadlineSettingsMessage("Zeitfristen gespeichert.");
+    } finally {
+      setIsSavingDeadlineSettings(false);
+    }
   }
 
   async function loadCustomerFeedback() {
@@ -7436,9 +7657,7 @@ export function DashboardPage() {
   }
 
   function openFreeInvoiceModal(project: HeroProjectPreview) {
-    const isImmocare =
-      (project.projectType ?? "").toLowerCase().includes("immocare") ||
-      (project.projectNumber ?? "").toLowerCase().startsWith("oki");
+    const isImmocare = getProjectCompany(project) === "OK immocare";
     const addressParts = (project.address || "").split(",").map((part) => part.trim()).filter(Boolean);
     const firstItem = catalogItems.find((item) => item.isActive);
     const serviceDate = getProjectServiceDateSuggestion(project);
@@ -7477,7 +7696,7 @@ export function DashboardPage() {
       customerStreet: invoice.customerStreet,
       customerCity: invoice.customerCity,
       contactName: invoice.contactName,
-      internalContactName: invoice.internalContactName,
+      internalContactName: invoice.internalContactName || activeUser?.name || "",
       internalPhone: invoice.internalPhone,
       internalEmail: invoice.internalEmail,
       introText: invoice.introText,
@@ -8224,8 +8443,13 @@ export function DashboardPage() {
   }
 
   function openEditInvoiceModal(invoice: InvoiceItem) {
+    const invoiceProject =
+      heroProjects.find((project) => project.id === invoice.projectId) ||
+      (selectedProjectFile?.id === invoice.projectId ? selectedProjectFile : null);
+    const correctedCompany =
+      invoice.billingSource === "hourly-recurring" && invoiceProject ? getProjectCompany(invoiceProject) : invoice.company;
     setInvoiceDraft({
-      company: invoice.company,
+      company: correctedCompany,
       offerType: "base",
       addendumMode: "addition",
       plannedExecutionEndMonth: "",
@@ -8276,8 +8500,11 @@ export function DashboardPage() {
     setInvoiceError("");
     setInvoiceLineSearchTerms({});
     setOpenInvoiceLinePickerId("");
-    setInvoiceStampEntryIds([]);
-    setInvoiceBillableStampEntryIds([]);
+    const linkedStampEntryIds = stampEntries
+      .filter((entry) => String(entry.invoiceId ?? "") === String(invoice.id) && !entry.deletedAt)
+      .map((entry) => entry.id);
+    setInvoiceStampEntryIds(linkedStampEntryIds);
+    setInvoiceBillableStampEntryIds(linkedStampEntryIds);
     setIsInvoiceSourcePickerOpen(false);
     setIsInvoiceModalOpen(true);
   }
@@ -8378,11 +8605,15 @@ export function DashboardPage() {
   }
 
   function addInvoiceLineLabor(lineIndex: number) {
+    const nextLabor = createOfferLaborItem();
+    if (selectedProjectFile) {
+      showInvoiceLaborStampNotice(invoiceDraft, selectedProjectFile.id, nextLabor, Number(nextLabor.plannedHours || 0));
+    }
     setInvoiceDraft((current) => ({
       ...current,
       lines: current.lines.map((line, currentLineIndex) =>
         currentLineIndex === lineIndex && canPlanOfferLineLabor(line)
-          ? { ...line, laborItems: [...line.laborItems, createOfferLaborItem()] }
+          ? { ...line, laborItems: [...line.laborItems, nextLabor] }
           : line
       ),
     }));
@@ -8493,6 +8724,215 @@ export function DashboardPage() {
 
   function getUnbilledProjectStampEntriesForMonth(projectId: string, monthKey: string) {
     return getProjectStampEntriesForMonth(projectId, monthKey).filter((entry) => !String(entry.invoiceId ?? "").trim());
+  }
+
+  function getInvoiceBillingMonthKey(draft: InvoiceDraft) {
+    return draft.plannedExecutionMonth || normalizeDateKeyValue(draft.serviceDate).slice(0, 7);
+  }
+
+  function getRoundedBillableStampHours(entry: StampTimeEntry) {
+    const rawHours = Math.max(0, Number(entry.durationMs || 0) / 3_600_000);
+    if (rawHours <= 0) return 0;
+    const roundingFactor = [0.25, 0.5, 1].includes(Number(hourlyBillingRoundingFactorHours))
+      ? Number(hourlyBillingRoundingFactorHours)
+      : 0.5;
+    return Number((Math.ceil(rawHours / roundingFactor) * roundingFactor).toFixed(2));
+  }
+
+  function cleanInvoiceStampLabel(value?: string | null) {
+    return String(value ?? "")
+      .replace(/\s*\([^)]+\/\s*Std\.\)\s*$/i, "")
+      .trim();
+  }
+
+  function getInvoiceLineStampEntries(
+    projectId: string,
+    draft: InvoiceDraft,
+    line: OfferLineDraft,
+    invoiceId?: string | null
+  ) {
+    const monthKey = getInvoiceBillingMonthKey(draft);
+    const lineCatalogItemId = String(line.catalogItemId ?? "").trim();
+    const lineTitle = cleanInvoiceStampLabel(line.title).toLowerCase();
+    const catalogLabel = lineCatalogItemId
+      ? catalogItems.find((item) => item.id === lineCatalogItemId)
+      : null;
+    const catalogLineTitle = catalogLabel
+      ? cleanInvoiceStampLabel(`${catalogLabel.number} | ${catalogLabel.name}`).toLowerCase()
+      : "";
+    const activeInvoiceId = String(invoiceId ?? "").trim();
+
+    return stampEntries.filter((entry) => {
+      if (entry.mode !== "project") return false;
+      if (String(entry.projectId) !== String(projectId)) return false;
+      if (entry.deletedAt) return false;
+      if (entry.completionStatus === "interrupted") return false;
+      if (Number(entry.durationMs || 0) <= 0) return false;
+      if (monthKey && !normalizeDateKeyValue(entry.date).startsWith(monthKey)) return false;
+
+      const entryInvoiceId = String(entry.invoiceId ?? "").trim();
+      if (entryInvoiceId && entryInvoiceId !== activeInvoiceId) return false;
+
+      const entryCatalogItemId = String(entry.billingCatalogItemId ?? "").trim();
+      if (lineCatalogItemId && entryCatalogItemId && entryCatalogItemId === lineCatalogItemId) return true;
+
+      const entryLabel = cleanInvoiceStampLabel(entry.billingCatalogItemLabel).toLowerCase();
+      return Boolean(entryLabel && (entryLabel === lineTitle || entryLabel === catalogLineTitle));
+    });
+  }
+
+  function getRoundedStampedInvoiceLaborItems(entries: StampTimeEntry[]) {
+    const grouped = new Map<string, OfferLineLaborDraft>();
+    for (const entry of entries) {
+      const userId = String(entry.userId ?? "");
+      const employeeName = entry.employee || users.find((user) => user.id === userId)?.name || "Mitarbeiter";
+      const key = userId || employeeName.toLowerCase();
+      const hours = getRoundedBillableStampHours(entry);
+      if (hours <= 0) continue;
+      const current =
+        grouped.get(key) ??
+        (userId
+          ? createOfferLaborItem(users.find((user) => user.id === userId))
+          : {
+              id: crypto.randomUUID(),
+              userId: "",
+              employeeName,
+              plannedHours: 0,
+              hourlyCostRate: 0,
+              totalCost: 0,
+            });
+      current.userId = userId || current.userId;
+      current.employeeName = employeeName;
+      current.plannedHours += hours;
+      current.hourlyCostRate = current.userId ? getEmployeeHourlyCostRate(current.userId) : current.hourlyCostRate;
+      current.totalCost = current.plannedHours * Number(current.hourlyCostRate || 0);
+      grouped.set(key, current);
+    }
+    return Array.from(grouped.values()).map((labor) => ({
+      ...labor,
+      id: crypto.randomUUID(),
+      plannedHours: Number(labor.plannedHours.toFixed(2)),
+      totalCost: Number((labor.plannedHours * Number(labor.hourlyCostRate || 0)).toFixed(2)),
+    }));
+  }
+
+  function syncInvoiceLineLaborFromStampIds(lineIndex: number, entryIds: string[]) {
+    if (!selectedProjectFile) return;
+    const selectedIds = new Set(entryIds);
+    setInvoiceDraft((current) => ({
+      ...current,
+      lines: current.lines.map((line, currentLineIndex) => {
+        if (currentLineIndex !== lineIndex || !canPlanOfferLineLabor(line)) return line;
+        const lineEntries = getInvoiceLineStampEntries(selectedProjectFile.id, current, line, editingInvoiceId).filter(
+          (entry) => selectedIds.has(entry.id)
+        );
+        const laborItems = getRoundedStampedInvoiceLaborItems(lineEntries);
+        const invoiceHours = laborItems.reduce((sum, labor) => sum + Number(labor.plannedHours || 0), 0);
+        return {
+          ...line,
+          quantity: Number(invoiceHours.toFixed(2)),
+          laborItems,
+        };
+      }),
+    }));
+  }
+
+  function toggleInvoiceLineStampEntry(lineIndex: number, entryId: string, checked: boolean) {
+    const nextIds = checked
+      ? Array.from(new Set([...invoiceStampEntryIds, entryId]))
+      : invoiceStampEntryIds.filter((id) => id !== entryId);
+    setInvoiceStampEntryIds(nextIds);
+    setInvoiceBillableStampEntryIds(nextIds);
+    syncInvoiceLineLaborFromStampIds(lineIndex, nextIds);
+  }
+
+  function takeOverInvoiceLineStampEntries(lineIndex: number, entries: StampTimeEntry[]) {
+    if (entries.length === 0) return;
+    const nextIds = Array.from(new Set([...invoiceStampEntryIds, ...entries.map((entry) => entry.id)]));
+    setInvoiceStampEntryIds(nextIds);
+    setInvoiceBillableStampEntryIds(nextIds);
+    syncInvoiceLineLaborFromStampIds(lineIndex, nextIds);
+  }
+
+  function getInvoiceStampBasisEntries(projectId: string, draft: InvoiceDraft) {
+    const monthKey = getInvoiceBillingMonthKey(draft);
+    return stampEntries.filter((entry) => {
+      if (entry.mode !== "project") return false;
+      if (String(entry.projectId) !== String(projectId)) return false;
+      if (entry.deletedAt) return false;
+      if (entry.completionStatus === "interrupted") return false;
+      if (Number(entry.durationMs || 0) <= 0) return false;
+      if (!monthKey) return true;
+      return normalizeDateKeyValue(entry.date).startsWith(monthKey);
+    });
+  }
+
+  function getInvoiceStampBasisHoursForWorker(
+    projectId: string,
+    draft: InvoiceDraft,
+    worker: Pick<OfferLineLaborDraft, "userId" | "employeeName">
+  ) {
+    const userId = String(worker.userId ?? "");
+    const employeeName = String(worker.employeeName ?? "").trim().toLowerCase();
+    return getInvoiceStampBasisEntries(projectId, draft)
+      .filter((entry) => {
+        if (userId) return String(entry.userId ?? "") === userId;
+        return String(entry.employee ?? "").trim().toLowerCase() === employeeName;
+      })
+      .reduce((sum, entry) => sum + getRoundedBillableStampHours(entry), 0);
+  }
+
+  function getInvoiceLaborStampWarnings(draft: InvoiceDraft, projectId: string) {
+    const plannedByWorker = new Map<string, { userId: string; employeeName: string; hours: number }>();
+    for (const line of draft.lines) {
+      if (!canPlanOfferLineLabor(line)) continue;
+      for (const labor of line.laborItems) {
+        const hours = Number(labor.plannedHours || 0);
+        if (hours <= 0) continue;
+        const userId = String(labor.userId ?? "");
+        const employeeName = String(labor.employeeName ?? "").trim() || "Mitarbeiter";
+        const key = userId || employeeName.toLowerCase();
+        const current = plannedByWorker.get(key) ?? { userId, employeeName, hours: 0 };
+        current.hours += hours;
+        plannedByWorker.set(key, current);
+      }
+    }
+
+    const warnings: string[] = [];
+    for (const worker of plannedByWorker.values()) {
+      const stampBasisHours = getInvoiceStampBasisHoursForWorker(projectId, draft, worker);
+      if (stampBasisHours <= 0) {
+        warnings.push(
+          `${worker.employeeName}: Es gibt im Abrechnungsmonat keine passende Stempelung.`
+        );
+      } else if (worker.hours > stampBasisHours + 0.01) {
+        warnings.push(
+          `${worker.employeeName}: ${formatHours(worker.hours)} Std. angesetzt, aber nur ${formatHours(stampBasisHours)} Std. aus Stempelungen ableitbar.`
+        );
+      }
+    }
+    return warnings;
+  }
+
+  function showInvoiceLaborStampNotice(
+    draft: InvoiceDraft,
+    projectId: string,
+    labor: Pick<OfferLineLaborDraft, "userId" | "employeeName">,
+    plannedHours: number
+  ) {
+    const employeeName = String(labor.employeeName ?? "").trim() || "Mitarbeiter";
+    const stampBasisHours = getInvoiceStampBasisHoursForWorker(projectId, draft, labor);
+    if (stampBasisHours <= 0) {
+      window.alert(
+        `Hinweis: Für ${employeeName} gibt es im Abrechnungsmonat keine passende Stempelung. Bitte nur bewusst manuell abrechnen.`
+      );
+      return;
+    }
+    if (plannedHours > stampBasisHours + 0.01) {
+      window.alert(
+        `Hinweis: Für ${employeeName} sind ${formatHours(plannedHours)} Std. angesetzt, aber nur ${formatHours(stampBasisHours)} Std. aus Stempelungen ableitbar. Bitte prüfen.`
+      );
+    }
   }
 
   function getStampedInvoiceLaborItems(entries: StampTimeEntry[]) {
@@ -8736,6 +9176,19 @@ export function DashboardPage() {
             setIsSavingInvoice(false);
             return;
           }
+        }
+      }
+    }
+
+    if (!saveAsDraft) {
+      const laborStampWarnings = getInvoiceLaborStampWarnings(draftToSave, selectedProjectFile.id);
+      if (laborStampWarnings.length > 0) {
+        const confirmedLaborStampWarnings = window.confirm(
+          `Bitte prüfen:\n\n${laborStampWarnings.join("\n")}\n\nTrotzdem speichern?`
+        );
+        if (!confirmedLaborStampWarnings) {
+          setIsSavingInvoice(false);
+          return;
         }
       }
     }
@@ -10689,7 +11142,7 @@ export function DashboardPage() {
   async function loadAbsences() {
     if (!activeUserId) return [];
 
-    const res = await fetch(`/api/absences?actorId=${encodeURIComponent(activeUserId)}`, { cache: "no-store" });
+    const res = await fetch(`/api/absences?actorId=${encodeURIComponent(activeUserId)}&includeDeleted=1`, { cache: "no-store" });
 
     if (!res.ok) {
       setErrorMessage("Abwesenheiten konnten nicht geladen werden.");
@@ -10697,8 +11150,9 @@ export function DashboardPage() {
     }
 
     const data = (await res.json()) as AbsenceItem[];
-    setAbsences(data);
-    return data;
+    setAbsences(data.filter((absence) => !absence.deletedAt));
+    setAbsenceHistoryEntries(data);
+    return data.filter((absence) => !absence.deletedAt);
   }
 
   async function loadHeroProjects() {
@@ -10763,6 +11217,68 @@ export function DashboardPage() {
     } finally {
       isProjectTimeEntriesLoadingRef.current = false;
     }
+  }
+
+  async function loadProjectHistoryStampEntries(projectId: string) {
+    if (!activeUserId || !projectId) return;
+
+    const params = new URLSearchParams({
+      actorUserId: activeUserId,
+      projectId,
+      includeDeleted: "1",
+    });
+    const res = await fetch(`/api/project-time-entries?${params.toString()}`, { cache: "no-store" });
+
+    if (!res.ok) return;
+
+    const data = (await res.json()) as StampTimeEntry[];
+    setProjectHistoryStampEntries((currentEntries) => [
+      ...data.map((entry) => ({ ...entry, date: normalizeDateKeyValue(entry.date) })),
+      ...currentEntries.filter((entry) => String(entry.projectId) !== String(projectId)),
+    ]);
+  }
+
+  async function deleteProjectPlanningHistoryEntry(historyId: string) {
+    if (!activeUserId || !selectedProjectFileId || !canDeleteHistoryEntries) return;
+    if (!window.confirm("Diesen Historieneintrag wirklich löschen?")) return;
+
+    const params = new URLSearchParams({
+      actorUserId: activeUserId,
+      historyId,
+    });
+    const res = await fetch(`/api/planning-entries?${params.toString()}`, {
+      method: "DELETE",
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setErrorMessage(data?.error ?? "Historieneintrag konnte nicht gelöscht werden.");
+      return;
+    }
+
+    await loadProjectHistoryPlanningEntries(selectedProjectFileId);
+  }
+
+  async function deleteProjectStampHistoryEntry(entryId: string, historyId: string) {
+    if (!activeUserId || !selectedProjectFileId || !canDeleteHistoryEntries) return;
+    if (!window.confirm("Diesen Historieneintrag wirklich löschen?")) return;
+
+    const params = new URLSearchParams({
+      actorUserId: activeUserId,
+      id: entryId,
+      historyId,
+    });
+    const res = await fetch(`/api/project-time-entries?${params.toString()}`, {
+      method: "DELETE",
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setErrorMessage(data?.error ?? "Historieneintrag konnte nicht gelöscht werden.");
+      return;
+    }
+
+    await loadProjectHistoryStampEntries(selectedProjectFileId);
   }
 
   async function loadProjectMarketingQuotas(projectId: string) {
@@ -11175,6 +11691,10 @@ export function DashboardPage() {
       projectId: session.mode === "project" ? session.projectId : "",
       projectLabel: session.projectLabel,
       trade: session.trade || "",
+      planningEntryId: session.planningEntryId || "",
+      planningBillingGroupId: session.planningBillingGroupId || "",
+      billingCatalogItemId: session.billingCatalogItemId || "",
+      billingCatalogItemLabel: session.billingCatalogItemLabel || "",
       comment: session.comment || "",
       startedAt,
       accumulatedMs: Number(session.accumulatedMs || 0),
@@ -11191,6 +11711,7 @@ export function DashboardPage() {
 
     const res = await fetch(`/api/stamp-session?userId=${encodeURIComponent(activeUserId)}`, {
       cache: "no-store",
+      credentials: "same-origin",
     });
 
     if (!res.ok) {
@@ -11206,7 +11727,10 @@ export function DashboardPage() {
   }
 
   async function loadDashboardStampSessions() {
-    const res = await fetch("/api/stamp-session", { cache: "no-store" });
+    const res = await fetch("/api/stamp-session", {
+      cache: "no-store",
+      credentials: "same-origin",
+    });
 
     if (!res.ok) return;
 
@@ -11231,7 +11755,31 @@ export function DashboardPage() {
     }
 
     const data = (await res.json()) as ProjectLogbookEntrySummary[];
-    setProjectLogbookEntries(data as ProjectLogbookEntry[]);
+    setProjectLogbookEntries((currentEntries) =>
+      (data as ProjectLogbookEntry[]).map((summaryEntry) => {
+        const currentEntry = currentEntries.find((entry) => entry.id === summaryEntry.id);
+        if (!currentEntry) return summaryEntry;
+
+        const attachments = summaryEntry.attachments.map((attachment, attachmentIndex) => {
+          if (attachment.dataUrl) return attachment;
+          const currentAttachment = currentEntry.attachments[attachmentIndex];
+          if (
+            currentAttachment?.dataUrl &&
+            currentAttachment.name === attachment.name &&
+            currentAttachment.type === attachment.type
+          ) {
+            return { ...attachment, dataUrl: currentAttachment.dataUrl };
+          }
+
+          const matchingAttachment = currentEntry.attachments.find(
+            (candidate) => candidate.name === attachment.name && candidate.type === attachment.type && candidate.dataUrl
+          );
+          return matchingAttachment ? { ...attachment, dataUrl: matchingAttachment.dataUrl } : attachment;
+        });
+
+        return { ...summaryEntry, attachments };
+      })
+    );
     setLogbookError("");
   }
 
@@ -11740,6 +12288,10 @@ export function DashboardPage() {
     setPlanningEntryProjectSearch("");
     setIsPlanningEntryProjectSearchOpen(false);
     setPlanningEntryProjectId("");
+    setPlanningEntryTrade("");
+    setPlanningEntryBillingCatalogItemId("");
+    setPlanningEntryHasAdditionalEmployees("");
+    setPlanningEntryAdditionalUserIds([]);
     setPlanningEntryDescription("");
     setPlanningEntryError("");
     setPlanningEntryOfferLabel("");
@@ -11818,6 +12370,10 @@ export function DashboardPage() {
     setPlanningEntryTitle(entry.title);
     setPlanningEntryCustomer(entry.customer);
     setPlanningEntryProjectId(entry.projectId);
+    setPlanningEntryTrade(entry.planningTrade);
+    setPlanningEntryBillingCatalogItemId(entry.billingCatalogItemId);
+    setPlanningEntryHasAdditionalEmployees("no");
+    setPlanningEntryAdditionalUserIds([]);
     setPlanningEntryProjectSearch(entry.projectLabel || entry.customer || "");
     setIsPlanningEntryProjectSearchOpen(false);
     setPlanningEntryDescription(entry.description);
@@ -11827,6 +12383,7 @@ export function DashboardPage() {
     setPlanningEntryOfferTotalHours(
       entry.offerTotalMinutes > 0 ? String(entry.offerTotalMinutes / 60) : "5"
     );
+    if (entryProject && isHourlyRecurringProject(entryProject) && catalogItems.length === 0) void loadCatalogItems();
     setPlanningRecurrenceType("once");
     setPlanningRecurrenceUntil("");
     setErrorMessage("");
@@ -11910,10 +12467,19 @@ export function DashboardPage() {
       setPlanningEntryProjectId(project.id);
       setPlanningEntryCustomer(project.customer || "");
       setPlanningEntryProjectSearch(`${project.projectNumber || project.id} | ${project.title}`);
+      setPlanningEntryTrade(isHourlyRecurringProject(project) ? project.trade || "" : "");
+      setPlanningEntryBillingCatalogItemId("");
+      setPlanningEntryHasAdditionalEmployees(isHourlyRecurringProject(project) ? "" : "no");
+      setPlanningEntryAdditionalUserIds([]);
+      if (isHourlyRecurringProject(project) && catalogItems.length === 0) void loadCatalogItems();
     } else {
       setPlanningEntryProjectId("");
       setPlanningEntryCustomer("");
       setPlanningEntryProjectSearch("");
+      setPlanningEntryTrade("");
+      setPlanningEntryBillingCatalogItemId("");
+      setPlanningEntryHasAdditionalEmployees("");
+      setPlanningEntryAdditionalUserIds([]);
     }
     setIsPlanningEntryProjectSearchOpen(false);
     setPlanningSlotAction(null);
@@ -11982,6 +12548,33 @@ export function DashboardPage() {
         }
       )
       .reduce((sum, entry) => sum + Number(entry.offerPlannedMinutes || entry.durationMinutes || 0), 0);
+  }
+
+  function getHourlyPlanningServiceOptions(trade: string) {
+    const normalizedTrade = normalizeTradeName(trade);
+    return catalogItems
+      .filter((item) => {
+        if (!item.isActive || item.type !== "service") return false;
+        if (normalizeUnit(item.unit) !== "Std") return false;
+        if (Number(item.salesPrice || 0) <= 0) return false;
+        return normalizedTrade ? normalizeTradeName(item.trade) === normalizedTrade : false;
+      })
+      .sort((first, second) => first.name.localeCompare(second.name, "de"));
+  }
+
+  function getPlanningBillingCatalogItemLabel(item?: CatalogItem | null) {
+    if (!item) return "";
+    return `${item.number} | ${item.name}`;
+  }
+
+  function getAdditionalPlanningUserOptions() {
+    return users.filter(
+      (user) =>
+        user.isActive &&
+        user.id !== planningEntryUserId &&
+        (user.planningBoard ?? "OK solutions") === planningEntryBoard &&
+        (user.planningGroup ?? "") === planningEntryGroup
+    );
   }
 
   function getWeekdayFromDateKey(dateKey: string) {
@@ -12113,6 +12706,15 @@ export function DashboardPage() {
     setErrorMessage("");
     const selectedUser = users.find((user) => user.id === planningEntryUserId);
     const selectedProject = heroProjects.find((project) => project.id === planningEntryProjectId);
+    const requiresHourlyPlanningFields = Boolean(selectedProject && isHourlyRecurringProject(selectedProject));
+    const hourlyPlanningServiceOptions = getHourlyPlanningServiceOptions(planningEntryTrade);
+    const selectedBillingCatalogItem = planningEntryBillingCatalogItemId
+      ? catalogItems.find((item) => item.id === planningEntryBillingCatalogItemId)
+      : null;
+    const selectedAdditionalUsers =
+      planningEntryHasAdditionalEmployees === "yes"
+        ? users.filter((user) => planningEntryAdditionalUserIds.includes(user.id) && user.isActive)
+        : [];
     const durationMinutes = getPlanningNetMinutesBetween(
       planningEntryStartTime,
       planningEntryEndTime,
@@ -12157,6 +12759,33 @@ export function DashboardPage() {
       return;
     }
 
+    if (requiresHourlyPlanningFields) {
+      if (!planningEntryTrade.trim()) {
+        setPlanningEntryError("Bitte ein Termin-Gewerk fuer diese Stundenabrechnung auswaehlen.");
+        return;
+      }
+
+      if (!selectedBillingCatalogItem) {
+        setPlanningEntryError("Bitte eine konkrete Abrechnungsleistung fuer diese Stundenabrechnung auswaehlen.");
+        return;
+      }
+
+      if (!hourlyPlanningServiceOptions.some((item) => item.id === selectedBillingCatalogItem.id)) {
+        setPlanningEntryError("Die ausgewaehlte Abrechnungsleistung passt nicht zum Termin-Gewerk.");
+        return;
+      }
+
+      if (!planningEntryHasAdditionalEmployees) {
+        setPlanningEntryError("Bitte auswaehlen, ob weitere Mitarbeiter fuer diesen Termin eingeplant werden.");
+        return;
+      }
+
+      if (planningEntryHasAdditionalEmployees === "yes" && selectedAdditionalUsers.length === 0) {
+        setPlanningEntryError("Bitte mindestens einen weiteren Mitarbeiter auswaehlen.");
+        return;
+      }
+    }
+
     const isSingleProjectWithOfferPlanning =
       selectedProject &&
       !getProjectKind(selectedProject).startsWith("Dauer") &&
@@ -12170,6 +12799,8 @@ export function DashboardPage() {
     const previousPlanningEntry = editingPlanningEntryId
       ? planningEntries.find((entry) => entry.id === editingPlanningEntryId)
       : null;
+    const planningBillingGroupId =
+      requiresHourlyPlanningFields ? previousPlanningEntry?.billingGroupId || crypto.randomUUID() : "";
 
     if (isSingleProjectWithOfferPlanning && !selectedPlanningOffer) {
       setPlanningEntryError("Bitte ein Angebot für diese Planung auswählen.");
@@ -12234,6 +12865,20 @@ export function DashboardPage() {
       return;
     }
 
+    const blockedAdditionalUser = selectedAdditionalUsers.find((user) =>
+      doesAbsenceBlockTime(
+        getUserAbsenceForDateKey(user.id, planningEntryDate),
+        planningEntryStartTime,
+        planningEntryEndTime
+      )
+    );
+    if (blockedAdditionalUser) {
+      setPlanningEntryError(
+        `${blockedAdditionalUser.name} ist am ${formatDateOnly(planningEntryDate)} abwesend. Die Planung wurde blockiert.`
+      );
+      return;
+    }
+
     if (recurrenceDates.length > 1 && planningEntryUserId) {
       const blockedDate = recurrenceDates.find((dateKey) =>
         doesAbsenceBlockTime(
@@ -12245,6 +12890,26 @@ export function DashboardPage() {
       if (blockedDate) {
         setPlanningEntryError(
           `${selectedUser?.name ?? "Der ausgewählte Mitarbeiter"} ist am ${formatDateOnly(blockedDate)} abwesend. Die Serie wurde nicht gespeichert.`
+        );
+        return;
+      }
+    }
+
+    if (recurrenceDates.length > 1 && selectedAdditionalUsers.length > 0) {
+      const blockedAdditionalPlanning = selectedAdditionalUsers.flatMap((user) =>
+        recurrenceDates
+          .filter((dateKey) =>
+            doesAbsenceBlockTime(
+              getUserAbsenceForDateKey(user.id, dateKey),
+              planningEntryStartTime,
+              planningEntryEndTime
+            )
+          )
+          .map((dateKey) => ({ user, dateKey }))
+      )[0];
+      if (blockedAdditionalPlanning) {
+        setPlanningEntryError(
+          `${blockedAdditionalPlanning.user.name} ist am ${formatDateOnly(blockedAdditionalPlanning.dateKey)} abwesend. Die Serie wurde nicht gespeichert.`
         );
         return;
       }
@@ -12265,7 +12930,9 @@ export function DashboardPage() {
                 !entry.deletedAt
             )
             .reduce((sum, entry) => sum + Number(entry.durationMinutes || 0), 0);
-          const newPlannedMinutes = recurrenceDates.filter((date) => date.startsWith(monthKey)).length * durationMinutes;
+          const plannedUserCount = requiresHourlyPlanningFields ? 1 + selectedAdditionalUsers.length : 1;
+          const newPlannedMinutes =
+            recurrenceDates.filter((date) => date.startsWith(monthKey)).length * durationMinutes * plannedUserCount;
           const afterSaveHours = (alreadyPlannedMinutes + newPlannedMinutes) / 60;
 
           return {
@@ -12327,15 +12994,23 @@ export function DashboardPage() {
         ? `Terminwunsch aus Angebot ${selectedPlanningOffer?.offerNumber ?? ""}`
         : `Termin aus Angebot ${selectedPlanningOffer?.offerNumber ?? ""} bestaetigt`;
 
+    const usersToPlan = [selectedUser, ...selectedAdditionalUsers].filter(Boolean) as UserOption[];
     for (const date of recurrenceDates) {
-      const res = await fetch("/api/planning-entries", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+      for (const userToPlan of usersToPlan) {
+        const userDurationMinutes = getPlanningNetMinutesBetween(
+          planningEntryStartTime,
+          planningEntryEndTime,
+          getUserBreakWindowForDate(userToPlan, date)
+        );
+        const res = await fetch("/api/planning-entries", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: {
+            "Content-Type": "application/json",
+          },
         body: JSON.stringify({
           source: storedPlanningEntrySource,
-          id: editingPlanningEntryId,
+          id: userToPlan.id === selectedUser?.id ? editingPlanningEntryId : "",
           approvalStatus: nextApprovalStatus,
           actorUserId: activeUserId,
           actorName: activeUser?.name ?? "",
@@ -12353,12 +13028,12 @@ export function DashboardPage() {
               : "",
           board: planningEntryBoard,
           groupName: planningEntryGroup,
-          userId: planningEntryUserId,
-          employeeName: selectedUser?.name ?? "",
+          userId: userToPlan.id,
+          employeeName: userToPlan.name,
           date,
           startTime: planningEntryStartTime,
           endTime: planningEntryEndTime,
-          durationMinutes,
+          durationMinutes: userDurationMinutes,
           title,
           customer: selectedProject?.customer || planningEntryCustomer,
           description,
@@ -12366,20 +13041,27 @@ export function DashboardPage() {
           projectLabel: selectedProject
             ? `${selectedProject.projectNumber} | ${selectedProject.title}`
             : "",
+          planningTrade: requiresHourlyPlanningFields ? planningEntryTrade : "",
+          billingCatalogItemId: requiresHourlyPlanningFields ? planningEntryBillingCatalogItemId : "",
+          billingCatalogItemLabel: requiresHourlyPlanningFields
+            ? getPlanningBillingCatalogItemLabel(selectedBillingCatalogItem)
+            : "",
+          billingGroupId: planningBillingGroupId,
           offerId: storedPlanningEntrySource === "offer" ? planningEntryOfferId : "",
           offerLineId: storedPlanningEntrySource === "offer" ? planningEntryOfferLineId : "",
           offerLabel: storedPlanningEntrySource === "offer" ? planningEntryOfferLabel : "",
           offerTotalMinutes: storedPlanningEntrySource === "offer" ? offerTotalMinutes : 0,
-          offerPlannedMinutes: storedPlanningEntrySource === "offer" ? durationMinutes : 0,
+          offerPlannedMinutes: storedPlanningEntrySource === "offer" ? userDurationMinutes : 0,
           recurrenceId,
           recurrenceRule,
         }),
       });
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        setPlanningEntryError(data?.error ?? "Planung konnte nicht gespeichert werden.");
-        return;
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          setPlanningEntryError(data?.error ?? "Planung konnte nicht gespeichert werden.");
+          return;
+        }
       }
     }
 
@@ -12417,7 +13099,10 @@ export function DashboardPage() {
     const logPlanningDate = planningEntryDate;
     const logPlanningStartTime = planningEntryStartTime;
     const logPlanningEndTime = planningEntryEndTime;
-    const logEmployeeName = selectedUser?.name || "Mitarbeiter";
+    const logEmployeeName =
+      usersToPlan.length > 1
+        ? usersToPlan.map((user) => user.name).join(", ")
+        : selectedUser?.name || "Mitarbeiter";
     setIsPlanningEntryModalOpen(false);
     resetPlanningEntryForm();
     await loadPlanningEntries();
@@ -12448,7 +13133,10 @@ export function DashboardPage() {
       actorUserId: activeUserId,
       actorName: activeUser?.name ?? "",
     });
-    const res = await fetch(`/api/planning-entries?${params.toString()}`, { method: "DELETE" });
+    const res = await fetch(`/api/planning-entries?${params.toString()}`, {
+      method: "DELETE",
+      credentials: "same-origin",
+    });
 
     if (!res.ok) {
       const data = await res.json().catch(() => null);
@@ -12991,6 +13679,7 @@ export function DashboardPage() {
       void loadDocumentTexts();
       void loadLegacyInvoices();
       void loadMonthlyFinancialReportValues();
+      void loadDeadlineSettings();
       void loadWinterServiceAutomationSettings();
       void loadCustomerFeedback();
       void loadCustomerFeedbackRequests();
@@ -13034,6 +13723,8 @@ export function DashboardPage() {
     if (selectedProjectFileId) {
       void loadProjectLogbookEntriesForProject(selectedProjectFileId);
       void loadProjectTimeEntries();
+      void loadProjectHistoryPlanningEntries(selectedProjectFileId);
+      void loadProjectHistoryStampEntries(selectedProjectFileId);
       void loadOffers(selectedProjectFileId);
       void loadInvoices(selectedProjectFileId);
       void loadOfferHistory(selectedProjectFileId);
@@ -13075,6 +13766,31 @@ export function DashboardPage() {
 
     return () => window.clearInterval(intervalId);
   }, [activeTab, activeUserId, authChecked, isAuthenticated, selectedProjectFileId]);
+
+  useEffect(() => {
+    if (!authChecked || !isAuthenticated || !activeUserId) return;
+    if (!selectedProjectFileId || projectFileTab !== "images") return;
+    if (projectImagePreviewReloadRef.current === selectedProjectFileId) return;
+
+    const hasImageWithoutPreviewData = projectLogbookEntries.some(
+      (entry) =>
+        String(entry.projectId) === String(selectedProjectFileId) &&
+        entry.title.startsWith("Bilder:") &&
+        entry.attachments.some((attachment) => attachment.type === "Bild" && !attachment.dataUrl)
+    );
+
+    if (hasImageWithoutPreviewData) {
+      projectImagePreviewReloadRef.current = selectedProjectFileId;
+      void loadProjectLogbookEntriesForProject(selectedProjectFileId);
+    }
+  }, [
+    activeUserId,
+    authChecked,
+    isAuthenticated,
+    projectFileTab,
+    projectLogbookEntries,
+    selectedProjectFileId,
+  ]);
 
   useEffect(() => {
     if (!authChecked || !isAuthenticated || !activeUserId) return;
@@ -13242,7 +13958,7 @@ export function DashboardPage() {
   }, [stampSession]);
 
   useEffect(() => {
-    if (!activeUserId) return;
+    if (!authChecked || !isAuthenticated || !activeUserId) return;
 
     hasLoadedNotifications.current = false;
     void loadActiveStampSession({ silent: true });
@@ -13255,10 +13971,10 @@ export function DashboardPage() {
     }, 15000);
 
     return () => window.clearInterval(intervalId);
-  }, [activeUserId]);
+  }, [activeUserId, authChecked, isAuthenticated]);
 
   useEffect(() => {
-    if (!activeUserId) {
+    if (!authChecked || !isAuthenticated || !activeUserId) {
       setStampSession(null);
       return;
     }
@@ -13269,7 +13985,7 @@ export function DashboardPage() {
     }, 5000);
 
     return () => window.clearInterval(intervalId);
-  }, [activeUserId]);
+  }, [activeUserId, authChecked, isAuthenticated]);
 
   useEffect(() => {
     if (!isTabAllowedForRole(activeTab, activeUser?.role)) {
@@ -13489,7 +14205,8 @@ export function DashboardPage() {
     setGewerkId("");
     setZustaendigId(fallbackOwnerId);
     setSelectedHeroProjectId("");
-    setFaelligkeit(getDefaultDeadlineValue());
+    setIsTaskProjectLocked(false);
+    setFaelligkeit("");
     setKunde(emptyTask.kunde);
     setKundenklasse(emptyTask.kundenklasse);
     setAutoFeedbackEnabled(emptyTask.autoFeedbackEnabled);
@@ -13502,6 +14219,7 @@ export function DashboardPage() {
     setKommentarText("");
     setCommentRecipientUserId("");
     setTaskParticipantUserId("");
+    setNewTaskParticipantUserIds([]);
     setIsTaskHistoryOpen(false);
     setIsTaskStatusConfirmOpen(false);
     setTaskStatusConfirmValue(emptyTask.status);
@@ -15327,6 +16045,7 @@ export function DashboardPage() {
         trade: projectDraft.trade,
         branch: projectDraft.branch,
         volume: projectDraft.volume,
+        timeBudgetEnabled: editingProject.timeBudgetEnabled ?? false,
         timeBudgetHours: nextBudget,
         timeBudgetHistory: budgetChanged
           ? [
@@ -15406,6 +16125,7 @@ await addProjectLogbookEntry(
       trade: projectDraft.trade,
       branch: projectDraft.branch,
       volume: projectDraft.volume,
+      timeBudgetEnabled: false,
       timeBudgetHours: projectDraft.timeBudgetHours,
       timeBudgetHistory: projectDraft.timeBudgetHours
         ? [
@@ -15507,6 +16227,7 @@ await addProjectLogbookEntry(
     setSelectedHeroProjectId(
       task.projectId || heroProjects.find((project) => project.title === task.titel)?.id || ""
     );
+    setIsTaskProjectLocked(Boolean(task.projectId));
     setFaelligkeit(task.faelligkeit);
     setKunde(task.kunde);
     setKundenklasse(task.kundenklasse);
@@ -15650,7 +16371,11 @@ await addProjectLogbookEntry(
   }
 
   async function saveTask(confirmedStatus?: TaskStatus) {
-    if (!titel.trim()) return;
+    const normalizedDeadline = normalizeDeadlineInput(faelligkeit);
+    if (!titel.trim() || !beschreibung.trim() || !normalizedDeadline) {
+      setErrorMessage("Bitte Titel, Beschreibung und Deadline ausfüllen.");
+      return;
+    }
     if (editingTask && getTaskAcceptanceStatusForActiveUser(editingTask) !== "accepted") {
       showTaskAcceptanceRequiredMessage();
       return;
@@ -15671,7 +16396,7 @@ await addProjectLogbookEntry(
     const plannedDateKeys =
       normalizedPlanningAllocations.length > 0
         ? Array.from(new Set(normalizedPlanningAllocations.map((allocation) => allocation.date)))
-        : [(normalizeDeadlineInput(faelligkeit) || getDefaultDeadlineValue()).slice(0, 10)];
+        : [normalizedDeadline.slice(0, 10)];
     const absenceDate = plannedDateKeys.find((dateKey) => getUserAbsenceForDateKey(selectedOwnerId, dateKey));
 
     if (absenceDate) {
@@ -15710,7 +16435,7 @@ await addProjectLogbookEntry(
       priority: prioritaet,
       tradeId: null,
       ownerId: selectedOwnerId,
-      deadline: normalizeDeadlineInput(faelligkeit) || getDefaultDeadlineValue(),
+      deadline: normalizedDeadline,
       customer: kunde,
       customerClass: null,
       projectId: selectedHeroProjectId,
@@ -15721,6 +16446,7 @@ await addProjectLogbookEntry(
       estimateMinutes,
       planningAllocations: normalizedPlanningAllocations,
       absenceHandoverTask: isCreatingAbsenceHandoverTask,
+      participantUserIds: editingTask ? [] : newTaskParticipantUserIds,
     };
 
     const res = await fetch("/api/tasks", {
@@ -15872,6 +16598,13 @@ await addProjectLogbookEntry(
     return entry.projectLabel || entry.title || "Termin ohne Projekt";
   }
 
+  function getPlanningEntryStampBillingDetails(entry: PlanningEntry) {
+    const project = entry.projectId ? heroProjects.find((item) => item.id === entry.projectId) : null;
+    if (!project || !isHourlyRecurringProject(project)) return "";
+
+    return [entry.planningTrade, entry.billingCatalogItemLabel].filter(Boolean).join(" - ");
+  }
+
   function getTodayStampPlanningEntries() {
     const todayKey = formatDateKey(new Date(timerNow));
     const activeUserName = activeUser?.name ?? "";
@@ -15947,6 +16680,28 @@ await addProjectLogbookEntry(
     );
   }
 
+  function getBestTodayStampPlanningEntryForProject(projectId: string) {
+    const nowMinutes = new Date(timerNow).getHours() * 60 + new Date(timerNow).getMinutes();
+    const candidates = getTodayStampPlanningEntries()
+      .filter((entry) => {
+        if (entry.projectId !== projectId) return false;
+        if (!entry.planningTrade.trim()) return false;
+        if (!entry.billingCatalogItemId || !entry.billingCatalogItemLabel.trim()) return false;
+        return true;
+      })
+      .sort((first, second) => {
+        const firstStart = parseStampTimeToMinutes(first.startTime) ?? 0;
+        const secondStart = parseStampTimeToMinutes(second.startTime) ?? 0;
+        return Math.abs(firstStart - nowMinutes) - Math.abs(secondStart - nowMinutes);
+      });
+
+    return (
+      candidates.find((entry) => !isPlanningEntryAlreadyStamped(entry)) ??
+      candidates[0] ??
+      null
+    );
+  }
+
   function selectPlanningEntryForStamp(entry: PlanningEntry) {
     if (!entry.projectId) {
       setStampSelectionMode("unproductive");
@@ -15955,6 +16710,10 @@ await addProjectLogbookEntry(
       setStampProjectSearch("");
       setStampTrade("");
       setStampTradeConfirmed(false);
+      setStampPlanningEntryId("");
+      setStampPlanningBillingGroupId("");
+      setStampBillingCatalogItemId("");
+      setStampBillingCatalogItemLabel("");
       setIsStampProjectSearchOpen(true);
       setIsStampManualProjectPickerOpen(false);
       if (stampModalMode === "change") {
@@ -15968,10 +16727,18 @@ await addProjectLogbookEntry(
 
     setStampSelectionMode("project");
     const selectedProject = heroProjects.find((project) => project.id === entry.projectId);
+    const planningTrade =
+      selectedProject && isHourlyRecurringProject(selectedProject) ? entry.planningTrade.trim() : "";
+    const planningBillingCatalogItemLabel =
+      selectedProject && isHourlyRecurringProject(selectedProject) ? entry.billingCatalogItemLabel.trim() : "";
     setStampProjectId(entry.projectId || "");
     setStampProjectSearch(getPlanningEntryStampLabel(entry));
-    setStampTrade(selectedProject?.trade || "");
-    setStampTradeConfirmed(false);
+    setStampTrade(planningTrade || selectedProject?.trade || "");
+    setStampTradeConfirmed(Boolean(planningTrade));
+    setStampPlanningEntryId(planningTrade ? entry.id : "");
+    setStampPlanningBillingGroupId(planningTrade ? entry.billingGroupId || "" : "");
+    setStampBillingCatalogItemId(planningTrade ? entry.billingCatalogItemId || "" : "");
+    setStampBillingCatalogItemLabel(planningBillingCatalogItemLabel);
     setStampUnproductiveLabel("");
     setIsStampProjectSearchOpen(false);
     setIsStampManualProjectPickerOpen(false);
@@ -16000,6 +16767,10 @@ await addProjectLogbookEntry(
     setStampProjectSearch("");
     setStampTrade("");
     setStampTradeConfirmed(false);
+    setStampPlanningEntryId("");
+    setStampPlanningBillingGroupId("");
+    setStampBillingCatalogItemId("");
+    setStampBillingCatalogItemLabel("");
     setIsStampProjectSearchOpen(false);
     setIsStampManualProjectPickerOpen(false);
     setStampUnproductiveLabel("");
@@ -16019,6 +16790,10 @@ await addProjectLogbookEntry(
     setStampProjectSearch("");
     setStampTrade("");
     setStampTradeConfirmed(false);
+    setStampPlanningEntryId("");
+    setStampPlanningBillingGroupId("");
+    setStampBillingCatalogItemId("");
+    setStampBillingCatalogItemLabel("");
     setIsStampProjectSearchOpen(false);
     setIsStampManualProjectPickerOpen(false);
     setStampUnproductiveLabel("");
@@ -16039,12 +16814,25 @@ await addProjectLogbookEntry(
     setIsStampModalOpen(true);
   }
 
-  async function startStampSession(mode: StampMode, projectId: string, comment: string, unproductiveLabel = "", trade = "") {
+  async function startStampSession(
+    mode: StampMode,
+    projectId: string,
+    comment: string,
+    unproductiveLabel = "",
+    trade = "",
+    hourlyBillingContext: {
+      planningEntryId?: string;
+      planningBillingGroupId?: string;
+      billingCatalogItemId?: string;
+      billingCatalogItemLabel?: string;
+    } = {}
+  ) {
     const normalizedUnproductiveLabel = unproductiveLabel.trim();
     const projectLabel =
       mode === "project" ? getStampProjectLabel(projectId) : normalizedUnproductiveLabel || "Unproduktiv";
     const res = await fetch("/api/stamp-session", {
       method: "POST",
+      credentials: "same-origin",
       headers: {
         "Content-Type": "application/json",
       },
@@ -16056,6 +16844,10 @@ await addProjectLogbookEntry(
         projectId: mode === "project" ? projectId : "__unproductive__",
         projectLabel,
         trade: mode === "project" ? trade : "",
+        planningEntryId: mode === "project" ? hourlyBillingContext.planningEntryId || "" : "",
+        planningBillingGroupId: mode === "project" ? hourlyBillingContext.planningBillingGroupId || "" : "",
+        billingCatalogItemId: mode === "project" ? hourlyBillingContext.billingCatalogItemId || "" : "",
+        billingCatalogItemLabel: mode === "project" ? hourlyBillingContext.billingCatalogItemLabel || "" : "",
         comment,
       }),
     });
@@ -16135,6 +16927,84 @@ await addProjectLogbookEntry(
     return hours * 60 + minutes;
   }
 
+  function formatPunctualityMinuteDifference(minutes: number) {
+    const absoluteMinutes = Math.abs(minutes);
+    const hours = Math.floor(absoluteMinutes / 60);
+    const remainingMinutes = absoluteMinutes % 60;
+    if (hours > 0 && remainingMinutes > 0) return `${hours} Std. ${remainingMinutes} Min.`;
+    if (hours > 0) return `${hours} Std.`;
+    return `${remainingMinutes} Min.`;
+  }
+
+  function getPunctualityDifferenceText(label: "Start" | "Ende", differenceMinutes: number) {
+    if (differenceMinutes === 0) return `${label} genau nach Plan`;
+    return `${label} ${formatPunctualityMinuteDifference(differenceMinutes)} ${
+      differenceMinutes > 0 ? "später" : "früher"
+    } als geplant`;
+  }
+
+  function getPlanningPunctualityDescription(label: string) {
+    switch (label) {
+      case "Pünktlich":
+        return "Start und Ende liegen innerhalb der eingestellten Toleranz.";
+      case "Unpünktlich":
+        return "Mindestens ein relevanter Zeitpunkt liegt zu spät außerhalb der eingestellten Toleranz.";
+      case "Zu früh":
+        return "Start oder Ende liegt zu früh außerhalb der eingestellten Toleranz.";
+      case "Ungeplant":
+        return "Diese Stempelung wurde keiner geplanten Terminzeile zugeordnet.";
+      default:
+        return "Noch keine Ist-Stempelung vorhanden.";
+    }
+  }
+
+  function getPlanningPunctuality(entry: PlanningEntry, stampEntry: StampTimeEntry | undefined) {
+    if (!stampEntry) {
+      const label = "-";
+      return { label, tone: "open", description: getPlanningPunctualityDescription(label) };
+    }
+
+    const plannedStartMinutes = parseStampTimeToMinutes(entry.startTime);
+    const plannedEndMinutes = parseStampTimeToMinutes(entry.endTime);
+    const actualStartMinutes = parseStampTimeToMinutes(stampEntry.startTime);
+    const actualEndMinutes = parseStampTimeToMinutes(stampEntry.endTime);
+
+    if (
+      plannedStartMinutes === null ||
+      plannedEndMinutes === null ||
+      actualStartMinutes === null ||
+      actualEndMinutes === null
+    ) {
+      const label = "-";
+      return { label, tone: "open", description: getPlanningPunctualityDescription(label) };
+    }
+
+    const startDelta = actualStartMinutes - plannedStartMinutes;
+    const endDelta = actualEndMinutes - plannedEndMinutes;
+    const startTolerance = Math.max(0, Math.round(Number(punctualityStartToleranceMinutes) || 0));
+    const endTolerance = Math.max(0, Math.round(Number(punctualityEndToleranceMinutes) || 0));
+    const startsLate = startDelta > startTolerance;
+    const startsEarly = startDelta < -startTolerance;
+    const endsLate = endDelta > endTolerance;
+    const endsEarly = endDelta < -endTolerance;
+
+    if (!startsLate && !startsEarly && !endsLate && !endsEarly) {
+      const label = "Pünktlich";
+      return { label, tone: "met", description: getPlanningPunctualityDescription(label) };
+    }
+
+    const relevantDifferences = [
+      startsLate || startsEarly ? getPunctualityDifferenceText("Start", startDelta) : "",
+      endsLate || endsEarly ? getPunctualityDifferenceText("Ende", endDelta) : "",
+    ].filter(Boolean);
+    const label = startsLate || endsLate ? "Unpünktlich" : "Zu früh";
+    return {
+      label,
+      tone: label === "Unpünktlich" ? "missed" : "warning",
+      description: `${getPlanningPunctualityDescription(label)} ${relevantDifferences.join(". ")}.`,
+    };
+  }
+
   function parseStampPauseToMilliseconds(value: string) {
     const trimmedValue = value.trim();
     if (!trimmedValue) return 0;
@@ -16179,6 +17049,11 @@ await addProjectLogbookEntry(
     if (!selectedProjectFile) return;
     const now = new Date();
     setManualProjectTimeUserId(activeUser?.id || users.find((user) => user.isActive)?.id || "");
+    const requiresBillingContext = isHourlyRecurringProject(selectedProjectFile);
+    setManualProjectTimeTrade(requiresBillingContext ? selectedProjectFile.trade || "" : "");
+    setManualProjectTimeBillingCatalogItemId("");
+    setManualProjectTimeBillingCatalogItemLabel("");
+    if (requiresBillingContext && catalogItems.length === 0) void loadCatalogItems();
     setStampEditDate(formatDateKey(now));
     setStampEditStartTime("08:00");
     setStampEditEndTime("09:00");
@@ -16190,6 +17065,9 @@ await addProjectLogbookEntry(
 
   function closeManualProjectTimeModal() {
     setIsManualProjectTimeModalOpen(false);
+    setManualProjectTimeTrade("");
+    setManualProjectTimeBillingCatalogItemId("");
+    setManualProjectTimeBillingCatalogItemLabel("");
     setStampEditError("");
   }
 
@@ -16221,12 +17099,37 @@ await addProjectLogbookEntry(
       return;
     }
 
+    if (manualProjectTimeNeedsBillingContext) {
+      const selectedBillingItem = selectedManualProjectTimeBillingCatalogItem;
+      if (!manualProjectTimeTrade.trim()) {
+        setStampEditError("Bitte fuer diese Stundenabrechnung ein Gewerk auswaehlen.");
+        return;
+      }
+      if (!manualProjectTimeBillingCatalogItemId || !selectedManualProjectTimeBillingCatalogItemLabel) {
+        setStampEditError("Bitte eine Abrechnungsleistung fuer diese Stundenabrechnung auswaehlen.");
+        return;
+      }
+      if (
+        selectedBillingItem &&
+        !manualProjectTimeServiceOptions.some((item) => item.id === selectedBillingItem.id)
+      ) {
+        setStampEditError("Die ausgewaehlte Abrechnungsleistung passt nicht zum Gewerk.");
+        return;
+      }
+    }
+
     const manualEntry: StampTimeEntry = {
       id: crypto.randomUUID(),
       mode: "project",
       projectId: selectedProjectFile.id,
       projectLabel: selectedProjectFile.title,
-      trade: selectedProjectFile.trade || "",
+      trade: manualProjectTimeNeedsBillingContext
+        ? manualProjectTimeTrade.trim()
+        : selectedProjectFile.trade || "",
+      billingCatalogItemId: manualProjectTimeNeedsBillingContext ? manualProjectTimeBillingCatalogItemId : "",
+      billingCatalogItemLabel: manualProjectTimeNeedsBillingContext
+        ? selectedManualProjectTimeBillingCatalogItemLabel
+        : "",
       userId: selectedUser.id,
       employee: selectedUser.name,
       entrySource: "manual",
@@ -16363,6 +17266,7 @@ await addProjectLogbookEntry(
 
     const res = await fetch("/api/stamp-session", {
       method: "POST",
+      credentials: "same-origin",
       headers: {
         "Content-Type": "application/json",
       },
@@ -16370,6 +17274,7 @@ await addProjectLogbookEntry(
         action: "stop",
         userId: activeUser?.id || activeUserId,
         comment: finalComment,
+        interruptionReason: completionStatus === "interrupted" ? comment.trim() : "",
         completionStatus: normalizedCompletionStatus,
       }),
     });
@@ -16386,6 +17291,8 @@ await addProjectLogbookEntry(
       normalizedSavedEntry,
       ...currentEntries.filter((currentEntry) => currentEntry.id !== normalizedSavedEntry.id),
     ]);
+    void loadProjectTimeEntries();
+    if (normalizedSavedEntry.projectId) void loadInvoices(normalizedSavedEntry.projectId);
     setStampSession(null);
     return normalizedSavedEntry;
   }
@@ -16442,6 +17349,7 @@ await addProjectLogbookEntry(
     const action = stampSession.pauseStartedAt ? "resume" : "pause";
     const res = await fetch("/api/stamp-session", {
       method: "PATCH",
+      credentials: "same-origin",
       headers: {
         "Content-Type": "application/json",
       },
@@ -16506,9 +17414,26 @@ await addProjectLogbookEntry(
       setStampError("Bitte das Gewerk fuer diese Stempelung bestaetigen.");
       return;
     }
+    if (startsNextStamp && nextStampNeedsTrade && (!stampBillingCatalogItemId || !selectedStampBillingCatalogItemLabel)) {
+      setStampError("Bitte eine Abrechnungsleistung fuer diese Stundenabrechnung auswaehlen.");
+      return;
+    }
+    if (
+      startsNextStamp &&
+      nextStampNeedsTrade &&
+      selectedStampBillingCatalogItem &&
+      !selectedStampHourlyServiceOptions.some((item) => item.id === selectedStampBillingCatalogItem.id)
+    ) {
+      setStampError("Die ausgewaehlte Abrechnungsleistung passt nicht zum Gewerk.");
+      return;
+    }
     if (requiresProjectCompletionState) {
       if (!stampCompletionState) {
         setStampError("Bitte auswählen, ob die Arbeit fertig oder unterbrochen ist.");
+        return;
+      }
+      if (stampCompletionState === "interrupted" && !stampComment.trim()) {
+        setStampError("Bitte kurz begründen, warum die Arbeit unterbrochen wurde.");
         return;
       }
       if (
@@ -16577,13 +17502,22 @@ await addProjectLogbookEntry(
       setStampUnproductiveLabel("");
       setStampTrade("");
       setStampTradeConfirmed(false);
+      setStampPlanningEntryId("");
+      setStampPlanningBillingGroupId("");
+      setStampBillingCatalogItemId("");
+      setStampBillingCatalogItemLabel("");
       setStampError("");
       resetStampCompletionState();
       return;
     }
 
     try {
-      await startStampSession(stampSelectionMode, nextProjectId, nextStampComment, nextUnproductiveLabel, nextStampTrade);
+      await startStampSession(stampSelectionMode, nextProjectId, nextStampComment, nextUnproductiveLabel, nextStampTrade, {
+        planningEntryId: nextStampNeedsTrade ? stampPlanningEntryId : "",
+        planningBillingGroupId: nextStampNeedsTrade ? stampPlanningBillingGroupId : "",
+        billingCatalogItemId: nextStampNeedsTrade ? stampBillingCatalogItemId : "",
+        billingCatalogItemLabel: nextStampNeedsTrade ? selectedStampBillingCatalogItemLabel : "",
+      });
       if (stampSelectionMode === "project" && selectedNextProject) {
         await confirmImplementationStatus(selectedNextProject, "Projektbezogene Stempelung gestartet");
       }
@@ -16593,6 +17527,10 @@ await addProjectLogbookEntry(
       setStampUnproductiveLabel("");
       setStampTrade("");
       setStampTradeConfirmed(false);
+      setStampPlanningEntryId("");
+      setStampPlanningBillingGroupId("");
+      setStampBillingCatalogItemId("");
+      setStampBillingCatalogItemLabel("");
       setStampError("");
       resetStampCompletionState();
     } catch (error) {
@@ -18300,25 +19238,21 @@ await addProjectLogbookEntry(
 
   function openProjectTaskModal(project: HeroProjectPreview, mode: "task" | "appointment") {
     const plannedDate = project.projectRuntimeFrom || formatDateKey(new Date());
-    const defaultDeadline = `${plannedDate}T12:00`;
 
     setIsQuickCreateOpen(false);
     setEditingTask(null);
     setErrorMessage("");
     resetForm();
-    setTitel(mode === "appointment" ? `Termin: ${project.title}` : project.title);
-    setBeschreibung(
-      [
-        `${project.projectNumber || project.id} | ${project.title}`,
-        project.description,
-        project.address ? `Projektanschrift: ${project.address}` : "",
-      ]
-        .filter(Boolean)
-        .join("\n")
-    );
+    setTitel("");
+    setBeschreibung("");
     setKunde(project.customer || "");
     setSelectedHeroProjectId(project.id);
-    setFaelligkeit(defaultDeadline);
+    setIsTaskProjectLocked(true);
+    const responsibleUser = users.find((user) => user.name === project.responsibleName);
+    if (responsibleUser) {
+      setZustaendigId(responsibleUser.id);
+    }
+    setFaelligkeit("");
 
     if (mode === "appointment") {
       setActiveTab("planningBoard");
@@ -18657,6 +19591,29 @@ await addProjectLogbookEntry(
     stampSelectionMode === "project" &&
     Boolean(selectedStampProject) &&
     getProjectRecurringBillingMode(selectedStampProject) === RECURRING_BILLING_HOURLY;
+  const selectedStampHourlyServiceOptions = selectedStampProjectNeedsTrade
+    ? getHourlyPlanningServiceOptions(stampTrade)
+    : [];
+  const selectedStampBillingCatalogItem = stampBillingCatalogItemId
+    ? catalogItems.find((item) => item.id === stampBillingCatalogItemId)
+    : undefined;
+  const selectedStampBillingCatalogItemLabel =
+    selectedStampBillingCatalogItem
+      ? getPlanningBillingCatalogItemLabel(selectedStampBillingCatalogItem)
+      : stampBillingCatalogItemLabel.trim();
+  const manualProjectTimeNeedsBillingContext = Boolean(
+    selectedProjectFile && isHourlyRecurringProject(selectedProjectFile)
+  );
+  const manualProjectTimeServiceOptions = manualProjectTimeNeedsBillingContext
+    ? getHourlyPlanningServiceOptions(manualProjectTimeTrade)
+    : [];
+  const selectedManualProjectTimeBillingCatalogItem = manualProjectTimeBillingCatalogItemId
+    ? catalogItems.find((item) => item.id === manualProjectTimeBillingCatalogItemId)
+    : undefined;
+  const selectedManualProjectTimeBillingCatalogItemLabel =
+    selectedManualProjectTimeBillingCatalogItem
+      ? getPlanningBillingCatalogItemLabel(selectedManualProjectTimeBillingCatalogItem)
+      : manualProjectTimeBillingCatalogItemLabel.trim();
   const currentStampProject =
     stampSession?.mode === "project"
       ? heroProjects.find((project) => String(project.id) === String(stampSession.projectId))
@@ -18941,7 +19898,12 @@ await addProjectLogbookEntry(
     setPlanningEntryProjectId(project.id);
     setPlanningEntryCustomer(project.customer || "");
     setPlanningEntryProjectSearch(`${project.projectNumber} | ${project.title}`);
+    setPlanningEntryTrade(isHourlyRecurringProject(project) ? project.trade || "" : "");
+    setPlanningEntryBillingCatalogItemId("");
+    setPlanningEntryHasAdditionalEmployees(isHourlyRecurringProject(project) ? "" : "no");
+    setPlanningEntryAdditionalUserIds([]);
     setIsPlanningEntryProjectSearchOpen(false);
+    if (isHourlyRecurringProject(project) && catalogItems.length === 0) void loadCatalogItems();
   }
   const getPlanningWindowStyle = (user: UserOption | undefined): CSSProperties => {
     const window = getUserPlanningWindowForDate(user, selectedPlanningDateKey);
@@ -20156,59 +21118,72 @@ await addProjectLogbookEntry(
       ? new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 23, 59, 59)
       : new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 0, 0, 0);
   };
-  const reportPeriodRange = (() => {
+  const getReportPeriodRange = (periodPreset: ReportPeriodPreset, customStartDate: string, customEndDate: string) => {
     const fiscalYearStartMonth = 5;
     const fiscalYearStart = (offset = 0) => {
       const fiscalYear = reportNow.getMonth() >= fiscalYearStartMonth ? reportNow.getFullYear() : reportNow.getFullYear() - 1;
       return new Date(fiscalYear + offset, fiscalYearStartMonth, 1, 0, 0, 0);
     };
-    if (reportPeriodPreset === "currentMonth") {
+    if (periodPreset === "currentMonth") {
       return {
         start: new Date(reportNow.getFullYear(), reportNow.getMonth(), 1, 0, 0, 0),
         end: new Date(reportNow.getFullYear(), reportNow.getMonth() + 1, 0, 23, 59, 59),
       };
     }
-    if (reportPeriodPreset === "previousMonth") {
+    if (periodPreset === "previousMonth") {
       return {
         start: new Date(reportNow.getFullYear(), reportNow.getMonth() - 1, 1, 0, 0, 0),
         end: new Date(reportNow.getFullYear(), reportNow.getMonth(), 0, 23, 59, 59),
       };
     }
-    if (reportPeriodPreset === "currentYear") {
+    if (periodPreset === "currentYear") {
       return {
         start: new Date(reportNow.getFullYear(), 0, 1, 0, 0, 0),
         end: new Date(reportNow.getFullYear(), 11, 31, 23, 59, 59),
       };
     }
-    if (reportPeriodPreset === "currentFiscalYear") {
+    if (periodPreset === "currentFiscalYear") {
       const start = fiscalYearStart();
       return {
         start,
         end: new Date(start.getFullYear() + 1, fiscalYearStartMonth, 0, 23, 59, 59),
       };
     }
-    if (reportPeriodPreset === "previousFiscalYear") {
+    if (periodPreset === "previousFiscalYear") {
       const start = fiscalYearStart(-1);
       return {
         start,
         end: new Date(start.getFullYear() + 1, fiscalYearStartMonth, 0, 23, 59, 59),
       };
     }
-    if (reportPeriodPreset === "custom") {
+    if (periodPreset === "custom") {
       const fallbackStart = new Date(reportNow.getFullYear(), reportNow.getMonth(), 1, 0, 0, 0);
       const fallbackEnd = new Date(reportNow.getFullYear(), reportNow.getMonth() + 1, 0, 23, 59, 59);
-      const start = getReportCustomDate(reportCustomStartDate, fallbackStart);
-      const end = getReportCustomDate(reportCustomEndDate, fallbackEnd, true);
+      const start = getReportCustomDate(customStartDate, fallbackStart);
+      const end = getReportCustomDate(customEndDate, fallbackEnd, true);
       return start <= end ? { start, end } : { start: end, end: start };
     }
     return {
       start: new Date(reportNow.getFullYear(), reportNow.getMonth() - 11, 1, 0, 0, 0),
       end: new Date(reportNow.getFullYear(), reportNow.getMonth() + 1, 0, 23, 59, 59),
     };
-  })();
+  };
+  const reportPeriodRange = getReportPeriodRange(reportPeriodPreset, reportCustomStartDate, reportCustomEndDate);
   const reportStartDate = reportPeriodRange.start;
   const reportEndDate = reportPeriodRange.end;
   const reportPeriodLabel = `${formatDateOnly(formatDateKey(reportStartDate))} - ${formatDateOnly(formatDateKey(reportEndDate))}`;
+  const employeeKpiDetailPeriodRange = getReportPeriodRange(
+    employeeKpiDetailPeriodPreset,
+    employeeKpiDetailCustomStartDate,
+    employeeKpiDetailCustomEndDate
+  );
+  const employeeKpiDetailStartDate = employeeKpiDetailPeriodRange.start;
+  const employeeKpiDetailEndDate = employeeKpiDetailPeriodRange.end;
+  const employeeKpiDetailStartDateKey = formatDateKey(employeeKpiDetailStartDate);
+  const employeeKpiDetailEndDateKey = formatDateKey(employeeKpiDetailEndDate);
+  const employeeKpiDetailPeriodLabel = `${formatDateOnly(employeeKpiDetailStartDateKey)} - ${formatDateOnly(
+    employeeKpiDetailEndDateKey
+  )}`;
   const forecastPeriodRange = (() => {
     if (forecastPeriodPreset === "currentMonth") {
       return {
@@ -20301,6 +21276,11 @@ await addProjectLogbookEntry(
     const date = parseAppDateTime(value);
     const time = date.getTime();
     return Number.isFinite(time) && date >= reportStartDate && date <= reportEndDate;
+  };
+  const isEmployeeKpiDetailDate = (value: string) => {
+    const date = parseAppDateTime(value);
+    const time = date.getTime();
+    return Number.isFinite(time) && date >= employeeKpiDetailStartDate && date <= employeeKpiDetailEndDate;
   };
   const isForecastDate = (value: string) => {
     const date = parseAppDateTime(value);
@@ -21629,6 +22609,59 @@ await addProjectLogbookEntry(
     const followUpTime = potential.followUpAt ? new Date(potential.followUpAt).getTime() : NaN;
     return potential.status === "follow_up" && Number.isFinite(followUpTime) && followUpTime <= reportNow.getTime();
   });
+  const getInterruptedWorkTask = (entry: StampTimeEntry) =>
+    tasks.find(
+      (task) =>
+        task.projectId === entry.projectId &&
+        task.titel.startsWith("Unterbrochene Arbeit") &&
+        task.beschreibung.includes(`Stempelung: ${entry.id}`)
+    ) ?? null;
+  const salesInterruptedWorkRows = stampEntries
+    .filter(
+      (entry) =>
+        !entry.deletedAt &&
+        entry.mode === "project" &&
+        entry.completionStatus === "interrupted" &&
+        isReportDate(entry.date)
+    )
+    .map((entry) => {
+      const project = heroProjects.find((item) => item.id === entry.projectId) ?? null;
+      const task = getInterruptedWorkTask(entry);
+      const entryDate = parseAppDateTime(entry.date);
+      const ageDays = Number.isFinite(entryDate.getTime())
+        ? Math.max(0, Math.floor((reportNow.getTime() - entryDate.getTime()) / 86_400_000))
+        : 0;
+      const isOpenTask = task ? !["erledigt", "archiviert", "abgelehnt"].includes(task.status) : false;
+      return {
+        entry,
+        project,
+        task,
+        ageDays,
+        isOpenTask,
+        responsibleName: task?.zustaendig || project?.responsibleName || "-",
+        taskStatus: task ? task.status : "keine Aufgabe",
+      };
+    })
+    .filter((row) => isProjectVisibleInProjectScopedAnalytics(row.project))
+    .filter((row) => {
+      if (!reportSearchValue) return true;
+      return [
+        row.project?.projectNumber,
+        row.project?.title,
+        row.project?.customer,
+        row.project?.responsibleName,
+        row.entry.employee,
+        row.entry.comment,
+        row.task?.titel,
+        row.task?.status,
+      ].some((value) => normalizeStampSearchValue(String(value ?? "")).includes(reportSearchValue));
+    })
+    .sort(
+      (first, second) =>
+        Number(second.isOpenTask) - Number(first.isOpenTask) ||
+        second.ageDays - first.ageDays ||
+        `${second.entry.date} ${second.entry.endTime}`.localeCompare(`${first.entry.date} ${first.entry.endTime}`)
+    );
   const salesPotentialStatusRows = (["open", "follow_up", "offered", "lost"] as ProjectPotentialStatus[])
     .map((status) => {
       const rows = salesPotentialRows.filter((potential) => potential.status === status);
@@ -22156,6 +23189,67 @@ await addProjectLogbookEntry(
     }
     return total;
   };
+  const getReportPlanningStampForEntry = (entry: PlanningEntry, userProjectEntries: StampTimeEntry[]) =>
+    userProjectEntries
+      .filter((stampEntry) => {
+        if (stampEntry.deletedAt) return false;
+        if (stampEntry.planningEntryId && stampEntry.planningEntryId === entry.id) return true;
+        if (normalizeDateKeyValue(stampEntry.date) !== normalizeDateKeyValue(entry.date)) return false;
+        if (entry.projectId && stampEntry.projectId !== entry.projectId) return false;
+        return doPlanningTimesOverlap(entry.startTime, entry.endTime, stampEntry.startTime, stampEntry.endTime);
+      })
+      .sort((first, second) => {
+        const firstTime = first.endTime || first.startTime || "00:00";
+        const secondTime = second.endTime || second.startTime || "00:00";
+        return `${second.date} ${secondTime}`.localeCompare(`${first.date} ${firstTime}`);
+      })[0];
+  const getReportPunctualitySummaryForUser = (user: UserOption, userProjectEntries: StampTimeEntry[]) => {
+    const userPlanningEntries = planningEntries.filter(
+      (entry) =>
+        !entry.deletedAt &&
+        isReportDate(entry.date) &&
+        (entry.userId === user.id || entry.employeeName === user.name)
+    );
+
+    return userPlanningEntries.reduce(
+      (summary, entry) => {
+        const matchingStampEntry = getReportPlanningStampForEntry(entry, userProjectEntries);
+        const punctuality = getPlanningPunctuality(entry, matchingStampEntry);
+        if (punctuality.label === "Pünktlich") {
+          summary.evaluable += 1;
+          summary.punctual += 1;
+        } else if (punctuality.label === "Unpünktlich") {
+          summary.evaluable += 1;
+          summary.late += 1;
+        } else if (punctuality.label === "Zu früh") {
+          summary.evaluable += 1;
+          summary.early += 1;
+        } else if (punctuality.label === "-") {
+          summary.open += 1;
+        }
+        return summary;
+      },
+      { evaluable: 0, punctual: 0, late: 0, early: 0, open: 0 }
+    );
+  };
+  const getPunctualityRate = (summary: { evaluable: number; punctual: number }) =>
+    summary.evaluable > 0 ? (summary.punctual / summary.evaluable) * 100 : 0;
+  const getPunctualityTrend = (summary: { evaluable: number; punctual: number; late: number; early: number }) => {
+    if (summary.evaluable <= 0) {
+      return { label: "Keine Bewertung", tone: "neutral" as const };
+    }
+    if (summary.punctual > summary.late + summary.early) {
+      return { label: "Tendenziell pünktlich", tone: "good" as const };
+    }
+    if (summary.late >= summary.early) {
+      return { label: "Tendenziell unpünktlich", tone: "low" as const };
+    }
+    return { label: "Tendenziell zu früh", tone: "ok" as const };
+  };
+  const getPunctualitySummaryLine = (summary: { evaluable: number; punctual: number; late: number; early: number }) =>
+    summary.evaluable > 0
+      ? `${summary.punctual} pünktlich · ${summary.late} unpünktlich · ${summary.early} zu früh`
+      : "Noch keine bewertbaren Termine";
   const employeeAllReportRows = visibleReportUsers.map((user) => {
       const userProjectEntries = stampEntries.filter(
         (entry) => !entry.deletedAt && entry.mode === "project" && entry.userId === user.id && isReportDate(entry.date)
@@ -22181,12 +23275,16 @@ await addProjectLogbookEntry(
       );
       const targetHours = getReportTargetHoursForUser(user);
       const performanceGrade = stampedProjectHours > 0 ? (soldHours / stampedProjectHours) * 100 : 0;
+      const isPerformanceGradePlausible = isPlausiblePerformancePercent(performanceGrade);
       const productivity =
         stampedProjectHours + unproductiveHours > 0
           ? (soldHours / (stampedProjectHours + unproductiveHours)) * 100
           : 0;
       const attendance = targetHours > 0 ? ((stampedProjectHours + unproductiveHours) / targetHours) * 100 : 0;
       const unproductiveShare = stampedProjectHours > 0 ? (unproductiveHours / stampedProjectHours) * 100 : 0;
+      const punctualitySummary = getReportPunctualitySummaryForUser(user, userProjectEntries);
+      const punctualityRate = getPunctualityRate(punctualitySummary);
+      const punctualityTrend = getPunctualityTrend(punctualitySummary);
       return {
         user,
         soldHours,
@@ -22194,9 +23292,15 @@ await addProjectLogbookEntry(
         unproductiveHours,
         targetHours,
         performanceGrade,
+        isPerformanceGradePlausible,
+        performanceSoldHours: isPerformanceGradePlausible ? soldHours : 0,
+        performanceStampedProjectHours: isPerformanceGradePlausible ? stampedProjectHours : 0,
         productivity,
         attendance,
         unproductiveShare,
+        punctualitySummary,
+        punctualityRate,
+        punctualityTrend,
       };
     });
   const employeeReportRows = employeeAllReportRows.filter(
@@ -22218,15 +23322,34 @@ await addProjectLogbookEntry(
     (summary, row) => ({
       soldHours: summary.soldHours + row.soldHours,
       stampedProjectHours: summary.stampedProjectHours + row.stampedProjectHours,
+      performanceSoldHours: summary.performanceSoldHours + row.performanceSoldHours,
+      performanceStampedProjectHours: summary.performanceStampedProjectHours + row.performanceStampedProjectHours,
       unproductiveHours: summary.unproductiveHours + row.unproductiveHours,
       targetHours: summary.targetHours + row.targetHours,
+      punctualityEvaluable: summary.punctualityEvaluable + row.punctualitySummary.evaluable,
+      punctualityPunctual: summary.punctualityPunctual + row.punctualitySummary.punctual,
+      punctualityLate: summary.punctualityLate + row.punctualitySummary.late,
+      punctualityEarly: summary.punctualityEarly + row.punctualitySummary.early,
+      punctualityOpen: summary.punctualityOpen + row.punctualitySummary.open,
     }),
-    { soldHours: 0, stampedProjectHours: 0, unproductiveHours: 0, targetHours: 0 }
+    {
+      soldHours: 0,
+      stampedProjectHours: 0,
+      performanceSoldHours: 0,
+      performanceStampedProjectHours: 0,
+      unproductiveHours: 0,
+      targetHours: 0,
+      punctualityEvaluable: 0,
+      punctualityPunctual: 0,
+      punctualityLate: 0,
+      punctualityEarly: 0,
+      punctualityOpen: 0,
+    }
   );
   const employeeSummaryMetrics = {
     performance:
-      employeeSummary.stampedProjectHours > 0
-        ? (employeeSummary.soldHours / employeeSummary.stampedProjectHours) * 100
+      employeeSummary.performanceStampedProjectHours > 0
+        ? (employeeSummary.performanceSoldHours / employeeSummary.performanceStampedProjectHours) * 100
         : 0,
     productivity:
       employeeSummary.stampedProjectHours + employeeSummary.unproductiveHours > 0
@@ -22244,15 +23367,27 @@ await addProjectLogbookEntry(
       employeeSummary.stampedProjectHours > 0
         ? (employeeSummary.unproductiveHours / employeeSummary.stampedProjectHours) * 100
         : 0,
+    punctuality:
+      employeeSummary.punctualityEvaluable > 0
+        ? (employeeSummary.punctualityPunctual / employeeSummary.punctualityEvaluable) * 100
+        : 0,
   };
   const getEmployeePerformanceMetrics = (summary: {
     soldHours: number;
     stampedProjectHours: number;
+    performanceSoldHours?: number;
+    performanceStampedProjectHours?: number;
     unproductiveHours: number;
     targetHours: number;
+    punctualityEvaluable?: number;
+    punctualityPunctual?: number;
   }) => ({
     performance:
-      summary.stampedProjectHours > 0 ? (summary.soldHours / summary.stampedProjectHours) * 100 : 0,
+      (summary.performanceStampedProjectHours ?? summary.stampedProjectHours) > 0
+        ? ((summary.performanceSoldHours ?? summary.soldHours) /
+            (summary.performanceStampedProjectHours ?? summary.stampedProjectHours)) *
+          100
+        : 0,
     productivity:
       summary.stampedProjectHours + summary.unproductiveHours > 0
         ? (summary.soldHours / (summary.stampedProjectHours + summary.unproductiveHours)) * 100
@@ -22260,6 +23395,10 @@ await addProjectLogbookEntry(
     attendance:
       summary.targetHours > 0
         ? ((summary.stampedProjectHours + summary.unproductiveHours) / summary.targetHours) * 100
+        : 0,
+    punctuality:
+      (summary.punctualityEvaluable ?? 0) > 0
+        ? ((summary.punctualityPunctual ?? 0) / (summary.punctualityEvaluable ?? 1)) * 100
         : 0,
   });
   const employeeGroupRows = Object.values(
@@ -22271,8 +23410,15 @@ await addProjectLogbookEntry(
           users: typeof visibleEmployeeReportRows;
           soldHours: number;
           stampedProjectHours: number;
+          performanceSoldHours: number;
+          performanceStampedProjectHours: number;
           unproductiveHours: number;
           targetHours: number;
+          punctualityEvaluable: number;
+          punctualityPunctual: number;
+          punctualityLate: number;
+          punctualityEarly: number;
+          punctualityOpen: number;
         }
       >
     >((groups, row) => {
@@ -22282,14 +23428,28 @@ await addProjectLogbookEntry(
         users: [],
         soldHours: 0,
         stampedProjectHours: 0,
+        performanceSoldHours: 0,
+        performanceStampedProjectHours: 0,
         unproductiveHours: 0,
         targetHours: 0,
+        punctualityEvaluable: 0,
+        punctualityPunctual: 0,
+        punctualityLate: 0,
+        punctualityEarly: 0,
+        punctualityOpen: 0,
       };
       groups[groupName].users.push(row);
       groups[groupName].soldHours += row.soldHours;
       groups[groupName].stampedProjectHours += row.stampedProjectHours;
+      groups[groupName].performanceSoldHours += row.performanceSoldHours;
+      groups[groupName].performanceStampedProjectHours += row.performanceStampedProjectHours;
       groups[groupName].unproductiveHours += row.unproductiveHours;
       groups[groupName].targetHours += row.targetHours;
+      groups[groupName].punctualityEvaluable += row.punctualitySummary.evaluable;
+      groups[groupName].punctualityPunctual += row.punctualitySummary.punctual;
+      groups[groupName].punctualityLate += row.punctualitySummary.late;
+      groups[groupName].punctualityEarly += row.punctualitySummary.early;
+      groups[groupName].punctualityOpen += row.punctualitySummary.open;
       return groups;
     }, {})
   )
@@ -22299,6 +23459,220 @@ await addProjectLogbookEntry(
     }))
     .sort((first, second) => first.groupName.localeCompare(second.groupName, "de"));
   const ownEmployeeAnalyticsRow = employeeAllReportRows.find((row) => row.user.id === activeUserId);
+  const employeeKpiDetailUser = employeeKpiDetail
+    ? employeeAllReportRows.find((row) => row.user.id === employeeKpiDetail.userId)
+    : null;
+  const openEmployeeKpiDetail = (userId: string, metric: EmployeeKpiDetailMetric) => {
+    setEmployeeKpiDetail({ userId, metric });
+    setEmployeeKpiDetailSearch("");
+    setEmployeeKpiDetailStatus(metric === "productivity" ? "with-time" : "all");
+    setEmployeeKpiDetailPeriodPreset("custom");
+    setEmployeeKpiDetailCustomStartDate(formatDateKey(reportStartDate));
+    setEmployeeKpiDetailCustomEndDate(formatDateKey(reportEndDate));
+  };
+  const closeEmployeeKpiDetail = () => {
+    setEmployeeKpiDetail(null);
+    setEmployeeKpiDetailSearch("");
+    setEmployeeKpiDetailStatus("all");
+  };
+  const getEmployeeKpiMetricLabel = (metric: EmployeeKpiDetailMetric) =>
+    metric === "performance"
+      ? "Leistungsgrad"
+      : metric === "productivity"
+        ? "Produktivität"
+        : metric === "attendance"
+          ? "Anwesenheit"
+          : "Pünktlichkeit";
+  const getEmployeeKpiStatusOptions = (metric: EmployeeKpiDetailMetric) => {
+    if (metric === "punctuality") {
+      return [
+        { value: "all", label: "Alle" },
+        { value: "Pünktlich", label: "Pünktlich" },
+        { value: "Unpünktlich", label: "Unpünktlich" },
+        { value: "Zu früh", label: "Zu früh" },
+        { value: "Offen", label: "Offen" },
+      ];
+    }
+    if (metric === "performance") {
+      return [
+        { value: "all", label: "Alle" },
+        { value: "Gewertet", label: "Gewertet" },
+        { value: "Unplausibel", label: "Unplausibel" },
+      ];
+    }
+    if (metric === "productivity") {
+      return [
+        { value: "with-time", label: "Mit Zeit" },
+        { value: "Produktiv", label: "Produktiv" },
+        { value: "Unproduktiv", label: "Unproduktiv" },
+        { value: "all", label: "Alle inkl. leere Tage" },
+      ];
+    }
+    return [
+      { value: "all", label: "Alle" },
+      { value: "Mit Abweichung", label: "Mit Abweichung" },
+      { value: "Positive Abweichung", label: "Positive Abweichung" },
+      { value: "Negative Abweichung", label: "Negative Abweichung" },
+      { value: "Ohne Abweichung", label: "Ohne Abweichung" },
+    ];
+  };
+  const getEmployeeKpiDetailRows = () => {
+    if (!employeeKpiDetail || !employeeKpiDetailUser) return [];
+    const user = employeeKpiDetailUser.user;
+    const userProjectEntries = stampEntries.filter(
+      (entry) => !entry.deletedAt && entry.mode === "project" && entry.userId === user.id && isEmployeeKpiDetailDate(entry.date)
+    );
+    const userUnproductiveEntries = stampEntries.filter(
+      (entry) =>
+        !entry.deletedAt && entry.mode === "unproductive" && entry.userId === user.id && isEmployeeKpiDetailDate(entry.date)
+    );
+    const detailInvoices = invoices.filter((invoice) => {
+      return isEmployeeKpiDetailDate(invoice.serviceDate || invoice.createdAt) && isReportRevenueInvoice(invoice);
+    });
+
+    if (employeeKpiDetail.metric === "punctuality") {
+      return planningEntries
+        .filter(
+          (entry) =>
+            !entry.deletedAt &&
+            isEmployeeKpiDetailDate(entry.date) &&
+            (entry.userId === user.id || entry.employeeName === user.name)
+        )
+        .map((entry) => {
+          const stampEntry = getReportPlanningStampForEntry(entry, userProjectEntries);
+          const punctuality = getPlanningPunctuality(entry, stampEntry);
+          const status = punctuality.label === "-" ? "Offen" : punctuality.label;
+          return {
+            id: `punctuality-${entry.id}`,
+            status,
+            cells: [
+              formatProjectDate(entry.date),
+              `${entry.startTime} - ${entry.endTime}`,
+              stampEntry ? `${formatProjectDate(stampEntry.date)} ${stampEntry.startTime} - ${stampEntry.endTime}` : "-",
+              entry.projectLabel || entry.customer || "-",
+              status,
+            ],
+            searchable: `${formatProjectDate(entry.date)} ${entry.startTime} ${entry.endTime} ${entry.projectLabel} ${entry.customer} ${status}`,
+          };
+        });
+    }
+
+    if (employeeKpiDetail.metric === "performance") {
+      const stampedProjectHours = userProjectEntries.reduce((sum, entry) => sum + entry.durationMs, 0) / 3_600_000;
+      const soldHours = detailInvoices.reduce(
+        (sum, invoice) =>
+          sum +
+          invoice.lines.reduce(
+            (lineSum, line) =>
+              lineSum +
+              line.laborItems
+                .filter((labor) => labor.userId === user.id || labor.employeeName === user.name)
+                .reduce((laborSum, labor) => laborSum + labor.plannedHours, 0),
+            0
+          ),
+        0
+      );
+      const performanceGrade = stampedProjectHours > 0 ? (soldHours / stampedProjectHours) * 100 : 0;
+      const isPerformanceGradePlausible = isPlausiblePerformancePercent(performanceGrade);
+      return [
+        {
+          id: "performance-summary",
+          status: isPerformanceGradePlausible ? "Gewertet" : "Unplausibel",
+          cells: [
+            "Leistungsgrad",
+            `${formatHours(soldHours)} Std.`,
+            `${formatHours(stampedProjectHours)} Std.`,
+            `${formatHours(performanceGrade)}%`,
+            isPerformanceGradePlausible ? "Gewertet" : "Unplausibel",
+          ],
+          searchable: `Leistungsgrad ${soldHours} ${stampedProjectHours}`,
+        },
+      ];
+    }
+
+    const dayKeys = new Set([
+      ...userProjectEntries.map((entry) => normalizeDateKeyValue(entry.date)),
+      ...userUnproductiveEntries.map((entry) => normalizeDateKeyValue(entry.date)),
+    ]);
+    const cursor = new Date(employeeKpiDetailStartDate);
+    while (cursor <= employeeKpiDetailEndDate) {
+      dayKeys.add(formatDateKey(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return Array.from(dayKeys)
+      .sort()
+      .map((dateKey) => {
+        const projectHours =
+          userProjectEntries
+            .filter((entry) => normalizeDateKeyValue(entry.date) === dateKey)
+            .reduce((sum, entry) => sum + entry.durationMs, 0) / 3_600_000;
+        const unproductiveHours =
+          userUnproductiveEntries
+            .filter((entry) => normalizeDateKeyValue(entry.date) === dateKey)
+            .reduce((sum, entry) => sum + entry.durationMs, 0) / 3_600_000;
+        const targetHours = getUserCapacityForDate(user, dateKey);
+
+        if (employeeKpiDetail.metric === "productivity") {
+          const status = projectHours > 0 ? "Produktiv" : unproductiveHours > 0 ? "Unproduktiv" : "Keine Zeit";
+          return {
+            id: `productivity-${dateKey}`,
+            status,
+            cells: [
+              formatProjectDate(dateKey),
+              `${formatHours(projectHours)} Std.`,
+              `${formatHours(unproductiveHours)} Std.`,
+              `${formatHours(projectHours + unproductiveHours)} Std.`,
+              status,
+            ],
+            searchable: `${formatProjectDate(dateKey)} ${status}`,
+          };
+        }
+
+        const actualHours = projectHours + unproductiveHours;
+        const difference = actualHours - targetHours;
+        const status =
+          difference > 0.01
+            ? "Positive Abweichung"
+            : difference < -0.01
+              ? "Negative Abweichung"
+              : "Ohne Abweichung";
+        return {
+          id: `attendance-${dateKey}`,
+          status,
+          cells: [
+            formatProjectDate(dateKey),
+            `${formatHours(targetHours)} Std.`,
+            `${formatHours(actualHours)} Std.`,
+            `${difference < 0 ? "-" : ""}${formatHours(Math.abs(difference))} Std.`,
+            status,
+          ],
+          searchable: `${formatProjectDate(dateKey)} ${status}`,
+        };
+      });
+  };
+  const employeeKpiDetailHeaders =
+    employeeKpiDetail?.metric === "punctuality"
+      ? ["Datum", "Planzeit", "Ist-Zeit", "Projekt", "Status"]
+      : employeeKpiDetail?.metric === "performance"
+        ? ["Kennzahl", "Verkaufte Std.", "Produktive Std.", "Wert", "Status"]
+        : employeeKpiDetail?.metric === "productivity"
+          ? ["Datum", "Produktiv", "Unproduktiv", "Summe", "Status"]
+          : ["Datum", "Sollzeit", "Istzeit", "Differenz", "Status"];
+  const employeeKpiDetailRows = getEmployeeKpiDetailRows().filter((row) => {
+    const matchesStatus =
+      employeeKpiDetailStatus === "all" ||
+      (employeeKpiDetail?.metric === "productivity" &&
+        employeeKpiDetailStatus === "with-time" &&
+        row.status !== "Keine Zeit") ||
+      (employeeKpiDetail?.metric === "attendance" &&
+        employeeKpiDetailStatus === "Mit Abweichung" &&
+        (row.status === "Positive Abweichung" || row.status === "Negative Abweichung")) ||
+      row.status === employeeKpiDetailStatus;
+    const normalizedSearch = normalizeStampSearchValue(employeeKpiDetailSearch);
+    const matchesSearch = !normalizedSearch || normalizeStampSearchValue(`${row.searchable} ${row.cells.join(" ")}`).includes(normalizedSearch);
+    return matchesStatus && matchesSearch;
+  });
   const toggleEmployeeAnalyticsGroup = (groupName: string) => {
     setExpandedEmployeeAnalyticsGroups((currentGroups) =>
       currentGroups.includes(groupName)
@@ -23359,7 +24733,85 @@ await addProjectLogbookEntry(
             {renderReportMetric("Abschlussquote", `${formatHours(salesWinRate)}%`, `${salesDecisionCount} entschiedene Angebote`, getMetricState(salesWinRate, 55, 35))}
             {renderReportMetric("Zusatzverkäufe", formatMoney(salesPotentialValue), `${salesPotentialRows.length} Zusatzverkauf${salesPotentialRows.length === 1 ? "" : "e"}`, "ok")}
             {renderReportMetric("Nachfassen", `${salesDueFollowUps.length}`, "Fällige Zusatzverkäufe", salesDueFollowUps.length > 0 ? "ok" : "good")}
+            {renderReportMetric(
+              "Unterbrochene Arbeiten",
+              `${salesInterruptedWorkRows.filter((row) => row.isOpenTask || !row.task).length}`,
+              `${salesInterruptedWorkRows.length} im Zeitraum`,
+              salesInterruptedWorkRows.some((row) => row.isOpenTask || !row.task) ? "low" : "good"
+            )}
           </section>
+
+          <article className={styles.analyticsCard}>
+            <h2>Unterbrochene Arbeiten</h2>
+            <table className={`${styles.analyticsTable} ${styles.salesInterruptedWorkTable}`}>
+              <thead>
+                <tr>
+                  <th>Projekt</th>
+                  <th>Mitarbeiter</th>
+                  <th>Datum/Uhrzeit</th>
+                  <th>Kommentar</th>
+                  <th>Alter</th>
+                  <th>Zuständig</th>
+                  <th>Aufgabe</th>
+                  <th>Aktion</th>
+                </tr>
+              </thead>
+              <tbody>
+                {salesInterruptedWorkRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={8}>Keine unterbrochenen Arbeiten im gewählten Zeitraum.</td>
+                  </tr>
+                ) : (
+                  salesInterruptedWorkRows.slice(0, 40).map((row) => (
+                    <tr key={row.entry.id}>
+                      <td>
+                        {row.project
+                          ? `${row.project.projectNumber || row.project.id} | ${row.project.title}`
+                          : row.entry.projectLabel || row.entry.projectId}
+                      </td>
+                      <td>{row.entry.employee || "-"}</td>
+                      <td>
+                        {formatProjectDate(row.entry.date)} · {row.entry.startTime} - {row.entry.endTime}
+                      </td>
+                      <td>{row.entry.comment || "-"}</td>
+                      <td>{row.ageDays === 0 ? "heute" : `${row.ageDays} Tag${row.ageDays === 1 ? "" : "e"}`}</td>
+                      <td>{row.responsibleName}</td>
+                      <td>
+                        <span
+                          className={styles.stampStatusPill}
+                          data-status={row.task ? (row.isOpenTask ? "interrupted" : "met") : "warning"}
+                        >
+                          {row.task ? row.taskStatus : "keine Aufgabe"}
+                        </span>
+                      </td>
+                      <td>
+                        <div className={`${styles.tableActionGroup} ${styles.salesInterruptedWorkActions}`}>
+                          {row.project ? (
+                            <button
+                              type="button"
+                              className={styles.timeEntryEditButton}
+                              onClick={() => openProjectFile(row.project as HeroProjectPreview, { tab: "appointments", keepMonth: true })}
+                            >
+                              Zum Projekt
+                            </button>
+                          ) : null}
+                          {row.task ? (
+                            <button
+                              type="button"
+                              className={styles.timeEntryEditButton}
+                              onClick={() => openEditModal(row.task as TaskItem)}
+                            >
+                              Zur Aufgabe
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </article>
 
           <section className={styles.analyticsTwoColumn}>
             <article className={styles.analyticsCard}>
@@ -24183,6 +25635,12 @@ await addProjectLogbookEntry(
               ) : (
                 employeeGroupRows.map((group) => {
                   const isExpanded = expandedEmployeeAnalyticsGroups.includes(group.groupName);
+                  const punctualityTrend = getPunctualityTrend({
+                    evaluable: group.punctualityEvaluable,
+                    punctual: group.punctualityPunctual,
+                    late: group.punctualityLate,
+                    early: group.punctualityEarly,
+                  });
                   return (
                     <section key={group.groupName} className={styles.employeeAnalyticsGroupCard}>
                       <div className={styles.employeeAnalyticsCardHeader}>
@@ -24222,6 +25680,16 @@ await addProjectLogbookEntry(
                           <strong>{formatHours(group.unproductiveHours)}</strong>
                           <small>Stundenwert, keine Quote</small>
                         </article>
+                        <article data-state={punctualityTrend.tone} className={styles.employeeAnalyticsTrendCard}>
+                          <span>Pünktlichkeit</span>
+                          <strong>{punctualityTrend.label}</strong>
+                          <small>{getPunctualitySummaryLine({
+                            evaluable: group.punctualityEvaluable,
+                            punctual: group.punctualityPunctual,
+                            late: group.punctualityLate,
+                            early: group.punctualityEarly,
+                          })}</small>
+                        </article>
                       </div>
                       <div className={styles.employeeAnalyticsFacts}>
                         <span>Verkauft: {formatHours(group.soldHours)} Std.</span>
@@ -24240,18 +25708,57 @@ await addProjectLogbookEntry(
                                 <span>{row.user.planningGroup || group.groupName}</span>
                               </div>
                               <div className={styles.employeeAnalyticsMemberKpis}>
-                                <div data-state={getMetricState(row.performanceGrade, 100, 90)}>
+                                <button
+                                  type="button"
+                                  className={styles.employeeAnalyticsKpiButton}
+                                  data-state={getMetricState(row.isPerformanceGradePlausible ? row.performanceGrade : 0, 100, 90)}
+                                  onClick={() => openEmployeeKpiDetail(row.user.id, "performance")}
+                                >
                                   <span>Leistungsgrad</span>
-                                  <strong>{formatHours(row.performanceGrade)}%</strong>
-                                </div>
-                                <div data-state={getMetricState(row.productivity, 100, 90)}>
+                                  <strong>{row.isPerformanceGradePlausible ? `${formatHours(row.performanceGrade)}%` : "-"}</strong>
+                                  {!row.isPerformanceGradePlausible ? (
+                                    <button
+                                      type="button"
+                                      className={styles.implausibleMetricPill}
+                                      title={getImplausiblePerformanceDescription(row.performanceGrade)}
+                                      onClick={() =>
+                                        window.alert(`Unplausibler Leistungsgrad\n\n${getImplausiblePerformanceDescription(row.performanceGrade)}`)
+                                      }
+                                    >
+                                      unplausibel
+                                    </button>
+                                  ) : null}
+                                </button>
+                                <button
+                                  type="button"
+                                  className={styles.employeeAnalyticsKpiButton}
+                                  data-state={getMetricState(row.productivity, 100, 90)}
+                                  onClick={() => openEmployeeKpiDetail(row.user.id, "productivity")}
+                                >
                                   <span>Produktivität</span>
                                   <strong>{formatHours(row.productivity)}%</strong>
-                                </div>
-                                <div data-state={getMetricState(row.attendance, 80, 70)}>
+                                </button>
+                                <button
+                                  type="button"
+                                  className={styles.employeeAnalyticsKpiButton}
+                                  data-state={getMetricState(row.attendance, 80, 70)}
+                                  onClick={() => openEmployeeKpiDetail(row.user.id, "attendance")}
+                                >
                                   <span>Anwesenheit</span>
                                   <strong>{formatHours(row.attendance)}%</strong>
-                                </div>
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`${styles.employeeAnalyticsKpiButton} ${styles.employeeAnalyticsMemberTrendKpi}`}
+                                  data-state={row.punctualityTrend.tone}
+                                  onClick={() => openEmployeeKpiDetail(row.user.id, "punctuality")}
+                                >
+                                  <span>Pünktlichkeit</span>
+                                  <strong>{row.punctualityTrend.label}</strong>
+                                  <small>
+                                    {getPunctualitySummaryLine(row.punctualitySummary)}
+                                  </small>
+                                </button>
                               </div>
                               <dl>
                                 <div><dt>Verkauft</dt><dd>{formatHours(row.soldHours)} Std.</dd></div>
@@ -24281,9 +25788,27 @@ await addProjectLogbookEntry(
                   </div>
                 </div>
                 <div className={styles.employeeAnalyticsMetricGrid}>
-                  <article data-state={getMetricState(ownEmployeeAnalyticsRow.performanceGrade, 100, 90)}>
+                  <article data-state={getMetricState(ownEmployeeAnalyticsRow.isPerformanceGradePlausible ? ownEmployeeAnalyticsRow.performanceGrade : 0, 100, 90)}>
                     <span>Leistungsgrad</span>
-                    <strong>{formatHours(ownEmployeeAnalyticsRow.performanceGrade)}%</strong>
+                    <strong>
+                      {ownEmployeeAnalyticsRow.isPerformanceGradePlausible
+                        ? `${formatHours(ownEmployeeAnalyticsRow.performanceGrade)}%`
+                        : "-"}
+                    </strong>
+                    {!ownEmployeeAnalyticsRow.isPerformanceGradePlausible ? (
+                      <button
+                        type="button"
+                        className={styles.implausibleMetricPill}
+                        title={getImplausiblePerformanceDescription(ownEmployeeAnalyticsRow.performanceGrade)}
+                        onClick={() =>
+                          window.alert(
+                            `Unplausibler Leistungsgrad\n\n${getImplausiblePerformanceDescription(ownEmployeeAnalyticsRow.performanceGrade)}`
+                          )
+                        }
+                      >
+                        unplausibel
+                      </button>
+                    ) : null}
                     <small>Verkaufte Std. / produktive Std.</small>
                   </article>
                   <article data-state={getMetricState(ownEmployeeAnalyticsRow.productivity, 100, 90)}>
@@ -24295,6 +25820,13 @@ await addProjectLogbookEntry(
                     <span>Anwesenheitsgrad</span>
                     <strong>{formatHours(ownEmployeeAnalyticsRow.attendance)}%</strong>
                     <small>Anwesenheit / Sollzeit</small>
+                  </article>
+                  <article className={styles.employeeAnalyticsTrendCard} data-state={ownEmployeeAnalyticsRow.punctualityTrend.tone}>
+                    <span>Pünktlichkeit</span>
+                    <strong>{ownEmployeeAnalyticsRow.punctualityTrend.label}</strong>
+                    <small>
+                      {getPunctualitySummaryLine(ownEmployeeAnalyticsRow.punctualitySummary)}
+                    </small>
                   </article>
                   <article>
                     <span>Unproduktive Std.</span>
@@ -26588,7 +28120,6 @@ await addProjectLogbookEntry(
       { id: "notes", label: "Hinweise", icon: "" },
       { id: "images", label: "Bilder", icon: "" },
       { id: "documents", label: "Dokumente", icon: "" },
-      { id: "gaeb", label: "Ausschreibungen (GAEB)", icon: "" },
       { id: "contacts", label: "Ansprechpartner", icon: "" },
       { id: "potentials", label: "Zusatzverkäufe", icon: "" },
       { id: "tasks", label: "Aufgaben", icon: "" },
@@ -27391,6 +28922,7 @@ await addProjectLogbookEntry(
     if (!selectedProjectFile) return null;
 
     const isSelectedProjectRecurring = getProjectKind(selectedProjectFile).startsWith("Dauer");
+    const isSelectedProjectHourlyRecurring = isHourlyRecurringProject(selectedProjectFile);
     const documentTypes: CustomerDocumentType[] = [
       "Allgemeine Dokumente",
       "Anfragen",
@@ -27423,7 +28955,7 @@ await addProjectLogbookEntry(
     );
     const menuItems: Array<{ id: ProjectFileTab; label: string; icon: string }> = [
       { id: "logbook", label: "Logbuch", icon: "" },
-      { id: "notes", label: "Hinweise", icon: "!" },
+      { id: "notes", label: "Hinweise", icon: "" },
       { id: "images", label: "Bilder", icon: "" },
       { id: "documents", label: "Dokumente", icon: "" },
       { id: "appointments", label: "Termine & Stempelungen", icon: "" },
@@ -27441,7 +28973,6 @@ await addProjectLogbookEntry(
       { id: "potentials", label: "Zusatzverkäufe", icon: "" },
       { id: "tasks", label: "Aufgaben", icon: "" },
       { id: "checklists", label: "Checklisten", icon: "" },
-      { id: "gaeb", label: "Ausschreibungen (GAEB)", icon: "" },
     ];
     const selectedContact = selectedProjectFile.contactId
       ? contacts.find((contact) => contact.id === selectedProjectFile.contactId)
@@ -27560,7 +29091,13 @@ await addProjectLogbookEntry(
           .includes(projectLogbookQuery);
       }),
     ];
-    const projectStampHistoryEntries = stampEntries.filter(
+    const projectStampHistorySourceEntries = Array.from(
+      new Map([...stampEntries, ...projectHistoryStampEntries].map((entry) => [entry.id, entry])).values()
+    );
+    const projectPlanningHistorySourceEntries = Array.from(
+      new Map([...planningEntries, ...projectHistoryPlanningEntries].map((entry) => [entry.id, entry])).values()
+    );
+    const projectStampHistoryEntries = projectStampHistorySourceEntries.filter(
       (entry) =>
         entry.mode === "project" && String(entry.projectId) === String(selectedProjectFile.id)
     );
@@ -27572,7 +29109,7 @@ await addProjectLogbookEntry(
       projectStampEntries
         .filter((entry) => entry.date.startsWith(currentProjectMonthKey))
         .reduce((sum, entry) => sum + entry.durationMs, 0) / 3_600_000;
-    const projectPlanningHistoryEntries = planningEntries.filter(
+    const projectPlanningHistoryEntries = projectPlanningHistorySourceEntries.filter(
       (entry) => String(entry.projectId) === String(selectedProjectFile.id)
     );
     const projectPlanningEntries = planningEntries
@@ -27660,6 +29197,7 @@ await addProjectLogbookEntry(
 
         return { entry, deleteHistory, sortTime };
       })
+      .filter(({ entry, deleteHistory }) => !entry.deletedAt || Boolean(deleteHistory))
       .sort((first, second) => second.sortTime - first.sortTime);
     const visibleProjectPlanningHistory = isProjectCombinedHistoryExpanded
       ? projectPlanningHistory
@@ -27670,7 +29208,11 @@ await addProjectLogbookEntry(
     const hasMoreProjectCombinedHistory =
       projectPlanningHistory.length > 3 || projectStampHistory.length > 3;
     const projectBudgetMonths = getProjectBudgetMonths(selectedProjectFile);
-    const projectHasBudgetAllocations = (selectedProjectFile.timeBudgetAllocations ?? []).length > 0;
+    const isProjectBudgetControlEnabled =
+      isSelectedProjectRecurring &&
+      (!isSelectedProjectHourlyRecurring || selectedProjectFile.timeBudgetEnabled === true);
+    const projectHasBudgetAllocations =
+      isProjectBudgetControlEnabled && (selectedProjectFile.timeBudgetAllocations ?? []).length > 0;
     const projectBudgetHours = projectHasBudgetAllocations
       ? getProjectBudgetAllocationTotal(selectedProjectFile)
       : 0;
@@ -27815,6 +29357,7 @@ await addProjectLogbookEntry(
 
       const updatedProject: HeroProjectPreview = {
         ...selectedProjectFile,
+        timeBudgetEnabled: true,
         timeBudgetHours: totalHours > 0 ? formatHours(totalHours) : "",
         timeBudgetAllocations: allocations,
       };
@@ -27834,6 +29377,30 @@ await addProjectLogbookEntry(
         );
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : "Projektzeitkontingente konnten nicht gespeichert werden.");
+      }
+    };
+    const enableHourlyProjectBudgetControl = async () => {
+      const confirmed = window.confirm(
+        "Projektzeitkontingente sind bei Dauerläufern mit Stundenabrechnung nicht der Standard. Diese Projekte sollen normalerweise nach tatsächlich angefallenen Stunden geplant und abgerechnet werden. Möchtest du die Kontingentsteuerung für dieses Projekt trotzdem aktivieren?"
+      );
+      if (!confirmed) return;
+
+      try {
+        const savedProject = await persistProject({
+          ...selectedProjectFile,
+          timeBudgetEnabled: true,
+        });
+        setHeroProjects((currentProjects) =>
+          currentProjects.map((project) => (project.id === savedProject.id ? savedProject : project))
+        );
+        setSelectedProjectFileId(savedProject.id);
+        await addProjectLogbookEntry(
+          savedProject.id,
+          "Projektzeitkontingente",
+          "Projektzeitkontingente für Dauerläufer mit Stundenabrechnung bewusst aktiviert."
+        );
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : "Projektzeitkontingente konnten nicht aktiviert werden.");
       }
     };
     const marketingQuotaMonth = currentProjectMonthKey;
@@ -28288,6 +29855,7 @@ await addProjectLogbookEntry(
       projectComparisonMonth
     );
     const projectBudgetComparisonRows =
+      isProjectBudgetControlEnabled &&
       offerRowsWithUnmappedProjectPlanning.length === 0 &&
       projectComparisonMonthBudgetHours > 0
         ? [{
@@ -28361,6 +29929,11 @@ await addProjectLogbookEntry(
       plannedHours: singleProjectOfferPlanningRows.reduce((sum, row) => sum + row.plannedHours, 0),
       plannedPlanningHours: singleProjectOfferPlanningRows.reduce((sum, row) => sum + row.plannedPlanningHours, 0),
     };
+    const canPlanSelectedProject =
+      isSelectedProjectRecurring || singleProjectOfferPlanningRows.length > 0;
+    const projectPlanningBlockedReason = canPlanSelectedProject
+      ? ""
+      : "Bitte zuerst ein finales Angebot mit Auftragspositionen anlegen.";
     const singleProjectOfferRowsWithoutAppointment = singleProjectOfferPlanningRows.filter(
       (row) => row.planningEntries.length === 0
     );
@@ -28562,20 +30135,32 @@ await addProjectLogbookEntry(
     );
     const projectExpectedStampRows = projectVisiblePlanningEntries.map((entry) => {
       const matchingStampEntries = getProjectStampEntriesForPlanningEntry(entry);
+      const latestMatchingStampEntry = matchingStampEntries
+        .slice()
+        .sort((first, second) => {
+          const firstTime = first.endTime || first.startTime || "00:00";
+          const secondTime = second.endTime || second.startTime || "00:00";
+          return `${second.date} ${secondTime}`.localeCompare(`${first.date} ${firstTime}`);
+        })[0];
       const commentSummary = getStampCommentSummary(matchingStampEntries);
       const isManualStamp = hasManualStampEntry(matchingStampEntries);
       const actualHours = matchingStampEntries.reduce((sum, stampEntry) => sum + stampEntry.durationMs, 0) / 3_600_000;
       const targetHours = Number(entry.durationMinutes || 0) / 60;
       const differenceHours = targetHours - actualHours;
       const performancePercent = actualHours > 0 ? (targetHours / actualHours) * 100 : null;
+      const isPerformancePlausible = isPlausiblePerformancePercent(performancePercent);
+      const punctuality = getPlanningPunctuality(entry, latestMatchingStampEntry);
       const invoiceNumbers = Array.from(
         new Set([
           ...matchingStampEntries.map((stampEntry) => stampEntry.invoiceNumber).filter(Boolean),
           ...(projectFinalizedInvoicesByMonth[entry.date.slice(0, 7)] ?? []),
         ])
       );
+      const hasInterruptedStamp = matchingStampEntries.some((stampEntry) => stampEntry.completionStatus === "interrupted");
       const status =
-        actualHours <= 0
+        hasInterruptedStamp
+          ? "Unterbrochen"
+          : actualHours <= 0
           ? "offen"
           : actualHours < targetHours - 0.01
             ? "schneller als Vorgabe"
@@ -28583,7 +30168,9 @@ await addProjectLogbookEntry(
               ? "Vorgabe eingehalten"
               : "Vorgabe nicht erreicht";
       const statusTone =
-        status === "schneller als Vorgabe"
+        status === "Unterbrochen"
+          ? "interrupted"
+          : status === "schneller als Vorgabe"
           ? "fast"
           : status === "Vorgabe eingehalten"
             ? "met"
@@ -28596,34 +30183,59 @@ await addProjectLogbookEntry(
         employeeName: entry.employeeName || "Noch nicht zugewiesen",
         date: entry.date,
         timeRange: `${entry.startTime} - ${entry.endTime}`,
+        plannedDateLabel: formatProjectDate(entry.date),
+        plannedTimeLabel: `${entry.startTime} - ${entry.endTime}`,
+        actualDateLabel: latestMatchingStampEntry ? formatProjectDate(latestMatchingStampEntry.date) : "-",
+        actualTimeLabel: latestMatchingStampEntry
+          ? `${latestMatchingStampEntry.startTime} - ${latestMatchingStampEntry.endTime}`
+          : "",
         targetHours,
         actualHours,
         differenceHours,
         performancePercent,
+        isPerformancePlausible,
+        performancePlausibilityDescription: isPerformancePlausible
+          ? ""
+          : getImplausiblePerformanceDescription(performancePercent),
+        punctualityLabel: punctuality.label,
+        punctualityTone: punctuality.tone,
+        punctualityDescription: punctuality.description,
         status,
         statusTone,
         invoiceLabel: invoiceNumbers.length > 0 ? `Fakturiert: ${invoiceNumbers.join(", ")}` : "Offen",
-        editEntry: matchingStampEntries[0],
+        editEntry: latestMatchingStampEntry,
         commentSummary,
         isManualStamp,
       };
     });
-    const projectUnexpectedStampRows = projectUnmatchedStampEntries.map((entry) => ({
-      id: `unexpected-${entry.id}`,
-      employeeName: entry.employee || "Nicht zugewiesen",
-      date: entry.date,
-      timeRange: `${entry.startTime} - ${entry.endTime}`,
-      targetHours: 0,
-      actualHours: Number(entry.durationMs || 0) / 3_600_000,
-      differenceHours: -(Number(entry.durationMs || 0) / 3_600_000),
-      performancePercent: null,
-      status: "ungeplant gestempelt",
-      statusTone: "unplanned",
-      invoiceLabel: entry.invoiceNumber ? `Fakturiert: ${entry.invoiceNumber}` : "Offen",
-      editEntry: entry,
-      commentSummary: getRealStampComment(entry),
-      isManualStamp: entry.entrySource === "manual",
-    }));
+    const projectUnexpectedStampRows = projectUnmatchedStampEntries.map((entry) => {
+      const isInterrupted = entry.completionStatus === "interrupted";
+      return {
+        id: `unexpected-${entry.id}`,
+        employeeName: entry.employee || "Nicht zugewiesen",
+        date: entry.date,
+        timeRange: `${entry.startTime} - ${entry.endTime}`,
+        plannedDateLabel: "-",
+        plannedTimeLabel: "",
+        actualDateLabel: formatProjectDate(entry.date),
+        actualTimeLabel: `${entry.startTime} - ${entry.endTime}`,
+        targetHours: 0,
+        actualHours: Number(entry.durationMs || 0) / 3_600_000,
+        differenceHours: -(Number(entry.durationMs || 0) / 3_600_000),
+        performancePercent: null,
+        isPerformancePlausible: true,
+        performancePlausibilityDescription: "",
+        punctualityLabel: "Ungeplant",
+        punctualityTone: "unplanned",
+        punctualityDescription: getPlanningPunctualityDescription("Ungeplant"),
+        status: isInterrupted ? "Unterbrochen" : "ungeplant gestempelt",
+        statusTone: isInterrupted ? "interrupted" : "unplanned",
+        invoiceLabel: entry.invoiceNumber ? `Fakturiert: ${entry.invoiceNumber}` : "Offen",
+        editEntry: entry,
+        commentSummary: getRealStampComment(entry),
+        isManualStamp: entry.entrySource === "manual",
+      };
+    });
     const projectStampExpectationRows = [...projectExpectedStampRows, ...projectUnexpectedStampRows];
     const transferPlanningToStampedEmployees = async (entry: PlanningEntry) => {
       const matchingStampEntries = getProjectStampEntriesForPlanningEntry(entry);
@@ -28673,6 +30285,7 @@ await addProjectLogbookEntry(
         for (const allocation of allocationRows) {
           const res = await fetch("/api/planning-entries", {
             method: "POST",
+            credentials: "same-origin",
             headers: {
               "Content-Type": "application/json",
             },
@@ -28779,6 +30392,10 @@ await addProjectLogbookEntry(
       setIsPlanningEntryModalOpen(true);
     };
     const openManualProjectPlanning = (approvalStatus: PlanningEntryApprovalStatus = "confirmed") => {
+      if (!canPlanSelectedProject) {
+        window.alert(projectPlanningBlockedReason);
+        return;
+      }
       const projectBoard = (
         selectedProjectFile.projectType === "Projekt OK immocare" ||
         selectedProjectFile.branch === "OK immocare GmbH"
@@ -30866,6 +32483,7 @@ await addProjectLogbookEntry(
                         <th>Pause</th>
                         <th>Mitarbeiter</th>
                         <th>Herkunft</th>
+                        <th>Status</th>
                         <th>Rechnung</th>
                         <th>Kommentar</th>
                         <th>Aktion</th>
@@ -30882,6 +32500,14 @@ await addProjectLogbookEntry(
                           <td>{formatStampDuration(entry.pauseMs)}</td>
                           <td>{entry.employee}</td>
                           <td>{entry.entrySource === "manual" ? "Manuell" : "Gestempelt"}</td>
+                          <td>
+                            <span
+                              className={styles.stampStatusPill}
+                              data-status={entry.completionStatus === "interrupted" ? "interrupted" : "met"}
+                            >
+                              {entry.completionStatus === "interrupted" ? "Unterbrochen" : "Erfasst"}
+                            </span>
+                          </td>
                           <td>{entry.invoiceNumber ? `Fakturiert: ${entry.invoiceNumber}` : "Offen"}</td>
                           <td>{entry.comment}</td>
                           <td>
@@ -31320,6 +32946,26 @@ await addProjectLogbookEntry(
                 </div>
 
                 <section className={styles.projectBudgetEditor}>
+                  {isSelectedProjectHourlyRecurring && !isProjectBudgetControlEnabled ? (
+                    <div className={styles.projectBudgetDisabledNotice}>
+                      <div>
+                        <strong>Projektzeitkontingente sind deaktiviert.</strong>
+                        <span>
+                          Bei Dauerläufern mit Stundenabrechnung entsteht die Vorgabe normalerweise aus Planung,
+                          Stempelungen und Abrechnungsleistung. Ein Monatskontingent ist hier nur ein bewusster
+                          Sonderfall.
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className={styles.primaryButton}
+                        onClick={() => void enableHourlyProjectBudgetControl()}
+                      >
+                        Kontingentsteuerung aktivieren
+                      </button>
+                    </div>
+                  ) : (
+                    <>
                   <div className={styles.projectBudgetModeGrid}>
                     <button
                       type="button"
@@ -31464,6 +33110,8 @@ await addProjectLogbookEntry(
                           Kontingente speichern
                         </button>
                       </div>
+                    </>
+                  )}
                     </>
                   )}
                 </section>
@@ -31795,12 +33443,20 @@ await addProjectLogbookEntry(
                       {projectVisiblePlanningEntries.length} Termin
                       {projectVisiblePlanningEntries.length === 1 ? "" : "e"}
                     </span>
-                    <button type="button" className={styles.primaryButton} onClick={() => openManualProjectPlanning()}>
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      disabled={!canPlanSelectedProject}
+                      title={!canPlanSelectedProject ? projectPlanningBlockedReason : undefined}
+                      onClick={() => openManualProjectPlanning()}
+                    >
                       + Termin
                     </button>
                     <button
                       type="button"
                       className={styles.requestButton}
+                      disabled={!canPlanSelectedProject}
+                      title={!canPlanSelectedProject ? projectPlanningBlockedReason : undefined}
                       onClick={() => openManualProjectPlanning("requested")}
                     >
                       + Terminwunsch
@@ -31919,6 +33575,14 @@ await addProjectLogbookEntry(
                     <span>
                       Alle Angebote sind als verloren markiert. Nimm den Verlust zurück oder erstelle ein neues Angebot,
                       damit Planung, Forecast und Kontingente wieder eine Grundlage haben.
+                    </span>
+                  </div>
+                ) : !isSelectedProjectRecurring && singleProjectOfferPlanningRows.length === 0 ? (
+                  <div className={styles.projectOfferBasisNotice}>
+                    <strong>Planung erst nach finalem Angebot möglich.</strong>
+                    <span>
+                      Bitte zuerst ein finales Angebot mit Auftragspositionen anlegen. Erst daraus entstehen Vorgabezeit,
+                      Planung, Soll/Ist-Vergleich und spätere Abrechnungsgrundlage.
                     </span>
                   </div>
                 ) : null}
@@ -32041,17 +33705,18 @@ await addProjectLogbookEntry(
                     <p>Noch keine erwarteten Stempelungen vorhanden.</p>
                   ) : (
                     <div className={styles.projectTableScroll}>
-                      <table className={styles.projectTimeTable}>
+                      <table className={`${styles.projectTimeTable} ${styles.expectedStampTable}`}>
                         <thead>
                           <tr>
                             <th>Mitarbeiter</th>
-                            <th>Datum</th>
-                            <th>Zeitraum</th>
+                            <th>Datum/Zeit Plan</th>
+                            <th>Datum/Zeit Ist</th>
                             <th>Soll-Zeit</th>
                             <th>Ist-Zeit</th>
                             <th>Differenz</th>
                             <th>Leistungsgrad</th>
                             <th>Status</th>
+                            <th>Pünktlichkeit</th>
                             <th>Rechnung</th>
                             <th>Kommentar</th>
                             <th>Aktion</th>
@@ -32061,16 +33726,57 @@ await addProjectLogbookEntry(
                           {projectStampExpectationRows.map((row) => (
                             <tr key={row.id}>
                               <td>{row.employeeName}</td>
-                              <td>{formatProjectDate(row.date)}</td>
-                              <td>{row.timeRange}</td>
+                              <td>
+                                <span className={styles.expectedStampDateTime}>
+                                  <span>{row.plannedDateLabel}</span>
+                                  {row.plannedTimeLabel ? <strong>{row.plannedTimeLabel}</strong> : null}
+                                </span>
+                              </td>
+                              <td>
+                                <span className={styles.expectedStampDateTime}>
+                                  <span>{row.actualDateLabel}</span>
+                                  {row.actualTimeLabel ? <strong>{row.actualTimeLabel}</strong> : null}
+                                </span>
+                              </td>
                               <td>{formatHours(row.targetHours)} Std.</td>
                               <td>{row.actualHours > 0 ? `${formatHours(row.actualHours)} Std.` : "-"}</td>
                               <td>{row.differenceHours < 0 ? "-" : ""}{formatHours(Math.abs(row.differenceHours))} Std.</td>
-                              <td>{row.performancePercent !== null ? formatPercent(row.performancePercent) : "-"}</td>
+                              <td>
+                                <div className={styles.metricCellStack}>
+                                  <span>
+                                    {row.performancePercent !== null
+                                      ? formatPercent(row.performancePercent)
+                                      : "-"}
+                                  </span>
+                                  {!row.isPerformancePlausible ? (
+                                    <button
+                                      type="button"
+                                      className={styles.implausibleMetricPill}
+                                      title={row.performancePlausibilityDescription}
+                                      aria-label={`Leistungsgrad unplausibel. ${row.performancePlausibilityDescription}`}
+                                      onClick={() => window.alert(`Unplausibler Leistungsgrad\n\n${row.performancePlausibilityDescription}`)}
+                                    >
+                                      unplausibel
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </td>
                               <td>
                                 <span className={styles.stampStatusPill} data-status={row.statusTone}>
                                   {row.status}
                                 </span>
+                              </td>
+                              <td>
+                                <button
+                                  type="button"
+                                  className={`${styles.stampStatusPill} ${styles.punctualityInfoButton}`}
+                                  data-status={row.punctualityTone}
+                                  title={row.punctualityDescription}
+                                  aria-label={`Pünktlichkeit: ${row.punctualityLabel}. ${row.punctualityDescription}`}
+                                  onClick={() => window.alert(`${row.punctualityLabel}\n\n${row.punctualityDescription}`)}
+                                >
+                                  {row.punctualityLabel}
+                                </button>
                               </td>
                               <td>
                                 {row.invoiceLabel.startsWith("Fakturiert") ? (
@@ -32149,6 +33855,17 @@ await addProjectLogbookEntry(
                     <div className={styles.planningHistoryList}>
                       {visibleProjectPlanningHistory.map((history) => (
                         <article key={history.id}>
+                          {canDeleteHistoryEntries ? (
+                            <button
+                              type="button"
+                              className={styles.historyDeleteButton}
+                              aria-label="Historieneintrag loeschen"
+                              title="Historieneintrag loeschen"
+                              onClick={() => void deleteProjectPlanningHistoryEntry(history.id)}
+                            >
+                              x
+                            </button>
+                          ) : null}
                           <strong>
                             {history.eventType === "approved"
                               ? "Termin freigegeben"
@@ -32179,6 +33896,17 @@ await addProjectLogbookEntry(
                         <div className={styles.planningHistoryList}>
                           {visibleProjectStampHistory.map(({ entry, deleteHistory }) => (
                             <article key={`appointment-stamp-history-${entry.id}`}>
+                              {canDeleteHistoryEntries && deleteHistory?.id ? (
+                                <button
+                                  type="button"
+                                  className={styles.historyDeleteButton}
+                                  aria-label="Historieneintrag loeschen"
+                                  title="Historieneintrag loeschen"
+                                  onClick={() => void deleteProjectStampHistoryEntry(entry.id, deleteHistory.id)}
+                                >
+                                  x
+                                </button>
+                              ) : null}
                               <strong>
                                 {entry.deletedAt
                                   ? "Zeiteintrag gel\u00f6scht"
@@ -33053,13 +34781,17 @@ await addProjectLogbookEntry(
       (sum, entry) => sum + Number(entry.durationMs || 0) / 3_600_000,
       0
     );
+    const getInvoiceLaborStampBasisHours = (labor: Pick<OfferLineLaborDraft, "userId" | "employeeName">) =>
+      getInvoiceStampBasisHoursForWorker(selectedProjectFile.id, invoiceDraft, labor);
     const editingInvoiceInModal = editingInvoiceId ? invoices.find((invoice) => invoice.id === editingInvoiceId) : null;
+    const isHourlyRecurringInvoiceModal =
+      isHourlyRecurringProject(selectedProjectFile) || editingInvoiceInModal?.billingSource === "hourly-recurring";
     const activeInvoiceCatalogItems = catalogItems.filter((item) => item.isActive);
     const getFilteredInvoiceCatalogItems = (line: OfferLineDraft) => {
       const search = (invoiceLineSearchTerms[line.id] ?? "").trim().toLowerCase();
       if (!search) return activeInvoiceCatalogItems;
       return activeInvoiceCatalogItems.filter((item) =>
-        [item.number, item.name, item.category, item.type, item.unit]
+        [item.number, item.name, item.category, item.trade, item.type, item.unit]
           .filter(Boolean)
           .join(" ")
           .toLowerCase()
@@ -33069,7 +34801,7 @@ await addProjectLogbookEntry(
 
     return (
       <div className={styles.modalOverlay}>
-        <div className={`${styles.standardModal} ${styles.catalogModal} ${styles.offerModal}`}>
+        <div className={`${styles.standardModal} ${styles.catalogModal} ${styles.offerModal} ${styles.invoiceModal}`}>
           <div className={styles.standardModalHeader}>
             <div>
               <h2>{editingInvoiceId ? "Rechnung bearbeiten" : "Neue Rechnung erstellen"}</h2>
@@ -33172,6 +34904,7 @@ await addProjectLogbookEntry(
                     <h3>Positionen</h3>
                     <button type="button" className={styles.secondaryButton} onClick={addInvoiceLine}>+ Position</button>
                   </div>
+                  {!isHourlyRecurringInvoiceModal ? (
                   <div
                     className={`${styles.offerInternalCalculation} ${
                       hasAllInvoiceStampEntriesLinked
@@ -33255,8 +34988,17 @@ await addProjectLogbookEntry(
                       </>
                     )}
                   </div>
+                  ) : null}
                   <div className={styles.offerLinesTableWrap}>
                     <table className={styles.offerLinesTable}>
+                      <colgroup>
+                        <col className={styles.invoiceLineMainColumn} />
+                        <col className={styles.invoiceLineQuantityColumn} />
+                        <col className={styles.invoiceLineUnitColumn} />
+                        <col className={styles.invoiceLinePriceColumn} />
+                        <col className={styles.invoiceLineDiscountColumn} />
+                        <col className={styles.invoiceLineTotalColumn} />
+                      </colgroup>
                       <thead>
                         <tr>
                           <th>Artikel / Leistung / Paket</th>
@@ -33269,13 +35011,32 @@ await addProjectLogbookEntry(
                       </thead>
                       <tbody>
                         {invoiceDraft.lines.map((line, index) => (
-                          <tr key={line.id} data-picker-open={openInvoiceLinePickerId === line.id}>
+                          <Fragment key={line.id}>
+                            <tr className={styles.invoicePositionTitleRow}>
+                              <td colSpan={6}>
+                                <div className={styles.invoicePositionTitleBar}>
+                                  <span>Position {index + 1}</span>
+                                  <em data-type={line.catalogType || "free"}>{getOfferLineTypeLabel(line.catalogType)}</em>
+                                  <button type="button" className={styles.offerLineDeleteButton} onClick={() => removeInvoiceLine(index)}>{"L\u00f6schen"}</button>
+                                </div>
+                              </td>
+                            </tr>
+                            <tr className={styles.invoicePositionColumnHeaderRow}>
+                              <th scope="col">Artikel / Leistung / Paket</th>
+                              <th scope="col">Menge</th>
+                              <th scope="col">Einheit</th>
+                              <th scope="col">Einzelpreis</th>
+                              <th scope="col">Rabatt</th>
+                              <th scope="col">Gesamt</th>
+                            </tr>
+                          <tr className={styles.invoicePositionDetailRow} data-picker-open={openInvoiceLinePickerId === line.id}>
                             <td>
                               <div className={styles.offerLineHeader}>
                                 <span>Position {index + 1}</span>
                                 <em data-type={line.catalogType || "free"}>{getOfferLineTypeLabel(line.catalogType)}</em>
                                 <button type="button" className={styles.offerLineDeleteButton} onClick={() => removeInvoiceLine(index)}>Löschen</button>
                               </div>
+                              {!line.catalogItemId || openInvoiceLinePickerId === line.id ? (
                               <div className={styles.offerLinePicker}>
                                 <input
                                   value={
@@ -33325,56 +35086,175 @@ await addProjectLogbookEntry(
                                 ) : null}
 
                               </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className={styles.invoiceLineChangeCatalogButton}
+                                  onClick={() => {
+                                    setOpenInvoiceLinePickerId(line.id);
+                                    setInvoiceLineSearchTerms((current) => ({ ...current, [line.id]: "" }));
+                                  }}
+                                >
+                                  {"Leistung \u00e4ndern"}
+                                </button>
+                              )}
                               <input value={line.title} onChange={(event) => updateInvoiceLine(index, { title: event.target.value })} />
                               <textarea rows={2} value={line.description} onChange={(event) => updateInvoiceLine(index, { description: event.target.value })} />
-                              {canPlanOfferLineLabor(line) ? (
+                              {canPlanOfferLineLabor(line) && isHourlyRecurringInvoiceModal ? (() => {
+                                const lineStampEntries = getInvoiceLineStampEntries(
+                                  selectedProjectFile.id,
+                                  invoiceDraft,
+                                  line,
+                                  editingInvoiceId
+                                );
+                                const selectedLineStampEntries = lineStampEntries.filter((entry) =>
+                                  invoiceStampEntryIds.includes(entry.id)
+                                );
+                                const selectedLineHours = selectedLineStampEntries.reduce(
+                                  (sum, entry) => sum + getRoundedBillableStampHours(entry),
+                                  0
+                                );
+                                const rawLineHours = selectedLineStampEntries.reduce(
+                                  (sum, entry) => sum + Number(entry.durationMs || 0) / 3_600_000,
+                                  0
+                                );
+                                const allLineEntriesSelected =
+                                  lineStampEntries.length > 0 &&
+                                  lineStampEntries.every((entry) => invoiceStampEntryIds.includes(entry.id));
+
+                                return (
+                                  <div className={styles.invoiceLineStampBasis}>
+                                    <div className={styles.offerInternalHeader}>
+                                      <strong>Abrechnungsgrundlage intern</strong>
+                                      <button
+                                        type="button"
+                                        className={styles.secondaryButton}
+                                        disabled={lineStampEntries.length === 0 || allLineEntriesSelected}
+                                        onClick={() => takeOverInvoiceLineStampEntries(index, lineStampEntries)}
+                                      >
+                                        Alle dieser Position übernehmen
+                                      </button>
+                                    </div>
+                                    {lineStampEntries.length === 0 ? (
+                                      <p>Keine passenden Stempelungen für diese Position.</p>
+                                    ) : (
+                                      <div className={styles.invoiceLineStampRows}>
+                                        {lineStampEntries.map((entry) => {
+                                          const isLinked = invoiceStampEntryIds.includes(entry.id);
+                                          const rawHours = Number(entry.durationMs || 0) / 3_600_000;
+                                          const roundedHours = getRoundedBillableStampHours(entry);
+                                          return (
+                                            <label
+                                              key={`invoice-line-stamp-${line.id}-${entry.id}`}
+                                              className={styles.invoiceLineStampRow}
+                                              data-linked={isLinked ? "true" : "false"}
+                                            >
+                                              <input
+                                                className={styles.invoiceStampCheckbox}
+                                                type="checkbox"
+                                                checked={isLinked}
+                                                onChange={(event) =>
+                                                  toggleInvoiceLineStampEntry(index, entry.id, event.target.checked)
+                                                }
+                                              />
+                                              <span>
+                                                <strong>{entry.employee || "Mitarbeiter"}</strong>
+                                                <small>{entry.date} | {entry.startTime} - {entry.endTime}</small>
+                                              </span>
+                                              <span>
+                                                <small>Gestempelt</small>
+                                                <strong>{formatHours(rawHours)} Std.</strong>
+                                              </span>
+                                              <span>
+                                                <small>Fakturiert</small>
+                                                <strong>{formatHours(roundedHours)} Std.</strong>
+                                              </span>
+                                              <span className={styles.invoiceLineStampComment}>
+                                                <small>Kommentar</small>
+                                                <strong>{entry.comment || "-"}</strong>
+                                              </span>
+                                            </label>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                    <small>
+                                      Intern: {formatHours(rawLineHours)} Std. gestempelt. Rechnung:{" "}
+                                      {formatHours(selectedLineHours)} Std. für diese Position.
+                                    </small>
+                                  </div>
+                                );
+                              })() : canPlanOfferLineLabor(line) ? (
                                 <div className={styles.offerInternalCalculation}>
                                   <div className={styles.offerInternalHeader}>
-                                    <strong>Abrechenbare Monteurstunden</strong>
+                                    <strong>Abrechnungsgrundlage intern</strong>
                                     <button
                                       type="button"
                                       className={styles.secondaryButton}
                                       onClick={() => addInvoiceLineLabor(index)}
                                     >
-                                      + Mitarbeiter
+                                      + Mitarbeiterzeit
                                     </button>
                                   </div>
                                   {line.laborItems.length === 0 ? (
                                     <p>Noch keine Stunden hinterlegt.</p>
                                   ) : (
                                     <div className={styles.offerLaborRows}>
-                                      {line.laborItems.map((labor) => (
-                                        <div key={labor.id} className={styles.offerLaborRow}>
-                                          <input value={labor.employeeName} readOnly />
-                                          <input
-                                            type="number"
-                                            min="0"
-                                            step="0.25"
-                                            value={Number(labor.plannedHours || 0) > 0 ? labor.plannedHours : ""}
-                                            onChange={(event) =>
-                                              updateInvoiceLineLabor(
-                                                index,
-                                                labor.id,
-                                                event.target.value === "" ? 0 : Number(event.target.value)
-                                              )
-                                            }
-                                          />
-                                          <span>Std. fakturieren</span>
-                                          <strong>{formatMoney(Number(labor.plannedHours || 0) * Number(line.unitPrice || 0))}</strong>
-                                          <button
-                                            type="button"
-                                            className={styles.iconButton}
-                                            onClick={() => removeInvoiceLineLabor(index, labor.id)}
+                                      {line.laborItems.map((labor) => {
+                                        const laborHours = Number(labor.plannedHours || 0);
+                                        const stampBasisHours = getInvoiceLaborStampBasisHours(labor);
+                                        const hasNoStampBasis = laborHours > 0 && stampBasisHours <= 0;
+                                        const exceedsStampBasis = stampBasisHours > 0 && laborHours > stampBasisHours + 0.01;
+                                        return (
+                                          <div
+                                            key={labor.id}
+                                            className={styles.offerLaborRow}
+                                            data-warning={hasNoStampBasis || exceedsStampBasis ? "true" : "false"}
                                           >
-                                            -
-                                          </button>
-                                        </div>
-                                      ))}
+                                            <input value={labor.employeeName} readOnly title="Interne Mitarbeiterzeit, nicht sichtbar auf der Kundenrechnung." />
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              step="0.25"
+                                              value={laborHours > 0 ? labor.plannedHours : ""}
+                                              onChange={(event) =>
+                                                updateInvoiceLineLabor(
+                                                  index,
+                                                  labor.id,
+                                                  event.target.value === "" ? 0 : Number(event.target.value)
+                                                )
+                                              }
+                                              onBlur={(event) =>
+                                                showInvoiceLaborStampNotice(
+                                                  invoiceDraft,
+                                                  selectedProjectFile.id,
+                                                  labor,
+                                                  event.target.value === "" ? 0 : Number(event.target.value)
+                                                )
+                                              }
+                                            />
+                                            <span>Std. fakturieren</span>
+                                            <strong>{formatMoney(laborHours * Number(line.unitPrice || 0))}</strong>
+                                            <button
+                                              type="button"
+                                              className={styles.iconButton}
+                                              onClick={() => removeInvoiceLineLabor(index, labor.id)}
+                                            >
+                                              -
+                                            </button>
+                                            {hasNoStampBasis ? (
+                                              <small>Keine passende Stempelung gefunden.</small>
+                                            ) : exceedsStampBasis ? (
+                                              <small>Mehr als Stempelbasis: {formatHours(stampBasisHours)} Std.</small>
+                                            ) : null}
+                                          </div>
+                                        );
+                                      })}
                                     </div>
                                   )}
                                   <small>
                                     Summe {formatHours(line.laborItems.reduce((sum, labor) => sum + Number(labor.plannedHours || 0), 0))} Std.
-                                    wird als Menge der Leistungsposition fakturiert.
+                                    wird als Menge der Leistungsposition fakturiert. Diese Angaben bleiben intern.
                                   </small>
                                 </div>
                               ) : null}
@@ -33409,6 +35289,7 @@ await addProjectLogbookEntry(
                               ) : null}
                             </td>
                           </tr>
+                          </Fragment>
                         ))}
                       </tbody>
                     </table>
@@ -33590,7 +35471,7 @@ await addProjectLogbookEntry(
       const search = (offerLineSearchTerms[line.id] ?? "").trim().toLowerCase();
       if (!search) return activeCatalogItems;
       return activeCatalogItems.filter((item) =>
-        [item.number, item.name, item.category, item.type, item.unit]
+        [item.number, item.name, item.category, item.trade, item.type, item.unit]
           .filter(Boolean)
           .join(" ")
           .toLowerCase()
@@ -35936,6 +37817,15 @@ await addProjectLogbookEntry(
         }, new Map())
         .values()
     ).map((items) => [...items].sort((first, second) => first.date.localeCompare(second.date)));
+    const groupedAbsenceHistory = Array.from(
+      absenceHistoryEntries
+        .reduce<Map<string, AbsenceItem[]>>((groups, absence) => {
+          const key = absence.requestGroupId || absence.id;
+          groups.set(key, [...(groups.get(key) ?? []), absence]);
+          return groups;
+        }, new Map())
+        .values()
+    ).map((items) => [...items].sort((first, second) => first.date.localeCompare(second.date)));
     const myRepresentationRequests = groupedAbsences.filter(
       ([absence]) => absence.representativeUserId === activeUserId && absence.status === "wartet_vertreter"
     );
@@ -35949,14 +37839,18 @@ await addProjectLogbookEntry(
     const activeMyRequests = myRequests.filter(
       ([absence]) => absence.status === "wartet_vertreter" || absence.status === "wartet_geschaeftsfuehrung"
     );
-    const historicalAbsenceRequests = (canViewAllAbsenceHistory ? groupedAbsences : myRequests).filter(
-      ([absence]) => absence.status === "genehmigt" || absence.status === "abgelehnt"
+    const historyRequests = canViewAllAbsenceHistory
+      ? groupedAbsenceHistory
+      : groupedAbsenceHistory.filter(([absence]) => absence.userId === activeUserId);
+    const historicalAbsenceRequests = historyRequests.filter(
+      ([absence]) => absence.status === "genehmigt" || absence.status === "abgelehnt" || Boolean(absence.deletedAt)
     );
     const visibleMyRequests =
       absenceRequestView === "active" ? activeMyRequests : historicalAbsenceRequests;
     const isAllAbsenceHistoryView = absenceRequestView === "history" && canViewAllAbsenceHistory;
     const getAbsenceGroupSpan = (absence: AbsenceItem) => {
-      const dates = absences
+      const dateSource = absence.deletedAt ? absenceHistoryEntries : absences;
+      const dates = dateSource
         .filter((item) => (item.requestGroupId || item.id) === (absence.requestGroupId || absence.id))
         .map((item) => item.date)
         .sort((first, second) => first.localeCompare(second));
@@ -36112,7 +38006,7 @@ await addProjectLogbookEntry(
                 return (
                   <article
                     key={requestId}
-                    data-status={absence.status}
+                    data-status={absence.deletedAt ? "deleted" : absence.status}
                     data-highlighted={highlightedAbsenceRequestId === requestId}
                   >
                     <div className={styles.teamCalendarRequestTop}>
@@ -36127,7 +38021,7 @@ await addProjectLogbookEntry(
                           {absence.representativeName || "-"} · Übergabe-Aufgaben: {handoverTasks.length}
                         </span>
                       </div>
-                      <em>{absenceStatusLabel(absence.status)}</em>
+                      <em>{absence.deletedAt ? "Gelöscht" : absenceStatusLabel(absence.status)}</em>
                     </div>
 
                     {absence.status === "abgelehnt" && absence.rejectionReason ? (
@@ -39149,34 +41043,258 @@ await addProjectLogbookEntry(
             </div>
           </section>
         ) : firmSettingsTab === "deadlines" ? (
-          <section className={styles.settingsCard}>
+          <section className={`${styles.settingsCard} ${styles.deadlineSettingsCard}`}>
             <div className={styles.settingsHeader}>
               <div>
                 <h2>Zeitfristen</h2>
                 <p>
-                  Hier steuerst du automatische Fristen, die WorkPilot beim Erstellen von Dokumenten
-                  und Aufgaben nutzt.
+                  Hier steuerst du automatische Fristen getrennt nach fachlichen Bereichen.
                 </p>
               </div>
             </div>
-            <div className={styles.companySettingsForm}>
-              <label>
-                Angebote nachfassen nach
-                <input
-                  type="number"
-                  min="1"
-                  max="30"
-                  step="1"
-                  value={offerFollowUpWorkdays}
-                  onChange={(event) =>
-                    setOfferFollowUpWorkdays(
-                      Math.max(1, Math.min(30, Math.round(Number(event.target.value) || 5)))
-                    )
-                  }
-                />
-              </label>
-              <span className={styles.companySettingsHint}>Werkstage</span>
+            <div className={styles.deadlineSettingsLayout}>
+              <nav className={styles.deadlineSettingsNav} aria-label="Zeitfristen-Bereiche">
+                {[
+                  {
+                    id: "offers" as DeadlineSettingsSection,
+                    label: "Angebote & Vertrieb",
+                    description: "Nachfassfrist für finale Angebote",
+                    status: "Aktiv",
+                  },
+                  {
+                    id: "tasks" as DeadlineSettingsSection,
+                    label: "Aufgaben & Eskalation",
+                    description: "Archivierung erledigter Aufgaben",
+                    status: "Aktiv",
+                  },
+                  {
+                    id: "projectStatus" as DeadlineSettingsSection,
+                    label: "Projektstatus & Eskalation",
+                    description: "Fristen je Projektstatus",
+                    status: "Vorbereitet",
+                  },
+                  {
+                    id: "stampInterruptions" as DeadlineSettingsSection,
+                    label: "Stempelung & Unterbrechung",
+                    description: "Nachfassmeldung für offene Aufgaben",
+                    status: "Aktiv",
+                  },
+                  {
+                    id: "punctuality" as DeadlineSettingsSection,
+                    label: "Planung & Pünktlichkeit",
+                    description: "Start- und Endtoleranzen",
+                    status: "Aktiv",
+                  },
+                  {
+                    id: "billing" as DeadlineSettingsSection,
+                    label: "Abrechnung & Zahlungsfristen",
+                    description: "Rundung und Rechnungsfristen",
+                    status: "Aktiv",
+                  },
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={styles.deadlineSettingsNavItem}
+                    data-active={deadlineSettingsSection === item.id}
+                    data-status={item.status === "Aktiv" ? "active" : "planned"}
+                    onClick={() => setDeadlineSettingsSection(item.id)}
+                  >
+                    <span>
+                      <strong>{item.label}</strong>
+                      <small>{item.description}</small>
+                    </span>
+                    <em>{item.status}</em>
+                  </button>
+                ))}
+              </nav>
+              <div className={styles.deadlineSettingsDetail}>
+                <div className={styles.settingsHeader}>
+                  <div>
+                    <h2>
+                      {deadlineSettingsSection === "offers"
+                        ? "Angebote & Vertrieb"
+                        : deadlineSettingsSection === "tasks"
+                          ? "Aufgaben & Eskalation"
+                          : deadlineSettingsSection === "projectStatus"
+                            ? "Projektstatus & Eskalation"
+                            : deadlineSettingsSection === "stampInterruptions"
+                              ? "Stempelung & Unterbrechung"
+                        : deadlineSettingsSection === "punctuality"
+                                ? "Planung & Pünktlichkeit"
+                                : "Abrechnung & Zahlungsfristen"}
+                    </h2>
+                    <p>
+                      {deadlineSettingsSection === "offers"
+                        ? "Beim finalen Speichern eines Angebots wird eine zentrale Nachfass-Aufgabe angelegt."
+                        : deadlineSettingsSection === "tasks"
+                          ? "Erledigte Aufgaben bleiben noch sichtbar und werden danach automatisch archiviert."
+                          : deadlineSettingsSection === "stampInterruptions"
+                            ? "Die Aufgabe entsteht sofort. Diese Frist steuert die spätere Nachfassmeldung, falls sie offen bleibt."
+                            : deadlineSettingsSection === "punctuality"
+                              ? "Diese Werte steuern, ab wann Planstart und Planende als abweichend gelten."
+                          : "Dieser Bereich wird erst editierbar, wenn die zugehörige Logik angeschlossen ist."}
+                    </p>
+                  </div>
+                  {(["offers", "tasks", "stampInterruptions", "punctuality", "billing"] as DeadlineSettingsSection[]).includes(deadlineSettingsSection) && (
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      onClick={() => void saveDeadlineSettings()}
+                      disabled={isSavingDeadlineSettings}
+                    >
+                      {isSavingDeadlineSettings ? "Speichert..." : "Speichern"}
+                    </button>
+                  )}
+                </div>
+                {deadlineSettingsSection === "offers" ? (
+                  <div className={styles.companySettingsForm}>
+                    <label>
+                      Angebote nachfassen nach
+                      <input
+                        type="number"
+                        min="1"
+                        max="30"
+                        step="1"
+                        value={offerFollowUpWorkdays}
+                        onChange={(event) =>
+                          setOfferFollowUpWorkdays(
+                            Math.max(1, Math.min(30, Math.round(Number(event.target.value) || 5)))
+                          )
+                        }
+                      />
+                    </label>
+                    <span className={styles.companySettingsHint}>Werkstage</span>
+                  </div>
+                ) : deadlineSettingsSection === "tasks" ? (
+                  <div className={styles.companySettingsForm}>
+                    <label>
+                      Erledigte Aufgaben archivieren nach
+                      <input
+                        type="number"
+                        min="1"
+                        max="30"
+                        step="1"
+                        value={completedTaskArchiveDays}
+                        onChange={(event) =>
+                          setCompletedTaskArchiveDays(
+                            Math.max(1, Math.min(30, Math.round(Number(event.target.value) || 5)))
+                          )
+                        }
+                      />
+                    </label>
+                    <span className={styles.companySettingsHint}>Tage</span>
+                  </div>
+                ) : deadlineSettingsSection === "stampInterruptions" ? (
+                  <>
+                    <div className={styles.companySettingsForm}>
+                      <label>
+                        Projektverantwortliche/Führungskraft benachrichtigen nach
+                        <input
+                          type="number"
+                          min="1"
+                          max="30"
+                          step="1"
+                          value={interruptedWorkFollowUpDays}
+                          onChange={(event) =>
+                            setInterruptedWorkFollowUpDays(
+                              Math.max(1, Math.min(30, Math.round(Number(event.target.value) || 2)))
+                            )
+                          }
+                        />
+                      </label>
+                      <span className={styles.companySettingsHint}>Tage</span>
+                    </div>
+                    <div className={styles.companySettingsForm}>
+                      <label>
+                        Geschäftsführung benachrichtigen nach
+                        <input
+                          type="number"
+                          min="1"
+                          max="60"
+                          step="1"
+                          value={interruptedWorkManagementEscalationDays}
+                          onChange={(event) =>
+                            setInterruptedWorkManagementEscalationDays(
+                              Math.max(1, Math.min(60, Math.round(Number(event.target.value) || 7)))
+                            )
+                          }
+                        />
+                      </label>
+                      <span className={styles.companySettingsHint}>Tage</span>
+                    </div>
+                  </>
+                ) : deadlineSettingsSection === "punctuality" ? (
+                  <>
+                    <div className={styles.companySettingsForm}>
+                      <label>
+                        Start-Toleranz
+                        <input
+                          type="number"
+                          min="0"
+                          max="120"
+                          step="1"
+                          value={punctualityStartToleranceMinutes}
+                          onChange={(event) => {
+                            const nextValue = Number(event.target.value);
+                            setPunctualityStartToleranceMinutes(
+                              Math.max(0, Math.min(120, Math.round(Number.isFinite(nextValue) ? nextValue : 10)))
+                            );
+                          }}
+                        />
+                      </label>
+                      <span className={styles.companySettingsHint}>Minuten</span>
+                    </div>
+                    <div className={styles.companySettingsForm}>
+                      <label>
+                        Ende-Toleranz
+                        <input
+                          type="number"
+                          min="0"
+                          max="120"
+                          step="1"
+                          value={punctualityEndToleranceMinutes}
+                          onChange={(event) => {
+                            const nextValue = Number(event.target.value);
+                            setPunctualityEndToleranceMinutes(
+                              Math.max(0, Math.min(120, Math.round(Number.isFinite(nextValue) ? nextValue : 10)))
+                            );
+                          }}
+                        />
+                      </label>
+                      <span className={styles.companySettingsHint}>Minuten</span>
+                    </div>
+                  </>
+                ) : deadlineSettingsSection === "billing" ? (
+                  <div className={styles.companySettingsForm}>
+                    <label>
+                      Stundenabrechnung aufrunden auf
+                      <select
+                        value={String(hourlyBillingRoundingFactorHours)}
+                        onChange={(event) => setHourlyBillingRoundingFactorHours(Number(event.target.value))}
+                      >
+                        <option value="0.25">0,25 Std.</option>
+                        <option value="0.5">0,50 Std.</option>
+                        <option value="1">1,00 Std.</option>
+                      </select>
+                    </label>
+                    <span className={styles.companySettingsHint}>je Stempelung</span>
+                  </div>
+                ) : (
+                  <div className={styles.deadlinePlannedState}>
+                    <strong>Noch nicht editierbar</strong>
+                    <span>
+                      Die Eingabefelder werden hier erst eingebaut, wenn die Werte direkt in der
+                      jeweiligen Programmlogik wirken.
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
+            {deadlineSettingsMessage ? (
+              <p className={styles.companySettingsHint}>{deadlineSettingsMessage}</p>
+            ) : null}
+            {/*
             <div className={styles.plannedModuleGrid}>
               <article>
                 <strong>Finale Angebote</strong>
@@ -39196,6 +41314,7 @@ await addProjectLogbookEntry(
                 </span>
               </article>
             </div>
+            */}
           </section>
         ) : firmSettingsTab === "projectTypes" ? (
           <section className={styles.settingsCard}>
@@ -39593,6 +41712,7 @@ await addProjectLogbookEntry(
         item.number,
         item.name,
         item.category,
+        item.trade,
         item.unit,
         item.description,
         item.matchcode,
@@ -39741,6 +41861,7 @@ await addProjectLogbookEntry(
                 <th>Name</th>
                 <th>Typ</th>
                 <th>Kategorie</th>
+                <th>Gewerk</th>
                 <th>Einheit</th>
                 <th>Lieferant</th>
                 <th>Genutzt</th>
@@ -39753,13 +41874,14 @@ await addProjectLogbookEntry(
             </thead>
             <tbody>
               {pagedItems.length === 0 ? (
-                <tr><td colSpan={12}>Noch keine Einträge gefunden.</td></tr>
+                <tr><td colSpan={13}>Noch keine Einträge gefunden.</td></tr>
               ) : pagedItems.map((item) => (
                 <tr key={item.id} data-selected={!item.isActive ? "true" : undefined}>
                   <td><button className={styles.tableTextLink} onClick={() => openEditCatalogModal(item)}>{item.number}</button></td>
                   <td className={styles.title}>{item.name}</td>
                   <td>{item.type === "service" ? "Leistung" : item.type === "package" ? "Paket" : "Artikel"}</td>
                   <td>{item.category || "-"}</td>
+                  <td>{item.trade || "-"}</td>
                   <td>{item.unit}</td>
                   <td>{item.supplierName || "-"}</td>
                   <td>{item.usedCount}</td>
@@ -39879,6 +42001,7 @@ await addProjectLogbookEntry(
               <label>Nummer<input value={catalogDraft.number} onChange={(event) => updateCatalogDraft("number", event.target.value)} /></label>
               <label className={styles.catalogWideField}>Name<input value={catalogDraft.name} onChange={(event) => updateCatalogDraft("name", event.target.value)} /></label>
               <label>Kategorie<input value={catalogDraft.category} onChange={(event) => updateCatalogDraft("category", event.target.value)} /></label>
+              <label>Gewerk<select value={catalogDraft.trade} onChange={(event) => updateCatalogDraft("trade", event.target.value)}><option value="">Nicht zugeordnet</option>{projectTradeSelectOptions.map((trade) => <option key={trade} value={trade}>{trade}</option>)}</select></label>
               <label>Einheit<select value={catalogDraft.unit} onChange={(event) => updateCatalogDraft("unit", event.target.value)}>{getUnitOptions(catalogDraft.unit).map((unit) => <option key={unit} value={unit}>{unit}</option>)}</select></label>
               <label>Matchcode<input value={catalogDraft.matchcode} onChange={(event) => updateCatalogDraft("matchcode", event.target.value)} /></label>
               <label>EAN<input value={catalogDraft.ean} onChange={(event) => updateCatalogDraft("ean", event.target.value)} /></label>
@@ -40294,6 +42417,34 @@ await addProjectLogbookEntry(
         : eInvoiceReadiness && eInvoiceReadiness.missingRecommended.length > 0
           ? "warning"
           : "ready";
+    const selectedEInvoiceFormat = documentMailDraft.eInvoiceFormat ?? "pdf";
+    const selectedEInvoiceFormatLabel =
+      selectedEInvoiceFormat === "xrechnung"
+        ? "XRechnung XML"
+        : selectedEInvoiceFormat === "pdf-xrechnung"
+          ? "PDF + XRechnung"
+          : selectedEInvoiceFormat === "zugferd"
+            ? "ZUGFeRD PDF"
+            : "PDF";
+    const currentXrechnungValidation =
+      xrechnungValidationResult?.invoiceId === documentMailDraft.documentId ? xrechnungValidationResult : null;
+    const eInvoiceCheckLabel = currentXrechnungValidation
+      ? currentXrechnungValidation.validation.valid && currentXrechnungValidation.kositValidation?.valid
+        ? "Prüfung bestanden"
+        : "Prüfung offen"
+      : "Noch nicht geprüft";
+    const eInvoiceValidationActionLabel =
+      selectedEInvoiceFormat === "zugferd"
+        ? "ZUGFeRD prüfen"
+        : selectedEInvoiceFormat === "pdf-xrechnung"
+          ? "E-Rechnung prüfen"
+          : "XRechnung prüfen";
+    const eInvoiceValidationLoadingLabel =
+      selectedEInvoiceFormat === "zugferd"
+        ? "ZUGFeRD wird geprüft..."
+        : selectedEInvoiceFormat === "pdf-xrechnung"
+          ? "E-Rechnung wird geprüft..."
+          : "XRechnung wird geprüft...";
 
     return (
       <div className={styles.modalOverlay}>
@@ -40306,7 +42457,7 @@ await addProjectLogbookEntry(
               </p>
             </div>
             <button className={styles.iconButton} type="button" onClick={() => setDocumentMailDraft(null)}>
-              -
+              &times;
             </button>
           </div>
           <div className={styles.standardModalBody}>
@@ -40407,7 +42558,7 @@ await addProjectLogbookEntry(
                   <small>Hauptdokument der E-Mail</small>
                 </span>
               </label>
-              {isInvoiceMail && eInvoiceReadiness ? (
+              {isInvoiceMail && eInvoiceReadiness && eInvoiceStatus === "blocked" ? (
                 <section className={`${styles.standardFormWide} ${styles.eInvoiceReadinessCard}`} data-status={eInvoiceStatus}>
                   <div className={styles.eInvoiceReadinessHeader}>
                     <div>
@@ -40415,16 +42566,9 @@ await addProjectLogbookEntry(
                       <strong>XRechnung und ZUGFeRD vorbereiten</strong>
                     </div>
                     <em>
-                      {eInvoiceStatus === "ready"
-                        ? "Basisdaten vollständig"
-                        : eInvoiceStatus === "warning"
-                          ? "Stammdaten prüfen"
-                          : "Nicht bereit"}
+                      Nicht bereit
                     </em>
                   </div>
-                  <p>
-                    Diese Prüfung verändert den Versand nicht. Sie zeigt, ob die Rechnung strukturell für elektronische Rechnungsformate vorbereitet ist.
-                  </p>
                   {eInvoiceReadiness.recipientContact ? (
                     <div className={styles.eInvoiceReadinessMeta}>
                       <span>Rechnungsempfänger</span>
@@ -40450,27 +42594,34 @@ await addProjectLogbookEntry(
                       </ul>
                     </details>
                   ) : null}
-                  <small>Die eigentliche XML-/ZUGFeRD-Datei wird im nächsten Ausbauschritt angebunden.</small>
+                  <small>Stammdatenstatus für elektronische Rechnungen. Der Versand bleibt unverändert, bis ein Format ausgewählt wird.</small>
                 </section>
               ) : null}
               {isInvoiceMail ? (
                 <section className={`${styles.standardFormWide} ${styles.eInvoiceFormatCard}`}>
-                  <div>
-                    <span>E-Rechnungsformat</span>
-                    <strong>Versandformat vorbereiten</strong>
+                  <div className={styles.eInvoiceFormatHeader}>
+                    <div>
+                      <span>E-Rechnungsformat</span>
+                      <strong>Versandformat vorbereiten</strong>
+                    </div>
+                    <div className={styles.eInvoiceStatusPills}>
+                      <span>{selectedEInvoiceFormatLabel}</span>
+                      <span data-state={currentXrechnungValidation?.kositValidation?.valid ? "ok" : "neutral"}>
+                        {eInvoiceCheckLabel}
+                      </span>
+                    </div>
                   </div>
                   <div className={styles.eInvoiceFormatOptions}>
                     {[
                       ["pdf", "PDF", "Aktiv"],
-                      ["xrechnung", "XRechnung XML", "Vorbereitet"],
-                      ["zugferd", "ZUGFeRD PDF", "Vorbereitet"],
-                      ["pdf-xrechnung", "PDF + XRechnung", "Vorbereitet"],
+                      ["xrechnung", "XRechnung XML", "Aktiv"],
+                      ["zugferd", "ZUGFeRD PDF", "Aktiv"],
+                      ["pdf-xrechnung", "PDF + XRechnung", "Aktiv"],
                     ].map(([value, label, state]) => (
                       <button
                         key={value}
                         type="button"
                         data-active={(documentMailDraft.eInvoiceFormat ?? "pdf") === value}
-                        data-disabled={value !== "pdf"}
                         onClick={() =>
                           setDocumentMailDraft((current) =>
                             current ? { ...current, eInvoiceFormat: value as EInvoiceFormat } : current
@@ -40482,66 +42633,83 @@ await addProjectLogbookEntry(
                       </button>
                     ))}
                   </div>
-                  {(documentMailDraft.eInvoiceFormat ?? "pdf") !== "pdf" ? (
-                    <p>Dieses Format ist fachlich vorbereitet. Der Versand bleibt bis zur Generator-Anbindung beim PDF.</p>
+                  {documentMailDraft.eInvoiceFormat === "xrechnung" ? (
+                    <p>Beim Versand wird die XRechnung als XML-Anhang erzeugt.</p>
+                  ) : documentMailDraft.eInvoiceFormat === "pdf-xrechnung" ? (
+                    <p>Beim Versand werden PDF und XRechnung-XML angehängt.</p>
+                  ) : documentMailDraft.eInvoiceFormat === "zugferd" ? (
+                    <p>Beim Versand wird ein PDF mit eingebetteter Rechnungs-XML erzeugt.</p>
                   ) : null}
-                  <button
-                    type="button"
-                    className={styles.secondaryButton}
-                    disabled={isValidatingXrechnung}
-                    onClick={() => void validateDocumentMailXRechnung(documentMailDraft)}
-                  >
-                    {isValidatingXrechnung ? "XRechnung wird geprüft..." : "XRechnung prüfen"}
-                  </button>
-                  {xrechnungValidationResult?.invoiceId === documentMailDraft.documentId ? (
+                  <div className={styles.eInvoiceActionRow}>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      disabled={isValidatingXrechnung}
+                      onClick={() => void validateDocumentMailXRechnung(documentMailDraft)}
+                    >
+                      {isValidatingXrechnung ? eInvoiceValidationLoadingLabel : eInvoiceValidationActionLabel}
+                    </button>
+                    {["xrechnung", "pdf-xrechnung"].includes(documentMailDraft.eInvoiceFormat ?? "") ? (
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        disabled={eInvoiceStatus === "blocked"}
+                        onClick={() =>
+                          window.open(getInvoiceXrechnungUrl(documentMailDraft.documentId), "_blank")
+                        }
+                      >
+                        XML herunterladen
+                      </button>
+                    ) : null}
+                    {documentMailDraft.eInvoiceFormat === "zugferd" ? (
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        disabled={eInvoiceStatus === "blocked"}
+                        onClick={() =>
+                          window.open(getInvoiceZugferdUrl(documentMailDraft.documentId), "_blank")
+                        }
+                      >
+                        ZUGFeRD PDF testen
+                      </button>
+                    ) : null}
+                  </div>
+                  {currentXrechnungValidation ? (
                     <div className={styles.eInvoiceReadinessMeta}>
                       <span>Prüfstatus</span>
                       <strong>
-                        {xrechnungValidationResult.validation.valid
+                        {currentXrechnungValidation.validation.valid
                           ? "Technische Mindestprüfung bestanden"
                           : "Validierungsfehler gefunden"}
                       </strong>
                       <span>KoSIT</span>
                       <strong>
-                        {xrechnungValidationResult.kositValidation?.available
-                          ? xrechnungValidationResult.kositValidation.valid
+                        {currentXrechnungValidation.kositValidation?.available
+                          ? currentXrechnungValidation.kositValidation.valid
                             ? "Bestanden"
                             : "Nicht bestanden"
                           : "Nicht konfiguriert"}
                       </strong>
                     </div>
                   ) : null}
-                  {xrechnungValidationResult?.invoiceId === documentMailDraft.documentId &&
-                  xrechnungValidationResult.kositValidation?.message ? (
-                    <p>{xrechnungValidationResult.kositValidation.message}</p>
+                  {currentXrechnungValidation?.kositValidation?.message ? (
+                    <p>{currentXrechnungValidation.kositValidation.message}</p>
                   ) : null}
-                  {xrechnungValidationResult?.invoiceId === documentMailDraft.documentId &&
-                  xrechnungValidationResult.validation.issues.length ? (
+                  {currentXrechnungValidation?.validation.issues.length ? (
                     <ul>
-                      {xrechnungValidationResult.validation.issues.map((issue) => (
+                      {currentXrechnungValidation.validation.issues.map((issue) => (
                         <li key={`${issue.code}-${issue.message}`}>{issue.message}</li>
                       ))}
                     </ul>
                   ) : null}
-                  {xrechnungValidationResult?.invoiceId === documentMailDraft.documentId &&
-                  xrechnungValidationResult.kositValidation?.issues.length ? (
+                  {currentXrechnungValidation &&
+                  !currentXrechnungValidation.kositValidation?.valid &&
+                  currentXrechnungValidation.kositValidation?.issues.length ? (
                     <ul>
-                      {xrechnungValidationResult.kositValidation.issues.map((issue) => (
+                      {currentXrechnungValidation.kositValidation.issues.map((issue) => (
                         <li key={`kosit-${issue.message}`}>{issue.message}</li>
                       ))}
                     </ul>
-                  ) : null}
-                  {["xrechnung", "pdf-xrechnung"].includes(documentMailDraft.eInvoiceFormat ?? "") ? (
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      disabled={eInvoiceStatus === "blocked"}
-                      onClick={() =>
-                        window.open(getInvoiceXrechnungUrl(documentMailDraft.documentId), "_blank")
-                      }
-                    >
-                      XRechnung XML herunterladen
-                    </button>
                   ) : null}
                 </section>
               ) : null}
@@ -43198,7 +45366,6 @@ await addProjectLogbookEntry(
               const children: Array<{ id: AppTab; label: string }> = [
                 { id: "batchBilling", label: "Stapelabrechnung" },
                 { id: "documents", label: "Dokumente" },
-                { id: "documentGaeb", label: "Ausschreibungen (GAEB)" },
               ];
               const isActiveGroup =
                 activeTab === tab || children.some((item) => item.id === activeTab);
@@ -43258,8 +45425,6 @@ await addProjectLogbookEntry(
                       { id: "articles", label: "Artikel" },
                       { id: "services", label: "Leistungen" },
                       { id: "packages", label: "Pakete" },
-                      { id: "salesPrices", label: "Verkaufspreise" },
-                      { id: "datanorm", label: "Datanorm" },
                     ];
               const isActiveGroup =
                 activeTab === tab || children.some((item) => item.id === activeTab);
@@ -46015,6 +48180,10 @@ await addProjectLogbookEntry(
                         onChange={(event) => {
                           setPlanningEntryProjectSearch(event.target.value);
                           setPlanningEntryProjectId("");
+                          setPlanningEntryTrade("");
+                          setPlanningEntryBillingCatalogItemId("");
+                          setPlanningEntryHasAdditionalEmployees("");
+                          setPlanningEntryAdditionalUserIds([]);
                           setPlanningEntryCustomer(event.target.value);
                           setIsPlanningEntryProjectSearchOpen(true);
                           if (!hasLoadedHeroProjects && !isHeroProjectsLoading) void loadHeroProjects();
@@ -46066,17 +48235,138 @@ await addProjectLogbookEntry(
                 </label>
                 {(() => {
                   const selectedProject = heroProjects.find((project) => project.id === planningEntryProjectId);
+                  if (!selectedProject || !isHourlyRecurringProject(selectedProject)) return null;
+                  const hourlyServiceOptions = getHourlyPlanningServiceOptions(planningEntryTrade);
+                  const additionalUserOptions = getAdditionalPlanningUserOptions();
+
+                  return (
+                    <section className={`${styles.planningRecurrencePanel} ${styles.hourlyPlanningPanel} ${styles.fullWidth}`}>
+                      <div>
+                        <strong>Stundenabrechnung</strong>
+                        <span>Diese Angaben steuern spaeter Stempelung, Rechnungsposition und Forecast.</span>
+                      </div>
+                      <div className={styles.hourlyPlanningGrid}>
+                        <label
+                          className={styles.requiredPlanningField}
+                          data-required-missing={!planningEntryTrade}
+                        >
+                          Termin-Gewerk
+                          <select
+                            value={planningEntryTrade}
+                            onChange={(event) => {
+                              setPlanningEntryTrade(event.target.value);
+                              setPlanningEntryBillingCatalogItemId("");
+                            }}
+                          >
+                            <option value="">Gewerk auswaehlen</option>
+                            {projectTradeSelectOptions.map((trade) => (
+                              <option key={trade} value={trade}>
+                                {trade}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label
+                          className={styles.requiredPlanningField}
+                          data-required-missing={!planningEntryBillingCatalogItemId}
+                        >
+                          Abrechnungsleistung
+                          <select
+                            value={planningEntryBillingCatalogItemId}
+                            onChange={(event) => setPlanningEntryBillingCatalogItemId(event.target.value)}
+                            disabled={!planningEntryTrade}
+                          >
+                            <option value="">
+                              {planningEntryTrade
+                                ? "Leistung auswaehlen"
+                                : "Erst Gewerk auswaehlen"}
+                            </option>
+                            {hourlyServiceOptions.map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.name} | {formatMoney(item.salesPrice)} / Std.
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label
+                          className={styles.requiredPlanningField}
+                          data-required-missing={!planningEntryHasAdditionalEmployees}
+                        >
+                          Weitere Mitarbeiter?
+                          <select
+                            value={planningEntryHasAdditionalEmployees}
+                            onChange={(event) => {
+                              const nextValue = event.target.value as "" | "yes" | "no";
+                              setPlanningEntryHasAdditionalEmployees(nextValue);
+                              if (nextValue !== "yes") setPlanningEntryAdditionalUserIds([]);
+                            }}
+                          >
+                            <option value="">Bitte auswaehlen</option>
+                            <option value="no">Nein</option>
+                            <option value="yes">Ja</option>
+                          </select>
+                        </label>
+                      </div>
+                      {planningEntryTrade && hourlyServiceOptions.length === 0 ? (
+                        <p className={styles.inlineHint}>
+                          Fuer dieses Gewerk ist noch keine aktive Stundenleistung mit Verkaufspreis hinterlegt.
+                        </p>
+                      ) : null}
+                      {planningEntryHasAdditionalEmployees === "yes" ? (
+                        <div className={`${styles.planningWeekdayPicker} ${styles.hourlyPlanningEmployeePicker}`}>
+                          <span>Weitere Mitarbeiter</span>
+                          <div>
+                            {additionalUserOptions.length === 0 ? (
+                              <button type="button" disabled>
+                                Keine weiteren Mitarbeiter in dieser Gruppe
+                              </button>
+                            ) : (
+                              additionalUserOptions.map((user) => (
+                                <button
+                                  key={user.id}
+                                  type="button"
+                                  data-active={planningEntryAdditionalUserIds.includes(user.id)}
+                                  onClick={() =>
+                                    setPlanningEntryAdditionalUserIds((current) =>
+                                      current.includes(user.id)
+                                        ? current.filter((id) => id !== user.id)
+                                        : [...current, user.id]
+                                    )
+                                  }
+                                >
+                                  {user.name}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      ) : null}
+                    </section>
+                  );
+                })()}
+                {(() => {
+                  const selectedProject = heroProjects.find((project) => project.id === planningEntryProjectId);
                   const monthKey = planningEntryDate.slice(0, 7);
                   const monthBudgetHours = selectedProject ? getProjectBudgetAllocationHours(selectedProject, monthKey) : 0;
                   if (!selectedProject || monthBudgetHours <= 0) return null;
 
-                  const currentMinutes = getPlanningNetMinutesBetween(
-                    planningEntryStartTime,
-                    planningEntryEndTime,
-                    getUserBreakWindowForDate(
-                      users.find((user) => user.id === planningEntryUserId),
-                      planningEntryDate
-                    )
+                  const previewUsers = [
+                    users.find((user) => user.id === planningEntryUserId),
+                    ...users.filter(
+                      (user) =>
+                        planningEntryHasAdditionalEmployees === "yes" &&
+                        planningEntryAdditionalUserIds.includes(user.id)
+                    ),
+                  ].filter(Boolean) as UserOption[];
+                  const currentMinutes = previewUsers.reduce(
+                    (sum, user) =>
+                      sum +
+                      getPlanningNetMinutesBetween(
+                        planningEntryStartTime,
+                        planningEntryEndTime,
+                        getUserBreakWindowForDate(user, planningEntryDate)
+                      ),
+                    0
                   );
                   const alreadyPlannedMinutes = planningEntries
                     .filter(
@@ -46102,7 +48392,8 @@ await addProjectLogbookEntry(
                       </strong>
                       <small>
                         Bereits {formatHours(alreadyPlannedMinutes / 60)} Std. | Dieser Termin{" "}
-                        {formatHours(currentMinutes / 60)} Std. | Danach{" "}
+                        {formatHours(currentMinutes / 60)} Std.
+                        {previewUsers.length > 1 ? ` (${previewUsers.length} Mitarbeiter)` : ""} | Danach{" "}
                         {overAfterSaveHours > 0
                           ? `${formatHours(overAfterSaveHours)} Std. überplant`
                           : `${formatHours(remainingAfterSaveHours)} Std. offen`}
@@ -48944,6 +51235,75 @@ await addProjectLogbookEntry(
                   />
                 </label>
               </div>
+              {manualProjectTimeNeedsBillingContext ? (
+                <div className={styles.stampTradePicker}>
+                  <label
+                    className={styles.requiredPlanningField}
+                    data-required-missing={!manualProjectTimeTrade.trim() ? "true" : "false"}
+                  >
+                    Gewerk fuer diesen Zeiteintrag *
+                    <select
+                      value={manualProjectTimeTrade}
+                      onChange={(event) => {
+                        setManualProjectTimeTrade(event.target.value);
+                        setManualProjectTimeBillingCatalogItemId("");
+                        setManualProjectTimeBillingCatalogItemLabel("");
+                        setStampEditError("");
+                      }}
+                    >
+                      <option value="">Bitte auswaehlen</option>
+                      {manualProjectTimeTrade && !projectTradeSelectOptions.includes(manualProjectTimeTrade) && (
+                        <option value={manualProjectTimeTrade}>{manualProjectTimeTrade}</option>
+                      )}
+                      {projectTradeSelectOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label
+                    className={styles.requiredPlanningField}
+                    data-required-missing={!manualProjectTimeBillingCatalogItemId ? "true" : "false"}
+                  >
+                    Abrechnungsleistung *
+                    <select
+                      value={manualProjectTimeBillingCatalogItemId}
+                      disabled={!manualProjectTimeTrade}
+                      onChange={(event) => {
+                        const nextItemId = event.target.value;
+                        const nextItem = catalogItems.find((item) => item.id === nextItemId);
+                        setManualProjectTimeBillingCatalogItemId(nextItemId);
+                        setManualProjectTimeBillingCatalogItemLabel(
+                          nextItem ? getPlanningBillingCatalogItemLabel(nextItem) : ""
+                        );
+                        setStampEditError("");
+                      }}
+                    >
+                      <option value="">
+                        {manualProjectTimeTrade ? "Leistung auswaehlen" : "Erst Gewerk auswaehlen"}
+                      </option>
+                      {manualProjectTimeBillingCatalogItemId &&
+                        selectedManualProjectTimeBillingCatalogItemLabel &&
+                        !manualProjectTimeServiceOptions.some(
+                          (item) => item.id === manualProjectTimeBillingCatalogItemId
+                        ) && (
+                          <option value={manualProjectTimeBillingCatalogItemId}>
+                            {selectedManualProjectTimeBillingCatalogItemLabel}
+                          </option>
+                        )}
+                      {manualProjectTimeServiceOptions.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.number} | {item.name} ({formatMoney(item.salesPrice)} / Std.)
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <p>
+                    Diese Zuordnung wird fuer Forecast und spaetere Rechnungspositionen verwendet.
+                  </p>
+                </div>
+              ) : null}
               <label>
                 Kommentar
                 <textarea
@@ -49153,25 +51513,37 @@ await addProjectLogbookEntry(
               )}
 
               {stampModalMode === "stop" && (
-                <label>
-                  Möchtest du noch etwas ergänzen?
+                <label data-required-missing={stampCompletionState === "interrupted" && !stampComment.trim()}>
+                  {stampCompletionState === "interrupted"
+                    ? "Warum wurde die Arbeit unterbrochen? *"
+                    : "Möchtest du noch etwas ergänzen?"}
                   <textarea
                     rows={4}
                     value={stampComment}
                     onChange={(event) => setStampComment(event.target.value)}
-                    placeholder="Optional: Ergänzung zur abgeschlossenen Tätigkeit"
+                    placeholder={
+                      stampCompletionState === "interrupted"
+                        ? "Bitte kurz begründen, warum die Arbeit nicht abgeschlossen werden konnte."
+                        : "Optional: Ergänzung zur abgeschlossenen Tätigkeit"
+                    }
                   />
                 </label>
               )}
 
               {stampModalMode === "change" && (
-                <label>
-                  Optional: Ergänzung zur abgeschlossenen Tätigkeit
+                <label data-required-missing={stampCompletionState === "interrupted" && !stampComment.trim()}>
+                  {stampCompletionState === "interrupted"
+                    ? "Warum wurde die bisherige Arbeit unterbrochen? *"
+                    : "Optional: Ergänzung zur abgeschlossenen Tätigkeit"}
                   <textarea
                     rows={3}
                     value={stampComment}
                     onChange={(event) => setStampComment(event.target.value)}
-                    placeholder="Nur ausfüllen, wenn zur bisherigen Tätigkeit noch etwas fehlt."
+                    placeholder={
+                      stampCompletionState === "interrupted"
+                        ? "Bitte kurz begründen, warum die bisherige Tätigkeit nicht abgeschlossen werden konnte."
+                        : "Nur ausfüllen, wenn zur bisherigen Tätigkeit noch etwas fehlt."
+                    }
                   />
                 </label>
               )}
@@ -49337,6 +51709,7 @@ await addProjectLogbookEntry(
                         ) : null}
                         {(recommendedEntry ? [recommendedEntry] : []).map((entry) => {
                           const entryStatus = getStampPlanningEntryStatus(entry);
+                          const billingDetails = getPlanningEntryStampBillingDetails(entry);
 
                           return (
                             <button
@@ -49355,6 +51728,7 @@ await addProjectLogbookEntry(
                               <small>
                                 {entry.projectId ? getPlanningEntryStampLabel(entry) : "Ohne Projekt"} - Vorschlag
                               </small>
+                              {billingDetails ? <small>{billingDetails}</small> : null}
                             </button>
                           );
                         })}
@@ -49364,6 +51738,7 @@ await addProjectLogbookEntry(
                             <div>
                               {otherPlanningEntries.map((entry) => {
                                 const entryStatus = getStampPlanningEntryStatus(entry);
+                                const billingDetails = getPlanningEntryStampBillingDetails(entry);
 
                                 return (
                                   <button
@@ -49381,6 +51756,7 @@ await addProjectLogbookEntry(
                                     <small>
                                       {entry.projectId ? getPlanningEntryStampLabel(entry) : "Ohne Projekt"}
                                     </small>
+                                    {billingDetails ? <small>{billingDetails}</small> : null}
                                   </button>
                                 );
                               })}
@@ -49404,6 +51780,10 @@ await addProjectLogbookEntry(
                       setIsStampProjectSearchOpen(true);
                       setStampTrade("");
                       setStampTradeConfirmed(false);
+                      setStampPlanningEntryId("");
+                      setStampPlanningBillingGroupId("");
+                      setStampBillingCatalogItemId("");
+                      setStampBillingCatalogItemLabel("");
                     }}
                   >
                     Anderes Projekt
@@ -49416,6 +51796,10 @@ await addProjectLogbookEntry(
                       setIsStampManualProjectPickerOpen(false);
                       setStampTrade("");
                       setStampTradeConfirmed(false);
+                      setStampPlanningEntryId("");
+                      setStampPlanningBillingGroupId("");
+                      setStampBillingCatalogItemId("");
+                      setStampBillingCatalogItemLabel("");
                     }}
                   >
                     Ich bin unproduktiv
@@ -49501,6 +51885,10 @@ await addProjectLogbookEntry(
                         setStampProjectId("");
                         setStampTrade("");
                         setStampTradeConfirmed(false);
+                        setStampPlanningEntryId("");
+                        setStampPlanningBillingGroupId("");
+                        setStampBillingCatalogItemId("");
+                        setStampBillingCatalogItemLabel("");
                         setStampError("");
                         setIsStampProjectSearchOpen(true);
                       }}
@@ -49519,6 +51907,10 @@ await addProjectLogbookEntry(
                           setStampProjectSearch("");
                           setStampTrade("");
                           setStampTradeConfirmed(false);
+                          setStampPlanningEntryId("");
+                          setStampPlanningBillingGroupId("");
+                          setStampBillingCatalogItemId("");
+                          setStampBillingCatalogItemLabel("");
                           setIsStampProjectSearchOpen(true);
                         }}
                       >
@@ -49538,10 +51930,20 @@ await addProjectLogbookEntry(
                             type="button"
                             data-active={stampProjectId === project.id}
                             onClick={() => {
+                              const matchingTodayPlanningEntry = isHourlyRecurringProject(project)
+                                ? getBestTodayStampPlanningEntryForProject(project.id)
+                                : null;
+                              const matchingTrade = matchingTodayPlanningEntry?.planningTrade.trim() || "";
+                              const matchingBillingLabel = matchingTodayPlanningEntry?.billingCatalogItemLabel.trim() || "";
                               setStampProjectId(project.id);
                               setStampProjectSearch(`${project.projectNumber} | ${project.title}`);
-                              setStampTrade(project.trade || "");
-                              setStampTradeConfirmed(false);
+                              setStampTrade(matchingTrade || project.trade || "");
+                              setStampTradeConfirmed(Boolean(matchingTrade));
+                              setStampPlanningEntryId(matchingTodayPlanningEntry ? matchingTodayPlanningEntry.id : "");
+                              setStampPlanningBillingGroupId(matchingTodayPlanningEntry?.billingGroupId || "");
+                              setStampBillingCatalogItemId(matchingTodayPlanningEntry?.billingCatalogItemId || "");
+                              setStampBillingCatalogItemLabel(matchingBillingLabel);
+                              if (isHourlyRecurringProject(project) && catalogItems.length === 0) void loadCatalogItems();
                               setStampError("");
                               setIsStampProjectSearchOpen(false);
                             }}
@@ -49566,6 +51968,10 @@ await addProjectLogbookEntry(
                       onChange={(event) => {
                         setStampTrade(event.target.value);
                         setStampTradeConfirmed(Boolean(event.target.value));
+                        setStampPlanningEntryId("");
+                        setStampPlanningBillingGroupId("");
+                        setStampBillingCatalogItemId("");
+                        setStampBillingCatalogItemLabel("");
                         setStampError("");
                       }}
                     >
@@ -49576,6 +51982,34 @@ await addProjectLogbookEntry(
                       {projectTradeSelectOptions.map((option) => (
                         <option key={option} value={option}>
                           {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Abrechnungsleistung *
+                    <select
+                      value={stampBillingCatalogItemId}
+                      disabled={!stampTrade}
+                      onChange={(event) => {
+                        const nextItemId = event.target.value;
+                        const nextItem = catalogItems.find((item) => item.id === nextItemId);
+                        setStampBillingCatalogItemId(nextItemId);
+                        setStampBillingCatalogItemLabel(nextItem ? getPlanningBillingCatalogItemLabel(nextItem) : "");
+                        setStampError("");
+                      }}
+                    >
+                      <option value="">
+                        {stampTrade ? "Leistung auswaehlen" : "Erst Gewerk auswaehlen"}
+                      </option>
+                      {stampBillingCatalogItemId &&
+                        selectedStampBillingCatalogItemLabel &&
+                        !selectedStampHourlyServiceOptions.some((item) => item.id === stampBillingCatalogItemId) && (
+                          <option value={stampBillingCatalogItemId}>{selectedStampBillingCatalogItemLabel}</option>
+                        )}
+                      {selectedStampHourlyServiceOptions.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.number} | {item.name} ({formatMoney(item.salesPrice)} / Std.)
                         </option>
                       ))}
                     </select>
@@ -49937,6 +52371,131 @@ await addProjectLogbookEntry(
 
       {renderFinalizeInvoiceConfirmModal()}
       {renderDocumentMailModal()}
+      {employeeKpiDetail && employeeKpiDetailUser ? (
+        <div className={styles.overlay} onClick={closeEmployeeKpiDetail}>
+          <div
+            className={`${styles.standardModal} ${styles.employeeKpiDetailModal}`}
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={styles.standardModalHeader}>
+              <div>
+                <h2>{getEmployeeKpiMetricLabel(employeeKpiDetail.metric)}</h2>
+                <p>
+                  {employeeKpiDetailUser.user.name} · {formatProjectDate(employeeKpiDetailStartDateKey)} bis{" "}
+                  {formatProjectDate(employeeKpiDetailEndDateKey)}
+                </p>
+              </div>
+              <button className={styles.iconButton} type="button" onClick={closeEmployeeKpiDetail}>
+                &times;
+              </button>
+            </div>
+            <div className={styles.standardModalBody}>
+              <div className={styles.employeeKpiPeriodFilter}>
+                <label>
+                  Zeitraum
+                  <select
+                    value={employeeKpiDetailPeriodPreset}
+                    onChange={(event) => setEmployeeKpiDetailPeriodPreset(event.target.value as ReportPeriodPreset)}
+                  >
+                    <option value="currentMonth">Aktueller Monat</option>
+                    <option value="previousMonth">Vormonat</option>
+                    <option value="currentYear">Aktuelles Jahr</option>
+                    <option value="currentFiscalYear">Aktuelles Geschäftsjahr</option>
+                    <option value="previousFiscalYear">Vorheriges Geschäftsjahr</option>
+                    <option value="last12">Letzte 12 Monate</option>
+                    <option value="custom">Individuell</option>
+                  </select>
+                </label>
+                <label>
+                  Von
+                  <input
+                    type="date"
+                    value={
+                      employeeKpiDetailPeriodPreset === "custom"
+                        ? employeeKpiDetailCustomStartDate
+                        : employeeKpiDetailStartDateKey
+                    }
+                    disabled={employeeKpiDetailPeriodPreset !== "custom"}
+                    onChange={(event) => setEmployeeKpiDetailCustomStartDate(event.target.value)}
+                  />
+                </label>
+                <label>
+                  Bis
+                  <input
+                    type="date"
+                    value={
+                      employeeKpiDetailPeriodPreset === "custom"
+                        ? employeeKpiDetailCustomEndDate
+                        : employeeKpiDetailEndDateKey
+                    }
+                    disabled={employeeKpiDetailPeriodPreset !== "custom"}
+                    onChange={(event) => setEmployeeKpiDetailCustomEndDate(event.target.value)}
+                  />
+                </label>
+                <span>Aktiv: {employeeKpiDetailPeriodLabel}</span>
+              </div>
+              <div className={styles.employeeKpiDetailFilters}>
+                <label>
+                  Suche
+                  <input
+                    value={employeeKpiDetailSearch}
+                    onChange={(event) => setEmployeeKpiDetailSearch(event.target.value)}
+                    placeholder="Projekt, Datum, Status suchen..."
+                  />
+                </label>
+                <label>
+                  Status
+                  <select
+                    value={employeeKpiDetailStatus}
+                    onChange={(event) => setEmployeeKpiDetailStatus(event.target.value)}
+                  >
+                    {getEmployeeKpiStatusOptions(employeeKpiDetail.metric).map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className={styles.employeeKpiDetailTableWrap}>
+                <table className={`${styles.table} ${styles.employeeKpiDetailTable}`}>
+                  <thead>
+                    <tr>
+                      {employeeKpiDetailHeaders.map((header) => (
+                        <th key={header}>{header}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {employeeKpiDetailRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={employeeKpiDetailHeaders.length}>Keine passenden Detaildaten gefunden.</td>
+                      </tr>
+                    ) : (
+                      employeeKpiDetailRows.map((row) => (
+                        <tr key={row.id}>
+                          {row.cells.map((cell, index) => (
+                            <td key={`${row.id}-${index}`}>{cell}</td>
+                          ))}
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className={styles.standardModalFooter}>
+              <div className={styles.modalActions}>
+                <button type="button" className={styles.secondaryButton} onClick={closeEmployeeKpiDetail}>
+                  Schließen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {isModalOpen && (
         <div className={styles.overlay} onClick={closeTaskModal}>
@@ -50058,7 +52617,10 @@ await addProjectLogbookEntry(
                 if (isTaskEditingLocked()) showTaskAcceptanceRequiredMessage();
               }}
             >
-              <label className={styles.standardFormWide}>
+              <label
+                className={`${styles.standardFormWide} ${styles.requiredPlanningField}`}
+                data-required-missing={!titel.trim()}
+              >
                 Titel
                 <input
                   value={titel}
@@ -50067,7 +52629,10 @@ await addProjectLogbookEntry(
                 />
               </label>
 
-              <label className={styles.standardFormWide}>
+              <label
+                className={`${styles.standardFormWide} ${styles.requiredPlanningField}`}
+                data-required-missing={!beschreibung.trim()}
+              >
                 Beschreibung
                 <textarea
                   rows={4}
@@ -50122,7 +52687,10 @@ await addProjectLogbookEntry(
                 </select>
               </label>
 
-              <label>
+              <label
+                className={styles.requiredPlanningField}
+                data-required-missing={!normalizeDeadlineInput(faelligkeit)}
+              >
                 Deadline
                 <input
                   type="datetime-local"
@@ -50133,9 +52701,7 @@ await addProjectLogbookEntry(
                   onFocus={() => {
                     if (isTaskEditingLocked()) {
                       showTaskAcceptanceRequiredMessage();
-                      return;
                     }
-                    if (!faelligkeit) setFaelligkeit(getDefaultDeadlineValue());
                   }}
                 />
               </label>
@@ -50144,7 +52710,7 @@ await addProjectLogbookEntry(
                 Kunde
                 <select
                   value={kunde}
-                  disabled={isTaskEditingLocked()}
+                  disabled={isTaskEditingLocked() || isTaskProjectLocked}
                   onChange={(event) => selectCustomer(event.target.value)}
                 >
                   <option value="">Kein Kunde ausgewählt</option>
@@ -50160,7 +52726,7 @@ await addProjectLogbookEntry(
                 Projekt
                 <select
                   value={selectedHeroProjectId}
-                  disabled={isTaskEditingLocked() || !kunde}
+                  disabled={isTaskEditingLocked() || isTaskProjectLocked || !kunde}
                   onChange={(event) => selectHeroProject(event.target.value)}
                 >
                   <option value="">
@@ -50256,6 +52822,83 @@ await addProjectLogbookEntry(
                 </section>
               )}
 
+              {!editingTask && (
+                <section className={`${styles.taskParticipantsBox} ${styles.standardFormWide}`}>
+                  <div className={styles.timeHeader}>
+                    <div>
+                      <h3>Aufgabenbeteiligte</h3>
+                      <p>
+                        {newTaskParticipantUserIds.length} Beteiligte. Zuständig bleibt{" "}
+                        {users.find((user) => user.id === zustaendigId)?.name || "die ausgewählte Person"}.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className={styles.taskParticipantAdd}>
+                    <select
+                      value={taskParticipantUserId}
+                      onChange={(event) => setTaskParticipantUserId(event.target.value)}
+                    >
+                      <option value="">Kollegen hinzufügen</option>
+                      {users
+                        .filter(
+                          (user) =>
+                            user.isActive &&
+                            user.id !== zustaendigId &&
+                            !newTaskParticipantUserIds.includes(user.id)
+                        )
+                        .map((user) => (
+                          <option key={user.id} value={user.id}>
+                            {user.name} - {user.roleLabel}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      disabled={!taskParticipantUserId}
+                      onClick={() => {
+                        setNewTaskParticipantUserIds((current) =>
+                          current.includes(taskParticipantUserId) ? current : [...current, taskParticipantUserId]
+                        );
+                        setTaskParticipantUserId("");
+                      }}
+                    >
+                      Hinzufügen
+                    </button>
+                  </div>
+
+                  <div className={styles.taskParticipantList}>
+                    {newTaskParticipantUserIds.length === 0 ? (
+                      <p className={styles.emptyState}>Noch keine Beteiligten ausgewählt.</p>
+                    ) : (
+                      newTaskParticipantUserIds.map((userId) => {
+                        const participant = users.find((user) => user.id === userId);
+                        return (
+                          <article key={userId} className={styles.taskParticipantItem}>
+                            <div>
+                              <strong>{participant?.name || "Mitarbeiter"}</strong>
+                              <span>{participant?.roleLabel || "Beteiligter"}</span>
+                            </div>
+                            <button
+                              type="button"
+                              className={styles.deleteButton}
+                              onClick={() =>
+                                setNewTaskParticipantUserIds((current) =>
+                                  current.filter((currentUserId) => currentUserId !== userId)
+                                )
+                              }
+                            >
+                              Entfernen
+                            </button>
+                          </article>
+                        );
+                      })
+                    )}
+                  </div>
+                </section>
+              )}
+
             {editingTask && (
               <section className={`${styles.commentBox} ${styles.standardFormWide}`}>
                 <div className={styles.timeHeader}>
@@ -50263,6 +52906,50 @@ await addProjectLogbookEntry(
                     <h3>Kommentare</h3>
                     <p>{editingTask.kommentare.length} Kommentare</p>
                   </div>
+                </div>
+
+                <div className={styles.commentList}>
+                  {editingTask.kommentare.length === 0 ? (
+                    <p className={styles.emptyState}>Noch keine Kommentare vorhanden.</p>
+                  ) : (
+                    editingTask.kommentare.map((comment) => {
+                      const isOwnComment =
+                        comment.autor.trim().toLowerCase() === (activeUser?.name ?? "").trim().toLowerCase();
+                      const commentAuthor = users.find(
+                        (user) => user.name.trim().toLowerCase() === comment.autor.trim().toLowerCase()
+                      );
+                      const commentHeadline = comment.recipientName
+                        ? `${comment.autor} an ${comment.recipientName}`
+                        : comment.autor;
+                      const commentAvatar = commentAuthor?.profileImageDataUrl ? (
+                        <img src={commentAuthor.profileImageDataUrl} alt="" />
+                      ) : (
+                        getInitials(comment.autor)
+                      );
+
+                      return (
+                        <article
+                          key={comment.id}
+                          className={styles.commentChatItem}
+                          data-own={isOwnComment ? "true" : "false"}
+                        >
+                          {!isOwnComment ? (
+                            <span className={styles.commentAvatar}>{commentAvatar}</span>
+                          ) : null}
+                          <div className={styles.commentBubble}>
+                            <div className={styles.commentBubbleHeader}>
+                              <strong>{commentHeadline}</strong>
+                              <span>{formatDeadline(comment.erstelltAm)}</span>
+                            </div>
+                            <p>{comment.text}</p>
+                          </div>
+                          {isOwnComment ? (
+                            <span className={styles.commentAvatar}>{commentAvatar}</span>
+                          ) : null}
+                        </article>
+                      );
+                    })
+                  )}
                 </div>
 
                 <div className={styles.commentForm}>
@@ -50292,27 +52979,6 @@ await addProjectLogbookEntry(
                   >
                     Kommentar speichern
                   </button>
-                </div>
-
-                <div className={styles.commentList}>
-                  {editingTask.kommentare.length === 0 ? (
-                    <p className={styles.emptyState}>Noch keine Kommentare vorhanden.</p>
-                  ) : (
-                    editingTask.kommentare.map((comment) => (
-                      <article key={comment.id} className={styles.commentItem}>
-                        <div>
-                          <strong>{comment.autor}</strong>
-                          <span>{formatDeadline(comment.erstelltAm)}</span>
-                        </div>
-                        {comment.recipientName && (
-                          <small className={styles.commentRecipient}>
-                            An {comment.recipientName}
-                          </small>
-                        )}
-                        <p>{comment.text}</p>
-                      </article>
-                    ))
-                  )}
                 </div>
               </section>
             )}

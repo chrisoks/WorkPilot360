@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
+import { getDeadlineSettings } from "@/lib/company-settings/deadlines";
 import { recordStatusTransition, seedCurrentStatusTimeline } from "@/lib/status-tracking";
 import { canAssignTasksToOthers, canDeleteTasks } from "@/lib/permissions";
 import {
@@ -19,6 +20,63 @@ import {
 
 function getUserName(user: Pick<User, "firstName" | "lastName" | "email">) {
   return `${user.firstName} ${user.lastName}`.trim() || user.email;
+}
+
+async function createTaskNotificationPair(input: {
+  organizationId: string;
+  taskId: string;
+  userId: string;
+  subject: string;
+  body: string;
+}) {
+  for (const channel of ["app", "email"]) {
+    await prisma.notification.create({
+      data: {
+        organizationId: input.organizationId,
+        taskId: input.taskId,
+        userId: input.userId,
+        channel,
+        subject: input.subject,
+        body: input.body,
+        sentAt: null,
+        linkTarget: "task",
+        linkTargetId: input.taskId,
+        linkLabel: "Aufgabe \u00f6ffnen",
+      },
+    });
+  }
+}
+
+async function notifyTaskCompletedForCollaborators(
+  task: TaskWithRelations,
+  feedback: TaskFeedbackSettings,
+  users: User[],
+  actor: User
+) {
+  if (task.status !== TaskStatus.ERLEDIGT) return;
+
+  const participants = await getTaskParticipants([task.id]);
+  const recipientIds = new Set<string>();
+  recipientIds.add(task.ownerId);
+  if (feedback.createdById) recipientIds.add(feedback.createdById);
+  for (const participant of participants.get(task.id) ?? []) {
+    recipientIds.add(participant.userId);
+  }
+  recipientIds.delete(actor.id);
+
+  const actorName = getUserName(actor);
+  for (const recipientId of recipientIds) {
+    const recipient = users.find((demoUser) => demoUser.id === recipientId);
+    if (!recipient) continue;
+
+    await createTaskNotificationPair({
+      organizationId: task.organizationId,
+      taskId: task.id,
+      userId: recipient.id,
+      subject: "Aufgabe erledigt",
+      body: `${actorName} hat die Aufgabe "${task.title}" erledigt. Die Aufgabe ist damit f\u00fcr alle Beteiligten abgeschlossen.`,
+    });
+  }
 }
 
 function mapStatus(status: string): TaskStatus {
@@ -715,16 +773,20 @@ async function autoArchiveExpiredTasks() {
 }
 
 async function updateCompletionArchiveTimer(
+  organizationId: string,
   taskId: string,
   previousStatus: TaskStatus | null,
   nextStatus: TaskStatus
 ) {
   if (previousStatus !== TaskStatus.ERLEDIGT && nextStatus === TaskStatus.ERLEDIGT) {
+    const deadlineSettings = await getDeadlineSettings(organizationId);
+    const completedTaskArchiveDays = deadlineSettings.completedTaskArchiveDays;
+
     await prisma.$executeRaw`
       UPDATE "Task"
       SET
         "completedAt" = CURRENT_TIMESTAMP,
-        "archiveDueAt" = CURRENT_TIMESTAMP + INTERVAL '120 hours',
+        "archiveDueAt" = CURRENT_TIMESTAMP + (${completedTaskArchiveDays} * INTERVAL '1 day'),
         "archiveReason" = NULL
       WHERE id = ${taskId}
     `;
@@ -922,7 +984,7 @@ export async function POST(req: Request) {
       },
     },
   });
-  await updateCompletionArchiveTimer(task.id, null, nextStatus);
+  await updateCompletionArchiveTimer(organization.id, task.id, null, nextStatus);
   await updateTaskPlanningAllocations(task.id, planningAllocations);
   await updateTaskProjectId(task.id, nextProjectId);
   await seedCurrentStatusTimeline({
@@ -948,8 +1010,39 @@ export async function POST(req: Request) {
     acceptanceStatus
   );
   feedback.planningAllocations = planningAllocations;
+  const participantUserIds: string[] = Array.isArray(body.participantUserIds)
+    ? Array.from(new Set(body.participantUserIds.map((userId: unknown) => String(userId))))
+    : [];
+  const participants = participantUserIds
+    .map((userId: string) => users.find((demoUser) => demoUser.id === userId))
+    .filter((participant): participant is (typeof users)[number] => Boolean(participant))
+    .filter((participant) => participant.id !== owner.id);
+
+  for (const participant of participants) {
+    await prisma.$executeRaw`
+      INSERT INTO "TaskParticipant" (id, "organizationId", "taskId", "userId", "acceptanceStatus")
+      VALUES (${randomUUID()}, ${task.organizationId}, ${task.id}, ${participant.id}, 'pending')
+      ON CONFLICT ("taskId", "userId") DO NOTHING
+    `;
+
+    await createTaskNotificationPair({
+      organizationId: task.organizationId,
+      taskId: task.id,
+      userId: participant.id,
+      subject: "Neue Aufgabenbeteiligung",
+      body: `${actor.firstName} ${actor.lastName} hat dich zur Aufgabe "${task.title}" hinzugef\u00fcgt. Bitte pr\u00fcfe die Aufgabe und nimm sie an oder lehne sie begr\u00fcndet ab.`,
+    });
+  }
+
   await appendTaskHistory(task.id, [
     createTaskHistoryItem("Aufgabe angelegt", getUserName(actor)),
+    ...participants.map((participant) =>
+      createTaskHistoryItem(
+        "Aufgabenbeteiligten hinzugef\u00fcgt",
+        getUserName(actor),
+        `${participant.firstName} ${participant.lastName}`
+      )
+    ),
   ]);
   await createDoneFeedbackNotification(task, null, users, feedback);
   await createNextRecurringTask(task, null, feedback);
@@ -1074,16 +1167,12 @@ export async function PATCH(req: Request) {
       ),
     ]);
 
-    await prisma.notification.create({
-      data: {
-        organizationId: existingTask.organizationId,
-        taskId: existingTask.id,
-        userId: participant.id,
-        channel: "app",
-        subject: "Neue Aufgabenbeteiligung",
-        body: `${actor.firstName} ${actor.lastName} hat dich zur Aufgabe "${existingTask.title}" hinzugefügt.`,
-        sentAt: null,
-      },
+    await createTaskNotificationPair({
+      organizationId: existingTask.organizationId,
+      taskId: existingTask.id,
+      userId: participant.id,
+      subject: "Neue Aufgabenbeteiligung",
+      body: `${actor.firstName} ${actor.lastName} hat dich zur Aufgabe "${existingTask.title}" hinzugef\u00fcgt. Bitte pr\u00fcfe die Aufgabe und nimm sie an oder lehne sie begr\u00fcndet ab.`,
     });
 
     const projectId = (await getTaskProjectIds([existingTask.id])).get(existingTask.id) ?? "";
@@ -1155,7 +1244,7 @@ export async function PATCH(req: Request) {
       },
     },
   });
-  await updateCompletionArchiveTimer(task.id, existingTask?.status ?? null, nextStatus);
+  await updateCompletionArchiveTimer(organization.id, task.id, existingTask?.status ?? null, nextStatus);
   await updateTaskPlanningAllocations(task.id, planningAllocations);
   await updateTaskProjectId(task.id, nextProjectId);
   await recordStatusTransition({
@@ -1204,6 +1293,9 @@ export async function PATCH(req: Request) {
     );
   }
   await appendTaskHistory(task.id, historyItems);
+  if (existingTask?.status !== TaskStatus.ERLEDIGT && task.status === TaskStatus.ERLEDIGT) {
+    await notifyTaskCompletedForCollaborators(task, feedback, users, actor);
+  }
   await createDoneFeedbackNotification(task, existingTask?.status ?? null, users, feedback);
   await createNextRecurringTask(task, existingTask?.status ?? null, feedback);
 

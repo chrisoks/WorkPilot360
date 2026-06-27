@@ -1,5 +1,108 @@
 # WorkPilot360 Agent Handover
 
+- Aktueller Arbeitsstand 2026-06-26: Der richtige Projektordner bleibt
+  `C:\Users\vagte\Downloads\Dokumenteauslastungdashboardhero\WorkPilot360`.
+  Nicht in den OneDrive-/SafeDesk360-Ordner wechseln. Der Nutzer will
+  vorsichtiges, gezieltes Vorgehen: so viel wie noetig, so wenig wie
+  moeglich, vor/nach Logikbloecken sichern, danach Checks laufen lassen und
+  Aenderungen in dieser `AGENTS.md` dokumentieren. Kleine reine UI-Fixes
+  duerfen schlank bleiben, aber groessere Logikbloecke brauchen Sicherung,
+  Checks und Handover-Notiz.
+- Laufender Funktionsblock 2026-06-26: Dauerlaeufer wurden fachlich in
+  Monatspauschale und Stundenabrechnung getrennt. Bei Dauerlaeufer-Projekten
+  muss das Abrechnungsmodell aktiv gewaehlt werden; Stundenabrechnung nutzt
+  Termin-Gewerk und konkrete Abrechnungsleistung in der Planung/Stempelung.
+  Manuelle Projektstempelungen fuer Dauerlaeufer mit Stundenabrechnung
+  verlangen ebenfalls Gewerk und Abrechnungsleistung. Die Haupt-Stempellogik
+  fuer Mitarbeiter/Planung/PWA wurde nicht grundsaetzlich umgeworfen.
+- Planung und Kontingente 2026-06-26: Bei einmaligen Projekten ist Planung
+  ohne finale Angebotsgrundlage blockiert; in der Projektakte sind `+ Termin`
+  und `+ Terminwunsch` dann deaktiviert und verweisen auf das zuerst
+  anzulegende Angebot. Der Reiter `Projektzeitkontingente` erscheint nur noch
+  bei Dauerlaeufern. Bei Dauerlaeufern mit Stundenabrechnung ist die
+  Kontingentsteuerung standardmaessig deaktiviert und kann nur bewusst mit
+  Warnhinweis aktiviert werden.
+- Rechnungsblock Stundenabrechnung 2026-06-26: Fuer Dauerlaeufer mit
+  Stundenabrechnung werden Stempelungen positionsbezogen als interne
+  Abrechnungsgrundlage in der Rechnungsmaske angezeigt. Die alte globale Box
+  offener Zeiteintraege wird fuer diesen Fall nicht mehr genutzt. Stempelungen
+  koennen je Position uebernommen werden; bestehende Verknuepfungen werden
+  beim Oeffnen des Entwurfs vorselektiert. Abrechnungspositionen werden fuer
+  die Rechnung ohne Preiszusatz wie `(60,50 EUR / Std.)` dargestellt.
+  Gestempelte Zeiten werden fuer die fakturierbare Menge aufgerundet
+  beruecksichtigt. Der Kommentar bleibt intern sichtbar, aber nicht als
+  eigener Rechnungsbestandteil.
+- PDF-/Dokumentdarstellung 2026-06-26: Rechnungs- und Angebotstexte brechen
+  lange Woerter und Beschreibungstexte jetzt sauber um. Die Textspalte wurde
+  begrenzt, damit Beschreibungen nicht in Preis-/Summenbereiche laufen.
+  Geschaeftspapier in Rechnungen richtet sich bei Stundenabrechnung nach der
+  Projekt-Niederlassung; `Bearbeiter/in` wird beim Oeffnen/Erstellen mit dem
+  aktiven Benutzer vorbelegt. Neue Endkontrollen werden nicht mehr als TXT,
+  sondern als PDF-Nachweis auf dem passenden OK-Briefpapier im Projektlogbuch
+  abgelegt; der Logbuchtext ist dabei nur noch eine kurze Zusammenfassung.
+- E-Rechnung 2026-06-27: Fuer Rechnungen kann die XRechnung-XML im
+  Dokumentversand jetzt wirklich als Anhang erzeugt werden. Die Auswahl
+  `XRechnung XML` haengt die XML an; `PDF + XRechnung` erzwingt zusaetzlich
+  den PDF-Anhang. Vor dem Versand wird die vorhandene technische
+  XRechnung-Mindestpruefung ausgefuehrt; falls der KoSIT-Validator in der
+  Umgebung konfiguriert ist, blockiert auch eine KoSIT-Ablehnung den Versand.
+  `ZUGFeRD PDF` bleibt bewusst gesperrt und meldet, dass dieser technische
+  Schritt noch nicht angebunden ist. Verkaeufer ist fuer alle Marken immer
+  OK solutions GmbH, da OK immocare nur als Marke genutzt wird. Sicherungen:
+  `.codex-safety/document-mail-route-before-xrechnung-mail-20260627.ts`,
+  `.codex-safety/dashboard-page-before-xrechnung-mail-20260627.tsx`,
+  `.codex-safety/AGENTS-before-xrechnung-mail-20260627.md`. Checks bestanden:
+  `npx.cmd tsc --noEmit`, `npm.cmd run check:mojibake`,
+  `npm.cmd run check:regressions`.
+- Rechnungs-/Stempelzeit-Freigabe 2026-06-27: Geloeschte oder stornierte
+  Rechnungen geben verknuepfte Projekt-Stempelzeiten wieder frei. Die
+  Freigabe nutzt jetzt zentral `releaseStampedHoursFromInvoice` und setzt
+  `invoiceId`, `invoiceNumber` und `invoicedAt` konsequent auf `NULL`, sowohl
+  ueber Rechnungs-ID als auch ueber Rechnungsnummer. Bereits entstandene leere
+  Platzhalter (`''`) in `ProjectTimeEntry` wurden auf `NULL` normalisiert,
+  damit die Zeiten erneut verknuepft werden koennen. Sicherungen:
+  `.codex-safety/invoices-route-before-release-time-on-delete-20260627.ts`,
+  `.codex-safety/AGENTS-before-release-time-on-delete-20260627.md`. Checks
+  bestanden: `npx.cmd tsc --noEmit`, `npm.cmd run check:mojibake`,
+  `npm.cmd run check:regressions`.
+- Aufgaben-/Kommentar-UI 2026-06-26: Kommentare in Aufgaben wurden optisch in
+  eine Chat-Darstellung umgebaut. Eigene Kommentare stehen rechts/blau,
+  fremde Kommentare links/weiss. Profilbilder werden im runden Avatar
+  angezeigt, sofern vorhanden; sonst bleiben Initialen als Fallback. Das
+  Schreibfeld steht jetzt unterhalb des Kommentarverlaufs.
+- Stempelungs-/Planungsuebersichten 2026-06-26: Erwartete Stempelungen wurden
+  kompakter und auswertbarer gemacht, inklusive Datum/Zeit Plan, Datum/Zeit
+  Ist, Sollzeit, Istzeit, Differenz, Leistungsgrad, Status, Puenktlichkeit,
+  Rechnung, Kommentar und Aktion. Puenktlichkeit nutzt einstellbare Start- und
+  Ende-Toleranzen in den Firmeneinstellungen. Unplausible Leistungsgrade
+  werden sichtbar markiert und sollen in Auswertungen nicht als normale KPI
+  gewertet werden.
+- Auswertungen/KPI 2026-06-26: Mitarbeiter- und Team-KPIs wurden um
+  Puenktlichkeits-Tendenzen erweitert. KPI-Kacheln in Mitarbeiterkarten
+  koennen Detailmodale oeffnen; diese Modale haben Suche, Statusfilter und
+  Zeitraumlogik. Puenktlichkeit wird als Tendenz statt nur als Prozentwert
+  dargestellt.
+- Unterbrechung/Nachfasslogik 2026-06-26: Bei unterbrochener Arbeit ist ein
+  Kommentar Pflicht. Unterbrochene Stempelungen werden in Projektuebersichten
+  sichtbar. Es gibt zentrale Fristen in den Firmeneinstellungen fuer
+  Nachfass-/Eskalationsmeldungen bei unterbrochener Arbeit: Standard 2 Tage
+  an Projektverantwortliche/Fuehrungskraft und 7 Tage an Geschaeftsfuehrung.
+  Offene Punkte fuer spaetere Pruefung: Benachrichtigungs-/Aufgabenlauf fuer
+  diese Eskalation noch einmal fachlich komplett gegen echte Daten testen.
+- Historie und Loeschsicherheit 2026-06-26: Abwesenheiten werden nicht mehr
+  hart geloescht, sondern mit `deletedAt` markiert und mit Historieneintrag
+  `Abwesenheit geloescht` versehen. Die Team-Kalender-Historie laedt auch
+  geloeschte Abwesenheiten und zeigt sie als `Geloescht`. Termin- und
+  Stempelungs-Historieneintraege in der Projektakte koennen nur von
+  Geschaeftsfuehrung ueber ein kleines `x` geloescht werden; Backend schuetzt
+  dies ebenfalls mit 403 fuer andere Rollen. Systemweit bleiben echte
+  Loeschpfade in einzelnen Alt-/Stammdatenbereichen ein separater Folgeblock.
+- Letzte Checks 2026-06-26: Nach den juengsten UI-/Rechnungs-/PDF-Aenderungen
+  bestanden `npx.cmd tsc --noEmit`, `npm.cmd run check:mojibake`,
+  `npm.cmd run check:regressions` und `npm.cmd run build`. Ein erster Build
+  zeigte einmal einen Next-Zwischenfehler bei `/api/content-items`; der direkte
+  Wiederholungslauf war erfolgreich.
+
 - Phase-2-Dokumentversandrechte 2026-06-20: Als elfter kleiner Schritt der
   Rollen-/Berechtigungsmatrix wurden Dokumentversandrechte in
   `src/lib/permissions/index.ts` zentralisiert und in
@@ -5096,3 +5199,17 @@ Wiederaufbau begonnen 2026-06-05:
 - Folgeblock Auth/Session Actor-Bindung 2026-06-22: Neuer Helfer `src/lib/auth/actor.ts` bindet `actorId`/`actorUserId` an die echte Session. Angebote, Rechnungen, Projektzeiten und Dokumenten-Mail verlangen jetzt eine aktive Session; fremde Actor-Werte sind dort nur fuer Admin/Geschaeftsfuehrung als bewusste Emulation erlaubt. Dashboard akzeptiert alte lokale Benutzer-ID nicht mehr als Anmeldung ohne Server-Session.
 - Folgeblock Auth/Session Mitarbeiter-Sensitivdaten 2026-06-22: `employee-costs` und `employee-assessments` nutzen jetzt ebenfalls die serverseitige Session-Actor-Bindung. Eigene Bewertungen bleiben auf den angemeldeten Benutzer bezogen; Lohnkosten und Managerbereiche behalten ihre bestehenden fachlichen Rollenregeln.
 - Folgeblock Auth/Session Dashboard-Start 2026-06-22: Dashboard laedt Massendaten erst nach bestaetigter Session und aktivem Benutzer. Direkte Projektakten-Links blockieren den Login ohne gueltige Session nicht mehr; der Boot-Lader wartet nur noch bei angemeldeter Projektakten-Wiederherstellung.
+- Stundenabrechnung manuelle Zeiteintraege 2026-06-27: Beim manuellen Zeiteintrag in einem Dauerlaeufer mit Stundenabrechnung werden jetzt Gewerk und Abrechnungsleistung als Pflichtangaben in der Maske erfasst. Die Auswahl nutzt dieselbe Stundenleistungslogik wie Planung/Stempelung und speichert `trade`, `billingCatalogItemId` und `billingCatalogItemLabel`, damit neue manuelle Zeiten spaeter positionsbezogen in Rechnungsentwuerfen landen koennen. Normale Projekte und Monatspauschalen bleiben unveraendert.
+- E-Rechnung/XRechnung Schutz 2026-06-27: XRechnung-Pruefung, XML-Download und E-Mail-Versand blockieren jetzt geloeschte oder stornierte Rechnungen. Leere Faelligkeitsdaten werden fuer die XRechnung aus Leistungsdatum plus Zahlungsziel abgeleitet, damit alte Rechnungen mit leerem `dueDate` nicht unnoetig scheitern. KoSIT-Fehler werden nicht mehr als roher Java-Command angezeigt; bei technischer Ablehnung erscheint eine kurze lesbare Meldung, bei fachlicher Ablehnung werden Report-Fehler genutzt.
+- XRechnung BuyerReference 2026-06-27: Die BuyerReference wird im UBL-XML nach DocumentCurrencyCode ausgegeben, damit KoSIT die Reihenfolge akzeptiert. Wenn beim Kunden keine Leitweg-ID gepflegt ist, wird fuer normale B2B-Rechnungen als sachlicher Fallback die Projektnummer, sonst die Rechnungsnummer genutzt. Echte Leitweg-IDs haben weiter Vorrang.
+- XRechnung Seller Contact 2026-06-27: Der UBL-Verkaeuferblock enthaelt jetzt den von KoSIT geforderten Seller Contact mit Name, Telefon und E-Mail der OK solutions GmbH. Das gilt auch fuer OK-immocare-Rechnungen, weil OK immocare als Marke abrechnet und OK solutions rechtlicher Verkaeufer bleibt.
+- XRechnung KoSIT-Anzeige 2026-06-27: Wenn KoSIT eine XRechnung akzeptiert, werden alte/technische Report-Issues nicht mehr als sichtbare Fehlerliste angezeigt. KoSIT-Issues erscheinen nur noch bei nicht bestandener KoSIT-Pruefung.
+- Dokument-Mail-Maske 2026-06-27: Die Rechnungsversandmaske wurde optisch beruhigt. E-Rechnungs-Stammdaten und Versandformat bleiben getrennt, die XRechnung-Aktionen stehen kompakter nebeneinander, Format und Pruefstatus erscheinen als kleine Statuspillen. Versandlogik und E-Rechnungsvalidierung wurden dabei nicht fachlich geaendert.
+- Dokument-Mail-Vorlagen 2026-06-27: Standardtexte fuer Angebot, Rechnung, Storno, Mahnung, Taetigkeitsbericht und allgemeine Dokumente enthalten keine eigene Grussformel mit Sender mehr. Die Grussformel kommt aus der Signatur, damit sie im Nachrichtentext und in der Vorschau nicht doppelt erscheint.
+- ZUGFeRD Versand 2026-06-27: Im Dokument-Mail-Versand ist ZUGFeRD PDF jetzt aktiv. Der Server erzeugt dafuer aus dem gespeicherten Rechnungs-PDF ein PDF mit eingebetteter validierter XRechnung-XML als `factur-x.xml`; die gleiche XRechnung/KoSIT-Pruefung wie beim XML-Versand wird verwendet. Bei ZUGFeRD wird kein zweites normales PDF angehaengt, sondern das ZUGFeRD-PDF ersetzt den PDF-Anhang. Die separate E-Rechnungsdatenpruefungsbox erscheint nur noch bei echten blockierenden Stammdatenfehlern.
+- ZUGFeRD PDF/A-3 Validierung 2026-06-27: ZUGFeRD-Versand ist jetzt zusaetzlich an eine echte PDF/A-3-Pruefung gekoppelt. Der Server erwartet `VERAPDF_PATH` oder `ZUGFERD_PDF_VALIDATOR_PATH` auf den veraPDF-CLI-Pfad. Ohne konfigurierten Validator oder bei abgelehnter PDF/A-3-Pruefung wird ZUGFeRD nicht versendet. Die XML bleibt weiterhin ueber XRechnung/KoSIT validiert.
+- ZUGFeRD Test ohne E-Mail 2026-06-27: Die Rechnungs-API unterstuetzt jetzt `zugferdId`, um ein ZUGFeRD-PDF zu erzeugen, XRechnung/KoSIT und PDF/A-3 zu pruefen und die Datei herunterzuladen, ohne eine E-Mail zu versenden. In der Dokument-Mail-Maske erscheint bei gewaehltem `ZUGFeRD PDF` der Button `ZUGFeRD PDF testen`.
+- veraPDF Setup 2026-06-27: veraPDF 1.30.2 wurde lokal unter `.codex-tools/verapdf/app/verapdf.bat` eingerichtet und in `.env` mit `VERAPDF_PATH` hinterlegt. Neue Scripts: `npm run setup:verapdf` laedt/ installiert den offiziellen veraPDF-Installer lokal ins Projekt, `npm run check:verapdf` prueft CLI und PDF/A-3b-Unterstuetzung. Nach Aenderungen an `VERAPDF_PATH` muss der Next-Server neu gestartet werden.
+- ZUGFeRD PDF/A-3 Konverter 2026-06-27: ZUGFeRD erzeugt jetzt nicht mehr direkt aus dem normalen Rechnungs-PDF ein finales Ergebnis, sondern nutzt eine getrennte PDF/A-3-Konverterstufe vor der veraPDF-Pruefung. Der Server erwartet dafuer `PDFA3_CONVERTER_PATH`, `ZUGFERD_PDFA3_CONVERTER_PATH`, `GHOSTSCRIPT_PATH` oder `GS_PATH`; optional kann `PDFA3_ICC_PROFILE_PATH` gesetzt werden. Ohne Konverter wird ZUGFeRD bewusst blockiert. Neue Scripts: `npm run setup:pdfa3-converter` fuer lokales Windows-Ghostscript-Setup, `npm run check:pdfa3-converter` zur Pruefung. Online/Linux: Ghostscript serverseitig installieren und z. B. `GHOSTSCRIPT_PATH=/usr/bin/gs` setzen. Lokal ist der Konverter aktuell noch nicht installiert, veraPDF und KoSIT sind vorhanden.
+- Prisma Schema Sync 2026-06-27: Im `WorkPilotProject`-Modell wurden die bestehenden DB-Felder `recurringBillingMode` und `timeBudgetEnabled` wiederhergestellt. Das ist nur eine Schema-Synchronisierung fuer vorhandene Spalten, keine Migration und kein Rueckbau. Ziel: `prisma db push` soll fuer diese Felder keine Loeschwarnung mehr erzeugen.
+- Prisma Schema Guard 2026-06-27: `npm run check:regressions` prueft jetzt explizit, dass kritische Runtime-/Code-Felder im Prisma-Schema vorhanden bleiben. Aktuell geschuetzt: `WorkPilotProject.recurringBillingMode` und `WorkPilotProject.timeBudgetEnabled`. Fehlt eines dieser Felder wieder, wird der Regressionscheck rot, bevor ein `prisma db push` Loeschwarnungen fuer diese Spalten erzeugt.

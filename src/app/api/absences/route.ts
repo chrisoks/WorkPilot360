@@ -25,6 +25,7 @@ type AbsenceRow = {
   rejectionReason: string | null;
   history: unknown;
   createdAt: Date | string;
+  deletedAt: Date | string | null;
 };
 
 type AbsenceHistoryItem = {
@@ -96,6 +97,7 @@ function formatAbsence(row: AbsenceRow) {
     handoverTaskIds: Array.isArray(row.handoverTaskIds) ? row.handoverTaskIds.map(String) : [],
     rejectionReason: row.rejectionReason ?? "",
     history: normalizedHistory,
+    deletedAt: row.deletedAt instanceof Date ? row.deletedAt.toISOString() : String(row.deletedAt ?? ""),
   };
 }
 
@@ -174,6 +176,7 @@ async function ensureAbsenceTable() {
       "rejectionReason" TEXT,
       "history" JSONB NOT NULL DEFAULT '[]'::jsonb,
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "deletedAt" TIMESTAMP(3),
       CONSTRAINT "Absence_pkey" PRIMARY KEY ("id"),
       CONSTRAINT "Absence_userId_date_key" UNIQUE ("userId", "date")
     )
@@ -186,7 +189,8 @@ async function ensureAbsenceTable() {
     ADD COLUMN IF NOT EXISTS "status" TEXT NOT NULL DEFAULT 'genehmigt',
     ADD COLUMN IF NOT EXISTS "handoverTaskIds" JSONB NOT NULL DEFAULT '[]'::jsonb,
     ADD COLUMN IF NOT EXISTS "rejectionReason" TEXT,
-    ADD COLUMN IF NOT EXISTS "history" JSONB NOT NULL DEFAULT '[]'::jsonb
+    ADD COLUMN IF NOT EXISTS "history" JSONB NOT NULL DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS "deletedAt" TIMESTAMP(3)
   `;
   await prisma.$executeRaw`
     ALTER TABLE "Notification"
@@ -276,6 +280,7 @@ export async function GET(req: Request) {
 
   const from = searchParams.get("from") ?? "1900-01-01";
   const to = searchParams.get("to") ?? "2999-12-31";
+  const includeDeleted = searchParams.get("includeDeleted") === "1";
 
   const rows = await prisma.$queryRaw<AbsenceRow[]>`
     SELECT
@@ -296,13 +301,15 @@ export async function GET(req: Request) {
       absences."handoverTaskIds",
       absences."rejectionReason",
       absences.history,
-      absences."createdAt"
+      absences."createdAt",
+      absences."deletedAt"
     FROM "Absence" absences
     INNER JOIN "User" users ON users.id = absences."userId"
     LEFT JOIN "User" representatives ON representatives.id = absences."representativeUserId"
     WHERE absences."organizationId" = ${organization.id}
       AND absences.date >= ${from}::date
       AND absences.date <= ${to}::date
+      AND (${includeDeleted}::boolean OR absences."deletedAt" IS NULL)
     ORDER BY absences.date ASC, users."firstName" ASC
   `;
 
@@ -457,7 +464,8 @@ export async function POST(req: Request) {
         "note" = EXCLUDED."note",
         "handoverTaskIds" = EXCLUDED."handoverTaskIds",
         "rejectionReason" = EXCLUDED."rejectionReason",
-        "history" = EXCLUDED."history"
+        "history" = EXCLUDED."history",
+        "deletedAt" = NULL
     `;
   }
 
@@ -543,7 +551,8 @@ export async function POST(req: Request) {
       absences."handoverTaskIds",
       absences."rejectionReason",
       absences.history,
-      absences."createdAt"
+      absences."createdAt",
+      absences."deletedAt"
     FROM "Absence" absences
     INNER JOIN "User" users ON users.id = absences."userId"
     LEFT JOIN "User" representatives ON representatives.id = absences."representativeUserId"
@@ -551,6 +560,7 @@ export async function POST(req: Request) {
       AND absences."userId" = ${targetUserId}
       AND absences.date >= ${dateFrom}::date
       AND absences.date <= ${dateTo}::date
+      AND absences."deletedAt" IS NULL
     ORDER BY absences.date ASC
   `;
 
@@ -601,12 +611,14 @@ export async function PATCH(req: Request) {
       absences."handoverTaskIds",
       absences."rejectionReason",
       absences.history,
-      absences."createdAt"
+      absences."createdAt",
+      absences."deletedAt"
     FROM "Absence" absences
     INNER JOIN "User" users ON users.id = absences."userId"
     LEFT JOIN "User" representatives ON representatives.id = absences."representativeUserId"
     WHERE absences.id = ${absenceId}
       AND absences."organizationId" = ${organization.id}
+      AND absences."deletedAt" IS NULL
     LIMIT 1
   `;
   const existingAbsence = existingRows[0];
@@ -843,7 +855,8 @@ export async function PATCH(req: Request) {
         "note" = EXCLUDED."note",
         "handoverTaskIds" = EXCLUDED."handoverTaskIds",
         "rejectionReason" = EXCLUDED."rejectionReason",
-        "history" = EXCLUDED."history"
+        "history" = EXCLUDED."history",
+        "deletedAt" = NULL
     `;
   }
 
@@ -874,14 +887,27 @@ export async function DELETE(req: Request) {
   const rows = await prisma.$queryRaw<
     Array<{
       userId: string;
+      userName: string;
       representativeUserId: string | null;
       type: AbsenceType;
       date: Date;
       note: string | null;
+      history: unknown;
     }>
   >`
-    SELECT "userId", "representativeUserId", type, date, note FROM "Absence"
-    WHERE id = ${absenceId} AND "organizationId" = ${organization.id}
+    SELECT
+      absences."userId",
+      CONCAT(users."firstName", ' ', users."lastName") as "userName",
+      absences."representativeUserId",
+      absences.type,
+      absences.date,
+      absences.note,
+      absences.history
+    FROM "Absence" absences
+    INNER JOIN "User" users ON users.id = absences."userId"
+    WHERE absences.id = ${absenceId}
+      AND absences."organizationId" = ${organization.id}
+      AND absences."deletedAt" IS NULL
     LIMIT 1
   `;
   const absence = rows[0];
@@ -899,9 +925,17 @@ export async function DELETE(req: Request) {
 
   const deleteStart = dateFrom || formatDateKey(absence.date);
   const deleteEnd = dateTo || deleteStart;
+  const targetUser = users.find((demoUser) => demoUser.id === absence.userId);
+  const deleteHistoryItem = createHistoryItem(
+    "Abwesenheit gelöscht",
+    `${actor.firstName} ${actor.lastName}`,
+    `${getAbsenceTypeLabel(absence.type)} vom ${formatDateKeyDisplay(deleteStart)} bis ${formatDateKeyDisplay(deleteEnd)}.`
+  );
 
   await prisma.$executeRaw`
-    DELETE FROM "Absence"
+    UPDATE "Absence"
+    SET "deletedAt" = CURRENT_TIMESTAMP,
+        history = COALESCE(history, '[]'::jsonb) || ${JSON.stringify([deleteHistoryItem])}::jsonb
     WHERE "organizationId" = ${organization.id}
       AND "userId" = ${absence.userId}
       AND type = ${absence.type}
@@ -909,9 +943,9 @@ export async function DELETE(req: Request) {
       AND COALESCE(note, '') = ${absence.note ?? ""}
       AND date >= ${deleteStart}::date
       AND date <= ${deleteEnd}::date
+      AND "deletedAt" IS NULL
   `;
 
-  const targetUser = users.find((demoUser) => demoUser.id === absence.userId);
   await notifyAbsenceChange(
     organization.id,
     users,

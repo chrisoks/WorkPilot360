@@ -22,6 +22,7 @@ model Organization {
   categories       Category[]
   departments      Department[]
   escalationRules  EscalationRule[]
+  organizationSettings OrganizationSetting[]
   notifications    Notification[]
   catalogItems     CatalogItem[]
   catalogItemHistory CatalogItemHistory[]
@@ -517,6 +518,7 @@ model CatalogItem {
   number                String
   name                  String
   category              String?
+  trade                 String               @default("")
   unit                  String               @default("Stk")
   description           String?
   matchcode             String?
@@ -912,6 +914,20 @@ model SchemaDataPatch {
   appliedAt DateTime @default(now())
 }
 
+model OrganizationSetting {
+  id             String   @id @default(cuid())
+  organizationId String
+  key            String
+  value          Json     @default("{}")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, key], map: "OrganizationSetting_org_key")
+  @@index([organizationId])
+}
+
 model AuditLog {
   id             String       @id @default(cuid())
   organizationId String
@@ -1302,6 +1318,11 @@ model ProjectTimeEntry {
   organizationId String
   projectId      String
   projectLabel   String?
+  trade          String?
+  planningEntryId String?
+  planningBillingGroupId String?
+  billingCatalogItemId String?
+  billingCatalogItemLabel String?
   userId         String?
   employee       String?
   entrySource    String   @default("stamped")
@@ -1338,6 +1359,11 @@ model ActiveStampSession {
   mode           String   @default("project")
   projectId      String
   projectLabel   String?
+  trade          String?
+  planningEntryId String?
+  planningBillingGroupId String?
+  billingCatalogItemId String?
+  billingCatalogItemLabel String?
   marketingContentItemId String?
   marketingContentTitle String?
   marketingContentType String?
@@ -1370,6 +1396,10 @@ model PlanningEntry {
   customer             String?
   projectId            String?
   projectLabel         String?
+  planningTrade        String   @default("")
+  billingCatalogItemId String?
+  billingCatalogItemLabel String?
+  billingGroupId       String?
   offerId              String?
   offerLineId          String?
   offerLabel           String?
@@ -1532,6 +1562,7 @@ model WorkPilotProject {
   projectRuntimeFrom  String?
   projectRuntimeUntil String?
   billingInterval     String?
+  recurringBillingMode String?
   forecastBillingType String?
   forecastNetAmount   String?
   trade               String?
@@ -1543,6 +1574,7 @@ model WorkPilotProject {
   deputyName          String?
   deputyFrom          String?
   deputyUntil         String?
+  timeBudgetEnabled   Boolean  @default(false)
   timeBudgetHours     String?
   timeBudgetHistory   Json     @default("[]")
   timeBudgetAllocations Json    @default("[]")

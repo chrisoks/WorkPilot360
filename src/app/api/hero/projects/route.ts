@@ -39,6 +39,7 @@ type LocalProjectRow = {
   deputyName: string | null;
   deputyFrom: string | null;
   deputyUntil: string | null;
+  timeBudgetEnabled: boolean | null;
   timeBudgetHours: string | null;
   timeBudgetHistory: unknown;
   timeBudgetAllocations: unknown;
@@ -87,6 +88,7 @@ async function ensureLocalProjectTable() {
       "deputyName" TEXT,
       "deputyFrom" TEXT,
       "deputyUntil" TEXT,
+      "timeBudgetEnabled" BOOLEAN NOT NULL DEFAULT false,
       "timeBudgetHours" TEXT,
       "timeBudgetHistory" JSONB NOT NULL DEFAULT '[]'::jsonb,
       "timeBudgetAllocations" JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -131,6 +133,7 @@ async function ensureLocalProjectTable() {
     ADD COLUMN IF NOT EXISTS "deputyName" TEXT,
     ADD COLUMN IF NOT EXISTS "deputyFrom" TEXT,
     ADD COLUMN IF NOT EXISTS "deputyUntil" TEXT,
+    ADD COLUMN IF NOT EXISTS "timeBudgetEnabled" BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN IF NOT EXISTS "timeBudgetHours" TEXT,
     ADD COLUMN IF NOT EXISTS "timeBudgetHistory" JSONB NOT NULL DEFAULT '[]'::jsonb,
     ADD COLUMN IF NOT EXISTS "timeBudgetAllocations" JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -268,6 +271,7 @@ function formatLocalProject(project: LocalProjectRow) {
     deputyFrom: project.deputyFrom ?? "",
     deputyUntil: project.deputyUntil ?? "",
     createdAt: formatDateTime(project.createdAt),
+    timeBudgetEnabled: Boolean(project.timeBudgetEnabled),
     timeBudgetHours: project.timeBudgetHours ?? "",
     timeBudgetHistory: cleanBudgetHistory(project.timeBudgetHistory),
     timeBudgetAllocations: cleanBudgetAllocations(project.timeBudgetAllocations),
@@ -476,6 +480,7 @@ export async function POST(req: Request) {
       "deputyName",
       "deputyFrom",
       "deputyUntil",
+      "timeBudgetEnabled",
       "timeBudgetHours",
       "timeBudgetHistory",
       "timeBudgetAllocations",
@@ -519,6 +524,7 @@ export async function POST(req: Request) {
       ${cleanString(body.deputyName) || null},
       ${cleanString(body.deputyFrom) || null},
       ${cleanString(body.deputyUntil) || null},
+      ${Boolean(body.timeBudgetEnabled)},
       ${cleanString(body.timeBudgetHours) || null},
       ${JSON.stringify(cleanBudgetHistory(body.timeBudgetHistory))}::jsonb,
       ${JSON.stringify(cleanBudgetAllocations(body.timeBudgetAllocations))}::jsonb,
@@ -560,6 +566,7 @@ export async function POST(req: Request) {
       "deputyName" = EXCLUDED."deputyName",
       "deputyFrom" = EXCLUDED."deputyFrom",
       "deputyUntil" = EXCLUDED."deputyUntil",
+      "timeBudgetEnabled" = EXCLUDED."timeBudgetEnabled",
       "timeBudgetHours" = EXCLUDED."timeBudgetHours",
       "timeBudgetHistory" = EXCLUDED."timeBudgetHistory",
       "timeBudgetAllocations" = EXCLUDED."timeBudgetAllocations",

@@ -511,12 +511,34 @@ function formatDate() {
   }).format(new Date());
 }
 
+function splitWordToWidth(word: string, font: PDFFont, size: number, maxWidth: number) {
+  if (font.widthOfTextAtSize(word, size) <= maxWidth) return [word];
+
+  const chunks: string[] = [];
+  let chunk = "";
+  for (const char of Array.from(word)) {
+    const candidate = `${chunk}${char}`;
+    if (chunk && font.widthOfTextAtSize(candidate, size) > maxWidth) {
+      chunks.push(chunk);
+      chunk = char;
+    } else {
+      chunk = candidate;
+    }
+  }
+  if (chunk) chunks.push(chunk);
+  return chunks;
+}
+
 function wrapText(text: string, font: PDFFont, size: number, maxWidth: number) {
   const normalized = text.replace(/\r/g, "").split("\n");
   const lines: string[] = [];
 
   normalized.forEach((paragraph) => {
-    const words = paragraph.trim().split(/\s+/).filter(Boolean);
+    const words = paragraph
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .flatMap((word) => splitWordToWidth(word, font, size, maxWidth));
     if (words.length === 0) {
       lines.push("");
       return;
@@ -624,7 +646,7 @@ async function generateOfferPdf(offer: OfferInput & { offerNumber: string }, lin
     titleX: 158,
     unitPriceRightX: 475,
     totalRightX: 545,
-    titleWidth: 238,
+    titleWidth: 165,
   };
   const headerSize = 8.2;
   const rowSize = 7.8;

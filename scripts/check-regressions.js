@@ -11,6 +11,11 @@ function count(content, needle) {
   return content.split(needle).length - 1;
 }
 
+function getPrismaModelBlock(schema, modelName) {
+  const match = schema.match(new RegExp(`model\\s+${modelName}\\s+\\{([\\s\\S]*?)\\n\\}`, "m"));
+  return match ? match[1] : "";
+}
+
 const files = {
   page: read("src/components/dashboard/dashboard-page.tsx"),
   css: read("src/components/dashboard/dashboard.module.css"),
@@ -404,8 +409,8 @@ const required = [
   {
     label: "Storno loest verknuepfte Stempelungen wieder von der Rechnung",
     file: "invoicesRoute",
-    needle: "SET \"invoiceId\" = NULL, \"invoiceNumber\" = NULL, \"invoicedAt\" = NULL",
-    min: 1,
+    needle: "releaseStampedHoursFromInvoice",
+    min: 3,
   },
   {
     label: "Zeiteintraege speichern Rechnungsverknuepfung",
@@ -614,6 +619,19 @@ const forbidden = [
   },
 ];
 
+const requiredPrismaFields = [
+  {
+    model: "WorkPilotProject",
+    field: "recurringBillingMode",
+    reason: "Dauerlaeufer-Abrechnungsmodell wird in UI, Projekt-API, Stempelung und Projektzeiten genutzt.",
+  },
+  {
+    model: "WorkPilotProject",
+    field: "timeBudgetEnabled",
+    reason: "Aktivierung von Projektzeitkontingenten wird in Projektakte und Planung genutzt.",
+  },
+];
+
 const failures = [];
 
 for (const check of required) {
@@ -626,6 +644,17 @@ for (const check of required) {
 for (const check of forbidden) {
   if (files[check.file].includes(check.needle)) {
     failures.push(`${check.label}: verbotener Marker gefunden.`);
+  }
+}
+
+for (const check of requiredPrismaFields) {
+  const modelBlock = getPrismaModelBlock(files.schema, check.model);
+  if (!modelBlock) {
+    failures.push(`Prisma-Modell fehlt: ${check.model}. ${check.reason}`);
+    continue;
+  }
+  if (!new RegExp(`(^|\\n)\\s*${check.field}\\s+`, "m").test(modelBlock)) {
+    failures.push(`Prisma-Feld fehlt: ${check.model}.${check.field}. ${check.reason}`);
   }
 }
 

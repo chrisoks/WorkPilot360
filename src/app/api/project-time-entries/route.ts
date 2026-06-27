@@ -22,6 +22,10 @@ type ProjectTimeEntryRow = {
   projectId: string;
   projectLabel: string | null;
   trade: string | null;
+  planningEntryId: string | null;
+  planningBillingGroupId: string | null;
+  billingCatalogItemId: string | null;
+  billingCatalogItemLabel: string | null;
   userId: string | null;
   employee: string | null;
   entrySource: string | null;
@@ -58,6 +62,10 @@ async function ensureProjectTimeEntryTable() {
       "projectId" TEXT NOT NULL,
       "projectLabel" TEXT,
       "trade" TEXT,
+      "planningEntryId" TEXT,
+      "planningBillingGroupId" TEXT,
+      "billingCatalogItemId" TEXT,
+      "billingCatalogItemLabel" TEXT,
       "userId" TEXT,
       "employee" TEXT,
       "entrySource" TEXT NOT NULL DEFAULT 'stamped',
@@ -89,6 +97,10 @@ async function ensureProjectTimeEntryTable() {
     ADD COLUMN IF NOT EXISTS "mode" TEXT NOT NULL DEFAULT 'project',
     ADD COLUMN IF NOT EXISTS "userId" TEXT,
     ADD COLUMN IF NOT EXISTS "trade" TEXT,
+    ADD COLUMN IF NOT EXISTS "planningEntryId" TEXT,
+    ADD COLUMN IF NOT EXISTS "planningBillingGroupId" TEXT,
+    ADD COLUMN IF NOT EXISTS "billingCatalogItemId" TEXT,
+    ADD COLUMN IF NOT EXISTS "billingCatalogItemLabel" TEXT,
     ADD COLUMN IF NOT EXISTS "entrySource" TEXT NOT NULL DEFAULT 'stamped',
     ADD COLUMN IF NOT EXISTS "invoiceId" TEXT,
     ADD COLUMN IF NOT EXISTS "invoiceNumber" TEXT,
@@ -205,6 +217,10 @@ function formatEntry(entry: ProjectTimeEntryRow) {
     projectId: entry.projectId,
     projectLabel: entry.projectLabel ?? "",
     trade: entry.trade ?? "",
+    planningEntryId: entry.planningEntryId ?? "",
+    planningBillingGroupId: entry.planningBillingGroupId ?? "",
+    billingCatalogItemId: entry.billingCatalogItemId ?? "",
+    billingCatalogItemLabel: entry.billingCatalogItemLabel ?? "",
     userId: entry.userId ?? "",
     employee: entry.employee ?? "",
     entrySource: entry.entrySource === "manual" ? "manual" : "stamped",
@@ -245,6 +261,8 @@ export async function GET(req: Request) {
   await ensureProjectTimeEntryTable();
 
   const requestedActorId = searchParams.get("actorUserId");
+  const projectIdFilter = cleanString(searchParams.get("projectId"));
+  const includeDeleted = searchParams.get("includeDeleted") === "1";
   const actorResult = await getSessionBoundActor(req, users, requestedActorId);
   if (!actorResult.ok) {
     if (!requestedActorId && actorResult.status === 401) {
@@ -255,22 +273,59 @@ export async function GET(req: Request) {
   }
   const actor = actorResult.actor;
 
-  const entries = canManageProjectTimeEntries(actor)
-    ? await prisma.$queryRaw<ProjectTimeEntryRow[]>`
-        SELECT *
-        FROM "ProjectTimeEntry"
-        WHERE "organizationId" = ${organization.id}
-          AND "deletedAt" IS NULL
-        ORDER BY "createdAt" DESC
-      `
-    : await prisma.$queryRaw<ProjectTimeEntryRow[]>`
-        SELECT *
-        FROM "ProjectTimeEntry"
-        WHERE "organizationId" = ${organization.id}
-          AND "userId" = ${actor.id}
-          AND "deletedAt" IS NULL
-        ORDER BY "createdAt" DESC
-      `;
+  const canManageTimeEntries = canManageProjectTimeEntries(actor);
+  const entries = projectIdFilter
+    ? canManageTimeEntries
+      ? includeDeleted
+        ? await prisma.$queryRaw<ProjectTimeEntryRow[]>`
+            SELECT *
+            FROM "ProjectTimeEntry"
+            WHERE "organizationId" = ${organization.id}
+              AND "projectId" = ${projectIdFilter}
+            ORDER BY "createdAt" DESC
+          `
+        : await prisma.$queryRaw<ProjectTimeEntryRow[]>`
+            SELECT *
+            FROM "ProjectTimeEntry"
+            WHERE "organizationId" = ${organization.id}
+              AND "projectId" = ${projectIdFilter}
+              AND "deletedAt" IS NULL
+            ORDER BY "createdAt" DESC
+          `
+      : includeDeleted
+        ? await prisma.$queryRaw<ProjectTimeEntryRow[]>`
+            SELECT *
+            FROM "ProjectTimeEntry"
+            WHERE "organizationId" = ${organization.id}
+              AND "projectId" = ${projectIdFilter}
+              AND "userId" = ${actor.id}
+            ORDER BY "createdAt" DESC
+          `
+        : await prisma.$queryRaw<ProjectTimeEntryRow[]>`
+            SELECT *
+            FROM "ProjectTimeEntry"
+            WHERE "organizationId" = ${organization.id}
+              AND "projectId" = ${projectIdFilter}
+              AND "userId" = ${actor.id}
+              AND "deletedAt" IS NULL
+            ORDER BY "createdAt" DESC
+          `
+    : canManageTimeEntries
+      ? await prisma.$queryRaw<ProjectTimeEntryRow[]>`
+          SELECT *
+          FROM "ProjectTimeEntry"
+          WHERE "organizationId" = ${organization.id}
+            AND "deletedAt" IS NULL
+          ORDER BY "createdAt" DESC
+        `
+      : await prisma.$queryRaw<ProjectTimeEntryRow[]>`
+          SELECT *
+          FROM "ProjectTimeEntry"
+          WHERE "organizationId" = ${organization.id}
+            AND "userId" = ${actor.id}
+            AND "deletedAt" IS NULL
+          ORDER BY "createdAt" DESC
+        `;
 
   return NextResponse.json(entries.map(formatEntry));
 }
@@ -304,6 +359,10 @@ export async function POST(req: Request) {
   const id = cleanString(body.id) || randomUUID();
   const projectLabel = cleanString(body.projectLabel);
   const trade = mode === "project" ? cleanString(body.trade) : "";
+  const planningEntryId = cleanString(body.planningEntryId);
+  const planningBillingGroupId = cleanString(body.planningBillingGroupId);
+  const billingCatalogItemId = cleanString(body.billingCatalogItemId);
+  const billingCatalogItemLabel = cleanString(body.billingCatalogItemLabel);
   const userId = cleanString(body.userId);
   const targetUser = getRequestUser(users, userId);
   if (!targetUser) {
@@ -390,6 +449,10 @@ export async function POST(req: Request) {
       "projectId",
       "projectLabel",
       "trade",
+      "planningEntryId",
+      "planningBillingGroupId",
+      "billingCatalogItemId",
+      "billingCatalogItemLabel",
       "userId",
       "employee",
       "entrySource",
@@ -418,6 +481,10 @@ export async function POST(req: Request) {
       ${projectId},
       ${projectLabel || null},
       ${trade || null},
+      ${planningEntryId || null},
+      ${planningBillingGroupId || null},
+      ${billingCatalogItemId || null},
+      ${billingCatalogItemLabel || null},
       ${targetUser.id},
       ${employee || null},
       ${entrySource},
@@ -443,6 +510,10 @@ export async function POST(req: Request) {
       "mode" = EXCLUDED."mode",
       "projectLabel" = EXCLUDED."projectLabel",
       "trade" = EXCLUDED."trade",
+      "planningEntryId" = EXCLUDED."planningEntryId",
+      "planningBillingGroupId" = EXCLUDED."planningBillingGroupId",
+      "billingCatalogItemId" = EXCLUDED."billingCatalogItemId",
+      "billingCatalogItemLabel" = EXCLUDED."billingCatalogItemLabel",
       "userId" = EXCLUDED."userId",
       "employee" = EXCLUDED."employee",
       "entrySource" = EXCLUDED."entrySource",
@@ -472,6 +543,7 @@ export async function POST(req: Request) {
 export async function DELETE(req: Request) {
   const { searchParams } = new URL(req.url);
   const id = cleanString(searchParams.get("id"));
+  const historyId = cleanString(searchParams.get("historyId"));
   const note = cleanString(searchParams.get("note")) || "Zeiteintrag gelöscht";
 
   if (!id) {
@@ -500,6 +572,30 @@ export async function DELETE(req: Request) {
   const existingEntry = existingRows[0];
   if (!existingEntry) {
     return NextResponse.json({ ok: true });
+  }
+
+  if (historyId) {
+    if (actor.role !== Role.GESCHAEFTSFUEHRER) {
+      return NextResponse.json(
+        { error: "Nur Gesch\u00e4ftsf\u00fchrer d\u00fcrfen Historieneintr\u00e4ge l\u00f6schen." },
+        { status: 403 }
+      );
+    }
+
+    const currentHistory = Array.isArray(existingEntry.editHistory) ? existingEntry.editHistory : [];
+    const nextHistory = currentHistory.filter((entry) => {
+      if (!entry || typeof entry !== "object") return true;
+      return String((entry as { id?: unknown }).id ?? "") !== historyId;
+    });
+    const rows = await prisma.$queryRaw<ProjectTimeEntryRow[]>`
+      UPDATE "ProjectTimeEntry"
+      SET "editHistory" = CAST(${JSON.stringify(nextHistory)} AS jsonb)
+      WHERE "id" = ${id}
+        AND "organizationId" = ${organization.id}
+      RETURNING *
+    `;
+
+    return NextResponse.json(formatEntry(rows[0]));
   }
 
   if (

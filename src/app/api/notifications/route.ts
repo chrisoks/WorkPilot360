@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
+import { getDeadlineSettings } from "@/lib/company-settings/deadlines";
 import { canCreateNotifications } from "@/lib/permissions";
 
 type NotificationRow = {
@@ -24,6 +25,16 @@ type NotificationEscalationInput = {
   userIds: string[];
   subjectPrefix: string;
   bodySuffix: string;
+};
+
+type InterruptedWorkTaskRow = {
+  id: string;
+  organizationId: string;
+  title: string;
+  description: string;
+  projectId: string | null;
+  ownerId: string;
+  createdAt: Date;
 };
 
 async function ensureNotificationLinkColumns() {
@@ -57,6 +68,7 @@ export async function GET(req: Request) {
     return sessionBoundActorResponse(actorResult);
   }
   const activeUser = actorResult.actor;
+  await ensureInterruptedWorkNotifications(activeUser.organizationId, users);
 
   const searchFilter = search
     ? Prisma.sql`AND (
@@ -168,6 +180,117 @@ function cleanEscalations(value: unknown): NotificationEscalationInput[] {
       return { afterBusinessDays, userIds, subjectPrefix, bodySuffix };
     })
     .filter((item): item is NotificationEscalationInput => Boolean(item));
+}
+
+async function createNotificationIfMissing(input: {
+  organizationId: string;
+  userId: string;
+  taskId: string;
+  subject: string;
+  body: string;
+  stage: string;
+}) {
+  const existing = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT id
+    FROM "Notification"
+    WHERE "organizationId" = ${input.organizationId}
+      AND "userId" = ${input.userId}
+      AND "taskId" = ${input.taskId}
+      AND "subject" = ${input.subject}
+      AND COALESCE("linkTarget", '') = 'task'
+      AND COALESCE("linkTargetId", '') = ${input.taskId}
+    LIMIT 1
+  `;
+  if (existing.length > 0) return;
+
+  await prisma.$executeRaw`
+    INSERT INTO "Notification" (
+      "id",
+      "organizationId",
+      "userId",
+      "taskId",
+      "channel",
+      "subject",
+      "body",
+      "linkTarget",
+      "linkTargetId",
+      "linkLabel",
+      "sentAt",
+      "createdAt"
+    )
+    VALUES (
+      ${randomUUID()},
+      ${input.organizationId},
+      ${input.userId},
+      ${input.taskId},
+      'app',
+      ${input.subject},
+      ${input.body},
+      'task',
+      ${input.taskId},
+      ${input.stage},
+      NULL,
+      CURRENT_TIMESTAMP
+    )
+  `;
+}
+
+async function ensureInterruptedWorkNotifications(organizationId: string, users: Array<{ id: string; role: string; isActive: boolean }>) {
+  const settings = await getDeadlineSettings(organizationId);
+  const tasks = await prisma.$queryRaw<InterruptedWorkTaskRow[]>`
+    SELECT id, "organizationId", title, description, "projectId", "ownerId", "createdAt"
+    FROM "Task"
+    WHERE "organizationId" = ${organizationId}
+      AND status NOT IN ('ERLEDIGT', 'ARCHIVIERT', 'ABGELEHNT')
+      AND description LIKE '%Stempelung:%'
+      AND title LIKE 'Unterbrochene Arbeit%'
+  `;
+
+  const activeUsers = users.filter((user) => user.isActive);
+  const managementUserIds = activeUsers
+    .filter((user) => user.role === "GESCHAEFTSFUEHRER")
+    .map((user) => user.id);
+
+  for (const task of tasks) {
+    const ageMs = Date.now() - new Date(task.createdAt).getTime();
+    const ageDays = ageMs / (24 * 60 * 60 * 1000);
+    const participantRows = await prisma.$queryRaw<Array<{ userId: string }>>`
+      SELECT "userId"
+      FROM "TaskParticipant"
+      WHERE "organizationId" = ${organizationId}
+        AND "taskId" = ${task.id}
+    `;
+    const responsibleRecipientIds = Array.from(
+      new Set([task.ownerId, ...participantRows.map((row) => row.userId)].filter(Boolean))
+    );
+    const body = `${task.title} ist weiterhin offen. Bitte prüfen, ob die Arbeit abgeschlossen oder neu geplant werden muss.`;
+
+    if (ageDays >= settings.interruptedWorkFollowUpDays) {
+      for (const userId of responsibleRecipientIds) {
+        await createNotificationIfMissing({
+          organizationId,
+          userId,
+          taskId: task.id,
+          subject: `Nachfassen: ${task.title}`,
+          body,
+          stage: "Nachfassen",
+        });
+      }
+    }
+
+    if (ageDays >= settings.interruptedWorkManagementEscalationDays) {
+      for (const userId of managementUserIds) {
+        await createNotificationIfMissing({
+          organizationId,
+          userId,
+          taskId: task.id,
+          subject: `Eskalation: ${task.title}`,
+          body: `${body} Die Unterbrechung ist seit mindestens ${settings.interruptedWorkManagementEscalationDays} Tagen offen.`,
+          stage: "Eskalation",
+        });
+      }
+    }
+  }
 }
 
 export async function POST(req: Request) {

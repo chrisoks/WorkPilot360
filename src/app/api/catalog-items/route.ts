@@ -13,6 +13,7 @@ type CatalogItemRow = {
   number: string;
   name: string;
   category: string | null;
+  trade: string | null;
   unit: string;
   description: string | null;
   matchcode: string | null;
@@ -88,6 +89,7 @@ async function ensureCatalogTables() {
       "number" TEXT NOT NULL,
       "name" TEXT NOT NULL,
       "category" TEXT,
+      "trade" TEXT NOT NULL DEFAULT '',
       "unit" TEXT NOT NULL DEFAULT 'Stk',
       "description" TEXT,
       "matchcode" TEXT,
@@ -127,6 +129,11 @@ async function ensureCatalogTables() {
 
   await prisma.$executeRaw`
     ALTER TABLE "CatalogItem"
+    ADD COLUMN IF NOT EXISTS "trade" TEXT NOT NULL DEFAULT ''
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "CatalogItem"
     ADD COLUMN IF NOT EXISTS "isLaborPosition" BOOLEAN NOT NULL DEFAULT false
   `;
 
@@ -149,6 +156,49 @@ async function ensureCatalogTables() {
   await prisma.$executeRaw`
     INSERT INTO "SchemaDataPatch" ("key")
     VALUES ('catalog-items-labor-position-backfill')
+    ON CONFLICT ("key") DO NOTHING
+  `;
+
+  await prisma.$executeRaw`
+    UPDATE "CatalogItem"
+    SET "trade" = CASE
+      WHEN LOWER(COALESCE("name", '') || ' ' || COALESCE("category", '')) LIKE '%hausmeister%' THEN 'Hausmeisterservice'
+      WHEN LOWER(COALESCE("name", '') || ' ' || COALESCE("category", '')) LIKE '%grün%'
+        OR LOWER(COALESCE("name", '') || ' ' || COALESCE("category", '')) LIKE '%gruen%'
+        OR LOWER(COALESCE("name", '') || ' ' || COALESCE("category", '')) LIKE '%garten%'
+        OR LOWER(COALESCE("name", '') || ' ' || COALESCE("category", '')) LIKE '%rasen%' THEN 'Grünflächen- und Gartenpflege'
+      WHEN LOWER(COALESCE("name", '') || ' ' || COALESCE("category", '')) LIKE '%dach%' THEN 'Dachreinigung'
+      WHEN LOWER(COALESCE("name", '') || ' ' || COALESCE("category", '')) LIKE '%fassade%' THEN 'Fassadenreinigung'
+      WHEN LOWER(COALESCE("name", '') || ' ' || COALESCE("category", '')) LIKE '%glas%' THEN 'Glasreinigung'
+      WHEN LOWER(COALESCE("name", '') || ' ' || COALESCE("category", '')) LIKE '%unterhaltsreinigung%' THEN 'Unterhaltsreinigung'
+      WHEN LOWER(COALESCE("name", '') || ' ' || COALESCE("category", '')) LIKE '%winter%' THEN 'Winterdienst'
+      WHEN LOWER(COALESCE("name", '') || ' ' || COALESCE("category", '')) LIKE '%arbeitssicherheit%'
+        OR LOWER(COALESCE("name", '') || ' ' || COALESCE("category", '')) LIKE '%brandschutz%'
+        OR LOWER(COALESCE("name", '') || ' ' || COALESCE("category", '')) LIKE '%leiterprüfung%'
+        OR LOWER(COALESCE("name", '') || ' ' || COALESCE("category", '')) LIKE '%lärmmessung%' THEN 'Arbeitssicherheit'
+      WHEN LOWER(COALESCE("name", '') || ' ' || COALESCE("category", '')) LIKE '%marketing%'
+        OR LOWER(COALESCE("name", '') || ' ' || COALESCE("category", '')) LIKE '%social%'
+        OR LOWER(COALESCE("name", '') || ' ' || COALESCE("category", '')) LIKE '%homepage%'
+        OR LOWER(COALESCE("name", '') || ' ' || COALESCE("category", '')) LIKE '%content%' THEN 'Marketing'
+      WHEN LOWER(COALESCE("name", '') || ' ' || COALESCE("category", '')) LIKE '%hr%'
+        OR LOWER(COALESCE("name", '') || ' ' || COALESCE("category", '')) LIKE '%azubi%'
+        OR LOWER(COALESCE("name", '') || ' ' || COALESCE("category", '')) LIKE '%karriere%'
+        OR LOWER(COALESCE("name", '') || ' ' || COALESCE("category", '')) LIKE '%talent%'
+        OR LOWER(COALESCE("name", '') || ' ' || COALESCE("category", '')) LIKE '%sourcing%' THEN 'HR'
+      WHEN LOWER(COALESCE("name", '') || ' ' || COALESCE("category", '')) LIKE '%objektbetreuung%' THEN 'Objektbetreuung'
+      WHEN LOWER(COALESCE("name", '') || ' ' || COALESCE("category", '')) LIKE '%trockeneis%' THEN 'Trockeneisstrahlen'
+      ELSE "trade"
+    END
+    WHERE "type" = 'service'
+      AND COALESCE("trade", '') = ''
+      AND NOT EXISTS (
+        SELECT 1 FROM "SchemaDataPatch" WHERE "key" = 'catalog-items-trade-backfill-v1'
+      )
+  `;
+
+  await prisma.$executeRaw`
+    INSERT INTO "SchemaDataPatch" ("key")
+    VALUES ('catalog-items-trade-backfill-v1')
     ON CONFLICT ("key") DO NOTHING
   `;
 
@@ -287,6 +337,7 @@ function formatCatalogItem(
     number: item.number,
     name: item.name,
     category: item.category ?? "",
+    trade: item.trade ?? "",
     unit: item.unit,
     description: item.description ?? "",
     matchcode: item.matchcode ?? "",
@@ -422,6 +473,7 @@ async function writeChangeHistory(
     ["number", "Nummer"],
     ["name", "Name"],
     ["category", "Kategorie"],
+    ["trade", "Gewerk"],
     ["unit", "Einheit"],
     ["description", "Beschreibung"],
     ["purchasePrice", "Einkaufspreis"],
@@ -550,7 +602,7 @@ export async function POST(req: Request) {
   try {
     rows = await prisma.$queryRaw<CatalogItemRow[]>`
       INSERT INTO "CatalogItem" (
-        "id", "organizationId", "type", "number", "name", "category", "unit",
+        "id", "organizationId", "type", "number", "name", "category", "trade", "unit",
         "description", "matchcode", "ean", "costCenter", "supplierName", "supplierNumber",
         "manufacturer", "manufacturerNumber", "manufacturerTypeName", "minimumOrderQuantity",
         "quantityScale", "priceUnit", "deliveryTime", "stockQuantity", "purchasePrice", "laborCostRateKey",
@@ -558,7 +610,7 @@ export async function POST(req: Request) {
         "defaultPlanningBoard", "defaultPlanningGroup", "isActive", "updatedAt"
       )
       VALUES (
-        ${id}, ${organization.id}, ${type}, ${number}, ${name}, ${nullableString(body.category)}, ${normalizeUnit(body.unit) || "Stk"},
+        ${id}, ${organization.id}, ${type}, ${number}, ${name}, ${nullableString(body.category)}, ${cleanString(body.trade)}, ${normalizeUnit(body.unit) || "Stk"},
         ${nullableString(body.description)}, ${nullableString(body.matchcode)}, ${nullableString(body.ean)}, ${nullableString(body.costCenter)},
         ${nullableString(body.supplierName)}, ${nullableString(body.supplierNumber)}, ${nullableString(body.manufacturer)},
         ${nullableString(body.manufacturerNumber)}, ${nullableString(body.manufacturerTypeName)}, ${parseNullableNumber(body.minimumOrderQuantity)},
@@ -649,6 +701,7 @@ export async function PATCH(req: Request) {
         "number" = ${cleanString(body.number) || before.number},
         "name" = ${name},
         "category" = ${nullableString(body.category)},
+        "trade" = ${cleanString(body.trade)},
         "unit" = ${normalizeUnit(body.unit) || "Stk"},
         "description" = ${nullableString(body.description)},
         "matchcode" = ${nullableString(body.matchcode)},

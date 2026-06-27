@@ -7,6 +7,10 @@ import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/acto
 import { getStoredMailAccount, refreshMicrosoftAccessToken } from "@/lib/mail/microsoft";
 import { ensureSalesHubTables } from "@/lib/sales-hub/ensure";
 import { canSendDocumentMails, canSendInvoiceDocuments, canSendOfferDocuments } from "@/lib/permissions";
+import { generateXRechnungXml, type XRechnungSeller } from "@/lib/e-invoice/xrechnung";
+import { validateXRechnungPayload } from "@/lib/e-invoice/xrechnung-validation";
+import { validateXRechnungWithKosit } from "@/lib/e-invoice/kosit-validator";
+import { buildValidatedZugferdPdf } from "@/lib/e-invoice/zugferd-pdf";
 
 type MailAccount = {
   provider?: string;
@@ -15,8 +19,69 @@ type MailAccount = {
   displayName?: string;
 };
 
+type EInvoiceFormat = "pdf" | "xrechnung" | "zugferd" | "pdf-xrechnung";
+
+type InvoiceMailRow = {
+  id: string;
+  projectId: string;
+  projectNumber: string;
+  invoiceNumber: string;
+  status: string;
+  customerName: string;
+  customerStreet: string;
+  customerCity: string;
+  contactName: string;
+  serviceDate: string;
+  dueDate: string;
+  netTotal: number;
+  vatRate: number;
+  grossTotal: number;
+  paymentTermDays: number;
+  createdAt: Date;
+};
+
+type InvoiceMailLineRow = {
+  position: number;
+  quantity: number;
+  unit: string;
+  title: string;
+  description: string;
+  unitPrice: number;
+  discountPercent: number;
+  vatRate: number;
+  totalNet: number;
+};
+
 function cleanText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function cleanDateKey(value: unknown) {
+  const normalized = cleanText(value);
+  return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : "";
+}
+
+function cleanPaymentTermDays(value: unknown) {
+  const parsed = Math.round(Number(value));
+  if (!Number.isFinite(parsed)) return 14;
+  return Math.min(Math.max(parsed, 0), 365);
+}
+
+function addDaysToDateKey(dateKey: string, days: number) {
+  const cleanDate = cleanDateKey(dateKey);
+  if (!cleanDate) return "";
+  const [year, month, day] = cleanDate.split("-").map(Number);
+  const date = new Date(year, month - 1, day, 12, 0, 0);
+  date.setDate(date.getDate() + cleanPaymentTermDays(days));
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function isInvoiceBlockedForXRechnung(status: unknown) {
+  return ["Storniert", "Stornorechnung", "Gelöscht", "Gel\u00c3\u00b6scht"].includes(cleanText(status));
+}
+
+function cleanInvoiceLineTitle(value: unknown) {
+  return cleanText(value).replace(/\s*\(\s*\d+(?:[,.]\d+)?\s*€\s*\/\s*Std\.\s*\)\s*$/i, "");
 }
 
 function parseBoundedPositiveInt(value: unknown, fallback: number, max: number) {
@@ -444,6 +509,175 @@ async function getPdfAttachment(kind: string, documentId: string, documentNumber
     : [];
 }
 
+async function getInvoicePdfBase64(documentId: string) {
+  const rows = await prisma.$queryRaw<Array<{ pdfData: string | null }>>`
+    SELECT "pdfData" FROM "Invoice" WHERE id = ${documentId} LIMIT 1
+  `;
+  return rows[0]?.pdfData || "";
+}
+
+function getXRechnungSellerProfile(): XRechnungSeller {
+  return {
+    name: "OK solutions GmbH",
+    street: "Im Krötenteich 3/4",
+    postalCode: "74722",
+    city: "Buchen",
+    country: "DE",
+    endpoint: "rechnung@ok-solutions.com",
+    vatId: "DE367346374",
+    iban: "DE85674500480004369971",
+    bic: "SOLADES1MOS",
+    bankName: "Sparkasse Neckartal-Odenwald",
+    contactName: "OK solutions GmbH",
+    contactPhone: "+49 6281 5649990",
+    contactEmail: "rechnung@ok-solutions.com",
+  };
+}
+
+async function getInvoiceBuyerReference(organizationId: string, projectId: string, fallbackReference = "") {
+  if (!projectId) return cleanText(fallbackReference);
+  const rows = await prisma.$queryRaw<Array<{ leitwegId: string | null }>>`
+    SELECT c."leitwegId"
+    FROM "WorkPilotProject" p
+    JOIN "Contact" c
+      ON c."organizationId" = p."organizationId"
+     AND (
+       c."id" = p."contactId"
+       OR c."id" = p."contactPersonId"
+       OR c."id" = p."addressContactId"
+       OR c."parentCompanyId" = p."contactId"
+     )
+    WHERE p."organizationId" = ${organizationId}
+      AND p."id" = ${projectId}
+      AND COALESCE(c."leitwegId", '') <> ''
+    ORDER BY c."isInvoiceRecipient" DESC, c."isMainContact" DESC, c."updatedAt" DESC
+    LIMIT 1
+  `;
+  return cleanText(rows[0]?.leitwegId) || cleanText(fallbackReference);
+}
+
+async function getXRechnungAttachment(organizationId: string, invoiceId: string, documentNumber: string) {
+  const invoiceRows = await prisma.$queryRaw<InvoiceMailRow[]>`
+    SELECT "id", "projectId", "projectNumber", "invoiceNumber", "status", "customerName", "customerStreet", "customerCity",
+           "contactName", "serviceDate", "dueDate", "netTotal", "vatRate", "grossTotal",
+           "paymentTermDays", "createdAt"
+    FROM "Invoice"
+    WHERE "organizationId" = ${organizationId}
+      AND "id" = ${invoiceId}
+    LIMIT 1
+  `;
+  const invoice = invoiceRows[0];
+  if (!invoice) {
+    throw new Error("XRechnung konnte nicht erzeugt werden: Rechnung wurde nicht gefunden.");
+  }
+  if (isInvoiceBlockedForXRechnung(invoice.status)) {
+    throw new Error("XRechnung kann fuer geloeschte oder stornierte Rechnungen nicht erzeugt werden.");
+  }
+
+  const lineRows = await prisma.$queryRaw<InvoiceMailLineRow[]>`
+    SELECT "position", "quantity", "unit", "title", "description", "unitPrice",
+           "discountPercent", "vatRate", "totalNet"
+    FROM "InvoiceLine"
+    WHERE "organizationId" = ${organizationId}
+      AND "invoiceId" = ${invoiceId}
+    ORDER BY "position" ASC, "createdAt" ASC
+  `;
+  if (!lineRows.length) {
+    throw new Error("XRechnung konnte nicht erzeugt werden: Rechnungspositionen fehlen.");
+  }
+
+  const paymentTermDays = cleanPaymentTermDays(invoice.paymentTermDays);
+  const serviceDate = cleanDateKey(invoice.serviceDate);
+  const dueDate = cleanDateKey(invoice.dueDate) || addDaysToDateKey(serviceDate, paymentTermDays);
+  const xrechnungInvoice = {
+    invoiceNumber: invoice.invoiceNumber || documentNumber,
+    issueDate: invoice.createdAt?.toISOString?.().slice(0, 10) || new Date().toISOString().slice(0, 10),
+    serviceDate,
+    dueDate,
+    seller: getXRechnungSellerProfile(),
+    customerName: invoice.customerName,
+    customerStreet: invoice.customerStreet,
+    customerCity: invoice.customerCity,
+    contactName: invoice.contactName,
+    netTotal: Number(invoice.netTotal ?? 0),
+    vatRate: Number(invoice.vatRate ?? 19),
+    grossTotal: Number(invoice.grossTotal ?? 0),
+    paymentTermDays,
+    buyerReference: await getInvoiceBuyerReference(
+      organizationId,
+      invoice.projectId,
+      invoice.projectNumber || invoice.invoiceNumber || documentNumber
+    ),
+  };
+  const xrechnungLines = lineRows.map((line, index) => ({
+    position: Number(line.position ?? index + 1),
+    quantity: Number(line.quantity ?? 0),
+    unit: line.unit || "Stk",
+    title: cleanInvoiceLineTitle(line.title) || "Position",
+    description: line.description || "",
+    unitPrice: Number(line.unitPrice ?? 0),
+    discountPercent: Number(line.discountPercent ?? 0),
+    vatRate: Number(line.vatRate ?? invoice.vatRate ?? 19),
+    totalNet: Number(line.totalNet ?? 0),
+  }));
+  const validation = validateXRechnungPayload(xrechnungInvoice, xrechnungLines);
+  if (!validation.valid) {
+    const message = validation.issues
+      .filter((issue) => issue.severity === "error")
+      .map((issue) => issue.message)
+      .join(" ");
+    throw new Error(`XRechnung konnte nicht erzeugt werden: ${message || "Validierungsfehler gefunden."}`);
+  }
+
+  const xml = generateXRechnungXml(xrechnungInvoice, xrechnungLines);
+  const kositValidation = await validateXRechnungWithKosit(xml);
+  if (kositValidation.available && !kositValidation.valid) {
+    throw new Error(`XRechnung wurde vom KoSIT-Validator abgelehnt: ${kositValidation.message}`);
+  }
+
+  return {
+    "@odata.type": "#microsoft.graph.fileAttachment",
+    name: `${invoice.invoiceNumber || documentNumber}-xrechnung.xml`,
+    contentType: "application/xml",
+    contentBytes: Buffer.from(xml, "utf8").toString("base64"),
+  };
+}
+
+async function getZugferdAttachment(organizationId: string, invoiceId: string, documentNumber: string) {
+  const xrechnungAttachment = await getXRechnungAttachment(organizationId, invoiceId, documentNumber);
+  const pdfData = await getInvoicePdfBase64(invoiceId);
+  if (!pdfData) {
+    throw new Error("ZUGFeRD konnte nicht erzeugt werden: Rechnungs-PDF fehlt.");
+  }
+
+  const zugferd = await buildValidatedZugferdPdf({
+    invoicePdfBytes: Buffer.from(pdfData, "base64"),
+    xrechnungXml: Buffer.from(String(xrechnungAttachment.contentBytes || ""), "base64"),
+  });
+  if (!zugferd.conversion.available) {
+    throw new Error("ZUGFeRD konnte nicht erzeugt werden: PDF/A-3-Konverter ist nicht konfiguriert.");
+  }
+  if (!zugferd.conversion.converted) {
+    throw new Error(`ZUGFeRD konnte nicht erzeugt werden: ${zugferd.conversion.message}`);
+  }
+  if (!zugferd.validation?.available) {
+    throw new Error("ZUGFeRD konnte nicht erzeugt werden: PDF/A-3-Validator ist nicht konfiguriert.");
+  }
+  if (!zugferd.validation.valid || !zugferd.pdfBytes) {
+    const issueText = zugferd.validation.issues.map((issue) => issue.message).filter(Boolean).slice(0, 3).join(" ");
+    throw new Error(
+      `ZUGFeRD wurde vom PDF/A-3-Validator abgelehnt: ${issueText || zugferd.validation.message}`
+    );
+  }
+
+  return {
+    "@odata.type": "#microsoft.graph.fileAttachment",
+    name: `${documentNumber}-zugferd.pdf`,
+    contentType: "application/pdf",
+    contentBytes: zugferd.pdfBytes.toString("base64"),
+  };
+}
+
 async function sendViaMicrosoftGraph(input: {
   accessToken: string;
   to: string[];
@@ -526,16 +760,43 @@ export async function POST(req: Request) {
     );
   }
 
-  const storedAttachments = Boolean(body.attachPdf)
+  const eInvoiceFormat = cleanText(body.eInvoiceFormat) as EInvoiceFormat;
+
+  const shouldAttachStoredPdf =
+    (Boolean(body.attachPdf) && eInvoiceFormat !== "zugferd") ||
+    (kind === "invoice" && eInvoiceFormat === "pdf-xrechnung");
+  const storedAttachments = shouldAttachStoredPdf
     ? await getPdfAttachment(kind, cleanText(body.documentId), cleanText(body.documentNumber))
     : [];
   const uploadedAttachment =
-    Boolean(body.attachPdf) && cleanText(body.attachmentDataUrl)
+    shouldAttachStoredPdf && cleanText(body.attachmentDataUrl)
       ? getDataUrlAttachment(
           cleanText(body.attachmentName) || `${cleanText(body.documentNumber)}.pdf`,
           cleanText(body.attachmentDataUrl)
         )
       : null;
+  let xrechnungAttachment: Record<string, unknown> | null = null;
+  let zugferdAttachment: Record<string, unknown> | null = null;
+  if (kind === "invoice" && ["xrechnung", "pdf-xrechnung"].includes(eInvoiceFormat)) {
+    try {
+      xrechnungAttachment = await getXRechnungAttachment(organization.id, documentId, documentNumber);
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "XRechnung konnte nicht erzeugt werden." },
+        { status: 400 }
+      );
+    }
+  }
+  if (kind === "invoice" && eInvoiceFormat === "zugferd") {
+    try {
+      zugferdAttachment = await getZugferdAttachment(organization.id, documentId, documentNumber);
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "ZUGFeRD konnte nicht erzeugt werden." },
+        { status: 400 }
+      );
+    }
+  }
   const additionalAttachments = Boolean(body.attachActivityReports)
     ? getAdditionalDataUrlAttachments(body.additionalAttachments)
     : [];
@@ -543,6 +804,8 @@ export async function POST(req: Request) {
   const attachments = [
     ...storedAttachments,
     ...(uploadedAttachment ? [uploadedAttachment] : []),
+    ...(xrechnungAttachment ? [xrechnungAttachment] : []),
+    ...(zugferdAttachment ? [zugferdAttachment] : []),
     ...additionalAttachments,
     ...manualAttachments,
   ];

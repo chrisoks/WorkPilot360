@@ -16,6 +16,7 @@ import { prisma } from "@/lib/db/client";
 import { generateXRechnungXml, type XRechnungSeller } from "@/lib/e-invoice/xrechnung";
 import { validateXRechnungWithKosit } from "@/lib/e-invoice/kosit-validator";
 import { validateXRechnungPayload } from "@/lib/e-invoice/xrechnung-validation";
+import { buildValidatedZugferdPdf } from "@/lib/e-invoice/zugferd-pdf";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canDeleteInvoices, canManageInvoices, canSendDocumentMails } from "@/lib/permissions";
 
@@ -167,6 +168,12 @@ const LINE = rgb(0.38, 0.38, 0.38);
 const DELETED_INVOICE_STATUS = "Gelöscht";
 const LEGACY_DELETED_INVOICE_STATUS = "Gel\u00c3\u00b6scht";
 
+function isInvoiceBlockedForXRechnung(status: unknown) {
+  return ["Storniert", "Stornorechnung", DELETED_INVOICE_STATUS, LEGACY_DELETED_INVOICE_STATUS].includes(
+    cleanString(status)
+  );
+}
+
 function getXRechnungSellerProfile(company: InvoiceCompany): XRechnungSeller {
   return {
     name: "OK solutions GmbH",
@@ -179,6 +186,9 @@ function getXRechnungSellerProfile(company: InvoiceCompany): XRechnungSeller {
     iban: "DE85674500480004369971",
     bic: "SOLADES1MOS",
     bankName: "Sparkasse Neckartal-Odenwald",
+    contactName: "OK solutions GmbH",
+    contactPhone: "+49 6281 5649990",
+    contactEmail: "rechnung@ok-solutions.com",
   };
 }
 
@@ -544,6 +554,25 @@ async function markStampedHoursAsInvoiced(input: {
   `;
 }
 
+async function releaseStampedHoursFromInvoice(input: {
+  organizationId: string;
+  invoiceId: string;
+  invoiceNumber: string;
+}) {
+  await ensureInvoiceTimeEntryColumns();
+  await prisma.$executeRaw`
+    UPDATE "ProjectTimeEntry"
+    SET "invoiceId" = NULL,
+        "invoiceNumber" = NULL,
+        "invoicedAt" = NULL
+    WHERE "organizationId" = ${input.organizationId}
+      AND (
+        "invoiceId" = ${input.invoiceId}
+        OR "invoiceNumber" = ${input.invoiceNumber}
+      )
+  `;
+}
+
 async function notifyManagementAboutUnderbilling(input: {
   organizationId: string;
   projectId: string;
@@ -606,6 +635,10 @@ async function notifyManagementAboutUnderbilling(input: {
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function cleanInvoiceLineTitle(value: unknown) {
+  return cleanString(value).replace(/\s*\(\s*\d+(?:[,.]\d+)?\s*€\s*\/\s*Std\.\s*\)\s*$/i, "");
 }
 
 function getUserName(user: Pick<User, "firstName" | "lastName" | "email">) {
@@ -770,12 +803,54 @@ function formatDateValue(value?: string) {
   }).format(new Date(year, month - 1, day));
 }
 
+function formatMonthValue(value?: string) {
+  const normalized = cleanString(value);
+  if (!/^\d{4}-\d{2}$/.test(normalized)) return "";
+  const [year, month] = normalized.split("-").map(Number);
+  return new Intl.DateTimeFormat("de-DE", {
+    month: "long",
+    year: "numeric",
+  }).format(new Date(year, month - 1, 1));
+}
+
+function getInvoiceServicePeriodInfo(invoice: Pick<InvoiceInput, "serviceDate" | "plannedExecutionMonth">) {
+  const serviceDate = formatDateValue(invoice.serviceDate);
+  if (serviceDate) return { label: "Leistungsdatum", value: serviceDate };
+
+  const serviceMonth = formatMonthValue(invoice.plannedExecutionMonth);
+  if (serviceMonth) return { label: "Leistungszeitraum", value: serviceMonth };
+
+  return { label: "Leistungsdatum", value: "entspricht Rechnungsdatum" };
+}
+
+function splitWordToWidth(word: string, font: PDFFont, size: number, maxWidth: number) {
+  if (font.widthOfTextAtSize(word, size) <= maxWidth) return [word];
+
+  const chunks: string[] = [];
+  let chunk = "";
+  for (const char of Array.from(word)) {
+    const candidate = `${chunk}${char}`;
+    if (chunk && font.widthOfTextAtSize(candidate, size) > maxWidth) {
+      chunks.push(chunk);
+      chunk = char;
+    } else {
+      chunk = candidate;
+    }
+  }
+  if (chunk) chunks.push(chunk);
+  return chunks;
+}
+
 function wrapText(text: string, font: PDFFont, size: number, maxWidth: number) {
   const normalized = text.replace(/\r/g, "").split("\n");
   const lines: string[] = [];
 
   normalized.forEach((paragraph) => {
-    const words = paragraph.trim().split(/\s+/).filter(Boolean);
+    const words = paragraph
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .flatMap((word) => splitWordToWidth(word, font, size, maxWidth));
     if (words.length === 0) {
       lines.push("");
       return;
@@ -886,7 +961,7 @@ async function generateInvoicePdf(Invoice: InvoiceInput & { invoiceNumber: strin
     titleX: 158,
     unitPriceRightX: 475,
     totalRightX: 545,
-    titleWidth: 238,
+    titleWidth: 165,
   };
   const headerSize = 8.2;
   const rowSize = 7.8;
@@ -939,6 +1014,7 @@ async function generateInvoicePdf(Invoice: InvoiceInput & { invoiceNumber: strin
 
   const documentTitle = cleanString(Invoice.documentTitle) || "Rechnung";
   const isDraftDocument = documentTitle === "Rechnungsentwurf";
+  const servicePeriodInfo = getInvoiceServicePeriodInfo(Invoice);
   const infoRows = [
     [
       documentTitle === "Stornorechnung"
@@ -947,8 +1023,8 @@ async function generateInvoicePdf(Invoice: InvoiceInput & { invoiceNumber: strin
       isDraftDocument ? "-" : Invoice.invoiceNumber,
     ],
     ["Projektnummer", Invoice.projectNumber || ""],
-    ["Datum", formatDate()],
-    ["Leistungsdatum", formatDateValue(Invoice.serviceDate) || "-"],
+    ["Rechnungsdatum", formatDate()],
+    [servicePeriodInfo.label, servicePeriodInfo.value],
     ["Ansprechpartner", Invoice.internalContactName || ""],
     ["Telefon", Invoice.internalPhone || ""],
     ["E-Mail", Invoice.internalEmail || ""],
@@ -979,7 +1055,7 @@ async function generateInvoicePdf(Invoice: InvoiceInput & { invoiceNumber: strin
 
   for (const [index, line] of lines.entries()) {
     const descriptionLines = wrapText(line.description || "", regular, descriptionSize, table.titleWidth - descriptionIndent);
-    const titleLines = wrapText(line.title || "-", bold, titleSize, table.titleWidth);
+    const titleLines = wrapText(cleanInvoiceLineTitle(line.title) || "-", bold, titleSize, table.titleWidth);
     const lineDiscountAmount = getLineDiscountAmount(line);
     const lineTotalNet = getLineTotalNet(line);
     const rowHeight = Math.max(
@@ -1243,7 +1319,7 @@ function normalizeInvoiceLines(lines: InvoiceLineInput[] = []) {
         isLaborPosition,
         quantity,
         unit: normalizeUnit(line.unit) || "Stk",
-        title: cleanString(line.title),
+        title: cleanInvoiceLineTitle(line.title),
         description: cleanString(line.description),
         unitPrice,
         discountPercent,
@@ -1285,6 +1361,7 @@ function serializeInvoice(
     updatedAt: row.updatedAt?.toISOString?.() ?? row.updatedAt,
     lines: lines.map((line) => ({
       ...line,
+      title: cleanInvoiceLineTitle(line.title),
       quantity: Number(line.quantity ?? 0),
       unitPrice: Number(line.unitPrice ?? 0),
       discountPercent: Number(line.discountPercent ?? 0),
@@ -1332,8 +1409,8 @@ async function getInvoiceLaborRowsForInvoice(organizationId: string, invoiceId: 
   `;
 }
 
-async function getInvoiceBuyerReference(organizationId: string, projectId: string) {
-  if (!projectId) return "";
+async function getInvoiceBuyerReference(organizationId: string, projectId: string, fallbackReference = "") {
+  if (!projectId) return cleanString(fallbackReference);
   const rows = await prisma.$queryRaw<Array<{ leitwegId: string | null }>>`
     SELECT c."leitwegId"
     FROM "WorkPilotProject" p
@@ -1351,7 +1428,7 @@ async function getInvoiceBuyerReference(organizationId: string, projectId: strin
     ORDER BY c."isInvoiceRecipient" DESC, c."isMainContact" DESC, c."updatedAt" DESC
     LIMIT 1
   `;
-  return cleanString(rows[0]?.leitwegId);
+  return cleanString(rows[0]?.leitwegId) || cleanString(fallbackReference);
 }
 
 async function addInvoiceHistory(input: {
@@ -1409,7 +1486,7 @@ async function cancelInvoice(input: {
     isLaborPosition: Boolean(line.isLaborPosition),
     quantity: Number(line.quantity ?? 0),
     unit: line.unit || "Stk",
-    title: line.title || "-",
+    title: cleanInvoiceLineTitle(line.title) || "-",
     description: [line.description, `Storno zu Rechnung ${existingInvoice.invoiceNumber}`].filter(Boolean).join("\n"),
     unitPrice: -Math.abs(Number(line.unitPrice ?? 0)),
     discountPercent: Number(line.discountPercent ?? 0),
@@ -1506,11 +1583,11 @@ async function cancelInvoice(input: {
     RETURNING *
   `;
 
-  await prisma.$executeRaw`
-    UPDATE "ProjectTimeEntry"
-    SET "invoiceId" = NULL, "invoiceNumber" = NULL, "invoicedAt" = NULL
-    WHERE "organizationId" = ${input.organizationId} AND "invoiceId" = ${input.invoiceId}
-  `;
+  await releaseStampedHoursFromInvoice({
+    organizationId: input.organizationId,
+    invoiceId: input.invoiceId,
+    invoiceNumber: existingInvoice.invoiceNumber,
+  });
 
   await addInvoiceHistory({
     organizationId: input.organizationId,
@@ -1556,6 +1633,7 @@ export async function GET(req: Request) {
   const pdfId = cleanString(searchParams.get("pdfId"));
   const xrechnungId = cleanString(searchParams.get("xrechnungId"));
   const xrechnungValidationId = cleanString(searchParams.get("xrechnungValidationId"));
+  const zugferdId = cleanString(searchParams.get("zugferdId"));
   const historyProjectId = cleanString(searchParams.get("historyProjectId"));
   const actorResult = await getSessionBoundActor(req, users, requestedActorId);
   if (!actorResult.ok) {
@@ -1565,6 +1643,7 @@ export async function GET(req: Request) {
       !pdfId &&
       !xrechnungId &&
       !xrechnungValidationId &&
+      !zugferdId &&
       !historyProjectId
     ) {
       return NextResponse.json([]);
@@ -1576,8 +1655,8 @@ export async function GET(req: Request) {
     return forbiddenInvoiceResponse();
   }
 
-  if (xrechnungId || xrechnungValidationId) {
-    const targetInvoiceId = xrechnungId || xrechnungValidationId;
+  if (xrechnungId || xrechnungValidationId || zugferdId) {
+    const targetInvoiceId = xrechnungId || xrechnungValidationId || zugferdId;
     const rows = await prisma.$queryRaw<InvoiceRow[]>`
       SELECT *
       FROM "Invoice"
@@ -1588,13 +1667,23 @@ export async function GET(req: Request) {
     if (!invoice) {
       return NextResponse.json({ error: "Rechnung wurde nicht gefunden." }, { status: 404 });
     }
+    if (isInvoiceBlockedForXRechnung(invoice.status)) {
+      return NextResponse.json(
+        { error: "XRechnung kann fuer geloeschte oder stornierte Rechnungen nicht erzeugt werden." },
+        { status: 409 }
+      );
+    }
 
     const lineRows = await getInvoiceLinesForInvoice(organization.id, invoice.id);
     if (!lineRows.length) {
       return NextResponse.json({ error: "XRechnung kann ohne Rechnungspositionen nicht erzeugt werden." }, { status: 400 });
     }
 
-    const buyerReference = await getInvoiceBuyerReference(organization.id, invoice.projectId);
+    const buyerReference = await getInvoiceBuyerReference(
+      organization.id,
+      invoice.projectId,
+      invoice.projectNumber || invoice.invoiceNumber
+    );
     const seller = getXRechnungSellerProfile(invoice.company);
     const missingSellerFields = getMissingXRechnungSellerFields(seller);
     if (missingSellerFields.length > 0) {
@@ -1606,11 +1695,14 @@ export async function GET(req: Request) {
       );
     }
 
+    const paymentTermDays = Number(invoice.paymentTermDays ?? 14);
+    const serviceDate = cleanDateKey(invoice.serviceDate);
+    const dueDate = cleanDateKey(invoice.dueDate) || addDaysToDateKey(serviceDate, paymentTermDays);
     const xrechnungInvoice = {
       invoiceNumber: invoice.invoiceNumber,
       issueDate: invoice.createdAt?.toISOString?.().slice(0, 10) || new Date().toISOString().slice(0, 10),
-      serviceDate: invoice.serviceDate,
-      dueDate: invoice.dueDate,
+      serviceDate,
+      dueDate,
       seller,
       customerName: invoice.customerName,
       customerStreet: invoice.customerStreet,
@@ -1619,14 +1711,14 @@ export async function GET(req: Request) {
       netTotal: Number(invoice.netTotal ?? 0),
       vatRate: Number(invoice.vatRate ?? 19),
       grossTotal: Number(invoice.grossTotal ?? 0),
-      paymentTermDays: Number(invoice.paymentTermDays ?? 14),
+      paymentTermDays,
       buyerReference,
     };
     const xrechnungLines = lineRows.map((line, index) => ({
       position: Number(line.position ?? index + 1),
       quantity: Number(line.quantity ?? 0),
       unit: line.unit || "Stk",
-      title: line.title || "Position",
+      title: cleanInvoiceLineTitle(line.title) || "Position",
       description: line.description || "",
       unitPrice: Number(line.unitPrice ?? 0),
       discountPercent: Number(line.discountPercent ?? 0),
@@ -1657,12 +1749,59 @@ export async function GET(req: Request) {
     if (!validation.valid || (kositValidation.available && !kositValidation.valid)) {
       return NextResponse.json(
         {
-          error: "XRechnung kann wegen Validierungsfehlern nicht erzeugt werden.",
+          error: zugferdId
+            ? "ZUGFeRD kann wegen Validierungsfehlern nicht erzeugt werden."
+            : "XRechnung kann wegen Validierungsfehlern nicht erzeugt werden.",
           validation,
           kositValidation,
         },
         { status: 400 }
       );
+    }
+
+    if (zugferdId) {
+      if (!invoice.pdfData) {
+        return NextResponse.json({ error: "ZUGFeRD kann nicht erzeugt werden: Rechnungs-PDF fehlt." }, { status: 404 });
+      }
+
+      const zugferd = await buildValidatedZugferdPdf({
+        invoicePdfBytes: Buffer.from(invoice.pdfData, "base64"),
+        xrechnungXml: Buffer.from(xml, "utf8"),
+      });
+      if (!zugferd.conversion.available) {
+        return NextResponse.json(
+          { error: "ZUGFeRD kann nicht erzeugt werden: PDF/A-3-Konverter ist nicht konfiguriert.", zugferdConversion: zugferd.conversion },
+          { status: 503 }
+        );
+      }
+      if (!zugferd.conversion.converted) {
+        return NextResponse.json(
+          { error: `ZUGFeRD kann nicht erzeugt werden: ${zugferd.conversion.message}`, zugferdConversion: zugferd.conversion },
+          { status: 500 }
+        );
+      }
+      if (!zugferd.validation?.available) {
+        return NextResponse.json(
+          { error: "ZUGFeRD kann nicht erzeugt werden: PDF/A-3-Validator ist nicht konfiguriert." },
+          { status: 503 }
+        );
+      }
+      if (!zugferd.validation.valid || !zugferd.pdfBytes) {
+        return NextResponse.json(
+          {
+            error: "ZUGFeRD wurde vom PDF/A-3-Validator abgelehnt.",
+            zugferdValidation: zugferd.validation,
+          },
+          { status: 400 }
+        );
+      }
+
+      return new Response(new Uint8Array(zugferd.pdfBytes), {
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename="${invoice.invoiceNumber}-zugferd.pdf"`,
+        },
+      });
     }
 
     return new Response(xml, {
@@ -1692,7 +1831,7 @@ export async function GET(req: Request) {
         isLaborPosition: Boolean(line.isLaborPosition),
         quantity: Number(line.quantity ?? 0),
         unit: line.unit || "Stk",
-        title: line.title || "-",
+        title: cleanInvoiceLineTitle(line.title) || "-",
         description: line.description || "",
         unitPrice: Number(line.unitPrice ?? 0),
         discountPercent: Number(line.discountPercent ?? 0),
@@ -1832,6 +1971,7 @@ export async function POST(req: Request) {
     return forbiddenInvoiceResponse();
   }
   const actorName = getUserName(actor);
+  const internalContactName = cleanString(body.internalContactName) || actorName;
   const lines = await withInvoiceLineCostSnapshots(organization.id, normalizeInvoiceLines(body.lines));
   const saveAsDraft = Boolean(body.saveAsDraft);
 
@@ -1877,7 +2017,13 @@ export async function POST(req: Request) {
   const pdf =
     lines.length > 0
       ? await generateInvoicePdf(
-          { ...body, company, invoiceNumber, documentTitle: saveAsDraft ? "Rechnungsentwurf" : "Rechnung" },
+          {
+            ...body,
+            company,
+            invoiceNumber,
+            internalContactName,
+            documentTitle: saveAsDraft ? "Rechnungsentwurf" : "Rechnung",
+          },
           lines
         )
       : { netTotal: 0, vatRate: cleanNumber(body.vatRate, 19), grossTotal: 0, pdfData: null };
@@ -1894,7 +2040,7 @@ export async function POST(req: Request) {
       ${id}, ${organization.id}, ${cleanString(body.projectId)}, ${cleanString(body.projectNumber)},
       ${cleanString(body.projectTitle)}, ${company}, ${invoiceNumber}, ${saveAsDraft ? "Entwurf" : "Fakturiert"}, ${billingSource},
       ${cleanString(body.customerName)}, ${cleanString(body.customerStreet)}, ${cleanString(body.customerCity)},
-      ${cleanString(body.contactName)}, ${cleanString(body.internalContactName)}, ${cleanString(body.internalPhone)},
+      ${cleanString(body.contactName)}, ${internalContactName}, ${cleanString(body.internalPhone)},
       ${cleanString(body.internalEmail)}, ${plannedExecutionMonth}, ${serviceDate},
       ${cleanString(body.sourceOfferId)}, ${cleanString(body.sourceOfferNumber)},
       ${cleanString(body.introText)}, ${cleanString(body.closingText)},
@@ -2192,8 +2338,10 @@ export async function PATCH(req: Request) {
     );
   }
 
-  const existingRows = await prisma.$queryRaw<Array<{ invoiceNumber: string; status: string; billingSource: string }>>`
-    SELECT "invoiceNumber", "status", "billingSource"
+  const existingRows = await prisma.$queryRaw<
+    Array<{ invoiceNumber: string; status: string; billingSource: string; internalContactName: string }>
+  >`
+    SELECT "invoiceNumber", "status", "billingSource", "internalContactName"
     FROM "Invoice"
     WHERE "organizationId" = ${organization.id} AND "id" = ${id}
     LIMIT 1
@@ -2214,6 +2362,8 @@ export async function PATCH(req: Request) {
   const paymentTermDays = cleanPaymentTermDays(body.paymentTermDays);
   const dueDate = getInvoiceDueDate(body, serviceDate, paymentTermDays);
   const plannedExecutionMonth = getInvoiceMonthFromInput(body);
+  const internalContactName =
+    cleanString(body.internalContactName) || cleanString(existingInvoice.internalContactName) || actorName;
   const pdf =
     lines.length > 0
       ? await generateInvoicePdf(
@@ -2221,6 +2371,7 @@ export async function PATCH(req: Request) {
             ...body,
             company,
             invoiceNumber: existingInvoice.invoiceNumber,
+            internalContactName,
             documentTitle: saveAsDraft ? "Rechnungsentwurf" : "Rechnung",
           },
           lines
@@ -2239,7 +2390,7 @@ export async function PATCH(req: Request) {
       "customerStreet" = ${cleanString(body.customerStreet)},
       "customerCity" = ${cleanString(body.customerCity)},
       "contactName" = ${cleanString(body.contactName)},
-      "internalContactName" = ${cleanString(body.internalContactName)},
+      "internalContactName" = ${internalContactName},
       "internalPhone" = ${cleanString(body.internalPhone)},
       "internalEmail" = ${cleanString(body.internalEmail)},
       "plannedExecutionMonth" = ${plannedExecutionMonth},
@@ -2389,15 +2540,11 @@ export async function DELETE(req: Request) {
   `;
 
 
-  await ensureInvoiceTimeEntryColumns();
-  await prisma.$executeRaw`
-    UPDATE "ProjectTimeEntry"
-    SET "invoiceId" = '',
-        "invoiceNumber" = '',
-        "invoicedAt" = NULL
-    WHERE "organizationId" = ${organization.id}
-      AND "invoiceId" = ${id}
-  `;
+  await releaseStampedHoursFromInvoice({
+    organizationId: organization.id,
+    invoiceId: id,
+    invoiceNumber: existingInvoice.invoiceNumber,
+  });
 
   await addInvoiceHistory({
     organizationId: organization.id,

@@ -1,0 +1,41 @@
+{
+  "name": "tasks-saas-mvp",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "dev:local": "node scripts/start-next-dev.js",
+    "prebuild": "node scripts/clean-next-build-cache.js",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "check:mojibake": "node scripts/check-mojibake.js",
+    "check:regressions": "node scripts/check-regressions.js",
+    "check:kosit": "node scripts/check-kosit-validator.js",
+    "setup:kosit": "node scripts/setup-kosit-validator.js",
+    "check:verapdf": "node scripts/check-verapdf-validator.js",
+    "setup:verapdf": "node scripts/setup-verapdf-validator.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@pdf-lib/fontkit": "^1.1.1",
+    "@prisma/client": "^5.19.1",
+    "bcryptjs": "^2.4.3",
+    "next": "14.2.5",
+    "next-intl": "^3.17.2",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^4.10.38",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.12",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "prisma": "^5.19.1",
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
+}

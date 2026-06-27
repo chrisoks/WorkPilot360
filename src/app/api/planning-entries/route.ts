@@ -32,6 +32,10 @@ type PlanningEntryRow = {
   customer: string | null;
   projectId: string | null;
   projectLabel: string | null;
+  planningTrade: string | null;
+  billingCatalogItemId: string | null;
+  billingCatalogItemLabel: string | null;
+  billingGroupId: string | null;
   offerId: string | null;
   offerLineId: string | null;
   offerLabel: string | null;
@@ -90,6 +94,10 @@ async function ensurePlanningEntryTable() {
       "customer" TEXT,
       "projectId" TEXT,
       "projectLabel" TEXT,
+      "planningTrade" TEXT NOT NULL DEFAULT '',
+      "billingCatalogItemId" TEXT,
+      "billingCatalogItemLabel" TEXT,
+      "billingGroupId" TEXT,
       "offerId" TEXT,
       "offerLineId" TEXT,
       "offerLabel" TEXT,
@@ -111,6 +119,10 @@ async function ensurePlanningEntryTable() {
   await prisma.$executeRaw`
     ALTER TABLE "PlanningEntry"
     ADD COLUMN IF NOT EXISTS "approvalStatus" TEXT NOT NULL DEFAULT 'confirmed',
+    ADD COLUMN IF NOT EXISTS "planningTrade" TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS "billingCatalogItemId" TEXT,
+    ADD COLUMN IF NOT EXISTS "billingCatalogItemLabel" TEXT,
+    ADD COLUMN IF NOT EXISTS "billingGroupId" TEXT,
     ADD COLUMN IF NOT EXISTS "recurrenceId" TEXT,
     ADD COLUMN IF NOT EXISTS "recurrenceRule" TEXT,
     ADD COLUMN IF NOT EXISTS "requestedByUserId" TEXT,
@@ -229,6 +241,10 @@ function formatEntry(entry: PlanningEntryRow, histories: PlanningEntryHistoryRow
     customer: entry.customer ?? "",
     projectId: entry.projectId ?? "",
     projectLabel: entry.projectLabel ?? "",
+    planningTrade: entry.planningTrade ?? "",
+    billingCatalogItemId: entry.billingCatalogItemId ?? "",
+    billingCatalogItemLabel: entry.billingCatalogItemLabel ?? "",
+    billingGroupId: entry.billingGroupId ?? "",
     offerId: entry.offerId ?? "",
     offerLineId: entry.offerLineId ?? "",
     offerLabel: entry.offerLabel ?? "",
@@ -450,19 +466,37 @@ export async function GET(req: Request) {
   await ensurePlanningEntryTable();
   const { searchParams } = new URL(req.url);
   const requestedActorId = searchParams.get("actorUserId") ?? searchParams.get("actorId");
+  const projectIdFilter = cleanString(searchParams.get("projectId"));
+  const includeDeleted = searchParams.get("includeDeleted") === "1";
   const actorResult = await getSessionBoundActor(req, users, requestedActorId);
   if (!actorResult.ok) {
     return sessionBoundActorResponse(actorResult);
   }
-  const actor = actorResult.actor;
 
-  const entries = await prisma.$queryRaw<PlanningEntryRow[]>`
-    SELECT *
-    FROM "PlanningEntry"
-    WHERE "organizationId" = ${organization.id}
-      AND "deletedAt" IS NULL
-    ORDER BY "date" ASC, "startTime" ASC
-  `;
+  const entries = projectIdFilter
+    ? includeDeleted
+      ? await prisma.$queryRaw<PlanningEntryRow[]>`
+          SELECT *
+          FROM "PlanningEntry"
+          WHERE "organizationId" = ${organization.id}
+            AND "projectId" = ${projectIdFilter}
+          ORDER BY "date" ASC, "startTime" ASC
+        `
+      : await prisma.$queryRaw<PlanningEntryRow[]>`
+          SELECT *
+          FROM "PlanningEntry"
+          WHERE "organizationId" = ${organization.id}
+            AND "projectId" = ${projectIdFilter}
+            AND "deletedAt" IS NULL
+          ORDER BY "date" ASC, "startTime" ASC
+        `
+    : await prisma.$queryRaw<PlanningEntryRow[]>`
+        SELECT *
+        FROM "PlanningEntry"
+        WHERE "organizationId" = ${organization.id}
+          AND "deletedAt" IS NULL
+        ORDER BY "date" ASC, "startTime" ASC
+      `;
   const entryIds = entries.map((entry) => entry.id);
   const histories =
     entryIds.length > 0
@@ -516,6 +550,10 @@ export async function POST(req: Request) {
   const customer = cleanString(body.customer);
   const projectId = cleanString(body.projectId);
   const projectLabel = cleanString(body.projectLabel);
+  const planningTrade = cleanString(body.planningTrade);
+  const billingCatalogItemId = cleanString(body.billingCatalogItemId);
+  const billingCatalogItemLabel = cleanString(body.billingCatalogItemLabel);
+  const billingGroupId = cleanString(body.billingGroupId);
   const offerId = cleanString(body.offerId);
   const offerLineId = cleanString(body.offerLineId);
   const offerLabel = cleanString(body.offerLabel);
@@ -628,6 +666,10 @@ export async function POST(req: Request) {
       "customer",
       "projectId",
       "projectLabel",
+      "planningTrade",
+      "billingCatalogItemId",
+      "billingCatalogItemLabel",
+      "billingGroupId",
       "offerId",
       "offerLineId",
       "offerLabel",
@@ -660,6 +702,10 @@ export async function POST(req: Request) {
       ${customer || null},
       ${projectId || null},
       ${projectLabel || null},
+      ${planningTrade},
+      ${billingCatalogItemId || null},
+      ${billingCatalogItemLabel || null},
+      ${billingGroupId || null},
       ${offerId || null},
       ${offerLineId || null},
       ${offerLabel || null},
@@ -690,6 +736,10 @@ export async function POST(req: Request) {
       "customer" = EXCLUDED."customer",
       "projectId" = EXCLUDED."projectId",
       "projectLabel" = EXCLUDED."projectLabel",
+      "planningTrade" = EXCLUDED."planningTrade",
+      "billingCatalogItemId" = EXCLUDED."billingCatalogItemId",
+      "billingCatalogItemLabel" = EXCLUDED."billingCatalogItemLabel",
+      "billingGroupId" = EXCLUDED."billingGroupId",
       "offerId" = EXCLUDED."offerId",
       "offerLineId" = EXCLUDED."offerLineId",
       "offerLabel" = EXCLUDED."offerLabel",
@@ -777,8 +827,9 @@ export async function POST(req: Request) {
 export async function DELETE(req: Request) {
   const { searchParams } = new URL(req.url);
   const id = cleanString(searchParams.get("id"));
+  const historyId = cleanString(searchParams.get("historyId"));
 
-  if (!id) {
+  if (!id && !historyId) {
     return NextResponse.json({ error: "Planung fehlt." }, { status: 400 });
   }
 
@@ -794,6 +845,23 @@ export async function DELETE(req: Request) {
   const actorUserId = actor.id;
   const actorName = getUserName(actor);
   const actorCanManagePlanning = canManagePlanningEntries(actor);
+
+  if (historyId) {
+    if (actor.role !== Role.GESCHAEFTSFUEHRER) {
+      return NextResponse.json(
+        { error: "Nur Gesch\u00e4ftsf\u00fchrer d\u00fcrfen Historieneintr\u00e4ge l\u00f6schen." },
+        { status: 403 }
+      );
+    }
+
+    await prisma.$executeRaw`
+      DELETE FROM "PlanningEntryHistory"
+      WHERE "id" = ${historyId}
+        AND "organizationId" = ${organization.id}
+    `;
+
+    return NextResponse.json({ ok: true });
+  }
 
   const entries = await prisma.$queryRaw<PlanningEntryRow[]>`
     SELECT *

@@ -40,6 +40,31 @@ function getUserName(user: Pick<User, "firstName" | "lastName" | "email">) {
   return `${user.firstName} ${user.lastName}`.trim() || user.email;
 }
 
+async function createTaskNotificationPair(input: {
+  organizationId: string;
+  taskId: string;
+  userId: string;
+  subject: string;
+  body: string;
+}) {
+  for (const channel of ["app", "email"]) {
+    await prisma.notification.create({
+      data: {
+        organizationId: input.organizationId,
+        taskId: input.taskId,
+        userId: input.userId,
+        channel,
+        subject: input.subject,
+        body: input.body,
+        sentAt: null,
+        linkTarget: "task",
+        linkTargetId: input.taskId,
+        linkLabel: "Aufgabe \u00f6ffnen",
+      },
+    });
+  }
+}
+
 function toUiStatus(status: TaskStatus) {
   if (status === TaskStatus.IN_BEARBEITUNG) return "in Bearbeitung";
   if (status === TaskStatus.WARTET_AUF_RUECKMELDUNG) return "wartet auf Rückmeldung";
@@ -286,7 +311,7 @@ export async function POST(req: Request) {
     }
   }
 
-  if (creator) {
+  if (creator && creator.id !== actor.id) {
     const subject = response === "accepted" ? "Aufgabe angenommen" : "Aufgabe abgelehnt";
     const bodyText =
       response === "accepted"
@@ -295,16 +320,12 @@ export async function POST(req: Request) {
           )}.`
         : `${actorName} hat die Aufgabe "${task.title}" abgelehnt. Begründung: ${reason}`;
 
-    await prisma.notification.create({
-      data: {
-        organizationId: task.organizationId,
-        taskId: task.id,
-        userId: creator.id,
-        channel: response === "rejected" ? "email" : "app",
-        subject,
-        body: bodyText,
-        sentAt: null,
-      },
+    await createTaskNotificationPair({
+      organizationId: task.organizationId,
+      taskId: task.id,
+      userId: creator.id,
+      subject,
+      body: bodyText,
     });
   }
 
