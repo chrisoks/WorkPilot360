@@ -5,6 +5,7 @@ import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canRunUnbilledTimeAlerts } from "@/lib/permissions";
+import { sendNotificationMailSafely } from "@/lib/mail/notifications";
 
 type ProjectRow = {
   id: string;
@@ -23,6 +24,7 @@ type StampRow = {
   employee: string | null;
   date: string;
   durationMs: bigint | number;
+  completionStatus: string | null;
   createdAt: Date;
 };
 
@@ -66,7 +68,7 @@ type UnbilledTimeGroup = {
 };
 
 const SINGLE_PROJECT_WARNING_DAYS = 3;
-const RECURRING_PROJECT_AFTER_MONTH_END_DAYS = 3;
+const RECURRING_PROJECT_WARNING_BUSINESS_DAY = 3;
 const ESCALATION_AFTER_WARNING_DAYS = 2;
 
 function cleanString(value: unknown) {
@@ -98,6 +100,29 @@ function addDays(date: Date, days: number) {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
   return next;
+}
+
+function isBusinessDay(date: Date) {
+  const day = date.getDay();
+  return day !== 0 && day !== 6;
+}
+
+function nthBusinessDayOfNextMonth(monthKey: string, businessDayNumber: number) {
+  const match = /^(\d{4})-(\d{2})$/.exec(monthKey);
+  if (!match) return null;
+
+  const current = new Date(Number(match[1]), Number(match[2]), 1, 12);
+  let seenBusinessDays = 0;
+
+  while (current.getMonth() === Number(match[2])) {
+    if (isBusinessDay(current)) {
+      seenBusinessDays += 1;
+      if (seenBusinessDays === businessDayNumber) return new Date(current);
+    }
+    current.setDate(current.getDate() + 1);
+  }
+
+  return null;
 }
 
 function endOfMonthFromKey(monthKey: string) {
@@ -167,7 +192,7 @@ async function getGroups(organizationId: string) {
       WHERE "organizationId" = ${organizationId}
     `,
     prisma.$queryRaw<StampRow[]>`
-      SELECT "id", "projectId", "projectLabel", "userId", "employee", "date", "durationMs", "createdAt"
+      SELECT "id", "projectId", "projectLabel", "userId", "employee", "date", "durationMs", "completionStatus", "createdAt"
       FROM "ProjectTimeEntry"
       WHERE "organizationId" = ${organizationId}
         AND "mode" = 'project'
@@ -204,21 +229,28 @@ async function getGroups(organizationId: string) {
   return Array.from(grouped.entries())
     .map(([groupKey, group]): UnbilledTimeGroup | null => {
       const project = group.project;
-      const oldestDate = group.entries
+      const sortedDates = group.entries
         .map((entry) => cleanString(entry.date))
         .filter(Boolean)
-        .sort()[0];
+        .sort();
+      const oldestDate = sortedDates[0];
       const oldest = parseDateKey(oldestDate);
       if (!oldest) return null;
 
       const recurring = isRecurringProject(project);
-      const warningBase = recurring ? endOfMonthFromKey(group.periodKey) : oldest;
+      const finishedDates = group.entries
+        .filter((entry) => cleanString(entry.completionStatus) === "finished")
+        .map((entry) => cleanString(entry.date))
+        .filter(Boolean)
+        .sort();
+      const lastFinishedDate = finishedDates[finishedDates.length - 1] || "";
+      const lastFinished = lastFinishedDate ? parseDateKey(lastFinishedDate) : null;
+      const warningBase = recurring
+        ? nthBusinessDayOfNextMonth(group.periodKey, RECURRING_PROJECT_WARNING_BUSINESS_DAY)
+        : lastFinished ?? oldest;
       if (!warningBase) return null;
 
-      const warningThreshold = addDays(
-        warningBase,
-        recurring ? RECURRING_PROJECT_AFTER_MONTH_END_DAYS : SINGLE_PROJECT_WARNING_DAYS
-      );
+      const warningThreshold = recurring ? warningBase : addDays(warningBase, SINGLE_PROJECT_WARNING_DAYS);
       const escalationThreshold = addDays(warningThreshold, ESCALATION_AFTER_WARNING_DAYS);
       const warningAlert = alertsByKey.get(`${groupKey}:warning`);
       const escalationAlert = alertsByKey.get(`${groupKey}:escalation`);
@@ -343,20 +375,28 @@ export async function POST(req: Request) {
 
     let firstNotificationId = "";
     for (const userId of recipients) {
-      const notificationId = randomUUID();
-      await prisma.$executeRaw`
-        INSERT INTO "Notification" (
-          "id", "organizationId", "userId", "taskId", "channel", "subject", "body",
-          "linkTarget", "linkTargetId", "linkLabel"
-        )
-        VALUES (
-          ${notificationId}, ${organization.id}, ${userId}, NULL, 'app', ${subject}, ${body},
-          'project-unbilled-time', ${group.projectId}, 'Projekt öffnen'
-        )
-      `;
-      firstNotificationId ||= notificationId;
+      const notification = await prisma.notification.create({
+        data: {
+          id: randomUUID(),
+          organizationId: organization.id,
+          userId,
+          taskId: null,
+          channel: "app",
+          subject,
+          body,
+          linkTarget: "project-unbilled-time",
+          linkTargetId: group.projectId,
+          linkLabel: "Projekt öffnen",
+        },
+      });
+      await sendNotificationMailSafely({
+        notificationId: notification.id,
+        userId,
+        subject,
+        body,
+      });
+      firstNotificationId ||= notification.id;
     }
-
     await prisma.$executeRaw`
       INSERT INTO "UnbilledTimeAlert" (
         "id", "organizationId", "alertKey", "projectId", "periodKey", "stage", "notificationId"
