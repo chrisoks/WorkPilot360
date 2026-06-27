@@ -8,6 +8,23 @@
   Aenderungen in dieser `AGENTS.md` dokumentieren. Kleine reine UI-Fixes
   duerfen schlank bleiben, aber groessere Logikbloecke brauchen Sicherung,
   Checks und Handover-Notiz.
+- PWA-Web-Push Tageserinnerung/Terminwuensche 2026-06-28:
+  Terminwuensche senden jetzt zusaetzlich zur bestehenden In-App-Notification
+  einen Web-Push an dieselben Planungsverantwortlichen. Der Push haengt an der
+  vorhandenen Terminwunsch-Deduplizierung, damit je Terminwunsch und
+  Empfaenger keine mehrfachen Pushes entstehen. Neuer geschuetzter Tageslauf
+  `POST /api/push/daily-planning-reminders`: Er bestimmt das Tagesdatum in
+  Europe/Berlin, sucht aktive Benutzer mit bestaetigten heutigen
+  Planungsterminen, schliesst Benutzer mit eingetragener Urlaub-/Krank-
+  Abwesenheit fuer diesen Tag aus und erzeugt pro Benutzer/Datum hoechstens
+  eine Erinnerung. Push-Text: `Sieh dir deine heutigen Termine an`; Ziel ist
+  bewusst die Startseite, weil dort die heutigen Termine der PWA gelistet
+  sind. Der Endpunkt verlangt `PUSH_REMINDER_CRON_SECRET` (Fallback
+  `WORKPILOT_CRON_SECRET` oder `CRON_SECRET`) per `Authorization: Bearer ...`
+  oder `x-cron-secret`. Checks bestanden: `npm.cmd run check:mojibake`,
+  `npm.cmd run check:regressions`, `npx.cmd prisma validate`,
+  `npx.cmd prisma db push --skip-generate` ohne Datenverlustwarnung,
+  `npm.cmd run build` und `git diff --check`.
 - Laufender Funktionsblock 2026-06-26: Dauerlaeufer wurden fachlich in
   Monatspauschale und Stundenabrechnung getrennt. Bei Dauerlaeufer-Projekten
   muss das Abrechnungsmodell aktiv gewaehlt werden; Stundenabrechnung nutzt

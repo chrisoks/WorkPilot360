@@ -368,6 +368,34 @@ async function notifyPlanningResponsibles(entry: PlanningEntryRow, organizationI
         CURRENT_TIMESTAMP
       )
     `;
+
+    const notificationRows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id
+      FROM "Notification"
+      WHERE "organizationId" = ${organizationId}
+        AND "userId" = ${recipient.id}
+        AND "linkTarget" = 'planning-entry'
+        AND "linkTargetId" = ${entry.id}
+      ORDER BY "createdAt" DESC
+      LIMIT 1
+    `;
+    const notificationId = notificationRows[0]?.id ?? "";
+    if (!notificationId) continue;
+
+    const title = "Terminwunsch freigeben";
+    const body = `Fuer ${entry.groupName} ist ein Terminwunsch am ${formatDateKeyDisplay(entry.date)} von ${entry.startTime} bis ${entry.endTime} freizugeben: ${entry.title}.`;
+    await sendPushToUserSafely({
+      organizationId,
+      userId: recipient.id,
+      payload: {
+        title,
+        body,
+        notificationId,
+        linkTarget: "planning-entry",
+        linkTargetId: entry.id,
+        url: `/?target=planning-entry&targetId=${encodeURIComponent(entry.id)}`,
+      },
+    });
   }
 }
 

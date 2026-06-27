@@ -11966,6 +11966,11 @@ export function DashboardPage() {
       }
     }
 
+    if (notification.linkTarget === "daily-planning-reminder" && notification.linkTargetId) {
+      setActiveTab("dashboard");
+      setIsNotificationsOpen(false);
+    }
+
     if (notification.linkTarget === "content-item" && notification.linkTargetId) {
       if (!CONTENT_MANAGEMENT_ENABLED) {
         setIsNotificationsOpen(false);
