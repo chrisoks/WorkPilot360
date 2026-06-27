@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
+import { sendTaskNotificationMailSafely } from "@/lib/mail/task-notifications";
 import type { User } from "@prisma/client";
 
 function getUserName(user: Pick<User, "firstName" | "lastName" | "email">) {
@@ -126,21 +127,29 @@ export async function POST(
   notificationRecipientIds.delete(actor.id);
 
   for (const userId of notificationRecipientIds) {
-    await prisma.notification.create({
+    const notificationBody = recipientName
+      ? `${getUserName(actor)} hat in der Aufgabe "${task.title}" einen Kommentar an ${recipientName} geschrieben: ${text}`
+      : `${getUserName(actor)} hat die Aufgabe "${task.title}" kommentiert: ${text}`;
+    const notification = await prisma.notification.create({
       data: {
         organizationId: organization.id,
         taskId: task.id,
         userId,
         channel: "app",
         subject: "Neuer Kommentar zur Aufgabe",
-        body: recipientName
-          ? `${getUserName(actor)} hat in der Aufgabe "${task.title}" einen Kommentar an ${recipientName} geschrieben: ${text}`
-          : `${getUserName(actor)} hat die Aufgabe "${task.title}" kommentiert: ${text}`,
+        body: notificationBody,
         sentAt: null,
         linkTarget: "task",
         linkTargetId: task.id,
         linkLabel: "Aufgabe öffnen",
       },
+    });
+
+    await sendTaskNotificationMailSafely({
+      notificationId: notification.id,
+      userId,
+      subject: "Neuer Kommentar zur Aufgabe",
+      body: notificationBody,
     });
   }
 
