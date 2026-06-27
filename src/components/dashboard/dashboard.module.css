@@ -18262,6 +18262,7 @@
   animation: requiredPulse 1.4s ease-in-out infinite;
   background: #fff7ed;
   border-color: #fb923c;
+  caret-color: #111827;
   box-shadow: 0 0 0 3px rgba(251, 146, 60, 0.18);
   color: #9a3412;
 }
