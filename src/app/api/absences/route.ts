@@ -5,6 +5,7 @@ import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canManageAbsences } from "@/lib/permissions";
+import { sendNotificationMailSafely } from "@/lib/mail/notifications";
 
 type AbsenceType = "urlaub" | "krank";
 type AbsenceDayPart = "full" | "first-half" | "second-half";
@@ -134,29 +135,57 @@ async function notifyAbsenceChange(
   );
 
   for (const recipient of recipients) {
-    await prisma.$executeRaw`
-      INSERT INTO "Notification" (
-        "id",
-        "organizationId",
-        "userId",
-        "taskId",
-        "channel",
-        "subject",
-        "body",
-        "createdAt"
-      )
-      VALUES (
-        ${randomUUID()},
-        ${organizationId},
-        ${recipient.id},
-        NULL,
-        'app',
-        ${subject},
-        ${body},
-        CURRENT_TIMESTAMP
-      )
-    `;
+    const notification = await prisma.notification.create({
+      data: {
+        id: randomUUID(),
+        organizationId,
+        userId: recipient.id,
+        taskId: null,
+        channel: "app",
+        subject,
+        body,
+      },
+    });
+
+    await sendNotificationMailSafely({
+      notificationId: notification.id,
+      userId: recipient.id,
+      subject,
+      body,
+    });
   }
+}
+
+async function createAbsenceNotification(input: {
+  organizationId: string;
+  userId: string;
+  subject: string;
+  body: string;
+  linkTarget?: string | null;
+  linkTargetId?: string | null;
+  linkLabel?: string | null;
+}) {
+  const notification = await prisma.notification.create({
+    data: {
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      userId: input.userId,
+      taskId: null,
+      channel: "app",
+      subject: input.subject,
+      body: input.body,
+      linkTarget: input.linkTarget ?? null,
+      linkTargetId: input.linkTargetId ?? null,
+      linkLabel: input.linkLabel ?? null,
+    },
+  });
+
+  await sendNotificationMailSafely({
+    notificationId: notification.id,
+    userId: input.userId,
+    subject: input.subject,
+    body: input.body,
+  });
 }
 
 async function ensureAbsenceTable() {
@@ -502,34 +531,15 @@ export async function POST(req: Request) {
   ];
 
   for (const notification of notificationRecipients) {
-    await prisma.$executeRaw`
-      INSERT INTO "Notification" (
-        "id",
-        "organizationId",
-        "userId",
-        "taskId",
-        "channel",
-        "subject",
-        "body",
-        "createdAt",
-        "linkTarget",
-        "linkTargetId",
-        "linkLabel"
-      )
-      VALUES (
-        ${randomUUID()},
-        ${organization.id},
-        ${notification.userId},
-        NULL,
-        'app',
-        ${notification.subject},
-        ${notification.body},
-        CURRENT_TIMESTAMP,
-        ${notification.linkTarget ?? null},
-        ${notification.linkTargetId ?? null},
-        ${notification.linkLabel ?? null}
-      )
-    `;
+    await createAbsenceNotification({
+      organizationId: organization.id,
+      userId: notification.userId,
+      subject: notification.subject,
+      body: notification.body,
+      linkTarget: notification.linkTarget,
+      linkTargetId: notification.linkTargetId,
+      linkLabel: notification.linkLabel,
+    });
   }
 
   const rows = await prisma.$queryRaw<AbsenceRow[]>`
@@ -711,31 +721,23 @@ export async function PATCH(req: Request) {
       `${actor.firstName} ${actor.lastName} hat den Abwesenheitsantrag von ${existingAbsence.userName} bearbeitet.`
     );
 
-    await prisma.$executeRaw`
-      INSERT INTO "Notification" (
-        "id", "organizationId", "userId", "taskId", "channel", "subject", "body",
-        "createdAt", "linkTarget", "linkTargetId", "linkLabel"
-      )
-      VALUES (
-        ${randomUUID()},
-        ${organization.id},
-        ${existingAbsence.userId},
-        NULL,
-        'app',
-        ${action === "accept-representation"
+    await createAbsenceNotification({
+      organizationId: organization.id,
+      userId: existingAbsence.userId,
+      subject:
+        action === "accept-representation"
           ? "Vertretung akzeptiert"
           : action === "final-approve"
             ? "Abwesenheit genehmigt"
-            : "Abwesenheit abgelehnt"},
-        ${action === "reject"
+            : "Abwesenheit abgelehnt",
+      body:
+        action === "reject"
           ? `${actor.firstName} ${actor.lastName} hat deinen Abwesenheitsantrag abgelehnt. Begründung: ${rejectionReason}`
-          : `${actor.firstName} ${actor.lastName} hat deinen Abwesenheitsantrag bearbeitet.`},
-        CURRENT_TIMESTAMP,
-        'absence-request',
-        ${requestGroupId},
-        'Antrag öffnen'
-      )
-    `;
+          : `${actor.firstName} ${actor.lastName} hat deinen Abwesenheitsantrag bearbeitet.`,
+      linkTarget: "absence-request",
+      linkTargetId: requestGroupId,
+      linkLabel: "Antrag öffnen",
+    });
 
     return NextResponse.json({ success: true });
   }
