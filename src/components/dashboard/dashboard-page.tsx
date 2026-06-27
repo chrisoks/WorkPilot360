@@ -19941,8 +19941,6 @@ await addProjectLogbookEntry(
     } as CSSProperties;
   };
   const getPlanningAssignmentsForEmployee = (employeeName: string) => {
-    if (selectedPlanningIsWeekend || selectedPlanningHoliday) return [];
-
     const entriesForEmployee = planningEntries.filter(
       (entry) =>
         !entry.deletedAt &&
@@ -38982,6 +38980,7 @@ await addProjectLogbookEntry(
                           groupName !== "Gesamt" &&
                           selectedPlanningDateKey === dateKey &&
                           selectedPlanningGroup === targetGroup;
+                        const hasWeekendPlanning = (isWeekend || Boolean(holiday)) && utilization.plannedHours > 0;
 
                         return (
                           <button
@@ -38992,6 +38991,7 @@ await addProjectLogbookEntry(
                             data-holiday={Boolean(holiday)}
                             data-active={isSelected}
                             data-overloaded={utilization.percent > 100}
+                            data-has-planning={hasWeekendPlanning}
                             title={holiday?.name}
                             onClick={() => {
                               setSelectedPlanningDateKey(dateKey);
@@ -39016,6 +39016,16 @@ await addProjectLogbookEntry(
                                     }}
                                   />
                                 </b>
+                              </>
+                            ) : hasWeekendPlanning ? (
+                              <>
+                                <span className={styles.planningWeekendAlert} aria-label="Termine am Wochenende">
+                                  !
+                                </span>
+                                <small>
+                                  {formatHours(utilization.plannedHours)}h geplant
+                                </small>
+                                <em>{holiday ? holiday.name : "Wochenende"}</em>
                               </>
                             ) : (
                               <em>{holiday ? holiday.name : "Wochenende"}</em>

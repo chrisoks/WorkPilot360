@@ -25,6 +25,16 @@
   `npm.cmd run check:regressions`, `npx.cmd prisma validate`,
   `npx.cmd prisma db push --skip-generate` ohne Datenverlustwarnung,
   `npm.cmd run build` und `git diff --check`.
+- Planungsboard Wochenende 2026-06-28: Wochenenden und Feiertage bleiben im
+  Planungsboard optisch als arbeitsfreie Tage markiert. Wenn dort trotzdem
+  Planungstermine vorhanden sind, werden sie nicht mehr in der Tagesansicht
+  ausgeblendet. Die Board-Zelle zeigt dann eine pulsierende Warnmarke und die
+  geplanten Stunden, damit Wochenendtermine nicht unsichtbar bleiben. Checks
+  bestanden: `git diff --check`, `npm.cmd run check:mojibake`,
+  `npm.cmd run check:regressions`, `npx.cmd prisma validate` und
+  `npm.cmd run build` im zweiten Lauf. Der erste Buildlauf hatte einen
+  transienten Next-Cache-Fehler `Cannot find module './1682.js'`, der direkte
+  Wiederholungslauf war erfolgreich.
 - Laufender Funktionsblock 2026-06-26: Dauerlaeufer wurden fachlich in
   Monatspauschale und Stundenabrechnung getrennt. Bei Dauerlaeufer-Projekten
   muss das Abrechnungsmodell aktiv gewaehlt werden; Stundenabrechnung nutzt

@@ -22360,6 +22360,11 @@
   color: #94a3b8;
 }
 
+.planningBoardCell[data-has-planning="true"] {
+  background: #fff7ed;
+  color: #b45309;
+}
+
 .planningBoardDayHeader[data-holiday="true"],
 .planningBoardCell[data-holiday="true"] {
   background: #e6f8fa;
@@ -22432,6 +22437,49 @@
   color: #64748b;
   font-size: 0.68rem;
   font-style: normal;
+}
+
+.planningWeekendAlert {
+  align-items: center;
+  animation: planningWeekendAlertPulse 1.35s ease-in-out infinite;
+  background: #f97316;
+  border-radius: 999px;
+  color: #ffffff;
+  display: inline-flex;
+  font-size: 0.76rem;
+  font-weight: 950;
+  height: 18px;
+  justify-content: center;
+  line-height: 1;
+  margin-bottom: 3px;
+  width: 18px;
+}
+
+.planningBoardCell[data-has-planning="true"] small {
+  color: #9a3412;
+}
+
+.planningBoardCell[data-has-planning="true"] em {
+  color: #9a3412;
+  font-size: 0.58rem;
+  line-height: 1;
+}
+
+@keyframes planningWeekendAlertPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.48);
+    transform: scale(1);
+  }
+
+  70% {
+    box-shadow: 0 0 0 8px rgba(249, 115, 22, 0);
+    transform: scale(1.08);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0);
+    transform: scale(1);
+  }
 }
 
 .planningBoardCell:hover,
