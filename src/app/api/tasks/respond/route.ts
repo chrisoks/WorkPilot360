@@ -5,6 +5,7 @@ import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { recordStatusTransition } from "@/lib/status-tracking";
+import { sendTaskNotificationMailSafely } from "@/lib/mail/task-notifications";
 
 type TaskAcceptanceRow = {
   id: string;
@@ -48,7 +49,7 @@ async function createTaskNotificationPair(input: {
   body: string;
 }) {
   for (const channel of ["app", "email"]) {
-    await prisma.notification.create({
+    const notification = await prisma.notification.create({
       data: {
         organizationId: input.organizationId,
         taskId: input.taskId,
@@ -62,6 +63,15 @@ async function createTaskNotificationPair(input: {
         linkLabel: "Aufgabe \u00f6ffnen",
       },
     });
+
+    if (channel === "email") {
+      await sendTaskNotificationMailSafely({
+        notificationId: notification.id,
+        userId: input.userId,
+        subject: input.subject,
+        body: input.body,
+      });
+    }
   }
 }
 

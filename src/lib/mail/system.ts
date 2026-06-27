@@ -88,6 +88,9 @@ export async function sendSystemMail(input: SystemMailInput) {
     host: status.host,
     port: status.port,
     secure: status.secure,
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
     auth: {
       user: status.user,
       pass: cleanText(process.env.SYSTEM_MAIL_SMTP_PASSWORD),

@@ -6,6 +6,7 @@ import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/acto
 import { getDeadlineSettings } from "@/lib/company-settings/deadlines";
 import { recordStatusTransition, seedCurrentStatusTimeline } from "@/lib/status-tracking";
 import { canAssignTasksToOthers, canDeleteTasks } from "@/lib/permissions";
+import { sendTaskNotificationMailSafely } from "@/lib/mail/task-notifications";
 import {
   CustomerClassification,
   Prisma,
@@ -30,7 +31,7 @@ async function createTaskNotificationPair(input: {
   body: string;
 }) {
   for (const channel of ["app", "email"]) {
-    await prisma.notification.create({
+    const notification = await prisma.notification.create({
       data: {
         organizationId: input.organizationId,
         taskId: input.taskId,
@@ -44,6 +45,15 @@ async function createTaskNotificationPair(input: {
         linkLabel: "Aufgabe \u00f6ffnen",
       },
     });
+
+    if (channel === "email") {
+      await sendTaskNotificationMailSafely({
+        notificationId: notification.id,
+        userId: input.userId,
+        subject: input.subject,
+        body: input.body,
+      });
+    }
   }
 }
 
@@ -475,16 +485,24 @@ async function createDoneFeedbackNotification(
 
   if (existingNotification) return;
 
-  await prisma.notification.create({
+  const bodyText = `Die Aufgabe "${task.title}" wurde erledigt. Rückmeldung an: ${recipient.email}`;
+  const notification = await prisma.notification.create({
     data: {
       organizationId: task.organizationId,
       taskId: task.id,
       userId: recipient.id,
       channel: "email",
       subject: "Aufgabe erledigt",
-      body: `Die Aufgabe "${task.title}" wurde erledigt. Rückmeldung an: ${recipient.email}`,
+      body: bodyText,
       sentAt: null,
     },
+  });
+
+  await sendTaskNotificationMailSafely({
+    notificationId: notification.id,
+    userId: recipient.id,
+    subject: "Aufgabe erledigt",
+    body: bodyText,
   });
 }
 
