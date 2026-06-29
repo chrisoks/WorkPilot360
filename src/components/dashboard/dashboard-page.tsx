@@ -2149,10 +2149,11 @@ const projectLifecycleStatuses: ProjectPipelineStatus[] = [
   { label: "Zur Planung bereit", icon: "4", count: 0 },
   { label: "Geplant", icon: "5", count: 0 },
   { label: "Umsetzung", icon: "6", count: 0 },
-  { label: "Endkontrolle", icon: "7", count: 0 },
-  { label: "Zur Abrechnung bereit", icon: "8", count: 0 },
-  { label: "Abgeschlossen", icon: "9", count: 0 },
-  { label: "Archiviert", icon: "10", count: 0 },
+  { label: "Arbeit unterbrochen", icon: "7", count: 0, urgent: true },
+  { label: "Abrechnungsprüfung", icon: "8", count: 0 },
+  { label: "Zur Abrechnung bereit", icon: "9", count: 0 },
+  { label: "Abgeschlossen", icon: "10", count: 0 },
+  { label: "Archiviert", icon: "11", count: 0 },
 ];
 
 const projectOperationalLifecycleStatuses = projectLifecycleStatuses.filter(
@@ -2190,8 +2191,13 @@ const projectAutomationRules: Array<{
     action: "Sichtbar für die ausführenden Mitarbeiter in App und PC",
   },
   {
+    status: "Abrechnungsprüfung",
+    trigger: "Nach gespeicherter Endkontrolle",
+    action: "Automatische Prüfung der Pflichtnachweise",
+  },
+  {
     status: "Zur Abrechnung bereit",
-    trigger: "Nach abgeschlossener Endkontrolle",
+    trigger: "Wenn Endkontrolle und Pflichtnachweise vollständig sind",
     action: "Automatischer Statuswechsel auf Zur Abrechnung bereit",
   },
   {
@@ -2252,10 +2258,10 @@ const projectPipelineAutomationBlueprint: Array<{
   },
   {
     event: "Endkontrolle liegt vor",
-    oneTimeStatus: "Endkontrolle",
-    recurringStatus: "Umsetzung",
-    behavior: "Vorschlag",
-    note: "Bei Dauerlaeufern ist Endkontrolle meist ein Monatsnachweis, nicht zwingend Projektstatus.",
+    oneTimeStatus: "Abrechnungsprüfung",
+    recurringStatus: "Abrechnungsprüfung",
+    behavior: "Automatisch",
+    note: "Das System prüft Vorherbilder, Nachherbilder und Endkontrolle; Tätigkeitsberichte entstehen erst in der Faktura.",
   },
   {
     event: "Monatsende: Pflichtnachweise vollstaendig und noch keine Monatsrechnung",
@@ -2280,7 +2286,9 @@ function getProjectStatusStripLabel(label: string) {
     Angebot: "Angebotserstellung",
     Geplant: "Geplant",
     Umsetzung: "In Umsetzung",
-    Endkontrolle: "Endkontrolle",
+    "Arbeit unterbrochen": "Arbeit unterbrochen",
+    Abrechnungsprüfung: "Abrechnungsprüfung",
+    Endkontrolle: "Abrechnungsprüfung",
     "Zur Abrechnung bereit": "Abrechnungbereit",
   };
 
@@ -2290,6 +2298,7 @@ function getProjectStatusStripLabel(label: string) {
 function normalizeProjectPipelineStatus(status?: string | null) {
   if (status === "Lead / Kl\u00c3\u00a4rung") return "Lead / Klärung";
   if (status === "Dauerl\u00c3\u00a4ufer-Faktura") return "Dauerläufer-Faktura";
+  if (status === "Endkontrolle") return "Abrechnungsprüfung";
   if (status === "In Umsetzung") return "Umsetzung";
   if (status === "Geplant") return "Geplant";
   return status || "";
@@ -7790,6 +7799,13 @@ export function DashboardPage() {
     return `${previousMonthDate.getFullYear()}-${String(previousMonthDate.getMonth() + 1).padStart(2, "0")}`;
   }
 
+  function getNextMonthKey(monthKey: string) {
+    const [year, month] = monthKey.split("-").map(Number);
+    if (!year || !month) return "";
+    const nextMonthDate = new Date(year, month, 1, 12);
+    return `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, "0")}`;
+  }
+
   function getLastDayOfMonthKey(monthKey: string) {
     const [year, month] = monthKey.split("-").map(Number);
     if (!year || !month) return formatDateKey(new Date());
@@ -8080,7 +8096,11 @@ export function DashboardPage() {
     };
   }
 
-  function getOneTimeProjectBillingReadyState(project: HeroProjectPreview, monthKey: string) {
+  function getOneTimeProjectBillingReadyState(
+    project: HeroProjectPreview,
+    monthKey: string,
+    options: { assumeFinalInspection?: boolean } = {}
+  ) {
     if (isRecurringProjectKindValue(getProjectKind(project))) {
       return { ready: false, reason: "Dauerlaeufer werden monatsbezogen bewertet." };
     }
@@ -8093,22 +8113,26 @@ export function DashboardPage() {
     );
     if (hasFinalInvoice) return { ready: false, reason: "Rechnung ist bereits erstellt." };
 
-    const finalInspectionCount = getProjectProcessAttachmentCount(project, "Dokumente: Endkontrolle", "Dokument", monthKey);
+    const finalInspectionCount = options.assumeFinalInspection
+      ? Math.max(1, getProjectProcessAttachmentCount(project, "Dokumente: Endkontrolle", "Dokument", monthKey))
+      : getProjectProcessAttachmentCount(project, "Dokumente: Endkontrolle", "Dokument", monthKey);
     if (finalInspectionCount === 0) return { ready: false, reason: "Endkontrolle fehlt." };
 
     if (!isImmocareProject(project)) return { ready: true, reason: "" };
 
     const beforeImageCount = getProjectProcessAttachmentCount(project, "Bilder: Vorherbilder", "Bild", monthKey);
     const afterImageCount = getProjectProcessAttachmentCount(project, "Bilder: Nachherbilder", "Bild", monthKey);
-    const activityReportCount = getMatchingActivityReportCount(project, monthKey);
     if (beforeImageCount === 0) return { ready: false, reason: "Vorherbild fehlt." };
     if (afterImageCount === 0) return { ready: false, reason: "Nachherbild fehlt." };
-    if (activityReportCount === 0) return { ready: false, reason: "Taetigkeitsbericht fehlt." };
 
     return { ready: true, reason: "" };
   }
 
-  function getRecurringProjectBillingReadyState(project: HeroProjectPreview, monthKey: string) {
+  function getRecurringProjectBillingReadyState(
+    project: HeroProjectPreview,
+    monthKey: string,
+    options: { assumeFinalInspection?: boolean } = {}
+  ) {
     if (!isRecurringProjectKindValue(getProjectKind(project))) {
       return { ready: false, reason: "Einmalprojekte werden projektbezogen bewertet." };
     }
@@ -8128,25 +8152,97 @@ export function DashboardPage() {
     );
     if (hasFinalMonthlyInvoice) return { ready: false, reason: "Monatsrechnung ist bereits erstellt." };
 
-    const finalInspectionCount = getProjectProcessAttachmentCount(project, "Dokumente: Endkontrolle", "Dokument", monthKey);
+    const finalInspectionCount = options.assumeFinalInspection
+      ? Math.max(1, getProjectProcessAttachmentCount(project, "Dokumente: Endkontrolle", "Dokument", monthKey))
+      : getProjectProcessAttachmentCount(project, "Dokumente: Endkontrolle", "Dokument", monthKey);
     if (finalInspectionCount === 0) return { ready: false, reason: "Endkontrolle fehlt." };
 
     if (!isImmocareProject(project)) return { ready: true, reason: "" };
 
-    const activityReportCount = getMatchingActivityReportCount(project, monthKey);
-    if (activityReportCount === 0) return { ready: false, reason: "Taetigkeitsbericht fehlt." };
+    const beforeImageCount = getProjectProcessAttachmentCount(project, "Bilder: Vorherbilder", "Bild", monthKey);
+    const afterImageCount = getProjectProcessAttachmentCount(project, "Bilder: Nachherbilder", "Bild", monthKey);
+    if (beforeImageCount === 0) return { ready: false, reason: "Vorherbild fehlt." };
+    if (afterImageCount === 0) return { ready: false, reason: "Nachherbild fehlt." };
 
     return { ready: true, reason: "" };
   }
 
-  async function notifyProjectBillingReady(project?: HeroProjectPreview | null, monthKey = getCurrentMonthKey()) {
+  function getProjectBillingReadyState(
+    project: HeroProjectPreview,
+    monthKey: string,
+    options: { assumeFinalInspection?: boolean } = {}
+  ) {
+    return isRecurringProjectKindValue(getProjectKind(project))
+      ? getRecurringProjectBillingReadyState(project, monthKey, options)
+      : getOneTimeProjectBillingReadyState(project, monthKey, options);
+  }
+
+  function getConfirmedProjectPlannedHoursForMonth(projectId: string, monthKey: string) {
+    return planningEntries
+      .filter(
+        (entry) =>
+          !entry.deletedAt &&
+          entry.projectId === projectId &&
+          entry.approvalStatus === "confirmed" &&
+          entry.date.startsWith(monthKey)
+      )
+      .reduce((sum, entry) => sum + Number(entry.durationMinutes || 0) / 60, 0);
+  }
+
+  function getProjectRequiredPlanningHoursForMonth(project: HeroProjectPreview, monthKey: string) {
+    if (!isProjectBudgetDueForPlanningMonth(project, monthKey)) return 0;
+    const allocatedHours = getProjectBudgetAllocationHours(project, monthKey);
+    if (allocatedHours > 0) return allocatedHours;
+    return project.timeBudgetEnabled ? parseHoursInput(project.timeBudgetHours) : 0;
+  }
+
+  function getProjectPostInvoiceStatus(project: HeroProjectPreview, invoiceMonth: string) {
+    if (!isRecurringProjectKindValue(getProjectKind(project))) return "Abgeschlossen";
+
+    const nextMonthKey = getNextMonthKey(invoiceMonth);
+    if (!nextMonthKey) return "Zur Planung bereit";
+
+    const requiredPlanningHours = getProjectRequiredPlanningHoursForMonth(project, nextMonthKey);
+    const confirmedPlannedHours = getConfirmedProjectPlannedHoursForMonth(project.id, nextMonthKey);
+    if (requiredPlanningHours > 0) {
+      return confirmedPlannedHours + 0.01 >= requiredPlanningHours ? "Umsetzung" : "Zur Planung bereit";
+    }
+
+    return confirmedPlannedHours > 0 ? "Umsetzung" : "Zur Planung bereit";
+  }
+
+  async function applyProjectStatusAfterInvoice(project: HeroProjectPreview, invoice: InvoiceItem) {
+    const invoiceMonth =
+      getProjectInvoiceMonth(invoice) ||
+      invoice.serviceDate.slice(0, 7) ||
+      invoice.plannedExecutionMonth ||
+      getCurrentMonthKey();
+    const nextStatus = getProjectPostInvoiceStatus(project, invoiceMonth);
+    const isRecurring = isRecurringProjectKindValue(getProjectKind(project));
+    const reason = isRecurring
+      ? `Rechnung ${invoice.invoiceNumber} für ${formatMonthLabel(invoiceMonth)} fakturiert; Folgemonat ${formatMonthLabel(
+          getNextMonthKey(invoiceMonth) || invoiceMonth
+        )} geprüft.`
+      : `Rechnung ${invoice.invoiceNumber} fakturiert.`;
+
+    return applyProjectStatus({
+      project,
+      nextStatus,
+      reason,
+      logPrefix: "Projektstatus nach Rechnung geändert",
+    });
+  }
+
+  async function notifyProjectBillingReady(
+    project?: HeroProjectPreview | null,
+    monthKey = getCurrentMonthKey(),
+    options: { assumeFinalInspection?: boolean } = {}
+  ) {
     if (!activeUserId) return false;
     if (!project) return false;
 
     const isRecurring = isRecurringProjectKindValue(getProjectKind(project));
-    const state = isRecurring
-      ? getRecurringProjectBillingReadyState(project, monthKey)
-      : getOneTimeProjectBillingReadyState(project, monthKey);
+    const state = getProjectBillingReadyState(project, monthKey, options);
     if (!state.ready) return false;
 
     const recipientUserIds = getProjectBillingReadyRecipients(project);
@@ -9260,6 +9356,9 @@ export function DashboardPage() {
         savedInvoice.grossTotal
       )} brutto).`
     );
+    if (!saveAsDraft) {
+      await applyProjectStatusAfterInvoice(selectedProjectFile, savedInvoice);
+    }
     setSelectedProjectDocumentType("Rechnungen");
     setProjectFileTab("documents");
     setIsInvoiceModalOpen(false);
@@ -9325,6 +9424,7 @@ export function DashboardPage() {
       "Rechnung",
       `Rechnung fakturiert: ${savedInvoice.invoiceNumber} (${formatMoney(savedInvoice.grossTotal)} brutto).`
     );
+    await applyProjectStatusAfterInvoice(project, savedInvoice);
   }
 
   async function confirmFinalizeInvoice() {
@@ -15906,6 +16006,46 @@ export function DashboardPage() {
     return (await res.json()) as HeroProjectPreview;
   }
 
+  async function applyProjectStatus(input: {
+    project?: HeroProjectPreview | null;
+    nextStatus: string;
+    reason: string;
+    logPrefix?: string;
+  }) {
+    const project = input.project;
+    if (
+      !project ||
+      !input.nextStatus ||
+      normalizeProjectPipelineStatus(project.status) === normalizeProjectPipelineStatus(input.nextStatus)
+    ) {
+      return null;
+    }
+
+    const previousStatus = project.status || "-";
+    const updatedProject = { ...project, status: input.nextStatus };
+    try {
+      const savedProject = await persistProject(updatedProject);
+      setHeroProjects((currentProjects) =>
+        currentProjects.map((currentProject) =>
+          currentProject.id === savedProject.id ? savedProject : currentProject
+        )
+      );
+      if (selectedProjectFileId === savedProject.id) {
+        setSelectedProjectPipelineStatus(savedProject.status);
+        setSelectedHeroDetailId(savedProject.id);
+      }
+      await addProjectLogbookEntry(
+        savedProject.id,
+        "Projektstatus",
+        `${input.logPrefix || "Projektstatus per Automatik geändert"}: ${previousStatus} -> ${savedProject.status}. Auslöser: ${input.reason}.`
+      );
+      return savedProject;
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Projektstatus konnte nicht gespeichert werden.");
+      return null;
+    }
+  }
+
   async function confirmAndApplyProjectStatus(input: {
     project?: HeroProjectPreview | null;
     nextStatus: string;
@@ -15954,15 +16094,33 @@ export function DashboardPage() {
     });
   }
 
-  async function confirmFinalInspectionStatus(project?: HeroProjectPreview | null) {
-    if (!project || getProjectKind(project).startsWith("Dauer")) return false;
+  async function applyBillingCheckStatus(
+    project?: HeroProjectPreview | null,
+    monthKey = getCurrentMonthKey(),
+    options: { assumeFinalInspection?: boolean } = {}
+  ) {
+    if (!project) return null;
 
-    return confirmAndApplyProjectStatus({
+    const state = getProjectBillingReadyState(project, monthKey, options);
+    const nextStatus = state.ready ? "Zur Abrechnung bereit" : "Abrechnungsprüfung";
+    const reason = state.ready
+      ? "Abrechnungsprüfung vollständig"
+      : `Abrechnungsprüfung offen: ${state.reason}`;
+
+    return applyProjectStatus({
       project,
-      nextStatus: "Endkontrolle",
-      reason: "Endkontrolle liegt vor",
-      question: `Für das Projekt "${project.projectNumber || project.title || "ohne Nummer"}" wurde eine Endkontrolle gespeichert. Soll der Projektstatus auf "Endkontrolle" gesetzt werden?`,
+      nextStatus,
+      reason,
+      logPrefix: "Projektstatus per Abrechnungsprüfung geändert",
     });
+  }
+
+  async function confirmFinalInspectionStatus(
+    project?: HeroProjectPreview | null,
+    monthKey = getCurrentMonthKey(),
+    options: { assumeFinalInspection?: boolean } = {}
+  ) {
+    return applyBillingCheckStatus(project, monthKey, options);
   }
 
   async function saveProjectDraft() {
@@ -17336,8 +17494,9 @@ await addProjectLogbookEntry(
 
     await loadProjectLogbookEntries();
     const project = heroProjects.find((item) => item.id === entry.projectId);
-    await confirmFinalInspectionStatus(project);
-    await notifyProjectBillingReady(project, normalizeDateKeyValue(entry.date).slice(0, 7) || getCurrentMonthKey());
+    const projectMonth = normalizeDateKeyValue(entry.date).slice(0, 7) || getCurrentMonthKey();
+    const savedProject = await confirmFinalInspectionStatus(project, projectMonth, { assumeFinalInspection: true });
+    await notifyProjectBillingReady(savedProject || project, projectMonth, { assumeFinalInspection: true });
     if (finalInspectionHasUpsell) {
       if (project) {
         await createProjectPotential(project, finalInspectionUpsellNotes.trim());
@@ -17491,6 +17650,15 @@ await addProjectLogbookEntry(
           shouldShowFinalInspectionChecklist
         ) {
           await saveFinalInspectionForStamp(closedEntry);
+        }
+        if (closedEntry?.mode === "project" && closedEntry.projectId && stampCompletionState === "interrupted") {
+          const interruptedProject = heroProjects.find((project) => project.id === closedEntry.projectId);
+          await applyProjectStatus({
+            project: interruptedProject,
+            nextStatus: "Arbeit unterbrochen",
+            reason: stampComment.trim() || "Arbeit wurde unterbrochen",
+            logPrefix: "Projektstatus per Arbeitsunterbrechung geändert",
+          });
         }
       } catch (error) {
         setStampError(
@@ -26318,6 +26486,7 @@ await addProjectLogbookEntry(
           "Rechnung",
           `Rechnung fakturiert: ${savedInvoice.invoiceNumber} (${formatMoney(savedInvoice.grossTotal)} brutto).`
         );
+        await applyProjectStatusAfterInvoice(project, savedInvoice);
       }
 
       setSelectedBatchDraftInvoiceIds([]);
@@ -43080,8 +43249,9 @@ await addProjectLogbookEntry(
                 "Zur Planung bereit",
                 "Geplant",
                 "Umsetzung",
-                "Endkontrolle",
-                "Abrechnungsbereit",
+                "Arbeit unterbrochen",
+                "Abrechnungsprüfung",
+                "Zur Abrechnung bereit",
               ],
             })}
           </div>

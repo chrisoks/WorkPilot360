@@ -312,15 +312,22 @@ function normalizeProjectStatus(status: string) {
   ) {
     return "Geplant";
   }
+  if (normalized.includes("arbeit unterbrochen") || normalized.includes("unterbrochen")) return "Arbeit unterbrochen";
   if (normalized.includes("in umsetzung")) return "Umsetzung";
   if (normalized.includes("umsetzung")) return "Umsetzung";
-  if (normalized.includes("abnahme") || normalized.includes("endkontrolle")) return "Endkontrolle";
+  if (
+    normalized.includes("abnahme") ||
+    normalized.includes("endkontrolle") ||
+    normalized.includes("abrechnungspr")
+  ) {
+    return "Abrechnungsprüfung";
+  }
   if (normalized.includes("kundenrechnung") || normalized.includes("abrechnung")) {
     return "Zur Abrechnung bereit";
   }
   if (normalized.includes("abgeschlossen")) return "Abgeschlossen";
   if (normalized.includes("archiviert")) return "Archiviert";
-  if (normalized.includes("reklamation") || normalized.includes("nacharbeit")) return "Endkontrolle";
+  if (normalized.includes("reklamation") || normalized.includes("nacharbeit")) return "Abrechnungsprüfung";
   if (normalized.includes("neu") || normalized.includes("akquise") || normalized.includes("erstkontakt")) {
     return "Lead / Klärung";
   }

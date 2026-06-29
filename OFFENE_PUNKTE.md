@@ -22,7 +22,19 @@ Diese Liste haelt Themen fest, die nach abgeschlossenen Zwischenarbeiten nicht v
 
 ## Abrechnungsbereit / Abrechnung
 
-- Abrechnungsbereit-Automatik fachlich nochmal durchgehen:
+- Pipeline-Status nach Umsetzung:
+  - `Endkontrolle` ist als Projektstatus durch `Abrechnungspruefung` ersetzt.
+  - `Endkontrolle` bleibt als Dokument-/Nachweisart erhalten.
+  - Neuer Sonderstatus: `Arbeit unterbrochen`.
+  - Nach gespeicherter Endkontrolle prueft das System automatisch Vorherbilder, Nachherbilder und Endkontrolle.
+  - Taetigkeitsberichte sind keine Voraussetzung fuer `Abrechnungsbereit`; sie werden in der Faktura erzeugt.
+
+- Dauerlaeufer nach Rechnung weiter beobachten:
+  - Nach Rechnung geht ein Dauerlaeufer in `Umsetzung`, wenn der Folgemonat ausreichend bestaetigt geplant ist.
+  - Ohne ausreichende bestaetigte Folgemonatsplanung geht er in `Zur Planung bereit`.
+  - Bei Projektzeitkontingent zaehlt: bestaetigte Planungsstunden im Folgemonat >= Monatskontingent.
+
+- Benachrichtigungslogik weiter fachlich abgrenzen:
   - `Projekt abrechnungsbereit` und `Dauerlaeufer abrechnungsbereit` senden seit Commit `3b8cec0` zusaetzlich Systemmail.
   - Offene, nicht fakturierte Projektzeiten laufen ueber `/api/unbilled-time-alerts` mit eigener Deduplizierung.
   - Noch pruefen, ob beide Logiken fachlich klar getrennt sind oder ob Nutzer sie als ein gemeinsames Thema erwarten.
