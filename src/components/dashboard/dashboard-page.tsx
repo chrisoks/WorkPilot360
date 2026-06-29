@@ -5352,6 +5352,7 @@ export function DashboardPage() {
   const [projectLogbookEntries, setProjectLogbookEntries] = useState<ProjectLogbookEntry[]>([]);
   const projectLogbookEntriesRef = useRef<ProjectLogbookEntry[]>([]);
   const projectImagePreviewReloadRef = useRef("");
+  const syncedPostInvoiceProjectKeysRef = useRef(new Set<string>());
   const [customerProjectNotes, setCustomerProjectNotes] = useState<CustomerProjectNote[]>([]);
   const [notesViewScope, setNotesViewScope] = useState<"customer" | "project">("customer");
   const [noteDraft, setNoteDraft] = useState<CustomerProjectNoteDraft>(emptyCustomerProjectNoteDraft);
@@ -8177,13 +8178,44 @@ export function DashboardPage() {
       : getOneTimeProjectBillingReadyState(project, monthKey, options);
   }
 
+  function getProjectBillingEvidenceIssues(project: HeroProjectPreview, monthKey: string) {
+    const issues: string[] = [];
+    const finalInspectionCount = getProjectProcessAttachmentCount(project, "Dokumente: Endkontrolle", "Dokument", monthKey);
+    if (finalInspectionCount === 0) issues.push("Endkontrolle");
+
+    if (isImmocareProject(project)) {
+      const beforeImageCount = getProjectProcessAttachmentCount(project, "Bilder: Vorherbilder", "Bild", monthKey);
+      const afterImageCount = getProjectProcessAttachmentCount(project, "Bilder: Nachherbilder", "Bild", monthKey);
+      if (beforeImageCount === 0) issues.push("Vorherbild");
+      if (afterImageCount === 0) issues.push("Nachherbild");
+    }
+
+    return issues;
+  }
+
+  function getProjectFinalInvoices(project: HeroProjectPreview) {
+    return invoices
+      .filter((invoice) => String(invoice.projectId) === String(project.id) && isFinanciallyActiveInvoice(invoice))
+      .sort((first, second) => parseAppDateTime(second.createdAt).getTime() - parseAppDateTime(first.createdAt).getTime());
+  }
+
   function getProjectPipelineNextBillingStep(project: HeroProjectPreview) {
     const normalizedStatus = normalizeProjectPipelineStatus(project.status);
-    if (normalizedStatus !== "Abrechnungsprüfung" && normalizedStatus !== "Zur Abrechnung bereit") {
+    if (
+      normalizedStatus !== "Abrechnungsprüfung" &&
+      normalizedStatus !== "Zur Abrechnung bereit" &&
+      normalizedStatus !== "Abgeschlossen"
+    ) {
       return "";
     }
 
     const monthKey = projectComparisonMonth || getCurrentMonthKey();
+    const finalInvoice = getProjectFinalInvoices(project)[0];
+    const evidenceIssues = getProjectBillingEvidenceIssues(project, finalInvoice ? getProjectInvoiceMonth(finalInvoice) : monthKey);
+    if (finalInvoice && evidenceIssues.length > 0) {
+      return `Rechnung vorhanden - Nachweise fehlen: ${evidenceIssues.join(", ")}.`;
+    }
+
     const state = getProjectBillingReadyState(project, monthKey);
     if (state.ready) return "Rechnung erstellen.";
 
@@ -8253,6 +8285,34 @@ export function DashboardPage() {
       reason,
       logPrefix: "Projektstatus nach Rechnung geändert",
     });
+  }
+
+  async function syncProjectStatusesAfterExistingInvoices() {
+    if (!activeUserId) return;
+
+    const projectsToSync = heroProjects
+      .map((project) => {
+        const normalizedStatus = normalizeProjectPipelineStatus(project.status);
+        if (normalizedStatus !== "Abrechnungsprüfung" && normalizedStatus !== "Zur Abrechnung bereit") {
+          return null;
+        }
+
+        const finalInvoice = getProjectFinalInvoices(project)[0];
+        if (!finalInvoice) return null;
+
+        const syncKey = `${project.id}:${finalInvoice.id}:${project.status}`;
+        if (syncedPostInvoiceProjectKeysRef.current.has(syncKey)) return null;
+
+        return { finalInvoice, project, syncKey };
+      })
+      .filter((entry): entry is { finalInvoice: InvoiceItem; project: HeroProjectPreview; syncKey: string } =>
+        Boolean(entry)
+      );
+
+    for (const entry of projectsToSync) {
+      syncedPostInvoiceProjectKeysRef.current.add(entry.syncKey);
+      await applyProjectStatusAfterInvoice(entry.project, entry.finalInvoice);
+    }
   }
 
   async function notifyProjectBillingReady(
@@ -13884,6 +13944,13 @@ export function DashboardPage() {
 
     void scanBillingReadyNotifications(getCurrentMonthKey());
   }, [activeUserId, authChecked, hasLoadedHeroProjects, heroProjects, invoices, isAuthenticated, projectLogbookEntries, users]);
+
+  useEffect(() => {
+    if (!authChecked || !isAuthenticated || !activeUserId) return;
+    if (!hasLoadedHeroProjects || heroProjects.length === 0 || invoices.length === 0) return;
+
+    void syncProjectStatusesAfterExistingInvoices();
+  }, [activeUserId, authChecked, hasLoadedHeroProjects, heroProjects, invoices, isAuthenticated, planningEntries]);
 
   useEffect(() => {
     if (!authChecked || !isAuthenticated || !activeUserId) return;
