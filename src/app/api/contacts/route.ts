@@ -20,6 +20,7 @@ type ContactRow = {
   lastName: string | null;
   position: string | null;
   email: string | null;
+  activityReportEmail: string | null;
   phone: string | null;
   mobile: string | null;
   fax: string | null;
@@ -80,6 +81,7 @@ async function ensureContactsTable() {
       "lastName" TEXT,
       "position" TEXT,
       "email" TEXT,
+      "activityReportEmail" TEXT,
       "phone" TEXT,
       "mobile" TEXT,
       "fax" TEXT,
@@ -119,6 +121,7 @@ async function ensureContactsTable() {
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "mainContactName" TEXT`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "isMainContact" BOOLEAN NOT NULL DEFAULT false`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "legalForm" TEXT`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "activityReportEmail" TEXT`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "isActivityReportRecipient" BOOLEAN NOT NULL DEFAULT false`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "eInvoiceRequired" BOOLEAN NOT NULL DEFAULT false`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "eInvoiceRecipientType" TEXT NOT NULL DEFAULT 'business'`;
@@ -178,6 +181,7 @@ function formatContact(contact: ContactRow) {
     lastName: contact.lastName ?? "",
     position: contact.position ?? "",
     email: contact.email ?? "",
+    activityReportEmail: contact.activityReportEmail ?? "",
     phone: contact.phone ?? "",
     mobile: contact.mobile ?? "",
     fax: contact.fax ?? "",
@@ -355,7 +359,7 @@ export async function POST(req: Request) {
     INSERT INTO "Contact" (
       "id", "organizationId", "category", "type", "legalForm", "customerNumber",
       "salutation", "additionalSalutation", "companyName", "firstName", "lastName", "position",
-      "email", "phone", "mobile", "fax", "website", "source", "reachability", "isInvoiceRecipient", "isActivityReportRecipient",
+      "email", "activityReportEmail", "phone", "mobile", "fax", "website", "source", "reachability", "isInvoiceRecipient", "isActivityReportRecipient",
       "eInvoiceRequired", "eInvoiceRecipientType",
       "parentCompanyId", "parentCompanyName", "mainContactName", "isMainContact",
       "street", "addressLine1", "addressLine2", "postalCode", "city", "country",
@@ -366,7 +370,7 @@ export async function POST(req: Request) {
       ${id}, ${organization.id}, ${category}, ${type}, ${nullableString(body.legalForm)}, ${customerNumber},
       ${nullableString(body.salutation)}, ${nullableString(body.additionalSalutation)}, ${nullableString(body.companyName)},
       ${nullableString(body.firstName)}, ${nullableString(body.lastName)}, ${nullableString(body.position)},
-      ${nullableString(body.email)}, ${nullableString(body.phone)}, ${nullableString(body.mobile)}, ${nullableString(body.fax)},
+      ${nullableString(body.email)}, ${nullableString(body.activityReportEmail)}, ${nullableString(body.phone)}, ${nullableString(body.mobile)}, ${nullableString(body.fax)},
       ${nullableString(body.website)}, ${nullableString(body.source)}, ${nullableString(body.reachability)}, ${Boolean(body.isInvoiceRecipient)}, ${Boolean(body.isActivityReportRecipient)},
       ${Boolean(body.eInvoiceRequired)}, ${cleanEInvoiceRecipientType(body.eInvoiceRecipientType)},
       ${nullableString(body.parentCompanyId)}, ${nullableString(body.parentCompanyName)}, ${nullableString(body.mainContactName)}, ${Boolean(body.isMainContact)},
@@ -420,6 +424,7 @@ export async function PATCH(req: Request) {
       "lastName" = ${nullableString(body.lastName)},
       "position" = ${nullableString(body.position)},
       "email" = ${nullableString(body.email)},
+      "activityReportEmail" = ${nullableString(body.activityReportEmail)},
       "phone" = ${nullableString(body.phone)},
       "mobile" = ${nullableString(body.mobile)},
       "fax" = ${nullableString(body.fax)},

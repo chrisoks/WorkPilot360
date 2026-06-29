@@ -1593,6 +1593,7 @@ type ContactItem = {
   lastName: string;
   position: string;
   email: string;
+  activityReportEmail: string;
   phone: string;
   mobile: string;
   fax: string;
@@ -3167,6 +3168,7 @@ const emptyContact: Omit<ContactItem, "id" | "createdAt" | "updatedAt"> = {
   lastName: "",
   position: "",
   email: "",
+  activityReportEmail: "",
   phone: "",
   mobile: "",
   fax: "",
@@ -9797,8 +9799,13 @@ export function DashboardPage() {
       if (project?.contactId && contact.parentCompanyId === project.contactId) return true;
       return contact.companyName === invoice.customerName || getContactDisplayName(contact) === invoice.customerName;
     });
-    const recipient = relatedContacts.find((contact) => contact.isActivityReportRecipient && contact.email.trim());
-    if (!recipient || recipient.id === invoiceRecipient?.id) return null;
+    const recipient = relatedContacts.find(
+      (contact) => contact.isActivityReportRecipient && (contact.activityReportEmail.trim() || contact.email.trim())
+    );
+    if (!recipient) return null;
+    const recipientEmail = (recipient.activityReportEmail || recipient.email).trim().toLowerCase();
+    const invoiceEmail = (invoiceRecipient?.email || "").trim().toLowerCase();
+    if (recipientEmail && invoiceEmail && recipientEmail === invoiceEmail) return null;
     return recipient;
   }
 
@@ -10037,10 +10044,10 @@ export function DashboardPage() {
       includeFeedbackLink: kind === "invoice",
       attachActivityReports: activityReportAttachments.length > 0,
       additionalAttachments: activityReportAttachments,
-      activityReportTo: activityReportRecipient?.email || "",
+      activityReportTo: activityReportRecipient?.activityReportEmail || activityReportRecipient?.email || "",
       activityReportSubject: activityReportTemplate?.subject || "",
       activityReportBody: activityReportTemplate?.body || "",
-      hasActivityReportRecipientField: Boolean(activityReportRecipient?.email),
+      hasActivityReportRecipientField: Boolean(activityReportRecipient?.activityReportEmail || activityReportRecipient?.email),
       activeMailTab: "invoice",
     });
     closeDocumentMailProjectAttachmentPicker();
@@ -49899,6 +49906,17 @@ await addProjectLogbookEntry(
                   />
                   Tätigkeitsberichtsempfänger
                 </label>
+                {contactDraft.isActivityReportRecipient ? (
+                  <label>
+                    E-Mail Tätigkeitsbericht
+                    <input
+                      type="email"
+                      value={contactDraft.activityReportEmail}
+                      placeholder={contactDraft.email || "bericht@example.de"}
+                      onChange={(event) => updateContactDraft("activityReportEmail", event.target.value)}
+                    />
+                  </label>
+                ) : null}
                 <label>
                   Erreichbarkeit
                   <select
