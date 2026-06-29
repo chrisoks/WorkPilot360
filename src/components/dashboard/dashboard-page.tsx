@@ -8177,7 +8177,7 @@ export function DashboardPage() {
       : getOneTimeProjectBillingReadyState(project, monthKey, options);
   }
 
-  function getProjectPipelineBillingCheckNote(project: HeroProjectPreview) {
+  function getProjectPipelineNextBillingStep(project: HeroProjectPreview) {
     const normalizedStatus = normalizeProjectPipelineStatus(project.status);
     if (normalizedStatus !== "Abrechnungsprüfung" && normalizedStatus !== "Zur Abrechnung bereit") {
       return "";
@@ -8185,7 +8185,16 @@ export function DashboardPage() {
 
     const monthKey = projectComparisonMonth || getCurrentMonthKey();
     const state = getProjectBillingReadyState(project, monthKey);
-    if (state.ready) return "Pflichtnachweise vollständig.";
+    if (state.ready) return "Rechnung erstellen.";
+
+    if (state.reason === "Rechnung ist bereits erstellt.") {
+      return isRecurringProjectKindValue(getProjectKind(project))
+        ? "Rechnung vorhanden - Folgemonatsstatus prüfen."
+        : "Rechnung vorhanden - Projekt abschließen.";
+    }
+    if (state.reason === "Endkontrolle fehlt.") return "Endkontrolle erfassen.";
+    if (state.reason === "Vorherbild fehlt.") return "Vorherbild hochladen.";
+    if (state.reason === "Nachherbild fehlt.") return "Nachherbild hochladen.";
 
     return state.reason || "Prüfung offen.";
   }
@@ -46748,7 +46757,7 @@ await addProjectLogbookEntry(
                           <th>Quelle</th>
                           <th>Partner</th>
                           <th>Status</th>
-                          <th>Prüfung</th>
+                          <th>Nächster Schritt</th>
                           <th>Erstellt</th>
                           <th>Erinnerung</th>
                           <th>Projektvolumen</th>
@@ -46769,7 +46778,7 @@ await addProjectLogbookEntry(
                           </tr>
                         ) : (
                           visibleHeroProjects.map((project) => {
-                            const billingCheckNote = getProjectPipelineBillingCheckNote(project);
+                            const billingNextStep = getProjectPipelineNextBillingStep(project);
 
                             return (
                               <tr
@@ -46790,7 +46799,7 @@ await addProjectLogbookEntry(
                                 <td>-</td>
                                 <td>{project.status || "-"}</td>
                                 <td>
-                                  {billingCheckNote ? (
+                                  {billingNextStep ? (
                                     <span
                                       className={styles.projectPipelineCheckNote}
                                       data-state={
@@ -46799,7 +46808,7 @@ await addProjectLogbookEntry(
                                           : "open"
                                       }
                                     >
-                                      {billingCheckNote}
+                                      {billingNextStep}
                                     </span>
                                   ) : (
                                     "-"
