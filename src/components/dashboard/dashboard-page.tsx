@@ -4925,7 +4925,7 @@ export function DashboardPage() {
   const [authenticatedUserId, setAuthenticatedUserId] = useState("");
   const [impersonatedUserId, setImpersonatedUserId] = useState("");
   const [activeTab, setActiveTab] = useState<AppTab>(() =>
-    getDashboardUrlValue("view", appTabs, getStoredDashboardValue("workpilot-active-tab", appTabs, "overview"))
+    getDashboardUrlValue("view", appTabs, "overview")
   );
   const [personalDataView, setPersonalDataView] = useState<PersonalDataView>("overview");
   const [selectedPersonalUserId, setSelectedPersonalUserId] = useState("");
@@ -10564,9 +10564,11 @@ export function DashboardPage() {
     const user = (await res.json()) as UserOption;
     window.localStorage.setItem("workpilot-user-id", user.id);
     window.localStorage.removeItem("workpilot-impersonated-user-id");
+    window.localStorage.removeItem("workpilot-active-tab");
     setAuthenticatedUserId(user.id);
     setImpersonatedUserId("");
     setActiveUserId(user.id);
+    setActiveTab("overview");
     setZustaendigId(user.id);
     setAbsenceUserId(user.id);
     setOwnerFilter(user.id);

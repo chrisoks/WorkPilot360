@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { getDeadlineSettings } from "@/lib/company-settings/deadlines";
 import { canCreateNotifications } from "@/lib/permissions";
+import { sendNotificationMailSafely } from "@/lib/mail/notifications";
 import { sendTaskNotificationMailSafely } from "@/lib/mail/task-notifications";
 
 type NotificationRow = {
@@ -300,7 +301,7 @@ export async function POST(req: Request) {
     return forbiddenNotificationResponse();
   }
 
-  const recipientUserIds = Array.isArray(body.userIds)
+  const recipientUserIds: string[] = Array.isArray(body.userIds)
     ? body.userIds.map((value: unknown) => String(value || "").trim()).filter(Boolean)
     : [];
   const subject = String(body.subject || "").trim();
@@ -315,7 +316,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Empfänger, Betreff und Text sind erforderlich." }, { status: 400 });
   }
 
-  const activeRecipientIds = Array.from(
+  const activeRecipientIds: string[] = Array.from(
     new Set(
       recipientUserIds.filter((userId: string) =>
         users.some((user) => user.id === userId && user.isActive)
@@ -358,6 +359,7 @@ export async function POST(req: Request) {
       if (existingReminder.length > 0) continue;
     }
 
+    const notificationId = randomUUID();
     await prisma.$executeRaw`
       INSERT INTO "Notification" (
         "id",
@@ -374,7 +376,7 @@ export async function POST(req: Request) {
         "createdAt"
       )
       VALUES (
-        ${randomUUID()},
+        ${notificationId},
         ${organization.id},
         ${userId},
         NULL,
@@ -388,6 +390,12 @@ export async function POST(req: Request) {
         CURRENT_TIMESTAMP
       )
     `;
+    await sendNotificationMailSafely({
+      notificationId,
+      userId,
+      subject: notificationSubject,
+      body: notificationBody,
+    });
     created += 1;
   }
 
@@ -410,7 +418,7 @@ export async function POST(req: Request) {
 
       for (const escalation of escalations) {
         if (businessDaysElapsed < escalation.afterBusinessDays) continue;
-        const escalationRecipientIds = Array.from(
+        const escalationRecipientIds: string[] = Array.from(
           new Set(
             escalation.userIds.filter((userId) =>
               users.some((user) => user.id === userId && user.isActive)
@@ -433,6 +441,7 @@ export async function POST(req: Request) {
           `;
           if (existingEscalation.length > 0) continue;
 
+          const escalationNotificationId = randomUUID();
           await prisma.$executeRaw`
             INSERT INTO "Notification" (
               "id",
@@ -449,7 +458,7 @@ export async function POST(req: Request) {
               "createdAt"
             )
             VALUES (
-              ${randomUUID()},
+              ${escalationNotificationId},
               ${organization.id},
               ${userId},
               NULL,
@@ -463,6 +472,12 @@ export async function POST(req: Request) {
               CURRENT_TIMESTAMP
             )
           `;
+          await sendNotificationMailSafely({
+            notificationId: escalationNotificationId,
+            userId,
+            subject: escalationSubject,
+            body: escalationBody,
+          });
           created += 1;
         }
       }
