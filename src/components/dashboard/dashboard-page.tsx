@@ -10188,7 +10188,11 @@ export function DashboardPage() {
     try {
       const attachments = (await Promise.all(selectedFiles.map(readMailAttachmentFile))).map((attachment) => ({
         ...attachment,
-        target: documentMailDraft?.hasActivityReportRecipientField ? "invoice" as const : undefined,
+        target: documentMailDraft?.hasActivityReportRecipientField
+          ? documentMailDraft.activeMailTab === "activityReport"
+            ? "activityReport" as const
+            : "invoice" as const
+          : undefined,
       }));
       setDocumentMailDraft((current) =>
         current
@@ -10268,7 +10272,11 @@ export function DashboardPage() {
     const selectedAttachments = selectedOptions.map((option) => ({
       name: option.name,
       dataUrl: option.dataUrl,
-      target: documentMailDraft?.hasActivityReportRecipientField ? "invoice" as const : undefined,
+      target: documentMailDraft?.hasActivityReportRecipientField
+        ? documentMailDraft.activeMailTab === "activityReport"
+          ? "activityReport" as const
+          : "invoice" as const
+        : undefined,
     }));
     const totalBytes = getDocumentMailManualAttachmentBytes([...existingAttachments, ...selectedAttachments]);
     const maxBytes = 15 * 1024 * 1024;
@@ -42792,6 +42800,15 @@ await addProjectLogbookEntry(
       hasSeparateActivityReportRecipient && documentMailDraft.activeMailTab === "activityReport"
         ? "activityReport"
         : "invoice";
+    const isInvoicePackageTab = !hasSeparateActivityReportRecipient || activeDocumentMailTab === "invoice";
+    const isActivityReportPackageTab = hasSeparateActivityReportRecipient && activeDocumentMailTab === "activityReport";
+    const visibleManualAttachments = (documentMailDraft.manualAttachments || [])
+      .map((attachment, index) => ({ attachment, index }))
+      .filter(({ attachment }) => {
+        if (!hasSeparateActivityReportRecipient) return true;
+        const target = attachment.target || "both";
+        return target === "both" || target === activeDocumentMailTab;
+      });
     const canManageFeedbackLink = activeUser?.role === "GESCHAEFTSFUEHRER";
     const projectAttachmentOptions = getDocumentMailProjectAttachmentOptions(documentMailDraft);
     const eInvoiceReadiness = isInvoiceMail ? getEInvoiceReadiness(documentMailDraft) : null;
@@ -42984,22 +43001,24 @@ await addProjectLogbookEntry(
                   }}
                 />
               </div>
-              <label className={`${styles.checkboxField} ${styles.standardFormWide}`}>
-                <input
-                  type="checkbox"
-                  checked={documentMailDraft.attachPdf}
-                  onChange={(event) =>
-                    setDocumentMailDraft((current) =>
-                      current ? { ...current, attachPdf: event.target.checked } : current
-                    )
-                  }
-                />
-                <span className={styles.attachmentCheckboxText}>
-                  <strong>{getDocumentMailPrimaryAttachmentLabel(documentMailDraft)}</strong>
-                  <small>Hauptdokument der E-Mail</small>
-                </span>
-              </label>
-              {isInvoiceMail && eInvoiceReadiness && eInvoiceStatus === "blocked" ? (
+              {isInvoicePackageTab ? (
+                <label className={`${styles.checkboxField} ${styles.standardFormWide}`}>
+                  <input
+                    type="checkbox"
+                    checked={documentMailDraft.attachPdf}
+                    onChange={(event) =>
+                      setDocumentMailDraft((current) =>
+                        current ? { ...current, attachPdf: event.target.checked } : current
+                      )
+                    }
+                  />
+                  <span className={styles.attachmentCheckboxText}>
+                    <strong>{getDocumentMailPrimaryAttachmentLabel(documentMailDraft)}</strong>
+                    <small>Hauptdokument der E-Mail</small>
+                  </span>
+                </label>
+              ) : null}
+              {isInvoicePackageTab && isInvoiceMail && eInvoiceReadiness && eInvoiceStatus === "blocked" ? (
                 <section className={`${styles.standardFormWide} ${styles.eInvoiceReadinessCard}`} data-status={eInvoiceStatus}>
                   <div className={styles.eInvoiceReadinessHeader}>
                     <div>
@@ -43038,7 +43057,7 @@ await addProjectLogbookEntry(
                   <small>Stammdatenstatus für elektronische Rechnungen. Der Versand bleibt unverändert, bis ein Format ausgewählt wird.</small>
                 </section>
               ) : null}
-              {isInvoiceMail ? (
+              {isInvoicePackageTab && isInvoiceMail ? (
                 <section className={`${styles.standardFormWide} ${styles.eInvoiceFormatCard}`}>
                   <div className={styles.eInvoiceFormatHeader}>
                     <div>
@@ -43154,7 +43173,7 @@ await addProjectLogbookEntry(
                   ) : null}
                 </section>
               ) : null}
-              {isInvoiceMail ? (
+              {isInvoicePackageTab && isInvoiceMail ? (
                 <label className={`${styles.checkboxField} ${styles.standardFormWide}`}>
                   <input
                     type="checkbox"
@@ -43176,7 +43195,7 @@ await addProjectLogbookEntry(
                   </span>
                 </label>
               ) : null}
-              {isInvoiceMail && documentMailDraft.additionalAttachments?.length ? (
+              {isInvoiceMail && documentMailDraft.additionalAttachments?.length && (!hasSeparateActivityReportRecipient || isActivityReportPackageTab) ? (
                 <label className={`${styles.checkboxField} ${styles.standardFormWide}`}>
                   <input
                     type="checkbox"
@@ -43192,7 +43211,11 @@ await addProjectLogbookEntry(
                       {documentMailDraft.additionalAttachments.length} Tätigkeitsbericht
                       {documentMailDraft.additionalAttachments.length === 1 ? "" : "e"} als PDF anhängen
                     </strong>
-                    <small>Bereits ausgewählter Zusatzanhang zur Rechnung</small>
+                    <small>
+                      {hasSeparateActivityReportRecipient
+                        ? "Wird nur mit der Tätigkeitsbericht-Mail versendet"
+                        : "Bereits ausgewählter Zusatzanhang zur Rechnung"}
+                    </small>
                     <span className={styles.attachmentNameList}>
                       {documentMailDraft.additionalAttachments.map((attachment) => attachment.name).join(", ")}
                     </span>
@@ -43202,7 +43225,13 @@ await addProjectLogbookEntry(
               <div className={`${styles.standardFormWide} ${styles.mailAdditionalAttachments}`}>
                 <div>
                   <span>Zusätzliche Anhänge</span>
-                  <small>Dateien vom PC oder aus der Projektakte werden nur mit dieser E-Mail versendet.</small>
+                  <small>
+                    {hasSeparateActivityReportRecipient
+                      ? activeDocumentMailTab === "activityReport"
+                        ? "Neue Dateien werden zunächst dem Tätigkeitsbericht-Paket zugeordnet."
+                        : "Neue Dateien werden zunächst dem Rechnungspaket zugeordnet."
+                      : "Dateien vom PC oder aus der Projektakte werden mit dieser E-Mail versendet."}
+                  </small>
                 </div>
                 <div className={styles.mailAttachmentActions}>
                   <label className={styles.secondaryButton}>
@@ -43229,9 +43258,9 @@ await addProjectLogbookEntry(
                   </button>
                 </div>
                 {!projectAttachmentOptions.length ? <p>Keine weiteren Projektanhänge verfügbar.</p> : null}
-                {documentMailDraft.manualAttachments?.length ? (
+                {visibleManualAttachments.length ? (
                   <div className={styles.mailAttachmentList}>
-                    {documentMailDraft.manualAttachments.map((attachment, index) => (
+                    {visibleManualAttachments.map(({ attachment, index }) => (
                       <span key={`${attachment.name}-${index}`}>
                         {attachment.name}
                         {hasSeparateActivityReportRecipient ? (
@@ -43268,7 +43297,11 @@ await addProjectLogbookEntry(
                     ))}
                   </div>
                 ) : (
-                  <p>Noch keine zusätzlichen Dateien ausgewählt.</p>
+                  <p>
+                    {hasSeparateActivityReportRecipient && documentMailDraft.manualAttachments?.length
+                      ? "Keine zusätzlichen Dateien für dieses Mailpaket ausgewählt."
+                      : "Noch keine zusätzlichen Dateien ausgewählt."}
+                  </p>
                 )}
               </div>
             </div>
