@@ -14107,7 +14107,12 @@ export function DashboardPage() {
   }, [activeUserId, employeeTopTab, mayAccessEmployeeCosts, selectedEmployeeId]);
 
   useEffect(() => {
-    const needsEmployeeCosts = isOfferModalOpen || activeTab === "laborCostRates" || projectFileTab === "profit";
+    const needsCatalogLaborCostRates = isCatalogModalOpen && catalogDraft.type === "service";
+    const needsEmployeeCosts =
+      isOfferModalOpen ||
+      activeTab === "laborCostRates" ||
+      projectFileTab === "profit" ||
+      needsCatalogLaborCostRates;
     if (!needsEmployeeCosts || !mayAccessEmployeeCosts) return;
 
     users
@@ -14115,7 +14120,16 @@ export function DashboardPage() {
       .forEach((user) => {
         void loadEmployeeCost(user.id);
       });
-  }, [activeTab, employeeCostCalculations, isOfferModalOpen, mayAccessEmployeeCosts, projectFileTab, users]);
+  }, [
+    activeTab,
+    catalogDraft.type,
+    employeeCostCalculations,
+    isCatalogModalOpen,
+    isOfferModalOpen,
+    mayAccessEmployeeCosts,
+    projectFileTab,
+    users,
+  ]);
 
   useEffect(() => {
     if (!isOfferModalOpen) return;
