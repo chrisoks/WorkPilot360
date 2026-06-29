@@ -4909,7 +4909,7 @@
 }
 
 .heroTableCard .table {
-  min-width: 1480px;
+  min-width: 1620px;
 }
 
 .heroTableCard thead th {
@@ -4927,6 +4927,19 @@
   font-weight: 800;
   margin: 0;
   padding: 12px 14px;
+}
+
+.projectPipelineCheckNote {
+  color: #92400e;
+  display: inline-block;
+  font-size: 0.82rem;
+  font-weight: 850;
+  line-height: 1.25;
+  max-width: 220px;
+}
+
+.projectPipelineCheckNote[data-state="ready"] {
+  color: #047857;
 }
 
 .heroDetailCard {

@@ -8177,6 +8177,19 @@ export function DashboardPage() {
       : getOneTimeProjectBillingReadyState(project, monthKey, options);
   }
 
+  function getProjectPipelineBillingCheckNote(project: HeroProjectPreview) {
+    const normalizedStatus = normalizeProjectPipelineStatus(project.status);
+    if (normalizedStatus !== "Abrechnungsprüfung" && normalizedStatus !== "Zur Abrechnung bereit") {
+      return "";
+    }
+
+    const monthKey = projectComparisonMonth || getCurrentMonthKey();
+    const state = getProjectBillingReadyState(project, monthKey);
+    if (state.ready) return "Pflichtnachweise vollständig.";
+
+    return state.reason || "Prüfung offen.";
+  }
+
   function getConfirmedProjectPlannedHoursForMonth(projectId: string, monthKey: string) {
     return planningEntries
       .filter(
@@ -46735,6 +46748,7 @@ await addProjectLogbookEntry(
                           <th>Quelle</th>
                           <th>Partner</th>
                           <th>Status</th>
+                          <th>Prüfung</th>
                           <th>Erstellt</th>
                           <th>Erinnerung</th>
                           <th>Projektvolumen</th>
@@ -46743,18 +46757,20 @@ await addProjectLogbookEntry(
                       <tbody>
                         {isHeroProjectsLoading ? (
                           <tr>
-                            <td colSpan={13}>HERO-Projekte werden geladen...</td>
+                            <td colSpan={14}>HERO-Projekte werden geladen...</td>
                           </tr>
                         ) : heroProjects.length === 0 ? (
                           <tr>
-                            <td colSpan={13}>Noch keine HERO-Projekte geladen.</td>
+                            <td colSpan={14}>Noch keine HERO-Projekte geladen.</td>
                           </tr>
                         ) : visibleHeroProjects.length === 0 ? (
                           <tr>
-                            <td colSpan={13}>Keine Projekte zur Suche gefunden.</td>
+                            <td colSpan={14}>Keine Projekte zur Suche gefunden.</td>
                           </tr>
                         ) : (
                           visibleHeroProjects.map((project) => {
+                            const billingCheckNote = getProjectPipelineBillingCheckNote(project);
+
                             return (
                               <tr
                                 key={project.id}
@@ -46773,6 +46789,22 @@ await addProjectLogbookEntry(
                                 <td>{project.source || "-"}</td>
                                 <td>-</td>
                                 <td>{project.status || "-"}</td>
+                                <td>
+                                  {billingCheckNote ? (
+                                    <span
+                                      className={styles.projectPipelineCheckNote}
+                                      data-state={
+                                        normalizeProjectPipelineStatus(project.status) === "Zur Abrechnung bereit"
+                                          ? "ready"
+                                          : "open"
+                                      }
+                                    >
+                                      {billingCheckNote}
+                                    </span>
+                                  ) : (
+                                    "-"
+                                  )}
+                                </td>
                                 <td>{project.createdAt || "-"}</td>
                                 <td>-</td>
                                 <td>{project.volume ? `${project.volume} €` : "-"}</td>
