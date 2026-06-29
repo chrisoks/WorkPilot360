@@ -1,0 +1,39 @@
+# WorkPilot360 Offene Punkte
+
+Stand: 2026-06-29
+
+Diese Liste haelt Themen fest, die nach abgeschlossenen Zwischenarbeiten nicht verloren gehen sollen.
+
+## Notifications, Push und Mail
+
+- Planungs-/Terminwunsch-Hinweise pruefen:
+  - Terminwunsch-Freigabe hat aktuell In-App + Web-Push.
+  - Planungsaenderung hat aktuell In-App + Web-Push.
+  - Noch entscheiden, ob diese Hinweise zusaetzlich echte Systemmails bekommen sollen.
+
+- Content-/Status-Eskalationen pruefen:
+  - Einige Bereiche nutzen Kanaele wie `app_email`, `email` oder `app_daily_report`.
+  - Noch pruefen, wo das nur Datenbank-/Anzeige-Kanal ist und wo tatsaechlich SMTP-Mail fehlt.
+  - Besonders Status-Eskalationen mit Tagesbericht sauber fachlich durchgehen.
+
+- Allgemeine Notification-Logik weiter konsolidieren:
+  - Aufgaben, Aufgabenkommentare, Abwesenheiten, offene Abrechnungszeiten und Abrechnungsbereit-Hinweise haben echte Systemmail.
+  - Bei weiteren Benachrichtigungsarten jeweils bewusst entscheiden: nur Glocke, Glocke + Push, Glocke + Mail oder Kombination.
+
+## Abrechnungsbereit / Abrechnung
+
+- Abrechnungsbereit-Automatik fachlich nochmal durchgehen:
+  - `Projekt abrechnungsbereit` und `Dauerlaeufer abrechnungsbereit` senden seit Commit `3b8cec0` zusaetzlich Systemmail.
+  - Offene, nicht fakturierte Projektzeiten laufen ueber `/api/unbilled-time-alerts` mit eigener Deduplizierung.
+  - Noch pruefen, ob beide Logiken fachlich klar getrennt sind oder ob Nutzer sie als ein gemeinsames Thema erwarten.
+
+## Login / Startverhalten
+
+- Erneuter Login startet seit Commit `3b8cec0` wieder im Dashboard (`overview`).
+- Direkte URL-/Push-Ziele sollen weiterhin explizit oeffnen. Bei zukuenftigen Login-Aenderungen darauf achten.
+
+## Bekannte Arbeitsregel
+
+- Vor Aenderungen Sicherheitskopie in `.codex-safety` anlegen, wenn bestehende Dateien geaendert werden.
+- Nach Aenderungen mindestens ausfuehren: `git diff --check`, `npm run check:mojibake`, `npm run check:regressions`, `npx prisma validate`, bei Codeaenderungen `npm run build`.
+- Erst nach erfolgreichen Checks committen und nach GitHub pushen.
