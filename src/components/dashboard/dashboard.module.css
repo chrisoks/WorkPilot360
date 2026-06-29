@@ -16969,6 +16969,12 @@
   width: 16px;
 }
 
+.contactModal .activityReportEmailField input:disabled {
+  background: #f3f6fa;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
 .contactModal .standardModalFooter {
   margin: 0 12px;
 }
@@ -17132,6 +17138,34 @@
 .contactFormTabs button[data-active="true"] {
   border-bottom-color: var(--brand);
   color: var(--ink);
+}
+
+.contactModalTabs {
+  background: #edf3f8;
+  border: 1px solid #d8e0ea;
+  border-radius: 10px;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  padding: 4px;
+}
+
+.contactModalTabs button {
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: #475569;
+  font-size: 0.84rem;
+  font-weight: 850;
+  min-height: 31px;
+  padding: 0 10px;
+}
+
+.contactModalTabs button[data-active="true"] {
+  background: var(--brand);
+  border: 0;
+  color: #ffffff;
+  box-shadow: none;
 }
 
 .modalOverlay {

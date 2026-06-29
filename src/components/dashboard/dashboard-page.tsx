@@ -49857,7 +49857,7 @@ await addProjectLogbookEntry(
               </label>
               </section>
 
-              <nav className={styles.contactFormTabs}>
+              <nav className={`${styles.contactFormTabs} ${styles.contactModalTabs}`}>
               {[
                 ["details", "Kontaktdetails"],
                 ["address", "Adresse"],
@@ -49906,17 +49906,16 @@ await addProjectLogbookEntry(
                   />
                   Tätigkeitsberichtsempfänger
                 </label>
-                {contactDraft.isActivityReportRecipient ? (
-                  <label>
-                    E-Mail Tätigkeitsbericht
-                    <input
-                      type="email"
-                      value={contactDraft.activityReportEmail}
-                      placeholder={contactDraft.email || "bericht@example.de"}
-                      onChange={(event) => updateContactDraft("activityReportEmail", event.target.value)}
-                    />
-                  </label>
-                ) : null}
+                <label className={styles.activityReportEmailField}>
+                  E-Mail Tätigkeitsbericht
+                  <input
+                    type="email"
+                    value={contactDraft.activityReportEmail}
+                    placeholder={contactDraft.email || "bericht@example.de"}
+                    disabled={!contactDraft.isActivityReportRecipient}
+                    onChange={(event) => updateContactDraft("activityReportEmail", event.target.value)}
+                  />
+                </label>
                 <label>
                   Erreichbarkeit
                   <select
