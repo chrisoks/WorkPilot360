@@ -654,7 +654,12 @@ type DocumentMailDraft = {
   includeFeedbackLink?: boolean;
   attachActivityReports?: boolean;
   additionalAttachments?: Array<{ name: string; dataUrl: string }>;
-  manualAttachments?: Array<{ name: string; dataUrl: string }>;
+  manualAttachments?: Array<{ name: string; dataUrl: string; target?: "invoice" | "activityReport" | "both" }>;
+  activityReportTo?: string;
+  activityReportSubject?: string;
+  activityReportBody?: string;
+  hasActivityReportRecipientField?: boolean;
+  activeMailTab?: "invoice" | "activityReport";
 };
 
 type EInvoiceReadiness = {
@@ -9717,9 +9722,15 @@ export function DashboardPage() {
   function getDocumentMailPreviewHtml() {
     if (!documentMailDraft) return "";
     const signatureHtml = getActiveUserSignatureHtml();
-    const messageBody = signatureHtml ? stripTrailingMailClosing(documentMailDraft.body) : documentMailDraft.body;
+    const rawBody =
+      documentMailDraft.activeMailTab === "activityReport" && documentMailDraft.hasActivityReportRecipientField
+        ? documentMailDraft.activityReportBody || ""
+        : documentMailDraft.body;
+    const messageBody = signatureHtml ? stripTrailingMailClosing(rawBody) : rawBody;
     const feedbackHtml =
-      documentMailDraft.kind === "invoice" && documentMailDraft.includeFeedbackLink !== false
+      documentMailDraft.kind === "invoice" &&
+      documentMailDraft.activeMailTab !== "activityReport" &&
+      documentMailDraft.includeFeedbackLink !== false
         ? getDocumentMailFeedbackPreviewHtml()
         : "";
     return `${textToMailHtml(messageBody)}${feedbackHtml}${signatureHtml ? signatureHtml : ""}`;
@@ -9767,6 +9778,37 @@ export function DashboardPage() {
       if (project && [project.contactId, project.contactPersonId, project.addressContactId].includes(contact.id)) return true;
       if (project?.contactId && contact.parentCompanyId === project.contactId) return true;
       return contact.companyName === invoice.customerName || getContactDisplayName(contact) === invoice.customerName;
+    });
+
+    return (
+      relatedContacts.find((contact) => contact.isInvoiceRecipient) ??
+      relatedContacts.find((contact) => contact.isMainContact) ??
+      relatedContacts[0] ??
+      null
+    );
+  }
+
+  function getActivityReportRecipientContactForInvoice(invoice: InvoiceItem | null) {
+    if (!invoice) return null;
+    const invoiceRecipient = getInvoiceRecipientContact(invoice);
+    const project = heroProjects.find((item) => item.id === invoice.projectId) ?? null;
+    const relatedContacts = contacts.filter((contact) => {
+      if (project && [project.contactId, project.contactPersonId, project.addressContactId].includes(contact.id)) return true;
+      if (project?.contactId && contact.parentCompanyId === project.contactId) return true;
+      return contact.companyName === invoice.customerName || getContactDisplayName(contact) === invoice.customerName;
+    });
+    const recipient = relatedContacts.find((contact) => contact.isActivityReportRecipient && contact.email.trim());
+    if (!recipient || recipient.id === invoiceRecipient?.id) return null;
+    return recipient;
+  }
+
+  function getOfferRecipientContact(offer: OfferItem | null) {
+    if (!offer) return null;
+    const project = heroProjects.find((item) => item.id === offer.projectId) ?? null;
+    const relatedContacts = contacts.filter((contact) => {
+      if (project && [project.contactId, project.contactPersonId, project.addressContactId].includes(contact.id)) return true;
+      if (project?.contactId && contact.parentCompanyId === project.contactId) return true;
+      return contact.companyName === offer.customerName || getContactDisplayName(contact) === offer.customerName;
     });
 
     return (
@@ -9966,6 +10008,12 @@ export function DashboardPage() {
     const activeMailAccount = getSafeEmployeeMailAccount(activeUser?.mailAccount, activeUser?.email || "");
     const documentNumber = kind === "offer" ? (document as OfferItem).offerNumber : getInvoiceDisplayNumber(document as InvoiceItem);
     const template = applyMailTemplate(kind, documentNumber);
+    const invoice = kind === "invoice" ? (document as InvoiceItem) : null;
+    const invoiceRecipient = kind === "invoice" ? getInvoiceRecipientContact(invoice) : null;
+    const offerRecipient = kind === "offer" ? getOfferRecipientContact(document as OfferItem) : null;
+    const activityReportRecipient = kind === "invoice" ? getActivityReportRecipientContactForInvoice(invoice) : null;
+    const activityReportTemplate =
+      kind === "invoice" ? applyMailTemplate("activityReport", documentNumber) : null;
     const activityReportAttachments =
       kind === "invoice"
         ? getActivityReportMailAttachmentsForProject(document.projectId, getProjectInvoiceMonth(document as InvoiceItem))
@@ -9979,7 +10027,7 @@ export function DashboardPage() {
       projectNumber: document.projectNumber,
       projectTitle: document.projectTitle,
       customerName: document.customerName,
-      to: "",
+      to: invoiceRecipient?.email || offerRecipient?.email || "",
       cc: "",
       bcc: activeMailAccount.bcc,
       subject: template.subject,
@@ -9989,6 +10037,11 @@ export function DashboardPage() {
       includeFeedbackLink: kind === "invoice",
       attachActivityReports: activityReportAttachments.length > 0,
       additionalAttachments: activityReportAttachments,
+      activityReportTo: activityReportRecipient?.email || "",
+      activityReportSubject: activityReportTemplate?.subject || "",
+      activityReportBody: activityReportTemplate?.body || "",
+      hasActivityReportRecipientField: Boolean(activityReportRecipient?.email),
+      activeMailTab: "invoice",
     });
     closeDocumentMailProjectAttachmentPicker();
     setDocumentMailError(
@@ -10124,7 +10177,10 @@ export function DashboardPage() {
     }
 
     try {
-      const attachments = await Promise.all(selectedFiles.map(readMailAttachmentFile));
+      const attachments = (await Promise.all(selectedFiles.map(readMailAttachmentFile))).map((attachment) => ({
+        ...attachment,
+        target: documentMailDraft?.hasActivityReportRecipientField ? "both" as const : undefined,
+      }));
       setDocumentMailDraft((current) =>
         current
           ? {
@@ -10200,7 +10256,11 @@ export function DashboardPage() {
     const selectedOptions = options.filter((item) => selectedDocumentMailProjectAttachmentKeys.includes(item.key));
     if (!selectedOptions.length) return;
     const existingAttachments = documentMailDraft?.manualAttachments || [];
-    const selectedAttachments = selectedOptions.map((option) => ({ name: option.name, dataUrl: option.dataUrl }));
+    const selectedAttachments = selectedOptions.map((option) => ({
+      name: option.name,
+      dataUrl: option.dataUrl,
+      target: documentMailDraft?.hasActivityReportRecipientField ? "both" as const : undefined,
+    }));
     const totalBytes = getDocumentMailManualAttachmentBytes([...existingAttachments, ...selectedAttachments]);
     const maxBytes = 15 * 1024 * 1024;
 
@@ -42691,6 +42751,11 @@ await addProjectLogbookEntry(
     const canSendMail = activeMailAccount.status === "connected";
     const documentLabel = getDocumentMailKindLabel(documentMailDraft.kind);
     const isInvoiceMail = documentMailDraft.kind === "invoice";
+    const hasSeparateActivityReportRecipient = isInvoiceMail && Boolean(documentMailDraft.hasActivityReportRecipientField);
+    const activeDocumentMailTab =
+      hasSeparateActivityReportRecipient && documentMailDraft.activeMailTab === "activityReport"
+        ? "activityReport"
+        : "invoice";
     const canManageFeedbackLink = activeUser?.role === "GESCHAEFTSFUEHRER";
     const projectAttachmentOptions = getDocumentMailProjectAttachmentOptions(documentMailDraft);
     const eInvoiceReadiness = isInvoiceMail ? getEInvoiceReadiness(documentMailDraft) : null;
@@ -42759,7 +42824,7 @@ await addProjectLogbookEntry(
             {documentMailSuccess ? <p className={styles.inlineSuccess}>{documentMailSuccess}</p> : null}
             <div className={styles.standardFormGrid}>
               <label className={styles.standardFormWide}>
-                Empfänger
+                {isInvoiceMail ? "Empfänger Rechnung" : "Empfänger"}
                 <input
                   type="email"
                   value={documentMailDraft.to}
@@ -42771,6 +42836,21 @@ await addProjectLogbookEntry(
                   }
                 />
               </label>
+              {hasSeparateActivityReportRecipient ? (
+                <label className={styles.standardFormWide}>
+                  Empfänger Tätigkeitsbericht
+                  <input
+                    type="email"
+                    value={documentMailDraft.activityReportTo || ""}
+                    placeholder="bericht@example.de"
+                    onChange={(event) =>
+                      setDocumentMailDraft((current) =>
+                        current ? { ...current, activityReportTo: event.target.value } : current
+                      )
+                    }
+                  />
+                </label>
+              ) : null}
               <label>
                 CC
                 <input
@@ -42796,12 +42876,46 @@ await addProjectLogbookEntry(
                 />
               </label>
               <label className={styles.standardFormWide}>
+                {hasSeparateActivityReportRecipient ? (
+                  <span className={styles.mailTabSwitch}>
+                    <button
+                      type="button"
+                      data-active={activeDocumentMailTab === "invoice"}
+                      onClick={() =>
+                        setDocumentMailDraft((current) =>
+                          current ? { ...current, activeMailTab: "invoice" } : current
+                        )
+                      }
+                    >
+                      Rechnungsmail
+                    </button>
+                    <button
+                      type="button"
+                      data-active={activeDocumentMailTab === "activityReport"}
+                      onClick={() =>
+                        setDocumentMailDraft((current) =>
+                          current ? { ...current, activeMailTab: "activityReport" } : current
+                        )
+                      }
+                    >
+                      Tätigkeitsbericht-Mail
+                    </button>
+                  </span>
+                ) : null}
                 Betreff
                 <input
-                  value={documentMailDraft.subject}
+                  value={
+                    activeDocumentMailTab === "activityReport"
+                      ? documentMailDraft.activityReportSubject || ""
+                      : documentMailDraft.subject
+                  }
                   onChange={(event) =>
                     setDocumentMailDraft((current) =>
-                      current ? { ...current, subject: event.target.value } : current
+                      current
+                        ? activeDocumentMailTab === "activityReport"
+                          ? { ...current, activityReportSubject: event.target.value }
+                          : { ...current, subject: event.target.value }
+                        : current
                     )
                   }
                 />
@@ -42810,10 +42924,18 @@ await addProjectLogbookEntry(
                 Nachricht
                 <textarea
                   rows={7}
-                  value={documentMailDraft.body}
+                  value={
+                    activeDocumentMailTab === "activityReport"
+                      ? documentMailDraft.activityReportBody || ""
+                      : documentMailDraft.body
+                  }
                   onChange={(event) =>
                     setDocumentMailDraft((current) =>
-                      current ? { ...current, body: event.target.value } : current
+                      current
+                        ? activeDocumentMailTab === "activityReport"
+                          ? { ...current, activityReportBody: event.target.value }
+                          : { ...current, body: event.target.value }
+                        : current
                     )
                   }
                 />
@@ -43076,6 +43198,29 @@ await addProjectLogbookEntry(
                     {documentMailDraft.manualAttachments.map((attachment, index) => (
                       <span key={`${attachment.name}-${index}`}>
                         {attachment.name}
+                        {hasSeparateActivityReportRecipient ? (
+                          <select
+                            value={attachment.target || "both"}
+                            onChange={(event) =>
+                              setDocumentMailDraft((current) =>
+                                current
+                                  ? {
+                                      ...current,
+                                      manualAttachments: (current.manualAttachments || []).map((item, itemIndex) =>
+                                        itemIndex === index
+                                          ? { ...item, target: event.target.value as "invoice" | "activityReport" | "both" }
+                                          : item
+                                      ),
+                                    }
+                                  : current
+                              )
+                            }
+                          >
+                            <option value="invoice">Rechnung</option>
+                            <option value="activityReport">Tätigkeitsbericht</option>
+                            <option value="both">Beide</option>
+                          </select>
+                        ) : null}
                         <button
                           type="button"
                           aria-label={`${attachment.name} entfernen`}
@@ -49729,6 +49874,16 @@ await addProjectLogbookEntry(
                     }
                   />
                   Rechnungsempfänger
+                </label>
+                <label className={styles.checkboxField}>
+                  <input
+                    type="checkbox"
+                    checked={contactDraft.isActivityReportRecipient}
+                    onChange={(event) =>
+                      updateContactDraft("isActivityReportRecipient", event.target.checked)
+                    }
+                  />
+                  Tätigkeitsberichtsempfänger
                 </label>
                 <label>
                   Erreichbarkeit

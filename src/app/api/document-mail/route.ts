@@ -148,6 +148,20 @@ function getAdditionalDataUrlAttachments(value: unknown) {
     .filter((item): item is NonNullable<ReturnType<typeof getDataUrlAttachment>> => Boolean(item));
 }
 
+function getTargetedDataUrlAttachments(value: unknown, target: "invoice" | "activityReport") {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item) => (item && typeof item === "object" ? (item as Record<string, unknown>) : null))
+    .filter(Boolean)
+    .filter((item) => {
+      const itemTarget = cleanText(item?.target) || "both";
+      return itemTarget === "both" || itemTarget === target;
+    })
+    .map((item) => getDataUrlAttachment(cleanText(item?.name), cleanText(item?.dataUrl)))
+    .filter((item): item is NonNullable<ReturnType<typeof getDataUrlAttachment>> => Boolean(item));
+}
+
 function escapeHtml(value: string) {
   return value
     .replaceAll("&", "&amp;")
@@ -797,17 +811,27 @@ export async function POST(req: Request) {
       );
     }
   }
+  const separateActivityReportRecipients =
+    kind === "invoice" && parseRecipients(body.activityReportTo).length > 0;
+  const activityReportRecipients = parseRecipients(body.activityReportTo);
   const additionalAttachments = Boolean(body.attachActivityReports)
     ? getAdditionalDataUrlAttachments(body.additionalAttachments)
     : [];
-  const manualAttachments = getAdditionalDataUrlAttachments(body.manualAttachments);
+  const invoiceManualAttachments = separateActivityReportRecipients
+    ? getTargetedDataUrlAttachments(body.manualAttachments, "invoice")
+    : getAdditionalDataUrlAttachments(body.manualAttachments);
+  const activityReportManualAttachments = separateActivityReportRecipients
+    ? getTargetedDataUrlAttachments(body.manualAttachments, "activityReport")
+    : [];
+  const shouldSendSeparateActivityReport =
+    separateActivityReportRecipients && (additionalAttachments.length > 0 || activityReportManualAttachments.length > 0);
   const attachments = [
     ...storedAttachments,
     ...(uploadedAttachment ? [uploadedAttachment] : []),
     ...(xrechnungAttachment ? [xrechnungAttachment] : []),
     ...(zugferdAttachment ? [zugferdAttachment] : []),
-    ...additionalAttachments,
-    ...manualAttachments,
+    ...(shouldSendSeparateActivityReport ? [] : additionalAttachments),
+    ...invoiceManualAttachments,
   ];
   const feedbackLink = await getOrCreateFeedbackRequestLink(req, { ...body, organizationId: organization.id }, actor);
   const signatureHtml = await getSenderSignature(actor.id);
@@ -829,6 +853,20 @@ export async function POST(req: Request) {
       body: messageHtml,
       attachments,
     });
+    if (shouldSendSeparateActivityReport) {
+      const activityReportRawBody = cleanText(body.activityReportBody) || rawMessageBody;
+      const activityReportBody = signatureHtml ? stripTrailingMailClosing(activityReportRawBody) : activityReportRawBody;
+      const activityReportHtml = `${textToHtml(activityReportBody)}${signatureHtml ? signatureHtml : ""}`;
+      await sendViaMicrosoftGraph({
+        accessToken: mailAccount.accessToken,
+        to: activityReportRecipients,
+        cc: [],
+        bcc: bccRecipients,
+        subject: cleanText(body.activityReportSubject) || cleanText(body.subject),
+        body: activityReportHtml,
+        attachments: [...additionalAttachments, ...activityReportManualAttachments],
+      });
+    }
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Microsoft 365 Versand fehlgeschlagen." },
@@ -856,6 +894,7 @@ export async function POST(req: Request) {
 
   if (kind === "invoice" && Boolean(body.attachActivityReports)) {
     const activityReportAttachments = getAdditionalDataUrlAttachments(body.additionalAttachments);
+    const reportHistoryRecipients = shouldSendSeparateActivityReport ? activityReportRecipients : recipients;
     for (const attachment of activityReportAttachments) {
       const attachmentName = cleanText(attachment.name).replace(/\.pdf$/i, "");
       await prisma.$executeRaw`
@@ -869,8 +908,8 @@ export async function POST(req: Request) {
           ${randomUUID()}, ${organization.id}, ${"activityReport"}, ${`${cleanText(body.documentId)}:${cleanText(attachment.name)}`}, ${attachmentName || "Tätigkeitsbericht"},
           ${cleanText(body.projectId)}, ${cleanText(body.projectNumber)}, ${cleanText(body.projectTitle)},
           ${cleanText(body.customerName)}, ${actor.id}, ${actorName}, ${senderEmail},
-          ${recipients.join(", ")}, ${ccRecipients.join(", ")}, ${bccRecipients.join(", ")},
-          ${cleanText(body.subject)}, ${`Als Anhang mit Rechnung ${cleanText(body.documentNumber)} versendet.`}, ${true},
+          ${reportHistoryRecipients.join(", ")}, ${shouldSendSeparateActivityReport ? "" : ccRecipients.join(", ")}, ${bccRecipients.join(", ")},
+          ${shouldSendSeparateActivityReport ? cleanText(body.activityReportSubject) || cleanText(body.subject) : cleanText(body.subject)}, ${shouldSendSeparateActivityReport ? "Separat als Tätigkeitsbericht-Mail versendet." : `Als Anhang mit Rechnung ${cleanText(body.documentNumber)} versendet.`}, ${true},
           ${"microsoft365"}, ${"sent"}, ${`ms365-${id}`}
         )
       `;

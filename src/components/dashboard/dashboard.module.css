@@ -4538,6 +4538,43 @@
   padding: 4px 9px;
 }
 
+.mailAttachmentList select {
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 900;
+  padding: 4px 8px;
+}
+
+.mailTabSwitch {
+  background: #eef4fb;
+  border: 1px solid #d8e0ea;
+  border-radius: 999px;
+  display: inline-flex;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding: 4px;
+}
+
+.mailTabSwitch button {
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  color: #475569;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 950;
+  padding: 7px 12px;
+}
+
+.mailTabSwitch button[data-active="true"] {
+  background: #ffffff;
+  box-shadow: 0 5px 12px rgba(15, 23, 42, 0.12);
+  color: #0f172a;
+}
+
 .teamPicker {
   display: grid;
   gap: 7px;
