@@ -8178,7 +8178,7 @@ export function DashboardPage() {
       : getOneTimeProjectBillingReadyState(project, monthKey, options);
   }
 
-  function getProjectBillingEvidenceIssues(project: HeroProjectPreview, monthKey: string) {
+  function getProjectBillingEvidenceIssues(project: HeroProjectPreview, monthKey: string, invoice?: InvoiceItem) {
     const issues: string[] = [];
     const finalInspectionCount = getProjectProcessAttachmentCount(project, "Dokumente: Endkontrolle", "Dokument", monthKey);
     if (finalInspectionCount === 0) issues.push("Endkontrolle");
@@ -8188,6 +8188,11 @@ export function DashboardPage() {
       const afterImageCount = getProjectProcessAttachmentCount(project, "Bilder: Nachherbilder", "Bild", monthKey);
       if (beforeImageCount === 0) issues.push("Vorherbild");
       if (afterImageCount === 0) issues.push("Nachherbild");
+    }
+
+    if (invoice) {
+      const activityReportCount = getMatchingActivityReportCount(project, monthKey, invoice.sourceOfferNumber);
+      if (activityReportCount === 0) issues.push("Tätigkeitsbericht");
     }
 
     return issues;
@@ -8211,7 +8216,11 @@ export function DashboardPage() {
 
     const monthKey = projectComparisonMonth || getCurrentMonthKey();
     const finalInvoice = getProjectFinalInvoices(project)[0];
-    const evidenceIssues = getProjectBillingEvidenceIssues(project, finalInvoice ? getProjectInvoiceMonth(finalInvoice) : monthKey);
+    const evidenceIssues = getProjectBillingEvidenceIssues(
+      project,
+      finalInvoice ? getProjectInvoiceMonth(finalInvoice) : monthKey,
+      finalInvoice
+    );
     if (finalInvoice && evidenceIssues.length > 0) {
       return `Rechnung vorhanden - Nachweise fehlen: ${evidenceIssues.join(", ")}.`;
     }
