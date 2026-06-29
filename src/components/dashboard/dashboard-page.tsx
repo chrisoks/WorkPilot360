@@ -10188,7 +10188,7 @@ export function DashboardPage() {
     try {
       const attachments = (await Promise.all(selectedFiles.map(readMailAttachmentFile))).map((attachment) => ({
         ...attachment,
-        target: documentMailDraft?.hasActivityReportRecipientField ? "both" as const : undefined,
+        target: documentMailDraft?.hasActivityReportRecipientField ? "invoice" as const : undefined,
       }));
       setDocumentMailDraft((current) =>
         current
@@ -10268,7 +10268,7 @@ export function DashboardPage() {
     const selectedAttachments = selectedOptions.map((option) => ({
       name: option.name,
       dataUrl: option.dataUrl,
-      target: documentMailDraft?.hasActivityReportRecipientField ? "both" as const : undefined,
+      target: documentMailDraft?.hasActivityReportRecipientField ? "invoice" as const : undefined,
     }));
     const totalBytes = getDocumentMailManualAttachmentBytes([...existingAttachments, ...selectedAttachments]);
     const maxBytes = 15 * 1024 * 1024;
@@ -14655,7 +14655,7 @@ export function DashboardPage() {
   }
 
   function getContactActivityReportEmail(contact?: ContactItem | null) {
-    return contact?.activityReportEmail?.trim() || "";
+    return contact?.activityReportEmail?.trim() || contact?.email?.trim() || "";
   }
 
   function getCustomerFileTarget(contact: ContactItem) {
