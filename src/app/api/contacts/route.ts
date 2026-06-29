@@ -20,6 +20,7 @@ type ContactRow = {
   lastName: string | null;
   position: string | null;
   email: string | null;
+  invoiceEmail: string | null;
   activityReportEmail: string | null;
   phone: string | null;
   mobile: string | null;
@@ -81,6 +82,7 @@ async function ensureContactsTable() {
       "lastName" TEXT,
       "position" TEXT,
       "email" TEXT,
+      "invoiceEmail" TEXT,
       "activityReportEmail" TEXT,
       "phone" TEXT,
       "mobile" TEXT,
@@ -121,6 +123,7 @@ async function ensureContactsTable() {
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "mainContactName" TEXT`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "isMainContact" BOOLEAN NOT NULL DEFAULT false`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "legalForm" TEXT`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "invoiceEmail" TEXT`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "activityReportEmail" TEXT`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "isActivityReportRecipient" BOOLEAN NOT NULL DEFAULT false`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "eInvoiceRequired" BOOLEAN NOT NULL DEFAULT false`;
@@ -148,6 +151,15 @@ function forbiddenContactDeleteResponse() {
 function nullableString(value: unknown) {
   const cleaned = cleanString(value);
   return cleaned || null;
+}
+
+function isValidEmailAddress(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(value);
+}
+
+function getEmailValidationError(label: string, value: string) {
+  if (!value) return "";
+  return isValidEmailAddress(value) ? "" : `${label} ist keine gültige E-Mail-Adresse.`;
 }
 
 function parseInteger(value: unknown) {
@@ -181,6 +193,7 @@ function formatContact(contact: ContactRow) {
     lastName: contact.lastName ?? "",
     position: contact.position ?? "",
     email: contact.email ?? "",
+    invoiceEmail: contact.invoiceEmail ?? "",
     activityReportEmail: contact.activityReportEmail ?? "",
     phone: contact.phone ?? "",
     mobile: contact.mobile ?? "",
@@ -354,12 +367,22 @@ export async function POST(req: Request) {
   const requestedType = cleanString(body.type);
   const type = requestedType === "company" || requestedType === "private" ? requestedType : "person";
   const customerNumber = cleanString(body.customerNumber) || (await getNextCustomerNumber(organization.id));
+  const email = cleanString(body.email);
+  const invoiceEmail = cleanString(body.invoiceEmail);
+  const activityReportEmail = cleanString(body.activityReportEmail);
+  const emailValidationError =
+    getEmailValidationError("E-Mail-Adresse Kontaktperson", email) ||
+    getEmailValidationError("E-Mail Rechnung", invoiceEmail) ||
+    getEmailValidationError("E-Mail Tätigkeitsbericht", activityReportEmail);
+  if (emailValidationError) {
+    return NextResponse.json({ error: emailValidationError }, { status: 400 });
+  }
 
   const inserted = await prisma.$queryRaw<ContactRow[]>`
     INSERT INTO "Contact" (
       "id", "organizationId", "category", "type", "legalForm", "customerNumber",
       "salutation", "additionalSalutation", "companyName", "firstName", "lastName", "position",
-      "email", "activityReportEmail", "phone", "mobile", "fax", "website", "source", "reachability", "isInvoiceRecipient", "isActivityReportRecipient",
+      "email", "invoiceEmail", "activityReportEmail", "phone", "mobile", "fax", "website", "source", "reachability", "isInvoiceRecipient", "isActivityReportRecipient",
       "eInvoiceRequired", "eInvoiceRecipientType",
       "parentCompanyId", "parentCompanyName", "mainContactName", "isMainContact",
       "street", "addressLine1", "addressLine2", "postalCode", "city", "country",
@@ -370,8 +393,8 @@ export async function POST(req: Request) {
       ${id}, ${organization.id}, ${category}, ${type}, ${nullableString(body.legalForm)}, ${customerNumber},
       ${nullableString(body.salutation)}, ${nullableString(body.additionalSalutation)}, ${nullableString(body.companyName)},
       ${nullableString(body.firstName)}, ${nullableString(body.lastName)}, ${nullableString(body.position)},
-      ${nullableString(body.email)}, ${nullableString(body.activityReportEmail)}, ${nullableString(body.phone)}, ${nullableString(body.mobile)}, ${nullableString(body.fax)},
-      ${nullableString(body.website)}, ${nullableString(body.source)}, ${nullableString(body.reachability)}, ${Boolean(body.isInvoiceRecipient)}, ${Boolean(body.isActivityReportRecipient)},
+      ${nullableString(email)}, ${nullableString(invoiceEmail)}, ${nullableString(activityReportEmail)}, ${nullableString(body.phone)}, ${nullableString(body.mobile)}, ${nullableString(body.fax)},
+      ${nullableString(body.website)}, ${nullableString(body.source)}, ${nullableString(body.reachability)}, ${Boolean(invoiceEmail)}, ${Boolean(activityReportEmail)},
       ${Boolean(body.eInvoiceRequired)}, ${cleanEInvoiceRecipientType(body.eInvoiceRecipientType)},
       ${nullableString(body.parentCompanyId)}, ${nullableString(body.parentCompanyName)}, ${nullableString(body.mainContactName)}, ${Boolean(body.isMainContact)},
       ${nullableString(body.street)}, ${nullableString(body.addressLine1)}, ${nullableString(body.addressLine2)},
@@ -409,6 +432,16 @@ export async function PATCH(req: Request) {
   const requestedType = cleanString(body.type);
   const type = requestedType === "company" || requestedType === "private" ? requestedType : "person";
   const customerNumber = cleanString(body.customerNumber) || (await getNextCustomerNumber(organization.id));
+  const email = cleanString(body.email);
+  const invoiceEmail = cleanString(body.invoiceEmail);
+  const activityReportEmail = cleanString(body.activityReportEmail);
+  const emailValidationError =
+    getEmailValidationError("E-Mail-Adresse Kontaktperson", email) ||
+    getEmailValidationError("E-Mail Rechnung", invoiceEmail) ||
+    getEmailValidationError("E-Mail Tätigkeitsbericht", activityReportEmail);
+  if (emailValidationError) {
+    return NextResponse.json({ error: emailValidationError }, { status: 400 });
+  }
 
   const updated = await prisma.$queryRaw<ContactRow[]>`
     UPDATE "Contact"
@@ -423,16 +456,17 @@ export async function PATCH(req: Request) {
       "firstName" = ${nullableString(body.firstName)},
       "lastName" = ${nullableString(body.lastName)},
       "position" = ${nullableString(body.position)},
-      "email" = ${nullableString(body.email)},
-      "activityReportEmail" = ${nullableString(body.activityReportEmail)},
+      "email" = ${nullableString(email)},
+      "invoiceEmail" = ${nullableString(invoiceEmail)},
+      "activityReportEmail" = ${nullableString(activityReportEmail)},
       "phone" = ${nullableString(body.phone)},
       "mobile" = ${nullableString(body.mobile)},
       "fax" = ${nullableString(body.fax)},
       "website" = ${nullableString(body.website)},
       "source" = ${nullableString(body.source)},
       "reachability" = ${nullableString(body.reachability)},
-      "isInvoiceRecipient" = ${Boolean(body.isInvoiceRecipient)},
-      "isActivityReportRecipient" = ${Boolean(body.isActivityReportRecipient)},
+      "isInvoiceRecipient" = ${Boolean(invoiceEmail)},
+      "isActivityReportRecipient" = ${Boolean(activityReportEmail)},
       "eInvoiceRequired" = ${Boolean(body.eInvoiceRequired)},
       "eInvoiceRecipientType" = ${cleanEInvoiceRecipientType(body.eInvoiceRecipientType)},
       "parentCompanyId" = ${nullableString(body.parentCompanyId)},

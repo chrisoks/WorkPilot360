@@ -1593,6 +1593,7 @@ type ContactItem = {
   lastName: string;
   position: string;
   email: string;
+  invoiceEmail: string;
   activityReportEmail: string;
   phone: string;
   mobile: string;
@@ -3168,6 +3169,7 @@ const emptyContact: Omit<ContactItem, "id" | "createdAt" | "updatedAt"> = {
   lastName: "",
   position: "",
   email: "",
+  invoiceEmail: "",
   activityReportEmail: "",
   phone: "",
   mobile: "",
@@ -9783,6 +9785,7 @@ export function DashboardPage() {
     });
 
     return (
+      relatedContacts.find((contact) => contact.invoiceEmail.trim()) ??
       relatedContacts.find((contact) => contact.isInvoiceRecipient) ??
       relatedContacts.find((contact) => contact.isMainContact) ??
       relatedContacts[0] ??
@@ -9799,12 +9802,10 @@ export function DashboardPage() {
       if (project?.contactId && contact.parentCompanyId === project.contactId) return true;
       return contact.companyName === invoice.customerName || getContactDisplayName(contact) === invoice.customerName;
     });
-    const recipient = relatedContacts.find(
-      (contact) => contact.isActivityReportRecipient && (contact.activityReportEmail.trim() || contact.email.trim())
-    );
+    const recipient = relatedContacts.find((contact) => getContactActivityReportEmail(contact));
     if (!recipient) return null;
-    const recipientEmail = (recipient.activityReportEmail || recipient.email).trim().toLowerCase();
-    const invoiceEmail = (invoiceRecipient?.email || "").trim().toLowerCase();
+    const recipientEmail = getContactActivityReportEmail(recipient).toLowerCase();
+    const invoiceEmail = getContactInvoiceEmail(invoiceRecipient).toLowerCase();
     if (recipientEmail && invoiceEmail && recipientEmail === invoiceEmail) return null;
     return recipient;
   }
@@ -9819,6 +9820,7 @@ export function DashboardPage() {
     });
 
     return (
+      relatedContacts.find((contact) => contact.invoiceEmail.trim()) ??
       relatedContacts.find((contact) => contact.isInvoiceRecipient) ??
       relatedContacts.find((contact) => contact.isMainContact) ??
       relatedContacts[0] ??
@@ -10034,7 +10036,7 @@ export function DashboardPage() {
       projectNumber: document.projectNumber,
       projectTitle: document.projectTitle,
       customerName: document.customerName,
-      to: invoiceRecipient?.email || offerRecipient?.email || "",
+      to: getContactInvoiceEmail(invoiceRecipient) || getContactInvoiceEmail(offerRecipient),
       cc: "",
       bcc: activeMailAccount.bcc,
       subject: template.subject,
@@ -10044,10 +10046,10 @@ export function DashboardPage() {
       includeFeedbackLink: kind === "invoice",
       attachActivityReports: activityReportAttachments.length > 0,
       additionalAttachments: activityReportAttachments,
-      activityReportTo: activityReportRecipient?.activityReportEmail || activityReportRecipient?.email || "",
+      activityReportTo: getContactActivityReportEmail(activityReportRecipient),
       activityReportSubject: activityReportTemplate?.subject || "",
       activityReportBody: activityReportTemplate?.body || "",
-      hasActivityReportRecipientField: Boolean(activityReportRecipient?.activityReportEmail || activityReportRecipient?.email),
+      hasActivityReportRecipientField: Boolean(getContactActivityReportEmail(activityReportRecipient)),
       activeMailTab: "invoice",
     });
     closeDocumentMailProjectAttachmentPicker();
@@ -14646,6 +14648,14 @@ export function DashboardPage() {
       contact.email ||
       contact.customerNumber
     );
+  }
+
+  function getContactInvoiceEmail(contact?: ContactItem | null) {
+    return contact?.invoiceEmail?.trim() || contact?.email?.trim() || "";
+  }
+
+  function getContactActivityReportEmail(contact?: ContactItem | null) {
+    return contact?.activityReportEmail?.trim() || "";
   }
 
   function getCustomerFileTarget(contact: ContactItem) {
@@ -27104,13 +27114,13 @@ await addProjectLogbookEntry(
         return false;
       });
       const candidates = [
-        ...relatedContacts.filter((contact) => contact.isActivityReportRecipient),
+        ...relatedContacts.filter((contact) => getContactActivityReportEmail(contact)),
         ...relatedContacts.filter((contact) => contact.isInvoiceRecipient),
         ...relatedContacts.filter((contact) => contact.isMainContact),
         projectContactPerson,
         projectAddressContact,
         projectContact,
-      ].filter((contact): contact is ContactItem => Boolean(contact?.email));
+      ].filter((contact): contact is ContactItem => Boolean(getContactActivityReportEmail(contact)));
       return candidates[0] ?? null;
     };
     const approveWinterServiceActivityReport = async (run: {
@@ -27132,7 +27142,8 @@ await addProjectLogbookEntry(
       reportAttachment?: { name: string; dataUrl: string } | null;
     }) => {
       if (isSendingDocumentMail) return;
-      if (!run.recipient?.email) {
+      const recipientEmail = getContactActivityReportEmail(run.recipient);
+      if (!recipientEmail) {
         setErrorMessage("Für diesen Winterdienstbericht ist kein Tätigkeitsberichtempfänger mit E-Mail hinterlegt.");
         return;
       }
@@ -27156,7 +27167,7 @@ await addProjectLogbookEntry(
           projectNumber: run.project.projectNumber || run.project.id,
           projectTitle: run.project.title,
           customerName: run.project.customer,
-          to: run.recipient.email,
+          to: recipientEmail,
           cc: "",
           bcc: getSafeEmployeeMailAccount(activeUser?.mailAccount, activeUser?.email || "").bcc,
           subject: template.subject,
@@ -27178,7 +27189,7 @@ await addProjectLogbookEntry(
       await addProjectLogbookEntry(
         run.project.id,
         "Winterdienst: Tätigkeitsbericht versendet",
-        `Tätigkeitsbericht versendet. Zuordnung: ${run.contextKey}. Empfänger: ${run.recipient.email}. Einsatzdatum: ${formatDateOnly(run.dateKey)}.`
+        `Tätigkeitsbericht versendet. Zuordnung: ${run.contextKey}. Empfänger: ${recipientEmail}. Einsatzdatum: ${formatDateOnly(run.dateKey)}.`
       );
     };
     const createWinterServiceActivityReport = async (run: {
@@ -27281,6 +27292,7 @@ await addProjectLogbookEntry(
         );
         const isApproved = isWinterServiceRunApproved(run.project.id, contextKey);
         const recipient = getWinterServiceActivityReportRecipient(run.project);
+        const recipientEmail = getContactActivityReportEmail(recipient);
         const isAutomationCandidate =
           sentCount === 0 &&
           reportCount === 0 &&
@@ -27290,7 +27302,7 @@ await addProjectLogbookEntry(
         const status =
           sentCount > 0
             ? "Versendet/erledigt"
-            : isApproved && !recipient?.email
+            : isApproved && !recipientEmail
               ? "Empfänger fehlt"
             : isApproved
               ? "Versandbereit"
@@ -27342,7 +27354,7 @@ await addProjectLogbookEntry(
       },
       {
         label: "Freigaben ohne Empfänger",
-        count: openRuns.filter((run) => run.isApproved && !run.recipient?.email).length,
+        count: openRuns.filter((run) => run.isApproved && !getContactActivityReportEmail(run.recipient)).length,
         hint: "Tätigkeitsberichtempfänger in der Kundenakte pflegen.",
       },
       {
@@ -27387,7 +27399,7 @@ await addProjectLogbookEntry(
             monthKey: run.monthKey,
             dateKey: run.dateKey,
             contextKey: run.contextKey,
-            recipientEmail: run.recipient?.email || "",
+            recipientEmail: getContactActivityReportEmail(run.recipient),
             beforeImageKeys: getActivityReportImageKeys(run.project, "Vorherbilder", run.monthKey, run.dateKey),
             afterImageKeys: getActivityReportImageKeys(run.project, "Nachherbilder", run.monthKey, run.dateKey),
           })),
@@ -27435,7 +27447,8 @@ await addProjectLogbookEntry(
       const touchedProjectIds = new Set<string>();
 
       for (const run of readyRuns) {
-        if (!run.recipient?.email || !run.reportAttachment?.dataUrl) {
+        const recipientEmail = getContactActivityReportEmail(run.recipient);
+        if (!recipientEmail || !run.reportAttachment?.dataUrl) {
           failedRuns.push(`${run.project.projectNumber || run.project.id} ${formatDateOnly(run.dateKey)}`);
           continue;
         }
@@ -27453,7 +27466,7 @@ await addProjectLogbookEntry(
             projectNumber: run.project.projectNumber || run.project.id,
             projectTitle: run.project.title,
             customerName: run.project.customer,
-            to: run.recipient.email,
+            to: recipientEmail,
             cc: "",
             bcc: getSafeEmployeeMailAccount(activeUser?.mailAccount, activeUser?.email || "").bcc,
             subject: template.subject,
@@ -27472,7 +27485,7 @@ await addProjectLogbookEntry(
         await addProjectLogbookEntry(
           run.project.id,
           "Winterdienst: Tätigkeitsbericht versendet",
-          `Tätigkeitsbericht versendet. Zuordnung: ${run.contextKey}. Empfänger: ${run.recipient.email}. Einsatzdatum: ${formatDateOnly(run.dateKey)}.`
+          `Tätigkeitsbericht versendet. Zuordnung: ${run.contextKey}. Empfänger: ${recipientEmail}. Einsatzdatum: ${formatDateOnly(run.dateKey)}.`
         );
       }
 
@@ -27531,12 +27544,12 @@ await addProjectLogbookEntry(
                   )}
                 </td>
                 <td>
-                  {run.recipient?.email ? (
+                  {getContactActivityReportEmail(run.recipient) ? (
                     <>
                       {[run.recipient.firstName, run.recipient.lastName].filter(Boolean).join(" ") ||
                         run.recipient.companyName ||
                         "Empfänger"}
-                      <span className={styles.metaLine}>{run.recipient.email}</span>
+                      <span className={styles.metaLine}>{getContactActivityReportEmail(run.recipient)}</span>
                     </>
                   ) : (
                     <>
@@ -27567,7 +27580,7 @@ await addProjectLogbookEntry(
                       Freigeben
                     </button>
                   ) : null}
-                  {run.isApproved && run.sentCount === 0 && run.recipient?.email && run.reportAttachment ? (
+                  {run.isApproved && run.sentCount === 0 && getContactActivityReportEmail(run.recipient) && run.reportAttachment ? (
                     <button
                       type="button"
                       className={styles.secondaryButton}
@@ -27821,13 +27834,13 @@ await addProjectLogbookEntry(
         return false;
       });
       const candidates = [
-        ...relatedContacts.filter((contact) => contact.isActivityReportRecipient),
+        ...relatedContacts.filter((contact) => getContactActivityReportEmail(contact)),
         ...relatedContacts.filter((contact) => contact.isInvoiceRecipient),
         ...relatedContacts.filter((contact) => contact.isMainContact),
         projectContactPerson,
         projectAddressContact,
         projectContact,
-      ].filter((contact): contact is ContactItem => Boolean(contact?.email));
+      ].filter((contact): contact is ContactItem => Boolean(getContactActivityReportEmail(contact)));
       return candidates[0] ?? null;
     };
     const rows = recurringProjects
@@ -27862,6 +27875,7 @@ await addProjectLogbookEntry(
           dispatch.body?.toLowerCase().includes("als anhang mit rechnung")
         ).length;
         const recipient = getActivityReportRecipient(project);
+        const recipientEmail = getContactActivityReportEmail(recipient);
         const selectedReport = reportAttachments[0] ?? null;
         const status =
           sentReportDispatches.length > 0
@@ -27870,7 +27884,7 @@ await addProjectLogbookEntry(
               : "Manuell versendet"
             : reportAttachments.length === 0
               ? "T-Bericht fehlt"
-              : !recipient?.email
+              : !recipientEmail
                 ? "Empfänger fehlt"
                 : projectInvoices.length === 0
                   ? "Rechnung fehlt"
@@ -27901,7 +27915,8 @@ await addProjectLogbookEntry(
     const missingInvoiceRows = rows.filter((row) => row.reportCount > 0 && row.projectInvoices.length === 0);
     const sendGeneralActivityReport = async (row: (typeof rows)[number]) => {
       if (isSendingDocumentMail) return;
-      if (!row.recipient?.email) {
+      const recipientEmail = getContactActivityReportEmail(row.recipient);
+      if (!recipientEmail) {
         setErrorMessage("Für diesen Tätigkeitsbericht ist kein Empfänger mit E-Mail hinterlegt.");
         return;
       }
@@ -27925,7 +27940,7 @@ await addProjectLogbookEntry(
           projectNumber: row.project.projectNumber || row.project.id,
           projectTitle: row.project.title,
           customerName: row.project.customer,
-          to: row.recipient.email,
+          to: recipientEmail,
           cc: "",
           bcc: getSafeEmployeeMailAccount(activeUser?.mailAccount, activeUser?.email || "").bcc,
           subject: template.subject,
@@ -27947,7 +27962,7 @@ await addProjectLogbookEntry(
       await addProjectLogbookEntry(
         row.project.id,
         "Tätigkeitsbericht: versendet",
-        `Tätigkeitsbericht ${documentNumber} für ${monthLabel} manuell versendet. Empfänger: ${row.recipient.email}.`
+        `Tätigkeitsbericht ${documentNumber} für ${monthLabel} manuell versendet. Empfänger: ${recipientEmail}.`
       );
     };
     const sendReadyGeneralActivityReports = async () => {
@@ -28005,12 +28020,12 @@ await addProjectLogbookEntry(
                   )}
                 </td>
                 <td>
-                  {row.recipient?.email ? (
+                  {getContactActivityReportEmail(row.recipient) ? (
                     <>
                       {[row.recipient.firstName, row.recipient.lastName].filter(Boolean).join(" ") ||
                         row.recipient.companyName ||
                         "Empfänger"}
-                      <span className={styles.metaLine}>{row.recipient.email}</span>
+                      <span className={styles.metaLine}>{getContactActivityReportEmail(row.recipient)}</span>
                     </>
                   ) : (
                     <span className={styles.metaLine}>Tätigkeitsberichtempfänger fehlt</span>
@@ -49879,40 +49894,28 @@ await addProjectLogbookEntry(
               {contactFormTab === "details" && (
               <section className={styles.contactFormGrid}>
                 <label>
-                  E-Mail-Adresse
+                  E-Mail-Adresse Kontaktperson
                   <input
                     type="email"
                     value={contactDraft.email}
                     onChange={(event) => updateContactDraft("email", event.target.value)}
                   />
                 </label>
-                <label className={styles.checkboxField}>
+                <label>
+                  E-Mail Rechnung
                   <input
-                    type="checkbox"
-                    checked={contactDraft.isInvoiceRecipient}
-                    onChange={(event) =>
-                      updateContactDraft("isInvoiceRecipient", event.target.checked)
-                    }
+                    type="email"
+                    value={contactDraft.invoiceEmail}
+                    placeholder={contactDraft.email || "rechnung@example.de"}
+                    onChange={(event) => updateContactDraft("invoiceEmail", event.target.value)}
                   />
-                  Rechnungsempfänger
                 </label>
-                <label className={styles.checkboxField}>
-                  <input
-                    type="checkbox"
-                    checked={contactDraft.isActivityReportRecipient}
-                    onChange={(event) =>
-                      updateContactDraft("isActivityReportRecipient", event.target.checked)
-                    }
-                  />
-                  Tätigkeitsberichtsempfänger
-                </label>
-                <label className={styles.activityReportEmailField}>
+                <label>
                   E-Mail Tätigkeitsbericht
                   <input
                     type="email"
                     value={contactDraft.activityReportEmail}
                     placeholder={contactDraft.email || "bericht@example.de"}
-                    disabled={!contactDraft.isActivityReportRecipient}
                     onChange={(event) => updateContactDraft("activityReportEmail", event.target.value)}
                   />
                 </label>

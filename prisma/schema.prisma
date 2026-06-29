@@ -1153,6 +1153,7 @@ model Contact {
   lastName              String?
   position              String?
   email                 String?
+  invoiceEmail          String?
   activityReportEmail   String?
   phone                 String?
   mobile                String?
