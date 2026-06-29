@@ -652,6 +652,7 @@ type DocumentMailDraft = {
   attachPdf: boolean;
   eInvoiceFormat?: EInvoiceFormat;
   includeFeedbackLink?: boolean;
+  includeActivityReportFeedbackLink?: boolean;
   attachActivityReports?: boolean;
   additionalAttachments?: Array<{ name: string; dataUrl: string }>;
   manualAttachments?: Array<{ name: string; dataUrl: string; target?: "invoice" | "activityReport" | "both" }>;
@@ -9733,8 +9734,11 @@ export function DashboardPage() {
     const messageBody = signatureHtml ? stripTrailingMailClosing(rawBody) : rawBody;
     const feedbackHtml =
       documentMailDraft.kind === "invoice" &&
-      documentMailDraft.activeMailTab !== "activityReport" &&
-      documentMailDraft.includeFeedbackLink !== false
+      (
+        documentMailDraft.activeMailTab === "activityReport"
+          ? documentMailDraft.includeActivityReportFeedbackLink !== false
+          : documentMailDraft.includeFeedbackLink !== false
+      )
         ? getDocumentMailFeedbackPreviewHtml()
         : "";
     return `${textToMailHtml(messageBody)}${feedbackHtml}${signatureHtml ? signatureHtml : ""}`;
@@ -10044,6 +10048,7 @@ export function DashboardPage() {
       attachPdf: true,
       eInvoiceFormat: kind === "invoice" ? "pdf" : undefined,
       includeFeedbackLink: kind === "invoice",
+      includeActivityReportFeedbackLink: kind === "invoice",
       attachActivityReports: activityReportAttachments.length > 0,
       additionalAttachments: activityReportAttachments,
       activityReportTo: getContactActivityReportEmail(activityReportRecipient),
@@ -10093,6 +10098,7 @@ export function DashboardPage() {
       attachPdf: Boolean(input.attachmentDataUrl),
       eInvoiceFormat: input.kind === "invoice" ? "pdf" : undefined,
       includeFeedbackLink: input.kind === "invoice",
+      includeActivityReportFeedbackLink: input.kind === "invoice",
     });
     closeDocumentMailProjectAttachmentPicker();
     setDocumentMailError(
@@ -43190,6 +43196,28 @@ await addProjectLogbookEntry(
                     <small>
                       {canManageFeedbackLink
                         ? "Kunden können nach dem Versand genau einmal bewerten."
+                        : "Aktiv. Nur Geschäftsführung kann diese Box deaktivieren."}
+                    </small>
+                  </span>
+                </label>
+              ) : null}
+              {isActivityReportPackageTab ? (
+                <label className={`${styles.checkboxField} ${styles.standardFormWide}`}>
+                  <input
+                    type="checkbox"
+                    checked={documentMailDraft.includeActivityReportFeedbackLink !== false}
+                    disabled={!canManageFeedbackLink}
+                    onChange={(event) =>
+                      setDocumentMailDraft((current) =>
+                        current ? { ...current, includeActivityReportFeedbackLink: event.target.checked } : current
+                      )
+                    }
+                  />
+                  <span className={styles.attachmentCheckboxText}>
+                    <strong>Eigene Bewertungsbox mit Bewertungslink mitsenden</strong>
+                    <small>
+                      {canManageFeedbackLink
+                        ? "Dieser Link ist unabhängig vom Bewertungslink der Rechnungsmail."
                         : "Aktiv. Nur Geschäftsführung kann diese Box deaktivieren."}
                     </small>
                   </span>

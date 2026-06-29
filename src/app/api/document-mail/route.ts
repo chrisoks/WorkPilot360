@@ -856,7 +856,20 @@ export async function POST(req: Request) {
     if (shouldSendSeparateActivityReport) {
       const activityReportRawBody = cleanText(body.activityReportBody) || rawMessageBody;
       const activityReportBody = signatureHtml ? stripTrailingMailClosing(activityReportRawBody) : activityReportRawBody;
-      const activityReportHtml = `${textToHtml(activityReportBody)}${signatureHtml ? signatureHtml : ""}`;
+      const activityReportFeedbackLink = await getOrCreateFeedbackRequestLink(
+        req,
+        {
+          ...body,
+          organizationId: organization.id,
+          documentId: `${documentId}:activity-report`,
+          documentNumber: `${documentNumber} Tätigkeitsbericht`,
+          to: cleanText(body.activityReportTo),
+          includeFeedbackLink: body.includeActivityReportFeedbackLink !== false,
+        },
+        actor
+      );
+      const activityReportFeedbackHtml = activityReportFeedbackLink ? getFeedbackMailBlockHtml(activityReportFeedbackLink) : "";
+      const activityReportHtml = `${textToHtml(activityReportBody)}${activityReportFeedbackHtml}${signatureHtml ? signatureHtml : ""}`;
       await sendViaMicrosoftGraph({
         accessToken: mailAccount.accessToken,
         to: activityReportRecipients,
