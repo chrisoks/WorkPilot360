@@ -29675,8 +29675,10 @@ await addProjectLogbookEntry(
       projectPlannedAppointmentHours > 0
         ? clampPercent((projectTrackedHours / projectPlannedAppointmentHours) * 100)
         : 0;
-    const getTimeBudgetUsageState = (usagePercent: number): "normal" | "warning" | "critical" =>
-      usagePercent >= 90 ? "critical" : usagePercent >= 75 ? "warning" : "normal";
+    const getTimeBudgetBarStyle = (usagePercent: number): CSSProperties => ({
+      "--project-time-budget-track-width": usagePercent > 0 ? `${10000 / usagePercent}%` : "100%",
+      width: `${usagePercent}%`,
+    } as CSSProperties);
     const projectBudgetDraftTotal = projectBudgetMonths.reduce(
       (sum, month) => sum + parseHoursInput(projectBudgetMonthDrafts[month]),
       0
@@ -34705,10 +34707,7 @@ await addProjectLogbookEntry(
                       </strong>
                     </div>
                     <div className={styles.projectTimeBudgetBar}>
-                      <span
-                        data-state={getTimeBudgetUsageState(projectMonthBudgetUsagePercent)}
-                        style={{ width: `${projectMonthBudgetUsagePercent}%` }}
-                      >
+                      <span style={getTimeBudgetBarStyle(projectMonthBudgetUsagePercent)}>
                         <i>{projectMonthBudgetUsagePercent.toFixed(0)}%</i>
                       </span>
                     </div>
@@ -34725,10 +34724,7 @@ await addProjectLogbookEntry(
                       </strong>
                     </div>
                     <div className={styles.projectTimeBudgetBar}>
-                      <span
-                        data-state={getTimeBudgetUsageState(projectBudgetUsagePercent)}
-                        style={{ width: `${projectBudgetUsagePercent}%` }}
-                      >
+                      <span style={getTimeBudgetBarStyle(projectBudgetUsagePercent)}>
                         <i>{projectBudgetUsagePercent.toFixed(0)}%</i>
                       </span>
                     </div>
@@ -34760,10 +34756,7 @@ await addProjectLogbookEntry(
                         </strong>
                       </div>
                       <div className={styles.projectTimeBudgetBar}>
-                        <span
-                          data-state={getTimeBudgetUsageState(row.usagePercent)}
-                          style={{ width: `${row.usagePercent}%` }}
-                        >
+                        <span style={getTimeBudgetBarStyle(row.usagePercent)}>
                           <i>{row.usagePercent.toFixed(0)}%</i>
                         </span>
                       </div>
@@ -34783,10 +34776,7 @@ await addProjectLogbookEntry(
                     </strong>
                   </div>
                   <div className={styles.projectTimeBudgetBar}>
-                    <span
-                      data-state={getTimeBudgetUsageState(projectAppointmentUsagePercent)}
-                      style={{ width: `${projectAppointmentUsagePercent}%` }}
-                    >
+                    <span style={getTimeBudgetBarStyle(projectAppointmentUsagePercent)}>
                       <i>{projectAppointmentUsagePercent.toFixed(0)}%</i>
                     </span>
                   </div>
