@@ -12658,7 +12658,7 @@
 
 .projectTimeBudgetBar span {
   align-items: center;
-  background: linear-gradient(90deg, #0f9f6e 0%, #13a37b 52%, #facc15 74%, #f97316 88%, #ef4444 100%);
+  background: linear-gradient(90deg, #0f9f6e 0%, #13a37b 100%);
   border-radius: inherit;
   box-shadow: 0 0 12px rgba(15, 159, 110, 0.24);
   display: flex;
@@ -12666,6 +12666,16 @@
   justify-content: flex-end;
   overflow: hidden;
   transition: width 0.2s ease;
+}
+
+.projectTimeBudgetBar span[data-state="warning"] {
+  background: linear-gradient(90deg, #facc15 0%, #f97316 100%);
+  box-shadow: 0 0 12px rgba(249, 115, 22, 0.22);
+}
+
+.projectTimeBudgetBar span[data-state="critical"] {
+  background: linear-gradient(90deg, #f97316 0%, #ef4444 100%);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.22);
 }
 
 .projectTimeBudgetBar i {
