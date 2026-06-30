@@ -9703,9 +9703,9 @@
   display: block;
   font-size: 0.9rem;
   font-weight: 900;
+  line-height: 1.2;
   margin: 0 0 12px;
   padding: 10px 0 9px;
-  text-transform: uppercase;
 }
 
 .customerInfoCard dl {
@@ -10970,6 +10970,7 @@
   display: block;
   font-size: 0.9rem;
   font-weight: 900;
+  line-height: 1.2;
   margin: 0;
   padding: 10px 0 9px;
 }
@@ -11179,7 +11180,7 @@
 }
 
 .appointmentPlanningTable {
-  min-width: 980px;
+  min-width: 1100px;
   table-layout: fixed;
 }
 
@@ -16049,33 +16050,72 @@
 
 .appointmentPlanningTable th:nth-child(1),
 .appointmentPlanningTable td:nth-child(1) {
-  width: 18%;
+  width: 150px;
 }
 
 .appointmentPlanningTable th:nth-child(2),
-.appointmentPlanningTable td:nth-child(2),
+.appointmentPlanningTable td:nth-child(2) {
+  width: 96px;
+}
+
 .appointmentPlanningTable th:nth-child(3),
 .appointmentPlanningTable td:nth-child(3) {
-  width: 10%;
+  width: 110px;
 }
 
 .appointmentPlanningTable th:nth-child(4),
-.appointmentPlanningTable td:nth-child(4),
+.appointmentPlanningTable td:nth-child(4) {
+  width: 150px;
+}
+
 .appointmentPlanningTable th:nth-child(5),
-.appointmentPlanningTable td:nth-child(5),
+.appointmentPlanningTable td:nth-child(5) {
+  width: 132px;
+}
+
 .appointmentPlanningTable th:nth-child(6),
 .appointmentPlanningTable td:nth-child(6) {
-  width: 13%;
+  width: 140px;
 }
 
 .appointmentPlanningTable th:nth-child(7),
 .appointmentPlanningTable td:nth-child(7) {
-  width: 10%;
+  width: 140px;
 }
 
 .appointmentPlanningTable th:nth-child(8),
 .appointmentPlanningTable td:nth-child(8) {
-  width: 9%;
+  width: 170px;
+}
+
+.appointmentPlanningTable td:nth-child(7),
+.appointmentPlanningTable td:nth-child(8) {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.appointmentPlanningTable .planningStatusPill {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  width: 100%;
+}
+
+.appointmentPlanningTable td:last-child .tableActionGroup {
+  align-items: stretch;
+  display: grid;
+  gap: 6px;
+  grid-template-columns: 1fr;
+  min-width: 0;
+  width: 100%;
+}
+
+.appointmentPlanningTable td:last-child .timeEntryEditButton {
+  box-sizing: border-box;
+  max-width: 100%;
+  width: 100%;
 }
 
 .personalTable th {
