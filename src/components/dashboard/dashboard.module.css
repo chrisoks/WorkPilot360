@@ -19843,15 +19843,17 @@
 }
 
 .quickCreateButton {
-  background: var(--brand);
+  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 14px;
-  box-shadow: 0 12px 24px rgba(0, 156, 166, 0.24);
+  box-shadow:
+    0 14px 30px rgba(37, 99, 235, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32);
   min-width: 82px;
 }
 
 .quickCreateButton:hover {
-  background: #008d96;
+  background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%);
   transform: translateY(-1px);
 }
 

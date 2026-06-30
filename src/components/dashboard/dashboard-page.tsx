@@ -45321,42 +45321,6 @@ await addProjectLogbookEntry(
                   <button type="button" onClick={() => openCreateModal()}>
                     <span>+</span> Aufgabe
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsQuickCreateOpen(false);
-                      setErrorMessage("Dokumente werden als nächstes Modul angebunden.");
-                    }}
-                  >
-                    <span>+</span> Dokument
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsQuickCreateOpen(false);
-                      setErrorMessage("Termine werden mit der Einsatzplanung verbunden.");
-                    }}
-                  >
-                    <span>+</span> Termin
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsQuickCreateOpen(false);
-                      setErrorMessage("Zeiteinträge werden direkt an Aufgaben angebunden.");
-                    }}
-                  >
-                    <span>+</span> Zeiteintrag
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsQuickCreateOpen(false);
-                      setErrorMessage("Aufträge folgen nach der Projektbasis.");
-                    }}
-                  >
-                    <span>+</span> Auftrag
-                  </button>
                 </div>
               )}
             </div>
