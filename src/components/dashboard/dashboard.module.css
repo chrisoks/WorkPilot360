@@ -9711,7 +9711,7 @@
 .customerInfoCard dl {
   display: grid;
   column-gap: 12px;
-  grid-template-columns: minmax(128px, 0.45fr) minmax(0, 1fr);
+  grid-template-columns: minmax(140px, 0.48fr) minmax(0, 1fr);
   margin: 0 0 12px;
 }
 
@@ -9725,14 +9725,19 @@
   margin: 0;
   padding: 8px 0;
   min-width: 0;
-  overflow-wrap: anywhere;
+}
+
+.customerInfoCard dt {
+  hyphens: auto;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .customerInfoCard dd {
   color: #005fff;
   font-weight: 650;
   hyphens: auto;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .customerInfoCard dd span {
@@ -12927,6 +12932,7 @@
 
 .projectBudgetHistory {
   border-top: 1px solid #e2e8f0;
+  margin-bottom: 14px;
   padding-top: 8px;
 }
 
