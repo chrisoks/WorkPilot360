@@ -31486,6 +31486,14 @@ await addProjectLogbookEntry(
                     projectEndMarkerPercent
                   )
         : 0;
+    const projectRuntimeTimelineState =
+      projectEndDate && today.getTime() >= projectEndDate.getTime()
+        ? "critical"
+        : projectRuntimeRemainingDays <= 14 && projectRuntimeTotalDays > 0
+          ? "critical"
+          : isProjectEndPhase
+            ? "endphase"
+            : "normal";
     const showProjectCreatedMarker =
       projectCreatedDate &&
       projectTimelineStartDate &&
@@ -34810,6 +34818,7 @@ await addProjectLogbookEntry(
                       <div className={styles.projectRuntimeTimelineTrack}>
                         <span
                           className={styles.projectRuntimeTimelineFill}
+                          data-state={projectRuntimeTimelineState}
                           style={{ width: `${projectTimelineTodayPercent}%` }}
                         />
                         {showProjectCreatedMarker && (
