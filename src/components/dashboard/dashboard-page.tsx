@@ -12326,6 +12326,19 @@ export function DashboardPage() {
       setIsNotificationsOpen(false);
     }
 
+    if (notification.linkTarget === "project-endphase" && notification.linkTargetId) {
+      const notificationProject = heroProjects.find((project) => project.id === notification.linkTargetId);
+      if (notificationProject) {
+        openProjectFile(notificationProject, { tab: "logbook" });
+      } else {
+        setSelectedProjectFileId(notification.linkTargetId);
+        setProjectFileTab("logbook");
+        setActiveTab("projectsSolutions");
+      }
+      setOpenSidebarMenus({ projectsSolutions: true });
+      setIsNotificationsOpen(false);
+    }
+
     if (notification.linkTarget === "absence-request" && notification.linkTargetId) {
       let targetAbsence = absences.find(
         (absence) => (absence.requestGroupId || absence.id) === notification.linkTargetId
