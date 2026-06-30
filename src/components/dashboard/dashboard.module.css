@@ -2945,6 +2945,7 @@
 
 .invoiceStatusChip {
   align-items: center;
+  border: 1px solid #cbd5e1;
   border-radius: 999px;
   display: inline-flex;
   font-size: 0.78rem;
@@ -2956,34 +2957,34 @@
 }
 
 .invoiceStatusChip[data-status="Entwurf"] {
-  background: #fef3c7;
-  border: 1px solid #facc15;
-  color: #92400e;
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #9a3412;
 }
 
 .invoiceStatusChip[data-status="Forecast"] {
-  background: #dbeafe;
-  border: 1px solid #93c5fd;
+  background: #eff6ff;
+  border-color: #bfdbfe;
   color: #1d4ed8;
 }
 
 .invoiceStatusChip[data-status="Angebot geplant"] {
-  background: #fef3c7;
-  border: 1px solid #facc15;
-  color: #92400e;
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #9a3412;
 }
 
 .invoiceStatusChip[data-status="Erstellt"] {
-  background: #e0f2fe;
-  border: 1px solid #93c5fd;
+  background: #eff6ff;
+  border-color: #bfdbfe;
   color: #075985;
 }
 
 .invoiceStatusChip[data-status="Fakturiert"],
 .invoiceStatusChip[data-status="Gewonnen"],
 .invoiceStatusChip[data-status="Bezahlt"] {
-  background: #dcfce7;
-  border: 1px solid #86efac;
+  background: #ecfdf5;
+  border-color: #a7f3d0;
   color: #047857;
 }
 
@@ -3730,12 +3731,12 @@
 }
 
 .deleteButton {
-  border: 1px solid #fecaca;
-  background: #fff1f2;
-  color: #b91c1c;
+  background: linear-gradient(180deg, #fff7f7 0%, #fff1f2 100%);
+  border: 1px solid #fecdd3;
   border-radius: 10px;
+  color: #b91c1c;
   padding: 7px 10px;
-  font-weight: 700;
+  font-weight: 850;
   cursor: pointer;
 }
 
@@ -8164,14 +8165,16 @@
 }
 
 .secondaryButton {
-  background: rgba(255, 255, 255, 0.88);
-  border-color: rgba(148, 163, 184, 0.38);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border-color: #bfdbfe;
+  color: #153a6b;
+  font-weight: 850;
 }
 
 .secondaryButton:hover {
-  background: #f8fbff;
+  background: linear-gradient(180deg, #ffffff 0%, #eef6ff 100%);
   border-color: #93c5fd;
-  color: #1d4ed8;
+  color: #0f5db8;
 }
 
 .card,
@@ -11390,19 +11393,6 @@
   grid-column: 1 / -1;
 }
 
-.projectTimeTable td:last-child .timeEntryEditButton:first-child,
-.projectTimeTable td:last-child .timeEntryEditButton:nth-child(3) {
-  background: #f8fbff;
-  border-color: #9ec5fe;
-  color: #0f3b82;
-}
-
-.projectTimeTable td:last-child .timeEntryEditButton:last-child {
-  background: #fff7f7;
-  border-color: #fecaca;
-  color: #991b1b;
-}
-
 .projectTimeTable tr[data-approval="requested"] td {
   background: #fffbeb;
 }
@@ -12571,19 +12561,20 @@
 }
 
 .timeEntryEditButton {
-  background: #eef6ff;
-  border: 1px solid #c8d7ea;
-  border-radius: 8px;
-  color: #0f172a;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  color: #153a6b;
   cursor: pointer;
   font: inherit;
-  font-weight: 800;
+  font-weight: 850;
   padding: 7px 10px;
 }
 
 .timeEntryEditButton:hover:not(:disabled) {
-  border-color: #009ca6;
-  color: #009ca6;
+  background: linear-gradient(180deg, #ffffff 0%, #eef6ff 100%);
+  border-color: #93c5fd;
+  color: #0f5db8;
 }
 
 .timeEntryEditButton:disabled {
@@ -12746,6 +12737,42 @@
 
 .projectRuntimeLegend span[data-state="active"] {
   color: #b45309;
+}
+
+.projectTimeTable td:last-child .tableActionGroup {
+  align-items: stretch;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 280px;
+}
+
+.projectTimeTable td:last-child .timeEntryEditButton,
+.projectTimeTable td:last-child .deleteButton {
+  align-items: center;
+  border-radius: 10px;
+  display: inline-flex;
+  font-size: 0.84rem;
+  justify-content: center;
+  line-height: 1.15;
+  min-height: 36px;
+  padding: 7px 10px;
+  text-align: center;
+  white-space: normal;
+  width: 100%;
+}
+
+.projectTimeTable td:last-child .deleteButton {
+  background: linear-gradient(180deg, #fff7f7 0%, #fff1f2 100%);
+  border-color: #fecdd3;
+  color: #b91c1c;
+}
+
+.invoiceStatusChip[data-status="Storniert"],
+.invoiceStatusChip[data-status="Stornorechnung"] {
+  background: #fff1f2;
+  border-color: #fecdd3;
+  color: #991b1b;
 }
 
 .projectRuntimeLegend span[data-edge="start"] {
