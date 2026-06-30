@@ -9621,7 +9621,7 @@
 }
 
 .customerLogTask {
-  color: #0a7c86;
+  color: #334155;
 }
 
 .customerLogAttachments {
@@ -9650,7 +9650,7 @@
 
 .customerAvatar {
   align-items: center;
-  background: linear-gradient(135deg, #0a9da3, #3169f5);
+  background: linear-gradient(135deg, #334155, #111827);
   border-radius: 999px;
   color: #ffffff;
   display: inline-flex;
@@ -9697,7 +9697,7 @@
 
 .customerInfoCard h2 {
   border-bottom: 1px solid #d8e0ea;
-  border-top: 3px solid #0a9da3;
+  border-top: 3px solid #1f2937;
   color: #0f172a;
   display: inline-block;
   font-size: 0.9rem;
@@ -9961,9 +9961,9 @@
 }
 
 .projectOfferPlanningButton[data-state="open"] {
-  --project-planning-pulse-rgb: 10, 157, 163;
-  background: #0a9da3;
-  border-color: #0a9da3;
+  --project-planning-pulse-rgb: 31, 41, 55;
+  background: #1f2937;
+  border-color: #1f2937;
 }
 
 .projectOfferPlanningButton[data-state="partial"] {
@@ -10381,8 +10381,8 @@
 
 .projectStatusMenu button:hover,
 .projectStatusMenu button[data-active="true"] {
-  background: #e8fbfc;
-  color: #009ca6;
+  background: #eef2f7;
+  color: #0f172a;
 }
 
 .projectStatusMenu strong {
@@ -10959,7 +10959,7 @@
 }
 
 .projectMetricCard h2 {
-  border-top: 3px solid #0a9da3;
+  border-top: 3px solid #1f2937;
   color: #0f172a;
   display: inline-block;
   font-size: 0.9rem;
@@ -11804,9 +11804,9 @@
 
 .projectPlanningCapacityBar span {
   align-items: center;
-  background: linear-gradient(90deg, #00a3ad 0%, #2f80ed 72%, #7c3aed 100%);
+  background: linear-gradient(90deg, #1f2937 0%, #2563eb 72%, #4f46e5 100%);
   border-radius: inherit;
-  box-shadow: 0 0 12px rgba(0, 163, 173, 0.28);
+  box-shadow: 0 0 12px rgba(37, 99, 235, 0.22);
   display: flex;
   height: 100%;
   justify-content: flex-end;
@@ -12017,9 +12017,9 @@
 }
 
 .projectBudgetModeButton[data-active="true"] {
-  background: #e6f8fa;
-  border-color: #009ca6;
-  box-shadow: inset 3px 0 0 #009ca6;
+  background: #eef2f7;
+  border-color: #94a3b8;
+  box-shadow: inset 3px 0 0 #1f2937;
 }
 
 .projectBudgetModeButton strong {
@@ -12504,7 +12504,7 @@
 .planningHistoryList article {
   background: #f8fbff;
   border: 1px solid #d8e0ea;
-  border-left: 4px solid #009ca6;
+  border-left: 4px solid #475569;
   border-radius: 10px;
   display: grid;
   gap: 4px;
