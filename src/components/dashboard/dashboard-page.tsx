@@ -124,6 +124,7 @@ type AppTab =
   | "breakManagement"
   | "planningBoard"
   | "processAutomation"
+  | "statusAutomation"
   | "winterService"
   | "generalActivityReports"
   | "archive"
@@ -2759,6 +2760,7 @@ const allAppTabs: AppTab[] = [
   "breakManagement",
   "planningBoard",
   "processAutomation",
+  "statusAutomation",
   "winterService",
   "generalActivityReports",
   "archive",
@@ -3059,7 +3061,7 @@ function SidebarIcon({ tab }: { tab: AppTab }) {
     );
   }
 
-  if (tab === "processAutomation" || tab === "winterService" || tab === "generalActivityReports") {
+  if (tab === "processAutomation" || tab === "statusAutomation" || tab === "winterService" || tab === "generalActivityReports") {
     return (
       <svg {...common}>
         <path d="M12 3v3M12 18v3M4.2 7.5l2.6 1.5M17.2 15l2.6 1.5M4.2 16.5l2.6-1.5M17.2 9l2.6-1.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
@@ -21173,6 +21175,7 @@ await addProjectLogbookEntry(
     timeCategories: "Zeitkategorien",
     breakManagement: "Pausenverwaltung",
     processAutomation: "Prozess/Automation",
+    statusAutomation: "Status-Automatisierung",
     winterService: "Winterdienst",
     generalActivityReports: "Allg. T-Berichte",
   };
@@ -28199,6 +28202,82 @@ await addProjectLogbookEntry(
   }
 
   function renderProcessAutomation() {
+    const winterServiceProjectCount = heroProjects.filter(isWinterServiceProject).length;
+    const generalActivityProjectCount = heroProjects.filter(
+      (project) =>
+        isRecurringProjectKindValue(getProjectKind(project)) &&
+        isImmocareProject(project) &&
+        !isWinterServiceProject(project)
+    ).length;
+    const statusAutomationRuleCount = projectPipelineAutomationBlueprint.length;
+    const automationModules: Array<{
+      tab: AppTab;
+      kicker: string;
+      title: string;
+      value: string;
+      body: string;
+      action: string;
+      state: "good" | "ok" | "low";
+    }> = [
+      {
+        tab: "winterService",
+        kicker: "Tätigkeitsberichte",
+        title: "Winterdienst",
+        value: String(winterServiceProjectCount),
+        body: "Kontrolle und Versand von Winterdienst-Berichten mit Bildern, PDF und Empfängerprüfung.",
+        action: "Winterdienst öffnen",
+        state: winterServiceProjectCount > 0 ? "ok" : "good",
+      },
+      {
+        tab: "generalActivityReports",
+        kicker: "Dauerläufer",
+        title: "Allg. T-Berichte",
+        value: String(generalActivityProjectCount),
+        body: "Versandzentrale für Tätigkeitsberichte aus Dauerläuferprojekten ohne Winterdienst.",
+        action: "T-Berichte öffnen",
+        state: generalActivityProjectCount > 0 ? "ok" : "good",
+      },
+      {
+        tab: "statusAutomation",
+        kicker: "Projektpipeline",
+        title: "Status-Automatisierung",
+        value: String(statusAutomationRuleCount),
+        body: "Regelübersicht für automatische und bestätigte Statuswechsel in den Projektpipelines.",
+        action: "Regeln öffnen",
+        state: "low",
+      },
+    ];
+
+    return (
+      <section className={`${styles.dashboardSection} ${styles.processAutomationPage} ${styles.processAutomationHub}`}>
+        <div className={styles.topline}>
+          <div>
+            <p className={styles.eyebrow}>Prozess/Automation</p>
+            <h1>Automation</h1>
+            <p className={styles.subline}>
+              Arbeitszentrale für automatische Abläufe, Prüfungen und Versandprozesse.
+            </p>
+          </div>
+        </div>
+
+        <section className={styles.processAutomationModuleGrid} aria-label="Automationsmodule">
+          {automationModules.map((module) => (
+            <article key={module.tab} className={styles.processAutomationModuleCard} data-state={module.state}>
+              <span>{module.kicker}</span>
+              <strong>{module.title}</strong>
+              <b>{module.value}</b>
+              <p>{module.body}</p>
+              <button type="button" onClick={() => openMainView(module.tab)}>
+                {module.action}
+              </button>
+            </article>
+          ))}
+        </section>
+      </section>
+    );
+  }
+
+  function renderStatusAutomation() {
     const regularRules = projectPipelineAutomationBlueprint.filter((rule) => rule.behavior !== "Monatslogik");
     const monthlyRules = projectPipelineAutomationBlueprint.filter((rule) => rule.behavior === "Monatslogik");
     const automaticRuleCount = projectPipelineAutomationBlueprint.filter((rule) => rule.behavior === "Automatisch").length;
@@ -45833,6 +45912,7 @@ await addProjectLogbookEntry(
               const children: Array<{ id: AppTab; label: string }> = [
                 { id: "winterService", label: "Winterdienst" },
                 { id: "generalActivityReports", label: "Allg. T-Berichte" },
+                { id: "statusAutomation", label: "Status-Automatisierung" },
               ];
               const isActiveGroup =
                 activeTab === tab || children.some((item) => item.id === activeTab);
@@ -47512,6 +47592,8 @@ await addProjectLogbookEntry(
             renderAccounting()
           ) : activeTab === "processAutomation" ? (
             renderProcessAutomation()
+          ) : activeTab === "statusAutomation" ? (
+            renderStatusAutomation()
           ) : activeTab === "winterService" ? (
             renderWinterServiceAutomation()
           ) : activeTab === "generalActivityReports" ? (
