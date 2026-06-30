@@ -9344,32 +9344,24 @@
 
 .customerFileSubNav button:hover,
 .customerFileSubNav button[data-active="true"] {
-  background: #f1f5f9;
+  background: #f3f4f6;
   color: #0f172a;
 }
 
 .customerFileSubNav button[data-active="true"] {
-  background: linear-gradient(90deg, rgba(10, 157, 163, 0.15) 0%, #f8fafc 100%);
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+  background: #eef2f7;
+  box-shadow: inset 3px 0 0 #1f2937;
   color: #0f172a;
   font-weight: 900;
 }
 
 .customerFileSubNav button[data-active="true"]::before {
-  background: #0a9da3;
-  border-radius: 999px;
-  content: "";
-  height: 18px;
-  left: 0;
-  position: absolute;
-  top: 50%;
-  transform: translate(-5px, -50%);
-  width: 4px;
+  content: none;
 }
 
 .customerFileSubNav button strong {
   align-items: center;
-  background: #0a9da3;
+  background: #1f2937;
   border-radius: 999px;
   color: #ffffff;
   display: inline-flex;
@@ -9382,7 +9374,7 @@
 }
 
 .customerFileSubNav button[data-active="true"] strong {
-  background: #0f766e;
+  background: #111827;
 }
 
 .customerFileMain {
