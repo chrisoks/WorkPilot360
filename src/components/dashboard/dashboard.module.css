@@ -9693,17 +9693,18 @@
   background: #ffffff;
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
+  padding: 16px 18px;
 }
 
 .customerInfoCard h2 {
   border-bottom: 1px solid #d8e0ea;
   border-top: 3px solid #1f2937;
   color: #0f172a;
-  display: inline-block;
+  display: block;
   font-size: 0.9rem;
   font-weight: 900;
   margin: 0 0 12px;
-  padding: 10px 12px 9px;
+  padding: 10px 0 9px;
   text-transform: uppercase;
 }
 
@@ -10954,18 +10955,23 @@
 }
 
 .projectMetricCard {
+  background: #ffffff;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
   display: grid;
-  gap: 8px;
+  gap: 12px;
+  padding: 16px 18px;
 }
 
 .projectMetricCard h2 {
+  border-bottom: 1px solid #d8e0ea;
   border-top: 3px solid #1f2937;
   color: #0f172a;
-  display: inline-block;
+  display: block;
   font-size: 0.9rem;
   font-weight: 900;
-  margin: 0 0 2px;
-  padding: 9px 12px 0;
+  margin: 0;
+  padding: 10px 0 9px;
 }
 
 .projectFileFields {
@@ -12581,7 +12587,7 @@
 }
 
 .projectTimeBudget {
-  background: #f8fafc;
+  background: #ffffff;
   border: 1px solid #d8e0ea;
   border-radius: 8px;
   display: grid;
