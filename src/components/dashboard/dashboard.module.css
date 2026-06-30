@@ -10163,7 +10163,7 @@
 }
 
 .projectProgressTracker {
-  --progress-step-bg: linear-gradient(90deg, #00a3ad 0%, #2f80ed 68%, #7c3aed 100%);
+  --progress-step-bg: linear-gradient(90deg, #0f9f6e 0%, #13a37b 100%);
   align-items: stretch;
   background: #ffffff;
   border: 1px solid #dbe7f4;
@@ -10219,43 +10219,43 @@
 }
 
 .projectProgressTracker button[data-state="done"]:nth-child(1) {
-  --progress-step-bg: linear-gradient(90deg, #00a3ad, #0aa9c5);
-  --progress-check-color: #00a3ad;
+  --progress-step-bg: linear-gradient(90deg, #0f9f6e, #13a37b);
+  --progress-check-color: #0f9f6e;
 }
 
 .projectProgressTracker button[data-state="done"]:nth-child(2) {
-  --progress-step-bg: linear-gradient(90deg, #0aa9c5, #1689dc);
-  --progress-check-color: #1689dc;
+  --progress-step-bg: linear-gradient(90deg, #109d70, #14a279);
+  --progress-check-color: #109d70;
 }
 
 .projectProgressTracker button[data-state="done"]:nth-child(3) {
-  --progress-step-bg: linear-gradient(90deg, #1689dc, #2f6fe8);
-  --progress-check-color: #2f6fe8;
+  --progress-step-bg: linear-gradient(90deg, #119b72, #15a077);
+  --progress-check-color: #119b72;
 }
 
 .projectProgressTracker button[data-state="done"]:nth-child(4) {
-  --progress-step-bg: linear-gradient(90deg, #2f6fe8, #4358ea);
-  --progress-check-color: #4358ea;
+  --progress-step-bg: linear-gradient(90deg, #129974, #169e76);
+  --progress-check-color: #129974;
 }
 
 .projectProgressTracker button[data-state="done"]:nth-child(5) {
-  --progress-step-bg: linear-gradient(90deg, #4358ea, #623be5);
-  --progress-check-color: #623be5;
+  --progress-step-bg: linear-gradient(90deg, #139776, #179c74);
+  --progress-check-color: #139776;
 }
 
 .projectProgressTracker button[data-state="done"]:nth-child(6) {
-  --progress-step-bg: linear-gradient(90deg, #623be5, #6d36e8);
-  --progress-check-color: #6d36e8;
+  --progress-step-bg: linear-gradient(90deg, #149578, #189a72);
+  --progress-check-color: #149578;
 }
 
 .projectProgressTracker button[data-state="done"]:nth-child(7) {
-  --progress-step-bg: linear-gradient(90deg, #6d36e8, #7438ea);
-  --progress-check-color: #7438ea;
+  --progress-step-bg: linear-gradient(90deg, #15937a, #199870);
+  --progress-check-color: #15937a;
 }
 
 .projectProgressTracker button[data-state="done"]:nth-child(8) {
-  --progress-step-bg: linear-gradient(90deg, #7438ea, #7c3aed);
-  --progress-check-color: #7c3aed;
+  --progress-step-bg: linear-gradient(90deg, #16917c, #1a966f);
+  --progress-check-color: #16917c;
 }
 
 .projectProgressTracker button[data-state="partial"] {
