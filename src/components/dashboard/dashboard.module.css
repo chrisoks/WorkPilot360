@@ -4782,7 +4782,7 @@
 
 .potentialStatusList {
   gap: 16px;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   padding-right: 6px;
 }
 
@@ -10179,6 +10179,18 @@
 .projectUpsellButton[data-state="offered"]:hover {
   background: #16a34a;
   border-color: #15803d;
+  color: #ffffff;
+}
+
+.projectUpsellButton[data-state="completed"] {
+  background: #15803d;
+  border-color: #166534;
+  color: #ffffff;
+}
+
+.projectUpsellButton[data-state="completed"]:hover {
+  background: #166534;
+  border-color: #14532d;
   color: #ffffff;
 }
 

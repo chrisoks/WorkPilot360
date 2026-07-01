@@ -1837,7 +1837,7 @@ type ProjectLogbookEntrySummary = {
   }>;
 };
 
-type ProjectPotentialStatus = "open" | "follow_up" | "offered" | "lost";
+type ProjectPotentialStatus = "open" | "follow_up" | "offered" | "lost" | "completed";
 type ProjectPotentialPriority = "low" | "normal" | "high";
 
 type ProjectPotential = {
@@ -15678,7 +15678,8 @@ export function DashboardPage() {
 
   function getPotentialStatusLabel(potential: ProjectPotential) {
     if (potential.status === "offered") return "Angeboten";
-    if (potential.status === "lost") return "Kein Interesse";
+    if (potential.status === "completed") return "Durchgeführt";
+    if (potential.status === "lost") return "Aktuell kein Interesse";
     if (potential.status === "follow_up") {
       const followUpTime = potential.followUpAt ? new Date(potential.followUpAt).getTime() : NaN;
       return Number.isFinite(followUpTime) && followUpTime <= Date.now()
@@ -15686,7 +15687,7 @@ export function DashboardPage() {
         : "Nachfassen geplant";
     }
 
-    return "Offen";
+    return "Festgestellt";
   }
 
   function getPotentialPriorityLabel(priority: ProjectPotentialPriority) {
@@ -15781,7 +15782,7 @@ export function DashboardPage() {
       changes.push(`Prioritaet: ${getPotentialPriorityLabel(potential.priority)} -> ${getPotentialPriorityLabel(potentialDraft.priority)}`);
     }
     if ((potential.nextStep || "") !== potentialDraft.nextStep) changes.push("Naechster Schritt");
-    if ((potential.lostReason || "") !== potentialDraft.lostReason) changes.push("Grund bei Kein Interesse");
+    if ((potential.lostReason || "") !== potentialDraft.lostReason) changes.push("Grund bei aktuell kein Interesse");
 
     if (potentialDraft.note.trim()) {
       changes.push(`Notiz: ${potentialDraft.note.trim()}`);
@@ -15892,7 +15893,7 @@ export function DashboardPage() {
 
     await updateProjectPotential(potential, "lost", { note });
     if (project) {
-      await addProjectLogbookEntry(project.id, "Zusatzverkauf: Kein Interesse", note);
+      await addProjectLogbookEntry(project.id, "Zusatzverkauf: Aktuell kein Interesse", note);
     }
   }
 
@@ -23053,7 +23054,7 @@ await addProjectLogbookEntry(
         second.ageDays - first.ageDays ||
         `${second.entry.date} ${second.entry.endTime}`.localeCompare(`${first.entry.date} ${first.entry.endTime}`)
     );
-  const salesPotentialStatusRows = (["open", "follow_up", "offered", "lost"] as ProjectPotentialStatus[])
+  const salesPotentialStatusRows = (["open", "follow_up", "offered", "completed", "lost"] as ProjectPotentialStatus[])
     .map((status) => {
       const rows = salesPotentialRows.filter((potential) => potential.status === status);
       return {
@@ -23061,11 +23062,13 @@ await addProjectLogbookEntry(
         label:
           status === "offered"
             ? "Angeboten"
-            : status === "lost"
-              ? "Kein Interesse"
-              : status === "follow_up"
-                ? "Nachfassen"
-                : "Offen",
+            : status === "completed"
+              ? "Durchgeführt"
+              : status === "lost"
+                ? "Aktuell kein Interesse"
+                : status === "follow_up"
+                  ? "Nachfassen"
+                  : "Festgestellt",
         count: rows.length,
         value: rows.reduce((sum, potential) => sum + parseReportAmount(potential.estimatedValue), 0),
       };
@@ -29133,9 +29136,11 @@ await addProjectLogbookEntry(
                                 ? "Nachfassen geplant"
                                 : potential.status === "offered"
                                   ? "Angeboten"
-                                  : potential.status === "lost"
-                                    ? "Kein Interesse"
-                                    : "Offen"}
+                                  : potential.status === "completed"
+                                    ? "Durchgeführt"
+                                    : potential.status === "lost"
+                                      ? "Aktuell kein Interesse"
+                                      : "Festgestellt"}
                             </td>
                             <td>{potential.description}</td>
                             <td>{potential.projectLabel || potential.projectId}</td>
@@ -29295,11 +29300,12 @@ await addProjectLogbookEntry(
             <div className={`${styles.projectPipelineStatusList} ${styles.potentialStatusList}`}>
               {[
                 { label: "Alle", value: "all" as const },
-                { label: "Offen", value: "open" as const },
+                { label: "Festgestellt", value: "open" as const },
                 { label: "Nachfassen", value: "follow_up" as const },
                 { label: "Fällig", value: "due" as const },
                 { label: "Angeboten", value: "offered" as const },
-                { label: "Kein Interesse", value: "lost" as const },
+                { label: "Durchgeführt", value: "completed" as const },
+                { label: "Aktuell kein Interesse", value: "lost" as const },
               ].map((item) => {
                 const count = getPotentialStatusCount(item.value);
 
@@ -29495,6 +29501,7 @@ await addProjectLogbookEntry(
         "Zusatzverkauf: Zusatzverkauf nachfassen",
         // Legacy title from the earlier UI label; keep it so old logbook entries still resolve the upsell state.
         "Zusatzverkauf: Verkaufschance nachfassen",
+        "Zusatzverkauf: Aktuell kein Interesse",
         "Zusatzverkauf: Kein Interesse",
       ].includes(entry.title)
     );
@@ -29506,6 +29513,7 @@ await addProjectLogbookEntry(
     const activeProjectPotential =
       projectPotentialsForFile.find((potential) => ["open", "follow_up"].includes(potential.status)) ??
       null;
+    const hasProjectUpsellCompleted = projectPotentialsForFile.some((potential) => potential.status === "completed");
     const hasProjectUpsellOffer = projectPotentialsForFile.some((potential) => potential.status === "offered") ||
       projectUpsellResolutionEntries.some(
       (entry) => entry.title === "Zusatzverkauf: Angebot erstellt"
@@ -29522,7 +29530,9 @@ await addProjectLogbookEntry(
     const hasOpenProjectUpsell =
       Boolean(activeProjectPotential && activeProjectPotential.status === "open") ||
       projectUpsellSourceEntries.length > projectUpsellResolutionEntries.length;
-    const projectUpsellState = hasProjectUpsellOffer
+    const projectUpsellState = hasProjectUpsellCompleted
+      ? "completed"
+      : hasProjectUpsellOffer
       ? "offered"
       : hasProjectUpsellPotential
         ? "potential"
@@ -29532,6 +29542,8 @@ await addProjectLogbookEntry(
     const projectUpsellButtonLabel =
       !projectUpsellState
         ? "Kein Zusatzverkauf"
+        : projectUpsellState === "completed"
+        ? "Zusatzverkauf durchgeführt"
         : projectUpsellState === "offered"
         ? "Zusatzverkauf angeboten"
         : projectUpsellState === "potential"
@@ -29643,7 +29655,7 @@ await addProjectLogbookEntry(
       ["open", "follow_up"].includes(potential.status)
     );
     const completedProjectPotentialsForFile = projectPotentialsForFile.filter((potential) =>
-      ["offered", "lost"].includes(potential.status)
+      ["offered", "lost", "completed"].includes(potential.status)
     );
     const projectPlanningHistory = projectPlanningHistoryEntries
       .flatMap((entry) =>
@@ -32813,7 +32825,7 @@ await addProjectLogbookEntry(
                                         className={styles.timeEntryDeleteButton}
                                         onClick={() => void closePotential(potential)}
                                       >
-                                        Kein Interesse
+                                        Aktuell kein Interesse
                                       </button>
                                     </>
                                   ) : null}
@@ -46962,11 +46974,12 @@ await addProjectLogbookEntry(
                       <div className={`${styles.projectPipelineStatusList} ${styles.potentialStatusList}`}>
                         {[
                           { label: "Alle", value: "all" as const },
-                          { label: "Offen", value: "open" as const },
+                          { label: "Festgestellt", value: "open" as const },
                           { label: "Nachfassen", value: "follow_up" as const },
                           { label: "Fällig", value: "due" as const },
                           { label: "Angeboten", value: "offered" as const },
-                          { label: "Kein Interesse", value: "lost" as const },
+                          { label: "Durchgeführt", value: "completed" as const },
+                          { label: "Aktuell kein Interesse", value: "lost" as const },
                         ].map((item) => {
                           const count = getPotentialStatusCount(item.value);
 
@@ -47057,7 +47070,7 @@ await addProjectLogbookEntry(
                                                 className={styles.timeEntryEditButton}
                                                 onClick={() => void closePotential(potential)}
                                               >
-                                                Kein Interesse
+                                                Aktuell kein Interesse
                                               </button>
                                             </>
                                           ) : null}
@@ -52814,10 +52827,13 @@ await addProjectLogbookEntry(
                       }))
                     }
                   >
-                    <option value="open">Offen</option>
+                    <option value="open">Festgestellt</option>
                     <option value="follow_up">Nachfassen geplant</option>
                     <option value="offered">Angeboten</option>
-                    <option value="lost">Kein Interesse</option>
+                    <option value="completed" disabled={potentialDraft.status !== "completed"}>
+                      Durchgeführt
+                    </option>
+                    <option value="lost">Aktuell kein Interesse</option>
                   </select>
                 </label>
                 <label>
@@ -52871,7 +52887,7 @@ await addProjectLogbookEntry(
                 </label>
                 {potentialDraft.status === "lost" ? (
                   <label className={styles.fullWidth}>
-                    Grund bei Kein Interesse
+                    Grund bei aktuell kein Interesse
                     <textarea
                       value={potentialDraft.lostReason}
                       onChange={(event) =>

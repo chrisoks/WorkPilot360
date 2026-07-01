@@ -51,7 +51,7 @@ function isNoUpsellDescription(value: string) {
 
 function cleanStatus(value: unknown) {
   const status = cleanString(value);
-  return ["open", "follow_up", "offered", "lost"].includes(status) ? status : "open";
+  return ["open", "follow_up", "offered", "lost", "completed"].includes(status) ? status : "open";
 }
 
 function cleanPriority(value: unknown) {
@@ -451,7 +451,7 @@ export async function PATCH(req: Request) {
         ELSE "followUpAt"
       END,
       "offeredAt" = CASE WHEN ${nextStatus} = 'offered' THEN ${now} ELSE "offeredAt" END,
-      "closedAt" = CASE WHEN ${nextStatus} IN ('offered', 'lost') THEN ${now} ELSE "closedAt" END,
+      "closedAt" = CASE WHEN ${nextStatus} IN ('offered', 'lost', 'completed') THEN ${now} ELSE "closedAt" END,
       "history" = ${JSON.stringify(history)}::jsonb,
       "updatedAt" = ${now}
     WHERE "id" = ${id}

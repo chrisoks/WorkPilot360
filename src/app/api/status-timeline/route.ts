@@ -156,7 +156,7 @@ async function seedCurrentStatuses(organizationId: string) {
     const statusStartedAt = getStatusStartedAtFromHistory(
       potential.history,
       potential.status,
-      ["open", "follow_up", "offered", "lost"],
+      ["open", "follow_up", "offered", "completed", "lost"],
       potential.createdAt
     );
     await seedCurrentStatusTimeline({
