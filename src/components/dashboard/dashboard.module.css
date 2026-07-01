@@ -8719,6 +8719,22 @@
   max-width: 760px;
 }
 
+.dailyImpulsePanel {
+  align-items: flex-start;
+}
+
+.dailyImpulsePanel h2 {
+  font-size: clamp(1.35rem, 1.9vw, 2rem);
+  line-height: 1.22;
+  max-width: 1100px;
+}
+
+.dailyImpulsePanel p:last-child {
+  color: #94a3b8;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+}
+
 .plannedModule {
   align-items: stretch;
   flex-direction: column;
@@ -20407,10 +20423,6 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.employeeStampSummary[data-layout="management"] {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
 .employeeStampSummary article {
   background: #f8fafc;
   border: 1px solid #dbe3ee;
@@ -20420,19 +20432,11 @@
 }
 
 .employeeStampSummary span,
-.employeeStampSummary small,
 .employeeStampHeader > span,
 .employeeStampPerson small {
   color: #64748b;
   font-size: 0.82rem;
   font-weight: 800;
-}
-
-.employeeStampSummary small {
-  display: block;
-  line-height: 1.25;
-  margin-top: 7px;
-  overflow-wrap: anywhere;
 }
 
 .employeeStampSummary strong {
@@ -20700,6 +20704,31 @@
   color: #4d5d72;
   font-size: 0.91rem;
   line-height: 1.46;
+}
+
+.managementDashboardKpiCard {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.managementDashboardKpiCard .moduleCardTop {
+  gap: 12px;
+}
+
+.managementDashboardKpiCard .moduleCardTop strong {
+  max-width: 64%;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.managementDashboardKpiCard h2 {
+  margin-top: 10px;
+}
+
+.managementDashboardKpiCard p {
+  font-weight: 850;
+  margin: 0;
 }
 
 .moduleAction {

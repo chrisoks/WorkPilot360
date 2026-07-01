@@ -10,6 +10,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
+import { getDashboardDailyImpulse } from "@/lib/dashboard-daily-impulses";
 import styles from "./dashboard.module.css";
 
 const DOCUMENT_PREVIEW_WIDTH = 595;
@@ -24353,29 +24354,38 @@ await addProjectLogbookEntry(
   const dashboardCurrentMonthCriticalFeedback = dashboardCurrentMonthFeedback.filter((feedback) => feedback.hotAlert).length;
   const managementDashboardKpis = [
     {
-      label: "Umsatz & Forecast",
+      kicker: "Finanzen",
+      title: "Umsatz & Forecast",
       value: formatMoney(dashboardCurrentMonthRevenue),
       detail: `Forecast bis Monatsende ${formatMoney(dashboardCurrentMonthForecast)}`,
+      tone: "blue",
     },
     {
-      label: "Produktivität",
+      kicker: "Leistung",
+      title: "Produktivität",
       value: formatPercent(dashboardPreviousWorkdayProductivity),
       detail: `Monat bisher ${formatPercent(dashboardCurrentMonthProductivity)}`,
+      tone: "teal",
     },
     {
-      label: "Projektlage",
+      kicker: "Projekte",
+      title: "Projektlage",
       value: `${dashboardActiveProjects.length}`,
       detail: `${longPipelineStatusRows.length} > 14 Tg. · ${dashboardBillingCheckCount} in Prüfung · ${dashboardPipelineBottleneckLabel}`,
+      tone: "amber",
     },
     {
-      label: "Vertrieb & Kunde",
+      kicker: "Vertrieb",
+      title: "Vertrieb & Kunde",
       value: `${dashboardCurrentMonthOffers.length} Angebote`,
       detail:
         dashboardCurrentMonthFeedback.length > 0
           ? `${formatMoney(dashboardCurrentMonthOfferVolume)} · Zufriedenheit ${formatHours(dashboardCurrentMonthRating)}/5 · ${dashboardCurrentMonthCriticalFeedback} kritisch`
           : `${formatMoney(dashboardCurrentMonthOfferVolume)} · noch keine Bewertung im Monat`,
+      tone: "rose",
     },
   ];
+  const dashboardDailyImpulse = getDashboardDailyImpulse(activeUser?.role);
   const projectMapRows = reportProjectRows
     .filter((row) => row.project.address || row.project.customer)
     .slice(0, 20)
@@ -46468,34 +46478,19 @@ await addProjectLogbookEntry(
 
               <section className={styles.dashboardMainGrid}>
                 <section className={styles.employeeStampPanel}>
-                  <div
-                    className={styles.employeeStampSummary}
-                    data-layout={activeUser?.role === "GESCHAEFTSFUEHRER" ? "management" : "team"}
-                  >
-                    {activeUser?.role === "GESCHAEFTSFUEHRER" ? (
-                      managementDashboardKpis.map((kpi) => (
-                        <article key={kpi.label}>
-                          <span>{kpi.label}</span>
-                          <strong>{kpi.value}</strong>
-                          <small>{kpi.detail}</small>
-                        </article>
-                      ))
-                    ) : (
-                      <>
-                        <article>
-                          <span>Angestempelt</span>
-                          <strong>{stampedDashboardEmployees.length}</strong>
-                        </article>
-                        <article>
-                          <span>Nicht eingestempelt</span>
-                          <strong>{Math.max(0, dashboardEmployees.length - stampedDashboardEmployees.length)}</strong>
-                        </article>
-                        <article>
-                          <span>Geplant abwesend</span>
-                          <strong>{dashboardAbsentEmployees.length}</strong>
-                        </article>
-                      </>
-                    )}
+                  <div className={styles.employeeStampSummary}>
+                    <article>
+                      <span>Angestempelt</span>
+                      <strong>{stampedDashboardEmployees.length}</strong>
+                    </article>
+                    <article>
+                      <span>Nicht eingestempelt</span>
+                      <strong>{Math.max(0, dashboardEmployees.length - stampedDashboardEmployees.length)}</strong>
+                    </article>
+                    <article>
+                      <span>Geplant abwesend</span>
+                      <strong>{dashboardAbsentEmployees.length}</strong>
+                    </article>
                   </div>
 
                   <div className={styles.employeeStampHeader}>
@@ -46553,38 +46548,49 @@ await addProjectLogbookEntry(
                 </section>
 
                 <section className={styles.moduleGrid}>
-                  {overviewModules.slice(0, 4).map((module) => (
-                    <article key={module.title} className={styles.moduleCard} data-tone={module.tone}>
-                      <div className={styles.moduleCardTop}>
-                        <span>{module.kicker}</span>
-                        <strong>{module.value}</strong>
-                      </div>
-                      <h2>{module.title}</h2>
-                      <p>{module.body}</p>
-                      <button
-                        className={styles.moduleAction}
-                        type="button"
-                        onClick={() => setActiveTab(module.tab)}
-                      >
-                        {module.action}
-                      </button>
-                    </article>
-                  ))}
+                  {activeUser?.role === "GESCHAEFTSFUEHRER"
+                    ? managementDashboardKpis.map((kpi) => (
+                        <article
+                          key={kpi.title}
+                          className={`${styles.moduleCard} ${styles.managementDashboardKpiCard}`}
+                          data-tone={kpi.tone}
+                        >
+                          <div className={styles.moduleCardTop}>
+                            <span>{kpi.kicker}</span>
+                            <strong>{kpi.value}</strong>
+                          </div>
+                          <h2>{kpi.title}</h2>
+                          <p>{kpi.detail}</p>
+                        </article>
+                      ))
+                    : overviewModules.slice(0, 4).map((module) => (
+                        <article key={module.title} className={styles.moduleCard} data-tone={module.tone}>
+                          <div className={styles.moduleCardTop}>
+                            <span>{module.kicker}</span>
+                            <strong>{module.value}</strong>
+                          </div>
+                          <h2>{module.title}</h2>
+                          <p>{module.body}</p>
+                          <button
+                            className={styles.moduleAction}
+                            type="button"
+                            onClick={() => setActiveTab(module.tab)}
+                          >
+                            {module.action}
+                          </button>
+                        </article>
+                      ))}
                 </section>
               </section>
 
-              <section className={styles.nextBuildPanel}>
+              <section className={`${styles.nextBuildPanel} ${styles.dailyImpulsePanel}`}>
                 <div>
-                  <p className={styles.eyebrow}>Ausbaupfad</p>
-                  <h2>Nächster sinnvoller Schritt</h2>
+                  <p className={styles.eyebrow}>Tagesimpuls</p>
+                  <h2>{dashboardDailyImpulse.text}</h2>
                   <p>
-                    Aus Aufgaben und HERO-Projekten machen wir als naechstes echte Projekte mit
-                    Kundenstamm, Ansprechpartnern, Dokumentenmappe und kaufmännischem Status.
+                    {dashboardDailyImpulse.audienceLabel} · {dashboardDailyImpulse.periodLabel}
                   </p>
                 </div>
-                <button className={styles.primaryButton} onClick={() => setActiveTab("projectsSolutions")}>
-                  Projektmodul starten
-                </button>
               </section>
             </section>
           ) : activeTab === "settings" ? (
