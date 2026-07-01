@@ -5,6 +5,8 @@ const DEADLINE_SETTINGS_KEY = "deadlines";
 
 const DEFAULT_DEADLINE_SETTINGS = {
   offerFollowUpWorkdays: 5,
+  potentialDecisionReminderWorkdays: 1,
+  potentialDecisionEscalationWorkdays: 2,
   completedTaskArchiveDays: 5,
   interruptedWorkFollowUpDays: 2,
   interruptedWorkManagementEscalationDays: 7,
@@ -37,6 +39,18 @@ export function normalizeDeadlineSettings(value: unknown): DeadlineSettings {
       DEFAULT_DEADLINE_SETTINGS.offerFollowUpWorkdays,
       1,
       30
+    ),
+    potentialDecisionReminderWorkdays: clampInteger(
+      settings.potentialDecisionReminderWorkdays,
+      DEFAULT_DEADLINE_SETTINGS.potentialDecisionReminderWorkdays,
+      1,
+      30
+    ),
+    potentialDecisionEscalationWorkdays: clampInteger(
+      settings.potentialDecisionEscalationWorkdays,
+      DEFAULT_DEADLINE_SETTINGS.potentialDecisionEscalationWorkdays,
+      1,
+      60
     ),
     completedTaskArchiveDays: clampInteger(
       settings.completedTaskArchiveDays,
@@ -115,6 +129,10 @@ export async function saveDeadlineSettings(organizationId: string, input: Record
   const settings = normalizeDeadlineSettings({
     ...currentSettings,
     offerFollowUpWorkdays: input.offerFollowUpWorkdays ?? currentSettings.offerFollowUpWorkdays,
+    potentialDecisionReminderWorkdays:
+      input.potentialDecisionReminderWorkdays ?? currentSettings.potentialDecisionReminderWorkdays,
+    potentialDecisionEscalationWorkdays:
+      input.potentialDecisionEscalationWorkdays ?? currentSettings.potentialDecisionEscalationWorkdays,
     completedTaskArchiveDays: input.completedTaskArchiveDays ?? currentSettings.completedTaskArchiveDays,
     interruptedWorkFollowUpDays: input.interruptedWorkFollowUpDays ?? currentSettings.interruptedWorkFollowUpDays,
     interruptedWorkManagementEscalationDays:

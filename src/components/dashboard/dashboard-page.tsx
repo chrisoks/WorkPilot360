@@ -5049,6 +5049,8 @@ export function DashboardPage() {
   const [offerPreviewDataUrl, setOfferPreviewDataUrl] = useState("");
   const [isGeneratingOfferPreview, setIsGeneratingOfferPreview] = useState(false);
   const [offerFollowUpWorkdays, setOfferFollowUpWorkdays] = useState(5);
+  const [potentialDecisionReminderWorkdays, setPotentialDecisionReminderWorkdays] = useState(1);
+  const [potentialDecisionEscalationWorkdays, setPotentialDecisionEscalationWorkdays] = useState(2);
   const [completedTaskArchiveDays, setCompletedTaskArchiveDays] = useState(5);
   const [interruptedWorkFollowUpDays, setInterruptedWorkFollowUpDays] = useState(2);
   const [interruptedWorkManagementEscalationDays, setInterruptedWorkManagementEscalationDays] = useState(7);
@@ -6686,6 +6688,8 @@ export function DashboardPage() {
 
     const data = (await res.json()) as {
       offerFollowUpWorkdays?: number;
+      potentialDecisionReminderWorkdays?: number;
+      potentialDecisionEscalationWorkdays?: number;
       completedTaskArchiveDays?: number;
       interruptedWorkFollowUpDays?: number;
       interruptedWorkManagementEscalationDays?: number;
@@ -6694,6 +6698,12 @@ export function DashboardPage() {
       hourlyBillingRoundingFactorHours?: number;
     };
     setOfferFollowUpWorkdays(Math.max(1, Math.min(30, Math.round(Number(data.offerFollowUpWorkdays) || 5))));
+    setPotentialDecisionReminderWorkdays(
+      Math.max(1, Math.min(30, Math.round(Number(data.potentialDecisionReminderWorkdays) || 1)))
+    );
+    setPotentialDecisionEscalationWorkdays(
+      Math.max(1, Math.min(60, Math.round(Number(data.potentialDecisionEscalationWorkdays) || 2)))
+    );
     setCompletedTaskArchiveDays(Math.max(1, Math.min(30, Math.round(Number(data.completedTaskArchiveDays) || 5))));
     setInterruptedWorkFollowUpDays(Math.max(1, Math.min(30, Math.round(Number(data.interruptedWorkFollowUpDays) || 2))));
     setInterruptedWorkManagementEscalationDays(
@@ -6720,6 +6730,14 @@ export function DashboardPage() {
 
     try {
       const normalizedWorkdays = Math.max(1, Math.min(30, Math.round(Number(offerFollowUpWorkdays) || 5)));
+      const normalizedPotentialReminderWorkdays = Math.max(
+        1,
+        Math.min(30, Math.round(Number(potentialDecisionReminderWorkdays) || 1))
+      );
+      const normalizedPotentialEscalationWorkdays = Math.max(
+        normalizedPotentialReminderWorkdays,
+        Math.min(60, Math.round(Number(potentialDecisionEscalationWorkdays) || 2))
+      );
       const normalizedArchiveDays = Math.max(1, Math.min(30, Math.round(Number(completedTaskArchiveDays) || 5)));
       const normalizedInterruptedDays = Math.max(1, Math.min(30, Math.round(Number(interruptedWorkFollowUpDays) || 2)));
       const normalizedManagementEscalationDays = Math.max(
@@ -6748,6 +6766,8 @@ export function DashboardPage() {
         body: JSON.stringify({
           actorId: activeUserId,
           offerFollowUpWorkdays: normalizedWorkdays,
+          potentialDecisionReminderWorkdays: normalizedPotentialReminderWorkdays,
+          potentialDecisionEscalationWorkdays: normalizedPotentialEscalationWorkdays,
           completedTaskArchiveDays: normalizedArchiveDays,
           interruptedWorkFollowUpDays: normalizedInterruptedDays,
           interruptedWorkManagementEscalationDays: normalizedManagementEscalationDays,
@@ -6764,6 +6784,8 @@ export function DashboardPage() {
 
       const data = (await res.json()) as {
         offerFollowUpWorkdays?: number;
+        potentialDecisionReminderWorkdays?: number;
+        potentialDecisionEscalationWorkdays?: number;
         completedTaskArchiveDays?: number;
         interruptedWorkFollowUpDays?: number;
         interruptedWorkManagementEscalationDays?: number;
@@ -6772,6 +6794,12 @@ export function DashboardPage() {
         hourlyBillingRoundingFactorHours?: number;
       };
       setOfferFollowUpWorkdays(Math.max(1, Math.min(30, Math.round(Number(data.offerFollowUpWorkdays) || 5))));
+      setPotentialDecisionReminderWorkdays(
+        Math.max(1, Math.min(30, Math.round(Number(data.potentialDecisionReminderWorkdays) || 1)))
+      );
+      setPotentialDecisionEscalationWorkdays(
+        Math.max(1, Math.min(60, Math.round(Number(data.potentialDecisionEscalationWorkdays) || 2)))
+      );
       setCompletedTaskArchiveDays(Math.max(1, Math.min(30, Math.round(Number(data.completedTaskArchiveDays) || 5))));
       setInterruptedWorkFollowUpDays(Math.max(1, Math.min(30, Math.round(Number(data.interruptedWorkFollowUpDays) || 2))));
       setInterruptedWorkManagementEscalationDays(
@@ -12137,17 +12165,18 @@ export function DashboardPage() {
   }
 
   async function loadProjectPotentials() {
-    if (!activeUserId) return;
+    if (!activeUserId) return [];
 
     const res = await fetch(`/api/potentials?actorId=${encodeURIComponent(activeUserId)}`, { cache: "no-store" });
 
     if (!res.ok) {
       setErrorMessage("Zusatzverkäufe konnten nicht geladen werden.");
-      return;
+      return [];
     }
 
     const data = (await res.json()) as ProjectPotential[];
     setProjectPotentials(data);
+    return data;
   }
 
   async function loadSalesGoals() {
@@ -12350,6 +12379,19 @@ export function DashboardPage() {
       }
       setOpenSidebarMenus({ projectsSolutions: true });
       setIsNotificationsOpen(false);
+    }
+
+    if (notification.linkTarget === "project-potential" && notification.linkTargetId) {
+      let potential = projectPotentials.find((item) => item.id === notification.linkTargetId);
+      if (!potential) {
+        const loadedPotentials = await loadProjectPotentials();
+        potential = loadedPotentials.find((item) => item.id === notification.linkTargetId);
+      }
+
+      setActiveTab("salesOpportunities");
+      setPotentialStatusFilter("all");
+      setIsNotificationsOpen(false);
+      if (potential) openPotentialDetail(potential);
     }
 
     if (notification.linkTarget === "absence-request" && notification.linkTargetId) {
@@ -41709,24 +41751,62 @@ await addProjectLogbookEntry(
                   )}
                 </div>
                 {deadlineSettingsSection === "offers" ? (
-                  <div className={styles.companySettingsForm}>
-                    <label>
-                      Angebote nachfassen nach
-                      <input
-                        type="number"
-                        min="1"
-                        max="30"
-                        step="1"
-                        value={offerFollowUpWorkdays}
-                        onChange={(event) =>
-                          setOfferFollowUpWorkdays(
-                            Math.max(1, Math.min(30, Math.round(Number(event.target.value) || 5)))
-                          )
-                        }
-                      />
-                    </label>
-                    <span className={styles.companySettingsHint}>Werkstage</span>
-                  </div>
+                  <>
+                    <div className={styles.companySettingsForm}>
+                      <label>
+                        Angebote nachfassen nach
+                        <input
+                          type="number"
+                          min="1"
+                          max="30"
+                          step="1"
+                          value={offerFollowUpWorkdays}
+                          onChange={(event) =>
+                            setOfferFollowUpWorkdays(
+                              Math.max(1, Math.min(30, Math.round(Number(event.target.value) || 5)))
+                            )
+                          }
+                        />
+                      </label>
+                      <span className={styles.companySettingsHint}>Werkstage</span>
+                    </div>
+                    <div className={styles.companySettingsForm}>
+                      <label>
+                        Zusatzverkauf-Entscheidung erinnern nach
+                        <input
+                          type="number"
+                          min="1"
+                          max="30"
+                          step="1"
+                          value={potentialDecisionReminderWorkdays}
+                          onChange={(event) =>
+                            setPotentialDecisionReminderWorkdays(
+                              Math.max(1, Math.min(30, Math.round(Number(event.target.value) || 1)))
+                            )
+                          }
+                        />
+                      </label>
+                      <span className={styles.companySettingsHint}>Werkstage</span>
+                    </div>
+                    <div className={styles.companySettingsForm}>
+                      <label>
+                        Zusatzverkauf eskalieren nach
+                        <input
+                          type="number"
+                          min="1"
+                          max="60"
+                          step="1"
+                          value={potentialDecisionEscalationWorkdays}
+                          onChange={(event) =>
+                            setPotentialDecisionEscalationWorkdays(
+                              Math.max(1, Math.min(60, Math.round(Number(event.target.value) || 2)))
+                            )
+                          }
+                        />
+                      </label>
+                      <span className={styles.companySettingsHint}>Werkstage</span>
+                    </div>
+                  </>
                 ) : deadlineSettingsSection === "tasks" ? (
                   <div className={styles.companySettingsForm}>
                     <label>
