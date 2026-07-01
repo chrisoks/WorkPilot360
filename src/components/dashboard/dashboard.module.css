@@ -9331,47 +9331,22 @@
 
 .newsFeedShell {
   display: grid;
-  gap: 18px;
+  gap: 16px;
 }
 
-.newsFeedShell .topline {
+.newsFeedHeader {
   align-items: flex-start;
-  background: #ffffff;
-  border: 1px solid #d8e0ea;
-  border-radius: 18px;
-  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.06);
-  padding: 22px 24px;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
 }
 
-.newsFeedSummary {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.newsFeedHeader h1 {
+  margin: 0;
 }
 
-.newsFeedSummary article {
-  background: #ffffff;
-  border: 1px solid #d8e0ea;
-  border-radius: 14px;
-  display: grid;
-  gap: 5px;
-  padding: 14px 16px;
-}
-
-.newsFeedSummary span,
-.newsFeedCardHeader span,
-.newsComments span,
-.newsComments p {
-  color: #64748b;
-  font-size: 0.9rem;
-  font-weight: 700;
-}
-
-.newsFeedSummary strong {
-  color: #0f172a;
-  font-size: 1.75rem;
-  font-weight: 900;
-  line-height: 1;
+.newsFeedHeader .subline {
+  max-width: 620px;
 }
 
 .newsFeedError {
@@ -9386,7 +9361,7 @@
 
 .newsFeedList {
   display: grid;
-  gap: 16px;
+  gap: 18px;
   justify-items: center;
 }
 
@@ -9394,9 +9369,9 @@
 .newsFeedCard {
   background: #ffffff;
   border: 1px solid #d8e0ea;
-  border-radius: 16px;
-  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.06);
-  width: min(780px, 100%);
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  width: min(520px, 100%);
 }
 
 .newsFeedEmpty {
@@ -9418,21 +9393,49 @@
 
 .newsFeedCardHeader {
   align-items: center;
-  border-bottom: 1px solid #e2e8f0;
-  display: flex;
-  justify-content: space-between;
-  padding: 14px 16px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 12px 14px;
 }
 
-.newsFeedCardHeader > div {
+.newsFeedAuthorAvatar {
+  align-items: center;
+  background: #111827;
+  border: 2px solid #f8fafc;
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px #d8e0ea;
+  color: #ffffff;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 900;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.newsFeedAuthorMeta {
   display: grid;
   gap: 2px;
+  min-width: 0;
 }
 
-.newsFeedCardHeader strong {
+.newsFeedAuthorMeta strong {
   color: #0f172a;
-  font-size: 1rem;
+  font-size: 0.98rem;
   font-weight: 900;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.newsFeedAuthorMeta span,
+.newsComments span,
+.newsComments p {
+  color: #64748b;
+  font-size: 0.86rem;
+  font-weight: 700;
 }
 
 .newsFeedCardHeader small {
@@ -9440,45 +9443,24 @@
   border: 1px solid #bfdbfe;
   border-radius: 999px;
   color: #1d4ed8;
+  font-size: 0.76rem;
   font-weight: 900;
-  padding: 4px 9px;
-}
-
-.newsFeedBody {
-  display: grid;
-  gap: 8px;
-  padding: 16px 18px;
-}
-
-.newsFeedBody h2 {
-  color: #0f172a;
-  font-size: 1.35rem;
-  line-height: 1.2;
-  margin: 0;
-}
-
-.newsFeedBody p {
-  color: #334155;
-  font-weight: 650;
-  line-height: 1.5;
-  margin: 0;
-  white-space: pre-wrap;
+  padding: 4px 8px;
 }
 
 .newsFeedImages,
 .newsComposerImages {
   display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  padding: 0 16px 16px;
+  gap: 0;
+  grid-template-columns: 1fr;
 }
 
 .newsFeedImages button,
 .newsComposerImages article {
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 1 / 1;
   background: #f8fafc;
-  border: 1px solid #d8e0ea;
-  border-radius: 12px;
+  border: 0;
+  border-radius: 0;
   overflow: hidden;
   padding: 0;
 }
@@ -9495,33 +9477,54 @@
   width: 100%;
 }
 
+.newsFeedBody {
+  display: grid;
+  gap: 7px;
+  padding: 12px 14px 8px;
+}
+
+.newsFeedBody h2 {
+  color: #0f172a;
+  font-size: 1rem;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.newsFeedBody p {
+  color: #334155;
+  font-weight: 650;
+  line-height: 1.45;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
 .newsReactionBar {
   align-items: center;
-  border-top: 1px solid #e2e8f0;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  padding: 12px 16px;
+  gap: 4px;
+  padding: 3px 10px 7px;
 }
 
 .newsReactionBar button {
   align-items: center;
-  background: #f8fafc;
-  border: 1px solid #d8e0ea;
-  border-radius: 999px;
-  color: #123a73;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: #0f172a;
   cursor: pointer;
   display: inline-flex;
   font-family: inherit;
+  font-size: 1rem;
   font-weight: 850;
-  gap: 6px;
-  min-height: 34px;
-  padding: 6px 11px;
+  gap: 4px;
+  min-height: 30px;
+  padding: 4px 7px;
 }
 
+.newsReactionBar button:hover,
 .newsReactionBar button[data-active="true"] {
-  background: #eaf2ff;
-  border-color: #93c5fd;
+  background: #f1f5f9;
   color: #1d4ed8;
 }
 
@@ -9532,24 +9535,25 @@
 }
 
 .newsComments {
-  background: #f8fafc;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid #eef2f7;
   display: grid;
-  gap: 8px;
-  padding: 12px 16px;
+  gap: 7px;
+  padding: 10px 14px;
+}
+
+.newsCommentsTitle {
+  color: #0f172a;
+  font-size: 0.86rem;
+  font-weight: 900;
 }
 
 .newsComments article {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
   display: grid;
-  gap: 5px;
-  padding: 10px 12px;
+  gap: 4px;
 }
 
 .newsComments article > div {
-  align-items: center;
+  align-items: baseline;
   display: flex;
   gap: 8px;
   justify-content: space-between;
@@ -9557,6 +9561,7 @@
 
 .newsComments strong {
   color: #0f172a;
+  font-size: 0.86rem;
   font-weight: 900;
 }
 
@@ -9570,18 +9575,18 @@
   display: grid;
   gap: 8px;
   grid-template-columns: minmax(0, 1fr) auto;
-  padding: 12px 16px 16px;
+  padding: 0 14px 14px;
 }
 
 .newsCommentForm input {
-  background: #ffffff;
+  background: #f8fafc;
   border: 1px solid #d8e0ea;
-  border-radius: 10px;
+  border-radius: 999px;
   color: #0f172a;
   font-family: inherit;
   font-weight: 650;
-  min-height: 38px;
-  padding: 8px 11px;
+  min-height: 36px;
+  padding: 8px 13px;
 }
 
 .newsCommentForm button,
@@ -9593,15 +9598,19 @@
   cursor: pointer;
   font-family: inherit;
   font-weight: 850;
-  min-height: 38px;
-  padding: 8px 14px;
+  min-height: 36px;
+  padding: 8px 13px;
 }
 
 .newsComposerImages {
-  padding: 0;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
 .newsComposerImages article {
+  aspect-ratio: 4 / 3;
+  border: 1px solid #d8e0ea;
+  border-radius: 12px;
   position: relative;
 }
 

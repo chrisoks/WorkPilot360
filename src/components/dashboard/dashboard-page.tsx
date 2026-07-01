@@ -44782,11 +44782,10 @@ await addProjectLogbookEntry(
       { key: "idea", label: "Idee", icon: "*" },
       { key: "wow", label: "Interessant", icon: "?" },
     ];
-    const unreadCount = newsFeedPosts.filter((post) => !post.readAt).length;
 
     return (
       <section className={styles.newsFeedShell}>
-        <div className={styles.topline}>
+        <div className={styles.newsFeedHeader}>
           <div>
             <p className={styles.eyebrow}>News-Feed</p>
             <h1>Unternehmensfeed</h1>
@@ -44798,21 +44797,6 @@ await addProjectLogbookEntry(
             + Neuer Beitrag
           </button>
         </div>
-
-        <section className={styles.newsFeedSummary}>
-          <article>
-            <span>Beiträge</span>
-            <strong>{newsFeedPosts.length}</strong>
-          </article>
-          <article>
-            <span>Ungelesen</span>
-            <strong>{unreadCount}</strong>
-          </article>
-          <article>
-            <span>Kommentare</span>
-            <strong>{newsFeedPosts.reduce((sum, post) => sum + post.comments.length, 0)}</strong>
-          </article>
-        </section>
 
         {newsFeedError ? <p className={styles.newsFeedError}>{newsFeedError}</p> : null}
 
@@ -44826,17 +44810,15 @@ await addProjectLogbookEntry(
             newsFeedPosts.map((post) => (
               <article key={post.id} className={styles.newsFeedCard}>
                 <header className={styles.newsFeedCardHeader}>
-                  <div>
+                  <div className={styles.newsFeedAuthorAvatar}>
+                    {getInitials(post.authorName || "WP")}
+                  </div>
+                  <div className={styles.newsFeedAuthorMeta}>
                     <strong>{post.authorName || "WorkPilot360"}</strong>
-                    <span>{formatDeadline(post.createdAt)}</span>
+                    <span>Unternehmensfeed · {formatDeadline(post.createdAt)}</span>
                   </div>
                   {!post.readAt ? <small>Neu</small> : null}
                 </header>
-
-                <div className={styles.newsFeedBody}>
-                  <h2>{post.title}</h2>
-                  {post.body ? <p>{post.body}</p> : null}
-                </div>
 
                 {post.attachments.length > 0 ? (
                   <div className={styles.newsFeedImages}>
@@ -44852,6 +44834,11 @@ await addProjectLogbookEntry(
                     ))}
                   </div>
                 ) : null}
+
+                <div className={styles.newsFeedBody}>
+                  <h2>{post.title}</h2>
+                  {post.body ? <p>{post.body}</p> : null}
+                </div>
 
                 <div className={styles.newsReactionBar}>
                   {reactions.map((reaction) => (
@@ -44870,6 +44857,11 @@ await addProjectLogbookEntry(
                 </div>
 
                 <section className={styles.newsComments}>
+                  {post.comments.length > 0 ? (
+                    <strong className={styles.newsCommentsTitle}>
+                      {post.comments.length} Kommentar{post.comments.length === 1 ? "" : "e"}
+                    </strong>
+                  ) : null}
                   {post.comments.length === 0 ? (
                     <span>Noch keine Kommentare.</span>
                   ) : (
