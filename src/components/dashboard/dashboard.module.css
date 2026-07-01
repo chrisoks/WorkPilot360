@@ -4984,6 +4984,48 @@
   color: #047857;
 }
 
+.projectMonthStateStack {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 160px;
+}
+
+.projectMonthIssueClip {
+  background: #111827;
+  border: 1px solid #111827;
+  border-radius: 999px;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 850;
+  line-height: 1.1;
+  padding: 5px 9px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.projectMonthIssueClip:hover {
+  background: #1f2937;
+  border-color: #1f2937;
+}
+
+.recurringMonthIssueModal {
+  width: min(760px, calc(100vw - 16px));
+}
+
+.recurringMonthIssueIntro {
+  background: #f8fbff;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  color: #334155;
+  font-size: 0.92rem;
+  font-weight: 750;
+  line-height: 1.4;
+  padding: 12px 14px;
+}
+
 .heroDetailCard {
   background: #f8fbff;
   border: 1px solid #bfdbfe;

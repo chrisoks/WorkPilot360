@@ -5400,6 +5400,7 @@ export function DashboardPage() {
   const skipNextStampNoteCheckRef = useRef(false);
   const [projectPotentials, setProjectPotentials] = useState<ProjectPotential[]>([]);
   const [projectStatusTimelineEntries, setProjectStatusTimelineEntries] = useState<StatusTimelineEntry[]>([]);
+  const [recurringMonthIssueProject, setRecurringMonthIssueProject] = useState<HeroProjectPreview | null>(null);
   const [projectLogbookSearch, setProjectLogbookSearch] = useState("");
   const [logbookTarget, setLogbookTarget] = useState<"customer" | "project">("customer");
   const [logbookError, setLogbookError] = useState("");
@@ -19548,6 +19549,100 @@ await addProjectLogbookEntry(
       (!projectType.includes("immocare") && !projectNumber.startsWith("oki"))
     );
   });
+  const getRecurringProjectMonthPlannedHours = (project: HeroProjectPreview, monthKey: string) =>
+    getConfirmedProjectPlannedHoursForMonth(project.id, monthKey);
+  const getRecurringProjectMonthStampedHours = (project: HeroProjectPreview, monthKey: string) =>
+    stampEntries
+      .filter(
+        (entry) =>
+          entry.mode === "project" &&
+          entry.projectId === project.id &&
+          !entry.deletedAt &&
+          normalizeDateKeyValue(entry.date).startsWith(monthKey)
+      )
+      .reduce((sum, entry) => sum + Number(entry.durationMs || 0) / 3_600_000, 0);
+  const hasRecurringProjectInterruptedWork = (project: HeroProjectPreview, monthKey: string) =>
+    stampEntries.some(
+      (entry) =>
+        entry.mode === "project" &&
+        entry.projectId === project.id &&
+        !entry.deletedAt &&
+        normalizeDateKeyValue(entry.date).startsWith(monthKey) &&
+        entry.completionStatus === "interrupted"
+    );
+  const getRecurringProjectMonthStatus = (project: HeroProjectPreview, monthKey = getCurrentMonthKey()) => {
+    const storedStatus = normalizeProjectPipelineStatus(project.status);
+    if (!isRecurringProjectKindValue(getProjectKind(project))) return storedStatus;
+    if (storedStatus === "Abgeschlossen" || storedStatus === "Archiviert") return storedStatus;
+    const projectEndMonth = getProjectPlanningEndMonth(project);
+    if (projectEndMonth && monthKey > projectEndMonth) {
+      const finalInvoice = getProjectFinalInvoices(project).find((item) => getProjectInvoiceMonth(item) === projectEndMonth);
+      return finalInvoice ? "Abgeschlossen" : "Abrechnungsprüfung";
+    }
+    if (!isProjectBudgetDueForPlanningMonth(project, monthKey)) return storedStatus || "Zur Planung bereit";
+
+    if (hasRecurringProjectInterruptedWork(project, monthKey)) return "Arbeit unterbrochen";
+    if (getRecurringProjectMonthStampedHours(project, monthKey) > 0) return "Umsetzung";
+
+    const requiredHours = getProjectRequiredPlanningHoursForMonth(project, monthKey);
+    const plannedHours = getRecurringProjectMonthPlannedHours(project, monthKey);
+    if (requiredHours > 0) {
+      return plannedHours + 0.01 >= requiredHours ? "Geplant" : "Zur Planung bereit";
+    }
+
+    return plannedHours > 0 ? "Geplant" : storedStatus || "Zur Planung bereit";
+  };
+  const getProjectPipelineDisplayStatus = (project: HeroProjectPreview) =>
+    isRecurringProjectKindValue(getProjectKind(project))
+      ? getRecurringProjectMonthStatus(project)
+      : normalizeProjectPipelineStatus(project.status);
+  const getRecurringProjectCurrentMonthHint = (project: HeroProjectPreview) => {
+    if (!isRecurringProjectKindValue(getProjectKind(project))) return "";
+    const monthKey = getCurrentMonthKey();
+    if (!isProjectBudgetDueForPlanningMonth(project, monthKey)) return "";
+
+    const requiredHours = getProjectRequiredPlanningHoursForMonth(project, monthKey);
+    const plannedHours = getRecurringProjectMonthPlannedHours(project, monthKey);
+    const stampedHours = getRecurringProjectMonthStampedHours(project, monthKey);
+    if (requiredHours > 0 && plannedHours + 0.01 < requiredHours) {
+      return `${formatMonthLabel(monthKey)}: ${formatHours(plannedHours)} von ${formatHours(requiredHours)} Std. geplant`;
+    }
+    if (stampedHours > 0) {
+      return `${formatMonthLabel(monthKey)}: ${formatHours(stampedHours)} Std. in Umsetzung`;
+    }
+    if (requiredHours > 0) {
+      return `${formatMonthLabel(monthKey)}: voll geplant`;
+    }
+    return "";
+  };
+  const getRecurringProjectPreviousMonthIssues = (project: HeroProjectPreview) => {
+    if (!isRecurringProjectKindValue(getProjectKind(project))) return [];
+
+    const currentMonth = getCurrentMonthKey();
+    return getProjectBudgetMonths(project)
+      .filter((monthKey) => monthKey < currentMonth)
+      .slice(-12)
+      .flatMap((monthKey) => {
+        const issues: string[] = [];
+        const requiredHours = getProjectRequiredPlanningHoursForMonth(project, monthKey);
+        const plannedHours = getRecurringProjectMonthPlannedHours(project, monthKey);
+        const invoice = getProjectFinalInvoices(project).find((item) => getProjectInvoiceMonth(item) === monthKey);
+
+        if (requiredHours > 0 && plannedHours + 0.01 < requiredHours) {
+          issues.push(`Planung ${formatHours(plannedHours)} von ${formatHours(requiredHours)} Std.`);
+        }
+        if (!invoice) {
+          issues.push("Rechnung fehlt");
+        } else {
+          const evidenceIssues = getProjectBillingEvidenceIssues(project, monthKey, invoice);
+          if (evidenceIssues.length > 0) {
+            issues.push(`Nachweise fehlen: ${evidenceIssues.join(", ")}`);
+          }
+        }
+
+        return issues.map((issue) => ({ monthKey, issue }));
+      });
+  };
   const activePipelineProjectIds = new Set(activePipelineProjects.map((project) => project.id));
   const activePipelinePotentials = projectPotentials.filter((potential) =>
     activePipelineProjectIds.has(potential.projectId)
@@ -19635,7 +19730,7 @@ await addProjectLogbookEntry(
 
     if (
       selectedProjectPipelineStatus !== "Alle Offenen" &&
-      normalizeProjectPipelineStatus(project.status) !== normalizeProjectPipelineStatus(selectedProjectPipelineStatus)
+      getProjectPipelineDisplayStatus(project) !== normalizeProjectPipelineStatus(selectedProjectPipelineStatus)
     ) {
       return false;
     }
@@ -19647,7 +19742,7 @@ await addProjectLogbookEntry(
       project.projectNumber.toLowerCase().includes(search) ||
       project.title.toLowerCase().includes(search) ||
       project.customer.toLowerCase().includes(search) ||
-      project.status.toLowerCase().includes(search) ||
+      getProjectPipelineDisplayStatus(project).toLowerCase().includes(search) ||
       project.description.toLowerCase().includes(search) ||
       getProjectKind(project).toLowerCase().includes(search)
     );
@@ -19667,9 +19762,7 @@ await addProjectLogbookEntry(
       return projectsForKind.length;
     }
 
-    return projectsForKind.filter(
-      (project) => normalizeProjectPipelineStatus(project.status) === normalizeProjectPipelineStatus(statusLabel)
-    ).length;
+    return projectsForKind.filter((project) => getProjectPipelineDisplayStatus(project) === normalizeProjectPipelineStatus(statusLabel)).length;
   };
   const activePipelineStatus =
     projectLifecycleStatuses.find(
@@ -47289,6 +47382,7 @@ await addProjectLogbookEntry(
                           <th>Quelle</th>
                           <th>Partner</th>
                           <th>Status</th>
+                          <th>Monatslage</th>
                           <th>Nächster Schritt</th>
                           <th>Erstellt</th>
                           <th>Erinnerung</th>
@@ -47298,19 +47392,22 @@ await addProjectLogbookEntry(
                       <tbody>
                         {isHeroProjectsLoading ? (
                           <tr>
-                            <td colSpan={14}>HERO-Projekte werden geladen...</td>
+                            <td colSpan={15}>HERO-Projekte werden geladen...</td>
                           </tr>
                         ) : heroProjects.length === 0 ? (
                           <tr>
-                            <td colSpan={14}>Noch keine HERO-Projekte geladen.</td>
+                            <td colSpan={15}>Noch keine HERO-Projekte geladen.</td>
                           </tr>
                         ) : visibleHeroProjects.length === 0 ? (
                           <tr>
-                            <td colSpan={14}>Keine Projekte zur Suche gefunden.</td>
+                            <td colSpan={15}>Keine Projekte zur Suche gefunden.</td>
                           </tr>
                         ) : (
                           visibleHeroProjects.map((project) => {
                             const billingNextStep = getProjectPipelineNextBillingStep(project);
+                            const displayStatus = getProjectPipelineDisplayStatus(project);
+                            const currentMonthHint = getRecurringProjectCurrentMonthHint(project);
+                            const previousMonthIssues = getRecurringProjectPreviousMonthIssues(project);
 
                             return (
                               <tr
@@ -47329,7 +47426,24 @@ await addProjectLogbookEntry(
                                 <td>{project.branch || activeProjectPipeline.company}</td>
                                 <td>{project.source || "-"}</td>
                                 <td>-</td>
-                                <td>{project.status || "-"}</td>
+                                <td>{displayStatus || project.status || "-"}</td>
+                                <td>
+                                  <div className={styles.projectMonthStateStack}>
+                                    <span>{currentMonthHint || "-"}</span>
+                                    {previousMonthIssues.length > 0 ? (
+                                      <button
+                                        type="button"
+                                        className={styles.projectMonthIssueClip}
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          setRecurringMonthIssueProject(project);
+                                        }}
+                                      >
+                                        Vormonat(e) unvollständig
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                </td>
                                 <td>
                                   {billingNextStep ? (
                                     <span
@@ -53808,6 +53922,81 @@ await addProjectLogbookEntry(
           </div>
         </div>
       )}
+      {recurringMonthIssueProject ? (
+        <div className={styles.modalBackdrop} onClick={() => setRecurringMonthIssueProject(null)}>
+          <section
+            className={`${styles.standardModal} ${styles.recurringMonthIssueModal}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={styles.standardModalHeader}>
+              <div>
+                <h2>Vormonat(e) unvollständig</h2>
+                <p>
+                  {recurringMonthIssueProject.projectNumber || recurringMonthIssueProject.id} ·{" "}
+                  {recurringMonthIssueProject.title}
+                </p>
+              </div>
+              <button type="button" onClick={() => setRecurringMonthIssueProject(null)}>
+                X
+              </button>
+            </div>
+            <div className={styles.standardModalBody}>
+              <div className={styles.recurringMonthIssueIntro}>
+                Diese Punkte stammen aus abgeschlossenen Vormonaten und beeinflussen nicht die aktuelle
+                Monatsposition des Dauerläufers.
+              </div>
+              <div className={styles.heroTableScroll}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Monat</th>
+                      <th>Offener Punkt</th>
+                      <th>Aktion</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {getRecurringProjectPreviousMonthIssues(recurringMonthIssueProject).map((item, index) => {
+                      const isPlanningIssue = item.issue.toLowerCase().includes("planung");
+                      const isInvoiceIssue = item.issue.toLowerCase().includes("rechnung");
+                      const documentType: CustomerDocumentType = isInvoiceIssue ? "Rechnungen" : "Endkontrolle";
+
+                      return (
+                        <tr key={`${item.monthKey}-${index}`}>
+                          <td>{formatMonthLabel(item.monthKey)}</td>
+                          <td>{item.issue}</td>
+                          <td>
+                            <button
+                              type="button"
+                              className={styles.timeEntryEditButton}
+                              onClick={() => {
+                                const project = recurringMonthIssueProject;
+                                setRecurringMonthIssueProject(null);
+                                openProjectFile(project, {
+                                  activeTab: activeProjectPipeline.tab,
+                                  tab: isPlanningIssue ? "appointments" : "documents",
+                                  documentType: isPlanningIssue ? undefined : documentType,
+                                  month: item.monthKey,
+                                });
+                              }}
+                            >
+                              Öffnen
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className={styles.standardModalFooter}>
+              <button className={styles.secondaryButton} onClick={() => setRecurringMonthIssueProject(null)}>
+                Schließen
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }
