@@ -3952,6 +3952,17 @@ function getDefaultDeadlineValue(date = new Date()) {
   return `${formatDateKey(date)}T12:00`;
 }
 
+function getNextBusinessDayDeadlineValue(date = new Date()) {
+  const nextDate = new Date(date);
+  nextDate.setDate(nextDate.getDate() + 1);
+
+  while (nextDate.getDay() === 0 || nextDate.getDay() === 6) {
+    nextDate.setDate(nextDate.getDate() + 1);
+  }
+
+  return getDefaultDeadlineValue(nextDate);
+}
+
 function normalizeDeadlineInput(value: string) {
   const trimmedValue = value.trim();
   if (!trimmedValue) return "";
@@ -15723,6 +15734,33 @@ export function DashboardPage() {
       };
     }
 
+    if (potential.status === "open") {
+      return {
+        title: "Entscheidung offen",
+        detail: "Angebot erstellen, Nachfass-Aufgabe anlegen oder als aktuell kein Interesse mit Grund abschließen.",
+      };
+    }
+
+    if (potential.status === "lost") {
+      return {
+        title: "Aktuell kein Interesse",
+        detail: potential.lostReason || "Grund wurde nicht hinterlegt.",
+      };
+    }
+
+    if (potential.status === "offered") {
+      return {
+        title: "Angebot erstellt",
+        detail: "Die Angebotsnachfassung wird über die verknüpfte Angebotsaufgabe gesteuert.",
+      };
+    }
+
+    if (potential.status === "completed") {
+      return {
+        title: "Durchgeführt",
+        detail: "Der Zusatzverkauf wurde als durchgeführt markiert.",
+      };
+    }
     if (potential.followUpAt) {
       return {
         title: "Nachfassdatum ohne verknüpfte Aufgabe",
@@ -15815,6 +15853,14 @@ export function DashboardPage() {
       status: potentialDraft.status,
       followUpAt: potentialDraft.followUpAt,
     });
+    if (potentialDraft.status === "lost" && !potentialDraft.lostReason.trim()) {
+      setErrorMessage("Bitte einen Grund eintragen, bevor der Zusatzverkauf auf aktuell kein Interesse gesetzt wird.");
+      return;
+    }
+    if (potentialDraft.status === "follow_up" && !getPotentialLinkedTask(editingPotential)) {
+      setErrorMessage("Bitte zuerst eine Nachfass-Aufgabe anlegen. Der Status Nachfassen braucht eine verknüpfte Aufgabe.");
+      return;
+    }
     const confirmed = window.confirm(
       `Der Zusatzverkauf wird mit dem Status "${nextStatusLabel}" gespeichert. Ist das korrekt?`
     );
@@ -15881,7 +15927,7 @@ export function DashboardPage() {
     setPrioritaet("normal");
     setKunde(project.customer || potential.customerName);
     setSelectedHeroProjectId(project.id);
-    setFaelligkeit(potential.followUpAt || getDefaultDeadlineValue());
+    setFaelligkeit(potential.followUpAt || getNextBusinessDayDeadlineValue());
 
     if (!hasLoadedHeroProjects) void loadHeroProjects();
     setIsModalOpen(true);
@@ -15889,14 +15935,19 @@ export function DashboardPage() {
   }
   async function closePotential(potential: ProjectPotential) {
     const project = getPotentialProject(potential);
-    const note = window.prompt("Kurze Notiz zur Ablehnung", "Kunde wünscht gar nicht.") || "Kunde wünscht gar nicht.";
+    const note = window.prompt("Grund für aktuell kein Interesse");
+    if (note === null) return;
+    const cleanNote = note.trim();
+    if (!cleanNote) {
+      setErrorMessage("Bitte einen Grund eintragen, bevor der Zusatzverkauf auf aktuell kein Interesse gesetzt wird.");
+      return;
+    }
 
-    await updateProjectPotential(potential, "lost", { note });
+    await updateProjectPotential(potential, "lost", { note: cleanNote, lostReason: cleanNote });
     if (project) {
-      await addProjectLogbookEntry(project.id, "Zusatzverkauf: Aktuell kein Interesse", note);
+      await addProjectLogbookEntry(project.id, "Zusatzverkauf: Aktuell kein Interesse", cleanNote);
     }
   }
-
   async function openAttachmentDataUrl(dataUrl?: string, fileName = "Dokument") {
     if (!dataUrl) return;
 
