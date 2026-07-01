@@ -1032,6 +1032,52 @@ type IdeaStorePost = {
   comments: IdeaStoreComment[];
 };
 
+type NewsFeedAttachment = {
+  id?: string;
+  name: string;
+  dataUrl: string;
+  contentType: string;
+};
+
+type NewsFeedComment = {
+  id: string;
+  postId: string;
+  body: string;
+  authorUserId: string;
+  authorName: string;
+  createdAt: string;
+};
+
+type NewsFeedPollOption = {
+  id: string;
+  label: string;
+  voteCount: number;
+  votedByActiveUser: boolean;
+};
+
+type NewsFeedPost = {
+  id: string;
+  title: string;
+  body: string;
+  authorUserId: string;
+  authorName: string;
+  visibility: string;
+  departmentIds: string[];
+  teamIds: string[];
+  userIds: string[];
+  attachments: NewsFeedAttachment[];
+  pollQuestion: string;
+  pollOptions: NewsFeedPollOption[];
+  pollAllowMultiple: boolean;
+  createdAt: string;
+  readAt: string;
+  reactionCount: number;
+  reactedByActiveUser: boolean;
+  activeUserReaction: string;
+  reactionSummary: Record<string, number>;
+  comments: NewsFeedComment[];
+};
+
 type CatalogItemType = "article" | "service" | "package";
 type CatalogFormTab = "information" | "components" | "calculation" | "history";
 type CatalogItemHistory = {
@@ -5020,6 +5066,14 @@ export function DashboardPage() {
   const [ideaCommentDrafts, setIdeaCommentDrafts] = useState<Record<string, string>>({});
   const [ideaFeedbackErrors, setIdeaFeedbackErrors] = useState<Record<string, string>>({});
   const [ideaStoreError, setIdeaStoreError] = useState("");
+  const [newsFeedPosts, setNewsFeedPosts] = useState<NewsFeedPost[]>([]);
+  const [newsFeedError, setNewsFeedError] = useState("");
+  const [isNewsComposerOpen, setIsNewsComposerOpen] = useState(false);
+  const [newsDraftTitle, setNewsDraftTitle] = useState("");
+  const [newsDraftBody, setNewsDraftBody] = useState("");
+  const [newsDraftAttachments, setNewsDraftAttachments] = useState<NewsFeedAttachment[]>([]);
+  const [newsCommentDrafts, setNewsCommentDrafts] = useState<Record<string, string>>({});
+  const [isNewsFeedSaving, setIsNewsFeedSaving] = useState(false);
   const [documentConfigSection, setDocumentConfigSection] =
     useState<DocumentConfiguratorSection>("general");
   const [documentPreviewPage, setDocumentPreviewPage] = useState<DocumentPreviewPage>("first");
@@ -6030,6 +6084,173 @@ export function DashboardPage() {
     setIdeaPosts(data);
     if (showNotifications) await loadNotifications(true);
     return data;
+  }
+
+  async function loadNewsFeed() {
+    if (!activeUserId) return [];
+
+    const res = await fetch(`/api/news-feed?actorId=${encodeURIComponent(activeUserId)}`, {
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+
+    if (!res.ok) {
+      setNewsFeedError("News-Feed konnte nicht geladen werden.");
+      return [];
+    }
+
+    const data = (await res.json()) as NewsFeedPost[];
+    setNewsFeedPosts(data);
+    setNewsFeedError("");
+    return data;
+  }
+
+  function resetNewsComposer() {
+    setNewsDraftTitle("");
+    setNewsDraftBody("");
+    setNewsDraftAttachments([]);
+    setNewsFeedError("");
+  }
+
+  function openNewsComposer() {
+    resetNewsComposer();
+    setIsNewsComposerOpen(true);
+  }
+
+  async function addNewsAttachments(files: FileList | null) {
+    if (!files) return;
+
+    try {
+      const nextAttachments = await Promise.all(
+        Array.from(files).map(async (file, index) => {
+          const attachment = await readProjectImageAttachment(file, `news-${Date.now()}-${index}`);
+          if (!attachment.dataUrl) {
+            throw new Error(`Bild "${file.name}" konnte nicht vorbereitet werden.`);
+          }
+          return {
+            id: `${Date.now()}-${index}-${file.name}`,
+            name: attachment.name,
+            dataUrl: attachment.dataUrl,
+            contentType: attachment.mimeType || file.type || "image/jpeg",
+          };
+        })
+      );
+
+      setNewsDraftAttachments((currentAttachments) => [...currentAttachments, ...nextAttachments]);
+      setNewsFeedError("");
+    } catch (error) {
+      setNewsFeedError(error instanceof Error ? error.message : "Bild konnte nicht hochgeladen werden.");
+    }
+  }
+
+  async function createNewsPost() {
+    if (!activeUserId) {
+      setNewsFeedError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
+
+    if (!newsDraftTitle.trim()) {
+      setNewsFeedError("Bitte einen Titel angeben.");
+      return;
+    }
+
+    setIsNewsFeedSaving(true);
+    setNewsFeedError("");
+
+    try {
+      const res = await fetch("/api/news-feed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          actorId: activeUserId,
+          title: newsDraftTitle,
+          body: newsDraftBody,
+          visibility: "all",
+          attachments: newsDraftAttachments,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        setNewsFeedError(data?.error ?? "Beitrag konnte nicht gespeichert werden.");
+        return;
+      }
+
+      await loadNewsFeed();
+      resetNewsComposer();
+      setIsNewsComposerOpen(false);
+    } finally {
+      setIsNewsFeedSaving(false);
+    }
+  }
+
+  async function reactToNewsPost(postId: string, reaction: string) {
+    if (!activeUserId) {
+      setNewsFeedError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
+
+    const res = await fetch("/api/news-feed/reactions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ actorId: activeUserId, postId, reaction }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      setNewsFeedError(data?.error ?? "Reaktion konnte nicht gespeichert werden.");
+      return;
+    }
+
+    await loadNewsFeed();
+  }
+
+  async function commentNewsPost(postId: string) {
+    if (!activeUserId) {
+      setNewsFeedError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
+
+    const body = newsCommentDrafts[postId]?.trim() ?? "";
+    if (!body) {
+      setNewsFeedError("Bitte einen Kommentar eingeben.");
+      return;
+    }
+
+    const res = await fetch("/api/news-feed/comments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ actorId: activeUserId, postId, body }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      setNewsFeedError(data?.error ?? "Kommentar konnte nicht gespeichert werden.");
+      return;
+    }
+
+    setNewsCommentDrafts((currentDrafts) => ({ ...currentDrafts, [postId]: "" }));
+    setNewsFeedError("");
+    await loadNewsFeed();
+  }
+
+  async function markNewsPostAsRead(postId: string) {
+    if (!activeUserId || !postId) return;
+
+    const res = await fetch("/api/news-feed", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ actorId: activeUserId, postId }),
+    });
+
+    if (!res.ok) return;
+
+    const readAt = new Date().toISOString();
+    setNewsFeedPosts((currentPosts) =>
+      currentPosts.map((post) => (post.id === postId ? { ...post, readAt } : post))
+    );
   }
 
   async function createIdeaPost() {
@@ -14085,6 +14306,7 @@ export function DashboardPage() {
       void loadWinterServiceAutomationSettings();
       void loadCustomerFeedback();
       void loadCustomerFeedbackRequests();
+      void loadNewsFeed();
       if (CONTENT_MANAGEMENT_ENABLED) {
         void loadContentItems();
         void loadIdeaPosts();
@@ -14096,6 +14318,15 @@ export function DashboardPage() {
       window.clearTimeout(secondaryLoadTimer);
     };
   }, [authChecked, isAuthenticated, activeUserId]);
+
+  useEffect(() => {
+    if (!authChecked || !isAuthenticated || !activeUserId || activeTab !== "newsFeed") return;
+    newsFeedPosts
+      .filter((post) => !post.readAt)
+      .forEach((post) => {
+        void markNewsPostAsRead(post.id);
+      });
+  }, [activeTab, activeUserId, authChecked, isAuthenticated, newsFeedPosts]);
 
   useEffect(() => {
     if (goalDraft.ownerUserId || users.length === 0) return;
@@ -44543,6 +44774,240 @@ await addProjectLogbookEntry(
     );
   }
 
+  function renderNewsFeed() {
+    const reactions = [
+      { key: "up", label: "Daumen hoch", icon: "+" },
+      { key: "heart", label: "Gefällt mir", icon: "♥" },
+      { key: "celebrate", label: "Gut", icon: "!" },
+      { key: "idea", label: "Idee", icon: "*" },
+      { key: "wow", label: "Interessant", icon: "?" },
+    ];
+    const unreadCount = newsFeedPosts.filter((post) => !post.readAt).length;
+
+    return (
+      <section className={styles.newsFeedShell}>
+        <div className={styles.topline}>
+          <div>
+            <p className={styles.eyebrow}>News-Feed</p>
+            <h1>Unternehmensfeed</h1>
+            <p className={styles.subline}>
+              Interne Informationen, kurze Updates und Rückmeldungen aus dem Team.
+            </p>
+          </div>
+          <button type="button" className={styles.primaryButton} onClick={openNewsComposer}>
+            + Neuer Beitrag
+          </button>
+        </div>
+
+        <section className={styles.newsFeedSummary}>
+          <article>
+            <span>Beiträge</span>
+            <strong>{newsFeedPosts.length}</strong>
+          </article>
+          <article>
+            <span>Ungelesen</span>
+            <strong>{unreadCount}</strong>
+          </article>
+          <article>
+            <span>Kommentare</span>
+            <strong>{newsFeedPosts.reduce((sum, post) => sum + post.comments.length, 0)}</strong>
+          </article>
+        </section>
+
+        {newsFeedError ? <p className={styles.newsFeedError}>{newsFeedError}</p> : null}
+
+        <section className={styles.newsFeedList}>
+          {newsFeedPosts.length === 0 ? (
+            <div className={styles.newsFeedEmpty}>
+              <strong>Noch keine Beiträge vorhanden.</strong>
+              <span>Starte mit einer kurzen internen Info oder einem Team-Update.</span>
+            </div>
+          ) : (
+            newsFeedPosts.map((post) => (
+              <article key={post.id} className={styles.newsFeedCard}>
+                <header className={styles.newsFeedCardHeader}>
+                  <div>
+                    <strong>{post.authorName || "WorkPilot360"}</strong>
+                    <span>{formatDeadline(post.createdAt)}</span>
+                  </div>
+                  {!post.readAt ? <small>Neu</small> : null}
+                </header>
+
+                <div className={styles.newsFeedBody}>
+                  <h2>{post.title}</h2>
+                  {post.body ? <p>{post.body}</p> : null}
+                </div>
+
+                {post.attachments.length > 0 ? (
+                  <div className={styles.newsFeedImages}>
+                    {post.attachments.map((attachment, index) => (
+                      <button
+                        key={attachment.id || `${post.id}-${attachment.name}-${index}`}
+                        type="button"
+                        onClick={() => window.open(attachment.dataUrl, "_blank")}
+                        aria-label={`${attachment.name || "Bild"} groß öffnen`}
+                      >
+                        <img src={attachment.dataUrl} alt={attachment.name || "News-Bild"} />
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+
+                <div className={styles.newsReactionBar}>
+                  {reactions.map((reaction) => (
+                    <button
+                      key={reaction.key}
+                      type="button"
+                      data-active={post.activeUserReaction === reaction.key}
+                      onClick={() => reactToNewsPost(post.id, reaction.key)}
+                      title={reaction.label}
+                      aria-label={reaction.label}
+                    >
+                      <span aria-hidden="true">{reaction.icon}</span>
+                      <strong>{post.reactionSummary[reaction.key] ?? 0}</strong>
+                    </button>
+                  ))}
+                </div>
+
+                <section className={styles.newsComments}>
+                  {post.comments.length === 0 ? (
+                    <span>Noch keine Kommentare.</span>
+                  ) : (
+                    post.comments.map((comment) => (
+                      <article key={comment.id}>
+                        <div>
+                          <strong>{comment.authorName || "Unbekannt"}</strong>
+                          <span>{formatDeadline(comment.createdAt)}</span>
+                        </div>
+                        <p>{comment.body}</p>
+                      </article>
+                    ))
+                  )}
+                </section>
+
+                <div className={styles.newsCommentForm}>
+                  <input
+                    value={newsCommentDrafts[post.id] ?? ""}
+                    onChange={(event) =>
+                      setNewsCommentDrafts((currentDrafts) => ({
+                        ...currentDrafts,
+                        [post.id]: event.target.value,
+                      }))
+                    }
+                    placeholder="Kommentar schreiben..."
+                  />
+                  <button type="button" onClick={() => commentNewsPost(post.id)}>
+                    Senden
+                  </button>
+                </div>
+              </article>
+            ))
+          )}
+        </section>
+
+        {isNewsComposerOpen ? (
+          <div className={styles.modalOverlay}>
+            <section className={styles.standardModal}>
+              <header className={styles.standardModalHeader}>
+                <div>
+                  <h2>Neuen Beitrag erstellen</h2>
+                  <p>Kurze interne Information für den Unternehmensfeed.</p>
+                </div>
+                <button
+                  type="button"
+                  className={styles.iconButton}
+                  onClick={() => {
+                    setIsNewsComposerOpen(false);
+                    resetNewsComposer();
+                  }}
+                  aria-label="Schließen"
+                >
+                  ×
+                </button>
+              </header>
+
+              <div className={styles.standardModalBody}>
+                <div className={styles.standardFormGrid}>
+                  <label className={styles.fullWidth}>
+                    Titel
+                    <input
+                      value={newsDraftTitle}
+                      onChange={(event) => setNewsDraftTitle(event.target.value)}
+                      placeholder="z.B. Neue Regelung für Einsatzberichte"
+                    />
+                  </label>
+                  <label className={styles.fullWidth}>
+                    Nachricht
+                    <textarea
+                      rows={5}
+                      value={newsDraftBody}
+                      onChange={(event) => setNewsDraftBody(event.target.value)}
+                      placeholder="Was soll das Team wissen?"
+                    />
+                  </label>
+                  <label className={styles.fullWidth}>
+                    Bilder
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={(event) => addNewsAttachments(event.target.files)}
+                    />
+                  </label>
+                </div>
+
+                {newsDraftAttachments.length > 0 ? (
+                  <div className={styles.newsComposerImages}>
+                    {newsDraftAttachments.map((attachment) => (
+                      <article key={attachment.id || attachment.name}>
+                        <img src={attachment.dataUrl} alt={attachment.name} />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setNewsDraftAttachments((currentAttachments) =>
+                              currentAttachments.filter((item) => item !== attachment)
+                            )
+                          }
+                        >
+                          Entfernen
+                        </button>
+                      </article>
+                    ))}
+                  </div>
+                ) : null}
+
+                {newsFeedError ? <p className={styles.modalFooterError}>{newsFeedError}</p> : null}
+              </div>
+
+              <footer className={styles.standardModalFooter}>
+                <div className={styles.modalActions}>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => {
+                      setIsNewsComposerOpen(false);
+                      resetNewsComposer();
+                    }}
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.primaryButton}
+                    onClick={createNewsPost}
+                    disabled={isNewsFeedSaving}
+                  >
+                    Beitrag veröffentlichen
+                  </button>
+                </div>
+              </footer>
+            </section>
+          </div>
+        ) : null}
+      </section>
+    );
+  }
+
   function renderContentManagement() {
     const editorialEntries = contentItems;
     const contentProgressNowMs = Date.now();
@@ -48010,6 +48475,8 @@ await addProjectLogbookEntry(
             renderWinterServiceAutomation()
           ) : activeTab === "generalActivityReports" ? (
             renderGeneralActivityReportAutomation()
+          ) : activeTab === "newsFeed" ? (
+            renderNewsFeed()
           ) : plannedModuleLabels[activeTab] ? (
             <section className={styles.plannedModule}>
               <div>
