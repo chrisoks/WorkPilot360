@@ -24300,6 +24300,82 @@ await addProjectLogbookEntry(
   };
   const averageSoldHourlyRate =
     employeeSummary.stampedProjectHours > 0 ? invoiceRevenueTotal / employeeSummary.stampedProjectHours : 0;
+  const dashboardCurrentMonthKey = getCurrentMonthKey();
+  const dashboardPreviousWorkingDateKey = (() => {
+    const cursor = new Date();
+    for (let guard = 0; guard < 31; guard += 1) {
+      cursor.setDate(cursor.getDate() - 1);
+      const dateKey = formatDateKey(cursor);
+      if (!isWeekendDateKey(dateKey) && !getHolidayForDateKey(dateKey)) return dateKey;
+    }
+    return formatDateKey(new Date());
+  })();
+  const getDashboardProductivityPercent = (matchesDate: (dateKey: string) => boolean) => {
+    const entries = stampEntries.filter((entry) => !entry.deletedAt && matchesDate(normalizeDateKeyValue(entry.date)));
+    const productiveMs = entries
+      .filter((entry) => entry.mode === "project")
+      .reduce((sum, entry) => sum + Math.max(0, Number(entry.durationMs || 0)), 0);
+    const totalMs = entries.reduce((sum, entry) => sum + Math.max(0, Number(entry.durationMs || 0)), 0);
+    return totalMs > 0 ? (productiveMs / totalMs) * 100 : 0;
+  };
+  const dashboardPreviousWorkdayProductivity = getDashboardProductivityPercent(
+    (dateKey) => dateKey === dashboardPreviousWorkingDateKey
+  );
+  const dashboardCurrentMonthProductivity = getDashboardProductivityPercent((dateKey) =>
+    dateKey.startsWith(dashboardCurrentMonthKey)
+  );
+  const dashboardCurrentMonthRevenue = invoices
+    .filter((invoice) => isFinanciallyActiveInvoice(invoice) && getProjectInvoiceMonth(invoice) === dashboardCurrentMonthKey)
+    .reduce((sum, invoice) => sum + invoice.netTotal, 0);
+  const dashboardCurrentMonthForecast =
+    forecastBusinessMonthRows.find((month) => month.key === dashboardCurrentMonthKey)?.potential ?? 0;
+  const dashboardActiveProjects = heroProjects.filter((project) => {
+    const status = normalizeProjectPipelineStatus(project.status);
+    return isProjectVisibleInProjectScopedAnalytics(project) && status !== "Archiviert" && status !== "Abgeschlossen";
+  });
+  const dashboardBillingCheckCount = dashboardActiveProjects.filter(
+    (project) => normalizeProjectPipelineStatus(project.status) === "Abrechnungsprüfung"
+  ).length;
+  const dashboardPipelineBottleneckLabel = largestPipelineBottleneck?.status || "kein Schwerpunkt";
+  const dashboardCurrentMonthOffers = offers.filter((offer) => getReportMonthKey(offer.createdAt) === dashboardCurrentMonthKey);
+  const dashboardCurrentMonthOfferVolume = dashboardCurrentMonthOffers.reduce((sum, offer) => sum + offer.netTotal, 0);
+  const dashboardCurrentMonthFeedback = customerFeedback
+    .filter((feedback) => getReportMonthKey(feedback.createdAt) === dashboardCurrentMonthKey)
+    .filter((feedback) => {
+      const project = feedback.projectId ? heroProjects.find((item) => item.id === feedback.projectId) : null;
+      return isProjectVisibleInProjectScopedAnalytics(project) || isCustomerFeedbackLinkedToActiveSalesUser(feedback);
+    });
+  const dashboardCurrentMonthRating =
+    dashboardCurrentMonthFeedback.length > 0
+      ? dashboardCurrentMonthFeedback.reduce((sum, feedback) => sum + feedback.rating, 0) /
+        dashboardCurrentMonthFeedback.length
+      : 0;
+  const dashboardCurrentMonthCriticalFeedback = dashboardCurrentMonthFeedback.filter((feedback) => feedback.hotAlert).length;
+  const managementDashboardKpis = [
+    {
+      label: "Umsatz & Forecast",
+      value: formatMoney(dashboardCurrentMonthRevenue),
+      detail: `Forecast bis Monatsende ${formatMoney(dashboardCurrentMonthForecast)}`,
+    },
+    {
+      label: "Produktivität",
+      value: formatPercent(dashboardPreviousWorkdayProductivity),
+      detail: `Monat bisher ${formatPercent(dashboardCurrentMonthProductivity)}`,
+    },
+    {
+      label: "Projektlage",
+      value: `${dashboardActiveProjects.length}`,
+      detail: `${longPipelineStatusRows.length} > 14 Tg. · ${dashboardBillingCheckCount} in Prüfung · ${dashboardPipelineBottleneckLabel}`,
+    },
+    {
+      label: "Vertrieb & Kunde",
+      value: `${dashboardCurrentMonthOffers.length} Angebote`,
+      detail:
+        dashboardCurrentMonthFeedback.length > 0
+          ? `${formatMoney(dashboardCurrentMonthOfferVolume)} · Zufriedenheit ${formatHours(dashboardCurrentMonthRating)}/5 · ${dashboardCurrentMonthCriticalFeedback} kritisch`
+          : `${formatMoney(dashboardCurrentMonthOfferVolume)} · noch keine Bewertung im Monat`,
+    },
+  ];
   const projectMapRows = reportProjectRows
     .filter((row) => row.project.address || row.project.customer)
     .slice(0, 20)
@@ -46392,19 +46468,34 @@ await addProjectLogbookEntry(
 
               <section className={styles.dashboardMainGrid}>
                 <section className={styles.employeeStampPanel}>
-                  <div className={styles.employeeStampSummary}>
-                    <article>
-                      <span>Angestempelt</span>
-                      <strong>{stampedDashboardEmployees.length}</strong>
-                    </article>
-                    <article>
-                      <span>Nicht eingestempelt</span>
-                      <strong>{Math.max(0, dashboardEmployees.length - stampedDashboardEmployees.length)}</strong>
-                    </article>
-                    <article>
-                      <span>Geplant abwesend</span>
-                      <strong>{dashboardAbsentEmployees.length}</strong>
-                    </article>
+                  <div
+                    className={styles.employeeStampSummary}
+                    data-layout={activeUser?.role === "GESCHAEFTSFUEHRER" ? "management" : "team"}
+                  >
+                    {activeUser?.role === "GESCHAEFTSFUEHRER" ? (
+                      managementDashboardKpis.map((kpi) => (
+                        <article key={kpi.label}>
+                          <span>{kpi.label}</span>
+                          <strong>{kpi.value}</strong>
+                          <small>{kpi.detail}</small>
+                        </article>
+                      ))
+                    ) : (
+                      <>
+                        <article>
+                          <span>Angestempelt</span>
+                          <strong>{stampedDashboardEmployees.length}</strong>
+                        </article>
+                        <article>
+                          <span>Nicht eingestempelt</span>
+                          <strong>{Math.max(0, dashboardEmployees.length - stampedDashboardEmployees.length)}</strong>
+                        </article>
+                        <article>
+                          <span>Geplant abwesend</span>
+                          <strong>{dashboardAbsentEmployees.length}</strong>
+                        </article>
+                      </>
+                    )}
                   </div>
 
                   <div className={styles.employeeStampHeader}>

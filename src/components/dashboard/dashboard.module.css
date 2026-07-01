@@ -20407,14 +20407,20 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.employeeStampSummary[data-layout="management"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .employeeStampSummary article {
   background: #f8fafc;
   border: 1px solid #dbe3ee;
   border-radius: 12px;
+  min-width: 0;
   padding: 10px 12px;
 }
 
 .employeeStampSummary span,
+.employeeStampSummary small,
 .employeeStampHeader > span,
 .employeeStampPerson small {
   color: #64748b;
@@ -20422,12 +20428,20 @@
   font-weight: 800;
 }
 
+.employeeStampSummary small {
+  display: block;
+  line-height: 1.25;
+  margin-top: 7px;
+  overflow-wrap: anywhere;
+}
+
 .employeeStampSummary strong {
   color: #0f172a;
   display: block;
-  font-size: 1.42rem;
+  font-size: clamp(1.25rem, 1.5vw, 1.42rem);
   line-height: 1;
   margin-top: 5px;
+  overflow-wrap: anywhere;
 }
 
 .employeeStampHeader {

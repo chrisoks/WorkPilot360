@@ -8,6 +8,12 @@
   Aenderungen in dieser `AGENTS.md` dokumentieren. Kleine reine UI-Fixes
   duerfen schlank bleiben, aber groessere Logikbloecke brauchen Sicherung,
   Checks und Handover-Notiz.
+- Dashboard-KPIs Geschaeftsfuehrung 2026-07-01: Die oberen KPI-Kacheln im
+  Dashboard zeigen fuer die Rolle `GESCHAEFTSFUEHRER` jetzt ein 2x2-Set aus
+  Umsatz & Forecast, Produktivitaet, Projektlage sowie Vertrieb & Kunde. Das
+  Raster bleibt buendig mit dem darunterliegenden `Team live`-Bereich. Andere
+  Rollen behalten vorerst die bisherige Team-Live-Zusammenfassung; ihre
+  eigenen KPI-Sets sind in `OFFENE_PUNKTE.md` lokal vorgemerkt.
 - PWA-Web-Push Tageserinnerung/Terminwuensche 2026-06-28:
   Terminwuensche senden jetzt zusaetzlich zur bestehenden In-App-Notification
   einen Web-Push an dieselben Planungsverantwortlichen. Der Push haengt an der
