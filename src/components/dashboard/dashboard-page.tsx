@@ -5932,7 +5932,7 @@ export function DashboardPage() {
   }
 
   async function loadPlanningEntries() {
-    if (!activeUserId) return;
+    if (!activeUserId) return null;
 
     const res = await fetch(`/api/planning-entries?actorUserId=${encodeURIComponent(activeUserId)}`, {
       cache: "no-store",
@@ -5941,7 +5941,7 @@ export function DashboardPage() {
 
     if (!res.ok) {
       setErrorMessage("Planungen konnten nicht geladen werden.");
-      return;
+      return null;
     }
 
     const data = (await res.json()) as PlanningEntry[];
@@ -5949,6 +5949,7 @@ export function DashboardPage() {
     setErrorMessage((currentMessage) =>
       currentMessage === "Planungen konnten nicht geladen werden." ? "" : currentMessage
     );
+    return data;
   }
 
   async function loadProjectHistoryPlanningEntries(projectId: string) {
@@ -13347,6 +13348,7 @@ export function DashboardPage() {
         : `Termin aus Angebot ${selectedPlanningOffer?.offerNumber ?? ""} bestaetigt`;
 
     const usersToPlan = [selectedUser, ...selectedAdditionalUsers].filter(Boolean) as UserOption[];
+    const savedPlanningEntries: PlanningEntry[] = [];
     for (const date of recurrenceDates) {
       for (const userToPlan of usersToPlan) {
         const userDurationMinutes = getPlanningNetMinutesBetween(
@@ -13414,6 +13416,9 @@ export function DashboardPage() {
           setPlanningEntryError(data?.error ?? "Planung konnte nicht gespeichert werden.");
           return;
         }
+
+        const savedPlanningEntry = (await res.json()) as PlanningEntry;
+        savedPlanningEntries.push(savedPlanningEntry);
       }
     }
 
@@ -13457,7 +13462,22 @@ export function DashboardPage() {
         : selectedUser?.name || "Mitarbeiter";
     setIsPlanningEntryModalOpen(false);
     resetPlanningEntryForm();
-    await loadPlanningEntries();
+    const reloadedPlanningEntries = await loadPlanningEntries();
+    if (reloadedPlanningEntries) {
+      const missingSavedEntries = savedPlanningEntries.filter(
+        (savedEntry) => !reloadedPlanningEntries.some((entry) => entry.id === savedEntry.id && !entry.deletedAt)
+      );
+      if (missingSavedEntries.length > 0) {
+        const firstMissingEntry = missingSavedEntries[0];
+        setErrorMessage(
+          `Planung wurde gespeichert, ist aber nach dem Neuladen nicht im Planungsboard sichtbar: ${
+            firstMissingEntry.title
+          } am ${formatDateOnly(firstMissingEntry.date)} von ${firstMissingEntry.startTime} bis ${
+            firstMissingEntry.endTime
+          } in ${firstMissingEntry.board} / ${firstMissingEntry.groupName}. Bitte Planungsboard neu laden oder prüfen.`
+        );
+      }
+    }
     await loadNotifications(true);
     if (logProjectId) {
       await addProjectLogbookEntry(
