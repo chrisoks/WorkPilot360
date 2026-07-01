@@ -32,6 +32,36 @@ const ALLOWED_LOGBOOK_DOCUMENT_MIME_TYPES = new Set([
 const ALLOWED_LOGBOOK_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
 const ALLOWED_LOGBOOK_DOCUMENT_EXTENSIONS = new Set([".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".txt"]);
 
+type ContactToolbarIconType = "bulk" | "export" | "columns";
+
+function ContactToolbarIcon({ type }: { type: ContactToolbarIconType }) {
+  if (type === "bulk") {
+    return (
+      <svg className={styles.contactActionIcon} viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M8 11a3.2 3.2 0 1 0 0-6.4A3.2 3.2 0 0 0 8 11Z" />
+        <path d="M16 10.6a2.7 2.7 0 1 0 0-5.4 2.7 2.7 0 0 0 0 5.4Z" />
+        <path d="M3.8 19.2c.5-3.1 2.1-5 4.2-5s3.7 1.9 4.2 5H3.8Z" />
+        <path d="M13.3 19.2c.3-1.8 1-3.2 2.1-4.1.4-.3.9-.5 1.4-.5 1.8 0 3 1.8 3.4 4.6h-6.9Z" />
+      </svg>
+    );
+  }
+
+  if (type === "export") {
+    return (
+      <svg className={styles.contactActionIcon} viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 4.2c.5 0 .9.4.9.9v7.1l2.2-2.2a.9.9 0 1 1 1.3 1.3l-3.8 3.8a.9.9 0 0 1-1.3 0l-3.8-3.8a.9.9 0 1 1 1.3-1.3l2.2 2.2V5.1c0-.5.4-.9.9-.9Z" />
+        <path d="M5.3 15.7c.5 0 .9.4.9.9v1.8h11.6v-1.8a.9.9 0 1 1 1.8 0v2.7c0 .5-.4.9-.9.9H5.3a.9.9 0 0 1-.9-.9v-2.7c0-.5.4-.9.9-.9Z" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg className={styles.contactActionIcon} viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4.8 5.2h14.4c.6 0 1 .4 1 1v11.6c0 .6-.4 1-1 1H4.8c-.6 0-1-.4-1-1V6.2c0-.6.4-1 1-1Zm.8 1.8v10h3.7V7H5.6Zm5.5 10h3.7V7h-3.7v10Zm5.5 0h1.8V7h-1.8v10Z" />
+    </svg>
+  );
+}
+
 function getTimeZoneOffsetMs(date: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone,
@@ -47712,18 +47742,23 @@ await addProjectLogbookEntry(
                 <div className={styles.contactToolbarActions}>
                   <button
                     type="button"
-                    className={styles.secondaryButton}
+                    className={styles.contactActionIconButton}
                     onClick={() => setIsContactBulkModalOpen(true)}
+                    title="Gruppenaktion"
+                    aria-label="Gruppenaktion"
                   >
-                    Gruppenaktion
+                    <ContactToolbarIcon type="bulk" />
                   </button>
                   <div className={styles.contactExportPicker}>
                     <button
                       type="button"
-                      className={styles.secondaryButton}
+                      className={styles.contactActionIconButton}
                       onClick={() => setIsContactExportMenuOpen((isOpen) => !isOpen)}
+                      title="Export"
+                      aria-label="Export"
+                      aria-expanded={isContactExportMenuOpen}
                     >
-                      Export v
+                      <ContactToolbarIcon type="export" />
                     </button>
                     {isContactExportMenuOpen && (
                       <div className={styles.contactExportMenu}>
@@ -47739,11 +47774,13 @@ await addProjectLogbookEntry(
                   <div className={styles.contactColumnPicker}>
                     <button
                       type="button"
-                      className={styles.iconButton}
-                aria-label="Spalten auswählen"
+                      className={styles.contactActionIconButton}
+                      aria-label="Spalten auswählen"
+                      title="Spalten auswählen"
+                      aria-expanded={isContactColumnMenuOpen}
                       onClick={() => setIsContactColumnMenuOpen((isOpen) => !isOpen)}
                     >
-                      1.
+                      <ContactToolbarIcon type="columns" />
                     </button>
                     {isContactColumnMenuOpen && (
                       <div className={styles.contactColumnMenu}>
