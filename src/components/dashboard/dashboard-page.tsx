@@ -26310,22 +26310,7 @@ await addProjectLogbookEntry(
                   return (
                     <section key={group.groupName} className={styles.employeeAnalyticsGroupCard}>
                       <div className={styles.employeeAnalyticsCardHeader}>
-                        <div
-                          className={styles.employeeAnalyticsGroupTitle}
-                          role={canViewEmployeeTeamMemberDetails ? "button" : undefined}
-                          tabIndex={canViewEmployeeTeamMemberDetails ? 0 : undefined}
-                          aria-expanded={canViewEmployeeTeamMemberDetails ? isExpanded : undefined}
-                          onClick={() => {
-                            if (canViewEmployeeTeamMemberDetails) toggleEmployeeAnalyticsGroup(group.groupName);
-                          }}
-                          onKeyDown={(event) => {
-                            if (!canViewEmployeeTeamMemberDetails) return;
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              toggleEmployeeAnalyticsGroup(group.groupName);
-                            }
-                          }}
-                        >
+                        <div>
                           <span>Planungsgruppe</span>
                           <strong>{group.groupName}</strong>
                           <small>{group.users.length} Mitarbeitende</small>

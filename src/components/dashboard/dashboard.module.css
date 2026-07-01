@@ -6873,16 +6873,6 @@
   gap: 4px;
 }
 
-.employeeAnalyticsGroupTitle[role="button"] {
-  border-radius: 8px;
-  cursor: pointer;
-  outline: none;
-}
-
-.employeeAnalyticsGroupTitle[role="button"]:focus-visible {
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
-}
-
 .employeeAnalyticsCardHeader span,
 .employeeAnalyticsCardHeader small,
 .employeeAnalyticsMetricGrid span,
