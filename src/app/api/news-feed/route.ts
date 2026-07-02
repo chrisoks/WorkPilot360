@@ -5,6 +5,7 @@ import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canSeeNewsPost } from "@/lib/news-feed/visibility";
+import { sendPushToUserSafely } from "@/lib/push/web-push";
 import { ensureNewsFeedTables } from "@/lib/sales-hub/ensure";
 
 type NewsPostRow = {
@@ -90,6 +91,76 @@ function cleanPollOptions(value: unknown) {
 
 function getUserName(user: { firstName?: string | null; lastName?: string | null; email?: string | null }) {
   return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "System";
+}
+
+function canEditNewsPost(
+  actor: { id: string; role?: string | null },
+  post: { authorUserId: string | null }
+) {
+  return post.authorUserId === actor.id || actor.role === "ADMIN" || actor.role === "GESCHAEFTSFUEHRER";
+}
+
+async function ensureNotificationLinkColumns() {
+  await prisma.$executeRaw`
+    ALTER TABLE "Notification"
+    ADD COLUMN IF NOT EXISTS "linkTarget" TEXT,
+    ADD COLUMN IF NOT EXISTS "linkTargetId" TEXT,
+    ADD COLUMN IF NOT EXISTS "linkLabel" TEXT
+  `;
+}
+
+async function notifyUsersAboutNewsPost(input: {
+  organizationId: string;
+  postId: string;
+  title: string;
+  authorName: string;
+  actorUserId: string;
+  users: Array<{ id: string; isActive: boolean; role?: string | null }>;
+  postVisibility: {
+    visibility: string;
+    departmentIds: unknown;
+    teamIds: unknown;
+    userIds: unknown;
+  };
+}) {
+  await ensureNotificationLinkColumns();
+
+  const subject = "Neuer Beitrag im Firmenfeed";
+  const body = `${input.authorName} hat einen neuen Beitrag im Firmenfeed veröffentlicht: ${input.title}`;
+  const recipients = input.users.filter(
+    (user) => user.isActive && user.id !== input.actorUserId && canSeeNewsPost(input.postVisibility, user)
+  );
+
+  for (const recipient of recipients) {
+    const notification = await prisma.notification.create({
+      data: {
+        id: randomUUID(),
+        organizationId: input.organizationId,
+        userId: recipient.id,
+        taskId: null,
+        channel: "app",
+        subject,
+        body,
+        linkTarget: "news-feed",
+        linkTargetId: input.postId,
+        linkLabel: "Beitrag öffnen",
+        sentAt: null,
+      },
+    });
+
+    await sendPushToUserSafely({
+      organizationId: input.organizationId,
+      userId: recipient.id,
+      payload: {
+        title: subject,
+        body,
+        notificationId: notification.id,
+        linkTarget: "news-feed",
+        linkTargetId: input.postId,
+        url: `/?target=news-feed&targetId=${encodeURIComponent(input.postId)}`,
+      },
+    });
+  }
 }
 
 function formatPost(
@@ -231,13 +302,14 @@ export async function POST(req: Request) {
   }
 
   const id = randomUUID();
+  const authorName = getUserName(actor);
   await prisma.$executeRaw`
     INSERT INTO "NewsPost" (
       "id", "organizationId", "title", "body", "authorUserId", "authorName",
       "visibility", "departmentIds", "teamIds", "userIds",
       "attachments", "pollQuestion", "pollOptions", "pollAllowMultiple"
     ) VALUES (
-      ${id}, ${organization.id}, ${title}, ${text}, ${actor.id}, ${getUserName(actor)},
+      ${id}, ${organization.id}, ${title}, ${text}, ${actor.id}, ${authorName},
       ${visibility}, ${JSON.stringify(cleanStringArray(body.departmentIds))}::jsonb,
       ${JSON.stringify(cleanStringArray(body.teamIds))}::jsonb,
       ${JSON.stringify(cleanStringArray(body.userIds))}::jsonb,
@@ -245,6 +317,21 @@ export async function POST(req: Request) {
       ${JSON.stringify(pollOptions)}::jsonb, ${pollAllowMultiple}
     )
   `;
+
+  await notifyUsersAboutNewsPost({
+    organizationId: organization.id,
+    postId: id,
+    title,
+    authorName,
+    actorUserId: actor.id,
+    users,
+    postVisibility: {
+      visibility,
+      departmentIds: cleanStringArray(body.departmentIds),
+      teamIds: cleanStringArray(body.teamIds),
+      userIds: cleanStringArray(body.userIds),
+    },
+  });
 
   return NextResponse.json({ id }, { status: 201 });
 }
@@ -262,6 +349,60 @@ export async function PATCH(req: Request) {
 
   if (!postId) {
     return NextResponse.json({ error: "Keine News-ID uebergeben." }, { status: 400 });
+  }
+
+  if (body.action === "update") {
+    const title = cleanString(body.title);
+    const text = cleanString(body.body);
+    const attachments = cleanAttachments(body.attachments);
+    const pollQuestion = cleanString(body.pollQuestion);
+    const pollOptions = cleanPollOptions(body.pollOptions);
+    const pollAllowMultiple = Boolean(body.pollAllowMultiple);
+
+    if (!title) {
+      return NextResponse.json({ error: "Bitte einen Titel angeben." }, { status: 400 });
+    }
+
+    if (pollQuestion && pollOptions.length < 2) {
+      return NextResponse.json({ error: "Eine Abstimmung benoetigt mindestens zwei Antwortoptionen." }, { status: 400 });
+    }
+
+    const editablePosts = await prisma.$queryRaw<Array<{ id: string; authorUserId: string | null }>>`
+      SELECT id, "authorUserId"
+      FROM "NewsPost"
+      WHERE "organizationId" = ${organization.id}
+        AND id = ${postId}
+      LIMIT 1
+    `;
+    const editablePost = editablePosts[0];
+    if (!editablePost) {
+      return NextResponse.json({ error: "Beitrag nicht gefunden." }, { status: 404 });
+    }
+    if (!canEditNewsPost(activeUser, editablePost)) {
+      return NextResponse.json({ error: "Du darfst diesen Beitrag nicht bearbeiten." }, { status: 403 });
+    }
+
+    await prisma.$executeRaw`
+      UPDATE "NewsPost"
+      SET
+        "title" = ${title},
+        "body" = ${text},
+        "attachments" = ${JSON.stringify(attachments)}::jsonb,
+        "pollQuestion" = ${pollQuestion},
+        "pollOptions" = ${JSON.stringify(pollOptions)}::jsonb,
+        "pollAllowMultiple" = ${pollAllowMultiple},
+        "updatedAt" = CURRENT_TIMESTAMP
+      WHERE "organizationId" = ${organization.id}
+        AND id = ${postId}
+    `;
+
+    await prisma.$executeRaw`
+      DELETE FROM "NewsPollVote"
+      WHERE "organizationId" = ${organization.id}
+        AND "postId" = ${postId}
+    `;
+
+    return NextResponse.json({ success: true });
   }
 
   const posts = await prisma.$queryRaw<

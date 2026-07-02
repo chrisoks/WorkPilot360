@@ -5072,6 +5072,9 @@ export function DashboardPage() {
   const [newsDraftTitle, setNewsDraftTitle] = useState("");
   const [newsDraftBody, setNewsDraftBody] = useState("");
   const [newsDraftAttachments, setNewsDraftAttachments] = useState<NewsFeedAttachment[]>([]);
+  const [editingNewsPostId, setEditingNewsPostId] = useState("");
+  const [newsDraftPollQuestion, setNewsDraftPollQuestion] = useState("");
+  const [newsDraftPollOptions, setNewsDraftPollOptions] = useState<string[]>(["", ""]);
   const [newsCommentDrafts, setNewsCommentDrafts] = useState<Record<string, string>>({});
   const [isNewsFeedSaving, setIsNewsFeedSaving] = useState(false);
   const [documentConfigSection, setDocumentConfigSection] =
@@ -6106,14 +6109,30 @@ export function DashboardPage() {
   }
 
   function resetNewsComposer() {
+    setEditingNewsPostId("");
     setNewsDraftTitle("");
     setNewsDraftBody("");
     setNewsDraftAttachments([]);
+    setNewsDraftPollQuestion("");
+    setNewsDraftPollOptions(["", ""]);
     setNewsFeedError("");
   }
 
   function openNewsComposer() {
     resetNewsComposer();
+    setIsNewsComposerOpen(true);
+  }
+
+  function openEditNewsComposer(post: NewsFeedPost) {
+    setEditingNewsPostId(post.id);
+    setNewsDraftTitle(post.title);
+    setNewsDraftBody(post.body);
+    setNewsDraftAttachments(post.attachments);
+    setNewsDraftPollQuestion(post.pollQuestion);
+    setNewsDraftPollOptions(
+      post.pollOptions.length > 0 ? post.pollOptions.map((option) => option.label) : ["", ""]
+    );
+    setNewsFeedError("");
     setIsNewsComposerOpen(true);
   }
 
@@ -6143,7 +6162,7 @@ export function DashboardPage() {
     }
   }
 
-  async function createNewsPost() {
+  async function saveNewsPost() {
     if (!activeUserId) {
       setNewsFeedError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
       return;
@@ -6154,20 +6173,30 @@ export function DashboardPage() {
       return;
     }
 
+    const pollOptions = newsDraftPollOptions.map((option) => option.trim()).filter(Boolean);
+    if (newsDraftPollQuestion.trim() && pollOptions.length < 2) {
+      setNewsFeedError("Eine Umfrage benötigt mindestens zwei Antwortoptionen.");
+      return;
+    }
+
     setIsNewsFeedSaving(true);
     setNewsFeedError("");
 
     try {
       const res = await fetch("/api/news-feed", {
-        method: "POST",
+        method: editingNewsPostId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
         body: JSON.stringify({
           actorId: activeUserId,
+          action: editingNewsPostId ? "update" : undefined,
+          postId: editingNewsPostId || undefined,
           title: newsDraftTitle,
           body: newsDraftBody,
           visibility: "all",
           attachments: newsDraftAttachments,
+          pollQuestion: newsDraftPollQuestion,
+          pollOptions,
         }),
       });
       const data = await res.json().catch(() => null);
@@ -6183,6 +6212,28 @@ export function DashboardPage() {
     } finally {
       setIsNewsFeedSaving(false);
     }
+  }
+
+  async function voteNewsPoll(postId: string, optionId: string) {
+    if (!activeUserId) {
+      setNewsFeedError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
+
+    const res = await fetch("/api/news-feed/votes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ actorId: activeUserId, postId, optionIds: [optionId] }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      setNewsFeedError(data?.error ?? "Abstimmung konnte nicht gespeichert werden.");
+      return;
+    }
+
+    setNewsFeedError("");
+    await loadNewsFeed();
   }
 
   async function reactToNewsPost(postId: string, reaction: string) {
@@ -12577,6 +12628,12 @@ export function DashboardPage() {
       await loadIdeaPosts();
       setActiveTab("ideaStore");
       setOpenSidebarMenus({ contentManagement: true });
+      setIsNotificationsOpen(false);
+    }
+
+    if (notification.linkTarget === "news-feed") {
+      await loadNewsFeed();
+      setActiveTab("newsFeed");
       setIsNotificationsOpen(false);
     }
 
@@ -44812,6 +44869,11 @@ await addProjectLogbookEntry(
               const authorUser = getNewsFeedAuthor(post);
               const authorName = authorUser?.name || post.authorName || "WorkPilot360";
               const likeCount = post.reactionSummary[likeReactionKey] ?? 0;
+              const canEditPost =
+                post.authorUserId === activeUserId ||
+                activeUser?.role === "ADMIN" ||
+                activeUser?.role === "GESCHAEFTSFUEHRER";
+              const pollVoteTotal = post.pollOptions.reduce((sum, option) => sum + option.voteCount, 0);
 
               return (
                 <article key={post.id} className={styles.newsFeedCard}>
@@ -44827,6 +44889,15 @@ await addProjectLogbookEntry(
                       <strong>{authorName}</strong>
                       <span>Unternehmensfeed · {formatDeadline(post.createdAt)}</span>
                     </div>
+                    {canEditPost ? (
+                      <button
+                        type="button"
+                        className={styles.newsEditButton}
+                        onClick={() => openEditNewsComposer(post)}
+                      >
+                        Bearbeiten
+                      </button>
+                    ) : null}
                     {!post.readAt ? <small>Neu</small> : null}
                   </header>
 
@@ -44849,6 +44920,29 @@ await addProjectLogbookEntry(
                   <h2>{post.title}</h2>
                   {post.body ? <p>{post.body}</p> : null}
                 </div>
+
+                {post.pollQuestion && post.pollOptions.length > 0 ? (
+                  <section className={styles.newsPoll}>
+                    <strong>{post.pollQuestion}</strong>
+                    <div>
+                      {post.pollOptions.map((option) => {
+                        const percent = pollVoteTotal > 0 ? Math.round((option.voteCount / pollVoteTotal) * 100) : 0;
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            data-active={option.votedByActiveUser}
+                            onClick={() => voteNewsPoll(post.id, option.id)}
+                          >
+                            <span>{option.label}</span>
+                            <em>{option.voteCount} Stimme{option.voteCount === 1 ? "" : "n"}</em>
+                            <i style={{ width: `${percent}%` }} aria-hidden="true" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ) : null}
 
                 <button
                   type="button"
@@ -44909,7 +45003,7 @@ await addProjectLogbookEntry(
             <section className={styles.standardModal}>
               <header className={styles.standardModalHeader}>
                 <div>
-                  <h2>Neuen Beitrag erstellen</h2>
+                  <h2>{editingNewsPostId ? "Beitrag bearbeiten" : "Neuen Beitrag erstellen"}</h2>
                   <p>Kurze interne Information für den Unternehmensfeed.</p>
                 </div>
                 <button
@@ -44953,6 +45047,41 @@ await addProjectLogbookEntry(
                       onChange={(event) => addNewsAttachments(event.target.files)}
                     />
                   </label>
+                  <div className={styles.fullWidth}>
+                    <label>
+                      Umfragefrage
+                      <input
+                        value={newsDraftPollQuestion}
+                        onChange={(event) => setNewsDraftPollQuestion(event.target.value)}
+                        placeholder="Optional, z.B. Welche Variante sollen wir nehmen?"
+                      />
+                    </label>
+                    <div className={styles.newsPollComposerOptions}>
+                      {newsDraftPollOptions.map((option, index) => (
+                        <label key={index}>
+                          Antwort {index + 1}
+                          <input
+                            value={option}
+                            onChange={(event) =>
+                              setNewsDraftPollOptions((currentOptions) =>
+                                currentOptions.map((currentOption, currentIndex) =>
+                                  currentIndex === index ? event.target.value : currentOption
+                                )
+                              )
+                            }
+                            placeholder={`Antwortmöglichkeit ${index + 1}`}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => setNewsDraftPollOptions((currentOptions) => [...currentOptions, ""])}
+                    >
+                      Antwort hinzufügen
+                    </button>
+                  </div>
                 </div>
 
                 {newsDraftAttachments.length > 0 ? (
@@ -44993,10 +45122,10 @@ await addProjectLogbookEntry(
                   <button
                     type="button"
                     className={styles.primaryButton}
-                    onClick={createNewsPost}
+                    onClick={saveNewsPost}
                     disabled={isNewsFeedSaving}
                   >
-                    Beitrag veröffentlichen
+                    {editingNewsPostId ? "Änderungen speichern" : "Beitrag veröffentlichen"}
                   </button>
                 </div>
               </footer>
