@@ -9371,7 +9371,7 @@
   border: 1px solid #d8e0ea;
   border-radius: 8px;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
-  width: min(520px, 100%);
+  width: min(680px, 100%);
 }
 
 .newsFeedEmpty {
@@ -9412,6 +9412,14 @@
   height: 34px;
   justify-content: center;
   width: 34px;
+}
+
+.newsFeedAuthorAvatar img {
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
 }
 
 .newsFeedAuthorMeta {
@@ -9457,7 +9465,7 @@
 
 .newsFeedImages button,
 .newsComposerImages article {
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 4 / 3;
   background: #f8fafc;
   border: 0;
   border-radius: 0;
@@ -9469,7 +9477,13 @@
   cursor: pointer;
 }
 
-.newsFeedImages img,
+.newsFeedImages img {
+  display: block;
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
 .newsComposerImages img {
   display: block;
   height: 100%;
@@ -9532,6 +9546,45 @@
   font-weight: 900;
   min-width: 14px;
   text-align: center;
+}
+
+.newsLikeButton {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid #eef2f7;
+  color: #123a73;
+  cursor: pointer;
+  display: inline-flex;
+  font-family: inherit;
+  font-weight: 900;
+  gap: 7px;
+  justify-content: flex-start;
+  min-height: 38px;
+  padding: 8px 14px;
+  width: 100%;
+}
+
+.newsLikeButton:hover,
+.newsLikeButton[data-active="true"] {
+  background: #f8fafc;
+  color: #1d4ed8;
+}
+
+.newsLikeButton span {
+  color: #ef4444;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.newsLikeButton small {
+  background: #eef2f7;
+  border-radius: 999px;
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1;
+  padding: 4px 7px;
 }
 
 .newsComments {

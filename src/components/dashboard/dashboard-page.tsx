@@ -44775,13 +44775,14 @@ await addProjectLogbookEntry(
   }
 
   function renderNewsFeed() {
-    const reactions = [
-      { key: "up", label: "Daumen hoch", icon: "+" },
-      { key: "heart", label: "Gefällt mir", icon: "♥" },
-      { key: "celebrate", label: "Gut", icon: "!" },
-      { key: "idea", label: "Idee", icon: "*" },
-      { key: "wow", label: "Interessant", icon: "?" },
-    ];
+    const likeReactionKey = "up";
+    const getNewsFeedAuthor = (post: NewsFeedPost) => {
+      const normalizedAuthorName = post.authorName.trim().toLowerCase();
+      return users.find((user) => {
+        const normalizedUserName = user.name.trim().toLowerCase();
+        return user.id === post.authorUserId || (!!normalizedAuthorName && normalizedUserName === normalizedAuthorName);
+      });
+    };
 
     return (
       <section className={styles.newsFeedShell}>
@@ -44807,18 +44808,27 @@ await addProjectLogbookEntry(
               <span>Starte mit einer kurzen internen Info oder einem Team-Update.</span>
             </div>
           ) : (
-            newsFeedPosts.map((post) => (
-              <article key={post.id} className={styles.newsFeedCard}>
-                <header className={styles.newsFeedCardHeader}>
-                  <div className={styles.newsFeedAuthorAvatar}>
-                    {getInitials(post.authorName || "WP")}
-                  </div>
-                  <div className={styles.newsFeedAuthorMeta}>
-                    <strong>{post.authorName || "WorkPilot360"}</strong>
-                    <span>Unternehmensfeed · {formatDeadline(post.createdAt)}</span>
-                  </div>
-                  {!post.readAt ? <small>Neu</small> : null}
-                </header>
+            newsFeedPosts.map((post) => {
+              const authorUser = getNewsFeedAuthor(post);
+              const authorName = authorUser?.name || post.authorName || "WorkPilot360";
+              const likeCount = post.reactionSummary[likeReactionKey] ?? 0;
+
+              return (
+                <article key={post.id} className={styles.newsFeedCard}>
+                  <header className={styles.newsFeedCardHeader}>
+                    <div className={styles.newsFeedAuthorAvatar}>
+                      {authorUser?.profileImageDataUrl ? (
+                        <img src={authorUser.profileImageDataUrl} alt="" />
+                      ) : (
+                        getInitials(authorName || "WP")
+                      )}
+                    </div>
+                    <div className={styles.newsFeedAuthorMeta}>
+                      <strong>{authorName}</strong>
+                      <span>Unternehmensfeed · {formatDeadline(post.createdAt)}</span>
+                    </div>
+                    {!post.readAt ? <small>Neu</small> : null}
+                  </header>
 
                 {post.attachments.length > 0 ? (
                   <div className={styles.newsFeedImages}>
@@ -44840,21 +44850,17 @@ await addProjectLogbookEntry(
                   {post.body ? <p>{post.body}</p> : null}
                 </div>
 
-                <div className={styles.newsReactionBar}>
-                  {reactions.map((reaction) => (
-                    <button
-                      key={reaction.key}
-                      type="button"
-                      data-active={post.activeUserReaction === reaction.key}
-                      onClick={() => reactToNewsPost(post.id, reaction.key)}
-                      title={reaction.label}
-                      aria-label={reaction.label}
-                    >
-                      <span aria-hidden="true">{reaction.icon}</span>
-                      <strong>{post.reactionSummary[reaction.key] ?? 0}</strong>
-                    </button>
-                  ))}
-                </div>
+                <button
+                  type="button"
+                  className={styles.newsLikeButton}
+                  data-active={post.activeUserReaction === likeReactionKey}
+                  onClick={() => reactToNewsPost(post.id, likeReactionKey)}
+                  aria-label="Gefällt mir"
+                >
+                  <span aria-hidden="true">♥</span>
+                  <strong>Gefällt mir</strong>
+                  <small>{likeCount}</small>
+                </button>
 
                 <section className={styles.newsComments}>
                   {post.comments.length > 0 ? (
@@ -44892,8 +44898,9 @@ await addProjectLogbookEntry(
                     Senden
                   </button>
                 </div>
-              </article>
-            ))
+                </article>
+              );
+            })
           )}
         </section>
 
