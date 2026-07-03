@@ -55631,7 +55631,7 @@ await addProjectLogbookEntry(
         </div>
       )}
       {recurringMonthIssueProject ? (
-        <div className={styles.modalBackdrop} onClick={() => setRecurringMonthIssueProject(null)}>
+        <div className={styles.modalOverlay} onClick={() => setRecurringMonthIssueProject(null)}>
           <section
             className={`${styles.standardModal} ${styles.recurringMonthIssueModal}`}
             onClick={(event) => event.stopPropagation()}
