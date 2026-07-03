@@ -279,3 +279,76 @@ export async function PATCH(req: Request) {
 
   return NextResponse.json(formatSalesTarget(rows[0]));
 }
+
+export async function DELETE(req: Request) {
+  await ensureSalesHubTables();
+  const body = await req.json().catch(() => ({}));
+  const { organization, users } = await getDemoContext();
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
+  }
+  const actor = actorResult.actor;
+
+  if (!canManageSalesPipeline(actor)) {
+    return forbiddenSalesResponse();
+  }
+
+  const id = cleanString(body.id);
+  const now = new Date();
+
+  if (!id) {
+    return NextResponse.json({ error: "Ziel fehlt." }, { status: 400 });
+  }
+
+  const currentRows = await prisma.$queryRaw<SalesTargetRow[]>`
+    SELECT *
+    FROM "SalesTarget"
+    WHERE "organizationId" = ${organization.id}
+      AND "id" = ${id}
+    LIMIT 1
+  `;
+  const current = currentRows[0];
+  if (!current) {
+    return NextResponse.json({ error: "Ziel wurde nicht gefunden." }, { status: 404 });
+  }
+  if (!canManageOwnedSalesItem(actor, current)) {
+    return forbiddenSalesResponse();
+  }
+
+  const history = [
+    ...(Array.isArray(current.history) ? current.history : []),
+    {
+      at: now.toISOString(),
+      actor: getUserName(actor),
+      action: "discarded",
+      note: "Ziel entfernt.",
+    },
+  ];
+
+  const rows = await prisma.$queryRaw<SalesTargetRow[]>`
+    UPDATE "SalesTarget"
+    SET
+      "status" = 'discarded',
+      "history" = ${JSON.stringify(history)}::jsonb,
+      "updatedAt" = ${now}
+    WHERE "organizationId" = ${organization.id}
+      AND "id" = ${id}
+    RETURNING *
+  `;
+
+  await recordStatusTransition({
+    organizationId: organization.id,
+    entityType: "sales_target",
+    entityId: current.id,
+    entityLabel: current.title,
+    fromStatus: current.status,
+    toStatus: "discarded",
+    actorUserId: actor.id,
+    actorName: getUserName(actor),
+    note: "Ziel entfernt.",
+    at: now,
+  });
+
+  return NextResponse.json(formatSalesTarget(rows[0]));
+}

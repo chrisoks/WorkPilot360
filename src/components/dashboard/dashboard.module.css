@@ -3742,7 +3742,7 @@
 
 .settingsPanel {
   display: grid;
-  gap: 22px;
+  gap: 18px;
 }
 
 .goalSummaryGrid {
@@ -3762,7 +3762,7 @@
 }
 
 .goalSummaryGrid article {
-  border-left: 4px solid #00a3ad;
+  border-left: 3px solid #cbd5e1;
   padding: 16px 18px;
 }
 
@@ -3779,14 +3779,26 @@
 
 .goalSummaryGrid strong {
   display: block;
-  font-size: 2rem;
+  font-size: 1.85rem;
   line-height: 1.1;
   margin: 8px 0 4px;
+}
+
+.goalToolbar {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .goalCreatePanel,
 .goalListPanel {
   padding: 18px;
+}
+
+.goalCreateHeader {
+  align-items: flex-start;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
 }
 
 .goalCreatePanel h2,
@@ -3843,20 +3855,20 @@
   align-items: center;
   display: flex;
   justify-content: space-between;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
 .goalCardsGrid {
   display: grid;
-  gap: 14px;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
 }
 
 .goalCard {
-  border-left: 4px solid #f59e0b;
+  border-left: 3px solid #cbd5e1;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 11px;
   padding: 16px;
 }
 
@@ -3871,7 +3883,15 @@
   justify-content: space-between;
 }
 
-.goalCardHeader b {
+.goalCardHeaderActions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  justify-content: flex-end;
+}
+
+.goalCardHeaderActions b {
   align-items: center;
   background: #eff6ff;
   border: 1px solid #bfdbfe;
@@ -3884,6 +3904,29 @@
   padding: 7px 10px;
 }
 
+.goalCardHeaderActions button {
+  background: #f8fafc;
+  border: 1px solid #c7d6ea;
+  border-radius: 8px;
+  color: #123a73;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 850;
+  min-height: 30px;
+  padding: 6px 9px;
+}
+
+.goalCardHeaderActions button:hover {
+  background: #eef2f7;
+}
+
+.goalCardHeaderActions button[data-danger="true"] {
+  background: #fff5f5;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
 .goalProgressBar {
   background: #e5e7eb;
   border-radius: 999px;
@@ -3892,7 +3935,7 @@
 }
 
 .goalProgressBar span {
-  background: linear-gradient(90deg, #00a3ad, #2563eb);
+  background: #2563eb;
   display: block;
   height: 100%;
 }

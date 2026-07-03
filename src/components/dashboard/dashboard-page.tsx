@@ -5401,6 +5401,8 @@ export function DashboardPage() {
   const [salesGoals, setSalesGoals] = useState<SalesGoal[]>([]);
   const [isGoalSaving, setIsGoalSaving] = useState(false);
   const [goalError, setGoalError] = useState("");
+  const [isGoalFormOpen, setIsGoalFormOpen] = useState(false);
+  const [editingGoalId, setEditingGoalId] = useState("");
   const [goalDraft, setGoalDraft] = useState({
     ownerUserId: "",
     metricKey: "offers_count" as GoalMetricKey,
@@ -14236,10 +14238,11 @@ export function DashboardPage() {
 
     try {
       const res = await fetch("/api/sales-targets", {
-        method: "POST",
+        method: editingGoalId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           actorId: activeUserId,
+          id: editingGoalId || undefined,
           title,
           description: goalDraft.description,
           ownerUserId: owner.id,
@@ -14260,15 +14263,70 @@ export function DashboardPage() {
       }
 
       await loadSalesGoals();
-      setGoalDraft({
-        ownerUserId: owner.id,
-        metricKey: "offers_count",
-        targetValue: "",
-        periodStart: getCurrentMonthStartDisplay(),
-        periodEnd: getCurrentMonthEndDisplay(),
-        title: "",
-        description: "",
+      resetGoalDraft(owner.id);
+      setIsGoalFormOpen(false);
+    } finally {
+      setIsGoalSaving(false);
+    }
+  }
+
+  function resetGoalDraft(ownerUserId = goalDraft.ownerUserId) {
+    setEditingGoalId("");
+    setGoalDraft({
+      ownerUserId,
+      metricKey: "offers_count",
+      targetValue: "",
+      periodStart: getCurrentMonthStartDisplay(),
+      periodEnd: getCurrentMonthEndDisplay(),
+      title: "",
+      description: "",
+    });
+    setGoalError("");
+  }
+
+  function openCreateGoalForm() {
+    resetGoalDraft(goalDraft.ownerUserId);
+    setIsGoalFormOpen(true);
+  }
+
+  function openEditGoalForm(goal: SalesGoal) {
+    setEditingGoalId(goal.id);
+    setGoalDraft({
+      ownerUserId: goal.ownerUserId,
+      metricKey: (goal.metricKey || "offers_count") as GoalMetricKey,
+      targetValue: String(goal.targetValue || ""),
+      periodStart: formatGoalPeriodLabel(goal.periodStart || goal.targetMonth),
+      periodEnd: formatGoalPeriodLabel(goal.periodEnd || goal.targetMonth),
+      title: goal.title || "",
+      description: goal.description || "",
+    });
+    setGoalError("");
+    setIsGoalFormOpen(true);
+  }
+
+  async function deleteGoal(goal: SalesGoal) {
+    if (!activeUser || !["ADMIN", "GESCHAEFTSFUEHRER"].includes(activeUser.role) || !activeUserId) return;
+    const confirmed = window.confirm(`Ziel "${goal.title || getGoalMetricOption(goal.metricKey).label}" wirklich entfernen?`);
+    if (!confirmed) return;
+
+    setIsGoalSaving(true);
+    setGoalError("");
+    try {
+      const res = await fetch("/api/sales-targets", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actorId: activeUserId, id: goal.id }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setGoalError(data?.error ?? "Ziel konnte nicht entfernt werden.");
+        return;
+      }
+      await loadSalesGoals();
+      if (editingGoalId === goal.id) {
+        resetGoalDraft(goalDraft.ownerUserId);
+        setIsGoalFormOpen(false);
+      }
     } finally {
       setIsGoalSaving(false);
     }
@@ -21708,6 +21766,7 @@ await addProjectLogbookEntry(
 
   const canManageGoals = activeUser?.role === "ADMIN" || activeUser?.role === "GESCHAEFTSFUEHRER";
   const visibleSalesGoals = salesGoals.filter((goal) => {
+    if (goal.status === "discarded") return false;
     if (canManageGoals) return true;
     if (!activeUser) return false;
     return goal.ownerUserId === activeUser.id || normalizeGoalPerson(goal.ownerName) === normalizeGoalPerson(activeUser.name);
@@ -21757,10 +21816,103 @@ await addProjectLogbookEntry(
         </section>
 
         {canManageGoals ? (
-          <section className={styles.goalCreatePanel}>
+          <div className={styles.goalToolbar}>
+            <button type="button" className={styles.primaryButton} onClick={openCreateGoalForm}>
+              + Ziel anlegen
+            </button>
+          </div>
+        ) : null}
+        {goalError && !isGoalFormOpen ? <p className={styles.formError}>{goalError}</p> : null}
+
+        <section className={styles.goalListPanel}>
+          <div className={styles.goalListHeader}>
             <div>
-              <h2>Ziel anlegen</h2>
-              <p>Geschäftsführung kann Ziele für aktive Mitarbeiter definieren.</p>
+              <h2>{canManageGoals ? "Zielübersicht" : "Meine Zielkarten"}</h2>
+              <p>Jede Karte zeigt Zielwert, Ist-Wert und Fortschritt im gewählten Zeitraum.</p>
+            </div>
+          </div>
+
+          {visibleSalesGoals.length === 0 ? (
+            <div className={styles.emptyState}>
+              <strong>Noch keine Ziele vorhanden.</strong>
+              <span>Neue Ziele erscheinen hier, sobald sie angelegt wurden.</span>
+            </div>
+          ) : (
+            <div className={styles.goalCardsGrid}>
+              {visibleSalesGoals.map((goal) => {
+                const metric = getGoalMetricOption(goal.metricKey);
+                const actualValue = getGoalActualValue(goal);
+                const targetValue = Number(goal.targetValue) || 0;
+                const progress = targetValue > 0 ? Math.min(100, Math.round((actualValue / targetValue) * 100)) : 0;
+                const owner = users.find((user) => user.id === goal.ownerUserId);
+
+                return (
+                  <article key={goal.id} className={styles.goalCard} data-reached={actualValue >= targetValue && targetValue > 0}>
+                    <div className={styles.goalCardHeader}>
+                      <div>
+                        <span>{metric.label}</span>
+                        <h3>{goal.title || metric.label}</h3>
+                      </div>
+                      <div className={styles.goalCardHeaderActions}>
+                        <b>{progress}%</b>
+                        {canManageGoals ? (
+                          <>
+                            <button type="button" onClick={() => openEditGoalForm(goal)}>
+                              Bearbeiten
+                            </button>
+                            <button type="button" data-danger="true" onClick={() => deleteGoal(goal)}>
+                              Löschen
+                            </button>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className={styles.goalProgressBar}>
+                      <span style={{ width: `${progress}%` }} />
+                    </div>
+                    <dl>
+                      <div>
+                        <dt>Ist</dt>
+                        <dd>{formatGoalValue(actualValue, goal.metricKey)}</dd>
+                      </div>
+                      <div>
+                        <dt>Ziel</dt>
+                        <dd>{formatGoalValue(targetValue, goal.metricKey)}</dd>
+                      </div>
+                      <div>
+                        <dt>Mitarbeiter</dt>
+                        <dd>{owner?.name || goal.ownerName || "-"}</dd>
+                      </div>
+                      <div>
+                        <dt>Zeitraum</dt>
+                        <dd>{formatGoalPeriodLabel(goal.periodStart || goal.targetMonth)} bis {formatGoalPeriodLabel(goal.periodEnd || goal.targetMonth)}</dd>
+                      </div>
+                    </dl>
+                    {goal.description ? <p>{goal.description}</p> : null}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {canManageGoals && isGoalFormOpen ? (
+          <section className={styles.goalCreatePanel}>
+            <div className={styles.goalCreateHeader}>
+              <div>
+                <h2>{editingGoalId ? "Ziel bearbeiten" : "Ziel anlegen"}</h2>
+                <p>Geschäftsführung kann Ziele für aktive Mitarbeiter definieren.</p>
+              </div>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => {
+                  resetGoalDraft(goalDraft.ownerUserId);
+                  setIsGoalFormOpen(false);
+                }}
+              >
+                Abbrechen
+              </button>
             </div>
             <div className={styles.goalCreateGrid}>
               <label>
@@ -21847,70 +21999,10 @@ await addProjectLogbookEntry(
             </label>
             {goalError ? <p className={styles.formError}>{goalError}</p> : null}
             <button className={styles.primaryButton} type="button" onClick={saveGoal} disabled={isGoalSaving}>
-              {isGoalSaving ? "Speichere..." : "+ Ziel anlegen"}
+              {isGoalSaving ? "Speichere..." : editingGoalId ? "Änderungen speichern" : "+ Ziel anlegen"}
             </button>
           </section>
         ) : null}
-
-        <section className={styles.goalListPanel}>
-          <div className={styles.goalListHeader}>
-            <div>
-              <h2>{canManageGoals ? "Zielübersicht" : "Meine Zielkarten"}</h2>
-              <p>Jede Karte zeigt Zielwert, Ist-Wert und Fortschritt im gewählten Zeitraum.</p>
-            </div>
-          </div>
-
-          {visibleSalesGoals.length === 0 ? (
-            <div className={styles.emptyState}>
-              <strong>Noch keine Ziele vorhanden.</strong>
-              <span>Neue Ziele erscheinen hier, sobald sie angelegt wurden.</span>
-            </div>
-          ) : (
-            <div className={styles.goalCardsGrid}>
-              {visibleSalesGoals.map((goal) => {
-                const metric = getGoalMetricOption(goal.metricKey);
-                const actualValue = getGoalActualValue(goal);
-                const targetValue = Number(goal.targetValue) || 0;
-                const progress = targetValue > 0 ? Math.min(100, Math.round((actualValue / targetValue) * 100)) : 0;
-                const owner = users.find((user) => user.id === goal.ownerUserId);
-
-                return (
-                  <article key={goal.id} className={styles.goalCard} data-reached={actualValue >= targetValue && targetValue > 0}>
-                    <div className={styles.goalCardHeader}>
-                      <div>
-                        <span>{metric.label}</span>
-                        <h3>{goal.title || metric.label}</h3>
-                      </div>
-                      <b>{progress}%</b>
-                    </div>
-                    <div className={styles.goalProgressBar}>
-                      <span style={{ width: `${progress}%` }} />
-                    </div>
-                    <dl>
-                      <div>
-                        <dt>Ist</dt>
-                        <dd>{formatGoalValue(actualValue, goal.metricKey)}</dd>
-                      </div>
-                      <div>
-                        <dt>Ziel</dt>
-                        <dd>{formatGoalValue(targetValue, goal.metricKey)}</dd>
-                      </div>
-                      <div>
-                        <dt>Mitarbeiter</dt>
-                        <dd>{owner?.name || goal.ownerName || "-"}</dd>
-                      </div>
-                      <div>
-                        <dt>Zeitraum</dt>
-                        <dd>{formatGoalPeriodLabel(goal.periodStart || goal.targetMonth)} bis {formatGoalPeriodLabel(goal.periodEnd || goal.targetMonth)}</dd>
-                      </div>
-                    </dl>
-                    {goal.description ? <p>{goal.description}</p> : null}
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </section>
       </section>
     );
   }
