@@ -21865,6 +21865,7 @@ await addProjectLogbookEntry(
                 const actualValue = getGoalActualValue(goal);
                 const progressDetails = getGoalProgressDetails(goal, actualValue);
                 const owner = users.find((user) => user.id === goal.ownerUserId);
+                const isLimitGoal = isLowerBetterGoalMetric(goal.metricKey);
 
                 return (
                   <article
@@ -21896,7 +21897,7 @@ await addProjectLogbookEntry(
                         <span style={{ width: `${progressDetails.actualPosition}%` }} />
                         <i style={{ left: `${progressDetails.targetPosition}%` }} />
                         <em style={{ left: `${progressDetails.targetLabelPosition}%` }}>
-                          Ziel: {formatGoalValue(progressDetails.targetValue, goal.metricKey)}
+                          {isLimitGoal ? "Grenze" : "Ziel"}: {formatGoalValue(progressDetails.targetValue, goal.metricKey)}
                         </em>
                       </div>
                       <strong>{formatGoalValue(actualValue, goal.metricKey)}</strong>
