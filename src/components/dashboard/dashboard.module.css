@@ -3918,9 +3918,9 @@
 
 .goalOwnerHeader {
   align-items: center;
-  background: #ffffff;
+  background: #0f172a;
   border: 0;
-  color: #071225;
+  color: #ffffff;
   cursor: pointer;
   display: grid;
   font: inherit;
@@ -3932,12 +3932,12 @@
 }
 
 .goalOwnerHeader:hover {
-  background: #f8fafc;
+  background: #151f33;
 }
 
 .goalOwnerHeader > span {
   align-items: center;
-  color: var(--muted);
+  color: rgba(255, 255, 255, 0.78);
   display: inline-flex;
   font-size: 0.84rem;
   font-weight: 850;
@@ -3952,12 +3952,12 @@
 
 .goalOwnerHeader strong,
 .goalOwnerHeader b {
-  color: #071225;
+  color: #ffffff;
   font-weight: 950;
 }
 
 .goalOwnerHeader small {
-  color: var(--muted);
+  color: rgba(255, 255, 255, 0.68);
   font-weight: 800;
 }
 
