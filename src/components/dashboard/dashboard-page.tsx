@@ -13958,10 +13958,13 @@ export function DashboardPage() {
     const targetValue = Math.max(0, Number(goal.targetValue) || 0);
     const isLowerBetter = isLowerBetterGoalMetric(goal.metricKey);
     const reached = targetValue > 0 && (isLowerBetter ? actualValue <= targetValue : actualValue >= targetValue);
+    const metric = getGoalMetricOption(goal.metricKey);
     const scaleMax =
-      getGoalMetricOption(goal.metricKey).unit === "percent"
+      metric.unit === "percent"
         ? Math.max(100, targetValue, actualValue)
-        : Math.max(targetValue, actualValue, 1);
+        : isLowerBetter
+          ? Math.max(targetValue * 1.25, actualValue, 1)
+          : Math.max(targetValue, actualValue, 1);
     const actualPosition = Math.min(100, Math.max(0, (actualValue / scaleMax) * 100));
     const targetPosition = Math.min(100, Math.max(0, (targetValue / scaleMax) * 100));
     const relationPercent = targetValue > 0 ? Math.round((actualValue / targetValue) * 100) : 0;
@@ -13972,7 +13975,6 @@ export function DashboardPage() {
       reached,
       relationPercent,
       status,
-      targetLabelPosition: Math.min(88, Math.max(12, targetPosition)),
       targetPosition,
       targetValue,
     };
@@ -21896,7 +21898,7 @@ await addProjectLogbookEntry(
                       <div className={styles.goalProgressBar}>
                         <span style={{ width: `${progressDetails.actualPosition}%` }} />
                         <i style={{ left: `${progressDetails.targetPosition}%` }} />
-                        <em style={{ left: `${progressDetails.targetLabelPosition}%` }}>
+                        <em style={{ left: `${progressDetails.targetPosition}%` }}>
                           {isLimitGoal ? "Grenze" : "Ziel"}: {formatGoalValue(progressDetails.targetValue, goal.metricKey)}
                         </em>
                       </div>

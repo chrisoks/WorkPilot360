@@ -3975,15 +3975,15 @@
 }
 
 .goalProgressBar i {
-  background: #64748b;
-  border-radius: 999px;
-  bottom: -5px;
-  box-shadow: 0 0 0 3px rgba(100, 116, 139, 0.14);
+  background: #0f172a;
+  bottom: -7px;
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.08);
   display: block;
   position: absolute;
-  top: -5px;
+  top: -7px;
   transform: translateX(-50%);
   width: 2px;
+  z-index: 2;
 }
 
 .goalProgressBar em {
@@ -3998,21 +3998,21 @@
   min-width: max-content;
   padding: 5px 12px;
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 10px);
   transform: translateX(-50%);
   white-space: nowrap;
+  z-index: 3;
 }
 
 .goalProgressBar em::before {
-  background: #64748b;
-  border-radius: 999px;
+  background: #0f172a;
   content: "";
-  height: 7px;
+  height: 10px;
   left: 50%;
   position: absolute;
-  top: -11px;
+  top: -12px;
   transform: translateX(-50%);
-  width: 7px;
+  width: 2px;
 }
 
 .goalMetaGrid {
