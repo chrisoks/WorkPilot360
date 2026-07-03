@@ -21782,6 +21782,10 @@ await addProjectLogbookEntry(
         const targetValue = Number(goal.targetValue) || 0;
         return targetValue > 0 && getGoalActualValue(goal) >= targetValue;
       }).length,
+      needsAttention: visibleSalesGoals.filter((goal) => {
+        const targetValue = Number(goal.targetValue) || 0;
+        return targetValue > 0 && getGoalActualValue(goal) < targetValue && normalizeGoalPeriodEnd(goal.periodEnd) < formatDateKey(new Date());
+      }).length,
     };
 
     return (
@@ -21797,23 +21801,12 @@ await addProjectLogbookEntry(
           </div>
         </div>
 
-        <section className={styles.goalSummaryGrid}>
-          <article>
-            <span>Aktive Ziele</span>
-            <strong>{goalSummary.open}</strong>
-            <small>{goalSummary.total} Ziele insgesamt sichtbar</small>
-          </article>
-          <article>
-            <span>Erreicht</span>
-            <strong>{goalSummary.reached}</strong>
-            <small>Ist-Wert liegt mindestens beim Zielwert</small>
-          </article>
-          <article>
-            <span>KPI-Katalog</span>
-            <strong>{goalMetricOptions.length}</strong>
-            <small>Messbare Kennzahlen verfügbar</small>
-          </article>
-        </section>
+        <div className={styles.goalSummaryStrip}>
+          <span>Alle Ziele: <strong>{goalSummary.total}</strong></span>
+          <span>Aktiv: <strong>{goalSummary.open}</strong></span>
+          <span>Erreicht: <strong>{goalSummary.reached}</strong></span>
+          <span>Handlungsbedarf: <strong>{goalSummary.needsAttention}</strong></span>
+        </div>
 
         {canManageGoals ? (
           <div className={styles.goalToolbar}>
