@@ -22542,13 +22542,6 @@ await addProjectLogbookEntry(
           <span>Handlungsbedarf: <strong>{goalSummary.needsAttention}</strong></span>
         </div>
 
-        {canManageGoals ? (
-          <div className={styles.goalToolbar}>
-            <button type="button" className={styles.primaryButton} onClick={openCreateGoalForm}>
-              + Ziel anlegen
-            </button>
-          </div>
-        ) : null}
         {goalError && !isGoalFormOpen ? <p className={styles.formError}>{goalError}</p> : null}
 
         <section className={styles.goalListPanel}>
@@ -22557,6 +22550,11 @@ await addProjectLogbookEntry(
               <h2>{canManageGoals ? "Zielübersicht" : "Meine Zielkarten"}</h2>
               <p>Jede Karte zeigt Zielwert, Ist-Wert und Fortschritt im gewählten Zeitraum.</p>
             </div>
+            {canManageGoals ? (
+              <button type="button" className={styles.primaryButton} onClick={openCreateGoalForm}>
+                + Ziel anlegen
+              </button>
+            ) : null}
           </div>
 
           {visibleSalesGoals.length === 0 ? (
