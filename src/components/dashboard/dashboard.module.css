@@ -3868,19 +3868,19 @@
 .goalCardsGrid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  grid-template-columns: 1fr;
 }
 
 .goalCard {
-  border-left: 3px solid #cbd5e1;
+  border-left: 0;
   display: flex;
   flex-direction: column;
-  gap: 11px;
-  padding: 16px;
+  gap: 16px;
+  padding: 18px;
 }
 
 .goalCard[data-reached="true"] {
-  border-left-color: #10b981;
+  border-color: #bfdbfe;
 }
 
 .goalCardHeader {
@@ -3890,25 +3890,25 @@
   justify-content: space-between;
 }
 
+.goalCard h3 {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.goalCard h3 small {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 850;
+}
+
 .goalCardHeaderActions {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: 7px;
   justify-content: flex-end;
-}
-
-.goalCardHeaderActions b {
-  align-items: center;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  border-radius: 999px;
-  color: #1d4ed8;
-  display: inline-flex;
-  font-size: 0.9rem;
-  justify-content: center;
-  min-width: 58px;
-  padding: 7px 10px;
 }
 
 .goalCardHeaderActions button {
@@ -3934,23 +3934,75 @@
   color: #b91c1c;
 }
 
+.goalProgressRow {
+  align-items: center;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-bottom: 42px;
+}
+
+.goalProgressRow > strong {
+  color: #020617;
+  font-size: clamp(1.8rem, 3vw, 2.55rem);
+  font-weight: 950;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .goalProgressBar {
-  background: #e5e7eb;
+  background: #ffffff;
+  border: 2px solid #cbd5e1;
   border-radius: 999px;
-  height: 10px;
-  overflow: hidden;
+  height: 38px;
+  position: relative;
 }
 
 .goalProgressBar span {
-  background: #2563eb;
+  background: #1a9d78;
+  border-radius: 999px;
   display: block;
   height: 100%;
+  min-width: 6px;
 }
 
-.goalCard dl {
+.goalCard[data-status="over"] .goalProgressBar span {
+  background: #ef4444;
+}
+
+.goalCard[data-status="open"]:not([data-reached="true"]) .goalProgressBar span {
+  background: #f59e0b;
+}
+
+.goalProgressBar i {
+  background: #020617;
+  bottom: -8px;
+  display: block;
+  position: absolute;
+  top: -8px;
+  transform: translateX(-50%);
+  width: 3px;
+}
+
+.goalProgressBar em {
+  background: #e2e8f0;
+  border: 2px solid #94a3b8;
+  border-radius: 999px;
+  color: #071225;
+  font-style: normal;
+  font-weight: 950;
+  min-width: max-content;
+  padding: 6px 18px;
+  position: absolute;
+  top: calc(100% + 8px);
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.goalMetaGrid {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin: 0;
 }
 
@@ -3959,7 +4011,7 @@
 }
 
 .goalCard dd {
-  font-size: 1.02rem;
+  font-size: 0.95rem;
   font-weight: 950;
   margin: 2px 0 0;
 }
@@ -3968,6 +4020,28 @@
   border-top: 1px solid var(--line);
   margin: 0;
   padding-top: 10px;
+}
+
+@media (max-width: 760px) {
+  .goalCardHeader {
+    flex-direction: column;
+  }
+
+  .goalProgressRow {
+    grid-template-columns: 1fr;
+  }
+
+  .goalProgressRow {
+    align-items: stretch;
+  }
+
+  .goalProgressRow > strong {
+    justify-self: flex-start;
+  }
+
+  .goalMetaGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .projectPipelinePanel {

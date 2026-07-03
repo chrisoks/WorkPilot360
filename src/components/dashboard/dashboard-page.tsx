@@ -13950,6 +13950,34 @@ export function DashboardPage() {
     return normalizedValue ? formatDateOnly(normalizedValue) : "-";
   }
 
+  function isLowerBetterGoalMetric(metricKey: GoalMetricKey | "") {
+    return ["lost_offers_count", "lost_offers_value", "open_tasks", "overdue_tasks", "unproductive_hours"].includes(metricKey);
+  }
+
+  function getGoalProgressDetails(goal: SalesGoal, actualValue: number) {
+    const targetValue = Math.max(0, Number(goal.targetValue) || 0);
+    const isLowerBetter = isLowerBetterGoalMetric(goal.metricKey);
+    const reached = targetValue > 0 && (isLowerBetter ? actualValue <= targetValue : actualValue >= targetValue);
+    const scaleMax =
+      getGoalMetricOption(goal.metricKey).unit === "percent"
+        ? Math.max(100, targetValue, actualValue)
+        : Math.max(targetValue, actualValue, 1);
+    const actualPosition = Math.min(100, Math.max(0, (actualValue / scaleMax) * 100));
+    const targetPosition = Math.min(100, Math.max(0, (targetValue / scaleMax) * 100));
+    const relationPercent = targetValue > 0 ? Math.round((actualValue / targetValue) * 100) : 0;
+    const status = reached ? "reached" : isLowerBetter && actualValue > targetValue ? "over" : "open";
+
+    return {
+      actualPosition,
+      reached,
+      relationPercent,
+      status,
+      targetLabelPosition: Math.min(88, Math.max(12, targetPosition)),
+      targetPosition,
+      targetValue,
+    };
+  }
+
   function getGoalActualValue(goal: SalesGoal) {
     const owner = users.find((user) => user.id === goal.ownerUserId) ??
       users.find((user) => normalizeGoalPerson(user.name) === normalizeGoalPerson(goal.ownerName));
@@ -21779,12 +21807,12 @@ await addProjectLogbookEntry(
       total: visibleSalesGoals.length,
       open: openSalesGoals.length,
       reached: visibleSalesGoals.filter((goal) => {
-        const targetValue = Number(goal.targetValue) || 0;
-        return targetValue > 0 && getGoalActualValue(goal) >= targetValue;
+        const details = getGoalProgressDetails(goal, getGoalActualValue(goal));
+        return details.reached;
       }).length,
       needsAttention: visibleSalesGoals.filter((goal) => {
-        const targetValue = Number(goal.targetValue) || 0;
-        return targetValue > 0 && getGoalActualValue(goal) < targetValue && normalizeGoalPeriodEnd(goal.periodEnd) < formatDateKey(new Date());
+        const details = getGoalProgressDetails(goal, getGoalActualValue(goal));
+        return details.targetValue > 0 && !details.reached && normalizeGoalPeriodEnd(goal.periodEnd) < formatDateKey(new Date());
       }).length,
     };
 
@@ -21835,19 +21863,22 @@ await addProjectLogbookEntry(
               {visibleSalesGoals.map((goal) => {
                 const metric = getGoalMetricOption(goal.metricKey);
                 const actualValue = getGoalActualValue(goal);
-                const targetValue = Number(goal.targetValue) || 0;
-                const progress = targetValue > 0 ? Math.min(100, Math.round((actualValue / targetValue) * 100)) : 0;
+                const progressDetails = getGoalProgressDetails(goal, actualValue);
                 const owner = users.find((user) => user.id === goal.ownerUserId);
 
                 return (
-                  <article key={goal.id} className={styles.goalCard} data-reached={actualValue >= targetValue && targetValue > 0}>
+                  <article
+                    key={goal.id}
+                    className={styles.goalCard}
+                    data-reached={progressDetails.reached}
+                    data-status={progressDetails.status}
+                  >
                     <div className={styles.goalCardHeader}>
                       <div>
                         <span>{metric.label}</span>
-                        <h3>{goal.title || metric.label}</h3>
+                        <h3>{goal.title || metric.label} {owner?.name || goal.ownerName ? <small>{owner?.name || goal.ownerName}</small> : null}</h3>
                       </div>
                       <div className={styles.goalCardHeaderActions}>
-                        <b>{progress}%</b>
                         {canManageGoals ? (
                           <>
                             <button type="button" onClick={() => openEditGoalForm(goal)}>
@@ -21860,17 +21891,24 @@ await addProjectLogbookEntry(
                         ) : null}
                       </div>
                     </div>
-                    <div className={styles.goalProgressBar}>
-                      <span style={{ width: `${progress}%` }} />
+                    <div className={styles.goalProgressRow}>
+                      <div className={styles.goalProgressBar}>
+                        <span style={{ width: `${progressDetails.actualPosition}%` }} />
+                        <i style={{ left: `${progressDetails.targetPosition}%` }} />
+                        <em style={{ left: `${progressDetails.targetLabelPosition}%` }}>
+                          Ziel: {formatGoalValue(progressDetails.targetValue, goal.metricKey)}
+                        </em>
+                      </div>
+                      <strong>{formatGoalValue(actualValue, goal.metricKey)}</strong>
                     </div>
-                    <dl>
+                    <dl className={styles.goalMetaGrid}>
                       <div>
-                        <dt>Ist</dt>
-                        <dd>{formatGoalValue(actualValue, goal.metricKey)}</dd>
+                        <dt>Stand</dt>
+                        <dd>{progressDetails.relationPercent}% vom Zielwert</dd>
                       </div>
                       <div>
-                        <dt>Ziel</dt>
-                        <dd>{formatGoalValue(targetValue, goal.metricKey)}</dd>
+                        <dt>Zielart</dt>
+                        <dd>{isLowerBetterGoalMetric(goal.metricKey) ? "Grenzwert halten" : "Ziel erreichen"}</dd>
                       </div>
                       <div>
                         <dt>Mitarbeiter</dt>
