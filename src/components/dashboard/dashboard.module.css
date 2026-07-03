@@ -3853,6 +3853,11 @@
   resize: vertical;
 }
 
+.goalCreatePanel > .primaryButton {
+  align-self: flex-start;
+  margin-top: 14px;
+}
+
 .goalListHeader {
   align-items: center;
   display: flex;
