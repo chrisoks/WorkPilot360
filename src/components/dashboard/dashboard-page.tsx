@@ -2006,6 +2006,8 @@ type SalesGoal = {
   updatedAt: string;
 };
 
+type GoalPeriodType = "month" | "quarter" | "year" | "custom";
+
 const goalMetricOptions: Array<{
   key: GoalMetricKey;
   label: string;
@@ -5403,6 +5405,14 @@ export function DashboardPage() {
   const [goalError, setGoalError] = useState("");
   const [isGoalFormOpen, setIsGoalFormOpen] = useState(false);
   const [editingGoalId, setEditingGoalId] = useState("");
+  const currentGoalMonthKey = getCurrentMonthKey();
+  const currentGoalMonthNumber = Number(currentGoalMonthKey.slice(5, 7)) || 1;
+  const currentGoalYear = currentGoalMonthKey.slice(0, 4);
+  const [goalPeriodType, setGoalPeriodType] = useState<GoalPeriodType>("month");
+  const [goalPeriodMonth, setGoalPeriodMonth] = useState(currentGoalMonthKey);
+  const [goalPeriodQuarter, setGoalPeriodQuarter] = useState(String(Math.ceil(currentGoalMonthNumber / 3)));
+  const [goalPeriodYear, setGoalPeriodYear] = useState(currentGoalYear);
+  const [expandedGoalOwnerIds, setExpandedGoalOwnerIds] = useState<Set<string>>(() => new Set());
   const [goalDraft, setGoalDraft] = useState({
     ownerUserId: "",
     metricKey: "offers_count" as GoalMetricKey,
@@ -13910,6 +13920,81 @@ export function DashboardPage() {
     return normalizeDateKeyValue(value);
   }
 
+  function getGoalQuarterForMonth(monthKey: string) {
+    const month = Number(monthKey.slice(5, 7)) || 1;
+    return String(Math.ceil(month / 3));
+  }
+
+  function getGoalPeriodRange(type: GoalPeriodType, monthKey: string, quarterValue: string, yearValue: string) {
+    const safeYear = Number(yearValue) || new Date().getFullYear();
+    if (type === "month") {
+      const [year, month] = monthKey.split("-").map(Number);
+      const safeMonth = month || 1;
+      return {
+        start: formatDateKey(new Date(year || safeYear, safeMonth - 1, 1, 12)),
+        end: formatDateKey(new Date(year || safeYear, safeMonth, 0, 12)),
+      };
+    }
+    if (type === "quarter") {
+      const quarter = Math.min(4, Math.max(1, Number(quarterValue) || 1));
+      const startMonth = (quarter - 1) * 3;
+      return {
+        start: formatDateKey(new Date(safeYear, startMonth, 1, 12)),
+        end: formatDateKey(new Date(safeYear, startMonth + 3, 0, 12)),
+      };
+    }
+    if (type === "year") {
+      return {
+        start: formatDateKey(new Date(safeYear, 0, 1, 12)),
+        end: formatDateKey(new Date(safeYear, 11, 31, 12)),
+      };
+    }
+    return { start: goalDraft.periodStart, end: goalDraft.periodEnd };
+  }
+
+  function applyGoalPeriodSelection(type: GoalPeriodType, monthKey = goalPeriodMonth, quarterValue = goalPeriodQuarter, yearValue = goalPeriodYear) {
+    setGoalPeriodType(type);
+    setGoalPeriodMonth(monthKey);
+    setGoalPeriodQuarter(quarterValue);
+    setGoalPeriodYear(yearValue);
+    if (type === "custom") return;
+    const range = getGoalPeriodRange(type, monthKey, quarterValue, yearValue);
+    setGoalDraft((current) => ({
+      ...current,
+      periodStart: formatGoalPeriodLabel(range.start),
+      periodEnd: formatGoalPeriodLabel(range.end),
+    }));
+  }
+
+  function getGoalPeriodMonths(periodStart: string, periodEnd: string) {
+    const startKey = normalizeGoalPeriodStart(periodStart);
+    const endKey = normalizeGoalPeriodEnd(periodEnd);
+    if (!startKey || !endKey || endKey < startKey) return [];
+    const start = new Date(Number(startKey.slice(0, 4)), Number(startKey.slice(5, 7)) - 1, 1, 12);
+    const end = new Date(Number(endKey.slice(0, 4)), Number(endKey.slice(5, 7)) - 1, 1, 12);
+    const months: string[] = [];
+    for (const cursor = new Date(start); cursor.getTime() <= end.getTime(); cursor.setMonth(cursor.getMonth() + 1)) {
+      months.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`);
+    }
+    return months;
+  }
+
+  function getGoalDisplayPeriodType(goal: SalesGoal): GoalPeriodType {
+    const months = getGoalPeriodMonths(goal.periodStart || goal.targetMonth, goal.periodEnd || goal.targetMonth);
+    if (months.length === 1) return "month";
+    if (months.length === 3 && ["01", "04", "07", "10"].includes(months[0].slice(5, 7))) return "quarter";
+    if (months.length === 12 && months[0].endsWith("-01")) return "year";
+    return "custom";
+  }
+
+  function getGoalMonthRange(monthKey: string) {
+    const [year, month] = monthKey.split("-").map(Number);
+    return {
+      start: formatDateKey(new Date(year, month - 1, 1, 12)),
+      end: formatDateKey(new Date(year, month, 0, 12)),
+    };
+  }
+
   function normalizeGoalDateValue(value: string) {
     const trimmedValue = String(value || "").trim();
     const isoPrefix = trimmedValue.match(/^(\d{4}-\d{2}-\d{2})/);
@@ -13948,6 +14033,42 @@ export function DashboardPage() {
   function formatGoalPeriodLabel(value: string) {
     const normalizedValue = /^\d{4}-\d{2}$/.test(value) ? `${value}-01` : normalizeGoalDateValue(value);
     return normalizedValue ? formatDateOnly(normalizedValue) : "-";
+  }
+
+  function syncGoalPeriodControls(periodStart: string, periodEnd: string) {
+    const startKey = normalizeGoalPeriodStart(periodStart);
+    const endKey = normalizeGoalPeriodEnd(periodEnd);
+    if (!startKey || !endKey) {
+      setGoalPeriodType("custom");
+      return;
+    }
+    const months = getGoalPeriodMonths(startKey, endKey);
+    const year = startKey.slice(0, 4);
+    if (months.length === 1) {
+      setGoalPeriodType("month");
+      setGoalPeriodMonth(months[0]);
+      setGoalPeriodQuarter(getGoalQuarterForMonth(months[0]));
+      setGoalPeriodYear(year);
+      return;
+    }
+    if (months.length === 3 && ["01", "04", "07", "10"].includes(months[0].slice(5, 7))) {
+      setGoalPeriodType("quarter");
+      setGoalPeriodMonth(months[0]);
+      setGoalPeriodQuarter(getGoalQuarterForMonth(months[0]));
+      setGoalPeriodYear(year);
+      return;
+    }
+    if (months.length === 12 && months[0].endsWith("-01")) {
+      setGoalPeriodType("year");
+      setGoalPeriodMonth(months[0]);
+      setGoalPeriodQuarter("1");
+      setGoalPeriodYear(year);
+      return;
+    }
+    setGoalPeriodType("custom");
+    setGoalPeriodMonth(months[0] ?? goalPeriodMonth);
+    setGoalPeriodQuarter(months[0] ? getGoalQuarterForMonth(months[0]) : goalPeriodQuarter);
+    setGoalPeriodYear(year);
   }
 
   function isLowerBetterGoalMetric(metricKey: GoalMetricKey | "") {
@@ -14238,6 +14359,51 @@ export function DashboardPage() {
     return 0;
   }
 
+  function getGoalBreakdown(goal: SalesGoal) {
+    const periodType = getGoalDisplayPeriodType(goal);
+    const months = getGoalPeriodMonths(goal.periodStart || goal.targetMonth, goal.periodEnd || goal.targetMonth);
+    const targetValue = Math.max(0, Number(goal.targetValue) || 0);
+    const metric = getGoalMetricOption(goal.metricKey);
+    const usesAverage = metric.unit === "percent";
+    const shouldShowMonths = (periodType === "quarter" || periodType === "year") && months.length > 1;
+    const monthTarget = shouldShowMonths && !usesAverage ? targetValue / months.length : targetValue;
+    const monthRows = shouldShowMonths
+      ? months.map((monthKey) => {
+          const range = getGoalMonthRange(monthKey);
+          const actualValue = getGoalActualValue({
+            ...goal,
+            periodStart: range.start,
+            periodEnd: range.end,
+            targetValue: monthTarget,
+          });
+          const details = getGoalProgressDetails({ ...goal, targetValue: monthTarget }, actualValue);
+          return { monthKey, actualValue, details };
+        })
+      : [];
+    const aggregateValue =
+      shouldShowMonths && usesAverage && monthRows.length > 0
+        ? monthRows.reduce((sum, row) => sum + row.actualValue, 0) / monthRows.length
+        : getGoalActualValue(goal);
+    const aggregateLabel =
+      periodType === "year"
+        ? usesAverage
+          ? "Jahresschnitt"
+          : "Jahressumme"
+        : periodType === "quarter"
+          ? usesAverage
+            ? "Quartalsschnitt"
+            : "Quartalssumme"
+          : "Stand";
+
+    return {
+      aggregateLabel,
+      aggregateValue,
+      monthRows,
+      periodType,
+      shouldShowMonths,
+    };
+  }
+
   async function saveGoal() {
     if (!activeUser || !["ADMIN", "GESCHAEFTSFUEHRER"].includes(activeUser.role)) return;
     if (!activeUserId) {
@@ -14301,13 +14467,18 @@ export function DashboardPage() {
   }
 
   function resetGoalDraft(ownerUserId = goalDraft.ownerUserId) {
+    const range = getGoalPeriodRange("month", currentGoalMonthKey, getGoalQuarterForMonth(currentGoalMonthKey), currentGoalYear);
     setEditingGoalId("");
+    setGoalPeriodType("month");
+    setGoalPeriodMonth(currentGoalMonthKey);
+    setGoalPeriodQuarter(getGoalQuarterForMonth(currentGoalMonthKey));
+    setGoalPeriodYear(currentGoalYear);
     setGoalDraft({
       ownerUserId,
       metricKey: "offers_count",
       targetValue: "",
-      periodStart: getCurrentMonthStartDisplay(),
-      periodEnd: getCurrentMonthEndDisplay(),
+      periodStart: formatGoalPeriodLabel(range.start),
+      periodEnd: formatGoalPeriodLabel(range.end),
       title: "",
       description: "",
     });
@@ -14320,13 +14491,16 @@ export function DashboardPage() {
   }
 
   function openEditGoalForm(goal: SalesGoal) {
+    const periodStart = formatGoalPeriodLabel(goal.periodStart || goal.targetMonth);
+    const periodEnd = formatGoalPeriodLabel(goal.periodEnd || goal.targetMonth);
     setEditingGoalId(goal.id);
+    syncGoalPeriodControls(periodStart, periodEnd);
     setGoalDraft({
       ownerUserId: goal.ownerUserId,
       metricKey: (goal.metricKey || "offers_count") as GoalMetricKey,
       targetValue: String(goal.targetValue || ""),
-      periodStart: formatGoalPeriodLabel(goal.periodStart || goal.targetMonth),
-      periodEnd: formatGoalPeriodLabel(goal.periodEnd || goal.targetMonth),
+      periodStart,
+      periodEnd,
       title: goal.title || "",
       description: goal.description || "",
     });
@@ -21795,11 +21969,21 @@ await addProjectLogbookEntry(
   };
 
   const canManageGoals = activeUser?.role === "ADMIN" || activeUser?.role === "GESCHAEFTSFUEHRER";
+  const canViewGroupedGoals =
+    activeUser?.role === "ADMIN" || activeUser?.role === "GESCHAEFTSFUEHRER" || activeUser?.role === "FUEHRUNGSKRAFT";
+  function canViewGoalOwner(ownerUserId: string, ownerName: string) {
+    if (!activeUser) return false;
+    if (activeUser.role === "ADMIN" || activeUser.role === "GESCHAEFTSFUEHRER") return true;
+    if (ownerUserId === activeUser.id || normalizeGoalPerson(ownerName) === normalizeGoalPerson(activeUser.name)) return true;
+    if (activeUser.role !== "FUEHRUNGSKRAFT") return false;
+    const owner = users.find((user) => user.id === ownerUserId) ?? users.find((user) => normalizeGoalPerson(user.name) === normalizeGoalPerson(ownerName));
+    if (!owner) return false;
+    const activeTeamIds = activeUser.teamIds.length > 0 ? activeUser.teamIds : [activeUser.teamId].filter(Boolean);
+    return owner.teamIds.some((teamId) => activeTeamIds.includes(teamId)) || (owner.teamId ? activeTeamIds.includes(owner.teamId) : false);
+  }
   const visibleSalesGoals = salesGoals.filter((goal) => {
     if (goal.status === "discarded") return false;
-    if (canManageGoals) return true;
-    if (!activeUser) return false;
-    return goal.ownerUserId === activeUser.id || normalizeGoalPerson(goal.ownerName) === normalizeGoalPerson(activeUser.name);
+    return canViewGoalOwner(goal.ownerUserId, goal.ownerName);
   });
   const openSalesGoals = visibleSalesGoals.filter((goal) => goal.status !== "done" && goal.status !== "discarded");
 
@@ -21816,6 +22000,125 @@ await addProjectLogbookEntry(
         const details = getGoalProgressDetails(goal, getGoalActualValue(goal));
         return details.targetValue > 0 && !details.reached && normalizeGoalPeriodEnd(goal.periodEnd) < formatDateKey(new Date());
       }).length,
+    };
+    const getGoalOwner = (goal: SalesGoal) =>
+      users.find((user) => user.id === goal.ownerUserId) ??
+      users.find((user) => normalizeGoalPerson(user.name) === normalizeGoalPerson(goal.ownerName));
+    const goalOwnerGroups = Array.from(
+      visibleSalesGoals
+        .reduce<Map<string, { owner: UserOption | null; ownerName: string; goals: SalesGoal[] }>>((groups, goal) => {
+          const owner = getGoalOwner(goal) ?? null;
+          const ownerKey = owner?.id || goal.ownerUserId || normalizeGoalPerson(goal.ownerName) || goal.id;
+          const currentGroup = groups.get(ownerKey) ?? {
+            owner,
+            ownerName: owner?.name || goal.ownerName || "Ohne Zuordnung",
+            goals: [],
+          };
+          currentGroup.goals.push(goal);
+          groups.set(ownerKey, currentGroup);
+          return groups;
+        }, new Map())
+        .entries()
+    ).map(([ownerKey, group]) => {
+      const reached = group.goals.filter((goal) => getGoalProgressDetails(goal, getGoalBreakdown(goal).aggregateValue).reached).length;
+      const needsAttention = group.goals.filter((goal) => {
+        const details = getGoalProgressDetails(goal, getGoalBreakdown(goal).aggregateValue);
+        return details.targetValue > 0 && !details.reached && normalizeGoalPeriodEnd(goal.periodEnd) < formatDateKey(new Date());
+      }).length;
+      return {
+        ...group,
+        ownerKey,
+        reached,
+        needsAttention,
+        open: group.goals.filter((goal) => goal.status !== "done" && goal.status !== "discarded").length,
+      };
+    });
+
+    const renderGoalCard = (goal: SalesGoal) => {
+      const metric = getGoalMetricOption(goal.metricKey);
+      const breakdown = getGoalBreakdown(goal);
+      const actualValue = breakdown.aggregateValue;
+      const progressDetails = getGoalProgressDetails(goal, actualValue);
+      const owner = getGoalOwner(goal);
+      const isLimitGoal = isLowerBetterGoalMetric(goal.metricKey);
+
+      return (
+        <article
+          key={goal.id}
+          className={styles.goalCard}
+          data-reached={progressDetails.reached}
+          data-status={progressDetails.status}
+          data-period={breakdown.periodType}
+        >
+          <div className={styles.goalCardHeader}>
+            <div>
+              <span>{metric.label}</span>
+              <h3>{goal.title || metric.label} {owner?.name || goal.ownerName ? <small>{owner?.name || goal.ownerName}</small> : null}</h3>
+            </div>
+            <div className={styles.goalCardHeaderActions}>
+              {canManageGoals ? (
+                <>
+                  <button type="button" onClick={() => openEditGoalForm(goal)}>
+                    Bearbeiten
+                  </button>
+                  <button type="button" data-danger="true" onClick={() => deleteGoal(goal)}>
+                    Löschen
+                  </button>
+                </>
+              ) : null}
+            </div>
+          </div>
+
+          {breakdown.shouldShowMonths ? (
+            <div className={styles.goalMonthGrid} data-period={breakdown.periodType}>
+              {breakdown.monthRows.map((row) => (
+                <div key={row.monthKey} className={styles.goalMonthCell} data-status={row.details.status} data-reached={row.details.reached}>
+                  <div>
+                    <span>{formatMonthLabel(row.monthKey).replace(/\s+\d{4}$/, "")}</span>
+                    <strong>{formatGoalValue(row.actualValue, goal.metricKey)} / {formatGoalValue(row.details.targetValue, goal.metricKey)}</strong>
+                  </div>
+                  <div className={styles.goalMiniProgressBar}>
+                    <span style={{ width: `${row.details.actualPosition}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          <div className={styles.goalAggregateLabel}>
+            <strong>{breakdown.aggregateLabel}</strong>
+          </div>
+          <div className={styles.goalProgressRow}>
+            <div className={styles.goalProgressBar}>
+              <span style={{ width: `${progressDetails.actualPosition}%` }} />
+              <i style={{ left: `${progressDetails.targetPosition}%` }} />
+              <em style={{ left: `${progressDetails.targetPosition}%` }}>
+                {isLimitGoal ? "Grenze" : "Ziel"}: {formatGoalValue(progressDetails.targetValue, goal.metricKey)}
+              </em>
+            </div>
+            <strong>{formatGoalValue(actualValue, goal.metricKey)}</strong>
+          </div>
+          <dl className={styles.goalMetaGrid}>
+            <div>
+              <dt>Stand</dt>
+              <dd>{progressDetails.relationPercent}% vom Zielwert</dd>
+            </div>
+            <div>
+              <dt>Zielart</dt>
+              <dd>{isLowerBetterGoalMetric(goal.metricKey) ? "Grenzwert halten" : "Ziel erreichen"}</dd>
+            </div>
+            <div>
+              <dt>Mitarbeiter</dt>
+              <dd>{owner?.name || goal.ownerName || "-"}</dd>
+            </div>
+            <div>
+              <dt>Zeitraum</dt>
+              <dd>{formatGoalPeriodLabel(goal.periodStart || goal.targetMonth)} bis {formatGoalPeriodLabel(goal.periodEnd || goal.targetMonth)}</dd>
+            </div>
+          </dl>
+          {goal.description ? <p>{goal.description}</p> : null}
+        </article>
+      );
     };
 
     return (
@@ -21861,77 +22164,55 @@ await addProjectLogbookEntry(
               <span>Neue Ziele erscheinen hier, sobald sie angelegt wurden.</span>
             </div>
           ) : (
+            canViewGroupedGoals ? (
+              <div className={styles.goalOwnerList}>
+                {goalOwnerGroups.map((group) => {
+                  const isExpanded = expandedGoalOwnerIds.has(group.ownerKey);
+                  return (
+                    <article key={group.ownerKey} className={styles.goalOwnerGroup}>
+                      <button
+                        type="button"
+                        className={styles.goalOwnerHeader}
+                        onClick={() =>
+                          setExpandedGoalOwnerIds((current) => {
+                            const next = new Set(current);
+                            if (next.has(group.ownerKey)) next.delete(group.ownerKey);
+                            else next.add(group.ownerKey);
+                            return next;
+                          })
+                        }
+                        aria-expanded={isExpanded}
+                      >
+                        <span>
+                          <strong>{group.ownerName}</strong>
+                          <small>{group.goals.length} Ziel(e)</small>
+                        </span>
+                        <span>Aktiv <b>{group.open}</b></span>
+                        <span>Erreicht <b>{group.reached}</b></span>
+                        <span>Handlungsbedarf <b>{group.needsAttention}</b></span>
+                      </button>
+                      {isExpanded ? <div className={styles.goalCardsGrid}>{group.goals.map(renderGoalCard)}</div> : null}
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
             <div className={styles.goalCardsGrid}>
-              {visibleSalesGoals.map((goal) => {
-                const metric = getGoalMetricOption(goal.metricKey);
-                const actualValue = getGoalActualValue(goal);
-                const progressDetails = getGoalProgressDetails(goal, actualValue);
-                const owner = users.find((user) => user.id === goal.ownerUserId);
-                const isLimitGoal = isLowerBetterGoalMetric(goal.metricKey);
-
-                return (
-                  <article
-                    key={goal.id}
-                    className={styles.goalCard}
-                    data-reached={progressDetails.reached}
-                    data-status={progressDetails.status}
-                  >
-                    <div className={styles.goalCardHeader}>
-                      <div>
-                        <span>{metric.label}</span>
-                        <h3>{goal.title || metric.label} {owner?.name || goal.ownerName ? <small>{owner?.name || goal.ownerName}</small> : null}</h3>
-                      </div>
-                      <div className={styles.goalCardHeaderActions}>
-                        {canManageGoals ? (
-                          <>
-                            <button type="button" onClick={() => openEditGoalForm(goal)}>
-                              Bearbeiten
-                            </button>
-                            <button type="button" data-danger="true" onClick={() => deleteGoal(goal)}>
-                              Löschen
-                            </button>
-                          </>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div className={styles.goalProgressRow}>
-                      <div className={styles.goalProgressBar}>
-                        <span style={{ width: `${progressDetails.actualPosition}%` }} />
-                        <i style={{ left: `${progressDetails.targetPosition}%` }} />
-                        <em style={{ left: `${progressDetails.targetPosition}%` }}>
-                          {isLimitGoal ? "Grenze" : "Ziel"}: {formatGoalValue(progressDetails.targetValue, goal.metricKey)}
-                        </em>
-                      </div>
-                      <strong>{formatGoalValue(actualValue, goal.metricKey)}</strong>
-                    </div>
-                    <dl className={styles.goalMetaGrid}>
-                      <div>
-                        <dt>Stand</dt>
-                        <dd>{progressDetails.relationPercent}% vom Zielwert</dd>
-                      </div>
-                      <div>
-                        <dt>Zielart</dt>
-                        <dd>{isLowerBetterGoalMetric(goal.metricKey) ? "Grenzwert halten" : "Ziel erreichen"}</dd>
-                      </div>
-                      <div>
-                        <dt>Mitarbeiter</dt>
-                        <dd>{owner?.name || goal.ownerName || "-"}</dd>
-                      </div>
-                      <div>
-                        <dt>Zeitraum</dt>
-                        <dd>{formatGoalPeriodLabel(goal.periodStart || goal.targetMonth)} bis {formatGoalPeriodLabel(goal.periodEnd || goal.targetMonth)}</dd>
-                      </div>
-                    </dl>
-                    {goal.description ? <p>{goal.description}</p> : null}
-                  </article>
-                );
-              })}
+              {visibleSalesGoals.map(renderGoalCard)}
             </div>
+            )
           )}
         </section>
 
         {canManageGoals && isGoalFormOpen ? (
-          <section className={styles.goalCreatePanel}>
+          <div
+            className={styles.modalOverlay}
+            onClick={() => {
+              resetGoalDraft(goalDraft.ownerUserId);
+              setIsGoalFormOpen(false);
+            }}
+          >
+          <section className={`${styles.standardModal} ${styles.goalCreateModal}`} onClick={(event) => event.stopPropagation()}>
             <div className={styles.goalCreateHeader}>
               <div>
                 <h2>{editingGoalId ? "Ziel bearbeiten" : "Ziel anlegen"}</h2>
@@ -21979,6 +22260,63 @@ await addProjectLogbookEntry(
                 <small>{selectedMetric.hint}</small>
               </label>
               <label>
+                Zeitraumtyp
+                <select
+                  value={goalPeriodType}
+                  onChange={(event) => applyGoalPeriodSelection(event.target.value as GoalPeriodType)}
+                >
+                  <option value="month">Monatsziel</option>
+                  <option value="quarter">Quartalsziel</option>
+                  <option value="year">Jahresziel</option>
+                  <option value="custom">Freier Zeitraum</option>
+                </select>
+              </label>
+              {goalPeriodType === "month" ? (
+                <label>
+                  Monat
+                  <input
+                    type="month"
+                    value={goalPeriodMonth}
+                    onChange={(event) => {
+                      const nextMonth = event.target.value || getCurrentMonthKey();
+                      applyGoalPeriodSelection("month", nextMonth, getGoalQuarterForMonth(nextMonth), nextMonth.slice(0, 4));
+                    }}
+                  />
+                </label>
+              ) : null}
+              {goalPeriodType === "quarter" ? (
+                <>
+                  <label>
+                    Jahr
+                    <input
+                      value={goalPeriodYear}
+                      onChange={(event) => applyGoalPeriodSelection("quarter", goalPeriodMonth, goalPeriodQuarter, event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Quartal
+                    <select
+                      value={goalPeriodQuarter}
+                      onChange={(event) => applyGoalPeriodSelection("quarter", goalPeriodMonth, event.target.value, goalPeriodYear)}
+                    >
+                      <option value="1">Q1</option>
+                      <option value="2">Q2</option>
+                      <option value="3">Q3</option>
+                      <option value="4">Q4</option>
+                    </select>
+                  </label>
+                </>
+              ) : null}
+              {goalPeriodType === "year" ? (
+                <label>
+                  Jahr
+                  <input
+                    value={goalPeriodYear}
+                    onChange={(event) => applyGoalPeriodSelection("year", goalPeriodMonth, goalPeriodQuarter, event.target.value)}
+                  />
+                </label>
+              ) : null}
+              <label>
                 Zielwert
                 <input
                   value={goalDraft.targetValue}
@@ -21989,6 +22327,7 @@ await addProjectLogbookEntry(
               <label>
                 Von
                 <input
+                  disabled={goalPeriodType !== "custom"}
                   value={goalDraft.periodStart}
                   onChange={(event) => setGoalDraft((current) => ({ ...current, periodStart: event.target.value }))}
                   onBlur={(event) =>
@@ -22003,6 +22342,7 @@ await addProjectLogbookEntry(
               <label>
                 Bis
                 <input
+                  disabled={goalPeriodType !== "custom"}
                   value={goalDraft.periodEnd}
                   onChange={(event) => setGoalDraft((current) => ({ ...current, periodEnd: event.target.value }))}
                   onBlur={(event) =>
@@ -22036,6 +22376,7 @@ await addProjectLogbookEntry(
               {isGoalSaving ? "Speichere..." : editingGoalId ? "Änderungen speichern" : "+ Ziel anlegen"}
             </button>
           </section>
+          </div>
         ) : null}
       </section>
     );
