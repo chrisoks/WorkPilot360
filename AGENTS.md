@@ -14,6 +14,16 @@
   Raster bleibt buendig mit dem darunterliegenden `Team live`-Bereich. Andere
   Rollen behalten vorerst die bisherige Team-Live-Zusammenfassung; ihre
   eigenen KPI-Sets sind in `OFFENE_PUNKTE.md` lokal vorgemerkt.
+- Angebots-KPIs und Nachfassentscheidung 2026-07-03:
+  Angebots-Nachfassaufgaben werden ueber vorhandene `TaskLink`-Eintraege mit
+  `offer:<id>` an das Angebot gekoppelt; bestehende Aufgaben werden weiterhin
+  ueber Angebotsnummer/Titel erkannt. Beim Erledigen einer Angebots-
+  Nachfassaufgabe muss aktiv entschieden werden: Angebot gewonnen, Angebot
+  verloren mit Grund/Kommentar oder weiter nachfassen mit neuem Datum. Neue
+  Ziel-KPIs: Gewinnquote, Verlustquote, offene Angebote > 14 Tage sowie
+  Durchschnittstage von Angebotsausgabe bis Gewinn, Verlust, Planung und
+  erledigter Nachfassung. Keine Prisma-Migration noetig, weil `TaskLink`
+  bereits existiert.
 - PWA-Web-Push Tageserinnerung/Terminwuensche 2026-06-28:
   Terminwuensche senden jetzt zusaetzlich zur bestehenden In-App-Notification
   einen Web-Push an dieselben Planungsverantwortlichen. Der Push haengt an der

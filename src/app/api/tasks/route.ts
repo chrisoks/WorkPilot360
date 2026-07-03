@@ -15,6 +15,7 @@ import {
   TaskStatus,
   type Task,
   type TaskComment,
+  type TaskLink,
   type TimeEntry,
   type User,
 } from "@prisma/client";
@@ -180,10 +181,52 @@ function normalizeProjectId(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function parseTaskLinks(value: unknown) {
+  if (!Array.isArray(value)) return null;
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const item = entry as { label?: unknown; url?: unknown };
+      const label = typeof item.label === "string" ? item.label.trim() : "";
+      const url = typeof item.url === "string" ? item.url.trim() : "";
+      if (!label || !url) return null;
+      return { label, url };
+    })
+    .filter((entry): entry is { label: string; url: string } => Boolean(entry));
+}
+
+async function syncTaskLinks(organizationId: string, taskId: string, rawLinks: unknown) {
+  const links = parseTaskLinks(rawLinks);
+  if (!links) return;
+  const offerLinks = links.filter((link) => link.url.startsWith("offer:"));
+
+  await prisma.taskLink.deleteMany({
+    where: {
+      organizationId,
+      taskId,
+      url: {
+        startsWith: "offer:",
+      },
+    },
+  });
+
+  if (offerLinks.length === 0) return;
+
+  await prisma.taskLink.createMany({
+    data: offerLinks.map((link) => ({
+      organizationId,
+      taskId,
+      label: link.label,
+      url: link.url,
+    })),
+  });
+}
+
 type TaskWithRelations = Task & {
   owner: User;
   category: { id: string; name: string } | null;
   comments: Array<TaskComment & { author: User }>;
+  links: TaskLink[];
   timeEntries: Array<TimeEntry & { user: User }>;
 };
 
@@ -420,6 +463,11 @@ function formatTask(
       autor: `${comment.author.firstName} ${comment.author.lastName}`,
       recipientUserId: commentRecipients.get(comment.id)?.id ?? "",
       recipientName: commentRecipients.get(comment.id)?.name ?? "",
+    })),
+    links: task.links.map((link) => ({
+      id: link.id,
+      label: link.label,
+      url: link.url,
     })),
     zeiteintraege: task.timeEntries.map((entry) => ({
       id: entry.id,
@@ -673,6 +721,7 @@ async function getFormattedTask(taskId: string, users: User[], projectId = "") {
           user: true,
         },
       },
+      links: true,
     },
   });
 
@@ -909,6 +958,7 @@ export async function GET(req: Request) {
           user: true,
         },
       },
+      links: true,
     },
   });
 
@@ -996,11 +1046,13 @@ export async function POST(req: Request) {
           user: true,
         },
       },
+      links: true,
     },
   });
   await updateCompletionArchiveTimer(organization.id, task.id, null, nextStatus);
   await updateTaskPlanningAllocations(task.id, planningAllocations);
   await updateTaskProjectId(task.id, nextProjectId);
+  await syncTaskLinks(organization.id, task.id, body.taskLinks);
   await seedCurrentStatusTimeline({
     organizationId: organization.id,
     entityType: "task",
@@ -1256,11 +1308,13 @@ export async function PATCH(req: Request) {
           user: true,
         },
       },
+      links: true,
     },
   });
   await updateCompletionArchiveTimer(organization.id, task.id, existingTask?.status ?? null, nextStatus);
   await updateTaskPlanningAllocations(task.id, planningAllocations);
   await updateTaskProjectId(task.id, nextProjectId);
+  await syncTaskLinks(organization.id, task.id, body.taskLinks);
   await recordStatusTransition({
     organizationId: task.organizationId,
     entityType: "task",

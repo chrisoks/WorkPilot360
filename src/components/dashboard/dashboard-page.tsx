@@ -1962,6 +1962,13 @@ type GoalMetricKey =
   | "offers_value"
   | "won_offers_count"
   | "won_offers_value"
+  | "offer_win_rate"
+  | "offer_loss_rate"
+  | "stale_open_offers"
+  | "avg_offer_to_win_days"
+  | "avg_offer_to_loss_days"
+  | "avg_offer_to_planning_days"
+  | "avg_offer_to_followup_days"
   | "offer_service_value"
   | "offer_material_value"
   | "offer_package_value"
@@ -2018,6 +2025,13 @@ const goalMetricOptions: Array<{
   { key: "offers_value", label: "Angebotswert", unit: "currency", hint: "Netto-Summe erstellter Angebote." },
   { key: "won_offers_count", label: "Gewonnene Angebote", unit: "count", hint: "Angebote mit Gewonnen-Markierung." },
   { key: "won_offers_value", label: "Wert gewonnener Angebote", unit: "currency", hint: "Netto-Summe gewonnener Angebote." },
+  { key: "offer_win_rate", label: "Gewinnquote Angebote", unit: "percent", hint: "Gewonnene Angebote im Verhaeltnis zu entschiedenen Angeboten." },
+  { key: "offer_loss_rate", label: "Verlustquote Angebote", unit: "percent", hint: "Verlorene Angebote im Verhaeltnis zu entschiedenen Angeboten." },
+  { key: "stale_open_offers", label: "Offene Angebote > 14 Tage", unit: "count", hint: "Aktive Angebote ohne Entscheidung, deren Ausgabe mindestens 14 Tage zurueckliegt." },
+  { key: "avg_offer_to_win_days", label: "Durchschnitt Tage Angebot bis Gewinn", unit: "count", hint: "Durchschnittliche Tage von Angebotsausgabe bis Gewinn." },
+  { key: "avg_offer_to_loss_days", label: "Durchschnitt Tage Angebot bis Verlust", unit: "count", hint: "Durchschnittliche Tage von Angebotsausgabe bis Verlust." },
+  { key: "avg_offer_to_planning_days", label: "Durchschnitt Tage Angebot bis Planung", unit: "count", hint: "Durchschnittliche Tage von Angebotsausgabe bis erstem Planungstermin." },
+  { key: "avg_offer_to_followup_days", label: "Durchschnitt Tage Angebot bis Nachfassung", unit: "count", hint: "Durchschnittliche Tage von Angebotsausgabe bis erledigter Nachfassaufgabe." },
   { key: "offer_service_value", label: "Angebotene Leistungen", unit: "currency", hint: "Netto-Angebotswert von Leistungspositionen." },
   { key: "offer_material_value", label: "Angebotenes Material", unit: "currency", hint: "Netto-Angebotswert von Materialpositionen." },
   { key: "offer_package_value", label: "Angebotene Pakete", unit: "currency", hint: "Netto-Angebotswert von Paketpositionen." },
@@ -3367,8 +3381,15 @@ type TaskItem = {
   planningAllocations: TaskPlanningAllocation[];
   participants: TaskParticipantItem[];
   history: TaskHistoryItem[];
+  links: TaskLinkItem[];
   kommentare: CommentItem[];
   zeiteintraege: TimeEntryItem[];
+};
+
+type TaskLinkItem = {
+  id: string;
+  label: string;
+  url: string;
 };
 
 type TaskParticipantItem = {
@@ -5582,6 +5603,17 @@ export function DashboardPage() {
   const [isTaskStatusConfirmOpen, setIsTaskStatusConfirmOpen] = useState(false);
   const [taskStatusConfirmValue, setTaskStatusConfirmValue] =
     useState<TaskStatus>(emptyTask.status);
+  const [offerFollowUpDecision, setOfferFollowUpDecision] = useState<{
+    task: TaskItem;
+    offer: OfferItem;
+    outcome: "won" | "lost" | "follow_up";
+    reason: string;
+    note: string;
+    followUpAt: string;
+    confirmedStatus: TaskStatus;
+    error: string;
+    isSaving: boolean;
+  } | null>(null);
   const [taskParticipantUserId, setTaskParticipantUserId] = useState("");
   const [newTaskParticipantUserIds, setNewTaskParticipantUserIds] = useState<string[]>([]);
   const [isTaskHistoryOpen, setIsTaskHistoryOpen] = useState(false);
@@ -7937,6 +7969,21 @@ export function DashboardPage() {
     }
 
     setLostOfferDraft((current) => (current ? { ...current, error: "", isSaving: true } : current));
+    const success = await markOfferLost(offer, reason, note, selectedProjectFile.id, (message) => {
+      setLostOfferDraft((current) =>
+        current ? { ...current, isSaving: false, error: message } : current
+      );
+    });
+    if (success) setLostOfferDraft(null);
+  }
+
+  async function markOfferLost(
+    offer: OfferItem,
+    reason: string,
+    note: string,
+    projectId = offer.projectId,
+    onError?: (message: string) => void
+  ) {
     const res = await fetch("/api/offers", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -7951,23 +7998,23 @@ export function DashboardPage() {
 
     if (!res.ok) {
       const data = await res.json().catch(() => null);
-      setLostOfferDraft((current) =>
-        current
-          ? { ...current, isSaving: false, error: data?.error ?? "Angebot konnte nicht als verloren markiert werden." }
-          : current
-      );
-      return;
+      const message = data?.error ?? "Angebot konnte nicht als verloren markiert werden.";
+      if (onError) onError(message);
+      else setErrorMessage(message);
+      return false;
     }
 
     const savedOffer = (await res.json()) as OfferItem;
     setOffers((currentOffers) => [savedOffer, ...currentOffers.filter((currentOffer) => currentOffer.id !== savedOffer.id)]);
-    await loadOfferHistory(selectedProjectFile.id);
-    await addProjectLogbookEntry(
-      selectedProjectFile.id,
-      "Angebot verloren",
-      `Angebot ${savedOffer.offerNumber} wurde als verloren markiert. Grund: ${reason}. Kommentar: ${note}.`
-    );
-    setLostOfferDraft(null);
+    if (projectId) {
+      await loadOfferHistory(projectId);
+      await addProjectLogbookEntry(
+        projectId,
+        "Angebot verloren",
+        `Angebot ${savedOffer.offerNumber} wurde als verloren markiert. Grund: ${reason}. Kommentar: ${note}.`
+      );
+    }
+    return true;
   }
 
   async function markOfferWon(offer: OfferItem, reason: string, projectId = offer.projectId) {
@@ -14024,6 +14071,9 @@ export function DashboardPage() {
     const metric = getGoalMetricOption(metricKey);
     if (metric.unit === "currency") return formatMoney(value);
     if (metric.unit === "percent") return `${value.toLocaleString("de-DE", { maximumFractionDigits: 1 })}%`;
+    if (["avg_offer_to_win_days", "avg_offer_to_loss_days", "avg_offer_to_planning_days", "avg_offer_to_followup_days"].includes(metricKey)) {
+      return `${value.toLocaleString("de-DE", { maximumFractionDigits: 1 })} Tg.`;
+    }
     if (["project_hours", "unproductive_hours", "attendance_hours"].includes(metricKey)) {
       return `${value.toLocaleString("de-DE", { maximumFractionDigits: 2 })} Std.`;
     }
@@ -14072,7 +14122,91 @@ export function DashboardPage() {
   }
 
   function isLowerBetterGoalMetric(metricKey: GoalMetricKey | "") {
-    return ["lost_offers_count", "lost_offers_value", "open_tasks", "overdue_tasks", "unproductive_hours"].includes(metricKey);
+    return [
+      "lost_offers_count",
+      "lost_offers_value",
+      "offer_loss_rate",
+      "stale_open_offers",
+      "avg_offer_to_win_days",
+      "avg_offer_to_loss_days",
+      "avg_offer_to_planning_days",
+      "avg_offer_to_followup_days",
+      "open_tasks",
+      "overdue_tasks",
+      "unproductive_hours",
+    ].includes(metricKey);
+  }
+
+  function isAverageGoalMetric(metricKey: GoalMetricKey | "") {
+    return (
+      getGoalMetricOption(metricKey).unit === "percent" ||
+      ["avg_offer_to_win_days", "avg_offer_to_loss_days", "avg_offer_to_planning_days", "avg_offer_to_followup_days"].includes(metricKey)
+    );
+  }
+
+  function getGoalDateTime(value?: string | null) {
+    if (!value) return null;
+    const date = parseAppDateTime(value);
+    return Number.isFinite(date.getTime()) ? date : null;
+  }
+
+  function getGoalDaysBetween(startValue?: string | null, endValue?: string | null) {
+    const start = getGoalDateTime(startValue);
+    const end = getGoalDateTime(endValue);
+    if (!start || !end || end.getTime() < start.getTime()) return null;
+    return (end.getTime() - start.getTime()) / 86400000;
+  }
+
+  function getOfferIssueDate(offer: OfferItem) {
+    const sentDispatches = documentMailDispatches
+      .filter((dispatch) => dispatch.documentKind === "offer")
+      .filter((dispatch) => dispatch.status === "sent")
+      .filter((dispatch) => dispatch.documentId === offer.id || dispatch.documentNumber === offer.offerNumber)
+      .map((dispatch) => dispatch.createdAt)
+      .filter(Boolean)
+      .sort();
+    return sentDispatches[0] || offer.createdAt;
+  }
+
+  function isGoalOfferAssignedToUser(owner: UserOption, offer: OfferItem, decisionOwnerName = "") {
+    return (
+      isGoalItemAssignedToUser(owner, decisionOwnerName || offer.internalContactName) ||
+      isGoalItemAssignedToUser(owner, offer.internalContactName)
+    );
+  }
+
+  function getFirstPlanningDateForOffer(offer: OfferItem, issuedAt: string) {
+    const issuedDateKey = normalizeGoalDateValue(issuedAt);
+    const matchingEntries = planningEntries
+      .filter((entry) => !entry.deletedAt && entry.approvalStatus === "confirmed")
+      .filter((entry) => entry.offerId === offer.id || (!entry.offerId && entry.projectId === offer.projectId))
+      .filter((entry) => !issuedDateKey || entry.date >= issuedDateKey)
+      .sort((first, second) => `${first.date}T${first.startTime}`.localeCompare(`${second.date}T${second.startTime}`));
+    const entry = matchingEntries[0];
+    return entry ? `${entry.date}T${entry.startTime}` : "";
+  }
+
+  function taskBelongsToOffer(task: TaskItem, offer: OfferItem) {
+    const linkedOfferId = getOfferIdFromTask(task);
+    if (linkedOfferId && linkedOfferId === offer.id) return true;
+    if (task.projectId && task.projectId !== offer.projectId) return false;
+    return task.titel.toLowerCase().includes("angebot nachfassen") && task.titel.includes(offer.offerNumber);
+  }
+
+  function getCompletedFollowUpDateForOffer(offer: OfferItem) {
+    const completedTasks = tasks
+      .filter((task) => taskBelongsToOffer(task, offer))
+      .filter((task) => task.status === "erledigt")
+      .map((task) => task.completedAt || task.archiveDueAt || task.createdAt)
+      .filter(Boolean)
+      .sort();
+    return completedTasks[0] || "";
+  }
+
+  function averageGoalDays(values: Array<number | null>) {
+    const cleanValues = values.filter((value): value is number => value !== null && Number.isFinite(value));
+    if (cleanValues.length === 0) return 0;
+    return cleanValues.reduce((sum, value) => sum + value, 0) / cleanValues.length;
   }
 
   function getGoalProgressDetails(goal: SalesGoal, actualValue: number) {
@@ -14216,6 +14350,94 @@ export function DashboardPage() {
             isGoalItemAssignedToUser(owner, offer.wonByName || offer.internalContactName)
         )
         .reduce((sum, offer) => sum + (Number(offer.netTotal) || 0), 0);
+    }
+
+    if (goal.metricKey === "offer_win_rate" || goal.metricKey === "offer_loss_rate") {
+      const decidedOffers = offers.filter((offer) => {
+        if (isDeletedOffer(offer) || offer.status === "Entwurf") return false;
+        const decisionDate = offer.wonAt || offer.lostAt || "";
+        if (!decisionDate || !isGoalDateInPeriod(decisionDate, goal.periodStart, goal.periodEnd)) return false;
+        return isGoalOfferAssignedToUser(owner, offer, offer.wonByName || offer.internalContactName);
+      });
+      if (decidedOffers.length === 0) return 0;
+      const matchingCount = decidedOffers.filter((offer) =>
+        goal.metricKey === "offer_win_rate" ? Boolean(offer.wonAt) : Boolean(offer.lostAt)
+      ).length;
+      return (matchingCount / decidedOffers.length) * 100;
+    }
+
+    if (goal.metricKey === "stale_open_offers") {
+      const now = new Date();
+      const periodEnd = normalizeGoalPeriodEnd(goal.periodEnd);
+      return offers.filter((offer) => {
+        if (isDeletedOffer(offer) || offer.status === "Entwurf" || isWonOffer(offer) || isLostOffer(offer)) return false;
+        if (!isGoalOfferAssignedToUser(owner, offer)) return false;
+        const issuedAt = getOfferIssueDate(offer);
+        const issuedDateKey = normalizeGoalDateValue(issuedAt);
+        if (periodEnd && issuedDateKey && issuedDateKey > periodEnd) return false;
+        const issuedDate = getGoalDateTime(issuedAt);
+        if (!issuedDate) return false;
+        return now.getTime() - issuedDate.getTime() >= 14 * 86400000;
+      }).length;
+    }
+
+    if (goal.metricKey === "avg_offer_to_win_days") {
+      return averageGoalDays(
+        offers
+          .filter(
+            (offer) =>
+              !isDeletedOffer(offer) &&
+              Boolean(offer.wonAt) &&
+              isGoalDateInPeriod(offer.wonAt, goal.periodStart, goal.periodEnd) &&
+              isGoalOfferAssignedToUser(owner, offer, offer.wonByName || offer.internalContactName)
+          )
+          .map((offer) => getGoalDaysBetween(getOfferIssueDate(offer), offer.wonAt))
+      );
+    }
+
+    if (goal.metricKey === "avg_offer_to_loss_days") {
+      return averageGoalDays(
+        offers
+          .filter(
+            (offer) =>
+              !isDeletedOffer(offer) &&
+              Boolean(offer.lostAt) &&
+              isGoalDateInPeriod(offer.lostAt, goal.periodStart, goal.periodEnd) &&
+              isGoalOfferAssignedToUser(owner, offer)
+          )
+          .map((offer) => getGoalDaysBetween(getOfferIssueDate(offer), offer.lostAt))
+      );
+    }
+
+    if (goal.metricKey === "avg_offer_to_planning_days") {
+      return averageGoalDays(
+        offers
+          .filter(
+            (offer) =>
+              !isDeletedOffer(offer) &&
+              offer.status !== "Entwurf" &&
+              isGoalDateInPeriod(getOfferIssueDate(offer), goal.periodStart, goal.periodEnd) &&
+              isGoalOfferAssignedToUser(owner, offer)
+          )
+          .map((offer) => {
+            const issuedAt = getOfferIssueDate(offer);
+            return getGoalDaysBetween(issuedAt, getFirstPlanningDateForOffer(offer, issuedAt));
+          })
+      );
+    }
+
+    if (goal.metricKey === "avg_offer_to_followup_days") {
+      return averageGoalDays(
+        offers
+          .filter(
+            (offer) =>
+              !isDeletedOffer(offer) &&
+              offer.status !== "Entwurf" &&
+              isGoalDateInPeriod(getOfferIssueDate(offer), goal.periodStart, goal.periodEnd) &&
+              isGoalOfferAssignedToUser(owner, offer)
+          )
+          .map((offer) => getGoalDaysBetween(getOfferIssueDate(offer), getCompletedFollowUpDateForOffer(offer)))
+      );
     }
 
     if (goal.metricKey === "lost_offers_count") {
@@ -14362,8 +14584,7 @@ export function DashboardPage() {
     const periodType = getGoalDisplayPeriodType(goal);
     const months = getGoalPeriodMonths(goal.periodStart || goal.targetMonth, goal.periodEnd || goal.targetMonth);
     const targetValue = Math.max(0, Number(goal.targetValue) || 0);
-    const metric = getGoalMetricOption(goal.metricKey);
-    const usesAverage = metric.unit === "percent";
+    const usesAverage = isAverageGoalMetric(goal.metricKey);
     const shouldShowMonths = (periodType === "quarter" || periodType === "year") && months.length > 1;
     const monthTarget = shouldShowMonths && !usesAverage ? targetValue / months.length : targetValue;
     const monthRows = shouldShowMonths
@@ -16066,12 +16287,174 @@ export function DashboardPage() {
           date: allocation.date,
           minutes: allocation.minutes,
         })),
+        taskLinks: (task.links ?? []).map((link) => ({ label: link.label, url: link.url })),
         absenceHandoverTask: false,
       }),
     });
 
     if (!res.ok) return null;
     return (await res.json()) as TaskItem;
+  }
+
+  async function updateOfferFollowUpTaskDeadline(task: TaskItem, deadline: string) {
+    const res = await fetch("/api/tasks", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        id: task.id,
+        actorId: activeUserId,
+        title: task.titel,
+        description: task.beschreibung,
+        status: "in Bearbeitung",
+        priority: task.prioritaet,
+        tradeId: null,
+        ownerId: task.zustaendigId || activeUserId,
+        deadline,
+        customer: task.kunde,
+        customerClass: null,
+        projectId: task.projectId,
+        autoFeedbackEnabled: false,
+        autoFeedbackRecipientId: null,
+        recurrenceEnabled: false,
+        recurrenceInterval: null,
+        estimateMinutes: null,
+        planningAllocations: task.planningAllocations.map((allocation) => ({
+          date: allocation.date,
+          minutes: allocation.minutes,
+        })),
+        taskLinks: (task.links ?? []).map((link) => ({ label: link.label, url: link.url })),
+        absenceHandoverTask: false,
+      }),
+    });
+
+    if (!res.ok) return null;
+    return (await res.json()) as TaskItem;
+  }
+
+  function getOfferIdFromTask(task: TaskItem) {
+    const linkedOffer = (task.links ?? []).find((link) => link.url.startsWith("offer:"));
+    return linkedOffer?.url.replace(/^offer:/, "").trim() || "";
+  }
+
+  function getOfferNumberFromTask(task: TaskItem) {
+    const source = `${task.titel}\n${task.beschreibung}`;
+    const match = source.match(/Angebot\s+(?:nachfassen:\s*)?([A-Z]{1,4}-?\d{3,}|[A-Z]{1,4}\d{3,})/i);
+    return match?.[1]?.trim() || "";
+  }
+
+  function getOfferForTask(task: TaskItem) {
+    const offerId = getOfferIdFromTask(task);
+    if (offerId) {
+      const byId = offers.find((offer) => offer.id === offerId);
+      if (byId) return byId;
+    }
+
+    const offerNumber = getOfferNumberFromTask(task);
+    if (!offerNumber) return null;
+    return offers.find((offer) => offer.offerNumber === offerNumber) ?? null;
+  }
+
+  function isOfferFollowUpTask(task: TaskItem) {
+    return task.titel.toLowerCase().includes("angebot nachfassen") && Boolean(getOfferForTask(task));
+  }
+
+  function openOfferFollowUpDecisionDialog(task: TaskItem, confirmedStatus: TaskStatus) {
+    const offer = getOfferForTask(task);
+    if (!offer) return false;
+    setOfferFollowUpDecision({
+      task,
+      offer,
+      outcome: "won",
+      reason: "",
+      note: "",
+      followUpAt: normalizeDeadlineInput(task.faelligkeit) || getOfferFollowUpDeadline(),
+      confirmedStatus,
+      error: "",
+      isSaving: false,
+    });
+    setIsTaskStatusConfirmOpen(false);
+    return true;
+  }
+
+  async function completeOfferFollowUpDecision() {
+    if (!offerFollowUpDecision) return;
+    const { task, offer, outcome } = offerFollowUpDecision;
+    const reason = offerFollowUpDecision.reason.trim();
+    const note = offerFollowUpDecision.note.trim();
+    const followUpAt = normalizeDeadlineInput(offerFollowUpDecision.followUpAt);
+
+    if (outcome === "won" && !reason) {
+      setOfferFollowUpDecision((current) =>
+        current ? { ...current, error: "Bitte kurz eintragen, warum das Angebot gewonnen wurde." } : current
+      );
+      return;
+    }
+    if (outcome === "lost" && (!reason || !note)) {
+      setOfferFollowUpDecision((current) =>
+        current ? { ...current, error: "Bitte Grund und Kommentar zum verlorenen Angebot eintragen." } : current
+      );
+      return;
+    }
+    if (outcome === "follow_up" && !followUpAt) {
+      setOfferFollowUpDecision((current) =>
+        current ? { ...current, error: "Bitte ein neues Nachfassdatum eintragen." } : current
+      );
+      return;
+    }
+
+    setOfferFollowUpDecision((current) => (current ? { ...current, error: "", isSaving: true } : current));
+
+    try {
+      if (outcome === "won") {
+        const markedWon = await markOfferWon(offer, reason, offer.projectId);
+        if (!markedWon) {
+          setOfferFollowUpDecision((current) => (current ? { ...current, isSaving: false } : current));
+          return;
+        }
+        await updateTaskStatus(task, "erledigt");
+      } else if (outcome === "lost") {
+        const markedLost = await markOfferLost(offer, reason, note, offer.projectId, (message) => {
+          setOfferFollowUpDecision((current) =>
+            current ? { ...current, isSaving: false, error: message } : current
+          );
+        });
+        if (!markedLost) return;
+        await updateTaskStatus(task, "erledigt");
+      } else {
+        const updatedTask = await updateOfferFollowUpTaskDeadline(task, followUpAt);
+        if (!updatedTask) {
+          setOfferFollowUpDecision((current) =>
+            current ? { ...current, isSaving: false, error: "Nachfassdatum konnte nicht aktualisiert werden." } : current
+          );
+          return;
+        }
+        if (offer.projectId) {
+          await addProjectLogbookEntry(
+            offer.projectId,
+            "Angebot: Nachfassen",
+            `Angebot ${offer.offerNumber} wird weiter nachgefasst. Neues Datum: ${formatDeadline(followUpAt)}.${reason ? ` Grund: ${reason}.` : ""}`
+          );
+        }
+      }
+
+      await loadTasks();
+      await loadNotifications(true);
+      setOfferFollowUpDecision(null);
+      setIsModalOpen(false);
+      setEditingTask(null);
+    } catch (error) {
+      setOfferFollowUpDecision((current) =>
+        current
+          ? {
+              ...current,
+              isSaving: false,
+              error: error instanceof Error ? error.message : "Entscheidung konnte nicht gespeichert werden.",
+            }
+          : current
+      );
+    }
   }
 
   async function createOfferFollowUpTask(
@@ -16124,6 +16507,12 @@ export function DashboardPage() {
         recurrenceInterval: null,
         estimateMinutes: null,
         planningAllocations: [],
+        taskLinks: [
+          {
+            label: `Angebot ${savedOffer.offerNumber}`,
+            url: `offer:${savedOffer.id}`,
+          },
+        ],
         absenceHandoverTask: false,
       }),
     });
@@ -17280,6 +17669,7 @@ await addProjectLogbookEntry(
     setPendingPotentialFollowUp(null);
     setIsTaskAcceptancePopupOpen(false);
     setIsTaskStatusConfirmOpen(false);
+    setOfferFollowUpDecision(null);
     setErrorMessage("");
   }
 
@@ -17293,6 +17683,7 @@ await addProjectLogbookEntry(
     setPendingPotentialFollowUp(null);
     setIsTaskAcceptancePopupOpen(false);
     setIsTaskStatusConfirmOpen(false);
+    setOfferFollowUpDecision(null);
     setTaskStatusConfirmValue(task.status);
     setErrorMessage("");
     setTitel(task.titel);
@@ -17466,6 +17857,10 @@ await addProjectLogbookEntry(
     const normalizedPlanningAllocations: TaskPlanningAllocation[] = [];
     const estimateMinutes = null;
     const nextTaskStatus = confirmedStatus ?? status;
+    if (editingTask && nextTaskStatus === "erledigt" && isOfferFollowUpTask(editingTask)) {
+      openOfferFollowUpDecisionDialog(editingTask, nextTaskStatus);
+      return;
+    }
 
     const method = editingTask ? "PATCH" : "POST";
     const selectedOwnerId =
@@ -17522,6 +17917,7 @@ await addProjectLogbookEntry(
       recurrenceInterval: null,
       estimateMinutes,
       planningAllocations: normalizedPlanningAllocations,
+      taskLinks: (editingTask?.links ?? []).map((link) => ({ label: link.label, url: link.url })),
       absenceHandoverTask: isCreatingAbsenceHandoverTask,
       participantUserIds: editingTask ? [] : newTaskParticipantUserIds,
     };
@@ -18771,6 +19167,10 @@ await addProjectLogbookEntry(
 
   async function moveTaskToStatus(task: TaskItem, nextStatus: TaskStatus) {
     if (task.status === nextStatus) return;
+    if (nextStatus === "erledigt" && isOfferFollowUpTask(task)) {
+      openOfferFollowUpDecisionDialog(task, nextStatus);
+      return;
+    }
 
     setTasks((currentTasks) =>
       currentTasks.map((currentTask) =>
@@ -18799,6 +19199,8 @@ await addProjectLogbookEntry(
         recurrenceEnabled: task.recurrenceEnabled,
         recurrenceInterval: task.recurrenceEnabled ? task.recurrenceInterval : null,
         estimateMinutes: task.vorgabeMinuten,
+        projectId: task.projectId,
+        taskLinks: (task.links ?? []).map((link) => ({ label: link.label, url: link.url })),
       }),
     });
 
@@ -54650,6 +55052,99 @@ await addProjectLogbookEntry(
                       type="button"
                       className={styles.secondaryButton}
                       onClick={() => setIsTaskStatusConfirmOpen(false)}
+                    >
+                      Abbrechen
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {offerFollowUpDecision && (
+              <div className={styles.taskAcceptancePopup} role="alertdialog" aria-modal="true">
+                <div className={styles.taskStatusConfirmDialog}>
+                  <strong>Angebots-Nachfassung abschliessen</strong>
+                  <p>
+                    Fuer Angebot {offerFollowUpDecision.offer.offerNumber} muss zuerst entschieden werden, was aus der
+                    Nachfassung geworden ist.
+                  </p>
+                  <label>
+                    Ergebnis
+                    <select
+                      value={offerFollowUpDecision.outcome}
+                      onChange={(event) =>
+                        setOfferFollowUpDecision((current) =>
+                          current
+                            ? { ...current, outcome: event.target.value as "won" | "lost" | "follow_up", error: "" }
+                            : current
+                        )
+                      }
+                    >
+                      <option value="won">Angebot gewonnen</option>
+                      <option value="lost">Angebot verloren</option>
+                      <option value="follow_up">Weiter nachfassen</option>
+                    </select>
+                  </label>
+                  <label>
+                    {offerFollowUpDecision.outcome === "follow_up" ? "Grund / Notiz" : "Grund"}
+                    <input
+                      value={offerFollowUpDecision.reason}
+                      onChange={(event) =>
+                        setOfferFollowUpDecision((current) =>
+                          current ? { ...current, reason: event.target.value, error: "" } : current
+                        )
+                      }
+                      placeholder={
+                        offerFollowUpDecision.outcome === "won"
+                          ? "z.B. Kunde hat zugesagt"
+                          : offerFollowUpDecision.outcome === "lost"
+                            ? "z.B. Preis, kein Bedarf, Wettbewerber"
+                            : "z.B. Kunde will naechste Woche entscheiden"
+                      }
+                    />
+                  </label>
+                  {offerFollowUpDecision.outcome === "lost" ? (
+                    <label>
+                      Kommentar
+                      <textarea
+                        value={offerFollowUpDecision.note}
+                        onChange={(event) =>
+                          setOfferFollowUpDecision((current) =>
+                            current ? { ...current, note: event.target.value, error: "" } : current
+                          )
+                        }
+                        placeholder="Kurz dokumentieren, warum das Angebot verloren ist."
+                      />
+                    </label>
+                  ) : null}
+                  {offerFollowUpDecision.outcome === "follow_up" ? (
+                    <label>
+                      Neues Nachfassdatum
+                      <input
+                        type="datetime-local"
+                        value={offerFollowUpDecision.followUpAt}
+                        onChange={(event) =>
+                          setOfferFollowUpDecision((current) =>
+                            current ? { ...current, followUpAt: event.target.value, error: "" } : current
+                          )
+                        }
+                      />
+                    </label>
+                  ) : null}
+                  {offerFollowUpDecision.error ? <p className={styles.formError}>{offerFollowUpDecision.error}</p> : null}
+                  <div className={styles.taskStatusConfirmActions}>
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      disabled={offerFollowUpDecision.isSaving}
+                      onClick={() => void completeOfferFollowUpDecision()}
+                    >
+                      {offerFollowUpDecision.isSaving ? "Speichern..." : "Entscheidung speichern"}
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      disabled={offerFollowUpDecision.isSaving}
+                      onClick={() => setOfferFollowUpDecision(null)}
                     >
                       Abbrechen
                     </button>
