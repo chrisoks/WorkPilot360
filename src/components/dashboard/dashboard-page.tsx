@@ -14080,12 +14080,11 @@ export function DashboardPage() {
     const isLowerBetter = isLowerBetterGoalMetric(goal.metricKey);
     const reached = targetValue > 0 && (isLowerBetter ? actualValue <= targetValue : actualValue >= targetValue);
     const metric = getGoalMetricOption(goal.metricKey);
+    const targetReserveScale = targetValue > 0 ? targetValue / 0.75 : 1;
     const scaleMax =
       metric.unit === "percent"
         ? Math.max(100, targetValue, actualValue)
-        : isLowerBetter
-          ? Math.max(targetValue * 1.25, actualValue, 1)
-          : Math.max(targetValue, actualValue, 1);
+        : Math.max(targetReserveScale, actualValue, 1);
     const actualPosition = Math.min(100, Math.max(0, (actualValue / scaleMax) * 100));
     const targetPosition = Math.min(100, Math.max(0, (targetValue / scaleMax) * 100));
     const relationPercent = targetValue > 0 ? Math.round((actualValue / targetValue) * 100) : 0;
