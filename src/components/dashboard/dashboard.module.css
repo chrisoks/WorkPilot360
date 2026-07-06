@@ -5339,6 +5339,29 @@
   width: 310px;
 }
 
+.potentialNumberButton {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: #005bff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 850;
+  line-height: 1.2;
+  padding: 0;
+  text-align: left;
+}
+
+.potentialNumberButton:hover {
+  text-decoration: underline;
+}
+
+.potentialNumberButton:focus-visible {
+  border-radius: 6px;
+  outline: 2px solid #93c5fd;
+  outline-offset: 3px;
+}
+
 .heroTableHint {
   background: #f8fbff;
   border-top: 1px solid #e2e8f0;
