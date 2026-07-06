@@ -22,6 +22,11 @@
   Auswertung fuer die eigene Planungsgruppe und duerfen weiterhin die
   `SVS Analyse` sehen. Geschaeftsfuehrung/Admin sehen wie bisher alle
   Mitarbeitenden.
+- Forecast/OP 2026-07-06: Die Kachel `Fakturierter Umsatz` zeigt im
+  Hauptwert jetzt den gesamten fakturierten Umsatz im gewaehlten Zeitraum.
+  Zahlungseingang und offene Rechnungswerte stehen darunter als Details
+  `Bezahlt` und `Offen`, damit Umsatz, Liquiditaet und OP nicht vermischt
+  werden.
 - Dashboard-KPIs Geschaeftsfuehrung 2026-07-01: Die oberen KPI-Kacheln im
   Dashboard zeigen fuer die Rolle `GESCHAEFTSFUEHRER` jetzt ein 2x2-Set aus
   Umsatz & Forecast, Produktivitaet, Projektlage sowie Vertrieb & Kunde. Das

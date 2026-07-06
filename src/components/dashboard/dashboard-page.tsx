@@ -23781,6 +23781,7 @@ await addProjectLogbookEntry(
     }),
     { recurring: 0, oneTime: 0, opportunities: 0, potential: 0, invoiced: 0, paid: 0, target: 0, deviation: 0 }
   );
+  const forecastOpenInvoicedTotal = Math.max(0, forecastBusinessSummaryTotal.invoiced - forecastBusinessSummaryTotal.paid);
   const forecastPotentialChartRows = forecastBusinessMonthRows;
   const forecastPotentialTop = 120000;
   const forecastPotentialBottom = 0;
@@ -26222,21 +26223,21 @@ await addProjectLogbookEntry(
 
             <article
               className={styles.forecastSummaryGroup}
-              data-state={forecastBusinessSummaryTotal.invoiced - forecastBusinessSummaryTotal.paid > 0 ? "ok" : "good"}
+              data-state={forecastOpenInvoicedTotal > 0 ? "ok" : "good"}
             >
               <div>
                 <span>Fakturierter Umsatz</span>
-                <small>Abgerechnet und Zahlungseingang</small>
+                <small>Abgerechneter Umsatz und Zahlungseingang</small>
               </div>
-              <strong>{formatMoney(forecastBusinessSummaryTotal.invoiced - forecastBusinessSummaryTotal.paid)}</strong>
+              <strong>{formatMoney(forecastBusinessSummaryTotal.invoiced)}</strong>
               <div className={styles.forecastSummaryDetails}>
-                <span>
-                  <small>Fakturiert</small>
-                  <b>{formatMoney(forecastBusinessSummaryTotal.invoiced)}</b>
-                </span>
                 <span>
                   <small>Bezahlt</small>
                   <b>{formatMoney(forecastBusinessSummaryTotal.paid)}</b>
+                </span>
+                <span>
+                  <small>Offen</small>
+                  <b>{formatMoney(forecastOpenInvoicedTotal)}</b>
                 </span>
               </div>
             </article>
