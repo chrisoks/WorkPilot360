@@ -189,7 +189,7 @@ type ReportAnalyticsTab =
   | "kuzu"
   | "catalog"
   | "employees"
-  | "overview"
+  | "executive"
   | "monthlyReport"
   | "map";
 const allReportTabs: Array<{ id: ReportAnalyticsTab; label: string }> = [
@@ -203,7 +203,7 @@ const allReportTabs: Array<{ id: ReportAnalyticsTab; label: string }> = [
   { id: "kuzu", label: "KuZu" },
   { id: "catalog", label: "Artikel & Leistungen" },
   { id: "employees", label: "Mitarbeitende" },
-  { id: "overview", label: "Umsatz- und Projektübersicht" },
+  { id: "executive", label: "Geschäftsführung" },
   { id: "map", label: "Projektkarte" },
 ];
 type ReportPeriodPreset =
@@ -2819,13 +2819,13 @@ function getVisibleReportTabs(role?: string) {
   const allowedTabsByRole: Record<string, ReportAnalyticsTab[]> = {
     ADMIN: allReportTabs.map((tab) => tab.id),
     GESCHAEFTSFUEHRER: allReportTabs.map((tab) => tab.id),
-    FUEHRUNGSKRAFT: ["overview", "projects", "svs", "kuzu", "employees", "map"],
-    MITARBEITER: ["overview", "employees"],
-    VERTRIEB: ["overview", "sales", "projects", "customers", "kuzu"],
-    BUCHHALTUNG: ["forecast", "revenue", "monthlyReport", "customers", "overview"],
-    GAST: ["overview"],
+    FUEHRUNGSKRAFT: ["projects", "svs", "kuzu", "employees", "map"],
+    MITARBEITER: ["employees"],
+    VERTRIEB: ["sales", "projects", "customers", "kuzu"],
+    BUCHHALTUNG: ["forecast", "revenue", "monthlyReport", "customers"],
+    GAST: [],
   };
-  const allowedTabs = allowedTabsByRole[role || ""] ?? ["overview"];
+  const allowedTabs = allowedTabsByRole[role || ""] ?? [];
   return allReportTabs.filter((tab) => allowedTabs.includes(tab.id));
 }
 
@@ -25735,6 +25735,132 @@ await addProjectLogbookEntry(
         dashboardCurrentMonthFeedback.length
       : 0;
   const dashboardCurrentMonthCriticalFeedback = dashboardCurrentMonthFeedback.filter((feedback) => feedback.hotAlert).length;
+  const executiveBottleneckRows = [
+    {
+      key: "overdue-open-items",
+      area: "Liquidität",
+      signal: `${overviewOverdueRows.length} überfällige Rechnung${overviewOverdueRows.length === 1 ? "" : "en"}`,
+      interpretation:
+        overviewOverdueTotal > 0
+          ? `Überfällige offene Posten binden ${formatMoney(overviewOverdueTotal)} und kosten direkt verfügbare Liquidität.`
+          : "Keine überfälligen offenen Posten im gewählten Zeitraum.",
+      action: "OP-Kontrolle priorisieren und Mahnlauf prüfen.",
+      amount: overviewOverdueTotal,
+      state: overviewOverdueTotal > 0 ? ("low" as const) : ("good" as const),
+      priority: overviewOverdueTotal > 0 ? 95 : 10,
+      visible: canViewAccountingOverviewAnalytics,
+    },
+    {
+      key: "pipeline-bottleneck",
+      area: "Projektfluss",
+      signal: largestPipelineBottleneck
+        ? `${largestPipelineBottleneck.status}: ${formatPipelineMinutesAsDays(largestPipelineBottleneck.totalMinutes)} gebunden`
+        : "Kein Pipeline-Schwerpunkt",
+      interpretation:
+        longPipelineStatusRows.length > 0
+          ? `${longPipelineStatusRows.length} Projekt${longPipelineStatusRows.length === 1 ? "" : "e"} hängen länger als 14 Tage in einer Phase.`
+          : "Keine auffälligen langen Statuslaufzeiten im gewählten Zeitraum.",
+      action: "Projekte mit langer Statuslaufzeit prüfen und nächsten Pflichtschritt auslösen.",
+      amount: 0,
+      state: longPipelineStatusRows.length > 0 ? ("ok" as const) : ("good" as const),
+      priority: longPipelineStatusRows.length > 0 ? 85 : 15,
+      visible: canViewOperationalOverviewAnalytics,
+    },
+    {
+      key: "forecast-quality",
+      area: "Forecast",
+      signal:
+        forecastQualityProblemCount > 0
+          ? `${forecastQualityProblemCount} Prüfpunkt${forecastQualityProblemCount === 1 ? "" : "e"} offen`
+          : "Forecast-Daten plausibel",
+      interpretation:
+        forecastQualityProblemCount > 0
+          ? "Forecast und offene Posten sind steuerbar, aber einzelne Datenpunkte brauchen Nachpflege."
+          : "Forecast-Grundlage wirkt im gewählten Zeitraum plausibel.",
+      action: "Forecast-Qualitätsprüfung öffnen und kritische Treffer bereinigen.",
+      amount: 0,
+      state: forecastQualityCriticalCount > 0 ? ("low" as const) : forecastQualityProblemCount > 0 ? ("ok" as const) : ("good" as const),
+      priority: forecastQualityCriticalCount > 0 ? 90 : forecastQualityProblemCount > 0 ? 70 : 12,
+      visible: canViewOperationalOverviewAnalytics || canViewAccountingOverviewAnalytics,
+    },
+    {
+      key: "billing-check",
+      area: "Abrechnung",
+      signal: `${dashboardBillingCheckCount} Projekt${dashboardBillingCheckCount === 1 ? "" : "e"} in Abrechnungsprüfung`,
+      interpretation:
+        dashboardBillingCheckCount > 0
+          ? "Leistung ist vermutlich erbracht, aber Umsatz wird noch nicht sauber realisiert."
+          : "Keine auffällige Häufung in der Abrechnungsprüfung.",
+      action: "Fehlende Nachweise/Rechnungsfreigaben prüfen und Projekte abschließen.",
+      amount: 0,
+      state: dashboardBillingCheckCount > 0 ? ("ok" as const) : ("good" as const),
+      priority: dashboardBillingCheckCount > 0 ? 78 : 8,
+      visible: canViewOperationalOverviewAnalytics || canViewAccountingOverviewAnalytics,
+    },
+    {
+      key: "sales-followups",
+      area: "Vertrieb",
+      signal: `${salesDueFollowUps.length} fällige Nachfasspunkte`,
+      interpretation:
+        salesDueFollowUps.length > 0
+          ? "Aktive Chancen liegen ohne aktuellen Vertriebsimpuls und können Umsatz verzögern."
+          : "Keine fälligen Zusatzverkauf-Nachfasspunkte.",
+      action: "Fällige Zusatzverkäufe heute nachfassen oder Aufgabe verbindlich terminieren.",
+      amount: salesPotentialValue,
+      state: salesDueFollowUps.length > 0 ? ("ok" as const) : ("good" as const),
+      priority: salesDueFollowUps.length > 0 ? 72 : 8,
+      visible: canViewFullOverviewAnalytics || activeUser?.role === "VERTRIEB",
+    },
+    {
+      key: "sales-win-rate",
+      area: "Sales-Performance",
+      signal:
+        salesDecisionCount > 0
+          ? `${formatHours(salesWinRate)}% Abschlussquote`
+          : "Noch keine entschiedenen Angebote",
+      interpretation:
+        salesDecisionCount >= 3 && salesWinRate < 35
+          ? "Die Abschlussquote liegt niedrig; Angebot, Preisargumentation oder Nachfassen sollten geprüft werden."
+          : "Die Abschlussquote liefert aktuell keinen kritischen Engpass.",
+      action: "Verlorene Angebote und Verlustgründe in Sales-Performance prüfen.",
+      amount: salesLostValue,
+      state: salesDecisionCount >= 3 && salesWinRate < 35 ? ("low" as const) : salesDecisionCount > 0 ? ("good" as const) : ("ok" as const),
+      priority: salesDecisionCount >= 3 && salesWinRate < 35 ? 76 : 20,
+      visible: canViewFullOverviewAnalytics || activeUser?.role === "VERTRIEB",
+    },
+    {
+      key: "critical-feedback",
+      area: "Kundenzufriedenheit",
+      signal: `${hotCustomerFeedbackCount} kritische Rückmeldung${hotCustomerFeedbackCount === 1 ? "" : "en"}`,
+      interpretation:
+        hotCustomerFeedbackCount > 0
+          ? "Kritische Kundenrückmeldungen können Wiederbeauftragung und Zusatzgeschäft gefährden."
+          : "Keine kritischen Rückmeldungen im gewählten Zeitraum.",
+      action: "KuZu öffnen und kritische Rückmeldungen mit Verantwortlichem klären.",
+      amount: 0,
+      state: hotCustomerFeedbackCount > 0 ? ("low" as const) : ("good" as const),
+      priority: hotCustomerFeedbackCount > 0 ? 82 : 8,
+      visible: canViewOperationalOverviewAnalytics || activeUser?.role === "VERTRIEB",
+    },
+    {
+      key: "productivity",
+      area: "Produktivität",
+      signal: `${formatPercent(dashboardCurrentMonthProductivity)} produktive Zeit im Monat`,
+      interpretation:
+        dashboardCurrentMonthProductivity > 0 && dashboardCurrentMonthProductivity < 75
+          ? "Der Anteil produktiver Projektzeit ist niedrig und drückt die abrechenbare Leistung."
+          : "Produktivitätsanteil ist aktuell kein Hauptengpass.",
+      action: "Unproduktive Stunden und Planungsgruppen in der Mitarbeiterauswertung prüfen.",
+      amount: 0,
+      state: dashboardCurrentMonthProductivity > 0 && dashboardCurrentMonthProductivity < 75 ? ("low" as const) : ("good" as const),
+      priority: dashboardCurrentMonthProductivity > 0 && dashboardCurrentMonthProductivity < 75 ? 74 : 10,
+      visible: canViewFullOverviewAnalytics,
+    },
+  ]
+    .filter((row) => row.visible)
+    .sort((first, second) => second.priority - first.priority)
+    .slice(0, 7);
+  const executiveTopBottleneck = executiveBottleneckRows.find((row) => row.state !== "good") ?? executiveBottleneckRows[0] ?? null;
   const managementDashboardKpis = [
     {
       kicker: "Finanzen",
@@ -27894,8 +28020,52 @@ await addProjectLogbookEntry(
         </>
       )}
 
-      {reportAnalyticsTab === "overview" && (
+      {reportAnalyticsTab === "executive" && (
         <>
+          <article className={`${styles.analyticsCard} ${styles.executiveInsightCard}`}>
+            <div className={styles.executiveInsightHeader}>
+              <div>
+                <h2>Systeminterpretation</h2>
+                <p>
+                  WorkPilot bewertet vorhandene Umsatz-, Forecast-, OP-, Projekt-, Vertriebs- und Kundendaten und zeigt die wichtigsten Steuerungspunkte.
+                </p>
+              </div>
+              {executiveTopBottleneck ? (
+                <span data-state={executiveTopBottleneck.state}>
+                  Schwerpunkt: {executiveTopBottleneck.area}
+                </span>
+              ) : null}
+            </div>
+            <table className={`${styles.analyticsTable} ${styles.executiveInsightTable}`}>
+              <thead>
+                <tr>
+                  <th>Bereich</th>
+                  <th>Signal</th>
+                  <th>Interpretation</th>
+                  <th>Nächster Schritt</th>
+                  <th>Betrag</th>
+                </tr>
+              </thead>
+              <tbody>
+                {executiveBottleneckRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={5}>Für die aktuelle Rolle sind keine Steuerungsdaten freigegeben.</td>
+                  </tr>
+                ) : (
+                  executiveBottleneckRows.map((row) => (
+                    <tr key={row.key}>
+                      <td data-state={row.state}>{row.area}</td>
+                      <td>{row.signal}</td>
+                      <td>{row.interpretation}</td>
+                      <td>{row.action}</td>
+                      <td>{row.amount > 0 ? formatMoney(row.amount) : "-"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </article>
+
           <section className={styles.analyticsGrid}>
             {renderReportMetric("Umsatz", formatMoney(invoiceRevenueTotal), `${reportInvoices.length} fakturierte Rechnungen`, "good")}
             {canViewAccountingOverviewAnalytics
