@@ -24157,7 +24157,7 @@ await addProjectLogbookEntry(
     packageItem.planningMinutesOverride ?? packageItem.componentPlanningMinutesPerUnit;
   const getPackageComponentSalesTotal = (packageItem: CatalogPackageItem) =>
     packageItem.componentType === "service"
-      ? getPackageComponentSalesUnitPrice(packageItem)
+      ? (getPackageComponentSalesUnitPrice(packageItem) * getPackageComponentPlanningMinutes(packageItem)) / 60
       : getPackageComponentSalesUnitPrice(packageItem) * packageItem.quantity;
   const getPackageComponentPurchaseTotal = (packageItem: CatalogPackageItem) =>
     packageItem.componentType === "service"
@@ -44161,8 +44161,8 @@ await addProjectLogbookEntry(
     const packageMargin = packageNetSalesPrice > 0
       ? ((packageNetSalesPrice - packagePurchaseTotal) / packageNetSalesPrice) * 100
       : 0;
-    const getMarkupPercent = (purchasePrice: number, salesPrice: number) =>
-      purchasePrice > 0 ? ((salesPrice - purchasePrice) / purchasePrice) * 100 : 0;
+    const getPackageMarginPercent = (purchasePrice: number, salesPrice: number) =>
+      salesPrice > 0 ? ((salesPrice - purchasePrice) / salesPrice) * 100 : 0;
     const planningGroups = catalogDraft.defaultPlanningBoard === "OK immocare" ? ["VZK", "TZK"] : ["Marketing", "Arb.Sich.", "HR"];
     const laborCostRateOptions = getLaborCostRateOptions();
     const canEditLaborCostRateValue = activeUser?.role === "GESCHAEFTSFUEHRER";
@@ -44357,14 +44357,14 @@ await addProjectLogbookEntry(
                         </span>
                       </th>
                       <th>Einheit</th>
-                      <th>EK €/Std.</th>
+                      <th>EK/Einheit</th>
                       <th>
                         <span className={styles.catalogLabelText}>
                           VK/Einheit
                           {renderCatalogHelp("Verkaufspreis je Einheit innerhalb dieses Pakets. Kann vom Stammdatenpreis abweichen.")}
                         </span>
                       </th>
-                      <th>Aufschlag %</th>
+                      <th>Marge %</th>
                       <th>VK Netto</th>
                       <th />
                     </tr>
@@ -44379,6 +44379,8 @@ await addProjectLogbookEntry(
                         const index = catalogDraft.packageItems.findIndex((candidate) => candidate.id === item.id);
                         const unitSalesPrice = getPackageComponentSalesUnitPrice(item);
                         const unitPurchasePrice = getPackageComponentPurchaseUnitPrice(item);
+                        const materialSalesPrice = getPackageComponentSalesTotal(item);
+                        const materialPurchasePrice = getPackageComponentPurchaseTotal(item);
                         return (
                           <tr key={item.id}>
                             <td>
@@ -44404,8 +44406,8 @@ await addProjectLogbookEntry(
                             <td>
                               <input type="number" value={unitSalesPrice} onChange={(event) => updateCatalogPackageItem(index, { priceOverride: Number(event.target.value) })} />
                             </td>
-                            <td>{formatHours(getMarkupPercent(unitPurchasePrice, unitSalesPrice))}</td>
-                            <td>{formatMoney(unitSalesPrice * item.quantity)}</td>
+                            <td>{formatHours(getPackageMarginPercent(materialPurchasePrice, materialSalesPrice))}</td>
+                            <td>{formatMoney(materialSalesPrice)}</td>
                             <td>
                               <button className={styles.iconButton} onClick={() => removeCatalogPackageItem(index)}>-</button>
                               <button className={styles.tableTextLink} onClick={() => refreshCatalogPackageItemFromMaster(index)}>
@@ -44442,14 +44444,14 @@ await addProjectLogbookEntry(
                         </span>
                       </th>
                       <th>in Stunden</th>
-                      <th>EK/Einheit</th>
+                      <th>EK/Std.</th>
                       <th>
                         <span className={styles.catalogLabelText}>
-                          VK/Einheit
-                          {renderCatalogHelp("Verkaufspreis dieser Leistung innerhalb des Pakets. Kann bei Bedarf vom aktuellen Stammdatenpreis abweichen.")}
+                          VK/Std.
+                          {renderCatalogHelp("Verkaufspreis pro Stunde innerhalb des Pakets. Der VK Netto wird aus diesem Stundensatz und den Minuten berechnet.")}
                         </span>
                       </th>
-                      <th>Aufschlag %</th>
+                      <th>Marge %</th>
                       <th>VK Netto</th>
                       <th />
                     </tr>
@@ -44466,6 +44468,7 @@ await addProjectLogbookEntry(
                         const unitPurchasePrice = getPackageComponentPurchaseUnitPrice(item);
                         const minutes = getPackageComponentPlanningMinutes(item);
                         const laborPurchasePrice = getPackageComponentPurchaseTotal(item);
+                        const laborSalesPrice = getPackageComponentSalesTotal(item);
                         return (
                           <tr key={item.id}>
                             <td>
@@ -44500,8 +44503,8 @@ await addProjectLogbookEntry(
                             <td>
                               <input type="number" value={unitSalesPrice} onChange={(event) => updateCatalogPackageItem(index, { priceOverride: Number(event.target.value) })} />
                             </td>
-                            <td>{formatHours(getMarkupPercent(laborPurchasePrice, unitSalesPrice))}</td>
-                            <td>{formatMoney(unitSalesPrice)}</td>
+                            <td>{formatHours(getPackageMarginPercent(laborPurchasePrice, laborSalesPrice))}</td>
+                            <td>{formatMoney(laborSalesPrice)}</td>
                             <td>
                               <button className={styles.iconButton} onClick={() => removeCatalogPackageItem(index)}>-</button>
                               <button className={styles.tableTextLink} onClick={() => refreshCatalogPackageItemFromMaster(index)}>
@@ -44523,7 +44526,6 @@ await addProjectLogbookEntry(
                     <tr>
                       <th />
                       <th>EK</th>
-                      <th>Aufschlag %</th>
                       <th>VK Netto</th>
                       <th>Paket-VK Netto</th>
                       <th>Marge %</th>
@@ -44533,23 +44535,20 @@ await addProjectLogbookEntry(
                     <tr>
                       <th>Material</th>
                       <td>{formatMoney(materialPurchaseTotal)}</td>
-                      <td>{formatHours(getMarkupPercent(materialPurchaseTotal, materialSalesTotal))}</td>
                       <td>{formatMoney(materialSalesTotal)}</td>
                       <td>{formatMoney(materialSalesTotal)}</td>
-                      <td>{materialSalesTotal > 0 ? formatHours(((materialSalesTotal - materialPurchaseTotal) / materialSalesTotal) * 100) : "0,00"}</td>
+                      <td>{formatHours(getPackageMarginPercent(materialPurchaseTotal, materialSalesTotal))}</td>
                     </tr>
                     <tr>
                       <th>Lohn / Maschinenkosten</th>
                       <td>{formatMoney(laborPurchaseTotal)}</td>
-                      <td>{formatHours(getMarkupPercent(laborPurchaseTotal, laborSalesTotal))}</td>
                       <td>{formatMoney(laborSalesTotal)}</td>
                       <td>{formatMoney(laborSalesTotal)}</td>
-                      <td>{laborSalesTotal > 0 ? formatHours(((laborSalesTotal - laborPurchaseTotal) / laborSalesTotal) * 100) : "0,00"}</td>
+                      <td>{formatHours(getPackageMarginPercent(laborPurchaseTotal, laborSalesTotal))}</td>
                     </tr>
                     <tr>
                       <th>Gesamtsumme</th>
                       <td>{formatMoney(packagePurchaseTotal)}</td>
-                      <td>{formatHours(getMarkupPercent(packagePurchaseTotal, packageSalesTotal))}</td>
                       <td>{formatMoney(packageSalesTotal)}</td>
                       <td>{formatMoney(packageNetSalesPrice)}</td>
                       <td>{formatHours(packageMargin)}</td>
