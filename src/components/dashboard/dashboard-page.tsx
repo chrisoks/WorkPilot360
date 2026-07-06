@@ -194,7 +194,6 @@ type ReportAnalyticsTab =
   | "map";
 const allReportTabs: Array<{ id: ReportAnalyticsTab; label: string }> = [
   { id: "forecast", label: "Forecast & OP Kontrolle" },
-  { id: "revenue", label: "Umsätze - Details" },
   { id: "monthlyReport", label: "Monatsbericht" },
   { id: "sales", label: "Sales-Performance" },
   { id: "svs", label: "SVS Analyse" },
@@ -26223,8 +26222,8 @@ await addProjectLogbookEntry(
               data-state={forecastBusinessSummaryTotal.invoiced - forecastBusinessSummaryTotal.paid > 0 ? "ok" : "good"}
             >
               <div>
-                <span>Rechnungen</span>
-                <small>Faktura und Zahlungseingang</small>
+                <span>Fakturierter Umsatz</span>
+                <small>Abgerechnet und Zahlungseingang</small>
               </div>
               <strong>{formatMoney(forecastBusinessSummaryTotal.invoiced - forecastBusinessSummaryTotal.paid)}</strong>
               <div className={styles.forecastSummaryDetails}>

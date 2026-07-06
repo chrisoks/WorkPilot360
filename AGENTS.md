@@ -8,6 +8,13 @@
   Aenderungen in dieser `AGENTS.md` dokumentieren. Kleine reine UI-Fixes
   duerfen schlank bleiben, aber groessere Logikbloecke brauchen Sicherung,
   Checks und Handover-Notiz.
+- Auswertungen Konsolidierung 2026-07-06: Der sichtbare Reiter
+  `Umsaetze - Details` wurde aus der Auswertungsnavigation entfernt, weil
+  seine Inhalte fachlich in Forecast/OP, Monatsbericht, Sales-Performance und
+  SVS Analyse sauberer aufgehoben sind. Die bestehende Revenue-Logik blieb
+  unangetastet. Im Forecast/OP-Bereich heisst die Rechnungskachel jetzt
+  `Fakturierter Umsatz`, damit wirklich abgerechnete Umsaetze weiterhin klar
+  sichtbar bleiben.
 - Dashboard-KPIs Geschaeftsfuehrung 2026-07-01: Die oberen KPI-Kacheln im
   Dashboard zeigen fuer die Rolle `GESCHAEFTSFUEHRER` jetzt ein 2x2-Set aus
   Umsatz & Forecast, Produktivitaet, Projektlage sowie Vertrieb & Kunde. Das
