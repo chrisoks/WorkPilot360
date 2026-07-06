@@ -201,7 +201,7 @@ const allReportTabs: Array<{ id: ReportAnalyticsTab; label: string }> = [
   { id: "customers", label: "Kunden" },
   { id: "kuzu", label: "KuZu" },
   { id: "catalog", label: "Artikel & Leistungen" },
-  { id: "employees", label: "Mitarbeitende" },
+  { id: "employees", label: "Mitarbeiter-Auswertung" },
   { id: "executive", label: "Geschäftsführung" },
   { id: "map", label: "Projektkarte" },
 ];
@@ -25345,10 +25345,13 @@ await addProjectLogbookEntry(
   const employeeAnalyticsOwnGroup = activeUser?.planningGroup || "Ohne Planungsgruppe";
   const canViewAllEmployeeAnalytics =
     activeUser?.role === "ADMIN" || activeUser?.role === "GESCHAEFTSFUEHRER";
-  const canViewEmployeeTeamMemberDetails =
+  const canViewEmployeeGroupAnalytics =
     canViewAllEmployeeAnalytics || activeUser?.role === "FUEHRUNGSKRAFT";
+  const canViewEmployeeTeamMemberDetails =
+    canViewEmployeeGroupAnalytics;
   const visibleEmployeeReportRows = employeeReportRows.filter((row) => {
     if (canViewAllEmployeeAnalytics) return true;
+    if (activeUser?.role === "MITARBEITER") return row.user.id === activeUserId;
     return (row.user.planningGroup || "Ohne Planungsgruppe") === employeeAnalyticsOwnGroup;
   });
   const employeeSummary = visibleEmployeeReportRows.reduce(
@@ -27898,13 +27901,14 @@ await addProjectLogbookEntry(
               getMetricState(employeeSummaryMetrics.unproductiveShare, 5, 10, true)
             )}
           </section>
-          <article className={styles.analyticsCard}>
-            <h2>Kennzahlen nach Planungsgruppe</h2>
-            <div className={styles.employeeAnalyticsCards}>
-              {employeeGroupRows.length === 0 ? (
-                <p className={styles.employeeAnalyticsEmpty}>Keine Mitarbeitenden-Kennzahlen im gewählten Zeitraum.</p>
-              ) : (
-                employeeGroupRows.map((group) => {
+          {canViewEmployeeGroupAnalytics ? (
+            <article className={styles.analyticsCard}>
+              <h2>Kennzahlen nach Planungsgruppe</h2>
+              <div className={styles.employeeAnalyticsCards}>
+                {employeeGroupRows.length === 0 ? (
+                  <p className={styles.employeeAnalyticsEmpty}>Keine Mitarbeitenden-Kennzahlen im gewählten Zeitraum.</p>
+                ) : (
+                  employeeGroupRows.map((group) => {
                   const isExpanded = expandedEmployeeAnalyticsGroups.includes(group.groupName);
                   const punctualityTrend = getPunctualityTrend({
                     evaluable: group.punctualityEvaluable,
@@ -28043,10 +28047,11 @@ await addProjectLogbookEntry(
                       ) : null}
                     </section>
                   );
-                })
-              )}
-            </div>
-          </article>
+                  })
+                )}
+              </div>
+            </article>
+          ) : null}
           {ownEmployeeAnalyticsRow ? (
             <article className={styles.analyticsCard}>
               <h2>Meine Kennzahlen</h2>

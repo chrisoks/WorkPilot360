@@ -15,6 +15,13 @@
   unangetastet. Im Forecast/OP-Bereich heisst die Rechnungskachel jetzt
   `Fakturierter Umsatz`, damit wirklich abgerechnete Umsaetze weiterhin klar
   sichtbar bleiben.
+- Mitarbeiter-Auswertung 2026-07-06: Der Auswertungsreiter
+  `Mitarbeitende` heisst jetzt `Mitarbeiter-Auswertung`. Normale Mitarbeiter
+  sehen dort nur noch ihre eigenen Kennzahlen; Planungsgruppen- und
+  Teamkarten werden fuer sie ausgeblendet. Fuehrungskraefte behalten die
+  Auswertung fuer die eigene Planungsgruppe und duerfen weiterhin die
+  `SVS Analyse` sehen. Geschaeftsfuehrung/Admin sehen wie bisher alle
+  Mitarbeitenden.
 - Dashboard-KPIs Geschaeftsfuehrung 2026-07-01: Die oberen KPI-Kacheln im
   Dashboard zeigen fuer die Rolle `GESCHAEFTSFUEHRER` jetzt ein 2x2-Set aus
   Umsatz & Forecast, Produktivitaet, Projektlage sowie Vertrieb & Kunde. Das
