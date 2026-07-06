@@ -19004,6 +19004,67 @@
   width: auto !important;
 }
 
+.catalogLabelText {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  min-width: 0;
+  position: relative;
+}
+
+.catalogLabelHelp {
+  align-items: center;
+  background: #eef6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  color: #1d4ed8;
+  cursor: help;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 950;
+  height: 18px;
+  justify-content: center;
+  line-height: 1;
+  position: relative;
+  width: 18px;
+}
+
+.catalogLabelHelp::after {
+  background: #111827;
+  border-radius: 7px;
+  color: #ffffff;
+  content: attr(data-tooltip);
+  font-size: 12px;
+  font-weight: 750;
+  left: 50%;
+  line-height: 1.3;
+  max-width: 260px;
+  opacity: 0;
+  padding: 8px 9px;
+  pointer-events: none;
+  position: absolute;
+  text-align: left;
+  top: calc(100% + 8px);
+  transform: translate(-50%, 4px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+  visibility: hidden;
+  width: max-content;
+  z-index: 60;
+}
+
+.catalogLabelHelp:hover::after,
+.catalogLabelHelp:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  visibility: visible;
+}
+
+.catalogPlanningFlag {
+  grid-column: 1 / -1;
+  margin-top: 2px !important;
+}
+
 .catalogMetric {
   border: 1px solid rgba(148, 163, 184, 0.25);
   border-radius: 11px;

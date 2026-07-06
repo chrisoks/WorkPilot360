@@ -44166,6 +44166,11 @@ await addProjectLogbookEntry(
     const planningGroups = catalogDraft.defaultPlanningBoard === "OK immocare" ? ["VZK", "TZK"] : ["Marketing", "Arb.Sich.", "HR"];
     const laborCostRateOptions = getLaborCostRateOptions();
     const canEditLaborCostRateValue = activeUser?.role === "GESCHAEFTSFUEHRER";
+    const renderCatalogHelp = (tooltip: string) => (
+      <span className={styles.catalogLabelHelp} data-tooltip={tooltip} tabIndex={0} aria-label={tooltip}>
+        ?
+      </span>
+    );
     const catalogTypeLabel =
       catalogDraft.type === "service" ? "Leistung" : catalogDraft.type === "package" ? "Paket" : "Artikel";
     const catalogModalTitle = editingCatalogItemId
@@ -44345,10 +44350,20 @@ await addProjectLogbookEntry(
                   <thead>
                     <tr>
                       <th>Artikelname</th>
-                      <th>Menge</th>
+                      <th>
+                        <span className={styles.catalogLabelText}>
+                          Menge
+                          {renderCatalogHelp("Anzahl der Materialeinheiten, die in diesem Paket enthalten sind.")}
+                        </span>
+                      </th>
                       <th>Einheit</th>
                       <th>EK €/Std.</th>
-                      <th>VK/Einheit</th>
+                      <th>
+                        <span className={styles.catalogLabelText}>
+                          VK/Einheit
+                          {renderCatalogHelp("Verkaufspreis je Einheit innerhalb dieses Pakets. Kann vom Stammdatenpreis abweichen.")}
+                        </span>
+                      </th>
                       <th>Aufschlag %</th>
                       <th>VK Netto</th>
                       <th />
@@ -44420,10 +44435,20 @@ await addProjectLogbookEntry(
                     <tr>
                       <th>Leistung</th>
                       <th>Beschreibung</th>
-                      <th>Minuten</th>
+                      <th>
+                        <span className={styles.catalogLabelText}>
+                          Minuten
+                          {renderCatalogHelp("Zeitanteil dieser Leistung im Paket. Hier kann bewusst eine andere Zeit als in der Leistungsstammdatenmaske hinterlegt werden.")}
+                        </span>
+                      </th>
                       <th>in Stunden</th>
                       <th>EK/Einheit</th>
-                      <th>VK/Einheit</th>
+                      <th>
+                        <span className={styles.catalogLabelText}>
+                          VK/Einheit
+                          {renderCatalogHelp("Verkaufspreis dieser Leistung innerhalb des Pakets. Kann bei Bedarf vom aktuellen Stammdatenpreis abweichen.")}
+                        </span>
+                      </th>
                       <th>Aufschlag %</th>
                       <th>VK Netto</th>
                       <th />
@@ -44537,7 +44562,10 @@ await addProjectLogbookEntry(
                 <h3>Gesamt</h3>
                 <div className={styles.packageTotalGrid}>
                   <label>
-                    Paket-VK Netto
+                    <span className={styles.catalogLabelText}>
+                      Paket-VK Netto
+                      {renderCatalogHelp("Netto-Verkaufspreis des kompletten Pakets. Wenn leer oder 0, ergibt er sich aus den Paketbestandteilen.")}
+                    </span>
                     <input
                       type="number"
                       value={catalogDraft.salesPrice || packageSalesTotal}
@@ -44561,14 +44589,17 @@ await addProjectLogbookEntry(
                     <strong>{formatMinutes(Math.round(packagePlanningMinutes))}</strong>
                   </article>
                 </div>
-                {catalogDraft.scheduledSalesPrice && catalogDraft.scheduledSalesPriceValidFrom ? (
+                  {catalogDraft.scheduledSalesPrice && catalogDraft.scheduledSalesPriceValidFrom ? (
                   <label className={styles.checkboxRow}>
                     <input
                       type="checkbox"
                       checked={catalogDraft.scheduledSalesPriceUpdatePackages}
                       onChange={(event) => updateCatalogDraft("scheduledSalesPriceUpdatePackages", event.target.checked)}
                     />
-                    Pakete beim Wirksamwerden ebenfalls aktualisieren
+                    <span className={styles.catalogLabelText}>
+                      Pakete beim Wirksamwerden ebenfalls aktualisieren
+                      {renderCatalogHelp("Wenn aktiv, werden Paketbestandteile mit dieser Leistung beim Preiswechsel ebenfalls aktualisiert. Bestehende Kundenvereinbarungen vorher prüfen.")}
+                    </span>
                   </label>
                 ) : null}
               </section>
@@ -44579,7 +44610,10 @@ await addProjectLogbookEntry(
               {catalogDraft.type === "service" ? (
                 <>
                   <label>
-                    LK-Satz
+                    <span className={styles.catalogLabelText}>
+                      LK-Satz
+                      {renderCatalogHelp("Der LK-Satz ist der hinterlegte interne Stundenkostensatz. Er füllt den LK-Satz-Wert und dient als Basis für kalkulatorischen EK und Marge.")}
+                    </span>
                     <select
                       value={catalogDraft.laborCostRateKey || getDefaultLaborCostRateKeyForCatalogItem(catalogDraft)}
                       onChange={(event) => {
@@ -44596,7 +44630,10 @@ await addProjectLogbookEntry(
                     </select>
                   </label>
                   <label>
-                    LK-Satz Wert (€ / Std.)
+                    <span className={styles.catalogLabelText}>
+                      LK-Satz Wert (€ / Std.)
+                      {renderCatalogHelp("Der tatsächlich verwendete interne Stundensatz für diese Leistung. Manuell änderbar nur durch die Geschäftsführung.")}
+                    </span>
                     <input
                       type="number"
                       step="0.01"
@@ -44608,22 +44645,67 @@ await addProjectLogbookEntry(
                   </label>
                 </>
               ) : (
-                <label>Einkaufspreis (€)<input type="number" value={catalogDraft.purchasePrice} onChange={(event) => updateCatalogDraft("purchasePrice", Number(event.target.value))} /></label>
+                <label>
+                  <span className={styles.catalogLabelText}>
+                    Einkaufspreis (€)
+                    {renderCatalogHelp("Interner Einkaufspreis je Einheit. Daraus wird zusammen mit dem Verkaufspreis die Marge berechnet.")}
+                  </span>
+                  <input type="number" value={catalogDraft.purchasePrice} onChange={(event) => updateCatalogDraft("purchasePrice", Number(event.target.value))} />
+                </label>
               )}
-              <label>Verkaufspreis aktuell (€)<input type="number" value={catalogDraft.salesPrice} onChange={(event) => updateCatalogDraft("salesPrice", Number(event.target.value))} /></label>
+              <label>
+                <span className={styles.catalogLabelText}>
+                  Verkaufspreis aktuell (€)
+                  {renderCatalogHelp("Aktueller Netto-Verkaufspreis je Einheit. Dieser Preis wird für neue Angebote, Rechnungen und Paketbestandteile verwendet.")}
+                </span>
+                <input type="number" value={catalogDraft.salesPrice} onChange={(event) => updateCatalogDraft("salesPrice", Number(event.target.value))} />
+              </label>
               <label>MwSt. (%)<input type="number" value={catalogDraft.vatRate} onChange={(event) => updateCatalogDraft("vatRate", Number(event.target.value))} /></label>
               {catalogDraft.type === "service" ? (
-                <article className={styles.catalogMetric}><span>Kalkulatorischer EK</span><strong>{formatMoney(servicePurchaseTotal)}</strong></article>
+                <article className={styles.catalogMetric}>
+                  <span className={styles.catalogLabelText}>
+                    Kalkulatorischer EK
+                    {renderCatalogHelp("Berechnet aus LK-Satz Wert und Planungszeit je Einheit. Beispiel: 60 Minuten entsprechen einer Stunde zum hinterlegten LK-Satz.")}
+                  </span>
+                  <strong>{formatMoney(servicePurchaseTotal)}</strong>
+                </article>
               ) : null}
               <article className={styles.catalogMetric}><span>Marge</span><strong>{formatHours(margin)}%</strong></article>
-              <label className={styles.checkboxRow}><input type="checkbox" checked={catalogDraft.isPlanningRelevant} onChange={(event) => updateCatalogDraft("isPlanningRelevant", event.target.checked)} />Für Planung verfügbar</label>
-              <label>Planungszeit je Einheit (Min.)<input type="number" value={catalogDraft.planningMinutesPerUnit} onChange={(event) => updateCatalogDraft("planningMinutesPerUnit", Number(event.target.value))} /></label>
-              <label>Standard-Board<select value={catalogDraft.defaultPlanningBoard} onChange={(event) => updateCatalogDraft("defaultPlanningBoard", event.target.value)}><option value="">Nicht vorbelegen</option><option value="OK solutions">OK solutions</option><option value="OK immocare">OK immocare</option></select></label>
-              <label>Standard-Gruppe<select value={catalogDraft.defaultPlanningGroup} onChange={(event) => updateCatalogDraft("defaultPlanningGroup", event.target.value)}><option value="">Nicht vorbelegen</option>{planningGroups.map((group) => <option key={group} value={group}>{group}</option>)}</select></label>
+              <label>
+                <span className={styles.catalogLabelText}>
+                  Planungszeit je Einheit (Min.)
+                  {renderCatalogHelp("Zeitansatz für eine Einheit dieser Leistung. In Paketen kann diese Zeit je Paketbestandteil bewusst überschrieben werden.")}
+                </span>
+                <input type="number" value={catalogDraft.planningMinutesPerUnit} onChange={(event) => updateCatalogDraft("planningMinutesPerUnit", Number(event.target.value))} />
+              </label>
+              <label>
+                <span className={styles.catalogLabelText}>
+                  Standard-Board
+                  {renderCatalogHelp("Vorbelegung für die Plantafel. Wird diese Leistung geplant, schlägt WorkPilot dieses Board automatisch vor.")}
+                </span>
+                <select value={catalogDraft.defaultPlanningBoard} onChange={(event) => updateCatalogDraft("defaultPlanningBoard", event.target.value)}><option value="">Nicht vorbelegen</option><option value="OK solutions">OK solutions</option><option value="OK immocare">OK immocare</option></select>
+              </label>
+              <label>
+                <span className={styles.catalogLabelText}>
+                  Standard-Gruppe
+                  {renderCatalogHelp("Vorbelegung für die Planungsgruppe innerhalb des Standard-Boards, zum Beispiel Marketing, VZK oder TZK.")}
+                </span>
+                <select value={catalogDraft.defaultPlanningGroup} onChange={(event) => updateCatalogDraft("defaultPlanningGroup", event.target.value)}><option value="">Nicht vorbelegen</option>{planningGroups.map((group) => <option key={group} value={group}>{group}</option>)}</select>
+              </label>
+              <label className={`${styles.checkboxRow} ${styles.catalogPlanningFlag}`}>
+                <input type="checkbox" checked={catalogDraft.isPlanningRelevant} onChange={(event) => updateCatalogDraft("isPlanningRelevant", event.target.checked)} />
+                <span className={styles.catalogLabelText}>
+                  Für Planung verfügbar
+                  {renderCatalogHelp("Aktiviert diese Leistung für die Planung. Nur verfügbare Leistungen können in der Plantafel als planbare Tätigkeit ausgewählt werden.")}
+                </span>
+              </label>
               <section className={styles.catalogPriceSchedulePanel}>
                 <div className={styles.catalogPriceScheduleHeader}>
                   <div>
-                    <strong>Geplante Preisänderung</strong>
+                    <strong className={styles.catalogLabelText}>
+                      Geplante Preisänderung
+                      {renderCatalogHelp("Trägt einen neuen Verkaufspreis mit Wirksamkeitsdatum vor. Am Stichtag wird er automatisch zum aktuellen Verkaufspreis übernommen.")}
+                    </strong>
                     <span>Wird ab dem Wirksamkeitsdatum automatisch zum aktuellen Verkaufspreis.</span>
                   </div>
                   {editingCatalogItemId && scheduledSalesPriceDue ? (
