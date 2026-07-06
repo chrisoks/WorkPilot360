@@ -196,7 +196,7 @@ const allReportTabs: Array<{ id: ReportAnalyticsTab; label: string }> = [
   { id: "forecast", label: "Forecast & OP Kontrolle" },
   { id: "revenue", label: "Umsätze - Details" },
   { id: "monthlyReport", label: "Monatsbericht" },
-  { id: "sales", label: "Sales" },
+  { id: "sales", label: "Sales-Performance" },
   { id: "svs", label: "SVS Analyse" },
   { id: "projects", label: "Projekte" },
   { id: "customers", label: "Kunden" },
@@ -24542,6 +24542,76 @@ await addProjectLogbookEntry(
   const salesLostValue = salesLostOfferRows.reduce((sum, row) => sum + row.offer.netTotal, 0);
   const salesDecisionCount = salesWonOfferRows.length + salesLostOfferRows.length;
   const salesWinRate = salesDecisionCount > 0 ? (salesWonOfferRows.length / salesDecisionCount) * 100 : 0;
+  const salesOfferIssueDate = (offer: OfferItem) => getOfferIssueDate(offer);
+  const salesStaleOpenOfferRows = salesOpenOfferRows.filter((row) => {
+    const issuedAt = getGoalDateTime(salesOfferIssueDate(row.offer));
+    return issuedAt ? reportNow.getTime() - issuedAt.getTime() >= 14 * 86400000 : false;
+  });
+  const salesAverageOfferToWinDays = averageGoalDays(
+    salesWonOfferRows.map((row) => getGoalDaysBetween(salesOfferIssueDate(row.offer), row.wonDate))
+  );
+  const salesAverageOfferToLossDays = averageGoalDays(
+    salesLostOfferRows.map((row) => getGoalDaysBetween(salesOfferIssueDate(row.offer), row.offer.lostAt))
+  );
+  const salesAverageOfferToPlanningDays = averageGoalDays(
+    salesOfferRows
+      .filter((row) => row.offer.status !== "Entwurf")
+      .map((row) => {
+        const issuedAt = salesOfferIssueDate(row.offer);
+        return getGoalDaysBetween(issuedAt, getFirstPlanningDateForOffer(row.offer, issuedAt));
+      })
+  );
+  const salesAverageOfferToFollowUpDays = averageGoalDays(
+    salesOfferRows
+      .filter((row) => row.offer.status !== "Entwurf")
+      .map((row) => getGoalDaysBetween(salesOfferIssueDate(row.offer), getCompletedFollowUpDateForOffer(row.offer)))
+  );
+  const salesDecisionGapRows = salesOpenOfferRows.filter((row) => row.offer.status !== "Entwurf");
+  const salesPerformanceInsights = [
+    {
+      key: "stale-offers",
+      signal: `${salesStaleOpenOfferRows.length} offene Angebote älter als 14 Tage`,
+      interpretation:
+        salesStaleOpenOfferRows.length > 0
+          ? "Hier liegt Umsatzpotenzial ohne klare Entscheidung. Das kostet Forecast-Sicherheit und Nachfassdruck."
+          : "Offene Angebote sind aktuell nicht auffällig lange ohne Entscheidung.",
+      action: "Alte offene Angebote nachfassen oder sauber als gewonnen/verloren entscheiden.",
+      state: salesStaleOpenOfferRows.length > 0 ? ("ok" as const) : ("good" as const),
+    },
+    {
+      key: "win-rate",
+      signal: salesDecisionCount > 0 ? `${formatHours(salesWinRate)}% Abschlussquote` : "Noch keine entschiedenen Angebote",
+      interpretation:
+        salesDecisionCount >= 3 && salesWinRate < 35
+          ? "Die Abschlussquote ist niedrig. Preisargumentation, Bedarfsklärung oder Nachfassen sollten geprüft werden."
+          : "Die Abschlussquote zeigt aktuell keinen harten Engpass.",
+      action: "Verlorene Angebote nach Grund auswerten und Muster in der Tabelle prüfen.",
+      state: salesDecisionCount >= 3 && salesWinRate < 35 ? ("low" as const) : ("good" as const),
+    },
+    {
+      key: "planning-speed",
+      signal:
+        salesAverageOfferToPlanningDays > 0
+          ? `${formatHours(salesAverageOfferToPlanningDays)} Tage bis zum ersten Planungstermin`
+          : "Noch keine belastbare Planungsdauer",
+      interpretation:
+        salesAverageOfferToPlanningDays > 10
+          ? "Zwischen Angebot und Planung liegt viel Zeit. Das kann Umsatzrealisierung und Kundenerlebnis bremsen."
+          : "Die Planungsdauer wirkt aktuell nicht kritisch.",
+      action: "Gewonnene Projekte ohne schnelle Planung im Projekt- oder Planungsboard prüfen.",
+      state: salesAverageOfferToPlanningDays > 10 ? ("ok" as const) : ("good" as const),
+    },
+    {
+      key: "decision-gap",
+      signal: `${salesDecisionGapRows.length} aktive Angebote ohne Entscheidung`,
+      interpretation:
+        salesDecisionGapRows.length > 0
+          ? "Solange Angebote offen bleiben, sind Abschlussquote und Forecast nur eingeschränkt steuerbar."
+          : "Alle relevanten Angebote im Zeitraum sind entschieden oder erledigt.",
+      action: "Offene Angebote regelmäßig entscheiden: gewonnen, verloren oder mit Nachfassdatum weiterführen.",
+      state: salesDecisionGapRows.length > 0 ? ("ok" as const) : ("good" as const),
+    },
+  ];
   const isSalesPotentialVisibleForRole = (potential: ProjectPotential) => {
     const project = getPotentialProject(potential);
     if (isProjectVisibleInProjectScopedAnalytics(project)) return true;
@@ -26906,6 +26976,11 @@ await addProjectLogbookEntry(
             {renderReportMetric("Gewonnen", formatMoney(salesWonValue), `${salesWonOfferRows.length} Angebot${salesWonOfferRows.length === 1 ? "" : "e"}`, "good")}
             {renderReportMetric("Verloren", formatMoney(salesLostValue), `${salesLostOfferRows.length} Angebot${salesLostOfferRows.length === 1 ? "" : "e"}`, salesLostOfferRows.length > 0 ? "low" : "good")}
             {renderReportMetric("Abschlussquote", `${formatHours(salesWinRate)}%`, `${salesDecisionCount} entschiedene Angebote`, getMetricState(salesWinRate, 55, 35))}
+            {renderReportMetric("Offen > 14 Tage", `${salesStaleOpenOfferRows.length}`, "Angebote ohne Entscheidung", salesStaleOpenOfferRows.length > 0 ? "ok" : "good")}
+            {renderReportMetric("Bis Gewinn", salesAverageOfferToWinDays > 0 ? `${formatHours(salesAverageOfferToWinDays)} Tg.` : "-", "Ø Angebot bis Gewinn", salesAverageOfferToWinDays > 14 ? "ok" : "good")}
+            {renderReportMetric("Bis Verlust", salesAverageOfferToLossDays > 0 ? `${formatHours(salesAverageOfferToLossDays)} Tg.` : "-", "Ø Angebot bis Verlust", salesAverageOfferToLossDays > 14 ? "ok" : "good")}
+            {renderReportMetric("Bis Planung", salesAverageOfferToPlanningDays > 0 ? `${formatHours(salesAverageOfferToPlanningDays)} Tg.` : "-", "Ø Angebot bis erster Termin", salesAverageOfferToPlanningDays > 10 ? "ok" : "good")}
+            {renderReportMetric("Bis Nachfassung", salesAverageOfferToFollowUpDays > 0 ? `${formatHours(salesAverageOfferToFollowUpDays)} Tg.` : "-", "Ø Angebot bis erledigte Nachfassung", salesAverageOfferToFollowUpDays > 7 ? "ok" : "good")}
             {renderReportMetric("Zusatzverkäufe", formatMoney(salesPotentialValue), `${salesPotentialRows.length} Zusatzverkauf${salesPotentialRows.length === 1 ? "" : "e"}`, "ok")}
             {renderReportMetric("Nachfassen", `${salesDueFollowUps.length}`, "Fällige Zusatzverkäufe", salesDueFollowUps.length > 0 ? "ok" : "good")}
             {renderReportMetric(
@@ -26915,6 +26990,28 @@ await addProjectLogbookEntry(
               salesInterruptedWorkRows.some((row) => row.isOpenTask || !row.task) ? "low" : "good"
             )}
           </section>
+
+          <article className={styles.analyticsCard}>
+            <h2>Sales-Steuerung</h2>
+            <table className={styles.analyticsTable}>
+              <thead>
+                <tr>
+                  <th>Signal</th>
+                  <th>Interpretation</th>
+                  <th>Nächster Schritt</th>
+                </tr>
+              </thead>
+              <tbody>
+                {salesPerformanceInsights.map((row) => (
+                  <tr key={row.key}>
+                    <td data-state={row.state}>{row.signal}</td>
+                    <td>{row.interpretation}</td>
+                    <td>{row.action}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </article>
 
           <article className={styles.analyticsCard}>
             <h2>Unterbrochene Arbeiten</h2>
