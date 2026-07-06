@@ -20619,30 +20619,47 @@ await addProjectLogbookEntry(
   };
   const getRecurringProjectPreviousMonthIssues = (project: HeroProjectPreview) => {
     if (!isRecurringProjectKindValue(getProjectKind(project))) return [];
+    const hasActiveFinalOffer = offers.some((offer) => offer.projectId === project.id && isActiveFinalOffer(offer));
 
     const currentMonth = getCurrentMonthKey();
     return getProjectBudgetMonths(project)
       .filter((monthKey) => monthKey < currentMonth)
       .slice(-12)
       .flatMap((monthKey) => {
-        const issues: string[] = [];
+        const issues: Array<{
+          issue: string;
+          target: "offer" | "planning" | "invoice" | "activityReport" | "finalInspection" | "images";
+        }> = [];
         const requiredHours = getProjectRequiredPlanningHoursForMonth(project, monthKey);
         const plannedHours = getRecurringProjectMonthPlannedHours(project, monthKey);
+        const stampedHours = getRecurringProjectMonthStampedHours(project, monthKey);
         const invoice = getProjectFinalInvoices(project).find((item) => getProjectInvoiceMonth(item) === monthKey);
+        const finalInspectionCount = getProjectProcessAttachmentCount(project, "Dokumente: Endkontrolle", "Dokument", monthKey);
+        const activityReportCount = getMatchingActivityReportCount(project, monthKey);
 
+        if (requiredHours > 0 && !hasActiveFinalOffer && !project.timeBudgetEnabled) {
+          issues.push({ issue: "Angebotsgrundlage fehlt", target: "offer" });
+        }
         if (requiredHours > 0 && plannedHours + 0.01 < requiredHours) {
-          issues.push(`Planung ${formatHours(plannedHours)} von ${formatHours(requiredHours)} Std.`);
+          issues.push({ issue: `Planung ${formatHours(plannedHours)} von ${formatHours(requiredHours)} Std.`, target: "planning" });
         }
         if (!invoice) {
-          issues.push("Rechnung fehlt");
-        } else {
-          const evidenceIssues = getProjectBillingEvidenceIssues(project, monthKey, invoice);
-          if (evidenceIssues.length > 0) {
-            issues.push(`Nachweise fehlen: ${evidenceIssues.join(", ")}`);
-          }
+          issues.push({ issue: "Rechnung fehlt", target: "invoice" });
+        }
+        if (finalInspectionCount === 0) {
+          issues.push({ issue: "Endkontrolle fehlt", target: "finalInspection" });
+        }
+        if (isImmocareProject(project)) {
+          const beforeImageCount = getProjectProcessAttachmentCount(project, "Bilder: Vorherbilder", "Bild", monthKey);
+          const afterImageCount = getProjectProcessAttachmentCount(project, "Bilder: Nachherbilder", "Bild", monthKey);
+          if (beforeImageCount === 0) issues.push({ issue: "Vorherbild fehlt", target: "images" });
+          if (afterImageCount === 0) issues.push({ issue: "Nachherbild fehlt", target: "images" });
+        }
+        if (!isWinterServiceProject(project) && (plannedHours > 0 || stampedHours > 0 || invoice) && activityReportCount === 0) {
+          issues.push({ issue: "Tätigkeitsbericht fehlt", target: "activityReport" });
         }
 
-        return issues.map((issue) => ({ monthKey, issue }));
+        return issues.map((issue) => ({ monthKey, ...issue }));
       });
   };
   const activePipelineProjectIds = new Set(activePipelineProjects.map((project) => project.id));
@@ -30802,8 +30819,8 @@ await addProjectLogbookEntry(
 
           <div className={styles.projectPipelineWorkspace}>
             <section className={`${styles.tableCard} ${styles.heroTableCard} ${styles.potentialOverviewCard}`}>
-              <div className={styles.heroTableScroll}>
-                <table className={styles.table}>
+              <div className={styles.recurringMonthIssueTableScroll}>
+                <table className={`${styles.table} ${styles.recurringMonthIssueTable}`}>
                   <thead>
                     <tr>
                       <th>Nr.</th>
@@ -55664,9 +55681,18 @@ await addProjectLogbookEntry(
                   </thead>
                   <tbody>
                     {getRecurringProjectPreviousMonthIssues(recurringMonthIssueProject).map((item, index) => {
-                      const isPlanningIssue = item.issue.toLowerCase().includes("planung");
-                      const isInvoiceIssue = item.issue.toLowerCase().includes("rechnung");
-                      const documentType: CustomerDocumentType = isInvoiceIssue ? "Rechnungen" : "Endkontrolle";
+                      const openOptions =
+                        item.target === "planning"
+                          ? { tab: "appointments" as ProjectFileTab, documentType: undefined }
+                          : item.target === "invoice"
+                            ? { tab: "documents" as ProjectFileTab, documentType: "Rechnungen" as CustomerDocumentType }
+                            : item.target === "offer"
+                              ? { tab: "documents" as ProjectFileTab, documentType: "Angebote" as CustomerDocumentType }
+                              : item.target === "activityReport"
+                                ? { tab: "documents" as ProjectFileTab, documentType: "Tätigkeitsberichte" as CustomerDocumentType }
+                                : item.target === "finalInspection"
+                                  ? { tab: "documents" as ProjectFileTab, documentType: "Endkontrolle" as CustomerDocumentType }
+                                  : { tab: "images" as ProjectFileTab, documentType: undefined };
 
                       return (
                         <tr key={`${item.monthKey}-${index}`}>
@@ -55681,8 +55707,8 @@ await addProjectLogbookEntry(
                                 setRecurringMonthIssueProject(null);
                                 openProjectFile(project, {
                                   activeTab: activeProjectPipeline.tab,
-                                  tab: isPlanningIssue ? "appointments" : "documents",
-                                  documentType: isPlanningIssue ? undefined : documentType,
+                                  tab: openOptions.tab,
+                                  documentType: openOptions.documentType,
                                   month: item.monthKey,
                                 });
                               }}

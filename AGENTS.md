@@ -24,6 +24,12 @@
   Durchschnittstage von Angebotsausgabe bis Gewinn, Verlust, Planung und
   erledigter Nachfassung. Keine Prisma-Migration noetig, weil `TaskLink`
   bereits existiert.
+- Dauerlaeufer-Vormonatsmodal 2026-07-06: `Vormonat(e) unvollstaendig` ist
+  bewusst keine reine Rechnungsliste. Das Modal zeigt abgeschlossene
+  Vormonate mit offenen Punkten fuer Angebotsgrundlage, Planung, Rechnung,
+  Endkontrolle, Vorher-/Nachherbilder und Taetigkeitsbericht. Die Eintraege
+  springen je nach Punkt in den passenden Projektbereich. Das Modal darf
+  vertikal scrollen, aber nicht horizontal.
 - PWA-Web-Push Tageserinnerung/Terminwuensche 2026-06-28:
   Terminwuensche senden jetzt zusaetzlich zur bestehenden In-App-Notification
   einen Web-Push an dieselben Planungsverantwortlichen. Der Push haengt an der

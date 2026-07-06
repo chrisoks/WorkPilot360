@@ -5331,6 +5331,41 @@
   width: min(760px, calc(100vw - 16px));
 }
 
+.recurringMonthIssueTableScroll {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  max-height: min(58vh, 620px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.recurringMonthIssueTable {
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.recurringMonthIssueTable th,
+.recurringMonthIssueTable td {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.recurringMonthIssueTable th:nth-child(1),
+.recurringMonthIssueTable td:nth-child(1) {
+  width: 34%;
+}
+
+.recurringMonthIssueTable th:nth-child(2),
+.recurringMonthIssueTable td:nth-child(2) {
+  width: 46%;
+}
+
+.recurringMonthIssueTable th:nth-child(3),
+.recurringMonthIssueTable td:nth-child(3) {
+  width: 20%;
+}
+
 .recurringMonthIssueIntro {
   background: #f8fbff;
   border: 1px solid #dbeafe;
