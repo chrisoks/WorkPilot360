@@ -1121,6 +1121,7 @@ type CatalogItem = {
   scheduledSalesPrice: number | null;
   scheduledSalesPriceValidFrom: string;
   scheduledSalesPriceCreatedAt: string;
+  scheduledSalesPriceUpdatePackages: boolean;
   lastSalesPriceChangedAt: string;
   lastSalesPriceOldValue: number | null;
   lastSalesPriceNewValue: number | null;
@@ -1145,6 +1146,9 @@ type CatalogPackageItem = {
   position: number;
   descriptionOverride: string;
   priceOverride: number | null;
+  purchasePriceSnapshot: number | null;
+  salesPriceSnapshot: number | null;
+  planningMinutesOverride: number | null;
   componentNumber: string;
   componentName: string;
   componentType: CatalogItemType;
@@ -1152,6 +1156,9 @@ type CatalogPackageItem = {
   componentPurchasePrice: number;
   componentSalesPrice: number;
   componentPlanningMinutesPerUnit: number;
+  currentComponentPurchasePrice: number;
+  currentComponentSalesPrice: number;
+  currentComponentPlanningMinutesPerUnit: number;
   componentIsActive: boolean;
 };
 type OfferLineDraft = {
@@ -2645,6 +2652,7 @@ const emptyCatalogItemDraft: Omit<CatalogItem, "id" | "createdAt" | "updatedAt" 
   scheduledSalesPrice: null,
   scheduledSalesPriceValidFrom: "",
   scheduledSalesPriceCreatedAt: "",
+  scheduledSalesPriceUpdatePackages: false,
   lastSalesPriceChangedAt: "",
   lastSalesPriceOldValue: null,
   lastSalesPriceNewValue: null,
@@ -7227,16 +7235,16 @@ export function DashboardPage() {
     if (item.type !== "package") return item.salesPrice;
     if (item.salesPrice > 0) return item.salesPrice;
     return item.packageItems.reduce(
-      (sum, packageItem) =>
-        sum + (packageItem.priceOverride ?? packageItem.componentSalesPrice) * packageItem.quantity,
+      (sum, packageItem) => sum + getPackageComponentSalesTotal(packageItem),
       0
     );
   }
 
   function getCatalogPackagePurchasePrice(item: CatalogItem) {
+    if (item.type === "service") return (item.purchasePrice * item.planningMinutesPerUnit) / 60;
     if (item.type !== "package") return item.purchasePrice;
     return item.packageItems.reduce(
-      (sum, packageItem) => sum + packageItem.componentPurchasePrice * packageItem.quantity,
+      (sum, packageItem) => sum + getPackageComponentPurchaseTotal(packageItem),
       0
     );
   }
@@ -7246,15 +7254,15 @@ export function DashboardPage() {
     if (item.type !== "package") return item.purchasePrice;
     return item.packageItems
       .filter((packageItem) => packageItem.componentType === "article")
-      .reduce((sum, packageItem) => sum + packageItem.componentPurchasePrice * packageItem.quantity, 0);
+      .reduce((sum, packageItem) => sum + getPackageComponentPurchaseTotal(packageItem), 0);
   }
 
   function getCatalogLaborPurchasePrice(item: CatalogItem) {
-    if (item.type === "service") return item.purchasePrice;
+    if (item.type === "service") return (item.purchasePrice * item.planningMinutesPerUnit) / 60;
     if (item.type !== "package") return 0;
     return item.packageItems
       .filter((packageItem) => packageItem.componentType === "service")
-      .reduce((sum, packageItem) => sum + packageItem.componentPurchasePrice * packageItem.quantity, 0);
+      .reduce((sum, packageItem) => sum + getPackageComponentPurchaseTotal(packageItem), 0);
   }
 
   function getDefaultLaborCostRateKeyForCatalogItem(item: Pick<CatalogItem, "type" | "defaultPlanningBoard" | "defaultPlanningGroup">) {
@@ -10786,6 +10794,7 @@ export function DashboardPage() {
       scheduledSalesPrice: null,
       scheduledSalesPriceValidFrom: "",
       scheduledSalesPriceCreatedAt: "",
+      scheduledSalesPriceUpdatePackages: false,
       lastSalesPriceChangedAt: "",
       lastSalesPriceOldValue: null,
       lastSalesPriceNewValue: null,
@@ -10820,6 +10829,9 @@ export function DashboardPage() {
           position: current.packageItems.length,
           descriptionOverride: "",
           priceOverride: null,
+          purchasePriceSnapshot: component?.purchasePrice ?? 0,
+          salesPriceSnapshot: component?.salesPrice ?? 0,
+          planningMinutesOverride: component?.planningMinutesPerUnit ?? 0,
           componentNumber: component?.number ?? "",
           componentName: component?.name ?? "",
           componentType: component?.type ?? "article",
@@ -10827,6 +10839,9 @@ export function DashboardPage() {
           componentPurchasePrice: component?.purchasePrice ?? 0,
           componentSalesPrice: component?.salesPrice ?? 0,
           componentPlanningMinutesPerUnit: component?.planningMinutesPerUnit ?? 0,
+          currentComponentPurchasePrice: component?.purchasePrice ?? 0,
+          currentComponentSalesPrice: component?.salesPrice ?? 0,
+          currentComponentPlanningMinutesPerUnit: component?.planningMinutesPerUnit ?? 0,
           componentIsActive: component?.isActive ?? true,
         },
       ],
@@ -10853,6 +10868,13 @@ export function DashboardPage() {
                 componentPurchasePrice: selectedComponent.purchasePrice,
                 componentSalesPrice: selectedComponent.salesPrice,
                 componentPlanningMinutesPerUnit: selectedComponent.planningMinutesPerUnit,
+                purchasePriceSnapshot: selectedComponent.purchasePrice,
+                salesPriceSnapshot: selectedComponent.salesPrice,
+                planningMinutesOverride: selectedComponent.planningMinutesPerUnit,
+                priceOverride: null,
+                currentComponentPurchasePrice: selectedComponent.purchasePrice,
+                currentComponentSalesPrice: selectedComponent.salesPrice,
+                currentComponentPlanningMinutesPerUnit: selectedComponent.planningMinutesPerUnit,
                 componentIsActive: selectedComponent.isActive,
               }
             : {}),
@@ -10868,7 +10890,70 @@ export function DashboardPage() {
     }));
   }
 
+  function refreshCatalogPackageItemFromMaster(index: number) {
+    setCatalogDraft((current) => ({
+      ...current,
+      packageItems: current.packageItems.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+        const component = catalogItems.find((candidate) => candidate.id === item.componentItemId);
+        if (!component) return item;
+        return {
+          ...item,
+          purchasePriceSnapshot: component.purchasePrice,
+          salesPriceSnapshot: component.salesPrice,
+          planningMinutesOverride: component.planningMinutesPerUnit,
+          priceOverride: null,
+          componentPurchasePrice: component.purchasePrice,
+          componentSalesPrice: component.salesPrice,
+          componentPlanningMinutesPerUnit: component.planningMinutesPerUnit,
+          currentComponentPurchasePrice: component.purchasePrice,
+          currentComponentSalesPrice: component.salesPrice,
+          currentComponentPlanningMinutesPerUnit: component.planningMinutesPerUnit,
+        };
+      }),
+    }));
+  }
+
   async function saveCatalogItem(keepOpen = false) {
+    const editingItem = editingCatalogItemId
+      ? catalogItems.find((item) => item.id === editingCatalogItemId)
+      : undefined;
+    const editingCatalogComponentId = editingItem?.id ?? "";
+    const affectedPackageCount =
+      editingItem && editingItem.type !== "package"
+        ? catalogItems.filter((item) =>
+            item.type === "package" &&
+            item.packageItems.some((packageItem) => packageItem.componentItemId === editingCatalogComponentId)
+          ).length
+        : 0;
+    const currentPriceChanged =
+      Boolean(editingItem) &&
+      editingItem?.type !== "package" &&
+      roundCurrencyValue(editingItem?.salesPrice ?? 0) !== roundCurrencyValue(catalogDraft.salesPrice);
+    const plannedPriceChanged =
+      Boolean(editingItem) &&
+      editingItem?.type !== "package" &&
+      Boolean(catalogDraft.scheduledSalesPrice && catalogDraft.scheduledSalesPriceValidFrom) &&
+      (
+        roundCurrencyValue(editingItem?.scheduledSalesPrice ?? 0) !== roundCurrencyValue(catalogDraft.scheduledSalesPrice ?? 0) ||
+        formatDateInputValue(editingItem?.scheduledSalesPriceValidFrom ?? "") !== formatDateInputValue(catalogDraft.scheduledSalesPriceValidFrom)
+      );
+    let updatePackageSnapshots = false;
+    let scheduledSalesPriceUpdatePackages = Boolean(
+      catalogDraft.scheduledSalesPrice &&
+      catalogDraft.scheduledSalesPriceValidFrom &&
+      catalogDraft.scheduledSalesPriceUpdatePackages
+    );
+    if (affectedPackageCount > 0 && (currentPriceChanged || plannedPriceChanged)) {
+      const confirmed = window.confirm(
+        `${editingItem?.name ?? "Diese Position"} ist in ${affectedPackageCount} Paket(en) enthalten.\n\n` +
+          "Sollen diese Pakete auch auf den neuen Preis/Minutenstand aktualisiert werden?\n\n" +
+          "Achtung: Ja kann vertraglich festgelegte Paketpreise mit Kunden verändern. Nein lässt bestehende Pakete unverändert."
+      );
+      updatePackageSnapshots = currentPriceChanged && confirmed;
+      scheduledSalesPriceUpdatePackages = plannedPriceChanged ? confirmed : scheduledSalesPriceUpdatePackages;
+    }
+
     const res = await fetch("/api/catalog-items", {
       method: editingCatalogItemId ? "PATCH" : "POST",
       headers: {
@@ -10882,6 +10967,8 @@ export function DashboardPage() {
             : catalogDraft.purchasePrice,
         id: editingCatalogItemId,
         actorId: activeUserId,
+        updatePackageSnapshots,
+        scheduledSalesPriceUpdatePackages,
       }),
     });
 
@@ -24062,10 +24149,20 @@ await addProjectLogbookEntry(
     document.lines.reduce((sum, line) => sum + getLineInternalCost(line), 0);
   const getLineCatalogItem = (line: OfferLineDraft) =>
     line.catalogItemId ? catalogItems.find((item) => item.id === line.catalogItemId) : undefined;
+  const getPackageComponentPurchaseUnitPrice = (packageItem: CatalogPackageItem) =>
+    packageItem.purchasePriceSnapshot ?? packageItem.componentPurchasePrice;
   const getPackageComponentSalesUnitPrice = (packageItem: CatalogPackageItem) =>
-    packageItem.priceOverride ?? packageItem.componentSalesPrice;
+    packageItem.priceOverride ?? packageItem.salesPriceSnapshot ?? packageItem.componentSalesPrice;
+  const getPackageComponentPlanningMinutes = (packageItem: CatalogPackageItem) =>
+    packageItem.planningMinutesOverride ?? packageItem.componentPlanningMinutesPerUnit;
   const getPackageComponentSalesTotal = (packageItem: CatalogPackageItem) =>
-    getPackageComponentSalesUnitPrice(packageItem) * packageItem.quantity;
+    packageItem.componentType === "service"
+      ? getPackageComponentSalesUnitPrice(packageItem)
+      : getPackageComponentSalesUnitPrice(packageItem) * packageItem.quantity;
+  const getPackageComponentPurchaseTotal = (packageItem: CatalogPackageItem) =>
+    packageItem.componentType === "service"
+      ? (getPackageComponentPurchaseUnitPrice(packageItem) * getPackageComponentPlanningMinutes(packageItem)) / 60
+      : getPackageComponentPurchaseUnitPrice(packageItem) * packageItem.quantity;
   const getInvoiceLineComponentRows = (line: OfferLineDraft) => {
     const catalogItem = getLineCatalogItem(line);
     const lineRevenue = line.quantity * line.unitPrice;
@@ -24104,7 +24201,7 @@ await addProjectLogbookEntry(
       0
     );
     const packagePurchaseTotal = catalogItem.packageItems.reduce(
-      (sum, packageItem) => sum + packageItem.componentPurchasePrice * packageItem.quantity,
+      (sum, packageItem) => sum + getPackageComponentPurchaseTotal(packageItem),
       0
     );
 
@@ -24113,14 +24210,14 @@ await addProjectLogbookEntry(
         packageSalesTotal > 0 ? getPackageComponentSalesTotal(packageItem) / packageSalesTotal : 0;
       const componentCostShare =
         packagePurchaseTotal > 0
-          ? (packageItem.componentPurchasePrice * packageItem.quantity) / packagePurchaseTotal
+          ? getPackageComponentPurchaseTotal(packageItem) / packagePurchaseTotal
           : componentRevenueShare;
       return {
         id: packageItem.componentItemId,
         title: packageItem.componentName,
         type: packageItem.componentType,
         unit: packageItem.componentUnit,
-        quantity: line.quantity * packageItem.quantity,
+        quantity: packageItem.componentType === "service" ? line.quantity : line.quantity * packageItem.quantity,
         revenue: lineRevenue * componentRevenueShare,
         cost: lineCost * componentCostShare,
         source: "package" as const,
@@ -31543,18 +31640,13 @@ await addProjectLogbookEntry(
       const catalogItem = getCatalogItemForLine(line);
       if (!catalogItem || catalogItem.type !== "package") return 0;
       const componentSalesTotal = catalogItem.packageItems.reduce(
-        (sum, packageItem) =>
-          sum + (packageItem.priceOverride ?? packageItem.componentSalesPrice) * packageItem.quantity,
+        (sum, packageItem) => sum + getPackageComponentSalesTotal(packageItem),
         0
       );
       if (componentSalesTotal <= 0) return 0;
       const componentTypeSalesTotal = catalogItem.packageItems
         .filter((packageItem) => packageItem.componentType === componentType)
-        .reduce(
-          (sum, packageItem) =>
-            sum + (packageItem.priceOverride ?? packageItem.componentSalesPrice) * packageItem.quantity,
-          0
-        );
+        .reduce((sum, packageItem) => sum + getPackageComponentSalesTotal(packageItem), 0);
       return getLineNetValue(line) * (componentTypeSalesTotal / componentSalesTotal);
     };
     const getInvoiceLaborRevenue = (invoice: InvoiceItem) =>
@@ -44022,36 +44114,43 @@ await addProjectLogbookEntry(
   function renderCatalogModal() {
     const editingItem = catalogItems.find((item) => item.id === editingCatalogItemId);
     const packagePurchaseTotal = catalogDraft.packageItems.reduce(
-      (sum, item) => sum + item.componentPurchasePrice * item.quantity,
+      (sum, item) => sum + getPackageComponentPurchaseTotal(item),
       0
     );
     const packageSalesTotal = catalogDraft.packageItems.reduce(
-      (sum, item) => sum + (item.priceOverride ?? item.componentSalesPrice) * item.quantity,
+      (sum, item) => sum + getPackageComponentSalesTotal(item),
       0
     );
     const packagePlanningMinutes = catalogDraft.packageItems.reduce(
-      (sum, item) => sum + item.componentPlanningMinutesPerUnit * item.quantity,
+      (sum, item) =>
+        sum + (item.componentType === "service" ? getPackageComponentPlanningMinutes(item) : getPackageComponentPlanningMinutes(item) * item.quantity),
       0
     );
     const materialPackageItems = catalogDraft.packageItems.filter((item) => item.componentType === "article");
     const laborPackageItems = catalogDraft.packageItems.filter((item) => item.componentType === "service");
     const materialPurchaseTotal = materialPackageItems.reduce(
-      (sum, item) => sum + item.componentPurchasePrice * item.quantity,
+      (sum, item) => sum + getPackageComponentPurchaseTotal(item),
       0
     );
     const materialSalesTotal = materialPackageItems.reduce(
-      (sum, item) => sum + (item.priceOverride ?? item.componentSalesPrice) * item.quantity,
+      (sum, item) => sum + getPackageComponentSalesTotal(item),
       0
     );
     const laborPurchaseTotal = laborPackageItems.reduce(
-      (sum, item) => sum + item.componentPurchasePrice * item.quantity,
+      (sum, item) => sum + getPackageComponentPurchaseTotal(item),
       0
     );
     const laborSalesTotal = laborPackageItems.reduce(
-      (sum, item) => sum + (item.priceOverride ?? item.componentSalesPrice) * item.quantity,
+      (sum, item) => sum + getPackageComponentSalesTotal(item),
       0
     );
-    const effectivePurchasePrice = catalogDraft.type === "package" ? packagePurchaseTotal : catalogDraft.purchasePrice;
+    const servicePurchaseTotal = (catalogDraft.purchasePrice * catalogDraft.planningMinutesPerUnit) / 60;
+    const effectivePurchasePrice =
+      catalogDraft.type === "package"
+        ? packagePurchaseTotal
+        : catalogDraft.type === "service"
+          ? servicePurchaseTotal
+          : catalogDraft.purchasePrice;
     const effectiveSalesPrice = catalogDraft.type === "package" && catalogDraft.salesPrice === 0 ? packageSalesTotal : catalogDraft.salesPrice;
     const margin = effectiveSalesPrice > 0 ? ((effectiveSalesPrice - effectivePurchasePrice) / effectiveSalesPrice) * 100 : 0;
     const packageNetSalesPrice =
@@ -44189,11 +44288,11 @@ await addProjectLogbookEntry(
                           />
                         </td>
                         <td>{item.componentUnit || "-"}</td>
-                        <td>{formatMoney(item.componentPurchasePrice * item.quantity)}</td>
+                        <td>{formatMoney(getPackageComponentPurchaseTotal(item))}</td>
                         <td>
                           <input
                             type="number"
-                            value={item.priceOverride ?? item.componentSalesPrice}
+                            value={getPackageComponentSalesUnitPrice(item)}
                             onChange={(event) =>
                               updateCatalogPackageItem(index, { priceOverride: Number(event.target.value) })
                             }
@@ -44212,6 +44311,9 @@ await addProjectLogbookEntry(
                         <td>
                           <button className={styles.iconButton} onClick={() => removeCatalogPackageItem(index)}>
                             -
+                          </button>
+                          <button className={styles.tableTextLink} onClick={() => refreshCatalogPackageItemFromMaster(index)}>
+                            Stammdaten laden
                           </button>
                         </td>
                       </tr>
@@ -44244,7 +44346,7 @@ await addProjectLogbookEntry(
                       <th>Artikelname</th>
                       <th>Menge</th>
                       <th>Einheit</th>
-                      <th>EK/Einheit</th>
+                      <th>EK €/Std.</th>
                       <th>VK/Einheit</th>
                       <th>Aufschlag %</th>
                       <th>VK Netto</th>
@@ -44259,7 +44361,8 @@ await addProjectLogbookEntry(
                     ) : (
                       materialPackageItems.map((item) => {
                         const index = catalogDraft.packageItems.findIndex((candidate) => candidate.id === item.id);
-                        const unitSalesPrice = item.priceOverride ?? item.componentSalesPrice;
+                        const unitSalesPrice = getPackageComponentSalesUnitPrice(item);
+                        const unitPurchasePrice = getPackageComponentPurchaseUnitPrice(item);
                         return (
                           <tr key={item.id}>
                             <td>
@@ -44281,13 +44384,18 @@ await addProjectLogbookEntry(
                               <input type="number" value={item.quantity} onChange={(event) => updateCatalogPackageItem(index, { quantity: Number(event.target.value) })} />
                             </td>
                             <td>{item.componentUnit || "-"}</td>
-                            <td>{formatMoney(item.componentPurchasePrice)}</td>
+                            <td>{formatMoney(unitPurchasePrice)}</td>
                             <td>
                               <input type="number" value={unitSalesPrice} onChange={(event) => updateCatalogPackageItem(index, { priceOverride: Number(event.target.value) })} />
                             </td>
-                            <td>{formatHours(getMarkupPercent(item.componentPurchasePrice, unitSalesPrice))}</td>
+                            <td>{formatHours(getMarkupPercent(unitPurchasePrice, unitSalesPrice))}</td>
                             <td>{formatMoney(unitSalesPrice * item.quantity)}</td>
-                            <td><button className={styles.iconButton} onClick={() => removeCatalogPackageItem(index)}>-</button></td>
+                            <td>
+                              <button className={styles.iconButton} onClick={() => removeCatalogPackageItem(index)}>-</button>
+                              <button className={styles.tableTextLink} onClick={() => refreshCatalogPackageItemFromMaster(index)}>
+                                Stammdaten laden
+                              </button>
+                            </td>
                           </tr>
                         );
                       })
@@ -44328,8 +44436,10 @@ await addProjectLogbookEntry(
                     ) : (
                       laborPackageItems.map((item) => {
                         const index = catalogDraft.packageItems.findIndex((candidate) => candidate.id === item.id);
-                        const unitSalesPrice = item.priceOverride ?? item.componentSalesPrice;
-                        const minutes = item.componentPlanningMinutesPerUnit * item.quantity;
+                        const unitSalesPrice = getPackageComponentSalesUnitPrice(item);
+                        const unitPurchasePrice = getPackageComponentPurchaseUnitPrice(item);
+                        const minutes = getPackageComponentPlanningMinutes(item);
+                        const laborPurchasePrice = getPackageComponentPurchaseTotal(item);
                         return (
                           <tr key={item.id}>
                             <td>
@@ -44350,15 +44460,28 @@ await addProjectLogbookEntry(
                             <td>
                               <input value={item.descriptionOverride} onChange={(event) => updateCatalogPackageItem(index, { descriptionOverride: event.target.value })} placeholder={item.componentName} />
                             </td>
-                            <td>{formatHours(minutes)}</td>
+                            <td>
+                              <input
+                                type="number"
+                                value={minutes}
+                                onChange={(event) =>
+                                  updateCatalogPackageItem(index, { planningMinutesOverride: Number(event.target.value) })
+                                }
+                              />
+                            </td>
                             <td>{formatHours(minutes / 60)}</td>
-                            <td>{formatMoney(item.componentPurchasePrice)}</td>
+                            <td>{formatMoney(unitPurchasePrice)}</td>
                             <td>
                               <input type="number" value={unitSalesPrice} onChange={(event) => updateCatalogPackageItem(index, { priceOverride: Number(event.target.value) })} />
                             </td>
-                            <td>{formatHours(getMarkupPercent(item.componentPurchasePrice, unitSalesPrice))}</td>
-                            <td>{formatMoney(unitSalesPrice * item.quantity)}</td>
-                            <td><button className={styles.iconButton} onClick={() => removeCatalogPackageItem(index)}>-</button></td>
+                            <td>{formatHours(getMarkupPercent(laborPurchasePrice, unitSalesPrice))}</td>
+                            <td>{formatMoney(unitSalesPrice)}</td>
+                            <td>
+                              <button className={styles.iconButton} onClick={() => removeCatalogPackageItem(index)}>-</button>
+                              <button className={styles.tableTextLink} onClick={() => refreshCatalogPackageItemFromMaster(index)}>
+                                Stammdaten laden
+                              </button>
+                            </td>
                           </tr>
                         );
                       })
@@ -44437,6 +44560,16 @@ await addProjectLogbookEntry(
                     <strong>{formatMinutes(Math.round(packagePlanningMinutes))}</strong>
                   </article>
                 </div>
+                {catalogDraft.scheduledSalesPrice && catalogDraft.scheduledSalesPriceValidFrom ? (
+                  <label className={styles.checkboxRow}>
+                    <input
+                      type="checkbox"
+                      checked={catalogDraft.scheduledSalesPriceUpdatePackages}
+                      onChange={(event) => updateCatalogDraft("scheduledSalesPriceUpdatePackages", event.target.checked)}
+                    />
+                    Pakete beim Wirksamwerden ebenfalls aktualisieren
+                  </label>
+                ) : null}
               </section>
             </div>
           ) : null}
@@ -44468,6 +44601,9 @@ await addProjectLogbookEntry(
               )}
               <label>Verkaufspreis aktuell (€)<input type="number" value={catalogDraft.salesPrice} onChange={(event) => updateCatalogDraft("salesPrice", Number(event.target.value))} /></label>
               <label>MwSt. (%)<input type="number" value={catalogDraft.vatRate} onChange={(event) => updateCatalogDraft("vatRate", Number(event.target.value))} /></label>
+              {catalogDraft.type === "service" ? (
+                <article className={styles.catalogMetric}><span>Kalkulatorischer EK</span><strong>{formatMoney(servicePurchaseTotal)}</strong></article>
+              ) : null}
               <article className={styles.catalogMetric}><span>Marge</span><strong>{formatHours(margin)}%</strong></article>
               <label className={styles.checkboxRow}><input type="checkbox" checked={catalogDraft.isPlanningRelevant} onChange={(event) => updateCatalogDraft("isPlanningRelevant", event.target.checked)} />Für Planung verfügbar</label>
               <label>Planungszeit je Einheit (Min.)<input type="number" value={catalogDraft.planningMinutesPerUnit} onChange={(event) => updateCatalogDraft("planningMinutesPerUnit", Number(event.target.value))} /></label>

@@ -36,6 +36,7 @@ type CatalogItemRow = {
   scheduledSalesPrice: number | null;
   scheduledSalesPriceValidFrom: Date | null;
   scheduledSalesPriceCreatedAt: Date | null;
+  scheduledSalesPriceUpdatePackages: boolean;
   lastSalesPriceChangedAt: Date | null;
   lastSalesPriceOldValue: number | null;
   lastSalesPriceNewValue: number | null;
@@ -74,6 +75,9 @@ type CatalogPackageItemRow = {
   position: number;
   descriptionOverride: string | null;
   priceOverride: number | null;
+  purchasePriceSnapshot: number | null;
+  salesPriceSnapshot: number | null;
+  planningMinutesOverride: number | null;
   createdAt: Date;
   updatedAt: Date;
   componentNumber: string;
@@ -148,6 +152,7 @@ async function ensureCatalogTables() {
     ADD COLUMN IF NOT EXISTS "scheduledSalesPrice" DOUBLE PRECISION,
     ADD COLUMN IF NOT EXISTS "scheduledSalesPriceValidFrom" TIMESTAMP(3),
     ADD COLUMN IF NOT EXISTS "scheduledSalesPriceCreatedAt" TIMESTAMP(3),
+    ADD COLUMN IF NOT EXISTS "scheduledSalesPriceUpdatePackages" BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN IF NOT EXISTS "lastSalesPriceChangedAt" TIMESTAMP(3),
     ADD COLUMN IF NOT EXISTS "lastSalesPriceOldValue" DOUBLE PRECISION,
     ADD COLUMN IF NOT EXISTS "lastSalesPriceNewValue" DOUBLE PRECISION
@@ -249,9 +254,41 @@ async function ensureCatalogTables() {
       "position" INTEGER NOT NULL DEFAULT 0,
       "descriptionOverride" TEXT,
       "priceOverride" DOUBLE PRECISION,
+      "purchasePriceSnapshot" DOUBLE PRECISION,
+      "salesPriceSnapshot" DOUBLE PRECISION,
+      "planningMinutesOverride" INTEGER,
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "CatalogPackageItem"
+    ADD COLUMN IF NOT EXISTS "purchasePriceSnapshot" DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS "salesPriceSnapshot" DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS "planningMinutesOverride" INTEGER
+  `;
+
+  await prisma.$executeRaw`
+    UPDATE "CatalogPackageItem" pi
+    SET
+      "purchasePriceSnapshot" = COALESCE(pi."purchasePriceSnapshot", ci."purchasePrice"),
+      "salesPriceSnapshot" = COALESCE(pi."salesPriceSnapshot", ci."salesPrice"),
+      "planningMinutesOverride" = COALESCE(
+        pi."planningMinutesOverride",
+        CASE
+          WHEN ci."type" = 'service'
+          THEN GREATEST(0, ROUND(ci."planningMinutesPerUnit" * pi."quantity")::int)
+          ELSE ci."planningMinutesPerUnit"
+        END
+      )
+    FROM "CatalogItem" ci
+    WHERE ci."id" = pi."componentItemId"
+      AND (
+        pi."purchasePriceSnapshot" IS NULL
+        OR pi."salesPriceSnapshot" IS NULL
+        OR pi."planningMinutesOverride" IS NULL
+      )
   `;
 }
 
@@ -320,6 +357,12 @@ function parseInteger(value: unknown, fallback = 0) {
   return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : fallback;
 }
 
+function parseNullableInteger(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : null;
+}
+
 function cleanType(value: unknown) {
   const valueAsString = cleanString(value);
   if (valueAsString === "service" || valueAsString === "package") return valueAsString;
@@ -353,13 +396,19 @@ function formatPackageItem(item: CatalogPackageItemRow) {
     position: item.position,
     descriptionOverride: item.descriptionOverride ?? "",
     priceOverride: item.priceOverride,
+    purchasePriceSnapshot: item.purchasePriceSnapshot,
+    salesPriceSnapshot: item.salesPriceSnapshot,
+    planningMinutesOverride: item.planningMinutesOverride,
     componentNumber: item.componentNumber,
     componentName: item.componentName,
     componentType: item.componentType === "service" ? "service" : item.componentType === "package" ? "package" : "article",
     componentUnit: item.componentUnit,
-    componentPurchasePrice: item.componentPurchasePrice,
-    componentSalesPrice: item.componentSalesPrice,
-    componentPlanningMinutesPerUnit: item.componentPlanningMinutesPerUnit,
+    componentPurchasePrice: item.purchasePriceSnapshot ?? item.componentPurchasePrice,
+    componentSalesPrice: item.salesPriceSnapshot ?? item.componentSalesPrice,
+    componentPlanningMinutesPerUnit: item.planningMinutesOverride ?? item.componentPlanningMinutesPerUnit,
+    currentComponentPurchasePrice: item.componentPurchasePrice,
+    currentComponentSalesPrice: item.componentSalesPrice,
+    currentComponentPlanningMinutesPerUnit: item.componentPlanningMinutesPerUnit,
     componentIsActive: item.componentIsActive,
   };
 }
@@ -398,6 +447,7 @@ function formatCatalogItem(
     scheduledSalesPrice: item.scheduledSalesPrice,
     scheduledSalesPriceValidFrom: item.scheduledSalesPriceValidFrom?.toISOString() ?? "",
     scheduledSalesPriceCreatedAt: item.scheduledSalesPriceCreatedAt?.toISOString() ?? "",
+    scheduledSalesPriceUpdatePackages: item.scheduledSalesPriceUpdatePackages,
     lastSalesPriceChangedAt: item.lastSalesPriceChangedAt?.toISOString() ?? "",
     lastSalesPriceOldValue: item.lastSalesPriceOldValue,
     lastSalesPriceNewValue: item.lastSalesPriceNewValue,
@@ -459,18 +509,33 @@ async function replacePackageItems(input: {
     const componentRecord = component as Record<string, unknown>;
     const componentItemId = cleanString(componentRecord.componentItemId);
     if (!componentItemId) continue;
+    const quantity = parseNumber(componentRecord.quantity, 1);
+    const planningMinutesOverride = parseNullableInteger(componentRecord.planningMinutesOverride);
 
     await prisma.$executeRaw`
       INSERT INTO "CatalogPackageItem" (
         "id", "organizationId", "packageId", "componentItemId", "quantity",
-        "position", "descriptionOverride", "priceOverride", "createdAt", "updatedAt"
+        "position", "descriptionOverride", "priceOverride", "purchasePriceSnapshot",
+        "salesPriceSnapshot", "planningMinutesOverride", "createdAt", "updatedAt"
       )
-      VALUES (
+      SELECT
         ${randomUUID()}, ${input.organizationId}, ${input.packageId}, ${componentItemId},
-        ${parseNumber(componentRecord.quantity, 1)}, ${parseInteger(componentRecord.position, index)},
+        ${quantity}, ${parseInteger(componentRecord.position, index)},
         ${nullableString(componentRecord.descriptionOverride)}, ${parseNullableNumber(componentRecord.priceOverride)},
+        COALESCE(${parseNullableNumber(componentRecord.purchasePriceSnapshot)}, ci."purchasePrice"),
+        COALESCE(${parseNullableNumber(componentRecord.salesPriceSnapshot)}, ci."salesPrice"),
+        COALESCE(
+          ${planningMinutesOverride},
+          CASE
+            WHEN ci."type" = 'service'
+            THEN GREATEST(0, ROUND(ci."planningMinutesPerUnit" * ${quantity})::int)
+            ELSE ci."planningMinutesPerUnit"
+          END
+        ),
         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-      )
+      FROM "CatalogItem" ci
+      WHERE ci."id" = ${componentItemId}
+        AND ci."organizationId" = ${input.organizationId}
     `;
   }
 }
@@ -525,6 +590,7 @@ async function writeChangeHistory(
     ["salesPrice", "Verkaufspreis"],
     ["scheduledSalesPrice", "Geplanter Verkaufspreis"],
     ["scheduledSalesPriceValidFrom", "Neuer Verkaufspreis ab"],
+    ["scheduledSalesPriceUpdatePackages", "Paketpreise mit aktualisieren"],
     ["vatRate", "MwSt."],
     ["isLaborPosition", "Arbeitsposition"],
     ["isPlanningRelevant", "Planungsrelevant"],
@@ -657,6 +723,7 @@ export async function POST(req: Request) {
         "manufacturer", "manufacturerNumber", "manufacturerTypeName", "minimumOrderQuantity",
         "quantityScale", "priceUnit", "deliveryTime", "stockQuantity", "purchasePrice", "laborCostRateKey",
         "listPrice", "salesPrice", "scheduledSalesPrice", "scheduledSalesPriceValidFrom", "scheduledSalesPriceCreatedAt",
+        "scheduledSalesPriceUpdatePackages",
         "vatRate", "isLaborPosition", "isPlanningRelevant", "planningMinutesPerUnit",
         "defaultPlanningBoard", "defaultPlanningGroup", "isActive", "updatedAt"
       )
@@ -668,7 +735,7 @@ export async function POST(req: Request) {
         ${nullableString(body.quantityScale)}, ${nullableString(body.priceUnit)}, ${nullableString(body.deliveryTime)}, ${parseNullableNumber(body.stockQuantity)},
         ${parseNumber(body.purchasePrice)}, ${cleanString(body.laborCostRateKey)}, 0, ${parseNumber(body.salesPrice)},
         ${scheduledPriceResult.scheduledSalesPrice}, ${scheduledPriceResult.scheduledSalesPriceValidFrom},
-        ${scheduledPriceResult.scheduledSalesPrice ? new Date() : null}, ${parseNumber(body.vatRate, 19)},
+        ${scheduledPriceResult.scheduledSalesPrice ? new Date() : null}, ${Boolean(body.scheduledSalesPriceUpdatePackages)}, ${parseNumber(body.vatRate, 19)},
         ${isLaborPosition}, ${Boolean(body.isPlanningRelevant)}, ${parseInteger(body.planningMinutesPerUnit)}, ${nullableString(body.defaultPlanningBoard)},
         ${nullableString(body.defaultPlanningGroup)}, ${body.isActive !== false}, CURRENT_TIMESTAMP
       )
@@ -749,6 +816,8 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: scheduledPriceResult.error }, { status: 400 });
   }
   const nextSalesPrice = parseNumber(body.salesPrice);
+  const nextPurchasePrice = parseNumber(body.purchasePrice);
+  const nextPlanningMinutes = parseInteger(body.planningMinutesPerUnit);
   const salesPriceChanged = comparableValue(before.salesPrice) !== comparableValue(nextSalesPrice);
 
   let rows: CatalogItemRow[];
@@ -776,7 +845,7 @@ export async function PATCH(req: Request) {
         "priceUnit" = ${nullableString(body.priceUnit)},
         "deliveryTime" = ${nullableString(body.deliveryTime)},
         "stockQuantity" = ${parseNullableNumber(body.stockQuantity)},
-        "purchasePrice" = ${parseNumber(body.purchasePrice)},
+        "purchasePrice" = ${nextPurchasePrice},
         "laborCostRateKey" = ${cleanString(body.laborCostRateKey)},
         "listPrice" = 0,
         "salesPrice" = ${nextSalesPrice},
@@ -789,13 +858,14 @@ export async function PATCH(req: Request) {
             ? new Date()
             : before.scheduledSalesPriceCreatedAt
         },
+        "scheduledSalesPriceUpdatePackages" = ${Boolean(body.scheduledSalesPriceUpdatePackages)},
         "lastSalesPriceChangedAt" = ${salesPriceChanged ? new Date() : before.lastSalesPriceChangedAt},
         "lastSalesPriceOldValue" = ${salesPriceChanged ? before.salesPrice : before.lastSalesPriceOldValue},
         "lastSalesPriceNewValue" = ${salesPriceChanged ? nextSalesPrice : before.lastSalesPriceNewValue},
         "vatRate" = ${parseNumber(body.vatRate, 19)},
         "isLaborPosition" = ${isLaborPosition},
         "isPlanningRelevant" = ${Boolean(body.isPlanningRelevant)},
-        "planningMinutesPerUnit" = ${parseInteger(body.planningMinutesPerUnit)},
+        "planningMinutesPerUnit" = ${nextPlanningMinutes},
         "defaultPlanningBoard" = ${nullableString(body.defaultPlanningBoard)},
         "defaultPlanningGroup" = ${nullableString(body.defaultPlanningGroup)},
         "isActive" = ${body.isActive !== false},
@@ -815,6 +885,23 @@ export async function PATCH(req: Request) {
     );
   }
   const after = rows[0];
+  const shouldUpdatePackageSnapshots = type !== "package" && Boolean(body.updatePackageSnapshots);
+  if (shouldUpdatePackageSnapshots) {
+    await prisma.$executeRaw`
+      UPDATE "CatalogPackageItem"
+      SET
+        "purchasePriceSnapshot" = ${nextPurchasePrice},
+        "salesPriceSnapshot" = ${nextSalesPrice},
+        "planningMinutesOverride" = CASE
+          WHEN ${type} = 'service' THEN ${nextPlanningMinutes}
+          ELSE "planningMinutesOverride"
+        END,
+        "priceOverride" = NULL,
+        "updatedAt" = CURRENT_TIMESTAMP
+      WHERE "organizationId" = ${organization.id}
+        AND "componentItemId" = ${id}
+    `;
+  }
   if (type === "package") {
     await replacePackageItems({
       organizationId: organization.id,

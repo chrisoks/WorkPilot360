@@ -9,11 +9,15 @@ import { canManageCatalogItems } from "@/lib/permissions";
 type DueCatalogPriceRow = {
   id: string;
   organizationId: string;
+  type: string;
   number: string;
   name: string;
+  purchasePrice: number;
   salesPrice: number;
+  planningMinutesPerUnit: number;
   scheduledSalesPrice: number;
   scheduledSalesPriceValidFrom: Date;
+  scheduledSalesPriceUpdatePackages: boolean;
 };
 
 function getActorName(actor: User) {
@@ -41,6 +45,7 @@ async function ensureScheduledPriceColumns() {
     ADD COLUMN IF NOT EXISTS "scheduledSalesPrice" DOUBLE PRECISION,
     ADD COLUMN IF NOT EXISTS "scheduledSalesPriceValidFrom" TIMESTAMP(3),
     ADD COLUMN IF NOT EXISTS "scheduledSalesPriceCreatedAt" TIMESTAMP(3),
+    ADD COLUMN IF NOT EXISTS "scheduledSalesPriceUpdatePackages" BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN IF NOT EXISTS "lastSalesPriceChangedAt" TIMESTAMP(3),
     ADD COLUMN IF NOT EXISTS "lastSalesPriceOldValue" DOUBLE PRECISION,
     ADD COLUMN IF NOT EXISTS "lastSalesPriceNewValue" DOUBLE PRECISION
@@ -66,7 +71,7 @@ async function ensureScheduledPriceColumns() {
 async function getDuePriceChanges(organizationId: string, catalogItemId?: string) {
   if (catalogItemId) {
     return prisma.$queryRaw<DueCatalogPriceRow[]>`
-      SELECT "id", "organizationId", "number", "name", "salesPrice", "scheduledSalesPrice", "scheduledSalesPriceValidFrom"
+      SELECT "id", "organizationId", "type", "number", "name", "purchasePrice", "salesPrice", "planningMinutesPerUnit", "scheduledSalesPrice", "scheduledSalesPriceValidFrom", "scheduledSalesPriceUpdatePackages"
       FROM "CatalogItem"
       WHERE "organizationId" = ${organizationId}
         AND "id" = ${catalogItemId}
@@ -78,7 +83,7 @@ async function getDuePriceChanges(organizationId: string, catalogItemId?: string
   }
 
   return prisma.$queryRaw<DueCatalogPriceRow[]>`
-    SELECT "id", "organizationId", "number", "name", "salesPrice", "scheduledSalesPrice", "scheduledSalesPriceValidFrom"
+    SELECT "id", "organizationId", "type", "number", "name", "purchasePrice", "salesPrice", "planningMinutesPerUnit", "scheduledSalesPrice", "scheduledSalesPriceValidFrom", "scheduledSalesPriceUpdatePackages"
     FROM "CatalogItem"
     WHERE "organizationId" = ${organizationId}
       AND "scheduledSalesPrice" IS NOT NULL
@@ -144,10 +149,28 @@ export async function POST(req: Request) {
           "scheduledSalesPrice" = NULL,
           "scheduledSalesPriceValidFrom" = NULL,
           "scheduledSalesPriceCreatedAt" = NULL,
+          "scheduledSalesPriceUpdatePackages" = false,
           "updatedAt" = CURRENT_TIMESTAMP
         WHERE "id" = ${item.id}
           AND "organizationId" = ${organization.id}
       `;
+
+      if (item.scheduledSalesPriceUpdatePackages) {
+        await tx.$executeRaw`
+          UPDATE "CatalogPackageItem"
+          SET
+            "purchasePriceSnapshot" = ${item.purchasePrice},
+            "salesPriceSnapshot" = ${item.scheduledSalesPrice},
+            "planningMinutesOverride" = CASE
+              WHEN ${item.type} = 'service' THEN ${item.planningMinutesPerUnit}
+              ELSE "planningMinutesOverride"
+            END,
+            "priceOverride" = NULL,
+            "updatedAt" = CURRENT_TIMESTAMP
+          WHERE "organizationId" = ${organization.id}
+            AND "componentItemId" = ${item.id}
+        `;
+      }
 
       await tx.$executeRaw`
         INSERT INTO "CatalogItemHistory" (
