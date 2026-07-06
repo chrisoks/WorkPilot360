@@ -27,6 +27,13 @@
   Zahlungseingang und offene Rechnungswerte stehen darunter als Details
   `Bezahlt` und `Offen`, damit Umsatz, Liquiditaet und OP nicht vermischt
   werden.
+- Mitarbeiter-Umsatztransparenz 2026-07-06: Fuer normale Mitarbeiter und
+  Fuehrungskraefte gibt es im Auswertungsbereich den reduzierten Reiter
+  `Umsatz & Kunden`. Er zeigt fakturierten Umsatz, Umsatzentwicklung und die
+  groessten Kunden im gewaehlten Zeitraum. Admin und Geschaeftsfuehrung sehen
+  diesen Reiter bewusst nicht, weil sie die vollstaendigen Steuerungsreiter
+  nutzen. Sensible Felder wie OP, Mahnungen, Zahlungsstatus, Forecast,
+  Marge und Kundenrisiko bleiben in der Mitarbeitersicht ausgeblendet.
 - Dashboard-KPIs Geschaeftsfuehrung 2026-07-01: Die oberen KPI-Kacheln im
   Dashboard zeigen fuer die Rolle `GESCHAEFTSFUEHRER` jetzt ein 2x2-Set aus
   Umsatz & Forecast, Produktivitaet, Projektlage sowie Vertrieb & Kunde. Das

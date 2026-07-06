@@ -182,6 +182,7 @@ type ProductivityPeriod = "day" | "week" | "month" | "quarter" | "year";
 type ReportAnalyticsTab =
   | "forecast"
   | "revenue"
+  | "employeeRevenue"
   | "sales"
   | "svs"
   | "projects"
@@ -195,6 +196,7 @@ type ReportAnalyticsTab =
 const allReportTabs: Array<{ id: ReportAnalyticsTab; label: string }> = [
   { id: "forecast", label: "Forecast & OP Kontrolle" },
   { id: "monthlyReport", label: "Monatsbericht" },
+  { id: "employeeRevenue", label: "Umsatz & Kunden" },
   { id: "sales", label: "Sales-Performance" },
   { id: "svs", label: "SVS Analyse" },
   { id: "projects", label: "Projekte" },
@@ -2816,10 +2818,10 @@ function getVisibleNavigationTabs(role?: string) {
 
 function getVisibleReportTabs(role?: string) {
   const allowedTabsByRole: Record<string, ReportAnalyticsTab[]> = {
-    ADMIN: allReportTabs.map((tab) => tab.id),
-    GESCHAEFTSFUEHRER: allReportTabs.map((tab) => tab.id),
-    FUEHRUNGSKRAFT: ["projects", "svs", "kuzu", "employees", "map"],
-    MITARBEITER: ["employees"],
+    ADMIN: allReportTabs.map((tab) => tab.id).filter((tab) => tab !== "employeeRevenue"),
+    GESCHAEFTSFUEHRER: allReportTabs.map((tab) => tab.id).filter((tab) => tab !== "employeeRevenue"),
+    FUEHRUNGSKRAFT: ["employeeRevenue", "projects", "svs", "kuzu", "employees", "map"],
+    MITARBEITER: ["employeeRevenue", "employees"],
     VERTRIEB: ["sales", "projects", "customers", "kuzu"],
     BUCHHALTUNG: ["forecast", "revenue", "monthlyReport", "customers"],
     GAST: [],
@@ -27608,6 +27610,72 @@ await addProjectLogbookEntry(
               </tbody>
             </table>
           </article>
+        </>
+      )}
+
+      {reportAnalyticsTab === "employeeRevenue" && (
+        <>
+          <section className={styles.analyticsGrid}>
+            {renderReportMetric("Fakturierter Umsatz", formatMoney(customerSummary.revenue), `${customerSummary.invoiceCount} Rechnungen im Zeitraum`, "good")}
+            {renderReportMetric("Kunden mit Umsatz", `${customerSummary.customerCount}`, "Kunden mit fakturierten Rechnungen", customerSummary.customerCount > 0 ? "good" : "neutral")}
+            {renderReportMetric(
+              "Größter Kunde",
+              customerRows[0]?.name ?? "-",
+              customerRows[0] ? formatMoney(customerRows[0].revenue) : "Noch kein Umsatz im Zeitraum",
+              customerRows[0] ? "good" : "neutral"
+            )}
+            {renderReportMetric(
+              "Umsatzanteil Top 5",
+              `${formatHours(customerSummary.revenue > 0 ? (customerRows.slice(0, 5).reduce((sum, row) => sum + row.revenue, 0) / customerSummary.revenue) * 100 : 0)}%`,
+              "Anteil der fünf größten Kunden",
+              customerRows.length > 0 ? "ok" : "neutral"
+            )}
+          </section>
+
+          <section className={styles.analyticsTwoColumn}>
+            <article className={styles.analyticsCard}>
+              <h2>Umsatzentwicklung</h2>
+              {renderReportBarChart(
+                monthlyRevenueRows.map((row) => ({
+                  key: row.key,
+                  label: row.label,
+                  value: row.invoiceValue,
+                }))
+              )}
+            </article>
+
+            <article className={styles.analyticsCard}>
+              <h2>Größte Kunden</h2>
+              <table className={styles.analyticsTable}>
+                <thead>
+                  <tr>
+                    <th>Kunde</th>
+                    <th>Umsatz</th>
+                    <th>Anteil</th>
+                    <th>Projekte</th>
+                    <th>Rechnungen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {customerRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={5}>Keine fakturierten Umsätze im gewählten Zeitraum.</td>
+                    </tr>
+                  ) : (
+                    customerRows.slice(0, 10).map((row) => (
+                      <tr key={row.name}>
+                        <td>{row.name}</td>
+                        <td>{formatMoney(row.revenue)}</td>
+                        <td>{formatHours(row.share)}%</td>
+                        <td>{row.projectCount}</td>
+                        <td>{row.invoiceCount}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </article>
+          </section>
         </>
       )}
 
