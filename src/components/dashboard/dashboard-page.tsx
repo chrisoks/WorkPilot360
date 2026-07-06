@@ -10965,6 +10965,10 @@ export function DashboardPage() {
           catalogDraft.type === "service"
             ? roundCurrencyValue(catalogDraft.purchasePrice)
             : catalogDraft.purchasePrice,
+        salesPrice:
+          catalogDraft.type === "package"
+            ? roundCurrencyValue(catalogDraft.packageItems.reduce((sum, item) => sum + getPackageComponentSalesTotal(item), 0))
+            : catalogDraft.salesPrice,
         id: editingCatalogItemId,
         actorId: activeUserId,
         updatePackageSnapshots,
@@ -44151,12 +44155,9 @@ await addProjectLogbookEntry(
         : catalogDraft.type === "service"
           ? servicePurchaseTotal
           : catalogDraft.purchasePrice;
-    const effectiveSalesPrice = catalogDraft.type === "package" && catalogDraft.salesPrice === 0 ? packageSalesTotal : catalogDraft.salesPrice;
+    const effectiveSalesPrice = catalogDraft.type === "package" ? packageSalesTotal : catalogDraft.salesPrice;
     const margin = effectiveSalesPrice > 0 ? ((effectiveSalesPrice - effectivePurchasePrice) / effectiveSalesPrice) * 100 : 0;
-    const packageNetSalesPrice =
-      catalogDraft.type === "package" && catalogDraft.salesPrice === 0
-        ? packageSalesTotal
-        : catalogDraft.salesPrice;
+    const packageNetSalesPrice = packageSalesTotal;
     const packageGrossSalesPrice = packageNetSalesPrice * (1 + catalogDraft.vatRate / 100);
     const packageMargin = packageNetSalesPrice > 0
       ? ((packageNetSalesPrice - packagePurchaseTotal) / packageNetSalesPrice) * 100
@@ -44491,10 +44492,12 @@ await addProjectLogbookEntry(
                             </td>
                             <td>
                               <input
-                                type="number"
-                                value={minutes}
+                                type="text"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                value={String(minutes || "")}
                                 onChange={(event) =>
-                                  updateCatalogPackageItem(index, { planningMinutesOverride: Number(event.target.value) })
+                                  updateCatalogPackageItem(index, { planningMinutesOverride: Number(event.target.value.replace(/\D/g, "")) || 0 })
                                 }
                               />
                             </td>
@@ -44560,17 +44563,13 @@ await addProjectLogbookEntry(
               <section>
                 <h3>Gesamt</h3>
                 <div className={styles.packageTotalGrid}>
-                  <label>
+                  <article>
                     <span className={styles.catalogLabelText}>
                       Paket-VK Netto
-                      {renderCatalogHelp("Netto-Verkaufspreis des kompletten Pakets. Wenn leer oder 0, ergibt er sich aus den Paketbestandteilen.")}
+                      {renderCatalogHelp("Der Paketpreis wird immer automatisch aus der Summe der Paketbestandteile berechnet. Manuelle Paketpreise werden nicht verwendet.")}
                     </span>
-                    <input
-                      type="number"
-                      value={catalogDraft.salesPrice || packageSalesTotal}
-                      onChange={(event) => updateCatalogDraft("salesPrice", Number(event.target.value))}
-                    />
-                  </label>
+                    <strong>{formatMoney(packageSalesTotal)}</strong>
+                  </article>
                   <label>
                     MwSt. %
                     <input type="number" value={catalogDraft.vatRate} onChange={(event) => updateCatalogDraft("vatRate", Number(event.target.value))} />
