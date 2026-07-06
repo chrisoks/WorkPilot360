@@ -30981,8 +30981,8 @@ await addProjectLogbookEntry(
 
           <div className={styles.projectPipelineWorkspace}>
             <section className={`${styles.tableCard} ${styles.heroTableCard} ${styles.potentialOverviewCard}`}>
-              <div className={styles.recurringMonthIssueTableScroll}>
-                <table className={`${styles.table} ${styles.recurringMonthIssueTable}`}>
+              <div className={styles.heroTableScroll}>
+                <table className={`${styles.table} ${styles.potentialOverviewTable}`}>
                   <thead>
                     <tr>
                       <th>Nr.</th>

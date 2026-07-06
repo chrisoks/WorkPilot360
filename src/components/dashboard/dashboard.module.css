@@ -5277,6 +5277,68 @@
   z-index: 1;
 }
 
+.potentialOverviewTable {
+  table-layout: fixed;
+}
+
+.potentialOverviewTable th,
+.potentialOverviewTable td {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.potentialOverviewTable th:nth-child(1),
+.potentialOverviewTable td:nth-child(1) {
+  width: 84px;
+}
+
+.potentialOverviewTable th:nth-child(2),
+.potentialOverviewTable td:nth-child(2) {
+  width: 150px;
+}
+
+.potentialOverviewTable th:nth-child(3),
+.potentialOverviewTable td:nth-child(3) {
+  width: 240px;
+}
+
+.potentialOverviewTable th:nth-child(4),
+.potentialOverviewTable td:nth-child(4) {
+  width: 180px;
+}
+
+.potentialOverviewTable th:nth-child(5),
+.potentialOverviewTable td:nth-child(5) {
+  width: 280px;
+}
+
+.potentialOverviewTable th:nth-child(6),
+.potentialOverviewTable td:nth-child(6),
+.potentialOverviewTable th:nth-child(7),
+.potentialOverviewTable td:nth-child(7) {
+  width: 105px;
+}
+
+.potentialOverviewTable th:nth-child(8),
+.potentialOverviewTable td:nth-child(8) {
+  width: 130px;
+}
+
+.potentialOverviewTable th:nth-child(9),
+.potentialOverviewTable td:nth-child(9) {
+  width: 190px;
+}
+
+.potentialOverviewTable th:nth-child(10),
+.potentialOverviewTable td:nth-child(10) {
+  width: 140px;
+}
+
+.potentialOverviewTable th:nth-child(11),
+.potentialOverviewTable td:nth-child(11) {
+  width: 310px;
+}
+
 .heroTableHint {
   background: #f8fbff;
   border-top: 1px solid #e2e8f0;
