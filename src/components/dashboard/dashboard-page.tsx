@@ -44530,6 +44530,7 @@ await addProjectLogbookEntry(
                       <th />
                       <th>EK</th>
                       <th>VK Netto</th>
+                      <th>Gewinn</th>
                       <th>Marge %</th>
                     </tr>
                   </thead>
@@ -44538,18 +44539,21 @@ await addProjectLogbookEntry(
                       <th>Material</th>
                       <td>{formatMoney(materialPurchaseTotal)}</td>
                       <td>{formatMoney(materialSalesTotal)}</td>
+                      <td>{formatMoney(materialSalesTotal - materialPurchaseTotal)}</td>
                       <td>{formatHours(getPackageMarginPercent(materialPurchaseTotal, materialSalesTotal))}</td>
                     </tr>
                     <tr>
                       <th>Lohn / Maschinenkosten</th>
                       <td>{formatMoney(laborPurchaseTotal)}</td>
                       <td>{formatMoney(laborSalesTotal)}</td>
+                      <td>{formatMoney(laborSalesTotal - laborPurchaseTotal)}</td>
                       <td>{formatHours(getPackageMarginPercent(laborPurchaseTotal, laborSalesTotal))}</td>
                     </tr>
                     <tr>
                       <th>Gesamtsumme</th>
                       <td>{formatMoney(packagePurchaseTotal)}</td>
                       <td>{formatMoney(packageSalesTotal)}</td>
+                      <td>{formatMoney(packageSalesTotal - packagePurchaseTotal)}</td>
                       <td>{formatHours(packageMargin)}</td>
                     </tr>
                   </tbody>
