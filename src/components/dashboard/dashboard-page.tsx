@@ -44165,6 +44165,7 @@ await addProjectLogbookEntry(
       purchasePrice > 0 ? ((salesPrice - purchasePrice) / purchasePrice) * 100 : 0;
     const planningGroups = catalogDraft.defaultPlanningBoard === "OK immocare" ? ["VZK", "TZK"] : ["Marketing", "Arb.Sich.", "HR"];
     const laborCostRateOptions = getLaborCostRateOptions();
+    const canEditLaborCostRateValue = activeUser?.role === "GESCHAEFTSFUEHRER";
     const catalogTypeLabel =
       catalogDraft.type === "service" ? "Leistung" : catalogDraft.type === "package" ? "Paket" : "Artikel";
     const catalogModalTitle = editingCatalogItemId
@@ -44594,7 +44595,17 @@ await addProjectLogbookEntry(
                       ))}
                     </select>
                   </label>
-                  <label>LK-Satz Wert (€ / Std.)<input type="number" step="0.01" value={formatCurrencyInputValue(catalogDraft.purchasePrice)} onChange={(event) => updateCatalogDraft("purchasePrice", roundCurrencyValue(Number(event.target.value)))} /></label>
+                  <label>
+                    LK-Satz Wert (€ / Std.)
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formatCurrencyInputValue(catalogDraft.purchasePrice)}
+                      disabled={!canEditLaborCostRateValue}
+                      title={canEditLaborCostRateValue ? undefined : "Nur die Geschäftsführung kann den LK-Satz-Wert manuell ändern."}
+                      onChange={(event) => updateCatalogDraft("purchasePrice", roundCurrencyValue(Number(event.target.value)))}
+                    />
+                  </label>
                 </>
               ) : (
                 <label>Einkaufspreis (€)<input type="number" value={catalogDraft.purchasePrice} onChange={(event) => updateCatalogDraft("purchasePrice", Number(event.target.value))} /></label>
