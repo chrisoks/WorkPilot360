@@ -1118,6 +1118,12 @@ type CatalogItem = {
   laborCostRateKey: string;
   listPrice: number;
   salesPrice: number;
+  scheduledSalesPrice: number | null;
+  scheduledSalesPriceValidFrom: string;
+  scheduledSalesPriceCreatedAt: string;
+  lastSalesPriceChangedAt: string;
+  lastSalesPriceOldValue: number | null;
+  lastSalesPriceNewValue: number | null;
   vatRate: number;
   isLaborPosition: boolean;
   isPlanningRelevant: boolean;
@@ -2636,6 +2642,12 @@ const emptyCatalogItemDraft: Omit<CatalogItem, "id" | "createdAt" | "updatedAt" 
   laborCostRateKey: "",
   listPrice: 0,
   salesPrice: 0,
+  scheduledSalesPrice: null,
+  scheduledSalesPriceValidFrom: "",
+  scheduledSalesPriceCreatedAt: "",
+  lastSalesPriceChangedAt: "",
+  lastSalesPriceOldValue: null,
+  lastSalesPriceNewValue: null,
   vatRate: 19,
   isLaborPosition: false,
   isPlanningRelevant: false,
@@ -3916,6 +3928,23 @@ function formatDeadline(value: string) {
   return new Intl.DateTimeFormat(APP_LOCALE, {
     dateStyle: "medium",
     timeStyle: "short",
+    timeZone: APP_TIME_ZONE,
+  }).format(date);
+}
+
+function formatDateInputValue(value: string) {
+  if (!value) return "";
+  const date = parseAppDateTime(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+}
+
+function formatPlainDate(value: string) {
+  if (!value) return "-";
+  const date = parseAppDateTime(value);
+  if (!Number.isFinite(date.getTime())) return "-";
+  return new Intl.DateTimeFormat(APP_LOCALE, {
+    dateStyle: "medium",
     timeZone: APP_TIME_ZONE,
   }).format(date);
 }
@@ -10754,6 +10783,12 @@ export function DashboardPage() {
       ...draft,
       number: getNextCatalogNumber(item.type),
       name: `${item.name} Kopie`,
+      scheduledSalesPrice: null,
+      scheduledSalesPriceValidFrom: "",
+      scheduledSalesPriceCreatedAt: "",
+      lastSalesPriceChangedAt: "",
+      lastSalesPriceOldValue: null,
+      lastSalesPriceNewValue: null,
     });
     setEditingCatalogItemId("");
     setCatalogFormTab("information");
@@ -10872,6 +10907,32 @@ export function DashboardPage() {
       return;
     }
 
+    setIsCatalogModalOpen(false);
+    setEditingCatalogItemId("");
+  }
+
+  async function applyScheduledCatalogPriceChange() {
+    if (!editingCatalogItemId) return;
+    const res = await fetch("/api/catalog-items/apply-scheduled-price-changes", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        apply: true,
+        catalogItemId: editingCatalogItemId,
+        actorId: activeUserId,
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setCatalogError(data?.error ?? "Geplante Preisänderung konnte nicht übernommen werden.");
+      return;
+    }
+
+    await loadCatalogItems();
+    setCatalogError("");
     setIsCatalogModalOpen(false);
     setEditingCatalogItemId("");
   }
@@ -44014,6 +44075,15 @@ await addProjectLogbookEntry(
       : catalogDraft.type === "package"
       ? "Neues Paket anlegen"
       : "Neuen Artikel anlegen";
+    const scheduledSalesPriceDue =
+      Boolean(catalogDraft.scheduledSalesPrice && catalogDraft.scheduledSalesPriceValidFrom) &&
+      parseAppDateTime(catalogDraft.scheduledSalesPriceValidFrom).getTime() <= Date.now();
+    const lastSalesPriceChangeLabel =
+      catalogDraft.lastSalesPriceOldValue !== null &&
+      catalogDraft.lastSalesPriceNewValue !== null &&
+      catalogDraft.lastSalesPriceNewValue > catalogDraft.lastSalesPriceOldValue
+        ? "Letzte Preiserhöhung"
+        : "Letzte Preisänderung";
 
     return (
       <div className={styles.modalOverlay}>
@@ -44391,18 +44461,77 @@ await addProjectLogbookEntry(
                       ))}
                     </select>
                   </label>
-                  <label>LK-Satz Wert<input type="number" step="0.01" value={formatCurrencyInputValue(catalogDraft.purchasePrice)} onChange={(event) => updateCatalogDraft("purchasePrice", roundCurrencyValue(Number(event.target.value)))} /></label>
+                  <label>LK-Satz Wert (€ / Std.)<input type="number" step="0.01" value={formatCurrencyInputValue(catalogDraft.purchasePrice)} onChange={(event) => updateCatalogDraft("purchasePrice", roundCurrencyValue(Number(event.target.value)))} /></label>
                 </>
               ) : (
-                <label>Einkaufspreis<input type="number" value={catalogDraft.purchasePrice} onChange={(event) => updateCatalogDraft("purchasePrice", Number(event.target.value))} /></label>
+                <label>Einkaufspreis (€)<input type="number" value={catalogDraft.purchasePrice} onChange={(event) => updateCatalogDraft("purchasePrice", Number(event.target.value))} /></label>
               )}
-              <label>Verkaufspreis<input type="number" value={catalogDraft.salesPrice} onChange={(event) => updateCatalogDraft("salesPrice", Number(event.target.value))} /></label>
-              <label>MwSt. %<input type="number" value={catalogDraft.vatRate} onChange={(event) => updateCatalogDraft("vatRate", Number(event.target.value))} /></label>
+              <label>Verkaufspreis aktuell (€)<input type="number" value={catalogDraft.salesPrice} onChange={(event) => updateCatalogDraft("salesPrice", Number(event.target.value))} /></label>
+              <label>MwSt. (%)<input type="number" value={catalogDraft.vatRate} onChange={(event) => updateCatalogDraft("vatRate", Number(event.target.value))} /></label>
               <article className={styles.catalogMetric}><span>Marge</span><strong>{formatHours(margin)}%</strong></article>
               <label className={styles.checkboxRow}><input type="checkbox" checked={catalogDraft.isPlanningRelevant} onChange={(event) => updateCatalogDraft("isPlanningRelevant", event.target.checked)} />Für Planung verfügbar</label>
-              <label>Planungszeit je Einheit<input type="number" value={catalogDraft.planningMinutesPerUnit} onChange={(event) => updateCatalogDraft("planningMinutesPerUnit", Number(event.target.value))} /></label>
+              <label>Planungszeit je Einheit (Min.)<input type="number" value={catalogDraft.planningMinutesPerUnit} onChange={(event) => updateCatalogDraft("planningMinutesPerUnit", Number(event.target.value))} /></label>
               <label>Standard-Board<select value={catalogDraft.defaultPlanningBoard} onChange={(event) => updateCatalogDraft("defaultPlanningBoard", event.target.value)}><option value="">Nicht vorbelegen</option><option value="OK solutions">OK solutions</option><option value="OK immocare">OK immocare</option></select></label>
               <label>Standard-Gruppe<select value={catalogDraft.defaultPlanningGroup} onChange={(event) => updateCatalogDraft("defaultPlanningGroup", event.target.value)}><option value="">Nicht vorbelegen</option>{planningGroups.map((group) => <option key={group} value={group}>{group}</option>)}</select></label>
+              <section className={styles.catalogPriceSchedulePanel}>
+                <div className={styles.catalogPriceScheduleHeader}>
+                  <div>
+                    <strong>Geplante Preisänderung</strong>
+                    <span>Wird ab dem Wirksamkeitsdatum automatisch zum aktuellen Verkaufspreis.</span>
+                  </div>
+                  {editingCatalogItemId && scheduledSalesPriceDue ? (
+                    <button type="button" className={styles.secondaryButton} onClick={applyScheduledCatalogPriceChange}>
+                      Jetzt übernehmen
+                    </button>
+                  ) : null}
+                </div>
+                <div className={styles.catalogPriceScheduleGrid}>
+                  <label>
+                    Neuer Verkaufspreis (€)
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={catalogDraft.scheduledSalesPrice ?? ""}
+                      onChange={(event) =>
+                        updateCatalogDraft(
+                          "scheduledSalesPrice",
+                          event.target.value ? roundCurrencyValue(Number(event.target.value)) : null
+                        )
+                      }
+                    />
+                  </label>
+                  <label>
+                    Neuer Verkaufspreis ab
+                    <input
+                      type="date"
+                      value={formatDateInputValue(catalogDraft.scheduledSalesPriceValidFrom)}
+                      onChange={(event) => updateCatalogDraft("scheduledSalesPriceValidFrom", event.target.value)}
+                    />
+                  </label>
+                </div>
+                <div className={styles.catalogPriceInfoGrid}>
+                  <article>
+                    <span>Aktueller Preis</span>
+                    <strong>{formatMoney(catalogDraft.salesPrice)}</strong>
+                  </article>
+                  <article>
+                    <span>Geplant</span>
+                    <strong>
+                      {catalogDraft.scheduledSalesPrice && catalogDraft.scheduledSalesPriceValidFrom
+                        ? `${formatMoney(catalogDraft.scheduledSalesPrice)} ab ${formatPlainDate(catalogDraft.scheduledSalesPriceValidFrom)}`
+                        : "Keine Preisänderung geplant"}
+                    </strong>
+                  </article>
+                  <article>
+                    <span>{lastSalesPriceChangeLabel}</span>
+                    <strong>
+                      {catalogDraft.lastSalesPriceChangedAt
+                        ? `${formatPlainDate(catalogDraft.lastSalesPriceChangedAt)} (${formatMoney(catalogDraft.lastSalesPriceOldValue ?? 0)} auf ${formatMoney(catalogDraft.lastSalesPriceNewValue ?? 0)})`
+                        : "Noch nicht hinterlegt"}
+                    </strong>
+                  </article>
+                </div>
+              </section>
             </div>
           ) : null}
           {catalogFormTab === "history" ? (

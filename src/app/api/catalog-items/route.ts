@@ -33,6 +33,12 @@ type CatalogItemRow = {
   laborCostRateKey: string | null;
   listPrice: number;
   salesPrice: number;
+  scheduledSalesPrice: number | null;
+  scheduledSalesPriceValidFrom: Date | null;
+  scheduledSalesPriceCreatedAt: Date | null;
+  lastSalesPriceChangedAt: Date | null;
+  lastSalesPriceOldValue: number | null;
+  lastSalesPriceNewValue: number | null;
   vatRate: number;
   isLaborPosition: boolean;
   isPlanningRelevant: boolean;
@@ -135,6 +141,16 @@ async function ensureCatalogTables() {
   await prisma.$executeRaw`
     ALTER TABLE "CatalogItem"
     ADD COLUMN IF NOT EXISTS "isLaborPosition" BOOLEAN NOT NULL DEFAULT false
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "CatalogItem"
+    ADD COLUMN IF NOT EXISTS "scheduledSalesPrice" DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS "scheduledSalesPriceValidFrom" TIMESTAMP(3),
+    ADD COLUMN IF NOT EXISTS "scheduledSalesPriceCreatedAt" TIMESTAMP(3),
+    ADD COLUMN IF NOT EXISTS "lastSalesPriceChangedAt" TIMESTAMP(3),
+    ADD COLUMN IF NOT EXISTS "lastSalesPriceOldValue" DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS "lastSalesPriceNewValue" DOUBLE PRECISION
   `;
 
   await prisma.$executeRaw`
@@ -277,6 +293,28 @@ function parseNullableNumber(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parseNullableDate(value: unknown) {
+  const valueAsString = cleanString(value);
+  if (!valueAsString) return null;
+  const parsed = valueAsString.includes("T") ? new Date(valueAsString) : new Date(`${valueAsString}T00:00:00.000`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function validateScheduledSalesPrice(body: Record<string, unknown>) {
+  const scheduledSalesPrice = parseNullableNumber(body.scheduledSalesPrice);
+  const scheduledSalesPriceValidFrom = parseNullableDate(body.scheduledSalesPriceValidFrom);
+  if (scheduledSalesPrice === null && scheduledSalesPriceValidFrom === null) {
+    return { ok: true as const, scheduledSalesPrice, scheduledSalesPriceValidFrom };
+  }
+  if (scheduledSalesPrice === null || scheduledSalesPrice <= 0) {
+    return { ok: false as const, error: "Bitte einen neuen Verkaufspreis groesser 0 angeben." };
+  }
+  if (!scheduledSalesPriceValidFrom) {
+    return { ok: false as const, error: "Bitte ein gueltiges Wirksamkeitsdatum fuer den neuen Verkaufspreis angeben." };
+  }
+  return { ok: true as const, scheduledSalesPrice, scheduledSalesPriceValidFrom };
+}
+
 function parseInteger(value: unknown, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : fallback;
@@ -357,6 +395,12 @@ function formatCatalogItem(
     laborCostRateKey: item.laborCostRateKey ?? "",
     listPrice: item.listPrice,
     salesPrice: item.salesPrice,
+    scheduledSalesPrice: item.scheduledSalesPrice,
+    scheduledSalesPriceValidFrom: item.scheduledSalesPriceValidFrom?.toISOString() ?? "",
+    scheduledSalesPriceCreatedAt: item.scheduledSalesPriceCreatedAt?.toISOString() ?? "",
+    lastSalesPriceChangedAt: item.lastSalesPriceChangedAt?.toISOString() ?? "",
+    lastSalesPriceOldValue: item.lastSalesPriceOldValue,
+    lastSalesPriceNewValue: item.lastSalesPriceNewValue,
     vatRate: item.vatRate,
     isLaborPosition: item.isLaborPosition,
     isPlanningRelevant: item.isPlanningRelevant,
@@ -479,6 +523,8 @@ async function writeChangeHistory(
     ["purchasePrice", "Einkaufspreis"],
     ["laborCostRateKey", "LK-Satz"],
     ["salesPrice", "Verkaufspreis"],
+    ["scheduledSalesPrice", "Geplanter Verkaufspreis"],
+    ["scheduledSalesPriceValidFrom", "Neuer Verkaufspreis ab"],
     ["vatRate", "MwSt."],
     ["isLaborPosition", "Arbeitsposition"],
     ["isPlanningRelevant", "Planungsrelevant"],
@@ -593,9 +639,13 @@ export async function POST(req: Request) {
     Object.prototype.hasOwnProperty.call(body, "isLaborPosition")
       ? Boolean(body.isLaborPosition)
       : type === "service";
+  const scheduledPriceResult = validateScheduledSalesPrice(body);
 
   if (!name) {
     return NextResponse.json({ error: "Bitte einen Namen angeben." }, { status: 400 });
+  }
+  if (!scheduledPriceResult.ok) {
+    return NextResponse.json({ error: scheduledPriceResult.error }, { status: 400 });
   }
 
   let rows: CatalogItemRow[];
@@ -606,7 +656,8 @@ export async function POST(req: Request) {
         "description", "matchcode", "ean", "costCenter", "supplierName", "supplierNumber",
         "manufacturer", "manufacturerNumber", "manufacturerTypeName", "minimumOrderQuantity",
         "quantityScale", "priceUnit", "deliveryTime", "stockQuantity", "purchasePrice", "laborCostRateKey",
-        "listPrice", "salesPrice", "vatRate", "isLaborPosition", "isPlanningRelevant", "planningMinutesPerUnit",
+        "listPrice", "salesPrice", "scheduledSalesPrice", "scheduledSalesPriceValidFrom", "scheduledSalesPriceCreatedAt",
+        "vatRate", "isLaborPosition", "isPlanningRelevant", "planningMinutesPerUnit",
         "defaultPlanningBoard", "defaultPlanningGroup", "isActive", "updatedAt"
       )
       VALUES (
@@ -615,7 +666,9 @@ export async function POST(req: Request) {
         ${nullableString(body.supplierName)}, ${nullableString(body.supplierNumber)}, ${nullableString(body.manufacturer)},
         ${nullableString(body.manufacturerNumber)}, ${nullableString(body.manufacturerTypeName)}, ${parseNullableNumber(body.minimumOrderQuantity)},
         ${nullableString(body.quantityScale)}, ${nullableString(body.priceUnit)}, ${nullableString(body.deliveryTime)}, ${parseNullableNumber(body.stockQuantity)},
-        ${parseNumber(body.purchasePrice)}, ${cleanString(body.laborCostRateKey)}, 0, ${parseNumber(body.salesPrice)}, ${parseNumber(body.vatRate, 19)},
+        ${parseNumber(body.purchasePrice)}, ${cleanString(body.laborCostRateKey)}, 0, ${parseNumber(body.salesPrice)},
+        ${scheduledPriceResult.scheduledSalesPrice}, ${scheduledPriceResult.scheduledSalesPriceValidFrom},
+        ${scheduledPriceResult.scheduledSalesPrice ? new Date() : null}, ${parseNumber(body.vatRate, 19)},
         ${isLaborPosition}, ${Boolean(body.isPlanningRelevant)}, ${parseInteger(body.planningMinutesPerUnit)}, ${nullableString(body.defaultPlanningBoard)},
         ${nullableString(body.defaultPlanningGroup)}, ${body.isActive !== false}, CURRENT_TIMESTAMP
       )
@@ -688,9 +741,15 @@ export async function PATCH(req: Request) {
     Object.prototype.hasOwnProperty.call(body, "isLaborPosition")
       ? Boolean(body.isLaborPosition)
       : type === "service";
+  const scheduledPriceResult = validateScheduledSalesPrice(body);
   if (!name) {
     return NextResponse.json({ error: "Bitte einen Namen angeben." }, { status: 400 });
   }
+  if (!scheduledPriceResult.ok) {
+    return NextResponse.json({ error: scheduledPriceResult.error }, { status: 400 });
+  }
+  const nextSalesPrice = parseNumber(body.salesPrice);
+  const salesPriceChanged = comparableValue(before.salesPrice) !== comparableValue(nextSalesPrice);
 
   let rows: CatalogItemRow[];
   try {
@@ -720,7 +779,19 @@ export async function PATCH(req: Request) {
         "purchasePrice" = ${parseNumber(body.purchasePrice)},
         "laborCostRateKey" = ${cleanString(body.laborCostRateKey)},
         "listPrice" = 0,
-        "salesPrice" = ${parseNumber(body.salesPrice)},
+        "salesPrice" = ${nextSalesPrice},
+        "scheduledSalesPrice" = ${scheduledPriceResult.scheduledSalesPrice},
+        "scheduledSalesPriceValidFrom" = ${scheduledPriceResult.scheduledSalesPriceValidFrom},
+        "scheduledSalesPriceCreatedAt" = ${
+          scheduledPriceResult.scheduledSalesPrice &&
+          (before.scheduledSalesPrice !== scheduledPriceResult.scheduledSalesPrice ||
+            comparableValue(before.scheduledSalesPriceValidFrom) !== comparableValue(scheduledPriceResult.scheduledSalesPriceValidFrom))
+            ? new Date()
+            : before.scheduledSalesPriceCreatedAt
+        },
+        "lastSalesPriceChangedAt" = ${salesPriceChanged ? new Date() : before.lastSalesPriceChangedAt},
+        "lastSalesPriceOldValue" = ${salesPriceChanged ? before.salesPrice : before.lastSalesPriceOldValue},
+        "lastSalesPriceNewValue" = ${salesPriceChanged ? nextSalesPrice : before.lastSalesPriceNewValue},
         "vatRate" = ${parseNumber(body.vatRate, 19)},
         "isLaborPosition" = ${isLaborPosition},
         "isPlanningRelevant" = ${Boolean(body.isPlanningRelevant)},

@@ -553,6 +553,12 @@ model CatalogItem {
   laborCostRateKey      String               @default("")
   listPrice             Float                @default(0)
   salesPrice            Float                @default(0)
+  scheduledSalesPrice   Float?
+  scheduledSalesPriceValidFrom DateTime?
+  scheduledSalesPriceCreatedAt DateTime?
+  lastSalesPriceChangedAt DateTime?
+  lastSalesPriceOldValue Float?
+  lastSalesPriceNewValue Float?
   vatRate               Float                @default(19)
   isLaborPosition       Boolean              @default(false)
   isPlanningRelevant    Boolean              @default(false)
