@@ -44530,7 +44530,6 @@ await addProjectLogbookEntry(
                       <th />
                       <th>EK</th>
                       <th>VK Netto</th>
-                      <th>Paket-VK Netto</th>
                       <th>Marge %</th>
                     </tr>
                   </thead>
@@ -44539,13 +44538,11 @@ await addProjectLogbookEntry(
                       <th>Material</th>
                       <td>{formatMoney(materialPurchaseTotal)}</td>
                       <td>{formatMoney(materialSalesTotal)}</td>
-                      <td>{formatMoney(materialSalesTotal)}</td>
                       <td>{formatHours(getPackageMarginPercent(materialPurchaseTotal, materialSalesTotal))}</td>
                     </tr>
                     <tr>
                       <th>Lohn / Maschinenkosten</th>
                       <td>{formatMoney(laborPurchaseTotal)}</td>
-                      <td>{formatMoney(laborSalesTotal)}</td>
                       <td>{formatMoney(laborSalesTotal)}</td>
                       <td>{formatHours(getPackageMarginPercent(laborPurchaseTotal, laborSalesTotal))}</td>
                     </tr>
@@ -44553,7 +44550,6 @@ await addProjectLogbookEntry(
                       <th>Gesamtsumme</th>
                       <td>{formatMoney(packagePurchaseTotal)}</td>
                       <td>{formatMoney(packageSalesTotal)}</td>
-                      <td>{formatMoney(packageNetSalesPrice)}</td>
                       <td>{formatHours(packageMargin)}</td>
                     </tr>
                   </tbody>

@@ -19311,7 +19311,7 @@
 
 .packageTotalGrid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(160px, 1.25fr) minmax(110px, 0.8fr) minmax(130px, 1fr) minmax(150px, 1fr) minmax(130px, 1fr);
   gap: 12px;
   margin-top: 6px;
 }
@@ -19335,7 +19335,7 @@
 
 .packageTotalGrid article span {
   color: #64748b;
-  display: block;
+  display: flex;
   font-size: 13px;
   font-weight: 800;
 }
