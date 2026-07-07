@@ -24659,6 +24659,24 @@ await addProjectLogbookEntry(
     const issuedAt = getGoalDateTime(salesOfferIssueDate(row.offer));
     return issuedAt ? reportNow.getTime() - issuedAt.getTime() >= 14 * 86400000 : false;
   });
+  const getSalesOfferAgeDays = (offer: OfferItem) => {
+    const issuedAt = getGoalDateTime(salesOfferIssueDate(offer));
+    if (!issuedAt) return 0;
+    return Math.max(0, Math.floor((reportNow.getTime() - issuedAt.getTime()) / 86_400_000));
+  };
+  const getOpenFollowUpTaskForOffer = (offer: OfferItem) =>
+    tasks.find(
+      (task) =>
+        taskBelongsToOffer(task, offer) &&
+        !["erledigt", "archiviert", "abgelehnt"].includes(task.status)
+    ) ?? null;
+  const salesStaleOpenOfferIds = new Set(salesStaleOpenOfferRows.map((row) => row.offer.id));
+  const salesOpenOfferWithoutFollowUpRows = salesOpenOfferRows.filter(
+    (row) =>
+      row.offer.status !== "Entwurf" &&
+      !salesStaleOpenOfferIds.has(row.offer.id) &&
+      !getOpenFollowUpTaskForOffer(row.offer)
+  );
   const salesAverageOfferToWinDays = averageGoalDays(
     salesWonOfferRows.map((row) => getGoalDaysBetween(salesOfferIssueDate(row.offer), row.wonDate))
   );
@@ -24722,6 +24740,16 @@ await addProjectLogbookEntry(
           : "Alle relevanten Angebote im Zeitraum sind entschieden oder erledigt.",
       action: "Offene Angebote regelmäßig entscheiden: gewonnen, verloren oder mit Nachfassdatum weiterführen.",
       state: salesDecisionGapRows.length > 0 ? ("ok" as const) : ("good" as const),
+    },
+    {
+      key: "missing-followup",
+      signal: `${salesOpenOfferWithoutFollowUpRows.length} offene Angebote ohne Nachfassaufgabe`,
+      interpretation:
+        salesOpenOfferWithoutFollowUpRows.length > 0
+          ? "Hier fehlt ein verbindlicher Wiedervorlagepunkt. Das Risiko ist nicht der Angebotswert, sondern dass niemand aktiv dranbleibt."
+          : "Offene Angebote haben entweder eine Entscheidung, eine Nachfassung oder sind bereits als überaltert markiert.",
+      action: "Für jedes offene Angebot ohne Aufgabe heute entscheiden: Nachfass-Aufgabe anlegen, gewonnen markieren oder verloren mit Grund dokumentieren.",
+      state: salesOpenOfferWithoutFollowUpRows.length > 0 ? ("ok" as const) : ("good" as const),
     },
   ];
   const isSalesPotentialVisibleForRole = (potential: ProjectPotential) => {
@@ -24806,6 +24834,68 @@ await addProjectLogbookEntry(
         second.ageDays - first.ageDays ||
         `${second.entry.date} ${second.entry.endTime}`.localeCompare(`${first.entry.date} ${first.entry.endTime}`)
     );
+  const salesActionRows = [
+    ...salesStaleOpenOfferRows.map((row) => ({
+      key: `stale-offer-${row.offer.id}`,
+      kind: "offer" as const,
+      priority: 95,
+      title: `Angebot ${row.offer.offerNumber} entscheiden`,
+      context: row.offer.customerName || row.project?.customer || "-",
+      projectLabel: row.project?.projectNumber || row.offer.projectNumber || row.offer.projectTitle || "-",
+      responsible: row.offer.internalContactName || row.project?.responsibleName || "-",
+      dueLabel: `seit ${getSalesOfferAgeDays(row.offer)} Tagen offen`,
+      value: row.offer.netTotal,
+      recommendation: "Kunde aktiv nachfassen und Angebot verbindlich als gewonnen, verloren oder mit neuem Termin weiterführen.",
+      offer: row.offer,
+      project: row.project,
+    })),
+    ...salesDueFollowUps.map((potential) => ({
+      key: `due-potential-${potential.id}`,
+      kind: "potential" as const,
+      priority: potential.priority === "high" ? 92 : 82,
+      title: `Zusatzverkauf ${getPotentialNumber(potential)} nachfassen`,
+      context: potential.customerName || "-",
+      projectLabel: potential.projectLabel || potential.projectId || "-",
+      responsible: potential.ownerName || "-",
+      dueLabel: potential.followUpAt ? formatDeadline(potential.followUpAt) : "fällig",
+      value: parseReportAmount(potential.estimatedValue),
+      recommendation: "Nachfasspunkt erledigen und Status sauber setzen: angeboten, aktuell kein Interesse mit Grund oder neuer Termin.",
+      potential,
+      task: getPotentialLinkedTask(potential),
+    })),
+    ...salesOpenOfferWithoutFollowUpRows.map((row) => ({
+      key: `missing-followup-${row.offer.id}`,
+      kind: "offer" as const,
+      priority: 72,
+      title: `Nachfassung für ${row.offer.offerNumber} fehlt`,
+      context: row.offer.customerName || row.project?.customer || "-",
+      projectLabel: row.project?.projectNumber || row.offer.projectNumber || row.offer.projectTitle || "-",
+      responsible: row.offer.internalContactName || row.project?.responsibleName || "-",
+      dueLabel: "keine Wiedervorlage",
+      value: row.offer.netTotal,
+      recommendation: "Nachfass-Aufgabe anlegen oder das Angebot direkt entscheiden, damit es nicht aus dem Blick fällt.",
+      offer: row.offer,
+      project: row.project,
+    })),
+    ...salesInterruptedWorkRows
+      .filter((row) => row.isOpenTask || !row.task)
+      .map((row) => ({
+        key: `interrupted-${row.entry.id}`,
+        kind: "interrupted" as const,
+        priority: 70,
+        title: "Unterbrochene Arbeit klären",
+        context: row.project?.customer || "-",
+        projectLabel: row.project?.projectNumber || row.entry.projectLabel || row.entry.projectId || "-",
+        responsible: row.responsibleName,
+        dueLabel: row.ageDays === 0 ? "heute" : `${row.ageDays} Tag${row.ageDays === 1 ? "" : "e"} offen`,
+        value: 0,
+        recommendation: "Ursache klären, Arbeit weiterplanen oder Aufgabe abschließen. Sonst blockiert die Ausführung später die Abrechnung.",
+        project: row.project,
+        task: row.task,
+      })),
+  ]
+    .sort((first, second) => second.priority - first.priority)
+    .slice(0, 30);
   const salesPotentialStatusRows = (["open", "follow_up", "offered", "completed", "lost"] as ProjectPotentialStatus[])
     .map((status) => {
       const rows = salesPotentialRows.filter((potential) => potential.status === status);
@@ -27366,6 +27456,7 @@ await addProjectLogbookEntry(
             {renderReportMetric("Bis Verlust", salesAverageOfferToLossDays > 0 ? `${formatHours(salesAverageOfferToLossDays)} Tg.` : "-", "Ø Angebot bis Verlust", salesAverageOfferToLossDays > 14 ? "ok" : "good")}
             {renderReportMetric("Bis Planung", salesAverageOfferToPlanningDays > 0 ? `${formatHours(salesAverageOfferToPlanningDays)} Tg.` : "-", "Ø Angebot bis erster Termin", salesAverageOfferToPlanningDays > 10 ? "ok" : "good")}
             {renderReportMetric("Bis Nachfassung", salesAverageOfferToFollowUpDays > 0 ? `${formatHours(salesAverageOfferToFollowUpDays)} Tg.` : "-", "Ø Angebot bis erledigte Nachfassung", salesAverageOfferToFollowUpDays > 7 ? "ok" : "good")}
+            {renderReportMetric("Ohne Nachfassung", `${salesOpenOfferWithoutFollowUpRows.length}`, "Offene Angebote ohne Aufgabe", salesOpenOfferWithoutFollowUpRows.length > 0 ? "ok" : "good")}
             {renderReportMetric("Zusatzverkäufe", formatMoney(salesPotentialValue), `${salesPotentialRows.length} Zusatzverkauf${salesPotentialRows.length === 1 ? "" : "e"}`, "ok")}
             {renderReportMetric("Nachfassen", `${salesDueFollowUps.length}`, "Fällige Zusatzverkäufe", salesDueFollowUps.length > 0 ? "ok" : "good")}
             {renderReportMetric(
@@ -27375,6 +27466,127 @@ await addProjectLogbookEntry(
               salesInterruptedWorkRows.some((row) => row.isOpenTask || !row.task) ? "low" : "good"
             )}
           </section>
+
+          <article className={styles.analyticsCard}>
+            <h2>Heute vertrieblich handeln</h2>
+            <table className={styles.analyticsTable}>
+              <thead>
+                <tr>
+                  <th>Priorität</th>
+                  <th>Aufgabe</th>
+                  <th>Kunde / Projekt</th>
+                  <th>Fällig</th>
+                  <th>Verantwortlich</th>
+                  <th>Wert</th>
+                  <th>Empfehlung</th>
+                  <th>Aktion</th>
+                </tr>
+              </thead>
+              <tbody>
+                {salesActionRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={8}>Aktuell keine akuten Vertriebsaktionen im gewählten Zeitraum.</td>
+                  </tr>
+                ) : (
+                  salesActionRows.map((row) => (
+                    <tr key={row.key}>
+                      <td data-state={row.priority >= 90 ? "low" : row.priority >= 75 ? "ok" : "neutral"}>
+                        {row.priority >= 90 ? "Hoch" : row.priority >= 75 ? "Mittel" : "Normal"}
+                      </td>
+                      <td>{row.title}</td>
+                      <td>
+                        {row.context}
+                        <br />
+                        <small>{row.projectLabel}</small>
+                      </td>
+                      <td>{row.dueLabel}</td>
+                      <td>{row.responsible}</td>
+                      <td>{row.value > 0 ? formatMoney(row.value) : "-"}</td>
+                      <td>{row.recommendation}</td>
+                      <td>
+                        <div className={styles.tableActionGroup}>
+                          {row.kind === "offer" ? (
+                            <>
+                              {row.project ? (
+                                <button
+                                  type="button"
+                                  className={styles.timeEntryEditButton}
+                                  onClick={() =>
+                                    openProjectFile(row.project as HeroProjectPreview, {
+                                      tab: "documents",
+                                      documentType: "Angebote",
+                                    })
+                                  }
+                                >
+                                  Öffnen
+                                </button>
+                              ) : null}
+                              <button
+                                type="button"
+                                className={styles.timeEntryEditButton}
+                                onClick={() => markOfferWon(row.offer, "Aus Sales-Performance entschieden", row.offer.projectId)}
+                              >
+                                Gewonnen
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.dangerButton}
+                                onClick={() => openMarkOfferLostDialog(row.offer)}
+                              >
+                                Verloren
+                              </button>
+                            </>
+                          ) : null}
+                          {row.kind === "potential" ? (
+                            <>
+                              <button
+                                type="button"
+                                className={styles.timeEntryEditButton}
+                                onClick={() => openPotentialDetail(row.potential)}
+                              >
+                                Öffnen
+                              </button>
+                              {row.task ? (
+                                <button
+                                  type="button"
+                                  className={styles.timeEntryEditButton}
+                                  onClick={() => openEditModal(row.task as TaskItem)}
+                                >
+                                  Aufgabe
+                                </button>
+                              ) : null}
+                            </>
+                          ) : null}
+                          {row.kind === "interrupted" ? (
+                            <>
+                              {row.project ? (
+                                <button
+                                  type="button"
+                                  className={styles.timeEntryEditButton}
+                                  onClick={() => openProjectFile(row.project as HeroProjectPreview, { tab: "appointments", keepMonth: true })}
+                                >
+                                  Projekt
+                                </button>
+                              ) : null}
+                              {row.task ? (
+                                <button
+                                  type="button"
+                                  className={styles.timeEntryEditButton}
+                                  onClick={() => openEditModal(row.task as TaskItem)}
+                                >
+                                  Aufgabe
+                                </button>
+                              ) : null}
+                            </>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </article>
 
           <article className={styles.analyticsCard}>
             <h2>Sales-Steuerung</h2>
