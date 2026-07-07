@@ -26001,11 +26001,17 @@ await addProjectLogbookEntry(
           item.defaultPlanningGroup === planningGroup
       )
       .map((item) => {
-        const serviceHours = item.packageItems
-          .filter((packageItem) => packageItem.componentType === "service")
-          .reduce((sum, packageItem) => sum + getPackageComponentPlanningMinutes(packageItem) / 60, 0);
+        const servicePackageItems = item.packageItems.filter((packageItem) => packageItem.componentType === "service");
+        const serviceHours = servicePackageItems.reduce(
+          (sum, packageItem) => sum + getPackageComponentPlanningMinutes(packageItem) / 60,
+          0
+        );
+        const serviceRevenue = servicePackageItems.reduce(
+          (sum, packageItem) => sum + getPackageComponentSalesTotal(packageItem),
+          0
+        );
         return {
-          revenue: serviceHours > 0 ? getCatalogPackageSalesPrice(item) : 0,
+          revenue: serviceHours > 0 ? serviceRevenue : 0,
           hours: serviceHours,
         };
       })
