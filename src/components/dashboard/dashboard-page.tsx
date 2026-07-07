@@ -25810,19 +25810,35 @@ await addProjectLogbookEntry(
         dashboardCurrentMonthFeedback.length
       : 0;
   const dashboardCurrentMonthCriticalFeedback = dashboardCurrentMonthFeedback.filter((feedback) => feedback.hotAlert).length;
-  const executiveBottleneckRows = [
+  const salesStaleOpenOfferValue = salesStaleOpenOfferRows.reduce((sum, row) => sum + row.offer.netTotal, 0);
+  const openInterruptedWorkCount = salesInterruptedWorkRows.filter((row) => row.isOpenTask || !row.task).length;
+  const executiveBottleneckCandidates = [
     {
       key: "overdue-open-items",
       area: "Liquidität",
       signal: `${overviewOverdueRows.length} überfällige Rechnung${overviewOverdueRows.length === 1 ? "" : "en"}`,
       interpretation:
         overviewOverdueTotal > 0
-          ? `Überfällige offene Posten binden ${formatMoney(overviewOverdueTotal)} und kosten direkt verfügbare Liquidität.`
+          ? `Wachstumsbremse: ${formatMoney(overviewOverdueTotal)} sind überfällig und stehen nicht für Löhne, Material, Investitionen oder zusätzliches Personal zur Verfügung.`
           : "Keine überfälligen offenen Posten im gewählten Zeitraum.",
-      action: "OP-Kontrolle priorisieren und Mahnlauf prüfen.",
+      action: "Heute OP-Liste abarbeiten: größte überfällige Kunden zuerst anrufen, Mahnstufe prüfen und verbindlichen Zahlungstermin dokumentieren.",
       amount: overviewOverdueTotal,
       state: overviewOverdueTotal > 0 ? ("low" as const) : ("good" as const),
       priority: overviewOverdueTotal > 0 ? 95 : 10,
+      visible: canViewAccountingOverviewAnalytics,
+    },
+    {
+      key: "open-items",
+      area: "Liquidität",
+      signal: `${formatMoney(overviewOpenTotal)} offen`,
+      interpretation:
+        overviewOpenTotal > overviewOverdueTotal
+          ? `Offene, noch nicht bezahlte Rechnungen binden ${formatMoney(overviewOpenTotal)}. Das ist kein Umsatzproblem, aber ein Liquiditätsrisiko.`
+          : "Keine zusätzlichen offenen Posten neben den überfälligen Rechnungen.",
+      action: "Offene Posten nach Betrag sortieren und Fälligkeiten absichern, bevor sie überfällig werden.",
+      amount: overviewOpenTotal,
+      state: overviewOpenTotal > overviewOverdueTotal && overviewOpenTotal > 0 ? ("ok" as const) : ("good" as const),
+      priority: overviewOpenTotal > overviewOverdueTotal && overviewOpenTotal > 0 ? 82 : 8,
       visible: canViewAccountingOverviewAnalytics,
     },
     {
@@ -25833,9 +25849,9 @@ await addProjectLogbookEntry(
         : "Kein Pipeline-Schwerpunkt",
       interpretation:
         longPipelineStatusRows.length > 0
-          ? `${longPipelineStatusRows.length} Projekt${longPipelineStatusRows.length === 1 ? "" : "e"} hängen länger als 14 Tage in einer Phase.`
+          ? `Wachstumsbremse: ${longPipelineStatusRows.length} Projekt${longPipelineStatusRows.length === 1 ? "" : "e"} hängen länger als 14 Tage. Arbeit, Abrechnung oder Planung kommt dadurch nicht weiter.`
           : "Keine auffälligen langen Statuslaufzeiten im gewählten Zeitraum.",
-      action: "Projekte mit langer Statuslaufzeit prüfen und nächsten Pflichtschritt auslösen.",
+      action: "Die ältesten Projekte im Engpassstatus öffnen und pro Projekt genau einen nächsten Pflichtschritt auslösen: planen, ausführen, Nachweis nachfordern oder abrechnen.",
       amount: 0,
       state: longPipelineStatusRows.length > 0 ? ("ok" as const) : ("good" as const),
       priority: longPipelineStatusRows.length > 0 ? 85 : 15,
@@ -25850,9 +25866,9 @@ await addProjectLogbookEntry(
           : "Forecast-Daten plausibel",
       interpretation:
         forecastQualityProblemCount > 0
-          ? "Forecast und offene Posten sind steuerbar, aber einzelne Datenpunkte brauchen Nachpflege."
+          ? "Wachstumsbremse: Forecast und OP-Steuerung sind nicht belastbar, solange Datenpunkte fehlen oder widersprüchlich sind."
           : "Forecast-Grundlage wirkt im gewählten Zeitraum plausibel.",
-      action: "Forecast-Qualitätsprüfung öffnen und kritische Treffer bereinigen.",
+      action: "Forecast-Qualitätsprüfung öffnen und zuerst kritische Treffer bereinigen: fehlende Forecast-Quelle, fehlender Ausführungsmonat oder fehlende Fälligkeit.",
       amount: 0,
       state: forecastQualityCriticalCount > 0 ? ("low" as const) : forecastQualityProblemCount > 0 ? ("ok" as const) : ("good" as const),
       priority: forecastQualityCriticalCount > 0 ? 90 : forecastQualityProblemCount > 0 ? 70 : 12,
@@ -25864,13 +25880,27 @@ await addProjectLogbookEntry(
       signal: `${dashboardBillingCheckCount} Projekt${dashboardBillingCheckCount === 1 ? "" : "e"} in Abrechnungsprüfung`,
       interpretation:
         dashboardBillingCheckCount > 0
-          ? "Leistung ist vermutlich erbracht, aber Umsatz wird noch nicht sauber realisiert."
+          ? "Wachstumsbremse: Leistung ist vermutlich erbracht, aber Umsatz wird noch nicht sauber realisiert."
           : "Keine auffällige Häufung in der Abrechnungsprüfung.",
-      action: "Fehlende Nachweise/Rechnungsfreigaben prüfen und Projekte abschließen.",
+      action: "Abrechnungsprüfung täglich leeren: fehlende Nachweise einsammeln, Rechnung erstellen oder Projekt mit klarem Grund zurückstellen.",
       amount: 0,
       state: dashboardBillingCheckCount > 0 ? ("ok" as const) : ("good" as const),
       priority: dashboardBillingCheckCount > 0 ? 78 : 8,
       visible: canViewOperationalOverviewAnalytics || canViewAccountingOverviewAnalytics,
+    },
+    {
+      key: "stale-offers",
+      area: "Vertrieb",
+      signal: `${salesStaleOpenOfferRows.length} Angebot${salesStaleOpenOfferRows.length === 1 ? "" : "e"} älter als 14 Tage`,
+      interpretation:
+        salesStaleOpenOfferRows.length > 0
+          ? `Wachstumsbremse: ${formatMoney(salesStaleOpenOfferValue)} Angebotsvolumen liegt ohne Entscheidung.`
+          : "Keine überalterten offenen Angebote.",
+      action: "Alte Angebote heute entscheiden lassen: gewonnen, verloren mit Grund oder verbindliches Nachfassdatum setzen.",
+      amount: salesStaleOpenOfferValue,
+      state: salesStaleOpenOfferRows.length > 0 ? ("ok" as const) : ("good" as const),
+      priority: salesStaleOpenOfferRows.length > 0 ? 80 : 8,
+      visible: canViewFullOverviewAnalytics || activeUser?.role === "VERTRIEB",
     },
     {
       key: "sales-followups",
@@ -25878,9 +25908,9 @@ await addProjectLogbookEntry(
       signal: `${salesDueFollowUps.length} fällige Nachfasspunkte`,
       interpretation:
         salesDueFollowUps.length > 0
-          ? "Aktive Chancen liegen ohne aktuellen Vertriebsimpuls und können Umsatz verzögern."
+          ? "Wachstumsbremse: erkannte Chancen liegen ohne aktuellen Vertriebsimpuls und können Umsatz verzögern oder verloren gehen."
           : "Keine fälligen Zusatzverkauf-Nachfasspunkte.",
-      action: "Fällige Zusatzverkäufe heute nachfassen oder Aufgabe verbindlich terminieren.",
+      action: "Fällige Zusatzverkäufe heute nachfassen. Danach Status sauber setzen: angeboten, aktuell kein Interesse mit Grund oder neuer Nachfasstermin.",
       amount: salesPotentialValue,
       state: salesDueFollowUps.length > 0 ? ("ok" as const) : ("good" as const),
       priority: salesDueFollowUps.length > 0 ? 72 : 8,
@@ -25895,13 +25925,27 @@ await addProjectLogbookEntry(
           : "Noch keine entschiedenen Angebote",
       interpretation:
         salesDecisionCount >= 3 && salesWinRate < 35
-          ? "Die Abschlussquote liegt niedrig; Angebot, Preisargumentation oder Nachfassen sollten geprüft werden."
+          ? "Wachstumsbremse: die Abschlussquote ist niedrig. Es wird Vertriebskapazität verbraucht, ohne genug Aufträge zu gewinnen."
           : "Die Abschlussquote liefert aktuell keinen kritischen Engpass.",
-      action: "Verlorene Angebote und Verlustgründe in Sales-Performance prüfen.",
+      action: "Verlorene Angebote nach Grund auswerten und Gegenmaßnahme festlegen: Preis, Bedarfsklärung, Reaktionszeit oder Nachfassen.",
       amount: salesLostValue,
       state: salesDecisionCount >= 3 && salesWinRate < 35 ? ("low" as const) : salesDecisionCount > 0 ? ("good" as const) : ("ok" as const),
       priority: salesDecisionCount >= 3 && salesWinRate < 35 ? 76 : 20,
       visible: canViewFullOverviewAnalytics || activeUser?.role === "VERTRIEB",
+    },
+    {
+      key: "interrupted-work",
+      area: "Ausführung",
+      signal: `${openInterruptedWorkCount} offene Unterbrechung${openInterruptedWorkCount === 1 ? "" : "en"}`,
+      interpretation:
+        openInterruptedWorkCount > 0
+          ? "Wachstumsbremse: unterbrochene Arbeit bleibt offen. Das bindet Kapazität, stört Planung und kann Abrechnung blockieren."
+          : "Keine offenen Unterbrechungen im gewählten Zeitraum.",
+      action: "Unterbrochene Arbeiten mit offener Aufgabe schließen: weiterplanen, Ursache beheben oder bewusst abbrechen.",
+      amount: 0,
+      state: openInterruptedWorkCount > 0 ? ("low" as const) : ("good" as const),
+      priority: openInterruptedWorkCount > 0 ? 79 : 8,
+      visible: canViewOperationalOverviewAnalytics || activeUser?.role === "VERTRIEB",
     },
     {
       key: "critical-feedback",
@@ -25909,9 +25953,9 @@ await addProjectLogbookEntry(
       signal: `${hotCustomerFeedbackCount} kritische Rückmeldung${hotCustomerFeedbackCount === 1 ? "" : "en"}`,
       interpretation:
         hotCustomerFeedbackCount > 0
-          ? "Kritische Kundenrückmeldungen können Wiederbeauftragung und Zusatzgeschäft gefährden."
+          ? "Wachstumsbremse: kritische Kundenrückmeldungen gefährden Wiederbeauftragung, Empfehlungen und Zusatzgeschäft."
           : "Keine kritischen Rückmeldungen im gewählten Zeitraum.",
-      action: "KuZu öffnen und kritische Rückmeldungen mit Verantwortlichem klären.",
+      action: "KuZu öffnen, Verantwortlichen festlegen und Kunden aktiv zurückgewinnen, bevor Folgeschäft verloren geht.",
       amount: 0,
       state: hotCustomerFeedbackCount > 0 ? ("low" as const) : ("good" as const),
       priority: hotCustomerFeedbackCount > 0 ? 82 : 8,
@@ -25923,9 +25967,9 @@ await addProjectLogbookEntry(
       signal: `${formatPercent(dashboardCurrentMonthProductivity)} produktive Zeit im Monat`,
       interpretation:
         dashboardCurrentMonthProductivity > 0 && dashboardCurrentMonthProductivity < 75
-          ? "Der Anteil produktiver Projektzeit ist niedrig und drückt die abrechenbare Leistung."
+          ? "Wachstumsbremse: zu wenig Arbeitszeit wird in abrechenbare Projektleistung umgesetzt."
           : "Produktivitätsanteil ist aktuell kein Hauptengpass.",
-      action: "Unproduktive Stunden und Planungsgruppen in der Mitarbeiterauswertung prüfen.",
+      action: "Mitarbeiterauswertung nach Planungsgruppe öffnen und die größte unproduktive Ursache beseitigen: Planung, Ausfall, Nacharbeit oder falsche Zuordnung.",
       amount: 0,
       state: dashboardCurrentMonthProductivity > 0 && dashboardCurrentMonthProductivity < 75 ? ("low" as const) : ("good" as const),
       priority: dashboardCurrentMonthProductivity > 0 && dashboardCurrentMonthProductivity < 75 ? 74 : 10,
@@ -25933,8 +25977,10 @@ await addProjectLogbookEntry(
     },
   ]
     .filter((row) => row.visible)
-    .sort((first, second) => second.priority - first.priority)
-    .slice(0, 7);
+    .sort((first, second) => second.priority - first.priority);
+  const executiveActiveBottleneckRows = executiveBottleneckCandidates.filter((row) => row.state !== "good");
+  const executiveBottleneckRows =
+    executiveActiveBottleneckRows.length > 0 ? executiveActiveBottleneckRows : executiveBottleneckCandidates.slice(0, 5);
   const executiveTopBottleneck = executiveBottleneckRows.find((row) => row.state !== "good") ?? executiveBottleneckRows[0] ?? null;
   const managementDashboardKpis = [
     {
@@ -28197,7 +28243,7 @@ await addProjectLogbookEntry(
               <div>
                 <h2>Systeminterpretation</h2>
                 <p>
-                  WorkPilot bewertet vorhandene Umsatz-, Forecast-, OP-, Projekt-, Vertriebs- und Kundendaten und zeigt die wichtigsten Steuerungspunkte.
+                  WorkPilot benennt aktive Wachstumsbremsen aus Umsatz-, OP-, Projekt-, Vertriebs-, Leistungs- und Kundendaten mit klarer Handlungsempfehlung.
                 </p>
               </div>
               {executiveTopBottleneck ? (
@@ -28209,7 +28255,7 @@ await addProjectLogbookEntry(
             <table className={`${styles.analyticsTable} ${styles.executiveInsightTable}`}>
               <thead>
                 <tr>
-                  <th>Bereich</th>
+                  <th>Wachstumsbremse</th>
                   <th>Signal</th>
                   <th>Interpretation</th>
                   <th>Nächster Schritt</th>
