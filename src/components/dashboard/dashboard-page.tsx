@@ -621,6 +621,7 @@ type UserOption = {
   planningResponsibleFor?: string[];
   branchAllocations?: BranchAllocations;
   includeInLaborCostRate?: boolean;
+  sellableCapacityEnabled?: boolean;
   notifyIdeaStore?: boolean;
   notifyUpsell?: boolean;
   mailAccount?: EmployeeMailAccount;
@@ -5732,6 +5733,7 @@ export function DashboardPage() {
     useState<WeeklyPlanningWindows>(defaultWeeklyBreakWindows);
   const [employeePlanningResponsibleFor, setEmployeePlanningResponsibleFor] = useState<string[]>([]);
   const [employeeIncludeInLaborCostRate, setEmployeeIncludeInLaborCostRate] = useState(true);
+  const [employeeSellableCapacityEnabled, setEmployeeSellableCapacityEnabled] = useState(true);
   const [employeeNotifyIdeaStore, setEmployeeNotifyIdeaStore] = useState(true);
   const [employeeNotifyUpsell, setEmployeeNotifyUpsell] = useState(false);
   const [employeeMailAccount, setEmployeeMailAccount] =
@@ -19613,6 +19615,7 @@ await addProjectLogbookEntry(
     setEmployeePlanningBreakWindows(defaultWeeklyBreakWindows);
     setEmployeePlanningResponsibleFor([]);
     setEmployeeIncludeInLaborCostRate(true);
+    setEmployeeSellableCapacityEnabled(true);
     setEmployeeNotifyIdeaStore(true);
     setEmployeeNotifyUpsell(false);
     setEmployeeMailAccount(emptyEmployeeMailAccount);
@@ -19800,6 +19803,7 @@ await addProjectLogbookEntry(
     );
     setEmployeePlanningResponsibleFor(user.planningResponsibleFor ?? []);
     setEmployeeIncludeInLaborCostRate(user.includeInLaborCostRate !== false);
+    setEmployeeSellableCapacityEnabled(user.sellableCapacityEnabled !== false);
     setEmployeeNotifyIdeaStore(user.notifyIdeaStore ?? true);
     setEmployeeNotifyUpsell(user.notifyUpsell ?? false);
     setEmployeeMailAccount(getSafeEmployeeMailAccount(user.mailAccount, user.email));
@@ -19991,6 +19995,7 @@ await addProjectLogbookEntry(
         planningBreakWindows: employeePlanningBreakWindows,
         planningResponsibleFor: employeePlanningResponsibleFor,
         includeInLaborCostRate: employeeIncludeInLaborCostRate,
+        sellableCapacityEnabled: employeeSellableCapacityEnabled,
         notifyIdeaStore: employeeNotifyIdeaStore,
         notifyUpsell: employeeNotifyUpsell,
         mailAccount: employeeMailAccount,
@@ -26052,6 +26057,8 @@ await addProjectLogbookEntry(
   const managementCapacityRows = planningBoardSections.flatMap((section) =>
     section.detailGroups.map((group) => {
       const groupUsers = getPlanningBoardUsers(section.company, group.name);
+      const sellableUsers = groupUsers.filter((user) => user.sellableCapacityEnabled !== false);
+      const nonSellableUsers = groupUsers.filter((user) => user.sellableCapacityEnabled === false);
       const setting = getPlanningGroupCapacitySetting(section.company, group.name);
       const invoiceSvs = getInvoiceSvsForPlanningGroup(section.company, group.name);
       const catalogSvs = getServiceCatalogSvsForPlanningGroup(section.company, group.name);
@@ -26071,7 +26078,12 @@ await addProjectLogbookEntry(
               ? "Manuell"
               : "Keine Basis";
       const capacityHours = reportDateKeys.reduce(
-        (sum, dateKey) => sum + getPlanningBoardCapacity(section.company, group.name, dateKey),
+        (sum, dateKey) =>
+          sum +
+          sellableUsers.reduce(
+            (userSum, user) => userSum + getUserCapacityForDate(user, dateKey),
+            0
+          ),
         0
       );
       const plannedHours = reportDateKeys.reduce(
@@ -26084,7 +26096,7 @@ await addProjectLogbookEntry(
       const openRevenueCapacity = Math.max(0, capacityHours - plannedHours) * resolvedSvs;
       const overloadHours = Math.max(0, plannedHours - capacityHours);
       const state =
-        groupUsers.length === 0 || capacityHours <= 0 || resolvedSvs <= 0 || overloadHours > 0
+        groupUsers.length === 0 || sellableUsers.length === 0 || capacityHours <= 0 || resolvedSvs <= 0 || overloadHours > 0
           ? ("low" as const)
           : utilization >= 85
             ? ("ok" as const)
@@ -26092,6 +26104,8 @@ await addProjectLogbookEntry(
       const interpretation =
         groupUsers.length === 0
           ? "Keine aktiven Mitarbeiter dieser Planungsgruppe zugeordnet. Kapazität und Umsatzpotenzial sind dadurch nicht steuerbar."
+          : sellableUsers.length === 0
+            ? "Mitarbeiter sind zugeordnet, aber keiner ist als verkaufbare Kapazit\u00e4t aktiviert. Diese Planungsgruppe erzeugt dadurch keine belastbare Umsatzkapazit\u00e4t."
           : capacityHours <= 0
             ? "Mitarbeiter sind zugeordnet, aber im Auswertungszeitraum ist keine verfügbare Kapazität hinterlegt oder sie ist durch freie Tage/Abwesenheiten blockiert."
             : resolvedSvs <= 0
@@ -26106,6 +26120,8 @@ await addProjectLogbookEntry(
       const actionRecommendation =
         groupUsers.length === 0
           ? "Mitarbeiterzuordnung prüfen."
+          : sellableUsers.length === 0
+            ? "Bei den Mitarbeitern den Schalter f\u00fcr verkaufbare Kapazit\u00e4t pr\u00fcfen."
           : capacityHours <= 0
             ? "Wochenstunden und Abwesenheiten prüfen."
             : resolvedSvs <= 0
@@ -26122,7 +26138,10 @@ await addProjectLogbookEntry(
         planningBoard: section.company,
         planningGroup: group.name,
         userCount: groupUsers.length,
-        userNames: groupUsers.map((user) => user.name).join(", "),
+        sellableUserCount: sellableUsers.length,
+        nonSellableUserCount: nonSellableUsers.length,
+        userNames: sellableUsers.map((user) => user.name).join(", "),
+        nonSellableUserNames: nonSellableUsers.map((user) => user.name).join(", "),
         source,
         sourceDetail:
           source === "Rechnungen"
@@ -28916,11 +28935,17 @@ await addProjectLogbookEntry(
                           <small>{row.planningGroup}</small>
                         </td>
                         <td>
-                          {row.userCount} MA
+                          {row.sellableUserCount} von {row.userCount} MA verkaufbar
                           <br />
                           <small>{formatHours(row.capacityHours)} verfügbare Std.</small>
                           <br />
-                          <small>{row.userNames || "Keine aktiven Mitarbeiter zugeordnet"}</small>
+                          <small>{row.userNames || "Keine Mitarbeiter als verkaufbar aktiviert"}</small>
+                          {row.nonSellableUserCount > 0 ? (
+                            <>
+                              <br />
+                              <small>Nicht eingerechnet: {row.nonSellableUserNames}</small>
+                            </>
+                          ) : null}
                         </td>
                         <td>
                           {row.svs > 0 ? `${formatMoney(row.svs)} / Std.` : "-"}
@@ -43311,6 +43336,20 @@ await addProjectLogbookEntry(
                         </select>
                       </label>
                     </div>
+                    <label className={`${styles.checkboxField} ${styles.fullWidth}`}>
+                      <input
+                        type="checkbox"
+                        checked={employeeSellableCapacityEnabled}
+                        disabled={!mayManageUsers}
+                        onChange={(event) => setEmployeeSellableCapacityEnabled(event.target.checked)}
+                      />
+                      <span>
+                        Als verkaufbare Kapazit&auml;t ber&uuml;cksichtigen
+                        <small>
+                          Wenn deaktiviert, bleibt die Planungsgruppe erhalten, die Stunden z&auml;hlen aber nicht in die Umsatzkapazit&auml;t.
+                        </small>
+                      </span>
+                    </label>
                     <section className={styles.employeePlanningSettings}>
                       <div>
                         <h3>Arbeitszeit nach Wochentagen</h3>

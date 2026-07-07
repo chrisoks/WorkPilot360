@@ -87,6 +87,7 @@ model User {
   planningResponsibleFor Json           @default("[]")
   branchAllocations Json?
   includeInLaborCostRate Boolean        @default(true)
+  sellableCapacityEnabled Boolean       @default(true)
   notifyIdeaStore    Boolean           @default(true)
   notifyUpsell       Boolean           @default(false)
   mailAccount        Json              @default("{}")
