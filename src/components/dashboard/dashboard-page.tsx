@@ -24959,11 +24959,275 @@ await addProjectLogbookEntry(
     const monthLostOffers = salesLostOfferRows.filter((row) => getReportMonthKey(row.offer.lostAt || row.offer.createdAt) === month.key);
     return {
       ...month,
+      createdCount: monthOpenOffers.length,
+      baseOfferCount: monthOpenOffers.filter((row) => row.offer.offerType !== "addendum").length,
+      addendumOfferCount: monthOpenOffers.filter((row) => row.offer.offerType === "addendum").length,
+      wonCount: monthWonOffers.length,
+      lostCount: monthLostOffers.length,
       offerValue: monthOpenOffers.reduce((sum, row) => sum + row.offer.netTotal, 0),
       wonValue: monthWonOffers.reduce((sum, row) => sum + (row.linkedInvoiceValue > 0 ? row.linkedInvoiceValue : row.offer.netTotal), 0),
       lostValue: monthLostOffers.reduce((sum, row) => sum + row.offer.netTotal, 0),
     };
   });
+  const salesCurrentMonthKey = reportMonthKeys[reportMonthKeys.length - 1]?.key || formatDateKey(reportNow).slice(0, 7);
+  const salesPreviousMonthKey = getPreviousMonthKey(salesCurrentMonthKey);
+  const salesCurrentMonthRow = monthlySalesRows.find((row) => row.key === salesCurrentMonthKey) ?? null;
+  const salesPreviousMonthRow = monthlySalesRows.find((row) => row.key === salesPreviousMonthKey) ?? null;
+  const salesCurrentMonthOfferCount = salesCurrentMonthRow?.createdCount ?? 0;
+  const salesPreviousMonthOfferCount = salesPreviousMonthRow?.createdCount ?? 0;
+  const salesOfferMonthTrend = salesCurrentMonthOfferCount - salesPreviousMonthOfferCount;
+  const normalizeSalesCustomerName = (value?: string | null) => normalizeStampSearchValue(String(value ?? "")).trim();
+  const salesNewCustomerContacts = contacts.filter(
+    (contact) => contact.category === "Kunde" && isReportDate(contact.createdAt)
+  );
+  const salesCurrentMonthFirstCustomerOfferRows = salesOfferRows.filter((row) => {
+    if (getReportMonthKey(row.offer.createdAt) !== salesCurrentMonthKey) return false;
+    const customerName = normalizeSalesCustomerName(row.offer.customerName || row.project?.customer);
+    if (!customerName) return false;
+    const currentOfferCreatedAt = parseAppDateTime(row.offer.createdAt).getTime();
+    if (!Number.isFinite(currentOfferCreatedAt)) return false;
+    return !offers.some((offer) => {
+      if (offer.id === row.offer.id || isDeletedOffer(offer)) return false;
+      const otherCustomerName = normalizeSalesCustomerName(offer.customerName);
+      if (!otherCustomerName || otherCustomerName !== customerName) return false;
+      const otherCreatedAt = parseAppDateTime(offer.createdAt).getTime();
+      return Number.isFinite(otherCreatedAt) && otherCreatedAt < currentOfferCreatedAt;
+    });
+  });
+  const activeRecurringProjectsForSales = heroProjects
+    .filter((project) => isProjectVisibleInProjectScopedAnalytics(project))
+    .filter((project) => isRecurringProjectKindValue(getProjectKind(project)))
+    .filter((project) => !isDeletedStatus(project.status) && project.status !== "Abgeschlossen");
+  const recurringNegotiationRows = activeRecurringProjectsForSales
+    .map((project) => {
+      const projectOffers = offers.filter(
+        (offer) =>
+          offer.projectId === project.id &&
+          offer.status !== "Entwurf" &&
+          !isDeletedOffer(offer) &&
+          !isLostOffer(offer)
+      );
+      const addendumOffers = projectOffers.filter((offer) => offer.offerType === "addendum");
+      const relevantOfferDates = projectOffers
+        .map((offer) => offer.wonAt || offer.createdAt)
+        .filter(Boolean)
+        .sort();
+      const lastOfferDate = relevantOfferDates[relevantOfferDates.length - 1] || project.createdAt || "";
+      const lastAddendumDate =
+        addendumOffers
+          .map((offer) => offer.wonAt || offer.createdAt)
+          .filter(Boolean)
+          .sort()
+          .at(-1) || "";
+      const reviewBaseDate = lastAddendumDate || lastOfferDate || project.projectRuntimeFrom || project.createdAt || "";
+      const reviewDate = parseAppDateTime(reviewBaseDate);
+      const monthsSinceReview = Number.isFinite(reviewDate.getTime())
+        ? Math.max(
+            0,
+            (reportNow.getFullYear() - reviewDate.getFullYear()) * 12 + (reportNow.getMonth() - reviewDate.getMonth())
+          )
+        : 0;
+      const projectInvoices = reportInvoices.filter(
+        (invoice) => invoice.projectId === project.id && isFinanciallyActiveInvoice(invoice)
+      );
+      const revenue = projectInvoices.reduce((sum, invoice) => sum + invoice.netTotal, 0);
+      const stampedHours =
+        stampEntries
+          .filter((entry) => !entry.deletedAt && entry.mode === "project" && entry.projectId === project.id && isReportDate(entry.date))
+          .reduce((sum, entry) => sum + Math.max(0, Number(entry.durationMs) || 0), 0) / 3600000;
+      const svs = stampedHours > 0 ? revenue / stampedHours : 0;
+      const periodBudgetHours = reportMonthKeys.reduce(
+        (sum, month) => sum + getProjectBudgetAllocationHours(project, month.key),
+        0
+      );
+      const monthsWithBudget = reportMonthKeys.filter((month) => getProjectBudgetAllocationHours(project, month.key) > 0).length;
+      const averageMonthlyBudgetHours = monthsWithBudget > 0 ? periodBudgetHours / monthsWithBudget : 0;
+      const budgetUsagePercent = periodBudgetHours > 0 ? (stampedHours / periodBudgetHours) * 100 : 0;
+      const currentMonthKey = formatDateKey(reportNow).slice(0, 7);
+      const monthlyBudgetUsageRows = reportMonthKeys
+        .filter((month) => month.key <= currentMonthKey)
+        .map((month) => {
+          const budgetHours = getProjectBudgetAllocationHours(project, month.key);
+          const monthStampedHours =
+            stampEntries
+              .filter(
+                (entry) =>
+                  !entry.deletedAt &&
+                  entry.mode === "project" &&
+                  entry.projectId === project.id &&
+                  getReportMonthKey(entry.date) === month.key
+              )
+              .reduce((sum, entry) => sum + Math.max(0, Number(entry.durationMs) || 0), 0) / 3600000;
+          return {
+            monthKey: month.key,
+            budgetHours,
+            stampedHours: monthStampedHours,
+            usagePercent: budgetHours > 0 ? (monthStampedHours / budgetHours) * 100 : 0,
+          };
+        })
+        .filter((row) => row.budgetHours > 0);
+      const latestBudgetUsageRow = [...monthlyBudgetUsageRows].reverse()[0] ?? null;
+      const currentBudgetOverrun = latestBudgetUsageRow && latestBudgetUsageRow.usagePercent > 100 ? latestBudgetUsageRow : null;
+      let depletedBudgetStreak = 0;
+      for (let index = monthlyBudgetUsageRows.length - 1; index >= 0; index -= 1) {
+        if (monthlyBudgetUsageRows[index].usagePercent >= 95) {
+          depletedBudgetStreak += 1;
+        } else {
+          break;
+        }
+      }
+      const reasons: string[] = [];
+      let priority = 0;
+      if (monthsSinceReview >= 12) {
+        reasons.push(`seit ${monthsSinceReview} Monaten keine Nachtrags-/Preisprüfung`);
+        priority += 36;
+      } else if (monthsSinceReview >= 6) {
+        reasons.push(`seit ${monthsSinceReview} Monaten keine Vertriebsprüfung`);
+        priority += 18;
+      }
+      if (currentBudgetOverrun) {
+        reasons.push(
+          `${formatMonthLabel(currentBudgetOverrun.monthKey)}: Kontingent überschritten (${formatHours(
+            currentBudgetOverrun.usagePercent
+          )}%)`
+        );
+        priority += 34;
+      } else if (depletedBudgetStreak >= 5) {
+        reasons.push(`${depletedBudgetStreak} Monate in Folge Kontingent ausgeschöpft`);
+        priority += 24;
+      }
+      if (stampedHours > 0 && revenue <= 0) {
+        reasons.push("Aufwand vorhanden, aber kein Umsatz im Zeitraum");
+        priority += 28;
+      } else if (stampedHours >= 8 && svs > 0 && svs < 85) {
+        reasons.push(`niedriger Erlös je Stunde (${formatMoney(svs)} / h)`);
+        priority += 24;
+      }
+      return {
+        project,
+        revenue,
+        stampedHours,
+        svs,
+        monthlyBudgetHours: averageMonthlyBudgetHours,
+        periodBudgetHours,
+        budgetUsagePercent,
+        monthsSinceReview,
+        lastReviewLabel: reviewBaseDate ? formatDateOnly(reviewBaseDate) : "-",
+        recommendation:
+          reasons.length > 0
+            ? "Nachverhandlung prüfen: Preis, Kontingent, Leistungsumfang oder Nachtragsangebot."
+            : "Aktuell kein harter Nachverhandlungsdruck sichtbar.",
+        reasons,
+        priority,
+      };
+    })
+    .filter((row) => row.priority > 0)
+    .sort((first, second) => second.priority - first.priority || second.revenue - first.revenue);
+  const recurringNegotiationHighRiskRows = recurringNegotiationRows.filter((row) => row.priority >= 34);
+  const salesTodayActionCount = salesActionRows.length + recurringNegotiationHighRiskRows.length;
+  const salesCockpitCards = [
+    {
+      key: "actions",
+      icon: (
+        <>
+          <path d="M12 4 3.5 19h17L12 4Z" />
+          <path d="M12 9v4" />
+          <path d="M12 16h.01" />
+        </>
+      ),
+      tone: salesTodayActionCount > 0 ? "urgent" : "good",
+      label: "Heute handeln",
+      value: String(salesTodayActionCount),
+      trend: salesTodayActionCount > 0 ? `${salesActionRows.filter((row) => row.priority >= 90).length + recurringNegotiationHighRiskRows.length} hoch` : "ruhig",
+      detail:
+        salesTodayActionCount > 0
+          ? "Konkrete Aufgaben, bei denen Vertrieb heute aktiv bleiben muss."
+          : "Keine akuten Vertriebsaktionen im gewählten Zeitraum.",
+    },
+    {
+      key: "offer-engine",
+      icon: (
+        <>
+          <path d="M7 4h7l4 4v12H7z" />
+          <path d="M14 4v4h4" />
+          <path d="M10 13h5" />
+          <path d="M12.5 10.5v5" />
+        </>
+      ),
+      tone: salesCurrentMonthOfferCount === 0 ? "urgent" : salesOfferMonthTrend < 0 ? "watch" : "good",
+      label: "Angebotsmotor",
+      value: `${salesCurrentMonthOfferCount}`,
+      trend:
+        salesOfferMonthTrend === 0
+          ? "wie Vormonat"
+          : `${salesOfferMonthTrend > 0 ? "+" : ""}${salesOfferMonthTrend} zum Vormonat`,
+      detail: `${salesCurrentMonthRow?.baseOfferCount ?? 0} Basisangebote, ${salesCurrentMonthRow?.addendumOfferCount ?? 0} Nachtragsangebote im aktuellen Auswertungsmonat.`,
+    },
+    {
+      key: "new-customers",
+      icon: (
+        <>
+          <path d="M8.5 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+          <path d="M3.5 19c.5-3.1 2.3-5 5-5s4.5 1.9 5 5" />
+          <path d="M16 8v5" />
+          <path d="M13.5 10.5h5" />
+        </>
+      ),
+      tone: salesNewCustomerContacts.length === 0 && salesCurrentMonthFirstCustomerOfferRows.length === 0 ? "watch" : "good",
+      label: "Neukundenbewegung",
+      value: `${salesNewCustomerContacts.length}`,
+      trend: `${salesCurrentMonthFirstCustomerOfferRows.length} Erstangebote`,
+      detail: "Neue Kundenkontakte im Zeitraum und erste Angebote an Kunden ohne ältere Angebotsakte.",
+    },
+    {
+      key: "closing",
+      icon: (
+        <>
+          <path d="M4 13.5 9 18 20 6" />
+          <path d="M5 6h5" />
+          <path d="M5 10h3" />
+        </>
+      ),
+      tone: salesDecisionCount >= 3 && salesWinRate < 35 ? "urgent" : salesDecisionCount === 0 ? "watch" : "good",
+      label: "Abschlusskraft",
+      value: salesDecisionCount > 0 ? `${formatHours(salesWinRate)}%` : "-",
+      trend: `${salesWonOfferRows.length} von ${salesDecisionCount}`,
+      detail: "Gewonnene Angebote im Verhältnis zu allen entschiedenen Angeboten.",
+    },
+    {
+      key: "recurring",
+      icon: (
+        <>
+          <path d="M17.5 7.5A7 7 0 0 0 5.3 10" />
+          <path d="M17.5 7.5V4" />
+          <path d="M17.5 7.5H14" />
+          <path d="M6.5 16.5A7 7 0 0 0 18.7 14" />
+          <path d="M6.5 16.5V20" />
+          <path d="M6.5 16.5H10" />
+        </>
+      ),
+      tone: recurringNegotiationHighRiskRows.length > 0 ? "urgent" : recurringNegotiationRows.length > 0 ? "watch" : "good",
+      label: "Dauerläufer-Ausbau",
+      value: `${recurringNegotiationRows.length}`,
+      trend: `${recurringNegotiationHighRiskRows.length} dringend`,
+      detail: "Aktive Dauerläufer, bei denen Preis, Kontingent oder Leistungsumfang geprüft werden sollte.",
+    },
+    {
+      key: "risk",
+      icon: (
+        <>
+          <path d="M12 3.5 19 6v5.5c0 4.4-2.9 7-7 9-4.1-2-7-4.6-7-9V6l7-2.5Z" />
+          <path d="M12 8v4" />
+          <path d="M12 15h.01" />
+        </>
+      ),
+      tone: salesStaleOpenOfferRows.length + salesOpenOfferWithoutFollowUpRows.length > 0 ? "watch" : "good",
+      label: "Risiko im Bestand",
+      value: `${salesStaleOpenOfferRows.length + salesOpenOfferWithoutFollowUpRows.length}`,
+      trend: `${salesInterruptedWorkRows.filter((row) => row.isOpenTask || !row.task).length} Ausführung`,
+      detail: "Alte offene Angebote, fehlende Nachfassungen und unterbrochene Arbeiten.",
+    },
+  ];
   const reportProjectRows = heroProjects
     .filter((project) => isProjectVisibleInProjectScopedAnalytics(project))
     .map((project) => {
@@ -26527,13 +26791,28 @@ await addProjectLogbookEntry(
     value: string,
     hint: string,
     state: "good" | "ok" | "low" | "neutral" = "neutral"
-  ) => (
-    <article className={styles.analyticsMetric} data-state={state}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <small>{hint}</small>
-    </article>
-  );
+  ) => {
+    const statusLabel = state === "good" ? "stabil" : state === "ok" ? "prüfen" : state === "low" ? "kritisch" : "Info";
+    return (
+      <article className={styles.analyticsMetric} data-state={state}>
+        <div className={styles.analyticsMetricHeader}>
+          <span className={styles.analyticsMetricIcon} aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <path d="M4 18V6" />
+              <path d="M8 18v-5" />
+              <path d="M12 18V9" />
+              <path d="M16 18v-8" />
+              <path d="M20 18V4" />
+            </svg>
+          </span>
+          <small>{statusLabel}</small>
+        </div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+        <em>{hint}</em>
+      </article>
+    );
+  };
   const renderReportBarChart = (
     rows: Array<{ key: string; label: string; value: number; secondary?: number }>
   ) => (
@@ -26725,7 +27004,16 @@ await addProjectLogbookEntry(
 
           <section className={styles.forecastSummaryGroups}>
             <article className={styles.forecastSummaryGroup} data-state="good">
-              <div>
+              <div className={styles.forecastSummaryHeader}>
+                <span className={styles.forecastSummaryIcon} aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M4 17 9 12l4 4 7-8" />
+                    <path d="M15 8h5v5" />
+                  </svg>
+                </span>
+                <small>stabil</small>
+              </div>
+              <div className={styles.forecastSummaryTitle}>
                 <span>Forecast</span>
                 <small>Sicherer Forecast und Chancen</small>
               </div>
@@ -26746,7 +27034,18 @@ await addProjectLogbookEntry(
               className={styles.forecastSummaryGroup}
               data-state={forecastOpenInvoicedTotal > 0 ? "ok" : "good"}
             >
-              <div>
+              <div className={styles.forecastSummaryHeader}>
+                <span className={styles.forecastSummaryIcon} aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M7 4h10v16H7z" />
+                    <path d="M10 8h4" />
+                    <path d="M10 12h4" />
+                    <path d="M10 16h2" />
+                  </svg>
+                </span>
+                <small>{forecastOpenInvoicedTotal > 0 ? "offen" : "stabil"}</small>
+              </div>
+              <div className={styles.forecastSummaryTitle}>
                 <span>Fakturierter Umsatz</span>
                 <small>Abgerechneter Umsatz und Zahlungseingang</small>
               </div>
@@ -26776,6 +27075,24 @@ await addProjectLogbookEntry(
               <div>
                 <span>Fälligkeit</span>
                 <small>Offene Posten nach Zahlungsziel</small>
+              </div>
+              <div className={styles.forecastSummaryHeader}>
+                <span className={styles.forecastSummaryIcon} aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M7 3v4" />
+                    <path d="M17 3v4" />
+                    <path d="M4 8h16" />
+                    <path d="M5 5h14v15H5z" />
+                    <path d="M9 13h6" />
+                  </svg>
+                </span>
+                <small>
+                  {forecastOpenInvoiceBucketTotals.overdue > 0 || forecastOpenInvoiceBucketTotals.missingDueDate > 0
+                    ? "kritisch"
+                    : forecastOpenInvoiceBucketTotals.dueToday > 0
+                      ? "heute"
+                      : "stabil"}
+                </small>
               </div>
               <strong>
                 {formatMoney(
@@ -27495,25 +27812,22 @@ await addProjectLogbookEntry(
 
       {reportAnalyticsTab === "sales" && (
         <>
-          <section className={styles.analyticsGrid}>
-            {renderReportMetric("Offene Angebote", formatMoney(salesOpenValue), `${salesOpenOfferRows.length} Angebot${salesOpenOfferRows.length === 1 ? "" : "e"}`, salesOpenValue > 0 ? "ok" : "neutral")}
-            {renderReportMetric("Gewonnen", formatMoney(salesWonValue), `${salesWonOfferRows.length} Angebot${salesWonOfferRows.length === 1 ? "" : "e"}`, "good")}
-            {renderReportMetric("Verloren", formatMoney(salesLostValue), `${salesLostOfferRows.length} Angebot${salesLostOfferRows.length === 1 ? "" : "e"}`, salesLostOfferRows.length > 0 ? "low" : "good")}
-            {renderReportMetric("Abschlussquote", `${formatHours(salesWinRate)}%`, `${salesDecisionCount} entschiedene Angebote`, getMetricState(salesWinRate, 55, 35))}
-            {renderReportMetric("Offen > 14 Tage", `${salesStaleOpenOfferRows.length}`, "Angebote ohne Entscheidung", salesStaleOpenOfferRows.length > 0 ? "ok" : "good")}
-            {renderReportMetric("Bis Gewinn", salesAverageOfferToWinDays > 0 ? `${formatHours(salesAverageOfferToWinDays)} Tg.` : "-", "Ø Angebot bis Gewinn", salesAverageOfferToWinDays > 14 ? "ok" : "good")}
-            {renderReportMetric("Bis Verlust", salesAverageOfferToLossDays > 0 ? `${formatHours(salesAverageOfferToLossDays)} Tg.` : "-", "Ø Angebot bis Verlust", salesAverageOfferToLossDays > 14 ? "ok" : "good")}
-            {renderReportMetric("Bis Planung", salesAverageOfferToPlanningDays > 0 ? `${formatHours(salesAverageOfferToPlanningDays)} Tg.` : "-", "Ø Angebot bis erster Termin", salesAverageOfferToPlanningDays > 10 ? "ok" : "good")}
-            {renderReportMetric("Bis Nachfassung", salesAverageOfferToFollowUpDays > 0 ? `${formatHours(salesAverageOfferToFollowUpDays)} Tg.` : "-", "Ø Angebot bis erledigte Nachfassung", salesAverageOfferToFollowUpDays > 7 ? "ok" : "good")}
-            {renderReportMetric("Ohne Nachfassung", `${salesOpenOfferWithoutFollowUpRows.length}`, "Offene Angebote ohne Aufgabe", salesOpenOfferWithoutFollowUpRows.length > 0 ? "ok" : "good")}
-            {renderReportMetric("Zusatzverkäufe", formatMoney(salesPotentialValue), `${salesPotentialRows.length} Zusatzverkauf${salesPotentialRows.length === 1 ? "" : "e"}`, "ok")}
-            {renderReportMetric("Nachfassen", `${salesDueFollowUps.length}`, "Fällige Zusatzverkäufe", salesDueFollowUps.length > 0 ? "ok" : "good")}
-            {renderReportMetric(
-              "Unterbrochene Arbeiten",
-              `${salesInterruptedWorkRows.filter((row) => row.isOpenTask || !row.task).length}`,
-              `${salesInterruptedWorkRows.length} im Zeitraum`,
-              salesInterruptedWorkRows.some((row) => row.isOpenTask || !row.task) ? "low" : "good"
-            )}
+          <section className={styles.salesCockpitGrid}>
+            {salesCockpitCards.map((card) => (
+              <article key={card.key} className={styles.salesCockpitCard} data-tone={card.tone}>
+                <div className={styles.salesCockpitCardHeader}>
+                  <span className={styles.salesCockpitIcon} aria-hidden="true">
+                    <svg viewBox="0 0 24 24" focusable="false">
+                      {card.icon}
+                    </svg>
+                  </span>
+                  <small>{card.trend}</small>
+                </div>
+                <p>{card.label}</p>
+                <strong>{card.value}</strong>
+                <em>{card.detail}</em>
+              </article>
+            ))}
           </section>
 
           <article className={styles.analyticsCard}>
@@ -27629,6 +27943,78 @@ await addProjectLogbookEntry(
                             </>
                           ) : null}
                         </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </article>
+
+          <article className={`${styles.analyticsCard} ${styles.salesRecurringReviewCard}`}>
+            <div className={styles.salesSectionHeader}>
+              <div>
+                <h2>Dauerläufer: Nachverhandlung prüfen</h2>
+                <p>
+                  Prüft aktive Dauerläufer auf Preisstand, Kontingentverbrauch, Ertrag je Stunde und fehlende Nachtragsaktivität.
+                </p>
+              </div>
+              <span>{recurringNegotiationRows.length} Prüfpunkt{recurringNegotiationRows.length === 1 ? "" : "e"}</span>
+            </div>
+            <table className={styles.analyticsTable}>
+              <thead>
+                <tr>
+                  <th>Dauerläufer</th>
+                  <th>Signal</th>
+                  <th>Umsatz / Stunden</th>
+                  <th>Kontingent</th>
+                  <th>Letzte Prüfung</th>
+                  <th>Empfehlung</th>
+                  <th>Aktion</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recurringNegotiationRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={7}>Keine auffälligen Dauerläufer im gewählten Zeitraum.</td>
+                  </tr>
+                ) : (
+                  recurringNegotiationRows.slice(0, 18).map((row) => (
+                    <tr key={row.project.id}>
+                      <td>
+                        {row.project.projectNumber || row.project.id}
+                        <br />
+                        <small>{row.project.customer || row.project.title}</small>
+                      </td>
+                      <td data-state={row.priority >= 34 ? "low" : "ok"}>
+                        {row.reasons.length > 0 ? row.reasons.join("; ") : "unauffällig"}
+                      </td>
+                      <td>
+                        {formatMoney(row.revenue)}
+                        <br />
+                        <small>
+                          {row.stampedHours > 0 ? `${formatHours(row.stampedHours)} Std. | ${formatMoney(row.svs)} / h` : "keine Stunden"}
+                        </small>
+                      </td>
+                      <td>
+                        {row.monthlyBudgetHours > 0 ? `${formatHours(row.monthlyBudgetHours)} Std./Monat` : "-"}
+                        <br />
+                        <small>
+                          {row.periodBudgetHours > 0
+                            ? `${formatHours(row.periodBudgetHours)} Std. im Zeitraum | ${formatHours(row.budgetUsagePercent)}% genutzt`
+                            : "kein Kontingent"}
+                        </small>
+                      </td>
+                      <td>{row.lastReviewLabel}</td>
+                      <td>{row.recommendation}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className={styles.timeEntryEditButton}
+                          onClick={() => openProjectFile(row.project, { tab: "documents", documentType: "Angebote" })}
+                        >
+                          Öffnen
+                        </button>
                       </td>
                     </tr>
                   ))
