@@ -25869,6 +25869,186 @@ await addProjectLogbookEntry(
   };
   const averageSoldHourlyRate =
     employeeSummary.stampedProjectHours > 0 ? invoiceRevenueTotal / employeeSummary.stampedProjectHours : 0;
+  const reportDateKeys = (() => {
+    const keys: string[] = [];
+    const cursor = new Date(reportStartDate);
+    for (let guard = 0; cursor <= reportEndDate && guard < 1100; guard += 1) {
+      keys.push(formatDateKey(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return keys;
+  })();
+  const getPlanningGroupCapacitySetting = (planningBoard: string, planningGroup: string) =>
+    planningGroupCapacitySettings.find(
+      (setting) => setting.planningBoard === planningBoard && setting.planningGroup === planningGroup
+    );
+  const getServiceCatalogSvsForPlanningGroup = (planningBoard: string, planningGroup: string) => {
+    const directServiceRows = catalogItems
+      .filter(
+        (item) =>
+          item.isActive &&
+          item.type === "service" &&
+          item.defaultPlanningBoard === planningBoard &&
+          item.defaultPlanningGroup === planningGroup &&
+          item.salesPrice > 0 &&
+          item.planningMinutesPerUnit > 0
+      )
+      .map((item) => ({
+        revenue: item.salesPrice * (item.planningMinutesPerUnit / 60),
+        hours: item.planningMinutesPerUnit / 60,
+      }));
+    const packageRows = catalogItems
+      .filter(
+        (item) =>
+          item.isActive &&
+          item.type === "package" &&
+          item.defaultPlanningBoard === planningBoard &&
+          item.defaultPlanningGroup === planningGroup
+      )
+      .map((item) => {
+        const serviceHours = item.packageItems
+          .filter((packageItem) => packageItem.componentType === "service")
+          .reduce((sum, packageItem) => sum + getPackageComponentPlanningMinutes(packageItem) / 60, 0);
+        return {
+          revenue: serviceHours > 0 ? getCatalogPackageSalesPrice(item) : 0,
+          hours: serviceHours,
+        };
+      })
+      .filter((row) => row.revenue > 0 && row.hours > 0);
+    const rows = [...directServiceRows, ...packageRows];
+    const revenue = rows.reduce((sum, row) => sum + row.revenue, 0);
+    const hours = rows.reduce((sum, row) => sum + row.hours, 0);
+    return {
+      svs: hours > 0 ? revenue / hours : 0,
+      rowCount: rows.length,
+    };
+  };
+  const getInvoiceSvsForPlanningGroup = (planningBoard: string, planningGroup: string) => {
+    const groupUserIds = new Set(getPlanningBoardUsers(planningBoard, planningGroup).map((user) => user.id));
+    const groupUserNames = new Set(
+      getPlanningBoardUsers(planningBoard, planningGroup).map((user) => normalizeReportPersonValue(user.name))
+    );
+    return reportInvoices.reduce(
+      (summary, invoice) => {
+        if (!isFinanciallyActiveInvoice(invoice)) return summary;
+        const linkedStampEntries = stampEntries.filter(
+          (entry) =>
+            !entry.deletedAt &&
+            entry.mode === "project" &&
+            isReportDate(entry.date) &&
+            (entry.invoiceId === invoice.id ||
+              (!!entry.invoiceNumber && entry.invoiceNumber === invoice.invoiceNumber))
+        );
+        const invoiceHours =
+          linkedStampEntries.reduce((sum, entry) => sum + Math.max(0, Number(entry.durationMs) || 0), 0) / 3600000;
+        if (invoiceHours <= 0) return summary;
+        const groupHours =
+          linkedStampEntries
+            .filter(
+              (entry) =>
+                groupUserIds.has(entry.userId) ||
+                groupUserNames.has(normalizeReportPersonValue(entry.employee))
+            )
+            .reduce((sum, entry) => sum + Math.max(0, Number(entry.durationMs) || 0), 0) / 3600000;
+        if (groupHours <= 0) return summary;
+        summary.hours += groupHours;
+        summary.revenue += invoice.netTotal * (groupHours / invoiceHours);
+        summary.invoiceCount += 1;
+        return summary;
+      },
+      { revenue: 0, hours: 0, invoiceCount: 0 }
+    );
+  };
+  const managementCapacityRows = planningBoardSections.flatMap((section) =>
+    section.detailGroups.map((group) => {
+      const setting = getPlanningGroupCapacitySetting(section.company, group.name);
+      const invoiceSvs = getInvoiceSvsForPlanningGroup(section.company, group.name);
+      const catalogSvs = getServiceCatalogSvsForPlanningGroup(section.company, group.name);
+      const manualSvs = setting?.manualSvsPerHour ?? 0;
+      const automaticInvoiceSvs = invoiceSvs.hours >= 5 && invoiceSvs.revenue > 0 ? invoiceSvs.revenue / invoiceSvs.hours : 0;
+      const automaticCatalogSvs = catalogSvs.svs;
+      const automaticSvs = automaticInvoiceSvs > 0 ? automaticInvoiceSvs : automaticCatalogSvs;
+      const shouldUseManualFirst = Boolean(setting?.manualOverridesAutomatic && manualSvs > 0);
+      const resolvedSvs = shouldUseManualFirst ? manualSvs : automaticSvs > 0 ? automaticSvs : manualSvs;
+      const source = shouldUseManualFirst
+        ? "Manuell"
+        : automaticInvoiceSvs > 0
+          ? "Rechnungen"
+          : automaticCatalogSvs > 0
+            ? "Leistungen/Pakete"
+            : manualSvs > 0
+              ? "Manuell"
+              : "Keine Basis";
+      const capacityHours = reportDateKeys.reduce(
+        (sum, dateKey) => sum + getPlanningBoardCapacity(section.company, group.name, dateKey),
+        0
+      );
+      const plannedHours = reportDateKeys.reduce(
+        (sum, dateKey) => sum + getPlanningPlannedHours(section.company, group.name, dateKey),
+        0
+      );
+      const utilization = capacityHours > 0 ? (plannedHours / capacityHours) * 100 : 0;
+      const revenueCapacity = capacityHours * resolvedSvs;
+      const plannedRevenue = plannedHours * resolvedSvs;
+      const openRevenueCapacity = Math.max(0, capacityHours - plannedHours) * resolvedSvs;
+      const overloadHours = Math.max(0, plannedHours - capacityHours);
+      const state =
+        resolvedSvs <= 0 || overloadHours > 0
+          ? ("low" as const)
+          : utilization >= 85
+            ? ("ok" as const)
+            : ("good" as const);
+      const interpretation =
+        resolvedSvs <= 0
+          ? "SVS-Basis fehlt. Ohne Rechnungs-, Stammdaten- oder manuellen Wert ist die Umsatzkapazität nicht belastbar."
+          : overloadHours > 0
+            ? `Planungsgruppe ist um ${formatHours(overloadHours)} Std. überplant. Mehr Umsatz ist mit der aktuellen Besetzung rechnerisch nicht sauber leistbar.`
+            : utilization >= 85
+              ? `Kapazität fast ausgeschöpft. Realistisch offen: ${formatMoney(openRevenueCapacity)}.`
+              : `Noch planbare Kapazität vorhanden: ${formatHours(Math.max(0, capacityHours - plannedHours))} Std. bzw. ${formatMoney(openRevenueCapacity)}.`;
+      return {
+        key: `${section.company}:${group.name}`,
+        planningBoard: section.company,
+        planningGroup: group.name,
+        source,
+        sourceDetail:
+          source === "Rechnungen"
+            ? `${invoiceSvs.invoiceCount} Rechnung${invoiceSvs.invoiceCount === 1 ? "" : "en"}, ${formatHours(invoiceSvs.hours)} Std.`
+            : source === "Leistungen/Pakete"
+              ? `${catalogSvs.rowCount} aktive Grundlage${catalogSvs.rowCount === 1 ? "" : "n"}`
+              : source === "Manuell"
+                ? "Zielwert aus Firmeneinstellungen"
+                : "Bitte Planungsgruppen-SVS pflegen",
+        svs: resolvedSvs,
+        capacityHours,
+        plannedHours,
+        utilization,
+        revenueCapacity,
+        plannedRevenue,
+        openRevenueCapacity,
+        overloadHours,
+        state,
+        interpretation,
+      };
+    })
+  );
+  const managementCapacityTotal = managementCapacityRows.reduce(
+    (summary, row) => {
+      summary.capacityHours += row.capacityHours;
+      summary.plannedHours += row.plannedHours;
+      summary.revenueCapacity += row.revenueCapacity;
+      summary.plannedRevenue += row.plannedRevenue;
+      summary.openRevenueCapacity += row.openRevenueCapacity;
+      summary.overloadHours += row.overloadHours;
+      return summary;
+    },
+    { capacityHours: 0, plannedHours: 0, revenueCapacity: 0, plannedRevenue: 0, openRevenueCapacity: 0, overloadHours: 0 }
+  );
+  const managementCapacityMissingSvsRows = managementCapacityRows.filter((row) => row.svs <= 0);
+  const managementCapacityOverloadRows = managementCapacityRows.filter((row) => row.overloadHours > 0);
+  const managementCapacityTightRows = managementCapacityRows.filter(
+    (row) => row.svs > 0 && row.overloadHours <= 0 && row.utilization >= 85
+  );
   const dashboardCurrentMonthKey = getCurrentMonthKey();
   const dashboardPreviousWorkingDateKey = (() => {
     const cursor = new Date();
@@ -26083,6 +26263,50 @@ await addProjectLogbookEntry(
       amount: 0,
       state: dashboardCurrentMonthProductivity > 0 && dashboardCurrentMonthProductivity < 75 ? ("low" as const) : ("good" as const),
       priority: dashboardCurrentMonthProductivity > 0 && dashboardCurrentMonthProductivity < 75 ? 74 : 10,
+      visible: canViewFullOverviewAnalytics,
+    },
+    {
+      key: "planning-group-capacity",
+      area: "Kapazität",
+      signal:
+        managementCapacityOverloadRows.length > 0
+          ? `${managementCapacityOverloadRows.length} Planungsgruppe${managementCapacityOverloadRows.length === 1 ? "" : "n"} überplant`
+          : managementCapacityTightRows.length > 0
+            ? `${managementCapacityTightRows.length} Planungsgruppe${managementCapacityTightRows.length === 1 ? "" : "n"} fast ausgelastet`
+            : `${formatMoney(managementCapacityTotal.openRevenueCapacity)} rechnerisch offen`,
+      interpretation:
+        managementCapacityOverloadRows.length > 0
+          ? `Wachstumsbremse: ${formatHours(managementCapacityTotal.overloadHours)} Std. sind über der verfügbaren Kapazität geplant. Mehr Umsatz ist mit der aktuellen Besetzung nicht realistisch sauber leistbar.`
+          : managementCapacityTightRows.length > 0
+            ? "Wachstumsbremse: einzelne Planungsgruppen laufen an die Kapazitätsgrenze. Zusätzlicher Umsatz braucht Entlastung, bessere Auslastungssteuerung oder mehr Personal."
+            : "Keine harte Kapazitätsbremse im ausgewählten Zeitraum. Die offene rechnerische Kapazität kann mit Vertrieb und Planung gezielt gefüllt werden.",
+      action:
+        managementCapacityOverloadRows.length > 0
+          ? "Überplante Planungsgruppen zuerst entlasten: Termine verschieben, Personal umplanen oder Zusatzkapazität schaffen."
+          : "Offene Kapazität mit Vertrieb abgleichen: welche Planungsgruppen können noch Umsatz aufnehmen, ohne Qualität und Termine zu gefährden?",
+      amount: managementCapacityTotal.openRevenueCapacity,
+      state: managementCapacityOverloadRows.length > 0 ? ("low" as const) : managementCapacityTightRows.length > 0 ? ("ok" as const) : ("good" as const),
+      priority: managementCapacityOverloadRows.length > 0 ? 88 : managementCapacityTightRows.length > 0 ? 73 : 18,
+      visible: canViewFullOverviewAnalytics,
+    },
+    {
+      key: "planning-group-svs-quality",
+      area: "SVS-Datenbasis",
+      signal:
+        managementCapacityMissingSvsRows.length > 0
+          ? `${managementCapacityMissingSvsRows.length} Planungsgruppe${managementCapacityMissingSvsRows.length === 1 ? "" : "n"} ohne SVS`
+          : "SVS-Basis vorhanden",
+      interpretation:
+        managementCapacityMissingSvsRows.length > 0
+          ? "Die Umsatzkapazität ist dort nicht belastbar, wo weder Rechnungsdaten, passende Stammdaten noch ein manueller Ziel-SVS vorhanden sind."
+          : "Für alle Planungsgruppen gibt es eine SVS-Grundlage aus Rechnungen, Stammdaten oder manuellem Fallback.",
+      action:
+        managementCapacityMissingSvsRows.length > 0
+          ? "Fehlende Planungsgruppen-SVS in den Firmeneinstellungen pflegen oder Stammdaten/Rechnungsverknüpfung verbessern."
+          : "SVS-Grundlage regelmäßig gegen echte Rechnungswerte prüfen.",
+      amount: 0,
+      state: managementCapacityMissingSvsRows.length > 0 ? ("ok" as const) : ("good" as const),
+      priority: managementCapacityMissingSvsRows.length > 0 ? 68 : 8,
       visible: canViewFullOverviewAnalytics,
     },
   ]
@@ -28391,6 +28615,90 @@ await addProjectLogbookEntry(
               </tbody>
             </table>
           </article>
+
+          {canViewFullOverviewAnalytics ? (
+            <article className={styles.analyticsCard}>
+              <h2>Umsatzkapazität nach Planungsgruppe</h2>
+              <p>
+                Verfügbare Stunden werden im Auswertungszeitraum mit Wochenenden, Feiertagen und Abwesenheiten berechnet.
+                Der SVS kommt zuerst aus echten Rechnungen, danach aus Stammdaten und zuletzt aus dem manuellen Planungsgruppenwert.
+              </p>
+              <section className={styles.analyticsGrid}>
+                {renderReportMetric(
+                  "Kapazität",
+                  formatMoney(managementCapacityTotal.revenueCapacity),
+                  `${formatHours(managementCapacityTotal.capacityHours)} verfügbare Std.`,
+                  managementCapacityTotal.revenueCapacity > 0 ? "good" : "ok"
+                )}
+                {renderReportMetric(
+                  "Geplant",
+                  formatMoney(managementCapacityTotal.plannedRevenue),
+                  `${formatHours(managementCapacityTotal.plannedHours)} geplante Std.`,
+                  "neutral"
+                )}
+                {renderReportMetric(
+                  "Rechnerisch offen",
+                  formatMoney(managementCapacityTotal.openRevenueCapacity),
+                  "Noch planbare Umsatzkapazität",
+                  managementCapacityTotal.openRevenueCapacity > 0 ? "good" : "ok"
+                )}
+                {renderReportMetric(
+                  "Überlast",
+                  `${formatHours(managementCapacityTotal.overloadHours)} Std.`,
+                  "Über verfügbare Kapazität geplant",
+                  managementCapacityTotal.overloadHours > 0 ? "low" : "good"
+                )}
+              </section>
+              <table className={`${styles.analyticsTable} ${styles.executiveInsightTable}`}>
+                <thead>
+                  <tr>
+                    <th>Planungsgruppe</th>
+                    <th>SVS-Basis</th>
+                    <th>Kapazität</th>
+                    <th>Geplant</th>
+                    <th>Umsatzpotenzial</th>
+                    <th>Bewertung</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {managementCapacityRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={6}>Keine Planungsgruppen im gewählten Zeitraum gefunden.</td>
+                    </tr>
+                  ) : (
+                    managementCapacityRows.map((row) => (
+                      <tr key={row.key}>
+                        <td data-state={row.state}>
+                          {row.planningBoard}
+                          <br />
+                          <small>{row.planningGroup}</small>
+                        </td>
+                        <td>
+                          {row.svs > 0 ? `${formatMoney(row.svs)} / Std.` : "-"}
+                          <br />
+                          <small>
+                            {row.source} · {row.sourceDetail}
+                          </small>
+                        </td>
+                        <td>{formatHours(row.capacityHours)} Std.</td>
+                        <td>
+                          {formatHours(row.plannedHours)} Std.
+                          <br />
+                          <small>{formatPercent(row.utilization)} Auslastung</small>
+                        </td>
+                        <td>
+                          {formatMoney(row.revenueCapacity)}
+                          <br />
+                          <small>offen {formatMoney(row.openRevenueCapacity)}</small>
+                        </td>
+                        <td>{row.interpretation}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </article>
+          ) : null}
 
           <section className={styles.analyticsGrid}>
             {renderReportMetric("Umsatz", formatMoney(invoiceRevenueTotal), `${reportInvoices.length} fakturierte Rechnungen`, "good")}
