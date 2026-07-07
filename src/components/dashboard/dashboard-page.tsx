@@ -282,6 +282,7 @@ type FirmSettingsTab =
   | "profile"
   | "units"
   | "businessAreaTargets"
+  | "planningGroupCapacity"
   | "deadlines"
   | "appearance"
   | "branches"
@@ -1440,6 +1441,21 @@ type BusinessAreaTarget = {
   businessAreaName: string;
   month: string;
   amount: number;
+};
+
+type PlanningGroupCapacitySetting = {
+  id: string;
+  planningBoard: string;
+  planningGroup: string;
+  manualSvsPerHour: number | null;
+  manualOverridesAutomatic: boolean;
+  automaticOverridesManual: boolean;
+};
+
+type PlanningGroupCapacityDraft = {
+  manualSvsPerHour: string;
+  manualOverridesAutomatic: boolean;
+  automaticOverridesManual: boolean;
 };
 
 type TradeInlineDraft = {
@@ -3228,6 +3244,7 @@ const firmSettingsTabs: Array<{ id: FirmSettingsTab; label: string }> = [
   { id: "profile", label: "Firmenprofil" },
   { id: "units", label: "Einheiten" },
   { id: "businessAreaTargets", label: "Geschäftsbereich-Soll" },
+  { id: "planningGroupCapacity", label: "Planungsgruppen-SVS" },
   { id: "deadlines", label: "Zeitfristen" },
   { id: "branches", label: "Niederlassungen" },
   { id: "emailTemplates", label: "Email-Templates" },
@@ -5339,6 +5356,13 @@ export function DashboardPage() {
   const [businessAreaTargets, setBusinessAreaTargets] = useState<BusinessAreaTarget[]>([]);
   const [businessAreaTargetDrafts, setBusinessAreaTargetDrafts] = useState<Record<string, string>>({});
   const [businessAreaTargetError, setBusinessAreaTargetError] = useState("");
+  const [planningGroupCapacitySettings, setPlanningGroupCapacitySettings] = useState<
+    PlanningGroupCapacitySetting[]
+  >([]);
+  const [planningGroupCapacityDrafts, setPlanningGroupCapacityDrafts] = useState<
+    Record<string, PlanningGroupCapacityDraft>
+  >({});
+  const [planningGroupCapacityError, setPlanningGroupCapacityError] = useState("");
   const [tradeInlineDrafts, setTradeInlineDrafts] = useState<Record<string, TradeInlineDraft>>({});
   const [units, setUnits] = useState<UnitOption[]>([]);
   const [unitDraftName, setUnitDraftName] = useState("");
@@ -5881,6 +5905,8 @@ export function DashboardPage() {
     /geschäftsführer|gesch\u00c3\u00a4ftsf\u00c3\u00bchrer|geschaeftsfuehrer|ceo/i.test(activeUser?.roleLabel ?? "") ||
     /ceo/i.test(activeUser?.name ?? "");
   const canDeleteInvoices = activeUser?.role === "GESCHAEFTSFUEHRER";
+  const canManageCompanyMasterData =
+    activeUser?.role === "ADMIN" || activeUser?.role === "GESCHAEFTSFUEHRER";
   const canDeleteHistoryEntries = activeUser?.role === "GESCHAEFTSFUEHRER";
   const isLostOffer = (offer: Pick<OfferItem, "status">) => offer.status === "Verloren" || offer.status === "Angebot verloren";
   const isDeletedOffer = (offer: Pick<OfferItem, "status">) => isDeletedStatus(offer.status);
@@ -11674,6 +11700,89 @@ export function DashboardPage() {
     await loadBusinessAreaTargets();
   }
 
+  function getPlanningGroupCapacityKey(planningBoard: string, planningGroup: string) {
+    return `${planningBoard}:${planningGroup}`;
+  }
+
+  async function loadPlanningGroupCapacitySettings() {
+    if (!activeUserId) return;
+    const res = await fetch(
+      `/api/company-settings/planning-group-capacity?actorId=${encodeURIComponent(activeUserId)}`,
+      { cache: "no-store" }
+    );
+
+    if (!res.ok) {
+      setPlanningGroupCapacityError("Planungsgruppen-SVS konnten nicht geladen werden.");
+      return;
+    }
+
+    const data = (await res.json()) as PlanningGroupCapacitySetting[];
+    setPlanningGroupCapacitySettings(data);
+    setPlanningGroupCapacityDrafts(
+      Object.fromEntries(
+        data.map((setting) => [
+          getPlanningGroupCapacityKey(setting.planningBoard, setting.planningGroup),
+          {
+            manualSvsPerHour:
+              setting.manualSvsPerHour !== null && setting.manualSvsPerHour !== undefined
+                ? String(setting.manualSvsPerHour).replace(".", ",")
+                : "",
+            manualOverridesAutomatic: setting.manualOverridesAutomatic,
+            automaticOverridesManual: setting.automaticOverridesManual,
+          },
+        ])
+      )
+    );
+    setPlanningGroupCapacityError("");
+  }
+
+  function parsePlanningGroupCapacityAmount(value: string | undefined) {
+    const raw = (value ?? "").trim();
+    if (!raw) return null;
+    const parsed = Number(raw.replace(/\./g, "").replace(",", "."));
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }
+
+  async function savePlanningGroupCapacitySettings() {
+    const rows = planningGroupCapacitySettings.map((setting) => {
+      const key = getPlanningGroupCapacityKey(setting.planningBoard, setting.planningGroup);
+      const draft = planningGroupCapacityDrafts[key];
+      return {
+        planningBoard: setting.planningBoard,
+        planningGroup: setting.planningGroup,
+        manualSvsPerHour: parsePlanningGroupCapacityAmount(draft?.manualSvsPerHour),
+        manualOverridesAutomatic: draft?.manualOverridesAutomatic ?? false,
+        automaticOverridesManual: draft?.automaticOverridesManual ?? true,
+      };
+    });
+    const missingManualOverride = rows.some((row) => row.manualOverridesAutomatic && row.manualSvsPerHour === null);
+    if (missingManualOverride) {
+      setPlanningGroupCapacityError(
+        "Wenn ein manueller Wert automatische Werte übersteuern soll, muss ein Ziel-SVS gepflegt sein."
+      );
+      return;
+    }
+    const conflictingRule = rows.some((row) => row.manualOverridesAutomatic && row.automaticOverridesManual);
+    if (conflictingRule) {
+      setPlanningGroupCapacityError("Bitte nur eine Übersteuerungsrichtung pro Planungsgruppe aktivieren.");
+      return;
+    }
+
+    const res = await fetch("/api/company-settings/planning-group-capacity", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: activeUserId, rows }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setPlanningGroupCapacityError(data?.error ?? "Planungsgruppen-SVS konnten nicht gespeichert werden.");
+      return;
+    }
+
+    await loadPlanningGroupCapacitySettings();
+  }
+
   async function loadUnits() {
     if (!activeUserId) return;
     const res = await fetch(`/api/units?actorId=${encodeURIComponent(activeUserId)}`, { cache: "no-store" });
@@ -14986,6 +15095,7 @@ export function DashboardPage() {
     const secondaryLoadTimer = window.setTimeout(() => {
       void loadTrades();
       void loadBusinessAreaTargets();
+      void loadPlanningGroupCapacitySettings();
       void loadUnits();
       void loadEscalationRules();
       void loadProjectPotentials();
@@ -43584,6 +43694,123 @@ await addProjectLogbookEntry(
                       </td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ) : firmSettingsTab === "planningGroupCapacity" ? (
+          <section className={styles.settingsCard}>
+            <div className={styles.settingsHeader}>
+              <div>
+                <h2>Planungsgruppen-SVS</h2>
+                <p>
+                  Manueller Fallback für Umsatzkapazität je Planungsgruppe, wenn noch keine
+                  belastbaren automatischen Werte aus Rechnungen, Leistungen oder Paketen vorliegen.
+                </p>
+              </div>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                disabled={!canManageCompanyMasterData}
+                onClick={() => void savePlanningGroupCapacitySettings()}
+              >
+                SVS speichern
+              </button>
+            </div>
+            <p className={styles.modalHint}>
+              Standard ist: Automatische Werte haben Vorrang, der manuelle Wert greift nur als
+              Fallback. Bei Bedarf kann die Priorität pro Planungsgruppe bewusst gedreht werden.
+            </p>
+            {planningGroupCapacityError ? (
+              <p className={styles.modalWarning}>{planningGroupCapacityError}</p>
+            ) : null}
+            <div className={styles.companySettingsTable}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Board</th>
+                    <th>Planungsgruppe</th>
+                    <th>Ziel-SVS manuell</th>
+                    <th>Manuell übersteuert automatisch</th>
+                    <th>Automatisch übersteuert manuell</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {planningGroupCapacitySettings.map((setting) => {
+                    const key = getPlanningGroupCapacityKey(setting.planningBoard, setting.planningGroup);
+                    const draft =
+                      planningGroupCapacityDrafts[key] ?? {
+                        manualSvsPerHour: "",
+                        manualOverridesAutomatic: false,
+                        automaticOverridesManual: true,
+                      };
+
+                    return (
+                      <tr key={key}>
+                        <td>{setting.planningBoard}</td>
+                        <td className={styles.title}>{setting.planningGroup}</td>
+                        <td>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={draft.manualSvsPerHour}
+                            disabled={!canManageCompanyMasterData}
+                            onChange={(event) =>
+                              setPlanningGroupCapacityDrafts((current) => ({
+                                ...current,
+                                [key]: { ...draft, manualSvsPerHour: event.target.value },
+                              }))
+                            }
+                            placeholder="z. B. 62,50"
+                          />
+                        </td>
+                        <td>
+                          <label className={styles.inlineCheckbox}>
+                            <input
+                              type="checkbox"
+                              checked={draft.manualOverridesAutomatic}
+                              disabled={!canManageCompanyMasterData}
+                              onChange={(event) =>
+                                setPlanningGroupCapacityDrafts((current) => ({
+                                  ...current,
+                                  [key]: {
+                                    ...draft,
+                                    manualOverridesAutomatic: event.target.checked,
+                                    automaticOverridesManual: event.target.checked
+                                      ? false
+                                      : draft.automaticOverridesManual,
+                                  },
+                                }))
+                              }
+                            />
+                            <span>Manueller Wert hat Vorrang.</span>
+                          </label>
+                        </td>
+                        <td>
+                          <label className={styles.inlineCheckbox}>
+                            <input
+                              type="checkbox"
+                              checked={draft.automaticOverridesManual}
+                              disabled={!canManageCompanyMasterData}
+                              onChange={(event) =>
+                                setPlanningGroupCapacityDrafts((current) => ({
+                                  ...current,
+                                  [key]: {
+                                    ...draft,
+                                    automaticOverridesManual: event.target.checked,
+                                    manualOverridesAutomatic: event.target.checked
+                                      ? false
+                                      : draft.manualOverridesAutomatic,
+                                  },
+                                }))
+                              }
+                            />
+                            <span>Automatischer Wert hat Vorrang.</span>
+                          </label>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

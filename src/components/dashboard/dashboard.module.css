@@ -14975,6 +14975,25 @@
   min-width: 920px;
 }
 
+.inlineCheckbox {
+  align-items: center;
+  color: #0f172a;
+  display: inline-flex;
+  font-size: 0.9rem;
+  font-weight: 700;
+  gap: 8px;
+  line-height: 1.25;
+}
+
+.companySettingsTable .inlineCheckbox input[type="checkbox"] {
+  border-radius: 4px;
+  flex: 0 0 auto;
+  margin: 0;
+  min-height: 16px;
+  padding: 0;
+  width: 16px;
+}
+
 .companySettingsList {
   display: grid;
   gap: 10px;
