@@ -26051,6 +26051,7 @@ await addProjectLogbookEntry(
   };
   const managementCapacityRows = planningBoardSections.flatMap((section) =>
     section.detailGroups.map((group) => {
+      const groupUsers = getPlanningBoardUsers(section.company, group.name);
       const setting = getPlanningGroupCapacitySetting(section.company, group.name);
       const invoiceSvs = getInvoiceSvsForPlanningGroup(section.company, group.name);
       const catalogSvs = getServiceCatalogSvsForPlanningGroup(section.company, group.name);
@@ -26083,23 +26084,45 @@ await addProjectLogbookEntry(
       const openRevenueCapacity = Math.max(0, capacityHours - plannedHours) * resolvedSvs;
       const overloadHours = Math.max(0, plannedHours - capacityHours);
       const state =
-        resolvedSvs <= 0 || overloadHours > 0
+        groupUsers.length === 0 || capacityHours <= 0 || resolvedSvs <= 0 || overloadHours > 0
           ? ("low" as const)
           : utilization >= 85
             ? ("ok" as const)
             : ("good" as const);
       const interpretation =
-        resolvedSvs <= 0
-          ? "SVS-Basis fehlt. Ohne Rechnungs-, Stammdaten- oder manuellen Wert ist die Umsatzkapazität nicht belastbar."
-          : overloadHours > 0
-            ? `Planungsgruppe ist um ${formatHours(overloadHours)} Std. überplant. Mehr Umsatz ist mit der aktuellen Besetzung rechnerisch nicht sauber leistbar.`
-            : utilization >= 85
-              ? `Kapazität fast ausgeschöpft. Realistisch offen: ${formatMoney(openRevenueCapacity)}.`
-              : `Noch planbare Kapazität vorhanden: ${formatHours(Math.max(0, capacityHours - plannedHours))} Std. bzw. ${formatMoney(openRevenueCapacity)}.`;
+        groupUsers.length === 0
+          ? "Keine aktiven Mitarbeiter dieser Planungsgruppe zugeordnet. Kapazität und Umsatzpotenzial sind dadurch nicht steuerbar."
+          : capacityHours <= 0
+            ? "Mitarbeiter sind zugeordnet, aber im Auswertungszeitraum ist keine verfügbare Kapazität hinterlegt oder sie ist durch freie Tage/Abwesenheiten blockiert."
+            : resolvedSvs <= 0
+              ? "Kapazität ist vorhanden, aber die SVS-Basis fehlt. Ohne Rechnungs-, Stammdaten- oder manuellen Wert ist die Umsatzkapazität nicht belastbar."
+              : overloadHours > 0
+                ? `Planungsgruppe ist um ${formatHours(overloadHours)} Std. überplant. Mehr Umsatz ist mit der aktuellen Besetzung rechnerisch nicht sauber leistbar.`
+                : utilization >= 85
+                  ? `Kapazität fast ausgeschöpft. Realistisch offen: ${formatMoney(openRevenueCapacity)}.`
+                  : plannedHours <= 0
+                    ? `Kapazität vorhanden, aber im Zeitraum noch nicht geplant: ${formatHours(capacityHours)} Std. bzw. ${formatMoney(revenueCapacity)}.`
+                    : `Noch planbare Kapazität vorhanden: ${formatHours(Math.max(0, capacityHours - plannedHours))} Std. bzw. ${formatMoney(openRevenueCapacity)}.`;
+      const actionRecommendation =
+        groupUsers.length === 0
+          ? "Mitarbeiterzuordnung prüfen."
+          : capacityHours <= 0
+            ? "Wochenstunden und Abwesenheiten prüfen."
+            : resolvedSvs <= 0
+              ? "Planungsgruppen-SVS pflegen."
+              : overloadHours > 0
+                ? "Planung entlasten oder Kapazität erhöhen."
+                : utilization >= 85
+                  ? "Zusatzkapazität oder Terminverschiebung prüfen."
+                  : plannedHours <= 0
+                    ? "Verfügbare Kapazität mit Vertrieb/Planung füllen."
+                    : "Planung laufend gegen Auslastung steuern.";
       return {
         key: `${section.company}:${group.name}`,
         planningBoard: section.company,
         planningGroup: group.name,
+        userCount: groupUsers.length,
+        userNames: groupUsers.map((user) => user.name).join(", "),
         source,
         sourceDetail:
           source === "Rechnungen"
@@ -26119,6 +26142,7 @@ await addProjectLogbookEntry(
         overloadHours,
         state,
         interpretation,
+        actionRecommendation,
       };
     })
   );
@@ -28835,6 +28859,11 @@ await addProjectLogbookEntry(
                 Verfügbare Stunden werden im Auswertungszeitraum mit Wochenenden, Feiertagen und Abwesenheiten berechnet.
                 Der SVS kommt zuerst aus echten Rechnungen, danach aus Stammdaten und zuletzt aus dem manuellen Planungsgruppenwert.
               </p>
+              <p>
+                Auswertungszeitraum: {formatProjectDate(formatDateKey(reportStartDate))} bis{" "}
+                {formatProjectDate(formatDateKey(reportEndDate))}. Hohe Werte können entstehen, wenn Mitarbeiterstunden oder
+                Arbeitszeiten noch nicht final gepflegt sind.
+              </p>
               <section className={styles.analyticsGrid}>
                 {renderReportMetric(
                   "Kapazität",
@@ -28865,17 +28894,18 @@ await addProjectLogbookEntry(
                 <thead>
                   <tr>
                     <th>Planungsgruppe</th>
+                    <th>Mitarbeiter / Kapazität</th>
                     <th>SVS-Basis</th>
-                    <th>Kapazität</th>
                     <th>Geplant</th>
                     <th>Umsatzpotenzial</th>
                     <th>Bewertung</th>
+                    <th>Aktion</th>
                   </tr>
                 </thead>
                 <tbody>
                   {managementCapacityRows.length === 0 ? (
                     <tr>
-                      <td colSpan={6}>Keine Planungsgruppen im gewählten Zeitraum gefunden.</td>
+                      <td colSpan={7}>Keine Planungsgruppen im gewählten Zeitraum gefunden.</td>
                     </tr>
                   ) : (
                     managementCapacityRows.map((row) => (
@@ -28886,13 +28916,19 @@ await addProjectLogbookEntry(
                           <small>{row.planningGroup}</small>
                         </td>
                         <td>
+                          {row.userCount} MA
+                          <br />
+                          <small>{formatHours(row.capacityHours)} verfügbare Std.</small>
+                          <br />
+                          <small>{row.userNames || "Keine aktiven Mitarbeiter zugeordnet"}</small>
+                        </td>
+                        <td>
                           {row.svs > 0 ? `${formatMoney(row.svs)} / Std.` : "-"}
                           <br />
                           <small>
                             {row.source} · {row.sourceDetail}
                           </small>
                         </td>
-                        <td>{formatHours(row.capacityHours)} Std.</td>
                         <td>
                           {formatHours(row.plannedHours)} Std.
                           <br />
@@ -28903,7 +28939,41 @@ await addProjectLogbookEntry(
                           <br />
                           <small>offen {formatMoney(row.openRevenueCapacity)}</small>
                         </td>
-                        <td>{row.interpretation}</td>
+                        <td>
+                          {row.interpretation}
+                          <br />
+                          <small>{row.actionRecommendation}</small>
+                        </td>
+                        <td>
+                          <div className={styles.actionGroup}>
+                            <button
+                              type="button"
+                              className={styles.secondaryButton}
+                              onClick={() => {
+                                setActiveTab("employees");
+                              }}
+                            >
+                              Mitarbeiter
+                            </button>
+                            <button
+                              type="button"
+                              className={styles.secondaryButton}
+                              onClick={() => {
+                                setActiveTab("settings");
+                                setFirmSettingsTab("planningGroupCapacity");
+                              }}
+                            >
+                              SVS
+                            </button>
+                            <button
+                              type="button"
+                              className={styles.secondaryButton}
+                              onClick={() => openProjectPlanningBoard({ groupName: row.planningGroup })}
+                            >
+                              Planung
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))
                   )}
