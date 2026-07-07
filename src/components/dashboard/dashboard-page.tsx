@@ -2823,7 +2823,7 @@ function getVisibleReportTabs(role?: string) {
     FUEHRUNGSKRAFT: ["employeeRevenue", "projects", "svs", "kuzu", "employees", "map"],
     MITARBEITER: ["employeeRevenue", "employees"],
     VERTRIEB: ["sales", "projects", "customers", "kuzu"],
-    BUCHHALTUNG: ["forecast", "revenue", "monthlyReport", "customers"],
+    BUCHHALTUNG: ["forecast", "monthlyReport", "customers"],
     GAST: [],
   };
   const allowedTabs = allowedTabsByRole[role || ""] ?? [];

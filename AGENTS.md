@@ -34,6 +34,14 @@
   diesen Reiter bewusst nicht, weil sie die vollstaendigen Steuerungsreiter
   nutzen. Sensible Felder wie OP, Mahnungen, Zahlungsstatus, Forecast,
   Marge und Kundenrisiko bleiben in der Mitarbeitersicht ausgeblendet.
+- Auswertungs-Reitermatrix 2026-07-07: Die sichtbaren Auswertungsreiter sind
+  nach Rollen bereinigt. Admin/Geschaeftsfuehrung sehen die vollstaendigen
+  Steuerungsreiter ohne den reduzierten Mitarbeiter-Reiter `Umsatz & Kunden`.
+  Fuehrungskraefte sehen `Umsatz & Kunden`, Projekte, SVS, KuZu,
+  Mitarbeiter-Auswertung und Projektkarte. Normale Mitarbeiter sehen nur
+  `Umsatz & Kunden` und ihre eigene Mitarbeiter-Auswertung. Buchhaltung sieht
+  Forecast/OP, Monatsbericht und Kunden; die alte interne Freigabe des nicht
+  mehr sichtbaren Reiters `revenue` wurde entfernt.
 - Dashboard-KPIs Geschaeftsfuehrung 2026-07-01: Die oberen KPI-Kacheln im
   Dashboard zeigen fuer die Rolle `GESCHAEFTSFUEHRER` jetzt ein 2x2-Set aus
   Umsatz & Forecast, Produktivitaet, Projektlage sowie Vertrieb & Kunde. Das
