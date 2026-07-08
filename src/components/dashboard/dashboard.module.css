@@ -6454,6 +6454,150 @@
   padding: 8px 12px;
 }
 
+.recurringReviewModal {
+  width: min(980px, calc(100vw - 24px));
+}
+
+.recurringReviewModal .standardModalHeader > div > span {
+  color: rgba(255, 255, 255, 0.68);
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.recurringReviewModalBody {
+  gap: 16px;
+  padding: 16px 20px;
+}
+
+.recurringReviewEditor {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(220px, 0.65fr) minmax(0, 1.35fr);
+}
+
+.recurringReviewSignalBox {
+  background: #f8fafc;
+  border: 1px solid #dbe3ee;
+  border-radius: 14px;
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+
+.recurringReviewSignalBox span {
+  color: #5b6f8d;
+  font-size: 0.76rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.recurringReviewSignalBox strong {
+  color: #020617;
+  font-size: 1.35rem;
+  font-weight: 950;
+}
+
+.recurringReviewSignalBox p {
+  color: #334155;
+  font-size: 0.9rem;
+  font-weight: 650;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.recurringReviewForm {
+  align-content: start;
+}
+
+.recurringReviewHistory {
+  background: #ffffff;
+  border: 1px solid #dbe3ee;
+  border-radius: 14px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.recurringReviewHistory .salesSectionHeader {
+  align-items: center;
+}
+
+.recurringReviewHistory .salesSectionHeader h2 {
+  font-size: 1rem;
+}
+
+.recurringReviewHistory .salesSectionHeader p {
+  font-size: 0.84rem;
+  margin-top: 3px;
+}
+
+.recurringReviewEmptyHistory {
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  color: #475569;
+  font-size: 0.92rem;
+  font-weight: 650;
+  line-height: 1.45;
+  padding: 14px;
+}
+
+.recurringReviewTimeline {
+  display: grid;
+  gap: 10px;
+}
+
+.recurringReviewTimeline article {
+  background: #f8fafc;
+  border: 1px solid #dbe3ee;
+  border-radius: 12px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.recurringReviewTimeline header {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.recurringReviewTimeline strong {
+  color: #020617;
+  font-size: 0.94rem;
+  font-weight: 950;
+}
+
+.recurringReviewTimeline span,
+.recurringReviewTimeline small {
+  color: #5b6f8d;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.recurringReviewTimeline p {
+  color: #273951;
+  font-size: 0.92rem;
+  font-weight: 650;
+  line-height: 1.45;
+  margin: 0;
+}
+
+@media (max-width: 760px) {
+  .recurringReviewEditor {
+    grid-template-columns: 1fr;
+  }
+
+  .recurringReviewTimeline header {
+    display: grid;
+  }
+}
+
 .monthlyFinancialShell {
   display: grid;
   gap: 14px;

@@ -2181,6 +2181,23 @@ type ProjectPotential = {
   updatedAt: string;
 };
 
+type RecurringProjectReview = {
+  id: string;
+  projectId: string;
+  projectNumber: string;
+  projectTitle: string;
+  customerName: string;
+  reviewedAt: string;
+  reviewedById: string;
+  reviewedByName: string;
+  result: "no_action" | "price_increase" | "budget_change" | "addendum_needed" | "follow_up";
+  nextReviewAt: string;
+  note: string;
+  signals: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
 function isNoUpsellDescription(value: string) {
   const normalized = value.trim().toLowerCase().replace(/[.!?]+$/g, "").replace(/\s+/g, " ");
   return (
@@ -5789,6 +5806,15 @@ export function DashboardPage() {
   } | null>(null);
   const skipNextStampNoteCheckRef = useRef(false);
   const [projectPotentials, setProjectPotentials] = useState<ProjectPotential[]>([]);
+  const [recurringProjectReviews, setRecurringProjectReviews] = useState<RecurringProjectReview[]>([]);
+  const [reviewingRecurringProjectId, setReviewingRecurringProjectId] = useState("");
+  const [recurringReviewDraft, setRecurringReviewDraft] = useState({
+    result: "no_action" as RecurringProjectReview["result"],
+    nextReviewAt: "",
+    note: "",
+  });
+  const [recurringReviewError, setRecurringReviewError] = useState("");
+  const [isRecurringReviewSaving, setIsRecurringReviewSaving] = useState(false);
   const [projectStatusTimelineEntries, setProjectStatusTimelineEntries] = useState<StatusTimelineEntry[]>([]);
   const [recurringMonthIssueProject, setRecurringMonthIssueProject] = useState<HeroProjectPreview | null>(null);
   const [projectLogbookSearch, setProjectLogbookSearch] = useState("");
@@ -13013,6 +13039,69 @@ export function DashboardPage() {
     return data;
   }
 
+  async function loadRecurringProjectReviews() {
+    if (!activeUserId) return [];
+
+    const res = await fetch(`/api/recurring-project-reviews?actorId=${encodeURIComponent(activeUserId)}`, { cache: "no-store" });
+
+    if (!res.ok) {
+      setErrorMessage("Dauerlaeufer-Pruefungen konnten nicht geladen werden.");
+      return [];
+    }
+
+    const data = (await res.json()) as RecurringProjectReview[];
+    setRecurringProjectReviews(data);
+    return data;
+  }
+
+  function openRecurringReviewDialog(row: { project: HeroProjectPreview; reasons: string[] }) {
+    const defaultNextReviewDate = new Date(reportNow.getFullYear(), reportNow.getMonth() + 6, reportNow.getDate(), 12);
+    setReviewingRecurringProjectId(row.project.id);
+    setRecurringReviewDraft({
+      result: "no_action",
+      nextReviewAt: formatDateKey(defaultNextReviewDate),
+      note: row.reasons.length > 0 ? row.reasons.join("; ") : "",
+    });
+    setRecurringReviewError("");
+  }
+
+  async function saveRecurringProjectReview() {
+    if (!activeUserId || !reviewingRecurringProjectId) return;
+    setIsRecurringReviewSaving(true);
+    setRecurringReviewError("");
+
+    try {
+      const row = recurringNegotiationRows.find((item) => item.project.id === reviewingRecurringProjectId);
+      const res = await fetch("/api/recurring-project-reviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: activeUserId,
+          projectId: reviewingRecurringProjectId,
+          result: recurringReviewDraft.result,
+          nextReviewAt: recurringReviewDraft.nextReviewAt,
+          note: recurringReviewDraft.note,
+          signals: row?.reasons ?? [],
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setRecurringReviewError(data?.error ?? "Pruefung konnte nicht gespeichert werden.");
+        return;
+      }
+
+      const savedReview = (await res.json()) as RecurringProjectReview;
+      setRecurringProjectReviews((currentReviews) => [savedReview, ...currentReviews]);
+      setReviewingRecurringProjectId("");
+      setRecurringReviewDraft({ result: "no_action", nextReviewAt: "", note: "" });
+    } catch (error) {
+      setRecurringReviewError(error instanceof Error ? error.message : "Pruefung konnte nicht gespeichert werden.");
+    } finally {
+      setIsRecurringReviewSaving(false);
+    }
+  }
+
   async function loadSalesGoals() {
     if (!activeUserId) return;
 
@@ -15307,6 +15396,7 @@ export function DashboardPage() {
       void loadUnits();
       void loadEscalationRules();
       void loadProjectPotentials();
+      void loadRecurringProjectReviews();
       void loadSalesGoals();
       void loadDocumentTypes();
       void loadDocumentTexts();
@@ -24830,7 +24920,7 @@ await addProjectLogbookEntry(
     Boolean(offer.wonAt && isReportDate(offer.wonAt)) ||
     Boolean(offer.lostAt && isReportDate(offer.lostAt)) ||
     linkedInvoices.some((invoice) => isReportDate(invoice.createdAt) || isReportDate(invoice.serviceDate));
-  const salesOfferRows = offers
+  const salesAllOfferRows = offers
     .filter((offer) => !isDeletedOffer(offer))
     .map((offer) => {
       const linkedInvoices = getOfferLinkedInvoices(offer);
@@ -24864,7 +24954,11 @@ await addProjectLogbookEntry(
       ].some((value) => normalizeStampSearchValue(String(value ?? "")).includes(reportSearchValue));
     })
     .sort((first, second) => parseAppDateTime(second.offer.createdAt).getTime() - parseAppDateTime(first.offer.createdAt).getTime());
-  const salesOpenOfferRows = salesOfferRows.filter((row) => row.statusGroup === "open");
+  const salesOfferRows = salesAllOfferRows.filter((row) => isSalesOfferInReportPeriod(row.offer, row.linkedInvoices));
+  const salesActionOfferRows = salesAllOfferRows.filter(
+    (row) => row.statusGroup === "open" || isSalesOfferInReportPeriod(row.offer, row.linkedInvoices)
+  );
+  const salesOpenOfferRows = salesActionOfferRows.filter((row) => row.statusGroup === "open");
   const salesWonOfferRows = salesOfferRows.filter((row) => row.statusGroup === "won");
   const salesLostOfferRows = salesOfferRows.filter((row) => row.statusGroup === "lost");
   const salesWonValue = salesWonOfferRows.reduce(
@@ -24982,9 +25076,14 @@ await addProjectLogbookEntry(
       normalizeReportPersonValue(potential.ownerName) === normalizeReportPersonValue(activeUser.name)
     );
   };
-  const salesPotentialRows = projectPotentials
+  const isSalesPotentialInReportPeriod = (potential: ProjectPotential) =>
+    isReportDate(potential.createdAt) || Boolean(potential.updatedAt && isReportDate(potential.updatedAt));
+  const isSalesPotentialDue = (potential: ProjectPotential) => {
+    const followUpTime = potential.followUpAt ? new Date(potential.followUpAt).getTime() : NaN;
+    return potential.status === "follow_up" && Number.isFinite(followUpTime) && followUpTime <= reportNow.getTime();
+  };
+  const salesAllPotentialRows = projectPotentials
     .filter(isSalesPotentialVisibleForRole)
-    .filter((potential) => isReportDate(potential.createdAt) || Boolean(potential.updatedAt && isReportDate(potential.updatedAt)))
     .filter((potential) => {
       if (!reportSearchValue) return true;
       return [
@@ -24997,11 +25096,9 @@ await addProjectLogbookEntry(
         potential.lostReason,
       ].some((value) => normalizeStampSearchValue(String(value ?? "")).includes(reportSearchValue));
     });
+  const salesPotentialRows = salesAllPotentialRows.filter(isSalesPotentialInReportPeriod);
   const salesPotentialValue = salesPotentialRows.reduce((sum, potential) => sum + parseReportAmount(potential.estimatedValue), 0);
-  const salesDueFollowUps = salesPotentialRows.filter((potential) => {
-    const followUpTime = potential.followUpAt ? new Date(potential.followUpAt).getTime() : NaN;
-    return potential.status === "follow_up" && Number.isFinite(followUpTime) && followUpTime <= reportNow.getTime();
-  });
+  const salesDueFollowUps = salesAllPotentialRows.filter(isSalesPotentialDue);
   const getInterruptedWorkTask = (entry: StampTimeEntry) =>
     tasks.find(
       (task) =>
@@ -25214,8 +25311,20 @@ await addProjectLogbookEntry(
     .filter((project) => isProjectVisibleInProjectScopedAnalytics(project))
     .filter((project) => isRecurringProjectKindValue(getProjectKind(project)))
     .filter((project) => !isDeletedStatus(project.status) && project.status !== "Abgeschlossen");
+  const recurringProjectReviewsByProjectId = recurringProjectReviews.reduce<Record<string, RecurringProjectReview[]>>(
+    (groups, review) => {
+      groups[review.projectId] = groups[review.projectId] ?? [];
+      groups[review.projectId].push(review);
+      return groups;
+    },
+    {}
+  );
   const recurringNegotiationRows = activeRecurringProjectsForSales
     .map((project) => {
+      const projectReviews = [...(recurringProjectReviewsByProjectId[project.id] ?? [])].sort(
+        (first, second) => parseAppDateTime(second.reviewedAt).getTime() - parseAppDateTime(first.reviewedAt).getTime()
+      );
+      const latestReview = projectReviews[0] ?? null;
       const projectOffers = offers.filter(
         (offer) =>
           offer.projectId === project.id &&
@@ -25235,7 +25344,7 @@ await addProjectLogbookEntry(
           .filter(Boolean)
           .sort()
           .at(-1) || "";
-      const reviewBaseDate = lastAddendumDate || lastOfferDate || project.projectRuntimeFrom || project.createdAt || "";
+      const reviewBaseDate = latestReview?.reviewedAt || lastAddendumDate || lastOfferDate || project.projectRuntimeFrom || project.createdAt || "";
       const reviewDate = parseAppDateTime(reviewBaseDate);
       const monthsSinceReview = Number.isFinite(reviewDate.getTime())
         ? Math.max(
@@ -25329,6 +25438,7 @@ await addProjectLogbookEntry(
         budgetUsagePercent,
         monthsSinceReview,
         lastReviewLabel: reviewBaseDate ? formatDateOnly(reviewBaseDate) : "-",
+        reviewHistory: projectReviews,
         recommendation:
           reasons.length > 0
             ? "Nachverhandlung prüfen: Preis, Kontingent, Leistungsumfang oder Nachtragsangebot."
@@ -25340,6 +25450,14 @@ await addProjectLogbookEntry(
     .filter((row) => row.priority > 0)
     .sort((first, second) => second.priority - first.priority || second.revenue - first.revenue);
   const recurringNegotiationHighRiskRows = recurringNegotiationRows.filter((row) => row.priority >= 34);
+  const reviewingRecurringRow = recurringNegotiationRows.find((row) => row.project.id === reviewingRecurringProjectId) ?? null;
+  const recurringReviewResultLabel: Record<RecurringProjectReview["result"], string> = {
+    no_action: "Geprüft, aktuell kein Handlungsbedarf",
+    price_increase: "Preiserhöhung prüfen",
+    budget_change: "Kontingent anpassen",
+    addendum_needed: "Nachtragsangebot nötig",
+    follow_up: "Später erneut nachfassen",
+  };
   salesPerformanceInsights = [
     ...salesPerformanceInsights,
     {
@@ -28793,16 +28911,36 @@ await addProjectLogbookEntry(
                             : "kein Kontingent"}
                         </small>
                       </td>
-                      <td>{row.lastReviewLabel}</td>
+                      <td>
+                        {row.lastReviewLabel}
+                        {row.reviewHistory.length > 0 ? (
+                          <>
+                            <br />
+                            <small>
+                              {row.reviewHistory[0].reviewedByName}
+                              {row.reviewHistory[0].nextReviewAt ? ` | naechste Pruefung ${formatDateOnly(row.reviewHistory[0].nextReviewAt)}` : ""}
+                            </small>
+                          </>
+                        ) : null}
+                      </td>
                       <td>{row.recommendation}</td>
                       <td>
-                        <button
-                          type="button"
-                          className={styles.timeEntryEditButton}
-                          onClick={() => openProjectFile(row.project, { tab: "documents", documentType: "Angebote" })}
-                        >
-                          Öffnen
-                        </button>
+                        <div className={styles.tableActionGroup}>
+                          <button
+                            type="button"
+                            className={styles.timeEntryEditButton}
+                            onClick={() => openProjectFile(row.project, { tab: "documents", documentType: "Angebote" })}
+                          >
+                            Öffnen
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.timeEntryEditButton}
+                            onClick={() => openRecurringReviewDialog(row)}
+                          >
+                            Prüfung
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -28810,6 +28948,113 @@ await addProjectLogbookEntry(
               </tbody>
             </table>
           </article>
+
+          {reviewingRecurringRow ? (
+            <div className={styles.overlay} onClick={() => setReviewingRecurringProjectId("")}>
+              <div className={`${styles.standardModal} ${styles.recurringReviewModal}`} onClick={(event) => event.stopPropagation()}>
+                <div className={styles.standardModalHeader}>
+                  <div>
+                    <span>Sales-Performance</span>
+                    <h2>Dauerläufer-Prüfung dokumentieren</h2>
+                    <p>
+                      {reviewingRecurringRow.project.projectNumber || reviewingRecurringRow.project.id} ·{" "}
+                      {reviewingRecurringRow.project.customer || reviewingRecurringRow.project.title}
+                    </p>
+                  </div>
+                  <button className={styles.iconButton} type="button" onClick={() => setReviewingRecurringProjectId("")}>
+                    ×
+                  </button>
+                </div>
+                <div className={`${styles.standardModalBody} ${styles.recurringReviewModalBody}`}>
+                  <section className={styles.recurringReviewEditor}>
+                    <div className={styles.recurringReviewSignalBox}>
+                      <span>Aktuelle Signale</span>
+                      <strong>{reviewingRecurringRow.reasons.length} Prüfpunkt{reviewingRecurringRow.reasons.length === 1 ? "" : "e"}</strong>
+                      <p>{reviewingRecurringRow.reasons.length > 0 ? reviewingRecurringRow.reasons.join("; ") : "Aktuell kein hartes Signal."}</p>
+                    </div>
+                    <div className={`${styles.formGrid} ${styles.recurringReviewForm}`}>
+                      <label>
+                        Ergebnis
+                        <select
+                          value={recurringReviewDraft.result}
+                          onChange={(event) =>
+                            setRecurringReviewDraft((currentDraft) => ({
+                              ...currentDraft,
+                              result: event.target.value as RecurringProjectReview["result"],
+                            }))
+                          }
+                        >
+                          {Object.entries(recurringReviewResultLabel).map(([value, label]) => (
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Nächste Prüfung
+                        <input
+                          type="date"
+                          value={recurringReviewDraft.nextReviewAt}
+                          onChange={(event) =>
+                            setRecurringReviewDraft((currentDraft) => ({ ...currentDraft, nextReviewAt: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <label className={styles.standardFormWide}>
+                        Notiz
+                        <textarea
+                          value={recurringReviewDraft.note}
+                          onChange={(event) =>
+                            setRecurringReviewDraft((currentDraft) => ({ ...currentDraft, note: event.target.value }))
+                          }
+                          rows={4}
+                        />
+                      </label>
+                    </div>
+                  </section>
+                  <section className={styles.recurringReviewHistory}>
+                    <div className={styles.salesSectionHeader}>
+                      <div>
+                        <h2>Historie</h2>
+                        <p>Dokumentierte Prüfungen bleiben hier nachvollziehbar erhalten.</p>
+                      </div>
+                      <span>{reviewingRecurringRow.reviewHistory.length}</span>
+                    </div>
+                    {reviewingRecurringRow.reviewHistory.length === 0 ? (
+                      <div className={styles.recurringReviewEmptyHistory}>
+                        Noch keine Prüfung dokumentiert. Nach dem Speichern erscheint dieser Eintrag hier als erste Historie.
+                      </div>
+                    ) : (
+                      <div className={styles.recurringReviewTimeline}>
+                        {reviewingRecurringRow.reviewHistory.slice(0, 8).map((review) => (
+                          <article key={review.id}>
+                            <header>
+                              <strong>{recurringReviewResultLabel[review.result] ?? review.result}</strong>
+                              <span>{formatDateOnly(review.reviewedAt)} · {review.reviewedByName}</span>
+                            </header>
+                            {review.note ? <p>{review.note}</p> : null}
+                            {review.nextReviewAt ? <small>Nächste Prüfung: {formatDateOnly(review.nextReviewAt)}</small> : null}
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                  {recurringReviewError ? <p className={styles.formError}>{recurringReviewError}</p> : null}
+                </div>
+                <div className={styles.standardModalFooter}>
+                  <div className={styles.modalActions}>
+                    <button type="button" className={styles.secondaryButton} onClick={() => setReviewingRecurringProjectId("")}>
+                      Abbrechen
+                    </button>
+                    <button type="button" className={styles.primaryButton} onClick={saveRecurringProjectReview} disabled={isRecurringReviewSaving}>
+                      {isRecurringReviewSaving ? "Speichert..." : "Prüfung speichern"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           <article className={styles.analyticsCard}>
             <h2>Sales-Steuerung</h2>

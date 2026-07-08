@@ -34,6 +34,7 @@ model Organization {
   offerLines       OfferLine[]
   offerLineLabor   OfferLineLabor[]
   offerHistory     OfferHistory[]
+  planningGroupCapacitySettings PlanningGroupCapacitySetting[]
   invoices         Invoice[]
   invoiceLines     InvoiceLine[]
   invoiceLineLabor InvoiceLineLabor[]
@@ -87,7 +88,7 @@ model User {
   planningResponsibleFor Json           @default("[]")
   branchAllocations Json?
   includeInLaborCostRate Boolean        @default(true)
-  sellableCapacityEnabled Boolean       @default(true)
+  sellableCapacityEnabled Boolean?      @default(true)
   notifyIdeaStore    Boolean           @default(true)
   notifyUpsell       Boolean           @default(false)
   mailAccount        Json              @default("{}")
@@ -289,6 +290,21 @@ model BusinessAreaTarget {
 
   @@unique([organizationId, businessAreaId, month])
   @@index([organizationId, month])
+}
+
+model PlanningGroupCapacitySetting {
+  id                       String       @id
+  organizationId           String
+  planningBoard            String
+  planningGroup            String
+  manualSvsPerHour         Float?
+  manualOverridesAutomatic Boolean      @default(false)
+  automaticOverridesManual Boolean      @default(true)
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime     @default(now())
+  organization             Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, planningBoard, planningGroup], map: "PlanningGroupCapacitySetting_org_board_group_key")
 }
 
 model Subcategory {
@@ -731,7 +747,7 @@ model Offer {
   wonReason           String       @default("")
   pdfData             String?      @db.Text
   createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
+  updatedAt           DateTime     @default(now()) @updatedAt
   organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   lines               OfferLine[]
 
@@ -758,7 +774,7 @@ model OfferLine {
   vatRate        Float        @default(19)
   totalNet       Float        @default(0)
   createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  updatedAt      DateTime     @default(now()) @updatedAt
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   offer          Offer        @relation(fields: [offerId], references: [id], onDelete: Cascade)
   laborItems     OfferLineLabor[]
@@ -778,7 +794,7 @@ model OfferLineLabor {
   totalCost      Float        @default(0)
   position       Int          @default(0)
   createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  updatedAt      DateTime     @default(now()) @updatedAt
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   offerLine      OfferLine    @relation(fields: [offerLineId], references: [id], onDelete: Cascade)
 
@@ -1078,6 +1094,7 @@ model Absence {
   rejectionReason      String?
   history              Json     @default("[]")
   createdAt            DateTime @default(now())
+  deletedAt            DateTime?
 
   @@unique([userId, date])
 }
@@ -1563,6 +1580,27 @@ model ProjectPotential {
   @@index([organizationId, number])
   @@index([organizationId, status])
   @@index([organizationId, updatedAt])
+}
+
+model RecurringProjectReview {
+  id             String   @id
+  organizationId String
+  projectId      String
+  projectNumber  String?
+  projectTitle   String?
+  customerName   String?
+  reviewedAt     DateTime @default(now())
+  reviewedById   String?
+  reviewedByName String
+  result         String   @default("no_action")
+  nextReviewAt   DateTime?
+  note           String   @default("")
+  signals        Json     @default("[]")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  @@index([organizationId, projectId, reviewedAt], map: "RecurringProjectReview_organization_project_reviewed_idx")
+  @@index([organizationId, nextReviewAt], map: "RecurringProjectReview_organization_nextReview_idx")
 }
 
 model UserTeamMembership {
