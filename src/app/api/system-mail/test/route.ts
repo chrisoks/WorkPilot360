@@ -12,7 +12,22 @@ function isSystemMailTester(role: Role) {
   return role === Role.ADMIN || role === Role.GESCHAEFTSFUEHRER;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const { users } = await getDemoContext();
+  const { searchParams } = new URL(req.url);
+  const actorResult = await getSessionBoundActor(req, users, searchParams.get("actorId"));
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
+  }
+
+  const actor = actorResult.actor;
+  if (!isSystemMailTester(actor.role)) {
+    return NextResponse.json(
+      { error: "Nur Admins und Geschaeftsfuehrung duerfen den Systemmail-Status sehen." },
+      { status: 403 }
+    );
+  }
+
   const status = getSystemMailStatus();
   return NextResponse.json({
     configured: status.configured,

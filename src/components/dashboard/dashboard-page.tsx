@@ -13142,7 +13142,9 @@ export function DashboardPage() {
   }
 
   async function loadProjectStatusTimelineEntries() {
-    const res = await fetch("/api/status-timeline?entityType=project", { cache: "no-store" });
+    const params = new URLSearchParams({ entityType: "project" });
+    if (activeUserId) params.set("actorId", activeUserId);
+    const res = await fetch(`/api/status-timeline?${params.toString()}`, { cache: "no-store" });
 
     if (!res.ok) return;
 

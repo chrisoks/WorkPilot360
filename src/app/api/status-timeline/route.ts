@@ -195,11 +195,16 @@ async function seedCurrentStatuses(organizationId: string) {
 }
 
 export async function GET(req: Request) {
-  const { organization } = await getDemoContext();
+  const { searchParams } = new URL(req.url);
+  const { organization, users } = await getDemoContext();
+  const actorResult = await getSessionBoundActor(req, users, searchParams.get("actorId"));
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
+  }
+
   await ensureDefaultStatusEscalationRules(organization.id);
   await seedCurrentStatuses(organization.id);
 
-  const { searchParams } = new URL(req.url);
   const entityType = cleanString(searchParams.get("entityType"));
   const entityId = cleanString(searchParams.get("entityId"));
 
