@@ -22,6 +22,44 @@ function hasPrismaField(schema, modelName, fieldName, fieldType) {
   return new RegExp(`(^|\\n)\\s*${fieldName}\\s+${fieldType}(\\s|\\?|\\n)`, "m").test(modelBlock);
 }
 
+function listSourceFiles(relativeDir) {
+  const absoluteDir = path.join(root, relativeDir);
+  if (!fs.existsSync(absoluteDir)) return [];
+  const entries = fs.readdirSync(absoluteDir, { withFileTypes: true });
+  return entries.flatMap((entry) => {
+    const relativePath = path.join(relativeDir, entry.name);
+    if (entry.isDirectory()) return listSourceFiles(relativePath);
+    if (!/\.(ts|tsx|js|prisma)$/.test(entry.name)) return [];
+    return [relativePath];
+  });
+}
+
+function getPrismaModels(schema) {
+  return new Set([...schema.matchAll(/model\s+(\w+)\s*\{/g)].map((match) => match[1]));
+}
+
+function getRuntimeSchemaTargets() {
+  const sourceFiles = [
+    ...listSourceFiles("src"),
+    ...listSourceFiles("scripts"),
+    ...listSourceFiles("prisma"),
+  ];
+  const runtimeTargets = new Map();
+  const ddlTargetPattern =
+    /(?:CREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?|ALTER\s+TABLE|CREATE\s+(?:UNIQUE\s+)?INDEX(?:\s+IF\s+NOT\s+EXISTS)?[\s\S]*?ON)\s+"([^"\r\n]+)"/gi;
+
+  for (const relativePath of sourceFiles) {
+    const content = read(relativePath);
+    for (const match of content.matchAll(ddlTargetPattern)) {
+      const tableName = match[1];
+      if (!runtimeTargets.has(tableName)) runtimeTargets.set(tableName, new Set());
+      runtimeTargets.get(tableName).add(relativePath);
+    }
+  }
+
+  return runtimeTargets;
+}
+
 const files = {
   page: read("src/components/dashboard/dashboard-page.tsx"),
   css: read("src/components/dashboard/dashboard.module.css"),
@@ -662,6 +700,20 @@ for (const check of requiredPrismaFields) {
   if (!new RegExp(`(^|\\n)\\s*${check.field}\\s+`, "m").test(modelBlock)) {
     failures.push(`Prisma-Feld fehlt: ${check.model}.${check.field}. ${check.reason}`);
   }
+}
+
+const prismaModels = getPrismaModels(files.schema);
+const runtimeSchemaTargets = getRuntimeSchemaTargets();
+const runtimeTargetsMissingInPrisma = [...runtimeSchemaTargets.keys()]
+  .filter((tableName) => !prismaModels.has(tableName))
+  .sort();
+
+for (const tableName of runtimeTargetsMissingInPrisma) {
+  failures.push(
+    `Runtime-DDL-Ziel fehlt im Prisma-Schema: ${tableName}. Dateien: ${[
+      ...runtimeSchemaTargets.get(tableName),
+    ].join(", ")}.`
+  );
 }
 
 if (failures.length > 0) {

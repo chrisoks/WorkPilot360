@@ -68,6 +68,11 @@ Diese Liste haelt Themen fest, die nach abgeschlossenen Zwischenarbeiten nicht v
   - `npm audit`-Hinweise kontrolliert durchgehen.
   - Keine Schnellreparatur mit Breaking-Changes, sondern Risiko und Aufwand je Paket bewerten.
 
+- Runtime-DDL / Prisma-Disziplin:
+  - Regressionscheck warnt jetzt, wenn Runtime-DDL eine Tabelle nutzt, die im Prisma-Schema fehlt.
+  - Aktueller Stand 08.07.2026: kein fehlendes Prisma-Modell gefunden.
+  - Spaeter eigener Migrationsblock: Runtime-`CREATE TABLE`/`ALTER TABLE` aus API-Routen in saubere Migrationen oder eine bewusst dokumentierte Setup-Schicht ueberfuehren.
+
 - Datenqualitaet pruefen:
   - Alte Statuswerte, Zeichensatzfehler und auffaellige Projekt-/Kontingentwerte systematisch suchen.
   - Entscheiden, ob ein kleiner Datenqualitaets-Check oder eigener Hinweisbereich sinnvoll ist.

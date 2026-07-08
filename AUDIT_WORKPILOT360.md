@@ -661,6 +661,13 @@ Pruefung:
 
 Status: Offen
 
+Zwischenstand 2026-07-08:
+- Runtime-DDL wurde erneut systematisch gegen `prisma/schema.prisma` abgeglichen.
+- Ergebnis: 72 Runtime-DDL-Ziele, 81 Prisma-Modelle, aktuell 0 Runtime-Tabellen ohne Prisma-Modell.
+- Kein Treffer fuer `DROP TABLE`, `DROP COLUMN` oder `TRUNCATE` in `src`, `scripts` und `prisma`.
+- Der Regressionscheck prueft jetzt automatisch, ob Runtime-DDL-Tabellen im Prisma-Schema fehlen.
+- Bewertung bleibt Hoch als Architektur-/Go-Live-Disziplin, aber kein aktuell offener Schema-Drift-Blocker gefunden.
+
 ### F-005: Storno-Logik ist fachlich vorhanden, muss aber systemweit abgeglichen werden
 
 Bereich: Buchhaltung / Auswertungen / Projektakte
