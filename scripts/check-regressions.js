@@ -16,6 +16,12 @@ function getPrismaModelBlock(schema, modelName) {
   return match ? match[1] : "";
 }
 
+function hasPrismaField(schema, modelName, fieldName, fieldType) {
+  const modelBlock = getPrismaModelBlock(schema, modelName);
+  if (!modelBlock) return false;
+  return new RegExp(`(^|\\n)\\s*${fieldName}\\s+${fieldType}(\\s|\\?|\\n)`, "m").test(modelBlock);
+}
+
 const files = {
   page: read("src/components/dashboard/dashboard-page.tsx"),
   css: read("src/components/dashboard/dashboard.module.css"),
@@ -445,7 +451,7 @@ const required = [
   {
     label: "ProjectPotential speichert VC-Nummer",
     file: "schema",
-    needle: "number         String?",
+    custom: () => hasPrismaField(files.schema, "ProjectPotential", "number", "String"),
     min: 1,
   },
   {
@@ -635,7 +641,7 @@ const requiredPrismaFields = [
 const failures = [];
 
 for (const check of required) {
-  const actual = count(files[check.file], check.needle);
+  const actual = check.custom ? (check.custom() ? 1 : 0) : count(files[check.file], check.needle);
   if (actual < check.min) {
     failures.push(`${check.label}: erwartet mindestens ${check.min}, gefunden ${actual}.`);
   }
