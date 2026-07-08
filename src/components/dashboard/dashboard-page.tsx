@@ -58153,12 +58153,12 @@ await addProjectLogbookEntry(
             <div className={styles.managementAiMessages}>
               {managementAiMessages.length === 0 ? (
                 <div className={styles.managementAiWelcome}>
-                  <strong>Frag die BWL-KI zu Engpaessen, Umsatz, Vertrieb, SVS oder Kapazitaet.</strong>
-                  <button type="button" onClick={() => setManagementAiInput("Wo bremsen wir aktuell Wachstum und Liquiditaet am staerksten?")}>
+                  <strong>Frag die BWL-KI zu Engpässen, Umsatz, Vertrieb, SVS oder Kapazität.</strong>
+                  <button type="button" onClick={() => setManagementAiInput("Wo bremsen wir aktuell Wachstum und Liquidität am stärksten?")}>
                     Wo bremsen wir Wachstum?
                   </button>
-                  <button type="button" onClick={() => setManagementAiInput("Welche 5 Management-Punkte sollte ich heute klaeren?")}>
-                    5 Punkte fuer heute
+                  <button type="button" onClick={() => setManagementAiInput("Welche 5 Management-Punkte sollte ich heute klären?")}>
+                    5 Punkte für heute
                   </button>
                   <button type="button" onClick={() => setManagementAiInput("Welche Planungsgruppen sind wirtschaftlich kritisch und warum?")}>
                     Kritische Planungsgruppen

@@ -6235,7 +6235,7 @@
 .managementAiMessages article {
   border: 1px solid #dbe3ee;
   border-radius: 16px;
-  max-width: 86%;
+  max-width: 92%;
   padding: 12px 14px;
 }
 
@@ -6253,8 +6253,8 @@
 .managementAiMessages p {
   color: #0f172a;
   font-size: 0.94rem;
-  font-weight: 650;
-  line-height: 1.55;
+  font-weight: 500;
+  line-height: 1.58;
   margin: 0;
   white-space: pre-wrap;
 }
