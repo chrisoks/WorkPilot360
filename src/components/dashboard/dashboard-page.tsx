@@ -33,6 +33,33 @@ const ALLOWED_LOGBOOK_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".web
 const ALLOWED_LOGBOOK_DOCUMENT_EXTENSIONS = new Set([".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".txt"]);
 
 type ContactToolbarIconType = "bulk" | "export" | "columns";
+type DashboardFocusIconType =
+  | "alert"
+  | "billing"
+  | "calendar"
+  | "chart"
+  | "check"
+  | "clock"
+  | "customer"
+  | "finance"
+  | "project"
+  | "shield"
+  | "team";
+type DashboardFocusTone = "blue" | "teal" | "amber" | "rose" | "slate";
+type DashboardTrendIconType = "up" | "down" | "flat" | "none";
+type DashboardFocusCard = {
+  kicker: string;
+  title: string;
+  value: string;
+  detail: string;
+  insight: string;
+  actionLabel: string;
+  tone: DashboardFocusTone;
+  icon: DashboardFocusIconType;
+  trendIcon?: DashboardTrendIconType;
+  targetTab: AppTab;
+  targetReportTab?: ReportAnalyticsTab;
+};
 
 function ContactToolbarIcon({ type }: { type: ContactToolbarIconType }) {
   if (type === "bulk") {
@@ -58,6 +85,132 @@ function ContactToolbarIcon({ type }: { type: ContactToolbarIconType }) {
   return (
     <svg className={styles.contactActionIcon} viewBox="0 0 24 24" aria-hidden="true">
       <path d="M4.8 5.2h14.4c.6 0 1 .4 1 1v11.6c0 .6-.4 1-1 1H4.8c-.6 0-1-.4-1-1V6.2c0-.6.4-1 1-1Zm.8 1.8v10h3.7V7H5.6Zm5.5 10h3.7V7h-3.7v10Zm5.5 0h1.8V7h-1.8v10Z" />
+    </svg>
+  );
+}
+
+function DashboardFocusIcon({ type }: { type: DashboardFocusIconType }) {
+  const paths: Record<DashboardFocusIconType, ReactNode> = {
+    alert: (
+      <>
+        <path d="M12 4 3.5 19h17L12 4Z" />
+        <path d="M12 9v4" />
+        <path d="M12 16h.01" />
+      </>
+    ),
+    billing: (
+      <>
+        <path d="M6 3.5h12v17l-2-1.2-2 1.2-2-1.2-2 1.2-2-1.2-2 1.2v-17Z" />
+        <path d="M9 8h6" />
+        <path d="M9 12h6" />
+        <path d="M9 16h3" />
+      </>
+    ),
+    calendar: (
+      <>
+        <path d="M5 5h14v15H5z" />
+        <path d="M8 3v4" />
+        <path d="M16 3v4" />
+        <path d="M5 9h14" />
+      </>
+    ),
+    chart: (
+      <>
+        <path d="M4 19h16" />
+        <path d="M7 16V9" />
+        <path d="M12 16V5" />
+        <path d="M17 16v-4" />
+      </>
+    ),
+    check: (
+      <>
+        <path d="M4 13.5 9 18 20 6" />
+        <path d="M5 6h5" />
+        <path d="M5 10h3" />
+      </>
+    ),
+    clock: (
+      <>
+        <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" />
+        <path d="M12 7v5l3 2" />
+      </>
+    ),
+    customer: (
+      <>
+        <path d="M8.5 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+        <path d="M3.5 19c.5-3.1 2.3-5 5-5s4.5 1.9 5 5" />
+        <path d="M16 8v5" />
+        <path d="M13.5 10.5h5" />
+      </>
+    ),
+    finance: (
+      <>
+        <path d="M5 19V5h14v14H5Z" />
+        <path d="M8 9h8" />
+        <path d="M8 13h8" />
+        <path d="M8 17h5" />
+      </>
+    ),
+    project: (
+      <>
+        <path d="M4 6.5h7l2 2h7v9H4z" />
+        <path d="M8 13h8" />
+      </>
+    ),
+    shield: (
+      <>
+        <path d="M12 3.5 19 6v5.2c0 4.2-2.7 7.5-7 9.3-4.3-1.8-7-5.1-7-9.3V6l7-2.5Z" />
+        <path d="m9 12 2 2 4-5" />
+      </>
+    ),
+    team: (
+      <>
+        <path d="M8.5 11.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+        <path d="M15.8 11a2.6 2.6 0 1 0 0-5.2 2.6 2.6 0 0 0 0 5.2Z" />
+        <path d="M3.5 19c.5-3.1 2.3-5 5-5s4.5 1.9 5 5" />
+        <path d="M13.6 18.8c.4-2.4 1.8-3.9 3.8-3.9 1.8 0 3 1.4 3.4 3.9" />
+      </>
+    ),
+  };
+
+  return (
+    <svg className={styles.dashboardFocusIconSvg} viewBox="0 0 24 24" aria-hidden="true">
+      {paths[type]}
+    </svg>
+  );
+}
+
+function DashboardTrendIcon({ type }: { type: DashboardTrendIconType }) {
+  if (type === "none") {
+    return (
+      <svg className={styles.dashboardTrendIconSvg} viewBox="0 0 36 24" aria-hidden="true">
+        <path d="M11 12h14" />
+      </svg>
+    );
+  }
+
+  if (type === "down") {
+    return (
+      <svg className={styles.dashboardTrendIconSvg} viewBox="0 0 36 24" aria-hidden="true">
+        <path d="M4 5.5 13 13l6.5-5.5L30 17.5" />
+        <path d="M24 17.5h6v-6" />
+      </svg>
+    );
+  }
+
+  if (type === "flat") {
+    return (
+      <svg className={styles.dashboardTrendIconSvg} viewBox="0 0 36 24" aria-hidden="true">
+        <path d="M5 12h24" />
+        <path d="M23.5 6.5 29 12l-5.5 5.5" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg className={styles.dashboardTrendIconSvg} viewBox="0 0 36 24" aria-hidden="true">
+      <path d="M4 18.5 13 11l6.5 5.5L30 6.5" />
+      <path d="M24 6.5h6v6" />
     </svg>
   );
 }
@@ -2429,12 +2582,20 @@ function getProjectStatusStripLabel(label: string) {
 }
 
 function normalizeProjectPipelineStatus(status?: string | null) {
+  const normalizedStatus = String(status ?? "").trim();
+  const normalizedStatusLower = normalizedStatus.toLowerCase();
+  if (normalizedStatusLower.startsWith("lead / kl") || normalizedStatusLower.startsWith("lead & kl")) return "Lead / Klärung";
+  if (normalizedStatusLower.startsWith("dauerl") && normalizedStatusLower.includes("faktura")) return "Dauerläufer-Faktura";
+  if (normalizedStatusLower.startsWith("abrechnungspr")) return "Abrechnungsprüfung";
+  if (status === "Lead / Kl\u00e4rung" || status === "Lead / Kl\u00c3\u00a4rung") return "Lead / Klärung";
+  if (status === "Dauerl\u00e4ufer-Faktura" || status === "Dauerl\u00c3\u00a4ufer-Faktura") return "Dauerläufer-Faktura";
+  if (status === "Abrechnungspr\u00fcfung" || status === "Abrechnungspr\u00c3\u00bcfung") return "Abrechnungsprüfung";
   if (status === "Lead / Kl\u00c3\u00a4rung") return "Lead / Klärung";
   if (status === "Dauerl\u00c3\u00a4ufer-Faktura") return "Dauerläufer-Faktura";
   if (status === "Endkontrolle") return "Abrechnungsprüfung";
   if (status === "In Umsetzung") return "Umsetzung";
   if (status === "Geplant") return "Geplant";
-  return status || "";
+  return normalizedStatus;
 }
 
 function getProjectNumberPrefix(projectNumber: string) {
@@ -24702,7 +24863,7 @@ await addProjectLogbookEntry(
       .map((row) => getGoalDaysBetween(salesOfferIssueDate(row.offer), getCompletedFollowUpDateForOffer(row.offer)))
   );
   const salesDecisionGapRows = salesOpenOfferRows.filter((row) => row.offer.status !== "Entwurf");
-  const salesPerformanceInsights = [
+  let salesPerformanceInsights = [
     {
       key: "stale-offers",
       signal: `${salesStaleOpenOfferRows.length} offene Angebote älter als 14 Tage`,
@@ -25124,6 +25285,25 @@ await addProjectLogbookEntry(
     .filter((row) => row.priority > 0)
     .sort((first, second) => second.priority - first.priority || second.revenue - first.revenue);
   const recurringNegotiationHighRiskRows = recurringNegotiationRows.filter((row) => row.priority >= 34);
+  salesPerformanceInsights = [
+    ...salesPerformanceInsights,
+    {
+      key: "recurring-review",
+      signal:
+        recurringNegotiationRows.length > 0
+          ? `${recurringNegotiationRows.length} Dauerläufer mit Vertriebsprüfung`
+          : "Keine auffälligen Dauerläufer",
+      interpretation:
+        recurringNegotiationRows.length > 0
+          ? "Preisstand, Kontingent, Erlös je Stunde oder Nachtragsaktivität sollten vertrieblich bewertet werden."
+          : "Aktive Dauerläufer zeigen aktuell keinen harten Nachverhandlungsdruck.",
+      action:
+        recurringNegotiationRows.length > 0
+          ? "Dauerläufer-Prüfung unten öffnen und Nachverhandlung, Kontingentanpassung oder Nachtragsangebot entscheiden."
+          : "Dauerläufer regelmäßig weiter beobachten.",
+      state: recurringNegotiationHighRiskRows.length > 0 ? ("low" as const) : recurringNegotiationRows.length > 0 ? ("ok" as const) : ("good" as const),
+    },
+  ];
   const salesTodayActionCount = salesActionRows.length + recurringNegotiationHighRiskRows.length;
   const salesCockpitCards = [
     {
@@ -25304,6 +25484,13 @@ await addProjectLogbookEntry(
     if (reportProjectKindFilter === "oneTime") return !isRecurringProjectKindValue(getProjectKind(project));
     return true;
   };
+  const isRecurringProjectImplementationStatus = (project?: HeroProjectPreview | null, status?: string | null) => {
+    if (!project) return false;
+    return (
+      isRecurringProjectKindValue(getProjectKind(project)) &&
+      normalizeProjectPipelineStatus(status || project.status || "") === "Umsetzung"
+    );
+  };
   const reportProjectKindLabel =
     reportProjectKindFilter === "recurring"
       ? "Dauerläufer"
@@ -25327,13 +25514,15 @@ await addProjectLogbookEntry(
         }
       >
     >((groups, entry) => {
-      if (entry.entityType !== "project" || !entry.toStatus || entry.toStatus === "Alle Offenen") return groups;
+      const normalizedStatus = normalizeProjectPipelineStatus(entry.toStatus);
+      if (entry.entityType !== "project" || !normalizedStatus || normalizedStatus === "Alle Offenen") return groups;
       const project = heroProjects.find((item) => item.id === entry.entityId);
       if (!isProjectVisibleInProjectScopedAnalytics(project)) return groups;
       if (!isProjectInReportKindFilter(project)) return groups;
+      if (isRecurringProjectImplementationStatus(project, normalizedStatus)) return groups;
       if (reportSearchValue) {
         const isSearchMatch = [
-          entry.toStatus,
+          normalizedStatus,
           entry.entityLabel,
           project?.projectNumber,
           project?.title,
@@ -25343,15 +25532,15 @@ await addProjectLogbookEntry(
         if (!isSearchMatch) return groups;
       }
       const durationMinutes = getPipelinePhaseDurationMinutes(entry);
-      groups[entry.toStatus] = groups[entry.toStatus] ?? {
-        status: entry.toStatus,
+      groups[normalizedStatus] = groups[normalizedStatus] ?? {
+        status: normalizedStatus,
         phaseCount: 0,
         projectIds: new Set<string>(),
         totalMinutes: 0,
         longestMinutes: 0,
         openCount: 0,
       };
-      const group = groups[entry.toStatus];
+      const group = groups[normalizedStatus];
       group.phaseCount += 1;
       group.projectIds.add(entry.entityId);
       group.totalMinutes += durationMinutes;
@@ -25370,6 +25559,81 @@ await addProjectLogbookEntry(
     }))
     .sort((first, second) => second.totalMinutes - first.totalMinutes);
   const largestPipelineBottleneck = pipelineBottleneckRows[0];
+  const pipelineProjectKindSections = [
+    { key: "oneTime", title: "Einmalige Projekte", emptyLabel: "Keine Pipeline-Engpässe für einmalige Projekte vorhanden." },
+    { key: "recurring", title: "Dauerläufer", emptyLabel: "Keine Pipeline-Engpässe für Dauerläufer vorhanden." },
+  ] as const;
+  const visiblePipelineProjectKindSections = pipelineProjectKindSections.filter((section) => {
+    if (reportProjectKindFilter === "oneTime") return section.key === "oneTime";
+    if (reportProjectKindFilter === "recurring") return section.key === "recurring";
+    return true;
+  });
+  const getPipelineProjectKindKey = (project?: HeroProjectPreview | null) =>
+    project && isRecurringProjectKindValue(getProjectKind(project)) ? "recurring" : "oneTime";
+  const getPipelineBottleneckRowsForKind = (kind: "oneTime" | "recurring") => {
+    const phaseRows = Object.values(
+      projectStatusTimelineEntries.reduce<
+        Record<
+          string,
+          {
+            status: string;
+            phaseCount: number;
+            projectIds: Set<string>;
+            totalMinutes: number;
+            longestMinutes: number;
+            openCount: number;
+          }
+        >
+      >((groups, entry) => {
+        const normalizedStatus = normalizeProjectPipelineStatus(entry.toStatus);
+        if (entry.entityType !== "project" || !normalizedStatus || normalizedStatus === "Alle Offenen") return groups;
+        const project = heroProjects.find((item) => item.id === entry.entityId);
+        if (!isProjectVisibleInProjectScopedAnalytics(project)) return groups;
+        if (getPipelineProjectKindKey(project) !== kind) return groups;
+        if (isRecurringProjectImplementationStatus(project, normalizedStatus)) return groups;
+        if (reportSearchValue) {
+          const isSearchMatch = [
+            normalizedStatus,
+            entry.entityLabel,
+            project?.projectNumber,
+            project?.title,
+            project?.customer,
+            project?.trade,
+          ].some((value) => normalizeStampSearchValue(String(value ?? "")).includes(reportSearchValue));
+          if (!isSearchMatch) return groups;
+        }
+        const durationMinutes = getPipelinePhaseDurationMinutes(entry);
+        groups[normalizedStatus] = groups[normalizedStatus] ?? {
+          status: normalizedStatus,
+          phaseCount: 0,
+          projectIds: new Set<string>(),
+          totalMinutes: 0,
+          longestMinutes: 0,
+          openCount: 0,
+        };
+        const group = groups[normalizedStatus];
+        group.phaseCount += 1;
+        group.projectIds.add(entry.entityId);
+        group.totalMinutes += durationMinutes;
+        group.longestMinutes = Math.max(group.longestMinutes, durationMinutes);
+        if (!entry.endedAt) group.openCount += 1;
+        return groups;
+      }, {})
+    );
+    const totalMinutes = phaseRows.reduce((sum, row) => sum + row.totalMinutes, 0);
+    return phaseRows
+      .map((row) => ({
+        ...row,
+        projectCount: row.projectIds.size,
+        averageMinutes: row.phaseCount > 0 ? row.totalMinutes / row.phaseCount : 0,
+        share: totalMinutes > 0 ? (row.totalMinutes / totalMinutes) * 100 : 0,
+      }))
+      .sort((first, second) => second.totalMinutes - first.totalMinutes);
+  };
+  const pipelineBottleneckRowsByKind = {
+    oneTime: getPipelineBottleneckRowsForKind("oneTime"),
+    recurring: getPipelineBottleneckRowsForKind("recurring"),
+  };
   const pipelineDurationRows = pipelineProjects
     .map((project) => {
       const createdAt = project.createdAt ? parseAppDateTime(project.createdAt) : null;
@@ -25381,12 +25645,14 @@ await addProjectLogbookEntry(
       const statusDurationDays = getPipelineDurationDays(statusStartedAt, reportNow);
       const totalDurationDays = getPipelineDurationDays(createdAt, reportNow);
       const completedStatusCount = projectEntries.filter((entry) => entry.endedAt).length;
+      const isRecurringImplementationStatus = isRecurringProjectImplementationStatus(project, project.status);
       return {
         project,
         statusStartedAt,
         statusDurationDays,
         totalDurationDays,
         completedStatusCount,
+        isRecurringImplementationStatus,
         source: activeStatusEntry ? "Statushistorie" : "Fallback: Erstellungsdatum",
       };
     })
@@ -25405,7 +25671,13 @@ await addProjectLogbookEntry(
     pipelineDurationRows.length > 0
       ? pipelineDurationRows.reduce((sum, row) => sum + row.totalDurationDays, 0) / pipelineDurationRows.length
       : 0;
-  const longPipelineStatusRows = pipelineDurationRows.filter((row) => row.statusDurationDays >= 14);
+  const longPipelineStatusRows = pipelineDurationRows.filter(
+    (row) => row.statusDurationDays >= 14 && !row.isRecurringImplementationStatus
+  );
+  const pipelineDurationRowsByKind = {
+    oneTime: pipelineDurationRows.filter((row) => getPipelineProjectKindKey(row.project) === "oneTime"),
+    recurring: pipelineDurationRows.filter((row) => getPipelineProjectKindKey(row.project) === "recurring"),
+  };
   const projectRowsByTrade = Object.values(
     reportProjectRows.reduce<Record<string, { trade: string; count: number; revenue: number; margin: number }>>(
       (groups, row) => {
@@ -26453,6 +26725,14 @@ await addProjectLogbookEntry(
     (row) => row.svs > 0 && row.overloadHours <= 0 && row.utilization >= 85
   );
   const dashboardCurrentMonthKey = getCurrentMonthKey();
+  const dashboardPreviousMonthKey = getPreviousMonthKey(dashboardCurrentMonthKey);
+  const getDashboardTrendIcon = (current: number, previous: number, lowerIsBetter = false): DashboardTrendIconType => {
+    const diff = current - previous;
+    const tolerance = Math.max(0.01, Math.abs(previous) * 0.03);
+    if (Math.abs(diff) <= tolerance) return "flat";
+    const improved = lowerIsBetter ? diff < 0 : diff > 0;
+    return improved ? "up" : "down";
+  };
   const dashboardPreviousWorkingDateKey = (() => {
     const cursor = new Date();
     for (let guard = 0; guard < 31; guard += 1) {
@@ -26476,11 +26756,30 @@ await addProjectLogbookEntry(
   const dashboardCurrentMonthProductivity = getDashboardProductivityPercent((dateKey) =>
     dateKey.startsWith(dashboardCurrentMonthKey)
   );
+  const dashboardPreviousMonthProductivity = getDashboardProductivityPercent((dateKey) =>
+    dateKey.startsWith(dashboardPreviousMonthKey)
+  );
   const dashboardCurrentMonthRevenue = invoices
     .filter((invoice) => isFinanciallyActiveInvoice(invoice) && getProjectInvoiceMonth(invoice) === dashboardCurrentMonthKey)
     .reduce((sum, invoice) => sum + invoice.netTotal, 0);
+  const dashboardPreviousMonthRevenue = invoices
+    .filter((invoice) => isFinanciallyActiveInvoice(invoice) && getProjectInvoiceMonth(invoice) === dashboardPreviousMonthKey)
+    .reduce((sum, invoice) => sum + invoice.netTotal, 0);
+  const dashboardPreviousMonthInvoices = invoices.filter(
+    (invoice) => isFinanciallyActiveInvoice(invoice) && getProjectInvoiceMonth(invoice) === dashboardPreviousMonthKey
+  );
+  const dashboardPreviousMonthOpenTotal = dashboardPreviousMonthInvoices
+    .filter((invoice) => !isInvoicePaid(invoice))
+    .reduce((sum, invoice) => sum + invoice.netTotal, 0);
+  const dashboardPreviousMonthOverdueTotal = dashboardPreviousMonthInvoices
+    .filter((invoice) => !isInvoicePaid(invoice))
+    .map((invoice) => ({ invoice, dueState: getInvoiceDueState(invoice) }))
+    .filter((row) => row.dueState.overdueDays > 0)
+    .reduce((sum, row) => sum + row.invoice.netTotal, 0);
   const dashboardCurrentMonthForecast =
     forecastBusinessMonthRows.find((month) => month.key === dashboardCurrentMonthKey)?.potential ?? 0;
+  const dashboardPreviousMonthForecast =
+    forecastBusinessMonthRows.find((month) => month.key === dashboardPreviousMonthKey)?.potential ?? 0;
   const dashboardActiveProjects = heroProjects.filter((project) => {
     const status = normalizeProjectPipelineStatus(project.status);
     return isProjectVisibleInProjectScopedAnalytics(project) && status !== "Archiviert" && status !== "Abgeschlossen";
@@ -26491,6 +26790,10 @@ await addProjectLogbookEntry(
   const dashboardPipelineBottleneckLabel = largestPipelineBottleneck?.status || "kein Schwerpunkt";
   const dashboardCurrentMonthOffers = offers.filter((offer) => getReportMonthKey(offer.createdAt) === dashboardCurrentMonthKey);
   const dashboardCurrentMonthOfferVolume = dashboardCurrentMonthOffers.reduce((sum, offer) => sum + offer.netTotal, 0);
+  const dashboardPreviousMonthOffers = offers.filter((offer) => getReportMonthKey(offer.createdAt) === dashboardPreviousMonthKey);
+  const dashboardPreviousMonthCustomerContacts = contacts.filter(
+    (contact) => contact.category === "Kunde" && getReportMonthKey(contact.createdAt) === dashboardPreviousMonthKey
+  );
   const dashboardCurrentMonthFeedback = customerFeedback
     .filter((feedback) => getReportMonthKey(feedback.createdAt) === dashboardCurrentMonthKey)
     .filter((feedback) => {
@@ -26719,27 +27022,42 @@ await addProjectLogbookEntry(
   const executiveBottleneckRows =
     executiveActiveBottleneckRows.length > 0 ? executiveActiveBottleneckRows : executiveBottleneckCandidates.slice(0, 5);
   const executiveTopBottleneck = executiveBottleneckRows.find((row) => row.state !== "good") ?? executiveBottleneckRows[0] ?? null;
-  const managementDashboardKpis = [
+  let dashboardRoleFocusCards: DashboardFocusCard[] = [
     {
       kicker: "Finanzen",
       title: "Umsatz & Forecast",
       value: formatMoney(dashboardCurrentMonthRevenue),
       detail: `Forecast bis Monatsende ${formatMoney(dashboardCurrentMonthForecast)}`,
+      insight: dashboardCurrentMonthRevenue > 0 ? "Fakturierte Monatsleistung ist sichtbar." : "Noch kein fakturierter Monatsumsatz.",
+      actionLabel: "Forecast & OP prüfen",
       tone: "blue",
+      icon: "finance" as const,
+      targetTab: "reports" as const,
+      targetReportTab: "forecast" as const,
     },
     {
       kicker: "Leistung",
       title: "Produktivität",
       value: formatPercent(dashboardPreviousWorkdayProductivity),
       detail: `Monat bisher ${formatPercent(dashboardCurrentMonthProductivity)}`,
+      insight: dashboardPreviousWorkdayProductivity > 0 ? "Letzter Arbeitstag liefert Produktivitätsdaten." : "Gestern keine produktive Projektzeit erfasst.",
+      actionLabel: "Mitarbeiter-Auswertung öffnen",
       tone: "teal",
+      icon: "chart" as const,
+      targetTab: "reports" as const,
+      targetReportTab: "employees" as const,
     },
     {
       kicker: "Projekte",
       title: "Projektlage",
       value: `${dashboardActiveProjects.length}`,
       detail: `${longPipelineStatusRows.length} > 14 Tg. · ${dashboardBillingCheckCount} in Prüfung · ${dashboardPipelineBottleneckLabel}`,
+      insight: longPipelineStatusRows.length > 0 ? "Projektfluss bremst an mindestens einer Stelle." : "Keine auffällige lange Projektlaufzeit.",
+      actionLabel: "Projekt-Reiter prüfen",
       tone: "amber",
+      icon: "project" as const,
+      targetTab: "reports" as const,
+      targetReportTab: "projects" as const,
     },
     {
       kicker: "Vertrieb",
@@ -26749,9 +27067,382 @@ await addProjectLogbookEntry(
         dashboardCurrentMonthFeedback.length > 0
           ? `${formatMoney(dashboardCurrentMonthOfferVolume)} · Zufriedenheit ${formatHours(dashboardCurrentMonthRating)}/5 · ${dashboardCurrentMonthCriticalFeedback} kritisch`
           : `${formatMoney(dashboardCurrentMonthOfferVolume)} · noch keine Bewertung im Monat`,
+      insight: dashboardCurrentMonthOffers.length > 0 ? "Aktueller Angebotsimpuls ist vorhanden." : "Aktuell kein neuer Angebotsimpuls sichtbar.",
+      actionLabel: "Sales-Performance öffnen",
       tone: "rose",
+      icon: "customer" as const,
+      targetTab: "reports" as const,
+      targetReportTab: "sales" as const,
+    },
+    {
+      kicker: "Liquidität",
+      title: "Offene Posten",
+      value: formatMoney(overviewOpenTotal),
+      detail: `${overviewOverdueRows.length} überfällig · ${formatMoney(overviewOverdueTotal)} überfälliger Wert`,
+      insight: overviewOverdueTotal > 0 ? "Überfällige Posten binden Liquidität." : "Offene Posten wirken aktuell kontrollierbar.",
+      actionLabel: "Forecast & OP öffnen",
+      tone: overviewOverdueTotal > 0 ? "rose" : overviewOpenTotal > 0 ? "amber" : "teal",
+      icon: "alert" as const,
+      targetTab: "reports" as const,
+      targetReportTab: "forecast" as const,
+    },
+    {
+      kicker: "Kapazität",
+      title: "Planungsgruppen",
+      value: `${managementCapacityOverloadRows.length + managementCapacityTightRows.length}`,
+      detail: `${managementCapacityOverloadRows.length} überplant · ${managementCapacityTightRows.length} fast ausgelastet`,
+      insight:
+        managementCapacityOverloadRows.length + managementCapacityTightRows.length > 0
+          ? "Kapazität braucht Steuerung vor weiterem Umsatzdruck."
+          : "Keine harte Kapazitätsbremse sichtbar.",
+      actionLabel: "Geschäftsführung öffnen",
+      tone: managementCapacityOverloadRows.length > 0 ? "rose" : managementCapacityTightRows.length > 0 ? "amber" : "teal",
+      icon: "team" as const,
+      targetTab: "reports" as const,
+      targetReportTab: "executive" as const,
     },
   ];
+  const dashboardTotalTeamMembers = dashboardEmployees.length;
+  const dashboardNotStampedCount = Math.max(0, dashboardTotalTeamMembers - stampedDashboardEmployees.length);
+  const dashboardMyOpenTaskCount = myRelevantTasks.filter((task) => task.status !== "erledigt" && task.status !== "abgelehnt").length;
+  const dashboardMyDueTaskCount = myRelevantTasks.filter(
+    (task) => task.status !== "erledigt" && task.status !== "abgelehnt" && isTaskOverdueByWorkingTime(task, deadlineProgressTime, holidayDateKeys)
+  ).length;
+  if (activeUser?.role === "VERTRIEB") {
+    dashboardRoleFocusCards = [
+      {
+        kicker: "Heute",
+        title: "Aktiv bleiben",
+        value: String(salesTodayActionCount),
+        detail:
+          salesTodayActionCount > 0
+            ? `${salesActionRows.filter((row) => row.priority >= 90).length + recurringNegotiationHighRiskRows.length} Punkte mit hoher Priorität.`
+            : "Keine akuten Vertriebsaktionen im gewählten Zeitraum.",
+        insight: salesTodayActionCount > 0 ? "Heute gibt es konkrete Vertriebsarbeit." : "Der heutige Vertriebsdruck ist ruhig.",
+        actionLabel: "Sales-Performance öffnen",
+        tone: salesTodayActionCount > 0 ? "rose" : "teal",
+        icon: "alert" as const,
+        targetTab: "reports" as const,
+        targetReportTab: "sales" as const,
+      },
+      {
+        kicker: "Angebote",
+        title: "Angebotsmotor",
+        value: `${salesCurrentMonthOfferCount}`,
+        detail: `${salesCurrentMonthRow?.baseOfferCount ?? 0} Basisangebote · ${salesCurrentMonthRow?.addendumOfferCount ?? 0} Nachträge · ${salesOfferMonthTrend >= 0 ? "+" : ""}${salesOfferMonthTrend} zum Vormonat`,
+        insight: salesCurrentMonthOfferCount > 0 ? "Der Angebotsmotor läuft im aktuellen Monat." : "Noch kein Angebot im aktuellen Auswertungsmonat.",
+        actionLabel: "Angebote analysieren",
+        tone: salesCurrentMonthOfferCount === 0 ? "rose" : salesOfferMonthTrend < 0 ? "amber" : "blue",
+        icon: "billing" as const,
+        targetTab: "reports" as const,
+        targetReportTab: "sales" as const,
+      },
+      {
+        kicker: "Neukunden",
+        title: "Kundenbewegung",
+        value: `${salesNewCustomerContacts.length}`,
+        detail: `${salesCurrentMonthFirstCustomerOfferRows.length} Erstangebote an Kunden ohne ältere Angebotsakte.`,
+        insight: salesNewCustomerContacts.length > 0 || salesCurrentMonthFirstCustomerOfferRows.length > 0 ? "Neue Kundenbewegung ist sichtbar." : "Neukundenimpulse fehlen aktuell.",
+        actionLabel: "Kontakte öffnen",
+        tone: salesNewCustomerContacts.length === 0 && salesCurrentMonthFirstCustomerOfferRows.length === 0 ? "amber" : "teal",
+        icon: "customer" as const,
+        targetTab: "contacts" as const,
+      },
+      {
+        kicker: "Dauerläufer",
+        title: "Ausbau prüfen",
+        value: `${recurringNegotiationRows.length}`,
+        detail: `${recurringNegotiationHighRiskRows.length} dringend · Preis, Kontingent oder Leistungsumfang nachfassen.`,
+        insight: recurringNegotiationRows.length > 0 ? "Aktive Dauerläufer sollten vertrieblich geprüft werden." : "Kein harter Nachverhandlungsdruck sichtbar.",
+        actionLabel: "Dauerläufer prüfen",
+        tone: recurringNegotiationHighRiskRows.length > 0 ? "rose" : recurringNegotiationRows.length > 0 ? "amber" : "teal",
+        icon: "clock" as const,
+        targetTab: "reports" as const,
+        targetReportTab: "sales" as const,
+      },
+      {
+        kicker: "Abschluss",
+        title: "Abschlusskraft",
+        value: salesDecisionCount > 0 ? `${formatHours(salesWinRate)}%` : "-",
+        detail: `${salesWonOfferRows.length} gewonnen · ${salesLostOfferRows.length} verloren`,
+        insight: salesDecisionCount > 0 ? "Entscheidungen machen die Abschlussquote belastbar." : "Noch keine entschiedenen Angebote im Zeitraum.",
+        actionLabel: "Abschlüsse prüfen",
+        tone: salesDecisionCount >= 3 && salesWinRate < 35 ? "rose" : salesDecisionCount > 0 ? "teal" : "amber",
+        icon: "check" as const,
+        targetTab: "reports" as const,
+        targetReportTab: "sales" as const,
+      },
+      {
+        kicker: "Bestand",
+        title: "Risiko im Bestand",
+        value: `${salesStaleOpenOfferRows.length + openInterruptedWorkCount}`,
+        detail: `${salesStaleOpenOfferRows.length} alte Angebote · ${openInterruptedWorkCount} Unterbrechungen`,
+        insight:
+          salesStaleOpenOfferRows.length + openInterruptedWorkCount > 0
+            ? "Bestandsrisiken sollten aktiv entschieden werden."
+            : "Keine akuten Bestandsrisiken sichtbar.",
+        actionLabel: "Bestand prüfen",
+        tone: salesStaleOpenOfferRows.length + openInterruptedWorkCount > 0 ? "amber" : "teal",
+        icon: "shield" as const,
+        targetTab: "reports" as const,
+        targetReportTab: "sales" as const,
+      },
+    ];
+  } else if (activeUser?.role === "BUCHHALTUNG") {
+    dashboardRoleFocusCards = [
+      {
+        kicker: "Fälligkeit",
+        title: "Offene Posten",
+        value: formatMoney(overviewOverdueTotal),
+        detail: `${overviewOverdueRows.length} überfällig · ${formatMoney(overviewOpenTotal)} insgesamt offen`,
+        insight: overviewOverdueTotal > 0 ? "Liquidität ist durch fällige Posten gebunden." : "Keine überfälligen offenen Posten im Blick.",
+        actionLabel: "Forecast & OP öffnen",
+        tone: overviewOverdueTotal > 0 ? "rose" : overviewOpenTotal > 0 ? "amber" : "teal",
+        icon: "alert" as const,
+        targetTab: "reports" as const,
+        targetReportTab: "forecast" as const,
+      },
+      {
+        kicker: "Umsatz",
+        title: "Bezahlt & fakturiert",
+        value: formatMoney(overviewPaidTotal),
+        detail: `${formatMoney(dashboardCurrentMonthRevenue)} Umsatz im aktuellen Monat.`,
+        insight: "Zahlungseingang und fakturierter Umsatz gehören zusammen betrachtet.",
+        actionLabel: "Monatsbericht öffnen",
+        tone: "blue",
+        icon: "finance" as const,
+        targetTab: "reports" as const,
+        targetReportTab: "monthlyReport" as const,
+      },
+      {
+        kicker: "Abrechnung",
+        title: "Prüfung leeren",
+        value: `${dashboardBillingCheckCount}`,
+        detail: "Projekte in Abrechnungsprüfung brauchen Nachweis, Rechnung oder klare Zurückstellung.",
+        insight: dashboardBillingCheckCount > 0 ? "Hier kann Umsatz noch in der Prüfung hängen." : "Keine auffällige Abrechnungsprüfung.",
+        actionLabel: "Projekte prüfen",
+        tone: dashboardBillingCheckCount > 0 ? "amber" : "teal",
+        icon: "billing" as const,
+        targetTab: "reports" as const,
+        targetReportTab: "projects" as const,
+      },
+      {
+        kicker: "Forecast",
+        title: "Datenqualität",
+        value: `${forecastQualityProblemCount}`,
+        detail: forecastQualityProblemCount > 0 ? "Offene Prüfpunkte vor der nächsten Steuerung bereinigen." : "Forecast-Daten wirken plausibel.",
+        insight: forecastQualityProblemCount > 0 ? "Die Forecast-Grundlage braucht Datenpflege." : "Die Datenbasis ist aktuell ruhig.",
+        actionLabel: "Forecast prüfen",
+        tone: forecastQualityCriticalCount > 0 ? "rose" : forecastQualityProblemCount > 0 ? "amber" : "teal",
+        icon: "shield" as const,
+        targetTab: "reports" as const,
+        targetReportTab: "forecast" as const,
+      },
+      {
+        kicker: "Zahlung",
+        title: "Offen gesamt",
+        value: formatMoney(overviewOpenTotal),
+        detail: `${formatMoney(overviewPaidTotal)} bereits bezahlt`,
+        insight: overviewOpenTotal > 0 ? "Offene Werte brauchen Fälligkeitskontrolle." : "Keine offenen Werte im Auswertungsblick.",
+        actionLabel: "OP-Liste öffnen",
+        tone: overviewOpenTotal > 0 ? "amber" : "teal",
+        icon: "finance" as const,
+        targetTab: "reports" as const,
+        targetReportTab: "forecast" as const,
+      },
+      {
+        kicker: "Monat",
+        title: "Monatsbericht",
+        value: formatMoney(monthlyFinancialRevenueTotal),
+        detail: `${formatPercent(monthlyFinancialResultPercent)} Ergebnisquote`,
+        insight: "Monatsbericht bündelt Erlöse, Ergebnis und Finanzpositionen.",
+        actionLabel: "Monatsbericht öffnen",
+        tone: "blue",
+        icon: "chart" as const,
+        targetTab: "reports" as const,
+        targetReportTab: "monthlyReport" as const,
+      },
+    ];
+  } else if (activeUser?.role === "FUEHRUNGSKRAFT") {
+    dashboardRoleFocusCards = [
+      {
+        kicker: "Team",
+        title: "Heute einsatzklar",
+        value: `${stampedDashboardEmployees.length}/${dashboardTotalTeamMembers}`,
+        detail: `${dashboardNotStampedCount} nicht eingestempelt · ${dashboardAbsentEmployees.length} geplant abwesend`,
+        insight: dashboardNotStampedCount > 0 ? "Teamstart ist noch nicht vollständig sichtbar." : "Das Team ist heute sauber sichtbar.",
+        actionLabel: "Mitarbeiter öffnen",
+        tone: dashboardNotStampedCount > 0 ? "amber" : "teal",
+        icon: "team" as const,
+        targetTab: "employees" as const,
+      },
+      {
+        kicker: "Leistung",
+        title: "Produktivität",
+        value: formatPercent(dashboardPreviousWorkdayProductivity),
+        detail: `Monat bisher ${formatPercent(dashboardCurrentMonthProductivity)} produktive Zeit.`,
+        insight: dashboardCurrentMonthProductivity > 0 && dashboardCurrentMonthProductivity < 75 ? "Produktive Zeit sollte geprüft werden." : "Produktivität wirkt aktuell unauffällig.",
+        actionLabel: "Mitarbeiter-Auswertung öffnen",
+        tone: dashboardCurrentMonthProductivity > 0 && dashboardCurrentMonthProductivity < 75 ? "rose" : "blue",
+        icon: "chart" as const,
+        targetTab: "reports" as const,
+        targetReportTab: "employees" as const,
+      },
+      {
+        kicker: "Projekte",
+        title: "Projektfluss",
+        value: `${dashboardActiveProjects.length}`,
+        detail: `${longPipelineStatusRows.length} länger als 14 Tage · ${dashboardBillingCheckCount} in Prüfung`,
+        insight: longPipelineStatusRows.length > 0 ? "Einige Projekte brauchen einen nächsten Schritt." : "Projektfluss wirkt aktuell stabil.",
+        actionLabel: "Projekte öffnen",
+        tone: longPipelineStatusRows.length > 0 ? "amber" : "teal",
+        icon: "project" as const,
+        targetTab: "reports" as const,
+        targetReportTab: "projects" as const,
+      },
+      {
+        kicker: "Aufgaben",
+        title: "Tagesarbeit",
+        value: `${offene}`,
+        detail: `${bearbeitung} in Bearbeitung · ${ueberfaellig} überfällig`,
+        insight: ueberfaellig > 0 ? "Überfällige Aufgaben brauchen heute Entscheidung." : "Aufgabenlage ist steuerbar.",
+        actionLabel: "Aufgaben öffnen",
+        tone: ueberfaellig > 0 ? "rose" : offene > 0 ? "amber" : "teal",
+        icon: "check" as const,
+        targetTab: "dashboard" as const,
+      },
+      {
+        kicker: "Planung",
+        title: "Heute geplant",
+        value: `${todayUtilization.utilization}%`,
+        detail: `${formatMinutes(todayUtilization.plannedMinutes)} von ${formatMinutes(todayUtilization.capacityMinutes)} Kapazität`,
+        insight: todayUtilization.utilization > 100 ? "Heute ist mehr geplant als Kapazität vorhanden." : "Planung und Kapazität sind sichtbar.",
+        actionLabel: "Planungsboard öffnen",
+        tone: todayUtilization.utilization > 100 ? "rose" : todayUtilization.utilization >= 85 ? "amber" : "blue",
+        icon: "calendar" as const,
+        targetTab: "planningBoard" as const,
+      },
+      {
+        kicker: "Abrechnung",
+        title: "Prüfung",
+        value: `${dashboardBillingCheckCount}`,
+        detail: "Projekte in Abrechnungsprüfung brauchen einen nächsten Schritt.",
+        insight: dashboardBillingCheckCount > 0 ? "Abrechnung kann hier noch gebunden sein." : "Keine auffällige Abrechnungsprüfung.",
+        actionLabel: "Projekte prüfen",
+        tone: dashboardBillingCheckCount > 0 ? "amber" : "teal",
+        icon: "billing" as const,
+        targetTab: "reports" as const,
+        targetReportTab: "projects" as const,
+      },
+    ];
+  } else if (activeUser?.role === "MITARBEITER") {
+    dashboardRoleFocusCards = [
+      {
+        kicker: "Stempelung",
+        title: "Mein Status",
+        value: stampSession ? "Aktiv" : "Offline",
+        detail: stampSession ? "Zeit läuft. Tätigkeit sauber dokumentieren." : "Aktuell keine laufende Stempelung.",
+        insight: stampSession ? "Deine laufende Zeit ist aktiv." : "Bei Arbeitsstart bitte sauber stempeln.",
+        actionLabel: "Persönliche Daten öffnen",
+        tone: stampSession ? "teal" : "amber",
+        icon: "clock" as const,
+        targetTab: "personalData" as const,
+      },
+      {
+        kicker: "Aufgaben",
+        title: "Meine Arbeit",
+        value: `${dashboardMyOpenTaskCount}`,
+        detail: `${dashboardMyDueTaskCount} fällig oder überfällig · offene Punkte heute klären.`,
+        insight: dashboardMyDueTaskCount > 0 ? "Fällige Aufgaben zuerst klären." : "Deine Aufgabenlage wirkt ruhig.",
+        actionLabel: "Meine Aufgaben öffnen",
+        tone: dashboardMyDueTaskCount > 0 ? "rose" : dashboardMyOpenTaskCount > 0 ? "amber" : "teal",
+        icon: "check" as const,
+        targetTab: "dashboard" as const,
+      },
+      {
+        kicker: "Planung",
+        title: "Heute geplant",
+        value: `${todayUtilization.utilization}%`,
+        detail: `${formatMinutes(todayUtilization.plannedMinutes)} von ${formatMinutes(todayUtilization.capacityMinutes)} Kapazität geplant.`,
+        insight: todayUtilization.utilization > 100 ? "Heute ist mehr geplant als Kapazität vorhanden." : "Die heutige Planung ist im Blick.",
+        actionLabel: "Planungsboard öffnen",
+        tone: todayUtilization.utilization > 100 ? "rose" : todayUtilization.utilization >= 85 ? "amber" : "blue",
+        icon: "calendar" as const,
+        targetTab: "planningBoard" as const,
+      },
+      {
+        kicker: "Team",
+        title: "Aktueller Betrieb",
+        value: `${stampedDashboardEmployees.length}`,
+        detail: `${dashboardAbsentEmployees.length} geplant abwesend · ${dashboardNotStampedCount} noch nicht eingestempelt`,
+        insight: "Zeigt, wie der Betrieb im Moment angelaufen ist.",
+        actionLabel: "Mitarbeiter öffnen",
+        tone: "teal",
+        icon: "team" as const,
+        targetTab: "employees" as const,
+      },
+      {
+        kicker: "Leistung",
+        title: "Produktivität",
+        value: formatPercent(dashboardPreviousWorkdayProductivity),
+        detail: `Monat bisher ${formatPercent(dashboardCurrentMonthProductivity)} produktive Zeit.`,
+        insight: "Zeigt, wie viel Zeit in Projektarbeit landet.",
+        actionLabel: "Auswertung öffnen",
+        tone: "blue",
+        icon: "chart" as const,
+        targetTab: "reports" as const,
+        targetReportTab: "employees" as const,
+      },
+      {
+        kicker: "Projekt",
+        title: "Projektfluss",
+        value: `${dashboardActiveProjects.length}`,
+        detail: `${dashboardBillingCheckCount} in Abrechnungsprüfung`,
+        insight: "Zeigt, ob Arbeit sauber durch den Prozess läuft.",
+        actionLabel: "Projekte öffnen",
+        tone: dashboardBillingCheckCount > 0 ? "amber" : "teal",
+        icon: "project" as const,
+        targetTab: "reports" as const,
+        targetReportTab: "projects" as const,
+      },
+    ];
+  }
+  const dashboardPreviousSalesDecisionCount = (salesPreviousMonthRow?.wonCount ?? 0) + (salesPreviousMonthRow?.lostCount ?? 0);
+  const dashboardPreviousSalesWinRate =
+    dashboardPreviousSalesDecisionCount > 0 ? ((salesPreviousMonthRow?.wonCount ?? 0) / dashboardPreviousSalesDecisionCount) * 100 : 0;
+  const dashboardCardTrendByKey: Record<string, DashboardTrendIconType> = {
+    "Finanzen:Umsatz & Forecast": getDashboardTrendIcon(dashboardCurrentMonthRevenue, dashboardPreviousMonthRevenue),
+    "Leistung:Produktivität": getDashboardTrendIcon(dashboardCurrentMonthProductivity, dashboardPreviousMonthProductivity),
+    "Projekte:Projektlage": "none",
+    "Vertrieb:Vertrieb & Kunde": getDashboardTrendIcon(dashboardCurrentMonthOffers.length, dashboardPreviousMonthOffers.length),
+    "Liquidität:Offene Posten": getDashboardTrendIcon(overviewOpenTotal, dashboardPreviousMonthOpenTotal, true),
+    "Kapazität:Planungsgruppen": "none",
+    "Heute:Aktiv bleiben": "none",
+    "Angebote:Angebotsmotor": getDashboardTrendIcon(salesCurrentMonthOfferCount, salesPreviousMonthOfferCount),
+    "Neukunden:Kundenbewegung": getDashboardTrendIcon(salesNewCustomerContacts.length, dashboardPreviousMonthCustomerContacts.length),
+    "Dauerläufer:Ausbau prüfen": "none",
+    "Abschluss:Abschlusskraft": getDashboardTrendIcon(salesWinRate, dashboardPreviousSalesWinRate),
+    "Bestand:Risiko im Bestand": "none",
+    "Fälligkeit:Offene Posten": getDashboardTrendIcon(overviewOverdueTotal, dashboardPreviousMonthOverdueTotal, true),
+    "Umsatz:Bezahlt & fakturiert": getDashboardTrendIcon(dashboardCurrentMonthRevenue, dashboardPreviousMonthRevenue),
+    "Abrechnung:Prüfung leeren": "flat",
+    "Forecast:Datenqualität": "none",
+    "Zahlung:Offen gesamt": getDashboardTrendIcon(overviewOpenTotal, dashboardPreviousMonthOpenTotal, true),
+    "Monat:Monatsbericht": getDashboardTrendIcon(dashboardCurrentMonthRevenue, dashboardPreviousMonthRevenue),
+    "Team:Heute einsatzklar": "none",
+    "Projekte:Projektfluss": "none",
+    "Aufgaben:Tagesarbeit": "none",
+    "Planung:Heute geplant": "none",
+    "Abrechnung:Prüfung": "none",
+    "Stempelung:Mein Status": "none",
+    "Aufgaben:Meine Arbeit": "none",
+    "Team:Aktueller Betrieb": "none",
+    "Projekt:Projektfluss": "none",
+  };
+  dashboardRoleFocusCards = dashboardRoleFocusCards.map((card) => ({
+    ...card,
+    trendIcon: card.trendIcon ?? dashboardCardTrendByKey[`${card.kicker}:${card.title}`] ?? "none",
+  }));
   const dashboardDailyImpulse = getDashboardDailyImpulse(activeUser?.role);
   const projectMapRows = reportProjectRows
     .filter((row) => row.project.address || row.project.customer)
@@ -28382,7 +29073,7 @@ await addProjectLogbookEntry(
                 : "Noch keine Statushistorie",
               largestPipelineBottleneck ? "ok" : "neutral"
             )}
-            {renderReportMetric("Status > 14 Tage", `${longPipelineStatusRows.length}`, `${reportProjectKindLabel} mit langer aktueller Phase`, longPipelineStatusRows.length === 0 ? "good" : "ok")}
+            {renderReportMetric("Kritische Phase > 14 Tage", `${longPipelineStatusRows.length}`, `${reportProjectKindLabel} mit messbarem Stillstand`, longPipelineStatusRows.length === 0 ? "good" : "ok")}
             {renderReportMetric("Projekte mit Umsatz", `${reportProjectRows.filter((row) => row.revenue > 0).length}`, "Im gewählten Zeitraum")}
             {renderReportMetric("Gebuchte Projektstunden", `${formatHours(employeeSummary.stampedProjectHours)} Std.`, "Aus Stempelungen")}
           </section>
@@ -28444,85 +29135,98 @@ await addProjectLogbookEntry(
                 </tbody>
               </table>
           </article>
-          <article className={styles.analyticsCard}>
-              <h2>Pipeline-Engpässe</h2>
-              <table className={styles.analyticsTable}>
-                <thead>
-                  <tr>
-                    <th>Phase</th>
-                    <th>Projekte</th>
-                    <th>Phasen</th>
-                    <th>Aktuell offen</th>
-                    <th>Gesamtzeit</th>
-                    <th>Ø Dauer</th>
-                    <th>Längste Dauer</th>
-                    <th>Anteil</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pipelineBottleneckRows.length === 0 ? (
+          {visiblePipelineProjectKindSections.map((section) => {
+            const rows = pipelineBottleneckRowsByKind[section.key];
+            return (
+              <article className={styles.analyticsCard} key={`pipeline-bottleneck-${section.key}`}>
+                <h2>Pipeline-Engpässe: {section.title}</h2>
+                <table className={styles.analyticsTable}>
+                  <thead>
                     <tr>
-                      <td colSpan={8}>Noch keine Statushistorie für Pipeline-Engpässe vorhanden.</td>
+                      <th>Phase</th>
+                      <th>Projekte</th>
+                      <th>Phasen</th>
+                      <th>Aktuell offen</th>
+                      <th>Gesamtzeit</th>
+                      <th>Ø Dauer</th>
+                      <th>Längste Dauer</th>
+                      <th>Anteil</th>
                     </tr>
-                  ) : (
-                    pipelineBottleneckRows.map((row) => (
-                      <tr key={row.status}>
-                        <td>{row.status}</td>
-                        <td>{row.projectCount}</td>
-                        <td>{row.phaseCount}</td>
-                        <td>{row.openCount}</td>
-                        <td>{formatPipelineMinutesAsDays(row.totalMinutes)}</td>
-                        <td>{formatPipelineMinutesAsDays(row.averageMinutes)}</td>
-                        <td data-state={row.longestMinutes >= 43200 ? "low" : row.longestMinutes >= 20160 ? "ok" : "good"}>
-                          {formatPipelineMinutesAsDays(row.longestMinutes)}
-                        </td>
-                        <td>{formatPercent(row.share)}</td>
+                  </thead>
+                  <tbody>
+                    {rows.length === 0 ? (
+                      <tr>
+                        <td colSpan={8}>{section.emptyLabel}</td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-          </article>
+                    ) : (
+                      rows.map((row) => (
+                        <tr key={`${section.key}-${row.status}`}>
+                          <td>{row.status}</td>
+                          <td>{row.projectCount}</td>
+                          <td>{row.phaseCount}</td>
+                          <td>{row.openCount}</td>
+                          <td>{formatPipelineMinutesAsDays(row.totalMinutes)}</td>
+                          <td>{formatPipelineMinutesAsDays(row.averageMinutes)}</td>
+                          <td data-state={row.longestMinutes >= 43200 ? "low" : row.longestMinutes >= 20160 ? "ok" : "good"}>
+                            {formatPipelineMinutesAsDays(row.longestMinutes)}
+                          </td>
+                          <td>{formatPercent(row.share)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </article>
+            );
+          })}
 
-          <article className={styles.analyticsCard}>
-              <h2>Pipeline-Dauer</h2>
-              <table className={styles.analyticsTable}>
-                <thead>
-                  <tr>
-                    <th>Projekt</th>
-                    <th>Kunde</th>
-                    <th>Status</th>
-                    <th>Im Status seit</th>
-                    <th>Dauer Status</th>
-                    <th>Seit Anlage</th>
-                    <th>Basis</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pipelineDurationRows.slice(0, 12).map((row) => (
-                    <tr key={row.project.id}>
-                      <td>{row.project.projectNumber || row.project.id}</td>
-                      <td>{row.project.customer || row.project.title}</td>
-                      <td>{row.project.status}</td>
-                      <td>{row.statusStartedAt ? formatDateOnly(row.statusStartedAt.toISOString()) : "-"}</td>
-                      <td data-state={row.statusDurationDays >= 30 ? "low" : row.statusDurationDays >= 14 ? "ok" : "good"}>
-                        {formatPipelineDays(row.statusDurationDays)}
-                      </td>
-                      <td>{formatPipelineDays(row.totalDurationDays)}</td>
-                      <td>{row.source}</td>
-                    </tr>
-                  ))}
-                  {pipelineDurationRows.length === 0 ? (
+          {visiblePipelineProjectKindSections.map((section) => {
+            const rows = pipelineDurationRowsByKind[section.key];
+            return (
+              <article className={styles.analyticsCard} key={`pipeline-duration-${section.key}`}>
+                <h2>Pipeline-Dauer: {section.title}</h2>
+                <table className={styles.analyticsTable}>
+                  <thead>
                     <tr>
-                      <td colSpan={7}>Keine passenden Projekte gefunden.</td>
+                      <th>Projekt</th>
+                      <th>Kunde</th>
+                      <th>Status</th>
+                      <th>Im Status seit</th>
+                      <th>Dauer Status</th>
+                      <th>Seit Anlage</th>
+                      <th>Basis</th>
                     </tr>
-                  ) : null}
-                </tbody>
-              </table>
-          </article>
+                  </thead>
+                  <tbody>
+                    {rows.slice(0, 12).map((row) => (
+                      <tr key={`${section.key}-${row.project.id}`}>
+                        <td>{row.project.projectNumber || row.project.id}</td>
+                        <td>{row.project.customer || row.project.title}</td>
+                        <td>{normalizeProjectPipelineStatus(row.project.status)}</td>
+                        <td>
+                          {row.statusStartedAt && Number.isFinite(row.statusStartedAt.getTime())
+                            ? formatDateOnly(row.statusStartedAt.toISOString())
+                            : "-"}
+                        </td>
+                        <td data-state={row.isRecurringImplementationStatus ? "good" : row.statusDurationDays >= 30 ? "low" : row.statusDurationDays >= 14 ? "ok" : "good"}>
+                          {formatPipelineDays(row.statusDurationDays)}
+                        </td>
+                        <td>{formatPipelineDays(row.totalDurationDays)}</td>
+                        <td>{row.isRecurringImplementationStatus ? "Laufender Dauerläufer" : row.source}</td>
+                      </tr>
+                    ))}
+                    {rows.length === 0 ? (
+                      <tr>
+                        <td colSpan={7}>Keine passenden Projekte gefunden.</td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </article>
+            );
+          })}
         </>
       )}
-
       {reportAnalyticsTab === "customers" && (
         <>
           <section className={styles.analyticsGrid}>
@@ -29430,7 +30134,7 @@ await addProjectLogbookEntry(
                 ? renderReportMetric("Dauerläufer", `${overviewRecurringProjectCount}`, "Wiederkehrende Projekte im Zeitraum")
                 : null}
               {canViewOperationalOverviewAnalytics
-                ? renderReportMetric("Status > 14 Tage", `${longPipelineStatusRows.length}`, "Projekte mit langer aktueller Phase", longPipelineStatusRows.length > 0 ? "ok" : "good")
+                ? renderReportMetric("Kritische Phase > 14 Tage", `${longPipelineStatusRows.length}`, "Projekte mit messbarem Stillstand", longPipelineStatusRows.length > 0 ? "ok" : "good")
                 : null}
               {canViewFullOverviewAnalytics
                 ? renderReportMetric("SVS", `${formatMoney(averageSoldHourlyRate)} / h`, "Umsatz je gestempelter Projektstunde")
@@ -50064,38 +50768,35 @@ await addProjectLogbookEntry(
                 </section>
 
                 <section className={styles.moduleGrid}>
-                  {activeUser?.role === "GESCHAEFTSFUEHRER"
-                    ? managementDashboardKpis.map((kpi) => (
-                        <article
-                          key={kpi.title}
-                          className={`${styles.moduleCard} ${styles.managementDashboardKpiCard}`}
-                          data-tone={kpi.tone}
-                        >
-                          <div className={styles.moduleCardTop}>
-                            <span>{kpi.kicker}</span>
-                            <strong>{kpi.value}</strong>
-                          </div>
-                          <h2>{kpi.title}</h2>
-                          <p>{kpi.detail}</p>
-                        </article>
-                      ))
-                    : overviewModules.slice(0, 4).map((module) => (
-                        <article key={module.title} className={styles.moduleCard} data-tone={module.tone}>
-                          <div className={styles.moduleCardTop}>
-                            <span>{module.kicker}</span>
-                            <strong>{module.value}</strong>
-                          </div>
-                          <h2>{module.title}</h2>
-                          <p>{module.body}</p>
-                          <button
-                            className={styles.moduleAction}
-                            type="button"
-                            onClick={() => setActiveTab(module.tab)}
-                          >
-                            {module.action}
-                          </button>
-                        </article>
-                      ))}
+                  {dashboardRoleFocusCards.map((kpi) => (
+                    <button
+                      type="button"
+                      key={`${kpi.kicker}-${kpi.title}`}
+                      className={`${styles.moduleCard} ${styles.managementDashboardKpiCard} ${styles.dashboardFocusButton}`}
+                      data-tone={kpi.tone}
+                      onClick={() => {
+                        if (kpi.targetReportTab) setReportAnalyticsTab(kpi.targetReportTab);
+                        openMainView(kpi.targetTab);
+                      }}
+                    >
+                      <div className={styles.moduleCardTop}>
+                        <div>
+                          <span className={styles.dashboardFocusIcon} aria-hidden="true">
+                            <DashboardFocusIcon type={kpi.icon} />
+                          </span>
+                          <span className={styles.moduleCardKicker}>{kpi.kicker}</span>
+                        </div>
+                        <span className={styles.dashboardTrendBadge} data-trend={kpi.trendIcon ?? "none"} aria-hidden="true">
+                          <DashboardTrendIcon type={kpi.trendIcon ?? "none"} />
+                        </span>
+                      </div>
+                      <strong className={styles.dashboardFocusValue}>{kpi.value}</strong>
+                      <p className={styles.dashboardFocusSubtitle}>{kpi.title}</p>
+                      <div className={styles.dashboardFocusFooter}>
+                        <p>{kpi.insight}</p>
+                      </div>
+                    </button>
+                  ))}
                 </section>
               </section>
 
