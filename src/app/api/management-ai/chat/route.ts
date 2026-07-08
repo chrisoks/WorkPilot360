@@ -10,6 +10,8 @@ type ManagementAiMessage = {
   content: string;
 };
 
+type AiMode = "management" | "sales";
+
 const MANAGEMENT_AI_SYSTEM_PROMPT = `
 Du bist die BWL-KI von WorkPilot360 für Geschäftsführung.
 Du sprichst Deutsch, klar, direkt und unternehmerisch.
@@ -35,6 +37,34 @@ Schreibe nur normalen Text mit kurzen Absätzen oder knappen Aufzählungen.
 Ende mit einer konkreten Rückfrage, womit tiefer gebohrt werden soll.
 `.trim();
 
+const SALES_AI_SYSTEM_PROMPT = `
+Du bist die Vertriebs-KI von WorkPilot360.
+Du sprichst Deutsch, klar, direkt und vertriebsorientiert.
+Dein Ziel ist, Abschlusskraft, Nachfassdisziplin, Neukundenbewegung, Zusatzverkauf, Dauerläufer-Nachverhandlung und Kundenaktivität zu verbessern.
+Du darfst Projekte, Angebote, Kunden, offene Vertriebsaufgaben, Nachfasspunkte, Dauerläufer-Prüfpunkte und die bereitgestellten Vertriebskennzahlen interpretieren.
+Du erfindest keine Zahlen. Wenn eine Zahl im Kontext fehlt, sagst du das klar.
+Du beantwortest ausschließlich Fragen im Kontext von WorkPilot360, Vertrieb, Kunden, Angeboten, Projekten, Nachfassaktionen, Potenzialen und Dauerläufer-Vertrieb.
+Du beantwortest keine Wetterfragen, allgemeinen Wissensfragen, privaten Ratschläge oder Themen ohne Bezug zu WorkPilot360.
+Du behauptest keine externen Quellen, keinen Internetzugriff und keinen direkten Datenbankzugriff.
+Du behauptest keine Aktionen auszuführen, die du nicht ausführen kannst.
+Strikte Vertraulichkeit: Du gibst keine Auskunft zu Gehalt, Lohn, Mitarbeiterverdienst, internen Lohnkosten, Personalkosten, internen Kostensätzen, Deckungsbeiträgen einzelner Mitarbeiter oder Ableitungen daraus.
+Wenn danach direkt oder indirekt gefragt wird, lehne kurz ab und biete eine vertriebliche Alternative an, zum Beispiel Umsatzpotenzial, Nachfasspriorität oder Kundensegmente.
+Du bewertest keine Mitarbeiter finanziell und vergleichst keine Mitarbeiter nach Kosten.
+Wenn die Datenlage für eine belastbare Antwort nicht reicht, sagst du: "Das kann ich mit den vorliegenden WorkPilot-Daten nicht belastbar beantworten." Danach nennst du, welche Vertriebsdaten fehlen.
+Wenn du interpretierst, kennzeichnest du es als Interpretation.
+Antworte im Chat-Stil, nicht als langer Bericht.
+Die erste Antwort auf eine Frage hat maximal 120 Wörter.
+Nenne maximal 3 konkrete Vertriebsaktionen.
+Nutze keine Markdown-Formatierung: keine Sternchen, keine Rauten, keine Trennlinien.
+Schreibe nur normalen Text mit kurzen Absätzen oder knappen Aufzählungen.
+Ende mit einer konkreten Rückfrage, welche Vertriebschance oder Bremse vertieft werden soll.
+`.trim();
+
+const AI_SYSTEM_PROMPTS: Record<AiMode, string> = {
+  management: MANAGEMENT_AI_SYSTEM_PROMPT,
+  sales: SALES_AI_SYSTEM_PROMPT,
+};
+
 function cleanText(value: unknown, maxLength: number) {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, maxLength);
@@ -53,6 +83,10 @@ function cleanMessages(value: unknown): ManagementAiMessage[] {
     })
     .filter((item): item is ManagementAiMessage => Boolean(item))
     .slice(-8);
+}
+
+function cleanMode(value: unknown): AiMode {
+  return value === "sales" ? "sales" : "management";
 }
 
 function extractResponseText(data: unknown) {
@@ -93,22 +127,31 @@ export async function POST(req: Request) {
     return sessionBoundActorResponse(actorResult);
   }
 
-  if (actorResult.actor.role !== Role.ADMIN && actorResult.actor.role !== Role.GESCHAEFTSFUEHRER) {
+  const mode = cleanMode(body.mode);
+  const actorUser = users.find((user) => user.id === actorResult.actor.id);
+  const canUseManagementAi = actorResult.actor.role === Role.ADMIN || actorResult.actor.role === Role.GESCHAEFTSFUEHRER;
+  const canUseSalesAi = canUseManagementAi || actorResult.actor.role === Role.VERTRIEB || actorUser?.salesRoleEnabled === true;
+  const aiLabel = mode === "sales" ? "Vertriebs-KI" : "BWL-KI";
+
+  if (mode === "management" && !canUseManagementAi) {
     return NextResponse.json({ error: "Die BWL-KI ist fuer Geschaeftsfuehrung und Admin freigegeben." }, { status: 403 });
+  }
+  if (mode === "sales" && !canUseSalesAi) {
+    return NextResponse.json({ error: "Die Vertriebs-KI ist fuer Vertrieb, Geschaeftsfuehrung und Admin freigegeben." }, { status: 403 });
   }
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     return NextResponse.json({
       reply:
-        "Die BWL-KI ist technisch vorbereitet, aber noch nicht verbunden. Bitte serverseitig OPENAI_API_KEY setzen und den Server neu starten.",
+        `Die ${aiLabel} ist technisch vorbereitet, aber noch nicht verbunden. Bitte serverseitig OPENAI_API_KEY setzen und den Server neu starten.`,
       missingConfiguration: true,
     });
   }
 
   const userMessage = cleanText(body.message, 4000);
   if (!userMessage) {
-    return NextResponse.json({ error: "Bitte eine Frage an die BWL-KI eingeben." }, { status: 400 });
+    return NextResponse.json({ error: `Bitte eine Frage an die ${aiLabel} eingeben.` }, { status: 400 });
   }
 
   const context = cleanText(body.context, 12000);
@@ -124,12 +167,12 @@ export async function POST(req: Request) {
     body: JSON.stringify({
       model,
       input: [
-        { role: "system", content: MANAGEMENT_AI_SYSTEM_PROMPT },
+        { role: "system", content: AI_SYSTEM_PROMPTS[mode] },
         {
           role: "user",
           content: [
             `Organisation: ${organization.name}`,
-            "Aktueller Management-Kontext aus WorkPilot360:",
+            mode === "sales" ? "Aktueller Vertriebs-Kontext aus WorkPilot360:" : "Aktueller Management-Kontext aus WorkPilot360:",
             context || "Kein strukturierter Kontext uebergeben.",
           ].join("\n\n"),
         },
@@ -144,7 +187,7 @@ export async function POST(req: Request) {
     const errorText = await response.text().catch(() => "");
     console.error("Management AI request failed", response.status, errorText);
     return NextResponse.json(
-      { error: "Die BWL-KI konnte gerade keine Antwort erzeugen. Bitte API-Key, Modell und Limits pruefen." },
+      { error: `Die ${aiLabel} konnte gerade keine Antwort erzeugen. Bitte API-Key, Modell und Limits pruefen.` },
       { status: 502 }
     );
   }
@@ -152,6 +195,6 @@ export async function POST(req: Request) {
   const data = await response.json();
   const reply = normalizeModelReply(extractResponseText(data));
   return NextResponse.json({
-    reply: reply || "Die BWL-KI hat keine verwertbare Antwort geliefert.",
+    reply: reply || `Die ${aiLabel} hat keine verwertbare Antwort geliefert.`,
   });
 }

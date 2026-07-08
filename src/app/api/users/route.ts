@@ -179,6 +179,7 @@ function formatUser(user: {
   branchAllocations?: Prisma.JsonValue | null;
   includeInLaborCostRate?: boolean | null;
   sellableCapacityEnabled?: boolean | null;
+  salesRoleEnabled?: boolean | null;
   notifyIdeaStore?: boolean | null;
   notifyUpsell?: boolean | null;
   mailAccount?: Prisma.JsonValue | null;
@@ -225,6 +226,7 @@ function formatUser(user: {
     branchAllocations: parseBranchAllocations(user.branchAllocations, user.planningBoard),
     includeInLaborCostRate: user.includeInLaborCostRate ?? true,
     sellableCapacityEnabled: user.sellableCapacityEnabled ?? true,
+    salesRoleEnabled: user.salesRoleEnabled ?? false,
     notifyIdeaStore: user.notifyIdeaStore ?? true,
     notifyUpsell: user.notifyUpsell ?? false,
     mailAccount: parseMailAccount(user.mailAccount, user.email),
@@ -417,6 +419,7 @@ async function ensureUserProfileColumns() {
     ADD COLUMN IF NOT EXISTS "branchAllocations" JSONB,
     ADD COLUMN IF NOT EXISTS "includeInLaborCostRate" BOOLEAN DEFAULT true,
     ADD COLUMN IF NOT EXISTS "sellableCapacityEnabled" BOOLEAN DEFAULT true,
+    ADD COLUMN IF NOT EXISTS "salesRoleEnabled" BOOLEAN DEFAULT false,
     ADD COLUMN IF NOT EXISTS "notifyIdeaStore" BOOLEAN DEFAULT true,
     ADD COLUMN IF NOT EXISTS "notifyUpsell" BOOLEAN DEFAULT false,
     ADD COLUMN IF NOT EXISTS "mailAccount" JSONB DEFAULT '{}'::jsonb
@@ -447,6 +450,7 @@ type UserDetails = {
   branchAllocations: BranchAllocations;
   includeInLaborCostRate: boolean;
   sellableCapacityEnabled: boolean;
+  salesRoleEnabled: boolean;
   notifyIdeaStore: boolean;
   notifyUpsell: boolean;
   mailAccount: ReturnType<typeof parseMailAccount>;
@@ -483,6 +487,7 @@ async function getUserDetails(userIds: string[]) {
       branchAllocations: Prisma.JsonValue | null;
       includeInLaborCostRate: boolean | null;
       sellableCapacityEnabled: boolean | null;
+      salesRoleEnabled: boolean | null;
       notifyIdeaStore: boolean | null;
       notifyUpsell: boolean | null;
       mailAccount: Prisma.JsonValue | null;
@@ -513,6 +518,7 @@ async function getUserDetails(userIds: string[]) {
       "branchAllocations",
       "includeInLaborCostRate",
       "sellableCapacityEnabled",
+      "salesRoleEnabled",
       "notifyIdeaStore",
       "notifyUpsell",
       "mailAccount"
@@ -551,6 +557,7 @@ async function getUserDetails(userIds: string[]) {
         branchAllocations: parseBranchAllocations(row.branchAllocations, row.planningBoard),
         includeInLaborCostRate: row.includeInLaborCostRate ?? true,
         sellableCapacityEnabled: row.sellableCapacityEnabled ?? true,
+        salesRoleEnabled: row.salesRoleEnabled ?? false,
         notifyIdeaStore: row.notifyIdeaStore ?? true,
         notifyUpsell: row.notifyUpsell ?? false,
         mailAccount: parseMailAccount(row.mailAccount, ""),
@@ -803,6 +810,7 @@ export async function PATCH(req: Request) {
   const hasBranchAllocationsUpdate = Object.prototype.hasOwnProperty.call(body, "branchAllocations");
   const hasIncludeInLaborCostRateUpdate = Object.prototype.hasOwnProperty.call(body, "includeInLaborCostRate");
   const hasSellableCapacityEnabledUpdate = Object.prototype.hasOwnProperty.call(body, "sellableCapacityEnabled");
+  const hasSalesRoleEnabledUpdate = Object.prototype.hasOwnProperty.call(body, "salesRoleEnabled");
   if (hasSellableCapacityEnabledUpdate && !isManagedUpdate) {
     return NextResponse.json(
       { error: "Nur Admins und Gesch\u00e4ftsf\u00fchrung d\u00fcrfen verkaufbare Kapazit\u00e4t \u00e4ndern." },
@@ -946,6 +954,10 @@ export async function PATCH(req: Request) {
         WHEN ${hasSellableCapacityEnabledUpdate} THEN ${Boolean(body.sellableCapacityEnabled)}
         ELSE "sellableCapacityEnabled"
       END,
+      "salesRoleEnabled" = CASE
+        WHEN ${hasSalesRoleEnabledUpdate} THEN ${Boolean(body.salesRoleEnabled)}
+        ELSE "salesRoleEnabled"
+      END,
       "notifyIdeaStore" = CASE
         WHEN ${hasNotifyIdeaStoreUpdate} THEN ${Boolean(body.notifyIdeaStore)}
         ELSE "notifyIdeaStore"
@@ -1063,6 +1075,7 @@ export async function POST(req: Request) {
   const branchAllocations = parseBranchAllocations(body.branchAllocations, planningBoard);
   const includeInLaborCostRate = body.includeInLaborCostRate !== false;
   const sellableCapacityEnabled = body.sellableCapacityEnabled !== false;
+  const salesRoleEnabled = body.salesRoleEnabled === true;
   const notifyIdeaStore = body.notifyIdeaStore !== false;
   const notifyUpsell = body.notifyUpsell === true;
   const mailAccount = parseMailAccount(body.mailAccount, body.email);
@@ -1107,6 +1120,7 @@ export async function POST(req: Request) {
       "branchAllocations" = ${JSON.stringify(branchAllocations)}::jsonb,
       "includeInLaborCostRate" = ${includeInLaborCostRate},
       "sellableCapacityEnabled" = ${sellableCapacityEnabled},
+      "salesRoleEnabled" = ${salesRoleEnabled},
       "notifyIdeaStore" = ${notifyIdeaStore},
       "notifyUpsell" = ${notifyUpsell},
       "mailAccount" = ${JSON.stringify(mailAccount)}::jsonb
@@ -1141,6 +1155,7 @@ export async function POST(req: Request) {
         branchAllocations,
         includeInLaborCostRate,
         sellableCapacityEnabled,
+        salesRoleEnabled,
         notifyIdeaStore,
         notifyUpsell,
         mailAccount,

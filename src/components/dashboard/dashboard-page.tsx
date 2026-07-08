@@ -437,6 +437,7 @@ type ManagementAiChatMessage = {
   content: string;
   createdAt: string;
 };
+type ManagementAiMode = "management" | "sales";
 type ContactFormTab = "details" | "address" | "terms" | "payment" | "zugferd";
 type CustomerFileTab =
   | "logbook"
@@ -835,6 +836,7 @@ type UserOption = {
   branchAllocations?: BranchAllocations;
   includeInLaborCostRate?: boolean;
   sellableCapacityEnabled?: boolean;
+  salesRoleEnabled?: boolean;
   notifyIdeaStore?: boolean;
   notifyUpsell?: boolean;
   mailAccount?: EmployeeMailAccount;
@@ -3071,18 +3073,21 @@ function getVisibleNavigationTabs(role?: string) {
   return navigationTabs.filter(([tab]) => isTabAllowedForRole(tab, role));
 }
 
-function getVisibleReportTabs(role?: string) {
+function getVisibleReportTabs(role?: string, hasSalesRole = false) {
   const allowedTabsByRole: Record<string, ReportAnalyticsTab[]> = {
     ADMIN: allReportTabs.map((tab) => tab.id).filter((tab) => tab !== "employeeRevenue"),
     GESCHAEFTSFUEHRER: allReportTabs.map((tab) => tab.id).filter((tab) => tab !== "employeeRevenue"),
     FUEHRUNGSKRAFT: ["employeeRevenue", "projects", "svs", "kuzu", "employees", "map"],
     MITARBEITER: ["employeeRevenue", "employees"],
-    VERTRIEB: ["sales", "projects", "customers", "kuzu"],
+    VERTRIEB: ["forecast", "sales", "projects", "customers", "kuzu"],
     BUCHHALTUNG: ["forecast", "monthlyReport", "customers"],
     GAST: [],
   };
-  const allowedTabs = allowedTabsByRole[role || ""] ?? [];
-  return allReportTabs.filter((tab) => allowedTabs.includes(tab.id));
+  const allowedTabs = new Set(allowedTabsByRole[role || ""] ?? []);
+  if (hasSalesRole) {
+    (["forecast", "sales", "projects", "customers", "kuzu"] as ReportAnalyticsTab[]).forEach((tab) => allowedTabs.add(tab));
+  }
+  return allReportTabs.filter((tab) => allowedTabs.has(tab.id));
 }
 
 const allAppTabs: AppTab[] = [
@@ -5544,8 +5549,12 @@ export function DashboardPage() {
   const [svsTradeFilter, setSvsTradeFilter] = useState("all");
   const [reportProjectKindFilter, setReportProjectKindFilter] = useState<ReportProjectKindFilter>("all");
   const [isManagementAiOpen, setIsManagementAiOpen] = useState(false);
+  const [managementAiMode, setManagementAiMode] = useState<ManagementAiMode>("management");
   const [managementAiInput, setManagementAiInput] = useState("");
-  const [managementAiMessages, setManagementAiMessages] = useState<ManagementAiChatMessage[]>([]);
+  const [managementAiMessagesByMode, setManagementAiMessagesByMode] = useState<Record<ManagementAiMode, ManagementAiChatMessage[]>>({
+    management: [],
+    sales: [],
+  });
   const [managementAiError, setManagementAiError] = useState("");
   const [isManagementAiSending, setIsManagementAiSending] = useState(false);
   const [expandedEmployeeAnalyticsGroups, setExpandedEmployeeAnalyticsGroups] = useState<string[]>([]);
@@ -5977,6 +5986,7 @@ export function DashboardPage() {
   const [employeePlanningResponsibleFor, setEmployeePlanningResponsibleFor] = useState<string[]>([]);
   const [employeeIncludeInLaborCostRate, setEmployeeIncludeInLaborCostRate] = useState(true);
   const [employeeSellableCapacityEnabled, setEmployeeSellableCapacityEnabled] = useState(true);
+  const [employeeSalesRoleEnabled, setEmployeeSalesRoleEnabled] = useState(false);
   const [employeeNotifyIdeaStore, setEmployeeNotifyIdeaStore] = useState(true);
   const [employeeNotifyUpsell, setEmployeeNotifyUpsell] = useState(false);
   const [employeeMailAccount, setEmployeeMailAccount] =
@@ -6102,13 +6112,14 @@ export function DashboardPage() {
     () => users.find((user) => user.id === activeUserId),
     [activeUserId, users]
   );
+  const activeUserHasSalesRole = activeUser?.role === "VERTRIEB" || activeUser?.salesRoleEnabled === true;
   const visibleNavigationTabs = useMemo(
     () => getVisibleNavigationTabs(activeUser?.role),
     [activeUser?.role]
   );
   const visibleReportTabs = useMemo(
-    () => getVisibleReportTabs(activeUser?.role),
-    [activeUser?.role]
+    () => getVisibleReportTabs(activeUser?.role, activeUserHasSalesRole),
+    [activeUser?.role, activeUserHasSalesRole]
   );
   const authenticatedUser = useMemo(
     () => users.find((user) => user.id === authenticatedUserId),
@@ -19923,6 +19934,7 @@ await addProjectLogbookEntry(
     setEmployeePlanningResponsibleFor([]);
     setEmployeeIncludeInLaborCostRate(true);
     setEmployeeSellableCapacityEnabled(true);
+    setEmployeeSalesRoleEnabled(false);
     setEmployeeNotifyIdeaStore(true);
     setEmployeeNotifyUpsell(false);
     setEmployeeMailAccount(emptyEmployeeMailAccount);
@@ -20111,6 +20123,7 @@ await addProjectLogbookEntry(
     setEmployeePlanningResponsibleFor(user.planningResponsibleFor ?? []);
     setEmployeeIncludeInLaborCostRate(user.includeInLaborCostRate !== false);
     setEmployeeSellableCapacityEnabled(user.sellableCapacityEnabled !== false);
+    setEmployeeSalesRoleEnabled(user.salesRoleEnabled === true);
     setEmployeeNotifyIdeaStore(user.notifyIdeaStore ?? true);
     setEmployeeNotifyUpsell(user.notifyUpsell ?? false);
     setEmployeeMailAccount(getSafeEmployeeMailAccount(user.mailAccount, user.email));
@@ -20303,6 +20316,7 @@ await addProjectLogbookEntry(
         planningResponsibleFor: employeePlanningResponsibleFor,
         includeInLaborCostRate: employeeIncludeInLaborCostRate,
         sellableCapacityEnabled: employeeSellableCapacityEnabled,
+        salesRoleEnabled: employeeSalesRoleEnabled,
         notifyIdeaStore: employeeNotifyIdeaStore,
         notifyUpsell: employeeNotifyUpsell,
         mailAccount: employeeMailAccount,
@@ -20364,6 +20378,7 @@ await addProjectLogbookEntry(
         planningBoard: derivedPlanningBoard,
         branchAllocations: employeeBranchAllocations,
         includeInLaborCostRate: employeeIncludeInLaborCostRate,
+        salesRoleEnabled: employeeSalesRoleEnabled,
         teamIds: derivedTeamIds,
         allTeams: false,
         actorId: activeUserId,
@@ -23790,7 +23805,7 @@ await addProjectLogbookEntry(
     if (activeUser?.role === "FUEHRUNGSKRAFT") {
       return isProjectLinkedToUser(project, activeUser) || isProjectLinkedToPlanningGroup(project, activeUser.planningGroup);
     }
-    if (activeUser?.role === "VERTRIEB") {
+    if (activeUserHasSalesRole) {
       return isProjectLinkedToUser(project, activeUser);
     }
     return false;
@@ -23798,7 +23813,7 @@ await addProjectLogbookEntry(
   const isCustomerFeedbackLinkedToActiveSalesUser = (
     item: Pick<CustomerFeedbackItem, "salesUserId" | "salesUserName"> | Pick<CustomerFeedbackRequestItem, "salesUserId" | "salesUserName">
   ) => {
-    if (activeUser?.role !== "VERTRIEB") return false;
+    if (!activeUserHasSalesRole) return false;
     return (
       Boolean(item.salesUserId && item.salesUserId === activeUser.id) ||
       normalizeReportPersonValue(item.salesUserName) === normalizeReportPersonValue(activeUser.name)
@@ -24915,7 +24930,7 @@ await addProjectLogbookEntry(
   const isSalesOfferVisibleForRole = (offer: OfferItem) => {
     const project = heroProjects.find((item) => item.id === offer.projectId);
     if (isProjectVisibleInProjectScopedAnalytics(project)) return true;
-    if (activeUser?.role !== "VERTRIEB") return false;
+    if (!activeUserHasSalesRole) return false;
     return normalizeReportPersonValue(offer.internalContactName) === normalizeReportPersonValue(activeUser.name);
   };
   const getOfferLinkedInvoices = (offer: OfferItem) =>
@@ -25081,7 +25096,7 @@ await addProjectLogbookEntry(
   const isSalesPotentialVisibleForRole = (potential: ProjectPotential) => {
     const project = getPotentialProject(potential);
     if (isProjectVisibleInProjectScopedAnalytics(project)) return true;
-    if (activeUser?.role !== "VERTRIEB") return false;
+    if (!activeUserHasSalesRole) return false;
     return (
       Boolean(potential.ownerUserId && potential.ownerUserId === activeUser.id) ||
       normalizeReportPersonValue(potential.ownerName) === normalizeReportPersonValue(activeUser.name)
@@ -27149,7 +27164,7 @@ await addProjectLogbookEntry(
       amount: salesStaleOpenOfferValue,
       state: salesStaleOpenOfferRows.length > 0 ? ("ok" as const) : ("good" as const),
       priority: salesStaleOpenOfferRows.length > 0 ? 80 : 8,
-      visible: canViewFullOverviewAnalytics || activeUser?.role === "VERTRIEB",
+      visible: canViewFullOverviewAnalytics || activeUserHasSalesRole,
     },
     {
       key: "sales-followups",
@@ -27163,7 +27178,7 @@ await addProjectLogbookEntry(
       amount: salesPotentialValue,
       state: salesDueFollowUps.length > 0 ? ("ok" as const) : ("good" as const),
       priority: salesDueFollowUps.length > 0 ? 72 : 8,
-      visible: canViewFullOverviewAnalytics || activeUser?.role === "VERTRIEB",
+      visible: canViewFullOverviewAnalytics || activeUserHasSalesRole,
     },
     {
       key: "sales-win-rate",
@@ -27180,7 +27195,7 @@ await addProjectLogbookEntry(
       amount: salesLostValue,
       state: salesDecisionCount >= 3 && salesWinRate < 35 ? ("low" as const) : salesDecisionCount > 0 ? ("good" as const) : ("ok" as const),
       priority: salesDecisionCount >= 3 && salesWinRate < 35 ? 76 : 20,
-      visible: canViewFullOverviewAnalytics || activeUser?.role === "VERTRIEB",
+      visible: canViewFullOverviewAnalytics || activeUserHasSalesRole,
     },
     {
       key: "interrupted-work",
@@ -27194,7 +27209,7 @@ await addProjectLogbookEntry(
       amount: 0,
       state: openInterruptedWorkCount > 0 ? ("low" as const) : ("good" as const),
       priority: openInterruptedWorkCount > 0 ? 79 : 8,
-      visible: canViewOperationalOverviewAnalytics || activeUser?.role === "VERTRIEB",
+      visible: canViewOperationalOverviewAnalytics || activeUserHasSalesRole,
     },
     {
       key: "critical-feedback",
@@ -27208,7 +27223,7 @@ await addProjectLogbookEntry(
       amount: 0,
       state: hotCustomerFeedbackCount > 0 ? ("low" as const) : ("good" as const),
       priority: hotCustomerFeedbackCount > 0 ? 82 : 8,
-      visible: canViewOperationalOverviewAnalytics || activeUser?.role === "VERTRIEB",
+      visible: canViewOperationalOverviewAnalytics || activeUserHasSalesRole,
     },
     {
       key: "productivity",
@@ -27276,6 +27291,50 @@ await addProjectLogbookEntry(
     executiveActiveBottleneckRows.length > 0 ? executiveActiveBottleneckRows : executiveBottleneckCandidates.slice(0, 5);
   const executiveTopBottleneck = executiveBottleneckRows.find((row) => row.state !== "good") ?? executiveBottleneckRows[0] ?? null;
   const canUseManagementAi = activeUser?.role === "ADMIN" || activeUser?.role === "GESCHAEFTSFUEHRER";
+  const canUseSalesAi = canUseManagementAi || activeUserHasSalesRole;
+  const currentManagementAiMessages = managementAiMessagesByMode[managementAiMode];
+  const managementAiLabels =
+    managementAiMode === "sales"
+      ? {
+          kicker: "Vertriebs-KI",
+          title: "Vertriebs-Analyse",
+          aria: "Vertriebs-KI",
+          intro: "Frag die Vertriebs-KI zu Angeboten, Nachfassen, Neukunden, Zusatzverkauf oder Dauerläufern.",
+          placeholder: "Frage zur aktuellen Vertriebslage stellen...",
+          fallbackError: "Die Vertriebs-KI konnte gerade nicht antworten.",
+          unreachableError: "Die Vertriebs-KI ist gerade nicht erreichbar.",
+          emptyReply: "Die Vertriebs-KI hat keine verwertbare Antwort geliefert.",
+          loading: "Analysiere aktuelle Vertriebsdaten...",
+        }
+      : {
+          kicker: "BWL-KI",
+          title: "Management-Analyse",
+          aria: "BWL-KI",
+          intro: "Frag die BWL-KI zu Engpässen, Umsatz, Vertrieb, SVS oder Kapazität.",
+          placeholder: "Frage zur aktuellen Unternehmenslage stellen...",
+          fallbackError: "Die BWL-KI konnte gerade nicht antworten.",
+          unreachableError: "Die BWL-KI ist gerade nicht erreichbar.",
+          emptyReply: "Die BWL-KI hat keine verwertbare Antwort geliefert.",
+          loading: "Analysiere aktuelle Systemzahlen...",
+        };
+  const managementAiSuggestions =
+    managementAiMode === "sales"
+      ? [
+          { label: "Heute aktiv angehen", question: "Welche Kunden oder Angebote soll ich heute aktiv angehen?" },
+          { label: "Nachfassbremsen", question: "Wo liegen aktuell die größten Nachfassbremsen?" },
+          { label: "Dauerläufer prüfen", question: "Welche Dauerläufer eignen sich für Nachverhandlung oder Zusatzverkauf?" },
+        ]
+      : [
+          { label: "Wo bremsen wir Wachstum?", question: "Wo bremsen wir aktuell Wachstum und Liquidität am stärksten?" },
+          { label: "5 Punkte für heute", question: "Welche 5 Management-Punkte sollte ich heute klären?" },
+          { label: "Kritische Planungsgruppen", question: "Welche Planungsgruppen sind wirtschaftlich kritisch und warum?" },
+        ];
+  function openManagementAi(mode: ManagementAiMode) {
+    setManagementAiMode(mode);
+    setManagementAiInput("");
+    setManagementAiError("");
+    setIsManagementAiOpen(true);
+  }
   const buildManagementAiContext = () => {
     const topCapacityRows = managementCapacityRows
       .filter((row) => row.state !== "good" || row.overloadHours > 0 || row.svs <= 0)
@@ -27311,6 +27370,43 @@ await addProjectLogbookEntry(
       topRecurringRisks.length ? `Dauerlaeufer-Nachverhandlung:\n${topRecurringRisks.join("\n")}` : "Dauerlaeufer-Nachverhandlung: kein aktueller Pruefpunkt.",
     ].join("\n\n");
   };
+  const buildSalesAiContext = () => {
+    const topSalesActions = salesActionRows
+      .slice(0, 10)
+      .map(
+        (row) =>
+          `- ${row.title}: Kunde ${row.context}, Projekt ${row.projectLabel}, faellig ${row.dueLabel}, Wert ${formatMoney(row.value)}. Empfehlung: ${row.recommendation}`
+      );
+    const topStaleOffers = salesStaleOpenOfferRows
+      .slice(0, 8)
+      .map(
+        (row) =>
+          `- ${row.offer.offerNumber}: ${row.offer.customerName || row.project?.customer || "-"}, ${formatMoney(row.offer.netTotal)}, ${getSalesOfferAgeDays(row.offer)} Tage offen.`
+      );
+    const topLostReasons = salesLostReasonRows
+      .slice(0, 6)
+      .map((row) => `- ${row.reason}: ${row.count}x, Wert ${formatMoney(row.value)}.`);
+    const topRecurringRisks = recurringNegotiationRows
+      .slice(0, 8)
+      .map(
+        (row) =>
+          `- ${row.project.projectNumber}: ${row.project.customer || row.project.title}. Signal: ${row.reasons.join("; ")}. Empfehlung: ${row.recommendation}`
+      );
+
+    return [
+      `Aktiver Auswertungsreiter: ${allReportTabs.find((tab) => tab.id === reportAnalyticsTab)?.label ?? reportAnalyticsTab}`,
+      `Zeitraum: ${reportPeriodLabel}`,
+      `Vertrieb: ${salesActionRows.length} priorisierte Vertriebsaufgaben, ${salesStaleOpenOfferRows.length} alte offene Angebote, ${salesOpenOfferWithoutFollowUpRows.length} offene Angebote ohne Wiedervorlage.`,
+      `Angebote: offen ${salesOpenOfferRows.length} mit ${formatMoney(salesOpenValue)}, gewonnen ${salesWonOfferRows.length} mit ${formatMoney(salesWonValue)}, verloren ${salesLostOfferRows.length} mit ${formatMoney(salesLostValue)}, Abschlussquote ${formatPercent(salesWinRate)}.`,
+      `Zusatzverkauf: ${salesDueFollowUps.length} faellige Nachfasspunkte, Statusgruppen ${salesPotentialStatusRows.map((row) => `${row.label}: ${row.count}`).join(", ") || "keine auffaelligen Statusgruppen"}.`,
+      `Dauerlaeufer: ${recurringNegotiationRows.length} Nachverhandlungs-Pruefpunkte, davon ${recurringNegotiationHighRiskRows.length} hohe Prioritaet.`,
+      topSalesActions.length ? `Priorisierte Vertriebsaktionen:\n${topSalesActions.join("\n")}` : "Priorisierte Vertriebsaktionen: keine offenen Punkte.",
+      topStaleOffers.length ? `Alte offene Angebote:\n${topStaleOffers.join("\n")}` : "Alte offene Angebote: keine auffaelligen Treffer.",
+      topLostReasons.length ? `Verlustgruende:\n${topLostReasons.join("\n")}` : "Verlustgruende: keine belastbaren Muster im Zeitraum.",
+      topRecurringRisks.length ? `Dauerlaeufer-Nachverhandlung:\n${topRecurringRisks.join("\n")}` : "Dauerlaeufer-Nachverhandlung: kein aktueller Pruefpunkt.",
+      "Sperrhinweis: Es werden keine Gehaelter, Mitarbeiterverdienste, internen Lohnkosten, Personalkosten oder internen Kostensaetze bereitgestellt.",
+    ].join("\n\n");
+  };
   async function sendManagementAiMessage() {
     const question = managementAiInput.trim();
     if (!question || !activeUserId || isManagementAiSending) return;
@@ -27320,8 +27416,10 @@ await addProjectLogbookEntry(
       content: question,
       createdAt: new Date().toISOString(),
     };
-    const nextMessages = [...managementAiMessages, userMessage];
-    setManagementAiMessages(nextMessages);
+    setManagementAiMessagesByMode((current) => ({
+      ...current,
+      [managementAiMode]: [...current[managementAiMode], userMessage],
+    }));
     setManagementAiInput("");
     setManagementAiError("");
     setIsManagementAiSending(true);
@@ -27332,29 +27430,33 @@ await addProjectLogbookEntry(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           actorId: activeUserId,
+          mode: managementAiMode,
           message: question,
-          messages: managementAiMessages.slice(-6).map((message) => ({
+          messages: currentManagementAiMessages.slice(-6).map((message) => ({
             role: message.role,
             content: message.content,
           })),
-          context: buildManagementAiContext(),
+          context: managementAiMode === "sales" ? buildSalesAiContext() : buildManagementAiContext(),
         }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        setManagementAiError(data?.error ?? "Die BWL-KI konnte gerade nicht antworten.");
+        setManagementAiError(data?.error ?? managementAiLabels.fallbackError);
         return;
       }
-      setManagementAiMessages((current) => [
+      setManagementAiMessagesByMode((current) => ({
         ...current,
-        {
-          role: "assistant",
-          content: data?.reply || "Die BWL-KI hat keine verwertbare Antwort geliefert.",
-          createdAt: new Date().toISOString(),
-        },
-      ]);
+        [managementAiMode]: [
+          ...current[managementAiMode],
+          {
+            role: "assistant",
+            content: data?.reply || managementAiLabels.emptyReply,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      }));
     } catch {
-      setManagementAiError("Die BWL-KI ist gerade nicht erreichbar.");
+      setManagementAiError(managementAiLabels.unreachableError);
     } finally {
       setIsManagementAiSending(false);
     }
@@ -27445,7 +27547,7 @@ await addProjectLogbookEntry(
   const dashboardMyDueTaskCount = myRelevantTasks.filter(
     (task) => task.status !== "erledigt" && task.status !== "abgelehnt" && isTaskOverdueByWorkingTime(task, deadlineProgressTime, holidayDateKeys)
   ).length;
-  if (activeUser?.role === "VERTRIEB") {
+  if (activeUserHasSalesRole) {
     dashboardRoleFocusCards = [
       {
         kicker: "Heute",
@@ -27780,7 +27882,7 @@ await addProjectLogbookEntry(
     ...card,
     trendIcon: card.trendIcon ?? dashboardCardTrendByKey[`${card.kicker}:${card.title}`] ?? "none",
   }));
-  const dashboardDailyImpulse = getDashboardDailyImpulse(activeUser?.role);
+  const dashboardDailyImpulse = getDashboardDailyImpulse(activeUserHasSalesRole ? "VERTRIEB" : activeUser?.role);
   const projectMapRows = reportProjectRows
     .filter((row) => row.project.address || row.project.customer)
     .slice(0, 20)
@@ -27881,16 +27983,31 @@ await addProjectLogbookEntry(
   };
   const renderReportsAnalytics = () => (
     <section className={styles.analyticsPage}>
-      {canUseManagementAi ? (
-        <button
-          type="button"
-          className={styles.managementAiButton}
-          onClick={() => setIsManagementAiOpen(true)}
-          aria-label="BWL-KI öffnen"
-          title="BWL-KI öffnen"
-        >
-          <span aria-hidden="true">AI</span>
-        </button>
+      {canUseManagementAi || canUseSalesAi ? (
+        <div className={styles.managementAiActions} aria-label="KI-Assistenten">
+          {canUseManagementAi ? (
+            <button
+              type="button"
+              className={styles.managementAiButton}
+              onClick={() => openManagementAi("management")}
+              aria-label="BWL-KI öffnen"
+              title="BWL-KI öffnen"
+            >
+              <span aria-hidden="true">BWL</span>
+            </button>
+          ) : null}
+          {canUseSalesAi ? (
+            <button
+              type="button"
+              className={styles.managementAiButton}
+              onClick={() => openManagementAi("sales")}
+              aria-label="Vertriebs-KI öffnen"
+              title="Vertriebs-KI öffnen"
+            >
+              <span aria-hidden="true">VK</span>
+            </button>
+          ) : null}
+        </div>
       ) : null}
 
       <div className={styles.analyticsTabs} role="tablist" aria-label="Auswertungsbereiche">
@@ -44716,6 +44833,18 @@ await addProjectLogbookEntry(
                       <label className={`${styles.checkboxField} ${styles.fullWidth}`}>
                         <input
                           type="checkbox"
+                          checked={employeeSalesRoleEnabled}
+                          disabled={!mayManageUsers}
+                          onChange={(event) => setEmployeeSalesRoleEnabled(event.target.checked)}
+                        />
+                        Zusatzrolle Vertriebler aktivieren
+                        <small>
+                          Gibt Sales-Performance, Forecast & OP-Kontrolle sowie die Vertriebs-KI frei, ohne die Hauptrolle zu ändern.
+                        </small>
+                      </label>
+                      <label className={`${styles.checkboxField} ${styles.fullWidth}`}>
+                        <input
+                          type="checkbox"
                           checked={employeeNotifyIdeaStore}
                           disabled={!mayManageUsers}
                           onChange={(event) => setEmployeeNotifyIdeaStore(event.target.checked)}
@@ -58130,19 +58259,19 @@ await addProjectLogbookEntry(
 
       {renderFinalizeInvoiceConfirmModal()}
       {renderDocumentMailModal()}
-      {isManagementAiOpen && canUseManagementAi ? (
+      {isManagementAiOpen && (managementAiMode === "sales" ? canUseSalesAi : canUseManagementAi) ? (
         <div className={styles.managementAiOverlay} onClick={() => setIsManagementAiOpen(false)}>
           <aside
             className={styles.managementAiPanel}
             role="dialog"
             aria-modal="true"
-            aria-label="BWL-KI"
+            aria-label={managementAiLabels.aria}
             onClick={(event) => event.stopPropagation()}
           >
             <div className={styles.managementAiHeader}>
               <div>
-                <span>BWL-KI</span>
-                <h2>Management-Analyse</h2>
+                <span>{managementAiLabels.kicker}</span>
+                <h2>{managementAiLabels.title}</h2>
                 <p>{reportPeriodLabel} · {allReportTabs.find((tab) => tab.id === reportAnalyticsTab)?.label ?? "Auswertungen"}</p>
               </div>
               <button className={styles.iconButton} type="button" onClick={() => setIsManagementAiOpen(false)}>
@@ -58151,21 +58280,17 @@ await addProjectLogbookEntry(
             </div>
 
             <div className={styles.managementAiMessages}>
-              {managementAiMessages.length === 0 ? (
+              {currentManagementAiMessages.length === 0 ? (
                 <div className={styles.managementAiWelcome}>
-                  <strong>Frag die BWL-KI zu Engpässen, Umsatz, Vertrieb, SVS oder Kapazität.</strong>
-                  <button type="button" onClick={() => setManagementAiInput("Wo bremsen wir aktuell Wachstum und Liquidität am stärksten?")}>
-                    Wo bremsen wir Wachstum?
-                  </button>
-                  <button type="button" onClick={() => setManagementAiInput("Welche 5 Management-Punkte sollte ich heute klären?")}>
-                    5 Punkte für heute
-                  </button>
-                  <button type="button" onClick={() => setManagementAiInput("Welche Planungsgruppen sind wirtschaftlich kritisch und warum?")}>
-                    Kritische Planungsgruppen
-                  </button>
+                  <strong>{managementAiLabels.intro}</strong>
+                  {managementAiSuggestions.map((suggestion) => (
+                    <button key={suggestion.question} type="button" onClick={() => setManagementAiInput(suggestion.question)}>
+                      {suggestion.label}
+                    </button>
+                  ))}
                 </div>
               ) : (
-                managementAiMessages.map((message, index) => (
+                currentManagementAiMessages.map((message, index) => (
                   <article key={`${message.createdAt}-${index}`} data-role={message.role}>
                     <p>{message.content}</p>
                   </article>
@@ -58173,7 +58298,7 @@ await addProjectLogbookEntry(
               )}
               {isManagementAiSending ? (
                 <article data-role="assistant">
-                  <p>Analysiere aktuelle Systemzahlen...</p>
+                  <p>{managementAiLabels.loading}</p>
                 </article>
               ) : null}
             </div>
@@ -58190,7 +58315,7 @@ await addProjectLogbookEntry(
               <textarea
                 value={managementAiInput}
                 onChange={(event) => setManagementAiInput(event.target.value)}
-                placeholder="Frage zur aktuellen Unternehmenslage stellen..."
+                placeholder={managementAiLabels.placeholder}
                 rows={3}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {

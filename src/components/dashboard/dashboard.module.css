@@ -6146,6 +6146,15 @@
   position: relative;
 }
 
+.managementAiActions {
+  display: flex;
+  gap: 8px;
+  position: absolute;
+  right: 24px;
+  top: 78px;
+  z-index: 3;
+}
+
 .managementAiButton {
   align-items: center;
   background: #2563eb;
@@ -6160,11 +6169,7 @@
   font-weight: 950;
   height: 44px;
   justify-content: center;
-  position: absolute;
-  right: 24px;
-  top: 78px;
   width: 44px;
-  z-index: 3;
 }
 
 .managementAiButton:hover {
