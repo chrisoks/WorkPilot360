@@ -360,7 +360,7 @@ export async function POST(req: Request) {
     const recipients = new Set<string>();
     const responsibleUserId = findResponsibleUserId(userRows, group.responsibleName);
     if (responsibleUserId) recipients.add(responsibleUserId);
-    if (stage === "escalation") managementUserIds.forEach((id) => recipients.add(id));
+    managementUserIds.forEach((id) => recipients.add(id));
     if (recipients.size === 0) managementUserIds.forEach((id) => recipients.add(id));
 
     const subject =

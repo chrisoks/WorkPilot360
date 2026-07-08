@@ -5,6 +5,7 @@ import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canManagePlanningEntries } from "@/lib/permissions";
+import { sendNotificationMailSafely } from "@/lib/mail/notifications";
 import { sendPushToUserSafely } from "@/lib/push/web-push";
 
 type DemoUser = {
@@ -158,6 +159,16 @@ async function ensureNotificationLinkColumns() {
     ADD COLUMN IF NOT EXISTS "linkTarget" TEXT,
     ADD COLUMN IF NOT EXISTS "linkTargetId" TEXT,
     ADD COLUMN IF NOT EXISTS "linkLabel" TEXT
+  `;
+}
+
+async function getManagementNotificationRecipients(organizationId: string) {
+  return prisma.$queryRaw<Array<{ id: string; email: string }>>`
+    SELECT id, email
+    FROM "User"
+    WHERE "organizationId" = ${organizationId}
+      AND "isActive" = true
+      AND "role" IN ('ADMIN', 'GESCHAEFTSFUEHRER')
   `;
 }
 
@@ -344,6 +355,7 @@ async function notifyPlanningResponsibles(entry: PlanningEntryRow, organizationI
 
     const title = "Terminwunsch freigeben";
     const body = formatPlanningRequestBody(entry);
+    const notificationId = randomUUID();
     await prisma.$executeRaw`
       INSERT INTO "Notification" (
         "id",
@@ -360,7 +372,7 @@ async function notifyPlanningResponsibles(entry: PlanningEntryRow, organizationI
         "createdAt"
       )
       VALUES (
-        ${randomUUID()},
+        ${notificationId},
         ${organizationId},
         ${recipient.id},
         NULL,
@@ -375,18 +387,12 @@ async function notifyPlanningResponsibles(entry: PlanningEntryRow, organizationI
       )
     `;
 
-    const notificationRows = await prisma.$queryRaw<Array<{ id: string }>>`
-      SELECT id
-      FROM "Notification"
-      WHERE "organizationId" = ${organizationId}
-        AND "userId" = ${recipient.id}
-        AND "linkTarget" = 'planning-entry'
-        AND "linkTargetId" = ${entry.id}
-      ORDER BY "createdAt" DESC
-      LIMIT 1
-    `;
-    const notificationId = notificationRows[0]?.id ?? "";
-    if (!notificationId) continue;
+    await sendNotificationMailSafely({
+      notificationId,
+      userId: recipient.id,
+      subject: title,
+      body,
+    });
 
     await sendPushToUserSafely({
       organizationId,
@@ -447,6 +453,12 @@ async function notifyPlanningOverlap(entry: PlanningEntryRow, organizationId: st
     `;
   }
 
+  const recipientMap = new Map(recipients.map((recipient) => [recipient.id, recipient]));
+  for (const recipient of await getManagementNotificationRecipients(organizationId)) {
+    recipientMap.set(recipient.id, recipient);
+  }
+  recipients = Array.from(recipientMap.values());
+
   for (const recipient of recipients) {
     const existing = await prisma.$queryRaw<Array<{ id: string }>>`
       SELECT id
@@ -461,6 +473,10 @@ async function notifyPlanningOverlap(entry: PlanningEntryRow, organizationId: st
 
     if (existing.length > 0) continue;
 
+    const subject = "Achtung ein Mitarbeiter ist doppelt verplant - bitte pruefen";
+    const body = `${entry.employeeName ?? "Ein Mitarbeiter"} ist am ${formatDateKeyDisplay(entry.date)} von ${
+      entry.startTime
+    } bis ${entry.endTime} parallel verplant. Bitte pruefen.`;
     await prisma.$executeRaw`
       INSERT INTO "Notification" (
         "id",
@@ -491,6 +507,25 @@ async function notifyPlanningOverlap(entry: PlanningEntryRow, organizationId: st
         CURRENT_TIMESTAMP
       )
     `;
+    const notificationRows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id
+      FROM "Notification"
+      WHERE "organizationId" = ${organizationId}
+        AND "userId" = ${recipient.id}
+        AND "linkTarget" = 'planning-entry-overlap'
+        AND "linkTargetId" = ${entry.id}
+      ORDER BY "createdAt" DESC
+      LIMIT 1
+    `;
+    const notificationId = notificationRows[0]?.id ?? "";
+    if (notificationId) {
+      await sendNotificationMailSafely({
+        notificationId,
+        userId: recipient.id,
+        subject,
+        body,
+      });
+    }
   }
 }
 

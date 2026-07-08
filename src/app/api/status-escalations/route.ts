@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { ensureDefaultStatusEscalationRules } from "@/lib/status-tracking";
 import { canRunStatusEscalations } from "@/lib/permissions";
+import { sendNotificationMailSafely } from "@/lib/mail/notifications";
 
 type OpenStatusRow = {
   entityType: string;
@@ -235,9 +236,7 @@ export async function POST(req: Request) {
         const responsible = await getResponsibleUserIds(organization.id, item, userRows);
         responsible.forEach((id) => recipients.add(id));
       }
-      if (rule.notifyManagement) {
-        managementUserIds.forEach((id) => recipients.add(id));
-      }
+      managementUserIds.forEach((id) => recipients.add(id));
 
       const subject = `Status-Toleranz überschritten: ${item.entityLabel || statusLabel(item.entityType)}`;
       const body = `${statusLabel(item.entityType)} "${item.entityLabel || item.entityId}" ist seit ${item.durationHours} Std. im Status "${item.toStatus}". Grenze: ${rule.thresholdHours} Std.`;
@@ -273,6 +272,12 @@ export async function POST(req: Request) {
           )
         `;
         firstNotificationId ??= notificationId;
+        await sendNotificationMailSafely({
+          notificationId,
+          userId,
+          subject,
+          body,
+        });
 
         if (rule.dailyReportEnabled) {
           const emailNotificationId = randomUUID();

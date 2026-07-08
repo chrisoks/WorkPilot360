@@ -19,6 +19,7 @@ import { validateXRechnungPayload } from "@/lib/e-invoice/xrechnung-validation";
 import { buildValidatedZugferdPdf } from "@/lib/e-invoice/zugferd-pdf";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canDeleteInvoices, canManageInvoices, canSendDocumentMails, canViewInternalCostData } from "@/lib/permissions";
+import { sendNotificationMailSafely } from "@/lib/mail/notifications";
 
 type InvoiceCompany = "OK solutions" | "OK immocare";
 
@@ -600,6 +601,11 @@ async function notifyManagementAboutUnderbilling(input: {
   `;
 
   for (const recipient of recipients) {
+    const notificationId = randomUUID();
+    const subject = "Achtung Projekt mit weniger Stunden fakturiert als gestempelt";
+    const body = `${input.projectLabel}: In ${input.invoiceNumber} wurden ${input.invoiceHours.toFixed(
+      2
+    )} Std. fakturiert, aber ${input.stampedHours.toFixed(2)} Std. produktiv gestempelt.`;
     await prisma.$executeRaw`
       INSERT INTO "Notification" (
         "id",
@@ -616,13 +622,13 @@ async function notifyManagementAboutUnderbilling(input: {
         "createdAt"
       )
       VALUES (
-        ${randomUUID()},
+        ${notificationId},
         ${input.organizationId},
         ${recipient.id},
         NULL,
         'app',
-        'Achtung Projekt mit weniger Stunden fakturiert als gestempelt',
-        ${`${input.projectLabel}: In ${input.invoiceNumber} wurden ${input.invoiceHours.toFixed(2)} Std. fakturiert, aber ${input.stampedHours.toFixed(2)} Std. produktiv gestempelt.`},
+        ${subject},
+        ${body},
         'project',
         ${input.projectId},
         'Projekt öffnen',
@@ -630,6 +636,12 @@ async function notifyManagementAboutUnderbilling(input: {
         CURRENT_TIMESTAMP
       )
     `;
+    await sendNotificationMailSafely({
+      notificationId,
+      userId: recipient.id,
+      subject,
+      body,
+    });
   }
 }
 
