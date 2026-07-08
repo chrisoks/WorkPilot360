@@ -215,6 +215,66 @@ function DashboardTrendIcon({ type }: { type: DashboardTrendIconType }) {
   );
 }
 
+function getReportMetricIcon(label: string): DashboardFocusIconType {
+  const normalizedLabel = label.toLowerCase();
+
+  if (
+    normalizedLabel.includes("kritisch") ||
+    normalizedLabel.includes("risiko") ||
+    normalizedLabel.includes("nicht")
+  ) {
+    return "alert";
+  }
+
+  if (
+    normalizedLabel.includes("umsatz") ||
+    normalizedLabel.includes("erlös") ||
+    normalizedLabel.includes("marge") ||
+    normalizedLabel.includes("gewinn") ||
+    normalizedLabel.includes("bezahlt") ||
+    normalizedLabel.includes("offen") ||
+    normalizedLabel.includes("überfällig") ||
+    normalizedLabel.includes("angebot") ||
+    normalizedLabel.includes("forecast")
+  ) {
+    return "finance";
+  }
+
+  if (
+    normalizedLabel.includes("kunde") ||
+    normalizedLabel.includes("kontakt") ||
+    normalizedLabel.includes("datenbasis") ||
+    normalizedLabel.includes("auswertbar")
+  ) {
+    return "customer";
+  }
+
+  if (
+    normalizedLabel.includes("projekt") ||
+    normalizedLabel.includes("pipeline") ||
+    normalizedLabel.includes("phase") ||
+    normalizedLabel.includes("dauerläufer") ||
+    normalizedLabel.includes("einmalig")
+  ) {
+    return "project";
+  }
+
+  if (
+    normalizedLabel.includes("stunde") ||
+    normalizedLabel.includes("zeit") ||
+    normalizedLabel.includes("dauer") ||
+    normalizedLabel.includes("alter")
+  ) {
+    return "clock";
+  }
+
+  if (normalizedLabel.includes("svs") || normalizedLabel.includes("produktiv")) {
+    return "chart";
+  }
+
+  return "chart";
+}
+
 function getTimeZoneOffsetMs(date: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone,
@@ -364,15 +424,9 @@ type ReportPeriodPreset =
   | "currentMonth"
   | "previousMonth"
   | "currentYear"
+  | "previousYear"
   | "currentFiscalYear"
   | "previousFiscalYear"
-  | "last12"
-  | "custom";
-type ForecastPeriodPreset =
-  | "currentMonth"
-  | "previousMonth"
-  | "currentYear"
-  | "previousYear"
   | "last12"
   | "next12"
   | "custom";
@@ -5439,15 +5493,6 @@ export function DashboardPage() {
   const [firmSettingsTab, setFirmSettingsTab] = useState<FirmSettingsTab>("profile");
   const [reportAnalyticsTab, setReportAnalyticsTab] = useState<ReportAnalyticsTab>("forecast");
   const [selectedForecastPeriod, setSelectedForecastPeriod] = useState("total");
-  const [forecastPeriodPreset, setForecastPeriodPreset] = useState<ForecastPeriodPreset>("next12");
-  const [forecastCustomStartDate, setForecastCustomStartDate] = useState(() => {
-    const today = new Date();
-    return formatDateKey(new Date(today.getFullYear(), today.getMonth(), 1));
-  });
-  const [forecastCustomEndDate, setForecastCustomEndDate] = useState(() => {
-    const today = new Date();
-    return formatDateKey(new Date(today.getFullYear(), today.getMonth() + 12, 0));
-  });
   const [reportPeriodPreset, setReportPeriodPreset] = useState<ReportPeriodPreset>("last12");
   const [isForecastQualityExpanded, setIsForecastQualityExpanded] = useState(false);
   const [selectedForecastQualityId, setSelectedForecastQualityId] = useState("");
@@ -15225,7 +15270,7 @@ export function DashboardPage() {
 
   useEffect(() => {
     setSelectedForecastPeriod("total");
-  }, [forecastPeriodPreset, forecastCustomStartDate, forecastCustomEndDate]);
+  }, [reportPeriodPreset, reportCustomStartDate, reportCustomEndDate]);
 
   useEffect(() => {
     projectLogbookEntriesRef.current = projectLogbookEntries;
@@ -23371,6 +23416,12 @@ await addProjectLogbookEntry(
         end: new Date(reportNow.getFullYear(), 11, 31, 23, 59, 59),
       };
     }
+    if (periodPreset === "previousYear") {
+      return {
+        start: new Date(reportNow.getFullYear() - 1, 0, 1, 0, 0, 0),
+        end: new Date(reportNow.getFullYear() - 1, 11, 31, 23, 59, 59),
+      };
+    }
     if (periodPreset === "currentFiscalYear") {
       const start = fiscalYearStart();
       return {
@@ -23392,6 +23443,12 @@ await addProjectLogbookEntry(
       const end = getReportCustomDate(customEndDate, fallbackEnd, true);
       return start <= end ? { start, end } : { start: end, end: start };
     }
+    if (periodPreset === "next12") {
+      return {
+        start: new Date(reportNow.getFullYear(), reportNow.getMonth(), 1, 0, 0, 0),
+        end: new Date(reportNow.getFullYear(), reportNow.getMonth() + 12, 0, 23, 59, 59),
+      };
+    }
     return {
       start: new Date(reportNow.getFullYear(), reportNow.getMonth() - 11, 1, 0, 0, 0),
       end: new Date(reportNow.getFullYear(), reportNow.getMonth() + 1, 0, 23, 59, 59),
@@ -23401,6 +23458,12 @@ await addProjectLogbookEntry(
   const reportStartDate = reportPeriodRange.start;
   const reportEndDate = reportPeriodRange.end;
   const reportPeriodLabel = `${formatDateOnly(formatDateKey(reportStartDate))} - ${formatDateOnly(formatDateKey(reportEndDate))}`;
+  const previousReportPeriodRange = (() => {
+    const durationMs = Math.max(0, reportEndDate.getTime() - reportStartDate.getTime());
+    const end = new Date(reportStartDate.getTime() - 1000);
+    const start = new Date(end.getTime() - durationMs);
+    return { start, end };
+  })();
   const employeeKpiDetailPeriodRange = getReportPeriodRange(
     employeeKpiDetailPeriodPreset,
     employeeKpiDetailCustomStartDate,
@@ -23413,49 +23476,7 @@ await addProjectLogbookEntry(
   const employeeKpiDetailPeriodLabel = `${formatDateOnly(employeeKpiDetailStartDateKey)} - ${formatDateOnly(
     employeeKpiDetailEndDateKey
   )}`;
-  const forecastPeriodRange = (() => {
-    if (forecastPeriodPreset === "currentMonth") {
-      return {
-        start: new Date(reportNow.getFullYear(), reportNow.getMonth(), 1, 0, 0, 0),
-        end: new Date(reportNow.getFullYear(), reportNow.getMonth() + 1, 0, 23, 59, 59),
-      };
-    }
-    if (forecastPeriodPreset === "previousMonth") {
-      return {
-        start: new Date(reportNow.getFullYear(), reportNow.getMonth() - 1, 1, 0, 0, 0),
-        end: new Date(reportNow.getFullYear(), reportNow.getMonth(), 0, 23, 59, 59),
-      };
-    }
-    if (forecastPeriodPreset === "currentYear") {
-      return {
-        start: new Date(reportNow.getFullYear(), 0, 1, 0, 0, 0),
-        end: new Date(reportNow.getFullYear(), 11, 31, 23, 59, 59),
-      };
-    }
-    if (forecastPeriodPreset === "previousYear") {
-      return {
-        start: new Date(reportNow.getFullYear() - 1, 0, 1, 0, 0, 0),
-        end: new Date(reportNow.getFullYear() - 1, 11, 31, 23, 59, 59),
-      };
-    }
-    if (forecastPeriodPreset === "last12") {
-      return {
-        start: new Date(reportNow.getFullYear(), reportNow.getMonth() - 11, 1, 0, 0, 0),
-        end: new Date(reportNow.getFullYear(), reportNow.getMonth() + 1, 0, 23, 59, 59),
-      };
-    }
-    if (forecastPeriodPreset === "custom") {
-      const fallbackStart = new Date(reportNow.getFullYear(), reportNow.getMonth(), 1, 0, 0, 0);
-      const fallbackEnd = new Date(reportNow.getFullYear(), reportNow.getMonth() + 12, 0, 23, 59, 59);
-      const start = getReportCustomDate(forecastCustomStartDate, fallbackStart);
-      const end = getReportCustomDate(forecastCustomEndDate, fallbackEnd, true);
-      return start <= end ? { start, end } : { start: end, end: start };
-    }
-    return {
-      start: new Date(reportNow.getFullYear(), reportNow.getMonth(), 1, 0, 0, 0),
-      end: new Date(reportNow.getFullYear(), reportNow.getMonth() + 12, 0, 23, 59, 59),
-    };
-  })();
+  const forecastPeriodRange = reportPeriodRange;
   const forecastStartDate = forecastPeriodRange.start;
   const forecastEndDate = forecastPeriodRange.end;
   const forecastPeriodLabel = `${formatDateOnly(formatDateKey(forecastStartDate))} - ${formatDateOnly(formatDateKey(forecastEndDate))}`;
@@ -23505,6 +23526,11 @@ await addProjectLogbookEntry(
     const date = parseAppDateTime(value);
     const time = date.getTime();
     return Number.isFinite(time) && date >= reportStartDate && date <= reportEndDate;
+  };
+  const isPreviousReportDate = (value: string) => {
+    const date = parseAppDateTime(value);
+    const time = date.getTime();
+    return Number.isFinite(time) && date >= previousReportPeriodRange.start && date <= previousReportPeriodRange.end;
   };
   const isEmployeeKpiDetailDate = (value: string) => {
     const date = parseAppDateTime(value);
@@ -23685,6 +23711,13 @@ await addProjectLogbookEntry(
     );
   });
   const reportOffers = offers.filter((offer) => isReportDate(offer.createdAt));
+  const previousReportInvoices = invoices.filter((invoice) => {
+    return (
+      isPreviousReportDate(invoice.serviceDate || invoice.createdAt) &&
+      isReportRevenueInvoice(invoice)
+    );
+  });
+  const previousReportOffers = offers.filter((offer) => isPreviousReportDate(offer.createdAt));
   const reportCustomerFeedback = customerFeedback
     .filter((feedback) => isReportDate(feedback.createdAt))
     .filter((feedback) => {
@@ -24507,16 +24540,26 @@ await addProjectLogbookEntry(
     });
   };
   const invoiceRevenueTotal = reportInvoices.reduce((sum, invoice) => sum + invoice.netTotal, 0);
+  const previousInvoiceRevenueTotal = previousReportInvoices.reduce((sum, invoice) => sum + invoice.netTotal, 0);
   const invoiceCostTotal = reportInvoices.reduce(
     (sum, invoice) => sum + getDocumentInternalCost(invoice),
     0
   );
+  const previousInvoiceCostTotal = previousReportInvoices.reduce(
+    (sum, invoice) => sum + getDocumentInternalCost(invoice),
+    0
+  );
   const invoiceMarginTotal = invoiceRevenueTotal - invoiceCostTotal;
+  const previousInvoiceMarginTotal = previousInvoiceRevenueTotal - previousInvoiceCostTotal;
   const invoiceMarginPercent = invoiceRevenueTotal > 0 ? (invoiceMarginTotal / invoiceRevenueTotal) * 100 : 0;
+  const previousInvoiceMarginPercent =
+    previousInvoiceRevenueTotal > 0 ? (previousInvoiceMarginTotal / previousInvoiceRevenueTotal) * 100 : 0;
   const offerVolumeTotal = reportOffers.reduce((sum, offer) => sum + offer.netTotal, 0);
-  const svsAllInvoiceRows = reportInvoices
-    .filter((invoice) => invoice.status !== "Entwurf")
-    .map((invoice) => {
+  const previousOfferVolumeTotal = previousReportOffers.reduce((sum, offer) => sum + offer.netTotal, 0);
+  const buildSvsInvoiceRows = (sourceInvoices: InvoiceItem[]) =>
+    sourceInvoices
+      .filter((invoice) => invoice.status !== "Entwurf")
+      .map((invoice) => {
       const project = heroProjects.find((item) => item.id === invoice.projectId);
       const trade = project?.trade || "Ohne Gewerk";
       const linkedStampEntries = stampEntries.filter(
@@ -24552,6 +24595,8 @@ await addProjectLogbookEntry(
       ].some((value) => normalizeStampSearchValue(String(value ?? "")).includes(reportSearchValue));
     })
     .sort((first, second) => second.svs - first.svs);
+  const svsAllInvoiceRows = buildSvsInvoiceRows(reportInvoices);
+  const previousSvsAllInvoiceRows = buildSvsInvoiceRows(previousReportInvoices);
   const svsTradeOptions = Array.from(new Set(svsAllInvoiceRows.map((row) => row.trade))).sort((first, second) =>
     first.localeCompare(second, "de")
   );
@@ -24561,11 +24606,21 @@ await addProjectLogbookEntry(
   );
   const svsEvaluableRows = svsInvoiceRows.filter((row) => row.status === "ok");
   const svsNotEvaluableRows = svsInvoiceRows.filter((row) => row.status === "missing");
+  const previousSvsInvoiceRows = previousSvsAllInvoiceRows.filter(
+    (row) => activeSvsTradeFilter === "all" || row.trade === activeSvsTradeFilter
+  );
+  const previousSvsEvaluableRows = previousSvsInvoiceRows.filter((row) => row.status === "ok");
+  const previousSvsNotEvaluableRows = previousSvsInvoiceRows.filter((row) => row.status === "missing");
   const svsTotalRevenue = svsEvaluableRows.reduce((sum, row) => sum + row.invoice.netTotal, 0);
   const svsTotalHours = svsEvaluableRows.reduce((sum, row) => sum + row.stampedHours, 0);
   const svsAverage = svsTotalHours > 0 ? svsTotalRevenue / svsTotalHours : 0;
+  const previousSvsTotalRevenue = previousSvsEvaluableRows.reduce((sum, row) => sum + row.invoice.netTotal, 0);
+  const previousSvsTotalHours = previousSvsEvaluableRows.reduce((sum, row) => sum + row.stampedHours, 0);
+  const previousSvsAverage = previousSvsTotalHours > 0 ? previousSvsTotalRevenue / previousSvsTotalHours : 0;
   const svsEvaluableShare =
     svsInvoiceRows.length > 0 ? (svsEvaluableRows.length / svsInvoiceRows.length) * 100 : 0;
+  const previousSvsEvaluableShare =
+    previousSvsInvoiceRows.length > 0 ? (previousSvsEvaluableRows.length / previousSvsInvoiceRows.length) * 100 : 0;
   const svsDataQualityState =
     svsInvoiceRows.length === 0
       ? "neutral"
@@ -25471,12 +25526,22 @@ await addProjectLogbookEntry(
   const formatPipelineDays = (days: number) => `${days.toLocaleString(APP_LOCALE)} Tg.`;
   const formatPipelineMinutesAsDays = (minutes: number) =>
     formatPipelineDays(Math.max(0, Math.round(minutes / 1440)));
+  const getPipelineMinutesAsDays = (minutes: number) => Math.max(0, Math.round(minutes / 1440));
   const getPipelinePhaseDurationMinutes = (entry: StatusTimelineEntry) => {
     if (entry.durationMinutes > 0) return entry.durationMinutes;
     const startedAt = parseAppDateTime(entry.startedAt);
     const endedAt = entry.endedAt ? parseAppDateTime(entry.endedAt) : reportNow;
     if (!Number.isFinite(startedAt.getTime()) || !Number.isFinite(endedAt.getTime())) return 0;
     return Math.max(0, Math.floor((endedAt.getTime() - startedAt.getTime()) / 60000));
+  };
+  const getPipelinePhaseDurationMinutesInRange = (entry: StatusTimelineEntry, range: { start: Date; end: Date }) => {
+    const startedAt = parseAppDateTime(entry.startedAt);
+    const endedAt = entry.endedAt ? parseAppDateTime(entry.endedAt) : reportNow;
+    if (!Number.isFinite(startedAt.getTime()) || !Number.isFinite(endedAt.getTime())) return 0;
+    const overlapStart = Math.max(startedAt.getTime(), range.start.getTime());
+    const overlapEnd = Math.min(endedAt.getTime(), range.end.getTime());
+    if (overlapEnd <= overlapStart) return 0;
+    return Math.max(0, Math.floor((overlapEnd - overlapStart) / 60000));
   };
   const isProjectInReportKindFilter = (project?: HeroProjectPreview | null) => {
     if (!project) return reportProjectKindFilter === "all";
@@ -25570,7 +25635,7 @@ await addProjectLogbookEntry(
   });
   const getPipelineProjectKindKey = (project?: HeroProjectPreview | null) =>
     project && isRecurringProjectKindValue(getProjectKind(project)) ? "recurring" : "oneTime";
-  const getPipelineBottleneckRowsForKind = (kind: "oneTime" | "recurring") => {
+  const getPipelineBottleneckRowsForKind = (kind: "oneTime" | "recurring", range = reportPeriodRange) => {
     const phaseRows = Object.values(
       projectStatusTimelineEntries.reduce<
         Record<
@@ -25602,7 +25667,8 @@ await addProjectLogbookEntry(
           ].some((value) => normalizeStampSearchValue(String(value ?? "")).includes(reportSearchValue));
           if (!isSearchMatch) return groups;
         }
-        const durationMinutes = getPipelinePhaseDurationMinutes(entry);
+        const durationMinutes = getPipelinePhaseDurationMinutesInRange(entry, range);
+        if (durationMinutes <= 0) return groups;
         groups[normalizedStatus] = groups[normalizedStatus] ?? {
           status: normalizedStatus,
           phaseCount: 0,
@@ -25634,6 +25700,48 @@ await addProjectLogbookEntry(
     oneTime: getPipelineBottleneckRowsForKind("oneTime"),
     recurring: getPipelineBottleneckRowsForKind("recurring"),
   };
+  const previousPipelineBottleneckRowsByKind = {
+    oneTime: getPipelineBottleneckRowsForKind("oneTime", previousReportPeriodRange),
+    recurring: getPipelineBottleneckRowsForKind("recurring", previousReportPeriodRange),
+  };
+  const pipelineDurationThresholds: Record<
+    "oneTime" | "recurring",
+    Record<string, { averageOk: number; averageWarn: number; longestOk: number; longestWarn: number }>
+  > = {
+    oneTime: {
+      "Lead / Klärung": { averageOk: 7, averageWarn: 14, longestOk: 14, longestWarn: 30 },
+      Angebot: { averageOk: 7, averageWarn: 14, longestOk: 14, longestWarn: 30 },
+      "Zur Planung bereit": { averageOk: 3, averageWarn: 7, longestOk: 7, longestWarn: 14 },
+      Geplant: { averageOk: 14, averageWarn: 30, longestOk: 30, longestWarn: 60 },
+      Umsetzung: { averageOk: 14, averageWarn: 30, longestOk: 30, longestWarn: 60 },
+      Abrechnungsprüfung: { averageOk: 3, averageWarn: 7, longestOk: 7, longestWarn: 14 },
+      "Zur Abrechnung bereit": { averageOk: 3, averageWarn: 7, longestOk: 7, longestWarn: 14 },
+    },
+    recurring: {
+      "Lead / Klärung": { averageOk: 14, averageWarn: 30, longestOk: 30, longestWarn: 60 },
+      Angebot: { averageOk: 14, averageWarn: 30, longestOk: 30, longestWarn: 60 },
+      "Warten auf Kunde": { averageOk: 14, averageWarn: 30, longestOk: 30, longestWarn: 60 },
+      "Zur Planung bereit": { averageOk: 7, averageWarn: 14, longestOk: 14, longestWarn: 30 },
+      Geplant: { averageOk: 14, averageWarn: 30, longestOk: 30, longestWarn: 60 },
+      Abrechnungsprüfung: { averageOk: 3, averageWarn: 7, longestOk: 7, longestWarn: 14 },
+      "Zur Abrechnung bereit": { averageOk: 3, averageWarn: 7, longestOk: 7, longestWarn: 14 },
+    },
+  };
+  const defaultPipelineDurationThreshold = { averageOk: 14, averageWarn: 30, longestOk: 30, longestWarn: 60 };
+  const getPipelineDurationThreshold = (kind: "oneTime" | "recurring", status: string) =>
+    pipelineDurationThresholds[kind][status] ?? defaultPipelineDurationThreshold;
+  const getPipelineDurationState = (days: number, okLimit: number, warnLimit: number) =>
+    days <= okLimit ? ("good" as const) : days <= warnLimit ? ("ok" as const) : ("low" as const);
+  const getPipelineDurationTrendIcon = (currentDays: number, previousDays: number): DashboardTrendIconType => {
+    if (previousDays <= 0 && currentDays <= 0) return "none";
+    if (previousDays <= 0) return "none";
+    const diff = currentDays - previousDays;
+    const tolerance = Math.max(1, Math.round(previousDays * 0.05));
+    if (Math.abs(diff) <= tolerance) return "flat";
+    return diff < 0 ? "up" : "down";
+  };
+  const getPreviousPipelineBottleneckRow = (kind: "oneTime" | "recurring", status: string) =>
+    previousPipelineBottleneckRowsByKind[kind].find((row) => row.status === status) ?? null;
   const pipelineDurationRows = pipelineProjects
     .map((project) => {
       const createdAt = project.createdAt ? parseAppDateTime(project.createdAt) : null;
@@ -25816,7 +25924,13 @@ await addProjectLogbookEntry(
   const overviewPaidTotal = reportInvoices
     .filter((invoice) => isInvoicePaid(invoice))
     .reduce((sum, invoice) => sum + invoice.netTotal, 0);
+  const previousOverviewPaidTotal = previousReportInvoices
+    .filter((invoice) => isInvoicePaid(invoice))
+    .reduce((sum, invoice) => sum + invoice.netTotal, 0);
   const overviewOpenTotal = reportInvoices
+    .filter((invoice) => !isInvoicePaid(invoice))
+    .reduce((sum, invoice) => sum + invoice.netTotal, 0);
+  const previousOverviewOpenTotal = previousReportInvoices
     .filter((invoice) => !isInvoicePaid(invoice))
     .reduce((sum, invoice) => sum + invoice.netTotal, 0);
   const overviewOverdueRows = reportInvoices
@@ -25825,6 +25939,11 @@ await addProjectLogbookEntry(
     .filter((row) => row.dueState.overdueDays > 0)
     .sort((first, second) => second.dueState.overdueDays - first.dueState.overdueDays);
   const overviewOverdueTotal = overviewOverdueRows.reduce((sum, row) => sum + row.invoice.netTotal, 0);
+  const previousOverviewOverdueRows = previousReportInvoices
+    .filter((invoice) => !isInvoicePaid(invoice))
+    .map((invoice) => ({ invoice, dueState: getInvoiceDueState(invoice) }))
+    .filter((row) => row.dueState.overdueDays > 0);
+  const previousOverviewOverdueTotal = previousOverviewOverdueRows.reduce((sum, row) => sum + row.invoice.netTotal, 0);
   const overviewProjectStatusRows = Object.values(
     reportProjectRows.reduce<Record<string, { status: string; count: number; revenue: number }>>((groups, row) => {
       const status = row.project.status || "Ohne Status";
@@ -27481,22 +27600,26 @@ await addProjectLogbookEntry(
     label: string,
     value: string,
     hint: string,
-    state: "good" | "ok" | "low" | "neutral" = "neutral"
+    state: "good" | "ok" | "low" | "neutral" = "neutral",
+    trendIcon: DashboardTrendIconType = "none"
   ) => {
     const statusLabel = state === "good" ? "stabil" : state === "ok" ? "prüfen" : state === "low" ? "kritisch" : "Info";
+    const metricIcon = getReportMetricIcon(label);
     return (
       <article className={styles.analyticsMetric} data-state={state}>
         <div className={styles.analyticsMetricHeader}>
           <span className={styles.analyticsMetricIcon} aria-hidden="true">
-            <svg viewBox="0 0 24 24" focusable="false">
-              <path d="M4 18V6" />
-              <path d="M8 18v-5" />
-              <path d="M12 18V9" />
-              <path d="M16 18v-8" />
-              <path d="M20 18V4" />
-            </svg>
+            <DashboardFocusIcon type={metricIcon} />
           </span>
-          <small>{statusLabel}</small>
+          <span className={styles.analyticsMetricStatusGroup}>
+            {trendIcon !== "none" ? (
+              <span className={styles.analyticsTrendBadge} data-trend={trendIcon} aria-label="Trend">
+                <DashboardTrendIcon type={trendIcon} />
+              </span>
+            ) : (
+              <small>{statusLabel}</small>
+            )}
+          </span>
         </div>
         <span>{label}</span>
         <strong>{value}</strong>
@@ -27558,81 +27681,42 @@ await addProjectLogbookEntry(
       ) : null}
 
       <div className={styles.analyticsFilters}>
-        {reportAnalyticsTab === "forecast" ? (
-          <>
-            <label>
-              Zeitraum
-              <select
-                value={forecastPeriodPreset}
-                onChange={(event) => setForecastPeriodPreset(event.target.value as ForecastPeriodPreset)}
-              >
-                <option value="currentMonth">Aktueller Monat</option>
-                <option value="previousMonth">Vormonat</option>
-                <option value="currentYear">Aktuelles Jahr</option>
-                <option value="previousYear">Vorjahr</option>
-                <option value="last12">Letzte 12 Monate</option>
-                <option value="next12">Nächste 12 Monate</option>
-                <option value="custom">Individuell</option>
-              </select>
-            </label>
-            <label>
-              Von
-              <input
-                type="date"
-                value={forecastPeriodPreset === "custom" ? forecastCustomStartDate : formatDateKey(forecastStartDate)}
-                disabled={forecastPeriodPreset !== "custom"}
-                onChange={(event) => setForecastCustomStartDate(event.target.value)}
-              />
-            </label>
-            <label>
-              Bis
-              <input
-                type="date"
-                value={forecastPeriodPreset === "custom" ? forecastCustomEndDate : formatDateKey(forecastEndDate)}
-                disabled={forecastPeriodPreset !== "custom"}
-                onChange={(event) => setForecastCustomEndDate(event.target.value)}
-              />
-            </label>
-            <span>Aktiv: {forecastPeriodLabel}</span>
-          </>
-        ) : (
-          <>
-            <label>
-              Zeitraum
-              <select
-                value={reportPeriodPreset}
-                onChange={(event) => setReportPeriodPreset(event.target.value as ReportPeriodPreset)}
-              >
-                <option value="currentMonth">Aktueller Monat</option>
-                <option value="previousMonth">Vormonat</option>
-                <option value="currentYear">Aktuelles Jahr</option>
-                <option value="currentFiscalYear">Aktuelles Geschäftsjahr</option>
-                <option value="previousFiscalYear">Vorheriges Geschäftsjahr</option>
-                <option value="last12">Letzte 12 Monate</option>
-                <option value="custom">Individuell</option>
-              </select>
-            </label>
-            <label>
-              Von
-              <input
-                type="date"
-                value={reportPeriodPreset === "custom" ? reportCustomStartDate : formatDateKey(reportStartDate)}
-                disabled={reportPeriodPreset !== "custom"}
-                onChange={(event) => setReportCustomStartDate(event.target.value)}
-              />
-            </label>
-            <label>
-              Bis
-              <input
-                type="date"
-                value={reportPeriodPreset === "custom" ? reportCustomEndDate : formatDateKey(reportEndDate)}
-                disabled={reportPeriodPreset !== "custom"}
-                onChange={(event) => setReportCustomEndDate(event.target.value)}
-              />
-            </label>
-            <span>Aktiv: {reportPeriodLabel}</span>
-          </>
-        )}
+        <label>
+          Zeitraum
+          <select
+            value={reportPeriodPreset}
+            onChange={(event) => setReportPeriodPreset(event.target.value as ReportPeriodPreset)}
+          >
+            <option value="currentMonth">Aktueller Monat</option>
+            <option value="previousMonth">Vormonat</option>
+            <option value="currentYear">Aktuelles Jahr</option>
+            <option value="previousYear">Vorjahr</option>
+            <option value="currentFiscalYear">Aktuelles Geschäftsjahr</option>
+            <option value="previousFiscalYear">Vorheriges Geschäftsjahr</option>
+            <option value="last12">Letzte 12 Monate</option>
+            <option value="next12">Nächste 12 Monate</option>
+            <option value="custom">Individuell</option>
+          </select>
+        </label>
+        <label>
+          Von
+          <input
+            type="date"
+            value={reportPeriodPreset === "custom" ? reportCustomStartDate : formatDateKey(reportStartDate)}
+            disabled={reportPeriodPreset !== "custom"}
+            onChange={(event) => setReportCustomStartDate(event.target.value)}
+          />
+        </label>
+        <label>
+          Bis
+          <input
+            type="date"
+            value={reportPeriodPreset === "custom" ? reportCustomEndDate : formatDateKey(reportEndDate)}
+            disabled={reportPeriodPreset !== "custom"}
+            onChange={(event) => setReportCustomEndDate(event.target.value)}
+          />
+        </label>
+        <span>Aktiv: {reportAnalyticsTab === "forecast" ? forecastPeriodLabel : reportPeriodLabel}</span>
         {reportAnalyticsTab === "svs" ? (
           <label>
             Gewerk
@@ -28411,14 +28495,27 @@ await addProjectLogbookEntry(
       {reportAnalyticsTab === "revenue" && (
         <>
           <section className={styles.analyticsGrid}>
-            {renderReportMetric("Angebotsvolumen", formatMoney(offerVolumeTotal), `${reportOffers.length} Angebote`)}
-            {renderReportMetric("Rechnungsvolumen", formatMoney(invoiceRevenueTotal), `${reportInvoices.length} Rechnungen`)}
+            {renderReportMetric(
+              "Angebotsvolumen",
+              formatMoney(offerVolumeTotal),
+              `${reportOffers.length} Angebote`,
+              "neutral",
+              getDashboardTrendIcon(offerVolumeTotal, previousOfferVolumeTotal)
+            )}
+            {renderReportMetric(
+              "Rechnungsvolumen",
+              formatMoney(invoiceRevenueTotal),
+              `${reportInvoices.length} Rechnungen`,
+              "neutral",
+              getDashboardTrendIcon(invoiceRevenueTotal, previousInvoiceRevenueTotal)
+            )}
             {canViewSensitiveOverviewFinancials
               ? renderReportMetric(
                   "Marge",
                   formatMoney(invoiceMarginTotal),
                   `${formatHours(invoiceMarginPercent)}% auf Rechnungsvolumen`,
-                  getMetricState(invoiceMarginPercent, 30, 18)
+                  getMetricState(invoiceMarginPercent, 30, 18),
+                  getDashboardTrendIcon(invoiceMarginPercent, previousInvoiceMarginPercent)
                 )
               : null}
             {canViewSensitiveOverviewFinancials
@@ -28972,10 +29069,34 @@ await addProjectLogbookEntry(
       {reportAnalyticsTab === "svs" && (
         <>
           <section className={styles.analyticsGrid}>
-            {renderReportMetric("SVS Durchschnitt", `${formatMoney(svsAverage)} / h`, "Netto-Rechnungswert / verknüpfte Stempelstunden", svsAverage > 0 ? "good" : "low")}
-            {renderReportMetric("Datenbasis", svsDataQualityLabel, `${formatPercent(svsEvaluableShare)} auswertbare Rechnungen`, svsDataQualityState)}
-            {renderReportMetric("Auswertbar", `${svsEvaluableRows.length}`, "Rechnungen mit verknüpften Stempelzeiten", svsNotEvaluableRows.length === 0 ? "good" : "ok")}
-            {renderReportMetric("Nicht auswertbar", `${svsNotEvaluableRows.length}`, "Rechnungen ohne verknüpfte Stempelzeiten", svsNotEvaluableRows.length === 0 ? "good" : "low")}
+            {renderReportMetric(
+              "SVS Durchschnitt",
+              `${formatMoney(svsAverage)} / h`,
+              "Netto-Rechnungswert / verknüpfte Stempelstunden",
+              svsAverage > 0 ? "good" : "low",
+              getDashboardTrendIcon(svsAverage, previousSvsAverage)
+            )}
+            {renderReportMetric(
+              "Datenbasis",
+              svsDataQualityLabel,
+              `${formatPercent(svsEvaluableShare)} auswertbare Rechnungen`,
+              svsDataQualityState,
+              getDashboardTrendIcon(svsEvaluableShare, previousSvsEvaluableShare)
+            )}
+            {renderReportMetric(
+              "Auswertbar",
+              `${svsEvaluableRows.length}`,
+              "Rechnungen mit verknüpften Stempelzeiten",
+              svsNotEvaluableRows.length === 0 ? "good" : "ok",
+              getDashboardTrendIcon(svsEvaluableRows.length, previousSvsEvaluableRows.length)
+            )}
+            {renderReportMetric(
+              "Nicht auswertbar",
+              `${svsNotEvaluableRows.length}`,
+              "Rechnungen ohne verknüpfte Stempelzeiten",
+              svsNotEvaluableRows.length === 0 ? "good" : "low",
+              getDashboardTrendIcon(svsNotEvaluableRows.length, previousSvsNotEvaluableRows.length, true)
+            )}
             {renderReportMetric("Verknüpfte Stunden", `${formatHours(svsTotalHours)} Std.`, `${formatMoney(svsTotalRevenue)} ausgewerteter Umsatz`)}
           </section>
 
@@ -29159,20 +29280,42 @@ await addProjectLogbookEntry(
                         <td colSpan={8}>{section.emptyLabel}</td>
                       </tr>
                     ) : (
-                      rows.map((row) => (
-                        <tr key={`${section.key}-${row.status}`}>
-                          <td>{row.status}</td>
-                          <td>{row.projectCount}</td>
-                          <td>{row.phaseCount}</td>
-                          <td>{row.openCount}</td>
-                          <td>{formatPipelineMinutesAsDays(row.totalMinutes)}</td>
-                          <td>{formatPipelineMinutesAsDays(row.averageMinutes)}</td>
-                          <td data-state={row.longestMinutes >= 43200 ? "low" : row.longestMinutes >= 20160 ? "ok" : "good"}>
-                            {formatPipelineMinutesAsDays(row.longestMinutes)}
-                          </td>
-                          <td>{formatPercent(row.share)}</td>
-                        </tr>
-                      ))
+                      rows.map((row) => {
+                        const thresholds = getPipelineDurationThreshold(section.key, row.status);
+                        const averageDays = getPipelineMinutesAsDays(row.averageMinutes);
+                        const longestDays = getPipelineMinutesAsDays(row.longestMinutes);
+                        const previousRow = getPreviousPipelineBottleneckRow(section.key, row.status);
+                        const previousAverageDays = previousRow ? getPipelineMinutesAsDays(previousRow.averageMinutes) : 0;
+                        const previousLongestDays = previousRow ? getPipelineMinutesAsDays(previousRow.longestMinutes) : 0;
+                        const averageTrend = getPipelineDurationTrendIcon(averageDays, previousAverageDays);
+                        const longestTrend = getPipelineDurationTrendIcon(longestDays, previousLongestDays);
+                        return (
+                          <tr key={`${section.key}-${row.status}`}>
+                            <td>{row.status}</td>
+                            <td>{row.projectCount}</td>
+                            <td>{row.phaseCount}</td>
+                            <td>{row.openCount}</td>
+                            <td>{formatPipelineMinutesAsDays(row.totalMinutes)}</td>
+                            <td data-state={getPipelineDurationState(averageDays, thresholds.averageOk, thresholds.averageWarn)}>
+                              <span className={styles.analyticsTrendValue}>
+                                {formatPipelineMinutesAsDays(row.averageMinutes)}
+                                <span className={styles.analyticsTrendBadge} data-trend={averageTrend} aria-label="Trend Durchschnittsdauer">
+                                  <DashboardTrendIcon type={averageTrend} />
+                                </span>
+                              </span>
+                            </td>
+                            <td data-state={getPipelineDurationState(longestDays, thresholds.longestOk, thresholds.longestWarn)}>
+                              <span className={styles.analyticsTrendValue}>
+                                {formatPipelineMinutesAsDays(row.longestMinutes)}
+                                <span className={styles.analyticsTrendBadge} data-trend={longestTrend} aria-label="Trend längste Dauer">
+                                  <DashboardTrendIcon type={longestTrend} />
+                                </span>
+                              </span>
+                            </td>
+                            <td>{formatPercent(row.share)}</td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -29231,19 +29374,33 @@ await addProjectLogbookEntry(
         <>
           <section className={styles.analyticsGrid}>
             {renderReportMetric("Kunden", `${customerSummary.customerCount}`, "Mit Rechnungen im Zeitraum")}
-            {renderReportMetric("Umsatz", formatMoney(customerSummary.revenue), `${customerSummary.invoiceCount} Rechnungen`, "good")}
-            {renderReportMetric("Bezahlt", formatMoney(customerSummary.paidRevenue), "Bereits bezahlter Umsatz", "good")}
+            {renderReportMetric(
+              "Umsatz",
+              formatMoney(customerSummary.revenue),
+              `${customerSummary.invoiceCount} Rechnungen`,
+              "good",
+              getDashboardTrendIcon(customerSummary.revenue, previousInvoiceRevenueTotal)
+            )}
+            {renderReportMetric(
+              "Bezahlt",
+              formatMoney(customerSummary.paidRevenue),
+              "Bereits bezahlter Umsatz",
+              "good",
+              getDashboardTrendIcon(customerSummary.paidRevenue, previousOverviewPaidTotal)
+            )}
             {renderReportMetric(
               "Offene Posten",
               formatMoney(customerSummary.openRevenue),
               "Noch nicht bezahlte Rechnungen",
-              customerSummary.openRevenue > 0 ? "ok" : "good"
+              customerSummary.openRevenue > 0 ? "ok" : "good",
+              getDashboardTrendIcon(customerSummary.openRevenue, previousOverviewOpenTotal, true)
             )}
             {renderReportMetric(
               "Überfällig",
               formatMoney(customerSummary.overdueRevenue),
               "Überfällige offene Posten",
-              customerSummary.overdueRevenue > 0 ? "low" : "good"
+              customerSummary.overdueRevenue > 0 ? "low" : "good",
+              getDashboardTrendIcon(customerSummary.overdueRevenue, previousOverviewOverdueTotal, true)
             )}
             {renderReportMetric(
               "KuZu-Hot-Alerts",
@@ -29347,7 +29504,13 @@ await addProjectLogbookEntry(
       {reportAnalyticsTab === "employeeRevenue" && (
         <>
           <section className={styles.analyticsGrid}>
-            {renderReportMetric("Fakturierter Umsatz", formatMoney(customerSummary.revenue), `${customerSummary.invoiceCount} Rechnungen im Zeitraum`, "good")}
+            {renderReportMetric(
+              "Fakturierter Umsatz",
+              formatMoney(customerSummary.revenue),
+              `${customerSummary.invoiceCount} Rechnungen im Zeitraum`,
+              "good",
+              getDashboardTrendIcon(customerSummary.revenue, previousInvoiceRevenueTotal)
+            )}
             {renderReportMetric("Kunden mit Umsatz", `${customerSummary.customerCount}`, "Kunden mit fakturierten Rechnungen", customerSummary.customerCount > 0 ? "good" : "neutral")}
             {renderReportMetric(
               "Größter Kunde",
@@ -30104,21 +30267,51 @@ await addProjectLogbookEntry(
           ) : null}
 
           <section className={styles.analyticsGrid}>
-            {renderReportMetric("Umsatz", formatMoney(invoiceRevenueTotal), `${reportInvoices.length} fakturierte Rechnungen`, "good")}
+            {renderReportMetric(
+              "Umsatz",
+              formatMoney(invoiceRevenueTotal),
+              `${reportInvoices.length} fakturierte Rechnungen`,
+              "good",
+              getDashboardTrendIcon(invoiceRevenueTotal, previousInvoiceRevenueTotal)
+            )}
             {canViewAccountingOverviewAnalytics
-              ? renderReportMetric("Bezahlt", formatMoney(overviewPaidTotal), "Bereits bezahlter Umsatz", "good")
+              ? renderReportMetric(
+                  "Bezahlt",
+                  formatMoney(overviewPaidTotal),
+                  "Bereits bezahlter Umsatz",
+                  "good",
+                  getDashboardTrendIcon(overviewPaidTotal, previousOverviewPaidTotal)
+                )
               : null}
             {canViewAccountingOverviewAnalytics
-              ? renderReportMetric("Offen", formatMoney(overviewOpenTotal), "Noch nicht bezahlt", overviewOpenTotal > 0 ? "ok" : "good")
+              ? renderReportMetric(
+                  "Offen",
+                  formatMoney(overviewOpenTotal),
+                  "Noch nicht bezahlt",
+                  overviewOpenTotal > 0 ? "ok" : "good",
+                  getDashboardTrendIcon(overviewOpenTotal, previousOverviewOpenTotal, true)
+                )
               : null}
             {canViewAccountingOverviewAnalytics
-              ? renderReportMetric("Überfällig", formatMoney(overviewOverdueTotal), `${overviewOverdueRows.length} Rechnung${overviewOverdueRows.length === 1 ? "" : "en"}`, overviewOverdueTotal > 0 ? "low" : "good")
+              ? renderReportMetric(
+                  "Überfällig",
+                  formatMoney(overviewOverdueTotal),
+                  `${overviewOverdueRows.length} Rechnung${overviewOverdueRows.length === 1 ? "" : "en"}`,
+                  overviewOverdueTotal > 0 ? "low" : "good",
+                  getDashboardTrendIcon(overviewOverdueTotal, previousOverviewOverdueTotal, true)
+                )
               : null}
             {canViewOperationalOverviewAnalytics || canViewAccountingOverviewAnalytics
               ? renderReportMetric("Forecast", formatMoney(forecastBusinessSummaryTotal.potential), "Gesamtpotenzial im Forecast-Zeitraum", "good")
               : null}
             {canViewSensitiveOverviewFinancials
-              ? renderReportMetric("Marge", `${formatHours(invoiceMarginPercent)}%`, formatMoney(invoiceMarginTotal), getMetricState(invoiceMarginPercent, 30, 18))
+              ? renderReportMetric(
+                  "Marge",
+                  `${formatHours(invoiceMarginPercent)}%`,
+                  formatMoney(invoiceMarginTotal),
+                  getMetricState(invoiceMarginPercent, 30, 18),
+                  getDashboardTrendIcon(invoiceMarginPercent, previousInvoiceMarginPercent)
+                )
               : null}
           </section>
 
