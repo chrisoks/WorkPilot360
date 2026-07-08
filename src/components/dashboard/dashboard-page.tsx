@@ -27985,26 +27985,36 @@ await addProjectLogbookEntry(
     <section className={styles.analyticsPage}>
       {canUseManagementAi || canUseSalesAi ? (
         <div className={styles.managementAiActions} aria-label="KI-Assistenten">
+          <span className={styles.managementAiActionsLabel}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3.5 13.6 8l4.5 1.6-4.5 1.6L12 15.7l-1.6-4.5-4.5-1.6L10.4 8 12 3.5Z" />
+              <path d="M18.4 14.2 19.2 16.4l2.1.8-2.1.8-.8 2.2-.8-2.2-2.1-.8 2.1-.8.8-2.2Z" />
+              <path d="M5.3 13.8 6 15.6l1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7.7-1.8Z" />
+            </svg>
+            KI-Assistent
+          </span>
           {canUseManagementAi ? (
             <button
               type="button"
               className={styles.managementAiButton}
+              data-active={isManagementAiOpen && managementAiMode === "management"}
               onClick={() => openManagementAi("management")}
               aria-label="BWL-KI öffnen"
               title="BWL-KI öffnen"
             >
-              <span aria-hidden="true">BWL</span>
+              <span aria-hidden="true">BWL-KI</span>
             </button>
           ) : null}
           {canUseSalesAi ? (
             <button
               type="button"
               className={styles.managementAiButton}
+              data-active={isManagementAiOpen && managementAiMode === "sales"}
               onClick={() => openManagementAi("sales")}
               aria-label="Vertriebs-KI öffnen"
               title="Vertriebs-KI öffnen"
             >
-              <span aria-hidden="true">VK</span>
+              <span aria-hidden="true">Vertriebs-KI</span>
             </button>
           ) : null}
         </div>

@@ -6147,33 +6147,78 @@
 }
 
 .managementAiActions {
+  align-items: center;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border: 1px solid #9fc1f7;
+  border-radius: 14px;
+  box-shadow: 0 12px 28px rgba(37, 99, 235, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.95);
   display: flex;
-  gap: 8px;
+  gap: 4px;
+  min-height: 38px;
+  padding: 4px 5px;
   position: absolute;
   right: 24px;
-  top: 78px;
+  top: 14px;
   z-index: 3;
+}
+
+.managementAiActionsLabel {
+  align-items: center;
+  color: #2563eb;
+  display: inline-flex;
+  font-size: 0.86rem;
+  font-weight: 950;
+  gap: 7px;
+  padding: 0 12px 0 8px;
+  white-space: nowrap;
+}
+
+.managementAiActionsLabel svg {
+  align-items: center;
+  background: #2563eb;
+  border-radius: 10px;
+  box-shadow: 0 8px 16px rgba(37, 99, 235, 0.22);
+  color: #ffffff;
+  display: inline-flex;
+  fill: none;
+  height: 24px;
+  justify-content: center;
+  padding: 5px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  width: 24px;
 }
 
 .managementAiButton {
   align-items: center;
-  background: #2563eb;
-  border: 1px solid #1d4ed8;
-  border-radius: 14px;
-  box-shadow: 0 14px 30px rgba(37, 99, 235, 0.24);
-  color: #ffffff;
+  background: #ffffff;
+  border: 1px solid #d7e5fb;
+  border-radius: 10px;
+  color: #2563eb;
   cursor: pointer;
   display: inline-flex;
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 0.84rem;
   font-weight: 950;
-  height: 44px;
+  height: 32px;
   justify-content: center;
-  width: 44px;
+  min-width: 78px;
+  padding: 0 12px;
+  white-space: nowrap;
 }
 
 .managementAiButton:hover {
-  background: #1d4ed8;
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.managementAiButton[data-active="true"] {
+  background: #2563eb;
+  border-color: #1d4ed8;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.22);
+  color: #ffffff;
 }
 
 .managementAiOverlay {
@@ -6329,6 +6374,7 @@
   border-bottom: 1px solid #d8e0ea;
   display: flex;
   overflow-x: auto;
+  padding-right: 280px;
 }
 
 .analyticsTabs button {
@@ -6354,6 +6400,18 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+@media (max-width: 900px) {
+  .managementAiActions {
+    justify-self: end;
+    position: static;
+    width: max-content;
+  }
+
+  .analyticsTabs {
+    padding-right: 0;
+  }
 }
 
 .analyticsFilters span,
