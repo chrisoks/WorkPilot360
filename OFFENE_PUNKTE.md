@@ -1,6 +1,6 @@
 # WorkPilot360 Offene Punkte
 
-Stand: 2026-06-29
+Stand: 2026-07-01
 
 Diese Liste haelt Themen fest, die nach abgeschlossenen Zwischenarbeiten nicht verloren gehen sollen.
 
@@ -34,10 +34,43 @@ Diese Liste haelt Themen fest, die nach abgeschlossenen Zwischenarbeiten nicht v
   - Ohne ausreichende bestaetigte Folgemonatsplanung geht er in `Zur Planung bereit`.
   - Bei Projektzeitkontingent zaehlt: bestaetigte Planungsstunden im Folgemonat >= Monatskontingent.
 
+- Dauerlaeufer-Monatslogik nach Serverupdate pruefen:
+  - HAS-1 und 1-2 weitere Dauerlaeufer in der Pipeline gegenpruefen.
+  - Kontrollieren, ob die aktuelle Monatsposition korrekt aus Planung/Stempelung/Laufzeit entsteht.
+  - Kontrollieren, ob `Vormonat(e) unvollstaendig` nur echte Altprobleme meldet.
+  - Vormonatsdetails pruefen: Planung, Rechnung und Nachweise sollen fachlich passend angezeigt werden.
+
+## Dashboard / Rollen-KPIs
+
+- KPI-Kacheln je Rolle nachziehen:
+  - Geschaeftsfuehrung zuerst: Umsatz & Forecast, Produktivitaet, Projektlage, Vertrieb & Kunde.
+  - Danach fachlich eigene KPI-Sets fuer Fuehrungskraft, Buchhaltung, Vertrieb und Mitarbeiter definieren.
+  - Layoutvorgabe: KPI-Kacheln im 2x2-Block lassen und mit `Team live` darunter sauber fluchten lassen.
+
 - Benachrichtigungslogik weiter fachlich abgrenzen:
   - `Projekt abrechnungsbereit` und `Dauerlaeufer abrechnungsbereit` senden seit Commit `3b8cec0` zusaetzlich Systemmail.
   - Offene, nicht fakturierte Projektzeiten laufen ueber `/api/unbilled-time-alerts` mit eigener Deduplizierung.
   - Noch pruefen, ob beide Logiken fachlich klar getrennt sind oder ob Nutzer sie als ein gemeinsames Thema erwarten.
+
+## Review naechste Ausbaustufe
+
+- Sales-Performance auf Praxistauglichkeit pruefen:
+  - Wirkt der Reiter fuer Vertrieb wirklich als aktives Steuerungsinstrument?
+  - Neukundenimpulse, alte offene Angebote, Nachfassdisziplin und Dauerlaeufer-Nachverhandlung fachlich gegen echte Nutzung pruefen.
+  - Besonders schauen, ob Hinweise konkret genug sind oder ob Vertriebler von Zahlen ueberrollt werden.
+
+- Projekt-Auswertungen weiter veredeln:
+  - Trennung Einmalprojekte/Dauerlaeufer nach dem Review fachlich bewerten.
+  - Grenzwerte fuer durchschnittliche Dauer und laengste Dauer je Projektart/Phase nachschaerfen.
+  - Top-Engpaesse und Handlungsempfehlungen noch verstaendlicher machen.
+
+- Sicherheits-/Audit-Themen separat bewerten:
+  - `npm audit`-Hinweise kontrolliert durchgehen.
+  - Keine Schnellreparatur mit Breaking-Changes, sondern Risiko und Aufwand je Paket bewerten.
+
+- Datenqualitaet pruefen:
+  - Alte Statuswerte, Zeichensatzfehler und auffaellige Projekt-/Kontingentwerte systematisch suchen.
+  - Entscheiden, ob ein kleiner Datenqualitaets-Check oder eigener Hinweisbereich sinnvoll ist.
 
 ## Login / Startverhalten
 

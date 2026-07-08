@@ -27,6 +27,9 @@ function cleanString(value: unknown) {
 }
 
 function cleanOptionalAmount(value: unknown) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }
   const raw = cleanString(value);
   if (!raw) return null;
   const parsed = Number(raw.replace(/\./g, "").replace(",", "."));

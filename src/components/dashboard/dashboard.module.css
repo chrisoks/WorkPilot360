@@ -6143,6 +6143,181 @@
   display: grid;
   gap: 18px;
   padding: 20px 24px 28px;
+  position: relative;
+}
+
+.managementAiButton {
+  align-items: center;
+  background: #2563eb;
+  border: 1px solid #1d4ed8;
+  border-radius: 14px;
+  box-shadow: 0 14px 30px rgba(37, 99, 235, 0.24);
+  color: #ffffff;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 950;
+  height: 44px;
+  justify-content: center;
+  position: absolute;
+  right: 24px;
+  top: 78px;
+  width: 44px;
+  z-index: 3;
+}
+
+.managementAiButton:hover {
+  background: #1d4ed8;
+}
+
+.managementAiOverlay {
+  align-items: stretch;
+  background: rgba(15, 23, 42, 0.36);
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  left: 0;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 80;
+}
+
+.managementAiPanel {
+  background: #ffffff;
+  box-shadow: -24px 0 56px rgba(15, 23, 42, 0.22);
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+  max-width: min(720px, calc(100vw - 28px));
+  min-width: min(620px, calc(100vw - 28px));
+}
+
+.managementAiHeader {
+  align-items: flex-start;
+  border-bottom: 1px solid #dbe3ee;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 22px 24px 18px;
+}
+
+.managementAiHeader span {
+  color: #2563eb;
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 950;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.managementAiHeader h2 {
+  color: #0f172a;
+  font-size: 1.45rem;
+  margin: 4px 0;
+}
+
+.managementAiHeader p {
+  color: #64748b;
+  font-size: 0.9rem;
+  font-weight: 750;
+  margin: 0;
+}
+
+.managementAiMessages {
+  align-content: flex-start;
+  display: grid;
+  gap: 12px;
+  overflow-y: auto;
+  padding: 18px 24px;
+}
+
+.managementAiMessages article {
+  border: 1px solid #dbe3ee;
+  border-radius: 16px;
+  max-width: 86%;
+  padding: 12px 14px;
+}
+
+.managementAiMessages article[data-role="user"] {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  justify-self: end;
+}
+
+.managementAiMessages article[data-role="assistant"] {
+  background: #ffffff;
+  justify-self: start;
+}
+
+.managementAiMessages p {
+  color: #0f172a;
+  font-size: 0.94rem;
+  font-weight: 650;
+  line-height: 1.55;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.managementAiWelcome {
+  background: #f8fafc;
+  border: 1px solid #dbe3ee;
+  border-radius: 18px;
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+}
+
+.managementAiWelcome strong {
+  color: #0f172a;
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
+.managementAiWelcome button {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  color: #0f172a;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 850;
+  justify-self: start;
+  padding: 8px 12px;
+}
+
+.managementAiError {
+  background: #fff1f2;
+  border-top: 1px solid #fecdd3;
+  color: #be123c;
+  font-size: 0.9rem;
+  font-weight: 850;
+  margin: 0;
+  padding: 10px 24px;
+}
+
+.managementAiComposer {
+  border-top: 1px solid #dbe3ee;
+  display: grid;
+  gap: 10px;
+  padding: 16px 24px 20px;
+}
+
+.managementAiComposer textarea {
+  border: 1px solid #cbd5e1;
+  border-radius: 14px;
+  color: #0f172a;
+  font: inherit;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  min-height: 94px;
+  padding: 12px 14px;
+  resize: vertical;
+}
+
+.managementAiComposer button {
+  justify-self: end;
 }
 
 .analyticsTabs {

@@ -19,6 +19,7 @@ const APP_LOCALE = "de-DE";
 const APP_TIME_ZONE = "Europe/Berlin";
 const MAX_LOGBOOK_ATTACHMENT_BYTES = 12 * 1024 * 1024;
 const MAX_LOGBOOK_ENTRY_ATTACHMENT_BYTES = 48 * 1024 * 1024;
+const MIN_CATALOG_SVS_BASIS_ROWS = 5;
 const ALLOWED_LOGBOOK_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const ALLOWED_LOGBOOK_DOCUMENT_MIME_TYPES = new Set([
   "application/pdf",
@@ -431,6 +432,11 @@ type ReportPeriodPreset =
   | "next12"
   | "custom";
 type ReportProjectKindFilter = "all" | "oneTime" | "recurring";
+type ManagementAiChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+};
 type ContactFormTab = "details" | "address" | "terms" | "payment" | "zugferd";
 type CustomerFileTab =
   | "logbook"
@@ -5537,6 +5543,11 @@ export function DashboardPage() {
   const [reportSearch, setReportSearch] = useState("");
   const [svsTradeFilter, setSvsTradeFilter] = useState("all");
   const [reportProjectKindFilter, setReportProjectKindFilter] = useState<ReportProjectKindFilter>("all");
+  const [isManagementAiOpen, setIsManagementAiOpen] = useState(false);
+  const [managementAiInput, setManagementAiInput] = useState("");
+  const [managementAiMessages, setManagementAiMessages] = useState<ManagementAiChatMessage[]>([]);
+  const [managementAiError, setManagementAiError] = useState("");
+  const [isManagementAiSending, setIsManagementAiSending] = useState(false);
   const [expandedEmployeeAnalyticsGroups, setExpandedEmployeeAnalyticsGroups] = useState<string[]>([]);
   const [employeeKpiDetail, setEmployeeKpiDetail] = useState<{
     userId: string;
@@ -26843,7 +26854,8 @@ await addProjectLogbookEntry(
       const catalogSvs = getServiceCatalogSvsForPlanningGroup(section.company, group.name);
       const manualSvs = setting?.manualSvsPerHour ?? 0;
       const automaticInvoiceSvs = invoiceSvs.hours >= 5 && invoiceSvs.revenue > 0 ? invoiceSvs.revenue / invoiceSvs.hours : 0;
-      const automaticCatalogSvs = catalogSvs.svs;
+      const hasEnoughCatalogBasis = catalogSvs.rowCount >= MIN_CATALOG_SVS_BASIS_ROWS;
+      const automaticCatalogSvs = hasEnoughCatalogBasis ? catalogSvs.svs : 0;
       const automaticSvs = automaticInvoiceSvs > 0 ? automaticInvoiceSvs : automaticCatalogSvs;
       const shouldUseManualFirst = Boolean(setting?.manualOverridesAutomatic && manualSvs > 0);
       const resolvedSvs = shouldUseManualFirst ? manualSvs : automaticSvs > 0 ? automaticSvs : manualSvs;
@@ -26928,8 +26940,12 @@ await addProjectLogbookEntry(
             : source === "Leistungen/Pakete"
               ? `${catalogSvs.rowCount} aktive Grundlage${catalogSvs.rowCount === 1 ? "" : "n"}`
               : source === "Manuell"
-                ? "Zielwert aus Firmeneinstellungen"
-                : "Bitte Planungsgruppen-SVS pflegen",
+                ? catalogSvs.rowCount > 0 && !hasEnoughCatalogBasis
+                  ? `Zielwert aus Firmeneinstellungen · Stammdatenbasis erst ${catalogSvs.rowCount}/${MIN_CATALOG_SVS_BASIS_ROWS}`
+                  : "Zielwert aus Firmeneinstellungen"
+                : catalogSvs.rowCount > 0 && !hasEnoughCatalogBasis
+                  ? `Zu wenig Stammdatenbasis: ${catalogSvs.rowCount}/${MIN_CATALOG_SVS_BASIS_ROWS} aktive Grundlagen`
+                  : "Bitte Planungsgruppen-SVS pflegen",
         svs: resolvedSvs,
         capacityHours,
         plannedHours,
@@ -27259,6 +27275,90 @@ await addProjectLogbookEntry(
   const executiveBottleneckRows =
     executiveActiveBottleneckRows.length > 0 ? executiveActiveBottleneckRows : executiveBottleneckCandidates.slice(0, 5);
   const executiveTopBottleneck = executiveBottleneckRows.find((row) => row.state !== "good") ?? executiveBottleneckRows[0] ?? null;
+  const canUseManagementAi = activeUser?.role === "ADMIN" || activeUser?.role === "GESCHAEFTSFUEHRER";
+  const buildManagementAiContext = () => {
+    const topCapacityRows = managementCapacityRows
+      .filter((row) => row.state !== "good" || row.overloadHours > 0 || row.svs <= 0)
+      .slice(0, 6)
+      .map(
+        (row) =>
+          `- ${row.planningBoard} / ${row.planningGroup}: SVS ${row.svs > 0 ? formatMoney(row.svs) + " je Std." : "fehlt"}, Kapazitaet ${formatHours(row.capacityHours)} Std., geplant ${formatHours(row.plannedHours)} Std., Quelle ${row.source} (${row.sourceDetail}). Bewertung: ${row.interpretation}`
+      );
+    const topExecutiveRows = executiveBottleneckRows.slice(0, 6).map(
+      (row) => `- ${row.area}: ${row.signal}. Interpretation: ${row.interpretation} Naechster Schritt: ${row.action}`
+    );
+    const topSalesActions = salesActionRows
+      .slice(0, 6)
+      .map((row) => `- ${row.title}: ${row.context}, faellig ${row.dueLabel}. Empfehlung: ${row.recommendation}`);
+    const topRecurringRisks = recurringNegotiationRows
+      .slice(0, 6)
+      .map(
+        (row) =>
+          `- ${row.project.projectNumber}: ${row.project.customer || row.project.title}. Signal: ${row.reasons.join("; ")}. Empfehlung: ${row.recommendation}`
+      );
+
+    return [
+      `Aktiver Auswertungsreiter: ${allReportTabs.find((tab) => tab.id === reportAnalyticsTab)?.label ?? reportAnalyticsTab}`,
+      `Zeitraum: ${reportPeriodLabel}`,
+      `Forecast: Potenzial ${formatMoney(forecastBusinessSummaryTotal.potential)}, fakturiert ${formatMoney(forecastBusinessSummaryTotal.invoiced)}, bezahlt ${formatMoney(forecastBusinessSummaryTotal.paid)}, Zielabweichung ${formatMoney(forecastBusinessSummaryTotal.deviation)}.`,
+      `Sales: ${salesActionRows.length} heutige Vertriebsaufgaben, ${salesStaleOpenOfferRows.length} alte offene Angebote, Abschlussquote ${formatPercent(salesWinRate)}, ${recurringNegotiationRows.length} Dauerlaeufer-Pruefpunkte.`,
+      `Projekte: groesster Pipeline-Engpass ${dashboardPipelineBottleneckLabel}, ${longPipelineStatusRows.length} lange Statuslaufzeiten, ${dashboardBillingCheckCount} Projekte in Abrechnungspruefung.`,
+      `Liquiditaet: offen ${formatMoney(overviewOpenTotal)}, ueberfaellig ${formatMoney(overviewOverdueTotal)}.`,
+      `Kapazitaet: ${formatHours(managementCapacityTotal.capacityHours)} verfuegbare Std., ${formatHours(managementCapacityTotal.plannedHours)} geplante Std., offenes Umsatzpotenzial ${formatMoney(managementCapacityTotal.openRevenueCapacity)}, ${managementCapacityMissingSvsRows.length} Gruppen ohne SVS-Basis, ${managementCapacityOverloadRows.length} ueberplante Gruppen.`,
+      topExecutiveRows.length ? `Geschaeftsfuehrungs-Engpaesse:\n${topExecutiveRows.join("\n")}` : "Geschaeftsfuehrungs-Engpaesse: keine harten Treffer.",
+      topCapacityRows.length ? `Kapazitaet/SVS-Auffaelligkeiten:\n${topCapacityRows.join("\n")}` : "Kapazitaet/SVS: keine harten Treffer.",
+      topSalesActions.length ? `Vertriebsaktionen:\n${topSalesActions.join("\n")}` : "Vertriebsaktionen: keine offenen priorisierten Punkte.",
+      topRecurringRisks.length ? `Dauerlaeufer-Nachverhandlung:\n${topRecurringRisks.join("\n")}` : "Dauerlaeufer-Nachverhandlung: kein aktueller Pruefpunkt.",
+    ].join("\n\n");
+  };
+  async function sendManagementAiMessage() {
+    const question = managementAiInput.trim();
+    if (!question || !activeUserId || isManagementAiSending) return;
+
+    const userMessage: ManagementAiChatMessage = {
+      role: "user",
+      content: question,
+      createdAt: new Date().toISOString(),
+    };
+    const nextMessages = [...managementAiMessages, userMessage];
+    setManagementAiMessages(nextMessages);
+    setManagementAiInput("");
+    setManagementAiError("");
+    setIsManagementAiSending(true);
+
+    try {
+      const res = await fetch("/api/management-ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: activeUserId,
+          message: question,
+          messages: managementAiMessages.slice(-6).map((message) => ({
+            role: message.role,
+            content: message.content,
+          })),
+          context: buildManagementAiContext(),
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setManagementAiError(data?.error ?? "Die BWL-KI konnte gerade nicht antworten.");
+        return;
+      }
+      setManagementAiMessages((current) => [
+        ...current,
+        {
+          role: "assistant",
+          content: data?.reply || "Die BWL-KI hat keine verwertbare Antwort geliefert.",
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+    } catch {
+      setManagementAiError("Die BWL-KI ist gerade nicht erreichbar.");
+    } finally {
+      setIsManagementAiSending(false);
+    }
+  }
   let dashboardRoleFocusCards: DashboardFocusCard[] = [
     {
       kicker: "Finanzen",
@@ -27781,6 +27881,18 @@ await addProjectLogbookEntry(
   };
   const renderReportsAnalytics = () => (
     <section className={styles.analyticsPage}>
+      {canUseManagementAi ? (
+        <button
+          type="button"
+          className={styles.managementAiButton}
+          onClick={() => setIsManagementAiOpen(true)}
+          aria-label="BWL-KI öffnen"
+          title="BWL-KI öffnen"
+        >
+          <span aria-hidden="true">AI</span>
+        </button>
+      ) : null}
+
       <div className={styles.analyticsTabs} role="tablist" aria-label="Auswertungsbereiche">
         {visibleReportTabs.map((tab) => (
           <button
@@ -58018,6 +58130,82 @@ await addProjectLogbookEntry(
 
       {renderFinalizeInvoiceConfirmModal()}
       {renderDocumentMailModal()}
+      {isManagementAiOpen && canUseManagementAi ? (
+        <div className={styles.managementAiOverlay} onClick={() => setIsManagementAiOpen(false)}>
+          <aside
+            className={styles.managementAiPanel}
+            role="dialog"
+            aria-modal="true"
+            aria-label="BWL-KI"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={styles.managementAiHeader}>
+              <div>
+                <span>BWL-KI</span>
+                <h2>Management-Analyse</h2>
+                <p>{reportPeriodLabel} · {allReportTabs.find((tab) => tab.id === reportAnalyticsTab)?.label ?? "Auswertungen"}</p>
+              </div>
+              <button className={styles.iconButton} type="button" onClick={() => setIsManagementAiOpen(false)}>
+                X
+              </button>
+            </div>
+
+            <div className={styles.managementAiMessages}>
+              {managementAiMessages.length === 0 ? (
+                <div className={styles.managementAiWelcome}>
+                  <strong>Frag die BWL-KI zu Engpaessen, Umsatz, Vertrieb, SVS oder Kapazitaet.</strong>
+                  <button type="button" onClick={() => setManagementAiInput("Wo bremsen wir aktuell Wachstum und Liquiditaet am staerksten?")}>
+                    Wo bremsen wir Wachstum?
+                  </button>
+                  <button type="button" onClick={() => setManagementAiInput("Welche 5 Management-Punkte sollte ich heute klaeren?")}>
+                    5 Punkte fuer heute
+                  </button>
+                  <button type="button" onClick={() => setManagementAiInput("Welche Planungsgruppen sind wirtschaftlich kritisch und warum?")}>
+                    Kritische Planungsgruppen
+                  </button>
+                </div>
+              ) : (
+                managementAiMessages.map((message, index) => (
+                  <article key={`${message.createdAt}-${index}`} data-role={message.role}>
+                    <p>{message.content}</p>
+                  </article>
+                ))
+              )}
+              {isManagementAiSending ? (
+                <article data-role="assistant">
+                  <p>Analysiere aktuelle Systemzahlen...</p>
+                </article>
+              ) : null}
+            </div>
+
+            {managementAiError ? <p className={styles.managementAiError}>{managementAiError}</p> : null}
+
+            <form
+              className={styles.managementAiComposer}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void sendManagementAiMessage();
+              }}
+            >
+              <textarea
+                value={managementAiInput}
+                onChange={(event) => setManagementAiInput(event.target.value)}
+                placeholder="Frage zur aktuellen Unternehmenslage stellen..."
+                rows={3}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void sendManagementAiMessage();
+                  }
+                }}
+              />
+              <button type="submit" className={styles.primaryButton} disabled={!managementAiInput.trim() || isManagementAiSending}>
+                {isManagementAiSending ? "Denkt..." : "Senden"}
+              </button>
+            </form>
+          </aside>
+        </div>
+      ) : null}
       {employeeKpiDetail && employeeKpiDetailUser ? (
         <div className={styles.overlay} onClick={closeEmployeeKpiDetail}>
           <div
