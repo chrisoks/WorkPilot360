@@ -366,6 +366,16 @@ model UnbilledTimeAlert {
   @@index([organizationId, projectId])
 }
 
+model ProjectEndPhaseReminder {
+  id             String   @id
+  organizationId String
+  projectId      String
+  notificationId String?
+  sentAt         DateTime @default(now())
+
+  @@index([organizationId, projectId, sentAt], map: "ProjectEndPhaseReminder_org_project_sent_idx")
+}
+
 model NewsPost {
   id             String   @id
   organizationId String
