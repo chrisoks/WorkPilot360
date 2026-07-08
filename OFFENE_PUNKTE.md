@@ -77,6 +77,12 @@ Diese Liste haelt Themen fest, die nach abgeschlossenen Zwischenarbeiten nicht v
   - Alte Statuswerte, Zeichensatzfehler und auffaellige Projekt-/Kontingentwerte systematisch suchen.
   - Entscheiden, ob ein kleiner Datenqualitaets-Check oder eigener Hinweisbereich sinnvoll ist.
 
+- UI-/Design-Review nach erster Klickpruefung:
+  - Hauptnavigation und grosse Arbeitsbereiche laden lokal ohne Runtime-Fehler fuer Geschaeftsfuehrung.
+  - Auffaellig: Seitenmenue wirkt textlich/visuell ueberladen; Klapp-Pfeile und Badges laufen in Textauszuegen zusammen (`Meine Ziele v`, `Aufgaben 1 4 6 v`).
+  - Tabellenbereiche wie Kontakte, Zusatzverkaeufe und Planungsboard sind funktional, wirken aber breit, schwer und nicht wie ein modernes, ruhiges Cockpit.
+  - Naechster Designblock sollte kein Einzel-Farbpolish sein, sondern ein klares UI-System fuer Navigation, Tabellen, Filterleisten, Karten, Modale und KI-Assistent.
+
 ## Login / Startverhalten
 
 - Erneuter Login startet seit Commit `3b8cec0` wieder im Dashboard (`overview`).

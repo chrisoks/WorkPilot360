@@ -14,10 +14,18 @@ const SALES_SENSITIVE_PATTERNS = [
   /\bverdienst\w*/i,
   /\bpersonalkosten\b/i,
   /\bmitarbeiterkosten\b/i,
+  /\bkosten\s+(je|pro)\s+mitarbeiter\b/i,
+  /\bmitarbeiter\w*\s+.*\bkosten\b/i,
   /\bkostensatz\b/i,
   /\bkostensaetze\b/i,
   /\bkostenstundensatz\b/i,
   /\bstundensatzkosten\b/i,
+  /\bteuer\w*\s+mitarbeiter\w*/i,
+  /\bmitarbeiter\w*.*\bteuer\w*/i,
+  /\bguenstig\w*\s+mitarbeiter\w*/i,
+  /\bgünstig\w*\s+mitarbeiter\w*/i,
+  /\bmitarbeiter\w*.*\bguenstig\w*/i,
+  /\bmitarbeiter\w*.*\bgünstig\w*/i,
   /\bdeckungsbeitrag\b/i,
   /\bmarge\b/i,
   /\blaborcost/i,
@@ -50,6 +58,9 @@ const OUT_OF_SCOPE_PATTERNS = [
   /\bprivatleben\b/i,
   /\bpolitik\b/i,
   /\baktienkurs\b/i,
+  /\bhauptstadt\b/i,
+  /\berzaehl.*witz\b/i,
+  /\berzähl.*witz\b/i,
 ];
 
 const WORKPILOT_SCOPE_PATTERNS = [
@@ -90,6 +101,10 @@ export function canUseSalesAi(user: RoleCarrier): boolean {
 
 export function asksForSalesRestrictedData(question: string): boolean {
   return SALES_SENSITIVE_PATTERNS.some((pattern) => pattern.test(question));
+}
+
+export function isPromptInjectionAttempt(question: string): boolean {
+  return PROMPT_INJECTION_PATTERNS.some((pattern) => pattern.test(question));
 }
 
 export function isClearlyOutOfScopeQuestion(question: string): boolean {

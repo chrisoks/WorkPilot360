@@ -6,6 +6,7 @@ import {
   canUseManagementAi,
   canUseSalesAi,
   isClearlyOutOfScopeQuestion,
+  isPromptInjectionAttempt,
   normalizeAndLimitAiReply,
   sanitizeAiContext,
 } from "@/lib/management-ai/security";
@@ -79,14 +80,14 @@ function cleanText(value: unknown, maxLength: number) {
   return value.trim().slice(0, maxLength);
 }
 
-function cleanMessages(value: unknown): ManagementAiMessage[] {
+function cleanMessages(value: unknown, mode: AiMode): ManagementAiMessage[] {
   if (!Array.isArray(value)) return [];
   return value
     .map((item) => {
       if (!item || typeof item !== "object") return null;
       const role = (item as { role?: unknown }).role;
       if (role !== "user" && role !== "assistant") return null;
-      const content = cleanText((item as { content?: unknown }).content, 3000);
+      const content = sanitizeAiContext(cleanText((item as { content?: unknown }).content, 3000), mode, 3000);
       if (!content) return null;
       return { role, content };
     })
@@ -151,6 +152,13 @@ export async function POST(req: Request) {
     });
   }
 
+  if (isPromptInjectionAttempt(userMessage)) {
+    return NextResponse.json({
+      reply:
+        "Diese Anweisung kann ich nicht befolgen. Ich bleibe bei den WorkPilot360-Daten, den Rollenrechten und dem freigegebenen Analysekontext. Welche Unternehmens- oder Vertriebsfrage soll ich sauber einordnen?",
+    });
+  }
+
   if (mode === "sales" && asksForSalesRestrictedData(userMessage)) {
     return NextResponse.json({
       reply:
@@ -168,7 +176,7 @@ export async function POST(req: Request) {
   }
 
   const context = sanitizeAiContext(cleanText(body.context, 12000), mode);
-  const messages = cleanMessages(body.messages);
+  const messages = cleanMessages(body.messages, mode);
   const model = process.env.OPENAI_MANAGEMENT_MODEL || "gpt-5.5";
 
   const response = await fetch("https://api.openai.com/v1/responses", {
