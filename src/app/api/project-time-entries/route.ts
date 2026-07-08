@@ -4,7 +4,7 @@ import { Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
-import { canApproveProjectOvertime, canManageProjectTimeEntries } from "@/lib/permissions";
+import { canApproveProjectOvertime, canManageProjectTimeEntries, canViewInternalCostData } from "@/lib/permissions";
 
 type DemoUser = {
   id: string;
@@ -210,7 +210,8 @@ function normalizeDateKeyValue(value: string) {
   return `${year}-${monthValue.padStart(2, "0")}-${dayValue.padStart(2, "0")}`;
 }
 
-function formatEntry(entry: ProjectTimeEntryRow) {
+function formatEntry(entry: ProjectTimeEntryRow, options: { includeInternalCosts?: boolean } = {}) {
+  const includeInternalCosts = options.includeInternalCosts === true;
   return {
     id: entry.id,
     mode: entry.mode === "unproductive" ? "unproductive" : "project",
@@ -229,9 +230,9 @@ function formatEntry(entry: ProjectTimeEntryRow) {
     endTime: entry.endTime,
     durationMs: Number(entry.durationMs),
     pauseMs: Number(entry.pauseMs),
-    laborCostRateSnapshot: Number(entry.laborCostRateSnapshot ?? 0),
-    laborCostSnapshot: Number(entry.laborCostSnapshot ?? 0),
-    costSnapshotAt: entry.costSnapshotAt?.toISOString() ?? "",
+    laborCostRateSnapshot: includeInternalCosts ? Number(entry.laborCostRateSnapshot ?? 0) : 0,
+    laborCostSnapshot: includeInternalCosts ? Number(entry.laborCostSnapshot ?? 0) : 0,
+    costSnapshotAt: includeInternalCosts ? entry.costSnapshotAt?.toISOString() ?? "" : "",
     comment: entry.comment ?? "",
     invoiceId: entry.invoiceId ?? "",
     invoiceNumber: entry.invoiceNumber ?? "",
@@ -272,6 +273,7 @@ export async function GET(req: Request) {
     return sessionBoundActorResponse(actorResult);
   }
   const actor = actorResult.actor;
+  const includeInternalCosts = canViewInternalCostData(actor);
 
   const canManageTimeEntries = canManageProjectTimeEntries(actor);
   const entries = projectIdFilter
@@ -327,7 +329,7 @@ export async function GET(req: Request) {
           ORDER BY "createdAt" DESC
         `;
 
-  return NextResponse.json(entries.map(formatEntry));
+  return NextResponse.json(entries.map((entry) => formatEntry(entry, { includeInternalCosts })));
 }
 
 export async function POST(req: Request) {
@@ -352,6 +354,7 @@ export async function POST(req: Request) {
     return sessionBoundActorResponse(actorResult);
   }
   const actor = actorResult.actor;
+  const includeInternalCosts = canViewInternalCostData(actor);
 
   const actorName = getUserName(actor);
   const actorCanManageProjectTime = canManageProjectTimeEntries(actor);
@@ -537,7 +540,7 @@ export async function POST(req: Request) {
     RETURNING *
   `;
 
-  return NextResponse.json(formatEntry(rows[0]), { status: 201 });
+  return NextResponse.json(formatEntry(rows[0], { includeInternalCosts }), { status: 201 });
 }
 
 export async function DELETE(req: Request) {
@@ -558,6 +561,7 @@ export async function DELETE(req: Request) {
     return sessionBoundActorResponse(actorResult);
   }
   const actor = actorResult.actor;
+  const includeInternalCosts = canViewInternalCostData(actor);
 
   const actorName = getUserName(actor);
   const actorCanManageProjectTime = canManageProjectTimeEntries(actor);
@@ -595,7 +599,7 @@ export async function DELETE(req: Request) {
       RETURNING *
     `;
 
-    return NextResponse.json(formatEntry(rows[0]));
+    return NextResponse.json(formatEntry(rows[0], { includeInternalCosts }));
   }
 
   if (
@@ -629,5 +633,5 @@ export async function DELETE(req: Request) {
     RETURNING *
   `;
 
-  return NextResponse.json(formatEntry(rows[0]));
+  return NextResponse.json(formatEntry(rows[0], { includeInternalCosts }));
 }

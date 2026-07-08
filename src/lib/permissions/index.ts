@@ -66,9 +66,12 @@ export function canManageEmployeeAssessments(user: RoleCarrier): boolean {
   return user.role === Role.ADMIN || user.role === Role.GESCHAEFTSFUEHRER;
 }
 
-export function canAccessEmployeeCosts(user: { firstName: string; lastName: string }): boolean {
-  const normalizedName = `${user.firstName} ${user.lastName}`.trim().toLowerCase();
-  return normalizedName === 'ramona eid' || normalizedName === 'christian eid';
+export function canViewInternalCostData(user: RoleCarrier): boolean {
+  return user.role === Role.ADMIN || user.role === Role.GESCHAEFTSFUEHRER;
+}
+
+export function canAccessEmployeeCosts(user: RoleCarrier): boolean {
+  return canViewInternalCostData(user);
 }
 
 export function canManageProjectTimeEntries(user: RoleCarrier): boolean {

@@ -18,7 +18,7 @@ import { validateXRechnungWithKosit } from "@/lib/e-invoice/kosit-validator";
 import { validateXRechnungPayload } from "@/lib/e-invoice/xrechnung-validation";
 import { buildValidatedZugferdPdf } from "@/lib/e-invoice/zugferd-pdf";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
-import { canDeleteInvoices, canManageInvoices, canSendDocumentMails } from "@/lib/permissions";
+import { canDeleteInvoices, canManageInvoices, canSendDocumentMails, canViewInternalCostData } from "@/lib/permissions";
 
 type InvoiceCompany = "OK solutions" | "OK immocare";
 
@@ -1335,9 +1335,11 @@ function normalizeInvoiceLines(lines: InvoiceLineInput[] = []) {
 function serializeInvoice(
   row: InvoiceRow,
   lines: InvoiceLineRow[] = [],
-  laborRows: InvoiceLineLaborRow[] = []
+  laborRows: InvoiceLineLaborRow[] = [],
+  options: { includeInternalCosts?: boolean } = {}
 ) {
   const billingSource = cleanString(row.billingSource) || "manual";
+  const includeInternalCosts = options.includeInternalCosts === true;
   return {
     ...row,
     billingSource,
@@ -1365,9 +1367,9 @@ function serializeInvoice(
       quantity: Number(line.quantity ?? 0),
       unitPrice: Number(line.unitPrice ?? 0),
       discountPercent: Number(line.discountPercent ?? 0),
-      materialUnitCostSnapshot: Number(line.materialUnitCostSnapshot ?? 0),
-      materialCostSnapshot: Number(line.materialCostSnapshot ?? 0),
-      costSnapshotAt: line.costSnapshotAt?.toISOString?.() ?? line.costSnapshotAt ?? "",
+      materialUnitCostSnapshot: includeInternalCosts ? Number(line.materialUnitCostSnapshot ?? 0) : 0,
+      materialCostSnapshot: includeInternalCosts ? Number(line.materialCostSnapshot ?? 0) : 0,
+      costSnapshotAt: includeInternalCosts ? line.costSnapshotAt?.toISOString?.() ?? line.costSnapshotAt ?? "" : "",
       isLaborPosition: Boolean(line.isLaborPosition),
       vatRate: Number(line.vatRate ?? 19),
       totalNet: Number(line.totalNet ?? 0),
@@ -1377,8 +1379,8 @@ function serializeInvoice(
         .map((labor) => ({
           ...labor,
           plannedHours: Number(labor.plannedHours ?? 0),
-          hourlyCostRate: Number(labor.hourlyCostRate ?? 0),
-          totalCost: Number(labor.totalCost ?? 0),
+          hourlyCostRate: includeInternalCosts ? Number(labor.hourlyCostRate ?? 0) : 0,
+          totalCost: includeInternalCosts ? Number(labor.totalCost ?? 0) : 0,
         })),
     })),
   };
@@ -1456,6 +1458,7 @@ async function cancelInvoice(input: {
   organizationId: string;
   invoiceId: string;
   actorName: string;
+  includeInternalCosts: boolean;
 }) {
   try {
   const existingRows = await prisma.$queryRaw<InvoiceRow[]>`
@@ -1611,8 +1614,12 @@ async function cancelInvoice(input: {
   });
 
   return NextResponse.json({
-    originalInvoice: serializeInvoice(originalRows[0], originalLines, originalLaborRows),
-    cancellationInvoice: serializeInvoice(cancellationRows[0], savedLines, savedLaborRows),
+    originalInvoice: serializeInvoice(originalRows[0], originalLines, originalLaborRows, {
+      includeInternalCosts: input.includeInternalCosts,
+    }),
+    cancellationInvoice: serializeInvoice(cancellationRows[0], savedLines, savedLaborRows, {
+      includeInternalCosts: input.includeInternalCosts,
+    }),
   });
   } catch (error) {
     console.error("Invoice cancellation failed", error);
@@ -1654,6 +1661,7 @@ export async function GET(req: Request) {
   if (!canSendDocumentMails(actor)) {
     return forbiddenInvoiceResponse();
   }
+  const includeInternalCosts = canViewInternalCostData(actor);
 
   if (xrechnungId || xrechnungValidationId || zugferdId) {
     const targetInvoiceId = xrechnungId || xrechnungValidationId || zugferdId;
@@ -1952,7 +1960,8 @@ export async function GET(req: Request) {
       serializeInvoice(
         row,
         lineRows.filter((line) => line.invoiceId === row.id),
-        laborRows.filter((labor) => labor.invoiceId === row.id)
+        laborRows.filter((labor) => labor.invoiceId === row.id),
+        { includeInternalCosts }
       )
     )
   );
@@ -1970,6 +1979,7 @@ export async function POST(req: Request) {
   if (!canManageInvoices(actor)) {
     return forbiddenInvoiceResponse();
   }
+  const includeInternalCosts = canViewInternalCostData(actor);
   const actorName = getUserName(actor);
   const internalContactName = cleanString(body.internalContactName) || actorName;
   const lines = await withInvoiceLineCostSnapshots(organization.id, normalizeInvoiceLines(body.lines));
@@ -2118,12 +2128,20 @@ export async function POST(req: Request) {
     });
   }
 
-  return NextResponse.json(serializeInvoice(rows[0], savedLines, savedLaborRows));
+  return NextResponse.json(serializeInvoice(rows[0], savedLines, savedLaborRows, { includeInternalCosts }));
 }
 
 export async function PUT(req: Request) {
+  const { users } = await getDemoContext();
   await ensureInvoiceTables();
   const body = (await req.json()) as InvoiceInput & { invoiceNumber?: string };
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
+  }
+  if (!canManageInvoices(actorResult.actor)) {
+    return forbiddenInvoiceResponse();
+  }
   const lines = normalizeInvoiceLines(body.lines);
 
   if (lines.length === 0) {
@@ -2158,6 +2176,7 @@ export async function PATCH(req: Request) {
   if (!canManageInvoices(actor)) {
     return forbiddenInvoiceResponse();
   }
+  const includeInternalCosts = canViewInternalCostData(actor);
   const actorName = getUserName(actor);
   const id = cleanString(body.id);
   const saveAsDraft = Boolean(body.saveAsDraft);
@@ -2171,6 +2190,7 @@ export async function PATCH(req: Request) {
       organizationId: organization.id,
       invoiceId: id,
       actorName,
+      includeInternalCosts,
     });
   }
 
@@ -2203,7 +2223,7 @@ export async function PATCH(req: Request) {
       actorName,
     });
 
-    return NextResponse.json(serializeInvoice(rows[0], []));
+    return NextResponse.json(serializeInvoice(rows[0], [], [], { includeInternalCosts }));
   }
 
   if (cleanString(body.action) === "record-reminder") {
@@ -2234,7 +2254,7 @@ export async function PATCH(req: Request) {
       actorName,
     });
 
-    return NextResponse.json(serializeInvoice(rows[0], []));
+    return NextResponse.json(serializeInvoice(rows[0], [], [], { includeInternalCosts }));
   }
 
   if (cleanString(body.action) === "create-reminder-document") {
@@ -2278,7 +2298,7 @@ export async function PATCH(req: Request) {
     });
 
     return NextResponse.json({
-      invoice: serializeInvoice(rows[0], []),
+      invoice: serializeInvoice(rows[0], [], [], { includeInternalCosts }),
       reminderDocument,
     });
   }
@@ -2306,7 +2326,7 @@ export async function PATCH(req: Request) {
       actorName,
     });
 
-    return NextResponse.json(serializeInvoice(rows[0], []));
+    return NextResponse.json(serializeInvoice(rows[0], [], [], { includeInternalCosts }));
   }
 
   const lines = await withInvoiceLineCostSnapshots(organization.id, normalizeInvoiceLines(body.lines));
@@ -2495,7 +2515,7 @@ export async function PATCH(req: Request) {
     });
   }
 
-  return NextResponse.json(serializeInvoice(rows[0], savedLines, savedLaborRows));
+  return NextResponse.json(serializeInvoice(rows[0], savedLines, savedLaborRows, { includeInternalCosts }));
 }
 
 export async function DELETE(req: Request) {
@@ -2508,6 +2528,7 @@ export async function DELETE(req: Request) {
     return sessionBoundActorResponse(actorResult);
   }
   const actor = actorResult.actor;
+  const includeInternalCosts = canViewInternalCostData(actor);
   const actorName = getUserName(actor);
 
   if (!id) {
@@ -2557,7 +2578,7 @@ export async function DELETE(req: Request) {
     actorName,
   });
 
-  return NextResponse.json(serializeInvoice(rows[0], []));
+  return NextResponse.json(serializeInvoice(rows[0], [], [], { includeInternalCosts }));
 }
 
 

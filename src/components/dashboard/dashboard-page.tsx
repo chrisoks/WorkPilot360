@@ -8062,6 +8062,7 @@ export function DashboardPage() {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        actorId: activeUserId,
         ...offerPayload,
         offerNumber: editingOffer?.offerNumber || "VORSCHAU",
         projectId: selectedProjectFile.id,
@@ -9605,6 +9606,7 @@ export function DashboardPage() {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        actorId: activeUserId,
         ...invoiceDraft,
         invoiceNumber: editingInvoice?.invoiceNumber || "VORSCHAU",
         projectId: selectedProjectFile.id,

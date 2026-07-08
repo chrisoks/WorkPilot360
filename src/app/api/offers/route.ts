@@ -14,7 +14,7 @@ import {
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
-import { canDeleteOffers, canManageOffers, canSendDocumentMails } from "@/lib/permissions";
+import { canDeleteOffers, canManageOffers, canSendDocumentMails, canViewInternalCostData } from "@/lib/permissions";
 
 type OfferCompany = "OK solutions" | "OK immocare";
 type OfferType = "base" | "addendum";
@@ -924,8 +924,10 @@ function getOfferLaborValidationMessage(lines: ReturnType<typeof normalizeOfferL
 function serializeOffer(
   row: OfferRow,
   lines: OfferLineRow[] = [],
-  laborRows: OfferLineLaborRow[] = []
+  laborRows: OfferLineLaborRow[] = [],
+  options: { includeInternalCosts?: boolean } = {}
 ) {
+  const includeInternalCosts = options.includeInternalCosts === true;
   return {
     ...row,
     offerType: normalizeOfferType(row.offerType),
@@ -954,7 +956,7 @@ function serializeOffer(
       discountPercent: Number(line.discountPercent ?? 0),
       isLaborPosition: Boolean(line.isLaborPosition),
       laborCostRateKey: line.laborCostRateKey ?? "",
-      laborCostRate: Number(line.laborCostRate ?? 0),
+      laborCostRate: includeInternalCosts ? Number(line.laborCostRate ?? 0) : 0,
       vatRate: Number(line.vatRate ?? 19),
       totalNet: Number(line.totalNet ?? 0),
       laborItems: laborRows
@@ -963,8 +965,8 @@ function serializeOffer(
         .map((labor) => ({
           ...labor,
           plannedHours: Number(labor.plannedHours ?? 0),
-          hourlyCostRate: Number(labor.hourlyCostRate ?? 0),
-          totalCost: Number(labor.totalCost ?? 0),
+          hourlyCostRate: includeInternalCosts ? Number(labor.hourlyCostRate ?? 0) : 0,
+          totalCost: includeInternalCosts ? Number(labor.totalCost ?? 0) : 0,
         })),
     })),
   };
@@ -1016,6 +1018,7 @@ export async function GET(req: Request) {
   if (!canSendDocumentMails(actor)) {
     return forbiddenOfferResponse();
   }
+  const includeInternalCosts = canViewInternalCostData(actor);
 
   if (pdfId) {
     const rows = await prisma.$queryRaw<Array<{ offerNumber: string; pdfData: string | null }>>`
@@ -1103,7 +1106,8 @@ export async function GET(req: Request) {
       serializeOffer(
         row,
         lineRows.filter((line) => line.offerId === row.id),
-        laborRows.filter((labor) => labor.offerId === row.id)
+        laborRows.filter((labor) => labor.offerId === row.id),
+        { includeInternalCosts }
       )
     )
   );
@@ -1121,6 +1125,7 @@ export async function POST(req: Request) {
   if (!canManageOffers(actor)) {
     return forbiddenOfferResponse();
   }
+  const includeInternalCosts = canViewInternalCostData(actor);
   const actorName = getUserName(actor);
   const lines = normalizeOfferLines(body.lines);
   const saveAsDraft = Boolean(body.saveAsDraft);
@@ -1222,7 +1227,7 @@ export async function POST(req: Request) {
       actorName,
     });
 
-    return NextResponse.json(serializeOffer(rows[0], savedLines, savedLaborRows));
+    return NextResponse.json(serializeOffer(rows[0], savedLines, savedLaborRows, { includeInternalCosts }));
   } catch (error) {
     console.error("Offer creation failed", error);
     return NextResponse.json(
@@ -1233,8 +1238,16 @@ export async function POST(req: Request) {
 }
 
 export async function PUT(req: Request) {
+  const { users } = await getDemoContext();
   await ensureOfferTables();
   const body = (await req.json()) as OfferInput & { offerNumber?: string };
+  const actorResult = await getSessionBoundActor(req, users, body.actorId);
+  if (!actorResult.ok) {
+    return sessionBoundActorResponse(actorResult);
+  }
+  if (!canManageOffers(actorResult.actor)) {
+    return forbiddenOfferResponse();
+  }
   const lines = normalizeOfferLines(body.lines);
 
   if (lines.length === 0) {
@@ -1267,6 +1280,7 @@ export async function PATCH(req: Request) {
     return sessionBoundActorResponse(actorResult);
   }
   const actor = actorResult.actor;
+  const includeInternalCosts = canViewInternalCostData(actor);
   if (!canManageOffers(actor) && !(action === "markPrinted" && canSendDocumentMails(actor))) {
     return forbiddenOfferResponse();
   }
@@ -1321,7 +1335,7 @@ export async function PATCH(req: Request) {
       ORDER BY "position" ASC
     `;
 
-    return NextResponse.json(serializeOffer(savedOfferRows[0], savedLines, savedLaborRows));
+    return NextResponse.json(serializeOffer(savedOfferRows[0], savedLines, savedLaborRows, { includeInternalCosts }));
   }
 
   if (action === "markLost") {
@@ -1391,7 +1405,7 @@ export async function PATCH(req: Request) {
       actorName,
     });
 
-    return NextResponse.json(serializeOffer(rows[0], savedLines, savedLaborRows));
+    return NextResponse.json(serializeOffer(rows[0], savedLines, savedLaborRows, { includeInternalCosts }));
   }
 
   if (action === "markWon") {
@@ -1453,7 +1467,7 @@ export async function PATCH(req: Request) {
       actorName,
     });
 
-    return NextResponse.json(serializeOffer(rows[0], savedLines, savedLaborRows));
+    return NextResponse.json(serializeOffer(rows[0], savedLines, savedLaborRows, { includeInternalCosts }));
   }
 
   if (action === "restoreLost") {
@@ -1507,7 +1521,7 @@ export async function PATCH(req: Request) {
       actorName,
     });
 
-    return NextResponse.json(serializeOffer(rows[0], savedLines, savedLaborRows));
+    return NextResponse.json(serializeOffer(rows[0], savedLines, savedLaborRows, { includeInternalCosts }));
   }
 
   if (!saveAsDraft && lines.length === 0) {
@@ -1631,7 +1645,7 @@ export async function PATCH(req: Request) {
     actorName,
   });
 
-  return NextResponse.json(serializeOffer(rows[0], savedLines, savedLaborRows));
+  return NextResponse.json(serializeOffer(rows[0], savedLines, savedLaborRows, { includeInternalCosts }));
 }
 
 export async function DELETE(req: Request) {
@@ -1647,6 +1661,7 @@ export async function DELETE(req: Request) {
   if (!canDeleteOffers(actor)) {
     return forbiddenOfferResponse();
   }
+  const includeInternalCosts = canViewInternalCostData(actor);
   const actorName = getUserName(actor);
 
   if (!id) {
@@ -1682,5 +1697,5 @@ export async function DELETE(req: Request) {
     actorName,
   });
 
-  return NextResponse.json(serializeOffer(rows[0], []));
+  return NextResponse.json(serializeOffer(rows[0], [], [], { includeInternalCosts }));
 }

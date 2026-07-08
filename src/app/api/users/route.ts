@@ -183,11 +183,12 @@ function formatUser(user: {
   notifyIdeaStore?: boolean | null;
   notifyUpsell?: boolean | null;
   mailAccount?: Prisma.JsonValue | null;
-}, teamIds: string[] = []) {
+}, teamIds: string[] = [], options: { includePrivateDetails?: boolean } = {}) {
   const birthDate =
     user.birthDate instanceof Date
       ? user.birthDate.toISOString().slice(0, 10)
       : user.birthDate ?? "";
+  const includePrivateDetails = options.includePrivateDetails !== false;
 
   return {
     id: user.id,
@@ -200,17 +201,17 @@ function formatUser(user: {
     teamIds,
     dailyWorkHours: user.dailyWorkHours ?? 8,
     profileImageDataUrl: user.profileImageDataUrl ?? "",
-    personalNumber: user.personalNumber ?? "",
-    salutation: user.salutation ?? "Herr",
-    birthDate,
+    personalNumber: includePrivateDetails ? user.personalNumber ?? "" : "",
+    salutation: includePrivateDetails ? user.salutation ?? "Herr" : "",
+    birthDate: includePrivateDetails ? birthDate : "",
     language: user.language ?? "Deutsch (Deutschland)",
     phone: user.phone ?? "",
     mobile: user.mobile ?? "",
-    street: user.street ?? "",
-    postalCode: user.postalCode ?? "",
-    city: user.city ?? "",
-    signature: user.signature ?? "",
-    signatureHidden: Boolean(user.signatureHidden),
+    street: includePrivateDetails ? user.street ?? "" : "",
+    postalCode: includePrivateDetails ? user.postalCode ?? "" : "",
+    city: includePrivateDetails ? user.city ?? "" : "",
+    signature: includePrivateDetails ? user.signature ?? "" : "",
+    signatureHidden: includePrivateDetails ? Boolean(user.signatureHidden) : false,
     planningBoard: user.planningBoard ?? "OK solutions",
     planningGroup: user.planningGroup ?? "Marketing",
     weeklyCapacity: parseWeeklyCapacity(user.weeklyCapacity),
@@ -226,11 +227,34 @@ function formatUser(user: {
     branchAllocations: parseBranchAllocations(user.branchAllocations, user.planningBoard),
     includeInLaborCostRate: user.includeInLaborCostRate ?? true,
     sellableCapacityEnabled: user.sellableCapacityEnabled ?? true,
-    salesRoleEnabled: user.salesRoleEnabled ?? false,
-    notifyIdeaStore: user.notifyIdeaStore ?? true,
-    notifyUpsell: user.notifyUpsell ?? false,
-    mailAccount: parseMailAccount(user.mailAccount, user.email),
+    salesRoleEnabled: includePrivateDetails ? user.salesRoleEnabled ?? false : false,
+    notifyIdeaStore: includePrivateDetails ? user.notifyIdeaStore ?? true : true,
+    notifyUpsell: includePrivateDetails ? user.notifyUpsell ?? false : false,
+    mailAccount: includePrivateDetails ? parseMailAccount(user.mailAccount, user.email) : parseMailAccount({}, ""),
   };
+}
+
+function hasProtectedSelfUpdateFields(body: Record<string, unknown>) {
+  const protectedFields = [
+    "role",
+    "teamIds",
+    "allTeams",
+    "teamId",
+    "planningBoard",
+    "planningGroup",
+    "weeklyCapacity",
+    "planningStartTime",
+    "planningEndTime",
+    "planningTimeWindows",
+    "planningBreakWindows",
+    "planningResponsibleFor",
+    "branchAllocations",
+    "includeInLaborCostRate",
+    "sellableCapacityEnabled",
+    "salesRoleEnabled",
+  ];
+
+  return protectedFields.some((field) => Object.prototype.hasOwnProperty.call(body, field));
 }
 
 function parseDailyWorkHours(value: unknown) {
@@ -595,6 +619,8 @@ export async function GET(req: Request) {
   if (!actorResult.ok) {
     return sessionBoundActorResponse(actorResult);
   }
+  const actor = actorResult.actor;
+  const actorCanManageUsers = canManageUsers(actor);
 
   const users = await prisma.user.findMany({
     where: {
@@ -624,7 +650,8 @@ export async function GET(req: Request) {
             dailyWorkHours: dailyWorkHoursByUserId.get(user.id) ?? 8,
             ...(detailsByUserId.get(user.id) ?? {}),
           },
-          await getUserTeamIds(user.id)
+          await getUserTeamIds(user.id),
+          { includePrivateDetails: actorCanManageUsers || user.id === actor.id }
         )
       )
     )
@@ -814,6 +841,13 @@ export async function PATCH(req: Request) {
   if (hasSellableCapacityEnabledUpdate && !isManagedUpdate) {
     return NextResponse.json(
       { error: "Nur Admins und Gesch\u00e4ftsf\u00fchrung d\u00fcrfen verkaufbare Kapazit\u00e4t \u00e4ndern." },
+      { status: 403 }
+    );
+  }
+
+  if (isSelfUpdate && !isManagedUpdate && hasProtectedSelfUpdateFields(body)) {
+    return NextResponse.json(
+      { error: "Diese Mitarbeiter- oder Rollenfelder duerfen nur Admins und Geschaeftsfuehrung aendern." },
       { status: 403 }
     );
   }
