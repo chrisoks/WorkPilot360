@@ -9447,6 +9447,11 @@ export function DashboardPage() {
     const invoiceProject =
       heroProjects.find((project) => project.id === invoice.projectId) ||
       (selectedProjectFile?.id === invoice.projectId ? selectedProjectFile : null);
+    if (!invoiceProject) {
+      setErrorMessage("Projekt zur Rechnung wurde nicht gefunden.");
+      return;
+    }
+    setSelectedProjectFileId(invoiceProject.id);
     const correctedCompany =
       invoice.billingSource === "hourly-recurring" && invoiceProject ? getProjectCompany(invoiceProject) : invoice.company;
     setInvoiceDraft({
@@ -31583,7 +31588,23 @@ await addProjectLogbookEntry(
                       >
                         PDF öffnen
                       </button>
-                      <button type="button" className={styles.secondaryButton} onClick={() => openEditInvoiceModal(invoice)}>
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={() => {
+                          const project = heroProjects.find((item) => item.id === invoice.projectId);
+                          if (!project) {
+                            setBatchBillingError("Projekt zur Rechnung wurde nicht gefunden.");
+                            return;
+                          }
+                          openProjectFile(project, {
+                            tab: "documents",
+                            documentType: "Rechnungen",
+                            month: invoice.plannedExecutionMonth || invoice.serviceDate.slice(0, 7),
+                          });
+                          openEditInvoiceModal(invoice);
+                        }}
+                      >
                         Prüfen
                       </button>
                       <button
