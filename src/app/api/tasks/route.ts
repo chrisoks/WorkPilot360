@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { getDeadlineSettings } from "@/lib/company-settings/deadlines";
 import { recordStatusTransition, seedCurrentStatusTimeline } from "@/lib/status-tracking";
-import { canAssignTasksToOthers, canDeleteTasks } from "@/lib/permissions";
+import { canAssignTasksToOthers, canDeleteTasks, canReadTask } from "@/lib/permissions";
 import { sendTaskNotificationMailSafely } from "@/lib/mail/task-notifications";
 import {
   CustomerClassification,
@@ -179,6 +179,27 @@ function parseEstimate(estimateMinutes?: unknown) {
 
 function normalizeProjectId(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function cleanTaskTitle(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function getTaskParticipantUserIds(participants: TaskParticipantView[] | undefined) {
+  return (participants ?? []).map((participant) => participant.userId);
+}
+
+function canActorReadTask(
+  actor: User,
+  task: Pick<Task, "ownerId" | "teamId" | "createdById">,
+  participants?: TaskParticipantView[]
+) {
+  return canReadTask(actor, {
+    ownerId: task.ownerId,
+    teamId: task.teamId,
+    createdById: task.createdById,
+    participantUserIds: getTaskParticipantUserIds(participants),
+  });
 }
 
 function parseTaskLinks(value: unknown) {
@@ -970,8 +991,12 @@ export async function GET(req: Request) {
     tasks.flatMap((task) => task.comments.map((comment) => comment.id))
   );
 
+  const visibleTasks = tasks.filter((task) =>
+    canActorReadTask(actorResult.actor, task, participantsByTaskId.get(task.id))
+  );
+
   return NextResponse.json(
-    tasks.map((task) => ({
+    visibleTasks.map((task) => ({
       ...formatTask(
         task,
         feedbackByTaskId.get(task.id),
@@ -996,6 +1021,11 @@ export async function POST(req: Request) {
   }
   const actor = actorResult.actor;
 
+  const taskTitle = cleanTaskTitle(body.title);
+  if (!taskTitle) {
+    return NextResponse.json({ error: "Bitte einen Aufgabentitel eingeben." }, { status: 400 });
+  }
+
   const requestedOwner = users.find((demoUser) => demoUser.id === body.ownerId);
   const owner = requestedOwner && (canAssignTasksToOthers(actor) || body.absenceHandoverTask) ? requestedOwner : actor;
   const acceptanceStatus = body.absenceHandoverTask
@@ -1017,7 +1047,7 @@ export async function POST(req: Request) {
       organizationId: organization.id,
       ownerId: owner.id,
       teamId: owner.teamId,
-      title: body.title,
+      title: taskTitle,
       description: body.description ?? "",
       status: nextStatus,
       priority: mapPriority(body.priority),
@@ -1127,6 +1157,11 @@ export async function PATCH(req: Request) {
     return sessionBoundActorResponse(actorResult);
   }
   const actor = actorResult.actor;
+
+  const taskTitle = cleanTaskTitle(body.title);
+  if (!body.restore && !body.addParticipantUserId && !taskTitle) {
+    return NextResponse.json({ error: "Bitte einen Aufgabentitel eingeben." }, { status: 400 });
+  }
 
   const requestedOwner = users.find((demoUser) => demoUser.id === body.ownerId);
   const nextStatus = mapStatus(body.status);
@@ -1264,6 +1299,13 @@ export async function PATCH(req: Request) {
   if (!existingTask) {
     return NextResponse.json({ error: "Aufgabe wurde nicht gefunden." }, { status: 404 });
   }
+  const existingParticipants = (await getTaskParticipants([existingTask.id])).get(existingTask.id) ?? [];
+  if (!canActorReadTask(actor, existingTask, existingParticipants)) {
+    return NextResponse.json(
+      { error: "Du darfst diese Aufgabe nicht bearbeiten." },
+      { status: 403 }
+    );
+  }
   const existingFeedback = body.id
     ? (await getTaskFeedbackSettings([body.id])).get(body.id)
     : undefined;
@@ -1279,7 +1321,7 @@ export async function PATCH(req: Request) {
     data: {
       ownerId: owner.id,
       teamId: owner.teamId,
-      title: body.title,
+      title: taskTitle,
       description: body.description ?? "",
       status: nextStatus,
       priority: mapPriority(body.priority),

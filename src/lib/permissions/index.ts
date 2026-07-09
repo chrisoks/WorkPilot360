@@ -1,7 +1,16 @@
 import { Role } from '@prisma/client';
 import { SessionUser } from '@/types/auth';
 
-type RoleCarrier = Pick<SessionUser, 'role'> | { role: Role };
+type RoleCarrier = (Pick<SessionUser, 'role'> | { role: Role }) & { salesRoleEnabled?: boolean | null };
+type TaskAccessUser =
+  | Pick<SessionUser, 'id' | 'role' | 'teamId'>
+  | { id: string; role: Role; teamId?: string | null };
+type TaskAccessTarget = {
+  ownerId: string;
+  teamId?: string | null;
+  createdById?: string | null;
+  participantUserIds?: string[];
+};
 
 export const roleHierarchy: Record<Role, number> = {
   GAST: 10,
@@ -17,10 +26,15 @@ export function hasMinimumRole(user: SessionUser, minimumRole: Role): boolean {
   return roleHierarchy[user.role] >= roleHierarchy[minimumRole];
 }
 
-export function canReadTask(user: SessionUser, task: { ownerId: string; teamId?: string | null }): boolean {
+function hasSalesAccess(user: RoleCarrier): boolean {
+  return user.role === Role.VERTRIEB || user.salesRoleEnabled === true;
+}
+
+export function canReadTask(user: TaskAccessUser, task: TaskAccessTarget): boolean {
   if (user.role === Role.ADMIN || user.role === Role.GESCHAEFTSFUEHRER) return true;
   if (user.role === Role.FUEHRUNGSKRAFT) return task.teamId != null && user.teamId === task.teamId;
-  if (user.role === Role.MITARBEITER || user.role === Role.VERTRIEB) return task.ownerId === user.id;
+  if (task.ownerId === user.id || task.createdById === user.id) return true;
+  if (task.participantUserIds?.includes(user.id)) return true;
   return false;
 }
 
@@ -29,7 +43,7 @@ export function canManageOffers(user: RoleCarrier): boolean {
     user.role === Role.ADMIN ||
     user.role === Role.GESCHAEFTSFUEHRER ||
     user.role === Role.FUEHRUNGSKRAFT ||
-    user.role === Role.VERTRIEB
+    hasSalesAccess(user)
   );
 }
 
@@ -160,7 +174,7 @@ export function canManageSalesPipeline(user: RoleCarrier): boolean {
     user.role === Role.ADMIN ||
     user.role === Role.GESCHAEFTSFUEHRER ||
     user.role === Role.FUEHRUNGSKRAFT ||
-    user.role === Role.VERTRIEB
+    hasSalesAccess(user)
   );
 }
 
@@ -220,7 +234,7 @@ export function canSendDocumentMails(user: RoleCarrier): boolean {
     user.role === Role.ADMIN ||
     user.role === Role.GESCHAEFTSFUEHRER ||
     user.role === Role.FUEHRUNGSKRAFT ||
-    user.role === Role.VERTRIEB ||
+    hasSalesAccess(user) ||
     user.role === Role.BUCHHALTUNG
   );
 }

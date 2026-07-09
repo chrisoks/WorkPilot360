@@ -7,6 +7,7 @@ import { recordStatusTransition, seedCurrentStatusTimeline } from "@/lib/status-
 import {
   canAssignSalesItemsToOthers,
   canCreateProjectPotentials,
+  canManageAllSalesPipeline,
   canManageOwnedSalesItem,
 } from "@/lib/permissions";
 
@@ -280,7 +281,11 @@ export async function GET(req: Request) {
     ORDER BY "updatedAt" DESC, "createdAt" DESC
   `;
 
-  return NextResponse.json(rows.filter((row) => !isNoUpsellDescription(row.description)).map(formatPotential));
+  const visibleRows = canManageAllSalesPipeline(actorResult.actor)
+    ? rows
+    : rows.filter((row) => row.ownerUserId === actorResult.actor.id);
+
+  return NextResponse.json(visibleRows.filter((row) => !isNoUpsellDescription(row.description)).map(formatPotential));
 }
 
 export async function POST(req: Request) {

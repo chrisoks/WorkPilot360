@@ -5,7 +5,12 @@ import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { ensureSalesHubTables } from "@/lib/sales-hub/ensure";
-import { canAssignSalesItemsToOthers, canManageOwnedSalesItem, canManageSalesPipeline } from "@/lib/permissions";
+import {
+  canAssignSalesItemsToOthers,
+  canManageAllSalesPipeline,
+  canManageOwnedSalesItem,
+  canManageSalesPipeline,
+} from "@/lib/permissions";
 
 type OpportunityRow = {
   id: string;
@@ -107,6 +112,9 @@ export async function GET(req: Request) {
     return cleanString(requestedActorId) ? sessionBoundActorResponse(actorResult) : NextResponse.json([]);
   }
   const actor = actorResult.actor;
+  if (!canManageSalesPipeline(actor)) {
+    return NextResponse.json([]);
+  }
 
   const rows = await prisma.$queryRaw<OpportunityRow[]>`
     SELECT *
@@ -114,7 +122,8 @@ export async function GET(req: Request) {
     WHERE "organizationId" = ${organization.id}
     ORDER BY "updatedAt" DESC
   `;
-  const ids = rows.map((row) => row.id);
+  const visibleRows = canManageAllSalesPipeline(actor) ? rows : rows.filter((row) => row.ownerUserId === actor.id);
+  const ids = visibleRows.map((row) => row.id);
   const activities = ids.length
     ? await prisma.$queryRaw<ActivityRow[]>`
         SELECT id, "opportunityId", type, body, "actorName", "createdAt"
@@ -124,7 +133,7 @@ export async function GET(req: Request) {
         ORDER BY "createdAt" DESC
       `
     : [];
-  return NextResponse.json(rows.map((row) => formatOpportunity(row, activities)));
+  return NextResponse.json(visibleRows.map((row) => formatOpportunity(row, activities)));
 }
 
 export async function POST(req: Request) {
