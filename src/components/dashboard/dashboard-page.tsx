@@ -7110,6 +7110,7 @@ export function DashboardPage() {
 
   async function loadContacts() {
     if (!activeUserId) return;
+    if (!activeUser) return;
     const canLoadContacts =
       activeUserHasSalesRole ||
       activeUser?.role === "ADMIN" ||
@@ -15549,7 +15550,7 @@ export function DashboardPage() {
       window.clearTimeout(operationalLoadTimer);
       window.clearTimeout(secondaryLoadTimer);
     };
-  }, [authChecked, isAuthenticated, activeUserId]);
+  }, [authChecked, isAuthenticated, activeUserId, activeUser?.role, activeUserHasSalesRole]);
 
   useEffect(() => {
     if (!authChecked || !isAuthenticated || !activeUserId || activeTab !== "newsFeed") return;
