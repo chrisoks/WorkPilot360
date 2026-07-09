@@ -955,6 +955,16 @@ export async function GET(req: Request) {
     return sessionBoundActorResponse(actorResult);
   }
   const actor = actorResult.actor;
+  if (!canSendDocumentMails(actor)) {
+    return forbiddenDocumentMailResponse();
+  }
+
+  const allowedKinds = [
+    ...(canSendOfferDocuments(actor) ? ["offer"] : []),
+    ...(canSendInvoiceDocuments(actor) ? ["invoice", "cancellation", "reminder"] : []),
+    "activityReport",
+    "document",
+  ];
 
   const rows = projectId
     ? await prisma.$queryRaw<Array<Parameters<typeof formatDispatch>[0]>>`
@@ -963,6 +973,7 @@ export async function GET(req: Request) {
         FROM "DocumentMailDispatch"
         WHERE "organizationId" = ${organization.id}
           AND "projectId" = ${projectId}
+          AND "documentKind" IN (${Prisma.join(allowedKinds)})
         ORDER BY "createdAt" DESC
       `
     : await prisma.$queryRaw<Array<Parameters<typeof formatDispatch>[0]>>`
@@ -970,6 +981,7 @@ export async function GET(req: Request) {
                "projectTitle", "customerName", "toRecipients", "subject", "body", "attachPdf", "status", "createdAt"
         FROM "DocumentMailDispatch"
         WHERE "organizationId" = ${organization.id}
+          AND "documentKind" IN (${Prisma.join(allowedKinds)})
         ORDER BY "createdAt" DESC
         LIMIT ${overviewLimit}
       `;

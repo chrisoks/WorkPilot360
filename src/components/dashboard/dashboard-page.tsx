@@ -4380,6 +4380,12 @@ function formatProjectDate(value?: string) {
     : "-";
 }
 
+function getProjectDateMonthKey(value?: string) {
+  const date = parseProjectDate(value);
+  if (!date) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
 function formatProjectRuntimeDuration(startValue?: string, endValue?: string) {
   const startDate = parseProjectDate(startValue);
   const endDate = parseProjectDate(endValue);
@@ -21215,6 +21221,7 @@ await addProjectLogbookEntry(
                             openProjectFile(row.project as HeroProjectPreview, {
                               tab: "documents",
                               documentType: row.projectDocumentType,
+                              month: getProjectDateMonthKey(row.date),
                             })
                           }
                         >
