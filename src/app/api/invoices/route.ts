@@ -660,6 +660,91 @@ async function notifyManagementAboutUnderbilling(input: {
   }
 }
 
+async function notifyCriticalReminderCreated(input: {
+  organizationId: string;
+  projectId: string;
+  projectLabel: string;
+  invoiceNumber: string;
+  documentNumber: string;
+  reminderLevel: number;
+  actorName: string;
+}) {
+  await prisma.$executeRaw`
+    ALTER TABLE "Notification"
+    ADD COLUMN IF NOT EXISTS "linkTarget" TEXT,
+    ADD COLUMN IF NOT EXISTS "linkTargetId" TEXT,
+    ADD COLUMN IF NOT EXISTS "linkLabel" TEXT
+  `;
+
+  const projectRows = await prisma.$queryRaw<Array<{ responsibleName: string | null; deputyName: string | null }>>`
+    SELECT "responsibleName", "deputyName"
+    FROM "WorkPilotProject"
+    WHERE "organizationId" = ${input.organizationId}
+      AND id = ${input.projectId}
+    LIMIT 1
+  `;
+  const projectRecipients = [
+    projectRows[0]?.responsibleName,
+    projectRows[0]?.deputyName,
+  ]
+    .map((name) => cleanString(name).toLowerCase())
+    .filter(Boolean);
+  const responsibleNames = projectRecipients.length > 0 ? projectRecipients : ["__no_project_recipient__"];
+
+  const recipients = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT DISTINCT id
+    FROM "User"
+    WHERE "organizationId" = ${input.organizationId}
+      AND "isActive" = true
+      AND (
+        "role" = 'GESCHAEFTSFUEHRER'
+        OR LOWER(CONCAT("firstName", ' ', "lastName")) IN (${Prisma.join(responsibleNames)})
+      )
+  `;
+
+  for (const recipient of recipients) {
+    const notificationId = randomUUID();
+    const subject = `Kritisch: Mahnung ${input.documentNumber} erstellt`;
+    const body = `${input.projectLabel}: Für Rechnung ${input.invoiceNumber} wurde Mahnstufe ${input.reminderLevel} durch ${input.actorName} erstellt. Bitte Zahlungseingang und nächste Eskalation im Blick behalten.`;
+    await prisma.$executeRaw`
+      INSERT INTO "Notification" (
+        "id",
+        "organizationId",
+        "userId",
+        "taskId",
+        "channel",
+        "subject",
+        "body",
+        "linkTarget",
+        "linkTargetId",
+        "linkLabel",
+        "sentAt",
+        "createdAt"
+      )
+      VALUES (
+        ${notificationId},
+        ${input.organizationId},
+        ${recipient.id},
+        NULL,
+        'app',
+        ${subject},
+        ${body},
+        'project',
+        ${input.projectId},
+        'Projekt öffnen',
+        NULL,
+        CURRENT_TIMESTAMP
+      )
+    `;
+    await sendNotificationMailSafely({
+      notificationId,
+      userId: recipient.id,
+      subject,
+      body,
+    });
+  }
+}
+
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -2321,6 +2406,18 @@ export async function PATCH(req: Request) {
       eventType: "reminder-document",
       title: `Mahnung ${reminderDocument.documentNumber} erstellt`,
       note: `${reminderDocument.fileName} wurde unter Dokumente: Mahnung abgelegt.`,
+      actorName,
+    });
+
+    await notifyCriticalReminderCreated({
+      organizationId: organization.id,
+      projectId: rows[0].projectId,
+      projectLabel:
+        [rows[0].projectNumber, rows[0].projectTitle].filter(Boolean).join(" · ") ||
+        rows[0].projectId,
+      invoiceNumber: rows[0].invoiceNumber,
+      documentNumber: reminderDocument.documentNumber,
+      reminderLevel: Number(rows[0].reminderLevel ?? 0),
       actorName,
     });
 

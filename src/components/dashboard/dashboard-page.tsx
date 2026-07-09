@@ -4250,6 +4250,7 @@ function getEmployeeCostMetrics(cost: EmployeeCostCalculation) {
 
 function formatDeadline(value: string) {
   if (!value) return "-";
+  if (/^\d{2}\.\d{2}\.\d{4}(?:,\s*\d{2}:\d{2})?$/.test(value.trim())) return value;
   const date = parseAppDateTime(value);
   if (!Number.isFinite(date.getTime())) return "-";
   return new Intl.DateTimeFormat(APP_LOCALE, {
@@ -10877,6 +10878,17 @@ export function DashboardPage() {
   }) {
     const activeMailAccount = getSafeEmployeeMailAccount(activeUser?.mailAccount, activeUser?.email || "");
     const template = applyMailTemplate(input.kind, input.documentNumber);
+    const reminderInvoiceNumber =
+      input.kind === "reminder" ? input.documentNumber.match(/^MA-(.+)-\d+$/i)?.[1] || "" : "";
+    const reminderInvoice = reminderInvoiceNumber
+      ? invoices.find(
+          (invoice) =>
+            invoice.projectId === (input.projectId || selectedProjectFile?.id || "") &&
+            invoice.invoiceNumber === reminderInvoiceNumber
+        ) ?? null
+      : null;
+    const reminderRecipientEmail =
+      input.kind === "reminder" ? getContactInvoiceEmail(getInvoiceRecipientContact(reminderInvoice)) : "";
 
     setDocumentMailDraft({
       kind: input.kind,
@@ -10888,7 +10900,7 @@ export function DashboardPage() {
       customerName: input.customerName || selectedProjectFile?.customer || "",
       attachmentName: input.attachmentName,
       attachmentDataUrl: input.attachmentDataUrl,
-      to: "",
+      to: reminderRecipientEmail,
       cc: "",
       bcc: activeMailAccount.bcc,
       subject: template.subject,
