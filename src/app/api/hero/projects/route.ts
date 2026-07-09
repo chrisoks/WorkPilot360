@@ -449,7 +449,7 @@ export async function POST(req: Request) {
   const incomingRecurringBillingMode = cleanRecurringBillingMode(body.recurringBillingMode);
   if (isRecurringProjectKind(projectKind) && !incomingRecurringBillingMode && !currentProject) {
     return NextResponse.json(
-      { error: "Bitte waehle das Abrechnungsmodell fuer diesen Dauerlaeufer aus." },
+      { error: "Bitte wähle das Abrechnungsmodell für diesen Dauerläufer aus." },
       { status: 400 }
     );
   }

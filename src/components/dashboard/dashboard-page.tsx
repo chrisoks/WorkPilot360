@@ -18148,9 +18148,8 @@ export function DashboardPage() {
       : "";
 
     if (isRecurringProjectKindValue(projectDraft.projectKind) && !recurringBillingMode) {
-      const message = "Bitte waehle das Abrechnungsmodell fuer diesen Dauerlaeufer aus.";
+      const message = "Bitte wähle das Abrechnungsmodell für diesen Dauerläufer aus.";
       setErrorMessage(message);
-      window.alert(message);
       return;
     }
 
