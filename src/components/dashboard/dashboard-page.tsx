@@ -2677,6 +2677,12 @@ function normalizeProjectPipelineStatus(status?: string | null) {
   return normalizedStatus;
 }
 
+function shouldPreserveCriticalProjectStatus(currentStatus?: string | null, nextStatus?: string | null) {
+  const current = normalizeProjectPipelineStatus(currentStatus);
+  const next = normalizeProjectPipelineStatus(nextStatus);
+  return current === "Arbeit unterbrochen" && next !== "Arbeit unterbrochen";
+}
+
 function getProjectNumberPrefix(projectNumber: string) {
   return projectNumber.split("-")[0] || "-";
 }
@@ -3069,7 +3075,24 @@ function isTabAllowedForRole(tab: AppTab, role?: string) {
   return true;
 }
 
-function getVisibleNavigationTabs(role?: string) {
+function getVisibleNavigationTabs(role?: string, hasSalesRole = false) {
+  if (hasSalesRole && role !== "ADMIN" && role !== "GESCHAEFTSFUEHRER") {
+    const allowedSalesTabs = new Set<AppTab>([
+      "overview",
+      "reports",
+      "contacts",
+      "newsFeed",
+      "salesHub",
+      "projectsSolutions",
+      "projectsImmocare",
+      "articles",
+      "salesOpportunities",
+      "dashboard",
+      "personalData",
+    ]);
+    return navigationTabs.filter(([tab]) => allowedSalesTabs.has(tab));
+  }
+
   return navigationTabs.filter(([tab]) => isTabAllowedForRole(tab, role));
 }
 
@@ -6114,8 +6137,8 @@ export function DashboardPage() {
   );
   const activeUserHasSalesRole = activeUser?.role === "VERTRIEB" || activeUser?.salesRoleEnabled === true;
   const visibleNavigationTabs = useMemo(
-    () => getVisibleNavigationTabs(activeUser?.role),
-    [activeUser?.role]
+    () => getVisibleNavigationTabs(activeUser?.role, activeUserHasSalesRole),
+    [activeUser?.role, activeUserHasSalesRole]
   );
   const visibleReportTabs = useMemo(
     () => getVisibleReportTabs(activeUser?.role, activeUserHasSalesRole),
@@ -15768,13 +15791,13 @@ export function DashboardPage() {
   }, [activeUserId, authChecked, isAuthenticated]);
 
   useEffect(() => {
-    if (!isTabAllowedForRole(activeTab, activeUser?.role)) {
-      setActiveTab("reports");
+    if (!visibleNavigationTabs.some(([tab]) => tab === activeTab)) {
+      setActiveTab(visibleNavigationTabs[0]?.[0] ?? "reports");
       setOpenSidebarMenus({});
       setOpenProjectNav({ projectsSolutions: false, projectsImmocare: false });
       setIsFirmSettingsNavOpen(false);
     }
-  }, [activeTab, activeUser?.role]);
+  }, [activeTab, visibleNavigationTabs]);
 
   useEffect(() => {
     if (activeTab !== "reports" || visibleReportTabs.length === 0) return;
@@ -15835,7 +15858,10 @@ export function DashboardPage() {
       const nextTab = appTabs.includes(params.get("view") as AppTab)
         ? (params.get("view") as AppTab)
         : "overview";
-      const allowedNextTab = isTabAllowedForRole(nextTab, activeUser?.role) ? nextTab : "reports";
+      const allowedNavigationTabs = getVisibleNavigationTabs(activeUser?.role, activeUserHasSalesRole);
+      const allowedNextTab = allowedNavigationTabs.some(([tab]) => tab === nextTab)
+        ? nextTab
+        : allowedNavigationTabs[0]?.[0] ?? "reports";
       const nextProjectTab = projectFileTabs.includes(params.get("projectTab") as ProjectFileTab)
         ? (params.get("projectTab") as ProjectFileTab)
         : "logbook";
@@ -15859,7 +15885,7 @@ export function DashboardPage() {
 
     window.addEventListener("popstate", applyBrowserLocation);
     return () => window.removeEventListener("popstate", applyBrowserLocation);
-  }, [activeUser?.role]);
+  }, [activeUser?.role, activeUserHasSalesRole]);
 
   useEffect(() => {
     if (typeof window === "undefined" || isApplyingBrowserHistoryRef.current) return;
@@ -17943,6 +17969,9 @@ export function DashboardPage() {
   }) {
     const project = input.project;
     if (!project || !input.nextStatus || normalizeProjectPipelineStatus(project.status) === input.nextStatus) {
+      return false;
+    }
+    if (shouldPreserveCriticalProjectStatus(project.status, input.nextStatus)) {
       return false;
     }
 
@@ -55628,11 +55657,13 @@ await addProjectLogbookEntry(
                   disabled={isRepresentativeAbsenceView}
                   onChange={(event) => setAbsenceUserId(event.target.value)}
                 >
-                  {users.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.name}
-                    </option>
-                  ))}
+                  {users
+                    .filter((user) => user.isActive || user.id === absenceUserId)
+                    .map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.name}
+                      </option>
+                    ))}
                 </select>
               </label>
 
@@ -55694,7 +55725,7 @@ await addProjectLogbookEntry(
                 >
                   <option value="">Kein Vertreter ausgewählt</option>
                   {users
-                    .filter((user) => user.id !== absenceUserId)
+                    .filter((user) => user.isActive && user.id !== absenceUserId)
                     .map((user) => (
                       <option key={user.id} value={user.id}>
                         {user.name}

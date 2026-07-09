@@ -94,7 +94,7 @@ export async function GET(req: Request) {
       "linkLabel"
     FROM "Notification"
     WHERE "userId" = ${activeUser.id}
-      AND "channel" = 'app'
+      AND "channel" IN ('app', 'app_email', 'app_daily_report', 'system')
       ${isHistory ? Prisma.empty : Prisma.sql`AND "readAt" IS NULL`}
       ${searchFilter}
     ORDER BY "createdAt" DESC

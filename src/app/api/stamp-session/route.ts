@@ -5,6 +5,7 @@ import { getDemoContext } from "@/lib/demo/context";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { getDeadlineSettings } from "@/lib/company-settings/deadlines";
 import { prisma } from "@/lib/db/client";
+import { sendNotificationMailSafely } from "@/lib/mail/notifications";
 
 type DemoUser = {
   id: string;
@@ -578,6 +579,42 @@ function findInterruptedWorkParticipants(users: DemoUser[], owner: DemoUser, ent
   );
 }
 
+function findInterruptedWorkManagementRecipients(users: DemoUser[]) {
+  return users.filter(
+    (user) => user.isActive && (user.role === Role.GESCHAEFTSFUEHRER || user.role === Role.ADMIN)
+  );
+}
+
+async function createInterruptedWorkNotification(input: {
+  organizationId: string;
+  taskId: string;
+  userId: string;
+  subject: string;
+  body: string;
+}) {
+  const notification = await prisma.notification.create({
+    data: {
+      organizationId: input.organizationId,
+      taskId: input.taskId,
+      userId: input.userId,
+      channel: "app",
+      subject: input.subject,
+      body: input.body,
+      sentAt: null,
+      linkTarget: "task",
+      linkTargetId: input.taskId,
+      linkLabel: "Aufgabe oeffnen",
+    },
+  });
+
+  await sendNotificationMailSafely({
+    notificationId: notification.id,
+    userId: input.userId,
+    subject: input.subject,
+    body: input.body,
+  });
+}
+
 async function ensureInterruptedWorkTask(input: {
   organizationId: string;
   users: DemoUser[];
@@ -657,6 +694,31 @@ async function ensureInterruptedWorkTask(input: {
       VALUES (${randomUUID()}, ${input.organizationId}, ${taskId}, ${participant.id}, 'pending')
       ON CONFLICT ("taskId", "userId") DO NOTHING
     `;
+  }
+
+  const recipientIds = new Set<string>([
+    owner.id,
+    ...participants.map((participant) => participant.id),
+    ...findInterruptedWorkManagementRecipients(input.users).map((user) => user.id),
+  ]);
+  const subject = "Kritisch: Unterbrochene Arbeit klaeren";
+  const body = [
+    "Eine Projektarbeit wurde als unterbrochen gestempelt und braucht aktive Klaerung.",
+    `Projekt: ${projectLabel}`,
+    `Mitarbeiter: ${input.entry.employee || "-"}`,
+    `Datum: ${input.entry.date} ${input.entry.startTime}-${input.entry.endTime}`,
+    `Kommentar: ${input.comment}`,
+    "Bitte Ursache klaeren, weitere Planung entscheiden und die Aufgabe erst danach abschliessen.",
+  ].join("\n");
+
+  for (const userId of recipientIds) {
+    await createInterruptedWorkNotification({
+      organizationId: input.organizationId,
+      taskId,
+      userId,
+      subject,
+      body,
+    });
   }
 }
 
