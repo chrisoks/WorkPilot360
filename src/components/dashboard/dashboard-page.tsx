@@ -53737,7 +53737,7 @@ await addProjectLogbookEntry(
                     onChange={(event) => setOwnerFilter(event.target.value)}
                   >
                     <option value="">Alle</option>
-                    {users.map((user) => (
+                    {taskOwnerFilterOptions.map((user) => (
                       <option key={user.id} value={user.id}>
                         {user.name}
                       </option>
