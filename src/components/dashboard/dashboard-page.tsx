@@ -6259,7 +6259,7 @@ export function DashboardPage() {
   const isActiveFinalOffer = (offer: OfferItem) =>
     offer.status !== "Entwurf" && !isDeletedOffer(offer) && !isLostOffer(offer);
   const getInvoiceDisplayNumber = (invoice: InvoiceItem) =>
-    invoice.status === "Entwurf" ? "Entwurf" : invoice.invoiceNumber;
+    invoice.status === "Entwurf" ? `${invoice.invoiceNumber} · Entwurf` : invoice.invoiceNumber;
   const renderInvoiceStatusChip = (status: string) => (
     <span className={styles.invoiceStatusChip} data-status={status}>
       {status}
@@ -8265,7 +8265,7 @@ export function DashboardPage() {
     }
     const isRecurringOfferProject = selectedProjectFile ? getProjectKind(selectedProjectFile).startsWith("Dauer") : false;
     if (isRecurringOfferProject && !offerDraft.plannedExecutionEndMonth) {
-      return "Bitte beim Dauerlaeufer den Ausfuehrungszeitraum bis auswaehlen.";
+      return "Bitte beim Dauerläufer den Ausführungszeitraum bis auswählen.";
     }
     if (
       offerDraft.plannedExecutionEndMonth &&
@@ -12690,11 +12690,11 @@ export function DashboardPage() {
       return;
     }
     if (noteDraft.scope === "customer" && !noteDraft.customerId) {
-      setNoteError("Bitte einen Kundenbezug auswaehlen.");
+      setNoteError("Bitte einen Kundenbezug auswählen.");
       return;
     }
     if (noteDraft.scope === "project" && !noteDraft.projectId) {
-      setNoteError("Bitte einen Projektbezug auswaehlen.");
+      setNoteError("Bitte einen Projektbezug auswählen.");
       return;
     }
     if (!activeUserId) {
@@ -14172,12 +14172,12 @@ export function DashboardPage() {
 
     if (requiresHourlyPlanningFields) {
       if (!planningEntryTrade.trim()) {
-        setPlanningEntryError("Bitte ein Termin-Gewerk fuer diese Stundenabrechnung auswaehlen.");
+        setPlanningEntryError("Bitte ein Termin-Gewerk für diese Stundenabrechnung auswählen.");
         return;
       }
 
       if (!selectedBillingCatalogItem) {
-        setPlanningEntryError("Bitte eine konkrete Abrechnungsleistung fuer diese Stundenabrechnung auswaehlen.");
+        setPlanningEntryError("Bitte eine konkrete Abrechnungsleistung für diese Stundenabrechnung auswählen.");
         return;
       }
 
@@ -14187,12 +14187,12 @@ export function DashboardPage() {
       }
 
       if (!planningEntryHasAdditionalEmployees) {
-        setPlanningEntryError("Bitte auswaehlen, ob weitere Mitarbeiter fuer diesen Termin eingeplant werden.");
+        setPlanningEntryError("Bitte auswählen, ob weitere Mitarbeiter für diesen Termin eingeplant werden.");
         return;
       }
 
       if (planningEntryHasAdditionalEmployees === "yes" && selectedAdditionalUsers.length === 0) {
-        setPlanningEntryError("Bitte mindestens einen weiteren Mitarbeiter auswaehlen.");
+        setPlanningEntryError("Bitte mindestens einen weiteren Mitarbeiter auswählen.");
         return;
       }
     }
@@ -15323,7 +15323,7 @@ export function DashboardPage() {
     }
     const owner = users.find((user) => user.id === goalDraft.ownerUserId && user.isActive);
     if (!owner) {
-      setGoalError("Bitte einen aktiven Mitarbeiter auswaehlen.");
+      setGoalError("Bitte einen aktiven Mitarbeiter auswählen.");
       return;
     }
     const targetValue = Number(String(goalDraft.targetValue).replace(",", "."));
@@ -15334,7 +15334,7 @@ export function DashboardPage() {
     const periodStart = normalizeGoalPeriodStart(goalDraft.periodStart);
     const periodEnd = normalizeGoalPeriodEnd(goalDraft.periodEnd);
     if (!periodStart || !periodEnd || periodEnd < periodStart) {
-      setGoalError("Bitte einen gueltigen Zeitraum auswaehlen.");
+      setGoalError("Bitte einen gültigen Zeitraum auswählen.");
       return;
     }
 
@@ -19275,11 +19275,11 @@ await addProjectLogbookEntry(
     if (manualProjectTimeNeedsBillingContext) {
       const selectedBillingItem = selectedManualProjectTimeBillingCatalogItem;
       if (!manualProjectTimeTrade.trim()) {
-        setStampEditError("Bitte fuer diese Stundenabrechnung ein Gewerk auswaehlen.");
+        setStampEditError("Bitte für diese Stundenabrechnung ein Gewerk auswählen.");
         return;
       }
       if (!manualProjectTimeBillingCatalogItemId || !selectedManualProjectTimeBillingCatalogItemLabel) {
-        setStampEditError("Bitte eine Abrechnungsleistung fuer diese Stundenabrechnung auswaehlen.");
+        setStampEditError("Bitte eine Abrechnungsleistung für diese Stundenabrechnung auswählen.");
         return;
       }
       if (
@@ -19466,7 +19466,6 @@ await addProjectLogbookEntry(
     ]);
     void loadProjectTimeEntries();
     if (normalizedSavedEntry.projectId) void loadInvoices(normalizedSavedEntry.projectId);
-    setStampSession(null);
     return normalizedSavedEntry;
   }
 
@@ -19565,7 +19564,7 @@ await addProjectLogbookEntry(
       return;
     }
     if (stampModalMode !== "stop" && stampSelectionMode === "unproductive" && !nextUnproductiveLabel) {
-      setStampError("Bitte eine unproduktive Taetigkeit auswaehlen oder eintragen.");
+      setStampError("Bitte eine unproduktive Tätigkeit auswählen oder eintragen.");
       return;
     }
     const nextStampComment = stampModalMode === "change" ? stampNextComment.trim() : stampComment.trim();
@@ -19581,15 +19580,15 @@ await addProjectLogbookEntry(
       nextStampNeedsTrade &&
       !nextStampTrade
     ) {
-      setStampError("Bitte fuer diese Stundenabrechnung ein Gewerk auswaehlen.");
+      setStampError("Bitte für diese Stundenabrechnung ein Gewerk auswählen.");
       return;
     }
     if (startsNextStamp && nextStampNeedsTrade && !stampTradeConfirmed) {
-      setStampError("Bitte das Gewerk fuer diese Stempelung bestaetigen.");
+      setStampError("Bitte das Gewerk für diese Stempelung bestätigen.");
       return;
     }
     if (startsNextStamp && nextStampNeedsTrade && (!stampBillingCatalogItemId || !selectedStampBillingCatalogItemLabel)) {
-      setStampError("Bitte eine Abrechnungsleistung fuer diese Stundenabrechnung auswaehlen.");
+      setStampError("Bitte eine Abrechnungsleistung für diese Stundenabrechnung auswählen.");
       return;
     }
     if (
@@ -19678,8 +19677,8 @@ await addProjectLogbookEntry(
     }
 
     if (stampModalMode === "stop") {
-      setStampSession(null);
       setIsStampModalOpen(false);
+      setStampSession(null);
       setStampComment("");
       setStampNextComment("");
       setStampUnproductiveLabel("");
@@ -31286,7 +31285,7 @@ await addProjectLogbookEntry(
     }
 
     if (invoicesToFinalize.length === 0) {
-      setBatchBillingError("Bitte mindestens einen Rechnungsentwurf fuer die Faktura auswaehlen.");
+      setBatchBillingError("Bitte mindestens einen Rechnungsentwurf für die Faktura auswählen.");
       return;
     }
 
@@ -31538,7 +31537,7 @@ await addProjectLogbookEntry(
                 <th>
                   <input
                     type="checkbox"
-                    aria-label="Alle Rechnungsentwuerfe auswaehlen"
+                    aria-label="Alle Rechnungsentwürfe auswählen"
                     disabled={draftInvoices.length === 0}
                     checked={allDraftsSelected}
                     onChange={(event) =>
@@ -38023,80 +38022,92 @@ await addProjectLogbookEntry(
                 <div className={styles.customerFileMainHeader}>
                   <h2>Automatische Abrechnung</h2>
                   <span>
-                    {selectedProjectFile.autoBillingEnabled
-                      ? "Aktiv für Stapelabrechnung"
-                      : "Noch nicht für Stapelabrechnung aktiviert"}
+                    {isSelectedProjectHourlyRecurring
+                      ? "Stundenabrechnung über echte Zeiten"
+                      : selectedProjectFile.autoBillingEnabled
+                        ? "Aktiv für Stapelabrechnung"
+                        : "Noch nicht für Stapelabrechnung aktiviert"}
                   </span>
                 </div>
 
                 <section className={`${styles.projectBudgetEditor} ${styles.autoBillingEditor}`}>
-                  <div className={`${styles.standardFormGrid} ${styles.autoBillingFormGrid}`}>
-                    <label className={styles.checkboxField}>
-                      <input
-                        type="checkbox"
-                        checked={Boolean(selectedProjectFile.autoBillingEnabled)}
-                        onChange={(event) =>
-                          void saveAutoBillingProjectPatch(selectedProjectFile, {
-                            autoBillingEnabled: event.target.checked,
-                          })
-                        }
-                      />
-                      Automatische monatliche Abrechnung aktiv
-                    </label>
-                    <label className={styles.monthPickerField}>
-                      Ab Monat
-                      <span className={styles.monthPickerControl}>
-                        <button
-                          type="button"
-                          onClick={() => openNativeDatePicker("auto-billing-start-month")}
-                        >
-                          {formatMonthLabel(
-                            selectedProjectFile.autoBillingStartMonth || selectedProjectFile.projectRuntimeFrom?.slice(0, 7) || ""
-                          ) || "Monat auswählen"}
-                        </button>
-                        <input
-                          id="auto-billing-start-month"
-                          className={styles.monthPickerNative}
-                          type="month"
-                          value={selectedProjectFile.autoBillingStartMonth || selectedProjectFile.projectRuntimeFrom?.slice(0, 7) || ""}
-                          onChange={(event) =>
-                            void saveAutoBillingProjectPatch(selectedProjectFile, {
-                              autoBillingStartMonth: event.target.value,
-                            })
-                          }
-                        />
-                      </span>
-                    </label>
-                    <label className={styles.monthPickerField}>
-                      Bis Monat
-                      <span className={styles.monthPickerControl}>
-                        <button
-                          type="button"
-                          onClick={() => openNativeDatePicker("auto-billing-end-month")}
-                        >
-                          {formatMonthLabel(
-                            selectedProjectFile.autoBillingEndMonth || selectedProjectFile.projectRuntimeUntil?.slice(0, 7) || ""
-                          ) || "Monat auswählen"}
-                        </button>
-                        <input
-                          id="auto-billing-end-month"
-                          className={styles.monthPickerNative}
-                          type="month"
-                          value={selectedProjectFile.autoBillingEndMonth || selectedProjectFile.projectRuntimeUntil?.slice(0, 7) || ""}
-                          onChange={(event) =>
-                            void saveAutoBillingProjectPatch(selectedProjectFile, {
-                              autoBillingEndMonth: event.target.value,
-                            })
-                          }
-                        />
-                      </span>
-                    </label>
-                  </div>
+                  {isSelectedProjectHourlyRecurring ? (
+                    <p className={styles.autoBillingHint}>
+                      Bei Dauerläufern mit Stundenabrechnung entstehen Rechnungsentwürfe aus echten
+                      Stempelzeiten und der zugeordneten Abrechnungsleistung. Eine Vormonatsrechnung
+                      als Vorlage wird hier nicht benötigt.
+                    </p>
+                  ) : (
+                    <>
+                      <div className={`${styles.standardFormGrid} ${styles.autoBillingFormGrid}`}>
+                        <label className={styles.checkboxField}>
+                          <input
+                            type="checkbox"
+                            checked={Boolean(selectedProjectFile.autoBillingEnabled)}
+                            onChange={(event) =>
+                              void saveAutoBillingProjectPatch(selectedProjectFile, {
+                                autoBillingEnabled: event.target.checked,
+                              })
+                            }
+                          />
+                          Automatische monatliche Abrechnung aktiv
+                        </label>
+                        <label className={styles.monthPickerField}>
+                          Ab Monat
+                          <span className={styles.monthPickerControl}>
+                            <button
+                              type="button"
+                              onClick={() => openNativeDatePicker("auto-billing-start-month")}
+                            >
+                              {formatMonthLabel(
+                                selectedProjectFile.autoBillingStartMonth || selectedProjectFile.projectRuntimeFrom?.slice(0, 7) || ""
+                              ) || "Monat auswählen"}
+                            </button>
+                            <input
+                              id="auto-billing-start-month"
+                              className={styles.monthPickerNative}
+                              type="month"
+                              value={selectedProjectFile.autoBillingStartMonth || selectedProjectFile.projectRuntimeFrom?.slice(0, 7) || ""}
+                              onChange={(event) =>
+                                void saveAutoBillingProjectPatch(selectedProjectFile, {
+                                  autoBillingStartMonth: event.target.value,
+                                })
+                              }
+                            />
+                          </span>
+                        </label>
+                        <label className={styles.monthPickerField}>
+                          Bis Monat
+                          <span className={styles.monthPickerControl}>
+                            <button
+                              type="button"
+                              onClick={() => openNativeDatePicker("auto-billing-end-month")}
+                            >
+                              {formatMonthLabel(
+                                selectedProjectFile.autoBillingEndMonth || selectedProjectFile.projectRuntimeUntil?.slice(0, 7) || ""
+                              ) || "Monat auswählen"}
+                            </button>
+                            <input
+                              id="auto-billing-end-month"
+                              className={styles.monthPickerNative}
+                              type="month"
+                              value={selectedProjectFile.autoBillingEndMonth || selectedProjectFile.projectRuntimeUntil?.slice(0, 7) || ""}
+                              onChange={(event) =>
+                                void saveAutoBillingProjectPatch(selectedProjectFile, {
+                                  autoBillingEndMonth: event.target.value,
+                                })
+                              }
+                            />
+                          </span>
+                        </label>
+                      </div>
 
-                  <p className={styles.autoBillingHint}>
-                    Die Stapelabrechnung nutzt immer die aktive Rechnung aus dem direkten Vormonat als Vorlage.
-                    Ohne Vormonatsrechnung wird das Projekt in der Stapelabrechnung zur Prüfung blockiert.
-                  </p>
+                      <p className={styles.autoBillingHint}>
+                        Die Stapelabrechnung nutzt immer die aktive Rechnung aus dem direkten Vormonat als Vorlage.
+                        Ohne Vormonatsrechnung wird das Projekt in der Stapelabrechnung zur Prüfung blockiert.
+                      </p>
+                    </>
+                  )}
                 </section>
               </div>
             ) : projectFileTab === "budgets" ? (
@@ -54264,7 +54275,7 @@ await addProjectLogbookEntry(
                     <section className={`${styles.planningRecurrencePanel} ${styles.hourlyPlanningPanel} ${styles.fullWidth}`}>
                       <div>
                         <strong>Stundenabrechnung</strong>
-                        <span>Diese Angaben steuern spaeter Stempelung, Rechnungsposition und Forecast.</span>
+                        <span>Diese Angaben steuern später Stempelung, Rechnungsposition und Forecast.</span>
                       </div>
                       <div className={styles.hourlyPlanningGrid}>
                         <label
@@ -54279,7 +54290,7 @@ await addProjectLogbookEntry(
                               setPlanningEntryBillingCatalogItemId("");
                             }}
                           >
-                            <option value="">Gewerk auswaehlen</option>
+                            <option value="">Gewerk auswählen</option>
                             {projectTradeSelectOptions.map((trade) => (
                               <option key={trade} value={trade}>
                                 {trade}
@@ -54299,8 +54310,8 @@ await addProjectLogbookEntry(
                           >
                             <option value="">
                               {planningEntryTrade
-                                ? "Leistung auswaehlen"
-                                : "Erst Gewerk auswaehlen"}
+                                ? "Leistung auswählen"
+                                : "Erst Gewerk auswählen"}
                             </option>
                             {hourlyServiceOptions.map((item) => (
                               <option key={item.id} value={item.id}>
@@ -54322,7 +54333,7 @@ await addProjectLogbookEntry(
                               if (nextValue !== "yes") setPlanningEntryAdditionalUserIds([]);
                             }}
                           >
-                            <option value="">Bitte auswaehlen</option>
+                            <option value="">Bitte auswählen</option>
                             <option value="no">Nein</option>
                             <option value="yes">Ja</option>
                           </select>
@@ -54330,7 +54341,7 @@ await addProjectLogbookEntry(
                       </div>
                       {planningEntryTrade && hourlyServiceOptions.length === 0 ? (
                         <p className={styles.inlineHint}>
-                          Fuer dieses Gewerk ist noch keine aktive Stundenleistung mit Verkaufspreis hinterlegt.
+                          Für dieses Gewerk ist noch keine aktive Stundenleistung mit Verkaufspreis hinterlegt.
                         </p>
                       ) : null}
                       {planningEntryHasAdditionalEmployees === "yes" ? (
@@ -56948,7 +56959,7 @@ await addProjectLogbookEntry(
                         }
                       >
                         <strong>Stundenabrechnung</strong>
-                        <small>Monatsrechnung nach angefallenen Stunden und spaeterer Positionsbildung.</small>
+                        <small>Monatsrechnung nach angefallenen Stunden und späterer Positionsbildung.</small>
                       </button>
                     </div>
                   </div>
@@ -57004,7 +57015,7 @@ await addProjectLogbookEntry(
                     <div className={`${styles.recurringHourlyHint} ${styles.standardFormWide}`}>
                       <strong>Forecast ueber Stempelstunden</strong>
                       <span>
-                        Bei Stundenabrechnung entsteht der Forecast spaeter aus gestempelten Stunden und dem
+                        Bei Stundenabrechnung entsteht der Forecast später aus gestempelten Stunden und dem
                         durchschnittlichen SVS des jeweils gewaehlten Gewerks. Ein fester Monatsbetrag wird hier
                         nicht gepflegt.
                       </span>
@@ -57052,7 +57063,7 @@ await addProjectLogbookEntry(
               <div className={`${styles.projectTwoColumn} ${styles.standardFormWide}`}>
                 <label>
                   {projectDraft.recurringBillingMode === RECURRING_BILLING_HOURLY
-                    ? "Standard-Gewerk fuer Stempelungen"
+                    ? "Standard-Gewerk für Stempelungen"
                     : "Gewerk"}
                   <select
                     value={projectDraft.trade}
@@ -57273,7 +57284,7 @@ await addProjectLogbookEntry(
                     className={styles.requiredPlanningField}
                     data-required-missing={!manualProjectTimeTrade.trim() ? "true" : "false"}
                   >
-                    Gewerk fuer diesen Zeiteintrag *
+                    Gewerk für diesen Zeiteintrag *
                     <select
                       value={manualProjectTimeTrade}
                       onChange={(event) => {
@@ -57283,7 +57294,7 @@ await addProjectLogbookEntry(
                         setStampEditError("");
                       }}
                     >
-                      <option value="">Bitte auswaehlen</option>
+                      <option value="">Bitte auswählen</option>
                       {manualProjectTimeTrade && !projectTradeSelectOptions.includes(manualProjectTimeTrade) && (
                         <option value={manualProjectTimeTrade}>{manualProjectTimeTrade}</option>
                       )}
@@ -57313,7 +57324,7 @@ await addProjectLogbookEntry(
                       }}
                     >
                       <option value="">
-                        {manualProjectTimeTrade ? "Leistung auswaehlen" : "Erst Gewerk auswaehlen"}
+                        {manualProjectTimeTrade ? "Leistung auswählen" : "Erst Gewerk auswählen"}
                       </option>
                       {manualProjectTimeBillingCatalogItemId &&
                         selectedManualProjectTimeBillingCatalogItemLabel &&
@@ -57332,7 +57343,7 @@ await addProjectLogbookEntry(
                     </select>
                   </label>
                   <p>
-                    Diese Zuordnung wird fuer Forecast und spaetere Rechnungspositionen verwendet.
+                    Diese Zuordnung wird für Forecast und spätere Rechnungspositionen verwendet.
                   </p>
                 </div>
               ) : null}
@@ -57994,7 +58005,7 @@ await addProjectLogbookEntry(
               {stampModalMode !== "stop" && selectedStampProjectNeedsTrade && (
                 <div className={styles.stampTradePicker}>
                   <label>
-                    Gewerk fuer diese Stempelung *
+                    Gewerk für diese Stempelung *
                     <select
                       value={stampTrade}
                       onChange={(event) => {
@@ -58007,7 +58018,7 @@ await addProjectLogbookEntry(
                         setStampError("");
                       }}
                     >
-                      <option value="">Bitte auswaehlen</option>
+                      <option value="">Bitte auswählen</option>
                       {stampTrade && !projectTradeSelectOptions.includes(stampTrade) && (
                         <option value={stampTrade}>{stampTrade}</option>
                       )}
@@ -58032,7 +58043,7 @@ await addProjectLogbookEntry(
                       }}
                     >
                       <option value="">
-                        {stampTrade ? "Leistung auswaehlen" : "Erst Gewerk auswaehlen"}
+                        {stampTrade ? "Leistung auswählen" : "Erst Gewerk auswählen"}
                       </option>
                       {stampBillingCatalogItemId &&
                         selectedStampBillingCatalogItemLabel &&
@@ -58056,10 +58067,10 @@ await addProjectLogbookEntry(
                         setStampError("");
                       }}
                     />
-                    <span>Dieses Gewerk fuer diese Stempelung verwenden</span>
+                    <span>Dieses Gewerk für diese Stempelung verwenden</span>
                   </label>
                   <p>
-                    Dieses Gewerk wird spaeter fuer Forecast und Abrechnung der Stunden verwendet.
+                    Dieses Gewerk wird später für Forecast und Abrechnung der Stunden verwendet.
                   </p>
                 </div>
               )}
