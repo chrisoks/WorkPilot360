@@ -18576,7 +18576,7 @@ await addProjectLogbookEntry(
         users.find((user) => user.id === selectedOwnerId)?.name ?? "Die ausgewählte Person";
       const absentUntil = getUserAbsentUntil(selectedOwnerId, absenceDate) || absenceDate;
       setErrorMessage(
-        `${selectedOwnerName} ist am geplanten Tag abwesend. Die Aufgabe kann nicht gespeichert werden, weil die Person bis einschliexlich ${formatDateOnly(absentUntil)} abwesend ist.`
+        `${selectedOwnerName} ist am geplanten Tag abwesend. Die Aufgabe kann nicht gespeichert werden, weil die Person bis einschließlich ${formatDateOnly(absentUntil)} abwesend ist.`
       );
       return;
     }

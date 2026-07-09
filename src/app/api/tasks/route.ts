@@ -54,6 +54,53 @@ async function createTaskNotificationPair(input: {
   });
 }
 
+async function notifyCriticalTaskLeadership(input: {
+  task: Pick<Task, "id" | "organizationId" | "title" | "priority" | "deadline" | "ownerId">;
+  users: User[];
+  actor: User;
+  reason: "created" | "escalated";
+}) {
+  if (input.task.priority !== TaskPriority.KRITISCH) return;
+
+  const owner = input.users.find((demoUser) => demoUser.id === input.task.ownerId);
+  const deadline = input.task.deadline.toLocaleString("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const subject =
+    input.reason === "created"
+      ? "Kritische Aufgabe angelegt"
+      : "Aufgabe auf kritisch gesetzt";
+  const body =
+    input.reason === "created"
+      ? `${getUserName(input.actor)} hat die kritische Aufgabe "${input.task.title}" angelegt. Zuständig: ${
+          owner ? getUserName(owner) : "nicht eindeutig"
+        }. Deadline: ${deadline}.`
+      : `${getUserName(input.actor)} hat die Aufgabe "${input.task.title}" auf kritisch gesetzt. Zuständig: ${
+          owner ? getUserName(owner) : "nicht eindeutig"
+        }. Deadline: ${deadline}.`;
+
+  const leadershipRecipients = input.users.filter(
+    (demoUser) =>
+      demoUser.isActive &&
+      demoUser.organizationId === input.task.organizationId &&
+      demoUser.role === Role.GESCHAEFTSFUEHRER
+  );
+
+  for (const recipient of leadershipRecipients) {
+    await createTaskNotificationPair({
+      organizationId: input.task.organizationId,
+      taskId: input.task.id,
+      userId: recipient.id,
+      subject,
+      body,
+    });
+  }
+}
+
 async function notifyTaskCompletedForCollaborators(
   task: TaskWithRelations,
   feedback: TaskFeedbackSettings,
@@ -1141,6 +1188,13 @@ export async function POST(req: Request) {
     });
   }
 
+  await notifyCriticalTaskLeadership({
+    task,
+    users,
+    actor,
+    reason: "created",
+  });
+
   await appendTaskHistory(task.id, [
     createTaskHistoryItem("Aufgabe angelegt", getUserName(actor)),
     ...participants.map((participant) =>
@@ -1421,6 +1475,14 @@ export async function PATCH(req: Request) {
       userId: owner.id,
       subject: "Aufgabe neu zugewiesen",
       body: `${actor.firstName} ${actor.lastName} hat dir die Aufgabe "${task.title}" zugewiesen. Bitte pr\u00fcfe die Aufgabe und nimm sie an oder lehne sie begr\u00fcndet ab.`,
+    });
+  }
+  if (existingTask?.priority !== TaskPriority.KRITISCH && task.priority === TaskPriority.KRITISCH) {
+    await notifyCriticalTaskLeadership({
+      task,
+      users,
+      actor,
+      reason: "escalated",
     });
   }
   if (existingTask?.status !== TaskStatus.ERLEDIGT && task.status === TaskStatus.ERLEDIGT) {
