@@ -151,6 +151,14 @@ function roundMoney(value: number) {
   return Math.round((Number(value) || 0) * 100) / 100;
 }
 
+function normalizeTradeName(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function normalizeUnit(value: string | null) {
+  return cleanString(value).toLowerCase().replace(/\./g, "");
+}
+
 async function isHourlyRecurringProject(organizationId: string, projectId: string) {
   if (!projectId || projectId === "__unproductive__") return false;
 
@@ -168,6 +176,54 @@ async function isHourlyRecurringProject(organizationId: string, projectId: strin
     project.recurringBillingMode === "hourly" &&
     (project.projectKind ?? "").toLowerCase().includes("dauerl")
   );
+}
+
+async function validateHourlyBillingCatalogItem(
+  organizationId: string,
+  input: { trade: string; billingCatalogItemId: string; billingCatalogItemLabel: string }
+) {
+  if (!input.billingCatalogItemId || !input.billingCatalogItemLabel) {
+    return "Bitte fuer diese Stundenabrechnung eine Abrechnungsleistung auswaehlen.";
+  }
+
+  const rows = await prisma.$queryRaw<
+    Array<{
+      id: string;
+      number: string | null;
+      name: string | null;
+      type: string | null;
+      unit: string | null;
+      trade: string | null;
+      salesPrice: number | null;
+      isActive: boolean | null;
+      isLaborPosition: boolean | null;
+    }>
+  >`
+    SELECT id, number, name, type, unit, trade, "salesPrice", "isActive", "isLaborPosition"
+    FROM "CatalogItem"
+    WHERE "organizationId" = ${organizationId}
+      AND id = ${input.billingCatalogItemId}
+    LIMIT 1
+  `;
+  const item = rows[0];
+
+  if (!item) return "Die ausgewaehlte Abrechnungsleistung wurde nicht gefunden.";
+  if (!item.isActive || item.type !== "service" || !item.isLaborPosition) {
+    return "Die ausgewaehlte Abrechnungsleistung ist keine aktive Arbeitsposition.";
+  }
+  if (normalizeUnit(item.unit) !== "std" || Number(item.salesPrice || 0) <= 0) {
+    return "Die ausgewaehlte Abrechnungsleistung ist keine abrechenbare Stundenleistung.";
+  }
+  if (normalizeTradeName(item.trade || "") !== normalizeTradeName(input.trade)) {
+    return "Die ausgewaehlte Abrechnungsleistung passt nicht zum Gewerk.";
+  }
+
+  const expectedLabel = [item.number, item.name].filter(Boolean).join(" | ");
+  if (expectedLabel && expectedLabel !== input.billingCatalogItemLabel) {
+    return "Die Bezeichnung der Abrechnungsleistung passt nicht zur hinterlegten Leistung.";
+  }
+
+  return "";
 }
 
 async function getEmployeeHourlyCostRateSnapshot(organizationId: string, userId: string) {
@@ -437,11 +493,32 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Datum und Uhrzeit fehlen." }, { status: 400 });
   }
 
-  if (mode === "project" && !trade && (await isHourlyRecurringProject(organization.id, projectId))) {
+  const projectRequiresHourlyBillingContext =
+    mode === "project" && (await isHourlyRecurringProject(organization.id, projectId));
+
+  if (projectRequiresHourlyBillingContext && !trade) {
     return NextResponse.json(
       { error: "Bitte fuer diese Stundenabrechnung ein Gewerk auswaehlen." },
       { status: 400 }
     );
+  }
+
+  if (projectRequiresHourlyBillingContext && (!billingCatalogItemId || !billingCatalogItemLabel)) {
+    return NextResponse.json(
+      { error: "Bitte fuer diese Stundenabrechnung eine Abrechnungsleistung auswaehlen." },
+      { status: 400 }
+    );
+  }
+
+  if (projectRequiresHourlyBillingContext) {
+    const billingCatalogItemError = await validateHourlyBillingCatalogItem(organization.id, {
+      trade,
+      billingCatalogItemId,
+      billingCatalogItemLabel,
+    });
+    if (billingCatalogItemError) {
+      return NextResponse.json({ error: billingCatalogItemError }, { status: 400 });
+    }
   }
 
   const rows = await prisma.$queryRaw<ProjectTimeEntryRow[]>`
