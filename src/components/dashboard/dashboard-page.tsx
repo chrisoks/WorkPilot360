@@ -19499,7 +19499,7 @@ await addProjectLogbookEntry(
     const nextStampTrade = nextStampNeedsTrade ? stampTrade.trim() : stampTrade.trim() || selectedNextProject?.trade || "";
     const nextUnproductiveLabel = stampUnproductiveLabel.trim();
     if (stampModalMode !== "stop" && stampSelectionMode === "project" && !selectedNextProject) {
-      setStampError("Bitte ein Projekt auswählen.");
+      setStampError("Bitte ein Projekt oder eine unproduktive Tätigkeit auswählen.");
       return;
     }
     if (stampModalMode !== "stop" && stampSelectionMode === "unproductive" && !nextUnproductiveLabel) {
@@ -55645,6 +55645,7 @@ await addProjectLogbookEntry(
                 )}
               </div>
               <div className={styles.modalActions}>
+                {errorMessage && <div className={styles.modalSaveNotice}>{errorMessage}</div>}
                 <button className={styles.secondaryButton} onClick={() => setIsContactModalOpen(false)}>
                   Abbrechen
                 </button>
