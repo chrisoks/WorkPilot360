@@ -62,6 +62,20 @@ function statusLabel(entityType: string) {
   return entityType;
 }
 
+function getRuleExecutionKey(rule: RuleRow) {
+  return [
+    rule.entityType,
+    rule.status,
+    rule.name,
+    rule.thresholdHours,
+    rule.notifyResponsible,
+    rule.notifyProjectOwner,
+    rule.notifyManagement,
+    rule.notificationEnabled,
+    rule.dailyReportEnabled,
+  ].join("|");
+}
+
 async function getResponsibleUserIds(organizationId: string, item: OpenStatusRow, users: UserRow[]) {
   const recipients = new Set<string>();
 
@@ -178,13 +192,16 @@ export async function POST(req: Request) {
   await ensureDefaultStatusEscalationRules(organization.id);
   const today = todayKey();
 
-  const rules = await prisma.$queryRaw<RuleRow[]>`
+  const rawRules = await prisma.$queryRaw<RuleRow[]>`
     SELECT id, "entityType", status, name, "thresholdHours", "notifyResponsible", "notifyProjectOwner",
       "notifyManagement", "notificationEnabled", "dailyReportEnabled"
     FROM "StatusEscalationRule"
     WHERE "organizationId" = ${organization.id}
       AND "isActive" = true
   `;
+  const rules = Array.from(
+    new Map(rawRules.map((rule) => [getRuleExecutionKey(rule), rule])).values()
+  );
 
   const openStatuses = await prisma.$queryRaw<OpenStatusRow[]>`
     SELECT
@@ -218,10 +235,10 @@ export async function POST(req: Request) {
         SELECT id
         FROM "StatusEscalationEvent"
         WHERE "organizationId" = ${organization.id}
-          AND "ruleId" = ${rule.id}
           AND "entityType" = ${item.entityType}
           AND "entityId" = ${item.entityId}
           AND "status" = ${item.toStatus}
+          AND "thresholdHours" = ${rule.thresholdHours}
           AND "resolvedAt" IS NULL
         LIMIT 1
       `;
