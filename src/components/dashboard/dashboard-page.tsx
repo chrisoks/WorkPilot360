@@ -7065,6 +7065,16 @@ export function DashboardPage() {
 
   async function loadContacts() {
     if (!activeUserId) return;
+    const canLoadContacts =
+      activeUserHasSalesRole ||
+      activeUser?.role === "ADMIN" ||
+      activeUser?.role === "GESCHAEFTSFUEHRER" ||
+      activeUser?.role === "FUEHRUNGSKRAFT" ||
+      activeUser?.role === "BUCHHALTUNG";
+    if (!canLoadContacts) {
+      setContacts([]);
+      return;
+    }
     const res = await fetch(`/api/contacts?actorId=${encodeURIComponent(activeUserId)}`, { cache: "no-store" });
 
     if (!res.ok) {
@@ -11430,6 +11440,18 @@ export function DashboardPage() {
       parentCompanyId: contactDraft.type === "person" ? contactDraft.parentCompanyId : "",
       parentCompanyName: contactDraft.type === "person" ? contactDraft.parentCompanyName : "",
     };
+    if (normalizedContactDraft.type === "company" && !normalizedContactDraft.companyName.trim()) {
+      setErrorMessage("Bitte einen Firmennamen angeben.");
+      return;
+    }
+    if (
+      normalizedContactDraft.type !== "company" &&
+      !normalizedContactDraft.firstName.trim() &&
+      !normalizedContactDraft.lastName.trim()
+    ) {
+      setErrorMessage("Bitte mindestens Vorname oder Nachname angeben.");
+      return;
+    }
     const res = await fetch("/api/contacts", {
       method: editingContactId ? "PATCH" : "POST",
       headers: {

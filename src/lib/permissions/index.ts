@@ -253,6 +253,10 @@ export function canManageCustomerFeedbackRequests(user: RoleCarrier): boolean {
   return canManageCustomerFeedback(user);
 }
 
+export function canReadContacts(user: RoleCarrier): boolean {
+  return canSendDocumentMails(user);
+}
+
 export function canManageContacts(user: RoleCarrier): boolean {
   return canSendDocumentMails(user);
 }

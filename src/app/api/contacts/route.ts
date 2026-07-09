@@ -4,7 +4,7 @@ import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
-import { canDeleteContacts, canManageContacts } from "@/lib/permissions";
+import { canDeleteContacts, canManageContacts, canReadContacts } from "@/lib/permissions";
 
 type ContactRow = {
   id: string;
@@ -160,6 +160,16 @@ function isValidEmailAddress(value: string) {
 function getEmailValidationError(label: string, value: string) {
   if (!value) return "";
   return isValidEmailAddress(value) ? "" : `${label} ist keine gültige E-Mail-Adresse.`;
+}
+
+function getRequiredContactError(input: { type: string; companyName?: unknown; firstName?: unknown; lastName?: unknown }) {
+  if (input.type === "company") {
+    return cleanString(input.companyName) ? "" : "Bitte einen Firmennamen angeben.";
+  }
+
+  return cleanString(input.firstName) || cleanString(input.lastName)
+    ? ""
+    : "Bitte mindestens Vorname oder Nachname angeben.";
 }
 
 function parseInteger(value: unknown) {
@@ -337,6 +347,9 @@ export async function GET(req: Request) {
     return sessionBoundActorResponse(actorResult);
   }
   const actor = actorResult.actor;
+  if (!canReadContacts(actor)) {
+    return forbiddenContactResponse();
+  }
   await ensureContactsTable();
 
   const contacts = await prisma.$queryRaw<ContactRow[]>`
@@ -366,6 +379,10 @@ export async function POST(req: Request) {
   const category = cleanString(body.category) || "Kunde";
   const requestedType = cleanString(body.type);
   const type = requestedType === "company" || requestedType === "private" ? requestedType : "person";
+  const requiredContactError = getRequiredContactError({ ...body, type });
+  if (requiredContactError) {
+    return NextResponse.json({ error: requiredContactError }, { status: 400 });
+  }
   const customerNumber = cleanString(body.customerNumber) || (await getNextCustomerNumber(organization.id));
   const email = cleanString(body.email);
   const invoiceEmail = cleanString(body.invoiceEmail);
@@ -431,6 +448,10 @@ export async function PATCH(req: Request) {
   const category = cleanString(body.category) || "Kunde";
   const requestedType = cleanString(body.type);
   const type = requestedType === "company" || requestedType === "private" ? requestedType : "person";
+  const requiredContactError = getRequiredContactError({ ...body, type });
+  if (requiredContactError) {
+    return NextResponse.json({ error: requiredContactError }, { status: 400 });
+  }
   const customerNumber = cleanString(body.customerNumber) || (await getNextCustomerNumber(organization.id));
   const email = cleanString(body.email);
   const invoiceEmail = cleanString(body.invoiceEmail);
