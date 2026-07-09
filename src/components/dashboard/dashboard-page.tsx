@@ -3066,6 +3066,24 @@ const navigationTabs: Array<[AppTab, string]> = allNavigationTabs.filter(
   ([tab]) => CONTENT_MANAGEMENT_ENABLED || !isContentManagementTab(tab)
 );
 
+const sidebarChildTabsByParent: Partial<Record<AppTab, AppTab[]>> = {
+  dashboard: ["calendar", "kanban", "archive"],
+  employees: ["employees", "laborCostRates", "absenceRequests", "timeTracking"],
+  contentManagement: [
+    "contentRound",
+    "editorialPlan",
+    "contentApprovals",
+    "contentCorrections",
+    "contentQuotas",
+    "ideaStore",
+  ],
+  salesHub: ["salesHub", "salesTargets"],
+  processAutomation: ["winterService", "generalActivityReports", "statusAutomation"],
+  accounting: ["batchBilling", "documents"],
+  documents: ["documentOverview", "documentTexts", "documentTemplates", "documentConfigurator", "documentGaeb"],
+  articles: ["articles", "services", "packages"],
+};
+
 function isAccountingRole(role?: string) {
   return role === "BUCHHALTUNG";
 }
@@ -3094,6 +3112,22 @@ function getVisibleNavigationTabs(role?: string, hasSalesRole = false) {
   }
 
   return navigationTabs.filter(([tab]) => isTabAllowedForRole(tab, role));
+}
+
+function getVisibleNavigationActiveTabs(role?: string, hasSalesRole = false) {
+  const tabs = getVisibleNavigationTabs(role, hasSalesRole);
+  const allowedTabs = new Set<AppTab>();
+
+  tabs.forEach(([tab]) => {
+    allowedTabs.add(tab);
+    (sidebarChildTabsByParent[tab] ?? []).forEach((childTab) => {
+      if (CONTENT_MANAGEMENT_ENABLED || !isContentManagementTab(childTab)) {
+        allowedTabs.add(childTab);
+      }
+    });
+  });
+
+  return allowedTabs;
 }
 
 function getVisibleReportTabs(role?: string, hasSalesRole = false) {
@@ -6138,6 +6172,10 @@ export function DashboardPage() {
   const activeUserHasSalesRole = activeUser?.role === "VERTRIEB" || activeUser?.salesRoleEnabled === true;
   const visibleNavigationTabs = useMemo(
     () => getVisibleNavigationTabs(activeUser?.role, activeUserHasSalesRole),
+    [activeUser?.role, activeUserHasSalesRole]
+  );
+  const visibleNavigationActiveTabs = useMemo(
+    () => getVisibleNavigationActiveTabs(activeUser?.role, activeUserHasSalesRole),
     [activeUser?.role, activeUserHasSalesRole]
   );
   const visibleReportTabs = useMemo(
@@ -15813,13 +15851,13 @@ export function DashboardPage() {
   }, [activeUserId, authChecked, isAuthenticated]);
 
   useEffect(() => {
-    if (!visibleNavigationTabs.some(([tab]) => tab === activeTab)) {
+    if (!visibleNavigationActiveTabs.has(activeTab)) {
       setActiveTab(visibleNavigationTabs[0]?.[0] ?? "reports");
       setOpenSidebarMenus({});
       setOpenProjectNav({ projectsSolutions: false, projectsImmocare: false });
       setIsFirmSettingsNavOpen(false);
     }
-  }, [activeTab, visibleNavigationTabs]);
+  }, [activeTab, visibleNavigationTabs, visibleNavigationActiveTabs]);
 
   useEffect(() => {
     if (activeTab !== "reports" || visibleReportTabs.length === 0) return;
@@ -15881,7 +15919,8 @@ export function DashboardPage() {
         ? (params.get("view") as AppTab)
         : "overview";
       const allowedNavigationTabs = getVisibleNavigationTabs(activeUser?.role, activeUserHasSalesRole);
-      const allowedNextTab = allowedNavigationTabs.some(([tab]) => tab === nextTab)
+      const allowedNavigationActiveTabs = getVisibleNavigationActiveTabs(activeUser?.role, activeUserHasSalesRole);
+      const allowedNextTab = allowedNavigationActiveTabs.has(nextTab)
         ? nextTab
         : allowedNavigationTabs[0]?.[0] ?? "reports";
       const nextProjectTab = projectFileTabs.includes(params.get("projectTab") as ProjectFileTab)
