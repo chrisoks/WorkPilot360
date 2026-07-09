@@ -6275,8 +6275,8 @@ export function DashboardPage() {
     (absenceHandoverMode === "open" && absenceHandoverTaskIds.length > 0);
 
   const assignableUsers = canAssignOther(activeUser?.role)
-    ? users
-    : users.filter((user) => user.id === activeUserId);
+    ? users.filter((user) => user.isActive)
+    : users.filter((user) => user.id === activeUserId && user.isActive);
 
   const sortedNotifications = useMemo(
     () =>
@@ -33794,7 +33794,7 @@ await addProjectLogbookEntry(
                             <td>
                               {potential.history.length === 0
                                 ? "-"
-                                : potential.history.map((entry) => `${formatDeadline(entry.at)}: ${entry.note}`).join(" | ")}
+                                : potential.history.map((entry) => `${formatInstantDateTime(entry.at)}: ${entry.note}`).join(" | ")}
                             </td>
                             <td>
                               <button
@@ -34024,7 +34024,7 @@ await addProjectLogbookEntry(
                             <td>{formatDeadline(potential.createdAt)}</td>
                             <td title={followUpInfo.detail}>{followUpInfo.title}</td>
                             <td>{potential.ownerName || linkedTask?.zustaendig || activeUser?.name || "-"}</td>
-                            <td>{lastHistory ? `${formatDeadline(lastHistory.at)}: ${lastHistory.note}` : "-"}</td>
+                            <td>{lastHistory ? `${formatInstantDateTime(lastHistory.at)}: ${lastHistory.note}` : "-"}</td>
                           </tr>
                         );
                       })
@@ -52372,7 +52372,7 @@ await addProjectLogbookEntry(
                                       <td>{formatDeadline(potential.createdAt)}</td>
                                       <td>{potential.followUpAt ? formatDeadline(potential.followUpAt) : "-"}</td>
                                       <td>{potential.ownerName || linkedTask?.zustaendig || activeUser?.name || "-"}</td>
-                                      <td>{lastHistory ? `${formatDeadline(lastHistory.at)}: ${lastHistory.note}` : "-"}</td>
+                                      <td>{lastHistory ? `${formatInstantDateTime(lastHistory.at)}: ${lastHistory.note}` : "-"}</td>
                                       <td>
                                         <div className={styles.tableActionGroup}>
                                           <button

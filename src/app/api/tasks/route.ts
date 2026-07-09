@@ -1026,7 +1026,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Bitte einen Aufgabentitel eingeben." }, { status: 400 });
   }
 
-  const requestedOwner = users.find((demoUser) => demoUser.id === body.ownerId);
+  const requestedOwner = users.find((demoUser) => demoUser.id === body.ownerId && demoUser.isActive);
   const owner = requestedOwner && (canAssignTasksToOthers(actor) || body.absenceHandoverTask) ? requestedOwner : actor;
   const acceptanceStatus = body.absenceHandoverTask
     ? "pending"
@@ -1112,6 +1112,7 @@ export async function POST(req: Request) {
   const participants = participantUserIds
     .map((userId: string) => users.find((demoUser) => demoUser.id === userId))
     .filter((participant): participant is (typeof users)[number] => Boolean(participant))
+    .filter((participant) => participant.isActive)
     .filter((participant) => participant.id !== owner.id);
 
   for (const participant of participants) {
@@ -1127,6 +1128,16 @@ export async function POST(req: Request) {
       userId: participant.id,
       subject: "Neue Aufgabenbeteiligung",
       body: `${actor.firstName} ${actor.lastName} hat dich zur Aufgabe "${task.title}" hinzugef\u00fcgt. Bitte pr\u00fcfe die Aufgabe und nimm sie an oder lehne sie begr\u00fcndet ab.`,
+    });
+  }
+
+  if (owner.id !== actor.id) {
+    await createTaskNotificationPair({
+      organizationId: task.organizationId,
+      taskId: task.id,
+      userId: owner.id,
+      subject: "Neue Aufgabe zugewiesen",
+      body: `${actor.firstName} ${actor.lastName} hat dir die Aufgabe "${task.title}" zugewiesen. Bitte pr\u00fcfe die Aufgabe und nimm sie an oder lehne sie begr\u00fcndet ab.`,
     });
   }
 
@@ -1163,7 +1174,7 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Bitte einen Aufgabentitel eingeben." }, { status: 400 });
   }
 
-  const requestedOwner = users.find((demoUser) => demoUser.id === body.ownerId);
+  const requestedOwner = users.find((demoUser) => demoUser.id === body.ownerId && demoUser.isActive);
   const nextStatus = mapStatus(body.status);
   const nextEstimate = parseEstimate(body.estimateMinutes);
   const nextProjectId = normalizeProjectId(body.projectId);
@@ -1242,7 +1253,7 @@ export async function PATCH(req: Request) {
       );
     }
 
-    const participant = users.find((demoUser) => demoUser.id === body.addParticipantUserId);
+    const participant = users.find((demoUser) => demoUser.id === body.addParticipantUserId && demoUser.isActive);
     if (!participant) {
       return NextResponse.json({ error: "Mitarbeiter wurde nicht gefunden." }, { status: 404 });
     }
@@ -1403,6 +1414,15 @@ export async function PATCH(req: Request) {
     );
   }
   await appendTaskHistory(task.id, historyItems);
+  if (existingTask && existingTask.ownerId !== owner.id && owner.id !== actor.id) {
+    await createTaskNotificationPair({
+      organizationId: task.organizationId,
+      taskId: task.id,
+      userId: owner.id,
+      subject: "Aufgabe neu zugewiesen",
+      body: `${actor.firstName} ${actor.lastName} hat dir die Aufgabe "${task.title}" zugewiesen. Bitte pr\u00fcfe die Aufgabe und nimm sie an oder lehne sie begr\u00fcndet ab.`,
+    });
+  }
   if (existingTask?.status !== TaskStatus.ERLEDIGT && task.status === TaskStatus.ERLEDIGT) {
     await notifyTaskCompletedForCollaborators(task, feedback, users, actor);
   }

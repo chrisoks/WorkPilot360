@@ -312,9 +312,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Ohne echte Zusatzverkaufsmöglichkeit wird kein Zusatzverkauf angelegt." }, { status: 400 });
   }
 
+  const now = new Date();
   const history = [
     {
-      at: new Date().toISOString(),
+      at: now.toISOString(),
       actor: getUserName(actor),
       action: "created",
       note: "Potenzial erkannt.",
@@ -344,7 +345,9 @@ export async function POST(req: Request) {
       "nextStep",
       "sourceType",
       "sourceLogbookEntryId",
-      "history"
+      "history",
+      "createdAt",
+      "updatedAt"
     )
     VALUES (
       ${randomUUID()},
@@ -363,7 +366,9 @@ export async function POST(req: Request) {
       ${cleanString(body.nextStep) || null},
       ${cleanString(body.sourceType) || "final_inspection"},
       ${cleanString(body.sourceLogbookEntryId) || null},
-      ${JSON.stringify(history)}::jsonb
+      ${JSON.stringify(history)}::jsonb,
+      ${now},
+      ${now}
     )
     RETURNING *
   `;
