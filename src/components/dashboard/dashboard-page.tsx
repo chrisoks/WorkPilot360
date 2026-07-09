@@ -19278,6 +19278,10 @@ await addProjectLogbookEntry(
         setStampEditError("Bitte für diese Stundenabrechnung ein Gewerk auswählen.");
         return;
       }
+      if (manualProjectTimeMissingBillingServiceMessage) {
+        setStampEditError(manualProjectTimeMissingBillingServiceMessage);
+        return;
+      }
       if (!manualProjectTimeBillingCatalogItemId || !selectedManualProjectTimeBillingCatalogItemLabel) {
         setStampEditError("Bitte eine Abrechnungsleistung für diese Stundenabrechnung auswählen.");
         return;
@@ -21912,6 +21916,12 @@ await addProjectLogbookEntry(
   const manualProjectTimeServiceOptions = manualProjectTimeNeedsBillingContext
     ? getHourlyPlanningServiceOptions(manualProjectTimeTrade)
     : [];
+  const manualProjectTimeMissingBillingServiceMessage =
+    manualProjectTimeNeedsBillingContext &&
+    manualProjectTimeTrade.trim() &&
+    manualProjectTimeServiceOptions.length === 0
+      ? `Für das Gewerk "${manualProjectTimeTrade.trim()}" ist keine aktive Stunden-Abrechnungsleistung gepflegt. Bitte in Artikel & Leistungen eine passende Leistung mit Einheit Std. und Verkaufspreis hinterlegen oder ein anderes Gewerk wählen.`
+      : "";
   const selectedManualProjectTimeBillingCatalogItem = manualProjectTimeBillingCatalogItemId
     ? catalogItems.find((item) => item.id === manualProjectTimeBillingCatalogItemId)
     : undefined;
@@ -57342,6 +57352,9 @@ await addProjectLogbookEntry(
                       ))}
                     </select>
                   </label>
+                  {manualProjectTimeMissingBillingServiceMessage ? (
+                    <p className={styles.stampWarningNote}>{manualProjectTimeMissingBillingServiceMessage}</p>
+                  ) : null}
                   <p>
                     Diese Zuordnung wird für Forecast und spätere Rechnungspositionen verwendet.
                   </p>
