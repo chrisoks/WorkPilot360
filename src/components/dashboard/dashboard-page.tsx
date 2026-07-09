@@ -53093,7 +53093,7 @@ await addProjectLogbookEntry(
                       onChange={(event) => setKanbanOwnerFilter(event.target.value)}
                     >
                       <option value="">Alle</option>
-                      {users.map((user) => (
+                      {taskOwnerFilterOptions.map((user) => (
                         <option key={user.id} value={user.id}>
                           {user.name}
                         </option>
@@ -53187,7 +53187,7 @@ await addProjectLogbookEntry(
                         onChange={(event) => setPlanningOwnerFilter(event.target.value)}
                       >
                         <option value="">Alle</option>
-                        {users.map((user) => (
+                        {users.filter((user) => user.isActive).map((user) => (
                           <option key={user.id} value={user.id}>
                             {user.name}
                           </option>
