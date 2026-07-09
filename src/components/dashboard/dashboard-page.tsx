@@ -58188,6 +58188,10 @@ await addProjectLogbookEntry(
                 </label>
                 <label>
                   Nachfass-Aufgabe
+                  <p className={styles.potentialTaskHint}>
+                    Der Status allein erzeugt keine Aufgabe. Erst der Button unten bereitet eine Aufgabe vor, die danach
+                    gespeichert werden muss.
+                  </p>
                   <button
                     type="button"
                     className={styles.potentialTaskInfo}
@@ -58274,7 +58278,7 @@ await addProjectLogbookEntry(
                     void schedulePotentialFollowUp(currentPotential);
                   }}
                 >
-                  {getPotentialLinkedTask(editingPotential) ? "Nachfass-Aufgabe öffnen" : "Nachfass-Aufgabe anlegen"}
+                  {getPotentialLinkedTask(editingPotential) ? "Nachfass-Aufgabe öffnen" : "Nachfass-Aufgabe vorbereiten"}
                 </button>
                 <button type="button" className={styles.primaryButton} onClick={() => void savePotentialDetail()}>
                   Speichern

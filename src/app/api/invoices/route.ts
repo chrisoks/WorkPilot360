@@ -589,14 +589,29 @@ async function notifyManagementAboutUnderbilling(input: {
     ADD COLUMN IF NOT EXISTS "linkLabel" TEXT
   `;
 
+  const projectRows = await prisma.$queryRaw<Array<{ responsibleName: string | null; deputyName: string | null }>>`
+    SELECT "responsibleName", "deputyName"
+    FROM "WorkPilotProject"
+    WHERE "organizationId" = ${input.organizationId}
+      AND id = ${input.projectId}
+    LIMIT 1
+  `;
+  const projectRecipients = [
+    projectRows[0]?.responsibleName,
+    projectRows[0]?.deputyName,
+  ]
+    .map((name) => cleanString(name).toLowerCase())
+    .filter(Boolean);
+  const responsibleNames = projectRecipients.length > 0 ? projectRecipients : ["__no_project_recipient__"];
+
   const recipients = await prisma.$queryRaw<Array<{ id: string }>>`
-    SELECT id
+    SELECT DISTINCT id
     FROM "User"
     WHERE "organizationId" = ${input.organizationId}
       AND "isActive" = true
       AND (
         "role" = 'GESCHAEFTSFUEHRER'
-        OR LOWER(CONCAT("firstName", ' ', "lastName")) IN ('christian eid', 'ramona eid')
+        OR LOWER(CONCAT("firstName", ' ', "lastName")) IN (${Prisma.join(responsibleNames)})
       )
   `;
 

@@ -19616,6 +19616,46 @@
   font-weight: 950;
 }
 
+.potentialTaskHint {
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 650;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.potentialTaskInfo {
+  background: #f8fbff;
+  border: 1px solid #dbe3ee;
+  border-radius: 11px;
+  color: #0f172a;
+  display: grid;
+  gap: 4px;
+  min-height: 58px;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.potentialTaskInfo[data-clickable="true"] {
+  cursor: pointer;
+}
+
+.potentialTaskInfo:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.potentialTaskInfo strong {
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.potentialTaskInfo span {
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
 .potentialHistorySection {
   border-top: 1px solid #dbe3ee;
   display: grid;
