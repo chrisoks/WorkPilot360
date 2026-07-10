@@ -66,7 +66,12 @@ async function getReminderUsers(organizationId: string, dateKey: string) {
           AND absences.date = ${dateKey}::date
           AND absences."deletedAt" IS NULL
           AND absences.type IN ('urlaub', 'krank')
-          AND COALESCE(absences.status, '') <> 'abgelehnt'
+          AND absences.status = 'genehmigt'
+          AND (
+            COALESCE(absences."dayPart", 'full') = 'full'
+            OR (absences."dayPart" = 'first-half' AND planningEntries."startTime" < '12:00')
+            OR (absences."dayPart" = 'second-half' AND planningEntries."endTime" > '12:00')
+          )
       )
   `;
 }
@@ -103,7 +108,7 @@ async function sendDailyReminder(input: {
       body,
       linkTarget,
       linkTargetId,
-      linkLabel: "Start oeffnen",
+      linkLabel: "Start öffnen",
       sentAt: null,
     },
   });
