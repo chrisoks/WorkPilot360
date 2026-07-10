@@ -5744,6 +5744,7 @@ export function DashboardPage() {
   const [absenceHistoryEntries, setAbsenceHistoryEntries] = useState<AbsenceItem[]>([]);
   const [holidayState, setHolidayState] = useState<GermanStateCode>("BW");
   const [holidays, setHolidays] = useState<HolidayItem[]>([]);
+  const [holidayStateError, setHolidayStateError] = useState("");
   const [heroProjects, setHeroProjects] = useState<HeroProjectPreview[]>([]);
   const [heroSearchTerm, setHeroSearchTerm] = useState("");
   const [selectedHeroDetailId, setSelectedHeroDetailId] = useState("");
@@ -12124,6 +12125,43 @@ export function DashboardPage() {
     setPlanningGroupCapacityError("");
   }
 
+  async function loadHolidayState() {
+    if (!activeUserId) return;
+    const res = await fetch(
+      `/api/company-settings/holidays?actorId=${encodeURIComponent(activeUserId)}`,
+      { cache: "no-store" }
+    );
+    if (!res.ok) {
+      setHolidayStateError("Feiertags-Bundesland konnte nicht geladen werden.");
+      return;
+    }
+
+    const data = (await res.json()) as { state?: GermanStateCode };
+    const nextState = germanStateOptions.some((option) => option.value === data.state) ? data.state : "BW";
+    setHolidayState(nextState ?? "BW");
+    setHolidayStateError("");
+  }
+
+  async function saveHolidayState(nextState: GermanStateCode) {
+    const previousState = holidayState;
+    setHolidayState(nextState);
+    setHolidayStateError("");
+    const res = await fetch("/api/company-settings/holidays", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: activeUserId, state: nextState }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setHolidayState(previousState);
+      setHolidayStateError(data?.error ?? "Feiertags-Bundesland konnte nicht gespeichert werden.");
+      return;
+    }
+
+    const data = (await res.json()) as { state?: GermanStateCode };
+    setHolidayState(data.state ?? nextState);
+  }
+
   function parsePlanningGroupCapacityAmount(value: string | undefined) {
     const raw = (value ?? "").trim();
     if (!raw) return null;
@@ -15585,6 +15623,7 @@ export function DashboardPage() {
       void loadTrades();
       void loadBusinessAreaTargets();
       void loadPlanningGroupCapacitySettings();
+      void loadHolidayState();
       void loadUnits();
       void loadEscalationRules();
       void loadProjectPotentials();
@@ -15818,17 +15857,6 @@ export function DashboardPage() {
   }, [employeeCostCalculations, isOfferModalOpen]);
 
   useEffect(() => {
-    const storedState = window.localStorage.getItem("workpilot-holiday-state") as GermanStateCode | null;
-    const initialState = storedState && germanStateOptions.some((option) => option.value === storedState)
-      ? storedState
-      : "BW";
-
-    setHolidayState(initialState);
-    setHolidays(calculateGermanHolidays(initialState, new Date().getFullYear(), 50));
-  }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem("workpilot-holiday-state", holidayState);
     setHolidays(calculateGermanHolidays(holidayState, new Date().getFullYear(), 50));
   }, [holidayState]);
 
@@ -47072,9 +47100,28 @@ await addProjectLogbookEntry(
             <div className={styles.settingsHeader}>
               <div>
                 <h2>Feiertagskalender</h2>
-                <p>Alle Bundesländer sind für die nächsten 50 Jahre hinterlegt.</p>
+                <p>Das gewählte Bundesland gilt zentral für Planung, Kapazitäten und Auswertungen.</p>
               </div>
             </div>
+            <div className={styles.companySettingsForm}>
+              <label>
+                Verbindliches Bundesland
+                <select
+                  value={holidayState}
+                  onChange={(event) => void saveHolidayState(event.target.value as GermanStateCode)}
+                >
+                  {germanStateOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <span className={styles.companySettingsHint}>
+                {holidays.length} Feiertage für {new Date().getFullYear()}-{new Date().getFullYear() + 49}
+              </span>
+            </div>
+            {holidayStateError ? <p className={styles.formError}>{holidayStateError}</p> : null}
             <div className={styles.companySettingsTable}>
               <table className={styles.table}>
                 <thead>
