@@ -1,5 +1,77 @@
 # WorkPilot360 Agent Handover
 
+- Uebergabe UI-Modernisierung 2026-07-11: Der abgeschlossene operative
+  Go-Live-Rundgang und der Startpunkt fuer die naechste Designphase sind in
+  `docs/HANDOFF_UI_MODERNISIERUNG_2026-07-11.md` zusammengefasst. Der naechste
+  Agent muss diese Datei, diese `AGENTS.md`, die zentrale Dashboard-Komponente
+  und das Dashboard-CSS lesen, bevor er UI-Dateien veraendert. Zuerst aktuelles
+  UI per echter Klickpruefung auf Desktop und kleinem Viewport aufnehmen, dann
+  dem Nutzer ein systemweites Designkonzept vorlegen. Keine grossflaechige
+  UI-Aenderung vor Freigabe des Konzepts.
+- Verbindliche Abschluss-Checks 2026-07-11: Echte Klickpruefung ersetzt keine
+  Code-/API-Pruefung und umgekehrt. Vor jedem Code-Push mindestens betroffene
+  Fachlogik und Rechte pruefen sowie `git diff --check`, Tests,
+  `npx tsc --noEmit`, `npx prisma validate`,
+  `npx prisma db push --skip-generate` und `npm run build` ausfuehren. Ein Push
+  ist nur zulaessig, wenn der Prisma-DB-Check keine Datenverlust- oder
+  Drop-Warnung zeigt. Nach dem Push Serverbefehle mit dem echten Pfad
+  `/var/www/WorkPilot360` und PM2-Prozess `workpilot360` liefern. Ungetrackte
+  `.codex-safety/*`, `backup.sql` und temporaere Screenshots nicht stagen,
+  loeschen oder zuruecksetzen.
+- Operativer Reviewabschluss 2026-07-11: Der strukturierte Modulrundgang
+  kombinierte reale UI-Klicks mit Code-, API-, Rollen-, Notification- und
+  Datenbankpruefungen. Getestet wurden unter anderem Stempeln/Unterbrechen,
+  Aufgaben, Zusatzverkaeufe, Kontakte, Einmal- und Dauerlaeuferprojekte,
+  Stundenabrechnung, Angebote, Rechnungen, Planung, Termine und
+  Terminwuensche. Die dafuer lokal erzeugten Codex-Testprojekte, Rechnungen,
+  Planungen, Zeiten, Benutzer, Meldungen, News-/Ideeneintraege und
+  Folgeaufgaben wurden am 11.07.2026 kontrolliert und transaktional bereinigt.
+  Echte Projekte `MKG-400` und `HAS-1` sowie ihre urspruenglichen Status blieben
+  erhalten. Diese lokale Testdatenbereinigung ist keine Servermigration.
+- Zusatzrolle Vertrieb 2026-07-10: `salesRoleEnabled` ist eine zusaetzliche
+  Mitarbeiterrolle und keine Ersetzung der Hauptrolle. Aktivierte Vertriebler
+  sehen Forecast & OP, Sales-Performance und die Vertriebs-KI. Sichtbarkeit im
+  Client ist keine Sicherheitsgrenze; die zugehoerigen API- und KI-Routen
+  muessen dieselbe Rolle serverseitig pruefen. Vertrieb darf insbesondere
+  keine Gehaelter, internen Personalkosten, Arbeitgeberkosten oder indirekte
+  Kostenvergleiche erhalten. Admin/Geschaeftsfuehrung behalten BWL- und
+  Vertriebs-KI; BWL-Kontext darf Projekt-, Rechnungs-, Stempel- und Zeitdaten
+  nur unter den bestehenden Managementrechten lesen.
+- KI-Assistenten Sicherheitsstand 2026-07-10: BWL-KI und Vertriebs-KI sind
+  fachlich getrennt. Beide muessen bei fehlenden Daten Unsicherheit benennen,
+  duerfen keine Fakten erfinden und beantworten keine fachfremden Fragen.
+  Vertriebs-KI blockiert auch Kombinations- und Umgehungsfragen zu Gehalt,
+  internen Kosten, Personalaufwand, Arbeitgeberkosten und der Frage, welcher
+  Mitarbeiter am billigsten/teuersten ist. Antworten sollen kurz starten,
+  lesbar formatiert sein und eine weitere Management-/Vertriebskonversation
+  ermoeglichen, statt den Nutzer mit unstrukturiertem Roh-Markdown zu
+  ueberfahren.
+- Taetigkeitsbericht-Automation 2026-07-10: Die automatische Zuordnung und der
+  Versand von Taetigkeitsberichten wurden gegen die realen Projekt-/Empfaenger-
+  und Automationsdaten geprueft. Fehler der Winterdienst-Automatik erzeugen
+  In-App-Meldung und Mail an die konfigurierten Empfaenger; Versandfehler
+  duerfen den Lauf nicht still als erfolgreich ausgeben.
+- Stapelabrechnung Schutz 2026-07-10: Die automatische Stapelabrechnung darf
+  nur automatisch erzeugte Entwuerfe mit `billingSource` `batch` oder
+  `hourly-recurring` uebernehmen. Manuelle Einmalrechnungsentwuerfe duerfen
+  weder in die Auswahl geraten noch per manipuliertem PATCH als Batchrechnung
+  verarbeitet oder mit Stempelzeiten verknuepft werden. API lehnt diesen Fall
+  mit Konfliktantwort ab.
+- Notification-/Systemmail-Audit 2026-07-11: Kritische Ereignisse senden an
+  die Geschaeftsfuehrung und zusaetzlich an den fachlich Verantwortlichen,
+  Projektverantwortlichen oder die Fuehrungskraft. Abgedeckt sind unter
+  anderem Statuseskalationen, Unterbrechungen, Unterfakturierung, Mahnungen,
+  Kapazitaetsueberschreitungen, Endphasen, Abwesenheiten,
+  Abrechnungsbereitschaft und KuZu-Hot-Alerts. KuZu-Hot-Alerts aus manueller
+  Erfassung und oeffentlichem Feedback senden seit Commit `bc7852f` auch
+  Systemmail an Geschaeftsfuehrung und zustaendigen Vertriebler. Normale
+  Feed-, Ideen-, Kommentar- oder Content-Freigabeaktivitaeten bleiben bewusst
+  In-App/Push, damit Pflichtmails nicht durch Meldungsrauschen entwertet werden.
+- Letzter verifizierter Stand 2026-07-11: Commit `bc7852f` ist auf `main`
+  gepusht. Danach bestanden 22 Tests, TypeScript, Mojibake-/Regressionscheck,
+  Prisma Validate, `prisma db push --skip-generate` ohne Schemawarnung und der
+  Produktionsbuild. Die anschliessende Dokumentationsuebergabe veraendert
+  keine Fachlogik und kein Prisma-Schema.
 - Aktueller Arbeitsstand 2026-06-26: Der richtige Projektordner bleibt
   `C:\Users\vagte\Downloads\Dokumenteauslastungdashboardhero\WorkPilot360`.
   Nicht in den OneDrive-/SafeDesk360-Ordner wechseln. Der Nutzer will
@@ -5337,7 +5409,7 @@ Wiederaufbau begonnen 2026-06-05:
 - Planungsgruppen-SVS Fallback 2026-07-07: In den Firmeneinstellungen gibt es jetzt den Reiter `Planungsgruppen-SVS`. Dort kann pro Planungsboard/-gruppe ein manueller Ziel-SVS gepflegt werden, falls fuer die kuenftige Umsatzkapazitaetsrechnung noch keine belastbaren automatischen Werte aus Rechnungen, Leistungen oder Paketen ableitbar sind. Pro Gruppe ist steuerbar, ob der manuelle Wert automatische Werte uebersteuern darf oder ob automatische Werte den manuellen Wert uebersteuern. Die eigentliche GF-Kennzahl fuer Umsatzpotenzial nach Anwesenheiten/Abwesenheiten baut spaeter auf dieser Fallback-Konfiguration auf.
 - GF Umsatzkapazitaet Planungsgruppen 2026-07-07: Der GF-Reiter der Auswertungen berechnet jetzt je Planungsgruppe die verfuegbaren Stunden im Auswertungszeitraum inklusive Wochenenden, Feiertagen und Abwesenheiten und bewertet sie mit einem SVS. Der SVS kommt zuerst aus echten Rechnungen mit verknuepften Stempelzeiten, danach aus aktiven Leistungen/Paketen und zuletzt aus dem manuellen Planungsgruppen-SVS. Die Systeminterpretation meldet ueberplante oder fast ausgelastete Gruppen als Wachstumsbremse und zeigt fehlende SVS-Grundlagen als Datenqualitaetsproblem. Keine DB-Schemaaenderung.
 - Sales-Performance Handlungsliste 2026-07-07: Der Sales-Reiter der Auswertungen hat jetzt den Block `Heute vertrieblich handeln`. Er priorisiert ueberalterte offene Angebote, faellige Zusatzverkaufsnachfassungen, offene Angebote ohne Nachfassaufgabe und offene unterbrochene Arbeiten. Pro Zeile werden Kunde/Projekt, Verantwortlicher, Wert, Empfehlung und direkte Aktionen angezeigt. Gewonnene/verlorene Angebotsentscheidungen nutzen die bestehende Angebotslogik; Zusatzverkaeufe, Projekte und Aufgaben oeffnen die vorhandenen Masken. Keine DB-Schemaaenderung.
-- Gesch‰ftsf¸hrer-Umsatzkapazit‰t 2026-07-07: Die Auswertung `Umsatzkapazit‰t nach Planungsgruppe` zeigt jetzt je Planungsgruppe Mitarbeiteranzahl, verf¸gbare Stunden, SVS-Herkunft, pr‰zisere Ursachenbewertung und direkte Aktionen zu Mitarbeiterpr¸fung, Planungsgruppen-SVS und Planungsboard. Keine DB-Schema‰nderung.
+- Gesch√§ftsf√ºhrer-Umsatzkapazit√§t 2026-07-07: Die Auswertung `Umsatzkapazit√§t nach Planungsgruppe` zeigt jetzt je Planungsgruppe Mitarbeiteranzahl, verf√ºgbare Stunden, SVS-Herkunft, pr√§zisere Ursachenbewertung und direkte Aktionen zu Mitarbeiterpr√ºfung, Planungsgruppen-SVS und Planungsboard. Keine DB-Schema√§nderung.
 - Verkaufbare Kapazitaet Mitarbeiter 2026-07-07: In den Mitarbeiter-Planungseinstellungen gibt es den Schalter `Als verkaufbare Kapazitaet beruecksichtigen`. Standard ist aktiv. Geschaeftsfuehrung/Admin koennen Mitarbeitende wie Geschaeftsfuehrung oder reine Overhead-Rollen deaktivieren, ohne Planungsboard oder Planungsgruppe zu entfernen. Die GF-Auswertung `Umsatzkapazitaet nach Planungsgruppe` rechnet nur aktivierte Mitarbeitende in die verfuegbaren verkaufbaren Stunden ein und zeigt nicht eingerechnete Personen separat.
 - Paket-SVS Arbeitsanteil 2026-07-07: Der Stammdaten-Fallback fuer die GF-Auswertung `Umsatzkapazitaet nach Planungsgruppe` bewertet Pakete nur noch mit dem Verkaufswert der Leistungsbestandteile und deren Planungsstunden. Artikel-/Materialbestandteile im Paket duerfen den SVS der verkaufbaren Arbeitskapazitaet nicht erhoehen. Normale Leistungen bleiben als Arbeitspositionen automatisch relevant.
 - Sales-Performance Cockpit 2026-07-07: Der Sales-Reiter startet jetzt mit verstaendlichen Cockpit-Karten statt reiner Kennzahlenwand: Heute handeln, Angebotsmotor, Neukundenbewegung, Abschlusskraft, Dauerlaeufer-Ausbau und Risiko im Bestand. Zusaetzlich prueft der Reiter aktive Dauerlaeufer auf Nachverhandlungsbedarf anhand letzter Angebots-/Nachtragsaktivitaet, Monatskontingenten, aktueller Kontingentueberschreitung, mindestens fuenfmaliger Folgeausschoepfung und Umsatz je gestempelter Stunde. Keine Prisma-Aenderung; die Logik nutzt vorhandene Angebote, Projekte, Rechnungen, Kontakte und Stempelzeiten.
