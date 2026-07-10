@@ -13401,6 +13401,24 @@ export function DashboardPage() {
       }
     }
 
+    if (notification.linkTarget === "planning-entry-overcapacity" && notification.linkTargetId) {
+      const [userId, date] = notification.linkTargetId.split(":");
+      const entry = planningEntries.find(
+        (item) =>
+          !item.deletedAt &&
+          item.approvalStatus === "confirmed" &&
+          item.userId === userId &&
+          item.date === date
+      );
+      if (entry) {
+        setSelectedPlanningDateKey(entry.date);
+        setSelectedPlanningGroup(entry.groupName);
+        setIsPlanningDayOpen(true);
+        setActiveTab("planningBoard");
+      }
+      setIsNotificationsOpen(false);
+    }
+
     if (notification.linkTarget === "daily-planning-reminder" && notification.linkTargetId) {
       setActiveTab("dashboard");
       setIsNotificationsOpen(false);

@@ -547,6 +547,138 @@ async function notifyPlanningOverlap(entry: PlanningEntryRow, organizationId: st
   }
 }
 
+async function syncPlanningCapacityAlert(entry: PlanningEntryRow, organizationId: string, actorUserId = "") {
+  if (!entry.userId || entry.approvalStatus !== "confirmed") return;
+
+  await ensureNotificationLinkColumns();
+  const alertTargetId = `${entry.userId}:${entry.date}`;
+  const userRows = await prisma.$queryRaw<
+    Array<{ dailyWorkHours: number; weeklyCapacity: Prisma.JsonValue }>
+  >`
+    SELECT "dailyWorkHours", "weeklyCapacity"
+    FROM "User"
+    WHERE id = ${entry.userId}
+      AND "organizationId" = ${organizationId}
+      AND "isActive" = true
+    LIMIT 1
+  `;
+  const user = userRows[0];
+  if (!user) return;
+
+  const dayKeys = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+  const dayIndex = new Date(`${entry.date}T12:00:00Z`).getUTCDay();
+  const dayKey = dayKeys[dayIndex] ?? "monday";
+  const weeklyCapacity = user.weeklyCapacity;
+  const configuredHours =
+    weeklyCapacity && typeof weeklyCapacity === "object" && !Array.isArray(weeklyCapacity)
+      ? Number(weeklyCapacity[dayKey])
+      : Number.NaN;
+  let capacityHours = Number.isFinite(configuredHours) && configuredHours >= 0
+    ? configuredHours
+    : Math.max(0, Number(user.dailyWorkHours) || 0);
+
+  const absenceRows = await prisma.$queryRaw<Array<{ dayPart: string }>>`
+    SELECT "dayPart"
+    FROM "Absence"
+    WHERE "organizationId" = ${organizationId}
+      AND "userId" = ${entry.userId}
+      AND date = ${entry.date}::date
+      AND "deletedAt" IS NULL
+      AND status = 'genehmigt'
+      AND type IN ('urlaub', 'krank')
+    LIMIT 1
+  `;
+  const absence = absenceRows[0];
+  if (absence?.dayPart === "full") capacityHours = 0;
+  if (absence?.dayPart === "first-half" || absence?.dayPart === "second-half") capacityHours /= 2;
+
+  const totalRows = await prisma.$queryRaw<Array<{ totalMinutes: number }>>`
+    SELECT COALESCE(SUM("durationMinutes"), 0)::int AS "totalMinutes"
+    FROM "PlanningEntry"
+    WHERE "organizationId" = ${organizationId}
+      AND "userId" = ${entry.userId}
+      AND date = ${entry.date}
+      AND "deletedAt" IS NULL
+      AND COALESCE("approvalStatus", 'confirmed') = 'confirmed'
+  `;
+  const plannedHours = Math.max(0, Number(totalRows[0]?.totalMinutes ?? 0)) / 60;
+  const isOverCapacity = plannedHours > capacityHours + 0.01;
+
+  if (!isOverCapacity) {
+    await prisma.$executeRaw`
+      DELETE FROM "Notification"
+      WHERE "organizationId" = ${organizationId}
+        AND "linkTarget" = 'planning-entry-overcapacity'
+        AND "linkTargetId" = ${alertTargetId}
+    `;
+    return;
+  }
+
+  await prisma.$executeRaw`
+    ALTER TABLE "User"
+    ADD COLUMN IF NOT EXISTS "planningResponsibleFor" JSONB DEFAULT '[]'::jsonb
+  `;
+  const responsibilityKey = `${entry.board}:${entry.groupName}`;
+  let recipients = await prisma.$queryRaw<Array<{ id: string; email: string }>>`
+    SELECT id, email
+    FROM "User"
+    WHERE "organizationId" = ${organizationId}
+      AND "isActive" = true
+      AND COALESCE("planningResponsibleFor", '[]'::jsonb) ? ${responsibilityKey}
+  `;
+  if (recipients.length === 0 && actorUserId) {
+    recipients = await prisma.$queryRaw<Array<{ id: string; email: string }>>`
+      SELECT id, email
+      FROM "User"
+      WHERE "organizationId" = ${organizationId}
+        AND "isActive" = true
+        AND id = ${actorUserId}
+      LIMIT 1
+    `;
+  }
+  const recipientMap = new Map(recipients.map((recipient) => [recipient.id, recipient]));
+  for (const recipient of await getManagementNotificationRecipients(organizationId)) {
+    recipientMap.set(recipient.id, recipient);
+  }
+
+  const subject = "Kapazität überschritten - Planung prüfen";
+  const body = `${entry.employeeName ?? "Ein Mitarbeiter"} ist am ${formatDateKeyDisplay(entry.date)} mit ${plannedHours.toFixed(2).replace(".", ",")} Std. bei ${capacityHours.toFixed(2).replace(".", ",")} Std. verfügbarer Kapazität überplant.`;
+  for (const recipient of recipientMap.values()) {
+    const existing = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id
+      FROM "Notification"
+      WHERE "organizationId" = ${organizationId}
+        AND "userId" = ${recipient.id}
+        AND "linkTarget" = 'planning-entry-overcapacity'
+        AND "linkTargetId" = ${alertTargetId}
+      LIMIT 1
+    `;
+    if (existing.length > 0) continue;
+
+    const notification = await prisma.notification.create({
+      data: {
+        id: randomUUID(),
+        organizationId,
+        userId: recipient.id,
+        taskId: null,
+        channel: "app",
+        subject,
+        body,
+        linkTarget: "planning-entry-overcapacity",
+        linkTargetId: alertTargetId,
+        linkLabel: "Planung öffnen",
+        sentAt: null,
+      },
+    });
+    await sendNotificationMailSafely({
+      notificationId: notification.id,
+      userId: recipient.id,
+      subject,
+      body,
+    });
+  }
+}
+
 function didPlanningTimeChange(existingEntry: PlanningEntryRow | null, savedEntry: PlanningEntryRow) {
   if (!existingEntry) return false;
   return (
@@ -1090,6 +1222,7 @@ export async function POST(req: Request) {
 
   await notifyPlanningResponsibles(savedEntry, organization.id);
   await notifyPlanningOverlap(savedEntry, organization.id, actorUserId);
+  await syncPlanningCapacityAlert(savedEntry, organization.id, actorUserId);
   if (savedEntry.approvalStatus === "confirmed" && (!existingEntry || existingEntry.approvalStatus === "requested")) {
     await notifyPlanningEntryConfirmed({
       organizationId: organization.id,
@@ -1207,6 +1340,7 @@ export async function DELETE(req: Request) {
     entry,
     actorUserId,
   });
+  await syncPlanningCapacityAlert(entry, organization.id, actorUserId);
 
   return NextResponse.json({ ok: true });
 }
