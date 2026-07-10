@@ -3,7 +3,10 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
+import { getInternalAutomationHeaders, isInternalAutomationRequest } from "@/lib/auth/internal-automation";
 import { prisma } from "@/lib/db/client";
+import { canManageProcessAutomation } from "@/lib/permissions";
+import { getWinterServiceSchedulerStatus } from "@/lib/automation/winter-service-scheduler";
 
 type AutomationRunInput = {
   projectId?: string;
@@ -60,17 +63,6 @@ type LogbookAttachment = {
   type: "Bild" | "Dokument";
   dataUrl?: string;
 };
-
-type SchedulerState = {
-  timer?: ReturnType<typeof setInterval>;
-  baseUrl?: string;
-  isRunning?: boolean;
-};
-
-const WINTER_SERVICE_SCHEDULER_KEY = "__workpilot360WinterServiceScheduler";
-const schedulerState = (globalThis as typeof globalThis & { [WINTER_SERVICE_SCHEDULER_KEY]?: SchedulerState })[
-  WINTER_SERVICE_SCHEDULER_KEY
-] ??= {};
 
 function cleanText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -367,57 +359,19 @@ async function discoverAutomationRuns(organizationId: string): Promise<Automatio
   }, []);
 }
 
-function getBaseUrl(req: Request) {
-  const url = new URL(req.url);
-  return `${url.protocol}//${url.host}`;
-}
-
-async function runScheduledAutomation(baseUrl: string) {
-  if (schedulerState.isRunning) return;
-  schedulerState.isRunning = true;
-  try {
-    await fetch(`${baseUrl}/api/winter-service-automation`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source: "scheduler" }),
-    });
-  } catch {
-    // The next interval can retry; failures inside the automation run create notifications.
-  } finally {
-    schedulerState.isRunning = false;
-  }
-}
-
-function syncScheduler(settings: { enabled: boolean }, baseUrl: string) {
-  schedulerState.baseUrl = baseUrl;
-  if (!settings.enabled) {
-    if (schedulerState.timer) {
-      clearInterval(schedulerState.timer);
-      schedulerState.timer = undefined;
-    }
-    return;
-  }
-  if (schedulerState.timer) return;
-  schedulerState.timer = setInterval(() => {
-    if (schedulerState.baseUrl) void runScheduledAutomation(schedulerState.baseUrl);
-  }, 10 * 60 * 1000);
-}
-
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const { organization, users } = await getDemoContext();
   const requestedActorId = searchParams.get("actorId");
   const actorResult = await getSessionBoundActor(req, users, requestedActorId);
   if (!actorResult.ok) {
-    return cleanText(requestedActorId) ? sessionBoundActorResponse(actorResult) : NextResponse.json({
-      enabled: false,
-      senderUserId: "",
-      notificationUserIds: [],
-    });
+    return sessionBoundActorResponse(actorResult);
+  }
+  if (!canManageProcessAutomation(actorResult.actor)) {
+    return NextResponse.json({ error: "Du darfst die Prozessautomatik nicht verwalten." }, { status: 403 });
   }
   const settings = await getSettings(organization.id);
-  syncScheduler(settings, getBaseUrl(req));
-  return NextResponse.json(settings);
+  return NextResponse.json({ ...settings, ...getWinterServiceSchedulerStatus() });
 }
 
 export async function PUT(req: Request) {
@@ -427,8 +381,10 @@ export async function PUT(req: Request) {
   if (!actorResult.ok) {
     return sessionBoundActorResponse(actorResult);
   }
+  if (!canManageProcessAutomation(actorResult.actor)) {
+    return NextResponse.json({ error: "Du darfst die Prozessautomatik nicht verwalten." }, { status: 403 });
+  }
   const settings = await upsertSettings(organization.id, body);
-  syncScheduler(settings, getBaseUrl(req));
   return NextResponse.json(settings);
 }
 
@@ -436,21 +392,32 @@ export async function POST(req: Request) {
   const { organization, users } = await getDemoContext();
   const settings = await getSettings(organization.id);
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-  const submittedRuns = Array.isArray(body.runs) ? (body.runs as AutomationRunInput[]) : [];
-  const runs = submittedRuns.length > 0 ? submittedRuns : await discoverAutomationRuns(organization.id);
-  syncScheduler(settings, getBaseUrl(req));
-
-  const actorResult = await getSessionBoundActor(req, users, body.actorId);
-  if (!actorResult.ok) {
+  const configuredSender = users.find(
+    (candidate) =>
+      candidate.id === settings.senderUserId &&
+      candidate.isActive &&
+      canManageProcessAutomation(candidate)
+  );
+  const isInternalRequest = isInternalAutomationRequest(req);
+  const actorResult = isInternalRequest ? null : await getSessionBoundActor(req, users, body.actorId);
+  if (actorResult && !actorResult.ok) {
     return sessionBoundActorResponse(actorResult);
   }
-  const configuredSender = users.find((candidate) => candidate.id === settings.senderUserId && candidate.isActive);
-  const actor = configuredSender ?? actorResult.actor;
+  const authorityActor = isInternalRequest ? configuredSender : actorResult?.actor;
+  if (!authorityActor) {
+    return NextResponse.json({ error: "Aktiver Automationsabsender fehlt." }, { status: 401 });
+  }
+  if (!canManageProcessAutomation(authorityActor)) {
+    return NextResponse.json({ error: "Du darfst die Prozessautomatik nicht ausführen." }, { status: 403 });
+  }
+  const actor = configuredSender ?? authorityActor;
   const actorId = actor.id;
 
   if (!settings.enabled) {
     return NextResponse.json({ processed: 0, sent: 0, failed: 0, failures: [], skipped: "disabled" });
   }
+
+  const runs = await discoverAutomationRuns(organization.id);
 
   const failures: string[] = [];
   let sent = 0;
@@ -471,7 +438,7 @@ export async function POST(req: Request) {
     try {
       const reportResponse = await fetch(new URL("/api/activity-reports", req.url), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getInternalAutomationHeaders() },
         body: JSON.stringify({
           actorId,
           projectId,
@@ -500,7 +467,7 @@ export async function POST(req: Request) {
       const documentNumber = attachmentName.replace(/\.pdf$/i, "") || `Winterdienst ${dateKey}`;
       const mailResponse = await fetch(new URL("/api/document-mail", req.url), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getInternalAutomationHeaders() },
         body: JSON.stringify({
           kind: "activityReport",
           documentId: `${contextKey}:${attachmentName}`,
@@ -551,7 +518,7 @@ export async function POST(req: Request) {
     if (notificationEmails.length > 0) {
       await fetch(new URL("/api/document-mail", req.url), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getInternalAutomationHeaders() },
         body: JSON.stringify({
           kind: "document",
           documentId: `winter-service-automation:${Date.now()}`,

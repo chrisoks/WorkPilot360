@@ -8,6 +8,7 @@ import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFImage, 
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
+import { isInternalAutomationRequest } from "@/lib/auth/internal-automation";
 import { canArchiveProjects, canCreateProjectLogbookEntries } from "@/lib/permissions";
 
 type LogbookAttachment = {
@@ -743,11 +744,17 @@ export async function POST(req: Request) {
   }
 
   const { organization, users } = await getDemoContext();
-  const actorResult = await getSessionBoundActor(req, users, body.actorId);
-  if (!actorResult.ok) {
+  const internalRequest = isInternalAutomationRequest(req);
+  const actorResult = internalRequest ? null : await getSessionBoundActor(req, users, body.actorId);
+  if (actorResult && !actorResult.ok) {
     return sessionBoundActorResponse(actorResult);
   }
-  const actor = actorResult.actor;
+  const actor = internalRequest
+    ? users.find((candidate) => candidate.id === cleanString(body.actorId) && candidate.isActive)
+    : actorResult?.actor;
+  if (!actor) {
+    return NextResponse.json({ error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." }, { status: 401 });
+  }
   if (!canCreateProjectLogbookEntries(actor)) {
     return forbiddenReportResponse();
   }

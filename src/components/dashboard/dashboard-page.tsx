@@ -948,6 +948,10 @@ type WinterServiceAutomationSettings = {
   enabled: boolean;
   senderUserId: string;
   notificationUserIds: string[];
+  schedulerRunning?: boolean;
+  schedulerLastAttemptAt?: string;
+  schedulerLastStatus?: string;
+  schedulerLastHttpStatus?: number;
 };
 
 type CustomerFeedbackItem = {
@@ -3090,6 +3094,15 @@ function isAccountingRole(role?: string) {
 
 function isTabAllowedForRole(tab: AppTab, role?: string) {
   if (isAccountingRole(role)) return tab === "reports";
+  if (
+    role &&
+    tab === "processAutomation" &&
+    role !== "ADMIN" &&
+    role !== "GESCHAEFTSFUEHRER" &&
+    role !== "FUEHRUNGSKRAFT"
+  ) {
+    return false;
+  }
   return true;
 }
 
@@ -32209,6 +32222,14 @@ await addProjectLogbookEntry(
     ];
     const openQualityIssues = qualityChecks.reduce((sum, check) => sum + check.count, 0);
     const automationNotificationUsers = users.filter((user) => user.isActive);
+    const automationSenderUsers = automationNotificationUsers.filter((user) =>
+      ["ADMIN", "GESCHAEFTSFUEHRER", "FUEHRUNGSKRAFT"].includes(user.role)
+    );
+    const automationSenderId = automationSenderUsers.some(
+      (user) => user.id === winterServiceAutomationSettings.senderUserId
+    )
+      ? winterServiceAutomationSettings.senderUserId
+      : activeUserId;
     const updateWinterServiceNotificationUser = (userId: string, checked: boolean) => {
       const nextUserIds = checked
         ? Array.from(new Set([...winterServiceAutomationSettings.notificationUserIds, userId]))
@@ -32508,6 +32529,15 @@ await addProjectLogbookEntry(
               <p>
                 Bei aktivem Schalter erstellt und versendet der Automatiklauf erkannte Winterdienstberichte mit vollständigen Voraussetzungen.
               </p>
+              <p>
+                Serverlauf: {winterServiceAutomationSettings.schedulerRunning ? "aktiv" : "wird gestartet"}
+                {winterServiceAutomationSettings.schedulerLastAttemptAt
+                  ? ` · letzte Prüfung ${formatInstantDateTime(winterServiceAutomationSettings.schedulerLastAttemptAt)}`
+                  : " · erste Prüfung nach Serverstart ausstehend"}
+                {winterServiceAutomationSettings.schedulerLastStatus === "error"
+                  ? ` · Fehler${winterServiceAutomationSettings.schedulerLastHttpStatus ? ` HTTP ${winterServiceAutomationSettings.schedulerLastHttpStatus}` : ""}`
+                  : ""}
+              </p>
               {winterServiceAutomationMessage ? <p>{winterServiceAutomationMessage}</p> : null}
             </div>
             <button
@@ -32527,7 +32557,7 @@ await addProjectLogbookEntry(
             <label>
               <span>Versandkonto</span>
               <select
-                value={winterServiceAutomationSettings.senderUserId || activeUserId}
+                value={automationSenderId}
                 onChange={(event) =>
                   void saveWinterServiceAutomationSettings({
                     ...winterServiceAutomationSettings,
@@ -32535,7 +32565,7 @@ await addProjectLogbookEntry(
                   })
                 }
               >
-                {automationNotificationUsers.map((user) => (
+                {automationSenderUsers.map((user) => (
                   <option key={user.id} value={user.id}>
                     {user.name || user.email}
                   </option>

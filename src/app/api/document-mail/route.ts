@@ -4,6 +4,7 @@ import { Prisma, type User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
+import { isInternalAutomationRequest } from "@/lib/auth/internal-automation";
 import { getStoredMailAccount, refreshMicrosoftAccessToken } from "@/lib/mail/microsoft";
 import { ensureSalesHubTables } from "@/lib/sales-hub/ensure";
 import { canSendDocumentMails, canSendInvoiceDocuments, canSendOfferDocuments } from "@/lib/permissions";
@@ -733,11 +734,17 @@ export async function POST(req: Request) {
   await ensureDocumentMailTables();
   const body = (await req.json()) as Record<string, unknown>;
   const { organization, users } = await getDemoContext();
-  const actorResult = await getSessionBoundActor(req, users, body.actorId);
-  if (!actorResult.ok) {
+  const internalRequest = isInternalAutomationRequest(req);
+  const actorResult = internalRequest ? null : await getSessionBoundActor(req, users, body.actorId);
+  if (actorResult && !actorResult.ok) {
     return sessionBoundActorResponse(actorResult);
   }
-  const actor = actorResult.actor;
+  const actor = internalRequest
+    ? users.find((candidate) => candidate.id === cleanText(body.actorId) && candidate.isActive)
+    : actorResult?.actor;
+  if (!actor) {
+    return NextResponse.json({ error: "Aktiver Benutzer konnte nicht eindeutig bestimmt werden." }, { status: 401 });
+  }
 
   const actorName = `${actor.firstName ?? ""} ${actor.lastName ?? ""}`.trim() || actor.email;
   let mailAccount = await getStoredMailAccount(actor.id);

@@ -8,9 +8,12 @@ function readPort() {
   return Number.isFinite(port) && port > 0 ? port : 3001;
 }
 
+const port = readPort();
+process.env.PORT = String(port);
+
 startServer({
   dir: process.cwd(),
-  port: readPort(),
+  port,
   isDev: true,
   hostname: "localhost",
   allowRetry: false,

@@ -3,6 +3,7 @@ import { Role } from '@prisma/client';
 import {
   canAccessEmployeeCosts,
   canEditTask,
+  canManageProcessAutomation,
   canReadTask,
   canViewInternalCostData,
   hasMinimumRole,
@@ -53,5 +54,14 @@ describe('permissions', () => {
     expect(canViewInternalCostData(management)).toBe(true);
     expect(canViewInternalCostData(employee)).toBe(false);
     expect(canAccessEmployeeCosts(employee)).toBe(false);
+  });
+
+  it('limits process automation to operational leadership', () => {
+    expect(canManageProcessAutomation({ role: Role.ADMIN })).toBe(true);
+    expect(canManageProcessAutomation({ role: Role.GESCHAEFTSFUEHRER })).toBe(true);
+    expect(canManageProcessAutomation({ role: Role.FUEHRUNGSKRAFT })).toBe(true);
+    expect(canManageProcessAutomation({ role: Role.MITARBEITER })).toBe(false);
+    expect(canManageProcessAutomation({ role: Role.VERTRIEB })).toBe(false);
+    expect(canManageProcessAutomation({ role: Role.BUCHHALTUNG })).toBe(false);
   });
 });

@@ -183,6 +183,10 @@ export function canManageSalesPipeline(user: RoleCarrier): boolean {
   );
 }
 
+export function canManageProcessAutomation(user: RoleCarrier): boolean {
+  return canRunStatusEscalations(user);
+}
+
 export function canManageAllSalesPipeline(user: RoleCarrier): boolean {
   return (
     user.role === Role.ADMIN ||
