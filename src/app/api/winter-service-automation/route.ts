@@ -462,6 +462,10 @@ export async function POST(req: Request) {
       if (!reportAttachment) {
         throw new Error("Tätigkeitsbericht-PDF wurde nicht gefunden.");
       }
+      const reportLogbookEntryId = cleanText(reportData?.id);
+      if (!reportLogbookEntryId) {
+        throw new Error("Tätigkeitsbericht konnte keinem Logbucheintrag zugeordnet werden.");
+      }
 
       const attachmentName = cleanText(reportAttachment.name);
       const documentNumber = attachmentName.replace(/\.pdf$/i, "") || `Winterdienst ${dateKey}`;
@@ -470,7 +474,7 @@ export async function POST(req: Request) {
         headers: { "Content-Type": "application/json", ...getInternalAutomationHeaders() },
         body: JSON.stringify({
           kind: "activityReport",
-          documentId: `${contextKey}:${attachmentName}`,
+          documentId: reportLogbookEntryId,
           documentNumber,
           projectId,
           projectNumber,

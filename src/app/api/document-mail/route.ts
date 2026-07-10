@@ -430,11 +430,11 @@ async function documentBelongsToOrganization(
     `;
     if (winterRuns[0]) return true;
 
-    const logbookEntryId = documentId.replace(/-\d+$/, "");
+    const legacyLogbookEntryId = documentId.replace(/-\d+$/, "");
     const logbookEntries = await prisma.$queryRaw<Array<{ id: string }>>`
       SELECT id FROM "ProjectLogbookEntry"
-      WHERE id = ${logbookEntryId}
-        AND "organizationId" = ${organizationId}
+      WHERE "organizationId" = ${organizationId}
+        AND (id = ${documentId} OR id = ${legacyLogbookEntryId})
       LIMIT 1
     `;
     return Boolean(logbookEntries[0]);
@@ -497,9 +497,11 @@ async function getPdfAttachment(kind: string, documentId: string, documentNumber
       // Project activity reports are stored in the project logbook instead of WinterServiceRun.
     }
 
-    const logbookEntryId = documentId.replace(/-\d+$/, "");
+    const legacyLogbookEntryId = documentId.replace(/-\d+$/, "");
     const logbookRows = await prisma.$queryRaw<Array<{ attachments: unknown }>>`
-      SELECT "attachments" FROM "ProjectLogbookEntry" WHERE id = ${logbookEntryId} LIMIT 1
+      SELECT "attachments" FROM "ProjectLogbookEntry"
+      WHERE id = ${documentId} OR id = ${legacyLogbookEntryId}
+      LIMIT 1
     `;
     const attachments = Array.isArray(logbookRows[0]?.attachments) ? logbookRows[0].attachments : [];
     const reportAttachment = attachments

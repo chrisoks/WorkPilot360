@@ -32124,7 +32124,7 @@ await addProjectLogbookEntry(
         const reportAttachments = reportEntries.flatMap((entry) =>
           entry.attachments.flatMap((attachment) =>
             attachment.type === "Dokument" && attachment.dataUrl
-              ? [{ name: attachment.name, dataUrl: attachment.dataUrl }]
+              ? [{ name: attachment.name, dataUrl: attachment.dataUrl, sourceEntryId: entry.id }]
               : []
           )
         );
@@ -32718,7 +32718,7 @@ await addProjectLogbookEntry(
         const reportAttachments = reportEntries.flatMap((entry) =>
           entry.attachments.flatMap((attachment) =>
             attachment.type === "Dokument" && attachment.dataUrl
-              ? [{ name: attachment.name, dataUrl: attachment.dataUrl }]
+              ? [{ name: attachment.name, dataUrl: attachment.dataUrl, sourceEntryId: entry.id }]
               : []
           )
         );
@@ -32803,7 +32803,7 @@ await addProjectLogbookEntry(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           kind: "activityReport",
-          documentId: `${row.project.id}:${row.monthKey}:${row.selectedReport.name}`,
+          documentId: row.selectedReport.sourceEntryId,
           documentNumber,
           projectId: row.project.id,
           projectNumber: row.project.projectNumber || row.project.id,
@@ -32844,6 +32844,30 @@ await addProjectLogbookEntry(
       for (const row of readyRows) {
         await sendGeneralActivityReport(row);
       }
+    };
+    const openGeneralActivityReportAction = (row: (typeof rows)[number]) => {
+      if (row.status === "Empfänger fehlt") {
+        const contact = contacts.find((candidate) =>
+          [row.project.contactId, row.project.contactPersonId, row.project.addressContactId].includes(candidate.id)
+        );
+        if (contact) {
+          setActiveTab("contacts");
+          openCustomerFile(contact);
+          return;
+        }
+      }
+
+      openProjectFile(row.project, {
+        tab: "documents",
+        documentType: row.status === "Rechnung fehlt" ? "Rechnungen" : "Tätigkeitsberichte",
+        month: row.monthKey,
+      });
+    };
+    const getGeneralActivityReportActionLabel = (row: (typeof rows)[number]) => {
+      if (row.status === "T-Bericht fehlt") return "T-Bericht";
+      if (row.status === "Rechnung fehlt") return "Rechnung";
+      if (row.status === "Empfänger fehlt") return "Empfänger";
+      return "T-Bericht";
     };
     const renderRowsTable = (tableRows: typeof rows, emptyText: string) => (
       <table className={styles.table}>
@@ -32921,15 +32945,9 @@ await addProjectLogbookEntry(
                   <button
                     type="button"
                     className={styles.secondaryButton}
-                    onClick={() =>
-                      openProjectFile(row.project, {
-                        tab: "documents",
-                        documentType: row.reportCount > 0 ? "Tätigkeitsberichte" : "Rechnungen",
-                        month: row.monthKey,
-                      })
-                    }
+                    onClick={() => openGeneralActivityReportAction(row)}
                   >
-                    Öffnen
+                    {getGeneralActivityReportActionLabel(row)}
                   </button>
                 </td>
               </tr>
