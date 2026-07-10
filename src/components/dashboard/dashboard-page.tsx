@@ -31359,6 +31359,7 @@ await addProjectLogbookEntry(
     return invoices.filter(
       (invoice) =>
         invoice.status === "Entwurf" &&
+        (invoice.billingSource === "batch" || invoice.billingSource === "hourly-recurring") &&
         !isDeletedInvoice(invoice) &&
         getProjectInvoiceMonth(invoice) === batchBillingMonth
     );
@@ -31675,7 +31676,7 @@ await addProjectLogbookEntry(
         <section className={`${styles.tableCard} ${styles.batchBillingCard}`}>
           <div className={styles.customerFileMainHeader}>
             <h2>Rechnungsentwürfe</h2>
-            <span>{draftInvoices.length} Entwurf{draftInvoices.length === 1 ? "" : "e"}</span>
+            <span>{draftInvoices.length} {draftInvoices.length === 1 ? "Entwurf" : "Entwürfe"}</span>
           </div>
           <div className={styles.batchBillingTableScroll}>
           <table className={`${styles.table} ${styles.batchBillingTable}`}>

@@ -2498,6 +2498,15 @@ export async function PATCH(req: Request) {
 
   const company = body.company === "OK immocare" ? "OK immocare" : "OK solutions";
   const requestedBillingSource = cleanString(body.billingSource);
+  if (
+    requestedBillingSource === "batch" &&
+    !["batch", "hourly-recurring"].includes(cleanString(existingInvoice.billingSource))
+  ) {
+    return NextResponse.json(
+      { error: "Manuelle Rechnungsentwürfe können nicht über die Stapelabrechnung fakturiert werden." },
+      { status: 409 }
+    );
+  }
   const billingSource =
     requestedBillingSource === "batch" || requestedBillingSource === "manual"
       ? requestedBillingSource
