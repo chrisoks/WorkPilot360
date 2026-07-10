@@ -288,6 +288,11 @@ export async function GET(req: Request) {
   return NextResponse.json(visibleRows.filter((row) => !isNoUpsellDescription(row.description)).map(formatPotential));
 }
 
+function hasInvalidDecimal(value: unknown) {
+  if (value === null || value === undefined || value === "") return false;
+  return cleanDecimal(value) === null;
+}
+
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const { organization, users } = await getDemoContext();
@@ -322,6 +327,9 @@ export async function POST(req: Request) {
     },
   ];
   const estimatedValue = cleanDecimal(body.estimatedValue);
+  if (hasInvalidDecimal(body.estimatedValue)) {
+    return NextResponse.json({ error: "Der geschätzte Wert muss eine positive Zahl oder 0 sein." }, { status: 400 });
+  }
   const requestedOwner = users.find((candidate) => candidate.id === cleanString(body.ownerUserId) && candidate.isActive);
   const owner = requestedOwner && canAssignSalesItemsToOthers(actor) ? requestedOwner : actor;
   await ensurePotentialNumbers(organization.id);
@@ -428,6 +436,64 @@ export async function PATCH(req: Request) {
   const hasNextStepUpdate = Object.prototype.hasOwnProperty.call(body, "nextStep");
   const hasLostReasonUpdate = Object.prototype.hasOwnProperty.call(body, "lostReason");
   const hasDescriptionUpdate = Object.prototype.hasOwnProperty.call(body, "description");
+  if (hasEstimatedValueUpdate && hasInvalidDecimal(body.estimatedValue)) {
+    return NextResponse.json({ error: "Der geschätzte Wert muss eine positive Zahl oder 0 sein." }, { status: 400 });
+  }
+
+  const nextTaskId = cleanString(body.taskId) || current.taskId || "";
+  const linkedTask = nextTaskId
+    ? await prisma.task.findFirst({
+        where: {
+          id: nextTaskId,
+          organizationId: organization.id,
+          projectId: current.projectId,
+        },
+        select: {
+          id: true,
+          links: {
+            where: { url: { startsWith: "offer:" } },
+            select: { url: true },
+            take: 1,
+          },
+        },
+      })
+    : null;
+  const followUpAtInput = cleanString(body.followUpAt);
+  const followUpAt = followUpAtInput ? new Date(followUpAtInput) : null;
+  if (followUpAt && Number.isNaN(followUpAt.getTime())) {
+    return NextResponse.json({ error: "Das Nachfassdatum ist ungültig." }, { status: 400 });
+  }
+  if (nextStatus === "follow_up" && !linkedTask) {
+    return NextResponse.json({ error: "Nachfassen benötigt eine verknüpfte Aufgabe." }, { status: 400 });
+  }
+  if (nextStatus === "offered") {
+    const offerId = linkedTask?.links[0]?.url.startsWith("offer:")
+      ? linkedTask.links[0].url.slice("offer:".length)
+      : "";
+    const linkedOffer = offerId
+      ? await prisma.offer.findFirst({
+          where: {
+            id: offerId,
+            organizationId: organization.id,
+            projectId: current.projectId,
+          },
+          select: { id: true },
+        })
+      : null;
+    if (!linkedTask || !linkedOffer) {
+      return NextResponse.json(
+        { error: "Der Status Angeboten benötigt ein erstelltes Angebot mit passender Nachfass-Aufgabe." },
+        { status: 400 }
+      );
+    }
+  }
+  const nextLostReason = cleanString(body.lostReason) || note || current.lostReason || "";
+  if (nextStatus === "lost" && !nextLostReason) {
+    return NextResponse.json({ error: "Aktuell kein Interesse benötigt einen Grund." }, { status: 400 });
+  }
+  if (nextStatus === "completed" && !["offered", "completed"].includes(current.status)) {
+    return NextResponse.json({ error: "Durchgeführt kann erst nach einem erstellten Angebot gesetzt werden." }, { status: 400 });
+  }
   const requestedOwner = users.find((candidate) => candidate.id === cleanString(body.ownerUserId) && candidate.isActive);
   const owner = requestedOwner && canAssignSalesItemsToOthers(actorUser) ? requestedOwner : null;
   const history = [
@@ -457,7 +523,7 @@ export async function PATCH(req: Request) {
       END,
       "taskId" = COALESCE(${cleanString(body.taskId) || null}, "taskId"),
       "followUpAt" = CASE
-        WHEN ${nextStatus} = 'follow_up' THEN ${cleanString(body.followUpAt) ? new Date(cleanString(body.followUpAt)) : null}
+        WHEN ${nextStatus} = 'follow_up' THEN ${followUpAt}
         ELSE "followUpAt"
       END,
       "offeredAt" = CASE WHEN ${nextStatus} = 'offered' THEN ${now} ELSE "offeredAt" END,

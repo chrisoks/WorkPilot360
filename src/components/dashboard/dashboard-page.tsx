@@ -17425,7 +17425,8 @@ export function DashboardPage() {
     });
 
     if (!res.ok) {
-      setErrorMessage("Zusatzverkauf konnte nicht aktualisiert werden.");
+      const data = await res.json().catch(() => null);
+      setErrorMessage(data?.error ?? "Zusatzverkauf konnte nicht aktualisiert werden.");
       return null;
     }
 
@@ -17592,6 +17593,8 @@ export function DashboardPage() {
       (potential.ownerUserId || "") !== potentialDraft.ownerUserId ||
       (potential.ownerName || "") !== (ownerName || "") ||
       (potential.estimatedValue || "") !== potentialDraft.estimatedValue ||
+      (potential.priority || "normal") !== potentialDraft.priority ||
+      (potential.nextStep || "") !== potentialDraft.nextStep ||
       (potential.lostReason || "") !== potentialDraft.lostReason ||
       potentialDraft.note.trim().length > 0
     );
@@ -17613,6 +17616,14 @@ export function DashboardPage() {
     }
     if (potentialDraft.status === "follow_up" && !getPotentialLinkedTask(editingPotential)) {
       setErrorMessage("Bitte zuerst eine Nachfass-Aufgabe anlegen. Der Status Nachfassen braucht eine verknüpfte Aufgabe.");
+      return;
+    }
+    if (potentialDraft.status === "offered" && editingPotential.status !== "offered") {
+      setErrorMessage("Bitte das Angebot über \"Angebot erstellen\" anlegen. Der Status wird danach automatisch gesetzt.");
+      return;
+    }
+    if (potentialDraft.status === "completed" && editingPotential.status !== "offered" && editingPotential.status !== "completed") {
+      setErrorMessage("Durchgeführt kann erst nach einem erstellten Angebot gesetzt werden.");
       return;
     }
     const confirmed = window.confirm(
@@ -34090,7 +34101,7 @@ await addProjectLogbookEntry(
                             <td>{potential.estimatedValue ? `${potential.estimatedValue} €` : "-"}</td>
                             <td>{formatDeadline(potential.createdAt)}</td>
                             <td title={followUpInfo.detail}>{followUpInfo.title}</td>
-                            <td>{potential.ownerName || linkedTask?.zustaendig || activeUser?.name || "-"}</td>
+                            <td>{potential.ownerName || linkedTask?.zustaendig || "Nicht zugeordnet"}</td>
                             <td>{lastHistory ? `${formatInstantDateTime(lastHistory.at)}: ${lastHistory.note}` : "-"}</td>
                           </tr>
                         );
@@ -37517,7 +37528,7 @@ await addProjectLogbookEntry(
                                 </span>
                               </td>
                               <td>{potential.estimatedValue ? `${potential.estimatedValue} €` : "-"}</td>
-                              <td>{potential.ownerName || activeUser?.name || "-"}</td>
+                              <td>{potential.ownerName || "Nicht zugeordnet"}</td>
                               <td>{potential.followUpAt ? formatDeadline(potential.followUpAt) : "-"}</td>
                               <td>
                                 {linkedTask ? (
@@ -52496,7 +52507,7 @@ await addProjectLogbookEntry(
                                       <td>{potential.estimatedValue ? `${potential.estimatedValue} €` : "-"}</td>
                                       <td>{formatDeadline(potential.createdAt)}</td>
                                       <td>{potential.followUpAt ? formatDeadline(potential.followUpAt) : "-"}</td>
-                                      <td>{potential.ownerName || linkedTask?.zustaendig || activeUser?.name || "-"}</td>
+                                      <td>{potential.ownerName || linkedTask?.zustaendig || "Nicht zugeordnet"}</td>
                                       <td>{lastHistory ? `${formatInstantDateTime(lastHistory.at)}: ${lastHistory.note}` : "-"}</td>
                                       <td>
                                         <div className={styles.tableActionGroup}>
@@ -58211,9 +58222,11 @@ await addProjectLogbookEntry(
             </div>
             <div className={styles.standardModalBody}>
               <div className={styles.formGrid}>
-                <label className={styles.fullWidth}>
+                <label className={styles.fullWidth} htmlFor="manual-potential-project">
                   Projekt
                   <select
+                    id="manual-potential-project"
+                    aria-label="Projekt"
                     value={manualPotentialProjectId}
                     onChange={(event) => {
                       setManualPotentialProjectId(event.target.value);
@@ -58228,9 +58241,10 @@ await addProjectLogbookEntry(
                     ))}
                   </select>
                 </label>
-                <label className={styles.fullWidth}>
+                <label className={styles.fullWidth} htmlFor="manual-potential-description">
                   Zusatzverkauf
                   <textarea
+                    id="manual-potential-description"
                     rows={4}
                     value={manualPotentialDescription}
                     onChange={(event) => {
@@ -58240,9 +58254,10 @@ await addProjectLogbookEntry(
                     placeholder="Welche Zusatzleistung oder Folgechance wurde erkannt?"
                   />
                 </label>
-                <label>
+                <label htmlFor="manual-potential-estimated-value">
                   Geschätzter Wert
                   <input
+                    id="manual-potential-estimated-value"
                     value={manualPotentialEstimatedValue}
                     onChange={(event) => setManualPotentialEstimatedValue(event.target.value)}
                     placeholder="0,00"
@@ -58323,8 +58338,16 @@ await addProjectLogbookEntry(
                   >
                     <option value="open">Festgestellt</option>
                     <option value="follow_up">Nachfassen geplant</option>
-                    <option value="offered">Angeboten</option>
-                    <option value="completed" disabled={potentialDraft.status !== "completed"}>
+                    <option
+                      value="offered"
+                      disabled={editingPotential.status !== "offered" && editingPotential.status !== "completed"}
+                    >
+                      Angeboten
+                    </option>
+                    <option
+                      value="completed"
+                      disabled={editingPotential.status !== "offered" && editingPotential.status !== "completed"}
+                    >
                       Durchgeführt
                     </option>
                     <option value="lost">Aktuell kein Interesse</option>
@@ -58364,6 +58387,35 @@ await addProjectLogbookEntry(
                       }))
                     }
                     placeholder="0,00"
+                  />
+                </label>
+                <label>
+                  Priorität
+                  <select
+                    value={potentialDraft.priority}
+                    onChange={(event) =>
+                      setPotentialDraft((currentDraft) => ({
+                        ...currentDraft,
+                        priority: event.target.value as ProjectPotentialPriority,
+                      }))
+                    }
+                  >
+                    <option value="low">Niedrig</option>
+                    <option value="normal">Normal</option>
+                    <option value="high">Hoch</option>
+                  </select>
+                </label>
+                <label className={styles.fullWidth}>
+                  Nächster Schritt
+                  <textarea
+                    value={potentialDraft.nextStep}
+                    onChange={(event) =>
+                      setPotentialDraft((currentDraft) => ({
+                        ...currentDraft,
+                        nextStep: event.target.value,
+                      }))
+                    }
+                    placeholder="Konkreten nächsten Vertriebs-Schritt festhalten"
                   />
                 </label>
                 <label>
