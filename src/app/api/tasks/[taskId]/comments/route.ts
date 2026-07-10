@@ -122,6 +122,7 @@ export async function POST(
 
   const notificationRecipientIds = new Set<string>([
     task.ownerId,
+    ...(task.createdById ? [task.createdById] : []),
     ...taskParticipantRows.map((participant) => participant.userId),
   ]);
   notificationRecipientIds.delete(actor.id);

@@ -19980,7 +19980,11 @@ await addProjectLogbookEntry(
       return;
     }
 
-    await loadTasks();
+    const updatedTasks = await loadTasks();
+    const updatedTask = updatedTasks.find((currentTask) => currentTask.id === task.id);
+    if (updatedTask) {
+      setEditingTask(updatedTask);
+    }
     await loadNotifications(true);
   }
 
@@ -21585,7 +21589,7 @@ await addProjectLogbookEntry(
     if (responsibleUser) {
       setZustaendigId(responsibleUser.id);
     }
-    setFaelligkeit("");
+    setFaelligkeit(`${plannedDate}T12:00`);
 
     if (mode === "appointment") {
       setActiveTab("planningBoard");
