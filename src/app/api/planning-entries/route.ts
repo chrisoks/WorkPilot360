@@ -202,7 +202,7 @@ function formatPlanningRequestBody(entry: PlanningEntryRow) {
 }
 
 function isValidTime(value: string) {
-  return /^\d{2}:\d{2}$/.test(value);
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 }
 
 function isValidDateKey(value: string) {
@@ -803,6 +803,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Bitte eine gültige Dauer planen." }, { status: 400 });
   }
 
+  const elapsedMinutes = getMinutesBetween(startTime, endTime);
+  if (!elapsedMinutes) {
+    return NextResponse.json(
+      { error: "Die Endzeit muss nach der Startzeit liegen." },
+      { status: 400 }
+    );
+  }
+
+  if (durationMinutes > elapsedMinutes) {
+    return NextResponse.json(
+      { error: "Die geplante Dauer darf den gewählten Zeitraum nicht überschreiten." },
+      { status: 400 }
+    );
+  }
+
   if (!title) {
     return NextResponse.json({ error: "Bitte einen Titel angeben." }, { status: 400 });
   }
@@ -814,6 +829,15 @@ export async function POST(req: Request) {
   const plannedUser = users.find((user) => user.id === userId && user.isActive);
   if (!plannedUser) {
     return NextResponse.json({ error: "Der gewaehlte Mitarbeiter ist nicht aktiv oder gehoert nicht zur Organisation." }, { status: 400 });
+  }
+
+  const plannedUserBoard = cleanString(plannedUser.planningBoard) || "OK solutions";
+  const plannedUserGroup = cleanString(plannedUser.planningGroup);
+  if (plannedUserBoard !== board || plannedUserGroup !== groupName) {
+    return NextResponse.json(
+      { error: "Der gewählte Mitarbeiter gehört nicht zu diesem Planungsboard und dieser Planungsgruppe." },
+      { status: 400 }
+    );
   }
 
   const employeeName = getUserName(plannedUser);

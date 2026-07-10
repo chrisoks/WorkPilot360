@@ -44209,6 +44209,13 @@ await addProjectLogbookEntry(
                         data-weekend={isWeekend}
                         data-holiday={Boolean(holiday)}
                         data-active={isSelected}
+                        aria-label={`${section.company}, ${day.toLocaleDateString(APP_LOCALE, {
+                          weekday: "long",
+                          day: "2-digit",
+                          month: "2-digit",
+                          year: "numeric",
+                          timeZone: APP_TIME_ZONE,
+                        })}${holiday ? `, Feiertag ${holiday.name}` : ""}`}
                         title={holiday?.name}
                         onClick={() => {
                           setSelectedPlanningDateKey(dateKey);
@@ -44264,6 +44271,15 @@ await addProjectLogbookEntry(
                             data-active={isSelected}
                             data-overloaded={utilization.percent > 100}
                             data-has-planning={hasWeekendPlanning}
+                            aria-label={`${section.company}, ${groupName}, ${day.toLocaleDateString(APP_LOCALE, {
+                              weekday: "long",
+                              day: "2-digit",
+                              month: "2-digit",
+                              year: "numeric",
+                              timeZone: APP_TIME_ZONE,
+                            })}: ${utilization.percent}% Auslastung, ${formatHours(
+                              utilization.plannedHours
+                            )} Stunden geplant von ${formatHours(utilization.capacityHours)} Stunden Kapazität`}
                             title={holiday?.name}
                             onClick={() => {
                               setSelectedPlanningDateKey(dateKey);
