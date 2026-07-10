@@ -841,6 +841,29 @@ export async function POST(req: Request) {
     );
   }
 
+  const blockingAbsences = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT id
+    FROM "Absence"
+    WHERE "organizationId" = ${organization.id}
+      AND "userId" = ${userId}
+      AND date = ${date}::date
+      AND "deletedAt" IS NULL
+      AND status = 'genehmigt'
+      AND type IN ('urlaub', 'krank')
+      AND (
+        COALESCE("dayPart", 'full') = 'full'
+        OR ("dayPart" = 'first-half' AND ${startTime} < '12:00')
+        OR ("dayPart" = 'second-half' AND ${endTime} > '12:00')
+      )
+    LIMIT 1
+  `;
+  if (blockingAbsences.length > 0) {
+    return NextResponse.json(
+      { error: "Der gewählte Mitarbeiter ist in diesem Zeitraum genehmigt abwesend. Die Planung wurde blockiert." },
+      { status: 409 }
+    );
+  }
+
   const employeeName = getUserName(plannedUser);
 
   const existingRows = await prisma.$queryRaw<PlanningEntryRow[]>`
