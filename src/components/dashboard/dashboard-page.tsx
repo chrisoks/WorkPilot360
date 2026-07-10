@@ -4343,6 +4343,23 @@ function parseDateKeyValue(value: string) {
   return parseGermanDate(value);
 }
 
+function isValidDateKeyValue(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+
+  const [, yearValue, monthValue, dayValue] = match;
+  const year = Number(yearValue);
+  const month = Number(monthValue);
+  const day = Number(dayValue);
+  const date = new Date(year, month - 1, day);
+
+  return (
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day
+  );
+}
+
 function parseProjectDate(value?: string) {
   if (!value) return null;
 
@@ -14156,6 +14173,11 @@ export function DashboardPage() {
       return;
     }
 
+    if (!isValidDateKeyValue(planningEntryDate)) {
+      setPlanningEntryError("Bitte ein gültiges Datum auswählen.");
+      return;
+    }
+
     if (!selectedUser) {
       setPlanningEntryError("Bitte einen Mitarbeiter zuweisen.");
       return;
@@ -22040,8 +22062,10 @@ await addProjectLogbookEntry(
       return groupName === "Gesamt" || (user.planningGroup ?? "") === groupName;
     });
   const getWeeklyDayKeyForDate = (dateKey: string): WeeklyDayKey => {
-    const day = new Date(`${dateKey}T12:00`).getDay();
-    return weeklyCapacityDayLabels[(day + 6) % 7].key;
+    const date = isValidDateKeyValue(dateKey) ? parseProjectDate(dateKey) : null;
+    const day = date?.getDay();
+    if (day === undefined) return "monday";
+    return weeklyCapacityDayLabels[(day + 6) % 7]?.key ?? "monday";
   };
   const getUserCapacityForDate = (user: UserOption, dateKey: string) => {
     if (isWeekendDateKey(dateKey)) return 0;
@@ -34287,7 +34311,13 @@ await addProjectLogbookEntry(
       .sort((first, second) =>
         `${second.date} ${second.startTime}`.localeCompare(`${first.date} ${first.startTime}`)
       );
+    const projectConfirmedPlanningEntries = projectPlanningEntries.filter(
+      (entry) => entry.approvalStatus === "confirmed"
+    );
     const projectCurrentMonthPlanningEntries = projectPlanningEntries.filter((entry) =>
+      entry.date.startsWith(currentProjectMonthKey)
+    );
+    const projectCurrentMonthConfirmedPlanningEntries = projectConfirmedPlanningEntries.filter((entry) =>
       entry.date.startsWith(currentProjectMonthKey)
     );
     const projectFinalizedInvoicesByMonth = invoices
@@ -34387,7 +34417,10 @@ await addProjectLogbookEntry(
       ? getProjectBudgetAllocationHours(selectedProjectFile, currentProjectMonthKey)
       : 0;
     const projectMonthPlannedHours =
-      projectCurrentMonthPlanningEntries.reduce((sum, entry) => sum + Number(entry.durationMinutes || 0), 0) / 60;
+      projectCurrentMonthConfirmedPlanningEntries.reduce(
+        (sum, entry) => sum + Number(entry.durationMinutes || 0),
+        0
+      ) / 60;
     const projectMonthHasPlanningBasis =
       projectMonthBudgetHours > 0 && isProjectBudgetDueForPlanningMonth(selectedProjectFile, currentProjectMonthKey);
     const projectMonthOpenPlanningHours = projectMonthHasPlanningBasis
@@ -34398,8 +34431,8 @@ await addProjectLogbookEntry(
     const projectMonthPlanningUsagePercent =
       projectMonthBudgetHours > 0 ? clampPercent((projectMonthPlannedHours / projectMonthBudgetHours) * 100) : 0;
     const projectPlanningTargetEntries = (isSelectedProjectRecurring
-      ? projectCurrentMonthPlanningEntries
-      : projectPlanningEntries
+      ? projectCurrentMonthConfirmedPlanningEntries
+      : projectConfirmedPlanningEntries
     )
       .filter((entry) => !entry.deletedAt)
       .sort((first, second) =>
@@ -34407,8 +34440,11 @@ await addProjectLogbookEntry(
       );
     const projectPlanningTargetEntry = projectPlanningTargetEntries[0] ?? null;
     const projectProgressMonthKey = currentProjectMonthKey;
-    const projectProgressMonthPlanningEntries = projectPlanningEntries.filter((entry) =>
+    const projectProgressMonthPlanningEntries = projectConfirmedPlanningEntries.filter((entry) =>
       entry.date.startsWith(projectProgressMonthKey)
+    );
+    const projectProgressMonthRequestedEntries = projectPlanningEntries.filter(
+      (entry) => entry.date.startsWith(projectProgressMonthKey) && entry.approvalStatus === "requested"
     );
     const projectProgressMonthBudgetHours = projectHasBudgetAllocations
       ? getProjectBudgetAllocationHours(selectedProjectFile, projectProgressMonthKey)
@@ -34441,7 +34477,7 @@ await addProjectLogbookEntry(
     const projectBudgetUsagePercent =
       projectBudgetHours > 0 ? clampPercent((projectTrackedHours / projectBudgetHours) * 100) : 0;
     const projectPlannedAppointmentHours =
-      projectPlanningEntries.reduce((sum, entry) => sum + Number(entry.durationMinutes || 0), 0) / 60;
+      projectConfirmedPlanningEntries.reduce((sum, entry) => sum + Number(entry.durationMinutes || 0), 0) / 60;
     const projectAppointmentRemainingHours =
       projectPlannedAppointmentHours > 0 ? projectPlannedAppointmentHours - projectTrackedHours : 0;
     const projectAppointmentUsagePercent =
@@ -34852,15 +34888,22 @@ await addProjectLogbookEntry(
       );
       return offersInEntryMonth.length === 1;
     };
-    const projectOfferPlanningEntries = isSelectedProjectRecurring
+    const projectOfferPlanningEntries = (isSelectedProjectRecurring
       ? projectComparisonMonthOfferPlanningEntries
-      : projectPlanningEntries.filter(isSingleProjectEntryLinkedToOffer);
+      : projectPlanningEntries.filter(isSingleProjectEntryLinkedToOffer)
+    ).filter((entry) => entry.approvalStatus === "confirmed");
     const projectComparisonMonthStampEntries = projectStampEntries.filter((entry) =>
       entry.date.startsWith(projectComparisonMonth)
     );
     const projectVisiblePlanningEntries = isSelectedProjectRecurring
       ? projectComparisonMonthPlanningEntries
       : projectPlanningEntries;
+    const projectVisibleConfirmedPlanningEntries = projectVisiblePlanningEntries.filter(
+      (entry) => entry.approvalStatus === "confirmed"
+    );
+    const projectVisibleRequestedPlanningEntries = projectVisiblePlanningEntries.filter(
+      (entry) => entry.approvalStatus === "requested"
+    );
     const projectVisibleStampEntries = isSelectedProjectRecurring
       ? projectComparisonMonthStampEntries
       : projectStampEntries;
@@ -35229,7 +35272,7 @@ await addProjectLogbookEntry(
       const monthKey = entry.date.slice(0, 7);
       const monthBudgetHours = getProjectBudgetAllocationHours(selectedProjectFile, monthKey);
       const monthPlannedHours =
-        projectPlanningEntries
+        projectConfirmedPlanningEntries
           .filter((planningEntry) => planningEntry.date.startsWith(monthKey))
           .reduce((sum, planningEntry) => sum + Number(planningEntry.durationMinutes || 0), 0) / 60;
       const hasMonthBudget = monthBudgetHours > 0;
@@ -35282,7 +35325,12 @@ await addProjectLogbookEntry(
         budgetClipState,
         differenceHours,
         hasMonthBudget,
-        planningStatus: planningStatusLabel,
+        planningStatus:
+          entry.approvalStatus === "requested"
+            ? "Freigabe offen"
+            : hasMonthBudget
+              ? planningStatusLabel
+              : "Bestätigt",
         plannedHours,
         plannedAgainstTargetHours,
         targetHours,
@@ -35292,14 +35340,14 @@ await addProjectLogbookEntry(
       };
     });
     const projectPlanningMatchedStampIds = new Set(
-      projectVisiblePlanningEntries.flatMap((entry) =>
+      projectVisibleConfirmedPlanningEntries.flatMap((entry) =>
         getProjectStampEntriesForPlanningEntry(entry).map((stampEntry) => stampEntry.id)
       )
     );
     const projectUnmatchedStampEntries = projectVisibleStampEntries.filter(
       (stampEntry) => !projectPlanningMatchedStampIds.has(stampEntry.id)
     );
-    const projectExpectedStampRows = projectVisiblePlanningEntries.map((entry) => {
+    const projectExpectedStampRows = projectVisibleConfirmedPlanningEntries.map((entry) => {
       const matchingStampEntries = getProjectStampEntriesForPlanningEntry(entry);
       const latestMatchingStampEntry = matchingStampEntries
         .slice()
@@ -35680,7 +35728,7 @@ await addProjectLogbookEntry(
             ? "partial"
             : "open"
         : isSelectedProjectRecurring
-          ? projectCurrentMonthPlanningEntries.length > 0
+          ? projectCurrentMonthConfirmedPlanningEntries.length > 0
             ? "done"
             : "open"
         : projectOpenOfferPlanningHours <= 0
@@ -35922,14 +35970,18 @@ await addProjectLogbookEntry(
       {
         id: "appointment",
         label: "TerWu",
-        state: isSelectedProjectRecurring && projectHasBudgetAllocations
-          ? projectProgressMonthState
+        state: isSelectedProjectRecurring
+          ? projectCurrentMonthPlanningEntries.length > 0
+            ? "done"
+            : "open"
           : singleProjectOfferAppointmentState,
         hint:
-          isSelectedProjectRecurring && projectHasBudgetAllocations
-            ? projectProgressMonthState === "done"
-              ? `${projectProgressMonthPlanningEntries.length} Termin(e) im ${formatMonthLabel(projectProgressMonthKey)} decken das Monatskontingent ab`
-              : projectProgressMonthHint
+          isSelectedProjectRecurring
+            ? projectProgressMonthRequestedEntries.length > 0
+              ? `${projectProgressMonthRequestedEntries.length} Terminwunsch/-wünsche warten auf Freigabe`
+              : projectProgressMonthPlanningEntries.length > 0
+                ? `${projectProgressMonthPlanningEntries.length} bestätigte Termin(e) im ${formatMonthLabel(projectProgressMonthKey)}`
+                : `Noch kein Terminwunsch oder Termin im ${formatMonthLabel(projectProgressMonthKey)} vorhanden`
             : singleProjectOfferAppointmentHint,
         onClick: () => setProjectFileTab("appointments"),
       },
@@ -35941,7 +35993,7 @@ await addProjectLogbookEntry(
           : projectHasOnlyLostOffers
             ? "open"
           : projectLaborComparisonRows.length === 0
-            ? projectPlanningEntries.length > 0
+            ? projectConfirmedPlanningEntries.length > 0
               ? "done"
               : "open"
             : projectOpenOfferPlanningHours > 0
@@ -35952,9 +36004,11 @@ await addProjectLogbookEntry(
           : projectHasOnlyLostOffers
         ? "Keine aktive Angebotsgrundlage für die Planung"
           : projectLaborComparisonRows.length === 0
-            ? projectPlanningEntries.length > 0
+            ? projectConfirmedPlanningEntries.length > 0
               ? "Projekttermine vorhanden"
-              : "Noch keine Angebotszeiten oder Termine vorhanden"
+              : projectPlanningEntries.length > 0
+                ? "Terminwunsch wartet auf Freigabe"
+                : "Noch keine Angebotszeiten oder Termine vorhanden"
             : projectOpenOfferPlanningHours > 0
               ? `${formatHours(projectOpenOfferPlanningHours)} Std. noch offen`
               : "Alle Zeiten komplett verplant",
@@ -38626,8 +38680,15 @@ await addProjectLogbookEntry(
                   <h2>Planungstermine</h2>
                   <div className={styles.headerActions}>
                     <span>
-                      {projectVisiblePlanningEntries.length} Termin
-                      {projectVisiblePlanningEntries.length === 1 ? "" : "e"}
+                      {projectVisibleConfirmedPlanningEntries.length} Termin
+                      {projectVisibleConfirmedPlanningEntries.length === 1 ? "" : "e"}
+                      {projectVisibleRequestedPlanningEntries.length > 0
+                        ? ` · ${projectVisibleRequestedPlanningEntries.length} ${
+                            projectVisibleRequestedPlanningEntries.length === 1
+                              ? "Terminwunsch"
+                              : "Terminwünsche"
+                          }`
+                        : ""}
                     </span>
                     <button
                       type="button"
@@ -38833,7 +38894,16 @@ await addProjectLogbookEntry(
                             </td>
                             <td>{budgetText}</td>
                             <td>
-                              <span className={styles.planningStatusPill} data-status={planningStatus === "zu viel geplant" ? "over" : "confirmed"}>
+                              <span
+                                className={styles.planningStatusPill}
+                                data-status={
+                                  entry.approvalStatus === "requested"
+                                    ? "requested"
+                                    : planningStatus === "zu viel geplant"
+                                      ? "over"
+                                      : "confirmed"
+                                }
+                              >
                                 {planningStatus}
                               </span>
                             </td>

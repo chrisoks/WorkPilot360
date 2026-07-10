@@ -205,6 +205,23 @@ function isValidTime(value: string) {
   return /^\d{2}:\d{2}$/.test(value);
 }
 
+function isValidDateKey(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+
+  const [, yearValue, monthValue, dayValue] = match;
+  const year = Number(yearValue);
+  const month = Number(monthValue);
+  const day = Number(dayValue);
+  const date = new Date(year, month - 1, day);
+
+  return (
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day
+  );
+}
+
 function getTimeMinutes(value: string) {
   const [hour, minute] = value.split(":").map(Number);
   return hour * 60 + minute;
@@ -554,6 +571,103 @@ function formatPlanningTimeChangeBody(existingEntry: PlanningEntryRow | null, sa
   return `Dein Termin „${title}“ wurde auf ${formatDateKeyDisplay(savedEntry.date)}, ${savedEntry.startTime}-${savedEntry.endTime} geändert.`;
 }
 
+async function createPlanningLifecycleNotification(input: {
+  organizationId: string;
+  userId: string;
+  actorUserId: string;
+  entryId: string;
+  title: string;
+  body: string;
+}) {
+  if (!input.userId || input.userId === input.actorUserId) return;
+
+  await ensureNotificationLinkColumns();
+  const notification = await prisma.notification.create({
+    data: {
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      userId: input.userId,
+      taskId: null,
+      channel: "app",
+      subject: input.title,
+      body: input.body,
+      linkTarget: "planning-entry",
+      linkTargetId: input.entryId,
+      linkLabel: "Termin öffnen",
+      sentAt: null,
+    },
+  });
+
+  await sendNotificationMailSafely({
+    notificationId: notification.id,
+    userId: input.userId,
+    subject: input.title,
+    body: input.body,
+  });
+  await sendPushToUserSafely({
+    organizationId: input.organizationId,
+    userId: input.userId,
+    payload: {
+      title: input.title,
+      body: input.body,
+      notificationId: notification.id,
+      linkTarget: "planning-entry",
+      linkTargetId: input.entryId,
+      url: `/?target=planning-entry&targetId=${encodeURIComponent(input.entryId)}`,
+    },
+  });
+}
+
+async function notifyPlanningEntryConfirmed(input: {
+  organizationId: string;
+  entry: PlanningEntryRow;
+  actorUserId: string;
+  wasRequested: boolean;
+}) {
+  const recipientIds = new Set(
+    [cleanString(input.entry.userId), cleanString(input.entry.requestedByUserId)].filter(Boolean)
+  );
+  const title = input.wasRequested ? "Terminwunsch bestätigt" : "Neuer Planungstermin";
+  const body = input.wasRequested
+    ? `Der Terminwunsch „${input.entry.title}“ am ${formatDateKeyDisplay(input.entry.date)} von ${input.entry.startTime} bis ${input.entry.endTime} wurde bestätigt.`
+    : `Für dich wurde der Termin „${input.entry.title}“ am ${formatDateKeyDisplay(input.entry.date)} von ${input.entry.startTime} bis ${input.entry.endTime} eingeplant.`;
+
+  for (const userId of recipientIds) {
+    await createPlanningLifecycleNotification({
+      organizationId: input.organizationId,
+      userId,
+      actorUserId: input.actorUserId,
+      entryId: input.entry.id,
+      title,
+      body,
+    });
+  }
+}
+
+async function notifyPlanningEntryDeleted(input: {
+  organizationId: string;
+  entry: PlanningEntryRow;
+  actorUserId: string;
+}) {
+  const recipientIds = new Set(
+    [cleanString(input.entry.userId), cleanString(input.entry.requestedByUserId)].filter(Boolean)
+  );
+  const wasRequested = input.entry.approvalStatus === "requested";
+  const title = wasRequested ? "Terminwunsch zurückgezogen" : "Planungstermin abgesagt";
+  const body = `${wasRequested ? "Der Terminwunsch" : "Der Termin"} „${input.entry.title}“ am ${formatDateKeyDisplay(input.entry.date)} von ${input.entry.startTime} bis ${input.entry.endTime} wurde gelöscht.`;
+
+  for (const userId of recipientIds) {
+    await createPlanningLifecycleNotification({
+      organizationId: input.organizationId,
+      userId,
+      actorUserId: input.actorUserId,
+      entryId: input.entry.id,
+      title,
+      body,
+    });
+  }
+}
+
 async function notifyPlannedEmployeeAboutTimeChange(input: {
   organizationId: string;
   existingEntry: PlanningEntryRow | null;
@@ -561,39 +675,15 @@ async function notifyPlannedEmployeeAboutTimeChange(input: {
   actorUserId: string;
 }) {
   const targetUserId = cleanString(input.entry.userId);
-  if (!targetUserId || targetUserId === input.actorUserId) return;
-
-  await ensureNotificationLinkColumns();
-
   const title = "Termin geändert";
   const body = formatPlanningTimeChangeBody(input.existingEntry, input.entry);
-  const notification = await prisma.notification.create({
-    data: {
-      id: randomUUID(),
-      organizationId: input.organizationId,
-      userId: targetUserId,
-      taskId: null,
-      channel: "app",
-      subject: title,
-      body,
-      linkTarget: "planning-entry",
-      linkTargetId: input.entry.id,
-      linkLabel: "Termin öffnen",
-      sentAt: null,
-    },
-  });
-
-  await sendPushToUserSafely({
+  await createPlanningLifecycleNotification({
     organizationId: input.organizationId,
     userId: targetUserId,
-    payload: {
-      title,
-      body,
-      notificationId: notification.id,
-      linkTarget: "planning-entry",
-      linkTargetId: input.entry.id,
-      url: `/?target=planning-entry&targetId=${encodeURIComponent(input.entry.id)}`,
-    },
+    actorUserId: input.actorUserId,
+    entryId: input.entry.id,
+    title,
+    body,
   });
 }
 
@@ -703,6 +793,10 @@ export async function POST(req: Request) {
 
   if (!board || !groupName || !date || !isValidTime(startTime) || !isValidTime(endTime)) {
     return NextResponse.json({ error: "Planungsboard, Gruppe, Datum und Uhrzeit sind Pflicht." }, { status: 400 });
+  }
+
+  if (!isValidDateKey(date)) {
+    return NextResponse.json({ error: "Bitte ein gültiges Datum im Format JJJJ-MM-TT angeben." }, { status: 400 });
   }
 
   if (!durationMinutes) {
@@ -948,6 +1042,14 @@ export async function POST(req: Request) {
 
   await notifyPlanningResponsibles(savedEntry, organization.id);
   await notifyPlanningOverlap(savedEntry, organization.id, actorUserId);
+  if (savedEntry.approvalStatus === "confirmed" && (!existingEntry || existingEntry.approvalStatus === "requested")) {
+    await notifyPlanningEntryConfirmed({
+      organizationId: organization.id,
+      entry: savedEntry,
+      actorUserId,
+      wasRequested: existingEntry?.approvalStatus === "requested",
+    });
+  }
   if (actorCanManagePlanning && didPlanningTimeChange(existingEntry, savedEntry)) {
     await notifyPlannedEmployeeAboutTimeChange({
       organizationId: organization.id,
@@ -1051,6 +1153,12 @@ export async function DELETE(req: Request) {
     WHERE "id" = ${id}
       AND "organizationId" = ${organization.id}
   `;
+
+  await notifyPlanningEntryDeleted({
+    organizationId: organization.id,
+    entry,
+    actorUserId,
+  });
 
   return NextResponse.json({ ok: true });
 }
