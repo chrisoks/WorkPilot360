@@ -43729,12 +43729,19 @@ await addProjectLogbookEntry(
       (project.timeBudgetAllocations ?? []).some((allocation) => parseHoursInput(allocation.hours) > 0);
     const getProjectPlannedHoursForMonth = (projectId: string, monthKey: string) =>
       planningEntries
-        .filter((entry) => !entry.deletedAt && entry.projectId === projectId && entry.date.startsWith(monthKey))
+        .filter(
+          (entry) =>
+            !entry.deletedAt &&
+            entry.approvalStatus === "confirmed" &&
+            entry.projectId === projectId &&
+            entry.date.startsWith(monthKey)
+        )
         .reduce((sum, entry) => sum + Number(entry.durationMinutes || 0) / 60, 0);
     const hasProjectPlanningInOpenMonths = (projectId: string) =>
       planningEntries.some(
         (entry) =>
           !entry.deletedAt &&
+          entry.approvalStatus === "confirmed" &&
           entry.projectId === projectId &&
           openPlanningMonths.some((month) => entry.date.startsWith(month.key))
       );
