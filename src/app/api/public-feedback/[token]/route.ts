@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
+import { sendNotificationMailSafely } from "@/lib/mail/notifications";
 import { ensureSalesHubTables } from "@/lib/sales-hub/ensure";
 
 type RequestRow = {
@@ -46,17 +47,26 @@ async function createHotAlert(input: {
   `;
 
   for (const recipient of recipients) {
+    const notificationId = randomUUID();
+    const subject = "KuZu Hot-Alert";
+    const notificationBody = `${input.customerName || "Ein Kunde"} hat ${input.rating} Sterne vergeben${input.wantsContact ? " und Kontakt gewünscht" : ""}.`;
     await prisma.$executeRaw`
       INSERT INTO "Notification" (
         "id", "organizationId", "userId", "taskId", "channel", "subject", "body",
         "linkTarget", "linkTargetId", "linkLabel", "sentAt", "createdAt"
       ) VALUES (
-        ${randomUUID()}, ${input.organizationId}, ${recipient.id}, NULL, 'app',
-        'KuZu Hot-Alert',
-        ${`${input.customerName || "Ein Kunde"} hat ${input.rating} Sterne vergeben${input.wantsContact ? " und Kontakt gewünscht" : ""}.`},
+        ${notificationId}, ${input.organizationId}, ${recipient.id}, NULL, 'app',
+        ${subject},
+        ${notificationBody},
         'customer-feedback', ${input.feedbackId}, 'Bewertung ansehen', NULL, CURRENT_TIMESTAMP
       )
     `;
+    await sendNotificationMailSafely({
+      notificationId,
+      userId: recipient.id,
+      subject,
+      body: notificationBody,
+    });
   }
 }
 
