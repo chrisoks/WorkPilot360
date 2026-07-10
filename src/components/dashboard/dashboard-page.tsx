@@ -6254,9 +6254,8 @@ export function DashboardPage() {
     () => contentItems.find((item) => item.id === editingContentItemId),
     [contentItems, editingContentItemId]
   );
-  const mayAccessEmployeeCosts = ["ramona eid", "christian eid"].includes(
-    (activeUser?.name ?? "").trim().toLowerCase()
-  );
+  const mayAccessEmployeeCosts =
+    activeUser?.role === "ADMIN" || activeUser?.role === "GESCHAEFTSFUEHRER";
   const canManageProjectTimeEntries =
     activeUser?.role === "ADMIN" ||
     activeUser?.role === "GESCHAEFTSFUEHRER" ||
@@ -45077,7 +45076,7 @@ await addProjectLogbookEntry(
                         />
                       </label>
                       <label className={styles.fullWidth}>
-                        Straxe & Hausnummer
+                        Straße & Hausnummer
                         <input
                           value={employeeStreet}
                           disabled={!mayManageUsers}
@@ -55030,7 +55029,7 @@ await addProjectLogbookEntry(
                     <input defaultValue="04.04.2024" />
                   </label>
                   <label className={styles.fullWidth}>
-                    Straxe & Hausnummer
+                    Straße & Hausnummer
                     <input defaultValue="Im Krötenteich 3/4" />
                   </label>
                   <label>
@@ -55844,7 +55843,7 @@ await addProjectLogbookEntry(
               {contactFormTab === "address" && (
               <section className={styles.contactFormGrid}>
                 <label>
-                  Straxe & Hausnummer
+                  Straße & Hausnummer
                   <input
                     value={contactDraft.street}
                     onChange={(event) => updateContactDraft("street", event.target.value)}

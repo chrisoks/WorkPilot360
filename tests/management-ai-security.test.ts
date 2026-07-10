@@ -25,6 +25,10 @@ describe("management ai security", () => {
     expect(asksForSalesRestrictedData("Was verdient Christian?")).toBe(true);
     expect(asksForSalesRestrictedData("Welche internen Kostensaetze haben die Mitarbeiter?")).toBe(true);
     expect(asksForSalesRestrictedData("Welche Mitarbeiter sind am teuersten?")).toBe(true);
+    expect(asksForSalesRestrictedData("Welcher Mitarbeiter ist für uns am günstigsten?")).toBe(true);
+    expect(asksForSalesRestrictedData("Wer kostet uns im Unternehmen am meisten?")).toBe(true);
+    expect(asksForSalesRestrictedData("Vergleiche Christian und Ramona nach Arbeitgeberkosten.")).toBe(true);
+    expect(asksForSalesRestrictedData("Wie hoch ist unser Personalaufwand?")).toBe(true);
     expect(asksForSalesRestrictedData("Berechne Kosten je Mitarbeiter aus Stunden und Marge.")).toBe(true);
     expect(asksForSalesRestrictedData("Welche Angebote soll ich heute nachfassen?")).toBe(false);
   });
