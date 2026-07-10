@@ -22149,6 +22149,7 @@ await addProjectLogbookEntry(
   const getPlanningEntriesForScope = (company: string, groupName: string, dateKey: string) =>
     planningEntries.filter((entry) => {
       if (entry.deletedAt) return false;
+      if (entry.approvalStatus !== "confirmed") return false;
       if (entry.date !== dateKey) return false;
       if (entry.board !== company) return false;
       if (groupName === "Gesamt") return true;
@@ -22175,6 +22176,7 @@ await addProjectLogbookEntry(
       .filter(
         (entry) =>
           !entry.deletedAt &&
+          entry.approvalStatus === "confirmed" &&
           entry.date === dateKey &&
           entry.groupName === groupName &&
           entry.employeeName === employeeName

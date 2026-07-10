@@ -427,7 +427,7 @@ async function notifyPlanningResponsibles(entry: PlanningEntryRow, organizationI
 }
 
 async function notifyPlanningOverlap(entry: PlanningEntryRow, organizationId: string, actorUserId = "") {
-  if (!entry.userId) return;
+  if (!entry.userId || entry.approvalStatus !== "confirmed") return;
 
   await ensureNotificationLinkColumns();
   await prisma.$executeRaw`
@@ -443,6 +443,7 @@ async function notifyPlanningOverlap(entry: PlanningEntryRow, organizationId: st
       AND "userId" = ${entry.userId}
       AND "date" = ${entry.date}
       AND "deletedAt" IS NULL
+      AND COALESCE("approvalStatus", 'confirmed') = 'confirmed'
   `;
 
   const conflictingEntries = overlaps.filter(
