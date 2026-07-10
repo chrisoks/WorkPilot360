@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { getDeadlineSettings } from "@/lib/company-settings/deadlines";
 import { recordStatusTransition, seedCurrentStatusTimeline } from "@/lib/status-tracking";
-import { canAssignTasksToOthers, canDeleteTasks, canReadTask } from "@/lib/permissions";
+import { canAssignTasksToOthers, canDeleteTasks, canEditTask, canReadTask } from "@/lib/permissions";
 import { sendTaskNotificationMailSafely } from "@/lib/mail/task-notifications";
 import {
   CustomerClassification,
@@ -1295,10 +1295,14 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Aufgabe wurde nicht gefunden." }, { status: 404 });
     }
 
-    const canAddParticipant =
-      canAssignTasksToOthers(actor) ||
-      existingTask.ownerId === actor.id ||
-      existingTask.createdById === actor.id;
+    const existingParticipants =
+      (await getTaskParticipants([existingTask.id])).get(existingTask.id) ?? [];
+    const canAddParticipant = canEditTask(actor, {
+      ownerId: existingTask.ownerId,
+      teamId: existingTask.teamId,
+      createdById: existingTask.createdById,
+      participantUserIds: getTaskParticipantUserIds(existingParticipants),
+    });
 
     if (!canAddParticipant) {
       return NextResponse.json(
@@ -1365,7 +1369,14 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Aufgabe wurde nicht gefunden." }, { status: 404 });
   }
   const existingParticipants = (await getTaskParticipants([existingTask.id])).get(existingTask.id) ?? [];
-  if (!canActorReadTask(actor, existingTask, existingParticipants)) {
+  if (
+    !canEditTask(actor, {
+      ownerId: existingTask.ownerId,
+      teamId: existingTask.teamId,
+      createdById: existingTask.createdById,
+      participantUserIds: getTaskParticipantUserIds(existingParticipants),
+    })
+  ) {
     return NextResponse.json(
       { error: "Du darfst diese Aufgabe nicht bearbeiten." },
       { status: 403 }

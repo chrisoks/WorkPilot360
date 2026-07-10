@@ -38,6 +38,11 @@ export function canReadTask(user: TaskAccessUser, task: TaskAccessTarget): boole
   return false;
 }
 
+export function canEditTask(user: TaskAccessUser, task: TaskAccessTarget): boolean {
+  if (task.ownerId === user.id || task.createdById === user.id) return true;
+  return canAssignTasksToOthers(user) && canReadTask(user, task);
+}
+
 export function canManageOffers(user: RoleCarrier): boolean {
   return (
     user.role === Role.ADMIN ||
