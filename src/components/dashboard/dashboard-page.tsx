@@ -21589,7 +21589,7 @@ await addProjectLogbookEntry(
     if (responsibleUser) {
       setZustaendigId(responsibleUser.id);
     }
-    setFaelligkeit(`${plannedDate}T12:00`);
+    setFaelligkeit("");
 
     if (mode === "appointment") {
       setActiveTab("planningBoard");
