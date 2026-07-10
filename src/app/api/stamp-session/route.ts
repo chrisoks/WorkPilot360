@@ -85,9 +85,24 @@ type ProjectRow = {
   title: string;
   customer: string | null;
   contactId?: string | null;
+  addressContactId?: string | null;
+  address?: string | null;
   projectType?: string | null;
   branch?: string | null;
   responsibleName: string | null;
+};
+
+type AutoInvoiceContactRow = {
+  companyName: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  mainContactName: string | null;
+  street: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  postalCode: string | null;
+  city: string | null;
+  paymentTermDays: number | null;
 };
 
 type HourlyPlanningStampContext = {
@@ -113,6 +128,14 @@ type AutoInvoiceDraftRow = {
   id: string;
   invoiceNumber: string;
   company?: string | null;
+  customerName?: string | null;
+  customerStreet?: string | null;
+  customerCity?: string | null;
+  contactName?: string | null;
+  internalContactName?: string | null;
+  serviceDate?: string | null;
+  paymentTermDays?: number | null;
+  dueDate?: string | null;
 };
 
 type AutoInvoiceLineRow = {
@@ -284,7 +307,8 @@ function addDaysAtNoon(days: number) {
 
 async function getProjectForInterruptedStamp(organizationId: string, projectId: string) {
   const rows = await prisma.$queryRaw<ProjectRow[]>`
-    SELECT id, "projectNumber", title, customer, "contactId", "projectType", branch, "responsibleName"
+    SELECT id, "projectNumber", title, customer, "contactId", "addressContactId", address,
+           "projectType", branch, "responsibleName"
     FROM "WorkPilotProject"
     WHERE "organizationId" = ${organizationId}
       AND id = ${projectId}
@@ -315,6 +339,62 @@ function getProjectInvoiceCompany(project: ProjectRow) {
 
 function getMonthKeyFromDateKey(dateKey: string) {
   return cleanString(dateKey).slice(0, 7);
+}
+
+function cleanPaymentTermDays(value: unknown) {
+  if (value === null || value === undefined || value === "") return 14;
+  const parsed = Math.round(Number(value));
+  if (!Number.isFinite(parsed)) return 14;
+  return Math.min(Math.max(parsed, 0), 365);
+}
+
+function addDaysToDateKey(dateKey: string, days: number) {
+  const parts = cleanString(dateKey).split("-").map(Number);
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return "";
+  const [year, month, day] = parts;
+  const date = new Date(year, month - 1, day, 12, 0, 0);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return "";
+  date.setDate(date.getDate() + cleanPaymentTermDays(days));
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+async function getAutoInvoiceContact(organizationId: string, project: ProjectRow) {
+  const contactId = cleanString(project.contactId);
+  const addressContactId = cleanString(project.addressContactId);
+  if (!contactId && !addressContactId) return null;
+
+  const rows = await prisma.$queryRaw<AutoInvoiceContactRow[]>`
+    SELECT "companyName", "firstName", "lastName", "mainContactName", street,
+           "addressLine1", "addressLine2", "postalCode", city, "paymentTermDays"
+    FROM "Contact"
+    WHERE "organizationId" = ${organizationId}
+      AND id IN (${contactId || "__no_contact__"}, ${addressContactId || "__no_address_contact__"})
+    ORDER BY CASE WHEN id = ${addressContactId || "__no_address_contact__"} THEN 0 ELSE 1 END,
+             "isInvoiceRecipient" DESC,
+             "isMainContact" DESC
+    LIMIT 1
+  `;
+  return rows[0] ?? null;
+}
+
+function getAutoInvoiceContactDefaults(project: ProjectRow, contact: AutoInvoiceContactRow | null) {
+  const contactPersonName = [contact?.firstName, contact?.lastName].map(cleanString).filter(Boolean).join(" ");
+  const customerName = cleanString(contact?.companyName) || cleanString(project.customer) || contactPersonName;
+  const customerStreet = [contact?.street, contact?.addressLine1, contact?.addressLine2]
+    .map(cleanString)
+    .filter((value, index, values) => Boolean(value) && values.indexOf(value) === index)
+    .join(", ") || cleanString(project.address).split(",")[0] || "";
+  const customerCity = [contact?.postalCode, contact?.city].map(cleanString).filter(Boolean).join(" ") ||
+    cleanString(project.address).split(",").slice(1).join(",").trim();
+
+  return {
+    customerName,
+    customerStreet,
+    customerCity,
+    contactName: cleanString(contact?.mainContactName) || contactPersonName,
+    internalContactName: cleanString(project.responsibleName),
+    paymentTermDays: cleanPaymentTermDays(contact?.paymentTermDays),
+  };
 }
 
 function getCleanInvoiceLineTitle(catalogItem: CatalogInvoiceItemRow) {
@@ -352,10 +432,15 @@ async function getOrCreateHourlyInvoiceDraft(input: {
   organizationId: string;
   project: ProjectRow;
   monthKey: string;
+  serviceDate: string;
 }) {
   const company = getProjectInvoiceCompany(input.project);
+  const contact = await getAutoInvoiceContact(input.organizationId, input.project);
+  const defaults = getAutoInvoiceContactDefaults(input.project, contact);
+  const dueDate = addDaysToDateKey(input.serviceDate, defaults.paymentTermDays);
   const existingRows = await prisma.$queryRaw<AutoInvoiceDraftRow[]>`
-    SELECT id, "invoiceNumber", company
+    SELECT id, "invoiceNumber", company, "customerName", "customerStreet", "customerCity",
+           "contactName", "internalContactName", "serviceDate", "paymentTermDays", "dueDate"
     FROM "Invoice"
     WHERE "organizationId" = ${input.organizationId}
       AND "projectId" = ${input.project.id}
@@ -366,14 +451,21 @@ async function getOrCreateHourlyInvoiceDraft(input: {
     LIMIT 1
   `;
   if (existingRows[0]) {
-    if (existingRows[0].company !== company) {
-      await prisma.$executeRaw`
-        UPDATE "Invoice"
-        SET company = ${company}, "updatedAt" = CURRENT_TIMESTAMP
-        WHERE "organizationId" = ${input.organizationId}
-          AND id = ${existingRows[0].id}
-      `;
-    }
+    await prisma.$executeRaw`
+      UPDATE "Invoice"
+      SET company = ${company},
+          "customerName" = CASE WHEN COALESCE("customerName", '') = '' THEN ${defaults.customerName} ELSE "customerName" END,
+          "customerStreet" = CASE WHEN COALESCE("customerStreet", '') = '' THEN ${defaults.customerStreet} ELSE "customerStreet" END,
+          "customerCity" = CASE WHEN COALESCE("customerCity", '') = '' THEN ${defaults.customerCity} ELSE "customerCity" END,
+          "contactName" = CASE WHEN COALESCE("contactName", '') = '' THEN ${defaults.contactName} ELSE "contactName" END,
+          "internalContactName" = CASE WHEN COALESCE("internalContactName", '') = '' THEN ${defaults.internalContactName} ELSE "internalContactName" END,
+          "serviceDate" = CASE WHEN COALESCE("serviceDate", '') = '' THEN ${input.serviceDate} ELSE "serviceDate" END,
+          "paymentTermDays" = CASE WHEN COALESCE("serviceDate", '') = '' THEN ${defaults.paymentTermDays} ELSE "paymentTermDays" END,
+          "dueDate" = CASE WHEN COALESCE("dueDate", '') = '' THEN ${dueDate} ELSE "dueDate" END,
+          "updatedAt" = CURRENT_TIMESTAMP
+      WHERE "organizationId" = ${input.organizationId}
+        AND id = ${existingRows[0].id}
+    `;
     return existingRows[0];
   }
 
@@ -383,15 +475,17 @@ async function getOrCreateHourlyInvoiceDraft(input: {
   await prisma.$executeRaw`
     INSERT INTO "Invoice" (
       "id", "organizationId", "projectId", "projectNumber", "projectTitle", "company",
-      "invoiceNumber", "status", "billingSource", "customerName", "plannedExecutionMonth",
+      "invoiceNumber", "status", "billingSource", "customerName", "customerStreet", "customerCity",
+      "contactName", "internalContactName", "plannedExecutionMonth",
       "serviceDate", "introText", "closingText", "discountPercent", "paymentTermDays",
       "dueDate", "netTotal", "vatRate", "grossTotal", "pdfData", "updatedAt"
     ) VALUES (
       ${invoiceId}, ${input.organizationId}, ${input.project.id}, ${input.project.projectNumber || input.project.id},
       ${input.project.title}, ${company}, ${invoiceNumber}, ${"Entwurf"}, ${"hourly-recurring"},
-      ${customerName}, ${input.monthKey}, ${""},
-      ${"wir stellen Ihnen folgende Leistungen in Rechnung."}, ${""}, ${0}, ${14},
-      ${""}, ${0}, ${19}, ${0}, ${null}, CURRENT_TIMESTAMP
+      ${defaults.customerName || customerName}, ${defaults.customerStreet}, ${defaults.customerCity},
+      ${defaults.contactName}, ${defaults.internalContactName}, ${input.monthKey}, ${input.serviceDate},
+      ${"wir stellen Ihnen folgende Leistungen in Rechnung."}, ${""}, ${0}, ${defaults.paymentTermDays},
+      ${dueDate}, ${0}, ${19}, ${0}, ${null}, CURRENT_TIMESTAMP
     )
   `;
 
@@ -460,6 +554,7 @@ async function attachStampEntryToHourlyInvoiceDraft(input: {
     organizationId: input.organizationId,
     project,
     monthKey,
+    serviceDate: input.entry.date,
   });
   const lineTitle = getCleanInvoiceLineTitle(catalogItem);
   const existingLineRows = await prisma.$queryRaw<AutoInvoiceLineRow[]>`

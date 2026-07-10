@@ -10409,11 +10409,12 @@ export function DashboardPage() {
     ]);
     setStampEntries((currentEntries) =>
       currentEntries.map((entry) =>
-        entry.invoiceId === invoice.id
+        entry.invoiceId === invoice.id || entry.invoiceNumber === invoice.invoiceNumber
           ? { ...entry, invoiceId: "", invoiceNumber: "", invoicedAt: "" }
           : entry
       )
     );
+    await loadProjectTimeEntries();
     await addProjectLogbookEntry(
       selectedProjectFile.id,
       "Rechnung",
@@ -10456,11 +10457,12 @@ export function DashboardPage() {
     setSelectedBatchDraftInvoiceIds((currentIds) => currentIds.filter((invoiceId) => invoiceId !== deletedInvoice.id));
     setStampEntries((currentEntries) =>
       currentEntries.map((entry) =>
-        entry.invoiceId === invoice.id
+        entry.invoiceId === invoice.id || entry.invoiceNumber === invoice.invoiceNumber
           ? { ...entry, invoiceId: "", invoiceNumber: "", invoicedAt: "" }
           : entry
       )
     );
+    await loadProjectTimeEntries();
     await addProjectLogbookEntry(
       invoiceProject.id,
       "Rechnung",
