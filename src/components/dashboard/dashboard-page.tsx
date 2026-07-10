@@ -6229,6 +6229,10 @@ export function DashboardPage() {
     canViewFullOverviewAnalytics || activeUser?.role === "FUEHRUNGSKRAFT";
   const canViewAccountingOverviewAnalytics =
     canViewFullOverviewAnalytics || activeUser?.role === "BUCHHALTUNG";
+  const mayManagePlanningEntries =
+    activeUser?.role === "ADMIN" ||
+    activeUser?.role === "GESCHAEFTSFUEHRER" ||
+    activeUser?.role === "FUEHRUNGSKRAFT";
   const canViewSensitiveOverviewFinancials = canViewFullOverviewAnalytics;
   const personalAssessmentTargetUserId =
     canManageEmployeeAssessments && selectedPersonalUserId ? selectedPersonalUserId : activeUserId;
@@ -13744,20 +13748,34 @@ export function DashboardPage() {
     approvalStatus: PlanningEntryApprovalStatus;
     requireManualAssignment: boolean;
   }> = {}) {
+    const approvalStatus = options.approvalStatus ?? "confirmed";
+    if (!mayManagePlanningEntries && approvalStatus !== "requested") {
+      setErrorMessage("Mitarbeiter können nur eigene Terminwünsche anlegen.");
+      return;
+    }
+
+    const isOwnEmployeeRequest = !mayManagePlanningEntries && approvalStatus === "requested";
     const shouldRequireManualAssignment = options.requireManualAssignment === true;
-    const board = shouldRequireManualAssignment ? "" : options.board ?? "OK solutions";
+    const ownBoard: PlanningBoardCompany =
+      activeUser?.planningBoard === "OK immocare" ? "OK immocare" : "OK solutions";
+    const board = isOwnEmployeeRequest
+      ? ownBoard
+      : shouldRequireManualAssignment
+        ? ""
+        : options.board ?? "OK solutions";
     const groups = getPlanningEntryGroups(board);
-    const groupName = options.groupName && groups.includes(options.groupName) ? options.groupName : groups[0] ?? "";
+    const preferredGroup = isOwnEmployeeRequest ? activeUser?.planningGroup ?? "" : options.groupName ?? "";
+    const groupName = groups.includes(preferredGroup) ? preferredGroup : groups[0] ?? "";
     const startTime = options.startTime ?? "08:00";
     const startTimeIndex = planningTimelineSlots.indexOf(startTime);
     const endTime =
       options.endTime ??
       planningTimelineSlots[Math.min(startTimeIndex >= 0 ? startTimeIndex + 4 : 4, planningTimelineSlots.length - 1)] ??
       "09:00";
-    const defaultUserId = options.userId ?? "";
+    const defaultUserId = isOwnEmployeeRequest ? activeUserId : options.userId ?? "";
 
     resetPlanningEntryForm();
-    setPlanningEntryApprovalStatus(options.approvalStatus ?? "confirmed");
+    setPlanningEntryApprovalStatus(approvalStatus);
     setPlanningEntryBoard(board);
     setPlanningEntryGroup(groupName);
     const nextPlanningDate = options.date ?? formatDateKey(new Date());
@@ -13771,7 +13789,19 @@ export function DashboardPage() {
     setIsPlanningEntryModalOpen(true);
   }
 
+  function canModifyPlanningEntry(entry: PlanningEntry) {
+    const mayEditOwnRequest =
+      entry.approvalStatus === "requested" &&
+      (entry.userId === activeUserId || entry.requestedByUserId === activeUserId);
+    return mayManagePlanningEntries || mayEditOwnRequest;
+  }
+
   function openEditPlanningEntryModal(entry: PlanningEntry) {
+    if (!canModifyPlanningEntry(entry)) {
+      setErrorMessage("Mitarbeiter können nur eigene offene Terminwünsche bearbeiten.");
+      return;
+    }
+
     const board = (entry.board === "OK immocare" ? "OK immocare" : "OK solutions") as PlanningBoardCompany;
     const groups = getPlanningEntryGroups(board);
     const groupName = groups.includes(entry.groupName) ? entry.groupName : groups[0];
@@ -14580,6 +14610,11 @@ export function DashboardPage() {
 
   async function deletePlanningEntryById(entryId: string) {
     if (!entryId) return;
+    const targetEntry = planningEntries.find((entry) => entry.id === entryId);
+    if (targetEntry && !canModifyPlanningEntry(targetEntry)) {
+      setErrorMessage("Mitarbeiter können nur eigene offene Terminwünsche löschen.");
+      return;
+    }
     const confirmed = window.confirm("Planung wirklich löschen?");
     if (!confirmed) return;
 
@@ -35571,6 +35606,10 @@ await addProjectLogbookEntry(
       row: (typeof projectLaborComparisonRows)[number],
       approvalStatus: PlanningEntryApprovalStatus = "confirmed"
     ) => {
+      if (!mayManagePlanningEntries && approvalStatus !== "requested") {
+        setErrorMessage("Mitarbeiter können nur eigene Terminwünsche anlegen.");
+        return;
+      }
       const projectBoard = (
         selectedProjectFile.projectType === "Projekt OK immocare" ||
         selectedProjectFile.branch === "OK immocare GmbH"
@@ -35579,7 +35618,15 @@ await addProjectLogbookEntry(
       ) as PlanningBoardCompany;
       const board = projectBoard;
       const groups = getPlanningEntryGroups(board);
-      const groupName = groups[0];
+      const isOwnEmployeeRequest = !mayManagePlanningEntries && approvalStatus === "requested";
+      const ownBoard: PlanningBoardCompany =
+        activeUser?.planningBoard === "OK immocare" ? "OK immocare" : "OK solutions";
+      const ownGroup = activeUser?.planningGroup ?? "";
+      if (isOwnEmployeeRequest && (ownBoard !== board || !groups.includes(ownGroup))) {
+        setErrorMessage("Du kannst nur für Projekte deiner eigenen Planungsgruppe einen Terminwunsch anlegen.");
+        return;
+      }
+      const groupName = isOwnEmployeeRequest ? ownGroup : groups[0];
       const remainingHours = Math.max(row.plannedHours - row.plannedPlanningHours, 0);
       const defaultPlanningDate = formatDateKey(new Date());
 
@@ -35587,7 +35634,7 @@ await addProjectLogbookEntry(
       setPlanningEntrySource("offer");
       setPlanningEntryBoard(board);
       setPlanningEntryGroup(groupName);
-      setPlanningEntryUserId("");
+      setPlanningEntryUserId(isOwnEmployeeRequest ? activeUserId : "");
       setPlanningEntryDate(defaultPlanningDate);
       setPlanningRecurrenceWeekdays([getWeekdayFromDateKey(defaultPlanningDate)]);
       setPlanningEntryStartTime("08:00");
@@ -35623,6 +35670,10 @@ await addProjectLogbookEntry(
       setIsPlanningEntryModalOpen(true);
     };
     const openManualProjectPlanning = (approvalStatus: PlanningEntryApprovalStatus = "confirmed") => {
+      if (!mayManagePlanningEntries && approvalStatus !== "requested") {
+        setErrorMessage("Mitarbeiter können nur eigene Terminwünsche anlegen.");
+        return;
+      }
       if (!canPlanSelectedProject) {
         window.alert(projectPlanningBlockedReason);
         return;
@@ -35633,14 +35684,23 @@ await addProjectLogbookEntry(
           ? "OK immocare"
           : "OK solutions"
       ) as PlanningBoardCompany;
-      const groupName = getPlanningEntryGroups(projectBoard)[0];
+      const isOwnEmployeeRequest = !mayManagePlanningEntries && approvalStatus === "requested";
+      const ownBoard: PlanningBoardCompany =
+        activeUser?.planningBoard === "OK immocare" ? "OK immocare" : "OK solutions";
+      const groupOptions = getPlanningEntryGroups(projectBoard);
+      const ownGroup = activeUser?.planningGroup ?? "";
+      if (isOwnEmployeeRequest && (ownBoard !== projectBoard || !groupOptions.includes(ownGroup))) {
+        setErrorMessage("Du kannst nur für Projekte deiner eigenen Planungsgruppe einen Terminwunsch anlegen.");
+        return;
+      }
+      const groupName = isOwnEmployeeRequest ? ownGroup : groupOptions[0];
       const defaultPlanningDate = formatDateKey(new Date());
 
       resetPlanningEntryForm();
       setPlanningEntrySource(!isSelectedProjectRecurring && singleProjectOfferPlanningRows.length > 0 ? "offer" : "manual");
       setPlanningEntryBoard(projectBoard);
       setPlanningEntryGroup(groupName);
-      setPlanningEntryUserId("");
+      setPlanningEntryUserId(isOwnEmployeeRequest ? activeUserId : "");
       setPlanningEntryDate(defaultPlanningDate);
       setPlanningRecurrenceWeekdays([getWeekdayFromDateKey(defaultPlanningDate)]);
       setPlanningEntryStartTime("08:00");
@@ -35695,9 +35755,11 @@ await addProjectLogbookEntry(
     ) =>
       projectPlanningChoiceMenuKey === menuKey ? (
         <div className={styles.projectPlanningCapacityMenu} data-kind="choice">
-          <button type="button" onClick={onConfirmed}>
-            + Termin
-          </button>
+          {mayManagePlanningEntries ? (
+            <button type="button" onClick={onConfirmed}>
+              + Termin
+            </button>
+          ) : null}
           <button type="button" onClick={onRequested}>
             + Terminwunsch
           </button>
@@ -38707,15 +38769,17 @@ await addProjectLogbookEntry(
                           }`
                         : ""}
                     </span>
-                    <button
-                      type="button"
-                      className={styles.primaryButton}
-                      disabled={!canPlanSelectedProject}
-                      title={!canPlanSelectedProject ? projectPlanningBlockedReason : undefined}
-                      onClick={() => openManualProjectPlanning()}
-                    >
-                      + Termin
-                    </button>
+                    {mayManagePlanningEntries ? (
+                      <button
+                        type="button"
+                        className={styles.primaryButton}
+                        disabled={!canPlanSelectedProject}
+                        title={!canPlanSelectedProject ? projectPlanningBlockedReason : undefined}
+                        onClick={() => openManualProjectPlanning()}
+                      >
+                        + Termin
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       className={styles.requestButton}
@@ -38925,29 +38989,35 @@ await addProjectLogbookEntry(
                               </span>
                             </td>
                             <td>
-                              <div className={styles.tableActionGroup}>
-                                <button
-                                  type="button"
-                                  className={styles.timeEntryEditButton}
-                                  onClick={() => openEditPlanningEntryModal(entry)}
-                                >
-                                  Bearbeiten
-                                </button>
-                                <button
-                                  type="button"
-                                  className={styles.timeEntryEditButton}
-                                  onClick={() => jumpToPlanningEntry(entry)}
-                                >
-                                  Zur Planung
-                                </button>
-                                <button
-                                  type="button"
-                                  className={styles.timeEntryEditButton}
-                                  onClick={() => void deletePlanningEntryById(entry.id)}
-                                >
-                                  Löschen
-                                </button>
-                              </div>
+                              {canModifyPlanningEntry(entry) ? (
+                                <div className={styles.tableActionGroup}>
+                                  <button
+                                    type="button"
+                                    className={styles.timeEntryEditButton}
+                                    onClick={() => openEditPlanningEntryModal(entry)}
+                                  >
+                                    Bearbeiten
+                                  </button>
+                                  {mayManagePlanningEntries ? (
+                                    <button
+                                      type="button"
+                                      className={styles.timeEntryEditButton}
+                                      onClick={() => jumpToPlanningEntry(entry)}
+                                    >
+                                      Zur Planung
+                                    </button>
+                                  ) : null}
+                                  <button
+                                    type="button"
+                                    className={styles.timeEntryEditButton}
+                                    onClick={() => void deletePlanningEntryById(entry.id)}
+                                  >
+                                    Löschen
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className={styles.metaLine}>Keine Rechte</span>
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -43520,22 +43590,24 @@ await addProjectLogbookEntry(
               >
                 + Terminwunsch
               </button>
-            <button
-              type="button"
-              className={styles.primaryButton}
-              onClick={() =>
-                openPlanningEntryModal({
-                  date: selectedPlanningDateKey,
-                  groupName: selectedPlanningGroup,
-                  board:
-                    selectedPlanningGroup === "VZK" || selectedPlanningGroup === "TZK"
-                      ? "OK immocare"
-                      : "OK solutions",
-                })
-              }
-            >
-              + Planung
-            </button>
+            {mayManagePlanningEntries ? (
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={() =>
+                  openPlanningEntryModal({
+                    date: selectedPlanningDateKey,
+                    groupName: selectedPlanningGroup,
+                    board:
+                      selectedPlanningGroup === "VZK" || selectedPlanningGroup === "TZK"
+                        ? "OK immocare"
+                        : "OK solutions",
+                  })
+                }
+              >
+                + Planung
+              </button>
+            ) : null}
             </div>
             <div className={styles.planningGroupSwitch}>
               {allDetailGroups.map((group) => (
@@ -43818,22 +43890,24 @@ await addProjectLogbookEntry(
               </div>
               <div className={styles.planningDayActions}>
                 <div className={styles.planningDayPrimaryActions}>
-                <button
-                  type="button"
-                  className={styles.primaryButton}
-                  onClick={() =>
-                    openPlanningEntryModal({
-                      date: selectedPlanningDateKey,
-                      groupName: selectedPlanningGroup,
-                      board:
-                        selectedPlanningGroup === "VZK" || selectedPlanningGroup === "TZK"
-                          ? "OK immocare"
-                          : "OK solutions",
-                    })
-                  }
-                >
-                  + Planung
-                </button>
+                {mayManagePlanningEntries ? (
+                  <button
+                    type="button"
+                    className={styles.primaryButton}
+                    onClick={() =>
+                      openPlanningEntryModal({
+                        date: selectedPlanningDateKey,
+                        groupName: selectedPlanningGroup,
+                        board:
+                          selectedPlanningGroup === "VZK" || selectedPlanningGroup === "TZK"
+                            ? "OK immocare"
+                            : "OK solutions",
+                      })
+                    }
+                  >
+                    + Planung
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className={styles.requestButton}
@@ -44072,13 +44146,15 @@ await addProjectLogbookEntry(
                 Offene Planungstermine
               </button>
             </div>
-            <button
-              type="button"
-              className={styles.primaryButton}
-              onClick={() => openPlanningEntryModal({ requireManualAssignment: true })}
-            >
-              + Planung
-            </button>
+            {mayManagePlanningEntries ? (
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={() => openPlanningEntryModal({ requireManualAssignment: true })}
+              >
+                + Planung
+              </button>
+            ) : null}
             <button
               type="button"
               className={styles.requestButton}
@@ -54083,17 +54159,19 @@ await addProjectLogbookEntry(
 
             <div className={`${styles.standardModalBody} ${styles.planningSlotActionBody}`}>
               <div className={styles.planningSlotActionChoices}>
-                <button
-                  type="button"
-                  data-active={planningSlotAction.approvalStatus === "confirmed"}
-                  onClick={() =>
-                    setPlanningSlotAction((current) =>
-                      current ? { ...current, approvalStatus: "confirmed", projectSearch: "" } : current
-                    )
-                  }
-                >
-                  + Termin
-                </button>
+                {mayManagePlanningEntries ? (
+                  <button
+                    type="button"
+                    data-active={planningSlotAction.approvalStatus === "confirmed"}
+                    onClick={() =>
+                      setPlanningSlotAction((current) =>
+                        current ? { ...current, approvalStatus: "confirmed", projectSearch: "" } : current
+                      )
+                    }
+                  >
+                    + Termin
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   data-active={planningSlotAction.approvalStatus === "requested"}
@@ -54205,6 +54283,7 @@ await addProjectLogbookEntry(
                   Planungsboard
                   <select
                     value={planningEntryBoard}
+                    disabled={!mayManagePlanningEntries}
                     onChange={(event) => {
                       const nextBoard = event.target.value as PlanningBoardCompany | "";
                       setPlanningEntryBoard(nextBoard);
@@ -54224,6 +54303,7 @@ await addProjectLogbookEntry(
                   Planungsgruppe
                   <select
                     value={planningEntryGroup}
+                    disabled={!mayManagePlanningEntries}
                     onChange={(event) => {
                       const nextGroup = event.target.value;
                       setPlanningEntryGroup(nextGroup);
@@ -54243,6 +54323,7 @@ await addProjectLogbookEntry(
                   Mitarbeiter
                   <select
                     value={planningEntryUserId}
+                    disabled={!mayManagePlanningEntries}
                     onChange={(event) => setPlanningEntryUserId(event.target.value)}
                   >
                     <option value="">Noch nicht zugewiesen</option>
@@ -54250,6 +54331,7 @@ await addProjectLogbookEntry(
                       .filter(
                         (user) =>
                           user.isActive &&
+                          (mayManagePlanningEntries || user.id === activeUserId) &&
                           (user.planningBoard ?? "OK solutions") === planningEntryBoard &&
                           (user.planningGroup ?? "") === planningEntryGroup
                       )
