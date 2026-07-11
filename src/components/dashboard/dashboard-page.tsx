@@ -13596,6 +13596,48 @@ export function DashboardPage() {
     }
   }
 
+  async function resetDesktopPushConnection() {
+    setDesktopPushStatus("checking");
+    setDesktopPushMessage("Alte Push-Verbindung wird zurückgesetzt...");
+    try {
+      if (!("serviceWorker" in navigator)) {
+        throw new Error("Dieser Browser unterstützt keine Service Worker.");
+      }
+      const registrations = await waitForDesktopPushStep(
+        navigator.serviceWorker.getRegistrations(),
+        "Die vorhandenen Benachrichtigungsdienste konnten nicht gelesen werden. Bitte die Seite neu laden."
+      );
+      const workPilotRegistrations = registrations.filter((registration) =>
+        registration.scope === `${window.location.origin}/` ||
+        registration.active?.scriptURL.endsWith("/workpilot-sw.js") ||
+        registration.waiting?.scriptURL.endsWith("/workpilot-sw.js") ||
+        registration.installing?.scriptURL.endsWith("/workpilot-sw.js")
+      );
+      for (const registration of workPilotRegistrations) {
+        const subscription = await waitForDesktopPushStep(
+          registration.pushManager.getSubscription(),
+          "Die alte Push-Registrierung konnte nicht gelesen werden."
+        );
+        if (subscription) {
+          await waitForDesktopPushStep(
+            subscription.unsubscribe(),
+            "Die alte Push-Registrierung konnte nicht entfernt werden."
+          );
+        }
+        await waitForDesktopPushStep(
+          registration.unregister(),
+          "Der alte Benachrichtigungsdienst konnte nicht entfernt werden."
+        );
+      }
+      setDesktopPushStatus("idle");
+      setDesktopPushMessage("Push-Verbindung wurde zurückgesetzt. Neuer Versuch startet...");
+      await requestDesktopNotifications();
+    } catch (error) {
+      setDesktopPushStatus("error");
+      setDesktopPushMessage(error instanceof Error ? error.message : "Die Push-Verbindung konnte nicht zurückgesetzt werden.");
+    }
+  }
+
   async function requestDesktopNotificationsLegacy() {
     if (typeof window === "undefined" || !("Notification" in window)) {
       setErrorMessage("Desktop-Benachrichtigungen werden von diesem Browser nicht unterstützt.");
@@ -51553,9 +51595,25 @@ await addProjectLogbookEntry(
                   </button>
                 )}
                 {desktopPushMessage && (
-                  <p className={styles.notificationPermissionStatus} data-status={desktopPushStatus}>
-                    {desktopPushMessage}
-                  </p>
+                  <div className={styles.notificationPermissionStatus} data-status={desktopPushStatus}>
+                    <span>{desktopPushMessage}</span>
+                    <button
+                      type="button"
+                      aria-label="Push-Status ausblenden"
+                      onClick={() => setDesktopPushMessage("")}
+                    >
+                      ×
+                    </button>
+                    {desktopPushStatus === "error" && (
+                      <button
+                        type="button"
+                        className={styles.notificationPermissionReset}
+                        onClick={resetDesktopPushConnection}
+                      >
+                        Push-Verbindung zurücksetzen
+                      </button>
+                    )}
+                  </div>
                 )}
 
                 <div className={styles.notificationList}>

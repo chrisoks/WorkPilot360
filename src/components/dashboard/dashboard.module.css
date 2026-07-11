@@ -27222,15 +27222,44 @@
 }
 
 .notificationPermissionStatus {
+  align-items: flex-start;
   background: #f8fafc;
   border: 1px solid #dbe3ec;
   border-radius: 9px;
   color: #475569;
+  display: grid;
   font-size: 0.78rem;
   font-weight: 700;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
   line-height: 1.4;
-  margin: 0;
-  padding: 9px 11px;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+}
+
+.notificationPermissionStatus > button:not(.notificationPermissionReset) {
+  background: transparent;
+  border: 0;
+  color: currentColor;
+  cursor: pointer;
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  opacity: 0.65;
+  padding: 1px 2px;
+}
+
+.notificationPermissionReset {
+  background: #ffffff;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  grid-column: 1 / -1;
+  justify-self: start;
+  padding: 6px 9px;
 }
 
 .notificationPermissionStatus[data-status="active"] {

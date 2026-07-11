@@ -7,7 +7,10 @@
   `Desktop-Benachrichtigungen werden aktiviert...`; stattdessen wird der
   Button erneut freigegeben und eine konkrete Fehlermeldung angezeigt. Push-
   Endpunkte, VAPID-Konfiguration, Rollen- und Subscriptionlogik blieben
-  unveraendert.
+  unveraendert. Bei einer haengenden Browser-Subscription kann der Nutzer die
+  alte WorkPilot-Service-Worker-/Push-Verbindung gezielt zuruecksetzen und
+  sofort neu aufbauen. Der Statushinweis ist kompakt, schliessbar und mit
+  Abstand von den fachlichen Benachrichtigungskarten getrennt.
 - Next-16-Sicherheitsupgrade 2026-07-11: WorkPilot360 wurde auf dem separaten
   Branch `codex/next16-security-upgrade` von Next 14.2.5 auf Next 16.2.10,
   React/React DOM 19.2.7, next-intl 4.13.2 und Vitest 4.1.10 aktualisiert.
