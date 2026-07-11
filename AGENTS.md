@@ -1,5 +1,13 @@
 # WorkPilot360 Agent Handover
 
+- Desktop-Push Timeout 2026-07-11: Die Aktivierung von Desktop-Push begrenzt
+  jetzt jeden Browser-/Service-Worker-/API-Schritt auf 15 Sekunden und zeigt
+  den aktuellen Fortschritt an. Ein nicht aufloesender Browserdialog oder
+  Service Worker laesst den Button dadurch nicht mehr dauerhaft im Zustand
+  `Desktop-Benachrichtigungen werden aktiviert...`; stattdessen wird der
+  Button erneut freigegeben und eine konkrete Fehlermeldung angezeigt. Push-
+  Endpunkte, VAPID-Konfiguration, Rollen- und Subscriptionlogik blieben
+  unveraendert.
 - Next-16-Sicherheitsupgrade 2026-07-11: WorkPilot360 wurde auf dem separaten
   Branch `codex/next16-security-upgrade` von Next 14.2.5 auf Next 16.2.10,
   React/React DOM 19.2.7, next-intl 4.13.2 und Vitest 4.1.10 aktualisiert.

@@ -13505,6 +13505,19 @@ export function DashboardPage() {
     return Uint8Array.from(Array.from(rawData).map((character) => character.charCodeAt(0)));
   }
 
+  async function waitForDesktopPushStep<T>(promise: Promise<T>, timeoutMessage: string, timeoutMs = 15_000) {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_resolve, reject) => {
+      timeoutId = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+    });
+
+    try {
+      return await Promise.race([promise, timeout]);
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
+  }
+
   async function requestDesktopNotifications() {
     setDesktopPushMessage("");
     if (typeof window === "undefined" || !("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
@@ -13519,32 +13532,60 @@ export function DashboardPage() {
     }
     setDesktopPushStatus("checking");
     try {
-      const permission = window.Notification.permission === "default" ? await window.Notification.requestPermission() : window.Notification.permission;
+      setDesktopPushMessage("Browser-Berechtigung wird geprüft...");
+      const permission = window.Notification.permission === "default"
+        ? await waitForDesktopPushStep(
+            window.Notification.requestPermission(),
+            "Die Browser-Berechtigung antwortet nicht. Bitte die Website-Berechtigung prüfen und erneut versuchen."
+          )
+        : window.Notification.permission;
       setDesktopPermission(permission);
       if (permission !== "granted") {
         setDesktopPushStatus("blocked");
         setDesktopPushMessage("Benachrichtigungen sind im Browser blockiert. Bitte die Website-Berechtigung auf ‚Zulassen‘ stellen.");
         return;
       }
-      const keyResponse = await fetch("/api/push/public-key", { cache: "no-store" });
+      setDesktopPushMessage("Push-Konfiguration wird geladen...");
+      const keyResponse = await waitForDesktopPushStep(
+        fetch("/api/push/public-key", { cache: "no-store" }),
+        "Die Push-Konfiguration konnte nicht rechtzeitig geladen werden. Bitte erneut versuchen."
+      );
       const keyData = (await keyResponse.json().catch(() => null)) as { configured?: boolean; publicKey?: string } | null;
       if (!keyResponse.ok || !keyData?.configured || !keyData.publicKey) {
         setDesktopPushStatus("unconfigured");
         setDesktopPushMessage("Web-Push ist auf diesem Server noch nicht konfiguriert.");
         return;
       }
-      const registration = await navigator.serviceWorker.register("/workpilot-sw.js", { scope: "/" });
-      await navigator.serviceWorker.ready;
-      const existingSubscription = await registration.pushManager.getSubscription();
-      const subscription = existingSubscription ?? await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(keyData.publicKey),
-      });
-      const subscriptionResponse = await fetch("/api/push/subscriptions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: activeUserId, userAgent: navigator.userAgent, subscription: subscription.toJSON() }),
-      });
+      setDesktopPushMessage("Benachrichtigungsdienst wird vorbereitet...");
+      const registration = await waitForDesktopPushStep(
+        navigator.serviceWorker.register("/workpilot-sw.js", { scope: "/" }),
+        "Der Benachrichtigungsdienst konnte nicht gestartet werden. Bitte die Seite neu laden und erneut versuchen."
+      );
+      await waitForDesktopPushStep(
+        navigator.serviceWorker.ready,
+        "Der Benachrichtigungsdienst antwortet nicht. Bitte die Seite neu laden und erneut versuchen."
+      );
+      setDesktopPushMessage("Gerät wird für Push-Benachrichtigungen registriert...");
+      const existingSubscription = await waitForDesktopPushStep(
+        registration.pushManager.getSubscription(),
+        "Eine vorhandene Push-Registrierung konnte nicht gelesen werden. Bitte erneut versuchen."
+      );
+      const subscription = existingSubscription ?? await waitForDesktopPushStep(
+        registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(keyData.publicKey),
+        }),
+        "Die Push-Registrierung des Browsers antwortet nicht. Bitte die Website-Berechtigung prüfen und erneut versuchen."
+      );
+      setDesktopPushMessage("Push-Registrierung wird sicher gespeichert...");
+      const subscriptionResponse = await waitForDesktopPushStep(
+        fetch("/api/push/subscriptions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: activeUserId, userAgent: navigator.userAgent, subscription: subscription.toJSON() }),
+        }),
+        "Die Push-Registrierung konnte nicht rechtzeitig gespeichert werden. Bitte erneut versuchen."
+      );
       const subscriptionData = await subscriptionResponse.json().catch(() => null);
       if (!subscriptionResponse.ok) throw new Error(subscriptionData?.error || "Push-Subscription konnte nicht gespeichert werden.");
       setDesktopPushStatus("active");
