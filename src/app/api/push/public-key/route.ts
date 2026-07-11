@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { getVapidPublicKey } from "@/lib/push/web-push";
+import { getPushStatus } from "@/lib/push/web-push";
 
 export async function GET() {
-  return NextResponse.json({ publicKey: getVapidPublicKey() });
+  const status = getPushStatus();
+  return NextResponse.json({ configured: status.configured, publicKey: status.publicKey });
 }

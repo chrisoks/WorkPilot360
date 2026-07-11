@@ -48,6 +48,13 @@ type DashboardFocusIconType =
   | "team";
 type DashboardFocusTone = "blue" | "teal" | "amber" | "rose" | "slate";
 type DashboardTrendIconType = "up" | "down" | "flat" | "none";
+type DashboardMiniVizType = "line" | "bars" | "ring" | "segments";
+type DashboardMiniViz = {
+  type: DashboardMiniVizType;
+  values: number[];
+  label: string;
+  captions?: string[];
+};
 type DashboardFocusCard = {
   kicker: string;
   title: string;
@@ -58,9 +65,80 @@ type DashboardFocusCard = {
   tone: DashboardFocusTone;
   icon: DashboardFocusIconType;
   trendIcon?: DashboardTrendIconType;
+  trendLabel?: string;
+  miniViz?: DashboardMiniViz;
   targetTab: AppTab;
   targetReportTab?: ReportAnalyticsTab;
 };
+
+function DashboardMiniVisualization({ visualization }: { visualization: DashboardMiniViz }) {
+  const safeValues = visualization.values.map((value) => Math.max(0, Number.isFinite(value) ? value : 0));
+  const maximum = Math.max(1, ...safeValues);
+  const hasData = safeValues.some((value) => value > 0);
+
+  if (!hasData) {
+    return (
+      <div className={styles.dashboardMiniViz} data-type="empty" aria-label={`${visualization.label}. Keine Vergleichsdaten vorhanden.`}>
+        <span />
+        <small>Keine Vergleichsdaten</small>
+      </div>
+    );
+  }
+
+  if (visualization.type === "ring") {
+    const value = Math.min(100, safeValues[0] ?? 0);
+    return (
+      <div className={styles.dashboardMiniViz} data-type="ring" aria-label={visualization.label}>
+        <span style={{ "--dashboard-ring-value": `${value * 3.6}deg` } as React.CSSProperties}>
+          <strong>{Math.round(value)}%</strong>
+        </span>
+        {visualization.captions?.[0] ? <small>{visualization.captions[0]}</small> : null}
+      </div>
+    );
+  }
+
+  if (visualization.type === "line") {
+    const points = safeValues
+      .map((value, index) => {
+        const x = safeValues.length <= 1 ? 50 : (index / (safeValues.length - 1)) * 100;
+        const y = 36 - (value / maximum) * 28;
+        return `${x},${y}`;
+      })
+      .join(" ");
+    return (
+      <div className={styles.dashboardMiniViz} data-type="line" aria-label={visualization.label}>
+        <svg viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M0 8 H100 M0 22 H100 M0 36 H100" />
+          <polygon points={`0,36 ${points} 100,36`} />
+          <polyline points={points} />
+        </svg>
+        {visualization.captions?.length ? (
+          <div className={styles.dashboardMiniVizCaptions}>
+            {visualization.captions.map((caption) => <small key={caption}>{caption}</small>)}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.dashboardMiniViz} data-type={visualization.type} aria-label={visualization.label}>
+      <div className={styles.dashboardMiniVizPlot}>
+        {safeValues.map((value, index) => (
+          <span
+            key={`${visualization.type}-${index}`}
+            style={{ "--dashboard-viz-size": `${Math.max(6, (value / maximum) * 100)}%` } as React.CSSProperties}
+          />
+        ))}
+      </div>
+      {visualization.captions?.length ? (
+        <div className={styles.dashboardMiniVizCaptions}>
+          {visualization.captions.map((caption) => <small key={caption}>{caption}</small>)}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function ContactToolbarIcon({ type }: { type: ContactToolbarIconType }) {
   if (type === "bulk") {
@@ -1884,6 +1962,14 @@ type AppNotification = {
   linkTargetId?: string;
   linkLabel?: string;
 };
+
+type NotificationHistoryResponse = {
+  items: AppNotification[];
+  hasMore: boolean;
+  nextOffset: number;
+};
+
+type DesktopPushStatus = "idle" | "checking" | "active" | "blocked" | "unsupported" | "unconfigured" | "error";
 
 type AbsenceItem = {
   id: string;
@@ -5612,6 +5698,11 @@ export function DashboardPage() {
   const letterheadUploadRef = useRef<HTMLInputElement | null>(null);
   const [globalSearchTerm, setGlobalSearchTerm] = useState("");
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
+  const [isMobileNavigationOpen, setIsMobileNavigationOpen] = useState(false);
+
+  useEffect(() => {
+    setIsMobileNavigationOpen(false);
+  }, [activeTab]);
   const [firmSettingsTab, setFirmSettingsTab] = useState<FirmSettingsTab>("profile");
   const [reportAnalyticsTab, setReportAnalyticsTab] = useState<ReportAnalyticsTab>("forecast");
   const [selectedForecastPeriod, setSelectedForecastPeriod] = useState("total");
@@ -5970,16 +6061,23 @@ export function DashboardPage() {
   } | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notificationHistory, setNotificationHistory] = useState<AppNotification[]>([]);
+  const [notificationHistoryHasMore, setNotificationHistoryHasMore] = useState(false);
+  const [notificationHistoryOffset, setNotificationHistoryOffset] = useState(0);
+  const [isNotificationHistoryLoading, setIsNotificationHistoryLoading] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [showNotificationHistory, setShowNotificationHistory] = useState(false);
   const [notificationSearchTerm, setNotificationSearchTerm] = useState("");
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isOwnSettingsOpen, setIsOwnSettingsOpen] = useState(false);
   const [desktopPermission, setDesktopPermission] = useState<NotificationPermission>("default");
+  const [desktopPushStatus, setDesktopPushStatus] = useState<DesktopPushStatus>("idle");
+  const [desktopPushMessage, setDesktopPushMessage] = useState("");
   const quickCreateRef = useRef<HTMLDivElement | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const notificationCenterRef = useRef<HTMLDivElement | null>(null);
   const hasLoadedNotifications = useRef(false);
+  const notificationHistoryRequestId = useRef(0);
   const isProjectTimeEntriesLoadingRef = useRef(false);
 
   const [titel, setTitel] = useState(emptyTask.titel);
@@ -6328,7 +6426,7 @@ export function DashboardPage() {
   );
   const unreadNotifications = sortedNotifications.filter((notification) => !notification.readAt);
   const visibleNotifications = showNotificationHistory
-    ? sortedNotifications.filter((notification) => {
+    ? notificationHistory.filter((notification) => {
         const normalizedSearchTerm = notificationSearchTerm.trim().toLowerCase();
         if (!normalizedSearchTerm) return true;
 
@@ -13370,7 +13468,94 @@ export function DashboardPage() {
     });
   }
 
+  async function loadNotificationHistory(options?: { append?: boolean; search?: string }) {
+    if (!activeUserId) return;
+    const requestId = notificationHistoryRequestId.current + 1;
+    notificationHistoryRequestId.current = requestId;
+    const append = options?.append === true;
+    const params = new URLSearchParams({
+      userId: activeUserId,
+      history: "true",
+      limit: "50",
+      offset: String(append ? notificationHistoryOffset : 0),
+    });
+    const search = (options?.search ?? notificationSearchTerm).trim();
+    if (search) params.set("search", search);
+    setIsNotificationHistoryLoading(true);
+    try {
+      const res = await fetch(`/api/notifications?${params.toString()}`, { cache: "no-store" });
+      const data = (await res.json().catch(() => null)) as NotificationHistoryResponse | { error?: string } | null;
+      if (requestId !== notificationHistoryRequestId.current) return;
+      if (!res.ok || !data || !("items" in data)) {
+        setErrorMessage(data && "error" in data && data.error ? data.error : "Benachrichtigungshistorie konnte nicht geladen werden.");
+        return;
+      }
+      setNotificationHistory((current) => append ? [...current, ...data.items] : data.items);
+      setNotificationHistoryHasMore(data.hasMore);
+      setNotificationHistoryOffset(data.nextOffset);
+    } finally {
+      if (requestId === notificationHistoryRequestId.current) setIsNotificationHistoryLoading(false);
+    }
+  }
+
+  function urlBase64ToUint8Array(value: string) {
+    const padding = "=".repeat((4 - (value.length % 4)) % 4);
+    const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const rawData = window.atob(base64);
+    return Uint8Array.from(Array.from(rawData).map((character) => character.charCodeAt(0)));
+  }
+
   async function requestDesktopNotifications() {
+    setDesktopPushMessage("");
+    if (typeof window === "undefined" || !("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setDesktopPushStatus("unsupported");
+      setDesktopPushMessage("Dieser Browser unterstützt keine Desktop-Push-Benachrichtigungen.");
+      return;
+    }
+    if (!window.isSecureContext) {
+      setDesktopPushStatus("unsupported");
+      setDesktopPushMessage("Desktop-Push benötigt HTTPS oder localhost.");
+      return;
+    }
+    setDesktopPushStatus("checking");
+    try {
+      const permission = window.Notification.permission === "default" ? await window.Notification.requestPermission() : window.Notification.permission;
+      setDesktopPermission(permission);
+      if (permission !== "granted") {
+        setDesktopPushStatus("blocked");
+        setDesktopPushMessage("Benachrichtigungen sind im Browser blockiert. Bitte die Website-Berechtigung auf ‚Zulassen‘ stellen.");
+        return;
+      }
+      const keyResponse = await fetch("/api/push/public-key", { cache: "no-store" });
+      const keyData = (await keyResponse.json().catch(() => null)) as { configured?: boolean; publicKey?: string } | null;
+      if (!keyResponse.ok || !keyData?.configured || !keyData.publicKey) {
+        setDesktopPushStatus("unconfigured");
+        setDesktopPushMessage("Web-Push ist auf diesem Server noch nicht konfiguriert.");
+        return;
+      }
+      const registration = await navigator.serviceWorker.register("/workpilot-sw.js", { scope: "/" });
+      await navigator.serviceWorker.ready;
+      const existingSubscription = await registration.pushManager.getSubscription();
+      const subscription = existingSubscription ?? await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(keyData.publicKey),
+      });
+      const subscriptionResponse = await fetch("/api/push/subscriptions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: activeUserId, userAgent: navigator.userAgent, subscription: subscription.toJSON() }),
+      });
+      const subscriptionData = await subscriptionResponse.json().catch(() => null);
+      if (!subscriptionResponse.ok) throw new Error(subscriptionData?.error || "Push-Subscription konnte nicht gespeichert werden.");
+      setDesktopPushStatus("active");
+      setDesktopPushMessage("Desktop-Benachrichtigungen sind aktiv.");
+    } catch (error) {
+      setDesktopPushStatus("error");
+      setDesktopPushMessage(error instanceof Error ? error.message : "Desktop-Benachrichtigungen konnten nicht aktiviert werden.");
+    }
+  }
+
+  async function requestDesktopNotificationsLegacy() {
     if (typeof window === "undefined" || !("Notification" in window)) {
       setErrorMessage("Desktop-Benachrichtigungen werden von diesem Browser nicht unterstützt.");
       return;
@@ -15893,6 +16078,20 @@ export function DashboardPage() {
   useEffect(() => {
     if (typeof window !== "undefined" && "Notification" in window) {
       setDesktopPermission(window.Notification.permission);
+      if (window.Notification.permission === "denied") {
+        setDesktopPushStatus("blocked");
+        setDesktopPushMessage("Benachrichtigungen sind im Browser blockiert.");
+      } else if (window.Notification.permission === "granted" && "serviceWorker" in navigator) {
+        void navigator.serviceWorker.getRegistration("/").then(async (registration) => {
+          const subscription = await registration?.pushManager.getSubscription();
+          if (subscription) {
+            setDesktopPushStatus("active");
+            setDesktopPushMessage("Desktop-Benachrichtigungen sind aktiv.");
+          }
+        });
+      }
+    } else if (typeof window !== "undefined") {
+      setDesktopPushStatus("unsupported");
     }
   }, []);
 
@@ -27264,6 +27463,14 @@ await addProjectLogbookEntry(
     const improved = lowerIsBetter ? diff < 0 : diff > 0;
     return improved ? "up" : "down";
   };
+  const getDashboardTrendLabel = (current: number, previous: number) => {
+    if (previous === 0) return current === 0 ? "0 %" : "Neu";
+    const change = ((current - previous) / Math.abs(previous)) * 100;
+    const rounded = Math.round(change);
+    if (rounded > 999) return ">999 %";
+    if (rounded < -999) return "<-999 %";
+    return `${rounded > 0 ? "+" : ""}${rounded} %`;
+  };
   const dashboardPreviousWorkingDateKey = (() => {
     const cursor = new Date();
     for (let guard = 0; guard < 31; guard += 1) {
@@ -28141,11 +28348,79 @@ await addProjectLogbookEntry(
     "Team:Aktueller Betrieb": "none",
     "Projekt:Projektfluss": "none",
   };
+  const dashboardCardTrendLabelByKey: Record<string, string> = {
+    "Finanzen:Umsatz & Forecast": getDashboardTrendLabel(dashboardCurrentMonthRevenue, dashboardPreviousMonthRevenue),
+    "Leistung:Produktivität": getDashboardTrendLabel(dashboardCurrentMonthProductivity, dashboardPreviousMonthProductivity),
+    "Vertrieb:Vertrieb & Kunde": getDashboardTrendLabel(dashboardCurrentMonthOffers.length, dashboardPreviousMonthOffers.length),
+    "Liquidität:Offene Posten": getDashboardTrendLabel(overviewOpenTotal, dashboardPreviousMonthOpenTotal),
+    "Angebote:Angebotsmotor": getDashboardTrendLabel(salesCurrentMonthOfferCount, salesPreviousMonthOfferCount),
+    "Neukunden:Kundenbewegung": getDashboardTrendLabel(salesNewCustomerContacts.length, dashboardPreviousMonthCustomerContacts.length),
+    "Abschluss:Abschlusskraft": getDashboardTrendLabel(salesWinRate, dashboardPreviousSalesWinRate),
+    "Fälligkeit:Offene Posten": getDashboardTrendLabel(overviewOverdueTotal, dashboardPreviousMonthOverdueTotal),
+    "Umsatz:Bezahlt & fakturiert": getDashboardTrendLabel(dashboardCurrentMonthRevenue, dashboardPreviousMonthRevenue),
+    "Zahlung:Offen gesamt": getDashboardTrendLabel(overviewOpenTotal, dashboardPreviousMonthOpenTotal),
+    "Monat:Monatsbericht": getDashboardTrendLabel(dashboardCurrentMonthRevenue, dashboardPreviousMonthRevenue),
+  };
+  const dashboardCardMiniVizByKey: Record<string, DashboardMiniViz> = {
+    "Finanzen:Umsatz & Forecast": {
+      type: "line",
+      values: [dashboardPreviousMonthRevenue, dashboardCurrentMonthRevenue, dashboardCurrentMonthForecast],
+      label: `Vormonat ${formatMoney(dashboardPreviousMonthRevenue)}, aktueller Monat ${formatMoney(dashboardCurrentMonthRevenue)}, Forecast ${formatMoney(dashboardCurrentMonthForecast)}`,
+      captions: ["Vormonat", "Aktuell", "Forecast"],
+    },
+    "Leistung:Produktivität": {
+      type: "ring",
+      values: [dashboardPreviousWorkdayProductivity],
+      label: `Produktivität am letzten Arbeitstag ${formatPercent(dashboardPreviousWorkdayProductivity)}`,
+      captions: ["Letzter Arbeitstag"],
+    },
+    "Projekte:Projektlage": {
+      type: "bars",
+      values: [dashboardActiveProjects.length, longPipelineStatusRows.length, dashboardBillingCheckCount],
+      label: `${dashboardActiveProjects.length} aktive Projekte, ${longPipelineStatusRows.length} länger als 14 Tage, ${dashboardBillingCheckCount} in Abrechnungsprüfung`,
+      captions: ["Aktiv", ">14 Tage", "Prüfung"],
+    },
+    "Vertrieb:Vertrieb & Kunde": {
+      type: "bars",
+      values: [dashboardPreviousMonthOffers.length, dashboardCurrentMonthOffers.length],
+      label: `${dashboardPreviousMonthOffers.length} Angebote im Vormonat, ${dashboardCurrentMonthOffers.length} im aktuellen Monat`,
+      captions: ["Vormonat", "Aktuell"],
+    },
+    "Liquidität:Offene Posten": {
+      type: "segments",
+      values: [Math.max(0, overviewOpenTotal - overviewOverdueTotal), overviewOverdueTotal],
+      label: `${formatMoney(overviewOpenTotal)} offen, davon ${formatMoney(overviewOverdueTotal)} überfällig`,
+      captions: ["Nicht fällig", "Überfällig"],
+    },
+    "Kapazität:Planungsgruppen": {
+      type: "bars",
+      values: [managementCapacityTightRows.length, managementCapacityOverloadRows.length],
+      label: `${managementCapacityTightRows.length} fast ausgelastete und ${managementCapacityOverloadRows.length} überplante Planungsgruppen`,
+      captions: ["Knapp", "Überplant"],
+    },
+  };
   dashboardRoleFocusCards = dashboardRoleFocusCards.map((card) => ({
     ...card,
     trendIcon: card.trendIcon ?? dashboardCardTrendByKey[`${card.kicker}:${card.title}`] ?? "none",
+    trendLabel: card.trendLabel ?? dashboardCardTrendLabelByKey[`${card.kicker}:${card.title}`],
+    miniViz: card.miniViz ?? dashboardCardMiniVizByKey[`${card.kicker}:${card.title}`],
   }));
   const dashboardDailyImpulse = getDashboardDailyImpulse(activeUserHasSalesRole ? "VERTRIEB" : activeUser?.role);
+  const dashboardHeaderDate = (() => {
+    const now = new Date();
+    const weekDate = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+    const weekday = weekDate.getUTCDay() || 7;
+    weekDate.setUTCDate(weekDate.getUTCDate() + 4 - weekday);
+    const yearStart = new Date(Date.UTC(weekDate.getUTCFullYear(), 0, 1));
+    const calendarWeek = Math.ceil(((weekDate.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+    return {
+      weekday: new Intl.DateTimeFormat("de-DE", { weekday: "long" }).format(now),
+      day: new Intl.DateTimeFormat("de-DE", { day: "2-digit" }).format(now),
+      month: new Intl.DateTimeFormat("de-DE", { month: "long" }).format(now),
+      year: new Intl.DateTimeFormat("de-DE", { year: "numeric" }).format(now),
+      calendarWeek,
+    };
+  })();
   const projectMapRows = reportProjectRows
     .filter((row) => row.project.address || row.project.customer)
     .slice(0, 20)
@@ -51014,6 +51289,19 @@ await addProjectLogbookEntry(
             <img className={styles.logo} src="/workpilot360-logo-header.png" alt="WorkPilot360" />
           </div>
 
+          <button
+            type="button"
+            className={styles.mobileNavigationButton}
+            aria-label={isMobileNavigationOpen ? "Navigation schließen" : "Navigation öffnen"}
+            aria-controls="workpilot-main-navigation"
+            aria-expanded={isMobileNavigationOpen}
+            onClick={() => setIsMobileNavigationOpen((isOpen) => !isOpen)}
+          >
+            <span aria-hidden="true" />
+            <span aria-hidden="true" />
+            <span aria-hidden="true" />
+          </button>
+
           <label className={styles.globalSearch}>
             <span>Suchen</span>
             <input
@@ -51188,10 +51476,14 @@ await addProjectLogbookEntry(
                   <button
                     type="button"
                     data-active={showNotificationHistory}
-                    onClick={() => setShowNotificationHistory(true)}
+                    onClick={() => {
+                      setShowNotificationHistory(true);
+                      setNotificationSearchTerm("");
+                      void loadNotificationHistory({ search: "" });
+                    }}
                   >
                     Historie
-                    {sortedNotifications.length > 0 && <span>{sortedNotifications.length}</span>}
+                    {notificationHistory.length > 0 && <span>{notificationHistory.length}</span>}
                   </button>
                 </div>
 
@@ -51200,19 +51492,29 @@ await addProjectLogbookEntry(
                     Suche
                     <input
                       value={notificationSearchTerm}
-                      onChange={(event) => setNotificationSearchTerm(event.target.value)}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setNotificationSearchTerm(value);
+                        void loadNotificationHistory({ search: value });
+                      }}
                       placeholder="Betreff oder Inhalt suchen"
                     />
                   </label>
                 )}
 
-                {desktopPermission !== "granted" && (
+                {desktopPushStatus !== "active" && (
                   <button
                     className={styles.notificationPermission}
                     onClick={requestDesktopNotifications}
+                    disabled={desktopPushStatus === "checking"}
                   >
-                    Desktop-Benachrichtigungen aktivieren
+                    {desktopPushStatus === "checking" ? "Desktop-Benachrichtigungen werden aktiviert..." : "Desktop-Benachrichtigungen aktivieren"}
                   </button>
+                )}
+                {desktopPushMessage && (
+                  <p className={styles.notificationPermissionStatus} data-status={desktopPushStatus}>
+                    {desktopPushMessage}
+                  </p>
                 )}
 
                 <div className={styles.notificationList}>
@@ -51248,6 +51550,16 @@ await addProjectLogbookEntry(
                     ))
                   )}
                 </div>
+                {showNotificationHistory && notificationHistoryHasMore && (
+                  <button
+                    type="button"
+                    className={styles.notificationHistoryMore}
+                    disabled={isNotificationHistoryLoading}
+                    onClick={() => void loadNotificationHistory({ append: true })}
+                  >
+                    {isNotificationHistoryLoading ? "Wird geladen..." : "Weitere laden"}
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -51266,7 +51578,11 @@ await addProjectLogbookEntry(
           </div>
         ) : null}
 
-        <nav className={styles.tabs}>
+        <nav
+          id="workpilot-main-navigation"
+          className={styles.tabs}
+          data-mobile-open={isMobileNavigationOpen}
+        >
           {visibleNavigationTabs.map(([tab, label]) => {
             const projectLogo =
               tab === "projectsSolutions"
@@ -51839,6 +52155,21 @@ await addProjectLogbookEntry(
                     <span>willkommen zu deinem Dashboard</span>
                   </h1>
                 </div>
+                <span className={styles.dashboardHeaderWeek} aria-label={`Kalenderwoche ${dashboardHeaderDate.calendarWeek}`}>
+                  <small>KW</small>
+                  {dashboardHeaderDate.calendarWeek}
+                </span>
+                <aside className={styles.dashboardHeaderDate} aria-label="Aktuelles Datum und Aktualisierungsstatus">
+                  <span>{dashboardHeaderDate.weekday}</span>
+                  <div>
+                    <strong>{dashboardHeaderDate.day}</strong>
+                    <p>
+                      {dashboardHeaderDate.month}
+                      <small>{dashboardHeaderDate.year}</small>
+                    </p>
+                  </div>
+                  <em><i aria-hidden="true" /> Dashboard aktuell</em>
+                </aside>
               </div>
 
               <section className={styles.dashboardMainGrid}>
@@ -51931,12 +52262,19 @@ await addProjectLogbookEntry(
                           </span>
                           <span className={styles.moduleCardKicker}>{kpi.kicker}</span>
                         </div>
-                        <span className={styles.dashboardTrendBadge} data-trend={kpi.trendIcon ?? "none"} aria-hidden="true">
+                        <span
+                          className={styles.dashboardTrendBadge}
+                          data-trend={kpi.trendIcon ?? "none"}
+                          aria-label={kpi.trendLabel ? `Veränderung zum Vormonat ${kpi.trendLabel}` : undefined}
+                          aria-hidden={kpi.trendLabel ? undefined : true}
+                        >
                           <DashboardTrendIcon type={kpi.trendIcon ?? "none"} />
+                          {kpi.trendLabel ? <small>{kpi.trendLabel}</small> : null}
                         </span>
                       </div>
                       <strong className={styles.dashboardFocusValue}>{kpi.value}</strong>
                       <p className={styles.dashboardFocusSubtitle}>{kpi.title}</p>
+                      {kpi.miniViz ? <DashboardMiniVisualization visualization={kpi.miniViz} /> : null}
                       <div className={styles.dashboardFocusFooter}>
                         <p>{kpi.insight}</p>
                       </div>
