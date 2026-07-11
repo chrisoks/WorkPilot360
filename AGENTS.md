@@ -6,7 +6,9 @@
   dunkler oberer Akzentlinie und kleinem `Heute`-Badge. Wochenend-, Feiertags-,
   Auswahl-, Kapazitaets- und Planungslogik blieben unveraendert. Desktop- und
   kleiner Viewport wurden echt geklickt; das Board bleibt intern horizontal
-  scrollbar, ohne einen globalen Seitenueberlauf zu erzeugen.
+  scrollbar, ohne einen globalen Seitenueberlauf zu erzeugen. Die Kontur liegt
+  als innerer Schatten innerhalb der Zellen und ueberlagert weder Schrift noch
+  Balken; an Wochenenden/Feiertagen bleibt die graue Grundflaeche erhalten.
 - Desktop-Push Timeout 2026-07-11: Die Aktivierung von Desktop-Push begrenzt
   jetzt jeden Browser-/Service-Worker-/API-Schritt auf 15 Sekunden und zeigt
   den aktuellen Fortschritt an. Ein nicht aufloesender Browserdialog oder
