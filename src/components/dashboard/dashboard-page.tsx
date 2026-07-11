@@ -22442,6 +22442,7 @@ await addProjectLogbookEntry(
     date.setDate(date.getDate() + index);
     return date;
   });
+  const planningBoardTodayKey = formatDateKey(new Date());
   const planningBoardEndDate = planningBoardDays[planningBoardDays.length - 1] ?? new Date(`${planningBoardStartDate}T12:00`);
   const planningBoardRangeLabel = `${formatProjectDate(planningBoardStartDate)} - ${formatProjectDate(formatDateKey(planningBoardEndDate))}`;
   const shiftPlanningBoardStart = (days: number) => {
@@ -44737,6 +44738,7 @@ await addProjectLogbookEntry(
                     const holiday = getHolidayForDateKey(dateKey);
                     const isWeekend = isWeekendDateKey(dateKey);
                     const isSelected = selectedPlanningDateKey === dateKey;
+                    const isToday = dateKey === planningBoardTodayKey;
 
                     return (
                       <button
@@ -44746,6 +44748,7 @@ await addProjectLogbookEntry(
                         data-weekend={isWeekend}
                         data-holiday={Boolean(holiday)}
                         data-active={isSelected}
+                        data-today={isToday}
                         aria-label={`${section.company}, ${day.toLocaleDateString(APP_LOCALE, {
                           weekday: "long",
                           day: "2-digit",
@@ -44773,6 +44776,7 @@ await addProjectLogbookEntry(
                             timeZone: APP_TIME_ZONE,
                           })}
                         </span>
+                        {isToday && <small className={styles.planningBoardTodayBadge}>Heute</small>}
                         {holiday && <small>Feiertag</small>}
                       </button>
                     );
@@ -44785,6 +44789,7 @@ await addProjectLogbookEntry(
                         const dateKey = formatDateKey(day);
                         const holiday = getHolidayForDateKey(dateKey);
                         const isWeekend = isWeekendDateKey(dateKey);
+                        const isToday = dateKey === planningBoardTodayKey;
                         const utilization = getPlanningBoardUtilization(
                           section.company,
                           groupName,
@@ -44806,6 +44811,7 @@ await addProjectLogbookEntry(
                             data-weekend={isWeekend}
                             data-holiday={Boolean(holiday)}
                             data-active={isSelected}
+                            data-today={isToday}
                             data-overloaded={utilization.percent > 100}
                             data-has-planning={hasWeekendPlanning}
                             aria-label={`${section.company}, ${groupName}, ${day.toLocaleDateString(APP_LOCALE, {

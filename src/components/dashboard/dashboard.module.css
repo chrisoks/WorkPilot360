@@ -24696,6 +24696,35 @@
   color: #009ca6;
 }
 
+.planningBoardDayHeader[data-today="true"],
+.planningBoardCell[data-today="true"] {
+  background: #f2fbfb;
+  border-left: 1px solid rgba(0, 156, 166, 0.2);
+  border-right: 1px solid rgba(0, 156, 166, 0.2);
+  box-shadow: 0 8px 0 #f2fbfb;
+}
+
+.planningBoardDayHeader[data-today="true"] {
+  border-bottom-color: rgba(0, 156, 166, 0.45);
+  border-radius: 10px 10px 0 0;
+  border-top: 3px solid #007f88;
+  color: #006f78;
+  padding-top: 3px;
+}
+
+.planningBoardTodayBadge {
+  background: #d9f4f2;
+  border: 1px solid rgba(0, 127, 136, 0.2);
+  border-radius: 999px;
+  color: #006f78 !important;
+  line-height: 1 !important;
+  padding: 3px 7px;
+}
+
+.planningBoardCell[data-today="true"] b {
+  background: #cfe7e9;
+}
+
 .planningBoardDayHeader[data-weekend="true"],
 .planningBoardCell[data-weekend="true"] {
   background: #eef2f7;
@@ -24711,6 +24740,11 @@
 .planningBoardCell[data-holiday="true"] {
   background: #e6f8fa;
   color: #009ca6;
+}
+
+.planningBoardDayHeader[data-today="true"],
+.planningBoardCell[data-today="true"] {
+  background: #f2fbfb;
 }
 
 .planningBoardRow {

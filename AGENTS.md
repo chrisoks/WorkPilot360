@@ -1,5 +1,12 @@
 # WorkPilot360 Agent Handover
 
+- Planungsboard Heute-Spalte 2026-07-11: Der aktuelle Kalendertag ist in
+  beiden Planungsboards nicht mehr nur ueber tuerkise Schrift markiert. Kopf
+  und Tageszellen bilden eine sehr dezent getoente Spalte mit Seitenkontur,
+  dunkler oberer Akzentlinie und kleinem `Heute`-Badge. Wochenend-, Feiertags-,
+  Auswahl-, Kapazitaets- und Planungslogik blieben unveraendert. Desktop- und
+  kleiner Viewport wurden echt geklickt; das Board bleibt intern horizontal
+  scrollbar, ohne einen globalen Seitenueberlauf zu erzeugen.
 - Desktop-Push Timeout 2026-07-11: Die Aktivierung von Desktop-Push begrenzt
   jetzt jeden Browser-/Service-Worker-/API-Schritt auf 15 Sekunden und zeigt
   den aktuellen Fortschritt an. Ein nicht aufloesender Browserdialog oder
