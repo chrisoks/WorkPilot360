@@ -28735,6 +28735,10 @@ await addProjectLogbookEntry(
 
       {reportAnalyticsTab === "forecast" && (
         <>
+          <div className={styles.forecastSectionHeading}>
+            <span>Steuerung</span>
+            <p>Forecast, Zahlungslage und kritische Datenqualität auf einen Blick.</p>
+          </div>
           <div className={styles.forecastPeriodTabs} role="tablist" aria-label="Forecast-Zeitraum">
             <button
               type="button"
@@ -29007,11 +29011,15 @@ await addProjectLogbookEntry(
             </div>
           ) : null}
 
-          <article className={styles.analyticsCard}>
-            <div className={styles.forecastListHeader}>
+          <details className={`${styles.analyticsCard} ${styles.forecastDetailDisclosure}`}>
+            <summary className={styles.forecastDetailSummary}>
+              <div className={styles.forecastListHeader}>
               <h2>Offene Posten Detailkontrolle</h2>
               <strong>{formatMoney(forecastOpenInvoiceTotal)}</strong>
-            </div>
+              </div>
+              <span>Details anzeigen</span>
+            </summary>
+            <div className={styles.forecastTableScroll}>
             <table className={styles.analyticsTable}>
               <thead>
                 <tr>
@@ -29088,8 +29096,13 @@ await addProjectLogbookEntry(
                 )}
               </tbody>
             </table>
-          </article>
+            </div>
+          </details>
 
+          <div className={styles.forecastSectionHeading}>
+            <span>Analyse</span>
+            <p>Entwicklung und Verteilung im gewählten Forecast-Zeitraum.</p>
+          </div>
           <section className={styles.forecastChartGrid}>
             <article className={styles.analyticsCard}>
               <h2>Gesamtpotenzial nach Monat</h2>
@@ -29261,9 +29274,20 @@ await addProjectLogbookEntry(
             </article>
           </section>
 
-          <article className={styles.analyticsCard}>
-            <div className={styles.forecastListHeader}>
-              <h2>Forecast & OP Liste</h2>
+          <div className={styles.forecastSectionHeading}>
+            <span>Details</span>
+            <p>Operative Einzelwerte und Berechnungsgrundlagen bei Bedarf öffnen.</p>
+          </div>
+
+          <details className={`${styles.analyticsCard} ${styles.forecastDetailDisclosure}`}>
+            <summary className={styles.forecastDetailSummary}>
+              <div className={styles.forecastListHeader}>
+                <h2>Forecast & OP Liste</h2>
+                <strong>{selectedForecastBusinessRows.length} Einträge</strong>
+              </div>
+              <span>Details anzeigen</span>
+            </summary>
+            <div className={styles.forecastDetailBody}>
               <label>
                 Suche
                 <input
@@ -29272,8 +29296,8 @@ await addProjectLogbookEntry(
                   placeholder="Kunde, Projekt, Rechnung, Status..."
                 />
               </label>
-            </div>
-            <table className={styles.analyticsTable}>
+              <div className={styles.forecastTableScroll}>
+              <table className={styles.analyticsTable}>
               <thead>
                 <tr>
                   <th>Monat</th>
@@ -29360,11 +29384,16 @@ await addProjectLogbookEntry(
                   ))
                 )}
               </tbody>
-            </table>
-          </article>
+              </table>
+              </div>
+            </div>
+          </details>
 
-          <article className={styles.analyticsCard}>
-            <h2>Logik, die Excel ersetzt</h2>
+          <details className={`${styles.analyticsCard} ${styles.forecastDetailDisclosure}`}>
+            <summary className={styles.forecastDetailSummary}>
+              <h2>Logik, die Excel ersetzt</h2>
+              <span>Erklärung anzeigen</span>
+            </summary>
             <div className={styles.forecastLogicList}>
               <article>
                 <strong>Dauerläufer</strong>
@@ -29383,7 +29412,7 @@ await addProjectLogbookEntry(
                 <span>Für Fälle wie Fensterreinigung 2x jährlich brauchen wir Forecast-Regeln pro Projekt: Rhythmus, Monate, Betrag und nächstes Fälligkeitsdatum.</span>
               </article>
             </div>
-          </article>
+          </details>
         </>
       )}
 

@@ -8773,6 +8773,133 @@
   outline: 0;
 }
 
+.forecastSectionHeading {
+  align-items: end;
+  border-bottom: 1px solid #dbe5ee;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin: 18px 0 10px;
+  padding: 0 2px 8px;
+}
+
+.forecastSectionHeading span {
+  color: #071225;
+  font-size: 0.9rem;
+  font-weight: 950;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.forecastSectionHeading p {
+  color: #64748b;
+  font-size: 0.76rem;
+  margin: 0;
+  text-align: right;
+}
+
+.forecastDetailDisclosure {
+  overflow: hidden;
+  padding: 0;
+}
+
+.forecastDetailSummary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  list-style: none;
+  padding: 16px 18px;
+}
+
+.forecastDetailSummary::-webkit-details-marker {
+  display: none;
+}
+
+.forecastDetailSummary > span {
+  color: #1d4ed8;
+  font-size: 0.75rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.forecastDetailDisclosure[open] > .forecastDetailSummary {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.forecastDetailDisclosure[open] > .forecastDetailSummary > span::before {
+  content: "– ";
+}
+
+.forecastDetailBody {
+  padding: 14px 18px 18px;
+}
+
+.forecastDetailBody > label {
+  color: #475569;
+  display: grid;
+  font-size: 0.75rem;
+  font-weight: 800;
+  gap: 5px;
+  margin-bottom: 12px;
+  max-width: 360px;
+}
+
+.forecastDetailBody input {
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  font: inherit;
+  padding: 8px 10px;
+}
+
+.forecastTableScroll {
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  padding: 0 18px 18px;
+}
+
+.forecastDetailBody .forecastTableScroll {
+  padding: 0;
+}
+
+.forecastTableScroll .analyticsTable {
+  min-width: 980px;
+}
+
+.forecastDetailDisclosure > .forecastLogicList {
+  padding: 0 18px 18px;
+}
+
+@media (max-width: 760px) {
+  .forecastSectionHeading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .forecastSectionHeading p {
+    text-align: left;
+  }
+
+  .forecastDetailSummary {
+    align-items: flex-start;
+    padding: 13px 14px;
+  }
+
+  .forecastDetailSummary .forecastListHeader {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .forecastTableScroll,
+  .forecastDetailDisclosure > .forecastLogicList {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+}
+
 .forecastQualityIntro {
   color: #5f6f86;
   font-size: 0.84rem;
