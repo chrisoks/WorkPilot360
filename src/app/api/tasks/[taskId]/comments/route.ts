@@ -12,8 +12,9 @@ function getUserName(user: Pick<User, "firstName" | "lastName" | "email">) {
 
 export async function POST(
   req: Request,
-  { params }: { params: { taskId: string } }
+  { params }: { params: Promise<{ taskId: string }> }
 ) {
+  const { taskId } = await params;
   const body = await req.json();
   const text = String(body.text ?? "").trim();
   const recipientUserId = typeof body.recipientUserId === "string" ? body.recipientUserId.trim() : "";
@@ -42,7 +43,7 @@ export async function POST(
   `;
   const task = await prisma.task.findFirst({
     where: {
-      id: params.taskId,
+      id: taskId,
       organizationId: organization.id,
     },
   });

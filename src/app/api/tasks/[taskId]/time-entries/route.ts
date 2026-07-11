@@ -67,8 +67,9 @@ function toLocalDateTimeInputValue(date: Date) {
 
 export async function POST(
   req: Request,
-  { params }: { params: { taskId: string } }
+  { params }: { params: Promise<{ taskId: string }> }
 ) {
+  const { taskId } = await params;
   const body = await req.json();
   const durationMinutes = parseDuration(body.durationMinutes);
   const startedAt = parseStartedAt(body.startedAt);
@@ -96,7 +97,7 @@ export async function POST(
 
   const task = await prisma.task.findFirst({
     where: {
-      id: params.taskId,
+      id: taskId,
       organizationId: organization.id,
     },
   });
@@ -141,8 +142,9 @@ export async function POST(
 
 export async function PATCH(
   req: Request,
-  { params }: { params: { taskId: string } }
+  { params }: { params: Promise<{ taskId: string }> }
 ) {
+  const { taskId } = await params;
   const body = await req.json();
   const durationMinutes = parseDuration(body.durationMinutes);
   const requestedStartedAt = parseOptionalStartedAt(body.startedAt);
@@ -175,7 +177,7 @@ export async function PATCH(
   const existingEntry = await prisma.timeEntry.findFirst({
     where: {
       id: body.entryId,
-      taskId: params.taskId,
+      taskId,
       organizationId: organization.id,
     },
   });
@@ -222,8 +224,9 @@ export async function PATCH(
 
 export async function DELETE(
   req: Request,
-  { params }: { params: { taskId: string } }
+  { params }: { params: Promise<{ taskId: string }> }
 ) {
+  const { taskId } = await params;
   const body = await req.json();
   const reason = String(body.reason ?? "").trim();
 
@@ -248,7 +251,7 @@ export async function DELETE(
   const existingEntry = await prisma.timeEntry.findFirst({
     where: {
       id: body.entryId,
-      taskId: params.taskId,
+      taskId,
       organizationId: organization.id,
     },
     include: {

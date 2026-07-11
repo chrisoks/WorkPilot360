@@ -7,9 +7,10 @@ process.env.WORKPILOT_INTERNAL_AUTOMATION_TOKEN =
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    typedRoutes: true,
-    instrumentationHook: true
+  typedRoutes: true,
+  outputFileTracingRoot: process.cwd(),
+  turbopack: {
+    root: process.cwd()
   }
 };
 

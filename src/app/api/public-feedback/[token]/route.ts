@@ -70,12 +70,13 @@ async function createHotAlert(input: {
   }
 }
 
-export async function GET(_req: Request, { params }: { params: { token: string } }) {
+export async function GET(_req: Request, { params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params;
   await ensureSalesHubTables();
   const rows = await prisma.$queryRaw<RequestRow[]>`
     SELECT *
     FROM "CustomerFeedbackRequest"
-    WHERE token = ${params.token}
+    WHERE token = ${token}
     LIMIT 1
   `;
   const request = rows[0];
@@ -91,13 +92,14 @@ export async function GET(_req: Request, { params }: { params: { token: string }
   });
 }
 
-export async function POST(req: Request, { params }: { params: { token: string } }) {
+export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params;
   await ensureSalesHubTables();
   const body = await req.json().catch(() => ({}));
   const rows = await prisma.$queryRaw<RequestRow[]>`
     SELECT *
     FROM "CustomerFeedbackRequest"
-    WHERE token = ${params.token}
+    WHERE token = ${token}
     LIMIT 1
   `;
   const request = rows[0];

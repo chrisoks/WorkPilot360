@@ -1,5 +1,17 @@
 # WorkPilot360 Agent Handover
 
+- Next-16-Sicherheitsupgrade 2026-07-11: WorkPilot360 wurde auf dem separaten
+  Branch `codex/next16-security-upgrade` von Next 14.2.5 auf Next 16.2.10,
+  React/React DOM 19.2.7, next-intl 4.13.2 und Vitest 4.1.10 aktualisiert.
+  Dynamische App-Router-Parameter verwenden die asynchrone Next-16-Signatur;
+  `src/middleware.ts` wurde ohne Logikaenderung zu `src/proxy.ts` migriert.
+  Mindestversion fuer Node ist 20.9.0. Der authentifizierte Browserrundgang
+  pruefte Dashboard, KPI-/Team-Live-Daten, Benachrichtigungen samt Historie,
+  Kontakte-Navigation sowie die mobile Navigation ohne Browserfehler oder
+  horizontalen Seitenueberlauf. Der nur lokal angelegte Testbenutzer und seine
+  Testmeldung wurden vollstaendig entfernt. Vor dem Serverdeployment zuerst
+  Node-Version und weitere PM2-Prozesse pruefen; keine globale Node-Aktualisierung
+  ohne Kompatibilitaetspruefung anderer Anwendungen.
 - Uebergabe UI-Modernisierung 2026-07-11: Der abgeschlossene operative
   Go-Live-Rundgang und der Startpunkt fuer die naechste Designphase sind in
   `docs/HANDOFF_UI_MODERNISIERUNG_2026-07-11.md` zusammengefasst. Der naechste

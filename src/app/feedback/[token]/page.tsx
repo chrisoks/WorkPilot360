@@ -1,6 +1,7 @@
 import { FeedbackForm } from "./feedback-form";
 import "./style.css";
 
-export default function FeedbackPage({ params }: { params: { token: string } }) {
-  return <FeedbackForm token={params.token} />;
+export default async function FeedbackPage({ params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params;
+  return <FeedbackForm token={token} />;
 }
