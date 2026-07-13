@@ -530,7 +530,6 @@ type CustomerFileTab =
   | "contacts"
   | "potentials"
   | "tasks"
-  | "orders"
   | "projects"
   | "addresses";
 type CustomerDocumentType =
@@ -6321,6 +6320,8 @@ export function DashboardPage() {
   const [selectedPlanningDateKey, setSelectedPlanningDateKey] = useState(() =>
     formatDateKey(new Date())
   );
+  const [selectedPlanningBoard, setSelectedPlanningBoard] =
+    useState<PlanningBoardCompany>("OK solutions");
   const [selectedPlanningGroup, setSelectedPlanningGroup] = useState("Marketing");
   const [isPlanningDayOpen, setIsPlanningDayOpen] = useState(false);
   const [planningEntries, setPlanningEntries] = useState<PlanningEntry[]>([]);
@@ -13902,6 +13903,7 @@ export function DashboardPage() {
       const entry = planningEntries.find((item) => item.id === notification.linkTargetId);
       if (entry) {
         setSelectedPlanningDateKey(entry.date);
+        setSelectedPlanningBoard(entry.board);
         setSelectedPlanningGroup(entry.groupName);
         setIsPlanningDayOpen(true);
         setActiveTab("planningBoard");
@@ -13921,6 +13923,7 @@ export function DashboardPage() {
       );
       if (entry) {
         setSelectedPlanningDateKey(entry.date);
+        setSelectedPlanningBoard(entry.board);
         setSelectedPlanningGroup(entry.groupName);
         setIsPlanningDayOpen(true);
         setActiveTab("planningBoard");
@@ -14313,6 +14316,7 @@ export function DashboardPage() {
     endTime: string;
     approvalStatus: PlanningEntryApprovalStatus;
     requireManualAssignment: boolean;
+    requireManualGroup: boolean;
   }> = {}) {
     const approvalStatus = options.approvalStatus ?? "confirmed";
     if (!mayManagePlanningEntries && approvalStatus !== "requested") {
@@ -14322,6 +14326,7 @@ export function DashboardPage() {
 
     const isOwnEmployeeRequest = !mayManagePlanningEntries && approvalStatus === "requested";
     const shouldRequireManualAssignment = options.requireManualAssignment === true;
+    const shouldRequireManualGroup = options.requireManualGroup === true;
     const ownBoard: PlanningBoardCompany =
       activeUser?.planningBoard === "OK immocare" ? "OK immocare" : "OK solutions";
     const board = isOwnEmployeeRequest
@@ -14331,7 +14336,11 @@ export function DashboardPage() {
         : options.board ?? "OK solutions";
     const groups = getPlanningEntryGroups(board);
     const preferredGroup = isOwnEmployeeRequest ? activeUser?.planningGroup ?? "" : options.groupName ?? "";
-    const groupName = groups.includes(preferredGroup) ? preferredGroup : groups[0] ?? "";
+    const groupName = shouldRequireManualGroup
+      ? ""
+      : groups.includes(preferredGroup)
+        ? preferredGroup
+        : groups[0] ?? "";
     const startTime = options.startTime ?? "08:00";
     const startTimeIndex = planningTimelineSlots.indexOf(startTime);
     const endTime =
@@ -14437,10 +14446,15 @@ export function DashboardPage() {
   function openPlanningSlotAction(event: MouseEvent<HTMLDivElement>, employeeUser?: UserOption) {
     if (selectedPlanningIsWeekend || selectedPlanningHoliday) return;
 
+    const employeeBoard: PlanningBoardCompany =
+      employeeUser?.planningBoard === "OK immocare" ? "OK immocare" : selectedPlanningBoard;
+    const employeeGroup = getSelectedPlanningGroupForUser(employeeUser);
+    if (!employeeGroup) return;
+
     setPlanningSlotAction({
       date: selectedPlanningDateKey,
-      board: getPlanningBoardForGroup(selectedPlanningGroup),
-      groupName: selectedPlanningGroup,
+      board: employeeBoard,
+      groupName: employeeGroup,
       userId: employeeUser?.id ?? "",
       employeeName: employeeUser?.name ?? "",
       startTime: getPlanningSlotTimeFromClick(event),
@@ -15230,6 +15244,7 @@ export function DashboardPage() {
 
   function jumpToPlanningEntry(entry: PlanningEntry) {
     setSelectedPlanningDateKey(entry.date);
+    setSelectedPlanningBoard(entry.board);
     setSelectedPlanningGroup(entry.groupName);
     setIsPlanningDayOpen(true);
     setActiveTab("planningBoard");
@@ -22443,6 +22458,7 @@ await addProjectLogbookEntry(
       setIsPlanningDayOpen(false);
     }
     if (options.groupName) {
+      setSelectedPlanningBoard(getPlanningBoardForGroup(options.groupName));
       setSelectedPlanningGroup(options.groupName);
     }
     setPlanningBoardView("board");
@@ -22453,6 +22469,7 @@ await addProjectLogbookEntry(
     setSelectedPlanningDateKey(options.date);
     setPlanningBoardStartDate(options.date);
     if (options.groupName) {
+      setSelectedPlanningBoard(getPlanningBoardForGroup(options.groupName));
       setSelectedPlanningGroup(options.groupName);
     }
     setPlanningBoardView("board");
@@ -22952,13 +22969,19 @@ await addProjectLogbookEntry(
       percent,
     };
   };
-  const getEmployeePlannedHours = (employeeName: string, groupName: string, dateKey: string) =>
+  const getEmployeePlannedHours = (
+    employeeName: string,
+    board: PlanningBoardCompany,
+    groupName: string,
+    dateKey: string
+  ) =>
     planningEntries
       .filter(
         (entry) =>
           !entry.deletedAt &&
           entry.approvalStatus === "confirmed" &&
           entry.date === dateKey &&
+          entry.board === board &&
           entry.groupName === groupName &&
           entry.employeeName === employeeName
       )
@@ -22966,10 +22989,11 @@ await addProjectLogbookEntry(
   const getEmployeePlanningUtilization = (
     employeeName: string,
     capacityHours: number,
+    board: PlanningBoardCompany,
     groupName: string,
     dateKey: string
   ) => {
-    const plannedHours = getEmployeePlannedHours(employeeName, groupName, dateKey);
+    const plannedHours = getEmployeePlannedHours(employeeName, board, groupName, dateKey);
     const percent = capacityHours > 0 ? Math.round((plannedHours / capacityHours) * 100) : 0;
 
     return {
@@ -22979,8 +23003,19 @@ await addProjectLogbookEntry(
   };
   const selectedPlanningGroupEmployees =
     users
-      .filter((user) => user.isActive && (user.planningGroup ?? "") === selectedPlanningGroup)
+      .filter(
+        (user) =>
+          user.isActive &&
+          (user.planningBoard ?? "OK solutions") === selectedPlanningBoard &&
+          (selectedPlanningGroup === "Gesamt" || (user.planningGroup ?? "") === selectedPlanningGroup)
+      )
       .map((user) => user.name);
+  const selectedPlanningBoardGroups = [
+    "Gesamt",
+    ...planningBoardGroupsByCompany[selectedPlanningBoard],
+  ];
+  const getSelectedPlanningGroupForUser = (user: UserOption | undefined) =>
+    selectedPlanningGroup === "Gesamt" ? user?.planningGroup ?? "" : selectedPlanningGroup;
   const selectedPlanningDate = new Date(`${selectedPlanningDateKey}T12:00`);
   const selectedPlanningHoliday = getHolidayForDateKey(selectedPlanningDateKey);
   const selectedPlanningIsWeekend = isWeekendDateKey(selectedPlanningDateKey);
@@ -23111,12 +23146,13 @@ await addProjectLogbookEntry(
       "--planning-break-end": `${(safeEnd / planningSlotColumnCount) * 100}%`,
     } as CSSProperties;
   };
-  const getPlanningAssignmentsForEmployee = (employeeName: string) => {
+  const getPlanningAssignmentsForEmployee = (employeeName: string, groupName: string) => {
     const entriesForEmployee = planningEntries.filter(
       (entry) =>
         !entry.deletedAt &&
         entry.date === selectedPlanningDateKey &&
-        entry.groupName === selectedPlanningGroup &&
+        entry.board === selectedPlanningBoard &&
+        entry.groupName === groupName &&
         entry.employeeName === employeeName
     );
 
@@ -23353,7 +23389,6 @@ await addProjectLogbookEntry(
     absences.find((absence) => absence.userId === userId && absence.date === formatDateKey(date) && isApprovedAbsence(absence));
   const getUserAbsenceForDateKey = (userId: string, dateKey: string) =>
     absences.find((absence) => absence.userId === userId && absence.date === dateKey && isApprovedAbsence(absence));
-  const allDetailGroups = planningBoardSections.flatMap((section) => section.detailGroups);
   const doesAbsenceBlockTime = (absence: AbsenceItem | undefined, startTime: string, endTime: string) => {
     if (!absence || !isApprovedAbsence(absence)) return false;
     if (absence.dayPart === "full") return true;
@@ -34368,7 +34403,6 @@ await addProjectLogbookEntry(
       { id: "contacts", label: "Ansprechpartner", icon: "" },
       { id: "potentials", label: "Zusatzverkäufe", icon: "" },
       { id: "tasks", label: "Aufgaben", icon: "" },
-      { id: "orders", label: "Aufträge", icon: "" },
       { id: "projects", label: "Projekte", icon: "" },
       { id: "addresses", label: "Objektadressen", icon: "" },
     ];
@@ -34507,25 +34541,25 @@ await addProjectLogbookEntry(
         };
       })
       .filter((group) => group.imageCount > 0);
-    const customerTaskCount = tasks.filter((task) => {
+    const customerTaskMarkers = [
+      selectedCustomerLabel,
+      selectedCustomerDisplayName,
+      selectedCustomerFile.companyName,
+      selectedCustomerFile.customerNumber,
+    ]
+      .filter(Boolean)
+      .map((value) => normalizeSearchText(String(value)));
+    const customerTasks = tasks.filter((task) => {
       if (task.projectId && customerProjectIds.has(String(task.projectId))) return true;
-      const haystack = [task.kunde, task.titel, task.beschreibung].join(" ").toLowerCase();
-      const customerMarkers = [
-        selectedCustomerLabel,
-        selectedCustomerDisplayName,
-        selectedCustomerFile.companyName,
-        selectedCustomerFile.customerNumber,
-      ]
-        .filter(Boolean)
-        .map((value) => String(value).toLowerCase());
-      return customerMarkers.some((marker) => marker && haystack.includes(marker));
-    }).length;
+      const taskCustomer = normalizeSearchText(task.kunde || "");
+      return Boolean(taskCustomer) && customerTaskMarkers.includes(taskCustomer);
+    });
     const getCustomerMenuCount = (id: CustomerFileTab) => {
       if (id === "images") return customerImageCount;
       if (id === "documents") return customerDocumentTotalCount;
       if (id === "contacts") return customerFileContacts.length;
       if (id === "potentials") return customerPotentials.length;
-      if (id === "tasks") return customerTaskCount;
+      if (id === "tasks") return customerTasks.length;
       if (id === "projects") return customerProjects.length;
       if (id === "addresses") {
         return customerObjectAddresses.filter((address) => address.isActive).length + (customerHasPrimaryAddress ? 1 : 0);
@@ -34675,15 +34709,6 @@ await addProjectLogbookEntry(
                   .join(" | ") || "Kontaktakte"}
               </p>
             </div>
-          </div>
-          <div className={styles.customerFileHeaderActions}>
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={() => openEditContactModal(selectedCustomerFile)}
-            >
-              Kontakt bearbeiten
-            </button>
           </div>
         </header>
 
@@ -35201,6 +35226,85 @@ await addProjectLogbookEntry(
                   </div>
                 )}
               </div>
+            ) : customerFileTab === "tasks" ? (
+              <div className={styles.customerDocumentModule}>
+                <div className={styles.customerFileMainHeader}>
+                  <h2>Aufgaben</h2>
+                  <span>{customerTasks.length} Aufgabe{customerTasks.length === 1 ? "" : "n"}</span>
+                </div>
+                {customerTasks.length === 0 ? (
+                  <div className={styles.customerDocumentEmpty}>
+                    <strong>Noch keine Aufgaben mit diesem Kunden verknüpft.</strong>
+                    <p>
+                      Aufgaben erscheinen hier automatisch, wenn sie einem Kundenprojekt oder direkt dem Kunden zugeordnet sind.
+                    </p>
+                  </div>
+                ) : (
+                  <div className={styles.projectTableScroll}>
+                    <table className={styles.projectTimeTable}>
+                      <thead>
+                        <tr>
+                          <th>Nr.</th>
+                          <th>Aufgabe</th>
+                          <th>Projekt</th>
+                          <th>Status</th>
+                          <th>Priorität</th>
+                          <th>Zuständig</th>
+                          <th>Deadline</th>
+                          <th>Aktion</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {customerTasks.map((task) => {
+                          const linkedProject = customerProjects.find(
+                            (project) => String(project.id) === String(task.projectId)
+                          );
+                          return (
+                            <tr key={task.id}>
+                              <td className={styles.number}>{getTaskNumber(task.id, tasks)}</td>
+                              <td>
+                                <strong>{task.titel}</strong>
+                                {task.beschreibung ? (
+                                  <span className={styles.metaLine}>{truncateText(task.beschreibung, 80)}</span>
+                                ) : null}
+                              </td>
+                              <td>
+                                {linkedProject
+                                  ? `${linkedProject.projectNumber || linkedProject.id} | ${linkedProject.title}`
+                                  : "Direkte Kundenaufgabe"}
+                              </td>
+                              <td>
+                                <span className={`${styles.badge} ${styles.status}`} data-status={task.status}>
+                                  {task.status}
+                                </span>
+                              </td>
+                              <td>
+                                <span className={`${styles.badge} ${styles.priority}`} data-priority={task.prioritaet}>
+                                  {task.prioritaet}
+                                </span>
+                              </td>
+                              <td>
+                                {task.zustaendig}
+                                <span className={styles.metaLine}>{task.rolle}</span>
+                              </td>
+                              <td>{formatDeadline(task.faelligkeit)}</td>
+                              <td>
+                                <button
+                                  type="button"
+                                  className={styles.timeEntryEditButton}
+                                  onClick={() => openEditModal(task)}
+                                >
+                                  Öffnen
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             ) : customerFileTab === "addresses" ? (
               <div className={styles.customerDocumentModule}>
                 <div className={styles.customerFileMainHeader}>
@@ -35209,13 +35313,6 @@ await addProjectLogbookEntry(
                     <span>Arbeitsorte für Projekte und Immocare-Planungen</span>
                   </div>
                   <div className={styles.headerActions}>
-                    <button
-                      type="button"
-                      className={styles.secondaryButton}
-                      onClick={() => openEditContactModal(selectedCustomerFile)}
-                    >
-                      Kontaktdaten bearbeiten
-                    </button>
                     <button
                       type="button"
                       className={styles.primaryButton}
@@ -35352,6 +35449,13 @@ await addProjectLogbookEntry(
                 <dt>Erreichbarkeit</dt>
                 <dd>{selectedCustomerFile.reachability || "Sonstige"}</dd>
               </dl>
+              <button
+                type="button"
+                className={`${styles.primaryButton} ${styles.customerInfoCardAction}`}
+                onClick={() => openEditContactModal(selectedCustomerFile)}
+              >
+                Kontaktdaten bearbeiten
+              </button>
             </article>
 
           </aside>
@@ -44909,7 +45013,9 @@ await addProjectLogbookEntry(
                 ? `Feiertag: ${selectedPlanningHoliday.name}`
                 : selectedPlanningIsWeekend
                   ? "Wochenende"
-                  : `Planungsgruppe ${selectedPlanningGroup}`}
+                  : selectedPlanningGroup === "Gesamt"
+                    ? `${selectedPlanningBoard} · Gesamtansicht`
+                    : `${selectedPlanningBoard} · Planungsgruppe ${selectedPlanningGroup}`}
             </p>
           </div>
           <div className={styles.planningDayActions}>
@@ -44920,12 +45026,10 @@ await addProjectLogbookEntry(
                 onClick={() =>
                   openPlanningEntryModal({
                     date: selectedPlanningDateKey,
-                    groupName: selectedPlanningGroup,
+                    groupName: selectedPlanningGroup === "Gesamt" ? "" : selectedPlanningGroup,
                     approvalStatus: "requested",
-                    board:
-                      selectedPlanningGroup === "VZK" || selectedPlanningGroup === "TZK"
-                        ? "OK immocare"
-                        : "OK solutions",
+                    board: selectedPlanningBoard,
+                    requireManualGroup: selectedPlanningGroup === "Gesamt",
                   })
                 }
               >
@@ -44938,11 +45042,9 @@ await addProjectLogbookEntry(
                 onClick={() =>
                   openPlanningEntryModal({
                     date: selectedPlanningDateKey,
-                    groupName: selectedPlanningGroup,
-                    board:
-                      selectedPlanningGroup === "VZK" || selectedPlanningGroup === "TZK"
-                        ? "OK immocare"
-                        : "OK solutions",
+                    groupName: selectedPlanningGroup === "Gesamt" ? "" : selectedPlanningGroup,
+                    board: selectedPlanningBoard,
+                    requireManualGroup: selectedPlanningGroup === "Gesamt",
                   })
                 }
               >
@@ -44951,14 +45053,14 @@ await addProjectLogbookEntry(
             ) : null}
             </div>
             <div className={styles.planningGroupSwitch}>
-              {allDetailGroups.map((group) => (
+              {selectedPlanningBoardGroups.map((groupName) => (
                 <button
-                  key={group.name}
+                  key={groupName}
                   type="button"
-                  data-active={selectedPlanningGroup === group.name}
-                  onClick={() => setSelectedPlanningGroup(group.name)}
+                  data-active={selectedPlanningGroup === groupName}
+                  onClick={() => setSelectedPlanningGroup(groupName)}
                 >
-                  {group.name}
+                  {groupName}
                 </button>
               ))}
             </div>
@@ -44994,13 +45096,15 @@ await addProjectLogbookEntry(
 
             {selectedPlanningGroupEmployees.map((employee) => {
               const employeeUser = users.find((user) => user.name === employee);
+              const employeePlanningGroup = getSelectedPlanningGroupForUser(employeeUser);
               const employeeCapacity = employeeUser
                 ? getUserCapacityForDate(employeeUser, selectedPlanningDateKey)
                 : 0;
               const employeeUtilization = getEmployeePlanningUtilization(
                 employee,
                 employeeCapacity,
-                selectedPlanningGroup,
+                selectedPlanningBoard,
+                employeePlanningGroup,
                 selectedPlanningDateKey
               );
               const employeeBreakWindow = getUserBreakWindowForDate(employeeUser, selectedPlanningDateKey);
@@ -45013,7 +45117,7 @@ await addProjectLogbookEntry(
               const employeeBreakEndColumn = employeeBreakWindow.end
                 ? getPlanningSlotIndex(employeeBreakWindow.end) + 1
                 : 1;
-              const assignments = getPlanningAssignmentsForEmployee(employee);
+              const assignments = getPlanningAssignmentsForEmployee(employee, employeePlanningGroup);
 
               return (
                 <div key={employee} className={styles.planningWorkerRow}>
@@ -45226,7 +45330,9 @@ await addProjectLogbookEntry(
                     ? `Feiertag: ${selectedPlanningHoliday.name}`
                     : selectedPlanningIsWeekend
                       ? "Wochenende"
-                      : `Planungsgruppe ${selectedPlanningGroup}`}
+                      : selectedPlanningGroup === "Gesamt"
+                        ? `${selectedPlanningBoard} · Gesamtansicht`
+                        : `${selectedPlanningBoard} · Planungsgruppe ${selectedPlanningGroup}`}
                 </p>
               </div>
               <div className={styles.planningDayActions}>
@@ -45238,11 +45344,9 @@ await addProjectLogbookEntry(
                     onClick={() =>
                       openPlanningEntryModal({
                         date: selectedPlanningDateKey,
-                        groupName: selectedPlanningGroup,
-                        board:
-                          selectedPlanningGroup === "VZK" || selectedPlanningGroup === "TZK"
-                            ? "OK immocare"
-                            : "OK solutions",
+                        groupName: selectedPlanningGroup === "Gesamt" ? "" : selectedPlanningGroup,
+                        board: selectedPlanningBoard,
+                        requireManualGroup: selectedPlanningGroup === "Gesamt",
                       })
                     }
                   >
@@ -45255,12 +45359,10 @@ await addProjectLogbookEntry(
                   onClick={() =>
                     openPlanningEntryModal({
                       date: selectedPlanningDateKey,
-                      groupName: selectedPlanningGroup,
+                      groupName: selectedPlanningGroup === "Gesamt" ? "" : selectedPlanningGroup,
                       approvalStatus: "requested",
-                      board:
-                        selectedPlanningGroup === "VZK" || selectedPlanningGroup === "TZK"
-                          ? "OK immocare"
-                          : "OK solutions",
+                      board: selectedPlanningBoard,
+                      requireManualGroup: selectedPlanningGroup === "Gesamt",
                     })
                   }
                 >
@@ -45275,14 +45377,14 @@ await addProjectLogbookEntry(
                   Zurück zum Planungsboard
                 </button>
                 <div className={styles.planningGroupSwitch}>
-                  {allDetailGroups.map((group) => (
+                  {selectedPlanningBoardGroups.map((groupName) => (
                     <button
-                      key={group.name}
+                      key={groupName}
                       type="button"
-                      data-active={selectedPlanningGroup === group.name}
-                      onClick={() => setSelectedPlanningGroup(group.name)}
+                      data-active={selectedPlanningGroup === groupName}
+                      onClick={() => setSelectedPlanningGroup(groupName)}
                     >
-                      {group.name}
+                      {groupName}
                     </button>
                   ))}
                 </div>
@@ -45318,6 +45420,7 @@ await addProjectLogbookEntry(
 
                 {selectedPlanningGroupEmployees.map((employee) => {
                   const employeeUser = users.find((user) => user.name === employee);
+                  const employeePlanningGroup = getSelectedPlanningGroupForUser(employeeUser);
                   const employeeCapacity = employeeUser
                     ? getUserCapacityForDate(employeeUser, selectedPlanningDateKey)
                     : 0;
@@ -45328,7 +45431,8 @@ await addProjectLogbookEntry(
                   const employeeUtilization = getEmployeePlanningUtilization(
                     employee,
                     employeeCapacity,
-                    selectedPlanningGroup,
+                    selectedPlanningBoard,
+                    employeePlanningGroup,
                     selectedPlanningDateKey
                   );
                   const employeeBreakWindow = getUserBreakWindowForDate(
@@ -45344,7 +45448,7 @@ await addProjectLogbookEntry(
                   const employeeBreakEndColumn = employeeBreakWindow.end
                     ? getPlanningSlotIndex(employeeBreakWindow.end) + 1
                     : 1;
-                  const assignments = getPlanningAssignmentsForEmployee(employee);
+                  const assignments = getPlanningAssignmentsForEmployee(employee, employeePlanningGroup);
 
                   return (
                     <div key={employee} className={styles.planningWorkerRow}>
@@ -45443,7 +45547,7 @@ await addProjectLogbookEntry(
 
     return (
       <section className={styles.planningBoardPage}>
-        <div className={styles.topline}>
+        <header className={styles.planningBoardHero}>
           <div>
             <p className={styles.eyebrow}>Planung</p>
             <h1>Planungsboard</h1>
@@ -45452,7 +45556,28 @@ await addProjectLogbookEntry(
               markiert.
             </p>
           </div>
-          <div className={styles.toplineActions}>
+          <div className={styles.planningBoardHeroActions}>
+            {mayManagePlanningEntries ? (
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={() => openPlanningEntryModal({ requireManualAssignment: true })}
+              >
+                + Planung
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className={styles.requestButton}
+              onClick={() => openPlanningEntryModal({ approvalStatus: "requested", requireManualAssignment: true })}
+            >
+              + Terminwunsch
+            </button>
+          </div>
+        </header>
+
+        <div className={styles.planningBoardToolbar}>
+          <div className={styles.planningBoardToolbarGroup}>
             <div className={styles.planningBoardDateNav} aria-label="Planungszeitraum">
               <button type="button" onClick={() => shiftPlanningBoardStart(-7)}>
                 &lt; 1 Woche
@@ -45487,22 +45612,6 @@ await addProjectLogbookEntry(
                 Offene Planungstermine
               </button>
             </div>
-            {mayManagePlanningEntries ? (
-              <button
-                type="button"
-                className={styles.primaryButton}
-                onClick={() => openPlanningEntryModal({ requireManualAssignment: true })}
-              >
-                + Planung
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className={styles.requestButton}
-              onClick={() => openPlanningEntryModal({ approvalStatus: "requested", requireManualAssignment: true })}
-            >
-              + Terminwunsch
-            </button>
           </div>
         </div>
 
@@ -45645,7 +45754,8 @@ await addProjectLogbookEntry(
                         title={holiday?.name}
                         onClick={() => {
                           setSelectedPlanningDateKey(dateKey);
-                          setSelectedPlanningGroup(section.detailGroups[0]?.name ?? "Marketing");
+                          setSelectedPlanningBoard(section.company as PlanningBoardCompany);
+                          setSelectedPlanningGroup("Gesamt");
                           setIsPlanningDayOpen(true);
                         }}
                       >
@@ -45681,12 +45791,10 @@ await addProjectLogbookEntry(
                           groupName,
                           dateKey
                         );
-                        const targetGroup =
-                          groupName === "Gesamt" ? section.detailGroups[0]?.name ?? "Marketing" : groupName;
                         const isSelected =
-                          groupName !== "Gesamt" &&
                           selectedPlanningDateKey === dateKey &&
-                          selectedPlanningGroup === targetGroup;
+                          selectedPlanningBoard === section.company &&
+                          selectedPlanningGroup === groupName;
                         const hasWeekendPlanning = (isWeekend || Boolean(holiday)) && utilization.plannedHours > 0;
 
                         return (
@@ -45712,7 +45820,8 @@ await addProjectLogbookEntry(
                             title={holiday?.name}
                             onClick={() => {
                               setSelectedPlanningDateKey(dateKey);
-                              setSelectedPlanningGroup(targetGroup);
+                              setSelectedPlanningBoard(section.company as PlanningBoardCompany);
+                              setSelectedPlanningGroup(groupName);
                               setIsPlanningDayOpen(true);
                             }}
                           >

@@ -11340,7 +11340,7 @@
     0 10px 22px rgba(15, 23, 42, 0.18);
   display: grid;
   gap: 18px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   padding: 18px 20px;
 }
 
@@ -11377,41 +11377,6 @@
   background: rgba(255, 255, 255, 0.14);
   border-color: rgba(226, 232, 240, 0.55);
   color: #ffffff;
-}
-
-.customerFileHeaderActions {
-  align-content: start;
-  background: rgba(15, 23, 42, 0.56);
-  border: 1px solid rgba(226, 232, 240, 0.16);
-  border-radius: 8px;
-  display: grid;
-  grid-template-columns: minmax(180px, 220px);
-  justify-content: flex-end;
-  min-width: min(100%, 244px);
-  padding: 8px 9px;
-}
-
-.customerFileHeaderActions > button {
-  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-  border-color: #d8e1ec;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.96) inset,
-    0 -1px 0 rgba(148, 163, 184, 0.18) inset,
-    0 7px 14px rgba(2, 6, 23, 0.18);
-  color: #0f172a;
-  min-height: 40px;
-  width: 100%;
-}
-
-.customerFileHeaderActions > button:hover {
-  background: linear-gradient(180deg, #ffffff 0%, #eef6ff 100%);
-  border-color: #bfdbfe;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.98) inset,
-    0 -1px 0 rgba(37, 99, 235, 0.14) inset,
-    0 9px 18px rgba(37, 99, 235, 0.16);
-  color: #0b5ed7;
-  transform: translateY(-1px);
 }
 
 .customerFileGrid {
@@ -12168,6 +12133,11 @@
   color: #334155;
   display: block;
   margin-top: 3px;
+}
+
+.customerInfoCardAction {
+  min-height: 42px;
+  width: 100%;
 }
 
 .customerInfoCard textarea {
@@ -25259,6 +25229,76 @@
   gap: 18px;
 }
 
+.planningBoardHero {
+  align-items: center;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.07), transparent 34%),
+    #0b1020;
+  border: 1px solid #eef3f8;
+  border-radius: 8px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.96) inset,
+    0 -1px 0 rgba(148, 163, 184, 0.24) inset,
+    0 0 0 2px rgba(238, 243, 248, 0.92),
+    0 10px 22px rgba(15, 23, 42, 0.18);
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 18px 20px;
+}
+
+.planningBoardHero .eyebrow {
+  color: #5eead4;
+  margin-bottom: 7px;
+}
+
+.planningBoardHero h1 {
+  color: #f8fafc;
+  font-size: 1.8rem;
+  font-weight: 850;
+  line-height: 1.15;
+  margin: 0;
+}
+
+.planningBoardHero .subline {
+  color: #cbd5e1;
+  margin-top: 8px;
+  max-width: 760px;
+}
+
+.planningBoardHeroActions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.planningBoardHeroActions > button {
+  min-height: 46px;
+  white-space: nowrap;
+}
+
+.planningBoardToolbar {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #d7e2ee;
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+  display: flex;
+  justify-content: space-between;
+  padding: 9px 10px;
+}
+
+.planningBoardToolbarGroup {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+  width: 100%;
+}
+
 .planningBoardStack {
   display: grid;
   gap: 28px;
@@ -26913,8 +26953,7 @@
     grid-template-columns: 1fr;
   }
 
-  .projectFileActions,
-  .customerFileHeaderActions {
+  .projectFileActions {
     grid-template-columns: 1fr;
     min-width: 0;
     width: 100%;
@@ -26974,6 +27013,26 @@
 
   .planningDayHeader {
     grid-template-columns: 1fr;
+  }
+
+  .planningBoardHero {
+    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .planningBoardHeroActions {
+    justify-content: flex-start;
+  }
+
+  .planningBoardToolbarGroup {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .planningBoardDateNav,
+  .planningBoardToolbar .segmentedControl {
+    max-width: 100%;
+    overflow-x: auto;
   }
 
   .planningDayPrimaryActions,

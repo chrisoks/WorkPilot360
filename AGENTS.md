@@ -1,5 +1,17 @@
 # WorkPilot360 Agent Handover
 
+- Planungsboard Gesamtansicht/Header 2026-07-13: Der Planungsboard-Einstieg
+  nutzt einen kompakten Navy-Kopf fuer Titel, Beschreibung und die beiden
+  Anlageaktionen; Zeitraum-Navigation und Ansichtswechsel stehen getrennt in
+  einer ruhigen weissen Werkzeugzeile. Ein Klick auf `Gesamt` oeffnet jetzt die
+  echte Gesamtansicht des gewaehlten Boards statt dessen erster
+  Planungsgruppe. Dort erscheinen alle aktiven Board-Mitarbeitenden, waehrend
+  Kapazitaeten, bestehende Eintraege und neue Eintraege weiterhin mit der
+  tatsaechlichen Planungsgruppe des jeweiligen Mitarbeiters arbeiten. Die
+  Gruppenumschaltung zeigt nur die Gruppen des aktuellen Boards. Eine neue
+  Planung aus `Gesamt` behaelt das Board bei, verlangt aber eine bewusste
+  Gruppenauswahl; die bestehende serverseitige Board-/Gruppenpruefung bleibt
+  unveraendert. Desktop und kleiner Viewport wurden echt geklickt.
 - Kundenakte Logbuch/Bilder 2026-07-13: Das Kundenlogbuch nutzt bei alten und
   neuen Projekt-Logbucheintraegen die vorhandenen Benutzer-IDs, Namen oder
   Initialen zur Profilbildzuordnung; Systemereignisse erhalten weiterhin ein
@@ -10,9 +22,13 @@
   Projekt in Objektbesichtigungen, Vorher- und Nachherbilder gegliedert;
   Solutions zeigt je Projekt eine einfache gemeinsame Bilderflaeche. Fehlende
   Vorschaudaten werden beim Oeffnen gezielt fuer die betroffenen Projekte
-  nachgeladen. In Objektadressen stehen `Kontaktdaten bearbeiten` und
-  `+ Weiterer Arbeitsort` gemeinsam in derselben Kopfaktionszeile. APIs,
-  Rollen, Upload-, Dokument- und Projektlogik wurden nicht erweitert.
+  nachgeladen. `Kontaktdaten bearbeiten` steht als einzelne blaue Primaeraktion
+  direkt unter der rechten Kontaktdatenliste; im Objektadressen-Kopf bleibt nur
+  `+ Weiterer Arbeitsort`. Der Kundenakten-Reiter `Aufgaben` zeigt echte, ueber
+  Projekt-ID oder exakte Kundenbezeichnung verknuepfte Aufgaben mit Projekt,
+  Status, Prioritaet, Zustaendigkeit, Deadline und direkter Oeffnen-Aktion. Der
+  fachlich nicht verwendete Reiter `Auftraege` wurde entfernt. APIs, Rollen,
+  Upload-, Dokument-, Aufgaben- und Projektlogik wurden nicht erweitert.
 - Adresskompatibilitaet Kundenstamm/Projekt/Planung 2026-07-13: Die vollstaendige
   Hauptadresse eines Kunden gilt ohne Datenkopie als primaerer Arbeitsort.
   Zusaetzliche `ObjectAddress`-Eintraege bleiben fuer weitere Einsatzorte
