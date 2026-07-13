@@ -1,5 +1,14 @@
 # WorkPilot360 Agent Handover
 
+- Kontakte UI-Verdichtung 2026-07-13: Die Kontakte-Übersicht ist rein
+  gestalterisch als kompakter CRM-Arbeitsbereich geschärft. Die sechs
+  Kategorien bilden auf Desktop eine ruhige gemeinsame Statusleiste und
+  wechseln im kleinen Viewport auf ein 3x2- beziehungsweise 2x3-Raster statt
+  einer langen Einzelspalte. Suche, Kategorie und Werkzeuge, Tabellenrahmen,
+  Filterzeile, Auswahlzustand sowie das Kontaktmodal nutzen eine einheitlichere
+  Operations-Optik. Tabelle und Modal bleiben intern scrollbar; Filter,
+  Auswahl, Pagination, Export, Spaltensteuerung, Datenfelder, Klick-Handler,
+  API und Rollenlogik bleiben unverändert.
 - Auswertungen KI-Werkzeugzeile 2026-07-13: Die rollenabhängigen Schaltflächen
   für BWL-KI und Vertriebs-KI sind in einem einzigen kompakten KI-Menü in der
   Filterzeile der Auswertungen gebündelt. Der Einstieg steht dort rechts neben
