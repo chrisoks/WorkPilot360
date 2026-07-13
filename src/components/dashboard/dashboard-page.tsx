@@ -1921,9 +1921,13 @@ type CustomerProjectNote = {
   body: string;
   category: string;
   priority: string;
+  effectLevel: "information" | "confirmation" | "critical";
   isActive: boolean;
   requiresStampConfirmation: boolean;
   requiresProjectCreateConfirmation: boolean;
+  requiresOfferSendConfirmation: boolean;
+  requiresInvoiceCreateConfirmation: boolean;
+  requiresInvoiceSendConfirmation: boolean;
   confirmationFrequency: string;
   validFrom: string;
   validUntil: string;
@@ -1946,13 +1950,24 @@ type CustomerProjectNoteDraft = {
   body: string;
   category: string;
   priority: string;
+  effectLevel: "information" | "confirmation" | "critical";
   isActive: boolean;
   requiresStampConfirmation: boolean;
   requiresProjectCreateConfirmation: boolean;
+  requiresOfferSendConfirmation: boolean;
+  requiresInvoiceCreateConfirmation: boolean;
+  requiresInvoiceSendConfirmation: boolean;
   confirmationFrequency: string;
   validFrom: string;
   validUntil: string;
 };
+
+type CustomerProjectNoteContext =
+  | "stamp"
+  | "projectCreate"
+  | "offerSend"
+  | "invoiceCreate"
+  | "invoiceSend";
 
 type AppNotification = {
   id: string;
@@ -3347,20 +3362,49 @@ const emptyCustomerProjectNoteDraft: CustomerProjectNoteDraft = {
   body: "",
   category: "Allgemein",
   priority: "normal",
+  effectLevel: "information",
   isActive: true,
   requiresStampConfirmation: false,
   requiresProjectCreateConfirmation: false,
+  requiresOfferSendConfirmation: false,
+  requiresInvoiceCreateConfirmation: false,
+  requiresInvoiceSendConfirmation: false,
   confirmationFrequency: "always",
   validFrom: "",
   validUntil: "",
 };
 
 const customerProjectNoteCategories = ["Allgemein", "Abrechnung", "Zugang", "Objekt", "Kommunikation", "Sicherheit"];
-const customerProjectNotePriorities = [
-  { value: "normal", label: "Normal" },
-  { value: "important", label: "Wichtig" },
-  { value: "critical", label: "Kritisch" },
+const customerProjectNoteEffectLevels = [
+  {
+    value: "information" as const,
+    label: "Information",
+    description: "Wird angezeigt, der Vorgang kann direkt fortgesetzt werden.",
+  },
+  {
+    value: "confirmation" as const,
+    label: "Bestätigung erforderlich",
+    description: "Muss aktiv gelesen und bestätigt werden.",
+  },
+  {
+    value: "critical" as const,
+    label: "Kritische Sperre",
+    description: "Folgt später mit abgesicherter Freigabe- und Rollenlogik.",
+    disabled: true,
+  },
 ];
+const customerProjectNoteEffectLabels: Record<CustomerProjectNote["effectLevel"], string> = {
+  information: "Information",
+  confirmation: "Bestätigung erforderlich",
+  critical: "Kritische Sperre",
+};
+const customerProjectNoteContextLabels: Record<CustomerProjectNoteContext, string> = {
+  stamp: "vor der Stempelung",
+  projectCreate: "bei der Projektanlage",
+  offerSend: "vor dem Angebotsversand",
+  invoiceCreate: "vor der Rechnungserstellung",
+  invoiceSend: "vor dem Rechnungsversand",
+};
 const customerProjectNoteFrequencies = [
   { value: "always", label: "Jedes Mal" },
   { value: "daily", label: "Einmal pro Tag" },
@@ -6016,6 +6060,19 @@ export function DashboardPage() {
     projectId: string;
     customerId: string;
   } | null>(null);
+  const [pendingWorkflowNoteConfirm, setPendingWorkflowNoteConfirm] = useState<{
+    notes: CustomerProjectNote[];
+    context: "offerSend" | "invoiceCreate" | "invoiceSend";
+    projectId: string;
+    customerId: string;
+    invoiceOptions?: {
+      asDraft?: boolean;
+      finalizeConfirmed?: boolean;
+      processPreflightConfirmed?: boolean;
+    };
+    invoiceToFinalize?: InvoiceItem;
+  } | null>(null);
+  const [isPendingNoteConfirmed, setIsPendingNoteConfirmed] = useState(false);
   const skipNextStampNoteCheckRef = useRef(false);
   const [projectPotentials, setProjectPotentials] = useState<ProjectPotential[]>([]);
   const [recurringProjectReviews, setRecurringProjectReviews] = useState<RecurringProjectReview[]>([]);
@@ -10241,13 +10298,43 @@ export function DashboardPage() {
     };
   }
 
-  async function saveInvoice(options: { asDraft?: boolean; finalizeConfirmed?: boolean; processPreflightConfirmed?: boolean } = {}) {
+  async function saveInvoice(options: {
+    asDraft?: boolean;
+    finalizeConfirmed?: boolean;
+    processPreflightConfirmed?: boolean;
+    noteConfirmed?: boolean;
+  } = {}) {
     if (!selectedProjectFile) return;
     const saveAsDraft = Boolean(options.asDraft);
     const editingInvoice = editingInvoiceId ? invoices.find((invoice) => invoice.id === editingInvoiceId) : null;
     if (!saveAsDraft && editingInvoice?.status === "Entwurf" && !options.finalizeConfirmed) {
       setPendingFinalizeInvoice({ source: "modal" });
       return;
+    }
+    if (
+      !saveAsDraft &&
+      !options.noteConfirmed &&
+      (!editingInvoice || editingInvoice.status === "Entwurf")
+    ) {
+      const customer = getProjectCustomerContact(selectedProjectFile);
+      const notes = await loadCustomerProjectNotes({
+        customerId: customer?.id || selectedProjectFile.contactId || "",
+        projectId: selectedProjectFile.id,
+        context: "invoiceCreate",
+        userId: activeUserId,
+      });
+      if (notes.length > 0) {
+        setIsPendingNoteConfirmed(false);
+        setPendingWorkflowNoteConfirm({
+          notes,
+          context: "invoiceCreate",
+          customerId: customer?.id || selectedProjectFile.contactId || "",
+          projectId: selectedProjectFile.id,
+          invoiceOptions: options,
+        });
+        setNoteError("");
+        return;
+      }
     }
     const normalizedServiceDate =
       invoiceDraft.serviceDate || getProjectServiceDateSuggestion(selectedProjectFile, invoiceDraft.plannedExecutionMonth);
@@ -10379,7 +10466,7 @@ export function DashboardPage() {
         setIsSavingInvoice(false);
         if (confirmed) {
           setTimeout(() => {
-            void saveInvoice({ processPreflightConfirmed: true });
+            void saveInvoice({ processPreflightConfirmed: true, noteConfirmed: true });
           }, 0);
         }
         return;
@@ -10425,12 +10512,34 @@ export function DashboardPage() {
     }
   }
 
-  async function finalizeInvoice(invoice: InvoiceItem) {
+  async function finalizeInvoice(invoice: InvoiceItem, noteConfirmed = false) {
     if (invoice.status !== "Entwurf") return;
     const project = heroProjects.find((item) => item.id === invoice.projectId) || selectedProjectFile;
     if (!project) {
       setErrorMessage("Projekt zur Rechnung wurde nicht gefunden.");
       return;
+    }
+
+    if (!noteConfirmed) {
+      const customer = getProjectCustomerContact(project);
+      const notes = await loadCustomerProjectNotes({
+        customerId: customer?.id || project.contactId || "",
+        projectId: project.id,
+        context: "invoiceCreate",
+        userId: activeUserId,
+      });
+      if (notes.length > 0) {
+        setIsPendingNoteConfirmed(false);
+        setPendingWorkflowNoteConfirm({
+          notes,
+          context: "invoiceCreate",
+          customerId: customer?.id || project.contactId || "",
+          projectId: project.id,
+          invoiceToFinalize: invoice,
+        });
+        setNoteError("");
+        return;
+      }
     }
 
     setInvoiceError("");
@@ -11076,8 +11185,32 @@ export function DashboardPage() {
     setDocumentMailSuccess("");
   }
 
-  async function sendDocumentMail() {
+  async function sendDocumentMail(noteConfirmed = false) {
     if (!documentMailDraft) return;
+    if (!noteConfirmed && (documentMailDraft.kind === "offer" || documentMailDraft.kind === "invoice")) {
+      const project = heroProjects.find((item) => item.id === documentMailDraft.projectId) || selectedProjectFile;
+      if (project) {
+        const customer = getProjectCustomerContact(project);
+        const context = documentMailDraft.kind === "offer" ? "offerSend" : "invoiceSend";
+        const notes = await loadCustomerProjectNotes({
+          customerId: customer?.id || project.contactId || "",
+          projectId: project.id,
+          context,
+          userId: activeUserId,
+        });
+        if (notes.length > 0) {
+          setIsPendingNoteConfirmed(false);
+          setPendingWorkflowNoteConfirm({
+            notes,
+            context,
+            customerId: customer?.id || project.contactId || "",
+            projectId: project.id,
+          });
+          setNoteError("");
+          return;
+        }
+      }
+    }
     if (!documentMailDraft.to.trim()) {
       setDocumentMailError("Bitte mindestens einen Empfänger eintragen.");
       return;
@@ -12846,9 +12979,13 @@ export function DashboardPage() {
             body: note.body,
             category: note.category,
             priority: note.priority,
+            effectLevel: note.effectLevel || "confirmation",
             isActive: note.isActive,
             requiresStampConfirmation: note.requiresStampConfirmation,
             requiresProjectCreateConfirmation: note.requiresProjectCreateConfirmation,
+            requiresOfferSendConfirmation: note.requiresOfferSendConfirmation,
+            requiresInvoiceCreateConfirmation: note.requiresInvoiceCreateConfirmation,
+            requiresInvoiceSendConfirmation: note.requiresInvoiceSendConfirmation,
             confirmationFrequency: note.confirmationFrequency,
             validFrom: note.validFrom,
             validUntil: note.validUntil,
@@ -12938,7 +13075,7 @@ export function DashboardPage() {
 
   async function acknowledgeCustomerProjectNotes(input: {
     notes: CustomerProjectNote[];
-    context: "stamp" | "projectCreate";
+    context: CustomerProjectNoteContext;
     customerId?: string;
     projectId?: string;
   }) {
@@ -12978,6 +13115,7 @@ export function DashboardPage() {
         projectId: pendingStampNoteConfirm.projectId,
       });
       setPendingStampNoteConfirm(null);
+      setIsPendingNoteConfirmed(false);
       skipNextStampNoteCheckRef.current = true;
       await confirmStampModal();
     } catch (error) {
@@ -12995,6 +13133,33 @@ export function DashboardPage() {
         projectId: pendingProjectCreateNoteConfirm.projectId,
       });
       setPendingProjectCreateNoteConfirm(null);
+      setIsPendingNoteConfirmed(false);
+    } catch (error) {
+      setNoteError(error instanceof Error ? error.message : "Hinweise konnten nicht bestaetigt werden.");
+    }
+  }
+
+  async function confirmPendingWorkflowNotes() {
+    if (!pendingWorkflowNoteConfirm) return;
+    const pending = pendingWorkflowNoteConfirm;
+    try {
+      await acknowledgeCustomerProjectNotes({
+        notes: pending.notes,
+        context: pending.context,
+        customerId: pending.customerId,
+        projectId: pending.projectId,
+      });
+      setPendingWorkflowNoteConfirm(null);
+      setIsPendingNoteConfirmed(false);
+      if (pending.context === "invoiceCreate") {
+        if (pending.invoiceToFinalize) {
+          await finalizeInvoice(pending.invoiceToFinalize, true);
+          return;
+        }
+        await saveInvoice({ ...pending.invoiceOptions, noteConfirmed: true });
+        return;
+      }
+      await sendDocumentMail(true);
     } catch (error) {
       setNoteError(error instanceof Error ? error.message : "Hinweise konnten nicht bestaetigt werden.");
     }
@@ -18786,6 +18951,7 @@ await addProjectLogbookEntry(
       userId: activeUserId,
     });
     if (projectCreateNotes.length > 0) {
+      setIsPendingNoteConfirmed(false);
       setPendingProjectCreateNoteConfirm({
         notes: projectCreateNotes,
         projectId: savedProject.id,
@@ -20071,6 +20237,7 @@ await addProjectLogbookEntry(
         userId: activeUserId,
       });
       if (notes.length > 0) {
+        setIsPendingNoteConfirmed(false);
         setPendingStampNoteConfirm({
           notes,
           mode: stampSelectionMode,
@@ -33842,7 +34009,7 @@ await addProjectLogbookEntry(
           <div>
             <h2>Hinweise</h2>
             <p>
-              CRM-Hinweise fuer Kunde und Projekt. Pflicht-Hinweise koennen vor Stempelung oder Projektanlage bestaetigt werden.
+              CRM-Hinweise für Kunde und Projekt – als Information oder mit Pflichtbestätigung im passenden Arbeitsschritt.
             </p>
           </div>
           <div className={styles.notesActions}>
@@ -33881,17 +34048,22 @@ await addProjectLogbookEntry(
                 <article
                   key={note.id}
                   className={styles.noteCard}
-                  data-priority={note.priority}
+                  data-effect={note.effectLevel || "confirmation"}
                   onClick={() => openCustomerProjectNoteDraft(note.scope, note)}
                 >
                   <header>
-                    <span>{note.category}</span>
+                    <span>
+                      {customerProjectNoteEffectLabels[note.effectLevel || "confirmation"]} · {note.category}
+                    </span>
                     <strong>{note.title}</strong>
                   </header>
                   <p>{note.body}</p>
                   <div className={styles.noteBadges}>
                     {note.requiresStampConfirmation ? <span>Stempelung</span> : null}
                     {note.requiresProjectCreateConfirmation ? <span>Projektanlage</span> : null}
+                    {note.requiresOfferSendConfirmation ? <span>Angebotsversand</span> : null}
+                    {note.requiresInvoiceCreateConfirmation ? <span>Rechnungserstellung</span> : null}
+                    {note.requiresInvoiceSendConfirmation ? <span>Rechnungsversand</span> : null}
                     {!note.isActive ? <span>Inaktiv</span> : null}
                   </div>
                   {note.projectTitle && activeScope === "project" ? (
@@ -49404,7 +49576,7 @@ await addProjectLogbookEntry(
                 type="button"
                 className={styles.primaryButton}
                 disabled={!canSendMail || isSendingDocumentMail}
-                onClick={sendDocumentMail}
+                onClick={() => void sendDocumentMail()}
               >
                 {isSendingDocumentMail ? "Sende..." : "E-Mail senden"}
               </button>
@@ -57128,20 +57300,7 @@ await addProjectLogbookEntry(
                   </select>
                 </label>
                 <label>
-                  Wichtigkeit
-                  <select
-                    value={noteDraft.priority}
-                    onChange={(event) => setNoteDraft((current) => ({ ...current, priority: event.target.value }))}
-                  >
-                    {customerProjectNotePriorities.map((priority) => (
-                      <option key={priority.value} value={priority.value}>
-                        {priority.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Wie oft bestätigen?
+                  Wie oft anzeigen?
                   <select
                     value={noteDraft.confirmationFrequency}
                     onChange={(event) =>
@@ -57155,6 +57314,39 @@ await addProjectLogbookEntry(
                     ))}
                   </select>
                 </label>
+                <fieldset className={`${styles.noteEffectFieldset} ${styles.fullWidth}`}>
+                  <legend>Wirkungsstufe</legend>
+                  <div className={styles.noteEffectGrid}>
+                    {customerProjectNoteEffectLevels.map((effect) => (
+                      <label
+                        key={effect.value}
+                        className={styles.noteEffectOption}
+                        data-effect={effect.value}
+                        data-active={noteDraft.effectLevel === effect.value}
+                        data-disabled={Boolean(effect.disabled)}
+                      >
+                        <input
+                          type="radio"
+                          name="noteEffectLevel"
+                          value={effect.value}
+                          checked={noteDraft.effectLevel === effect.value}
+                          disabled={effect.disabled}
+                          onChange={() =>
+                            setNoteDraft((current) => ({
+                              ...current,
+                              effectLevel: effect.value,
+                              priority: effect.value === "confirmation" ? "important" : "normal",
+                            }))
+                          }
+                        />
+                        <span>
+                          <strong>{effect.label}</strong>
+                          <small>{effect.description}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
                 <label className={styles.fullWidth}>
                   Titel
                   <input
@@ -57187,15 +57379,17 @@ await addProjectLogbookEntry(
                     onChange={(event) => setNoteDraft((current) => ({ ...current, validUntil: event.target.value }))}
                   />
                 </label>
-                <div className={`${styles.noteOptionGrid} ${styles.fullWidth}`}>
-                  <label className={styles.noteCheckboxLine}>
+                <label className={`${styles.noteCheckboxLine} ${styles.fullWidth}`}>
                     <input
                       type="checkbox"
                       checked={noteDraft.isActive}
                       onChange={(event) => setNoteDraft((current) => ({ ...current, isActive: event.target.checked }))}
                     />
-                    <span>Aktiv</span>
+                    <span>Hinweis ist aktiv</span>
                   </label>
+                <fieldset className={`${styles.noteTriggerFieldset} ${styles.fullWidth}`}>
+                  <legend>Anzeigen bei</legend>
+                  <div className={styles.noteOptionGrid}>
                   <label className={styles.noteCheckboxLine}>
                     <input
                       type="checkbox"
@@ -57204,7 +57398,7 @@ await addProjectLogbookEntry(
                         setNoteDraft((current) => ({ ...current, requiresStampConfirmation: event.target.checked }))
                       }
                     />
-                    <span>Vor Stempelung anzeigen und bestätigen lassen</span>
+                    <span>Vor Stempelung</span>
                   </label>
                   <label className={styles.noteCheckboxLine}>
                     <input
@@ -57217,9 +57411,49 @@ await addProjectLogbookEntry(
                         }))
                       }
                     />
-                    <span>Bei neuer Projektanlage anzeigen und bestätigen lassen</span>
+                    <span>Bei neuer Projektanlage</span>
                   </label>
-                </div>
+                  <label className={styles.noteCheckboxLine}>
+                    <input
+                      type="checkbox"
+                      checked={noteDraft.requiresOfferSendConfirmation}
+                      onChange={(event) =>
+                        setNoteDraft((current) => ({
+                          ...current,
+                          requiresOfferSendConfirmation: event.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Vor Angebotsversand</span>
+                  </label>
+                  <label className={styles.noteCheckboxLine}>
+                    <input
+                      type="checkbox"
+                      checked={noteDraft.requiresInvoiceCreateConfirmation}
+                      onChange={(event) =>
+                        setNoteDraft((current) => ({
+                          ...current,
+                          requiresInvoiceCreateConfirmation: event.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Vor Rechnungserstellung</span>
+                  </label>
+                  <label className={styles.noteCheckboxLine}>
+                    <input
+                      type="checkbox"
+                      checked={noteDraft.requiresInvoiceSendConfirmation}
+                      onChange={(event) =>
+                        setNoteDraft((current) => ({
+                          ...current,
+                          requiresInvoiceSendConfirmation: event.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Vor Rechnungsversand</span>
+                  </label>
+                  </div>
+                </fieldset>
               </div>
             </div>
             <div className={styles.standardModalFooter}>
@@ -57236,43 +57470,109 @@ await addProjectLogbookEntry(
         </div>
       )}
 
-      {pendingStampNoteConfirm || pendingProjectCreateNoteConfirm ? (
+      {pendingStampNoteConfirm || pendingProjectCreateNoteConfirm || pendingWorkflowNoteConfirm ? (
         <div className={styles.overlay}>
-          <div className={`${styles.standardModal} ${styles.noteConfirmModal}`}>
+          <div
+            className={`${styles.standardModal} ${styles.noteConfirmModal}`}
+            data-effect={(
+              pendingStampNoteConfirm?.notes ||
+              pendingProjectCreateNoteConfirm?.notes ||
+              pendingWorkflowNoteConfirm?.notes ||
+              []
+            ).some((note) => (note.effectLevel || "confirmation") === "confirmation")
+              ? "confirmation"
+              : "information"}
+          >
             <div className={styles.standardModalHeader}>
               <div>
-                <h2>Hinweise bestätigen</h2>
+                <h2>
+                  {(
+                    pendingStampNoteConfirm?.notes ||
+                    pendingProjectCreateNoteConfirm?.notes ||
+                    pendingWorkflowNoteConfirm?.notes ||
+                    []
+                  ).some((note) => (note.effectLevel || "confirmation") === "confirmation")
+                    ? "Hinweise bestätigen"
+                    : "Hinweise beachten"}
+                </h2>
                 <p>
                   {pendingStampNoteConfirm
-                    ? "Vor der Stempelung bitte lesen und bestätigen."
-                    : "Zur neuen Projektanlage bitte lesen und bestätigen."}
+                    ? "Kunden- und Projekthinweise vor der Stempelung prüfen."
+                    : pendingProjectCreateNoteConfirm
+                      ? "Kunden- und Projekthinweise bei der Projektanlage prüfen."
+                      : `Kunden- und Projekthinweise ${customerProjectNoteContextLabels[pendingWorkflowNoteConfirm?.context || "stamp"]} prüfen.`}
                 </p>
               </div>
             </div>
             <div className={styles.standardModalBody}>
               {noteError ? <p className={styles.emptyState}>{noteError}</p> : null}
               <div className={styles.noteConfirmList}>
-                {(pendingStampNoteConfirm?.notes || pendingProjectCreateNoteConfirm?.notes || []).map((note) => (
-                  <article key={note.id} className={styles.noteConfirmCard} data-priority={note.priority}>
-                    <span>{note.scope === "customer" ? "Kundenhinweis" : "Projekthinweis"} · {note.category}</span>
+                {(
+                  pendingStampNoteConfirm?.notes ||
+                  pendingProjectCreateNoteConfirm?.notes ||
+                  pendingWorkflowNoteConfirm?.notes ||
+                  []
+                ).map((note) => (
+                  <article
+                    key={note.id}
+                    className={styles.noteConfirmCard}
+                    data-effect={note.effectLevel || "confirmation"}
+                  >
+                    <span>
+                      {customerProjectNoteEffectLabels[note.effectLevel || "confirmation"]} ·{" "}
+                      {note.scope === "customer" ? "Kundenhinweis" : "Projekthinweis"} · {note.category}
+                    </span>
                     <strong>{note.title}</strong>
                     <p>{note.body}</p>
                   </article>
                 ))}
               </div>
+              {(
+                pendingStampNoteConfirm?.notes ||
+                pendingProjectCreateNoteConfirm?.notes ||
+                pendingWorkflowNoteConfirm?.notes ||
+                []
+              ).some((note) => (note.effectLevel || "confirmation") === "confirmation") ? (
+                <label className={styles.noteConfirmCheck}>
+                  <input
+                    type="checkbox"
+                    checked={isPendingNoteConfirmed}
+                    onChange={(event) => setIsPendingNoteConfirmed(event.target.checked)}
+                  />
+                  <span>Ich habe die Hinweise geprüft und berücksichtigt.</span>
+                </label>
+              ) : null}
             </div>
             <div className={styles.standardModalFooter}>
               <div className={styles.modalActions}>
                 <button
                   type="button"
                   className={styles.primaryButton}
+                  disabled={
+                    (
+                      pendingStampNoteConfirm?.notes ||
+                      pendingProjectCreateNoteConfirm?.notes ||
+                      pendingWorkflowNoteConfirm?.notes ||
+                      []
+                    ).some((note) => (note.effectLevel || "confirmation") === "confirmation") &&
+                    !isPendingNoteConfirmed
+                  }
                   onClick={() =>
                     pendingStampNoteConfirm
                       ? void confirmPendingStampNotes()
-                      : void confirmPendingProjectCreateNotes()
+                      : pendingProjectCreateNoteConfirm
+                        ? void confirmPendingProjectCreateNotes()
+                        : void confirmPendingWorkflowNotes()
                   }
                 >
-                  Gelesen und bestätigt
+                  {(
+                    pendingStampNoteConfirm?.notes ||
+                    pendingProjectCreateNoteConfirm?.notes ||
+                    pendingWorkflowNoteConfirm?.notes ||
+                    []
+                  ).some((note) => (note.effectLevel || "confirmation") === "confirmation")
+                    ? "Bestätigen und fortfahren"
+                    : "Verstanden, fortfahren"}
                 </button>
               </div>
             </div>

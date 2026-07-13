@@ -17,9 +17,13 @@ type NoteRow = {
   body: string;
   category: string;
   priority: string;
+  effectLevel: string;
   isActive: boolean;
   requiresStampConfirmation: boolean;
   requiresProjectCreateConfirmation: boolean;
+  requiresOfferSendConfirmation: boolean;
+  requiresInvoiceCreateConfirmation: boolean;
+  requiresInvoiceSendConfirmation: boolean;
   confirmationFrequency: string;
   validFrom: string | null;
   validUntil: string | null;
@@ -57,9 +61,13 @@ async function ensureNoteTables() {
       "body" TEXT NOT NULL,
       "category" TEXT NOT NULL DEFAULT 'Allgemein',
       "priority" TEXT NOT NULL DEFAULT 'normal',
+      "effectLevel" TEXT NOT NULL DEFAULT 'confirmation',
       "isActive" BOOLEAN NOT NULL DEFAULT true,
       "requiresStampConfirmation" BOOLEAN NOT NULL DEFAULT false,
       "requiresProjectCreateConfirmation" BOOLEAN NOT NULL DEFAULT false,
+      "requiresOfferSendConfirmation" BOOLEAN NOT NULL DEFAULT false,
+      "requiresInvoiceCreateConfirmation" BOOLEAN NOT NULL DEFAULT false,
+      "requiresInvoiceSendConfirmation" BOOLEAN NOT NULL DEFAULT false,
       "confirmationFrequency" TEXT NOT NULL DEFAULT 'always',
       "validFrom" TEXT,
       "validUntil" TEXT,
@@ -80,9 +88,13 @@ async function ensureNoteTables() {
     ADD COLUMN IF NOT EXISTS "projectTitle" TEXT,
     ADD COLUMN IF NOT EXISTS "category" TEXT NOT NULL DEFAULT 'Allgemein',
     ADD COLUMN IF NOT EXISTS "priority" TEXT NOT NULL DEFAULT 'normal',
+    ADD COLUMN IF NOT EXISTS "effectLevel" TEXT NOT NULL DEFAULT 'confirmation',
     ADD COLUMN IF NOT EXISTS "isActive" BOOLEAN NOT NULL DEFAULT true,
     ADD COLUMN IF NOT EXISTS "requiresStampConfirmation" BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN IF NOT EXISTS "requiresProjectCreateConfirmation" BOOLEAN NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS "requiresOfferSendConfirmation" BOOLEAN NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS "requiresInvoiceCreateConfirmation" BOOLEAN NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS "requiresInvoiceSendConfirmation" BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN IF NOT EXISTS "confirmationFrequency" TEXT NOT NULL DEFAULT 'always',
     ADD COLUMN IF NOT EXISTS "validFrom" TEXT,
     ADD COLUMN IF NOT EXISTS "validUntil" TEXT,
@@ -154,9 +166,13 @@ function formatNote(row: NoteRow, acknowledgements: AcknowledgementRow[] = []) {
     body: row.body,
     category: row.category,
     priority: row.priority,
+    effectLevel: row.effectLevel,
     isActive: row.isActive,
     requiresStampConfirmation: row.requiresStampConfirmation,
     requiresProjectCreateConfirmation: row.requiresProjectCreateConfirmation,
+    requiresOfferSendConfirmation: row.requiresOfferSendConfirmation,
+    requiresInvoiceCreateConfirmation: row.requiresInvoiceCreateConfirmation,
+    requiresInvoiceSendConfirmation: row.requiresInvoiceSendConfirmation,
     confirmationFrequency: row.confirmationFrequency,
     validFrom: row.validFrom ?? "",
     validUntil: row.validUntil ?? "",
@@ -250,11 +266,14 @@ export async function GET(req: Request) {
   const visibleAcknowledgements = acknowledgements.filter((ack) => rowIds.has(ack.noteId));
 
   let visibleRows = rows;
-  if (context === "stamp" || context === "projectCreate") {
+  if (["stamp", "projectCreate", "offerSend", "invoiceCreate", "invoiceSend"].includes(context)) {
     visibleRows = rows.filter((note) => {
       if (!isNoteActiveForDate(note, todayKey)) return false;
       if (context === "stamp" && !note.requiresStampConfirmation) return false;
       if (context === "projectCreate" && !note.requiresProjectCreateConfirmation) return false;
+      if (context === "offerSend" && !note.requiresOfferSendConfirmation) return false;
+      if (context === "invoiceCreate" && !note.requiresInvoiceCreateConfirmation) return false;
+      if (context === "invoiceSend" && !note.requiresInvoiceSendConfirmation) return false;
       return !isAcknowledgedForFrequency(note, visibleAcknowledgements, context, userId, todayKey);
     });
   }
@@ -286,11 +305,18 @@ export async function POST(req: Request) {
   const noteBody = cleanString(body.body);
   const customerId = cleanString(body.customerId);
   const projectId = cleanString(body.projectId);
+  const requestedEffectLevel = cleanString(body.effectLevel) || "information";
 
   if (!title) return NextResponse.json({ error: "Titel fehlt." }, { status: 400 });
   if (!noteBody) return NextResponse.json({ error: "Hinweistext fehlt." }, { status: 400 });
   if (scope === "customer" && !customerId) return NextResponse.json({ error: "Kunde fehlt." }, { status: 400 });
   if (scope === "project" && !projectId) return NextResponse.json({ error: "Projekt fehlt." }, { status: 400 });
+  if (!["information", "confirmation"].includes(requestedEffectLevel)) {
+    return NextResponse.json(
+      { error: "Kritische Sperren werden erst nach Einfuehrung einer abgesicherten Freigabelogik aktiviert." },
+      { status: 400 }
+    );
+  }
 
   await prisma.$executeRaw`
     INSERT INTO "CustomerProjectNote" (
@@ -305,9 +331,13 @@ export async function POST(req: Request) {
       "body",
       "category",
       "priority",
+      "effectLevel",
       "isActive",
       "requiresStampConfirmation",
       "requiresProjectCreateConfirmation",
+      "requiresOfferSendConfirmation",
+      "requiresInvoiceCreateConfirmation",
+      "requiresInvoiceSendConfirmation",
       "confirmationFrequency",
       "validFrom",
       "validUntil",
@@ -326,9 +356,13 @@ export async function POST(req: Request) {
       ${noteBody},
       ${cleanString(body.category) || "Allgemein"},
       ${cleanString(body.priority) || "normal"},
+      ${requestedEffectLevel},
       ${body.isActive !== false},
       ${Boolean(body.requiresStampConfirmation)},
       ${Boolean(body.requiresProjectCreateConfirmation)},
+      ${Boolean(body.requiresOfferSendConfirmation)},
+      ${Boolean(body.requiresInvoiceCreateConfirmation)},
+      ${Boolean(body.requiresInvoiceSendConfirmation)},
       ${cleanString(body.confirmationFrequency) || "always"},
       ${cleanDate(body.validFrom) || null},
       ${cleanDate(body.validUntil) || null},
@@ -345,9 +379,13 @@ export async function POST(req: Request) {
       "body" = EXCLUDED."body",
       "category" = EXCLUDED."category",
       "priority" = EXCLUDED."priority",
+      "effectLevel" = EXCLUDED."effectLevel",
       "isActive" = EXCLUDED."isActive",
       "requiresStampConfirmation" = EXCLUDED."requiresStampConfirmation",
       "requiresProjectCreateConfirmation" = EXCLUDED."requiresProjectCreateConfirmation",
+      "requiresOfferSendConfirmation" = EXCLUDED."requiresOfferSendConfirmation",
+      "requiresInvoiceCreateConfirmation" = EXCLUDED."requiresInvoiceCreateConfirmation",
+      "requiresInvoiceSendConfirmation" = EXCLUDED."requiresInvoiceSendConfirmation",
       "confirmationFrequency" = EXCLUDED."confirmationFrequency",
       "validFrom" = EXCLUDED."validFrom",
       "validUntil" = EXCLUDED."validUntil",
@@ -393,7 +431,9 @@ export async function PATCH(req: Request) {
         : [];
     const context = cleanString(body.context);
     if (noteIds.length === 0) return NextResponse.json({ error: "Hinweis fehlt." }, { status: 400 });
-    if (!context) return NextResponse.json({ error: "Kontext fehlt." }, { status: 400 });
+    if (!["stamp", "projectCreate", "offerSend", "invoiceCreate", "invoiceSend"].includes(context)) {
+      return NextResponse.json({ error: "Kontext ist ungueltig." }, { status: 400 });
+    }
 
     const allNotes = await prisma.$queryRaw<NoteRow[]>`
       SELECT *

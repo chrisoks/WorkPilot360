@@ -1348,9 +1348,13 @@ model CustomerProjectNote {
   body                              String
   category                          String    @default("Allgemein")
   priority                          String    @default("normal")
+  effectLevel                       String    @default("confirmation")
   isActive                          Boolean   @default(true)
   requiresStampConfirmation         Boolean   @default(false)
   requiresProjectCreateConfirmation Boolean   @default(false)
+  requiresOfferSendConfirmation     Boolean   @default(false)
+  requiresInvoiceCreateConfirmation Boolean   @default(false)
+  requiresInvoiceSendConfirmation   Boolean   @default(false)
   confirmationFrequency             String    @default("always")
   validFrom                         String?
   validUntil                        String?

@@ -26771,6 +26771,10 @@
   gap: 8px;
 }
 
+.notesActions button {
+  white-space: nowrap;
+}
+
 .notesScopeTabs {
   border-bottom: 1px solid #dbe4f0;
 }
@@ -26811,13 +26815,18 @@
   cursor: pointer;
 }
 
-.noteCard[data-priority="important"],
-.noteConfirmCard[data-priority="important"] {
+.noteCard[data-effect="information"],
+.noteConfirmCard[data-effect="information"] {
+  border-left: 5px solid #2563eb;
+}
+
+.noteCard[data-effect="confirmation"],
+.noteConfirmCard[data-effect="confirmation"] {
   border-left: 5px solid #f59e0b;
 }
 
-.noteCard[data-priority="critical"],
-.noteConfirmCard[data-priority="critical"] {
+.noteCard[data-effect="critical"],
+.noteConfirmCard[data-effect="critical"] {
   border-left: 5px solid #dc2626;
 }
 
@@ -26871,6 +26880,95 @@
   min-height: 140px;
 }
 
+.noteEffectFieldset,
+.noteTriggerFieldset {
+  border: 0;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.noteEffectFieldset legend,
+.noteTriggerFieldset legend {
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 850;
+  margin-bottom: 7px;
+  padding: 0;
+}
+
+.noteEffectGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.standardModal .formGrid .noteEffectOption {
+  align-items: flex-start;
+  background: #ffffff;
+  border: 1px solid #d8e0ea;
+  border-left: 4px solid #2563eb;
+  border-radius: 10px;
+  color: #0f172a;
+  cursor: pointer;
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  min-height: 86px;
+  padding: 12px;
+}
+
+.standardModal .formGrid .noteEffectOption[data-effect="confirmation"] {
+  border-left-color: #f59e0b;
+}
+
+.standardModal .formGrid .noteEffectOption[data-effect="critical"] {
+  border-left-color: #dc2626;
+}
+
+.standardModal .formGrid .noteEffectOption[data-active="true"] {
+  background: #f8fbff;
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+}
+
+.standardModal .formGrid .noteEffectOption[data-effect="confirmation"][data-active="true"] {
+  background: #fffbeb;
+  border-color: #fbbf24;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.13);
+}
+
+.standardModal .formGrid .noteEffectOption[data-disabled="true"] {
+  background: #f8fafc;
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.standardModal .formGrid .noteEffectOption input {
+  accent-color: #2563eb;
+  flex: 0 0 auto;
+  height: 16px;
+  margin: 2px 0 0;
+  padding: 0;
+  width: 16px;
+}
+
+.standardModal .formGrid .noteEffectOption > span {
+  display: grid;
+  gap: 5px;
+}
+
+.standardModal .formGrid .noteEffectOption strong {
+  font-size: 0.88rem;
+}
+
+.standardModal .formGrid .noteEffectOption small {
+  color: #64748b;
+  font-size: 0.76rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
 .noteOptionGrid {
   display: grid;
   gap: 10px;
@@ -26916,7 +27014,38 @@
   gap: 12px;
 }
 
+.noteConfirmModal[data-effect="information"] .standardModalHeader {
+  border-top: 4px solid #2563eb;
+}
+
+.noteConfirmModal[data-effect="confirmation"] .standardModalHeader {
+  border-top: 4px solid #f59e0b;
+}
+
+.noteConfirmCheck {
+  align-items: center;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 10px;
+  color: #78350f;
+  cursor: pointer;
+  display: flex;
+  font-size: 0.88rem;
+  font-weight: 800;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px 14px;
+}
+
+.noteConfirmCheck input {
+  accent-color: #d97706;
+  flex: 0 0 auto;
+  height: 17px;
+  width: 17px;
+}
+
 @media (max-width: 760px) {
+  .noteEffectGrid,
   .noteOptionGrid {
     grid-template-columns: 1fr;
   }

@@ -1,5 +1,17 @@
 # WorkPilot360 Agent Handover
 
+- Hinweis-Wirkungsstufen 2026-07-13: Kunden-/Projekthinweise unterscheiden
+  jetzt `Information` und `Bestätigung erforderlich`. Informationen lassen den
+  Vorgang nach einfachem Fortfahren weiterlaufen; Pflichtbestätigungen
+  verlangen eine aktive Checkbox und werden wie bisher serverseitig mit
+  Benutzer, Zeitpunkt und Kontext protokolliert. Unterstützte manuelle
+  Auslöser sind Stempelung, Projektanlage, Angebotsversand,
+  Rechnungserstellung und Rechnungsversand. Bestehende Hinweise bleiben zur
+  Rückwärtskompatibilität bestätigungspflichtig. `Kritische Sperre` ist im
+  Editor als nächste Stufe erklärt, bleibt aber client- und serverseitig
+  deaktiviert, bis Aufhebung, Freigaberollen und Audit vollständig definiert
+  sind. Automatische Stapel-/Versandprozesse wurden nicht mit interaktiven
+  Dialogen verändert.
 - Kontaktakten-Objektkopf 2026-07-13: Die Kunden-/Kontaktakte nutzt als
   gestalterischen Pilot jetzt denselben ruhigen Navy-Objektkopf wie die
   Projektakte. Die Rückkehr zur Kontaktübersicht steht links oben, darunter
