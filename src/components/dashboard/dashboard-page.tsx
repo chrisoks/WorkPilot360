@@ -1216,6 +1216,8 @@ type PlanningEntry = {
   customer: string;
   projectId: string;
   projectLabel: string;
+  objectAddressId: string;
+  objectAddressLabel: string;
   planningTrade: string;
   billingCatalogItemId: string;
   billingCatalogItemLabel: string;
@@ -1795,6 +1797,7 @@ type HeroProjectPreview = {
   contactId?: string;
   contactPersonId?: string;
   addressContactId?: string;
+  objectAddressId?: string;
   projectType?: string;
   projectKind?: string;
   projectRuntimeFrom?: string;
@@ -2063,6 +2066,21 @@ type ContactItem = {
   updatedAt: string;
 };
 
+type ObjectAddress = {
+  id: string;
+  customerId: string;
+  name: string;
+  street: string;
+  postalCode: string;
+  city: string;
+  country: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type ObjectAddressDraft = Omit<ObjectAddress, "id" | "createdAt" | "updatedAt">;
+
 type ContactColumnId =
   | "type"
   | "customerNumber"
@@ -2163,6 +2181,7 @@ type ProjectDraft = {
   contactId: string;
   contactPersonId: string;
   addressContactId: string;
+  objectAddressId: string;
   projectType: "Projekt OK solutions" | "Projekt OK immocare";
   projectKind: ProjectKindValue;
   projectRuntimeFrom: string;
@@ -2543,6 +2562,7 @@ const emptyProjectDraft: ProjectDraft = {
   contactId: "",
   contactPersonId: "",
   addressContactId: "",
+  objectAddressId: "",
   projectType: "Projekt OK solutions",
   projectKind: "einmaliges Projekt",
   projectRuntimeFrom: "",
@@ -3783,6 +3803,16 @@ const emptyContact: Omit<ContactItem, "id" | "createdAt" | "updatedAt"> = {
   taxId: "",
   debtorCreditorAccount: "",
   leitwegId: "",
+};
+
+const emptyObjectAddressDraft: ObjectAddressDraft = {
+  customerId: "",
+  name: "",
+  street: "",
+  postalCode: "",
+  city: "",
+  country: "Deutschland",
+  isActive: true,
 };
 
 const finalInspectionItems = [
@@ -6011,6 +6041,11 @@ export function DashboardPage() {
   const [hasLoadedHeroProjects, setHasLoadedHeroProjects] = useState(false);
   const [isHeroProjectsLoading, setIsHeroProjectsLoading] = useState(false);
   const [contacts, setContacts] = useState<ContactItem[]>([]);
+  const [objectAddresses, setObjectAddresses] = useState<ObjectAddress[]>([]);
+  const [isObjectAddressModalOpen, setIsObjectAddressModalOpen] = useState(false);
+  const [editingObjectAddressId, setEditingObjectAddressId] = useState("");
+  const [objectAddressDraft, setObjectAddressDraft] = useState<ObjectAddressDraft>(emptyObjectAddressDraft);
+  const [objectAddressError, setObjectAddressError] = useState("");
   const [contactSearchTerm, setContactSearchTerm] = useState("");
   const [contactCategoryFilter, setContactCategoryFilter] = useState("");
   const [contactPage, setContactPage] = useState(1);
@@ -6301,6 +6336,7 @@ export function DashboardPage() {
   const [planningEntryProjectSearch, setPlanningEntryProjectSearch] = useState("");
   const [isPlanningEntryProjectSearchOpen, setIsPlanningEntryProjectSearchOpen] = useState(false);
   const [planningEntryProjectId, setPlanningEntryProjectId] = useState("");
+  const [planningEntryObjectAddressId, setPlanningEntryObjectAddressId] = useState("");
   const [planningEntryTrade, setPlanningEntryTrade] = useState("");
   const [planningEntryBillingCatalogItemId, setPlanningEntryBillingCatalogItemId] = useState("");
   const [planningEntryHasAdditionalEmployees, setPlanningEntryHasAdditionalEmployees] = useState<"" | "yes" | "no">("");
@@ -7327,6 +7363,18 @@ export function DashboardPage() {
 
     const data = (await res.json()) as ContactItem[];
     setContacts(data);
+  }
+
+  async function loadObjectAddresses() {
+    if (!activeUserId) return;
+    const res = await fetch(`/api/object-addresses?actorId=${encodeURIComponent(activeUserId)}`, {
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      setErrorMessage("Objektadressen konnten nicht geladen werden.");
+      return;
+    }
+    setObjectAddresses((await res.json()) as ObjectAddress[]);
   }
 
   async function loadCatalogItems() {
@@ -14236,6 +14284,7 @@ export function DashboardPage() {
     setPlanningEntryProjectSearch("");
     setIsPlanningEntryProjectSearchOpen(false);
     setPlanningEntryProjectId("");
+    setPlanningEntryObjectAddressId("");
     setPlanningEntryTrade("");
     setPlanningEntryBillingCatalogItemId("");
     setPlanningEntryHasAdditionalEmployees("");
@@ -14344,6 +14393,7 @@ export function DashboardPage() {
     setPlanningEntryTitle(entry.title);
     setPlanningEntryCustomer(entry.customer);
     setPlanningEntryProjectId(entry.projectId);
+    setPlanningEntryObjectAddressId(entry.objectAddressId || "");
     setPlanningEntryTrade(entry.planningTrade);
     setPlanningEntryBillingCatalogItemId(entry.billingCatalogItemId);
     setPlanningEntryHasAdditionalEmployees("no");
@@ -14439,6 +14489,8 @@ export function DashboardPage() {
     setPlanningEntrySource(projectHasOfferPlanning ? "offer" : "manual");
     if (project) {
       setPlanningEntryProjectId(project.id);
+      const projectAddresses = getActiveObjectAddresses(project.contactId);
+      setPlanningEntryObjectAddressId(projectAddresses.length === 1 ? projectAddresses[0].id : "");
       setPlanningEntryCustomer(project.customer || "");
       setPlanningEntryProjectSearch(`${project.projectNumber || project.id} | ${project.title}`);
       setPlanningEntryTrade(isHourlyRecurringProject(project) ? project.trade || "" : "");
@@ -14448,6 +14500,7 @@ export function DashboardPage() {
       if (isHourlyRecurringProject(project) && catalogItems.length === 0) void loadCatalogItems();
     } else {
       setPlanningEntryProjectId("");
+      setPlanningEntryObjectAddressId("");
       setPlanningEntryCustomer("");
       setPlanningEntryProjectSearch("");
       setPlanningEntryTrade("");
@@ -14680,6 +14733,12 @@ export function DashboardPage() {
     setErrorMessage("");
     const selectedUser = users.find((user) => user.id === planningEntryUserId);
     const selectedProject = heroProjects.find((project) => project.id === planningEntryProjectId);
+    const planningObjectAddresses = selectedProject
+      ? getActiveObjectAddresses(selectedProject.contactId)
+      : [];
+    const selectedPlanningObjectAddress = planningObjectAddresses.find(
+      (address) => address.id === planningEntryObjectAddressId
+    );
     const requiresHourlyPlanningFields = Boolean(selectedProject && isHourlyRecurringProject(selectedProject));
     const hourlyPlanningServiceOptions = getHourlyPlanningServiceOptions(planningEntryTrade);
     const selectedBillingCatalogItem = planningEntryBillingCatalogItemId
@@ -14736,6 +14795,17 @@ export function DashboardPage() {
     if (!description) {
       setPlanningEntryError("Bitte eine Beschreibung eintragen.");
       return;
+    }
+
+    if (planningEntryBoard === "OK immocare" && selectedProject) {
+      if (planningObjectAddresses.length === 0) {
+        setPlanningEntryError("Für dieses Immocare-Projekt ist noch keine Objektadresse hinterlegt.");
+        return;
+      }
+      if (planningObjectAddresses.length > 1 && !selectedPlanningObjectAddress) {
+        setPlanningEntryError("Bitte wähle für diese Immocare-Planung eine Objektadresse aus.");
+        return;
+      }
     }
 
     if (requiresHourlyPlanningFields) {
@@ -15021,6 +15091,12 @@ export function DashboardPage() {
           projectLabel: selectedProject
             ? `${selectedProject.projectNumber} | ${selectedProject.title}`
             : "",
+          objectAddressId: selectedPlanningObjectAddress?.id || planningObjectAddresses[0]?.id || "",
+          objectAddressLabel: selectedPlanningObjectAddress
+            ? formatObjectAddress(selectedPlanningObjectAddress)
+            : planningObjectAddresses[0]
+              ? formatObjectAddress(planningObjectAddresses[0])
+              : "",
           planningTrade: requiresHourlyPlanningFields ? planningEntryTrade : "",
           billingCatalogItemId: requiresHourlyPlanningFields ? planningEntryBillingCatalogItemId : "",
           billingCatalogItemLabel: requiresHourlyPlanningFields
@@ -16086,6 +16162,7 @@ export function DashboardPage() {
 
     const operationalLoadTimer = window.setTimeout(() => {
       void loadContacts();
+      void loadObjectAddresses();
       void loadCatalogItems();
       void loadOffers();
       void loadInvoices();
@@ -16152,6 +16229,29 @@ export function DashboardPage() {
   useEffect(() => {
     setContactPage(1);
   }, [contactSearchTerm, contactCategoryFilter, contactColumnFilters, contactPageSize]);
+
+  useEffect(() => {
+    if (!isProjectModalOpen || !projectDraft.contactId || projectDraft.objectAddressId) return;
+    const addresses = getActiveObjectAddresses(projectDraft.contactId);
+    if (addresses.length === 1) {
+      setProjectDraft((current) => ({ ...current, objectAddressId: addresses[0].id }));
+    }
+  }, [isProjectModalOpen, objectAddresses, projectDraft.contactId, projectDraft.objectAddressId]);
+
+  useEffect(() => {
+    if (!isPlanningEntryModalOpen || planningEntryBoard !== "OK immocare" || planningEntryObjectAddressId) return;
+    const project = heroProjects.find((item) => item.id === planningEntryProjectId);
+    if (!project) return;
+    const addresses = getActiveObjectAddresses(project.contactId);
+    if (addresses.length === 1) setPlanningEntryObjectAddressId(addresses[0].id);
+  }, [
+    heroProjects,
+    isPlanningEntryModalOpen,
+    objectAddresses,
+    planningEntryBoard,
+    planningEntryObjectAddressId,
+    planningEntryProjectId,
+  ]);
 
   useEffect(() => {
     setCatalogPage(1);
@@ -16746,6 +16846,7 @@ export function DashboardPage() {
       contactId: project.contactId || "",
       contactPersonId: project.contactPersonId || "",
       addressContactId: project.addressContactId || "",
+      objectAddressId: project.objectAddressId || "",
       projectType:
         project.projectType === "Projekt OK immocare"
           ? "Projekt OK immocare"
@@ -16797,6 +16898,7 @@ export function DashboardPage() {
         ? {
             contactPersonId: "",
             addressContactId: "",
+            objectAddressId: "",
           }
         : {}),
       ...(key === "projectType"
@@ -18583,6 +18685,65 @@ export function DashboardPage() {
       .join(", ");
   }
 
+  function formatObjectAddress(address: ObjectAddress) {
+    return `${address.name} | ${address.street}, ${address.postalCode} ${address.city}`;
+  }
+
+  function getActiveObjectAddresses(customerId?: string | null) {
+    return objectAddresses
+      .filter((address) => address.isActive && address.customerId === customerId)
+      .sort((first, second) => first.name.localeCompare(second.name, "de"));
+  }
+
+  function openObjectAddressModal(customerId: string, address?: ObjectAddress) {
+    setEditingObjectAddressId(address?.id ?? "");
+    setObjectAddressDraft(
+      address
+        ? {
+            customerId: address.customerId,
+            name: address.name,
+            street: address.street,
+            postalCode: address.postalCode,
+            city: address.city,
+            country: address.country,
+            isActive: address.isActive,
+          }
+        : { ...emptyObjectAddressDraft, customerId }
+    );
+    setObjectAddressError("");
+    setIsObjectAddressModalOpen(true);
+  }
+
+  async function saveObjectAddress() {
+    if (!activeUserId) return;
+    setObjectAddressError("");
+    const res = await fetch("/api/object-addresses", {
+      method: editingObjectAddressId ? "PATCH" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...objectAddressDraft, id: editingObjectAddressId, actorId: activeUserId }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setObjectAddressError(data?.error ?? "Objektadresse konnte nicht gespeichert werden.");
+      return;
+    }
+    await loadObjectAddresses();
+    setIsObjectAddressModalOpen(false);
+    setEditingObjectAddressId("");
+  }
+
+  async function deactivateObjectAddress(address: ObjectAddress) {
+    if (!activeUserId || !window.confirm(`Objektadresse „${address.name}“ deaktivieren?`)) return;
+    const params = new URLSearchParams({ id: address.id, actorId: activeUserId });
+    const res = await fetch(`/api/object-addresses?${params.toString()}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setObjectAddressError(data?.error ?? "Objektadresse konnte nicht deaktiviert werden.");
+      return;
+    }
+    await loadObjectAddresses();
+  }
+
   async function persistProject(project: HeroProjectPreview) {
     if (!activeUserId) {
       throw new Error("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
@@ -18726,8 +18887,8 @@ export function DashboardPage() {
 
   async function saveProjectDraft() {
     const selectedContact = contacts.find((contact) => contact.id === projectDraft.contactId);
-    const selectedAddressContact = contacts.find(
-      (contact) => contact.id === projectDraft.addressContactId
+    const selectedObjectAddress = objectAddresses.find(
+      (address) => address.id === projectDraft.objectAddressId && address.isActive
     );
     const selectedContactPerson = contacts.find(
       (contact) => contact.id === projectDraft.contactPersonId
@@ -18752,8 +18913,13 @@ export function DashboardPage() {
       return;
     }
 
-    const projectAddress = selectedAddressContact
-      ? getContactAddressLine(selectedAddressContact)
+    if (projectDraft.projectType === "Projekt OK immocare" && !selectedObjectAddress) {
+      setErrorMessage("Bitte wähle für das Immocare-Projekt eine Objektadresse aus.");
+      return;
+    }
+
+    const projectAddress = selectedObjectAddress
+      ? `${selectedObjectAddress.street}, ${selectedObjectAddress.postalCode} ${selectedObjectAddress.city}`
       : selectedContact
         ? getContactAddressLine(selectedContact)
         : editingProject?.address || "";
@@ -18793,7 +18959,8 @@ export function DashboardPage() {
         customer: selectedContact ? getContactLabel(selectedContact) : editingProject.customer,
         contactId: selectedContact?.id || "",
         contactPersonId: selectedContactPerson?.id || "",
-        addressContactId: selectedAddressContact?.id || "",
+        addressContactId: "",
+        objectAddressId: selectedObjectAddress?.id || "",
         projectType: projectDraft.projectType,
         projectKind: normalizeProjectKindValue(projectDraft.projectKind),
         projectRuntimeFrom: projectDraft.projectRuntimeFrom,
@@ -18875,7 +19042,8 @@ await addProjectLogbookEntry(
       statusCode: "lead",
       contactId: selectedContact?.id,
       contactPersonId: selectedContactPerson?.id,
-      addressContactId: selectedAddressContact?.id,
+      addressContactId: "",
+      objectAddressId: selectedObjectAddress?.id,
       projectType: projectDraft.projectType,
       projectKind: normalizeProjectKindValue(projectDraft.projectKind),
       projectRuntimeFrom: projectDraft.projectRuntimeFrom,
@@ -22375,17 +22543,8 @@ await addProjectLogbookEntry(
           return getContactDisplayName(first).localeCompare(getContactDisplayName(second), "de");
         })
     : [];
-  const projectAddressOptions = selectedProjectCompany
-    ? [
-        selectedProjectCompany,
-        ...contacts.filter(
-          (contact) =>
-            contact.id !== selectedProjectCompany.id &&
-            (contact.parentCompanyId === selectedProjectCompany.id ||
-              (selectedProjectCompany.companyName &&
-                contact.parentCompanyName === selectedProjectCompany.companyName))
-        ),
-      ]
+  const projectObjectAddressOptions = selectedProjectCompany
+    ? getActiveObjectAddresses(selectedProjectCompany.id)
     : [];
   const selectedProjectContactPotentials = selectedProjectCompany
     ? projectPotentials.filter(
@@ -22422,6 +22581,7 @@ await addProjectLogbookEntry(
       contactId: projectContact.id,
       contactPersonId: contact.type === "person" ? contact.id : "",
       addressContactId: "",
+      objectAddressId: "",
     }));
     setIsProjectContactPickerOpen(false);
     setProjectContactPickerSearch("");
@@ -22820,6 +22980,8 @@ await addProjectLogbookEntry(
     .slice(0, 12);
   function selectPlanningProject(project: HeroProjectPreview) {
     setPlanningEntryProjectId(project.id);
+    const projectAddresses = getActiveObjectAddresses(project.contactId);
+    setPlanningEntryObjectAddressId(projectAddresses.length === 1 ? projectAddresses[0].id : "");
     setPlanningEntryCustomer(project.customer || "");
     setPlanningEntryProjectSearch(`${project.projectNumber} | ${project.title}`);
     setPlanningEntryTrade(isHourlyRecurringProject(project) ? project.trade || "" : "");
@@ -34159,6 +34321,9 @@ await addProjectLogbookEntry(
       );
     });
     const customerProjectIds = new Set(customerProjects.map((project) => project.id));
+    const customerObjectAddresses = objectAddresses.filter(
+      (address) => address.customerId === selectedCustomerFile.id
+    );
     const customerProjectLogEntries = projectLogbookEntries.filter((entry) =>
       customerProjectIds.has(entry.projectId)
     );
@@ -34227,6 +34392,7 @@ await addProjectLogbookEntry(
       if (id === "potentials") return customerPotentials.length;
       if (id === "tasks") return customerTaskCount;
       if (id === "projects") return customerProjects.length;
+      if (id === "addresses") return customerObjectAddresses.filter((address) => address.isActive).length;
       return 0;
     };
     const logbookEntries = [
@@ -34715,6 +34881,59 @@ await addProjectLogbookEntry(
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                )}
+              </div>
+            ) : customerFileTab === "addresses" ? (
+              <div className={styles.customerDocumentModule}>
+                <div className={styles.customerFileMainHeader}>
+                  <div>
+                    <h2>Objektadressen</h2>
+                    <span>Arbeitsorte für Projekte und Immocare-Planungen</span>
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.primaryButton}
+                    onClick={() => openObjectAddressModal(selectedCustomerFile.id)}
+                  >
+                    + Objektadresse
+                  </button>
+                </div>
+                {customerObjectAddresses.length === 0 ? (
+                  <div className={styles.customerDocumentEmpty}>
+                    <strong>Noch keine Objektadresse hinterlegt.</strong>
+                    <p>Lege den ersten Arbeitsort für Projekte und Planungen dieses Kunden an.</p>
+                  </div>
+                ) : (
+                  <div className={styles.customerContactList}>
+                    {customerObjectAddresses.map((address) => (
+                      <article key={address.id} className={styles.customerContactRow}>
+                        <div>
+                          <strong>{address.name}</strong>
+                          <span>{address.street}</span>
+                          <small>{address.postalCode} {address.city} · {address.country}</small>
+                          {!address.isActive ? <small>Inaktiv</small> : null}
+                        </div>
+                        <div className={styles.modalActions}>
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            onClick={() => openObjectAddressModal(selectedCustomerFile.id, address)}
+                          >
+                            Bearbeiten
+                          </button>
+                          {address.isActive ? (
+                            <button
+                              type="button"
+                              className={styles.secondaryButton}
+                              onClick={() => void deactivateObjectAddress(address)}
+                            >
+                              Deaktivieren
+                            </button>
+                          ) : null}
+                        </div>
+                      </article>
+                    ))}
                   </div>
                 )}
               </div>
@@ -36424,6 +36643,8 @@ await addProjectLogbookEntry(
       setPlanningEntryTitle("");
       setPlanningEntryCustomer(selectedProjectFile.customer || "");
       setPlanningEntryProjectId(selectedProjectFile.id);
+      const projectAddresses = getActiveObjectAddresses(selectedProjectFile.contactId);
+      setPlanningEntryObjectAddressId(projectAddresses.length === 1 ? projectAddresses[0].id : "");
       setPlanningEntryProjectSearch(`${selectedProjectFile.projectNumber || selectedProjectFile.id} | ${selectedProjectFile.title}`);
       setIsPlanningEntryProjectSearchOpen(false);
       setPlanningEntryDescription("");
@@ -36490,6 +36711,8 @@ await addProjectLogbookEntry(
       setPlanningEntryTitle("");
       setPlanningEntryCustomer(selectedProjectFile.customer || "");
       setPlanningEntryProjectId(selectedProjectFile.id);
+      const projectAddresses = getActiveObjectAddresses(selectedProjectFile.contactId);
+      setPlanningEntryObjectAddressId(projectAddresses.length === 1 ? projectAddresses[0].id : "");
       setPlanningEntryProjectSearch(`${selectedProjectFile.projectNumber || selectedProjectFile.id} | ${selectedProjectFile.title}`);
       setIsPlanningEntryProjectSearchOpen(false);
       setPlanningEntryDescription("");
@@ -55302,6 +55525,7 @@ await addProjectLogbookEntry(
                         onChange={(event) => {
                           setPlanningEntryProjectSearch(event.target.value);
                           setPlanningEntryProjectId("");
+                          setPlanningEntryObjectAddressId("");
                           setPlanningEntryTrade("");
                           setPlanningEntryBillingCatalogItemId("");
                           setPlanningEntryHasAdditionalEmployees("");
@@ -55339,6 +55563,54 @@ await addProjectLogbookEntry(
                     )}
                   </div>
                 </label>
+                {(() => {
+                  const selectedProject = heroProjects.find((project) => project.id === planningEntryProjectId);
+                  if (!selectedProject || planningEntryBoard !== "OK immocare") return null;
+                  const addresses = getActiveObjectAddresses(selectedProject.contactId);
+                  if (addresses.length === 0) {
+                    return (
+                      <div className={`${styles.modalWarning} ${styles.fullWidth}`}>
+                        <span>Für diesen Kunden fehlt eine aktive Objektadresse.</span>
+                        {selectedProject.contactId ? (
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            onClick={() => openObjectAddressModal(selectedProject.contactId || "")}
+                          >
+                            + Objektadresse anlegen
+                          </button>
+                        ) : null}
+                      </div>
+                    );
+                  }
+                  if (addresses.length === 1) {
+                    return (
+                      <label className={styles.fullWidth}>
+                        Objektadresse (automatisch)
+                        <input readOnly value={formatObjectAddress(addresses[0])} />
+                      </label>
+                    );
+                  }
+                  return (
+                    <label
+                      className={`${styles.fullWidth} ${styles.requiredPlanningField}`}
+                      data-required-missing={!planningEntryObjectAddressId}
+                    >
+                      Objektadresse
+                      <select
+                        value={planningEntryObjectAddressId}
+                        onChange={(event) => setPlanningEntryObjectAddressId(event.target.value)}
+                      >
+                        <option value="">Objektadresse auswählen</option>
+                        {addresses.map((address) => (
+                          <option key={address.id} value={address.id}>
+                            {formatObjectAddress(address)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  );
+                })()}
                 <label>
                   Geplante Dauer
                   <input
@@ -57970,7 +58242,84 @@ await addProjectLogbookEntry(
         </div>
       )}
 
-      {isProjectModalOpen && (
+      {isObjectAddressModalOpen && (
+        <div className={styles.overlay} onClick={() => setIsObjectAddressModalOpen(false)}>
+          <div
+            className={`${styles.standardModal} ${styles.noteEditorModal}`}
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={styles.standardModalHeader}>
+              <div>
+                <h2>{editingObjectAddressId ? "Objektadresse bearbeiten" : "Objektadresse anlegen"}</h2>
+                <p>Arbeitsort für Projektanlage und Planung</p>
+              </div>
+              <button
+                type="button"
+                className={styles.iconButton}
+                aria-label="Objektadresse schließen"
+                onClick={() => setIsObjectAddressModalOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className={styles.standardModalBody}>
+              <div className={styles.standardFormGrid}>
+                <label className={styles.standardFormWide}>
+                  Bezeichnung
+                  <input
+                    value={objectAddressDraft.name}
+                    onChange={(event) => setObjectAddressDraft((current) => ({ ...current, name: event.target.value }))}
+                    placeholder="z.B. Wohnanlage Am Stadtpark"
+                  />
+                </label>
+                <label className={styles.standardFormWide}>
+                  Straße und Hausnummer
+                  <input
+                    value={objectAddressDraft.street}
+                    onChange={(event) => setObjectAddressDraft((current) => ({ ...current, street: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  PLZ
+                  <input
+                    value={objectAddressDraft.postalCode}
+                    onChange={(event) => setObjectAddressDraft((current) => ({ ...current, postalCode: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  Ort
+                  <input
+                    value={objectAddressDraft.city}
+                    onChange={(event) => setObjectAddressDraft((current) => ({ ...current, city: event.target.value }))}
+                  />
+                </label>
+                <label className={styles.standardFormWide}>
+                  Land
+                  <input
+                    value={objectAddressDraft.country}
+                    onChange={(event) => setObjectAddressDraft((current) => ({ ...current, country: event.target.value }))}
+                  />
+                </label>
+              </div>
+              {objectAddressError ? <p className={styles.modalWarning}>{objectAddressError}</p> : null}
+            </div>
+            <div className={styles.standardModalFooter}>
+              <div className={styles.modalActions}>
+                <button type="button" className={styles.secondaryButton} onClick={() => setIsObjectAddressModalOpen(false)}>
+                  Abbrechen
+                </button>
+                <button type="button" className={styles.primaryButton} onClick={() => void saveObjectAddress()}>
+                  Speichern
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isProjectModalOpen && !isObjectAddressModalOpen && (
         <div className={styles.overlay} onClick={closeProjectModal}>
           <div
             className={`${styles.standardModal} ${styles.projectCreateModal}`}
@@ -58092,27 +58441,26 @@ await addProjectLogbookEntry(
                 Projektadresse
                 <div>
                   <select
-                    value={projectDraft.addressContactId}
+                    value={projectDraft.objectAddressId}
                     disabled={!projectDraft.contactId}
-                    onChange={(event) => updateProjectDraft("addressContactId", event.target.value)}
+                    onChange={(event) => updateProjectDraft("objectAddressId", event.target.value)}
                   >
                     <option value="">Bitte auswählen</option>
-                    {projectAddressOptions.map((contact) => (
-                      <option key={contact.id} value={contact.id}>
-                        {[contact.street, contact.postalCode, contact.city].filter(Boolean).join(", ") ||
-                          getContactLabel(contact)}
+                    {projectObjectAddressOptions.map((address) => (
+                      <option key={address.id} value={address.id}>
+                        {formatObjectAddress(address)}
                       </option>
                     ))}
                   </select>
-                  {projectDraft.contactId && projectAddressOptions.length === 0 && (
+                  {projectDraft.contactId && projectObjectAddressOptions.length === 0 && (
                     <small className={styles.projectSelectHint}>
-                      Keine Adresse zu diesem Kontakt hinterlegt.
+                      Noch keine Objektadresse für diesen Kunden hinterlegt.
                     </small>
                   )}
                   <button
                     type="button"
                     disabled={!projectDraft.contactId}
-                    onClick={() => openCreateContactModal("address")}
+                    onClick={() => openObjectAddressModal(projectDraft.contactId)}
                   >
                     + Neu
                   </button>

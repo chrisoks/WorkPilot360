@@ -34,6 +34,8 @@ type PlanningEntryRow = {
   customer: string | null;
   projectId: string | null;
   projectLabel: string | null;
+  objectAddressId: string | null;
+  objectAddressLabel: string | null;
   planningTrade: string | null;
   billingCatalogItemId: string | null;
   billingCatalogItemLabel: string | null;
@@ -96,6 +98,8 @@ async function ensurePlanningEntryTable() {
       "customer" TEXT,
       "projectId" TEXT,
       "projectLabel" TEXT,
+      "objectAddressId" TEXT,
+      "objectAddressLabel" TEXT,
       "planningTrade" TEXT NOT NULL DEFAULT '',
       "billingCatalogItemId" TEXT,
       "billingCatalogItemLabel" TEXT,
@@ -122,6 +126,8 @@ async function ensurePlanningEntryTable() {
     ALTER TABLE "PlanningEntry"
     ADD COLUMN IF NOT EXISTS "approvalStatus" TEXT NOT NULL DEFAULT 'confirmed',
     ADD COLUMN IF NOT EXISTS "planningTrade" TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS "objectAddressId" TEXT,
+    ADD COLUMN IF NOT EXISTS "objectAddressLabel" TEXT,
     ADD COLUMN IF NOT EXISTS "billingCatalogItemId" TEXT,
     ADD COLUMN IF NOT EXISTS "billingCatalogItemLabel" TEXT,
     ADD COLUMN IF NOT EXISTS "billingGroupId" TEXT,
@@ -274,6 +280,8 @@ function formatEntry(entry: PlanningEntryRow, histories: PlanningEntryHistoryRow
     customer: entry.customer ?? "",
     projectId: entry.projectId ?? "",
     projectLabel: entry.projectLabel ?? "",
+    objectAddressId: entry.objectAddressId ?? "",
+    objectAddressLabel: entry.objectAddressLabel ?? "",
     planningTrade: entry.planningTrade ?? "",
     billingCatalogItemId: entry.billingCatalogItemId ?? "",
     billingCatalogItemLabel: entry.billingCatalogItemLabel ?? "",
@@ -909,6 +917,8 @@ export async function POST(req: Request) {
   const customer = cleanString(body.customer);
   const projectId = cleanString(body.projectId);
   const projectLabel = cleanString(body.projectLabel);
+  let objectAddressId = cleanString(body.objectAddressId);
+  let objectAddressLabel = cleanString(body.objectAddressLabel);
   const planningTrade = cleanString(body.planningTrade);
   const billingCatalogItemId = cleanString(body.billingCatalogItemId);
   const billingCatalogItemLabel = cleanString(body.billingCatalogItemLabel);
@@ -962,6 +972,53 @@ export async function POST(req: Request) {
   const plannedUser = users.find((user) => user.id === userId && user.isActive);
   if (!plannedUser) {
     return NextResponse.json({ error: "Der gewaehlte Mitarbeiter ist nicht aktiv oder gehoert nicht zur Organisation." }, { status: 400 });
+  }
+
+  if (board === "OK immocare" && projectId) {
+    const projects = await prisma.$queryRaw<Array<{ contactId: string | null }>>`
+      SELECT "contactId"
+      FROM "WorkPilotProject"
+      WHERE "organizationId" = ${organization.id}
+        AND "id" = ${projectId}
+      LIMIT 1
+    `;
+    const project = projects[0];
+    if (!project) {
+      return NextResponse.json({ error: "Das ausgewählte Projekt ist ungültig." }, { status: 400 });
+    }
+    const addresses = project.contactId
+      ? await prisma.$queryRaw<Array<{ id: string; name: string; street: string; postalCode: string; city: string }>>`
+          SELECT "id", "name", "street", "postalCode", "city"
+          FROM "ObjectAddress"
+          WHERE "organizationId" = ${organization.id}
+            AND "customerId" = ${project.contactId}
+            AND "isActive" = true
+          ORDER BY "name" ASC
+        `
+      : [];
+    if (addresses.length === 0) {
+      return NextResponse.json(
+        { error: "Für dieses Immocare-Projekt ist noch keine aktive Objektadresse hinterlegt." },
+        { status: 400 }
+      );
+    }
+    if (addresses.length > 1 && !objectAddressId) {
+      return NextResponse.json(
+        { error: "Bitte wähle für diese Immocare-Planung eine Objektadresse aus." },
+        { status: 400 }
+      );
+    }
+    const selectedAddress = objectAddressId
+      ? addresses.find((address) => address.id === objectAddressId)
+      : addresses[0];
+    if (!selectedAddress) {
+      return NextResponse.json(
+        { error: "Die ausgewählte Objektadresse gehört nicht zum Projektkunden oder ist inaktiv." },
+        { status: 400 }
+      );
+    }
+    objectAddressId = selectedAddress.id;
+    objectAddressLabel = `${selectedAddress.name} | ${selectedAddress.street}, ${selectedAddress.postalCode} ${selectedAddress.city}`;
   }
 
   const plannedUserBoard = cleanString(plannedUser.planningBoard) || "OK solutions";
@@ -1076,6 +1133,8 @@ export async function POST(req: Request) {
       "customer",
       "projectId",
       "projectLabel",
+      "objectAddressId",
+      "objectAddressLabel",
       "planningTrade",
       "billingCatalogItemId",
       "billingCatalogItemLabel",
@@ -1112,6 +1171,8 @@ export async function POST(req: Request) {
       ${customer || null},
       ${projectId || null},
       ${projectLabel || null},
+      ${objectAddressId || null},
+      ${objectAddressLabel || null},
       ${planningTrade},
       ${billingCatalogItemId || null},
       ${billingCatalogItemLabel || null},
@@ -1146,6 +1207,8 @@ export async function POST(req: Request) {
       "customer" = EXCLUDED."customer",
       "projectId" = EXCLUDED."projectId",
       "projectLabel" = EXCLUDED."projectLabel",
+      "objectAddressId" = EXCLUDED."objectAddressId",
+      "objectAddressLabel" = EXCLUDED."objectAddressLabel",
       "planningTrade" = EXCLUDED."planningTrade",
       "billingCatalogItemId" = EXCLUDED."billingCatalogItemId",
       "billingCatalogItemLabel" = EXCLUDED."billingCatalogItemLabel",

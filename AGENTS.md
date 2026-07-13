@@ -1,5 +1,20 @@
 # WorkPilot360 Agent Handover
 
+- Objektadressen in Kundenakte, Projekt und Planung 2026-07-13: Kunden mit
+  mehreren Einsatzorten erhalten jetzt eigenstaendige, organisationsgebundene
+  Objektadressen mit Bezeichnung, Anschrift und Aktivstatus. Die Kundenakte
+  kann sie im Reiter `Objektadressen` anlegen, bearbeiten und deaktivieren.
+  Immocare-Projekte muessen eine aktive Objektadresse ihres Projektkunden
+  verwenden; bei genau einer Adresse wird sie automatisch gesetzt, bei
+  mehreren bleibt die Auswahl bewusst verpflichtend. Dieselbe Regel gilt in
+  der Immocare-Planung: keine Adresse erzeugt einen klaren Hinweis, eine wird
+  automatisch uebernommen, mehrere verlangen eine Auswahl. Die Planung
+  speichert ID und lesbare Anschrift als Zeitpunkt-Snapshot. Solutions bleibt
+  von der Pflicht unberuehrt. Lese- und Schreibrechte der Kontakte werden
+  serverseitig wiederverwendet; Projekt- und Planungs-APIs pruefen
+  Organisation, Kundenbezug und Aktivstatus erneut. Desktop sowie kleiner
+  Viewport wurden echt geklickt; der Planungsdialog erzeugt keinen globalen
+  horizontalen Seitenueberlauf.
 - Kundenakten-Korrekturen und Ausbau-Befund 2026-07-13: Das ungespeicherte
   Notizfeld in der rechten Kundenakten-Spalte wurde entfernt, weil die
   rollen- und auslöserfähigen Kunden-/Projekthinweise diese Aufgabe

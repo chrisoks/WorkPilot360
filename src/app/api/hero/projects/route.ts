@@ -21,6 +21,7 @@ type LocalProjectRow = {
   contactId: string | null;
   contactPersonId: string | null;
   addressContactId: string | null;
+  objectAddressId: string | null;
   projectType: string | null;
   projectKind: string | null;
   projectRuntimeFrom: string | null;
@@ -70,6 +71,7 @@ async function ensureLocalProjectTable() {
       "contactId" TEXT,
       "contactPersonId" TEXT,
       "addressContactId" TEXT,
+      "objectAddressId" TEXT,
       "projectType" TEXT,
       "projectKind" TEXT,
       "projectRuntimeFrom" TEXT,
@@ -115,6 +117,7 @@ async function ensureLocalProjectTable() {
     ADD COLUMN IF NOT EXISTS "contactId" TEXT,
     ADD COLUMN IF NOT EXISTS "contactPersonId" TEXT,
     ADD COLUMN IF NOT EXISTS "addressContactId" TEXT,
+    ADD COLUMN IF NOT EXISTS "objectAddressId" TEXT,
     ADD COLUMN IF NOT EXISTS "projectType" TEXT,
     ADD COLUMN IF NOT EXISTS "projectKind" TEXT,
     ADD COLUMN IF NOT EXISTS "projectRuntimeFrom" TEXT,
@@ -252,6 +255,7 @@ function formatLocalProject(project: LocalProjectRow) {
     contactId: project.contactId ?? "",
     contactPersonId: project.contactPersonId ?? "",
     addressContactId: project.addressContactId ?? "",
+    objectAddressId: project.objectAddressId ?? "",
     projectType: project.projectType ?? "",
     projectKind: project.projectKind ?? "",
     projectRuntimeFrom: project.projectRuntimeFrom ?? "",
@@ -388,6 +392,31 @@ async function validateProjectContactReferences(
   return null;
 }
 
+async function validateProjectObjectAddress(
+  organizationId: string,
+  input: { contactId: string; objectAddressId: string; projectType: string; branch: string }
+) {
+  const isImmocare = `${input.projectType} ${input.branch}`.toLowerCase().includes("immocare");
+  if (isImmocare && !input.objectAddressId) {
+    return "Bitte wähle für das Immocare-Projekt eine Objektadresse aus.";
+  }
+  if (!input.objectAddressId) return null;
+
+  const rows = await prisma.$queryRaw<Array<{ id: string; customerId: string; isActive: boolean }>>`
+    SELECT "id", "customerId", "isActive"
+    FROM "ObjectAddress"
+    WHERE "organizationId" = ${organizationId}
+      AND "id" = ${input.objectAddressId}
+    LIMIT 1
+  `;
+  const address = rows[0];
+  if (!address || !address.isActive) return "Die ausgewählte Objektadresse ist ungültig oder inaktiv.";
+  if (input.contactId && address.customerId !== input.contactId) {
+    return "Die ausgewählte Objektadresse gehört nicht zum Projektkunden.";
+  }
+  return null;
+}
+
 export async function GET(req: Request) {
   const { organization, users } = await getDemoContext();
   const { searchParams } = new URL(req.url);
@@ -437,6 +466,15 @@ export async function POST(req: Request) {
   if (contactReferenceError) {
     return NextResponse.json({ error: contactReferenceError }, { status: 400 });
   }
+  const objectAddressError = await validateProjectObjectAddress(organization.id, {
+    contactId: cleanString(body.contactId),
+    objectAddressId: cleanString(body.objectAddressId),
+    projectType: cleanString(body.projectType),
+    branch: cleanString(body.branch),
+  });
+  if (objectAddressError) {
+    return NextResponse.json({ error: objectAddressError }, { status: 400 });
+  }
   const currentRows = await prisma.$queryRaw<Array<{ status: string; createdAt: Date }>>`
     SELECT status, "createdAt"
     FROM "WorkPilotProject"
@@ -469,6 +507,7 @@ export async function POST(req: Request) {
       "contactId",
       "contactPersonId",
       "addressContactId",
+      "objectAddressId",
       "projectType",
       "projectKind",
       "projectRuntimeFrom",
@@ -513,6 +552,7 @@ export async function POST(req: Request) {
       ${cleanString(body.contactId) || null},
       ${cleanString(body.contactPersonId) || null},
       ${cleanString(body.addressContactId) || null},
+      ${cleanString(body.objectAddressId) || null},
       ${cleanString(body.projectType) || null},
       ${projectKind || null},
       ${cleanString(body.projectRuntimeFrom) || null},
@@ -555,6 +595,7 @@ export async function POST(req: Request) {
       "contactId" = EXCLUDED."contactId",
       "contactPersonId" = EXCLUDED."contactPersonId",
       "addressContactId" = EXCLUDED."addressContactId",
+      "objectAddressId" = EXCLUDED."objectAddressId",
       "projectType" = EXCLUDED."projectType",
       "projectKind" = EXCLUDED."projectKind",
       "projectRuntimeFrom" = EXCLUDED."projectRuntimeFrom",
