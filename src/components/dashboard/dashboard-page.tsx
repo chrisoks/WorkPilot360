@@ -29608,6 +29608,10 @@ await addProjectLogbookEntry(
 
       {reportAnalyticsTab === "sales" && (
         <>
+          <div className={styles.salesReportSectionHeading}>
+            <span>Steuerung</span>
+            <p>Vertriebsleistung und die wichtigsten Aufgaben für heute auf einen Blick.</p>
+          </div>
           <section className={styles.salesCockpitGrid}>
             {salesCockpitCards.map((card) => (
               <article key={card.key} className={styles.salesCockpitCard} data-tone={card.tone}>
@@ -29626,7 +29630,7 @@ await addProjectLogbookEntry(
             ))}
           </section>
 
-          <article className={styles.analyticsCard}>
+          <article className={`${styles.analyticsCard} ${styles.salesPriorityCard}`}>
             <h2>Heute vertrieblich handeln</h2>
             <table className={styles.analyticsTable}>
               <thead>
@@ -29747,6 +29751,10 @@ await addProjectLogbookEntry(
             </table>
           </article>
 
+          <div className={styles.salesReportSectionHeading}>
+            <span>Prüfen &amp; entscheiden</span>
+            <p>Dauerläufer, Steuerungssignale und unterbrochene Arbeiten gezielt bearbeiten.</p>
+          </div>
           <article className={`${styles.analyticsCard} ${styles.salesRecurringReviewCard}`}>
             <div className={styles.salesSectionHeader}>
               <div>
@@ -29946,9 +29954,16 @@ await addProjectLogbookEntry(
             </div>
           ) : null}
 
-          <article className={styles.analyticsCard}>
-            <h2>Sales-Steuerung</h2>
-            <table className={styles.analyticsTable}>
+          <details className={`${styles.analyticsCard} ${styles.salesDetailDisclosure}`}>
+            <summary className={styles.salesDetailSummary}>
+              <div className={styles.salesDetailTitle}>
+                <h2>Sales-Steuerung</h2>
+                <strong>{salesPerformanceInsights.length} Signale</strong>
+              </div>
+              <span>Details anzeigen</span>
+            </summary>
+            <div className={styles.salesTableScroll}>
+              <table className={styles.analyticsTable}>
               <thead>
                 <tr>
                   <th>Signal</th>
@@ -29965,8 +29980,9 @@ await addProjectLogbookEntry(
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </article>
+              </table>
+            </div>
+          </details>
 
           <article className={styles.analyticsCard}>
             <h2>Unterbrochene Arbeiten</h2>
@@ -30040,6 +30056,10 @@ await addProjectLogbookEntry(
             </table>
           </article>
 
+          <div className={styles.salesReportSectionHeading}>
+            <span>Analyse</span>
+            <p>Entwicklung und Statusverteilung im gewählten Zeitraum vergleichen.</p>
+          </div>
           <section className={styles.analyticsTwoColumn}>
             <article className={styles.analyticsCard}>
               <h2>Sales-Verlauf</h2>
@@ -30085,9 +30105,21 @@ await addProjectLogbookEntry(
             </article>
           </section>
 
-          <article className={styles.analyticsCard}>
-            <h2>Angebote nach Sales-Status</h2>
-            <table className={styles.analyticsTable}>
+          <div className={styles.salesReportSectionHeading}>
+            <span>Details</span>
+            <p>Einzelwerte und Ursachen bei Bedarf öffnen, ohne die tägliche Steuerung zu überladen.</p>
+          </div>
+
+          <details className={`${styles.analyticsCard} ${styles.salesDetailDisclosure}`}>
+            <summary className={styles.salesDetailSummary}>
+              <div className={styles.salesDetailTitle}>
+                <h2>Angebote nach Sales-Status</h2>
+                <strong>{salesOfferRows.length} Angebote</strong>
+              </div>
+              <span>Details anzeigen</span>
+            </summary>
+            <div className={styles.salesTableScroll}>
+              <table className={styles.analyticsTable}>
               <thead>
                 <tr>
                   <th>Angebot</th>
@@ -30130,13 +30162,21 @@ await addProjectLogbookEntry(
                   ))
                 )}
               </tbody>
-            </table>
-          </article>
+              </table>
+            </div>
+          </details>
 
           <section className={styles.analyticsTwoColumn}>
-            <article className={styles.analyticsCard}>
-              <h2>Verlustgründe</h2>
-              <table className={styles.analyticsTable}>
+            <details className={`${styles.analyticsCard} ${styles.salesDetailDisclosure}`}>
+              <summary className={styles.salesDetailSummary}>
+                <div className={styles.salesDetailTitle}>
+                  <h2>Verlustgründe</h2>
+                  <strong>{salesLostReasonRows.length} Gründe</strong>
+                </div>
+                <span>Details anzeigen</span>
+              </summary>
+              <div className={styles.salesTableScroll}>
+                <table className={styles.analyticsTable}>
                 <thead>
                   <tr>
                     <th>Grund</th>
@@ -30163,12 +30203,20 @@ await addProjectLogbookEntry(
                     ))
                   )}
                 </tbody>
-              </table>
-            </article>
+                </table>
+              </div>
+            </details>
 
-            <article className={styles.analyticsCard}>
-              <h2>Fällige Nachfasspunkte</h2>
-              <table className={styles.analyticsTable}>
+            <details className={`${styles.analyticsCard} ${styles.salesDetailDisclosure}`}>
+              <summary className={styles.salesDetailSummary}>
+                <div className={styles.salesDetailTitle}>
+                  <h2>Fällige Nachfasspunkte</h2>
+                  <strong>{salesDueFollowUps.length} fällig</strong>
+                </div>
+                <span>Details anzeigen</span>
+              </summary>
+              <div className={styles.salesTableScroll}>
+                <table className={styles.analyticsTable}>
                 <thead>
                   <tr>
                     <th>Zusatzverkauf</th>
@@ -30195,8 +30243,9 @@ await addProjectLogbookEntry(
                     ))
                   )}
                 </tbody>
-              </table>
-            </article>
+                </table>
+              </div>
+            </details>
           </section>
         </>
       )}

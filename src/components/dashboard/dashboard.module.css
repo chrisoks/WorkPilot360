@@ -6648,6 +6648,128 @@
   }
 }
 
+.salesReportSectionHeading {
+  align-items: end;
+  border-bottom: 1px solid #dbe5ee;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin: 18px 0 10px;
+  padding: 0 2px 8px;
+}
+
+.salesReportSectionHeading span {
+  color: #071225;
+  font-size: 0.9rem;
+  font-weight: 950;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.salesReportSectionHeading p {
+  color: #64748b;
+  font-size: 0.76rem;
+  margin: 0;
+  text-align: right;
+}
+
+.salesPriorityCard {
+  border-color: #cbdfe2;
+  box-shadow: 0 16px 38px rgb(15 118 110 / 0.08), 0 8px 22px rgb(15 23 42 / 0.06);
+  position: relative;
+}
+
+.salesPriorityCard::before {
+  background: #0f766e;
+  border-radius: 22px 0 0 22px;
+  bottom: 0;
+  content: "";
+  left: 0;
+  position: absolute;
+  top: 0;
+  width: 3px;
+}
+
+.analyticsCard.salesDetailDisclosure {
+  display: block;
+  overflow: hidden;
+  padding: 0;
+}
+
+.salesDetailSummary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  list-style: none;
+  padding: 16px 18px;
+}
+
+.salesDetailSummary::-webkit-details-marker {
+  display: none;
+}
+
+.salesDetailSummary > span {
+  color: #0f766e;
+  font-size: 0.75rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.salesDetailDisclosure[open] > .salesDetailSummary {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.salesDetailDisclosure[open] > .salesDetailSummary > span::before {
+  content: "– ";
+}
+
+.salesDetailTitle {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  min-width: 0;
+}
+
+.salesDetailTitle strong {
+  color: #64748b;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.salesTableScroll {
+  box-sizing: border-box;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  padding: 0 18px 18px;
+  width: 100%;
+}
+
+@media (max-width: 760px) {
+  .salesReportSectionHeading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .salesReportSectionHeading p {
+    text-align: left;
+  }
+
+  .salesDetailSummary {
+    align-items: flex-start;
+  }
+
+  .salesDetailTitle {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+}
+
 .salesRecurringReviewCard .analyticsTable {
   min-width: 1060px;
 }

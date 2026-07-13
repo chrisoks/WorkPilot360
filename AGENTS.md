@@ -1,5 +1,13 @@
 # WorkPilot360 Agent Handover
 
+- Sales-Performance UI-Hierarchie 2026-07-13: Der Auswertungsreiter ist rein
+  gestalterisch in `Steuerung`, `Pruefen & entscheiden`, `Analyse` und
+  `Details` gegliedert. Die operativen Bereiche fuer heutige Aktionen,
+  Dauerlaeufer und unterbrochene Arbeiten bleiben direkt sichtbar;
+  wiederholende Steuerungssignale sowie Angebotsstatus, Verlustgruende und
+  Nachfassdetails starten eingeklappt. Geoeffnete Detailtabellen scrollen auch
+  im kleinen Viewport innerhalb ihrer eigenen Karte. Werte, Filter,
+  Reihenfolgen, Rollen, Aktionen, APIs und Fachlogik blieben unveraendert.
 - Planungsboard Heute-Spalte 2026-07-11: Der aktuelle Kalendertag ist in
   beiden Planungsboards nicht mehr nur ueber tuerkise Schrift markiert. Kopf
   und Tageszellen bilden eine sehr dezent getoente Spalte mit Seitenkontur,
