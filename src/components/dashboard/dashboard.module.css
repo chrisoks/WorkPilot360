@@ -11316,21 +11316,91 @@
 }
 
 .customerFileHeader {
-  align-items: center;
-  background: #ffffff;
-  border: 1px solid var(--border-subtle);
+  align-items: flex-start;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.07), transparent 34%),
+    #0b1020;
+  border: 1px solid #eef3f8;
   border-radius: 8px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.96) inset,
+    0 -1px 0 rgba(148, 163, 184, 0.24) inset,
+    0 0 0 2px rgba(238, 243, 248, 0.92),
+    0 10px 22px rgba(15, 23, 42, 0.18);
   display: grid;
-  gap: 14px;
-  grid-template-columns: auto 1fr auto;
-  padding: 14px 18px;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 18px 20px;
+}
+
+.customerFileTitleBlock {
+  align-content: flex-start;
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+  min-width: 0;
 }
 
 .customerFileHeader h1 {
-  color: #475569;
-  font-size: 1.25rem;
-  font-weight: 650;
+  color: #f8fafc;
+  font-size: 1.42rem;
+  font-weight: 850;
+  line-height: 1.28;
   margin: 0;
+}
+
+.customerFileHeader p {
+  color: #cbd5e1;
+  font-size: 0.95rem;
+  font-weight: 500;
+  margin: 8px 0 0;
+}
+
+.customerFileTitleBlock > button {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(226, 232, 240, 0.34);
+  color: #f8fafc;
+}
+
+.customerFileTitleBlock > button:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(226, 232, 240, 0.55);
+  color: #ffffff;
+}
+
+.customerFileHeaderActions {
+  align-content: start;
+  background: rgba(15, 23, 42, 0.56);
+  border: 1px solid rgba(226, 232, 240, 0.16);
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: minmax(180px, 220px);
+  justify-content: flex-end;
+  min-width: min(100%, 244px);
+  padding: 8px 9px;
+}
+
+.customerFileHeaderActions > button {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border-color: #d8e1ec;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.96) inset,
+    0 -1px 0 rgba(148, 163, 184, 0.18) inset,
+    0 7px 14px rgba(2, 6, 23, 0.18);
+  color: #0f172a;
+  min-height: 40px;
+  width: 100%;
+}
+
+.customerFileHeaderActions > button:hover {
+  background: linear-gradient(180deg, #ffffff 0%, #eef6ff 100%);
+  border-color: #bfdbfe;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.98) inset,
+    0 -1px 0 rgba(37, 99, 235, 0.14) inset,
+    0 9px 18px rgba(37, 99, 235, 0.16);
+  color: #0b5ed7;
+  transform: translateY(-1px);
 }
 
 .customerFileGrid {
@@ -26578,14 +26648,28 @@
 }
 
 @media (max-width: 900px) {
-  .projectFileHeader {
+  .customerFile {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .projectFileHeader,
+  .customerFileHeader {
     grid-template-columns: 1fr;
   }
 
-  .projectFileActions {
+  .projectFileActions,
+  .customerFileHeaderActions {
     grid-template-columns: 1fr;
     min-width: 0;
     width: 100%;
+  }
+
+  .customerFileGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .customerFileNav {
+    position: static;
   }
 
   .projectCombinedHistoryGrid {

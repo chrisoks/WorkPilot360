@@ -1,5 +1,12 @@
 # WorkPilot360 Agent Handover
 
+- Kontaktakten-Objektkopf 2026-07-13: Die Kunden-/Kontaktakte nutzt als
+  gestalterischen Pilot jetzt denselben ruhigen Navy-Objektkopf wie die
+  Projektakte. Die Rückkehr zur Kontaktübersicht steht links oben, darunter
+  folgen Kontaktname, Kundennummer und Adresse; die vorhandene Aktion zum
+  Bearbeiten der Kontaktdaten steht rechts im Kopf statt doppelt in der
+  Seitenkarte. Kontaktfelder, Aktenreiter, Handler, API und Rollenlogik bleiben
+  unverändert. Im kleinen Viewport stapeln sich Identität und Aktion.
 - Kontakte UI-Verdichtung 2026-07-13: Die Kontakte-Übersicht ist rein
   gestalterisch als kompakter CRM-Arbeitsbereich geschärft. Die sechs
   Kategorien bilden auf Desktop eine ruhige gemeinsame Statusleiste und

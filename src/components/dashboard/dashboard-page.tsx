@@ -34096,16 +34096,39 @@ await addProjectLogbookEntry(
 
     return (
       <section className={styles.customerFile}>
-        <div className={styles.customerFileHeader}>
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            onClick={() => setSelectedCustomerFileId("")}
-          >
-            Zurück zu Kontakte
-          </button>
-          <h1>{title}</h1>
-        </div>
+        <header className={styles.customerFileHeader}>
+          <div className={styles.customerFileTitleBlock}>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => setSelectedCustomerFileId("")}
+            >
+              Zurück zu Kontakten
+            </button>
+            <div>
+              <h1>{title}</h1>
+              <p>
+                {[
+                  selectedCustomerFile.customerNumber
+                    ? `Kundennummer ${selectedCustomerFile.customerNumber}`
+                    : "",
+                  getContactAddressLine(selectedCustomerFile),
+                ]
+                  .filter(Boolean)
+                  .join(" | ") || "Kontaktakte"}
+              </p>
+            </div>
+          </div>
+          <div className={styles.customerFileHeaderActions}>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => openEditContactModal(selectedCustomerFile)}
+            >
+              Kontakt bearbeiten
+            </button>
+          </div>
+        </header>
 
         <div className={styles.customerFileGrid}>
           <aside className={styles.customerFileNav}>
@@ -34589,13 +34612,6 @@ await addProjectLogbookEntry(
                 <dt>Erreichbarkeit</dt>
                 <dd>{selectedCustomerFile.reachability || "Sonstige"}</dd>
               </dl>
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={() => openEditContactModal(selectedCustomerFile)}
-              >
-                Kontaktdaten
-              </button>
             </article>
 
             <article className={styles.customerInfoCard}>
