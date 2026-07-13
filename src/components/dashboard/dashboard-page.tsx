@@ -12,6 +12,10 @@ import {
 } from "react";
 import { getDashboardDailyImpulse } from "@/lib/dashboard-daily-impulses";
 import styles from "./dashboard.module.css";
+import {
+  getEffectiveMonthlyFinancialAmount,
+  parseMonthlyFinancialInput,
+} from "@/lib/monthly-financial-report";
 
 const DOCUMENT_PREVIEW_WIDTH = 595;
 const DOCUMENT_PREVIEW_HEIGHT = 842;
@@ -5714,6 +5718,7 @@ export function DashboardPage() {
   const [monthlyFinancialReportMessage, setMonthlyFinancialReportMessage] = useState("");
   const [monthlyFinancialReportError, setMonthlyFinancialReportError] = useState("");
   const [isSavingMonthlyFinancialReport, setIsSavingMonthlyFinancialReport] = useState(false);
+  const [monthlyFinancialEditorMonth, setMonthlyFinancialEditorMonth] = useState(() => formatDateKey(new Date()).slice(0, 7));
   const [projectForecastDraft, setProjectForecastDraft] = useState({
     projectId: "",
     forecastBillingType: "monatlich",
@@ -7371,12 +7376,16 @@ export function DashboardPage() {
   async function saveMonthlyFinancialReportValue(lineKey: string, monthKey: string, rawValue: string) {
     if (!activeUserId) return;
 
-    setIsSavingMonthlyFinancialReport(true);
     setMonthlyFinancialReportMessage("");
     setMonthlyFinancialReportError("");
 
-    const trimmed = rawValue.trim();
-    const amount = trimmed === "" ? null : parseReportAmount(trimmed);
+    const parsedInput = parseMonthlyFinancialInput(rawValue);
+    if (!parsedInput.ok) {
+      setMonthlyFinancialReportError("Bitte eine gültige Zahl eingeben, zum Beispiel 1234,56.");
+      return;
+    }
+
+    setIsSavingMonthlyFinancialReport(true);
 
     const res = await fetch("/api/monthly-financial-report", {
       method: "POST",
@@ -7385,7 +7394,7 @@ export function DashboardPage() {
         actorId: activeUserId,
         lineKey,
         effectiveMonth: monthKey,
-        amount,
+        amount: parsedInput.amount,
       }),
     });
 
@@ -7404,7 +7413,7 @@ export function DashboardPage() {
         (value) => !(value.lineKey === saved.lineKey && value.effectiveMonth === saved.effectiveMonth)
       ),
     ]);
-    setMonthlyFinancialReportMessage("Wert ab diesem Monat gespeichert.");
+    setMonthlyFinancialReportMessage("Wert ab diesem Monat gespeichert; spätere manuelle Änderungen bleiben erhalten.");
   }
 
   async function markInvoiceAsPaid(invoice: InvoiceItem) {
@@ -25374,10 +25383,7 @@ await addProjectLogbookEntry(
     },
   ];
   const getMonthlyFinancialManualValue = (lineKey: string, monthKey: string) => {
-    const matchingValues = monthlyFinancialReportValues
-      .filter((value) => value.lineKey === lineKey && value.effectiveMonth <= monthKey)
-      .sort((first, second) => second.effectiveMonth.localeCompare(first.effectiveMonth));
-    return matchingValues[0]?.amount ?? null;
+    return getEffectiveMonthlyFinancialAmount(monthlyFinancialReportValues, lineKey, monthKey);
   };
   const getMonthlyFinancialDraftKey = (lineKey: string, monthKey: string) => `${lineKey}:${monthKey}`;
   const getMonthlyFinancialInputValue = (lineKey: string, monthKey: string) => {
@@ -25399,7 +25405,21 @@ await addProjectLogbookEntry(
     key: formatDateKey(reportStartDate).slice(0, 7),
     label: reportPeriodLabel,
   };
+  const monthlyFinancialEditorMonthValue = isMonthlyFinancialSingleMonth
+    ? monthlyFinancialEditMonth.key
+    : monthlyFinancialEditorMonth;
   const monthlyFinancialPeriodLabel = isMonthlyFinancialSingleMonth ? monthlyFinancialEditMonth.label : reportPeriodLabel;
+  const openMonthlyFinancialEditorMonth = (monthKey: string) => {
+    if (!/^\d{4}-\d{2}$/.test(monthKey)) return;
+    const [year, month] = monthKey.split("-").map(Number);
+    const monthEnd = formatDateKey(new Date(year, month, 0));
+    setMonthlyFinancialEditorMonth(monthKey);
+    setReportCustomStartDate(`${monthKey}-01`);
+    setReportCustomEndDate(monthEnd);
+    setReportPeriodPreset("custom");
+    setMonthlyFinancialReportMessage("");
+    setMonthlyFinancialReportError("");
+  };
   const getMonthlyFinancialSignedManualValue = (lineKey: string, monthKey: string) => {
     const line = monthlyFinancialReportLines.find((item) => item.key === lineKey);
     const value = getMonthlyFinancialManualValue(lineKey, monthKey);
@@ -28682,8 +28702,13 @@ await addProjectLogbookEntry(
           <input
             type="date"
             value={reportPeriodPreset === "custom" ? reportCustomStartDate : formatDateKey(reportStartDate)}
-            disabled={reportPeriodPreset !== "custom"}
-            onChange={(event) => setReportCustomStartDate(event.target.value)}
+            onChange={(event) => {
+              setReportCustomStartDate(event.target.value);
+              if (reportPeriodPreset !== "custom") {
+                setReportCustomEndDate(formatDateKey(reportEndDate));
+                setReportPeriodPreset("custom");
+              }
+            }}
           />
         </label>
         <label>
@@ -28691,8 +28716,13 @@ await addProjectLogbookEntry(
           <input
             type="date"
             value={reportPeriodPreset === "custom" ? reportCustomEndDate : formatDateKey(reportEndDate)}
-            disabled={reportPeriodPreset !== "custom"}
-            onChange={(event) => setReportCustomEndDate(event.target.value)}
+            onChange={(event) => {
+              setReportCustomEndDate(event.target.value);
+              if (reportPeriodPreset !== "custom") {
+                setReportCustomStartDate(formatDateKey(reportStartDate));
+                setReportPeriodPreset("custom");
+              }
+            }}
           />
         </label>
         <span>Aktiv: {reportAnalyticsTab === "forecast" ? forecastPeriodLabel : reportPeriodLabel}</span>
@@ -29439,7 +29469,20 @@ await addProjectLogbookEntry(
                   {!isMonthlyFinancialSingleMonth ? " Im Zeitraumfilter werden die Monatswerte summiert; bearbeiten kannst du die Werte in einem Einzelmonat." : ""}
                 </p>
               </div>
-              <span>{isSavingMonthlyFinancialReport ? "Speichert..." : monthlyFinancialPeriodLabel}</span>
+              <div className={styles.monthlyFinancialHeaderActions}>
+                <span className={styles.monthlyFinancialPeriodBadge}>
+                  {isSavingMonthlyFinancialReport ? "Speichert..." : monthlyFinancialPeriodLabel}
+                </span>
+                <label className={styles.monthlyFinancialMonthPicker}>
+                  <span>Kostenmonat bearbeiten</span>
+                  <input
+                    type="month"
+                    value={monthlyFinancialEditorMonthValue}
+                    onInput={(event) => openMonthlyFinancialEditorMonth(event.currentTarget.value)}
+                    onChange={(event) => openMonthlyFinancialEditorMonth(event.target.value)}
+                  />
+                </label>
+              </div>
             </div>
             {monthlyFinancialReportMessage ? <p className={styles.stampSuccess}>{monthlyFinancialReportMessage}</p> : null}
             {monthlyFinancialReportError ? <p className={styles.stampError}>{monthlyFinancialReportError}</p> : null}
@@ -29462,6 +29505,7 @@ await addProjectLogbookEntry(
                       {line.kind === "manual" && isMonthlyFinancialSingleMonth ? (
                         <input
                           inputMode="decimal"
+                          aria-label={`${line.label} ${monthlyFinancialEditMonth.label}`}
                           value={getMonthlyFinancialInputValue(line.key, monthlyFinancialEditMonth.key)}
                           placeholder="-"
                           onChange={(event) => {

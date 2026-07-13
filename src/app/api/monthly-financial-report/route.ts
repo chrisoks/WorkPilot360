@@ -120,6 +120,9 @@ export async function GET(req: Request) {
   if (!actorResult.ok) {
     return sessionBoundActorResponse(actorResult);
   }
+  if (!canManageInvoices(actorResult.actor)) {
+    return forbiddenFinancialReportResponse();
+  }
   await ensureMonthlyFinancialReportTable();
 
   const rows = await prisma.$queryRaw<MonthlyFinancialReportValueRow[]>`
@@ -154,6 +157,9 @@ export async function POST(req: Request) {
   }
   if (!effectiveMonth) {
     return NextResponse.json({ error: "Monat fehlt." }, { status: 400 });
+  }
+  if (body.amount !== null && body.amount !== "" && amount === null) {
+    return NextResponse.json({ error: "Betrag ist ungültig." }, { status: 400 });
   }
 
   const rows = await prisma.$queryRaw<MonthlyFinancialReportValueRow[]>`

@@ -6445,11 +6445,6 @@
   min-width: 250px;
 }
 
-.analyticsFilters input:disabled {
-  color: #64748b;
-  cursor: default;
-}
-
 .forecastPeriodTabs {
   display: grid;
   gap: 10px;
@@ -7001,7 +6996,15 @@
   line-height: 1.45;
 }
 
-.monthlyFinancialHeader > span {
+.monthlyFinancialHeaderActions {
+  align-items: flex-end;
+  display: grid;
+  flex: 0 0 auto;
+  gap: 8px;
+  justify-items: end;
+}
+
+.monthlyFinancialPeriodBadge {
   flex: 0 0 auto;
   border: 1px solid #b7d6ff;
   border-radius: 999px;
@@ -7009,6 +7012,31 @@
   color: #0b4b8f;
   font-weight: 800;
   padding: 8px 12px;
+}
+
+.monthlyFinancialMonthPicker {
+  align-items: flex-start;
+  color: #4b5f7d;
+  display: grid;
+  font-size: 0.72rem;
+  font-weight: 850;
+  gap: 4px;
+}
+
+.monthlyFinancialMonthPicker input {
+  background: #ffffff;
+  border: 1px solid #c8d7ea;
+  border-radius: 8px;
+  color: #10213a;
+  font: inherit;
+  font-size: 0.84rem;
+  min-height: 36px;
+  padding: 6px 9px;
+}
+
+.monthlyFinancialMonthPicker input:focus {
+  border-color: #2f74e6;
+  outline: 2px solid rgba(36, 111, 231, 0.18);
 }
 
 .monthlyFinancialList {
@@ -7109,6 +7137,18 @@
 }
 
 @media (max-width: 900px) {
+  .monthlyFinancialHeader {
+    display: grid;
+  }
+
+  .monthlyFinancialHeaderActions {
+    justify-items: stretch;
+  }
+
+  .monthlyFinancialPeriodBadge {
+    justify-self: start;
+  }
+
   .monthlyFinancialMetrics {
     grid-template-columns: 1fr;
   }
