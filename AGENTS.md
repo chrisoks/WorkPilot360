@@ -1,5 +1,22 @@
 # WorkPilot360 Agent Handover
 
+- Kundenakten-Korrekturen und Ausbau-Befund 2026-07-13: Das ungespeicherte
+  Notizfeld in der rechten Kundenakten-Spalte wurde entfernt, weil die
+  rollen- und auslöserfähigen Kunden-/Projekthinweise diese Aufgabe
+  übernehmen. Der Dokumentenbaum lässt sich über seinen Pfeil ein- und
+  ausklappen, ohne den ausgewählten Dokumentbereich zu verlassen. `+
+  Ansprechpartner` öffnet die Kontaktmaske jetzt direkt mit Kontakttyp
+  `Ansprechpartner` und der aktuellen Firma vorausgewählt. Bei der Prüfung
+  der nächsten Kundenakten-Module zeigte sich: Bilder und Dokumente können
+  bereits aus den verknüpften Projekt-Logbucheinträgen, Angeboten und
+  Rechnungen gelesen werden, benötigen aber noch eine gruppierte Kundenakten-
+  Darstellung. Objektadressen haben noch keine eigene fachliche Kennzeichnung
+  und dürfen nicht als Ansprechpartner-Kontakte modelliert werden. Das
+  Kundenlogbuch enthält derzeit zusätzlich fest im Frontend hinterlegte
+  Beispielzeilen; manuelle Kundeneinträge werden nur im lokalen React-Zustand
+  gehalten. Vor dessen Ausbau daher zuerst persistentes Kundenereignis-/
+  Logbuchmodell, API, Rechte und Audit definieren. Projekt-, Kontakt-,
+  Dokumenten- und Logik-APIs wurden in diesem Korrekturpaket nicht verändert.
 - Hinweis-Wirkungsstufen 2026-07-13: Kunden-/Projekthinweise unterscheiden
   jetzt `Information` und `Bestätigung erforderlich`. Informationen lassen den
   Vorgang nach einfachem Fortfahren weiterlaufen; Pflichtbestätigungen

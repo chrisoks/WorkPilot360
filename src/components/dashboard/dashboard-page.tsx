@@ -6034,6 +6034,7 @@ export function DashboardPage() {
     useState<Omit<ContactItem, "id" | "createdAt" | "updatedAt">>(emptyContact);
   const [selectedCustomerFileId, setSelectedCustomerFileId] = useState("");
   const [customerFileTab, setCustomerFileTab] = useState<CustomerFileTab>("logbook");
+  const [isCustomerDocumentNavOpen, setIsCustomerDocumentNavOpen] = useState(true);
   const [selectedCustomerDocumentType, setSelectedCustomerDocumentType] =
     useState<CustomerDocumentType>("Allgemeine Dokumente");
   const [customerLogbookEntries, setCustomerLogbookEntries] = useState<CustomerLogbookEntry[]>([]);
@@ -34310,16 +34311,24 @@ await addProjectLogbookEntry(
                   <button
                     type="button"
                     data-active={customerFileTab === item.id}
-                    onClick={() => setCustomerFileTab(item.id)}
+                    aria-expanded={isCustomerDocumentNavOpen}
+                    onClick={() => {
+                      if (customerFileTab === "documents") {
+                        setIsCustomerDocumentNavOpen((isOpen) => !isOpen);
+                        return;
+                      }
+                      setCustomerFileTab(item.id);
+                      setIsCustomerDocumentNavOpen(true);
+                    }}
                   >
                     <span>{item.icon}</span>
                     {item.label}
                     {getCustomerMenuCount(item.id) > 0 ? (
                       <strong className={styles.projectNavCount}>{getCustomerMenuCount(item.id)}</strong>
                     ) : null}
-                    <b>v</b>
+                    <b>{isCustomerDocumentNavOpen ? "˄" : "˅"}</b>
                   </button>
-                  {customerFileTab === "documents" && (
+                  {customerFileTab === "documents" && isCustomerDocumentNavOpen && (
                     <div className={styles.customerFileSubNav}>
                       {uniqueCustomerDocumentTypes.map((type) => (
                         <button
@@ -34328,6 +34337,7 @@ await addProjectLogbookEntry(
                           data-active={selectedCustomerDocumentType === type}
                           onClick={() => {
                             setCustomerFileTab("documents");
+                            setIsCustomerDocumentNavOpen(true);
                             setSelectedCustomerDocumentType(type);
                           }}
                         >
@@ -34369,6 +34379,7 @@ await addProjectLogbookEntry(
                       setContactDraft({
                         ...emptyContact,
                         category: "Ansprechpartner",
+                        type: "person",
                         customerNumber: "",
                         parentCompanyId: selectedCustomerFile.id,
                         parentCompanyName: selectedCustomerFile.companyName,
@@ -34786,10 +34797,6 @@ await addProjectLogbookEntry(
               </dl>
             </article>
 
-            <article className={styles.customerInfoCard}>
-              <h2>Notizen</h2>
-              <textarea placeholder="Hier können Informationen eingetragen werden, die dauerhaft für den Kunden sichtbar bleiben." />
-            </article>
           </aside>
         </div>
       </section>
