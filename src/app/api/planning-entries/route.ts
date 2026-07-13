@@ -975,8 +975,13 @@ export async function POST(req: Request) {
   }
 
   if (board === "OK immocare" && projectId) {
-    const projects = await prisma.$queryRaw<Array<{ contactId: string | null }>>`
-      SELECT "contactId"
+    const projects = await prisma.$queryRaw<Array<{
+      contactId: string | null;
+      addressContactId: string | null;
+      objectAddressId: string | null;
+      address: string | null;
+    }>>`
+      SELECT "contactId", "addressContactId", "objectAddressId", "address"
       FROM "WorkPilotProject"
       WHERE "organizationId" = ${organization.id}
         AND "id" = ${projectId}
@@ -986,39 +991,60 @@ export async function POST(req: Request) {
     if (!project) {
       return NextResponse.json({ error: "Das ausgewählte Projekt ist ungültig." }, { status: 400 });
     }
-    const addresses = project.contactId
-      ? await prisma.$queryRaw<Array<{ id: string; name: string; street: string; postalCode: string; city: string }>>`
-          SELECT "id", "name", "street", "postalCode", "city"
-          FROM "ObjectAddress"
-          WHERE "organizationId" = ${organization.id}
-            AND "customerId" = ${project.contactId}
-            AND "isActive" = true
-          ORDER BY "name" ASC
-        `
-      : [];
-    if (addresses.length === 0) {
-      return NextResponse.json(
-        { error: "Für dieses Immocare-Projekt ist noch keine aktive Objektadresse hinterlegt." },
-        { status: 400 }
-      );
+
+    if (project.objectAddressId) {
+      const addresses = await prisma.$queryRaw<Array<{
+        id: string;
+        name: string;
+        street: string;
+        postalCode: string;
+        city: string;
+      }>>`
+        SELECT "id", "name", "street", "postalCode", "city"
+        FROM "ObjectAddress"
+        WHERE "organizationId" = ${organization.id}
+          AND "id" = ${project.objectAddressId}
+          AND "customerId" = ${project.contactId}
+          AND "isActive" = true
+        LIMIT 1
+      `;
+      const selectedAddress = addresses[0];
+      if (!selectedAddress) {
+        return NextResponse.json(
+          { error: "Die im Projekt hinterlegte Objektadresse ist ungültig oder inaktiv." },
+          { status: 400 }
+        );
+      }
+      objectAddressId = selectedAddress.id;
+      objectAddressLabel = `${selectedAddress.name} | ${selectedAddress.street}, ${selectedAddress.postalCode} ${selectedAddress.city}`;
+    } else if (project.address?.trim()) {
+      objectAddressId = "";
+      objectAddressLabel = project.address.trim();
+    } else {
+      const addressContactId = project.addressContactId || project.contactId;
+      const contacts = addressContactId
+        ? await prisma.$queryRaw<Array<{
+            street: string | null;
+            postalCode: string | null;
+            city: string | null;
+          }>>`
+            SELECT "street", "postalCode", "city"
+            FROM "Contact"
+            WHERE "organizationId" = ${organization.id}
+              AND "id" = ${addressContactId}
+            LIMIT 1
+          `
+        : [];
+      const addressContact = contacts[0];
+      if (!addressContact?.street?.trim() || !addressContact.postalCode?.trim() || !addressContact.city?.trim()) {
+        return NextResponse.json(
+          { error: "Für dieses Immocare-Projekt ist noch keine Einsatzadresse hinterlegt." },
+          { status: 400 }
+        );
+      }
+      objectAddressId = "";
+      objectAddressLabel = `${addressContact.street.trim()}, ${addressContact.postalCode.trim()} ${addressContact.city.trim()}`;
     }
-    if (addresses.length > 1 && !objectAddressId) {
-      return NextResponse.json(
-        { error: "Bitte wähle für diese Immocare-Planung eine Objektadresse aus." },
-        { status: 400 }
-      );
-    }
-    const selectedAddress = objectAddressId
-      ? addresses.find((address) => address.id === objectAddressId)
-      : addresses[0];
-    if (!selectedAddress) {
-      return NextResponse.json(
-        { error: "Die ausgewählte Objektadresse gehört nicht zum Projektkunden oder ist inaktiv." },
-        { status: 400 }
-      );
-    }
-    objectAddressId = selectedAddress.id;
-    objectAddressLabel = `${selectedAddress.name} | ${selectedAddress.street}, ${selectedAddress.postalCode} ${selectedAddress.city}`;
   }
 
   const plannedUserBoard = cleanString(plannedUser.planningBoard) || "OK solutions";

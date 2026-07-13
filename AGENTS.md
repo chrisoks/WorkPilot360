@@ -1,5 +1,18 @@
 # WorkPilot360 Agent Handover
 
+- Adresskompatibilitaet Kundenstamm/Projekt/Planung 2026-07-13: Die vollstaendige
+  Hauptadresse eines Kunden gilt ohne Datenkopie als primaerer Arbeitsort.
+  Zusaetzliche `ObjectAddress`-Eintraege bleiben fuer weitere Einsatzorte
+  vorgesehen. Bei der Immocare-Projektanlage zaehlen Hauptadresse und weitere
+  Arbeitsorte gemeinsam; genau eine Option wird automatisch gesetzt, mehrere
+  verlangen eine bewusste Auswahl. Die Planung erbt anschliessend die im Projekt
+  gespeicherte Adresse und fragt sie nicht erneut ab. Bestehende Projekte mit
+  `addressContactId` und/oder Adress-Snapshot bleiben dadurch kompatibel. Die
+  Planungs-API leitet die Adresse serverseitig aus Projekt, aktivem Zusatzort
+  oder Adresskontakt ab und vertraut keinem frei gesendeten Adresslabel. In der
+  Kundenakte wird die Hauptadresse im Reiter `Objektadressen` als Quelle aus den
+  Kontaktdaten angezeigt. Fehlhinweise stellen ihre Aktion in jeder Breite in
+  einer eigenen Zeile dar.
 - Objektadressen in Kundenakte, Projekt und Planung 2026-07-13: Kunden mit
   mehreren Einsatzorten erhalten jetzt eigenstaendige, organisationsgebundene
   Objektadressen mit Bezeichnung, Anschrift und Aktivstatus. Die Kundenakte

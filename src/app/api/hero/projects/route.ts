@@ -394,27 +394,45 @@ async function validateProjectContactReferences(
 
 async function validateProjectObjectAddress(
   organizationId: string,
-  input: { contactId: string; objectAddressId: string; projectType: string; branch: string }
+  input: {
+    contactId: string;
+    addressContactId: string;
+    objectAddressId: string;
+    projectType: string;
+    branch: string;
+  }
 ) {
   const isImmocare = `${input.projectType} ${input.branch}`.toLowerCase().includes("immocare");
-  if (isImmocare && !input.objectAddressId) {
-    return "Bitte wähle für das Immocare-Projekt eine Objektadresse aus.";
+  if (input.objectAddressId) {
+    const rows = await prisma.$queryRaw<Array<{ id: string; customerId: string; isActive: boolean }>>`
+      SELECT "id", "customerId", "isActive"
+      FROM "ObjectAddress"
+      WHERE "organizationId" = ${organizationId}
+        AND "id" = ${input.objectAddressId}
+      LIMIT 1
+    `;
+    const address = rows[0];
+    if (!address || !address.isActive) return "Die ausgewählte Objektadresse ist ungültig oder inaktiv.";
+    if (input.contactId && address.customerId !== input.contactId) {
+      return "Die ausgewählte Objektadresse gehört nicht zum Projektkunden.";
+    }
+    return null;
   }
-  if (!input.objectAddressId) return null;
 
-  const rows = await prisma.$queryRaw<Array<{ id: string; customerId: string; isActive: boolean }>>`
-    SELECT "id", "customerId", "isActive"
-    FROM "ObjectAddress"
-    WHERE "organizationId" = ${organizationId}
-      AND "id" = ${input.objectAddressId}
-    LIMIT 1
-  `;
-  const address = rows[0];
-  if (!address || !address.isActive) return "Die ausgewählte Objektadresse ist ungültig oder inaktiv.";
-  if (input.contactId && address.customerId !== input.contactId) {
-    return "Die ausgewählte Objektadresse gehört nicht zum Projektkunden.";
+  if (input.addressContactId) {
+    const rows = await prisma.$queryRaw<Array<{ street: string | null; postalCode: string | null; city: string | null }>>`
+      SELECT "street", "postalCode", "city"
+      FROM "Contact"
+      WHERE "organizationId" = ${organizationId}
+        AND "id" = ${input.addressContactId}
+      LIMIT 1
+    `;
+    const address = rows[0];
+    if (address?.street?.trim() && address.postalCode?.trim() && address.city?.trim()) return null;
+    return "Die ausgewählte Hauptadresse ist unvollständig.";
   }
-  return null;
+
+  return isImmocare ? "Bitte wähle für das Immocare-Projekt eine Objektadresse aus." : null;
 }
 
 export async function GET(req: Request) {
@@ -468,6 +486,7 @@ export async function POST(req: Request) {
   }
   const objectAddressError = await validateProjectObjectAddress(organization.id, {
     contactId: cleanString(body.contactId),
+    addressContactId: cleanString(body.addressContactId),
     objectAddressId: cleanString(body.objectAddressId),
     projectType: cleanString(body.projectType),
     branch: cleanString(body.branch),

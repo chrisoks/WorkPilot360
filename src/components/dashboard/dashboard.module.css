@@ -3206,21 +3206,14 @@
 }
 
 .objectAddressWarning {
-  align-items: center;
+  align-items: flex-start;
   display: flex;
-  gap: 12px;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .objectAddressWarning .secondaryButton {
   flex: 0 0 auto;
-}
-
-@media (max-width: 720px) {
-  .objectAddressWarning {
-    align-items: flex-start;
-    flex-direction: column;
-  }
 }
 
 .formGrid {

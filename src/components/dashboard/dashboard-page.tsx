@@ -14489,8 +14489,7 @@ export function DashboardPage() {
     setPlanningEntrySource(projectHasOfferPlanning ? "offer" : "manual");
     if (project) {
       setPlanningEntryProjectId(project.id);
-      const projectAddresses = getActiveObjectAddresses(project.contactId);
-      setPlanningEntryObjectAddressId(projectAddresses.length === 1 ? projectAddresses[0].id : "");
+      setPlanningEntryObjectAddressId(project.objectAddressId || "");
       setPlanningEntryCustomer(project.customer || "");
       setPlanningEntryProjectSearch(`${project.projectNumber || project.id} | ${project.title}`);
       setPlanningEntryTrade(isHourlyRecurringProject(project) ? project.trade || "" : "");
@@ -14733,12 +14732,7 @@ export function DashboardPage() {
     setErrorMessage("");
     const selectedUser = users.find((user) => user.id === planningEntryUserId);
     const selectedProject = heroProjects.find((project) => project.id === planningEntryProjectId);
-    const planningObjectAddresses = selectedProject
-      ? getActiveObjectAddresses(selectedProject.contactId)
-      : [];
-    const selectedPlanningObjectAddress = planningObjectAddresses.find(
-      (address) => address.id === planningEntryObjectAddressId
-    );
+    const planningProjectAddress = getProjectPlanningAddress(selectedProject);
     const requiresHourlyPlanningFields = Boolean(selectedProject && isHourlyRecurringProject(selectedProject));
     const hourlyPlanningServiceOptions = getHourlyPlanningServiceOptions(planningEntryTrade);
     const selectedBillingCatalogItem = planningEntryBillingCatalogItemId
@@ -14798,12 +14792,8 @@ export function DashboardPage() {
     }
 
     if (planningEntryBoard === "OK immocare" && selectedProject) {
-      if (planningObjectAddresses.length === 0) {
-        setPlanningEntryError("Für dieses Immocare-Projekt ist noch keine Objektadresse hinterlegt.");
-        return;
-      }
-      if (planningObjectAddresses.length > 1 && !selectedPlanningObjectAddress) {
-        setPlanningEntryError("Bitte wähle für diese Immocare-Planung eine Objektadresse aus.");
+      if (!planningProjectAddress) {
+        setPlanningEntryError("Für dieses Immocare-Projekt ist noch keine Einsatzadresse hinterlegt.");
         return;
       }
     }
@@ -15091,12 +15081,8 @@ export function DashboardPage() {
           projectLabel: selectedProject
             ? `${selectedProject.projectNumber} | ${selectedProject.title}`
             : "",
-          objectAddressId: selectedPlanningObjectAddress?.id || planningObjectAddresses[0]?.id || "",
-          objectAddressLabel: selectedPlanningObjectAddress
-            ? formatObjectAddress(selectedPlanningObjectAddress)
-            : planningObjectAddresses[0]
-              ? formatObjectAddress(planningObjectAddresses[0])
-              : "",
+          objectAddressId: selectedProject?.objectAddressId || planningEntryObjectAddressId || "",
+          objectAddressLabel: planningProjectAddress,
           planningTrade: requiresHourlyPlanningFields ? planningEntryTrade : "",
           billingCatalogItemId: requiresHourlyPlanningFields ? planningEntryBillingCatalogItemId : "",
           billingCatalogItemLabel: requiresHourlyPlanningFields
@@ -16231,27 +16217,36 @@ export function DashboardPage() {
   }, [contactSearchTerm, contactCategoryFilter, contactColumnFilters, contactPageSize]);
 
   useEffect(() => {
-    if (!isProjectModalOpen || !projectDraft.contactId || projectDraft.objectAddressId) return;
+    if (
+      !isProjectModalOpen ||
+      !projectDraft.contactId ||
+      projectDraft.objectAddressId ||
+      projectDraft.addressContactId
+    ) return;
+    const customer = contacts.find((contact) => contact.id === projectDraft.contactId);
     const addresses = getActiveObjectAddresses(projectDraft.contactId);
-    if (addresses.length === 1) {
-      setProjectDraft((current) => ({ ...current, objectAddressId: addresses[0].id }));
+    const optionCount = addresses.length + (hasCompleteContactAddress(customer) ? 1 : 0);
+    if (optionCount !== 1) return;
+    if (hasCompleteContactAddress(customer)) {
+      setProjectDraft((current) => ({ ...current, addressContactId: customer!.id }));
+      return;
     }
-  }, [isProjectModalOpen, objectAddresses, projectDraft.contactId, projectDraft.objectAddressId]);
+    setProjectDraft((current) => ({ ...current, objectAddressId: addresses[0].id }));
+  }, [
+    contacts,
+    isProjectModalOpen,
+    objectAddresses,
+    projectDraft.addressContactId,
+    projectDraft.contactId,
+    projectDraft.objectAddressId,
+  ]);
 
   useEffect(() => {
-    if (!isPlanningEntryModalOpen || planningEntryBoard !== "OK immocare" || planningEntryObjectAddressId) return;
+    if (!isPlanningEntryModalOpen || planningEntryBoard !== "OK immocare") return;
     const project = heroProjects.find((item) => item.id === planningEntryProjectId);
     if (!project) return;
-    const addresses = getActiveObjectAddresses(project.contactId);
-    if (addresses.length === 1) setPlanningEntryObjectAddressId(addresses[0].id);
-  }, [
-    heroProjects,
-    isPlanningEntryModalOpen,
-    objectAddresses,
-    planningEntryBoard,
-    planningEntryObjectAddressId,
-    planningEntryProjectId,
-  ]);
+    setPlanningEntryObjectAddressId(project.objectAddressId || "");
+  }, [heroProjects, isPlanningEntryModalOpen, planningEntryBoard, planningEntryProjectId]);
 
   useEffect(() => {
     setCatalogPage(1);
@@ -18685,6 +18680,26 @@ export function DashboardPage() {
       .join(", ");
   }
 
+  function hasCompleteContactAddress(contact?: ContactItem | null) {
+    return Boolean(contact?.street.trim() && contact?.postalCode.trim() && contact?.city.trim());
+  }
+
+  function getProjectPlanningAddress(project?: HeroProjectPreview | null) {
+    if (!project) return "";
+    if (project.address?.trim()) return project.address.trim();
+
+    const linkedObjectAddress = objectAddresses.find(
+      (address) => address.id === project.objectAddressId && address.isActive
+    );
+    if (linkedObjectAddress) return formatObjectAddress(linkedObjectAddress);
+
+    const addressContact = contacts.find((contact) => contact.id === project.addressContactId);
+    if (hasCompleteContactAddress(addressContact)) return getContactAddressLine(addressContact!);
+
+    const projectCustomer = contacts.find((contact) => contact.id === project.contactId);
+    return hasCompleteContactAddress(projectCustomer) ? getContactAddressLine(projectCustomer!) : "";
+  }
+
   function formatObjectAddress(address: ObjectAddress) {
     return `${address.name} | ${address.street}, ${address.postalCode} ${address.city}`;
   }
@@ -18887,6 +18902,13 @@ export function DashboardPage() {
 
   async function saveProjectDraft() {
     const selectedContact = contacts.find((contact) => contact.id === projectDraft.contactId);
+    const selectedPrimaryAddress =
+      selectedContact &&
+      !projectDraft.objectAddressId &&
+      projectDraft.addressContactId === selectedContact.id &&
+      hasCompleteContactAddress(selectedContact)
+        ? selectedContact
+        : null;
     const selectedObjectAddress = objectAddresses.find(
       (address) => address.id === projectDraft.objectAddressId && address.isActive
     );
@@ -18913,15 +18935,15 @@ export function DashboardPage() {
       return;
     }
 
-    if (projectDraft.projectType === "Projekt OK immocare" && !selectedObjectAddress) {
+    if (projectDraft.projectType === "Projekt OK immocare" && !selectedPrimaryAddress && !selectedObjectAddress) {
       setErrorMessage("Bitte wähle für das Immocare-Projekt eine Objektadresse aus.");
       return;
     }
 
     const projectAddress = selectedObjectAddress
       ? `${selectedObjectAddress.street}, ${selectedObjectAddress.postalCode} ${selectedObjectAddress.city}`
-      : selectedContact
-        ? getContactAddressLine(selectedContact)
+      : selectedPrimaryAddress
+        ? getContactAddressLine(selectedPrimaryAddress)
         : editingProject?.address || "";
     const projectDescription = [
       projectDraft.projectType,
@@ -18959,7 +18981,7 @@ export function DashboardPage() {
         customer: selectedContact ? getContactLabel(selectedContact) : editingProject.customer,
         contactId: selectedContact?.id || "",
         contactPersonId: selectedContactPerson?.id || "",
-        addressContactId: "",
+        addressContactId: selectedPrimaryAddress?.id || "",
         objectAddressId: selectedObjectAddress?.id || "",
         projectType: projectDraft.projectType,
         projectKind: normalizeProjectKindValue(projectDraft.projectKind),
@@ -19042,7 +19064,7 @@ await addProjectLogbookEntry(
       statusCode: "lead",
       contactId: selectedContact?.id,
       contactPersonId: selectedContactPerson?.id,
-      addressContactId: "",
+      addressContactId: selectedPrimaryAddress?.id || "",
       objectAddressId: selectedObjectAddress?.id,
       projectType: projectDraft.projectType,
       projectKind: normalizeProjectKindValue(projectDraft.projectKind),
@@ -22546,6 +22568,13 @@ await addProjectLogbookEntry(
   const projectObjectAddressOptions = selectedProjectCompany
     ? getActiveObjectAddresses(selectedProjectCompany.id)
     : [];
+  const projectHasPrimaryAddress = hasCompleteContactAddress(selectedProjectCompany);
+  const projectAddressOptionCount = projectObjectAddressOptions.length + (projectHasPrimaryAddress ? 1 : 0);
+  const projectAddressSelectionValue = projectDraft.objectAddressId
+    ? `object:${projectDraft.objectAddressId}`
+    : projectDraft.addressContactId
+      ? `contact:${projectDraft.addressContactId}`
+      : "";
   const selectedProjectContactPotentials = selectedProjectCompany
     ? projectPotentials.filter(
         (potential) =>
@@ -22980,8 +23009,7 @@ await addProjectLogbookEntry(
     .slice(0, 12);
   function selectPlanningProject(project: HeroProjectPreview) {
     setPlanningEntryProjectId(project.id);
-    const projectAddresses = getActiveObjectAddresses(project.contactId);
-    setPlanningEntryObjectAddressId(projectAddresses.length === 1 ? projectAddresses[0].id : "");
+    setPlanningEntryObjectAddressId(project.objectAddressId || "");
     setPlanningEntryCustomer(project.customer || "");
     setPlanningEntryProjectSearch(`${project.projectNumber} | ${project.title}`);
     setPlanningEntryTrade(isHourlyRecurringProject(project) ? project.trade || "" : "");
@@ -34324,6 +34352,7 @@ await addProjectLogbookEntry(
     const customerObjectAddresses = objectAddresses.filter(
       (address) => address.customerId === selectedCustomerFile.id
     );
+    const customerHasPrimaryAddress = hasCompleteContactAddress(selectedCustomerFile);
     const customerProjectLogEntries = projectLogbookEntries.filter((entry) =>
       customerProjectIds.has(entry.projectId)
     );
@@ -34392,7 +34421,9 @@ await addProjectLogbookEntry(
       if (id === "potentials") return customerPotentials.length;
       if (id === "tasks") return customerTaskCount;
       if (id === "projects") return customerProjects.length;
-      if (id === "addresses") return customerObjectAddresses.filter((address) => address.isActive).length;
+      if (id === "addresses") {
+        return customerObjectAddresses.filter((address) => address.isActive).length + (customerHasPrimaryAddress ? 1 : 0);
+      }
       return 0;
     };
     const logbookEntries = [
@@ -34896,16 +34927,37 @@ await addProjectLogbookEntry(
                     className={styles.primaryButton}
                     onClick={() => openObjectAddressModal(selectedCustomerFile.id)}
                   >
-                    + Objektadresse
+                    + Weiterer Arbeitsort
                   </button>
                 </div>
-                {customerObjectAddresses.length === 0 ? (
+                {!customerHasPrimaryAddress && customerObjectAddresses.length === 0 ? (
                   <div className={styles.customerDocumentEmpty}>
                     <strong>Noch keine Objektadresse hinterlegt.</strong>
-                    <p>Lege den ersten Arbeitsort für Projekte und Planungen dieses Kunden an.</p>
+                    <p>Pflege zuerst die Hauptadresse oder lege einen weiteren Arbeitsort an.</p>
                   </div>
                 ) : (
                   <div className={styles.customerContactList}>
+                    {customerHasPrimaryAddress ? (
+                      <article className={styles.customerContactRow}>
+                        <div>
+                          <strong>Hauptadresse</strong>
+                          <span>{selectedCustomerFile.street}</span>
+                          <small>
+                            {selectedCustomerFile.postalCode} {selectedCustomerFile.city} · {selectedCustomerFile.country || "Deutschland"}
+                          </small>
+                          <small>Aus den Kontaktdaten · automatisch für Projekte verfügbar</small>
+                        </div>
+                        <div className={styles.modalActions}>
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            onClick={() => openEditContactModal(selectedCustomerFile)}
+                          >
+                            Kontaktdaten bearbeiten
+                          </button>
+                        </div>
+                      </article>
+                    ) : null}
                     {customerObjectAddresses.map((address) => (
                       <article key={address.id} className={styles.customerContactRow}>
                         <div>
@@ -36643,8 +36695,7 @@ await addProjectLogbookEntry(
       setPlanningEntryTitle("");
       setPlanningEntryCustomer(selectedProjectFile.customer || "");
       setPlanningEntryProjectId(selectedProjectFile.id);
-      const projectAddresses = getActiveObjectAddresses(selectedProjectFile.contactId);
-      setPlanningEntryObjectAddressId(projectAddresses.length === 1 ? projectAddresses[0].id : "");
+      setPlanningEntryObjectAddressId(selectedProjectFile.objectAddressId || "");
       setPlanningEntryProjectSearch(`${selectedProjectFile.projectNumber || selectedProjectFile.id} | ${selectedProjectFile.title}`);
       setIsPlanningEntryProjectSearchOpen(false);
       setPlanningEntryDescription("");
@@ -36711,8 +36762,7 @@ await addProjectLogbookEntry(
       setPlanningEntryTitle("");
       setPlanningEntryCustomer(selectedProjectFile.customer || "");
       setPlanningEntryProjectId(selectedProjectFile.id);
-      const projectAddresses = getActiveObjectAddresses(selectedProjectFile.contactId);
-      setPlanningEntryObjectAddressId(projectAddresses.length === 1 ? projectAddresses[0].id : "");
+      setPlanningEntryObjectAddressId(selectedProjectFile.objectAddressId || "");
       setPlanningEntryProjectSearch(`${selectedProjectFile.projectNumber || selectedProjectFile.id} | ${selectedProjectFile.title}`);
       setIsPlanningEntryProjectSearchOpen(false);
       setPlanningEntryDescription("");
@@ -55566,48 +55616,25 @@ await addProjectLogbookEntry(
                 {(() => {
                   const selectedProject = heroProjects.find((project) => project.id === planningEntryProjectId);
                   if (!selectedProject || planningEntryBoard !== "OK immocare") return null;
-                  const addresses = getActiveObjectAddresses(selectedProject.contactId);
-                  if (addresses.length === 0) {
+                  const projectAddress = getProjectPlanningAddress(selectedProject);
+                  if (!projectAddress) {
                     return (
                       <div className={`${styles.modalWarning} ${styles.objectAddressWarning} ${styles.fullWidth}`}>
-                        <span>Für diesen Kunden fehlt eine aktive Objektadresse.</span>
-                        {selectedProject.contactId ? (
-                          <button
-                            type="button"
-                            className={styles.secondaryButton}
-                            onClick={() => openObjectAddressModal(selectedProject.contactId || "")}
-                          >
-                            + Objektadresse anlegen
-                          </button>
-                        ) : null}
+                        <span>Für dieses Projekt fehlt noch eine Einsatzadresse.</span>
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          onClick={() => openProjectDataModal(selectedProject)}
+                        >
+                          Projektadresse ergänzen
+                        </button>
                       </div>
                     );
                   }
-                  if (addresses.length === 1) {
-                    return (
-                      <label className={styles.fullWidth}>
-                        Objektadresse (automatisch)
-                        <input readOnly value={formatObjectAddress(addresses[0])} />
-                      </label>
-                    );
-                  }
                   return (
-                    <label
-                      className={`${styles.fullWidth} ${styles.requiredPlanningField}`}
-                      data-required-missing={!planningEntryObjectAddressId}
-                    >
-                      Objektadresse
-                      <select
-                        value={planningEntryObjectAddressId}
-                        onChange={(event) => setPlanningEntryObjectAddressId(event.target.value)}
-                      >
-                        <option value="">Objektadresse auswählen</option>
-                        {addresses.map((address) => (
-                          <option key={address.id} value={address.id}>
-                            {formatObjectAddress(address)}
-                          </option>
-                        ))}
-                      </select>
+                    <label className={styles.fullWidth}>
+                      Objektadresse (aus Projekt)
+                      <input readOnly value={projectAddress} />
                     </label>
                   );
                 })()}
@@ -58441,20 +58468,32 @@ await addProjectLogbookEntry(
                 Projektadresse
                 <div>
                   <select
-                    value={projectDraft.objectAddressId}
+                    value={projectAddressSelectionValue}
                     disabled={!projectDraft.contactId}
-                    onChange={(event) => updateProjectDraft("objectAddressId", event.target.value)}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setProjectDraft((current) => ({
+                        ...current,
+                        addressContactId: value.startsWith("contact:") ? value.slice("contact:".length) : "",
+                        objectAddressId: value.startsWith("object:") ? value.slice("object:".length) : "",
+                      }));
+                    }}
                   >
                     <option value="">Bitte auswählen</option>
+                    {projectHasPrimaryAddress && selectedProjectCompany ? (
+                      <option value={`contact:${selectedProjectCompany.id}`}>
+                        Hauptadresse | {getContactAddressLine(selectedProjectCompany)}
+                      </option>
+                    ) : null}
                     {projectObjectAddressOptions.map((address) => (
-                      <option key={address.id} value={address.id}>
+                      <option key={address.id} value={`object:${address.id}`}>
                         {formatObjectAddress(address)}
                       </option>
                     ))}
                   </select>
-                  {projectDraft.contactId && projectObjectAddressOptions.length === 0 && (
+                  {projectDraft.contactId && projectAddressOptionCount === 0 && (
                     <small className={styles.projectSelectHint}>
-                      Noch keine Objektadresse für diesen Kunden hinterlegt.
+                      Weder Hauptadresse noch weiterer Arbeitsort hinterlegt.
                     </small>
                   )}
                   <button
@@ -58462,7 +58501,7 @@ await addProjectLogbookEntry(
                     disabled={!projectDraft.contactId}
                     onClick={() => openObjectAddressModal(projectDraft.contactId)}
                   >
-                    + Neu
+                    + Weiterer Arbeitsort
                   </button>
                 </div>
               </label>
