@@ -3205,6 +3205,24 @@
   padding: 12px 14px;
 }
 
+.objectAddressWarning {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.objectAddressWarning .secondaryButton {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 720px) {
+  .objectAddressWarning {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 .formGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

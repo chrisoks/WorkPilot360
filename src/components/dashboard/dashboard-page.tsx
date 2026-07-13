@@ -55569,7 +55569,7 @@ await addProjectLogbookEntry(
                   const addresses = getActiveObjectAddresses(selectedProject.contactId);
                   if (addresses.length === 0) {
                     return (
-                      <div className={`${styles.modalWarning} ${styles.fullWidth}`}>
+                      <div className={`${styles.modalWarning} ${styles.objectAddressWarning} ${styles.fullWidth}`}>
                         <span>Für diesen Kunden fehlt eine aktive Objektadresse.</span>
                         {selectedProject.contactId ? (
                           <button
