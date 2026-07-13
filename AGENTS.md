@@ -1,5 +1,14 @@
 # WorkPilot360 Agent Handover
 
+- Auswertungen KI-Werkzeugzeile 2026-07-13: Die rollenabhängigen Schaltflächen
+  für BWL-KI und Vertriebs-KI sind in einem einzigen kompakten KI-Menü in der
+  Filterzeile der Auswertungen gebündelt. Der Einstieg steht dort rechts neben
+  den fachlichen Filtern und bleibt außerhalb der Auswertungen unsichtbar.
+  Reiter und Filter behalten dadurch ihre klare fachliche Zuordnung. Die
+  bisherige absolute Positionierung samt pauschal reservierter Reiterbreite
+  entfällt, damit auch lange Reiterbezeichnungen nicht überlagert werden.
+  Sichtbarkeitsregeln, Rollen, Klick-Handler, KI-Modi und APIs bleiben
+  unverändert.
 - Sales-Performance UI-Hierarchie 2026-07-13: Der Auswertungsreiter ist rein
   gestalterisch in `Steuerung`, `Pruefen & entscheiden`, `Analyse` und
   `Details` gegliedert. Die operativen Bereiche fuer heutige Aktionen,

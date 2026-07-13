@@ -5739,6 +5739,7 @@ export function DashboardPage() {
   const [svsTradeFilter, setSvsTradeFilter] = useState("all");
   const [reportProjectKindFilter, setReportProjectKindFilter] = useState<ReportProjectKindFilter>("all");
   const [isManagementAiOpen, setIsManagementAiOpen] = useState(false);
+  const [isManagementAiMenuOpen, setIsManagementAiMenuOpen] = useState(false);
   const [managementAiMode, setManagementAiMode] = useState<ManagementAiMode>("management");
   const [managementAiInput, setManagementAiInput] = useState("");
   const [managementAiMessagesByMode, setManagementAiMessagesByMode] = useState<Record<ManagementAiMode, ManagementAiChatMessage[]>>({
@@ -6079,6 +6080,7 @@ export function DashboardPage() {
   const [desktopPushStatus, setDesktopPushStatus] = useState<DesktopPushStatus>("idle");
   const [desktopPushMessage, setDesktopPushMessage] = useState("");
   const quickCreateRef = useRef<HTMLDivElement | null>(null);
+  const managementAiMenuRef = useRef<HTMLDivElement | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const notificationCenterRef = useRef<HTMLDivElement | null>(null);
   const hasLoadedNotifications = useRef(false);
@@ -16195,6 +16197,13 @@ export function DashboardPage() {
       if (isQuickCreateOpen && quickCreateRef.current && !quickCreateRef.current.contains(target)) {
         setIsQuickCreateOpen(false);
       }
+      if (
+        isManagementAiMenuOpen &&
+        managementAiMenuRef.current &&
+        !managementAiMenuRef.current.contains(target)
+      ) {
+        setIsManagementAiMenuOpen(false);
+      }
       if (isUserMenuOpen && userMenuRef.current && !userMenuRef.current.contains(target)) {
         setIsUserMenuOpen(false);
       }
@@ -16216,7 +16225,11 @@ export function DashboardPage() {
 
     document.addEventListener("pointerdown", closeHeaderMenusOnOutsidePointer);
     return () => document.removeEventListener("pointerdown", closeHeaderMenusOnOutsidePointer);
-  }, [isNotificationsOpen, isProjectStatusMenuOpen, isQuickCreateOpen, isUserMenuOpen]);
+  }, [isManagementAiMenuOpen, isNotificationsOpen, isProjectStatusMenuOpen, isQuickCreateOpen, isUserMenuOpen]);
+
+  useEffect(() => {
+    setIsManagementAiMenuOpen(false);
+  }, [activeTab]);
 
   useEffect(() => {
     if (!projectPlanningChoiceMenuKey && !projectPlanningEditMenuKey) return;
@@ -27903,11 +27916,12 @@ await addProjectLogbookEntry(
           { label: "5 Punkte für heute", question: "Welche 5 Management-Punkte sollte ich heute klären?" },
           { label: "Kritische Planungsgruppen", question: "Welche Planungsgruppen sind wirtschaftlich kritisch und warum?" },
         ];
-  function openManagementAi(mode: ManagementAiMode) {
+  function selectManagementAi(mode: ManagementAiMode) {
+    setIsManagementAiMenuOpen(false);
     setManagementAiMode(mode);
     setManagementAiInput("");
     setManagementAiError("");
-    setIsManagementAiOpen(true);
+    window.setTimeout(() => setIsManagementAiOpen(true), 0);
   }
   const buildManagementAiContext = () => {
     const topCapacityRows = managementCapacityRows
@@ -28625,43 +28639,6 @@ await addProjectLogbookEntry(
   };
   const renderReportsAnalytics = () => (
     <section className={styles.analyticsPage}>
-      {canUseManagementAi || canUseSalesAi ? (
-        <div className={styles.managementAiActions} aria-label="KI-Assistenten">
-          <span className={styles.managementAiActionsLabel}>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 3.5 13.6 8l4.5 1.6-4.5 1.6L12 15.7l-1.6-4.5-4.5-1.6L10.4 8 12 3.5Z" />
-              <path d="M18.4 14.2 19.2 16.4l2.1.8-2.1.8-.8 2.2-.8-2.2-2.1-.8 2.1-.8.8-2.2Z" />
-              <path d="M5.3 13.8 6 15.6l1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7.7-1.8Z" />
-            </svg>
-            KI-Assistent
-          </span>
-          {canUseManagementAi ? (
-            <button
-              type="button"
-              className={styles.managementAiButton}
-              data-active={isManagementAiOpen && managementAiMode === "management"}
-              onClick={() => openManagementAi("management")}
-              aria-label="BWL-KI öffnen"
-              title="BWL-KI öffnen"
-            >
-              <span aria-hidden="true">BWL-KI</span>
-            </button>
-          ) : null}
-          {canUseSalesAi ? (
-            <button
-              type="button"
-              className={styles.managementAiButton}
-              data-active={isManagementAiOpen && managementAiMode === "sales"}
-              onClick={() => openManagementAi("sales")}
-              aria-label="Vertriebs-KI öffnen"
-              title="Vertriebs-KI öffnen"
-            >
-              <span aria-hidden="true">Vertriebs-KI</span>
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-
       <div className={styles.analyticsTabs} role="tablist" aria-label="Auswertungsbereiche">
         {visibleReportTabs.map((tab) => (
           <button
@@ -28761,6 +28738,39 @@ await addProjectLogbookEntry(
             placeholder="Projekt, Kunde, Mitarbeiter, Position..."
           />
         </label>
+        {canUseManagementAi || canUseSalesAi ? (
+          <div className={styles.reportAiMenu} ref={managementAiMenuRef}>
+            <button
+              type="button"
+              className={styles.reportAiButton}
+              aria-label="KI-Assistent auswählen"
+              aria-expanded={isManagementAiMenuOpen}
+              onClick={() => setIsManagementAiMenuOpen((current) => !current)}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 3.5 13.6 8l4.5 1.6-4.5 1.6L12 15.7l-1.6-4.5-4.5-1.6L10.4 8 12 3.5Z" />
+                <path d="M18.4 14.2 19.2 16.4l2.1.8-2.1.8-.8 2.2-.8-2.2-2.1-.8 2.1-.8.8-2.2Z" />
+              </svg>
+              <span>KI-Assistent</span>
+            </button>
+            {isManagementAiMenuOpen ? (
+              <div className={styles.reportAiPopover} aria-label="KI-Assistenten">
+                {canUseManagementAi ? (
+                  <button type="button" onClick={() => selectManagementAi("management")}>
+                    <strong>BWL-KI</strong>
+                    <span>Unternehmenslage analysieren</span>
+                  </button>
+                ) : null}
+                {canUseSalesAi ? (
+                  <button type="button" onClick={() => selectManagementAi("sales")}>
+                    <strong>Vertriebs-KI</strong>
+                    <span>Vertrieb und Chancen prüfen</span>
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {reportAnalyticsTab === "forecast" && (
@@ -51569,6 +51579,7 @@ await addProjectLogbookEntry(
                 className={styles.quickCreateButton}
                 onClick={() => {
                   setIsQuickCreateOpen((current) => !current);
+                  setIsManagementAiMenuOpen(false);
                   setIsUserMenuOpen(false);
                   setIsNotificationsOpen(false);
                 }}
@@ -51595,6 +51606,7 @@ await addProjectLogbookEntry(
                 onClick={() => {
                   setIsUserMenuOpen((current) => !current);
                   setIsQuickCreateOpen(false);
+                  setIsManagementAiMenuOpen(false);
                   setIsNotificationsOpen(false);
                 }}
                 aria-label="Benutzermenü"
@@ -51648,6 +51660,7 @@ await addProjectLogbookEntry(
               onClick={() => {
                 setIsNotificationsOpen((current) => !current);
                 setIsQuickCreateOpen(false);
+                setIsManagementAiMenuOpen(false);
                 setIsUserMenuOpen(false);
                 setShowNotificationHistory(false);
                 setNotificationSearchTerm("");

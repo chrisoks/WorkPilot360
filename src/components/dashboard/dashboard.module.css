@@ -6146,81 +6146,6 @@
   position: relative;
 }
 
-.managementAiActions {
-  align-items: center;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-  border: 1px solid #9fc1f7;
-  border-radius: 14px;
-  box-shadow: 0 12px 28px rgba(37, 99, 235, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.95);
-  display: flex;
-  gap: 4px;
-  min-height: 38px;
-  padding: 4px 5px;
-  position: absolute;
-  right: 24px;
-  top: 14px;
-  z-index: 3;
-}
-
-.managementAiActionsLabel {
-  align-items: center;
-  color: #2563eb;
-  display: inline-flex;
-  font-size: 0.86rem;
-  font-weight: 950;
-  gap: 7px;
-  padding: 0 12px 0 8px;
-  white-space: nowrap;
-}
-
-.managementAiActionsLabel svg {
-  align-items: center;
-  background: #2563eb;
-  border-radius: 10px;
-  box-shadow: 0 8px 16px rgba(37, 99, 235, 0.22);
-  color: #ffffff;
-  display: inline-flex;
-  fill: none;
-  height: 24px;
-  justify-content: center;
-  padding: 5px;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 2;
-  width: 24px;
-}
-
-.managementAiButton {
-  align-items: center;
-  background: #ffffff;
-  border: 1px solid #d7e5fb;
-  border-radius: 10px;
-  color: #2563eb;
-  cursor: pointer;
-  display: inline-flex;
-  font: inherit;
-  font-size: 0.84rem;
-  font-weight: 950;
-  height: 32px;
-  justify-content: center;
-  min-width: 78px;
-  padding: 0 12px;
-  white-space: nowrap;
-}
-
-.managementAiButton:hover {
-  background: #eff6ff;
-  border-color: #bfdbfe;
-}
-
-.managementAiButton[data-active="true"] {
-  background: #2563eb;
-  border-color: #1d4ed8;
-  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.22);
-  color: #ffffff;
-}
-
 .managementAiOverlay {
   align-items: stretch;
   background: rgba(15, 23, 42, 0.36);
@@ -6373,8 +6298,9 @@
 .analyticsTabs {
   border-bottom: 1px solid #d8e0ea;
   display: flex;
+  min-width: 0;
   overflow-x: auto;
-  padding-right: 280px;
+  width: 100%;
 }
 
 .analyticsTabs button {
@@ -6402,20 +6328,100 @@
   gap: 10px;
 }
 
-@media (max-width: 900px) {
-  .managementAiActions {
-    justify-self: end;
-    position: static;
-    width: max-content;
-  }
-
-  .analyticsTabs {
-    padding-right: 0;
-  }
+.reportAiMenu {
+  margin-left: auto;
+  position: relative;
 }
 
-.analyticsFilters span,
-.analyticsFilters label {
+.reportAiButton {
+  align-items: center;
+  background: linear-gradient(135deg, #111c30 0%, #173b63 100%);
+  border: 1px solid rgba(91, 165, 255, 0.34);
+  border-radius: 10px;
+  box-shadow:
+    0 8px 18px rgba(15, 23, 42, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 900;
+  gap: 8px;
+  justify-content: center;
+  min-height: 42px;
+  min-width: 126px;
+  padding: 0 14px;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  white-space: nowrap;
+}
+
+.reportAiButton:hover,
+.reportAiButton[aria-expanded="true"] {
+  border-color: rgba(103, 232, 249, 0.72);
+  box-shadow:
+    0 11px 24px rgba(15, 23, 42, 0.2),
+    0 0 0 3px rgba(0, 156, 166, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  transform: translateY(-1px);
+}
+
+.reportAiButton svg {
+  color: #67e8f9;
+  fill: none;
+  height: 19px;
+  filter: drop-shadow(0 0 5px rgba(103, 232, 249, 0.35));
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  width: 19px;
+}
+
+.reportAiPopover {
+  background: #ffffff;
+  border: 1px solid #d8e0ea;
+  border-radius: 12px;
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.18);
+  display: grid;
+  min-width: 240px;
+  padding: 6px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  z-index: 40;
+}
+
+.reportAiPopover button {
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: #0f172a;
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  gap: 2px;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.reportAiPopover button:hover {
+  background: #f2f7ff;
+}
+
+.reportAiPopover strong {
+  color: #2563eb;
+  font-size: 0.9rem;
+}
+
+.reportAiPopover span {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.analyticsFilters > span,
+.analyticsFilters > label {
   align-items: center;
   background: #ffffff;
   border: 1px solid #cbd5e1;
