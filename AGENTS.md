@@ -1,5 +1,18 @@
 # WorkPilot360 Agent Handover
 
+- Kundenakte Logbuch/Bilder 2026-07-13: Das Kundenlogbuch nutzt bei alten und
+  neuen Projekt-Logbucheintraegen die vorhandenen Benutzer-IDs, Namen oder
+  Initialen zur Profilbildzuordnung; Systemereignisse erhalten weiterhin ein
+  neutrales Systemicon. Eintraege sind absteigend nach Jahr und Monat
+  gegliedert, der aktuelle Monat ist geoeffnet und aeltere Monate lassen sich
+  aufklappen. Der Bilderzaehler und der Bilderreiter verwenden nun dieselben
+  echten Bildanhaenge aus verknuepften Projekten. Immocare-Bilder bleiben pro
+  Projekt in Objektbesichtigungen, Vorher- und Nachherbilder gegliedert;
+  Solutions zeigt je Projekt eine einfache gemeinsame Bilderflaeche. Fehlende
+  Vorschaudaten werden beim Oeffnen gezielt fuer die betroffenen Projekte
+  nachgeladen. In Objektadressen stehen `Kontaktdaten bearbeiten` und
+  `+ Weiterer Arbeitsort` gemeinsam in derselben Kopfaktionszeile. APIs,
+  Rollen, Upload-, Dokument- und Projektlogik wurden nicht erweitert.
 - Adresskompatibilitaet Kundenstamm/Projekt/Planung 2026-07-13: Die vollstaendige
   Hauptadresse eines Kunden gilt ohne Datenkopie als primaerer Arbeitsort.
   Zusaetzliche `ObjectAddress`-Eintraege bleiben fuer weitere Einsatzorte

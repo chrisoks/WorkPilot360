@@ -2209,6 +2209,8 @@ type CustomerLogbookEntry = {
   customerId: string;
   date: string;
   text: string;
+  author: string;
+  authorUserId: string;
   colleague: string;
   visibleFor: string[];
   attachments: LogbookAttachment[];
@@ -6069,6 +6071,7 @@ export function DashboardPage() {
     useState<Omit<ContactItem, "id" | "createdAt" | "updatedAt">>(emptyContact);
   const [selectedCustomerFileId, setSelectedCustomerFileId] = useState("");
   const [customerFileTab, setCustomerFileTab] = useState<CustomerFileTab>("logbook");
+  const [customerLogbookMonthOpenState, setCustomerLogbookMonthOpenState] = useState<Record<string, boolean>>({});
   const [isCustomerDocumentNavOpen, setIsCustomerDocumentNavOpen] = useState(true);
   const [selectedCustomerDocumentType, setSelectedCustomerDocumentType] =
     useState<CustomerDocumentType>("Allgemeine Dokumente");
@@ -6076,6 +6079,7 @@ export function DashboardPage() {
   const [projectLogbookEntries, setProjectLogbookEntries] = useState<ProjectLogbookEntry[]>([]);
   const projectLogbookEntriesRef = useRef<ProjectLogbookEntry[]>([]);
   const projectImagePreviewReloadRef = useRef("");
+  const customerImagePreviewReloadRef = useRef("");
   const syncedPostInvoiceProjectKeysRef = useRef(new Set<string>());
   const [customerProjectNotes, setCustomerProjectNotes] = useState<CustomerProjectNote[]>([]);
   const [notesViewScope, setNotesViewScope] = useState<"customer" | "project">("customer");
@@ -16335,6 +16339,55 @@ export function DashboardPage() {
 
   useEffect(() => {
     if (!authChecked || !isAuthenticated || !activeUserId) return;
+    if (!selectedCustomerFileId || customerFileTab !== "images") return;
+
+    const customer = contacts.find((contact) => contact.id === selectedCustomerFileId);
+    if (!customer) return;
+
+    const customerLabels = [
+      getContactLabel(customer),
+      getContactDisplayName(customer),
+      customer.companyName,
+    ]
+      .filter(Boolean)
+      .map((value) => String(value).trim().toLowerCase());
+    const customerProjectIds = heroProjects
+      .filter((project) => {
+        const projectCustomer = (project.customer || "").trim().toLowerCase();
+        return (
+          project.contactId === customer.id ||
+          project.contactPersonId === customer.id ||
+          customerLabels.includes(projectCustomer)
+        );
+      })
+      .map((project) => project.id);
+    const projectIdsWithMissingImages = customerProjectIds.filter((projectId) =>
+      projectLogbookEntries.some(
+        (entry) =>
+          String(entry.projectId) === String(projectId) &&
+          entry.title.startsWith("Bilder:") &&
+          entry.attachments.some((attachment) => attachment.type === "Bild" && !attachment.dataUrl)
+      )
+    );
+    const reloadKey = `${selectedCustomerFileId}:${projectIdsWithMissingImages.sort().join(",")}`;
+
+    if (projectIdsWithMissingImages.length === 0 || customerImagePreviewReloadRef.current === reloadKey) return;
+
+    customerImagePreviewReloadRef.current = reloadKey;
+    void Promise.all(projectIdsWithMissingImages.map((projectId) => loadProjectLogbookEntriesForProject(projectId)));
+  }, [
+    activeUserId,
+    authChecked,
+    contacts,
+    customerFileTab,
+    heroProjects,
+    isAuthenticated,
+    projectLogbookEntries,
+    selectedCustomerFileId,
+  ]);
+
+  useEffect(() => {
+    if (!authChecked || !isAuthenticated || !activeUserId) return;
     if (!selectedProjectFileId) return;
 
     const intervalId = window.setInterval(() => {
@@ -17237,7 +17290,13 @@ export function DashboardPage() {
     }
 
     const authorName = entry.author.trim().toLowerCase();
-    return authorName ? users.find((user) => user.name.trim().toLowerCase() === authorName) : undefined;
+    return authorName
+      ? users.find(
+          (user) =>
+            user.name.trim().toLowerCase() === authorName ||
+            getInitials(user.name).toLowerCase() === authorName
+        )
+      : undefined;
   }
 
   function isSystemLogbookAuthor(entry: ProjectLogbookEntry) {
@@ -17361,6 +17420,8 @@ export function DashboardPage() {
         customerId: selectedCustomerFile.id,
         date,
         text: logbookMessage.trim(),
+        author: activeUser?.name || "Mitarbeiter",
+        authorUserId: activeUserId,
         colleague: logbookColleague.trim(),
         visibleFor: logbookVisibleFor,
         attachments: logbookAttachments,
@@ -34401,6 +34462,51 @@ await addProjectLogbookEntry(
     const customerImageCount = customerProjectLogEntries
       .filter((entry) => entry.title?.startsWith("Bilder:"))
       .reduce((sum, entry) => sum + entry.attachments.filter((attachment) => attachment.type === "Bild").length, 0);
+    const customerImageProjects = customerProjects
+      .map((project) => {
+        const imageItems = customerProjectLogEntries
+          .filter((entry) => entry.projectId === project.id && entry.title?.startsWith("Bilder:"))
+          .flatMap((entry) => {
+            const category = entry.title.replace(/^Bilder:\s*/i, "").trim() || "Projektbilder";
+            return entry.attachments.flatMap((attachment, attachmentIndex) =>
+              attachment.type === "Bild"
+                ? [
+                    {
+                      ...attachment,
+                      attachmentIndex,
+                      category,
+                      date: entry.date,
+                      entryId: entry.id,
+                    },
+                  ]
+                : []
+            );
+          });
+        const isImmocareProject = project.projectType === "Projekt OK immocare";
+        const categoryOrder = ["Objektbesichtigungen", "Vorherbilder", "Nachherbilder"];
+        const categoryLabels = Array.from(new Set(imageItems.map((image) => image.category))).sort((first, second) => {
+          const firstIndex = categoryOrder.indexOf(first);
+          const secondIndex = categoryOrder.indexOf(second);
+          if (firstIndex >= 0 && secondIndex >= 0) return firstIndex - secondIndex;
+          if (firstIndex >= 0) return -1;
+          if (secondIndex >= 0) return 1;
+          return first.localeCompare(second, "de");
+        });
+        const groups = isImmocareProject
+          ? categoryLabels.map((label) => ({
+              label,
+              images: imageItems.filter((image) => image.category === label),
+            }))
+          : [{ label: "Projektbilder", images: imageItems }];
+
+        return {
+          project,
+          isImmocareProject,
+          groups,
+          imageCount: imageItems.length,
+        };
+      })
+      .filter((group) => group.imageCount > 0);
     const customerTaskCount = tasks.filter((task) => {
       if (task.projectId && customerProjectIds.has(String(task.projectId))) return true;
       const haystack = [task.kunde, task.titel, task.beschreibung].join(" ").toLowerCase();
@@ -34430,8 +34536,12 @@ await addProjectLogbookEntry(
       ...customerLogbookEntries
         .filter((entry) => entry.customerId === selectedCustomerFile.id)
         .map((entry) => ({
+          id: entry.id,
           date: entry.date,
           text: entry.text,
+          author: entry.author,
+          authorUserId: entry.authorUserId,
+          isSystem: false,
           attachments: entry.attachments,
           taskTitle: entry.taskTitle,
           colleague: entry.colleague,
@@ -34439,8 +34549,12 @@ await addProjectLogbookEntry(
       ...customerProjectLogEntries.map((entry) => {
         const project = customerProjects.find((item) => item.id === entry.projectId);
         return {
+          id: entry.id,
           date: entry.date,
           text: `${project?.projectNumber || entry.projectId}: ${entry.text}`,
+          author: entry.author,
+          authorUserId: entry.authorUserId || "",
+          isSystem: isSystemLogbookAuthor(entry),
           attachments: entry.attachments,
           taskTitle: "",
           colleague: entry.colleague,
@@ -34463,6 +34577,79 @@ await addProjectLogbookEntry(
         text: "Zeiten wurden geprüft und im Kundenlogbuch abgelegt.",
       },
     ];
+    const normalizedLogbookEntries = logbookEntries.map((entry, index) => ({
+      id: "id" in entry ? entry.id : `${selectedCustomerFile.id}-system-${index}-${entry.date}`,
+      date: entry.date,
+      text: entry.text,
+      author: "author" in entry ? entry.author : "System",
+      authorUserId: "authorUserId" in entry ? entry.authorUserId : "",
+      isSystem: "isSystem" in entry ? entry.isSystem : true,
+      attachments: "attachments" in entry ? entry.attachments : [],
+      taskTitle: "taskTitle" in entry ? entry.taskTitle : "",
+      colleague: "colleague" in entry ? entry.colleague : "",
+    }));
+    const parseCustomerLogbookDate = (value: string) => {
+      const germanDateMatch = value.match(
+        /^(\d{2})\.(\d{2})\.(\d{4})(?:,|\s)+(\d{2}):(\d{2})/
+      );
+      if (germanDateMatch) {
+        const [, day, month, year, hour, minute] = germanDateMatch;
+        return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
+      }
+
+      return parseAppDateTime(value);
+    };
+    const sortedLogbookEntries = [...normalizedLogbookEntries].sort(
+      (first, second) =>
+        parseCustomerLogbookDate(second.date).getTime() - parseCustomerLogbookDate(first.date).getTime()
+    );
+    const customerLogbookMonthGroups = Array.from(
+      sortedLogbookEntries.reduce(
+        (groups, entry) => {
+          const parsedDate = parseCustomerLogbookDate(entry.date);
+          const validDate = Number.isFinite(parsedDate.getTime());
+          const monthKey = validDate
+            ? `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, "0")}`
+            : "unknown";
+          const currentGroup = groups.get(monthKey) || {
+            key: monthKey,
+            year: validDate ? String(parsedDate.getFullYear()) : "Ohne Datum",
+            monthLabel: validDate
+              ? parsedDate.toLocaleDateString(APP_LOCALE, { month: "long" })
+              : "Weitere Eintraege",
+            entries: [] as typeof sortedLogbookEntries,
+          };
+          currentGroup.entries.push(entry);
+          groups.set(monthKey, currentGroup);
+          return groups;
+        },
+        new Map<
+          string,
+          {
+            key: string;
+            year: string;
+            monthLabel: string;
+            entries: typeof sortedLogbookEntries;
+          }
+        >()
+      ).values()
+    );
+    const renderCustomerLogbookAvatar = (entry: (typeof normalizedLogbookEntries)[number]) => {
+      const normalizedAuthor = entry.author.trim().toLowerCase();
+      const authorUser = entry.authorUserId
+        ? users.find((user) => user.id === entry.authorUserId)
+        : users.find(
+            (user) =>
+              user.name.trim().toLowerCase() === normalizedAuthor ||
+              getInitials(user.name).toLowerCase() === normalizedAuthor
+          );
+
+      if (authorUser?.profileImageDataUrl) {
+        return <img src={authorUser.profileImageDataUrl} alt="" />;
+      }
+      if (entry.isSystem) return renderSystemLogbookAvatar();
+      return getInitials(authorUser?.name || entry.author || "MA");
+    };
 
     return (
       <section className={styles.customerFile}>
@@ -34638,38 +34825,137 @@ await addProjectLogbookEntry(
                   </button>
                 </div>
                 <div className={styles.customerTimeline}>
-                  {logbookEntries.map((entry) => (
-                    <article key={entry.date}>
-                      <div className={styles.customerAvatar}>CG</div>
-                      <div>
-                        <a>{entry.date}</a>
-                        <p>{entry.text}</p>
-                        {"colleague" in entry && entry.colleague && (
-                          <small className={styles.customerLogMeta}>
-                            Benachrichtigung: {entry.colleague}
-                          </small>
-                        )}
-                        {"attachments" in entry && entry.attachments.length > 0 && (
-                          <div className={styles.customerLogAttachments}>
-                            {entry.attachments.map((attachment) => (
-                              <span key={`${entry.date}-${attachment.name}`}>
-                                {attachment.type}: {attachment.name}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        {"taskTitle" in entry && entry.taskTitle && (
-                          <small className={styles.customerLogTask}>
-                            Aufgabe vorbereitet: {entry.taskTitle}
-                          </small>
-                        )}
-                      </div>
-                    </article>
+                  {customerLogbookMonthGroups.map((group, groupIndex) => (
+                    <section key={group.key} className={styles.customerTimelineMonth}>
+                      {(groupIndex === 0 || customerLogbookMonthGroups[groupIndex - 1]?.year !== group.year) && (
+                        <h2 className={styles.customerTimelineYear}>{group.year}</h2>
+                      )}
+                      <details
+                        className={styles.customerTimelineMonthDetails}
+                        open={customerLogbookMonthOpenState[group.key] ?? groupIndex === 0}
+                        onToggle={(event) => {
+                          const isOpen = event.currentTarget.open;
+                          setCustomerLogbookMonthOpenState((currentState) =>
+                            currentState[group.key] === isOpen
+                              ? currentState
+                              : { ...currentState, [group.key]: isOpen }
+                          );
+                        }}
+                      >
+                        <summary className={styles.customerTimelineMonthHeader}>
+                          <h3>{group.monthLabel}</h3>
+                          <span>
+                            {group.entries.length} {group.entries.length === 1 ? "Eintrag" : "Einträge"}
+                          </span>
+                        </summary>
+                        <div className={styles.customerTimelineEntries}>
+                          {group.entries.map((entry) => (
+                            <article key={entry.id}>
+                              <div className={styles.customerAvatar}>{renderCustomerLogbookAvatar(entry)}</div>
+                              <div className={styles.customerLogEntryBody}>
+                                <a>{entry.date}</a>
+                                <p>{entry.text}</p>
+                                {entry.colleague && (
+                                  <small className={styles.customerLogMeta}>
+                                    Benachrichtigung: {entry.colleague}
+                                  </small>
+                                )}
+                                {entry.attachments.length > 0 && (
+                                  <div className={styles.customerLogAttachments}>
+                                    {entry.attachments.map((attachment) => (
+                                      <span key={`${entry.id}-${attachment.name}`}>
+                                        {attachment.type}: {attachment.name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                                {entry.taskTitle && (
+                                  <small className={styles.customerLogTask}>
+                                    Aufgabe vorbereitet: {entry.taskTitle}
+                                  </small>
+                                )}
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+                      </details>
+                    </section>
                   ))}
                 </div>
               </>
             ) : customerFileTab === "notes" ? (
               renderCustomerProjectNotesPanel("customer")
+            ) : customerFileTab === "images" ? (
+              <div className={styles.customerImageModule}>
+                <div className={styles.customerFileMainHeader}>
+                  <div>
+                    <h2>Bilder</h2>
+                    <span>Nach verknüpften Projekten geordnet</span>
+                  </div>
+                  <strong className={styles.customerImageTotal}>{customerImageCount} Bilder</strong>
+                </div>
+                {customerImageProjects.length === 0 ? (
+                  <div className={styles.customerDocumentEmpty}>
+                    <strong>Noch keine Bilder vorhanden.</strong>
+                    <p>Bilder aus verknüpften Projekten erscheinen automatisch in dieser Kundenakte.</p>
+                  </div>
+                ) : (
+                  <div className={styles.customerImageProjects}>
+                    {customerImageProjects.map(({ project, isImmocareProject, groups, imageCount }) => (
+                      <section key={project.id} className={styles.customerImageProject}>
+                        <header>
+                          <div>
+                            <span>{project.projectNumber}</span>
+                            <h3>{project.title}</h3>
+                          </div>
+                          <small>
+                            {isImmocareProject ? "OK immocare" : "OK solutions"} · {imageCount} Bilder
+                          </small>
+                        </header>
+                        <div className={styles.customerImageGroups}>
+                          {groups.map((group) => (
+                            <section key={`${project.id}-${group.label}`} className={styles.customerImageGroup}>
+                              <div className={styles.customerImageGroupHeader}>
+                                <h4>{group.label}</h4>
+                                <span>{group.images.length}</span>
+                              </div>
+                              <div className={styles.customerImageGrid}>
+                                {group.images.map((image, imageIndex) =>
+                                  image.dataUrl ? (
+                                    <button
+                                      key={`${image.entryId}-${image.attachmentIndex}-${imageIndex}`}
+                                      type="button"
+                                      className={styles.customerImageCard}
+                                      onClick={() => void openAttachmentDataUrl(image.dataUrl, image.name)}
+                                      title={`${image.name} (${image.date})`}
+                                    >
+                                      <img src={image.dataUrl} alt={image.name} />
+                                      <strong>{image.name}</strong>
+                                      <small>
+                                        {!isImmocareProject && image.category !== "Projektbilder"
+                                          ? `${image.category} · ${image.date}`
+                                          : image.date}
+                                      </small>
+                                    </button>
+                                  ) : (
+                                    <div
+                                      key={`${image.entryId}-${image.attachmentIndex}-${imageIndex}`}
+                                      className={styles.customerImageCardLoading}
+                                    >
+                                      <span>Vorschau wird geladen</span>
+                                      <strong>{image.name}</strong>
+                                    </div>
+                                  )
+                                )}
+                              </div>
+                            </section>
+                          ))}
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                )}
+              </div>
             ) : customerFileTab === "documents" ? (
               <div className={styles.customerDocumentModule}>
                 <div className={styles.customerFileMainHeader}>
@@ -34922,13 +35208,22 @@ await addProjectLogbookEntry(
                     <h2>Objektadressen</h2>
                     <span>Arbeitsorte für Projekte und Immocare-Planungen</span>
                   </div>
-                  <button
-                    type="button"
-                    className={styles.primaryButton}
-                    onClick={() => openObjectAddressModal(selectedCustomerFile.id)}
-                  >
-                    + Weiterer Arbeitsort
-                  </button>
+                  <div className={styles.headerActions}>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => openEditContactModal(selectedCustomerFile)}
+                    >
+                      Kontaktdaten bearbeiten
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      onClick={() => openObjectAddressModal(selectedCustomerFile.id)}
+                    >
+                      + Weiterer Arbeitsort
+                    </button>
+                  </div>
                 </div>
                 {!customerHasPrimaryAddress && customerObjectAddresses.length === 0 ? (
                   <div className={styles.customerDocumentEmpty}>
@@ -34946,15 +35241,6 @@ await addProjectLogbookEntry(
                             {selectedCustomerFile.postalCode} {selectedCustomerFile.city} · {selectedCustomerFile.country || "Deutschland"}
                           </small>
                           <small>Aus den Kontaktdaten · automatisch für Projekte verfügbar</small>
-                        </div>
-                        <div className={styles.modalActions}>
-                          <button
-                            type="button"
-                            className={styles.secondaryButton}
-                            onClick={() => openEditContactModal(selectedCustomerFile)}
-                          >
-                            Kontaktdaten bearbeiten
-                          </button>
                         </div>
                       </article>
                     ) : null}

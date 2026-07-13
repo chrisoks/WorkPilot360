@@ -11609,6 +11609,11 @@
   min-width: max-content;
 }
 
+.customerFileMainHeader .headerActions > button {
+  height: 46px;
+  min-height: 46px;
+}
+
 .projectTimeModule .customerFileMainHeader .headerActions {
   flex-shrink: 1;
   min-width: 0;
@@ -11732,6 +11737,69 @@
   padding: 6px 8px 18px;
 }
 
+.customerTimelineMonth {
+  display: grid;
+  gap: 8px;
+}
+
+.customerTimelineYear {
+  color: #0f172a;
+  font-size: 1rem;
+  font-weight: 900;
+  margin: 10px 0 0;
+  padding: 0 4px;
+}
+
+.customerTimelineMonthHeader {
+  align-items: center;
+  border-bottom: 1px solid #d8e0ea;
+  cursor: pointer;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  list-style: none;
+  margin: 0 4px;
+  padding: 4px 0 7px;
+}
+
+.customerTimelineMonthHeader::-webkit-details-marker {
+  display: none;
+}
+
+.customerTimelineMonthHeader::before {
+  color: #64748b;
+  content: "›";
+  font-size: 1rem;
+  font-weight: 900;
+  transform: rotate(0deg);
+  transition: transform 140ms ease;
+}
+
+.customerTimelineMonthDetails[open] .customerTimelineMonthHeader::before {
+  transform: rotate(90deg);
+}
+
+.customerTimelineMonthHeader h3 {
+  color: #334155;
+  font-size: 0.86rem;
+  font-weight: 850;
+  margin: 0;
+  margin-right: auto;
+  text-transform: capitalize;
+}
+
+.customerTimelineMonthHeader span {
+  color: #64748b;
+  font-size: 0.74rem;
+  font-weight: 750;
+}
+
+.customerTimelineEntries {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+}
+
 .customerTimeline article {
   align-items: flex-start;
   background: rgba(255, 255, 255, 0.92);
@@ -11754,6 +11822,10 @@
   top: 48px;
   width: 2px;
   z-index: 0;
+}
+
+.customerTimelineEntries article:last-child::before {
+  display: none;
 }
 
 .customerTimeline a {
@@ -11883,6 +11955,152 @@
   stroke-linejoin: round;
   stroke-width: 2.1;
   width: 22px;
+}
+
+.customerImageModule,
+.customerImageProjects,
+.customerImageGroups {
+  display: grid;
+  gap: 14px;
+}
+
+.customerImageTotal {
+  background: #eef4ff;
+  border-radius: 8px;
+  color: #1d4ed8;
+  font-size: 0.78rem;
+  padding: 6px 9px;
+  white-space: nowrap;
+}
+
+.customerImageProject {
+  background: #f8fafc;
+  border: 1px solid #dbe3ee;
+  border-radius: 10px;
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+.customerImageProject > header {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.customerImageProject > header span {
+  color: #2563eb;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.customerImageProject > header h3 {
+  color: #0f172a;
+  font-size: 0.96rem;
+  font-weight: 850;
+  margin: 3px 0 0;
+}
+
+.customerImageProject > header small {
+  color: #64748b;
+  font-size: 0.76rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.customerImageGroup {
+  display: grid;
+  gap: 9px;
+}
+
+.customerImageGroupHeader {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.customerImageGroupHeader h4 {
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 850;
+  margin: 0;
+}
+
+.customerImageGroupHeader span {
+  align-items: center;
+  background: #e2e8f0;
+  border-radius: 999px;
+  color: #334155;
+  display: inline-flex;
+  font-size: 0.68rem;
+  font-weight: 900;
+  height: 22px;
+  justify-content: center;
+  min-width: 22px;
+  padding: 0 6px;
+}
+
+.customerImageGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 220px));
+}
+
+.customerImageCard,
+.customerImageCardLoading {
+  background: #ffffff;
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  color: #0f172a;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 8px;
+  text-align: left;
+}
+
+.customerImageCard {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.customerImageCard:hover {
+  border-color: #93c5fd;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.customerImageCard img {
+  aspect-ratio: 4 / 3;
+  border-radius: 6px;
+  object-fit: cover;
+  width: 100%;
+}
+
+.customerImageCard strong,
+.customerImageCardLoading strong {
+  font-size: 0.76rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.customerImageCard small {
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.customerImageCardLoading {
+  align-content: center;
+  min-height: 150px;
+}
+
+.customerImageCardLoading span {
+  color: #64748b;
+  font-size: 0.74rem;
+  font-weight: 750;
 }
 
 .customerFileAside {
@@ -26661,6 +26879,33 @@
 @media (max-width: 900px) {
   .customerFile {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .customerFileMainHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .customerFileMainHeader .headerActions {
+    flex-wrap: wrap;
+    margin-left: 0;
+    min-width: 0;
+  }
+
+  .customerContactRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .customerImageProject > header {
+    display: grid;
+  }
+
+  .customerImageProject > header small {
+    white-space: normal;
+  }
+
+  .customerImageGrid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   }
 
   .projectFileHeader,
