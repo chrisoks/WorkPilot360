@@ -20354,6 +20354,105 @@
   background: #ffffff;
 }
 
+/* Artikel & Leistungen: ruhiger Stammdatenrahmen, Fachinhalte bleiben vollstaendig. */
+.catalogPanel {
+  gap: 12px;
+}
+
+.catalogModuleHeader {
+  margin-bottom: 0;
+}
+
+.catalogHeaderActions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.catalogHeaderSecondaryButton {
+  background: rgba(15, 23, 42, 0.34);
+  border: 1px solid rgba(203, 213, 225, 0.54);
+  border-radius: 10px;
+  color: #f8fafc;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 800;
+  min-height: 42px;
+  padding: 10px 16px;
+}
+
+.catalogHeaderSecondaryButton:hover {
+  background: rgba(30, 41, 59, 0.84);
+  border-color: rgba(94, 234, 212, 0.72);
+}
+
+.catalogTypeStrip {
+  background: #ffffff;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+}
+
+.catalogTypeButton {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-right: 1px solid #e2e8f0;
+  color: #475569;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-height: 54px;
+  padding: 9px 14px;
+  text-align: left;
+}
+
+.catalogTypeButton:last-child {
+  border-right: 0;
+}
+
+.catalogTypeButton:hover {
+  background: #f8fafc;
+}
+
+.catalogTypeButton[data-active="true"] {
+  background: #f3f6fa;
+  box-shadow: inset 0 3px 0 #0f172a;
+  color: #0f172a;
+}
+
+.catalogTypeButton span {
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.catalogTypeButton strong {
+  color: #0f172a;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.catalogToolbar {
+  border-radius: 10px;
+  grid-template-columns: minmax(320px, 1fr) 190px;
+}
+
+.catalogPagination {
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  justify-content: flex-start;
+}
+
+.catalogPagination strong {
+  margin-left: auto;
+}
+
 .catalogTable {
   min-width: 1540px;
   table-layout: fixed;
@@ -20545,20 +20644,20 @@
 }
 
 .catalogLabelHelp {
-  align-items: center;
   background: #eef6ff;
   border: 1px solid #bfdbfe;
   border-radius: 999px;
   color: #1d4ed8;
   cursor: help;
-  display: inline-flex;
+  display: inline-grid;
   flex: 0 0 auto;
   font-size: 11px;
   font-weight: 950;
   height: 18px;
-  justify-content: center;
-  line-height: 1;
+  line-height: 18px;
+  place-items: center;
   position: relative;
+  text-align: center;
   width: 18px;
 }
 
@@ -20641,12 +20740,24 @@
   font-size: 15px;
 }
 
+.catalogPriceScheduleHeader .catalogLabelText {
+  align-items: center;
+  display: inline-flex;
+}
+
 .catalogPriceScheduleHeader span {
   display: block;
   margin-top: 3px;
   color: #64748b;
   font-size: 13px;
   font-weight: 700;
+}
+
+.catalogPriceScheduleHeader .catalogLabelHelp {
+  display: inline-grid;
+  font-size: 11px;
+  line-height: 18px;
+  margin-top: 0;
 }
 
 .catalogPriceScheduleGrid,

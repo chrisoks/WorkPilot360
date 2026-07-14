@@ -48922,6 +48922,26 @@ await addProjectLogbookEntry(
     const packageCount = catalogItems.filter((item) => item.type === "package" && item.isActive).length;
     const activeCreateType: CatalogItemType =
       activeTab === "services" ? "service" : activeTab === "packages" ? "package" : "article";
+    const catalogPageMeta =
+      activeTab === "salesPrices"
+        ? {
+            title: "Verkaufspreise",
+            description: "Aktuelle und geplante Verkaufspreise der Stammdaten zentral prüfen und fortschreiben.",
+          }
+        : activeTab === "services"
+        ? {
+            title: "Leistungen",
+            description: "Arbeitsleistungen mit Kalkulation, Planungszeit und Standardzuordnung zentral pflegen.",
+          }
+        : activeTab === "packages"
+          ? {
+              title: "Pakete",
+              description: "Material und Leistungen zu kalkulierten, planbaren Angebotspaketen verbinden.",
+            }
+          : {
+              title: "Artikel",
+              description: "Material, Handelsware und sonstige Positionen für Angebote und Rechnungen verwalten.",
+            };
     const catalogCreateButtons: Array<{ type: CatalogItemType; label: string }> = [
       { type: "article", label: "+ Artikel" },
       { type: "service", label: "+ Leistung" },
@@ -48945,35 +48965,27 @@ await addProjectLogbookEntry(
     }
 
     return (
-      <section className={styles.contactsPanel}>
-        <div className={styles.topline}>
+      <section className={`${styles.contactsPanel} ${styles.catalogPanel}`}>
+        <header className={`${styles.taskModuleHeader} ${styles.catalogModuleHeader}`}>
           <div>
-            <p className={styles.eyebrow}>Artikel & Leistungen</p>
-            <h1>
-              {activeTab === "services"
-                ? "Leistungen"
-                : activeTab === "packages"
-                ? "Pakete"
-                : activeTab === "salesPrices"
-                ? "Verkaufspreise"
-                : "Artikel"}
-            </h1>
-            <p className={styles.subline}>Zentrale Stammdaten für Angebote, Rechnungen, Planung und spätere Nachkalkulation.</p>
+            <p className={styles.taskModuleEyebrow}>Stammdaten</p>
+            <h1>{catalogPageMeta.title}</h1>
+            <p>{catalogPageMeta.description}</p>
           </div>
-          <div className={styles.actionGroup}>
+          <div className={styles.catalogHeaderActions} aria-label="Stammdaten anlegen">
             {catalogCreateButtons.map((button) => (
               <button
                 key={button.type}
-                className={activeCreateType === button.type ? styles.primaryButton : styles.secondaryButton}
+                className={activeCreateType === button.type ? styles.primaryButton : styles.catalogHeaderSecondaryButton}
                 onClick={() => openCatalogModal(button.type)}
               >
                 {button.label}
               </button>
             ))}
           </div>
-        </div>
+        </header>
 
-        <section className={styles.contactSummaryGrid}>
+        <section className={styles.catalogTypeStrip} aria-label="Stammdatenbereiche">
           {[
             { label: "Artikel", value: "articles", count: articleCount },
             { label: "Leistungen", value: "services", count: serviceCount },
@@ -48981,7 +48993,7 @@ await addProjectLogbookEntry(
           ].map((item) => (
             <button
               key={item.label}
-              className={styles.contactSummaryCard}
+              className={styles.catalogTypeButton}
               data-active={activeTab === item.value}
               onClick={() => {
                 if (item.value === "articles") {
@@ -49002,7 +49014,7 @@ await addProjectLogbookEntry(
           ))}
         </section>
 
-        <section className={styles.contactToolbar}>
+        <section className={`${styles.contactToolbar} ${styles.catalogToolbar}`}>
           <label>
             Suche
             <input value={catalogSearchTerm} onChange={(event) => setCatalogSearchTerm(event.target.value)} placeholder="Nummer, Name, Kategorie, Lieferant, Matchcode" />
@@ -49017,7 +49029,7 @@ await addProjectLogbookEntry(
           </label>
         </section>
 
-        <div className={styles.contactPagination}>
+        <div className={`${styles.contactPagination} ${styles.catalogPagination}`}>
           <span>Seite</span>
           <button
             className={styles.iconButton}
