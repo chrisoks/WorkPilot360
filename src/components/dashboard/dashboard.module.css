@@ -25304,6 +25304,11 @@
   gap: 28px;
 }
 
+.planningBoardSection {
+  display: grid;
+  gap: 0;
+}
+
 .planningBoardDateNav {
   align-items: center;
   background: #f8fafc;
@@ -25343,7 +25348,61 @@
 }
 
 .planningBoardCard {
-  padding: 22px;
+  padding: 6px 22px 22px;
+}
+
+.planningBoardSection > .planningBoardCard {
+  border-top-left-radius: 0;
+}
+
+.planningBoardCardHeader {
+  align-items: flex-end;
+  background: #ffffff;
+  border: 1px solid #d7e2ee;
+  border-bottom: 0;
+  border-radius: 18px 18px 0 0;
+  box-sizing: border-box;
+  display: flex;
+  margin-bottom: -2px;
+  min-height: 71px;
+  padding: 10px 10px 8px;
+  position: relative;
+  width: 228px;
+  z-index: 2;
+}
+
+.planningBoardBrand {
+  align-items: center;
+  display: flex;
+}
+
+.planningBoardBrandMark {
+  align-items: center;
+  background: #0b1020;
+  border: 1px solid #164e63;
+  border-radius: 9px;
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.13);
+  display: flex;
+  gap: 8px;
+  min-height: 52px;
+  padding: 6px 11px 6px 7px;
+  width: 208px;
+}
+
+.planningBoardBrandMark img {
+  display: block;
+  height: 38px;
+  object-fit: contain;
+  width: 82px;
+}
+
+.planningBoardBrandMark span {
+  color: #f8fafc;
+  font-size: 0.82rem;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .planningBoardCard h2,
@@ -25823,11 +25882,14 @@
 }
 
 .planningDayHeader {
-  align-items: start;
-  border-bottom: 1px solid #d7e2ee;
+  align-items: center;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.07), transparent 34%),
+    #0b1020;
+  border-bottom: 0;
   display: grid;
-  gap: 16px;
-  grid-template-columns: minmax(270px, 1fr) auto minmax(270px, 1fr);
+  gap: 16px 20px;
+  grid-template-columns: minmax(270px, 1fr) auto;
   padding: 18px 22px 14px;
 }
 
@@ -25838,18 +25900,32 @@
 }
 
 .planningDayTitleBlock .secondaryButton {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(226, 232, 240, 0.48);
+  color: #f8fafc;
   min-height: 36px;
   padding: 7px 12px;
 }
 
+.planningDayTitleBlock .secondaryButton:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(248, 250, 252, 0.76);
+  color: #ffffff;
+}
+
 .planningDayHeader h1 {
+  color: #f8fafc;
   font-size: 1.7rem;
 }
 
 .planningDayHeader p {
-  color: #64748b;
+  color: #cbd5e1;
   font-weight: 800;
   margin: 0;
+}
+
+.planningDayHeader .eyebrow {
+  color: #5eead4;
 }
 
 .planningDayActions {
@@ -25865,7 +25941,7 @@
   display: flex;
   gap: 10px;
   grid-column: 2;
-  justify-self: center;
+  justify-self: end;
 }
 
 .planningDayPrimaryActions > button {
@@ -25875,12 +25951,28 @@
 }
 
 .planningGroupSwitch {
+  align-items: center;
+  background: #ffffff;
+  border-top: 1px solid #d7e2ee;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  grid-column: 1 / -1;
   justify-content: flex-end;
-  grid-column: 3;
-  justify-self: end;
+  justify-self: stretch;
+  margin: 8px -22px -14px;
+  min-height: 58px;
+  padding: 9px 22px;
+}
+
+.planningGroupSwitch::before {
+  color: #64748b;
+  content: "Planungsgruppe";
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  margin-right: auto;
+  text-transform: uppercase;
 }
 
 .planningGroupSwitch button {

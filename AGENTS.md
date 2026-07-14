@@ -1,5 +1,27 @@
 # WorkPilot360 Agent Handover
 
+- Planungsboard Markenkoepfe 2026-07-13: Die beiden Boardkarten beginnen nicht
+  mehr mit den ausgeschriebenen Titeln `OK solutions Planungsboard` und
+  `OK immocare Planungsboard`. Stattdessen verwenden sie die vorhandenen
+  OK-Logo-Assets gemeinsam mit der Funktionsbezeichnung `Planungsboard` in
+  einem kompakten Navy-Badge. Der Badge sitzt in einer abgerundeten weissen
+  Lasche, die dieselbe Flaeche und Randfarbe wie die Matrixkarte verwendet und
+  deren obere Kante leicht ueberdeckt. Dadurch bilden Lasche und Matrix eine
+  nahtlos verbundene Einheit. Der 208 Pixel breite Badge zeigt Logo und die
+  vollstaendige Bezeichnung `Planungsboard` ohne Abschneiden.
+  Matrix, Board-/Tagesklicks, Auslastungswerte und Fachlogik blieben
+  unveraendert. Beide Boards wurden auf Desktop und im kleinen Viewport echt
+  geprueft; Logos laden vollstaendig und erzeugen keinen globalen horizontalen
+  Seitenueberlauf.
+- Planungsboard Tageskopf 2026-07-13: Die normale und die projektbezogene
+  Tagesansicht verwenden jetzt ueber ihre gemeinsamen Darstellungsklassen
+  denselben kompakten Navy-Kopf wie der Planungsboard-Einstieg. Rueckweg,
+  Datum, Board-/Gruppenkontext sowie Planung und Terminwunsch bleiben im Kopf;
+  die vorhandene Gruppenumschaltung bildet darunter eine eigene weisse
+  Werkzeugzeile. Klick-Handler, Board-/Gruppenzustand, Mitarbeiterauswahl,
+  Eintraege, Rollen und APIs blieben unveraendert. Einzelgruppe und
+  Gesamtansicht wurden auf Desktop sowie im kleinen Viewport echt geklickt;
+  es entsteht kein globaler horizontaler Seitenueberlauf.
 - Planungsboard Gesamtansicht/Header 2026-07-13: Der Planungsboard-Einstieg
   nutzt einen kompakten Navy-Kopf fuer Titel, Beschreibung und die beiden
   Anlageaktionen; Zeitraum-Navigation und Ansichtswechsel stehen getrennt in

@@ -45718,15 +45718,29 @@ await addProjectLogbookEntry(
         ) : (
         <div className={styles.planningBoardStack}>
           {planningBoardSections.map((section) => (
-            <section key={section.company} className={styles.planningBoardCard}>
-              <h2>{section.title}</h2>
-              <div className={styles.planningBoardScroll}>
+            <div key={section.company} className={styles.planningBoardSection}>
+              <header className={styles.planningBoardCardHeader}>
                 <div
-                  className={styles.planningBoardMatrix}
-                  style={{
-                    gridTemplateColumns: `120px repeat(${planningBoardDays.length}, minmax(78px, 1fr))`,
-                  }}
+                  className={styles.planningBoardBrand}
+                  data-company={section.company === "OK immocare" ? "immocare" : "solutions"}
                 >
+                  <div className={styles.planningBoardBrandMark}>
+                    <img
+                      src={section.company === "OK immocare" ? "/oki-logo.png" : "/oks-logo.png"}
+                      alt={section.company}
+                    />
+                    <span>Planungsboard</span>
+                  </div>
+                </div>
+              </header>
+              <section className={styles.planningBoardCard}>
+                <div className={styles.planningBoardScroll}>
+                  <div
+                    className={styles.planningBoardMatrix}
+                    style={{
+                      gridTemplateColumns: `120px repeat(${planningBoardDays.length}, minmax(78px, 1fr))`,
+                    }}
+                  >
                   <div className={styles.planningBoardCorner} />
                   {planningBoardDays.map((day) => {
                     const dateKey = formatDateKey(day);
@@ -45861,9 +45875,10 @@ await addProjectLogbookEntry(
                       })}
                     </div>
                   ))}
+                  </div>
                 </div>
-              </div>
-            </section>
+              </section>
+            </div>
           ))}
         </div>
         )}
