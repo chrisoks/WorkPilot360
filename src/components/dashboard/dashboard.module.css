@@ -5292,6 +5292,198 @@
   table-layout: fixed;
 }
 
+/* Zusatzverkauf: kompakter Vertriebsarbeitsplatz mit getrenntem Faelligkeitssignal. */
+.potentialPanel {
+  gap: 12px;
+}
+
+.potentialModuleHeader {
+  margin-bottom: 0;
+}
+
+.potentialToolbar {
+  align-items: flex-end;
+  background: #ffffff;
+  border: 1px solid #d8e0ea;
+  border-radius: 10px;
+  display: flex;
+  gap: 16px;
+  padding: 10px 12px;
+}
+
+.potentialToolbar label {
+  color: #334155;
+  display: grid;
+  flex: 1;
+  font-size: 0.72rem;
+  font-weight: 850;
+  gap: 5px;
+  min-width: 0;
+}
+
+.potentialToolbar input {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  color: #0f172a;
+  font: inherit;
+  font-size: 0.86rem;
+  min-height: 40px;
+  padding: 8px 11px;
+  width: 100%;
+}
+
+.potentialToolbar input:focus {
+  border-color: #009ca6;
+  box-shadow: 0 0 0 3px rgba(0, 156, 166, 0.12);
+  outline: 0;
+}
+
+.potentialToolbar > span {
+  color: #64748b;
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding-bottom: 11px;
+}
+
+.potentialWorkspace {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.potentialStatusBar {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.potentialWorkflowFilters {
+  display: grid;
+  gap: 8px;
+  grid-column: 1 / 7;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.potentialWorkflowFilters button,
+.potentialDueFilter {
+  background: #ffffff;
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
+  color: #0f172a;
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  gap: 5px;
+  min-height: 68px;
+  min-width: 0;
+  padding: 9px 12px;
+  text-align: left;
+  transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.potentialWorkflowFilters button:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+}
+
+.potentialWorkflowFilters button[data-active="true"] {
+  background: #f8fafc;
+  border-color: #64748b;
+  box-shadow:
+    0 0 0 2px rgba(15, 23, 42, 0.82),
+    0 6px 14px rgba(15, 23, 42, 0.12);
+  transform: translateY(-1px);
+}
+
+.potentialWorkflowFilters button[data-tone="amber"] {
+  border-color: #f5b942;
+}
+
+.potentialWorkflowFilters button[data-tone="blue"] {
+  border-color: #67b7c8;
+}
+
+.potentialWorkflowFilters button[data-tone="green"] {
+  border-color: #65c98b;
+}
+
+.potentialWorkflowFilters button[data-tone="amber"][data-active="true"] {
+  background: #fffbeb;
+}
+
+.potentialWorkflowFilters button[data-tone="blue"][data-active="true"] {
+  background: #f0fdfa;
+}
+
+.potentialWorkflowFilters button[data-tone="green"][data-active="true"] {
+  background: #f0fdf4;
+}
+
+.potentialWorkflowFilters span,
+.potentialDueFilter span {
+  color: #64748b;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.potentialWorkflowFilters strong,
+.potentialDueFilter strong {
+  color: #0f172a;
+  font-size: 1.35rem;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.potentialDueFilter {
+  border-color: #ef6b73;
+  grid-column: 7;
+}
+
+.potentialDueFilter:hover,
+.potentialDueFilter[data-active="true"] {
+  background: #fff5f5;
+  border-color: #ef4444;
+}
+
+.potentialDueFilter[data-active="true"] {
+  box-shadow:
+    0 0 0 2px rgba(185, 28, 28, 0.72),
+    0 6px 14px rgba(185, 28, 28, 0.12);
+  transform: translateY(-1px);
+}
+
+.potentialDueFilter span,
+.potentialDueFilter strong {
+  color: #b91c1c;
+}
+
+.potentialOverviewCard {
+  border-color: #d8e0ea;
+  border-radius: 10px;
+  min-width: 0;
+  width: 100%;
+}
+
+.potentialOverviewCard thead th {
+  background: #0f172a;
+  color: #f8fafc;
+}
+
+.potentialOverviewCard tbody tr:hover td {
+  background: #f8fafc;
+}
+
+.potentialOverviewCard .heroTableHint {
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  color: #64748b;
+  margin: 0;
+  padding: 9px 12px;
+}
+
 .potentialOverviewTable th,
 .potentialOverviewTable td {
   overflow-wrap: anywhere;
@@ -5348,6 +5540,21 @@
 .potentialOverviewTable th:nth-child(11),
 .potentialOverviewTable td:nth-child(11) {
   width: 310px;
+}
+
+@media (max-width: 1180px) {
+  .potentialStatusBar {
+    grid-template-columns: 1fr;
+  }
+
+  .potentialWorkflowFilters {
+    grid-column: 1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .potentialDueFilter {
+    grid-column: 1;
+  }
 }
 
 .potentialNumberButton {
@@ -10526,41 +10733,38 @@
 }
 
 .contactSummaryGrid {
-  background: #ffffff;
-  border: 1px solid var(--border-subtle);
-  border-radius: 14px;
+  background: transparent;
+  border: 0;
   display: grid;
-  gap: 0;
+  gap: 8px;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  overflow: hidden;
 }
 
 .contactSummaryCard {
-  background: transparent;
-  border: 0;
-  border-right: 1px solid #e2e8f0;
-  border-radius: 0;
+  background: #ffffff;
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
   cursor: pointer;
   display: grid;
   gap: 6px;
   min-height: 70px;
   padding: 11px 14px;
   text-align: left;
-  transition: background 0.15s ease, box-shadow 0.15s ease;
-}
-
-.contactSummaryCard:last-child {
-  border-right: 0;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .contactSummaryCard:hover {
   background: #f8fafc;
-  box-shadow: none;
+  border-color: #94a3b8;
 }
 
 .contactSummaryCard[data-active="true"] {
-  background: #f3f6fa;
-  box-shadow: inset 0 3px 0 #0f172a;
+  background: #f8fafc;
+  border-color: #64748b;
+  box-shadow:
+    0 0 0 2px rgba(15, 23, 42, 0.82),
+    0 6px 14px rgba(15, 23, 42, 0.12);
+  transform: translateY(-1px);
 }
 
 .contactSummaryCard span {
@@ -20219,6 +20423,49 @@
   font-weight: 950;
 }
 
+.potentialFormSection {
+  border: 1px solid #dbe3ee;
+  border-radius: 12px;
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+.potentialSectionHeading,
+.potentialSectionDivider {
+  display: grid;
+  gap: 3px;
+}
+
+.potentialSectionHeading h3,
+.potentialSectionDivider h3 {
+  color: #0f172a;
+  font-size: 0.98rem;
+  font-weight: 950;
+  margin: 0;
+}
+
+.potentialSectionHeading p,
+.potentialSectionDivider p {
+  color: #64748b;
+  font-size: 0.8rem;
+  font-weight: 650;
+  margin: 0;
+}
+
+.potentialSectionDivider {
+  border-top: 1px solid #dbe3ee;
+  margin-top: 2px;
+  padding-top: 14px;
+}
+
+.potentialOwnerHint {
+  color: #64748b;
+  font-size: 0.74rem;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
 .potentialTaskHint {
   color: #64748b;
   font-size: 0.82rem;
@@ -20390,41 +20637,39 @@
 }
 
 .catalogTypeStrip {
-  background: #ffffff;
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
+  background: transparent;
+  border: 0;
   display: grid;
+  gap: 8px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  overflow: hidden;
 }
 
 .catalogTypeButton {
-  align-items: center;
-  background: transparent;
-  border: 0;
-  border-right: 1px solid #e2e8f0;
+  background: #ffffff;
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
   color: #475569;
   cursor: pointer;
-  display: flex;
-  gap: 10px;
-  justify-content: space-between;
-  min-height: 54px;
+  display: grid;
+  gap: 5px;
+  min-height: 62px;
   padding: 9px 14px;
   text-align: left;
 }
 
-.catalogTypeButton:last-child {
-  border-right: 0;
-}
-
 .catalogTypeButton:hover {
   background: #f8fafc;
+  border-color: #94a3b8;
 }
 
 .catalogTypeButton[data-active="true"] {
-  background: #f3f6fa;
-  box-shadow: inset 0 3px 0 #0f172a;
+  background: #f8fafc;
+  border-color: #64748b;
+  box-shadow:
+    0 0 0 2px rgba(15, 23, 42, 0.82),
+    0 6px 14px rgba(15, 23, 42, 0.12);
   color: #0f172a;
+  transform: translateY(-1px);
 }
 
 .catalogTypeButton span {
@@ -22388,14 +22633,6 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .contactSummaryCard:nth-child(3n) {
-    border-right: 0;
-  }
-
-  .contactSummaryCard:nth-child(-n + 3) {
-    border-bottom: 1px solid #e2e8f0;
-  }
-
   .contactToolbar {
     grid-template-columns: minmax(240px, 1fr) minmax(180px, 0.55fr) auto;
   }
@@ -22417,18 +22654,6 @@
 @media (max-width: 640px) {
   .contactSummaryGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .contactSummaryCard:nth-child(3n) {
-    border-right: 1px solid #e2e8f0;
-  }
-
-  .contactSummaryCard:nth-child(2n) {
-    border-right: 0;
-  }
-
-  .contactSummaryCard:nth-child(-n + 4) {
-    border-bottom: 1px solid #e2e8f0;
   }
 
   .contactToolbar,

@@ -35602,21 +35602,21 @@ await addProjectLogbookEntry(
 
   function renderPotentialWorkspace() {
     return (
-      <section className={styles.settingsPanel}>
-        <div className={styles.topline}>
+      <section className={`${styles.settingsPanel} ${styles.potentialPanel}`}>
+        <header className={`${styles.taskModuleHeader} ${styles.potentialModuleHeader}`}>
           <div>
-            <p className={styles.eyebrow}>Zusatzverkauf</p>
+            <p className={styles.taskModuleEyebrow}>Vertriebschancen</p>
             <h1>Zusatzverkäufe</h1>
-            <p className={styles.subline}>
+            <p>
               Erkannte Zusatzverkäufe aus Endkontrollen. Forecast bleibt erst durch Angebote und Rechnungen messbar.
             </p>
           </div>
           <button type="button" className={styles.primaryButton} onClick={openManualPotentialModal}>
             + Zusatzverkauf
           </button>
-        </div>
+        </header>
 
-        <section className={styles.heroSearchBar}>
+        <section className={styles.potentialToolbar}>
           <label>
             Suche
             <input
@@ -35625,24 +35625,19 @@ await addProjectLogbookEntry(
               placeholder="Zusatzverkauf, Projekt, Kunde oder Status"
             />
           </label>
-          <span>{visiblePotentialRows.length} Zusatzverkäufe</span>
+          <span>{visiblePotentialRows.length} von {getPotentialStatusCount("all")} Zusatzverkäufen</span>
         </section>
 
-        <section className={styles.projectPipelineBoard}>
-          <div className={styles.projectStatusStrip}>
-            <div className={styles.projectStatusStripMeta}>
-              <strong>Zusatzverkäufe</strong>
-              <span>{getPotentialStatusCount("all")} Zusatzverkäufe</span>
-            </div>
-            <div className={`${styles.projectPipelineStatusList} ${styles.potentialStatusList}`}>
+        <section className={styles.potentialWorkspace}>
+          <div className={styles.potentialStatusBar}>
+            <div className={styles.potentialWorkflowFilters} aria-label="Status der Zusatzverkäufe">
               {[
-                { label: "Alle", value: "all" as const },
-                { label: "Festgestellt", value: "open" as const },
-                { label: "Nachfassen", value: "follow_up" as const },
-                { label: "Fällig", value: "due" as const },
-                { label: "Angeboten", value: "offered" as const },
-                { label: "Durchgeführt", value: "completed" as const },
-                { label: "Aktuell kein Interesse", value: "lost" as const },
+                { label: "Alle", value: "all" as const, tone: "neutral" },
+                { label: "Festgestellt", value: "open" as const, tone: "amber" },
+                { label: "Nachfassen", value: "follow_up" as const, tone: "blue" },
+                { label: "Angeboten", value: "offered" as const, tone: "blue" },
+                { label: "Durchgeführt", value: "completed" as const, tone: "green" },
+                { label: "Kein Interesse", value: "lost" as const, tone: "neutral" },
               ].map((item) => {
                 const count = getPotentialStatusCount(item.value);
 
@@ -35651,17 +35646,27 @@ await addProjectLogbookEntry(
                     key={item.value}
                     type="button"
                     data-active={potentialStatusFilter === item.value}
+                    data-tone={item.tone}
                     onClick={() => setPotentialStatusFilter(item.value)}
                   >
                     <span>{item.label}</span>
-                    {count > 0 ? <strong data-urgent={item.value === "due" ? "true" : undefined}>{count}</strong> : null}
+                    <strong>{count}</strong>
                   </button>
                 );
               })}
             </div>
+            <button
+              type="button"
+              className={styles.potentialDueFilter}
+              data-active={potentialStatusFilter === "due"}
+              onClick={() => setPotentialStatusFilter("due")}
+            >
+              <span>Fällig</span>
+              <strong>{getPotentialStatusCount("due")}</strong>
+            </button>
           </div>
 
-          <div className={styles.projectPipelineWorkspace}>
+          <div>
             <section className={`${styles.tableCard} ${styles.heroTableCard} ${styles.potentialOverviewCard}`}>
               <div className={styles.heroTableScroll}>
                 <table className={`${styles.table} ${styles.potentialOverviewTable}`}>
@@ -60670,7 +60675,12 @@ await addProjectLogbookEntry(
                 </div>
               </section>
 
-              <div className={styles.formGrid}>
+              <section className={styles.potentialFormSection}>
+                <div className={styles.potentialSectionHeading}>
+                  <h3>Vertriebsdaten</h3>
+                  <p>Status, Wert und Verantwortlichkeit des Zusatzverkaufs.</p>
+                </div>
+                <div className={styles.formGrid}>
                 <label className={styles.fullWidth}>
                   Zusatzverkauf
                   <textarea
@@ -60733,6 +60743,9 @@ await addProjectLogbookEntry(
                         </option>
                       ))}
                   </select>
+                  <small className={styles.potentialOwnerHint}>
+                    Nachfass-Aufgabe: {getPotentialLinkedTask(editingPotential)?.zustaendig || "nicht zugeordnet"}
+                  </small>
                 </label>
                 <label>
                   Geschätzter Wert
@@ -60763,6 +60776,10 @@ await addProjectLogbookEntry(
                     <option value="high">Hoch</option>
                   </select>
                 </label>
+                <div className={`${styles.fullWidth} ${styles.potentialSectionDivider}`}>
+                  <h3>Nachfassen</h3>
+                  <p>Nächsten Schritt, verknüpfte Aufgabe und eine optionale Verlaufsnotiz pflegen.</p>
+                </div>
                 <label className={styles.fullWidth}>
                   Nächster Schritt
                   <textarea
@@ -60820,7 +60837,8 @@ await addProjectLogbookEntry(
                     placeholder="Optionaler Eintrag für die Historie"
                   />
                 </label>
-              </div>
+                </div>
+              </section>
 
               <section className={styles.potentialHistorySection}>
                 <h3>Historie</h3>
