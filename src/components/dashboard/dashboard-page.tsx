@@ -4245,6 +4245,9 @@ const statusOptions: TaskStatus[] = [
   "\u00fcberf\u00e4llig",
   "archiviert",
 ];
+const taskWorkflowStatusOptions = statusOptions.filter(
+  (status) => status !== "\u00fcberf\u00e4llig" && status !== "archiviert"
+);
 
 const priorityOptions: TaskPriority[] = ["niedrig", "normal", "hoch", "kritisch"];
 
@@ -6315,6 +6318,7 @@ export function DashboardPage() {
   const [escalationEmailEnabled, setEscalationEmailEnabled] = useState(false);
   const [escalationEmailRecipients, setEscalationEmailRecipients] = useState("");
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [kanbanOverdueOnly, setKanbanOverdueOnly] = useState(false);
   const [calendarDate, setCalendarDate] = useState(() => new Date());
   const [calendarView, setCalendarView] = useState<CalendarView>("week");
   const [selectedPlanningDateKey, setSelectedPlanningDateKey] = useState(() =>
@@ -19244,16 +19248,17 @@ await addProjectLogbookEntry(
   }
 
   function openEditModal(task: TaskItem) {
+    const editableTaskStatus = task.status === "\u00fcberf\u00e4llig" ? "offen" : task.status;
     setEditingTask(task);
     setPendingPotentialFollowUp(null);
     setIsTaskAcceptancePopupOpen(false);
     setIsTaskStatusConfirmOpen(false);
     setOfferFollowUpDecision(null);
-    setTaskStatusConfirmValue(task.status);
+    setTaskStatusConfirmValue(editableTaskStatus);
     setErrorMessage("");
     setTitel(task.titel);
     setBeschreibung(task.beschreibung);
-    setStatus(task.status);
+    setStatus(editableTaskStatus);
     setPrioritaet(task.prioritaet);
     setGewerkId(task.gewerkId);
     setZustaendigId(task.zustaendigId);
@@ -20741,7 +20746,14 @@ await addProjectLogbookEntry(
 
   async function moveTaskToStatus(task: TaskItem, nextStatus: TaskStatus) {
     if (task.status === nextStatus) return;
+    if (getTaskAcceptanceStatusForActiveUser(task) !== "accepted") {
+      openEditModal(task);
+      setIsTaskAcceptancePopupOpen(true);
+      return;
+    }
+    if (!window.confirm(`Status von „${task.titel}“ auf „${nextStatus}“ ändern?`)) return;
     if (nextStatus === "erledigt" && isOfferFollowUpTask(task)) {
+      openEditModal(task);
       openOfferFollowUpDecisionDialog(task, nextStatus);
       return;
     }
@@ -22852,9 +22864,9 @@ await addProjectLogbookEntry(
     "in Bearbeitung",
     "wartet auf R\u00fcckmeldung",
     "erledigt",
-    "\u00fcberf\u00e4llig",
+    "abgelehnt",
   ];
-  const kanbanTasks = kanbanOwnerFilter
+  const kanbanScopeTasks = kanbanOwnerFilter
     ? taskOverviewTasks.filter(
         (task) =>
           task.zustaendigId === kanbanOwnerFilter ||
@@ -22863,6 +22875,26 @@ await addProjectLogbookEntry(
           (kanbanOwnerFilter === activeUserId && isTaskEscalatedToActiveUser(task))
       )
     : taskOverviewTasks;
+  const kanbanOverdueCount = kanbanScopeTasks.filter((task) =>
+    isTaskOverdueByWorkingTime(task, deadlineProgressTime, holidayDateKeys)
+  ).length;
+  const kanbanTasks = (kanbanOverdueOnly
+    ? kanbanScopeTasks.filter((task) =>
+        isTaskOverdueByWorkingTime(task, deadlineProgressTime, holidayDateKeys)
+      )
+    : kanbanScopeTasks
+  ).filter((task) => task.status !== "archiviert");
+  const getKanbanWorkflowStatus = (task: TaskItem): TaskStatus =>
+    task.status === "\u00fcberf\u00e4llig" ? "offen" : task.status;
+  const sortKanbanTasks = (first: TaskItem, second: TaskItem) => {
+    const firstOverdue = isTaskOverdueByWorkingTime(first, deadlineProgressTime, holidayDateKeys);
+    const secondOverdue = isTaskOverdueByWorkingTime(second, deadlineProgressTime, holidayDateKeys);
+    if (firstOverdue !== secondOverdue) return firstOverdue ? -1 : 1;
+
+    const firstDeadline = parseAppDateTime(first.faelligkeit).getTime();
+    const secondDeadline = parseAppDateTime(second.faelligkeit).getTime();
+    return firstDeadline - secondDeadline;
+  };
   const calendarDays = getMonthDays(calendarDate);
   const calendarVisibleDateKeys = new Set(
     calendarDays.filter((day): day is Date => Boolean(day)).map(formatDateKey)
@@ -54873,15 +54905,16 @@ await addProjectLogbookEntry(
             </section>
           ) : activeTab === "archive" ? (
             <section>
-              <div className={styles.topline}>
+              <header className={`${styles.taskModuleHeader} ${styles.archiveModuleHeader}`}>
                 <div>
-                  <p className={styles.eyebrow}>Archiv</p>
+                  <p className={styles.taskModuleEyebrow}>Aufgabensteuerung</p>
                   <h1>Archivierte Aufgaben</h1>
-                  <p className={styles.subline}>
-                    Archivierte und gelöschte Aufgaben bleiben nachvollziehbar erhalten.
-                  </p>
+                  <p>Archivierte und gelöschte Aufgaben bleiben nachvollziehbar erhalten.</p>
                 </div>
-              </div>
+                <span className={styles.archiveHeaderCount}>
+                  {archivedTasks.length} {archivedTasks.length === 1 ? "Eintrag" : "Einträge"}
+                </span>
+              </header>
 
               <section className={styles.tableCard}>
                 <table className={styles.table}>
@@ -54947,13 +54980,11 @@ await addProjectLogbookEntry(
             </section>
           ) : activeTab === "kanban" ? (
             <section>
-              <div className={styles.topline}>
+              <header className={`${styles.taskModuleHeader} ${styles.kanbanModuleHeader}`}>
                 <div>
-                  <p className={styles.eyebrow}>Kanban</p>
+                  <p className={styles.taskModuleEyebrow}>Aufgabensteuerung</p>
                   <h1>Aufgabenboard</h1>
-                  <p className={styles.subline}>
-                    Verfolge den Status deiner Aufgaben als Board.
-                  </p>
+                  <p>Verfolge Arbeitsstatus, Zuständigkeiten und Fristen im Team.</p>
                 </div>
 
                 <div className={styles.kanbanActions}>
@@ -54972,20 +55003,43 @@ await addProjectLogbookEntry(
                     </select>
                   </label>
 
+                  <button
+                    type="button"
+                    className={styles.kanbanOverdueFilter}
+                    data-active={kanbanOverdueOnly}
+                    aria-pressed={kanbanOverdueOnly}
+                    onClick={() => setKanbanOverdueOnly((current) => !current)}
+                  >
+                    {kanbanOverdueCount > 0 && <span className={styles.pulseAlert}>!</span>}
+                    {kanbanOverdueCount} überfällig
+                  </button>
+
                   <button className={styles.primaryButton} onClick={() => openCreateModal()}>
                     Neue Aufgabe
                   </button>
                 </div>
-              </div>
+              </header>
 
               <section className={styles.kanbanBoard}>
                 {kanbanStatuses.map((kanbanStatus) => {
-                  const columnTasks = kanbanTasks.filter((task) => task.status === kanbanStatus);
+                  const columnTasks = kanbanTasks
+                    .filter((task) => getKanbanWorkflowStatus(task) === kanbanStatus)
+                    .sort(sortKanbanTasks);
+                  const columnLabel =
+                    kanbanStatus === "offen"
+                      ? "Offen"
+                      : kanbanStatus === "in Bearbeitung"
+                        ? "In Bearbeitung"
+                        : kanbanStatus === "wartet auf R\u00fcckmeldung"
+                          ? "Wartet auf Rückmeldung"
+                          : kanbanStatus === "erledigt"
+                            ? "Erledigt"
+                            : "Abgelehnt";
 
                   return (
-                    <article key={kanbanStatus} className={styles.kanbanColumn}>
+                    <article key={kanbanStatus} className={styles.kanbanColumn} data-status={kanbanStatus}>
                       <header className={styles.kanbanHeader}>
-                        <h2>{kanbanStatus}</h2>
+                        <h2>{columnLabel}</h2>
                         <span>{columnTasks.length}</span>
                       </header>
 
@@ -54997,40 +55051,68 @@ await addProjectLogbookEntry(
                         onDrop={() => handleKanbanDrop(kanbanStatus)}
                       >
                         {columnTasks.length === 0 ? (
-                          <p className={styles.emptyState}>Keine Aufgaben</p>
+                          <p className={styles.emptyState}>
+                            {kanbanOverdueOnly ? "Keine überfälligen Aufgaben" : "Keine Aufgaben"}
+                          </p>
                         ) : (
-                          columnTasks.map((task) => (
-                            <button
-                              key={task.id}
-                              draggable
-                              className={`${styles.kanbanCard} ${
-                                draggedTaskId === task.id ? styles.draggingCard : ""
-                              }`}
-                              data-status={task.status}
-                              onDragStart={() => setDraggedTaskId(task.id)}
-                              onDragEnd={() => setDraggedTaskId(null)}
-                              onClick={() => openEditModal(task)}
-                            >
-                              <strong>{task.titel}</strong>
-                              <span>{task.zustaendig}</span>
-                              <div className={styles.kanbanMeta}>
-                                <span
-                                  className={`${styles.badge} ${styles.priority}`}
-                                  data-priority={task.prioritaet}
-                                >
-                                  {task.prioritaet}
+                          columnTasks.map((task) => {
+                            const context = getTaskListContext(task);
+                            const taskIsOverdue = isTaskOverdueByWorkingTime(
+                              task,
+                              deadlineProgressTime,
+                              holidayDateKeys
+                            );
+                            const mayDragTask = getTaskAcceptanceStatusForActiveUser(task) === "accepted";
+
+                            return (
+                              <button
+                                key={task.id}
+                                draggable={mayDragTask}
+                                className={`${styles.kanbanCard} ${
+                                  draggedTaskId === task.id ? styles.draggingCard : ""
+                                }`}
+                                data-status={getKanbanWorkflowStatus(task)}
+                                data-overdue={taskIsOverdue}
+                                data-locked={!mayDragTask}
+                                onDragStart={() => {
+                                  if (mayDragTask) setDraggedTaskId(task.id);
+                                }}
+                                onDragEnd={() => setDraggedTaskId(null)}
+                                onClick={() => openEditModal(task)}
+                              >
+                                <span className={styles.kanbanCardTopline}>
+                                  <span>{getTaskNumber(task.id, tasks)}</span>
+                                  {taskIsOverdue && <strong>Überfällig</strong>}
                                 </span>
-                                <span
-                                  className={styles.deadlinePill}
-                                  data-state={getDeadlineProgressState(task, deadlineProgressTime, holidayDateKeys)}
-                                  style={getDeadlineProgressStyle(task, deadlineProgressTime, holidayDateKeys)}
-                                  title={getDeadlineProgressText(task, deadlineProgressTime, holidayDateKeys)}
-                                >
-                                  <span>{formatDeadline(task.faelligkeit)}</span>
-                                </span>
-                              </div>
-                            </button>
-                          ))
+                                <strong className={styles.kanbanCardTitle}>{task.titel}</strong>
+                                <span className={styles.kanbanCardOwner}>{task.zustaendig}</span>
+                                {(context.customer || context.project || context.participantLabel) && (
+                                  <span className={styles.kanbanCardContext}>
+                                    {context.customer && <span>{context.customer}</span>}
+                                    {context.project && <span>{context.project}</span>}
+                                    {context.participantLabel && <span>{context.participantLabel}</span>}
+                                  </span>
+                                )}
+                                {!mayDragTask && <span className={styles.kanbanAcceptanceHint}>Annahme ausstehend</span>}
+                                <div className={styles.kanbanMeta}>
+                                  <span
+                                    className={`${styles.badge} ${styles.priority}`}
+                                    data-priority={task.prioritaet}
+                                  >
+                                    {task.prioritaet}
+                                  </span>
+                                  <span
+                                    className={styles.deadlinePill}
+                                    data-state={getDeadlineProgressState(task, deadlineProgressTime, holidayDateKeys)}
+                                    style={getDeadlineProgressStyle(task, deadlineProgressTime, holidayDateKeys)}
+                                    title={getDeadlineProgressText(task, deadlineProgressTime, holidayDateKeys)}
+                                  >
+                                    <span>{formatDeadline(task.faelligkeit)}</span>
+                                  </span>
+                                </div>
+                              </button>
+                            );
+                          })
                         )}
                       </div>
                     </article>
@@ -55040,16 +55122,14 @@ await addProjectLogbookEntry(
             </section>
           ) : activeTab === "calendar" ? (
             <section>
-              <div className={styles.topline}>
+              <header className={`${styles.taskModuleHeader} ${styles.calendarModuleHeader}`}>
                 <div>
-                  <p className={styles.eyebrow}>Kalender</p>
+                  <p className={styles.taskModuleEyebrow}>Aufgabensteuerung</p>
                   <h1>Kalenderübersicht</h1>
-                  <p className={styles.subline}>
-                    Sieh auf einen Blick, welche Aufgaben an welchem Tag fällig sind.
-                  </p>
+                  <p>Sieh auf einen Blick, welche Aufgaben an welchem Tag fällig sind.</p>
                 </div>
 
-                <div className={styles.toplineActions}>
+                <div className={`${styles.toplineActions} ${styles.calendarHeaderActions}`}>
                   {mayFilterPlanningUsers && (
                     <label className={styles.inlineSelectLabel}>
                       Benutzer
@@ -55073,7 +55153,7 @@ await addProjectLogbookEntry(
                     Neue Abwesenheit
                   </button>
                 </div>
-              </div>
+              </header>
 
               <section className={styles.calendarToolbar}>
                 <button
@@ -55611,7 +55691,7 @@ await addProjectLogbookEntry(
                     onChange={(event) => setStatusFilter(event.target.value)}
                   >
                     <option value="">Alle</option>
-                    {statusOptions.map((option) => (
+                    {taskWorkflowStatusOptions.map((option) => (
                       <option key={option} value={option}>
                         {option}
                       </option>
@@ -60835,7 +60915,7 @@ await addProjectLogbookEntry(
                         setTaskStatusConfirmValue(event.target.value as TaskStatus)
                       }
                     >
-                      {statusOptions.map((option) => (
+                      {taskWorkflowStatusOptions.map((option) => (
                         <option key={option} value={option}>
                           {option}
                         </option>
@@ -61048,7 +61128,7 @@ await addProjectLogbookEntry(
                   disabled={isTaskEditingLocked()}
                   onChange={(event) => setStatus(event.target.value as TaskStatus)}
                 >
-                  {statusOptions.map((option) => (
+                  {taskWorkflowStatusOptions.map((option) => (
                     <option key={option} value={option}>
                       {option}
                     </option>
