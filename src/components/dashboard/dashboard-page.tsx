@@ -4441,6 +4441,17 @@ function formatDeadline(value: string) {
   }).format(date);
 }
 
+function formatCalendarTaskTime(value: string) {
+  if (!value) return "-";
+  const date = parseAppDateTime(value);
+  if (!Number.isFinite(date.getTime())) return "-";
+  return new Intl.DateTimeFormat(APP_LOCALE, {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: APP_TIME_ZONE,
+  }).format(date);
+}
+
 function formatDateInputValue(value: string) {
   if (!value) return "";
   const date = parseAppDateTime(value);
@@ -6379,6 +6390,9 @@ export function DashboardPage() {
   const [projectPlanningChoiceMenuKey, setProjectPlanningChoiceMenuKey] = useState("");
   const [projectPlanningEditMenuKey, setProjectPlanningEditMenuKey] = useState("");
   const [selectedCalendarActionDate, setSelectedCalendarActionDate] = useState("");
+  const [selectedCalendarDateKey, setSelectedCalendarDateKey] = useState(() =>
+    formatDateKey(new Date())
+  );
   const [absenceUserId, setAbsenceUserId] = useState("");
   const [absenceDateFrom, setAbsenceDateFrom] = useState(() => formatDateKey(new Date()));
   const [absenceDateTo, setAbsenceDateTo] = useState(() => formatDateKey(new Date()));
@@ -22929,6 +22943,26 @@ await addProjectLogbookEntry(
     });
     return groupedTasks;
   }, {});
+  const sortCalendarTasks = (first: TaskItem, second: TaskItem) => {
+    const firstOverdue = isTaskOverdueByWorkingTime(first, deadlineProgressTime, holidayDateKeys);
+    const secondOverdue = isTaskOverdueByWorkingTime(second, deadlineProgressTime, holidayDateKeys);
+    if (firstOverdue !== secondOverdue) return firstOverdue ? -1 : 1;
+    return parseAppDateTime(first.faelligkeit).getTime() - parseAppDateTime(second.faelligkeit).getTime();
+  };
+  const getCalendarTasksForDate = (dateKey: string) =>
+    [...(tasksByDate[dateKey] ?? [])].sort(sortCalendarTasks);
+  const getCalendarTaskStatusLabel = (task: TaskItem) => {
+    const status = getKanbanWorkflowStatus(task);
+    return status === "in Bearbeitung"
+      ? "Bearbeitung"
+      : status === "wartet auf R\u00fcckmeldung"
+        ? "Rückmeldung"
+        : status === "erledigt"
+          ? "Erledigt"
+          : status === "abgelehnt"
+            ? "Abgelehnt"
+            : "Offen";
+  };
   const planningAbsences = absences.filter(
     (absence) => !effectivePlanningOwnerFilter || absence.userId === effectivePlanningOwnerFilter
   );
@@ -23529,8 +23563,14 @@ await addProjectLogbookEntry(
 
     return span;
   };
-  const selectedDayTasks = tasksByDate[formatDateKey(calendarDate)] ?? [];
+  const selectedDayTasks = getCalendarTasksForDate(formatDateKey(calendarDate));
   const selectedDayAbsences = absencesByDate[formatDateKey(calendarDate)] ?? [];
+  const selectedCalendarDate = isValidDateKeyValue(selectedCalendarDateKey)
+    ? new Date(`${selectedCalendarDateKey}T12:00`)
+    : calendarDate;
+  const selectedCalendarTasks = getCalendarTasksForDate(selectedCalendarDateKey);
+  const selectedCalendarAbsences = absencesByDate[selectedCalendarDateKey] ?? [];
+  const selectedCalendarHoliday = getHolidayForDateKey(selectedCalendarDateKey);
   const filteredTasks = taskPersonScopeTasks.filter((task) => {
     const search = searchTerm.trim().toLowerCase();
     const taskNumber = getTaskNumber(task.id, tasks).toLowerCase();
@@ -55157,7 +55197,23 @@ await addProjectLogbookEntry(
 
               <section className={styles.calendarToolbar}>
                 <button
-                  className={styles.secondaryButton}
+                  type="button"
+                  className={styles.calendarTodayButton}
+                  onClick={() => {
+                    const today = new Date();
+                    setCalendarDate(today);
+                    setSelectedCalendarDateKey(formatDateKey(today));
+                  }}
+                >
+                  Heute
+                </button>
+
+                <div className={styles.calendarPeriodControl}>
+                  <button
+                    type="button"
+                    className={styles.calendarPeriodButton}
+                    aria-label="Vorheriger Zeitraum"
+                    title="Vorheriger Zeitraum"
                   onClick={() => {
                     const nextDate = new Date(calendarDate);
                     if (calendarView === "month") {
@@ -55168,70 +55224,82 @@ await addProjectLogbookEntry(
                       nextDate.setDate(calendarDate.getDate() - 1);
                     }
                     setCalendarDate(nextDate);
+                    setSelectedCalendarDateKey(formatDateKey(nextDate));
                   }}
                 >
-                  Zurück
+                    <span aria-hidden="true">‹</span>
                 </button>
 
-                <div className={styles.calendarTitleGroup}>
-                  <div className={styles.viewSwitch}>
-                    <button
-                      className={calendarView === "month" ? styles.activeViewButton : ""}
-                      onClick={() => setCalendarView("month")}
-                    >
-                      Monat
-                    </button>
-                    <button
-                      className={calendarView === "week" ? styles.activeViewButton : ""}
-                      onClick={() => setCalendarView("week")}
-                    >
-                      Woche
-                    </button>
-                    <button
-                      className={calendarView === "day" ? styles.activeViewButton : ""}
-                      onClick={() => setCalendarView("day")}
-                    >
-                      Tag
-                    </button>
-                  </div>
-                  <h2>
+                  <h2 className={styles.calendarPeriodTitle}>
                     {calendarView === "month"
                       ? formatCalendarTitle(calendarDate)
                       : calendarView === "week"
                         ? formatWeekTitle(calendarDate)
                         : formatDayTitle(calendarDate)}
                   </h2>
+
+                  <button
+                    type="button"
+                    className={styles.calendarPeriodButton}
+                    aria-label="Nächster Zeitraum"
+                    title="Nächster Zeitraum"
+                    onClick={() => {
+                      const nextDate = new Date(calendarDate);
+                      if (calendarView === "month") {
+                        nextDate.setMonth(calendarDate.getMonth() + 1, 1);
+                      } else if (calendarView === "week") {
+                        nextDate.setDate(calendarDate.getDate() + 7);
+                      } else {
+                        nextDate.setDate(calendarDate.getDate() + 1);
+                      }
+                      setCalendarDate(nextDate);
+                      setSelectedCalendarDateKey(formatDateKey(nextDate));
+                    }}
+                  >
+                    <span aria-hidden="true">›</span>
+                  </button>
                 </div>
 
-                <button
-                  className={styles.secondaryButton}
-                  onClick={() => {
-                    const nextDate = new Date(calendarDate);
-                    if (calendarView === "month") {
-                      nextDate.setMonth(calendarDate.getMonth() + 1, 1);
-                    } else if (calendarView === "week") {
-                      nextDate.setDate(calendarDate.getDate() + 7);
-                    } else {
-                      nextDate.setDate(calendarDate.getDate() + 1);
-                    }
-                    setCalendarDate(nextDate);
-                  }}
-                >
-                  Weiter
-                </button>
+                <div className={styles.viewSwitch} aria-label="Kalenderansicht">
+                  <button
+                    type="button"
+                    className={calendarView === "month" ? styles.activeViewButton : ""}
+                    onClick={() => {
+                      setCalendarView("month");
+                      setSelectedCalendarDateKey(formatDateKey(calendarDate));
+                    }}
+                  >
+                    Monat
+                  </button>
+                  <button
+                    type="button"
+                    className={calendarView === "week" ? styles.activeViewButton : ""}
+                    onClick={() => setCalendarView("week")}
+                  >
+                    Woche
+                  </button>
+                  <button
+                    type="button"
+                    className={calendarView === "day" ? styles.activeViewButton : ""}
+                    onClick={() => setCalendarView("day")}
+                  >
+                    Tag
+                  </button>
+                </div>
               </section>
 
               {calendarView === "month" && (
-                <section className={styles.calendarGrid}>
-                  {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((weekday) => (
-                    <div key={weekday} className={styles.calendarWeekday}>
-                      {weekday}
-                    </div>
-                  ))}
+                <section className={styles.calendarMonthWorkspace}>
+                  <section className={styles.calendarGrid}>
+                    {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((weekday) => (
+                      <div key={weekday} className={styles.calendarWeekday}>
+                        {weekday}
+                      </div>
+                    ))}
 
-                  {calendarDays.map((day, index) => {
+                    {calendarDays.map((day, index) => {
                     const dateKey = day ? formatDateKey(day) : `empty-${index}`;
-                    const dayTasks = day ? tasksByDate[dateKey] ?? [] : [];
+                    const dayTasks = day ? getCalendarTasksForDate(dateKey) : [];
                     const dayAbsences = day ? absencesByDate[dateKey] ?? [] : [];
                     const holiday = day ? getHolidayForDateKey(dateKey) : undefined;
                     const isWeekend = day ? isWeekendDateKey(dateKey) : false;
@@ -55278,30 +55346,17 @@ await addProjectLogbookEntry(
                         }`}
                         data-weekend={isWeekend && dayTasks.length === 0}
                         data-holiday={Boolean(holiday)}
-                        onClick={() => day && toggleCalendarDayActions(day)}
+                        data-selected={day ? selectedCalendarDateKey === dateKey : false}
+                        onClick={() => day && setSelectedCalendarDateKey(dateKey)}
                       >
                         {day && (
                           <>
                             <div className={styles.calendarDayHeader}>
                               <strong>{day.getDate()}</strong>
-                              <span>{dayTasks.length}</span>
+                              {dayTasks.length > 0 && <span>{dayTasks.length}</span>}
                             </div>
 
                             {holiday && <span className={styles.holidayChip}>{holiday.name}</span>}
-
-                            {selectedCalendarActionDate === dateKey && (
-                              <div
-                                className={styles.calendarDayActions}
-                                onClick={(event) => event.stopPropagation()}
-                              >
-                                <button type="button" onClick={() => openCreateModal(day)}>
-                                  Aufgabe anlegen
-                                </button>
-                                <button type="button" onClick={() => openAbsenceModal(day)}>
-                                  Abwesenheit anlegen
-                                </button>
-                              </div>
-                            )}
 
                             {monthAbsenceBars.length > 0 && (
                               <div className={styles.monthAbsenceBars}>
@@ -55329,31 +55384,159 @@ await addProjectLogbookEntry(
                             )}
 
                             <div className={styles.calendarTasks}>
-                              {dayTasks.map((task) => (
+                              {dayTasks.slice(0, 3).map((task) => {
+                                const isOverdue = isTaskOverdueByWorkingTime(
+                                  task,
+                                  deadlineProgressTime,
+                                  holidayDateKeys
+                                );
+                                return (
+                                  <button
+                                    key={task.id}
+                                    className={styles.calendarTask}
+                                    data-status={getKanbanWorkflowStatus(task)}
+                                    data-overdue={isOverdue}
+                                    title={getDeadlineProgressText(task, deadlineProgressTime, holidayDateKeys)}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      openEditModal(task);
+                                    }}
+                                  >
+                                    <span className={styles.calendarTaskTopline}>
+                                      <span>{formatCalendarTaskTime(task.faelligkeit)}</span>
+                                      {isOverdue && <span className={styles.calendarOverdueMarker}>Überfällig</span>}
+                                    </span>
+                                    <strong>{task.titel}</strong>
+                                    <span className={styles.calendarTaskOwner}>
+                                      {task.zustaendig}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                              {dayTasks.length > 3 && (
                                 <button
-                                  key={task.id}
-                                  className={styles.calendarTask}
-                                  data-status={task.status}
+                                  type="button"
+                                  className={styles.calendarMoreTasks}
                                   onClick={(event) => {
                                     event.stopPropagation();
-                                    openEditModal(task);
+                                    setSelectedCalendarDateKey(dateKey);
                                   }}
                                 >
-                                  <strong>{task.titel}</strong>
-                                  <span>
-                                    {task.zustaendig}
-                                    {getTaskPlannedMinutesForDate(task, dateKey) > 0
-                                      ? ` · ${formatMinutes(getTaskPlannedMinutesForDate(task, dateKey))}`
-                                      : ""}
-                                  </span>
+                                  + {dayTasks.length - 3} weitere
                                 </button>
-                              ))}
+                              )}
                             </div>
                           </>
                         )}
                       </article>
                     );
-                  })}
+                    })}
+                  </section>
+
+                  <aside className={styles.calendarDayInspector}>
+                    <header className={styles.calendarDayInspectorHeader}>
+                      <div>
+                        <span>Tagesübersicht</span>
+                        <h2>{formatDayTitle(selectedCalendarDate)}</h2>
+                      </div>
+                      <strong>{selectedCalendarTasks.length}</strong>
+                    </header>
+
+                    <div className={styles.calendarDayInspectorActions}>
+                      <button type="button" onClick={() => openCreateModal(selectedCalendarDate)}>
+                        + Aufgabe
+                      </button>
+                      <button type="button" onClick={() => openAbsenceModal(selectedCalendarDate)}>
+                        + Abwesenheit
+                      </button>
+                    </div>
+
+                    {selectedCalendarHoliday && (
+                      <span className={styles.holidayChip}>{selectedCalendarHoliday.name}</span>
+                    )}
+
+                    {selectedCalendarAbsences.length > 0 && (
+                      <div className={styles.calendarInspectorAbsences}>
+                        {selectedCalendarAbsences.map((absence) => (
+                          <button
+                            key={absence.id}
+                            type="button"
+                            className={styles.absenceChip}
+                            data-type={absence.type}
+                            onClick={() => openEditAbsenceModal(absence)}
+                          >
+                            {absence.userName}: {absenceLabel(absence.type)}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className={styles.calendarInspectorTasks}>
+                      {selectedCalendarTasks.length === 0 ? (
+                        <div className={styles.calendarInspectorEmpty}>
+                          <strong>Keine Aufgaben</strong>
+                          <span>Für diesen Tag sind keine Aufgaben eingeplant oder fällig.</span>
+                        </div>
+                      ) : (
+                        selectedCalendarTasks.map((task) => {
+                          const context = getTaskListContext(task);
+                          const isOverdue = isTaskOverdueByWorkingTime(
+                            task,
+                            deadlineProgressTime,
+                            holidayDateKeys
+                          );
+                          return (
+                            <button
+                              key={task.id}
+                              type="button"
+                              className={styles.calendarInspectorTask}
+                              data-status={getKanbanWorkflowStatus(task)}
+                              data-overdue={isOverdue}
+                              onClick={() => openEditModal(task)}
+                            >
+                              <span className={styles.calendarInspectorTaskTopline}>
+                                <span>
+                                  {getTaskNumber(task.id, tasks)} · {formatCalendarTaskTime(task.faelligkeit)}
+                                </span>
+                                <span>{isOverdue ? "Überfällig" : getCalendarTaskStatusLabel(task)}</span>
+                              </span>
+                              <strong>{task.titel}</strong>
+                              <span>
+                                {task.zustaendig}
+                                {getTaskPlannedMinutesForDate(task, selectedCalendarDateKey) > 0
+                                  ? ` · ${formatMinutes(
+                                      getTaskPlannedMinutesForDate(task, selectedCalendarDateKey)
+                                    )}`
+                                  : ""}
+                              </span>
+                              {(context.customer || context.project || context.participantLabel) && (
+                                <span className={styles.calendarInspectorTaskContext}>
+                                  {[context.customer, context.project, context.participantLabel]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                                </span>
+                              )}
+                              <span
+                                className={styles.calendarInspectorDeadline}
+                                data-state={getDeadlineProgressState(
+                                  task,
+                                  deadlineProgressTime,
+                                  holidayDateKeys
+                                )}
+                                style={getDeadlineProgressStyle(
+                                  task,
+                                  deadlineProgressTime,
+                                  holidayDateKeys
+                                )}
+                              >
+                                {formatDeadline(task.faelligkeit)}
+                              </span>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </aside>
                 </section>
               )}
 
@@ -55361,7 +55544,7 @@ await addProjectLogbookEntry(
                 <section className={styles.weekGrid}>
                   {weekDays.map((day) => {
                     const dateKey = formatDateKey(day);
-                    const dayTasks = tasksByDate[dateKey] ?? [];
+                    const dayTasks = getCalendarTasksForDate(dateKey);
                     const dayAbsences = absencesByDate[dateKey] ?? [];
                     const holiday = getHolidayForDateKey(dateKey);
                     const isWeekend = isWeekendDateKey(dateKey);
@@ -55412,7 +55595,7 @@ await addProjectLogbookEntry(
                               timeZone: APP_TIME_ZONE,
                             }).format(day)}
                           </strong>
-                          <span>{dayTasks.length}</span>
+                          {dayTasks.length > 0 && <span>{dayTasks.length}</span>}
                         </div>
                         {holiday && <span className={styles.holidayChip}>{holiday.name}</span>}
                         {selectedCalendarActionDate === dateKey && (
@@ -55456,25 +55639,44 @@ await addProjectLogbookEntry(
                           {dayTasks.length === 0 ? (
                             <p className={styles.emptyState}>Keine Aufgaben</p>
                           ) : (
-                            dayTasks.map((task) => (
-                              <button
-                                key={task.id}
-                                className={styles.calendarTask}
-                                data-status={task.status}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  openEditModal(task);
-                                }}
-                              >
-                                <strong>{task.titel}</strong>
-                                <span>
-                                  {task.zustaendig}
-                                  {getTaskPlannedMinutesForDate(task, dateKey) > 0
-                                    ? ` · ${formatMinutes(getTaskPlannedMinutesForDate(task, dateKey))}`
-                                    : ""}
-                                </span>
-                              </button>
-                            ))
+                            dayTasks.map((task) => {
+                              const context = getTaskListContext(task);
+                              const isOverdue = isTaskOverdueByWorkingTime(
+                                task,
+                                deadlineProgressTime,
+                                holidayDateKeys
+                              );
+                              return (
+                                <button
+                                  key={task.id}
+                                  className={styles.calendarTask}
+                                  data-status={getKanbanWorkflowStatus(task)}
+                                  data-overdue={isOverdue}
+                                  title={getDeadlineProgressText(task, deadlineProgressTime, holidayDateKeys)}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    openEditModal(task);
+                                  }}
+                                >
+                                  <span className={styles.calendarTaskTopline}>
+                                    <span>{getTaskNumber(task.id, tasks)} · {formatCalendarTaskTime(task.faelligkeit)}</span>
+                                    <span>{isOverdue ? "Überfällig" : getCalendarTaskStatusLabel(task)}</span>
+                                  </span>
+                                  <strong>{task.titel}</strong>
+                                  <span className={styles.calendarTaskOwner}>
+                                    {task.zustaendig}
+                                    {getTaskPlannedMinutesForDate(task, dateKey) > 0
+                                      ? ` · ${formatMinutes(getTaskPlannedMinutesForDate(task, dateKey))}`
+                                      : ""}
+                                  </span>
+                                  {(context.customer || context.project) && (
+                                    <span className={styles.calendarTaskContext}>
+                                      {[context.customer, context.project].filter(Boolean).join(" · ")}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })
                           )}
                         </div>
                       </article>
@@ -55524,34 +55726,53 @@ await addProjectLogbookEntry(
                   {selectedDayTasks.length === 0 ? (
                     <p className={styles.emptyState}>Keine Aufgaben an diesem Tag.</p>
                   ) : (
-                    selectedDayTasks.map((task) => (
-                      <button
-                        key={task.id}
-                        className={styles.dayTask}
-                        data-status={task.status}
-                        onClick={() => openEditModal(task)}
-                      >
-                        <div>
-                          <strong>{task.titel}</strong>
-                          <span>
-                            {task.zustaendig}
-                            {getTaskPlannedMinutesForDate(task, formatDateKey(calendarDate)) > 0
-                              ? ` · ${formatMinutes(
-                                  getTaskPlannedMinutesForDate(task, formatDateKey(calendarDate))
-                                )}`
-                              : ""}
-                          </span>
-                        </div>
-                        <span
-                          className={styles.deadlinePill}
-                          data-state={getDeadlineProgressState(task, deadlineProgressTime, holidayDateKeys)}
-                          style={getDeadlineProgressStyle(task, deadlineProgressTime, holidayDateKeys)}
-                          title={getDeadlineProgressText(task, deadlineProgressTime, holidayDateKeys)}
+                    selectedDayTasks.map((task) => {
+                      const context = getTaskListContext(task);
+                      const isOverdue = isTaskOverdueByWorkingTime(
+                        task,
+                        deadlineProgressTime,
+                        holidayDateKeys
+                      );
+                      return (
+                        <button
+                          key={task.id}
+                          className={styles.dayTask}
+                          data-status={getKanbanWorkflowStatus(task)}
+                          data-overdue={isOverdue}
+                          onClick={() => openEditModal(task)}
                         >
-                          <span>{formatDeadline(task.faelligkeit)}</span>
-                        </span>
-                      </button>
-                    ))
+                          <div>
+                            <span className={styles.dayTaskTopline}>
+                              {getTaskNumber(task.id, tasks)} · {getCalendarTaskStatusLabel(task)}
+                            </span>
+                            <strong>{task.titel}</strong>
+                            <span>
+                              {task.zustaendig}
+                              {getTaskPlannedMinutesForDate(task, formatDateKey(calendarDate)) > 0
+                                ? ` · ${formatMinutes(
+                                    getTaskPlannedMinutesForDate(task, formatDateKey(calendarDate))
+                                  )}`
+                                : ""}
+                            </span>
+                            {(context.customer || context.project || context.participantLabel) && (
+                              <span className={styles.dayTaskContext}>
+                                {[context.customer, context.project, context.participantLabel]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                              </span>
+                            )}
+                          </div>
+                          <span
+                            className={styles.deadlinePill}
+                            data-state={getDeadlineProgressState(task, deadlineProgressTime, holidayDateKeys)}
+                            style={getDeadlineProgressStyle(task, deadlineProgressTime, holidayDateKeys)}
+                            title={getDeadlineProgressText(task, deadlineProgressTime, holidayDateKeys)}
+                          >
+                            <span>{formatDeadline(task.faelligkeit)}</span>
+                          </span>
+                        </button>
+                      );
+                    })
                   )}
                 </section>
               )}

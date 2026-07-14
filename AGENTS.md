@@ -1,5 +1,21 @@
 # WorkPilot360 Agent Handover
 
+- Aufgaben-Kalender Modernisierung 2026-07-14: Kalenderuebersicht, Wochen- und
+  Tagesansicht verwenden jetzt denselben kompakten Navy-Modulkopf wie die
+  uebrigen modernisierten Aufgabenansichten. Die Zeitraumsteuerung verbindet
+  Heute-Sprung, Vor-/Zuruecknavigation, Zeitraumtitel und Ansichtswechsel in
+  einer gemeinsamen Werkzeugzeile. In der Monatsansicht bleiben die Zellen
+  bewusst ruhig: Aufgaben erscheinen kompakt mit Uhrzeit, Titel,
+  Zustaendigkeit und schmalem Statusakzent; Ueberfaelligkeit wird als kleiner
+  roter Warnhinweis statt als vollflaechiger roter Rahmen dargestellt. Pro Tag
+  werden hoechstens drei Aufgaben direkt gezeigt, weitere bleiben ueber den
+  Zaehler erreichbar. Eine feste Tagesuebersicht rechts zeigt weiterhin alle
+  vollstaendigen Informationen inklusive A-Nummer, Kunde, Projekt,
+  Beteiligten, geplanter Dauer und Deadline sowie die bestehenden Aktionen
+  fuer Aufgabe und Abwesenheit. Aufgaben-, Abwesenheits-, Feiertags-,
+  Benutzerfilter-, Rollen-, API- und Deadline-Logik blieb unveraendert. Monat,
+  Woche, Tag, Tagesauswahl und Aufgabenmodal wurden echt geklickt; bei normaler
+  Desktopbreite entstand kein globaler horizontaler Seitenueberlauf.
 - Planungsboard Markenkoepfe 2026-07-13: Die beiden Boardkarten beginnen nicht
   mehr mit den ausgeschriebenen Titeln `OK solutions Planungsboard` und
   `OK immocare Planungsboard`. Stattdessen verwenden sie die vorhandenen

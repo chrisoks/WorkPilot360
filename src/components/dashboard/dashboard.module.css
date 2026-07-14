@@ -29172,6 +29172,595 @@
   white-space: nowrap;
 }
 
+/* Aufgaben-Kalender: kompakte Navigation und einheitliche Aufgabeninformationen. */
+.calendarToolbar {
+  background: #ffffff;
+  border: 1px solid #d8e0ea;
+  border-radius: 9px;
+  box-shadow: none;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(92px, 1fr) auto minmax(240px, 1fr);
+  margin-bottom: 12px;
+  padding: 9px 12px;
+}
+
+.calendarTodayButton {
+  background: transparent;
+  border: 0;
+  color: #1d4ed8;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 850;
+  justify-self: start;
+  min-height: 34px;
+  padding: 6px 8px;
+}
+
+.calendarTodayButton:hover {
+  color: #0f172a;
+}
+
+.calendarPeriodControl {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: 36px minmax(170px, auto) 36px;
+  overflow: hidden;
+}
+
+.calendarPeriodButton {
+  align-items: center;
+  align-self: stretch;
+  background: transparent;
+  border: 0;
+  color: #334155;
+  cursor: pointer;
+  display: inline-flex;
+  font-family: inherit;
+  font-size: 1.35rem;
+  font-weight: 700;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0;
+}
+
+.calendarPeriodButton:first-child {
+  border-right: 1px solid #d8e0ea;
+}
+
+.calendarPeriodButton:last-child {
+  border-left: 1px solid #d8e0ea;
+}
+
+.calendarPeriodButton:hover {
+  background: #eaf1fb;
+  color: #1d4ed8;
+}
+
+.calendarPeriodTitle {
+  color: #0f172a;
+  font-size: 0.9rem;
+  font-weight: 900;
+  margin: 0;
+  padding: 0 14px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.calendarToolbar > .viewSwitch {
+  justify-self: end;
+}
+
+.calendarToolbar .viewSwitch {
+  background: #f1f5f9;
+  border: 1px solid #d8e0ea;
+  border-radius: 7px;
+  padding: 2px;
+}
+
+.calendarToolbar .viewSwitch button {
+  border-radius: 5px;
+  font-size: 0.76rem;
+  min-height: 31px;
+  padding: 6px 11px;
+}
+
+.calendarMonthWorkspace {
+  align-items: start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
+}
+
+.calendarMonthWorkspace .calendarGrid {
+  min-width: 0;
+}
+
+.calendarMonthWorkspace .calendarDay {
+  cursor: pointer;
+  min-height: 132px;
+  transition: background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.calendarMonthWorkspace .calendarDay:hover {
+  background: #f8fbff;
+}
+
+.calendarMonthWorkspace .calendarDay[data-selected="true"] {
+  background: #f4f8ff;
+  box-shadow: inset 0 0 0 2px #93c5fd;
+}
+
+.calendarMonthWorkspace .calendarDay[data-selected="true"] .calendarDayHeader strong {
+  align-items: center;
+  background: #2563eb;
+  border-radius: 999px;
+  color: #ffffff;
+  display: inline-flex;
+  height: 24px;
+  justify-content: center;
+  min-width: 24px;
+  padding: 0 6px;
+}
+
+.calendarGrid,
+.dayView {
+  border-color: #d8e0ea;
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.calendarWeekday {
+  font-size: 0.76rem;
+  padding: 9px 10px;
+}
+
+.calendarDay {
+  min-height: 145px;
+  padding: 8px;
+}
+
+.calendarDayHeader {
+  margin-bottom: 6px;
+}
+
+.calendarDayHeader span {
+  height: 20px;
+  min-width: 20px;
+  padding: 0 6px;
+}
+
+.calendarTasks {
+  gap: 5px;
+}
+
+.calendarTask,
+.calendarTask[data-status="in Bearbeitung"],
+.calendarTask[data-status="wartet auf Rückmeldung"],
+.calendarTask[data-status="erledigt"],
+.calendarTask[data-status="abgelehnt"] {
+  background: #ffffff;
+  border: 1px solid #dbe3ee;
+  border-left: 4px solid #3b82f6;
+  border-radius: 7px;
+  box-shadow: none;
+  gap: 4px;
+  padding: 7px 7px 7px 9px;
+}
+
+.calendarMonthWorkspace .calendarTask {
+  border-color: #dbe3ee;
+  border-left-width: 3px;
+  gap: 2px;
+  min-height: 49px;
+  padding: 5px 6px 5px 8px;
+  position: relative;
+}
+
+.calendarMonthWorkspace .calendarTask[data-overdue="true"] {
+  border-color: #dbe3ee;
+  border-left-color: #ef4444;
+}
+
+.calendarMonthWorkspace .calendarTaskTopline > span:first-child {
+  color: #64748b;
+  font-size: 0.58rem;
+}
+
+.calendarMonthWorkspace .calendarTask strong {
+  display: block;
+  font-size: 0.66rem;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendarMonthWorkspace .calendarTaskOwner {
+  display: block;
+  font-size: 0.58rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendarOverdueMarker {
+  align-items: center;
+  color: #dc2626 !important;
+  display: inline-flex;
+  font-size: 0 !important;
+  gap: 4px;
+}
+
+.calendarOverdueMarker::before {
+  background: #ef4444;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px #fee2e2;
+  content: "";
+  display: block;
+  height: 6px;
+  width: 6px;
+}
+
+.calendarMoreTasks {
+  background: transparent;
+  border: 0;
+  color: #1d4ed8;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.62rem;
+  font-weight: 850;
+  padding: 3px 4px;
+  text-align: left;
+}
+
+.calendarMoreTasks:hover {
+  color: #0f172a;
+  text-decoration: underline;
+}
+
+.calendarTask[data-status="in Bearbeitung"] {
+  border-left-color: #22c55e;
+}
+
+.calendarTask[data-status="wartet auf Rückmeldung"] {
+  border-left-color: #0f9da8;
+}
+
+.calendarTask[data-status="erledigt"] {
+  border-left-color: #64748b;
+}
+
+.calendarTask[data-status="abgelehnt"] {
+  border-left-color: #ef6b73;
+}
+
+.calendarTask[data-overdue="true"] {
+  border-color: #fca5a5;
+}
+
+.calendarDayInspector {
+  background: #ffffff;
+  border: 1px solid #d8e0ea;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  display: grid;
+  gap: 12px;
+  max-height: 760px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 14px;
+  position: sticky;
+  top: 12px;
+}
+
+.calendarDayInspectorHeader {
+  align-items: center;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  padding-bottom: 11px;
+}
+
+.calendarDayInspectorHeader div {
+  display: grid;
+  gap: 2px;
+}
+
+.calendarDayInspectorHeader div > span {
+  color: #0f9da8;
+  font-size: 0.63rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.calendarDayInspectorHeader h2 {
+  color: #0f172a;
+  font-size: 1rem;
+  margin: 0;
+}
+
+.calendarDayInspectorHeader > strong {
+  align-items: center;
+  background: #eaf1fb;
+  border-radius: 999px;
+  color: #1d4ed8;
+  display: inline-flex;
+  font-size: 0.75rem;
+  height: 28px;
+  justify-content: center;
+  min-width: 28px;
+  padding: 0 8px;
+}
+
+.calendarDayInspectorActions {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.calendarDayInspectorActions button {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  color: #17355c;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.73rem;
+  font-weight: 850;
+  min-height: 36px;
+  padding: 7px 8px;
+}
+
+.calendarDayInspectorActions button:first-child {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+}
+
+.calendarDayInspectorActions button:hover {
+  border-color: #2563eb;
+}
+
+.calendarInspectorAbsences {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.calendarInspectorTasks {
+  display: grid;
+  gap: 8px;
+  min-height: 120px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.calendarInspectorTask {
+  background: #ffffff;
+  border: 1px solid #dbe3ee;
+  border-left: 4px solid #3b82f6;
+  border-radius: 8px;
+  color: #334155;
+  cursor: pointer;
+  display: grid;
+  font-family: inherit;
+  gap: 5px;
+  padding: 10px 11px;
+  position: relative;
+  text-align: left;
+}
+
+.calendarInspectorTask[data-status="in Bearbeitung"] {
+  border-left-color: #22c55e;
+}
+
+.calendarInspectorTask[data-status="wartet auf Rückmeldung"] {
+  border-left-color: #0f9da8;
+}
+
+.calendarInspectorTask[data-status="erledigt"] {
+  border-left-color: #64748b;
+}
+
+.calendarInspectorTask[data-status="abgelehnt"] {
+  border-left-color: #ef6b73;
+}
+
+.calendarInspectorTask[data-overdue="true"] {
+  border-left-color: #ef4444;
+}
+
+.calendarInspectorTask:hover {
+  border-color: #93c5fd;
+  border-left-color: #2563eb;
+}
+
+.calendarInspectorTaskTopline {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.calendarInspectorTaskTopline span:first-child {
+  color: #2563eb;
+  font-size: 0.65rem;
+  font-weight: 900;
+}
+
+.calendarInspectorTaskTopline span:last-child {
+  color: #64748b;
+  font-size: 0.62rem;
+  font-weight: 850;
+}
+
+.calendarInspectorTask[data-overdue="true"] .calendarInspectorTaskTopline span:last-child {
+  color: #dc2626;
+}
+
+.calendarInspectorTask > strong {
+  color: #0f172a;
+  font-size: 0.78rem;
+  line-height: 1.3;
+}
+
+.calendarInspectorTask > span:not(.calendarInspectorTaskTopline):not(.calendarInspectorDeadline) {
+  color: #475569;
+  font-size: 0.67rem;
+  font-weight: 700;
+}
+
+.calendarInspectorTaskContext {
+  color: #64748b !important;
+  line-height: 1.35;
+}
+
+.calendarInspectorDeadline {
+  background: #f1f5f9;
+  border-radius: 5px;
+  color: #334155;
+  font-size: 0.63rem;
+  font-weight: 850;
+  justify-self: start;
+  margin-top: 2px;
+  padding: 4px 6px;
+}
+
+.calendarInspectorEmpty {
+  align-content: center;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  min-height: 130px;
+  padding: 18px;
+  text-align: center;
+}
+
+.calendarInspectorEmpty strong {
+  color: #334155;
+  font-size: 0.82rem;
+}
+
+.calendarInspectorEmpty span {
+  color: #64748b;
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.calendarTaskTopline {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+}
+
+.calendarTaskTopline > span:first-child {
+  color: #2563eb;
+  font-size: 0.64rem;
+  font-weight: 900;
+}
+
+.calendarTaskTopline > span:last-child {
+  color: #475569;
+  font-size: 0.6rem;
+  font-weight: 850;
+  text-align: right;
+}
+
+.calendarTask[data-overdue="true"] .calendarTaskTopline > span:last-child {
+  color: #dc2626;
+}
+
+.calendarTask strong {
+  color: #0f172a;
+  font-size: 0.73rem;
+}
+
+.calendarTask .calendarTaskOwner {
+  color: #475569;
+  font-size: 0.66rem;
+}
+
+.calendarTaskContext {
+  color: #64748b !important;
+  display: -webkit-box;
+  font-size: 0.62rem !important;
+  line-height: 1.3;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.weekGrid {
+  gap: 9px;
+}
+
+.weekDay {
+  border-radius: 9px;
+  min-height: 380px;
+  padding: 10px;
+}
+
+.dayView {
+  gap: 10px;
+  padding: 14px;
+}
+
+.dayTask,
+.dayTask[data-status="in Bearbeitung"],
+.dayTask[data-status="wartet auf Rückmeldung"],
+.dayTask[data-status="erledigt"],
+.dayTask[data-status="abgelehnt"] {
+  background: #ffffff;
+  border: 1px solid #dbe3ee;
+  border-left: 4px solid #3b82f6;
+  border-radius: 8px;
+  box-shadow: none;
+  padding: 12px 14px;
+}
+
+.dayTask[data-status="in Bearbeitung"] {
+  border-left-color: #22c55e;
+}
+
+.dayTask[data-status="wartet auf Rückmeldung"] {
+  border-left-color: #0f9da8;
+}
+
+.dayTask[data-status="erledigt"] {
+  border-left-color: #64748b;
+}
+
+.dayTask[data-status="abgelehnt"] {
+  border-left-color: #ef6b73;
+}
+
+.dayTask[data-overdue="true"] {
+  border-color: #fca5a5;
+}
+
+.dayTaskTopline {
+  color: #2563eb !important;
+  font-size: 0.7rem !important;
+  font-weight: 900 !important;
+  margin: 0 0 4px !important;
+}
+
+.dayTaskContext {
+  color: #64748b !important;
+  font-size: 0.75rem !important;
+  font-weight: 700 !important;
+  margin-top: 5px !important;
+}
+
 @media (max-width: 1180px) {
   .taskFilterBar {
     grid-template-columns: minmax(220px, 1.5fr) repeat(2, minmax(130px, 1fr));
