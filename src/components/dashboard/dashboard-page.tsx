@@ -5362,7 +5362,7 @@ function productivityPeriodLabel(period: ProductivityPeriod) {
 
 function getTaskNumber(taskId: string, taskList: TaskItem[]) {
   const index = taskList.findIndex((task) => task.id === taskId);
-  return index >= 0 ? `T-${1001 + index}` : taskId;
+  return index >= 0 ? `A-${1001 + index}` : taskId;
 }
 
 function getTaskNumberValue(taskId: string, taskList: TaskItem[]) {
@@ -19282,6 +19282,11 @@ await addProjectLogbookEntry(
     setIsModalOpen(true);
   }
 
+  function openTaskHistory(task: TaskItem) {
+    openEditModal(task);
+    setIsTaskHistoryOpen(true);
+  }
+
   function selectCustomer(nextCustomer: string) {
     setKunde(nextCustomer);
 
@@ -21765,11 +21770,27 @@ await addProjectLogbookEntry(
       task.participants.some((participant) => participant.userId === activeUserId) ||
       isTaskEscalatedToActiveUser(task)
   );
-  const taskOverviewTasks = canManageUsers(activeUser?.role) ? activeTasks : myRelevantTasks;
-  const offene = taskOverviewTasks.filter((task) => task.status === "offen").length;
-  const bearbeitung = taskOverviewTasks.filter((task) => task.status === "in Bearbeitung").length;
-  const erledigt = taskOverviewTasks.filter((task) => task.status === "erledigt").length;
-  const ueberfaellig = taskOverviewTasks.filter(
+  // Die API liefert bereits nur den rollenberechtigten Aufgabenbestand:
+  // Admin/GF organisationsweit, Fuehrungskraefte im eigenen Team und sonstige
+  // Nutzer als Ersteller, Zustaendige oder Beteiligte. Liste, Board und Kalender
+  // muessen auf genau diesem gemeinsamen Bestand aufsetzen.
+  const taskOverviewTasks = activeTasks;
+  const taskPersonScopeTasks = taskOverviewTasks.filter(
+    (task) =>
+      !ownerFilter ||
+      task.createdById === ownerFilter ||
+      task.zustaendigId === ownerFilter ||
+      task.participants.some((participant) => participant.userId === ownerFilter) ||
+      (ownerFilter === activeUserId && isTaskEscalatedToActiveUser(task))
+  );
+  const offene = taskPersonScopeTasks.filter((task) => task.status === "offen").length;
+  const bearbeitung = taskPersonScopeTasks.filter((task) => task.status === "in Bearbeitung").length;
+  const wartetAufRueckmeldung = taskPersonScopeTasks.filter(
+    (task) => task.status === "wartet auf R\u00fcckmeldung"
+  ).length;
+  const erledigt = taskPersonScopeTasks.filter((task) => task.status === "erledigt").length;
+  const abgelehnt = taskPersonScopeTasks.filter((task) => task.status === "abgelehnt").length;
+  const ueberfaellig = taskPersonScopeTasks.filter(
     (task) => isTaskOverdueByWorkingTime(task, deadlineProgressTime, holidayDateKeys)
   ).length;
   const mayManageUsers = canManageUsers(activeUser?.role);
@@ -22834,12 +22855,14 @@ await addProjectLogbookEntry(
     "\u00fcberf\u00e4llig",
   ];
   const kanbanTasks = kanbanOwnerFilter
-    ? myRelevantTasks.filter(
+    ? taskOverviewTasks.filter(
         (task) =>
           task.zustaendigId === kanbanOwnerFilter ||
+          task.createdById === kanbanOwnerFilter ||
+          task.participants.some((participant) => participant.userId === kanbanOwnerFilter) ||
           (kanbanOwnerFilter === activeUserId && isTaskEscalatedToActiveUser(task))
       )
-    : myRelevantTasks;
+    : taskOverviewTasks;
   const calendarDays = getMonthDays(calendarDate);
   const calendarVisibleDateKeys = new Set(
     calendarDays.filter((day): day is Date => Boolean(day)).map(formatDateKey)
@@ -22859,7 +22882,7 @@ await addProjectLogbookEntry(
     getTaskPlanningEntries(task)
       .filter((allocation) => allocation.date === dateKey)
       .reduce((total, allocation) => total + allocation.minutes, 0);
-  const planningTasks = myRelevantTasks.filter(
+  const planningTasks = taskOverviewTasks.filter(
     (task) =>
       task.status !== "erledigt" &&
       (!effectivePlanningOwnerFilter ||
@@ -23476,14 +23499,20 @@ await addProjectLogbookEntry(
   };
   const selectedDayTasks = tasksByDate[formatDateKey(calendarDate)] ?? [];
   const selectedDayAbsences = absencesByDate[formatDateKey(calendarDate)] ?? [];
-  const filteredTasks = taskOverviewTasks.filter((task) => {
+  const filteredTasks = taskPersonScopeTasks.filter((task) => {
     const search = searchTerm.trim().toLowerCase();
     const taskNumber = getTaskNumber(task.id, tasks).toLowerCase();
+    const taskProject = task.projectId
+      ? heroProjects.find((project) => project.id === task.projectId)
+      : undefined;
     const matchesSearch =
       !search ||
       taskNumber.includes(search) ||
       task.titel.toLowerCase().includes(search) ||
       task.beschreibung.toLowerCase().includes(search) ||
+      task.kunde.toLowerCase().includes(search) ||
+      taskProject?.projectNumber?.toLowerCase().includes(search) ||
+      taskProject?.title.toLowerCase().includes(search) ||
       task.zustaendig.toLowerCase().includes(search) ||
       task.participants.some((participant) => participant.userName.toLowerCase().includes(search));
     const matchesDeadlineFilter =
@@ -23496,12 +23525,7 @@ await addProjectLogbookEntry(
       matchesSearch &&
       (!statusFilter || task.status === statusFilter) &&
       matchesDeadlineFilter &&
-      (!priorityFilter || task.prioritaet === priorityFilter) &&
-      (!ownerFilter ||
-        task.createdById === ownerFilter ||
-        task.zustaendigId === ownerFilter ||
-        task.participants.some((participant) => participant.userId === ownerFilter) ||
-        (ownerFilter === activeUserId && isTaskEscalatedToActiveUser(task)))
+      (!priorityFilter || task.prioritaet === priorityFilter)
     );
   }).sort((first, second) => {
     const firstNumber = getTaskNumberValue(first.id, tasks);
@@ -23514,10 +23538,50 @@ await addProjectLogbookEntry(
       (user.id === activeUserId ||
         taskOverviewTasks.some(
           (task) =>
+            task.createdById === user.id ||
             task.zustaendigId === user.id ||
             task.participants.some((participant) => participant.userId === user.id)
         ))
   );
+  const selectedTaskScopeUser = ownerFilter
+    ? users.find((user) => user.id === ownerFilter)
+    : undefined;
+  const mayReviewMultipleTaskScopes =
+    activeUser?.role === "ADMIN" ||
+    activeUser?.role === "GESCHAEFTSFUEHRER" ||
+    activeUser?.role === "FUEHRUNGSKRAFT";
+  const taskModuleTitle = ownerFilter
+    ? ownerFilter === activeUserId
+      ? "Meine Aufgaben"
+      : `Aufgaben von ${selectedTaskScopeUser?.name.split(/\s+/)[0] || "Mitarbeitenden"}`
+    : mayReviewMultipleTaskScopes
+      ? "Aufgaben gesamtes Team"
+      : "Meine Aufgaben";
+  const taskModuleDescription = !ownerFilter && mayReviewMultipleTaskScopes
+    ? "Behalte Zust\u00e4ndigkeiten, Priorit\u00e4ten und Fristen im gesamten Team im Blick."
+    : ownerFilter && ownerFilter !== activeUserId
+      ? `Aufgaben mit Bezug zu ${selectedTaskScopeUser?.name || "der ausgew\u00e4hlten Person"}.`
+      : "Plane, priorisiere und verfolge deine Aufgaben an einem Ort.";
+  const getTaskListContext = (task: TaskItem) => {
+    const project = task.projectId
+      ? heroProjects.find((item) => item.id === task.projectId)
+      : undefined;
+    const projectLabel = project
+      ? [project.projectNumber, project.title].filter(Boolean).join(" - ")
+      : task.projectId
+        ? task.projectId
+        : "";
+
+    return {
+      customer: task.kunde,
+      project: projectLabel,
+      participantLabel:
+        task.participants.length > 0
+          ? `${task.participants.length} Beteiligte${task.participants.length === 1 ? "r" : ""}`
+          : "",
+      participantNames: task.participants.map((participant) => participant.userName).join(", "),
+    };
+  };
   const reportDays = Array.from({ length: 10 }, (_, index) => {
     const day = new Date();
     day.setHours(0, 0, 0, 0);
@@ -52776,11 +52840,12 @@ await addProjectLogbookEntry(
                       {label}
                       <span
                         className={styles.sidebarTaskBadges}
-                        aria-label={`${offene} offene Aufgaben, ${bearbeitung} Aufgaben in Bearbeitung, ${ueberfaellig} ueberfaellige Aufgaben`}
+                        aria-label={`${offene} offene Aufgaben, ${bearbeitung} Aufgaben in Bearbeitung, ${wartetAufRueckmeldung} Aufgaben warten auf R\u00fcckmeldung, ${ueberfaellig} ueberfaellige Aufgaben`}
                       >
-                        {offene > 0 && <span className={styles.sidebarTaskBadge} data-tone="open">{offene}</span>}
-                        {bearbeitung > 0 && <span className={styles.sidebarTaskBadge} data-tone="progress">{bearbeitung}</span>}
-                        {ueberfaellig > 0 && <span className={styles.sidebarTaskBadge} data-tone="overdue">{ueberfaellig}</span>}
+                        {offene > 0 && <span className={styles.sidebarTaskBadge} data-tone="open" title="Offen">{offene}</span>}
+                        {bearbeitung > 0 && <span className={styles.sidebarTaskBadge} data-tone="progress" title="In Bearbeitung">{bearbeitung}</span>}
+                        {wartetAufRueckmeldung > 0 && <span className={styles.sidebarTaskBadge} data-tone="feedback" title="Wartet auf R\u00fcckmeldung">{wartetAufRueckmeldung}</span>}
+                        {ueberfaellig > 0 && <span className={styles.sidebarTaskBadge} data-tone="overdue" title="\u00dcberf\u00e4llig">{ueberfaellig}</span>}
                       </span>
                     </span>
                     <b>{isOpen ? "^" : "v"}</b>
@@ -54837,9 +54902,9 @@ await addProjectLogbookEntry(
                         <td colSpan={7}>Noch keine Aufgaben im Archiv.</td>
                       </tr>
                     ) : (
-                      archivedTasks.map((task, index) => (
+                      archivedTasks.map((task) => (
                         <tr key={task.id}>
-                          <td className={styles.number}>A-{1001 + index}</td>
+                          <td className={styles.number}>{getTaskNumber(task.id, tasks)}</td>
                           <td className={styles.title}>
                             {task.titel}
                             {task.beschreibung && (
@@ -55415,36 +55480,35 @@ await addProjectLogbookEntry(
             renderReportsAnalytics()
           ) : (
             <>
-              <div className={styles.topline}>
+              <header className={styles.taskModuleHeader}>
                 <div>
-                  <p className={styles.eyebrow}>WorkPilot</p>
-                  <h1>Meine Aufgaben</h1>
-                  <p className={styles.subline}>
-                    Plane, priorisiere und verfolge deine Aufgaben an einem Ort.
-                  </p>
+                  <p className={styles.taskModuleEyebrow}>Aufgabensteuerung</p>
+                  <h1>{taskModuleTitle}</h1>
+                  <p>{taskModuleDescription}</p>
                 </div>
 
                 <button className={styles.primaryButton} onClick={() => openCreateModal()}>
                   Neue Aufgabe
                 </button>
-              </div>
+              </header>
 
-              <section className={styles.cards}>
+              <section className={styles.taskSummaryStrip} aria-label="Aufgabenstatus">
                 <button
-                  className={`${styles.card} ${styles.clickableCard}`}
+                  className={styles.taskSummaryMetric}
+                  data-active={!statusFilter && !deadlineFilter}
                   onClick={() => {
                     setStatusFilter("");
-                  setDeadlineFilter("");
-                }}
-              >
-                <span>Gesamt</span>
-                  <strong>{taskOverviewTasks.length}</strong>
+                    setDeadlineFilter("");
+                  }}
+                >
+                  <span>Gesamt</span>
+                  <strong>{taskPersonScopeTasks.length}</strong>
                 </button>
 
                 <button
-                  className={`${styles.card} ${styles.clickableCard} ${
-                    offene > 0 ? styles.warningCard : ""
-                  }`}
+                  className={styles.taskSummaryMetric}
+                  data-active={statusFilter === "offen" && !deadlineFilter}
+                  data-tone={offene > 0 ? "amber" : "neutral"}
                   onClick={() => {
                     setStatusFilter("offen");
                     setDeadlineFilter("");
@@ -55458,20 +55522,65 @@ await addProjectLogbookEntry(
                 </button>
 
                 <button
-                  className={`${styles.card} ${styles.clickableCard}`}
+                  className={styles.taskSummaryMetric}
+                  data-active={statusFilter === "in Bearbeitung" && !deadlineFilter}
+                  data-tone={bearbeitung > 0 ? "green" : "neutral"}
                   onClick={() => {
                     setStatusFilter("in Bearbeitung");
                     setDeadlineFilter("");
                   }}
                 >
-                  <span>In Bearbeitung</span>
+                  <span>
+                    In Bearbeitung
+                    {bearbeitung > 0 && <span className={styles.taskProgressPulse} aria-hidden="true" />}
+                  </span>
                   <strong>{bearbeitung}</strong>
                 </button>
 
                 <button
-                  className={`${styles.card} ${styles.clickableCard} ${
-                    ueberfaellig > 0 ? styles.alertCard : ""
-                  }`}
+                  className={styles.taskSummaryMetric}
+                  data-active={statusFilter === "wartet auf R\u00fcckmeldung" && !deadlineFilter}
+                  data-tone={wartetAufRueckmeldung > 0 ? "blue" : "neutral"}
+                  onClick={() => {
+                    setStatusFilter("wartet auf R\u00fcckmeldung");
+                    setDeadlineFilter("");
+                  }}
+                >
+                  <span>
+                    Rückmeldung
+                    {wartetAufRueckmeldung > 0 && <span className={styles.taskFeedbackMarker} aria-hidden="true" />}
+                  </span>
+                  <strong>{wartetAufRueckmeldung}</strong>
+                </button>
+
+                <button
+                  className={styles.taskSummaryMetric}
+                  data-active={statusFilter === "erledigt" && !deadlineFilter}
+                  onClick={() => {
+                    setStatusFilter("erledigt");
+                    setDeadlineFilter("");
+                  }}
+                >
+                  <span>Erledigt</span>
+                  <strong>{erledigt}</strong>
+                </button>
+
+                <button
+                  className={styles.taskSummaryMetric}
+                  data-active={statusFilter === "abgelehnt" && !deadlineFilter}
+                  onClick={() => {
+                    setStatusFilter("abgelehnt");
+                    setDeadlineFilter("");
+                  }}
+                >
+                  <span>Abgelehnt</span>
+                  <strong>{abgelehnt}</strong>
+                </button>
+
+                <button
+                  className={styles.taskSummaryMetric}
+                  data-active={deadlineFilter === "due"}
+                  data-tone={ueberfaellig > 0 ? "red" : "neutral"}
                   onClick={() => {
                     setStatusFilter("");
                     setDeadlineFilter("due");
@@ -55483,26 +55592,15 @@ await addProjectLogbookEntry(
                   </span>
                   <strong>{ueberfaellig}</strong>
                 </button>
-
-                <button
-                  className={`${styles.card} ${styles.clickableCard}`}
-                  onClick={() => {
-                    setStatusFilter("erledigt");
-                    setDeadlineFilter("");
-                  }}
-                >
-                  <span>Erledigt</span>
-                  <strong>{erledigt}</strong>
-                </button>
               </section>
 
-              <section className={styles.filterBar}>
+              <section className={`${styles.filterBar} ${styles.taskFilterBar}`}>
                 <label>
                   Suche
                   <input
                     value={searchTerm}
                     onChange={(event) => setSearchTerm(event.target.value)}
-                    placeholder="Aufgabennummer, Aufgabe, Zuständigkeit"
+                    placeholder="Nummer, Aufgabe, Kunde, Projekt oder Person"
                   />
                 </label>
 
@@ -55536,8 +55634,8 @@ await addProjectLogbookEntry(
                   </select>
                 </label>
 
-                <label>
-                  Zuständig / beteiligt
+                <label title="Zuständig, erstellt, beteiligt oder eskaliert">
+                  Personenbezug
                   <select
                     value={ownerFilter}
                     onChange={(event) => setOwnerFilter(event.target.value)}
@@ -55592,13 +55690,21 @@ await addProjectLogbookEntry(
                   </thead>
 
                   <tbody>
-                    {filteredTasks.map((task) => (
-                      <tr
-                        key={task.id}
-                        onClick={() => openEditModal(task)}
-                        className={styles.clickableRow}
-                        data-status={task.status}
-                      >
+                    {filteredTasks.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className={styles.taskEmptyTableState}>
+                          Keine Aufgaben für die gewählten Filter gefunden.
+                        </td>
+                      </tr>
+                    ) : filteredTasks.map((task) => {
+                      const context = getTaskListContext(task);
+                      return (
+                        <tr
+                          key={task.id}
+                          onClick={() => openEditModal(task)}
+                          className={styles.clickableRow}
+                          data-status={task.status}
+                        >
                         <td className={styles.number}>
                           <span className={styles.taskNumberStack}>
                             {task.status === "erledigt" && (
@@ -55611,7 +55717,16 @@ await addProjectLogbookEntry(
                           {task.titel}
                           {task.beschreibung && (
                             <span className={styles.description}>
-                              {truncateText(task.beschreibung, 30)}
+                              {truncateText(task.beschreibung, 76)}
+                            </span>
+                          )}
+                          {(context.customer || context.project || context.participantLabel) && (
+                            <span className={styles.taskContextLine}>
+                              {context.customer && <span>Kunde: {context.customer}</span>}
+                              {context.project && <span>Projekt: {context.project}</span>}
+                              {context.participantLabel && (
+                                <span title={context.participantNames}>{context.participantLabel}</span>
+                              )}
                             </span>
                           )}
                           {getTaskAcceptanceStatusForActiveUser(task) === "pending" && (
@@ -55666,9 +55781,21 @@ await addProjectLogbookEntry(
                           )}
                         </td>
                         <td>
-                          {getTaskAcceptanceStatusForActiveUser(task) === "pending" &&
-                          (task.zustaendigId === activeUserId || getActiveUserParticipant(task)) ? (
-                            <div className={styles.actionGroup}>
+                          <div className={styles.taskRowActions}>
+                            <button
+                              type="button"
+                              className={styles.taskHistoryRowButton}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openTaskHistory(task);
+                              }}
+                            >
+                              Historie
+                              {task.history.length > 0 && <span>{task.history.length}</span>}
+                            </button>
+                            {getTaskAcceptanceStatusForActiveUser(task) === "pending" &&
+                            (task.zustaendigId === activeUserId || getActiveUserParticipant(task)) ? (
+                              <>
                               <button
                                 onClick={(event) => respondToTask(event, task, "accepted")}
                                 className={styles.acceptButton}
@@ -55681,20 +55808,20 @@ await addProjectLogbookEntry(
                               >
                                 Ablehnen
                               </button>
-                            </div>
-                          ) : canManageUsers(activeUser?.role) ? (
-                            <button
-                              onClick={(event) => deleteTask(event, task.id)}
-                              className={styles.deleteButton}
-                            >
-                              Archivieren
-                            </button>
-                          ) : (
-                            <span className={styles.metaLine}>Keine Rechte</span>
-                          )}
+                              </>
+                            ) : canManageUsers(activeUser?.role) ? (
+                              <button
+                                onClick={(event) => deleteTask(event, task.id)}
+                                className={styles.taskArchiveButton}
+                              >
+                                Archivieren
+                              </button>
+                            ) : null}
+                          </div>
                         </td>
-                      </tr>
-                    ))}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </section>
@@ -60843,20 +60970,18 @@ await addProjectLogbookEntry(
                       X
                     </button>
                   </div>
-                  <div className={styles.taskHistoryList}>
+                  <div className={styles.taskHistoryTimeline}>
                     {editingTask.history.length === 0 ? (
                       <p className={styles.emptyState}>Noch keine Historie vorhanden.</p>
                     ) : (
                       [...editingTask.history].reverse().map((entry) => (
-                        <article key={entry.id} className={styles.taskHistoryItem}>
-                          <div>
+                        <article key={entry.id} className={styles.taskHistoryTimelineItem}>
+                          <time>{formatInstantDateTime(entry.createdAt)}</time>
+                          <div className={styles.taskHistoryTimelineContent}>
                             <strong>{entry.event}</strong>
-                            <span>{formatInstantDateTime(entry.createdAt)}</span>
+                            {entry.note && <p>{entry.note}</p>}
                           </div>
-                          <p>
-                            {entry.actorName}
-                            {entry.note ? ` - ${entry.note}` : ""}
-                          </p>
+                          <span>{entry.actorName}</span>
                         </article>
                       ))
                     )}
@@ -60886,7 +61011,7 @@ await addProjectLogbookEntry(
 
             <div className={styles.standardModalBody}>
             <div
-              className={`${styles.standardFormGrid} ${isTaskEditingLocked() ? styles.taskLockedForm : ""}`}
+              className={`${styles.standardFormGrid} ${styles.taskDetailForm} ${isTaskEditingLocked() ? styles.taskLockedForm : ""}`}
               onClickCapture={() => {
                 if (isTaskEditingLocked()) showTaskAcceptanceRequiredMessage();
               }}
