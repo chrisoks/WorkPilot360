@@ -24248,6 +24248,22 @@ await addProjectLogbookEntry(
       const progressDetails = getGoalProgressDetails(goal, actualValue);
       const owner = getGoalOwner(goal);
       const isLimitGoal = isLowerBetterGoalMetric(goal.metricKey);
+      const periodExpired = normalizeGoalPeriodEnd(goal.periodEnd) < formatDateKey(new Date());
+      const displayStatus = progressDetails.reached
+        ? "reached"
+        : progressDetails.status === "over"
+          ? "critical"
+          : periodExpired
+            ? "expired"
+            : "active";
+      const displayStatusLabel =
+        displayStatus === "reached"
+          ? "Erreicht"
+          : displayStatus === "critical"
+            ? "Grenzwert überschritten"
+            : displayStatus === "expired"
+              ? "Zeitraum beendet"
+              : "Im Zeitraum";
 
       return (
         <article
@@ -24255,14 +24271,16 @@ await addProjectLogbookEntry(
           className={styles.goalCard}
           data-reached={progressDetails.reached}
           data-status={progressDetails.status}
+          data-display-status={displayStatus}
           data-period={breakdown.periodType}
         >
           <div className={styles.goalCardHeader}>
             <div>
-              <span>{metric.label}</span>
+              <span className={styles.goalMetricLabel}>{metric.label}</span>
               <h3>{goal.title || metric.label} {owner?.name || goal.ownerName ? <small>{owner?.name || goal.ownerName}</small> : null}</h3>
             </div>
             <div className={styles.goalCardHeaderActions}>
+              <span className={styles.goalStatusBadge} data-status={displayStatus}>{displayStatusLabel}</span>
               {canManageGoalsInView ? (
                 <>
                   <button type="button" onClick={() => openEditGoalForm(goal)}>
@@ -24292,23 +24310,31 @@ await addProjectLogbookEntry(
             </div>
           ) : null}
 
-          <div className={styles.goalAggregateLabel}>
-            <strong>{breakdown.aggregateLabel}</strong>
-          </div>
           <div className={styles.goalProgressRow}>
-            <div className={styles.goalProgressBar}>
-              <span style={{ width: `${progressDetails.actualPosition}%` }} />
-              <i style={{ left: `${progressDetails.targetPosition}%` }} />
-              <em style={{ left: `${progressDetails.targetPosition}%` }}>
-                {isLimitGoal ? "Grenze" : "Ziel"}: {formatGoalValue(progressDetails.targetValue, goal.metricKey)}
-              </em>
+            <div className={styles.goalValueSummary}>
+              <span>{breakdown.aggregateLabel}</span>
+              <strong>{formatGoalValue(actualValue, goal.metricKey)}</strong>
+              <small>
+                {isLimitGoal ? "Grenzwert" : "Zielwert"}: {formatGoalValue(progressDetails.targetValue, goal.metricKey)}
+              </small>
             </div>
-            <strong>{formatGoalValue(actualValue, goal.metricKey)}</strong>
+            <div className={styles.goalProgressTrack}>
+              <div className={styles.goalProgressBar}>
+                <span style={{ width: `${progressDetails.actualPosition}%` }} />
+                <i style={{ left: `${progressDetails.targetPosition}%` }} />
+                <em style={{ left: `${progressDetails.targetPosition}%` }}>
+                  {isLimitGoal ? "Grenze" : "Ziel"}: {formatGoalValue(progressDetails.targetValue, goal.metricKey)}
+                </em>
+              </div>
+              <span className={styles.goalProgressRelation}>
+                {progressDetails.relationPercent}% vom {isLimitGoal ? "Grenzwert" : "Zielwert"}
+              </span>
+            </div>
           </div>
           <dl className={styles.goalMetaGrid}>
             <div>
-              <dt>Stand</dt>
-              <dd>{progressDetails.relationPercent}% vom Zielwert</dd>
+              <dt>Bewertung</dt>
+              <dd>{displayStatusLabel}</dd>
             </div>
             <div>
               <dt>Zielart</dt>
@@ -24437,16 +24463,21 @@ await addProjectLogbookEntry(
               </div>
               <button
                 type="button"
-                className={styles.secondaryButton}
+                className={styles.goalModalClose}
+                aria-label="Zielmaske schließen"
                 onClick={() => {
                   resetGoalDraft(goalDraft.ownerUserId);
                   setIsGoalFormOpen(false);
                 }}
               >
-                Abbrechen
+                ×
               </button>
             </div>
             <div className={styles.goalCreateGrid}>
+              <div className={styles.goalFormSectionTitle}>
+                <strong>Zieldefinition</strong>
+                <span>Mitarbeiter, Kennzahl und Zielwert festlegen.</span>
+              </div>
               <label>
                 Mitarbeiter
                 <select
@@ -24460,7 +24491,7 @@ await addProjectLogbookEntry(
                   ))}
                 </select>
               </label>
-              <label>
+              <label className={styles.goalWideField}>
                 KPI
                 <select
                   value={goalDraft.metricKey}
@@ -24483,6 +24514,10 @@ await addProjectLogbookEntry(
                 </select>
                 <small>{selectedMetric.hint}</small>
               </label>
+              <div className={styles.goalFormSectionTitle}>
+                <strong>Zeitraum und Zielwert</strong>
+                <span>Auswertungszeitraum und vereinbarten Sollwert bestimmen.</span>
+              </div>
               <label>
                 Zeitraumtyp
                 <select
@@ -24587,6 +24622,10 @@ await addProjectLogbookEntry(
                 />
               </label>
             </div>
+            <div className={styles.goalFormSectionTitle} data-outside-grid="true">
+              <strong>Zusätzliche Information</strong>
+              <span>Optionalen Kontext für die Zielvereinbarung ergänzen.</span>
+            </div>
             <label className={styles.goalDescriptionField}>
               Notiz
               <textarea
@@ -24596,9 +24635,21 @@ await addProjectLogbookEntry(
               />
             </label>
             {goalError ? <p className={styles.formError}>{goalError}</p> : null}
+            <div className={styles.goalModalActions}>
+            <button
+              className={styles.secondaryButton}
+              type="button"
+              onClick={() => {
+                resetGoalDraft(goalDraft.ownerUserId);
+                setIsGoalFormOpen(false);
+              }}
+            >
+              Abbrechen
+            </button>
             <button className={styles.primaryButton} type="button" onClick={saveGoal} disabled={isGoalSaving}>
               {isGoalSaving ? "Speichere..." : editingGoalId ? "Änderungen speichern" : "+ Ziel anlegen"}
             </button>
+            </div>
           </section>
           </div>
         ) : null}
@@ -54282,14 +54333,14 @@ await addProjectLogbookEntry(
               renderProjectFile()
             ) : (
             <section className={styles.settingsPanel}>
-              <div className={styles.topline}>
+              <header className={`${styles.taskModuleHeader} ${styles.projectPipelineModuleHeader}`}>
                 <div>
-                  <p className={styles.eyebrow}>Projektpipeline</p>
+                  <p className={styles.taskModuleEyebrow}>Projektpipeline</p>
                   <h1>{projectPipelineTitle}</h1>
-                  <p className={styles.subline}>{projectPipelineSubline}</p>
+                  <p>{projectPipelineSubline}</p>
                 </div>
 
-                <div className={styles.actionGroup}>
+                <div className={styles.projectPipelineHeaderActions}>
                   {projectPipelines.map((pipeline) => (
                     <button
                       key={pipeline.id}
@@ -54312,7 +54363,7 @@ await addProjectLogbookEntry(
                     {isHeroProjectsLoading ? "Projekte werden geladen..." : "Projekte neu laden"}
                   </button>
                 </div>
-              </div>
+              </header>
 
               <section className={styles.heroSearchBar}>
                 <label>
