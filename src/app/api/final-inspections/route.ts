@@ -8,6 +8,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
+import { getBerlinMonthKey } from "@/lib/date-time";
 
 const A4_WIDTH = 595.276;
 const INK = rgb(0.08, 0.1, 0.14);
@@ -301,6 +302,7 @@ export async function POST(req: Request) {
   await ensureTables();
 
   const now = new Date();
+  const projectMonth = getBerlinMonthKey(now);
   const projectReference = await getProjectReference(organization.id, projectId);
   const company = cleanString(projectReference?.branch) || "";
   const resolvedProjectLabel =
@@ -356,7 +358,8 @@ export async function POST(req: Request) {
       "authorUserId",
       "colleague",
       "visibleFor",
-      "attachments"
+      "attachments",
+      "projectMonth"
     )
     VALUES (
       ${randomUUID()},
@@ -368,7 +371,8 @@ export async function POST(req: Request) {
       ${actor.id},
       ${status === "colleague" ? "Endkontrolle durch Kollegen" : ""},
       ${JSON.stringify(["Geschaeftsfuehrer", "Vertriebler", "Niederlassungsleiter", "Monteur", "Buchhaltung"])}::jsonb,
-      ${JSON.stringify(attachments)}::jsonb
+      ${JSON.stringify(attachments)}::jsonb,
+      ${projectMonth || null}
     )
     RETURNING "id"
   `;

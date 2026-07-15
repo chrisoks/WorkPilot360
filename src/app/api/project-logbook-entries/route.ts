@@ -4,6 +4,7 @@ import type { User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
+import { formatBerlinDateTime, getBerlinMonthKey } from "@/lib/date-time";
 import {
   canArchiveProjects,
   canCreateProjectLogbookEntries,
@@ -259,21 +260,11 @@ function validateAttachments(attachments: LogbookAttachment[]) {
   return null;
 }
 
-function formatDateTime(value: Date) {
-  return new Intl.DateTimeFormat("de-DE", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(value);
-}
-
 function formatEntry(entry: ProjectLogbookEntryRow) {
   return {
     id: entry.id,
     projectId: entry.projectId,
-    date: formatDateTime(entry.createdAt),
+    date: formatBerlinDateTime(entry.createdAt),
     title: entry.title || "Eintrag",
     text: entry.body,
     author: entry.author || "",
@@ -281,7 +272,7 @@ function formatEntry(entry: ProjectLogbookEntryRow) {
     colleague: entry.colleague || "",
     visibleFor: cleanStringList(entry.visibleFor),
     attachments: cleanAttachments(entry.attachments),
-    projectMonth: entry.projectMonth || "",
+    projectMonth: entry.projectMonth || getBerlinMonthKey(entry.createdAt),
     updatedAt: entry.updatedAt.toISOString(),
   };
 }
@@ -292,14 +283,14 @@ function formatEntrySummary(entry: ProjectLogbookEntryRow) {
   return {
     id: entry.id,
     projectId: entry.projectId,
-    date: formatDateTime(entry.createdAt),
+    date: formatBerlinDateTime(entry.createdAt),
     title: entry.title || "Eintrag",
     text: entry.body,
     author: entry.author || "",
     authorUserId: entry.authorUserId || "",
     colleague: entry.colleague || "",
     visibleFor: cleanStringList(entry.visibleFor),
-    projectMonth: entry.projectMonth || "",
+    projectMonth: entry.projectMonth || getBerlinMonthKey(entry.createdAt),
     updatedAt: entry.updatedAt.toISOString(),
     attachments: attachments.map((attachment) => ({
       name: attachment.name,
