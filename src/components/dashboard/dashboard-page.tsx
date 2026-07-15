@@ -35647,6 +35647,7 @@ await addProjectLogbookEntry(
                     type="button"
                     data-active={potentialStatusFilter === item.value}
                     data-tone={item.tone}
+                    aria-pressed={potentialStatusFilter === item.value}
                     onClick={() => setPotentialStatusFilter(item.value)}
                   >
                     <span>{item.label}</span>
@@ -35659,6 +35660,7 @@ await addProjectLogbookEntry(
               type="button"
               className={styles.potentialDueFilter}
               data-active={potentialStatusFilter === "due"}
+              aria-pressed={potentialStatusFilter === "due"}
               onClick={() => setPotentialStatusFilter("due")}
             >
               <span>Fällig</span>
@@ -48992,14 +48994,16 @@ await addProjectLogbookEntry(
 
         <section className={styles.catalogTypeStrip} aria-label="Stammdatenbereiche">
           {[
-            { label: "Artikel", value: "articles", count: articleCount },
-            { label: "Leistungen", value: "services", count: serviceCount },
-            { label: "Pakete", value: "packages", count: packageCount },
+            { label: "Artikel", value: "articles", count: articleCount, tone: "blue" },
+            { label: "Leistungen", value: "services", count: serviceCount, tone: "teal" },
+            { label: "Pakete", value: "packages", count: packageCount, tone: "indigo" },
           ].map((item) => (
             <button
               key={item.label}
               className={styles.catalogTypeButton}
               data-active={activeTab === item.value}
+              data-tone={item.tone}
+              aria-pressed={activeTab === item.value}
               onClick={() => {
                 if (item.value === "articles") {
                   openMainView("articles");
@@ -54603,11 +54607,11 @@ await addProjectLogbookEntry(
             renderCustomerFile()
           ) : (
             <section className={styles.contactsPanel}>
-              <div className={styles.topline}>
+              <header className={`${styles.taskModuleHeader} ${styles.contactModuleHeader}`}>
                 <div>
-                  <p className={styles.eyebrow}>CRM</p>
+                  <p className={styles.taskModuleEyebrow}>CRM</p>
                   <h1>Kontakte</h1>
-                  <p className={styles.subline}>
+                  <p>
                     Kunden, Lieferanten, Partner und Ansprechpartner zentral verwalten.
                   </p>
                 </div>
@@ -54615,21 +54619,23 @@ await addProjectLogbookEntry(
                 <button className={styles.primaryButton} onClick={() => openCreateContactModal()}>
                   + Kontakt
                 </button>
-              </div>
+              </header>
 
               <section className={styles.contactSummaryGrid}>
                 {[
-                  { label: "Alle", value: "", count: contacts.length },
-                  { label: "Kunden", value: "Kunde", count: contactCategoryCounts.Kunde ?? 0 },
-                  { label: "Privatkunden", value: "Privatkunde", count: contactCategoryCounts.Privatkunde ?? 0 },
-                  { label: "Lieferanten", value: "Lieferant", count: contactCategoryCounts.Lieferant ?? 0 },
-                  { label: "Partner", value: "Partner", count: contactCategoryCounts.Partner ?? 0 },
-                  { label: "Ansprechpartner", value: "Ansprechpartner", count: contactCategoryCounts.Ansprechpartner ?? 0 },
+                  { label: "Alle", value: "", count: contacts.length, tone: "neutral" },
+                  { label: "Kunden", value: "Kunde", count: contactCategoryCounts.Kunde ?? 0, tone: "blue" },
+                  { label: "Privatkunden", value: "Privatkunde", count: contactCategoryCounts.Privatkunde ?? 0, tone: "teal" },
+                  { label: "Lieferanten", value: "Lieferant", count: contactCategoryCounts.Lieferant ?? 0, tone: "amber" },
+                  { label: "Partner", value: "Partner", count: contactCategoryCounts.Partner ?? 0, tone: "indigo" },
+                  { label: "Ansprechpartner", value: "Ansprechpartner", count: contactCategoryCounts.Ansprechpartner ?? 0, tone: "cyan" },
                 ].map((item) => (
                   <button
                     key={item.label}
                     className={styles.contactSummaryCard}
                     data-active={contactCategoryFilter === item.value}
+                    data-tone={item.tone}
+                    aria-pressed={contactCategoryFilter === item.value}
                     onClick={() => setContactCategoryFilter(item.value)}
                   >
                     <span>{item.label}</span>
@@ -55814,6 +55820,7 @@ await addProjectLogbookEntry(
                 <button
                   className={styles.taskSummaryMetric}
                   data-active={!statusFilter && !deadlineFilter}
+                  aria-pressed={!statusFilter && !deadlineFilter}
                   onClick={() => {
                     setStatusFilter("");
                     setDeadlineFilter("");
@@ -55827,6 +55834,7 @@ await addProjectLogbookEntry(
                   className={styles.taskSummaryMetric}
                   data-active={statusFilter === "offen" && !deadlineFilter}
                   data-tone={offene > 0 ? "amber" : "neutral"}
+                  aria-pressed={statusFilter === "offen" && !deadlineFilter}
                   onClick={() => {
                     setStatusFilter("offen");
                     setDeadlineFilter("");
@@ -55843,6 +55851,7 @@ await addProjectLogbookEntry(
                   className={styles.taskSummaryMetric}
                   data-active={statusFilter === "in Bearbeitung" && !deadlineFilter}
                   data-tone={bearbeitung > 0 ? "green" : "neutral"}
+                  aria-pressed={statusFilter === "in Bearbeitung" && !deadlineFilter}
                   onClick={() => {
                     setStatusFilter("in Bearbeitung");
                     setDeadlineFilter("");
@@ -55859,6 +55868,7 @@ await addProjectLogbookEntry(
                   className={styles.taskSummaryMetric}
                   data-active={statusFilter === "wartet auf R\u00fcckmeldung" && !deadlineFilter}
                   data-tone={wartetAufRueckmeldung > 0 ? "blue" : "neutral"}
+                  aria-pressed={statusFilter === "wartet auf R\u00fcckmeldung" && !deadlineFilter}
                   onClick={() => {
                     setStatusFilter("wartet auf R\u00fcckmeldung");
                     setDeadlineFilter("");
@@ -55874,6 +55884,7 @@ await addProjectLogbookEntry(
                 <button
                   className={styles.taskSummaryMetric}
                   data-active={statusFilter === "erledigt" && !deadlineFilter}
+                  aria-pressed={statusFilter === "erledigt" && !deadlineFilter}
                   onClick={() => {
                     setStatusFilter("erledigt");
                     setDeadlineFilter("");
@@ -55886,6 +55897,7 @@ await addProjectLogbookEntry(
                 <button
                   className={styles.taskSummaryMetric}
                   data-active={statusFilter === "abgelehnt" && !deadlineFilter}
+                  aria-pressed={statusFilter === "abgelehnt" && !deadlineFilter}
                   onClick={() => {
                     setStatusFilter("abgelehnt");
                     setDeadlineFilter("");
@@ -55899,6 +55911,7 @@ await addProjectLogbookEntry(
                   className={styles.taskSummaryMetric}
                   data-active={deadlineFilter === "due"}
                   data-tone={ueberfaellig > 0 ? "red" : "neutral"}
+                  aria-pressed={deadlineFilter === "due"}
                   onClick={() => {
                     setStatusFilter("");
                     setDeadlineFilter("due");

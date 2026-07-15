@@ -5369,57 +5369,99 @@
 
 .potentialWorkflowFilters button,
 .potentialDueFilter {
-  background: #ffffff;
-  border: 1px solid #d8e0ea;
-  border-radius: 8px;
+  --potential-accent: #64748b;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid #cbd5e1;
+  border-bottom-color: #aebccc;
+  border-radius: 10px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    0 3px 0 #d8e0e9,
+    0 8px 16px rgba(15, 23, 42, 0.07);
   color: #0f172a;
   cursor: pointer;
   display: grid;
   font: inherit;
   gap: 5px;
-  min-height: 68px;
+  min-height: 76px;
   min-width: 0;
-  padding: 9px 12px;
+  overflow: hidden;
+  padding: 14px 14px 12px;
+  position: relative;
   text-align: left;
-  transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+  transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.potentialWorkflowFilters button::before,
+.potentialDueFilter::before {
+  background: var(--potential-accent);
+  content: "";
+  height: 3px;
+  inset: 0 0 auto;
+  opacity: 0.78;
+  position: absolute;
 }
 
 .potentialWorkflowFilters button:hover {
-  background: #f8fafc;
+  background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
   border-color: #94a3b8;
+  box-shadow:
+    inset 0 1px 0 #ffffff,
+    0 4px 0 #cbd5e1,
+    0 11px 20px rgba(15, 23, 42, 0.1);
+  transform: translateY(-2px);
 }
 
 .potentialWorkflowFilters button[data-active="true"] {
-  background: #f8fafc;
-  border-color: #64748b;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 42%),
+    #0b1020;
+  border-color: #0b1020;
   box-shadow:
-    0 0 0 2px rgba(15, 23, 42, 0.82),
-    0 6px 14px rgba(15, 23, 42, 0.12);
-  transform: translateY(-1px);
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 3px 0 #020617,
+    0 10px 20px rgba(15, 23, 42, 0.22);
+  transform: translateY(-2px);
+}
+
+.potentialWorkflowFilters button[data-active="true"]::before {
+  height: 4px;
+  opacity: 1;
 }
 
 .potentialWorkflowFilters button[data-tone="amber"] {
+  --potential-accent: #d99a16;
   border-color: #f5b942;
 }
 
 .potentialWorkflowFilters button[data-tone="blue"] {
+  --potential-accent: #0f9fa8;
   border-color: #67b7c8;
 }
 
 .potentialWorkflowFilters button[data-tone="green"] {
+  --potential-accent: #22a95a;
   border-color: #65c98b;
 }
 
 .potentialWorkflowFilters button[data-tone="amber"][data-active="true"] {
-  background: #fffbeb;
+  background: #0b1020;
 }
 
 .potentialWorkflowFilters button[data-tone="blue"][data-active="true"] {
-  background: #f0fdfa;
+  background: #0b1020;
 }
 
 .potentialWorkflowFilters button[data-tone="green"][data-active="true"] {
-  background: #f0fdf4;
+  background: #0b1020;
+}
+
+.potentialWorkflowFilters button[data-active="true"] span {
+  color: #cbd5e1;
+}
+
+.potentialWorkflowFilters button[data-active="true"] strong {
+  color: #ffffff;
 }
 
 .potentialWorkflowFilters span,
@@ -5438,6 +5480,7 @@
 }
 
 .potentialDueFilter {
+  --potential-accent: #ef4444;
   border-color: #ef6b73;
   grid-column: 7;
 }
@@ -5449,15 +5492,22 @@
 }
 
 .potentialDueFilter[data-active="true"] {
+  background: linear-gradient(180deg, #b91c1c 0%, #991b1b 100%);
   box-shadow:
-    0 0 0 2px rgba(185, 28, 28, 0.72),
-    0 6px 14px rgba(185, 28, 28, 0.12);
-  transform: translateY(-1px);
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 3px 0 #7f1d1d,
+    0 10px 20px rgba(185, 28, 28, 0.2);
+  transform: translateY(-2px);
 }
 
 .potentialDueFilter span,
 .potentialDueFilter strong {
   color: #b91c1c;
+}
+
+.potentialDueFilter[data-active="true"] span,
+.potentialDueFilter[data-active="true"] strong {
+  color: #ffffff;
 }
 
 .potentialOverviewCard {
@@ -10732,6 +10782,10 @@
   min-width: 0;
 }
 
+.contactModuleHeader {
+  margin-bottom: 0;
+}
+
 .contactSummaryGrid {
   background: transparent;
   border: 0;
@@ -10741,30 +10795,85 @@
 }
 
 .contactSummaryCard {
-  background: #ffffff;
-  border: 1px solid #d8e0ea;
-  border-radius: 8px;
+  --contact-accent: #64748b;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid #cbd5e1;
+  border-bottom-color: #aebccc;
+  border-radius: 10px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    0 3px 0 #d8e0e9,
+    0 8px 16px rgba(15, 23, 42, 0.07);
   cursor: pointer;
   display: grid;
   gap: 6px;
-  min-height: 70px;
-  padding: 11px 14px;
+  min-height: 76px;
+  overflow: hidden;
+  padding: 14px 15px 12px;
+  position: relative;
   text-align: left;
-  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
+}
+
+.contactSummaryCard::before {
+  background: var(--contact-accent);
+  content: "";
+  height: 3px;
+  inset: 0 0 auto;
+  opacity: 0.78;
+  position: absolute;
+}
+
+.contactSummaryCard[data-tone="blue"] {
+  --contact-accent: #2563eb;
+}
+
+.contactSummaryCard[data-tone="teal"] {
+  --contact-accent: #0f9fa8;
+}
+
+.contactSummaryCard[data-tone="amber"] {
+  --contact-accent: #d99a16;
+}
+
+.contactSummaryCard[data-tone="indigo"] {
+  --contact-accent: #6366f1;
+}
+
+.contactSummaryCard[data-tone="cyan"] {
+  --contact-accent: #0891b2;
 }
 
 .contactSummaryCard:hover {
-  background: #f8fafc;
+  background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
   border-color: #94a3b8;
+  box-shadow:
+    inset 0 1px 0 #ffffff,
+    0 4px 0 #cbd5e1,
+    0 11px 20px rgba(15, 23, 42, 0.1);
+  transform: translateY(-2px);
 }
 
 .contactSummaryCard[data-active="true"] {
-  background: #f8fafc;
-  border-color: #64748b;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 42%),
+    #0b1020;
+  border-color: #0b1020;
   box-shadow:
-    0 0 0 2px rgba(15, 23, 42, 0.82),
-    0 6px 14px rgba(15, 23, 42, 0.12);
-  transform: translateY(-1px);
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 3px 0 #020617,
+    0 10px 20px rgba(15, 23, 42, 0.22);
+  transform: translateY(-2px);
+}
+
+.contactSummaryCard[data-active="true"]::before {
+  box-shadow: 0 0 12px color-mix(in srgb, var(--contact-accent) 64%, transparent);
+  height: 4px;
+  opacity: 1;
 }
 
 .contactSummaryCard span {
@@ -10776,7 +10885,16 @@
 .contactSummaryCard strong {
   color: var(--ink);
   font-size: 1.5rem;
+  font-weight: 950;
   line-height: 1;
+}
+
+.contactSummaryCard[data-active="true"] span {
+  color: #cbd5e1;
+}
+
+.contactSummaryCard[data-active="true"] strong {
+  color: #ffffff;
 }
 
 .contactToolbar {
@@ -10831,24 +10949,40 @@
 
 .contactActionIconButton {
   align-items: center;
-  background: #f8fafc;
+  background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
   border: 1px solid #cbd5e1;
+  border-bottom-color: #aebccc;
   border-radius: 8px;
+  box-shadow:
+    inset 0 1px 0 #ffffff,
+    0 2px 0 #d8e0e9,
+    0 5px 10px rgba(15, 23, 42, 0.07);
   color: #173b68;
   cursor: pointer;
   display: inline-flex;
   height: 38px;
   justify-content: center;
   padding: 0;
-  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
   width: 42px;
 }
 
-.contactActionIconButton:hover,
-.contactActionIconButton[aria-expanded="true"] {
-  background: #eef4fb;
+.contactActionIconButton:hover {
+  background: linear-gradient(180deg, #ffffff 0%, #e8eef6 100%);
   border-color: #9fb2ca;
-  box-shadow: none;
+  box-shadow:
+    inset 0 1px 0 #ffffff,
+    0 3px 0 #c4cfdd,
+    0 7px 12px rgba(15, 23, 42, 0.1);
+  transform: translateY(-1px);
+}
+
+.contactActionIconButton[aria-expanded="true"] {
+  background: #0b1020;
+  border-color: #0b1020;
+  box-shadow: 0 2px 0 #020617;
+  color: #ffffff;
+  transform: translateY(1px);
 }
 
 .contactActionIcon {
@@ -20645,31 +20779,74 @@
 }
 
 .catalogTypeButton {
-  background: #ffffff;
-  border: 1px solid #d8e0ea;
-  border-radius: 8px;
+  --catalog-accent: #64748b;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid #cbd5e1;
+  border-bottom-color: #aebccc;
+  border-radius: 10px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    0 3px 0 #d8e0e9,
+    0 8px 16px rgba(15, 23, 42, 0.07);
   color: #475569;
   cursor: pointer;
   display: grid;
   gap: 5px;
-  min-height: 62px;
-  padding: 9px 14px;
+  min-height: 72px;
+  overflow: hidden;
+  padding: 14px 15px 12px;
+  position: relative;
   text-align: left;
+  transition: background 150ms ease, border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.catalogTypeButton::before {
+  background: var(--catalog-accent);
+  content: "";
+  height: 3px;
+  inset: 0 0 auto;
+  opacity: 0.78;
+  position: absolute;
+}
+
+.catalogTypeButton[data-tone="blue"] {
+  --catalog-accent: #2563eb;
+}
+
+.catalogTypeButton[data-tone="teal"] {
+  --catalog-accent: #0f9fa8;
+}
+
+.catalogTypeButton[data-tone="indigo"] {
+  --catalog-accent: #6366f1;
 }
 
 .catalogTypeButton:hover {
-  background: #f8fafc;
+  background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
   border-color: #94a3b8;
+  box-shadow:
+    inset 0 1px 0 #ffffff,
+    0 4px 0 #cbd5e1,
+    0 11px 20px rgba(15, 23, 42, 0.1);
+  transform: translateY(-2px);
 }
 
 .catalogTypeButton[data-active="true"] {
-  background: #f8fafc;
-  border-color: #64748b;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 42%),
+    #0b1020;
+  border-color: #0b1020;
   box-shadow:
-    0 0 0 2px rgba(15, 23, 42, 0.82),
-    0 6px 14px rgba(15, 23, 42, 0.12);
-  color: #0f172a;
-  transform: translateY(-1px);
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 3px 0 #020617,
+    0 10px 20px rgba(15, 23, 42, 0.22);
+  color: #ffffff;
+  transform: translateY(-2px);
+}
+
+.catalogTypeButton[data-active="true"]::before {
+  height: 4px;
+  opacity: 1;
 }
 
 .catalogTypeButton span {
@@ -20680,7 +20857,16 @@
 .catalogTypeButton strong {
   color: #0f172a;
   font-size: 1.25rem;
+  font-weight: 950;
   line-height: 1;
+}
+
+.catalogTypeButton[data-active="true"] span {
+  color: #cbd5e1;
+}
+
+.catalogTypeButton[data-active="true"] strong {
+  color: #ffffff;
 }
 
 .catalogToolbar {
@@ -28756,49 +28942,80 @@
 }
 
 .taskSummaryMetric {
-  background: #ffffff;
-  border: 1px solid #d8e0ea;
-  border-radius: 8px;
+  --task-accent: #64748b;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid #cbd5e1;
+  border-bottom-color: #aebccc;
+  border-radius: 10px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    0 3px 0 #d8e0e9,
+    0 8px 16px rgba(15, 23, 42, 0.07);
   color: #0f172a;
   cursor: pointer;
   display: grid;
   font-family: inherit;
   gap: 5px;
-  min-height: 62px;
-  padding: 9px 12px;
+  min-height: 70px;
+  overflow: hidden;
+  padding: 13px 12px 11px;
+  position: relative;
   text-align: left;
-  transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+  transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.taskSummaryMetric::before {
+  background: var(--task-accent);
+  content: "";
+  height: 3px;
+  inset: 0 0 auto;
+  opacity: 0.76;
+  position: absolute;
 }
 
 .taskSummaryMetric:hover {
   border-color: #94a3b8;
-  background: #f8fafc;
+  background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
+  box-shadow:
+    inset 0 1px 0 #ffffff,
+    0 4px 0 #cbd5e1,
+    0 11px 20px rgba(15, 23, 42, 0.1);
+  transform: translateY(-2px);
 }
 
 .taskSummaryMetric[data-active="true"] {
-  background: #f8fafc;
+  background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
   border-color: #64748b;
-  box-shadow: 0 0 0 1px rgba(100, 116, 139, 0.16);
+  box-shadow:
+    0 0 0 2px rgba(15, 23, 42, 0.78),
+    0 4px 0 #cbd5e1,
+    0 10px 20px rgba(15, 23, 42, 0.13);
+  transform: translateY(-2px);
+}
+
+.taskSummaryMetric[data-active="true"]::before {
+  height: 4px;
+  opacity: 1;
 }
 
 .taskSummaryMetric[data-tone="amber"] {
+  --task-accent: #f59e0b;
   border-color: #f5b942;
-  box-shadow: 0 0 0 1px rgba(245, 185, 66, 0.12);
 }
 
 .taskSummaryMetric[data-tone="red"] {
+  --task-accent: #ef4444;
   border-color: #ef6b73;
-  box-shadow: 0 0 0 1px rgba(239, 107, 115, 0.12);
 }
 
 .taskSummaryMetric[data-tone="green"] {
+  --task-accent: #22c55e;
   border-color: #65c98b;
-  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.1);
 }
 
 .taskSummaryMetric[data-tone="blue"] {
+  --task-accent: #0f9da8;
   border-color: #67b7c8;
-  box-shadow: 0 0 0 1px rgba(15, 157, 168, 0.1);
 }
 
 .taskSummaryMetric[data-tone="amber"][data-active="true"] {
