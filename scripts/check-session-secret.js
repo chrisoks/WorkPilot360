@@ -1,3 +1,7 @@
+const { loadEnvConfig } = require("@next/env");
+
+loadEnvConfig(process.cwd());
+
 const secret = process.env.WORKPILOT_SESSION_SECRET || process.env.NEXTAUTH_SECRET || "";
 
 if (secret.length < 32) {
