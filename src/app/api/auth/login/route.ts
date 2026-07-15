@@ -2,7 +2,12 @@
 import { Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
-import { createSessionToken, getSessionCookieOptions, WORKPILOT_SESSION_COOKIE } from "@/lib/auth/session";
+import {
+  createServerSession,
+  getRemainingCookieMaxAge,
+  getSessionCookieOptions,
+  WORKPILOT_SESSION_COOKIE,
+} from "@/lib/auth/session";
 
 const bcrypt = require("bcryptjs") as {
   compareSync(password: string, hash: string): boolean;
@@ -83,7 +88,7 @@ export async function POST(req: Request) {
   if (!passwordMatches) {
     return NextResponse.json(
       { error: "E-Mail oder Passwort ist nicht korrekt." },
-      { status: 401 }
+      { status: 401, headers: { "Cache-Control": "no-store" } }
     );
   }
 
@@ -99,7 +104,13 @@ export async function POST(req: Request) {
     profileImageDataUrl: user.profileImageDataUrl ?? "",
     personalNumber: user.personalNumber ?? "",
   });
-  response.cookies.set(WORKPILOT_SESSION_COOKIE, createSessionToken(user.id), getSessionCookieOptions());
+  response.headers.set("Cache-Control", "no-store");
+  const session = await createServerSession(user.id);
+  response.cookies.set(
+    WORKPILOT_SESSION_COOKIE,
+    session.token,
+    getSessionCookieOptions(getRemainingCookieMaxAge(session.absoluteExpiresAt))
+  );
   return response;
 }
 

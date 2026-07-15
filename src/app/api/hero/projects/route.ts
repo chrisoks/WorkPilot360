@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canArchiveProjects, canManageProjects } from "@/lib/permissions";
 import { recordStatusTransition, seedCurrentStatusTimeline } from "@/lib/status-tracking";
+import { getProjectBusinessAreaCode } from "@/lib/project-business-area";
 
 export const dynamic = "force-dynamic";
 
@@ -257,6 +258,7 @@ function formatLocalProject(project: LocalProjectRow) {
     addressContactId: project.addressContactId ?? "",
     objectAddressId: project.objectAddressId ?? "",
     projectType: project.projectType ?? "",
+    businessAreaCode: getProjectBusinessAreaCode(project),
     projectKind: project.projectKind ?? "",
     projectRuntimeFrom: project.projectRuntimeFrom ?? "",
     projectRuntimeUntil: project.projectRuntimeUntil ?? "",

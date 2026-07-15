@@ -107,6 +107,23 @@ model User {
   @@unique([organizationId, email])
 }
 
+model AuthSession {
+  id                   String    @id
+  userId               String
+  tokenVersion         Int       @default(1)
+  previousTokenVersion Int?
+  previousValidUntil   DateTime?
+  createdAt            DateTime  @default(now())
+  lastSeenAt           DateTime  @default(now())
+  lastRotatedAt        DateTime  @default(now())
+  idleExpiresAt        DateTime
+  absoluteExpiresAt    DateTime
+  revokedAt            DateTime?
+
+  @@index([userId])
+  @@index([absoluteExpiresAt])
+}
+
 model EmployeeCostCalculation {
   id              String       @id @default(cuid())
   organizationId  String

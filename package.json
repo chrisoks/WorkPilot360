@@ -13,6 +13,7 @@
     "start": "next start",
     "check:mojibake": "node scripts/check-mojibake.js",
     "check:regressions": "node scripts/check-regressions.js",
+    "check:session-secret": "node scripts/check-session-secret.js",
     "check:kosit": "node scripts/check-kosit-validator.js",
     "setup:kosit": "node scripts/setup-kosit-validator.js",
     "check:verapdf": "node scripts/check-verapdf-validator.js",

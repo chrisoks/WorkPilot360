@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
-import { getAuthenticatedSessionUser } from "@/lib/auth/session";
+import {
+  authenticateSession,
+  createServerSession,
+  getRemainingCookieMaxAge,
+  getSessionCookieOptions,
+  WORKPILOT_SESSION_COOKIE,
+} from "@/lib/auth/session";
 
 function roleLabel(role: string) {
   if (role === "GESCHAEFTSFUEHRER") return "Gesch\u00e4ftsf\u00fchrung";
@@ -21,12 +27,16 @@ async function getUserTeamIds(userId: string) {
 }
 
 export async function GET(req: Request) {
-  const user = await getAuthenticatedSessionUser(req);
-  if (!user) {
-    return NextResponse.json({ authenticated: false }, { status: 401 });
+  const authentication = await authenticateSession(req, { rotate: true });
+  if (!authentication) {
+    return NextResponse.json(
+      { authenticated: false, code: "SESSION_EXPIRED", error: "Sitzung ist abgelaufen oder wurde beendet." },
+      { status: 401, headers: { "Cache-Control": "no-store" } }
+    );
   }
+  const { user } = authentication;
 
-  return NextResponse.json({
+  const response = NextResponse.json({
     authenticated: true,
     user: {
       id: user.id,
@@ -41,4 +51,22 @@ export async function GET(req: Request) {
       personalNumber: user.personalNumber ?? "",
     },
   });
+  response.headers.set("Cache-Control", "no-store");
+
+  if (authentication.legacy) {
+    const replacement = await createServerSession(user.id);
+    response.cookies.set(
+      WORKPILOT_SESSION_COOKIE,
+      replacement.token,
+      getSessionCookieOptions(getRemainingCookieMaxAge(replacement.absoluteExpiresAt))
+    );
+  } else if (authentication.replacementToken && authentication.session) {
+    response.cookies.set(
+      WORKPILOT_SESSION_COOKIE,
+      authentication.replacementToken,
+      getSessionCookieOptions(getRemainingCookieMaxAge(authentication.session.absoluteExpiresAt))
+    );
+  }
+
+  return response;
 }

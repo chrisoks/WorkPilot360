@@ -1,5 +1,27 @@
 # WorkPilot360 Agent Handover
 
+- PWA-Projektbereichsvertrag 2026-07-15: `/api/hero/projects` liefert mit
+  `businessAreaCode` nun explizit `OK_IMMOCARE` oder `OK_SOLUTIONS`. Die
+  Ermittlung nutzt nur die strukturierten Projektfelder und fuer historische
+  Importe den bereits etablierten `OKI-`-Projektnummernpraefix; sichtbare
+  Titel/Kundentexte werden nicht ausgewertet. Nicht klassifizierte Altdaten
+  bleiben ohne Migration wie bisher Solutions. Vor einem Produktionsstart
+  prueft `npm run check:session-secret` die Existenz und Mindestlaenge des
+  serverseitigen Session-Secrets, ohne dessen Inhalt auszugeben.
+
+- Serverseitige erneuerbare Sitzung 2026-07-15: Die bisherige ausschliesslich
+  signierte 12-Stunden-Anmeldung wird durch eine serverseitig widerrufbare
+  Sliding-Session ersetzt. `AuthSession` begrenzt Sitzungen auf sieben Tage
+  Inaktivitaet und absolut 30 Tage; die Cookie-Version rotiert nach zwoelf
+  Stunden, wobei die vorherige Version 30 Sekunden fuer parallele Requests
+  gueltig bleibt. `/api/auth/session` erneuert beziehungsweise migriert eine
+  noch gueltige Altsitzung, liefert fuer abgelaufene Sitzungen den eindeutigen
+  Code `SESSION_EXPIRED`, und Logout widerruft den Datensatz serverseitig.
+  Das HttpOnly-/Secure-/SameSite-Lax-Cookie bleibt hostgebunden; die PWA nutzt
+  weiterhin relative `/api`-Aufrufe ueber ihren bestehenden Reverse Proxy.
+  Der genaue PWA-Vertrag steht in
+  `docs/HANDOFF_PWA_SESSION_2026-07-15.md`. Keine PWA-Datei wurde geaendert.
+
 - Zielsteuerung Rollen/UI 2026-07-15: `Meine Ziele` zeigt ausschliesslich die
   eigenen Zielkarten; `Zielverwaltung` zeigt Admin/Geschaeftsfuehrung alle
   Organisationsziele und Fuehrungskraeften nur Ziele des eigenen Teams.
