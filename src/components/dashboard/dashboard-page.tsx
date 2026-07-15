@@ -5663,6 +5663,7 @@ export function DashboardPage() {
   const [ideaStoreError, setIdeaStoreError] = useState("");
   const [newsFeedPosts, setNewsFeedPosts] = useState<NewsFeedPost[]>([]);
   const [newsFeedError, setNewsFeedError] = useState("");
+  const [isNewsFeedLoading, setIsNewsFeedLoading] = useState(true);
   const [isNewsComposerOpen, setIsNewsComposerOpen] = useState(false);
   const [newsDraftTitle, setNewsDraftTitle] = useState("");
   const [newsDraftBody, setNewsDraftBody] = useState("");
@@ -6778,22 +6779,33 @@ export function DashboardPage() {
   }
 
   async function loadNewsFeed() {
-    if (!activeUserId) return [];
-
-    const res = await fetch(`/api/news-feed?actorId=${encodeURIComponent(activeUserId)}`, {
-      cache: "no-store",
-      credentials: "same-origin",
-    });
-
-    if (!res.ok) {
-      setNewsFeedError("News-Feed konnte nicht geladen werden.");
+    if (!activeUserId) {
+      setIsNewsFeedLoading(false);
       return [];
     }
 
-    const data = (await res.json()) as NewsFeedPost[];
-    setNewsFeedPosts(data);
-    setNewsFeedError("");
-    return data;
+    setIsNewsFeedLoading(true);
+    try {
+      const res = await fetch(`/api/news-feed?actorId=${encodeURIComponent(activeUserId)}`, {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+
+      if (!res.ok) {
+        setNewsFeedError("News-Feed konnte nicht geladen werden.");
+        return [];
+      }
+
+      const data = (await res.json()) as NewsFeedPost[];
+      setNewsFeedPosts(data);
+      setNewsFeedError("");
+      return data;
+    } catch {
+      setNewsFeedError("News-Feed konnte nicht geladen werden.");
+      return [];
+    } finally {
+      setIsNewsFeedLoading(false);
+    }
   }
 
   function resetNewsComposer() {
@@ -51096,23 +51108,31 @@ await addProjectLogbookEntry(
 
     return (
       <section className={styles.newsFeedShell}>
-        <div className={styles.newsFeedHeader}>
+        <header className={`${styles.taskModuleHeader} ${styles.newsFeedHeader}`}>
           <div>
-            <p className={styles.eyebrow}>News-Feed</p>
+            <p className={styles.taskModuleEyebrow}>News-Feed</p>
             <h1>Unternehmensfeed</h1>
-            <p className={styles.subline}>
+            <p>
               Interne Informationen, kurze Updates und Rückmeldungen aus dem Team.
             </p>
           </div>
           <button type="button" className={styles.primaryButton} onClick={openNewsComposer}>
             + Neuer Beitrag
           </button>
-        </div>
+        </header>
 
         {newsFeedError ? <p className={styles.newsFeedError}>{newsFeedError}</p> : null}
 
         <section className={styles.newsFeedList}>
-          {newsFeedPosts.length === 0 ? (
+          {isNewsFeedLoading ? (
+            <div className={styles.newsFeedLoading} role="status" aria-live="polite">
+              <span aria-hidden="true" />
+              <div>
+                <strong>Unternehmensfeed wird geladen</strong>
+                <small>Beiträge und Rückmeldungen werden vorbereitet.</small>
+              </div>
+            </div>
+          ) : newsFeedPosts.length === 0 ? (
             <div className={styles.newsFeedEmpty}>
               <strong>Noch keine Beiträge vorhanden.</strong>
               <span>Starte mit einer kurzen internen Info oder einem Team-Update.</span>
@@ -51154,6 +51174,11 @@ await addProjectLogbookEntry(
                     {!post.readAt ? <small>Neu</small> : null}
                   </header>
 
+                <div className={styles.newsFeedBody}>
+                  <h2>{post.title}</h2>
+                  {post.body ? <p>{post.body}</p> : null}
+                </div>
+
                 {post.attachments.length > 0 ? (
                   <div className={styles.newsFeedImages}>
                     {post.attachments.map((attachment, index) => (
@@ -51168,11 +51193,6 @@ await addProjectLogbookEntry(
                     ))}
                   </div>
                 ) : null}
-
-                <div className={styles.newsFeedBody}>
-                  <h2>{post.title}</h2>
-                  {post.body ? <p>{post.body}</p> : null}
-                </div>
 
                 {post.pollQuestion && post.pollOptions.length > 0 ? (
                   <section className={styles.newsPoll}>
@@ -51218,15 +51238,28 @@ await addProjectLogbookEntry(
                   {post.comments.length === 0 ? (
                     <span>Noch keine Kommentare.</span>
                   ) : (
-                    post.comments.map((comment) => (
-                      <article key={comment.id}>
-                        <div>
-                          <strong>{comment.authorName || "Unbekannt"}</strong>
-                          <span>{formatDeadline(comment.createdAt)}</span>
-                        </div>
-                        <p>{comment.body}</p>
-                      </article>
-                    ))
+                    post.comments.map((comment) => {
+                      const commentAuthor = users.find((user) => user.id === comment.authorUserId);
+                      const commentAuthorName = commentAuthor?.name || comment.authorName || "Unbekannt";
+                      return (
+                        <article key={comment.id}>
+                          <div className={styles.newsCommentAvatar}>
+                            {commentAuthor?.profileImageDataUrl ? (
+                              <img src={commentAuthor.profileImageDataUrl} alt="" />
+                            ) : (
+                              getInitials(commentAuthorName)
+                            )}
+                          </div>
+                          <div className={styles.newsCommentContent}>
+                            <div>
+                              <strong>{commentAuthorName}</strong>
+                              <span>{formatDeadline(comment.createdAt)}</span>
+                            </div>
+                            <p>{comment.body}</p>
+                          </div>
+                        </article>
+                      );
+                    })
                   )}
                 </section>
 
