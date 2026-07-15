@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { ensureSalesHubTables } from "@/lib/sales-hub/ensure";
 import { recordStatusTransition, seedCurrentStatusTimeline } from "@/lib/status-tracking";
-import { canAssignSalesItemsToOthers, canManageOwnedSalesItem, canManageSalesPipeline } from "@/lib/permissions";
+import { Role } from "@prisma/client";
 
 type SalesTargetRow = {
   id: string;
@@ -98,7 +98,22 @@ export async function GET(req: Request) {
     ORDER BY "updatedAt" DESC, "createdAt" DESC
   `;
 
-  return NextResponse.json(rows.map(formatSalesTarget));
+  const visibleOwnerIds = await getVisibleGoalOwnerIds(actorResult.actor, users);
+  const visibleOwnerNames = new Set(
+    users
+      .filter((user) => visibleOwnerIds.has(user.id))
+      .map((user) => getUserName(user).trim().toLocaleLowerCase("de-DE"))
+  );
+  return NextResponse.json(
+    (canManageGoals(actorResult.actor)
+      ? rows
+      : rows.filter(
+          (row) =>
+            (row.ownerUserId && visibleOwnerIds.has(row.ownerUserId)) ||
+            visibleOwnerNames.has(row.ownerName.trim().toLocaleLowerCase("de-DE"))
+        )
+    ).map(formatSalesTarget)
+  );
 }
 
 export async function POST(req: Request) {
@@ -111,11 +126,11 @@ export async function POST(req: Request) {
   }
   const actor = actorResult.actor;
 
-  if (!canManageSalesPipeline(actor)) {
+  if (!canManageGoals(actor)) {
     return forbiddenSalesResponse();
   }
   const requestedOwner = users.find((candidate) => candidate.id === cleanString(body.ownerUserId) && candidate.isActive);
-  const owner = requestedOwner && canAssignSalesItemsToOthers(actor) ? requestedOwner : actor;
+  const owner = requestedOwner ?? actor;
   const title = cleanString(body.title);
   const now = new Date();
 
@@ -200,7 +215,7 @@ export async function PATCH(req: Request) {
   }
   const actor = actorResult.actor;
 
-  if (!canManageSalesPipeline(actor)) {
+  if (!canManageGoals(actor)) {
     return forbiddenSalesResponse();
   }
   const id = cleanString(body.id);
@@ -221,12 +236,8 @@ export async function PATCH(req: Request) {
   if (!current) {
     return NextResponse.json({ error: "Ziel wurde nicht gefunden." }, { status: 404 });
   }
-  if (!canManageOwnedSalesItem(actor, current)) {
-    return forbiddenSalesResponse();
-  }
-
   const requestedOwner = users.find((candidate) => candidate.id === cleanString(body.ownerUserId) && candidate.isActive);
-  const owner = requestedOwner && canAssignSalesItemsToOthers(actor) ? requestedOwner : null;
+  const owner = requestedOwner ?? null;
   const nextStatus = cleanStatus(body.status || current.status);
   const history = [
     ...(Array.isArray(current.history) ? current.history : []),
@@ -280,6 +291,36 @@ export async function PATCH(req: Request) {
   return NextResponse.json(formatSalesTarget(rows[0]));
 }
 
+function canManageGoals(actor: { role: Role }) {
+  return actor.role === Role.ADMIN || actor.role === Role.GESCHAEFTSFUEHRER;
+}
+
+async function getVisibleGoalOwnerIds(
+  actor: { id: string; role: Role; teamId?: string | null },
+  users: Array<{ id: string; teamId?: string | null }>
+) {
+  if (canManageGoals(actor)) return new Set(users.map((user) => user.id));
+  if (actor.role !== Role.FUEHRUNGSKRAFT) return new Set([actor.id]);
+
+  const memberships = await prisma.$queryRaw<Array<{ userId: string; teamId: string }>>`
+    SELECT "userId", "teamId" FROM "UserTeamMembership"
+  `;
+  const actorTeamIds = new Set(
+    memberships.filter((membership) => membership.userId === actor.id).map((membership) => membership.teamId)
+  );
+  if (actor.teamId) actorTeamIds.add(actor.teamId);
+
+  return new Set(
+    users
+      .filter((user) =>
+        user.id === actor.id ||
+        Boolean(user.teamId && actorTeamIds.has(user.teamId)) ||
+        memberships.some((membership) => membership.userId === user.id && actorTeamIds.has(membership.teamId))
+      )
+      .map((user) => user.id)
+  );
+}
+
 export async function DELETE(req: Request) {
   await ensureSalesHubTables();
   const body = await req.json().catch(() => ({}));
@@ -290,7 +331,7 @@ export async function DELETE(req: Request) {
   }
   const actor = actorResult.actor;
 
-  if (!canManageSalesPipeline(actor)) {
+  if (!canManageGoals(actor)) {
     return forbiddenSalesResponse();
   }
 
@@ -312,10 +353,6 @@ export async function DELETE(req: Request) {
   if (!current) {
     return NextResponse.json({ error: "Ziel wurde nicht gefunden." }, { status: 404 });
   }
-  if (!canManageOwnedSalesItem(actor, current)) {
-    return forbiddenSalesResponse();
-  }
-
   const history = [
     ...(Array.isArray(current.history) ? current.history : []),
     {

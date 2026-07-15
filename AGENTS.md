@@ -1,5 +1,17 @@
 # WorkPilot360 Agent Handover
 
+- Zielsteuerung Rollen/UI 2026-07-15: `Meine Ziele` zeigt ausschliesslich die
+  eigenen Zielkarten; `Zielverwaltung` zeigt Admin/Geschaeftsfuehrung alle
+  Organisationsziele und Fuehrungskraeften nur Ziele des eigenen Teams.
+  Dieselbe Reichweite wird nun bereits serverseitig in `/api/sales-targets`
+  erzwungen; Anlegen, Aendern und Entfernen ist dort wie in der UI nur noch
+  Admin/Geschaeftsfuehrung erlaubt. Die beiden Ansichten besitzen eigene
+  Navy-Koepfe, moderne KPI-Karten und rollenpassende Texte. Teamgruppen zeigen
+  Profilbilder; das Zielmodal gruppiert alle vorhandenen KPI-Optionen fachlich,
+  ohne Kennzahlen zu entfernen. Zielwerte, Monats-/Quartals-/Jahres- und freie
+  Zeitraeume, Fortschrittsberechnung, Historie und Detailinformationen bleiben
+  erhalten.
+
 - Aufgaben-Kalender Modernisierung 2026-07-14: Kalenderuebersicht, Wochen- und
   Tagesansicht verwenden jetzt denselben kompakten Navy-Modulkopf wie die
   uebrigen modernisierten Aufgabenansichten. Die Zeitraumsteuerung verbindet

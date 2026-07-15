@@ -2451,6 +2451,29 @@ const goalMetricOptions: Array<{
   { key: "customer_feedback_average", label: "Kundenzufriedenheit", unit: "percent", hint: "Durchschnittliche Bewertung als Prozentwert." },
 ];
 
+const goalMetricGroups: Array<{ label: string; keys: GoalMetricKey[] }> = [
+  {
+    label: "Angebote & Abschluss",
+    keys: goalMetricOptions.slice(0, 16).map((metric) => metric.key),
+  },
+  {
+    label: "Rechnungen & Umsatz",
+    keys: goalMetricOptions.slice(16, 23).map((metric) => metric.key),
+  },
+  {
+    label: "Aufgaben & Vertriebschancen",
+    keys: goalMetricOptions.slice(23, 28).map((metric) => metric.key),
+  },
+  {
+    label: "Zeit & Leistung",
+    keys: goalMetricOptions.slice(28, 33).map((metric) => metric.key),
+  },
+  {
+    label: "Dokumentation & Feedback",
+    keys: goalMetricOptions.slice(33).map((metric) => metric.key),
+  },
+];
+
 type StampMode = "project" | "unproductive";
 
 const defaultUnproductiveStampLabels = [
@@ -24147,6 +24170,8 @@ await addProjectLogbookEntry(
   };
 
   const canManageGoals = activeUser?.role === "ADMIN" || activeUser?.role === "GESCHAEFTSFUEHRER";
+  const isGoalManagementView = activeTab === "salesTargets";
+  const canManageGoalsInView = canManageGoals && isGoalManagementView;
   const canViewGroupedGoals =
     activeUser?.role === "ADMIN" || activeUser?.role === "GESCHAEFTSFUEHRER" || activeUser?.role === "FUEHRUNGSKRAFT";
   function canViewGoalOwner(ownerUserId: string, ownerName: string) {
@@ -24161,6 +24186,10 @@ await addProjectLogbookEntry(
   }
   const visibleSalesGoals = salesGoals.filter((goal) => {
     if (goal.status === "discarded") return false;
+    if (!isGoalManagementView) {
+      if (!activeUser) return false;
+      return goal.ownerUserId === activeUser.id || normalizeGoalPerson(goal.ownerName) === normalizeGoalPerson(activeUser.name);
+    }
     return canViewGoalOwner(goal.ownerUserId, goal.ownerName);
   });
   const openSalesGoals = visibleSalesGoals.filter((goal) => goal.status !== "done" && goal.status !== "discarded");
@@ -24234,7 +24263,7 @@ await addProjectLogbookEntry(
               <h3>{goal.title || metric.label} {owner?.name || goal.ownerName ? <small>{owner?.name || goal.ownerName}</small> : null}</h3>
             </div>
             <div className={styles.goalCardHeaderActions}>
-              {canManageGoals ? (
+              {canManageGoalsInView ? (
                 <>
                   <button type="button" onClick={() => openEditGoalForm(goal)}>
                     Bearbeiten
@@ -24300,23 +24329,31 @@ await addProjectLogbookEntry(
     };
 
     return (
-      <section className={styles.settingsPanel}>
-        <div className={styles.topline}>
+      <section className={`${styles.settingsPanel} ${styles.goalModule}`}>
+        <header className={`${styles.taskModuleHeader} ${styles.goalModuleHeader}`}>
           <div>
-            <p className={styles.eyebrow}>Ziele</p>
-            <h1>Meine Ziele</h1>
-            <p className={styles.subline}>
-              Ziele werden mit messbaren Kennzahlen verglichen. Die Ist-Werte kommen aus Angeboten,
-              Rechnungen, Aufgaben, Zusatzverkäufe und Kundenbewertungen.
+            <p className={styles.taskModuleEyebrow}>{isGoalManagementView ? "ZIELSTEUERUNG" : "PERSÖNLICHE ZIELE"}</p>
+            <h1>{isGoalManagementView ? (canManageGoals ? "Teamziele verwalten" : "Teamziele") : "Meine Ziele"}</h1>
+            <p>
+              {isGoalManagementView
+                ? canManageGoals
+                  ? "Ziele für Mitarbeitende zentral steuern und Fortschritte im vereinbarten Zeitraum prüfen."
+                  : "Ziele und Fortschritte der Mitarbeitenden im eigenen Team prüfen."
+                : "Eigene Zielwerte, Ist-Stand und Fortschritt im vereinbarten Zeitraum im Blick behalten."}
             </p>
           </div>
-        </div>
+          {canManageGoalsInView ? (
+            <button type="button" className={styles.primaryButton} onClick={openCreateGoalForm}>
+              + Ziel anlegen
+            </button>
+          ) : null}
+        </header>
 
         <div className={styles.goalSummaryStrip}>
-          <span>Alle Ziele: <strong>{goalSummary.total}</strong></span>
-          <span>Aktiv: <strong>{goalSummary.open}</strong></span>
-          <span>Erreicht: <strong>{goalSummary.reached}</strong></span>
-          <span>Handlungsbedarf: <strong>{goalSummary.needsAttention}</strong></span>
+          <div className={styles.goalSummaryMetric} data-tone="neutral"><span>Ziele gesamt</span><strong>{goalSummary.total}</strong></div>
+          <div className={styles.goalSummaryMetric} data-tone="active"><span>Aktiv</span><strong>{goalSummary.open}</strong></div>
+          <div className={styles.goalSummaryMetric} data-tone="success"><span>Erreicht</span><strong>{goalSummary.reached}</strong></div>
+          <div className={styles.goalSummaryMetric} data-tone="warning"><span>Handlungsbedarf</span><strong>{goalSummary.needsAttention}</strong></div>
         </div>
 
         {goalError && !isGoalFormOpen ? <p className={styles.formError}>{goalError}</p> : null}
@@ -24324,14 +24361,9 @@ await addProjectLogbookEntry(
         <section className={styles.goalListPanel}>
           <div className={styles.goalListHeader}>
             <div>
-              <h2>{canManageGoals ? "Zielübersicht" : "Meine Zielkarten"}</h2>
+              <h2>{isGoalManagementView ? "Ziele nach Mitarbeitenden" : "Meine Zielkarten"}</h2>
               <p>Jede Karte zeigt Zielwert, Ist-Wert und Fortschritt im gewählten Zeitraum.</p>
             </div>
-            {canManageGoals ? (
-              <button type="button" className={styles.primaryButton} onClick={openCreateGoalForm}>
-                + Ziel anlegen
-              </button>
-            ) : null}
           </div>
 
           {visibleSalesGoals.length === 0 ? (
@@ -24340,7 +24372,7 @@ await addProjectLogbookEntry(
               <span>Neue Ziele erscheinen hier, sobald sie angelegt wurden.</span>
             </div>
           ) : (
-            canViewGroupedGoals ? (
+            isGoalManagementView && canViewGroupedGoals ? (
               <div className={styles.goalOwnerList}>
                 {goalOwnerGroups.map((group) => {
                   const isExpanded = expandedGoalOwnerIds.has(group.ownerKey);
@@ -24359,9 +24391,18 @@ await addProjectLogbookEntry(
                         }
                         aria-expanded={isExpanded}
                       >
-                        <span>
-                          <strong>{group.ownerName}</strong>
-                          <small>{group.goals.length} Ziel(e)</small>
+                        <span className={styles.goalOwnerIdentity}>
+                          <span className={styles.goalOwnerAvatar}>
+                            {group.owner?.profileImageDataUrl ? (
+                              <img src={group.owner.profileImageDataUrl} alt="" />
+                            ) : (
+                              getInitials(group.ownerName)
+                            )}
+                          </span>
+                          <span>
+                            <strong>{group.ownerName}</strong>
+                            <small>{group.goals.length} Ziel(e)</small>
+                          </span>
                         </span>
                         <span>Aktiv <b>{group.open}</b></span>
                         <span>Erreicht <b>{group.reached}</b></span>
@@ -24380,7 +24421,7 @@ await addProjectLogbookEntry(
           )}
         </section>
 
-        {canManageGoals && isGoalFormOpen ? (
+        {canManageGoalsInView && isGoalFormOpen ? (
           <div
             className={styles.modalOverlay}
             onClick={() => {
@@ -24392,7 +24433,7 @@ await addProjectLogbookEntry(
             <div className={styles.goalCreateHeader}>
               <div>
                 <h2>{editingGoalId ? "Ziel bearbeiten" : "Ziel anlegen"}</h2>
-                <p>Geschäftsführung kann Ziele für aktive Mitarbeiter definieren.</p>
+                <p>Geschäftsführung und Administration können Ziele für aktive Mitarbeitende definieren.</p>
               </div>
               <button
                 type="button"
@@ -24427,10 +24468,17 @@ await addProjectLogbookEntry(
                     setGoalDraft((current) => ({ ...current, metricKey: event.target.value as GoalMetricKey }))
                   }
                 >
-                  {goalMetricOptions.map((metric) => (
-                    <option key={metric.key} value={metric.key}>
-                      {metric.label}
-                    </option>
+                  {goalMetricGroups.map((group) => (
+                    <optgroup key={group.label} label={group.label}>
+                      {group.keys.map((metricKey) => {
+                        const metric = getGoalMetricOption(metricKey);
+                        return (
+                          <option key={metric.key} value={metric.key}>
+                            {metric.label}
+                          </option>
+                        );
+                      })}
+                    </optgroup>
                   ))}
                 </select>
                 <small>{selectedMetric.hint}</small>
