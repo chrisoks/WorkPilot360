@@ -1921,6 +1921,12 @@
   color: #b91c1c;
 }
 
+.absenceChip[data-type="ueberstundenabbau"] {
+  background: #e0f2fe;
+  border-color: #7dd3fc;
+  color: #075985;
+}
+
 .monthAbsenceBars {
   display: grid;
   gap: 5px;
@@ -17502,6 +17508,52 @@
   gap: 14px;
 }
 
+.employeeListHero {
+  align-items: center;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.07), transparent 34%),
+    #0b1020;
+  border: 1px solid #eef3f8;
+  border-radius: 8px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.96) inset,
+    0 -1px 0 rgba(148, 163, 184, 0.24) inset,
+    0 0 0 2px rgba(238, 243, 248, 0.92),
+    0 14px 28px rgba(15, 23, 42, 0.13);
+  color: #ffffff;
+  display: flex;
+  justify-content: space-between;
+  min-height: 104px;
+  padding: 18px 20px;
+}
+
+.employeeListHero h1 {
+  color: #ffffff;
+  font-size: 1.65rem;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  margin: 0;
+}
+
+.employeeListHero .eyebrow {
+  color: #51e6d7;
+  margin-bottom: 6px;
+}
+
+.employeeListHero .subline {
+  color: #dbe5f2;
+  font-size: 0.92rem;
+  font-weight: 650;
+  margin-top: 7px;
+}
+
+.employeeListHero .primaryButton {
+  background: linear-gradient(180deg, #ffffff 0%, #f4f7fb 100%);
+  border-color: #ffffff;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  color: #0b1730;
+}
+
 .employeeTabs,
 .employeeTopTabs {
   align-items: center;
@@ -17535,8 +17587,71 @@
   color: #0f172a;
 }
 
+.employeePage > .employeeTabs {
+  background: #eef3f8;
+  border: 0;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px #d7e0ea;
+  gap: 6px;
+  overflow: visible;
+  padding: 5px;
+  width: max-content;
+}
+
+.employeePage > .employeeTabs button {
+  border: 1px solid transparent;
+  border-radius: 9px;
+  min-height: 38px;
+  padding: 0 18px;
+  text-transform: none;
+}
+
+.employeePage > .employeeTabs button[data-active="true"] {
+  background: #0b1020;
+  border-color: #0b1020;
+  box-shadow: 0 5px 12px rgba(15, 23, 42, 0.2);
+  color: #ffffff;
+}
+
+.employeeListToolbar {
+  align-items: end;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
+  grid-template-columns: minmax(320px, 1fr) auto;
+  padding: 12px;
+}
+
+.employeeListToolbar .contactToolbarActions {
+  align-items: center;
+  min-height: 38px;
+  padding: 0 6px;
+}
+
+.employeeListToolbar .contactToolbarActions strong {
+  color: #475569;
+  font-size: 0.86rem;
+  white-space: nowrap;
+}
+
 .employeeTableCard {
   padding: 0;
+}
+
+.employeeListTableCard {
+  border-radius: 16px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+}
+
+.employeeListTableCard .table {
+  min-width: 1040px;
+}
+
+.employeeListTableCard .table tbody tr {
+  transition: background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.employeeListTableCard .table tbody tr:hover {
+  background: #f4f8fc;
+  box-shadow: inset 3px 0 0 #0f9da8;
 }
 
 .employeeIdentityCell {
@@ -17603,20 +17718,126 @@
 
 .employeeFileHeader {
   align-items: center;
-  background: #ffffff;
-  border: 1px solid var(--border-subtle);
-  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.07), transparent 34%),
+    #0b1020;
+  border: 1px solid #eef3f8;
+  border-radius: 8px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.96) inset,
+    0 -1px 0 rgba(148, 163, 184, 0.24) inset,
+    0 0 0 2px rgba(238, 243, 248, 0.92),
+    0 14px 28px rgba(15, 23, 42, 0.13);
+  color: #ffffff;
   display: grid;
-  gap: 14px;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  padding: 16px 18px;
+  gap: 12px 20px;
+  grid-template-areas:
+    "back action"
+    "title action";
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  min-height: 138px;
+  padding: 18px 20px;
 }
 
 .employeeFileHeader h1 {
+  color: #ffffff;
+  font-size: 1.7rem;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
   margin: 0;
 }
 
+.employeeFileTitle {
+  grid-area: title;
+  min-width: 0;
+}
+
+.employeeFileTitle .eyebrow {
+  color: #51e6d7;
+  margin-bottom: 6px;
+}
+
+.employeeFileTitle span {
+  color: #cbd5e1;
+  display: block;
+  font-size: 0.88rem;
+  font-weight: 650;
+  margin-top: 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.employeeFileBackButton,
+.employeeFileSaveButton {
+  align-items: center;
+  border-radius: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 850;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 16px;
+  white-space: nowrap;
+}
+
+.employeeFileBackButton {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  color: #ffffff;
+  grid-area: back;
+  justify-self: start;
+}
+
+.employeeFileSaveButton {
+  background: linear-gradient(180deg, #ffffff 0%, #f4f7fb 100%);
+  border: 1px solid #ffffff;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  color: #0b1730;
+  grid-area: action;
+  justify-self: end;
+  min-width: 132px;
+}
+
+.employeeFileBackButton:hover:not(:disabled),
+.employeeFileSaveButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.employeeFileSaveButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.employeeFile > .employeeTopTabs {
+  background: #ffffff;
+  border: 1px solid #d8e0ea;
+  border-radius: 14px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.045);
+  gap: 5px;
+  padding: 5px;
+}
+
+.employeeFile > .employeeTopTabs button {
+  border: 1px solid transparent;
+  border-radius: 9px;
+  min-height: 40px;
+  padding: 0 14px;
+  text-transform: none;
+}
+
+.employeeFile > .employeeTopTabs button[data-active="true"] {
+  background: #0b1020;
+  border-color: #0b1020;
+  box-shadow: 0 5px 12px rgba(15, 23, 42, 0.18);
+  color: #ffffff;
+}
+
 .employeeFileLayout {
+  align-items: start;
   display: grid;
   gap: 18px;
   grid-template-columns: 250px minmax(0, 1fr);
@@ -17631,6 +17852,9 @@
 .employeePhoto {
   background: #ffffff;
   border: 1px solid #d8e0ea;
+  border-radius: 14px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
+  overflow: hidden;
   padding: 8px;
 }
 
@@ -17643,13 +17867,18 @@
 .employeeSideTabs {
   background: #ffffff;
   border: 1px solid #d8e0ea;
+  border-radius: 14px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
   display: grid;
+  gap: 4px;
+  overflow: hidden;
+  padding: 6px;
 }
 
 .employeeSideTabs button {
-  background: #f8fafc;
-  border: 0;
-  border-bottom: 1px solid #e2e8f0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 9px;
   color: #334155;
   cursor: pointer;
   font-family: inherit;
@@ -17661,33 +17890,56 @@
 }
 
 .employeeSideTabs button[data-active="true"] {
-  background: #9ca3af;
+  background: #0b1020;
+  border-color: #0b1020;
+  box-shadow: 0 5px 12px rgba(15, 23, 42, 0.16);
   color: #ffffff;
   font-weight: 900;
 }
 
 .employeeDetailPanel {
-  background: #ffffff;
-  border: 1px solid var(--border-subtle);
-  border-radius: 14px;
+  align-content: start;
+  align-self: start;
+  background:
+    linear-gradient(180deg, rgba(248, 251, 255, 0.88) 0, #ffffff 92px);
+  border: 1px solid #d8e0ea;
+  border-radius: 16px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.92) inset,
+    0 12px 30px rgba(15, 23, 42, 0.06);
   display: grid;
-  gap: 16px;
-  padding: 18px;
+  gap: 20px;
+  grid-auto-rows: max-content;
+  min-width: 0;
+  padding: 20px;
 }
 
 .employeeSectionHeader {
   align-items: center;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid #dbe4ef;
   display: flex;
   justify-content: space-between;
-  padding-bottom: 10px;
+  min-height: 42px;
+  padding: 0 2px 12px;
 }
 
 .employeeSectionHeader h2 {
-  color: #64748b;
-  font-size: 1.25rem;
-  font-weight: 500;
+  color: #0f172a;
+  font-size: 1.2rem;
+  font-weight: 950;
+  letter-spacing: -0.015em;
   margin: 0;
+}
+
+.employeeSectionHeader h2::before {
+  background: #0aa8b2;
+  border-radius: 999px;
+  content: "";
+  display: inline-block;
+  height: 8px;
+  margin-right: 9px;
+  vertical-align: 2px;
+  width: 8px;
 }
 
 .employeeSectionHeader p {
@@ -17698,13 +17950,41 @@
   margin: 4px 0 0;
 }
 
+.employeeTabHeader {
+  background:
+    radial-gradient(circle at 88% 20%, rgba(10, 168, 178, 0.1), transparent 28%),
+    linear-gradient(135deg, #ffffff 0%, #f4f9fb 100%);
+  border: 1px solid #cbd8e6;
+  border-left: 4px solid #0aa8b2;
+  border-radius: 12px;
+  box-shadow: 0 7px 18px rgba(15, 23, 42, 0.055);
+  min-height: 72px;
+  padding: 14px 16px;
+}
+
+.employeeTabHeader h2 {
+  color: #0f172a;
+}
+
+.employeeTabHeader p {
+  color: #64748b;
+}
+
+.employeeTabHeader h2::before {
+  background: #36d7d0;
+  box-shadow: 0 0 0 5px rgba(54, 215, 208, 0.12);
+}
+
 .employeeFormGrid {
+  align-content: start;
+  align-items: start;
   display: grid;
-  gap: 14px 26px;
+  gap: 16px 22px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .employeeFormGrid label {
+  align-content: start;
   color: #334155;
   display: grid;
   font-size: 0.82rem;
@@ -17715,14 +17995,34 @@
 .employeeFormGrid input,
 .employeeFormGrid select,
 .employeeFormGrid textarea {
+  background: #fbfdff;
   border: 1px solid #d8e0ea;
+  border-radius: 10px;
   color: #0f172a;
   font-family: inherit;
   font-size: 0.94rem;
   font-weight: 600;
-  min-height: 36px;
-  padding: 8px 10px;
+  min-height: 42px;
+  padding: 9px 11px;
+  transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
   width: 100%;
+}
+
+.employeeFormGrid input:focus,
+.employeeFormGrid select:focus,
+.employeeFormGrid textarea:focus {
+  background: #ffffff;
+  border-color: #0aa8b2;
+  box-shadow: 0 0 0 3px rgba(10, 168, 178, 0.12);
+  outline: 0;
+}
+
+.employeeFormGrid input:disabled,
+.employeeFormGrid select:disabled,
+.employeeFormGrid textarea:disabled,
+.employeeFormGrid input:read-only {
+  background: #f1f5f9;
+  color: #64748b;
 }
 
 .employeeFormGrid select[multiple] {
@@ -17731,6 +18031,25 @@
 
 .employeeFormGrid .fullWidth {
   grid-column: 1 / -1;
+}
+
+.employeeFormSectionTitle {
+  align-items: center;
+  color: #0f172a;
+  display: flex;
+  font-size: 0.88rem;
+  font-weight: 950;
+  gap: 9px;
+  letter-spacing: 0.025em;
+  margin: 4px 0 -2px;
+  text-transform: uppercase;
+}
+
+.employeeFormSectionTitle::after {
+  background: #dbe4ef;
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
 }
 
 .employeePlanningTotal {
@@ -17744,14 +18063,13 @@
 }
 
 .employeePlanningSettings {
-  background: #f8fbff;
+  background: linear-gradient(180deg, #f8fbff 0%, #f3f7fb 100%);
   border: 1px solid #d8e0ea;
-  border-radius: 999px;
   border-radius: 14px;
   display: grid;
   gap: 16px;
   margin-top: 4px;
-  padding: 16px;
+  padding: 18px;
 }
 
 .employeePlanningSettings h3 {
@@ -17771,13 +18089,14 @@
 .employeeWeeklyGrid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(7, minmax(132px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
 }
 
 .employeeWeeklyGrid label {
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
+  box-shadow: 0 5px 14px rgba(15, 23, 42, 0.035);
   color: #334155;
   display: grid;
   font-size: 0.78rem;
@@ -17849,12 +18168,12 @@
 }
 
 .branchAllocationCard {
-  background: #f8fafc;
-  border: 1px solid #cbd5e1;
+  background: linear-gradient(180deg, #f8fbff 0%, #f3f7fb 100%);
+  border: 1px solid #d8e0ea;
   border-radius: 14px;
   display: grid;
   gap: 12px;
-  padding: 14px;
+  padding: 18px;
 }
 
 .branchAllocationHeader {
@@ -17957,13 +18276,15 @@
 }
 
 .employeePasswordBox {
-  background: #f8fafc;
+  align-content: start;
+  background: linear-gradient(180deg, #f8fbff 0%, #f3f7fb 100%);
   border: 1px solid #d8e0ea;
-  border-radius: 8px;
+  border-radius: 14px;
   display: grid;
   gap: 14px;
   max-width: 760px;
   padding: 18px;
+  width: 100%;
 }
 
 .employeePasswordIntro {
@@ -18000,7 +18321,7 @@
   border-radius: 14px;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(260px, 1.5fr) minmax(160px, 1fr) minmax(160px, 1fr) auto;
+  grid-template-columns: minmax(260px, 1.5fr) minmax(160px, 1fr) minmax(160px, 1fr) minmax(360px, auto);
   padding: 18px;
 }
 
@@ -18082,6 +18403,96 @@
 .teamCalendarPage {
   display: grid;
   gap: 16px;
+}
+
+.employeeTimeQuickRanges {
+  align-items: center;
+  background: #f1f5f9;
+  border: 1px solid #cbd8e7;
+  border-radius: 11px;
+  display: flex;
+  gap: 4px;
+  min-height: 42px;
+  padding: 4px;
+}
+
+.employeeTimeQuickRanges button {
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: #334155;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 900;
+  min-height: 32px;
+  padding: 6px 12px;
+  white-space: nowrap;
+}
+
+.employeeTimeQuickRanges button:hover,
+.employeeTimeQuickRanges button:focus-visible {
+  background: #ffffff;
+  color: #0f766e;
+  outline: none;
+}
+
+@media (max-width: 1400px) {
+  .employeeTimeControlPanel {
+    grid-template-columns: minmax(240px, 1.4fr) repeat(2, minmax(160px, 1fr));
+  }
+
+  .employeeTimeQuickRanges {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 760px) {
+  .employeeTimeControlPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .employeeTimeQuickRanges {
+    display: grid;
+    grid-column: auto;
+    grid-template-columns: 1fr;
+  }
+}
+
+.calendarToolbar.teamCalendarToolbar {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  grid-template-columns: 42px minmax(150px, 220px) 42px;
+  justify-content: center;
+  margin: 0;
+  padding: 2px 0;
+}
+
+.teamCalendarMonthButton {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #cbd8e6;
+  border-radius: 10px;
+  color: #0f172a;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 1.55rem;
+  font-weight: 800;
+  height: 40px;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+  width: 40px;
+}
+
+.teamCalendarMonthButton:hover {
+  border-color: #0aa8b2;
+  box-shadow: 0 5px 14px rgba(15, 23, 42, 0.09);
+  transform: translateY(-1px);
 }
 
 .teamCalendarShell {
@@ -18565,10 +18976,67 @@
 }
 
 .employeeKpiGrid article {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: linear-gradient(180deg, #ffffff 0%, #f5f8fc 100%);
+  border: 1px solid #d8e0ea;
   border-radius: 14px;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.04);
   padding: 16px;
+}
+
+.teamCalendarAbsenceBar[data-type="ueberstundenabbau"] {
+  background: #e0f2fe;
+  border-color: #38bdf8;
+  color: #075985;
+}
+
+.employeeAbsenceKpis article,
+.employeeTimeKpis article {
+  border-top: 3px solid #9aa9bd;
+  box-shadow:
+    0 1px 0 #ffffff inset,
+    0 8px 18px rgba(15, 23, 42, 0.06);
+  min-height: 112px;
+}
+
+.employeeAbsenceKpis article:nth-child(1),
+.employeeTimeKpis article:nth-child(1) {
+  background: linear-gradient(180deg, #f2ffff 0%, #ffffff 100%);
+  border-color: #36d7d0;
+}
+
+.employeeAbsenceKpis article:nth-child(1) span,
+.employeeAbsenceKpis article:nth-child(1) small,
+.employeeTimeKpis article:nth-child(1) span,
+.employeeTimeKpis article:nth-child(1) small {
+  color: #64748b;
+}
+
+.employeeAbsenceKpis article:nth-child(1) strong,
+.employeeTimeKpis article:nth-child(1) strong {
+  color: #0f172a;
+}
+
+.employeeAbsenceKpis article:nth-child(2),
+.employeeTimeKpis article:nth-child(2) {
+  border-top-color: #0aa8b2;
+}
+
+.employeeAbsenceKpis article:nth-child(3),
+.employeeTimeKpis article:nth-child(3) {
+  border-top-color: #5b7cfa;
+}
+
+.employeeTimeKpis {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.employeeTimeKpis article:nth-child(4) {
+  border-top-color: #f59e0b;
+}
+
+.employeeTimeKpis article:nth-child(5) {
+  background: linear-gradient(180deg, #ecfeff 0%, #f8ffff 100%);
+  border-top-color: #14b8a6;
 }
 
 .employeeKpiGrid span,
@@ -18586,12 +19054,19 @@
 }
 
 .employeeCostPanel {
-  background: #ffffff;
-  border: 1px solid var(--border-subtle);
+  background: linear-gradient(180deg, #fbfdff 0%, #ffffff 100%);
+  border: 1px solid #d8e0ea;
   border-radius: 14px;
   display: grid;
   gap: 16px;
   padding: 18px;
+}
+
+.employeeDetailPanel > .employeeCostPanel {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
 }
 
 .employeeCostForm {
@@ -18609,9 +19084,9 @@
 }
 
 .employeeCostForm input {
-  background: #ffffff;
+  background: #fbfdff;
   border: 1px solid #cbd5e1;
-  border-radius: 8px;
+  border-radius: 10px;
   color: #0f172a;
   font: inherit;
   font-weight: 650;
@@ -18627,9 +19102,10 @@
 }
 
 .employeeCostSummary article {
-  background: #f8fafc;
+  background: linear-gradient(180deg, #ffffff 0%, #f5f8fc 100%);
   border: 1px solid #d8e0ea;
   border-radius: 12px;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.035);
   display: grid;
   gap: 5px;
   min-height: 118px;
@@ -18675,7 +19151,7 @@
 
 .stampSearchBar {
   align-items: end;
-  background: #f8fafc;
+  background: linear-gradient(180deg, #f8fbff 0%, #f3f7fb 100%);
   border: 1px solid #d8e0ea;
   border-radius: 12px;
   display: grid;
@@ -19948,8 +20424,12 @@
 }
 
 .employeeSignatureEditor {
+  background: linear-gradient(180deg, #f8fbff 0%, #f3f7fb 100%);
+  border: 1px solid #d8e0ea;
+  border-radius: 14px;
   display: grid;
   gap: 8px;
+  padding: 14px;
 }
 
 .employeeSignatureEditor .checkboxField {
@@ -19969,9 +20449,10 @@
 
 .signatureToolbar {
   align-items: center;
-  background: #f1f5f9;
+  background: #eef3f8;
   border: 1px solid #cbd5e1;
   border-bottom: 0;
+  border-radius: 10px 10px 0 0;
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
@@ -29416,6 +29897,29 @@
   gap: 8px;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   margin-bottom: 12px;
+}
+
+.employeeTimeToolbar {
+  background: linear-gradient(180deg, #f8fbff 0%, #f2f6fb 100%);
+  border: 1px solid #d8e0ea;
+  border-radius: 14px;
+  box-shadow: 0 5px 16px rgba(15, 23, 42, 0.04);
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.employeeTimeToolbar .employeeTimeFilters,
+.employeeTimeToolbar .stampSearchBar {
+  margin: 0;
+}
+
+.employeeTimeToolbar .stampSearchBar {
+  background: transparent;
+  border: 0;
+  border-top: 1px solid #d8e0ea;
+  border-radius: 0;
+  padding: 12px 0 0;
 }
 
 .taskSummaryMetric {

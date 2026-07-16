@@ -7,7 +7,7 @@ import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/acto
 import { canManageAbsences } from "@/lib/permissions";
 import { sendNotificationMailSafely } from "@/lib/mail/notifications";
 
-type AbsenceType = "urlaub" | "krank";
+type AbsenceType = "urlaub" | "krank" | "ueberstundenabbau";
 type AbsenceDayPart = "full" | "first-half" | "second-half";
 
 type AbsenceRow = {
@@ -113,7 +113,9 @@ function createHistoryItem(event: string, actorName: string, note = ""): Absence
 }
 
 function getAbsenceTypeLabel(type: AbsenceType) {
-  return type === "urlaub" ? "Urlaub" : "Krank";
+  if (type === "urlaub") return "Urlaub";
+  if (type === "krank") return "Krank";
+  return "Überstundenabbau";
 }
 
 function addDays(date: Date, days: number) {
@@ -154,6 +156,113 @@ async function notifyAbsenceChange(
       body,
     });
   }
+}
+
+function getDailyCapacityHours(
+  user: { dailyWorkHours: number; weeklyCapacity: Prisma.JsonValue },
+  date: Date
+) {
+  const dayKeys = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+  const dayKey = dayKeys[date.getDay()] ?? "monday";
+  if (dayKey === "saturday" || dayKey === "sunday") return 0;
+  const weeklyCapacity = user.weeklyCapacity;
+  const configuredHours =
+    weeklyCapacity && typeof weeklyCapacity === "object" && !Array.isArray(weeklyCapacity)
+      ? Number(weeklyCapacity[dayKey])
+      : Number.NaN;
+  return Number.isFinite(configuredHours) && configuredHours >= 0
+    ? configuredHours
+    : Math.max(0, Number(user.dailyWorkHours) || 0);
+}
+
+function getAbsenceHours(
+  user: { dailyWorkHours: number; weeklyCapacity: Prisma.JsonValue },
+  date: Date,
+  dayPart: AbsenceDayPart
+) {
+  const hours = getDailyCapacityHours(user, date);
+  return dayPart === "full" ? hours : hours / 2;
+}
+
+async function getCurrentTimeAccountBalanceHours(input: {
+  organizationId: string;
+  userId: string;
+  user: { dailyWorkHours: number; weeklyCapacity: Prisma.JsonValue };
+}) {
+  const tableRows = await prisma.$queryRaw<Array<{ exists: string | null }>>`
+    SELECT to_regclass('"ProjectTimeEntry"')::text AS "exists"
+  `;
+  if (!tableRows[0]?.exists) return 0;
+
+  const today = new Date();
+  const endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12);
+  const endDateKey = formatDateKey(endDate);
+
+  const entryRows = await prisma.$queryRaw<Array<{
+    date: string;
+    durationMs: bigint | number;
+    pauseMs: bigint | number;
+  }>>`
+    SELECT date, "durationMs", "pauseMs"
+    FROM "ProjectTimeEntry"
+    WHERE "organizationId" = ${input.organizationId}
+      AND "userId" = ${input.userId}
+      AND "deletedAt" IS NULL
+      AND date <= ${endDateKey}
+    ORDER BY date ASC
+  `;
+  if (entryRows.length === 0) return 0;
+
+  const firstDateKey = String(entryRows[0].date).slice(0, 10);
+  const firstDate = new Date(`${firstDateKey.slice(0, 7)}-01T12:00:00`);
+  const paidAbsenceRows = await prisma.$queryRaw<Array<{ date: Date | string; dayPart: AbsenceDayPart }>>`
+    SELECT date, COALESCE("dayPart", 'full') AS "dayPart"
+    FROM "Absence"
+    WHERE "organizationId" = ${input.organizationId}
+      AND "userId" = ${input.userId}
+      AND "deletedAt" IS NULL
+      AND status = 'genehmigt'
+      AND type IN ('urlaub', 'krank')
+      AND date >= ${formatDateKey(firstDate)}::date
+      AND date <= ${formatDateKey(endDate)}::date
+  `;
+  const paidAbsences = new Map(
+    paidAbsenceRows.map((absence) => [
+      absence.date instanceof Date ? formatDateKey(absence.date) : String(absence.date).slice(0, 10),
+      absence.dayPart,
+    ])
+  );
+
+  let targetHours = 0;
+  let paidAbsenceCreditHours = 0;
+  for (const current = new Date(firstDate); current <= endDate; current.setDate(current.getDate() + 1)) {
+    targetHours += getDailyCapacityHours(input.user, current);
+    const paidDayPart = paidAbsences.get(formatDateKey(current));
+    if (paidDayPart) paidAbsenceCreditHours += getAbsenceHours(input.user, current, paidDayPart);
+  }
+  const productiveHours = entryRows.reduce((sum, entry) => {
+    const durationMs = Number(entry.durationMs) || 0;
+    const pauseMs = Number(entry.pauseMs) || 0;
+    return sum + Math.max(0, durationMs - pauseMs) / 3_600_000;
+  }, 0);
+  return productiveHours - targetHours + paidAbsenceCreditHours;
+}
+
+function getRequestedOvertimeReductionHours(input: {
+  user: { dailyWorkHours: number; weeklyCapacity: Prisma.JsonValue };
+  startDate: Date;
+  endDate: Date;
+  dayPart: AbsenceDayPart;
+}) {
+  let hours = 0;
+  for (
+    const current = new Date(input.startDate);
+    current <= input.endDate;
+    current.setDate(current.getDate() + 1)
+  ) {
+    hours += getAbsenceHours(input.user, current, input.dayPart);
+  }
+  return hours;
 }
 
 async function createAbsenceNotification(input: {
@@ -390,9 +499,9 @@ export async function POST(req: Request) {
     );
   }
 
-  if (type !== "urlaub" && type !== "krank") {
+  if (type !== "urlaub" && type !== "krank" && type !== "ueberstundenabbau") {
     return NextResponse.json(
-      { error: "Bitte Urlaub oder Krank ausw\u00e4hlen." },
+      { error: "Bitte Urlaub, Krank oder Überstundenabbau auswählen." },
       { status: 400 }
     );
   }
@@ -428,6 +537,28 @@ export async function POST(req: Request) {
     );
   }
 
+  const overtimeAccountProjection =
+    type === "ueberstundenabbau"
+      ? await (async () => {
+          const currentBalanceHours = await getCurrentTimeAccountBalanceHours({
+            organizationId: organization.id,
+            userId: targetUser.id,
+            user: targetUser,
+          });
+          const requestedHours = getRequestedOvertimeReductionHours({
+            user: targetUser,
+            startDate,
+            endDate,
+            dayPart,
+          });
+          return {
+            currentBalanceHours,
+            requestedHours,
+            projectedBalanceHours: currentBalanceHours - requestedHours,
+          };
+        })()
+      : null;
+
   const baseNote = String(body.note ?? "").trim();
   const requestGroupId = randomUUID();
   const providedHandoverTaskIds = Array.isArray(body.handoverTaskIds)
@@ -458,6 +589,15 @@ export async function POST(req: Request) {
       `${actor.firstName} ${actor.lastName}`,
       `${getAbsenceTypeLabel(type)} vom ${formatDateKeyDisplay(dateFrom)} bis ${formatDateKeyDisplay(dateTo)}. Vertreter: ${representative.firstName} ${representative.lastName}.`
     ),
+    ...(overtimeAccountProjection && overtimeAccountProjection.projectedBalanceHours < 0
+      ? [
+          createHistoryItem(
+            "Zeitkonto-Warnung",
+            `${actor.firstName} ${actor.lastName}`,
+            `Der beantragte Überstundenabbau von ${overtimeAccountProjection.requestedHours.toFixed(2).replace(".", ",")} Std. führt voraussichtlich zu einem Zeitkonto von ${overtimeAccountProjection.projectedBalanceHours.toFixed(2).replace(".", ",")} Std.`
+          ),
+        ]
+      : []),
   ];
 
   for (const currentDate = new Date(startDate); currentDate <= endDate; currentDate.setDate(currentDate.getDate() + 1)) {
@@ -498,7 +638,7 @@ export async function POST(req: Request) {
     `;
   }
 
-  const absenceTypeLabel = type === "urlaub" ? "Urlaub" : "Krank";
+  const absenceTypeLabel = getAbsenceTypeLabel(type);
   const targetUserName = `${targetUser.firstName} ${targetUser.lastName}`;
   const notificationBody = `${targetUserName}: ${absenceTypeLabel} vom ${formatDateKeyDisplay(dateFrom)} bis ${formatDateKeyDisplay(dateTo)}. Vertreter: ${representative.firstName} ${representative.lastName}.`;
   const adminRecipients = users.filter(
@@ -540,6 +680,34 @@ export async function POST(req: Request) {
       linkTargetId: notification.linkTargetId,
       linkLabel: notification.linkLabel,
     });
+  }
+
+  if (overtimeAccountProjection && overtimeAccountProjection.projectedBalanceHours < 0) {
+    const warningRecipients = new Map(
+      users
+        .filter(
+          (demoUser) =>
+            demoUser.isActive !== false &&
+            (demoUser.id === targetUser.id ||
+              demoUser.role === Role.FUEHRUNGSKRAFT ||
+              demoUser.role === Role.GESCHAEFTSFUEHRER)
+        )
+        .map((demoUser) => [demoUser.id, demoUser])
+    );
+    const projectedBalance = overtimeAccountProjection.projectedBalanceHours.toFixed(2).replace(".", ",");
+    const requestedHours = overtimeAccountProjection.requestedHours.toFixed(2).replace(".", ",");
+    const warningBody = `${targetUserName} hat ${requestedHours} Std. Überstundenabbau für den Zeitraum ${formatDateKeyDisplay(dateFrom)} bis ${formatDateKeyDisplay(dateTo)} beantragt. Der voraussichtliche Zeitkonto-Stand beträgt danach ${projectedBalance} Std. Der Antrag bleibt zulässig und muss geprüft werden.`;
+    for (const recipient of warningRecipients.values()) {
+      await createAbsenceNotification({
+        organizationId: organization.id,
+        userId: recipient.id,
+        subject: "Zeitkonto wird durch Überstundenabbau negativ",
+        body: warningBody,
+        linkTarget: "absence-request",
+        linkTargetId: requestGroupId,
+        linkLabel: "Abwesenheitsantrag prüfen",
+      });
+    }
   }
 
   const rows = await prisma.$queryRaw<AbsenceRow[]>`
@@ -756,9 +924,9 @@ export async function PATCH(req: Request) {
     );
   }
 
-  if (type !== "urlaub" && type !== "krank") {
+  if (type !== "urlaub" && type !== "krank" && type !== "ueberstundenabbau") {
     return NextResponse.json(
-      { error: "Bitte Urlaub oder Krank ausw\u00e4hlen." },
+      { error: "Bitte Urlaub, Krank oder Überstundenabbau auswählen." },
       { status: 400 }
     );
   }

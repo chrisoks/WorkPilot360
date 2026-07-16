@@ -2000,7 +2000,7 @@ type AbsenceItem = {
   userName: string;
   representativeUserId: string | null;
   representativeName: string | null;
-  type: "urlaub" | "krank";
+  type: "urlaub" | "krank" | "ueberstundenabbau";
   dayPart: "full" | "first-half" | "second-half";
   status: "wartet_vertreter" | "wartet_geschaeftsfuehrung" | "genehmigt" | "abgelehnt";
   date: string;
@@ -23573,7 +23573,11 @@ await addProjectLogbookEntry(
 
     return until;
   };
-  const absenceLabel = (type: AbsenceItem["type"]) => (type === "urlaub" ? "Urlaub" : "Krank");
+  const absenceLabel = (type: AbsenceItem["type"]) => {
+    if (type === "urlaub") return "Urlaub";
+    if (type === "krank") return "Krank";
+    return "Überstundenabbau";
+  };
   const getAbsenceGroupKey = (absence: AbsenceItem) =>
     [
       absence.userId,
@@ -24044,7 +24048,7 @@ await addProjectLogbookEntry(
         absence.status === "genehmigt" &&
         normalizeDateKeyValue(absence.date) === dashboardTodayKey
     );
-    const absenceTodayLabel = absenceToday?.type === "krank" ? "Krank" : "Urlaub";
+    const absenceTodayLabel = absenceToday ? absenceLabel(absenceToday.type) : "Abwesenheit";
     const activityLabel = activeSession
       ? activeSession.mode === "project"
         ? activeSession.projectLabel || getStampProjectLabel(activeSession.projectId)
@@ -44106,7 +44110,18 @@ await addProjectLogbookEntry(
       (sum, date) => sum + getPersonalTargetHoursForDate(formatDateKey(date)),
       0
     );
-    const monthBalanceHours = monthProductiveMs / 3600000 - targetMonthHours;
+    const getPaidAbsenceCreditHoursForDate = (dateKey: string) => {
+      if (!currentUser) return 0;
+      const absence = getUserAbsenceForDateKey(currentUser.id, dateKey);
+      if (!absence || absence.type === "ueberstundenabbau") return 0;
+      const targetHours = getPersonalTargetHoursForDate(dateKey);
+      return absence.dayPart === "full" ? targetHours : targetHours / 2;
+    };
+    const monthPaidAbsenceCreditHours = personalTimeMonthDays.reduce(
+      (sum, date) => sum + getPaidAbsenceCreditHoursForDate(formatDateKey(date)),
+      0
+    );
+    const monthBalanceHours = monthProductiveMs / 3600000 - targetMonthHours + monthPaidAbsenceCreditHours;
     const personalDailyTimeRows = personalTimeMonthDays.map((date) => {
       const dateKey = formatDateKey(date);
       const dayEntries = monthStampEntries
@@ -44118,7 +44133,8 @@ await addProjectLogbookEntry(
       );
       const pauseMs = dayEntries.reduce((sum, entry) => sum + entry.pauseMs, 0);
       const targetMs = getPersonalTargetHoursForDate(dateKey) * 3_600_000;
-      const balanceMs = productiveMs - targetMs;
+      const paidAbsenceCreditMs = getPaidAbsenceCreditHoursForDate(dateKey) * 3_600_000;
+      const balanceMs = productiveMs - targetMs + paidAbsenceCreditMs;
       const overtimeMs = Math.max(0, productiveMs - targetMs);
       const requiresApproval = overtimeMs > 30 * 60_000;
       const approvedOvertime =
@@ -44176,7 +44192,12 @@ await addProjectLogbookEntry(
       (sum, dateKey) => sum + getPersonalTargetHoursForDate(dateKey),
       0
     );
-    const cumulativeBalanceHours = cumulativeProductiveMs / 3600000 - cumulativeTargetHours;
+    const cumulativePaidAbsenceCreditHours = accountDateKeys.reduce(
+      (sum, dateKey) => sum + getPaidAbsenceCreditHoursForDate(dateKey),
+      0
+    );
+    const cumulativeBalanceHours =
+      cumulativeProductiveMs / 3600000 - cumulativeTargetHours + cumulativePaidAbsenceCreditHours;
     const monthOvertimeMs = personalDailyTimeRows.reduce((sum, row) => sum + row.overtimeMs, 0);
     const pendingOvertimeRows = personalDailyTimeRows.filter(
       (row) => row.requiresApproval && !row.approvedOvertime
@@ -44918,23 +44939,27 @@ await addProjectLogbookEntry(
           </button>
         </div>
 
-        <section className={styles.calendarToolbar}>
+        <section className={`${styles.calendarToolbar} ${styles.teamCalendarToolbar}`}>
           <button
             type="button"
-            className={styles.secondaryButton}
+            className={styles.teamCalendarMonthButton}
+            aria-label="Vorheriger Monat"
+            title="Vorheriger Monat"
             onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))}
           >
-            Zurück
+            ‹
           </button>
           <div className={styles.calendarTitleGroup}>
             <h2>{formatCalendarTitle(monthStart)}</h2>
           </div>
           <button
             type="button"
-            className={styles.secondaryButton}
+            className={styles.teamCalendarMonthButton}
+            aria-label="Nächster Monat"
+            title="Nächster Monat"
             onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))}
           >
-            Weiter
+            ›
           </button>
         </section>
 
@@ -46167,6 +46192,35 @@ await addProjectLogbookEntry(
       .reduce((sum, entry) => sum + Math.max(0, entry.durationMs - entry.pauseMs), 0);
     const pauseMs = visibleTimeEntries.reduce((sum, entry) => sum + entry.pauseMs, 0);
     const editedCount = visibleTimeEntries.filter((entry) => (entry.editHistory ?? []).length > 0).length;
+    const setTimeTrackingQuickRange = (
+      range: "today" | "yesterday" | "currentMonth" | "previousMonth" | "currentYear"
+    ) => {
+      const now = new Date();
+      if (range === "today") {
+        const todayKey = formatDateKey(now);
+        setTimeTrackingFrom(todayKey);
+        setTimeTrackingTo(todayKey);
+        return;
+      }
+      if (range === "yesterday") {
+        const yesterdayKey = formatDateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 12));
+        setTimeTrackingFrom(yesterdayKey);
+        setTimeTrackingTo(yesterdayKey);
+        return;
+      }
+      if (range === "currentMonth") {
+        setTimeTrackingFrom(formatDateKey(new Date(now.getFullYear(), now.getMonth(), 1, 12)));
+        setTimeTrackingTo(formatDateKey(new Date(now.getFullYear(), now.getMonth() + 1, 0, 12)));
+        return;
+      }
+      if (range === "previousMonth") {
+        setTimeTrackingFrom(formatDateKey(new Date(now.getFullYear(), now.getMonth() - 1, 1, 12)));
+        setTimeTrackingTo(formatDateKey(new Date(now.getFullYear(), now.getMonth(), 0, 12)));
+        return;
+      }
+      setTimeTrackingFrom(formatDateKey(new Date(now.getFullYear(), 0, 1, 12)));
+      setTimeTrackingTo(formatDateKey(new Date(now.getFullYear(), 11, 31, 12)));
+    };
 
     return (
       <section className={styles.employeeTimeOverview}>
@@ -46210,17 +46264,23 @@ await addProjectLogbookEntry(
               onChange={(event) => setTimeTrackingTo(event.target.value)}
             />
           </label>
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            onClick={() => {
-              const now = new Date();
-              setTimeTrackingFrom(formatDateKey(new Date(now.getFullYear(), now.getMonth(), 1, 12)));
-              setTimeTrackingTo(formatDateKey(new Date(now.getFullYear(), now.getMonth() + 1, 0, 12)));
-            }}
-          >
-            Aktueller Monat
-          </button>
+          <div className={styles.employeeTimeQuickRanges} aria-label="Schnellzeitraum auswählen">
+            <button type="button" onClick={() => setTimeTrackingQuickRange("today")}>
+              Heute
+            </button>
+            <button type="button" onClick={() => setTimeTrackingQuickRange("yesterday")}>
+              Gestern
+            </button>
+            <button type="button" onClick={() => setTimeTrackingQuickRange("currentMonth")}>
+              Aktueller Monat
+            </button>
+            <button type="button" onClick={() => setTimeTrackingQuickRange("previousMonth")}>
+              Vormonat
+            </button>
+            <button type="button" onClick={() => setTimeTrackingQuickRange("currentYear")}>
+              Laufendes Jahr
+            </button>
+          </div>
         </section>
 
         <div className={styles.employeeKpiGrid}>
@@ -46519,7 +46579,7 @@ await addProjectLogbookEntry(
           <header className={styles.employeeFileHeader}>
             <button
               type="button"
-              className={styles.secondaryButton}
+              className={styles.employeeFileBackButton}
               onClick={() => {
                 setSelectedEmployeeId("");
                 resetUserForm();
@@ -46527,13 +46587,18 @@ await addProjectLogbookEntry(
             >
               Zurück zur Mitarbeiterliste
             </button>
-            <div>
+            <div className={styles.employeeFileTitle}>
               <p className={styles.eyebrow}>Mitarbeiterverwaltung</p>
               <h1>{employeeName}</h1>
+              {!isNewEmployee && selectedEmployee ? (
+                <span>{selectedEmployee.roleLabel} · {selectedEmployee.email}</span>
+              ) : (
+                <span>Neue Mitarbeiterakte anlegen</span>
+              )}
             </div>
             <button
               type="button"
-              className={styles.primaryButton}
+              className={styles.employeeFileSaveButton}
               disabled={!mayManageUsers}
               onClick={saveEmployeeFile}
             >
@@ -46619,6 +46684,7 @@ await addProjectLogbookEntry(
                           )}
                         </div>
                       </div>
+                      <h3 className={`${styles.employeeFormSectionTitle} ${styles.fullWidth}`}>Person &amp; Zugang</h3>
                       <label>
                         Anrede
                         <select
@@ -46685,6 +46751,7 @@ await addProjectLogbookEntry(
                           onChange={(event) => setUserEmail(event.target.value)}
                         />
                       </label>
+                      <h3 className={`${styles.employeeFormSectionTitle} ${styles.fullWidth}`}>Kontakt &amp; Adresse</h3>
                       <label>
                         Telefonnummer
                         <input
@@ -46728,6 +46795,7 @@ await addProjectLogbookEntry(
                           onChange={(event) => setEmployeeCity(event.target.value)}
                         />
                       </label>
+                      <h3 className={`${styles.employeeFormSectionTitle} ${styles.fullWidth}`}>E-Mail-Signatur</h3>
                       <div className={`${styles.fullWidth} ${styles.employeeSignatureEditor}`}>
                         <label className={styles.checkboxField}>
                           <input
@@ -46884,6 +46952,7 @@ await addProjectLogbookEntry(
                         />
                         In LK-Satz-Berechnung einbeziehen
                       </label>
+                      <h3 className={`${styles.employeeFormSectionTitle} ${styles.fullWidth}`}>Rollen &amp; Benachrichtigungen</h3>
                       <label>
                         Benutzerrechte *
                         <select
@@ -47389,20 +47458,26 @@ await addProjectLogbookEntry(
             <section className={styles.employeeDetailPanel}>
               {employeeTopTab === "absence" && (
                 <>
-                  <div className={styles.employeeKpiGrid}>
+                  <div className={`${styles.employeeSectionHeader} ${styles.employeeTabHeader}`}>
+                    <div>
+                      <h2>Urlaub &amp; Abwesenheiten</h2>
+                      <p>Urlaubsbudget, Antragsstand und Abwesenheitszeiträume des Mitarbeiters im Überblick.</p>
+                    </div>
+                  </div>
+                  <div className={`${styles.employeeKpiGrid} ${styles.employeeAbsenceKpis}`}>
                     <article>
                       <span>Aktuelles Urlaubsbudget</span>
-                      <strong>30 t</strong>
+                      <strong>30 Tage</strong>
                       <small>noch verfügbar</small>
                     </article>
                     <article>
                       <span>Beantragt</span>
-                      <strong>0 t</strong>
+                      <strong>0 Tage</strong>
                       <small>offene Abwesenheitsanträge</small>
                     </article>
                     <article>
                       <span>Genehmigt</span>
-                      <strong>0 t</strong>
+                      <strong>0 Tage</strong>
                       <small>für dieses Jahr</small>
                     </article>
                   </div>
@@ -47427,7 +47502,14 @@ await addProjectLogbookEntry(
               )}
               {employeeTopTab === "time" && (
                 <>
-                  <div className={styles.employeeTimeFilters}>
+                  <div className={`${styles.employeeSectionHeader} ${styles.employeeTabHeader}`}>
+                    <div>
+                      <h2>Zeiterfassung</h2>
+                      <p>Produktive und unproduktive Zeiten nach Zeitraum, Projekt und Kommentar auswerten.</p>
+                    </div>
+                  </div>
+                  <div className={styles.employeeTimeToolbar}>
+                    <div className={styles.employeeTimeFilters}>
                     <div className={styles.segmentedControl}>
                       {[
                         ["day", "Tag"],
@@ -47465,8 +47547,8 @@ await addProjectLogbookEntry(
                         </label>
                       </div>
                     )}
-                  </div>
-                  <div className={styles.stampSearchBar}>
+                    </div>
+                    <div className={styles.stampSearchBar}>
                     <label>
                       Projekt / Kunde
                       <input
@@ -47495,9 +47577,10 @@ await addProjectLogbookEntry(
                     >
                       Zurücksetzen
                     </button>
-                    <span className={styles.stampSearchResult}>{employeeTimeEntries.length} Treffer</span>
+                      <span className={styles.stampSearchResult}>{employeeTimeEntries.length} Treffer</span>
+                    </div>
                   </div>
-                  <div className={styles.employeeKpiGrid}>
+                  <div className={`${styles.employeeKpiGrid} ${styles.employeeTimeKpis}`}>
                     <article>
                       <span>Ist Gesamt</span>
                       <strong>{formatStampDuration(employeeTotalTimeMs)}</strong>
@@ -47559,27 +47642,35 @@ await addProjectLogbookEntry(
                 </>
               )}
               {employeeTopTab === "balance" && (
-                <section className={styles.tableCard}>
-                  <table className={styles.table}>
-                    <thead>
-                      <tr>
-                        <th>Mitarbeiter</th>
-                        <th>Zeit</th>
-                        <th>Ausgleichsart</th>
-                        <th>Verrechnungszeitpunkt</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <td colSpan={4}>Keine passenden Einträge gefunden.</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </section>
+                <>
+                  <div className={`${styles.employeeSectionHeader} ${styles.employeeTabHeader}`}>
+                    <div>
+                      <h2>Stundenausgleich</h2>
+                      <p>Erfasste Ausgleichsbuchungen mit Art und Verrechnungszeitpunkt nachvollziehen.</p>
+                    </div>
+                  </div>
+                  <section className={styles.tableCard}>
+                    <table className={styles.table}>
+                      <thead>
+                        <tr>
+                          <th>Mitarbeiter</th>
+                          <th>Zeit</th>
+                          <th>Ausgleichsart</th>
+                          <th>Verrechnungszeitpunkt</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td colSpan={4}>Keine passenden Einträge gefunden.</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </section>
+                </>
               )}
               {employeeTopTab === "costs" && selectedEmployee && mayAccessEmployeeCosts && (
                 <section className={styles.employeeCostPanel}>
-                  <div className={styles.employeeSectionHeader}>
+                  <div className={`${styles.employeeSectionHeader} ${styles.employeeTabHeader}`}>
                     <div>
                       <h2>Lohnkostenberechnung</h2>
                       <p>
@@ -47748,22 +47839,30 @@ await addProjectLogbookEntry(
                 </section>
               )}
               {employeeTopTab === "documents" && (
-                <section className={styles.tableCard}>
-                  <table className={styles.table}>
-                    <thead>
-                      <tr>
-                        <th>Dateiname</th>
-                        <th>Kategorie</th>
-                        <th>Erstellt am</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <td colSpan={3}>Noch keine Dokumente hinterlegt.</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </section>
+                <>
+                  <div className={`${styles.employeeSectionHeader} ${styles.employeeTabHeader}`}>
+                    <div>
+                      <h2>Dokumente</h2>
+                      <p>Personalbezogene Dokumente mit Kategorie und Erstellungsdatum gebündelt anzeigen.</p>
+                    </div>
+                  </div>
+                  <section className={styles.tableCard}>
+                    <table className={styles.table}>
+                      <thead>
+                        <tr>
+                          <th>Dateiname</th>
+                          <th>Kategorie</th>
+                          <th>Erstellt am</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td colSpan={3}>Noch keine Dokumente hinterlegt.</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </section>
+                </>
               )}
             </section>
           )}
@@ -47773,11 +47872,11 @@ await addProjectLogbookEntry(
 
     return (
       <section className={styles.employeePage}>
-        <div className={styles.topline}>
+        <div className={styles.employeeListHero}>
           <div>
             <p className={styles.eyebrow}>Team</p>
             <h1>Mitarbeiterverwaltung</h1>
-            <p className={styles.subline}>Verwaltung der Mitarbeiter im Projektmanagement.</p>
+            <p className={styles.subline}>Mitarbeiter, Rollen und Niederlassungszuordnungen zentral verwalten.</p>
           </div>
           <button type="button" className={styles.primaryButton} onClick={openNewEmployeeFile}>
             + Mitarbeiter
@@ -47801,7 +47900,7 @@ await addProjectLogbookEntry(
           </button>
         </div>
 
-        <section className={styles.contactToolbar}>
+        <section className={`${styles.contactToolbar} ${styles.employeeListToolbar}`}>
           <label>
             Suche
             <input
@@ -47815,7 +47914,7 @@ await addProjectLogbookEntry(
           </div>
         </section>
 
-        <section className={`${styles.tableCard} ${styles.employeeTableCard}`}>
+        <section className={`${styles.tableCard} ${styles.employeeTableCard} ${styles.employeeListTableCard}`}>
           <table className={styles.table}>
             <thead>
               <tr>
@@ -58253,6 +58352,7 @@ await addProjectLogbookEntry(
                 >
                   <option value="urlaub">Urlaub</option>
                   <option value="krank">Krank</option>
+                  <option value="ueberstundenabbau">Überstundenabbau</option>
                 </select>
               </label>
 

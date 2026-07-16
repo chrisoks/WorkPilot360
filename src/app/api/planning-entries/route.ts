@@ -593,7 +593,7 @@ async function syncPlanningCapacityAlert(entry: PlanningEntryRow, organizationId
       AND date = ${entry.date}::date
       AND "deletedAt" IS NULL
       AND status = 'genehmigt'
-      AND type IN ('urlaub', 'krank')
+      AND type IN ('urlaub', 'krank', 'ueberstundenabbau')
     LIMIT 1
   `;
   const absence = absenceRows[0];
@@ -1064,7 +1064,7 @@ export async function POST(req: Request) {
       AND date = ${date}::date
       AND "deletedAt" IS NULL
       AND status = 'genehmigt'
-      AND type IN ('urlaub', 'krank')
+      AND type IN ('urlaub', 'krank', 'ueberstundenabbau')
       AND (
         COALESCE("dayPart", 'full') = 'full'
         OR ("dayPart" = 'first-half' AND ${startTime} < '12:00')

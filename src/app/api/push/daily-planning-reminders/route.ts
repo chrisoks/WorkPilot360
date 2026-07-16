@@ -65,7 +65,7 @@ async function getReminderUsers(organizationId: string, dateKey: string) {
           AND absences."userId" = users.id
           AND absences.date = ${dateKey}::date
           AND absences."deletedAt" IS NULL
-          AND absences.type IN ('urlaub', 'krank')
+          AND absences.type IN ('urlaub', 'krank', 'ueberstundenabbau')
           AND absences.status = 'genehmigt'
           AND (
             COALESCE(absences."dayPart", 'full') = 'full'
