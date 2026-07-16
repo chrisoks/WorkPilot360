@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { getDashboardDailyImpulse } from "@/lib/dashboard-daily-impulses";
+import { getLoginErrorMessage } from "@/lib/auth/login-error";
 import styles from "./dashboard.module.css";
 import {
   getEffectiveMonthlyFinancialAmount,
@@ -12163,8 +12164,7 @@ export function DashboardPage() {
     }
 
     if (!res.ok) {
-      const data = await res.json().catch(() => null);
-      setLoginError(data?.error ?? "E-Mail oder Passwort ist nicht korrekt.");
+      setLoginError(await getLoginErrorMessage(res));
       setIsLoginSubmitting(false);
       return;
     }
