@@ -49128,7 +49128,16 @@ await addProjectLogbookEntry(
                 }
               }}
             >
-              <span>{item.label}</span>
+              <span className={styles.catalogTypeIcon} aria-hidden="true">
+                {item.value === "articles" ? (
+                  <svg viewBox="0 0 24 24"><path d="m4 7 8-4 8 4-8 4-8-4Z"/><path d="m4 7 8 4 8-4M4 7v10l8 4 8-4V7M12 11v10"/></svg>
+                ) : item.value === "services" ? (
+                  <svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5-5L12 3.6 9.6 6 7.3 3.7a4 4 0 0 0 5 5L4 17l3 3 8.3-8.3a4 4 0 0 0 5-5L18 9l-2.4-2.4 2.3-2.3a4 4 0 0 0-3.2 2Z"/></svg>
+                ) : (
+                  <svg viewBox="0 0 24 24"><path d="M5 8h14v11H5zM3 5h18v3H3zM9 12h6"/></svg>
+                )}
+              </span>
+              <span className={styles.catalogTypeLabel}>{item.label}</span>
               <strong>{item.count}</strong>
             </button>
           ))}
@@ -49218,13 +49227,13 @@ await addProjectLogbookEntry(
                   </td>
                   <td>
                     <div className={`${styles.tableActionGroup} ${styles.catalogActionGroup}`}>
-                      <button className={styles.secondaryButton} onClick={() => openEditCatalogModal(item)}>
+                      <button className={`${styles.secondaryButton} ${styles.catalogPrimaryRowAction}`} onClick={() => openEditCatalogModal(item)}>
                         Bearbeiten
                       </button>
-                      <button className={styles.secondaryButton} onClick={() => duplicateCatalogItem(item)}>
+                      <button className={`${styles.secondaryButton} ${styles.catalogSecondaryRowAction}`} onClick={() => duplicateCatalogItem(item)}>
                         Duplizieren
                       </button>
-                      <button className={styles.secondaryButton} disabled={!item.isActive} onClick={() => deactivateCatalogItem(item)}>
+                      <button className={`${styles.secondaryButton} ${styles.catalogDangerRowAction}`} disabled={!item.isActive} onClick={() => deactivateCatalogItem(item)}>
                         Deaktivieren
                       </button>
                     </div>
@@ -49315,6 +49324,46 @@ await addProjectLogbookEntry(
       catalogDraft.lastSalesPriceNewValue > catalogDraft.lastSalesPriceOldValue
         ? "Letzte Preiserhöhung"
         : "Letzte Preisänderung";
+    const catalogHistoryEventLabels: Record<string, string> = {
+      updated: "Geändert",
+      created: "Angelegt",
+      package_items_updated: "Paketbestandteile geändert",
+      "scheduled-price-applied": "Preisänderung übernommen",
+    };
+    const formatCatalogHistoryValue = (entry: CatalogItemHistory, value: string) => {
+      if (!value || value === "-") return "-";
+
+      if (["Einkaufspreis", "Verkaufspreis", "Geplanter Verkaufspreis"].includes(entry.fieldName)) {
+        const numericValue = Number(value);
+        return Number.isFinite(numericValue) ? formatMoney(numericValue) : value;
+      }
+
+      if (entry.fieldName === "MwSt.") {
+        const numericValue = Number(value);
+        return Number.isFinite(numericValue)
+          ? `${new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 }).format(numericValue)} %`
+          : value;
+      }
+
+      if (entry.fieldName === "Planungszeit je Einheit") {
+        const numericValue = Number(value);
+        return Number.isFinite(numericValue)
+          ? `${new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 }).format(numericValue)} Min.`
+          : value;
+      }
+
+      if (entry.fieldName === "Typ") {
+        return ({ article: "Artikel", service: "Leistung", package: "Paket" } as Record<string, string>)[value] ?? value;
+      }
+
+      if (["Paketpreise mit aktualisieren", "Arbeitsposition", "Planungsrelevant", "Status"].includes(entry.fieldName)) {
+        if (value === "true") return entry.fieldName === "Status" ? "Aktiv" : "Ja";
+        if (value === "false") return entry.fieldName === "Status" ? "Inaktiv" : "Nein";
+      }
+
+      if (entry.fieldName === "Neuer Verkaufspreis ab") return formatPlainDate(value);
+      return value;
+    };
 
     return (
       <div className={styles.modalOverlay}>
@@ -49338,7 +49387,13 @@ await addProjectLogbookEntry(
           </div>
           {catalogError ? <p className={styles.modalWarning}>{catalogError}</p> : null}
           {catalogFormTab === "information" ? (
-            <div className={styles.catalogFormGrid}>
+            <div className={styles.catalogInformationLayout}>
+              <section className={styles.catalogFormSection}>
+                <div className={styles.catalogFormSectionHeader}>
+                  <strong>Basisdaten</strong>
+                  <span>Identität, Zuordnung und Abrechnungseinheit</span>
+                </div>
+                <div className={styles.catalogFormGrid}>
               <label>Typ<select value={catalogDraft.type} onChange={(event) => updateCatalogDraft("type", event.target.value as CatalogItemType)}><option value="article">Artikel</option><option value="service">Leistung</option><option value="package">Paket</option></select></label>
               <label>Nummer<input value={catalogDraft.number} onChange={(event) => updateCatalogDraft("number", event.target.value)} /></label>
               <label className={styles.catalogWideField}>Name<input value={catalogDraft.name} onChange={(event) => updateCatalogDraft("name", event.target.value)} /></label>
@@ -49348,6 +49403,15 @@ await addProjectLogbookEntry(
               <label>Matchcode<input value={catalogDraft.matchcode} onChange={(event) => updateCatalogDraft("matchcode", event.target.value)} /></label>
               <label>EAN<input value={catalogDraft.ean} onChange={(event) => updateCatalogDraft("ean", event.target.value)} /></label>
               <label>Kostenstelle<input value={catalogDraft.costCenter} onChange={(event) => updateCatalogDraft("costCenter", event.target.value)} /></label>
+                </div>
+              </section>
+
+              <section className={styles.catalogFormSection}>
+                <div className={styles.catalogFormSectionHeader}>
+                  <strong>Beschaffung &amp; Logistik</strong>
+                  <span>Lieferanten-, Hersteller- und Bestandsangaben</span>
+                </div>
+                <div className={styles.catalogFormGrid}>
               <label>Lieferant<input value={catalogDraft.supplierName} onChange={(event) => updateCatalogDraft("supplierName", event.target.value)} /></label>
               <label>Lieferanten-Nr.<input value={catalogDraft.supplierNumber} onChange={(event) => updateCatalogDraft("supplierNumber", event.target.value)} /></label>
               <label>Hersteller<input value={catalogDraft.manufacturer} onChange={(event) => updateCatalogDraft("manufacturer", event.target.value)} /></label>
@@ -49357,8 +49421,19 @@ await addProjectLogbookEntry(
               <label>Mengenstaffel<input value={catalogDraft.quantityScale} onChange={(event) => updateCatalogDraft("quantityScale", event.target.value)} /></label>
               <label>Lieferzeit<input value={catalogDraft.deliveryTime} onChange={(event) => updateCatalogDraft("deliveryTime", event.target.value)} /></label>
               <label>Lagerbestand<input type="number" value={catalogDraft.stockQuantity ?? ""} onChange={(event) => updateCatalogDraft("stockQuantity", event.target.value ? Number(event.target.value) : null)} /></label>
-              <label className={styles.catalogWideField}>Beschreibung<textarea value={catalogDraft.description} onChange={(event) => updateCatalogDraft("description", event.target.value)} /></label>
-              <label className={styles.checkboxRow}><input type="checkbox" checked={catalogDraft.isActive} onChange={(event) => updateCatalogDraft("isActive", event.target.checked)} />Aktiv</label>
+                </div>
+              </section>
+
+              <section className={styles.catalogFormSection}>
+                <div className={styles.catalogFormSectionHeader}>
+                  <strong>Beschreibung &amp; Status</strong>
+                  <span>Zusätzliche Informationen und Verfügbarkeit</span>
+                </div>
+                <div className={styles.catalogFormGrid}>
+                  <label className={styles.catalogDescriptionField}>Beschreibung<textarea value={catalogDraft.description} onChange={(event) => updateCatalogDraft("description", event.target.value)} /></label>
+                  <label className={`${styles.checkboxRow} ${styles.catalogActiveField}`}><input type="checkbox" checked={catalogDraft.isActive} onChange={(event) => updateCatalogDraft("isActive", event.target.checked)} />Aktiv</label>
+                </div>
+              </section>
             </div>
           ) : null}
           {catalogFormTab === "components" ? (
@@ -49896,10 +49971,10 @@ await addProjectLogbookEntry(
                   ) : (editingItem?.history ?? []).map((entry) => (
                     <tr key={entry.id}>
                       <td>{formatDeadline(entry.createdAt)}</td>
-                      <td>{entry.note || entry.eventType}</td>
+                      <td>{entry.note || catalogHistoryEventLabels[entry.eventType] || entry.eventType}</td>
                       <td>{entry.fieldName || "-"}</td>
-                      <td>{entry.oldValue || "-"}</td>
-                      <td>{entry.newValue || "-"}</td>
+                      <td title={entry.oldValue || undefined}>{formatCatalogHistoryValue(entry, entry.oldValue)}</td>
+                      <td title={entry.newValue || undefined}>{formatCatalogHistoryValue(entry, entry.newValue)}</td>
                       <td>{entry.actorName || "-"}</td>
                     </tr>
                   ))}
