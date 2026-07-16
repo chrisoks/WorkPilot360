@@ -44926,7 +44926,7 @@ await addProjectLogbookEntry(
 
     return (
       <section className={styles.teamCalendarPage}>
-        <div className={styles.topline}>
+        <div className={styles.employeeListHero}>
           <div>
             <p className={styles.eyebrow}>Mitarbeiter</p>
             <h1>Team-Kalender</h1>
@@ -46224,7 +46224,7 @@ await addProjectLogbookEntry(
 
     return (
       <section className={styles.employeeTimeOverview}>
-        <div className={styles.topline}>
+        <div className={styles.employeeListHero}>
           <div>
             <p className={styles.eyebrow}>Mitarbeiter</p>
             <h1>Zeiterfassung</h1>
@@ -46389,7 +46389,7 @@ await addProjectLogbookEntry(
     if (!mayAccessEmployeeCosts) {
       return (
         <section className={styles.settingsPanel}>
-          <div className={styles.topline}>
+          <div className={styles.employeeListHero}>
             <div>
               <p className={styles.eyebrow}>Mitarbeiter</p>
               <h1>LK-Satz</h1>
@@ -46408,7 +46408,7 @@ await addProjectLogbookEntry(
 
     return (
       <section className={styles.settingsPanel}>
-        <div className={styles.topline}>
+        <div className={styles.employeeListHero}>
           <div>
             <p className={styles.eyebrow}>Mitarbeiter</p>
             <h1>LK-Satz</h1>
