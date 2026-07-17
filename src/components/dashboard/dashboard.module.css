@@ -19821,8 +19821,114 @@
   border-radius: 10px;
   display: grid;
   gap: 6px;
-  min-height: 100px;
+  align-content: start;
+  min-height: 136px;
   padding: 14px;
+}
+
+.personalDocumentCategoryHeader {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.personalDocumentCategoryHeader > div:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.personalDocumentUploadButton {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #b9d4ff;
+  border-radius: 9px;
+  color: #123a70;
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+  font-weight: 950;
+  justify-content: center;
+  min-height: 34px;
+  padding: 7px 10px;
+}
+
+.personalDocumentUploadButton:hover {
+  background: #eef5ff;
+  border-color: #78aaf7;
+}
+
+.personalDocumentUploadButton:has(input:disabled) {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.personalDocumentUploadButton input {
+  display: none;
+}
+
+.personalDocumentList {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.personalDocumentList > div {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #d8e0ea;
+  border-radius: 9px;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 9px 10px;
+}
+
+.personalDocumentList > div > div:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.personalDocumentList strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.personalDocumentList small {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.personalDocumentActions {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.personalDocumentActions a,
+.personalDocumentActions button {
+  background: #f8fbff;
+  border: 1px solid #c7d9f4;
+  border-radius: 7px;
+  color: #144b8b;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 900;
+  padding: 6px 8px;
+  text-decoration: none;
+}
+
+.personalDocumentActions button {
+  background: #fff7f7;
+  border-color: #fecaca;
+  color: #b42318;
 }
 
 .personalPerformanceGrid {

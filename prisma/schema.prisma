@@ -40,6 +40,7 @@ model Organization {
   invoiceLineLabor              InvoiceLineLabor[]
   invoiceHistory                InvoiceHistory[]
   employeeCostCalculations      EmployeeCostCalculation[]
+  employeeDocuments             EmployeeDocument[]
   recurringRules                RecurringTaskRule[]
   subcategories                 Subcategory[]
   tasks                         Task[]
@@ -144,6 +145,26 @@ model EmployeeCostCalculation {
 
   @@unique([organizationId, userId])
   @@index([organizationId, userId])
+}
+
+model EmployeeDocument {
+  id               String       @id @default(cuid())
+  organizationId   String
+  employeeId       String
+  category         String
+  originalFileName String
+  mimeType         String
+  size             Int
+  fileData         Bytes
+  uploadedById     String
+  uploadedByName   String
+  createdAt        DateTime     @default(now())
+  deletedAt        DateTime?
+  deletedById      String?
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, employeeId, category, createdAt])
+  @@index([organizationId, deletedAt])
 }
 
 model Department {

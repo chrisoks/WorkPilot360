@@ -1965,6 +1965,40 @@ type CustomerProjectNoteDraft = {
   validUntil: string;
 };
 
+type EmployeeDocumentCategory =
+  | "employment_contract"
+  | "payroll"
+  | "certificate"
+  | "sick_note"
+  | "vacation_proof"
+  | "training";
+
+type EmployeeDocumentItem = {
+  id: string;
+  category: EmployeeDocumentCategory;
+  originalFileName: string;
+  mimeType: string;
+  size: number;
+  uploadedById: string;
+  uploadedByName: string;
+  createdAt: string;
+};
+
+const employeeDocumentCategories: Array<{ id: EmployeeDocumentCategory; label: string }> = [
+  { id: "employment_contract", label: "Arbeitsvertrag" },
+  { id: "payroll", label: "Lohnabrechnungen" },
+  { id: "certificate", label: "Bescheinigungen" },
+  { id: "sick_note", label: "Krankmeldungen" },
+  { id: "vacation_proof", label: "Urlaubsnachweise" },
+  { id: "training", label: "Weiterbildungen" },
+];
+
+const selfUploadEmployeeDocumentCategories = new Set<EmployeeDocumentCategory>([
+  "sick_note",
+  "vacation_proof",
+  "training",
+]);
+
 type CustomerProjectNoteContext =
   | "stamp"
   | "projectCreate"
@@ -5657,6 +5691,11 @@ export function DashboardPage() {
   );
   const [personalDataView, setPersonalDataView] = useState<PersonalDataView>("overview");
   const [selectedPersonalUserId, setSelectedPersonalUserId] = useState("");
+  const [employeeDocuments, setEmployeeDocuments] = useState<EmployeeDocumentItem[]>([]);
+  const [employeeDocumentsLoading, setEmployeeDocumentsLoading] = useState(false);
+  const [employeeDocumentBusyCategory, setEmployeeDocumentBusyCategory] = useState<EmployeeDocumentCategory | "">("");
+  const [employeeDocumentError, setEmployeeDocumentError] = useState("");
+  const [employeeDocumentMessage, setEmployeeDocumentMessage] = useState("");
   const [personalTimeDate, setPersonalTimeDate] = useState(() => new Date());
   const [personalStampPeriod, setPersonalStampPeriod] = useState<EmployeeTimePeriod>("year");
   const [personalStampFrom, setPersonalStampFrom] = useState(() => formatInputDate(new Date()));
@@ -6830,6 +6869,68 @@ export function DashboardPage() {
     } finally {
       setIsNewsFeedLoading(false);
     }
+  }
+
+  async function loadEmployeeDocuments(userId = personalAssessmentTargetUserId) {
+    if (!userId) return;
+    setEmployeeDocumentsLoading(true);
+    setEmployeeDocumentError("");
+    const response = await fetch(`/api/employee-documents?userId=${encodeURIComponent(userId)}`, {
+      cache: "no-store",
+      credentials: "same-origin",
+    }).catch(() => null);
+    if (!response?.ok) {
+      const payload = response ? await response.json().catch(() => null) : null;
+      setEmployeeDocumentError(payload?.error || "Personalunterlagen konnten nicht geladen werden.");
+      setEmployeeDocuments([]);
+      setEmployeeDocumentsLoading(false);
+      return;
+    }
+    const payload = (await response.json()) as { documents?: EmployeeDocumentItem[] };
+    setEmployeeDocuments(Array.isArray(payload.documents) ? payload.documents : []);
+    setEmployeeDocumentsLoading(false);
+  }
+
+  async function uploadEmployeeDocument(category: EmployeeDocumentCategory, file: File | undefined) {
+    if (!file || !personalAssessmentTargetUserId) return;
+    setEmployeeDocumentBusyCategory(category);
+    setEmployeeDocumentError("");
+    setEmployeeDocumentMessage("");
+    const formData = new FormData();
+    formData.set("userId", personalAssessmentTargetUserId);
+    formData.set("category", category);
+    formData.set("file", file);
+    const response = await fetch("/api/employee-documents", {
+      method: "POST",
+      body: formData,
+      credentials: "same-origin",
+    }).catch(() => null);
+    if (!response?.ok) {
+      const payload = response ? await response.json().catch(() => null) : null;
+      setEmployeeDocumentError(payload?.error || "Dokument konnte nicht hochgeladen werden.");
+      setEmployeeDocumentBusyCategory("");
+      return;
+    }
+    setEmployeeDocumentMessage("Dokument wurde sicher hinterlegt.");
+    await loadEmployeeDocuments(personalAssessmentTargetUserId);
+    setEmployeeDocumentBusyCategory("");
+  }
+
+  async function deleteEmployeeDocument(document: EmployeeDocumentItem) {
+    if (!window.confirm(`„${document.originalFileName}“ wirklich aus der aktiven Personalakte entfernen?`)) return;
+    setEmployeeDocumentError("");
+    setEmployeeDocumentMessage("");
+    const response = await fetch(`/api/employee-documents/${encodeURIComponent(document.id)}`, {
+      method: "DELETE",
+      credentials: "same-origin",
+    }).catch(() => null);
+    if (!response?.ok) {
+      const payload = response ? await response.json().catch(() => null) : null;
+      setEmployeeDocumentError(payload?.error || "Dokument konnte nicht entfernt werden.");
+      return;
+    }
+    setEmployeeDocumentMessage("Dokument wurde aus der aktiven Personalakte entfernt.");
+    await loadEmployeeDocuments(personalAssessmentTargetUserId);
   }
 
   function resetNewsComposer() {
@@ -16283,6 +16384,11 @@ export function DashboardPage() {
 
     void loadEmployeeAssessment(personalAssessmentTargetUserId);
   }, [activeTab, personalDataView, personalAssessmentTargetUserId, assessmentLoadedUserId]);
+
+  useEffect(() => {
+    if (activeTab !== "personalData" || personalDataView !== "documents" || !personalAssessmentTargetUserId) return;
+    void loadEmployeeDocuments(personalAssessmentTargetUserId);
+  }, [activeTab, personalDataView, personalAssessmentTargetUserId]);
 
   useEffect(() => {
     setContactPage(1);
@@ -44828,15 +44934,79 @@ await addProjectLogbookEntry(
                 <h2>Persönliche Unterlagen</h2>
               </div>
             </div>
+            {employeeDocumentError ? <p className={styles.inlineError}>{employeeDocumentError}</p> : null}
+            {employeeDocumentMessage ? <p className={styles.inlineSuccess}>{employeeDocumentMessage}</p> : null}
             <div className={styles.personalDocumentGrid}>
-              {["Arbeitsvertrag", "Lohnabrechnungen", "Bescheinigungen", "Krankmeldungen", "Urlaubsnachweise", "Weiterbildungen"].map(
-                (label) => (
-                  <article key={label}>
-                    <strong>{label}</strong>
-                    <span>Noch keine Datei hinterlegt.</span>
+              {employeeDocumentCategories.map((category) => {
+                const categoryDocuments = employeeDocuments.filter((document) => document.category === category.id);
+                const documentActor = impersonationControllerUser;
+                const authenticatedIsExecutive =
+                  documentActor?.role === "ADMIN" || documentActor?.role === "GESCHAEFTSFUEHRER";
+                const mayUpload =
+                  authenticatedIsExecutive ||
+                  (documentActor?.id === currentUser?.id && selfUploadEmployeeDocumentCategories.has(category.id));
+                return (
+                  <article key={category.id}>
+                    <div className={styles.personalDocumentCategoryHeader}>
+                      <div>
+                        <strong>{category.label}</strong>
+                        <span>{categoryDocuments.length} {categoryDocuments.length === 1 ? "Dokument" : "Dokumente"}</span>
+                      </div>
+                      {mayUpload ? (
+                        <label className={styles.personalDocumentUploadButton}>
+                          {employeeDocumentBusyCategory === category.id ? "Wird hochgeladen …" : "+ Dokument"}
+                          <input
+                            type="file"
+                            accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png"
+                            disabled={Boolean(employeeDocumentBusyCategory)}
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              event.target.value = "";
+                              void uploadEmployeeDocument(category.id, file);
+                            }}
+                          />
+                        </label>
+                      ) : null}
+                    </div>
+                    {employeeDocumentsLoading ? <span>Dokumente werden geladen …</span> : null}
+                    {!employeeDocumentsLoading && categoryDocuments.length === 0 ? (
+                      <span>Noch keine Datei hinterlegt.</span>
+                    ) : null}
+                    {categoryDocuments.length > 0 ? (
+                      <div className={styles.personalDocumentList}>
+                        {categoryDocuments.map((document) => {
+                          const mayDelete =
+                            authenticatedIsExecutive ||
+                            (documentActor?.id === currentUser?.id &&
+                              documentActor.id === document.uploadedById &&
+                              selfUploadEmployeeDocumentCategories.has(document.category));
+                          return (
+                            <div key={document.id}>
+                              <div>
+                                <strong title={document.originalFileName}>{document.originalFileName}</strong>
+                                <small>
+                                  {new Intl.DateTimeFormat(APP_LOCALE, {
+                                    dateStyle: "medium",
+                                    timeStyle: "short",
+                                    timeZone: APP_TIME_ZONE,
+                                  }).format(new Date(document.createdAt))}
+                                  {document.uploadedByName ? ` · ${document.uploadedByName}` : ""}
+                                </small>
+                              </div>
+                              <div className={styles.personalDocumentActions}>
+                                <a href={`/api/employee-documents/${encodeURIComponent(document.id)}`}>Download</a>
+                                {mayDelete ? (
+                                  <button type="button" onClick={() => void deleteEmployeeDocument(document)}>Entfernen</button>
+                                ) : null}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : null}
                   </article>
-                )
-              )}
+                );
+              })}
             </div>
           </section>
         ) : null}
