@@ -48526,10 +48526,13 @@ await addProjectLogbookEntry(
                 SVS speichern
               </button>
             </div>
-            <p className={styles.modalHint}>
-              Standard ist: Automatische Werte haben Vorrang, der manuelle Wert greift nur als
-              Fallback. Bei Bedarf kann die Priorität pro Planungsgruppe bewusst gedreht werden.
-            </p>
+            <div className={styles.companyCapacityHint}>
+              <strong>Automatik bleibt der Standard</strong>
+              <span>
+                Der manuelle SVS greift als Fallback. Nur bei einer bewussten Umstellung wird er
+                zum führenden Wert der Planungsgruppe.
+              </span>
+            </div>
             {planningGroupCapacityError ? (
               <p className={styles.modalWarning}>{planningGroupCapacityError}</p>
             ) : null}
@@ -48539,9 +48542,8 @@ await addProjectLogbookEntry(
                   <tr>
                     <th>Board</th>
                     <th>Planungsgruppe</th>
-                    <th>Ziel-SVS manuell</th>
-                    <th>Manuell übersteuert automatisch</th>
-                    <th>Automatisch übersteuert manuell</th>
+                    <th>Manueller Ziel-SVS</th>
+                    <th>Vorrang</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -48559,63 +48561,44 @@ await addProjectLogbookEntry(
                         <td>{setting.planningBoard}</td>
                         <td className={styles.title}>{setting.planningGroup}</td>
                         <td>
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            value={draft.manualSvsPerHour}
+                          <div className={styles.companyCapacityValueField}>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={draft.manualSvsPerHour}
+                              disabled={!canManageCompanyMasterData}
+                              onChange={(event) =>
+                                setPlanningGroupCapacityDrafts((current) => ({
+                                  ...current,
+                                  [key]: { ...draft, manualSvsPerHour: event.target.value },
+                                }))
+                              }
+                              placeholder="z. B. 62,50"
+                            />
+                            <span>€/Std.</span>
+                          </div>
+                        </td>
+                        <td>
+                          <select
+                            className={styles.companyCapacityPrioritySelect}
+                            value={draft.manualOverridesAutomatic ? "manual" : "automatic"}
                             disabled={!canManageCompanyMasterData}
-                            onChange={(event) =>
+                            aria-label={`Vorrang für ${setting.planningBoard} ${setting.planningGroup}`}
+                            onChange={(event) => {
+                              const manualHasPriority = event.target.value === "manual";
                               setPlanningGroupCapacityDrafts((current) => ({
                                 ...current,
-                                [key]: { ...draft, manualSvsPerHour: event.target.value },
-                              }))
-                            }
-                            placeholder="z. B. 62,50"
-                          />
-                        </td>
-                        <td>
-                          <label className={styles.inlineCheckbox}>
-                            <input
-                              type="checkbox"
-                              checked={draft.manualOverridesAutomatic}
-                              disabled={!canManageCompanyMasterData}
-                              onChange={(event) =>
-                                setPlanningGroupCapacityDrafts((current) => ({
-                                  ...current,
-                                  [key]: {
-                                    ...draft,
-                                    manualOverridesAutomatic: event.target.checked,
-                                    automaticOverridesManual: event.target.checked
-                                      ? false
-                                      : draft.automaticOverridesManual,
-                                  },
-                                }))
-                              }
-                            />
-                            <span>Manueller Wert hat Vorrang.</span>
-                          </label>
-                        </td>
-                        <td>
-                          <label className={styles.inlineCheckbox}>
-                            <input
-                              type="checkbox"
-                              checked={draft.automaticOverridesManual}
-                              disabled={!canManageCompanyMasterData}
-                              onChange={(event) =>
-                                setPlanningGroupCapacityDrafts((current) => ({
-                                  ...current,
-                                  [key]: {
-                                    ...draft,
-                                    automaticOverridesManual: event.target.checked,
-                                    manualOverridesAutomatic: event.target.checked
-                                      ? false
-                                      : draft.manualOverridesAutomatic,
-                                  },
-                                }))
-                              }
-                            />
-                            <span>Automatischer Wert hat Vorrang.</span>
-                          </label>
+                                [key]: {
+                                  ...draft,
+                                  manualOverridesAutomatic: manualHasPriority,
+                                  automaticOverridesManual: !manualHasPriority,
+                                },
+                              }));
+                            }}
+                          >
+                            <option value="automatic">Automatischer Wert</option>
+                            <option value="manual">Manueller Wert</option>
+                          </select>
                         </td>
                       </tr>
                     );
@@ -48669,8 +48652,8 @@ await addProjectLogbookEntry(
                   },
                   {
                     id: "billing" as DeadlineSettingsSection,
-                    label: "Abrechnung & Zahlungsfristen",
-                    description: "Rundung und Rechnungsfristen",
+                    label: "Stundenabrechnung",
+                    description: "Rundung der Stundenabrechnung",
                     status: "Aktiv",
                   },
                 ].map((item) => (
@@ -48704,7 +48687,7 @@ await addProjectLogbookEntry(
                               ? "Stempelung & Unterbrechung"
                         : deadlineSettingsSection === "punctuality"
                                 ? "Planung & Pünktlichkeit"
-                                : "Abrechnung & Zahlungsfristen"}
+                                : "Stundenabrechnung"}
                     </h2>
                     <p>
                       {deadlineSettingsSection === "offers"
@@ -48715,7 +48698,9 @@ await addProjectLogbookEntry(
                             ? "Die Aufgabe entsteht sofort. Diese Frist steuert die spätere Nachfassmeldung, falls sie offen bleibt."
                             : deadlineSettingsSection === "punctuality"
                               ? "Diese Werte steuern, ab wann Planstart und Planende als abweichend gelten."
-                          : "Dieser Bereich wird erst editierbar, wenn die zugehörige Logik angeschlossen ist."}
+                              : deadlineSettingsSection === "billing"
+                                ? "Der Rundungsfaktor wird bei abrechenbaren Projektstempelungen angewendet."
+                                : "Dieser Bereich wird erst editierbar, wenn die zugehörige Logik angeschlossen ist."}
                     </p>
                   </div>
                   {(["offers", "tasks", "stampInterruptions", "punctuality", "billing"] as DeadlineSettingsSection[]).includes(deadlineSettingsSection) && (
@@ -48809,7 +48794,7 @@ await addProjectLogbookEntry(
                   <>
                     <div className={styles.companySettingsForm}>
                       <label>
-                        Projektverantwortliche/Führungskraft benachrichtigen nach
+                        Aufgaben-Zuständige und Beteiligte benachrichtigen nach
                         <input
                           type="number"
                           min="1"

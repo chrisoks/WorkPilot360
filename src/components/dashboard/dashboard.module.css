@@ -17100,12 +17100,68 @@
 }
 
 .companyCapacityTable .table {
-  min-width: 960px;
+  min-width: 760px;
 }
 
 .companyCapacityTable td:nth-child(3) input {
   min-height: 38px;
   min-width: 150px;
+}
+
+.companyCapacityHint {
+  align-items: flex-start;
+  background: #f1f5f9;
+  border: 1px solid #dbe4ef;
+  border-left: 4px solid #0ea5a8;
+  border-radius: 10px;
+  display: grid;
+  gap: 3px;
+  margin: 16px 18px 0;
+  padding: 12px 14px;
+}
+
+.companyCapacityHint strong {
+  color: #0f172a;
+  font-size: 0.86rem;
+}
+
+.companyCapacityHint span {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.companyCapacityValueField {
+  align-items: center;
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto;
+  position: relative;
+}
+
+.companyCapacityValueField input {
+  padding-right: 58px;
+}
+
+.companyCapacityValueField span {
+  color: #64748b;
+  font-size: 0.76rem;
+  font-weight: 800;
+  pointer-events: none;
+  position: absolute;
+  right: 11px;
+}
+
+.companyCapacityPrioritySelect {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  color: #0f172a;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 750;
+  min-height: 38px;
+  padding: 7px 34px 7px 10px;
+  width: min(100%, 260px);
 }
 
 .inlineCheckbox {
