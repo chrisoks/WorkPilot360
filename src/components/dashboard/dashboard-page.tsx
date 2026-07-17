@@ -44243,7 +44243,7 @@ await addProjectLogbookEntry(
 
     return (
       <section className={styles.personalDataPage}>
-        <div className={styles.topline}>
+        <div className={`${styles.employeeListHero} ${styles.personalDataHero}`}>
           <div>
             <p className={styles.eyebrow}>Persönlicher Bereich</p>
             <h1>Persönliche Daten</h1>
@@ -44251,7 +44251,7 @@ await addProjectLogbookEntry(
               Urlaub, Krankheit, Zeitkonto, Aufgaben und eigene Stammdaten an einem Ort.
             </p>
           </div>
-          <button type="button" className={styles.primaryButton} onClick={() => openAbsenceModal(undefined, currentUser?.id)}>
+          <button type="button" className={styles.personalDataHeroAction} onClick={() => openAbsenceModal(undefined, currentUser?.id)}>
             Urlaub beantragen
           </button>
         </div>
@@ -44284,9 +44284,9 @@ await addProjectLogbookEntry(
             </label>
           ) : null}
           <div className={styles.personalQuickFacts}>
-            <span>{weeklyTargetHours > 0 ? `${formatHours(weeklyTargetHours)} Std./Woche` : "Wochenstunden offen"}</span>
-            <span>{currentUser?.planningBoard || "Kein Planungsboard"}</span>
-            <span>{currentUser?.email || "Keine E-Mail"}</span>
+            <span><small>Arbeitszeit</small>{weeklyTargetHours > 0 ? `${formatHours(weeklyTargetHours)} Std./Woche` : "Wochenstunden offen"}</span>
+            <span><small>Planungsboard</small>{currentUser?.planningBoard || "Kein Planungsboard"}</span>
+            <span><small>E-Mail</small>{currentUser?.email || "Keine E-Mail"}</span>
           </div>
         </div>
 
@@ -46417,10 +46417,10 @@ await addProjectLogbookEntry(
     ];
 
     return (
-      <section className={styles.settingsPanel}>
-        <div className={styles.employeeListHero}>
+      <section className={`${styles.settingsPanel} ${styles.laborCostRatePage}`}>
+        <div className={`${styles.employeeListHero} ${styles.laborCostRateHero}`}>
           <div>
-            <p className={styles.eyebrow}>Mitarbeiter</p>
+            <p className={styles.eyebrow}>Interne Kalkulation</p>
             <h1>LK-Satz</h1>
             <p className={styles.subline}>
               Durchschnittlicher Lohnkostensatz je Niederlassung als Basis für die Margenorientierung in Angeboten.
@@ -46428,10 +46428,13 @@ await addProjectLogbookEntry(
           </div>
         </div>
 
-        <div className={styles.employeeCostSummary}>
+        <div className={`${styles.employeeCostSummary} ${styles.laborCostRateSummary}`}>
           {boards.map((board) => (
-            <article key={`${board.board}-${board.planningGroup || "gesamt"}`} className={styles.employeeCostHighlight}>
-              <span>{board.label}</span>
+            <article key={`${board.board}-${board.planningGroup || "gesamt"}`} className={styles.laborCostRateCard}>
+              <div className={styles.laborCostRateCardTitle}>
+                <span>{board.label}</span>
+                <small>{board.count} Personen</small>
+              </div>
               <strong>{formatMoney(board.average)} / Std.</strong>
               <small>
                 {formatHours(board.allocationTotal)} Mitarbeiteranteile aus {board.count} Personen, gewichtete Summe{" "}
@@ -46442,10 +46445,14 @@ await addProjectLogbookEntry(
         </div>
 
         {boards.map((board) => (
-          <section key={`table-${board.board}-${board.planningGroup || "gesamt"}`} className={styles.employeeCostPanel}>
+          <section
+            key={`table-${board.board}-${board.planningGroup || "gesamt"}`}
+            className={`${styles.employeeCostPanel} ${styles.laborCostRatePanel}`}
+          >
             <div className={styles.employeeSectionHeader}>
               <div>
-              <h2>{board.label}</h2>
+                <p className={styles.laborCostRatePanelEyebrow}>Niederlassung</p>
+                <h2>{board.label}</h2>
                 <p>
                   Alle aktiven Mitarbeiter dieser Niederlassung fließen in den kalkulatorischen LK-Satz ein.
                 </p>
