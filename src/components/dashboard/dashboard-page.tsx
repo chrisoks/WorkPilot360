@@ -6556,8 +6556,8 @@ export function DashboardPage() {
     if (!comment) return;
     window.alert(`Kommentar zu ${offer.offerNumber}:\n\n${comment}`);
   };
-  const isVacationHandoverComplete =
-    absenceType !== "urlaub" ||
+  const isAbsenceHandoverComplete =
+    absenceType === "krank" ||
     absenceHandoverMode === "none" ||
     (absenceHandoverMode === "open" && absenceHandoverTaskIds.length > 0);
 
@@ -14130,8 +14130,8 @@ export function DashboardPage() {
       return;
     }
 
-    if (!isVacationHandoverComplete) {
-      setAbsenceWarning("Bitte die Urlaubsübergabe vollständig ausfüllen und bestätigen.");
+    if (!isAbsenceHandoverComplete) {
+      setAbsenceWarning("Bitte die Aufgabenübergabe vollständig ausfüllen und bestätigen.");
       return;
     }
 
@@ -14152,13 +14152,13 @@ export function DashboardPage() {
         note: absenceNote,
         handoverTaskIds: absenceHandoverMode === "open" ? absenceHandoverTaskIds : [],
         handoverChecklist: [],
-        handoverConfirmed: absenceType !== "urlaub" || isVacationHandoverComplete,
+        handoverConfirmed: isAbsenceHandoverComplete,
       }),
     });
 
     if (!res.ok) {
       const data = await res.json().catch(() => null);
-      setErrorMessage(data?.error ?? "Abwesenheit konnte nicht gespeichert werden.");
+      setAbsenceWarning(data?.error ?? "Abwesenheit konnte nicht gespeichert werden.");
       return;
     }
 
@@ -45233,6 +45233,7 @@ await addProjectLogbookEntry(
                       data-status={absence.status}
                       data-type={absence.type}
                       data-part={absence.dayPart}
+                      data-compact={span <= 2}
                       style={
                         {
                           "--team-calendar-start": start + 1,
@@ -45242,9 +45243,18 @@ await addProjectLogbookEntry(
                       }
                       onClick={() => openEditAbsenceModal(absence)}
                       title={`${absence.userName}: ${absenceLabel(absence.type)} · ${absenceDayPartLabel(absence.dayPart)} · ${absenceStatusLabel(absence.status)}`}
+                      aria-label={`${absence.userName}: ${absenceLabel(absence.type)}, ${absenceDayPartLabel(absence.dayPart)}, ${absenceStatusLabel(absence.status)}`}
                     >
-                      <span>{absenceLabel(absence.type)}</span>
-                      <small>{absenceStatusLabel(absence.status)}</small>
+                      <span>
+                        {span === 1
+                          ? absence.type === "ueberstundenabbau"
+                            ? "ÜA"
+                            : absence.type === "urlaub"
+                              ? "U"
+                              : "K"
+                          : absenceLabel(absence.type)}
+                      </span>
+                      {span >= 3 && <small>{absenceStatusLabel(absence.status)}</small>}
                     </button>
                   )),
                 ];
@@ -58425,10 +58435,12 @@ await addProjectLogbookEntry(
               </label>
             </div>
 
-            {absenceType === "urlaub" && (
+            {absenceType !== "krank" && (
               <section className={styles.handoverChecklist}>
                 <div>
-                  <p className={styles.eyebrow}>Urlaubsübergabe</p>
+                  <p className={styles.eyebrow}>
+                    {absenceType === "urlaub" ? "Urlaubsübergabe" : "Übergabe bei Überstundenabbau"}
+                  </p>
                   <h3>Aufgabenübergabe</h3>
                   <p>Falls Aufgaben offen sind, lege sie hier als echte Aufgaben für den Vertreter an.</p>
                 </div>
@@ -58546,7 +58558,7 @@ await addProjectLogbookEntry(
 
             {(absenceWarning ||
               !absenceRepresentativeUserId ||
-              (absenceType === "urlaub" && !isVacationHandoverComplete)) && (
+              !isAbsenceHandoverComplete) && (
               <p className={styles.modalWarning}>
                 {absenceWarning ||
                   (!absenceRepresentativeUserId
@@ -58586,7 +58598,7 @@ await addProjectLogbookEntry(
                   <button
                     className={styles.primaryButton}
                     onClick={saveAbsence}
-                    disabled={!absenceRepresentativeUserId || !isVacationHandoverComplete}
+                    disabled={!absenceRepresentativeUserId || !isAbsenceHandoverComplete}
                   >
                     {editingAbsenceId ? "Änderungen speichern" : "Speichern"}
                   </button>

@@ -1,5 +1,16 @@
 export const WORKPILOT_TIME_ZONE = "Europe/Berlin";
 
+export function normalizeStoredDateKey(value: unknown) {
+  const raw = String(value ?? "").trim();
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+
+  const germanMatch = raw.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (germanMatch) return `${germanMatch[3]}-${germanMatch[2]}-${germanMatch[1]}`;
+
+  return "";
+}
+
 export function formatBerlinDateTime(value: Date | string | number) {
   const date = value instanceof Date ? value : new Date(value);
   if (!Number.isFinite(date.getTime())) return "";

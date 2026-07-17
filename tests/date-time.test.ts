@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatBerlinDateTime, getBerlinMonthKey } from "../src/lib/date-time";
+import { formatBerlinDateTime, getBerlinMonthKey, normalizeStoredDateKey } from "../src/lib/date-time";
 
 describe("WorkPilot-Zeitdarstellung", () => {
   it("zeigt einen UTC-Zeitpunkt im Juli mit Berliner Sommerzeit", () => {
@@ -21,5 +21,12 @@ describe("WorkPilot-Zeitdarstellung", () => {
 
     expect(formatBerlinDateTime(instant)).toBe("01.07.2026, 00:30");
     expect(getBerlinMonthKey(instant)).toBe("2026-07");
+  });
+
+  it("normalisiert historische und aktuelle Datumsformate aus Zeitbuchungen", () => {
+    expect(normalizeStoredDateKey("2026-06-14")).toBe("2026-06-14");
+    expect(normalizeStoredDateKey("2026-06-14T10:00:00.000Z")).toBe("2026-06-14");
+    expect(normalizeStoredDateKey("14.06.2026")).toBe("2026-06-14");
+    expect(normalizeStoredDateKey("kein Datum")).toBe("");
   });
 });

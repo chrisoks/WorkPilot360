@@ -18830,9 +18830,34 @@
   font-size: 0.72rem;
   font-weight: 900;
   grid-column: var(--team-calendar-start) / span var(--team-calendar-span);
+  justify-content: center;
+  min-width: 0;
+  overflow: hidden;
   padding: 5px 6px;
   position: relative;
+  text-align: left;
   z-index: 1;
+}
+
+.teamCalendarAbsenceBar span,
+.teamCalendarAbsenceBar small {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.teamCalendarAbsenceBar[data-compact="true"] {
+  align-items: center;
+  border-radius: 10px;
+  padding: 4px 3px;
+  text-align: center;
+}
+
+.teamCalendarAbsenceBar[data-compact="true"] span {
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
 }
 
 .teamCalendarAbsenceBar[data-type="krank"] {

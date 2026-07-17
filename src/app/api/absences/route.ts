@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canManageAbsences } from "@/lib/permissions";
 import { sendNotificationMailSafely } from "@/lib/mail/notifications";
+import { normalizeStoredDateKey } from "@/lib/date-time";
 
 type AbsenceType = "urlaub" | "krank" | "ueberstundenabbau";
 type AbsenceDayPart = "full" | "first-half" | "second-half";
@@ -213,7 +214,11 @@ async function getCurrentTimeAccountBalanceHours(input: {
   `;
   if (entryRows.length === 0) return 0;
 
-  const firstDateKey = String(entryRows[0].date).slice(0, 10);
+  const firstDateKey = entryRows
+    .map((entry) => normalizeStoredDateKey(entry.date))
+    .filter(Boolean)
+    .sort()[0];
+  if (!firstDateKey) return 0;
   const firstDate = new Date(`${firstDateKey.slice(0, 7)}-01T12:00:00`);
   const paidAbsenceRows = await prisma.$queryRaw<Array<{ date: Date | string; dayPart: AbsenceDayPart }>>`
     SELECT date, COALESCE("dayPart", 'full') AS "dayPart"
@@ -506,9 +511,9 @@ export async function POST(req: Request) {
     );
   }
 
-  if (type === "urlaub" && !handoverConfirmed) {
+  if ((type === "urlaub" || type === "ueberstundenabbau") && !handoverConfirmed) {
     return NextResponse.json(
-      { error: "Bitte die Urlaubs\u00fcbergabe vollst\u00e4ndig ausf\u00fcllen und best\u00e4tigen." },
+      { error: "Bitte die Aufgabenübergabe vollständig ausfüllen und bestätigen." },
       { status: 400 }
     );
   }
@@ -931,9 +936,9 @@ export async function PATCH(req: Request) {
     );
   }
 
-  if (type === "urlaub" && !handoverConfirmed) {
+  if ((type === "urlaub" || type === "ueberstundenabbau") && !handoverConfirmed) {
     return NextResponse.json(
-      { error: "Bitte die Urlaubs\u00fcbergabe vollst\u00e4ndig ausf\u00fcllen und best\u00e4tigen." },
+      { error: "Bitte die Aufgabenübergabe vollständig ausfüllen und bestätigen." },
       { status: 400 }
     );
   }
