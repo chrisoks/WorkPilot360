@@ -3762,6 +3762,14 @@
   gap: 18px;
 }
 
+.companySettingsPanel {
+  gap: 14px;
+}
+
+.companySettingsModuleHeader {
+  margin-bottom: 0;
+}
+
 .goalModule {
   gap: 14px;
 }
@@ -16912,6 +16920,194 @@
   min-width: 920px;
 }
 
+.companyUnitsCard {
+  border-radius: 12px;
+  overflow: hidden;
+  padding: 0;
+}
+
+.companyUnitsCard > .settingsHeader {
+  align-items: center;
+  background: #f8fafc;
+  border-bottom: 1px solid #dbe4ef;
+  margin: 0;
+  padding: 16px 18px;
+}
+
+.companyUnitsCard > .settingsHeader h2 {
+  color: #0f172a;
+  font-size: 1.05rem;
+  margin-bottom: 4px;
+}
+
+.companyUnitsCard > .settingsHeader p {
+  margin: 0;
+}
+
+.companyUnitsCard > .modalWarning {
+  margin: 14px 18px 0;
+}
+
+.companyUnitsToolbar {
+  align-items: end;
+  background: #ffffff;
+  border-bottom: 1px solid #dbe4ef;
+  grid-template-columns: minmax(280px, 1fr) 148px auto;
+  padding: 16px 18px;
+}
+
+.companyUnitsToolbar .primaryButton,
+.companyUnitsToolbar .secondaryButton {
+  justify-self: start;
+  min-height: 42px;
+}
+
+.companyUnitsToolbar .primaryButton {
+  width: 148px;
+}
+
+.companyUnitsTable {
+  padding: 0 18px 18px;
+}
+
+.companyUnitsTable .table {
+  min-width: 620px;
+}
+
+.companyUnitsTable th:last-child,
+.companyUnitsTable td:last-child {
+  width: 280px;
+}
+
+.companyUnitStatus {
+  align-items: center;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  color: #475569;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 850;
+  line-height: 1;
+  padding: 7px 10px;
+}
+
+.companyUnitStatus[data-active="true"] {
+  background: #ecfdf5;
+  border-color: #86efac;
+  color: #15803d;
+}
+
+.companyTargetsCard {
+  border-radius: 12px;
+  overflow: hidden;
+  padding: 0;
+}
+
+.companyTargetsCard > .settingsHeader {
+  align-items: center;
+  background: #f8fafc;
+  border-bottom: 1px solid #dbe4ef;
+  margin: 0;
+  padding: 16px 18px;
+}
+
+.companyTargetsCard > .settingsHeader h2 {
+  color: #0f172a;
+  font-size: 1.05rem;
+  margin-bottom: 4px;
+}
+
+.companyTargetsCard > .settingsHeader p {
+  margin: 0;
+  max-width: 820px;
+}
+
+.companyTargetsCard > .settingsHeader .primaryButton {
+  flex: 0 0 auto;
+  min-height: 40px;
+  width: auto;
+}
+
+.companyTargetsCard > .modalWarning {
+  margin: 14px 18px 0;
+}
+
+.companyTargetsTable {
+  padding: 16px 18px 18px;
+}
+
+.companyTargetsTable .table {
+  min-width: 1180px;
+}
+
+.companyTargetsTable th:not(:first-child),
+.companyTargetsTable td:not(:first-child) {
+  min-width: 112px;
+  text-align: right;
+}
+
+.companyTargetsTable th:last-child,
+.companyTargetsTable td:last-child {
+  min-width: 132px;
+  white-space: nowrap;
+}
+
+.companyTargetsTable td:last-child strong {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.companyCurrencyInput {
+  align-items: center;
+  display: grid;
+  grid-template-columns: minmax(72px, 1fr) auto;
+  position: relative;
+}
+
+.companyCurrencyInput input {
+  font-variant-numeric: tabular-nums;
+  min-height: 36px;
+  min-width: 96px;
+  padding-right: 30px;
+  text-align: right;
+}
+
+.companyCurrencyInput span {
+  color: #475569;
+  font-size: 0.82rem;
+  font-weight: 850;
+  pointer-events: none;
+  position: absolute;
+  right: 12px;
+}
+
+.companyCurrencyInput:focus-within span {
+  color: #0f766e;
+}
+
+.companyCapacityCard > .modalHint {
+  background: #f8fafc;
+  border: 1px solid #dbe4ef;
+  border-radius: 10px;
+  color: #475569;
+  margin: 16px 18px 0;
+  padding: 12px 14px;
+}
+
+.companyCapacityTable {
+  padding: 16px 18px 18px;
+}
+
+.companyCapacityTable .table {
+  min-width: 960px;
+}
+
+.companyCapacityTable td:nth-child(3) input {
+  min-height: 38px;
+  min-width: 150px;
+}
+
 .inlineCheckbox {
   align-items: center;
   color: #0f172a;
@@ -16957,31 +17153,42 @@
 
 .companyProfileGrid {
   display: grid;
-  gap: 14px;
+  gap: 16px;
   grid-template-columns: minmax(380px, 0.72fr) minmax(560px, 1fr);
 }
 
 .companyProfileCard {
-  border-radius: 8px;
+  border-radius: 12px;
   min-height: 450px;
+  overflow: hidden;
+  padding: 0;
 }
 
 .companyProfileCard .settingsHeader {
-  border-bottom: 1px solid #e2e8f0;
-  margin-bottom: 12px;
-  padding-bottom: 12px;
+  align-items: center;
+  background: #f8fafc;
+  border-bottom: 1px solid #dbe4ef;
+  margin: 0;
+  padding: 16px 18px;
 }
 
 .companyProfileCard h2 {
-  color: #475569;
-  font-size: 1rem;
-  text-transform: uppercase;
+  color: #0f172a;
+  font-size: 1.05rem;
+  margin-bottom: 4px;
+  text-transform: none;
+}
+
+.companyProfileCard .settingsHeader p {
+  font-size: 0.82rem;
+  margin: 0;
 }
 
 .companyProfileData {
   display: grid;
-  gap: 4px;
+  gap: 0;
   grid-template-columns: 190px minmax(0, 1fr);
+  padding: 8px 18px 16px;
 }
 
 .companyProfileData div {
@@ -16990,9 +17197,11 @@
 
 .companyProfileData strong,
 .companyProfileData span {
+  border-bottom: 1px solid #edf2f7;
   color: #0f172a;
   font-size: 0.9rem;
-  min-height: 19px;
+  min-height: 34px;
+  padding: 7px 0;
 }
 
 .companyProfileData strong {
@@ -17014,8 +17223,9 @@
 }
 
 .companyServicesTable {
-  max-height: 370px;
+  max-height: 386px;
   overflow: auto;
+  padding: 0 18px 16px;
 }
 
 .companyServicesTable .table {
@@ -17037,6 +17247,12 @@
   border-radius: 6px;
   min-height: 30px;
   padding: 5px 10px;
+}
+
+@media (max-width: 900px) {
+  .companyUnitsToolbar {
+    grid-template-columns: 1fr;
+  }
 }
 
 .companyProfileModal {

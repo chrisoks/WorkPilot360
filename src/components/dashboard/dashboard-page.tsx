@@ -5943,6 +5943,7 @@ export function DashboardPage() {
   const [businessAreas, setBusinessAreas] = useState<BusinessAreaOption[]>([]);
   const [businessAreaTargets, setBusinessAreaTargets] = useState<BusinessAreaTarget[]>([]);
   const [businessAreaTargetDrafts, setBusinessAreaTargetDrafts] = useState<Record<string, string>>({});
+  const [businessAreaTargetEditingKey, setBusinessAreaTargetEditingKey] = useState<string | null>(null);
   const [businessAreaTargetError, setBusinessAreaTargetError] = useState("");
   const [planningGroupCapacitySettings, setPlanningGroupCapacitySettings] = useState<
     PlanningGroupCapacitySetting[]
@@ -12493,6 +12494,17 @@ export function DashboardPage() {
   function parseBusinessAreaTargetDraft(value: string | undefined) {
     const parsed = Number(String(value ?? "0").replace(",", "."));
     return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function formatBusinessAreaTargetDraft(value: string | undefined) {
+    const rawValue = String(value ?? "").trim();
+    if (!rawValue) return "";
+    const parsed = Number(rawValue.replace(",", "."));
+    if (!Number.isFinite(parsed)) return rawValue;
+    return new Intl.NumberFormat(APP_LOCALE, {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(parsed);
   }
 
   function getBusinessAreaTargetYearTotal(businessAreaId: string) {
@@ -48180,6 +48192,21 @@ await addProjectLogbookEntry(
   function renderFirmSettings() {
     const activeSettingsLabel =
       firmSettingsTabs.find((item) => item.id === firmSettingsTab)?.label ?? "Firmeneinstellungen";
+    const activeSettingsDescriptions: Partial<Record<FirmSettingsTab, string>> = {
+        profile: "Unternehmensdaten und Gewerke als zentrale Grundlage verwalten.",
+        units: "Verbindliche Mengeneinheiten für Stammdaten und Dokumente pflegen.",
+        businessAreaTargets: "Monatliche Sollwerte je Geschäftsbereich zentral steuern.",
+        planningGroupCapacity: "Manuelle SVS-Fallbacks für die Kapazitätsplanung pflegen.",
+        deadlines: "Fristen, Toleranzen und Eskalationsstufen zentral konfigurieren.",
+        branches: "Niederlassungen und den verbindlichen Feiertagskalender verwalten.",
+        emailTemplates: "Vorlagen und Variablen für den Dokumentversand pflegen.",
+        interfaces: "Vorbereitete Anbindungen und Datenaustausch zentral überblicken.",
+        projectTypes: "Projektarten, Nummernkreise und Pipeline-Zuordnung verwalten.",
+        checklists: "Vorbereitete Checklisten und ihre spätere Nutzung überblicken.",
+        mailServer: "Versandweg und Microsoft-365-Anbindung nachvollziehen.",
+      };
+    const activeSettingsDescription =
+      activeSettingsDescriptions[firmSettingsTab] ?? "Zentrale Grundlagen für WorkPilot360 verwalten.";
     const projectTypeRows = [
       {
         name: "Projekt OK solutions",
@@ -48229,16 +48256,14 @@ await addProjectLogbookEntry(
     const holidayCatalog = buildGermanHolidayCatalog(new Date().getFullYear(), 50);
 
     return (
-      <section className={styles.settingsPanel}>
-        <div className={styles.topline}>
+      <section className={`${styles.settingsPanel} ${styles.companySettingsPanel}`}>
+        <header className={`${styles.taskModuleHeader} ${styles.companySettingsModuleHeader}`}>
           <div>
-            <p className={styles.eyebrow}>Firmeneinstellungen</p>
+            <p className={styles.taskModuleEyebrow}>Firmeneinstellungen</p>
             <h1>{activeSettingsLabel}</h1>
-            <p className={styles.subline}>
-              Grundlagen für Firmenprofil, Projektlogik, Dokumente, Rechte und Automationen.
-            </p>
+            <p>{activeSettingsDescription}</p>
           </div>
-        </div>
+        </header>
 
         {firmSettingsTab === "profile" ? (
           <section className={styles.companyProfileGrid}>
@@ -48246,6 +48271,7 @@ await addProjectLogbookEntry(
               <div className={styles.settingsHeader}>
                 <div>
                   <h2>Firmendaten</h2>
+                  <p>Rechtliche, steuerliche und kaufmännische Stammdaten.</p>
                 </div>
                 <button
                   type="button"
@@ -48272,6 +48298,7 @@ await addProjectLogbookEntry(
               <div className={styles.settingsHeader}>
                 <div>
                   <h2>Gewerke & Leistungen</h2>
+                  <p>Gewerke mit Kürzel und Geschäftsbereich im Überblick.</p>
                 </div>
                 <button
                   type="button"
@@ -48325,7 +48352,7 @@ await addProjectLogbookEntry(
             </article>
           </section>
         ) : firmSettingsTab === "units" ? (
-          <section className={styles.settingsCard}>
+          <section className={`${styles.settingsCard} ${styles.companyUnitsCard}`}>
             <div className={styles.settingsHeader}>
               <div>
                 <h2>Einheitenverwaltung</h2>
@@ -48335,7 +48362,7 @@ await addProjectLogbookEntry(
               </div>
             </div>
             {unitError ? <p className={styles.modalWarning}>{unitError}</p> : null}
-            <div className={styles.companySettingsForm}>
+            <div className={`${styles.companySettingsForm} ${styles.companyUnitsToolbar}`}>
               <label>
                 Einheit
                 <input
@@ -48353,7 +48380,7 @@ await addProjectLogbookEntry(
                 </button>
               ) : null}
             </div>
-            <div className={styles.companySettingsTable}>
+            <div className={`${styles.companySettingsTable} ${styles.companyUnitsTable}`}>
               <table className={styles.table}>
                 <thead>
                   <tr>
@@ -48371,7 +48398,11 @@ await addProjectLogbookEntry(
                     units.map((unit) => (
                       <tr key={unit.id}>
                         <td className={styles.title}>{unit.name}</td>
-                        <td>{unit.isActive ? "Aktiv" : "Inaktiv"}</td>
+                        <td>
+                          <span className={styles.companyUnitStatus} data-active={unit.isActive ? "true" : "false"}>
+                            {unit.isActive ? "Aktiv" : "Inaktiv"}
+                          </span>
+                        </td>
                         <td>
                           <div className={styles.tableActionGroup}>
                             <button type="button" className={styles.secondaryButton} onClick={() => editUnit(unit)}>
@@ -48392,7 +48423,7 @@ await addProjectLogbookEntry(
             </div>
           </section>
         ) : firmSettingsTab === "businessAreaTargets" ? (
-          <section className={styles.settingsCard}>
+          <section className={`${styles.settingsCard} ${styles.companyTargetsCard}`}>
             <div className={styles.settingsHeader}>
               <div>
                 <h2>Geschäftsbereich-Sollwerte</h2>
@@ -48413,7 +48444,7 @@ await addProjectLogbookEntry(
             {businessAreaTargetError ? (
               <p className={styles.modalWarning}>{businessAreaTargetError}</p>
             ) : null}
-            <div className={styles.companySettingsTable}>
+            <div className={`${styles.companySettingsTable} ${styles.companyTargetsTable}`}>
               <table className={styles.table}>
                 <thead>
                   <tr>
@@ -48437,20 +48468,33 @@ await addProjectLogbookEntry(
                         const key = `${businessArea.id}:${month}`;
                         return (
                           <td key={key}>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={businessAreaTargetDrafts[key] ?? ""}
-                              disabled={!canDeleteInvoices}
-                              onChange={(event) =>
-                                setBusinessAreaTargetDrafts((current) => ({
-                                  ...current,
-                                  [key]: event.target.value,
-                                }))
-                              }
-                              placeholder="0,00"
-                            />
+                            <div className={styles.companyCurrencyInput}>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={
+                                  businessAreaTargetEditingKey === key
+                                    ? (businessAreaTargetDrafts[key] ?? "")
+                                    : formatBusinessAreaTargetDraft(businessAreaTargetDrafts[key])
+                                }
+                                disabled={!canDeleteInvoices}
+                                onFocus={() => setBusinessAreaTargetEditingKey(key)}
+                                onBlur={() =>
+                                  setBusinessAreaTargetEditingKey((current) =>
+                                    current === key ? null : current
+                                  )
+                                }
+                                onChange={(event) =>
+                                  setBusinessAreaTargetDrafts((current) => ({
+                                    ...current,
+                                    [key]: event.target.value,
+                                  }))
+                                }
+                                placeholder="0,00"
+                                aria-label={`${businessArea.name}, Monat ${month}, Sollwert in Euro`}
+                              />
+                              <span aria-hidden="true">€</span>
+                            </div>
                           </td>
                         );
                       })}
@@ -48464,7 +48508,7 @@ await addProjectLogbookEntry(
             </div>
           </section>
         ) : firmSettingsTab === "planningGroupCapacity" ? (
-          <section className={styles.settingsCard}>
+          <section className={`${styles.settingsCard} ${styles.companyTargetsCard} ${styles.companyCapacityCard}`}>
             <div className={styles.settingsHeader}>
               <div>
                 <h2>Planungsgruppen-SVS</h2>
@@ -48489,7 +48533,7 @@ await addProjectLogbookEntry(
             {planningGroupCapacityError ? (
               <p className={styles.modalWarning}>{planningGroupCapacityError}</p>
             ) : null}
-            <div className={styles.companySettingsTable}>
+            <div className={`${styles.companySettingsTable} ${styles.companyCapacityTable}`}>
               <table className={styles.table}>
                 <thead>
                   <tr>
