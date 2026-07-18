@@ -3774,7 +3774,7 @@ const firmSettingsTabs: Array<{ id: FirmSettingsTab; label: string }> = [
   { id: "planningGroupCapacity", label: "Planungsgruppen-SVS" },
   { id: "deadlines", label: "Zeitfristen" },
   { id: "branches", label: "Unternehmensstruktur" },
-  { id: "emailTemplates", label: "Email-Templates" },
+  { id: "emailTemplates", label: "E-Mail-Vorlagen" },
   { id: "interfaces", label: "Schnittstellen" },
   { id: "projectTypes", label: "Projekttypen" },
   { id: "checklists", label: "Checklisten" },
@@ -5852,6 +5852,13 @@ export function DashboardPage() {
   const [customerFeedbackRequests, setCustomerFeedbackRequests] = useState<CustomerFeedbackRequestItem[]>([]);
   const [mailTemplates, setMailTemplates] =
     useState<Record<DocumentMailKind, { subject: string; body: string }>>(defaultDocumentMailTemplates);
+  const [savedMailTemplates, setSavedMailTemplates] =
+    useState<Record<DocumentMailKind, { subject: string; body: string }>>(defaultDocumentMailTemplates);
+  const [selectedMailTemplateKind, setSelectedMailTemplateKind] = useState<DocumentMailKind>("offer");
+  const [mailTemplatesMessage, setMailTemplatesMessage] = useState("");
+  const [mailTemplatesError, setMailTemplatesError] = useState("");
+  const [isLoadingMailTemplates, setIsLoadingMailTemplates] = useState(false);
+  const [isSavingMailTemplates, setIsSavingMailTemplates] = useState(false);
   const letterheadUploadRef = useRef<HTMLInputElement | null>(null);
   const [globalSearchTerm, setGlobalSearchTerm] = useState("");
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
@@ -12497,6 +12504,56 @@ export function DashboardPage() {
     return Number.isFinite(parsed) ? parsed : 0;
   }
 
+  async function loadMailTemplates() {
+    setIsLoadingMailTemplates(true);
+    setMailTemplatesError("");
+    try {
+      const res = await fetch("/api/company-settings/mail-templates", {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      if (!res.ok) {
+        if (res.status !== 401) setMailTemplatesError("E-Mail-Vorlagen konnten nicht geladen werden.");
+        return;
+      }
+      const data = (await res.json()) as Record<DocumentMailKind, { subject: string; body: string }>;
+      setMailTemplates(data);
+      setSavedMailTemplates(data);
+    } catch {
+      setMailTemplatesError("E-Mail-Vorlagen konnten nicht geladen werden.");
+    } finally {
+      setIsLoadingMailTemplates(false);
+    }
+  }
+
+  async function saveMailTemplates() {
+    if (!activeUserId || !canManageMailTemplates || isSavingMailTemplates) return;
+    setIsSavingMailTemplates(true);
+    setMailTemplatesError("");
+    setMailTemplatesMessage("");
+    try {
+      const res = await fetch("/api/company-settings/mail-templates", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ actorId: activeUserId, templates: mailTemplates }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        setMailTemplatesError(data.error || "E-Mail-Vorlagen konnten nicht gespeichert werden.");
+        return;
+      }
+      const data = (await res.json()) as Record<DocumentMailKind, { subject: string; body: string }>;
+      setMailTemplates(data);
+      setSavedMailTemplates(data);
+      setMailTemplatesMessage("E-Mail-Vorlagen wurden gespeichert.");
+    } catch {
+      setMailTemplatesError("E-Mail-Vorlagen konnten nicht gespeichert werden.");
+    } finally {
+      setIsSavingMailTemplates(false);
+    }
+  }
+
   function formatBusinessAreaTargetDraft(value: string | undefined) {
     const rawValue = String(value ?? "").trim();
     if (!rawValue) return "";
@@ -16358,6 +16415,7 @@ export function DashboardPage() {
       void loadLegacyInvoices();
       void loadMonthlyFinancialReportValues();
       void loadDeadlineSettings();
+      void loadMailTemplates();
       void loadWinterServiceAutomationSettings();
       void loadCustomerFeedback();
       void loadCustomerFeedbackRequests();
@@ -21963,6 +22021,8 @@ await addProjectLogbookEntry(
       task.participants.some((participant) => participant.userId === ownerFilter) ||
       (ownerFilter === activeUserId && isTaskEscalatedToActiveUser(task))
   );
+  const canManageMailTemplates = activeUser?.role === "ADMIN" || activeUser?.role === "GESCHAEFTSFUEHRER";
+  const hasMailTemplateChanges = JSON.stringify(mailTemplates) !== JSON.stringify(savedMailTemplates);
   const offene = taskPersonScopeTasks.filter((task) => task.status === "offen").length;
   const bearbeitung = taskPersonScopeTasks.filter((task) => task.status === "in Bearbeitung").length;
   const wartetAufRueckmeldung = taskPersonScopeTasks.filter(
@@ -48208,6 +48268,22 @@ await addProjectLogbookEntry(
       };
     const activeSettingsDescription =
       activeSettingsDescriptions[firmSettingsTab] ?? "Zentrale Grundlagen für WorkPilot360 verwalten.";
+    const mailTemplateSampleNumbers: Record<DocumentMailKind, string> = {
+      offer: "ANG-10123",
+      invoice: "RE-10123",
+      cancellation: "ST-10123",
+      reminder: "MA-RE-10123-1",
+      activityReport: "TB-10123",
+      document: "DOK-10123",
+    };
+    const selectedMailTemplate = mailTemplates[selectedMailTemplateKind];
+    const previewSender = activeUser?.name || "Max Mustermann";
+    const previewSubject = selectedMailTemplate.subject
+      .replaceAll("{{number}}", mailTemplateSampleNumbers[selectedMailTemplateKind])
+      .replaceAll("{{sender}}", previewSender);
+    const previewBody = selectedMailTemplate.body
+      .replaceAll("{{number}}", mailTemplateSampleNumbers[selectedMailTemplateKind])
+      .replaceAll("{{sender}}", previewSender);
     const projectTypeRows = [
       {
         name: "Projekt OK solutions",
@@ -49043,48 +49119,126 @@ await addProjectLogbookEntry(
             </div>
           </section>
         ) : firmSettingsTab === "emailTemplates" ? (
-          <section className={styles.settingsCard}>
-            <div className={styles.settingsHeader}>
+          <section className={`${styles.settingsCard} ${styles.mailTemplateSettingsCard}`}>
+            <div className={styles.settingsSectionHeader}>
               <div>
+                <p className={styles.settingsSectionEyebrow}>Dokumentversand</p>
                 <h2>E-Mail-Vorlagen</h2>
-                <p>Diese Texte werden beim Versand von Angeboten und Rechnungen vorausgefüllt.</p>
+                <p>Zentrale Texte für Angebote, Rechnungen und weitere Dokumente verwalten.</p>
+              </div>
+              <div className={styles.mailTemplateToolbar}>
+                <span className={hasMailTemplateChanges ? styles.mailTemplateDirty : styles.mailTemplateSaved}>
+                  {hasMailTemplateChanges ? "Nicht gespeicherte Änderungen" : "Gespeichert"}
+                </span>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  disabled={!canManageMailTemplates || !hasMailTemplateChanges || isSavingMailTemplates}
+                  onClick={() => {
+                    setMailTemplates((current) => ({
+                      ...current,
+                      [selectedMailTemplateKind]: savedMailTemplates[selectedMailTemplateKind],
+                    }));
+                    setMailTemplatesMessage("");
+                    setMailTemplatesError("");
+                  }}
+                >
+                  Vorlage zurücksetzen
+                </button>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  disabled={!canManageMailTemplates || !hasMailTemplateChanges || isSavingMailTemplates}
+                  onClick={() => void saveMailTemplates()}
+                >
+                  {isSavingMailTemplates ? "Speichert …" : "Vorlagen speichern"}
+                </button>
               </div>
             </div>
-            <div className={styles.employeeFormGrid}>
+            <nav className={styles.mailTemplateKindNav} aria-label="E-Mail-Vorlage auswählen">
               {(["offer", "invoice", "cancellation", "reminder", "activityReport", "document"] as DocumentMailKind[]).map((kind) => (
-                <section key={kind} className={`${styles.offerSection} ${styles.fullWidth}`}>
-                  <div className={styles.offerSectionHeader}>
-                    <h3>{getDocumentMailKindLabel(kind)} versenden</h3>
-                    <span>{"{{number}} · {{sender}}"}</span>
-                  </div>
-                  <label>
-                    Betreff
-                    <input
-                      value={mailTemplates[kind].subject}
-                      onChange={(event) =>
-                        setMailTemplates((current) => ({
-                          ...current,
-                          [kind]: { ...current[kind], subject: event.target.value },
-                        }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    Text
-                    <textarea
-                      rows={7}
-                      value={mailTemplates[kind].body}
-                      onChange={(event) =>
-                        setMailTemplates((current) => ({
-                          ...current,
-                          [kind]: { ...current[kind], body: event.target.value },
-                        }))
-                      }
-                    />
-                  </label>
-                </section>
+                <button
+                  key={kind}
+                  type="button"
+                  className={kind === selectedMailTemplateKind ? styles.mailTemplateKindActive : ""}
+                  onClick={() => {
+                    setSelectedMailTemplateKind(kind);
+                    setMailTemplatesMessage("");
+                    setMailTemplatesError("");
+                  }}
+                >
+                  <span>{getDocumentMailKindLabel(kind)}</span>
+                  <small>{mailTemplateSampleNumbers[kind]}</small>
+                </button>
               ))}
+            </nav>
+            <div className={styles.mailTemplateEditorLayout}>
+              <section className={styles.mailTemplateEditor}>
+                <div className={styles.mailTemplateEditorHeader}>
+                  <div>
+                    <span>Aktive Vorlage</span>
+                    <h3>{getDocumentMailKindLabel(selectedMailTemplateKind)}</h3>
+                  </div>
+                  <div className={styles.mailTemplateVariables} aria-label="Verfügbare Variablen">
+                    <code>{"{{number}}"}</code>
+                    <code>{"{{sender}}"}</code>
+                  </div>
+                </div>
+                <label>
+                  Betreff
+                  <input
+                    value={selectedMailTemplate.subject}
+                    readOnly={!canManageMailTemplates}
+                    maxLength={240}
+                    onChange={(event) => setMailTemplates((current) => ({
+                      ...current,
+                      [selectedMailTemplateKind]: {
+                        ...current[selectedMailTemplateKind],
+                        subject: event.target.value,
+                      },
+                    }))}
+                  />
+                </label>
+                <label>
+                  Nachrichtentext
+                  <textarea
+                    rows={11}
+                    value={selectedMailTemplate.body}
+                    readOnly={!canManageMailTemplates}
+                    maxLength={12000}
+                    onChange={(event) => setMailTemplates((current) => ({
+                      ...current,
+                      [selectedMailTemplateKind]: {
+                        ...current[selectedMailTemplateKind],
+                        body: event.target.value,
+                      },
+                    }))}
+                  />
+                </label>
+                {!canManageMailTemplates ? (
+                  <p className={styles.mailTemplateReadOnlyNotice}>
+                    Nur Admins und Geschäftsführung dürfen zentrale Vorlagen bearbeiten.
+                  </p>
+                ) : null}
+              </section>
+              <aside className={styles.mailTemplatePreview}>
+                <div className={styles.mailTemplatePreviewHeader}>
+                  <span>Vorschau</span>
+                  <strong>{getDocumentMailKindLabel(selectedMailTemplateKind)}</strong>
+                </div>
+                <div className={styles.mailTemplatePreviewMail}>
+                  <div>
+                    <span>Betreff</span>
+                    <strong>{previewSubject}</strong>
+                  </div>
+                  <p>{previewBody}</p>
+                  <footer>Die persönliche Signatur wird beim Versand automatisch ergänzt.</footer>
+                </div>
+              </aside>
             </div>
+            {isLoadingMailTemplates ? <p className={styles.formHint}>Vorlagen werden geladen …</p> : null}
+            {mailTemplatesMessage ? <p className={styles.successMessage}>{mailTemplatesMessage}</p> : null}
+            {mailTemplatesError ? <p className={styles.errorMessage}>{mailTemplatesError}</p> : null}
           </section>
         ) : firmSettingsTab === "branches" ? (
           <section className={`${styles.settingsCard} ${styles.companyStructureCard}`}>
