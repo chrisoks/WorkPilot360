@@ -3773,7 +3773,7 @@ const firmSettingsTabs: Array<{ id: FirmSettingsTab; label: string }> = [
   { id: "businessAreaTargets", label: "Geschäftsbereich-Soll" },
   { id: "planningGroupCapacity", label: "Planungsgruppen-SVS" },
   { id: "deadlines", label: "Zeitfristen" },
-  { id: "branches", label: "Niederlassungen" },
+  { id: "branches", label: "Unternehmensstruktur" },
   { id: "emailTemplates", label: "Email-Templates" },
   { id: "interfaces", label: "Schnittstellen" },
   { id: "projectTypes", label: "Projekttypen" },
@@ -6009,6 +6009,7 @@ export function DashboardPage() {
   const [holidayState, setHolidayState] = useState<GermanStateCode>("BW");
   const [holidays, setHolidays] = useState<HolidayItem[]>([]);
   const [holidayStateError, setHolidayStateError] = useState("");
+  const [isHolidayCatalogOpen, setIsHolidayCatalogOpen] = useState(false);
   const [heroProjects, setHeroProjects] = useState<HeroProjectPreview[]>([]);
   const [heroSearchTerm, setHeroSearchTerm] = useState("");
   const [selectedHeroDetailId, setSelectedHeroDetailId] = useState("");
@@ -48198,7 +48199,7 @@ await addProjectLogbookEntry(
         businessAreaTargets: "Monatliche Sollwerte je Geschäftsbereich zentral steuern.",
         planningGroupCapacity: "Manuelle SVS-Fallbacks für die Kapazitätsplanung pflegen.",
         deadlines: "Fristen, Toleranzen und Eskalationsstufen zentral konfigurieren.",
-        branches: "Niederlassungen und den verbindlichen Feiertagskalender verwalten.",
+        branches: "Rechtsträger, Geschäftsbereiche und den zentralen Feiertagskalender überblicken.",
         emailTemplates: "Vorlagen und Variablen für den Dokumentversand pflegen.",
         interfaces: "Vorbereitete Anbindungen und Datenaustausch zentral überblicken.",
         projectTypes: "Projektarten, Nummernkreise und Pipeline-Zuordnung verwalten.",
@@ -49086,30 +49087,38 @@ await addProjectLogbookEntry(
             </div>
           </section>
         ) : firmSettingsTab === "branches" ? (
-          <section className={styles.settingsCard}>
-            <div className={styles.settingsHeader}>
+          <section className={`${styles.settingsCard} ${styles.companyStructureCard}`}>
+            <div className={styles.settingsSectionHeader}>
               <div>
-                <h2>Niederlassungen</h2>
-                <p>Diese Werte steuern später die Auswahl in Projektanlage und Dokumenten.</p>
+                <p className={styles.settingsSectionEyebrow}>Unternehmensstruktur</p>
+                <h2>Rechtsträger und Geschäftsbereiche</h2>
+                <p>Die OK solutions GmbH ist der gemeinsame Rechtsträger aller Geschäftsbereiche.</p>
               </div>
-              <button type="button" className={styles.primaryButton}>
-                + Niederlassung
-              </button>
             </div>
-            <div className={styles.companySettingsList}>
+            <div className={`${styles.companySettingsList} ${styles.companyStructureList}`}>
               <article>
-                <strong>OK solutions GmbH</strong>
-                <span>Standard für Projekt OK solutions</span>
+                <div>
+                  <span className={styles.companyStructureType}>Rechtsträger</span>
+                  <strong>OK solutions GmbH</strong>
+                </div>
+                <span>Unternehmen und rechtliche Grundlage aller Bereiche</span>
               </article>
               <article>
-                <strong>OK immocare GmbH</strong>
-                <span>Standard für Projekt OK immocare</span>
+                <div>
+                  <span className={styles.companyStructureType}>Marke &amp; Geschäftsbereich</span>
+                  <strong>OK immocare</strong>
+                </div>
+                <span>Marke der OK solutions GmbH für Immocare-Projekte und -Planung</span>
               </article>
             </div>
-            <div className={styles.settingsHeader}>
+            <div className={`${styles.settingsSectionHeader} ${styles.holidaySettingsHeader}`}>
               <div>
+                <p className={styles.settingsSectionEyebrow}>Zentrale Regelung</p>
                 <h2>Feiertagskalender</h2>
-                <p>Das gewählte Bundesland gilt zentral für Planung, Kapazitäten und Auswertungen.</p>
+                <p>
+                  Das gewählte Bundesland gilt für die OK solutions GmbH und alle zugehörigen
+                  Marken und Geschäftsbereiche.
+                </p>
               </div>
             </div>
             <div className={styles.companySettingsForm}>
@@ -49126,35 +49135,45 @@ await addProjectLogbookEntry(
                   ))}
                 </select>
               </label>
-              <span className={styles.companySettingsHint}>
-                {holidays.length} Feiertage für {new Date().getFullYear()}-{new Date().getFullYear() + 49}
-              </span>
             </div>
             {holidayStateError ? <p className={styles.formError}>{holidayStateError}</p> : null}
-            <div className={styles.companySettingsTable}>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Bundesland</th>
-                    <th>Kürzel</th>
-                    <th>Zeitraum</th>
-                    <th>Feiertage</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {holidayCatalog.map((stateOption) => (
-                    <tr key={stateOption.value}>
-                      <td className={styles.title}>{stateOption.label}</td>
-                      <td>{stateOption.value}</td>
-                      <td>
-                        {new Date().getFullYear()}-{new Date().getFullYear() + 49}
-                      </td>
-                      <td>{stateOption.holidays.length}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className={styles.holidayCatalogControl}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                aria-expanded={isHolidayCatalogOpen}
+                onClick={() => setIsHolidayCatalogOpen((current) => !current)}
+              >
+                {isHolidayCatalogOpen ? "Feiertagskatalog ausblenden" : "Feiertagskatalog anzeigen"}
+              </button>
+              <span>Der Zeitraum wird jährlich automatisch um weitere Jahre fortgeschrieben.</span>
             </div>
+            {isHolidayCatalogOpen ? (
+              <div className={styles.companySettingsTable}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Bundesland</th>
+                      <th>Kürzel</th>
+                      <th>Zeitraum</th>
+                      <th>Feiertage</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {holidayCatalog.map((stateOption) => (
+                      <tr key={stateOption.value}>
+                        <td className={styles.title}>{stateOption.label}</td>
+                        <td>{stateOption.value}</td>
+                        <td>
+                          {new Date().getFullYear()}-{new Date().getFullYear() + 49}
+                        </td>
+                        <td>{stateOption.holidays.length}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
           </section>
         ) : (
           <section className={styles.settingsCard}>
@@ -53404,7 +53423,7 @@ await addProjectLogbookEntry(
                       <SidebarIcon tab={tab} />
                       {label}
                     </span>
-                    <b>{isFirmSettingsNavOpen ? "R" : "v"}</b>
+                    <b>{isFirmSettingsNavOpen ? "^" : "v"}</b>
                   </button>
                   {isFirmSettingsNavOpen && (
                     <div className={styles.sidebarSubTabs}>

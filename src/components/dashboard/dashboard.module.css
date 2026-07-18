@@ -17207,6 +17207,83 @@
   font-weight: 650;
 }
 
+.companyStructureCard {
+  display: grid;
+  gap: 16px;
+}
+
+.settingsSectionHeader {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+}
+
+.settingsSectionHeader h2 {
+  margin-bottom: 4px;
+}
+
+.settingsSectionHeader p {
+  margin-bottom: 0;
+}
+
+.settingsSectionEyebrow {
+  color: #0891a2 !important;
+  font-size: 0.72rem !important;
+  font-weight: 850 !important;
+  letter-spacing: 0.06em;
+  margin-bottom: 5px !important;
+  text-transform: uppercase;
+}
+
+.companyStructureList {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.companyStructureList article {
+  align-content: center;
+  min-height: 76px;
+}
+
+.companyStructureList article > div {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+
+.companyStructureType {
+  color: #0891a2 !important;
+  font-size: 0.7rem !important;
+  font-weight: 850 !important;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.holidaySettingsHeader {
+  border-top: 1px solid #e2e8f0;
+  margin-top: 2px;
+  padding-top: 16px;
+}
+
+.holidayCatalogControl {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+}
+
+.holidayCatalogControl span {
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+@media (max-width: 760px) {
+  .companyStructureList {
+    grid-template-columns: 1fr;
+  }
+}
+
 .companyProfileGrid {
   display: grid;
   gap: 16px;
