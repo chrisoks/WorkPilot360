@@ -2102,6 +2102,15 @@ type ContactItem = {
   taxId: string;
   debtorCreditorAccount: string;
   leitwegId: string;
+  customerStatusSystem: "prospect" | "new" | "existing";
+  customerStatusEffective: "prospect" | "new" | "existing";
+  customerStatusSource: "automatic" | "manual";
+  customerStatusInvoiceCount: number;
+  customerStatusOverride: "automatic" | "prospect" | "new" | "existing";
+  customerStatusOverrideReason: string;
+  customerStatusOverrideAt: string;
+  customerStatusOverrideById: string;
+  customerStatusOverrideByName: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -2255,6 +2264,7 @@ type CustomerLogbookEntry = {
   visibleFor: string[];
   attachments: LogbookAttachment[];
   taskTitle: string;
+  isSystem: boolean;
 };
 
 type LogbookAttachment = {
@@ -3867,7 +3877,30 @@ const emptyContact: Omit<ContactItem, "id" | "createdAt" | "updatedAt"> = {
   taxId: "",
   debtorCreditorAccount: "",
   leitwegId: "",
+  customerStatusSystem: "prospect",
+  customerStatusEffective: "prospect",
+  customerStatusSource: "automatic",
+  customerStatusInvoiceCount: 0,
+  customerStatusOverride: "automatic",
+  customerStatusOverrideReason: "",
+  customerStatusOverrideAt: "",
+  customerStatusOverrideById: "",
+  customerStatusOverrideByName: "",
 };
+
+const customerStatusLabels: Record<ContactItem["customerStatusEffective"], string> = {
+  prospect: "Interessent",
+  new: "Neukunde",
+  existing: "Bestandskunde",
+};
+
+function formatCustomerStatusAuditDate(value: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? ""
+    : new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
 
 const emptyObjectAddressDraft: ObjectAddressDraft = {
   customerId: "",
@@ -7553,6 +7586,26 @@ export function DashboardPage() {
 
     const data = (await res.json()) as ContactItem[];
     setContacts(data);
+  }
+
+  async function loadCustomerLogbookEntries(customerId: string) {
+    if (!activeUserId || !customerId) return;
+    const params = new URLSearchParams({ actorId: activeUserId, customerId });
+    const res = await fetch(`/api/customer-logbook-entries?${params.toString()}`, {
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      setLogbookError("Kunden-Logbucheinträge konnten nicht geladen werden.");
+      return;
+    }
+
+    const data = (await res.json()) as CustomerLogbookEntry[];
+    setCustomerLogbookEntries((currentEntries) => [
+      ...currentEntries.filter((entry) => entry.customerId !== customerId),
+      ...data,
+    ]);
+    setLogbookError("");
   }
 
   async function loadObjectAddresses() {
@@ -12031,6 +12084,16 @@ export function DashboardPage() {
       setErrorMessage("Bitte mindestens Vorname oder Nachname angeben.");
       return;
     }
+    if (
+      (normalizedContactDraft.type === "private" ||
+        normalizedContactDraft.category === "Kunde" ||
+        normalizedContactDraft.category === "Privatkunde") &&
+      normalizedContactDraft.customerStatusOverride !== "automatic" &&
+      !normalizedContactDraft.customerStatusOverrideReason.trim()
+    ) {
+      setErrorMessage("Bitte begründe die manuelle Kundenstatus-Einstufung.");
+      return;
+    }
     const res = await fetch("/api/contacts", {
       method: editingContactId ? "PATCH" : "POST",
       headers: {
@@ -12057,6 +12120,12 @@ export function DashboardPage() {
           )
         : [savedContact, ...currentContacts]
     );
+    if (editingContactId) {
+      await Promise.all([
+        loadCustomerLogbookEntries(savedContact.id),
+        loadNotifications(false),
+      ]);
+    }
     setIsContactModalOpen(false);
     setEditingContactId(null);
     if (!editingContactId && projectContactTarget) {
@@ -14276,6 +14345,18 @@ export function DashboardPage() {
     if (notification.linkTarget === "news-feed") {
       await loadNewsFeed();
       setActiveTab("newsFeed");
+      setIsNotificationsOpen(false);
+    }
+
+    if (notification.linkTarget === "customer" && notification.linkTargetId) {
+      const customer = contacts.find((contact) => contact.id === notification.linkTargetId);
+      if (customer) {
+        openCustomerFile(customer);
+      } else {
+        setSelectedCustomerFileId(notification.linkTargetId);
+        setCustomerFileTab("logbook");
+      }
+      setActiveTab("contacts");
       setIsNotificationsOpen(false);
     }
 
@@ -16594,6 +16675,12 @@ export function DashboardPage() {
   }, [activeUserId, authChecked, isAuthenticated, selectedProjectFileId]);
 
   useEffect(() => {
+    if (!authChecked || !isAuthenticated || !activeUserId || !selectedCustomerFileId) return;
+    if (customerFileTab !== "logbook") return;
+    void loadCustomerLogbookEntries(selectedCustomerFileId);
+  }, [activeUserId, authChecked, customerFileTab, isAuthenticated, selectedCustomerFileId]);
+
+  useEffect(() => {
     if (!authChecked || !isAuthenticated || !activeUserId) return;
     if (projectFileTab !== "notes" || !selectedProjectFileId) return;
     const project = heroProjects.find((item) => item.id === selectedProjectFileId);
@@ -17678,15 +17765,6 @@ export function DashboardPage() {
   async function saveLogbookEntry() {
     if (!logbookMessage.trim()) return;
 
-    const now = new Date();
-    const date = new Intl.DateTimeFormat(APP_LOCALE, {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZone: APP_TIME_ZONE,
-    }).format(now);
     const taskTitle = logbookCreateTask
       ? logbookTaskTitle.trim() || logbookMessage.trim().slice(0, 80)
       : "";
@@ -17735,21 +17813,37 @@ export function DashboardPage() {
     }
 
     if (!selectedCustomerFile) return;
+    if (!activeUserId) {
+      setLogbookError("Aktiver Benutzer konnte nicht eindeutig bestimmt werden.");
+      return;
+    }
 
-    setCustomerLogbookEntries((currentEntries) => [
-      {
-        id: `${selectedCustomerFile.id}-${now.getTime()}`,
+    const res = await fetch("/api/customer-logbook-entries", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actorId: activeUserId,
         customerId: selectedCustomerFile.id,
-        date,
         text: logbookMessage.trim(),
-        author: activeUser?.name || "Mitarbeiter",
-        authorUserId: activeUserId,
         colleague: logbookColleague.trim(),
         visibleFor: logbookVisibleFor,
         attachments: logbookAttachments,
         taskTitle,
-      },
-      ...currentEntries,
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setLogbookError(data?.error ?? "Kunden-Logbucheintrag konnte nicht gespeichert werden.");
+      return;
+    }
+
+    const savedEntry = (await res.json()) as CustomerLogbookEntry;
+    setCustomerLogbookEntries((currentEntries) => [
+      savedEntry,
+      ...currentEntries.filter((entry) => entry.id !== savedEntry.id),
     ]);
     setIsLogbookModalOpen(false);
 
@@ -35082,7 +35176,7 @@ await addProjectLogbookEntry(
           text: entry.text,
           author: entry.author,
           authorUserId: entry.authorUserId,
-          isSystem: false,
+          isSystem: entry.isSystem,
           attachments: entry.attachments,
           taskTitle: entry.taskTitle,
           colleague: entry.colleague,
@@ -58478,6 +58572,7 @@ await addProjectLogbookEntry(
               </nav>
 
               {contactFormTab === "details" && (
+              <>
               <section className={styles.contactFormGrid}>
                 <label>
                   E-Mail-Adresse Kontaktperson
@@ -58559,6 +58654,96 @@ await addProjectLogbookEntry(
                   />
                 </label>
               </section>
+              {(contactDraft.type === "private" ||
+                contactDraft.category === "Kunde" ||
+                contactDraft.category === "Privatkunde") && (
+                <section className={styles.customerClassificationPanel}>
+                  <div className={styles.customerClassificationHeading}>
+                    <div>
+                      <span className={styles.eyebrow}>Kundenentwicklung</span>
+                      <h3>Kundenstatus</h3>
+                      <p>
+                        Operative Einstufung auf Basis eindeutig verknüpfter WorkPilot-Rechnungen.
+                      </p>
+                    </div>
+                    <div className={styles.customerClassificationBadges}>
+                      <span data-status={contactDraft.customerStatusSystem}>
+                        System: {customerStatusLabels[contactDraft.customerStatusSystem]}
+                      </span>
+                      <span data-status={contactDraft.customerStatusEffective} data-effective="true">
+                        Gültig: {customerStatusLabels[contactDraft.customerStatusEffective]}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className={styles.customerClassificationGrid}>
+                    <label>
+                      Einstufung
+                      <select
+                        value={contactDraft.customerStatusOverride}
+                        onChange={(event) => {
+                          const value = event.target.value as ContactItem["customerStatusOverride"];
+                          updateContactDraft("customerStatusOverride", value);
+                          updateContactDraft(
+                            "customerStatusEffective",
+                            value === "automatic" ? contactDraft.customerStatusSystem : value
+                          );
+                          updateContactDraft(
+                            "customerStatusSource",
+                            value === "automatic" ? "automatic" : "manual"
+                          );
+                          if (value === "automatic") {
+                            updateContactDraft("customerStatusOverrideReason", "");
+                          }
+                        }}
+                      >
+                        <option value="automatic">Automatisch aus WorkPilot-Belegen</option>
+                        <option value="prospect">Manuell: Interessent</option>
+                        <option value="new">Manuell: Neukunde</option>
+                        <option value="existing">Manuell: Bestandskunde</option>
+                      </select>
+                    </label>
+                    <label>
+                      Berechnungsbasis
+                      <input
+                        value={`${contactDraft.customerStatusInvoiceCount} aktive, positive Rechnung${
+                          contactDraft.customerStatusInvoiceCount === 1 ? "" : "en"
+                        }`}
+                        readOnly
+                      />
+                    </label>
+                    {contactDraft.customerStatusOverride !== "automatic" && (
+                      <label className={styles.customerClassificationReason}>
+                        Begründung der manuellen Einstufung *
+                        <textarea
+                          value={contactDraft.customerStatusOverrideReason}
+                          maxLength={500}
+                          placeholder="z. B. Bestandskunde aus dem Altsystem"
+                          onChange={(event) =>
+                            updateContactDraft("customerStatusOverrideReason", event.target.value)
+                          }
+                        />
+                      </label>
+                    )}
+                  </div>
+
+                  <div className={styles.customerClassificationNote}>
+                    <strong>Regel:</strong> 0 Rechnungen = Interessent, 1 Rechnung = Neukunde,
+                    ab 2 Rechnungen = Bestandskunde. Entwürfe, Stornos und nicht positive Beträge
+                    zählen nicht. Altbelege ohne eindeutige Kontaktverknüpfung sind nicht enthalten.
+                    {contactDraft.customerStatusSource === "manual" &&
+                      contactDraft.customerStatusOverrideByName && (
+                        <span>
+                          Manuell gesetzt von {contactDraft.customerStatusOverrideByName}
+                          {formatCustomerStatusAuditDate(contactDraft.customerStatusOverrideAt)
+                            ? ` am ${formatCustomerStatusAuditDate(contactDraft.customerStatusOverrideAt)}`
+                            : ""}.
+                        </span>
+                      )}
+                  </div>
+                </section>
+              )}
+              </>
               )}
 
               {contactFormTab === "address" && (

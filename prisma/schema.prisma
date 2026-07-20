@@ -1314,6 +1314,11 @@ model Contact {
   taxId                     String?
   debtorCreditorAccount     String?
   leitwegId                 String?
+  customerStatusOverride              String    @default("automatic")
+  customerStatusOverrideReason        String?
+  customerStatusOverrideAt            DateTime?
+  customerStatusOverrideById          String?
+  customerStatusOverrideByName        String?
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @default(now())
   parentCompanyId           String?

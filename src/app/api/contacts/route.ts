@@ -1,10 +1,16 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import type { User } from "@prisma/client";
+import { Role, type User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canDeleteContacts, canManageContacts, canReadContacts } from "@/lib/permissions";
+import {
+  deriveCustomerStatus,
+  getCustomerStatusAuditText,
+  getEffectiveCustomerStatus,
+  normalizeCustomerStatusOverride,
+} from "@/lib/contacts/customer-status";
 
 type ContactRow = {
   id: string;
@@ -52,6 +58,11 @@ type ContactRow = {
   taxId: string | null;
   debtorCreditorAccount: string | null;
   leitwegId: string | null;
+  customerStatusOverride: string;
+  customerStatusOverrideReason: string | null;
+  customerStatusOverrideAt: Date | null;
+  customerStatusOverrideById: string | null;
+  customerStatusOverrideByName: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -65,6 +76,20 @@ type ContactReferenceSummary = {
   label: string;
   count: number;
 };
+
+type CustomerInvoiceCountRow = {
+  contactId: string;
+  invoiceCount: number;
+};
+
+function getContactDisplayName(contact: ContactRow) {
+  return (
+    contact.companyName ||
+    [contact.firstName, contact.lastName].filter(Boolean).join(" ") ||
+    contact.customerNumber ||
+    "Kunde"
+  );
+}
 
 async function ensureContactsTable() {
   await prisma.$executeRaw`
@@ -114,6 +139,11 @@ async function ensureContactsTable() {
       "taxId" TEXT,
       "debtorCreditorAccount" TEXT,
       "leitwegId" TEXT,
+      "customerStatusOverride" TEXT NOT NULL DEFAULT 'automatic',
+      "customerStatusOverrideReason" TEXT,
+      "customerStatusOverrideAt" TIMESTAMP(3),
+      "customerStatusOverrideById" TEXT,
+      "customerStatusOverrideByName" TEXT,
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
@@ -128,6 +158,11 @@ async function ensureContactsTable() {
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "isActivityReportRecipient" BOOLEAN NOT NULL DEFAULT false`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "eInvoiceRequired" BOOLEAN NOT NULL DEFAULT false`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "eInvoiceRecipientType" TEXT NOT NULL DEFAULT 'business'`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "customerStatusOverride" TEXT NOT NULL DEFAULT 'automatic'`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "customerStatusOverrideReason" TEXT`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "customerStatusOverrideAt" TIMESTAMP(3)`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "customerStatusOverrideById" TEXT`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "customerStatusOverrideByName" TEXT`;
 }
 
 function cleanString(value: unknown) {
@@ -189,7 +224,18 @@ function parseNumber(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function formatContact(contact: ContactRow) {
+function getUserName(user: Pick<User, "firstName" | "lastName" | "email">) {
+  return [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || user.email;
+}
+
+function isCustomerContact(contact: Pick<ContactRow, "category" | "type">) {
+  return contact.type === "private" || contact.category === "Kunde" || contact.category === "Privatkunde";
+}
+
+function formatContact(contact: ContactRow, invoiceCount = 0) {
+  const systemStatus = deriveCustomerStatus(invoiceCount);
+  const storedOverride = normalizeCustomerStatusOverride(contact.customerStatusOverride);
+  const customerStatusOverride = isCustomerContact(contact) ? storedOverride : "automatic";
   return {
     id: contact.id,
     category: contact.category,
@@ -235,9 +281,87 @@ function formatContact(contact: ContactRow) {
     taxId: contact.taxId ?? "",
     debtorCreditorAccount: contact.debtorCreditorAccount ?? "",
     leitwegId: contact.leitwegId ?? "",
+    customerStatusSystem: systemStatus,
+    customerStatusEffective: getEffectiveCustomerStatus(systemStatus, customerStatusOverride),
+    customerStatusSource: customerStatusOverride === "automatic" ? "automatic" : "manual",
+    customerStatusInvoiceCount: invoiceCount,
+    customerStatusOverride,
+    customerStatusOverrideReason: contact.customerStatusOverrideReason ?? "",
+    customerStatusOverrideAt: contact.customerStatusOverrideAt?.toISOString() ?? "",
+    customerStatusOverrideById: contact.customerStatusOverrideById ?? "",
+    customerStatusOverrideByName: contact.customerStatusOverrideByName ?? "",
     createdAt: contact.createdAt.toISOString(),
     updatedAt: contact.updatedAt.toISOString(),
   };
+}
+
+async function getCustomerInvoiceCounts(organizationId: string) {
+  const rows = await prisma.$queryRaw<CustomerInvoiceCountRow[]>`
+    SELECT project."contactId" AS "contactId", COUNT(invoice."id")::int AS "invoiceCount"
+    FROM "Invoice" invoice
+    INNER JOIN "WorkPilotProject" project
+      ON project."id" = invoice."projectId"
+      AND project."organizationId" = invoice."organizationId"
+    WHERE invoice."organizationId" = ${organizationId}
+      AND project."contactId" IS NOT NULL
+      AND project."contactId" <> ''
+      AND invoice."netTotal" > 0
+      AND LOWER(invoice."status") <> 'entwurf'
+      AND LOWER(invoice."status") NOT LIKE '%storno%'
+      AND LOWER(invoice."status") NOT LIKE '%gelöscht%'
+      AND LOWER(invoice."status") NOT LIKE '%geloescht%'
+    GROUP BY project."contactId"
+  `;
+  return new Map(rows.map((row) => [row.contactId, Number(row.invoiceCount)]));
+}
+
+function getCustomerStatusInput(args: {
+  body: Record<string, unknown>;
+  actor: Pick<User, "id" | "firstName" | "lastName" | "email">;
+  isCustomer: boolean;
+  existing?: Pick<
+    ContactRow,
+    | "customerStatusOverride"
+    | "customerStatusOverrideReason"
+    | "customerStatusOverrideAt"
+    | "customerStatusOverrideById"
+    | "customerStatusOverrideByName"
+  >;
+}) {
+  const customerStatusOverride = args.isCustomer
+    ? normalizeCustomerStatusOverride(args.body.customerStatusOverride)
+    : "automatic";
+  const reason = cleanString(args.body.customerStatusOverrideReason);
+  if (customerStatusOverride !== "automatic" && !reason) {
+    return { error: "Bitte begründe die manuelle Kundenstatus-Einstufung." } as const;
+  }
+  const existingOverride = normalizeCustomerStatusOverride(args.existing?.customerStatusOverride);
+  const manualDecisionUnchanged =
+    customerStatusOverride !== "automatic" &&
+    customerStatusOverride === existingOverride &&
+    reason === (args.existing?.customerStatusOverrideReason ?? "");
+  return {
+    customerStatusOverride,
+    customerStatusOverrideReason: customerStatusOverride === "automatic" ? null : reason.slice(0, 500),
+    customerStatusOverrideAt:
+      customerStatusOverride === "automatic"
+        ? null
+        : manualDecisionUnchanged
+          ? args.existing?.customerStatusOverrideAt ?? new Date()
+          : new Date(),
+    customerStatusOverrideById:
+      customerStatusOverride === "automatic"
+        ? null
+        : manualDecisionUnchanged
+          ? args.existing?.customerStatusOverrideById ?? args.actor.id
+          : args.actor.id,
+    customerStatusOverrideByName:
+      customerStatusOverride === "automatic"
+        ? null
+        : manualDecisionUnchanged
+          ? args.existing?.customerStatusOverrideByName ?? getUserName(args.actor)
+          : getUserName(args.actor),
+  } as const;
 }
 
 async function getNextCustomerNumber(organizationId: string) {
@@ -358,8 +482,9 @@ export async function GET(req: Request) {
     WHERE "organizationId" = ${organization.id}
     ORDER BY "createdAt" DESC
   `;
+  const invoiceCounts = await getCustomerInvoiceCounts(organization.id);
 
-  return NextResponse.json(contacts.map(formatContact));
+  return NextResponse.json(contacts.map((contact) => formatContact(contact, invoiceCounts.get(contact.id) ?? 0)));
 }
 
 export async function POST(req: Request) {
@@ -394,6 +519,14 @@ export async function POST(req: Request) {
   if (emailValidationError) {
     return NextResponse.json({ error: emailValidationError }, { status: 400 });
   }
+  const customerStatus = getCustomerStatusInput({
+    body,
+    actor,
+    isCustomer: type === "private" || category === "Kunde" || category === "Privatkunde",
+  });
+  if ("error" in customerStatus) {
+    return NextResponse.json({ error: customerStatus.error }, { status: 400 });
+  }
 
   const inserted = await prisma.$queryRaw<ContactRow[]>`
     INSERT INTO "Contact" (
@@ -404,7 +537,8 @@ export async function POST(req: Request) {
       "parentCompanyId", "parentCompanyName", "mainContactName", "isMainContact",
       "street", "addressLine1", "addressLine2", "postalCode", "city", "country",
       "paymentTermDays", "discountPercent", "discountTermDays", "priceGroup",
-      "iban", "bic", "bankName", "taxId", "debtorCreditorAccount", "leitwegId"
+      "iban", "bic", "bankName", "taxId", "debtorCreditorAccount", "leitwegId",
+      "customerStatusOverride", "customerStatusOverrideReason", "customerStatusOverrideAt", "customerStatusOverrideById", "customerStatusOverrideByName"
     )
     VALUES (
       ${id}, ${organization.id}, ${category}, ${type}, ${nullableString(body.legalForm)}, ${customerNumber},
@@ -418,7 +552,9 @@ export async function POST(req: Request) {
       ${nullableString(body.postalCode)}, ${nullableString(body.city)}, ${nullableString(body.country)},
       ${parseInteger(body.paymentTermDays)}, ${parseNumber(body.discountPercent)}, ${parseInteger(body.discountTermDays)}, ${nullableString(body.priceGroup)},
       ${nullableString(body.iban)}, ${nullableString(body.bic)}, ${nullableString(body.bankName)}, ${nullableString(body.taxId)},
-      ${nullableString(body.debtorCreditorAccount)}, ${nullableString(body.leitwegId)}
+      ${nullableString(body.debtorCreditorAccount)}, ${nullableString(body.leitwegId)},
+      ${customerStatus.customerStatusOverride}, ${customerStatus.customerStatusOverrideReason}, ${customerStatus.customerStatusOverrideAt},
+      ${customerStatus.customerStatusOverrideById}, ${customerStatus.customerStatusOverrideByName}
     )
     RETURNING *
   `;
@@ -463,10 +599,55 @@ export async function PATCH(req: Request) {
   if (emailValidationError) {
     return NextResponse.json({ error: emailValidationError }, { status: 400 });
   }
+  const existingContacts = await prisma.$queryRaw<ContactRow[]>`
+    SELECT *
+    FROM "Contact"
+    WHERE "id" = ${id}
+      AND "organizationId" = ${organization.id}
+    LIMIT 1
+  `;
+  if (existingContacts.length === 0) {
+    return NextResponse.json({ error: "Kontakt wurde nicht gefunden." }, { status: 404 });
+  }
+  const customerStatus = getCustomerStatusInput({
+    body,
+    actor,
+    isCustomer: type === "private" || category === "Kunde" || category === "Privatkunde",
+    existing: existingContacts[0],
+  });
+  if ("error" in customerStatus) {
+    return NextResponse.json({ error: customerStatus.error }, { status: 400 });
+  }
 
-  const updated = await prisma.$queryRaw<ContactRow[]>`
-    UPDATE "Contact"
-    SET
+  const previousContact = existingContacts[0];
+  const customerStatusAuditText = getCustomerStatusAuditText({
+    previousOverride: previousContact.customerStatusOverride,
+    previousReason: previousContact.customerStatusOverrideReason ?? "",
+    nextOverride: customerStatus.customerStatusOverride,
+    nextReason: customerStatus.customerStatusOverrideReason ?? "",
+  });
+  const contactDisplayName = getContactDisplayName({
+    ...previousContact,
+    category,
+    type,
+    customerNumber,
+    companyName: nullableString(body.companyName),
+    firstName: nullableString(body.firstName),
+    lastName: nullableString(body.lastName),
+  });
+  const managementRecipients = customerStatusAuditText
+    ? users.filter(
+        (user) =>
+          user.organizationId === organization.id &&
+          user.isActive !== false &&
+          user.role === Role.GESCHAEFTSFUEHRER
+      )
+    : [];
+
+  const updated = await prisma.$transaction(async (transaction) => {
+    const rows = await transaction.$queryRaw<ContactRow[]>`
+      UPDATE "Contact"
+      SET
       "category" = ${category},
       "type" = ${type},
       "legalForm" = ${nullableString(body.legalForm)},
@@ -510,17 +691,62 @@ export async function PATCH(req: Request) {
       "taxId" = ${nullableString(body.taxId)},
       "debtorCreditorAccount" = ${nullableString(body.debtorCreditorAccount)},
       "leitwegId" = ${nullableString(body.leitwegId)},
+      "customerStatusOverride" = ${customerStatus.customerStatusOverride},
+      "customerStatusOverrideReason" = ${customerStatus.customerStatusOverrideReason},
+      "customerStatusOverrideAt" = ${customerStatus.customerStatusOverrideAt},
+      "customerStatusOverrideById" = ${customerStatus.customerStatusOverrideById},
+      "customerStatusOverrideByName" = ${customerStatus.customerStatusOverrideByName},
       "updatedAt" = CURRENT_TIMESTAMP
-    WHERE "id" = ${id}
-      AND "organizationId" = ${organization.id}
-    RETURNING *
-  `;
+      WHERE "id" = ${id}
+        AND "organizationId" = ${organization.id}
+      RETURNING *
+    `;
+
+    if (customerStatusAuditText) {
+      await transaction.auditLog.create({
+        data: {
+          organizationId: organization.id,
+          actorId: actor.id,
+          action: "customer_status_changed",
+          entityType: "contact-logbook",
+          entityId: id,
+          payload: {
+            text: customerStatusAuditText,
+            author: [actor.firstName, actor.lastName].filter(Boolean).join(" ") || actor.email,
+            authorUserId: actor.id,
+            previousOverride: normalizeCustomerStatusOverride(previousContact.customerStatusOverride),
+            nextOverride: customerStatus.customerStatusOverride,
+            reason: customerStatus.customerStatusOverrideReason ?? "",
+            isSystem: true,
+          },
+        },
+      });
+
+      if (managementRecipients.length > 0) {
+        await transaction.notification.createMany({
+          data: managementRecipients.map((recipient) => ({
+            organizationId: organization.id,
+            userId: recipient.id,
+            channel: "app",
+            subject: "Kundenstatus manuell geändert",
+            body: `${contactDisplayName}: ${customerStatusAuditText}`,
+            linkTarget: "customer",
+            linkTargetId: id,
+            linkLabel: "Kundenakte öffnen",
+          })),
+        });
+      }
+    }
+
+    return rows;
+  });
 
   if (updated.length === 0) {
     return NextResponse.json({ error: "Kontakt wurde nicht gefunden." }, { status: 404 });
   }
 
-  return NextResponse.json(formatContact(updated[0]));
+  const invoiceCounts = await getCustomerInvoiceCounts(organization.id);
+  return NextResponse.json(formatContact(updated[0], invoiceCounts.get(updated[0].id) ?? 0));
 }
 
 export async function DELETE(req: Request) {
