@@ -11,6 +11,7 @@ import {
   getEffectiveCustomerStatus,
   normalizeCustomerStatusOverride,
 } from "@/lib/contacts/customer-status";
+import { normalizePhoneNumber } from "@/lib/phone/normalize";
 
 type ContactRow = {
   id: string;
@@ -29,8 +30,11 @@ type ContactRow = {
   invoiceEmail: string | null;
   activityReportEmail: string | null;
   phone: string | null;
+  phoneNormalized: string | null;
   mobile: string | null;
+  mobileNormalized: string | null;
   fax: string | null;
+  faxNormalized: string | null;
   website: string | null;
   source: string | null;
   reachability: string | null;
@@ -110,8 +114,11 @@ async function ensureContactsTable() {
       "invoiceEmail" TEXT,
       "activityReportEmail" TEXT,
       "phone" TEXT,
+      "phoneNormalized" TEXT,
       "mobile" TEXT,
+      "mobileNormalized" TEXT,
       "fax" TEXT,
+      "faxNormalized" TEXT,
       "website" TEXT,
       "source" TEXT,
       "reachability" TEXT,
@@ -163,6 +170,12 @@ async function ensureContactsTable() {
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "customerStatusOverrideAt" TIMESTAMP(3)`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "customerStatusOverrideById" TEXT`;
   await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "customerStatusOverrideByName" TEXT`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "phoneNormalized" TEXT`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "mobileNormalized" TEXT`;
+  await prisma.$executeRaw`ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "faxNormalized" TEXT`;
+  await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "Contact_organizationId_phoneNormalized_idx" ON "Contact"("organizationId", "phoneNormalized")`;
+  await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "Contact_organizationId_mobileNormalized_idx" ON "Contact"("organizationId", "mobileNormalized")`;
+  await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "Contact_organizationId_faxNormalized_idx" ON "Contact"("organizationId", "faxNormalized")`;
 }
 
 function cleanString(value: unknown) {
@@ -186,6 +199,21 @@ function forbiddenContactDeleteResponse() {
 function nullableString(value: unknown) {
   const cleaned = cleanString(value);
   return cleaned || null;
+}
+
+function normalizeContactPhone(value: unknown, label: string, existingValue?: string | null) {
+  const raw = cleanString(value);
+  const result = normalizePhoneNumber(raw);
+  if (result.kind === "invalid") {
+    if (existingValue !== undefined && raw === cleanString(existingValue)) return { raw, normalized: null };
+    return { error: `${label}: ${result.reason}` } as const;
+  }
+  return { raw: result.normalized ?? "", normalized: result.normalized };
+}
+
+function getChangedContactFields(previous: ContactRow, body: Record<string, unknown>) {
+  const trackedFields = ["phone", "mobile", "fax", "email", "companyName", "firstName", "lastName", "parentCompanyId"] as const;
+  return trackedFields.filter((field) => cleanString(previous[field]) !== cleanString(body[field]));
 }
 
 function isValidEmailAddress(value: string) {
@@ -527,12 +555,19 @@ export async function POST(req: Request) {
   if ("error" in customerStatus) {
     return NextResponse.json({ error: customerStatus.error }, { status: 400 });
   }
+  const phone = normalizeContactPhone(body.phone, "Telefon");
+  const mobile = normalizeContactPhone(body.mobile, "Mobiltelefon");
+  const fax = normalizeContactPhone(body.fax, "Fax");
+  for (const result of [phone, mobile, fax]) {
+    if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
+  }
 
-  const inserted = await prisma.$queryRaw<ContactRow[]>`
+  const inserted = await prisma.$transaction(async (transaction) => {
+    const rows = await transaction.$queryRaw<ContactRow[]>`
     INSERT INTO "Contact" (
       "id", "organizationId", "category", "type", "legalForm", "customerNumber",
       "salutation", "additionalSalutation", "companyName", "firstName", "lastName", "position",
-      "email", "invoiceEmail", "activityReportEmail", "phone", "mobile", "fax", "website", "source", "reachability", "isInvoiceRecipient", "isActivityReportRecipient",
+      "email", "invoiceEmail", "activityReportEmail", "phone", "phoneNormalized", "mobile", "mobileNormalized", "fax", "faxNormalized", "website", "source", "reachability", "isInvoiceRecipient", "isActivityReportRecipient",
       "eInvoiceRequired", "eInvoiceRecipientType",
       "parentCompanyId", "parentCompanyName", "mainContactName", "isMainContact",
       "street", "addressLine1", "addressLine2", "postalCode", "city", "country",
@@ -544,7 +579,7 @@ export async function POST(req: Request) {
       ${id}, ${organization.id}, ${category}, ${type}, ${nullableString(body.legalForm)}, ${customerNumber},
       ${nullableString(body.salutation)}, ${nullableString(body.additionalSalutation)}, ${nullableString(body.companyName)},
       ${nullableString(body.firstName)}, ${nullableString(body.lastName)}, ${nullableString(body.position)},
-      ${nullableString(email)}, ${nullableString(invoiceEmail)}, ${nullableString(activityReportEmail)}, ${nullableString(body.phone)}, ${nullableString(body.mobile)}, ${nullableString(body.fax)},
+      ${nullableString(email)}, ${nullableString(invoiceEmail)}, ${nullableString(activityReportEmail)}, ${nullableString(phone.raw)}, ${phone.normalized}, ${nullableString(mobile.raw)}, ${mobile.normalized}, ${nullableString(fax.raw)}, ${fax.normalized},
       ${nullableString(body.website)}, ${nullableString(body.source)}, ${nullableString(body.reachability)}, ${Boolean(invoiceEmail)}, ${Boolean(activityReportEmail)},
       ${Boolean(body.eInvoiceRequired)}, ${cleanEInvoiceRecipientType(body.eInvoiceRecipientType)},
       ${nullableString(body.parentCompanyId)}, ${nullableString(body.parentCompanyName)}, ${nullableString(body.mainContactName)}, ${Boolean(body.isMainContact)},
@@ -557,7 +592,12 @@ export async function POST(req: Request) {
       ${customerStatus.customerStatusOverrideById}, ${customerStatus.customerStatusOverrideByName}
     )
     RETURNING *
-  `;
+    `;
+    await transaction.contactIntegrationEvent.create({
+      data: { organizationId: organization.id, contactId: id, eventType: "created", changedFields: [] },
+    });
+    return rows;
+  });
 
   return NextResponse.json(formatContact(inserted[0]));
 }
@@ -620,6 +660,13 @@ export async function PATCH(req: Request) {
   }
 
   const previousContact = existingContacts[0];
+  const phone = normalizeContactPhone(body.phone, "Telefon", previousContact.phone);
+  const mobile = normalizeContactPhone(body.mobile, "Mobiltelefon", previousContact.mobile);
+  const fax = normalizeContactPhone(body.fax, "Fax", previousContact.fax);
+  for (const result of [phone, mobile, fax]) {
+    if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
+  }
+  const changedFields = getChangedContactFields(previousContact, body);
   const customerStatusAuditText = getCustomerStatusAuditText({
     previousOverride: previousContact.customerStatusOverride,
     previousReason: previousContact.customerStatusOverrideReason ?? "",
@@ -661,9 +708,12 @@ export async function PATCH(req: Request) {
       "email" = ${nullableString(email)},
       "invoiceEmail" = ${nullableString(invoiceEmail)},
       "activityReportEmail" = ${nullableString(activityReportEmail)},
-      "phone" = ${nullableString(body.phone)},
-      "mobile" = ${nullableString(body.mobile)},
-      "fax" = ${nullableString(body.fax)},
+      "phone" = ${nullableString(phone.raw)},
+      "phoneNormalized" = ${phone.normalized},
+      "mobile" = ${nullableString(mobile.raw)},
+      "mobileNormalized" = ${mobile.normalized},
+      "fax" = ${nullableString(fax.raw)},
+      "faxNormalized" = ${fax.normalized},
       "website" = ${nullableString(body.website)},
       "source" = ${nullableString(body.source)},
       "reachability" = ${nullableString(body.reachability)},
@@ -738,6 +788,12 @@ export async function PATCH(req: Request) {
       }
     }
 
+    if (changedFields.length > 0) {
+      await transaction.contactIntegrationEvent.create({
+        data: { organizationId: organization.id, contactId: id, eventType: "updated", changedFields },
+      });
+    }
+
     return rows;
   });
 
@@ -792,11 +848,16 @@ export async function DELETE(req: Request) {
     );
   }
 
-  await prisma.$executeRaw`
-    DELETE FROM "Contact"
-    WHERE "id" = ${id}
-      AND "organizationId" = ${organization.id}
-  `;
+  await prisma.$transaction(async (transaction) => {
+    await transaction.contactIntegrationEvent.create({
+      data: { organizationId: organization.id, contactId: id, eventType: "deleted", changedFields: [] },
+    });
+    await transaction.$executeRaw`
+      DELETE FROM "Contact"
+      WHERE "id" = ${id}
+        AND "organizationId" = ${organization.id}
+    `;
+  });
 
   return NextResponse.json({ success: true });
 }

@@ -4,6 +4,7 @@ import { getDemoContext } from "@/lib/demo/context";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { prisma } from "@/lib/db/client";
 import { canManagePersonalNumber, canManageUsers } from "@/lib/permissions";
+import { normalizePhoneNumber } from "@/lib/phone/normalize";
 
 const bcrypt = require("bcryptjs") as {
   hashSync(password: string, saltRounds: number): string;
@@ -821,6 +822,22 @@ export async function PATCH(req: Request) {
   const hasLanguageUpdate = Object.prototype.hasOwnProperty.call(body, "language");
   const hasPhoneUpdate = Object.prototype.hasOwnProperty.call(body, "phone");
   const hasMobileUpdate = Object.prototype.hasOwnProperty.call(body, "mobile");
+  const nextPhoneResult = normalizePhoneNumber(body.phone);
+  const nextMobileResult = normalizePhoneNumber(body.mobile);
+  if (hasPhoneUpdate && nextPhoneResult.kind === "invalid") {
+    return NextResponse.json(
+      { error: `Telefon: ${nextPhoneResult.reason}` },
+      { status: 400 }
+    );
+  }
+  if (hasMobileUpdate && nextMobileResult.kind === "invalid") {
+    return NextResponse.json(
+      { error: `Mobiltelefon: ${nextMobileResult.reason}` },
+      { status: 400 }
+    );
+  }
+  const nextPhone = nextPhoneResult.normalized ?? "";
+  const nextMobile = nextMobileResult.normalized ?? "";
   const hasStreetUpdate = Object.prototype.hasOwnProperty.call(body, "street");
   const hasPostalCodeUpdate = Object.prototype.hasOwnProperty.call(body, "postalCode");
   const hasCityUpdate = Object.prototype.hasOwnProperty.call(body, "city");
@@ -909,11 +926,11 @@ export async function PATCH(req: Request) {
         ELSE "language"
       END,
       "phone" = CASE
-        WHEN ${hasPhoneUpdate} THEN ${parseText(body.phone) || null}
+        WHEN ${hasPhoneUpdate} THEN ${nextPhone || null}
         ELSE "phone"
       END,
       "mobile" = CASE
-        WHEN ${hasMobileUpdate} THEN ${parseText(body.mobile) || null}
+        WHEN ${hasMobileUpdate} THEN ${nextMobile || null}
         ELSE "mobile"
       END,
       "street" = CASE
@@ -1113,6 +1130,22 @@ export async function POST(req: Request) {
   const notifyIdeaStore = body.notifyIdeaStore !== false;
   const notifyUpsell = body.notifyUpsell === true;
   const mailAccount = parseMailAccount(body.mailAccount, body.email);
+  const phoneResult = normalizePhoneNumber(body.phone);
+  const mobileResult = normalizePhoneNumber(body.mobile);
+  if (phoneResult.kind === "invalid") {
+    return NextResponse.json(
+      { error: `Telefon: ${phoneResult.reason}` },
+      { status: 400 }
+    );
+  }
+  if (mobileResult.kind === "invalid") {
+    return NextResponse.json(
+      { error: `Mobiltelefon: ${mobileResult.reason}` },
+      { status: 400 }
+    );
+  }
+  const phone = phoneResult.normalized ?? "";
+  const mobile = mobileResult.normalized ?? "";
   const created = await prisma.user.create({
     data: {
       organizationId: organization.id,
@@ -1136,8 +1169,8 @@ export async function POST(req: Request) {
       "salutation" = ${parseText(body.salutation) || null},
       "birthDate" = ${birthDate},
       "language" = ${parseText(body.language) || "Deutsch (Deutschland)"},
-      "phone" = ${parseText(body.phone) || null},
-      "mobile" = ${parseText(body.mobile) || null},
+      "phone" = ${phone || null},
+      "mobile" = ${mobile || null},
       "street" = ${parseText(body.street) || null},
       "postalCode" = ${parseText(body.postalCode) || null},
       "city" = ${parseText(body.city) || null},
@@ -1171,8 +1204,8 @@ export async function POST(req: Request) {
         salutation: parseText(body.salutation) || "Herr",
         birthDate: body.birthDate ?? "",
         language: parseText(body.language) || "Deutsch (Deutschland)",
-        phone: parseText(body.phone),
-        mobile: parseText(body.mobile),
+        phone,
+        mobile,
         street: parseText(body.street),
         postalCode: parseText(body.postalCode),
         city: parseText(body.city),

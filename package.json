@@ -20,6 +20,9 @@
     "setup:verapdf": "node scripts/setup-verapdf-validator.js",
     "check:pdfa3-converter": "node scripts/check-pdfa3-converter.js",
     "setup:pdfa3-converter": "node scripts/setup-pdfa3-converter.js",
+    "oks-phone:phones:dry-run": "node --env-file=.env scripts/normalize-contact-phones.mjs",
+    "oks-phone:phones:apply": "node --env-file=.env scripts/normalize-contact-phones.mjs --apply",
+    "oks-phone:credential:provision": "node --env-file=.env scripts/provision-oks-phone-credential.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -29,6 +32,7 @@
     "@swc/helpers": "0.5.23",
     "@types/web-push": "^3.6.4",
     "bcryptjs": "^2.4.3",
+    "libphonenumber-js": "^1.13.9",
     "next": "16.2.10",
     "next-intl": "4.13.2",
     "nodemailer": "^9.0.1",

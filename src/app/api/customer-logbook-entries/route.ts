@@ -13,6 +13,18 @@ type CustomerLogbookAuditRow = {
   createdAt: Date;
 };
 
+type StructuredCustomerLogbookRow = {
+  id: string;
+  customerId: string;
+  title: string;
+  body: string;
+  createdByUserId: string | null;
+  createdByName: string;
+  source: string;
+  occurredAt: Date;
+  createdAt: Date;
+};
+
 type LogbookAttachment = {
   name: string;
   type: "Bild" | "Dokument";
@@ -87,6 +99,24 @@ function formatEntry(row: CustomerLogbookAuditRow) {
   };
 }
 
+function formatStructuredEntry(row: StructuredCustomerLogbookRow) {
+  return {
+    id: row.id,
+    customerId: row.customerId,
+    date: formatBerlinDateTime(row.occurredAt),
+    text: row.body,
+    author: row.createdByName || "System",
+    authorUserId: row.createdByUserId || "",
+    colleague: "",
+    visibleFor: [],
+    attachments: [],
+    taskTitle: row.title,
+    isSystem: true,
+    source: row.source,
+    sortDate: row.occurredAt,
+  };
+}
+
 export async function GET(req: Request) {
   const { organization, users } = await getDemoContext();
   const { searchParams } = new URL(req.url);
@@ -103,16 +133,40 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Kunde wurde nicht gefunden." }, { status: 404 });
   }
 
-  const rows = await prisma.$queryRaw<CustomerLogbookAuditRow[]>`
-    SELECT "id", "entityId", "payload", "createdAt"
-    FROM "AuditLog"
-    WHERE "organizationId" = ${organization.id}
-      AND "entityType" = 'contact-logbook'
-      AND "entityId" = ${customerId}
-    ORDER BY "createdAt" DESC
-  `;
+  const [auditRows, structuredRows] = await Promise.all([
+    prisma.$queryRaw<CustomerLogbookAuditRow[]>`
+      SELECT "id", "entityId", "payload", "createdAt"
+      FROM "AuditLog"
+      WHERE "organizationId" = ${organization.id}
+        AND "entityType" = 'contact-logbook'
+        AND "entityId" = ${customerId}
+      ORDER BY "createdAt" DESC
+    `,
+    prisma.customerLogbookEntry.findMany({
+      where: { organizationId: organization.id, customerId },
+      select: {
+        id: true,
+        customerId: true,
+        title: true,
+        body: true,
+        createdByUserId: true,
+        createdByName: true,
+        source: true,
+        occurredAt: true,
+        createdAt: true,
+      },
+      orderBy: { occurredAt: "desc" },
+    }),
+  ]);
 
-  return NextResponse.json(rows.map(formatEntry));
+  const combined = [
+    ...auditRows.map((row) => ({ ...formatEntry(row), sortDate: row.createdAt })),
+    ...structuredRows.map(formatStructuredEntry),
+  ]
+    .sort((left, right) => right.sortDate.getTime() - left.sortDate.getTime())
+    .map(({ sortDate: _sortDate, ...entry }) => entry);
+
+  return NextResponse.json(combined);
 }
 
 export async function POST(req: Request) {

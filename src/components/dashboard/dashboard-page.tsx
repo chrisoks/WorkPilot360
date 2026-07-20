@@ -3434,6 +3434,19 @@ const projectFileTabs: ProjectFileTab[] = [
   "checklists",
 ];
 
+const customerFileTabs: CustomerFileTab[] = [
+  "logbook",
+  "notes",
+  "images",
+  "documents",
+  "gaeb",
+  "contacts",
+  "potentials",
+  "tasks",
+  "projects",
+  "addresses",
+];
+
 const emptyMarketingQuotaDraft: ProjectMarketingQuotaDraft = {
   id: "",
   name: "",
@@ -6201,8 +6214,12 @@ export function DashboardPage() {
   const [contactFormTab, setContactFormTab] = useState<ContactFormTab>("details");
   const [contactDraft, setContactDraft] =
     useState<Omit<ContactItem, "id" | "createdAt" | "updatedAt">>(emptyContact);
-  const [selectedCustomerFileId, setSelectedCustomerFileId] = useState("");
-  const [customerFileTab, setCustomerFileTab] = useState<CustomerFileTab>("logbook");
+  const [selectedCustomerFileId, setSelectedCustomerFileId] = useState(() => getDashboardUrlText("customer"));
+  const [customerFileTab, setCustomerFileTab] = useState<CustomerFileTab>(() =>
+    getDashboardUrlValue("customerTab", customerFileTabs, "logbook")
+  );
+  const [requestedOfferId, setRequestedOfferId] = useState(() => getDashboardUrlText("offer"));
+  const [requestedInvoiceId, setRequestedInvoiceId] = useState(() => getDashboardUrlText("invoice"));
   const [customerLogbookMonthOpenState, setCustomerLogbookMonthOpenState] = useState<Record<string, boolean>>({});
   const [projectLogbookMonthOpenState, setProjectLogbookMonthOpenState] = useState<Record<string, boolean>>({});
   const [isCustomerDocumentNavOpen, setIsCustomerDocumentNavOpen] = useState(true);
@@ -12377,7 +12394,6 @@ export function DashboardPage() {
     setAuthenticatedUserId(user.id);
     setImpersonatedUserId("");
     setActiveUserId(user.id);
-    setActiveTab("overview");
     setZustaendigId(user.id);
     setAbsenceUserId(user.id);
     setOwnerFilter(user.id);
@@ -17099,12 +17115,19 @@ export function DashboardPage() {
         ? (params.get("doc") as CustomerDocumentType)
         : "Allgemeine Dokumente";
       const nextMonth = params.get("month") || "";
+      const nextCustomerTab = customerFileTabs.includes(params.get("customerTab") as CustomerFileTab)
+        ? (params.get("customerTab") as CustomerFileTab)
+        : "logbook";
 
       isApplyingBrowserHistoryRef.current = true;
       setActiveTab(allowedNextTab);
       setSelectedProjectFileId(params.get("project") || "");
       setProjectFileTab(nextProjectTab);
       setSelectedProjectDocumentType(nextDocumentType);
+      setSelectedCustomerFileId(params.get("customer") || "");
+      setCustomerFileTab(nextCustomerTab);
+      setRequestedOfferId(params.get("offer") || "");
+      setRequestedInvoiceId(params.get("invoice") || "");
       if (/^\d{4}-\d{2}$/.test(nextMonth)) {
         setProjectComparisonMonth(nextMonth);
       }
@@ -17131,6 +17154,12 @@ export function DashboardPage() {
       if (projectFileTab === "documents") params.set("doc", selectedProjectDocumentType);
       if (/^\d{4}-\d{2}$/.test(projectComparisonMonth)) params.set("month", projectComparisonMonth);
     }
+    if (selectedCustomerFileId && activeTab === "contacts") {
+      params.set("customer", selectedCustomerFileId);
+      params.set("customerTab", customerFileTab);
+    }
+    if (requestedOfferId) params.set("offer", requestedOfferId);
+    if (requestedInvoiceId) params.set("invoice", requestedInvoiceId);
 
     const nextUrl = `${window.location.pathname}?${params.toString()}`;
     const currentUrl = `${window.location.pathname}${window.location.search}`;
@@ -17142,7 +17171,62 @@ export function DashboardPage() {
     const method = hasInitializedBrowserHistoryRef.current ? "pushState" : "replaceState";
     window.history[method]({ workpilot: true }, "", nextUrl);
     hasInitializedBrowserHistoryRef.current = true;
-  }, [activeTab, selectedProjectFileId, projectFileTab, selectedProjectDocumentType, projectComparisonMonth]);
+  }, [
+    activeTab,
+    customerFileTab,
+    projectComparisonMonth,
+    projectFileTab,
+    requestedInvoiceId,
+    requestedOfferId,
+    selectedCustomerFileId,
+    selectedProjectDocumentType,
+    selectedProjectFileId,
+  ]);
+
+  useEffect(() => {
+    if (!authChecked || !isAuthenticated || activeTab !== "contacts" || !selectedCustomerFileId) return;
+    if (contacts.length === 0) return;
+    if (!contacts.some((contact) => contact.id === selectedCustomerFileId)) {
+      setSelectedCustomerFileId("");
+      setCustomerFileTab("logbook");
+    }
+  }, [activeTab, authChecked, contacts, isAuthenticated, selectedCustomerFileId]);
+
+  useEffect(() => {
+    if (!authChecked || !isAuthenticated) return;
+    const directLinkProject = heroProjects.find((project) => project.id === selectedProjectFileId);
+    if (!directLinkProject) return;
+
+    if (requestedOfferId) {
+      const offer = offers.find(
+        (candidate) => candidate.id === requestedOfferId && candidate.projectId === directLinkProject.id
+      );
+      if (offer) {
+        openEditOfferModal(offer);
+        setRequestedOfferId("");
+      }
+      return;
+    }
+
+    if (requestedInvoiceId) {
+      const invoice = invoices.find(
+        (candidate) => candidate.id === requestedInvoiceId && candidate.projectId === directLinkProject.id
+      );
+      if (invoice) {
+        openEditInvoiceModal(invoice);
+        setRequestedInvoiceId("");
+      }
+    }
+  }, [
+    authChecked,
+    heroProjects,
+    invoices,
+    isAuthenticated,
+    offers,
+    requestedInvoiceId,
+    requestedOfferId,
+    selectedProjectFileId,
+  ]);
 
   useEffect(() => {
     if (projectFileTab === "comparison" || projectFileTab === "time") {

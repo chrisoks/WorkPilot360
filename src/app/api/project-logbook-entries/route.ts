@@ -85,7 +85,23 @@ async function ensureProjectLogbookEntryTable() {
     ALTER TABLE "ProjectLogbookEntry"
     ADD COLUMN IF NOT EXISTS "projectMonth" TEXT,
     ADD COLUMN IF NOT EXISTS "authorUserId" TEXT,
+    ADD COLUMN IF NOT EXISTS "source" TEXT NOT NULL DEFAULT 'manual',
+    ADD COLUMN IF NOT EXISTS "callReference" TEXT,
+    ADD COLUMN IF NOT EXISTS "customerLogbookEntryId" TEXT,
+    ADD COLUMN IF NOT EXISTS "confirmedByUserId" TEXT,
+    ADD COLUMN IF NOT EXISTS "confirmedByName" TEXT,
+    ADD COLUMN IF NOT EXISTS "confirmationTimestamp" TIMESTAMP(3),
     ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+  `;
+
+  await prisma.$executeRaw`
+    CREATE UNIQUE INDEX IF NOT EXISTS "ProjectLogbookEntry_organizationId_source_callReference_projectId_key"
+    ON "ProjectLogbookEntry"("organizationId", "source", "callReference", "projectId")
+  `;
+
+  await prisma.$executeRaw`
+    CREATE INDEX IF NOT EXISTS "ProjectLogbookEntry_organizationId_projectId_createdAt_idx"
+    ON "ProjectLogbookEntry"("organizationId", "projectId", "createdAt")
   `;
 }
 

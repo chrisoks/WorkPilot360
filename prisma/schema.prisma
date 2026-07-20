@@ -1274,58 +1274,65 @@ model DocumentMailDispatch {
 }
 
 model Contact {
-  id                        String   @id
-  organizationId            String
-  category                  String   @default("Kunde")
-  type                      String   @default("person")
-  customerNumber            String
-  salutation                String?
-  additionalSalutation      String?
-  companyName               String?
-  firstName                 String?
-  lastName                  String?
-  position                  String?
-  email                     String?
-  invoiceEmail              String?
-  activityReportEmail       String?
-  phone                     String?
-  mobile                    String?
-  fax                       String?
-  website                   String?
-  source                    String?
-  reachability              String?
-  isInvoiceRecipient        Boolean  @default(false)
-  isActivityReportRecipient Boolean  @default(false)
-  eInvoiceRequired          Boolean  @default(false)
-  eInvoiceRecipientType     String   @default("business")
-  street                    String?
-  addressLine1              String?
-  addressLine2              String?
-  postalCode                String?
-  city                      String?
-  country                   String?
-  paymentTermDays           Int?
-  discountPercent           Float?
-  discountTermDays          Int?
-  priceGroup                String?
-  iban                      String?
-  bic                       String?
-  bankName                  String?
-  taxId                     String?
-  debtorCreditorAccount     String?
-  leitwegId                 String?
-  customerStatusOverride              String    @default("automatic")
-  customerStatusOverrideReason        String?
-  customerStatusOverrideAt            DateTime?
-  customerStatusOverrideById          String?
-  customerStatusOverrideByName        String?
-  createdAt                 DateTime @default(now())
-  updatedAt                 DateTime @default(now())
-  parentCompanyId           String?
-  parentCompanyName         String?
-  mainContactName           String?
-  isMainContact             Boolean  @default(false)
-  legalForm                 String?
+  id                           String    @id
+  organizationId               String
+  category                     String    @default("Kunde")
+  type                         String    @default("person")
+  customerNumber               String
+  salutation                   String?
+  additionalSalutation         String?
+  companyName                  String?
+  firstName                    String?
+  lastName                     String?
+  position                     String?
+  email                        String?
+  invoiceEmail                 String?
+  activityReportEmail          String?
+  phone                        String?
+  phoneNormalized              String?
+  mobile                       String?
+  mobileNormalized             String?
+  fax                          String?
+  faxNormalized                String?
+  website                      String?
+  source                       String?
+  reachability                 String?
+  isInvoiceRecipient           Boolean   @default(false)
+  isActivityReportRecipient    Boolean   @default(false)
+  eInvoiceRequired             Boolean   @default(false)
+  eInvoiceRecipientType        String    @default("business")
+  street                       String?
+  addressLine1                 String?
+  addressLine2                 String?
+  postalCode                   String?
+  city                         String?
+  country                      String?
+  paymentTermDays              Int?
+  discountPercent              Float?
+  discountTermDays             Int?
+  priceGroup                   String?
+  iban                         String?
+  bic                          String?
+  bankName                     String?
+  taxId                        String?
+  debtorCreditorAccount        String?
+  leitwegId                    String?
+  customerStatusOverride       String    @default("automatic")
+  customerStatusOverrideReason String?
+  customerStatusOverrideAt     DateTime?
+  customerStatusOverrideById   String?
+  customerStatusOverrideByName String?
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @default(now())
+  parentCompanyId              String?
+  parentCompanyName            String?
+  mainContactName              String?
+  isMainContact                Boolean   @default(false)
+  legalForm                    String?
+
+  @@index([organizationId, phoneNormalized])
+  @@index([organizationId, mobileNormalized])
+  @@index([organizationId, faxNormalized])
 }
 
 model ObjectAddress {
@@ -1373,19 +1380,94 @@ model DocumentTypeConfig {
 }
 
 model ProjectLogbookEntry {
-  id             String   @id
+  id                     String    @id
+  organizationId         String
+  projectId              String
+  title                  String?
+  body                   String
+  author                 String?
+  authorUserId           String?
+  colleague              String?
+  visibleFor             Json      @default("[]")
+  attachments            Json      @default("[]")
+  projectMonth           String?
+  source                 String    @default("manual")
+  callReference          String?
+  customerLogbookEntryId String?
+  confirmedByUserId      String?
+  confirmedByName        String?
+  confirmationTimestamp  DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @default(now())
+
+  @@unique([organizationId, source, callReference, projectId])
+  @@index([organizationId, projectId, createdAt])
+}
+
+model CustomerLogbookEntry {
+  id                     String   @id @default(cuid())
+  organizationId         String
+  customerId             String
+  contactId              String?
+  eventType              String
+  title                  String
+  body                   String   @db.Text
+  occurredAt             DateTime
+  createdAt              DateTime @default(now())
+  createdByUserId        String?
+  createdByName          String
+  source                 String   @default("manual")
+  externalReference      String?
+  callReference          String?
+  direction              String?
+  callerNumberNormalized String?
+  calledNumberNormalized String?
+  transcriptReference    String?
+  linkedProjectIds       Json     @default("[]")
+  metadata               Json     @default("{}")
+
+  @@unique([organizationId, source, callReference])
+  @@index([organizationId, customerId, occurredAt])
+  @@index([organizationId, contactId, occurredAt])
+}
+
+model OksPhoneIntegrationCredential {
+  id                 String    @id @default(cuid())
+  organizationId     String
+  keyId              String    @unique
+  name               String
+  secretHash         String
+  scopes             Json      @default("[]")
+  isActive           Boolean   @default(true)
+  rateLimitPerMinute Int       @default(120)
+  lastUsedAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([organizationId, isActive])
+}
+
+model OksPhoneRateLimitBucket {
+  id           String   @id @default(cuid())
+  credentialId String
+  windowStart  DateTime
+  requestCount Int      @default(0)
+  updatedAt    DateTime @updatedAt
+
+  @@unique([credentialId, windowStart])
+  @@index([windowStart])
+}
+
+model ContactIntegrationEvent {
+  id             String   @id @default(cuid())
   organizationId String
-  projectId      String
-  title          String?
-  body           String
-  author         String?
-  authorUserId   String?
-  colleague      String?
-  visibleFor     Json     @default("[]")
-  attachments    Json     @default("[]")
-  projectMonth   String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @default(now())
+  contactId      String
+  eventType      String
+  changedFields  Json     @default("[]")
+  occurredAt     DateTime @default(now())
+
+  @@index([organizationId, occurredAt, id])
+  @@index([organizationId, contactId])
 }
 
 model MonthlyFinancialReportValue {
