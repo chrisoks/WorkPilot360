@@ -23,6 +23,8 @@ model Organization {
   departments                   Department[]
   escalationRules               EscalationRule[]
   organizationSettings          OrganizationSetting[]
+  checklistTemplates            ChecklistTemplate[]
+  checklistTemplateVersions     ChecklistTemplateVersion[]
   notifications                 Notification[]
   catalogItems                  CatalogItem[]
   catalogItemHistory            CatalogItemHistory[]
@@ -1028,6 +1030,49 @@ model OrganizationSetting {
 
   @@unique([organizationId, key], map: "OrganizationSetting_org_key")
   @@index([organizationId])
+}
+
+model ChecklistTemplate {
+  id             String   @id @default(cuid())
+  organizationId String
+  stableKey      String
+  name           String
+  description    String
+  area           String
+  scope          String
+  status         String   @default("planned")
+  sortOrder      Int      @default(0)
+  handlerKey     String?
+  createdById    String?
+  updatedById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  versions     ChecklistTemplateVersion[]
+
+  @@unique([organizationId, stableKey])
+  @@index([organizationId, area, sortOrder])
+  @@index([organizationId, status])
+}
+
+model ChecklistTemplateVersion {
+  id             String    @id @default(cuid())
+  organizationId String
+  templateId     String
+  versionNumber  Int
+  status         String    @default("draft")
+  schema         Json      @default("{}")
+  pdfConfig      Json      @default("{}")
+  publishedAt    DateTime?
+  publishedById  String?
+  createdAt      DateTime  @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  template     ChecklistTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, versionNumber])
+  @@index([organizationId, status])
 }
 
 model AuditLog {

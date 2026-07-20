@@ -17,6 +17,13 @@ import {
   getEffectiveMonthlyFinancialAmount,
   parseMonthlyFinancialInput,
 } from "@/lib/monthly-financial-report";
+import {
+  checklistAreas,
+  checklistScopes,
+  defaultChecklistTemplateCatalog,
+  type ChecklistTemplateDefinition,
+  type ChecklistTemplateStatus,
+} from "@/lib/checklists/templates";
 
 const DOCUMENT_PREVIEW_WIDTH = 595;
 const DOCUMENT_PREVIEW_HEIGHT = 842;
@@ -591,16 +598,6 @@ type FirmSettingsTab =
   | "sources"
   | "mailServer"
   | "customFields";
-type ChecklistTemplateStatus = "active" | "planned" | "inactive";
-type ChecklistTemplateScope = "OK solutions" | "OK immocare" | "Alle Bereiche";
-type ChecklistTemplateDefinition = {
-  id: string;
-  area: "Arbeitsschutz" | "Brandschutz" | "Gefahrstoffe";
-  name: string;
-  description: string;
-  status: ChecklistTemplateStatus;
-  scope: ChecklistTemplateScope;
-};
 type DeadlineSettingsSection =
   | "offers"
   | "tasks"
@@ -4318,73 +4315,7 @@ const checklistAreaDescriptions: Record<ChecklistTemplateDefinition["area"], str
   Gefahrstoffe: "Lagerung, Kennzeichnung, Betriebsanweisungen und Schutzmaßnahmen.",
 };
 
-const checklistTemplateCatalog: ChecklistTemplateDefinition[] = [
-  ...[
-    "Arbeitsplatz-/Objektbegehung",
-    "PSA-Prüfung",
-    "Leiterprüfung",
-    "Tritt-/Arbeitsmittelprüfung",
-    "Maschinen-/Geräteprüfung",
-    "Einsatzstellenkontrolle",
-    "Erste-Hilfe-Ausstattung",
-    "Unfall-/Beinaheunfall-Dokumentation",
-    "Sicherheitsunterweisung",
-    "Fremdfirmen-Einweisung",
-  ].map((name, index) => ({
-    id: `arbeitsschutz-${index + 1}`,
-    area: "Arbeitsschutz" as const,
-    name,
-    description: "Vorlage fachlich vorbereitet.",
-    status: "planned" as const,
-    scope: "Alle Bereiche" as const,
-  })),
-  {
-    id: "brandschutz-rauchmelder-installation",
-    area: "Brandschutz",
-    name: "Rauchmelder-Installationsnachweis",
-    description: "Gerätedaten, Montageorte, Prüfpunkte und Bildnachweise erfassen.",
-    status: "active",
-    scope: "OK immocare",
-  },
-  ...[
-    ["Rauchmelderprüfung", "Prüf- und Wartungsnachweis für bestehende Melder."],
-    ["Rauchmelderliste", "Gemeinsame Melderliste für Installation und Prüfung."],
-    ["Feuerlöscher-Sichtprüfung", "Vorlage fachlich vorbereitet."],
-    ["Flucht- und Rettungswege", "Vorlage fachlich vorbereitet."],
-    ["Notbeleuchtung", "Vorlage fachlich vorbereitet."],
-    ["Brandschutztüren", "Vorlage fachlich vorbereitet."],
-    ["Brandabschottungen", "Vorlage fachlich vorbereitet."],
-    ["Feuerwehrzufahrt", "Vorlage fachlich vorbereitet."],
-    ["Brandschutzordnung / Aushänge", "Vorlage fachlich vorbereitet."],
-    ["Evakuierungsübung", "Vorlage fachlich vorbereitet."],
-  ].map(([name, description], index) => ({
-    id: `brandschutz-${index + 2}`,
-    area: "Brandschutz" as const,
-    name,
-    description,
-    status: "planned" as const,
-    scope: "OK immocare" as const,
-  })),
-  ...[
-    "Gefahrstofflager-Prüfung",
-    "Sicherheitsdatenblatt vorhanden",
-    "Kennzeichnung / Etikettierung",
-    "Betriebsanweisung vorhanden",
-    "Unterweisung Gefahrstoffe",
-    "Zusammenlagerung geprüft",
-    "Auffangwannen / Leckageschutz",
-    "PSA für Gefahrstoffe",
-    "Entsorgung / Reststoffe",
-    "Gefahrstoffverzeichnis-Abgleich",
-  ].map((name, index) => ({
-    id: `gefahrstoffe-${index + 1}`,
-    area: "Gefahrstoffe" as const,
-    name,
-    description: "Vorlage fachlich vorbereitet.",
-    status: "planned" as const,
-    scope: "OK immocare" as const,
-  })),
-];
+const checklistTemplateCatalogFallback: ChecklistTemplateDefinition[] = defaultChecklistTemplateCatalog;
 const taskWorkflowStatusOptions = statusOptions.filter(
   (status) => status !== "\u00fcberf\u00e4llig" && status !== "archiviert"
 );
@@ -6313,6 +6244,14 @@ export function DashboardPage() {
   const [activeChecklistView, setActiveChecklistView] = useState<"overview" | "smokeInstallation">("overview");
   const [checklistSearchTerm, setChecklistSearchTerm] = useState("");
   const [openChecklistArea, setOpenChecklistArea] = useState("");
+  const [checklistTemplateCatalog, setChecklistTemplateCatalog] = useState<ChecklistTemplateDefinition[]>(
+    checklistTemplateCatalogFallback
+  );
+  const [editingChecklistTemplateId, setEditingChecklistTemplateId] = useState("");
+  const [checklistTemplateDraft, setChecklistTemplateDraft] = useState<ChecklistTemplateDefinition | null>(null);
+  const [checklistTemplateMessage, setChecklistTemplateMessage] = useState("");
+  const [checklistTemplateError, setChecklistTemplateError] = useState("");
+  const [isChecklistTemplateSaving, setIsChecklistTemplateSaving] = useState(false);
   const [smokeDetectorInstallationDate, setSmokeDetectorInstallationDate] = useState(() => formatDateKey(new Date()));
   const [smokeDetectorInstaller, setSmokeDetectorInstaller] = useState("");
   const [smokeDetectorObjectNotes, setSmokeDetectorObjectNotes] = useState("");
@@ -12756,6 +12695,61 @@ export function DashboardPage() {
     setHolidayStateError("");
   }
 
+  async function loadChecklistTemplates() {
+    if (!activeUserId) return;
+    const res = await fetch(
+      `/api/company-settings/checklists?actorId=${encodeURIComponent(activeUserId)}`,
+      { cache: "no-store" }
+    );
+    if (!res.ok) {
+      setChecklistTemplateError("Checklisten-Vorlagen konnten nicht geladen werden.");
+      return;
+    }
+    const data = (await res.json()) as { templates?: ChecklistTemplateDefinition[] };
+    setChecklistTemplateCatalog(data.templates?.length ? data.templates : checklistTemplateCatalogFallback);
+    setChecklistTemplateError("");
+  }
+
+  function editChecklistTemplate(template: ChecklistTemplateDefinition) {
+    setEditingChecklistTemplateId(template.id);
+    setChecklistTemplateDraft({ ...template });
+    setChecklistTemplateError("");
+    setChecklistTemplateMessage("");
+  }
+
+  function cancelChecklistTemplateEdit() {
+    setEditingChecklistTemplateId("");
+    setChecklistTemplateDraft(null);
+    setChecklistTemplateError("");
+  }
+
+  async function saveChecklistTemplate() {
+    if (!checklistTemplateDraft || !activeUserId || isChecklistTemplateSaving) return;
+    setIsChecklistTemplateSaving(true);
+    setChecklistTemplateError("");
+    setChecklistTemplateMessage("");
+    const res = await fetch("/api/company-settings/checklists", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        actorId: activeUserId,
+        id: checklistTemplateDraft.id,
+        template: checklistTemplateDraft,
+      }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      setChecklistTemplateError(data?.error ?? "Checklisten-Vorlage konnte nicht gespeichert werden.");
+      setIsChecklistTemplateSaving(false);
+      return;
+    }
+    await loadChecklistTemplates();
+    setEditingChecklistTemplateId("");
+    setChecklistTemplateDraft(null);
+    setChecklistTemplateMessage("Vorlage wurde gespeichert.");
+    setIsChecklistTemplateSaving(false);
+  }
+
   async function saveHolidayState(nextState: GermanStateCode) {
     const previousState = holidayState;
     setHolidayState(nextState);
@@ -16487,6 +16481,7 @@ export function DashboardPage() {
       void loadBusinessAreaTargets();
       void loadPlanningGroupCapacitySettings();
       void loadHolidayState();
+      void loadChecklistTemplates();
       void loadUnits();
       void loadEscalationRules();
       void loadProjectPotentials();
@@ -49045,6 +49040,8 @@ await addProjectLogbookEntry(
                 erst nach fachlicher Definition von Feldern, Prüfregeln und PDF-Ausgabe freigegeben.
               </span>
             </div>
+            {checklistTemplateError ? <p className={styles.formError}>{checklistTemplateError}</p> : null}
+            {checklistTemplateMessage ? <p className={styles.formSuccess}>{checklistTemplateMessage}</p> : null}
             <div className={`${styles.companySettingsTable} ${styles.checklistManagementTable}`}>
               <table className={styles.table}>
                 <thead>
@@ -49054,29 +49051,114 @@ await addProjectLogbookEntry(
                     <th>Einsatzbereich</th>
                     <th>Status</th>
                     <th>Ausgabe</th>
+                    <th>Aktion</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {checklistTemplateCatalog.map((template) => (
-                    <tr key={template.id}>
-                      <td className={styles.title}>
-                        <strong>{template.name}</strong>
-                        <span>{template.description}</span>
-                      </td>
-                      <td>{template.area}</td>
-                      <td>{template.scope}</td>
-                      <td>
-                        <span className={styles.checklistManagementStatus} data-status={template.status}>
-                          {template.status === "active"
-                            ? "Nutzbar"
-                            : template.status === "inactive"
-                              ? "Deaktiviert"
-                              : "In Vorbereitung"}
-                        </span>
-                      </td>
-                      <td>{template.status === "active" ? "PDF · Dokumente > Checklisten" : "Noch nicht festgelegt"}</td>
-                    </tr>
-                  ))}
+                  {checklistTemplateCatalog.map((template) => {
+                    const isEditing = editingChecklistTemplateId === template.id && checklistTemplateDraft;
+                    return (
+                      <tr key={template.id} data-editing={isEditing ? "true" : undefined}>
+                        <td className={styles.title}>
+                          {isEditing ? (
+                            <div className={styles.checklistTemplateEditStack}>
+                              <input
+                                value={checklistTemplateDraft.name}
+                                onChange={(event) => setChecklistTemplateDraft({ ...checklistTemplateDraft, name: event.target.value })}
+                                aria-label="Vorlagenname"
+                              />
+                              <textarea
+                                value={checklistTemplateDraft.description}
+                                onChange={(event) => setChecklistTemplateDraft({ ...checklistTemplateDraft, description: event.target.value })}
+                                aria-label="Vorlagenbeschreibung"
+                              />
+                            </div>
+                          ) : (
+                            <>
+                              <strong>{template.name}</strong>
+                              <span>{template.description}</span>
+                            </>
+                          )}
+                        </td>
+                        <td>
+                          {isEditing ? (
+                            <select
+                              value={checklistTemplateDraft.area}
+                              onChange={(event) => setChecklistTemplateDraft({
+                                ...checklistTemplateDraft,
+                                area: event.target.value as ChecklistTemplateDefinition["area"],
+                              })}
+                              aria-label="Fachbereich"
+                            >
+                              {checklistAreas.map((area) => <option key={area}>{area}</option>)}
+                            </select>
+                          ) : template.area}
+                        </td>
+                        <td>
+                          {isEditing ? (
+                            <select
+                              value={checklistTemplateDraft.scope}
+                              onChange={(event) => setChecklistTemplateDraft({
+                                ...checklistTemplateDraft,
+                                scope: event.target.value as ChecklistTemplateDefinition["scope"],
+                              })}
+                              aria-label="Einsatzbereich"
+                            >
+                              {checklistScopes.map((scope) => <option key={scope}>{scope}</option>)}
+                            </select>
+                          ) : template.scope}
+                        </td>
+                        <td>
+                          {isEditing ? (
+                            <select
+                              value={checklistTemplateDraft.status}
+                              onChange={(event) => setChecklistTemplateDraft({
+                                ...checklistTemplateDraft,
+                                status: event.target.value as ChecklistTemplateStatus,
+                              })}
+                              aria-label="Status"
+                            >
+                              <option value="planned">In Vorbereitung</option>
+                              <option value="active" disabled={!checklistTemplateDraft.handlerKey}>Nutzbar</option>
+                              <option value="inactive">Deaktiviert</option>
+                            </select>
+                          ) : (
+                            <span className={styles.checklistManagementStatus} data-status={template.status}>
+                              {template.status === "active"
+                                ? "Nutzbar"
+                                : template.status === "inactive"
+                                  ? "Deaktiviert"
+                                  : "In Vorbereitung"}
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          {template.handlerKey ? "Formular · PDF · Dokumente > Checklisten" : "Formular und PDF fehlen"}
+                        </td>
+                        <td>
+                          {isEditing ? (
+                            <div className={styles.checklistTemplateActions}>
+                              <button type="button" className={styles.primaryButton} onClick={() => void saveChecklistTemplate()} disabled={isChecklistTemplateSaving}>
+                                {isChecklistTemplateSaving ? "Speichert..." : "Speichern"}
+                              </button>
+                              <button type="button" className={styles.secondaryButton} onClick={cancelChecklistTemplateEdit} disabled={isChecklistTemplateSaving}>
+                                Abbrechen
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              className={styles.secondaryButton}
+                              onClick={() => editChecklistTemplate(template)}
+                              disabled={!canManageCompanyMasterData || Boolean(editingChecklistTemplateId)}
+                            >
+                              Bearbeiten
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

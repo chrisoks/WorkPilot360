@@ -17362,6 +17362,55 @@
   margin-top: 3px;
 }
 
+.checklistManagementTable tr[data-editing="true"] td {
+  background: #f8fbff;
+}
+
+.checklistTemplateEditStack {
+  display: grid;
+  gap: 8px;
+}
+
+.checklistTemplateEditStack input,
+.checklistTemplateEditStack textarea,
+.checklistManagementTable select {
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  color: #13213a;
+  font: inherit;
+  min-height: 38px;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+.checklistTemplateEditStack textarea {
+  line-height: 1.4;
+  min-height: 72px;
+  resize: vertical;
+}
+
+.checklistTemplateEditStack input:focus,
+.checklistTemplateEditStack textarea:focus,
+.checklistManagementTable select:focus {
+  border-color: #089ba5;
+  box-shadow: 0 0 0 3px rgba(8, 155, 165, 0.12);
+  outline: none;
+}
+
+.checklistTemplateActions {
+  align-items: stretch;
+  display: grid;
+  gap: 7px;
+  min-width: 118px;
+}
+
+.checklistTemplateActions button {
+  justify-content: center;
+  margin: 0;
+  width: 100%;
+}
+
 .checklistManagementStatus {
   border: 1px solid #cbd5e1;
   border-radius: 999px;
