@@ -6204,6 +6204,7 @@ export function DashboardPage() {
   const [selectedCustomerFileId, setSelectedCustomerFileId] = useState("");
   const [customerFileTab, setCustomerFileTab] = useState<CustomerFileTab>("logbook");
   const [customerLogbookMonthOpenState, setCustomerLogbookMonthOpenState] = useState<Record<string, boolean>>({});
+  const [projectLogbookMonthOpenState, setProjectLogbookMonthOpenState] = useState<Record<string, boolean>>({});
   const [isCustomerDocumentNavOpen, setIsCustomerDocumentNavOpen] = useState(true);
   const [selectedCustomerDocumentType, setSelectedCustomerDocumentType] =
     useState<CustomerDocumentType>("Allgemeine Dokumente");
@@ -36293,6 +36294,7 @@ await addProjectLogbookEntry(
         text: `Das Projekt ist aktuell in ${selectedProjectFile.status || "-"}.`,
       },
     ];
+    const currentProjectMonthKey = projectComparisonMonth || formatInputDate(new Date()).slice(0, 7);
     const projectLogbookQuery = projectLogbookSearch.trim().toLowerCase();
     const projectLogEntries = projectLogbookEntries.filter(
       (entry) => String(entry.projectId) === String(selectedProjectFile.id)
@@ -36385,6 +36387,69 @@ await addProjectLogbookEntry(
           .includes(projectLogbookQuery);
       }),
     ];
+    const parseProjectLogbookDate = (value: string) => {
+      const germanDateMatch = value.match(
+        /^(\d{2})\.(\d{2})\.(\d{4})(?:,|\s)+(\d{2}):(\d{2})/
+      );
+      if (germanDateMatch) {
+        const [, day, month, year, hour, minute] = germanDateMatch;
+        return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
+      }
+
+      return parseAppDateTime(value);
+    };
+    const sortedVisibleProjectLogEntries = [...visibleProjectLogEntries].sort(
+      (first, second) =>
+        parseProjectLogbookDate(second.date).getTime() - parseProjectLogbookDate(first.date).getTime()
+    );
+    const projectLogbookMonthGroupMap = sortedVisibleProjectLogEntries.reduce(
+      (groups, entry) => {
+        const parsedDate = parseProjectLogbookDate(entry.date);
+        const validDate = Number.isFinite(parsedDate.getTime());
+        const monthKey = validDate
+          ? `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, "0")}`
+          : "unknown";
+        const currentGroup = groups.get(monthKey) || {
+          key: monthKey,
+          year: validDate ? String(parsedDate.getFullYear()) : "Ohne Datum",
+          monthLabel: validDate
+            ? parsedDate.toLocaleDateString(APP_LOCALE, { month: "long" })
+            : "Weitere Einträge",
+          entries: [] as typeof sortedVisibleProjectLogEntries,
+        };
+        currentGroup.entries.push(entry);
+        groups.set(monthKey, currentGroup);
+        return groups;
+      },
+      new Map<
+        string,
+        {
+          key: string;
+          year: string;
+          monthLabel: string;
+          entries: typeof sortedVisibleProjectLogEntries;
+        }
+      >()
+    );
+    if (
+      !projectLogbookQuery &&
+      /^\d{4}-\d{2}$/.test(currentProjectMonthKey) &&
+      !projectLogbookMonthGroupMap.has(currentProjectMonthKey)
+    ) {
+      const [selectedYear, selectedMonth] = currentProjectMonthKey.split("-").map(Number);
+      const selectedMonthDate = new Date(selectedYear, selectedMonth - 1, 1);
+      projectLogbookMonthGroupMap.set(currentProjectMonthKey, {
+        key: currentProjectMonthKey,
+        year: String(selectedYear),
+        monthLabel: selectedMonthDate.toLocaleDateString(APP_LOCALE, { month: "long" }),
+        entries: [],
+      });
+    }
+    const projectLogbookMonthGroups = Array.from(projectLogbookMonthGroupMap.values()).sort((first, second) => {
+      if (first.key === "unknown") return 1;
+      if (second.key === "unknown") return -1;
+      return second.key.localeCompare(first.key);
+    });
     const projectStampHistorySourceEntries = Array.from(
       new Map([...stampEntries, ...projectHistoryStampEntries].map((entry) => [entry.id, entry])).values()
     );
@@ -36398,7 +36463,6 @@ await addProjectLogbookEntry(
     const projectStampEntries = projectStampHistoryEntries.filter((entry) => !entry.deletedAt);
     const projectTrackedHours =
       projectStampEntries.reduce((sum, entry) => sum + entry.durationMs, 0) / 3_600_000;
-    const currentProjectMonthKey = projectComparisonMonth || formatInputDate(new Date()).slice(0, 7);
     const projectTrackedMonthHours =
       projectStampEntries
         .filter((entry) => entry.date.startsWith(currentProjectMonthKey))
@@ -38692,54 +38756,93 @@ await addProjectLogbookEntry(
                 </div>
                 <div className={styles.customerTimeline}>
                   {logbookError ? <p className={styles.emptyState}>{logbookError}</p> : null}
-                  {visibleProjectLogEntries.length === 0 ? (
+                  {projectLogbookMonthGroups.length === 0 ? (
                     <p className={styles.emptyState}>Keine Logbucheinträge zur Suche gefunden.</p>
                   ) : (
-                    visibleProjectLogEntries.map((entry) => (
-                      <article key={`${entry.title}-${entry.date}-${"id" in entry ? entry.id : entry.actor}`}>
-                        <div className={styles.customerAvatar}>
-                          {"author" in entry
-                            ? renderProjectLogbookAvatar(entry)
-                            : renderProjectLogbookFallbackAvatar(entry.actor)}
-                        </div>
-                        <div className={styles.customerLogEntryBody}>
-                          <a>
-                            {normalizeVisibleMojibakeText(entry.title)} {entry.date}
-                          </a>
-                          <p>{normalizeVisibleMojibakeText(entry.text)}</p>
-                          {"author" in entry && entry.author ? (
-                            <small className={styles.customerLogMeta}>Erfasst von: {entry.author}</small>
-                          ) : null}
-                          {"colleague" in entry && entry.colleague ? (
-                            <small className={styles.customerLogMeta}>
-                              Benachrichtigung: {entry.colleague}
-                            </small>
-                          ) : null}
-                          {"attachments" in entry && entry.attachments.length > 0 ? (
-                            <div className={styles.customerLogAttachments}>
-                              {entry.attachments.map((attachment, index) =>
-                                attachment.dataUrl ? (
-                                  <a
-                                    key={`${entry.date}-${attachment.name}-${index}`}
-                                    href={attachment.dataUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                  >
-                                    {attachment.type}: {attachment.name}
-                                  </a>
-                                ) : (
-                                  <span key={`${entry.date}-${attachment.name}-${index}`}>
-                                    {attachment.type}: {attachment.name}
-                                  </span>
-                                )
+                    projectLogbookMonthGroups.map((group, groupIndex) => {
+                      const openStateKey = `${selectedProjectFile.id}:${currentProjectMonthKey}:${group.key}`;
+                      return (
+                        <section key={group.key} className={styles.customerTimelineMonth}>
+                          {(groupIndex === 0 || projectLogbookMonthGroups[groupIndex - 1]?.year !== group.year) && (
+                            <h2 className={styles.customerTimelineYear}>{group.year}</h2>
+                          )}
+                          <details
+                            className={styles.customerTimelineMonthDetails}
+                            open={
+                              projectLogbookQuery
+                                ? true
+                                : projectLogbookMonthOpenState[openStateKey] ?? group.key === currentProjectMonthKey
+                            }
+                            onToggle={(event) => {
+                              const isOpen = event.currentTarget.open;
+                              setProjectLogbookMonthOpenState((currentState) =>
+                                currentState[openStateKey] === isOpen
+                                  ? currentState
+                                  : { ...currentState, [openStateKey]: isOpen }
+                              );
+                            }}
+                          >
+                            <summary className={styles.customerTimelineMonthHeader}>
+                              <h3>{group.monthLabel}</h3>
+                              <span>
+                                {group.entries.length} {group.entries.length === 1 ? "Eintrag" : "Einträge"}
+                              </span>
+                            </summary>
+                            <div className={styles.customerTimelineEntries}>
+                              {group.entries.length === 0 ? (
+                                <p className={styles.emptyState}>Keine Logbucheinträge in diesem Monat.</p>
+                              ) : (
+                                group.entries.map((entry) => (
+                                  <article key={`${entry.title}-${entry.date}-${"id" in entry ? entry.id : entry.actor}`}>
+                                    <div className={styles.customerAvatar}>
+                                      {"author" in entry
+                                        ? renderProjectLogbookAvatar(entry)
+                                        : renderProjectLogbookFallbackAvatar(entry.actor)}
+                                    </div>
+                                    <div className={styles.customerLogEntryBody}>
+                                      <a>
+                                        {normalizeVisibleMojibakeText(entry.title)} {entry.date}
+                                      </a>
+                                      <p>{normalizeVisibleMojibakeText(entry.text)}</p>
+                                      {"author" in entry && entry.author ? (
+                                        <small className={styles.customerLogMeta}>Erfasst von: {entry.author}</small>
+                                      ) : null}
+                                      {"colleague" in entry && entry.colleague ? (
+                                        <small className={styles.customerLogMeta}>
+                                          Benachrichtigung: {entry.colleague}
+                                        </small>
+                                      ) : null}
+                                      {"attachments" in entry && entry.attachments.length > 0 ? (
+                                        <div className={styles.customerLogAttachments}>
+                                          {entry.attachments.map((attachment, index) =>
+                                            attachment.dataUrl ? (
+                                              <a
+                                                key={`${entry.date}-${attachment.name}-${index}`}
+                                                href={attachment.dataUrl}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                              >
+                                                {attachment.type}: {attachment.name}
+                                              </a>
+                                            ) : (
+                                              <span key={`${entry.date}-${attachment.name}-${index}`}>
+                                                {attachment.type}: {attachment.name}
+                                              </span>
+                                            )
+                                          )}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  </article>
+                                ))
                               )}
                             </div>
-                          ) : null}
-                        </div>
-                      </article>
-                    ))
+                          </details>
+                        </section>
+                      );
+                    })
                   )}
-                  {visibleProjectLogEntries.length > 0 ? (
+                  {projectLogbookMonthGroups.length > 0 ? (
                     <p className={styles.customerTimelineEnd}>Keine weiteren Einträge in dieser Ansicht.</p>
                   ) : null}
                 </div>
