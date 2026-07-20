@@ -586,12 +586,21 @@ type FirmSettingsTab =
   | "infoDocuments"
   | "interfaces"
   | "accessRights"
-  | "projectTypes"
   | "documentFolders"
   | "checklists"
   | "sources"
   | "mailServer"
   | "customFields";
+type ChecklistTemplateStatus = "active" | "planned" | "inactive";
+type ChecklistTemplateScope = "OK solutions" | "OK immocare" | "Alle Bereiche";
+type ChecklistTemplateDefinition = {
+  id: string;
+  area: "Arbeitsschutz" | "Brandschutz" | "Gefahrstoffe";
+  name: string;
+  description: string;
+  status: ChecklistTemplateStatus;
+  scope: ChecklistTemplateScope;
+};
 type DeadlineSettingsSection =
   | "offers"
   | "tasks"
@@ -3776,7 +3785,6 @@ const firmSettingsTabs: Array<{ id: FirmSettingsTab; label: string }> = [
   { id: "branches", label: "Unternehmensstruktur" },
   { id: "emailTemplates", label: "E-Mail-Vorlagen" },
   { id: "interfaces", label: "Schnittstellen" },
-  { id: "projectTypes", label: "Projekttypen" },
   { id: "checklists", label: "Checklisten" },
   { id: "mailServer", label: "Mailserver" },
 ];
@@ -4302,6 +4310,80 @@ const statusOptions: TaskStatus[] = [
   "abgelehnt",
   "\u00fcberf\u00e4llig",
   "archiviert",
+];
+
+const checklistAreaDescriptions: Record<ChecklistTemplateDefinition["area"], string> = {
+  Arbeitsschutz: "Sichere Arbeit, PSA, Arbeitsmittel und Einsatzstellen.",
+  Brandschutz: "Vorbeugender Brandschutz, Melder, Fluchtwege und Brandschutztechnik.",
+  Gefahrstoffe: "Lagerung, Kennzeichnung, Betriebsanweisungen und Schutzmaßnahmen.",
+};
+
+const checklistTemplateCatalog: ChecklistTemplateDefinition[] = [
+  ...[
+    "Arbeitsplatz-/Objektbegehung",
+    "PSA-Prüfung",
+    "Leiterprüfung",
+    "Tritt-/Arbeitsmittelprüfung",
+    "Maschinen-/Geräteprüfung",
+    "Einsatzstellenkontrolle",
+    "Erste-Hilfe-Ausstattung",
+    "Unfall-/Beinaheunfall-Dokumentation",
+    "Sicherheitsunterweisung",
+    "Fremdfirmen-Einweisung",
+  ].map((name, index) => ({
+    id: `arbeitsschutz-${index + 1}`,
+    area: "Arbeitsschutz" as const,
+    name,
+    description: "Vorlage fachlich vorbereitet.",
+    status: "planned" as const,
+    scope: "Alle Bereiche" as const,
+  })),
+  {
+    id: "brandschutz-rauchmelder-installation",
+    area: "Brandschutz",
+    name: "Rauchmelder-Installationsnachweis",
+    description: "Gerätedaten, Montageorte, Prüfpunkte und Bildnachweise erfassen.",
+    status: "active",
+    scope: "OK immocare",
+  },
+  ...[
+    ["Rauchmelderprüfung", "Prüf- und Wartungsnachweis für bestehende Melder."],
+    ["Rauchmelderliste", "Gemeinsame Melderliste für Installation und Prüfung."],
+    ["Feuerlöscher-Sichtprüfung", "Vorlage fachlich vorbereitet."],
+    ["Flucht- und Rettungswege", "Vorlage fachlich vorbereitet."],
+    ["Notbeleuchtung", "Vorlage fachlich vorbereitet."],
+    ["Brandschutztüren", "Vorlage fachlich vorbereitet."],
+    ["Brandabschottungen", "Vorlage fachlich vorbereitet."],
+    ["Feuerwehrzufahrt", "Vorlage fachlich vorbereitet."],
+    ["Brandschutzordnung / Aushänge", "Vorlage fachlich vorbereitet."],
+    ["Evakuierungsübung", "Vorlage fachlich vorbereitet."],
+  ].map(([name, description], index) => ({
+    id: `brandschutz-${index + 2}`,
+    area: "Brandschutz" as const,
+    name,
+    description,
+    status: "planned" as const,
+    scope: "OK immocare" as const,
+  })),
+  ...[
+    "Gefahrstofflager-Prüfung",
+    "Sicherheitsdatenblatt vorhanden",
+    "Kennzeichnung / Etikettierung",
+    "Betriebsanweisung vorhanden",
+    "Unterweisung Gefahrstoffe",
+    "Zusammenlagerung geprüft",
+    "Auffangwannen / Leckageschutz",
+    "PSA für Gefahrstoffe",
+    "Entsorgung / Reststoffe",
+    "Gefahrstoffverzeichnis-Abgleich",
+  ].map((name, index) => ({
+    id: `gefahrstoffe-${index + 1}`,
+    area: "Gefahrstoffe" as const,
+    name,
+    description: "Vorlage fachlich vorbereitet.",
+    status: "planned" as const,
+    scope: "OK immocare" as const,
+  })),
 ];
 const taskWorkflowStatusOptions = statusOptions.filter(
   (status) => status !== "\u00fcberf\u00e4llig" && status !== "archiviert"
@@ -37798,78 +37880,23 @@ await addProjectLogbookEntry(
         return sum + entry.attachments.filter((attachment) => attachment.type === "Dokument").length;
       }, 0);
     };
-    const checklistAreas = [
-      {
-        name: "Arbeitsschutz",
-        description: "Sichere Arbeit, PSA, Arbeitsmittel und Einsatzstellen.",
-        existingCount: getChecklistAreaDocumentCount("Arbeitsschutz"),
-        items: [
-          "Arbeitsplatz-/Objektbegehung",
-          "PSA-Prüfung",
-          "Leiterprüfung",
-          "Tritt-/Arbeitsmittelprüfung",
-          "Maschinen-/Geräteprüfung",
-          "Einsatzstellenkontrolle",
-          "Erste-Hilfe-Ausstattung",
-          "Unfall-/Beinaheunfall-Dokumentation",
-          "Sicherheitsunterweisung",
-          "Fremdfirmen-Einweisung",
-        ].map((name) => ({ name, description: "Vorlage vorbereitet.", status: "planned" as const })),
-      },
-      {
-        name: "Brandschutz",
-        description: "Vorbeugender Brandschutz, Melder, Fluchtwege und Brandschutztechnik.",
-        existingCount: getChecklistAreaDocumentCount("Brandschutz"),
-        items: [
-          {
-            name: "Rauchmelder-Installationsnachweis",
-            description: "Gerätedaten, Montageorte, Prüfpunkte und Bildnachweise erfassen.",
-            status: "active" as const,
-            actionLabel: "Öffnen",
-            onOpen: openSmokeDetectorInstallationChecklist,
-          },
-          {
-            name: "Rauchmelderprüfung",
-            description: "Prüf- und Wartungsnachweis für bestehende Melder.",
-            status: "planned" as const,
-          },
-          {
-            name: "Rauchmelderliste",
-            description: "Gemeinsame Melderliste für Installation und Prüfung.",
-            status: "planned" as const,
-          },
-          "Feuerlöscher-Sichtprüfung",
-          "Flucht- und Rettungswege",
-          "Notbeleuchtung",
-          "Brandschutztüren",
-          "Brandabschottungen",
-          "Feuerwehrzufahrt",
-          "Brandschutzordnung / Aushänge",
-          "Evakuierungsübung",
-        ].map((item) =>
-          typeof item === "string"
-            ? { name: item, description: "Vorlage vorbereitet.", status: "planned" as const }
-            : item
-        ),
-      },
-      {
-        name: "Gefahrstoffe",
-        description: "Lagerung, Kennzeichnung, Betriebsanweisungen und Schutzmaßnahmen.",
-        existingCount: getChecklistAreaDocumentCount("Gefahrstoffe"),
-        items: [
-          "Gefahrstofflager-Prüfung",
-          "Sicherheitsdatenblatt vorhanden",
-          "Kennzeichnung / Etikettierung",
-          "Betriebsanweisung vorhanden",
-          "Unterweisung Gefahrstoffe",
-          "Zusammenlagerung geprüft",
-          "Auffangwannen / Leckageschutz",
-          "PSA für Gefahrstoffe",
-          "Entsorgung / Reststoffe",
-          "Gefahrstoffverzeichnis-Abgleich",
-        ].map((name) => ({ name, description: "Vorlage vorbereitet.", status: "planned" as const })),
-      },
-    ];
+    const checklistAreas = (Object.keys(checklistAreaDescriptions) as ChecklistTemplateDefinition["area"][]).map(
+      (areaName) => ({
+        name: areaName,
+        description: checklistAreaDescriptions[areaName],
+        existingCount: getChecklistAreaDocumentCount(areaName),
+        items: checklistTemplateCatalog
+          .filter((template) => template.area === areaName && template.status !== "inactive")
+          .map((template) => ({
+            ...template,
+            actionLabel: template.status === "active" ? "Öffnen" : undefined,
+            onOpen:
+              template.id === "brandschutz-rauchmelder-installation"
+                ? openSmokeDetectorInstallationChecklist
+                : undefined,
+          })),
+      })
+    );
     const normalizedChecklistSearch = checklistSearchTerm.trim().toLowerCase();
     const visibleChecklistAreas = checklistAreas
       .map((area) => ({
@@ -41197,7 +41224,8 @@ await addProjectLogbookEntry(
                                     : "Noch kein Nachweis"}
                                 </span>
                                 <span>
-                                  {area.items.length} Checkliste{area.items.length === 1 ? "" : "n"}
+                                  {area.items.filter((item) => item.status === "active").length} nutzbar ·{" "}
+                                  {area.items.filter((item) => item.status === "planned").length} in Vorbereitung
                                 </span>
                                 <button
                                   type="button"
@@ -41208,7 +41236,7 @@ await addProjectLogbookEntry(
                                     )
                                   }
                                 >
-                                  {isAreaOpen && !normalizedChecklistSearch ? "Zuklappen" : "+ Checkliste"}
+                                  {isAreaOpen && !normalizedChecklistSearch ? "Zuklappen" : "Vorlagen anzeigen"}
                                 </button>
                               </div>
                             </div>
@@ -48262,7 +48290,6 @@ await addProjectLogbookEntry(
         branches: "Rechtsträger, Geschäftsbereiche und den zentralen Feiertagskalender überblicken.",
         emailTemplates: "Vorlagen und Variablen für den Dokumentversand pflegen.",
         interfaces: "Vorbereitete Anbindungen und Datenaustausch zentral überblicken.",
-        projectTypes: "Projektarten, Nummernkreise und Pipeline-Zuordnung verwalten.",
         checklists: "Vorbereitete Checklisten und ihre spätere Nutzung überblicken.",
         mailServer: "Versandweg und Microsoft-365-Anbindung nachvollziehen.",
       };
@@ -48284,22 +48311,6 @@ await addProjectLogbookEntry(
     const previewBody = selectedMailTemplate.body
       .replaceAll("{{number}}", mailTemplateSampleNumbers[selectedMailTemplateKind])
       .replaceAll("{{sender}}", previewSender);
-    const projectTypeRows = [
-      {
-        name: "Projekt OK solutions",
-        prefix: "OKS",
-        numberPrefix: "ASS",
-        nextNumber: "388",
-        pipeline: "OK solutions",
-      },
-      {
-        name: "Projekt OK immocare",
-        prefix: "OKI",
-        numberPrefix: "IMM",
-        nextNumber: "81",
-        pipeline: "OK immocare",
-      },
-    ];
     const companyProfileRows = [
       ["Firmenname", "OK solutions GmbH"],
       ["Anschrift", "Im Krötenteich 3/4, 74722 Buchen"],
@@ -48998,79 +49009,72 @@ await addProjectLogbookEntry(
             </div>
             */}
           </section>
-        ) : firmSettingsTab === "projectTypes" ? (
-          <section className={styles.settingsCard}>
-            <div className={styles.settingsHeader}>
+        ) : firmSettingsTab === "checklists" ? (
+          <section className={`${styles.settingsCard} ${styles.checklistManagementCard}`}>
+            <div className={styles.settingsSectionHeader}>
               <div>
-                <h2>Projekttypen und Nummernlogik</h2>
+                <p className={styles.settingsSectionEyebrow}>Vorlagensteuerung</p>
+                <h2>Checklistenverwaltung</h2>
                 <p>
-                  Hier legen wir später fest, welches Kürzel und welcher nächste Nummernkreis bei
-                  der Projektanlage verwendet wird.
+                  Zentrale Übersicht der fachlichen Vorlagen, ihrer Einsatzbereiche und ihres
+                  tatsächlichen Entwicklungsstands.
                 </p>
               </div>
-              <button type="button" className={styles.primaryButton}>
-                + Projekttyp
-              </button>
             </div>
-            <div className={styles.companySettingsTable}>
+            <div className={styles.checklistManagementStats}>
+              <article>
+                <span>Vorlagen gesamt</span>
+                <strong>{checklistTemplateCatalog.length}</strong>
+                <small>in drei Fachbereichen</small>
+              </article>
+              <article data-tone="active">
+                <span>Nutzbar</span>
+                <strong>{checklistTemplateCatalog.filter((template) => template.status === "active").length}</strong>
+                <small>operativ freigegeben</small>
+              </article>
+              <article data-tone="planned">
+                <span>In Vorbereitung</span>
+                <strong>{checklistTemplateCatalog.filter((template) => template.status === "planned").length}</strong>
+                <small>noch ohne ausführbares Formular</small>
+              </article>
+            </div>
+            <div className={styles.checklistManagementNotice}>
+              <strong>Kontrollierter Ausbau</strong>
+              <span>
+                Nur der Rauchmelder-Installationsnachweis ist derzeit aktiv. Weitere Vorlagen werden
+                erst nach fachlicher Definition von Feldern, Prüfregeln und PDF-Ausgabe freigegeben.
+              </span>
+            </div>
+            <div className={`${styles.companySettingsTable} ${styles.checklistManagementTable}`}>
               <table className={styles.table}>
                 <thead>
                   <tr>
-                    <th>Projekttyp</th>
-                    <th>Pipeline</th>
-                    <th>Interner Code</th>
-                    <th>Projektnummer-Präfix</th>
-                    <th>Nächste Nummer</th>
-                    <th>Beispiel</th>
+                    <th>Vorlage</th>
+                    <th>Fachbereich</th>
+                    <th>Einsatzbereich</th>
+                    <th>Status</th>
+                    <th>Ausgabe</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {projectTypeRows.map((row) => (
-                    <tr key={row.name}>
-                      <td className={styles.title}>{row.name}</td>
-                      <td>{row.pipeline}</td>
+                  {checklistTemplateCatalog.map((template) => (
+                    <tr key={template.id}>
+                      <td className={styles.title}>
+                        <strong>{template.name}</strong>
+                        <span>{template.description}</span>
+                      </td>
+                      <td>{template.area}</td>
+                      <td>{template.scope}</td>
                       <td>
-                        <input defaultValue={row.prefix} />
+                        <span className={styles.checklistManagementStatus} data-status={template.status}>
+                          {template.status === "active"
+                            ? "Nutzbar"
+                            : template.status === "inactive"
+                              ? "Deaktiviert"
+                              : "In Vorbereitung"}
+                        </span>
                       </td>
-                      <td>
-                        <input defaultValue={row.numberPrefix} />
-                      </td>
-                      <td>
-                        <input defaultValue={row.nextNumber} />
-                      </td>
-                      <td className={styles.number}>
-                        {row.numberPrefix}-{row.nextNumber}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className={styles.settingsHeader}>
-              <div>
-                <h2>Feiertagskalender</h2>
-                <p>Alle Bundesländer sind für die nächsten 50 Jahre hinterlegt.</p>
-              </div>
-            </div>
-            <div className={styles.companySettingsTable}>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Bundesland</th>
-                    <th>Kürzel</th>
-                    <th>Zeitraum</th>
-                    <th>Feiertage</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {holidayCatalog.map((stateOption) => (
-                    <tr key={stateOption.value}>
-                      <td className={styles.title}>{stateOption.label}</td>
-                      <td>{stateOption.value}</td>
-                      <td>
-                        {new Date().getFullYear()}-{new Date().getFullYear() + 49}
-                      </td>
-                      <td>{stateOption.holidays.length}</td>
+                      <td>{template.status === "active" ? "PDF · Dokumente > Checklisten" : "Noch nicht festgelegt"}</td>
                     </tr>
                   ))}
                 </tbody>
