@@ -2095,6 +2095,7 @@ type AppNotification = {
   channel: string;
   createdAt: string;
   readAt: string | null;
+  resolvedAt: string | null;
   taskId: string | null;
   linkTarget?: string;
   linkTargetId?: string;
@@ -6419,6 +6420,7 @@ export function DashboardPage() {
   const [notificationHistoryHasMore, setNotificationHistoryHasMore] = useState(false);
   const [notificationHistoryOffset, setNotificationHistoryOffset] = useState(0);
   const [isNotificationHistoryLoading, setIsNotificationHistoryLoading] = useState(false);
+  const [notificationActionId, setNotificationActionId] = useState("");
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [showNotificationHistory, setShowNotificationHistory] = useState(false);
   const [notificationSearchTerm, setNotificationSearchTerm] = useState("");
@@ -6788,7 +6790,9 @@ export function DashboardPage() {
       ),
     [notifications]
   );
-  const unreadNotifications = sortedNotifications.filter((notification) => !notification.readAt);
+  const unreadNotifications = sortedNotifications.filter(
+    (notification) => !notification.readAt && !notification.resolvedAt
+  );
   const visibleNotifications = showNotificationHistory
     ? notificationHistory.filter((notification) => {
         const normalizedSearchTerm = notificationSearchTerm.trim().toLowerCase();
@@ -14491,6 +14495,32 @@ export function DashboardPage() {
     if (!res.ok) return;
 
     await loadNotifications(false);
+  }
+
+  async function updateNotificationState(notificationId: string, action: "read" | "resolve") {
+    if (!activeUserId || notificationActionId) return;
+    setNotificationActionId(notificationId);
+    try {
+      const res = await fetch("/api/notifications", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ userId: activeUserId, notificationId, action }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setErrorMessage(data?.error || "Die Benachrichtigung konnte nicht aktualisiert werden.");
+        return;
+      }
+
+      await loadNotifications(false);
+      if (showNotificationHistory) {
+        await loadNotificationHistory({ search: notificationSearchTerm });
+      }
+    } finally {
+      setNotificationActionId("");
+    }
   }
 
   async function openNotificationTarget(notification: AppNotification) {
@@ -54766,22 +54796,57 @@ await addProjectLogbookEntry(
                       <article
                         key={notification.id}
                         className={styles.notificationItem}
-                        data-unread={!notification.readAt}
+                        data-unread={!notification.readAt && !notification.resolvedAt}
+                        data-resolved={Boolean(notification.resolvedAt)}
                       >
                         <div className={styles.notificationItemHeader}>
                           <strong>{notification.subject}</strong>
-                          {notification.readAt ? <small>Gelesen</small> : <small>Neu</small>}
+                          <div className={styles.notificationItemState}>
+                            <small>
+                              {notification.resolvedAt
+                                ? "Erledigt"
+                                : notification.readAt
+                                  ? "Gelesen"
+                                  : "Neu"}
+                            </small>
+                            {!notification.readAt && !notification.resolvedAt && (
+                              <button
+                                type="button"
+                                aria-label={`Benachrichtigung „${notification.subject}“ schließen`}
+                                title="Als gelesen markieren"
+                                disabled={notificationActionId === notification.id}
+                                onClick={() => updateNotificationState(notification.id, "read")}
+                              >
+                                ×
+                              </button>
+                            )}
+                          </div>
                         </div>
                         <span>{formatDeadline(notification.createdAt)}</span>
                         <p>{notification.body}</p>
-                        {notification.linkTarget && notification.linkTargetId && (
-                          <button
-                            type="button"
-                            className={styles.notificationLinkButton}
-                            onClick={() => openNotificationTarget(notification)}
-                          >
-                            {notification.linkLabel || "Öffnen"}
-                          </button>
+                        {((notification.linkTarget && notification.linkTargetId) ||
+                          !notification.resolvedAt) && (
+                          <div className={styles.notificationItemActions}>
+                            {notification.linkTarget && notification.linkTargetId && (
+                              <button
+                                type="button"
+                                className={styles.notificationLinkButton}
+                                onClick={() => openNotificationTarget(notification)}
+                              >
+                                {notification.linkLabel || "Öffnen"}
+                              </button>
+                            )}
+                            {!notification.resolvedAt && (
+                              <button
+                                type="button"
+                                className={styles.notificationResolveButton}
+                                disabled={notificationActionId === notification.id}
+                                onClick={() => updateNotificationState(notification.id, "resolve")}
+                              >
+                                Erledigt
+                              </button>
+                            )}
+                          </div>
                         )}
                       </article>
                     ))

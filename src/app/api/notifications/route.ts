@@ -17,6 +17,7 @@ type NotificationRow = {
   channel: string;
   createdAt: Date;
   readAt: Date | null;
+  resolvedAt: Date | null;
   taskId: string | null;
   linkTarget: string | null;
   linkTargetId: string | null;
@@ -40,12 +41,13 @@ type InterruptedWorkTaskRow = {
   createdAt: Date;
 };
 
-async function ensureNotificationLinkColumns() {
+async function ensureNotificationColumns() {
   await prisma.$executeRaw`
     ALTER TABLE "Notification"
     ADD COLUMN IF NOT EXISTS "linkTarget" TEXT,
     ADD COLUMN IF NOT EXISTS "linkTargetId" TEXT,
-    ADD COLUMN IF NOT EXISTS "linkLabel" TEXT
+    ADD COLUMN IF NOT EXISTS "linkLabel" TEXT,
+    ADD COLUMN IF NOT EXISTS "resolvedAt" TIMESTAMP(3)
   `;
 }
 
@@ -57,7 +59,7 @@ function forbiddenNotificationResponse() {
 }
 
 export async function GET(req: Request) {
-  await ensureNotificationLinkColumns();
+  await ensureNotificationColumns();
   const { searchParams } = new URL(req.url);
   const requestedUserId = searchParams.get("userId");
   const isHistory = searchParams.get("history") === "true";
@@ -89,6 +91,7 @@ export async function GET(req: Request) {
       channel,
       "createdAt",
       "readAt",
+      "resolvedAt",
       "taskId",
       "linkTarget",
       "linkTargetId",
@@ -96,7 +99,7 @@ export async function GET(req: Request) {
     FROM "Notification"
     WHERE "userId" = ${activeUser.id}
       AND "channel" IN ('app', 'app_email', 'app_daily_report', 'system')
-      ${isHistory ? Prisma.empty : Prisma.sql`AND "readAt" IS NULL`}
+      ${isHistory ? Prisma.empty : Prisma.sql`AND "readAt" IS NULL AND "resolvedAt" IS NULL`}
       ${searchFilter}
     ORDER BY "createdAt" DESC
     ${isHistory ? Prisma.sql`LIMIT ${limit + 1} OFFSET ${offset}` : Prisma.empty}
@@ -111,6 +114,7 @@ export async function GET(req: Request) {
       channel: notification.channel,
       createdAt: notification.createdAt.toISOString(),
       readAt: notification.readAt?.toISOString() ?? null,
+      resolvedAt: notification.resolvedAt?.toISOString() ?? null,
       taskId: notification.taskId,
       linkTarget: notification.linkTarget ?? "",
       linkTargetId: notification.linkTargetId ?? "",
@@ -129,7 +133,8 @@ export async function GET(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  const body = await req.json();
+  await ensureNotificationColumns();
+  const body = await req.json().catch(() => ({}));
   const { users } = await getDemoContext();
   const actorResult = await getSessionBoundActor(req, users, body.userId);
 
@@ -137,6 +142,38 @@ export async function PATCH(req: Request) {
     return sessionBoundActorResponse(actorResult);
   }
   const activeUser = actorResult.actor;
+
+  const notificationId = String(body.notificationId || "").trim();
+  const action = String(body.action || "read-all").trim();
+  if (notificationId) {
+    if (action !== "read" && action !== "resolve") {
+      return NextResponse.json({ error: "Unbekannte Benachrichtigungsaktion." }, { status: 400 });
+    }
+
+    const changed = action === "resolve"
+      ? await prisma.$executeRaw`
+          UPDATE "Notification"
+          SET
+            "readAt" = COALESCE("readAt", CURRENT_TIMESTAMP),
+            "resolvedAt" = CURRENT_TIMESTAMP
+          WHERE id = ${notificationId}
+            AND "organizationId" = ${activeUser.organizationId}
+            AND "userId" = ${activeUser.id}
+        `
+      : await prisma.$executeRaw`
+          UPDATE "Notification"
+          SET "readAt" = COALESCE("readAt", CURRENT_TIMESTAMP)
+          WHERE id = ${notificationId}
+            AND "organizationId" = ${activeUser.organizationId}
+            AND "userId" = ${activeUser.id}
+        `;
+
+    if (Number(changed) === 0) {
+      return NextResponse.json({ error: "Benachrichtigung nicht gefunden." }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, action });
+  }
 
   await prisma.$executeRaw`
     UPDATE "Notification"
@@ -303,7 +340,7 @@ async function ensureInterruptedWorkNotifications(
 }
 
 export async function POST(req: Request) {
-  await ensureNotificationLinkColumns();
+  await ensureNotificationColumns();
   const body = await req.json().catch(() => ({}));
   const { organization, users } = await getDemoContext();
   const actorResult = await getSessionBoundActor(req, users, body.actorId);
