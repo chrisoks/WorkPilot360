@@ -8,6 +8,7 @@ import { getDeadlineSettings } from "@/lib/company-settings/deadlines";
 import { canCreateNotifications } from "@/lib/permissions";
 import { sendNotificationMailSafely } from "@/lib/mail/notifications";
 import { sendTaskNotificationMailSafely } from "@/lib/mail/task-notifications";
+import { getLeadershipRecipientIds } from "@/lib/users/leadership";
 
 type NotificationRow = {
   id: string;
@@ -230,7 +231,16 @@ async function createNotificationIfMissing(input: {
   });
 }
 
-async function ensureInterruptedWorkNotifications(organizationId: string, users: Array<{ id: string; role: string; isActive: boolean }>) {
+async function ensureInterruptedWorkNotifications(
+  organizationId: string,
+  users: Array<{
+    id: string;
+    role: string;
+    isActive: boolean;
+    leadershipManagerId: string | null;
+    leadershipDeputyId: string | null;
+  }>
+) {
   const settings = await getDeadlineSettings(organizationId);
   const tasks = await prisma.$queryRaw<InterruptedWorkTaskRow[]>`
     SELECT id, "organizationId", title, description, "projectId", "ownerId", "createdAt"
@@ -274,7 +284,11 @@ async function ensureInterruptedWorkNotifications(organizationId: string, users:
     }
 
     if (ageDays >= settings.interruptedWorkManagementEscalationDays) {
-      for (const userId of managementUserIds) {
+      const escalationRecipientIds = new Set(managementUserIds);
+      getLeadershipRecipientIds(responsibleRecipientIds, activeUsers).forEach((userId) =>
+        escalationRecipientIds.add(userId)
+      );
+      for (const userId of escalationRecipientIds) {
         await createNotificationIfMissing({
           organizationId,
           userId,

@@ -89,6 +89,8 @@ model User {
   planningTimeWindows     Json                      @default("{\"monday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"tuesday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"wednesday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"thursday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"friday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"saturday\":{\"start\":\"08:00\",\"end\":\"17:00\"},\"sunday\":{\"start\":\"08:00\",\"end\":\"17:00\"}}")
   planningBreakWindows    Json                      @default("{\"monday\":{\"start\":\"12:00\",\"end\":\"12:30\"},\"tuesday\":{\"start\":\"12:00\",\"end\":\"12:30\"},\"wednesday\":{\"start\":\"12:00\",\"end\":\"12:30\"},\"thursday\":{\"start\":\"12:00\",\"end\":\"12:30\"},\"friday\":{\"start\":\"12:00\",\"end\":\"12:30\"},\"saturday\":{\"start\":\"\",\"end\":\"\"},\"sunday\":{\"start\":\"\",\"end\":\"\"}}")
   planningResponsibleFor  Json                      @default("[]")
+  leadershipManagerId     String?
+  leadershipDeputyId      String?
   branchAllocations       Json?
   includeInLaborCostRate  Boolean                   @default(true)
   sellableCapacityEnabled Boolean?                  @default(true)
@@ -108,6 +110,22 @@ model User {
   team                    Team?                     @relation(fields: [teamId], references: [id])
 
   @@unique([organizationId, email])
+  @@index([organizationId, leadershipManagerId])
+  @@index([organizationId, leadershipDeputyId])
+}
+
+model EmployeeLeadershipHistory {
+  id                String   @id @default(cuid())
+  organizationId    String
+  employeeId        String
+  actorId           String?
+  previousManagerId String?
+  managerId         String?
+  previousDeputyId  String?
+  deputyId          String?
+  createdAt         DateTime @default(now())
+
+  @@index([organizationId, employeeId, createdAt])
 }
 
 model AuthSession {

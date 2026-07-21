@@ -7,6 +7,7 @@ import { getDeadlineSettings } from "@/lib/company-settings/deadlines";
 import { recordStatusTransition, seedCurrentStatusTimeline } from "@/lib/status-tracking";
 import { canAssignTasksToOthers, canDeleteTasks, canEditTask, canReadTask } from "@/lib/permissions";
 import { sendTaskNotificationMailSafely } from "@/lib/mail/task-notifications";
+import { getLeadershipRecipientIds } from "@/lib/users/leadership";
 import {
   CustomerClassification,
   Prisma,
@@ -83,18 +84,23 @@ async function notifyCriticalTaskLeadership(input: {
           owner ? getUserName(owner) : "nicht eindeutig"
         }. Deadline: ${deadline}.`;
 
-  const leadershipRecipients = input.users.filter(
+  const leadershipRecipientIds = new Set(
+    getLeadershipRecipientIds([input.task.ownerId], input.users)
+  );
+  input.users
+    .filter(
     (demoUser) =>
       demoUser.isActive &&
       demoUser.organizationId === input.task.organizationId &&
       demoUser.role === Role.GESCHAEFTSFUEHRER
-  );
+    )
+    .forEach((demoUser) => leadershipRecipientIds.add(demoUser.id));
 
-  for (const recipient of leadershipRecipients) {
+  for (const userId of leadershipRecipientIds) {
     await createTaskNotificationPair({
       organizationId: input.task.organizationId,
       taskId: input.task.id,
-      userId: recipient.id,
+      userId,
       subject,
       body,
     });

@@ -7,6 +7,7 @@ import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/acto
 import { ensureDefaultStatusEscalationRules } from "@/lib/status-tracking";
 import { canRunStatusEscalations } from "@/lib/permissions";
 import { sendNotificationMailSafely } from "@/lib/mail/notifications";
+import { getLeadershipRecipientIds } from "@/lib/users/leadership";
 
 type OpenStatusRow = {
   entityType: string;
@@ -36,6 +37,9 @@ type UserRow = {
   lastName: string | null;
   email: string;
   role: Role;
+  isActive: boolean;
+  leadershipManagerId: string | null;
+  leadershipDeputyId: string | null;
 };
 
 function getUserName(user: { firstName?: string | null; lastName?: string | null; email?: string | null }) {
@@ -245,15 +249,28 @@ export async function POST(req: Request) {
       if (existing[0]) continue;
 
       const recipients = new Set<string>();
+      let responsible: Set<string> | null = null;
       if (rule.notifyResponsible) {
-        const responsible = await getResponsibleUserIds(organization.id, item, userRows);
+        responsible = await getResponsibleUserIds(organization.id, item, userRows);
         responsible.forEach((id) => recipients.add(id));
       }
       if (rule.notifyProjectOwner) {
-        const responsible = await getResponsibleUserIds(organization.id, item, userRows);
+        if (!responsible) {
+          responsible = await getResponsibleUserIds(organization.id, item, userRows);
+        }
         responsible.forEach((id) => recipients.add(id));
       }
-      managementUserIds.forEach((id) => recipients.add(id));
+      if (rule.notifyManagement) {
+        if (item.entityType === "task") {
+          if (!responsible) {
+            responsible = await getResponsibleUserIds(organization.id, item, userRows);
+          }
+          getLeadershipRecipientIds(responsible, userRows).forEach((id) =>
+            recipients.add(id)
+          );
+        }
+        managementUserIds.forEach((id) => recipients.add(id));
+      }
 
       const subject = `Status-Toleranz überschritten: ${item.entityLabel || statusLabel(item.entityType)}`;
       const body = `${statusLabel(item.entityType)} "${item.entityLabel || item.entityId}" ist seit ${item.durationHours} Std. im Status "${item.toStatus}". Grenze: ${rule.thresholdHours} Std.`;

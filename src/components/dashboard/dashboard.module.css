@@ -18594,6 +18594,139 @@
   padding: 7px 12px;
 }
 
+.employeeLeadershipSettings {
+  background: linear-gradient(135deg, #f8fbff 0%, #f3fafb 100%);
+  border: 1px solid #cbd8e7;
+  border-left: 3px solid #08a6ad;
+  border-radius: 14px;
+  display: grid;
+  gap: 14px;
+  margin-top: 4px;
+  padding: 16px;
+}
+
+.employeeLeadershipHeading {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.employeeLeadershipHeading h3 {
+  color: #0f172a;
+  font-size: 1rem;
+  font-weight: 950;
+  margin: 0;
+}
+
+.employeeLeadershipHeading p {
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 750;
+  line-height: 1.45;
+  margin: 4px 0 0;
+}
+
+.employeeLeadershipHeading > span {
+  background: #e6f8fa;
+  border: 1px solid #b8ecf0;
+  border-radius: 999px;
+  color: #007f89;
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  font-weight: 900;
+  padding: 6px 10px;
+}
+
+.employeeLeadershipGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.employeeLeadershipGrid label {
+  color: #334155;
+  display: grid;
+  font-size: 0.8rem;
+  font-weight: 900;
+  gap: 7px;
+}
+
+.employeeLeadershipGrid small {
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.employeeLeadershipTeam {
+  align-items: baseline;
+  background: #ffffff;
+  border: 1px solid #dbe4ef;
+  border-radius: 11px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 11px 12px;
+}
+
+.employeeLeadershipTeam strong {
+  color: #0f172a;
+  font-size: 0.8rem;
+  font-weight: 950;
+}
+
+.employeeLeadershipTeam span {
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.employeeLeadershipHistory {
+  border-top: 1px solid #dbe4ef;
+  padding-top: 10px;
+}
+
+.employeeLeadershipHistory summary {
+  color: #0f4c81;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.employeeLeadershipHistory > div {
+  background: #ffffff;
+  border: 1px solid #dbe4ef;
+  border-radius: 11px;
+  display: grid;
+  margin-top: 9px;
+  padding: 0 12px;
+}
+
+.employeeLeadershipHistory p {
+  align-items: baseline;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(130px, 0.35fr) minmax(0, 1fr);
+  margin: 0;
+  padding: 9px 0;
+}
+
+.employeeLeadershipHistory p + p {
+  border-top: 1px solid #edf2f7;
+}
+
+.employeeLeadershipHistory time {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.employeeLeadershipHistory p span {
+  color: #334155;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
 .employeePlanningSettings {
   background: linear-gradient(180deg, #f8fbff 0%, #f3f7fb 100%);
   border: 1px solid #d8e0ea;

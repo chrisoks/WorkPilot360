@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { Prisma, Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { prisma } from "@/lib/db/client";
 import { canManagePersonalNumber, canManageUsers } from "@/lib/permissions";
 import { normalizePhoneNumber } from "@/lib/phone/normalize";
+import { getLeadershipStructureError } from "@/lib/users/leadership";
 
 const bcrypt = require("bcryptjs") as {
   hashSync(password: string, saltRounds: number): string;
@@ -53,6 +55,16 @@ type BranchAllocations = {
   okImmocare: number;
   okImmocareVzk?: number;
   okImmocareTzk?: number;
+};
+
+type LeadershipHistoryEntry = {
+  id: string;
+  actorId: string;
+  previousManagerId: string;
+  managerId: string;
+  previousDeputyId: string;
+  deputyId: string;
+  createdAt: string;
 };
 
 function roleLabel(role: Role) {
@@ -177,6 +189,9 @@ function formatUser(user: {
   planningTimeWindows?: Prisma.JsonValue | null;
   planningBreakWindows?: Prisma.JsonValue | null;
   planningResponsibleFor?: Prisma.JsonValue | null;
+  leadershipManagerId?: string | null;
+  leadershipDeputyId?: string | null;
+  leadershipHistory?: LeadershipHistoryEntry[];
   branchAllocations?: Prisma.JsonValue | null;
   includeInLaborCostRate?: boolean | null;
   sellableCapacityEnabled?: boolean | null;
@@ -225,6 +240,9 @@ function formatUser(user: {
     ),
     planningBreakWindows: parsePlanningBreakWindows(user.planningBreakWindows),
     planningResponsibleFor: parsePlanningResponsibleFor(user.planningResponsibleFor),
+    leadershipManagerId: includePrivateDetails ? user.leadershipManagerId ?? "" : "",
+    leadershipDeputyId: includePrivateDetails ? user.leadershipDeputyId ?? "" : "",
+    leadershipHistory: includePrivateDetails ? user.leadershipHistory ?? [] : [],
     branchAllocations: parseBranchAllocations(user.branchAllocations, user.planningBoard),
     includeInLaborCostRate: user.includeInLaborCostRate ?? true,
     sellableCapacityEnabled: user.sellableCapacityEnabled ?? true,
@@ -249,6 +267,8 @@ function hasProtectedSelfUpdateFields(body: Record<string, unknown>) {
     "planningTimeWindows",
     "planningBreakWindows",
     "planningResponsibleFor",
+    "leadershipManagerId",
+    "leadershipDeputyId",
     "branchAllocations",
     "includeInLaborCostRate",
     "sellableCapacityEnabled",
@@ -441,6 +461,8 @@ async function ensureUserProfileColumns() {
     ADD COLUMN IF NOT EXISTS "planningTimeWindows" JSONB DEFAULT '{"monday":{"start":"08:00","end":"17:00"},"tuesday":{"start":"08:00","end":"17:00"},"wednesday":{"start":"08:00","end":"17:00"},"thursday":{"start":"08:00","end":"17:00"},"friday":{"start":"08:00","end":"17:00"},"saturday":{"start":"08:00","end":"17:00"},"sunday":{"start":"08:00","end":"17:00"}}'::jsonb,
     ADD COLUMN IF NOT EXISTS "planningBreakWindows" JSONB DEFAULT '{"monday":{"start":"12:00","end":"12:30"},"tuesday":{"start":"12:00","end":"12:30"},"wednesday":{"start":"12:00","end":"12:30"},"thursday":{"start":"12:00","end":"12:30"},"friday":{"start":"12:00","end":"12:30"},"saturday":{"start":"","end":""},"sunday":{"start":"","end":""}}'::jsonb,
     ADD COLUMN IF NOT EXISTS "planningResponsibleFor" JSONB DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS "leadershipManagerId" TEXT,
+    ADD COLUMN IF NOT EXISTS "leadershipDeputyId" TEXT,
     ADD COLUMN IF NOT EXISTS "branchAllocations" JSONB,
     ADD COLUMN IF NOT EXISTS "includeInLaborCostRate" BOOLEAN DEFAULT true,
     ADD COLUMN IF NOT EXISTS "sellableCapacityEnabled" BOOLEAN DEFAULT true,
@@ -448,6 +470,33 @@ async function ensureUserProfileColumns() {
     ADD COLUMN IF NOT EXISTS "notifyIdeaStore" BOOLEAN DEFAULT true,
     ADD COLUMN IF NOT EXISTS "notifyUpsell" BOOLEAN DEFAULT false,
     ADD COLUMN IF NOT EXISTS "mailAccount" JSONB DEFAULT '{}'::jsonb
+  `;
+
+  await prisma.$executeRaw`
+    CREATE TABLE IF NOT EXISTS "EmployeeLeadershipHistory" (
+      "id" TEXT NOT NULL,
+      "organizationId" TEXT NOT NULL,
+      "employeeId" TEXT NOT NULL,
+      "actorId" TEXT,
+      "previousManagerId" TEXT,
+      "managerId" TEXT,
+      "previousDeputyId" TEXT,
+      "deputyId" TEXT,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "EmployeeLeadershipHistory_pkey" PRIMARY KEY ("id")
+    )
+  `;
+  await prisma.$executeRaw`
+    CREATE INDEX IF NOT EXISTS "User_organizationId_leadershipManagerId_idx"
+    ON "User"("organizationId", "leadershipManagerId")
+  `;
+  await prisma.$executeRaw`
+    CREATE INDEX IF NOT EXISTS "User_organizationId_leadershipDeputyId_idx"
+    ON "User"("organizationId", "leadershipDeputyId")
+  `;
+  await prisma.$executeRaw`
+    CREATE INDEX IF NOT EXISTS "EmployeeLeadershipHistory_organizationId_employeeId_createdAt_idx"
+    ON "EmployeeLeadershipHistory"("organizationId", "employeeId", "createdAt")
   `;
 }
 
@@ -472,6 +521,9 @@ type UserDetails = {
   planningTimeWindows: Record<string, { start: string; end: string }>;
   planningBreakWindows: Record<string, { start: string; end: string }>;
   planningResponsibleFor: string[];
+  leadershipManagerId: string;
+  leadershipDeputyId: string;
+  leadershipHistory: LeadershipHistoryEntry[];
   branchAllocations: BranchAllocations;
   includeInLaborCostRate: boolean;
   sellableCapacityEnabled: boolean;
@@ -509,6 +561,8 @@ async function getUserDetails(userIds: string[]) {
       planningTimeWindows: Prisma.JsonValue | null;
       planningBreakWindows: Prisma.JsonValue | null;
       planningResponsibleFor: Prisma.JsonValue | null;
+      leadershipManagerId: string | null;
+      leadershipDeputyId: string | null;
       branchAllocations: Prisma.JsonValue | null;
       includeInLaborCostRate: boolean | null;
       sellableCapacityEnabled: boolean | null;
@@ -540,6 +594,8 @@ async function getUserDetails(userIds: string[]) {
       "planningTimeWindows",
       "planningBreakWindows",
       "planningResponsibleFor",
+      "leadershipManagerId",
+      "leadershipDeputyId",
       "branchAllocations",
       "includeInLaborCostRate",
       "sellableCapacityEnabled",
@@ -550,6 +606,46 @@ async function getUserDetails(userIds: string[]) {
     FROM "User"
     WHERE id IN (${Prisma.join(userIds)})
   `;
+
+  const leadershipHistoryRows = await prisma.$queryRaw<
+    Array<{
+      id: string;
+      employeeId: string;
+      actorId: string | null;
+      previousManagerId: string | null;
+      managerId: string | null;
+      previousDeputyId: string | null;
+      deputyId: string | null;
+      createdAt: Date;
+    }>
+  >`
+    SELECT
+      "id",
+      "employeeId",
+      "actorId",
+      "previousManagerId",
+      "managerId",
+      "previousDeputyId",
+      "deputyId",
+      "createdAt"
+    FROM "EmployeeLeadershipHistory"
+    WHERE "employeeId" IN (${Prisma.join(userIds)})
+    ORDER BY "createdAt" DESC
+  `;
+  const leadershipHistoryByUserId = new Map<string, LeadershipHistoryEntry[]>();
+  for (const entry of leadershipHistoryRows) {
+    const history = leadershipHistoryByUserId.get(entry.employeeId) ?? [];
+    history.push({
+      id: entry.id,
+      actorId: entry.actorId ?? "",
+      previousManagerId: entry.previousManagerId ?? "",
+      managerId: entry.managerId ?? "",
+      previousDeputyId: entry.previousDeputyId ?? "",
+      deputyId: entry.deputyId ?? "",
+      createdAt: entry.createdAt.toISOString(),
+    });
+    leadershipHistoryByUserId.set(entry.employeeId, history);
+  }
 
   return new Map(
     rows.map((row) => [
@@ -579,6 +675,9 @@ async function getUserDetails(userIds: string[]) {
         ),
         planningBreakWindows: parsePlanningBreakWindows(row.planningBreakWindows),
         planningResponsibleFor: parsePlanningResponsibleFor(row.planningResponsibleFor),
+        leadershipManagerId: row.leadershipManagerId ?? "",
+        leadershipDeputyId: row.leadershipDeputyId ?? "",
+        leadershipHistory: leadershipHistoryByUserId.get(row.id) ?? [],
         branchAllocations: parseBranchAllocations(row.branchAllocations, row.planningBoard),
         includeInLaborCostRate: row.includeInLaborCostRate ?? true,
         sellableCapacityEnabled: row.sellableCapacityEnabled ?? true,
@@ -611,6 +710,119 @@ function splitName(name: string) {
   const lastName = parts.join(" ") || "Benutzer";
 
   return { firstName, lastName };
+}
+
+type LeadershipAssignment = {
+  managerId: string | null;
+  deputyId: string | null;
+};
+
+function parseOptionalUserId(value: unknown) {
+  return parseText(value) || null;
+}
+
+async function getLeadershipAssignment(userId: string): Promise<LeadershipAssignment> {
+  const rows = await prisma.$queryRaw<
+    Array<{ leadershipManagerId: string | null; leadershipDeputyId: string | null }>
+  >`
+    SELECT "leadershipManagerId", "leadershipDeputyId"
+    FROM "User"
+    WHERE id = ${userId}
+    LIMIT 1
+  `;
+
+  return {
+    managerId: rows[0]?.leadershipManagerId ?? null,
+    deputyId: rows[0]?.leadershipDeputyId ?? null,
+  };
+}
+
+async function validateLeadershipAssignment(input: {
+  organizationId: string;
+  employeeId?: string;
+  managerId: string | null;
+  deputyId: string | null;
+  requireManager: boolean;
+}) {
+  const { organizationId, employeeId, managerId, deputyId, requireManager } = input;
+  const structuralError = getLeadershipStructureError({
+    employeeId,
+    managerId,
+    deputyId,
+    requireManager,
+  });
+  if (structuralError) return structuralError;
+
+  const requestedIds = [managerId, deputyId].filter((id): id is string => Boolean(id));
+  if (requestedIds.length > 0) {
+    const selectedUsers = await prisma.user.findMany({
+      where: {
+        id: { in: requestedIds },
+        organizationId,
+        isActive: true,
+      },
+      select: { id: true, role: true },
+    });
+    if (selectedUsers.length !== new Set(requestedIds).size) {
+      return "Es dürfen nur aktive Personen derselben Organisation ausgewählt werden.";
+    }
+
+    const manager = managerId
+      ? selectedUsers.find((user) => user.id === managerId)
+      : null;
+    if (
+      manager &&
+      manager.role !== Role.FUEHRUNGSKRAFT &&
+      manager.role !== Role.GESCHAEFTSFUEHRER
+    ) {
+      return "Als zuständige Führungskraft dürfen nur Führungskräfte oder Geschäftsführer ausgewählt werden.";
+    }
+  }
+
+  if (employeeId && managerId) {
+    const rows = await prisma.$queryRaw<Array<{ id: string; leadershipManagerId: string | null }>>`
+      SELECT id, "leadershipManagerId"
+      FROM "User"
+      WHERE "organizationId" = ${organizationId}
+    `;
+    const managerByUserId = new Map(rows.map((row) => [row.id, row.leadershipManagerId]));
+    const cycleError = getLeadershipStructureError({
+      employeeId,
+      managerId,
+      deputyId,
+      requireManager,
+      managerByUserId,
+    });
+    if (cycleError) return cycleError;
+  }
+
+  return null;
+}
+
+async function addLeadershipHistory(input: {
+  organizationId: string;
+  employeeId: string;
+  actorId: string;
+  previous: LeadershipAssignment;
+  next: LeadershipAssignment;
+}) {
+  if (
+    input.previous.managerId === input.next.managerId &&
+    input.previous.deputyId === input.next.deputyId
+  ) {
+    return;
+  }
+
+  await prisma.$executeRaw`
+    INSERT INTO "EmployeeLeadershipHistory" (
+      "id", "organizationId", "employeeId", "actorId",
+      "previousManagerId", "managerId", "previousDeputyId", "deputyId", "createdAt"
+    ) VALUES (
+      ${randomUUID()}, ${input.organizationId}, ${input.employeeId}, ${input.actorId},
+      ${input.previous.managerId}, ${input.next.managerId},
+      ${input.previous.deputyId}, ${input.next.deputyId}, CURRENT_TIMESTAMP
+    )
+  `;
 }
 
 export async function GET(req: Request) {
@@ -768,6 +980,39 @@ export async function PATCH(req: Request) {
 
   if (!existingUser) {
     return NextResponse.json({ error: "Benutzer wurde nicht gefunden." }, { status: 404 });
+  }
+
+  const hasLeadershipManagerUpdate = Object.prototype.hasOwnProperty.call(body, "leadershipManagerId");
+  const hasLeadershipDeputyUpdate = Object.prototype.hasOwnProperty.call(body, "leadershipDeputyId");
+  if ((hasLeadershipManagerUpdate || hasLeadershipDeputyUpdate) && !isManagedUpdate) {
+    return NextResponse.json(
+      { error: "Nur Admins und Geschäftsführung dürfen Führungszuordnungen ändern." },
+      { status: 403 }
+    );
+  }
+  const previousLeadership = await getLeadershipAssignment(existingUser.id);
+  const nextLeadership: LeadershipAssignment = {
+    managerId: hasLeadershipManagerUpdate
+      ? parseOptionalUserId(body.leadershipManagerId)
+      : previousLeadership.managerId,
+    deputyId: hasLeadershipDeputyUpdate
+      ? parseOptionalUserId(body.leadershipDeputyId)
+      : previousLeadership.deputyId,
+  };
+  const nextRole = isManagedUpdate ? (body.role as Role) : existingUser.role;
+  const leadershipError = await validateLeadershipAssignment({
+    organizationId: organization.id,
+    employeeId: existingUser.id,
+    managerId: nextLeadership.managerId,
+    deputyId: nextLeadership.deputyId,
+    requireManager:
+      nextRole !== Role.GESCHAEFTSFUEHRER &&
+      (existingUser.role === Role.GESCHAEFTSFUEHRER ||
+        previousLeadership.managerId !== null ||
+        nextLeadership.managerId !== null),
+  });
+  if (leadershipError) {
+    return NextResponse.json({ error: leadershipError }, { status: 400 });
   }
 
   const updated = await prisma.user.update({
@@ -993,6 +1238,14 @@ export async function PATCH(req: Request) {
         WHEN ${hasPlanningResponsibleForUpdate} THEN ${JSON.stringify(nextPlanningResponsibleFor)}::jsonb
         ELSE "planningResponsibleFor"
       END,
+      "leadershipManagerId" = CASE
+        WHEN ${hasLeadershipManagerUpdate} THEN ${nextLeadership.managerId}
+        ELSE "leadershipManagerId"
+      END,
+      "leadershipDeputyId" = CASE
+        WHEN ${hasLeadershipDeputyUpdate} THEN ${nextLeadership.deputyId}
+        ELSE "leadershipDeputyId"
+      END,
       "branchAllocations" = CASE
         WHEN ${hasBranchAllocationsUpdate} THEN ${JSON.stringify(nextBranchAllocations)}::jsonb
         ELSE "branchAllocations"
@@ -1027,6 +1280,16 @@ export async function PATCH(req: Request) {
       END
     WHERE id = ${updated.id}
   `;
+
+  if (hasLeadershipManagerUpdate || hasLeadershipDeputyUpdate) {
+    await addLeadershipHistory({
+      organizationId: organization.id,
+      employeeId: updated.id,
+      actorId: actor.id,
+      previous: previousLeadership,
+      next: nextLeadership,
+    });
+  }
 
   const detailsByUserId = await getUserDetails([updated.id]);
 
@@ -1146,6 +1409,19 @@ export async function POST(req: Request) {
   }
   const phone = phoneResult.normalized ?? "";
   const mobile = mobileResult.normalized ?? "";
+  const leadership: LeadershipAssignment = {
+    managerId: parseOptionalUserId(body.leadershipManagerId),
+    deputyId: parseOptionalUserId(body.leadershipDeputyId),
+  };
+  const leadershipError = await validateLeadershipAssignment({
+    organizationId: organization.id,
+    managerId: leadership.managerId,
+    deputyId: leadership.deputyId,
+    requireManager: body.role !== Role.GESCHAEFTSFUEHRER,
+  });
+  if (leadershipError) {
+    return NextResponse.json({ error: leadershipError }, { status: 400 });
+  }
   const created = await prisma.user.create({
     data: {
       organizationId: organization.id,
@@ -1184,6 +1460,8 @@ export async function POST(req: Request) {
       "planningTimeWindows" = ${JSON.stringify(planningTimeWindows)}::jsonb,
       "planningBreakWindows" = ${JSON.stringify(planningBreakWindows)}::jsonb,
       "planningResponsibleFor" = ${JSON.stringify(planningResponsibleFor)}::jsonb,
+      "leadershipManagerId" = ${leadership.managerId},
+      "leadershipDeputyId" = ${leadership.deputyId},
       "branchAllocations" = ${JSON.stringify(branchAllocations)}::jsonb,
       "includeInLaborCostRate" = ${includeInLaborCostRate},
       "sellableCapacityEnabled" = ${sellableCapacityEnabled},
@@ -1193,6 +1471,14 @@ export async function POST(req: Request) {
       "mailAccount" = ${JSON.stringify(mailAccount)}::jsonb
     WHERE id = ${created.id}
   `;
+
+  await addLeadershipHistory({
+    organizationId: organization.id,
+    employeeId: created.id,
+    actorId: actor.id,
+    previous: { managerId: null, deputyId: null },
+    next: leadership,
+  });
 
   return NextResponse.json(
     formatUser(
@@ -1219,6 +1505,8 @@ export async function POST(req: Request) {
         planningTimeWindows,
         planningBreakWindows,
         planningResponsibleFor,
+        leadershipManagerId: leadership.managerId,
+        leadershipDeputyId: leadership.deputyId,
         branchAllocations,
         includeInLaborCostRate,
         sellableCapacityEnabled,

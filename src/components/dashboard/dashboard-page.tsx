@@ -921,6 +921,17 @@ type UserOption = {
   planningTimeWindows?: WeeklyPlanningWindows;
   planningBreakWindows?: WeeklyPlanningWindows;
   planningResponsibleFor?: string[];
+  leadershipManagerId?: string;
+  leadershipDeputyId?: string;
+  leadershipHistory?: Array<{
+    id: string;
+    actorId: string;
+    previousManagerId: string;
+    managerId: string;
+    previousDeputyId: string;
+    deputyId: string;
+    createdAt: string;
+  }>;
   branchAllocations?: BranchAllocations;
   includeInLaborCostRate?: boolean;
   sellableCapacityEnabled?: boolean;
@@ -6439,6 +6450,8 @@ export function DashboardPage() {
   const [employeePlanningBreakWindows, setEmployeePlanningBreakWindows] =
     useState<WeeklyPlanningWindows>(defaultWeeklyBreakWindows);
   const [employeePlanningResponsibleFor, setEmployeePlanningResponsibleFor] = useState<string[]>([]);
+  const [employeeLeadershipManagerId, setEmployeeLeadershipManagerId] = useState("");
+  const [employeeLeadershipDeputyId, setEmployeeLeadershipDeputyId] = useState("");
   const [employeeIncludeInLaborCostRate, setEmployeeIncludeInLaborCostRate] = useState(true);
   const [employeeSellableCapacityEnabled, setEmployeeSellableCapacityEnabled] = useState(true);
   const [employeeSalesRoleEnabled, setEmployeeSalesRoleEnabled] = useState(false);
@@ -21421,6 +21434,8 @@ await addProjectLogbookEntry(
     setEmployeePlanningTimeWindows(defaultWeeklyPlanningWindows);
     setEmployeePlanningBreakWindows(defaultWeeklyBreakWindows);
     setEmployeePlanningResponsibleFor([]);
+    setEmployeeLeadershipManagerId("");
+    setEmployeeLeadershipDeputyId("");
     setEmployeeIncludeInLaborCostRate(true);
     setEmployeeSellableCapacityEnabled(true);
     setEmployeeSalesRoleEnabled(false);
@@ -21610,6 +21625,8 @@ await addProjectLogbookEntry(
       getSafePlanningTimeWindows(user.planningBreakWindows, "12:00", "12:30")
     );
     setEmployeePlanningResponsibleFor(user.planningResponsibleFor ?? []);
+    setEmployeeLeadershipManagerId(user.leadershipManagerId ?? "");
+    setEmployeeLeadershipDeputyId(user.leadershipDeputyId ?? "");
     setEmployeeIncludeInLaborCostRate(user.includeInLaborCostRate !== false);
     setEmployeeSellableCapacityEnabled(user.sellableCapacityEnabled !== false);
     setEmployeeSalesRoleEnabled(user.salesRoleEnabled === true);
@@ -21758,6 +21775,19 @@ await addProjectLogbookEntry(
       return false;
     }
 
+    if (!editingUserId && userRole !== "GESCHAEFTSFUEHRER" && !employeeLeadershipManagerId) {
+      setErrorMessage("Bitte eine zuständige Führungskraft auswählen.");
+      return false;
+    }
+
+    if (
+      employeeLeadershipManagerId &&
+      employeeLeadershipManagerId === employeeLeadershipDeputyId
+    ) {
+      setErrorMessage("Führungskraft und Vertretung müssen unterschiedliche Personen sein.");
+      return false;
+    }
+
     const branchAllocationTotal =
       getBranchAllocationTotal(employeeBranchAllocations);
     if (Math.abs(branchAllocationTotal - 100) > 0.01) {
@@ -21803,6 +21833,8 @@ await addProjectLogbookEntry(
         planningTimeWindows: employeePlanningTimeWindows,
         planningBreakWindows: employeePlanningBreakWindows,
         planningResponsibleFor: employeePlanningResponsibleFor,
+        leadershipManagerId: employeeLeadershipManagerId,
+        leadershipDeputyId: employeeLeadershipDeputyId,
         includeInLaborCostRate: employeeIncludeInLaborCostRate,
         sellableCapacityEnabled: employeeSellableCapacityEnabled,
         salesRoleEnabled: employeeSalesRoleEnabled,
@@ -47764,7 +47796,14 @@ await addProjectLogbookEntry(
                         <select
                           value={userRole}
                           disabled={!mayManageUsers}
-                          onChange={(event) => setUserRole(event.target.value as UserRole)}
+                          onChange={(event) => {
+                            const nextRole = event.target.value as UserRole;
+                            setUserRole(nextRole);
+                            if (nextRole === "GESCHAEFTSFUEHRER") {
+                              setEmployeeLeadershipManagerId("");
+                              setEmployeeLeadershipDeputyId("");
+                            }
+                          }}
                         >
                           {roleOptions.map((option) => (
                             <option key={option.value} value={option.value}>
@@ -47810,6 +47849,117 @@ await addProjectLogbookEntry(
                         />
                         Benachrichtigung bei erkanntem Zusatzverkauf
                       </label>
+                      <section className={`${styles.employeeLeadershipSettings} ${styles.fullWidth}`}>
+                        <div className={styles.employeeLeadershipHeading}>
+                          <div>
+                            <h3>Führungszuordnung</h3>
+                            <p>
+                              Legt die persönliche Führungskraft und eine optionale Vertretung fest.
+                              Diese Zuordnung ist von der Planungsverantwortung getrennt.
+                            </p>
+                          </div>
+                          {userRole === "GESCHAEFTSFUEHRER" && (
+                            <span>Geschäftsführung ausgenommen</span>
+                          )}
+                        </div>
+                        <div className={styles.employeeLeadershipGrid}>
+                          <label>
+                            Zuständige Führungskraft {userRole !== "GESCHAEFTSFUEHRER" ? "*" : ""}
+                            <select
+                              value={employeeLeadershipManagerId}
+                              disabled={!mayManageUsers || userRole === "GESCHAEFTSFUEHRER"}
+                              required={!editingUserId && userRole !== "GESCHAEFTSFUEHRER"}
+                              onChange={(event) => {
+                                const nextManagerId = event.target.value;
+                                setEmployeeLeadershipManagerId(nextManagerId);
+                                if (nextManagerId === employeeLeadershipDeputyId) {
+                                  setEmployeeLeadershipDeputyId("");
+                                }
+                              }}
+                            >
+                              <option value="">
+                                {userRole === "GESCHAEFTSFUEHRER"
+                                  ? "Keine Führungskraft erforderlich"
+                                  : "Bitte Führungskraft auswählen"}
+                              </option>
+                              {users
+                                .filter(
+                                  (user) =>
+                                    user.isActive &&
+                                    (user.role === "FUEHRUNGSKRAFT" ||
+                                      user.role === "GESCHAEFTSFUEHRER") &&
+                                    user.id !== editingUserId
+                                )
+                                .map((user) => (
+                                  <option key={user.id} value={user.id}>
+                                    {user.name}
+                                  </option>
+                                ))}
+                            </select>
+                            {!editingUserId && userRole !== "GESCHAEFTSFUEHRER" && (
+                              <small>Bei neuen Mitarbeitern ist diese Angabe verpflichtend.</small>
+                            )}
+                            <small>Auswahl aus aktiven Führungskräften und Geschäftsführern.</small>
+                          </label>
+                          <label>
+                            Vertretung
+                            <select
+                              value={employeeLeadershipDeputyId}
+                              disabled={!mayManageUsers || userRole === "GESCHAEFTSFUEHRER"}
+                              onChange={(event) => setEmployeeLeadershipDeputyId(event.target.value)}
+                            >
+                              <option value="">Keine Vertretung festgelegt</option>
+                              {users
+                                .filter(
+                                  (user) =>
+                                    user.isActive &&
+                                    user.id !== editingUserId &&
+                                    user.id !== employeeLeadershipManagerId
+                                )
+                                .map((user) => (
+                                  <option key={user.id} value={user.id}>
+                                    {user.name}
+                                  </option>
+                                ))}
+                            </select>
+                            <small>Als Vertretung kann jede andere aktive Person gewählt werden.</small>
+                          </label>
+                        </div>
+                        {editingUserId &&
+                          users.some((user) => user.leadershipManagerId === editingUserId) && (
+                            <div className={styles.employeeLeadershipTeam}>
+                              <strong>Zugeordnete Mitarbeiter</strong>
+                              <span>
+                                {users
+                                  .filter((user) => user.leadershipManagerId === editingUserId)
+                                  .map((user) => user.name)
+                                  .join(", ")}
+                              </span>
+                            </div>
+                          )}
+                        {editingUserId &&
+                          (users.find((user) => user.id === editingUserId)?.leadershipHistory?.length ?? 0) > 0 && (
+                            <details className={styles.employeeLeadershipHistory}>
+                              <summary>Änderungsverlauf anzeigen</summary>
+                              <div>
+                                {users
+                                  .find((user) => user.id === editingUserId)
+                                  ?.leadershipHistory?.slice(0, 8)
+                                  .map((entry) => (
+                                    <p key={entry.id}>
+                                      <time>{formatInstantDateTime(entry.createdAt)}</time>
+                                      <span>
+                                        Führungskraft: {users.find((user) => user.id === entry.managerId)?.name ?? "Keine"}
+                                        {entry.deputyId
+                                          ? ` · Vertretung: ${users.find((user) => user.id === entry.deputyId)?.name ?? "Unbekannt"}`
+                                          : " · Keine Vertretung"}
+                                      </span>
+                                    </p>
+                                  ))}
+                              </div>
+                            </details>
+                          )}
+                      </section>
                       <section className={`${styles.employeePlanningSettings} ${styles.fullWidth}`}>
                         <div>
                           <h3>Planungsverantwortung</h3>
