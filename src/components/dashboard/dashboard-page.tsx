@@ -27662,6 +27662,130 @@ await addProjectLogbookEntry(
       {}
     )
   ).sort((first, second) => second.revenue - first.revenue);
+  const activeRevenueInvoices = invoices.filter(isReportRevenueInvoice);
+  const projectById = new Map(heroProjects.map((project) => [project.id, project]));
+  const contactById = new Map(contacts.map((contact) => [contact.id, contact]));
+  const firstRevenueAtByContactId = activeRevenueInvoices.reduce<Map<string, number>>((firstRevenueAt, invoice) => {
+    const contactId = projectById.get(invoice.projectId)?.contactId?.trim() ?? "";
+    const invoiceDate = parseAppDateTime(invoice.serviceDate || invoice.createdAt);
+    const invoiceTime = invoiceDate.getTime();
+    if (!contactId || !Number.isFinite(invoiceTime)) return firstRevenueAt;
+    const currentFirstRevenueAt = firstRevenueAt.get(contactId);
+    if (currentFirstRevenueAt === undefined || invoiceTime < currentFirstRevenueAt) {
+      firstRevenueAt.set(contactId, invoiceTime);
+    }
+    return firstRevenueAt;
+  }, new Map<string, number>());
+  const buildCustomerRevenueMix = (periodInvoices: typeof reportInvoices, periodStart: Date) =>
+    periodInvoices.reduce(
+      (mix, invoice) => {
+      const revenue = Number.isFinite(invoice.netTotal) ? invoice.netTotal : 0;
+      const contactId = projectById.get(invoice.projectId)?.contactId?.trim() ?? "";
+      const contact = contactId ? contactById.get(contactId) : undefined;
+      const firstRevenueAt = contactId ? firstRevenueAtByContactId.get(contactId) : undefined;
+
+      if (!contact || firstRevenueAt === undefined || contact.customerStatusOverride === "prospect") {
+        mix.unassignedRevenue += revenue;
+        mix.unassignedInvoiceCount += 1;
+        return mix;
+      }
+
+      const isExistingCustomer =
+        contact.customerStatusOverride === "existing" ||
+        (contact.customerStatusOverride === "automatic" && firstRevenueAt < periodStart.getTime());
+      if (isExistingCustomer) {
+        mix.existingRevenue += revenue;
+        mix.existingInvoiceCount += 1;
+      } else {
+        mix.newRevenue += revenue;
+        mix.newInvoiceCount += 1;
+      }
+      return mix;
+    },
+    {
+      newRevenue: 0,
+      existingRevenue: 0,
+      unassignedRevenue: 0,
+      newInvoiceCount: 0,
+      existingInvoiceCount: 0,
+      unassignedInvoiceCount: 0,
+      }
+    );
+  const customerRevenueMix = buildCustomerRevenueMix(reportInvoices, reportStartDate);
+  const previousCustomerRevenueMix = buildCustomerRevenueMix(previousReportInvoices, previousReportPeriodRange.start);
+  const revenueMixTotal =
+    customerRevenueMix.newRevenue + customerRevenueMix.existingRevenue + customerRevenueMix.unassignedRevenue;
+  const previousRevenueMixTotal =
+    previousCustomerRevenueMix.newRevenue +
+    previousCustomerRevenueMix.existingRevenue +
+    previousCustomerRevenueMix.unassignedRevenue;
+  const attributedCustomerRevenue = customerRevenueMix.newRevenue + customerRevenueMix.existingRevenue;
+  const customerRevenueCoverage = getPercent(
+    Math.abs(attributedCustomerRevenue),
+    Math.abs(attributedCustomerRevenue) + Math.abs(customerRevenueMix.unassignedRevenue)
+  );
+  const potentialOfferIds = new Set(
+    projectPotentials
+      .map((potential) => (potential.taskId ? tasks.find((task) => task.id === potential.taskId) : undefined))
+      .flatMap((task) => (task?.links ?? []).map((link) => link.url))
+      .filter((url) => url.startsWith("offer:"))
+      .map((url) => url.replace(/^offer:/, "").trim())
+      .filter(Boolean)
+  );
+  const offerIdByNumber = new Map(offers.map((offer) => [offer.offerNumber, offer.id]));
+  const buildAdditionalSalesRevenue = (periodInvoices: typeof reportInvoices) =>
+    periodInvoices.reduce(
+      (summary, invoice) => {
+      const revenue = Number.isFinite(invoice.netTotal) ? invoice.netTotal : 0;
+      const sourceOfferId = invoice.sourceOfferId || offerIdByNumber.get(invoice.sourceOfferNumber) || "";
+      if (!sourceOfferId) {
+        summary.unassignedRevenue += revenue;
+        summary.unassignedInvoiceCount += 1;
+      } else {
+        summary.attributedRevenue += revenue;
+        summary.attributedInvoiceCount += 1;
+        if (potentialOfferIds.has(sourceOfferId)) {
+          summary.provenRevenue += revenue;
+          summary.provenInvoiceCount += 1;
+        }
+      }
+      return summary;
+    },
+    {
+      provenRevenue: 0,
+      attributedRevenue: 0,
+      unassignedRevenue: 0,
+      provenInvoiceCount: 0,
+      attributedInvoiceCount: 0,
+      unassignedInvoiceCount: 0,
+      }
+    );
+  const additionalSalesRevenue = buildAdditionalSalesRevenue(reportInvoices);
+  const previousAdditionalSalesRevenue = buildAdditionalSalesRevenue(previousReportInvoices);
+  const additionalSalesSourceCoverage = getPercent(
+    Math.abs(additionalSalesRevenue.attributedRevenue),
+    Math.abs(additionalSalesRevenue.attributedRevenue) + Math.abs(additionalSalesRevenue.unassignedRevenue)
+  );
+  const newCustomerRevenueShare = getPercent(customerRevenueMix.newRevenue, revenueMixTotal);
+  const previousNewCustomerRevenueShare = getPercent(
+    previousCustomerRevenueMix.newRevenue,
+    previousRevenueMixTotal
+  );
+  const existingCustomerRevenueShare = getPercent(customerRevenueMix.existingRevenue, revenueMixTotal);
+  const previousExistingCustomerRevenueShare = getPercent(
+    previousCustomerRevenueMix.existingRevenue,
+    previousRevenueMixTotal
+  );
+  const unassignedCustomerRevenueShare = getPercent(customerRevenueMix.unassignedRevenue, revenueMixTotal);
+  const previousUnassignedCustomerRevenueShare = getPercent(
+    previousCustomerRevenueMix.unassignedRevenue,
+    previousRevenueMixTotal
+  );
+  const additionalSalesRevenueShare = getPercent(additionalSalesRevenue.provenRevenue, revenueMixTotal);
+  const previousAdditionalSalesRevenueShare = getPercent(
+    previousAdditionalSalesRevenue.provenRevenue,
+    previousRevenueMixTotal
+  );
   const customerRows = Object.values(
     reportInvoices.reduce<
       Record<
@@ -28728,6 +28852,15 @@ await addProjectLogbookEntry(
     if (rounded < -999) return "<-999 %";
     return `${rounded > 0 ? "+" : ""}${rounded} %`;
   };
+  const getPercentagePointTrendLabel = (current: number, previous: number) => {
+    const roundedDifference = Math.round((current - previous) * 10) / 10;
+    const formattedDifference = Math.abs(roundedDifference).toLocaleString(APP_LOCALE, {
+      maximumFractionDigits: Number.isInteger(roundedDifference) ? 0 : 1,
+      minimumFractionDigits: Number.isInteger(roundedDifference) ? 0 : 1,
+    });
+    if (roundedDifference === 0) return "0 %-Pkt.";
+    return `${roundedDifference > 0 ? "+" : "−"}${formattedDifference} %-Pkt.`;
+  };
   const dashboardPreviousWorkingDateKey = (() => {
     const cursor = new Date();
     for (let guard = 0; guard < 31; guard += 1) {
@@ -29717,7 +29850,9 @@ await addProjectLogbookEntry(
     value: string,
     hint: string,
     state: "good" | "ok" | "low" | "neutral" = "neutral",
-    trendIcon: DashboardTrendIconType = "none"
+    trendIcon: DashboardTrendIconType = "none",
+    trendLabel?: string,
+    neutralTrend = false
   ) => {
     const statusLabel = state === "good" ? "stabil" : state === "ok" ? "prüfen" : state === "low" ? "kritisch" : "Info";
     const metricIcon = getReportMetricIcon(label);
@@ -29729,9 +29864,18 @@ await addProjectLogbookEntry(
           </span>
           <span className={styles.analyticsMetricStatusGroup}>
             {trendIcon !== "none" ? (
-              <span className={styles.analyticsTrendBadge} data-trend={trendIcon} aria-label="Trend">
-                <DashboardTrendIcon type={trendIcon} />
-              </span>
+              <>
+                <span
+                  className={styles.analyticsTrendBadge}
+                  data-trend={trendIcon}
+                  data-neutral={neutralTrend ? "true" : undefined}
+                  aria-label={trendLabel ? `Trend zum Vorzeitraum: ${trendLabel}` : "Trend zum Vorzeitraum"}
+                  title={trendLabel ? `Zum Vorzeitraum: ${trendLabel}` : "Trend zum Vorzeitraum"}
+                >
+                  <DashboardTrendIcon type={trendIcon} />
+                </span>
+                {trendLabel ? <small>{trendLabel}</small> : null}
+              </>
             ) : (
               <small>{statusLabel}</small>
             )}
@@ -30702,14 +30846,16 @@ await addProjectLogbookEntry(
               formatMoney(offerVolumeTotal),
               `${reportOffers.length} Angebote`,
               "neutral",
-              getDashboardTrendIcon(offerVolumeTotal, previousOfferVolumeTotal)
+              getDashboardTrendIcon(offerVolumeTotal, previousOfferVolumeTotal),
+              getDashboardTrendLabel(offerVolumeTotal, previousOfferVolumeTotal)
             )}
             {renderReportMetric(
               "Rechnungsvolumen",
               formatMoney(invoiceRevenueTotal),
               `${reportInvoices.length} Rechnungen`,
               "neutral",
-              getDashboardTrendIcon(invoiceRevenueTotal, previousInvoiceRevenueTotal)
+              getDashboardTrendIcon(invoiceRevenueTotal, previousInvoiceRevenueTotal),
+              getDashboardTrendLabel(invoiceRevenueTotal, previousInvoiceRevenueTotal)
             )}
             {canViewSensitiveOverviewFinancials
               ? renderReportMetric(
@@ -30717,7 +30863,8 @@ await addProjectLogbookEntry(
                   formatMoney(invoiceMarginTotal),
                   `${formatHours(invoiceMarginPercent)}% auf Rechnungsvolumen`,
                   getMetricState(invoiceMarginPercent, 30, 18),
-                  getDashboardTrendIcon(invoiceMarginPercent, previousInvoiceMarginPercent)
+                  getDashboardTrendIcon(invoiceMarginPercent, previousInvoiceMarginPercent),
+                  getPercentagePointTrendLabel(invoiceMarginPercent, previousInvoiceMarginPercent)
                 )
               : null}
             {canViewSensitiveOverviewFinancials
@@ -31757,28 +31904,32 @@ await addProjectLogbookEntry(
               formatMoney(customerSummary.revenue),
               `${customerSummary.invoiceCount} Rechnungen`,
               "good",
-              getDashboardTrendIcon(customerSummary.revenue, previousInvoiceRevenueTotal)
+              getDashboardTrendIcon(customerSummary.revenue, previousInvoiceRevenueTotal),
+              getDashboardTrendLabel(customerSummary.revenue, previousInvoiceRevenueTotal)
             )}
             {renderReportMetric(
               "Bezahlt",
               formatMoney(customerSummary.paidRevenue),
               "Bereits bezahlter Umsatz",
               "good",
-              getDashboardTrendIcon(customerSummary.paidRevenue, previousOverviewPaidTotal)
+              getDashboardTrendIcon(customerSummary.paidRevenue, previousOverviewPaidTotal),
+              getDashboardTrendLabel(customerSummary.paidRevenue, previousOverviewPaidTotal)
             )}
             {renderReportMetric(
               "Offene Posten",
               formatMoney(customerSummary.openRevenue),
               "Noch nicht bezahlte Rechnungen",
               customerSummary.openRevenue > 0 ? "ok" : "good",
-              getDashboardTrendIcon(customerSummary.openRevenue, previousOverviewOpenTotal, true)
+              getDashboardTrendIcon(customerSummary.openRevenue, previousOverviewOpenTotal, true),
+              getDashboardTrendLabel(customerSummary.openRevenue, previousOverviewOpenTotal)
             )}
             {renderReportMetric(
               "Überfällig",
               formatMoney(customerSummary.overdueRevenue),
               "Überfällige offene Posten",
               customerSummary.overdueRevenue > 0 ? "low" : "good",
-              getDashboardTrendIcon(customerSummary.overdueRevenue, previousOverviewOverdueTotal, true)
+              getDashboardTrendIcon(customerSummary.overdueRevenue, previousOverviewOverdueTotal, true),
+              getDashboardTrendLabel(customerSummary.overdueRevenue, previousOverviewOverdueTotal)
             )}
             {renderReportMetric(
               "KuZu-Hot-Alerts",
@@ -31786,7 +31937,48 @@ await addProjectLogbookEntry(
               "Bewertungen mit Handlungsbedarf",
               customerSummary.hotAlertCount > 0 ? "low" : "good"
             )}
+            {renderReportMetric(
+              "Neukundenumsatz",
+              formatPercent(newCustomerRevenueShare),
+              `${formatMoney(customerRevenueMix.newRevenue)} · ${customerRevenueMix.newInvoiceCount} ${customerRevenueMix.newInvoiceCount === 1 ? "Rechnung" : "Rechnungen"}`,
+              customerRevenueCoverage >= 90 ? "good" : customerRevenueCoverage >= 70 ? "ok" : "neutral",
+              getDashboardTrendIcon(newCustomerRevenueShare, previousNewCustomerRevenueShare),
+              getPercentagePointTrendLabel(newCustomerRevenueShare, previousNewCustomerRevenueShare)
+            )}
+            {renderReportMetric(
+              "Bestandskundenumsatz",
+              formatPercent(existingCustomerRevenueShare),
+              `${formatMoney(customerRevenueMix.existingRevenue)} · ${customerRevenueMix.existingInvoiceCount} ${customerRevenueMix.existingInvoiceCount === 1 ? "Rechnung" : "Rechnungen"}`,
+              customerRevenueCoverage >= 90 ? "good" : customerRevenueCoverage >= 70 ? "ok" : "neutral",
+              getDashboardTrendIcon(existingCustomerRevenueShare, previousExistingCustomerRevenueShare),
+              getPercentagePointTrendLabel(existingCustomerRevenueShare, previousExistingCustomerRevenueShare),
+              true
+            )}
+            {renderReportMetric(
+              "Nicht zuordenbar",
+              formatPercent(unassignedCustomerRevenueShare),
+              `Kunden-Zuordnungsquote ${formatPercent(customerRevenueCoverage)}`,
+              customerRevenueMix.unassignedInvoiceCount > 0 ? "ok" : "good",
+              getDashboardTrendIcon(unassignedCustomerRevenueShare, previousUnassignedCustomerRevenueShare, true),
+              getPercentagePointTrendLabel(unassignedCustomerRevenueShare, previousUnassignedCustomerRevenueShare)
+            )}
+            {renderReportMetric(
+              "Nachweisbarer Zusatzverkauf",
+              formatPercent(additionalSalesRevenueShare),
+              `${formatMoney(additionalSalesRevenue.provenRevenue)} · Quellenabdeckung ${formatPercent(additionalSalesSourceCoverage)}`,
+              additionalSalesSourceCoverage >= 90 ? "good" : additionalSalesSourceCoverage >= 70 ? "ok" : "neutral",
+              getDashboardTrendIcon(additionalSalesRevenueShare, previousAdditionalSalesRevenueShare),
+              getPercentagePointTrendLabel(additionalSalesRevenueShare, previousAdditionalSalesRevenueShare)
+            )}
           </section>
+
+          <p className={styles.analyticsMethodNote}>
+            Neukundenumsatz umfasst Umsatz von Kunden, deren erste aktive WorkPilot-Rechnung im gewählten Zeitraum liegt.
+            Frühere aktive Rechnungen oder eine manuelle Einstufung als Bestandskunde führen zum Bestandskundenumsatz.
+            Zusatzverkaufsumsatz wird nur gezählt, wenn die Rechnung über Angebot und Aufgabe eindeutig mit einer
+            Vertriebschance verknüpft ist. Eine Wachstumsnote wird erst nach ausreichender Zuordnungsquote und festgelegten
+            Zielwerten der Geschäftsführung angezeigt.
+          </p>
 
           <section className={styles.analyticsTwoColumn}>
             <article className={styles.analyticsCard}>
@@ -31883,11 +32075,56 @@ await addProjectLogbookEntry(
         <>
           <section className={styles.analyticsGrid}>
             {renderReportMetric(
+              "Neukundenumsatz",
+              formatPercent(getPercent(customerRevenueMix.newRevenue, revenueMixTotal)),
+              `${formatMoney(customerRevenueMix.newRevenue)} · ${customerRevenueMix.newInvoiceCount} ${customerRevenueMix.newInvoiceCount === 1 ? "Rechnung" : "Rechnungen"}`,
+              customerRevenueCoverage >= 90 ? "good" : customerRevenueCoverage >= 70 ? "ok" : "neutral",
+              getDashboardTrendIcon(newCustomerRevenueShare, previousNewCustomerRevenueShare),
+              getPercentagePointTrendLabel(newCustomerRevenueShare, previousNewCustomerRevenueShare)
+            )}
+            {renderReportMetric(
+              "Bestandskundenumsatz",
+              formatPercent(getPercent(customerRevenueMix.existingRevenue, revenueMixTotal)),
+              `${formatMoney(customerRevenueMix.existingRevenue)} · ${customerRevenueMix.existingInvoiceCount} ${customerRevenueMix.existingInvoiceCount === 1 ? "Rechnung" : "Rechnungen"}`,
+              customerRevenueCoverage >= 90 ? "good" : customerRevenueCoverage >= 70 ? "ok" : "neutral",
+              getDashboardTrendIcon(existingCustomerRevenueShare, previousExistingCustomerRevenueShare),
+              getPercentagePointTrendLabel(existingCustomerRevenueShare, previousExistingCustomerRevenueShare),
+              true
+            )}
+            {renderReportMetric(
+              "Nicht zuordenbar",
+              formatPercent(getPercent(customerRevenueMix.unassignedRevenue, revenueMixTotal)),
+              `Kunden-Zuordnungsquote ${formatPercent(customerRevenueCoverage)}`,
+              customerRevenueMix.unassignedInvoiceCount > 0 ? "ok" : "good",
+              getDashboardTrendIcon(unassignedCustomerRevenueShare, previousUnassignedCustomerRevenueShare, true),
+              getPercentagePointTrendLabel(unassignedCustomerRevenueShare, previousUnassignedCustomerRevenueShare)
+            )}
+            {renderReportMetric(
+              "Nachweisbarer Zusatzverkauf",
+              formatPercent(getPercent(additionalSalesRevenue.provenRevenue, revenueMixTotal)),
+              `${formatMoney(additionalSalesRevenue.provenRevenue)} · Quellenabdeckung ${formatPercent(additionalSalesSourceCoverage)}`,
+              additionalSalesSourceCoverage >= 90 ? "good" : additionalSalesSourceCoverage >= 70 ? "ok" : "neutral",
+              getDashboardTrendIcon(additionalSalesRevenueShare, previousAdditionalSalesRevenueShare),
+              getPercentagePointTrendLabel(additionalSalesRevenueShare, previousAdditionalSalesRevenueShare)
+            )}
+          </section>
+
+          <p className={styles.analyticsMethodNote}>
+            Neukundenumsatz umfasst Umsatz von Kunden, deren erste aktive WorkPilot-Rechnung im gewählten Zeitraum liegt.
+            Frühere aktive Rechnungen oder eine manuelle Einstufung als Bestandskunde führen zum Bestandskundenumsatz.
+            Zusatzverkaufsumsatz wird nur gezählt, wenn die Rechnung über Angebot und Aufgabe eindeutig mit einer
+            Vertriebschance verknüpft ist. Eine Wachstumsnote wird erst nach ausreichender Zuordnungsquote und festgelegten
+            Zielwerten der Geschäftsführung angezeigt.
+          </p>
+
+          <section className={styles.analyticsGrid}>
+            {renderReportMetric(
               "Fakturierter Umsatz",
               formatMoney(customerSummary.revenue),
               `${customerSummary.invoiceCount} Rechnungen im Zeitraum`,
               "good",
-              getDashboardTrendIcon(customerSummary.revenue, previousInvoiceRevenueTotal)
+              getDashboardTrendIcon(customerSummary.revenue, previousInvoiceRevenueTotal),
+              getDashboardTrendLabel(customerSummary.revenue, previousInvoiceRevenueTotal)
             )}
             {renderReportMetric("Kunden mit Umsatz", `${customerSummary.customerCount}`, "Kunden mit fakturierten Rechnungen", customerSummary.customerCount > 0 ? "good" : "neutral")}
             {renderReportMetric(
@@ -32650,7 +32887,8 @@ await addProjectLogbookEntry(
               formatMoney(invoiceRevenueTotal),
               `${reportInvoices.length} fakturierte Rechnungen`,
               "good",
-              getDashboardTrendIcon(invoiceRevenueTotal, previousInvoiceRevenueTotal)
+              getDashboardTrendIcon(invoiceRevenueTotal, previousInvoiceRevenueTotal),
+              getDashboardTrendLabel(invoiceRevenueTotal, previousInvoiceRevenueTotal)
             )}
             {canViewAccountingOverviewAnalytics
               ? renderReportMetric(
@@ -32658,7 +32896,8 @@ await addProjectLogbookEntry(
                   formatMoney(overviewPaidTotal),
                   "Bereits bezahlter Umsatz",
                   "good",
-                  getDashboardTrendIcon(overviewPaidTotal, previousOverviewPaidTotal)
+                  getDashboardTrendIcon(overviewPaidTotal, previousOverviewPaidTotal),
+                  getDashboardTrendLabel(overviewPaidTotal, previousOverviewPaidTotal)
                 )
               : null}
             {canViewAccountingOverviewAnalytics
@@ -32667,7 +32906,8 @@ await addProjectLogbookEntry(
                   formatMoney(overviewOpenTotal),
                   "Noch nicht bezahlt",
                   overviewOpenTotal > 0 ? "ok" : "good",
-                  getDashboardTrendIcon(overviewOpenTotal, previousOverviewOpenTotal, true)
+                  getDashboardTrendIcon(overviewOpenTotal, previousOverviewOpenTotal, true),
+                  getDashboardTrendLabel(overviewOpenTotal, previousOverviewOpenTotal)
                 )
               : null}
             {canViewAccountingOverviewAnalytics
@@ -32676,7 +32916,8 @@ await addProjectLogbookEntry(
                   formatMoney(overviewOverdueTotal),
                   `${overviewOverdueRows.length} Rechnung${overviewOverdueRows.length === 1 ? "" : "en"}`,
                   overviewOverdueTotal > 0 ? "low" : "good",
-                  getDashboardTrendIcon(overviewOverdueTotal, previousOverviewOverdueTotal, true)
+                  getDashboardTrendIcon(overviewOverdueTotal, previousOverviewOverdueTotal, true),
+                  getDashboardTrendLabel(overviewOverdueTotal, previousOverviewOverdueTotal)
                 )
               : null}
             {canViewOperationalOverviewAnalytics || canViewAccountingOverviewAnalytics
@@ -32688,7 +32929,8 @@ await addProjectLogbookEntry(
                   `${formatHours(invoiceMarginPercent)}%`,
                   formatMoney(invoiceMarginTotal),
                   getMetricState(invoiceMarginPercent, 30, 18),
-                  getDashboardTrendIcon(invoiceMarginPercent, previousInvoiceMarginPercent)
+                  getDashboardTrendIcon(invoiceMarginPercent, previousInvoiceMarginPercent),
+                  getPercentagePointTrendLabel(invoiceMarginPercent, previousInvoiceMarginPercent)
                 )
               : null}
           </section>

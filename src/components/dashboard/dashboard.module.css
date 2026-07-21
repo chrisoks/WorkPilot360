@@ -7035,6 +7035,19 @@
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
 }
 
+.analyticsMethodNote {
+  background: #f8fafc;
+  border: 1px solid #dbe5f1;
+  border-left: 4px solid #089ca6;
+  border-radius: 12px;
+  color: #42546d;
+  font-size: 0.82rem;
+  font-weight: 650;
+  line-height: 1.55;
+  margin: 0;
+  padding: 12px 14px;
+}
+
 .salesCockpitGrid {
   display: grid;
   gap: 14px;
@@ -8724,6 +8737,11 @@
 
 .analyticsTrendBadge[data-trend="none"] {
   color: #6b7280;
+}
+
+.analyticsTrendBadge[data-neutral="true"] {
+  background: #e2e8f0;
+  color: #475569;
 }
 
 .analyticsTrendBadge .dashboardTrendIconSvg {
@@ -21528,12 +21546,15 @@
 }
 
 .contactModalTabs {
+  align-items: stretch;
   background: #f4f7fa;
   border: 1px solid #d8e0ea;
   border-radius: 9px;
   display: grid;
   gap: 4px;
   grid-template-columns: repeat(5, minmax(0, 1fr));
+  min-height: 41px;
+  overflow-y: hidden;
   padding: 4px;
 }
 
