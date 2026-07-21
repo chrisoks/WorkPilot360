@@ -16901,6 +16901,59 @@
   padding: 18px;
 }
 
+.deadlineSettingsTaskSections {
+  display: grid;
+  gap: 22px;
+}
+
+.deadlineSettingsGroup {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 18px;
+}
+
+.deadlineSettingsGroup:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.deadlineSettingsGroupHeader {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.deadlineSettingsGroupHeader strong {
+  color: #0f172a;
+  font-size: 0.94rem;
+  font-weight: 850;
+}
+
+.deadlineSettingsGroupHeader span,
+.deadlineSettingsNote {
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.deadlineSettingsGrid {
+  display: grid;
+  gap: 12px 18px;
+  grid-template-columns: repeat(2, minmax(240px, 1fr));
+}
+
+.deadlineSettingsGrid .companySettingsForm {
+  grid-template-columns: minmax(180px, 1fr) auto;
+  margin-bottom: 0;
+}
+
+.deadlineSettingsNote {
+  background: #f8fafc;
+  border-left: 3px solid #0ea5a8;
+  margin: 0;
+  padding: 10px 12px;
+}
+
 .deadlinePlannedState {
   background: #f8fafc;
   border: 1px dashed #cbd5e1;
@@ -16918,7 +16971,8 @@
 
 @media (max-width: 1100px) {
   .deadlineCategoryGrid,
-  .deadlineSettingsLayout {
+  .deadlineSettingsLayout,
+  .deadlineSettingsGrid {
     grid-template-columns: 1fr;
   }
 }

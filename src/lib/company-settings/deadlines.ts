@@ -8,6 +8,16 @@ const DEFAULT_DEADLINE_SETTINGS = {
   potentialDecisionReminderWorkdays: 1,
   potentialDecisionEscalationWorkdays: 2,
   completedTaskArchiveDays: 5,
+  taskEmployeeActiveLimit: 8,
+  taskEmployeeOverdueLimit: 2,
+  taskEmployeeStaleWorkdays: 3,
+  taskWaitingFeedbackWorkdays: 7,
+  taskLeadershipEscalationWorkdays: 2,
+  taskLeadershipImmediateActiveLimit: 12,
+  taskLeadershipImmediateOverdueLimit: 4,
+  taskManagementEscalationWorkdays: 3,
+  taskManagementImmediateActiveLimit: 15,
+  taskManagementImmediateOverdueLimit: 6,
   interruptedWorkFollowUpDays: 2,
   interruptedWorkManagementEscalationDays: 7,
   punctualityStartToleranceMinutes: 10,
@@ -33,6 +43,36 @@ function normalizeRoundingFactor(value: unknown, fallback: number) {
 
 export function normalizeDeadlineSettings(value: unknown): DeadlineSettings {
   const settings = (value && typeof value === "object" ? value : {}) as DeadlineSettingValue;
+  const taskEmployeeActiveLimit = clampInteger(
+    settings.taskEmployeeActiveLimit,
+    DEFAULT_DEADLINE_SETTINGS.taskEmployeeActiveLimit,
+    1,
+    100
+  );
+  const taskEmployeeOverdueLimit = clampInteger(
+    settings.taskEmployeeOverdueLimit,
+    DEFAULT_DEADLINE_SETTINGS.taskEmployeeOverdueLimit,
+    1,
+    100
+  );
+  const taskLeadershipImmediateActiveLimit = Math.max(
+    taskEmployeeActiveLimit,
+    clampInteger(
+      settings.taskLeadershipImmediateActiveLimit,
+      DEFAULT_DEADLINE_SETTINGS.taskLeadershipImmediateActiveLimit,
+      1,
+      100
+    )
+  );
+  const taskLeadershipImmediateOverdueLimit = Math.max(
+    taskEmployeeOverdueLimit,
+    clampInteger(
+      settings.taskLeadershipImmediateOverdueLimit,
+      DEFAULT_DEADLINE_SETTINGS.taskLeadershipImmediateOverdueLimit,
+      1,
+      100
+    )
+  );
   return {
     offerFollowUpWorkdays: clampInteger(
       settings.offerFollowUpWorkdays,
@@ -57,6 +97,52 @@ export function normalizeDeadlineSettings(value: unknown): DeadlineSettings {
       DEFAULT_DEADLINE_SETTINGS.completedTaskArchiveDays,
       1,
       30
+    ),
+    taskEmployeeActiveLimit,
+    taskEmployeeOverdueLimit,
+    taskEmployeeStaleWorkdays: clampInteger(
+      settings.taskEmployeeStaleWorkdays,
+      DEFAULT_DEADLINE_SETTINGS.taskEmployeeStaleWorkdays,
+      1,
+      60
+    ),
+    taskWaitingFeedbackWorkdays: clampInteger(
+      settings.taskWaitingFeedbackWorkdays,
+      DEFAULT_DEADLINE_SETTINGS.taskWaitingFeedbackWorkdays,
+      1,
+      60
+    ),
+    taskLeadershipEscalationWorkdays: clampInteger(
+      settings.taskLeadershipEscalationWorkdays,
+      DEFAULT_DEADLINE_SETTINGS.taskLeadershipEscalationWorkdays,
+      1,
+      60
+    ),
+    taskLeadershipImmediateActiveLimit,
+    taskLeadershipImmediateOverdueLimit,
+    taskManagementEscalationWorkdays: clampInteger(
+      settings.taskManagementEscalationWorkdays,
+      DEFAULT_DEADLINE_SETTINGS.taskManagementEscalationWorkdays,
+      1,
+      60
+    ),
+    taskManagementImmediateActiveLimit: Math.max(
+      taskLeadershipImmediateActiveLimit,
+      clampInteger(
+        settings.taskManagementImmediateActiveLimit,
+        DEFAULT_DEADLINE_SETTINGS.taskManagementImmediateActiveLimit,
+        1,
+        100
+      )
+    ),
+    taskManagementImmediateOverdueLimit: Math.max(
+      taskLeadershipImmediateOverdueLimit,
+      clampInteger(
+        settings.taskManagementImmediateOverdueLimit,
+        DEFAULT_DEADLINE_SETTINGS.taskManagementImmediateOverdueLimit,
+        1,
+        100
+      )
     ),
     interruptedWorkFollowUpDays: clampInteger(
       settings.interruptedWorkFollowUpDays,
@@ -134,6 +220,23 @@ export async function saveDeadlineSettings(organizationId: string, input: Record
     potentialDecisionEscalationWorkdays:
       input.potentialDecisionEscalationWorkdays ?? currentSettings.potentialDecisionEscalationWorkdays,
     completedTaskArchiveDays: input.completedTaskArchiveDays ?? currentSettings.completedTaskArchiveDays,
+    taskEmployeeActiveLimit: input.taskEmployeeActiveLimit ?? currentSettings.taskEmployeeActiveLimit,
+    taskEmployeeOverdueLimit: input.taskEmployeeOverdueLimit ?? currentSettings.taskEmployeeOverdueLimit,
+    taskEmployeeStaleWorkdays: input.taskEmployeeStaleWorkdays ?? currentSettings.taskEmployeeStaleWorkdays,
+    taskWaitingFeedbackWorkdays:
+      input.taskWaitingFeedbackWorkdays ?? currentSettings.taskWaitingFeedbackWorkdays,
+    taskLeadershipEscalationWorkdays:
+      input.taskLeadershipEscalationWorkdays ?? currentSettings.taskLeadershipEscalationWorkdays,
+    taskLeadershipImmediateActiveLimit:
+      input.taskLeadershipImmediateActiveLimit ?? currentSettings.taskLeadershipImmediateActiveLimit,
+    taskLeadershipImmediateOverdueLimit:
+      input.taskLeadershipImmediateOverdueLimit ?? currentSettings.taskLeadershipImmediateOverdueLimit,
+    taskManagementEscalationWorkdays:
+      input.taskManagementEscalationWorkdays ?? currentSettings.taskManagementEscalationWorkdays,
+    taskManagementImmediateActiveLimit:
+      input.taskManagementImmediateActiveLimit ?? currentSettings.taskManagementImmediateActiveLimit,
+    taskManagementImmediateOverdueLimit:
+      input.taskManagementImmediateOverdueLimit ?? currentSettings.taskManagementImmediateOverdueLimit,
     interruptedWorkFollowUpDays: input.interruptedWorkFollowUpDays ?? currentSettings.interruptedWorkFollowUpDays,
     interruptedWorkManagementEscalationDays:
       input.interruptedWorkManagementEscalationDays ?? currentSettings.interruptedWorkManagementEscalationDays,

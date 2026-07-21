@@ -605,6 +605,27 @@ type DeadlineSettingsSection =
   | "stampInterruptions"
   | "punctuality"
   | "billing";
+type DeadlineSettingsData = {
+  offerFollowUpWorkdays?: number;
+  potentialDecisionReminderWorkdays?: number;
+  potentialDecisionEscalationWorkdays?: number;
+  completedTaskArchiveDays?: number;
+  taskEmployeeActiveLimit?: number;
+  taskEmployeeOverdueLimit?: number;
+  taskEmployeeStaleWorkdays?: number;
+  taskWaitingFeedbackWorkdays?: number;
+  taskLeadershipEscalationWorkdays?: number;
+  taskLeadershipImmediateActiveLimit?: number;
+  taskLeadershipImmediateOverdueLimit?: number;
+  taskManagementEscalationWorkdays?: number;
+  taskManagementImmediateActiveLimit?: number;
+  taskManagementImmediateOverdueLimit?: number;
+  interruptedWorkFollowUpDays?: number;
+  interruptedWorkManagementEscalationDays?: number;
+  punctualityStartToleranceMinutes?: number;
+  punctualityEndToleranceMinutes?: number;
+  hourlyBillingRoundingFactorHours?: number;
+};
 type CompanyProfileEditTab = "general" | "contact" | "bank";
 type EmployeeTopTab = "overview" | "absence" | "time" | "balance" | "documents" | "costs";
 type EmployeeTimePeriod = "day" | "month" | "year" | "custom";
@@ -5869,6 +5890,16 @@ export function DashboardPage() {
   const [potentialDecisionReminderWorkdays, setPotentialDecisionReminderWorkdays] = useState(1);
   const [potentialDecisionEscalationWorkdays, setPotentialDecisionEscalationWorkdays] = useState(2);
   const [completedTaskArchiveDays, setCompletedTaskArchiveDays] = useState(5);
+  const [taskEmployeeActiveLimit, setTaskEmployeeActiveLimit] = useState(8);
+  const [taskEmployeeOverdueLimit, setTaskEmployeeOverdueLimit] = useState(2);
+  const [taskEmployeeStaleWorkdays, setTaskEmployeeStaleWorkdays] = useState(3);
+  const [taskWaitingFeedbackWorkdays, setTaskWaitingFeedbackWorkdays] = useState(7);
+  const [taskLeadershipEscalationWorkdays, setTaskLeadershipEscalationWorkdays] = useState(2);
+  const [taskLeadershipImmediateActiveLimit, setTaskLeadershipImmediateActiveLimit] = useState(12);
+  const [taskLeadershipImmediateOverdueLimit, setTaskLeadershipImmediateOverdueLimit] = useState(4);
+  const [taskManagementEscalationWorkdays, setTaskManagementEscalationWorkdays] = useState(3);
+  const [taskManagementImmediateActiveLimit, setTaskManagementImmediateActiveLimit] = useState(15);
+  const [taskManagementImmediateOverdueLimit, setTaskManagementImmediateOverdueLimit] = useState(6);
   const [interruptedWorkFollowUpDays, setInterruptedWorkFollowUpDays] = useState(2);
   const [interruptedWorkManagementEscalationDays, setInterruptedWorkManagementEscalationDays] = useState(7);
   const [punctualityStartToleranceMinutes, setPunctualityStartToleranceMinutes] = useState(10);
@@ -7944,6 +7975,39 @@ export function DashboardPage() {
     return data;
   }
 
+  function normalizeDeadlineInteger(value: unknown, fallback: number, min: number, max: number) {
+    const numericValue = Number(value);
+    return Math.max(
+      min,
+      Math.min(max, Math.round(Number.isFinite(numericValue) ? numericValue : fallback))
+    );
+  }
+
+  function applyTaskWorkloadDeadlineSettings(data: DeadlineSettingsData) {
+    setTaskEmployeeActiveLimit(normalizeDeadlineInteger(data.taskEmployeeActiveLimit, 8, 1, 100));
+    setTaskEmployeeOverdueLimit(normalizeDeadlineInteger(data.taskEmployeeOverdueLimit, 2, 1, 100));
+    setTaskEmployeeStaleWorkdays(normalizeDeadlineInteger(data.taskEmployeeStaleWorkdays, 3, 1, 60));
+    setTaskWaitingFeedbackWorkdays(normalizeDeadlineInteger(data.taskWaitingFeedbackWorkdays, 7, 1, 60));
+    setTaskLeadershipEscalationWorkdays(
+      normalizeDeadlineInteger(data.taskLeadershipEscalationWorkdays, 2, 1, 60)
+    );
+    setTaskLeadershipImmediateActiveLimit(
+      normalizeDeadlineInteger(data.taskLeadershipImmediateActiveLimit, 12, 1, 100)
+    );
+    setTaskLeadershipImmediateOverdueLimit(
+      normalizeDeadlineInteger(data.taskLeadershipImmediateOverdueLimit, 4, 1, 100)
+    );
+    setTaskManagementEscalationWorkdays(
+      normalizeDeadlineInteger(data.taskManagementEscalationWorkdays, 3, 1, 60)
+    );
+    setTaskManagementImmediateActiveLimit(
+      normalizeDeadlineInteger(data.taskManagementImmediateActiveLimit, 15, 1, 100)
+    );
+    setTaskManagementImmediateOverdueLimit(
+      normalizeDeadlineInteger(data.taskManagementImmediateOverdueLimit, 6, 1, 100)
+    );
+  }
+
   async function loadDeadlineSettings() {
     const res = await fetch("/api/company-settings/deadlines", {
       cache: "no-store",
@@ -7957,17 +8021,7 @@ export function DashboardPage() {
       return;
     }
 
-    const data = (await res.json()) as {
-      offerFollowUpWorkdays?: number;
-      potentialDecisionReminderWorkdays?: number;
-      potentialDecisionEscalationWorkdays?: number;
-      completedTaskArchiveDays?: number;
-      interruptedWorkFollowUpDays?: number;
-      interruptedWorkManagementEscalationDays?: number;
-      punctualityStartToleranceMinutes?: number;
-      punctualityEndToleranceMinutes?: number;
-      hourlyBillingRoundingFactorHours?: number;
-    };
+    const data = (await res.json()) as DeadlineSettingsData;
     setOfferFollowUpWorkdays(Math.max(1, Math.min(30, Math.round(Number(data.offerFollowUpWorkdays) || 5))));
     setPotentialDecisionReminderWorkdays(
       Math.max(1, Math.min(30, Math.round(Number(data.potentialDecisionReminderWorkdays) || 1)))
@@ -7976,6 +8030,7 @@ export function DashboardPage() {
       Math.max(1, Math.min(60, Math.round(Number(data.potentialDecisionEscalationWorkdays) || 2)))
     );
     setCompletedTaskArchiveDays(Math.max(1, Math.min(30, Math.round(Number(data.completedTaskArchiveDays) || 5))));
+    applyTaskWorkloadDeadlineSettings(data);
     setInterruptedWorkFollowUpDays(Math.max(1, Math.min(30, Math.round(Number(data.interruptedWorkFollowUpDays) || 2))));
     setInterruptedWorkManagementEscalationDays(
       Math.max(1, Math.min(60, Math.round(Number(data.interruptedWorkManagementEscalationDays) || 7)))
@@ -8010,6 +8065,38 @@ export function DashboardPage() {
         Math.min(60, Math.round(Number(potentialDecisionEscalationWorkdays) || 2))
       );
       const normalizedArchiveDays = Math.max(1, Math.min(30, Math.round(Number(completedTaskArchiveDays) || 5)));
+      const normalizedTaskEmployeeActiveLimit = normalizeDeadlineInteger(taskEmployeeActiveLimit, 8, 1, 100);
+      const normalizedTaskEmployeeOverdueLimit = normalizeDeadlineInteger(taskEmployeeOverdueLimit, 2, 1, 100);
+      const normalizedTaskEmployeeStaleWorkdays = normalizeDeadlineInteger(taskEmployeeStaleWorkdays, 3, 1, 60);
+      const normalizedTaskWaitingFeedbackWorkdays = normalizeDeadlineInteger(taskWaitingFeedbackWorkdays, 7, 1, 60);
+      const normalizedTaskLeadershipEscalationWorkdays = normalizeDeadlineInteger(
+        taskLeadershipEscalationWorkdays,
+        2,
+        1,
+        60
+      );
+      const normalizedTaskLeadershipImmediateActiveLimit = Math.max(
+        normalizedTaskEmployeeActiveLimit,
+        normalizeDeadlineInteger(taskLeadershipImmediateActiveLimit, 12, 1, 100)
+      );
+      const normalizedTaskLeadershipImmediateOverdueLimit = Math.max(
+        normalizedTaskEmployeeOverdueLimit,
+        normalizeDeadlineInteger(taskLeadershipImmediateOverdueLimit, 4, 1, 100)
+      );
+      const normalizedTaskManagementEscalationWorkdays = normalizeDeadlineInteger(
+        taskManagementEscalationWorkdays,
+        3,
+        1,
+        60
+      );
+      const normalizedTaskManagementImmediateActiveLimit = Math.max(
+        normalizedTaskLeadershipImmediateActiveLimit,
+        normalizeDeadlineInteger(taskManagementImmediateActiveLimit, 15, 1, 100)
+      );
+      const normalizedTaskManagementImmediateOverdueLimit = Math.max(
+        normalizedTaskLeadershipImmediateOverdueLimit,
+        normalizeDeadlineInteger(taskManagementImmediateOverdueLimit, 6, 1, 100)
+      );
       const normalizedInterruptedDays = Math.max(1, Math.min(30, Math.round(Number(interruptedWorkFollowUpDays) || 2)));
       const normalizedManagementEscalationDays = Math.max(
         1,
@@ -8040,6 +8127,16 @@ export function DashboardPage() {
           potentialDecisionReminderWorkdays: normalizedPotentialReminderWorkdays,
           potentialDecisionEscalationWorkdays: normalizedPotentialEscalationWorkdays,
           completedTaskArchiveDays: normalizedArchiveDays,
+          taskEmployeeActiveLimit: normalizedTaskEmployeeActiveLimit,
+          taskEmployeeOverdueLimit: normalizedTaskEmployeeOverdueLimit,
+          taskEmployeeStaleWorkdays: normalizedTaskEmployeeStaleWorkdays,
+          taskWaitingFeedbackWorkdays: normalizedTaskWaitingFeedbackWorkdays,
+          taskLeadershipEscalationWorkdays: normalizedTaskLeadershipEscalationWorkdays,
+          taskLeadershipImmediateActiveLimit: normalizedTaskLeadershipImmediateActiveLimit,
+          taskLeadershipImmediateOverdueLimit: normalizedTaskLeadershipImmediateOverdueLimit,
+          taskManagementEscalationWorkdays: normalizedTaskManagementEscalationWorkdays,
+          taskManagementImmediateActiveLimit: normalizedTaskManagementImmediateActiveLimit,
+          taskManagementImmediateOverdueLimit: normalizedTaskManagementImmediateOverdueLimit,
           interruptedWorkFollowUpDays: normalizedInterruptedDays,
           interruptedWorkManagementEscalationDays: normalizedManagementEscalationDays,
           punctualityStartToleranceMinutes: normalizedPunctualityStartToleranceMinutes,
@@ -8053,17 +8150,7 @@ export function DashboardPage() {
         return;
       }
 
-      const data = (await res.json()) as {
-        offerFollowUpWorkdays?: number;
-        potentialDecisionReminderWorkdays?: number;
-        potentialDecisionEscalationWorkdays?: number;
-        completedTaskArchiveDays?: number;
-        interruptedWorkFollowUpDays?: number;
-        interruptedWorkManagementEscalationDays?: number;
-        punctualityStartToleranceMinutes?: number;
-        punctualityEndToleranceMinutes?: number;
-        hourlyBillingRoundingFactorHours?: number;
-      };
+      const data = (await res.json()) as DeadlineSettingsData;
       setOfferFollowUpWorkdays(Math.max(1, Math.min(30, Math.round(Number(data.offerFollowUpWorkdays) || 5))));
       setPotentialDecisionReminderWorkdays(
         Math.max(1, Math.min(30, Math.round(Number(data.potentialDecisionReminderWorkdays) || 1)))
@@ -8072,6 +8159,7 @@ export function DashboardPage() {
         Math.max(1, Math.min(60, Math.round(Number(data.potentialDecisionEscalationWorkdays) || 2)))
       );
       setCompletedTaskArchiveDays(Math.max(1, Math.min(30, Math.round(Number(data.completedTaskArchiveDays) || 5))));
+      applyTaskWorkloadDeadlineSettings(data);
       setInterruptedWorkFollowUpDays(Math.max(1, Math.min(30, Math.round(Number(data.interruptedWorkFollowUpDays) || 2))));
       setInterruptedWorkManagementEscalationDays(
         Math.max(1, Math.min(60, Math.round(Number(data.interruptedWorkManagementEscalationDays) || 7)))
@@ -49385,7 +49473,7 @@ await addProjectLogbookEntry(
                   {
                     id: "tasks" as DeadlineSettingsSection,
                     label: "Aufgaben & Eskalation",
-                    description: "Archivierung erledigter Aufgaben",
+                    description: "Archivierung und Belastungsgrenzen",
                     status: "Aktiv",
                   },
                   {
@@ -49449,7 +49537,7 @@ await addProjectLogbookEntry(
                       {deadlineSettingsSection === "offers"
                         ? "Beim finalen Speichern eines Angebots wird eine zentrale Nachfass-Aufgabe angelegt."
                         : deadlineSettingsSection === "tasks"
-                          ? "Erledigte Aufgaben bleiben noch sichtbar und werden danach automatisch archiviert."
+                          ? "Archivierung und Grenzwerte für die gestufte Aufgaben-Eskalation werden hier zentral gepflegt."
                           : deadlineSettingsSection === "stampInterruptions"
                             ? "Die Aufgabe entsteht sofort. Diese Frist steuert die spätere Nachfassmeldung, falls sie offen bleibt."
                             : deadlineSettingsSection === "punctuality"
@@ -49528,23 +49616,219 @@ await addProjectLogbookEntry(
                     </div>
                   </>
                 ) : deadlineSettingsSection === "tasks" ? (
-                  <div className={styles.companySettingsForm}>
-                    <label>
-                      Erledigte Aufgaben archivieren nach
-                      <input
-                        type="number"
-                        min="1"
-                        max="30"
-                        step="1"
-                        value={completedTaskArchiveDays}
-                        onChange={(event) =>
-                          setCompletedTaskArchiveDays(
-                            Math.max(1, Math.min(30, Math.round(Number(event.target.value) || 5)))
-                          )
-                        }
-                      />
-                    </label>
-                    <span className={styles.companySettingsHint}>Tage</span>
+                  <div className={styles.deadlineSettingsTaskSections}>
+                    <section className={styles.deadlineSettingsGroup}>
+                      <div className={styles.deadlineSettingsGroupHeader}>
+                        <strong>Archivierung</strong>
+                        <span>Erledigte Aufgaben bleiben bis zur automatischen Archivierung sichtbar.</span>
+                      </div>
+                      <div className={styles.deadlineSettingsGrid}>
+                        <div className={styles.companySettingsForm}>
+                          <label>
+                            Erledigte Aufgaben archivieren nach
+                            <input
+                              type="number"
+                              min="1"
+                              max="30"
+                              step="1"
+                              value={completedTaskArchiveDays}
+                              onChange={(event) =>
+                                setCompletedTaskArchiveDays(
+                                  normalizeDeadlineInteger(event.target.value, 5, 1, 30)
+                                )
+                              }
+                            />
+                          </label>
+                          <span className={styles.companySettingsHint}>Tage</span>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section className={styles.deadlineSettingsGroup}>
+                      <div className={styles.deadlineSettingsGroupHeader}>
+                        <strong>Warnung an Mitarbeiter</strong>
+                        <span>Eine erfüllte Grenze reicht aus, um die erste Belastungsstufe auszulösen.</span>
+                      </div>
+                      <div className={styles.deadlineSettingsGrid}>
+                        {[
+                          {
+                            key: "employee-active",
+                            label: "Aktive Aufgaben ab",
+                            value: taskEmployeeActiveLimit,
+                            setValue: setTaskEmployeeActiveLimit,
+                            fallback: 8,
+                            max: 100,
+                            unit: "Aufgaben",
+                          },
+                          {
+                            key: "employee-overdue",
+                            label: "Überfällige Aufgaben ab",
+                            value: taskEmployeeOverdueLimit,
+                            setValue: setTaskEmployeeOverdueLimit,
+                            fallback: 2,
+                            max: 100,
+                            unit: "Aufgaben",
+                          },
+                          {
+                            key: "employee-stale",
+                            label: "Unverändert seit",
+                            value: taskEmployeeStaleWorkdays,
+                            setValue: setTaskEmployeeStaleWorkdays,
+                            fallback: 3,
+                            max: 60,
+                            unit: "Werkstagen",
+                          },
+                          {
+                            key: "employee-feedback",
+                            label: "Wartet auf Rückmeldung seit",
+                            value: taskWaitingFeedbackWorkdays,
+                            setValue: setTaskWaitingFeedbackWorkdays,
+                            fallback: 7,
+                            max: 60,
+                            unit: "Werkstagen",
+                          },
+                        ].map((field) => (
+                          <div className={styles.companySettingsForm} key={field.key}>
+                            <label>
+                              {field.label}
+                              <input
+                                type="number"
+                                min="1"
+                                max={field.max}
+                                step="1"
+                                value={field.value}
+                                onChange={(event) =>
+                                  field.setValue(
+                                    normalizeDeadlineInteger(event.target.value, field.fallback, 1, field.max)
+                                  )
+                                }
+                              />
+                            </label>
+                            <span className={styles.companySettingsHint}>{field.unit}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+
+                    <section className={styles.deadlineSettingsGroup}>
+                      <div className={styles.deadlineSettingsGroupHeader}>
+                        <strong>Eskalation an Führungskraft</strong>
+                        <span>Nach der Mitarbeiterwarnung oder sofort bei einer kritischen Aufgabenmenge.</span>
+                      </div>
+                      <div className={styles.deadlineSettingsGrid}>
+                        {[
+                          {
+                            key: "leadership-delay",
+                            label: "Nach Warnstufe eskalieren nach",
+                            value: taskLeadershipEscalationWorkdays,
+                            setValue: setTaskLeadershipEscalationWorkdays,
+                            fallback: 2,
+                            max: 60,
+                            unit: "Werkstagen",
+                          },
+                          {
+                            key: "leadership-active",
+                            label: "Sofort bei aktiven Aufgaben ab",
+                            value: taskLeadershipImmediateActiveLimit,
+                            setValue: setTaskLeadershipImmediateActiveLimit,
+                            fallback: 12,
+                            max: 100,
+                            unit: "Aufgaben",
+                          },
+                          {
+                            key: "leadership-overdue",
+                            label: "Sofort bei überfälligen Aufgaben ab",
+                            value: taskLeadershipImmediateOverdueLimit,
+                            setValue: setTaskLeadershipImmediateOverdueLimit,
+                            fallback: 4,
+                            max: 100,
+                            unit: "Aufgaben",
+                          },
+                        ].map((field) => (
+                          <div className={styles.companySettingsForm} key={field.key}>
+                            <label>
+                              {field.label}
+                              <input
+                                type="number"
+                                min="1"
+                                max={field.max}
+                                step="1"
+                                value={field.value}
+                                onChange={(event) =>
+                                  field.setValue(
+                                    normalizeDeadlineInteger(event.target.value, field.fallback, 1, field.max)
+                                  )
+                                }
+                              />
+                            </label>
+                            <span className={styles.companySettingsHint}>{field.unit}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+
+                    <section className={styles.deadlineSettingsGroup}>
+                      <div className={styles.deadlineSettingsGroupHeader}>
+                        <strong>Eskalation an Geschäftsführung</strong>
+                        <span>Folgestufe nach der Führungskraft oder sofort bei besonders hoher Belastung.</span>
+                      </div>
+                      <div className={styles.deadlineSettingsGrid}>
+                        {[
+                          {
+                            key: "management-delay",
+                            label: "Nach Führungskraft eskalieren nach",
+                            value: taskManagementEscalationWorkdays,
+                            setValue: setTaskManagementEscalationWorkdays,
+                            fallback: 3,
+                            max: 60,
+                            unit: "Werkstagen",
+                          },
+                          {
+                            key: "management-active",
+                            label: "Sofort bei aktiven Aufgaben ab",
+                            value: taskManagementImmediateActiveLimit,
+                            setValue: setTaskManagementImmediateActiveLimit,
+                            fallback: 15,
+                            max: 100,
+                            unit: "Aufgaben",
+                          },
+                          {
+                            key: "management-overdue",
+                            label: "Sofort bei überfälligen Aufgaben ab",
+                            value: taskManagementImmediateOverdueLimit,
+                            setValue: setTaskManagementImmediateOverdueLimit,
+                            fallback: 6,
+                            max: 100,
+                            unit: "Aufgaben",
+                          },
+                        ].map((field) => (
+                          <div className={styles.companySettingsForm} key={field.key}>
+                            <label>
+                              {field.label}
+                              <input
+                                type="number"
+                                min="1"
+                                max={field.max}
+                                step="1"
+                                value={field.value}
+                                onChange={(event) =>
+                                  field.setValue(
+                                    normalizeDeadlineInteger(event.target.value, field.fallback, 1, field.max)
+                                  )
+                                }
+                              />
+                            </label>
+                            <span className={styles.companySettingsHint}>{field.unit}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+
+                    <p className={styles.deadlineSettingsNote}>
+                      Kritische Sofortgrenzen werden beim Speichern automatisch so geordnet, dass die
+                      Geschäftsführungsstufe nicht vor der Führungskraft und diese nicht vor der
+                      Mitarbeiterstufe greift.
+                    </p>
                   </div>
                 ) : deadlineSettingsSection === "stampInterruptions" ? (
                   <>
