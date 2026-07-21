@@ -25,7 +25,7 @@ function textToHtml(value: string) {
 
 export async function sendTaskNotificationMailSafely(input: TaskNotificationMailInput) {
   const status = getSystemMailStatus();
-  if (!status.configured) return;
+  if (!status.configured) return false;
 
   try {
     const recipient = await prisma.user.findUnique({
@@ -37,7 +37,7 @@ export async function sendTaskNotificationMailSafely(input: TaskNotificationMail
       },
     });
 
-    if (!recipient?.email) return;
+    if (!recipient?.email) return false;
 
     await sendSystemMail({
       to: recipient.email,
@@ -55,7 +55,9 @@ export async function sendTaskNotificationMailSafely(input: TaskNotificationMail
         sentAt: new Date(),
       },
     });
+    return true;
   } catch (error) {
     console.error("Task notification mail could not be sent", error);
+    return false;
   }
 }

@@ -50,6 +50,7 @@ model Organization {
   taskLinks                     TaskLink[]
   taskParticipants              TaskParticipant[]
   taskTemplates                 TaskTemplate[]
+  taskEscalationEpisodes        TaskEscalationEpisode[]
   teams                         Team[]
   timeEntries                   TimeEntry[]
   users                         User[]
@@ -104,6 +105,7 @@ model User {
   ownedTasks              Task[]                    @relation("TaskOwner")
   taskComments            TaskComment[]
   taskParticipations      TaskParticipant[]
+  taskEscalationEpisodes  TaskEscalationEpisode[]
   timeEntries             TimeEntry[]
   department              Department?               @relation(fields: [departmentId], references: [id])
   organization            Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -1177,6 +1179,38 @@ model StatusEscalationEvent {
 
   @@index([organizationId, ruleId, entityType, entityId, resolvedAt])
   @@index([organizationId, dailyReportDate])
+}
+
+model TaskEscalationEpisode {
+  id                    String       @id @default(cuid())
+  organizationId        String
+  userId                String
+  episode               Int
+  activeKey             String?      @unique
+  highestStage          String
+  observedStage         String
+  notifiedStage         String       @default("none")
+  warningSince          DateTime
+  leadershipDueAt       DateTime?
+  managementDueAt       DateTime?
+  leadershipRecipientId String?
+  leadershipRequired    Boolean      @default(true)
+  activeCount           Int          @default(0)
+  overdueCount          Int          @default(0)
+  staleCount            Int          @default(0)
+  waitingFeedbackCount  Int          @default(0)
+  reasons               Json         @default("[]")
+  taskIds               Json         @default("[]")
+  lastEvaluatedAt       DateTime     @default(now())
+  resolvedAt            DateTime?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId, episode])
+  @@index([organizationId, userId, resolvedAt])
+  @@index([organizationId, highestStage, resolvedAt])
 }
 
 model TaskTemplate {

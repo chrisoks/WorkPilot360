@@ -3,4 +3,9 @@ export async function register() {
 
   const { startWinterServiceScheduler } = await import("./lib/automation/winter-service-scheduler");
   startWinterServiceScheduler();
+
+  const { startTaskEscalationScheduler } = await import(
+    "./lib/automation/task-escalation-scheduler"
+  );
+  startTaskEscalationScheduler();
 }

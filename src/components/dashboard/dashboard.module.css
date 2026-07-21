@@ -16954,6 +16954,152 @@
   padding: 10px 12px;
 }
 
+.taskEscalationPreview {
+  border-top: 1px solid #e2e8f0;
+  display: grid;
+  gap: 14px;
+  padding-top: 18px;
+}
+
+.taskEscalationPreviewHeader {
+  align-items: end;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+}
+
+.taskEscalationPreviewHeader > div {
+  display: grid;
+  gap: 4px;
+}
+
+.taskEscalationPreviewActions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.taskEscalationPreviewHeader strong {
+  color: #0f172a;
+  font-size: 0.94rem;
+  font-weight: 850;
+}
+
+.taskEscalationPreviewHeader span,
+.taskEscalationPreviewBasis,
+.taskEscalationPreviewEmpty {
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.taskEscalationPreviewSummary {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+}
+
+.taskEscalationPreviewSummary > div {
+  background: #f8fafc;
+  border: 1px solid #dbe4ee;
+  border-radius: 10px;
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+}
+
+.taskEscalationPreviewSummary span {
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.taskEscalationPreviewSummary strong {
+  color: #0f172a;
+  font-size: 1.25rem;
+  font-weight: 900;
+}
+
+.taskEscalationPreviewBasis,
+.taskEscalationPreviewEmpty,
+.taskEscalationPreviewError {
+  margin: 0;
+}
+
+.taskEscalationPreviewError {
+  color: #b91c1c;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.taskEscalationSyncMessage {
+  color: #047857;
+  font-size: 0.82rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.taskEscalationPreviewList {
+  border: 1px solid #dbe4ee;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.taskEscalationPreviewRow {
+  align-items: center;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
+.taskEscalationPreviewRow:first-child {
+  border-top: 0;
+}
+
+.taskEscalationPreviewRow > div {
+  display: grid;
+  gap: 3px;
+}
+
+.taskEscalationPreviewRow > div:last-child {
+  justify-items: end;
+}
+
+.taskEscalationPreviewRow strong {
+  color: #0f172a;
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.taskEscalationPreviewRow span,
+.taskEscalationPreviewRow small {
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.taskEscalationStage {
+  border: 1px solid #93c5fd;
+  border-radius: 999px;
+  color: #1d4ed8 !important;
+  padding: 3px 8px;
+}
+
+.taskEscalationStage[data-stage="leadership"] {
+  border-color: #f59e0b;
+  color: #9a3412 !important;
+}
+
+.taskEscalationStage[data-stage="management"] {
+  border-color: #ef4444;
+  color: #b91c1c !important;
+}
+
 .deadlinePlannedState {
   background: #f8fafc;
   border: 1px dashed #cbd5e1;

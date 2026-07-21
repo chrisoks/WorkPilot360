@@ -626,6 +626,50 @@ type DeadlineSettingsData = {
   punctualityEndToleranceMinutes?: number;
   hourlyBillingRoundingFactorHours?: number;
 };
+type TaskEscalationPreviewStage = "employee" | "leadership" | "management";
+type TaskEscalationPreviewResponse = {
+  dryRun: true;
+  generatedAt: string;
+  calculationBasis: string;
+  summary: {
+    employees: number;
+    leadership: number;
+    management: number;
+    missingLeadership: number;
+  };
+  items: Array<{
+    userId: string;
+    userName: string;
+    stage: TaskEscalationPreviewStage;
+    activeCount: number;
+    overdueCount: number;
+    staleCount: number;
+    waitingFeedbackCount: number;
+    warningSince: string | null;
+    leadershipRecipientId: string | null;
+    leadershipRecipientName: string | null;
+    leadershipRequired: boolean;
+    reasons: string[];
+  }>;
+};
+type TaskEscalationSyncResponse = {
+  synchronizedAt: string;
+  notificationsSent: number;
+  emailsSent: number;
+  deliveryEnabled: boolean;
+  message: string;
+  summary: {
+    active: number;
+    created: number;
+    updated: number;
+    resolved: number;
+  };
+  delivery: {
+    enabled: boolean;
+    plannedNotifications: number;
+    blockedLeadershipEpisodes: number;
+  };
+};
 type CompanyProfileEditTab = "general" | "contact" | "bank";
 type EmployeeTopTab = "overview" | "absence" | "time" | "balance" | "documents" | "costs";
 type EmployeeTimePeriod = "day" | "month" | "year" | "custom";
@@ -5908,6 +5952,13 @@ export function DashboardPage() {
   const [deadlineSettingsSection, setDeadlineSettingsSection] = useState<DeadlineSettingsSection>("offers");
   const [deadlineSettingsMessage, setDeadlineSettingsMessage] = useState("");
   const [isSavingDeadlineSettings, setIsSavingDeadlineSettings] = useState(false);
+  const [taskEscalationPreview, setTaskEscalationPreview] =
+    useState<TaskEscalationPreviewResponse | null>(null);
+  const [taskEscalationPreviewError, setTaskEscalationPreviewError] = useState("");
+  const [isLoadingTaskEscalationPreview, setIsLoadingTaskEscalationPreview] = useState(false);
+  const [taskEscalationSyncMessage, setTaskEscalationSyncMessage] = useState("");
+  const [taskEscalationSyncError, setTaskEscalationSyncError] = useState("");
+  const [isSynchronizingTaskEscalations, setIsSynchronizingTaskEscalations] = useState(false);
   const [offerLineSearchTerms, setOfferLineSearchTerms] = useState<Record<string, string>>({});
   const [openOfferLinePickerId, setOpenOfferLinePickerId] = useState("");
   const [isOfferExecutionMonthPickerOpen, setIsOfferExecutionMonthPickerOpen] = useState(false);
@@ -8160,6 +8211,7 @@ export function DashboardPage() {
       );
       setCompletedTaskArchiveDays(Math.max(1, Math.min(30, Math.round(Number(data.completedTaskArchiveDays) || 5))));
       applyTaskWorkloadDeadlineSettings(data);
+      setTaskEscalationPreview(null);
       setInterruptedWorkFollowUpDays(Math.max(1, Math.min(30, Math.round(Number(data.interruptedWorkFollowUpDays) || 2))));
       setInterruptedWorkManagementEscalationDays(
         Math.max(1, Math.min(60, Math.round(Number(data.interruptedWorkManagementEscalationDays) || 7)))
@@ -12731,6 +12783,66 @@ export function DashboardPage() {
       setMailTemplatesError("E-Mail-Vorlagen konnten nicht geladen werden.");
     } finally {
       setIsLoadingMailTemplates(false);
+    }
+  }
+
+  async function loadTaskEscalationPreview() {
+    setIsLoadingTaskEscalationPreview(true);
+    setTaskEscalationPreviewError("");
+
+    try {
+      const res = await fetch("/api/task-escalations/preview", {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      const data = (await res.json()) as TaskEscalationPreviewResponse & { error?: string };
+      if (!res.ok) {
+        setTaskEscalationPreviewError(data.error || "Die Eskalationsvorschau konnte nicht geladen werden.");
+        return;
+      }
+      setTaskEscalationPreview(data);
+    } catch {
+      setTaskEscalationPreviewError("Die Eskalationsvorschau konnte nicht geladen werden.");
+    } finally {
+      setIsLoadingTaskEscalationPreview(false);
+    }
+  }
+
+  async function synchronizeTaskEscalations() {
+    if (isSynchronizingTaskEscalations) return;
+    setIsSynchronizingTaskEscalations(true);
+    setTaskEscalationSyncError("");
+    setTaskEscalationSyncMessage("");
+
+    try {
+      const res = await fetch("/api/task-escalations/sync", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      const data = (await res.json()) as TaskEscalationSyncResponse & { error?: string };
+      if (!res.ok) {
+        setTaskEscalationSyncError(data.error || "Der Eskalationsstatus konnte nicht gespeichert werden.");
+        return;
+      }
+      setTaskEscalationSyncMessage(
+        [
+          data.message,
+          `Aktiv: ${data.summary.active}, neu: ${data.summary.created}, aktualisiert: ${data.summary.updated}, abgeschlossen: ${data.summary.resolved}.`,
+          data.delivery.enabled
+            ? `Versendet: ${data.notificationsSent} Notifications und ${data.emailsSent} Systemmails.`
+            : `Bei einer späteren Aktivierung wären aktuell ${data.delivery.plannedNotifications} Empfänger vorgesehen.`,
+          data.delivery.blockedLeadershipEpisodes > 0
+            ? `${data.delivery.blockedLeadershipEpisodes} Eskalation(en) können wegen fehlender Führungskraft-Zuordnung nicht an die Führungskraft zugestellt werden.`
+            : "",
+        ]
+          .filter(Boolean)
+          .join(" ")
+      );
+      await loadTaskEscalationPreview();
+    } catch {
+      setTaskEscalationSyncError("Der Eskalationsstatus konnte nicht gespeichert werden.");
+    } finally {
+      setIsSynchronizingTaskEscalations(false);
     }
   }
 
@@ -49829,6 +49941,118 @@ await addProjectLogbookEntry(
                       Geschäftsführungsstufe nicht vor der Führungskraft und diese nicht vor der
                       Mitarbeiterstufe greift.
                     </p>
+
+                    <section className={styles.taskEscalationPreview}>
+                      <div className={styles.taskEscalationPreviewHeader}>
+                        <div>
+                          <strong>Eskalationsvorschau</strong>
+                          <span>
+                            Reiner Dry-Run: Es werden keine Aufgaben, Notifications oder Systemmails verändert
+                            oder versendet.
+                          </span>
+                        </div>
+                        <div className={styles.taskEscalationPreviewActions}>
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            onClick={() => void loadTaskEscalationPreview()}
+                            disabled={isLoadingTaskEscalationPreview || isSynchronizingTaskEscalations}
+                          >
+                            {isLoadingTaskEscalationPreview ? "Prüft..." : "Dry-Run ausführen"}
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.primaryButton}
+                            onClick={() => void synchronizeTaskEscalations()}
+                            disabled={isSynchronizingTaskEscalations || isLoadingTaskEscalationPreview}
+                          >
+                            {isSynchronizingTaskEscalations ? "Speichert..." : "Status speichern"}
+                          </button>
+                        </div>
+                      </div>
+
+                      {taskEscalationPreviewError ? (
+                        <p className={styles.taskEscalationPreviewError}>{taskEscalationPreviewError}</p>
+                      ) : null}
+
+                      {taskEscalationSyncError ? (
+                        <p className={styles.taskEscalationPreviewError}>{taskEscalationSyncError}</p>
+                      ) : null}
+
+                      {taskEscalationSyncMessage ? (
+                        <p className={styles.taskEscalationSyncMessage}>{taskEscalationSyncMessage}</p>
+                      ) : null}
+
+                      {taskEscalationPreview ? (
+                        <>
+                          <div className={styles.taskEscalationPreviewSummary}>
+                            {[
+                              {
+                                label: "Mitarbeiterwarnung",
+                                value: taskEscalationPreview.summary.employees,
+                              },
+                              {
+                                label: "Führungskraft",
+                                value: taskEscalationPreview.summary.leadership,
+                              },
+                              {
+                                label: "Geschäftsführung",
+                                value: taskEscalationPreview.summary.management,
+                              },
+                              {
+                                label: "Führungskraft fehlt",
+                                value: taskEscalationPreview.summary.missingLeadership,
+                              },
+                            ].map((entry) => (
+                              <div key={entry.label}>
+                                <span>{entry.label}</span>
+                                <strong>{entry.value}</strong>
+                              </div>
+                            ))}
+                          </div>
+
+                          <p className={styles.taskEscalationPreviewBasis}>
+                            Stand {formatInstantDateTime(taskEscalationPreview.generatedAt)} · Berechnung: {taskEscalationPreview.calculationBasis}
+                          </p>
+
+                          {taskEscalationPreview.items.length === 0 ? (
+                            <p className={styles.taskEscalationPreviewEmpty}>
+                              Mit den gespeicherten Grenzen ist aktuell keine Eskalationsstufe erreicht.
+                            </p>
+                          ) : (
+                            <div className={styles.taskEscalationPreviewList}>
+                              {taskEscalationPreview.items.map((item) => (
+                                <div className={styles.taskEscalationPreviewRow} key={item.userId}>
+                                  <div>
+                                    <strong>{item.userName}</strong>
+                                    <span>{item.reasons.join(" · ")}</span>
+                                  </div>
+                                  <div>
+                                    <span
+                                      className={styles.taskEscalationStage}
+                                      data-stage={item.stage}
+                                    >
+                                      {item.stage === "management"
+                                        ? "Geschäftsführung"
+                                        : item.stage === "leadership"
+                                          ? "Führungskraft"
+                                          : "Mitarbeiter"}
+                                    </span>
+                                    {item.stage !== "employee" && item.leadershipRequired ? (
+                                      <small>
+                                        {item.leadershipRecipientName
+                                          ? `Zuständig: ${item.leadershipRecipientName}`
+                                          : "Keine Führungskraft zugeordnet"}
+                                      </small>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      ) : null}
+                    </section>
                   </div>
                 ) : deadlineSettingsSection === "stampInterruptions" ? (
                   <>
