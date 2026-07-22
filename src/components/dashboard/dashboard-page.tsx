@@ -3138,6 +3138,32 @@ function getInitials(name: string) {
   return (initials || "MA").toUpperCase();
 }
 
+function CustomerContactChannelIcon({ type }: { type: "phone" | "mobile" | "email" }) {
+  if (type === "email") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3.5" y="5.5" width="17" height="13" rx="2.5" />
+        <path d="m5 7 7 5.5L19 7" />
+      </svg>
+    );
+  }
+
+  if (type === "mobile") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="7" y="2.8" width="10" height="18.4" rx="2.2" />
+        <path d="M10.2 5h3.6M11 18.5h2" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7.1 3.8 10 7.7 8.2 10a15.8 15.8 0 0 0 5.8 5.8l2.3-1.8 3.9 2.9c.4.3.6.8.4 1.3-.5 1.5-1.8 2.4-3.4 2.2C10.1 19.6 4.4 13.9 3.6 6.8c-.2-1.6.7-2.9 2.2-3.4.5-.2 1 0 1.3.4Z" />
+    </svg>
+  );
+}
+
 function getNextProjectSequence(projects: HeroProjectPreview[]) {
   const numericIds = projects
     .map((project) => Number(getProjectNumberSuffix(project.projectNumber || "")))
@@ -38000,10 +38026,13 @@ await addProjectLogbookEntry(
             {customerFileTab === "contacts" ? (
               <>
                 <div className={styles.customerFileMainHeader}>
-                  <h2>Ansprechpartner</h2>
+                  <h2>
+                    Ansprechpartner
+                    <span className={styles.customerContactCount}>{customerFileContacts.length}</span>
+                  </h2>
                   <button
                     type="button"
-                    className={styles.primaryButton}
+                    className={`${styles.primaryButton} ${styles.customerContactAddButton}`}
                     onClick={() => {
                       setContactDraft({
                         ...emptyContact,
@@ -38031,53 +38060,88 @@ await addProjectLogbookEntry(
                       const directlyAssignedProjects = customerProjects.filter(
                         (project) => project.contactPersonId === contact.id
                       );
+                      const contactDisplayName = getContactDisplayName(contact);
+                      const contactInitials = getInitials(
+                        [contact.firstName, contact.lastName].filter(Boolean).join(" ") || contactDisplayName
+                      );
+                      const hasContactDetails = Boolean(contact.phone || contact.mobile || contact.email);
                       return (
-                        <article key={contact.id} className={styles.customerContactRow}>
-                          <div className={styles.customerContactDetails}>
-                            <div className={styles.customerContactHeading}>
+                        <article
+                          key={contact.id}
+                          className={styles.customerContactRow}
+                          data-main-contact={contact.isMainContact ? "true" : "false"}
+                        >
+                          <header className={styles.customerContactHeading}>
+                            <span className={styles.customerContactAvatar} aria-hidden="true">
+                              {contactInitials}
+                            </span>
+                            <div className={styles.customerContactIdentity}>
                               <div>
                                 <button
                                   type="button"
                                   className={styles.tableTextLink}
                                   onClick={() => openEditContactModal(contact)}
                                 >
-                                  {getContactDisplayName(contact)}
+                                  {contactDisplayName}
                                 </button>
-                                {contact.position && <span>({contact.position})</span>}
+                                {contact.position && (
+                                  <span className={styles.customerContactPosition}>{contact.position}</span>
+                                )}
                               </div>
-                              <button
-                                type="button"
-                                className={styles.secondaryButton}
-                                onClick={() => openEditContactModal(contact)}
-                              >
-                                Bearbeiten
-                              </button>
+                              <div className={styles.customerContactBadges}>
+                                {contact.isMainContact && <strong>Hauptkontakt</strong>}
+                                {contact.isInvoiceRecipient && <strong>Rechnungsempfänger</strong>}
+                              </div>
                             </div>
-                            <div className={styles.customerContactBadges}>
-                              {contact.isMainContact && <strong>Hauptkontakt</strong>}
-                              {contact.isInvoiceRecipient && <strong>Rechnungsempfänger</strong>}
-                            </div>
+                            <button
+                              type="button"
+                              className={`${styles.secondaryButton} ${styles.customerContactEditButton}`}
+                              onClick={() => openEditContactModal(contact)}
+                            >
+                              Bearbeiten
+                            </button>
+                          </header>
+
+                          {hasContactDetails ? (
                             <dl className={styles.customerContactMeta}>
-                              <div><dt>Telefon</dt><dd>{contact.phone || "-"}</dd></div>
-                              <div><dt>Mobil</dt><dd>{contact.mobile || "-"}</dd></div>
-                              <div><dt>E-Mail</dt><dd>{contact.email || "-"}</dd></div>
+                              {contact.phone ? (
+                                <div>
+                                  <dt><CustomerContactChannelIcon type="phone" /> Telefon</dt>
+                                  <dd>{contact.phone}</dd>
+                                </div>
+                              ) : null}
+                              {contact.mobile ? (
+                                <div>
+                                  <dt><CustomerContactChannelIcon type="mobile" /> Mobil</dt>
+                                  <dd>{contact.mobile}</dd>
+                                </div>
+                              ) : null}
+                              {contact.email ? (
+                                <div>
+                                  <dt><CustomerContactChannelIcon type="email" /> E-Mail</dt>
+                                  <dd>{contact.email}</dd>
+                                </div>
+                              ) : null}
                             </dl>
-                          </div>
-                          <div className={styles.customerProjects}>
-                            <b>Direkt zugeordnete Projekte</b>
-                            {directlyAssignedProjects.length === 0 ? (
-                              <span>Keine direkte Projektzuordnung</span>
-                            ) : (
-                              directlyAssignedProjects.slice(0, 5).map((project) => (
-                                <button key={project.id} type="button" onClick={() => openProjectFile(project)}>
-                                  {project.projectNumber} · {project.title}
-                                </button>
-                              ))
-                            )}
-                            {directlyAssignedProjects.length > 5 ? (
-                              <small>+ {directlyAssignedProjects.length - 5} weitere Projekte</small>
-                            ) : null}
-                          </div>
+                          ) : (
+                            <p className={styles.customerContactEmpty}>Noch keine Kontaktdaten hinterlegt.</p>
+                          )}
+
+                          {directlyAssignedProjects.length > 0 ? (
+                            <div className={styles.customerProjects}>
+                              <b>Projekte</b>
+                              <div>
+                                {directlyAssignedProjects.slice(0, 5).map((project) => (
+                                  <button key={project.id} type="button" onClick={() => openProjectFile(project)}>
+                                    {project.projectNumber} · {project.title}
+                                  </button>
+                                ))}
+                                {directlyAssignedProjects.length > 5 ? (
+                                  <small>+ {directlyAssignedProjects.length - 5} weitere</small>
+                                ) : null}
+                              </div>
+                            </div>
+                          ) : null}
                         </article>
                       );
                     })

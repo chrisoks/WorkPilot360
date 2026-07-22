@@ -12885,45 +12885,114 @@
   margin: 0;
 }
 
+.customerFileMainHeader h2 {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.customerContactCount {
+  align-items: center;
+  background: #e8f3f4;
+  border-radius: 999px;
+  color: #075c63;
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 900;
+  justify-content: center;
+  min-height: 24px;
+  min-width: 24px;
+  padding: 2px 7px;
+}
+
+.customerContactAddButton {
+  min-height: 38px;
+  padding: 8px 14px;
+}
+
 .customerContactList {
   display: grid;
-  max-height: 492px;
-  overflow: auto;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  padding-top: 4px;
 }
 
 .customerContactRow {
-  border-bottom: 1px solid #d8e0ea;
+  background: #ffffff;
+  border: 1px solid #dbe5ec;
+  border-radius: 14px;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.045);
   display: grid;
-  gap: 18px;
-  grid-template-columns: minmax(280px, 1fr) 280px;
-  padding: 10px 4px;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
 }
 
-.customerContactDetails {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
+.customerContactRow[data-main-contact="true"] {
+  border-color: #b9dfe2;
+  box-shadow:
+    inset 3px 0 0 #0f666d,
+    0 8px 22px rgba(15, 23, 42, 0.05);
+}
+
+.customerContactRow:hover {
+  border-color: #bfd1dd;
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.075);
 }
 
 .customerContactHeading {
-  align-items: center;
-  display: flex;
-  gap: 12px;
-  justify-content: space-between;
+  align-items: flex-start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
 }
 
-.customerContactHeading > div {
+.customerContactAvatar {
   align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
+  background: #e7f2f3;
+  border: 1px solid #c8e2e4;
+  border-radius: 12px;
+  color: #075c63;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 950;
+  height: 42px;
+  justify-content: center;
+  letter-spacing: 0.02em;
+  width: 42px;
+}
+
+.customerContactIdentity {
+  display: grid;
+  gap: 6px;
   min-width: 0;
 }
 
-.customerContactHeading .secondaryButton {
-  flex: 0 0 auto;
+.customerContactIdentity > div:first-child {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.customerContactIdentity .tableTextLink {
+  color: #0f172a;
+  font-size: 0.94rem;
+  font-weight: 900;
+  line-height: 1.25;
+  text-align: left;
+}
+
+.customerContactPosition {
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.customerContactEditButton {
   min-height: 32px;
-  padding: 6px 11px;
+  padding: 6px 10px;
 }
 
 .customerContactBadges {
@@ -12934,75 +13003,114 @@
 
 .customerContactMeta {
   display: grid;
-  gap: 5px 14px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   margin: 0;
 }
 
 .customerContactMeta div {
+  background: #f7fafb;
+  border: 1px solid #e7eef2;
+  border-radius: 10px;
+  display: grid;
+  gap: 3px;
   min-width: 0;
-}
-
-.customerContactMeta div:last-child {
-  grid-column: 1 / -1;
+  padding: 9px 10px;
 }
 
 .customerContactMeta dt {
+  align-items: center;
   color: #64748b;
+  display: flex;
   font-size: 0.68rem;
   font-weight: 850;
+  gap: 5px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
+.customerContactMeta dt svg {
+  fill: none;
+  height: 14px;
+  stroke: #0f666d;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+  width: 14px;
+}
+
 .customerContactMeta dd {
   color: #1e293b;
-  font-size: 0.84rem;
-  font-weight: 700;
-  margin: 1px 0 0;
+  font-size: 0.82rem;
+  font-weight: 750;
+  margin: 0;
   overflow-wrap: anywhere;
 }
 
-.customerContactRow strong {
-  background: #e6f7fb;
-  border-radius: 999px;
-  color: #087b85;
-  font-size: 0.72rem;
-  font-weight: 900;
-  padding: 2px 7px;
-}
-
-.customerProjects {
-  display: grid;
-  gap: 4px;
-}
-
-.customerProjects b {
-  color: #0f172a;
-  font-size: 0.86rem;
-}
-
-.customerProjects button {
-  background: transparent;
-  border: 0;
-  color: #005fff;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 0.86rem;
-  font-weight: 650;
-  padding: 0;
-  text-align: left;
-}
-
-.customerProjects button:hover {
-  text-decoration: underline;
-}
-
-.customerProjects span,
-.customerProjects small {
+.customerContactEmpty {
   color: #64748b;
   font-size: 0.8rem;
   font-weight: 650;
+  margin: 0;
+}
+
+.customerContactRow strong {
+  background: #e7f4f5;
+  border-radius: 999px;
+  color: #075c63;
+  font-size: 0.68rem;
+  font-weight: 900;
+  padding: 3px 7px;
+}
+
+.customerProjects {
+  align-items: center;
+  border-top: 1px solid #e7eef2;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr);
+  padding-top: 11px;
+}
+
+.customerProjects b {
+  color: #64748b;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+.customerProjects > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.customerProjects button {
+  background: #eef6ff;
+  border: 1px solid #d4e4f7;
+  border-radius: 999px;
+  color: #184e8e;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 5px 8px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.customerProjects button:hover {
+  background: #deecfb;
+  border-color: #aac9eb;
+}
+
+.customerProjects small {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 750;
+  padding: 5px 2px;
 }
 
 .customerLogToolbar {
