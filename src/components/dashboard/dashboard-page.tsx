@@ -453,6 +453,16 @@ function getTimeZoneOffsetMs(date: Date, timeZone: string) {
 
 function parseAppDateTime(value: string) {
   if (!value) return new Date(NaN);
+  const localizedMatch = value.match(
+    /^(\d{2})\.(\d{2})\.(\d{2}|\d{4}),?\s+(\d{2}):(\d{2})(?::(\d{2}))?$/
+  );
+
+  if (localizedMatch) {
+    const [, day, month, rawYear, hour, minute, second = "00"] = localizedMatch;
+    const year = rawYear.length === 2 ? 2000 + Number(rawYear) : Number(rawYear);
+    return new Date(year, Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
+  }
+
   const match = value.match(
     /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?Z$/
   );
@@ -6100,6 +6110,18 @@ export function DashboardPage() {
       | "additionalSales"
       | null
     >(null);
+  const [selectedProjectAnalyticsDetail, setSelectedProjectAnalyticsDetail] = useState<
+    "runtime" | "bottlenecks" | "critical" | "revenue" | "hours" | null
+  >(null);
+  const [selectedProjectBottleneckKind, setSelectedProjectBottleneckKind] = useState<"oneTime" | "recurring">("oneTime");
+  const [selectedSalesAnalyticsDetail, setSelectedSalesAnalyticsDetail] = useState<
+    "actions" | "offers" | "newCustomers" | "closing" | "recurring" | "risk" | null
+  >(null);
+  const [selectedSvsAnalyticsDetail, setSelectedSvsAnalyticsDetail] = useState<
+    "average" | "coverage" | "evaluable" | "missing" | "hours" | null
+  >(null);
+  const [isSvsTradeTableExpanded, setIsSvsTradeTableExpanded] = useState(false);
+  const [svsModalSearch, setSvsModalSearch] = useState("");
   const [selectedForecastPeriod, setSelectedForecastPeriod] = useState("total");
   const [reportPeriodPreset, setReportPeriodPreset] = useState<ReportPeriodPreset>("last12");
   const [isForecastQualityExpanded, setIsForecastQualityExpanded] = useState(false);
@@ -26797,13 +26819,27 @@ await addProjectLogbookEntry(
       .map((invoice) => {
       const project = heroProjects.find((item) => item.id === invoice.projectId);
       const trade = project?.trade || "Ohne Gewerk";
-      const linkedStampEntries = stampEntries.filter(
-        (entry) =>
-          !entry.deletedAt &&
-          entry.mode === "project" &&
-          (entry.invoiceId === invoice.id ||
-            (!!entry.invoiceNumber && entry.invoiceNumber === invoice.invoiceNumber))
-      );
+      const relevantStampEntries = stampEntries.filter((entry) => !entry.deletedAt && entry.mode === "project");
+      const conflictingStampEntries = relevantStampEntries.filter((entry) => {
+        const entryInvoiceId = String(entry.invoiceId ?? "").trim();
+        const entryInvoiceNumber = String(entry.invoiceNumber ?? "").trim();
+        const referencesInvoice = entryInvoiceId === invoice.id || entryInvoiceNumber === invoice.invoiceNumber;
+        if (!referencesInvoice) return false;
+        return (
+          (entryInvoiceId !== "" && entryInvoiceId !== invoice.id) ||
+          (entryInvoiceNumber !== "" && entryInvoiceNumber !== invoice.invoiceNumber) ||
+          entry.projectId !== invoice.projectId
+        );
+      });
+      const linkedStampEntries = relevantStampEntries.filter((entry) => {
+        const entryInvoiceId = String(entry.invoiceId ?? "").trim();
+        const entryInvoiceNumber = String(entry.invoiceNumber ?? "").trim();
+        if (entry.projectId !== invoice.projectId) return false;
+        if (entryInvoiceId) {
+          return entryInvoiceId === invoice.id && (!entryInvoiceNumber || entryInvoiceNumber === invoice.invoiceNumber);
+        }
+        return entryInvoiceNumber === invoice.invoiceNumber;
+      });
       const stampedHours =
         linkedStampEntries.reduce((sum, entry) => sum + Math.max(0, entry.durationMs), 0) / 3600000;
       const svs = stampedHours > 0 ? invoice.netTotal / stampedHours : 0;
@@ -26812,9 +26848,10 @@ await addProjectLogbookEntry(
         project,
         trade,
         linkedStampEntries,
+        conflictingStampEntries,
         stampedHours,
         svs,
-        status: stampedHours > 0 ? "ok" : "missing",
+        status: conflictingStampEntries.length > 0 ? "conflict" : stampedHours > 0 ? "ok" : "missing",
       };
     })
     .filter((row) => isProjectVisibleInProjectScopedAnalytics(row.project))
@@ -26840,12 +26877,12 @@ await addProjectLogbookEntry(
     (row) => activeSvsTradeFilter === "all" || row.trade === activeSvsTradeFilter
   );
   const svsEvaluableRows = svsInvoiceRows.filter((row) => row.status === "ok");
-  const svsNotEvaluableRows = svsInvoiceRows.filter((row) => row.status === "missing");
+  const svsNotEvaluableRows = svsInvoiceRows.filter((row) => row.status !== "ok");
   const previousSvsInvoiceRows = previousSvsAllInvoiceRows.filter(
     (row) => activeSvsTradeFilter === "all" || row.trade === activeSvsTradeFilter
   );
   const previousSvsEvaluableRows = previousSvsInvoiceRows.filter((row) => row.status === "ok");
-  const previousSvsNotEvaluableRows = previousSvsInvoiceRows.filter((row) => row.status === "missing");
+  const previousSvsNotEvaluableRows = previousSvsInvoiceRows.filter((row) => row.status !== "ok");
   const svsTotalRevenue = svsEvaluableRows.reduce((sum, row) => sum + row.invoice.netTotal, 0);
   const svsTotalHours = svsEvaluableRows.reduce((sum, row) => sum + row.stampedHours, 0);
   const svsAverage = svsTotalHours > 0 ? svsTotalRevenue / svsTotalHours : 0;
@@ -26854,6 +26891,8 @@ await addProjectLogbookEntry(
   const previousSvsAverage = previousSvsTotalHours > 0 ? previousSvsTotalRevenue / previousSvsTotalHours : 0;
   const svsEvaluableShare =
     svsInvoiceRows.length > 0 ? (svsEvaluableRows.length / svsInvoiceRows.length) * 100 : 0;
+  const svsInvoiceRevenueTotal = svsInvoiceRows.reduce((sum, row) => sum + row.invoice.netTotal, 0);
+  const svsRevenueCoverage = svsInvoiceRevenueTotal > 0 ? (svsTotalRevenue / svsInvoiceRevenueTotal) * 100 : 0;
   const previousSvsEvaluableShare =
     previousSvsInvoiceRows.length > 0 ? (previousSvsEvaluableRows.length / previousSvsInvoiceRows.length) * 100 : 0;
   const svsDataQualityState =
@@ -26912,7 +26951,66 @@ await addProjectLogbookEntry(
       ...row,
       svs: row.stampedHours > 0 ? row.revenue / row.stampedHours : 0,
     }))
-    .sort((first, second) => second.revenue - first.revenue);
+    .sort((first, second) => second.svs - first.svs || second.revenue - first.revenue);
+  const selectedSvsRows = selectedSvsAnalyticsDetail === "evaluable"
+    ? svsEvaluableRows
+    : selectedSvsAnalyticsDetail === "missing"
+      ? svsNotEvaluableRows
+      : selectedSvsAnalyticsDetail === "hours"
+        ? [...svsEvaluableRows].sort((first, second) => second.stampedHours - first.stampedHours)
+        : svsInvoiceRows;
+  const selectedSvsAnalyticsTitle = selectedSvsAnalyticsDetail === "average"
+    ? "Umsatz je verknüpfter Stunde im Detail"
+    : selectedSvsAnalyticsDetail === "coverage"
+      ? "SVS-Datenbasis im Detail"
+      : selectedSvsAnalyticsDetail === "evaluable"
+        ? "Auswertbare Rechnungen im Detail"
+        : selectedSvsAnalyticsDetail === "missing"
+          ? "Nicht auswertbare Rechnungen im Detail"
+          : selectedSvsAnalyticsDetail === "hours"
+            ? "Verknüpfte Stunden im Detail"
+            : "";
+  const selectedSvsAnalyticsInterpretation = selectedSvsAnalyticsDetail === "average"
+    ? "Die Kennzahl teilt den Netto-Rechnungsumsatz durch die Stempelstunden, die genau diesen Rechnungen zugeordnet wurden. Sie zeigt Umsatz je verknüpfter Arbeitsstunde, aber weder Gewinn noch reine Arbeitsproduktivität, weil Rechnungswerte auch Material und Fremdleistungen enthalten können."
+    : selectedSvsAnalyticsDetail === "coverage"
+      ? "Die Datenbasis bewertet den Anteil der Rechnungen mit zugeordneten Stempelzeiten. Zusätzlich zeigt die Umsatzabdeckung, welcher Anteil des fakturierten Netto-Umsatzes tatsächlich in den SVS einfließt. Erst beide Werte zusammen machen die Aussagekraft sichtbar."
+      : selectedSvsAnalyticsDetail === "evaluable"
+        ? "Auswertbar sind nur aktive Rechnungen mit mindestens einer eindeutig derselben Rechnung und demselben Projekt zugeordneten Stempelzeit. Jede Stempelzeit kann dadurch nur einer Rechnung zugerechnet werden."
+        : selectedSvsAnalyticsDetail === "missing"
+          ? "Diese Rechnungen besitzen keine eindeutig nutzbare Stempelzeit. Sie bleiben sichtbar, fließen aber weder in den Durchschnitt noch in die Gewerk-SVS-Werte ein. Die Einordnung zeigt, ob Zeiten fehlen oder eine widersprüchliche Verknüpfung geprüft werden muss."
+          : "Gezeigt wird die Summe der eindeutig mit den Rechnungen verbundenen Projekt-Stempelzeiten. Zeiten ohne Rechnungszuordnung und gelöschte Einträge sind nicht enthalten.";
+  const normalizedSvsModalSearch = normalizeStampSearchValue(svsModalSearch.trim());
+  const doesSvsInvoiceRowMatchModalSearch = (row: (typeof svsInvoiceRows)[number]) => {
+    if (!normalizedSvsModalSearch) return true;
+    const statusLabel = row.status === "ok" ? "Auswertbar" : row.status === "conflict" ? "Verknüpfung prüfen" : "Stempelzeiten fehlen";
+    return [
+      row.invoice.invoiceNumber,
+      row.invoice.customerName,
+      row.project?.projectNumber,
+      row.invoice.projectNumber,
+      row.invoice.projectTitle,
+      row.trade,
+      row.invoice.serviceDate,
+      row.invoice.netTotal,
+      row.stampedHours,
+      row.svs,
+      statusLabel,
+    ].some((value) => normalizeStampSearchValue(String(value ?? "")).includes(normalizedSvsModalSearch));
+  };
+  const filteredSelectedSvsRows = selectedSvsRows.filter(doesSvsInvoiceRowMatchModalSearch);
+  const matchingSvsTrades = new Set(svsInvoiceRows.filter(doesSvsInvoiceRowMatchModalSearch).map((row) => row.trade));
+  const filteredSvsTradeRows = svsRowsByTrade.filter((row) => {
+    if (!normalizedSvsModalSearch) return true;
+    return matchingSvsTrades.has(row.trade) || [
+      row.trade,
+      row.invoiceCount,
+      row.evaluableCount,
+      row.missingCount,
+      row.revenue,
+      row.stampedHours,
+      row.svs,
+    ].some((value) => normalizeStampSearchValue(String(value)).includes(normalizedSvsModalSearch));
+  });
   const monthlyRevenueRows = reportMonthKeys.map((month) => {
     const monthInvoices = reportInvoices.filter(
       (invoice) => getProjectInvoiceMonth(invoice) === month.key
@@ -27090,7 +27188,6 @@ await addProjectLogbookEntry(
       };
     })
     .filter((row) => isSalesOfferVisibleForRole(row.offer))
-    .filter((row) => isSalesOfferInReportPeriod(row.offer, row.linkedInvoices))
     .filter((row) => {
       if (!reportSearchValue) return true;
       return [
@@ -27111,10 +27208,14 @@ await addProjectLogbookEntry(
     (row) => row.statusGroup === "open" || isSalesOfferInReportPeriod(row.offer, row.linkedInvoices)
   );
   const salesOpenOfferRows = salesActionOfferRows.filter((row) => row.statusGroup === "open");
-  const salesWonOfferRows = salesOfferRows.filter((row) => row.statusGroup === "won");
-  const salesLostOfferRows = salesOfferRows.filter((row) => row.statusGroup === "lost");
+  const salesWonOfferRows = salesAllOfferRows.filter(
+    (row) => row.statusGroup === "won" && Boolean(row.wonDate && isReportDate(row.wonDate))
+  );
+  const salesLostOfferRows = salesAllOfferRows.filter(
+    (row) => row.statusGroup === "lost" && Boolean(row.offer.lostAt && isReportDate(row.offer.lostAt))
+  );
   const salesWonValue = salesWonOfferRows.reduce(
-    (sum, row) => sum + (row.linkedInvoiceValue > 0 ? row.linkedInvoiceValue : row.offer.netTotal),
+    (sum, row) => sum + row.offer.netTotal,
     0
   );
   const salesOpenValue = salesOpenOfferRows.reduce((sum, row) => sum + row.offer.netTotal, 0);
@@ -27430,7 +27531,7 @@ await addProjectLogbookEntry(
       wonCount: monthWonOffers.length,
       lostCount: monthLostOffers.length,
       offerValue: monthOpenOffers.reduce((sum, row) => sum + row.offer.netTotal, 0),
-      wonValue: monthWonOffers.reduce((sum, row) => sum + (row.linkedInvoiceValue > 0 ? row.linkedInvoiceValue : row.offer.netTotal), 0),
+      wonValue: monthWonOffers.reduce((sum, row) => sum + row.offer.netTotal, 0),
       lostValue: monthLostOffers.reduce((sum, row) => sum + row.offer.netTotal, 0),
     };
   });
@@ -27630,9 +27731,13 @@ await addProjectLogbookEntry(
     },
   ];
   const salesTodayActionCount = salesActionRows.length + recurringNegotiationHighRiskRows.length;
+  const salesInterruptedRiskRows = salesInterruptedWorkRows.filter((row) => row.isOpenTask || !row.task);
+  const salesStockRiskCount =
+    salesStaleOpenOfferRows.length + salesOpenOfferWithoutFollowUpRows.length + salesInterruptedRiskRows.length;
   const salesCockpitCards = [
     {
       key: "actions",
+      detailKey: "actions" as const,
       icon: (
         <>
           <path d="M12 4 3.5 19h17L12 4Z" />
@@ -27651,6 +27756,7 @@ await addProjectLogbookEntry(
     },
     {
       key: "offer-engine",
+      detailKey: "offers" as const,
       icon: (
         <>
           <path d="M7 4h7l4 4v12H7z" />
@@ -27666,10 +27772,11 @@ await addProjectLogbookEntry(
         salesOfferMonthTrend === 0
           ? "wie Vormonat"
           : `${salesOfferMonthTrend > 0 ? "+" : ""}${salesOfferMonthTrend} zum Vormonat`,
-      detail: `${salesCurrentMonthRow?.baseOfferCount ?? 0} Basisangebote, ${salesCurrentMonthRow?.addendumOfferCount ?? 0} Nachtragsangebote im aktuellen Auswertungsmonat.`,
+      detail: `${salesCurrentMonthRow?.baseOfferCount ?? 0} ${(salesCurrentMonthRow?.baseOfferCount ?? 0) === 1 ? "Basisangebot" : "Basisangebote"}, ${salesCurrentMonthRow?.addendumOfferCount ?? 0} ${(salesCurrentMonthRow?.addendumOfferCount ?? 0) === 1 ? "Nachtragsangebot" : "Nachtragsangebote"} im aktuellen Auswertungsmonat.`,
     },
     {
       key: "new-customers",
+      detailKey: "newCustomers" as const,
       icon: (
         <>
           <path d="M8.5 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
@@ -27679,13 +27786,14 @@ await addProjectLogbookEntry(
         </>
       ),
       tone: salesNewCustomerContacts.length === 0 && salesCurrentMonthFirstCustomerOfferRows.length === 0 ? "watch" : "good",
-      label: "Neukundenbewegung",
-      value: `${salesNewCustomerContacts.length}`,
-      trend: `${salesCurrentMonthFirstCustomerOfferRows.length} Erstangebote`,
-      detail: "Neue Kundenkontakte im Zeitraum und erste Angebote an Kunden ohne ältere Angebotsakte.",
+      label: "Erstangebote",
+      value: `${salesCurrentMonthFirstCustomerOfferRows.length}`,
+      trend: `${salesNewCustomerContacts.length} neue Akten`,
+      detail: "Erste Angebote im aktuellen Auswertungsmonat; neue Kundenakten werden separat ausgewiesen.",
     },
     {
       key: "closing",
+      detailKey: "closing" as const,
       icon: (
         <>
           <path d="M4 13.5 9 18 20 6" />
@@ -27701,6 +27809,7 @@ await addProjectLogbookEntry(
     },
     {
       key: "recurring",
+      detailKey: "recurring" as const,
       icon: (
         <>
           <path d="M17.5 7.5A7 7 0 0 0 5.3 10" />
@@ -27719,6 +27828,7 @@ await addProjectLogbookEntry(
     },
     {
       key: "risk",
+      detailKey: "risk" as const,
       icon: (
         <>
           <path d="M12 3.5 19 6v5.5c0 4.4-2.9 7-7 9-4.1-2-7-4.6-7-9V6l7-2.5Z" />
@@ -27728,20 +27838,109 @@ await addProjectLogbookEntry(
       ),
       tone: salesStaleOpenOfferRows.length + salesOpenOfferWithoutFollowUpRows.length > 0 ? "watch" : "good",
       label: "Risiko im Bestand",
-      value: `${salesStaleOpenOfferRows.length + salesOpenOfferWithoutFollowUpRows.length}`,
-      trend: `${salesInterruptedWorkRows.filter((row) => row.isOpenTask || !row.task).length} Ausführung`,
+      value: `${salesStockRiskCount}`,
+      trend: `${salesInterruptedRiskRows.length} Ausführung`,
       detail: "Alte offene Angebote, fehlende Nachfassungen und unterbrochene Arbeiten.",
     },
   ];
+  const salesRiskOfferRows = [
+    ...salesStaleOpenOfferRows.map((row) => ({ ...row, riskLabel: `Seit ${getSalesOfferAgeDays(row.offer)} Tagen offen` })),
+    ...salesOpenOfferWithoutFollowUpRows.map((row) => ({ ...row, riskLabel: "Keine Nachfassaufgabe" })),
+  ];
+  const selectedSalesAnalyticsTitle = selectedSalesAnalyticsDetail === "actions"
+    ? "Heute vertrieblich handeln"
+    : selectedSalesAnalyticsDetail === "offers"
+      ? "Angebotsmotor im Detail"
+      : selectedSalesAnalyticsDetail === "newCustomers"
+        ? "Erstangebote und neue Kundenakten"
+        : selectedSalesAnalyticsDetail === "closing"
+          ? "Abschlusskraft im Detail"
+          : selectedSalesAnalyticsDetail === "recurring"
+            ? "Dauerläufer-Ausbau im Detail"
+            : selectedSalesAnalyticsDetail === "risk"
+              ? "Risiken im Vertriebsbestand"
+              : "";
+  const selectedSalesAnalyticsCount = selectedSalesAnalyticsDetail === "actions"
+    ? salesTodayActionCount
+    : selectedSalesAnalyticsDetail === "offers"
+      ? salesOfferRows.length
+      : selectedSalesAnalyticsDetail === "newCustomers"
+        ? salesCurrentMonthFirstCustomerOfferRows.length + salesNewCustomerContacts.length
+        : selectedSalesAnalyticsDetail === "closing"
+          ? salesDecisionCount
+          : selectedSalesAnalyticsDetail === "recurring"
+            ? recurringNegotiationRows.length
+            : selectedSalesAnalyticsDetail === "risk"
+              ? salesStockRiskCount
+              : 0;
+  const selectedSalesAnalyticsInterpretation = selectedSalesAnalyticsDetail === "actions"
+    ? "Die Liste bündelt fällige Zusatzverkaufs-Nachfassungen, überalterte oder nicht nachgefasste Angebote, offene unterbrochene Arbeiten und dringende Dauerläufer-Prüfungen. Offene To-dos bleiben bewusst auch außerhalb des gewählten Berichtszeitraums sichtbar."
+    : selectedSalesAnalyticsDetail === "offers"
+      ? "Der Angebotsmotor zählt im Monatsvergleich neu erstellte Angebote. Die Detailtabelle zeigt Angebote mit Aktivität im gewählten Zeitraum; der Verlauf trennt gewonnenes Angebotsvolumen nach Entscheidungsmonat vom neu erstellten Angebotsvolumen."
+      : selectedSalesAnalyticsDetail === "newCustomers"
+        ? "Ein Erstangebot ist das erste bekannte, nicht gelöschte Angebot zu einem Kundennamen. Neue Kundenakten werden nach ihrem technischen Anlagedatum ausgewiesen und deshalb nicht automatisch als tatsächlich neu gewonnene Kunden interpretiert."
+        : selectedSalesAnalyticsDetail === "closing"
+          ? "Die Abschlussquote verwendet nur Angebote, die im gewählten Zeitraum tatsächlich als gewonnen oder verloren entschieden wurden. Gewonnene Werte sind Angebotswerte, keine späteren Rechnungswerte."
+          : selectedSalesAnalyticsDetail === "recurring"
+            ? "Dauerläufer werden anhand dokumentierter Prüfungen, Nachtragsaktivität, Kontingentverbrauch und Erlös je gestempelter Stunde bewertet. Die Signale sind Prüfhinweise und keine automatische Preisentscheidung."
+            : selectedSalesAnalyticsDetail === "risk"
+              ? "Bestandsrisiken sind offene Angebote ab 14 Tagen, Angebote ohne aktive Nachfassaufgabe und unterbrochene Projektarbeiten ohne erledigte Klärung. Die operative Sicht ist nicht auf den Berichtszeitraum beschränkt, damit alte offene Vorgänge nicht verschwinden."
+              : "";
+  const isProjectInReportKindFilter = (project?: HeroProjectPreview | null) => {
+    if (!project) return reportProjectKindFilter === "all";
+    if (reportProjectKindFilter === "recurring") return isRecurringProjectKindValue(getProjectKind(project));
+    if (reportProjectKindFilter === "oneTime") return !isRecurringProjectKindValue(getProjectKind(project));
+    return true;
+  };
+  const getProjectAnalyticsInvoiceLineMaterialCost = (line: OfferLineDraft) =>
+    line.costSnapshotAt
+      ? Math.max(0, Number(line.materialCostSnapshot || 0))
+      : Math.max(0, getCatalogPurchasePriceForLine(line) * Number(line.quantity || 0));
+  const getProjectAnalyticsInvoiceMaterialCost = (invoice: InvoiceItem) =>
+    invoice.lines.reduce((sum, line) => sum + getProjectAnalyticsInvoiceLineMaterialCost(line), 0);
+  const getProjectAnalyticsStampCost = (entry: StampTimeEntry) => {
+    if (entry.costSnapshotAt) return Math.max(0, Number(entry.laborCostSnapshot || 0));
+    const hours = Math.max(0, Number(entry.durationMs) || 0) / 3_600_000;
+    return hours * (entry.userId ? getEmployeeHourlyCostRate(entry.userId) : 0);
+  };
+  const hasProjectAnalyticsLaborContent = (invoice: InvoiceItem) =>
+    invoice.lines.some((line) => {
+      if (line.isLaborPosition || line.catalogType === "service") return true;
+      if (line.laborItems.some((labor) => Number(labor.plannedHours || 0) > 0)) return true;
+      const catalogItem = line.catalogItemId ? catalogItems.find((item) => item.id === line.catalogItemId) : null;
+      return Boolean(catalogItem?.type === "package" && catalogItem.packageItems.some((item) => item.componentType === "service"));
+    });
+  const hasProjectAnalyticsCostGap = (invoice: InvoiceItem) =>
+    invoice.lines.length === 0 ||
+    invoice.lines.some((line) => {
+      const hasMaterialFallback =
+        !line.costSnapshotAt &&
+        Boolean(line.catalogItemId) &&
+        line.catalogType !== "service" &&
+        !line.isLaborPosition;
+      return hasMaterialFallback;
+    });
   const reportProjectRows = heroProjects
     .filter((project) => isProjectVisibleInProjectScopedAnalytics(project))
+    .filter((project) => isProjectInReportKindFilter(project))
     .map((project) => {
       const projectInvoices = reportInvoices.filter((invoice) => invoice.projectId === project.id);
-      const projectOffers = reportOffers.filter((offer) => offer.projectId === project.id);
+      const projectOffers = reportOffers.filter(
+        (offer) =>
+          offer.projectId === project.id &&
+          offer.status !== "Entwurf" &&
+          !isDeletedOffer(offer) &&
+          !isLostOffer(offer)
+      );
+      const projectStampEntries = stampEntries.filter(
+        (entry) =>
+          !entry.deletedAt &&
+          entry.mode === "project" &&
+          entry.projectId === project.id &&
+          isReportDate(entry.date)
+      );
       const stampedHours =
-        stampEntries
-          .filter((entry) => entry.mode === "project" && entry.projectId === project.id)
-          .reduce((sum, entry) => sum + entry.durationMs, 0) / 3600000;
+        projectStampEntries.reduce((sum, entry) => sum + Math.max(0, Number(entry.durationMs) || 0), 0) / 3600000;
       const soldHours = projectInvoices.reduce(
         (sum, invoice) =>
           sum +
@@ -27753,10 +27952,32 @@ await addProjectLogbookEntry(
         0
       );
       const revenue = projectInvoices.reduce((sum, invoice) => sum + invoice.netTotal, 0);
-      const costs = projectInvoices.reduce((sum, invoice) => sum + getDocumentInternalCost(invoice), 0);
+      const materialCosts = projectInvoices.reduce(
+        (sum, invoice) => sum + getProjectAnalyticsInvoiceMaterialCost(invoice),
+        0
+      );
+      const laborCosts = projectStampEntries.reduce(
+        (sum, entry) => sum + getProjectAnalyticsStampCost(entry),
+        0
+      );
+      const costs = materialCosts + laborCosts;
       const margin = revenue - costs;
+      const hasStampCostGap = projectStampEntries.some((entry) => {
+        if (!entry.costSnapshotAt) return true;
+        const hours = Math.max(0, Number(entry.durationMs) || 0) / 3_600_000;
+        return hours > 0 && Number(entry.laborCostRateSnapshot || 0) <= 0;
+      });
+      const hasMissingLaborEvidence =
+        projectInvoices.some(hasProjectAnalyticsLaborContent) && projectStampEntries.length === 0;
+      const costBasisStatus =
+        projectInvoices.some(hasProjectAnalyticsCostGap) || hasStampCostGap || hasMissingLaborEvidence
+          ? "preliminary"
+          : "verified";
       return {
         project,
+        projectInvoices,
+        projectOffers,
+        projectStampEntries,
         revenue,
         offerVolume: projectOffers.reduce((sum, offer) => sum + offer.netTotal, 0),
         invoiceCount: projectInvoices.length,
@@ -27764,8 +27985,12 @@ await addProjectLogbookEntry(
         stampedHours,
         soldHours,
         openHours: soldHours - stampedHours,
+        materialCosts,
+        laborCosts,
+        costs,
         margin,
         marginPercent: revenue > 0 ? (margin / revenue) * 100 : 0,
+        costBasisStatus,
       };
     })
     .filter((row) => {
@@ -27797,13 +28022,6 @@ await addProjectLogbookEntry(
   const formatPipelineMinutesAsDays = (minutes: number) =>
     formatPipelineDays(Math.max(0, Math.round(minutes / 1440)));
   const getPipelineMinutesAsDays = (minutes: number) => Math.max(0, Math.round(minutes / 1440));
-  const getPipelinePhaseDurationMinutes = (entry: StatusTimelineEntry) => {
-    if (entry.durationMinutes > 0) return entry.durationMinutes;
-    const startedAt = parseAppDateTime(entry.startedAt);
-    const endedAt = entry.endedAt ? parseAppDateTime(entry.endedAt) : reportNow;
-    if (!Number.isFinite(startedAt.getTime()) || !Number.isFinite(endedAt.getTime())) return 0;
-    return Math.max(0, Math.floor((endedAt.getTime() - startedAt.getTime()) / 60000));
-  };
   const getPipelinePhaseDurationMinutesInRange = (entry: StatusTimelineEntry, range: { start: Date; end: Date }) => {
     const startedAt = parseAppDateTime(entry.startedAt);
     const endedAt = entry.endedAt ? parseAppDateTime(entry.endedAt) : reportNow;
@@ -27813,18 +28031,16 @@ await addProjectLogbookEntry(
     if (overlapEnd <= overlapStart) return 0;
     return Math.max(0, Math.floor((overlapEnd - overlapStart) / 60000));
   };
-  const isProjectInReportKindFilter = (project?: HeroProjectPreview | null) => {
-    if (!project) return reportProjectKindFilter === "all";
-    if (reportProjectKindFilter === "recurring") return isRecurringProjectKindValue(getProjectKind(project));
-    if (reportProjectKindFilter === "oneTime") return !isRecurringProjectKindValue(getProjectKind(project));
-    return true;
-  };
   const isRecurringProjectImplementationStatus = (project?: HeroProjectPreview | null, status?: string | null) => {
     if (!project) return false;
     return (
       isRecurringProjectKindValue(getProjectKind(project)) &&
       normalizeProjectPipelineStatus(status || project.status || "") === "Umsetzung"
     );
+  };
+  const isTerminalPipelineStatus = (status?: string | null) => {
+    const normalizedStatus = normalizeProjectPipelineStatus(status);
+    return normalizedStatus === "Abgeschlossen" || normalizedStatus === "Archiviert";
   };
   const reportProjectKindLabel =
     reportProjectKindFilter === "recurring"
@@ -27850,6 +28066,7 @@ await addProjectLogbookEntry(
       >
     >((groups, entry) => {
       const normalizedStatus = normalizeProjectPipelineStatus(entry.toStatus);
+      if (isTerminalPipelineStatus(normalizedStatus)) return groups;
       if (entry.entityType !== "project" || !normalizedStatus || normalizedStatus === "Alle Offenen") return groups;
       const project = heroProjects.find((item) => item.id === entry.entityId);
       if (!isProjectVisibleInProjectScopedAnalytics(project)) return groups;
@@ -27866,7 +28083,8 @@ await addProjectLogbookEntry(
         ].some((value) => normalizeStampSearchValue(String(value ?? "")).includes(reportSearchValue));
         if (!isSearchMatch) return groups;
       }
-      const durationMinutes = getPipelinePhaseDurationMinutes(entry);
+      const durationMinutes = getPipelinePhaseDurationMinutesInRange(entry, reportPeriodRange);
+      if (durationMinutes <= 0) return groups;
       groups[normalizedStatus] = groups[normalizedStatus] ?? {
         status: normalizedStatus,
         phaseCount: 0,
@@ -27880,7 +28098,11 @@ await addProjectLogbookEntry(
       group.projectIds.add(entry.entityId);
       group.totalMinutes += durationMinutes;
       group.longestMinutes = Math.max(group.longestMinutes, durationMinutes);
-      if (!entry.endedAt) group.openCount += 1;
+      if (
+        !entry.endedAt &&
+        !isTerminalPipelineStatus(project?.status) &&
+        normalizeProjectPipelineStatus(project?.status) === normalizedStatus
+      ) group.openCount += 1;
       return groups;
     }, {})
   );
@@ -27903,7 +28125,7 @@ await addProjectLogbookEntry(
     if (reportProjectKindFilter === "recurring") return section.key === "recurring";
     return true;
   });
-  const getPipelineProjectKindKey = (project?: HeroProjectPreview | null) =>
+  const getPipelineProjectKindKey = (project?: HeroProjectPreview | null): "oneTime" | "recurring" =>
     project && isRecurringProjectKindValue(getProjectKind(project)) ? "recurring" : "oneTime";
   const getPipelineBottleneckRowsForKind = (kind: "oneTime" | "recurring", range = reportPeriodRange) => {
     const phaseRows = Object.values(
@@ -27921,6 +28143,7 @@ await addProjectLogbookEntry(
         >
       >((groups, entry) => {
         const normalizedStatus = normalizeProjectPipelineStatus(entry.toStatus);
+        if (isTerminalPipelineStatus(normalizedStatus)) return groups;
         if (entry.entityType !== "project" || !normalizedStatus || normalizedStatus === "Alle Offenen") return groups;
         const project = heroProjects.find((item) => item.id === entry.entityId);
         if (!isProjectVisibleInProjectScopedAnalytics(project)) return groups;
@@ -27952,7 +28175,11 @@ await addProjectLogbookEntry(
         group.projectIds.add(entry.entityId);
         group.totalMinutes += durationMinutes;
         group.longestMinutes = Math.max(group.longestMinutes, durationMinutes);
-        if (!entry.endedAt) group.openCount += 1;
+        if (
+          !entry.endedAt &&
+          !isTerminalPipelineStatus(project?.status) &&
+          normalizeProjectPipelineStatus(project?.status) === normalizedStatus
+        ) group.openCount += 1;
         return groups;
       }, {})
     );
@@ -28014,14 +28241,34 @@ await addProjectLogbookEntry(
     previousPipelineBottleneckRowsByKind[kind].find((row) => row.status === status) ?? null;
   const pipelineDurationRows = pipelineProjects
     .map((project) => {
-      const createdAt = project.createdAt ? parseAppDateTime(project.createdAt) : null;
+      const parsedCreatedAt = project.createdAt ? parseAppDateTime(project.createdAt) : null;
+      const createdAt = parsedCreatedAt && Number.isFinite(parsedCreatedAt.getTime()) ? parsedCreatedAt : null;
       const projectEntries = [...(projectTimelineEntriesByProject[project.id] ?? [])].sort(
         (first, second) => parseAppDateTime(first.startedAt).getTime() - parseAppDateTime(second.startedAt).getTime()
       );
-      const activeStatusEntry = projectEntries.find((entry) => !entry.endedAt && entry.toStatus === project.status);
-      const statusStartedAt = activeStatusEntry ? parseAppDateTime(activeStatusEntry.startedAt) : createdAt;
+      const normalizedCurrentStatus = normalizeProjectPipelineStatus(project.status);
+      const matchingStatusEntries = projectEntries.filter(
+        (entry) => normalizeProjectPipelineStatus(entry.toStatus) === normalizedCurrentStatus
+      );
+      const activeStatusEntry = [...matchingStatusEntries].reverse().find((entry) => !entry.endedAt) ?? null;
+      const latestMatchingStatusEntry = matchingStatusEntries[matchingStatusEntries.length - 1] ?? null;
+      const statusEntry = activeStatusEntry ?? latestMatchingStatusEntry;
+      const parsedStatusStartedAt = statusEntry ? parseAppDateTime(statusEntry.startedAt) : null;
+      const firstTimelineStartedAt = projectEntries.length > 0 ? parseAppDateTime(projectEntries[0].startedAt) : null;
+      const validFirstTimelineStartedAt =
+        firstTimelineStartedAt && Number.isFinite(firstTimelineStartedAt.getTime()) ? firstTimelineStartedAt : null;
+      const projectStartedAtCandidates = [createdAt, validFirstTimelineStartedAt].filter(
+        (date): date is Date => Boolean(date)
+      );
+      const projectStartedAt = projectStartedAtCandidates.length > 0
+        ? new Date(Math.min(...projectStartedAtCandidates.map((date) => date.getTime())))
+        : null;
+      const statusStartedAt =
+        parsedStatusStartedAt && Number.isFinite(parsedStatusStartedAt.getTime())
+          ? parsedStatusStartedAt
+          : projectStartedAt;
       const statusDurationDays = getPipelineDurationDays(statusStartedAt, reportNow);
-      const totalDurationDays = getPipelineDurationDays(createdAt, reportNow);
+      const totalDurationDays = getPipelineDurationDays(projectStartedAt, reportNow);
       const completedStatusCount = projectEntries.filter((entry) => entry.endedAt).length;
       const isRecurringImplementationStatus = isRecurringProjectImplementationStatus(project, project.status);
       return {
@@ -28031,11 +28278,18 @@ await addProjectLogbookEntry(
         totalDurationDays,
         completedStatusCount,
         isRecurringImplementationStatus,
-        source: activeStatusEntry ? "Statushistorie" : "Fallback: Erstellungsdatum",
+        source: activeStatusEntry
+          ? "Statushistorie"
+          : latestMatchingStatusEntry
+            ? "Letzter dokumentierter Wechsel"
+            : projectStartedAt
+              ? "Projektbeginn"
+              : "Keine Zeitbasis",
       };
     })
     .filter((row) => {
-      if (!reportSearchValue) return row.project.status !== "Archiviert" && row.project.status !== "Abgeschlossen";
+      if (isTerminalPipelineStatus(row.project.status)) return false;
+      if (!reportSearchValue) return true;
       return [
         row.project.projectNumber,
         row.project.title,
@@ -28049,26 +28303,123 @@ await addProjectLogbookEntry(
     pipelineDurationRows.length > 0
       ? pipelineDurationRows.reduce((sum, row) => sum + row.totalDurationDays, 0) / pipelineDurationRows.length
       : 0;
-  const longPipelineStatusRows = pipelineDurationRows.filter(
-    (row) => row.statusDurationDays >= 14 && !row.isRecurringImplementationStatus
-  );
+  const longPipelineStatusRows = pipelineDurationRows.filter((row) => {
+    if (row.isRecurringImplementationStatus) return false;
+    const kind = getPipelineProjectKindKey(row.project);
+    const thresholds = getPipelineDurationThreshold(kind, normalizeProjectPipelineStatus(row.project.status));
+    return row.statusDurationDays > thresholds.averageWarn;
+  });
+  const pipelineLegacyProjectKindCount = pipelineProjects.filter((project) => !project.projectKind).length;
   const pipelineDurationRowsByKind = {
     oneTime: pipelineDurationRows.filter((row) => getPipelineProjectKindKey(row.project) === "oneTime"),
     recurring: pipelineDurationRows.filter((row) => getPipelineProjectKindKey(row.project) === "recurring"),
   };
+  const getPipelineProjectAssessment = (
+    row: (typeof pipelineDurationRows)[number],
+    kind = getPipelineProjectKindKey(row.project)
+  ) => {
+    const normalizedStatus = normalizeProjectPipelineStatus(row.project.status);
+    const thresholds = getPipelineDurationThreshold(kind, normalizedStatus);
+    const state = row.isRecurringImplementationStatus
+      ? ("good" as const)
+      : getPipelineDurationState(row.statusDurationDays, thresholds.averageOk, thresholds.averageWarn);
+    return {
+      state,
+      label: row.isRecurringImplementationStatus
+        ? "Normalbetrieb"
+        : state === "good"
+          ? "Im Zielkorridor"
+          : state === "ok"
+            ? "Beobachten"
+            : "Prüfen",
+    };
+  };
   const projectRowsByTrade = Object.values(
-    reportProjectRows.reduce<Record<string, { trade: string; count: number; revenue: number; margin: number }>>(
+    reportProjectRows
+      .filter((row) => row.revenue > 0)
+      .reduce<Record<string, { trade: string; count: number; revenue: number; costs: number; margin: number; preliminaryCount: number }>>(
       (groups, row) => {
         const trade = row.project.trade || "Ohne Gewerk";
-        groups[trade] = groups[trade] ?? { trade, count: 0, revenue: 0, margin: 0 };
+        groups[trade] = groups[trade] ?? { trade, count: 0, revenue: 0, costs: 0, margin: 0, preliminaryCount: 0 };
         groups[trade].count += 1;
         groups[trade].revenue += row.revenue;
+        groups[trade].costs += row.costs;
         groups[trade].margin += row.margin;
+        if (row.costBasisStatus === "preliminary") groups[trade].preliminaryCount += 1;
         return groups;
       },
       {}
     )
   ).sort((first, second) => second.revenue - first.revenue);
+  const projectRevenueRows = reportProjectRows.filter((row) => row.revenue > 0);
+  const projectHoursRows = reportProjectRows.filter((row) => row.stampedHours > 0);
+  const projectReportStampedHours = projectHoursRows.reduce((sum, row) => sum + row.stampedHours, 0);
+  const visibleProjectBottleneckKinds = visiblePipelineProjectKindSections
+    .filter((section) => pipelineBottleneckRowsByKind[section.key].length > 0);
+  const selectedProjectBottleneckSection = pipelineProjectKindSections.find(
+    (section) => section.key === selectedProjectBottleneckKind
+  ) ?? pipelineProjectKindSections[0];
+  const selectedProjectBottleneckRows = pipelineBottleneckRowsByKind[selectedProjectBottleneckKind];
+  const selectedProjectMainBottleneck = selectedProjectBottleneckRows[0] ?? null;
+  const selectedProjectBottleneckAffectedRows = pipelineDurationRowsByKind[selectedProjectBottleneckKind].filter((row) => {
+    if (row.isRecurringImplementationStatus) return false;
+    return getPipelineProjectAssessment(row, selectedProjectBottleneckKind).state !== "good";
+  });
+  const projectBottleneckCardValue = reportProjectKindFilter === "all"
+    ? `${visibleProjectBottleneckKinds.length} ${visibleProjectBottleneckKinds.length === 1 ? "Engpass" : "Engpässe"}`
+    : pipelineBottleneckRowsByKind[reportProjectKindFilter][0]?.status ?? "-";
+  const projectBottleneckCardHint = reportProjectKindFilter === "all"
+    ? visibleProjectBottleneckKinds.length > 0
+      ? visibleProjectBottleneckKinds
+          .map((section) => `${section.key === "oneTime" ? "Einmalig" : "Dauerläufer"}: ${pipelineBottleneckRowsByKind[section.key][0]?.status}`)
+          .join(" · ")
+      : "Noch keine Statushistorie"
+    : pipelineBottleneckRowsByKind[reportProjectKindFilter][0]
+      ? `${formatPipelineMinutesAsDays(pipelineBottleneckRowsByKind[reportProjectKindFilter][0].averageMinutes)} Ø · ${pipelineBottleneckRowsByKind[reportProjectKindFilter][0].openCount} aktuell offen · ${formatPercent(pipelineBottleneckRowsByKind[reportProjectKindFilter][0].share)} Anteil`
+      : "Noch keine Statushistorie";
+  const selectedProjectAnalyticsTitle = selectedProjectAnalyticsDetail === "runtime"
+    ? "Pipeline-Dauer im Detail"
+    : selectedProjectAnalyticsDetail === "bottlenecks"
+      ? "Pipeline-Engpässe im Detail"
+      : selectedProjectAnalyticsDetail === "critical"
+        ? "Kritische Projektphasen im Detail"
+        : selectedProjectAnalyticsDetail === "revenue"
+          ? "Projektumsatz und kalkulatorische Marge"
+          : selectedProjectAnalyticsDetail === "hours"
+            ? "Gebuchte Projektstunden im Detail"
+            : "";
+  const selectedProjectAnalyticsInterpretation = selectedProjectAnalyticsDetail === "runtime"
+    ? "Die Projektlaufzeit zählt vom frühesten belastbaren Projekt- oder Statusbeginn bis heute. Die Zeit in der aktuellen Phase zeigt, wo ein aktives Projekt gerade gebunden ist. Dauerläufer in Umsetzung sind Normalbetrieb und kein automatischer Engpass."
+    : selectedProjectAnalyticsDetail === "bottlenecks"
+      ? "Ein Engpass ist eine Pipeline-Phase, in der sich im gewählten Zeitraum besonders viel Zeit über mehrere Projekte gesammelt hat. Gesamtzeit, Durchschnitt und längster Einzelfall werden je Projektart getrennt bewertet."
+      : selectedProjectAnalyticsDetail === "critical"
+        ? "Aufgeführt werden aktive Projekte, deren aktuelle Phase den kritischen Zielkorridor dieser Projektart und Phase überschritten hat. Der normale Umsetzungsbetrieb eines Dauerläufers ist davon ausdrücklich ausgenommen."
+        : selectedProjectAnalyticsDetail === "revenue"
+          ? "Der Projektumsatz umfasst aktive Netto-Rechnungen mit Leistungsdatum im gewählten Zeitraum. Die kalkulatorische Marge zieht Materialkosten der Rechnungen und Lohnkosten der Projektstempelungen desselben Zeitraums ab. Bei fehlenden Kostensnapshots oder fehlendem Zeitnachweis wird der Wert ausdrücklich als vorläufig markiert. Angebotsvolumen und offene Forderungen sind nicht Bestandteil dieser Kennzahl."
+          : selectedProjectAnalyticsDetail === "hours"
+            ? "Gebuchte Projektstunden sind nicht gelöschte Projektstempelungen im gewählten Zeitraum. Die Differenz vergleicht diese Ist-Stunden mit den in den Rechnungspositionen hinterlegten verkauften Stunden; sie ist ein Prüfhinweis, keine abschließende Produktivitätsbewertung."
+            : "";
+  const selectedProjectAnalyticsCount = selectedProjectAnalyticsDetail === "runtime"
+    ? pipelineDurationRows.length
+    : selectedProjectAnalyticsDetail === "bottlenecks"
+      ? selectedProjectBottleneckRows.length
+      : selectedProjectAnalyticsDetail === "critical"
+        ? longPipelineStatusRows.length
+        : selectedProjectAnalyticsDetail === "revenue"
+          ? projectRevenueRows.length
+          : selectedProjectAnalyticsDetail === "hours"
+            ? projectHoursRows.length
+            : 0;
+  const selectedProjectAnalyticsCountLabel = selectedProjectAnalyticsDetail === "bottlenecks"
+    ? selectedProjectAnalyticsCount === 1 ? "Phase" : "Phasen"
+    : selectedProjectAnalyticsCount === 1 ? "Projekt" : "Projekte";
+  const selectedProjectLegacyKindCount = selectedProjectAnalyticsDetail === "revenue"
+    ? projectRevenueRows.filter((row) => !row.project.projectKind).length
+    : selectedProjectAnalyticsDetail === "hours"
+      ? projectHoursRows.filter((row) => !row.project.projectKind).length
+      : selectedProjectAnalyticsDetail === "critical"
+        ? longPipelineStatusRows.filter((row) => !row.project.projectKind).length
+        : pipelineLegacyProjectKindCount;
   const customerRevenueMix = {
     newRevenue: customerRevenueAnalytics?.current.customerRevenue.newCustomers.revenue ?? 0,
     existingRevenue: customerRevenueAnalytics?.current.customerRevenue.existingCustomers.revenue ?? 0,
@@ -30325,6 +30676,190 @@ await addProjectLogbookEntry(
   ).sort((first, second) => second.count - first.count);
   const projectMapWithAddressCount = reportProjectRows.filter((row) => row.project.address).length;
   const projectMapWithoutAddressCount = Math.max(0, reportProjectRows.length - projectMapWithAddressCount);
+  const renderProjectAnalyticsActions = (
+    project: HeroProjectPreview,
+    options?: { showInvoices?: boolean }
+  ) => {
+    const contact = getCustomerDrilldownContact(project.customer, project.id);
+    return (
+      <div className={styles.tableActionGroup}>
+        <button type="button" className={styles.secondaryButton} onClick={() => {
+          setSelectedProjectAnalyticsDetail(null);
+          openProjectFile(project);
+        }}>Projekt</button>
+        {options?.showInvoices ? (
+          <button type="button" className={styles.secondaryButton} onClick={() => {
+            setSelectedProjectAnalyticsDetail(null);
+            openProjectFile(project, { tab: "documents", documentType: "Rechnungen" });
+          }}>Rechnungen</button>
+        ) : null}
+        {contact ? (
+          <button type="button" className={styles.secondaryButton} onClick={() => {
+            setSelectedProjectAnalyticsDetail(null);
+            setActiveTab("contacts");
+            openCustomerFile(contact);
+          }}>Kunde</button>
+        ) : null}
+      </div>
+    );
+  };
+  const renderSalesOfferActions = (row: (typeof salesAllOfferRows)[number]) => {
+    const contact = getCustomerDrilldownContact(
+      row.offer.customerName || row.project?.customer || "",
+      row.project?.id
+    );
+    return (
+      <div className={styles.tableActionGroup}>
+        {row.project ? (
+          <>
+            <button type="button" className={styles.secondaryButton} onClick={() => {
+              setSelectedSalesAnalyticsDetail(null);
+              openProjectFile(row.project as HeroProjectPreview);
+            }}>Projekt</button>
+            <button type="button" className={styles.secondaryButton} onClick={() => {
+              setSelectedSalesAnalyticsDetail(null);
+              openProjectFile(row.project as HeroProjectPreview, { tab: "documents", documentType: "Angebote" });
+            }}>Angebot</button>
+          </>
+        ) : null}
+        {contact ? (
+          <button type="button" className={styles.secondaryButton} onClick={() => {
+            setSelectedSalesAnalyticsDetail(null);
+            setActiveTab("contacts");
+            openCustomerFile(contact);
+          }}>Kunde</button>
+        ) : null}
+      </div>
+    );
+  };
+  const renderSalesActionTable = () => (
+    <div className={styles.salesAnalyticsTableScroll}>
+      <table className={styles.analyticsTable}>
+        <thead><tr>
+          <th>Priorität</th><th>Aufgabe</th><th>Kunde / Projekt</th><th>Fällig</th>
+          <th>Verantwortlich</th><th>Wert</th><th>Empfehlung</th><th>Aktionen</th>
+        </tr></thead>
+        <tbody>
+          {salesActionRows.length === 0 ? (
+            <tr><td colSpan={8}>Aktuell keine akuten Vertriebsaktionen.</td></tr>
+          ) : salesActionRows.map((row) => (
+            <tr key={row.key}>
+              <td data-state={row.priority >= 90 ? "low" : row.priority >= 75 ? "ok" : "neutral"}>
+                {row.priority >= 90 ? "Hoch" : row.priority >= 75 ? "Mittel" : "Normal"}
+              </td>
+              <td>{row.title}</td>
+              <td>{row.context}<br /><small>{row.projectLabel}</small></td>
+              <td>{row.dueLabel}</td><td>{row.responsible}</td>
+              <td>{row.value > 0 ? formatMoney(row.value) : "-"}</td><td>{row.recommendation}</td>
+              <td><div className={styles.tableActionGroup}>
+                {row.kind === "offer" ? <>
+                  {row.project ? <button type="button" className={styles.secondaryButton} onClick={() => {
+                    setSelectedSalesAnalyticsDetail(null);
+                    openProjectFile(row.project as HeroProjectPreview, { tab: "documents", documentType: "Angebote" });
+                  }}>Angebot</button> : null}
+                  <button type="button" className={styles.secondaryButton} onClick={() => markOfferWon(row.offer, "Aus Sales-Performance entschieden", row.offer.projectId)}>Gewonnen</button>
+                  <button type="button" className={styles.dangerButton} onClick={() => openMarkOfferLostDialog(row.offer)}>Verloren</button>
+                </> : null}
+                {row.kind === "potential" ? <>
+                  <button type="button" className={styles.secondaryButton} onClick={() => openPotentialDetail(row.potential)}>Zusatzverkauf</button>
+                  {row.task ? <button type="button" className={styles.secondaryButton} onClick={() => openEditModal(row.task as TaskItem)}>Aufgabe</button> : null}
+                </> : null}
+                {row.kind === "interrupted" ? <>
+                  {row.project ? <button type="button" className={styles.secondaryButton} onClick={() => {
+                    setSelectedSalesAnalyticsDetail(null);
+                    openProjectFile(row.project as HeroProjectPreview, { tab: "appointments", keepMonth: true });
+                  }}>Projekt</button> : null}
+                  {row.task ? <button type="button" className={styles.secondaryButton} onClick={() => openEditModal(row.task as TaskItem)}>Aufgabe</button> : null}
+                </> : null}
+              </div></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+  const renderSalesOffersTable = (rows: typeof salesAllOfferRows) => (
+    <div className={styles.salesAnalyticsTableScroll}>
+      <table className={styles.analyticsTable}>
+        <thead><tr>
+          <th>Angebot</th><th>Status</th><th>Kunde</th><th>Projekt</th><th>Verantwortlich</th>
+          <th>Erstellt</th><th>Entschieden</th><th>Wert</th><th>Rechnung</th><th>Grund</th><th>Aktionen</th>
+        </tr></thead>
+        <tbody>
+          {rows.length === 0 ? <tr><td colSpan={11}>Keine passenden Angebote.</td></tr> : rows.slice(0, 100).map((row) => (
+            <tr key={`sales-offer-detail-${row.offer.id}`}>
+              <td>{row.offer.offerNumber}</td><td>{renderOfferStatusChip(row.offer)}</td>
+              <td>{row.offer.customerName || row.project?.customer || "-"}</td>
+              <td>{row.project?.projectNumber || row.offer.projectNumber || row.offer.projectTitle || "-"}</td>
+              <td>{row.offer.internalContactName || row.project?.responsibleName || "-"}</td>
+              <td>{formatDateOnly(row.offer.createdAt)}</td>
+              <td>{row.statusGroup === "won" && row.wonDate ? formatDateOnly(row.wonDate) : row.statusGroup === "lost" && row.offer.lostAt ? formatDateOnly(row.offer.lostAt) : "-"}</td>
+              <td>{formatMoney(row.offer.netTotal)}</td><td>{row.linkedInvoiceValue > 0 ? formatMoney(row.linkedInvoiceValue) : "-"}</td>
+              <td>{row.offer.wonReason || row.offer.lostReason || "-"}</td><td>{renderSalesOfferActions(row)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+  const renderSalesRecurringTable = (rows = recurringNegotiationRows) => (
+    <div className={styles.salesAnalyticsTableScroll}>
+      <table className={styles.analyticsTable}>
+        <thead><tr>
+          <th>Dauerläufer</th><th>Signal</th><th>Umsatz / Stunden</th><th>Kontingent</th>
+          <th>Letzte Prüfung</th><th>Empfehlung</th><th>Aktionen</th>
+        </tr></thead>
+        <tbody>
+          {rows.length === 0 ? <tr><td colSpan={7}>Keine auffälligen Dauerläufer.</td></tr> : rows.map((row) => (
+            <tr key={`sales-recurring-detail-${row.project.id}`}>
+              <td>{row.project.projectNumber || row.project.id}<br /><small>{row.project.customer || row.project.title}</small></td>
+              <td data-state={row.priority >= 34 ? "low" : "ok"}>{row.reasons.join("; ")}</td>
+              <td>{formatMoney(row.revenue)}<br /><small>{row.stampedHours > 0 ? `${formatHours(row.stampedHours)} Std. · ${formatMoney(row.svs)} / h` : "keine Stunden"}</small></td>
+              <td>{row.monthlyBudgetHours > 0 ? `${formatHours(row.monthlyBudgetHours)} Std./Monat` : "-"}<br /><small>{row.periodBudgetHours > 0 ? `${formatHours(row.budgetUsagePercent)} % im Zeitraum` : "kein Kontingent"}</small></td>
+              <td>{row.lastReviewLabel}</td><td>{row.recommendation}</td>
+              <td><div className={styles.tableActionGroup}>
+                <button type="button" className={styles.secondaryButton} onClick={() => {
+                  setSelectedSalesAnalyticsDetail(null);
+                  openProjectFile(row.project, { tab: "documents", documentType: "Angebote" });
+                }}>Projekt</button>
+                <button type="button" className={styles.secondaryButton} onClick={() => {
+                  setSelectedSalesAnalyticsDetail(null);
+                  openRecurringReviewDialog(row);
+                }}>Prüfung</button>
+              </div></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+  const renderSalesInterruptedTable = () => (
+    <div className={styles.salesAnalyticsTableScroll}>
+      <table className={styles.analyticsTable}>
+        <thead><tr>
+          <th>Projekt</th><th>Mitarbeiter</th><th>Datum / Uhrzeit</th><th>Kommentar</th>
+          <th>Alter</th><th>Zuständig</th><th>Aufgabe</th><th>Aktionen</th>
+        </tr></thead>
+        <tbody>
+          {salesInterruptedRiskRows.length === 0 ? <tr><td colSpan={8}>Keine ungeklärten unterbrochenen Arbeiten.</td></tr> : salesInterruptedRiskRows.map((row) => (
+            <tr key={`sales-interrupted-detail-${row.entry.id}`}>
+              <td>{row.project ? `${row.project.projectNumber || row.project.id} · ${row.project.title}` : row.entry.projectLabel || row.entry.projectId}</td>
+              <td>{row.entry.employee || "-"}</td><td>{formatProjectDate(row.entry.date)} · {row.entry.startTime} - {row.entry.endTime}</td>
+              <td>{row.entry.comment || "-"}</td><td>{row.ageDays === 0 ? "heute" : `${row.ageDays} Tage`}</td>
+              <td>{row.responsibleName}</td><td>{row.task ? row.taskStatus : "keine Aufgabe"}</td>
+              <td><div className={styles.tableActionGroup}>
+                {row.project ? <button type="button" className={styles.secondaryButton} onClick={() => {
+                  setSelectedSalesAnalyticsDetail(null);
+                  openProjectFile(row.project as HeroProjectPreview, { tab: "appointments", keepMonth: true });
+                }}>Projekt</button> : null}
+                {row.task ? <button type="button" className={styles.secondaryButton} onClick={() => openEditModal(row.task as TaskItem)}>Aufgabe</button> : null}
+              </div></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
   const renderReportMetric = (
     label: string,
     value: string,
@@ -30386,7 +30921,7 @@ await addProjectLogbookEntry(
   };
   const renderReportBarChart = (
     rows: Array<{ key: string; label: string; value: number; secondary?: number }>,
-    options?: { showValues?: boolean }
+    options?: { showValues?: boolean; primaryLabel?: string; secondaryLabel?: string }
   ) => {
     const chartMaximum = Math.max(
       1,
@@ -30413,7 +30948,7 @@ await addProjectLogbookEntry(
                 <span
                   className={styles.analyticsBarPrimary}
                   style={{ height: `${primaryHeight}%` }}
-                  title={`Rechnungen: ${formatMoney(row.value)}`}
+                  title={`${options?.primaryLabel ?? "Rechnungen"}: ${formatMoney(row.value)}`}
                 />
               </div>
               {secondaryHeight !== null ? (
@@ -30421,7 +30956,7 @@ await addProjectLogbookEntry(
                   <span
                     className={styles.analyticsBarSecondary}
                     style={{ height: `${secondaryHeight}%` }}
-                    title={`Angebote: ${formatMoney(row.secondary ?? 0)}`}
+                    title={`${options?.secondaryLabel ?? "Angebote"}: ${formatMoney(row.secondary ?? 0)}`}
                   />
                 </div>
               ) : null}
@@ -31474,7 +32009,22 @@ await addProjectLogbookEntry(
           </div>
           <section className={styles.salesCockpitGrid}>
             {salesCockpitCards.map((card) => (
-              <article key={card.key} className={styles.salesCockpitCard} data-tone={card.tone}>
+              <article
+                key={card.key}
+                className={styles.salesCockpitCard}
+                data-tone={card.tone}
+                data-clickable="true"
+                role="button"
+                tabIndex={0}
+                aria-label={`${card.label}: Details anzeigen`}
+                onClick={() => setSelectedSalesAnalyticsDetail(card.detailKey)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setSelectedSalesAnalyticsDetail(card.detailKey);
+                  }
+                }}
+              >
                 <div className={styles.salesCockpitCardHeader}>
                   <span className={styles.salesCockpitIcon} aria-hidden="true">
                     <svg viewBox="0 0 24 24" focusable="false">
@@ -31490,7 +32040,164 @@ await addProjectLogbookEntry(
             ))}
           </section>
 
-          <article className={`${styles.analyticsCard} ${styles.salesPriorityCard}`}>
+          {selectedSalesAnalyticsDetail ? (
+            <div
+              className={styles.modalOverlay}
+              role="dialog"
+              aria-modal="true"
+              aria-label={selectedSalesAnalyticsTitle}
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget) setSelectedSalesAnalyticsDetail(null);
+              }}
+            >
+              <div className={`${styles.standardModal} ${styles.salesAnalyticsModal}`}>
+                <header className={styles.standardModalHeader}>
+                  <div>
+                    <h2>{selectedSalesAnalyticsTitle}</h2>
+                    <p>Zeitraum {reportPeriodLabel}</p>
+                  </div>
+                  <button type="button" className={styles.iconButton} aria-label="Schließen" onClick={() => setSelectedSalesAnalyticsDetail(null)}>×</button>
+                </header>
+                <div className={styles.standardModalBody}>
+                  <div className={styles.customerRevenueModalSummary}>
+                    <span className={styles.customerRevenueModalCount}>
+                      {selectedSalesAnalyticsCount} {selectedSalesAnalyticsCount === 1 ? "Eintrag" : "Einträge"} angezeigt
+                    </span>
+                    <div className={styles.customerRevenueModalExplanation}>
+                      <strong>Einordnung</strong>
+                      <p>{selectedSalesAnalyticsInterpretation}</p>
+                    </div>
+                  </div>
+
+                  {selectedSalesAnalyticsDetail === "actions" ? (
+                    <div className={styles.salesAnalyticsDetail}>
+                      <section className={styles.salesAnalyticsBlock}>
+                        <h3>Priorisierte Vertriebsaktionen</h3>
+                        {renderSalesActionTable()}
+                      </section>
+                      {recurringNegotiationHighRiskRows.length > 0 ? (
+                        <section className={styles.salesAnalyticsBlock}>
+                          <h3>Dringende Dauerläufer-Prüfungen</h3>
+                          {renderSalesRecurringTable(recurringNegotiationHighRiskRows)}
+                        </section>
+                      ) : null}
+                    </div>
+                  ) : selectedSalesAnalyticsDetail === "offers" ? (
+                    <div className={styles.salesAnalyticsDetail}>
+                      <div className={styles.salesAnalyticsSummaryGrid}>
+                        <article><span>Aktueller Monat</span><strong>{salesCurrentMonthOfferCount}</strong><small>neu erstellte Angebote</small></article>
+                        <article><span>Vormonat</span><strong>{salesPreviousMonthOfferCount}</strong><small>neu erstellte Angebote</small></article>
+                        <article><span>Offener Bestand</span><strong>{salesOpenOfferRows.length}</strong><small>{formatMoney(salesOpenValue)} Angebotswert</small></article>
+                      </div>
+                      <section className={styles.salesAnalyticsBlock}>
+                        <h3>Angebote mit Aktivität im Zeitraum</h3>
+                        {renderSalesOffersTable(salesOfferRows)}
+                      </section>
+                      <section className={styles.salesAnalyticsBlock}>
+                        <h3>Zusatzverkäufe nach Status</h3>
+                        <div className={styles.salesAnalyticsTableScroll}>
+                          <table className={styles.analyticsTable}>
+                            <thead><tr><th>Status</th><th>Anzahl</th><th>Geschätzter Wert</th></tr></thead>
+                            <tbody>{salesPotentialStatusRows.length === 0 ? <tr><td colSpan={3}>Keine Zusatzverkäufe im Zeitraum.</td></tr> : salesPotentialStatusRows.map((row) => (
+                              <tr key={`sales-potential-status-${row.status}`}><td>{row.label}</td><td>{row.count}</td><td>{formatMoney(row.value)}</td></tr>
+                            ))}</tbody>
+                          </table>
+                        </div>
+                      </section>
+                    </div>
+                  ) : selectedSalesAnalyticsDetail === "newCustomers" ? (
+                    <div className={styles.salesAnalyticsDetail}>
+                      <section className={styles.salesAnalyticsBlock}>
+                        <h3>Erstangebote im aktuellen Auswertungsmonat</h3>
+                        {renderSalesOffersTable(salesCurrentMonthFirstCustomerOfferRows)}
+                      </section>
+                      <section className={styles.salesAnalyticsBlock}>
+                        <h3>Im Zeitraum neu angelegte Kundenakten</h3>
+                        <div className={styles.salesAnalyticsTableScroll}>
+                          <table className={styles.analyticsTable}>
+                            <thead><tr><th>Kunde</th><th>Angelegt</th><th>Aktionen</th></tr></thead>
+                            <tbody>{salesNewCustomerContacts.length === 0 ? <tr><td colSpan={3}>Keine neu angelegten Kundenakten.</td></tr> : salesNewCustomerContacts.slice(0, 100).map((contact) => (
+                              <tr key={`sales-new-contact-${contact.id}`}>
+                                <td>{getContactDisplayName(contact)}</td><td>{formatDateOnly(contact.createdAt)}</td>
+                                <td><button type="button" className={styles.secondaryButton} onClick={() => {
+                                  setSelectedSalesAnalyticsDetail(null);
+                                  setActiveTab("contacts");
+                                  openCustomerFile(contact);
+                                }}>Kunde</button></td>
+                              </tr>
+                            ))}</tbody>
+                          </table>
+                        </div>
+                      </section>
+                    </div>
+                  ) : selectedSalesAnalyticsDetail === "closing" ? (
+                    <div className={styles.salesAnalyticsDetail}>
+                      <div className={styles.salesAnalyticsSummaryGrid}>
+                        <article><span>Abschlussquote</span><strong>{salesDecisionCount > 0 ? formatPercent(salesWinRate) : "-"}</strong><small>{salesDecisionCount} entschiedene Angebote</small></article>
+                        <article><span>Gewonnen</span><strong>{salesWonOfferRows.length}</strong><small>{formatMoney(salesWonValue)} Angebotswert</small></article>
+                        <article><span>Verloren</span><strong>{salesLostOfferRows.length}</strong><small>{formatMoney(salesLostValue)} Angebotswert</small></article>
+                      </div>
+                      <section className={styles.salesAnalyticsBlock}>
+                        <h3>Im Zeitraum entschiedene Angebote</h3>
+                        {renderSalesOffersTable([...salesWonOfferRows, ...salesLostOfferRows])}
+                      </section>
+                      <section className={styles.salesAnalyticsBlock}>
+                        <h3>Dokumentierte Verlustgründe</h3>
+                        <div className={styles.salesAnalyticsTableScroll}>
+                          <table className={styles.analyticsTable}>
+                            <thead><tr><th>Grund</th><th>Fälle</th><th>Angebote</th><th>Zusatzverkäufe</th><th>Wert</th></tr></thead>
+                            <tbody>{salesLostReasonRows.length === 0 ? <tr><td colSpan={5}>Keine dokumentierten Verluste im Zeitraum.</td></tr> : salesLostReasonRows.map((row) => (
+                              <tr key={`sales-lost-reason-${row.reason}`}><td>{row.reason}</td><td>{row.count}</td><td>{row.offerCount}</td><td>{row.potentialCount}</td><td>{formatMoney(row.value)}</td></tr>
+                            ))}</tbody>
+                          </table>
+                        </div>
+                      </section>
+                    </div>
+                  ) : selectedSalesAnalyticsDetail === "recurring" ? (
+                    <section className={styles.salesAnalyticsBlock}>
+                      <h3>Dauerläufer mit Prüfhinweis</h3>
+                      {renderSalesRecurringTable()}
+                    </section>
+                  ) : (
+                    <div className={styles.salesAnalyticsDetail}>
+                      <section className={styles.salesAnalyticsBlock}>
+                        <h3>Offene Angebotsrisiken</h3>
+                        <div className={styles.salesAnalyticsTableScroll}>
+                          <table className={styles.analyticsTable}>
+                            <thead><tr><th>Angebot</th><th>Kunde / Projekt</th><th>Risiko</th><th>Wert</th><th>Verantwortlich</th><th>Aktionen</th></tr></thead>
+                            <tbody>{salesRiskOfferRows.length === 0 ? <tr><td colSpan={6}>Keine offenen Angebotsrisiken.</td></tr> : salesRiskOfferRows.map((row) => (
+                              <tr key={`sales-risk-offer-${row.offer.id}`}>
+                                <td>{row.offer.offerNumber}</td><td>{row.offer.customerName || row.project?.customer || "-"}<br /><small>{row.project?.projectNumber || row.offer.projectNumber || "-"}</small></td>
+                                <td data-state="ok">{row.riskLabel}</td><td>{formatMoney(row.offer.netTotal)}</td><td>{row.offer.internalContactName || row.project?.responsibleName || "-"}</td>
+                                <td>{renderSalesOfferActions(row)}</td>
+                              </tr>
+                            ))}</tbody>
+                          </table>
+                        </div>
+                      </section>
+                      <section className={styles.salesAnalyticsBlock}>
+                        <h3>Ungeklärte unterbrochene Arbeiten</h3>
+                        {renderSalesInterruptedTable()}
+                      </section>
+                      <section className={styles.salesAnalyticsBlock}>
+                        <h3>Einordnung der Steuerungssignale</h3>
+                        <div className={styles.salesAnalyticsTableScroll}>
+                          <table className={styles.analyticsTable}>
+                            <thead><tr><th>Signal</th><th>Interpretation</th><th>Nächster Schritt</th></tr></thead>
+                            <tbody>{salesPerformanceInsights.map((row) => (
+                              <tr key={`sales-signal-${row.key}`}><td data-state={row.state}>{row.signal}</td><td>{row.interpretation}</td><td>{row.action}</td></tr>
+                            ))}</tbody>
+                          </table>
+                        </div>
+                      </section>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <article className={`${styles.analyticsCard} ${styles.salesPriorityCard}`} hidden>
             <h2>Heute vertrieblich handeln</h2>
             <table className={styles.analyticsTable}>
               <thead>
@@ -31611,11 +32318,11 @@ await addProjectLogbookEntry(
             </table>
           </article>
 
-          <div className={styles.salesReportSectionHeading}>
+          <div className={styles.salesReportSectionHeading} hidden>
             <span>Prüfen &amp; entscheiden</span>
             <p>Dauerläufer, Steuerungssignale und unterbrochene Arbeiten gezielt bearbeiten.</p>
           </div>
-          <article className={`${styles.analyticsCard} ${styles.salesRecurringReviewCard}`}>
+          <article className={`${styles.analyticsCard} ${styles.salesRecurringReviewCard}`} hidden>
             <div className={styles.salesSectionHeader}>
               <div>
                 <h2>Dauerläufer: Nachverhandlung prüfen</h2>
@@ -31814,7 +32521,7 @@ await addProjectLogbookEntry(
             </div>
           ) : null}
 
-          <details className={`${styles.analyticsCard} ${styles.salesDetailDisclosure}`}>
+          <details className={`${styles.analyticsCard} ${styles.salesDetailDisclosure}`} hidden>
             <summary className={styles.salesDetailSummary}>
               <div className={styles.salesDetailTitle}>
                 <h2>Sales-Steuerung</h2>
@@ -31844,7 +32551,7 @@ await addProjectLogbookEntry(
             </div>
           </details>
 
-          <article className={styles.analyticsCard}>
+          <article className={styles.analyticsCard} hidden>
             <h2>Unterbrochene Arbeiten</h2>
             <table className={`${styles.analyticsTable} ${styles.salesInterruptedWorkTable}`}>
               <thead>
@@ -31920,7 +32627,7 @@ await addProjectLogbookEntry(
             <span>Analyse</span>
             <p>Entwicklung und Statusverteilung im gewählten Zeitraum vergleichen.</p>
           </div>
-          <section className={styles.analyticsTwoColumn}>
+          <section className={styles.salesTrendSection}>
             <article className={styles.analyticsCard}>
               <h2>Sales-Verlauf</h2>
               {renderReportBarChart(
@@ -31929,14 +32636,19 @@ await addProjectLogbookEntry(
                   label: row.label,
                   value: row.wonValue,
                   secondary: row.offerValue,
-                }))
+                })),
+                {
+                  showValues: true,
+                  primaryLabel: "Gewonnenes Angebotsvolumen",
+                  secondaryLabel: "Erstelltes Angebotsvolumen",
+                }
               )}
               <div className={styles.analyticsLegend}>
                 <span data-color="primary">Gewonnen</span>
                 <span data-color="secondary">Angebotsvolumen</span>
               </div>
             </article>
-            <article className={styles.analyticsCard}>
+            <article className={styles.analyticsCard} hidden>
               <h2>Zusatzverkäufe nach Status</h2>
               <table className={styles.analyticsTable}>
                 <thead>
@@ -31965,12 +32677,12 @@ await addProjectLogbookEntry(
             </article>
           </section>
 
-          <div className={styles.salesReportSectionHeading}>
+          <div className={styles.salesReportSectionHeading} hidden>
             <span>Details</span>
             <p>Einzelwerte und Ursachen bei Bedarf öffnen, ohne die tägliche Steuerung zu überladen.</p>
           </div>
 
-          <details className={`${styles.analyticsCard} ${styles.salesDetailDisclosure}`}>
+          <details className={`${styles.analyticsCard} ${styles.salesDetailDisclosure}`} hidden>
             <summary className={styles.salesDetailSummary}>
               <div className={styles.salesDetailTitle}>
                 <h2>Angebote nach Sales-Status</h2>
@@ -32026,7 +32738,7 @@ await addProjectLogbookEntry(
             </div>
           </details>
 
-          <section className={styles.analyticsTwoColumn}>
+          <section className={styles.analyticsTwoColumn} hidden>
             <details className={`${styles.analyticsCard} ${styles.salesDetailDisclosure}`}>
               <summary className={styles.salesDetailSummary}>
                 <div className={styles.salesDetailTitle}>
@@ -32116,303 +32828,255 @@ await addProjectLogbookEntry(
             {renderReportMetric(
               "SVS Durchschnitt",
               `${formatMoney(svsAverage)} / h`,
-              "Netto-Rechnungswert / verknüpfte Stempelstunden",
-              svsAverage > 0 ? "good" : "low",
-              getDashboardTrendIcon(svsAverage, previousSvsAverage)
+              "Umsatz je verknüpfte Projektstunde",
+              "neutral",
+              getDashboardTrendIcon(svsAverage, previousSvsAverage),
+              undefined,
+              true,
+              undefined,
+              () => {
+                setIsSvsTradeTableExpanded(false);
+                setSvsModalSearch("");
+                setSelectedSvsAnalyticsDetail("average");
+              }
             )}
             {renderReportMetric(
               "Datenbasis",
               svsDataQualityLabel,
               `${formatPercent(svsEvaluableShare)} auswertbare Rechnungen`,
               svsDataQualityState,
-              getDashboardTrendIcon(svsEvaluableShare, previousSvsEvaluableShare)
+              getDashboardTrendIcon(svsEvaluableShare, previousSvsEvaluableShare),
+              undefined,
+              false,
+              undefined,
+              () => {
+                setIsSvsTradeTableExpanded(false);
+                setSvsModalSearch("");
+                setSelectedSvsAnalyticsDetail("coverage");
+              }
             )}
             {renderReportMetric(
               "Auswertbar",
               `${svsEvaluableRows.length}`,
               "Rechnungen mit verknüpften Stempelzeiten",
               svsNotEvaluableRows.length === 0 ? "good" : "ok",
-              getDashboardTrendIcon(svsEvaluableRows.length, previousSvsEvaluableRows.length)
+              getDashboardTrendIcon(svsEvaluableRows.length, previousSvsEvaluableRows.length),
+              undefined,
+              false,
+              undefined,
+              () => {
+                setSvsModalSearch("");
+                setSelectedSvsAnalyticsDetail("evaluable");
+              }
             )}
             {renderReportMetric(
               "Nicht auswertbar",
               `${svsNotEvaluableRows.length}`,
               "Rechnungen ohne verknüpfte Stempelzeiten",
               svsNotEvaluableRows.length === 0 ? "good" : "low",
-              getDashboardTrendIcon(svsNotEvaluableRows.length, previousSvsNotEvaluableRows.length, true)
+              getDashboardTrendIcon(svsNotEvaluableRows.length, previousSvsNotEvaluableRows.length, true),
+              undefined,
+              false,
+              undefined,
+              () => {
+                setSvsModalSearch("");
+                setSelectedSvsAnalyticsDetail("missing");
+              }
             )}
-            {renderReportMetric("Verknüpfte Stunden", `${formatHours(svsTotalHours)} Std.`, `${formatMoney(svsTotalRevenue)} ausgewerteter Umsatz`)}
+            {renderReportMetric(
+              "Verknüpfte Stunden",
+              `${formatHours(svsTotalHours)} Std.`,
+              `${formatMoney(svsTotalRevenue)} ausgewerteter Umsatz`,
+              "neutral",
+              "none",
+              undefined,
+              false,
+              undefined,
+              () => {
+                setSvsModalSearch("");
+                setSelectedSvsAnalyticsDetail("hours");
+              }
+            )}
           </section>
-
-          <article className={styles.analyticsCard}>
-            <h2>SVS nach Gewerk</h2>
-            <table className={styles.analyticsTable}>
-              <thead>
-                <tr>
-                  <th>Gewerk</th>
-                  <th>Rechnungen</th>
-                  <th>Auswertbar</th>
-                  <th>Nicht auswertbar</th>
-                  <th>Netto</th>
-                  <th>Stempelstunden</th>
-                  <th>SVS</th>
-                </tr>
-              </thead>
-              <tbody>
-                {svsRowsByTrade.length === 0 ? (
-                  <tr>
-                    <td colSpan={7}>Keine Gewerke im gewählten Zeitraum.</td>
-                  </tr>
-                ) : (
-                  svsRowsByTrade.map((row) => (
-                    <tr key={row.trade}>
-                      <td>{row.trade}</td>
-                      <td>{row.invoiceCount}</td>
-                      <td>{row.evaluableCount}</td>
-                      <td>{row.missingCount}</td>
-                      <td>{formatMoney(row.revenue)}</td>
-                      <td>{row.stampedHours > 0 ? `${formatHours(row.stampedHours)} Std.` : "-"}</td>
-                      <td>{row.stampedHours > 0 ? `${formatMoney(row.svs)} / h` : "-"}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </article>
-
-          <article className={styles.analyticsCard}>
-            <h2>SVS je Rechnung</h2>
-            <table className={styles.analyticsTable}>
-              <thead>
-                <tr>
-                  <th>Rechnung</th>
-                  <th>Kunde</th>
-                  <th>Projekt</th>
-                  <th>Gewerk</th>
-                  <th>Leistungsdatum</th>
-                  <th>Netto</th>
-                  <th>Stempelstunden</th>
-                  <th>SVS</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {svsInvoiceRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={9}>Keine Rechnungen im gewählten Zeitraum.</td>
-                  </tr>
-                ) : (
-                  svsInvoiceRows.map((row) => (
-                    <tr key={row.invoice.id}>
-                      <td>{row.invoice.invoiceNumber}</td>
-                      <td>{row.invoice.customerName || "-"}</td>
-                      <td>{row.invoice.projectNumber || row.invoice.projectTitle || "-"}</td>
-                      <td>{row.trade}</td>
-                      <td>{formatDateOnly(row.invoice.serviceDate || row.invoice.createdAt)}</td>
-                      <td>{formatMoney(row.invoice.netTotal)}</td>
-                      <td>{row.stampedHours > 0 ? `${formatHours(row.stampedHours)} Std.` : "-"}</td>
-                      <td>{row.stampedHours > 0 ? `${formatMoney(row.svs)} / h` : "-"}</td>
-                      <td>
-                        <span className={styles.invoiceStatusChip} data-status={row.status === "ok" ? "Bezahlt" : "Entwurf"}>
-                          {row.status === "ok" ? "auswertung i.O." : "nicht auswertbar"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </article>
         </>
       )}
 
-      {reportAnalyticsTab === "projects" && (
-        <>
-          <section className={styles.analyticsGrid}>
-            {renderReportMetric("Ø Projektalter", formatPipelineDays(Math.round(averageProjectRuntime)), `${reportProjectKindLabel} seit Anlage`)}
-            {renderReportMetric(
-              "Größter Engpass",
-              largestPipelineBottleneck?.status ?? "-",
-              largestPipelineBottleneck
-                ? `${formatPipelineMinutesAsDays(largestPipelineBottleneck.totalMinutes)} Gesamtzeit (${reportProjectKindLabel})`
-                : "Noch keine Statushistorie",
-              largestPipelineBottleneck ? "ok" : "neutral"
-            )}
-            {renderReportMetric("Kritische Phase > 14 Tage", `${longPipelineStatusRows.length}`, `${reportProjectKindLabel} mit messbarem Stillstand`, longPipelineStatusRows.length === 0 ? "good" : "ok")}
-            {renderReportMetric("Projekte mit Umsatz", `${reportProjectRows.filter((row) => row.revenue > 0).length}`, "Im gewählten Zeitraum")}
-            {renderReportMetric("Gebuchte Projektstunden", `${formatHours(employeeSummary.stampedProjectHours)} Std.`, "Aus Stempelungen")}
-          </section>
+      {selectedSvsAnalyticsDetail ? (
+        <div
+          className={styles.modalOverlay}
+          role="dialog"
+          aria-modal="true"
+          aria-label={selectedSvsAnalyticsTitle}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setSelectedSvsAnalyticsDetail(null);
+          }}
+        >
+          <div className={`${styles.standardModal} ${styles.salesAnalyticsModal}`}>
+            <header className={styles.standardModalHeader}>
+              <div>
+                <h2>{selectedSvsAnalyticsTitle}</h2>
+                <p>Zeitraum {reportPeriodLabel} · {activeSvsTradeFilter === "all" ? "Alle Gewerke" : activeSvsTradeFilter}</p>
+              </div>
+              <button type="button" className={styles.iconButton} aria-label="Schließen" onClick={() => setSelectedSvsAnalyticsDetail(null)}>×</button>
+            </header>
+            <div className={styles.standardModalBody}>
+              <div className={styles.customerRevenueModalSummary}>
+                <span className={styles.customerRevenueModalCount}>
+                  {filteredSelectedSvsRows.length} {filteredSelectedSvsRows.length === 1 ? "Rechnung" : "Rechnungen"} angezeigt
+                </span>
+                <div className={styles.customerRevenueModalExplanation}>
+                  <strong>Einordnung</strong>
+                  <p>{selectedSvsAnalyticsInterpretation}</p>
+                </div>
+              </div>
+              <label className={styles.analyticsModalSearch}>
+                <span>Details durchsuchen</span>
+                <input
+                  type="search"
+                  value={svsModalSearch}
+                  onChange={(event) => {
+                    setSvsModalSearch(event.target.value);
+                    setIsSvsTradeTableExpanded(false);
+                  }}
+                  placeholder="Rechnung, Kunde, Projekt, Gewerk oder Einordnung …"
+                />
+              </label>
 
-          <article className={styles.analyticsCard}>
-            <h2>Offene Umsätze pro Projekt</h2>
-            <table className={styles.analyticsTable}>
-              <thead>
-                <tr>
-                  <th>Projekt-ID</th>
-                  <th>Kunde</th>
-                  <th>Projektstatus</th>
-                  <th>Gewerk</th>
-                  <th>Angebotsvolumen</th>
-                  <th>Rechnungsvolumen</th>
-                  <th>Marge %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reportProjectRows.slice(0, 18).map((row) => (
-                  <tr key={row.project.id}>
-                    <td>{row.project.projectNumber}</td>
-                    <td>{row.project.customer || row.project.title}</td>
-                    <td>{row.project.status}</td>
-                    <td>{row.project.trade || "-"}</td>
-                    <td>{formatMoney(row.offerVolume)}</td>
-                    <td>{formatMoney(row.revenue)}</td>
-                    <td data-state={getMetricState(row.marginPercent, 30, 18)}>{formatHours(row.marginPercent)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </article>
+              <div className={styles.salesAnalyticsDetail}>
+                <div className={styles.salesAnalyticsSummaryGrid}>
+                  <article><span>Auswertbare Rechnungen</span><strong>{formatPercent(svsEvaluableShare)}</strong><small>{svsEvaluableRows.length} von {svsInvoiceRows.length} Rechnungen</small></article>
+                  <article><span>Abgedeckter Umsatz</span><strong>{formatPercent(svsRevenueCoverage)}</strong><small>{formatMoney(svsTotalRevenue)} von {formatMoney(svsInvoiceRevenueTotal)}</small></article>
+                  <article><span>Gewichteter SVS</span><strong>{svsTotalHours > 0 ? `${formatMoney(svsAverage)} / h` : "-"}</strong><small>{formatHours(svsTotalHours)} verknüpfte Std.</small></article>
+                </div>
 
-          <article className={styles.analyticsCard}>
-              <h2>Marge pro Gewerk</h2>
-              <table className={styles.analyticsTable}>
-                <thead>
-                  <tr>
-                    <th>Gewerk</th>
-                    <th>Anzahl Projekte</th>
-                    <th>Rechnungsvolumen</th>
-                    <th>Marge</th>
-                    <th>Marge %</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {projectRowsByTrade.slice(0, 10).map((row) => (
-                    <tr key={row.trade}>
-                      <td>{row.trade}</td>
-                      <td>{row.count}</td>
-                      <td>{formatMoney(row.revenue)}</td>
-                      <td>{formatMoney(row.margin)}</td>
-                      <td data-state={getMetricState(row.revenue > 0 ? (row.margin / row.revenue) * 100 : 0, 30, 18)}>
-                        {formatHours(row.revenue > 0 ? (row.margin / row.revenue) * 100 : 0)}%
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-          </article>
-          {visiblePipelineProjectKindSections.map((section) => {
-            const rows = pipelineBottleneckRowsByKind[section.key];
-            return (
-              <article className={styles.analyticsCard} key={`pipeline-bottleneck-${section.key}`}>
-                <h2>Pipeline-Engpässe: {section.title}</h2>
-                <table className={styles.analyticsTable}>
-                  <thead>
-                    <tr>
-                      <th>Phase</th>
-                      <th>Projekte</th>
-                      <th>Phasen</th>
-                      <th>Aktuell offen</th>
-                      <th>Gesamtzeit</th>
-                      <th>Ø Dauer</th>
-                      <th>Längste Dauer</th>
-                      <th>Anteil</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.length === 0 ? (
-                      <tr>
-                        <td colSpan={8}>{section.emptyLabel}</td>
-                      </tr>
-                    ) : (
-                      rows.map((row) => {
-                        const thresholds = getPipelineDurationThreshold(section.key, row.status);
-                        const averageDays = getPipelineMinutesAsDays(row.averageMinutes);
-                        const longestDays = getPipelineMinutesAsDays(row.longestMinutes);
-                        const previousRow = getPreviousPipelineBottleneckRow(section.key, row.status);
-                        const previousAverageDays = previousRow ? getPipelineMinutesAsDays(previousRow.averageMinutes) : 0;
-                        const previousLongestDays = previousRow ? getPipelineMinutesAsDays(previousRow.longestMinutes) : 0;
-                        const averageTrend = getPipelineDurationTrendIcon(averageDays, previousAverageDays);
-                        const longestTrend = getPipelineDurationTrendIcon(longestDays, previousLongestDays);
+                {(selectedSvsAnalyticsDetail === "average" || selectedSvsAnalyticsDetail === "coverage") ? (
+                  <section className={styles.salesAnalyticsBlock}>
+                    <h3>SVS nach Gewerk</h3>
+                    <div className={styles.salesAnalyticsTableScroll}>
+                      <table className={styles.analyticsTable}>
+                        <thead><tr><th>Gewerk</th><th>Rechnungen</th><th>Auswertbar</th><th>Nicht auswertbar</th><th>Ausgewerteter Umsatz</th><th>Stempelstunden</th><th>SVS</th></tr></thead>
+                        <tbody>{filteredSvsTradeRows.length === 0 ? <tr><td colSpan={7}>Keine passenden Gewerke gefunden.</td></tr> : (isSvsTradeTableExpanded ? filteredSvsTradeRows : filteredSvsTradeRows.slice(0, 5)).map((row) => (
+                          <tr key={`svs-trade-${row.trade}`}>
+                            <td>{row.trade}</td><td>{row.invoiceCount}</td><td>{row.evaluableCount}</td><td>{row.missingCount}</td>
+                            <td>{formatMoney(row.revenue)}</td><td>{row.stampedHours > 0 ? `${formatHours(row.stampedHours)} Std.` : "-"}</td><td>{row.stampedHours > 0 ? `${formatMoney(row.svs)} / h` : "-"}</td>
+                          </tr>
+                        ))}</tbody>
+                      </table>
+                    </div>
+                    {filteredSvsTradeRows.length > 5 ? (
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        aria-expanded={isSvsTradeTableExpanded}
+                        onClick={() => setIsSvsTradeTableExpanded((current) => !current)}
+                      >
+                        {isSvsTradeTableExpanded ? "Weniger anzeigen" : `Alle ${filteredSvsTradeRows.length} Gewerke anzeigen`}
+                      </button>
+                    ) : null}
+                  </section>
+                ) : null}
+
+                <section className={styles.salesAnalyticsBlock}>
+                  <h3>{selectedSvsAnalyticsDetail === "missing" ? "Zu prüfende Rechnungen" : "Rechnungen und zugeordnete Zeiten"}</h3>
+                  <div className={styles.salesAnalyticsTableScroll}>
+                    <table className={styles.analyticsTable}>
+                      <thead><tr><th>Rechnung</th><th>Kunde</th><th>Projekt</th><th>Gewerk</th><th>Leistungsdatum</th><th>Netto</th><th>Stempelstunden</th><th>SVS</th><th>Einordnung</th><th>Aktionen</th></tr></thead>
+                      <tbody>{filteredSelectedSvsRows.length === 0 ? <tr><td colSpan={10}>Keine passenden Rechnungen gefunden.</td></tr> : filteredSelectedSvsRows.map((row) => {
+                        const contact = getCustomerDrilldownContact(row.invoice.customerName, row.invoice.projectId);
                         return (
-                          <tr key={`${section.key}-${row.status}`}>
-                            <td>{row.status}</td>
-                            <td>{row.projectCount}</td>
-                            <td>{row.phaseCount}</td>
-                            <td>{row.openCount}</td>
-                            <td>{formatPipelineMinutesAsDays(row.totalMinutes)}</td>
-                            <td data-state={getPipelineDurationState(averageDays, thresholds.averageOk, thresholds.averageWarn)}>
-                              <span className={styles.analyticsTrendValue}>
-                                {formatPipelineMinutesAsDays(row.averageMinutes)}
-                                <span className={styles.analyticsTrendBadge} data-trend={averageTrend} aria-label="Trend Durchschnittsdauer">
-                                  <DashboardTrendIcon type={averageTrend} />
-                                </span>
-                              </span>
-                            </td>
-                            <td data-state={getPipelineDurationState(longestDays, thresholds.longestOk, thresholds.longestWarn)}>
-                              <span className={styles.analyticsTrendValue}>
-                                {formatPipelineMinutesAsDays(row.longestMinutes)}
-                                <span className={styles.analyticsTrendBadge} data-trend={longestTrend} aria-label="Trend längste Dauer">
-                                  <DashboardTrendIcon type={longestTrend} />
-                                </span>
-                              </span>
-                            </td>
-                            <td>{formatPercent(row.share)}</td>
+                          <tr key={`svs-invoice-${row.invoice.id}`}>
+                            <td>{row.invoice.invoiceNumber}</td><td>{row.invoice.customerName || "-"}</td><td>{row.project?.projectNumber || row.invoice.projectNumber || row.invoice.projectTitle || "-"}</td><td>{row.trade}</td>
+                            <td>{formatDateOnly(row.invoice.serviceDate || row.invoice.createdAt)}</td><td>{formatMoney(row.invoice.netTotal)}</td><td>{row.stampedHours > 0 ? `${formatHours(row.stampedHours)} Std.` : "-"}</td><td>{row.stampedHours > 0 ? `${formatMoney(row.svs)} / h` : "-"}</td>
+                            <td data-state={row.status === "ok" ? "good" : "ok"}>{row.status === "ok" ? "Auswertbar" : row.status === "conflict" ? "Verknüpfung prüfen" : "Stempelzeiten fehlen"}</td>
+                            <td><div className={styles.tableActionGroup}>
+                              <button type="button" className={styles.secondaryButton} onClick={() => {
+                                setSelectedSvsAnalyticsDetail(null);
+                                if (row.project) openProjectFile(row.project, { tab: "documents", documentType: "Rechnungen" });
+                                openEditInvoiceModal(row.invoice);
+                              }}>Rechnung</button>
+                              {row.project ? <button type="button" className={styles.secondaryButton} onClick={() => {
+                                setSelectedSvsAnalyticsDetail(null);
+                                openProjectFile(row.project as HeroProjectPreview, { tab: "time", keepMonth: true });
+                              }}>Projektzeiten</button> : null}
+                              {contact ? <button type="button" className={styles.secondaryButton} onClick={() => {
+                                setSelectedSvsAnalyticsDetail(null);
+                                setActiveTab("contacts");
+                                openCustomerFile(contact);
+                              }}>Kunde</button> : null}
+                            </div></td>
                           </tr>
                         );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </article>
-            );
-          })}
+                      })}</tbody>
+                    </table>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
-          {visiblePipelineProjectKindSections.map((section) => {
-            const rows = pipelineDurationRowsByKind[section.key];
-            return (
-              <article className={styles.analyticsCard} key={`pipeline-duration-${section.key}`}>
-                <h2>Pipeline-Dauer: {section.title}</h2>
-                <table className={styles.analyticsTable}>
-                  <thead>
-                    <tr>
-                      <th>Projekt</th>
-                      <th>Kunde</th>
-                      <th>Status</th>
-                      <th>Im Status seit</th>
-                      <th>Dauer Status</th>
-                      <th>Seit Anlage</th>
-                      <th>Basis</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.slice(0, 12).map((row) => (
-                      <tr key={`${section.key}-${row.project.id}`}>
-                        <td>{row.project.projectNumber || row.project.id}</td>
-                        <td>{row.project.customer || row.project.title}</td>
-                        <td>{normalizeProjectPipelineStatus(row.project.status)}</td>
-                        <td>
-                          {row.statusStartedAt && Number.isFinite(row.statusStartedAt.getTime())
-                            ? formatDateOnly(row.statusStartedAt.toISOString())
-                            : "-"}
-                        </td>
-                        <td data-state={row.isRecurringImplementationStatus ? "good" : row.statusDurationDays >= 30 ? "low" : row.statusDurationDays >= 14 ? "ok" : "good"}>
-                          {formatPipelineDays(row.statusDurationDays)}
-                        </td>
-                        <td>{formatPipelineDays(row.totalDurationDays)}</td>
-                        <td>{row.isRecurringImplementationStatus ? "Laufender Dauerläufer" : row.source}</td>
-                      </tr>
-                    ))}
-                    {rows.length === 0 ? (
-                      <tr>
-                        <td colSpan={7}>Keine passenden Projekte gefunden.</td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                </table>
-              </article>
-            );
-          })}
-        </>
+      {reportAnalyticsTab === "projects" && (
+        <section className={styles.analyticsGrid}>
+          {renderReportMetric(
+            "Ø Projektalter",
+            formatPipelineDays(Math.round(averageProjectRuntime)),
+            `${reportProjectKindLabel} seit Anlage`,
+            "neutral",
+            "none",
+            undefined,
+            false,
+            undefined,
+            () => setSelectedProjectAnalyticsDetail("runtime")
+          )}
+          {renderReportMetric(
+            "Engpässe nach Projektart",
+            projectBottleneckCardValue,
+            projectBottleneckCardHint,
+            visibleProjectBottleneckKinds.length > 0 ? "ok" : "neutral",
+            "none",
+            undefined,
+            false,
+            undefined,
+            () => {
+              setSelectedProjectBottleneckKind(reportProjectKindFilter === "recurring" ? "recurring" : "oneTime");
+              setSelectedProjectAnalyticsDetail("bottlenecks");
+            }
+          )}
+          {renderReportMetric(
+            "Kritische Projektphasen",
+            `${longPipelineStatusRows.length}`,
+            `${reportProjectKindLabel} außerhalb des Zielkorridors`,
+            longPipelineStatusRows.length === 0 ? "good" : "ok",
+            "none",
+            undefined,
+            false,
+            undefined,
+            () => setSelectedProjectAnalyticsDetail("critical")
+          )}
+          {renderReportMetric(
+            "Projekte mit Umsatz",
+            `${projectRevenueRows.length}`,
+            "Fakturierte Projekte im Zeitraum",
+            "neutral",
+            "none",
+            undefined,
+            false,
+            undefined,
+            () => setSelectedProjectAnalyticsDetail("revenue")
+          )}
+          {renderReportMetric(
+            "Gebuchte Projektstunden",
+            `${formatHours(projectReportStampedHours)} Std.`,
+            "Im gewählten Zeitraum",
+            "neutral",
+            "none",
+            undefined,
+            false,
+            undefined,
+            () => setSelectedProjectAnalyticsDetail("hours")
+          )}
+        </section>
       )}
       {reportAnalyticsTab === "customers" && (
         <>
@@ -32559,6 +33223,307 @@ await addProjectLogbookEntry(
           </article>
         </>
       )}
+
+      {selectedProjectAnalyticsDetail ? (
+        <div
+          className={styles.modalOverlay}
+          role="dialog"
+          aria-modal="true"
+          aria-label={selectedProjectAnalyticsTitle}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setSelectedProjectAnalyticsDetail(null);
+          }}
+        >
+          <div className={`${styles.standardModal} ${styles.projectAnalyticsModal}`}>
+            <header className={styles.standardModalHeader}>
+              <div>
+                <h2>{selectedProjectAnalyticsTitle}</h2>
+                <p>Zeitraum {reportPeriodLabel} · {reportProjectKindLabel}</p>
+              </div>
+              <button
+                type="button"
+                className={styles.iconButton}
+                aria-label="Schließen"
+                onClick={() => setSelectedProjectAnalyticsDetail(null)}
+              >
+                ×
+              </button>
+            </header>
+            <div className={styles.standardModalBody}>
+              <div className={styles.customerRevenueModalSummary}>
+                <span className={styles.customerRevenueModalCount}>
+                  {selectedProjectAnalyticsCount} {selectedProjectAnalyticsCountLabel} angezeigt
+                </span>
+                <div className={styles.customerRevenueModalExplanation}>
+                  <strong>Einordnung</strong>
+                  <p>{selectedProjectAnalyticsInterpretation}</p>
+                  {selectedProjectLegacyKindCount > 0 && reportProjectKindFilter !== "recurring" ? (
+                    <small>
+                      {selectedProjectLegacyKindCount} historische {selectedProjectLegacyKindCount === 1 ? "Projekt" : "Projekte"} ohne gespeicherte Projektart werden entsprechend der systemweiten Bestandslogik als einmalig eingeordnet.
+                    </small>
+                  ) : null}
+                </div>
+              </div>
+
+              {selectedProjectAnalyticsDetail === "bottlenecks" ? (
+                <div className={styles.projectBottleneckDetail}>
+                  {reportProjectKindFilter === "all" ? (
+                    <div className={styles.projectBottleneckTabs} role="tablist" aria-label="Projektart auswählen">
+                      {pipelineProjectKindSections.map((section) => (
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={selectedProjectBottleneckKind === section.key}
+                          data-active={selectedProjectBottleneckKind === section.key ? "true" : undefined}
+                          onClick={() => setSelectedProjectBottleneckKind(section.key)}
+                          key={`project-bottleneck-tab-${section.key}`}
+                        >
+                          {section.title}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  <section className={styles.projectBottleneckSection}>
+                    <div className={styles.projectBottleneckSectionHeading}>
+                      <div>
+                        <span>Auswertung für</span>
+                        <h3>{selectedProjectBottleneckSection.title}</h3>
+                      </div>
+                      {selectedProjectBottleneckKind === "recurring" ? (
+                        <p>Die laufende Umsetzung ist bei Dauerläufern Normalbetrieb und wird nicht als Engpass gewertet.</p>
+                      ) : null}
+                    </div>
+
+                    <div className={styles.projectBottleneckSummaryGrid}>
+                      <article><span>Hauptengpass</span><strong>{selectedProjectMainBottleneck?.status ?? "-"}</strong></article>
+                      <article><span>Ø Dauer im Hauptengpass</span><strong>{selectedProjectMainBottleneck ? formatPipelineMinutesAsDays(selectedProjectMainBottleneck.averageMinutes) : "-"}</strong></article>
+                      <article><span>Aktuell offene Projekte</span><strong>{selectedProjectMainBottleneck?.openCount ?? 0}</strong></article>
+                    </div>
+
+                    <div className={styles.projectBottleneckTableBlock}>
+                      <h3>Phasen im Vergleich</h3>
+                      <div className={styles.projectBottleneckTableScroll}>
+                        <table className={styles.analyticsTable}>
+                          <thead><tr>
+                            <th>Phase</th><th>Projekte</th><th>Aktuell offen</th>
+                            <th>Gesamtzeit</th><th>Ø Dauer</th><th>Längste Dauer</th><th>Anteil</th>
+                          </tr></thead>
+                          <tbody>
+                            {selectedProjectBottleneckRows.length === 0 ? (
+                              <tr><td colSpan={7}>{selectedProjectBottleneckSection.emptyLabel}</td></tr>
+                            ) : selectedProjectBottleneckRows.map((row) => {
+                              const thresholds = getPipelineDurationThreshold(selectedProjectBottleneckKind, row.status);
+                              const averageDays = getPipelineMinutesAsDays(row.averageMinutes);
+                              const longestDays = getPipelineMinutesAsDays(row.longestMinutes);
+                              const previousRow = getPreviousPipelineBottleneckRow(selectedProjectBottleneckKind, row.status);
+                              const previousAverageDays = previousRow ? getPipelineMinutesAsDays(previousRow.averageMinutes) : 0;
+                              const previousLongestDays = previousRow ? getPipelineMinutesAsDays(previousRow.longestMinutes) : 0;
+                              const averageTrend = getPipelineDurationTrendIcon(averageDays, previousAverageDays);
+                              const longestTrend = getPipelineDurationTrendIcon(longestDays, previousLongestDays);
+                              return (
+                                <tr key={`${selectedProjectBottleneckKind}-${row.status}`}>
+                                  <td>{row.status}</td><td>{row.projectCount}</td><td>{row.openCount}</td>
+                                  <td>{formatPipelineMinutesAsDays(row.totalMinutes)}</td>
+                                  <td data-state={getPipelineDurationState(averageDays, thresholds.averageOk, thresholds.averageWarn)}>
+                                    <span className={styles.analyticsTrendValue}>{formatPipelineMinutesAsDays(row.averageMinutes)}<span className={styles.analyticsTrendBadge} data-trend={averageTrend} aria-label="Trend Durchschnittsdauer"><DashboardTrendIcon type={averageTrend} /></span></span>
+                                  </td>
+                                  <td data-state={getPipelineDurationState(longestDays, thresholds.longestOk, thresholds.longestWarn)}>
+                                    <span className={styles.analyticsTrendValue}>{formatPipelineMinutesAsDays(row.longestMinutes)}<span className={styles.analyticsTrendBadge} data-trend={longestTrend} aria-label="Trend längste Dauer"><DashboardTrendIcon type={longestTrend} /></span></span>
+                                  </td>
+                                  <td>{formatPercent(row.share)}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <div className={styles.projectBottleneckTableBlock}>
+                      <h3>Auffällige aktive Projekte</h3>
+                      <div className={styles.projectBottleneckTableScroll}>
+                        <table className={styles.analyticsTable}>
+                          <thead><tr><th>Projekt</th><th>Kunde</th><th>Phase</th><th>Zeit in Phase</th><th>Einordnung</th><th>Aktionen</th></tr></thead>
+                          <tbody>
+                            {selectedProjectBottleneckAffectedRows.length === 0 ? (
+                              <tr><td colSpan={6}>Keine aktuell auffälligen Projekte dieser Projektart.</td></tr>
+                            ) : selectedProjectBottleneckAffectedRows.map((row) => {
+                              const assessment = getPipelineProjectAssessment(row, selectedProjectBottleneckKind);
+                              return (
+                                <tr key={`affected-${selectedProjectBottleneckKind}-${row.project.id}`}>
+                                  <td>{row.project.projectNumber || row.project.id}</td>
+                                  <td>{row.project.customer || row.project.title}</td>
+                                  <td>{normalizeProjectPipelineStatus(row.project.status)}</td>
+                                  <td>{formatPipelineDays(row.statusDurationDays)}</td>
+                                  <td data-state={assessment.state}>{assessment.label}</td>
+                                  <td>{renderProjectAnalyticsActions(row.project)}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              ) : selectedProjectAnalyticsDetail === "runtime" ? (
+                visiblePipelineProjectKindSections.map((section) => {
+                  const rows = pipelineDurationRowsByKind[section.key];
+                  return (
+                    <article className={styles.analyticsCard} key={`project-modal-runtime-${section.key}`}>
+                      <h2>{section.title}</h2>
+                      <div className={styles.forecastTableScroll}>
+                        <table className={styles.analyticsTable}>
+                          <thead><tr>
+                            <th>Projekt</th><th>Kunde</th><th>Aktuelle Phase</th><th>Phasenbeginn</th>
+                            <th>Zeit in Phase</th><th>Projektlaufzeit</th><th>Einordnung</th><th>Basis</th><th>Aktionen</th>
+                          </tr></thead>
+                          <tbody>
+                            {rows.length === 0 ? (
+                              <tr><td colSpan={9}>Keine passenden aktiven Projekte.</td></tr>
+                            ) : rows.map((row) => {
+                              const assessment = getPipelineProjectAssessment(row, section.key);
+                              return (
+                                <tr key={`runtime-${section.key}-${row.project.id}`}>
+                                  <td>{row.project.projectNumber || row.project.id}</td>
+                                  <td>{row.project.customer || row.project.title}</td>
+                                  <td>{normalizeProjectPipelineStatus(row.project.status)}</td>
+                                  <td>{row.statusStartedAt && Number.isFinite(row.statusStartedAt.getTime()) ? formatDateOnly(row.statusStartedAt.toISOString()) : "-"}</td>
+                                  <td data-state={assessment.state}>{formatPipelineDays(row.statusDurationDays)}</td>
+                                  <td>{formatPipelineDays(row.totalDurationDays)}</td>
+                                  <td data-state={assessment.state}>{assessment.label}</td>
+                                  <td>{row.source}</td>
+                                  <td>{renderProjectAnalyticsActions(row.project)}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </article>
+                  );
+                })
+              ) : selectedProjectAnalyticsDetail === "critical" ? (
+                <div className={styles.forecastTableScroll}>
+                  <table className={styles.analyticsTable}>
+                    <thead><tr>
+                      <th>Projekt</th><th>Kunde</th><th>Projektart</th><th>Phase</th><th>Phasenbeginn</th>
+                      <th>Zeit in Phase</th><th>Einordnung</th><th>Aktionen</th>
+                    </tr></thead>
+                    <tbody>
+                      {longPipelineStatusRows.length === 0 ? (
+                        <tr><td colSpan={8}>Keine kritischen Projektphasen im gewählten Filter.</td></tr>
+                      ) : longPipelineStatusRows.map((row) => {
+                        const kind = getPipelineProjectKindKey(row.project);
+                        const assessment = getPipelineProjectAssessment(row, kind);
+                        return (
+                          <tr key={`critical-${row.project.id}`}>
+                            <td>{row.project.projectNumber || row.project.id}</td>
+                            <td>{row.project.customer || row.project.title}</td>
+                            <td>{kind === "recurring" ? "Dauerläufer" : "Einmalig"}</td>
+                            <td>{normalizeProjectPipelineStatus(row.project.status)}</td>
+                            <td>{row.statusStartedAt && Number.isFinite(row.statusStartedAt.getTime()) ? formatDateOnly(row.statusStartedAt.toISOString()) : "-"}</td>
+                            <td data-state={assessment.state}>{formatPipelineDays(row.statusDurationDays)}</td>
+                            <td data-state={assessment.state}>{assessment.label}</td>
+                            <td>{renderProjectAnalyticsActions(row.project)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : selectedProjectAnalyticsDetail === "revenue" ? (
+                <>
+                  <div className={styles.forecastTableScroll}>
+                    <table className={styles.analyticsTable}>
+                      <thead><tr>
+                        <th>Projekt</th><th>Kunde</th><th>Projektart</th><th>Gewerk</th>
+                        <th>Umsatz</th><th>Kalk. Marge</th><th>Datenbasis</th><th>Aktionen</th>
+                      </tr></thead>
+                      <tbody>
+                        {projectRevenueRows.length === 0 ? (
+                          <tr><td colSpan={8}>Keine fakturierten Projekte im gewählten Zeitraum.</td></tr>
+                        ) : projectRevenueRows.map((row) => {
+                          const marginState = row.costBasisStatus === "preliminary" ? "ok" : getMetricState(row.marginPercent, 30, 18);
+                          return (
+                            <tr key={`revenue-${row.project.id}`}>
+                              <td>{row.project.projectNumber || row.project.id}</td>
+                              <td>{row.project.customer || row.project.title}</td>
+                              <td>{getPipelineProjectKindKey(row.project) === "recurring" ? "Dauerläufer" : "Einmalig"}</td>
+                              <td>{row.project.trade || "-"}</td>
+                              <td><div className={styles.customerRiskStatus}>
+                                <strong>{formatMoney(row.revenue)}</strong>
+                                <small>{row.invoiceCount} {row.invoiceCount === 1 ? "Rechnung" : "Rechnungen"}</small>
+                              </div></td>
+                              <td data-state={marginState}><div className={styles.customerRiskStatus}>
+                                <strong>{formatMoney(row.margin)} · {formatHours(row.marginPercent)}%</strong>
+                                <small>Material {formatMoney(row.materialCosts)} · Lohn {formatMoney(row.laborCosts)}</small>
+                              </div></td>
+                              <td data-state={row.costBasisStatus === "verified" ? "good" : "ok"}>
+                                {row.costBasisStatus === "verified" ? "Belastbar" : "Vorläufig"}
+                              </td>
+                              <td>{renderProjectAnalyticsActions(row.project, { showInvoices: true })}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <article className={styles.analyticsCard}>
+                    <h2>Kalkulatorische Marge nach Gewerk</h2>
+                    <div className={styles.forecastTableScroll}>
+                      <table className={styles.analyticsTable}>
+                        <thead><tr><th>Gewerk</th><th>Projekte</th><th>Fakturiert</th><th>Kalk. Kosten</th><th>Kalk. Marge</th><th>Marge %</th><th>Datenbasis</th></tr></thead>
+                        <tbody>
+                          {projectRowsByTrade.length === 0 ? (
+                            <tr><td colSpan={7}>Keine Gewerke mit fakturiertem Umsatz im Zeitraum.</td></tr>
+                          ) : projectRowsByTrade.map((row) => {
+                            const marginPercent = row.revenue > 0 ? (row.margin / row.revenue) * 100 : 0;
+                            const marginState = row.preliminaryCount > 0 ? "ok" : getMetricState(marginPercent, 30, 18);
+                            return (
+                              <tr key={`trade-margin-${row.trade}`}>
+                                <td>{row.trade}</td><td>{row.count}</td><td>{formatMoney(row.revenue)}</td><td>{formatMoney(row.costs)}</td>
+                                <td data-state={marginState}>{formatMoney(row.margin)}</td><td data-state={marginState}>{formatHours(marginPercent)}%</td>
+                                <td data-state={row.preliminaryCount > 0 ? "ok" : "good"}>{row.preliminaryCount > 0 ? `${row.preliminaryCount} vorläufig` : "Belastbar"}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </article>
+                </>
+              ) : (
+                <div className={styles.forecastTableScroll}>
+                  <table className={styles.analyticsTable}>
+                    <thead><tr>
+                      <th>Projekt</th><th>Kunde</th><th>Projektart</th><th>Status</th><th>Gebucht</th>
+                      <th>Verkauft</th><th>Differenz verkauft − gebucht</th><th>Aktionen</th>
+                    </tr></thead>
+                    <tbody>
+                      {projectHoursRows.length === 0 ? (
+                        <tr><td colSpan={8}>Keine Projektstunden im gewählten Zeitraum.</td></tr>
+                      ) : projectHoursRows.map((row) => (
+                        <tr key={`hours-${row.project.id}`}>
+                          <td>{row.project.projectNumber || row.project.id}</td>
+                          <td>{row.project.customer || row.project.title}</td>
+                          <td>{getPipelineProjectKindKey(row.project) === "recurring" ? "Dauerläufer" : "Einmalig"}</td>
+                          <td>{normalizeProjectPipelineStatus(row.project.status)}</td>
+                          <td>{formatHours(row.stampedHours)} Std.</td>
+                          <td>{formatHours(row.soldHours)} Std.</td>
+                          <td data-state={row.openHours >= 0 ? "good" : "ok"}>{formatHours(row.openHours)} Std.</td>
+                          <td>{renderProjectAnalyticsActions(row.project)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {selectedCustomerRevenueDetail &&
       (isCustomerInvoiceDrilldown || isCustomerListDrilldown || customerRevenueAnalytics?.details) ? (

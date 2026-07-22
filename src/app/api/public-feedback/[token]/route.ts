@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
 import { sendNotificationMailSafely } from "@/lib/mail/notifications";
 import { ensureSalesHubTables } from "@/lib/sales-hub/ensure";
+import { parseCustomerFeedbackRating } from "@/lib/customer-feedback/rating";
 
 type RequestRow = {
   id: string;
@@ -20,11 +21,6 @@ type RequestRow = {
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function cleanRating(value: unknown) {
-  const rating = Math.round(Number(value));
-  return Math.max(1, Math.min(5, Number.isFinite(rating) ? rating : 5));
 }
 
 async function createHotAlert(input: {
@@ -96,43 +92,52 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   const { token } = await params;
   await ensureSalesHubTables();
   const body = await req.json().catch(() => ({}));
-  const rows = await prisma.$queryRaw<RequestRow[]>`
-    SELECT *
-    FROM "CustomerFeedbackRequest"
-    WHERE token = ${token}
-    LIMIT 1
-  `;
-  const request = rows[0];
-  if (!request) {
-    return NextResponse.json({ error: "Bewertungslink nicht gefunden." }, { status: 404 });
+  const rating = parseCustomerFeedbackRating(body.rating);
+  if (rating === null) {
+    return NextResponse.json({ error: "Bitte eine Bewertung zwischen 1 und 5 Sternen auswählen." }, { status: 400 });
   }
-  if (request.status === "answered") {
-    return NextResponse.json({ error: "Diese Bewertung wurde bereits abgegeben." }, { status: 409 });
-  }
-
-  const rating = cleanRating(body.rating);
   const wantsContact = Boolean(body.wantsContact);
   const hotAlert = rating <= 4 || wantsContact;
   const id = randomUUID();
+  const transactionResult = await prisma.$transaction(async (transaction) => {
+    const rows = await transaction.$queryRaw<RequestRow[]>`
+      SELECT *
+      FROM "CustomerFeedbackRequest"
+      WHERE token = ${token}
+      LIMIT 1
+      FOR UPDATE
+    `;
+    const request = rows[0];
+    if (!request) return { state: "not-found" as const, request: null };
+    if (request.status === "answered") return { state: "answered" as const, request };
 
-  await prisma.$executeRaw`
-    INSERT INTO "CustomerFeedback" (
-      "id", "organizationId", "requestId", "invoiceId", "invoiceNumber", "projectId",
-      "contactId", "customerName", "rating", "comment", "wantsContact", "source",
-      "salesUserId", "salesUserName", "hotAlert"
-    ) VALUES (
-      ${id}, ${request.organizationId}, ${request.id}, ${request.invoiceId}, ${request.invoiceNumber},
-      ${request.projectId}, ${request.contactId}, ${request.customerName}, ${rating},
-      ${cleanString(body.comment)}, ${wantsContact}, 'public',
-      ${request.salesUserId}, ${request.salesUserName}, ${hotAlert}
-    )
-  `;
+    await transaction.$executeRaw`
+      INSERT INTO "CustomerFeedback" (
+        "id", "organizationId", "requestId", "invoiceId", "invoiceNumber", "projectId",
+        "contactId", "customerName", "rating", "comment", "wantsContact", "source",
+        "salesUserId", "salesUserName", "hotAlert"
+      ) VALUES (
+        ${id}, ${request.organizationId}, ${request.id}, ${request.invoiceId}, ${request.invoiceNumber},
+        ${request.projectId}, ${request.contactId}, ${request.customerName}, ${rating},
+        ${cleanString(body.comment)}, ${wantsContact}, 'public',
+        ${request.salesUserId}, ${request.salesUserName}, ${hotAlert}
+      )
+    `;
 
-  await prisma.$executeRaw`
-    UPDATE "CustomerFeedbackRequest"
-    SET "status" = 'answered', "respondedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP
-    WHERE id = ${request.id}
-  `;
+    await transaction.$executeRaw`
+      UPDATE "CustomerFeedbackRequest"
+      SET "status" = 'answered', "respondedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP
+      WHERE id = ${request.id}
+    `;
+    return { state: "created" as const, request };
+  });
+  if (transactionResult.state === "not-found" || !transactionResult.request) {
+    return NextResponse.json({ error: "Bewertungslink nicht gefunden." }, { status: 404 });
+  }
+  if (transactionResult.state === "answered") {
+    return NextResponse.json({ error: "Diese Bewertung wurde bereits abgegeben." }, { status: 409 });
+  }
+  const request = transactionResult.request;
 
   if (hotAlert) {
     await createHotAlert({

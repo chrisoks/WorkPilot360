@@ -7109,6 +7109,10 @@
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
+.analyticsPage [hidden] {
+  display: none !important;
+}
+
 .salesCockpitCard {
   background: #ffffff;
   border: 1px solid #e5edf7;
@@ -7120,6 +7124,19 @@
   padding: 22px;
 }
 
+.salesCockpitCard[data-clickable="true"] {
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.salesCockpitCard[data-clickable="true"]:hover,
+.salesCockpitCard[data-clickable="true"]:focus-visible {
+  border-color: #8cb9bd;
+  box-shadow: 0 18px 38px rgb(15 23 42 / 0.11);
+  outline: none;
+  transform: translateY(-2px);
+}
+
 .salesCockpitCardHeader {
   align-items: center;
   display: flex;
@@ -7129,9 +7146,9 @@
 
 .salesCockpitIcon {
   align-items: center;
-  background: #eef6ff;
+  background: #edf6f6;
   border-radius: 16px;
-  color: #005fff;
+  color: #063f45;
   display: inline-flex;
   height: 48px;
   justify-content: center;
@@ -7173,13 +7190,113 @@
 }
 
 .salesCockpitCard[data-tone="urgent"] .salesCockpitIcon {
-  background: #fff1f2;
-  color: #dc2626;
+  background: #edf6f6;
+  color: #063f45;
 }
 
 .salesCockpitCard[data-tone="watch"] .salesCockpitIcon {
-  background: #fffbeb;
-  color: #d97706;
+  background: #edf6f6;
+  color: #063f45;
+}
+
+.salesTrendSection {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.standardModal.salesAnalyticsModal {
+  width: min(1480px, calc(100vw - 32px));
+}
+
+.analyticsModalSearch {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: max-content minmax(240px, 520px);
+}
+
+.analyticsModalSearch span {
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.analyticsModalSearch input {
+  background: #fff;
+  border: 1px solid #cbd8e8;
+  border-radius: 10px;
+  color: #0f172a;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 750;
+  min-height: 40px;
+  outline: none;
+  padding: 8px 12px;
+  width: 100%;
+}
+
+.analyticsModalSearch input:focus {
+  border-color: #0aa7b5;
+  box-shadow: 0 0 0 3px rgba(10, 167, 181, 0.12);
+}
+
+.salesAnalyticsDetail,
+.salesAnalyticsBlock {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.salesAnalyticsBlock {
+  border: 1px solid #dbe3ee;
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.salesAnalyticsBlock h3 {
+  color: #0f172a;
+  font-size: 0.98rem;
+  font-weight: 950;
+  margin: 0;
+}
+
+.salesAnalyticsSummaryGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.salesAnalyticsSummaryGrid article {
+  background: #f5f9f9;
+  border: 1px solid #d7e7e8;
+  border-radius: 11px;
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+}
+
+.salesAnalyticsSummaryGrid span,
+.salesAnalyticsSummaryGrid small {
+  color: #61738a;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.salesAnalyticsSummaryGrid strong {
+  color: #063f45;
+  font-size: 1.2rem;
+  font-weight: 950;
+}
+
+.salesAnalyticsTableScroll {
+  border: 1px solid #e0e7ef;
+  border-radius: 10px;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.salesAnalyticsTableScroll .analyticsTable {
+  min-width: 1040px;
 }
 
 .salesCockpitCard p {
@@ -7221,6 +7338,19 @@
 
 @media (max-width: 760px) {
   .salesCockpitGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .standardModal.salesAnalyticsModal {
+    width: min(100%, calc(100vw - 16px));
+  }
+
+  .salesAnalyticsSummaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .analyticsModalSearch {
+    align-items: stretch;
     grid-template-columns: 1fr;
   }
 }
@@ -22651,6 +22781,143 @@
   color: #0f172a;
   font-size: 1rem;
   font-weight: 950;
+}
+
+.projectAnalyticsModal {
+  width: min(1480px, calc(100vw - 32px));
+}
+
+.projectBottleneckDetail {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.projectBottleneckTabs {
+  align-items: center;
+  background: #eef3f6;
+  border: 1px solid #d8e3e7;
+  border-radius: 12px;
+  display: inline-flex;
+  gap: 4px;
+  justify-self: start;
+  padding: 4px;
+}
+
+.projectBottleneckTabs button {
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  color: #52647a;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 900;
+  padding: 9px 14px;
+}
+
+.projectBottleneckTabs button[data-active="true"] {
+  background: #063f45;
+  box-shadow: 0 3px 10px rgba(6, 63, 69, 0.18);
+  color: #ffffff;
+}
+
+.projectBottleneckSection {
+  border: 1px solid #dbe3ee;
+  border-radius: 14px;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.projectBottleneckSectionHeading {
+  align-items: end;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+}
+
+.projectBottleneckSectionHeading span,
+.projectBottleneckSummaryGrid span {
+  color: #61738a;
+  font-size: 0.74rem;
+  font-weight: 850;
+}
+
+.projectBottleneckSectionHeading h3,
+.projectBottleneckTableBlock h3 {
+  color: #0f172a;
+  font-size: 1rem;
+  font-weight: 950;
+  margin: 2px 0 0;
+}
+
+.projectBottleneckSectionHeading p {
+  color: #52647a;
+  font-size: 0.78rem;
+  font-weight: 750;
+  line-height: 1.4;
+  margin: 0;
+  max-width: 620px;
+  text-align: right;
+}
+
+.projectBottleneckSummaryGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.projectBottleneckSummaryGrid article {
+  background: #f5f9f9;
+  border: 1px solid #d7e7e8;
+  border-radius: 11px;
+  display: grid;
+  gap: 5px;
+  padding: 12px 14px;
+}
+
+.projectBottleneckSummaryGrid strong {
+  color: #063f45;
+  font-size: 1.08rem;
+  font-weight: 950;
+}
+
+.projectBottleneckTableBlock {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.projectBottleneckTableScroll {
+  border: 1px solid #e0e7ef;
+  border-radius: 10px;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.projectBottleneckTableScroll .analyticsTable {
+  min-width: 900px;
+}
+
+@media (max-width: 720px) {
+  .projectAnalyticsModal {
+    width: min(100%, calc(100vw - 16px));
+  }
+
+  .projectBottleneckSectionHeading {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .projectBottleneckSectionHeading p {
+    text-align: left;
+  }
+
+  .projectBottleneckSummaryGrid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .potentialFormSection {

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canManageCustomerFeedbackRequests, canReadCustomerFeedbackRequests } from "@/lib/permissions";
 import { ensureSalesHubTables } from "@/lib/sales-hub/ensure";
+import { getPublicAppOrigin } from "@/lib/http/public-app-origin";
 
 type FeedbackRequestRow = {
   id: string;
@@ -27,11 +28,6 @@ function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function getBaseUrl(req: Request) {
-  const url = new URL(req.url);
-  return `${url.protocol}//${url.host}`;
-}
-
 function getUserName(user: { firstName?: string | null; lastName?: string | null; email?: string | null }) {
   return [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email || "System";
 }
@@ -47,7 +43,7 @@ function formatRequest(row: FeedbackRequestRow, req: Request) {
   return {
     id: row.id,
     token: row.token,
-    url: `${getBaseUrl(req)}/feedback/${row.token}`,
+    url: `${getPublicAppOrigin(req)}/feedback/${row.token}`,
     invoiceId: row.invoiceId ?? "",
     invoiceNumber: row.invoiceNumber,
     projectId: row.projectId ?? "",

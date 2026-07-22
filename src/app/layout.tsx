@@ -1,6 +1,7 @@
 import "./globals.css";
 import { Outfit } from "next/font/google";
 import type { Metadata, Viewport } from "next";
+import { ModalScrollLock } from "@/components/ui/modal-scroll-lock";
 
 const outfit = Outfit({
   subsets: ["latin"],
@@ -38,7 +39,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="de">
-      <body className={`${outfit.className} ${outfit.variable}`}>{children}</body>
+      <body className={`${outfit.className} ${outfit.variable}`}>
+        <ModalScrollLock />
+        {children}
+      </body>
     </html>
   );
 }

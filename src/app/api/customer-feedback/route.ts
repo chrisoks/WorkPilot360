@@ -6,6 +6,7 @@ import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/acto
 import { sendNotificationMailSafely } from "@/lib/mail/notifications";
 import { canDeleteCustomerFeedback, canManageCustomerFeedback, canReadCustomerFeedback } from "@/lib/permissions";
 import { ensureSalesHubTables } from "@/lib/sales-hub/ensure";
+import { parseCustomerFeedbackRating } from "@/lib/customer-feedback/rating";
 
 type FeedbackRow = {
   id: string;
@@ -27,11 +28,6 @@ type FeedbackRow = {
 
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function cleanRating(value: unknown) {
-  const rating = Math.round(Number(value));
-  return Math.max(1, Math.min(5, Number.isFinite(rating) ? rating : 5));
 }
 
 function getUserName(user: { firstName?: string | null; lastName?: string | null; email?: string | null }) {
@@ -147,7 +143,10 @@ export async function POST(req: Request) {
   }
 
   const salesUser = users.find((candidate) => candidate.id === cleanString(body.salesUserId)) ?? actor;
-  const rating = cleanRating(body.rating);
+  const rating = parseCustomerFeedbackRating(body.rating);
+  if (rating === null) {
+    return NextResponse.json({ error: "Bitte eine Bewertung zwischen 1 und 5 Sternen auswählen." }, { status: 400 });
+  }
   const wantsContact = Boolean(body.wantsContact);
   const hotAlert = rating <= 4 || wantsContact;
   const id = randomUUID();

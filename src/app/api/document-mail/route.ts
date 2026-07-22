@@ -12,6 +12,7 @@ import { generateXRechnungXml, type XRechnungSeller } from "@/lib/e-invoice/xrec
 import { validateXRechnungPayload } from "@/lib/e-invoice/xrechnung-validation";
 import { validateXRechnungWithKosit } from "@/lib/e-invoice/kosit-validator";
 import { buildValidatedZugferdPdf } from "@/lib/e-invoice/zugferd-pdf";
+import { getPublicAppOrigin } from "@/lib/http/public-app-origin";
 
 type MailAccount = {
   provider?: string;
@@ -227,22 +228,25 @@ async function getSenderSignature(userId: string) {
   return normalizeSignatureHtml(row.signature ?? "");
 }
 
-function getBaseUrl(req: Request) {
-  const url = new URL(req.url);
-  return `${url.protocol}//${url.host}`;
-}
+type PreparedFeedbackRequest = {
+  id: string;
+  url: string;
+  recipientEmail: string;
+  created: boolean;
+};
 
-async function getOrCreateFeedbackRequestLink(req: Request, body: Record<string, unknown>, _actor: { id: string; firstName?: string | null; lastName?: string | null; email?: string | null }) {
-  if (cleanText(body.kind) !== "invoice") return "";
-  if (body.includeFeedbackLink === false) return "";
+async function prepareFeedbackRequestLink(req: Request, body: Record<string, unknown>): Promise<PreparedFeedbackRequest | null> {
+  if (cleanText(body.kind) !== "invoice") return null;
+  if (body.includeFeedbackLink === false) return null;
   const invoiceId = cleanText(body.documentId);
-  if (!invoiceId) return "";
+  if (!invoiceId) return null;
   const organizationId = cleanText(body.organizationId);
-  if (!organizationId) return "";
+  if (!organizationId) return null;
+  const recipientEmail = parseRecipients(body.to)[0] ?? "";
 
   await ensureSalesHubTables();
-  const existing = await prisma.$queryRaw<Array<{ token: string }>>`
-    SELECT token
+  const existing = await prisma.$queryRaw<Array<{ id: string; token: string }>>`
+    SELECT id, token
     FROM "CustomerFeedbackRequest"
     WHERE "organizationId" = ${organizationId}
       AND "invoiceId" = ${invoiceId}
@@ -250,31 +254,52 @@ async function getOrCreateFeedbackRequestLink(req: Request, body: Record<string,
     LIMIT 1
   `;
   if (existing[0]?.token) {
-    await prisma.$executeRaw`
-      UPDATE "CustomerFeedbackRequest"
-      SET "recipientEmail" = ${parseRecipients(body.to)[0] ?? ""},
-          "status" = CASE WHEN "status" = 'answered' THEN "status" ELSE 'sent' END,
-          "sentAt" = COALESCE("sentAt", CURRENT_TIMESTAMP),
-          "updatedAt" = CURRENT_TIMESTAMP
-      WHERE token = ${existing[0].token}
-        AND "organizationId" = ${organizationId}
-    `;
-    return `${getBaseUrl(req)}/feedback/${existing[0].token}`;
+    return {
+      id: existing[0].id,
+      url: `${getPublicAppOrigin(req)}/feedback/${existing[0].token}`,
+      recipientEmail,
+      created: false,
+    };
   }
 
   const token = randomUUID().replaceAll("-", "");
+  const id = randomUUID();
   await prisma.$executeRaw`
     INSERT INTO "CustomerFeedbackRequest" (
       "id", "organizationId", "token", "invoiceId", "invoiceNumber", "projectId",
       "customerName", "recipientEmail", "salesUserId", "salesUserName", "status", "sentAt"
     ) VALUES (
-      ${randomUUID()}, ${organizationId}, ${token},
+      ${id}, ${organizationId}, ${token},
       ${invoiceId}, ${cleanText(body.documentNumber)}, ${cleanText(body.projectId) || null},
-      ${cleanText(body.customerName)}, ${parseRecipients(body.to)[0] ?? ""},
-      ${null}, ${"WorkPilot"}, 'sent', CURRENT_TIMESTAMP
+      ${cleanText(body.customerName)}, ${recipientEmail},
+      ${null}, ${"WorkPilot"}, 'open', NULL
     )
   `;
-  return `${getBaseUrl(req)}/feedback/${token}`;
+  return { id, url: `${getPublicAppOrigin(req)}/feedback/${token}`, recipientEmail, created: true };
+}
+
+async function markFeedbackRequestAsSent(organizationId: string, request: PreparedFeedbackRequest | null) {
+  if (!request) return;
+  await prisma.$executeRaw`
+    UPDATE "CustomerFeedbackRequest"
+    SET "recipientEmail" = ${request.recipientEmail},
+        "status" = CASE WHEN "status" = 'answered' THEN "status" ELSE 'sent' END,
+        "sentAt" = COALESCE("sentAt", CURRENT_TIMESTAMP),
+        "updatedAt" = CURRENT_TIMESTAMP
+    WHERE id = ${request.id}
+      AND "organizationId" = ${organizationId}
+  `;
+}
+
+async function discardUnsentFeedbackRequest(organizationId: string, request: PreparedFeedbackRequest | null) {
+  if (!request?.created) return;
+  await prisma.$executeRaw`
+    DELETE FROM "CustomerFeedbackRequest"
+    WHERE id = ${request.id}
+      AND "organizationId" = ${organizationId}
+      AND status = 'open'
+      AND "sentAt" IS NULL
+  `;
 }
 
 async function ensureDocumentMailTables() {
@@ -842,7 +867,8 @@ export async function POST(req: Request) {
     ...(shouldSendSeparateActivityReport ? [] : additionalAttachments),
     ...invoiceManualAttachments,
   ];
-  const feedbackLink = await getOrCreateFeedbackRequestLink(req, { ...body, organizationId: organization.id }, actor);
+  const preparedFeedbackRequest = await prepareFeedbackRequestLink(req, { ...body, organizationId: organization.id });
+  const feedbackLink = preparedFeedbackRequest?.url ?? "";
   const signatureHtml = await getSenderSignature(actor.id);
   const rawMessageBody = cleanText(body.body);
   const messageBody = signatureHtml ? stripTrailingMailClosing(rawMessageBody) : rawMessageBody;
@@ -852,6 +878,9 @@ export async function POST(req: Request) {
     : "";
   const messageHtml = `${textToHtml(messageBody)}${feedbackHtml}${signatureHtml ? signatureHtml : ""}`;
 
+  let primaryMailDelivered = false;
+  let preparedActivityFeedbackRequest: PreparedFeedbackRequest | null = null;
+  let activityMailDelivered = false;
   try {
     await sendViaMicrosoftGraph({
       accessToken: mailAccount.accessToken,
@@ -862,10 +891,12 @@ export async function POST(req: Request) {
       body: messageHtml,
       attachments,
     });
+    primaryMailDelivered = true;
+    await markFeedbackRequestAsSent(organization.id, preparedFeedbackRequest);
     if (shouldSendSeparateActivityReport) {
       const activityReportRawBody = cleanText(body.activityReportBody) || rawMessageBody;
       const activityReportBody = signatureHtml ? stripTrailingMailClosing(activityReportRawBody) : activityReportRawBody;
-      const activityReportFeedbackLink = await getOrCreateFeedbackRequestLink(
+      preparedActivityFeedbackRequest = await prepareFeedbackRequestLink(
         req,
         {
           ...body,
@@ -874,9 +905,9 @@ export async function POST(req: Request) {
           documentNumber: `${documentNumber} Tätigkeitsbericht`,
           to: cleanText(body.activityReportTo),
           includeFeedbackLink: body.includeActivityReportFeedbackLink !== false,
-        },
-        actor
+        }
       );
+      const activityReportFeedbackLink = preparedActivityFeedbackRequest?.url ?? "";
       const activityReportFeedbackHtml = activityReportFeedbackLink ? getFeedbackMailBlockHtml(activityReportFeedbackLink) : "";
       const activityReportHtml = `${textToHtml(activityReportBody)}${activityReportFeedbackHtml}${signatureHtml ? signatureHtml : ""}`;
       await sendViaMicrosoftGraph({
@@ -888,8 +919,16 @@ export async function POST(req: Request) {
         body: activityReportHtml,
         attachments: [...additionalAttachments, ...activityReportManualAttachments],
       });
+      activityMailDelivered = true;
+      await markFeedbackRequestAsSent(organization.id, preparedActivityFeedbackRequest);
     }
   } catch (error) {
+    if (!primaryMailDelivered) {
+      await discardUnsentFeedbackRequest(organization.id, preparedFeedbackRequest).catch(() => undefined);
+    }
+    if (!activityMailDelivered) {
+      await discardUnsentFeedbackRequest(organization.id, preparedActivityFeedbackRequest).catch(() => undefined);
+    }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Microsoft 365 Versand fehlgeschlagen." },
       { status: 502 }

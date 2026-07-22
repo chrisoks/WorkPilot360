@@ -624,6 +624,7 @@ model CustomerFeedback {
   @@index([organizationId, rating])
   @@index([organizationId, hotAlert])
   @@index([organizationId, createdAt])
+  @@unique([organizationId, requestId])
 }
 
 model CatalogItem {

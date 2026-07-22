@@ -238,6 +238,11 @@ export async function ensureSalesHubTables() {
   `;
 
   await prisma.$executeRaw`
+    CREATE UNIQUE INDEX IF NOT EXISTS "CustomerFeedback_organizationId_requestId_key"
+    ON "CustomerFeedback" ("organizationId", "requestId")
+  `;
+
+  await prisma.$executeRaw`
     ALTER TABLE "Notification"
     ADD COLUMN IF NOT EXISTS "linkTarget" TEXT,
     ADD COLUMN IF NOT EXISTS "linkTargetId" TEXT,
