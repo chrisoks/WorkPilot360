@@ -621,10 +621,10 @@ model CustomerFeedback {
   hotAlert       Boolean  @default(false)
   createdAt      DateTime @default(now())
 
+  @@unique([organizationId, requestId])
   @@index([organizationId, rating])
   @@index([organizationId, hotAlert])
   @@index([organizationId, createdAt])
-  @@unique([organizationId, requestId])
 }
 
 model CatalogItem {
@@ -947,29 +947,33 @@ model Invoice {
 }
 
 model InvoiceLine {
-  id                       String             @id @default(cuid())
-  organizationId           String
-  invoiceId                String
-  catalogItemId            String             @default("")
-  catalogType              String             @default("")
-  position                 Int                @default(0)
-  quantity                 Float              @default(1)
-  unit                     String             @default("Stk")
-  title                    String             @default("")
-  description              String             @default("")
-  unitPrice                Float              @default(0)
-  discountPercent          Float              @default(0)
-  isLaborPosition          Boolean            @default(false)
-  materialUnitCostSnapshot Float              @default(0)
-  materialCostSnapshot     Float              @default(0)
-  costSnapshotAt           DateTime?
-  vatRate                  Float              @default(19)
-  totalNet                 Float              @default(0)
-  createdAt                DateTime           @default(now())
-  updatedAt                DateTime           @updatedAt
-  organization             Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  invoice                  Invoice            @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  laborItems               InvoiceLineLabor[]
+  id                         String             @id @default(cuid())
+  organizationId             String
+  invoiceId                  String
+  catalogItemId              String             @default("")
+  catalogType                String             @default("")
+  position                   Int                @default(0)
+  quantity                   Float              @default(1)
+  unit                       String             @default("Stk")
+  title                      String             @default("")
+  description                String             @default("")
+  unitPrice                  Float              @default(0)
+  discountPercent            Float              @default(0)
+  isLaborPosition            Boolean            @default(false)
+  materialUnitCostSnapshot   Float              @default(0)
+  materialCostSnapshot       Float              @default(0)
+  laborUnitCostSnapshot      Float              @default(0)
+  laborCostSnapshot          Float              @default(0)
+  packageComponentsSnapshot  Json               @default("[]")
+  catalogCostSnapshotVersion Int                @default(0)
+  costSnapshotAt             DateTime?
+  vatRate                    Float              @default(19)
+  totalNet                   Float              @default(0)
+  createdAt                  DateTime           @default(now())
+  updatedAt                  DateTime           @updatedAt
+  organization               Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice                    Invoice            @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  laborItems                 InvoiceLineLabor[]
 
   @@index([organizationId, invoiceId])
 }
@@ -1905,6 +1909,13 @@ model WorkPilotProject {
   volume                      String?
   source                      String?
   address                     String?
+  mapLatitude                 Float?
+  mapLongitude                Float?
+  mapGeocodedAddress          String?
+  mapGeocodeProvider          String?
+  mapGeocodeStatus            String   @default("pending")
+  mapGeocodeConfidence        Int?
+  mapGeocodedAt               DateTime?
   participants                String?
   deputyName                  String?
   deputyFrom                  String?

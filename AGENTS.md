@@ -1,5 +1,17 @@
 # WorkPilot360 Agent Handover
 
+- Artikel-/Leistungs-Auswertung 2026-07-22: Der Reiter verwendet jetzt fuenf
+  klickbare KPI-Karten mit breiten, durchsuchbaren Detailmodals statt der
+  dauernd sichtbaren Tabellen. Materialien und Leistungen aus verkauften
+  Paketen werden anteilig mitgerechnet; Materialmengen folgen der Formel
+  verkaufte Paketmenge mal Komponentenmenge. Positionsrabatte, gespeicherte
+  Material-/Lohnkosten und Paketbestandteile werden bei neuen Rechnungen als
+  historische Snapshots gesichert. Altdaten ohne Snapshot werden aus den
+  verfuegbaren Stammdaten rekonstruiert und im Modal sichtbar als solche
+  gekennzeichnet. Rechnungs-, Projekt- und Stammpositionsspruenge bleiben in
+  den Tabellen erhalten. Prisma validate/db push, TypeScript, 175 Tests,
+  Regression, Mojibake, Build und echter Browser-Klicktest bestanden.
+
 - PWA-Projektbereichsvertrag 2026-07-15: `/api/hero/projects` liefert mit
   `businessAreaCode` nun explizit `OK_IMMOCARE` oder `OK_SOLUTIONS`. Die
   Ermittlung nutzt nur die strukturierten Projektfelder und fuer historische
@@ -5665,3 +5677,5 @@ Wiederaufbau begonnen 2026-06-05:
 - Forecast-Auswertung UI-Hierarchie 2026-07-11: Der Reiter `Forecast & OP Kontrolle` ist rein gestalterisch in `Steuerung`, `Analyse` und `Details` gegliedert. Offene-Posten-Detailkontrolle, Forecast-/OP-Liste und Logikerlaeuterung starten eingeklappt; Tabellen scrollen innerhalb ihres eigenen Containers. Werte, Filter, Rollen, Aktionen, APIs und Fachlogik bleiben unveraendert.
 - Monatsbericht Kostenfortschreibung 2026-07-13: Manuelle GuV-Werte werden als Aenderungswerte gespeichert und gelten ab ihrem Monat bis zur naechsten ausdruecklichen Aenderung. Fruehere Monatswerte und spaetere manuelle Abweichungen bleiben erhalten; ein bewusst geleertes Feld stoppt die Fortschreibung ab diesem Monat. Deutsche und input-formatierte Dezimalwerte werden strikt geprueft, damit beispielsweise `651.00` nicht als `65100` gespeichert wird. Lesen und Schreiben der Monatsberichtswerte bleibt serverseitig an die bestehende Rechnungs-/Buchhaltungsberechtigung gebunden. Keine Prisma-Schemaaenderung.
 - Monatsbericht Bearbeitungszugang 2026-07-13: Der Monatsbericht hat einen eigenen sichtbaren Wähler `Kostenmonat bearbeiten`. Die Auswahl stellt den globalen Auswertungszeitraum auf genau diesen Einzelmonat, wodurch ausschließlich die manuellen GuV-Zeilen editierbar werden; Rechnungswerte und berechnete Summen bleiben Systemfelder. Die globalen Von-/Bis-Felder sind direkt editierbar und wechseln bei manueller Änderung automatisch auf `Individuell`.
+- Geschäftsführung Managementcockpit 2026-07-22: Der zuvor sehr lange GF-Reiter ist auf sechs klickbare Steuerungsbereiche und maximal fünf priorisierte Handlungsthemen verdichtet. Umsatz/Marge, Liquidität, Projektfluss, Vertrieb, Kundenlage und Kapazität öffnen breite, volltextdurchsuchbare Detailmodale mit verständlicher Einordnung und direkten Sprüngen zu Rechnung, Projekt, Kunde, Angebot, Zusatzverkauf, Planung, Mitarbeitern oder Planungsgruppen-SVS. Offene Posten sind bewusst eine heutige Stichtagssicht über alle aktiven unbezahlten Rechnungen; Zeitraumwerte bleiben separat gekennzeichnet. Deckungsbeitrag und Geschäftsbereiche verwenden dieselbe Snapshot-/Rekonstruktionsbasis wie Artikel & Leistungen, der SVS nur rechnungsverknüpfte Zeiten. Die Kapazitätsrechnung berücksichtigt bei Kapazität und Gegenplanung ausschließlich als verkaufbar aktivierte Mitarbeiter. Versteckte Projektart-, Forecast- und Suchfilter anderer Auswertungsreiter werden beim Öffnen der Geschäftsführung neutralisiert. Keine zusätzliche Prisma-Schemaänderung für diesen Cockpit-Umbau.
+- Projektkarte 2026-07-22: Der Auswertungsreiter nutzt jetzt eine echte interaktive MapLibre-Karte mit OpenStreetMap-Basiskarte, Zoom, Clustern, Projekt-Popover, Umfang-/Projektartfilter und Volltextsuche. Nur Projekte mit lokal gespeicherten, sicher geprüften Koordinaten erscheinen als Kartenpunkte; fehlende, ungeprüfte oder unklare Adressen stehen transparent in einer separaten Prüfliste. Koordinaten und Geocodingstatus liegen am `WorkPilotProject`; Adressänderungen invalidieren den bisherigen Treffer. OpenCage wird ausschließlich nach einem bewussten UI-Klick verwendet, wenn `OPENCAGE_API_KEY` serverseitig gesetzt ist; ohne Key werden keine Adressen extern übertragen. Der additive Prisma-Diff wurde vor `db push` geprüft und enthielt nur die sieben neuen Kartenfelder.

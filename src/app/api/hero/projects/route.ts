@@ -36,6 +36,13 @@ type LocalProjectRow = {
   volume: string | null;
   source: string | null;
   address: string | null;
+  mapLatitude: number | null;
+  mapLongitude: number | null;
+  mapGeocodedAddress: string | null;
+  mapGeocodeProvider: string | null;
+  mapGeocodeStatus: string;
+  mapGeocodeConfidence: number | null;
+  mapGeocodedAt: Date | null;
   participants: string | null;
   responsibleName: string | null;
   deputyName: string | null;
@@ -86,6 +93,13 @@ async function ensureLocalProjectTable() {
       "volume" TEXT,
       "source" TEXT,
       "address" TEXT,
+      "mapLatitude" DOUBLE PRECISION,
+      "mapLongitude" DOUBLE PRECISION,
+      "mapGeocodedAddress" TEXT,
+      "mapGeocodeProvider" TEXT,
+      "mapGeocodeStatus" TEXT NOT NULL DEFAULT 'pending',
+      "mapGeocodeConfidence" INTEGER,
+      "mapGeocodedAt" TIMESTAMP(3),
       "participants" TEXT,
       "responsibleName" TEXT,
       "deputyName" TEXT,
@@ -132,6 +146,13 @@ async function ensureLocalProjectTable() {
     ADD COLUMN IF NOT EXISTS "volume" TEXT,
     ADD COLUMN IF NOT EXISTS "source" TEXT,
     ADD COLUMN IF NOT EXISTS "address" TEXT,
+    ADD COLUMN IF NOT EXISTS "mapLatitude" DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS "mapLongitude" DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS "mapGeocodedAddress" TEXT,
+    ADD COLUMN IF NOT EXISTS "mapGeocodeProvider" TEXT,
+    ADD COLUMN IF NOT EXISTS "mapGeocodeStatus" TEXT NOT NULL DEFAULT 'pending',
+    ADD COLUMN IF NOT EXISTS "mapGeocodeConfidence" INTEGER,
+    ADD COLUMN IF NOT EXISTS "mapGeocodedAt" TIMESTAMP(3),
     ADD COLUMN IF NOT EXISTS "participants" TEXT,
     ADD COLUMN IF NOT EXISTS "responsibleName" TEXT,
     ADD COLUMN IF NOT EXISTS "deputyName" TEXT,
@@ -271,6 +292,13 @@ function formatLocalProject(project: LocalProjectRow) {
     volume: project.volume ?? "",
     source: project.source ?? "",
     address: project.address ?? "",
+    mapLatitude: project.mapLatitude,
+    mapLongitude: project.mapLongitude,
+    mapGeocodedAddress: project.mapGeocodedAddress ?? "",
+    mapGeocodeProvider: project.mapGeocodeProvider ?? "",
+    mapGeocodeStatus: project.mapGeocodeStatus || "pending",
+    mapGeocodeConfidence: project.mapGeocodeConfidence,
+    mapGeocodedAt: project.mapGeocodedAt?.toISOString() ?? "",
     participants: project.participants ?? "",
     responsibleName: project.responsibleName ?? "",
     deputyName: project.deputyName ?? "",
@@ -630,6 +658,13 @@ export async function POST(req: Request) {
       "volume" = EXCLUDED."volume",
       "source" = EXCLUDED."source",
       "address" = EXCLUDED."address",
+      "mapLatitude" = CASE WHEN "WorkPilotProject"."address" IS DISTINCT FROM EXCLUDED."address" THEN NULL ELSE "WorkPilotProject"."mapLatitude" END,
+      "mapLongitude" = CASE WHEN "WorkPilotProject"."address" IS DISTINCT FROM EXCLUDED."address" THEN NULL ELSE "WorkPilotProject"."mapLongitude" END,
+      "mapGeocodedAddress" = CASE WHEN "WorkPilotProject"."address" IS DISTINCT FROM EXCLUDED."address" THEN NULL ELSE "WorkPilotProject"."mapGeocodedAddress" END,
+      "mapGeocodeProvider" = CASE WHEN "WorkPilotProject"."address" IS DISTINCT FROM EXCLUDED."address" THEN NULL ELSE "WorkPilotProject"."mapGeocodeProvider" END,
+      "mapGeocodeStatus" = CASE WHEN "WorkPilotProject"."address" IS DISTINCT FROM EXCLUDED."address" THEN 'pending' ELSE "WorkPilotProject"."mapGeocodeStatus" END,
+      "mapGeocodeConfidence" = CASE WHEN "WorkPilotProject"."address" IS DISTINCT FROM EXCLUDED."address" THEN NULL ELSE "WorkPilotProject"."mapGeocodeConfidence" END,
+      "mapGeocodedAt" = CASE WHEN "WorkPilotProject"."address" IS DISTINCT FROM EXCLUDED."address" THEN NULL ELSE "WorkPilotProject"."mapGeocodedAt" END,
       "participants" = EXCLUDED."participants",
       "responsibleName" = EXCLUDED."responsibleName",
       "deputyName" = EXCLUDED."deputyName",

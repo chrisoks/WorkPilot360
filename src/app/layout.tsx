@@ -1,4 +1,5 @@
 import "./globals.css";
+import "maplibre-gl/dist/maplibre-gl.css";
 import { Outfit } from "next/font/google";
 import type { Metadata, Viewport } from "next";
 import { ModalScrollLock } from "@/components/ui/modal-scroll-lock";

@@ -26,6 +26,15 @@ import {
 } from "@/lib/checklists/templates";
 import type { CustomerRevenueAnalyticsResponse } from "@/lib/analytics/customer-revenue-mix";
 import { getCustomerRiskAssessment } from "@/lib/analytics/customer-risk";
+import {
+  buildCatalogPerformance,
+  type CatalogPackageComponentSnapshot,
+  type CatalogPerformanceRow,
+} from "@/lib/analytics/catalog-performance";
+import {
+  ProjectAnalyticsMap,
+  type ProjectAnalyticsMapPoint,
+} from "./project-analytics-map";
 
 const DOCUMENT_PREVIEW_WIDTH = 595;
 const DOCUMENT_PREVIEW_HEIGHT = 842;
@@ -1633,6 +1642,10 @@ type OfferLineDraft = {
   discountPercent?: number;
   materialUnitCostSnapshot?: number;
   materialCostSnapshot?: number;
+  laborUnitCostSnapshot?: number;
+  laborCostSnapshot?: number;
+  packageComponentsSnapshot?: CatalogPackageComponentSnapshot[];
+  catalogCostSnapshotVersion?: number;
   costSnapshotAt?: string;
   laborCostRateKey?: string;
   laborCostRate?: number;
@@ -1964,6 +1977,13 @@ type HeroProjectPreview = {
   volume?: string;
   source?: string;
   address?: string;
+  mapLatitude?: number | null;
+  mapLongitude?: number | null;
+  mapGeocodedAddress?: string;
+  mapGeocodeProvider?: string;
+  mapGeocodeStatus?: string;
+  mapGeocodeConfidence?: number | null;
+  mapGeocodedAt?: string;
   participants?: string;
   responsibleName?: string;
   deputyName?: string;
@@ -4647,8 +4667,9 @@ function formatHourMinutes(value: number) {
   return `${sign}${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 
-function formatMoney(value: number) {
-  return `${value.toLocaleString(APP_LOCALE, {
+function formatMoney(value: number | string) {
+  const normalizedValue = typeof value === "number" ? value : Number(String(value).replace(",", ".")) || 0;
+  return `${normalizedValue.toLocaleString(APP_LOCALE, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })} €`;
@@ -6122,8 +6143,23 @@ export function DashboardPage() {
   >(null);
   const [isSvsTradeTableExpanded, setIsSvsTradeTableExpanded] = useState(false);
   const [svsModalSearch, setSvsModalSearch] = useState("");
+  const [selectedCatalogAnalyticsDetail, setSelectedCatalogAnalyticsDetail] = useState<
+    "positions" | "services" | "materials" | "packages" | "margin" | null
+  >(null);
+  const [catalogAnalyticsModalSearch, setCatalogAnalyticsModalSearch] = useState("");
+  const [selectedExecutiveAnalyticsDetail, setSelectedExecutiveAnalyticsDetail] = useState<
+    "financials" | "liquidity" | "projects" | "sales" | "customers" | "capacity" | null
+  >(null);
+  const [executiveAnalyticsModalSearch, setExecutiveAnalyticsModalSearch] = useState("");
+  const [projectMapScope, setProjectMapScope] = useState<"active" | "period" | "all">("active");
+  const [projectMapKindFilter, setProjectMapKindFilter] = useState<"all" | "oneTime" | "recurring">("all");
+  const [projectMapSearch, setProjectMapSearch] = useState("");
+  const [selectedProjectMapPointId, setSelectedProjectMapPointId] = useState("");
+  const [projectMapGeocodingConfigured, setProjectMapGeocodingConfigured] = useState<boolean | null>(null);
+  const [projectMapGeocodingMessage, setProjectMapGeocodingMessage] = useState("");
+  const [isProjectMapGeocoding, setIsProjectMapGeocoding] = useState(false);
   const [selectedForecastPeriod, setSelectedForecastPeriod] = useState("total");
-  const [reportPeriodPreset, setReportPeriodPreset] = useState<ReportPeriodPreset>("last12");
+  const [reportPeriodPreset, setReportPeriodPreset] = useState<ReportPeriodPreset>("currentMonth");
   const [isForecastQualityExpanded, setIsForecastQualityExpanded] = useState(false);
   const [selectedForecastQualityId, setSelectedForecastQualityId] = useState("");
   const [monthlyFinancialReportValues, setMonthlyFinancialReportValues] = useState<MonthlyFinancialReportValue[]>([]);
@@ -17394,6 +17430,31 @@ export function DashboardPage() {
   }, [activeTab, reportAnalyticsTab, visibleReportTabs]);
 
   useEffect(() => {
+    if (reportAnalyticsTab !== "executive") return;
+    setReportProjectKindFilter("all");
+    setSelectedForecastPeriod("total");
+    setReportSearch("");
+  }, [reportAnalyticsTab]);
+
+  useEffect(() => {
+    if (reportAnalyticsTab !== "map" || !activeUser?.id) return;
+    let cancelled = false;
+    void fetch(`/api/project-map/geocode?actorId=${encodeURIComponent(activeUser.id)}`)
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || "Kartenstatus konnte nicht geladen werden.");
+        if (!cancelled) setProjectMapGeocodingConfigured(Boolean(payload.configured));
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setProjectMapGeocodingConfigured(false);
+          setProjectMapGeocodingMessage(error instanceof Error ? error.message : "Kartenstatus konnte nicht geladen werden.");
+        }
+      });
+    return () => { cancelled = true; };
+  }, [activeUser?.id, reportAnalyticsTab]);
+
+  useEffect(() => {
     window.localStorage.setItem("workpilot-active-tab", activeTab);
 
     if (
@@ -26735,67 +26796,6 @@ await addProjectLogbookEntry(
     packageItem.componentType === "service"
       ? (getPackageComponentPurchaseUnitPrice(packageItem) * getPackageComponentPlanningMinutes(packageItem)) / 60
       : getPackageComponentPurchaseUnitPrice(packageItem) * packageItem.quantity;
-  const getInvoiceLineComponentRows = (line: OfferLineDraft) => {
-    const catalogItem = getLineCatalogItem(line);
-    const lineRevenue = line.quantity * line.unitPrice;
-    const lineCost = getLineInternalCost(line);
-    if (!catalogItem) {
-      return [
-        {
-          id: line.catalogItemId || line.title || "free-line",
-          title: line.title || "Freie Position",
-          type: "unknown" as CatalogItemType | "unknown",
-          unit: line.unit || "",
-          quantity: line.quantity,
-          revenue: lineRevenue,
-          cost: lineCost,
-          source: "direct" as const,
-        },
-      ];
-    }
-    if (catalogItem.type !== "package") {
-      return [
-        {
-          id: catalogItem.id,
-          title: catalogItem.name || line.title,
-          type: catalogItem.type,
-          unit: catalogItem.unit || line.unit || "",
-          quantity: line.quantity,
-          revenue: lineRevenue,
-          cost: lineCost,
-          source: "direct" as const,
-        },
-      ];
-    }
-
-    const packageSalesTotal = catalogItem.packageItems.reduce(
-      (sum, packageItem) => sum + getPackageComponentSalesTotal(packageItem),
-      0
-    );
-    const packagePurchaseTotal = catalogItem.packageItems.reduce(
-      (sum, packageItem) => sum + getPackageComponentPurchaseTotal(packageItem),
-      0
-    );
-
-    return catalogItem.packageItems.map((packageItem) => {
-      const componentRevenueShare =
-        packageSalesTotal > 0 ? getPackageComponentSalesTotal(packageItem) / packageSalesTotal : 0;
-      const componentCostShare =
-        packagePurchaseTotal > 0
-          ? getPackageComponentPurchaseTotal(packageItem) / packagePurchaseTotal
-          : componentRevenueShare;
-      return {
-        id: packageItem.componentItemId,
-        title: packageItem.componentName,
-        type: packageItem.componentType,
-        unit: packageItem.componentUnit,
-        quantity: packageItem.componentType === "service" ? line.quantity : line.quantity * packageItem.quantity,
-        revenue: lineRevenue * componentRevenueShare,
-        cost: lineCost * componentCostShare,
-        source: "package" as const,
-      };
-    });
-  };
   const invoiceRevenueTotal = reportInvoices.reduce((sum, invoice) => sum + invoice.netTotal, 0);
   const previousInvoiceRevenueTotal = previousReportInvoices.reduce((sum, invoice) => sum + invoice.netTotal, 0);
   const invoiceCostTotal = reportInvoices.reduce(
@@ -28814,86 +28814,125 @@ await addProjectLogbookEntry(
       state: "ok" as const,
     })),
   ].slice(0, 8);
-  const catalogRows = Object.values(
-    reportInvoices.reduce<
-      Record<string, { title: string; catalogType: CatalogItemType | ""; quantity: number; revenue: number; cost: number; count: number }>
-    >((groups, invoice) => {
-      invoice.lines.forEach((line) => {
-        const title = line.title || "Freie Position";
-        const key = `${line.catalogType || "free"}:${line.catalogItemId || title}`;
-        groups[key] = groups[key] ?? { title, catalogType: line.catalogType, quantity: 0, revenue: 0, cost: 0, count: 0 };
-        groups[key].quantity += line.quantity;
-        groups[key].revenue += line.quantity * line.unitPrice;
-        groups[key].cost += getLineInternalCost(line);
-        groups[key].count += 1;
-      });
-      return groups;
-    }, {})
+  const catalogPerformance = buildCatalogPerformance(reportInvoices, catalogItems);
+  const previousCatalogPerformance = buildCatalogPerformance(previousReportInvoices, catalogItems);
+  const executiveOutstandingInvoices = invoices
+    .filter((invoice) => isReportRevenueInvoice(invoice) && !isInvoicePaid(invoice))
+    .sort((first, second) => {
+      const firstDue = parseProjectDate(first.dueDate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      const secondDue = parseProjectDate(second.dueDate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      return firstDue - secondDue;
+    });
+  const executiveOverdueRows = executiveOutstandingInvoices
+    .map((invoice) => ({ invoice, dueState: getInvoiceDueState(invoice) }))
+    .filter((row) => row.dueState.overdueDays > 0)
+    .sort((first, second) => second.dueState.overdueDays - first.dueState.overdueDays);
+  const executiveOpenTotal = executiveOutstandingInvoices.reduce((sum, invoice) => sum + invoice.netTotal, 0);
+  const executiveOverdueTotal = executiveOverdueRows.reduce((sum, row) => sum + row.invoice.netTotal, 0);
+  const executiveMarginTotal = catalogPerformance.totalMargin;
+  const executiveMarginPercent = catalogPerformance.totalRevenue > 0
+    ? (executiveMarginTotal / catalogPerformance.totalRevenue) * 100
+    : 0;
+  const executiveSvsEvaluableRows = svsAllInvoiceRows.filter((row) => row.status === "ok");
+  const executiveSvsRevenue = executiveSvsEvaluableRows.reduce((sum, row) => sum + row.invoice.netTotal, 0);
+  const executiveSvsHours = executiveSvsEvaluableRows.reduce((sum, row) => sum + row.stampedHours, 0);
+  const executiveSvsAverage = executiveSvsHours > 0 ? executiveSvsRevenue / executiveSvsHours : 0;
+  const executiveBusinessAreaRows = Object.values(
+    catalogPerformance.positionRows
+      .flatMap((row) => row.details)
+      .reduce<
+        Record<string, { name: string; projectIds: Set<string>; revenue: number; costs: number; margin: number }>
+      >((groups, detail) => {
+        const project = detail.projectId ? heroProjects.find((item) => item.id === detail.projectId) : null;
+        const name = project ? getProjectBusinessArea(project).name : "Ohne Projektzuordnung";
+        groups[name] = groups[name] ?? { name, projectIds: new Set<string>(), revenue: 0, costs: 0, margin: 0 };
+        if (detail.projectId) groups[name].projectIds.add(detail.projectId);
+        groups[name].revenue += detail.revenue;
+        groups[name].costs += detail.cost;
+        groups[name].margin += detail.revenue - detail.cost;
+        return groups;
+      }, {})
   )
-    .map((row) => ({
-      ...row,
-      margin: row.revenue - row.cost,
-      marginPercent: row.revenue > 0 ? ((row.revenue - row.cost) / row.revenue) * 100 : 0,
-    }))
-    .filter((row) => !reportSearchValue || normalizeStampSearchValue(row.title).includes(reportSearchValue))
+    .map((row) => ({ ...row, count: row.projectIds.size }))
     .sort((first, second) => second.revenue - first.revenue);
-  const catalogComponentRows = Object.values(
-    reportInvoices.reduce<
-      Record<
-        string,
-        {
-          id: string;
-          title: string;
-          type: CatalogItemType | "unknown";
-          unit: string;
-          quantity: number;
-          revenue: number;
-          cost: number;
-          count: number;
-          directCount: number;
-          packageCount: number;
-        }
-      >
-    >((groups, invoice) => {
-      invoice.lines.forEach((line) => {
-        getInvoiceLineComponentRows(line).forEach((component) => {
-          const key = `${component.type}:${component.id}:${component.title}`;
-          groups[key] = groups[key] ?? {
-            id: component.id,
-            title: component.title,
-            type: component.type,
-            unit: component.unit,
-            quantity: 0,
-            revenue: 0,
-            cost: 0,
-            count: 0,
-            directCount: 0,
-            packageCount: 0,
-          };
-          groups[key].quantity += component.quantity;
-          groups[key].revenue += component.revenue;
-          groups[key].cost += component.cost;
-          groups[key].count += 1;
-          if (component.source === "package") {
-            groups[key].packageCount += 1;
-          } else {
-            groups[key].directCount += 1;
-          }
-        });
-      });
-      return groups;
-    }, {})
-  )
-    .map((row) => ({
-      ...row,
-      margin: row.revenue - row.cost,
-      marginPercent: row.revenue > 0 ? ((row.revenue - row.cost) / row.revenue) * 100 : 0,
-    }))
-    .filter((row) => !reportSearchValue || normalizeStampSearchValue(row.title).includes(reportSearchValue))
-    .sort((first, second) => second.quantity - first.quantity);
-  const serviceSalesRows = catalogComponentRows.filter((row) => row.type === "service");
-  const materialSalesRows = catalogComponentRows.filter((row) => row.type === "article");
-  const packageSalesRows = catalogRows.filter((row) => row.catalogType === "package");
+  const executiveTrendMonthRows = Array.from({ length: 12 }, (_, index) => {
+    const date = new Date(reportEndDate.getFullYear(), reportEndDate.getMonth() - 11 + index, 1);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    const monthInvoices = invoices.filter(
+      (invoice) => isReportRevenueInvoice(invoice) && getProjectInvoiceMonth(invoice) === key
+    );
+    return {
+      key,
+      label: new Intl.DateTimeFormat(APP_LOCALE, { month: "short", year: "2-digit", timeZone: APP_TIME_ZONE }).format(date),
+      value: monthInvoices.reduce((sum, invoice) => sum + invoice.netTotal, 0),
+    };
+  });
+  const filterCatalogPerformanceRows = (rows: CatalogPerformanceRow[]) => rows.filter((row) => {
+    if (!reportSearchValue) return true;
+    return [row.title, row.id, row.unit, ...row.details.flatMap((detail) => [
+      detail.invoiceNumber,
+      detail.customerName,
+      detail.projectLabel,
+      detail.packageTitle,
+    ])].some((value) => normalizeStampSearchValue(String(value ?? "")).includes(reportSearchValue));
+  });
+  const catalogRows = filterCatalogPerformanceRows(catalogPerformance.positionRows);
+  const serviceSalesRows = filterCatalogPerformanceRows(catalogPerformance.serviceRows);
+  const materialSalesRows = filterCatalogPerformanceRows(catalogPerformance.materialRows);
+  const packageSalesRows = filterCatalogPerformanceRows(catalogPerformance.packageRows);
+  const catalogServiceRevenue = serviceSalesRows.reduce((sum, row) => sum + row.revenue, 0);
+  const catalogMaterialRevenue = materialSalesRows.reduce((sum, row) => sum + row.revenue, 0);
+  const catalogPackageRevenue = packageSalesRows.reduce((sum, row) => sum + row.revenue, 0);
+  const previousCatalogServiceRevenue = previousCatalogPerformance.serviceRows.reduce((sum, row) => sum + row.revenue, 0);
+  const previousCatalogMaterialRevenue = previousCatalogPerformance.materialRows.reduce((sum, row) => sum + row.revenue, 0);
+  const previousCatalogPackageRevenue = previousCatalogPerformance.packageRows.reduce((sum, row) => sum + row.revenue, 0);
+  const selectedCatalogAnalyticsRows = selectedCatalogAnalyticsDetail === "services"
+    ? serviceSalesRows
+    : selectedCatalogAnalyticsDetail === "materials"
+      ? materialSalesRows
+      : selectedCatalogAnalyticsDetail === "packages"
+        ? packageSalesRows
+        : catalogRows;
+  const catalogModalSearchValue = normalizeStampSearchValue(catalogAnalyticsModalSearch);
+  const selectedCatalogAnalyticsDetails = selectedCatalogAnalyticsRows
+    .flatMap((row) => row.details.map((detail) => ({ row, detail })))
+    .filter(({ row, detail }) => {
+      if (!catalogModalSearchValue) return true;
+      return [
+        row.title,
+        row.id,
+        detail.invoiceNumber,
+        detail.customerName,
+        detail.projectLabel,
+        detail.packageTitle,
+        detail.source === "package" ? "Paket" : "Direkt",
+      ].some((value) => normalizeStampSearchValue(String(value ?? "")).includes(catalogModalSearchValue));
+    })
+    .sort((first, second) => second.detail.revenue - first.detail.revenue);
+  const selectedCatalogAnalyticsReconstructedCount = selectedCatalogAnalyticsDetails.filter(
+    ({ detail }) => detail.basis !== "snapshot",
+  ).length;
+  const selectedCatalogAnalyticsReconstructedPackageCount = selectedCatalogAnalyticsDetails.filter(
+    ({ detail }) => detail.source === "package" && detail.basis !== "snapshot",
+  ).length;
+  const selectedCatalogAnalyticsTitle = selectedCatalogAnalyticsDetail === "services"
+    ? "Leistungen im Detail"
+    : selectedCatalogAnalyticsDetail === "materials"
+      ? "Materialien im Detail"
+      : selectedCatalogAnalyticsDetail === "packages"
+        ? "Pakete im Detail"
+        : selectedCatalogAnalyticsDetail === "margin"
+          ? "Deckungsbeitrag im Detail"
+          : "Rechnungspositionen im Detail";
+  const selectedCatalogAnalyticsInterpretation = selectedCatalogAnalyticsDetail === "services"
+    ? "Leistungen werden nach ihrem anteiligen Nettoumsatz sortiert. Leistungen aus Paketen zählen mit den beim Rechnungszeitpunkt gespeicherten Paketbestandteilen dazu."
+    : selectedCatalogAnalyticsDetail === "materials"
+      ? "Materialien umfassen direkte Rechnungspositionen und Bestandteile verkaufter Pakete. Mengen aus Paketen werden mit verkaufter Paketmenge × Materialmenge je Paket berechnet."
+      : selectedCatalogAnalyticsDetail === "packages"
+        ? "Pakete werden als tatsächlich fakturierte Rechnungspositionen ausgewertet. Positionsrabatte mindern den ausgewiesenen Nettoumsatz."
+        : selectedCatalogAnalyticsDetail === "margin"
+          ? "Der kalkulatorische Deckungsbeitrag ist Nettoumsatz abzüglich gespeicherter Material- und Lohnkosten. Sind bei Altdaten keine Snapshots vorhanden, wird die aktuelle Stammdatenbasis verwendet und gekennzeichnet."
+          : "Der Positionsumsatz summiert die aktiven Rechnungspositionen nach Positionsrabatt. Entwürfe, Stornos und gelöschte Rechnungen sind ausgeschlossen.";
   const getReportTargetHoursForUser = (user: UserOption) => {
     let total = 0;
     const cursor = new Date(reportStartDate);
@@ -29538,6 +29577,8 @@ await addProjectLogbookEntry(
       const groupUsers = getPlanningBoardUsers(section.company, group.name);
       const sellableUsers = groupUsers.filter((user) => user.sellableCapacityEnabled !== false);
       const nonSellableUsers = groupUsers.filter((user) => user.sellableCapacityEnabled === false);
+      const sellableUserIds = new Set(sellableUsers.map((user) => user.id));
+      const sellableUserNames = new Set(sellableUsers.map((user) => normalizeReportPersonValue(user.name)));
       const setting = getPlanningGroupCapacitySetting(section.company, group.name);
       const invoiceSvs = getInvoiceSvsForPlanningGroup(section.company, group.name);
       const catalogSvs = getServiceCatalogSvsForPlanningGroup(section.company, group.name);
@@ -29567,7 +29608,15 @@ await addProjectLogbookEntry(
         0
       );
       const plannedHours = reportDateKeys.reduce(
-        (sum, dateKey) => sum + getPlanningPlannedHours(section.company, group.name, dateKey),
+        (sum, dateKey) =>
+          sum +
+          getPlanningEntriesForScope(section.company, group.name, dateKey)
+            .filter(
+              (entry) =>
+                sellableUserIds.has(entry.userId) ||
+                sellableUserNames.has(normalizeReportPersonValue(entry.employeeName))
+            )
+            .reduce((entrySum, entry) => entrySum + entry.durationMinutes / 60, 0),
         0
       );
       const utilization = capacityHours > 0 ? (plannedHours / capacityHours) * 100 : 0;
@@ -29663,9 +29712,18 @@ await addProjectLogbookEntry(
   );
   const managementCapacityMissingSvsRows = managementCapacityRows.filter((row) => row.svs <= 0);
   const managementCapacityOverloadRows = managementCapacityRows.filter((row) => row.overloadHours > 0);
+  const managementCapacityStructuralProblemRows = managementCapacityRows.filter(
+    (row) => row.state === "low" && row.overloadHours <= 0 && row.svs > 0
+  );
   const managementCapacityTightRows = managementCapacityRows.filter(
     (row) => row.svs > 0 && row.overloadHours <= 0 && row.utilization >= 85
   );
+  const executiveProductiveTimeShare =
+    employeeSummary.stampedProjectHours + employeeSummary.unproductiveHours > 0
+      ? (employeeSummary.stampedProjectHours /
+          (employeeSummary.stampedProjectHours + employeeSummary.unproductiveHours)) *
+        100
+      : 0;
   const dashboardCurrentMonthKey = getCurrentMonthKey();
   const dashboardPreviousMonthKey = getPreviousMonthKey(dashboardCurrentMonthKey);
   const getDashboardTrendIcon = (current: number, previous: number, lowerIsBetter = false): DashboardTrendIconType => {
@@ -29771,29 +29829,29 @@ await addProjectLogbookEntry(
     {
       key: "overdue-open-items",
       area: "Liquidität",
-      signal: `${overviewOverdueRows.length} überfällige Rechnung${overviewOverdueRows.length === 1 ? "" : "en"}`,
+      signal: `${executiveOverdueRows.length} überfällige Rechnung${executiveOverdueRows.length === 1 ? "" : "en"}`,
       interpretation:
-        overviewOverdueTotal > 0
-          ? `Wachstumsbremse: ${formatMoney(overviewOverdueTotal)} sind überfällig und stehen nicht für Löhne, Material, Investitionen oder zusätzliches Personal zur Verfügung.`
-          : "Keine überfälligen offenen Posten im gewählten Zeitraum.",
+        executiveOverdueTotal > 0
+          ? `Wachstumsbremse: ${formatMoney(executiveOverdueTotal)} sind aktuell überfällig und stehen nicht für Löhne, Material, Investitionen oder zusätzliches Personal zur Verfügung.`
+          : "Aktuell sind keine offenen Posten überfällig.",
       action: "Heute OP-Liste abarbeiten: größte überfällige Kunden zuerst anrufen, Mahnstufe prüfen und verbindlichen Zahlungstermin dokumentieren.",
-      amount: overviewOverdueTotal,
-      state: overviewOverdueTotal > 0 ? ("low" as const) : ("good" as const),
-      priority: overviewOverdueTotal > 0 ? 95 : 10,
+      amount: executiveOverdueTotal,
+      state: executiveOverdueTotal > 0 ? ("low" as const) : ("good" as const),
+      priority: executiveOverdueTotal > 0 ? 95 : 10,
       visible: canViewAccountingOverviewAnalytics,
     },
     {
       key: "open-items",
       area: "Liquidität",
-      signal: `${formatMoney(overviewOpenTotal)} offen`,
+      signal: `${formatMoney(executiveOpenTotal)} aktuell offen`,
       interpretation:
-        overviewOpenTotal > overviewOverdueTotal
-          ? `Offene, noch nicht bezahlte Rechnungen binden ${formatMoney(overviewOpenTotal)}. Das ist kein Umsatzproblem, aber ein Liquiditätsrisiko.`
+        executiveOpenTotal > executiveOverdueTotal
+          ? `Offene, noch nicht bezahlte Rechnungen binden aktuell ${formatMoney(executiveOpenTotal)}. Das ist kein Umsatzproblem, aber ein Liquiditätsrisiko.`
           : "Keine zusätzlichen offenen Posten neben den überfälligen Rechnungen.",
       action: "Offene Posten nach Betrag sortieren und Fälligkeiten absichern, bevor sie überfällig werden.",
-      amount: overviewOpenTotal,
-      state: overviewOpenTotal > overviewOverdueTotal && overviewOpenTotal > 0 ? ("ok" as const) : ("good" as const),
-      priority: overviewOpenTotal > overviewOverdueTotal && overviewOpenTotal > 0 ? 82 : 8,
+      amount: executiveOpenTotal,
+      state: executiveOpenTotal > executiveOverdueTotal && executiveOpenTotal > 0 ? ("ok" as const) : ("good" as const),
+      priority: executiveOpenTotal > executiveOverdueTotal && executiveOpenTotal > 0 ? 82 : 8,
       visible: canViewAccountingOverviewAnalytics,
     },
     {
@@ -29884,7 +29942,7 @@ await addProjectLogbookEntry(
           : "Die Abschlussquote liefert aktuell keinen kritischen Engpass.",
       action: "Verlorene Angebote nach Grund auswerten und Gegenmaßnahme festlegen: Preis, Bedarfsklärung, Reaktionszeit oder Nachfassen.",
       amount: salesLostValue,
-      state: salesDecisionCount >= 3 && salesWinRate < 35 ? ("low" as const) : salesDecisionCount > 0 ? ("good" as const) : ("ok" as const),
+      state: salesDecisionCount >= 3 && salesWinRate < 35 ? ("low" as const) : ("good" as const),
       priority: salesDecisionCount >= 3 && salesWinRate < 35 ? 76 : 20,
       visible: canViewFullOverviewAnalytics || activeUserHasSalesRole,
     },
@@ -29919,15 +29977,15 @@ await addProjectLogbookEntry(
     {
       key: "productivity",
       area: "Produktivität",
-      signal: `${formatPercent(dashboardCurrentMonthProductivity)} produktive Zeit im Monat`,
+      signal: `${formatPercent(executiveProductiveTimeShare)} produktive Projektzeit`,
       interpretation:
-        dashboardCurrentMonthProductivity > 0 && dashboardCurrentMonthProductivity < 75
+        executiveProductiveTimeShare > 0 && executiveProductiveTimeShare < 75
           ? "Wachstumsbremse: zu wenig Arbeitszeit wird in abrechenbare Projektleistung umgesetzt."
           : "Produktivitätsanteil ist aktuell kein Hauptengpass.",
       action: "Mitarbeiterauswertung nach Planungsgruppe öffnen und die größte unproduktive Ursache beseitigen: Planung, Ausfall, Nacharbeit oder falsche Zuordnung.",
       amount: 0,
-      state: dashboardCurrentMonthProductivity > 0 && dashboardCurrentMonthProductivity < 75 ? ("low" as const) : ("good" as const),
-      priority: dashboardCurrentMonthProductivity > 0 && dashboardCurrentMonthProductivity < 75 ? 74 : 10,
+      state: executiveProductiveTimeShare > 0 && executiveProductiveTimeShare < 75 ? ("low" as const) : ("good" as const),
+      priority: executiveProductiveTimeShare > 0 && executiveProductiveTimeShare < 75 ? 74 : 10,
       visible: canViewFullOverviewAnalytics,
     },
     {
@@ -29936,22 +29994,28 @@ await addProjectLogbookEntry(
       signal:
         managementCapacityOverloadRows.length > 0
           ? `${managementCapacityOverloadRows.length} Planungsgruppe${managementCapacityOverloadRows.length === 1 ? "" : "n"} überplant`
+          : managementCapacityStructuralProblemRows.length > 0
+            ? `${managementCapacityStructuralProblemRows.length} Planungsgruppe${managementCapacityStructuralProblemRows.length === 1 ? "" : "n"} ohne belastbare Kapazität`
           : managementCapacityTightRows.length > 0
             ? `${managementCapacityTightRows.length} Planungsgruppe${managementCapacityTightRows.length === 1 ? "" : "n"} fast ausgelastet`
             : `${formatMoney(managementCapacityTotal.openRevenueCapacity)} rechnerisch offen`,
       interpretation:
         managementCapacityOverloadRows.length > 0
           ? `Wachstumsbremse: ${formatHours(managementCapacityTotal.overloadHours)} Std. sind über der verfügbaren Kapazität geplant. Mehr Umsatz ist mit der aktuellen Besetzung nicht realistisch sauber leistbar.`
+          : managementCapacityStructuralProblemRows.length > 0
+            ? "Wachstumsbremse: Mindestens eine Planungsgruppe hat keine aktiven oder keine als verkaufbar aktivierten Mitarbeiter beziehungsweise keine verfügbaren Stunden."
           : managementCapacityTightRows.length > 0
             ? "Wachstumsbremse: einzelne Planungsgruppen laufen an die Kapazitätsgrenze. Zusätzlicher Umsatz braucht Entlastung, bessere Auslastungssteuerung oder mehr Personal."
             : "Keine harte Kapazitätsbremse im ausgewählten Zeitraum. Die offene rechnerische Kapazität kann mit Vertrieb und Planung gezielt gefüllt werden.",
       action:
         managementCapacityOverloadRows.length > 0
           ? "Überplante Planungsgruppen zuerst entlasten: Termine verschieben, Personal umplanen oder Zusatzkapazität schaffen."
+          : managementCapacityStructuralProblemRows.length > 0
+            ? "Mitarbeiterzuordnung, Verkaufbarkeits-Schalter und Wochenkapazitäten der betroffenen Gruppen prüfen."
           : "Offene Kapazität mit Vertrieb abgleichen: welche Planungsgruppen können noch Umsatz aufnehmen, ohne Qualität und Termine zu gefährden?",
       amount: managementCapacityTotal.openRevenueCapacity,
-      state: managementCapacityOverloadRows.length > 0 ? ("low" as const) : managementCapacityTightRows.length > 0 ? ("ok" as const) : ("good" as const),
-      priority: managementCapacityOverloadRows.length > 0 ? 88 : managementCapacityTightRows.length > 0 ? 73 : 18,
+      state: managementCapacityOverloadRows.length > 0 || managementCapacityStructuralProblemRows.length > 0 ? ("low" as const) : managementCapacityTightRows.length > 0 ? ("ok" as const) : ("good" as const),
+      priority: managementCapacityOverloadRows.length > 0 ? 88 : managementCapacityStructuralProblemRows.length > 0 ? 84 : managementCapacityTightRows.length > 0 ? 73 : 18,
       visible: canViewFullOverviewAnalytics,
     },
     {
@@ -29979,8 +30043,170 @@ await addProjectLogbookEntry(
     .sort((first, second) => second.priority - first.priority);
   const executiveActiveBottleneckRows = executiveBottleneckCandidates.filter((row) => row.state !== "good");
   const executiveBottleneckRows =
-    executiveActiveBottleneckRows.length > 0 ? executiveActiveBottleneckRows : executiveBottleneckCandidates.slice(0, 5);
+    executiveActiveBottleneckRows.length > 0
+      ? executiveActiveBottleneckRows.slice(0, 5)
+      : executiveBottleneckCandidates.slice(0, 5);
   const executiveTopBottleneck = executiveBottleneckRows.find((row) => row.state !== "good") ?? executiveBottleneckRows[0] ?? null;
+  const executiveProjectAttentionRows = dashboardActiveProjects
+    .map((project) => {
+      const durationRow = pipelineDurationRows.find((row) => row.project.id === project.id) ?? null;
+      const isBillingCheck = normalizeProjectPipelineStatus(project.status) === "Abrechnungsprüfung";
+      const isLongPhase = longPipelineStatusRows.some((row) => row.project.id === project.id);
+      if (!isBillingCheck && !isLongPhase) return null;
+      return {
+        project,
+        durationRow,
+        reason: isBillingCheck ? "Abrechnungsprüfung" : "Phase außerhalb Zielkorridor",
+        priority: isBillingCheck ? 1000 : durationRow?.statusDurationDays ?? 0,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => Boolean(row))
+    .sort((first, second) => second.priority - first.priority);
+  const executiveTopRiskRows = [
+    ...executiveOverdueRows.map((row) => ({
+      key: `invoice-${row.invoice.id}`,
+      type: "Überfällige Rechnung",
+      title: row.invoice.invoiceNumber,
+      detail: row.invoice.customerName || "Ohne Kunde",
+      days: row.dueState.overdueDays,
+      amount: row.invoice.netTotal,
+      state: "low" as const,
+      score: 3000 + row.dueState.overdueDays + row.invoice.netTotal / 1000,
+      invoice: row.invoice,
+      project: row.invoice.projectId ? heroProjects.find((item) => item.id === row.invoice.projectId) ?? null : null,
+    })),
+    ...executiveProjectAttentionRows.map((row) => ({
+      key: `project-${row.project.id}`,
+      type: row.reason,
+      title: row.project.projectNumber || row.project.title,
+      detail: `${row.project.customer || "Ohne Kunde"} · ${row.project.status || "Ohne Status"}`,
+      days: row.durationRow?.statusDurationDays ?? 0,
+      amount: 0,
+      state: row.reason === "Abrechnungsprüfung" ? ("ok" as const) : ("low" as const),
+      score: 2000 + row.priority,
+      invoice: null,
+      project: row.project,
+    })),
+    ...recurringForecastMissingSourceRows.map((row) => ({
+      key: `forecast-${row.month.key}-${row.project.id}`,
+      type: "Forecast-Datenlücke",
+      title: row.project.projectNumber || row.project.title,
+      detail: `${row.project.customer || "Ohne Kunde"} · ${row.month.label}`,
+      days: 0,
+      amount: 0,
+      state: "ok" as const,
+      score: 1000,
+      invoice: null,
+      project: row.project,
+    })),
+  ].sort((first, second) => second.score - first.score);
+  const executiveModalSearchValue = normalizeStampSearchValue(executiveAnalyticsModalSearch);
+  const matchesExecutiveModalSearch = (...values: unknown[]) =>
+    !executiveModalSearchValue ||
+    values.some((value) => normalizeStampSearchValue(String(value ?? "")).includes(executiveModalSearchValue));
+  const executiveFinancialInvoiceRows = reportInvoices.filter((invoice) =>
+    matchesExecutiveModalSearch(
+      invoice.invoiceNumber,
+      invoice.customerName,
+      invoice.projectNumber,
+      invoice.projectTitle,
+      invoice.status
+    )
+  );
+  const executiveLiquidityInvoiceRows = executiveOutstandingInvoices.filter((invoice) =>
+    matchesExecutiveModalSearch(
+      invoice.invoiceNumber,
+      invoice.customerName,
+      invoice.projectNumber,
+      invoice.projectTitle,
+      getInvoiceDueState(invoice).label
+    )
+  );
+  const executiveFilteredProjectAttentionRows = executiveProjectAttentionRows.filter((row) =>
+    matchesExecutiveModalSearch(
+      row.project.projectNumber,
+      row.project.title,
+      row.project.customer,
+      row.project.status,
+      row.project.trade,
+      row.reason
+    )
+  );
+  const executiveFilteredCapacityRows = managementCapacityRows.filter((row) =>
+    matchesExecutiveModalSearch(
+      row.planningBoard,
+      row.planningGroup,
+      row.userNames,
+      row.nonSellableUserNames,
+      row.source,
+      row.interpretation
+    )
+  );
+  const executiveFilteredCustomerRows = customerRiskRows.filter((row) =>
+    matchesExecutiveModalSearch(row.name, row.riskState, row.revenue, row.openRevenue, row.overdueRevenue)
+  );
+  const executiveFilteredStaleOffers = salesStaleOpenOfferRows.filter((row) =>
+    matchesExecutiveModalSearch(
+      row.offer.offerNumber,
+      row.offer.customerName,
+      row.offer.projectNumber,
+      row.offer.projectTitle,
+      row.offer.internalContactName
+    )
+  );
+  const executiveFilteredDueFollowUps = salesDueFollowUps.filter((potential) =>
+    matchesExecutiveModalSearch(
+      getPotentialNumber(potential),
+      potential.customerName,
+      potential.projectLabel,
+      potential.description,
+      potential.ownerName
+    )
+  );
+  const selectedExecutiveAnalyticsTitle = selectedExecutiveAnalyticsDetail === "financials"
+    ? "Umsatz und Deckungsbeitrag im Detail"
+    : selectedExecutiveAnalyticsDetail === "liquidity"
+      ? "Liquidität und offene Posten im Detail"
+      : selectedExecutiveAnalyticsDetail === "projects"
+        ? "Projektfluss und Faktura im Detail"
+        : selectedExecutiveAnalyticsDetail === "sales"
+          ? "Vertrieb im Detail"
+          : selectedExecutiveAnalyticsDetail === "customers"
+            ? "Kundenlage im Detail"
+            : selectedExecutiveAnalyticsDetail === "capacity"
+              ? "Umsatzkapazität im Detail"
+              : "";
+  const selectedExecutiveAnalyticsInterpretation = selectedExecutiveAnalyticsDetail === "financials"
+    ? "Umsatz und kalkulatorischer Deckungsbeitrag folgen dem gewählten Berichtszeitraum. Kosten verwenden dieselbe gespeicherte beziehungsweise gekennzeichnet rekonstruierte Positionsbasis wie die Artikel- und Leistungsauswertung."
+    : selectedExecutiveAnalyticsDetail === "liquidity"
+      ? "Offene Posten sind eine Stichtagssicht auf alle aktuell unbezahlten aktiven Rechnungen. Sie werden bewusst nicht auf Rechnungen des gewählten Monats begrenzt, damit alte Forderungen nicht verschwinden."
+      : selectedExecutiveAnalyticsDetail === "projects"
+        ? "Diese operative Stichtagssicht zeigt aktive Projekte in Abrechnungsprüfung oder mit einer aktuellen Phase außerhalb ihres Zielkorridors. Dauerläufer in Umsetzung bleiben Normalbetrieb."
+        : selectedExecutiveAnalyticsDetail === "sales"
+          ? "Offene alte Angebote und fällige Nachfasspunkte bleiben als heutige Aufgaben unabhängig vom Berichtszeitraum sichtbar. Abschlussquote und Umsatzwerte beziehen sich dagegen auf den gewählten Zeitraum."
+          : selectedExecutiveAnalyticsDetail === "customers"
+            ? "Die Kundenlage bewertet fakturierten Umsatz, offene und überfällige Beträge sowie kritische Rückmeldungen im gewählten Berichtszeitraum."
+            : selectedExecutiveAnalyticsDetail === "capacity"
+              ? "Kapazität wird aus als verkaufbar aktivierten Mitarbeitern, deren Arbeitszeiten, Feiertagen und Abwesenheiten berechnet. Geplante Stunden derselben Gruppe werden nur für diese verkaufbaren Mitarbeiter gegengerechnet."
+              : "";
+  const openExecutiveDetail = (detail: NonNullable<typeof selectedExecutiveAnalyticsDetail>) => {
+    setExecutiveAnalyticsModalSearch("");
+    setSelectedExecutiveAnalyticsDetail(detail);
+  };
+  const openExecutiveBottleneck = (key: string) => {
+    if (["overdue-open-items", "open-items"].includes(key)) return openExecutiveDetail("liquidity");
+    if (["pipeline-bottleneck", "billing-check", "interrupted-work"].includes(key)) return openExecutiveDetail("projects");
+    if (["stale-offers", "sales-followups", "sales-win-rate"].includes(key)) return openExecutiveDetail("sales");
+    if (key === "critical-feedback") return openExecutiveDetail("customers");
+    if (["planning-group-capacity", "planning-group-svs-quality"].includes(key)) return openExecutiveDetail("capacity");
+    if (key === "forecast-quality") {
+      setReportAnalyticsTab("forecast");
+      return;
+    }
+    if (key === "productivity") {
+      setActiveTab("employees");
+    }
+  };
   const canUseManagementAi = activeUser?.role === "ADMIN" || activeUser?.role === "GESCHAEFTSFUEHRER";
   const canUseSalesAi = canUseManagementAi || activeUserHasSalesRole;
   const currentManagementAiMessages = managementAiMessagesByMode[managementAiMode];
@@ -30643,22 +30869,69 @@ await addProjectLogbookEntry(
       calendarWeek,
     };
   })();
-  const projectMapRows = reportProjectRows
-    .filter((row) => row.project.address || row.project.customer)
-    .slice(0, 20)
-    .map((row, index) => {
-      const hash = Array.from(`${row.project.projectNumber}${row.project.address}${row.project.customer}`).reduce(
-        (sum, char) => sum + char.charCodeAt(0),
-        0
-      );
-      return {
-        ...row,
-        x: 12 + ((hash + index * 17) % 76),
-        y: 18 + ((hash * 3 + index * 11) % 62),
-      };
-    });
+  const projectMapPeriodProjectIds = new Set(reportProjectRows.map((row) => row.project.id));
+  const projectMapMetricsByProjectId = new Map(
+    reportProjectRows.map((row) => [row.project.id, { revenue: row.revenue, offerVolume: row.offerVolume }] as const)
+  );
+  const projectMapSearchValue = normalizeStampSearchValue(projectMapSearch);
+  const projectMapRows = heroProjects
+    .filter((project) => isProjectVisibleInProjectScopedAnalytics(project))
+    .filter((project) => {
+      const status = normalizeProjectPipelineStatus(project.status);
+      if (projectMapScope === "active") return status !== "Archiviert" && status !== "Abgeschlossen";
+      if (projectMapScope === "period") return projectMapPeriodProjectIds.has(project.id);
+      return true;
+    })
+    .filter((project) => {
+      if (projectMapKindFilter === "recurring") return isRecurringProject(project);
+      if (projectMapKindFilter === "oneTime") return !isRecurringProject(project);
+      return true;
+    })
+    .filter((project) => {
+      const values = [
+        project.projectNumber,
+        project.title,
+        project.customer,
+        project.address,
+        project.status,
+        project.trade,
+        project.responsibleName,
+      ].map((value) => normalizeStampSearchValue(String(value ?? "")));
+      return (!reportSearchValue || values.some((value) => value.includes(reportSearchValue))) &&
+        (!projectMapSearchValue || values.some((value) => value.includes(projectMapSearchValue)));
+    })
+    .map((project) => ({
+      project,
+      revenue: projectMapMetricsByProjectId.get(project.id)?.revenue ?? 0,
+      offerVolume: projectMapMetricsByProjectId.get(project.id)?.offerVolume ?? 0,
+    }))
+    .sort((first, second) => first.project.projectNumber.localeCompare(second.project.projectNumber, APP_LOCALE));
+  const projectMapLocatedRows = projectMapRows.filter(
+    (row) =>
+      Boolean(row.project.address?.trim()) &&
+      row.project.mapGeocodeStatus === "located" &&
+      row.project.mapLatitude != null &&
+      row.project.mapLongitude != null &&
+      Number.isFinite(Number(row.project.mapLatitude)) &&
+      Number.isFinite(Number(row.project.mapLongitude))
+  );
+  const projectMapAddressReviewRows = projectMapRows.filter(
+    (row) => !row.project.address?.trim() || !projectMapLocatedRows.some((located) => located.project.id === row.project.id)
+  );
+  const projectMapPoints: ProjectAnalyticsMapPoint[] = projectMapLocatedRows.map((row) => ({
+    id: row.project.id,
+    projectNumber: row.project.projectNumber,
+    customer: row.project.customer || row.project.title,
+    address: row.project.mapGeocodedAddress || row.project.address || "",
+    status: row.project.status,
+    projectKind: isRecurringProject(row.project) ? "Dauerläufer" : "Einmaliges Projekt",
+    revenue: row.revenue,
+    offerVolume: row.offerVolume,
+    latitude: Number(row.project.mapLatitude),
+    longitude: Number(row.project.mapLongitude),
+  }));
   const projectMapRegionRows = Object.values(
-    reportProjectRows.reduce<Record<string, { region: string; count: number; revenue: number; openProjects: number }>>(
+    projectMapLocatedRows.reduce<Record<string, { region: string; count: number; revenue: number; openProjects: number }>>(
       (groups, row) => {
         const address = row.project.address || "";
         const postalMatch = address.match(/\b(\d{5})\b/);
@@ -30674,8 +30947,39 @@ await addProjectLogbookEntry(
       {}
     )
   ).sort((first, second) => second.count - first.count);
-  const projectMapWithAddressCount = reportProjectRows.filter((row) => row.project.address).length;
-  const projectMapWithoutAddressCount = Math.max(0, reportProjectRows.length - projectMapWithAddressCount);
+  const projectMapWithAddressCount = projectMapRows.filter((row) => row.project.address?.trim()).length;
+  const projectMapWithoutAddressCount = Math.max(0, projectMapRows.length - projectMapWithAddressCount);
+  const projectMapUnresolvedAddressCount = projectMapAddressReviewRows.filter((row) => row.project.address?.trim()).length;
+  const geocodeVisibleProjectMapAddresses = async () => {
+    if (!activeUser?.id || isProjectMapGeocoding) return;
+    const projectIds = projectMapAddressReviewRows
+      .filter((row) => row.project.address?.trim())
+      .map((row) => row.project.id);
+    if (projectIds.length === 0) {
+      setProjectMapGeocodingMessage("Alle sichtbaren Projektadressen sind bereits kartiert.");
+      return;
+    }
+    setIsProjectMapGeocoding(true);
+    setProjectMapGeocodingMessage("");
+    try {
+      const response = await fetch("/api/project-map/geocode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actorId: activeUser.id, projectIds }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Projektadressen konnten nicht geprüft werden.");
+      setProjectMapGeocodingConfigured(Boolean(payload.configured));
+      setProjectMapGeocodingMessage(
+        payload.message || `${Number(payload.updated || 0)} Projektadresse${Number(payload.updated || 0) === 1 ? "" : "n"} geprüft.`
+      );
+      await loadHeroProjects();
+    } catch (error) {
+      setProjectMapGeocodingMessage(error instanceof Error ? error.message : "Projektadressen konnten nicht geprüft werden.");
+    } finally {
+      setIsProjectMapGeocoding(false);
+    }
+  };
   const renderProjectAnalyticsActions = (
     project: HeroProjectPreview,
     options?: { showInvoices?: boolean }
@@ -31065,17 +31369,19 @@ await addProjectLogbookEntry(
               <option value="recurring">Dauerläufer</option>
             </select>
           </label>
-        ) : (
+        ) : reportAnalyticsTab !== "executive" ? (
           <span>Gewerk: Alle</span>
-        )}
-        <label>
-          Suche
-          <input
-            value={reportSearch}
-            onChange={(event) => setReportSearch(event.target.value)}
-            placeholder="Projekt, Kunde, Mitarbeiter, Position..."
-          />
-        </label>
+        ) : null}
+        {reportAnalyticsTab !== "executive" ? (
+          <label>
+            Suche
+            <input
+              value={reportSearch}
+              onChange={(event) => setReportSearch(event.target.value)}
+              placeholder="Projekt, Kunde, Mitarbeiter, Position..."
+            />
+          </label>
+        ) : null}
         {canUseManagementAi || canUseSalesAi ? (
           <div className={styles.reportAiMenu} ref={managementAiMenuRef}>
             <button
@@ -32900,6 +33206,113 @@ await addProjectLogbookEntry(
           </section>
         </>
       )}
+          {selectedCatalogAnalyticsDetail ? (
+            <div
+              className={styles.modalOverlay}
+              role="dialog"
+              aria-modal="true"
+              aria-label={selectedCatalogAnalyticsTitle}
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget) setSelectedCatalogAnalyticsDetail(null);
+              }}
+            >
+              <div className={`${styles.standardModal} ${styles.salesAnalyticsModal}`}>
+                <header className={styles.standardModalHeader}>
+                  <div>
+                    <h2>{selectedCatalogAnalyticsTitle}</h2>
+                    <p>Zeitraum {reportPeriodLabel}</p>
+                  </div>
+                  <button type="button" className={styles.iconButton} aria-label="Schließen" onClick={() => setSelectedCatalogAnalyticsDetail(null)}>×</button>
+                </header>
+                <div className={styles.standardModalBody}>
+                  <div className={styles.customerRevenueModalSummary}>
+                    <span className={styles.customerRevenueModalCount}>
+                      {selectedCatalogAnalyticsDetails.length} {selectedCatalogAnalyticsDetails.length === 1 ? "Eintrag" : "Einträge"} angezeigt
+                    </span>
+                    <div className={styles.customerRevenueModalExplanation}>
+                      <strong>Einordnung</strong>
+                      <p>{selectedCatalogAnalyticsInterpretation}</p>
+                      <div className={styles.catalogMarginLegend} aria-label="Farblegende der Margenquote">
+                        <span data-state="good"><i />Grün: ab 30 %</span>
+                        <span data-state="ok"><i />Gelb: 18 bis unter 30 %</span>
+                        <span data-state="low"><i />Rot: unter 18 %</span>
+                      </div>
+                      {selectedCatalogAnalyticsReconstructedCount > 0 ? (
+                        <p className={styles.customerRevenueAssessmentLogic}>
+                          <b>Datenbasis:</b> {selectedCatalogAnalyticsReconstructedCount} {selectedCatalogAnalyticsReconstructedCount === 1 ? "Eintrag wurde aus den verfügbaren Stammdaten rekonstruiert und ist" : "Einträge wurden aus den verfügbaren Stammdaten rekonstruiert und sind"} in der Spalte Basis entsprechend gekennzeichnet.
+                          {selectedCatalogAnalyticsReconstructedPackageCount > 0 ? ` Bei ${selectedCatalogAnalyticsReconstructedPackageCount} Paketpositionen basiert die Rekonstruktion auf der aktuellen Paketzusammensetzung.` : ""}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                  <label className={styles.analyticsModalSearch}>
+                    <span>Details durchsuchen</span>
+                    <input
+                      type="search"
+                      value={catalogAnalyticsModalSearch}
+                      onChange={(event) => setCatalogAnalyticsModalSearch(event.target.value)}
+                      placeholder="Position, Paket, Rechnung, Kunde oder Projekt …"
+                    />
+                  </label>
+                  <div className={styles.salesAnalyticsTableScroll}>
+                    <table className={styles.analyticsTable}>
+                      <thead><tr>
+                        <th>Position</th><th>Herkunft</th><th>Rechnung</th><th>Kunde</th><th>Projekt</th>
+                        <th>Menge</th><th>Umsatz</th><th>Kosten</th><th>Marge</th><th>Basis</th><th>Aktionen</th>
+                      </tr></thead>
+                      <tbody>
+                        {selectedCatalogAnalyticsDetails.length === 0 ? (
+                          <tr><td colSpan={11}>Keine passenden Einträge im gewählten Zeitraum.</td></tr>
+                        ) : selectedCatalogAnalyticsDetails.map(({ row, detail }) => {
+                          const invoice = invoices.find((item) => item.id === detail.invoiceId) ?? null;
+                          const project = detail.projectId ? heroProjects.find((item) => item.id === detail.projectId) ?? null : null;
+                          const catalogItem = detail.catalogItemId ? catalogItems.find((item) => item.id === detail.catalogItemId) ?? null : null;
+                          const detailMarginPercent = detail.revenue > 0
+                            ? ((detail.revenue - detail.cost) / detail.revenue) * 100
+                            : 0;
+                          return (
+                            <tr key={detail.key}>
+                              <td>{row.title}</td>
+                              <td>{detail.source === "package" ? `Paket · ${detail.packageTitle}` : "Direkt"}</td>
+                              <td>{detail.invoiceNumber}</td>
+                              <td>{detail.customerName || "-"}</td>
+                              <td>{detail.projectLabel}</td>
+                              <td>{formatHours(detail.quantity)} {row.unit}</td>
+                              <td>{formatMoney(detail.revenue)}</td>
+                              <td>{formatMoney(detail.cost)}</td>
+                              <td data-state={getMetricState(detailMarginPercent, 30, 18)}>
+                                <span className={styles.catalogMarginCell}>
+                                  <strong>{formatMoney(detail.revenue - detail.cost)}</strong>
+                                  <small>{formatPercent(detailMarginPercent)} Marge</small>
+                                </span>
+                              </td>
+                              <td>{detail.basis === "snapshot" ? "Gespeichert" : detail.basis === "reconstructed" ? "Rekonstruiert" : "Unvollständig"}</td>
+                              <td><div className={styles.tableActionGroup}>
+                                {invoice ? <button type="button" className={styles.secondaryButton} onClick={() => {
+                                  setSelectedCatalogAnalyticsDetail(null);
+                                  if (project) openProjectFile(project, { tab: "documents", documentType: "Rechnungen" });
+                                  openEditInvoiceModal(invoice);
+                                }}>Rechnung</button> : null}
+                                {project ? <button type="button" className={styles.secondaryButton} onClick={() => {
+                                  setSelectedCatalogAnalyticsDetail(null);
+                                  openProjectFile(project);
+                                }}>Projekt</button> : null}
+                                {catalogItem ? <button type="button" className={styles.secondaryButton} onClick={() => {
+                                  setSelectedCatalogAnalyticsDetail(null);
+                                  openMainView(catalogItem.type === "service" ? "services" : catalogItem.type === "package" ? "packages" : "articles");
+                                  openEditCatalogModal(catalogItem);
+                                }}>Stammposition</button> : null}
+                              </div></td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
       {selectedSvsAnalyticsDetail ? (
         <div
@@ -34002,163 +34415,63 @@ await addProjectLogbookEntry(
 
       {reportAnalyticsTab === "catalog" && (
         <>
-          <section className={styles.analyticsTwoColumn}>
-            <article className={styles.analyticsCard}>
-              <h2>Meistverkaufte Leistungen</h2>
-              <table className={styles.analyticsTable}>
-                <thead>
-                  <tr>
-                    <th>Leistung</th>
-                    <th>Menge</th>
-                    <th>VK</th>
-                    <th>Marge</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {serviceSalesRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={4}>Keine Leistungen im gewählten Zeitraum.</td>
-                    </tr>
-                  ) : (
-                    serviceSalesRows.slice(0, 10).map((row) => (
-                      <tr key={row.title}>
-                        <td>{row.title}</td>
-                        <td>{formatHours(row.quantity)} {row.unit}</td>
-                        <td>{formatMoney(row.revenue)}</td>
-                        <td data-state={getMetricState(row.marginPercent, 30, 18)}>{formatMoney(row.margin)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </article>
-            <article className={styles.analyticsCard}>
-              <h2>Meistverkaufte Materialien</h2>
-              <table className={styles.analyticsTable}>
-                <thead>
-                  <tr>
-                    <th>Material</th>
-                    <th>Menge</th>
-                    <th>VK</th>
-                    <th>Marge</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {materialSalesRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={4}>Keine Materialien im gewählten Zeitraum.</td>
-                    </tr>
-                  ) : (
-                    materialSalesRows.slice(0, 10).map((row) => (
-                      <tr key={row.title}>
-                        <td>{row.title}</td>
-                        <td>{formatHours(row.quantity)} {row.unit}</td>
-                        <td>{formatMoney(row.revenue)}</td>
-                        <td data-state={getMetricState(row.marginPercent, 30, 18)}>{formatMoney(row.margin)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </article>
+          <section className={styles.analyticsGrid}>
+            {renderReportMetric(
+              "Positionsumsatz",
+              formatMoney(catalogPerformance.totalRevenue),
+              `${catalogRows.reduce((sum, row) => sum + row.details.length, 0)} fakturierte Positionen`,
+              "neutral",
+              getDashboardTrendIcon(catalogPerformance.totalRevenue, previousCatalogPerformance.totalRevenue),
+              getDashboardTrendLabel(catalogPerformance.totalRevenue, previousCatalogPerformance.totalRevenue),
+              false,
+              "Info",
+              () => { setCatalogAnalyticsModalSearch(""); setSelectedCatalogAnalyticsDetail("positions"); }
+            )}
+            {renderReportMetric(
+              "Leistungen",
+              formatMoney(catalogServiceRevenue),
+              serviceSalesRows[0] ? `Top: ${serviceSalesRows[0].title}` : "Keine Leistungen im Zeitraum",
+              "neutral",
+              getDashboardTrendIcon(catalogServiceRevenue, previousCatalogServiceRevenue),
+              getDashboardTrendLabel(catalogServiceRevenue, previousCatalogServiceRevenue),
+              false,
+              "Info",
+              () => { setCatalogAnalyticsModalSearch(""); setSelectedCatalogAnalyticsDetail("services"); }
+            )}
+            {renderReportMetric(
+              "Materialien",
+              formatMoney(catalogMaterialRevenue),
+              materialSalesRows[0] ? `Top: ${materialSalesRows[0].title} · inkl. Paketanteile` : "Keine Materialien im Zeitraum",
+              "neutral",
+              getDashboardTrendIcon(catalogMaterialRevenue, previousCatalogMaterialRevenue),
+              getDashboardTrendLabel(catalogMaterialRevenue, previousCatalogMaterialRevenue),
+              false,
+              "Info",
+              () => { setCatalogAnalyticsModalSearch(""); setSelectedCatalogAnalyticsDetail("materials"); }
+            )}
+            {renderReportMetric(
+              "Pakete",
+              formatMoney(catalogPackageRevenue),
+              packageSalesRows[0] ? `Top: ${packageSalesRows[0].title}` : "Keine Pakete im Zeitraum",
+              "neutral",
+              getDashboardTrendIcon(catalogPackageRevenue, previousCatalogPackageRevenue),
+              getDashboardTrendLabel(catalogPackageRevenue, previousCatalogPackageRevenue),
+              false,
+              "Info",
+              () => { setCatalogAnalyticsModalSearch(""); setSelectedCatalogAnalyticsDetail("packages"); }
+            )}
+            {renderReportMetric(
+              "Deckungsbeitrag",
+              formatMoney(catalogPerformance.totalMargin),
+              `${formatHours(catalogPerformance.totalMarginPercent)} % kalkulatorische Marge`,
+              getMetricState(catalogPerformance.totalMarginPercent, 30, 18),
+              getDashboardTrendIcon(catalogPerformance.totalMargin, previousCatalogPerformance.totalMargin),
+              getDashboardTrendLabel(catalogPerformance.totalMargin, previousCatalogPerformance.totalMargin),
+              false,
+              undefined,
+              () => { setCatalogAnalyticsModalSearch(""); setSelectedCatalogAnalyticsDetail("margin"); }
+            )}
           </section>
-          <article className={styles.analyticsCard}>
-            <h2>Meistverkaufte Pakete</h2>
-            <table className={styles.analyticsTable}>
-              <thead>
-                <tr>
-                  <th>Paket</th>
-                  <th>Anzahl</th>
-                  <th>VK</th>
-                  <th>EK/Kosten</th>
-                  <th>Marge</th>
-                  <th>Marge %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {packageSalesRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={6}>Keine Pakete im gewählten Zeitraum.</td>
-                  </tr>
-                ) : (
-                  packageSalesRows.slice(0, 12).map((row) => (
-                    <tr key={row.title}>
-                      <td>{row.title}</td>
-                      <td>{formatHours(row.quantity)}</td>
-                      <td>{formatMoney(row.revenue)}</td>
-                      <td>{formatMoney(row.cost)}</td>
-                      <td>{formatMoney(row.margin)}</td>
-                      <td data-state={getMetricState(row.marginPercent, 30, 18)}>{formatHours(row.marginPercent)}%</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </article>
-          <article className={styles.analyticsCard}>
-            <h2>Leistungen & Materialien inkl. Paketbestandteilen</h2>
-            <table className={styles.analyticsTable}>
-              <thead>
-                <tr>
-                  <th>Position</th>
-                  <th>Typ</th>
-                  <th>Menge</th>
-                  <th>Aus Paketen</th>
-                  <th>VK</th>
-                  <th>EK/Kosten</th>
-                  <th>Marge</th>
-                  <th>Marge %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {catalogComponentRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={8}>Keine Leistungen oder Materialien im gewählten Zeitraum.</td>
-                  </tr>
-                ) : (
-                  catalogComponentRows.slice(0, 24).map((row) => (
-                    <tr key={`${row.type}-${row.id}-${row.title}`}>
-                      <td>{row.title}</td>
-                      <td>{row.type === "service" ? "Leistung" : row.type === "article" ? "Material" : "-"}</td>
-                      <td>{formatHours(row.quantity)} {row.unit}</td>
-                      <td>{row.packageCount > 0 ? `${row.packageCount}x` : "-"}</td>
-                      <td>{formatMoney(row.revenue)}</td>
-                      <td>{formatMoney(row.cost)}</td>
-                      <td>{formatMoney(row.margin)}</td>
-                      <td data-state={getMetricState(row.marginPercent, 30, 18)}>{formatHours(row.marginPercent)}%</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </article>
-          <article className={styles.analyticsCard}>
-            <h2>Rechnungspositionen gesamt</h2>
-            <table className={styles.analyticsTable}>
-              <thead>
-                <tr>
-                  <th>Position</th>
-                  <th>Anzahl</th>
-                  <th>VK</th>
-                  <th>EK/Kosten</th>
-                  <th>Marge</th>
-                  <th>Marge %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {catalogRows.slice(0, 20).map((row) => (
-                  <tr key={row.title}>
-                    <td>{row.title}</td>
-                    <td>{formatHours(row.quantity)}</td>
-                    <td>{formatMoney(row.revenue)}</td>
-                    <td>{formatMoney(row.cost)}</td>
-                    <td>{formatMoney(row.margin)}</td>
-                    <td data-state={getMetricState(row.marginPercent, 30, 18)}>{formatHours(row.marginPercent)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </article>
         </>
       )}
 
@@ -34415,9 +34728,10 @@ await addProjectLogbookEntry(
           <article className={`${styles.analyticsCard} ${styles.executiveInsightCard}`}>
             <div className={styles.executiveInsightHeader}>
               <div>
-                <h2>Systeminterpretation</h2>
+                <p className={styles.eyebrow}>Managementcockpit</p>
+                <h2>Unternehmenslage auf einen Blick</h2>
                 <p>
-                  WorkPilot benennt aktive Wachstumsbremsen aus Umsatz-, OP-, Projekt-, Vertriebs-, Leistungs- und Kundendaten mit klarer Handlungsempfehlung.
+                  Zeitraumwerte und heutige operative Bestände sind bewusst getrennt. Die Kacheln öffnen die jeweilige Datenbasis mit Erklärung und direkten Aktionen.
                 </p>
               </div>
               {executiveTopBottleneck ? (
@@ -34426,14 +34740,100 @@ await addProjectLogbookEntry(
                 </span>
               ) : null}
             </div>
+            <section className={styles.analyticsGrid}>
+              {renderReportMetric(
+                "Umsatz & Marge",
+                formatMoney(invoiceRevenueTotal),
+                `${formatPercent(executiveMarginPercent)} Marge · ${formatMoney(executiveMarginTotal)} DB`,
+                getMetricState(executiveMarginPercent, 30, 18),
+                getDashboardTrendIcon(invoiceRevenueTotal, previousInvoiceRevenueTotal),
+                getDashboardTrendLabel(invoiceRevenueTotal, previousInvoiceRevenueTotal),
+                false,
+                undefined,
+                () => openExecutiveDetail("financials")
+              )}
+              {renderReportMetric(
+                "Liquidität",
+                formatMoney(executiveOpenTotal),
+                `${executiveOverdueRows.length} überfällig · ${formatMoney(executiveOverdueTotal)}`,
+                executiveOverdueTotal > 0 ? "low" : executiveOpenTotal > 0 ? "ok" : "good",
+                "none",
+                undefined,
+                false,
+                "Stichtag",
+                () => openExecutiveDetail("liquidity")
+              )}
+              {renderReportMetric(
+                "Projektfluss",
+                `${executiveProjectAttentionRows.length}`,
+                `${longPipelineStatusRows.length} lange Phasen · ${dashboardBillingCheckCount} in Abrechnungsprüfung`,
+                executiveProjectAttentionRows.length > 0 ? "ok" : "good",
+                "none",
+                undefined,
+                false,
+                "Heute",
+                () => openExecutiveDetail("projects")
+              )}
+              {renderReportMetric(
+                "Vertrieb",
+                `${salesStaleOpenOfferRows.length + salesDueFollowUps.length}`,
+                `${salesStaleOpenOfferRows.length} alte Angebote · ${salesDueFollowUps.length} Nachfasspunkt${salesDueFollowUps.length === 1 ? "" : "e"}`,
+                salesStaleOpenOfferRows.length + salesDueFollowUps.length > 0 ? "ok" : "good",
+                "none",
+                undefined,
+                false,
+                "Heute",
+                () => openExecutiveDetail("sales")
+              )}
+              {renderReportMetric(
+                "Kundenlage",
+                `${customerRiskRows.filter((row) => row.riskState !== "good").length}`,
+                `${hotCustomerFeedbackCount} kritische Rückmeldungen im Zeitraum`,
+                hotCustomerFeedbackCount > 0 || customerRiskRows.some((row) => row.riskState === "low") ? "low" : "good",
+                "none",
+                undefined,
+                false,
+                undefined,
+                () => openExecutiveDetail("customers")
+              )}
+              {renderReportMetric(
+                "Kapazität",
+                formatMoney(managementCapacityTotal.openRevenueCapacity),
+                `${managementCapacityOverloadRows.length} überplant · ${managementCapacityStructuralProblemRows.length} Daten-/Strukturproblem`,
+                managementCapacityOverloadRows.length > 0 || managementCapacityStructuralProblemRows.length > 0
+                  ? "low"
+                  : managementCapacityTightRows.length > 0
+                    ? "ok"
+                    : "good",
+                "none",
+                undefined,
+                false,
+                undefined,
+                () => openExecutiveDetail("capacity")
+              )}
+            </section>
+          </article>
+
+          <article className={`${styles.analyticsCard} ${styles.executiveInsightCard}`}>
+            <div className={styles.executiveInsightHeader}>
+              <div>
+                <h2>Jetzt handeln</h2>
+                <p>Maximal fünf priorisierte Managementthemen. Details und Datenbasis liegen hinter der jeweiligen Aktion.</p>
+              </div>
+              <span data-state={executiveActiveBottleneckRows.length > 0 ? "ok" : "good"}>
+                {executiveActiveBottleneckRows.length > 0
+                  ? `${executiveBottleneckRows.length} von ${executiveActiveBottleneckRows.length} priorisiert`
+                  : "Keine akute Bremse"}
+              </span>
+            </div>
             <table className={`${styles.analyticsTable} ${styles.executiveInsightTable}`}>
               <thead>
                 <tr>
-                  <th>Wachstumsbremse</th>
+                  <th>Bereich</th>
                   <th>Signal</th>
-                  <th>Interpretation</th>
                   <th>Nächster Schritt</th>
                   <th>Betrag</th>
+                  <th>Aktion</th>
                 </tr>
               </thead>
               <tbody>
@@ -34446,9 +34846,13 @@ await addProjectLogbookEntry(
                     <tr key={row.key}>
                       <td data-state={row.state}>{row.area}</td>
                       <td>{row.signal}</td>
-                      <td>{row.interpretation}</td>
                       <td>{row.action}</td>
                       <td>{row.amount > 0 ? formatMoney(row.amount) : "-"}</td>
+                      <td>
+                        <button type="button" className={styles.secondaryButton} onClick={() => openExecutiveBottleneck(row.key)}>
+                          Details
+                        </button>
+                      </td>
                     </tr>
                   ))
                 )}
@@ -34456,6 +34860,7 @@ await addProjectLogbookEntry(
             </table>
           </article>
 
+          {false ? <>
           {canViewFullOverviewAnalytics ? (
             <article className={styles.analyticsCard}>
               <h2>Umsatzkapazität nach Planungsgruppe</h2>
@@ -34779,118 +35184,292 @@ await addProjectLogbookEntry(
               ) : null}
             </section>
           ) : null}
+          </> : null}
+
+          {selectedExecutiveAnalyticsDetail ? (
+            <div
+              className={styles.modalOverlay}
+              role="dialog"
+              aria-modal="true"
+              aria-label={selectedExecutiveAnalyticsTitle}
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget) setSelectedExecutiveAnalyticsDetail(null);
+              }}
+            >
+              <div className={`${styles.standardModal} ${styles.salesAnalyticsModal}`}>
+                <header className={styles.standardModalHeader}>
+                  <div>
+                    <h2>{selectedExecutiveAnalyticsTitle}</h2>
+                    <p>
+                      {selectedExecutiveAnalyticsDetail === "liquidity" || selectedExecutiveAnalyticsDetail === "projects" || selectedExecutiveAnalyticsDetail === "sales"
+                        ? `Stichtag ${formatProjectDate(formatDateKey(reportNow))} · Berichtszeitraum ${reportPeriodLabel}`
+                        : `Berichtszeitraum ${reportPeriodLabel}`}
+                    </p>
+                  </div>
+                  <button type="button" className={styles.iconButton} aria-label="Schließen" onClick={() => setSelectedExecutiveAnalyticsDetail(null)}>×</button>
+                </header>
+                <div className={styles.standardModalBody}>
+                  <div className={styles.customerRevenueModalSummary}>
+                    <span className={styles.customerRevenueModalCount}>Datenbasis geprüft</span>
+                    <div className={styles.customerRevenueModalExplanation}>
+                      <strong>Einordnung</strong>
+                      <p>{selectedExecutiveAnalyticsInterpretation}</p>
+                    </div>
+                  </div>
+
+                  <label className={styles.analyticsModalSearch}>
+                    <span>Details durchsuchen</span>
+                    <input
+                      type="search"
+                      value={executiveAnalyticsModalSearch}
+                      onChange={(event) => setExecutiveAnalyticsModalSearch(event.target.value)}
+                      placeholder="Projekt, Kunde, Rechnung, Angebot oder Planungsgruppe …"
+                    />
+                  </label>
+
+                  {selectedExecutiveAnalyticsDetail === "financials" ? (
+                    <>
+                      <section className={styles.salesAnalyticsSummaryGrid}>
+                        <article><span>Umsatz</span><strong>{formatMoney(invoiceRevenueTotal)}</strong><small>{reportInvoices.length} Rechnungen</small></article>
+                        <article><span>Deckungsbeitrag</span><strong>{formatMoney(executiveMarginTotal)}</strong><small>{formatPercent(executiveMarginPercent)} Marge</small></article>
+                        <article><span>Verknüpfter SVS</span><strong>{formatMoney(executiveSvsAverage)} / h</strong><small>{formatHours(executiveSvsHours)} verknüpfte Std.</small></article>
+                      </section>
+                      <article className={styles.analyticsCard}>
+                        <h3>Umsatzverlauf · 12 Monate bis zum Periodenende</h3>
+                        {renderReportBarChart(executiveTrendMonthRows, { showValues: true, primaryLabel: "Fakturierter Umsatz" })}
+                      </article>
+                      <article className={styles.analyticsCard}>
+                        <h3>Rechnungen im Berichtszeitraum</h3>
+                        <div className={styles.salesAnalyticsTableScroll}>
+                          <table className={styles.analyticsTable}>
+                            <thead><tr><th>Rechnung</th><th>Kunde</th><th>Projekt</th><th>Status</th><th>Umsatz</th><th>Kosten</th><th>Deckungsbeitrag</th><th>Basis</th><th>Aktionen</th></tr></thead>
+                            <tbody>
+                              {executiveFinancialInvoiceRows.length === 0 ? <tr><td colSpan={9}>Keine passenden Rechnungen im Berichtszeitraum.</td></tr> : executiveFinancialInvoiceRows.map((invoice) => {
+                                const project = invoice.projectId ? heroProjects.find((item) => item.id === invoice.projectId) ?? null : null;
+                                const performance = buildCatalogPerformance([invoice], catalogItems);
+                                return <tr key={invoice.id}>
+                                  <td>{invoice.invoiceNumber}</td><td>{invoice.customerName || "-"}</td><td>{invoice.projectNumber || "-"}</td><td>{invoice.status}</td>
+                                  <td>{formatMoney(performance.totalRevenue)}</td><td>{formatMoney(performance.totalCost)}</td>
+                                  <td data-state={getMetricState(performance.totalMarginPercent, 30, 18)}>{formatMoney(performance.totalMargin)}<br /><small>{formatPercent(performance.totalMarginPercent)}</small></td>
+                                  <td>{performance.reconstructedPackageLineCount > 0 ? "Teilweise rekonstruiert" : "Gespeichert/geprüft"}</td>
+                                  <td><div className={styles.tableActionGroup}>
+                                    <button type="button" className={styles.secondaryButton} onClick={() => { setSelectedExecutiveAnalyticsDetail(null); if (project) openProjectFile(project, { tab: "documents", documentType: "Rechnungen" }); openEditInvoiceModal(invoice); }}>Rechnung</button>
+                                    {project ? <button type="button" className={styles.secondaryButton} onClick={() => { setSelectedExecutiveAnalyticsDetail(null); openProjectFile(project); }}>Projekt</button> : null}
+                                  </div></td>
+                                </tr>;
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </article>
+                      <article className={styles.analyticsCard}>
+                        <h3>Geschäftsbereiche auf derselben Kostenbasis</h3>
+                        <table className={styles.analyticsTable}>
+                          <thead><tr><th>Geschäftsbereich</th><th>Projekte</th><th>Umsatz</th><th>Kosten</th><th>Deckungsbeitrag</th></tr></thead>
+                          <tbody>{executiveBusinessAreaRows.map((row) => <tr key={row.name}><td>{row.name}</td><td>{row.count}</td><td>{formatMoney(row.revenue)}</td><td>{formatMoney(row.costs)}</td><td>{formatMoney(row.margin)}</td></tr>)}</tbody>
+                        </table>
+                      </article>
+                    </>
+                  ) : null}
+
+                  {selectedExecutiveAnalyticsDetail === "liquidity" ? (
+                    <>
+                      <section className={styles.salesAnalyticsSummaryGrid}>
+                        <article><span>Aktuell offen</span><strong>{formatMoney(executiveOpenTotal)}</strong><small>{executiveOutstandingInvoices.length} Rechnung{executiveOutstandingInvoices.length === 1 ? "" : "en"}</small></article>
+                        <article><span>Überfällig</span><strong>{formatMoney(executiveOverdueTotal)}</strong><small>{executiveOverdueRows.length} Rechnung{executiveOverdueRows.length === 1 ? "" : "en"}</small></article>
+                        <article><span>Noch nicht überfällig</span><strong>{formatMoney(Math.max(0, executiveOpenTotal - executiveOverdueTotal))}</strong><small>Aktueller Restbestand</small></article>
+                      </section>
+                      <div className={styles.salesAnalyticsTableScroll}>
+                        <table className={styles.analyticsTable}>
+                          <thead><tr><th>Rechnung</th><th>Kunde</th><th>Projekt</th><th>Leistungsdatum</th><th>Fälligkeit</th><th>Status</th><th>Netto</th><th>Mahnstufe</th><th>Aktionen</th></tr></thead>
+                          <tbody>{executiveLiquidityInvoiceRows.length === 0 ? <tr><td colSpan={9}>Keine passenden offenen Posten.</td></tr> : executiveLiquidityInvoiceRows.map((invoice) => {
+                            const dueState = getInvoiceDueState(invoice);
+                            const project = invoice.projectId ? heroProjects.find((item) => item.id === invoice.projectId) ?? null : null;
+                            return <tr key={invoice.id}><td>{invoice.invoiceNumber}</td><td>{invoice.customerName || "-"}</td><td>{invoice.projectNumber || "-"}</td><td>{formatProjectDate(invoice.serviceDate || invoice.createdAt)}</td><td>{invoice.dueDate ? formatProjectDate(invoice.dueDate) : "Fehlt"}</td><td data-state={dueState.state}>{dueState.label}</td><td>{formatMoney(invoice.netTotal)}</td><td>{Number(invoice.reminderLevel ?? 0) || "-"}</td><td><div className={styles.tableActionGroup}><button type="button" className={styles.secondaryButton} onClick={() => { setSelectedExecutiveAnalyticsDetail(null); if (project) openProjectFile(project, { tab: "documents", documentType: "Rechnungen" }); openEditInvoiceModal(invoice); }}>Rechnung</button>{project ? <button type="button" className={styles.secondaryButton} onClick={() => { setSelectedExecutiveAnalyticsDetail(null); openProjectFile(project); }}>Projekt</button> : null}</div></td></tr>;
+                          })}</tbody>
+                        </table>
+                      </div>
+                    </>
+                  ) : null}
+
+                  {selectedExecutiveAnalyticsDetail === "projects" ? (
+                    <>
+                      <section className={styles.salesAnalyticsSummaryGrid}>
+                        <article><span>Handlungsbedarf</span><strong>{executiveProjectAttentionRows.length}</strong><small>Aktive Projekte</small></article>
+                        <article><span>Lange Phase</span><strong>{longPipelineStatusRows.length}</strong><small>Außerhalb Zielkorridor</small></article>
+                        <article><span>Abrechnungsprüfung</span><strong>{dashboardBillingCheckCount}</strong><small>Aktueller Bestand</small></article>
+                      </section>
+                      <div className={styles.salesAnalyticsTableScroll}>
+                        <table className={styles.analyticsTable}>
+                          <thead><tr><th>Projekt</th><th>Kunde</th><th>Projektart</th><th>Aktuelle Phase</th><th>Zeit in Phase</th><th>Einordnung</th><th>Datenbasis</th><th>Aktion</th></tr></thead>
+                          <tbody>{executiveFilteredProjectAttentionRows.length === 0 ? <tr><td colSpan={8}>Keine passenden Projekte mit aktuellem Handlungsbedarf.</td></tr> : executiveFilteredProjectAttentionRows.map((row) => <tr key={row.project.id}><td>{row.project.projectNumber || row.project.id}</td><td>{row.project.customer || row.project.title}</td><td>{isRecurringProject(row.project) ? "Dauerläufer" : "Einmalig"}</td><td>{row.project.status}</td><td>{row.durationRow ? `${row.durationRow.statusDurationDays} Tg.` : "-"}</td><td data-state={row.reason === "Abrechnungsprüfung" ? "ok" : "low"}>{row.reason}</td><td>{row.durationRow?.source || "Projektstatus"}</td><td><button type="button" className={styles.secondaryButton} onClick={() => { setSelectedExecutiveAnalyticsDetail(null); openProjectFile(row.project); }}>Projekt</button></td></tr>)}</tbody>
+                        </table>
+                      </div>
+                    </>
+                  ) : null}
+
+                  {selectedExecutiveAnalyticsDetail === "sales" ? (
+                    <>
+                      <section className={styles.salesAnalyticsSummaryGrid}>
+                        <article><span>Alte offene Angebote</span><strong>{salesStaleOpenOfferRows.length}</strong><small>{formatMoney(salesStaleOpenOfferValue)} Volumen</small></article>
+                        <article><span>Fällige Nachfasspunkte</span><strong>{salesDueFollowUps.length}</strong><small>Heutige Aufgaben</small></article>
+                        <article><span>Abschlussquote</span><strong>{salesDecisionCount > 0 ? formatPercent(salesWinRate) : "-"}</strong><small>{salesDecisionCount} Entscheidungen im Zeitraum</small></article>
+                      </section>
+                      <article className={styles.analyticsCard}><h3>Alte offene Angebote</h3><div className={styles.salesAnalyticsTableScroll}><table className={styles.analyticsTable}><thead><tr><th>Angebot</th><th>Kunde</th><th>Projekt</th><th>Alter</th><th>Wert</th><th>Verantwortlich</th><th>Aktionen</th></tr></thead><tbody>{executiveFilteredStaleOffers.length === 0 ? <tr><td colSpan={7}>Keine passenden alten Angebote.</td></tr> : executiveFilteredStaleOffers.map((row) => <tr key={row.offer.id}><td>{row.offer.offerNumber}</td><td>{row.offer.customerName || "-"}</td><td>{row.offer.projectNumber || "-"}</td><td>{getSalesOfferAgeDays(row.offer)} Tg.</td><td>{formatMoney(row.offer.netTotal)}</td><td>{row.offer.internalContactName || row.project?.responsibleName || "-"}</td><td><div className={styles.tableActionGroup}><button type="button" className={styles.secondaryButton} onClick={() => { setSelectedExecutiveAnalyticsDetail(null); openEditOfferModal(row.offer); }}>Angebot</button>{row.project ? <button type="button" className={styles.secondaryButton} onClick={() => { setSelectedExecutiveAnalyticsDetail(null); openProjectFile(row.project as HeroProjectPreview); }}>Projekt</button> : null}</div></td></tr>)}</tbody></table></div></article>
+                      <article className={styles.analyticsCard}><h3>Fällige Zusatzverkaufs-Nachfassungen</h3><div className={styles.salesAnalyticsTableScroll}><table className={styles.analyticsTable}><thead><tr><th>Potenzial</th><th>Kunde</th><th>Projekt</th><th>Beschreibung</th><th>Wert</th><th>Zuständig</th><th>Aktion</th></tr></thead><tbody>{executiveFilteredDueFollowUps.length === 0 ? <tr><td colSpan={7}>Keine passenden fälligen Nachfasspunkte.</td></tr> : executiveFilteredDueFollowUps.map((potential) => <tr key={potential.id}><td>{getPotentialNumber(potential)}</td><td>{potential.customerName || "-"}</td><td>{potential.projectLabel || "-"}</td><td>{potential.description}</td><td>{formatMoney(potential.estimatedValue)}</td><td>{potential.ownerName || "-"}</td><td><button type="button" className={styles.secondaryButton} onClick={() => { setSelectedExecutiveAnalyticsDetail(null); openPotentialDetail(potential); }}>Zusatzverkauf</button></td></tr>)}</tbody></table></div></article>
+                    </>
+                  ) : null}
+
+                  {selectedExecutiveAnalyticsDetail === "customers" ? (
+                    <>
+                      <section className={styles.salesAnalyticsSummaryGrid}>
+                        <article><span>Kunden im Zeitraum</span><strong>{customerRows.length}</strong><small>Mit fakturiertem Umsatz</small></article>
+                        <article><span>Prüfbedarf</span><strong>{customerRiskRows.filter((row) => row.riskState !== "good").length}</strong><small>Nach Zahlungs-/Feedbacklogik</small></article>
+                        <article><span>KuZu-Hot-Alerts</span><strong>{hotCustomerFeedbackCount}</strong><small>Kritische Rückmeldungen</small></article>
+                      </section>
+                      <div className={styles.salesAnalyticsTableScroll}><table className={styles.analyticsTable}><thead><tr><th>Kunde</th><th>Umsatz</th><th>Offen</th><th>Überfällig</th><th>Rechnungen</th><th>Bewertungen</th><th>Einordnung</th><th>Aktion</th></tr></thead><tbody>{executiveFilteredCustomerRows.length === 0 ? <tr><td colSpan={8}>Keine passenden Kunden im Berichtszeitraum.</td></tr> : executiveFilteredCustomerRows.map((row) => {
+                        const contact = getCustomerDrilldownContact(row.name, Array.from(row.projectIds)[0]);
+                        return <tr key={row.name}><td>{row.name}</td><td>{formatMoney(row.revenue)}</td><td>{formatMoney(row.openRevenue)}</td><td>{formatMoney(row.overdueRevenue)}</td><td>{row.invoiceCount}</td><td>{row.feedbackCount > 0 ? `${formatHours(row.averageRating)} / 5 · ${row.hotAlertCount} kritisch` : "-"}</td><td data-state={row.riskState}>{row.riskLabel}</td><td>{contact ? <button type="button" className={styles.secondaryButton} onClick={() => { setSelectedExecutiveAnalyticsDetail(null); openCustomerFile(contact); }}>Kunde</button> : "-"}</td></tr>;
+                      })}</tbody></table></div>
+                    </>
+                  ) : null}
+
+                  {selectedExecutiveAnalyticsDetail === "capacity" ? (
+                    <>
+                      <section className={styles.salesAnalyticsSummaryGrid}>
+                        <article><span>Umsatzkapazität</span><strong>{formatMoney(managementCapacityTotal.revenueCapacity)}</strong><small>{formatHours(managementCapacityTotal.capacityHours)} verfügbare Std.</small></article>
+                        <article><span>Geplant</span><strong>{formatMoney(managementCapacityTotal.plannedRevenue)}</strong><small>{formatHours(managementCapacityTotal.plannedHours)} Std.</small></article>
+                        <article><span>Rechnerisch offen</span><strong>{formatMoney(managementCapacityTotal.openRevenueCapacity)}</strong><small>{formatHours(managementCapacityTotal.overloadHours)} Std. Überlast</small></article>
+                      </section>
+                      <div className={styles.salesAnalyticsTableScroll}><table className={styles.analyticsTable}><thead><tr><th>Planungsgruppe</th><th>Verkaufbare Mitarbeiter</th><th>SVS-Basis</th><th>Kapazität</th><th>Geplant</th><th>Offenes Potenzial</th><th>Einordnung</th><th>Aktionen</th></tr></thead><tbody>{executiveFilteredCapacityRows.length === 0 ? <tr><td colSpan={8}>Keine passenden Planungsgruppen.</td></tr> : executiveFilteredCapacityRows.map((row) => <tr key={row.key}><td data-state={row.state}>{row.planningBoard}<br /><small>{row.planningGroup}</small></td><td>{row.sellableUserCount} von {row.userCount}<br /><small>{row.userNames || "Keine aktivierte verkaufbare Kapazität"}</small>{row.nonSellableUserCount > 0 ? <><br /><small>Nicht eingerechnet: {row.nonSellableUserNames}</small></> : null}</td><td>{row.svs > 0 ? `${formatMoney(row.svs)} / Std.` : "-"}<br /><small>{row.source} · {row.sourceDetail}</small></td><td>{formatHours(row.capacityHours)} Std.</td><td>{formatHours(row.plannedHours)} Std.<br /><small>{formatPercent(row.utilization)}</small></td><td>{formatMoney(row.openRevenueCapacity)}</td><td>{row.interpretation}<br /><small>{row.actionRecommendation}</small></td><td><div className={styles.tableActionGroup}><button type="button" className={styles.secondaryButton} onClick={() => { setSelectedExecutiveAnalyticsDetail(null); setActiveTab("employees"); }}>Mitarbeiter</button><button type="button" className={styles.secondaryButton} onClick={() => { setSelectedExecutiveAnalyticsDetail(null); setActiveTab("settings"); setFirmSettingsTab("planningGroupCapacity"); }}>SVS</button><button type="button" className={styles.secondaryButton} onClick={() => { setSelectedExecutiveAnalyticsDetail(null); openProjectPlanningBoard({ groupName: row.planningGroup }); }}>Planung</button></div></td></tr>)}</tbody></table></div>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
         </>
       )}
 
       {reportAnalyticsTab === "map" && (
         <>
-          <section className={styles.analyticsGrid}>
-            {renderReportMetric("Projekte", `${reportProjectRows.length}`, "Im gewählten Zeitraum")}
-            {renderReportMetric("Mit Adresse", `${projectMapWithAddressCount}`, "Für Projektkarte auswertbar", projectMapWithoutAddressCount > 0 ? "ok" : "good")}
-            {renderReportMetric("Ohne Adresse", `${projectMapWithoutAddressCount}`, "Fehlende Projektanschrift", projectMapWithoutAddressCount > 0 ? "ok" : "good")}
-            {renderReportMetric("Regionen", `${projectMapRegionRows.length}`, "Nach PLZ-Bereich gruppiert")}
-            {renderReportMetric("Kartenumsatz", formatMoney(projectMapRows.reduce((sum, row) => sum + row.revenue, 0)), "Pins in der Kartenfläche")}
+          <section className={styles.projectMapToolbar} aria-label="Filter der Projektkarte">
+            <label>
+              <span>Umfang</span>
+              <select value={projectMapScope} onChange={(event) => setProjectMapScope(event.target.value as typeof projectMapScope)}>
+                <option value="active">Aktive Projekte</option>
+                <option value="period">Aktivität im Zeitraum</option>
+                <option value="all">Alle Projekte</option>
+              </select>
+            </label>
+            <label>
+              <span>Projektart</span>
+              <select value={projectMapKindFilter} onChange={(event) => setProjectMapKindFilter(event.target.value as typeof projectMapKindFilter)}>
+                <option value="all">Alle Projektarten</option>
+                <option value="oneTime">Einmalige Projekte</option>
+                <option value="recurring">Dauerläufer</option>
+              </select>
+            </label>
+            <label>
+              <span>Karte durchsuchen</span>
+              <input
+                type="search"
+                value={projectMapSearch}
+                onChange={(event) => setProjectMapSearch(event.target.value)}
+                placeholder="Projekt, Kunde, Adresse, Gewerk …"
+              />
+            </label>
           </section>
+
+          <section className={styles.analyticsGrid}>
+            {renderReportMetric("Projekte", `${projectMapRows.length}`, projectMapScope === "active" ? "Aktueller aktiver Bestand" : projectMapScope === "period" ? "Mit Aktivität im Zeitraum" : "Gesamter Projektbestand")}
+            {renderReportMetric("Kartiert", `${projectMapLocatedRows.length}`, "Mit geprüften Koordinaten", projectMapLocatedRows.length > 0 ? "good" : "ok")}
+            {renderReportMetric("Adresse prüfen", `${projectMapUnresolvedAddressCount}`, "Vorhanden, aber noch nicht sicher kartiert", projectMapUnresolvedAddressCount > 0 ? "ok" : "good")}
+            {renderReportMetric("Adresse fehlt", `${projectMapWithoutAddressCount}`, "Im Projektstamm ergänzen", projectMapWithoutAddressCount > 0 ? "low" : "good")}
+            {renderReportMetric("Kartenumsatz", formatMoney(projectMapLocatedRows.reduce((sum, row) => sum + row.revenue, 0)), "Nur sicher kartierte Projekte")}
+          </section>
+
+          <article className={styles.analyticsCard}>
+            <div className={styles.forecastListHeader}>
+              <div>
+                <h2>Interaktive Projektkarte</h2>
+                <p className={styles.forecastQualityIntro}>
+                  Zoomen, verschieben und Punkte oder Gruppen anklicken. Die Karte zeigt ausschließlich Projekte mit sicher geprüften Koordinaten.
+                </p>
+              </div>
+            </div>
+            <div className={styles.projectMapAddressNotice} data-state={projectMapGeocodingConfigured ? "ready" : "missing"}>
+              <div>
+                <strong>{projectMapGeocodingConfigured ? "Adressprüfung ist verfügbar" : "Adressprüfung ist noch nicht konfiguriert"}</strong>
+                <span>
+                  {projectMapGeocodingConfigured
+                    ? "Adressen werden nur nach einem bewussten Klick geprüft und danach lokal als Koordinaten gespeichert."
+                    : "Für echte Kartenpunkte muss auf dem Server OPENCAGE_API_KEY hinterlegt werden. Ohne Schlüssel werden keine Adressen extern übertragen."}
+                </span>
+                {projectMapGeocodingMessage ? <small>{projectMapGeocodingMessage}</small> : null}
+              </div>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                disabled={isProjectMapGeocoding || projectMapUnresolvedAddressCount === 0}
+                onClick={() => void geocodeVisibleProjectMapAddresses()}
+              >
+                {isProjectMapGeocoding ? "Adressen werden geprüft …" : "Sichtbare Adressen prüfen"}
+              </button>
+            </div>
+            <ProjectAnalyticsMap
+              points={projectMapPoints}
+              selectedPointId={selectedProjectMapPointId}
+              onSelectPoint={setSelectedProjectMapPointId}
+              onOpenProject={(projectId) => {
+                const project = heroProjects.find((item) => item.id === projectId);
+                if (project) openProjectFile(project);
+              }}
+              formatMoney={formatMoney}
+            />
+          </article>
 
           <section className={styles.analyticsTwoColumn}>
             <article className={styles.analyticsCard}>
-              <div className={styles.forecastListHeader}>
-                <div>
-                  <h2>Projektkarte</h2>
-                  <p className={styles.forecastQualityIntro}>
-                    Schematische Projektübersicht ohne Geocoding. Exakte Kartenpositionen folgen erst mit echten Koordinaten.
-                  </p>
-                </div>
-              </div>
-              <div className={styles.analyticsMap}>
-                {projectMapRows.map((row) => (
-                  <button
-                    key={row.project.id}
-                    type="button"
-                    style={{ left: `${row.x}%`, top: `${row.y}%` }}
-                    title={`${row.project.projectNumber} - ${row.project.customer || row.project.title}`}
-                    data-state={row.revenue > 0 ? "revenue" : row.offerVolume > 0 ? "offer" : "neutral"}
-                    onClick={() => {
-                      openProjectFile(row.project);
-                    }}
-                  >
-                    <span />
-                    <strong>{row.project.projectNumber}</strong>
-                  </button>
-                ))}
+              <h2>Adressen prüfen</h2>
+              <p className={styles.forecastQualityIntro}>Hier stehen nur Projekte, die noch nicht zuverlässig auf der Karte verortet werden können.</p>
+              <div className={styles.projectMapListScroll}>
+                <table className={styles.analyticsTable}>
+                  <thead><tr><th>Projekt</th><th>Kunde</th><th>Adresse</th><th>Einordnung</th><th>Aktion</th></tr></thead>
+                  <tbody>
+                    {projectMapAddressReviewRows.length === 0 ? <tr><td colSpan={5}>Alle sichtbaren Projekte sind sicher kartiert.</td></tr> : projectMapAddressReviewRows.slice(0, 100).map((row) => {
+                      const hasAddress = Boolean(row.project.address?.trim());
+                      const state = row.project.mapGeocodeStatus;
+                      const interpretation = !hasAddress ? "Adresse fehlt" : state === "review" ? "Treffer unklar" : state === "failed" ? "Nicht gefunden" : "Noch nicht geprüft";
+                      return <tr key={row.project.id}>
+                        <td>{row.project.projectNumber}</td>
+                        <td>{row.project.customer || row.project.title}</td>
+                        <td>{row.project.address || "-"}</td>
+                        <td data-state={!hasAddress || state === "failed" ? "low" : "ok"}>{interpretation}</td>
+                        <td><button type="button" className={styles.secondaryButton} onClick={() => openProjectFile(row.project)}>Projekt</button></td>
+                      </tr>;
+                    })}
+                  </tbody>
+                </table>
               </div>
             </article>
 
             <article className={styles.analyticsCard}>
-              <h2>Regionen nach PLZ</h2>
+              <h2>Kartierte Regionen</h2>
+              <p className={styles.forecastQualityIntro}>Auswertung nach den ersten beiden Ziffern der PLZ – ausschließlich auf Basis sicher kartierter Projekte.</p>
               <table className={styles.analyticsTable}>
-                <thead>
-                  <tr>
-                    <th>Region</th>
-                    <th>Projekte</th>
-                    <th>Offen</th>
-                    <th>Umsatz</th>
-                  </tr>
-                </thead>
+                <thead><tr><th>Region</th><th>Projekte</th><th>Aktiv</th><th>Umsatz</th></tr></thead>
                 <tbody>
-                  {projectMapRegionRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={4}>Keine Projektadressen im gewählten Zeitraum.</td>
-                    </tr>
-                  ) : (
-                    projectMapRegionRows.slice(0, 12).map((row) => (
-                      <tr key={row.region}>
-                        <td>{row.region === "Ohne PLZ" ? "Ohne PLZ" : `PLZ ${row.region}xxx`}</td>
-                        <td>{row.count}</td>
-                        <td>{row.openProjects}</td>
-                        <td>{formatMoney(row.revenue)}</td>
-                      </tr>
-                    ))
-                  )}
+                  {projectMapRegionRows.length === 0 ? <tr><td colSpan={4}>Noch keine sicher kartierten Projektadressen.</td></tr> : projectMapRegionRows.slice(0, 12).map((row) => <tr key={row.region}>
+                    <td>{row.region === "Ohne PLZ" ? "Ohne PLZ" : `PLZ ${row.region}xxx`}</td>
+                    <td>{row.count}</td>
+                    <td>{row.openProjects}</td>
+                    <td>{formatMoney(row.revenue)}</td>
+                  </tr>)}
                 </tbody>
               </table>
             </article>
           </section>
-
-          <article className={styles.analyticsCard}>
-            <h2>Projektliste</h2>
-            <table className={styles.analyticsTable}>
-              <thead>
-                <tr>
-                  <th>Projekt</th>
-                  <th>Kunde</th>
-                  <th>Adresse</th>
-                  <th>Status</th>
-                  <th>Projektart</th>
-                  <th>Umsatz</th>
-                  <th>Aktion</th>
-                </tr>
-              </thead>
-              <tbody>
-                {projectMapRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={7}>Keine Projekte mit Adresse oder Kunde im gewählten Zeitraum.</td>
-                  </tr>
-                ) : (
-                  projectMapRows.map((row) => (
-                    <tr key={row.project.id}>
-                      <td>{row.project.projectNumber}</td>
-                      <td>{row.project.customer || row.project.title}</td>
-                      <td>{row.project.address || "-"}</td>
-                      <td>{row.project.status}</td>
-                      <td>{isRecurringProject(row.project) ? "Dauerläufer" : "Einmalig"}</td>
-                      <td>{formatMoney(row.revenue)}</td>
-                      <td>
-                        <button type="button" className={styles.secondaryButton} onClick={() => openProjectFile(row.project)}>
-                          Öffnen
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </article>
         </>
       )}
     </section>

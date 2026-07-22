@@ -20,6 +20,7 @@ import { buildValidatedZugferdPdf } from "@/lib/e-invoice/zugferd-pdf";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canDeleteInvoices, canManageInvoices, canSendDocumentMails, canViewInternalCostData } from "@/lib/permissions";
 import { sendNotificationMailSafely } from "@/lib/mail/notifications";
+import type { CatalogPackageComponentSnapshot } from "@/lib/analytics/catalog-performance";
 
 type InvoiceCompany = "OK solutions" | "OK immocare";
 
@@ -35,6 +36,10 @@ type InvoiceLineInput = {
   discountPercent?: number;
   materialUnitCostSnapshot?: number;
   materialCostSnapshot?: number;
+  laborUnitCostSnapshot?: number;
+  laborCostSnapshot?: number;
+  packageComponentsSnapshot?: CatalogPackageComponentSnapshot[];
+  catalogCostSnapshotVersion?: number;
   vatRate?: number;
   laborItems?: InvoiceLineLaborInput[];
 };
@@ -132,6 +137,10 @@ type InvoiceLineRow = {
   discountPercent: number;
   materialUnitCostSnapshot: number;
   materialCostSnapshot: number;
+  laborUnitCostSnapshot: number;
+  laborCostSnapshot: number;
+  packageComponentsSnapshot: Prisma.JsonValue;
+  catalogCostSnapshotVersion: number;
   costSnapshotAt: Date | null;
   vatRate: number;
   totalNet: number;
@@ -349,6 +358,10 @@ async function ensureInvoiceTables() {
     ALTER TABLE "InvoiceLine"
     ADD COLUMN IF NOT EXISTS "materialUnitCostSnapshot" DOUBLE PRECISION NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS "materialCostSnapshot" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS "laborUnitCostSnapshot" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS "laborCostSnapshot" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS "packageComponentsSnapshot" JSONB NOT NULL DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS "catalogCostSnapshotVersion" INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS "costSnapshotAt" TIMESTAMP(3)
   `;
 
@@ -836,24 +849,64 @@ function getLineTotalNet(line: Pick<Required<InvoiceLineInput>, "quantity" | "un
   return roundMoney(getLineBaseNet(line) - getLineDiscountAmount(line));
 }
 
-async function getCatalogMaterialUnitCostSnapshot(organizationId: string, line: Required<InvoiceLineInput>) {
-  if (!line.catalogItemId || line.isLaborPosition || line.catalogType === "service") return 0;
+async function getCatalogLineCostSnapshot(organizationId: string, line: Required<InvoiceLineInput>) {
+  if (!line.catalogItemId) {
+    return { materialUnitCostSnapshot: 0, laborUnitCostSnapshot: 0, packageComponentsSnapshot: [] as CatalogPackageComponentSnapshot[] };
+  }
 
-  const catalogRows = await prisma.$queryRaw<Array<{ type: string; purchasePrice: number }>>`
-    SELECT "type", "purchasePrice"
+  const catalogRows = await prisma.$queryRaw<Array<{
+    type: string;
+    purchasePrice: number;
+    salesPrice: number;
+    planningMinutesPerUnit: number;
+  }>>`
+    SELECT "type", "purchasePrice", "salesPrice", "planningMinutesPerUnit"
     FROM "CatalogItem"
     WHERE "organizationId" = ${organizationId} AND "id" = ${line.catalogItemId}
     LIMIT 1
   `;
   const catalogItem = catalogRows[0];
-  if (!catalogItem) return 0;
-  if (catalogItem.type !== "package") return roundMoney(Number(catalogItem.purchasePrice ?? 0));
+  if (!catalogItem) {
+    return { materialUnitCostSnapshot: 0, laborUnitCostSnapshot: 0, packageComponentsSnapshot: [] as CatalogPackageComponentSnapshot[] };
+  }
+  if (catalogItem.type === "article") {
+    return {
+      materialUnitCostSnapshot: roundMoney(Number(catalogItem.purchasePrice ?? 0)),
+      laborUnitCostSnapshot: 0,
+      packageComponentsSnapshot: [] as CatalogPackageComponentSnapshot[],
+    };
+  }
+  if (catalogItem.type === "service") {
+    return {
+      materialUnitCostSnapshot: 0,
+      laborUnitCostSnapshot: roundMoney(
+        Number(catalogItem.purchasePrice ?? 0) * Number(catalogItem.planningMinutesPerUnit ?? 0) / 60
+      ),
+      packageComponentsSnapshot: [] as CatalogPackageComponentSnapshot[],
+    };
+  }
 
-  const packageRows = await prisma.$queryRaw<Array<{ quantity: number; componentType: string; componentPurchasePrice: number }>>`
+  const packageRows = await prisma.$queryRaw<Array<{
+    componentItemId: string;
+    componentNumber: string;
+    componentName: string;
+    componentType: string;
+    componentUnit: string;
+    quantity: number;
+    planningMinutes: number;
+    componentPurchasePrice: number;
+    componentSalesPrice: number;
+  }>>`
     SELECT
+      package_item."componentItemId",
+      component."number" AS "componentNumber",
+      component."name" AS "componentName",
+      component."unit" AS "componentUnit",
       package_item."quantity",
       component."type" AS "componentType",
-      component."purchasePrice" AS "componentPurchasePrice"
+      COALESCE(package_item."planningMinutesOverride", component."planningMinutesPerUnit") AS "planningMinutes",
+      COALESCE(package_item."purchasePriceSnapshot", component."purchasePrice") AS "componentPurchasePrice",
+      COALESCE(package_item."priceOverride", package_item."salesPriceSnapshot", component."salesPrice") AS "componentSalesPrice"
     FROM "CatalogPackageItem" package_item
     JOIN "CatalogItem" component
       ON component."organizationId" = package_item."organizationId"
@@ -861,22 +914,58 @@ async function getCatalogMaterialUnitCostSnapshot(organizationId: string, line: 
     WHERE package_item."organizationId" = ${organizationId}
       AND package_item."packageId" = ${line.catalogItemId}
   `;
-
-  return roundMoney(
-    packageRows
-      .filter((row) => row.componentType !== "service")
-      .reduce((sum, row) => sum + Number(row.componentPurchasePrice ?? 0) * Number(row.quantity ?? 0), 0)
-  );
+  const packageComponentsSnapshot = packageRows
+    .filter((row) => row.componentType === "article" || row.componentType === "service")
+    .map((row): CatalogPackageComponentSnapshot => {
+      const componentType = row.componentType as "article" | "service";
+      const planningMinutes = Number(row.planningMinutes ?? 0);
+      const materialQuantity = Number(row.quantity ?? 0);
+      const salesPrice = Number(row.componentSalesPrice ?? 0);
+      const purchasePrice = Number(row.componentPurchasePrice ?? 0);
+      return {
+        componentItemId: row.componentItemId,
+        componentNumber: row.componentNumber ?? "",
+        componentName: row.componentName ?? "",
+        componentType,
+        componentUnit: componentType === "service" ? "Std." : row.componentUnit ?? "",
+        quantityPerPackage: componentType === "service" ? planningMinutes / 60 : materialQuantity,
+        salesValuePerPackage: roundMoney(
+          componentType === "service" ? salesPrice * planningMinutes / 60 : salesPrice * materialQuantity
+        ),
+        costValuePerPackage: roundMoney(
+          componentType === "service" ? purchasePrice * planningMinutes / 60 : purchasePrice * materialQuantity
+        ),
+      };
+    });
+  return {
+    materialUnitCostSnapshot: roundMoney(
+      packageComponentsSnapshot
+        .filter((component) => component.componentType === "article")
+        .reduce((sum, component) => sum + component.costValuePerPackage, 0)
+    ),
+    laborUnitCostSnapshot: roundMoney(
+      packageComponentsSnapshot
+        .filter((component) => component.componentType === "service")
+        .reduce((sum, component) => sum + component.costValuePerPackage, 0)
+    ),
+    packageComponentsSnapshot,
+  };
 }
 
 async function withInvoiceLineCostSnapshots(organizationId: string, lines: Required<InvoiceLineInput>[]) {
   return Promise.all(
     lines.map(async (line) => {
-      const materialUnitCostSnapshot = roundMoney(await getCatalogMaterialUnitCostSnapshot(organizationId, line));
+      const snapshot = await getCatalogLineCostSnapshot(organizationId, line);
+      const materialUnitCostSnapshot = roundMoney(snapshot.materialUnitCostSnapshot);
+      const laborUnitCostSnapshot = roundMoney(snapshot.laborUnitCostSnapshot);
       return {
         ...line,
         materialUnitCostSnapshot,
         materialCostSnapshot: roundMoney(materialUnitCostSnapshot * Number(line.quantity || 0)),
+        laborUnitCostSnapshot,
+        laborCostSnapshot: roundMoney(laborUnitCostSnapshot * Number(line.quantity || 0)),
+        packageComponentsSnapshot: snapshot.packageComponentsSnapshot,
+        catalogCostSnapshotVersion: 1,
       };
     })
   );
@@ -1437,11 +1526,38 @@ function normalizeInvoiceLines(lines: InvoiceLineInput[] = []) {
         discountPercent,
         materialUnitCostSnapshot: cleanNumber(line.materialUnitCostSnapshot, 0),
         materialCostSnapshot: cleanNumber(line.materialCostSnapshot, 0),
+        laborUnitCostSnapshot: cleanNumber(line.laborUnitCostSnapshot, 0),
+        laborCostSnapshot: cleanNumber(line.laborCostSnapshot, 0),
+        packageComponentsSnapshot: cleanPackageComponentsSnapshot(line.packageComponentsSnapshot),
+        catalogCostSnapshotVersion: Math.max(0, Math.floor(cleanNumber(line.catalogCostSnapshotVersion, 0))),
         vatRate: cleanNumber(line.vatRate, 19),
         laborItems,
       };
     })
     .filter((line) => line.title || line.catalogItemId);
+}
+
+function cleanPackageComponentsSnapshot(value: unknown): CatalogPackageComponentSnapshot[] {
+  if (!Array.isArray(value)) return [];
+  return value.reduce<CatalogPackageComponentSnapshot[]>((items, entry) => {
+    if (!entry || typeof entry !== "object") return items;
+    const candidate = entry as Partial<CatalogPackageComponentSnapshot>;
+    if (candidate.componentType !== "article" && candidate.componentType !== "service") return items;
+    const componentItemId = cleanString(candidate.componentItemId);
+    const componentName = cleanString(candidate.componentName);
+    if (!componentItemId || !componentName) return items;
+    items.push({
+      componentItemId,
+      componentNumber: cleanString(candidate.componentNumber),
+      componentName,
+      componentType: candidate.componentType,
+      componentUnit: normalizeUnit(candidate.componentUnit),
+      quantityPerPackage: Math.max(0, cleanNumber(candidate.quantityPerPackage, 0)),
+      salesValuePerPackage: Math.max(0, cleanNumber(candidate.salesValuePerPackage, 0)),
+      costValuePerPackage: Math.max(0, cleanNumber(candidate.costValuePerPackage, 0)),
+    });
+    return items;
+  }, []);
 }
 
 function serializeInvoice(
@@ -1481,6 +1597,12 @@ function serializeInvoice(
       discountPercent: Number(line.discountPercent ?? 0),
       materialUnitCostSnapshot: includeInternalCosts ? Number(line.materialUnitCostSnapshot ?? 0) : 0,
       materialCostSnapshot: includeInternalCosts ? Number(line.materialCostSnapshot ?? 0) : 0,
+      laborUnitCostSnapshot: includeInternalCosts ? Number(line.laborUnitCostSnapshot ?? 0) : 0,
+      laborCostSnapshot: includeInternalCosts ? Number(line.laborCostSnapshot ?? 0) : 0,
+      packageComponentsSnapshot: includeInternalCosts
+        ? cleanPackageComponentsSnapshot(line.packageComponentsSnapshot)
+        : [],
+      catalogCostSnapshotVersion: includeInternalCosts ? Number(line.catalogCostSnapshotVersion ?? 0) : 0,
       costSnapshotAt: includeInternalCosts ? line.costSnapshotAt?.toISOString?.() ?? line.costSnapshotAt ?? "" : "",
       isLaborPosition: Boolean(line.isLaborPosition),
       vatRate: Number(line.vatRate ?? 19),
@@ -1607,6 +1729,10 @@ async function cancelInvoice(input: {
     discountPercent: Number(line.discountPercent ?? 0),
     materialUnitCostSnapshot: Number(line.materialUnitCostSnapshot ?? 0),
     materialCostSnapshot: -Math.abs(Number(line.materialCostSnapshot ?? 0)),
+    laborUnitCostSnapshot: Number(line.laborUnitCostSnapshot ?? 0),
+    laborCostSnapshot: -Math.abs(Number(line.laborCostSnapshot ?? 0)),
+    packageComponentsSnapshot: cleanPackageComponentsSnapshot(line.packageComponentsSnapshot),
+    catalogCostSnapshotVersion: Number(line.catalogCostSnapshotVersion ?? 0),
     vatRate: Number(line.vatRate ?? existingInvoice.vatRate ?? 19),
     laborItems: [],
   })) as Required<InvoiceLineInput>[];
@@ -1664,11 +1790,16 @@ async function cancelInvoice(input: {
     const lineRows = await prisma.$queryRaw<InvoiceLineRow[]>`
       INSERT INTO "InvoiceLine" (
         "id", "organizationId", "invoiceId", "catalogItemId", "catalogType", "isLaborPosition", "position",
-        "quantity", "unit", "title", "description", "unitPrice", "discountPercent", "vatRate", "totalNet", "updatedAt"
+        "quantity", "unit", "title", "description", "unitPrice", "discountPercent",
+        "materialUnitCostSnapshot", "materialCostSnapshot", "laborUnitCostSnapshot", "laborCostSnapshot",
+        "packageComponentsSnapshot", "catalogCostSnapshotVersion", "costSnapshotAt", "vatRate", "totalNet", "updatedAt"
       ) VALUES (
         ${randomUUID()}, ${input.organizationId}, ${cancellationId}, ${line.catalogItemId}, ${line.catalogType}, ${line.isLaborPosition}, ${index + 1},
         ${line.quantity}, ${line.unit}, ${line.title}, ${line.description},
-        ${line.unitPrice}, ${line.discountPercent}, ${line.vatRate}, ${getLineTotalNet(line)}, CURRENT_TIMESTAMP
+        ${line.unitPrice}, ${line.discountPercent},
+        ${line.materialUnitCostSnapshot}, ${line.materialCostSnapshot}, ${line.laborUnitCostSnapshot}, ${line.laborCostSnapshot},
+        ${JSON.stringify(line.packageComponentsSnapshot)}::jsonb, ${line.catalogCostSnapshotVersion}, CURRENT_TIMESTAMP,
+        ${line.vatRate}, ${getLineTotalNet(line)}, CURRENT_TIMESTAMP
       )
       RETURNING *
     `;
@@ -1957,6 +2088,10 @@ export async function GET(req: Request) {
         discountPercent: Number(line.discountPercent ?? 0),
         materialUnitCostSnapshot: Number(line.materialUnitCostSnapshot ?? 0),
         materialCostSnapshot: Number(line.materialCostSnapshot ?? 0),
+        laborUnitCostSnapshot: Number(line.laborUnitCostSnapshot ?? 0),
+        laborCostSnapshot: Number(line.laborCostSnapshot ?? 0),
+        packageComponentsSnapshot: cleanPackageComponentsSnapshot(line.packageComponentsSnapshot),
+        catalogCostSnapshotVersion: Number(line.catalogCostSnapshotVersion ?? 0),
         vatRate: Number(line.vatRate ?? Invoice.vatRate ?? 19),
         laborItems: [],
       })) as Required<InvoiceLineInput>[];
@@ -2179,13 +2314,15 @@ export async function POST(req: Request) {
       INSERT INTO "InvoiceLine" (
         "id", "organizationId", "invoiceId", "catalogItemId", "catalogType", "isLaborPosition", "position",
         "quantity", "unit", "title", "description", "unitPrice", "discountPercent",
-        "materialUnitCostSnapshot", "materialCostSnapshot", "costSnapshotAt",
+        "materialUnitCostSnapshot", "materialCostSnapshot", "laborUnitCostSnapshot", "laborCostSnapshot",
+        "packageComponentsSnapshot", "catalogCostSnapshotVersion", "costSnapshotAt",
         "vatRate", "totalNet", "updatedAt"
       ) VALUES (
         ${randomUUID()}, ${organization.id}, ${id}, ${line.catalogItemId}, ${line.catalogType}, ${line.isLaborPosition}, ${index + 1},
         ${line.quantity}, ${line.unit}, ${line.title}, ${line.description},
         ${line.unitPrice}, ${line.discountPercent},
-        ${line.materialUnitCostSnapshot}, ${line.materialCostSnapshot}, CURRENT_TIMESTAMP,
+        ${line.materialUnitCostSnapshot}, ${line.materialCostSnapshot}, ${line.laborUnitCostSnapshot}, ${line.laborCostSnapshot},
+        ${JSON.stringify(line.packageComponentsSnapshot)}::jsonb, ${line.catalogCostSnapshotVersion}, CURRENT_TIMESTAMP,
         ${line.vatRate}, ${getLineTotalNet(line)}, CURRENT_TIMESTAMP
       )
       RETURNING *
@@ -2581,13 +2718,15 @@ export async function PATCH(req: Request) {
       INSERT INTO "InvoiceLine" (
         "id", "organizationId", "invoiceId", "catalogItemId", "catalogType", "isLaborPosition", "position",
         "quantity", "unit", "title", "description", "unitPrice", "discountPercent",
-        "materialUnitCostSnapshot", "materialCostSnapshot", "costSnapshotAt",
+        "materialUnitCostSnapshot", "materialCostSnapshot", "laborUnitCostSnapshot", "laborCostSnapshot",
+        "packageComponentsSnapshot", "catalogCostSnapshotVersion", "costSnapshotAt",
         "vatRate", "totalNet", "updatedAt"
       ) VALUES (
         ${randomUUID()}, ${organization.id}, ${id}, ${line.catalogItemId}, ${line.catalogType}, ${line.isLaborPosition}, ${index + 1},
         ${line.quantity}, ${line.unit}, ${line.title}, ${line.description},
         ${line.unitPrice}, ${line.discountPercent},
-        ${line.materialUnitCostSnapshot}, ${line.materialCostSnapshot}, CURRENT_TIMESTAMP,
+        ${line.materialUnitCostSnapshot}, ${line.materialCostSnapshot}, ${line.laborUnitCostSnapshot}, ${line.laborCostSnapshot},
+        ${JSON.stringify(line.packageComponentsSnapshot)}::jsonb, ${line.catalogCostSnapshotVersion}, CURRENT_TIMESTAMP,
         ${line.vatRate}, ${getLineTotalNet(line)}, CURRENT_TIMESTAMP
       )
       RETURNING *
