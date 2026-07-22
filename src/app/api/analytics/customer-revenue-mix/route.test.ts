@@ -59,6 +59,7 @@ describe("customer revenue analytics route", () => {
 
     expect(response.status).toBe(200);
     expect(body.current.customerRevenue.totalRevenue).toBe(0);
+    expect(body.details).toBeNull();
     expect(body.dataQuality).toEqual({
       legacyInvoiceCount: 12,
       evaluableLegacyInvoiceCount: 10,
@@ -79,6 +80,45 @@ describe("customer revenue analytics route", () => {
     expect(mocks.legacyInvoiceCount).toHaveBeenNthCalledWith(2, {
       where: { organizationId: "org-a", isEvaluable: true },
     });
+  });
+
+  it("returns current-period invoice explanations only to authorized detail roles", async () => {
+    mocks.getSessionBoundActor.mockResolvedValue({
+      ok: true,
+      actor: { id: "manager-1", organizationId: "org-a", role: Role.GESCHAEFTSFUEHRER },
+    });
+    mocks.invoiceFindMany.mockResolvedValue([{
+      id: "invoice-1",
+      projectId: "project-1",
+      projectNumber: "P-1",
+      projectTitle: "Projekt Eins",
+      invoiceNumber: "RE-1",
+      customerName: "Kunde Eins",
+      status: "Fakturiert",
+      netTotal: 500,
+      serviceDate: "2026-05-10",
+      createdAt: new Date("2026-05-10T12:00:00.000Z"),
+      sourceOfferId: "",
+      sourceOfferNumber: "",
+    }]);
+    mocks.projectFindMany.mockResolvedValue([{ id: "project-1", contactId: "contact-1" }]);
+    mocks.contactFindMany.mockResolvedValue([{ id: "contact-1", customerStatusOverride: "automatic" }]);
+
+    const response = await GET(request());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.details.customerRevenue).toEqual([
+      expect.objectContaining({
+        invoiceId: "invoice-1",
+        invoiceNumber: "RE-1",
+        bucket: "newCustomers",
+        reason: "first_revenue_in_period",
+      }),
+    ]);
+    expect(body.details.additionalSales).toEqual([
+      expect.objectContaining({ invoiceId: "invoice-1", proofStatus: "missing_source_offer" }),
+    ]);
   });
 
   it("rejects guests before reading analytics data", async () => {

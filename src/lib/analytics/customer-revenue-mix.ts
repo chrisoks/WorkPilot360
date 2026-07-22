@@ -48,6 +48,32 @@ export type CustomerRevenueMix = {
   invalidDateInvoiceCount: number;
 };
 
+export type CustomerRevenueDetailBucket = "newCustomers" | "existingCustomers" | "unassigned";
+
+export type CustomerRevenueClassificationRow = {
+  invoiceId: string;
+  projectId: string | null;
+  customerId: string | null;
+  revenue: number;
+  revenueAt: string;
+  firstRevenueAt: string | null;
+  bucket: CustomerRevenueDetailBucket;
+  reason:
+    | "manual_new"
+    | "manual_existing"
+    | "first_revenue_in_period"
+    | "revenue_before_period"
+    | "missing_customer"
+    | "missing_contact"
+    | "prospect_override"
+    | "no_positive_revenue_evidence";
+};
+
+export type CustomerRevenueBreakdown = {
+  mix: CustomerRevenueMix;
+  rows: CustomerRevenueClassificationRow[];
+};
+
 export type AdditionalSalesRevenueMix = {
   provenRevenue: number;
   provenInvoiceCount: number;
@@ -59,6 +85,20 @@ export type AdditionalSalesRevenueMix = {
   proofCoveragePercent: number | null;
   excludedInvoiceCount: number;
   invalidDateInvoiceCount: number;
+};
+
+export type AdditionalSalesClassificationRow = {
+  invoiceId: string;
+  projectId: string | null;
+  revenue: number;
+  revenueAt: string;
+  sourceOfferId: string | null;
+  proofStatus: "proven" | "missing_proof_chain" | "missing_source_offer";
+};
+
+export type AdditionalSalesRevenueBreakdown = {
+  mix: AdditionalSalesRevenueMix;
+  rows: AdditionalSalesClassificationRow[];
 };
 
 export type AdditionalSalesInvoiceInput = RevenueInvoiceInput & {
@@ -97,9 +137,27 @@ export type CustomerRevenueAnalyticsResponse = {
     legacyInvoicesIncluded: false;
     manualOverrideCount: number;
   };
+  details: {
+    customerRevenue: Array<CustomerRevenueClassificationRow & {
+      invoiceNumber: string;
+      customerName: string;
+      projectNumber: string;
+      projectTitle: string;
+      invoiceStatus: string;
+    }>;
+    additionalSales: Array<AdditionalSalesClassificationRow & {
+      invoiceNumber: string;
+      customerName: string;
+      projectNumber: string;
+      projectTitle: string;
+      invoiceStatus: string;
+      sourceOfferNumber: string;
+    }>;
+    truncated: boolean;
+  } | null;
 };
 
-type RevenueBucketKey = "newCustomers" | "existingCustomers" | "unassigned";
+type RevenueBucketKey = CustomerRevenueDetailBucket;
 
 const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 const roundPercent = (value: number) => Math.round((value + Number.EPSILON) * 10) / 10;
@@ -150,13 +208,13 @@ export function getRevenueInvoiceTimestamp(
   return parseRevenueDate(invoice.serviceDate) ?? parseRevenueDate(invoice.createdAt);
 }
 
-export function calculateCustomerRevenueMix(args: {
+export function calculateCustomerRevenueBreakdown(args: {
   invoices: readonly RevenueInvoiceInput[];
   projects: readonly RevenueProjectInput[];
   contacts?: readonly RevenueContactInput[];
   period: RevenuePeriodInput;
   firstRevenueEvidence?: readonly CustomerFirstRevenueEvidence[];
-}): CustomerRevenueMix {
+}): CustomerRevenueBreakdown {
   const periodFrom = parseRevenueDate(args.period.from);
   const periodTo = parseRevenueDate(args.period.to, true);
   if (periodFrom === null || periodTo === null || periodFrom > periodTo) {
@@ -224,6 +282,7 @@ export function calculateCustomerRevenueMix(args: {
   let totalAbsoluteRevenue = 0;
   let classifiedAbsoluteRevenue = 0;
   let totalInvoiceCount = 0;
+  const rows: CustomerRevenueClassificationRow[] = [];
 
   for (const { invoice, revenueTimestamp, customerId } of activeInvoices) {
     if (revenueTimestamp < periodFrom || revenueTimestamp > periodTo) continue;
@@ -234,16 +293,26 @@ export function calculateCustomerRevenueMix(args: {
     totalInvoiceCount += 1;
 
     let bucketKey: RevenueBucketKey = "unassigned";
+    let reason: CustomerRevenueClassificationRow["reason"] = "missing_customer";
     const override = customerId ? contactOverrides?.get(customerId) ?? "automatic" : "automatic";
     const hasKnownContact = Boolean(customerId && (!contactOverrides || contactOverrides.has(customerId)));
-    if (customerId && hasKnownContact && override !== "prospect") {
+    if (customerId && !hasKnownContact) {
+      reason = "missing_contact";
+    } else if (customerId && override === "prospect") {
+      reason = "prospect_override";
+    } else if (customerId && hasKnownContact) {
       const firstRevenueTimestamp = firstRevenueByCustomer.get(customerId);
       if (override === "existing") {
         bucketKey = "existingCustomers";
+        reason = "manual_existing";
       } else if (override === "new") {
         bucketKey = "newCustomers";
+        reason = "manual_new";
       } else if (firstRevenueTimestamp !== undefined) {
         bucketKey = firstRevenueTimestamp < periodFrom ? "existingCustomers" : "newCustomers";
+        reason = firstRevenueTimestamp < periodFrom ? "revenue_before_period" : "first_revenue_in_period";
+      } else {
+        reason = "no_positive_revenue_evidence";
       }
       if (bucketKey !== "unassigned") {
         classifiedAbsoluteRevenue += Math.abs(revenue);
@@ -253,6 +322,16 @@ export function calculateCustomerRevenueMix(args: {
 
     totals[bucketKey].revenue += revenue;
     totals[bucketKey].invoiceCount += 1;
+    rows.push({
+      invoiceId: invoice.id,
+      projectId: invoice.projectId?.trim() || null,
+      customerId,
+      revenue,
+      revenueAt: new Date(revenueTimestamp).toISOString(),
+      firstRevenueAt: toIsoDate(customerId ? firstRevenueByCustomer.get(customerId) ?? null : null),
+      bucket: bucketKey,
+      reason,
+    });
   }
 
   totalRevenue = roundMoney(totalRevenue);
@@ -269,7 +348,7 @@ export function calculateCustomerRevenueMix(args: {
   const existingCustomers = makeBucket("existingCustomers");
   const unassigned = makeBucket("unassigned");
 
-  return {
+  const mix: CustomerRevenueMix = {
     totalRevenue,
     totalInvoiceCount,
     newCustomers,
@@ -285,15 +364,23 @@ export function calculateCustomerRevenueMix(args: {
     excludedInvoiceCount,
     invalidDateInvoiceCount,
   };
+
+  return { mix, rows };
 }
 
-export function calculateAdditionalSalesRevenueMix(args: {
+export function calculateCustomerRevenueMix(
+  args: Parameters<typeof calculateCustomerRevenueBreakdown>[0]
+): CustomerRevenueMix {
+  return calculateCustomerRevenueBreakdown(args).mix;
+}
+
+export function calculateAdditionalSalesRevenueBreakdown(args: {
   invoices: readonly AdditionalSalesInvoiceInput[];
   offers: readonly AdditionalSalesOfferInput[];
   potentials: readonly AdditionalSalesPotentialInput[];
   taskLinks: readonly AdditionalSalesTaskLinkInput[];
   period: RevenuePeriodInput;
-}): AdditionalSalesRevenueMix {
+}): AdditionalSalesRevenueBreakdown {
   const periodFrom = parseRevenueDate(args.period.from);
   const periodTo = parseRevenueDate(args.period.to, true);
   if (periodFrom === null || periodTo === null || periodFrom > periodTo) {
@@ -333,6 +420,7 @@ export function calculateAdditionalSalesRevenueMix(args: {
   let unassignedInvoiceCount = 0;
   let excludedInvoiceCount = 0;
   let invalidDateInvoiceCount = 0;
+  const rows: AdditionalSalesClassificationRow[] = [];
 
   for (const invoice of args.invoices) {
     if (!isFinanciallyActiveRevenueInvoice(invoice) || !Number.isFinite(invoice.netTotal)) {
@@ -355,20 +443,37 @@ export function calculateAdditionalSalesRevenueMix(args: {
     if (!sourceOfferId) {
       unassignedRevenue += revenue;
       unassignedInvoiceCount += 1;
+      rows.push({
+        invoiceId: invoice.id,
+        projectId: invoice.projectId?.trim() || null,
+        revenue,
+        revenueAt: new Date(revenueTimestamp).toISOString(),
+        sourceOfferId: null,
+        proofStatus: "missing_source_offer",
+      });
       continue;
     }
 
     attributedRevenue += revenue;
     attributedAbsoluteRevenue += absoluteRevenue;
     attributedInvoiceCount += 1;
-    if (potentialProjectsByOfferId.get(sourceOfferId)?.has(invoice.projectId?.trim() || "")) {
+    const isProven = potentialProjectsByOfferId.get(sourceOfferId)?.has(invoice.projectId?.trim() || "") ?? false;
+    if (isProven) {
       provenRevenue += revenue;
       provenAbsoluteRevenue += absoluteRevenue;
       provenInvoiceCount += 1;
     }
+    rows.push({
+      invoiceId: invoice.id,
+      projectId: invoice.projectId?.trim() || null,
+      revenue,
+      revenueAt: new Date(revenueTimestamp).toISOString(),
+      sourceOfferId,
+      proofStatus: isProven ? "proven" : "missing_proof_chain",
+    });
   }
 
-  return {
+  const mix: AdditionalSalesRevenueMix = {
     provenRevenue: roundMoney(provenRevenue),
     provenInvoiceCount,
     attributedRevenue: roundMoney(attributedRevenue),
@@ -384,4 +489,12 @@ export function calculateAdditionalSalesRevenueMix(args: {
     excludedInvoiceCount,
     invalidDateInvoiceCount,
   };
+
+  return { mix, rows };
+}
+
+export function calculateAdditionalSalesRevenueMix(
+  args: Parameters<typeof calculateAdditionalSalesRevenueBreakdown>[0]
+): AdditionalSalesRevenueMix {
+  return calculateAdditionalSalesRevenueBreakdown(args).mix;
 }

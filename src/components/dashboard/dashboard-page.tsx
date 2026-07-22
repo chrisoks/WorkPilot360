@@ -25,6 +25,7 @@ import {
   type ChecklistTemplateStatus,
 } from "@/lib/checklists/templates";
 import type { CustomerRevenueAnalyticsResponse } from "@/lib/analytics/customer-revenue-mix";
+import { getCustomerRiskAssessment } from "@/lib/analytics/customer-risk";
 
 const DOCUMENT_PREVIEW_WIDTH = 595;
 const DOCUMENT_PREVIEW_HEIGHT = 842;
@@ -56,7 +57,13 @@ type DashboardFocusIconType =
   | "clock"
   | "customer"
   | "finance"
+  | "feedback"
+  | "growth"
+  | "money"
+  | "overdue"
+  | "paid"
   | "project"
+  | "receipt"
   | "shield"
   | "team";
 type DashboardFocusTone = "blue" | "teal" | "amber" | "rose" | "slate";
@@ -243,10 +250,54 @@ function DashboardFocusIcon({ type }: { type: DashboardFocusIconType }) {
         <path d="M8 17h5" />
       </>
     ),
+    feedback: (
+      <>
+        <path d="M5 4.5h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-7l-4.5 3v-3H5a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2Z" />
+        <path d="m12 7.3 1.1 2.2 2.4.3-1.7 1.7.4 2.4-2.2-1.1-2.2 1.1.4-2.4-1.7-1.7 2.4-.3L12 7.3Z" />
+      </>
+    ),
+    growth: (
+      <>
+        <path d="M4 19.5h16" />
+        <path d="M6.5 16v-3.5" />
+        <path d="M11 16V9.5" />
+        <path d="M15.5 16V6" />
+        <path d="m14 7.5 1.5-1.5L17 7.5" />
+      </>
+    ),
+    money: (
+      <>
+        <ellipse cx="12" cy="6.5" rx="7.5" ry="3" />
+        <path d="M4.5 6.5v5c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-5" />
+        <path d="M4.5 11.5v5c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-5" />
+      </>
+    ),
+    overdue: (
+      <>
+        <path d="M6 3.5h12v17l-2-1.2-2 1.2-2-1.2-2 1.2-2-1.2-2 1.2v-17Z" />
+        <path d="M12 7.5v5" />
+        <path d="M12 16h.01" />
+      </>
+    ),
+    paid: (
+      <>
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="m8.2 12.2 2.5 2.5 5.3-5.5" />
+      </>
+    ),
     project: (
       <>
         <path d="M4 6.5h7l2 2h7v9H4z" />
         <path d="M8 13h8" />
+      </>
+    ),
+    receipt: (
+      <>
+        <path d="M6 3.5h12v17l-2-1.2-2 1.2-2-1.2-2 1.2-2-1.2-2 1.2v-17Z" />
+        <path d="M9 8h6" />
+        <path d="M9 12h4" />
+        <circle cx="15.5" cy="14.5" r="2.5" />
+        <path d="M15.5 13.2v1.5l1 .6" />
       </>
     ),
     shield: (
@@ -309,6 +360,15 @@ function DashboardTrendIcon({ type }: { type: DashboardTrendIconType }) {
 
 function getReportMetricIcon(label: string): DashboardFocusIconType {
   const normalizedLabel = label.toLowerCase();
+
+  if (normalizedLabel === "umsatz" || normalizedLabel.includes("fakturierter umsatz")) return "money";
+  if (normalizedLabel.includes("bezahlt")) return "paid";
+  if (normalizedLabel.includes("überfällig")) return "overdue";
+  if (normalizedLabel.includes("offene posten")) return "receipt";
+  if (normalizedLabel.includes("kuzu")) return "feedback";
+  if (normalizedLabel.includes("neukunde")) return "customer";
+  if (normalizedLabel.includes("bestandskunde")) return "team";
+  if (normalizedLabel.includes("zusatzverkauf")) return "growth";
 
   if (
     normalizedLabel.includes("kritisch") ||
@@ -6026,6 +6086,20 @@ export function DashboardPage() {
   const [customerRevenueAnalytics, setCustomerRevenueAnalytics] =
     useState<CustomerRevenueAnalyticsResponse | null>(null);
   const [customerRevenueAnalyticsError, setCustomerRevenueAnalyticsError] = useState("");
+  const [selectedCustomerRevenueDetail, setSelectedCustomerRevenueDetail] =
+    useState<
+      | "customers"
+      | "revenue"
+      | "paid"
+      | "open"
+      | "overdue"
+      | "hotAlerts"
+      | "newCustomers"
+      | "existingCustomers"
+      | "unassigned"
+      | "additionalSales"
+      | null
+    >(null);
   const [selectedForecastPeriod, setSelectedForecastPeriod] = useState("total");
   const [reportPeriodPreset, setReportPeriodPreset] = useState<ReportPeriodPreset>("last12");
   const [isForecastQualityExpanded, setIsForecastQualityExpanded] = useState(false);
@@ -26852,10 +26926,6 @@ await addProjectLogbookEntry(
       offerCount: monthOffers.length,
     };
   });
-  const maxMonthlyRevenue = Math.max(
-    1,
-    ...monthlyRevenueRows.map((row) => Math.max(row.invoiceValue, row.offerValue))
-  );
   const invoiceStatusRows = [
     {
       label: "Bezahlt",
@@ -28086,6 +28156,25 @@ await addProjectLogbookEntry(
     customerRevenueAnalytics?.previous.additionalSales.provenRevenue ?? 0,
     previousRevenueMixTotal
   );
+  const customerRevenueDetailReasonLabels = {
+    manual_new: "Manuell als Neukunde eingestuft",
+    manual_existing: "Manuell als Bestandskunde eingestuft",
+    first_revenue_in_period: "Erste positive Rechnung im Zeitraum",
+    revenue_before_period: "Positive Rechnung vor dem Zeitraum vorhanden",
+    missing_customer: "Keine stabile Kundenzuordnung",
+    missing_contact: "Verknüpfter Kontakt nicht vorhanden",
+    prospect_override: "Kontakt manuell als Interessent eingestuft",
+    no_positive_revenue_evidence: "Kein positiver Erstumsatz nachweisbar",
+  } as const;
+  const additionalSalesProofLabels = {
+    proven: "Potenzial, Aufgabe, Angebot und Rechnung projektgleich verknüpft",
+    missing_proof_chain: "Angebot vorhanden, Nachweiskette unvollständig",
+    missing_source_offer: "Kein Quellangebot an der Rechnung",
+  } as const;
+  const selectedCustomerClassificationRows = customerRevenueAnalytics?.details?.customerRevenue.filter(
+    (row) => row.bucket === selectedCustomerRevenueDetail
+  ) ?? [];
+  const selectedAdditionalSalesRows = customerRevenueAnalytics?.details?.additionalSales ?? [];
   const customerRows = Object.values(
     reportInvoices.reduce<
       Record<
@@ -28168,11 +28257,13 @@ await addProjectLogbookEntry(
       const hotAlertCount = feedbackRows.filter((feedback) => feedback.hotAlert).length;
       const paymentDays =
         row.paidWithDateCount > 0 ? row.paymentDaysTotal / row.paidWithDateCount : 0;
-      const riskScore =
-        row.overdueInvoiceCount * 3 +
-        row.highestReminderLevel * 2 +
-        hotAlertCount * 2 +
-        (row.openRevenue > 0 && row.revenue > 0 && row.openRevenue / row.revenue > 0.5 ? 1 : 0);
+      const riskAssessment = getCustomerRiskAssessment({
+        overdueInvoiceCount: row.overdueInvoiceCount,
+        highestReminderLevel: row.highestReminderLevel,
+        hotAlertCount,
+        openRevenue: row.openRevenue,
+        revenue: row.revenue,
+      });
 
       return {
         ...row,
@@ -28182,8 +28273,9 @@ await addProjectLogbookEntry(
         feedbackCount: feedbackRows.length,
         averageRating,
         hotAlertCount,
-        riskLabel: riskScore >= 5 ? "Kritisch" : riskScore >= 2 ? "Prüfen" : "Stabil",
-        riskState: (riskScore >= 5 ? "low" : riskScore >= 2 ? "ok" : "good") as "low" | "ok" | "good",
+        riskLabel: riskAssessment.label,
+        riskReason: riskAssessment.reason,
+        riskState: riskAssessment.state,
       };
     })
     .filter((row) => !reportSearchValue || normalizeStampSearchValue(row.name).includes(reportSearchValue))
@@ -28231,6 +28323,94 @@ await addProjectLogbookEntry(
     .map((invoice) => ({ invoice, dueState: getInvoiceDueState(invoice) }))
     .filter((row) => row.dueState.overdueDays > 0);
   const previousOverviewOverdueTotal = previousOverviewOverdueRows.reduce((sum, row) => sum + row.invoice.netTotal, 0);
+  const selectedCustomerInvoiceRows = selectedCustomerRevenueDetail === "revenue"
+    ? reportInvoices
+    : selectedCustomerRevenueDetail === "paid"
+      ? reportInvoices.filter((invoice) => isInvoicePaid(invoice))
+      : selectedCustomerRevenueDetail === "open"
+        ? reportInvoices.filter((invoice) => !isInvoicePaid(invoice))
+        : selectedCustomerRevenueDetail === "overdue"
+          ? overviewOverdueRows.map((row) => row.invoice)
+          : [];
+  const selectedCustomerListRows = selectedCustomerRevenueDetail === "customers"
+    ? customerRows
+    : selectedCustomerRevenueDetail === "hotAlerts"
+      ? customerRiskRows.filter((row) => row.hotAlertCount > 0)
+      : [];
+  const isCustomerInvoiceDrilldown = ["revenue", "paid", "open", "overdue"].includes(
+    selectedCustomerRevenueDetail ?? ""
+  );
+  const isCustomerListDrilldown = selectedCustomerRevenueDetail === "customers" || selectedCustomerRevenueDetail === "hotAlerts";
+  const getCustomerDrilldownContact = (customerName: string, projectId?: string | null) => {
+    const project = projectId ? heroProjects.find((item) => item.id === projectId) : null;
+    const projectContact = project?.contactId ? contacts.find((contact) => contact.id === project.contactId) : null;
+    if (projectContact) return projectContact;
+    const normalizedCustomerName = normalizeStampSearchValue(customerName);
+    return contacts.find((contact) =>
+      [getContactDisplayName(contact), getContactLabel(contact), contact.companyName]
+        .filter(Boolean)
+        .some((value) => normalizeStampSearchValue(String(value)) === normalizedCustomerName)
+    ) ?? null;
+  };
+  const openCustomerRevenueInvoice = (invoice: InvoiceItem) => {
+    const project = heroProjects.find((item) => item.id === invoice.projectId) ?? null;
+    setSelectedCustomerRevenueDetail(null);
+    if (project) {
+      openProjectFile(project, { tab: "documents", documentType: "Rechnungen" });
+    }
+    openEditInvoiceModal(invoice);
+  };
+  const selectedCustomerRevenueDetailTitle = selectedCustomerRevenueDetail === "customers"
+    ? "Kunden im Auswertungszeitraum"
+    : selectedCustomerRevenueDetail === "revenue"
+      ? "Fakturierter Umsatz im Detail"
+      : selectedCustomerRevenueDetail === "paid"
+        ? "Bezahlter Umsatz im Detail"
+        : selectedCustomerRevenueDetail === "open"
+          ? "Offene Posten im Detail"
+          : selectedCustomerRevenueDetail === "overdue"
+            ? "Überfällige Rechnungen im Detail"
+            : selectedCustomerRevenueDetail === "hotAlerts"
+              ? "KuZu-Hot-Alerts im Detail"
+              : selectedCustomerRevenueDetail === "newCustomers"
+                ? "Neukundenumsatz im Detail"
+                : selectedCustomerRevenueDetail === "existingCustomers"
+                  ? "Bestandskundenumsatz im Detail"
+                  : selectedCustomerRevenueDetail === "unassigned"
+                    ? "Nicht zuordenbarer Umsatz im Detail"
+                    : selectedCustomerRevenueDetail === "additionalSales"
+                      ? "Zusatzverkaufsnachweis im Detail"
+                      : "";
+  const selectedCustomerRevenueInterpretation = selectedCustomerRevenueDetail === "customers"
+    ? "Die Kennzahl zählt Kunden mit mindestens einer aktiven Rechnung im gewählten Zeitraum. Sie zeigt die Reichweite des fakturierten Geschäfts, nicht die Anzahl aller gespeicherten Kontakte."
+    : selectedCustomerRevenueDetail === "revenue"
+      ? "Der Umsatz ist die Summe der aktiven Netto-Rechnungen im Zeitraum. Ein höherer Wert zeigt mehr Fakturierung, sagt für sich allein aber noch nichts über Zahlungseingang oder Ertrag aus."
+      : selectedCustomerRevenueDetail === "paid"
+        ? "Bezahlter Umsatz umfasst Rechnungen, die als bezahlt gekennzeichnet sind. Für die Liquidität ist ein steigender Anteil grundsätzlich positiv; fehlende Zahlungskennzeichnungen können das Ergebnis unterschätzen."
+        : selectedCustomerRevenueDetail === "open"
+          ? "Offene Posten sind aktive Rechnungen ohne Zahlungskennzeichnung. Entscheidend ist nicht nur die Höhe, sondern ob das Zahlungsziel bereits überschritten wurde."
+          : selectedCustomerRevenueDetail === "overdue"
+            ? "Überfällige Rechnungen sind offene Posten nach Ablauf des Zahlungsziels. Sie sollten nach Alter, Mahnstufe und Kundenbeziehung priorisiert bearbeitet werden."
+            : selectedCustomerRevenueDetail === "hotAlerts"
+              ? "KuZu-Hot-Alerts zeigen Kundenbewertungen mit akutem Handlungsbedarf. Die Fälle sollten in der Kunden- oder Projektakte nachvollzogen und geklärt werden."
+              : selectedCustomerRevenueDetail === "newCustomers"
+                ? "Neukundenumsatz stammt von Kunden, deren erste positive aktive Rechnung im gewählten Zeitraum liegt oder die manuell als Neukunde eingestuft wurden."
+                : selectedCustomerRevenueDetail === "existingCustomers"
+                  ? "Bestandskundenumsatz stammt von Kunden mit positivem Umsatz vor dem Zeitraum oder einer manuellen Einstufung als Bestandskunde."
+                  : selectedCustomerRevenueDetail === "unassigned"
+                    ? "Nicht zuordenbarer Umsatz kann keiner belastbaren Kundenklasse zugewiesen werden. Diese Fälle senken die Aussagekraft der Neu- und Bestandskundenquote und sollten geprüft werden."
+                    : selectedCustomerRevenueDetail === "additionalSales"
+                      ? "Als Zusatzverkauf zählt nur Umsatz mit einer vollständigen, projektgleichen Kette aus Potenzial, Aufgabe, Angebot und Rechnung. Fehlende Verknüpfungen werden ausdrücklich nicht als nachgewiesener Zusatzverkauf gewertet."
+                      : "";
+  const selectedCustomerRevenueDetailCount = isCustomerInvoiceDrilldown
+    ? selectedCustomerInvoiceRows.length
+    : isCustomerListDrilldown
+      ? selectedCustomerListRows.length
+      : selectedCustomerRevenueDetail === "additionalSales"
+        ? selectedAdditionalSalesRows.length
+        : selectedCustomerClassificationRows.length;
+  const selectedCustomerRevenueDetailNoun = isCustomerListDrilldown ? "Kunde" : "Rechnung";
+  const selectedCustomerRevenueDetailNounPlural = isCustomerListDrilldown ? "Kunden" : "Rechnungen";
   const overviewProjectStatusRows = Object.values(
     reportProjectRows.reduce<Record<string, { status: string; count: number; revenue: number }>>((groups, row) => {
       const status = row.project.status || "Ohne Status";
@@ -30153,13 +30333,28 @@ await addProjectLogbookEntry(
     trendIcon: DashboardTrendIconType = "none",
     trendLabel?: string,
     neutralTrend = false,
-    statusLabelOverride?: string
+    statusLabelOverride?: string,
+    onOpen?: () => void
   ) => {
     const statusLabel =
       statusLabelOverride ?? (state === "good" ? "stabil" : state === "ok" ? "prüfen" : state === "low" ? "kritisch" : "Info");
     const metricIcon = getReportMetricIcon(label);
     return (
-      <article className={styles.analyticsMetric} data-state={state}>
+      <article
+        className={styles.analyticsMetric}
+        data-state={state}
+        data-clickable={onOpen ? "true" : undefined}
+        role={onOpen ? "button" : undefined}
+        tabIndex={onOpen ? 0 : undefined}
+        aria-label={onOpen ? `${label}: Details anzeigen` : undefined}
+        onClick={onOpen}
+        onKeyDown={onOpen ? (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onOpen();
+          }
+        } : undefined}
+      >
         <div className={styles.analyticsMetricHeader}>
           <span className={styles.analyticsMetricIcon} aria-hidden="true">
             <DashboardFocusIcon type={metricIcon} />
@@ -30190,32 +30385,54 @@ await addProjectLogbookEntry(
     );
   };
   const renderReportBarChart = (
-    rows: Array<{ key: string; label: string; value: number; secondary?: number }>
-  ) => (
-    <div className={styles.analyticsBarChart}>
-      {rows.map((row) => {
-        const primaryHeight = Math.max(3, (row.value / maxMonthlyRevenue) * 100);
-        const secondaryHeight = Math.max(3, ((row.secondary ?? 0) / maxMonthlyRevenue) * 100);
+    rows: Array<{ key: string; label: string; value: number; secondary?: number }>,
+    options?: { showValues?: boolean }
+  ) => {
+    const chartMaximum = Math.max(
+      1,
+      ...rows.map((row) => Math.max(row.value, row.secondary ?? 0))
+    );
+    const heightScale = options?.showValues ? 78 : 100;
+
+    return (
+      <div className={styles.analyticsBarChart} data-values-visible={options?.showValues ? "true" : undefined}>
+        {rows.map((row) => {
+        const primaryHeight = Math.max(3, (row.value / chartMaximum) * heightScale);
+        const secondaryHeight = row.secondary === undefined
+          ? null
+          : Math.max(3, (row.secondary / chartMaximum) * heightScale);
         return (
           <div key={row.key} className={styles.analyticsBarGroup}>
             <div className={styles.analyticsBars}>
-              <span
-                className={styles.analyticsBarPrimary}
-                style={{ height: `${primaryHeight}%` }}
-                title={`Rechnungen: ${formatMoney(row.value)}`}
-              />
-              <span
-                className={styles.analyticsBarSecondary}
-                style={{ height: `${secondaryHeight}%` }}
-                title={`Angebote: ${formatMoney(row.secondary ?? 0)}`}
-              />
+              <div className={styles.analyticsBarColumn}>
+                {options?.showValues ? (
+                  <strong data-zero={row.value === 0 ? "true" : undefined}>
+                    {row.value === 0 ? "–" : formatMoney(row.value)}
+                  </strong>
+                ) : null}
+                <span
+                  className={styles.analyticsBarPrimary}
+                  style={{ height: `${primaryHeight}%` }}
+                  title={`Rechnungen: ${formatMoney(row.value)}`}
+                />
+              </div>
+              {secondaryHeight !== null ? (
+                <div className={styles.analyticsBarColumn}>
+                  <span
+                    className={styles.analyticsBarSecondary}
+                    style={{ height: `${secondaryHeight}%` }}
+                    title={`Angebote: ${formatMoney(row.secondary ?? 0)}`}
+                  />
+                </div>
+              ) : null}
             </div>
             <small>{row.label}</small>
           </div>
         );
       })}
-    </div>
-  );
+      </div>
+    );
+  };
   const renderKuzuStars = (rating: number) => "★".repeat(Math.max(1, Math.min(5, rating)));
   const getKuzuSourceLabel = (source: string) => (source === "public" ? "Bewertungslink" : "Manuell");
   const getKuzuRequestStatusLabel = (status: string) => {
@@ -32200,14 +32417,27 @@ await addProjectLogbookEntry(
       {reportAnalyticsTab === "customers" && (
         <>
           <section className={styles.analyticsGrid}>
-            {renderReportMetric("Kunden", `${customerSummary.customerCount}`, "Mit Rechnungen im Zeitraum")}
+            {renderReportMetric(
+              "Kunden",
+              `${customerSummary.customerCount}`,
+              "Mit Rechnungen im Zeitraum",
+              "neutral",
+              "none",
+              undefined,
+              false,
+              undefined,
+              () => setSelectedCustomerRevenueDetail("customers")
+            )}
             {renderReportMetric(
               "Umsatz",
               formatMoney(customerSummary.revenue),
               `${customerSummary.invoiceCount} Rechnungen`,
               "good",
               getDashboardTrendIcon(customerSummary.revenue, previousInvoiceRevenueTotal),
-              getDashboardTrendLabel(customerSummary.revenue, previousInvoiceRevenueTotal)
+              getDashboardTrendLabel(customerSummary.revenue, previousInvoiceRevenueTotal),
+              false,
+              undefined,
+              () => setSelectedCustomerRevenueDetail("revenue")
             )}
             {renderReportMetric(
               "Bezahlt",
@@ -32215,7 +32445,10 @@ await addProjectLogbookEntry(
               "Bereits bezahlter Umsatz",
               "good",
               getDashboardTrendIcon(customerSummary.paidRevenue, previousOverviewPaidTotal),
-              getDashboardTrendLabel(customerSummary.paidRevenue, previousOverviewPaidTotal)
+              getDashboardTrendLabel(customerSummary.paidRevenue, previousOverviewPaidTotal),
+              false,
+              undefined,
+              () => setSelectedCustomerRevenueDetail("paid")
             )}
             {renderReportMetric(
               "Offene Posten",
@@ -32223,7 +32456,10 @@ await addProjectLogbookEntry(
               "Noch nicht bezahlte Rechnungen",
               customerSummary.openRevenue > 0 ? "ok" : "good",
               getDashboardTrendIcon(customerSummary.openRevenue, previousOverviewOpenTotal, true),
-              getDashboardTrendLabel(customerSummary.openRevenue, previousOverviewOpenTotal)
+              getDashboardTrendLabel(customerSummary.openRevenue, previousOverviewOpenTotal),
+              false,
+              undefined,
+              () => setSelectedCustomerRevenueDetail("open")
             )}
             {renderReportMetric(
               "Überfällig",
@@ -32231,13 +32467,21 @@ await addProjectLogbookEntry(
               "Überfällige offene Posten",
               customerSummary.overdueRevenue > 0 ? "low" : "good",
               getDashboardTrendIcon(customerSummary.overdueRevenue, previousOverviewOverdueTotal, true),
-              getDashboardTrendLabel(customerSummary.overdueRevenue, previousOverviewOverdueTotal)
+              getDashboardTrendLabel(customerSummary.overdueRevenue, previousOverviewOverdueTotal),
+              false,
+              undefined,
+              () => setSelectedCustomerRevenueDetail("overdue")
             )}
             {renderReportMetric(
               "KuZu-Hot-Alerts",
               `${customerSummary.hotAlertCount}`,
               "Bewertungen mit Handlungsbedarf",
-              customerSummary.hotAlertCount > 0 ? "low" : "good"
+              customerSummary.hotAlertCount > 0 ? "low" : "good",
+              "none",
+              undefined,
+              false,
+              undefined,
+              () => setSelectedCustomerRevenueDetail("hotAlerts")
             )}
             {renderReportMetric(
               "Neukundenumsatz",
@@ -32247,7 +32491,10 @@ await addProjectLogbookEntry(
               getDashboardTrendIcon(newCustomerRevenueShare, previousNewCustomerRevenueShare),
               getPercentagePointTrendLabel(newCustomerRevenueShare, previousNewCustomerRevenueShare),
               true,
-              customerRevenueQualityLabel
+              customerRevenueQualityLabel,
+              customerRevenueAnalytics?.details
+                ? () => setSelectedCustomerRevenueDetail("newCustomers")
+                : undefined
             )}
             {renderReportMetric(
               "Bestandskundenumsatz",
@@ -32257,7 +32504,10 @@ await addProjectLogbookEntry(
               getDashboardTrendIcon(existingCustomerRevenueShare, previousExistingCustomerRevenueShare),
               getPercentagePointTrendLabel(existingCustomerRevenueShare, previousExistingCustomerRevenueShare),
               true,
-              customerRevenueQualityLabel
+              customerRevenueQualityLabel,
+              customerRevenueAnalytics?.details
+                ? () => setSelectedCustomerRevenueDetail("existingCustomers")
+                : undefined
             )}
             {renderReportMetric(
               "Nicht zuordenbar",
@@ -32267,7 +32517,10 @@ await addProjectLogbookEntry(
               getDashboardTrendIcon(unassignedCustomerRevenueShare, previousUnassignedCustomerRevenueShare, true),
               getPercentagePointTrendLabel(unassignedCustomerRevenueShare, previousUnassignedCustomerRevenueShare),
               true,
-              customerRevenueQualityLabel
+              customerRevenueQualityLabel,
+              customerRevenueAnalytics?.details
+                ? () => setSelectedCustomerRevenueDetail("unassigned")
+                : undefined
             )}
             {renderReportMetric(
               "Nachweisbarer Zusatzverkauf",
@@ -32277,111 +32530,282 @@ await addProjectLogbookEntry(
               getDashboardTrendIcon(additionalSalesRevenueShare, previousAdditionalSalesRevenueShare),
               getPercentagePointTrendLabel(additionalSalesRevenueShare, previousAdditionalSalesRevenueShare),
               true,
-              additionalSalesQualityLabel
+              additionalSalesQualityLabel,
+              customerRevenueAnalytics?.details
+                ? () => setSelectedCustomerRevenueDetail("additionalSales")
+                : undefined
             )}
           </section>
 
-          <p className={styles.analyticsMethodNote}>
-            Neukundenumsatz umfasst Umsatz von Kunden, deren erste positive aktive WorkPilot-Rechnung im gewählten Zeitraum liegt.
-            Frühere positive aktive Rechnungen oder eine manuelle Einstufung als Bestandskunde führen zum Bestandskundenumsatz.
-            Zusatzverkaufsumsatz wird nur gezählt, wenn Potenzial, Aufgabe, Angebot und Rechnung projektgleich verknüpft sind.
-            Die Karten bewerten bewusst nur die Datenqualität, nicht die Umsatzentwicklung. Vergleichszeitraum: {formatDateOnly(formatDateKey(previousReportPeriodRange.start))} bis {formatDateOnly(formatDateKey(previousReportPeriodRange.end))}.
-            {customerRevenueAnalytics?.dataQuality.legacyInvoiceCount
-              ? ` ${customerRevenueAnalytics.dataQuality.legacyInvoiceCount} importierte Altrechnungen sind mangels stabiler Kundenverknüpfung noch nicht enthalten.`
-              : ""}
-            {customerRevenueAnalyticsError ? ` Fehler: ${customerRevenueAnalyticsError}` : ""}
-          </p>
-
-          <section className={styles.analyticsTwoColumn}>
-            <article className={styles.analyticsCard}>
-              <h2>Umsatz pro Zeitraum</h2>
-              {renderReportBarChart(
-                monthlyRevenueRows.map((row) => ({
-                  key: row.key,
-                  label: row.label,
-                  value: row.invoiceValue,
-                }))
-              )}
-            </article>
-            <article className={styles.analyticsCard}>
-              <h2>Kunden mit Handlungsbedarf</h2>
-              <table className={styles.analyticsTable}>
-                <thead>
-                  <tr>
-                    <th>Kunde</th>
-                    <th>Risiko</th>
-                    <th>Offen</th>
-                    <th>Überfällig</th>
-                    <th>Mahnung</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {customerRiskRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={5}>Keine Kunden im gewählten Zeitraum.</td>
-                    </tr>
-                  ) : (
-                    customerRiskRows.slice(0, 8).map((row) => (
-                      <tr key={row.name}>
-                        <td>{row.name}</td>
-                        <td data-state={row.riskState}>{row.riskLabel}</td>
-                        <td>{formatMoney(row.openRevenue)}</td>
-                        <td>{row.overdueInvoiceCount > 0 ? formatMoney(row.overdueRevenue) : "-"}</td>
-                        <td>{row.highestReminderLevel > 0 ? `Stufe ${row.highestReminderLevel}` : "-"}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </article>
-          </section>
           <article className={styles.analyticsCard}>
-            <h2>Kundenübersicht</h2>
-            <table className={styles.analyticsTable}>
-              <thead>
-                <tr>
-                  <th>Kunde</th>
-                  <th>Rechnungsvolumen</th>
-                  <th>Bezahlt</th>
-                  <th>Offen</th>
-                  <th>Anteil</th>
-                  <th>Projekte</th>
-                  <th>Rechnungen</th>
-                  <th>Ø Zahlungsdauer</th>
-                  <th>KuZu</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {customerRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={10}>Keine Kunden im gewählten Zeitraum.</td>
-                  </tr>
-                ) : (
-                  customerRows.slice(0, 30).map((row) => (
-                    <tr key={row.name}>
-                      <td>{row.name}</td>
-                      <td>{formatMoney(row.revenue)}</td>
-                      <td>{formatMoney(row.paidRevenue)}</td>
-                      <td>{row.openRevenue > 0 ? formatMoney(row.openRevenue) : "-"}</td>
-                      <td>{formatHours(row.share)}%</td>
-                      <td>{row.projectCount}</td>
-                      <td>{row.invoiceCount}</td>
-                      <td>{row.paymentDays > 0 ? `${formatHours(row.paymentDays)} Tg.` : "-"}</td>
-                      <td>
-                        {row.feedbackCount > 0
-                          ? `${formatHours(row.averageRating)} / 5 (${row.feedbackCount})`
-                          : "-"}
-                      </td>
-                      <td data-state={row.riskState}>{row.riskLabel}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+            <div className={styles.analyticsChartHeader}>
+              <h2>Umsatz pro Zeitraum</h2>
+              <div className={styles.analyticsChartSummary}>
+                <span><small>Gesamt</small><strong>{formatMoney(customerSummary.revenue)}</strong></span>
+                <span><small>Ø pro Monat</small><strong>{formatMoney(customerSummary.revenue / Math.max(1, monthlyRevenueRows.length))}</strong></span>
+              </div>
+            </div>
+            {renderReportBarChart(
+              monthlyRevenueRows.map((row) => ({
+                key: row.key,
+                label: row.label,
+                value: row.invoiceValue,
+              })),
+              { showValues: true }
+            )}
+            <div className={styles.analyticsLegend}>
+              <span data-color="primary">Fakturierter Umsatz</span>
+            </div>
           </article>
         </>
       )}
+
+      {selectedCustomerRevenueDetail &&
+      (isCustomerInvoiceDrilldown || isCustomerListDrilldown || customerRevenueAnalytics?.details) ? (
+        <div
+          className={styles.modalOverlay}
+          role="dialog"
+          aria-modal="true"
+          aria-label={selectedCustomerRevenueDetailTitle}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setSelectedCustomerRevenueDetail(null);
+          }}
+        >
+          <div className={styles.standardModal}>
+            <header className={styles.standardModalHeader}>
+              <div>
+                <h2>{selectedCustomerRevenueDetailTitle}</h2>
+                <p>
+                  Zeitraum {formatDateOnly(formatDateKey(reportPeriodRange.start))} bis {formatDateOnly(formatDateKey(reportPeriodRange.end))}
+                </p>
+              </div>
+              <button
+                type="button"
+                className={styles.iconButton}
+                aria-label="Schließen"
+                onClick={() => setSelectedCustomerRevenueDetail(null)}
+              >
+                ×
+              </button>
+            </header>
+            <div className={styles.standardModalBody}>
+              <div className={styles.customerRevenueModalSummary}>
+                <span className={styles.customerRevenueModalCount}>
+                  {selectedCustomerRevenueDetailCount}{" "}
+                  {selectedCustomerRevenueDetailCount === 1
+                    ? selectedCustomerRevenueDetailNoun
+                    : selectedCustomerRevenueDetailNounPlural} angezeigt
+                </span>
+                <div className={styles.customerRevenueModalExplanation}>
+                  <strong>Einordnung</strong>
+                  <p>{selectedCustomerRevenueInterpretation}</p>
+                  {isCustomerListDrilldown ? (
+                    <p className={styles.customerRevenueAssessmentLogic}>
+                      <b>Bewertungslogik:</b> Überfällige Rechnungen, Mahnstufen und KuZu-Hot-Alerts bestimmen den Status. Ein offener Umsatzanteil über 50 % verstärkt vorhandene Hinweise.
+                    </p>
+                  ) : null}
+                  {customerRevenueAnalytics?.details?.truncated && !isCustomerInvoiceDrilldown && !isCustomerListDrilldown ? (
+                    <small>Die Detailansicht ist auf die neuesten 200 Einträge begrenzt.</small>
+                  ) : null}
+                </div>
+              </div>
+              <div className={styles.forecastTableScroll}>
+                {isCustomerInvoiceDrilldown ? (
+                  <table className={styles.analyticsTable}>
+                    <thead>
+                      <tr>
+                        <th>Rechnung</th>
+                        <th>Kunde</th>
+                        <th>Projekt</th>
+                        <th>Leistungsdatum</th>
+                        <th>Status</th>
+                        <th>Fälligkeit</th>
+                        <th>Netto</th>
+                        <th>Aktionen</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedCustomerInvoiceRows.length === 0 ? (
+                        <tr><td colSpan={8}>Keine passenden Rechnungen im gewählten Zeitraum.</td></tr>
+                      ) : selectedCustomerInvoiceRows.map((invoice) => {
+                        const project = heroProjects.find((item) => item.id === invoice.projectId) ?? null;
+                        const contact = getCustomerDrilldownContact(invoice.customerName, invoice.projectId);
+                        return (
+                          <tr key={invoice.id}>
+                            <td>{invoice.invoiceNumber}</td>
+                            <td>{invoice.customerName || "-"}</td>
+                            <td>{project?.projectNumber || invoice.projectTitle || "-"}</td>
+                            <td>{formatDateOnly(invoice.serviceDate || invoice.createdAt)}</td>
+                            <td>{isInvoicePaid(invoice) ? "Bezahlt" : invoice.status}</td>
+                            <td>{invoice.dueDate ? formatDateOnly(invoice.dueDate) : "-"}</td>
+                            <td>{formatMoney(invoice.netTotal)}</td>
+                            <td>
+                              <div className={styles.tableActionGroup}>
+                                <button type="button" className={styles.secondaryButton} onClick={() => {
+                                  openCustomerRevenueInvoice(invoice);
+                                }}>Rechnung</button>
+                                {project ? <button type="button" className={styles.secondaryButton} onClick={() => {
+                                  setSelectedCustomerRevenueDetail(null);
+                                  openProjectFile(project, { tab: "documents", documentType: "Rechnungen" });
+                                }}>Projekt</button> : null}
+                                {contact ? <button type="button" className={styles.secondaryButton} onClick={() => {
+                                  setSelectedCustomerRevenueDetail(null);
+                                  setActiveTab("contacts");
+                                  openCustomerFile(contact);
+                                }}>Kunde</button> : null}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                ) : isCustomerListDrilldown ? (
+                  <table className={styles.analyticsTable}>
+                    <thead>
+                      <tr>
+                        <th>Kunde</th>
+                        <th>Umsatz</th>
+                        <th>Bezahlt</th>
+                        <th>Offen</th>
+                        <th>Überfällig</th>
+                        <th>Rechnungen</th>
+                        <th>KuZu-Alerts</th>
+                        <th>Status</th>
+                        <th>Aktionen</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedCustomerListRows.length === 0 ? (
+                        <tr><td colSpan={9}>Keine passenden Kunden im gewählten Zeitraum.</td></tr>
+                      ) : selectedCustomerListRows.map((row) => {
+                        const projectId = Array.from(row.projectIds)[0] ?? "";
+                        const project = projectId ? heroProjects.find((item) => item.id === projectId) ?? null : null;
+                        const contact = getCustomerDrilldownContact(row.name, projectId);
+                        return (
+                          <tr key={row.name}>
+                            <td>{row.name}</td>
+                            <td>{formatMoney(row.revenue)}</td>
+                            <td>{formatMoney(row.paidRevenue)}</td>
+                            <td>{formatMoney(row.openRevenue)}</td>
+                            <td>{row.overdueRevenue > 0 ? formatMoney(row.overdueRevenue) : "-"}</td>
+                            <td>{row.invoiceCount}</td>
+                            <td>{row.hotAlertCount}</td>
+                            <td data-state={row.riskState}>
+                              <div className={styles.customerRiskStatus}>
+                                <strong>{row.riskLabel}</strong>
+                                <small>{row.riskReason}</small>
+                              </div>
+                            </td>
+                            <td>
+                              <div className={styles.tableActionGroup}>
+                                {contact ? <button type="button" className={styles.secondaryButton} onClick={() => {
+                                  setSelectedCustomerRevenueDetail(null);
+                                  setActiveTab("contacts");
+                                  openCustomerFile(contact);
+                                }}>Kunde</button> : null}
+                                {project ? <button type="button" className={styles.secondaryButton} onClick={() => {
+                                  setSelectedCustomerRevenueDetail(null);
+                                  openProjectFile(project);
+                                }}>Projekt</button> : null}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                ) : (
+                  <table className={styles.analyticsTable}>
+                    <thead>
+                      <tr>
+                        <th>Rechnung</th>
+                        <th>Kunde</th>
+                        <th>Projekt</th>
+                        <th>Leistungsdatum</th>
+                        {selectedCustomerRevenueDetail === "additionalSales" ? <th>Angebot</th> : null}
+                        <th>Einordnung</th>
+                        <th>Netto</th>
+                        <th>Aktionen</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedCustomerRevenueDetailCount === 0 ? (
+                        <tr>
+                          <td colSpan={selectedCustomerRevenueDetail === "additionalSales" ? 8 : 7}>
+                            Keine passenden Rechnungen im gewählten Zeitraum.
+                          </td>
+                        </tr>
+                      ) : selectedCustomerRevenueDetail === "additionalSales" ? (
+                        selectedAdditionalSalesRows.map((row) => {
+                          const invoice = invoices.find((item) => item.id === row.invoiceId) ?? null;
+                          const project = heroProjects.find((item) => item.id === row.projectId) ?? null;
+                          const contact = getCustomerDrilldownContact(row.customerName, row.projectId);
+                          return (
+                            <tr key={row.invoiceId}>
+                              <td>{row.invoiceNumber}</td>
+                              <td>{row.customerName || "-"}</td>
+                              <td>{row.projectNumber || row.projectTitle || "-"}</td>
+                              <td>{formatDateOnly(row.revenueAt)}</td>
+                              <td>{row.sourceOfferNumber || "-"}</td>
+                              <td>{additionalSalesProofLabels[row.proofStatus]}</td>
+                              <td>{formatMoney(row.revenue)}</td>
+                              <td><div className={styles.tableActionGroup}>
+                                {invoice ? <button type="button" className={styles.secondaryButton} onClick={() => {
+                                  openCustomerRevenueInvoice(invoice);
+                                }}>Rechnung</button> : null}
+                                {project ? <button type="button" className={styles.secondaryButton} onClick={() => {
+                                  setSelectedCustomerRevenueDetail(null);
+                                  openProjectFile(project);
+                                }}>Projekt</button> : null}
+                                {contact ? <button type="button" className={styles.secondaryButton} onClick={() => {
+                                  setSelectedCustomerRevenueDetail(null);
+                                  setActiveTab("contacts");
+                                  openCustomerFile(contact);
+                                }}>Kunde</button> : null}
+                              </div></td>
+                            </tr>
+                          );
+                        })
+                      ) : (
+                        selectedCustomerClassificationRows.map((row) => {
+                          const invoice = invoices.find((item) => item.id === row.invoiceId) ?? null;
+                          const project = heroProjects.find((item) => item.id === row.projectId) ?? null;
+                          const contact = getCustomerDrilldownContact(row.customerName, row.projectId);
+                          return (
+                            <tr key={row.invoiceId}>
+                              <td>{row.invoiceNumber}</td>
+                              <td>{row.customerName || "-"}</td>
+                              <td>{row.projectNumber || row.projectTitle || "-"}</td>
+                              <td>{formatDateOnly(row.revenueAt)}</td>
+                              <td>{customerRevenueDetailReasonLabels[row.reason]}</td>
+                              <td>{formatMoney(row.revenue)}</td>
+                              <td><div className={styles.tableActionGroup}>
+                                {invoice ? <button type="button" className={styles.secondaryButton} onClick={() => {
+                                  openCustomerRevenueInvoice(invoice);
+                                }}>Rechnung</button> : null}
+                                {project ? <button type="button" className={styles.secondaryButton} onClick={() => {
+                                  setSelectedCustomerRevenueDetail(null);
+                                  openProjectFile(project);
+                                }}>Projekt</button> : null}
+                                {contact ? <button type="button" className={styles.secondaryButton} onClick={() => {
+                                  setSelectedCustomerRevenueDetail(null);
+                                  setActiveTab("contacts");
+                                  openCustomerFile(contact);
+                                }}>Kunde</button> : null}
+                              </div></td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {reportAnalyticsTab === "employeeRevenue" && (
         <>

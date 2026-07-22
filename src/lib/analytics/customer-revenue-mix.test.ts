@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   calculateAdditionalSalesRevenueMix,
+  calculateAdditionalSalesRevenueBreakdown,
+  calculateCustomerRevenueBreakdown,
   calculateCustomerRevenueMix,
   isFinanciallyActiveRevenueInvoice,
   type RevenueInvoiceInput,
@@ -213,6 +215,32 @@ describe("customer revenue mix", () => {
       period: { from: "2026-12-31", to: "2026-01-01" },
     })).toThrowError("Der Auswertungszeitraum ist ungültig.");
   });
+
+  it("explains every current-period customer classification", () => {
+    const result = calculateCustomerRevenueBreakdown({
+      invoices: [
+        invoice("automatic-new", "project-new", 200, "2026-02-01"),
+        invoice("manual-existing", "project-existing", 300, "2026-02-02"),
+        invoice("missing", null, 100, "2026-02-03"),
+      ],
+      projects: [
+        { id: "project-new", contactId: "customer-new" },
+        { id: "project-existing", contactId: "customer-existing" },
+      ],
+      contacts: [
+        { id: "customer-new", customerStatusOverride: "automatic" },
+        { id: "customer-existing", customerStatusOverride: "existing" },
+      ],
+      period: { from: "2026-01-01", to: "2026-12-31" },
+    });
+
+    expect(result.mix.totalRevenue).toBe(600);
+    expect(result.rows.map((row) => [row.invoiceId, row.bucket, row.reason])).toEqual([
+      ["automatic-new", "newCustomers", "first_revenue_in_period"],
+      ["manual-existing", "existingCustomers", "manual_existing"],
+      ["missing", "unassigned", "missing_customer"],
+    ]);
+  });
 });
 
 describe("additional sales revenue mix", () => {
@@ -257,5 +285,26 @@ describe("additional sales revenue mix", () => {
 
     expect(result.invoiceSourceCoveragePercent).toBe(80);
     expect(result.proofCoveragePercent).toBe(100);
+  });
+
+  it("explains proven and incomplete additional-sales links", () => {
+    const result = calculateAdditionalSalesRevenueBreakdown({
+      invoices: [
+        { ...invoice("proven", "project", 100, "2026-07-01"), sourceOfferId: "offer" },
+        { ...invoice("missing-chain", "other-project", 80, "2026-07-02"), sourceOfferId: "offer" },
+        invoice("missing-source", "project", 50, "2026-07-03"),
+      ],
+      offers: [{ id: "offer", offerNumber: "AN-1" }],
+      potentials: [{ projectId: "project", taskId: "task" }],
+      taskLinks: [{ taskId: "task", url: "offer:offer" }],
+      period: { from: "2026-01-01", to: "2026-12-31" },
+    });
+
+    expect(result.mix.provenRevenue).toBe(100);
+    expect(result.rows.map((row) => [row.invoiceId, row.proofStatus])).toEqual([
+      ["proven", "proven"],
+      ["missing-chain", "missing_proof_chain"],
+      ["missing-source", "missing_source_offer"],
+    ]);
   });
 });

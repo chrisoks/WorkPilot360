@@ -93,6 +93,10 @@ export function canViewCustomerRevenueAnalytics(user: RoleCarrier): boolean {
   return user.role !== Role.GAST;
 }
 
+export function canViewCustomerRevenueAnalyticsDetails(user: RoleCarrier): boolean {
+  return canManageInvoices(user);
+}
+
 export function canAccessEmployeeCosts(user: RoleCarrier): boolean {
   return canViewInternalCostData(user);
 }
