@@ -13,6 +13,7 @@ import { validateXRechnungPayload } from "@/lib/e-invoice/xrechnung-validation";
 import { validateXRechnungWithKosit } from "@/lib/e-invoice/kosit-validator";
 import { buildValidatedZugferdPdf } from "@/lib/e-invoice/zugferd-pdf";
 import { getPublicAppOrigin } from "@/lib/http/public-app-origin";
+import { createAcceptanceId, createAcceptanceToken, ensureOfferAcceptanceTable, hashAcceptanceValue } from "@/lib/offer-acceptance/core";
 
 type MailAccount = {
   provider?: string;
@@ -276,6 +277,51 @@ async function prepareFeedbackRequestLink(req: Request, body: Record<string, unk
     )
   `;
   return { id, url: `${getPublicAppOrigin(req)}/feedback/${token}`, recipientEmail, created: true };
+}
+
+function getOfferAcceptanceMailBlockHtml(link: string) {
+  const safeLink = escapeHtml(link);
+  return [
+    '<div style="margin:22px 0 18px;padding:18px;border:1px solid #bcd7da;border-radius:14px;background:#f4f9f9;max-width:520px;">',
+    '<p style="margin:0 0 8px;color:#0f172a;font-weight:800;">Angebot digital prüfen und freigeben</p>',
+    '<p style="margin:0 0 14px;color:#52666b;font-size:13px;line-height:1.5;">Über den folgenden Link können Sie das Angebot ansehen, herunterladen und verbindlich annehmen.</p>',
+    `<a href="${safeLink}" target="_blank" rel="noreferrer" style="display:inline-block;background:#075c63;color:#ffffff;text-decoration:none;font-weight:800;border-radius:10px;padding:11px 17px;">Angebot prüfen und annehmen</a>`,
+    '<p style="margin:10px 0 0;color:#64748b;font-size:12px;line-height:1.4;">Die Annahme erfolgt erst nach Ihrer ausdrücklichen Bestätigung auf der Folgeseite.</p>',
+    "</div>",
+  ].join("");
+}
+
+type PreparedOfferAcceptance = { id: string; url: string };
+
+async function prepareOfferAcceptance(req: Request, organizationId: string, body: Record<string, unknown>, actor: User, actorName: string, senderEmail: string, recipientEmail: string): Promise<PreparedOfferAcceptance | null> {
+  if (cleanText(body.kind) !== "offer" || body.includeAcceptanceLink === false) return null;
+  const offerId = cleanText(body.documentId);
+  if (!offerId || !recipientEmail) return null;
+  await ensureOfferAcceptanceTable();
+  const offers = await prisma.$queryRaw<Array<{ id: string; offerNumber: string; projectId: string; pdfData: string | null }>>`
+    SELECT id, "offerNumber", "projectId", "pdfData" FROM "Offer"
+    WHERE id = ${offerId} AND "organizationId" = ${organizationId} LIMIT 1
+  `;
+  const offer = offers[0];
+  if (!offer?.pdfData) return null;
+  const projects = await prisma.$queryRaw<Array<{ contactId: string | null }>>`
+    SELECT "contactId" FROM "WorkPilotProject" WHERE id = ${offer.projectId} AND "organizationId" = ${organizationId} LIMIT 1
+  `;
+  const token = createAcceptanceToken();
+  const id = createAcceptanceId();
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  await prisma.$executeRaw`
+    INSERT INTO "OfferAcceptanceRequest" (
+      "id", "organizationId", "offerId", "projectId", "customerId", "tokenHash", "offerNumber",
+      "offerVersionHash", "offerPdfData", "recipientEmail", "recipientName", "senderUserId",
+      "senderName", "senderEmail", "status", "expiresAt"
+    ) VALUES (
+      ${id}, ${organizationId}, ${offerId}, ${offer.projectId}, ${projects[0]?.contactId ?? ""}, ${hashAcceptanceValue(token)}, ${offer.offerNumber},
+      ${hashAcceptanceValue(offer.pdfData)}, ${offer.pdfData}, ${recipientEmail}, ${cleanText(body.customerName)}, ${actor.id},
+      ${actorName}, ${senderEmail}, 'prepared', ${expiresAt}
+    )
+  `;
+  return { id, url: `${getPublicAppOrigin(req)}/angebot/${token}` };
 }
 
 async function markFeedbackRequestAsSent(organizationId: string, request: PreparedFeedbackRequest | null) {
@@ -868,15 +914,27 @@ export async function POST(req: Request) {
     ...invoiceManualAttachments,
   ];
   const preparedFeedbackRequest = await prepareFeedbackRequestLink(req, { ...body, organizationId: organization.id });
+  const preparedOfferAcceptance = await prepareOfferAcceptance(
+    req,
+    organization.id,
+    body,
+    actor,
+    actorName,
+    senderEmail,
+    recipients[0] ?? ""
+  );
   const feedbackLink = preparedFeedbackRequest?.url ?? "";
+  const acceptanceLink = preparedOfferAcceptance?.url ?? "";
   const signatureHtml = await getSenderSignature(actor.id);
   const rawMessageBody = cleanText(body.body);
   const messageBody = signatureHtml ? stripTrailingMailClosing(rawMessageBody) : rawMessageBody;
   const feedbackHtml = feedbackLink ? getFeedbackMailBlockHtml(feedbackLink) : "";
+  const acceptanceHtml = acceptanceLink ? getOfferAcceptanceMailBlockHtml(acceptanceLink) : "";
   const feedbackText = feedbackLink
     ? `\n\nWie zufrieden waren Sie mit unserer Leistung? Jetzt bewerten: ${feedbackLink}`
     : "";
-  const messageHtml = `${textToHtml(messageBody)}${feedbackHtml}${signatureHtml ? signatureHtml : ""}`;
+  const acceptanceText = acceptanceLink ? `\n\nAngebot prüfen und annehmen: ${acceptanceLink}` : "";
+  const messageHtml = `${textToHtml(messageBody)}${acceptanceHtml}${feedbackHtml}${signatureHtml ? signatureHtml : ""}`;
 
   let primaryMailDelivered = false;
   let preparedActivityFeedbackRequest: PreparedFeedbackRequest | null = null;
@@ -893,6 +951,10 @@ export async function POST(req: Request) {
     });
     primaryMailDelivered = true;
     await markFeedbackRequestAsSent(organization.id, preparedFeedbackRequest);
+    if (preparedOfferAcceptance) {
+      await prisma.$executeRaw`UPDATE "OfferAcceptanceRequest" SET "status" = 'sent', "sentAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ${preparedOfferAcceptance.id}`;
+      await prisma.$executeRaw`UPDATE "OfferAcceptanceRequest" SET "status" = 'revoked', "revokedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP WHERE "organizationId" = ${organization.id} AND "offerId" = ${documentId} AND id <> ${preparedOfferAcceptance.id} AND "acceptedAt" IS NULL AND "revokedAt" IS NULL`;
+    }
     if (shouldSendSeparateActivityReport) {
       const activityReportRawBody = cleanText(body.activityReportBody) || rawMessageBody;
       const activityReportBody = signatureHtml ? stripTrailingMailClosing(activityReportRawBody) : activityReportRawBody;
@@ -925,6 +987,9 @@ export async function POST(req: Request) {
   } catch (error) {
     if (!primaryMailDelivered) {
       await discardUnsentFeedbackRequest(organization.id, preparedFeedbackRequest).catch(() => undefined);
+      if (preparedOfferAcceptance) {
+        await prisma.$executeRaw`DELETE FROM "OfferAcceptanceRequest" WHERE id = ${preparedOfferAcceptance.id} AND status = 'prepared'`.catch(() => undefined);
+      }
     }
     if (!activityMailDelivered) {
       await discardUnsentFeedbackRequest(organization.id, preparedActivityFeedbackRequest).catch(() => undefined);
@@ -948,7 +1013,7 @@ export async function POST(req: Request) {
       ${cleanText(body.projectId)}, ${cleanText(body.projectNumber)}, ${cleanText(body.projectTitle)},
       ${cleanText(body.customerName)}, ${actor.id}, ${actorName}, ${senderEmail},
       ${recipients.join(", ")}, ${ccRecipients.join(", ")}, ${bccRecipients.join(", ")},
-      ${cleanText(body.subject)}, ${`${messageBody}${feedbackText}`}, ${Boolean(body.attachPdf)},
+      ${cleanText(body.subject)}, ${`${messageBody}${acceptanceText}${feedbackText}`}, ${Boolean(body.attachPdf)},
       ${"microsoft365"}, ${"sent"}, ${`ms365-${id}`}
     )
   `;

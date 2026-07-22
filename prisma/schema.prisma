@@ -903,6 +903,50 @@ model OfferHistory {
   @@index([organizationId, projectId, createdAt])
 }
 
+model OfferAcceptanceRequest {
+  id                  String    @id @default(cuid())
+  organizationId      String
+  offerId             String
+  projectId           String
+  customerId          String    @default("")
+  tokenHash           String    @unique
+  offerNumber         String
+  offerVersionHash    String
+  offerPdfData        String    @db.Text
+  recipientEmail      String
+  recipientName       String    @default("")
+  senderUserId        String
+  senderName          String
+  senderEmail         String
+  status              String    @default("prepared")
+  sentAt              DateTime?
+  expiresAt           DateTime
+  firstAccessedAt     DateTime?
+  firstViewedAt       DateTime?
+  lastViewedAt        DateTime?
+  viewCount           Int       @default(0)
+  acceptanceStartedAt DateTime?
+  acceptedAt          DateTime?
+  acceptedByName      String    @default("")
+  acceptedByRole      String    @default("")
+  acceptedByEmail     String    @default("")
+  acceptedIp          String    @default("")
+  acceptedUserAgent   String    @default("")
+  consentText         String    @default("")
+  acceptancePdfData   String?   @db.Text
+  acceptancePdfHash   String    @default("")
+  confirmationSentAt  DateTime?
+  confirmationError   String    @default("")
+  revokedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @default(now()) @updatedAt
+
+  @@index([organizationId, projectId, createdAt])
+  @@index([organizationId, customerId, createdAt])
+  @@index([organizationId, offerId, createdAt])
+  @@index([organizationId, status, sentAt])
+}
+
 model Invoice {
   id                    String        @id @default(cuid())
   organizationId        String

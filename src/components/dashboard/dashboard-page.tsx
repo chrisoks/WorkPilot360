@@ -510,6 +510,7 @@ type AppTab =
   | "projectsImmocare"
   | "contacts"
   | "documents"
+  | "approvals"
   | "documentOverview"
   | "documentTexts"
   | "documentTemplates"
@@ -614,6 +615,7 @@ type CustomerFileTab =
   | "notes"
   | "images"
   | "documents"
+  | "approvals"
   | "gaeb"
   | "contacts"
   | "potentials"
@@ -635,6 +637,7 @@ type ProjectFileTab =
   | "notes"
   | "images"
   | "documents"
+  | "approvals"
   | "gaeb"
   | "time"
   | "appointments"
@@ -1146,6 +1149,7 @@ type DocumentMailDraft = {
   attachPdf: boolean;
   eInvoiceFormat?: EInvoiceFormat;
   includeFeedbackLink?: boolean;
+  includeAcceptanceLink?: boolean;
   includeActivityReportFeedbackLink?: boolean;
   attachActivityReports?: boolean;
   additionalAttachments?: Array<{ name: string; dataUrl: string }>;
@@ -2136,6 +2140,33 @@ type CustomerProjectNoteDraft = {
   confirmationFrequency: string;
   validFrom: string;
   validUntil: string;
+};
+
+type OfferAcceptanceItem = {
+  id: string;
+  offerId: string;
+  projectId: string;
+  customerId: string;
+  offerNumber: string;
+  projectNumber: string;
+  projectTitle: string;
+  grossTotal: number;
+  recipientEmail: string;
+  senderName: string;
+  status: string;
+  sentAt?: string;
+  expiresAt: string;
+  firstAccessedAt?: string;
+  firstViewedAt?: string;
+  lastViewedAt?: string;
+  viewCount: number;
+  acceptanceStartedAt?: string;
+  acceptedAt?: string;
+  acceptedByName: string;
+  acceptedByRole: string;
+  acceptedByEmail?: string;
+  confirmationSentAt?: string;
+  confirmationError?: string;
 };
 
 type EmployeeDocumentCategory =
@@ -3614,6 +3645,7 @@ const projectFileTabs: ProjectFileTab[] = [
   "notes",
   "images",
   "documents",
+  "approvals",
   "gaeb",
   "time",
   "appointments",
@@ -3633,6 +3665,7 @@ const customerFileTabs: CustomerFileTab[] = [
   "notes",
   "images",
   "documents",
+  "approvals",
   "gaeb",
   "contacts",
   "potentials",
@@ -6119,6 +6152,7 @@ export function DashboardPage() {
   const [isDocumentMailProjectAttachmentPickerOpen, setIsDocumentMailProjectAttachmentPickerOpen] = useState(false);
   const [selectedDocumentMailProjectAttachmentKeys, setSelectedDocumentMailProjectAttachmentKeys] = useState<string[]>([]);
   const [documentMailDispatches, setDocumentMailDispatches] = useState<DocumentMailDispatchItem[]>([]);
+  const [offerAcceptances, setOfferAcceptances] = useState<OfferAcceptanceItem[]>([]);
   const [customerFeedback, setCustomerFeedback] = useState<CustomerFeedbackItem[]>([]);
   const [customerFeedbackRequests, setCustomerFeedbackRequests] = useState<CustomerFeedbackRequestItem[]>([]);
   const [mailTemplates, setMailTemplates] =
@@ -6869,6 +6903,11 @@ export function DashboardPage() {
     canViewFullOverviewAnalytics || activeUser?.role === "FUEHRUNGSKRAFT";
   const canViewAccountingOverviewAnalytics =
     canViewFullOverviewAnalytics || activeUser?.role === "BUCHHALTUNG";
+  const canAccessOfferApprovals =
+    activeUserHasSalesRole ||
+    activeUser?.role === "ADMIN" ||
+    activeUser?.role === "GESCHAEFTSFUEHRER" ||
+    activeUser?.role === "FUEHRUNGSKRAFT";
   const mayManagePlanningEntries =
     activeUser?.role === "ADMIN" ||
     activeUser?.role === "GESCHAEFTSFUEHRER" ||
@@ -8160,6 +8199,19 @@ export function DashboardPage() {
       const otherDispatches = currentDispatches.filter((dispatch) => dispatch.projectId !== projectId);
       return [...data, ...otherDispatches];
     });
+  }
+
+  async function loadOfferAcceptances(filters: { projectId?: string; customerId?: string } = {}) {
+    if (!activeUserId) return;
+    const params = new URLSearchParams({ actorId: activeUserId });
+    if (filters.projectId) params.set("projectId", filters.projectId);
+    if (filters.customerId) params.set("customerId", filters.customerId);
+    const res = await fetch(`/api/offer-acceptances?${params.toString()}`, { cache: "no-store" });
+    if (!res.ok) {
+      setOfferAcceptances([]);
+      return;
+    }
+    setOfferAcceptances((await res.json()) as OfferAcceptanceItem[]);
   }
 
   async function loadWinterServiceAutomationSettings() {
@@ -11742,6 +11794,7 @@ export function DashboardPage() {
       attachPdf: true,
       eInvoiceFormat: kind === "invoice" ? "pdf" : undefined,
       includeFeedbackLink: kind === "invoice",
+      includeAcceptanceLink: kind === "offer",
       includeActivityReportFeedbackLink: kind === "invoice",
       attachActivityReports: activityReportAttachments.length > 0,
       additionalAttachments: activityReportAttachments,
@@ -11803,6 +11856,7 @@ export function DashboardPage() {
       attachPdf: Boolean(input.attachmentDataUrl),
       eInvoiceFormat: input.kind === "invoice" ? "pdf" : undefined,
       includeFeedbackLink: input.kind === "invoice",
+      includeAcceptanceLink: input.kind === "offer",
       includeActivityReportFeedbackLink: input.kind === "invoice",
     });
     closeDocumentMailProjectAttachmentPicker();
@@ -17102,6 +17156,20 @@ export function DashboardPage() {
     if (!authChecked || !isAuthenticated || !activeUserId || !selectedCustomerFileId) return;
     if (customerFileTab !== "logbook") return;
     void loadCustomerLogbookEntries(selectedCustomerFileId);
+  }, [activeUserId, authChecked, customerFileTab, isAuthenticated, selectedCustomerFileId]);
+
+  useEffect(() => {
+    if (!authChecked || !isAuthenticated || !activeUserId) return;
+    if (projectFileTab === "approvals" && selectedProjectFileId) {
+      void loadOfferAcceptances({ projectId: selectedProjectFileId });
+    }
+  }, [activeUserId, authChecked, isAuthenticated, projectFileTab, selectedProjectFileId]);
+
+  useEffect(() => {
+    if (!authChecked || !isAuthenticated || !activeUserId) return;
+    if (customerFileTab === "approvals" && selectedCustomerFileId) {
+      void loadOfferAcceptances({ customerId: selectedCustomerFileId });
+    }
   }, [activeUserId, authChecked, customerFileTab, isAuthenticated, selectedCustomerFileId]);
 
   useEffect(() => {
@@ -37638,6 +37706,96 @@ await addProjectLogbookEntry(
     );
   }
 
+  function renderOfferAcceptanceHistory() {
+    const now = Date.now();
+    const statusMeta: Record<string, { label: string; tone: "neutral" | "info" | "warning" | "success" }> = {
+      prepared: { label: "Vorbereitet", tone: "neutral" },
+      sent: { label: "Versendet", tone: "info" },
+      viewed: { label: "Angesehen", tone: "warning" },
+      started: { label: "Freigabe begonnen", tone: "warning" },
+      accepted: { label: "Angenommen", tone: "success" },
+      revoked: { label: "Ersetzt", tone: "neutral" },
+      expired: { label: "Abgelaufen", tone: "neutral" },
+    };
+    const formatAcceptanceDate = (value?: string) =>
+      value
+        ? new Intl.DateTimeFormat("de-DE", { dateStyle: "short", timeStyle: "short" }).format(new Date(value))
+        : "–";
+    const effectiveStatus = (item: OfferAcceptanceItem) =>
+      item.status !== "accepted" && new Date(item.expiresAt).getTime() < now ? "expired" : item.status;
+    const followUp = (item: OfferAcceptanceItem) => {
+      if (effectiveStatus(item) === "accepted" || ["expired", "revoked"].includes(effectiveStatus(item))) return "";
+      const reference = item.firstViewedAt || item.sentAt;
+      if (!reference) return "";
+      const ageDays = Math.floor((now - new Date(reference).getTime()) / 86_400_000);
+      if (item.firstViewedAt && ageDays >= 2) return `Seit ${ageDays} Tagen angesehen – Nachfassen empfohlen`;
+      if (!item.firstViewedAt && ageDays >= 3) return `Seit ${ageDays} Tagen versendet – noch nicht angesehen`;
+      return "";
+    };
+    const openAcceptanceDocument = (item: OfferAcceptanceItem, type: "offer" | "certificate") => {
+      window.open(buildActorApiUrl(`/api/offer-acceptances/${item.id}/document`, { type }), "_blank", "noopener,noreferrer");
+    };
+
+    return (
+      <div className={styles.offerAcceptanceModule}>
+        <div className={styles.customerFileMainHeader}>
+          <div>
+            <h2>Digitale Angebotsfreigaben</h2>
+            <span>Versand, Aufruf und verbindliche Annahme nachvollziehbar an einem Ort.</span>
+          </div>
+          <strong>{offerAcceptances.length} Vorgang{offerAcceptances.length === 1 ? "" : "e"}</strong>
+        </div>
+        {offerAcceptances.length === 0 ? (
+          <div className={styles.customerDocumentEmpty}>
+            <strong>Noch keine digitale Angebotsfreigabe vorhanden.</strong>
+            <p>Beim nächsten Angebotsversand kann der Annahmelink direkt mitgesendet werden.</p>
+          </div>
+        ) : (
+          <div className={styles.offerAcceptanceList}>
+            {offerAcceptances.map((item) => {
+              const status = effectiveStatus(item);
+              const meta = statusMeta[status] || statusMeta.prepared;
+              const reminder = followUp(item);
+              return (
+                <article key={item.id} className={styles.offerAcceptanceCard}>
+                  <header>
+                    <div>
+                      <strong>{item.offerNumber}</strong>
+                      <span>{item.projectNumber} · {item.projectTitle}</span>
+                    </div>
+                    <span className={styles.offerAcceptanceStatus} data-tone={meta.tone}>{meta.label}</span>
+                  </header>
+                  <div className={styles.offerAcceptanceFacts}>
+                    <div><span>Empfänger</span><strong>{item.recipientEmail}</strong></div>
+                    <div><span>Versendet</span><strong>{formatAcceptanceDate(item.sentAt)}</strong></div>
+                    <div><span>Zuletzt angesehen</span><strong>{formatAcceptanceDate(item.lastViewedAt || item.firstViewedAt)}</strong></div>
+                    <div><span>Aufrufe</span><strong>{item.viewCount || 0}</strong></div>
+                    <div><span>Auftragswert</span><strong>{formatMoney(Number(item.grossTotal) || 0)}</strong></div>
+                  </div>
+                  {status === "accepted" ? (
+                    <div className={styles.offerAcceptanceDecision} data-tone="success">
+                      <strong>Verbindlich angenommen am {formatAcceptanceDate(item.acceptedAt)}</strong>
+                      <span>{item.acceptedByName}{item.acceptedByRole ? ` · ${item.acceptedByRole}` : ""}{item.acceptedByEmail ? ` · ${item.acceptedByEmail}` : ""}</span>
+                      <span>{item.confirmationSentAt ? `Bestätigung per E-Mail versendet am ${formatAcceptanceDate(item.confirmationSentAt)}` : item.confirmationError ? "Annahme gespeichert · Bestätigungs-E-Mail konnte nicht versendet werden" : "Bestätigungs-E-Mail wird verarbeitet"}</span>
+                    </div>
+                  ) : reminder ? (
+                    <div className={styles.offerAcceptanceDecision} data-tone="warning"><strong>{reminder}</strong></div>
+                  ) : null}
+                  <footer>
+                    <button type="button" className={styles.secondaryButton} onClick={() => openAcceptanceDocument(item, "offer")}>Angebot öffnen</button>
+                    {status === "accepted" ? (
+                      <button type="button" className={styles.secondaryButton} onClick={() => openAcceptanceDocument(item, "certificate")}>Freigabeprotokoll</button>
+                    ) : null}
+                  </footer>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   function renderCustomerFile() {
     if (!selectedCustomerFile) return null;
 
@@ -37646,6 +37804,7 @@ await addProjectLogbookEntry(
       { id: "notes", label: "Hinweise", icon: "" },
       { id: "images", label: "Bilder", icon: "" },
       { id: "documents", label: "Dokumente", icon: "" },
+      ...(canAccessOfferApprovals ? [{ id: "approvals" as CustomerFileTab, label: "Freigaben", icon: "" }] : []),
       { id: "contacts", label: "Ansprechpartner", icon: "" },
       { id: "potentials", label: "Zusatzverkäufe", icon: "" },
       { id: "tasks", label: "Aufgaben", icon: "" },
@@ -38473,6 +38632,8 @@ await addProjectLogbookEntry(
                   </div>
                 )}
               </div>
+            ) : customerFileTab === "approvals" ? (
+              renderOfferAcceptanceHistory()
             ) : customerFileTab === "potentials" ? (
               <div className={styles.customerDocumentModule}>
                 <div className={styles.customerFileMainHeader}>
@@ -38956,6 +39117,7 @@ await addProjectLogbookEntry(
       { id: "notes", label: "Hinweise", icon: "" },
       { id: "images", label: "Bilder", icon: "" },
       { id: "documents", label: "Dokumente", icon: "" },
+      ...(canAccessOfferApprovals ? [{ id: "approvals" as ProjectFileTab, label: "Freigaben", icon: "" }] : []),
       { id: "appointments", label: "Termine & Stempelungen", icon: "" },
       ...(isSelectedProjectRecurring
         ? [
@@ -42213,6 +42375,8 @@ await addProjectLogbookEntry(
                   })()
                 )}
               </div>
+            ) : projectFileTab === "approvals" ? (
+              renderOfferAcceptanceHistory()
             ) : projectFileTab === "profit" ? (
               <div className={styles.projectTimeModule}>
                 <div className={styles.customerFileMainHeader}>
@@ -54172,6 +54336,23 @@ await addProjectLogbookEntry(
                   ) : null}
                   <small>Stammdatenstatus für elektronische Rechnungen. Der Versand bleibt unverändert, bis ein Format ausgewählt wird.</small>
                 </section>
+              ) : null}
+              {documentMailDraft.kind === "offer" ? (
+                <label className={`${styles.checkboxField} ${styles.standardFormWide}`}>
+                  <input
+                    type="checkbox"
+                    checked={documentMailDraft.includeAcceptanceLink !== false}
+                    onChange={(event) =>
+                      setDocumentMailDraft((current) =>
+                        current ? { ...current, includeAcceptanceLink: event.target.checked } : current
+                      )
+                    }
+                  />
+                  <span className={styles.attachmentCheckboxText}>
+                    <strong>Digitale Angebotsannahme mitsenden</strong>
+                    <small>Der Kunde erhält einen persönlichen Link zum Prüfen und verbindlichen Annehmen.</small>
+                  </span>
+                </label>
               ) : null}
               {isInvoicePackageTab && isInvoiceMail ? (
                 <section className={`${styles.standardFormWide} ${styles.eInvoiceFormatCard}`}>

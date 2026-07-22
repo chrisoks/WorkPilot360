@@ -1,5 +1,25 @@
 # WorkPilot360 Agent Handover
 
+- Digitale Angebotsannahme 2026-07-22: Beim Angebotsversand kann standardmäßig
+  ein 30 Tage gültiger, kryptografisch zufälliger Annahmelink mitgesendet
+  werden. Die öffentliche Seite zeigt die unveränderlich gespeicherte
+  Angebots-PDF und verlangt Name, Berechtigungsbestätigung sowie die explizite
+  zahlungspflichtige Beauftragung. WorkPilot protokolliert Versand, echten
+  Seitenaufruf, begonnenen Annahmeprozess, Zeitpunkt, Empfänger, Erklärenden,
+  Funktion, IP, Browserkennung und SHA-256 der Angebotsversion. Die Annahme
+  wird transaktional als gewonnenes Angebot gespeichert; parallele oder
+  wiederholte Annahmen können den Vorgang nicht doppelt abschließen. Kunde und
+  Absender erhalten Angebot beziehungsweise erzeugtes Freigabeprotokoll als
+  PDF, wobei ein Fehler der Bestätigungsmail intern sichtbar bleibt. Projekt-
+  und Kundenakte besitzen für berechtigte Rollen den Reiter `Freigaben` mit
+  Statuschronik, Aufrufen, Nachfasshinweis und PDF-Zugriff. Ein neu versendeter
+  Link ersetzt erst nach erfolgreichem E-Mail-Versand ältere offene Links.
+  Prisma-Diff enthielt ausschließlich die additive Freigabetabelle; nach
+  Anlage ist der Diff leer. TypeScript, 183 Tests, Regression, Mojibake,
+  Produktions-Build und echter Browsertest der PDF-/Formularansicht sowie der
+  verzögerten View-Erkennung bestanden. Der temporäre QA-Datensatz wurde
+  anschließend vollständig entfernt.
+
 - Artikel-/Leistungs-Auswertung 2026-07-22: Der Reiter verwendet jetzt fuenf
   klickbare KPI-Karten mit breiten, durchsuchbaren Detailmodals statt der
   dauernd sichtbaren Tabellen. Materialien und Leistungen aus verkauften

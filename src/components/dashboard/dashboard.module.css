@@ -33861,3 +33861,119 @@
     justify-content: flex-start;
   }
 }
+.offerAcceptanceModule {
+  display: grid;
+  gap: 16px;
+}
+
+.offerAcceptanceList {
+  display: grid;
+  gap: 12px;
+}
+
+.offerAcceptanceCard {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid #d7e2e8;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgb(15 43 48 / 5%);
+}
+
+.offerAcceptanceCard > header,
+.offerAcceptanceCard > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.offerAcceptanceCard > header > div {
+  display: grid;
+  gap: 3px;
+}
+
+.offerAcceptanceCard > header strong {
+  color: #092f35;
+  font-size: 17px;
+}
+
+.offerAcceptanceCard > header span:not(.offerAcceptanceStatus) {
+  color: #60747b;
+  font-size: 13px;
+}
+
+.offerAcceptanceStatus {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #eef2f4;
+  color: #53666c;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.offerAcceptanceStatus[data-tone="info"] { background: #e8f2ff; color: #0756a5; }
+.offerAcceptanceStatus[data-tone="warning"] { background: #fff4cf; color: #805800; }
+.offerAcceptanceStatus[data-tone="success"] { background: #dff6eb; color: #08704c; }
+
+.offerAcceptanceFacts {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.4fr) repeat(4, minmax(110px, 1fr));
+  gap: 8px;
+}
+
+.offerAcceptanceFacts > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 11px;
+  background: #f4f8f9;
+}
+
+.offerAcceptanceFacts span {
+  color: #6b7d83;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.offerAcceptanceFacts strong {
+  overflow-wrap: anywhere;
+  color: #173c42;
+  font-size: 13px;
+}
+
+.offerAcceptanceDecision {
+  display: grid;
+  gap: 3px;
+  padding: 11px 13px;
+  border-left: 4px solid #dfb329;
+  border-radius: 10px;
+  background: #fff9e8;
+  color: #694c00;
+}
+
+.offerAcceptanceDecision[data-tone="success"] {
+  border-left-color: #0f9b6c;
+  background: #edfaf5;
+  color: #075c41;
+}
+
+.offerAcceptanceDecision span { font-size: 12px; }
+
+.offerAcceptanceCard > footer {
+  justify-content: flex-end;
+}
+
+@media (max-width: 1100px) {
+  .offerAcceptanceFacts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 700px) {
+  .offerAcceptanceCard > header { align-items: flex-start; }
+  .offerAcceptanceFacts { grid-template-columns: 1fr; }
+  .offerAcceptanceCard > footer { align-items: stretch; flex-direction: column; }
+}
