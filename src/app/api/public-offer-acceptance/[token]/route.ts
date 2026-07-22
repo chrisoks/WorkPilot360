@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/client";
 import { getStoredMailAccount, refreshMicrosoftAccessToken } from "@/lib/mail/microsoft";
+import { getUserMailSignatureHtml } from "@/lib/mail/signature";
 import {
   EARLY_PERFORMANCE_LOSS_ACKNOWLEDGEMENT,
   EARLY_PERFORMANCE_REQUEST,
@@ -108,7 +109,9 @@ async function sendConfirmation(req: Request, row: AcceptanceRow, certificate: s
   const consumerParagraph = row.consumerFlow
     ? `<p>Die Widerrufsbelehrung mit Muster-Widerrufsformular ist ebenfalls beigefügt. Ihre Widerrufsfrist läuft bis ${row.withdrawalDeadline?.toLocaleString("de-DE", { timeZone: "Europe/Berlin" }) ?? "zum gesetzlichen Fristende"}. Während dieser Frist können Sie den Vertrag auch direkt über <a href="${escapeAcceptanceHtml(offerPageUrl)}">Ihre Angebotsseite</a> widerrufen.</p>`
     : "";
-  const content = `<p>Guten Tag ${escapeAcceptanceHtml(row.acceptedByName)},</p><p>vielen Dank für Ihren Auftrag. Das Angebot <strong>${escapeAcceptanceHtml(row.offerNumber)}</strong> wurde am ${acceptedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })} verbindlich angenommen.</p><p>Im Anhang finden Sie das angenommene Angebot und das Freigabeprotokoll.</p>${consumerParagraph}<p>Mit freundlichen Grüßen<br>${escapeAcceptanceHtml(row.senderName)}</p>`;
+  const signatureHtml = await getUserMailSignatureHtml(row.senderUserId);
+  const closingHtml = signatureHtml || `<p>Mit freundlichen Grüßen<br>${escapeAcceptanceHtml(row.senderName)}</p>`;
+  const content = `<p>Guten Tag ${escapeAcceptanceHtml(row.acceptedByName)},</p><p>vielen Dank für Ihren Auftrag. Das Angebot <strong>${escapeAcceptanceHtml(row.offerNumber)}</strong> wurde am ${acceptedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })} verbindlich angenommen.</p><p>Im Anhang finden Sie das angenommene Angebot und das Freigabeprotokoll.</p>${consumerParagraph}${closingHtml}`;
   const attachments = [
     { "@odata.type": "#microsoft.graph.fileAttachment", name: `${row.offerNumber}.pdf`, contentType: "application/pdf", contentBytes: row.offerPdfData },
     { "@odata.type": "#microsoft.graph.fileAttachment", name: `Freigabe-${row.offerNumber}.pdf`, contentType: "application/pdf", contentBytes: certificate },
@@ -131,7 +134,9 @@ async function sendConfirmation(req: Request, row: AcceptanceRow, certificate: s
 async function sendWithdrawalConfirmation(req: Request, row: AcceptanceRow, receipt: string) {
   const account = await refreshMicrosoftAccessToken(row.senderUserId, await getStoredMailAccount(row.senderUserId), req);
   if (account.status !== "connected" || !account.accessToken) throw new Error("Das Microsoft-Postfach des Absenders ist nicht verbunden.");
-  const content = `<p>Guten Tag ${escapeAcceptanceHtml(row.withdrawnByName)},</p><p>der Widerruf zum Angebot <strong>${escapeAcceptanceHtml(row.offerNumber)}</strong> ist am ${(row.withdrawnAt ?? new Date()).toLocaleString("de-DE", { timeZone: "Europe/Berlin" })} bei uns eingegangen.</p><p>Die Bestätigung des Widerrufs finden Sie im Anhang.</p><p>Mit freundlichen Grüßen<br>${escapeAcceptanceHtml(row.senderName)}</p>`;
+  const signatureHtml = await getUserMailSignatureHtml(row.senderUserId);
+  const closingHtml = signatureHtml || `<p>Mit freundlichen Grüßen<br>${escapeAcceptanceHtml(row.senderName)}</p>`;
+  const content = `<p>Guten Tag ${escapeAcceptanceHtml(row.withdrawnByName)},</p><p>der Widerruf zum Angebot <strong>${escapeAcceptanceHtml(row.offerNumber)}</strong> ist am ${(row.withdrawnAt ?? new Date()).toLocaleString("de-DE", { timeZone: "Europe/Berlin" })} bei uns eingegangen.</p><p>Die Bestätigung des Widerrufs finden Sie im Anhang.</p>${closingHtml}`;
   await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
     method: "POST",
     headers: { Authorization: `Bearer ${account.accessToken}`, "Content-Type": "application/json" },

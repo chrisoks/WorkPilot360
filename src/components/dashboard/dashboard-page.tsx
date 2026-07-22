@@ -35,6 +35,7 @@ import {
   ProjectAnalyticsMap,
   type ProjectAnalyticsMapPoint,
 } from "./project-analytics-map";
+import { getOfferAcceptanceFunnel } from "@/lib/offer-acceptance/analytics";
 
 const DOCUMENT_PREVIEW_WIDTH = 595;
 const DOCUMENT_PREVIEW_HEIGHT = 842;
@@ -2178,6 +2179,7 @@ type OfferAcceptanceItem = {
   withdrawalReceiptPdfHash?: string;
   withdrawalConfirmationSentAt?: string;
   withdrawalConfirmationError?: string;
+  createdAt?: string;
 };
 
 type EmployeeDocumentCategory =
@@ -6164,6 +6166,9 @@ export function DashboardPage() {
   const [selectedDocumentMailProjectAttachmentKeys, setSelectedDocumentMailProjectAttachmentKeys] = useState<string[]>([]);
   const [documentMailDispatches, setDocumentMailDispatches] = useState<DocumentMailDispatchItem[]>([]);
   const [offerAcceptances, setOfferAcceptances] = useState<OfferAcceptanceItem[]>([]);
+  const [salesOfferAcceptances, setSalesOfferAcceptances] = useState<OfferAcceptanceItem[]>([]);
+  const [projectOfferAcceptanceCounts, setProjectOfferAcceptanceCounts] = useState<Record<string, number>>({});
+  const [customerOfferAcceptanceCounts, setCustomerOfferAcceptanceCounts] = useState<Record<string, number>>({});
   const [customerFeedback, setCustomerFeedback] = useState<CustomerFeedbackItem[]>([]);
   const [customerFeedbackRequests, setCustomerFeedbackRequests] = useState<CustomerFeedbackRequestItem[]>([]);
   const [mailTemplates, setMailTemplates] =
@@ -6207,7 +6212,7 @@ export function DashboardPage() {
   >(null);
   const [selectedProjectBottleneckKind, setSelectedProjectBottleneckKind] = useState<"oneTime" | "recurring">("oneTime");
   const [selectedSalesAnalyticsDetail, setSelectedSalesAnalyticsDetail] = useState<
-    "actions" | "offers" | "newCustomers" | "closing" | "recurring" | "risk" | null
+    "actions" | "offers" | "newCustomers" | "closing" | "approvals" | "recurring" | "risk" | null
   >(null);
   const [selectedSvsAnalyticsDetail, setSelectedSvsAnalyticsDetail] = useState<
     "average" | "coverage" | "evaluable" | "missing" | "hours" | null
@@ -8222,7 +8227,25 @@ export function DashboardPage() {
       setOfferAcceptances([]);
       return;
     }
-    setOfferAcceptances((await res.json()) as OfferAcceptanceItem[]);
+    const data = (await res.json()) as OfferAcceptanceItem[];
+    setOfferAcceptances(data);
+    if (filters.projectId) {
+      setProjectOfferAcceptanceCounts((current) => ({ ...current, [filters.projectId as string]: data.length }));
+    }
+    if (filters.customerId) {
+      setCustomerOfferAcceptanceCounts((current) => ({ ...current, [filters.customerId as string]: data.length }));
+    }
+  }
+
+  async function loadSalesOfferAcceptances() {
+    if (!activeUserId) return;
+    const params = new URLSearchParams({ actorId: activeUserId });
+    const res = await fetch(`/api/offer-acceptances?${params.toString()}`, { cache: "no-store" });
+    if (!res.ok) {
+      setSalesOfferAcceptances([]);
+      return;
+    }
+    setSalesOfferAcceptances((await res.json()) as OfferAcceptanceItem[]);
   }
 
   async function loadWinterServiceAutomationSettings() {
@@ -17183,17 +17206,34 @@ export function DashboardPage() {
 
   useEffect(() => {
     if (!authChecked || !isAuthenticated || !activeUserId) return;
-    if (projectFileTab === "approvals" && selectedProjectFileId) {
+    if (canAccessOfferApprovals && selectedProjectFileId) {
       void loadOfferAcceptances({ projectId: selectedProjectFileId });
     }
-  }, [activeUserId, authChecked, isAuthenticated, projectFileTab, selectedProjectFileId]);
+  }, [activeUserId, authChecked, canAccessOfferApprovals, isAuthenticated, selectedProjectFileId]);
 
   useEffect(() => {
     if (!authChecked || !isAuthenticated || !activeUserId) return;
-    if (customerFileTab === "approvals" && selectedCustomerFileId) {
+    if (canAccessOfferApprovals && selectedCustomerFileId) {
       void loadOfferAcceptances({ customerId: selectedCustomerFileId });
     }
-  }, [activeUserId, authChecked, customerFileTab, isAuthenticated, selectedCustomerFileId]);
+  }, [activeUserId, authChecked, canAccessOfferApprovals, isAuthenticated, selectedCustomerFileId]);
+
+  useEffect(() => {
+    if (!authChecked || !isAuthenticated || !activeUserId || !canAccessOfferApprovals) return;
+    if (reportAnalyticsTab !== "sales") return;
+    const refresh = () => {
+      if (document.visibilityState === "visible") void loadSalesOfferAcceptances();
+    };
+    refresh();
+    const intervalId = window.setInterval(refresh, 15_000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [activeUserId, authChecked, canAccessOfferApprovals, isAuthenticated, reportAnalyticsTab]);
 
   useEffect(() => {
     if (!authChecked || !isAuthenticated || !activeUserId) return;
@@ -27351,6 +27391,18 @@ await addProjectLogbookEntry(
       ].some((value) => normalizeStampSearchValue(String(value ?? "")).includes(reportSearchValue));
     })
     .sort((first, second) => parseAppDateTime(second.offer.createdAt).getTime() - parseAppDateTime(first.offer.createdAt).getTime());
+  const salesOfferRowsById = new Map(salesAllOfferRows.map((row) => [row.offer.id, row]));
+  const salesAcceptanceFunnel = getOfferAcceptanceFunnel(
+    salesOfferAcceptances.filter((item) => salesOfferRowsById.has(item.offerId)),
+    { isInPeriod: isReportDate, now: reportNow }
+  );
+  const salesViewedOpenAcceptanceRows = salesAcceptanceFunnel.viewedOpen.filter(
+    (item) => salesOfferRowsById.get(item.offerId)?.statusGroup === "open"
+  );
+  const getAcceptanceFollowUpDays = (item: OfferAcceptanceItem) => {
+    if (!item.firstViewedAt) return 0;
+    return Math.max(0, Math.floor((reportNow.getTime() - new Date(item.firstViewedAt).getTime()) / 86_400_000));
+  };
   const salesOfferRows = salesAllOfferRows.filter((row) => isSalesOfferInReportPeriod(row.offer, row.linkedInvoices));
   const salesActionOfferRows = salesAllOfferRows.filter(
     (row) => row.statusGroup === "open" || isSalesOfferInReportPeriod(row.offer, row.linkedInvoices)
@@ -27940,6 +27992,36 @@ await addProjectLogbookEntry(
       detail: "Erste Angebote im aktuellen Auswertungsmonat; neue Kundenakten werden separat ausgewiesen.",
     },
     {
+      key: "opening-rate",
+      detailKey: "approvals" as const,
+      icon: (
+        <>
+          <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+          <circle cx="12" cy="12" r="2.5" />
+        </>
+      ),
+      tone: salesAcceptanceFunnel.sent.length === 0 ? "watch" : salesAcceptanceFunnel.openingRate < 60 ? "urgent" : "good",
+      label: "Öffnungsquote",
+      value: salesAcceptanceFunnel.sent.length > 0 ? formatPercent(salesAcceptanceFunnel.openingRate) : "-",
+      trend: `${salesAcceptanceFunnel.viewed.length} von ${salesAcceptanceFunnel.sent.length}`,
+      detail: `${salesViewedOpenAcceptanceRows.length} angesehen, aber noch ohne verbindliche Freigabe.`,
+    },
+    {
+      key: "acceptance-rate",
+      detailKey: "approvals" as const,
+      icon: (
+        <>
+          <path d="M5 12.5 10 17l9-10" />
+          <path d="M4 4h16v16H4z" />
+        </>
+      ),
+      tone: salesAcceptanceFunnel.sent.length === 0 ? "watch" : salesAcceptanceFunnel.acceptanceRate < 35 ? "urgent" : "good",
+      label: "Annahmequote",
+      value: salesAcceptanceFunnel.sent.length > 0 ? formatPercent(salesAcceptanceFunnel.acceptanceRate) : "-",
+      trend: `${salesAcceptanceFunnel.accepted.length} von ${salesAcceptanceFunnel.sent.length}`,
+      detail: "Aktuell verbindlich angenommene digitale Angebote aus dem Versandzeitraum.",
+    },
+    {
       key: "closing",
       detailKey: "closing" as const,
       icon: (
@@ -28003,6 +28085,8 @@ await addProjectLogbookEntry(
         ? "Erstangebote und neue Kundenakten"
         : selectedSalesAnalyticsDetail === "closing"
           ? "Abschlusskraft im Detail"
+          : selectedSalesAnalyticsDetail === "approvals"
+            ? "Digitale Angebotsfreigaben im Detail"
           : selectedSalesAnalyticsDetail === "recurring"
             ? "Dauerläufer-Ausbau im Detail"
             : selectedSalesAnalyticsDetail === "risk"
@@ -28016,12 +28100,14 @@ await addProjectLogbookEntry(
         ? salesCurrentMonthFirstCustomerOfferRows.length + salesNewCustomerContacts.length
         : selectedSalesAnalyticsDetail === "closing"
           ? salesDecisionCount
+          : selectedSalesAnalyticsDetail === "approvals"
+            ? salesViewedOpenAcceptanceRows.length
           : selectedSalesAnalyticsDetail === "recurring"
             ? recurringNegotiationRows.length
             : selectedSalesAnalyticsDetail === "risk"
               ? salesStockRiskCount
               : 0;
-  const selectedSalesAnalyticsInterpretation = selectedSalesAnalyticsDetail === "actions"
+  const selectedSalesAnalyticsBaseInterpretation = selectedSalesAnalyticsDetail === "actions"
     ? "Die Liste bündelt fällige Zusatzverkaufs-Nachfassungen, überalterte oder nicht nachgefasste Angebote, offene unterbrochene Arbeiten und dringende Dauerläufer-Prüfungen. Offene To-dos bleiben bewusst auch außerhalb des gewählten Berichtszeitraums sichtbar."
     : selectedSalesAnalyticsDetail === "offers"
       ? "Der Angebotsmotor zählt im Monatsvergleich neu erstellte Angebote. Die Detailtabelle zeigt Angebote mit Aktivität im gewählten Zeitraum; der Verlauf trennt gewonnenes Angebotsvolumen nach Entscheidungsmonat vom neu erstellten Angebotsvolumen."
@@ -28034,6 +28120,9 @@ await addProjectLogbookEntry(
             : selectedSalesAnalyticsDetail === "risk"
               ? "Bestandsrisiken sind offene Angebote ab 14 Tagen, Angebote ohne aktive Nachfassaufgabe und unterbrochene Projektarbeiten ohne erledigte Klärung. Die operative Sicht ist nicht auf den Berichtszeitraum beschränkt, damit alte offene Vorgänge nicht verschwinden."
               : "";
+  const selectedSalesAnalyticsInterpretation = selectedSalesAnalyticsDetail === "approvals"
+    ? "Öffnungs- und Annahmequote verwenden je Angebot ausschließlich den neuesten digitalen Freigabevorgang, der im gewählten Zeitraum versendet wurde. Mehrere Aufrufe zählen nur einmal. Widerrufene Annahmen gelten nicht als aktuell angenommen. Die Liste zeigt angesehene, weiterhin offene Angebote als konkretes Nachfasspotenzial."
+    : selectedSalesAnalyticsBaseInterpretation;
   const isProjectInReportKindFilter = (project?: HeroProjectPreview | null) => {
     if (!project) return reportProjectKindFilter === "all";
     if (reportProjectKindFilter === "recurring") return isRecurringProjectKindValue(getProjectKind(project));
@@ -31254,6 +31343,56 @@ await addProjectLogbookEntry(
       </table>
     </div>
   );
+  const formatSalesAcceptanceDate = (value?: string) =>
+    value
+      ? new Intl.DateTimeFormat("de-DE", { dateStyle: "short", timeStyle: "short" }).format(new Date(value))
+      : "–";
+  const renderSalesAcceptanceTable = () => (
+    <div className={styles.salesAnalyticsTableScroll}>
+      <table className={styles.analyticsTable}>
+        <thead><tr>
+          <th>Angebot</th><th>Kunde / Projekt</th><th>Versendet</th><th>Zuletzt angesehen</th>
+          <th>Aufrufe</th><th>Seit Ansicht</th><th>Wert</th><th>Aktionen</th>
+        </tr></thead>
+        <tbody>
+          {salesViewedOpenAcceptanceRows.length === 0 ? (
+            <tr><td colSpan={8}>Keine angesehenen Angebote ohne Entscheidung.</td></tr>
+          ) : salesViewedOpenAcceptanceRows.map((item) => {
+            const offerRow = salesOfferRowsById.get(item.offerId);
+            const project = offerRow?.project ?? heroProjects.find((entry) => entry.id === item.projectId) ?? null;
+            const contact = contacts.find((entry) => entry.id === item.customerId) ?? null;
+            const followUpDays = getAcceptanceFollowUpDays(item);
+            return (
+              <tr key={`sales-acceptance-${item.id}`}>
+                <td>{item.offerNumber}</td>
+                <td>{offerRow?.offer.customerName || project?.customer || "-"}<br /><small>{project?.projectNumber || item.projectNumber || "-"}</small></td>
+                <td>{formatSalesAcceptanceDate(item.sentAt)}</td>
+                <td>{formatSalesAcceptanceDate(item.lastViewedAt || item.firstViewedAt)}</td>
+                <td>{item.viewCount || 0}</td>
+                <td data-state={followUpDays >= 2 ? "ok" : "neutral"}>{followUpDays === 0 ? "Heute" : `${followUpDays} Tg.`}</td>
+                <td>{formatMoney(Number(item.grossTotal) || 0)}</td>
+                <td><div className={styles.tableActionGroup}>
+                  {offerRow ? <button type="button" className={styles.secondaryButton} onClick={() => {
+                    setSelectedSalesAnalyticsDetail(null);
+                    openEditOfferModal(offerRow.offer);
+                  }}>Angebot</button> : null}
+                  {project ? <button type="button" className={styles.secondaryButton} onClick={() => {
+                    setSelectedSalesAnalyticsDetail(null);
+                    openProjectFile(project, { tab: "approvals" });
+                  }}>Projekt</button> : null}
+                  {contact ? <button type="button" className={styles.secondaryButton} onClick={() => {
+                    setSelectedSalesAnalyticsDetail(null);
+                    setActiveTab("contacts");
+                    openCustomerFile(contact);
+                  }}>Kunde</button> : null}
+                </div></td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
   const renderSalesRecurringTable = (rows = recurringNegotiationRows) => (
     <div className={styles.salesAnalyticsTableScroll}>
       <table className={styles.analyticsTable}>
@@ -32605,6 +32744,30 @@ await addProjectLogbookEntry(
                             ))}</tbody>
                           </table>
                         </div>
+                      </section>
+                    </div>
+                  ) : selectedSalesAnalyticsDetail === "approvals" ? (
+                    <div className={styles.salesAnalyticsDetail}>
+                      <div className={styles.salesAnalyticsSummaryGrid}>
+                        <article>
+                          <span>Öffnungsquote</span>
+                          <strong>{salesAcceptanceFunnel.sent.length > 0 ? formatPercent(salesAcceptanceFunnel.openingRate) : "-"}</strong>
+                          <small>{salesAcceptanceFunnel.viewed.length} von {salesAcceptanceFunnel.sent.length} versendeten Angeboten</small>
+                        </article>
+                        <article>
+                          <span>Annahmequote</span>
+                          <strong>{salesAcceptanceFunnel.sent.length > 0 ? formatPercent(salesAcceptanceFunnel.acceptanceRate) : "-"}</strong>
+                          <small>{salesAcceptanceFunnel.accepted.length} verbindlich angenommen</small>
+                        </article>
+                        <article>
+                          <span>Angesehen – noch offen</span>
+                          <strong>{salesViewedOpenAcceptanceRows.length}</strong>
+                          <small>konkrete Nachfassmöglichkeiten</small>
+                        </article>
+                      </div>
+                      <section className={styles.salesAnalyticsBlock}>
+                        <h3>Angesehene Angebote ohne Freigabe</h3>
+                        {renderSalesAcceptanceTable()}
                       </section>
                     </div>
                   ) : selectedSalesAnalyticsDetail === "recurring" ? (
@@ -38035,6 +38198,7 @@ await addProjectLogbookEntry(
     const getCustomerMenuCount = (id: CustomerFileTab) => {
       if (id === "images") return customerImageCount;
       if (id === "documents") return customerDocumentTotalCount;
+      if (id === "approvals") return customerOfferAcceptanceCounts[selectedCustomerFile.id] || 0;
       if (id === "contacts") return customerFileContacts.length;
       if (id === "potentials") return customerPotentials.length;
       if (id === "tasks") return customerTasks.length;
@@ -41666,6 +41830,9 @@ await addProjectLogbookEntry(
                   {renderProjectMenuLabel(item)}
                   {item.id === "images" && projectImageCount > 0 && (
                     <strong className={styles.projectNavCount}>{projectImageCount}</strong>
+                  )}
+                  {item.id === "approvals" && (projectOfferAcceptanceCounts[selectedProjectFile.id] || 0) > 0 && (
+                    <strong className={styles.projectNavCount}>{projectOfferAcceptanceCounts[selectedProjectFile.id]}</strong>
                   )}
                 </button>
               )

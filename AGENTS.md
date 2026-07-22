@@ -1,5 +1,22 @@
 # WorkPilot360 Agent Handover
 
+- Persoenliche Signatur in Freigabemails 2026-07-22: Automatische
+  Bestaetigungen einer Angebotsannahme und eines Widerrufs verwenden jetzt die
+  im Absenderprofil hinterlegte, nicht ausgeblendete E-Mail-Signatur. HTML-
+  Signaturen werden wie beim regulaeren Dokumentversand von ausfuehrbaren
+  Inhalten bereinigt; ohne nutzbare Signatur bleibt die bisherige schlanke
+  Grusszeile als Rueckfall erhalten.
+
+- Angebotsfreigaben in Sales-Performance 2026-07-22: Projekt- und
+  Kundenakten zeigen am Reiter `Freigaben` einen Vorgangszaehler, ohne dass
+  der Reiter zuvor geoeffnet werden muss. Sales-Performance wertet je Angebot
+  nur den neuesten Freigabevorgang im gewaehlten Versandzeitraum aus und zeigt
+  Oeffnungs- sowie Annahmequote. Die gemeinsame Detailansicht erklaert die
+  Bezugsbasis und listet angesehene, noch offene Angebote mit Versand,
+  letztem Aufruf, Aufrufzahl, Nachfassalter, Wert und direkten Spruengen zu
+  Angebot, Projekt und Kunde. Die Daten aktualisieren sich im Sales-Reiter
+  alle 15 Sekunden sowie bei Fokus beziehungsweise Rueckkehr in den Browser.
+
 - Verbraucher-Widerruf und Live-Freigaben 2026-07-22: Digitale
   Angebotsannahmen erkennen Privatkunden ueber den strukturierten Kontakt-Typ
   beziehungsweise die Kategorie `Privatkunde`. Nur fuer diese Empfaenger wird
