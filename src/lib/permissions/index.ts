@@ -89,6 +89,10 @@ export function canViewInternalCostData(user: RoleCarrier): boolean {
   return user.role === Role.ADMIN || user.role === Role.GESCHAEFTSFUEHRER;
 }
 
+export function canViewCustomerRevenueAnalytics(user: RoleCarrier): boolean {
+  return user.role !== Role.GAST;
+}
+
 export function canAccessEmployeeCosts(user: RoleCarrier): boolean {
   return canViewInternalCostData(user);
 }

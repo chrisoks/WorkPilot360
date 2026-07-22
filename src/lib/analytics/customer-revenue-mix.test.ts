@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  calculateAdditionalSalesRevenueMix,
   calculateCustomerRevenueMix,
   isFinanciallyActiveRevenueInvoice,
   type RevenueInvoiceInput,
@@ -64,6 +65,47 @@ describe("customer revenue mix", () => {
     expect(result.existingCustomers.revenue).toBe(600);
     expect(result.newCustomers.revenue).toBe(0);
     expect(result.earliestObservedRevenueAt).toBe("2024-09-12T00:00:00.000Z");
+  });
+
+  it("applies manual customer status decisions without guessing missing contacts", () => {
+    const result = calculateCustomerRevenueMix({
+      invoices: [
+        invoice("existing", "project-existing", 600, "2026-07-05"),
+        invoice("new", "project-new", 300, "2026-07-06"),
+        invoice("prospect", "project-prospect", 200, "2026-07-07"),
+        invoice("missing-contact", "project-missing", 100, "2026-07-08"),
+      ],
+      projects: [
+        { id: "project-existing", contactId: "customer-existing" },
+        { id: "project-new", contactId: "customer-new" },
+        { id: "project-prospect", contactId: "customer-prospect" },
+        { id: "project-missing", contactId: "customer-missing" },
+      ],
+      contacts: [
+        { id: "customer-existing", customerStatusOverride: "existing" },
+        { id: "customer-new", customerStatusOverride: "new" },
+        { id: "customer-prospect", customerStatusOverride: "prospect" },
+      ],
+      period: { from: "2026-01-01", to: "2026-12-31" },
+    });
+
+    expect(result.existingCustomers.revenue).toBe(600);
+    expect(result.newCustomers.revenue).toBe(300);
+    expect(result.unassigned.revenue).toBe(300);
+    expect(result.classificationCoveragePercent).toBe(75);
+  });
+
+  it("does not use a credit as first positive customer revenue evidence", () => {
+    const result = calculateCustomerRevenueMix({
+      invoices: [invoice("credit", "project", -100, "2025-12-01", "Gutschrift")],
+      projects: [{ id: "project", contactId: "customer" }],
+      contacts: [{ id: "customer", customerStatusOverride: "automatic" }],
+      period: { from: "2025-01-01", to: "2025-12-31" },
+    });
+
+    expect(result.newCustomers.revenue).toBe(0);
+    expect(result.existingCustomers.revenue).toBe(0);
+    expect(result.unassigned.revenue).toBe(-100);
   });
 
   it("keeps invoices without a stable customer relation in a visible unassigned bucket", () => {
@@ -170,5 +212,50 @@ describe("customer revenue mix", () => {
       projects: [],
       period: { from: "2026-12-31", to: "2026-01-01" },
     })).toThrowError("Der Auswertungszeitraum ist ungültig.");
+  });
+});
+
+describe("additional sales revenue mix", () => {
+  it("requires the complete potential-task-offer-invoice chain for proven revenue", () => {
+    const result = calculateAdditionalSalesRevenueMix({
+      invoices: [
+        { ...invoice("proven", "project-a", 500, "2026-07-01"), sourceOfferId: "offer-a" },
+        { ...invoice("wrong-project", "project-b", 300, "2026-07-02"), sourceOfferId: "offer-a" },
+        { ...invoice("source-only", "project-c", 200, "2026-07-03"), sourceOfferNumber: "AN-2" },
+        invoice("without-source", "project-d", 100, "2026-07-04"),
+      ],
+      offers: [
+        { id: "offer-a", offerNumber: "AN-1" },
+        { id: "offer-b", offerNumber: "AN-2" },
+      ],
+      potentials: [{ projectId: "project-a", taskId: "task-a" }],
+      taskLinks: [{ taskId: "task-a", url: "offer:offer-a" }],
+      period: { from: "2026-01-01", to: "2026-12-31" },
+    });
+
+    expect(result.provenRevenue).toBe(500);
+    expect(result.provenInvoiceCount).toBe(1);
+    expect(result.attributedRevenue).toBe(1_000);
+    expect(result.attributedInvoiceCount).toBe(3);
+    expect(result.unassignedRevenue).toBe(100);
+    expect(result.invoiceSourceCoveragePercent).toBe(90.9);
+    expect(result.proofCoveragePercent).toBe(50);
+  });
+
+  it("uses absolute invoice amounts for source and proof coverage", () => {
+    const result = calculateAdditionalSalesRevenueMix({
+      invoices: [
+        { ...invoice("sale", "project", 100, "2026-07-01"), sourceOfferId: "offer" },
+        { ...invoice("credit", "project", -20, "2026-07-02", "Gutschrift"), sourceOfferId: "offer" },
+        invoice("unassigned", "project", 30, "2026-07-03"),
+      ],
+      offers: [{ id: "offer", offerNumber: "AN-1" }],
+      potentials: [{ projectId: "project", taskId: "task" }],
+      taskLinks: [{ taskId: "task", url: "offer:offer" }],
+      period: { from: "2026-01-01", to: "2026-12-31" },
+    });
+
+    expect(result.invoiceSourceCoveragePercent).toBe(80);
+    expect(result.proofCoveragePercent).toBe(100);
   });
 });

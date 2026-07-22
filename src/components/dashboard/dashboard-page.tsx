@@ -24,6 +24,7 @@ import {
   type ChecklistTemplateDefinition,
   type ChecklistTemplateStatus,
 } from "@/lib/checklists/templates";
+import type { CustomerRevenueAnalyticsResponse } from "@/lib/analytics/customer-revenue-mix";
 
 const DOCUMENT_PREVIEW_WIDTH = 595;
 const DOCUMENT_PREVIEW_HEIGHT = 842;
@@ -6022,6 +6023,9 @@ export function DashboardPage() {
   }, [activeTab]);
   const [firmSettingsTab, setFirmSettingsTab] = useState<FirmSettingsTab>("profile");
   const [reportAnalyticsTab, setReportAnalyticsTab] = useState<ReportAnalyticsTab>("forecast");
+  const [customerRevenueAnalytics, setCustomerRevenueAnalytics] =
+    useState<CustomerRevenueAnalyticsResponse | null>(null);
+  const [customerRevenueAnalyticsError, setCustomerRevenueAnalyticsError] = useState("");
   const [selectedForecastPeriod, setSelectedForecastPeriod] = useState("total");
   const [reportPeriodPreset, setReportPeriodPreset] = useState<ReportPeriodPreset>("last12");
   const [isForecastQualityExpanded, setIsForecastQualityExpanded] = useState(false);
@@ -25545,11 +25549,82 @@ await addProjectLogbookEntry(
   const reportEndDate = reportPeriodRange.end;
   const reportPeriodLabel = `${formatDateOnly(formatDateKey(reportStartDate))} - ${formatDateOnly(formatDateKey(reportEndDate))}`;
   const previousReportPeriodRange = (() => {
+    if (reportPeriodPreset === "currentMonth") {
+      return {
+        start: new Date(reportNow.getFullYear(), reportNow.getMonth() - 1, 1, 0, 0, 0),
+        end: new Date(reportNow.getFullYear(), reportNow.getMonth(), 0, 23, 59, 59),
+      };
+    }
+    if (reportPeriodPreset === "previousMonth") {
+      return {
+        start: new Date(reportNow.getFullYear(), reportNow.getMonth() - 2, 1, 0, 0, 0),
+        end: new Date(reportNow.getFullYear(), reportNow.getMonth() - 1, 0, 23, 59, 59),
+      };
+    }
+    if (reportPeriodPreset === "currentYear" || reportPeriodPreset === "previousYear") {
+      const year = reportPeriodPreset === "currentYear" ? reportNow.getFullYear() - 1 : reportNow.getFullYear() - 2;
+      return {
+        start: new Date(year, 0, 1, 0, 0, 0),
+        end: new Date(year, 11, 31, 23, 59, 59),
+      };
+    }
+    if (reportPeriodPreset === "currentFiscalYear" || reportPeriodPreset === "previousFiscalYear") {
+      const currentFiscalYear = reportNow.getMonth() >= 5 ? reportNow.getFullYear() : reportNow.getFullYear() - 1;
+      const year = currentFiscalYear - (reportPeriodPreset === "currentFiscalYear" ? 1 : 2);
+      return {
+        start: new Date(year, 5, 1, 0, 0, 0),
+        end: new Date(year + 1, 5, 0, 23, 59, 59),
+      };
+    }
+    if (reportPeriodPreset === "last12" || reportPeriodPreset === "next12") {
+      return {
+        start: new Date(reportStartDate.getFullYear() - 1, reportStartDate.getMonth(), 1, 0, 0, 0),
+        end: new Date(reportEndDate.getFullYear() - 1, reportEndDate.getMonth() + 1, 0, 23, 59, 59),
+      };
+    }
     const durationMs = Math.max(0, reportEndDate.getTime() - reportStartDate.getTime());
     const end = new Date(reportStartDate.getTime() - 1000);
     const start = new Date(end.getTime() - durationMs);
     return { start, end };
   })();
+  const customerRevenueAnalyticsPeriodKey = [
+    formatDateKey(reportStartDate),
+    formatDateKey(reportEndDate),
+    formatDateKey(previousReportPeriodRange.start),
+    formatDateKey(previousReportPeriodRange.end),
+  ].join("|");
+  useEffect(() => {
+    if (!authChecked || !isAuthenticated || !activeUserId) return;
+    if (activeTab !== "reports") return;
+    if (!visibleReportTabs.some((tab) => tab.id === "customers" || tab.id === "employeeRevenue")) return;
+
+    const [from, to, previousFrom, previousTo] = customerRevenueAnalyticsPeriodKey.split("|");
+    const controller = new AbortController();
+    const params = new URLSearchParams({ actorId: activeUserId, from, to, previousFrom, previousTo });
+    setCustomerRevenueAnalyticsError("");
+    setCustomerRevenueAnalytics((current) =>
+      current?.period.from === from && current.period.to === to ? current : null
+    );
+
+    void fetch(`/api/analytics/customer-revenue-mix?${params.toString()}`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(data?.error ?? "Kundenumsatz-Kennzahlen konnten nicht geladen werden.");
+        setCustomerRevenueAnalytics(data as CustomerRevenueAnalyticsResponse);
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setCustomerRevenueAnalytics(null);
+        setCustomerRevenueAnalyticsError(
+          error instanceof Error ? error.message : "Kundenumsatz-Kennzahlen konnten nicht geladen werden."
+        );
+      });
+
+    return () => controller.abort();
+  }, [activeTab, activeUserId, authChecked, customerRevenueAnalyticsPeriodKey, isAuthenticated, reportAnalyticsTab, visibleReportTabs]);
   const employeeKpiDetailPeriodRange = getReportPeriodRange(
     employeeKpiDetailPeriodPreset,
     employeeKpiDetailCustomStartDate,
@@ -27924,128 +27999,91 @@ await addProjectLogbookEntry(
       {}
     )
   ).sort((first, second) => second.revenue - first.revenue);
-  const activeRevenueInvoices = invoices.filter(isReportRevenueInvoice);
-  const projectById = new Map(heroProjects.map((project) => [project.id, project]));
-  const contactById = new Map(contacts.map((contact) => [contact.id, contact]));
-  const firstRevenueAtByContactId = activeRevenueInvoices.reduce<Map<string, number>>((firstRevenueAt, invoice) => {
-    const contactId = projectById.get(invoice.projectId)?.contactId?.trim() ?? "";
-    const invoiceDate = parseAppDateTime(invoice.serviceDate || invoice.createdAt);
-    const invoiceTime = invoiceDate.getTime();
-    if (!contactId || !Number.isFinite(invoiceTime)) return firstRevenueAt;
-    const currentFirstRevenueAt = firstRevenueAt.get(contactId);
-    if (currentFirstRevenueAt === undefined || invoiceTime < currentFirstRevenueAt) {
-      firstRevenueAt.set(contactId, invoiceTime);
-    }
-    return firstRevenueAt;
-  }, new Map<string, number>());
-  const buildCustomerRevenueMix = (periodInvoices: typeof reportInvoices, periodStart: Date) =>
-    periodInvoices.reduce(
-      (mix, invoice) => {
-      const revenue = Number.isFinite(invoice.netTotal) ? invoice.netTotal : 0;
-      const contactId = projectById.get(invoice.projectId)?.contactId?.trim() ?? "";
-      const contact = contactId ? contactById.get(contactId) : undefined;
-      const firstRevenueAt = contactId ? firstRevenueAtByContactId.get(contactId) : undefined;
-
-      if (!contact || firstRevenueAt === undefined || contact.customerStatusOverride === "prospect") {
-        mix.unassignedRevenue += revenue;
-        mix.unassignedInvoiceCount += 1;
-        return mix;
-      }
-
-      const isExistingCustomer =
-        contact.customerStatusOverride === "existing" ||
-        (contact.customerStatusOverride === "automatic" && firstRevenueAt < periodStart.getTime());
-      if (isExistingCustomer) {
-        mix.existingRevenue += revenue;
-        mix.existingInvoiceCount += 1;
-      } else {
-        mix.newRevenue += revenue;
-        mix.newInvoiceCount += 1;
-      }
-      return mix;
-    },
-    {
-      newRevenue: 0,
-      existingRevenue: 0,
-      unassignedRevenue: 0,
-      newInvoiceCount: 0,
-      existingInvoiceCount: 0,
-      unassignedInvoiceCount: 0,
-      }
-    );
-  const customerRevenueMix = buildCustomerRevenueMix(reportInvoices, reportStartDate);
-  const previousCustomerRevenueMix = buildCustomerRevenueMix(previousReportInvoices, previousReportPeriodRange.start);
+  const customerRevenueMix = {
+    newRevenue: customerRevenueAnalytics?.current.customerRevenue.newCustomers.revenue ?? 0,
+    existingRevenue: customerRevenueAnalytics?.current.customerRevenue.existingCustomers.revenue ?? 0,
+    unassignedRevenue: customerRevenueAnalytics?.current.customerRevenue.unassigned.revenue ?? 0,
+    newInvoiceCount: customerRevenueAnalytics?.current.customerRevenue.newCustomers.invoiceCount ?? 0,
+    existingInvoiceCount: customerRevenueAnalytics?.current.customerRevenue.existingCustomers.invoiceCount ?? 0,
+    unassignedInvoiceCount: customerRevenueAnalytics?.current.customerRevenue.unassigned.invoiceCount ?? 0,
+  };
   const revenueMixTotal =
     customerRevenueMix.newRevenue + customerRevenueMix.existingRevenue + customerRevenueMix.unassignedRevenue;
-  const previousRevenueMixTotal =
-    previousCustomerRevenueMix.newRevenue +
-    previousCustomerRevenueMix.existingRevenue +
-    previousCustomerRevenueMix.unassignedRevenue;
-  const attributedCustomerRevenue = customerRevenueMix.newRevenue + customerRevenueMix.existingRevenue;
-  const customerRevenueCoverage = getPercent(
-    Math.abs(attributedCustomerRevenue),
-    Math.abs(attributedCustomerRevenue) + Math.abs(customerRevenueMix.unassignedRevenue)
-  );
-  const potentialOfferIds = new Set(
-    projectPotentials
-      .map((potential) => (potential.taskId ? tasks.find((task) => task.id === potential.taskId) : undefined))
-      .flatMap((task) => (task?.links ?? []).map((link) => link.url))
-      .filter((url) => url.startsWith("offer:"))
-      .map((url) => url.replace(/^offer:/, "").trim())
-      .filter(Boolean)
-  );
-  const offerIdByNumber = new Map(offers.map((offer) => [offer.offerNumber, offer.id]));
-  const buildAdditionalSalesRevenue = (periodInvoices: typeof reportInvoices) =>
-    periodInvoices.reduce(
-      (summary, invoice) => {
-      const revenue = Number.isFinite(invoice.netTotal) ? invoice.netTotal : 0;
-      const sourceOfferId = invoice.sourceOfferId || offerIdByNumber.get(invoice.sourceOfferNumber) || "";
-      if (!sourceOfferId) {
-        summary.unassignedRevenue += revenue;
-        summary.unassignedInvoiceCount += 1;
-      } else {
-        summary.attributedRevenue += revenue;
-        summary.attributedInvoiceCount += 1;
-        if (potentialOfferIds.has(sourceOfferId)) {
-          summary.provenRevenue += revenue;
-          summary.provenInvoiceCount += 1;
-        }
-      }
-      return summary;
-    },
-    {
-      provenRevenue: 0,
-      attributedRevenue: 0,
-      unassignedRevenue: 0,
-      provenInvoiceCount: 0,
-      attributedInvoiceCount: 0,
-      unassignedInvoiceCount: 0,
-      }
-    );
-  const additionalSalesRevenue = buildAdditionalSalesRevenue(reportInvoices);
-  const previousAdditionalSalesRevenue = buildAdditionalSalesRevenue(previousReportInvoices);
-  const additionalSalesSourceCoverage = getPercent(
-    Math.abs(additionalSalesRevenue.attributedRevenue),
-    Math.abs(additionalSalesRevenue.attributedRevenue) + Math.abs(additionalSalesRevenue.unassignedRevenue)
-  );
+  const customerRevenueTotalInvoiceCount = customerRevenueAnalytics?.current.customerRevenue.totalInvoiceCount ?? 0;
+  const customerRevenueCoverage = customerRevenueAnalytics?.current.customerRevenue.classificationCoveragePercent ?? 0;
+  const customerRevenueQualityState: "good" | "ok" | "low" | "neutral" = customerRevenueAnalyticsError
+    ? "low"
+    : !customerRevenueAnalytics
+      ? "neutral"
+      : customerRevenueTotalInvoiceCount === 0
+        ? "neutral"
+      : customerRevenueCoverage >= 90
+        ? "good"
+        : customerRevenueCoverage >= 70
+          ? "ok"
+          : "low";
+  const customerRevenueQualityLabel = customerRevenueAnalyticsError
+    ? "Datenfehler"
+    : !customerRevenueAnalytics
+      ? "Wird geladen"
+      : customerRevenueTotalInvoiceCount === 0
+        ? "Keine Umsatzbasis"
+      : customerRevenueCoverage >= 90
+        ? "Datenbasis gut"
+        : "Datenbasis prüfen";
+  const additionalSalesRevenue = customerRevenueAnalytics?.current.additionalSales ?? {
+    provenRevenue: 0,
+    provenInvoiceCount: 0,
+    attributedRevenue: 0,
+    attributedInvoiceCount: 0,
+    unassignedRevenue: 0,
+    unassignedInvoiceCount: 0,
+    invoiceSourceCoveragePercent: null,
+    proofCoveragePercent: null,
+    excludedInvoiceCount: 0,
+    invalidDateInvoiceCount: 0,
+  };
+  const additionalSalesSourceCoverage = additionalSalesRevenue.proofCoveragePercent ?? 0;
+  const additionalSalesQualityState: "good" | "ok" | "low" | "neutral" = !customerRevenueAnalytics
+    ? "neutral"
+    : additionalSalesRevenue.attributedInvoiceCount === 0
+      ? "neutral"
+      : additionalSalesSourceCoverage >= 90
+        ? "good"
+        : additionalSalesSourceCoverage >= 70
+          ? "ok"
+          : "low";
+  const additionalSalesQualityLabel = !customerRevenueAnalytics
+    ? "Wird geladen"
+    : additionalSalesRevenue.attributedInvoiceCount === 0
+      ? "Kein Nachweis"
+      : additionalSalesSourceCoverage >= 90
+        ? "Nachweis gut"
+        : "Nachweis prüfen";
   const newCustomerRevenueShare = getPercent(customerRevenueMix.newRevenue, revenueMixTotal);
-  const previousNewCustomerRevenueShare = getPercent(
-    previousCustomerRevenueMix.newRevenue,
-    previousRevenueMixTotal
-  );
   const existingCustomerRevenueShare = getPercent(customerRevenueMix.existingRevenue, revenueMixTotal);
-  const previousExistingCustomerRevenueShare = getPercent(
-    previousCustomerRevenueMix.existingRevenue,
-    previousRevenueMixTotal
-  );
   const unassignedCustomerRevenueShare = getPercent(customerRevenueMix.unassignedRevenue, revenueMixTotal);
-  const previousUnassignedCustomerRevenueShare = getPercent(
-    previousCustomerRevenueMix.unassignedRevenue,
+  const additionalSalesRevenueShare = getPercent(additionalSalesRevenue.provenRevenue, revenueMixTotal);
+  const previousCustomerRevenueMix = customerRevenueAnalytics?.previous.customerRevenue;
+  const previousRevenueMixTotal = previousCustomerRevenueMix
+    ? previousCustomerRevenueMix.newCustomers.revenue +
+      previousCustomerRevenueMix.existingCustomers.revenue +
+      previousCustomerRevenueMix.unassigned.revenue
+    : 0;
+  const previousNewCustomerRevenueShare = getPercent(
+    previousCustomerRevenueMix?.newCustomers.revenue ?? 0,
     previousRevenueMixTotal
   );
-  const additionalSalesRevenueShare = getPercent(additionalSalesRevenue.provenRevenue, revenueMixTotal);
+  const previousExistingCustomerRevenueShare = getPercent(
+    previousCustomerRevenueMix?.existingCustomers.revenue ?? 0,
+    previousRevenueMixTotal
+  );
+  const previousUnassignedCustomerRevenueShare = getPercent(
+    previousCustomerRevenueMix?.unassigned.revenue ?? 0,
+    previousRevenueMixTotal
+  );
   const previousAdditionalSalesRevenueShare = getPercent(
-    previousAdditionalSalesRevenue.provenRevenue,
+    customerRevenueAnalytics?.previous.additionalSales.provenRevenue ?? 0,
     previousRevenueMixTotal
   );
   const customerRows = Object.values(
@@ -29107,7 +29145,7 @@ await addProjectLogbookEntry(
     return improved ? "up" : "down";
   };
   const getDashboardTrendLabel = (current: number, previous: number) => {
-    if (previous === 0) return current === 0 ? "0 %" : "Neu";
+    if (previous === 0) return current === 0 ? "0 %" : "—";
     const change = ((current - previous) / Math.abs(previous)) * 100;
     const rounded = Math.round(change);
     if (rounded > 999) return ">999 %";
@@ -29120,8 +29158,8 @@ await addProjectLogbookEntry(
       maximumFractionDigits: Number.isInteger(roundedDifference) ? 0 : 1,
       minimumFractionDigits: Number.isInteger(roundedDifference) ? 0 : 1,
     });
-    if (roundedDifference === 0) return "0 %-Pkt.";
-    return `${roundedDifference > 0 ? "+" : "−"}${formattedDifference} %-Pkt.`;
+    if (roundedDifference === 0) return "0 %";
+    return `${roundedDifference > 0 ? "+" : "−"}${formattedDifference} %`;
   };
   const dashboardPreviousWorkingDateKey = (() => {
     const cursor = new Date();
@@ -30114,9 +30152,11 @@ await addProjectLogbookEntry(
     state: "good" | "ok" | "low" | "neutral" = "neutral",
     trendIcon: DashboardTrendIconType = "none",
     trendLabel?: string,
-    neutralTrend = false
+    neutralTrend = false,
+    statusLabelOverride?: string
   ) => {
-    const statusLabel = state === "good" ? "stabil" : state === "ok" ? "prüfen" : state === "low" ? "kritisch" : "Info";
+    const statusLabel =
+      statusLabelOverride ?? (state === "good" ? "stabil" : state === "ok" ? "prüfen" : state === "low" ? "kritisch" : "Info");
     const metricIcon = getReportMetricIcon(label);
     return (
       <article className={styles.analyticsMetric} data-state={state}>
@@ -32203,43 +32243,53 @@ await addProjectLogbookEntry(
               "Neukundenumsatz",
               formatPercent(newCustomerRevenueShare),
               `${formatMoney(customerRevenueMix.newRevenue)} · ${customerRevenueMix.newInvoiceCount} ${customerRevenueMix.newInvoiceCount === 1 ? "Rechnung" : "Rechnungen"}`,
-              customerRevenueCoverage >= 90 ? "good" : customerRevenueCoverage >= 70 ? "ok" : "neutral",
+              customerRevenueQualityState,
               getDashboardTrendIcon(newCustomerRevenueShare, previousNewCustomerRevenueShare),
-              getPercentagePointTrendLabel(newCustomerRevenueShare, previousNewCustomerRevenueShare)
+              getPercentagePointTrendLabel(newCustomerRevenueShare, previousNewCustomerRevenueShare),
+              true,
+              customerRevenueQualityLabel
             )}
             {renderReportMetric(
               "Bestandskundenumsatz",
               formatPercent(existingCustomerRevenueShare),
               `${formatMoney(customerRevenueMix.existingRevenue)} · ${customerRevenueMix.existingInvoiceCount} ${customerRevenueMix.existingInvoiceCount === 1 ? "Rechnung" : "Rechnungen"}`,
-              customerRevenueCoverage >= 90 ? "good" : customerRevenueCoverage >= 70 ? "ok" : "neutral",
+              customerRevenueQualityState,
               getDashboardTrendIcon(existingCustomerRevenueShare, previousExistingCustomerRevenueShare),
               getPercentagePointTrendLabel(existingCustomerRevenueShare, previousExistingCustomerRevenueShare),
-              true
+              true,
+              customerRevenueQualityLabel
             )}
             {renderReportMetric(
               "Nicht zuordenbar",
               formatPercent(unassignedCustomerRevenueShare),
               `Kunden-Zuordnungsquote ${formatPercent(customerRevenueCoverage)}`,
-              customerRevenueMix.unassignedInvoiceCount > 0 ? "ok" : "good",
+              customerRevenueQualityState,
               getDashboardTrendIcon(unassignedCustomerRevenueShare, previousUnassignedCustomerRevenueShare, true),
-              getPercentagePointTrendLabel(unassignedCustomerRevenueShare, previousUnassignedCustomerRevenueShare)
+              getPercentagePointTrendLabel(unassignedCustomerRevenueShare, previousUnassignedCustomerRevenueShare),
+              true,
+              customerRevenueQualityLabel
             )}
             {renderReportMetric(
               "Nachweisbarer Zusatzverkauf",
               formatPercent(additionalSalesRevenueShare),
-              `${formatMoney(additionalSalesRevenue.provenRevenue)} · Quellenabdeckung ${formatPercent(additionalSalesSourceCoverage)}`,
-              additionalSalesSourceCoverage >= 90 ? "good" : additionalSalesSourceCoverage >= 70 ? "ok" : "neutral",
+              `${formatMoney(additionalSalesRevenue.provenRevenue)} · Nachweisabdeckung ${formatPercent(additionalSalesSourceCoverage)}`,
+              additionalSalesQualityState,
               getDashboardTrendIcon(additionalSalesRevenueShare, previousAdditionalSalesRevenueShare),
-              getPercentagePointTrendLabel(additionalSalesRevenueShare, previousAdditionalSalesRevenueShare)
+              getPercentagePointTrendLabel(additionalSalesRevenueShare, previousAdditionalSalesRevenueShare),
+              true,
+              additionalSalesQualityLabel
             )}
           </section>
 
           <p className={styles.analyticsMethodNote}>
-            Neukundenumsatz umfasst Umsatz von Kunden, deren erste aktive WorkPilot-Rechnung im gewählten Zeitraum liegt.
-            Frühere aktive Rechnungen oder eine manuelle Einstufung als Bestandskunde führen zum Bestandskundenumsatz.
-            Zusatzverkaufsumsatz wird nur gezählt, wenn die Rechnung über Angebot und Aufgabe eindeutig mit einer
-            Vertriebschance verknüpft ist. Eine Wachstumsnote wird erst nach ausreichender Zuordnungsquote und festgelegten
-            Zielwerten der Geschäftsführung angezeigt.
+            Neukundenumsatz umfasst Umsatz von Kunden, deren erste positive aktive WorkPilot-Rechnung im gewählten Zeitraum liegt.
+            Frühere positive aktive Rechnungen oder eine manuelle Einstufung als Bestandskunde führen zum Bestandskundenumsatz.
+            Zusatzverkaufsumsatz wird nur gezählt, wenn Potenzial, Aufgabe, Angebot und Rechnung projektgleich verknüpft sind.
+            Die Karten bewerten bewusst nur die Datenqualität, nicht die Umsatzentwicklung. Vergleichszeitraum: {formatDateOnly(formatDateKey(previousReportPeriodRange.start))} bis {formatDateOnly(formatDateKey(previousReportPeriodRange.end))}.
+            {customerRevenueAnalytics?.dataQuality.legacyInvoiceCount
+              ? ` ${customerRevenueAnalytics.dataQuality.legacyInvoiceCount} importierte Altrechnungen sind mangels stabiler Kundenverknüpfung noch nicht enthalten.`
+              : ""}
+            {customerRevenueAnalyticsError ? ` Fehler: ${customerRevenueAnalyticsError}` : ""}
           </p>
 
           <section className={styles.analyticsTwoColumn}>
@@ -32340,43 +32390,53 @@ await addProjectLogbookEntry(
               "Neukundenumsatz",
               formatPercent(getPercent(customerRevenueMix.newRevenue, revenueMixTotal)),
               `${formatMoney(customerRevenueMix.newRevenue)} · ${customerRevenueMix.newInvoiceCount} ${customerRevenueMix.newInvoiceCount === 1 ? "Rechnung" : "Rechnungen"}`,
-              customerRevenueCoverage >= 90 ? "good" : customerRevenueCoverage >= 70 ? "ok" : "neutral",
+              customerRevenueQualityState,
               getDashboardTrendIcon(newCustomerRevenueShare, previousNewCustomerRevenueShare),
-              getPercentagePointTrendLabel(newCustomerRevenueShare, previousNewCustomerRevenueShare)
+              getPercentagePointTrendLabel(newCustomerRevenueShare, previousNewCustomerRevenueShare),
+              true,
+              customerRevenueQualityLabel
             )}
             {renderReportMetric(
               "Bestandskundenumsatz",
               formatPercent(getPercent(customerRevenueMix.existingRevenue, revenueMixTotal)),
               `${formatMoney(customerRevenueMix.existingRevenue)} · ${customerRevenueMix.existingInvoiceCount} ${customerRevenueMix.existingInvoiceCount === 1 ? "Rechnung" : "Rechnungen"}`,
-              customerRevenueCoverage >= 90 ? "good" : customerRevenueCoverage >= 70 ? "ok" : "neutral",
+              customerRevenueQualityState,
               getDashboardTrendIcon(existingCustomerRevenueShare, previousExistingCustomerRevenueShare),
               getPercentagePointTrendLabel(existingCustomerRevenueShare, previousExistingCustomerRevenueShare),
-              true
+              true,
+              customerRevenueQualityLabel
             )}
             {renderReportMetric(
               "Nicht zuordenbar",
               formatPercent(getPercent(customerRevenueMix.unassignedRevenue, revenueMixTotal)),
               `Kunden-Zuordnungsquote ${formatPercent(customerRevenueCoverage)}`,
-              customerRevenueMix.unassignedInvoiceCount > 0 ? "ok" : "good",
+              customerRevenueQualityState,
               getDashboardTrendIcon(unassignedCustomerRevenueShare, previousUnassignedCustomerRevenueShare, true),
-              getPercentagePointTrendLabel(unassignedCustomerRevenueShare, previousUnassignedCustomerRevenueShare)
+              getPercentagePointTrendLabel(unassignedCustomerRevenueShare, previousUnassignedCustomerRevenueShare),
+              true,
+              customerRevenueQualityLabel
             )}
             {renderReportMetric(
               "Nachweisbarer Zusatzverkauf",
               formatPercent(getPercent(additionalSalesRevenue.provenRevenue, revenueMixTotal)),
-              `${formatMoney(additionalSalesRevenue.provenRevenue)} · Quellenabdeckung ${formatPercent(additionalSalesSourceCoverage)}`,
-              additionalSalesSourceCoverage >= 90 ? "good" : additionalSalesSourceCoverage >= 70 ? "ok" : "neutral",
+              `${formatMoney(additionalSalesRevenue.provenRevenue)} · Nachweisabdeckung ${formatPercent(additionalSalesSourceCoverage)}`,
+              additionalSalesQualityState,
               getDashboardTrendIcon(additionalSalesRevenueShare, previousAdditionalSalesRevenueShare),
-              getPercentagePointTrendLabel(additionalSalesRevenueShare, previousAdditionalSalesRevenueShare)
+              getPercentagePointTrendLabel(additionalSalesRevenueShare, previousAdditionalSalesRevenueShare),
+              true,
+              additionalSalesQualityLabel
             )}
           </section>
 
           <p className={styles.analyticsMethodNote}>
-            Neukundenumsatz umfasst Umsatz von Kunden, deren erste aktive WorkPilot-Rechnung im gewählten Zeitraum liegt.
-            Frühere aktive Rechnungen oder eine manuelle Einstufung als Bestandskunde führen zum Bestandskundenumsatz.
-            Zusatzverkaufsumsatz wird nur gezählt, wenn die Rechnung über Angebot und Aufgabe eindeutig mit einer
-            Vertriebschance verknüpft ist. Eine Wachstumsnote wird erst nach ausreichender Zuordnungsquote und festgelegten
-            Zielwerten der Geschäftsführung angezeigt.
+            Neukundenumsatz umfasst Umsatz von Kunden, deren erste positive aktive WorkPilot-Rechnung im gewählten Zeitraum liegt.
+            Frühere positive aktive Rechnungen oder eine manuelle Einstufung als Bestandskunde führen zum Bestandskundenumsatz.
+            Zusatzverkaufsumsatz wird nur gezählt, wenn Potenzial, Aufgabe, Angebot und Rechnung projektgleich verknüpft sind.
+            Die Karten bewerten bewusst nur die Datenqualität, nicht die Umsatzentwicklung. Vergleichszeitraum: {formatDateOnly(formatDateKey(previousReportPeriodRange.start))} bis {formatDateOnly(formatDateKey(previousReportPeriodRange.end))}.
+            {customerRevenueAnalytics?.dataQuality.legacyInvoiceCount
+              ? ` ${customerRevenueAnalytics.dataQuality.legacyInvoiceCount} importierte Altrechnungen sind mangels stabiler Kundenverknüpfung noch nicht enthalten.`
+              : ""}
+            {customerRevenueAnalyticsError ? ` Fehler: ${customerRevenueAnalyticsError}` : ""}
           </p>
 
           <section className={styles.analyticsGrid}>

@@ -5,6 +5,7 @@ import {
   canEditTask,
   canManageProcessAutomation,
   canReadTask,
+  canViewCustomerRevenueAnalytics,
   canViewInternalCostData,
   hasMinimumRole,
 } from '@/lib/permissions';
@@ -54,6 +55,16 @@ describe('permissions', () => {
     expect(canViewInternalCostData(management)).toBe(true);
     expect(canViewInternalCostData(employee)).toBe(false);
     expect(canAccessEmployeeCosts(employee)).toBe(false);
+  });
+
+  it('allows safe customer revenue aggregates without exposing them to guests', () => {
+    expect(canViewCustomerRevenueAnalytics({ role: Role.ADMIN })).toBe(true);
+    expect(canViewCustomerRevenueAnalytics({ role: Role.GESCHAEFTSFUEHRER })).toBe(true);
+    expect(canViewCustomerRevenueAnalytics({ role: Role.FUEHRUNGSKRAFT })).toBe(true);
+    expect(canViewCustomerRevenueAnalytics({ role: Role.MITARBEITER })).toBe(true);
+    expect(canViewCustomerRevenueAnalytics({ role: Role.VERTRIEB })).toBe(true);
+    expect(canViewCustomerRevenueAnalytics({ role: Role.BUCHHALTUNG })).toBe(true);
+    expect(canViewCustomerRevenueAnalytics({ role: Role.GAST })).toBe(false);
   });
 
   it('limits process automation to operational leadership', () => {
