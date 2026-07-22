@@ -114,4 +114,42 @@ describe("OKS Phone customer context endpoint", () => {
     }));
     expect(JSON.stringify(payload)).not.toMatch(/coaching|audio|recording/i);
   });
+
+  it("removes the imported company duplicate and returns people only as contacts", async () => {
+    const phone = "+496281557912";
+    const company = {
+      ...contact("company-1", phone),
+      companyName: "Familienheim",
+      firstName: "Eva",
+      lastName: "Hilbert",
+    };
+    const person = {
+      ...contact("person-1", phone),
+      type: "person",
+      companyName: null,
+      firstName: "Eva",
+      lastName: "Hilbert",
+      parentCompanyId: company.id,
+      parentCompanyName: company.companyName,
+    };
+    prismaMock.contact.findFirst.mockResolvedValue(company);
+    prismaMock.contact.findMany.mockImplementation(async (args) => {
+      if (args.where.OR.some((entry: Record<string, unknown>) => "phoneNormalized" in entry)) {
+        return [company, person];
+      }
+      return [company, person];
+    });
+
+    const response = await GET(new Request(
+      "http://localhost/api/integrations/oks-phone/customer-context?phone=06281%20557912"
+    ));
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({ matchCount: 1, multipleMatches: false });
+    expect(payload.candidates[0].matchedContact).toMatchObject({ id: person.id, phone });
+    expect(payload.candidates[0].customer).toMatchObject({ id: company.id, phone: null, phoneNormalized: null });
+    expect(payload.candidates[0].contacts).toEqual([
+      expect.objectContaining({ id: person.id, phone }),
+    ]);
+  });
 });

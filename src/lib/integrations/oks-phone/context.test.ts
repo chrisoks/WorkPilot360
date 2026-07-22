@@ -6,6 +6,7 @@ import {
   buildProjectDirectLinks,
   getMatchedPhoneFields,
   isActiveContextNote,
+  preferLinkedPersonPhoneMatches,
 } from "./context";
 
 describe("OKS Phone customer context helpers", () => {
@@ -37,5 +38,35 @@ describe("OKS Phone customer context helpers", () => {
   it("reports every exact normalized field without merging contacts", () => {
     expect(getMatchedPhoneFields({ phoneNormalized: "+49170", mobileNormalized: "+49170", faxNormalized: null }, "+49170"))
       .toEqual(["phoneNormalized", "mobileNormalized"]);
+  });
+
+  it("prefers a linked person over the legacy company duplicate", () => {
+    const phone = "+496281557912";
+    const company = {
+      id: "company-1",
+      type: "company",
+      parentCompanyId: null,
+      phoneNormalized: phone,
+      mobileNormalized: null,
+      faxNormalized: null,
+    };
+    const person = {
+      id: "person-1",
+      type: "person",
+      parentCompanyId: company.id,
+      phoneNormalized: phone,
+      mobileNormalized: null,
+      faxNormalized: null,
+    };
+
+    expect(preferLinkedPersonPhoneMatches([company, person], phone)).toEqual([person]);
+  });
+
+  it("keeps several people sharing a real central number ambiguous", () => {
+    const phone = "+49628112345";
+    const first = { id: "p1", type: "person", parentCompanyId: "c1", phoneNormalized: phone, mobileNormalized: null, faxNormalized: null };
+    const second = { id: "p2", type: "person", parentCompanyId: "c1", phoneNormalized: phone, mobileNormalized: null, faxNormalized: null };
+
+    expect(preferLinkedPersonPhoneMatches([first, second], phone)).toEqual([first, second]);
   });
 });

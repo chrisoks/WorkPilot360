@@ -12332,6 +12332,8 @@ export function DashboardPage() {
 
     setContactDraft(draft);
     setEditingContactId(contact.id);
+    setProjectContactTarget("");
+    setErrorMessage("");
     setContactFormTab("details");
     setIsContactModalOpen(true);
   }
@@ -38025,33 +38027,60 @@ await addProjectLogbookEntry(
                   {customerFileContacts.length === 0 ? (
                     <p>Für diese Firma sind noch keine Ansprechpartner verknüpft.</p>
                   ) : (
-                    customerFileContacts.map((contact) => (
-                      <article key={contact.id} className={styles.customerContactRow}>
-                        <div>
-                          <button
-                            type="button"
-                            className={styles.tableTextLink}
-                            onClick={() => openEditContactModal(contact)}
-                          >
-                            {getContactDisplayName(contact)}
-                          </button>
-                          {contact.position && <span>({contact.position})</span>}
-                          {contact.isMainContact && <strong>Hauptkontakt</strong>}
-                          {contact.isInvoiceRecipient && <strong>Rechnungsempfänger</strong>}
-                          <small>
-                            {[contact.phone && `} ${contact.phone}`, contact.email && `S0 ${contact.email}`]
-                              .filter(Boolean)
-                              .join("   ")}
-                          </small>
-                        </div>
-                        <div className={styles.customerProjects}>
-                          <b>Projekte</b>
-                          <a>#100 Renovierungsarbeiten GEL</a>
-                          <a>#103 Grünflächen- und Gartenpflege GEL</a>
-                          <a>#126 Arbeitssicherheit KRN</a>
-                        </div>
-                      </article>
-                    ))
+                    customerFileContacts.map((contact) => {
+                      const directlyAssignedProjects = customerProjects.filter(
+                        (project) => project.contactPersonId === contact.id
+                      );
+                      return (
+                        <article key={contact.id} className={styles.customerContactRow}>
+                          <div className={styles.customerContactDetails}>
+                            <div className={styles.customerContactHeading}>
+                              <div>
+                                <button
+                                  type="button"
+                                  className={styles.tableTextLink}
+                                  onClick={() => openEditContactModal(contact)}
+                                >
+                                  {getContactDisplayName(contact)}
+                                </button>
+                                {contact.position && <span>({contact.position})</span>}
+                              </div>
+                              <button
+                                type="button"
+                                className={styles.secondaryButton}
+                                onClick={() => openEditContactModal(contact)}
+                              >
+                                Bearbeiten
+                              </button>
+                            </div>
+                            <div className={styles.customerContactBadges}>
+                              {contact.isMainContact && <strong>Hauptkontakt</strong>}
+                              {contact.isInvoiceRecipient && <strong>Rechnungsempfänger</strong>}
+                            </div>
+                            <dl className={styles.customerContactMeta}>
+                              <div><dt>Telefon</dt><dd>{contact.phone || "-"}</dd></div>
+                              <div><dt>Mobil</dt><dd>{contact.mobile || "-"}</dd></div>
+                              <div><dt>E-Mail</dt><dd>{contact.email || "-"}</dd></div>
+                            </dl>
+                          </div>
+                          <div className={styles.customerProjects}>
+                            <b>Direkt zugeordnete Projekte</b>
+                            {directlyAssignedProjects.length === 0 ? (
+                              <span>Keine direkte Projektzuordnung</span>
+                            ) : (
+                              directlyAssignedProjects.slice(0, 5).map((project) => (
+                                <button key={project.id} type="button" onClick={() => openProjectFile(project)}>
+                                  {project.projectNumber} · {project.title}
+                                </button>
+                              ))
+                            )}
+                            {directlyAssignedProjects.length > 5 ? (
+                              <small>+ {directlyAssignedProjects.length - 5} weitere Projekte</small>
+                            ) : null}
+                          </div>
+                        </article>
+                      );
+                    })
                   )}
                 </div>
               </>
@@ -38660,7 +38689,7 @@ await addProjectLogbookEntry(
                 </dd>
                 <dt>Kundennummer</dt>
                 <dd>{selectedCustomerFile.customerNumber || "-"}</dd>
-                <dt>Telefon</dt>
+                <dt>{selectedCustomerFile.phone ? "Telefon Firma" : mainContact?.phone ? "Telefon Hauptkontakt" : "Telefon"}</dt>
                 <dd>{selectedCustomerFile.phone || mainContact?.phone || "-"}</dd>
                 <dt>Fax</dt>
                 <dd>{selectedCustomerFile.fax || "-"}</dd>
@@ -61803,6 +61832,8 @@ await addProjectLogbookEntry(
                     <option>Website</option>
                     <option>Empfehlung</option>
                     <option>HERO Import</option>
+                    <option value="CSV Import">CSV Import (Altsystem)</option>
+                    <option value="XLSX Import">XLSX Import (Altsystem)</option>
                   </select>
                 </label>
                 <label>

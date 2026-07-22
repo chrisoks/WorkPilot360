@@ -14,6 +14,7 @@ import {
   buildProjectDirectLinks,
   getMatchedPhoneFields,
   isActiveContextNote,
+  preferLinkedPersonPhoneMatches,
 } from "@/lib/integrations/oks-phone/context";
 import { isOpenOksPhoneProject } from "@/lib/integrations/oks-phone/project-logbook";
 
@@ -45,7 +46,12 @@ const contactSelect = {
   updatedAt: true,
 } as const;
 
-function contactDto(contact: Awaited<ReturnType<typeof findContactById>>) {
+type SuppressedContactPhoneField = "phone" | "mobile" | "fax";
+
+function contactDto(
+  contact: Awaited<ReturnType<typeof findContactById>>,
+  suppressedPhoneFields: SuppressedContactPhoneField[] = []
+) {
   if (!contact) return null;
   return {
     id: contact.id,
@@ -57,12 +63,12 @@ function contactDto(contact: Awaited<ReturnType<typeof findContactById>>) {
     lastName: contact.lastName,
     position: contact.position,
     email: contact.email,
-    phone: contact.phone,
-    phoneNormalized: contact.phoneNormalized,
-    mobile: contact.mobile,
-    mobileNormalized: contact.mobileNormalized,
-    fax: contact.fax,
-    faxNormalized: contact.faxNormalized,
+    phone: suppressedPhoneFields.includes("phone") ? null : contact.phone,
+    phoneNormalized: suppressedPhoneFields.includes("phone") ? null : contact.phoneNormalized,
+    mobile: suppressedPhoneFields.includes("mobile") ? null : contact.mobile,
+    mobileNormalized: suppressedPhoneFields.includes("mobile") ? null : contact.mobileNormalized,
+    fax: suppressedPhoneFields.includes("fax") ? null : contact.fax,
+    faxNormalized: suppressedPhoneFields.includes("fax") ? null : contact.faxNormalized,
     address: {
       street: contact.street,
       postalCode: contact.postalCode,
@@ -95,6 +101,21 @@ async function buildCandidate(organizationId: string, matchedContact: NonNullabl
     select: contactSelect,
     orderBy: [{ isMainContact: "desc" }, { lastName: "asc" }, { firstName: "asc" }],
   });
+  const relatedPeople = relatedContacts.filter(
+    (contact) => contact.type === "person" && contact.parentCompanyId === customer.id
+  );
+  const suppressedCustomerPhoneFields = ([
+    ["phone", "phoneNormalized"],
+    ["mobile", "mobileNormalized"],
+    ["fax", "faxNormalized"],
+  ] as const)
+    .filter(([, normalizedField]) => {
+      const normalizedValue = customer[normalizedField];
+      return Boolean(
+        normalizedValue && relatedPeople.some((person) => person[normalizedField] === normalizedValue)
+      );
+    })
+    .map(([rawField]) => rawField);
   const projects = (await prisma.workPilotProject.findMany({
     where: {
       organizationId,
@@ -210,9 +231,9 @@ async function buildCandidate(organizationId: string, matchedContact: NonNullabl
       quality: phone ? "exact-e164" : "contact-id",
       matchedFields: phone ? getMatchedPhoneFields(matchedContact, phone) : [],
     },
-    customer: contactDto(customer),
+    customer: contactDto(customer, suppressedCustomerPhoneFields),
     matchedContact: contactDto(matchedContact),
-    contacts: relatedContacts.map(contactDto),
+    contacts: relatedPeople.map((contact) => contactDto(contact)),
     activeCustomerNotes: activeNotes.filter((note) => note.scope === "customer"),
     activeProjectNotes: activeNotes.filter((note) => note.scope === "project"),
     projects: projects.map((project) => ({ ...project, directLinks: buildProjectDirectLinks(project) })),
@@ -269,6 +290,7 @@ export async function GET(request: Request) {
         select: contactSelect,
         orderBy: { updatedAt: "desc" },
       });
+      matchedContacts = preferLinkedPersonPhoneMatches(matchedContacts, normalizedPhone);
     } else {
       const contact = await findContactById(actor.organizationId, contactId);
       if (contact) matchedContacts = [contact];

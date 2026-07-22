@@ -12899,19 +12899,68 @@
   padding: 10px 4px;
 }
 
-.customerContactRow > div:first-child {
-  align-content: flex-start;
+.customerContactDetails {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.customerContactHeading {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.customerContactHeading > div {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
+.customerContactHeading .secondaryButton {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 6px 11px;
+}
+
+.customerContactBadges {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
 }
 
-.customerContactRow small {
-  color: #334155;
-  flex-basis: 100%;
+.customerContactMeta {
+  display: grid;
+  gap: 5px 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.customerContactMeta div {
+  min-width: 0;
+}
+
+.customerContactMeta div:last-child {
+  grid-column: 1 / -1;
+}
+
+.customerContactMeta dt {
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.customerContactMeta dd {
+  color: #1e293b;
   font-size: 0.84rem;
-  font-weight: 650;
-  white-space: pre-wrap;
+  font-weight: 700;
+  margin: 1px 0 0;
+  overflow-wrap: anywhere;
 }
 
 .customerContactRow strong {
@@ -12933,9 +12982,26 @@
   font-size: 0.86rem;
 }
 
-.customerProjects a {
+.customerProjects button {
+  background: transparent;
+  border: 0;
   color: #005fff;
+  cursor: pointer;
+  font-family: inherit;
   font-size: 0.86rem;
+  font-weight: 650;
+  padding: 0;
+  text-align: left;
+}
+
+.customerProjects button:hover {
+  text-decoration: underline;
+}
+
+.customerProjects span,
+.customerProjects small {
+  color: #64748b;
+  font-size: 0.8rem;
   font-weight: 650;
 }
 
@@ -30516,6 +30582,10 @@
 
   .customerContactRow {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .customerContactHeading {
+    align-items: flex-start;
   }
 
   .customerImageProject > header {

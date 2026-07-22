@@ -64,3 +64,41 @@ export function getMatchedPhoneFields(contact: {
     (field) => contact[field] === phone
   );
 }
+
+type OksPhoneMatchedContact = {
+  id: string;
+  type: string;
+  parentCompanyId: string | null;
+  phoneNormalized: string | null;
+  mobileNormalized: string | null;
+  faxNormalized: string | null;
+};
+
+/**
+ * Legacy imports may have stored a main contact's direct number both on the
+ * company and on the linked person. In that exact parent/child situation the
+ * person is the more specific match. Shared numbers between several people
+ * remain visible as genuinely ambiguous matches.
+ */
+export function preferLinkedPersonPhoneMatches<T extends OksPhoneMatchedContact>(contacts: T[], phone: string) {
+  const linkedCompanyIds = new Set(
+    contacts
+      .filter(
+        (contact) =>
+          contact.type === "person" &&
+          Boolean(contact.parentCompanyId) &&
+          getMatchedPhoneFields(contact, phone).length > 0
+      )
+      .map((contact) => contact.parentCompanyId as string)
+  );
+
+  if (linkedCompanyIds.size === 0) return contacts;
+  return contacts.filter(
+    (contact) =>
+      !(
+        contact.type === "company" &&
+        linkedCompanyIds.has(contact.id) &&
+        getMatchedPhoneFields(contact, phone).length > 0
+      )
+  );
+}
