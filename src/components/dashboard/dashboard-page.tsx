@@ -2167,6 +2167,17 @@ type OfferAcceptanceItem = {
   acceptedByEmail?: string;
   confirmationSentAt?: string;
   confirmationError?: string;
+  consumerFlow: boolean;
+  withdrawalNoticePdfHash?: string;
+  withdrawalNoticeAcknowledgedAt?: string;
+  earlyPerformanceRequested: boolean;
+  withdrawalDeadline?: string;
+  withdrawnAt?: string;
+  withdrawnByName?: string;
+  withdrawnByEmail?: string;
+  withdrawalReceiptPdfHash?: string;
+  withdrawalConfirmationSentAt?: string;
+  withdrawalConfirmationError?: string;
 };
 
 type EmployeeDocumentCategory =
@@ -14880,6 +14891,18 @@ export function DashboardPage() {
       setIsNotificationsOpen(false);
     }
 
+    if (notification.linkTarget === "offer-acceptance" && notification.linkTargetId) {
+      const notificationProject = heroProjects.find((project) => project.id === notification.linkTargetId);
+      if (notificationProject) {
+        openProjectFile(notificationProject, { tab: "approvals" });
+      } else {
+        setSelectedProjectFileId(notification.linkTargetId);
+        setProjectFileTab("approvals");
+        setActiveTab("projectsSolutions");
+      }
+      setIsNotificationsOpen(false);
+    }
+
     if (notification.linkTarget === "project-endphase" && notification.linkTargetId) {
       const notificationProject = heroProjects.find((project) => project.id === notification.linkTargetId);
       if (notificationProject) {
@@ -17171,6 +17194,35 @@ export function DashboardPage() {
       void loadOfferAcceptances({ customerId: selectedCustomerFileId });
     }
   }, [activeUserId, authChecked, customerFileTab, isAuthenticated, selectedCustomerFileId]);
+
+  useEffect(() => {
+    if (!authChecked || !isAuthenticated || !activeUserId) return;
+    const filters = projectFileTab === "approvals" && selectedProjectFileId
+      ? { projectId: selectedProjectFileId }
+      : customerFileTab === "approvals" && selectedCustomerFileId
+        ? { customerId: selectedCustomerFileId }
+        : null;
+    if (!filters) return;
+    const refresh = () => {
+      if (document.visibilityState === "visible") void loadOfferAcceptances(filters);
+    };
+    const intervalId = window.setInterval(refresh, 5000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [
+    activeUserId,
+    authChecked,
+    customerFileTab,
+    isAuthenticated,
+    projectFileTab,
+    selectedCustomerFileId,
+    selectedProjectFileId,
+  ]);
 
   useEffect(() => {
     if (!authChecked || !isAuthenticated || !activeUserId) return;
@@ -37714,6 +37766,7 @@ await addProjectLogbookEntry(
       viewed: { label: "Angesehen", tone: "warning" },
       started: { label: "Freigabe begonnen", tone: "warning" },
       accepted: { label: "Angenommen", tone: "success" },
+      withdrawn: { label: "Widerrufen", tone: "warning" },
       revoked: { label: "Ersetzt", tone: "neutral" },
       expired: { label: "Abgelaufen", tone: "neutral" },
     };
@@ -37722,9 +37775,9 @@ await addProjectLogbookEntry(
         ? new Intl.DateTimeFormat("de-DE", { dateStyle: "short", timeStyle: "short" }).format(new Date(value))
         : "–";
     const effectiveStatus = (item: OfferAcceptanceItem) =>
-      item.status !== "accepted" && new Date(item.expiresAt).getTime() < now ? "expired" : item.status;
+      !["accepted", "withdrawn"].includes(item.status) && new Date(item.expiresAt).getTime() < now ? "expired" : item.status;
     const followUp = (item: OfferAcceptanceItem) => {
-      if (effectiveStatus(item) === "accepted" || ["expired", "revoked"].includes(effectiveStatus(item))) return "";
+      if (["accepted", "withdrawn", "expired", "revoked"].includes(effectiveStatus(item))) return "";
       const reference = item.firstViewedAt || item.sentAt;
       if (!reference) return "";
       const ageDays = Math.floor((now - new Date(reference).getTime()) / 86_400_000);
@@ -37732,7 +37785,10 @@ await addProjectLogbookEntry(
       if (!item.firstViewedAt && ageDays >= 3) return `Seit ${ageDays} Tagen versendet – noch nicht angesehen`;
       return "";
     };
-    const openAcceptanceDocument = (item: OfferAcceptanceItem, type: "offer" | "certificate") => {
+    const openAcceptanceDocument = (
+      item: OfferAcceptanceItem,
+      type: "offer" | "certificate" | "withdrawal-notice" | "withdrawal-receipt"
+    ) => {
       window.open(buildActorApiUrl(`/api/offer-acceptances/${item.id}/document`, { type }), "_blank", "noopener,noreferrer");
     };
 
@@ -37777,6 +37833,17 @@ await addProjectLogbookEntry(
                       <strong>Verbindlich angenommen am {formatAcceptanceDate(item.acceptedAt)}</strong>
                       <span>{item.acceptedByName}{item.acceptedByRole ? ` · ${item.acceptedByRole}` : ""}{item.acceptedByEmail ? ` · ${item.acceptedByEmail}` : ""}</span>
                       <span>{item.confirmationSentAt ? `Bestätigung per E-Mail versendet am ${formatAcceptanceDate(item.confirmationSentAt)}` : item.confirmationError ? "Annahme gespeichert · Bestätigungs-E-Mail konnte nicht versendet werden" : "Bestätigungs-E-Mail wird verarbeitet"}</span>
+                      {item.consumerFlow ? (
+                        <span>
+                          Widerrufsfrist bis {formatAcceptanceDate(item.withdrawalDeadline)} · Vorzeitiger Leistungsbeginn {item.earlyPerformanceRequested ? "gewünscht" : "nicht gewünscht"}
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : status === "withdrawn" ? (
+                    <div className={styles.offerAcceptanceDecision} data-tone="warning">
+                      <strong>Vertrag widerrufen am {formatAcceptanceDate(item.withdrawnAt)}</strong>
+                      <span>{item.withdrawnByName}{item.withdrawnByEmail ? ` · ${item.withdrawnByEmail}` : ""}</span>
+                      <span>{item.withdrawalConfirmationSentAt ? `Widerrufsbestätigung versendet am ${formatAcceptanceDate(item.withdrawalConfirmationSentAt)}` : item.withdrawalConfirmationError ? "Widerruf gespeichert · Bestätigungs-E-Mail konnte nicht versendet werden" : "Bestätigungs-E-Mail wird verarbeitet"}</span>
                     </div>
                   ) : reminder ? (
                     <div className={styles.offerAcceptanceDecision} data-tone="warning"><strong>{reminder}</strong></div>
@@ -37785,6 +37852,12 @@ await addProjectLogbookEntry(
                     <button type="button" className={styles.secondaryButton} onClick={() => openAcceptanceDocument(item, "offer")}>Angebot öffnen</button>
                     {status === "accepted" ? (
                       <button type="button" className={styles.secondaryButton} onClick={() => openAcceptanceDocument(item, "certificate")}>Freigabeprotokoll</button>
+                    ) : null}
+                    {item.consumerFlow ? (
+                      <button type="button" className={styles.secondaryButton} onClick={() => openAcceptanceDocument(item, "withdrawal-notice")}>Widerrufsunterlagen</button>
+                    ) : null}
+                    {status === "withdrawn" ? (
+                      <button type="button" className={styles.secondaryButton} onClick={() => openAcceptanceDocument(item, "withdrawal-receipt")}>Widerrufsprotokoll</button>
                     ) : null}
                   </footer>
                 </article>

@@ -4,6 +4,8 @@ import {
   OFFER_ACCEPTANCE_CONSENT,
   createAcceptanceCertificate,
   createAcceptanceToken,
+  createWithdrawalNotice,
+  createWithdrawalReceipt,
   hashAcceptanceValue,
 } from "./core";
 
@@ -36,5 +38,35 @@ describe("offer acceptance evidence", () => {
     expect(result.hash).toMatch(/^[a-f0-9]{64}$/);
     const pdf = await PDFDocument.load(Buffer.from(result.base64, "base64"));
     expect(pdf.getPageCount()).toBe(1);
+  });
+
+  it("creates immutable consumer withdrawal documents", async () => {
+    const notice = await createWithdrawalNotice({
+      seller: {
+        name: "OK solutions GmbH",
+        street: "Im Krötenteich 3/4",
+        postalCode: "74722",
+        city: "Buchen",
+        country: "Deutschland",
+        phone: "+49 6281 3263110",
+        email: "angebot@example.com",
+      },
+      offerNumber: "ANG-1001",
+      withdrawalUrl: "https://example.com/angebot/token",
+    });
+    const receipt = await createWithdrawalReceipt({
+      offerNumber: "ANG-1001",
+      customerName: "Erika Muster",
+      projectNumber: "PR-42",
+      withdrawnByName: "Erika Muster",
+      withdrawnByEmail: "erika@example.com",
+      withdrawnAt: new Date("2026-07-24T12:00:00.000Z"),
+      acceptanceId: "acceptance-test",
+      offerVersionHash: "a".repeat(64),
+    });
+    expect(notice.hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(receipt.hash).toMatch(/^[a-f0-9]{64}$/);
+    expect((await PDFDocument.load(Buffer.from(notice.base64, "base64"))).getPageCount()).toBe(2);
+    expect((await PDFDocument.load(Buffer.from(receipt.base64, "base64"))).getPageCount()).toBe(1);
   });
 });

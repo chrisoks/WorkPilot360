@@ -18,7 +18,11 @@ export async function GET(req: Request) {
     SELECT r."id", r."offerId", r."projectId", r."customerId", r."offerNumber", r."recipientEmail", r."recipientName",
       r."senderName", r."status", r."sentAt", r."expiresAt", r."firstAccessedAt", r."firstViewedAt", r."lastViewedAt",
       r."viewCount", r."acceptanceStartedAt", r."acceptedAt", r."acceptedByName", r."acceptedByRole", r."acceptedByEmail",
-      r."acceptancePdfHash", r."confirmationSentAt", r."confirmationError", r."createdAt", o."projectNumber", o."projectTitle", o."grossTotal"
+      r."acceptancePdfHash", r."confirmationSentAt", r."confirmationError", r."consumerFlow",
+      r."withdrawalNoticePdfHash", r."withdrawalNoticeAcknowledgedAt", r."earlyPerformanceRequested",
+      r."withdrawalDeadline", r."withdrawnAt", r."withdrawnByName", r."withdrawnByEmail",
+      r."withdrawalReceiptPdfHash", r."withdrawalConfirmationSentAt", r."withdrawalConfirmationError",
+      r."createdAt", o."projectNumber", o."projectTitle", o."grossTotal"
     FROM "OfferAcceptanceRequest" r
     INNER JOIN "Offer" o ON o.id = r."offerId" AND o."organizationId" = r."organizationId"
     WHERE r."organizationId" = ${organization.id}

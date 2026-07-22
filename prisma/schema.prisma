@@ -904,42 +904,58 @@ model OfferHistory {
 }
 
 model OfferAcceptanceRequest {
-  id                  String    @id @default(cuid())
-  organizationId      String
-  offerId             String
-  projectId           String
-  customerId          String    @default("")
-  tokenHash           String    @unique
-  offerNumber         String
-  offerVersionHash    String
-  offerPdfData        String    @db.Text
-  recipientEmail      String
-  recipientName       String    @default("")
-  senderUserId        String
-  senderName          String
-  senderEmail         String
-  status              String    @default("prepared")
-  sentAt              DateTime?
-  expiresAt           DateTime
-  firstAccessedAt     DateTime?
-  firstViewedAt       DateTime?
-  lastViewedAt        DateTime?
-  viewCount           Int       @default(0)
-  acceptanceStartedAt DateTime?
-  acceptedAt          DateTime?
-  acceptedByName      String    @default("")
-  acceptedByRole      String    @default("")
-  acceptedByEmail     String    @default("")
-  acceptedIp          String    @default("")
-  acceptedUserAgent   String    @default("")
-  consentText         String    @default("")
-  acceptancePdfData   String?   @db.Text
-  acceptancePdfHash   String    @default("")
-  confirmationSentAt  DateTime?
-  confirmationError   String    @default("")
-  revokedAt           DateTime?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @default(now()) @updatedAt
+  id                             String    @id @default(cuid())
+  organizationId                 String
+  offerId                        String
+  projectId                      String
+  customerId                     String    @default("")
+  tokenHash                      String    @unique
+  offerNumber                    String
+  offerVersionHash               String
+  offerPdfData                   String    @db.Text
+  recipientEmail                 String
+  recipientName                  String    @default("")
+  senderUserId                   String
+  senderName                     String
+  senderEmail                    String
+  status                         String    @default("prepared")
+  sentAt                         DateTime?
+  expiresAt                      DateTime
+  firstAccessedAt                DateTime?
+  firstViewedAt                  DateTime?
+  lastViewedAt                   DateTime?
+  viewCount                      Int       @default(0)
+  acceptanceStartedAt            DateTime?
+  acceptedAt                     DateTime?
+  acceptedByName                 String    @default("")
+  acceptedByRole                 String    @default("")
+  acceptedByEmail                String    @default("")
+  acceptedIp                     String    @default("")
+  acceptedUserAgent              String    @default("")
+  consentText                    String    @default("")
+  acceptancePdfData              String?   @db.Text
+  acceptancePdfHash              String    @default("")
+  confirmationSentAt             DateTime?
+  confirmationError              String    @default("")
+  consumerFlow                   Boolean   @default(false)
+  withdrawalNoticePdfData        String?   @db.Text
+  withdrawalNoticePdfHash        String    @default("")
+  withdrawalNoticeAcknowledgedAt DateTime?
+  earlyPerformanceRequested      Boolean   @default(false)
+  earlyPerformanceConsentText    String    @default("")
+  withdrawalDeadline             DateTime?
+  withdrawnAt                    DateTime?
+  withdrawnByName                String    @default("")
+  withdrawnByEmail               String    @default("")
+  withdrawnIp                    String    @default("")
+  withdrawnUserAgent             String    @default("")
+  withdrawalReceiptPdfData       String?   @db.Text
+  withdrawalReceiptPdfHash       String    @default("")
+  withdrawalConfirmationSentAt   DateTime?
+  withdrawalConfirmationError    String    @default("")
+  revokedAt                      DateTime?
+  createdAt                      DateTime  @default(now())
+  updatedAt                      DateTime  @default(now()) @updatedAt
 
   @@index([organizationId, projectId, createdAt])
   @@index([organizationId, customerId, createdAt])
@@ -1928,12 +1944,12 @@ model UserTeamMembership {
 }
 
 model WorkPilotProject {
-  id                          String   @id
+  id                          String    @id
   organizationId              String
   projectNumber               String
   title                       String
   customer                    String?
-  status                      String   @default("Lead / Kl├ñrung")
+  status                      String    @default("Lead / Kl├ñrung")
   statusCode                  String?
   description                 String?
   contactId                   String?
@@ -1957,18 +1973,18 @@ model WorkPilotProject {
   mapLongitude                Float?
   mapGeocodedAddress          String?
   mapGeocodeProvider          String?
-  mapGeocodeStatus            String   @default("pending")
+  mapGeocodeStatus            String    @default("pending")
   mapGeocodeConfidence        Int?
   mapGeocodedAt               DateTime?
   participants                String?
   deputyName                  String?
   deputyFrom                  String?
   deputyUntil                 String?
-  timeBudgetEnabled           Boolean  @default(false)
+  timeBudgetEnabled           Boolean   @default(false)
   timeBudgetHours             String?
-  timeBudgetHistory           Json     @default("[]")
-  timeBudgetAllocations       Json     @default("[]")
-  autoBillingEnabled          Boolean  @default(false)
+  timeBudgetHistory           Json      @default("[]")
+  timeBudgetAllocations       Json      @default("[]")
+  autoBillingEnabled          Boolean   @default(false)
   autoBillingNetAmount        String?
   autoBillingVatRate          String?
   autoBillingStartMonth       String?
@@ -1977,8 +1993,8 @@ model WorkPilotProject {
   autoBillingTemplate         Json?
   winterGritPackageItemId     String?
   winterGritPushPackageItemId String?
-  createdAt                   DateTime @default(now())
-  updatedAt                   DateTime @default(now())
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @default(now())
   responsibleName             String?
 }
 

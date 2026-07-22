@@ -1,5 +1,22 @@
 # WorkPilot360 Agent Handover
 
+- Verbraucher-Widerruf und Live-Freigaben 2026-07-22: Digitale
+  Angebotsannahmen erkennen Privatkunden ueber den strukturierten Kontakt-Typ
+  beziehungsweise die Kategorie `Privatkunde`. Nur fuer diese Empfaenger wird
+  die Angebotsmail um eine Widerrufsbelehrung mit Musterformular ergaenzt. Die
+  Annahmeseite verlangt deren Kenntnisnahme und bietet den vorzeitigen
+  Leistungsbeginn bewusst nur optional mit gesonderter Bestaetigung an.
+  Belehrung, Einwilligungen, Frist, Angebotsversion, Annahme und ein innerhalb
+  der Frist online erklaerter Widerruf werden unveraenderlich protokolliert;
+  Kunde und WorkPilot erhalten passende PDF-Nachweise und Statusmeldungen.
+  Firmenkunden behalten den schlanken bisherigen Ablauf. Der Projekt- und
+  Kundenreiter `Freigaben` aktualisiert sichtbare Vorgangsdaten alle fuenf
+  Sekunden sowie bei Fokus/Rueckkehr in den Browser, ohne die ganze Seite neu
+  zu laden. Prisma-Diff ist nach dem additiven Push leer. Prisma-Validierung,
+  TypeScript, 184 Tests, Regression, Mojibake, Produktions-Build, PDF-Sichttest
+  sowie ein echter Browserdurchlauf von Ansicht, Annahme, Widerruf und
+  Live-Aktualisierung bestanden; alle QA-Daten wurden danach entfernt.
+
 - Digitale Angebotsannahme 2026-07-22: Beim Angebotsversand kann standardmäßig
   ein 30 Tage gültiger, kryptografisch zufälliger Annahmelink mitgesendet
   werden. Die öffentliche Seite zeigt die unveränderlich gespeicherte

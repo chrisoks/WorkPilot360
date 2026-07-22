@@ -13,7 +13,13 @@ import { validateXRechnungPayload } from "@/lib/e-invoice/xrechnung-validation";
 import { validateXRechnungWithKosit } from "@/lib/e-invoice/kosit-validator";
 import { buildValidatedZugferdPdf } from "@/lib/e-invoice/zugferd-pdf";
 import { getPublicAppOrigin } from "@/lib/http/public-app-origin";
-import { createAcceptanceId, createAcceptanceToken, ensureOfferAcceptanceTable, hashAcceptanceValue } from "@/lib/offer-acceptance/core";
+import {
+  createAcceptanceId,
+  createAcceptanceToken,
+  createWithdrawalNotice,
+  ensureOfferAcceptanceTable,
+  hashAcceptanceValue,
+} from "@/lib/offer-acceptance/core";
 
 type MailAccount = {
   provider?: string;
@@ -279,7 +285,7 @@ async function prepareFeedbackRequestLink(req: Request, body: Record<string, unk
   return { id, url: `${getPublicAppOrigin(req)}/feedback/${token}`, recipientEmail, created: true };
 }
 
-function getOfferAcceptanceMailBlockHtml(link: string) {
+function getOfferAcceptanceMailBlockHtml(link: string, consumerFlow = false) {
   const safeLink = escapeHtml(link);
   return [
     '<div style="margin:22px 0 18px;padding:18px;border:1px solid #bcd7da;border-radius:14px;background:#f4f9f9;max-width:520px;">',
@@ -287,11 +293,20 @@ function getOfferAcceptanceMailBlockHtml(link: string) {
     '<p style="margin:0 0 14px;color:#52666b;font-size:13px;line-height:1.5;">Über den folgenden Link können Sie das Angebot ansehen, herunterladen und verbindlich annehmen.</p>',
     `<a href="${safeLink}" target="_blank" rel="noreferrer" style="display:inline-block;background:#075c63;color:#ffffff;text-decoration:none;font-weight:800;border-radius:10px;padding:11px 17px;">Angebot prüfen und annehmen</a>`,
     '<p style="margin:10px 0 0;color:#64748b;font-size:12px;line-height:1.4;">Die Annahme erfolgt erst nach Ihrer ausdrücklichen Bestätigung auf der Folgeseite.</p>',
+    consumerFlow
+      ? '<p style="margin:8px 0 0;color:#64748b;font-size:12px;line-height:1.4;">Ihre Widerrufsbelehrung und das Muster-Widerrufsformular finden Sie im Anhang und auf der Angebotsseite.</p>'
+      : '',
     "</div>",
   ].join("");
 }
 
-type PreparedOfferAcceptance = { id: string; url: string };
+type PreparedOfferAcceptance = {
+  id: string;
+  url: string;
+  consumerFlow: boolean;
+  withdrawalNoticePdfData: string | null;
+  offerNumber: string;
+};
 
 async function prepareOfferAcceptance(req: Request, organizationId: string, body: Record<string, unknown>, actor: User, actorName: string, senderEmail: string, recipientEmail: string): Promise<PreparedOfferAcceptance | null> {
   if (cleanText(body.kind) !== "offer" || body.includeAcceptanceLink === false) return null;
@@ -307,21 +322,54 @@ async function prepareOfferAcceptance(req: Request, organizationId: string, body
   const projects = await prisma.$queryRaw<Array<{ contactId: string | null }>>`
     SELECT "contactId" FROM "WorkPilotProject" WHERE id = ${offer.projectId} AND "organizationId" = ${organizationId} LIMIT 1
   `;
+  const customerId = projects[0]?.contactId ?? "";
+  const contacts = customerId
+    ? await prisma.$queryRaw<Array<{ type: string; category: string }>>`
+        SELECT "type", "category" FROM "Contact"
+        WHERE id = ${customerId} AND "organizationId" = ${organizationId}
+        LIMIT 1
+      `
+    : [];
+  const consumerFlow = contacts[0]?.type === "private" || contacts[0]?.category === "Privatkunde";
   const token = createAcceptanceToken();
   const id = createAcceptanceId();
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  const acceptanceUrl = `${getPublicAppOrigin(req)}/angebot/${token}`;
+  const withdrawalNotice = consumerFlow
+    ? await createWithdrawalNotice({
+        seller: {
+          name: "OK solutions GmbH",
+          street: "Im Krötenteich 3/4",
+          postalCode: "74722",
+          city: "Buchen",
+          country: "Deutschland",
+          phone: "+49 6281 3263110",
+          email: senderEmail,
+        },
+        offerNumber: offer.offerNumber,
+        withdrawalUrl: acceptanceUrl,
+      })
+    : null;
   await prisma.$executeRaw`
     INSERT INTO "OfferAcceptanceRequest" (
       "id", "organizationId", "offerId", "projectId", "customerId", "tokenHash", "offerNumber",
       "offerVersionHash", "offerPdfData", "recipientEmail", "recipientName", "senderUserId",
-      "senderName", "senderEmail", "status", "expiresAt"
+      "senderName", "senderEmail", "status", "expiresAt", "consumerFlow",
+      "withdrawalNoticePdfData", "withdrawalNoticePdfHash"
     ) VALUES (
-      ${id}, ${organizationId}, ${offerId}, ${offer.projectId}, ${projects[0]?.contactId ?? ""}, ${hashAcceptanceValue(token)}, ${offer.offerNumber},
+      ${id}, ${organizationId}, ${offerId}, ${offer.projectId}, ${customerId}, ${hashAcceptanceValue(token)}, ${offer.offerNumber},
       ${hashAcceptanceValue(offer.pdfData)}, ${offer.pdfData}, ${recipientEmail}, ${cleanText(body.customerName)}, ${actor.id},
-      ${actorName}, ${senderEmail}, 'prepared', ${expiresAt}
+      ${actorName}, ${senderEmail}, 'prepared', ${expiresAt}, ${consumerFlow},
+      ${withdrawalNotice?.base64 ?? null}, ${withdrawalNotice?.hash ?? ""}
     )
   `;
-  return { id, url: `${getPublicAppOrigin(req)}/angebot/${token}` };
+  return {
+    id,
+    url: acceptanceUrl,
+    consumerFlow,
+    withdrawalNoticePdfData: withdrawalNotice?.base64 ?? null,
+    offerNumber: offer.offerNumber,
+  };
 }
 
 async function markFeedbackRequestAsSent(organizationId: string, request: PreparedFeedbackRequest | null) {
@@ -923,13 +971,23 @@ export async function POST(req: Request) {
     senderEmail,
     recipients[0] ?? ""
   );
+  const acceptanceAttachments = preparedOfferAcceptance?.withdrawalNoticePdfData
+    ? [{
+        "@odata.type": "#microsoft.graph.fileAttachment",
+        name: `Widerrufsbelehrung-${preparedOfferAcceptance.offerNumber}.pdf`,
+        contentType: "application/pdf",
+        contentBytes: preparedOfferAcceptance.withdrawalNoticePdfData,
+      }]
+    : [];
   const feedbackLink = preparedFeedbackRequest?.url ?? "";
   const acceptanceLink = preparedOfferAcceptance?.url ?? "";
   const signatureHtml = await getSenderSignature(actor.id);
   const rawMessageBody = cleanText(body.body);
   const messageBody = signatureHtml ? stripTrailingMailClosing(rawMessageBody) : rawMessageBody;
   const feedbackHtml = feedbackLink ? getFeedbackMailBlockHtml(feedbackLink) : "";
-  const acceptanceHtml = acceptanceLink ? getOfferAcceptanceMailBlockHtml(acceptanceLink) : "";
+  const acceptanceHtml = acceptanceLink
+    ? getOfferAcceptanceMailBlockHtml(acceptanceLink, preparedOfferAcceptance?.consumerFlow)
+    : "";
   const feedbackText = feedbackLink
     ? `\n\nWie zufrieden waren Sie mit unserer Leistung? Jetzt bewerten: ${feedbackLink}`
     : "";
@@ -947,7 +1005,7 @@ export async function POST(req: Request) {
       bcc: bccRecipients,
       subject: cleanText(body.subject),
       body: messageHtml,
-      attachments,
+      attachments: [...attachments, ...acceptanceAttachments],
     });
     primaryMailDelivered = true;
     await markFeedbackRequestAsSent(organization.id, preparedFeedbackRequest);
