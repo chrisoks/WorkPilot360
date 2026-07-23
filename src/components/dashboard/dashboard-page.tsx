@@ -38,9 +38,9 @@ import {
 } from "./project-analytics-map";
 import { getOfferAcceptanceFunnel } from "@/lib/offer-acceptance/analytics";
 import {
-  WinterServiceCalculator,
   type WinterServiceOfferTransfer,
 } from "@/components/calculators/winter-service-calculator";
+import { CalculatorWorkspace } from "@/components/calculators/calculator-workspace";
 
 const DOCUMENT_PREVIEW_WIDTH = 595;
 const DOCUMENT_PREVIEW_HEIGHT = 842;
@@ -59903,7 +59903,7 @@ await addProjectLogbookEntry(
           ) : activeTab === "documents" ? (
             renderAccountingDocuments()
           ) : activeTab === "calculators" ? (
-            <WinterServiceCalculator
+            <CalculatorWorkspace
               actorId={activeUserId}
               customers={contacts
                 .filter((contact) => contact.category === "Kunde" && contact.type !== "person")

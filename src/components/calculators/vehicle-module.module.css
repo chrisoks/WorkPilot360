@@ -1,0 +1,95 @@
+.page { display: grid; gap: 16px; }
+.sectionHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 21px 23px; border: 1px solid #d8e3ee; border-radius: 17px; background: white; }
+.sectionHeader p { margin: 0 0 4px; color: #0f8b8d; font-size: 11px; font-weight: 900; letter-spacing: .07em; text-transform: uppercase; }
+.sectionHeader h2 { margin: 0; font-size: 23px; }
+.sectionHeader span { display: block; margin-top: 5px; color: #66758a; font-size: 13px; }
+.sectionHeader > button, .vehicleForm footer button, .empty button, .calculate { min-height: 42px; padding: 0 17px; border: 0; border-radius: 10px; background: #07565d; color: white; font-weight: 850; cursor: pointer; }
+.loading { padding: 30px; border: 1px solid #d8e3ee; border-radius: 16px; background: white; color: #526174; text-align: center; }
+.error, .success, .info, .warning { margin: 0; padding: 13px 15px; border-radius: 11px; font-size: 13px; font-weight: 750; }
+.error { border: 1px solid #fecaca; background: #fff1f2; color: #b42318; }
+.success { border: 1px solid #9ed9c3; background: #effcf6; color: #087252; }
+.info { border: 1px solid #bdd7d6; background: #eff8f7; color: #07565d; }
+.warning { border: 1px solid #e7c36c; background: #fff9e9; color: #6b4900; }
+.fuelPanel, .tripPanel, .history { padding: 21px; border: 1px solid #d8e3ee; border-radius: 17px; background: white; }
+.fuelHeading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.fuelHeading div { display: grid; gap: 4px; }
+.fuelHeading strong { font-size: 17px; }
+.fuelHeading span { color: #66758a; font-size: 12px; }
+.fuelHeading > small { max-width: 420px; padding: 7px 9px; border-radius: 8px; background: #f1f5f9; color: #64748b; font-weight: 750; text-align: right; }
+.fuelHeading > small[data-status="live"] { background: #eaf9f2; color: #087252; }
+.fuelCards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+.fuelCards button { display: grid; gap: 5px; padding: 16px; border: 1px solid #cfe0e6; border-radius: 13px; background: #fbfdff; color: #172033; text-align: left; cursor: pointer; }
+.fuelCards button:hover:not(:disabled) { border-color: #0f8b8d; background: #f0f9f8; }
+.fuelCards button:disabled { cursor: default; opacity: .65; }
+.fuelCards span { color: #526174; font-size: 12px; font-weight: 850; }
+.fuelCards strong { color: #063f45; font-size: 27px; }
+.fuelCards small { color: #77879a; font-size: 10px; }
+.fuelPanel > p { margin: 13px 0 0; color: #77879a; font-size: 10px; }
+.tripPanel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, .85fr); gap: 22px; }
+.tripInputs, .tripResults { min-width: 0; }
+.tripResults { padding-left: 22px; border-left: 1px solid #e2e8f0; }
+.stepTitle { display: flex; align-items: flex-start; gap: 11px; margin-bottom: 17px; }
+.stepTitle > span { display: inline-grid; flex: 0 0 28px; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: #0f8b8d; color: white; font-weight: 900; }
+.stepTitle strong { font-size: 16px; }
+.stepTitle p { margin: 3px 0 0; color: #66758a; font-size: 11px; line-height: 1.4; }
+.tripGrid, .formGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
+.tripGrid label, .formGrid label, .note { display: grid; gap: 6px; color: #43536a; font-size: 11px; font-weight: 850; }
+.tripGrid input, .tripGrid select, .formGrid input, .formGrid select, .formGrid textarea, .note textarea { width: 100%; min-height: 42px; padding: 9px 11px; border: 1px solid #cbd9e7; border-radius: 9px; background: white; color: #0f172a; font: inherit; font-size: 13px; }
+.tripGrid input[readonly] { background: #f6f8fa; color: #526174; }
+.tripGrid label small { color: #7a899b; font-weight: 500; }
+.calculate { margin-top: 17px; }
+.calculate:disabled { cursor: not-allowed; opacity: .55; }
+.resultEmpty { min-height: 240px; display: grid; place-items: center; padding: 30px; border: 1px dashed #cad6e2; border-radius: 13px; background: #f8fafc; color: #7a899b; text-align: center; }
+.resultCards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.resultCards article { display: grid; gap: 5px; padding: 13px; border: 1px solid #d8e3ee; border-radius: 11px; background: #fbfdff; }
+.resultCards article[data-primary] { border-color: #85b9b6; background: #eff8f7; }
+.resultCards span { color: #66758a; font-size: 10px; font-weight: 850; text-transform: uppercase; }
+.resultCards strong { color: #063f45; font-size: 20px; }
+.resultCards small { color: #7a899b; font-size: 10px; }
+.resultDetails { display: grid; gap: 0; margin: 13px 0; }
+.resultDetails div { display: flex; justify-content: space-between; gap: 12px; padding: 8px 3px; border-bottom: 1px solid #e7edf3; font-size: 12px; }
+.resultDetails dt { color: #66758a; }
+.resultDetails dd { margin: 0; font-weight: 850; }
+.note textarea, .formGrid textarea { min-height: 70px; resize: vertical; }
+.history h3 { margin: 0 0 14px; font-size: 16px; }
+.history > div { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.history article { display: grid; gap: 4px; padding: 12px; border: 1px solid #e1e8ef; border-radius: 11px; }
+.history strong { font-size: 12px; }
+.history span, .history small { color: #718096; font-size: 10px; }
+.history b { color: #07565d; font-size: 16px; }
+.vehicleLayout { display: grid; grid-template-columns: minmax(240px, .55fr) minmax(0, 1.45fr); gap: 16px; }
+.vehicleList, .vehicleForm { border: 1px solid #d8e3ee; border-radius: 16px; background: white; }
+.vehicleList { display: grid; align-content: start; gap: 7px; padding: 10px; }
+.vehicleList > button { position: relative; display: grid; gap: 4px; padding: 13px 80px 13px 13px; border: 1px solid transparent; border-radius: 10px; background: #f7f9fb; color: #172033; text-align: left; cursor: pointer; }
+.vehicleList > button[data-active="true"] { border-color: #78aaa8; background: #eff8f7; }
+.vehicleList span { color: #0f8b8d; font-size: 10px; font-weight: 900; }
+.vehicleList strong { font-size: 13px; }
+.vehicleList small { color: #6d7c8f; font-size: 10px; }
+.vehicleList b { position: absolute; top: 12px; right: 12px; padding: 4px 7px; border-radius: 999px; background: #f1f5f9; color: #64748b; font-size: 9px; }
+.vehicleList b[data-enabled="true"] { background: #dcfce7; color: #087252; }
+.empty { display: grid; gap: 8px; padding: 20px; text-align: center; }
+.empty p { margin: 0 0 8px; color: #66758a; font-size: 12px; }
+.vehicleForm { overflow: hidden; }
+.formIntro { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 16px 18px; border-bottom: 1px solid #e1e8ef; background: #f8fafc; }
+.formIntro span { color: #718096; font-size: 10px; }
+.formGrid { padding: 18px; }
+.formGrid .full { grid-column: 1 / -1; }
+.checkbox { display: flex !important; align-items: center; align-self: end; min-height: 42px; padding: 10px; border: 1px solid #cbd9e7; border-radius: 9px; }
+.checkbox input { width: 18px; min-height: 18px; }
+.vehicleForm footer { display: flex; justify-content: flex-end; gap: 9px; padding: 14px 18px; border-top: 1px solid #e1e8ef; background: #f8fafc; }
+.vehicleForm footer .secondary { border: 1px solid #a8bdca; background: white; color: #07565d; }
+.rentalRoadmap { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.rentalRoadmap div { display: grid; gap: 8px; padding: 20px; border: 1px solid #d8e3ee; border-radius: 15px; background: white; }
+.rentalRoadmap span { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: #e7f4f3; color: #07565d; font-weight: 900; }
+.rentalRoadmap p { margin: 0; color: #66758a; font-size: 12px; line-height: 1.45; }
+@media (max-width: 1050px) {
+  .tripPanel, .vehicleLayout { grid-template-columns: 1fr; }
+  .tripResults { padding: 20px 0 0; border-top: 1px solid #e2e8f0; border-left: 0; }
+  .history > div { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  .fuelCards, .rentalRoadmap, .tripGrid, .formGrid, .resultCards { grid-template-columns: 1fr; }
+  .fuelHeading, .sectionHeader { display: grid; }
+  .fuelHeading > small { text-align: left; }
+  .history > div { grid-template-columns: 1fr; }
+}

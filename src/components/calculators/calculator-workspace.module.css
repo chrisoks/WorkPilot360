@@ -1,0 +1,22 @@
+.workspace { display: grid; gap: 18px; }
+.header { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 25px 28px; border-radius: 18px; background: #111827; color: white; }
+.header p { margin: 0 0 5px; color: #5eead4; font-size: 11px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.header h1 { margin: 0; font-size: 27px; }
+.header span { display: block; margin-top: 7px; color: #cbd5e1; font-size: 13px; }
+.header svg { width: 52px; height: 52px; padding: 11px; border: 1px solid #3f596c; border-radius: 14px; background: #173347; fill: none; stroke: #5eead4; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
+.navigation { display: flex; flex-wrap: wrap; gap: 8px; padding: 7px; border: 1px solid #d8e3ee; border-radius: 14px; background: white; }
+.navigation button { min-height: 38px; padding: 0 15px; border: 0; border-radius: 9px; background: transparent; color: #526174; font-weight: 800; cursor: pointer; }
+.navigation button[data-active="true"] { background: #07565d; color: white; box-shadow: 0 5px 14px rgba(7, 86, 93, .18); }
+.overview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.overview > button { display: grid; grid-template-columns: auto 1fr; column-gap: 14px; padding: 22px; border: 1px solid #d8e3ee; border-radius: 17px; background: white; color: #111827; text-align: left; cursor: pointer; transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease; }
+.overview > button:hover { transform: translateY(-2px); border-color: #8fbdbc; box-shadow: 0 12px 30px rgba(15, 23, 42, .08); }
+.icon { display: inline-grid; grid-row: span 4; place-items: center; width: 46px; height: 46px; border-radius: 13px; background: #e9f5f4; color: #07565d; font-size: 22px; font-weight: 900; }
+.overview small { color: #0f8b8d; font-size: 11px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+.overview strong { margin-top: 3px; font-size: 18px; }
+.overview p { margin: 7px 0 14px; color: #66758a; font-size: 13px; line-height: 1.45; }
+.overview b { color: #07565d; font-size: 12px; }
+@media (max-width: 900px) {
+  .overview { grid-template-columns: 1fr; }
+  .header { align-items: flex-start; }
+  .header svg { width: 44px; height: 44px; }
+}

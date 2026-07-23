@@ -1,5 +1,22 @@
 # WorkPilot360 Agent Handover
 
+- Kalkulations-Rechner Fahrzeuge 2026-07-23: Der Sidebar-Bereich
+  `Kalkulations-Rechner` besitzt jetzt eine eigene Uebersicht und die
+  Unterbereiche Winterdienst, Fahrten, Vermietung und Fahrzeuge. Der
+  bestehende Winterdienstrechner blieb fachlich unveraendert. Fahrzeuge
+  werden organisationsgebunden mit Verbrauch, Selbstkosten, Kilometer-VK
+  sowie vorbereitenden Mietwerten verwaltet. Der Fahrtenrechner verwendet
+  ausschliesslich Fahrzeug- und Kraftstoffkosten; Personalkosten aus der alten
+  Crafter-Excel sind bewusst ausgeschlossen. Kraftstoff-, Fahrzeug-,
+  Gesamt-Selbstkosten, Fahrt-VK, Gewinn, Aufschlag auf Selbstkosten und echte
+  Marge vom Verkauf werden getrennt ausgewiesen. Gespeicherte Kalkulationen
+  halten Fahrzeug-, Eingabe-, Ergebnis- und Kraftstoffpreis-Snapshots fest.
+  Aktuelle Diesel-, E5- und E10-Preise koennen serverseitig ueber die
+  Tankerkoenig-/MTS-K-API fuer HERM, In der vorderen Wanne 11, geladen und
+  zehn Minuten zwischengespeichert werden; ohne API-Schluessel oder bei
+  Ausfall bleibt der Kraftstoffpreis manuell editierbar. Das Prisma-Schema
+  wurde ausschliesslich um `Vehicle` und `VehicleCalculation` erweitert.
+
 - Kontakte-Reiter-Isolierung 2026-07-23: Die Kontakte-Uebersicht besitzt jetzt
   einen eigenen React-Komponenten- und Zustandsbereich fuer Suche, Kategorie,
   Spaltenfilter, Pagination, Zeilenauswahl und Export. Eingaben in der

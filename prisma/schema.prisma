@@ -2055,6 +2055,56 @@ model WinterServiceCalculation {
   @@index([organizationId, createdAt])
 }
 
+model Vehicle {
+  id                        String   @id @default(cuid())
+  organizationId            String
+  vehicleNumber             String
+  name                      String
+  licensePlate              String   @default("")
+  fuelType                  String
+  consumptionLitersPer100Km Float
+  selfCostPerKm             Float
+  salesPricePerKm           Float
+  hourlyRentalRate          Float?
+  dailyRentalRate           Float?
+  includedKilometersPerDay  Float?
+  extraKilometerPrice       Float?
+  depositAmount             Float?
+  fuelPolicy                String   @default("Voll/Voll")
+  note                      String   @default("")
+  isActive                  Boolean  @default(true)
+  createdById               String?
+  createdByName             String   @default("")
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  @@unique([organizationId, vehicleNumber])
+  @@index([organizationId, isActive, name])
+}
+
+model VehicleCalculation {
+  id                 String    @id @default(cuid())
+  organizationId     String
+  vehicleId          String
+  vehicleNumber      String
+  vehicleName        String
+  customerId         String    @default("")
+  projectId          String    @default("")
+  createdById        String?
+  createdByName      String    @default("")
+  inputSnapshot      Json
+  resultSnapshot     Json
+  fuelPriceSource    String    @default("")
+  fuelPriceFetchedAt DateTime?
+  note               String    @default("")
+  createdAt          DateTime  @default(now())
+
+  @@index([organizationId, vehicleId, createdAt])
+  @@index([organizationId, customerId, createdAt])
+  @@index([organizationId, projectId, createdAt])
+  @@index([organizationId, createdAt])
+}
+
 model WinterServiceRun {
   id                String    @id
   organizationId    String
