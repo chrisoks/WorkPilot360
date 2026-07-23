@@ -1,5 +1,25 @@
 # WorkPilot360 Agent Handover
 
+- Kontakte-Reiter-Isolierung 2026-07-23: Die Kontakte-Uebersicht besitzt jetzt
+  einen eigenen React-Komponenten- und Zustandsbereich fuer Suche, Kategorie,
+  Spaltenfilter, Pagination, Zeilenauswahl und Export. Eingaben in der
+  Kontaktsuche rendern dadurch nicht mehr die vollstaendige Dashboard-Seite;
+  die eigentliche Filterberechnung laeuft nachrangig ueber den verzögerten
+  Suchwert. Kundenakte, Kontaktmodal, Gruppenaktion, API- und Rechtevertrag
+  blieben unveraendert. Der Kontakte-Reiter dient als gepruefter Pilot fuer die
+  schrittweise Isolierung weiterer Reiter. TypeScript, 207 Tests, Regression,
+  Mojibake, Prisma validate/db push, Produktions-Build und ein echter
+  Browserdurchlauf von Suche, Kategorie, Kundenakte, Spaltenmenue und
+  Gruppenaktions-Modal bestanden.
+- Dashboard-Suchleistung 2026-07-23: Auch die gemeinsame
+  Artikel-/Leistungen-/Pakete-Liste haelt Suche, Statusfilter und Pagination in
+  einer eigenen Unterkomponente. Weitere grosse Volltextsuchen in Projekten,
+  Projektkarte, Aufgaben, Mitarbeitern, Buchhaltung, Auswertungen, Dokumenten
+  und umfangreichen Detailmodale puffern die Eingabe lokal und uebergeben den
+  Filter erst nach einer kurzen Tipp-Pause an den fachlichen Elternzustand.
+  Formulare und Auswahlfelder bleiben bewusst unmittelbar gesteuert. Keine
+  API-, Daten- oder Prisma-Logik wurde geaendert.
+
 - Stammdaten-Kalkulationsreiter 2026-07-23: Die Reiter `Informationen`,
   `Kalkulation` und `Historie` im Bearbeitungsmodal fuer Artikel, Leistungen
   und Pakete verwenden eine eigene stabile Reiterleiste. Sie behaelt auch in

@@ -2,6 +2,7 @@
 
 import {
   Fragment,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -6015,6 +6016,927 @@ const defaultDocumentLayoutConfig: DocumentLayoutConfig = {
   correctionDocumentType: "Stornorechnung",
 };
 
+type ContactsListViewProps = {
+  contacts: ContactItem[];
+  onCreateContact: () => void;
+  onEditContact: (contact: ContactItem) => void;
+  onOpenContactFile: (contact: ContactItem) => void;
+  onOpenBulkAction: (contactIds: string[]) => void;
+};
+
+function ContactsListView({
+  contacts,
+  onCreateContact,
+  onEditContact,
+  onOpenContactFile,
+  onOpenBulkAction,
+}: ContactsListViewProps) {
+  const [searchTerm, setSearchTerm] = useState("");
+  const deferredSearchTerm = useDeferredValue(searchTerm);
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [isColumnMenuOpen, setIsColumnMenuOpen] = useState(false);
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
+  const [lastSelectedContactId, setLastSelectedContactId] = useState("");
+  const [columnSearch, setColumnSearch] = useState("");
+  const [columnFilters, setColumnFilters] = useState<
+    Partial<Record<ContactColumnId, string>>
+  >({});
+  const [visibleColumnIds, setVisibleColumnIds] =
+    useState<ContactColumnId[]>(defaultContactColumnIds);
+
+  const contactColumns = useMemo<ContactColumn[]>(
+    () => [
+      {
+        id: "type",
+        label: "Typ",
+        filterType: "select",
+        options: ["Ansprechpartner", "Firma", "Privatperson"],
+        value: (contact) => {
+          if (contact.type === "company") return "Firma";
+          if (contact.type === "private") return "Privatperson";
+          return "Ansprechpartner";
+        },
+        render: (contact) => {
+          const label =
+            contact.type === "company"
+              ? "Firma"
+              : contact.type === "private"
+                ? "Privatperson"
+                : "Ansprechpartner";
+          return <span className={styles.contactTypeBadge}>{label}</span>;
+        },
+      },
+      { id: "customerNumber", label: "Kundennummer", value: (contact) => contact.customerNumber },
+      {
+        id: "companyName",
+        label: "Firmenname",
+        value: (contact) => contact.companyName || contact.parentCompanyName,
+        render: (contact) => {
+          const label = contact.companyName || contact.parentCompanyName;
+          if (!label) return "-";
+          return (
+            <button
+              type="button"
+              className={styles.tableTextLink}
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenContactFile(contact);
+              }}
+            >
+              {label}
+            </button>
+          );
+        },
+      },
+      { id: "salutation", label: "Anrede", value: (contact) => contact.salutation },
+      {
+        id: "additionalSalutation",
+        label: "Weitere Anrede",
+        value: (contact) => contact.additionalSalutation,
+      },
+      {
+        id: "firstName",
+        label: "Vorname",
+        value: (contact) => contact.firstName,
+        render: (contact) => {
+          if (!contact.firstName) return "-";
+          return (
+            <button
+              type="button"
+              className={styles.tableTextLink}
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenContactFile(contact);
+              }}
+            >
+              {contact.firstName}
+            </button>
+          );
+        },
+      },
+      {
+        id: "lastName",
+        label: "Nachname",
+        value: (contact) => contact.lastName,
+        render: (contact) => {
+          if (!contact.lastName) return "-";
+          return (
+            <button
+              type="button"
+              className={styles.tableTextLink}
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenContactFile(contact);
+              }}
+            >
+              {contact.lastName}
+            </button>
+          );
+        },
+      },
+      { id: "email", label: "E-Mail", value: (contact) => contact.email },
+      {
+        id: "category",
+        label: "Kategorie",
+        filterType: "select",
+        options: ["Kunde", "Privatkunde", "Lieferant", "Partner", "Ansprechpartner"],
+        value: (contact) => contact.category,
+      },
+      {
+        id: "location",
+        label: "Ort",
+        value: (contact) =>
+          [contact.street, contact.postalCode, contact.city].filter(Boolean).join(" "),
+        render: (contact) => (
+          <>
+            {[contact.postalCode, contact.city].filter(Boolean).join(" ") || "-"}
+            {contact.street && <span className={styles.metaLine}>{contact.street}</span>}
+          </>
+        ),
+      },
+      { id: "phone", label: "Telefon", value: (contact) => contact.phone },
+      { id: "mobile", label: "Mobil", value: (contact) => contact.mobile },
+      {
+        id: "createdAt",
+        label: "Erstellungsdatum",
+        value: (contact) => formatDeadline(contact.createdAt),
+      },
+      { id: "birthDate", label: "Geburtsdatum", value: () => "" },
+      { id: "fax", label: "Fax", value: (contact) => contact.fax },
+      { id: "website", label: "Website", value: (contact) => contact.website },
+      { id: "source", label: "Quelle", value: (contact) => contact.source },
+      { id: "reachability", label: "Erreichbarkeit", value: (contact) => contact.reachability },
+      {
+        id: "paymentTermDays",
+        label: "Zahlungsziel",
+        value: (contact) => (contact.paymentTermDays === null ? "" : `${contact.paymentTermDays}`),
+      },
+      {
+        id: "discountPercent",
+        label: "Skonto",
+        value: (contact) => (contact.discountPercent === null ? "" : `${contact.discountPercent}`),
+      },
+      {
+        id: "discountTermDays",
+        label: "Skontoziel",
+        value: (contact) => (contact.discountTermDays === null ? "" : `${contact.discountTermDays}`),
+      },
+      { id: "priceGroup", label: "VK-Gruppe", value: (contact) => contact.priceGroup },
+      { id: "leitwegId", label: "Leitweg-ID", value: (contact) => contact.leitwegId },
+    ],
+    [onOpenContactFile]
+  );
+
+  const visibleColumns = useMemo(
+    () => contactColumns.filter((column) => visibleColumnIds.includes(column.id)),
+    [contactColumns, visibleColumnIds]
+  );
+  const searchedColumns = useMemo(() => {
+    const search = columnSearch.trim().toLowerCase();
+    return contactColumns.filter((column) => column.label.toLowerCase().includes(search));
+  }, [columnSearch, contactColumns]);
+  const visibleContacts = useMemo(() => {
+    const search = deferredSearchTerm.trim().toLowerCase();
+
+    return contacts.filter((contact) => {
+      const matchesCategory = !categoryFilter || contact.category === categoryFilter;
+      const matchesSearch =
+        !search ||
+        contactColumns
+          .map((column) => column.value(contact))
+          .some((value) => value.toLowerCase().includes(search));
+      const matchesColumnFilters = contactColumns.every((column) => {
+        const filterValue = columnFilters[column.id]?.trim().toLowerCase();
+        if (!filterValue) return true;
+        return column.value(contact).toLowerCase().includes(filterValue);
+      });
+
+      return matchesCategory && matchesSearch && matchesColumnFilters;
+    });
+  }, [categoryFilter, columnFilters, contactColumns, contacts, deferredSearchTerm]);
+  const categoryCounts = useMemo(
+    () =>
+      contacts.reduce<Record<string, number>>((counts, contact) => {
+        counts[contact.category] = (counts[contact.category] ?? 0) + 1;
+        return counts;
+      }, {}),
+    [contacts]
+  );
+  const pageCount = Math.max(1, Math.ceil(visibleContacts.length / pageSize));
+  const activePage = Math.min(page, pageCount);
+  const paginatedContacts = useMemo(
+    () => visibleContacts.slice((activePage - 1) * pageSize, activePage * pageSize),
+    [activePage, pageSize, visibleContacts]
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [deferredSearchTerm, categoryFilter, columnFilters, pageSize]);
+
+  useEffect(() => {
+    const validIds = new Set(contacts.map((contact) => contact.id));
+    setSelectedContactIds((currentIds) => currentIds.filter((id) => validIds.has(id)));
+  }, [contacts]);
+
+  function updateColumnFilter(columnId: ContactColumnId, value: string) {
+    setColumnFilters((currentFilters) => ({ ...currentFilters, [columnId]: value }));
+  }
+
+  function toggleColumn(columnId: ContactColumnId, checked: boolean) {
+    setVisibleColumnIds((currentIds) => {
+      if (checked) {
+        return currentIds.includes(columnId) ? currentIds : [...currentIds, columnId];
+      }
+      return currentIds.length <= 1 ? currentIds : currentIds.filter((id) => id !== columnId);
+    });
+  }
+
+  function resetColumns() {
+    setVisibleColumnIds(defaultContactColumnIds);
+    setColumnSearch("");
+  }
+
+  function downloadExport(format: "csv" | "excel") {
+    const getExportValue = (contact: ContactItem, column: ContactColumn) =>
+      column.value(contact).replace(/\s+/g, " ").trim();
+    const fileDate = new Date().toISOString().slice(0, 10);
+
+    if (format === "csv") {
+      const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`;
+      const rows = [
+        visibleColumns.map((column) => escapeCsv(column.label)).join(";"),
+        ...visibleContacts.map((contact) =>
+          visibleColumns
+            .map((column) => escapeCsv(getExportValue(contact, column)))
+            .join(";")
+        ),
+      ];
+      const blob = new Blob([`\uFEFF${rows.join("\r\n")}`], {
+        type: "text/csv;charset=utf-8;",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `kontakte-${fileDate}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setIsExportMenuOpen(false);
+      return;
+    }
+
+    const escapeHtml = (value: string) =>
+      value
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    const tableRows = visibleContacts
+      .map(
+        (contact) =>
+          `<tr>${visibleColumns
+            .map((column) => `<td>${escapeHtml(getExportValue(contact, column))}</td>`)
+            .join("")}</tr>`
+      )
+      .join("");
+    const tableHeader = visibleColumns
+      .map((column) => `<th>${escapeHtml(column.label)}</th>`)
+      .join("");
+    const html = `<html><head><meta charset="utf-8" /></head><body><table><thead><tr>${tableHeader}</tr></thead><tbody>${tableRows}</tbody></table></body></html>`;
+    const blob = new Blob([html], {
+      type: "application/vnd.ms-excel;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `kontakte-${fileDate}.xls`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setIsExportMenuOpen(false);
+  }
+
+  function handleRowClick(
+    event: MouseEvent<HTMLTableRowElement>,
+    contact: ContactItem,
+    pageIndex: number
+  ) {
+    event.stopPropagation();
+
+    if (event.shiftKey && lastSelectedContactId) {
+      const lastIndex = paginatedContacts.findIndex((item) => item.id === lastSelectedContactId);
+      const startIndex = Math.min(lastIndex, pageIndex);
+      const endIndex = Math.max(lastIndex, pageIndex);
+      const rangeIds = paginatedContacts.slice(startIndex, endIndex + 1).map((item) => item.id);
+      setSelectedContactIds((currentIds) => Array.from(new Set([...currentIds, ...rangeIds])));
+      return;
+    }
+
+    if (event.ctrlKey || event.metaKey) {
+      setSelectedContactIds((currentIds) =>
+        currentIds.includes(contact.id)
+          ? currentIds.filter((id) => id !== contact.id)
+          : [...currentIds, contact.id]
+      );
+      setLastSelectedContactId(contact.id);
+      return;
+    }
+
+    setSelectedContactIds((currentIds) =>
+      currentIds.length === 1 && currentIds[0] === contact.id ? [] : [contact.id]
+    );
+    setLastSelectedContactId(contact.id);
+  }
+
+  function openBulkAction() {
+    onOpenBulkAction(
+      selectedContactIds.length
+        ? selectedContactIds
+        : visibleContacts.map((contact) => contact.id)
+    );
+  }
+
+  const pagination = (location: "top" | "bottom") => (
+    <div className={styles.contactPagination}>
+      <span>Seite</span>
+      <button
+        type="button"
+        className={styles.paginationButton}
+        disabled={activePage <= 1}
+        onClick={() => setPage((currentPage) => Math.max(1, currentPage - 1))}
+        aria-label="Vorherige Seite"
+      >
+        &lt;
+      </button>
+      <input
+        aria-label={location === "top" ? "Kontaktseite" : "Kontaktseite unten"}
+        min={1}
+        max={pageCount}
+        type="number"
+        value={activePage}
+        onChange={(event) => {
+          const nextPage = Number(event.target.value);
+          if (Number.isFinite(nextPage)) {
+            setPage(Math.min(Math.max(1, nextPage), pageCount));
+          }
+        }}
+      />
+      <button
+        type="button"
+        className={styles.paginationButton}
+        disabled={activePage >= pageCount}
+        onClick={() => setPage((currentPage) => Math.min(pageCount, currentPage + 1))}
+        aria-label="Nächste Seite"
+      >
+        &gt;
+      </button>
+      <span>von {pageCount}</span>
+      <span>Zeige</span>
+      <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}>
+        {[25, 50, 100, 250].map((size) => (
+          <option key={size} value={size}>
+            {size}
+          </option>
+        ))}
+      </select>
+      <span>Einträge</span>
+      <strong>{visibleContacts.length} Einträge gefunden</strong>
+      {location === "top" && (
+        <span>
+          {selectedContactIds.length
+            ? `${selectedContactIds.length} Zeilen ausgewählt`
+            : "Klicken, um Zeilen auszuwählen"}
+        </span>
+      )}
+    </div>
+  );
+
+  return (
+    <section className={styles.contactsPanel}>
+      <header className={`${styles.taskModuleHeader} ${styles.contactModuleHeader}`}>
+        <div>
+          <p className={styles.taskModuleEyebrow}>CRM</p>
+          <h1>Kontakte</h1>
+          <p>Kunden, Lieferanten, Partner und Ansprechpartner zentral verwalten.</p>
+        </div>
+        <button className={styles.primaryButton} onClick={onCreateContact}>
+          + Kontakt
+        </button>
+      </header>
+
+      <section className={styles.contactSummaryGrid}>
+        {[
+          { label: "Alle", value: "", count: contacts.length, tone: "neutral" },
+          { label: "Kunden", value: "Kunde", count: categoryCounts.Kunde ?? 0, tone: "blue" },
+          {
+            label: "Privatkunden",
+            value: "Privatkunde",
+            count: categoryCounts.Privatkunde ?? 0,
+            tone: "teal",
+          },
+          {
+            label: "Lieferanten",
+            value: "Lieferant",
+            count: categoryCounts.Lieferant ?? 0,
+            tone: "amber",
+          },
+          { label: "Partner", value: "Partner", count: categoryCounts.Partner ?? 0, tone: "indigo" },
+          {
+            label: "Ansprechpartner",
+            value: "Ansprechpartner",
+            count: categoryCounts.Ansprechpartner ?? 0,
+            tone: "cyan",
+          },
+        ].map((item) => (
+          <button
+            key={item.label}
+            className={styles.contactSummaryCard}
+            data-active={categoryFilter === item.value}
+            data-tone={item.tone}
+            aria-pressed={categoryFilter === item.value}
+            onClick={() => setCategoryFilter(item.value)}
+          >
+            <span>{item.label}</span>
+            <strong>{item.count}</strong>
+          </button>
+        ))}
+      </section>
+
+      <section className={styles.contactToolbar}>
+        <label>
+          Suche
+          <input
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Name, Firma, Kundennummer, E-Mail, Ort"
+          />
+        </label>
+        <label>
+          Kategorie
+          <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+            <option value="">Alle</option>
+            <option value="Kunde">Kunden</option>
+            <option value="Privatkunde">Privatkunden</option>
+            <option value="Lieferant">Lieferanten</option>
+            <option value="Partner">Partner</option>
+            <option value="Ansprechpartner">Ansprechpartner</option>
+          </select>
+        </label>
+        <div className={styles.contactToolbarActions}>
+          <button
+            type="button"
+            className={styles.contactActionIconButton}
+            onClick={openBulkAction}
+            title="Gruppenaktion"
+            aria-label="Gruppenaktion"
+          >
+            <ContactToolbarIcon type="bulk" />
+          </button>
+          <div className={styles.contactExportPicker}>
+            <button
+              type="button"
+              className={styles.contactActionIconButton}
+              onClick={() => setIsExportMenuOpen((isOpen) => !isOpen)}
+              title="Export"
+              aria-label="Export"
+              aria-expanded={isExportMenuOpen}
+            >
+              <ContactToolbarIcon type="export" />
+            </button>
+            {isExportMenuOpen && (
+              <div className={styles.contactExportMenu}>
+                <button type="button" onClick={() => downloadExport("csv")}>
+                  CSV
+                </button>
+                <button type="button" onClick={() => downloadExport("excel")}>
+                  Excel
+                </button>
+              </div>
+            )}
+          </div>
+          <div className={styles.contactColumnPicker}>
+            <button
+              type="button"
+              className={styles.contactActionIconButton}
+              aria-label="Spalten auswählen"
+              title="Spalten auswählen"
+              aria-expanded={isColumnMenuOpen}
+              onClick={() => setIsColumnMenuOpen((isOpen) => !isOpen)}
+            >
+              <ContactToolbarIcon type="columns" />
+            </button>
+            {isColumnMenuOpen && (
+              <div className={styles.contactColumnMenu}>
+                <input
+                  value={columnSearch}
+                  onChange={(event) => setColumnSearch(event.target.value)}
+                  placeholder="Suche"
+                />
+                <button
+                  type="button"
+                  className={styles.contactColumnReset}
+                  onClick={resetColumns}
+                >
+                  Standard wiederherstellen
+                </button>
+                <div className={styles.contactColumnOptions}>
+                  {searchedColumns.map((column) => (
+                    <label key={column.id}>
+                      <input
+                        type="checkbox"
+                        checked={visibleColumnIds.includes(column.id)}
+                        onChange={(event) => toggleColumn(column.id, event.target.checked)}
+                      />
+                      {column.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className={`${styles.tableCard} ${styles.contactsTableCard}`}>
+        {pagination("top")}
+        <table className={`${styles.table} ${styles.contactsTable}`}>
+          <thead>
+            <tr>
+              {visibleColumns.map((column) => (
+                <th key={column.id}>{column.label}</th>
+              ))}
+            </tr>
+            <tr className={styles.contactFilterRow}>
+              {visibleColumns.map((column) => (
+                <th key={`${column.id}-filter`}>
+                  {column.filterType === "select" ? (
+                    <select
+                      value={columnFilters[column.id] ?? ""}
+                      onChange={(event) => updateColumnFilter(column.id, event.target.value)}
+                    >
+                      <option value="">Alle</option>
+                      {(column.options ?? []).map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      value={columnFilters[column.id] ?? ""}
+                      onChange={(event) => updateColumnFilter(column.id, event.target.value)}
+                      placeholder="Filtern"
+                    />
+                  )}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {visibleContacts.length === 0 ? (
+              <tr>
+                <td colSpan={visibleColumns.length}>Noch keine Kontakte gefunden.</td>
+              </tr>
+            ) : (
+              paginatedContacts.map((contact, pageIndex) => (
+                <tr
+                  key={contact.id}
+                  className={styles.clickableRow}
+                  data-selected={selectedContactIds.includes(contact.id)}
+                  onClick={(event) => handleRowClick(event, contact, pageIndex)}
+                  onDoubleClick={() => onEditContact(contact)}
+                >
+                  {visibleColumns.map((column) => (
+                    <td
+                      key={`${contact.id}-${column.id}`}
+                      className={
+                        column.id === "customerNumber"
+                          ? styles.number
+                          : column.id === "companyName"
+                            ? styles.title
+                            : undefined
+                      }
+                    >
+                      {(column.render?.(contact) ?? column.value(contact)) || "-"}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+        {pagination("bottom")}
+      </section>
+    </section>
+  );
+}
+
+function IsolatedFilterInput({
+  value,
+  onChange,
+  placeholder,
+  type,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  type?: "search" | "text";
+}) {
+  const [draft, setDraft] = useState(value);
+  const lastEmittedValueRef = useRef(value);
+
+  useEffect(() => {
+    if (value !== lastEmittedValueRef.current) {
+      lastEmittedValueRef.current = value;
+      setDraft(value);
+    }
+  }, [value]);
+
+  useEffect(() => {
+    if (draft === lastEmittedValueRef.current) return;
+    const timeoutId = window.setTimeout(() => {
+      lastEmittedValueRef.current = draft;
+      onChange(draft);
+    }, 140);
+    return () => window.clearTimeout(timeoutId);
+  }, [draft, onChange]);
+
+  return (
+    <input
+      type={type}
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      placeholder={placeholder}
+    />
+  );
+}
+
+function CatalogListView({
+  activeTab,
+  catalogItems,
+  modalContent,
+  onCreateItem,
+  onEditItem,
+  onDuplicateItem,
+  onDeactivateItem,
+  onNavigate,
+}: {
+  activeTab: AppTab;
+  catalogItems: CatalogItem[];
+  modalContent: ReactNode;
+  onCreateItem: (type: CatalogItemType) => void;
+  onEditItem: (item: CatalogItem) => void;
+  onDuplicateItem: (item: CatalogItem) => void;
+  onDeactivateItem: (item: CatalogItem) => void;
+  onNavigate: (tab: AppTab) => void;
+}) {
+  const [searchTerm, setSearchTerm] = useState("");
+  const deferredSearchTerm = useDeferredValue(searchTerm);
+  const [statusFilter, setStatusFilter] = useState<"active" | "inactive" | "all">("active");
+  const [pageSize, setPageSize] = useState(25);
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    setPage(1);
+  }, [activeTab, deferredSearchTerm, pageSize, statusFilter]);
+
+  const viewType: CatalogItemType | "" =
+    activeTab === "articles"
+      ? "article"
+      : activeTab === "services"
+        ? "service"
+        : activeTab === "packages"
+          ? "package"
+          : "";
+  const search = normalizeSearchText(deferredSearchTerm);
+  const filteredItems = catalogItems.filter((item) => {
+    if (viewType && item.type !== viewType) return false;
+    if (statusFilter === "active" && !item.isActive) return false;
+    if (statusFilter === "inactive" && item.isActive) return false;
+    const haystack = [
+      item.number,
+      item.name,
+      item.category,
+      item.trade,
+      item.unit,
+      item.description,
+      item.matchcode,
+      item.supplierName,
+      item.manufacturer,
+    ].join(" ");
+    return !search || normalizeSearchText(haystack).includes(search);
+  });
+  const pageCount = Math.max(1, Math.ceil(filteredItems.length / pageSize));
+  const safePage = Math.min(page, pageCount);
+  const pagedItems = filteredItems.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const articleCount = catalogItems.filter((item) => item.type === "article" && item.isActive).length;
+  const serviceCount = catalogItems.filter((item) => item.type === "service" && item.isActive).length;
+  const packageCount = catalogItems.filter((item) => item.type === "package" && item.isActive).length;
+  const activeCreateType: CatalogItemType =
+    activeTab === "services" ? "service" : activeTab === "packages" ? "package" : "article";
+  const pageMeta =
+    activeTab === "salesPrices"
+      ? {
+          title: "Verkaufspreise",
+          description: "Aktuelle und geplante Verkaufspreise der Stammdaten zentral prüfen und fortschreiben.",
+        }
+      : activeTab === "services"
+        ? {
+            title: "Leistungen",
+            description: "Arbeitsleistungen mit Kalkulation, Planungszeit und Standardzuordnung zentral pflegen.",
+          }
+        : activeTab === "packages"
+          ? {
+              title: "Pakete",
+              description: "Material und Leistungen zu kalkulierten, planbaren Angebotspaketen verbinden.",
+            }
+          : {
+              title: "Artikel",
+              description: "Material, Handelsware und sonstige Positionen für Angebote und Rechnungen verwalten.",
+            };
+  const createButtons: Array<{ type: CatalogItemType; label: string }> = [
+    { type: "article", label: "+ Artikel" },
+    { type: "service", label: "+ Leistung" },
+    { type: "package", label: "+ Paket" },
+  ];
+  const typeButtons: Array<{
+    label: string;
+    value: Extract<AppTab, "articles" | "services" | "packages">;
+    count: number;
+    tone: string;
+  }> = [
+    { label: "Artikel", value: "articles", count: articleCount, tone: "blue" },
+    { label: "Leistungen", value: "services", count: serviceCount, tone: "teal" },
+    { label: "Pakete", value: "packages", count: packageCount, tone: "indigo" },
+  ];
+
+  return (
+    <section className={`${styles.contactsPanel} ${styles.catalogPanel}`}>
+      <header className={`${styles.taskModuleHeader} ${styles.catalogModuleHeader}`}>
+        <div>
+          <p className={styles.taskModuleEyebrow}>Stammdaten</p>
+          <h1>{pageMeta.title}</h1>
+          <p>{pageMeta.description}</p>
+        </div>
+        <div className={styles.catalogHeaderActions} aria-label="Stammdaten anlegen">
+          {createButtons.map((button) => (
+            <button
+              key={button.type}
+              className={activeCreateType === button.type ? styles.primaryButton : styles.catalogHeaderSecondaryButton}
+              onClick={() => onCreateItem(button.type)}
+            >
+              {button.label}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      <section className={styles.catalogTypeStrip} aria-label="Stammdatenbereiche">
+        {typeButtons.map((item) => (
+          <button
+            key={item.label}
+            className={styles.catalogTypeButton}
+            data-active={activeTab === item.value}
+            data-tone={item.tone}
+            aria-pressed={activeTab === item.value}
+            onClick={() => {
+              onNavigate(item.value);
+              setStatusFilter("active");
+            }}
+          >
+            <span className={styles.catalogTypeIcon} aria-hidden="true">
+              {item.value === "articles" ? (
+                <svg viewBox="0 0 24 24"><path d="m4 7 8-4 8 4-8 4-8-4Z"/><path d="m4 7 8 4 8-4M4 7v10l8 4 8-4V7M12 11v10"/></svg>
+              ) : item.value === "services" ? (
+                <svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5-5L12 3.6 9.6 6 7.3 3.7a4 4 0 0 0 5 5L4 17l3 3 8.3-8.3a4 4 0 0 0 5-5L18 9l-2.4-2.4 2.3-2.3a4 4 0 0 0-3.2 2Z"/></svg>
+              ) : (
+                <svg viewBox="0 0 24 24"><path d="M5 8h14v11H5zM3 5h18v3H3zM9 12h6"/></svg>
+              )}
+            </span>
+            <span className={styles.catalogTypeLabel}>{item.label}</span>
+            <strong>{item.count}</strong>
+          </button>
+        ))}
+      </section>
+
+      <section className={`${styles.contactToolbar} ${styles.catalogToolbar}`}>
+        <label>
+          Suche
+          <input
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Nummer, Name, Kategorie, Lieferant, Matchcode"
+          />
+        </label>
+        <label>
+          Status
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as "active" | "inactive" | "all")}
+          >
+            <option value="active">Aktiv</option>
+            <option value="inactive">Inaktiv</option>
+            <option value="all">Alle</option>
+          </select>
+        </label>
+      </section>
+
+      <div className={`${styles.contactPagination} ${styles.catalogPagination}`}>
+        <span>Seite</span>
+        <button
+          className={styles.iconButton}
+          disabled={safePage <= 1}
+          aria-label="Vorherige Seite"
+          onClick={() => setPage((currentPage) => Math.max(1, currentPage - 1))}
+        >
+          {"<"}
+        </button>
+        <input value={safePage} onChange={(event) => setPage(Number(event.target.value) || 1)} />
+        <button
+          className={styles.iconButton}
+          disabled={safePage >= pageCount}
+          aria-label="Nächste Seite"
+          onClick={() => setPage((currentPage) => Math.min(pageCount, currentPage + 1))}
+        >
+          {">"}
+        </button>
+        <span>von {pageCount}</span>
+        <span>Zeige</span>
+        <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}>
+          {[25, 50, 100, 250].map((size) => <option key={size} value={size}>{size}</option>)}
+        </select>
+        <strong>{filteredItems.length} Einträge gefunden</strong>
+      </div>
+
+      <section className={`${styles.tableCard} ${styles.catalogTableCard}`}>
+        <table className={`${styles.table} ${styles.catalogTable}`}>
+          <thead>
+            <tr>
+              <th>Nummer</th>
+              <th>Name</th>
+              <th>Typ</th>
+              <th>Kategorie</th>
+              <th>Gewerk</th>
+              <th>Einheit</th>
+              <th>Lieferant</th>
+              <th>Genutzt</th>
+              <th>EK</th>
+              <th>VK</th>
+              <th>MwSt.</th>
+              <th>Status</th>
+              <th>Aktionen</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pagedItems.length === 0 ? (
+              <tr><td colSpan={13}>Noch keine Einträge gefunden.</td></tr>
+            ) : pagedItems.map((item) => (
+              <tr key={item.id} data-selected={!item.isActive ? "true" : undefined}>
+                <td><button className={styles.tableTextLink} onClick={() => onEditItem(item)}>{item.number}</button></td>
+                <td className={styles.title}>{item.name}</td>
+                <td>{item.type === "service" ? "Leistung" : item.type === "package" ? "Paket" : "Artikel"}</td>
+                <td>{item.category || "-"}</td>
+                <td>{item.trade || "-"}</td>
+                <td>{item.unit}</td>
+                <td>{item.supplierName || "-"}</td>
+                <td>{item.usedCount}</td>
+                <td>{formatMoney(item.purchasePrice)}</td>
+                <td>{formatMoney(item.salesPrice)}</td>
+                <td>{formatHours(item.vatRate)}%</td>
+                <td>
+                  <span className={styles.catalogStatusClip} data-status={item.isActive ? "active" : "inactive"}>
+                    {item.isActive ? "Aktiv" : "Inaktiv"}
+                  </span>
+                </td>
+                <td>
+                  <div className={`${styles.tableActionGroup} ${styles.catalogActionGroup}`}>
+                    <button className={`${styles.secondaryButton} ${styles.catalogPrimaryRowAction}`} onClick={() => onEditItem(item)}>
+                      Bearbeiten
+                    </button>
+                    <button className={`${styles.secondaryButton} ${styles.catalogSecondaryRowAction}`} onClick={() => onDuplicateItem(item)}>
+                      Duplizieren
+                    </button>
+                    <button
+                      className={`${styles.secondaryButton} ${styles.catalogDangerRowAction}`}
+                      disabled={!item.isActive}
+                      onClick={() => onDeactivateItem(item)}
+                    >
+                      Deaktivieren
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      {modalContent}
+    </section>
+  );
+}
+
 export function DashboardPage() {
   const hasInitializedBrowserHistoryRef = useRef(false);
   const isApplyingBrowserHistoryRef = useRef(false);
@@ -6103,6 +7025,8 @@ export function DashboardPage() {
   const [documentTextDraftBody, setDocumentTextDraftBody] = useState("");
   const [documentTextDraftError, setDocumentTextDraftError] = useState("");
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
+  // Legacy list state remains until the old inline catalog renderer is removed completely.
+  // The active article/service/package lists use CatalogListView and do not update this parent state.
   const [catalogSearchTerm, setCatalogSearchTerm] = useState("");
   const [catalogStatusFilter, setCatalogStatusFilter] = useState<"active" | "inactive" | "all">("active");
   const [catalogPageSize, setCatalogPageSize] = useState(25);
@@ -6540,22 +7464,9 @@ export function DashboardPage() {
   const [editingObjectAddressId, setEditingObjectAddressId] = useState("");
   const [objectAddressDraft, setObjectAddressDraft] = useState<ObjectAddressDraft>(emptyObjectAddressDraft);
   const [objectAddressError, setObjectAddressError] = useState("");
-  const [contactSearchTerm, setContactSearchTerm] = useState("");
-  const [contactCategoryFilter, setContactCategoryFilter] = useState("");
-  const [contactPage, setContactPage] = useState(1);
-  const [contactPageSize, setContactPageSize] = useState(25);
-  const [isContactColumnMenuOpen, setIsContactColumnMenuOpen] = useState(false);
-  const [isContactExportMenuOpen, setIsContactExportMenuOpen] = useState(false);
   const [isContactBulkModalOpen, setIsContactBulkModalOpen] = useState(false);
   const [contactBulkAction, setContactBulkAction] = useState("Archivieren");
-  const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
-  const [lastSelectedContactId, setLastSelectedContactId] = useState("");
-  const [contactColumnSearch, setContactColumnSearch] = useState("");
-  const [contactColumnFilters, setContactColumnFilters] = useState<
-    Partial<Record<ContactColumnId, string>>
-  >({});
-  const [visibleContactColumnIds, setVisibleContactColumnIds] =
-    useState<ContactColumnId[]>(defaultContactColumnIds);
+  const [contactBulkTargetIds, setContactBulkTargetIds] = useState<string[]>([]);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
   const [contactFormTab, setContactFormTab] = useState<ContactFormTab>("details");
@@ -12690,129 +13601,10 @@ export function DashboardPage() {
     setErrorMessage("");
   }
 
-  function updateContactColumnFilter(columnId: ContactColumnId, value: string) {
-    setContactColumnFilters((currentFilters) => ({
-      ...currentFilters,
-      [columnId]: value,
-    }));
-  }
-
-  function toggleContactColumn(columnId: ContactColumnId, checked: boolean) {
-    setVisibleContactColumnIds((currentIds) => {
-      if (checked) {
-        return currentIds.includes(columnId) ? currentIds : [...currentIds, columnId];
-      }
-
-      return currentIds.length <= 1 ? currentIds : currentIds.filter((id) => id !== columnId);
-    });
-  }
-
-  function resetContactColumns() {
-    setVisibleContactColumnIds(defaultContactColumnIds);
-    setContactColumnSearch("");
-  }
-
-  function getContactExportValue(contact: ContactItem, column: ContactColumn) {
-    return column.value(contact).replace(/\s+/g, " ").trim();
-  }
-
-  function downloadContactExport(format: "csv" | "excel") {
-    const exportColumns = visibleContactColumns;
-    const exportRows = visibleContacts;
-    const fileDate = new Date().toISOString().slice(0, 10);
-
-    if (format === "csv") {
-      const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`;
-      const rows = [
-        exportColumns.map((column) => escapeCsv(column.label)).join(";"),
-        ...exportRows.map((contact) =>
-          exportColumns
-            .map((column) => escapeCsv(getContactExportValue(contact, column)))
-            .join(";")
-        ),
-      ];
-      const blob = new Blob([`\uFEFF${rows.join("\r\n")}`], {
-        type: "text/csv;charset=utf-8;",
-      });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `kontakte-${fileDate}.csv`;
-      link.click();
-      URL.revokeObjectURL(url);
-      setIsContactExportMenuOpen(false);
-      return;
-    }
-
-    const escapeHtml = (value: string) =>
-      value
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
-    const tableRows = exportRows
-      .map(
-        (contact) =>
-          `<tr>${exportColumns
-            .map((column) => `<td>${escapeHtml(getContactExportValue(contact, column))}</td>`)
-            .join("")}</tr>`
-      )
-      .join("");
-    const tableHeader = exportColumns
-      .map((column) => `<th>${escapeHtml(column.label)}</th>`)
-      .join("");
-    const html = `<html><head><meta charset="utf-8" /></head><body><table><thead><tr>${tableHeader}</tr></thead><tbody>${tableRows}</tbody></table></body></html>`;
-    const blob = new Blob([html], {
-      type: "application/vnd.ms-excel;charset=utf-8;",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `kontakte-${fileDate}.xls`;
-    link.click();
-    URL.revokeObjectURL(url);
-    setIsContactExportMenuOpen(false);
-  }
-
-  function handleContactRowClick(
-    event: MouseEvent<HTMLTableRowElement>,
-    contact: ContactItem,
-    pageIndex: number
-  ) {
-    event.stopPropagation();
-
-    if (event.shiftKey && lastSelectedContactId) {
-      const lastIndex = paginatedContacts.findIndex((item) => item.id === lastSelectedContactId);
-      const startIndex = Math.min(lastIndex, pageIndex);
-      const endIndex = Math.max(lastIndex, pageIndex);
-      const rangeIds = paginatedContacts
-        .slice(startIndex, endIndex + 1)
-        .map((item) => item.id);
-      setSelectedContactIds((currentIds) => Array.from(new Set([...currentIds, ...rangeIds])));
-      return;
-    }
-
-    if (event.ctrlKey || event.metaKey) {
-      setSelectedContactIds((currentIds) =>
-        currentIds.includes(contact.id)
-          ? currentIds.filter((id) => id !== contact.id)
-          : [...currentIds, contact.id]
-      );
-      setLastSelectedContactId(contact.id);
-      return;
-    }
-
-    setSelectedContactIds((currentIds) =>
-      currentIds.length === 1 && currentIds[0] === contact.id ? [] : [contact.id]
-    );
-    setLastSelectedContactId(contact.id);
-  }
-
   async function applyContactBulkAction() {
-    const targetIds = selectedContactIds.length
-      ? selectedContactIds
-      : visibleContacts.map((contact) => contact.id);
-    const targetContacts = contacts.filter((contact) => targetIds.includes(contact.id));
+    const targetContacts = contacts.filter((contact) =>
+      contactBulkTargetIds.includes(contact.id)
+    );
 
     if (contactBulkAction !== "Archivieren" || targetContacts.length === 0) {
       setIsContactBulkModalOpen(false);
@@ -12847,7 +13639,7 @@ export function DashboardPage() {
         updatedContacts.find((updatedContact) => updatedContact.id === contact.id) ?? contact
       )
     );
-    setSelectedContactIds([]);
+    setContactBulkTargetIds([]);
     setIsContactBulkModalOpen(false);
     setErrorMessage("");
   }
@@ -16253,7 +17045,6 @@ export function DashboardPage() {
 
     if (tab === "contacts") {
       setSelectedCustomerFileId("");
-      setSelectedContactIds([]);
     }
 
     if (tab === "projectsSolutions" || tab === "projectsImmocare" || tab === "hero") {
@@ -17218,6 +18009,10 @@ export function DashboardPage() {
   }, [goalDraft.ownerUserId, users]);
 
   useEffect(() => {
+    setCatalogPage(1);
+  }, [catalogSearchTerm, catalogStatusFilter, catalogPageSize, activeTab]);
+
+  useEffect(() => {
     if (activeTab !== "personalData" || !["development", "disg"].includes(personalDataView)) return;
     if (!personalAssessmentTargetUserId) return;
     if (assessmentLoadedUserId === personalAssessmentTargetUserId) return;
@@ -17229,10 +18024,6 @@ export function DashboardPage() {
     if (activeTab !== "personalData" || personalDataView !== "documents" || !personalAssessmentTargetUserId) return;
     void loadEmployeeDocuments(personalAssessmentTargetUserId);
   }, [activeTab, personalDataView, personalAssessmentTargetUserId]);
-
-  useEffect(() => {
-    setContactPage(1);
-  }, [contactSearchTerm, contactCategoryFilter, contactColumnFilters, contactPageSize]);
 
   useEffect(() => {
     if (
@@ -17265,10 +18056,6 @@ export function DashboardPage() {
     if (!project) return;
     setPlanningEntryObjectAddressId(project.objectAddressId || "");
   }, [heroProjects, isPlanningEntryModalOpen, planningEntryBoard, planningEntryProjectId]);
-
-  useEffect(() => {
-    setCatalogPage(1);
-  }, [catalogSearchTerm, catalogStatusFilter, catalogPageSize, activeTab]);
 
   useEffect(() => {
     if (!authChecked || !isAuthenticated || !activeUserId) return;
@@ -18146,12 +18933,6 @@ export function DashboardPage() {
     );
   }
 
-  function getContactTypeLabel(contact: Pick<ContactItem, "type">) {
-    if (contact.type === "company") return "Firma";
-    if (contact.type === "private") return "Privatperson";
-    return "Ansprechpartner";
-  }
-
   function getContactDisplayName(contact: ContactItem) {
     if (contact.type === "company") return contact.companyName || contact.customerNumber;
 
@@ -18189,7 +18970,6 @@ export function DashboardPage() {
     const target = getCustomerFileTarget(contact);
     setSelectedCustomerFileId(target.id);
     setCustomerFileTab("logbook");
-    setSelectedContactIds([]);
   }
 
   function openGlobalSearchResult(result: GlobalSearchResult) {
@@ -18231,23 +19011,6 @@ export function DashboardPage() {
     setActiveTab("documentTexts");
     setDocumentTextSearch(result.title);
     setDocumentTextView(result.category === "Titel" ? "titles" : "texts");
-  }
-
-  function renderContactFileLink(contact: ContactItem, label: string) {
-    if (!label) return "-";
-
-    return (
-      <button
-        type="button"
-        className={styles.tableTextLink}
-        onClick={(event) => {
-          event.stopPropagation();
-          openCustomerFile(contact);
-        }}
-      >
-        {label}
-      </button>
-    );
   }
 
   function resetLogbookDraft() {
@@ -23249,10 +24012,10 @@ await addProjectLogbookEntry(
           </label>
           <label>
             Volltextsuche
-            <input
+            <IsolatedFilterInput
               type="search"
               value={accountingDocumentSearch}
-              onChange={(event) => setAccountingDocumentSearch(event.target.value)}
+              onChange={setAccountingDocumentSearch}
               placeholder="Dokumentnummer, Status, Datei, Betrag..."
             />
           </label>
@@ -25031,127 +25794,7 @@ await addProjectLogbookEntry(
       })
       .slice(0, 12);
   }, [activeTasks, contacts, documentTexts, documentTypes, globalSearchTerm, heroProjects, tasks]);
-  const contactColumns: ContactColumn[] = [
-    {
-      id: "type",
-      label: "Typ",
-      filterType: "select",
-      options: ["Ansprechpartner", "Firma", "Privatperson"],
-      value: getContactTypeLabel,
-      render: (contact) => (
-        <span className={styles.contactTypeBadge}>{getContactTypeLabel(contact)}</span>
-      ),
-    },
-    { id: "customerNumber", label: "Kundennummer", value: (contact) => contact.customerNumber },
-    {
-      id: "companyName",
-      label: "Firmenname",
-      value: (contact) => contact.companyName || contact.parentCompanyName,
-      render: (contact) =>
-        renderContactFileLink(contact, contact.companyName || contact.parentCompanyName),
-    },
-    { id: "salutation", label: "Anrede", value: (contact) => contact.salutation },
-    {
-      id: "additionalSalutation",
-      label: "Weitere Anrede",
-      value: (contact) => contact.additionalSalutation,
-    },
-    {
-      id: "firstName",
-      label: "Vorname",
-      value: (contact) => contact.firstName,
-      render: (contact) => renderContactFileLink(contact, contact.firstName),
-    },
-    {
-      id: "lastName",
-      label: "Nachname",
-      value: (contact) => contact.lastName,
-      render: (contact) => renderContactFileLink(contact, contact.lastName),
-    },
-    { id: "email", label: "E-Mail", value: (contact) => contact.email },
-    {
-      id: "category",
-      label: "Kategorie",
-      filterType: "select",
-      options: ["Kunde", "Privatkunde", "Lieferant", "Partner", "Ansprechpartner"],
-      value: (contact) => contact.category,
-    },
-    {
-      id: "location",
-      label: "Ort",
-      value: (contact) =>
-        [contact.street, contact.postalCode, contact.city].filter(Boolean).join(" "),
-      render: (contact) => (
-        <>
-          {[contact.postalCode, contact.city].filter(Boolean).join(" ") || "-"}
-          {contact.street && <span className={styles.metaLine}>{contact.street}</span>}
-        </>
-      ),
-    },
-    { id: "phone", label: "Telefon", value: (contact) => contact.phone },
-    { id: "mobile", label: "Mobil", value: (contact) => contact.mobile },
-    {
-      id: "createdAt",
-      label: "Erstellungsdatum",
-      value: (contact) => formatDeadline(contact.createdAt),
-    },
-    { id: "birthDate", label: "Geburtsdatum", value: () => "" },
-    { id: "fax", label: "Fax", value: (contact) => contact.fax },
-    { id: "website", label: "Website", value: (contact) => contact.website },
-    { id: "source", label: "Quelle", value: (contact) => contact.source },
-    { id: "reachability", label: "Erreichbarkeit", value: (contact) => contact.reachability },
-    {
-      id: "paymentTermDays",
-      label: "Zahlungsziel",
-      value: (contact) => (contact.paymentTermDays === null ? "" : `${contact.paymentTermDays}`),
-    },
-    {
-      id: "discountPercent",
-      label: "Skonto",
-      value: (contact) => (contact.discountPercent === null ? "" : `${contact.discountPercent}`),
-    },
-    {
-      id: "discountTermDays",
-      label: "Skontoziel",
-      value: (contact) => (contact.discountTermDays === null ? "" : `${contact.discountTermDays}`),
-    },
-    { id: "priceGroup", label: "VK-Gruppe", value: (contact) => contact.priceGroup },
-    { id: "leitwegId", label: "Leitweg-ID", value: (contact) => contact.leitwegId },
-  ];
-  const visibleContactColumns = contactColumns.filter((column) =>
-    visibleContactColumnIds.includes(column.id)
-  );
-  const searchedContactColumns = contactColumns.filter((column) =>
-    column.label.toLowerCase().includes(contactColumnSearch.trim().toLowerCase())
-  );
-  const visibleContacts = contacts.filter((contact) => {
-    const search = contactSearchTerm.trim().toLowerCase();
-    const matchesCategory = !contactCategoryFilter || contact.category === contactCategoryFilter;
-    const matchesSearch =
-      !search ||
-      contactColumns
-        .map((column) => column.value(contact))
-        .some((value) => value.toLowerCase().includes(search));
-    const matchesColumnFilters = contactColumns.every((column) => {
-      const filterValue = contactColumnFilters[column.id]?.trim().toLowerCase();
-      if (!filterValue) return true;
-
-      return column.value(contact).toLowerCase().includes(filterValue);
-    });
-
-    return matchesCategory && matchesSearch && matchesColumnFilters;
-  });
-  const contactPageCount = Math.max(1, Math.ceil(visibleContacts.length / contactPageSize));
-  const activeContactPage = Math.min(contactPage, contactPageCount);
-  const paginatedContacts = visibleContacts.slice(
-    (activeContactPage - 1) * contactPageSize,
-    activeContactPage * contactPageSize
-  );
-  const contactBulkCount = selectedContactIds.length || visibleContacts.length;
-  const contactCategoryCounts = contacts.reduce<Record<string, number>>((counts, contact) => {
-    counts[contact.category] = (counts[contact.category] ?? 0) + 1;
-    return counts;
-  }, {});
+  const contactBulkCount = contactBulkTargetIds.length;
   const selectedCustomerFile =
     contacts.find((contact) => contact.id === selectedCustomerFileId) ?? null;
   const customerFileContacts = selectedCustomerFile
@@ -31756,9 +32399,9 @@ await addProjectLogbookEntry(
         {reportAnalyticsTab !== "executive" ? (
           <label>
             Suche
-            <input
+            <IsolatedFilterInput
               value={reportSearch}
-              onChange={(event) => setReportSearch(event.target.value)}
+              onChange={setReportSearch}
               placeholder="Projekt, Kunde, Mitarbeiter, Position..."
             />
           </label>
@@ -32355,9 +32998,9 @@ await addProjectLogbookEntry(
             <div className={styles.forecastDetailBody}>
               <label>
                 Suche
-                <input
+                <IsolatedFilterInput
                   value={reportSearch}
-                  onChange={(event) => setReportSearch(event.target.value)}
+                  onChange={setReportSearch}
                   placeholder="Kunde, Projekt, Rechnung, Status..."
                 />
               </label>
@@ -33652,10 +34295,10 @@ await addProjectLogbookEntry(
                   </div>
                   <label className={styles.analyticsModalSearch}>
                     <span>Details durchsuchen</span>
-                    <input
+                    <IsolatedFilterInput
                       type="search"
                       value={catalogAnalyticsModalSearch}
-                      onChange={(event) => setCatalogAnalyticsModalSearch(event.target.value)}
+                      onChange={setCatalogAnalyticsModalSearch}
                       placeholder="Position, Paket, Rechnung, Kunde oder Projekt …"
                     />
                   </label>
@@ -35624,10 +36267,10 @@ await addProjectLogbookEntry(
 
                   <label className={styles.analyticsModalSearch}>
                     <span>Details durchsuchen</span>
-                    <input
+                    <IsolatedFilterInput
                       type="search"
                       value={executiveAnalyticsModalSearch}
-                      onChange={(event) => setExecutiveAnalyticsModalSearch(event.target.value)}
+                      onChange={setExecutiveAnalyticsModalSearch}
                       placeholder="Projekt, Kunde, Rechnung, Angebot oder Planungsgruppe …"
                     />
                   </label>
@@ -35777,10 +36420,10 @@ await addProjectLogbookEntry(
             </label>
             <label>
               <span>Karte durchsuchen</span>
-              <input
+              <IsolatedFilterInput
                 type="search"
                 value={projectMapSearch}
-                onChange={(event) => setProjectMapSearch(event.target.value)}
+                onChange={setProjectMapSearch}
                 placeholder="Projekt, Kunde, Adresse, Gewerk …"
               />
             </label>
@@ -39286,9 +39929,9 @@ await addProjectLogbookEntry(
         <section className={styles.potentialToolbar}>
           <label>
             Suche
-            <input
+            <IsolatedFilterInput
               value={heroSearchTerm}
-              onChange={(event) => setHeroSearchTerm(event.target.value)}
+              onChange={setHeroSearchTerm}
               placeholder="Zusatzverkauf, Projekt, Kunde oder Status"
             />
           </label>
@@ -48253,10 +48896,10 @@ await addProjectLogbookEntry(
               </label>
               <label>
                 Volltextsuche
-                <input
+                <IsolatedFilterInput
                   type="search"
                   value={personalStampSearch}
-                  onChange={(event) => setPersonalStampSearch(event.target.value)}
+                  onChange={setPersonalStampSearch}
                   placeholder="Kommentar, Stempelung oder Projekt suchen..."
                 />
               </label>
@@ -51364,10 +52007,10 @@ await addProjectLogbookEntry(
                     </label>
                     <label>
                       Volltextsuche
-                      <input
+                      <IsolatedFilterInput
                         type="search"
                         value={employeeTimeSearch}
-                        onChange={(event) => setEmployeeTimeSearch(event.target.value)}
+                        onChange={setEmployeeTimeSearch}
                         placeholder="Kommentar, Stempelung oder Projekt suchen..."
                       />
                     </label>
@@ -51707,9 +52350,9 @@ await addProjectLogbookEntry(
         <section className={`${styles.contactToolbar} ${styles.employeeListToolbar}`}>
           <label>
             Suche
-            <input
+            <IsolatedFilterInput
               value={employeeSearchTerm}
-              onChange={(event) => setEmployeeSearchTerm(event.target.value)}
+              onChange={setEmployeeSearchTerm}
               placeholder="Name, E-Mail, Rolle oder Niederlassung"
             />
           </label>
@@ -53414,6 +54057,21 @@ await addProjectLogbookEntry(
   }
 
   function renderCatalogItems() {
+    if (String(activeTab) !== "datanorm") {
+      return (
+        <CatalogListView
+          activeTab={activeTab}
+          catalogItems={catalogItems}
+          modalContent={isCatalogModalOpen ? renderCatalogModal() : null}
+          onCreateItem={openCatalogModal}
+          onEditItem={openEditCatalogModal}
+          onDuplicateItem={duplicateCatalogItem}
+          onDeactivateItem={deactivateCatalogItem}
+          onNavigate={openMainView}
+        />
+      );
+    }
+
     const viewType = getCatalogViewType();
     const search = normalizeSearchText(catalogSearchTerm);
     const filteredItems = catalogItems.filter((item) => {
@@ -56732,9 +57390,9 @@ await addProjectLogbookEntry(
           </label>
           <label>
             Suchen:
-            <input
+            <IsolatedFilterInput
               value={documentTypeSearch}
-              onChange={(event) => setDocumentTypeSearch(event.target.value)}
+              onChange={setDocumentTypeSearch}
             />
           </label>
         </div>
@@ -56972,9 +57630,9 @@ await addProjectLogbookEntry(
               </label>
               <label>
                 Suchen:
-                <input
+                <IsolatedFilterInput
                   value={documentTextSearch}
-                  onChange={(event) => setDocumentTextSearch(event.target.value)}
+                  onChange={setDocumentTextSearch}
                 />
               </label>
             </div>
@@ -58902,9 +59560,9 @@ await addProjectLogbookEntry(
               <section className={styles.heroSearchBar}>
                 <label>
                   Suche
-                  <input
+                  <IsolatedFilterInput
                     value={heroSearchTerm}
-                    onChange={(event) => setHeroSearchTerm(event.target.value)}
+                    onChange={setHeroSearchTerm}
                     placeholder="Projekt, Projektnummer, Kunde oder Status"
                   />
                 </label>
@@ -59338,318 +59996,16 @@ await addProjectLogbookEntry(
           ) : activeTab === "contacts" ? selectedCustomerFile ? (
             renderCustomerFile()
           ) : (
-            <section className={styles.contactsPanel}>
-              <header className={`${styles.taskModuleHeader} ${styles.contactModuleHeader}`}>
-                <div>
-                  <p className={styles.taskModuleEyebrow}>CRM</p>
-                  <h1>Kontakte</h1>
-                  <p>
-                    Kunden, Lieferanten, Partner und Ansprechpartner zentral verwalten.
-                  </p>
-                </div>
-
-                <button className={styles.primaryButton} onClick={() => openCreateContactModal()}>
-                  + Kontakt
-                </button>
-              </header>
-
-              <section className={styles.contactSummaryGrid}>
-                {[
-                  { label: "Alle", value: "", count: contacts.length, tone: "neutral" },
-                  { label: "Kunden", value: "Kunde", count: contactCategoryCounts.Kunde ?? 0, tone: "blue" },
-                  { label: "Privatkunden", value: "Privatkunde", count: contactCategoryCounts.Privatkunde ?? 0, tone: "teal" },
-                  { label: "Lieferanten", value: "Lieferant", count: contactCategoryCounts.Lieferant ?? 0, tone: "amber" },
-                  { label: "Partner", value: "Partner", count: contactCategoryCounts.Partner ?? 0, tone: "indigo" },
-                  { label: "Ansprechpartner", value: "Ansprechpartner", count: contactCategoryCounts.Ansprechpartner ?? 0, tone: "cyan" },
-                ].map((item) => (
-                  <button
-                    key={item.label}
-                    className={styles.contactSummaryCard}
-                    data-active={contactCategoryFilter === item.value}
-                    data-tone={item.tone}
-                    aria-pressed={contactCategoryFilter === item.value}
-                    onClick={() => setContactCategoryFilter(item.value)}
-                  >
-                    <span>{item.label}</span>
-                    <strong>{item.count}</strong>
-                  </button>
-                ))}
-              </section>
-
-              <section className={styles.contactToolbar}>
-                <label>
-                  Suche
-                  <input
-                    value={contactSearchTerm}
-                    onChange={(event) => setContactSearchTerm(event.target.value)}
-                    placeholder="Name, Firma, Kundennummer, E-Mail, Ort"
-                  />
-                </label>
-                <label>
-                  Kategorie
-                  <select
-                    value={contactCategoryFilter}
-                    onChange={(event) => setContactCategoryFilter(event.target.value)}
-                  >
-                    <option value="">Alle</option>
-                    <option value="Kunde">Kunden</option>
-                    <option value="Privatkunde">Privatkunden</option>
-                    <option value="Lieferant">Lieferanten</option>
-                    <option value="Partner">Partner</option>
-                    <option value="Ansprechpartner">Ansprechpartner</option>
-                  </select>
-                </label>
-                <div className={styles.contactToolbarActions}>
-                  <button
-                    type="button"
-                    className={styles.contactActionIconButton}
-                    onClick={() => setIsContactBulkModalOpen(true)}
-                    title="Gruppenaktion"
-                    aria-label="Gruppenaktion"
-                  >
-                    <ContactToolbarIcon type="bulk" />
-                  </button>
-                  <div className={styles.contactExportPicker}>
-                    <button
-                      type="button"
-                      className={styles.contactActionIconButton}
-                      onClick={() => setIsContactExportMenuOpen((isOpen) => !isOpen)}
-                      title="Export"
-                      aria-label="Export"
-                      aria-expanded={isContactExportMenuOpen}
-                    >
-                      <ContactToolbarIcon type="export" />
-                    </button>
-                    {isContactExportMenuOpen && (
-                      <div className={styles.contactExportMenu}>
-                        <button type="button" onClick={() => downloadContactExport("csv")}>
-                          CSV
-                        </button>
-                        <button type="button" onClick={() => downloadContactExport("excel")}>
-                          Excel
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  <div className={styles.contactColumnPicker}>
-                    <button
-                      type="button"
-                      className={styles.contactActionIconButton}
-                      aria-label="Spalten auswählen"
-                      title="Spalten auswählen"
-                      aria-expanded={isContactColumnMenuOpen}
-                      onClick={() => setIsContactColumnMenuOpen((isOpen) => !isOpen)}
-                    >
-                      <ContactToolbarIcon type="columns" />
-                    </button>
-                    {isContactColumnMenuOpen && (
-                      <div className={styles.contactColumnMenu}>
-                        <input
-                          value={contactColumnSearch}
-                          onChange={(event) => setContactColumnSearch(event.target.value)}
-                          placeholder="Suche"
-                        />
-                        <button
-                          type="button"
-                          className={styles.contactColumnReset}
-                          onClick={resetContactColumns}
-                        >
-                          Standard wiederherstellen
-                        </button>
-                        <div className={styles.contactColumnOptions}>
-                          {searchedContactColumns.map((column) => (
-                            <label key={column.id}>
-                              <input
-                                type="checkbox"
-                                checked={visibleContactColumnIds.includes(column.id)}
-                                onChange={(event) =>
-                                  toggleContactColumn(column.id, event.target.checked)
-                                }
-                              />
-                              {column.label}
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </section>
-
-              <section className={`${styles.tableCard} ${styles.contactsTableCard}`}>
-                <div className={styles.contactPagination}>
-                  <span>Seite</span>
-                  <button
-                    type="button"
-                    className={styles.paginationButton}
-                    disabled={activeContactPage <= 1}
-                    onClick={() => setContactPage((page) => Math.max(1, page - 1))}
-                    aria-label="Vorherige Seite"
-                  >
-                    &lt;
-                  </button>
-                  <input
-                    aria-label="Kontaktseite"
-                    min={1}
-                    max={contactPageCount}
-                    type="number"
-                    value={activeContactPage}
-                    onChange={(event) => {
-                      const nextPage = Number(event.target.value);
-                      if (Number.isFinite(nextPage)) {
-                        setContactPage(Math.min(Math.max(1, nextPage), contactPageCount));
-                      }
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className={styles.paginationButton}
-                    disabled={activeContactPage >= contactPageCount}
-                    onClick={() => setContactPage((page) => Math.min(contactPageCount, page + 1))}
-                    aria-label="Nächste Seite"
-                  >
-                    &gt;
-                  </button>
-                  <span>von {contactPageCount}</span>
-                  <span>Zeige</span>
-                  <select
-                    value={contactPageSize}
-                    onChange={(event) => setContactPageSize(Number(event.target.value))}
-                  >
-                    {[25, 50, 100, 250].map((size) => (
-                      <option key={size} value={size}>
-                        {size}
-                      </option>
-                    ))}
-                  </select>
-                  <span>Einträge</span>
-                  <strong>{visibleContacts.length} Einträge gefunden</strong>
-                  <span>
-                    {selectedContactIds.length
-                      ? `${selectedContactIds.length} Zeilen ausgewählt`
-                      : "Klicken, um Zeilen auszuwählen"}
-                  </span>
-                </div>
-                <table className={`${styles.table} ${styles.contactsTable}`}>
-                  <thead>
-                    <tr>
-                      {visibleContactColumns.map((column) => (
-                        <th key={column.id}>{column.label}</th>
-                      ))}
-                    </tr>
-                    <tr className={styles.contactFilterRow}>
-                      {visibleContactColumns.map((column) => (
-                        <th key={`${column.id}-filter`}>
-                          {column.filterType === "select" ? (
-                            <select
-                              value={contactColumnFilters[column.id] ?? ""}
-                              onChange={(event) =>
-                                updateContactColumnFilter(column.id, event.target.value)
-                              }
-                            >
-                              <option value="">Alle</option>
-                              {(column.options ?? []).map((option) => (
-                                <option key={option} value={option}>
-                                  {option}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <input
-                              value={contactColumnFilters[column.id] ?? ""}
-                              onChange={(event) =>
-                                updateContactColumnFilter(column.id, event.target.value)
-                              }
-                              placeholder="Filtern"
-                            />
-                          )}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleContacts.length === 0 ? (
-                      <tr>
-                        <td colSpan={visibleContactColumns.length}>Noch keine Kontakte gefunden.</td>
-                      </tr>
-                    ) : (
-                      paginatedContacts.map((contact, pageIndex) => (
-                        <tr
-                          key={contact.id}
-                          className={styles.clickableRow}
-                          data-selected={selectedContactIds.includes(contact.id)}
-                          onClick={(event) => handleContactRowClick(event, contact, pageIndex)}
-                          onDoubleClick={() => openEditContactModal(contact)}
-                        >
-                          {visibleContactColumns.map((column) => (
-                            <td
-                              key={`${contact.id}-${column.id}`}
-                              className={
-                                column.id === "customerNumber"
-                                  ? styles.number
-                                  : column.id === "companyName"
-                                    ? styles.title
-                                    : undefined
-                              }
-                            >
-                              {(column.render?.(contact) ?? column.value(contact)) || "-"}
-                            </td>
-                          ))}
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-                <div className={styles.contactPagination}>
-                  <span>Seite</span>
-                  <button
-                    type="button"
-                    className={styles.paginationButton}
-                    disabled={activeContactPage <= 1}
-                    onClick={() => setContactPage((page) => Math.max(1, page - 1))}
-                    aria-label="Vorherige Seite"
-                  >
-                    &lt;
-                  </button>
-                  <input
-                    aria-label="Kontaktseite unten"
-                    min={1}
-                    max={contactPageCount}
-                    type="number"
-                    value={activeContactPage}
-                    onChange={(event) => {
-                      const nextPage = Number(event.target.value);
-                      if (Number.isFinite(nextPage)) {
-                        setContactPage(Math.min(Math.max(1, nextPage), contactPageCount));
-                      }
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className={styles.paginationButton}
-                    disabled={activeContactPage >= contactPageCount}
-                    onClick={() => setContactPage((page) => Math.min(contactPageCount, page + 1))}
-                    aria-label="Nächste Seite"
-                  >
-                    &gt;
-                  </button>
-                  <span>von {contactPageCount}</span>
-                  <span>Zeige</span>
-                  <select
-                    value={contactPageSize}
-                    onChange={(event) => setContactPageSize(Number(event.target.value))}
-                  >
-                    {[25, 50, 100, 250].map((size) => (
-                      <option key={size} value={size}>
-                        {size}
-                      </option>
-                    ))}
-                  </select>
-                  <span>Einträge</span>
-                  <strong>{visibleContacts.length} Einträge gefunden</strong>
-                </div>
-              </section>
-            </section>
+            <ContactsListView
+              contacts={contacts}
+              onCreateContact={() => openCreateContactModal()}
+              onEditContact={openEditContactModal}
+              onOpenContactFile={openCustomerFile}
+              onOpenBulkAction={(contactIds) => {
+                setContactBulkTargetIds(contactIds);
+                setIsContactBulkModalOpen(true);
+              }}
+            />
           ) : activeTab === "timeTracking" ? (
             renderTimeTrackingOverview()
           ) : activeTab === "laborCostRates" ? (
@@ -60660,9 +61016,9 @@ await addProjectLogbookEntry(
               <section className={`${styles.filterBar} ${styles.taskFilterBar}`}>
                 <label>
                   Suche
-                  <input
+                  <IsolatedFilterInput
                     value={searchTerm}
-                    onChange={(event) => setSearchTerm(event.target.value)}
+                    onChange={setSearchTerm}
                     placeholder="Nummer, Aufgabe, Kunde, Projekt oder Person"
                   />
                 </label>
@@ -65920,9 +66276,9 @@ await addProjectLogbookEntry(
               <div className={styles.employeeKpiDetailFilters}>
                 <label>
                   Suche
-                  <input
+                  <IsolatedFilterInput
                     value={employeeKpiDetailSearch}
-                    onChange={(event) => setEmployeeKpiDetailSearch(event.target.value)}
+                    onChange={setEmployeeKpiDetailSearch}
                     placeholder="Projekt, Datum, Status suchen..."
                   />
                 </label>
