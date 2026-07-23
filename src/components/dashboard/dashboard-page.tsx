@@ -36,6 +36,10 @@ import {
   type ProjectAnalyticsMapPoint,
 } from "./project-analytics-map";
 import { getOfferAcceptanceFunnel } from "@/lib/offer-acceptance/analytics";
+import {
+  WinterServiceCalculator,
+  type WinterServiceOfferTransfer,
+} from "@/components/calculators/winter-service-calculator";
 
 const DOCUMENT_PREVIEW_WIDTH = 595;
 const DOCUMENT_PREVIEW_HEIGHT = 842;
@@ -528,6 +532,7 @@ type AppTab =
   | "articles"
   | "services"
   | "packages"
+  | "calculators"
   | "salesPrices"
   | "datanorm"
   | "accounting"
@@ -3494,6 +3499,7 @@ const allNavigationTabs: Array<[AppTab, string]> = [
   ["projectsImmocare", "Projekte OK immocare"],
   ["contentManagement", "Content-Management"],
   ["articles", "Artikel & Leistungen"],
+  ["calculators", "Kalkulations-Rechner"],
   ["salesOpportunities", "Zusatzverkäufe"],
   ["dashboard", "Aufgaben"],
   ["planningBoard", "Planungsboard"],
@@ -3629,6 +3635,7 @@ const allAppTabs: AppTab[] = [
   "articles",
   "services",
   "packages",
+  "calculators",
   "salesPrices",
   "datanorm",
   "accounting",
@@ -3919,6 +3926,40 @@ function SidebarIcon({ tab }: { tab: AppTab }) {
       <svg {...common}>
         <path d="M4 18V8m5 10V5m5 13v-7m5 7V9" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
         <path d="m4 14 5-5 5 3 5-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+
+  if (tab === "calculators") {
+    return (
+      <svg {...common}>
+        <rect
+          x="5"
+          y="2.5"
+          width="14"
+          height="19"
+          rx="2.4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+        />
+        <rect
+          x="7.8"
+          y="5.2"
+          width="8.4"
+          height="3.6"
+          rx="0.8"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+        />
+        <path
+          d="M8 13h3M9.5 11.5v3M14 13h3M8 17.5h3M14 16l3 3M17 16l-3 3"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.7"
+          strokeLinecap="round"
+        />
       </svg>
     );
   }
@@ -9036,6 +9077,52 @@ export function DashboardPage() {
     );
     setUpsellOfferProjectId("");
     setIsOfferModalOpen(true);
+  }
+
+  function prepareWinterServiceOffer(selection: { projectId: string; offerId: string }) {
+    const project = heroProjects.find((entry) => entry.id === selection.projectId);
+    if (!project) {
+      setErrorMessage("Das zugehörige Projekt wurde nicht gefunden.");
+      return false;
+    }
+    setSelectedProjectFileId(project.id);
+    if (selection.offerId !== "new") {
+      const offer = offers.find((entry) => entry.id === selection.offerId && entry.projectId === project.id);
+      if (!offer || offer.status !== "Entwurf") {
+        setErrorMessage("Nur ein Angebotsentwurf kann um die Winterdienstposition ergänzt werden.");
+        return false;
+      }
+      openEditOfferModal(offer);
+    } else {
+      openOfferModal(project);
+    }
+    return true;
+  }
+
+  function transferWinterServicePackageToOffer(transfer: WinterServiceOfferTransfer) {
+    const lines: OfferLineDraft[] = transfer.packageItems.map((packageItem) => ({
+      id: crypto.randomUUID(),
+      catalogItemId: packageItem.id,
+      catalogType: "package",
+      quantity: 1,
+      unit: packageItem.unit || "Einsatz",
+      title: packageItem.name,
+      description: packageItem.description,
+      unitPrice: packageItem.salesPrice,
+      discountPercent: 0,
+      vatRate: packageItem.vatRate || 19,
+      laborItems: [],
+    }));
+    const addLine = (current: OfferDraft): OfferDraft => ({
+      ...current,
+      lines:
+        current.lines.length === 1 && !current.lines[0].catalogItemId && !current.lines[0].title
+          ? lines
+          : [...current.lines, ...lines],
+    });
+
+    setOfferDraft(addLine);
+    void loadCatalogItems();
   }
 
   async function generateOfferPreview() {
@@ -21373,9 +21460,16 @@ await addProjectLogbookEntry(
     }
 
     const deletedEntry = (await res.json()) as StampTimeEntry;
-    setStampEntries((currentEntries) =>
-      currentEntries.map((entry) => (entry.id === deletedEntry.id ? deletedEntry : entry))
-    );
+    const normalizedDeletedEntry = {
+      ...deletedEntry,
+      date: normalizeDateKeyValue(deletedEntry.date),
+    };
+    const replaceDeletedEntry = (currentEntries: StampTimeEntry[]) => [
+      normalizedDeletedEntry,
+      ...currentEntries.filter((entry) => entry.id !== normalizedDeletedEntry.id),
+    ];
+    setStampEntries(replaceDeletedEntry);
+    setProjectHistoryStampEntries(replaceDeletedEntry);
     closeStampEntryEditModal();
   }
 
@@ -39559,7 +39653,7 @@ await addProjectLogbookEntry(
       return second.key.localeCompare(first.key);
     });
     const projectStampHistorySourceEntries = Array.from(
-      new Map([...stampEntries, ...projectHistoryStampEntries].map((entry) => [entry.id, entry])).values()
+      new Map([...projectHistoryStampEntries, ...stampEntries].map((entry) => [entry.id, entry])).values()
     );
     const projectPlanningHistorySourceEntries = Array.from(
       new Map([...planningEntries, ...projectHistoryPlanningEntries].map((entry) => [entry.id, entry])).values()
@@ -45166,7 +45260,6 @@ await addProjectLogbookEntry(
           </aside>
         </div>
 
-        {renderOfferModal()}
         {renderLostOfferModal()}
         {renderInvoiceSourcePicker()}
         {renderInvoiceModal()}
@@ -53730,7 +53823,11 @@ await addProjectLogbookEntry(
               <label>Mindestbestellmenge<input type="number" value={catalogDraft.minimumOrderQuantity ?? ""} onChange={(event) => updateCatalogDraft("minimumOrderQuantity", event.target.value ? Number(event.target.value) : null)} /></label>
               <label>Mengenstaffel<input value={catalogDraft.quantityScale} onChange={(event) => updateCatalogDraft("quantityScale", event.target.value)} /></label>
               <label>Lieferzeit<input value={catalogDraft.deliveryTime} onChange={(event) => updateCatalogDraft("deliveryTime", event.target.value)} /></label>
-              <label>Lagerbestand<input type="number" value={catalogDraft.stockQuantity ?? ""} onChange={(event) => updateCatalogDraft("stockQuantity", event.target.value ? Number(event.target.value) : null)} /></label>
+              <label>
+                Lagerbestand
+                <input type="number" value={catalogDraft.stockQuantity ?? 0} readOnly />
+                <small>Wird aus Zubuchungen, Rechnungsverbrauch und Gegenbuchungen berechnet.</small>
+              </label>
                 </div>
               </section>
 
@@ -59147,6 +59244,72 @@ await addProjectLogbookEntry(
             renderDocumentTextsAndTitles()
           ) : activeTab === "documents" ? (
             renderAccountingDocuments()
+          ) : activeTab === "calculators" ? (
+            <WinterServiceCalculator
+              actorId={activeUserId}
+              customers={contacts
+                .filter((contact) => contact.category === "Kunde" && contact.type !== "person")
+                .map((contact) => ({
+                  id: contact.id,
+                  label: `${contact.customerNumber} · ${getContactDisplayName(contact)}`,
+                }))
+                .sort((a, b) => a.label.localeCompare(b.label, "de"))}
+              projects={heroProjects
+                .filter((project) => Boolean(project.contactId))
+                .map((project) => ({
+                  id: project.id,
+                  contactId: project.contactId || "",
+                  label: `${project.projectNumber} · ${project.title}`,
+                  projectNumber: project.projectNumber,
+                  title: project.title,
+                  customerLabel:
+                    contacts.find((contact) => contact.id === project.contactId)
+                      ? getContactDisplayName(contacts.find((contact) => contact.id === project.contactId)!)
+                      : project.customer || "Kunde nicht benannt",
+                }))
+                .sort((a, b) => a.label.localeCompare(b.label, "de"))}
+              offers={offers.map((offer) => ({
+                id: offer.id,
+                projectId: offer.projectId,
+                offerNumber: offer.offerNumber,
+                status: offer.status,
+              }))}
+              catalogMasters={catalogItems
+                .filter((item) => ["OKI0455", "OKI0448", "OKI0400", "OKI0401", "OKI0402"].includes(item.number))
+                .map((item) => ({
+                  id: item.id,
+                  number: item.number,
+                  name: item.name,
+                  type: item.type,
+                  unit: item.unit,
+                  purchasePrice: item.purchasePrice,
+                  salesPrice: item.salesPrice,
+                  vatRate: item.vatRate,
+                }))}
+              existingWinterPackages={catalogItems
+                .filter(
+                  (item) =>
+                    item.type === "package" &&
+                    item.isActive &&
+                    (item.category.toLocaleLowerCase("de").includes("winterdienst") ||
+                      item.trade.toLocaleLowerCase("de").includes("winterdienst") ||
+                      item.name.toLocaleLowerCase("de").includes("winterdienst"))
+                )
+                .map((item) => ({
+                  id: item.id,
+                  number: item.number,
+                  name: item.name,
+                  description: item.description,
+                  matchcode: item.matchcode,
+                  unit: item.unit,
+                  salesPrice: item.salesPrice,
+                  vatRate: item.vatRate,
+                  componentNumbers: item.packageItems.map((packageItem) => packageItem.componentNumber),
+                }))}
+              onPrepareOffer={prepareWinterServiceOffer}
+              onTransferToOffer={transferWinterServicePackageToOffer}
+              onCancelOfferPreparation={closeOfferModal}
+            />
           ) : activeTab === "articles" ||
             activeTab === "services" ||
             activeTab === "packages" ||
@@ -65616,6 +65779,7 @@ await addProjectLogbookEntry(
 
       {renderFinalizeInvoiceConfirmModal()}
       {renderDocumentMailModal()}
+      {renderOfferModal()}
       {isManagementAiOpen && (managementAiMode === "sales" ? canUseSalesAi : canUseManagementAi) ? (
         <div className={styles.managementAiOverlay} onClick={() => setIsManagementAiOpen(false)}>
           <aside

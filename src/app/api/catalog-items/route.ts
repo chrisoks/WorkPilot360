@@ -5,6 +5,7 @@ import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canManageCatalogItems } from "@/lib/permissions";
+import { getNextWinterServiceCatalogNumber as selectNextWinterServiceCatalogNumber } from "@/lib/winter-service/catalog-number";
 
 type CatalogItemRow = {
   id: string;
@@ -90,7 +91,9 @@ type CatalogPackageItemRow = {
   componentIsActive: boolean;
 };
 
-async function ensureCatalogTables() {
+let catalogTablesReady: Promise<void> | null = null;
+
+async function initializeCatalogTables() {
   await prisma.$executeRaw`
     CREATE TABLE IF NOT EXISTS "CatalogItem" (
       "id" TEXT NOT NULL PRIMARY KEY,
@@ -229,6 +232,12 @@ async function ensureCatalogTables() {
   `;
 
   await prisma.$executeRaw`
+    CREATE UNIQUE INDEX IF NOT EXISTS "CatalogItem_winter_service_dedupe_key"
+    ON "CatalogItem" ("organizationId", "matchcode")
+    WHERE "matchcode" LIKE 'WINTER:%'
+  `;
+
+  await prisma.$executeRaw`
     CREATE TABLE IF NOT EXISTS "CatalogItemHistory" (
       "id" TEXT NOT NULL PRIMARY KEY,
       "organizationId" TEXT NOT NULL,
@@ -328,6 +337,16 @@ function parseNullableNumber(value: unknown) {
   if (value === "" || value === null || value === undefined) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+async function ensureCatalogTables() {
+  if (!catalogTablesReady) {
+    catalogTablesReady = initializeCatalogTables().catch((error) => {
+      catalogTablesReady = null;
+      throw error;
+    });
+  }
+  await catalogTablesReady;
 }
 
 function parseNullableDate(value: unknown) {
@@ -489,6 +508,49 @@ async function getNextCatalogNumber(organizationId: string, type: string) {
   `;
   const current = Number((rows[0]?.number ?? `${prefix}1000`).replace(/\D/g, ""));
   return `${prefix}${String(Number.isFinite(current) ? current + 1 : 1001).padStart(4, "0")}`;
+}
+
+async function getNextWinterServiceCatalogNumber(organizationId: string) {
+  const rows = await prisma.$queryRaw<Array<{ number: string }>>`
+    SELECT "number"
+    FROM "CatalogItem"
+    WHERE "organizationId" = ${organizationId}
+      AND "number" LIKE 'OKI%'
+  `;
+  return selectNextWinterServiceCatalogNumber(rows.map((row) => row.number));
+}
+
+async function findExistingWinterServicePackage(input: {
+  organizationId: string;
+  projectNumber: string;
+  customerLabel: string;
+  serviceNumber: string;
+}) {
+  if (!input.serviceNumber || (!input.projectNumber && !input.customerLabel)) return null;
+  const projectMarker = input.projectNumber
+    ? `projekt ${input.projectNumber.toLocaleLowerCase("de")}.`
+    : "";
+  const customerMarker = input.customerLabel.toLocaleLowerCase("de");
+  const rows = await prisma.$queryRaw<CatalogItemRow[]>`
+    SELECT DISTINCT catalog_package.*
+    FROM "CatalogItem" catalog_package
+    INNER JOIN "CatalogPackageItem" package_item
+      ON package_item."packageId" = catalog_package."id"
+    INNER JOIN "CatalogItem" component
+      ON component."id" = package_item."componentItemId"
+    WHERE catalog_package."organizationId" = ${input.organizationId}
+      AND catalog_package."type" = 'package'
+      AND catalog_package."isActive" = true
+      AND component."number" = ${input.serviceNumber}
+      AND (
+        (${projectMarker} <> '' AND POSITION(${projectMarker} IN LOWER(COALESCE(catalog_package."description", ''))) > 0)
+        OR
+        (${customerMarker} <> '' AND POSITION(${customerMarker} IN LOWER(catalog_package."name")) > 0)
+      )
+    ORDER BY catalog_package."createdAt" DESC
+    LIMIT 1
+  `;
+  return rows[0] ?? null;
 }
 
 async function replacePackageItems(input: {
@@ -698,8 +760,33 @@ export async function POST(req: Request) {
   }
   const actorName = getActorName(actor);
   const type = cleanType(body.type);
+  const isWinterServicePackage = type === "package" && body.numberSeries === "winter-service";
+  const winterServiceCustomerId = cleanString(body.winterServiceCustomerId);
+  const winterServiceServiceNumber = cleanString(body.winterServiceServiceNumber);
+  const winterServiceDedupeKey =
+    isWinterServicePackage && winterServiceCustomerId && winterServiceServiceNumber
+      ? `WINTER:${winterServiceCustomerId}:${winterServiceServiceNumber}`
+      : "";
+  if (isWinterServicePackage) {
+    const existingPackage = await findExistingWinterServicePackage({
+      organizationId: organization.id,
+      projectNumber: cleanString(body.winterServiceProjectNumber),
+      customerLabel: cleanString(body.winterServiceCustomerLabel),
+      serviceNumber: winterServiceServiceNumber,
+    });
+    if (existingPackage) {
+      return NextResponse.json(
+        { ...formatCatalogItem(existingPackage), reused: true },
+        { status: 200 }
+      );
+    }
+  }
   const id = randomUUID();
-  const number = cleanString(body.number) || (await getNextCatalogNumber(organization.id, type));
+  const number =
+    cleanString(body.number) ||
+    (body.numberSeries === "winter-service"
+      ? await getNextWinterServiceCatalogNumber(organization.id)
+      : await getNextCatalogNumber(organization.id, type));
   const name = cleanString(body.name);
   const isLaborPosition =
     Object.prototype.hasOwnProperty.call(body, "isLaborPosition")
@@ -712,6 +799,22 @@ export async function POST(req: Request) {
   }
   if (!scheduledPriceResult.ok) {
     return NextResponse.json({ error: scheduledPriceResult.error }, { status: 400 });
+  }
+  if (isWinterServicePackage) {
+    const duplicateName = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"
+      FROM "CatalogItem"
+      WHERE "organizationId" = ${organization.id}
+        AND "type" = 'package'
+        AND LOWER(TRIM("name")) = LOWER(TRIM(${name}))
+      LIMIT 1
+    `;
+    if (duplicateName.length > 0) {
+      return NextResponse.json(
+        { error: "Diese Paketbezeichnung existiert bereits. Bitte eindeutig anders benennen." },
+        { status: 409 }
+      );
+    }
   }
 
   let rows: CatalogItemRow[];
@@ -729,7 +832,7 @@ export async function POST(req: Request) {
       )
       VALUES (
         ${id}, ${organization.id}, ${type}, ${number}, ${name}, ${nullableString(body.category)}, ${cleanString(body.trade)}, ${normalizeUnit(body.unit) || "Stk"},
-        ${nullableString(body.description)}, ${nullableString(body.matchcode)}, ${nullableString(body.ean)}, ${nullableString(body.costCenter)},
+        ${nullableString(body.description)}, ${nullableString(winterServiceDedupeKey || body.matchcode)}, ${nullableString(body.ean)}, ${nullableString(body.costCenter)},
         ${nullableString(body.supplierName)}, ${nullableString(body.supplierNumber)}, ${nullableString(body.manufacturer)},
         ${nullableString(body.manufacturerNumber)}, ${nullableString(body.manufacturerTypeName)}, ${parseNullableNumber(body.minimumOrderQuantity)},
         ${nullableString(body.quantityScale)}, ${nullableString(body.priceUnit)}, ${nullableString(body.deliveryTime)}, ${parseNullableNumber(body.stockQuantity)},
@@ -742,6 +845,21 @@ export async function POST(req: Request) {
       RETURNING *
     `;
   } catch (error) {
+    if (winterServiceDedupeKey && isUniqueConstraintError(error)) {
+      const existingRows = await prisma.$queryRaw<CatalogItemRow[]>`
+        SELECT *
+        FROM "CatalogItem"
+        WHERE "organizationId" = ${organization.id}
+          AND "matchcode" = ${winterServiceDedupeKey}
+        LIMIT 1
+      `;
+      if (existingRows[0]) {
+        return NextResponse.json(
+          { ...formatCatalogItem(existingRows[0]), reused: true },
+          { status: 200 }
+        );
+      }
+    }
     if (!isUniqueConstraintError(error)) {
       throw error;
     }

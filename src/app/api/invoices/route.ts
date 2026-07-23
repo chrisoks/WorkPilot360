@@ -21,6 +21,7 @@ import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/acto
 import { canDeleteInvoices, canManageInvoices, canSendDocumentMails, canViewInternalCostData } from "@/lib/permissions";
 import { sendNotificationMailSafely } from "@/lib/mail/notifications";
 import type { CatalogPackageComponentSnapshot } from "@/lib/analytics/catalog-performance";
+import { syncInvoiceInventoryMovements } from "@/lib/inventory/catalog-inventory";
 
 type InvoiceCompany = "OK solutions" | "OK immocare";
 
@@ -1856,6 +1857,13 @@ async function cancelInvoice(input: {
     actorName: input.actorName,
   });
 
+  await syncInvoiceInventoryMovements({
+    db: prisma,
+    organizationId: input.organizationId,
+    invoiceId: input.invoiceId,
+    actorName: input.actorName,
+  });
+
   return NextResponse.json({
     originalInvoice: serializeInvoice(originalRows[0], originalLines, originalLaborRows, {
       includeInternalCosts: input.includeInternalCosts,
@@ -2377,6 +2385,14 @@ export async function POST(req: Request) {
     });
   }
 
+  await syncInvoiceInventoryMovements({
+    db: prisma,
+    organizationId: organization.id,
+    invoiceId: id,
+    actorUserId: actor.id,
+    actorName,
+  });
+
   return NextResponse.json(serializeInvoice(rows[0], savedLines, savedLaborRows, { includeInternalCosts }));
 }
 
@@ -2787,6 +2803,14 @@ export async function PATCH(req: Request) {
     });
   }
 
+  await syncInvoiceInventoryMovements({
+    db: prisma,
+    organizationId: organization.id,
+    invoiceId: id,
+    actorUserId: actor.id,
+    actorName,
+  });
+
   return NextResponse.json(serializeInvoice(rows[0], savedLines, savedLaborRows, { includeInternalCosts }));
 }
 
@@ -2847,6 +2871,14 @@ export async function DELETE(req: Request) {
     eventType: "deleted",
     title: "Rechnung gel\u00f6scht",
     note: `${existingInvoice.invoiceNumber} wurde gel\u00f6scht.`,
+    actorName,
+  });
+
+  await syncInvoiceInventoryMovements({
+    db: prisma,
+    organizationId: organization.id,
+    invoiceId: id,
+    actorUserId: actor.id,
     actorName,
   });
 

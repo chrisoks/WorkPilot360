@@ -28,6 +28,7 @@ model Organization {
   notifications                 Notification[]
   catalogItems                  CatalogItem[]
   catalogItemHistory            CatalogItemHistory[]
+  catalogInventoryMovements     CatalogInventoryMovement[]
   unitOptions                   UnitOption[]
   catalogPackageItems           CatalogPackageItem[]
   contentApprovalHistory        ContentApprovalHistory[]
@@ -673,6 +674,7 @@ model CatalogItem {
   updatedAt                         DateTime             @updatedAt
   organization                      Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   history                           CatalogItemHistory[]
+  inventoryMovements                CatalogInventoryMovement[]
   packageItems                      CatalogPackageItem[] @relation("CatalogPackage")
   usedInPackages                    CatalogPackageItem[] @relation("CatalogPackageComponent")
 
@@ -720,6 +722,37 @@ model CatalogItemHistory {
 
   @@index([organizationId, catalogItemId])
   @@index([organizationId, createdAt])
+}
+
+model CatalogInventoryMovement {
+  id              String       @id @default(cuid())
+  organizationId  String
+  catalogItemId   String
+  movementType    String
+  quantityDelta   Float
+  unitCost        Float?
+  occurredAt      DateTime
+  referenceType   String       @default("")
+  referenceId     String       @default("")
+  referenceNumber String       @default("")
+  customerId      String       @default("")
+  customerName    String       @default("")
+  projectId       String       @default("")
+  projectNumber   String       @default("")
+  invoiceId       String       @default("")
+  invoiceNumber   String       @default("")
+  actorUserId     String?
+  actorName       String       @default("")
+  supplierName    String       @default("")
+  note            String       @default("")
+  createdAt       DateTime     @default(now())
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  catalogItem     CatalogItem  @relation(fields: [catalogItemId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, catalogItemId, occurredAt])
+  @@index([organizationId, customerId, occurredAt])
+  @@index([organizationId, referenceType, referenceId])
+  @@index([organizationId, invoiceId])
 }
 
 model UnitOption {
@@ -1996,6 +2029,30 @@ model WorkPilotProject {
   createdAt                   DateTime  @default(now())
   updatedAt                   DateTime  @default(now())
   responsibleName             String?
+}
+
+model WinterServiceCalculation {
+  id                  String   @id @default(cuid())
+  organizationId      String
+  seriesId            String
+  version             Int
+  customerId          String
+  projectId           String
+  customerName        String
+  projectNumber       String
+  projectTitle        String
+  createdById         String?
+  createdByName       String
+  inputSnapshot       Json
+  resultSnapshot      Json
+  generatedPackageIds Json     @default("[]")
+  note                String   @default("")
+  createdAt           DateTime @default(now())
+
+  @@unique([organizationId, seriesId, version])
+  @@index([organizationId, customerId, createdAt])
+  @@index([organizationId, projectId, createdAt])
+  @@index([organizationId, createdAt])
 }
 
 model WinterServiceRun {
