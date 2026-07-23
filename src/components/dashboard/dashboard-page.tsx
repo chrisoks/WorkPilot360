@@ -53686,7 +53686,7 @@ await addProjectLogbookEntry(
             <button className={styles.iconButton} onClick={() => setIsCatalogModalOpen(false)}>X</button>
           </div>
           <div className={styles.standardModalBody}>
-          <div className={styles.contactFormTabs}>
+          <div className={`${styles.contactFormTabs} ${styles.catalogFormTabs}`}>
             {[
               ["information", "Informationen"],
               ["calculation", "Kalkulation"],

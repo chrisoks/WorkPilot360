@@ -1,5 +1,18 @@
 # WorkPilot360 Agent Handover
 
+- Stammdaten-Kalkulationsreiter 2026-07-23: Die Reiter `Informationen`,
+  `Kalkulation` und `Historie` im Bearbeitungsmodal fuer Artikel, Leistungen
+  und Pakete verwenden eine eigene stabile Reiterleiste. Sie behaelt auch in
+  kleineren, intern scrollbar gewordenen Browserfenstern ihre Hoehe und bleibt
+  beim Scrollen am oberen Rand sichtbar. Kalkulationslogik und Datenfelder
+  blieben unveraendert.
+
+- Rueckfallhinweis im Angebotsversand 2026-07-23: Der automatisch eingefuegte
+  Freigabeblock weist Empfaenger jetzt darauf hin, bei einem blockierten oder
+  nicht zu oeffnenden Button direkt auf die Angebotsmail zu antworten. Der
+  normale Begleittext und dessen Vorlage bleiben weiterhin frei bearbeitbar;
+  Button, Sicherheitsinformation und Rueckfallhinweis bleiben systemseitig.
+
 - Persoenliche Signatur in Freigabemails 2026-07-22: Automatische
   Bestaetigungen einer Angebotsannahme und eines Widerrufs verwenden jetzt die
   im Absenderprofil hinterlegte, nicht ausgeblendete E-Mail-Signatur. HTML-

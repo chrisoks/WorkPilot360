@@ -293,6 +293,7 @@ function getOfferAcceptanceMailBlockHtml(link: string, consumerFlow = false) {
     '<p style="margin:0 0 14px;color:#52666b;font-size:13px;line-height:1.5;">Über den folgenden Link können Sie das Angebot ansehen, herunterladen und verbindlich annehmen.</p>',
     `<a href="${safeLink}" target="_blank" rel="noreferrer" style="display:inline-block;background:#075c63;color:#ffffff;text-decoration:none;font-weight:800;border-radius:10px;padding:11px 17px;">Angebot prüfen und annehmen</a>`,
     '<p style="margin:10px 0 0;color:#64748b;font-size:12px;line-height:1.4;">Die Annahme erfolgt erst nach Ihrer ausdrücklichen Bestätigung auf der Folgeseite.</p>',
+    '<p style="margin:8px 0 0;color:#64748b;font-size:12px;line-height:1.4;">Falls sich der Button nicht öffnen lässt, antworten Sie bitte auf diese E-Mail. Wir helfen Ihnen gerne weiter.</p>',
     consumerFlow
       ? '<p style="margin:8px 0 0;color:#64748b;font-size:12px;line-height:1.4;">Ihre Widerrufsbelehrung und das Muster-Widerrufsformular finden Sie im Anhang und auf der Angebotsseite.</p>'
       : '',
@@ -991,7 +992,9 @@ export async function POST(req: Request) {
   const feedbackText = feedbackLink
     ? `\n\nWie zufrieden waren Sie mit unserer Leistung? Jetzt bewerten: ${feedbackLink}`
     : "";
-  const acceptanceText = acceptanceLink ? `\n\nAngebot prüfen und annehmen: ${acceptanceLink}` : "";
+  const acceptanceText = acceptanceLink
+    ? `\n\nAngebot prüfen und annehmen: ${acceptanceLink}\nFalls sich der Link nicht öffnen lässt, antworten Sie bitte auf diese E-Mail. Wir helfen Ihnen gerne weiter.`
+    : "";
   const messageHtml = `${textToHtml(messageBody)}${acceptanceHtml}${feedbackHtml}${signatureHtml ? signatureHtml : ""}`;
 
   let primaryMailDelivered = false;
