@@ -29,7 +29,7 @@ describe("JARVIS system help", () => {
   });
 
   it("prioritizes the planning intent over the currently open document tab", () => {
-    const result = resolveJarvisSystemHelp("Hi Jarvis, wie kann ich hier die Jungs verplanen?", {
+    const result = resolveJarvisSystemHelp("Wie verplane ich die Jungs hier richtig? Auf was muss ich achten?", {
       module: "Projektakte",
       subview: "Dokumente",
       recordType: "project",
