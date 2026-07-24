@@ -51,6 +51,7 @@ const APP_TIME_ZONE = "Europe/Berlin";
 const MAX_LOGBOOK_ATTACHMENT_BYTES = 12 * 1024 * 1024;
 const MAX_LOGBOOK_ENTRY_ATTACHMENT_BYTES = 48 * 1024 * 1024;
 const MIN_CATALOG_SVS_BASIS_ROWS = 5;
+const JARVIS_MIN_RESPONSE_DELAY_MS = 3000;
 const ALLOWED_LOGBOOK_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const ALLOWED_LOGBOOK_DOCUMENT_MIME_TYPES = new Set([
   "application/pdf",
@@ -6839,6 +6840,57 @@ function IsolatedFilterInput({
   );
 }
 
+function JarvisComposer({
+  prefill,
+  placeholder,
+  isSending,
+  onSend,
+}: {
+  prefill: { value: string; revision: number };
+  placeholder: string;
+  isSending: boolean;
+  onSend: (question: string) => void;
+}) {
+  const [draft, setDraft] = useState("");
+
+  useEffect(() => {
+    setDraft(prefill.value);
+  }, [prefill]);
+
+  function submitDraft() {
+    const question = draft.trim();
+    if (!question || isSending) return;
+    setDraft("");
+    onSend(question);
+  }
+
+  return (
+    <form
+      className={styles.managementAiComposer}
+      onSubmit={(event) => {
+        event.preventDefault();
+        submitDraft();
+      }}
+    >
+      <textarea
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        placeholder={placeholder}
+        rows={3}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            submitDraft();
+          }
+        }}
+      />
+      <button type="submit" className={styles.primaryButton} disabled={!draft.trim() || isSending}>
+        {isSending ? "Denkt..." : "Senden"}
+      </button>
+    </form>
+  );
+}
+
 function CatalogListView({
   activeTab,
   catalogItems,
@@ -7409,7 +7461,10 @@ export function DashboardPage() {
   const [jarvisLaunchVector, setJarvisLaunchVector] = useState({ x: -180, y: 40 });
   const [isManagementAiMenuOpen, setIsManagementAiMenuOpen] = useState(false);
   const [managementAiMode, setManagementAiMode] = useState<ManagementAiMode>("system");
-  const [managementAiInput, setManagementAiInput] = useState("");
+  const [managementAiComposerPrefill, setManagementAiComposerPrefill] = useState({
+    value: "",
+    revision: 0,
+  });
   const [managementAiMessagesByMode, setManagementAiMessagesByMode] = useState<Record<ManagementAiMode, ManagementAiChatMessage[]>>({
     system: [],
     management: [],
@@ -31794,7 +31849,10 @@ await addProjectLogbookEntry(
   function selectManagementAi(mode: ManagementAiMode) {
     setIsManagementAiMenuOpen(false);
     setManagementAiMode(mode);
-    setManagementAiInput("");
+    setManagementAiComposerPrefill((current) => ({
+      value: "",
+      revision: current.revision + 1,
+    }));
     setManagementAiError("");
     setJarvisLaunchVector({ x: -180, y: 40 });
     window.setTimeout(() => setIsManagementAiOpen(true), 0);
@@ -31807,7 +31865,10 @@ await addProjectLogbookEntry(
       y: origin.top + origin.height / 2 - window.innerHeight,
     });
     setManagementAiMode("system");
-    setManagementAiInput("");
+    setManagementAiComposerPrefill((current) => ({
+      value: "",
+      revision: current.revision + 1,
+    }));
     setManagementAiError("");
     setIsManagementAiOpen(true);
   }
@@ -31931,9 +31992,16 @@ await addProjectLogbookEntry(
       "Sperrhinweis: Es werden keine Gehaelter, Mitarbeiterverdienste, internen Lohnkosten, Personalkosten oder internen Kostensaetze bereitgestellt.",
     ].join("\n\n");
   };
-  async function sendManagementAiMessage(questionOverride?: string) {
-    const question = (questionOverride ?? managementAiInput).trim();
+  async function sendManagementAiMessage(questionInput: string) {
+    const question = questionInput.trim();
     if (!question || !activeUserId || isManagementAiSending) return;
+    const responseStartedAt = Date.now();
+    const waitForMinimumResponseDelay = async () => {
+      const remainingDelay = JARVIS_MIN_RESPONSE_DELAY_MS - (Date.now() - responseStartedAt);
+      if (remainingDelay > 0) {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, remainingDelay));
+      }
+    };
 
     const userMessage: ManagementAiChatMessage = {
       role: "user",
@@ -31944,7 +32012,6 @@ await addProjectLogbookEntry(
       ...current,
       [managementAiMode]: [...current[managementAiMode], userMessage],
     }));
-    setManagementAiInput("");
     setManagementAiError("");
     setIsManagementAiSending(true);
 
@@ -31969,6 +32036,7 @@ await addProjectLogbookEntry(
         }),
       });
       const data = await res.json().catch(() => null);
+      await waitForMinimumResponseDelay();
       if (!res.ok) {
         setManagementAiError(data?.error ?? managementAiLabels.fallbackError);
         return;
@@ -31988,6 +32056,7 @@ await addProjectLogbookEntry(
         ],
       }));
     } catch {
+      await waitForMinimumResponseDelay();
       setManagementAiError(managementAiLabels.unreachableError);
     } finally {
       setIsManagementAiSending(false);
@@ -67363,7 +67432,16 @@ await addProjectLogbookEntry(
                 <div className={styles.managementAiWelcome}>
                   <strong>{managementAiLabels.intro}</strong>
                   {managementAiSuggestions.map((suggestion) => (
-                    <button key={suggestion.question} type="button" onClick={() => setManagementAiInput(suggestion.question)}>
+                    <button
+                      key={suggestion.question}
+                      type="button"
+                      onClick={() =>
+                        setManagementAiComposerPrefill((current) => ({
+                          value: suggestion.question,
+                          revision: current.revision + 1,
+                        }))
+                      }
+                    >
                       {suggestion.label}
                     </button>
                   ))}
@@ -67396,37 +67474,27 @@ await addProjectLogbookEntry(
                 ))
               )}
               {isManagementAiSending ? (
-                <article data-role="assistant">
-                  <p>{managementAiLabels.loading}</p>
+                <article
+                  className={styles.jarvisTypingBubble}
+                  data-role="assistant"
+                  data-typing="true"
+                  aria-label={managementAiLabels.loading}
+                >
+                  <span aria-hidden="true" />
+                  <span aria-hidden="true" />
+                  <span aria-hidden="true" />
                 </article>
               ) : null}
             </div>
 
             {managementAiError ? <p className={styles.managementAiError}>{managementAiError}</p> : null}
 
-            <form
-              className={styles.managementAiComposer}
-              onSubmit={(event) => {
-                event.preventDefault();
-                void sendManagementAiMessage();
-              }}
-            >
-              <textarea
-                value={managementAiInput}
-                onChange={(event) => setManagementAiInput(event.target.value)}
-                placeholder={managementAiLabels.placeholder}
-                rows={3}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void sendManagementAiMessage();
-                  }
-                }}
-              />
-              <button type="submit" className={styles.primaryButton} disabled={!managementAiInput.trim() || isManagementAiSending}>
-                {isManagementAiSending ? "Denkt..." : "Senden"}
-              </button>
-            </form>
+            <JarvisComposer
+              prefill={managementAiComposerPrefill}
+              placeholder={managementAiLabels.placeholder}
+              isSending={isManagementAiSending}
+              onSend={(question) => void sendManagementAiMessage(question)}
+            />
           </aside>
         </div>
       ) : null}

@@ -54,6 +54,27 @@ const TOPICS: JarvisTopic[] = [
       "Öffne das Projekt und den Reiter „Termine & Stempelungen“. Mit „+ Termin“ legst du einen festen Planungstermin an. Mit „+ Terminwunsch“ erfasst du einen noch freizugebenden Bedarf. Wähle Mitarbeiter, Datum, Zeit und die passende Zuordnung und speichere anschließend.",
   },
   {
+    id: "planning.assignEmployees",
+    title: "Mitarbeitende für ein Projekt verplanen",
+    keywords: [
+      "mitarbeiter verplanen",
+      "mitarbeitende verplanen",
+      "mitarbeiter einplanen",
+      "mitarbeitende einplanen",
+      "jungs verplanen",
+      "jungs einplanen",
+      "team verplanen",
+      "team einplanen",
+      "personal verplanen",
+      "personal einplanen",
+      "wie kann ich verplanen",
+      "wie plane ich mitarbeiter",
+      "projekt verplanen",
+    ],
+    surfaces: ["Planungsboard", "Projektakte"],
+    answer: "",
+  },
+  {
     id: "time.manual",
     title: "Manuellen Zeiteintrag erfassen",
     keywords: [
@@ -196,18 +217,43 @@ function getTimeEntryAnswer(question: string, context: JarvisSurfaceContext): Ja
   };
 }
 
+function getEmployeePlanningAnswer(context: JarvisSurfaceContext): JarvisHelpResult {
+  const start =
+    context.recordType === "project"
+      ? "Du bist bereits in der Projektakte. Öffne dort „Termine & Stempelungen“ und klicke auf „+ Termin“."
+      : "Öffne das passende Projekt, gehe auf „Termine & Stempelungen“ und klicke auf „+ Termin“. Alternativ kannst du die Planung im „Planungsboard“ beginnen.";
+  const billingNote =
+    context.billingMode === "hourly"
+      ? "Da dieses Projekt nach Stunden abgerechnet wird, wählst du zusätzlich „Termin-Gewerk“ und „Abrechnungsleistung“."
+      : context.billingMode === "monthlyFlat"
+        ? "Bei der Monatspauschale ist keine zusätzliche Abrechnungsleistung nötig."
+        : "Bei einem Dauerläufer mit Stundenabrechnung wählst du zusätzlich „Termin-Gewerk“ und „Abrechnungsleistung“.";
+
+  return {
+    type: "answer",
+    topicId: "planning.assignEmployees",
+    message:
+      `${start} Wähle Planungsboard, Planungsgruppe, Mitarbeiter, Datum sowie Von/Bis und speichere die Planung. ${billingNote} „+ Terminwunsch“ nutzt du nur, wenn der Termin erst noch freigegeben werden soll.`,
+  };
+}
+
 function scoreTopic(topic: JarvisTopic, question: string, context: JarvisSurfaceContext) {
   const normalized = normalize(question);
-  let score = 0;
+  let intentScore = 0;
 
   topic.keywords.forEach((keyword) => {
     const normalizedKeyword = normalize(keyword);
-    if (normalized.includes(normalizedKeyword)) score += normalizedKeyword.split(" ").length * 4;
+    if (normalized.includes(normalizedKeyword)) intentScore += normalizedKeyword.split(" ").length * 4;
     normalizedKeyword.split(" ").forEach((term) => {
-      if (term.length >= 5 && normalized.includes(term)) score += 1;
+      if (term.length >= 5 && normalized.includes(term)) intentScore += 1;
     });
   });
 
+  // Der Oberflächenkontext darf eine erkannte Absicht präzisieren, aber niemals
+  // allein ein fachlich unpassendes Hilfethema auswählen.
+  if (intentScore === 0) return 0;
+
+  let score = intentScore;
   if (context.module && topic.surfaces?.includes(context.module)) score += 2;
   if (context.recordType === "project" && topic.surfaces?.includes("Projektakte")) score += 2;
   if (context.recordType === "customer" && topic.surfaces?.includes("Kundenakte")) score += 2;
@@ -279,6 +325,7 @@ export function resolveJarvisSystemHelp(
   }
 
   if (match.topic.id === "time.manual") return getTimeEntryAnswer(cleaned, context);
+  if (match.topic.id === "planning.assignEmployees") return getEmployeePlanningAnswer(context);
   return {
     type: "answer",
     topicId: match.topic.id,

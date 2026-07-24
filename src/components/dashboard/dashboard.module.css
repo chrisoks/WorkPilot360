@@ -7083,6 +7083,49 @@
   justify-self: start;
 }
 
+.managementAiMessages article.jarvisTypingBubble {
+  align-items: center;
+  background: #eef2f4;
+  border-color: #d8e0e5;
+  border-radius: 18px;
+  display: flex;
+  gap: 7px;
+  min-height: 46px;
+  padding: 12px 16px;
+  width: auto;
+}
+
+.jarvisTypingBubble > span {
+  animation: jarvisTypingWave 1.05s ease-in-out infinite;
+  background: #102431;
+  border-radius: 50%;
+  display: block;
+  height: 9px;
+  width: 9px;
+}
+
+.jarvisTypingBubble > span:nth-child(2) {
+  animation-delay: 0.14s;
+}
+
+.jarvisTypingBubble > span:nth-child(3) {
+  animation-delay: 0.28s;
+}
+
+@keyframes jarvisTypingWave {
+  0%,
+  60%,
+  100% {
+    opacity: 0.48;
+    transform: translateY(0);
+  }
+
+  30% {
+    opacity: 1;
+    transform: translateY(-6px);
+  }
+}
+
 .jarvisChoiceList {
   display: flex;
   flex-wrap: wrap;
@@ -7175,6 +7218,13 @@
 
 .managementAiComposer button {
   justify-self: end;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jarvisTypingBubble > span {
+    animation: none;
+    opacity: 0.72;
+  }
 }
 
 @media (max-width: 620px) {

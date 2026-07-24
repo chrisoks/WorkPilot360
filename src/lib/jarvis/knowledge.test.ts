@@ -28,6 +28,30 @@ describe("JARVIS system help", () => {
     expect(result.message).toContain("Verrechnungsgewerk");
   });
 
+  it("prioritizes the planning intent over the currently open document tab", () => {
+    const result = resolveJarvisSystemHelp("Hi Jarvis, wie kann ich hier die Jungs verplanen?", {
+      module: "Projektakte",
+      subview: "Dokumente",
+      recordType: "project",
+      projectKind: "recurring",
+      billingMode: "hourly",
+    });
+    expect(result.type).toBe("answer");
+    expect(result.topicId).toBe("planning.assignEmployees");
+    expect(result.message).toContain("Termine & Stempelungen");
+    expect(result.message).toContain("Termin-Gewerk");
+    expect(result.message).not.toContain("Angebot");
+  });
+
+  it("does not let the surface context select an unrelated instruction", () => {
+    const result = resolveJarvisSystemHelp("Wie bestelle ich heute eine Pizza?", {
+      module: "Projektakte",
+      subview: "Dokumente",
+      recordType: "project",
+    });
+    expect(result.type).toBe("unknown");
+  });
+
   it("blocks salary and payroll questions", () => {
     const result = resolveJarvisSystemHelp("Was verdient Mitarbeiter Müller?");
     expect(result.type).toBe("refusal");
