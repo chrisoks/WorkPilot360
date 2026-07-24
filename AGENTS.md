@@ -1,5 +1,18 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS-Systemassistenz 2026-07-24: Die bisher getrennten Einstiege fuer
+  Systemhilfe, Vertrieb und BWL laufen jetzt in einem gemeinsamen, global
+  erreichbaren JARVIS-Slide-out zusammen. Die Systemhilfe ist fuer aktive
+  Benutzer verfuegbar; Vertrieb und BWL bleiben an die bestehenden
+  Rollenrechte gebunden. JARVIS kennt die aktuelle Oberflaeche nur ueber
+  eine technische Allowlist ohne Kunden-, Projekt- oder Personenbezeichnungen.
+  Die erste Wissensbasis beantwortet ausschliesslich Fragen zur Bedienung,
+  stellt bei mehrdeutigen Ablaeufen Rueckfragen und lehnt insbesondere
+  Lohn-/Gehaltsfragen sowie sachfremde Fragen ab. Ohne OpenAI-Key arbeitet
+  die Systemhilfe weiterhin deterministisch; mit Key formuliert standardmaessig
+  `gpt-5.6-luna`, waehrend Vertrieb/BWL `gpt-5.6-terra` verwenden. Keine
+  Prisma-Schemaaenderung.
+
 - Stempelstatus und Stundenentwurf gehaertet 2026-07-24: Der bestaetigte
   Wechsel eines Projekts auf `Umsetzung` erfolgt beim Stempelstart jetzt
   serverseitig in derselben Datenbanktransaktion wie die Anlage der aktiven

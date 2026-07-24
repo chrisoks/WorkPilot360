@@ -1,13 +1,13 @@
 import "./globals.css";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { Outfit } from "next/font/google";
+import { Google_Sans } from "next/font/google";
 import type { Metadata, Viewport } from "next";
 import { ModalScrollLock } from "@/components/ui/modal-scroll-lock";
 
-const outfit = Outfit({
+const googleSans = Google_Sans({
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
-  variable: "--font-outfit",
+  weight: "variable",
+  variable: "--font-google-sans",
 });
 
 export const metadata: Metadata = {
@@ -40,7 +40,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="de">
-      <body className={`${outfit.className} ${outfit.variable}`}>
+      <body className={`${googleSans.className} ${googleSans.variable}`}>
         <ModalScrollLock />
         {children}
       </body>

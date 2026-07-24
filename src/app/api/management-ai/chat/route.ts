@@ -177,7 +177,7 @@ export async function POST(req: Request) {
 
   const context = sanitizeAiContext(cleanText(body.context, 12000), mode);
   const messages = cleanMessages(body.messages, mode);
-  const model = process.env.OPENAI_MANAGEMENT_MODEL || "gpt-5.5";
+  const model = process.env.OPENAI_MANAGEMENT_MODEL || "gpt-5.6-terra";
 
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",

@@ -1,4 +1,5 @@
 .page {
+  --wp-sidebar-width: clamp(252px, 15vw, 292px);
   --surface: rgba(255, 255, 255, 0.86);
   --surface-strong: rgba(255, 255, 255, 0.96);
   --surface-muted: rgba(248, 250, 252, 0.82);
@@ -31,7 +32,7 @@
   border-radius: 0;
   box-shadow: none;
   display: grid;
-  grid-template-columns: 276px minmax(0, 1fr);
+  grid-template-columns: var(--wp-sidebar-width) minmax(0, 1fr);
   grid-template-rows: auto 1fr;
   padding: 0;
 }
@@ -75,7 +76,7 @@
 .bootShell p {
   color: #64748b;
   font-size: clamp(0.98rem, 1.2vw, 1.18rem);
-  font-weight: 800;
+  font-weight: 600;
   margin: -2px 0 0;
   text-align: center;
 }
@@ -188,7 +189,7 @@
 .loginCardHeader span {
   color: #005fff;
   font-size: 0.86rem;
-  font-weight: 950;
+  font-weight: 700;
   text-transform: uppercase;
 }
 
@@ -202,7 +203,7 @@
 .loginCardHeader p {
   color: #64748b;
   font-size: 0.88rem;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.35;
   margin: 0;
 }
@@ -211,7 +212,7 @@
   color: #071225;
   display: grid;
   font-size: 0.86rem;
-  font-weight: 850;
+  font-weight: 600;
   gap: 9px;
 }
 
@@ -275,7 +276,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 0.84rem;
-  font-weight: 950;
+  font-weight: 700;
   padding: 0;
   position: static;
 }
@@ -297,7 +298,7 @@
   display: inline-flex;
   flex-direction: row;
   font-size: 0.84rem;
-  font-weight: 800;
+  font-weight: 600;
   gap: 9px;
 }
 
@@ -316,7 +317,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 0.84rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 0;
 }
 
@@ -329,7 +330,7 @@
   font-family: inherit;
   display: flex;
   font-size: 1rem;
-  font-weight: 950;
+  font-weight: 700;
   justify-content: center;
   min-height: 50px;
   padding: 10px 18px;
@@ -364,7 +365,7 @@
   border-radius: 8px;
   color: #9a3412;
   font-size: 0.86rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.35;
   margin: 0;
   padding: 10px 40px 10px 12px;
@@ -373,7 +374,7 @@
 .loginContactHint {
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 600;
   margin: 0;
   text-align: center;
 }
@@ -384,7 +385,7 @@
   color: #1e5eff;
   cursor: pointer;
   font-family: inherit;
-  font-weight: 950;
+  font-weight: 700;
   padding: 0;
 }
 
@@ -407,7 +408,7 @@
 
 .creatorBadge span {
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .loginHero {
@@ -445,7 +446,7 @@
   color: #008aa3;
   display: inline-flex;
   font-size: 0.78rem;
-  font-weight: 950;
+  font-weight: 700;
   margin: 0 0 14px;
   padding: 7px 15px;
   text-transform: uppercase;
@@ -462,7 +463,7 @@
 .loginHeroContent > p:not(.loginKicker) {
   color: #64748b;
   font-size: 0.98rem;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.5;
   margin: 14px 0 0;
   max-width: 650px;
@@ -504,7 +505,7 @@
 .loginListCard > span {
   color: #475569;
   font-size: 0.68rem;
-  font-weight: 950;
+  font-weight: 700;
   text-transform: uppercase;
 }
 
@@ -512,7 +513,7 @@
 .loginTaskCard strong {
   color: #071225;
   font-size: 1.2rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .loginMiniCard i {
@@ -559,7 +560,7 @@
 .loginProgressVisual strong {
   color: #071225;
   font-size: 0.9rem;
-  font-weight: 950;
+  font-weight: 700;
   position: relative;
   z-index: 1;
 }
@@ -577,7 +578,7 @@
   color: #64748b;
   display: grid;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 600;
   gap: 8px;
   grid-template-columns: auto minmax(0, 1fr) auto;
 }
@@ -600,7 +601,7 @@
 .loginProgressCard li strong {
   color: #0b1533;
   font-size: 0.72rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .loginTaskCard {
@@ -657,7 +658,7 @@
 .loginListCard strong {
   color: #071225;
   font-size: 0.76rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .loginListCard small {
@@ -665,7 +666,7 @@
   border-radius: 999px;
   color: #005fff;
   font-size: 0.66rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 4px 8px;
 }
 
@@ -700,13 +701,13 @@
 .brandBlock strong {
   color: #0f172a;
   font-size: 1rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .brandBlock span {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
   margin-top: 2px;
 }
 
@@ -724,7 +725,7 @@
 .globalSearch span {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .globalSearch input {
@@ -734,7 +735,7 @@
   flex: 1;
   font-family: inherit;
   font-size: 0.95rem;
-  font-weight: 750;
+  font-weight: 600;
   min-width: 0;
   outline: none;
 }
@@ -746,7 +747,7 @@
   color: #ffffff;
   cursor: pointer;
   font-family: inherit;
-  font-weight: 900;
+  font-weight: 700;
   min-height: 46px;
   padding: 0 18px;
 }
@@ -814,7 +815,7 @@
   color: #ffffff;
   display: inline-flex;
   font-size: 1rem;
-  font-weight: 900;
+  font-weight: 700;
   height: 30px;
   justify-content: center;
   width: 30px;
@@ -861,7 +862,7 @@
 .userMenuPanel span {
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 600;
   margin-bottom: 4px;
 }
 
@@ -872,7 +873,7 @@
   color: #071225;
   cursor: pointer;
   font-family: inherit;
-  font-weight: 850;
+  font-weight: 600;
   padding: 10px 12px;
   text-align: left;
 }
@@ -893,7 +894,7 @@
 .impersonationControl span {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -903,7 +904,7 @@
   border-radius: 10px;
   color: #0f172a;
   font-family: inherit;
-  font-weight: 800;
+  font-weight: 600;
   min-height: 40px;
   min-width: 0;
   padding: 0 10px;
@@ -930,13 +931,13 @@
 .impersonationBanner strong {
   color: #7c2d12;
   font-size: 0.86rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .impersonationBanner span {
   flex: 1;
   font-size: 0.86rem;
-  font-weight: 800;
+  font-weight: 600;
   min-width: 0;
 }
 
@@ -947,7 +948,7 @@
   color: #9a3412;
   cursor: pointer;
   font-family: inherit;
-  font-weight: 900;
+  font-weight: 700;
   padding: 7px 10px;
 }
 
@@ -970,7 +971,7 @@
   display: inline-flex;
   flex: 0 0 auto;
   font-size: 2rem;
-  font-weight: 900;
+  font-weight: 700;
   height: 92px;
   justify-content: center;
   overflow: hidden;
@@ -1002,7 +1003,7 @@
   border-radius: 12px;
   cursor: pointer;
   display: inline-flex !important;
-  font-weight: 850;
+  font-weight: 600;
   margin: 0 10px 0 0 !important;
   padding: 10px 12px;
 }
@@ -1037,7 +1038,7 @@
   color: #ffffff;
   display: inline-flex;
   font-size: 0.72rem;
-  font-weight: 900;
+  font-weight: 700;
   height: 22px;
   justify-content: center;
   min-width: 22px;
@@ -1076,7 +1077,7 @@
   color: #1d4ed8;
   cursor: pointer;
   font-family: inherit;
-  font-weight: 800;
+  font-weight: 600;
   padding: 8px 10px;
 }
 
@@ -1105,7 +1106,7 @@
   cursor: pointer;
   display: inline-flex;
   font-family: inherit;
-  font-weight: 850;
+  font-weight: 600;
   gap: 7px;
   justify-content: center;
   padding: 8px 10px;
@@ -1134,7 +1135,7 @@
   color: #0f172a;
   display: block;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
   margin-bottom: 10px;
 }
 
@@ -1189,7 +1190,7 @@
   color: #475569;
   flex: 0 0 auto;
   font-size: 0.7rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 4px 8px;
 }
 
@@ -1210,7 +1211,7 @@
   display: inline-flex;
   font: inherit;
   font-size: 1rem;
-  font-weight: 900;
+  font-weight: 700;
   height: 26px;
   justify-content: center;
   line-height: 1;
@@ -1275,7 +1276,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 8px 10px;
 }
 
@@ -1373,7 +1374,7 @@
   display: inline-flex;
   font-family: inherit;
   font-size: 0.62rem;
-  font-weight: 950;
+  font-weight: 700;
   height: 30px;
   justify-content: center;
   transition:
@@ -1450,14 +1451,14 @@
 .stampReadout strong {
   color: #0f172a;
   font-size: 0.9rem;
-  font-weight: 950;
+  font-weight: 700;
   line-height: 1.1;
 }
 
 .stampReadout span {
   color: #64748b;
   font-size: 0.66rem;
-  font-weight: 800;
+  font-weight: 600;
   margin-top: 3px;
 }
 
@@ -1467,7 +1468,7 @@
   border: 1px solid transparent;
   padding: 12px 14px;
   border-radius: 10px;
-  font-weight: 850;
+  font-weight: 600;
   cursor: pointer;
   text-align: left;
   transition: 0.2s ease;
@@ -1525,7 +1526,7 @@
   display: flex;
   gap: 8px;
   font-size: 0.9rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .inlineSelectLabel select {
@@ -1534,7 +1535,7 @@
   border-radius: 14px;
   font-family: inherit;
   font-size: 0.95rem;
-  font-weight: 750;
+  font-weight: 600;
   min-width: 230px;
   padding: 12px 14px;
 }
@@ -1542,7 +1543,7 @@
 .eyebrow {
   color: #2563eb;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
   margin: 0 0 6px;
 }
 
@@ -1567,7 +1568,7 @@
   border: none;
   padding: 14px 22px;
   border-radius: 14px;
-  font-weight: 800;
+  font-weight: 600;
   cursor: pointer;
   transition: 0.2s ease;
   box-shadow: 0 10px 22px rgba(37, 99, 235, 0.22);
@@ -1599,7 +1600,7 @@
   color: #15803d;
   cursor: pointer;
   font-family: inherit;
-  font-weight: 900;
+  font-weight: 700;
   padding: 9px 12px;
 }
 
@@ -1612,7 +1613,7 @@
   color: #ffffff;
   cursor: pointer;
   font-family: inherit;
-  font-weight: 950;
+  font-weight: 700;
   padding: 14px 18px;
 }
 
@@ -1631,7 +1632,7 @@
   color: #b45309;
   display: block;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
   margin-top: 4px;
 }
 
@@ -1654,7 +1655,7 @@
   color: #0f172a;
   display: block;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .filterBar input,
@@ -1689,7 +1690,7 @@
   display: flex;
   gap: 8px;
   font-size: 0.9rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .kanbanActions select {
@@ -1740,7 +1741,7 @@
   color: #1d4ed8;
   display: inline-flex;
   font-size: 0.8rem;
-  font-weight: 800;
+  font-weight: 600;
   height: 26px;
   justify-content: center;
   min-width: 26px;
@@ -1891,7 +1892,7 @@
   border-radius: 10px;
   color: #1d4ed8;
   cursor: pointer;
-  font-weight: 800;
+  font-weight: 600;
   padding: 8px 14px;
 }
 
@@ -1932,7 +1933,7 @@
   color: #071225;
   display: grid;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
   gap: 6px;
 }
 
@@ -1960,7 +1961,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 0.72rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 5px 9px;
 }
 
@@ -2011,7 +2012,7 @@
   display: inline-flex;
   font-family: inherit;
   font-size: 0.75rem;
-  font-weight: 900;
+  font-weight: 700;
   justify-content: center;
   min-height: 26px;
   overflow: hidden;
@@ -2050,7 +2051,7 @@
   border-bottom: 1px solid #e2e8f0;
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 600;
   padding: 12px;
   text-align: center;
 }
@@ -2112,7 +2113,7 @@
   color: #1d4ed8;
   display: inline-flex;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 600;
   height: 22px;
   justify-content: center;
   min-width: 22px;
@@ -2142,7 +2143,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
   padding: 8px 10px;
   text-align: left;
 }
@@ -2160,7 +2161,7 @@
   color: #1d4ed8;
   display: inline-flex;
   font-size: 0.72rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.2;
   margin-bottom: 8px;
   max-width: 100%;
@@ -2343,7 +2344,7 @@
   color: #ffffff !important;
   display: inline-flex !important;
   font-size: 0.72rem;
-  font-weight: 900;
+  font-weight: 700;
   height: 20px;
   justify-content: center;
   line-height: 1;
@@ -2359,7 +2360,7 @@
   color: #ffffff !important;
   display: inline-flex !important;
   font-size: 0.72rem;
-  font-weight: 900;
+  font-weight: 700;
   height: 20px;
   justify-content: center;
   line-height: 1;
@@ -2497,7 +2498,7 @@
   border-radius: 12px;
   display: inline-flex;
   font-size: 0.86rem;
-  font-weight: 850;
+  font-weight: 600;
   height: 44px;
   justify-content: center;
   min-width: 96px;
@@ -2788,7 +2789,7 @@
 .timerReadout {
   color: #0f172a;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 600;
   min-height: 1em;
   white-space: nowrap;
 }
@@ -2833,7 +2834,7 @@
 
 .number {
   color: #2563eb;
-  font-weight: 800;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -2859,7 +2860,7 @@
   color: #ffffff;
   display: inline-flex;
   font-size: 0.72rem;
-  font-weight: 900;
+  font-weight: 700;
   height: 20px;
   justify-content: center;
   width: 20px;
@@ -2888,7 +2889,7 @@
   color: #9a3412;
   display: inline-flex;
   font-size: 0.82rem;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.15;
   margin-top: 8px;
   padding: 7px 10px;
@@ -2956,7 +2957,7 @@
   border-radius: 999px;
   display: inline-flex;
   font-size: 0.76rem;
-  font-weight: 950;
+  font-weight: 700;
   justify-content: center;
   line-height: 1.1;
   min-height: 26px;
@@ -3010,7 +3011,7 @@
   border-radius: 999px;
   display: inline-flex;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
   justify-content: center;
   line-height: 1;
   padding: 7px 12px;
@@ -3063,7 +3064,7 @@
   background: #fff7ed;
   border-color: #f59e0b;
   color: #92400e;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 @keyframes invoiceFinalizePulse {
@@ -3083,7 +3084,7 @@
 .finalizeConfirmText {
   color: #0f172a;
   font-size: 1.05rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.45;
   margin: 10px 0;
 }
@@ -3116,7 +3117,7 @@
   border-radius: 999px;
   display: inline-flex;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
   justify-content: center;
   min-width: 86px;
   padding: 6px 10px;
@@ -3143,7 +3144,7 @@
   border-radius: 12px;
   display: inline-flex;
   gap: 7px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.25;
   overflow: hidden;
   padding: 7px 10px;
@@ -3260,7 +3261,7 @@
   border: 1px solid #fdba74;
   border-radius: 14px;
   color: #9a3412;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.35;
   margin: 14px 0 0;
   padding: 12px 14px;
@@ -3289,7 +3290,7 @@
 
 .modal label {
   display: block;
-  font-weight: 800;
+  font-weight: 600;
   margin: 12px 0 6px;
 }
 
@@ -3391,7 +3392,7 @@
   display: inline-flex;
   font-family: inherit;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.15;
   max-width: 100%;
   min-height: 28px;
@@ -3434,7 +3435,7 @@
   display: flex;
   flex-wrap: wrap;
   font-size: 0.9rem;
-  font-weight: 800;
+  font-weight: 600;
   gap: 10px;
 }
 
@@ -3464,7 +3465,7 @@
   border-radius: 14px;
   color: #9a3412;
   font-size: 0.86rem;
-  font-weight: 800;
+  font-weight: 600;
   margin: 0;
   padding: 10px 12px;
 }
@@ -3507,7 +3508,7 @@
   color: #b91c1c;
   cursor: pointer;
   font: inherit;
-  font-weight: 950;
+  font-weight: 700;
   padding: 10px 16px;
 }
 
@@ -3520,7 +3521,7 @@
   border-radius: 12px;
   cursor: pointer;
   font: inherit;
-  font-weight: 950;
+  font-weight: 700;
   padding: 10px 16px;
 }
 
@@ -3540,7 +3541,7 @@
   border-radius: 16px;
   color: #9a3412;
   font-size: 0.95rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.35;
   margin-top: 14px;
   padding: 13px 15px;
@@ -3660,7 +3661,7 @@
   color: #0f172a;
   font-family: inherit;
   font-size: 0.92rem;
-  font-weight: 750;
+  font-weight: 600;
   min-height: 38px;
   padding: 8px 11px;
 }
@@ -3718,7 +3719,7 @@
   color: #075985;
   display: inline-flex;
   font-size: 0.82rem;
-  font-weight: 900;
+  font-weight: 700;
   height: 34px;
   justify-content: center;
   overflow: hidden;
@@ -3764,7 +3765,7 @@
 
 .commentBubbleHeader strong {
   font-size: 0.88rem;
-  font-weight: 950;
+  font-weight: 700;
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
@@ -3773,7 +3774,7 @@
   color: #64748b;
   flex: 0 0 auto;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .commentChatItem[data-own="true"] .commentBubbleHeader span {
@@ -3808,7 +3809,7 @@
   border-radius: 10px;
   color: #b91c1c;
   padding: 7px 10px;
-  font-weight: 850;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -3848,7 +3849,7 @@
 .goalCard dt,
 .goalCard p {
   color: var(--muted);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .goalSummaryStrip {
@@ -3887,14 +3888,14 @@
   color: #64748b;
   display: block;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .goalSummaryMetric strong {
   color: #071225;
   display: block;
   font-size: 1.45rem;
-  font-weight: 950;
+  font-weight: 700;
   margin-top: 6px;
 }
 
@@ -3939,7 +3940,7 @@
   display: flex;
   flex-direction: column;
   font-size: 0.82rem;
-  font-weight: 900;
+  font-weight: 700;
   gap: 7px;
 }
 
@@ -3951,7 +3952,7 @@
   border-radius: 8px;
   color: #071225;
   font: inherit;
-  font-weight: 800;
+  font-weight: 600;
   min-height: 42px;
   padding: 10px 12px;
 }
@@ -4029,7 +4030,7 @@
   display: inline-flex;
   font: inherit;
   font-size: 1.25rem;
-  font-weight: 950;
+  font-weight: 700;
   height: 34px;
   justify-content: center;
   line-height: 1;
@@ -4049,13 +4050,13 @@
 .goalFormSectionTitle strong {
   color: #0b1325;
   font-size: 0.9rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .goalFormSectionTitle span {
   color: #64748b;
   font-size: 0.76rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .goalWideField {
@@ -4123,7 +4124,7 @@
   color: rgba(255, 255, 255, 0.78);
   display: inline-flex;
   font-size: 0.84rem;
-  font-weight: 850;
+  font-weight: 600;
   gap: 8px;
 }
 
@@ -4136,12 +4137,12 @@
 .goalOwnerHeader strong,
 .goalOwnerHeader b {
   color: #ffffff;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .goalOwnerHeader small {
   color: rgba(255, 255, 255, 0.68);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .goalOwnerGroup .goalCardsGrid {
@@ -4187,14 +4188,14 @@
 .goalCard h3 small {
   color: var(--muted);
   font-size: 0.86rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .goalMetricLabel {
   color: #49617f;
   display: block;
   font-size: 0.76rem;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0.04em;
   margin-bottom: 4px;
   text-transform: uppercase;
@@ -4216,7 +4217,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
   min-height: 30px;
   padding: 6px 9px;
 }
@@ -4239,7 +4240,7 @@
   color: #1e55a5;
   display: inline-flex;
   font-size: 0.76rem;
-  font-weight: 900;
+  font-weight: 700;
   min-height: 30px;
   padding: 5px 9px;
 }
@@ -4279,13 +4280,13 @@
 .goalValueSummary > span {
   color: #526b8a;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .goalValueSummary > strong {
   color: #020617;
   font-size: clamp(1.65rem, 2.5vw, 2.25rem);
-  font-weight: 950;
+  font-weight: 700;
   line-height: 1;
   margin: 5px 0 4px;
   white-space: nowrap;
@@ -4295,7 +4296,7 @@
 .goalProgressRelation {
   color: #64748b;
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .goalProgressTrack {
@@ -4338,13 +4339,13 @@
 .goalMonthCell span {
   color: #071225;
   font-size: 0.94rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .goalMonthCell strong {
   color: #071225;
   font-size: 0.88rem;
-  font-weight: 950;
+  font-weight: 700;
   white-space: nowrap;
 }
 
@@ -4415,7 +4416,7 @@
   color: #334155;
   font-style: normal;
   font-size: 0.82rem;
-  font-weight: 900;
+  font-weight: 700;
   min-width: max-content;
   padding: 5px 12px;
   position: absolute;
@@ -4456,7 +4457,7 @@
 
 .goalCard dd {
   font-size: 0.95rem;
-  font-weight: 950;
+  font-weight: 700;
   margin: 2px 0 0;
 }
 
@@ -4589,7 +4590,7 @@
   color: #071225;
   font-family: inherit;
   font-size: 0.95rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.45;
   padding: 12px;
   resize: vertical;
@@ -4615,7 +4616,7 @@
 .escalationForm label {
   color: #0f172a;
   display: block;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .userForm input,
@@ -4677,7 +4678,7 @@
 .attachmentNameList {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .attachmentNameList {
@@ -4699,14 +4700,14 @@
 
 .mailAdditionalAttachments > div > span {
   color: #0f172a;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .mailAdditionalAttachments small,
 .mailAdditionalAttachments p {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -4743,14 +4744,14 @@
 .eInvoiceReadinessMeta span {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .eInvoiceReadinessHeader strong,
 .eInvoiceReadinessMeta strong {
   color: #0f172a;
   display: block;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .eInvoiceReadinessHeader em {
@@ -4760,7 +4761,7 @@
   flex: 0 0 auto;
   font-size: 0.78rem;
   font-style: normal;
-  font-weight: 950;
+  font-weight: 700;
   padding: 6px 10px;
 }
 
@@ -4780,7 +4781,7 @@
 .eInvoiceReadinessCard li {
   color: #64748b;
   font-size: 0.8rem;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.45;
 }
 
@@ -4827,13 +4828,13 @@
 .eInvoiceStatusPills span {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .eInvoiceFormatHeader strong {
   color: #0f172a;
   display: block;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .eInvoiceStatusPills {
@@ -4861,7 +4862,7 @@
 .eInvoiceFormatCard p {
   color: #64748b;
   font-size: 0.8rem;
-  font-weight: 800;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -4896,13 +4897,13 @@
 .eInvoiceFormatOptions strong {
   color: #0f172a;
   font-size: 0.84rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .eInvoiceFormatOptions small {
   color: #64748b;
   font-size: 0.72rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .eInvoiceActionRow {
@@ -4944,7 +4945,7 @@
   border-radius: 10px;
   color: #0f172a;
   font: inherit;
-  font-weight: 800;
+  font-weight: 600;
   min-height: 40px;
   padding: 8px 10px;
 }
@@ -5003,13 +5004,13 @@
 .mailProjectAttachmentModalHeader strong {
   color: #0f172a;
   font-size: 1rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .mailProjectAttachmentModalHeader span {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .mailProjectAttachmentModalList {
@@ -5022,7 +5023,7 @@
 
 .mailProjectAttachmentModalList > p {
   color: #64748b;
-  font-weight: 850;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -5063,7 +5064,7 @@
 .mailProjectAttachmentFileIcon {
   color: #2563eb;
   font-size: 0.7rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .mailProjectAttachmentOption > span:last-child {
@@ -5075,14 +5076,14 @@
 .mailProjectAttachmentOption strong {
   color: #0f172a;
   font-size: 0.86rem;
-  font-weight: 950;
+  font-weight: 700;
   overflow-wrap: anywhere;
 }
 
 .mailProjectAttachmentOption small {
   color: #64748b;
   font-size: 0.76rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .mailProjectAttachmentModalFooter {
@@ -5108,7 +5109,7 @@
   color: #0f172a;
   display: flex;
   font-size: 0.82rem;
-  font-weight: 900;
+  font-weight: 700;
   gap: 8px;
   justify-content: space-between;
   padding: 8px 10px;
@@ -5122,7 +5123,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 0.74rem;
-  font-weight: 950;
+  font-weight: 700;
   padding: 4px 9px;
 }
 
@@ -5131,7 +5132,7 @@
   border-radius: 999px;
   font: inherit;
   font-size: 0.74rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 4px 8px;
 }
 
@@ -5153,7 +5154,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 0.78rem;
-  font-weight: 950;
+  font-weight: 700;
   padding: 7px 12px;
 }
 
@@ -5170,7 +5171,7 @@
 
 .teamPicker > span {
   color: #0f172a;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .actionGroup {
@@ -5195,7 +5196,7 @@
   display: block;
   flex: 1;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 600;
   max-width: 520px;
 }
 
@@ -5213,7 +5214,7 @@
 .heroSearchBar span {
   color: #64748b;
   font-size: 0.88rem;
-  font-weight: 800;
+  font-weight: 600;
   padding-bottom: 12px;
 }
 
@@ -5311,7 +5312,7 @@
   color: #0f172a;
   display: flex;
   font-size: 1rem;
-  font-weight: 950;
+  font-weight: 700;
   height: 25px;
   justify-content: center;
   letter-spacing: 0;
@@ -5333,7 +5334,7 @@
   color: #ffffff;
   display: flex;
   font-size: 0.68rem;
-  font-weight: 950;
+  font-weight: 700;
   height: 20px;
   justify-content: center;
   min-width: 20px;
@@ -5355,7 +5356,7 @@
 .projectStatusStripMeta span {
   color: #94a3b8;
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .projectPipelineStatusList {
@@ -5403,7 +5404,7 @@
   display: grid;
   font-family: inherit;
   font-size: clamp(0.55rem, 0.52vw, 0.68rem);
-  font-weight: 750;
+  font-weight: 600;
   gap: 4px;
   grid-template-columns: minmax(0, 1fr);
   line-height: 1.05;
@@ -5452,7 +5453,7 @@
 .projectPipelineStatusList button:first-child span {
   color: #ffffff;
   font-size: clamp(0.62rem, 0.65vw, 0.82rem);
-  font-weight: 950;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -5471,7 +5472,7 @@
   color: #d8dee8;
   font-size: clamp(1.25rem, 1.45vw, 1.8rem);
   font-style: normal;
-  font-weight: 950;
+  font-weight: 700;
   line-height: 0.8;
   margin-right: 3px;
   vertical-align: -0.16em;
@@ -5483,7 +5484,7 @@
   color: #d8dee8;
   display: inline;
   font-size: clamp(1.35rem, 1.55vw, 1.9rem);
-  font-weight: 950;
+  font-weight: 700;
   height: auto;
   left: auto;
   margin-left: 0;
@@ -5502,7 +5503,7 @@
   color: #ffffff;
   display: flex;
   font-size: 1rem;
-  font-weight: 950;
+  font-weight: 700;
   height: 30px;
   justify-content: center;
   min-width: 30px;
@@ -5567,7 +5568,7 @@
   display: inline-flex;
   flex: 0 0 38px;
   font-size: 0.72rem;
-  font-weight: 950;
+  font-weight: 700;
   height: 38px;
   justify-content: center;
   overflow: hidden;
@@ -5611,7 +5612,7 @@
   display: grid;
   flex: 1;
   font-size: 0.72rem;
-  font-weight: 850;
+  font-weight: 600;
   gap: 5px;
   min-width: 0;
 }
@@ -5638,7 +5639,7 @@
   color: #64748b;
   flex: 0 0 auto;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
   padding-bottom: 11px;
 }
 
@@ -5763,14 +5764,14 @@
 .potentialDueFilter span {
   color: #64748b;
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .potentialWorkflowFilters strong,
 .potentialDueFilter strong {
   color: #0f172a;
   font-size: 1.35rem;
-  font-weight: 950;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -5909,7 +5910,7 @@
   color: #005bff;
   cursor: pointer;
   font: inherit;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.2;
   padding: 0;
   text-align: left;
@@ -5930,7 +5931,7 @@
   border-top: 1px solid #e2e8f0;
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 600;
   margin: 0;
   padding: 12px 14px;
 }
@@ -5939,7 +5940,7 @@
   color: #92400e;
   display: inline-block;
   font-size: 0.82rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.25;
   max-width: 220px;
 }
@@ -5963,7 +5964,7 @@
   color: #ffffff;
   cursor: pointer;
   font-size: 0.76rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.1;
   padding: 5px 9px;
   text-align: left;
@@ -6020,7 +6021,7 @@
   border-radius: 12px;
   color: #334155;
   font-size: 0.92rem;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.4;
   padding: 12px 14px;
 }
@@ -6062,7 +6063,7 @@
   color: #64748b;
   display: block;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
   margin-bottom: 4px;
 }
 
@@ -6074,7 +6075,7 @@
 
 .heroDescription p {
   color: #334155;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.5;
   margin: 0;
   white-space: pre-line;
@@ -6106,7 +6107,7 @@
   color: #2563eb;
   display: block;
   font-size: 0.82rem;
-  font-weight: 900;
+  font-weight: 700;
   margin-bottom: 6px;
 }
 
@@ -6117,7 +6118,7 @@
 
 .reportHero p {
   color: #64748b;
-  font-weight: 750;
+  font-weight: 600;
   margin: 8px 0 18px;
 }
 
@@ -6160,7 +6161,7 @@
   color: #64748b;
   display: block;
   font-size: 0.8rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .unproductiveSummaryGrid strong {
@@ -6201,7 +6202,7 @@
 .productivityEndpoint span {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
   margin-top: 4px;
 }
 
@@ -6253,7 +6254,7 @@
   border-radius: 999px;
   color: #b91c1c;
   font-size: 0.76rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 7px 10px;
   white-space: nowrap;
 }
@@ -6284,7 +6285,7 @@
 .reportHeader > p {
   color: #64748b;
   font-size: 0.86rem;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.35;
   margin: 0;
   max-width: 430px;
@@ -6309,7 +6310,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 0.84rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 9px 14px;
 }
 
@@ -6344,7 +6345,7 @@
 .workloadDayHeader {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 0 6px 4px;
 }
 
@@ -6375,7 +6376,7 @@
 .workloadUser span {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
   margin-top: 4px;
 }
 
@@ -6414,7 +6415,7 @@
 .workloadCell small {
   color: #64748b;
   font-size: 0.74rem;
-  font-weight: 800;
+  font-weight: 600;
   margin-top: 6px;
 }
 
@@ -6519,7 +6520,7 @@
 
 .performanceGauge small {
   color: #64748b;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .performanceGauge small span {
@@ -6625,7 +6626,7 @@
   color: #64748b;
   display: block;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .performanceHero strong {
@@ -6652,7 +6653,7 @@
 
 .performanceUser span {
   font-size: 1.2rem;
-  font-weight: 900;
+  font-weight: 700;
   margin: 8px 0 4px;
 }
 
@@ -6693,7 +6694,7 @@
   border-radius: 999px;
   display: inline-flex;
   font-size: 0.82rem;
-  font-weight: 900;
+  font-weight: 700;
   justify-content: center;
   min-width: 70px;
   padding: 7px 10px;
@@ -6711,29 +6712,98 @@
 
 .managementAiOverlay {
   align-items: stretch;
-  background: rgba(15, 23, 42, 0.36);
   bottom: 0;
   display: flex;
   justify-content: flex-end;
   left: 0;
+  pointer-events: none;
   position: fixed;
   right: 0;
   top: 0;
-  z-index: 80;
+  z-index: 400;
 }
 
 .managementAiPanel {
+  animation: jarvisPanelMaterialize 680ms cubic-bezier(0.2, 0.82, 0.22, 1) both;
   background: #ffffff;
-  box-shadow: -24px 0 56px rgba(15, 23, 42, 0.22);
+  border: 1px solid #aebecb;
+  border-radius: 18px 0 0 18px;
+  border-right: 0;
+  box-shadow:
+    -18px 0 48px rgba(15, 23, 42, 0.26),
+    0 0 0 1px rgba(255, 255, 255, 0.82) inset;
   display: grid;
-  grid-template-rows: auto 1fr auto auto;
-  max-width: min(720px, calc(100vw - 28px));
-  min-width: min(620px, calc(100vw - 28px));
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+  margin: 8px 0;
+  max-width: min(480px, 100vw);
+  min-width: min(440px, 100vw);
+  overflow: hidden;
+  pointer-events: auto;
+  position: relative;
+  transform-origin: left bottom;
+  will-change: opacity, transform;
+}
+
+.managementAiPanel::before {
+  animation: jarvisPanelEdgeTrace 680ms ease-out both;
+  background: linear-gradient(180deg, transparent, #22d3ee 18%, #38bdf8 82%, transparent);
+  bottom: 0;
+  content: "";
+  left: 0;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  transform-origin: center bottom;
+  width: 3px;
+  z-index: 4;
+}
+
+@keyframes jarvisPanelMaterialize {
+  0% {
+    opacity: 0;
+    transform: translate3d(
+        var(--jarvis-launch-x, -180px),
+        var(--jarvis-launch-y, 40px),
+        0
+      )
+      scale(0.08);
+  }
+  28% {
+    opacity: 0.72;
+  }
+  82% {
+    opacity: 1;
+    transform: translate3d(5px, 0, 0) scale(1.008);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes jarvisPanelEdgeTrace {
+  0% {
+    opacity: 0;
+    transform: scaleY(0.06);
+  }
+  38% {
+    opacity: 1;
+    transform: scaleY(0.7);
+  }
+  76% {
+    opacity: 0.72;
+    transform: scaleY(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scaleY(1);
+  }
 }
 
 .managementAiHeader {
   align-items: flex-start;
-  border-bottom: 1px solid #dbe3ee;
+  background: linear-gradient(145deg, #0f172a, #12353a);
+  border-bottom: 1px solid #1e454b;
   display: flex;
   gap: 16px;
   justify-content: space-between;
@@ -6741,25 +6811,250 @@
 }
 
 .managementAiHeader span {
-  color: #2563eb;
+  color: #67e8f9;
   display: block;
   font-size: 0.78rem;
-  font-weight: 950;
+  font-weight: 700;
   letter-spacing: 0;
   text-transform: uppercase;
 }
 
 .managementAiHeader h2 {
-  color: #0f172a;
+  color: #ffffff;
   font-size: 1.45rem;
   margin: 4px 0;
 }
 
 .managementAiHeader p {
-  color: #64748b;
+  color: #d7e7ea;
   font-size: 0.9rem;
-  font-weight: 750;
+  font-weight: 600;
   margin: 0;
+}
+
+.managementAiHeader .iconButton {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #0f172a;
+}
+
+.sidebarUtilityStack {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 8px;
+  margin-top: auto;
+  min-width: 0;
+}
+
+.sidebarUtilityStack .stampWidget {
+  margin-top: 0;
+}
+
+.jarvisSidebarCard {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  color: #ffffff;
+  cursor: pointer;
+  display: block;
+  font: inherit;
+  height: clamp(150px, 10vw, 180px);
+  overflow: hidden;
+  padding: 0;
+  position: relative;
+  text-align: center;
+  transition:
+    filter 180ms ease,
+    opacity 180ms ease;
+  width: 100%;
+}
+
+.jarvisSidebarCard:hover,
+.jarvisSidebarCard:focus-visible,
+.jarvisSidebarCard[data-active="true"] {
+  filter: none;
+}
+
+.jarvisSidebarCard:hover .jarvisSidebarLabel strong,
+.jarvisSidebarCard:focus-visible .jarvisSidebarLabel strong,
+.jarvisSidebarCard[data-active="true"] .jarvisSidebarLabel strong {
+  text-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.9),
+    0 0 18px rgba(56, 189, 248, 0.92),
+    0 0 30px rgba(37, 99, 235, 0.58);
+}
+
+.jarvisSidebarCard::after {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg 34deg,
+    rgba(14, 165, 233, 0.18) 54deg,
+    rgba(103, 232, 249, 0.96) 78deg,
+    rgba(37, 99, 235, 0.42) 104deg,
+    transparent 132deg 208deg,
+    rgba(37, 99, 235, 0.16) 226deg,
+    rgba(56, 189, 248, 0.72) 250deg,
+    transparent 282deg 360deg
+  );
+  content: "";
+  filter:
+    drop-shadow(0 0 7px rgba(56, 189, 248, 0.72))
+    drop-shadow(0 0 15px rgba(37, 99, 235, 0.42));
+  left: 50%;
+  -webkit-mask: radial-gradient(
+    circle,
+    transparent calc(50% - 5px),
+    #000 calc(50% - 4px),
+    #000 calc(50% - 1px),
+    transparent 50%
+  );
+  mask: radial-gradient(
+    circle,
+    transparent calc(50% - 5px),
+    #000 calc(50% - 4px),
+    #000 calc(50% - 1px),
+    transparent 50%
+  );
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%) rotate(0deg);
+  width: 48%;
+  z-index: 1;
+}
+
+.jarvisSidebarCard[data-active="true"]::after {
+  animation:
+    jarvisOrbWaveSpin 2.8s linear infinite,
+    jarvisOrbWaveBreathe 1.4s ease-in-out infinite alternate;
+}
+
+@keyframes jarvisOrbWaveSpin {
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+@keyframes jarvisOrbWaveBreathe {
+  from {
+    opacity: 0.44;
+  }
+  to {
+    opacity: 0.96;
+  }
+}
+
+.jarvisSidebarCard:focus-visible {
+  outline: 3px solid rgba(103, 232, 249, 0.3);
+  outline-offset: -3px;
+}
+
+.jarvisSidebarVisual {
+  display: block;
+  height: 100%;
+  inset: 0;
+  overflow: hidden;
+  position: absolute;
+}
+
+.jarvisSidebarVisual img {
+  display: block;
+  height: 100%;
+  mix-blend-mode: screen;
+  object-fit: contain;
+  object-position: center;
+  width: 100%;
+}
+
+.jarvisSidebarLabel {
+  align-items: center;
+  inset: 50% auto auto 50%;
+  display: flex;
+  justify-content: center;
+  padding: 5px 8px;
+  pointer-events: none;
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+}
+
+.jarvisSidebarLabel strong {
+  color: #ffffff;
+  font-size: 0.94rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  line-height: 1;
+  text-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.9),
+    0 0 14px rgba(56, 189, 248, 0.72);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jarvisSidebarCard,
+  .jarvisSidebarCard[data-active="true"]::after,
+  .managementAiPanel,
+  .managementAiPanel::before {
+    animation: none;
+    transition: none;
+  }
+}
+
+.jarvisModeBar {
+  background: #f7fafb;
+  border-bottom: 1px solid #dbe3ee;
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding: 11px 18px;
+}
+
+.jarvisModeBar button {
+  background: #ffffff;
+  border: 1px solid #cbd9dd;
+  border-radius: 999px;
+  color: #40545a;
+  cursor: pointer;
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 7px 11px;
+}
+
+.jarvisModeBar button[data-active="true"] {
+  background: #0b5960;
+  border-color: #0b5960;
+  color: #ffffff;
+}
+
+.jarvisContextBar {
+  align-items: center;
+  background: #eef7f7;
+  border-bottom: 1px solid #cfe4e5;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  padding: 9px 18px;
+}
+
+.jarvisContextBar span {
+  color: #60747b;
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.jarvisContextBar strong {
+  color: #0b5960;
+  font-size: 0.76rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .managementAiMessages {
@@ -6786,6 +7081,30 @@
 .managementAiMessages article[data-role="assistant"] {
   background: #ffffff;
   justify-self: start;
+}
+
+.jarvisChoiceList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 11px;
+}
+
+.jarvisChoiceList button {
+  background: #eef7f7;
+  border: 1px solid #a9cfd2;
+  border-radius: 999px;
+  color: #0b5960;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  padding: 7px 10px;
+}
+
+.jarvisChoiceList button:disabled {
+  cursor: wait;
+  opacity: 0.58;
 }
 
 .managementAiMessages p {
@@ -6820,7 +7139,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 0.86rem;
-  font-weight: 850;
+  font-weight: 600;
   justify-self: start;
   padding: 8px 12px;
 }
@@ -6830,7 +7149,7 @@
   border-top: 1px solid #fecdd3;
   color: #be123c;
   font-size: 0.9rem;
-  font-weight: 850;
+  font-weight: 600;
   margin: 0;
   padding: 10px 24px;
 }
@@ -6858,30 +7177,86 @@
   justify-self: end;
 }
 
+@media (max-width: 620px) {
+  .managementAiPanel {
+    max-width: 100vw;
+    min-width: 100vw;
+  }
+
+  .managementAiHeader {
+    padding: 18px 16px 15px;
+  }
+
+  .managementAiMessages {
+    padding: 15px 16px;
+  }
+
+  .managementAiComposer {
+    padding: 13px 16px 16px;
+  }
+
+  .jarvisLauncher {
+    border-radius: 12px 0 0 12px;
+    padding: 11px;
+  }
+
+  .jarvisLauncher span {
+    display: none;
+  }
+}
+
 .analyticsTabs {
-  border-bottom: 1px solid #d8e0ea;
+  background: #f1f4f8;
+  border: 1px solid #d8e0ea;
+  border-radius: 12px;
   display: flex;
+  gap: 4px;
   min-width: 0;
   overflow-x: auto;
+  padding: 5px;
+  scrollbar-color: #b9c5d3 transparent;
+  scrollbar-width: thin;
   width: 100%;
 }
 
 .analyticsTabs button {
-  background: #ffffff;
-  border: 0;
-  border-bottom: 3px solid transparent;
-  color: #005fff;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #475569;
   cursor: pointer;
   font: inherit;
-  font-size: 0.96rem;
-  font-weight: 800;
-  padding: 14px 18px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 10px 14px;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
   white-space: nowrap;
 }
 
+.analyticsTabs button:hover {
+  background: rgba(255, 255, 255, 0.72);
+  border-color: #d5dde7;
+  color: #0f6268;
+}
+
 .analyticsTabs button[data-active="true"] {
-  border-color: #111827;
-  color: #111827;
+  background: #ffffff;
+  border-color: rgba(15, 98, 104, 0.3);
+  box-shadow:
+    inset 0 -3px 0 #0f6268,
+    0 2px 7px rgba(15, 23, 42, 0.08);
+  color: #0b4d52;
+  font-weight: 600;
+}
+
+.analyticsTabs button:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.22);
+  outline-offset: 1px;
 }
 
 .analyticsFilters {
@@ -6909,7 +7284,7 @@
   display: inline-flex;
   font: inherit;
   font-size: 0.84rem;
-  font-weight: 900;
+  font-weight: 700;
   gap: 8px;
   justify-content: center;
   min-height: 42px;
@@ -6992,7 +7367,7 @@
   color: #334155;
   display: inline-flex;
   font-size: 0.86rem;
-  font-weight: 850;
+  font-weight: 600;
   gap: 8px;
   min-height: 38px;
   padding: 8px 12px;
@@ -7036,7 +7411,7 @@
   cursor: pointer;
   display: grid;
   font: inherit;
-  font-weight: 950;
+  font-weight: 700;
   justify-items: center;
   min-height: 38px;
   padding: 7px 10px;
@@ -7074,7 +7449,7 @@
 .forecastPeriodTabs small {
   color: #111827;
   font-size: 0.68rem;
-  font-weight: 950;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -7097,7 +7472,7 @@
   border-radius: 12px;
   color: #42546d;
   font-size: 0.82rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.55;
   margin: 0;
   padding: 12px 14px;
@@ -7172,7 +7547,7 @@
   color: #047857;
   font-size: 0.78rem;
   font-style: normal;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1;
   padding: 7px 10px;
   text-align: right;
@@ -7218,7 +7593,7 @@
 .analyticsModalSearch span {
   color: #334155;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .analyticsModalSearch input {
@@ -7228,7 +7603,7 @@
   color: #0f172a;
   font: inherit;
   font-size: 0.84rem;
-  font-weight: 750;
+  font-weight: 600;
   min-height: 40px;
   outline: none;
   padding: 8px 12px;
@@ -7256,7 +7631,7 @@
 .salesAnalyticsBlock h3 {
   color: #0f172a;
   font-size: 0.98rem;
-  font-weight: 950;
+  font-weight: 700;
   margin: 0;
 }
 
@@ -7279,13 +7654,13 @@
 .salesAnalyticsSummaryGrid small {
   color: #61738a;
   font-size: 0.74rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .salesAnalyticsSummaryGrid strong {
   color: #063f45;
   font-size: 1.2rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .salesAnalyticsTableScroll {
@@ -7302,7 +7677,7 @@
 .salesCockpitCard p {
   color: #5b6f8d;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0;
   margin: 6px 0 0;
   text-transform: uppercase;
@@ -7311,7 +7686,7 @@
 .salesCockpitCard strong {
   color: #020617;
   font-size: 2.65rem;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0;
   line-height: 1;
 }
@@ -7368,7 +7743,7 @@
 .salesReportSectionHeading span {
   color: #071225;
   font-size: 0.9rem;
-  font-weight: 950;
+  font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -7420,7 +7795,7 @@
 .salesDetailSummary > span {
   color: #0f766e;
   font-size: 0.75rem;
-  font-weight: 850;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -7443,7 +7818,7 @@
 .salesDetailTitle strong {
   color: #64748b;
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .salesTableScroll {
@@ -7482,7 +7857,7 @@
 }
 
 .salesRecurringReviewCard .analyticsTable td {
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .salesRecurringReviewCard .analyticsTable small {
@@ -7517,7 +7892,7 @@
   color: #0054c7;
   flex: 0 0 auto;
   font-size: 0.82rem;
-  font-weight: 950;
+  font-weight: 700;
   padding: 8px 12px;
 }
 
@@ -7529,7 +7904,7 @@
   color: rgba(255, 255, 255, 0.68);
   display: block;
   font-size: 0.72rem;
-  font-weight: 950;
+  font-weight: 700;
   letter-spacing: 0;
   margin-bottom: 4px;
   text-transform: uppercase;
@@ -7558,20 +7933,20 @@
 .recurringReviewSignalBox span {
   color: #5b6f8d;
   font-size: 0.76rem;
-  font-weight: 950;
+  font-weight: 700;
   text-transform: uppercase;
 }
 
 .recurringReviewSignalBox strong {
   color: #020617;
   font-size: 1.35rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .recurringReviewSignalBox p {
   color: #334155;
   font-size: 0.9rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.45;
   margin: 0;
 }
@@ -7608,7 +7983,7 @@
   border-radius: 12px;
   color: #475569;
   font-size: 0.92rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.45;
   padding: 14px;
 }
@@ -7637,20 +8012,20 @@
 .recurringReviewTimeline strong {
   color: #020617;
   font-size: 0.94rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .recurringReviewTimeline span,
 .recurringReviewTimeline small {
   color: #5b6f8d;
   font-size: 0.82rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .recurringReviewTimeline p {
   color: #273951;
   font-size: 0.92rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.45;
   margin: 0;
 }
@@ -7722,7 +8097,7 @@
   border-radius: 999px;
   background: #eef6ff;
   color: #0b4b8f;
-  font-weight: 800;
+  font-weight: 600;
   padding: 8px 12px;
 }
 
@@ -7731,7 +8106,7 @@
   color: #4b5f7d;
   display: grid;
   font-size: 0.72rem;
-  font-weight: 850;
+  font-weight: 600;
   gap: 4px;
 }
 
@@ -7797,11 +8172,11 @@
 .monthlyFinancialRow span {
   display: block;
   color: #13233a;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .monthlyFinancialRow[data-level="1"] span {
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .monthlyFinancialRow small {
@@ -7819,7 +8194,7 @@
 
 .monthlyFinancialRow strong {
   color: #0f1f35;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .monthlyFinancialRow[data-kind="result"][data-state="good"] strong {
@@ -7837,7 +8212,7 @@
   background: #f8fbff;
   color: #10213a;
   font: inherit;
-  font-weight: 800;
+  font-weight: 600;
   text-align: right;
   padding: 7px 9px;
 }
@@ -7939,7 +8314,7 @@
   border-radius: 999px;
   color: #0054c7;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1;
   padding: 7px 10px;
   white-space: nowrap;
@@ -7979,7 +8354,7 @@
 .analyticsMetric > span {
   color: #5b6f8d;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0;
   margin-top: 4px;
   text-transform: uppercase;
@@ -7988,7 +8363,7 @@
 .analyticsMetric strong {
   color: #020617;
   font-size: clamp(2.1rem, 2.45vw, 3rem);
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0;
   line-height: 1;
   white-space: nowrap;
@@ -8024,7 +8399,7 @@
 .executiveInsightHeader p {
   color: #4b5f7d;
   font-size: 0.94rem;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.45;
   margin: 6px 0 0;
   max-width: 920px;
@@ -8037,7 +8412,7 @@
   color: #0b4b8f;
   flex: 0 0 auto;
   font-size: 0.86rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 8px 12px;
   white-space: nowrap;
 }
@@ -8071,7 +8446,7 @@
   display: inline-flex;
   font: inherit;
   font-size: 0.86rem;
-  font-weight: 900;
+  font-weight: 700;
   gap: 10px;
   min-height: 42px;
   padding: 10px 16px;
@@ -8111,7 +8486,7 @@
   color: #334155;
   display: grid;
   font-size: 0.84rem;
-  font-weight: 850;
+  font-weight: 600;
   gap: 8px;
 }
 
@@ -8204,14 +8579,14 @@
 .processAutomationModuleCard span {
   color: #64748b;
   font-size: 0.74rem;
-  font-weight: 950;
+  font-weight: 700;
   text-transform: uppercase;
 }
 
 .processAutomationModuleCard strong {
   color: #071225;
   font-size: 1.12rem;
-  font-weight: 950;
+  font-weight: 700;
   line-height: 1.2;
 }
 
@@ -8241,7 +8616,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 0.9rem;
-  font-weight: 900;
+  font-weight: 700;
   min-height: 42px;
   padding: 10px 14px;
 }
@@ -8274,7 +8649,7 @@
 .processAutomationRuleCard span {
   color: #009ca6;
   font-size: 0.72rem;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
@@ -8288,7 +8663,7 @@
 .processAutomationIntro p {
   color: #52637a;
   font-size: 0.84rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.45;
   margin: 0;
 }
@@ -8387,7 +8762,7 @@
 .processAutomationRuleCard p {
   color: #52637a;
   font-size: 0.82rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.45;
   margin: 0;
 }
@@ -8406,7 +8781,7 @@
 .processAutomationRuleCard small {
   color: #64748b;
   font-size: 0.72rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .processAutomationRuleCard b {
@@ -8429,7 +8804,7 @@
 
 .processAutomationDetails summary {
   cursor: pointer;
-  font-weight: 900;
+  font-weight: 700;
   padding: 14px 16px;
 }
 
@@ -8488,7 +8863,7 @@
 .winterServicePanel .reportHeader p {
   color: #52637a;
   font-size: 0.86rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.45;
   margin: 7px 0 0;
   max-width: 760px;
@@ -8549,7 +8924,7 @@
 
 .winterServiceTablePanel tbody tr:only-child td {
   color: #52637a;
-  font-weight: 750;
+  font-weight: 600;
   padding: 18px;
 }
 
@@ -8686,7 +9061,7 @@
   border-radius: 999px;
   color: #0054c7;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1;
   padding: 7px 10px;
   white-space: nowrap;
@@ -8721,7 +9096,7 @@
 .forecastSummaryDetails small {
   color: #5b6f8d;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .forecastSummaryTitle span,
@@ -8739,7 +9114,7 @@
 .forecastSummaryGroup > strong {
   color: #020617;
   font-size: clamp(2rem, 2.2vw, 2.75rem);
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -8762,7 +9137,7 @@
 .forecastSummaryDetails b {
   color: #0f172a;
   font-size: 1rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.1;
 }
 
@@ -8793,7 +9168,7 @@
 .analyticsCard h2 {
   color: #0f172a;
   font-size: 1rem;
-  font-weight: 950;
+  font-weight: 700;
   margin: 0;
 }
 
@@ -8808,7 +9183,7 @@
   border-bottom: 1px solid #edf2f7;
   color: #0f172a;
   font-size: 0.86rem;
-  font-weight: 800;
+  font-weight: 600;
   padding: 10px 12px;
   text-align: left;
   vertical-align: top;
@@ -8818,7 +9193,7 @@
   background: #eef6ff;
   color: #005fff;
   font-size: 0.78rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .salesInterruptedWorkTable {
@@ -8986,13 +9361,13 @@
 .employeeAnalyticsMemberCard dt {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .employeeAnalyticsCardHeader strong {
   color: #0f172a;
   font-size: 1.15rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .employeeAnalyticsMetricGrid {
@@ -9027,7 +9402,7 @@
 .employeeAnalyticsMetricGrid strong {
   color: #0f172a;
   font-size: 1.34rem;
-  font-weight: 950;
+  font-weight: 700;
   letter-spacing: 0;
   line-height: 1.1;
 }
@@ -9098,7 +9473,7 @@
 .employeeAnalyticsGauge strong {
   color: #0f172a;
   font-size: 1.18rem;
-  font-weight: 950;
+  font-weight: 700;
   letter-spacing: 0;
   line-height: 1;
 }
@@ -9150,7 +9525,7 @@
   color: #0f172a;
   display: block;
   font-size: 0.98rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .employeeAnalyticsMemberHeader > span {
@@ -9160,7 +9535,7 @@
   color: #005fff;
   flex: 0 0 auto;
   font-size: 0.72rem;
-  font-weight: 950;
+  font-weight: 700;
   max-width: 120px;
   overflow: hidden;
   padding: 5px 8px;
@@ -9222,7 +9597,7 @@
 .employeeAnalyticsMemberKpis span {
   color: #64748b;
   font-size: 0.68rem;
-  font-weight: 900;
+  font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -9231,7 +9606,7 @@
 .employeeAnalyticsMemberKpis strong {
   color: #0f172a;
   font-size: 1rem;
-  font-weight: 950;
+  font-weight: 700;
   letter-spacing: 0;
   line-height: 1.15;
   overflow-wrap: anywhere;
@@ -9258,7 +9633,7 @@
   color: #334155;
   display: grid;
   font-size: 0.82rem;
-  font-weight: 850;
+  font-weight: 600;
   gap: 6px;
 }
 
@@ -9284,7 +9659,7 @@
   color: #334155;
   display: inline-flex;
   font-size: 0.86rem;
-  font-weight: 850;
+  font-weight: 600;
   min-height: 38px;
   padding: 8px 12px;
   white-space: nowrap;
@@ -9301,7 +9676,7 @@
   color: #334155;
   display: grid;
   font-size: 0.82rem;
-  font-weight: 850;
+  font-weight: 600;
   gap: 6px;
 }
 
@@ -9355,14 +9730,14 @@
 .employeeAnalyticsMemberCard dd {
   color: #0f172a;
   font-size: 0.92rem;
-  font-weight: 950;
+  font-weight: 700;
   margin: 2px 0 0;
 }
 
 .employeeAnalyticsEmpty {
   color: #64748b;
   font-size: 0.88rem;
-  font-weight: 850;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -9382,7 +9757,7 @@
   color: #334155;
   display: grid;
   font-size: 0.82rem;
-  font-weight: 900;
+  font-weight: 700;
   gap: 6px;
 }
 
@@ -9420,7 +9795,7 @@
   color: #047857;
   display: block;
   font-size: 0.72rem;
-  font-weight: 850;
+  font-weight: 600;
   margin-top: 3px;
   white-space: nowrap;
 }
@@ -9489,7 +9864,7 @@
 .forecastAxisLabel {
   fill: #475569;
   font-size: 1.55px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .forecastAxisLabelBg {
@@ -9505,7 +9880,7 @@
 .forecastHighlightText {
   fill: #1d4ed8;
   font-size: 1px;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .forecastLineChart .forecastHighlightDot {
@@ -9527,7 +9902,7 @@
 .forecastChartLabels span {
   color: #64748b;
   font-size: 0.72rem;
-  font-weight: 850;
+  font-weight: 600;
   text-align: center;
   white-space: nowrap;
 }
@@ -9571,7 +9946,7 @@
   align-self: end;
   color: #0f172a;
   font-size: 1rem;
-  font-weight: 950;
+  font-weight: 700;
   letter-spacing: 0;
 }
 
@@ -9579,7 +9954,7 @@
   align-self: start;
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .forecastDistributionLegend {
@@ -9607,7 +9982,7 @@
 .forecastDistributionLegend strong {
   color: #334155;
   font-size: 0.82rem;
-  font-weight: 900;
+  font-weight: 700;
   min-width: 0;
   white-space: nowrap;
 }
@@ -9642,7 +10017,7 @@
   color: #334155;
   display: inline-flex;
   font-size: 0.84rem;
-  font-weight: 900;
+  font-weight: 700;
   gap: 8px;
   min-height: 38px;
   padding: 7px 12px;
@@ -9669,7 +10044,7 @@
 .forecastSectionHeading span {
   color: #071225;
   font-size: 0.9rem;
-  font-weight: 950;
+  font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -9703,7 +10078,7 @@
 .forecastDetailSummary > span {
   color: #1d4ed8;
   font-size: 0.75rem;
-  font-weight: 850;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -9723,7 +10098,7 @@
   color: #475569;
   display: grid;
   font-size: 0.75rem;
-  font-weight: 800;
+  font-weight: 600;
   gap: 5px;
   margin-bottom: 12px;
   max-width: 360px;
@@ -9786,7 +10161,7 @@
 .forecastQualityIntro {
   color: #5f6f86;
   font-size: 0.84rem;
-  font-weight: 800;
+  font-weight: 600;
   margin: 4px 0 0;
 }
 
@@ -9832,7 +10207,7 @@
   color: #0f172a;
   display: inline-flex;
   font-size: 1.05rem;
-  font-weight: 950;
+  font-weight: 700;
   height: 34px;
   justify-content: center;
   line-height: 1;
@@ -9847,7 +10222,7 @@
   display: flex;
   flex-wrap: wrap;
   font-size: 0.86rem;
-  font-weight: 900;
+  font-weight: 700;
   gap: 12px;
   justify-content: space-between;
   padding: 12px 18px;
@@ -9861,7 +10236,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 0.82rem;
-  font-weight: 950;
+  font-weight: 700;
   padding: 7px 12px;
 }
 
@@ -9870,7 +10245,7 @@
   border-radius: 999px;
   color: #334155;
   font-size: 0.82rem;
-  font-weight: 950;
+  font-weight: 700;
   padding: 8px 12px;
   white-space: nowrap;
 }
@@ -9935,7 +10310,7 @@
   color: #475569;
   flex: 0 0 auto;
   font-size: 0.7rem;
-  font-weight: 950;
+  font-weight: 700;
   padding: 4px 8px;
 }
 
@@ -9957,7 +10332,7 @@
 .forecastQualityCard strong {
   color: #0f172a;
   font-size: 0.92rem;
-  font-weight: 950;
+  font-weight: 700;
   line-height: 1.25;
 }
 
@@ -9965,7 +10340,7 @@
 .forecastQualityCard small {
   color: #52647a;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.35;
   margin: 0;
 }
@@ -9987,7 +10362,7 @@
   border-radius: 999px;
   color: #0f172a;
   font-size: 0.74rem;
-  font-weight: 950;
+  font-weight: 700;
   padding: 5px 8px;
 }
 
@@ -10024,7 +10399,7 @@
   border-radius: 999px;
   color: #0f172a;
   font-size: 0.8rem;
-  font-weight: 950;
+  font-weight: 700;
   padding: 6px 10px;
 }
 
@@ -10032,7 +10407,7 @@
   color: #52647a;
   flex: 1 1 320px;
   font-size: 0.82rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.35;
   margin: 0;
 }
@@ -10071,20 +10446,20 @@
 .forecastQualityModalRow strong {
   color: #0f172a;
   font-size: 0.9rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .forecastQualityModalRow span,
 .forecastQualityModalRow small {
   color: #52647a;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.3;
 }
 
 .forecastQualityModalRow > div:last-child span {
   color: #0f172a;
-  font-weight: 950;
+  font-weight: 700;
   text-align: right;
 }
 
@@ -10096,7 +10471,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 0.78rem;
-  font-weight: 950;
+  font-weight: 700;
   min-height: 34px;
   padding: 7px 12px;
   white-space: nowrap;
@@ -10173,14 +10548,14 @@
 .analyticsChartSummary small {
   color: #64748b;
   font-size: 0.68rem;
-  font-weight: 850;
+  font-weight: 600;
   text-transform: uppercase;
 }
 
 .analyticsChartSummary strong {
   color: #063f45;
   font-size: 0.9rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .analyticsBarGroup {
@@ -10211,14 +10586,14 @@
 .analyticsBarColumn > strong {
   color: #334155;
   font-size: 0.68rem;
-  font-weight: 900;
+  font-weight: 700;
   margin-bottom: 6px;
   white-space: nowrap;
 }
 
 .analyticsBarColumn > strong[data-zero="true"] {
   color: #94a3b8;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .analyticsBarPrimary,
@@ -10253,7 +10628,7 @@
 .analyticsBarGroup small {
   color: #64748b;
   font-size: 0.75rem;
-  font-weight: 850;
+  font-weight: 600;
   text-align: center;
 }
 
@@ -10267,7 +10642,7 @@
   color: #334155;
   display: inline-flex;
   font-size: 0.8rem;
-  font-weight: 900;
+  font-weight: 700;
   gap: 6px;
 }
 
@@ -10318,14 +10693,14 @@
   align-self: end;
   color: #0f172a;
   font-size: 1.4rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .analyticsDonut span {
   align-self: start;
   color: #64748b;
   font-size: 0.84rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .analyticsRankBars {
@@ -10344,7 +10719,7 @@
 .analyticsRankBars small {
   color: #334155;
   font-size: 0.82rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .analyticsRankBars b {
@@ -10371,13 +10746,13 @@
 .forecastLogicList strong {
   color: #0f172a;
   font-size: 0.9rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .forecastLogicList span {
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 760;
+  font-weight: 600;
   line-height: 1.45;
 }
 
@@ -10399,7 +10774,7 @@
   color: rgba(15, 23, 42, 0.16);
   content: "Projektkarte";
   font-size: 4rem;
-  font-weight: 950;
+  font-weight: 700;
   left: 50%;
   position: absolute;
   top: 50%;
@@ -10449,7 +10824,7 @@
 .analyticsMap button strong {
   color: #0f172a;
   font-size: 0.72rem;
-  font-weight: 950;
+  font-weight: 700;
   line-height: 1;
   white-space: nowrap;
 }
@@ -10527,7 +10902,7 @@
   border-radius: 16px;
   box-shadow: none;
   color: #1d4ed8;
-  font-weight: 850;
+  font-weight: 600;
   padding: 11px 22px;
 }
 
@@ -10585,7 +10960,7 @@
   color: #7c2d12;
   cursor: pointer;
   font: inherit;
-  font-weight: 950;
+  font-weight: 700;
   padding: 14px 22px;
   transition: 0.2s ease;
 }
@@ -10615,7 +10990,7 @@
   background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
   border-color: #bfdbfe;
   color: #153a6b;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .secondaryButton:hover {
@@ -10870,7 +11245,7 @@
 .overviewHero p {
   color: #526173;
   font-size: 1rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.55;
   margin: 16px 0 0;
   max-width: 820px;
@@ -10896,7 +11271,7 @@
 .overviewHeroStats span {
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .overviewHeroStats strong {
@@ -10952,7 +11327,7 @@
 .moduleCardTop span {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
   text-transform: uppercase;
 }
 
@@ -10978,7 +11353,7 @@
 .moduleCard p {
   color: #526173;
   font-size: 0.94rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.5;
   margin: 10px 0 22px;
 }
@@ -10991,7 +11366,7 @@
   color: #0f172a;
   cursor: pointer;
   font-family: inherit;
-  font-weight: 900;
+  font-weight: 700;
   margin-top: auto;
   padding: 10px 14px;
 }
@@ -11021,7 +11396,7 @@
 .nextBuildPanel p,
 .plannedModule p {
   color: #cbd5e1;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.5;
   margin: 10px 0 0;
   max-width: 760px;
@@ -11069,7 +11444,7 @@
 .plannedModuleGrid span {
   color: #cbd5e1;
   font-size: 0.9rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.45;
   margin-top: 8px;
 }
@@ -11403,13 +11778,13 @@
 .contactSummaryCard span {
   color: #64748b;
   font-size: 0.76rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .contactSummaryCard strong {
   color: var(--ink);
   font-size: 1.5rem;
-  font-weight: 950;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -11436,7 +11811,7 @@
   color: #334155;
   display: grid;
   font-size: 0.76rem;
-  font-weight: 750;
+  font-weight: 600;
   gap: 5px;
 }
 
@@ -11536,7 +11911,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 0.95rem;
-  font-weight: 650;
+  font-weight: 600;
   padding: 10px 16px;
   text-align: left;
 }
@@ -11554,7 +11929,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 1rem;
-  font-weight: 900;
+  font-weight: 700;
   height: 38px;
   width: 42px;
 }
@@ -11585,7 +11960,7 @@
   color: #0f172a;
   cursor: pointer;
   font-family: inherit;
-  font-weight: 800;
+  font-weight: 600;
   min-height: 34px;
 }
 
@@ -11601,7 +11976,7 @@
   color: #334155;
   display: flex;
   font-size: 0.84rem;
-  font-weight: 650;
+  font-weight: 600;
   gap: 7px;
 }
 
@@ -11653,7 +12028,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: inherit;
-  font-weight: 750;
+  font-weight: 600;
   padding: 0;
   text-align: left;
 }
@@ -11720,7 +12095,7 @@
 .contactPagination strong {
   color: #334155;
   font-size: 0.9rem;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .paginationButton {
@@ -11732,7 +12107,7 @@
   display: inline-flex;
   font-family: inherit;
   font-size: 1.35rem;
-  font-weight: 850;
+  font-weight: 600;
   height: 32px;
   justify-content: center;
   width: 28px;
@@ -11763,7 +12138,7 @@
   border: 1px solid #fecdd3;
   border-radius: 12px;
   color: #be123c;
-  font-weight: 850;
+  font-weight: 600;
   margin: 0;
   padding: 12px 14px;
 }
@@ -11829,7 +12204,7 @@
 
 .newsFeedLoading small {
   color: #64748b;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 @keyframes newsFeedLoadingPulse {
@@ -11858,7 +12233,7 @@
   color: #ffffff;
   display: inline-flex;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
   height: 34px;
   justify-content: center;
   width: 34px;
@@ -11881,7 +12256,7 @@
 .newsFeedAuthorMeta strong {
   color: #0f172a;
   font-size: 0.98rem;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.15;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -11893,7 +12268,7 @@
 .newsComments p {
   color: #64748b;
   font-size: 0.86rem;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .newsFeedCardHeader small {
@@ -11902,7 +12277,7 @@
   border-radius: 999px;
   color: #1d4ed8;
   font-size: 0.76rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 4px 8px;
 }
 
@@ -11914,7 +12289,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
   padding: 5px 9px;
 }
 
@@ -11972,7 +12347,7 @@
   font-size: 1.08rem;
   line-height: 1.25;
   margin: 0;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .newsFeedBody p {
@@ -11993,7 +12368,7 @@
 .newsPoll > strong {
   color: #0f172a;
   font-size: 0.92rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .newsPoll > div {
@@ -12027,14 +12402,14 @@
 }
 
 .newsPoll button span {
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .newsPoll button em {
   color: #64748b;
   font-size: 0.8rem;
   font-style: normal;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .newsPoll button i {
@@ -12054,7 +12429,7 @@
   cursor: pointer;
   display: inline-flex;
   font-family: inherit;
-  font-weight: 900;
+  font-weight: 700;
   gap: 7px;
   justify-content: flex-start;
   min-height: 38px;
@@ -12079,7 +12454,7 @@
   border-radius: 999px;
   color: #475569;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
   padding: 4px 7px;
 }
@@ -12094,7 +12469,7 @@
 .newsCommentsTitle {
   color: #0f172a;
   font-size: 0.86rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .newsComments article {
@@ -12112,7 +12487,7 @@
 .newsComments strong {
   color: #0f172a;
   font-size: 0.86rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .newsComments p {
@@ -12134,7 +12509,7 @@
   border-radius: 999px;
   color: #0f172a;
   font-family: inherit;
-  font-weight: 650;
+  font-weight: 600;
   min-height: 36px;
   padding: 8px 13px;
 }
@@ -12147,7 +12522,7 @@
   color: #123a73;
   cursor: pointer;
   font-family: inherit;
-  font-weight: 850;
+  font-weight: 600;
   min-height: 36px;
   padding: 8px 13px;
 }
@@ -12195,7 +12570,7 @@
   color: #334155;
   font-family: inherit;
   font-size: 0.98rem;
-  font-weight: 650;
+  font-weight: 600;
   min-height: 38px;
   padding: 7px 14px;
 }
@@ -12203,7 +12578,7 @@
 .contactBulkHelp {
   color: #475569;
   font-size: 0.94rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.45;
   margin: 0;
 }
@@ -12252,7 +12627,7 @@
 .customerFileHeader h1 {
   color: #f8fafc;
   font-size: 1.42rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.28;
   margin: 0;
 }
@@ -12274,7 +12649,7 @@
   border-radius: 999px;
   color: #0f172a;
   font-size: 0.8rem;
-  font-weight: 950;
+  font-weight: 700;
   padding: 6px 10px;
   white-space: nowrap;
 }
@@ -12339,7 +12714,7 @@
 .projectAnalyticsMapPopup > span {
   color: #0f766e;
   font-size: 0.68rem;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -12347,7 +12722,7 @@
 .projectAnalyticsMapPopup > strong {
   color: #0f172a;
   font-size: 1.15rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .projectAnalyticsMapPopup p,
@@ -12358,7 +12733,7 @@
 .projectAnalyticsMapPopup p {
   color: #0f172a;
   font-size: 0.86rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .projectAnalyticsMapPopup small {
@@ -12385,13 +12760,13 @@
 .projectAnalyticsMapPopup dt {
   color: #64748b;
   font-size: 0.65rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .projectAnalyticsMapPopup dd {
   color: #0f172a;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
   margin: 0;
 }
 
@@ -12403,7 +12778,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
   margin-top: 4px;
   min-height: 36px;
   padding: 8px 12px;
@@ -12430,7 +12805,7 @@
   color: #475569;
   display: inline-flex;
   font-size: 0.68rem;
-  font-weight: 850;
+  font-weight: 600;
   gap: 6px;
   white-space: nowrap;
 }
@@ -12461,7 +12836,7 @@
   color: #475569;
   display: grid;
   font-size: 0.72rem;
-  font-weight: 850;
+  font-weight: 600;
   gap: 5px;
 }
 
@@ -12473,7 +12848,7 @@
   color: #0f172a;
   font: inherit;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
   min-height: 38px;
   padding: 7px 10px;
 }
@@ -12490,7 +12865,7 @@
   display: flex;
   flex-wrap: wrap;
   font-size: 0.78rem;
-  font-weight: 750;
+  font-weight: 600;
   gap: 10px;
   justify-content: space-between;
   margin-bottom: 14px;
@@ -12536,14 +12911,14 @@
 .customerRevenueModalExplanation strong {
   color: #0f172a;
   font-size: 0.82rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .customerRevenueModalExplanation p,
 .customerRevenueModalExplanation small {
   color: #52647a;
   font-size: 0.82rem;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.45;
   margin: 0;
 }
@@ -12571,7 +12946,7 @@
   color: #52647a;
   display: inline-flex;
   font-size: 0.74rem;
-  font-weight: 800;
+  font-weight: 600;
   gap: 5px;
 }
 
@@ -12607,7 +12982,7 @@
 .catalogMarginCell small {
   color: #52647a;
   font-size: 0.7rem;
-  font-weight: 800;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -12620,13 +12995,13 @@
 .customerRiskStatus strong {
   color: #0f172a;
   font-size: 0.82rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .customerRiskStatus small {
   color: #52647a;
   font-size: 0.72rem;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.3;
 }
 
@@ -12739,7 +13114,7 @@
   display: inline-flex;
   flex: 0 0 auto;
   font-size: 0.68rem;
-  font-weight: 900;
+  font-weight: 700;
   height: 16px;
   justify-content: center;
   line-height: 1;
@@ -12754,7 +13129,7 @@
   display: inline-flex;
   flex: 0 0 auto;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
   justify-content: center;
   line-height: 1;
   margin-left: auto;
@@ -12787,7 +13162,7 @@
   border-left: 0;
   color: #64748b;
   font-size: 0.88rem;
-  font-weight: 650;
+  font-weight: 600;
   min-height: 36px;
   padding: 8px 10px 8px 12px;
   position: relative;
@@ -12803,7 +13178,7 @@
   background: #eef2f7;
   box-shadow: inset 3px 0 0 #1f2937;
   color: #0f172a;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .customerFileSubNav button[data-active="true"]::before {
@@ -12881,7 +13256,7 @@
 .customerEmptyModule h2 {
   color: #475569;
   font-size: 1rem;
-  font-weight: 650;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -12898,7 +13273,7 @@
   color: #075c63;
   display: inline-flex;
   font-size: 0.72rem;
-  font-weight: 900;
+  font-weight: 700;
   justify-content: center;
   min-height: 24px;
   min-width: 24px;
@@ -12955,7 +13330,7 @@
   color: #075c63;
   display: inline-flex;
   font-size: 0.78rem;
-  font-weight: 950;
+  font-weight: 700;
   height: 42px;
   justify-content: center;
   letter-spacing: 0.02em;
@@ -12979,7 +13354,7 @@
 .customerContactIdentity .tableTextLink {
   color: #0f172a;
   font-size: 0.94rem;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.25;
   text-align: left;
 }
@@ -13023,7 +13398,7 @@
   color: #64748b;
   display: flex;
   font-size: 0.68rem;
-  font-weight: 850;
+  font-weight: 600;
   gap: 5px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -13042,7 +13417,7 @@
 .customerContactMeta dd {
   color: #1e293b;
   font-size: 0.82rem;
-  font-weight: 750;
+  font-weight: 600;
   margin: 0;
   overflow-wrap: anywhere;
 }
@@ -13050,7 +13425,7 @@
 .customerContactEmpty {
   color: #64748b;
   font-size: 0.8rem;
-  font-weight: 650;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -13059,7 +13434,7 @@
   border-radius: 999px;
   color: #075c63;
   font-size: 0.68rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 3px 7px;
 }
 
@@ -13092,7 +13467,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 600;
   max-width: 100%;
   overflow: hidden;
   padding: 5px 8px;
@@ -13109,7 +13484,7 @@
 .customerProjects small {
   color: #64748b;
   font-size: 0.72rem;
-  font-weight: 750;
+  font-weight: 600;
   padding: 5px 2px;
 }
 
@@ -13131,7 +13506,7 @@
   border-radius: 7px;
   color: #0f172a;
   font-family: inherit;
-  font-weight: 750;
+  font-weight: 600;
   min-height: 40px;
   padding: 8px 13px;
 }
@@ -13164,7 +13539,7 @@
 .customerTimelineYear {
   color: #0f172a;
   font-size: 1rem;
-  font-weight: 900;
+  font-weight: 700;
   margin: 10px 0 0;
   padding: 0 4px;
 }
@@ -13189,7 +13564,7 @@
   color: #64748b;
   content: "›";
   font-size: 1rem;
-  font-weight: 900;
+  font-weight: 700;
   transform: rotate(0deg);
   transition: transform 140ms ease;
 }
@@ -13201,7 +13576,7 @@
 .customerTimelineMonthHeader h3 {
   color: #334155;
   font-size: 0.86rem;
-  font-weight: 850;
+  font-weight: 600;
   margin: 0;
   margin-right: auto;
   text-transform: capitalize;
@@ -13210,7 +13585,7 @@
 .customerTimelineMonthHeader span {
   color: #64748b;
   font-size: 0.74rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .customerTimelineEntries {
@@ -13250,7 +13625,7 @@
 .customerTimeline a {
   color: #005fff;
   font-size: 0.88rem;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.25;
 }
 
@@ -13272,7 +13647,7 @@
   border-top: 1px solid #e2e8f0;
   color: #64748b !important;
   font-size: 0.78rem !important;
-  font-weight: 850;
+  font-weight: 600;
   margin: 6px 0 0 !important;
   padding: 12px 0 0;
   text-align: center;
@@ -13313,7 +13688,7 @@
   color: #64748b;
   display: block;
   font-size: 0.8rem;
-  font-weight: 750;
+  font-weight: 600;
   margin-top: 5px;
 }
 
@@ -13335,7 +13710,7 @@
   border-radius: 999px;
   color: #155bd7;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.1;
   padding: 4px 8px;
 }
@@ -13352,7 +13727,7 @@
   color: #ffffff;
   display: inline-flex;
   font-size: 0.72rem;
-  font-weight: 900;
+  font-weight: 700;
   height: 36px;
   justify-content: center;
   position: relative;
@@ -13411,20 +13786,20 @@
 .customerImageProject > header span {
   color: #2563eb;
   font-size: 0.72rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .customerImageProject > header h3 {
   color: #0f172a;
   font-size: 0.96rem;
-  font-weight: 850;
+  font-weight: 600;
   margin: 3px 0 0;
 }
 
 .customerImageProject > header small {
   color: #64748b;
   font-size: 0.76rem;
-  font-weight: 750;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -13442,7 +13817,7 @@
 .customerImageGroupHeader h4 {
   color: #334155;
   font-size: 0.82rem;
-  font-weight: 850;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -13453,7 +13828,7 @@
   color: #334155;
   display: inline-flex;
   font-size: 0.68rem;
-  font-weight: 900;
+  font-weight: 700;
   height: 22px;
   justify-content: center;
   min-width: 22px;
@@ -13519,7 +13894,7 @@
 .customerImageCardLoading span {
   color: #64748b;
   font-size: 0.74rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .customerFileAside {
@@ -13545,7 +13920,7 @@
   color: #0f172a;
   display: block;
   font-size: 0.9rem;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.2;
   margin: 0 0 12px;
   padding: 10px 0 9px;
@@ -13563,7 +13938,7 @@
   border-bottom: 1px solid #e2e8f0;
   color: #334155;
   font-size: 0.84rem;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.25;
   margin: 0;
   padding: 8px 0;
@@ -13578,7 +13953,7 @@
 
 .customerInfoCard dd {
   color: #005fff;
-  font-weight: 650;
+  font-weight: 600;
   hyphens: auto;
   overflow-wrap: anywhere;
 }
@@ -13638,7 +14013,7 @@
 .projectFileHeader h1 {
   color: #f8fafc;
   font-size: 1.42rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.28;
   margin: 0;
 }
@@ -13678,7 +14053,7 @@
   display: inline-flex;
   font-family: inherit;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
   gap: 6px;
   min-height: 34px;
   padding: 7px 11px;
@@ -13700,13 +14075,13 @@
 .projectHeaderChips small {
   color: #94a3b8;
   font-size: 0.68rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .projectHeaderChips strong {
   color: #ffffff;
   font-size: 0.78rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .projectHeaderChip[data-state="empty"] {
@@ -13796,13 +14171,13 @@
 
 .projectResponsibleBadge span {
   font-size: 0.7rem;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1;
 }
 
 .projectResponsibleBadge strong {
   font-size: 0.86rem;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.1;
   overflow-wrap: anywhere;
 }
@@ -13983,7 +14358,7 @@
   display: inline-flex;
   font-family: inherit;
   font-size: 0.86rem;
-  font-weight: 850;
+  font-weight: 600;
   justify-content: center;
   min-height: 34px;
   padding: 7px 10px;
@@ -14148,7 +14523,7 @@
   flex: 0 0 auto;
   display: inline-flex;
   font-size: 14px;
-  font-weight: 950;
+  font-weight: 700;
   height: 26px;
   justify-content: center;
   position: relative;
@@ -14188,7 +14563,7 @@
 .projectProgressTracker strong {
   color: inherit;
   font-size: 0.86rem;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.1;
   text-align: center;
 }
@@ -14238,7 +14613,7 @@
   cursor: pointer;
   display: grid;
   font-family: inherit;
-  font-weight: 850;
+  font-weight: 600;
   gap: 12px;
   grid-template-columns: minmax(0, 1fr) auto;
   padding: 10px 12px;
@@ -14312,14 +14687,14 @@
 .projectImageBucket h3 {
   color: #0f172a;
   font-size: 1rem;
-  font-weight: 900;
+  font-weight: 700;
   margin: 0;
 }
 
 .projectImageBucket p {
   color: #64748b;
   font-size: 0.88rem;
-  font-weight: 650;
+  font-weight: 600;
   margin: 4px 0 0;
 }
 
@@ -14333,7 +14708,7 @@
   cursor: pointer;
   display: inline-flex;
   font-size: 0.9rem;
-  font-weight: 900;
+  font-weight: 700;
   justify-content: center;
   min-height: 38px;
   padding: 8px 14px;
@@ -14401,7 +14776,7 @@
 
 .projectImageThumbs span {
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -14420,7 +14795,7 @@
   display: inline-flex;
   font-family: inherit;
   font-size: 0.72rem;
-  font-weight: 900;
+  font-weight: 700;
   justify-content: center;
   min-height: 32px;
   padding: 6px 10px;
@@ -14482,13 +14857,13 @@
 
 .projectDocumentList strong {
   font-size: 0.94rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .projectDocumentList span {
   color: #64748b;
   font-size: 0.8rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .checklistModule {
@@ -14505,7 +14880,7 @@
 .checklistModule p {
   color: #53627a;
   font-size: 0.9rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.45;
   margin: 6px 0 0;
 }
@@ -14558,7 +14933,7 @@
   color: #0f172a;
   display: block;
   font-size: 1rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .checklistAreaMeta {
@@ -14570,14 +14945,14 @@
 .checklistAreaMeta > span {
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 850;
+  font-weight: 600;
   white-space: nowrap;
 }
 
 .checklistAreaMeta > span[data-state] {
   border-radius: 999px;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 6px 9px;
 }
 
@@ -14616,14 +14991,14 @@
   color: #0f172a;
   display: block;
   font-size: 0.92rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .checklistSelectionRow span {
   color: #64748b;
   display: block;
   font-size: 0.82rem;
-  font-weight: 750;
+  font-weight: 600;
   margin-top: 3px;
 }
 
@@ -14633,7 +15008,7 @@
   border-radius: 999px;
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
   margin: 0;
   padding: 7px 10px;
   white-space: nowrap;
@@ -14651,7 +15026,7 @@
   border-radius: 8px;
   color: #334155;
   font-size: 0.82rem;
-  font-weight: 850;
+  font-weight: 600;
   min-height: 34px;
   padding: 8px 10px;
 }
@@ -14671,7 +15046,7 @@
   color: #0f172a;
   display: block;
   font-size: 1rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .checklistTemplateCard[data-state="planned"] {
@@ -14708,7 +15083,7 @@
   color: #334155;
   display: grid;
   font-size: 0.84rem;
-  font-weight: 800;
+  font-weight: 600;
   gap: 6px;
   min-width: 0;
 }
@@ -14762,7 +15137,7 @@
   color: #334155;
   display: flex;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 600;
   gap: 8px;
   justify-content: space-between;
   min-width: 0;
@@ -14777,7 +15152,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 0.76rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 5px 8px;
 }
 
@@ -14800,7 +15175,7 @@
 .checklistDeviceHeader strong {
   color: #0f172a;
   font-size: 0.98rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .checklistActionRow {
@@ -14834,7 +15209,7 @@
   color: #0f172a;
   display: block;
   font-size: 0.9rem;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.2;
   margin: 0;
   padding: 10px 0 9px;
@@ -14857,7 +15232,7 @@
   color: #334155;
   display: grid;
   font-size: 0.86rem;
-  font-weight: 650;
+  font-weight: 600;
   gap: 6px;
 }
 
@@ -14908,13 +15283,13 @@
 .projectProfitSummaryCard small {
   color: #64748b;
   font-size: 0.84rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .projectProfitSummaryCard strong {
   color: #0f172a;
   font-size: 1.45rem;
-  font-weight: 950;
+  font-weight: 700;
   line-height: 1.1;
 }
 
@@ -14936,7 +15311,7 @@
   cursor: help;
   display: inline-flex;
   font-size: 0.76rem;
-  font-weight: 950;
+  font-weight: 700;
   justify-content: center;
   min-width: 0;
   padding: 5px 9px;
@@ -14962,7 +15337,7 @@
   color: #ffffff;
   content: attr(data-tooltip);
   font-size: 0.74rem;
-  font-weight: 750;
+  font-weight: 600;
   left: 0;
   line-height: 1.35;
   max-width: 320px;
@@ -15030,7 +15405,7 @@
   display: inline-flex;
   flex: 0 0 auto;
   font-size: 0.72rem;
-  font-weight: 950;
+  font-weight: 700;
   height: 18px;
   justify-content: center;
   position: relative;
@@ -15043,7 +15418,7 @@
   color: #ffffff;
   content: attr(data-tooltip);
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.25;
   max-width: 220px;
   opacity: 0;
@@ -15071,7 +15446,7 @@
   align-items: center;
   border-radius: 999px;
   display: inline-flex;
-  font-weight: 950;
+  font-weight: 700;
   justify-content: center;
   min-width: 96px;
   padding: 6px 10px;
@@ -15135,7 +15510,7 @@
 .projectTimeTable th {
   background: #111827;
   color: #ffffff;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .projectTimeTable th:first-child {
@@ -15179,7 +15554,7 @@
 }
 
 .expectedStampDateTime strong {
-  font-weight: 850;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -15197,7 +15572,7 @@
   cursor: help;
   font: inherit;
   font-size: 0.72rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.1;
   padding: 4px 8px;
   width: fit-content;
@@ -15341,7 +15716,7 @@
   border-radius: 999px;
   display: inline-flex;
   font-size: 0.76rem;
-  font-weight: 950;
+  font-weight: 700;
   justify-content: center;
   line-height: 1.1;
   min-height: 26px;
@@ -15375,7 +15750,7 @@
   border-radius: 999px;
   display: inline-flex;
   font-size: 0.76rem;
-  font-weight: 950;
+  font-weight: 700;
   justify-content: center;
   line-height: 1.1;
   min-height: 26px;
@@ -15455,7 +15830,7 @@
   display: inline-flex;
   font-family: inherit;
   font-size: 0.76rem;
-  font-weight: 950;
+  font-weight: 700;
   justify-content: center;
   line-height: 1;
   min-width: 96px;
@@ -15482,7 +15857,7 @@
   color: #334155;
   display: inline-flex;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
   justify-content: center;
   line-height: 1;
   min-width: 118px;
@@ -15508,7 +15883,7 @@
   border-radius: 999px;
   display: inline-flex;
   font-size: 0.76rem;
-  font-weight: 950;
+  font-weight: 700;
   justify-content: center;
   line-height: 1.1;
   margin-top: 8px;
@@ -15583,13 +15958,13 @@
 .projectBudgetDisabledNotice strong {
   color: #9a3412;
   font-size: 0.95rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .projectBudgetDisabledNotice span {
   color: #9a3412;
   font-size: 0.82rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.45;
 }
 
@@ -15617,13 +15992,13 @@
 .projectOfferBasisNotice strong {
   color: #9a3412;
   font-size: 0.92rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .projectOfferBasisNotice span {
   color: #9a3412;
   font-size: 0.8rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .projectPlanningCapacityCompact {
@@ -15641,14 +16016,14 @@
 .projectPlanningCapacityCompact strong {
   color: #0f172a;
   font-size: 0.95rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .projectPlanningCapacityCompact span,
 .projectPlanningCapacitySummary p {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .projectPlanningCapacityCompact b,
@@ -15661,7 +16036,7 @@
   display: inline-flex;
   font-family: inherit;
   font-size: 0.82rem;
-  font-weight: 950;
+  font-weight: 700;
   justify-content: center;
   min-height: 30px;
   padding: 7px 12px;
@@ -15712,7 +16087,7 @@
   display: grid;
   font-family: inherit;
   font-size: 0.8rem;
-  font-weight: 900;
+  font-weight: 700;
   gap: 2px;
   justify-items: start;
   line-height: 1.25;
@@ -15730,7 +16105,7 @@
 .projectPlanningCapacityMenu span {
   color: #64748b;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .projectPlanningCapacityBar {
@@ -15759,7 +16134,7 @@
   color: #ffffff;
   font-size: 0.68rem;
   font-style: normal;
-  font-weight: 950;
+  font-weight: 700;
   line-height: 1;
   padding: 0 8px;
   text-shadow: 0 1px 2px rgba(15, 23, 42, 0.22);
@@ -15809,13 +16184,13 @@
 .projectForecastSummaryGrid small {
   color: #52647a;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .projectForecastSummaryGrid strong {
   color: #0f172a;
   font-size: 1.35rem;
-  font-weight: 950;
+  font-weight: 700;
   line-height: 1.1;
 }
 
@@ -15847,7 +16222,7 @@
   display: flex;
   font-family: inherit;
   font-size: 0.94rem;
-  font-weight: 800;
+  font-weight: 600;
   justify-content: space-between;
   min-height: 38px;
   padding: 8px 38px 8px 11px;
@@ -15902,7 +16277,7 @@
   color: #0f172a;
   display: block;
   font-size: 0.95rem;
-  font-weight: 950;
+  font-weight: 700;
   margin-bottom: 4px;
 }
 
@@ -15910,7 +16285,7 @@
   color: #64748b;
   display: block;
   font-size: 0.82rem;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.35;
   max-width: 680px;
 }
@@ -15932,7 +16307,7 @@
   border-radius: 12px;
   color: #475569;
   font-size: 0.86rem;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.45;
   margin: 0;
   padding: 12px 14px;
@@ -15965,14 +16340,14 @@
 
 .projectBudgetModeButton strong {
   font-size: 0.92rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .projectBudgetModeButton span,
 .projectBudgetSummary span {
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .marketingQuotaShell {
@@ -16006,13 +16381,13 @@
 .marketingQuotaLastDone {
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .marketingQuotaSummaryCard strong {
   color: #0f172a;
   font-size: 1.35rem;
-  font-weight: 950;
+  font-weight: 700;
   line-height: 1.05;
 }
 
@@ -16038,13 +16413,13 @@
 .marketingQuotaGroupHeader strong {
   color: #0f172a;
   font-size: 1rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .marketingQuotaGroupHeader span {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .marketingQuotaUnitGrid {
@@ -16088,7 +16463,7 @@
   color: #32aee0;
   display: inline-flex;
   font-size: 1.1rem;
-  font-weight: 950;
+  font-weight: 700;
   height: 40px;
   justify-content: center;
   position: absolute;
@@ -16117,13 +16492,13 @@
 
 .marketingQuotaUnitMain strong {
   font-size: 1rem;
-  font-weight: 950;
+  font-weight: 700;
   line-height: 1.1;
 }
 
 .marketingQuotaUnitMain span {
   font-size: 0.7rem;
-  font-weight: 850;
+  font-weight: 600;
   opacity: 0.9;
 }
 
@@ -16136,7 +16511,7 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.8);
   color: #334155;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.25;
   min-height: 82px;
   max-height: 82px;
@@ -16150,7 +16525,7 @@
   bottom: 12px;
   color: #334155;
   content: "...";
-  font-weight: 950;
+  font-weight: 700;
   padding-left: 20px;
   position: absolute;
   right: 12px;
@@ -16166,12 +16541,12 @@
 
 .marketingQuotaUnitMeta span {
   font-size: 0.68rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .marketingQuotaUnitMeta strong {
   font-size: 0.72rem;
-  font-weight: 950;
+  font-weight: 700;
   line-height: 1.15;
 }
 
@@ -16184,7 +16559,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 0.9rem;
-  font-weight: 950;
+  font-weight: 700;
   min-height: 34px;
 }
 
@@ -16211,14 +16586,14 @@
   color: #9a3412;
   display: block;
   font-size: 0.76rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .marketingQuotaResetBox strong {
   color: #0f172a;
   display: block;
   font-size: 0.9rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .marketingQuotaCard {
@@ -16252,7 +16627,7 @@
 .marketingQuotaCardMain strong {
   color: #0f172a;
   font-size: 1.08rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .marketingQuotaCardStats {
@@ -16267,7 +16642,7 @@
   border-radius: 6px;
   color: #334155;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 7px 8px;
   text-align: center;
 }
@@ -16286,7 +16661,7 @@
 .marketingQuotaCardActions a {
   color: #0369a1;
   font-size: 0.84rem;
-  font-weight: 900;
+  font-weight: 700;
   text-decoration: none;
 }
 
@@ -16299,7 +16674,7 @@
 .marketingQuotaEditor h3 {
   color: #0f172a;
   font-size: 1rem;
-  font-weight: 950;
+  font-weight: 700;
   margin: 0;
 }
 
@@ -16330,7 +16705,7 @@
   color: #334155;
   display: grid;
   font-size: 0.86rem;
-  font-weight: 800;
+  font-weight: 600;
   gap: 6px;
 }
 
@@ -16339,7 +16714,7 @@
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   font-family: inherit;
-  font-weight: 800;
+  font-weight: 600;
   min-height: 38px;
   padding: 7px 9px;
   width: 100%;
@@ -16370,7 +16745,7 @@
 .projectBudgetSummary strong {
   color: #0f172a;
   font-size: 0.95rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .projectBudgetSummary[data-state="over"] {
@@ -16386,7 +16761,7 @@
 .planningHistorySection h3 {
   color: #0f172a;
   font-size: 1.05rem;
-  font-weight: 900;
+  font-weight: 700;
   margin: 0;
 }
 
@@ -16418,21 +16793,21 @@
 .projectCombinedHistoryColumn h4 {
   color: #334155;
   font-size: 0.9rem;
-  font-weight: 900;
+  font-weight: 700;
   margin: 0;
 }
 
 .projectCombinedHistoryColumn > p {
   color: #64748b;
   font-size: 0.9rem;
-  font-weight: 750;
+  font-weight: 600;
   margin: 0;
 }
 
 .planningHistorySection > p {
   color: #64748b;
   font-size: 0.9rem;
-  font-weight: 750;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -16465,7 +16840,7 @@
   display: inline-flex;
   font: inherit;
   font-size: 0.78rem;
-  font-weight: 950;
+  font-weight: 700;
   height: 22px;
   justify-content: center;
   line-height: 1;
@@ -16484,14 +16859,14 @@
 .planningHistoryList strong {
   color: #0f172a;
   font-size: 0.9rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .planningHistoryList span,
 .planningHistoryList p {
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 600;
   margin: 0;
   max-width: 100%;
   overflow-wrap: anywhere;
@@ -16505,7 +16880,7 @@
   color: #153a6b;
   cursor: pointer;
   font: inherit;
-  font-weight: 850;
+  font-weight: 600;
   padding: 7px 10px;
 }
 
@@ -16566,13 +16941,13 @@
 .projectTimeBudget span {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .projectTimeBudget strong {
   color: #0f172a;
   font-size: 0.9rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .projectTimeBudget strong[data-state="over"] {
@@ -16615,7 +16990,7 @@
   color: #ffffff;
   font-size: 0.66rem;
   font-style: normal;
-  font-weight: 950;
+  font-weight: 700;
   line-height: 1;
   padding: 0 7px;
   position: relative;
@@ -16756,12 +17131,12 @@
 .projectRuntimeLegend em {
   color: #64748b;
   font-style: normal;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .projectRuntimeLegend strong {
   color: #0f172a;
-  font-weight: 900;
+  font-weight: 700;
   white-space: nowrap;
 }
 
@@ -16772,7 +17147,7 @@
   color: #ffffff;
   content: attr(data-tooltip);
   font-size: 0.68rem;
-  font-weight: 750;
+  font-weight: 600;
   left: 50%;
   line-height: 1.25;
   max-width: 190px;
@@ -16869,7 +17244,7 @@
   color: #005fff;
   cursor: pointer;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .projectBudgetHistory ul {
@@ -16897,7 +17272,7 @@
 
 .projectBudgetHistory li small {
   color: #64748b;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .stampModal {
@@ -16915,7 +17290,7 @@
   color: #334155;
   display: grid;
   font-size: 0.86rem;
-  font-weight: 800;
+  font-weight: 600;
   gap: 7px;
 }
 
@@ -16943,13 +17318,13 @@
 .stampCapturedComment span {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .stampCapturedComment strong {
   color: #0f172a;
   font-size: 0.92rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.45;
   white-space: pre-wrap;
 }
@@ -16981,7 +17356,7 @@
 .stampTradePicker p {
   color: #64748b;
   font-size: 0.8rem;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.35;
   margin: 0;
 }
@@ -17013,7 +17388,7 @@
 .stampTradeConfirm span {
   color: #0f172a;
   font-size: 0.84rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .stampQuickChoices {
@@ -17030,7 +17405,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 0.82rem;
-  font-weight: 900;
+  font-weight: 700;
   min-height: 34px;
   padding: 7px 11px;
 }
@@ -17081,19 +17456,19 @@
 
 .stampProjectResults span {
   font-size: 0.88rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .stampProjectResults small {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .stampProjectResults p {
   color: #64748b;
   font-size: 0.86rem;
-  font-weight: 800;
+  font-weight: 600;
   margin: 0;
   padding: 12px;
 }
@@ -17123,13 +17498,13 @@
 .stampSelectedProject span {
   color: #0f172a;
   font-size: 0.92rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .stampSelectedProject small {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .stampSelectedProject button {
@@ -17140,7 +17515,7 @@
   color: #009ca6;
   cursor: pointer;
   font-family: inherit;
-  font-weight: 900;
+  font-weight: 700;
   grid-column: 2;
   grid-row: 1 / span 3;
   padding: 8px 10px;
@@ -17170,7 +17545,7 @@
   color: #ffffff;
   display: inline-flex;
   font-size: 0.82rem;
-  font-weight: 950;
+  font-weight: 700;
   height: 30px;
   justify-content: center;
   width: 30px;
@@ -17180,13 +17555,13 @@
   color: #0f172a;
   display: block;
   font-size: 0.92rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .stampStepIntro p {
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 600;
   margin: 2px 0 0;
 }
 
@@ -17196,7 +17571,7 @@
   border-radius: 14px;
   color: #9a3412;
   font-size: 0.86rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 11px 12px;
 }
 
@@ -17223,14 +17598,14 @@
 .stampPlanningHeader strong {
   color: #0f172a;
   font-size: 0.95rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .stampPlanningHeader span,
 .stampPlanningSuggestions p {
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 600;
   margin: 3px 0 0;
 }
 
@@ -17282,7 +17657,7 @@
   color: #005fff;
   display: flex;
   font-size: 0.85rem;
-  font-weight: 950;
+  font-weight: 700;
   gap: 8px;
   justify-content: space-between;
 }
@@ -17295,7 +17670,7 @@
   flex: 0 0 auto;
   font-size: 0.68rem;
   font-style: normal;
-  font-weight: 950;
+  font-weight: 700;
   padding: 2px 7px;
 }
 
@@ -17320,14 +17695,14 @@
 .stampPlanningList span,
 .stampPlanningMore span {
   font-size: 0.92rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .stampPlanningList small,
 .stampPlanningMore small {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .stampPlanningMore {
@@ -17339,7 +17714,7 @@
   color: #475569;
   cursor: pointer;
   font-size: 0.82rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 7px 2px;
 }
 
@@ -17358,7 +17733,7 @@
   color: #0f172a;
   cursor: pointer;
   font-family: inherit;
-  font-weight: 900;
+  font-weight: 700;
   min-height: 56px;
 }
 
@@ -17381,7 +17756,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 0.9rem;
-  font-weight: 950;
+  font-weight: 700;
   min-height: 42px;
   padding: 10px 12px;
 }
@@ -17439,7 +17814,7 @@
   border-radius: 10px;
   color: #be123c;
   font-size: 0.86rem;
-  font-weight: 800;
+  font-weight: 600;
   margin: 0;
   padding: 10px 12px;
 }
@@ -17450,7 +17825,7 @@
   border-radius: 10px;
   color: #047857;
   font-size: 0.86rem;
-  font-weight: 800;
+  font-weight: 600;
   margin: 0;
   padding: 10px 12px;
 }
@@ -17475,7 +17850,7 @@
   color: #475569;
   display: grid;
   font-size: 0.82rem;
-  font-weight: 650;
+  font-weight: 600;
   gap: 6px;
 }
 
@@ -17488,7 +17863,7 @@
   color: #0f172a;
   font-family: inherit;
   font-size: 0.95rem;
-  font-weight: 650;
+  font-weight: 600;
   padding: 8px 10px;
   width: 100%;
 }
@@ -17508,7 +17883,7 @@
   color: #475569;
   display: grid;
   font-size: 0.82rem;
-  font-weight: 750;
+  font-weight: 600;
   gap: 6px;
 }
 
@@ -17526,7 +17901,7 @@
   color: #155bd7;
   display: inline-flex;
   font-size: 0.8rem;
-  font-weight: 800;
+  font-weight: 600;
   gap: 7px;
   padding: 5px 8px;
 }
@@ -17537,7 +17912,7 @@
   color: #64748b;
   cursor: pointer;
   font: inherit;
-  font-weight: 900;
+  font-weight: 700;
   padding: 0;
 }
 
@@ -17550,7 +17925,7 @@
 .logbookVisibility > span {
   color: #475569;
   font-size: 0.82rem;
-  font-weight: 650;
+  font-weight: 600;
   grid-column: 1 / -1;
 }
 
@@ -17560,7 +17935,7 @@
   color: #475569;
   display: flex;
   font-size: 0.84rem;
-  font-weight: 650;
+  font-weight: 600;
   gap: 7px;
 }
 
@@ -17597,7 +17972,7 @@
 .projectSectionTitle {
   color: #334155;
   font-size: 0.84rem;
-  font-weight: 950;
+  font-weight: 700;
   margin-top: 4px;
   text-transform: uppercase;
 }
@@ -17616,13 +17991,13 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 0.9rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .projectSelectHint {
   color: #64748b;
   font-size: 0.72rem;
-  font-weight: 650;
+  font-weight: 600;
   grid-column: 1 / -1;
   margin-top: 2px;
 }
@@ -17642,7 +18017,7 @@
   color: #334155;
   display: grid;
   font-size: 0.86rem;
-  font-weight: 800;
+  font-weight: 600;
   gap: 7px;
 }
 
@@ -17653,7 +18028,7 @@
   color: #0f172a;
   font-family: inherit;
   font-size: 0.92rem;
-  font-weight: 650;
+  font-weight: 600;
   min-height: 38px;
   padding: 8px 10px;
   width: 100%;
@@ -17694,7 +18069,7 @@
 .deadlineCategoryGrid span {
   color: #64748b;
   font-size: 0.84rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.4;
   margin-top: 7px;
 }
@@ -17719,7 +18094,7 @@
 .deadlineSettingsOverviewBadge strong {
   color: #0f766e;
   font-size: 0.82rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .deadlineSettingsOverviewBadge span {
@@ -17796,7 +18171,7 @@
   color: #64748b;
   font-size: 0.68rem;
   font-style: normal;
-  font-weight: 850;
+  font-weight: 600;
   padding: 4px 8px;
   white-space: nowrap;
 }
@@ -17854,7 +18229,7 @@
 .deadlineSettingsGroupHeader strong {
   color: #0f172a;
   font-size: 0.94rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .deadlineSettingsGroupHeader span,
@@ -17896,7 +18271,7 @@
   color: #334155;
   display: grid;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
   gap: 6px;
 }
 
@@ -17986,7 +18361,7 @@
 .taskEscalationPreviewHeader strong {
   color: #0f172a;
   font-size: 0.94rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .taskEscalationPreviewHeader span,
@@ -18022,7 +18397,7 @@
 .taskEscalationPreviewSummary strong {
   color: #0f172a;
   font-size: 1.25rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .taskEscalationPreviewBasis,
@@ -18075,7 +18450,7 @@
 .taskEscalationPreviewRow strong {
   color: #0f172a;
   font-size: 0.85rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .taskEscalationPreviewRow span,
@@ -18114,7 +18489,7 @@
 
 .deadlinePlannedState strong {
   color: #0f172a;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 @media (max-width: 1100px) {
@@ -18228,7 +18603,7 @@
   color: #475569;
   display: inline-flex;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1;
   padding: 7px 10px;
 }
@@ -18317,7 +18692,7 @@
 .companyCurrencyInput span {
   color: #475569;
   font-size: 0.82rem;
-  font-weight: 850;
+  font-weight: 600;
   pointer-events: none;
   position: absolute;
   right: 12px;
@@ -18369,7 +18744,7 @@
 .companyCapacityHint span {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .companyCapacityValueField {
@@ -18386,7 +18761,7 @@
 .companyCapacityValueField span {
   color: #64748b;
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 600;
   pointer-events: none;
   position: absolute;
   right: 11px;
@@ -18399,7 +18774,7 @@
   color: #0f172a;
   font: inherit;
   font-size: 0.86rem;
-  font-weight: 750;
+  font-weight: 600;
   min-height: 38px;
   padding: 7px 34px 7px 10px;
   width: min(100%, 260px);
@@ -18445,7 +18820,7 @@
 .companySettingsList span {
   color: #64748b;
   font-size: 0.86rem;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .companyStructureCard {
@@ -18470,7 +18845,7 @@
 .settingsSectionEyebrow {
   color: #0891a2 !important;
   font-size: 0.72rem !important;
-  font-weight: 850 !important;
+  font-weight: 600 !important;
   letter-spacing: 0.06em;
   margin-bottom: 5px !important;
   text-transform: uppercase;
@@ -18495,7 +18870,7 @@
 .companyStructureType {
   color: #0891a2 !important;
   font-size: 0.7rem !important;
-  font-weight: 850 !important;
+  font-weight: 600 !important;
   letter-spacing: 0.045em;
   text-transform: uppercase;
 }
@@ -18516,7 +18891,7 @@
 .holidayCatalogControl span {
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 @media (max-width: 760px) {
@@ -18657,7 +19032,7 @@
   border-radius: 999px;
   display: inline-flex;
   font-size: 0.7rem;
-  font-weight: 800;
+  font-weight: 600;
   padding: 4px 8px;
   white-space: nowrap;
 }
@@ -18744,11 +19119,11 @@
 }
 
 .companyProfileData strong {
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .companyProfileData span {
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .companyProfileData span[data-empty="true"] {
@@ -18818,7 +19193,7 @@
   color: #475569;
   display: grid;
   font-size: 0.76rem;
-  font-weight: 650;
+  font-weight: 600;
   gap: 4px;
 }
 
@@ -18830,7 +19205,7 @@
   color: #334155;
   font-family: inherit;
   font-size: 0.92rem;
-  font-weight: 650;
+  font-weight: 600;
   min-height: 38px;
   padding: 8px 11px;
 }
@@ -18901,7 +19276,7 @@
   color: #0f172a;
   font-family: inherit;
   font-size: 0.92rem;
-  font-weight: 650;
+  font-weight: 600;
   min-height: 38px;
   padding: 8px 10px;
 }
@@ -18947,7 +19322,7 @@
   background: #111827;
   color: #ffffff;
   font-size: 0.78rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .tradeManagementTable th:nth-child(1) {
@@ -18969,7 +19344,7 @@
   color: #0f172a;
   font-family: inherit;
   font-size: 0.84rem;
-  font-weight: 750;
+  font-weight: 600;
   min-height: 34px;
   padding: 7px 9px;
   width: 100%;
@@ -19081,7 +19456,7 @@
 
 .projectContactOptions strong {
   font-size: 0.8rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .projectContactOptions em {
@@ -19100,7 +19475,7 @@
 .projectContactOptions p {
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 650;
+  font-weight: 600;
   margin: 0;
   padding: 10px;
 }
@@ -19123,7 +19498,7 @@
   border-radius: 8px;
   color: #005fff;
   font-size: 0.86rem;
-  font-weight: 850;
+  font-weight: 600;
   margin: 0 0 8px;
   padding: 9px 10px;
 }
@@ -19136,7 +19511,7 @@
 .recurringBillingModeField > span {
   color: #334155;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .recurringBillingModeOptions {
@@ -19177,7 +19552,7 @@
 
 .recurringBillingModeOptions button strong {
   font-size: 0.94rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .recurringBillingModeOptions button small {
@@ -19207,7 +19582,7 @@
 .recurringHourlyHint strong {
   color: #0f172a;
   font-size: 0.92rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .recurringHourlyHint span {
@@ -19242,7 +19617,7 @@
   border-left: 0;
   color: #334155;
   display: flex;
-  font-weight: 800;
+  font-weight: 600;
   justify-content: center;
 }
 
@@ -19253,7 +19628,7 @@
   color: #087983;
   display: inline-flex;
   font-size: 0.76rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 6px 9px;
 }
 
@@ -19298,7 +19673,7 @@
 .employeeListHero .subline {
   color: #dbe5f2;
   font-size: 0.92rem;
-  font-weight: 650;
+  font-weight: 600;
   margin-top: 7px;
 }
 
@@ -19329,7 +19704,7 @@
   color: #334155;
   cursor: pointer;
   font-family: inherit;
-  font-weight: 900;
+  font-weight: 700;
   min-height: 46px;
   padding: 0 16px;
   text-transform: uppercase;
@@ -19445,7 +19820,7 @@
   align-items: center;
   color: #334155;
   display: inline-flex;
-  font-weight: 900;
+  font-weight: 700;
   justify-content: center;
 }
 
@@ -19517,7 +19892,7 @@
   color: #cbd5e1;
   display: block;
   font-size: 0.88rem;
-  font-weight: 650;
+  font-weight: 600;
   margin-top: 7px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -19532,7 +19907,7 @@
   display: inline-flex;
   font-family: inherit;
   font-size: 0.9rem;
-  font-weight: 850;
+  font-weight: 600;
   justify-content: center;
   min-height: 42px;
   padding: 0 16px;
@@ -19638,7 +20013,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 0.95rem;
-  font-weight: 650;
+  font-weight: 600;
   min-height: 40px;
   padding: 9px 12px;
   text-align: left;
@@ -19649,7 +20024,7 @@
   border-color: #0b1020;
   box-shadow: 0 5px 12px rgba(15, 23, 42, 0.16);
   color: #ffffff;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .employeeDetailPanel {
@@ -19681,7 +20056,7 @@
 .employeeSectionHeader h2 {
   color: #0f172a;
   font-size: 1.2rem;
-  font-weight: 950;
+  font-weight: 700;
   letter-spacing: -0.015em;
   margin: 0;
 }
@@ -19743,7 +20118,7 @@
   color: #334155;
   display: grid;
   font-size: 0.82rem;
-  font-weight: 750;
+  font-weight: 600;
   gap: 6px;
 }
 
@@ -19793,7 +20168,7 @@
   color: #0f172a;
   display: flex;
   font-size: 0.88rem;
-  font-weight: 950;
+  font-weight: 700;
   gap: 9px;
   letter-spacing: 0.025em;
   margin: 4px 0 -2px;
@@ -19813,7 +20188,7 @@
   border-radius: 999px;
   color: #008b96;
   font-size: 0.88rem;
-  font-weight: 950;
+  font-weight: 700;
   padding: 7px 12px;
 }
 
@@ -19838,14 +20213,14 @@
 .employeeLeadershipHeading h3 {
   color: #0f172a;
   font-size: 1rem;
-  font-weight: 950;
+  font-weight: 700;
   margin: 0;
 }
 
 .employeeLeadershipHeading p {
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.45;
   margin: 4px 0 0;
 }
@@ -19857,7 +20232,7 @@
   color: #007f89;
   flex: 0 0 auto;
   font-size: 0.72rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 6px 10px;
 }
 
@@ -19871,14 +20246,14 @@
   color: #334155;
   display: grid;
   font-size: 0.8rem;
-  font-weight: 900;
+  font-weight: 700;
   gap: 7px;
 }
 
 .employeeLeadershipGrid small {
   color: #64748b;
   font-size: 0.7rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .employeeLeadershipTeam {
@@ -19895,13 +20270,13 @@
 .employeeLeadershipTeam strong {
   color: #0f172a;
   font-size: 0.8rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .employeeLeadershipTeam span {
   color: #475569;
   font-size: 0.78rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .employeeLeadershipHistory {
@@ -19913,7 +20288,7 @@
   color: #0f4c81;
   cursor: pointer;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .employeeLeadershipHistory > div {
@@ -19941,13 +20316,13 @@
 .employeeLeadershipHistory time {
   color: #64748b;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .employeeLeadershipHistory p span {
   color: #334155;
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .employeePlanningSettings {
@@ -19963,14 +20338,14 @@
 .employeePlanningSettings h3 {
   color: #0f172a;
   font-size: 1rem;
-  font-weight: 950;
+  font-weight: 700;
   margin: 0;
 }
 
 .employeePlanningSettings p {
   color: #64748b;
   font-size: 0.86rem;
-  font-weight: 750;
+  font-weight: 600;
   margin: 4px 0 0;
 }
 
@@ -19988,7 +20363,7 @@
   color: #334155;
   display: grid;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
   gap: 8px;
   padding: 12px;
 }
@@ -19996,7 +20371,7 @@
 .employeeWeeklyGrid small {
   color: #64748b;
   font-size: 0.7rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .employeeWeeklyGrid input {
@@ -20004,7 +20379,7 @@
   border-radius: 10px;
   color: #0f172a;
   font: inherit;
-  font-weight: 900;
+  font-weight: 700;
   min-height: 38px;
   padding: 8px 10px;
   width: 100%;
@@ -20028,7 +20403,7 @@
 .planningResponsibilityGrid strong {
   color: #0f172a;
   font-size: 0.88rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .planningResponsibilityGrid label {
@@ -20039,7 +20414,7 @@
   color: #334155;
   display: flex;
   font-size: 0.84rem;
-  font-weight: 850;
+  font-weight: 600;
   gap: 10px;
   justify-content: space-between;
   min-height: 38px;
@@ -20081,7 +20456,7 @@
   color: #64748b;
   display: block;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 600;
   margin-top: 3px;
 }
 
@@ -20098,7 +20473,7 @@
   color: #334155;
   display: grid;
   font-size: 0.86rem;
-  font-weight: 900;
+  font-weight: 700;
   gap: 7px;
   padding: 10px;
 }
@@ -20115,7 +20490,7 @@
   border-radius: 9px;
   color: #0f172a;
   font: inherit;
-  font-weight: 900;
+  font-weight: 700;
   min-height: 36px;
   padding: 7px 9px;
 }
@@ -20123,7 +20498,7 @@
 .branchAllocationTotal {
   border-radius: 999px;
   font-size: 0.82rem;
-  font-weight: 950;
+  font-weight: 700;
   justify-self: start;
   padding: 6px 10px;
 }
@@ -20160,14 +20535,14 @@
 .employeePasswordIntro strong {
   color: #0f172a;
   font-size: 1rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .employeePasswordIntro span,
 .employeePasswordHint {
   color: #64748b;
   font-size: 0.86rem;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.35;
   margin: 0;
 }
@@ -20192,7 +20567,7 @@
   color: #334155;
   display: grid;
   font-size: 0.82rem;
-  font-weight: 900;
+  font-weight: 700;
   gap: 6px;
 }
 
@@ -20203,7 +20578,7 @@
   border-radius: 10px;
   color: #0f172a;
   font: inherit;
-  font-weight: 800;
+  font-weight: 600;
   min-height: 40px;
   padding: 8px 10px;
 }
@@ -20216,7 +20591,7 @@
 .timeEntryHistoryDetails summary {
   color: #1d4ed8;
   cursor: pointer;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .timeEntryHistoryDetails article,
@@ -20242,7 +20617,7 @@
 .timeEntryEditHistory p {
   color: #64748b;
   font-size: 0.8rem;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.35;
   margin: 0;
 }
@@ -20259,7 +20634,7 @@
 .timeEntryEditHistory h3 {
   color: #0f172a;
   font-size: 1rem;
-  font-weight: 950;
+  font-weight: 700;
   margin: 0;
 }
 
@@ -20289,7 +20664,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 0.82rem;
-  font-weight: 900;
+  font-weight: 700;
   min-height: 32px;
   padding: 6px 12px;
   white-space: nowrap;
@@ -20345,7 +20720,7 @@
   display: inline-flex;
   font: inherit;
   font-size: 1.55rem;
-  font-weight: 800;
+  font-weight: 600;
   height: 40px;
   justify-content: center;
   line-height: 1;
@@ -20416,7 +20791,7 @@
 .teamCalendarApprovalList small {
   color: #64748b;
   font-size: 0.84rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .teamCalendarApprovalActions {
@@ -20495,7 +20870,7 @@
 .absenceHistory span {
   color: #64748b;
   font-size: 0.84rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .teamCalendarRequestTop em {
@@ -20504,7 +20879,7 @@
   color: #1d4ed8;
   flex: 0 0 auto;
   font-style: normal;
-  font-weight: 900;
+  font-weight: 700;
   padding: 7px 10px;
 }
 
@@ -20514,7 +20889,7 @@
   border-radius: 10px;
   color: #be123c;
   font-size: 0.88rem;
-  font-weight: 850;
+  font-weight: 600;
   margin: 0;
   padding: 10px 12px;
 }
@@ -20532,7 +20907,7 @@
 .absenceHistory summary {
   color: #0f172a;
   cursor: pointer;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .absenceHistory div {
@@ -20557,7 +20932,7 @@
 .absenceHistory p {
   color: #334155;
   font-size: 0.84rem;
-  font-weight: 750;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -20614,7 +20989,7 @@
   flex: 0 0 auto;
   font-size: 0.75rem;
   font-style: normal;
-  font-weight: 900;
+  font-weight: 700;
   height: 34px;
   justify-content: center;
   object-fit: cover;
@@ -20653,7 +21028,7 @@
   color: #64748b;
   display: grid;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
   height: var(--team-calendar-header-height);
   justify-items: center;
   padding: 8px 4px;
@@ -20691,7 +21066,7 @@
   display: flex;
   flex-direction: column;
   font-size: 0.72rem;
-  font-weight: 900;
+  font-weight: 700;
   grid-column: var(--team-calendar-start) / span var(--team-calendar-span);
   justify-content: center;
   min-width: 0;
@@ -20738,7 +21113,7 @@
 
 .teamCalendarAbsenceBar small {
   font-size: 0.62rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .absenceHandoverTaskRow {
@@ -20755,7 +21130,7 @@
 .absenceTaskList > p {
   color: #64748b;
   font-size: 0.86rem;
-  font-weight: 750;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -20785,7 +21160,7 @@
   align-items: center;
   color: #15803d !important;
   display: inline-flex !important;
-  font-weight: 950 !important;
+  font-weight: 700 !important;
   gap: 7px;
 }
 
@@ -20796,7 +21171,7 @@
   color: #ffffff;
   display: inline-flex;
   font-size: 0.75rem;
-  font-weight: 950;
+  font-weight: 700;
   height: 22px;
   justify-content: center;
   width: 22px;
@@ -20819,14 +21194,14 @@
 .absenceTaskList small {
   color: #64748b;
   font-size: 0.8rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .employeePasswordBox label {
   color: #334155;
   display: grid;
   font-size: 0.82rem;
-  font-weight: 850;
+  font-weight: 600;
   gap: 6px;
 }
 
@@ -20836,7 +21211,7 @@
   border-radius: 8px;
   color: #0f172a;
   font: inherit;
-  font-weight: 750;
+  font-weight: 600;
   min-height: 42px;
   padding: 9px 12px;
 }
@@ -20933,7 +21308,7 @@
 .employeeKpiGrid small {
   color: #64748b;
   display: block;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .employeeKpiGrid strong {
@@ -20969,7 +21344,7 @@
   color: #334155;
   display: grid;
   font-size: 0.84rem;
-  font-weight: 900;
+  font-weight: 700;
   gap: 6px;
 }
 
@@ -20979,7 +21354,7 @@
   border-radius: 10px;
   color: #0f172a;
   font: inherit;
-  font-weight: 650;
+  font-weight: 600;
   min-height: 38px;
   padding: 8px 10px;
   width: 100%;
@@ -21006,14 +21381,14 @@
 .employeeCostSummary small {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.3;
 }
 
 .employeeCostSummary strong {
   color: #0f172a;
   font-size: 1.45rem;
-  font-weight: 950;
+  font-weight: 700;
   line-height: 1.15;
 }
 
@@ -21089,7 +21464,7 @@
 .laborCostRatePanelEyebrow {
   color: #0891a2 !important;
   font-size: 0.68rem !important;
-  font-weight: 950 !important;
+  font-weight: 700 !important;
   letter-spacing: 0.08em;
   margin: 0 0 3px !important;
   text-transform: uppercase;
@@ -21109,7 +21484,7 @@
   border-top: 1px solid #e2e8f0;
   color: #64748b;
   font-size: 0.84rem;
-  font-weight: 750;
+  font-weight: 600;
   margin: 0;
   padding-top: 12px;
 }
@@ -21138,7 +21513,7 @@
   color: #475569;
   display: grid;
   font-size: 0.82rem;
-  font-weight: 900;
+  font-weight: 700;
   gap: 6px;
 }
 
@@ -21149,7 +21524,7 @@
   border-radius: 10px;
   color: #0f172a;
   font: inherit;
-  font-weight: 800;
+  font-weight: 600;
   min-height: 42px;
   padding: 0 12px;
   width: 100%;
@@ -21170,7 +21545,7 @@
   color: #475569;
   display: inline-flex;
   font-size: 0.84rem;
-  font-weight: 950;
+  font-weight: 700;
   min-height: 42px;
   padding: 0 14px;
   white-space: nowrap;
@@ -21202,7 +21577,7 @@
 .accountingDocumentMuted {
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .accountingDocumentSummaryGrid strong {
@@ -21227,7 +21602,7 @@
   color: #475569;
   cursor: pointer;
   font: inherit;
-  font-weight: 900;
+  font-weight: 700;
   padding: 8px 12px;
 }
 
@@ -21253,7 +21628,7 @@
   color: #081225;
   cursor: pointer;
   font: inherit;
-  font-weight: 950;
+  font-weight: 700;
   min-height: 44px;
   padding: 10px 18px;
 }
@@ -21291,7 +21666,7 @@
   flex: 0 0 auto;
   font-size: 1rem;
   font-style: normal;
-  font-weight: 950;
+  font-weight: 700;
   height: 56px;
   justify-content: center;
   object-fit: cover;
@@ -21302,7 +21677,7 @@
   color: #0f172a;
   display: block;
   font-size: 1.2rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .personalIdentity span,
@@ -21314,7 +21689,7 @@
 .personalDocumentGrid span {
   color: #64748b;
   font-size: 0.84rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .personalQuickFacts {
@@ -21335,7 +21710,7 @@
 .personalEmployeePicker span {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .personalEmployeePicker select {
@@ -21344,7 +21719,7 @@
   border-radius: 10px;
   color: #0f172a;
   font: inherit;
-  font-weight: 850;
+  font-weight: 600;
   min-height: 40px;
   padding: 8px 12px;
   width: 100%;
@@ -21368,7 +21743,7 @@
 .personalQuickFacts span small {
   color: #718096;
   font-size: 0.64rem;
-  font-weight: 950;
+  font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -21391,7 +21766,7 @@
   color: #475569;
   cursor: pointer;
   font: inherit;
-  font-weight: 950;
+  font-weight: 700;
   padding: 10px 14px;
 }
 
@@ -21448,13 +21823,13 @@
 .personalMasterData dt {
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .personalKpiGrid strong {
   color: #0f172a;
   font-size: 2rem;
-  font-weight: 950;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -21483,7 +21858,7 @@
 .personalPanelHeader h2 {
   color: #0f172a;
   font-size: 1.18rem;
-  font-weight: 950;
+  font-weight: 700;
   margin: 0;
 }
 
@@ -21514,7 +21889,7 @@
 .personalAbsenceList strong,
 .personalDocumentGrid strong {
   color: #0f172a;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .personalAbsenceList {
@@ -21548,7 +21923,7 @@
   border-radius: 999px;
   color: #1d4ed8;
   font-style: normal;
-  font-weight: 950;
+  font-weight: 700;
   padding: 7px 10px;
   white-space: nowrap;
 }
@@ -21661,14 +22036,14 @@
   background: #f8fafc;
   color: #475569;
   font-size: 0.78rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .personalTable td span {
   color: #64748b;
   display: block;
   font-size: 0.82rem;
-  font-weight: 750;
+  font-weight: 600;
   margin-top: 3px;
 }
 
@@ -21712,7 +22087,7 @@
   display: inline-flex;
   flex: 0 0 auto;
   font-size: 0.78rem;
-  font-weight: 950;
+  font-weight: 700;
   justify-content: center;
   min-height: 34px;
   padding: 7px 10px;
@@ -21764,7 +22139,7 @@
 .personalDocumentList small {
   color: #64748b;
   font-size: 0.72rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .personalDocumentActions {
@@ -21783,7 +22158,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 0.72rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 6px 8px;
   text-decoration: none;
 }
@@ -21811,13 +22186,13 @@
 
 .personalPerformanceGrid strong {
   color: #0f172a;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .personalPerformanceGrid span {
   color: #64748b;
   font-size: 0.86rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .personalDevelopmentPage {
@@ -21829,7 +22204,7 @@
 .inlineError,
 .inlineSuccess {
   border-radius: 10px;
-  font-weight: 850;
+  font-weight: 600;
   margin: 0;
   padding: 12px 14px;
 }
@@ -21876,7 +22251,7 @@
 .assessmentAreaHeader strong,
 .developmentMeasureList strong {
   color: #0f172a;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .assessmentAreaHeader span {
@@ -21884,7 +22259,7 @@
   border: 1px solid #d8e8ff;
   border-radius: 999px;
   color: #1e40af;
-  font-weight: 950;
+  font-weight: 700;
   padding: 6px 10px;
 }
 
@@ -21909,7 +22284,7 @@
 .developmentMeasureList label span {
   color: #334155;
   font-size: 0.86rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .assessmentQuestionRow select,
@@ -21923,7 +22298,7 @@
   border-radius: 10px;
   color: #0f172a;
   font: inherit;
-  font-weight: 750;
+  font-weight: 600;
   min-height: 42px;
   padding: 10px 12px;
   width: 100%;
@@ -21977,7 +22352,7 @@
   color: #64748b;
   font-size: 0.82rem;
   font-style: normal;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .assessmentBarGroup {
@@ -22018,7 +22393,7 @@
 
 .assessmentInsightGrid strong {
   color: #0f172a;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .assessmentInsightGrid span,
@@ -22026,7 +22401,7 @@
 .developmentMeasureList dt {
   color: #64748b;
   font-size: 0.86rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .assessmentHistoryList {
@@ -22053,7 +22428,7 @@
 
 .assessmentHistoryList strong {
   color: #0f172a;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .assessmentHistoryList span,
@@ -22061,7 +22436,7 @@
   color: #64748b;
   font-size: 0.84rem;
   font-style: normal;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .disgProgress {
@@ -22080,7 +22455,7 @@
 .disgProgress strong {
   color: #0f172a;
   font-size: 0.84rem;
-  font-weight: 950;
+  font-weight: 700;
   position: relative;
   z-index: 1;
 }
@@ -22108,7 +22483,7 @@
   color: #475569;
   cursor: pointer;
   font: inherit;
-  font-weight: 950;
+  font-weight: 700;
   min-height: 38px;
   padding: 8px 10px;
 }
@@ -22137,13 +22512,13 @@
 .disgResultHero span {
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .disgResultHero strong {
   color: #0f172a;
   font-size: 1.2rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .disgDetailGrid {
@@ -22188,7 +22563,7 @@
 .mailMetaGrid span {
   color: #64748b;
   font-size: 0.8rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .mailConnectionCard strong,
@@ -22196,14 +22571,14 @@
   color: #0f172a;
   display: block;
   font-size: 1rem;
-  font-weight: 950;
+  font-weight: 700;
   margin-top: 4px;
 }
 
 .mailConnectionCard p {
   color: #64748b;
   font-size: 0.88rem;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.45;
   margin: 6px 0 0;
 }
@@ -22228,7 +22603,7 @@
 .disgDetailGrid strong {
   color: #0f172a;
   display: block;
-  font-weight: 950;
+  font-weight: 700;
   margin-bottom: 8px;
 }
 
@@ -22236,7 +22611,7 @@
 .disgDetailGrid li {
   color: #475569;
   font-size: 0.88rem;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.45;
 }
 
@@ -22313,7 +22688,7 @@
 
 .personalMasterData dd {
   color: #0f172a;
-  font-weight: 900;
+  font-weight: 700;
   margin: 0;
 }
 
@@ -22341,7 +22716,7 @@
 .personalTimeNav strong {
   color: #0f172a;
   font-size: 1rem;
-  font-weight: 950;
+  font-weight: 700;
   margin-left: 6px;
 }
 
@@ -22376,20 +22751,20 @@
 .personalTimeCards small {
   color: #64748b;
   font-size: 0.84rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .personalTimeCards strong {
   color: #0f172a;
   font-size: 1.7rem;
-  font-weight: 950;
+  font-weight: 700;
   line-height: 1.1;
 }
 
 .personalTimeCards strong em {
   color: #94a3b8;
   font-style: normal;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .personalWorkModel {
@@ -22417,7 +22792,7 @@
 .personalWorkModel b {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .personalTimeTable {
@@ -22430,7 +22805,7 @@
   border-bottom: 1px solid #e2e8f0;
   color: #475569;
   font-size: 0.82rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 12px 10px;
   text-align: left;
   white-space: nowrap;
@@ -22440,7 +22815,7 @@
   border-bottom: 1px solid #edf2f7;
   color: #0f172a;
   font-size: 0.9rem;
-  font-weight: 750;
+  font-weight: 600;
   padding: 13px 10px;
   vertical-align: middle;
 }
@@ -22459,20 +22834,20 @@
 
 .personalTimeTable td strong {
   color: #0f172a;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .personalTimeTable td em {
   color: #94a3b8;
   font-style: normal;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .personalTimeTable td span,
 .personalTimeTable td small {
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .personalTimeTable input[type="checkbox"] {
@@ -22500,7 +22875,7 @@
   align-items: center;
   border-radius: 999px;
   display: inline-flex;
-  font-weight: 950 !important;
+  font-weight: 700 !important;
   justify-content: center;
   min-height: 28px;
   padding: 5px 10px;
@@ -22519,7 +22894,7 @@
 
 .personalTimeTable td[data-overtime="pending"] {
   color: #c2410c;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .personalMoreButton {
@@ -22528,7 +22903,7 @@
   color: #475569;
   cursor: pointer;
   font: inherit;
-  font-weight: 950;
+  font-weight: 700;
   padding: 6px;
 }
 
@@ -22541,7 +22916,7 @@
   color: #334155;
   display: grid;
   font-size: 0.76rem;
-  font-weight: 900;
+  font-weight: 700;
   gap: 4px;
 }
 
@@ -22592,14 +22967,14 @@
 .signatureToolbar strong {
   color: #0f172a;
   font-size: 0.86rem;
-  font-weight: 950;
+  font-weight: 700;
   margin-right: 4px;
 }
 
 .signatureToolbar span {
   color: #64748b;
   font-size: 0.8rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .signatureToolbar button,
@@ -22613,7 +22988,7 @@
   display: inline-flex;
   font-family: inherit;
   font-size: 0.88rem;
-  font-weight: 900;
+  font-weight: 700;
   justify-content: center;
   min-height: 32px;
   min-width: 36px;
@@ -22648,7 +23023,7 @@
 .mailSignaturePreview > span {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 950;
+  font-weight: 700;
   text-transform: uppercase;
 }
 
@@ -22739,7 +23114,7 @@
   display: inline-flex;
   font-family: inherit;
   font-size: 1.55rem;
-  font-weight: 800;
+  font-weight: 600;
   height: 42px;
   justify-content: center;
   line-height: 1;
@@ -22759,7 +23134,7 @@
   color: #334155;
   display: grid;
   font-size: 0.78rem;
-  font-weight: 750;
+  font-weight: 600;
   gap: 5px;
   margin: 0;
 }
@@ -22777,7 +23152,7 @@
   border-radius: 999px;
   display: inline-flex;
   font-size: 0.76rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.25;
   margin-top: 6px;
   padding: 5px 9px;
@@ -22808,7 +23183,7 @@
 .contactTypeSwitch > span {
   color: #334155;
   font-size: 0.78rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .contactTypeSwitch > div {
@@ -22829,7 +23204,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 0.86rem;
-  font-weight: 800;
+  font-weight: 600;
   min-height: 31px;
   padding: 0 10px;
   white-space: nowrap;
@@ -22865,7 +23240,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 0.9rem;
-  font-weight: 800;
+  font-weight: 600;
   min-height: 42px;
   padding: 0 11px;
   white-space: nowrap;
@@ -22895,7 +23270,7 @@
   border-radius: 7px;
   color: #475569;
   font-size: 0.84rem;
-  font-weight: 850;
+  font-weight: 600;
   min-height: 31px;
   padding: 0 10px;
 }
@@ -22946,7 +23321,7 @@
 
 .standardModalHeader h2 {
   font-size: 23px;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0;
   line-height: 1.12;
   margin: 0;
@@ -22955,7 +23330,7 @@
 .standardModalHeader p {
   color: rgba(255, 255, 255, 0.82);
   font-size: 0.94rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.25;
   margin: 4px 0 0;
 }
@@ -22967,7 +23342,7 @@
   color: #111827;
   flex: 0 0 auto;
   font-size: 20px;
-  font-weight: 850;
+  font-weight: 600;
   height: 34px;
   min-width: 34px;
   padding: 0;
@@ -22991,7 +23366,7 @@
   color: #334155;
   display: grid;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 600;
   gap: 5px;
   letter-spacing: 0;
   margin: 0;
@@ -23072,12 +23447,12 @@
 .taskAcceptancePopup strong {
   color: #9a3412;
   font-size: 1.1rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .taskAcceptancePopup p {
   color: #431407;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.45;
   margin: 0;
 }
@@ -23086,7 +23461,7 @@
   color: #334155;
   display: grid;
   font-size: 0.84rem;
-  font-weight: 850;
+  font-weight: 600;
   gap: 6px;
 }
 
@@ -23097,7 +23472,7 @@
   color: #0f172a;
   font-family: inherit;
   font-size: 0.95rem;
-  font-weight: 750;
+  font-weight: 600;
   min-height: 40px;
   padding: 8px 11px;
 }
@@ -23127,14 +23502,14 @@
 .taskHistoryItem span {
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .taskMetaPanel strong,
 .taskParticipantItem strong,
 .taskHistoryItem strong {
   color: #0f172a;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .taskParticipantsBox,
@@ -23183,7 +23558,7 @@
   color: #1d4ed8;
   flex: 0 0 auto;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 5px 10px;
 }
 
@@ -23208,7 +23583,7 @@
   cursor: pointer;
   display: flex;
   font-family: inherit;
-  font-weight: 900;
+  font-weight: 700;
   justify-content: space-between;
   min-height: 42px;
   padding: 0 12px;
@@ -23235,7 +23610,7 @@
   cursor: pointer;
   display: inline-flex;
   font-family: inherit;
-  font-weight: 900;
+  font-weight: 700;
   gap: 8px;
   min-height: 42px;
   padding: 0 14px;
@@ -23286,7 +23661,7 @@
 .taskHistoryItem p {
   color: #475569;
   font-size: 0.86rem;
-  font-weight: 750;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -23318,7 +23693,7 @@
   color: #334155;
   display: flex;
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 600;
   gap: 8px;
   margin: 0;
 }
@@ -23328,7 +23703,7 @@
   border-radius: 10px;
   color: #0f172a;
   font: inherit;
-  font-weight: 800;
+  font-weight: 600;
   min-height: 38px;
   padding: 7px 10px;
 }
@@ -23336,14 +23711,14 @@
 .reportFilterBar span {
   color: #64748b;
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .modalFooterError,
 .modalFooterHint {
   border-radius: 8px;
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.35;
   margin: 0;
   max-width: min(720px, 60%);
@@ -23370,7 +23745,7 @@
   color: #334155;
   display: grid;
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 600;
   gap: 7px;
   margin: 0;
 }
@@ -23386,7 +23761,7 @@
   color: #0f172a;
   font: inherit;
   font-size: 15px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .standardModal .formGrid textarea {
@@ -23423,13 +23798,13 @@
 .potentialSummary span {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .potentialSummary strong {
   color: #0f172a;
   font-size: 1rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .projectAnalyticsModal {
@@ -23461,7 +23836,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 0.84rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 9px 14px;
 }
 
@@ -23491,21 +23866,21 @@
 .projectBottleneckSummaryGrid span {
   color: #61738a;
   font-size: 0.74rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .projectBottleneckSectionHeading h3,
 .projectBottleneckTableBlock h3 {
   color: #0f172a;
   font-size: 1rem;
-  font-weight: 950;
+  font-weight: 700;
   margin: 2px 0 0;
 }
 
 .projectBottleneckSectionHeading p {
   color: #52647a;
   font-size: 0.78rem;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.4;
   margin: 0;
   max-width: 620px;
@@ -23530,7 +23905,7 @@
 .projectBottleneckSummaryGrid strong {
   color: #063f45;
   font-size: 1.08rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .projectBottleneckTableBlock {
@@ -23587,7 +23962,7 @@
 .potentialSectionDivider h3 {
   color: #0f172a;
   font-size: 0.98rem;
-  font-weight: 950;
+  font-weight: 700;
   margin: 0;
 }
 
@@ -23595,7 +23970,7 @@
 .potentialSectionDivider p {
   color: #64748b;
   font-size: 0.8rem;
-  font-weight: 650;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -23608,14 +23983,14 @@
 .potentialOwnerHint {
   color: #64748b;
   font-size: 0.74rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.3;
 }
 
 .potentialTaskHint {
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.35;
   margin: 0;
 }
@@ -23643,13 +24018,13 @@
 
 .potentialTaskInfo strong {
   font-size: 0.9rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .potentialTaskInfo span {
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .potentialHistorySection {
@@ -23662,14 +24037,14 @@
 .potentialHistorySection h3 {
   color: #0f172a;
   font-size: 1rem;
-  font-weight: 950;
+  font-weight: 700;
   margin: 0;
 }
 
 .potentialHistorySection > p {
   color: #64748b;
   font-size: 0.9rem;
-  font-weight: 750;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -23685,7 +24060,7 @@
   color: #334155;
   display: block;
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -23701,7 +24076,7 @@
   color: #0f172a;
   font: inherit;
   font-size: 15px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .absenceModal textarea {
@@ -23772,7 +24147,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 0.86rem;
-  font-weight: 800;
+  font-weight: 600;
   min-height: 42px;
   padding: 10px 16px;
 }
@@ -23889,13 +24264,13 @@
 .catalogTypeButton .catalogTypeLabel {
   color: #334155;
   font-size: 0.96rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .catalogTypeButton strong {
   color: #0f172a;
   font-size: 1.32rem;
-  font-weight: 950;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -24025,7 +24400,7 @@
 }
 
 .catalogTable .title {
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .catalogStatusClip {
@@ -24034,7 +24409,7 @@
   border-radius: 999px;
   display: inline-flex;
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 700;
   justify-content: center;
   line-height: 1;
   min-width: 72px;
@@ -24077,7 +24452,7 @@
   background: #eff6ff;
   border-color: #93c5fd;
   color: #0f4fb8;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .catalogActionGroup .catalogPrimaryRowAction:hover {
@@ -24136,7 +24511,7 @@
 .catalogFormSectionHeader strong {
   color: #0f172a;
   font-size: 14px;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .catalogFormSectionHeader span {
@@ -24161,7 +24536,7 @@
   flex-direction: column;
   gap: 3px;
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 600;
   color: #334155;
   margin: 0;
 }
@@ -24178,7 +24553,7 @@
   padding: 8px 11px;
   font: inherit;
   font-size: 15px;
-  font-weight: 650;
+  font-weight: 600;
   background: #ffffff;
   color: #0f172a;
   margin: 0;
@@ -24234,7 +24609,7 @@
   display: inline-grid;
   flex: 0 0 auto;
   font-size: 11px;
-  font-weight: 950;
+  font-weight: 700;
   height: 18px;
   line-height: 18px;
   place-items: center;
@@ -24249,7 +24624,7 @@
   color: #ffffff;
   content: attr(data-tooltip);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
   left: 50%;
   line-height: 1.3;
   max-width: 260px;
@@ -24289,7 +24664,7 @@
   display: block;
   color: #64748b;
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .catalogMetric strong {
@@ -24364,7 +24739,7 @@
   display: block;
   color: #64748b;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .catalogPriceInfoGrid strong {
@@ -24477,7 +24852,7 @@
   padding: 6px 10px;
   font: inherit;
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -24499,7 +24874,7 @@
   display: block;
   color: #64748b;
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .catalogPackageTotals strong {
@@ -24551,7 +24926,7 @@
 .packageSummaryTable th {
   color: #334155;
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .packageCalculationTable td,
@@ -24572,7 +24947,7 @@
   padding: 6px 10px;
   font: inherit;
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 600;
   margin: 0;
   background: #ffffff;
 }
@@ -24594,7 +24969,7 @@
   display: flex;
   flex-direction: column;
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 600;
   gap: 4px;
   margin: 0;
 }
@@ -24610,7 +24985,7 @@
   color: #64748b;
   display: flex;
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .packageTotalGrid article strong {
@@ -24672,14 +25047,14 @@
 .offerSectionHeader h3 {
   color: #334155;
   font-size: 18px;
-  font-weight: 850;
+  font-weight: 600;
   margin: 0;
 }
 
 .offerSectionHeader span {
   color: #64748b;
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .offerAddPositionButton {
@@ -24694,7 +25069,7 @@
   display: inline-flex;
   font: inherit;
   font-size: 15px;
-  font-weight: 950;
+  font-weight: 700;
   justify-content: center;
   min-height: 42px;
   padding: 10px 18px;
@@ -24746,7 +25121,7 @@
 .importantOfferField small {
   color: #9a3412;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .fieldLabelWithHelp {
@@ -24763,7 +25138,7 @@
   color: #0f3f8f;
   display: inline-flex;
   font-size: 12px;
-  font-weight: 950;
+  font-weight: 700;
   height: 20px;
   justify-content: center;
   line-height: 1;
@@ -24778,7 +25153,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 15px;
-  font-weight: 750;
+  font-weight: 600;
   min-height: 38px;
   padding: 8px 11px;
   text-align: left;
@@ -24843,7 +25218,7 @@
   color: #0f172a;
   cursor: pointer;
   font: inherit;
-  font-weight: 850;
+  font-weight: 600;
   min-height: 34px;
 }
 
@@ -24997,7 +25372,7 @@
   border: 1px solid #dbe3ee;
   color: #ffffff;
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   padding: 6px 8px;
   text-align: left;
 }
@@ -25016,7 +25391,7 @@
 
 .invoicePositionTitleBar span {
   font-size: 1.05rem;
-  font-weight: 950;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -25027,7 +25402,7 @@
   color: #075985;
   font-size: 0.68rem;
   font-style: normal;
-  font-weight: 950;
+  font-weight: 700;
   padding: 3px 9px;
 }
 
@@ -25064,7 +25439,7 @@
   background: #0f172a;
   color: #ffffff;
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .offerLinesTable td {
@@ -25092,7 +25467,7 @@
   border-radius: 10px;
   font: inherit;
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 600;
   min-height: 34px;
   margin: 0 0 5px;
   padding: 6px 10px;
@@ -25117,7 +25492,7 @@
 .offerLineHeader span {
   color: #64748b;
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .offerLineHeader em {
@@ -25126,7 +25501,7 @@
   color: #334155;
   font-size: 11px;
   font-style: normal;
-  font-weight: 900;
+  font-weight: 700;
   padding: 3px 8px;
 }
 
@@ -25160,7 +25535,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
   min-height: 28px;
   padding: 4px 9px;
 }
@@ -25178,7 +25553,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 700;
   margin: 0 0 6px;
   min-height: 32px;
   padding: 6px 10px;
@@ -25218,7 +25593,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 600;
   min-height: 28px;
   padding: 5px 8px;
   text-align: left;
@@ -25256,7 +25631,7 @@
   color: #334155;
   content: "LK-Satz";
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 700;
   grid-column: 1;
 }
 
@@ -25268,7 +25643,7 @@
 .offerLaborCompact > span {
   color: #334155;
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .offerLaborCompact .offerLaborRateRow {
@@ -25302,7 +25677,7 @@
 .offerInternalHeader strong {
   color: #334155;
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .offerInternalHeader .secondaryButton {
@@ -25321,7 +25696,7 @@
 .offerInternalCalculation small {
   color: #64748b;
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .invoiceStampLinkWarning {
@@ -25342,7 +25717,7 @@
   color: #9a3412;
   display: block;
   font-size: 12px;
-  font-weight: 950;
+  font-weight: 700;
   padding: 8px 10px;
 }
 
@@ -25391,7 +25766,7 @@
   color: #1d4ed8;
   display: inline-flex;
   font-size: 11px;
-  font-weight: 950;
+  font-weight: 700;
   height: 18px;
   justify-content: center;
   margin-left: 4px;
@@ -25430,7 +25805,7 @@
 .offerMarginBar strong {
   color: #0f172a;
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 700;
   grid-area: 1 / 1;
   padding: 0 7px;
   position: relative;
@@ -25441,7 +25816,7 @@
 .offerMarginEmpty {
   color: #94a3b8;
   display: block;
-  font-weight: 850;
+  font-weight: 600;
   padding-top: 8px;
   text-align: center;
 }
@@ -25450,7 +25825,7 @@
   color: #64748b;
   display: block;
   font-size: 11px;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.25;
   margin-top: 3px;
 }
@@ -25478,14 +25853,14 @@
 .invoiceLineStampBasis p {
   color: #64748b;
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
   margin: 0;
 }
 
 .invoiceLineStampBasis small {
   color: #64748b;
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .invoiceLineStampRows {
@@ -25526,7 +25901,7 @@
 .invoiceLineStampRow strong {
   color: #0f172a;
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
@@ -25537,7 +25912,7 @@
 
 .invoiceLineStampComment strong {
   color: #334155;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .invoiceLineStampComment .invoiceLineStampInterruptionLabel {
@@ -25556,7 +25931,7 @@
 }
 
 .projectPipelineStatusCell > span {
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .projectPipelineStatusCell > small {
@@ -25574,7 +25949,7 @@
 
 .projectPipelineStatusCell > small strong {
   display: block;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .offerLaborRow {
@@ -25602,25 +25977,25 @@
 .offerLaborRow span {
   color: #64748b;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .offerLaborRow strong {
   color: #0f172a;
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .offerLaborRow small {
   color: #9a3412;
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 700;
   grid-column: 1 / -1;
 }
 
 .offerLaborRow .iconButton {
   border-radius: 10px;
-  font-weight: 900;
+  font-weight: 700;
   height: 30px;
   min-width: 30px;
   padding: 0;
@@ -25659,7 +26034,7 @@
   color: #334155;
   display: grid;
   font-size: 14px;
-  font-weight: 850;
+  font-weight: 600;
   gap: 6px;
   padding: 9px 12px;
 }
@@ -25677,7 +26052,7 @@
   color: #64748b;
   display: block;
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .offerTotals strong {
@@ -25724,21 +26099,21 @@
   background: #0f172a;
   color: #ffffff;
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .offerInternalSummaryTable td {
   background: #ffffff;
   color: #0f172a;
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .offerInternalSummaryTable td span {
   color: #334155;
   display: block;
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .offerInternalSummaryTable td strong {
@@ -25749,7 +26124,7 @@
 
 .offerInternalSummaryTable tbody tr:last-child td {
   background: #f8fafc;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .offerInternalSummaryTable td[data-margin="good"] {
@@ -25868,7 +26243,7 @@
 
 .offerPreviewInfo dt {
   color: #475569;
-  font-weight: 800;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -25921,7 +26296,7 @@
 .offerPreviewTable th {
   border-bottom: 1px solid #64748b;
   border-top: 1px solid #64748b;
-  font-weight: 800;
+  font-weight: 600;
   padding: 3px 2px;
   text-align: left;
 }
@@ -26076,7 +26451,7 @@
 .customerClassificationHeading p {
   color: #64748b;
   font-size: 0.8rem;
-  font-weight: 650;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -26093,7 +26468,7 @@
   border-radius: 999px;
   color: #475569;
   font-size: 0.76rem;
-  font-weight: 850;
+  font-weight: 600;
   padding: 6px 10px;
   white-space: nowrap;
 }
@@ -26124,7 +26499,7 @@
   color: #334155;
   display: grid;
   font-size: 0.78rem;
-  font-weight: 750;
+  font-weight: 600;
   gap: 5px;
 }
 
@@ -26153,7 +26528,7 @@
   display: flex;
   flex-wrap: wrap;
   font-size: 0.76rem;
-  font-weight: 650;
+  font-weight: 600;
   gap: 4px;
   line-height: 1.45;
 }
@@ -26401,14 +26776,14 @@
 .globalSearchResults small {
   color: #009ca6;
   font-size: 0.68rem;
-  font-weight: 950;
+  font-weight: 700;
   text-transform: uppercase;
 }
 
 .globalSearchResults strong {
   color: #06142f;
   font-size: 0.9rem;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.2;
 }
 
@@ -26417,14 +26792,14 @@
   color: #64748b;
   font-size: 0.78rem;
   font-style: normal;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.25;
 }
 
 .globalSearchResults p {
   color: #64748b;
   font-size: 0.86rem;
-  font-weight: 800;
+  font-weight: 600;
   margin: 0;
   padding: 14px 12px;
 }
@@ -26486,7 +26861,7 @@
 .quickCreateMenu span {
   color: #9aa3b2;
   font-size: 1.1rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .notificationBell,
@@ -26526,7 +26901,7 @@
   color: #c7d2e3;
   display: flex;
   font-size: 0.92rem;
-  font-weight: 850;
+  font-weight: 600;
   gap: 8px;
   justify-content: flex-start;
   min-height: 44px;
@@ -26559,7 +26934,7 @@
   border-radius: 999px;
   display: inline-flex;
   font-size: 0.74rem;
-  font-weight: 950;
+  font-weight: 700;
   height: 22px;
   justify-content: center;
   line-height: 1;
@@ -26674,7 +27049,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 0.88rem;
-  font-weight: 750;
+  font-weight: 600;
   min-height: 34px;
   padding: 7px 10px;
   text-align: left;
@@ -26729,7 +27104,7 @@
 .overviewHero h1 {
   color: var(--ink);
   font-size: clamp(1.75rem, 2.35vw, 2.45rem);
-  font-weight: 950;
+  font-weight: 700;
   letter-spacing: 0;
   line-height: 1.1;
   margin-top: 6px;
@@ -26812,7 +27187,7 @@
 .employeeStampPerson small {
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .employeeStampSummary strong {
@@ -26877,7 +27252,7 @@
   background: #111827;
   color: #ffffff;
   font-size: 0.72rem;
-  font-weight: 950;
+  font-weight: 700;
   letter-spacing: 0;
 }
 
@@ -26892,7 +27267,7 @@
 .employeeStampTable td {
   color: #0f172a;
   font-size: 0.82rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .employeeStampPerson {
@@ -26915,7 +27290,7 @@
 }
 
 .employeeStampPerson > div > span {
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .employeeStampLamp {
@@ -26962,7 +27337,7 @@
   color: #475569;
   display: inline-flex;
   font-size: 0.72rem;
-  font-weight: 950;
+  font-weight: 700;
   min-height: 24px;
   padding: 0 10px;
 }
@@ -26996,13 +27371,13 @@
 }
 
 .employeeStampActivity strong {
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .employeeStampActivity span {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .employeeStampTable td:nth-child(4) strong {
@@ -27143,7 +27518,7 @@
   color: #5c6b80;
   display: block;
   font-size: 0.72rem;
-  font-weight: 950;
+  font-weight: 700;
   letter-spacing: 0;
   margin-top: 8px;
   text-transform: uppercase;
@@ -27196,7 +27571,7 @@
   color: #020617;
   display: block;
   font-size: clamp(1.75rem, 2.35vw, 3.05rem);
-  font-weight: 950;
+  font-weight: 700;
   letter-spacing: 0;
   line-height: 0.96;
   margin-top: 14px;
@@ -27207,7 +27582,7 @@
 .dashboardFocusSubtitle {
   color: #020617;
   font-size: clamp(0.98rem, 1.05vw, 1.26rem);
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.12;
   margin: 6px 0 12px;
 }
@@ -27222,7 +27597,7 @@
 .dashboardFocusFooter p {
   color: #111827;
   font-size: 0.78rem;
-  font-weight: 450;
+  font-weight: 400;
   line-height: 1.35;
   margin: 0;
 }
@@ -27266,14 +27641,14 @@
 .documentTypeHeader h1 {
   color: #334155;
   font-size: 1.45rem;
-  font-weight: 650;
+  font-weight: 600;
   margin: 0;
 }
 
 .documentTypeHeader p {
   color: #64748b;
   font-size: 0.92rem;
-  font-weight: 650;
+  font-weight: 600;
   margin: 5px 0 0;
 }
 
@@ -27292,7 +27667,7 @@
   color: #334155;
   cursor: pointer;
   font: inherit;
-  font-weight: 900;
+  font-weight: 700;
   padding: 13px 14px;
   text-transform: uppercase;
 }
@@ -27349,7 +27724,7 @@
   border: 1px solid #dbe3ee;
   color: #0f172a;
   font-size: 0.9rem;
-  font-weight: 850;
+  font-weight: 600;
   padding: 12px 10px;
   text-align: left;
 }
@@ -27371,7 +27746,7 @@
   color: #0059ff;
   cursor: pointer;
   font: inherit;
-  font-weight: 750;
+  font-weight: 600;
   padding: 0;
 }
 
@@ -27437,7 +27812,7 @@
 .editorialWorkflowCard span {
   color: #009ca6;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
   text-transform: uppercase;
 }
 
@@ -27488,7 +27863,7 @@
 .editorialApprovalRules span {
   color: #0f172a;
   font-size: 0.78rem;
-  font-weight: 950;
+  font-weight: 700;
   text-transform: uppercase;
 }
 
@@ -27560,7 +27935,7 @@
 .contentRoundRow span,
 .contentRoundRow small {
   color: #64748b;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .contentMonthGrid,
@@ -27585,7 +27960,7 @@
   color: #475569;
   display: inline-flex;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 600;
   gap: 7px;
 }
 
@@ -27598,7 +27973,7 @@
   flex: 0 0 auto;
   font-size: 0.7rem;
   font-style: normal;
-  font-weight: 950;
+  font-weight: 700;
   height: 20px;
   justify-content: center;
   line-height: 1;
@@ -27637,7 +28012,7 @@
   background: #f8fafc;
   color: #64748b;
   font-size: 0.8rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 10px;
   text-transform: uppercase;
 }
@@ -27677,7 +28052,7 @@
   border-radius: 999px;
   color: #007d85;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
   min-width: 26px;
   padding: 4px 8px;
   text-align: center;
@@ -27747,7 +28122,7 @@
   flex: 0 0 auto;
   font-size: 0.7rem;
   font-style: normal;
-  font-weight: 950;
+  font-weight: 700;
   height: 20px;
   justify-content: center;
   line-height: 1;
@@ -27782,13 +28157,13 @@
 .contentCalendarEntry span {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .contentCalendarEntry small {
   color: #334155;
   font-size: 0.74rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .contentCalendarProgress {
@@ -27825,7 +28200,7 @@
   color: #0369a1;
   display: inline-flex;
   font-size: 0.72rem;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
   padding: 4px 8px;
   text-transform: uppercase;
@@ -27884,7 +28259,7 @@
 .contentApprovalCard span,
 .contentApprovalCard small {
   color: #64748b;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .contentApprovalActions,
@@ -27903,7 +28278,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 0.8rem;
-  font-weight: 850;
+  font-weight: 600;
   padding: 8px 10px;
 }
 
@@ -27948,7 +28323,7 @@
 .contentCorrectionCard span,
 .contentCorrectionCard small {
   color: #64748b;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .contentCorrectionCard p {
@@ -27957,7 +28332,7 @@
   border-radius: 10px;
   color: #9a3412;
   font-size: 0.88rem;
-  font-weight: 800;
+  font-weight: 600;
   margin: 0;
   padding: 10px 12px;
 }
@@ -27981,7 +28356,7 @@
 .contentQuotaCard span {
   color: #009ca6;
   font-size: 0.8rem;
-  font-weight: 950;
+  font-weight: 700;
   text-transform: uppercase;
 }
 
@@ -27994,7 +28369,7 @@
 .contentQuotaCard p {
   color: #64748b;
   font-size: 0.88rem;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.45;
   margin: 0;
 }
@@ -28026,7 +28401,7 @@
   color: #0f172a;
   display: grid;
   font-size: 0.9rem;
-  font-weight: 850;
+  font-weight: 600;
   gap: 7px;
 }
 
@@ -28056,7 +28431,7 @@
 .ideaComposerFooter p {
   color: #dc2626;
   font-size: 0.86rem;
-  font-weight: 850;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -28092,7 +28467,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 8px 11px;
   white-space: nowrap;
 }
@@ -28108,7 +28483,7 @@
 .ideaComments small {
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .ideaPlannedBadge {
@@ -28118,7 +28493,7 @@
   color: #1d4ed8;
   display: inline-flex;
   font-size: 0.76rem;
-  font-weight: 900;
+  font-weight: 700;
   margin-top: 8px;
   padding: 5px 9px;
 }
@@ -28136,7 +28511,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 0.82rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 9px 12px;
 }
 
@@ -28153,7 +28528,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 0.82rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 9px 12px;
   white-space: nowrap;
 }
@@ -28185,7 +28560,7 @@
   display: inline-flex;
   font: inherit;
   font-size: 0.9rem;
-  font-weight: 900;
+  font-weight: 700;
   gap: 7px;
   min-height: 38px;
   padding: 8px 12px;
@@ -28211,13 +28586,13 @@
 .ideaReactionBar small {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 750;
+  font-weight: 600;
   margin-left: auto;
 }
 
 .ideaReactionBar small[data-error="true"] {
   color: #dc2626;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .ideaComments {
@@ -28280,7 +28655,7 @@
 .ideaPinnedPanel p {
   color: #64748b;
   font-size: 0.84rem;
-  font-weight: 750;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -28304,7 +28679,7 @@
 .ideaPinnedPanel span {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .contentSourceIdeaBox {
@@ -28332,7 +28707,7 @@
 .contentSourceIdeaBox span {
   color: #334155;
   font-size: 0.86rem;
-  font-weight: 750;
+  font-weight: 600;
   margin-top: 2px;
 }
 
@@ -28344,7 +28719,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 0.8rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 8px 11px;
   white-space: nowrap;
 }
@@ -28415,7 +28790,7 @@
   color: #334155;
   display: grid;
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 600;
   gap: 7px;
   margin: 0;
 }
@@ -28426,7 +28801,7 @@
   color: #0f172a;
   font: inherit;
   font-size: 15px;
-  font-weight: 650;
+  font-weight: 600;
   padding: 9px 12px;
   resize: vertical;
 }
@@ -28463,7 +28838,7 @@
 .contentHistoryList p {
   color: #64748b;
   font-size: 0.84rem;
-  font-weight: 750;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -28533,7 +28908,7 @@
   cursor: pointer;
   font-family: "Consolas", "Liberation Mono", monospace;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
   overflow: hidden;
   padding: 7px 8px;
   text-align: left;
@@ -28553,7 +28928,7 @@
   display: inline-block;
   font-family: "Consolas", "Liberation Mono", monospace;
   font-size: 0.86rem;
-  font-weight: 800;
+  font-weight: 600;
   padding: 4px 7px;
 }
 
@@ -28613,7 +28988,7 @@
   color: #0059ff;
   cursor: pointer;
   font: inherit;
-  font-weight: 750;
+  font-weight: 600;
   padding: 12px 14px;
   text-align: left;
 }
@@ -28637,7 +29012,7 @@
 .documentConfigSection h2 {
   color: #334155;
   font-size: 1.28rem;
-  font-weight: 750;
+  font-weight: 600;
   margin: 8px 0 -4px;
 }
 
@@ -28674,7 +29049,7 @@
   color: #0f172a;
   font: inherit;
   font-size: 0.92rem;
-  font-weight: 650;
+  font-weight: 600;
   min-height: 38px;
   padding: 8px 10px;
   width: 100%;
@@ -28743,7 +29118,7 @@
   color: #0f172a;
   font: inherit;
   font-size: 0.8rem;
-  font-weight: 800;
+  font-weight: 600;
   min-height: 28px;
   padding: 4px 9px;
 }
@@ -28768,7 +29143,7 @@
 .documentConfigSaved {
   color: #009ca6;
   font-size: 0.84rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .documentLetterheadUpload {
@@ -28784,7 +29159,7 @@
 .documentLetterheadUpload p {
   color: #64748b;
   font-size: 0.84rem;
-  font-weight: 650;
+  font-weight: 600;
   margin: 8px 0 0;
 }
 
@@ -28803,7 +29178,7 @@
 .documentLetterheadActions span {
   color: #334155;
   font-size: 0.84rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .documentLetterheadActions > button:not(.secondaryButton) {
@@ -28813,7 +29188,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 0.82rem;
-  font-weight: 850;
+  font-weight: 600;
   padding: 0;
 }
 
@@ -28838,7 +29213,7 @@
   color: #0059ff;
   cursor: pointer;
   font: inherit;
-  font-weight: 750;
+  font-weight: 600;
   padding: 12px 16px;
 }
 
@@ -28949,7 +29324,7 @@
 }
 
 .documentPreviewInfoBlock dt {
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .documentPreviewInfoBlock dd {
@@ -28998,7 +29373,7 @@
 .documentPreviewTable th {
   border-bottom: 2px solid #1f2937;
   border-top: 2px solid #1f2937;
-  font-weight: 900;
+  font-weight: 700;
   padding: 5px 4px;
   text-align: left;
 }
@@ -29059,7 +29434,7 @@
   bottom: 100px;
   color: rgba(126, 200, 69, 0.13);
   font-size: 5rem;
-  font-weight: 950;
+  font-weight: 700;
   line-height: 0.82;
   position: absolute;
   right: 22px;
@@ -29077,7 +29452,7 @@
 
 .eyebrow {
   color: var(--brand);
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -29145,7 +29520,7 @@
 .planningBoardHero h1 {
   color: #f8fafc;
   font-size: 1.8rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.15;
   margin: 0;
 }
@@ -29217,7 +29592,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 0.9rem;
-  font-weight: 850;
+  font-weight: 600;
   min-height: 36px;
   padding: 8px 12px;
   white-space: nowrap;
@@ -29289,7 +29664,7 @@
 .planningBoardBrandMark span {
   color: #f8fafc;
   font-size: 0.82rem;
-  font-weight: 750;
+  font-weight: 600;
   letter-spacing: -0.01em;
   line-height: 1;
   white-space: nowrap;
@@ -29347,19 +29722,19 @@
 
 .planningBoardDayHeader strong {
   font-size: 0.82rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .planningBoardDayHeader span {
   font-size: 0.8rem;
-  font-weight: 900;
+  font-weight: 700;
   margin-top: 3px;
 }
 
 .planningBoardDayHeader small {
   color: #009ca6;
   font-size: 0.62rem;
-  font-weight: 900;
+  font-weight: 700;
   margin-top: 3px;
 }
 
@@ -29435,7 +29810,7 @@
   color: #071225;
   display: flex;
   font-size: 0.92rem;
-  font-weight: 950;
+  font-weight: 700;
   padding: 0 10px;
 }
 
@@ -29447,7 +29822,7 @@
   display: flex;
   flex-direction: column;
   font-family: inherit;
-  font-weight: 900;
+  font-weight: 700;
   justify-content: center;
   padding: 4px 0;
 }
@@ -29461,7 +29836,7 @@
 .planningBoardCell small {
   color: #64748b;
   font-size: 0.62rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.1;
   margin-bottom: 5px;
 }
@@ -29502,7 +29877,7 @@
   color: #ffffff;
   display: inline-flex;
   font-size: 0.76rem;
-  font-weight: 950;
+  font-weight: 700;
   height: 18px;
   justify-content: center;
   line-height: 1;
@@ -29571,7 +29946,7 @@
   color: #64748b;
   display: block;
   font-size: 0.84rem;
-  font-weight: 850;
+  font-weight: 600;
   margin-top: 3px;
 }
 
@@ -29606,7 +29981,7 @@
 .planningOpenMonth p {
   color: #94a3b8;
   font-size: 0.8rem;
-  font-weight: 850;
+  font-weight: 600;
   margin: 10px 0 0;
   text-align: center;
 }
@@ -29641,19 +30016,19 @@
 
 .planningOpenProject strong {
   font-size: 0.76rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .planningOpenProject span {
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.2;
 }
 
 .planningOpenProject small {
   color: #64748b;
   font-size: 0.7rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .invoiceStatusDone {
@@ -29663,7 +30038,7 @@
   border-radius: 999px;
   color: #047857;
   display: inline-flex;
-  font-weight: 900;
+  font-weight: 700;
   gap: 6px;
   line-height: 1.1;
   min-height: 26px;
@@ -29708,7 +30083,7 @@
   color: #9a3412;
   display: inline-flex;
   font-size: 0.76rem;
-  font-weight: 950;
+  font-weight: 700;
   min-height: 26px;
   padding: 0 10px;
 }
@@ -29716,7 +30091,7 @@
 .planningMissingContingent p {
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 850;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -29752,19 +30127,19 @@
 
 .planningMissingProject strong {
   font-size: 0.76rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .planningMissingProject span {
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.2;
 }
 
 .planningMissingProject small {
   color: #9a3412;
   font-size: 0.7rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .planningDayPanel {
@@ -29810,7 +30185,7 @@
 
 .planningDayHeader p {
   color: #cbd5e1;
-  font-weight: 800;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -29859,7 +30234,7 @@
   color: #64748b;
   content: "Planungsgruppe";
   font-size: 0.72rem;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0.06em;
   margin-right: auto;
   text-transform: uppercase;
@@ -29872,7 +30247,7 @@
   color: #0f172a;
   cursor: pointer;
   font-family: inherit;
-  font-weight: 900;
+  font-weight: 700;
   padding: 10px 14px;
 }
 
@@ -29897,7 +30272,7 @@
   background: #f8fbff;
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 950;
+  font-weight: 700;
   letter-spacing: 0.04em;
   padding: 12px 8px;
   text-transform: uppercase;
@@ -29909,7 +30284,7 @@
   border-radius: 12px;
   color: #64748b;
   font-size: 0.9rem;
-  font-weight: 850;
+  font-weight: 600;
   grid-column: 1 / -1;
   margin-top: 10px;
   padding: 16px;
@@ -29924,7 +30299,7 @@
   color: #334155;
   display: grid;
   font-size: 0.78rem;
-  font-weight: 950;
+  font-weight: 700;
   height: 30px;
   overflow: visible;
 }
@@ -29970,20 +30345,20 @@
 .planningWorkerCell strong {
   color: #0f172a;
   font-size: 0.95rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .planningWorkerCell span {
   color: #64748b;
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 600;
   margin-top: 4px;
 }
 
 .planningWorkerCell small {
   color: #008b96;
   font-size: 0.78rem;
-  font-weight: 950;
+  font-weight: 700;
   margin-top: 4px;
 }
 
@@ -29991,7 +30366,7 @@
   color: #475569;
   font-size: 0.72rem;
   font-style: normal;
-  font-weight: 800;
+  font-weight: 600;
   margin-top: 3px;
 }
 
@@ -30065,7 +30440,7 @@
   color: #475569;
   display: inline-flex;
   font-size: 0.62rem;
-  font-weight: 950;
+  font-weight: 700;
   height: 18px;
   justify-content: center;
   justify-self: center;
@@ -30087,7 +30462,7 @@
   color: #5b21b6;
   display: inline-flex;
   font-size: 0.72rem;
-  font-weight: 950;
+  font-weight: 700;
   height: 26px;
   grid-column: 1 / -1;
   justify-content: center;
@@ -30126,7 +30501,7 @@
   display: inline-flex;
   font-family: inherit;
   font-size: 0.74rem;
-  font-weight: 950;
+  font-weight: 700;
   height: 38px;
   justify-content: center;
   margin: 0 5px;
@@ -30372,12 +30747,12 @@
 
 .planningApprovalNotice strong {
   font-size: 0.9rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .planningApprovalNotice span {
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .planningEntryModal {
@@ -30409,7 +30784,7 @@
   color: #0f172a;
   cursor: pointer;
   font: inherit;
-  font-weight: 950;
+  font-weight: 700;
   min-height: 44px;
   padding: 10px 12px;
   text-align: left;
@@ -30447,20 +30822,20 @@
 
 .planningSlotNoProjectButton strong {
   font-size: 0.92rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .planningSlotNoProjectButton span {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .planningSlotProjectStep label {
   color: #334155;
   display: grid;
   font-size: 0.82rem;
-  font-weight: 850;
+  font-weight: 600;
   gap: 7px;
 }
 
@@ -30469,7 +30844,7 @@
   border-radius: 12px;
   color: #0f172a;
   font: inherit;
-  font-weight: 750;
+  font-weight: 600;
   min-height: 42px;
   padding: 9px 12px;
 }
@@ -30513,7 +30888,7 @@
 .modalInfoText {
   color: #64748b;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -30545,7 +30920,7 @@
   color: #334155;
   display: grid;
   font-size: 0.82rem;
-  font-weight: 850;
+  font-weight: 600;
   gap: 7px;
 }
 
@@ -30557,7 +30932,7 @@
   border-radius: 12px;
   color: #0f172a;
   font: inherit;
-  font-weight: 750;
+  font-weight: 600;
   min-height: 42px;
   padding: 9px 12px;
 }
@@ -30579,18 +30954,18 @@
 
 .planningOfferInfo span {
   font-size: 0.76rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .planningOfferInfo strong {
   font-size: 0.92rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .planningOfferInfo small {
   color: #31536d;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -30613,18 +30988,18 @@
 
 .planningBudgetInfo span {
   font-size: 0.76rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .planningBudgetInfo strong {
   font-size: 0.92rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .planningBudgetInfo small {
   color: #31536d;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -30646,13 +31021,13 @@
 .planningRecurrencePanel strong {
   color: #0f172a;
   font-size: 0.88rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .planningRecurrencePanel span {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .hourlyPlanningPanel > div:first-child {
@@ -30691,7 +31066,7 @@
   color: #334155;
   display: grid;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 600;
   gap: 8px;
 }
 
@@ -30714,7 +31089,7 @@
   color: #334155;
   cursor: pointer;
   display: inline-flex;
-  font-weight: 900;
+  font-weight: 700;
   justify-content: center;
   min-height: 38px;
 }
@@ -30744,7 +31119,7 @@
   color: #005fff;
   display: inline-flex;
   font-size: 0.68rem;
-  font-weight: 900;
+  font-weight: 700;
   margin-left: 8px;
   padding: 3px 7px;
   vertical-align: middle;
@@ -30764,7 +31139,7 @@
   display: flex;
   font: inherit;
   font-size: 0.86rem;
-  font-weight: 950;
+  font-weight: 700;
   min-height: 44px;
   overflow: hidden;
   padding: 10px 12px;
@@ -30819,13 +31194,13 @@
 
 .planningProjectResults strong {
   font-size: 0.86rem;
-  font-weight: 950;
+  font-weight: 700;
 }
 
 .planningProjectResults span {
   color: #64748b;
   font-size: 0.76rem;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .planningDayGrid {
@@ -30843,7 +31218,7 @@
   background: #111827;
   border-right: 1px solid rgba(255, 255, 255, 0.1);
   color: #ffffff;
-  font-weight: 950;
+  font-weight: 700;
   padding: 12px;
 }
 
@@ -30867,7 +31242,7 @@
   border-right: 1px solid #e2e8f0;
   color: #475569;
   font-size: 0.78rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .planningSlot {
@@ -30875,7 +31250,7 @@
   border-right: 1px solid #e2e8f0;
   color: #0f172a;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .planningSlot[data-filled="true"] {
@@ -31086,7 +31461,7 @@
   border-bottom: 3px solid transparent;
   color: #475569;
   cursor: pointer;
-  font-weight: 800;
+  font-weight: 600;
   padding: 10px 12px;
 }
 
@@ -31140,7 +31515,7 @@
 .noteConfirmCard span {
   color: #64748b;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .noteCard header strong,
@@ -31169,7 +31544,7 @@
   border-radius: 999px;
   color: #1d4ed8;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   padding: 4px 8px;
 }
 
@@ -31193,7 +31568,7 @@
 .noteTriggerFieldset legend {
   color: #334155;
   font-size: 0.82rem;
-  font-weight: 850;
+  font-weight: 600;
   margin-bottom: 7px;
   padding: 0;
 }
@@ -31266,7 +31641,7 @@
 .standardModal .formGrid .noteEffectOption small {
   color: #64748b;
   font-size: 0.76rem;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -31303,7 +31678,7 @@
 
 .standardModal .formGrid .noteCheckboxLine span {
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .noteConfirmModal {
@@ -31332,7 +31707,7 @@
   cursor: pointer;
   display: flex;
   font-size: 0.88rem;
-  font-weight: 800;
+  font-weight: 600;
   gap: 10px;
   margin-top: 14px;
   padding: 12px 14px;
@@ -31367,20 +31742,35 @@
   --wp-brand: #0f6268;
   --wp-brand-strong: #0b4d52;
   --wp-focus: #2563eb;
-  background: var(--wp-bg);
+  background:
+    linear-gradient(
+      to right,
+      #0a0728 0,
+      #0a0728 var(--wp-sidebar-width),
+      var(--wp-bg) var(--wp-sidebar-width),
+      var(--wp-bg) 100%
+    );
 }
 
 .shell {
-  background: var(--wp-bg);
-  grid-template-columns: 236px minmax(0, 1fr);
+  background:
+    linear-gradient(
+      to right,
+      #0a0728 0,
+      #0a0728 var(--wp-sidebar-width),
+      var(--wp-bg) var(--wp-sidebar-width),
+      var(--wp-bg) 100%
+    );
+  grid-template-columns: var(--wp-sidebar-width) minmax(0, 1fr);
   grid-template-rows: 68px minmax(0, 1fr);
+  min-height: 100dvh;
 }
 
 .header {
   background: rgba(255, 255, 255, 0.98);
   border-bottom: 1px solid var(--wp-line);
   box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
-  grid-template-columns: 236px minmax(280px, 1fr) auto;
+  grid-template-columns: var(--wp-sidebar-width) minmax(280px, 1fr) auto;
   min-height: 68px;
   padding: 9px 18px;
 }
@@ -31415,9 +31805,10 @@
 }
 
 .tabs {
-  background: #111827;
+  background: #0a0728;
   gap: 2px;
-  height: calc(100vh - 68px);
+  height: calc(100dvh - 68px);
+  min-height: calc(100dvh - 68px);
   padding: 12px 10px;
   top: 68px;
 }
@@ -31426,8 +31817,20 @@
   border-radius: 8px;
   color: #cbd5e1;
   font-size: 0.88rem;
+  font-weight: 600;
   min-height: 40px;
   padding: 0 12px;
+  white-space: nowrap;
+}
+
+.navLabel,
+.projectTabLabel,
+.sidebarSubTabs button {
+  white-space: nowrap;
+}
+
+.sidebarSubTabs button {
+  font-weight: 600;
 }
 
 .tabs .activeTab,
@@ -31558,7 +31961,7 @@
     flex: 0 0 auto;
     justify-content: flex-start;
     min-height: 42px;
-    white-space: normal;
+    white-space: nowrap;
     width: 100%;
   }
 
@@ -31630,7 +32033,7 @@
 
 .overviewHero h1 {
   font-size: clamp(1.65rem, 2vw, 2.15rem);
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: -0.025em;
 }
 
@@ -31669,7 +32072,7 @@
 
 .employeeStampSummary strong {
   font-size: 1.75rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .employeeStampHeader {
@@ -31740,7 +32143,7 @@
 
 .dashboardFocusValue {
   font-size: clamp(1.6rem, 2vw, 2.45rem);
-  font-weight: 850;
+  font-weight: 600;
   margin-top: 10px;
 }
 
@@ -31841,7 +32244,7 @@
 .dashboardTrendBadge small {
   color: currentColor;
   font-size: 0.68rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1;
   white-space: nowrap;
 }
@@ -31903,7 +32306,7 @@
   display: inline-flex;
   font-size: clamp(4.8rem, 8vw, 8.5rem);
   font-variant-numeric: tabular-nums;
-  font-weight: 850;
+  font-weight: 600;
   gap: 6px;
   letter-spacing: -0.08em;
   line-height: 0.72;
@@ -31915,14 +32318,14 @@
 
 .dashboardHeaderWeek small {
   font-size: 0.22em;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0.04em;
 }
 
 .dashboardHeaderDate > span {
   color: #64748b;
   font-size: 0.7rem;
-  font-weight: 850;
+  font-weight: 600;
   letter-spacing: 0.09em;
   text-transform: uppercase;
 }
@@ -31937,7 +32340,7 @@
   color: #111827;
   font-size: 2.75rem;
   font-variant-numeric: tabular-nums;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: -0.06em;
   line-height: 0.9;
 }
@@ -31951,7 +32354,7 @@
 .dashboardHeaderDate p {
   color: #263447;
   font-size: 0.88rem;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.15;
   text-transform: uppercase;
 }
@@ -32135,7 +32538,7 @@
 .dashboardMiniViz[data-type="ring"] strong {
   color: #334155;
   font-size: 0.68rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .dashboardMiniVizCaptions {
@@ -32226,7 +32629,7 @@
   cursor: pointer;
   font: inherit;
   font-size: 0.8rem;
-  font-weight: 800;
+  font-weight: 600;
   margin-top: 8px;
   min-height: 36px;
   width: 100%;
@@ -32265,7 +32668,7 @@
 .taskModuleHeader h1 {
   color: #f8fafc;
   font-size: 1.55rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1.15;
   margin: 4px 0 0;
 }
@@ -32273,14 +32676,14 @@
 .taskModuleHeader p:not(.taskModuleEyebrow) {
   color: #cbd5e1;
   font-size: 0.9rem;
-  font-weight: 550;
+  font-weight: 500;
   margin: 7px 0 0;
 }
 
 .taskModuleEyebrow {
   color: #5eead4;
   font-size: 0.7rem;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0.08em;
   margin: 0;
   text-transform: uppercase;
@@ -32503,7 +32906,7 @@
   color: #64748b;
   display: flex;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 600;
   gap: 6px;
   line-height: 1.15;
   min-width: 0;
@@ -32512,7 +32915,7 @@
 .taskSummaryMetric strong {
   color: #0f172a;
   font-size: 1.45rem;
-  font-weight: 850;
+  font-weight: 600;
   line-height: 1;
 }
 
@@ -32597,7 +33000,7 @@
   display: flex;
   flex-wrap: wrap;
   font-size: 0.72rem;
-  font-weight: 750;
+  font-weight: 600;
   gap: 4px 10px;
   line-height: 1.3;
   margin-top: 6px;
@@ -32617,7 +33020,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 0.78rem;
-  font-weight: 850;
+  font-weight: 600;
   min-height: 34px;
   padding: 7px 10px;
 }
@@ -32643,7 +33046,7 @@
   display: flex;
   font-family: inherit;
   font-size: 0.76rem;
-  font-weight: 850;
+  font-weight: 600;
   gap: 6px;
   justify-content: center;
   min-height: 34px;
@@ -32669,7 +33072,7 @@
 
 .taskEmptyTableState {
   color: #64748b;
-  font-weight: 750;
+  font-weight: 600;
   padding: 32px 18px !important;
   text-align: center;
 }
@@ -32695,7 +33098,7 @@
 .taskHistoryTimelineItem > span {
   color: #64748b;
   font-size: 0.78rem;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.35;
 }
 
@@ -32712,7 +33115,7 @@
 .taskHistoryTimelineContent strong {
   color: #0f172a;
   font-size: 0.86rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .taskHistoryTimelineContent p {
@@ -32787,7 +33190,7 @@
 .taskDetailForm .timeHeader h3 {
   color: #0f172a;
   font-size: 0.94rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .taskDetailForm .timeHeader p {
@@ -32905,7 +33308,7 @@
   display: inline-flex;
   font-family: inherit;
   font-size: 0.84rem;
-  font-weight: 900;
+  font-weight: 700;
   gap: 7px;
   min-height: 42px;
   padding: 8px 12px;
@@ -32967,7 +33370,7 @@
 .kanbanHeader h2 {
   color: #0f172a;
   font-size: 0.84rem;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.2;
   text-transform: none;
 }
@@ -33038,7 +33441,7 @@
 .kanbanCardTopline > span {
   color: #2563eb;
   font-size: 0.7rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .kanbanCardTopline > strong {
@@ -33047,21 +33450,21 @@
   border-radius: 999px;
   color: #b91c1c;
   font-size: 0.64rem;
-  font-weight: 900;
+  font-weight: 700;
   padding: 3px 6px;
 }
 
 .kanbanCard .kanbanCardTitle {
   color: #0f172a;
   font-size: 0.84rem;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.3;
 }
 
 .kanbanCard .kanbanCardOwner {
   color: #475569;
   font-size: 0.73rem;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .kanbanCardContext {
@@ -33082,7 +33485,7 @@
 .kanbanAcceptanceHint {
   color: #b45309 !important;
   font-size: 0.68rem !important;
-  font-weight: 850 !important;
+  font-weight: 600 !important;
 }
 
 .kanbanMeta {
@@ -33115,7 +33518,7 @@
   color: #0f172a;
   font-family: inherit;
   font-size: 0.88rem;
-  font-weight: 750;
+  font-weight: 600;
   min-height: 42px;
   min-width: 210px;
   padding: 8px 10px;
@@ -33145,7 +33548,7 @@
   color: #f8fafc;
   display: inline-flex;
   font-size: 0.84rem;
-  font-weight: 850;
+  font-weight: 600;
   min-height: 42px;
   padding: 9px 14px;
   white-space: nowrap;
@@ -33171,7 +33574,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 0.8rem;
-  font-weight: 850;
+  font-weight: 600;
   justify-self: start;
   min-height: 34px;
   padding: 6px 8px;
@@ -33223,7 +33626,7 @@
 .calendarPeriodTitle {
   color: #0f172a;
   font-size: 0.9rem;
-  font-weight: 900;
+  font-weight: 700;
   margin: 0;
   padding: 0 14px;
   text-align: center;
@@ -33392,7 +33795,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 0.62rem;
-  font-weight: 850;
+  font-weight: 600;
   padding: 3px 4px;
   text-align: left;
 }
@@ -33453,7 +33856,7 @@
 .calendarDayInspectorHeader div > span {
   color: #0f9da8;
   font-size: 0.63rem;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -33491,7 +33894,7 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 0.73rem;
-  font-weight: 850;
+  font-weight: 600;
   min-height: 36px;
   padding: 7px 8px;
 }
@@ -33570,13 +33973,13 @@
 .calendarInspectorTaskTopline span:first-child {
   color: #2563eb;
   font-size: 0.65rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .calendarInspectorTaskTopline span:last-child {
   color: #64748b;
   font-size: 0.62rem;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .calendarInspectorTask[data-overdue="true"] .calendarInspectorTaskTopline span:last-child {
@@ -33605,7 +34008,7 @@
   border-radius: 5px;
   color: #334155;
   font-size: 0.63rem;
-  font-weight: 850;
+  font-weight: 600;
   justify-self: start;
   margin-top: 2px;
   padding: 4px 6px;
@@ -33644,13 +34047,13 @@
 .calendarTaskTopline > span:first-child {
   color: #2563eb;
   font-size: 0.64rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .calendarTaskTopline > span:last-child {
   color: #475569;
   font-size: 0.6rem;
-  font-weight: 850;
+  font-weight: 600;
   text-align: right;
 }
 
@@ -33729,7 +34132,7 @@
 .dayTaskTopline {
   color: #2563eb !important;
   font-size: 0.7rem !important;
-  font-weight: 900 !important;
+  font-weight: 700 !important;
   margin: 0 0 4px !important;
 }
 
@@ -33819,7 +34222,7 @@
   display: flex;
   flex: 0 0 30px;
   font-size: 0.68rem;
-  font-weight: 900;
+  font-weight: 700;
   height: 30px;
   justify-content: center;
   overflow: hidden;
@@ -33854,7 +34257,7 @@
 .mailTemplateSaved {
   border-radius: 999px;
   font-size: 0.75rem;
-  font-weight: 800;
+  font-weight: 600;
   padding: 7px 10px;
 }
 
@@ -33898,7 +34301,7 @@
 
 .mailTemplateKindNav button span {
   font-size: 0.86rem;
-  font-weight: 900;
+  font-weight: 700;
 }
 
 .mailTemplateKindNav button small {
@@ -33955,7 +34358,7 @@
   color: #64748b;
   display: block;
   font-size: 0.7rem;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -33978,7 +34381,7 @@
   border-radius: 7px;
   color: #087f8c;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 600;
   padding: 6px 8px;
 }
 
@@ -34137,7 +34540,7 @@
   background: #eef2f4;
   color: #53666c;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .offerAcceptanceStatus[data-tone="info"] { background: #e8f2ff; color: #0756a5; }
@@ -34202,4 +34605,212 @@
   .offerAcceptanceCard > header { align-items: flex-start; }
   .offerAcceptanceFacts { grid-template-columns: 1fr; }
   .offerAcceptanceCard > footer { align-items: stretch; flex-direction: column; }
+}
+
+/* WorkPilot360 typography system: controlled foundation */
+.page {
+  font-size: var(--wp-type-size-base);
+  line-height: var(--wp-type-line-default);
+}
+
+.page h1,
+.page h2,
+.page h3,
+.page h4 {
+  font-weight: var(--wp-type-weight-bold);
+  letter-spacing: -0.02em;
+}
+
+.page h1 {
+  line-height: 1.15;
+}
+
+.page h2,
+.page h3,
+.page h4 {
+  line-height: var(--wp-type-line-compact);
+}
+
+.page button {
+  font-weight: var(--wp-type-weight-semibold);
+}
+
+.page input,
+.page select,
+.page textarea {
+  font-weight: var(--wp-type-weight-medium);
+  line-height: var(--wp-type-line-compact);
+}
+
+.page table th {
+  font-size: var(--wp-type-size-sm);
+  font-weight: var(--wp-type-weight-semibold);
+  line-height: 1.35;
+}
+
+.page table td {
+  font-size: var(--wp-type-size-sm);
+  font-weight: var(--wp-type-weight-medium);
+  line-height: 1.4;
+}
+
+.tab,
+.sidebarSubTabs button,
+.analyticsTabs button {
+  font-weight: var(--wp-type-weight-semibold);
+}
+
+.analyticsTabs button[data-active="true"] {
+  font-weight: var(--wp-type-weight-bold);
+}
+
+.analyticsCard h2,
+.standardModalHeader h2 {
+  font-weight: var(--wp-type-weight-bold);
+}
+
+.standardModalHeader h2 {
+  font-size: var(--wp-type-size-2xl);
+}
+
+.standardModalHeader p {
+  font-size: var(--wp-type-size-base);
+  font-weight: var(--wp-type-weight-regular);
+  line-height: 1.4;
+}
+
+.primaryButton,
+.secondaryButton,
+.dangerButton,
+.acceptButton,
+.deleteButton {
+  font-weight: var(--wp-type-weight-semibold);
+}
+
+.page label,
+.page legend {
+  font-size: var(--wp-type-size-sm);
+  font-weight: var(--wp-type-weight-semibold);
+  line-height: 1.35;
+}
+
+.page input,
+.page select,
+.page textarea {
+  font-size: var(--wp-type-size-base);
+}
+
+.page button:not(.iconButton):not(.notificationBell):not(.userMenuButton) {
+  font-size: var(--wp-type-size-base);
+}
+
+.page small {
+  font-size: var(--wp-type-size-xs);
+  line-height: 1.4;
+}
+
+.customerFileHeader h1,
+.employeeFileHeader h1,
+.employeeListHero h1,
+.overviewHero h1,
+.planningBoardHero h1,
+.projectFileHeader h1,
+.taskModuleHeader h1 {
+  font-size: var(--wp-type-size-2xl);
+}
+
+.analyticsCard h2,
+.companyProfileCard h2,
+.customerInfoCard h2,
+.heroDetailCard h2,
+.moduleCard h2,
+.projectMetricCard h2,
+.settingsCard h2 {
+  font-size: var(--wp-type-size-lg);
+}
+
+.employeeSectionHeader h2,
+.monthlyFinancialHeader h2,
+.personalPanelHeader h2,
+.reportHeader h2,
+.salesSectionHeader h2,
+.settingsSectionHeader h2 {
+  font-size: var(--wp-type-size-xl);
+}
+
+.goalCard h3,
+.salesAnalyticsBlock h3,
+.processAutomationRuleColumns h3,
+.projectBottleneckSectionHeading h3,
+.projectBottleneckTableBlock h3 {
+  font-size: var(--wp-type-size-lg);
+}
+
+/* WorkPilot360 typography system: KPI hierarchy */
+.analyticsMetric strong,
+.dashboardFocusValue,
+.goalValueSummary > strong {
+  font-size: var(--wp-type-size-kpi-lg);
+  font-weight: var(--wp-type-weight-bold);
+  letter-spacing: -0.025em;
+  line-height: var(--wp-type-line-kpi);
+}
+
+.monthlyFinancialMetrics .analyticsMetric strong,
+.winterServiceMetricGrid .analyticsMetric strong,
+.winterServiceQualityGrid .analyticsMetric strong,
+.forecastMetricGrid .analyticsMetric strong,
+.employeeKpiGrid strong,
+.personalKpiGrid strong {
+  font-size: var(--wp-type-size-kpi);
+  font-weight: var(--wp-type-weight-bold);
+  line-height: var(--wp-type-line-kpi);
+}
+
+.goalSummaryMetric strong,
+.employeeAnalyticsMetricGrid strong,
+.employeeAnalyticsMemberKpis strong,
+.taskSummaryMetric strong,
+.catalogMetric strong {
+  font-size: var(--wp-type-size-kpi-sm);
+  font-weight: var(--wp-type-weight-semibold);
+  line-height: var(--wp-type-line-kpi);
+}
+
+/* WorkPilot360 typography system: compact semantic status labels */
+.page :is(
+  .absenceAcceptedBadge,
+  .catalogStatusClip,
+  .checklistManagementStatus,
+  .companyUnitStatus,
+  .contactTypeBadge,
+  .deadlinePill,
+  .employeeStampStatus,
+  .goalStatusBadge,
+  .ideaPlannedBadge,
+  .implausibleMetricPill,
+  .invoiceStatusChip,
+  .offerAcceptanceStatus,
+  .offerStatusCommentClip,
+  .paidForecastBadge,
+  .performanceBadge,
+  .personalTimeStatus,
+  .planningBoardTodayBadge,
+  .planningSeriesBadge,
+  .planningStatusPill,
+  .projectHeaderChip,
+  .projectPlanningCapacityPill,
+  .projectProfitStatusPill,
+  .stampStatusPill,
+  .taskParticipantStatus
+) {
+  font-size: var(--wp-type-size-xs);
+  font-weight: var(--wp-type-weight-semibold);
+  line-height: 1.2;
+}
+
+.page .analyticsMetricHeader > small {
+  font-size: var(--wp-type-size-xs);
+  font-weight: var(--wp-type-weight-semibold);
+  line-height: 1;
 }

@@ -616,8 +616,9 @@ type ManagementAiChatMessage = {
   role: "user" | "assistant";
   content: string;
   createdAt: string;
+  choices?: string[];
 };
-type ManagementAiMode = "management" | "sales";
+type ManagementAiMode = "system" | "management" | "sales";
 type ContactFormTab = "details" | "address" | "terms" | "payment" | "zugferd";
 type CustomerFileTab =
   | "logbook"
@@ -3626,6 +3627,78 @@ const sidebarChildTabsByParent: Partial<Record<AppTab, AppTab[]>> = {
   documents: ["documentOverview", "documentTexts", "documentTemplates", "documentConfigurator", "documentGaeb"],
   articles: ["articles", "services", "packages"],
 };
+
+const jarvisSubviewLabels: Partial<Record<AppTab, string>> = {
+  calendar: "Kalender",
+  kanban: "Kanban",
+  archive: "Archiv",
+  salesTargets: "Zielverwaltung",
+  laborCostRates: "Lohnkostensätze",
+  absenceRequests: "Abwesenheiten",
+  timeTracking: "Zeiterfassung",
+  contentRound: "Content-Runde",
+  editorialPlan: "Redaktionsplan",
+  contentApprovals: "Freigaben",
+  contentCorrections: "Korrekturen",
+  contentQuotas: "Kontingente",
+  ideaStore: "Ideenspeicher",
+  winterService: "Winterdienst",
+  generalActivityReports: "Tätigkeitsberichte",
+  statusAutomation: "Status-Automation",
+  batchBilling: "Stapelabrechnung",
+  documents: "Dokumente",
+  services: "Leistungen",
+  packages: "Pakete",
+  salesPrices: "Verkaufspreise",
+  datanorm: "Datanorm",
+};
+
+const jarvisProjectFileTabLabels: Record<ProjectFileTab, string> = {
+  logbook: "Logbuch",
+  notes: "Hinweise",
+  images: "Bilder",
+  documents: "Dokumente",
+  approvals: "Freigaben",
+  gaeb: "GAEB",
+  time: "Zeiten",
+  appointments: "Termine & Stempelungen",
+  forecast: "Forecast",
+  budgets: "Projektzeitkontingente",
+  marketingQuotas: "Marketing-Kontingente",
+  automaticBilling: "Automatische Abrechnung",
+  profit: "Projektgewinn",
+  potentials: "Zusatzverkäufe",
+  tasks: "Aufgaben",
+  material: "Material",
+  comparison: "Vergleich",
+  participants: "Beteiligte",
+  checklists: "Checklisten",
+};
+
+const jarvisCustomerFileTabLabels: Record<CustomerFileTab, string> = {
+  logbook: "Logbuch",
+  notes: "Hinweise",
+  images: "Bilder",
+  documents: "Dokumente",
+  approvals: "Freigaben",
+  gaeb: "GAEB",
+  contacts: "Ansprechpartner",
+  potentials: "Zusatzverkäufe",
+  tasks: "Aufgaben",
+  projects: "Projekte",
+  addresses: "Objektadressen",
+};
+
+function getJarvisNavigationContext(tab: AppTab) {
+  const direct = allNavigationTabs.find(([item]) => item === tab);
+  if (direct) return { module: direct[1], subview: "" };
+
+  const parent = Object.entries(sidebarChildTabsByParent).find(([, children]) =>
+    children?.includes(tab)
+  )?.[0] as AppTab | undefined;
+  const module = allNavigationTabs.find(([item]) => item === parent)?.[1] ?? "WorkPilot360";
+  return { module, subview: jarvisSubviewLabels[tab] ?? "" };
+}
 
 function isAccountingRole(role?: string) {
   return role === "BUCHHALTUNG";
@@ -7333,10 +7406,12 @@ export function DashboardPage() {
   const [svsTradeFilter, setSvsTradeFilter] = useState("all");
   const [reportProjectKindFilter, setReportProjectKindFilter] = useState<ReportProjectKindFilter>("all");
   const [isManagementAiOpen, setIsManagementAiOpen] = useState(false);
+  const [jarvisLaunchVector, setJarvisLaunchVector] = useState({ x: -180, y: 40 });
   const [isManagementAiMenuOpen, setIsManagementAiMenuOpen] = useState(false);
-  const [managementAiMode, setManagementAiMode] = useState<ManagementAiMode>("management");
+  const [managementAiMode, setManagementAiMode] = useState<ManagementAiMode>("system");
   const [managementAiInput, setManagementAiInput] = useState("");
   const [managementAiMessagesByMode, setManagementAiMessagesByMode] = useState<Record<ManagementAiMode, ManagementAiChatMessage[]>>({
+    system: [],
     management: [],
     sales: [],
   });
@@ -31654,33 +31729,58 @@ await addProjectLogbookEntry(
   };
   const canUseManagementAi = activeUser?.role === "ADMIN" || activeUser?.role === "GESCHAEFTSFUEHRER";
   const canUseSalesAi = canUseManagementAi || activeUserHasSalesRole;
+  const canUseJarvis = Boolean(activeUser);
+  const canUseSelectedJarvisMode =
+    managementAiMode === "system"
+      ? canUseJarvis
+      : managementAiMode === "sales"
+        ? canUseSalesAi
+        : canUseManagementAi;
   const currentManagementAiMessages = managementAiMessagesByMode[managementAiMode];
   const managementAiLabels =
-    managementAiMode === "sales"
+    managementAiMode === "system"
       ? {
-          kicker: "Vertriebs-KI",
+          kicker: "JARVIS · Systemhilfe",
+          title: "Hilfe zur Bedienung",
+          aria: "JARVIS Systemhilfe",
+          intro: "Frag mich, wie du eine Funktion in WorkPilot360 benutzt.",
+          placeholder: "Wie kann ich dir in WorkPilot360 helfen?",
+          fallbackError: "JARVIS konnte gerade nicht antworten.",
+          unreachableError: "JARVIS ist gerade nicht erreichbar.",
+          emptyReply: "Dazu habe ich noch keine freigegebene WorkPilot-Anleitung.",
+          loading: "JARVIS prüft die passende Anleitung...",
+        }
+      : managementAiMode === "sales"
+      ? {
+          kicker: "JARVIS · Vertrieb",
           title: "Vertriebs-Analyse",
-          aria: "Vertriebs-KI",
-          intro: "Frag die Vertriebs-KI zu Angeboten, Nachfassen, Neukunden, Zusatzverkauf oder Dauerläufern.",
+          aria: "JARVIS Vertrieb",
+          intro: "Frag JARVIS zu Angeboten, Nachfassen, Neukunden, Zusatzverkauf oder Dauerläufern.",
           placeholder: "Frage zur aktuellen Vertriebslage stellen...",
-          fallbackError: "Die Vertriebs-KI konnte gerade nicht antworten.",
-          unreachableError: "Die Vertriebs-KI ist gerade nicht erreichbar.",
-          emptyReply: "Die Vertriebs-KI hat keine verwertbare Antwort geliefert.",
+          fallbackError: "JARVIS Vertrieb konnte gerade nicht antworten.",
+          unreachableError: "JARVIS Vertrieb ist gerade nicht erreichbar.",
+          emptyReply: "JARVIS hat keine verwertbare Vertriebsantwort geliefert.",
           loading: "Analysiere aktuelle Vertriebsdaten...",
         }
       : {
-          kicker: "BWL-KI",
+          kicker: "JARVIS · BWL",
           title: "Management-Analyse",
-          aria: "BWL-KI",
-          intro: "Frag die BWL-KI zu Engpässen, Umsatz, Vertrieb, SVS oder Kapazität.",
+          aria: "JARVIS BWL",
+          intro: "Frag JARVIS zu Engpässen, Umsatz, SVS oder Kapazität.",
           placeholder: "Frage zur aktuellen Unternehmenslage stellen...",
-          fallbackError: "Die BWL-KI konnte gerade nicht antworten.",
-          unreachableError: "Die BWL-KI ist gerade nicht erreichbar.",
-          emptyReply: "Die BWL-KI hat keine verwertbare Antwort geliefert.",
+          fallbackError: "JARVIS BWL konnte gerade nicht antworten.",
+          unreachableError: "JARVIS BWL ist gerade nicht erreichbar.",
+          emptyReply: "JARVIS hat keine verwertbare BWL-Antwort geliefert.",
           loading: "Analysiere aktuelle Systemzahlen...",
         };
   const managementAiSuggestions =
-    managementAiMode === "sales"
+    managementAiMode === "system"
+      ? [
+          { label: "Angebot anlegen", question: "Wie lege ich ein Angebot an?" },
+          { label: "Termin eintragen", question: "Wie trage ich einen Termin ein?" },
+          { label: "Zeiteintrag erfassen", question: "Wie erfasse ich einen manuellen Zeiteintrag?" },
+        ]
+      : managementAiMode === "sales"
       ? [
           { label: "Heute aktiv angehen", question: "Welche Kunden oder Angebote soll ich heute aktiv angehen?" },
           { label: "Nachfassbremsen", question: "Wo liegen aktuell die größten Nachfassbremsen?" },
@@ -31696,8 +31796,69 @@ await addProjectLogbookEntry(
     setManagementAiMode(mode);
     setManagementAiInput("");
     setManagementAiError("");
+    setJarvisLaunchVector({ x: -180, y: 40 });
     window.setTimeout(() => setIsManagementAiOpen(true), 0);
   }
+  function openJarvis(event: MouseEvent<HTMLElement>) {
+    const origin = event.currentTarget.getBoundingClientRect();
+    const panelWidth = Math.min(480, window.innerWidth);
+    setJarvisLaunchVector({
+      x: origin.left + origin.width / 2 - (window.innerWidth - panelWidth),
+      y: origin.top + origin.height / 2 - window.innerHeight,
+    });
+    setManagementAiMode("system");
+    setManagementAiInput("");
+    setManagementAiError("");
+    setIsManagementAiOpen(true);
+  }
+  const buildJarvisSurfaceContext = () => {
+    const navigation = getJarvisNavigationContext(activeTab);
+    const hasProjectFile = Boolean(selectedProjectFile);
+    const hasCustomerFile = Boolean(selectedCustomerFile);
+    const projectKind = selectedProjectFile
+      ? getProjectKind(selectedProjectFile) === ONE_TIME_PROJECT_KIND
+        ? "oneTime"
+        : "recurring"
+      : "unknown";
+    const recurringBillingMode = selectedProjectFile
+      ? getProjectRecurringBillingMode(selectedProjectFile)
+      : "";
+    const modal = isOfferModalOpen
+      ? "Angebot"
+      : isInvoiceModalOpen
+        ? "Rechnung"
+        : isManualProjectTimeModalOpen
+          ? "Zeiteintrag"
+          : isPlanningEntryModalOpen
+            ? "Termin oder Terminwunsch"
+            : isContactModalOpen
+              ? "Kontakt"
+              : isProjectModalOpen
+                ? "Projekt"
+                : isCatalogModalOpen
+                  ? "Artikel, Leistung oder Paket"
+                  : "";
+
+    return {
+      module: hasProjectFile ? "Projektakte" : hasCustomerFile ? "Kundenakte" : navigation.module,
+      subview: hasProjectFile
+        ? jarvisProjectFileTabLabels[projectFileTab]
+        : hasCustomerFile
+          ? jarvisCustomerFileTabLabels[customerFileTab]
+          : activeTab === "reports"
+            ? allReportTabs.find((tab) => tab.id === reportAnalyticsTab)?.label ?? navigation.subview
+            : navigation.subview,
+      recordType: hasProjectFile ? "project" : hasCustomerFile ? "customer" : "none",
+      projectKind,
+      billingMode:
+        recurringBillingMode === RECURRING_BILLING_HOURLY
+          ? "hourly"
+          : recurringBillingMode === RECURRING_BILLING_MONTHLY_FLAT
+            ? "monthlyFlat"
+            : "unknown",
+      modal,
+    };
+  };
   const buildManagementAiContext = () => {
     const topCapacityRows = managementCapacityRows
       .filter((row) => row.state !== "good" || row.overloadHours > 0 || row.svs <= 0)
@@ -31770,8 +31931,8 @@ await addProjectLogbookEntry(
       "Sperrhinweis: Es werden keine Gehaelter, Mitarbeiterverdienste, internen Lohnkosten, Personalkosten oder internen Kostensaetze bereitgestellt.",
     ].join("\n\n");
   };
-  async function sendManagementAiMessage() {
-    const question = managementAiInput.trim();
+  async function sendManagementAiMessage(questionOverride?: string) {
+    const question = (questionOverride ?? managementAiInput).trim();
     if (!question || !activeUserId || isManagementAiSending) return;
 
     const userMessage: ManagementAiChatMessage = {
@@ -31788,7 +31949,8 @@ await addProjectLogbookEntry(
     setIsManagementAiSending(true);
 
     try {
-      const res = await fetch("/api/management-ai/chat", {
+      const isSystemHelp = managementAiMode === "system";
+      const res = await fetch(isSystemHelp ? "/api/jarvis/chat" : "/api/management-ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -31799,7 +31961,11 @@ await addProjectLogbookEntry(
             role: message.role,
             content: message.content,
           })),
-          context: managementAiMode === "sales" ? buildSalesAiContext() : buildManagementAiContext(),
+          context: isSystemHelp
+            ? buildJarvisSurfaceContext()
+            : managementAiMode === "sales"
+              ? buildSalesAiContext()
+              : buildManagementAiContext(),
         }),
       });
       const data = await res.json().catch(() => null);
@@ -31813,8 +31979,11 @@ await addProjectLogbookEntry(
           ...current[managementAiMode],
           {
             role: "assistant",
-            content: data?.reply || managementAiLabels.emptyReply,
+            content: (isSystemHelp ? data?.message : data?.reply) || managementAiLabels.emptyReply,
             createdAt: new Date().toISOString(),
+            choices: isSystemHelp && Array.isArray(data?.choices)
+              ? data.choices.filter((choice: unknown): choice is string => typeof choice === "string").slice(0, 4)
+              : undefined,
           },
         ],
       }));
@@ -32877,12 +33046,12 @@ await addProjectLogbookEntry(
             />
           </label>
         ) : null}
-        {canUseManagementAi || canUseSalesAi ? (
+        {canUseJarvis ? (
           <div className={styles.reportAiMenu} ref={managementAiMenuRef}>
             <button
               type="button"
               className={styles.reportAiButton}
-              aria-label="KI-Assistent auswählen"
+              aria-label="JARVIS auswählen"
               aria-expanded={isManagementAiMenuOpen}
               onClick={() => setIsManagementAiMenuOpen((current) => !current)}
             >
@@ -32890,19 +33059,23 @@ await addProjectLogbookEntry(
                 <path d="M12 3.5 13.6 8l4.5 1.6-4.5 1.6L12 15.7l-1.6-4.5-4.5-1.6L10.4 8 12 3.5Z" />
                 <path d="M18.4 14.2 19.2 16.4l2.1.8-2.1.8-.8 2.2-.8-2.2-2.1-.8 2.1-.8.8-2.2Z" />
               </svg>
-              <span>KI-Assistent</span>
+              <span>JARVIS</span>
             </button>
             {isManagementAiMenuOpen ? (
-              <div className={styles.reportAiPopover} aria-label="KI-Assistenten">
+              <div className={styles.reportAiPopover} aria-label="JARVIS Bereiche">
+                <button type="button" onClick={() => selectManagementAi("system")}>
+                  <strong>Systemhilfe</strong>
+                  <span>Bedienung von WorkPilot360</span>
+                </button>
                 {canUseManagementAi ? (
                   <button type="button" onClick={() => selectManagementAi("management")}>
-                    <strong>BWL-KI</strong>
+                    <strong>BWL</strong>
                     <span>Unternehmenslage analysieren</span>
                   </button>
                 ) : null}
                 {canUseSalesAi ? (
                   <button type="button" onClick={() => selectManagementAi("sales")}>
-                    <strong>Vertriebs-KI</strong>
+                    <strong>Vertrieb</strong>
                     <span>Vertrieb und Chancen prüfen</span>
                   </button>
                 ) : null}
@@ -59472,6 +59645,24 @@ await addProjectLogbookEntry(
               </button>
             );
           })}
+          <div className={styles.sidebarUtilityStack}>
+          {canUseJarvis ? (
+            <button
+              type="button"
+              className={styles.jarvisSidebarCard}
+              data-active={isManagementAiOpen}
+              onClick={openJarvis}
+              aria-label="JARVIS Chat öffnen"
+              aria-expanded={isManagementAiOpen}
+            >
+              <span className={styles.jarvisSidebarVisual} aria-hidden="true">
+                <img src="/media/jarvis-ring.webp" alt="" />
+              </span>
+              <span className={styles.jarvisSidebarLabel}>
+                <strong>JARVIS</strong>
+              </span>
+            </button>
+          ) : null}
           <div className={styles.stampWidget}>
             <div className={styles.stampStatusDot} data-state={stampSession ? "active" : "idle"} />
             <button
@@ -59525,6 +59716,7 @@ await addProjectLogbookEntry(
             >
               Stop
             </button>
+          </div>
           </div>
         </nav>
 
@@ -67092,24 +67284,78 @@ await addProjectLogbookEntry(
       {renderFinalizeInvoiceConfirmModal()}
       {renderDocumentMailModal()}
       {renderOfferModal()}
-      {isManagementAiOpen && (managementAiMode === "sales" ? canUseSalesAi : canUseManagementAi) ? (
-        <div className={styles.managementAiOverlay} onClick={() => setIsManagementAiOpen(false)}>
+      {isManagementAiOpen && canUseSelectedJarvisMode ? (
+        <div className={styles.managementAiOverlay}>
           <aside
             className={styles.managementAiPanel}
             role="dialog"
-            aria-modal="true"
+            aria-modal="false"
             aria-label={managementAiLabels.aria}
-            onClick={(event) => event.stopPropagation()}
+            style={
+              {
+                "--jarvis-launch-x": `${jarvisLaunchVector.x}px`,
+                "--jarvis-launch-y": `${jarvisLaunchVector.y}px`,
+              } as CSSProperties
+            }
           >
             <div className={styles.managementAiHeader}>
               <div>
                 <span>{managementAiLabels.kicker}</span>
-                <h2>{managementAiLabels.title}</h2>
-                <p>{reportPeriodLabel} · {allReportTabs.find((tab) => tab.id === reportAnalyticsTab)?.label ?? "Auswertungen"}</p>
+                <h2>Hallo, ich bin JARVIS.</h2>
+                <p>Ich helfe dir bei deinen Fragen rund um unser System.</p>
               </div>
               <button className={styles.iconButton} type="button" onClick={() => setIsManagementAiOpen(false)}>
                 X
               </button>
+            </div>
+
+            <div className={styles.jarvisModeBar} role="tablist" aria-label="JARVIS Bereich">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={managementAiMode === "system"}
+                data-active={managementAiMode === "system"}
+                onClick={() => selectManagementAi("system")}
+              >
+                Systemhilfe
+              </button>
+              {canUseSalesAi ? (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={managementAiMode === "sales"}
+                  data-active={managementAiMode === "sales"}
+                  onClick={() => selectManagementAi("sales")}
+                >
+                  Vertrieb
+                </button>
+              ) : null}
+              {canUseManagementAi ? (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={managementAiMode === "management"}
+                  data-active={managementAiMode === "management"}
+                  onClick={() => selectManagementAi("management")}
+                >
+                  BWL
+                </button>
+              ) : null}
+            </div>
+
+            <div className={styles.jarvisContextBar}>
+              <span>Aktueller Kontext</span>
+              <strong>
+                {managementAiMode === "system"
+                  ? [
+                      buildJarvisSurfaceContext().module,
+                      buildJarvisSurfaceContext().subview,
+                      buildJarvisSurfaceContext().modal,
+                    ].filter(Boolean).join(" · ")
+                  : `${reportPeriodLabel} · ${
+                      allReportTabs.find((tab) => tab.id === reportAnalyticsTab)?.label ?? "Auswertungen"
+                    }`}
+              </strong>
             </div>
 
             <div className={styles.managementAiMessages}>
@@ -67126,6 +67372,26 @@ await addProjectLogbookEntry(
                 currentManagementAiMessages.map((message, index) => (
                   <article key={`${message.createdAt}-${index}`} data-role={message.role}>
                     <p>{message.content}</p>
+                    {message.role === "assistant" && message.choices?.length ? (
+                      <div className={styles.jarvisChoiceList}>
+                        {message.choices.map((choice) => (
+                          <button
+                            key={choice}
+                            type="button"
+                            disabled={isManagementAiSending}
+                            onClick={() =>
+                              void sendManagementAiMessage(
+                                managementAiMode === "system"
+                                  ? `Wie erfasse ich einen manuellen Zeiteintrag für: ${choice}?`
+                                  : choice
+                              )
+                            }
+                          >
+                            {choice}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                   </article>
                 ))
               )}

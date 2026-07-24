@@ -1,10 +1,29 @@
 :root {
   color-scheme: light;
+  --wp-type-size-xs: 0.75rem;
+  --wp-type-size-sm: 0.8125rem;
+  --wp-type-size-base: 0.875rem;
+  --wp-type-size-lg: 1rem;
+  --wp-type-size-xl: 1.125rem;
+  --wp-type-size-2xl: 1.5rem;
+  --wp-type-size-kpi-sm: 1.5rem;
+  --wp-type-size-kpi: clamp(1.75rem, 2vw, 2.25rem);
+  --wp-type-size-kpi-lg: clamp(2rem, 2.4vw, 2.75rem);
+  --wp-type-line-compact: 1.25;
+  --wp-type-line-kpi: 1.05;
+  --wp-type-line-default: 1.5;
+  --wp-type-weight-regular: 400;
+  --wp-type-weight-medium: 500;
+  --wp-type-weight-semibold: 600;
+  --wp-type-weight-bold: 700;
 }
 * { box-sizing: border-box; }
 body {
   margin: 0;
-  font-family: var(--font-outfit), Outfit, Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-google-sans), "Google Sans", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  font-size: var(--wp-type-size-base);
+  line-height: var(--wp-type-line-default);
+  font-synthesis: style;
   background: #f5f7fb;
   color: #1e293b;
 }
@@ -14,6 +33,6 @@ input,
 select,
 textarea,
 option {
-  font-family: var(--font-outfit), Outfit, Inter, ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-google-sans), "Google Sans", ui-sans-serif, system-ui, sans-serif;
   font-size: inherit;
 }
