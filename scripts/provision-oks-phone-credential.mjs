@@ -9,6 +9,7 @@ const ALLOWED_SCOPES = new Set([
   "customer-logbook:write",
   "project-logbook:write",
   "contacts-delta:read",
+  "team-availability:read",
 ]);
 
 function required(name) {

@@ -6,6 +6,7 @@ export const OKS_PHONE_SCOPES = {
   customerLogbookWrite: "customer-logbook:write",
   projectLogbookWrite: "project-logbook:write",
   contactsDeltaRead: "contacts-delta:read",
+  teamAvailabilityRead: "team-availability:read",
 } as const;
 
 type CredentialRecord = {
