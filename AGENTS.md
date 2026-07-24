@@ -1,5 +1,19 @@
 # WorkPilot360 Agent Handover
 
+- Stempelstatus und Stundenentwurf gehaertet 2026-07-24: Der bestaetigte
+  Wechsel eines Projekts auf `Umsetzung` erfolgt beim Stempelstart jetzt
+  serverseitig in derselben Datenbanktransaktion wie die Anlage der aktiven
+  Stempelung. Damit kann die Stempelung nicht mehr erfolgreich starten,
+  waehrend der getrennte, rollenabhaengige Projekt-Speicheraufruf unbemerkt
+  scheitert. Geschuetzte spaete Projektstatus werden nicht ueberschrieben.
+  Auch `Arbeit unterbrochen` wird beim Abstempeln serverseitig gesetzt.
+  Bei Dauerlaeufern mit Stundenabrechnung bleibt geleistete Zeit unabhaengig
+  von `fertig` oder `unterbrochen` abrechenbar: Die erste passende Stempelung
+  eines Monats erzeugt den Entwurf, weitere Stempelungen erweitern denselben
+  Entwurf und werden nach Verrechnungsleistung zusammengefasst. Fehler dieser
+  Abrechnungsautomatik werden nicht mehr nur geloggt, sondern im Hauptprogramm
+  sichtbar gemeldet. Keine Prisma-Schemaaenderung.
+
 - Projektstatus-Fruehwarnung 2026-07-24: Der zuvor nur vorbereitete Bereich
   `Firmeneinstellungen > Zeitfristen > Projektstatus & Eskalation` steuert
   jetzt sechs operative Projektphasen: Lead/Klaerung, Zur Planung bereit,

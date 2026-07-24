@@ -3,9 +3,15 @@ import { NextResponse } from "next/server";
 import { Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
+import { shouldAttemptHourlyDraftAttachment } from "@/lib/billing/hourly-stamp-automation";
 import { getDeadlineSettings } from "@/lib/company-settings/deadlines";
 import { prisma } from "@/lib/db/client";
 import { sendNotificationMailSafely } from "@/lib/mail/notifications";
+import {
+  shouldApplyStampInterruptionTransition,
+  shouldOfferStampImplementationTransition,
+} from "@/lib/projects/stamp-status-automation";
+import { recordStatusTransition } from "@/lib/status-tracking";
 
 type DemoUser = {
   id: string;
@@ -321,6 +327,59 @@ async function getProjectForHourlyInvoiceDraft(organizationId: string, projectId
   return getProjectForInterruptedStamp(organizationId, projectId);
 }
 
+async function applyInterruptedProjectStatus(input: {
+  organizationId: string;
+  projectId: string;
+  actor: DemoUser;
+}) {
+  const projectRows = await prisma.$queryRaw<
+    Array<{ id: string; projectNumber: string; title: string; status: string }>
+  >`
+    SELECT id, "projectNumber", title, status
+    FROM "WorkPilotProject"
+    WHERE "organizationId" = ${input.organizationId}
+      AND id = ${input.projectId}
+    LIMIT 1
+  `;
+  const project = projectRows[0];
+  if (!project || !shouldApplyStampInterruptionTransition(project.status)) return null;
+  if (cleanString(project.status).toLowerCase().includes("unterbrochen")) return null;
+
+  await prisma.$executeRaw`
+    UPDATE "WorkPilotProject"
+    SET status = ${"Arbeit unterbrochen"},
+        "updatedAt" = CURRENT_TIMESTAMP
+    WHERE "organizationId" = ${input.organizationId}
+      AND id = ${project.id}
+  `;
+
+  const transition = {
+    changed: true,
+    projectId: project.id,
+    previousStatus: project.status,
+    nextStatus: "Arbeit unterbrochen",
+    projectLabel: `${project.projectNumber || project.id} | ${project.title}`,
+  };
+
+  try {
+    await recordStatusTransition({
+      organizationId: input.organizationId,
+      entityType: "project",
+      entityId: transition.projectId,
+      entityLabel: transition.projectLabel,
+      fromStatus: transition.previousStatus,
+      toStatus: transition.nextStatus,
+      actorUserId: input.actor.id,
+      actorName: getUserName(input.actor),
+      note: "Projektstatus per Arbeitsunterbrechung geändert.",
+    });
+  } catch (error) {
+    console.error("Interrupted stamp project status timeline could not be updated", error);
+  }
+
+  return transition;
+}
+
 function roundStampDurationToBillingFactor(durationMs: bigint | number, roundingFactorHours: number) {
   const hours = Number(durationMs || 0) / 3_600_000;
   if (hours <= 0) return 0;
@@ -533,22 +592,27 @@ async function attachStampEntryToHourlyInvoiceDraft(input: {
   users: DemoUser[];
   entry: ProjectTimeEntryRow;
 }) {
-  if (input.entry.mode !== "project") return;
-  if (!input.entry.projectId || !input.entry.billingCatalogItemId || !input.entry.billingCatalogItemLabel) return;
-  if (cleanString(input.entry.invoiceId)) return;
-  if (!(await isHourlyRecurringProject(input.organizationId, input.entry.projectId))) return;
+  if (input.entry.mode !== "project") return null;
+  if (!input.entry.projectId || !input.entry.billingCatalogItemId || !input.entry.billingCatalogItemLabel) return null;
+  if (cleanString(input.entry.invoiceId)) {
+    return {
+      invoiceId: cleanString(input.entry.invoiceId),
+      invoiceNumber: cleanString(input.entry.invoiceNumber),
+    };
+  }
+  if (!(await isHourlyRecurringProject(input.organizationId, input.entry.projectId))) return null;
 
   const project = await getProjectForHourlyInvoiceDraft(input.organizationId, input.entry.projectId);
   const catalogItem = await getCatalogInvoiceItem(input.organizationId, input.entry.billingCatalogItemId);
   const monthKey = getMonthKeyFromDateKey(input.entry.date);
-  if (!project || !catalogItem || !monthKey) return;
+  if (!project || !catalogItem || !monthKey) return null;
 
   const deadlineSettings = await getDeadlineSettings(input.organizationId);
   const roundedHours = roundStampDurationToBillingFactor(
     input.entry.durationMs,
     deadlineSettings.hourlyBillingRoundingFactorHours
   );
-  if (roundedHours <= 0) return;
+  if (roundedHours <= 0) return null;
 
   const draft = await getOrCreateHourlyInvoiceDraft({
     organizationId: input.organizationId,
@@ -640,6 +704,11 @@ async function attachStampEntryToHourlyInvoiceDraft(input: {
       AND id = ${input.entry.id}
       AND COALESCE("invoiceId", '') = ''
   `;
+
+  return {
+    invoiceId: draft.id,
+    invoiceNumber: draft.invoiceNumber,
+  };
 }
 
 function findInterruptedWorkResponsibleUser(users: DemoUser[], project: ProjectRow | null) {
@@ -1130,6 +1199,7 @@ export async function POST(req: Request) {
   const requestedPlanningBillingGroupId = mode === "project" ? cleanString(body.planningBillingGroupId) : "";
   const requestedBillingCatalogItemId = mode === "project" ? cleanString(body.billingCatalogItemId) : "";
   const requestedBillingCatalogItemLabel = mode === "project" ? cleanString(body.billingCatalogItemLabel) : "";
+  const confirmImplementationStatus = mode === "project" && body.confirmImplementationStatus === true;
   const comment = cleanString(body.comment);
 
   if (!userId) {
@@ -1190,8 +1260,9 @@ export async function POST(req: Request) {
     );
   }
 
-  const rows = await prisma.$queryRaw<ActiveStampSessionRow[]>`
-    INSERT INTO "ActiveStampSession" (
+  const startResult = await prisma.$transaction(async (transaction) => {
+    const rows = await transaction.$queryRaw<ActiveStampSessionRow[]>`
+      INSERT INTO "ActiveStampSession" (
       "id",
       "organizationId",
       "userId",
@@ -1239,10 +1310,86 @@ export async function POST(req: Request) {
       ${now},
       ${now}
     )
-    RETURNING *
-  `;
+      RETURNING *
+    `;
 
-  return NextResponse.json(formatSession(rows[0]), { status: 201 });
+    let projectStatusTransition: {
+      changed: boolean;
+      projectId: string;
+      previousStatus: string;
+      nextStatus: string;
+      projectLabel: string;
+    } | null = null;
+
+    if (confirmImplementationStatus && mode === "project") {
+      const projectRows = await transaction.$queryRaw<
+        Array<{ id: string; projectNumber: string; title: string; status: string }>
+      >`
+        SELECT id, "projectNumber", title, status
+        FROM "WorkPilotProject"
+        WHERE "organizationId" = ${organization.id}
+          AND id = ${projectId}
+        LIMIT 1
+        FOR UPDATE
+      `;
+      const project = projectRows[0];
+
+      if (project && shouldOfferStampImplementationTransition(project.status)) {
+        await transaction.$executeRaw`
+          UPDATE "WorkPilotProject"
+          SET status = ${"Umsetzung"},
+              "updatedAt" = CURRENT_TIMESTAMP
+          WHERE "organizationId" = ${organization.id}
+            AND id = ${project.id}
+        `;
+        projectStatusTransition = {
+          changed: true,
+          projectId: project.id,
+          previousStatus: project.status,
+          nextStatus: "Umsetzung",
+          projectLabel: `${project.projectNumber || project.id} | ${project.title}`,
+        };
+      }
+    }
+
+    return {
+      session: rows[0],
+      projectStatusTransition,
+    };
+  });
+
+  if (startResult.projectStatusTransition?.changed) {
+    try {
+      await recordStatusTransition({
+        organizationId: organization.id,
+        entityType: "project",
+        entityId: startResult.projectStatusTransition.projectId,
+        entityLabel: startResult.projectStatusTransition.projectLabel,
+        fromStatus: startResult.projectStatusTransition.previousStatus,
+        toStatus: startResult.projectStatusTransition.nextStatus,
+        actorUserId: stampUser.id,
+        actorName: getUserName(stampUser),
+        note: "Projektstatus per bestätigtem Stempelstart geändert.",
+      });
+    } catch (error) {
+      console.error("Stamp project status timeline could not be updated", error);
+    }
+  }
+
+  return NextResponse.json(
+    {
+      ...formatSession(startResult.session),
+      projectStatusTransition: startResult.projectStatusTransition
+        ? {
+            changed: true,
+            projectId: startResult.projectStatusTransition.projectId,
+            previousStatus: startResult.projectStatusTransition.previousStatus,
+            nextStatus: startResult.projectStatusTransition.nextStatus,
+          }
+        : null,
+    },
+    { status: 201 }
+  );
 }
 
 export async function PATCH(req: Request) {
@@ -1332,6 +1479,7 @@ async function stopSession(req: Request, body: Record<string, unknown>) {
   if (!stampUserResult.ok) {
     return sessionBoundActorResponse(stampUserResult);
   }
+  const stampUser = stampUserResult.actor;
 
   const session = await getActiveSession(organization.id, userId);
 
@@ -1447,17 +1595,47 @@ async function stopSession(req: Request, body: Record<string, unknown>) {
       AND "userId" = ${userId}
   `;
 
-  if (rows[0]?.mode === "project" && rows[0]?.completionStatus !== "interrupted") {
+  let billingAutomation:
+    | { status: "attached"; invoiceId: string; invoiceNumber: string }
+    | { status: "failed"; message: string }
+    | null = null;
+
+  if (
+    rows[0] &&
+    shouldAttemptHourlyDraftAttachment({
+      mode: rows[0].mode,
+      completionStatus: rows[0].completionStatus,
+    })
+  ) {
     try {
-      await attachStampEntryToHourlyInvoiceDraft({
+      const attachedDraft = await attachStampEntryToHourlyInvoiceDraft({
         organizationId: organization.id,
         users,
         entry: rows[0],
       });
+      if (attachedDraft) {
+        billingAutomation = {
+          status: "attached",
+          invoiceId: attachedDraft.invoiceId,
+          invoiceNumber: attachedDraft.invoiceNumber,
+        };
+      }
     } catch (error) {
       console.error("Hourly recurring invoice draft could not be updated", error);
+      billingAutomation = {
+        status: "failed",
+        message:
+          "Die Stempelung wurde gespeichert, konnte aber keinem Rechnungsentwurf zugeordnet werden. Bitte die Abrechnung prüfen.",
+      };
     }
   }
+
+  let projectStatusTransition: {
+    changed: boolean;
+    projectId: string;
+    previousStatus: string;
+    nextStatus: string;
+  } | null = null;
 
   if (completionStatus === "interrupted" && rows[0]) {
     const project = await getProjectForInterruptedStamp(organization.id, rows[0].projectId);
@@ -1468,7 +1646,27 @@ async function stopSession(req: Request, body: Record<string, unknown>) {
       entry: rows[0],
       comment: interruptionReason,
     });
+    const interruptedTransition = await applyInterruptedProjectStatus({
+      organizationId: organization.id,
+      projectId: rows[0].projectId,
+      actor: stampUser,
+    });
+    if (interruptedTransition) {
+      projectStatusTransition = {
+        changed: true,
+        projectId: interruptedTransition.projectId,
+        previousStatus: interruptedTransition.previousStatus,
+        nextStatus: interruptedTransition.nextStatus,
+      };
+    }
   }
 
-  return NextResponse.json(formatEntry(rows[0]), { status: 201 });
+  return NextResponse.json(
+    {
+      ...formatEntry(rows[0]),
+      billingAutomation,
+      projectStatusTransition,
+    },
+    { status: 201 }
+  );
 }

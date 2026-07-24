@@ -13,6 +13,7 @@ import {
 } from "react";
 import { getDashboardDailyImpulse } from "@/lib/dashboard-daily-impulses";
 import { getLoginErrorMessage } from "@/lib/auth/login-error";
+import { shouldAttemptHourlyDraftAttachment } from "@/lib/billing/hourly-stamp-automation";
 import styles from "./dashboard.module.css";
 import {
   getEffectiveMonthlyFinancialAmount,
@@ -41,6 +42,7 @@ import {
   type WinterServiceOfferTransfer,
 } from "@/components/calculators/winter-service-calculator";
 import { CalculatorWorkspace } from "@/components/calculators/calculator-workspace";
+import { shouldOfferStampImplementationTransition } from "@/lib/projects/stamp-status-automation";
 
 const DOCUMENT_PREVIEW_WIDTH = 595;
 const DOCUMENT_PREVIEW_HEIGHT = 842;
@@ -2835,10 +2837,28 @@ type ActiveStampSessionResponse = {
   pauseMs: number;
   createdAt: string;
   updatedAt: string;
+  projectStatusTransition?: {
+    changed: boolean;
+    projectId: string;
+    previousStatus: string;
+    nextStatus: string;
+  } | null;
 };
 
 type StampTimeEntry = {
   id: string;
+  billingAutomation?: {
+    status: "attached" | "failed";
+    invoiceId?: string;
+    invoiceNumber?: string;
+    message?: string;
+  } | null;
+  projectStatusTransition?: {
+    changed: boolean;
+    projectId: string;
+    previousStatus: string;
+    nextStatus: string;
+  } | null;
   mode: StampMode;
   projectId: string;
   projectLabel: string;
@@ -11785,10 +11805,16 @@ export function DashboardPage() {
     const activeInvoiceId = String(invoiceId ?? "").trim();
 
     return stampEntries.filter((entry) => {
-      if (entry.mode !== "project") return false;
+      if (
+        !shouldAttemptHourlyDraftAttachment({
+          mode: entry.mode,
+          completionStatus: entry.completionStatus,
+        })
+      ) {
+        return false;
+      }
       if (String(entry.projectId) !== String(projectId)) return false;
       if (entry.deletedAt) return false;
-      if (entry.completionStatus === "interrupted") return false;
       if (Number(entry.durationMs || 0) <= 0) return false;
       if (monthKey && !normalizeDateKeyValue(entry.date).startsWith(monthKey)) return false;
 
@@ -20998,7 +21024,9 @@ export function DashboardPage() {
       );
       return savedProject;
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Projektstatus konnte nicht gespeichert werden.");
+      const message = error instanceof Error ? error.message : "Projektstatus konnte nicht gespeichert werden.";
+      setErrorMessage(message);
+      window.alert(message);
       return null;
     }
   }
@@ -21040,7 +21068,9 @@ export function DashboardPage() {
       );
       return true;
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Projektstatus konnte nicht gespeichert werden.");
+      const message = error instanceof Error ? error.message : "Projektstatus konnte nicht gespeichert werden.";
+      setErrorMessage(message);
+      window.alert(message);
       return false;
     }
   }
@@ -21976,6 +22006,7 @@ await addProjectLogbookEntry(
       planningBillingGroupId?: string;
       billingCatalogItemId?: string;
       billingCatalogItemLabel?: string;
+      confirmImplementationStatus?: boolean;
     } = {}
   ) {
     const normalizedUnproductiveLabel = unproductiveLabel.trim();
@@ -21999,6 +22030,8 @@ await addProjectLogbookEntry(
         planningBillingGroupId: mode === "project" ? hourlyBillingContext.planningBillingGroupId || "" : "",
         billingCatalogItemId: mode === "project" ? hourlyBillingContext.billingCatalogItemId || "" : "",
         billingCatalogItemLabel: mode === "project" ? hourlyBillingContext.billingCatalogItemLabel || "" : "",
+        confirmImplementationStatus:
+          mode === "project" && hourlyBillingContext.confirmImplementationStatus === true,
         comment,
       }),
     });
@@ -22012,6 +22045,16 @@ await addProjectLogbookEntry(
     const data = (await res.json()) as ActiveStampSessionResponse;
     setStampSession(mapActiveStampSession(data));
     setTimerNow(Date.now());
+    if (data.projectStatusTransition?.changed) {
+      setHeroProjects((currentProjects) =>
+        currentProjects.map((project) =>
+          project.id === data.projectStatusTransition?.projectId
+            ? { ...project, status: data.projectStatusTransition.nextStatus }
+            : project
+        )
+      );
+    }
+    return data;
   }
 
   async function saveStampTimeEntry(entry: StampTimeEntry) {
@@ -22602,6 +22645,21 @@ await addProjectLogbookEntry(
     ]);
     void loadProjectTimeEntries();
     if (normalizedSavedEntry.projectId) void loadInvoices(normalizedSavedEntry.projectId);
+    if (normalizedSavedEntry.billingAutomation?.status === "failed") {
+      setErrorMessage(
+        normalizedSavedEntry.billingAutomation.message ||
+          "Die Stempelung wurde gespeichert, aber die Abrechnungsautomatik muss geprüft werden."
+      );
+    }
+    if (normalizedSavedEntry.projectStatusTransition?.changed) {
+      setHeroProjects((currentProjects) =>
+        currentProjects.map((project) =>
+          project.id === normalizedSavedEntry.projectStatusTransition?.projectId
+            ? { ...project, status: normalizedSavedEntry.projectStatusTransition.nextStatus }
+            : project
+        )
+      );
+    }
     return normalizedSavedEntry;
   }
 
@@ -22796,15 +22854,6 @@ await addProjectLogbookEntry(
         ) {
           await saveFinalInspectionForStamp(closedEntry);
         }
-        if (closedEntry?.mode === "project" && closedEntry.projectId && stampCompletionState === "interrupted") {
-          const interruptedProject = heroProjects.find((project) => project.id === closedEntry.projectId);
-          await applyProjectStatus({
-            project: interruptedProject,
-            nextStatus: "Arbeit unterbrochen",
-            reason: stampComment.trim() || "Arbeit wurde unterbrochen",
-            logPrefix: "Projektstatus per Arbeitsunterbrechung geändert",
-          });
-        }
       } catch (error) {
         setStampError(
           error instanceof Error ? error.message : "Stempelung konnte nicht gespeichert werden."
@@ -22830,16 +22879,25 @@ await addProjectLogbookEntry(
       return;
     }
 
+    const confirmImplementationStatus =
+      stampSelectionMode === "project" &&
+      Boolean(selectedNextProject) &&
+      shouldOfferStampImplementationTransition(selectedNextProject?.status)
+        ? window.confirm(
+            `Für das Projekt "${
+              selectedNextProject?.projectNumber || selectedNextProject?.title || "ohne Nummer"
+            }" wurde eine echte Ausführung erkannt. Soll der Projektstatus auf "In Umsetzung" gesetzt werden?`
+          )
+        : false;
+
     try {
       await startStampSession(stampSelectionMode, nextProjectId, nextStampComment, nextUnproductiveLabel, nextStampTrade, {
         planningEntryId: nextStampNeedsTrade ? stampPlanningEntryId : "",
         planningBillingGroupId: nextStampNeedsTrade ? stampPlanningBillingGroupId : "",
         billingCatalogItemId: nextStampNeedsTrade ? stampBillingCatalogItemId : "",
         billingCatalogItemLabel: nextStampNeedsTrade ? selectedStampBillingCatalogItemLabel : "",
+        confirmImplementationStatus,
       });
-      if (stampSelectionMode === "project" && selectedNextProject) {
-        await confirmImplementationStatus(selectedNextProject, "Projektbezogene Stempelung gestartet");
-      }
       setIsStampModalOpen(false);
       setStampComment("");
       setStampNextComment("");
