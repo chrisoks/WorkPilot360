@@ -1729,6 +1729,8 @@ model ProjectTimeEntry {
   trade                    String?
   planningEntryId          String?
   planningBillingGroupId   String?
+  offerId                  String?
+  offerLabel               String?
   billingCatalogItemId     String?
   billingCatalogItemLabel  String?
   userId                   String?

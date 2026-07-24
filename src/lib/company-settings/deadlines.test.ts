@@ -67,4 +67,45 @@ describe("deadline settings", () => {
     expect(settings.taskManagementImmediateActiveLimit).toBe(20);
     expect(settings.taskManagementImmediateOverdueLimit).toBe(7);
   });
+
+  it("keeps project status escalation disabled until it is explicitly activated", () => {
+    const settings = normalizeDeadlineSettings(undefined);
+
+    expect(settings.projectStatusEscalationEnabled).toBe(false);
+    expect(settings.projectStatusRules.map((rule) => rule.status)).toEqual([
+      "Lead / Klärung",
+      "Zur Planung bereit",
+      "Geplant",
+      "Umsetzung",
+      "Endkontrolle",
+      "Schlussrechnung",
+    ]);
+  });
+
+  it("normalizes project status deadlines and never escalates management first", () => {
+    const settings = normalizeDeadlineSettings({
+      projectStatusEscalationEnabled: true,
+      projectStatusRules: [
+        {
+          status: "Umsetzung",
+          enabled: true,
+          responsibleAfterDays: 25,
+          managementAfterDays: 5,
+        },
+        {
+          status: "Angebot",
+          enabled: true,
+          responsibleAfterDays: 1,
+          managementAfterDays: 1,
+        },
+      ],
+    });
+
+    expect(settings.projectStatusEscalationEnabled).toBe(true);
+    expect(settings.projectStatusRules.find((rule) => rule.status === "Umsetzung")).toMatchObject({
+      responsibleAfterDays: 25,
+      managementAfterDays: 25,
+    });
+    expect(settings.projectStatusRules.some((rule) => rule.status === "Angebot")).toBe(false);
+  });
 });

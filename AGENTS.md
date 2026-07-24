@@ -1,5 +1,40 @@
 # WorkPilot360 Agent Handover
 
+- Projektstatus-Fruehwarnung 2026-07-24: Der zuvor nur vorbereitete Bereich
+  `Firmeneinstellungen > Zeitfristen > Projektstatus & Eskalation` steuert
+  jetzt sechs operative Projektphasen: Lead/Klaerung, Zur Planung bereit,
+  Geplant, Umsetzung, Endkontrolle und Schlussrechnung. Angebot,
+  Warten auf Kunde, Arbeit unterbrochen und Abgeschlossen bleiben bewusst in
+  ihren eigenen Fachprozessen und werden durch die alte generische
+  Status-Eskalation nicht mehr doppelt verarbeitet. Je Phase gelten eine
+  erste Frist an die verantwortliche Person und eine zweite Frist an die
+  Geschaeftsfuehrung; Projektstatus werden niemals automatisch geaendert.
+  Vor der Aktivierung ist ein Dry-Run verpflichtend. Die globale Einstellung
+  ist standardmaessig aus, ebenso die zusaetzlichen Serverfreigaben
+  `WORKPILOT_PROJECT_STATUS_AUTOMATION_ENABLED` und
+  `WORKPILOT_PROJECT_STATUS_DELIVERY_ENABLED`. Ein Bestands-Dry-Run am
+  24.07.2026 fand 105 faellige Altprojekte, davon 95 ohne eindeutig auf einen
+  aktiven Benutzer abbildbare verantwortliche Person; deshalb darf die
+  Zustellung erst nach fachlicher Bereinigung und bewusster Freigabe
+  eingeschaltet werden. Prisma-Schema und Projektstatusdaten wurden dafuer
+  nicht migriert oder veraendert.
+
+- Zeitfristen und Zeiteintrags-Zuordnung 2026-07-24: Die Firmenansicht
+  `Zeitfristen` verwendet jetzt eine kompakte, horizontale Bereichsauswahl,
+  klar getrennte Regelkarten und eine gemeinsame, am unteren Rand sichtbare
+  Speicheraktion. Die fachlichen Fristen und Eskalationsregeln blieben
+  unveraendert. Manuelle Zeiteintraege unterscheiden nun nach Projekttyp:
+  Einmalige Projekte verlangen eine gueltige Auftragsgrundlage aus den aktiven
+  Angeboten oder Nachtraegen des konkreten Projekts; eine ausdrueckliche
+  Erfassung ohne Angebot benoetigt eine Begruendung. Stunden-Dauerlaeufer
+  verlangen weiterhin Verrechnungsgewerk und passende aktive
+  Stunden-Abrechnungsleistung, Monatspauschalen keine zusaetzliche Zuordnung.
+  Die Zuordnung bleibt beim Bearbeiten sichtbar und wird in der
+  Bearbeitungshistorie dokumentiert. `ProjectTimeEntry` wurde additiv um die
+  optionalen Felder `offerId` und `offerLabel` erweitert; die API prueft
+  organisations- und projektgenau, dass ein ausgewaehltes Angebot wirklich
+  zum Zeiteintrag gehoert. Bestehende Eintraege bleiben lesbar.
+
 - Kalkulations-Rechner Fahrzeuge 2026-07-23: Der Sidebar-Bereich
   `Kalkulations-Rechner` besitzt jetzt eine eigene Uebersicht und die
   Unterbereiche Winterdienst, Fahrten, Vermietung und Fahrzeuge. Der

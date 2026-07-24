@@ -3,6 +3,22 @@ import { prisma } from "@/lib/db/client";
 
 const DEADLINE_SETTINGS_KEY = "deadlines";
 
+export const PROJECT_STATUS_ESCALATION_DEFAULTS = [
+  { status: "Lead / Klärung", enabled: true, responsibleAfterDays: 7, managementAfterDays: 14 },
+  { status: "Zur Planung bereit", enabled: true, responsibleAfterDays: 3, managementAfterDays: 7 },
+  { status: "Geplant", enabled: true, responsibleAfterDays: 7, managementAfterDays: 14 },
+  { status: "Umsetzung", enabled: true, responsibleAfterDays: 14, managementAfterDays: 28 },
+  { status: "Endkontrolle", enabled: true, responsibleAfterDays: 3, managementAfterDays: 7 },
+  { status: "Schlussrechnung", enabled: true, responsibleAfterDays: 3, managementAfterDays: 7 },
+] as const;
+
+export type ProjectStatusEscalationRuleSetting = {
+  status: string;
+  enabled: boolean;
+  responsibleAfterDays: number;
+  managementAfterDays: number;
+};
+
 const DEFAULT_DEADLINE_SETTINGS = {
   offerFollowUpWorkdays: 5,
   potentialDecisionReminderWorkdays: 1,
@@ -23,6 +39,8 @@ const DEFAULT_DEADLINE_SETTINGS = {
   punctualityStartToleranceMinutes: 10,
   punctualityEndToleranceMinutes: 10,
   hourlyBillingRoundingFactorHours: 0.5,
+  projectStatusEscalationEnabled: false,
+  projectStatusRules: PROJECT_STATUS_ESCALATION_DEFAULTS.map((rule) => ({ ...rule })) as ProjectStatusEscalationRuleSetting[],
 };
 
 export type DeadlineSettings = typeof DEFAULT_DEADLINE_SETTINGS;
@@ -39,6 +57,34 @@ function normalizeRoundingFactor(value: unknown, fallback: number) {
   const numericValue = Number(value);
   const allowedValues = [0.25, 0.5, 1];
   return allowedValues.includes(numericValue) ? numericValue : fallback;
+}
+
+function normalizeProjectStatusRules(value: unknown): ProjectStatusEscalationRuleSetting[] {
+  const input = Array.isArray(value) ? value : [];
+  return PROJECT_STATUS_ESCALATION_DEFAULTS.map((fallback) => {
+    const candidate = input.find(
+      (entry) =>
+        entry &&
+        typeof entry === "object" &&
+        String((entry as { status?: unknown }).status || "").trim() === fallback.status
+    ) as Partial<ProjectStatusEscalationRuleSetting> | undefined;
+    const responsibleAfterDays = clampInteger(
+      candidate?.responsibleAfterDays,
+      fallback.responsibleAfterDays,
+      1,
+      180
+    );
+    const managementAfterDays = Math.max(
+      responsibleAfterDays,
+      clampInteger(candidate?.managementAfterDays, fallback.managementAfterDays, 1, 365)
+    );
+    return {
+      status: fallback.status,
+      enabled: typeof candidate?.enabled === "boolean" ? candidate.enabled : fallback.enabled,
+      responsibleAfterDays,
+      managementAfterDays,
+    };
+  });
 }
 
 export function normalizeDeadlineSettings(value: unknown): DeadlineSettings {
@@ -172,6 +218,8 @@ export function normalizeDeadlineSettings(value: unknown): DeadlineSettings {
       settings.hourlyBillingRoundingFactorHours,
       DEFAULT_DEADLINE_SETTINGS.hourlyBillingRoundingFactorHours
     ),
+    projectStatusEscalationEnabled: settings.projectStatusEscalationEnabled === true,
+    projectStatusRules: normalizeProjectStatusRules(settings.projectStatusRules),
   };
 }
 
@@ -246,6 +294,9 @@ export async function saveDeadlineSettings(organizationId: string, input: Record
       input.punctualityEndToleranceMinutes ?? currentSettings.punctualityEndToleranceMinutes,
     hourlyBillingRoundingFactorHours:
       input.hourlyBillingRoundingFactorHours ?? currentSettings.hourlyBillingRoundingFactorHours,
+    projectStatusEscalationEnabled:
+      input.projectStatusEscalationEnabled ?? currentSettings.projectStatusEscalationEnabled,
+    projectStatusRules: input.projectStatusRules ?? currentSettings.projectStatusRules,
   });
 
   await prisma.$executeRaw`

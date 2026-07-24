@@ -8,4 +8,9 @@ export async function register() {
     "./lib/automation/task-escalation-scheduler"
   );
   startTaskEscalationScheduler();
+
+  const { startProjectStatusEscalationScheduler } = await import(
+    "./lib/automation/project-status-escalation-scheduler"
+  );
+  startProjectStatusEscalationScheduler();
 }

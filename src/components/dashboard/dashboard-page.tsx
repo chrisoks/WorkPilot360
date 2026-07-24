@@ -715,6 +715,49 @@ type DeadlineSettingsData = {
   punctualityStartToleranceMinutes?: number;
   punctualityEndToleranceMinutes?: number;
   hourlyBillingRoundingFactorHours?: number;
+  projectStatusEscalationEnabled?: boolean;
+  projectStatusRules?: ProjectStatusDeadlineRule[];
+};
+type ProjectStatusDeadlineRule = {
+  status: string;
+  enabled: boolean;
+  responsibleAfterDays: number;
+  managementAfterDays: number;
+};
+const DEFAULT_PROJECT_STATUS_DEADLINE_RULES: ProjectStatusDeadlineRule[] = [
+  { status: "Lead / Klärung", enabled: true, responsibleAfterDays: 7, managementAfterDays: 14 },
+  { status: "Zur Planung bereit", enabled: true, responsibleAfterDays: 3, managementAfterDays: 7 },
+  { status: "Geplant", enabled: true, responsibleAfterDays: 7, managementAfterDays: 14 },
+  { status: "Umsetzung", enabled: true, responsibleAfterDays: 14, managementAfterDays: 28 },
+  { status: "Endkontrolle", enabled: true, responsibleAfterDays: 3, managementAfterDays: 7 },
+  { status: "Schlussrechnung", enabled: true, responsibleAfterDays: 3, managementAfterDays: 7 },
+];
+type ProjectStatusEscalationPreviewResponse = {
+  dryRun: true;
+  generatedAt: string;
+  calculationBasis: string;
+  enabled: boolean;
+  monitoredProjects: number;
+  statusCounts: Record<string, number>;
+  items: Array<{
+    projectId: string;
+    projectNumber: string;
+    projectTitle: string;
+    customer: string;
+    status: string;
+    startedAt: string;
+    elapsedDays: number;
+    stage: "responsible" | "management";
+    responsibleName: string;
+    responsibleUserId: string | null;
+    responsibleAfterDays: number;
+    managementAfterDays: number;
+  }>;
+  automation: {
+    enabled: boolean;
+    schedulerRunning: boolean;
+    deliveryEnabled: boolean;
+  };
 };
 type TaskEscalationPreviewStage = "employee" | "leadership" | "management";
 type TaskEscalationPreviewResponse = {
@@ -2408,6 +2451,7 @@ const RECURRING_PROJECT_KIND = "Dauerläufer-Projekt";
 const LEGACY_RECURRING_PROJECT_KIND = "Dauerl\u00c3\u00a4ufer-Projekt";
 const RECURRING_BILLING_MONTHLY_FLAT: RecurringBillingMode = "monthlyFlat";
 const RECURRING_BILLING_HOURLY: RecurringBillingMode = "hourly";
+const WITHOUT_OFFER_ASSIGNMENT = "__without_offer_assignment__";
 const DELETED_STATUS_VALUES = new Set(["Gelöscht", "Gel\u00c3\u00b6scht"]);
 
 function normalizeProjectKindValue(value?: string | null): Exclude<ProjectKindValue, "Dauerl\u00c3\u00a4ufer-Projekt"> {
@@ -2801,6 +2845,8 @@ type StampTimeEntry = {
   trade?: string;
   planningEntryId?: string;
   planningBillingGroupId?: string;
+  offerId?: string;
+  offerLabel?: string;
   billingCatalogItemId?: string;
   billingCatalogItemLabel?: string;
   userId: string;
@@ -7079,6 +7125,16 @@ export function DashboardPage() {
   const [punctualityStartToleranceMinutes, setPunctualityStartToleranceMinutes] = useState(10);
   const [punctualityEndToleranceMinutes, setPunctualityEndToleranceMinutes] = useState(10);
   const [hourlyBillingRoundingFactorHours, setHourlyBillingRoundingFactorHours] = useState(0.5);
+  const [projectStatusEscalationEnabled, setProjectStatusEscalationEnabled] = useState(false);
+  const [projectStatusRules, setProjectStatusRules] = useState<ProjectStatusDeadlineRule[]>(
+    () => DEFAULT_PROJECT_STATUS_DEADLINE_RULES.map((rule) => ({ ...rule }))
+  );
+  const [projectStatusPreview, setProjectStatusPreview] =
+    useState<ProjectStatusEscalationPreviewResponse | null>(null);
+  const [projectStatusPreviewError, setProjectStatusPreviewError] = useState("");
+  const [projectStatusSyncMessage, setProjectStatusSyncMessage] = useState("");
+  const [isLoadingProjectStatusPreview, setIsLoadingProjectStatusPreview] = useState(false);
+  const [isSynchronizingProjectStatus, setIsSynchronizingProjectStatus] = useState(false);
   const [deadlineSettingsSection, setDeadlineSettingsSection] = useState<DeadlineSettingsSection>("offers");
   const [deadlineSettingsMessage, setDeadlineSettingsMessage] = useState("");
   const [isSavingDeadlineSettings, setIsSavingDeadlineSettings] = useState(false);
@@ -7335,6 +7391,7 @@ export function DashboardPage() {
   const [manualProjectTimeTrade, setManualProjectTimeTrade] = useState("");
   const [manualProjectTimeBillingCatalogItemId, setManualProjectTimeBillingCatalogItemId] = useState("");
   const [manualProjectTimeBillingCatalogItemLabel, setManualProjectTimeBillingCatalogItemLabel] = useState("");
+  const [stampEditOfferId, setStampEditOfferId] = useState("");
   const [stampEditDate, setStampEditDate] = useState("");
   const [stampEditStartTime, setStampEditStartTime] = useState("");
   const [stampEditEndTime, setStampEditEndTime] = useState("");
@@ -9300,11 +9357,48 @@ export function DashboardPage() {
     );
     const loadedRoundingFactor = Number(data.hourlyBillingRoundingFactorHours);
     setHourlyBillingRoundingFactorHours([0.25, 0.5, 1].includes(loadedRoundingFactor) ? loadedRoundingFactor : 0.5);
+    setProjectStatusEscalationEnabled(data.projectStatusEscalationEnabled === true);
+    setProjectStatusRules(
+      DEFAULT_PROJECT_STATUS_DEADLINE_RULES.map((fallback) => {
+        const loaded = data.projectStatusRules?.find((rule) => rule.status === fallback.status);
+        const responsibleAfterDays = normalizeDeadlineInteger(
+          loaded?.responsibleAfterDays,
+          fallback.responsibleAfterDays,
+          1,
+          180
+        );
+        return {
+          status: fallback.status,
+          enabled: typeof loaded?.enabled === "boolean" ? loaded.enabled : fallback.enabled,
+          responsibleAfterDays,
+          managementAfterDays: Math.max(
+            responsibleAfterDays,
+            normalizeDeadlineInteger(
+              loaded?.managementAfterDays,
+              fallback.managementAfterDays,
+              1,
+              365
+            )
+          ),
+        };
+      })
+    );
+    setProjectStatusPreview(null);
     setDeadlineSettingsMessage("");
   }
 
   async function saveDeadlineSettings() {
     if (!activeUserId) return;
+    if (
+      deadlineSettingsSection === "projectStatus" &&
+      projectStatusEscalationEnabled &&
+      !projectStatusPreview
+    ) {
+      setDeadlineSettingsMessage(
+        "Bitte vor der Aktivierung zuerst den Dry-Run mit den aktuellen Fristen ausführen."
+      );
+      return;
+    }
 
     setIsSavingDeadlineSettings(true);
     setDeadlineSettingsMessage("");
@@ -9397,6 +9491,8 @@ export function DashboardPage() {
           punctualityStartToleranceMinutes: normalizedPunctualityStartToleranceMinutes,
           punctualityEndToleranceMinutes: normalizedPunctualityEndToleranceMinutes,
           hourlyBillingRoundingFactorHours: normalizedHourlyBillingRoundingFactorHours,
+          projectStatusEscalationEnabled,
+          projectStatusRules,
         }),
       });
 
@@ -9430,6 +9526,11 @@ export function DashboardPage() {
       );
       const savedRoundingFactor = Number(data.hourlyBillingRoundingFactorHours);
       setHourlyBillingRoundingFactorHours([0.25, 0.5, 1].includes(savedRoundingFactor) ? savedRoundingFactor : 0.5);
+      setProjectStatusEscalationEnabled(data.projectStatusEscalationEnabled === true);
+      setProjectStatusRules(
+        (data.projectStatusRules ?? projectStatusRules).map((rule) => ({ ...rule }))
+      );
+      setProjectStatusPreview(null);
       setDeadlineSettingsMessage("Zeitfristen gespeichert.");
     } finally {
       setIsSavingDeadlineSettings(false);
@@ -13978,6 +14079,84 @@ export function DashboardPage() {
       setTaskEscalationSyncError("Der Eskalationsstatus konnte nicht gespeichert werden.");
     } finally {
       setIsSynchronizingTaskEscalations(false);
+    }
+  }
+
+  async function loadProjectStatusEscalationPreview() {
+    setIsLoadingProjectStatusPreview(true);
+    setProjectStatusPreviewError("");
+    setProjectStatusSyncMessage("");
+    try {
+      const res = await fetch("/api/project-status-escalations/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        credentials: "same-origin",
+        body: JSON.stringify({
+          enabled: projectStatusEscalationEnabled,
+          rules: projectStatusRules,
+        }),
+      });
+      const data = (await res.json()) as ProjectStatusEscalationPreviewResponse & {
+        error?: string;
+      };
+      if (!res.ok) {
+        setProjectStatusPreviewError(
+          data.error || "Die Projektstatus-Vorschau konnte nicht geladen werden."
+        );
+        return;
+      }
+      setProjectStatusPreview(data);
+    } catch {
+      setProjectStatusPreviewError("Die Projektstatus-Vorschau konnte nicht geladen werden.");
+    } finally {
+      setIsLoadingProjectStatusPreview(false);
+    }
+  }
+
+  async function synchronizeProjectStatusEscalations() {
+    if (isSynchronizingProjectStatus) return;
+    setIsSynchronizingProjectStatus(true);
+    setProjectStatusPreviewError("");
+    setProjectStatusSyncMessage("");
+    try {
+      const res = await fetch("/api/project-status-escalations/sync", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        message?: string;
+        delivery?: {
+          plannedNotifications?: number;
+          notificationsSent?: number;
+          missingResponsible?: number;
+        };
+      };
+      if (!res.ok) {
+        setProjectStatusPreviewError(
+          data.error || "Die Projektstatus-Prüfung konnte nicht ausgeführt werden."
+        );
+        return;
+      }
+      setProjectStatusSyncMessage(
+        [
+          data.message,
+          data.delivery?.notificationsSent
+            ? `${data.delivery.notificationsSent} Hinweis(e) wurden erstellt.`
+            : `Aktuell wären ${data.delivery?.plannedNotifications || 0} Empfänger vorgesehen.`,
+          data.delivery?.missingResponsible
+            ? `${data.delivery.missingResponsible} Projekt(e) haben keine eindeutig zuordenbare verantwortliche Person.`
+            : "",
+        ]
+          .filter(Boolean)
+          .join(" ")
+      );
+      await loadProjectStatusEscalationPreview();
+    } catch {
+      setProjectStatusPreviewError("Die Projektstatus-Prüfung konnte nicht ausgeführt werden.");
+    } finally {
+      setIsSynchronizingProjectStatus(false);
     }
   }
 
@@ -22006,9 +22185,41 @@ await addProjectLogbookEntry(
     return null;
   }
 
+  function getAssignableProjectOffers(projectId: string) {
+    return offers
+      .filter(
+        (offer) =>
+          String(offer.projectId) === String(projectId) &&
+          isActiveFinalOffer(offer)
+      )
+      .sort((first, second) => second.updatedAt.localeCompare(first.updatedAt));
+  }
+
+  function getTimeEntryOfferLabel(offer: OfferItem) {
+    const offerKind = offer.offerType === "addendum" ? "Nachtrag" : "Angebot";
+    return `${offer.offerNumber} · ${offerKind} · ${offer.status}`;
+  }
+
   function openStampEntryEditModal(entry: StampTimeEntry) {
     if (!canManageProjectTimeEntries) return;
+    const entryProject = heroProjects.find((project) => project.id === entry.projectId);
     setEditingStampEntry(entry);
+    setManualProjectTimeTrade(entry.trade || entryProject?.trade || "");
+    setManualProjectTimeBillingCatalogItemId(entry.billingCatalogItemId || "");
+    setManualProjectTimeBillingCatalogItemLabel(entry.billingCatalogItemLabel || "");
+    setStampEditOfferId(
+      entry.offerId
+        ? entry.offerId
+        : entry.offerLabel
+          ? WITHOUT_OFFER_ASSIGNMENT
+          : ""
+    );
+    if (entryProject && isHourlyRecurringProject(entryProject) && catalogItems.length === 0) {
+      void loadCatalogItems();
+    }
+    if (entryProject && !isRecurringProjectKindValue(getProjectKind(entryProject))) {
+      void loadOffers(entryProject.id);
+    }
     setStampEditDate(normalizeDateKeyValue(entry.date));
     setStampEditStartTime(entry.startTime);
     setStampEditEndTime(entry.endTime);
@@ -22022,10 +22233,24 @@ await addProjectLogbookEntry(
     const now = new Date();
     setManualProjectTimeUserId(activeUser?.id || users.find((user) => user.isActive)?.id || "");
     const requiresBillingContext = isHourlyRecurringProject(selectedProjectFile);
+    const requiresOfferContext = !isRecurringProjectKindValue(getProjectKind(selectedProjectFile));
+    const assignableOffers = requiresOfferContext
+      ? getAssignableProjectOffers(selectedProjectFile.id)
+      : [];
     setManualProjectTimeTrade(requiresBillingContext ? selectedProjectFile.trade || "" : "");
     setManualProjectTimeBillingCatalogItemId("");
     setManualProjectTimeBillingCatalogItemLabel("");
+    setStampEditOfferId(
+      requiresOfferContext
+        ? assignableOffers.length === 1
+          ? assignableOffers[0].id
+          : assignableOffers.length === 0
+            ? WITHOUT_OFFER_ASSIGNMENT
+            : ""
+        : ""
+    );
     if (requiresBillingContext && catalogItems.length === 0) void loadCatalogItems();
+    if (requiresOfferContext) void loadOffers(selectedProjectFile.id);
     setStampEditDate(formatDateKey(now));
     setStampEditStartTime("08:00");
     setStampEditEndTime("09:00");
@@ -22040,6 +22265,7 @@ await addProjectLogbookEntry(
     setManualProjectTimeTrade("");
     setManualProjectTimeBillingCatalogItemId("");
     setManualProjectTimeBillingCatalogItemLabel("");
+    setStampEditOfferId("");
     setStampEditError("");
   }
 
@@ -22094,6 +22320,29 @@ await addProjectLogbookEntry(
       }
     }
 
+    if (manualProjectTimeNeedsOfferContext) {
+      if (!stampEditOfferId) {
+        setStampEditError("Bitte eine Auftragsgrundlage auswählen.");
+        return;
+      }
+      if (
+        stampEditOfferId === WITHOUT_OFFER_ASSIGNMENT &&
+        !stampEditComment.trim()
+      ) {
+        setStampEditError(
+          "Bitte im Kommentar kurz begründen, warum keine Angebotszuweisung möglich ist."
+        );
+        return;
+      }
+    }
+
+    const selectedOffer =
+      stampEditOfferId && stampEditOfferId !== WITHOUT_OFFER_ASSIGNMENT
+        ? getAssignableProjectOffers(selectedProjectFile.id).find(
+            (offer) => offer.id === stampEditOfferId
+          )
+        : undefined;
+
     const manualEntry: StampTimeEntry = {
       id: crypto.randomUUID(),
       mode: "project",
@@ -22102,6 +22351,13 @@ await addProjectLogbookEntry(
       trade: manualProjectTimeNeedsBillingContext
         ? manualProjectTimeTrade.trim()
         : selectedProjectFile.trade || "",
+      offerId: selectedOffer?.id || "",
+      offerLabel:
+        stampEditOfferId === WITHOUT_OFFER_ASSIGNMENT
+          ? "Ohne Angebotszuweisung"
+          : selectedOffer
+            ? getTimeEntryOfferLabel(selectedOffer)
+            : "",
       billingCatalogItemId: manualProjectTimeNeedsBillingContext ? manualProjectTimeBillingCatalogItemId : "",
       billingCatalogItemLabel: manualProjectTimeNeedsBillingContext
         ? selectedManualProjectTimeBillingCatalogItemLabel
@@ -22136,6 +22392,10 @@ await addProjectLogbookEntry(
 
   function closeStampEntryEditModal() {
     setEditingStampEntry(null);
+    setManualProjectTimeTrade("");
+    setManualProjectTimeBillingCatalogItemId("");
+    setManualProjectTimeBillingCatalogItemLabel("");
+    setStampEditOfferId("");
     setStampEditError("");
   }
 
@@ -22162,14 +22422,80 @@ await addProjectLogbookEntry(
       return;
     }
 
+    if (editingStampNeedsBillingContext) {
+      if (!manualProjectTimeTrade.trim()) {
+        setStampEditError("Bitte für diese Stundenabrechnung ein Gewerk auswählen.");
+        return;
+      }
+      if (editingStampMissingBillingServiceMessage) {
+        setStampEditError(editingStampMissingBillingServiceMessage);
+        return;
+      }
+      if (
+        !manualProjectTimeBillingCatalogItemId ||
+        !selectedEditingStampBillingCatalogItemLabel
+      ) {
+        setStampEditError(
+          "Bitte eine Abrechnungsleistung für diese Stundenabrechnung auswählen."
+        );
+        return;
+      }
+      if (
+        selectedEditingStampBillingCatalogItem &&
+        !editingStampServiceOptions.some(
+          (item) => item.id === selectedEditingStampBillingCatalogItem.id
+        )
+      ) {
+        setStampEditError("Die ausgewählte Abrechnungsleistung passt nicht zum Gewerk.");
+        return;
+      }
+    }
+
+    if (editingStampNeedsOfferContext) {
+      if (!stampEditOfferId) {
+        setStampEditError("Bitte eine Auftragsgrundlage auswählen.");
+        return;
+      }
+      if (
+        stampEditOfferId === WITHOUT_OFFER_ASSIGNMENT &&
+        !stampEditComment.trim()
+      ) {
+        setStampEditError(
+          "Bitte im Kommentar kurz begründen, warum keine Angebotszuweisung möglich ist."
+        );
+        return;
+      }
+    }
+
+    const selectedOffer =
+      editingStampProject &&
+      stampEditOfferId &&
+      stampEditOfferId !== WITHOUT_OFFER_ASSIGNMENT
+        ? editingStampOfferOptions.find((offer) => offer.id === stampEditOfferId)
+        : undefined;
+
     const previousSummary = `${formatProjectDate(editingStampEntry.date)} ${editingStampEntry.startTime}-${editingStampEntry.endTime}, Pause ${formatStampDuration(editingStampEntry.pauseMs)}, ${formatStampDuration(editingStampEntry.durationMs)}`;
-    const nextSummary = `${formatProjectDate(normalizeDateKeyValue(stampEditDate.trim()))} ${stampEditStartTime}-${stampEditEndTime}, Pause ${formatStampDuration(pauseMs)}, ${formatStampDuration(rawDurationMs)}`;
+    const previousOfferLabel = editingStampEntry.offerLabel || "keine Auftragsgrundlage";
+    const nextOfferLabel =
+      stampEditOfferId === WITHOUT_OFFER_ASSIGNMENT
+        ? "Ohne Angebotszuweisung"
+        : selectedOffer
+          ? getTimeEntryOfferLabel(selectedOffer)
+          : previousOfferLabel;
+    const nextSummary = `${formatProjectDate(normalizeDateKeyValue(stampEditDate.trim()))} ${stampEditStartTime}-${stampEditEndTime}, Pause ${formatStampDuration(pauseMs)}, ${formatStampDuration(rawDurationMs)}, Auftragsgrundlage: ${nextOfferLabel}`;
     const updatedEntry: StampTimeEntry = {
       ...editingStampEntry,
-      trade:
-        editingStampEntry.trade ||
-        heroProjects.find((project) => project.id === editingStampEntry.projectId)?.trade ||
-        "",
+      trade: editingStampNeedsBillingContext
+        ? manualProjectTimeTrade.trim()
+        : editingStampEntry.trade || editingStampProject?.trade || "",
+      billingCatalogItemId: editingStampNeedsBillingContext
+        ? manualProjectTimeBillingCatalogItemId
+        : editingStampEntry.billingCatalogItemId || "",
+      billingCatalogItemLabel: editingStampNeedsBillingContext
+        ? selectedEditingStampBillingCatalogItemLabel
+        : editingStampEntry.billingCatalogItemLabel || "",
+      offerId: editingStampNeedsOfferContext ? selectedOffer?.id || "" : editingStampEntry.offerId || "",
+      offerLabel: editingStampNeedsOfferContext ? nextOfferLabel : editingStampEntry.offerLabel || "",
       date: normalizeDateKeyValue(stampEditDate.trim()),
       startTime: stampEditStartTime,
       endTime: stampEditEndTime,
@@ -22183,7 +22509,7 @@ await addProjectLogbookEntry(
           actorName: activeUser?.name ?? "",
           event: "Zeiteintrag bearbeitet",
           note: stampEditComment.trim(),
-          previousValue: previousSummary,
+          previousValue: `${previousSummary}, Auftragsgrundlage: ${previousOfferLabel}`,
           nextValue: nextSummary,
           createdAt: new Date().toISOString(),
         },
@@ -24769,6 +25095,13 @@ await addProjectLogbookEntry(
   const manualProjectTimeNeedsBillingContext = Boolean(
     selectedProjectFile && isHourlyRecurringProject(selectedProjectFile)
   );
+  const manualProjectTimeNeedsOfferContext = Boolean(
+    selectedProjectFile && !isRecurringProjectKindValue(getProjectKind(selectedProjectFile))
+  );
+  const manualProjectTimeOfferOptions =
+    selectedProjectFile && manualProjectTimeNeedsOfferContext
+      ? getAssignableProjectOffers(selectedProjectFile.id)
+      : [];
   const manualProjectTimeServiceOptions = manualProjectTimeNeedsBillingContext
     ? getHourlyPlanningServiceOptions(manualProjectTimeTrade)
     : [];
@@ -24785,6 +25118,34 @@ await addProjectLogbookEntry(
     selectedManualProjectTimeBillingCatalogItem
       ? getPlanningBillingCatalogItemLabel(selectedManualProjectTimeBillingCatalogItem)
       : manualProjectTimeBillingCatalogItemLabel.trim();
+  const editingStampProject = editingStampEntry
+    ? heroProjects.find((project) => project.id === editingStampEntry.projectId)
+    : undefined;
+  const editingStampNeedsBillingContext = Boolean(
+    editingStampProject && isHourlyRecurringProject(editingStampProject)
+  );
+  const editingStampNeedsOfferContext = Boolean(
+    editingStampProject && !isRecurringProjectKindValue(getProjectKind(editingStampProject))
+  );
+  const editingStampOfferOptions =
+    editingStampProject && editingStampNeedsOfferContext
+      ? getAssignableProjectOffers(editingStampProject.id)
+      : [];
+  const editingStampServiceOptions = editingStampNeedsBillingContext
+    ? getHourlyPlanningServiceOptions(manualProjectTimeTrade)
+    : [];
+  const selectedEditingStampBillingCatalogItem = manualProjectTimeBillingCatalogItemId
+    ? catalogItems.find((item) => item.id === manualProjectTimeBillingCatalogItemId)
+    : undefined;
+  const selectedEditingStampBillingCatalogItemLabel = selectedEditingStampBillingCatalogItem
+    ? getPlanningBillingCatalogItemLabel(selectedEditingStampBillingCatalogItem)
+    : manualProjectTimeBillingCatalogItemLabel.trim();
+  const editingStampMissingBillingServiceMessage =
+    editingStampNeedsBillingContext &&
+    manualProjectTimeTrade.trim() &&
+    editingStampServiceOptions.length === 0
+      ? `Für das Gewerk "${manualProjectTimeTrade.trim()}" ist keine aktive Stunden-Abrechnungsleistung gepflegt.`
+      : "";
   const currentStampProject =
     stampSession?.mode === "project"
       ? heroProjects.find((project) => String(project.id) === String(stampSession.projectId))
@@ -40782,6 +41143,30 @@ await addProjectLogbookEntry(
             : 0;
         return hourlyCostRate > 0 ? sum : sum + Number(entry.durationMs || 0) / 3_600_000;
       }, 0);
+    const getUnratedStampDetails = (entries: StampTimeEntry[]) => {
+      const hoursByEmployee = entries.reduce((groups, entry) => {
+        const hourlyCostRate = entry.costSnapshotAt
+          ? Number(entry.laborCostRateSnapshot || 0)
+          : entry.userId
+            ? getEmployeeHourlyCostRate(entry.userId)
+            : 0;
+        if (hourlyCostRate > 0) return groups;
+
+        const employeeName = entry.employee?.trim() || "unbekanntem Mitarbeiter";
+        groups.set(
+          employeeName,
+          (groups.get(employeeName) ?? 0) + Number(entry.durationMs || 0) / 3_600_000
+        );
+        return groups;
+      }, new Map<string, number>());
+
+      return Array.from(hoursByEmployee.entries())
+        .map(
+          ([employeeName, hours]) =>
+            `${hours.toLocaleString(APP_LOCALE, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} Std. von ${employeeName}`
+        )
+        .join(", ");
+    };
     const getProjectProfitSummary = (
       scopeInvoices: InvoiceItem[],
       scopeStampEntries: StampTimeEntry[],
@@ -40803,6 +41188,7 @@ await addProjectLogbookEntry(
       const fallbackInvoiceCount = scopeInvoices.filter(hasInvoiceMaterialFallback).length;
       const fallbackStampCount = scopeStampEntries.filter(hasStampLaborFallback).length;
       const unratedStampHours = getUnratedStampHours(scopeStampEntries);
+      const unratedStampDetails = getUnratedStampDetails(scopeStampEntries);
       const hasCancelledInvoice = scopeAllInvoices.some((invoice) =>
         ["Storniert", "Stornorechnung"].includes(invoice.status)
       );
@@ -40830,6 +41216,11 @@ await addProjectLogbookEntry(
                   : unratedStampHours > 0
                     ? "vorläufig - Stunden ohne Kostensatz"
                     : "vorläufig";
+      const statusDisplayLabel = status === "final" ? "Final" : "Prüfung nötig";
+      const statusDetail =
+        unratedStampHours > 0 && unratedStampDetails
+          ? `Für ${unratedStampDetails} fehlt ein interner Lohnkostensatz. Der angezeigte Projektgewinn ist daher vorläufig.`
+          : statusLabel;
       return {
         revenue,
         materialRevenue,
@@ -40844,6 +41235,8 @@ await addProjectLogbookEntry(
         marginPercent: revenue > 0 ? (profit / revenue) * 100 : 0,
         status,
         statusLabel,
+        statusDisplayLabel,
+        statusDetail,
         invoiceCount: scopeInvoices.length,
         stampHours: scopeStampEntries.reduce((sum, entry) => sum + Number(entry.durationMs || 0) / 3_600_000, 0),
         unratedStampHours,
@@ -43371,11 +43764,19 @@ await addProjectLogbookEntry(
                     >
                       <span>{label}</span>
                       <strong>{formatMoney(summary.profit)}</strong>
-                      <small>
-                        {summary.revenue > 0
-                          ? `${summary.statusLabel} · ${formatMarginPercent(summary.marginPercent)} Marge`
-                          : summary.statusLabel}
-                      </small>
+                      <div className={styles.projectProfitSummaryMeta}>
+                        <span
+                          className={styles.projectProfitStatusPill}
+                          data-state={summary.status === "final" ? "final" : "review"}
+                          data-tooltip={summary.statusDetail}
+                          tabIndex={0}
+                        >
+                          {summary.statusDisplayLabel}
+                        </span>
+                        {summary.revenue > 0 && (
+                          <small>{formatMarginPercent(summary.marginPercent)} Marge</small>
+                        )}
+                      </div>
                     </article>
                   ))}
                 </div>
@@ -43414,10 +43815,12 @@ await addProjectLogbookEntry(
                           </td>
                           <td>
                             <span
-                              className={styles.projectProfitResultClip}
-                              data-state={summary.status === "final" ? "positive" : "preliminary"}
+                              className={styles.projectProfitStatusPill}
+                              data-state={summary.status === "final" ? "final" : "review"}
+                              data-tooltip={summary.statusDetail}
+                              tabIndex={0}
                             >
-                              {summary.statusLabel}
+                              {summary.statusDisplayLabel}
                             </span>
                           </td>
                         </tr>
@@ -51180,31 +51583,6 @@ await addProjectLogbookEntry(
                             <strong>Niederlassungsverteilung *</strong>
                             <span>Die Summe muss 100% ergeben. Diese Anteile steuern auch den LK-Satz.</span>
                           </div>
-                          <div className={styles.branchAllocationActions}>
-                            <button
-                              type="button"
-                              disabled={!mayManageUsers}
-                              onClick={() => updateEmployeeBranch("OK solutions")}
-                            >
-                              100% OK solutions
-                            </button>
-                            <button
-                              type="button"
-                              disabled={!mayManageUsers}
-                              onClick={() => updateEmployeeBranch("OK immocare")}
-                            >
-                              100% OK immocare
-                            </button>
-                            <button
-                              type="button"
-                              disabled={!mayManageUsers}
-                              onClick={() =>
-                                updateEmployeeBranchAllocations({ okSolutions: 50, okImmocareVzk: 50, okImmocareTzk: 0 })
-                              }
-                            >
-                              50 / 50
-                            </button>
-                          </div>
                         </div>
                         <div className={styles.branchAllocationGrid}>
                           <label>
@@ -52863,9 +53241,17 @@ await addProjectLogbookEntry(
                   Hier steuerst du automatische Fristen getrennt nach fachlichen Bereichen.
                 </p>
               </div>
+              <div className={styles.deadlineSettingsOverviewBadge}>
+                <strong>5 Bereiche aktiv</strong>
+                <span>1 Bereich vorbereitet</span>
+              </div>
             </div>
             <div className={styles.deadlineSettingsLayout}>
-              <nav className={styles.deadlineSettingsNav} aria-label="Zeitfristen-Bereiche">
+              <nav
+                className={styles.deadlineSettingsNav}
+                aria-label="Zeitfristen-Bereiche"
+                role="tablist"
+              >
                 {[
                   {
                     id: "offers" as DeadlineSettingsSection,
@@ -52883,7 +53269,7 @@ await addProjectLogbookEntry(
                     id: "projectStatus" as DeadlineSettingsSection,
                     label: "Projektstatus & Eskalation",
                     description: "Fristen je Projektstatus",
-                    status: "Vorbereitet",
+                    status: projectStatusEscalationEnabled ? "Aktiv" : "Inaktiv",
                   },
                   {
                     id: "stampInterruptions" as DeadlineSettingsSection,
@@ -52910,6 +53296,8 @@ await addProjectLogbookEntry(
                     className={styles.deadlineSettingsNavItem}
                     data-active={deadlineSettingsSection === item.id}
                     data-status={item.status === "Aktiv" ? "active" : "planned"}
+                    role="tab"
+                    aria-selected={deadlineSettingsSection === item.id}
                     onClick={() => setDeadlineSettingsSection(item.id)}
                   >
                     <span>
@@ -52921,7 +53309,7 @@ await addProjectLogbookEntry(
                 ))}
               </nav>
               <div className={styles.deadlineSettingsDetail}>
-                <div className={styles.settingsHeader}>
+                <div className={`${styles.settingsHeader} ${styles.deadlineSettingsDetailHeader}`}>
                   <div>
                     <h2>
                       {deadlineSettingsSection === "offers"
@@ -52939,27 +53327,19 @@ await addProjectLogbookEntry(
                     <p>
                       {deadlineSettingsSection === "offers"
                         ? "Beim finalen Speichern eines Angebots wird eine zentrale Nachfass-Aufgabe angelegt."
-                        : deadlineSettingsSection === "tasks"
+                          : deadlineSettingsSection === "tasks"
                           ? "Archivierung und Grenzwerte für die gestufte Aufgaben-Eskalation werden hier zentral gepflegt."
+                          : deadlineSettingsSection === "projectStatus"
+                            ? "Warnt, wenn ein Projekt ungewöhnlich lange in einer operativen Phase stehen bleibt. Der Status wird niemals automatisch geändert."
                           : deadlineSettingsSection === "stampInterruptions"
                             ? "Die Aufgabe entsteht sofort. Diese Frist steuert die spätere Nachfassmeldung, falls sie offen bleibt."
                             : deadlineSettingsSection === "punctuality"
                               ? "Diese Werte steuern, ab wann Planstart und Planende als abweichend gelten."
                               : deadlineSettingsSection === "billing"
                                 ? "Der Rundungsfaktor wird bei abrechenbaren Projektstempelungen angewendet."
-                                : "Dieser Bereich wird erst editierbar, wenn die zugehörige Logik angeschlossen ist."}
+                                : ""}
                     </p>
                   </div>
-                  {(["offers", "tasks", "stampInterruptions", "punctuality", "billing"] as DeadlineSettingsSection[]).includes(deadlineSettingsSection) && (
-                    <button
-                      type="button"
-                      className={styles.primaryButton}
-                      onClick={() => void saveDeadlineSettings()}
-                      disabled={isSavingDeadlineSettings}
-                    >
-                      {isSavingDeadlineSettings ? "Speichert..." : "Speichern"}
-                    </button>
-                  )}
                 </div>
                 {deadlineSettingsSection === "offers" ? (
                   <>
@@ -53345,6 +53725,278 @@ await addProjectLogbookEntry(
                       ) : null}
                     </section>
                   </div>
+                ) : deadlineSettingsSection === "projectStatus" ? (
+                  <div className={styles.deadlineSettingsTaskSections}>
+                    <section className={styles.deadlineSettingsGroup}>
+                      <div className={styles.deadlineSettingsGroupHeader}>
+                        <strong>Sichere Aktivierung</strong>
+                        <span>
+                          Erst Vorschau prüfen, dann einschalten. Angebote, Kundenwartezeiten,
+                          Unterbrechungen und abgeschlossene Projekte werden bewusst nicht doppelt überwacht.
+                        </span>
+                      </div>
+                      <div className={styles.companySettingsForm}>
+                        <label>
+                          Projektstatus-Frühwarnung
+                          <select
+                            value={projectStatusEscalationEnabled ? "enabled" : "disabled"}
+                            disabled={!projectStatusPreview && !projectStatusEscalationEnabled}
+                            onChange={(event) =>
+                              setProjectStatusEscalationEnabled(event.target.value === "enabled")
+                            }
+                          >
+                            <option value="disabled">Ausgeschaltet</option>
+                            <option value="enabled">Aktiv</option>
+                          </select>
+                        </label>
+                        <span className={styles.companySettingsHint}>
+                          {!projectStatusPreview && !projectStatusEscalationEnabled
+                            ? "Vor Aktivierung zuerst Dry-Run ausführen"
+                            : "Keine automatische Statusänderung"}
+                        </span>
+                      </div>
+                    </section>
+
+                    <section className={styles.deadlineSettingsGroup}>
+                      <div className={styles.deadlineSettingsGroupHeader}>
+                        <strong>Fristen je Projektphase</strong>
+                        <span>
+                          Erste Stufe an die verantwortliche Person, zweite Stufe zusätzlich an die
+                          Geschäftsführung. Es zählen Kalendertage.
+                        </span>
+                      </div>
+                      <div className={styles.projectStatusRuleGrid}>
+                        {projectStatusRules.map((rule) => (
+                          <div className={styles.projectStatusRuleRow} key={rule.status}>
+                            <label>
+                              <span>{rule.status}</span>
+                              <select
+                                value={rule.enabled ? "enabled" : "disabled"}
+                                onChange={(event) => {
+                                  const enabled = event.target.value === "enabled";
+                                  setProjectStatusRules((current) =>
+                                    current.map((entry) =>
+                                      entry.status === rule.status ? { ...entry, enabled } : entry
+                                    )
+                                  );
+                                  setProjectStatusPreview(null);
+                                }}
+                              >
+                                <option value="enabled">Überwachen</option>
+                                <option value="disabled">Nicht überwachen</option>
+                              </select>
+                            </label>
+                            <label>
+                              Verantwortliche Person nach
+                              <input
+                                type="number"
+                                min="1"
+                                max="180"
+                                value={rule.responsibleAfterDays}
+                                disabled={!rule.enabled}
+                                onChange={(event) => {
+                                  const responsibleAfterDays = normalizeDeadlineInteger(
+                                    event.target.value,
+                                    rule.responsibleAfterDays,
+                                    1,
+                                    180
+                                  );
+                                  setProjectStatusRules((current) =>
+                                    current.map((entry) =>
+                                      entry.status === rule.status
+                                        ? {
+                                            ...entry,
+                                            responsibleAfterDays,
+                                            managementAfterDays: Math.max(
+                                              responsibleAfterDays,
+                                              entry.managementAfterDays
+                                            ),
+                                          }
+                                        : entry
+                                    )
+                                  );
+                                  setProjectStatusPreview(null);
+                                }}
+                              />
+                            </label>
+                            <label>
+                              Geschäftsführung nach
+                              <input
+                                type="number"
+                                min={rule.responsibleAfterDays}
+                                max="365"
+                                value={rule.managementAfterDays}
+                                disabled={!rule.enabled}
+                                onChange={(event) => {
+                                  const managementAfterDays = Math.max(
+                                    rule.responsibleAfterDays,
+                                    normalizeDeadlineInteger(
+                                      event.target.value,
+                                      rule.managementAfterDays,
+                                      1,
+                                      365
+                                    )
+                                  );
+                                  setProjectStatusRules((current) =>
+                                    current.map((entry) =>
+                                      entry.status === rule.status
+                                        ? { ...entry, managementAfterDays }
+                                        : entry
+                                    )
+                                  );
+                                  setProjectStatusPreview(null);
+                                }}
+                              />
+                            </label>
+                            <span className={styles.companySettingsHint}>Kalendertage</span>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+
+                    <section className={styles.taskEscalationPreview}>
+                      <div className={styles.taskEscalationPreviewHeader}>
+                        <div>
+                          <strong>Auswirkung vorab prüfen</strong>
+                          <span>
+                            Der Dry-Run liest den aktuellen Bestand. Er erzeugt weder Meldungen noch
+                            E-Mails und ändert keinen Projektstatus.
+                          </span>
+                        </div>
+                        <div className={styles.taskEscalationPreviewActions}>
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            onClick={() => void loadProjectStatusEscalationPreview()}
+                            disabled={
+                              isLoadingProjectStatusPreview || isSynchronizingProjectStatus
+                            }
+                          >
+                            {isLoadingProjectStatusPreview ? "Prüft..." : "Dry-Run ausführen"}
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.primaryButton}
+                            onClick={() => void synchronizeProjectStatusEscalations()}
+                            disabled={
+                              !projectStatusPreview ||
+                              projectStatusPreview.enabled !== projectStatusEscalationEnabled ||
+                              isSynchronizingProjectStatus ||
+                              isLoadingProjectStatusPreview
+                            }
+                          >
+                            {isSynchronizingProjectStatus ? "Prüft..." : "Jetzt prüfen"}
+                          </button>
+                        </div>
+                      </div>
+
+                      {projectStatusPreviewError ? (
+                        <p className={styles.taskEscalationPreviewError}>
+                          {projectStatusPreviewError}
+                        </p>
+                      ) : null}
+                      {projectStatusSyncMessage ? (
+                        <p className={styles.taskEscalationSyncMessage}>
+                          {projectStatusSyncMessage}
+                        </p>
+                      ) : null}
+
+                      {projectStatusPreview ? (
+                        <>
+                          <div className={styles.taskEscalationPreviewSummary}>
+                            <div>
+                              <span>Überwachte Projekte</span>
+                              <strong>{projectStatusPreview.monitoredProjects}</strong>
+                            </div>
+                            <div>
+                              <span>Hinweis an Verantwortliche</span>
+                              <strong>
+                                {
+                                  projectStatusPreview.items.filter(
+                                    (item) => item.stage === "responsible"
+                                  ).length
+                                }
+                              </strong>
+                            </div>
+                            <div>
+                              <span>Geschäftsführung</span>
+                              <strong>
+                                {
+                                  projectStatusPreview.items.filter(
+                                    (item) => item.stage === "management"
+                                  ).length
+                                }
+                              </strong>
+                            </div>
+                            <div>
+                              <span>Zuständigkeit fehlt</span>
+                              <strong>
+                                {
+                                  projectStatusPreview.items.filter(
+                                    (item) => !item.responsibleUserId
+                                  ).length
+                                }
+                              </strong>
+                            </div>
+                          </div>
+                          <p className={styles.taskEscalationPreviewBasis}>
+                            Stand {formatInstantDateTime(projectStatusPreview.generatedAt)} ·{" "}
+                            {projectStatusPreview.calculationBasis}
+                          </p>
+                          {!projectStatusPreview.automation.enabled ||
+                          !projectStatusPreview.automation.deliveryEnabled ? (
+                            <p className={styles.taskEscalationPreviewEmpty}>
+                              Sicherer Testbetrieb: Die automatische Prüfung und Zustellung ist auf
+                              diesem Server noch ausgeschaltet.
+                            </p>
+                          ) : null}
+                          {projectStatusPreview.items.length === 0 ? (
+                            <p className={styles.taskEscalationPreviewEmpty}>
+                              Aktuell überschreitet kein Projekt die eingestellten Fristen.
+                            </p>
+                          ) : (
+                            <div className={styles.taskEscalationPreviewList}>
+                              {projectStatusPreview.items.map((item) => (
+                                <div
+                                  className={styles.taskEscalationPreviewRow}
+                                  key={`${item.projectId}-${item.stage}`}
+                                >
+                                  <div>
+                                    <strong>
+                                      {item.projectNumber} · {item.projectTitle}
+                                    </strong>
+                                    <span>
+                                      {item.status} seit {item.elapsedDays} Tagen
+                                      {item.customer ? ` · ${item.customer}` : ""}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span
+                                      className={styles.taskEscalationStage}
+                                      data-stage={
+                                        item.stage === "management"
+                                          ? "management"
+                                          : "employee"
+                                      }
+                                    >
+                                      {item.stage === "management"
+                                        ? "Geschäftsführung"
+                                        : "Verantwortliche Person"}
+                                    </span>
+                                    <small>
+                                      {item.responsibleUserId
+                                        ? `Zuständig: ${item.responsibleName}`
+                                        : "Keine eindeutige Zuständigkeit"}
+                                    </small>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      ) : null}
+                    </section>
+                  </div>
                 ) : deadlineSettingsSection === "stampInterruptions" ? (
                   <>
                     <div className={styles.companySettingsForm}>
@@ -53451,9 +54103,22 @@ await addProjectLogbookEntry(
                 )}
               </div>
             </div>
-            {deadlineSettingsMessage ? (
-              <p className={styles.companySettingsHint}>{deadlineSettingsMessage}</p>
-            ) : null}
+            <div className={styles.deadlineSettingsFooter}>
+              <span>
+                {deadlineSettingsMessage ||
+                  "Änderungen wirken nach dem Speichern für alle neuen Fristprüfungen."}
+              </span>
+              {(["offers", "tasks", "projectStatus", "stampInterruptions", "punctuality", "billing"] as DeadlineSettingsSection[]).includes(deadlineSettingsSection) ? (
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  onClick={() => void saveDeadlineSettings()}
+                  disabled={isSavingDeadlineSettings}
+                >
+                  {isSavingDeadlineSettings ? "Speichert..." : "Änderungen speichern"}
+                </button>
+              ) : null}
+            </div>
             {/*
             <div className={styles.plannedModuleGrid}>
               <article>
@@ -64935,13 +65600,45 @@ await addProjectLogbookEntry(
                   />
                 </label>
               </div>
+              {manualProjectTimeNeedsOfferContext ? (
+                <div className={styles.stampTradePicker}>
+                  <label
+                    className={styles.requiredPlanningField}
+                    data-required-missing={!stampEditOfferId ? "true" : "false"}
+                  >
+                    Auftragsgrundlage *
+                    <select
+                      value={stampEditOfferId}
+                      onChange={(event) => {
+                        setStampEditOfferId(event.target.value);
+                        setStampEditError("");
+                      }}
+                    >
+                      <option value="">Bitte auswählen</option>
+                      {manualProjectTimeOfferOptions.map((offer) => (
+                        <option key={offer.id} value={offer.id}>
+                          {getTimeEntryOfferLabel(offer)}
+                        </option>
+                      ))}
+                      <option value={WITHOUT_OFFER_ASSIGNMENT}>
+                        Ohne Angebotszuweisung
+                      </option>
+                    </select>
+                  </label>
+                  <p>
+                    Die Zuordnung verbindet die tatsächlich geleisteten Stunden mit dem
+                    Hauptangebot oder einem Nachtrag. Ohne Angebot ist eine kurze Begründung im
+                    Kommentar erforderlich.
+                  </p>
+                </div>
+              ) : null}
               {manualProjectTimeNeedsBillingContext ? (
                 <div className={styles.stampTradePicker}>
                   <label
                     className={styles.requiredPlanningField}
                     data-required-missing={!manualProjectTimeTrade.trim() ? "true" : "false"}
                   >
-                    Gewerk für diesen Zeiteintrag *
+                    Verrechnungsgewerk *
                     <select
                       value={manualProjectTimeTrade}
                       onChange={(event) => {
@@ -64966,7 +65663,7 @@ await addProjectLogbookEntry(
                     className={styles.requiredPlanningField}
                     data-required-missing={!manualProjectTimeBillingCatalogItemId ? "true" : "false"}
                   >
-                    Abrechnungsleistung *
+                    Verrechnungsposition *
                     <select
                       value={manualProjectTimeBillingCatalogItemId}
                       disabled={!manualProjectTimeTrade}
@@ -65091,6 +65788,127 @@ await addProjectLogbookEntry(
                   />
                 </label>
               </div>
+              {editingStampNeedsOfferContext ? (
+                <div className={styles.stampTradePicker}>
+                  <label
+                    className={styles.requiredPlanningField}
+                    data-required-missing={!stampEditOfferId ? "true" : "false"}
+                  >
+                    Auftragsgrundlage *
+                    <select
+                      value={stampEditOfferId}
+                      onChange={(event) => {
+                        setStampEditOfferId(event.target.value);
+                        setStampEditError("");
+                      }}
+                    >
+                      <option value="">Bitte auswählen</option>
+                      {stampEditOfferId &&
+                        stampEditOfferId !== WITHOUT_OFFER_ASSIGNMENT &&
+                        !editingStampOfferOptions.some(
+                          (offer) => offer.id === stampEditOfferId
+                        ) && (
+                          <option value={stampEditOfferId}>
+                            {editingStampEntry.offerLabel || "Bisherige Auftragsgrundlage"}
+                          </option>
+                        )}
+                      {editingStampOfferOptions.map((offer) => (
+                        <option key={offer.id} value={offer.id}>
+                          {getTimeEntryOfferLabel(offer)}
+                        </option>
+                      ))}
+                      <option value={WITHOUT_OFFER_ASSIGNMENT}>
+                        Ohne Angebotszuweisung
+                      </option>
+                    </select>
+                  </label>
+                  <p>
+                    Änderungen an der Auftragsgrundlage werden in der Bearbeitungshistorie
+                    dokumentiert.
+                  </p>
+                </div>
+              ) : null}
+              {editingStampNeedsBillingContext ? (
+                <div className={styles.stampTradePicker}>
+                  <label
+                    className={styles.requiredPlanningField}
+                    data-required-missing={!manualProjectTimeTrade.trim() ? "true" : "false"}
+                  >
+                    Verrechnungsgewerk *
+                    <select
+                      value={manualProjectTimeTrade}
+                      onChange={(event) => {
+                        setManualProjectTimeTrade(event.target.value);
+                        setManualProjectTimeBillingCatalogItemId("");
+                        setManualProjectTimeBillingCatalogItemLabel("");
+                        setStampEditError("");
+                      }}
+                    >
+                      <option value="">Bitte auswählen</option>
+                      {manualProjectTimeTrade &&
+                        !projectTradeSelectOptions.includes(manualProjectTimeTrade) && (
+                          <option value={manualProjectTimeTrade}>
+                            {manualProjectTimeTrade}
+                          </option>
+                        )}
+                      {projectTradeSelectOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label
+                    className={styles.requiredPlanningField}
+                    data-required-missing={
+                      !manualProjectTimeBillingCatalogItemId ? "true" : "false"
+                    }
+                  >
+                    Verrechnungsposition *
+                    <select
+                      value={manualProjectTimeBillingCatalogItemId}
+                      disabled={!manualProjectTimeTrade}
+                      onChange={(event) => {
+                        const nextItemId = event.target.value;
+                        const nextItem = catalogItems.find((item) => item.id === nextItemId);
+                        setManualProjectTimeBillingCatalogItemId(nextItemId);
+                        setManualProjectTimeBillingCatalogItemLabel(
+                          nextItem ? getPlanningBillingCatalogItemLabel(nextItem) : ""
+                        );
+                        setStampEditError("");
+                      }}
+                    >
+                      <option value="">
+                        {manualProjectTimeTrade
+                          ? "Leistung auswählen"
+                          : "Erst Gewerk auswählen"}
+                      </option>
+                      {manualProjectTimeBillingCatalogItemId &&
+                        selectedEditingStampBillingCatalogItemLabel &&
+                        !editingStampServiceOptions.some(
+                          (item) => item.id === manualProjectTimeBillingCatalogItemId
+                        ) && (
+                          <option value={manualProjectTimeBillingCatalogItemId}>
+                            {selectedEditingStampBillingCatalogItemLabel}
+                          </option>
+                        )}
+                      {editingStampServiceOptions.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.number} | {item.name} ({formatMoney(item.salesPrice)} / Std.)
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {editingStampMissingBillingServiceMessage ? (
+                    <p className={styles.stampWarningNote}>
+                      {editingStampMissingBillingServiceMessage}
+                    </p>
+                  ) : null}
+                  <p>
+                    Diese Zuordnung wird für die spätere Stundenabrechnung verwendet.
+                  </p>
+                </div>
+              ) : null}
               <label>
                 Kommentar
                 <textarea

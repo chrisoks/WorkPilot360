@@ -24,6 +24,8 @@ type ProjectTimeEntryRow = {
   trade: string | null;
   planningEntryId: string | null;
   planningBillingGroupId: string | null;
+  offerId: string | null;
+  offerLabel: string | null;
   billingCatalogItemId: string | null;
   billingCatalogItemLabel: string | null;
   userId: string | null;
@@ -64,6 +66,8 @@ async function ensureProjectTimeEntryTable() {
       "trade" TEXT,
       "planningEntryId" TEXT,
       "planningBillingGroupId" TEXT,
+      "offerId" TEXT,
+      "offerLabel" TEXT,
       "billingCatalogItemId" TEXT,
       "billingCatalogItemLabel" TEXT,
       "userId" TEXT,
@@ -99,6 +103,8 @@ async function ensureProjectTimeEntryTable() {
     ADD COLUMN IF NOT EXISTS "trade" TEXT,
     ADD COLUMN IF NOT EXISTS "planningEntryId" TEXT,
     ADD COLUMN IF NOT EXISTS "planningBillingGroupId" TEXT,
+    ADD COLUMN IF NOT EXISTS "offerId" TEXT,
+    ADD COLUMN IF NOT EXISTS "offerLabel" TEXT,
     ADD COLUMN IF NOT EXISTS "billingCatalogItemId" TEXT,
     ADD COLUMN IF NOT EXISTS "billingCatalogItemLabel" TEXT,
     ADD COLUMN IF NOT EXISTS "entrySource" TEXT NOT NULL DEFAULT 'stamped',
@@ -276,6 +282,8 @@ function formatEntry(entry: ProjectTimeEntryRow, options: { includeInternalCosts
     trade: entry.trade ?? "",
     planningEntryId: entry.planningEntryId ?? "",
     planningBillingGroupId: entry.planningBillingGroupId ?? "",
+    offerId: entry.offerId ?? "",
+    offerLabel: entry.offerLabel ?? "",
     billingCatalogItemId: entry.billingCatalogItemId ?? "",
     billingCatalogItemLabel: entry.billingCatalogItemLabel ?? "",
     userId: entry.userId ?? "",
@@ -420,6 +428,8 @@ export async function POST(req: Request) {
   const trade = mode === "project" ? cleanString(body.trade) : "";
   const planningEntryId = cleanString(body.planningEntryId);
   const planningBillingGroupId = cleanString(body.planningBillingGroupId);
+  const offerId = mode === "project" ? cleanString(body.offerId) : "";
+  let offerLabel = mode === "project" ? cleanString(body.offerLabel) : "";
   const billingCatalogItemId = cleanString(body.billingCatalogItemId);
   const billingCatalogItemLabel = cleanString(body.billingCatalogItemLabel);
   const userId = cleanString(body.userId);
@@ -521,6 +531,25 @@ export async function POST(req: Request) {
     }
   }
 
+  if (offerId) {
+    const offerRows = await prisma.$queryRaw<Array<{ offerNumber: string; status: string }>>`
+      SELECT "offerNumber", "status"
+      FROM "Offer"
+      WHERE "organizationId" = ${organization.id}
+        AND "id" = ${offerId}
+        AND "projectId" = ${projectId}
+      LIMIT 1
+    `;
+    const linkedOffer = offerRows[0];
+    if (!linkedOffer) {
+      return NextResponse.json(
+        { error: "Das ausgewählte Angebot gehört nicht zu diesem Projekt." },
+        { status: 400 }
+      );
+    }
+    offerLabel = `${linkedOffer.offerNumber} · ${linkedOffer.status}`;
+  }
+
   const rows = await prisma.$queryRaw<ProjectTimeEntryRow[]>`
     INSERT INTO "ProjectTimeEntry" (
       "id",
@@ -531,6 +560,8 @@ export async function POST(req: Request) {
       "trade",
       "planningEntryId",
       "planningBillingGroupId",
+      "offerId",
+      "offerLabel",
       "billingCatalogItemId",
       "billingCatalogItemLabel",
       "userId",
@@ -563,6 +594,8 @@ export async function POST(req: Request) {
       ${trade || null},
       ${planningEntryId || null},
       ${planningBillingGroupId || null},
+      ${offerId || null},
+      ${offerLabel || null},
       ${billingCatalogItemId || null},
       ${billingCatalogItemLabel || null},
       ${targetUser.id},
@@ -592,6 +625,8 @@ export async function POST(req: Request) {
       "trade" = EXCLUDED."trade",
       "planningEntryId" = EXCLUDED."planningEntryId",
       "planningBillingGroupId" = EXCLUDED."planningBillingGroupId",
+      "offerId" = EXCLUDED."offerId",
+      "offerLabel" = EXCLUDED."offerLabel",
       "billingCatalogItemId" = EXCLUDED."billingCatalogItemId",
       "billingCatalogItemLabel" = EXCLUDED."billingCatalogItemLabel",
       "userId" = EXCLUDED."userId",

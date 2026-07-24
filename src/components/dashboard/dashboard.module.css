@@ -14918,6 +14918,75 @@
   line-height: 1.1;
 }
 
+.projectProfitSummaryMeta {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.projectProfitSummaryCard .projectProfitStatusPill {
+  color: #92400e;
+}
+
+.projectProfitStatusPill {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: help;
+  display: inline-flex;
+  font-size: 0.76rem;
+  font-weight: 950;
+  justify-content: center;
+  min-width: 0;
+  padding: 5px 9px;
+  position: relative;
+  white-space: nowrap;
+}
+
+.projectProfitStatusPill[data-state="final"] {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #00833e;
+}
+
+.projectProfitStatusPill[data-state="review"] {
+  background: #fef3c7;
+  border-color: #fbbf24;
+  color: #92400e;
+}
+
+.projectProfitStatusPill::after {
+  background: #111827;
+  border-radius: 7px;
+  color: #ffffff;
+  content: attr(data-tooltip);
+  font-size: 0.74rem;
+  font-weight: 750;
+  left: 0;
+  line-height: 1.35;
+  max-width: 320px;
+  opacity: 0;
+  padding: 8px 10px;
+  pointer-events: none;
+  position: absolute;
+  text-align: left;
+  top: calc(100% + 8px);
+  transform: translateY(4px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+  visibility: hidden;
+  white-space: normal;
+  width: max-content;
+  z-index: 40;
+}
+
+.projectProfitStatusPill:hover::after,
+.projectProfitStatusPill:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
+}
+
 .projectProfitTable {
   min-width: 1080px;
 }
@@ -17632,51 +17701,76 @@
 
 .deadlineSettingsCard .companySettingsForm {
   align-items: end;
-  grid-template-columns: minmax(240px, 520px) auto;
-  margin-bottom: 14px;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  margin-bottom: 12px;
+}
+
+.deadlineSettingsOverviewBadge {
+  align-items: flex-end;
+  background: #f0fdfa;
+  border: 1px solid #99f6e4;
+  border-radius: 10px;
+  display: grid;
+  gap: 2px;
+  padding: 9px 12px;
+  text-align: right;
+}
+
+.deadlineSettingsOverviewBadge strong {
+  color: #0f766e;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.deadlineSettingsOverviewBadge span {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 700;
 }
 
 .deadlineSettingsLayout {
   display: grid;
-  gap: 18px;
-  grid-template-columns: minmax(260px, 330px) minmax(0, 1fr);
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
   margin-top: 18px;
 }
 
 .deadlineSettingsNav {
   background: #f8fafc;
-  border: 1px solid #dbeafe;
+  border: 1px solid #dbe4ee;
   border-radius: 12px;
   display: grid;
-  gap: 8px;
+  gap: 7px;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
   padding: 8px;
 }
 
 .deadlineSettingsNavItem {
   align-items: center;
-  background: transparent;
+  background: #ffffff;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: 9px;
   color: #0f172a;
   cursor: pointer;
   display: flex;
   font: inherit;
   gap: 10px;
   justify-content: space-between;
-  padding: 12px;
+  min-height: 72px;
+  padding: 10px 11px;
   text-align: left;
   width: 100%;
 }
 
 .deadlineSettingsNavItem:hover,
 .deadlineSettingsNavItem[data-active="true"] {
-  background: #ffffff;
-  border-color: #93c5fd;
-  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.1);
+  border-color: #5eead4;
+  box-shadow: 0 7px 16px rgba(15, 118, 110, 0.08);
 }
 
 .deadlineSettingsNavItem[data-active="true"] {
-  box-shadow: inset 4px 0 0 #2563eb, 0 10px 22px rgba(37, 99, 235, 0.1);
+  background: #f0fdfa;
+  box-shadow: inset 0 -3px 0 #0f8f8f, 0 7px 16px rgba(15, 118, 110, 0.08);
 }
 
 .deadlineSettingsNavItem span,
@@ -17686,12 +17780,12 @@
 }
 
 .deadlineSettingsNavItem strong {
-  font-size: 0.9rem;
+  font-size: 0.84rem;
 }
 
 .deadlineSettingsNavItem small {
   color: #64748b;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 500;
   line-height: 1.35;
   margin-top: 4px;
@@ -17700,7 +17794,7 @@
 .deadlineSettingsNavItem em {
   border-radius: 999px;
   color: #64748b;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-style: normal;
   font-weight: 850;
   padding: 4px 8px;
@@ -17718,25 +17812,37 @@
 }
 
 .deadlineSettingsDetail {
-  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border: 1px solid #dbe4ee;
   border-radius: 12px;
   min-height: 286px;
-  padding: 18px;
+  padding: 14px;
+}
+
+.deadlineSettingsDetailHeader {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  margin-bottom: 14px;
+  padding: 13px 14px;
 }
 
 .deadlineSettingsTaskSections {
   display: grid;
-  gap: 22px;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .deadlineSettingsGroup {
-  border-top: 1px solid #e2e8f0;
-  padding-top: 18px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 14px;
 }
 
 .deadlineSettingsGroup:first-child {
-  border-top: 0;
-  padding-top: 0;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 14px;
 }
 
 .deadlineSettingsGroupHeader {
@@ -17761,8 +17867,8 @@
 
 .deadlineSettingsGrid {
   display: grid;
-  gap: 12px 18px;
-  grid-template-columns: repeat(2, minmax(240px, 1fr));
+  gap: 10px 12px;
+  grid-template-columns: repeat(2, minmax(170px, 1fr));
 }
 
 .deadlineSettingsGrid .companySettingsForm {
@@ -17770,18 +17876,91 @@
   margin-bottom: 0;
 }
 
+.projectStatusRuleGrid {
+  display: grid;
+  gap: 8px;
+}
+
+.projectStatusRuleRow {
+  align-items: end;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  display: grid;
+  gap: 10px 12px;
+  grid-template-columns: minmax(190px, 1.15fr) minmax(160px, 0.8fr) minmax(160px, 0.8fr) auto;
+  padding: 11px 12px;
+}
+
+.projectStatusRuleRow label {
+  color: #334155;
+  display: grid;
+  font-size: 0.78rem;
+  font-weight: 800;
+  gap: 6px;
+}
+
+.projectStatusRuleRow label:first-child span {
+  color: #0f172a;
+  font-size: 0.9rem;
+}
+
+.projectStatusRuleRow input,
+.projectStatusRuleRow select,
+.deadlineSettingsCard .companySettingsForm select {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  color: #0f172a;
+  font: inherit;
+  font-weight: 700;
+  min-height: 38px;
+  padding: 7px 9px;
+  width: 100%;
+}
+
+.projectStatusRuleRow input:disabled,
+.projectStatusRuleRow select:disabled {
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+
 .deadlineSettingsNote {
   background: #f8fafc;
   border-left: 3px solid #0ea5a8;
+  grid-column: 1 / -1;
   margin: 0;
   padding: 10px 12px;
 }
 
 .taskEscalationPreview {
-  border-top: 1px solid #e2e8f0;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
   display: grid;
   gap: 14px;
-  padding-top: 18px;
+  grid-column: 1 / -1;
+  padding: 14px;
+}
+
+.deadlineSettingsFooter {
+  align-items: center;
+  background: #ffffff;
+  border-top: 1px solid #dbe4ee;
+  bottom: 0;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin: 14px -18px -18px;
+  padding: 12px 18px;
+  position: sticky;
+  z-index: 12;
+}
+
+.deadlineSettingsFooter span {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .taskEscalationPreviewHeader {
@@ -17940,9 +18119,17 @@
 
 @media (max-width: 1100px) {
   .deadlineCategoryGrid,
-  .deadlineSettingsLayout,
-  .deadlineSettingsGrid {
+  .deadlineSettingsGrid,
+  .deadlineSettingsTaskSections {
     grid-template-columns: 1fr;
+  }
+
+  .deadlineSettingsNav {
+    grid-template-columns: repeat(2, minmax(180px, 1fr));
+  }
+
+  .projectStatusRuleRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -17950,6 +18137,19 @@
   .deadlineCategoryGrid,
   .deadlineSettingsCard .companySettingsForm {
     grid-template-columns: 1fr;
+  }
+
+  .deadlineSettingsNav {
+    grid-template-columns: 1fr;
+  }
+
+  .projectStatusRuleRow {
+    grid-template-columns: 1fr;
+  }
+
+  .deadlineSettingsFooter {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 
@@ -19883,31 +20083,6 @@
   font-size: 0.82rem;
   font-weight: 800;
   margin-top: 3px;
-}
-
-.branchAllocationActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: flex-end;
-}
-
-.branchAllocationActions button {
-  background: #ffffff;
-  border: 1px solid #bfd0e6;
-  border-radius: 10px;
-  color: #0f172a;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.82rem;
-  font-weight: 900;
-  min-height: 34px;
-  padding: 7px 10px;
-}
-
-.branchAllocationActions button:hover {
-  border-color: #009ca6;
-  color: #008992;
 }
 
 .branchAllocationGrid {

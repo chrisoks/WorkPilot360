@@ -202,6 +202,7 @@ export async function POST(req: Request) {
     FROM "StatusEscalationRule"
     WHERE "organizationId" = ${organization.id}
       AND "isActive" = true
+      AND "entityType" <> 'project'
   `;
   const rules = Array.from(
     new Map(rawRules.map((rule) => [getRuleExecutionKey(rule), rule])).values()
@@ -218,6 +219,7 @@ export async function POST(req: Request) {
     FROM "StatusTimelineEntry"
     WHERE "organizationId" = ${organization.id}
       AND "endedAt" IS NULL
+      AND "entityType" <> 'project'
   `;
 
   let created = 0;
