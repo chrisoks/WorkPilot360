@@ -47,6 +47,7 @@ type VehicleCalculation = {
 };
 
 type VehicleDraft = Omit<Vehicle, "id">;
+type FuelPriceKey = "diesel" | "e5" | "e10";
 
 const currency = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
 const number = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 });
@@ -90,6 +91,14 @@ function fuelPriceForVehicle(vehicle: Vehicle | undefined, prices: FuelPrices | 
   return 0;
 }
 
+function fuelPriceKeyForVehicle(vehicle: Vehicle | undefined): FuelPriceKey | "" {
+  if (!vehicle) return "";
+  if (vehicle.fuelType === "DIESEL") return "diesel";
+  if (vehicle.fuelType === "E5") return "e5";
+  if (vehicle.fuelType === "E10" || vehicle.fuelType === "HYBRID") return "e10";
+  return "";
+}
+
 export function VehicleModule({
   actorId,
   section,
@@ -106,6 +115,7 @@ export function VehicleModule({
   const [selectedVehicleId, setSelectedVehicleId] = useState("");
   const [distanceKm, setDistanceKm] = useState(100);
   const [fuelPrice, setFuelPrice] = useState(1.8);
+  const [selectedFuelPriceKey, setSelectedFuelPriceKey] = useState<FuelPriceKey | "">("");
   const [result, setResult] = useState<VehicleTripCalculationResult | null>(null);
   const [note, setNote] = useState("");
   const [savingCalculation, setSavingCalculation] = useState(false);
@@ -164,7 +174,12 @@ export function VehicleModule({
 
   useEffect(() => {
     const currentPrice = fuelPriceForVehicle(selectedVehicle, fuelPrices);
-    if (typeof currentPrice === "number") setFuelPrice(currentPrice);
+    if (typeof currentPrice === "number") {
+      setFuelPrice(currentPrice);
+      setSelectedFuelPriceKey(fuelPriceKeyForVehicle(selectedVehicle));
+    } else {
+      setSelectedFuelPriceKey("");
+    }
     setResult(null);
   }, [fuelPrices, selectedVehicle]);
 
@@ -558,20 +573,31 @@ export function VehicleModule({
           </small>
         </div>
         <div className={styles.fuelCards}>
-          {[
-            ["Diesel", fuelPrices?.prices.diesel],
-            ["Super E5", fuelPrices?.prices.e5],
-            ["Super E10", fuelPrices?.prices.e10],
-          ].map(([label, price]) => (
+          {([
+            ["diesel", "Diesel", fuelPrices?.prices.diesel],
+            ["e5", "Super E5", fuelPrices?.prices.e5],
+            ["e10", "Super E10", fuelPrices?.prices.e10],
+          ] satisfies Array<[FuelPriceKey, string, number | null | undefined]>).map(([key, label, price]) => (
             <button
               type="button"
-              key={String(label)}
+              key={key}
               disabled={typeof price !== "number"}
-              onClick={() => typeof price === "number" && setFuelPrice(price)}
+              data-selected={selectedFuelPriceKey === key}
+              aria-pressed={selectedFuelPriceKey === key}
+              onClick={() => {
+                if (typeof price !== "number") return;
+                setFuelPrice(price);
+                setSelectedFuelPriceKey(key);
+                setResult(null);
+              }}
             >
               <span>{label}</span>
               <strong>{typeof price === "number" ? `${price.toFixed(3)} €` : "–"}</strong>
-              <small>pro Liter · in Kalkulation übernehmen</small>
+              <small>
+                {selectedFuelPriceKey === key
+                  ? "✓ Ausgewählt · in der Kalkulation verwendet"
+                  : "pro Liter · in Kalkulation übernehmen"}
+              </small>
             </button>
           ))}
         </div>
@@ -635,6 +661,7 @@ export function VehicleModule({
                   disabled={selectedVehicle?.fuelType === "ELECTRIC"}
                   onChange={(event) => {
                     setFuelPrice(Number(event.target.value));
+                    setSelectedFuelPriceKey("");
                     setResult(null);
                   }}
                 />

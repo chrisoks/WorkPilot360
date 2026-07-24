@@ -20,6 +20,8 @@
 .fuelCards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
 .fuelCards button { display: grid; gap: 5px; padding: 16px; border: 1px solid #cfe0e6; border-radius: 13px; background: #fbfdff; color: #172033; text-align: left; cursor: pointer; }
 .fuelCards button:hover:not(:disabled) { border-color: #0f8b8d; background: #f0f9f8; }
+.fuelCards button[data-selected="true"] { border-color: #0f8b8d; background: #eaf8f6; box-shadow: inset 0 0 0 2px rgb(15 139 141 / 18%); }
+.fuelCards button[data-selected="true"] small { color: #087252; font-weight: 850; }
 .fuelCards button:disabled { cursor: default; opacity: .65; }
 .fuelCards span { color: #526174; font-size: 12px; font-weight: 850; }
 .fuelCards strong { color: #063f45; font-size: 27px; }
