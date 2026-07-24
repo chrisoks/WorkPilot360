@@ -2943,13 +2943,41 @@ const emptyProjectDraft: ProjectDraft = {
   deputyUntil: "",
 };
 
-function combineStampComments(startComment: string, endComment: string) {
+function combineStampComments(startComment: string, endComment: string, endLabel = "Ergaenzung") {
   const cleanedStartComment = startComment.trim();
   const cleanedEndComment = endComment.trim();
-  if (!cleanedStartComment) return cleanedEndComment;
+  if (!cleanedStartComment) {
+    return cleanedEndComment && endLabel === "Unterbrechungsgrund"
+      ? `${endLabel}: ${cleanedEndComment}`
+      : cleanedEndComment;
+  }
   if (!cleanedEndComment) return cleanedStartComment;
   if (cleanedStartComment === cleanedEndComment) return cleanedStartComment;
-  return `${cleanedStartComment}\n\nErgaenzung: ${cleanedEndComment}`;
+  return `${cleanedStartComment}\n\n${endLabel}: ${cleanedEndComment}`;
+}
+
+function getStampCommentDetails(entry: Pick<StampTimeEntry, "comment" | "completionStatus">) {
+  const comment = String(entry.comment ?? "").trim();
+  if (entry.completionStatus !== "interrupted") {
+    return {
+      activityComment: comment,
+      interruptionReason: "",
+    };
+  }
+
+  const reasonMarker = /(?:Unterbrechungsgrund|Erg(?:aenzung|änzung)):\s*/i;
+  const markerMatch = reasonMarker.exec(comment);
+  if (!markerMatch || markerMatch.index === undefined) {
+    return {
+      activityComment: "",
+      interruptionReason: comment,
+    };
+  }
+
+  return {
+    activityComment: comment.slice(0, markerMatch.index).trim(),
+    interruptionReason: comment.slice(markerMatch.index + markerMatch[0].length).trim(),
+  };
 }
 
 const projectTradeOptions = [
@@ -22610,7 +22638,11 @@ await addProjectLogbookEntry(
     completionStatus: "" | "finished" | "interrupted" = ""
   ) {
     if (!stampSession) return null;
-    const finalComment = combineStampComments(stampSession.comment || "", comment);
+    const finalComment = combineStampComments(
+      stampSession.comment || "",
+      comment,
+      completionStatus === "interrupted" ? "Unterbrechungsgrund" : "Ergaenzung"
+    );
     const normalizedCompletionStatus =
       stampSession.mode === "project" && (completionStatus === "finished" || completionStatus === "interrupted")
         ? completionStatus
@@ -24715,6 +24747,26 @@ await addProjectLogbookEntry(
       project.description.toLowerCase().includes(search) ||
       getProjectKind(project).toLowerCase().includes(search)
     );
+  });
+  const latestInterruptedStampByProjectId = new Map<string, StampTimeEntry>();
+  stampEntries.forEach((entry) => {
+    if (
+      entry.deletedAt ||
+      entry.mode !== "project" ||
+      !entry.projectId ||
+      entry.completionStatus !== "interrupted"
+    ) {
+      return;
+    }
+
+    const currentLatest = latestInterruptedStampByProjectId.get(entry.projectId);
+    const entryTimestamp = `${entry.date} ${entry.endTime || entry.startTime}`;
+    const currentTimestamp = currentLatest
+      ? `${currentLatest.date} ${currentLatest.endTime || currentLatest.startTime}`
+      : "";
+    if (!currentLatest || entryTimestamp.localeCompare(currentTimestamp) > 0) {
+      latestInterruptedStampByProjectId.set(entry.projectId, entry);
+    }
   });
   const getPipelineStatusCount = (statusLabel: string) => {
     const projectsForKind = selectedProjectKindFilter
@@ -46899,6 +46951,7 @@ await addProjectLogbookEntry(
                                           const isLinked = invoiceStampEntryIds.includes(entry.id);
                                           const rawHours = Number(entry.durationMs || 0) / 3_600_000;
                                           const roundedHours = getRoundedBillableStampHours(entry);
+                                          const { activityComment, interruptionReason } = getStampCommentDetails(entry);
                                           return (
                                             <label
                                               key={`invoice-line-stamp-${line.id}-${entry.id}`}
@@ -46926,8 +46979,18 @@ await addProjectLogbookEntry(
                                                 <strong>{formatHours(roundedHours)} Std.</strong>
                                               </span>
                                               <span className={styles.invoiceLineStampComment}>
-                                                <small>Kommentar</small>
-                                                <strong>{entry.comment || "-"}</strong>
+                                                <small>{interruptionReason ? "Tätigkeitsnotiz" : "Kommentar"}</small>
+                                                <strong>{activityComment || "-"}</strong>
+                                                {interruptionReason ? (
+                                                  <>
+                                                    <small className={styles.invoiceLineStampInterruptionLabel}>
+                                                      Unterbrechungsgrund
+                                                    </small>
+                                                    <strong className={styles.invoiceLineStampInterruptionReason}>
+                                                      {interruptionReason}
+                                                    </strong>
+                                                  </>
+                                                ) : null}
                                               </span>
                                             </label>
                                           );
@@ -60528,6 +60591,13 @@ await addProjectLogbookEntry(
                             const displayStatus = getProjectPipelineDisplayStatus(project);
                             const currentMonthHint = getRecurringProjectCurrentMonthHint(project);
                             const previousMonthIssues = getRecurringProjectPreviousMonthIssues(project);
+                            const latestInterruption =
+                              normalizeProjectPipelineStatus(displayStatus || project.status) === "Arbeit unterbrochen"
+                                ? latestInterruptedStampByProjectId.get(project.id) ?? null
+                                : null;
+                            const latestInterruptionReason = latestInterruption
+                              ? getStampCommentDetails(latestInterruption).interruptionReason
+                              : "";
 
                             return (
                               <tr
@@ -60546,7 +60616,17 @@ await addProjectLogbookEntry(
                                 <td>{project.branch || activeProjectPipeline.company}</td>
                                 <td>{project.source || "-"}</td>
                                 <td>-</td>
-                                <td>{displayStatus || project.status || "-"}</td>
+                                <td>
+                                  <div className={styles.projectPipelineStatusCell}>
+                                    <span>{displayStatus || project.status || "-"}</span>
+                                    {latestInterruption ? (
+                                      <small>
+                                        <strong>Unterbrechungsgrund:</strong>{" "}
+                                        {latestInterruptionReason || "Kein Grund erfasst"}
+                                      </small>
+                                    ) : null}
+                                  </div>
+                                </td>
                                 <td>
                                   <div className={styles.projectMonthStateStack}>
                                     <span>{currentMonthHint || "-"}</span>
