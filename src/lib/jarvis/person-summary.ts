@@ -10,9 +10,14 @@ import {
   authorizeJarvisQuestion,
   type JarvisAccessProfile,
 } from "@/lib/jarvis/security";
+import type { JarvisSurfaceContext } from "@/lib/jarvis/knowledge";
 
 type JarvisPersonIntent = {
   query: string;
+};
+
+type JarvisPersonDiagnosticIntent = {
+  query?: string;
 };
 
 type ContactCandidate = {
@@ -59,6 +64,13 @@ type ProjectRow = {
   projectType: string | null;
   trade: string | null;
   updatedAt: Date;
+};
+
+type DiagnosticProjectRow = ProjectRow & {
+  customer: string | null;
+  contactId: string | null;
+  contactPersonId: string | null;
+  addressContactId: string | null;
 };
 
 const PERSON_QUESTION_PATTERNS = [
@@ -139,6 +151,49 @@ function joinParts(parts: Array<string | null | undefined>) {
   return parts.filter((part): part is string => Boolean(part?.trim())).join(" · ");
 }
 
+function mapContactCandidate(contact: {
+  id: string;
+  customerNumber: string;
+  category: string;
+  type: string;
+  companyName: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  parentCompanyId: string | null;
+  parentCompanyName: string | null;
+  email: string | null;
+  phone: string | null;
+  mobile: string | null;
+  street: string | null;
+  postalCode: string | null;
+  city: string | null;
+}): ContactCandidate {
+  const personName = [contact.firstName, contact.lastName].filter(Boolean).join(" ");
+  return {
+    kind: "customer",
+    id: contact.id,
+    displayName:
+      contact.companyName ||
+      personName ||
+      contact.parentCompanyName ||
+      "Kontakt ohne Namen",
+    customerNumber: contact.customerNumber,
+    category: contact.category,
+    type: contact.type,
+    companyName: contact.companyName ?? "",
+    firstName: contact.firstName ?? "",
+    lastName: contact.lastName ?? "",
+    parentCompanyId: contact.parentCompanyId ?? "",
+    parentCompanyName: contact.parentCompanyName ?? "",
+    email: contact.email ?? "",
+    phone: contact.phone ?? "",
+    mobile: contact.mobile ?? "",
+    street: contact.street ?? "",
+    postalCode: contact.postalCode ?? "",
+    city: contact.city ?? "",
+  };
+}
+
 export function resolveJarvisPersonIntent(question: string): JarvisPersonIntent | undefined {
   const normalizedQuestion = normalize(question);
   for (const pattern of PERSON_QUESTION_PATTERNS) {
@@ -148,6 +203,35 @@ export function resolveJarvisPersonIntent(question: string): JarvisPersonIntent 
     return { query };
   }
   return undefined;
+}
+
+export function resolveJarvisPersonDiagnosticIntent(
+  question: string
+): JarvisPersonDiagnosticIntent | undefined {
+  const normalizedQuestion = normalize(question);
+  const referencesProjects = /\bprojekt(?:e|zahl|zahlen)?\b/.test(normalizedQuestion);
+  const asksForCause =
+    /\bwarum\b/.test(normalizedQuestion) ||
+    /\bworan\b/.test(normalizedQuestion) ||
+    /\bursache\b/.test(normalizedQuestion) ||
+    /\babweichung\b/.test(normalizedQuestion) ||
+    /\bunterschied\b/.test(normalizedQuestion);
+  const comparesViews =
+    /\b(?:anzeig|zeig|find|sag|zahl|kundenakte|jarvis|stimm|unterschied|abweichung)\w*\b/.test(normalizedQuestion) ||
+    /\b\d+\b/.test(normalizedQuestion);
+  if (!referencesProjects || !asksForCause || !comparesViews) return undefined;
+
+  const queryPatterns = [
+    /\bbei\s+(.+?)\s+(?:nur\s+)?\d+\s+projekte?\b/,
+    /\bfur\s+(.+?)\s+(?:nur\s+)?\d+\s+projekte?\b/,
+    /\bvon\s+(.+?)\s+(?:nur\s+)?\d+\s+projekte?\b/,
+  ];
+  for (const pattern of queryPatterns) {
+    const match = normalizedQuestion.match(pattern);
+    const query = cleanQuery(match?.[1] ?? "");
+    if (query.length >= 3) return { query };
+  }
+  return {};
 }
 
 function scoreCandidate(candidate: PersonCandidate, query: string) {
@@ -225,6 +309,33 @@ async function findContactCandidates(
       city: contact.city ?? "",
     };
   });
+}
+
+async function findContactCandidateById(
+  organizationId: string,
+  contactId: string
+): Promise<ContactCandidate | undefined> {
+  const contact = await prisma.contact.findFirst({
+    where: { organizationId, id: contactId },
+    select: {
+      id: true,
+      customerNumber: true,
+      category: true,
+      type: true,
+      companyName: true,
+      firstName: true,
+      lastName: true,
+      parentCompanyId: true,
+      parentCompanyName: true,
+      email: true,
+      phone: true,
+      mobile: true,
+      street: true,
+      postalCode: true,
+      city: true,
+    },
+  });
+  return contact ? mapContactCandidate(contact) : undefined;
 }
 
 async function findEmployeeCandidates(
@@ -503,6 +614,54 @@ async function buildCustomerSummary(input: {
     topicId: "person.customer.summary",
     message: summaryParts.join(" "),
     records,
+    structured: {
+      title: input.contact.displayName,
+      subtitle: joinParts([
+        contactType,
+        input.contact.customerNumber ? `Kundennummer ${input.contact.customerNumber}` : "",
+        input.contact.city,
+      ]),
+      summary: "Aktueller, rollenbasierter Überblick aus den verknüpften WorkPilot-Daten.",
+      facts: [
+        {
+          label: "Projekte",
+          value: `${projects.length} verknüpft · ${openProjects.length} offen`,
+        },
+        ...(offerDecision.executable
+          ? [{
+              label: "Angebote",
+              value: `${offers.length} gesamt · ${openOffers.length} offen`,
+            }]
+          : []),
+        ...(invoiceDecision.executable
+          ? [{
+              label: "Rechnungen",
+              value: `${invoices.length} gesamt · ${openInvoices.length} offen`,
+            }]
+          : []),
+        {
+          label: "Aufgaben",
+          value: `${visibleTasks.length} offen und sichtbar`,
+        },
+      ],
+      sections: [
+        {
+          title: "Kontaktdaten",
+          items: contactDetails
+            ? [contactDetails]
+            : ["Keine direkten Kontaktdaten gepflegt."],
+        },
+        {
+          title: "Einordnung",
+          items: [
+            lastActivity
+              ? `Letzte dokumentierte Kundenaktivität: ${lastActivity.title || lastActivity.eventType} am ${formatDate(lastActivity.occurredAt)}.`
+              : "Keine Kundenaktivität im Logbuch dokumentiert.",
+          ],
+          tone: lastActivity ? "neutral" : "warning",
+        },
+      ],
+    },
     deterministic: true,
   };
 }
@@ -522,6 +681,274 @@ function buildEmployeeSummary(employee: EmployeeCandidate): JarvisReadResponse {
       `${employee.isActive ? "aktiv" : "inaktiv"}. Dienstliche E-Mail: ${employee.email}.` +
       `${workContext ? ` ${workContext}.` : ""} ` +
       "Lohn-, Gehalts-, Personalakten- und technische Geheimdaten werden in dieser Übersicht nicht ausgegeben.",
+    structured: {
+      title: employee.displayName,
+      subtitle: `${formatRole(employee.role)} · ${employee.isActive ? "Aktiv" : "Inaktiv"}`,
+      facts: [
+        { label: "E-Mail", value: employee.email },
+        ...(employee.departmentName
+          ? [{ label: "Abteilung", value: employee.departmentName }]
+          : []),
+        ...(employee.teamName
+          ? [{ label: "Team", value: employee.teamName }]
+          : []),
+        ...(employee.planningGroup
+          ? [{ label: "Planungsgruppe", value: employee.planningGroup }]
+          : []),
+      ],
+      sections: [{
+        title: "Datenschutz",
+        items: [
+          "Lohn-, Gehalts-, Personalakten- und technische Geheimdaten werden in dieser Übersicht nicht ausgegeben.",
+        ],
+      }],
+    },
+    deterministic: true,
+  };
+}
+
+function diagnosticProjectRecord(
+  project: DiagnosticProjectRow,
+  status: string
+): JarvisRecordResult {
+  return {
+    id: `person-diagnostic-project-${project.id}`,
+    kind: "project",
+    title: `${project.projectNumber || "Ohne Nummer"} · ${project.title}`,
+    subtitle: joinParts([project.status, project.trade]),
+    summary: project.customer
+      ? `Gespeicherter Kundenname: ${project.customer}`
+      : "Kein Kundenname gespeichert.",
+    status,
+    target: { kind: "project", id: project.id },
+  };
+}
+
+async function resolveDiagnosticContact(input: {
+  intent: JarvisPersonDiagnosticIntent;
+  organizationId: string;
+  context?: JarvisSurfaceContext;
+}): Promise<ContactCandidate | undefined> {
+  if (input.intent.query) {
+    const candidates = await findContactCandidates(input.organizationId, input.intent.query);
+    const exact = candidates.filter(
+      (candidate) => normalize(candidate.displayName) === normalize(input.intent.query ?? "")
+    );
+    return exact.length === 1
+      ? exact[0]
+      : candidates.length === 1
+        ? candidates[0]
+        : undefined;
+  }
+
+  if (input.context?.recordType === "customer" && input.context.recordId) {
+    return findContactCandidateById(input.organizationId, input.context.recordId);
+  }
+
+  if (input.context?.recordType === "project" && input.context.recordId) {
+    const projects = await prisma.$queryRaw<Array<{
+      contactId: string | null;
+      contactPersonId: string | null;
+      addressContactId: string | null;
+      customer: string | null;
+    }>>(Prisma.sql`
+      SELECT "contactId", "contactPersonId", "addressContactId", "customer"
+      FROM "WorkPilotProject"
+      WHERE "organizationId" = ${input.organizationId}
+        AND "id" = ${input.context.recordId}
+      LIMIT 1
+    `);
+    const project = projects[0];
+    const stableContactId =
+      project?.contactId || project?.contactPersonId || project?.addressContactId;
+    if (stableContactId) {
+      const contact = await findContactCandidateById(input.organizationId, stableContactId);
+      if (contact) return contact;
+    }
+    if (project?.customer) {
+      const candidates = await findContactCandidates(input.organizationId, project.customer);
+      const exact = candidates.filter((candidate) => {
+        const contactLabel = [
+          candidate.companyName,
+          candidate.firstName,
+          candidate.lastName,
+        ].filter(Boolean).join(" - ");
+        return [candidate.displayName, contactLabel, candidate.companyName]
+          .filter(Boolean)
+          .some((label) => normalize(label) === normalize(project.customer ?? ""));
+      });
+      return exact.length === 1 ? exact[0] : undefined;
+    }
+  }
+
+  return undefined;
+}
+
+export async function resolveJarvisPersonDiagnosticRequest(input: {
+  question: string;
+  organizationId: string;
+  accessProfile: JarvisAccessProfile;
+  context?: JarvisSurfaceContext;
+}): Promise<JarvisReadResponse | undefined> {
+  const intent = resolveJarvisPersonDiagnosticIntent(input.question);
+  if (!intent) return undefined;
+
+  const authorization = authorizeJarvisQuestion(input.question, input.accessProfile);
+  if (!authorization.allowed) {
+    return {
+      type: "refusal",
+      topicId: "person.project-diagnostic.refused",
+      message: "Diese Diagnose ist für deine aktuelle WorkPilot-Rolle nicht freigegeben.",
+      deterministic: true,
+    };
+  }
+
+  const contactDecision = getJarvisActionDecision("contact.read", input.accessProfile);
+  const projectDecision = getJarvisActionDecision("project.read", input.accessProfile);
+  if (!contactDecision.executable || !projectDecision.executable) {
+    return {
+      type: "refusal",
+      topicId: "person.project-diagnostic.refused",
+      message:
+        "Deine aktuelle WorkPilot-Rolle darf Kunden- und Projektzuordnungen nicht gemeinsam prüfen.",
+      deterministic: true,
+    };
+  }
+
+  const contact = await resolveDiagnosticContact({
+    intent,
+    organizationId: input.organizationId,
+    context: input.context,
+  });
+  if (!contact) {
+    return {
+      type: "unknown",
+      topicId: "person.project-diagnostic.context-required",
+      message:
+        "Für die Diagnose brauche ich einen eindeutigen Kunden. Öffne die Kunden- oder Projektakte und stelle die Frage dort erneut oder nenne den vollständigen Kundennamen.",
+      structured: {
+        title: "Projektabweichung prüfen",
+        summary: "Der betroffene Kunde konnte nicht eindeutig bestimmt werden.",
+        sections: [{
+          title: "Nächster Schritt",
+          items: [
+            "Öffne die betroffene Kunden- oder Projektakte und stelle die Frage erneut.",
+          ],
+        }],
+      },
+      deterministic: true,
+    };
+  }
+
+  const childContacts = await prisma.contact.findMany({
+    where: {
+      organizationId: input.organizationId,
+      parentCompanyId: contact.id,
+    },
+    select: { id: true },
+  });
+  const linkedContactIds = [
+    contact.id,
+    contact.parentCompanyId,
+    ...childContacts.map((child) => child.id),
+  ].filter(Boolean);
+  const projects = await prisma.$queryRaw<DiagnosticProjectRow[]>(Prisma.sql`
+    SELECT "id", "projectNumber", "title", "status", "projectKind",
+           "projectType", "trade", "updatedAt", "customer",
+           "contactId", "contactPersonId", "addressContactId"
+    FROM "WorkPilotProject"
+    WHERE "organizationId" = ${input.organizationId}
+    ORDER BY "updatedAt" DESC
+    LIMIT 1000
+  `);
+  const customerFileNames = [
+    contact.displayName,
+    [contact.companyName, contact.firstName, contact.lastName].filter(Boolean).join(" - "),
+    contact.companyName,
+  ].filter(Boolean).map(normalize);
+  const jarvisProjects = projects.filter((project) =>
+    [project.contactId, project.contactPersonId, project.addressContactId]
+      .filter(Boolean)
+      .some((contactId) => linkedContactIds.includes(contactId ?? ""))
+  );
+  const customerFileProjects = projects.filter((project) => {
+    const stableCustomerMatch =
+      project.contactId === contact.id || project.contactPersonId === contact.id;
+    const nameMatch =
+      Boolean(project.customer) &&
+      customerFileNames.includes(normalize(project.customer ?? ""));
+    return stableCustomerMatch || nameMatch;
+  });
+  const jarvisIds = new Set(jarvisProjects.map((project) => project.id));
+  const customerFileIds = new Set(customerFileProjects.map((project) => project.id));
+  const nameOnlyProjects = customerFileProjects.filter(
+    (project) => !jarvisIds.has(project.id)
+  );
+  const stableOnlyProjects = jarvisProjects.filter(
+    (project) => !customerFileIds.has(project.id)
+  );
+  const sameCount =
+    jarvisProjects.length === customerFileProjects.length &&
+    nameOnlyProjects.length === 0 &&
+    stableOnlyProjects.length === 0;
+
+  const causeItems = [
+    ...nameOnlyProjects.map(
+      (project) =>
+        `${project.projectNumber || project.title} wird in der Kundenakte nur über den gespeicherten Kundennamen „${project.customer || contact.displayName}“ gefunden. Eine stabile Kunden-ID zu ${contact.displayName} fehlt.`
+    ),
+    ...stableOnlyProjects.map(
+      (project) =>
+        `${project.projectNumber || project.title} besitzt eine stabile Verknüpfung über Ansprechpartner oder Adresse, wird von der aktuellen Kundenakten-Zählung aber nicht erfasst.`
+    ),
+  ];
+  if (sameCount) {
+    causeItems.push(
+      "Aktuell verwenden beide Auswertungen dieselbe Projektmenge. Eine frühere Abweichung kann nach einer korrigierten Kundenzuordnung oder durch eine noch angezeigte ältere Chatantwort entstanden sein."
+    );
+  }
+
+  const message =
+    `Ich habe die Zuordnung für ${contact.displayName} geprüft. ` +
+    `JARVIS findet ${jarvisProjects.length} stabil verknüpfte Projekte; die Kundenakte zählt ${customerFileProjects.length}. ` +
+    causeItems.join(" ");
+
+  return {
+    type: "answer",
+    topicId: "person.project-diagnostic",
+    message,
+    structured: {
+      title: `Projektabweichung · ${contact.displayName}`,
+      subtitle: "Stabile Kunden-ID und Kundenakten-Zählung verglichen",
+      summary: sameCount
+        ? "Aktuell besteht keine Abweichung."
+        : "Die Abweichung wurde anhand der gespeicherten Zuordnungen nachvollzogen.",
+      facts: [
+        {
+          label: "JARVIS",
+          value: `${jarvisProjects.length} stabil verknüpft`,
+          tone: sameCount ? "positive" : "neutral",
+        },
+        {
+          label: "Kundenakte",
+          value: `${customerFileProjects.length} angezeigt`,
+          tone: sameCount ? "positive" : "warning",
+        },
+      ],
+      sections: [{
+        title: sameCount ? "Ergebnis" : "Gefundene Ursache",
+        items: causeItems,
+        tone: sameCount ? "positive" : "warning",
+      }],
+    },
+    records: [
+      ...nameOnlyProjects.map((project) =>
+        diagnosticProjectRecord(project, "Kundenzuordnung fehlt")
+      ),
+      ...stableOnlyProjects.map((project) =>
+        diagnosticProjectRecord(project, "Nur stabile Verknüpfung")
+      ),
+    ].slice(0, 5),
     deterministic: true,
   };
 }

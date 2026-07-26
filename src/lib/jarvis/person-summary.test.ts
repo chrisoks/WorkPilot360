@@ -3,6 +3,7 @@ import { Role } from "@prisma/client";
 import { createJarvisAccessProfile } from "@/lib/jarvis/security";
 
 const dbMocks = vi.hoisted(() => ({
+  contactFindFirst: vi.fn(),
   contactFindMany: vi.fn(),
   userFindMany: vi.fn(),
   queryRaw: vi.fn(),
@@ -14,7 +15,10 @@ const dbMocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/db/client", () => ({
   prisma: {
-    contact: { findMany: dbMocks.contactFindMany },
+    contact: {
+      findFirst: dbMocks.contactFindFirst,
+      findMany: dbMocks.contactFindMany,
+    },
     user: { findMany: dbMocks.userFindMany },
     $queryRaw: dbMocks.queryRaw,
     offer: { findMany: dbMocks.offerFindMany },
@@ -25,6 +29,8 @@ vi.mock("@/lib/db/client", () => ({
 }));
 
 import {
+  resolveJarvisPersonDiagnosticIntent,
+  resolveJarvisPersonDiagnosticRequest,
   resolveJarvisPersonIntent,
   resolveJarvisPersonSummaryRequest,
 } from "@/lib/jarvis/person-summary";
@@ -55,6 +61,7 @@ const contact = {
 describe("JARVIS person summary", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    dbMocks.contactFindFirst.mockResolvedValue(undefined);
     dbMocks.contactFindMany.mockResolvedValue([]);
     dbMocks.userFindMany.mockResolvedValue([]);
     dbMocks.queryRaw.mockResolvedValue([]);
@@ -73,6 +80,22 @@ describe("JARVIS person summary", () => {
     });
     expect(resolveJarvisPersonIntent("Was weißt du über WorkPilot360?")).toBeUndefined();
     expect(resolveJarvisPersonIntent("Wie lege ich einen Kunden an?")).toBeUndefined();
+  });
+
+  it("recognizes project count diagnostics without catching normal project help", () => {
+    expect(
+      resolveJarvisPersonDiagnosticIntent(
+        "Warum zeigt JARVIS bei Klaus Testmann nur 3 Projekte, die Kundenakte aber 4?"
+      )
+    ).toEqual({ query: "klaus testmann" });
+    expect(
+      resolveJarvisPersonDiagnosticIntent(
+        "Woran liegt der Unterschied zwischen den Projektzahlen?"
+      )
+    ).toEqual({});
+    expect(
+      resolveJarvisPersonDiagnosticIntent("Wie lege ich ein Projekt an?")
+    ).toBeUndefined();
   });
 
   it("builds a connected customer summary from stable contact and project ids", async () => {
@@ -139,6 +162,12 @@ describe("JARVIS person summary", () => {
     expect(response?.message).toContain("1 Angebot");
     expect(response?.message).toContain("1 Rechnung");
     expect(response?.message).toContain("Telefonat");
+    expect(response?.structured).toMatchObject({
+      title: "Klaus Testmann",
+      facts: expect.arrayContaining([
+        expect.objectContaining({ label: "Projekte", value: "1 verknüpft · 0 offen" }),
+      ]),
+    });
     expect(response?.records?.map((record) => record.target)).toEqual([
       { kind: "customer", id: "contact-klaus" },
       { kind: "project", id: "project-1" },
@@ -165,6 +194,109 @@ describe("JARVIS person summary", () => {
         }),
       })
     );
+  });
+
+  it("diagnoses name-only customer-file projects deterministically", async () => {
+    dbMocks.contactFindFirst.mockResolvedValue(contact);
+    dbMocks.contactFindMany.mockResolvedValue([]);
+    dbMocks.queryRaw.mockResolvedValue([
+      {
+        id: "project-stable",
+        projectNumber: "P-100",
+        title: "Stabil verknüpft",
+        status: "Umsetzung",
+        projectKind: "Einmalig",
+        projectType: "Projekt OK solutions",
+        trade: "Reinigung",
+        updatedAt: new Date("2026-07-20T10:00:00.000Z"),
+        customer: "Klaus - Testmann",
+        contactId: "contact-klaus",
+        contactPersonId: null,
+        addressContactId: null,
+      },
+      {
+        id: "project-name-only",
+        projectNumber: "P-099",
+        title: "Altprojekt",
+        status: "Abrechnungsprüfung",
+        projectKind: null,
+        projectType: null,
+        trade: null,
+        updatedAt: new Date("2026-05-17T10:00:00.000Z"),
+        customer: "Klaus Testmann",
+        contactId: null,
+        contactPersonId: null,
+        addressContactId: null,
+      },
+    ]);
+
+    const response = await resolveJarvisPersonDiagnosticRequest({
+      question: "Warum zeigt die Kundenakte 2 Projekte und JARVIS nur 1?",
+      organizationId: "org-1",
+      accessProfile: management,
+      context: {
+        recordType: "customer",
+        recordId: "contact-klaus",
+      },
+    });
+
+    expect(response).toMatchObject({
+      type: "answer",
+      topicId: "person.project-diagnostic",
+      structured: {
+        title: "Projektabweichung · Klaus Testmann",
+        facts: [
+          { label: "JARVIS", value: "1 stabil verknüpft", tone: "neutral" },
+          { label: "Kundenakte", value: "2 angezeigt", tone: "warning" },
+        ],
+      },
+    });
+    expect(response?.message).toContain("P-099");
+    expect(response?.message).toContain("stabile Kunden-ID");
+    expect(response?.records?.[0]).toMatchObject({
+      status: "Kundenzuordnung fehlt",
+      target: { kind: "project", id: "project-name-only" },
+    });
+  });
+
+  it("reports when a previously different project count is now aligned", async () => {
+    dbMocks.contactFindFirst.mockResolvedValue(contact);
+    dbMocks.contactFindMany.mockResolvedValue([]);
+    dbMocks.queryRaw.mockResolvedValue([
+      {
+        id: "project-stable",
+        projectNumber: "P-100",
+        title: "Stabil verknüpft",
+        status: "Umsetzung",
+        projectKind: "Einmalig",
+        projectType: "Projekt OK solutions",
+        trade: "Reinigung",
+        updatedAt: new Date("2026-07-20T10:00:00.000Z"),
+        customer: "Klaus - Testmann",
+        contactId: "contact-klaus",
+        contactPersonId: null,
+        addressContactId: null,
+      },
+    ]);
+
+    const response = await resolveJarvisPersonDiagnosticRequest({
+      question: "Warum waren es vorher unterschiedliche Projektzahlen?",
+      organizationId: "org-1",
+      accessProfile: management,
+      context: {
+        recordType: "customer",
+        recordId: "contact-klaus",
+      },
+    });
+
+    expect(response?.structured).toMatchObject({
+      summary: "Aktuell besteht keine Abweichung.",
+      facts: [
+        { label: "JARVIS", value: "1 stabil verknüpft", tone: "positive" },
+        { label: "Kundenakte", value: "1 angezeigt", tone: "positive" },
+      ],
+    });
+    expect(response?.records).toEqual([]);
   });
 
   it("keeps employee summaries behind personnel permissions", async () => {

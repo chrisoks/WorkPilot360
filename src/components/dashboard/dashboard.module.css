@@ -6724,7 +6724,7 @@
 }
 
 .managementAiPanel {
-  animation: jarvisPanelMaterialize 680ms cubic-bezier(0.2, 0.82, 0.22, 1) both;
+  animation: jarvisPanelMaterialize 680ms cubic-bezier(0.2, 0.82, 0.22, 1);
   background: #ffffff;
   border: 1px solid #aebecb;
   border-radius: 18px 0 0 18px;
@@ -6741,7 +6741,6 @@
   pointer-events: auto;
   position: relative;
   transform-origin: left bottom;
-  will-change: opacity, transform;
 }
 
 .managementAiPanel::before {
@@ -7083,6 +7082,105 @@
   justify-self: start;
 }
 
+.managementAiMessages article.jarvisStructuredMessage {
+  width: 92%;
+}
+
+.jarvisStructuredAnswer {
+  display: grid;
+  gap: 12px;
+}
+
+.jarvisStructuredAnswer > header {
+  display: grid;
+  gap: 3px;
+}
+
+.jarvisStructuredAnswer > header > strong {
+  color: #0f3440;
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.jarvisStructuredAnswer > header > span {
+  color: #567079;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.jarvisAnswerFacts {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.jarvisAnswerFacts > div {
+  background: #f5f9fa;
+  border: 1px solid #d7e5e7;
+  border-radius: 11px;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 9px 10px;
+}
+
+.jarvisAnswerFacts > div[data-tone="positive"] {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.jarvisAnswerFacts > div[data-tone="warning"] {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.jarvisAnswerFacts span {
+  color: #60747b;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.jarvisAnswerFacts strong {
+  color: #153942;
+  font-size: 0.79rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.jarvisStructuredAnswer > section {
+  border-left: 3px solid #9ec9cd;
+  display: grid;
+  gap: 6px;
+  padding: 2px 0 2px 10px;
+}
+
+.jarvisStructuredAnswer > section[data-tone="positive"] {
+  border-left-color: #22c55e;
+}
+
+.jarvisStructuredAnswer > section[data-tone="warning"] {
+  border-left-color: #f59e0b;
+}
+
+.jarvisStructuredAnswer > section > strong {
+  color: #244852;
+  font-size: 0.78rem;
+}
+
+.jarvisStructuredAnswer ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 17px;
+}
+
+.jarvisStructuredAnswer li {
+  color: #263b43;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
 .managementAiMessages article.jarvisTypingBubble {
   align-items: center;
   background: #eef2f4;
@@ -7319,6 +7417,10 @@
 
   .managementAiComposer {
     padding: 13px 16px 16px;
+  }
+
+  .jarvisAnswerFacts {
+    grid-template-columns: 1fr;
   }
 
   .jarvisLauncher {

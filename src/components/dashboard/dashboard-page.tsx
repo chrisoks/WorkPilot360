@@ -47,6 +47,7 @@ import type { JarvisNavigationTarget } from "@/lib/jarvis/system-map";
 import type {
   JarvisRecordResult,
   JarvisRecordTarget,
+  JarvisStructuredAnswer,
 } from "@/lib/jarvis/read-model";
 import type { JarvisRecordKind } from "@/lib/jarvis/read-intent";
 
@@ -626,6 +627,7 @@ type ManagementAiChatMessage = {
   choices?: string[];
   navigation?: JarvisNavigationTarget;
   records?: JarvisRecordResult[];
+  structured?: JarvisStructuredAnswer;
 };
 type ManagementAiMode = "system" | "management" | "sales";
 
@@ -636,6 +638,74 @@ const jarvisRecordKinds = new Set<JarvisRecordKind>([
   "offer",
   "invoice",
 ]);
+const jarvisAnswerTones = new Set(["neutral", "positive", "warning"]);
+
+function parseJarvisStructuredAnswer(value: unknown): JarvisStructuredAnswer | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.title !== "string" || !candidate.title.trim()) return undefined;
+
+  const facts = Array.isArray(candidate.facts)
+    ? candidate.facts.slice(0, 6).flatMap((entry) => {
+        if (!entry || typeof entry !== "object") return [];
+        const fact = entry as Record<string, unknown>;
+        if (
+          typeof fact.label !== "string" ||
+          !fact.label.trim() ||
+          typeof fact.value !== "string" ||
+          !fact.value.trim()
+        ) {
+          return [];
+        }
+        const tone =
+          typeof fact.tone === "string" && jarvisAnswerTones.has(fact.tone)
+            ? fact.tone as "neutral" | "positive" | "warning"
+            : undefined;
+        return [{
+          label: fact.label.trim().slice(0, 80),
+          value: fact.value.trim().slice(0, 180),
+          tone,
+        }];
+      })
+    : undefined;
+  const sections = Array.isArray(candidate.sections)
+    ? candidate.sections.slice(0, 4).flatMap((entry) => {
+        if (!entry || typeof entry !== "object") return [];
+        const section = entry as Record<string, unknown>;
+        if (typeof section.title !== "string" || !section.title.trim()) return [];
+        const items = Array.isArray(section.items)
+          ? section.items
+              .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+              .slice(0, 6)
+              .map((item) => item.trim().slice(0, 500))
+          : [];
+        if (items.length === 0) return [];
+        const tone =
+          typeof section.tone === "string" && jarvisAnswerTones.has(section.tone)
+            ? section.tone as "neutral" | "positive" | "warning"
+            : undefined;
+        return [{
+          title: section.title.trim().slice(0, 100),
+          items,
+          tone,
+        }];
+      })
+    : undefined;
+
+  return {
+    title: candidate.title.trim().slice(0, 140),
+    subtitle:
+      typeof candidate.subtitle === "string"
+        ? candidate.subtitle.trim().slice(0, 220)
+        : undefined,
+    summary:
+      typeof candidate.summary === "string"
+        ? candidate.summary.trim().slice(0, 500)
+        : undefined,
+    facts: facts?.length ? facts : undefined,
+    sections: sections?.length ? sections : undefined,
+  };
+}
 
 function parseJarvisRecordResults(value: unknown): JarvisRecordResult[] | undefined {
   if (!Array.isArray(value)) return undefined;
@@ -32143,6 +32213,9 @@ await addProjectLogbookEntry(
                   }
                 : undefined,
             records: parseJarvisRecordResults(data?.records),
+            structured: isSystemHelp
+              ? parseJarvisStructuredAnswer(data?.structured)
+              : undefined,
           },
         ],
       }));
@@ -67645,8 +67718,52 @@ await addProjectLogbookEntry(
                 </div>
               ) : (
                 currentManagementAiMessages.map((message, index) => (
-                  <article key={`${message.createdAt}-${index}`} data-role={message.role}>
-                    <p>{message.content}</p>
+                  <article
+                    key={`${message.createdAt}-${index}`}
+                    data-role={message.role}
+                    className={message.structured ? styles.jarvisStructuredMessage : undefined}
+                  >
+                    {message.role === "assistant" && message.structured ? (
+                      <div className={styles.jarvisStructuredAnswer}>
+                        <header>
+                          <strong>{message.structured.title}</strong>
+                          {message.structured.subtitle ? (
+                            <span>{message.structured.subtitle}</span>
+                          ) : null}
+                        </header>
+                        {message.structured.summary ? (
+                          <p>{message.structured.summary}</p>
+                        ) : null}
+                        {message.structured.facts?.length ? (
+                          <div className={styles.jarvisAnswerFacts}>
+                            {message.structured.facts.map((fact) => (
+                              <div
+                                key={`${fact.label}-${fact.value}`}
+                                data-tone={fact.tone || "neutral"}
+                              >
+                                <span>{fact.label}</span>
+                                <strong>{fact.value}</strong>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                        {message.structured.sections?.map((section) => (
+                          <section
+                            key={section.title}
+                            data-tone={section.tone || "neutral"}
+                          >
+                            <strong>{section.title}</strong>
+                            <ul>
+                              {section.items.map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
+                          </section>
+                        ))}
+                      </div>
+                    ) : (
+                      <p>{message.content}</p>
+                    )}
                     {message.role === "assistant" && message.choices?.length ? (
                       <div className={styles.jarvisChoiceList}>
                         {message.choices.map((choice) => (

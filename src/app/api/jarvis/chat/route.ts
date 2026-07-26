@@ -5,7 +5,10 @@ import {
   resolveJarvisSystemHelp,
   sanitizeJarvisSurfaceContext,
 } from "@/lib/jarvis/knowledge";
-import { resolveJarvisPersonSummaryRequest } from "@/lib/jarvis/person-summary";
+import {
+  resolveJarvisPersonDiagnosticRequest,
+  resolveJarvisPersonSummaryRequest,
+} from "@/lib/jarvis/person-summary";
 import { resolveJarvisReadRequest } from "@/lib/jarvis/read-model";
 import { resolveJarvisSalesAnalysisIntent } from "@/lib/jarvis/sales-analysis";
 import { createJarvisAccessProfile } from "@/lib/jarvis/security";
@@ -38,6 +41,15 @@ export async function POST(req: Request) {
 
   const context = sanitizeJarvisSurfaceContext(body.context);
   const accessProfile = createJarvisAccessProfile(sessionActor, actorResult.actor);
+  const personDiagnosticResponse = await resolveJarvisPersonDiagnosticRequest({
+    question: message,
+    organizationId: organization.id,
+    accessProfile,
+    context,
+  });
+  if (personDiagnosticResponse) {
+    return NextResponse.json(personDiagnosticResponse);
+  }
   const personSummaryResponse = await resolveJarvisPersonSummaryRequest({
     question: message,
     organizationId: organization.id,

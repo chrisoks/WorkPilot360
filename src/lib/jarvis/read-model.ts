@@ -30,11 +30,30 @@ export type JarvisRecordResult = {
   target: JarvisRecordTarget;
 };
 
+export type JarvisAnswerTone = "neutral" | "positive" | "warning";
+
+export type JarvisStructuredAnswer = {
+  title: string;
+  subtitle?: string;
+  summary?: string;
+  facts?: Array<{
+    label: string;
+    value: string;
+    tone?: JarvisAnswerTone;
+  }>;
+  sections?: Array<{
+    title: string;
+    items: string[];
+    tone?: JarvisAnswerTone;
+  }>;
+};
+
 export type JarvisReadResponse = {
   type: "answer" | "refusal" | "unknown";
   message: string;
   topicId: string;
   records?: JarvisRecordResult[];
+  structured?: JarvisStructuredAnswer;
   deterministic: true;
 };
 

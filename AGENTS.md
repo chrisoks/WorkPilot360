@@ -1,5 +1,23 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS-Struktur und Projektdiagnose 2026-07-27: Deterministische
+  Personen-/Kundenantworten können zusätzlich ein serverseitig typisiertes
+  Antwortmodell mit Überschrift, Kurzkontext, Kennzahlen und erklärenden
+  Abschnitten liefern. Die UI validiert Feldlängen, Tonwerte und Listen erneut
+  und rendert diese Antworten strukturiert statt als langen Fließtext; der
+  normale Nachrichtentext bleibt als sicherer Fallback erhalten. Fragen nach
+  abweichenden Projektzahlen werden vor der allgemeinen Personen- und
+  Systemhilfe als Diagnose erkannt. JARVIS vergleicht dafür die eigene stabile
+  ID-Verknüpfung mit der tatsächlich verwendeten Kundenakten-Zählung, kann
+  reine Namenszuordnungen und nur über Ansprechpartner/Adresse verknüpfte
+  Projekte benennen und gibt betroffene Projekte als erlaubte Sprungkarten
+  aus. Wenn eine frühere Abweichung inzwischen behoben ist, meldet er den
+  aktuellen Gleichstand statt eine alte Ursache zu behaupten. Die Diagnose ist
+  organisations- und rollenbeschränkt, rein lesend, deterministisch und ohne
+  OpenAI-Aufruf. Das JARVIS-Panel wird nach seiner Einfluganimation nicht mehr
+  dauerhaft auf einer Transform-Ebene gehalten; dadurch bleibt die Schrift
+  insbesondere bei reduziertem Browserzoom schärfer.
+
 - JARVIS-Personen- und Kundenübersicht 2026-07-26: Freie Fragen wie
   `Was weißt du über Klaus Testmann?` werden vor der allgemeinen Systemhilfe
   als sichere Personenabsicht erkannt. JARVIS sucht ausschließlich in der

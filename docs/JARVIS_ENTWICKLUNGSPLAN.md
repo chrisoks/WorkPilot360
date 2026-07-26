@@ -65,6 +65,21 @@ Stand 26.07.2026:
   Emulation kann die Sicht nur einschränken. Mitarbeiterübersichten enthalten
   keine Lohnwerte, Personalakten oder Geheimnisse. Die Antwort benötigt keinen
   OpenAI-Aufruf und schreibt keine Daten.
+- Personen- und Kundenübersichten liefern zusätzlich ein typisiertes,
+  clientseitig nochmals validiertes Antwortmodell aus Überschrift,
+  Kurzkontext, Kennzahlen und erklärenden Abschnitten. Dadurch erscheinen
+  belegte Daten übersichtlich statt als langer Fließtext; der normale
+  Nachrichtentext bleibt als Fallback erhalten.
+- Die erste deterministische Systemdiagnose vergleicht bei abweichenden
+  Projektzahlen die stabile JARVIS-ID-Verknüpfung mit der tatsächlichen
+  Kundenakten-Zählung. Reine Namenszuordnungen, abweichende
+  Ansprechpartner-/Adressverknüpfungen und inzwischen behobene Unterschiede
+  werden nachvollziehbar erklärt. Betroffene Projekte können als erlaubte
+  Sprungkarten geöffnet werden. Die Diagnose ist rollen- und
+  organisationsgebunden, rein lesend und verursacht keinen OpenAI-Aufruf.
+- Das JARVIS-Panel gibt seine Transform-Ebene nach der Einfluganimation
+  vollständig frei. Damit bleibt Text insbesondere bei reduziertem
+  Browserzoom schärfer, ohne die gewünschte Öffnungsanimation zu entfernen.
 
 ## 1. Zielbild
 
