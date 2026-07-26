@@ -1,5 +1,19 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS-Sicherheitskern 2026-07-26: Der verbindliche Gesamtplan liegt in
+  `docs/JARVIS_ENTWICKLUNGSPLAN.md`. JARVIS klassifiziert Fragen jetzt nach
+  internen, Kunden-, Finanz-, Personal-, Lohn- und geheimen Daten. Rechte
+  werden bei Mitarbeiteremulation als Schnittmenge aus wirklich angemeldetem
+  Benutzer und emulierter Rolle geprüft; Emulation kann JARVIS dadurch nur
+  einschränken, niemals hochstufen. Passwörter, API-Schlüssel, Tokens und
+  technische Secrets bleiben für alle Rollen gesperrt. Ein zentraler
+  Aktionskatalog beschreibt Navigation, Aufgaben, Planung, Zeiten, Projekte,
+  Kontakte, Angebote, Rechnungen, Mail, Personal, Massenänderungen und
+  Automationen samt Risiko und Bestätigungsstufe. Alle Aktionen stehen in
+  diesem Fundamentblock ausdrücklich auf `planned` und sind noch nicht
+  ausführbar. Bekannte Bedienhilfen sind mit den bestehenden
+  WorkPilot-Berechtigungen verbunden. Keine Prisma- oder UI-Änderung.
+
 - JARVIS-Systemassistenz 2026-07-24: Die bisher getrennten Einstiege fuer
   Systemhilfe, Vertrieb und BWL laufen jetzt in einem gemeinsamen, global
   erreichbaren JARVIS-Slide-out zusammen. Die Systemhilfe ist fuer aktive

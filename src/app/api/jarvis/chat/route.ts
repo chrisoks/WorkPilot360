@@ -5,6 +5,7 @@ import {
   resolveJarvisSystemHelp,
   sanitizeJarvisSurfaceContext,
 } from "@/lib/jarvis/knowledge";
+import { createJarvisAccessProfile } from "@/lib/jarvis/security";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,15 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const actorResult = await getSessionBoundActor(req, users, body.actorId);
   if (!actorResult.ok) return sessionBoundActorResponse(actorResult);
+  const sessionActor = users.find(
+    (candidate) => candidate.id === actorResult.sessionUserId && candidate.isActive !== false
+  );
+  if (!sessionActor) {
+    return NextResponse.json(
+      { error: "Angemeldeter Benutzer konnte nicht eindeutig bestimmt werden." },
+      { status: 401 }
+    );
+  }
 
   const message = cleanText(body.message, 1800);
   if (!message) {
@@ -24,6 +34,7 @@ export async function POST(req: Request) {
   }
 
   const context = sanitizeJarvisSurfaceContext(body.context);
-  const resolved = resolveJarvisSystemHelp(message, context);
+  const accessProfile = createJarvisAccessProfile(sessionActor, actorResult.actor);
+  const resolved = resolveJarvisSystemHelp(message, context, accessProfile);
   return NextResponse.json(resolved);
 }

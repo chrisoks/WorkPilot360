@@ -1,0 +1,56 @@
+import { describe, expect, it } from "vitest";
+import { Role } from "@prisma/client";
+import {
+  getJarvisActionCatalog,
+  getJarvisActionDecision,
+  JARVIS_ACTIONS,
+} from "@/lib/jarvis/actions";
+import { createJarvisAccessProfile } from "@/lib/jarvis/security";
+
+describe("JARVIS action registry", () => {
+  it("uses unique action identifiers", () => {
+    expect(new Set(JARVIS_ACTIONS.map((action) => action.id)).size).toBe(JARVIS_ACTIONS.length);
+  });
+
+  it("marks critical actions as requiring critical confirmation", () => {
+    const criticalActions = JARVIS_ACTIONS.filter((action) => action.risk === "critical");
+    expect(criticalActions.length).toBeGreaterThan(0);
+    expect(criticalActions.every((action) => action.confirmation === "critical")).toBe(true);
+  });
+
+  it("does not make planned actions executable", () => {
+    const profile = createJarvisAccessProfile({
+      id: "gf",
+      role: Role.GESCHAEFTSFUEHRER,
+    });
+    const decision = getJarvisActionDecision("invoice.finalize", profile);
+
+    expect(decision.permitted).toBe(true);
+    expect(decision.executable).toBe(false);
+    expect(decision.reason).toBe("not_implemented");
+    expect(decision.requiresConfirmation).toBe(true);
+  });
+
+  it("prevents privilege escalation through impersonation", () => {
+    const profile = createJarvisAccessProfile(
+      { id: "gf", role: Role.GESCHAEFTSFUEHRER },
+      { id: "employee", role: Role.MITARBEITER }
+    );
+    const decision = getJarvisActionDecision("invoice.finalize", profile);
+
+    expect(decision.permitted).toBe(false);
+    expect(decision.executable).toBe(false);
+  });
+
+  it("gives employees only their permitted foundation catalog", () => {
+    const profile = createJarvisAccessProfile({
+      id: "employee",
+      role: Role.MITARBEITER,
+    });
+    const catalog = getJarvisActionCatalog(profile);
+
+    expect(catalog.find((entry) => entry.action?.id === "task.prepare")?.permitted).toBe(true);
+    expect(catalog.find((entry) => entry.action?.id === "invoice.finalize")?.permitted).toBe(false);
+    expect(catalog.find((entry) => entry.action?.id === "payroll.manage")?.permitted).toBe(false);
+  });
+});

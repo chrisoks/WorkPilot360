@@ -1,3 +1,10 @@
+import {
+  authorizeJarvisQuestion,
+  JarvisAccessProfile,
+  JarvisQuestionAuthorization,
+} from "@/lib/jarvis/security";
+import { getJarvisActionDecision } from "@/lib/jarvis/actions";
+
 export type JarvisSurfaceContext = {
   module?: string;
   subview?: string;
@@ -20,6 +27,7 @@ type JarvisTopic = {
   keywords: string[];
   surfaces?: string[];
   answer: string;
+  actionId?: string;
 };
 
 const PROJECT_KIND_CHOICES = [
@@ -34,6 +42,7 @@ const TOPICS: JarvisTopic[] = [
     title: "Angebot anlegen",
     keywords: ["angebot anlegen", "angebot erstellen", "neues angebot", "wie lege ich ein angebot"],
     surfaces: ["Projekte OK solutions", "Projekte OK immocare", "Projektakte"],
+    actionId: "offer.prepare",
     answer:
       "Öffne zuerst das passende Projekt. Gehe in der Projektakte auf „Dokumente“ und wähle als Dokumentart „Angebote“. Klicke anschließend auf „+ Angebot“, ergänze Kopf- und Positionsdaten, prüfe die Vorschau und erstelle oder speichere das Angebot.",
   },
@@ -42,6 +51,7 @@ const TOPICS: JarvisTopic[] = [
     title: "Nachtragsangebot anlegen",
     keywords: ["nachtragsangebot", "nachtrag anlegen", "nachtrag erstellen"],
     surfaces: ["Projekte OK solutions", "Projekte OK immocare", "Projektakte"],
+    actionId: "offer.prepare",
     answer:
       "Öffne das Projekt und gehe in der Projektakte auf „Dokumente“. Wähle „Angebote: Nachtragsangebote“ und klicke auf „+ Nachtragsangebot“. Ergänze die Positionen und prüfe vor dem Erstellen die Vorschau.",
   },
@@ -50,6 +60,7 @@ const TOPICS: JarvisTopic[] = [
     title: "Termin oder Terminwunsch anlegen",
     keywords: ["termin anlegen", "termin eintragen", "termin erstellen", "terminwunsch", "planungstermin"],
     surfaces: ["Planungsboard", "Projektakte"],
+    actionId: "planning.prepare",
     answer:
       "Öffne das Projekt und den Reiter „Termine & Stempelungen“. Mit „+ Termin“ legst du einen festen Planungstermin an. Mit „+ Terminwunsch“ erfasst du einen noch freizugebenden Bedarf. Wähle Mitarbeiter, Datum, Zeit und die passende Zuordnung und speichere anschließend.",
   },
@@ -72,6 +83,7 @@ const TOPICS: JarvisTopic[] = [
       "projekt verplanen",
     ],
     surfaces: ["Planungsboard", "Projektakte"],
+    actionId: "planning.prepare",
     answer: "",
   },
   {
@@ -86,6 +98,7 @@ const TOPICS: JarvisTopic[] = [
       "manuelle stempelung",
     ],
     surfaces: ["Projektakte", "Persönliche Daten"],
+    actionId: "time.prepare",
     answer: "",
   },
   {
@@ -93,6 +106,7 @@ const TOPICS: JarvisTopic[] = [
     title: "Aufgabe anlegen",
     keywords: ["aufgabe anlegen", "aufgabe erstellen", "neue aufgabe"],
     surfaces: ["Aufgaben", "Projektakte", "Kundenakte"],
+    actionId: "task.prepare",
     answer:
       "Nutze oben „+ Neu“ und wähle „Aufgabe“. Ergänze Titel, Zuständigkeit und Deadline. Wenn die Aufgabe zu einem Kunden oder Projekt gehört, ordne beides direkt im Formular zu und speichere anschließend.",
   },
@@ -101,6 +115,7 @@ const TOPICS: JarvisTopic[] = [
     title: "Kontakt anlegen",
     keywords: ["kontakt anlegen", "kunde anlegen", "firma anlegen", "ansprechpartner anlegen", "neuer kontakt"],
     surfaces: ["Kontakte", "Kundenakte"],
+    actionId: "contact.manage",
     answer:
       "Öffne „Kontakte“ und klicke auf „+ Kontakt“. Wähle den passenden Kontakttyp, trage die Stammdaten ein und speichere. Einen Ansprechpartner legst du danach in der Kundenakte im Reiter „Ansprechpartner“ an.",
   },
@@ -109,6 +124,7 @@ const TOPICS: JarvisTopic[] = [
     title: "Projekt anlegen",
     keywords: ["projekt anlegen", "projekt erstellen", "neues projekt"],
     surfaces: ["Projekte OK solutions", "Projekte OK immocare"],
+    actionId: "project.manage",
     answer:
       "Nutze oben „+ Neu“ und wähle „Projekt“. Entscheide zuerst den richtigen Geschäftsbereich, ordne den Kunden zu und ergänze Projektart, Verantwortlichkeit und Projektdaten. Prüfe die Angaben und speichere das Projekt.",
   },
@@ -117,12 +133,14 @@ const TOPICS: JarvisTopic[] = [
     title: "Artikel, Leistung oder Paket anlegen",
     keywords: [
       "artikel anlegen",
+      "wie lege ich einen artikel an",
       "leistung anlegen",
       "paket anlegen",
       "stammdaten anlegen",
       "katalogposition anlegen",
     ],
     surfaces: ["Artikel & Leistungen"],
+    actionId: "catalog.manage",
     answer:
       "Öffne „Artikel & Leistungen“ und wähle oben „+ Artikel“, „+ Leistung“ oder „+ Paket“. Pflege zuerst die Informationen und anschließend den Reiter „Kalkulation“. Bei Paketen ergänzt du dort die enthaltenen Materialien sowie Lohn- oder Maschinenkosten.",
   },
@@ -142,30 +160,6 @@ const TOPICS: JarvisTopic[] = [
     answer:
       "Öffne „Kalkulations-Rechner“ und wähle „Fahrten“. Wähle ein Fahrzeug, trage die Gesamtstrecke ein und übernimm bei Bedarf einen aktuellen Kraftstoffpreis. Der Rechner berücksichtigt bewusst nur Fahrzeug- und Kraftstoffkosten, keine Personalkosten.",
   },
-];
-
-const RESTRICTED_PATTERNS = [
-  /\bgehalt\w*/i,
-  /\blohn\w*/i,
-  /\bverdien\w*/i,
-  /\bpersonalkosten\b/i,
-  /\bmitarbeiterkosten\b/i,
-  /\bkostensatz\b/i,
-  /\bkostenstundensatz\b/i,
-  /\barbeitgeberkosten\b/i,
-  /\bpersonalaufwand\b/i,
-  /\bsalary\b/i,
-  /\bwage\b/i,
-];
-
-const PROMPT_INJECTION_PATTERNS = [
-  /ignore (all )?(previous|above|earlier) instructions/i,
-  /ignoriere .*anweisung/i,
-  /system prompt/i,
-  /developer message/i,
-  /du bist jetzt/i,
-  /forget .*instructions/i,
-  /zeige .*prompt/i,
 ];
 
 function normalize(value: string) {
@@ -288,26 +282,30 @@ export function sanitizeJarvisSurfaceContext(value: unknown): JarvisSurfaceConte
 
 export function resolveJarvisSystemHelp(
   question: string,
-  context: JarvisSurfaceContext = {}
+  context: JarvisSurfaceContext = {},
+  accessProfile?: JarvisAccessProfile
 ): JarvisHelpResult {
   const cleaned = question.trim().slice(0, 1800);
   if (!cleaned) {
     return { type: "unknown", message: "Bitte stelle mir eine Frage zur Bedienung von WorkPilot360." };
   }
 
-  if (RESTRICTED_PATTERNS.some((pattern) => pattern.test(cleaned))) {
+  const authorization = authorizeJarvisQuestion(cleaned, accessProfile);
+  if (!authorization.allowed) {
     return {
       type: "refusal",
-      message:
-        "Dazu gebe ich keine Auskunft. Lohn-, Gehalts-, Mitarbeiterkosten- und persönliche Personaldaten sind in JARVIS gesperrt. Ich helfe dir gern bei einer Frage zur Bedienung von WorkPilot360.",
+      message: getJarvisRefusalMessage(authorization),
     };
   }
-
-  if (PROMPT_INJECTION_PATTERNS.some((pattern) => pattern.test(cleaned))) {
+  if (
+    authorization.dataClass === "payroll" ||
+    authorization.dataClass === "personnel" ||
+    authorization.dataClass === "financial"
+  ) {
     return {
-      type: "refusal",
+      type: "unknown",
       message:
-        "Diese Anweisung kann ich nicht befolgen. Ich bleibe bei freigegebenen Hilfen zur Bedienung von WorkPilot360.",
+        "Deine Rolle erlaubt diese Datenklasse. Die konkrete Abfrage ist im aktuellen JARVIS-Ausbaustand noch nicht sicher angebunden.",
     };
   }
 
@@ -323,6 +321,23 @@ export function resolveJarvisSystemHelp(
         "Dazu habe ich noch keine freigegebene WorkPilot-Anleitung. Formuliere bitte kurz, welche Funktion oder welchen Reiter du bedienen möchtest.",
     };
   }
+  if (match.topic.actionId) {
+    if (!accessProfile) {
+      return {
+        type: "refusal",
+        message: "Für diese Bedienhilfe muss deine aktuelle WorkPilot-Rolle eindeutig geprüft werden.",
+      };
+    }
+    const actionDecision = getJarvisActionDecision(match.topic.actionId, accessProfile);
+    if (!actionDecision.permitted) {
+      return {
+        type: "refusal",
+        topicId: match.topic.id,
+        message:
+          "Diese Funktion ist für deine aktuelle WorkPilot-Rolle nicht freigegeben. JARVIS kann sie deshalb weder erklären noch vorbereiten.",
+      };
+    }
+  }
 
   if (match.topic.id === "time.manual") return getTimeEntryAnswer(cleaned, context);
   if (match.topic.id === "planning.assignEmployees") return getEmployeePlanningAnswer(context);
@@ -331,6 +346,25 @@ export function resolveJarvisSystemHelp(
     topicId: match.topic.id,
     message: match.topic.answer,
   };
+}
+
+function getJarvisRefusalMessage(authorization: JarvisQuestionAuthorization) {
+  if (authorization.reason === "prompt_injection") {
+    return "Diese Anweisung kann ich nicht befolgen. Ich bleibe bei freigegebenen Hilfen zur Bedienung von WorkPilot360.";
+  }
+  if (authorization.reason === "secret") {
+    return "Passwörter, API-Schlüssel, Tokens und technische Geheimnisse sind in JARVIS für alle Rollen gesperrt.";
+  }
+  if (authorization.dataClass === "payroll" || authorization.dataClass === "personnel") {
+    return "Deine aktuelle Rolle darf diese sensiblen Personal- oder Lohndaten nicht über JARVIS abrufen.";
+  }
+  if (authorization.dataClass === "financial") {
+    return "Deine aktuelle Rolle darf diese Finanzdaten oder Finanzfunktion nicht über JARVIS verwenden.";
+  }
+  if (authorization.dataClass === "customer") {
+    return "Deine aktuelle Rolle darf diese Kunden- oder Kontaktdaten nicht über JARVIS verwenden.";
+  }
+  return "Diese Information ist für deine aktuelle Rolle in JARVIS nicht freigegeben.";
 }
 
 export function getJarvisKnowledgeExcerpt(topicId?: string) {

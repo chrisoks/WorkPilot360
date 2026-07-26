@@ -2,6 +2,26 @@
 
 Stand: 24.07.2026
 
+## Aktueller Umsetzungsstand
+
+Stand 26.07.2026:
+
+- Der Entwicklungsplan ist als eigener Git-Commit gesichert.
+- Der JARVIS-Sicherheitskern klassifiziert interne, Kunden-, Finanz-,
+  Personal-, Lohn- und geheime Daten.
+- Passwörter, API-Schlüssel, Tokens und technische Secrets sind für alle
+  Rollen gesperrt.
+- Rechte werden bei Mitarbeiteremulation als Schnittmenge aus echter Sitzung
+  und emulierter Rolle geprüft. Emulation kann Rechte nur einschränken.
+- Bekannte Bedienhilfen sind mit den bestehenden
+  WorkPilot-Aktionsberechtigungen verbunden.
+- Die zentrale Action Registry enthält die geplanten Aktionsarten,
+  Risikostufen, Bestätigungsstufen und Datenklassen.
+- Alle registrierten Aktionen stehen weiterhin auf `planned` und sind noch
+  nicht ausführbar.
+- Der nächste Block ist die vollständige Systemlandkarte mit gemessener
+  Wissensabdeckung.
+
 ## 1. Zielbild
 
 JARVIS wird die gemeinsame, rollengerechte Assistenz- und Bedienebene von
