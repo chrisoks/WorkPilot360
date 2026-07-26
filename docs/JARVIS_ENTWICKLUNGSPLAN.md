@@ -38,6 +38,11 @@ Stand 26.07.2026:
   Zeitraum- und Statusfilter sowie weitere Kernabläufe. Schreibende Aktionen
   bleiben bis zu ihren eigenen Vorschau-, Audit- und Idempotenzpaketen
   `planned`.
+- Das nächste fachliche Ziel ist ein proaktiver Vertriebs-, Projekt- und
+  BWL-Analyst: JARVIS soll historische und aktuelle Projekte verstehen,
+  Wiederholungs-, Nachfass- und Cross-Selling-Chancen erkennen und daraus
+  nachvollziehbare Empfehlungen, Aufgaben und kontrollierte Mailentwürfe
+  vorbereiten.
 
 ## 1. Zielbild
 
@@ -498,6 +503,64 @@ benötigen eine vorher eingerichtete, eng begrenzte Unternehmensregel mit:
 
 Eine frei handelnde KI darf keine kritische Aktion selbstständig beschließen.
 
+### 7.18 Proaktiver Vertriebs-, Projekt- und BWL-Analyst
+
+JARVIS soll Chancen und Risiken nicht nur auf Nachfrage erklären, sondern in
+einem festgelegten Turnus kontrolliert erkennen. Beispiele:
+
+- Im Vorjahreszeitraum wurde beim Kunden dieselbe oder eine verwandte Leistung
+  ausgeführt, aber aktuell gibt es noch keinen Folgekontakt oder Auftrag.
+- Ähnliche Kunden erhielten im vergleichbaren Zeitraum eine passende Leistung.
+- Ein Angebot wurde angesehen, aber noch nicht angenommen.
+- Ein abgeschlossenes Projekt besitzt trotz sinnvoller Wiederholung noch keine
+  Nachfassaufgabe.
+- Bei Dauerläufern oder wiederkehrenden Projekten bestehen Hinweise auf
+  Neuverhandlung, Cross-Selling, Kapazitäts- oder Margenbedarf.
+- Projektverlauf, Aufgaben, Planung, Dokumentation und Abrechnung zeigen
+  nachvollziehbare vertriebliche oder betriebswirtschaftliche Signale.
+- Inaktive Kunden eignen sich anhand belastbarer Historie für Rückgewinnung.
+
+Die Architektur bleibt bewusst zweistufig:
+
+1. WorkPilot-Systemlogik ermittelt organisations- und rollengebunden mögliche
+   Treffer, Zeiträume, Muster, Ausschlüsse, Limits, Turnus und
+   Deduplizierung. Zahlen, Status und Datensätze werden niemals durch die KI
+   erfunden.
+2. Die KI verbindet ausschließlich die erlaubten Signale, priorisiert und
+   erklärt sie, weist auf Unsicherheit hin und formuliert den nächsten
+   sinnvollen Schritt.
+
+Jede Empfehlung zeigt mindestens:
+
+- Kunde und gegebenenfalls Projekt,
+- Auslöser und überprüfbare Datenquelle,
+- Datum der letzten Leistung oder Aktivität,
+- empfohlene Aktion und Priorität,
+- Unsicherheit oder fehlende Daten,
+- bereits vorhandene Aufgabe, Wiedervorlage oder Kontaktaktivität zur
+  Vermeidung von Dubletten.
+
+Mögliche Ausgaben sind ein JARVIS-Cockpit, eine interne Systemmail an
+Mitarbeitende, eine vorbereitete Nachfassaufgabe, Gesprächsleitfäden,
+Kundenmailentwürfe und eine verdichtete Management-Zusammenfassung.
+
+Für E-Mails gelten feste Grenzen:
+
+- Interne Mails dürfen den Anzeigenamen `JARVIS` tragen. Technischer Absender
+  bleibt ein freigegebenes Unternehmens-Systempostfach; Empfänger sind
+  ausschließlich Mitarbeitende.
+- Kundenmails werden nur mit Empfänger, Betreff, Text und Anhängen vorbereitet.
+  Versand erfolgt erst nach sichtbarer Prüfung und ausdrücklicher Freigabe
+  eines berechtigten Mitarbeiters über dessen freigegebenes Unternehmens- oder
+  Personenkonto, niemals unter einer scheinbaren JARVIS-Identität.
+- Vorschau, Freigabe, ausführende Person, Zeitpunkt, Empfänger, Ergebnis und
+  Fehler werden auditierbar protokolliert.
+
+Der Start erfolgt ausschließlich als Dry-Run für die Geschäftsführung.
+Gemessen werden Empfehlungsqualität, Fehlalarme, Dubletten, Rollenumfang,
+Mailhäufigkeit und Tokenverbrauch. Die KI entscheidet oder versendet niemals
+eigenständig Kundenansprachen.
+
 ## 8. Risikostufen und Bestätigung
 
 ### Stufe 1: Lesen und Navigieren
@@ -780,6 +843,11 @@ Sicherheitskontrollen wie die normale UI.
 ### Phase 6: Vertrieb und BWL
 
 - sichere Vertriebs- und Managementadapter,
+- verbundene Kunden-, Projekt-, Angebots-, Rechnungs- und Leistungsansichten,
+- historische Wiederholungs-, Nachfass- und Cross-Selling-Signale,
+- regelmäßiger Chancen- und Projektrisiko-Check zunächst im Dry-Run,
+- JARVIS-Cockpit und interne Hinweise an berechtigte Mitarbeitende,
+- Aufgaben und Kundenmailentwürfe mit verpflichtender menschlicher Prüfung,
 - priorisierte Vertriebsaktionen,
 - Ursachen- und Trendanalysen,
 - Szenarien,
@@ -868,6 +936,11 @@ Nach Änderungen mindestens:
 - UI für Massenänderungs-Dry-Runs,
 - Grenzwerte und Freigaben für kritische Automationen,
 - Kostenbudget und bevorzugte Modelle pro Modus,
+- Turnus, Rückblickzeitraum und Mindestkonfidenz für Chancenprüfungen,
+- interne Empfängergruppen und maximale Häufigkeit für JARVIS-Hinweise,
+- fachliche Trennung wiederkehrender Leistungen von einmaligen Vorjahresfällen,
+- Freigaberollen und Absenderkonto je Art einer externen Kundenmail,
+- Deduplizierungszeitraum für Empfehlungen, Aufgaben und Kontaktversuche,
 - fachlichen Ausbau des Mietmoduls vor JARVIS-Mietaktionen abschließen,
 - Wissenspflege bei jeder neuen/änderten WorkPilot-Funktion verpflichtend
   machen,

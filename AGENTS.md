@@ -1,5 +1,23 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS-Profi-Allrounder-Roadmap 2026-07-26: JARVIS soll zu einem
+  rollengerechten Profi für Systembedienung, Vertrieb, Projektverständnis und
+  Betriebswirtschaft ausgebaut werden. Geplant ist ein regelmäßiger,
+  deterministisch gesteuerter Projekt- und Kundenchancen-Check: Er vergleicht
+  belastbare historische Leistungen, Projektarten, Zeitabstände, offene
+  Angebote, letzte Aktivitäten und ähnliche Kunden, erkennt mögliche
+  Wiederholungs-, Nachfass- und Cross-Selling-Anlässe und liefert dafür
+  nachvollziehbare Empfehlungen mit Datenquelle statt erfundener Behauptungen.
+  KI priorisiert, erklärt und formuliert; WorkPilot-Systemlogik bestimmt
+  Treffer, Rechte, Turnus, Limits und Deduplizierung. Aus Empfehlungen dürfen
+  Aufgaben oder Mailentwürfe vorbereitet werden. Kundenmails benötigen immer
+  eine sichtbare Vorschau und die bewusste Freigabe eines berechtigten
+  Mitarbeiters und werden über dessen freigegebenes Unternehmenskonto
+  versendet, niemals scheinbar von JARVIS. Interne Systemmails an Mitarbeitende
+  dürfen den Anzeigenamen `JARVIS` tragen, bleiben technisch am
+  Unternehmens-Systempostfach, rollenbezogen, auditierbar und werden nicht an
+  Kunden versendet. Noch keine Ausführung oder Automation in diesem Block.
+
 - JARVIS-Leseadapter 2026-07-26: Die Systemhilfe erkennt eindeutige
   Such-, Öffnungs- und Zusammenfassungsabsichten für Projekte, Kunden/Kontakte,
   Aufgaben, Angebote und Rechnungen deterministisch und ohne OpenAI-Aufruf.
