@@ -55,6 +55,16 @@ Stand 26.07.2026:
   Treffer enthalten Quelle, Datum, Priorität und vorsichtige Empfehlung. Der
   Dry-Run erzeugt keine Aufgabe, keine Mail, keine Datenänderung und keinen
   OpenAI-Aufruf.
+- Freie Personenfragen wie `Was weißt du über Klaus Testmann?` besitzen eine
+  sichere, deterministische Gesamtsicht. JARVIS ordnet erlaubte
+  Kundenkontakte und Mitarbeitende eindeutig zu, fragt bei Mehrdeutigkeit nach
+  und verbindet Kunden über stabile Kontakt-IDs mit Projekten, Angeboten,
+  Rechnungen, erlaubten Aufgaben und der letzten Logbuchaktivität. Gelöschte
+  oder stornierte Dokumente werden nicht als relevante Historie gezählt.
+  Kunden-, Finanz-, Aufgaben- und Personaldetails bleiben rollengebunden;
+  Emulation kann die Sicht nur einschränken. Mitarbeiterübersichten enthalten
+  keine Lohnwerte, Personalakten oder Geheimnisse. Die Antwort benötigt keinen
+  OpenAI-Aufruf und schreibt keine Daten.
 
 ## 1. Zielbild
 

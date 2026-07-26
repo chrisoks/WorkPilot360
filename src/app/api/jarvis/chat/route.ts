@@ -5,6 +5,7 @@ import {
   resolveJarvisSystemHelp,
   sanitizeJarvisSurfaceContext,
 } from "@/lib/jarvis/knowledge";
+import { resolveJarvisPersonSummaryRequest } from "@/lib/jarvis/person-summary";
 import { resolveJarvisReadRequest } from "@/lib/jarvis/read-model";
 import { resolveJarvisSalesAnalysisIntent } from "@/lib/jarvis/sales-analysis";
 import { createJarvisAccessProfile } from "@/lib/jarvis/security";
@@ -37,6 +38,14 @@ export async function POST(req: Request) {
 
   const context = sanitizeJarvisSurfaceContext(body.context);
   const accessProfile = createJarvisAccessProfile(sessionActor, actorResult.actor);
+  const personSummaryResponse = await resolveJarvisPersonSummaryRequest({
+    question: message,
+    organizationId: organization.id,
+    accessProfile,
+  });
+  if (personSummaryResponse) {
+    return NextResponse.json(personSummaryResponse);
+  }
   if (resolveJarvisSalesAnalysisIntent(message)) {
     return NextResponse.json({
       type: "answer",

@@ -337,6 +337,16 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     canUse: canManageCatalogItems,
   },
   {
+    id: "personnel.read",
+    title: "Mitarbeiterstammdaten rollengerecht zusammenfassen",
+    category: "personnel",
+    risk: "read",
+    confirmation: "none",
+    dataClasses: ["personnel"],
+    implementation: "available",
+    canUse: canManageUsers,
+  },
+  {
     id: "personnel.manage",
     title: "Personalstammdaten oder Rolle ändern",
     category: "personnel",

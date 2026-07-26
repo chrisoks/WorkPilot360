@@ -45,6 +45,7 @@ const PROMPT_INJECTION_PATTERNS = [
 ];
 
 const SECRET_REQUEST_PATTERNS = [
+  /\bwas\s+wei\S*\s+du\b.*\b(?:passwort|kennwort|api[- ]?key|secret|token|private key)\b/i,
   /\b(?:zeige|nenne|verrate|gib|lies|sende|exportiere)\b.*\b(?:passwort|kennwort|api[- ]?key|secret|token|private key|privater schlüssel|umgebungsvariable|\.env)\b/i,
   /\bwie lautet\b.*\b(?:passwort|kennwort|api[- ]?key|secret|token|private key|privater schlüssel)\b/i,
   /\b(?:passwort|kennwort|api[- ]?key|secret|token|private key|privater schlüssel)\b.*\b(?:anzeigen|auslesen|offenlegen|herausgeben)\b/i,

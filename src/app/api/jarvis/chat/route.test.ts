@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   getSessionBoundActor: vi.fn(),
   sessionBoundActorResponse: vi.fn(),
   sanitizeJarvisSurfaceContext: vi.fn(),
+  resolveJarvisPersonSummaryRequest: vi.fn(),
   resolveJarvisSalesAnalysisIntent: vi.fn(),
   resolveJarvisReadRequest: vi.fn(),
   resolveJarvisSystemHelp: vi.fn(),
@@ -27,6 +28,10 @@ vi.mock("@/lib/jarvis/knowledge", () => ({
 
 vi.mock("@/lib/jarvis/read-model", () => ({
   resolveJarvisReadRequest: mocks.resolveJarvisReadRequest,
+}));
+
+vi.mock("@/lib/jarvis/person-summary", () => ({
+  resolveJarvisPersonSummaryRequest: mocks.resolveJarvisPersonSummaryRequest,
 }));
 
 vi.mock("@/lib/jarvis/sales-analysis", () => ({
@@ -54,6 +59,7 @@ describe("POST /api/jarvis/chat", () => {
     });
     mocks.sanitizeJarvisSurfaceContext.mockReturnValue({ module: "Projekte" });
     mocks.createJarvisAccessProfile.mockReturnValue({ profile: true });
+    mocks.resolveJarvisPersonSummaryRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisSalesAnalysisIntent.mockReturnValue(false);
     mocks.resolveJarvisSystemHelp.mockReturnValue({
       type: "answer",
@@ -93,6 +99,36 @@ describe("POST /api/jarvis/chat", () => {
       organizationId: "organization-1",
       accessProfile: { profile: true },
     });
+    expect(mocks.resolveJarvisSystemHelp).not.toHaveBeenCalled();
+  });
+
+  it("returns a person summary before generic record and system help paths", async () => {
+    mocks.resolveJarvisPersonSummaryRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "person.customer.summary",
+      message: "Klaus Testmann ist als Privatkunde erfasst.",
+      records: [],
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Was weißt du über Klaus Testmann?",
+          context: {},
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      topicId: "person.customer.summary",
+      deterministic: true,
+    });
+    expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisSystemHelp).not.toHaveBeenCalled();
   });
 

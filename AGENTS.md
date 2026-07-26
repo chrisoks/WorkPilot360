@@ -1,5 +1,23 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS-Personen- und Kundenübersicht 2026-07-26: Freie Fragen wie
+  `Was weißt du über Klaus Testmann?` werden vor der allgemeinen Systemhilfe
+  als sichere Personenabsicht erkannt. JARVIS sucht ausschließlich in der
+  aktuellen Organisation, ordnet Kundenkontakte und – nur mit
+  Personalberechtigung – Mitarbeitende getrennt zu und fordert bei mehreren
+  Treffern Kundennummer, Firma oder Rolle nach. Kunden werden ausschließlich
+  über stabile Kontakt-, Firmen- und Ansprechpartner-IDs mit Projekten,
+  Angeboten, Rechnungen, erlaubten Aufgaben und Logbuchaktivitäten verbunden;
+  keine fachliche Verknüpfung über bloße Namensähnlichkeit. Gelöschte und
+  stornierte Dokumente einschließlich historisch fehlkodierter
+  `Gelöscht`-Werte werden nicht als relevante Historie gezählt. Finanzangaben,
+  Aufgaben und Mitarbeiterdaten folgen weiterhin der Schnittmenge aus echter
+  Sitzung und emulierter Rolle. Mitarbeiterübersichten sind auf
+  Geschäftsführung/Administration beschränkt und zeigen keine Lohnwerte,
+  Personalakten oder technischen Geheimnisse. Geheimnisse bleiben für alle
+  Rollen gesperrt. Rein lesend, ohne OpenAI-Aufruf und ohne
+  Prisma-Schemaänderung.
+
 - JARVIS-Vertriebsanalyse-Dry-Run 2026-07-26: Der JARVIS-Reiter `Vertrieb`
   erkennt konkrete Fragen nach Nachfass- und Verkaufschancen vor dem freien
   KI-Pfad und prüft sie bei jeder Anfrage neu gegen die aktuelle
