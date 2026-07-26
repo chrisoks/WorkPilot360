@@ -31994,6 +31994,19 @@
   min-height: 100dvh;
 }
 
+.shell.loginShell {
+  background:
+    linear-gradient(115deg, rgba(255, 255, 255, 0.96) 0%, rgba(244, 250, 255, 0.96) 45%, rgba(232, 237, 255, 0.95) 100%);
+  grid-template-columns: none;
+  grid-template-rows: none;
+}
+
+.shell.bootShell {
+  background: #eef2f6;
+  grid-template-columns: none;
+  grid-template-rows: none;
+}
+
 .header {
   background: rgba(255, 255, 255, 0.98);
   border-bottom: 1px solid var(--wp-line);

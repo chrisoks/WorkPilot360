@@ -1,5 +1,13 @@
 # WorkPilot360 Agent Handover
 
+- Login- und Ladeansicht 2026-07-27: Die späte globale `.shell`-Gestaltung
+  zeichnet den dunklen Sidebar-Hintergrund nur noch im angemeldeten
+  Dashboard. Login- und Boot-Shell überschreiben den Hintergrund nach dieser
+  Regel ausdrücklich mit ihrem eigenen vollflächigen Hintergrund; dadurch
+  erscheint links vor der Anmeldung und während des Ladens keine leere
+  Sidebar mehr. Die eigentliche Dashboard-Sidebar und ihre Breite bleiben
+  unverändert.
+
 - Abhängigkeitssicherheit 2026-07-27: Next.js wurde als kontrolliertes
   Patchupdate von 16.2.10 auf 16.2.12 angehoben. Weil Next weiterhin
   verwundbare transitive Versionsbereiche mitführt, erzwingen npm-Overrides
