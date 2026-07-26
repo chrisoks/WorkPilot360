@@ -42,6 +42,7 @@ export type JarvisActionDefinition = {
     | "catalog"
     | "offer"
     | "invoice"
+    | "sales"
     | "document"
     | "personnel"
     | "bulk"
@@ -124,6 +125,16 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     dataClasses: ["financial"],
     implementation: "available",
     canUse: canManageInvoices,
+  },
+  {
+    id: "sales.analysis.read",
+    title: "Vertriebs- und Projektchancen im Dry-Run analysieren",
+    category: "sales",
+    risk: "read",
+    confirmation: "none",
+    dataClasses: ["customer", "financial"],
+    implementation: "available",
+    canUse: (actor) => actor.role === Role.GESCHAEFTSFUEHRER,
   },
   {
     id: "task.prepare",

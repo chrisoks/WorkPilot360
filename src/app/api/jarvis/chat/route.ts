@@ -6,6 +6,7 @@ import {
   sanitizeJarvisSurfaceContext,
 } from "@/lib/jarvis/knowledge";
 import { resolveJarvisReadRequest } from "@/lib/jarvis/read-model";
+import { resolveJarvisSalesAnalysisIntent } from "@/lib/jarvis/sales-analysis";
 import { createJarvisAccessProfile } from "@/lib/jarvis/security";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +37,15 @@ export async function POST(req: Request) {
 
   const context = sanitizeJarvisSurfaceContext(body.context);
   const accessProfile = createJarvisAccessProfile(sessionActor, actorResult.actor);
+  if (resolveJarvisSalesAnalysisIntent(message)) {
+    return NextResponse.json({
+      type: "answer",
+      topicId: "sales.analysis.mode-hint",
+      message:
+        "Diese Frage gehört zur Vertriebsanalyse. Nutze dafür den JARVIS-Reiter „Vertrieb“, sofern er für deine Rolle freigegeben ist. Die Systemhilfe bleibt auf die Bedienung von WorkPilot360 begrenzt.",
+      deterministic: true,
+    });
+  }
   const readResponse = await resolveJarvisReadRequest({
     question: message,
     context,

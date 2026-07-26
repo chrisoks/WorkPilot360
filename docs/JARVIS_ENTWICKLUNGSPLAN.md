@@ -43,6 +43,18 @@ Stand 26.07.2026:
   Wiederholungs-, Nachfass- und Cross-Selling-Chancen erkennen und daraus
   nachvollziehbare Empfehlungen, Aufgaben und kontrollierte Mailentwürfe
   vorbereiten.
+- Der erste Vertriebsanalyse-Dry-Run ist umgesetzt. Er läuft im Reiter
+  `Vertrieb` vor dem freien KI-Pfad, liest bei jeder Anfrage die aktuellen
+  organisationsgebundenen Daten und nimmt dadurch neue Kunden, Projekte,
+  Angebote und Rechnungen automatisch auf. Für die erste Abnahme ist er nur
+  bei einer echten Geschäftsführungs-Sitzung verfügbar. Belegte Signale sind
+  angesehene, nicht angenommene Angebote, kürzlich abgeschlossene Projekte
+  ohne erkannte Nachfassspur und Rechnungsleistungen im vergleichbaren
+  Vorjahreszeitraum. Vorhandene aktive Projektpotenziale, Verkaufschancen und
+  erkennbare Nachfassaufgaben werden zur Deduplizierung berücksichtigt.
+  Treffer enthalten Quelle, Datum, Priorität und vorsichtige Empfehlung. Der
+  Dry-Run erzeugt keine Aufgabe, keine Mail, keine Datenänderung und keinen
+  OpenAI-Aufruf.
 
 ## 1. Zielbild
 
@@ -560,6 +572,21 @@ Der Start erfolgt ausschließlich als Dry-Run für die Geschäftsführung.
 Gemessen werden Empfehlungsqualität, Fehlalarme, Dubletten, Rollenumfang,
 Mailhäufigkeit und Tokenverbrauch. Die KI entscheidet oder versendet niemals
 eigenständig Kundenansprachen.
+
+Umgesetzter erster Stand:
+
+- dynamische Live-Abfrage statt statischer Kunden-/Projektliste,
+- organisationsgebundene Auswahl bei jeder Anfrage,
+- echte Geschäftsführungs-Sitzung als erste Freigabestufe,
+- Signale aus Angebotsöffnung, Projektabschluss und Vorjahresrechnung,
+- Unterdrückung erkennbarer aktiver Nachfassspuren,
+- klickbare Projekt- und Angebotskarten mit Quelle und Datum,
+- rein deterministischer Dry-Run ohne Tokenkosten und ohne Schreibzugriff.
+
+Noch offen bleiben insbesondere fachlich feinere Leistungsähnlichkeit,
+Kontaktaktivitäten über alle Kanäle, konfigurierbarer Turnus, gespeicherte
+Empfehlungshistorie, Cockpit, interne JARVIS-Mail, Aufgabenentwurf und
+kontrollierter Kundenmailentwurf.
 
 ## 8. Risikostufen und Bestätigung
 

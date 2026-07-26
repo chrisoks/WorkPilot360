@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   getSessionBoundActor: vi.fn(),
   sessionBoundActorResponse: vi.fn(),
   sanitizeJarvisSurfaceContext: vi.fn(),
+  resolveJarvisSalesAnalysisIntent: vi.fn(),
   resolveJarvisReadRequest: vi.fn(),
   resolveJarvisSystemHelp: vi.fn(),
   createJarvisAccessProfile: vi.fn(),
@@ -28,6 +29,10 @@ vi.mock("@/lib/jarvis/read-model", () => ({
   resolveJarvisReadRequest: mocks.resolveJarvisReadRequest,
 }));
 
+vi.mock("@/lib/jarvis/sales-analysis", () => ({
+  resolveJarvisSalesAnalysisIntent: mocks.resolveJarvisSalesAnalysisIntent,
+}));
+
 vi.mock("@/lib/jarvis/security", () => ({
   createJarvisAccessProfile: mocks.createJarvisAccessProfile,
 }));
@@ -49,6 +54,7 @@ describe("POST /api/jarvis/chat", () => {
     });
     mocks.sanitizeJarvisSurfaceContext.mockReturnValue({ module: "Projekte" });
     mocks.createJarvisAccessProfile.mockReturnValue({ profile: true });
+    mocks.resolveJarvisSalesAnalysisIntent.mockReturnValue(false);
     mocks.resolveJarvisSystemHelp.mockReturnValue({
       type: "answer",
       message: "Systemhilfe",
@@ -112,5 +118,29 @@ describe("POST /api/jarvis/chat", () => {
       { module: "Projekte" },
       { profile: true }
     );
+  });
+
+  it("redirects analysis questions to the role-aware sales mode", async () => {
+    mocks.resolveJarvisSalesAnalysisIntent.mockReturnValue(true);
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Welche Kunden sollte ich nachfassen?",
+          context: {},
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      topicId: "sales.analysis.mode-hint",
+      deterministic: true,
+    });
+    expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisSystemHelp).not.toHaveBeenCalled();
   });
 });

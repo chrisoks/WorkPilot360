@@ -1,5 +1,21 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS-Vertriebsanalyse-Dry-Run 2026-07-26: Der JARVIS-Reiter `Vertrieb`
+  erkennt konkrete Fragen nach Nachfass- und Verkaufschancen vor dem freien
+  KI-Pfad und prüft sie bei jeder Anfrage neu gegen die aktuelle
+  organisationsgebundene Datenbank. Dadurch fließen auch später angelegte
+  Kunden, Projekte, Angebote und Rechnungen automatisch ein; ein statischer
+  Wissensstand wird nicht verwendet. Der erste Dry-Run ist ausschließlich für
+  eine echte Geschäftsführungs-Sitzung freigegeben und wird bei Emulation
+  eingeschränkt. Er priorisiert belegte, noch nicht nachverfolgte Signale aus
+  angesehenen, nicht angenommenen Angeboten, kürzlich abgeschlossenen
+  Projekten und Leistungen im vergleichbaren Vorjahreszeitraum. Aktive
+  Projektpotenziale, Verkaufschancen und erkennbare Nachfassaufgaben
+  unterdrücken Dubletten. Jeder Treffer nennt Quelle, Datum und vorsichtige
+  Empfehlung; es werden weder OpenAI-Tokens verbraucht noch Aufgaben, Mails
+  oder andere Datensätze geschrieben. Die Systemhilfe verweist Analysefragen
+  auf den rollengerechten Vertriebsreiter. Keine Prisma-Schemaänderung.
+
 - JARVIS-Profi-Allrounder-Roadmap 2026-07-26: JARVIS soll zu einem
   rollengerechten Profi für Systembedienung, Vertrieb, Projektverständnis und
   Betriebswirtschaft ausgebaut werden. Geplant ist ein regelmäßiger,

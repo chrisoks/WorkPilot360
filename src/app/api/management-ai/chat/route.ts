@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { getDemoContext } from "@/lib/demo/context";
+import { resolveJarvisSalesAnalysisRequest } from "@/lib/jarvis/sales-analysis";
+import { createJarvisAccessProfile } from "@/lib/jarvis/security";
 import {
   asksForSalesRestrictedData,
   canUseManagementAi,
@@ -164,6 +166,31 @@ export async function POST(req: Request) {
       reply:
         "Dazu gebe ich in der Vertriebs-KI keine Auskunft. Gehaelter, interne Personalkosten, Kostensaetze und Rueckschluesse darauf sind gesperrt. Ich kann stattdessen Umsatzpotenzial, Nachfassprioritaeten oder Kundensegmente bewerten. Was soll ich vertrieblich einordnen?",
     });
+  }
+
+  if (mode === "sales") {
+    const sessionActor = users.find(
+      (user) => user.id === actorResult.sessionUserId && user.isActive !== false
+    );
+    if (!sessionActor) {
+      return NextResponse.json(
+        { error: "Angemeldeter Benutzer konnte nicht eindeutig bestimmt werden." },
+        { status: 401 }
+      );
+    }
+    const analysisResponse = await resolveJarvisSalesAnalysisRequest({
+      question: userMessage,
+      organizationId: organization.id,
+      accessProfile: createJarvisAccessProfile(sessionActor, actorWithFlags),
+    });
+    if (analysisResponse) {
+      return NextResponse.json({
+        reply: analysisResponse.message,
+        records: analysisResponse.records,
+        topicId: analysisResponse.topicId,
+        deterministic: true,
+      });
+    }
   }
 
   const apiKey = process.env.OPENAI_API_KEY;

@@ -32142,7 +32142,7 @@ await addProjectLogbookEntry(
                         : undefined,
                   }
                 : undefined,
-            records: isSystemHelp ? parseJarvisRecordResults(data?.records) : undefined,
+            records: parseJarvisRecordResults(data?.records),
           },
         ],
       }));
