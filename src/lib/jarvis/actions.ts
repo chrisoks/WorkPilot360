@@ -71,7 +71,7 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     risk: "read",
     confirmation: "none",
     dataClasses: ["internal"],
-    implementation: "planned",
+    implementation: "available",
     canUse: () => true,
   },
   {

@@ -43,6 +43,7 @@ import {
 } from "@/components/calculators/winter-service-calculator";
 import { CalculatorWorkspace } from "@/components/calculators/calculator-workspace";
 import { shouldOfferStampImplementationTransition } from "@/lib/projects/stamp-status-automation";
+import type { JarvisNavigationTarget } from "@/lib/jarvis/system-map";
 
 const DOCUMENT_PREVIEW_WIDTH = 595;
 const DOCUMENT_PREVIEW_HEIGHT = 842;
@@ -618,6 +619,7 @@ type ManagementAiChatMessage = {
   content: string;
   createdAt: string;
   choices?: string[];
+  navigation?: JarvisNavigationTarget;
 };
 type ManagementAiMode = "system" | "management" | "sales";
 type ContactFormTab = "details" | "address" | "terms" | "payment" | "zugferd";
@@ -32052,6 +32054,33 @@ await addProjectLogbookEntry(
             choices: isSystemHelp && Array.isArray(data?.choices)
               ? data.choices.filter((choice: unknown): choice is string => typeof choice === "string").slice(0, 4)
               : undefined,
+            navigation:
+              isSystemHelp &&
+              data?.navigation &&
+              typeof data.navigation === "object" &&
+              typeof data.navigation.label === "string" &&
+              typeof data.navigation.tab === "string"
+                ? {
+                    label: data.navigation.label.slice(0, 80),
+                    tab: data.navigation.tab.slice(0, 80),
+                    reportTab:
+                      typeof data.navigation.reportTab === "string"
+                        ? data.navigation.reportTab.slice(0, 80)
+                        : undefined,
+                    firmSettingsTab:
+                      typeof data.navigation.firmSettingsTab === "string"
+                        ? data.navigation.firmSettingsTab.slice(0, 80)
+                        : undefined,
+                    projectFileTab:
+                      typeof data.navigation.projectFileTab === "string"
+                        ? data.navigation.projectFileTab.slice(0, 80)
+                        : undefined,
+                    customerFileTab:
+                      typeof data.navigation.customerFileTab === "string"
+                        ? data.navigation.customerFileTab.slice(0, 80)
+                        : undefined,
+                  }
+                : undefined,
           },
         ],
       }));
@@ -32061,6 +32090,50 @@ await addProjectLogbookEntry(
     } finally {
       setIsManagementAiSending(false);
     }
+  }
+
+  function openJarvisNavigationTarget(target: JarvisNavigationTarget) {
+    if (
+      target.projectFileTab &&
+      selectedProjectFile &&
+      projectFileTabs.includes(target.projectFileTab as ProjectFileTab)
+    ) {
+      setProjectFileTab(target.projectFileTab as ProjectFileTab);
+      return;
+    }
+    if (
+      target.customerFileTab &&
+      selectedCustomerFile &&
+      customerFileTabs.includes(target.customerFileTab as CustomerFileTab)
+    ) {
+      setCustomerFileTab(target.customerFileTab as CustomerFileTab);
+      return;
+    }
+    if (target.tab === "reports" && target.reportTab) {
+      const reportTarget = visibleReportTabs.find((item) => item.id === target.reportTab);
+      if (!reportTarget) {
+        setManagementAiError("Dieser Auswertungsbereich ist für deine aktuelle Rolle nicht freigegeben.");
+        return;
+      }
+      setActiveTab("reports");
+      setReportAnalyticsTab(reportTarget.id);
+      return;
+    }
+    if (target.tab === "settings" && target.firmSettingsTab) {
+      const settingsTarget = firmSettingsTabs.find((item) => item.id === target.firmSettingsTab);
+      if (!settingsTarget || !visibleNavigationActiveTabs.has("settings")) {
+        setManagementAiError("Dieser Einstellungsbereich ist für deine aktuelle Rolle nicht freigegeben.");
+        return;
+      }
+      setActiveTab("settings");
+      setFirmSettingsTab(settingsTarget.id);
+      return;
+    }
+    if (!appTabs.includes(target.tab as AppTab) || !visibleNavigationActiveTabs.has(target.tab as AppTab)) {
+      setManagementAiError("Dieser Bereich ist für deine aktuelle Rolle nicht freigegeben.");
+      return;
+    }
+    openMainView(target.tab as AppTab);
   }
   let dashboardRoleFocusCards: DashboardFocusCard[] = [
     {
@@ -67468,6 +67541,17 @@ await addProjectLogbookEntry(
                             {choice}
                           </button>
                         ))}
+                      </div>
+                    ) : null}
+                    {message.role === "assistant" && message.navigation ? (
+                      <div className={styles.jarvisChoiceList}>
+                        <button
+                          type="button"
+                          disabled={isManagementAiSending}
+                          onClick={() => openJarvisNavigationTarget(message.navigation!)}
+                        >
+                          {message.navigation.label}
+                        </button>
                       </div>
                     ) : null}
                   </article>

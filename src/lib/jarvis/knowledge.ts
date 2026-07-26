@@ -4,6 +4,11 @@ import {
   JarvisQuestionAuthorization,
 } from "@/lib/jarvis/security";
 import { getJarvisActionDecision } from "@/lib/jarvis/actions";
+import {
+  findJarvisAreaByContext,
+  findJarvisSystemAreas,
+} from "@/lib/jarvis/system-map";
+import type { JarvisNavigationTarget, JarvisSystemArea } from "@/lib/jarvis/system-map";
 
 export type JarvisSurfaceContext = {
   module?: string;
@@ -19,6 +24,7 @@ export type JarvisHelpResult = {
   message: string;
   choices?: string[];
   topicId?: string;
+  navigation?: JarvisNavigationTarget;
 };
 
 type JarvisTopic = {
@@ -176,6 +182,79 @@ function includesOne(value: string, candidates: string[]) {
   return candidates.some((candidate) => value.includes(normalize(candidate)));
 }
 
+const SYSTEM_MAP_INTENTS = [
+  "wo finde ich",
+  "wo ist",
+  "wo kann ich",
+  "öffne",
+  "oeffne",
+  "navigiere",
+  "bring mich",
+  "was kann ich hier",
+  "was mache ich hier",
+  "wofür ist",
+  "wofuer ist",
+  "was ist der bereich",
+  "was ist dieser bereich",
+  "erkläre mir den bereich",
+  "erklaere mir den bereich",
+];
+
+function isSystemMapIntent(question: string) {
+  const normalized = normalize(question);
+  return SYSTEM_MAP_INTENTS.some((intent) => normalized.includes(normalize(intent)));
+}
+
+function getSystemAreaMessage(areaDefinition: JarvisSystemArea) {
+  const workflowText = areaDefinition.workflows
+    .map((workflow, index) => `${index + 1}. ${workflow}`)
+    .join(" ");
+  const limitation =
+    areaDefinition.status === "limited"
+      ? " Der Bereich ist derzeit nur eingeschränkt ausgebaut; JARVIS verspricht dort keine noch nicht vorhandenen Funktionen."
+      : "";
+  return `${areaDefinition.label}: ${areaDefinition.purpose} Typische Schritte: ${workflowText}${limitation}`;
+}
+
+function getSystemMapHelp(
+  question: string,
+  context: JarvisSurfaceContext,
+  accessProfile?: JarvisAccessProfile
+): JarvisHelpResult | undefined {
+  if (!isSystemMapIntent(question)) return undefined;
+
+  const normalized = normalize(question);
+  const asksAboutCurrentContext = includesOne(normalized, [
+    "hier",
+    "dieser bereich",
+    "diesem bereich",
+    "aktuelle bereich",
+    "aktuellen bereich",
+  ]);
+  const contextArea = asksAboutCurrentContext
+    ? findJarvisAreaByContext(context.module, context.subview, accessProfile)
+    : undefined;
+  const areaDefinition = contextArea ?? findJarvisSystemAreas(question, accessProfile, 1)[0]?.area;
+  if (!areaDefinition) return undefined;
+
+  const isMatchingRecordContext =
+    (areaDefinition.kind === "project_file" && context.recordType === "project") ||
+    (areaDefinition.kind === "customer_file" && context.recordType === "customer");
+  const navigation =
+    areaDefinition.kind === "project_file" || areaDefinition.kind === "customer_file"
+      ? isMatchingRecordContext
+        ? areaDefinition.target
+        : undefined
+      : areaDefinition.target;
+
+  return {
+    type: "answer",
+    topicId: `systemMap.${areaDefinition.id}`,
+    message: getSystemAreaMessage(areaDefinition),
+    navigation,
+  };
+}
+
 function getTimeEntryAnswer(question: string, context: JarvisSurfaceContext): JarvisHelpResult {
   const normalized = normalize(question);
   const isOneTime =
@@ -297,6 +376,8 @@ export function resolveJarvisSystemHelp(
       message: getJarvisRefusalMessage(authorization),
     };
   }
+  const systemMapHelp = getSystemMapHelp(cleaned, context, accessProfile);
+  if (systemMapHelp) return systemMapHelp;
   if (
     authorization.dataClass === "payroll" ||
     authorization.dataClass === "personnel" ||

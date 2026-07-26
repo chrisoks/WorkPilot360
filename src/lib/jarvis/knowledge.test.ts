@@ -75,6 +75,48 @@ describe("JARVIS system help", () => {
     expect(result.type).toBe("unknown");
   });
 
+  it("explains the current area from the verified system map", () => {
+    const result = resolveJarvisSystemHelp(
+      "Was kann ich hier machen?",
+      {
+        module: "Projektakte",
+        subview: "Termine & Stempelungen",
+        recordType: "project",
+      },
+      leadershipAccess
+    );
+    expect(result.type).toBe("answer");
+    expect(result.topicId).toBe("systemMap.projectFile.appointments");
+    expect(result.message).toContain("Planungstermine");
+    expect(result.navigation?.projectFileTab).toBe("appointments");
+  });
+
+  it("returns a safe navigation target for a known area", () => {
+    const result = resolveJarvisSystemHelp(
+      "Wo finde ich die Zeiterfassung?",
+      {},
+      leadershipAccess
+    );
+    expect(result.type).toBe("answer");
+    expect(result.topicId).toBe("systemMap.employees.timeTracking");
+    expect(result.navigation).toEqual({
+      label: "Zeiterfassung öffnen",
+      tab: "timeTracking",
+      reportTab: undefined,
+      firmSettingsTab: undefined,
+    });
+  });
+
+  it("does not return a restricted system area to the wrong role", () => {
+    const result = resolveJarvisSystemHelp(
+      "Öffne bitte die Lohnkostensätze.",
+      {},
+      employeeAccess
+    );
+    expect(result.type).toBe("refusal");
+    expect(result.navigation).toBeUndefined();
+  });
+
   it("does not explain restricted operational actions to an employee", () => {
     const result = resolveJarvisSystemHelp("Wie lege ich einen Artikel an?", {}, employeeAccess);
     expect(result.type).toBe("refusal");

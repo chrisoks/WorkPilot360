@@ -1,5 +1,19 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS-Systemlandkarte 2026-07-26: Die maschinenlesbare Registry
+  `src/lib/jarvis/system-map.ts` erfasst 88 Bereiche aus Hauptnavigation,
+  Aufgaben, Zielen, Mitarbeitern, Prozessen, Buchhaltung, Katalog,
+  Auswertungen, Firmeneinstellungen, Kalkulationen sowie Projekt- und
+  Kundenakte mit Zweck, Kernabläufen, Rollen, Navigationsziel, Prüfstatus und
+  Quellverweis. JARVIS beantwortet eindeutige Bereichs- und Kontextfragen
+  deterministisch und kann als erste verfügbare, rein lesende Aktion einen
+  erlaubten Bereich öffnen. Die UI validiert Serverziele erneut gegen ihre
+  Rollen-Allowlist; Projekt-/Kundenreiter benötigen eine bereits geöffnete
+  passende Akte. Alle schreibenden Aktionen bleiben `planned`. Der
+  Vermietungsbereich ist bewusst `limited/needs_review`. Keine Prisma- oder
+  Datenänderung. Abdeckung und Pflegepflicht stehen in
+  `docs/JARVIS_SYSTEMLANDKARTE.md`.
+
 - JARVIS-Sicherheitskern 2026-07-26: Der verbindliche Gesamtplan liegt in
   `docs/JARVIS_ENTWICKLUNGSPLAN.md`. JARVIS klassifiziert Fragen jetzt nach
   internen, Kunden-, Finanz-, Personal-, Lohn- und geheimen Daten. Rechte

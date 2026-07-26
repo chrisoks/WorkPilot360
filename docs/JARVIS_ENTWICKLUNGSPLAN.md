@@ -17,10 +17,18 @@ Stand 26.07.2026:
   WorkPilot-Aktionsberechtigungen verbunden.
 - Die zentrale Action Registry enthält die geplanten Aktionsarten,
   Risikostufen, Bestätigungsstufen und Datenklassen.
-- Alle registrierten Aktionen stehen weiterhin auf `planned` und sind noch
-  nicht ausführbar.
-- Der nächste Block ist die vollständige Systemlandkarte mit gemessener
-  Wissensabdeckung.
+- Die erste rein lesende Aktion `navigation.open` ist verfügbar. Alle
+  schreibenden Aktionen stehen weiterhin auf `planned`.
+- Die erste maschinenlesbare Systemlandkarte erfasst 88 geprüfte Bereiche aus
+  Hauptnavigation, Aufgaben, Zielen, Mitarbeitern, Prozessen, Buchhaltung,
+  Katalog, Auswertungen, Firmeneinstellungen, Kalkulationen sowie Projekt- und
+  Kundenakte. Details und bewusste Lücken stehen in
+  `docs/JARVIS_SYSTEMLANDKARTE.md`.
+- JARVIS kann bekannte Bereiche und den aktuellen UI-Kontext deterministisch
+  erklären und ein rollenberechtigtes, clientseitig nochmals validiertes
+  Sprungziel anbieten.
+- Der nächste Ausbau vertieft Kernabläufe und beginnt danach mit
+  rollenberechtigter Suche und sicheren Lesefunktionen.
 
 ## 1. Zielbild
 

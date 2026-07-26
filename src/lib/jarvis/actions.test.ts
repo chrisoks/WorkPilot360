@@ -31,6 +31,21 @@ describe("JARVIS action registry", () => {
     expect(decision.requiresConfirmation).toBe(true);
   });
 
+  it("makes only the safe navigation action executable", () => {
+    const profile = createJarvisAccessProfile({
+      id: "employee",
+      role: Role.MITARBEITER,
+    });
+    const navigation = getJarvisActionDecision("navigation.open", profile);
+    const availableActions = getJarvisActionCatalog(profile).filter((entry) => entry.executable);
+
+    expect(navigation.permitted).toBe(true);
+    expect(navigation.executable).toBe(true);
+    expect(navigation.reason).toBe("allowed");
+    expect(navigation.requiresConfirmation).toBe(false);
+    expect(availableActions.map((entry) => entry.action?.id)).toEqual(["navigation.open"]);
+  });
+
   it("prevents privilege escalation through impersonation", () => {
     const profile = createJarvisAccessProfile(
       { id: "gf", role: Role.GESCHAEFTSFUEHRER },
