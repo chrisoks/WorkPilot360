@@ -27,8 +27,17 @@ Stand 26.07.2026:
 - JARVIS kann bekannte Bereiche und den aktuellen UI-Kontext deterministisch
   erklären und ein rollenberechtigtes, clientseitig nochmals validiertes
   Sprungziel anbieten.
-- Der nächste Ausbau vertieft Kernabläufe und beginnt danach mit
-  rollenberechtigter Suche und sicheren Lesefunktionen.
+- Die ersten sicheren Live-Datenadapter finden und erklären Projekte,
+  Kunden/Kontakte, Aufgaben, Angebote und Rechnungen. Eindeutige Such-,
+  Öffnungs- und Zusammenfassungsabsichten laufen vollständig deterministisch
+  und verursachen keinen OpenAI-Aufruf.
+- Jede Abfrage ist organisationsgebunden. Aufgaben werden zusätzlich nach
+  Eigentümer, Beteiligung und Team für echte Sitzung und emulierten Benutzer
+  gefiltert; die UI öffnet nur Datensätze aus ihren bereits erlaubten Listen.
+- Der nächste Ausbau vertieft die Zusammenfassungen um verbundene Daten,
+  Zeitraum- und Statusfilter sowie weitere Kernabläufe. Schreibende Aktionen
+  bleiben bis zu ihren eigenen Vorschau-, Audit- und Idempotenzpaketen
+  `planned`.
 
 ## 1. Zielbild
 

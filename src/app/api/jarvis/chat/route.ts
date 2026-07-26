@@ -5,6 +5,7 @@ import {
   resolveJarvisSystemHelp,
   sanitizeJarvisSurfaceContext,
 } from "@/lib/jarvis/knowledge";
+import { resolveJarvisReadRequest } from "@/lib/jarvis/read-model";
 import { createJarvisAccessProfile } from "@/lib/jarvis/security";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +15,7 @@ function cleanText(value: unknown, maxLength: number) {
 }
 
 export async function POST(req: Request) {
-  const { users } = await getDemoContext();
+  const { organization, users } = await getDemoContext();
   const body = await req.json().catch(() => ({}));
   const actorResult = await getSessionBoundActor(req, users, body.actorId);
   if (!actorResult.ok) return sessionBoundActorResponse(actorResult);
@@ -35,6 +36,15 @@ export async function POST(req: Request) {
 
   const context = sanitizeJarvisSurfaceContext(body.context);
   const accessProfile = createJarvisAccessProfile(sessionActor, actorResult.actor);
+  const readResponse = await resolveJarvisReadRequest({
+    question: message,
+    context,
+    organizationId: organization.id,
+    accessProfile,
+  });
+  if (readResponse) {
+    return NextResponse.json(readResponse);
+  }
   const resolved = resolveJarvisSystemHelp(message, context, accessProfile);
   return NextResponse.json(resolved);
 }

@@ -1,5 +1,19 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS-Leseadapter 2026-07-26: Die Systemhilfe erkennt eindeutige
+  Such-, Öffnungs- und Zusammenfassungsabsichten für Projekte, Kunden/Kontakte,
+  Aufgaben, Angebote und Rechnungen deterministisch und ohne OpenAI-Aufruf.
+  Alle Abfragen sind organisationsgebunden und geben nur schmale
+  Trefferzusammenfassungen zurück. Kunden, Angebote und Rechnungen verwenden
+  die bestehenden WorkPilot-Berechtigungen; Aufgaben werden zusätzlich für
+  echte Sitzung und gegebenenfalls emulierten Benutzer nach Eigentümer,
+  Beteiligung und Team gefiltert. Emulation kann die Reichweite weiterhin nur
+  einschränken. Die Oberfläche validiert Serverantworten und öffnet nur
+  Datensätze aus ihren bereits erlaubten, geladenen Listen. Normale
+  Bedienfragen wie „Wie lege ich ein Angebot an?“ bleiben Systemhilfe und
+  werden nicht als Datensuche missverstanden. Keine Prisma- oder
+  Datenänderung; alle schreibenden Aktionen bleiben `planned`.
+
 - JARVIS-Systemlandkarte 2026-07-26: Die maschinenlesbare Registry
   `src/lib/jarvis/system-map.ts` erfasst 88 Bereiche aus Hauptnavigation,
   Aufgaben, Zielen, Mitarbeitern, Prozessen, Buchhaltung, Katalog,

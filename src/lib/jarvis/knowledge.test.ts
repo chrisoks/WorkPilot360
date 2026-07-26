@@ -171,6 +171,7 @@ describe("JARVIS system help", () => {
     const result = sanitizeJarvisSurfaceContext({
       module: "Kontakte",
       recordType: "customer",
+      recordId: "customer-123",
       projectKind: "secret",
       billingMode: "salary",
       customerName: "Darf nicht übernommen werden",
@@ -179,6 +180,7 @@ describe("JARVIS system help", () => {
       module: "Kontakte",
       subview: undefined,
       modal: undefined,
+      recordId: "customer-123",
       recordType: "customer",
       projectKind: "unknown",
       billingMode: "unknown",

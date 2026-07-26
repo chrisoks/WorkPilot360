@@ -1,0 +1,130 @@
+import type { JarvisSurfaceContext } from "@/lib/jarvis/knowledge";
+
+export type JarvisRecordKind = "project" | "customer" | "task" | "offer" | "invoice";
+export type JarvisRecordFilter = "all" | "open" | "today" | "overdue";
+
+export type JarvisReadIntent = {
+  kind: JarvisRecordKind;
+  query: string;
+  filter: JarvisRecordFilter;
+  contextRecordId?: string;
+  summarize: boolean;
+};
+
+const READ_INTENT_MARKERS = [
+  "finde",
+  "finden",
+  "suche",
+  "such",
+  "offne",
+  "öffne",
+  "oeffne",
+  "zeige",
+  "zeig",
+  "welche",
+  "welcher",
+  "welches",
+  "fasse",
+  "zusammenfassung",
+  "status von",
+];
+
+function normalize(value: string) {
+  return value
+    .toLocaleLowerCase("de-DE")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}\s./_-]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getKind(normalized: string): JarvisRecordKind | undefined {
+  if (/\b(rechnung|rechnungen|rechnung nr|rechnungsnummer)\b/.test(normalized)) return "invoice";
+  if (/\b(angebot|angebote|angebotsnummer|nachtragsangebot)\b/.test(normalized)) return "offer";
+  if (/\b(aufgabe|aufgaben|todo|to do)\b/.test(normalized)) return "task";
+  if (/\b(kunde|kunden|kontakt|kontakte|firma|ansprechpartner)\b/.test(normalized)) return "customer";
+  if (/\b(projekt|projekte|projektnummer)\b/.test(normalized)) return "project";
+  return undefined;
+}
+
+function getFilter(kind: JarvisRecordKind, normalized: string): JarvisRecordFilter {
+  if (kind === "invoice" && /\buberfallig\w*\b/.test(normalized)) return "overdue";
+  if (kind === "task" && /\bheute\b/.test(normalized)) return "today";
+  if (/\b(offen|offene|offenen|noch offen)\b/.test(normalized)) return "open";
+  return "all";
+}
+
+function cleanQuery(kind: JarvisRecordKind, question: string) {
+  const normalized = normalize(question);
+  const entityWords: Record<JarvisRecordKind, string[]> = {
+    project: ["projekt", "projekte", "projektnummer"],
+    customer: ["kunde", "kunden", "kontakt", "kontakte", "firma", "ansprechpartner"],
+    task: ["aufgabe", "aufgaben", "todo", "to do"],
+    offer: ["angebot", "angebote", "angebotsnummer", "nachtragsangebot"],
+    invoice: ["rechnung", "rechnungen", "rechnungsnummer", "rechnung nr"],
+  };
+  const removable = [
+    ...READ_INTENT_MARKERS,
+    ...entityWords[kind],
+    "bitte",
+    "mir",
+    "die",
+    "den",
+    "das",
+    "der",
+    "dieses",
+    "diesen",
+    "dieser",
+    "kurz",
+    "ist",
+    "sind",
+    "alle",
+    "noch",
+    "offen",
+    "offene",
+    "offenen",
+    "uberfallig",
+    "uberfallige",
+    "uberfalligen",
+    "heute",
+    "zusammen",
+    "status",
+    "von",
+  ].sort((first, second) => second.length - first.length);
+
+  let query = ` ${normalized} `;
+  removable.forEach((word) => {
+    query = query.replace(new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"), " ");
+  });
+  return query.replace(/\s+/g, " ").replace(/^[\s:.-]+|[\s:?.-]+$/g, "").trim().slice(0, 120);
+}
+
+export function resolveJarvisReadIntent(
+  question: string,
+  context: JarvisSurfaceContext = {}
+): JarvisReadIntent | undefined {
+  const normalized = normalize(question);
+  const kind = getKind(normalized);
+  if (!kind || !READ_INTENT_MARKERS.some((marker) => normalized.includes(normalize(marker)))) {
+    return undefined;
+  }
+  const explicitSearchOrOpen = /\b(finde|finden|suche|such|offne|oeffne)\b/.test(normalized);
+  if (/\bwie\b/.test(normalized) && !explicitSearchOrOpen) {
+    return undefined;
+  }
+
+  const summarize = /\b(fasse|zusammenfassung|status von)\b/.test(normalized);
+  const contextMatches =
+    (kind === "project" && context.recordType === "project") ||
+    (kind === "customer" && context.recordType === "customer");
+  const contextRecordId = contextMatches && context.recordId ? context.recordId : undefined;
+
+  return {
+    kind,
+    query: contextRecordId ? "" : cleanQuery(kind, question),
+    filter: getFilter(kind, normalized),
+    contextRecordId,
+    summarize,
+  };
+}

@@ -60,7 +60,9 @@ Die Systemlandkarte bildet die sichtbare Struktur und die wichtigsten
 Kernabläufe ab. Folgende Tiefenarbeit bleibt offen:
 
 - einzelne Modale und jede Feldvariante je Fachprozess,
-- dynamische Datensatzsuche und rollenberechtigte Live-Zusammenfassungen,
+- verbundene und fachlich tiefere Live-Zusammenfassungen über die erste
+  rollenberechtigte Suche für Projekte, Kunden/Kontakte, Aufgaben, Angebote
+  und Rechnungen hinaus,
 - vollständige Dialogvarianten und Umgangssprache je Workflow,
 - schreibende Aktionen mit Vorschau, Bestätigung, Audit und Idempotenz,
 - Sprachsteuerung,

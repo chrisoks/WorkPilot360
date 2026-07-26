@@ -7150,6 +7150,82 @@
   opacity: 0.58;
 }
 
+.jarvisRecordList {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.jarvisRecordCard {
+  background: #f8fbfc;
+  border: 1px solid #cfe2e5;
+  border-radius: 13px;
+  display: grid;
+  gap: 9px;
+  padding: 11px 12px;
+}
+
+.jarvisRecordCard > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.jarvisRecordCard strong,
+.jarvisRecordCard span,
+.jarvisRecordCard small {
+  overflow-wrap: anywhere;
+}
+
+.jarvisRecordCard strong {
+  color: #0f3440;
+  font-size: 0.86rem;
+}
+
+.jarvisRecordCard > div span {
+  color: #3f5b65;
+  font-size: 0.76rem;
+}
+
+.jarvisRecordCard small {
+  color: #5f7179;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.jarvisRecordCard footer {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.jarvisRecordCard footer > span {
+  background: #e5f2f3;
+  border-radius: 999px;
+  color: #0b5960;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 4px 7px;
+}
+
+.jarvisRecordCard button {
+  background: #0b6670;
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 6px 10px;
+}
+
+.jarvisRecordCard button:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
 .managementAiMessages p {
   color: #0f172a;
   font-size: 0.94rem;

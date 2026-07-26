@@ -14,6 +14,7 @@ export type JarvisSurfaceContext = {
   module?: string;
   subview?: string;
   recordType?: "none" | "customer" | "project";
+  recordId?: string;
   projectKind?: "unknown" | "oneTime" | "recurring";
   billingMode?: "unknown" | "hourly" | "monthlyFlat";
   modal?: string;
@@ -346,6 +347,7 @@ export function sanitizeJarvisSurfaceContext(value: unknown): JarvisSurfaceConte
     module: text("module"),
     subview: text("subview"),
     modal: text("modal"),
+    recordId: text("recordId", 120),
     recordType:
       recordType === "customer" || recordType === "project" || recordType === "none" ? recordType : "none",
     projectKind:

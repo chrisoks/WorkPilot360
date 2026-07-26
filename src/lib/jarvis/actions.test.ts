@@ -43,7 +43,11 @@ describe("JARVIS action registry", () => {
     expect(navigation.executable).toBe(true);
     expect(navigation.reason).toBe("allowed");
     expect(navigation.requiresConfirmation).toBe(false);
-    expect(availableActions.map((entry) => entry.action?.id)).toEqual(["navigation.open"]);
+    expect(availableActions.map((entry) => entry.action?.id)).toEqual([
+      "navigation.open",
+      "project.read",
+      "task.read",
+    ]);
   });
 
   it("prevents privilege escalation through impersonation", () => {

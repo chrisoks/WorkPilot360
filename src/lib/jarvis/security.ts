@@ -9,6 +9,7 @@ import {
 export type JarvisActor = {
   id?: string;
   role: Role;
+  teamId?: string | null;
   salesRoleEnabled?: boolean | null;
 };
 

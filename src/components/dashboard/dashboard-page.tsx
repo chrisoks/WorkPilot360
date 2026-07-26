@@ -44,6 +44,11 @@ import {
 import { CalculatorWorkspace } from "@/components/calculators/calculator-workspace";
 import { shouldOfferStampImplementationTransition } from "@/lib/projects/stamp-status-automation";
 import type { JarvisNavigationTarget } from "@/lib/jarvis/system-map";
+import type {
+  JarvisRecordResult,
+  JarvisRecordTarget,
+} from "@/lib/jarvis/read-model";
+import type { JarvisRecordKind } from "@/lib/jarvis/read-intent";
 
 const DOCUMENT_PREVIEW_WIDTH = 595;
 const DOCUMENT_PREVIEW_HEIGHT = 842;
@@ -620,8 +625,59 @@ type ManagementAiChatMessage = {
   createdAt: string;
   choices?: string[];
   navigation?: JarvisNavigationTarget;
+  records?: JarvisRecordResult[];
 };
 type ManagementAiMode = "system" | "management" | "sales";
+
+const jarvisRecordKinds = new Set<JarvisRecordKind>([
+  "project",
+  "customer",
+  "task",
+  "offer",
+  "invoice",
+]);
+
+function parseJarvisRecordResults(value: unknown): JarvisRecordResult[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const records = value.slice(0, 5).flatMap((candidate) => {
+    if (!candidate || typeof candidate !== "object") return [];
+    const record = candidate as Record<string, unknown>;
+    const target = record.target;
+    if (!target || typeof target !== "object") return [];
+    const parsedTarget = target as Record<string, unknown>;
+    if (
+      typeof record.id !== "string" ||
+      typeof record.kind !== "string" ||
+      !jarvisRecordKinds.has(record.kind as JarvisRecordKind) ||
+      typeof record.title !== "string" ||
+      typeof record.subtitle !== "string" ||
+      typeof record.summary !== "string" ||
+      typeof record.status !== "string" ||
+      typeof parsedTarget.kind !== "string" ||
+      parsedTarget.kind !== record.kind ||
+      typeof parsedTarget.id !== "string"
+    ) {
+      return [];
+    }
+    return [{
+      id: record.id.slice(0, 180),
+      kind: record.kind as JarvisRecordKind,
+      title: record.title.slice(0, 180),
+      subtitle: record.subtitle.slice(0, 240),
+      summary: record.summary.slice(0, 360),
+      status: record.status.slice(0, 100),
+      target: {
+        kind: parsedTarget.kind as JarvisRecordKind,
+        id: parsedTarget.id.slice(0, 180),
+        projectId:
+          typeof parsedTarget.projectId === "string"
+            ? parsedTarget.projectId.slice(0, 180)
+            : undefined,
+      },
+    }];
+  });
+  return records.length > 0 ? records : undefined;
+}
 type ContactFormTab = "details" | "address" | "terms" | "payment" | "zugferd";
 type CustomerFileTab =
   | "logbook"
@@ -31912,6 +31968,11 @@ await addProjectLogbookEntry(
             ? allReportTabs.find((tab) => tab.id === reportAnalyticsTab)?.label ?? navigation.subview
             : navigation.subview,
       recordType: hasProjectFile ? "project" : hasCustomerFile ? "customer" : "none",
+      recordId: hasProjectFile
+        ? selectedProjectFile?.id
+        : hasCustomerFile
+          ? selectedCustomerFile?.id
+          : undefined,
       projectKind,
       billingMode:
         recurringBillingMode === RECURRING_BILLING_HOURLY
@@ -32081,6 +32142,7 @@ await addProjectLogbookEntry(
                         : undefined,
                   }
                 : undefined,
+            records: isSystemHelp ? parseJarvisRecordResults(data?.records) : undefined,
           },
         ],
       }));
@@ -32134,6 +32196,68 @@ await addProjectLogbookEntry(
       return;
     }
     openMainView(target.tab as AppTab);
+  }
+
+  function openJarvisRecordTarget(target: JarvisRecordTarget) {
+    setManagementAiError("");
+
+    if (target.kind === "project") {
+      const project = heroProjects.find((candidate) => candidate.id === target.id);
+      if (!project || isAccountingRole(activeUser?.role)) {
+        setManagementAiError("Dieses Projekt kann mit deiner aktuellen Rolle nicht geöffnet werden.");
+        return;
+      }
+      setIsManagementAiOpen(false);
+      openProjectFile(project);
+      return;
+    }
+
+    if (target.kind === "customer") {
+      const contact = contacts.find((candidate) => candidate.id === target.id);
+      if (!contact || !visibleNavigationActiveTabs.has("contacts")) {
+        setManagementAiError("Dieser Kunde oder Kontakt kann mit deiner aktuellen Rolle nicht geöffnet werden.");
+        return;
+      }
+      setIsManagementAiOpen(false);
+      setActiveTab("contacts");
+      openCustomerFile(contact);
+      return;
+    }
+
+    if (target.kind === "task") {
+      const task = tasks.find((candidate) => candidate.id === target.id);
+      if (!task) {
+        setManagementAiError("Diese Aufgabe gehört nicht zu deinem aktuell erlaubten Aufgabenbereich.");
+        return;
+      }
+      setIsManagementAiOpen(false);
+      setActiveTab("dashboard");
+      openEditModal(task);
+      return;
+    }
+
+    if (target.kind === "offer") {
+      const offer = offers.find((candidate) => candidate.id === target.id);
+      const offerProject = offer
+        ? heroProjects.find((candidate) => candidate.id === offer.projectId)
+        : undefined;
+      if (!offer || !offerProject) {
+        setManagementAiError("Dieses Angebot ist in deinem aktuell erlaubten Bereich nicht verfügbar.");
+        return;
+      }
+      setIsManagementAiOpen(false);
+      openProjectFile(offerProject, { tab: "documents", documentType: "Angebote" });
+      setRequestedOfferId(offer.id);
+      return;
+    }
+
+    const invoice = invoices.find((candidate) => candidate.id === target.id);
+    if (!invoice) {
+      setManagementAiError("Diese Rechnung ist in deinem aktuell erlaubten Bereich nicht verfügbar.");
+      return;
+    }
+    setIsManagementAiOpen(false);
+    openEditInvoiceModal(invoice);
   }
   let dashboardRoleFocusCards: DashboardFocusCard[] = [
     {
@@ -67552,6 +67676,29 @@ await addProjectLogbookEntry(
                         >
                           {message.navigation.label}
                         </button>
+                      </div>
+                    ) : null}
+                    {message.role === "assistant" && message.records?.length ? (
+                      <div className={styles.jarvisRecordList}>
+                        {message.records.map((record) => (
+                          <div key={record.id} className={styles.jarvisRecordCard}>
+                            <div>
+                              <strong>{record.title}</strong>
+                              {record.subtitle ? <span>{record.subtitle}</span> : null}
+                              {record.summary ? <small>{record.summary}</small> : null}
+                            </div>
+                            <footer>
+                              <span>{record.status}</span>
+                              <button
+                                type="button"
+                                disabled={isManagementAiSending}
+                                onClick={() => openJarvisRecordTarget(record.target)}
+                              >
+                                Öffnen
+                              </button>
+                            </footer>
+                          </div>
+                        ))}
                       </div>
                     ) : null}
                   </article>
