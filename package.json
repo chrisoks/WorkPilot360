@@ -36,7 +36,7 @@
     "bcryptjs": "^2.4.3",
     "libphonenumber-js": "^1.13.9",
     "maplibre-gl": "^5.24.0",
-    "next": "16.2.10",
+    "next": "16.2.12",
     "next-intl": "4.13.2",
     "nodemailer": "^9.0.1",
     "pdf-lib": "^1.17.1",
@@ -54,5 +54,9 @@
     "prisma": "^6.19.3",
     "typescript": "^5.5.4",
     "vitest": "4.1.10"
+  },
+  "overrides": {
+    "postcss": "8.5.23",
+    "sharp": "0.35.3"
   }
 }

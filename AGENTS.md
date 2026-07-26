@@ -1,5 +1,17 @@
 # WorkPilot360 Agent Handover
 
+- Abhängigkeitssicherheit 2026-07-27: Next.js wurde als kontrolliertes
+  Patchupdate von 16.2.10 auf 16.2.12 angehoben. Weil Next weiterhin
+  verwundbare transitive Versionsbereiche mitführt, erzwingen npm-Overrides
+  zusätzlich PostCSS 8.5.23 und Sharp 0.35.3. `npm audit` meldet damit 0
+  bekannte Schwachstellen. Nach `npm ci` muss der Prisma-Client weiterhin
+  ausdrücklich mit der lokalen Binary generiert werden, bevor TypeScript,
+  Tests oder Build laufen. Prisma validate und der Live-Diff waren sauber
+  beziehungsweise leer; TypeScript, Regression, Mojibake, 306 Tests,
+  Produktions-Build mit 88 Seiten sowie ein angemeldeter Browserdurchlauf von
+  Projektakte und strukturierter JARVIS-Kundenantwort bestanden. Keine
+  Prisma-, Datenbank- oder Fachlogikänderung.
+
 - JARVIS-Struktur und Projektdiagnose 2026-07-27: Deterministische
   Personen-/Kundenantworten können zusätzlich ein serverseitig typisiertes
   Antwortmodell mit Überschrift, Kurzkontext, Kennzahlen und erklärenden
