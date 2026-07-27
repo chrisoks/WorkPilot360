@@ -1,5 +1,17 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS-Chat-Autoscroll 2026-07-27: Der Nachrichtenbereich folgt nach dem
+  Senden der eigenen Nachricht, beim Einblenden der Tippanimation und beim
+  Eintreffen der Antwort automatisch der neuesten Konversation. Wächst eine
+  strukturierte Antwort nach dem Rendern weiter, hält ein lokaler
+  `ResizeObserver` die Ansicht nur dann unten, wenn der Nutzer bereits am
+  Gesprächsende war. Bewusstes Hochscrollen wird respektiert und blendet
+  stattdessen den kompakten Button `Neueste Nachricht` ein. Scrollzustand und
+  Resize-Beobachtung liegen in einer kleinen Kindkomponente, damit
+  Scrollereignisse nicht das sehr große Dashboard neu rendern. Bei
+  `prefers-reduced-motion` wird ohne weiche Scrollanimation gesprungen. Keine
+  API-, Rollen-, Datenbank- oder Fachlogikänderung.
+
 - Login- und Ladeansicht 2026-07-27: Die späte globale `.shell`-Gestaltung
   zeichnet den dunklen Sidebar-Hintergrund nur noch im angemeldeten
   Dashboard. Login- und Boot-Shell überschreiben den Hintergrund nach dieser

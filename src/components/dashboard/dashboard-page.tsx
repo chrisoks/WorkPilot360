@@ -2,6 +2,7 @@
 
 import {
   Fragment,
+  useCallback,
   useDeferredValue,
   useEffect,
   useMemo,
@@ -7016,6 +7017,147 @@ function JarvisComposer({
         {isSending ? "Denkt..." : "Senden"}
       </button>
     </form>
+  );
+}
+
+function JarvisConversationViewport({
+  conversationKey,
+  messageCount,
+  lastMessageRole,
+  isSending,
+  children,
+}: {
+  conversationKey: ManagementAiMode;
+  messageCount: number;
+  lastMessageRole?: ManagementAiChatMessage["role"];
+  isSending: boolean;
+  children: ReactNode;
+}) {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const isPinnedToBottomRef = useRef(true);
+  const programmaticScrollTimeoutRef = useRef<number | null>(null);
+  const previousSnapshotRef = useRef<{
+    conversationKey: ManagementAiMode;
+    messageCount: number;
+    isSending: boolean;
+  } | null>(null);
+  const [showLatestButton, setShowLatestButton] = useState(false);
+
+  const isNearBottom = useCallback(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return true;
+    return viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 56;
+  }, []);
+
+  const scrollToLatest = useCallback((behavior: ScrollBehavior = "smooth") => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    if (programmaticScrollTimeoutRef.current !== null) {
+      window.clearTimeout(programmaticScrollTimeoutRef.current);
+    }
+    isPinnedToBottomRef.current = true;
+    setShowLatestButton(false);
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    viewport.scrollTo({
+      top: viewport.scrollHeight,
+      behavior: prefersReducedMotion ? "auto" : behavior,
+    });
+    programmaticScrollTimeoutRef.current = window.setTimeout(() => {
+      programmaticScrollTimeoutRef.current = null;
+    }, behavior === "smooth" && !prefersReducedMotion ? 500 : 0);
+  }, []);
+
+  useEffect(() => {
+    const previous = previousSnapshotRef.current;
+    const conversationChanged = !previous || previous.conversationKey !== conversationKey;
+    const messageAdded = Boolean(previous && messageCount > previous.messageCount);
+    const typingStarted = Boolean(previous && isSending && !previous.isSending);
+    previousSnapshotRef.current = {
+      conversationKey,
+      messageCount,
+      isSending,
+    };
+
+    const shouldFollowLatest =
+      conversationChanged ||
+      (messageAdded && lastMessageRole === "user") ||
+      (isPinnedToBottomRef.current && (messageAdded || typingStarted));
+
+    if (shouldFollowLatest) {
+      const frameId = window.requestAnimationFrame(() => {
+        scrollToLatest(conversationChanged ? "auto" : "smooth");
+      });
+      return () => window.cancelAnimationFrame(frameId);
+    }
+
+    if (messageAdded) {
+      setShowLatestButton(true);
+    }
+  }, [
+    conversationKey,
+    isSending,
+    lastMessageRole,
+    messageCount,
+    scrollToLatest,
+  ]);
+
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content || typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(() => {
+      if (isPinnedToBottomRef.current && !isNearBottom()) {
+        scrollToLatest("auto");
+      }
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [isNearBottom, scrollToLatest]);
+
+  useEffect(
+    () => () => {
+      if (programmaticScrollTimeoutRef.current !== null) {
+        window.clearTimeout(programmaticScrollTimeoutRef.current);
+      }
+    },
+    [],
+  );
+
+  return (
+    <div className={styles.jarvisMessagesViewport}>
+      <div
+        ref={viewportRef}
+        className={styles.managementAiMessages}
+        onScroll={() => {
+          const nearBottom = isNearBottom();
+          if (programmaticScrollTimeoutRef.current !== null) {
+            if (nearBottom) {
+              isPinnedToBottomRef.current = true;
+              setShowLatestButton(false);
+            }
+            return;
+          }
+          isPinnedToBottomRef.current = nearBottom;
+          setShowLatestButton(!nearBottom && messageCount > 0);
+        }}
+      >
+        <div ref={contentRef} className={styles.jarvisMessagesContent}>
+          {children}
+        </div>
+      </div>
+      {showLatestButton ? (
+        <button
+          type="button"
+          className={styles.jarvisScrollToLatest}
+          onClick={() => scrollToLatest("smooth")}
+        >
+          <span aria-hidden="true">↓</span>
+          Neueste Nachricht
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -67697,7 +67839,12 @@ await addProjectLogbookEntry(
               </strong>
             </div>
 
-            <div className={styles.managementAiMessages}>
+            <JarvisConversationViewport
+              conversationKey={managementAiMode}
+              messageCount={currentManagementAiMessages.length}
+              lastMessageRole={currentManagementAiMessages.at(-1)?.role}
+              isSending={isManagementAiSending}
+            >
               {currentManagementAiMessages.length === 0 ? (
                 <div className={styles.managementAiWelcome}>
                   <strong>{managementAiLabels.intro}</strong>
@@ -67833,7 +67980,7 @@ await addProjectLogbookEntry(
                   <span aria-hidden="true" />
                 </article>
               ) : null}
-            </div>
+            </JarvisConversationViewport>
 
             {managementAiError ? <p className={styles.managementAiError}>{managementAiError}</p> : null}
 

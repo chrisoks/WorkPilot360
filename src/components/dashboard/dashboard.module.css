@@ -7056,11 +7056,22 @@
   white-space: nowrap;
 }
 
+.jarvisMessagesViewport {
+  min-height: 0;
+  position: relative;
+}
+
 .managementAiMessages {
+  height: 100%;
+  overflow-y: auto;
+}
+
+.jarvisMessagesContent {
   align-content: flex-start;
+  box-sizing: border-box;
   display: grid;
   gap: 12px;
-  overflow-y: auto;
+  min-height: 100%;
   padding: 18px 24px;
 }
 
@@ -7394,6 +7405,36 @@
   justify-self: end;
 }
 
+.jarvisScrollToLatest {
+  align-items: center;
+  background: #0b5960;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 999px;
+  bottom: 12px;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.22);
+  color: #ffffff;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  gap: 6px;
+  padding: 8px 12px;
+  position: absolute;
+  right: 18px;
+  z-index: 2;
+}
+
+.jarvisScrollToLatest:hover,
+.jarvisScrollToLatest:focus-visible {
+  background: #08464c;
+}
+
+.jarvisScrollToLatest:focus-visible {
+  outline: 3px solid rgba(56, 189, 248, 0.38);
+  outline-offset: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .jarvisTypingBubble > span {
     animation: none;
@@ -7411,8 +7452,12 @@
     padding: 18px 16px 15px;
   }
 
-  .managementAiMessages {
+  .jarvisMessagesContent {
     padding: 15px 16px;
+  }
+
+  .jarvisScrollToLatest {
+    right: 12px;
   }
 
   .managementAiComposer {
