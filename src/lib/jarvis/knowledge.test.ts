@@ -80,6 +80,38 @@ describe("JARVIS system help", () => {
     expect(result.type).toBe("unknown");
   });
 
+  it("offers role-aware choices before using the generic unknown fallback", () => {
+    const result = resolveJarvisSystemHelp(
+      "Was ist mit HAS-1?",
+      { module: "Projektakte", recordType: "project" },
+      employeeAccess
+    );
+
+    expect(result).toMatchObject({
+      type: "clarification",
+      topicId: "system-help.clarification",
+    });
+    expect(result.choices?.map((choice) => choice.label)).toEqual([
+      "Aktuellen Bereich erklären",
+      "Projekte, Planung & Zeiten",
+      "Aufgaben & offene Punkte",
+    ]);
+    expect(JSON.stringify(result.choices)).not.toContain("Rechnungen");
+  });
+
+  it("includes commercial fallback choices only for an authorized role", () => {
+    const result = resolveJarvisSystemHelp(
+      "Was ist mit HAS-1?",
+      {},
+      leadershipAccess
+    );
+
+    expect(result.type).toBe("clarification");
+    expect(result.choices?.map((choice) => choice.label)).toContain(
+      "Angebote & Rechnungen"
+    );
+  });
+
   it("explains the current area from the verified system map", () => {
     const result = resolveJarvisSystemHelp(
       "Was kann ich hier machen?",

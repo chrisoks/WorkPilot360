@@ -3,6 +3,10 @@ import { getDeadlineSettings } from "@/lib/company-settings/deadlines";
 import { prisma } from "@/lib/db/client";
 import { canManageProjectTimeEntries } from "@/lib/permissions";
 import { getJarvisActionDecision } from "@/lib/jarvis/actions";
+import {
+  createJarvisDialogChoice,
+  type JarvisDialogChoice,
+} from "@/lib/jarvis/dialog";
 import type { JarvisSurfaceContext } from "@/lib/jarvis/knowledge";
 import {
   canAccessJarvisTask,
@@ -153,12 +157,19 @@ export function resolveJarvisProjectHealthIntent(
   context?: JarvisSurfaceContext
 ) {
   const value = normalize(question);
-  const projectContext = context?.recordType === "project";
+  const projectReference = extractProjectReference(question);
+  const projectContext = context?.recordType === "project" || Boolean(projectReference);
   const stampDiagnosticQuestion =
     projectContext &&
     /(stempel|zeiteintrag|stunden|rechnung)/.test(value) &&
     /(pruf|check|fehl|falsch|stimm|doppelt|uberschneid|warum)/.test(value);
   if (stampDiagnosticQuestion) return true;
+  if (
+    projectReference &&
+    /(pruf|check|analysier|untersuch|kontrollier)/.test(value)
+  ) {
+    return true;
+  }
   if (!value.includes("projekt") && !value.includes("akte")) return false;
   return [
     /gesundheitscheck/,
@@ -400,8 +411,198 @@ export function evaluateProjectHealth(
 }
 
 function extractProjectReference(question: string) {
-  const candidates = question.match(/\b(?:[A-ZÄÖÜ]{2,}[- ]?\d{2,}|\d{5,})\b/giu);
+  const candidates = question.match(/\b(?:[A-ZÄÖÜ]{2,}[- ]?\d+|\d{5,})\b/giu);
   return candidates?.[0]?.trim() ?? "";
+}
+
+type ProjectHealthScope =
+  | "full"
+  | "stamps"
+  | "planning"
+  | "tasks"
+  | "commercial"
+  | "automation"
+  | "improvements";
+
+function resolveProjectHealthScope(question: string): ProjectHealthScope | undefined {
+  const value = normalize(question);
+  if (/gesundheitscheck|vollstandiger projektcheck/.test(value)) return "full";
+  if (/stempel|zeiteintrag|arbeitszeit|stunden/.test(value)) return "stamps";
+  if (/planung|termin/.test(value)) return "planning";
+  if (/aufgabe|offene punkte|unterbrech/.test(value)) return "tasks";
+  if (/angebot|rechnung|abrechnung/.test(value)) return "commercial";
+  if (/automatik|zusammenhang/.test(value)) return "automation";
+  if (/auffallig|verbesser|was fehlt/.test(value)) return "improvements";
+  return undefined;
+}
+
+const PROJECT_HEALTH_SCOPE_LABELS: Record<ProjectHealthScope, string> = {
+  full: "Vollständiger Projektcheck",
+  stamps: "Stempelungen & Arbeitszeiten",
+  planning: "Planung & Termine",
+  tasks: "Aufgaben & offene Punkte",
+  commercial: "Angebote & Rechnungen",
+  automation: "Automatik & Zusammenhänge",
+  improvements: "Auffälligkeiten & Verbesserungen",
+};
+
+function scopeProjectHealthEvaluation(
+  evaluation: ProjectHealthEvaluation,
+  snapshot: ProjectHealthSnapshot,
+  scope: ProjectHealthScope
+): ProjectHealthEvaluation {
+  if (scope === "full" || scope === "improvements") return evaluation;
+  const stampIssueIds = new Set(
+    snapshot.stampDiagnostics?.issues.map((issue) => issue.id) ?? []
+  );
+  const issues = evaluation.issues.filter((issue) => {
+    if (scope === "stamps") {
+      return (
+        stampIssueIds.has(issue.id) ||
+        [
+          "one-time-offer-link-missing",
+          "cost-snapshot-missing",
+          "time-budget-invalid",
+        ].includes(issue.id)
+      );
+    }
+    if (scope === "planning") {
+      return (
+        issue.area.includes("Planung") ||
+        issue.area.includes("Laufzeit") ||
+        issue.id === "time-budget-invalid"
+      );
+    }
+    if (scope === "tasks") {
+      return (
+        issue.area.includes("Aufgabe") ||
+        issue.area.includes("Unterbrech") ||
+        issue.area.includes("Überstunden")
+      );
+    }
+    if (scope === "commercial") {
+      return (
+        issue.area.includes("Angebot") ||
+        issue.area.includes("Abrechnung") ||
+        issue.area.includes("Rechnung") ||
+        issue.area.includes("Leistungszuordnung") ||
+        issue.area.includes("Projektgewinn")
+      );
+    }
+    return (
+      issue.area.includes("Automatik") ||
+      issue.area.includes("Projektlogik") ||
+      issue.area.includes("Laufzeit")
+    );
+  });
+  const criticalCount = issues.filter((issue) => issue.severity === "critical").length;
+  const warningCount = issues.length - criticalCount;
+  const score = Math.max(0, 100 - criticalCount * 22 - warningCount * 8);
+  return {
+    ...evaluation,
+    issues,
+    score,
+    status:
+      criticalCount > 0 || score < 60
+        ? "critical"
+        : warningCount > 0 || score < 90
+          ? "attention"
+          : "healthy",
+  };
+}
+
+function checkedAreasForScope(snapshot: ProjectHealthSnapshot, scope: ProjectHealthScope) {
+  if (scope === "full" || scope === "improvements") return snapshot.checkedAreas;
+  const markers: Record<Exclude<ProjectHealthScope, "full" | "improvements">, string[]> = {
+    stamps: ["Stempelungen", "Wirtschaftlichkeit"],
+    planning: ["Planung"],
+    tasks: ["Aufgaben"],
+    commercial: ["Angebote", "Kunden-"],
+    automation: ["Stammdaten"],
+  };
+  return snapshot.checkedAreas.filter((area) =>
+    markers[scope].some((marker) => area.includes(marker))
+  );
+}
+
+function buildProjectHealthClarification(
+  project: ProjectHealthRow,
+  accessProfile: JarvisAccessProfile
+): JarvisReadResponse {
+  const reference = project.projectNumber || project.title;
+  const choices: JarvisDialogChoice[] = [
+    createJarvisDialogChoice(
+      `project-health-full-${project.id}`,
+      "Vollständiger Projektcheck",
+      `Führe den vollständigen Projekt-Gesundheitscheck für ${reference} aus.`
+    ),
+    createJarvisDialogChoice(
+      `project-health-stamps-${project.id}`,
+      "Stempelungen & Arbeitszeiten",
+      `Prüfe Stempelungen und Arbeitszeiten für ${reference}.`
+    ),
+    createJarvisDialogChoice(
+      `project-health-planning-${project.id}`,
+      "Planung & Termine",
+      `Prüfe Planung und Termine für ${reference}.`
+    ),
+  ];
+
+  if (getJarvisActionDecision("task.read", accessProfile).executable) {
+    choices.push(
+      createJarvisDialogChoice(
+        `project-health-tasks-${project.id}`,
+        "Aufgaben & offene Punkte",
+        `Prüfe Aufgaben und offene Punkte für ${reference}.`
+      )
+    );
+  }
+  const canReadOffers = getJarvisActionDecision("offer.read", accessProfile).executable;
+  const canReadInvoices = getJarvisActionDecision("invoice.read", accessProfile).executable;
+  if (canReadOffers || canReadInvoices) {
+    const commercialLabel =
+      canReadOffers && canReadInvoices
+        ? "Angebote & Rechnungen"
+        : canReadOffers
+          ? "Angebote"
+          : "Rechnungen";
+    choices.push(
+      createJarvisDialogChoice(
+        `project-health-commercial-${project.id}`,
+        commercialLabel,
+        `Prüfe ${commercialLabel.toLowerCase()} für ${reference}.`
+      )
+    );
+  }
+  choices.push(
+    createJarvisDialogChoice(
+      `project-health-automation-${project.id}`,
+      "Automatik & Zusammenhänge",
+      `Prüfe und erkläre Automatik und Zusammenhänge für ${reference}.`
+    ),
+    createJarvisDialogChoice(
+      `project-health-improvements-${project.id}`,
+      "Auffälligkeiten & Verbesserungen",
+      `Prüfe Auffälligkeiten und Verbesserungspotenzial für ${reference}.`
+    )
+  );
+
+  return {
+    type: "clarification",
+    topicId: "project.health.clarification",
+    message: `Ich habe ${reference} eindeutig gefunden. Was soll ich für dieses Projekt prüfen?`,
+    choices,
+    records: [{
+      id: `project-health-choice-${project.id}`,
+      kind: "project",
+      title: [project.projectNumber, project.title].filter(Boolean).join(" · "),
+      subtitle: project.customer || project.projectType || "Projekt",
+      summary: project.status,
+      status: project.status,
+      target: { kind: "project", id: project.id },
+    }],
+    deterministic: true,
+  };
 }
 
 async function findProject(
@@ -409,6 +610,22 @@ async function findProject(
   question: string,
   context?: JarvisSurfaceContext
 ) {
+  const reference = extractProjectReference(question);
+  if (reference) {
+    const rows = await prisma.$queryRaw<ProjectHealthRow[]>(Prisma.sql`
+      SELECT *
+      FROM "WorkPilotProject"
+      WHERE "organizationId" = ${organizationId}
+        AND (
+          "projectNumber" ILIKE ${reference}
+          OR "id" = ${reference}
+        )
+      ORDER BY "updatedAt" DESC
+      LIMIT 2
+    `);
+    return rows.length === 1 ? rows[0] : undefined;
+  }
+
   if (context?.recordType === "project" && context.recordId) {
     const rows = await prisma.$queryRaw<ProjectHealthRow[]>(Prisma.sql`
       SELECT *
@@ -420,20 +637,7 @@ async function findProject(
     return rows[0];
   }
 
-  const reference = extractProjectReference(question);
-  if (!reference) return undefined;
-  const rows = await prisma.$queryRaw<ProjectHealthRow[]>(Prisma.sql`
-    SELECT *
-    FROM "WorkPilotProject"
-    WHERE "organizationId" = ${organizationId}
-      AND (
-        "projectNumber" ILIKE ${reference}
-        OR "id" = ${reference}
-      )
-    ORDER BY "updatedAt" DESC
-    LIMIT 2
-  `);
-  return rows.length === 1 ? rows[0] : undefined;
+  return undefined;
 }
 
 function formatHealthStatus(status: ProjectHealthEvaluation["status"]) {
@@ -475,6 +679,32 @@ export async function resolveJarvisProjectHealthRequest(input: {
     input.context
   );
   if (!project) {
+    const reference = extractProjectReference(input.question);
+    if (reference) {
+      const choices = [
+        ...(input.context?.recordType === "project" && input.context.recordId
+          ? [
+              createJarvisDialogChoice(
+                "project-health-use-current",
+                "Geöffnetes Projekt verwenden",
+                "Prüfe das aktuell geöffnete Projekt vollständig."
+              ),
+            ]
+          : []),
+        createJarvisDialogChoice(
+          "project-health-find-project",
+          "Projekt suchen",
+          "Wie finde und öffne ich das richtige Projekt?"
+        ),
+      ];
+      return {
+        type: "clarification",
+        topicId: "project.health.project-not-found",
+        message: `Ich konnte ${reference} nicht eindeutig als Projekt finden. Prüfe bitte die Projektnummer oder wähle den nächsten Schritt.`,
+        choices,
+        deterministic: true,
+      };
+    }
     return {
       type: "unknown",
       topicId: "project.health.context-required",
@@ -482,6 +712,11 @@ export async function resolveJarvisProjectHealthRequest(input: {
         "Für den Gesundheitscheck brauche ich ein eindeutiges Projekt. Öffne die Projektakte und frage „Prüfe dieses Projekt“ oder nenne die vollständige Projektnummer.",
       deterministic: true,
     };
+  }
+
+  const requestedScope = resolveProjectHealthScope(input.question);
+  if (!requestedScope) {
+    return buildProjectHealthClarification(project, input.accessProfile);
   }
 
   const offerDecision = getJarvisActionDecision("offer.read", input.accessProfile);
@@ -494,6 +729,22 @@ export async function resolveJarvisProjectHealthRequest(input: {
   const canInspectCrossProjectTimes =
     canManageProjectTimeEntries(input.accessProfile.sessionActor) &&
     canManageProjectTimeEntries(input.accessProfile.effectiveActor);
+  const timeEntryActorFilters: Prisma.ProjectTimeEntryWhereInput[] = [
+    ...(!canManageProjectTimeEntries(input.accessProfile.sessionActor)
+      ? [{ userId: input.accessProfile.sessionActor.id }]
+      : []),
+    ...(!canManageProjectTimeEntries(input.accessProfile.effectiveActor)
+      ? [{ userId: input.accessProfile.effectiveActor.id }]
+      : []),
+  ];
+  const activeSessionActorFilters: Prisma.ActiveStampSessionWhereInput[] = [
+    ...(!canManageProjectTimeEntries(input.accessProfile.sessionActor)
+      ? [{ userId: input.accessProfile.sessionActor.id }]
+      : []),
+    ...(!canManageProjectTimeEntries(input.accessProfile.effectiveActor)
+      ? [{ userId: input.accessProfile.effectiveActor.id }]
+      : []),
+  ];
   const stableContactIds = [
     project.contactId,
     project.contactPersonId,
@@ -516,6 +767,9 @@ export async function resolveJarvisProjectHealthRequest(input: {
         organizationId: input.organizationId,
         projectId: project.id,
         deletedAt: null,
+        ...(timeEntryActorFilters.length > 0
+          ? { AND: timeEntryActorFilters }
+          : {}),
       },
       select: {
         id: true,
@@ -548,6 +802,9 @@ export async function resolveJarvisProjectHealthRequest(input: {
       where: {
         organizationId: input.organizationId,
         projectId: project.id,
+        ...(activeSessionActorFilters.length > 0
+          ? { AND: activeSessionActorFilters }
+          : {}),
       },
       select: {
         id: true,
@@ -841,7 +1098,21 @@ export async function resolveJarvisProjectHealthRequest(input: {
     checkedAreas,
     restrictedAreas,
   };
-  const evaluation = evaluateProjectHealth(snapshot);
+  const fullEvaluation = evaluateProjectHealth(snapshot);
+  const evaluation = scopeProjectHealthEvaluation(
+    fullEvaluation,
+    snapshot,
+    requestedScope
+  );
+  const scopeLabel =
+    requestedScope === "commercial"
+      ? offerDecision.executable && invoiceDecision.executable
+        ? "Angebote & Rechnungen"
+        : offerDecision.executable
+          ? "Angebote"
+          : "Rechnungen"
+      : PROJECT_HEALTH_SCOPE_LABELS[requestedScope];
+  const scopedCheckedAreas = checkedAreasForScope(snapshot, requestedScope);
   const criticalIssues = evaluation.issues.filter(
     (issue) => issue.severity === "critical"
   );
@@ -858,11 +1129,11 @@ export async function resolveJarvisProjectHealthRequest(input: {
       ? `${projectLabel} erreicht im freigegebenen Prüfumfang ${evaluation.score} von 100 Punkten. Wichtigster Prüfpunkt: ${topIssue.title}. ${topIssue.recommendation}`
       : `${projectLabel} erreicht im freigegebenen Prüfumfang 100 von 100 Punkten. In den geprüften Bereichen wurde kein konkreter Daten- oder Logikfehler gefunden.`,
     structured: {
-      title: `Projekt-Gesundheitscheck · ${project.projectNumber || project.title}`,
+      title: `${scopeLabel} · ${project.projectNumber || project.title}`,
       subtitle: `${project.customer || "Ohne Kundenanzeige"} · ${project.status || "Ohne Status"}`,
       summary:
         evaluation.status === "healthy"
-          ? `Die ${snapshot.checkedAreas.length} freigegebenen Prüfbereiche sind aktuell schlüssig.`
+          ? `Die ${scopedCheckedAreas.length} ausgewählten, freigegebenen Prüfbereiche sind aktuell schlüssig.`
           : `${criticalIssues.length} kritische und ${warningIssues.length} weitere Prüfungen wurden nachvollziehbar erkannt.`,
       facts: [
         {
@@ -875,14 +1146,21 @@ export async function resolveJarvisProjectHealthRequest(input: {
           value: formatHealthStatus(evaluation.status),
           tone: evaluation.status === "healthy" ? "positive" : "warning",
         },
-        {
-          label: "Prüfumfang",
-          value: `${snapshot.checkedAreas.length} / 7 Bereiche`,
-        },
-        {
-          label: "Stempelungen",
-          value: `${stampDiagnostics.metrics.entries} · ${stampDiagnostics.metrics.totalHours} Std.`,
-        },
+        requestedScope === "full" || requestedScope === "improvements"
+          ? {
+              label: "Prüfumfang",
+              value: `${snapshot.checkedAreas.length} / 7 Bereiche`,
+            }
+          : {
+              label: "Auswahl",
+              value: scopeLabel,
+            },
+        ...(requestedScope === "full" || requestedScope === "stamps"
+          ? [{
+              label: "Stempelungen",
+              value: `${stampDiagnostics.metrics.entries} · ${stampDiagnostics.metrics.totalHours} Std.`,
+            }]
+          : []),
       ],
       sections: [
         ...(criticalIssues.length > 0
@@ -908,8 +1186,12 @@ export async function resolveJarvisProjectHealthRequest(input: {
         {
           title: "Geprüfter Umfang",
           items: [
-            ...snapshot.checkedAreas,
-            ...stampDiagnostics.checkedRules.map((rule) => `Stempeldiagnose: ${rule}`),
+            ...scopedCheckedAreas,
+            ...(requestedScope === "full" || requestedScope === "stamps"
+              ? stampDiagnostics.checkedRules.map(
+                  (rule) => `Stempeldiagnose: ${rule}`
+                )
+              : []),
           ],
           tone: evaluation.status === "healthy" ? "positive" : "neutral",
         },

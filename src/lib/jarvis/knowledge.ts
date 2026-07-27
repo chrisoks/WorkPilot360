@@ -32,6 +32,79 @@ export type JarvisHelpResult = {
   navigation?: JarvisNavigationTarget;
 };
 
+function buildRoleAwareFallbackChoices(
+  context: JarvisSurfaceContext,
+  accessProfile?: JarvisAccessProfile
+) {
+  const choices: JarvisDialogChoice[] = [];
+  if (context.module || context.subview || context.recordType === "project") {
+    choices.push(
+      createJarvisDialogChoice(
+        "fallback-current-area",
+        "Aktuellen Bereich erklären",
+        "Was kann ich im aktuell geöffneten Bereich machen?"
+      )
+    );
+  }
+  if (!accessProfile) return choices;
+
+  if (getJarvisActionDecision("project.read", accessProfile).executable) {
+    choices.push(
+      createJarvisDialogChoice(
+        "fallback-projects",
+        "Projekte, Planung & Zeiten",
+        "Wie finde ich ein Projekt und wo prüfe ich Planung, Termine und Stempelungen?"
+      )
+    );
+  }
+  if (getJarvisActionDecision("contact.read", accessProfile).executable) {
+    choices.push(
+      createJarvisDialogChoice(
+        "fallback-contacts",
+        "Kunden & Kontakte",
+        "Wie finde und bearbeite ich Kunden und Kontakte?"
+      )
+    );
+  }
+  if (getJarvisActionDecision("task.read", accessProfile).executable) {
+    choices.push(
+      createJarvisDialogChoice(
+        "fallback-tasks",
+        "Aufgaben & offene Punkte",
+        "Wie finde und bearbeite ich meine Aufgaben und offenen Punkte?"
+      )
+    );
+  }
+  const canReadOffers = getJarvisActionDecision("offer.read", accessProfile).executable;
+  const canReadInvoices = getJarvisActionDecision("invoice.read", accessProfile).executable;
+  if (canReadOffers || canReadInvoices) {
+    const label =
+      canReadOffers && canReadInvoices
+        ? "Angebote & Rechnungen"
+        : canReadOffers
+          ? "Angebote"
+          : "Rechnungen";
+    choices.push(
+      createJarvisDialogChoice(
+        "fallback-commercial",
+        label,
+        `Wie finde und prüfe ich ${label.toLowerCase()}?`
+      )
+    );
+  }
+  return choices;
+}
+
+function looksLikeWorkPilotQuestion(question: string) {
+  const value = question.toLocaleLowerCase("de-DE");
+  return (
+    /\b(?:[a-zäöü]{2,}[- ]?\d+|\d{5,})\b/i.test(question) ||
+    /(projekt|kunde|kontakt|angebot|rechnung|aufgabe|termin|planung|stempel|zeiteintrag|mitarbeiter|auswertung|dashboard|logbuch|dokument|leistung|artikel|kalkulation|einstellung|workpilot|jarvis|reiter|funktion|bereich|akte|status)/.test(
+      value
+    )
+  );
+}
+
 type JarvisTopic = {
   id: string;
   title: string;
@@ -414,6 +487,18 @@ export function resolveJarvisSystemHelp(
   const match = ranked[0];
 
   if (!match || match.score < 3) {
+    const choices = looksLikeWorkPilotQuestion(cleaned)
+      ? buildRoleAwareFallbackChoices(context, accessProfile)
+      : [];
+    if (choices.length > 0) {
+      return {
+        type: "clarification",
+        topicId: "system-help.clarification",
+        message:
+          "Ich bin noch nicht sicher, was du in WorkPilot360 wissen möchtest. Wähle einen passenden Bereich oder beschreibe dein Ziel kurz.",
+        choices,
+      };
+    }
     return {
       type: "unknown",
       message:

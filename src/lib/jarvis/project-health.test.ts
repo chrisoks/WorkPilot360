@@ -67,6 +67,7 @@ describe("resolveJarvisProjectHealthIntent", () => {
     "Mach einen Projekt-Gesundheitscheck",
     "Was fehlt bei diesem Projekt?",
     "Wie können wir dieses Projekt verbessern?",
+    "Und jetzt prüfe HAS-1 vollständig",
   ])("recognizes project health questions: %s", (question) => {
     expect(resolveJarvisProjectHealthIntent(question)).toBe(true);
   });

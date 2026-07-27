@@ -99,7 +99,7 @@ describe("resolveJarvisProjectHealthRequest", () => {
 
   it("builds a structured, read-only health report for management", async () => {
     const response = await resolveJarvisProjectHealthRequest({
-      question: "Prüfe dieses Projekt vollständig.",
+      question: "Führe den vollständigen Projekt-Gesundheitscheck aus.",
       organizationId: "org-1",
       accessProfile: createJarvisAccessProfile({
         id: "manager-1",
@@ -112,7 +112,7 @@ describe("resolveJarvisProjectHealthRequest", () => {
       type: "answer",
       topicId: "project.health",
       structured: {
-        title: "Projekt-Gesundheitscheck · MKG-209",
+        title: "Vollständiger Projektcheck · MKG-209",
         facts: [
           { label: "Prüfwert", value: "100 / 100", tone: "positive" },
           { label: "Einordnung", value: "Stabil", tone: "positive" },
@@ -132,7 +132,7 @@ describe("resolveJarvisProjectHealthRequest", () => {
 
   it("does not load or expose financial and payroll checks for employees", async () => {
     const response = await resolveJarvisProjectHealthRequest({
-      question: "Mach einen Projektcheck.",
+      question: "Führe den vollständigen Projekt-Gesundheitscheck aus.",
       organizationId: "org-1",
       accessProfile: createJarvisAccessProfile({
         id: "employee-1",
@@ -148,6 +148,153 @@ describe("resolveJarvisProjectHealthRequest", () => {
       title: "Rollenbedingter Prüfumfang",
     });
     expect(JSON.stringify(response)).not.toContain("Kostensatz-Snapshot");
+    expect(dbMocks.projectTimeEntryFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([{ userId: "employee-1" }]),
+        }),
+      })
+    );
+    expect(dbMocks.activeStampSessionFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([{ userId: "employee-1" }]),
+        }),
+      })
+    );
+  });
+
+  it("asks what to inspect for a broad project reference and offers role-aware choices", async () => {
+    dbMocks.queryRaw.mockResolvedValueOnce([{
+      ...project,
+      id: "project-has-1",
+      projectNumber: "HAS-1",
+      title: "Hausmeisterservice",
+    }]);
+
+    const response = await resolveJarvisProjectHealthRequest({
+      question: "Und jetzt prüfe HAS-1 vollständig.",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "employee-1",
+        role: Role.MITARBEITER,
+      }),
+      context: { recordType: "project", recordId: "project-dar-399" },
+    });
+
+    expect(response).toMatchObject({
+      type: "clarification",
+      topicId: "project.health.clarification",
+      message: "Ich habe HAS-1 eindeutig gefunden. Was soll ich für dieses Projekt prüfen?",
+      records: [{
+        target: { kind: "project", id: "project-has-1" },
+      }],
+    });
+    expect(response?.choices?.map((choice) => choice.label)).toEqual([
+      "Vollständiger Projektcheck",
+      "Stempelungen & Arbeitszeiten",
+      "Planung & Termine",
+      "Aufgaben & offene Punkte",
+      "Automatik & Zusammenhänge",
+      "Auffälligkeiten & Verbesserungen",
+    ]);
+    expect(JSON.stringify(response?.choices)).not.toContain("Rechnungen");
+    expect(dbMocks.projectTimeEntryFindMany).not.toHaveBeenCalled();
+  });
+
+  it("asks the same guided follow-up for a broad request about the open project", async () => {
+    const response = await resolveJarvisProjectHealthRequest({
+      question: "Prüfe dieses Projekt vollständig.",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "manager-1",
+        role: Role.GESCHAEFTSFUEHRER,
+      }),
+      context: { recordType: "project", recordId: "project-1" },
+    });
+
+    expect(response).toMatchObject({
+      type: "clarification",
+      topicId: "project.health.clarification",
+      message: "Ich habe MKG-209 eindeutig gefunden. Was soll ich für dieses Projekt prüfen?",
+    });
+    expect(dbMocks.projectTimeEntryFindMany).not.toHaveBeenCalled();
+  });
+
+  it("offers commercial project checks only to an authorized management role", async () => {
+    dbMocks.queryRaw.mockResolvedValueOnce([{
+      ...project,
+      id: "project-has-1",
+      projectNumber: "HAS-1",
+    }]);
+
+    const response = await resolveJarvisProjectHealthRequest({
+      question: "Prüfe HAS-1 vollständig.",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "manager-1",
+        role: Role.GESCHAEFTSFUEHRER,
+      }),
+      context: { recordType: "project", recordId: "project-dar-399" },
+    });
+
+    expect(response?.type).toBe("clarification");
+    expect(response?.choices?.map((choice) => choice.label)).toContain(
+      "Angebote & Rechnungen"
+    );
+    expect(response?.records?.[0]?.target).toEqual({
+      kind: "project",
+      id: "project-has-1",
+    });
+  });
+
+  it("continues with the selected project scope instead of asking again", async () => {
+    const response = await resolveJarvisProjectHealthRequest({
+      question: "Prüfe Planung und Termine für MKG-209.",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "manager-1",
+        role: Role.GESCHAEFTSFUEHRER,
+      }),
+      context: { recordType: "project", recordId: "different-project" },
+    });
+
+    expect(response).toMatchObject({
+      type: "answer",
+      topicId: "project.health",
+      structured: {
+        title: "Planung & Termine · MKG-209",
+      },
+    });
+    expect(response?.structured?.facts?.map((fact) => fact.label)).toEqual([
+      "Prüfwert",
+      "Einordnung",
+      "Auswahl",
+    ]);
+  });
+
+  it("offers a safe next step when an explicit project number is not found", async () => {
+    dbMocks.queryRaw.mockResolvedValueOnce([]);
+
+    const response = await resolveJarvisProjectHealthRequest({
+      question: "Prüfe FALSCH-1 vollständig.",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "manager-1",
+        role: Role.GESCHAEFTSFUEHRER,
+      }),
+      context: { recordType: "project", recordId: "project-1" },
+    });
+
+    expect(response).toMatchObject({
+      type: "clarification",
+      topicId: "project.health.project-not-found",
+    });
+    expect(response?.choices?.map((choice) => choice.label)).toEqual([
+      "Geöffnetes Projekt verwenden",
+      "Projekt suchen",
+    ]);
+    expect(dbMocks.projectTimeEntryFindMany).not.toHaveBeenCalled();
   });
 
   it("refuses guest access before reading project data", async () => {
