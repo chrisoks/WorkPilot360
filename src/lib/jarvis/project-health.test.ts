@@ -115,7 +115,7 @@ describe("evaluateProjectHealth", () => {
       status: "healthy",
       issues: [],
     });
-    expect(result.automationSummary[0]).toContain("Angebotszuweisung");
+    expect(result.automationSummary.join(" ")).toContain("Angebotszuweisung");
   });
 
   it("finds the configuration blockers of an hourly recurring project", () => {
@@ -138,6 +138,52 @@ describe("evaluateProjectHealth", () => {
     );
     expect(result.automationSummary.join(" ")).toContain(
       "genau einen Rechnungsentwurf"
+    );
+  });
+
+  it("keeps hourly recurring and monthly-flat automation strictly separated", () => {
+    const base = healthySnapshot();
+    const result = evaluateProjectHealth(healthySnapshot({
+      project: {
+        ...base.project,
+        projectKind: "Dauerläufer-Projekt",
+        recurringBillingMode: "hourly",
+        projectRuntimeFrom: "2026-05-01",
+        projectRuntimeUntil: "2026-12-31",
+        billingInterval: "monatlich",
+        autoBillingEnabled: true,
+      },
+    }));
+
+    expect(result.issues.map((issue) => issue.id)).toContain(
+      "hourly-flat-auto-billing-conflict"
+    );
+    expect(result.automationSummary.join(" ")).toContain(
+      "tatsächlich zugeordneten und geprüften Stunden"
+    );
+    expect(result.automationSummary.join(" ")).not.toContain(
+      "vereinbarte Monatspauschale"
+    );
+  });
+
+  it("recognizes contradictory legacy settings on a one-time project", () => {
+    const base = healthySnapshot();
+    const result = evaluateProjectHealth(healthySnapshot({
+      project: {
+        ...base.project,
+        recurringBillingMode: "monthlyFlat",
+        autoBillingEnabled: true,
+      },
+    }));
+
+    expect(result.issues.map((issue) => issue.id)).toEqual(
+      expect.arrayContaining([
+        "one-time-recurring-mode-conflict",
+        "one-time-flat-auto-billing-conflict",
+      ])
+    );
+    expect(result.automationSummary.join(" ")).toContain(
+      "Gesamtprojekt abgeschlossen"
     );
   });
 

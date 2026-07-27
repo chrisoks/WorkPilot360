@@ -1,5 +1,21 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Projektarten-Regelmatrix 2026-07-27: Die Projektdiagnose leitet
+  ihren Sollprozess zentral aus Projektart und Abrechnungsmodell ab und trennt
+  Einmalprojekte, Dauerläufer mit Monatspauschale und Dauerläufer mit
+  Stundenabrechnung ausdrücklich. Einmalprojekte folgen Auftragsgrundlage,
+  Planung, Ausführung, Endkontrolle, Schlussrechnung und Gesamtabschluss.
+  Monatspauschalen werden monatsbezogen über Kontingent, Planung, Nachweise,
+  Monatsrechnung und Folgemonat bewertet. Stunden-Dauerläufer benötigen
+  Gewerk/Abrechnungsleistung und führen passende Zeiten in genau einem
+  Monatsentwurf zusammen. Die Regelmatrix erkennt zusätzlich widersprüchliche
+  Altstände wie Dauerläufer-Abrechnungsfelder an Einmalprojekten, aktivierte
+  Pauschal-Stapelabrechnung bei Stundenprojekten, vertauschte Laufzeiten,
+  fehlende Abrechnungsintervalle sowie Automatikzeiträume außerhalb der
+  Projektlaufzeit. JARVIS ändert diese Konfigurationen nicht automatisch,
+  sondern nennt Beleg und sicheren Korrekturschritt. Keine Prisma- oder
+  Datenbankänderung.
+
 - JARVIS Dauerläufer-Monatskette 2026-07-27: Der rein lesende
   Projekt-Gesundheitscheck prüft Dauerläufer innerhalb ihrer Laufzeit jetzt
   monatsweise statt nur als Momentaufnahme. Er vergleicht bestätigte

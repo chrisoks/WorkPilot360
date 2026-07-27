@@ -26,6 +26,10 @@ import {
   diagnoseRecurringProjectMonths,
   type RecurringMonthDiagnosticResult,
 } from "@/lib/jarvis/recurring-month-diagnostics";
+import {
+  diagnoseJarvisProjectLogic,
+  resolveJarvisProjectLogic,
+} from "@/lib/jarvis/project-logic";
 
 type ProjectHealthSeverity = "critical" | "warning";
 
@@ -124,15 +128,6 @@ function getBerlinDateKey(value = new Date()) {
   return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
-function isRecurringProject(projectKind: string | null) {
-  return normalize(projectKind).includes("dauerl");
-}
-
-function isRecognizedProjectKind(projectKind: string | null) {
-  const value = normalize(projectKind);
-  return value.includes("dauerl") || value.includes("einmal");
-}
-
 function isClosedProject(status: string) {
   const value = normalize(status);
   return value.includes("abgeschlossen") || value.includes("archiviert");
@@ -208,9 +203,9 @@ export function evaluateProjectHealth(
 ): ProjectHealthEvaluation {
   const { project } = snapshot;
   const issues: ProjectHealthIssue[] = [];
-  const recurring = isRecurringProject(project.projectKind);
-  const hourlyRecurring = recurring && project.recurringBillingMode === "hourly";
-  const monthlyRecurring = recurring && project.recurringBillingMode === "monthlyFlat";
+  const projectLogic = diagnoseJarvisProjectLogic(project);
+  const recurring = projectLogic.profile.isRecurring;
+  const monthlyRecurring = projectLogic.profile.isMonthlyFlatRecurring;
   const operational = isOperationalProject(project.status);
   const closed = isClosedProject(project.status);
   const evaluationMonth = snapshot.evaluationDateKey.slice(0, 7);
@@ -220,6 +215,7 @@ export function evaluateProjectHealth(
   const hasStableCustomerReference = Boolean(
     project.contactId || project.contactPersonId || project.addressContactId
   );
+  issues.push(...projectLogic.issues);
 
   addIssue(issues, {
     id: "customer-reference-missing",
@@ -242,16 +238,6 @@ export function evaluateProjectHealth(
     recommendation:
       "Die Kundenzuordnung in den Projektinformationen erneut auswählen und speichern.",
   }, hasStableCustomerReference && snapshot.stableCustomerReferenceValid === false);
-
-  addIssue(issues, {
-    id: "project-kind-missing",
-    severity: "critical",
-    area: "Projektlogik",
-    title: "Projektart ist nicht eindeutig",
-    evidence: "WorkPilot360 kann nicht sicher zwischen einmaligem Projekt und Dauerläufer unterscheiden.",
-    recommendation:
-      "In den Projektinformationen „Einmaliges Projekt“ oder „Dauerläufer-Projekt“ festlegen.",
-  }, !isRecognizedProjectKind(project.projectKind));
 
   addIssue(issues, {
     id: "project-company-type-missing",
@@ -288,24 +274,6 @@ export function evaluateProjectHealth(
     evidence: "Weder eine Objektadresse noch eine freie Projektadresse ist hinterlegt.",
     recommendation: "Eine vorhandene Objektadresse auswählen oder die Projektadresse ergänzen.",
   }, operational && !project.objectAddressId && !project.address);
-
-  addIssue(issues, {
-    id: "recurring-billing-mode-missing",
-    severity: "critical",
-    area: "Abrechnung",
-    title: "Abrechnungsmodell des Dauerläufers fehlt",
-    evidence: "Der Dauerläufer ist weder als Stundenabrechnung noch als Monatspauschale eindeutig konfiguriert.",
-    recommendation: "Das Abrechnungsmodell in den Projektinformationen festlegen.",
-  }, recurring && !hourlyRecurring && !monthlyRecurring);
-
-  addIssue(issues, {
-    id: "recurring-runtime-missing",
-    severity: "warning",
-    area: "Laufzeit",
-    title: "Laufzeit des Dauerläufers ist unvollständig",
-    evidence: "Start- oder Endmonat fehlt. Forecast, Vorgabezeiten und Monatslogik können dadurch unvollständig sein.",
-    recommendation: "Ausführungszeitraum von und bis vollständig pflegen.",
-  }, recurring && (!project.projectRuntimeFrom || !project.projectRuntimeUntil));
 
   addIssue(issues, {
     id: "one-time-offer-link-missing",
@@ -423,24 +391,14 @@ export function evaluateProjectHealth(
       : warningCount > 0 || score < 90
         ? "attention"
         : "healthy";
-  const automationSummary = recurring
-    ? hourlyRecurring
-      ? [
-          "Dauerläufer mit Stundenabrechnung: Die erste passende Monatsstempelung soll genau einen Rechnungsentwurf erzeugen.",
-          "Weitere Monatsstempelungen werden nach Gewerk und Abrechnungsleistung an denselben Entwurf angehängt.",
-        ]
-      : monthlyRecurring
-        ? [
-            "Dauerläufer mit Monatspauschale: Stunden benötigen keine einzelne Abrechnungsleistung.",
-            project.autoBillingEnabled
-              ? "Die automatische Pauschalabrechnung ist für dieses Projekt aktiviert."
-              : "Die automatische Pauschalabrechnung ist für dieses Projekt nicht aktiviert.",
-          ]
-        : ["Die Dauerläufer-Abrechnungslogik kann erst nach Wahl des Abrechnungsmodells sicher arbeiten."]
-    : [
-        "Einmaliges Projekt: Manuelle Zeiten benötigen eine Angebotszuweisung auf Angebotsebene.",
-        "Der Projektabschluss folgt der einmaligen Projektpipeline und nicht der monatlichen Dauerläufer-Faktura.",
-      ];
+  const automationSummary = [...projectLogic.profile.processSummary];
+  if (monthlyRecurring) {
+    automationSummary.push(
+      project.autoBillingEnabled
+        ? "Die automatische Pauschalabrechnung ist für dieses Projekt aktiviert."
+        : "Die automatische Pauschalabrechnung ist für dieses Projekt nicht aktiviert."
+    );
+  }
   automationSummary.push(...(snapshot.recurringMonthDiagnostics?.summary ?? []));
 
   return { score, status, issues, automationSummary };
@@ -1107,8 +1065,9 @@ export async function resolveJarvisProjectHealthRequest(input: {
     })
   );
   const now = new Date();
-  const recurring = isRecurringProject(project.projectKind);
-  const hourlyRecurring = recurring && project.recurringBillingMode === "hourly";
+  const projectLogic = resolveJarvisProjectLogic(project);
+  const recurring = projectLogic.isRecurring;
+  const hourlyRecurring = projectLogic.isHourlyRecurring;
   const stampDiagnostics = diagnoseProjectStamps({
     projectId: project.id,
     isHourlyRecurring: hourlyRecurring,
