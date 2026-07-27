@@ -34,6 +34,7 @@ function healthySnapshot(
       responsibleName: "Christian Eid",
       timeBudgetEnabled: false,
       timeBudgetHours: null,
+      timeBudgetAllocations: [],
       autoBillingEnabled: false,
       autoBillingNetAmount: null,
       autoBillingStartMonth: null,

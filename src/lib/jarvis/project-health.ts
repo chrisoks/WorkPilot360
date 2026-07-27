@@ -22,6 +22,10 @@ import {
   diagnoseProjectStamps,
   type StampDiagnosticResult,
 } from "@/lib/jarvis/stamp-diagnostics";
+import {
+  diagnoseRecurringProjectMonths,
+  type RecurringMonthDiagnosticResult,
+} from "@/lib/jarvis/recurring-month-diagnostics";
 
 type ProjectHealthSeverity = "critical" | "warning";
 
@@ -59,6 +63,7 @@ type ProjectHealthRow = {
   responsibleName: string | null;
   timeBudgetEnabled: boolean;
   timeBudgetHours: string | null;
+  timeBudgetAllocations: Prisma.JsonValue;
   autoBillingEnabled: boolean;
   autoBillingNetAmount: string | null;
   autoBillingStartMonth: string | null;
@@ -81,6 +86,7 @@ export type ProjectHealthSnapshot = {
   logbookEntryCount: number;
   evaluationDateKey: string;
   stampDiagnostics?: StampDiagnosticResult;
+  recurringMonthDiagnostics?: RecurringMonthDiagnosticResult;
   checkedAreas: string[];
   restrictedAreas: string[];
 };
@@ -402,6 +408,11 @@ export function evaluateProjectHealth(
       issues.push(stampIssue);
     }
   }
+  for (const monthIssue of snapshot.recurringMonthDiagnostics?.issues ?? []) {
+    if (!issues.some((issue) => issue.id === monthIssue.id)) {
+      issues.push(monthIssue);
+    }
+  }
 
   const criticalCount = issues.filter((issue) => issue.severity === "critical").length;
   const warningCount = issues.length - criticalCount;
@@ -430,6 +441,7 @@ export function evaluateProjectHealth(
         "Einmaliges Projekt: Manuelle Zeiten benötigen eine Angebotszuweisung auf Angebotsebene.",
         "Der Projektabschluss folgt der einmaligen Projektpipeline und nicht der monatlichen Dauerläufer-Faktura.",
       ];
+  automationSummary.push(...(snapshot.recurringMonthDiagnostics?.summary ?? []));
 
   return { score, status, issues, automationSummary };
 }
@@ -491,6 +503,7 @@ function scopeProjectHealthEvaluation(
     snapshot.stampDiagnostics?.issues.map((issue) => issue.id) ?? []
   );
   const issues = evaluation.issues.filter((issue) => {
+    const issueArea = normalize(issue.area);
     if (scope === "stamps") {
       return (
         stampIssueIds.has(issue.id) ||
@@ -503,31 +516,32 @@ function scopeProjectHealthEvaluation(
     }
     if (scope === "planning") {
       return (
-        issue.area.includes("Planung") ||
-        issue.area.includes("Laufzeit") ||
+        issueArea.includes("planung") ||
+        issueArea.includes("laufzeit") ||
         issue.id === "time-budget-invalid"
       );
     }
     if (scope === "tasks") {
       return (
-        issue.area.includes("Aufgabe") ||
-        issue.area.includes("Unterbrech") ||
-        issue.area.includes("Überstunden")
+        issueArea.includes("aufgabe") ||
+        issueArea.includes("unterbrech") ||
+        issueArea.includes("uberstunden")
       );
     }
     if (scope === "commercial") {
       return (
-        issue.area.includes("Angebot") ||
-        issue.area.includes("Abrechnung") ||
-        issue.area.includes("Rechnung") ||
-        issue.area.includes("Leistungszuordnung") ||
-        issue.area.includes("Projektgewinn")
+        issueArea.includes("angebot") ||
+        issueArea.includes("abrechnung") ||
+        issueArea.includes("rechnung") ||
+        issueArea.includes("leistungszuordnung") ||
+        issueArea.includes("projektgewinn")
       );
     }
     return (
-      issue.area.includes("Automatik") ||
-      issue.area.includes("Projektlogik") ||
-      issue.area.includes("Laufzeit")
+      issueArea.includes("automatik") ||
+      issueArea.includes("projektlogik") ||
+      issueArea.includes("laufzeit") ||
+      issueArea.includes("stapelabrechnung")
     );
   });
   const criticalCount = issues.filter((issue) => issue.severity === "critical").length;
@@ -550,10 +564,10 @@ function checkedAreasForScope(snapshot: ProjectHealthSnapshot, scope: ProjectHea
   if (scope === "full" || scope === "improvements") return snapshot.checkedAreas;
   const markers: Record<Exclude<ProjectHealthScope, "full" | "improvements">, string[]> = {
     stamps: ["Stempelungen", "Wirtschaftlichkeit"],
-    planning: ["Planung"],
+    planning: ["Planung", "Dauerläufer-Monatskette"],
     tasks: ["Aufgaben"],
-    commercial: ["Angebote", "Kunden-"],
-    automation: ["Stammdaten"],
+    commercial: ["Angebote", "Kunden-", "Dauerläufer-Monatskette"],
+    automation: ["Stammdaten", "Dauerläufer-Monatskette"],
   };
   return snapshot.checkedAreas.filter((area) =>
     markers[scope].some((marker) => area.includes(marker))
@@ -830,7 +844,7 @@ export async function resolveJarvisProjectHealthRequest(input: {
   const [
     timeEntries,
     activeSessions,
-    futurePlanningCount,
+    projectPlanningEntries,
     logbookEntryCount,
     offers,
     invoices,
@@ -898,12 +912,20 @@ export async function resolveJarvisProjectHealthRequest(input: {
         createdAt: true,
       },
     }),
-    prisma.planningEntry.count({
+    prisma.planningEntry.findMany({
       where: {
         organizationId: input.organizationId,
         projectId: project.id,
         deletedAt: null,
-        date: { gte: healthCheckDateKey },
+      },
+      select: {
+        id: true,
+        projectId: true,
+        userId: true,
+        date: true,
+        durationMinutes: true,
+        approvalStatus: true,
+        deletedAt: true,
       },
     }),
     prisma.projectLogbookEntry.count({
@@ -934,7 +956,9 @@ export async function resolveJarvisProjectHealthRequest(input: {
             status: true,
             billingSource: true,
             plannedExecutionMonth: true,
+            serviceDate: true,
             netTotal: true,
+            createdAt: true,
           },
         })
       : Promise.resolve(undefined),
@@ -1103,6 +1127,15 @@ export async function resolveJarvisProjectHealthRequest(input: {
     roundingFactorHours: deadlineSettings.hourlyBillingRoundingFactorHours,
     now,
   });
+  const recurringMonthDiagnostics = recurring
+    ? diagnoseRecurringProjectMonths({
+        project,
+        planningEntries: projectPlanningEntries,
+        timeEntries,
+        invoices,
+        evaluationDateKey: healthCheckDateKey,
+      })
+    : undefined;
   const activeInvoices = invoices?.filter(
     (invoice) =>
       ![
@@ -1128,6 +1161,7 @@ export async function resolveJarvisProjectHealthRequest(input: {
     ...(offerDecision.executable && invoiceDecision.executable
       ? ["Angebote, Rechnungen & Abrechnungsautomatik"]
       : []),
+    ...(recurring ? ["Dauerläufer-Monatskette"] : []),
     ...(taskDecision.executable ? ["Aufgaben & Unterbrechungen"] : []),
     ...(canReadCosts ? ["Wirtschaftlichkeit & Kostensatzqualität"] : []),
   ];
@@ -1159,7 +1193,9 @@ export async function resolveJarvisProjectHealthRequest(input: {
             Number(entry.laborCostRateSnapshot) <= 0
         ).length
       : undefined,
-    futurePlanningCount,
+    futurePlanningCount: projectPlanningEntries.filter(
+      (entry) => entry.date >= healthCheckDateKey
+    ).length,
     visibleOpenTaskCount: openVisibleTasks?.length,
     visibleOverdueTaskCount: openVisibleTasks?.filter(
       (task) =>
@@ -1172,6 +1208,7 @@ export async function resolveJarvisProjectHealthRequest(input: {
     logbookEntryCount,
     evaluationDateKey: healthCheckDateKey,
     stampDiagnostics,
+    recurringMonthDiagnostics,
     checkedAreas,
     restrictedAreas,
   };
@@ -1231,7 +1268,9 @@ export async function resolveJarvisProjectHealthRequest(input: {
         requestedScope === "full" || requestedScope === "improvements"
           ? {
               label: "Prüfumfang",
-              value: `${snapshot.checkedAreas.length} / 7 Bereiche`,
+              value:
+                `${snapshot.checkedAreas.length} / ` +
+                `${snapshot.checkedAreas.length + snapshot.restrictedAreas.length} Bereiche`,
             }
           : {
               label: "Auswahl",

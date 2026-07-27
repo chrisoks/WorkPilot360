@@ -1,5 +1,20 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Dauerläufer-Monatskette 2026-07-27: Der rein lesende
+  Projekt-Gesundheitscheck prüft Dauerläufer innerhalb ihrer Laufzeit jetzt
+  monatsweise statt nur als Momentaufnahme. Er vergleicht bestätigte
+  Planung mit dem jeweiligen Monatskontingent, weist gestempelte Stunden aus
+  und kontrolliert – nur bei vorhandener Rechnungsberechtigung – vergangene
+  Leistungsmonate auf fehlende oder mehrere aktive Rechnungen. Bei
+  Stundenabrechnung wird eine Rechnung nur erwartet, wenn im Monat tatsächlich
+  Zeit gestempelt wurde; bei Monatspauschalen wird außerdem nachvollziehbar
+  gemeldet, wenn die automatische Stapelabrechnung wegen einer fehlenden
+  Vormonatsrechnung keine Vorlage besitzt. Gelöschte, historisch fehlkodierte
+  gelöschte und stornierte Rechnungen werden nicht als aktive Belege gewertet.
+  Die Diagnose betrachtet höchstens zwölf abgeschlossene Projektmonate,
+  verändert weder Planung noch Zeiten oder Rechnungen und führt keine
+  Prisma-/Datenbankänderung aus.
+
 - JARVIS-Projekt-Gesundheitscheck 2026-07-27: In einer geöffneten
   Projektakte bietet JARVIS den direkten Einstieg `Projekt prüfen`. Fragen
   wie `Prüfe dieses Projekt vollständig`, `Was fehlt bei diesem Projekt?`

@@ -68,6 +68,7 @@ const project = {
   responsibleName: "Christian Eid",
   timeBudgetEnabled: false,
   timeBudgetHours: null,
+  timeBudgetAllocations: [],
   autoBillingEnabled: false,
   autoBillingNetAmount: null,
   autoBillingStartMonth: null,
@@ -421,6 +422,80 @@ describe("resolveJarvisProjectHealthRequest", () => {
     expect(JSON.stringify(response)).toContain(
       "Dauerläufer hat keine zukünftige Planung"
     );
+  });
+
+  it("carries a missing recurring invoice month into the commercial project check", async () => {
+    dbMocks.queryRaw.mockResolvedValueOnce([{
+      ...project,
+      id: "project-has-1",
+      projectNumber: "HAS-1",
+      title: "Hausmeisterservice",
+      status: "Umsetzung",
+      projectKind: "Dauerläufer-Projekt",
+      projectRuntimeFrom: "2026-05-11",
+      projectRuntimeUntil: "2026-12-31",
+      recurringBillingMode: "monthlyFlat",
+      timeBudgetEnabled: true,
+      timeBudgetHours: "8",
+      timeBudgetAllocations: [
+        { month: "2026-05", hours: "8" },
+        { month: "2026-06", hours: "8" },
+      ],
+    }]);
+    dbMocks.planningEntryFindMany
+      .mockResolvedValueOnce([
+        {
+          id: "planning-may",
+          projectId: "project-has-1",
+          userId: "employee-1",
+          date: "2026-05-12",
+          durationMinutes: 480,
+          approvalStatus: "confirmed",
+          deletedAt: null,
+        },
+        {
+          id: "planning-june",
+          projectId: "project-has-1",
+          userId: "employee-1",
+          date: "2026-06-12",
+          durationMinutes: 480,
+          approvalStatus: "confirmed",
+          deletedAt: null,
+        },
+      ])
+      .mockResolvedValueOnce([]);
+    dbMocks.invoiceFindMany.mockResolvedValueOnce([
+      {
+        id: "invoice-may",
+        projectId: "project-has-1",
+        status: "Fakturiert",
+        billingSource: "batch",
+        plannedExecutionMonth: "2026-05",
+        serviceDate: "2026-05-31",
+        netTotal: 800,
+        createdAt: new Date("2026-05-31T12:00:00.000Z"),
+      },
+    ]);
+
+    const response = await resolveJarvisProjectHealthRequest({
+      question: "Prüfe Angebote und Rechnungen für HAS-1.",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "manager-1",
+        role: Role.GESCHAEFTSFUEHRER,
+      }),
+    });
+
+    expect(response).toMatchObject({
+      type: "answer",
+      structured: {
+        title: "Angebote & Rechnungen · HAS-1",
+      },
+    });
+    expect(JSON.stringify(response)).toContain(
+      "Für abgeschlossene Leistungsmonate fehlt eine Rechnung"
+    );
+    expect(JSON.stringify(response)).toContain("Juni 2026");
   });
 
   it("offers a safe next step when an explicit project number is not found", async () => {
