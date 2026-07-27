@@ -1,5 +1,33 @@
 # WorkPilot360 Agent Handover
 
+- HERO-Aktivprojekt-Cutover 2026-07-27: Nach einem vollständigen, verifizierten
+  Datenbank- und Quellbackup wurde der alte gemischte Fünfer-Pilot
+  `cms3n6886000xw4g8vfe1voip` sicher zurückgenommen. Anschließend wurden
+  ausschließlich die in HERO weder abgeschlossenen noch archivierten oder
+  gelöschten Projekte gegen WorkPilot abgeglichen. Maßgeblich ist allein die
+  normalisierte Projektnummer, unabhängig von den unterschiedlichen
+  Projektpipelines. Von 138 aktiven HERO-Projekten waren 111 bereits vorhanden;
+  Importlauf `cms3rhlut0000w4sc4r9nhthf` legte die übrigen 27 Projekte sowie
+  exakt 8 fehlende Kunden an und verknüpfte 16 vorhandene Kunden bzw. echte
+  Ansprechpartner über stabile IDs. Alle neuen Projekte starten neutral in
+  `Lead / Klärung`; Projektart und Abrechnungsmodell bleiben bewusst leer und
+  müssen fachlich in WorkPilot gepflegt werden. Der HERO-Status wird nur als
+  Quellenhinweis protokolliert und nicht in die WorkPilot-Pipeline übersetzt.
+  Angebote, Rechnungen, Positionen, Zahlungen und historische Belege wurden
+  nicht importiert oder verändert. Ein vollständiger erster Aktivimport wurde
+  unmittelbar wieder zurückgerollt und stellte exakt 132 Projekte, 291
+  Kontakte und 0 HERO-Referenzen her; damit ist die Rücknahme praktisch
+  nachgewiesen. Der bereinigte finale Lauf enthält 27 Projekt-, 8 Kontaktanlage-
+  und 16 Kontaktverknüpfungsprotokolle, 0 Dokumentprotokolle und 51 stabile
+  HERO-Referenzen. Nachher: 159 Projekte, 299 Kontakte, weiterhin 15 Angebote,
+  27 native Rechnungen, 596 Legacy-Rechnungen und 0 historische Belege. Ein
+  frischer Gegenabgleich meldet 138 von 138 aktiven Projektnummern vorhanden,
+  keine Dublette und keinen Blocker. Prisma-Schema und Live-Diff, Regression,
+  Mojibake, 415 Tests, TypeScript, Diff-Check und Produktions-Build mit 88
+  Seiten bestanden. Port 3001 wurde danach aus dem kanonischen Repository neu
+  gestartet; `/dashboard` liefert HTTP 200. Kein Push und kein
+  Live-Deployment.
+
 - JARVIS sicherer Unklarheits-Fallback 2026-07-27: Wenn eine Frage wegen
   starker Schreibfehler oder einer logisch unklaren Formulierung keinem
   freigegebenen Intent sicher zugeordnet werden kann, fragt JARVIS eine

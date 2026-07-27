@@ -1132,6 +1132,80 @@ model LegacyInvoice {
   @@index([organizationId, invoiceDate])
 }
 
+model DataImportRun {
+  id                 String             @id @default(cuid())
+  organizationId     String
+  sourceSystem       String
+  importType         String             @default("full")
+  status             String             @default("planned")
+  dryRun             Boolean            @default(true)
+  sourceSnapshotHash String             @default("")
+  sourceSnapshotAt   DateTime?
+  requestedById      String?
+  requestedByName    String             @default("")
+  summary            Json               @default("{}")
+  errorMessage       String             @default("")
+  rollbackStatus     String             @default("not_requested")
+  startedAt          DateTime            @default(now())
+  completedAt        DateTime?
+  rolledBackAt       DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  records            DataImportRecord[]
+
+  @@index([organizationId, sourceSystem, createdAt])
+  @@index([organizationId, status, createdAt])
+}
+
+model DataImportRecord {
+  id              String        @id @default(cuid())
+  importRunId     String
+  organizationId  String
+  sourceSystem    String
+  entityType      String
+  externalId      String
+  localEntityId   String?
+  action          String
+  status          String        @default("planned")
+  sourceHash      String        @default("")
+  beforeHash      String        @default("")
+  afterHash       String        @default("")
+  sourceSnapshot  Json?
+  beforeSnapshot  Json?
+  afterSnapshot   Json?
+  conflictCode    String        @default("")
+  conflictDetails Json?
+  errorMessage    String        @default("")
+  rolledBackAt    DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  importRun       DataImportRun @relation(fields: [importRunId], references: [id], onDelete: Cascade)
+
+  @@unique([importRunId, entityType, externalId])
+  @@index([organizationId, sourceSystem, entityType, externalId])
+  @@index([organizationId, localEntityId])
+  @@index([importRunId, status])
+}
+
+model ExternalSourceReference {
+  id                 String    @id @default(cuid())
+  organizationId     String
+  sourceSystem       String
+  entityType         String
+  externalId         String
+  localEntityId      String
+  sourceHash         String    @default("")
+  sourceModifiedAt   DateTime?
+  lastImportRunId    String?
+  metadata           Json      @default("{}")
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@unique([organizationId, sourceSystem, entityType, externalId])
+  @@index([organizationId, entityType, localEntityId])
+  @@index([organizationId, lastImportRunId])
+}
+
 model SchemaDataPatch {
   key       String   @id
   appliedAt DateTime @default(now())
