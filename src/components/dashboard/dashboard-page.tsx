@@ -669,6 +669,36 @@ function parseJarvisDialogChoices(value: unknown): JarvisDialogChoice[] | undefi
   return choices.length ? choices : undefined;
 }
 
+function buildJarvisConversationContext(messages: ManagementAiChatMessage[]) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role !== "assistant") continue;
+    const targets = [
+      ...new Map(
+        (message.records ?? [])
+          .filter(
+            (record) =>
+              (record.target.kind === "project" ||
+                record.target.kind === "customer") &&
+              Boolean(record.target.id)
+          )
+          .map((record) => [
+            `${record.target.kind}:${record.target.id}`,
+            record.target,
+          ])
+      ).values(),
+    ];
+    if (targets.length > 1) return undefined;
+    const target = targets[0];
+    if (!target) continue;
+    return {
+      recordType: target.kind,
+      recordId: target.id,
+    };
+  }
+  return undefined;
+}
+
 function parseJarvisStructuredAnswer(value: unknown): JarvisStructuredAnswer | undefined {
   if (!value || typeof value !== "object") return undefined;
   const candidate = value as Record<string, unknown>;
@@ -32263,6 +32293,9 @@ await addProjectLogbookEntry(
             role: message.role,
             content: message.requestContent || message.content,
           })),
+          conversationContext: isSystemHelp
+            ? buildJarvisConversationContext(currentManagementAiMessages)
+            : undefined,
           context: isSystemHelp
             ? buildJarvisSurfaceContext()
             : requestMode === "sales"

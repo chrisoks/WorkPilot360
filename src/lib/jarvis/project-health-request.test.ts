@@ -173,13 +173,17 @@ describe("resolveJarvisProjectHealthRequest", () => {
     }]);
 
     const response = await resolveJarvisProjectHealthRequest({
-      question: "Und jetzt prüfe HAS-1 vollständig.",
+      question: "Und HAS-1?",
       organizationId: "org-1",
       accessProfile: createJarvisAccessProfile({
         id: "employee-1",
         role: Role.MITARBEITER,
       }),
       context: { recordType: "project", recordId: "project-dar-399" },
+      conversationContext: {
+        recordType: "project",
+        recordId: "older-conversation-project",
+      },
     });
 
     expect(response).toMatchObject({
@@ -267,10 +271,156 @@ describe("resolveJarvisProjectHealthRequest", () => {
       },
     });
     expect(response?.structured?.facts?.map((fact) => fact.label)).toEqual([
-      "Prüfwert",
+      "Teilprüfwert",
       "Einordnung",
       "Auswahl",
     ]);
+    expect(response?.structured?.sections?.at(-1)).toMatchObject({
+      title: "Abgrenzung",
+    });
+  });
+
+  it("uses the stable conversation project before the open screen project", async () => {
+    dbMocks.queryRaw.mockResolvedValueOnce([{
+      ...project,
+      id: "project-has-1",
+      projectNumber: "HAS-1",
+      title: "Hausmeisterservice",
+    }]);
+
+    const response = await resolveJarvisProjectHealthRequest({
+      question: "Und wie sieht die Planung aus?",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "manager-1",
+        role: Role.GESCHAEFTSFUEHRER,
+      }),
+      conversationContext: {
+        recordType: "project",
+        recordId: "project-has-1",
+      },
+      context: {
+        recordType: "project",
+        recordId: "project-mkg-209",
+      },
+    });
+
+    expect(response).toMatchObject({
+      type: "answer",
+      structured: {
+        title: "Planung & Termine · HAS-1",
+      },
+      records: [{
+        target: { kind: "project", id: "project-has-1" },
+      }],
+    });
+  });
+
+  it("does not reduce a combined project-planning-time choice to a stamp-only check", async () => {
+    dbMocks.queryRaw.mockResolvedValueOnce([{
+      ...project,
+      id: "project-has-1",
+      projectNumber: "HAS-1",
+      title: "Hausmeisterservice",
+    }]);
+
+    const response = await resolveJarvisProjectHealthRequest({
+      question:
+        "Wie finde ich ein Projekt und wo prüfe ich Planung, Termine und Stempelungen?",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "manager-1",
+        role: Role.GESCHAEFTSFUEHRER,
+      }),
+      conversationContext: {
+        recordType: "project",
+        recordId: "project-has-1",
+      },
+      context: {
+        recordType: "project",
+        recordId: "project-mkg-209",
+      },
+    });
+
+    expect(response).toMatchObject({
+      type: "clarification",
+      topicId: "project.health.clarification",
+      records: [{
+        target: { kind: "project", id: "project-has-1" },
+      }],
+    });
+    expect(dbMocks.projectTimeEntryFindMany).not.toHaveBeenCalled();
+  });
+
+  it("lets an explicit reference to this project use the open screen again", async () => {
+    dbMocks.queryRaw.mockResolvedValueOnce([{
+      ...project,
+      id: "project-mkg-209",
+      projectNumber: "MKG-209",
+    }]);
+
+    const response = await resolveJarvisProjectHealthRequest({
+      question: "Prüfe dieses Projekt vollständig.",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "manager-1",
+        role: Role.GESCHAEFTSFUEHRER,
+      }),
+      conversationContext: {
+        recordType: "project",
+        recordId: "project-has-1",
+      },
+      context: {
+        recordType: "project",
+        recordId: "project-mkg-209",
+      },
+    });
+
+    expect(response).toMatchObject({
+      type: "clarification",
+      records: [{
+        target: { kind: "project", id: "project-mkg-209" },
+      }],
+    });
+  });
+
+  it("finds the missing future planning of a live recurring project", async () => {
+    dbMocks.queryRaw.mockResolvedValueOnce([{
+      ...project,
+      id: "project-has-1",
+      projectNumber: "HAS-1",
+      title: "Hausmeisterservice",
+      status: "Arbeit unterbrochen",
+      projectKind: "Dauerläufer-Projekt",
+      projectRuntimeFrom: "2026-05-11",
+      projectRuntimeUntil: "2026-12-31",
+      recurringBillingMode: "monthlyFlat",
+    }]);
+
+    const response = await resolveJarvisProjectHealthRequest({
+      question: "Prüfe Planung und Termine für HAS-1.",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "manager-1",
+        role: Role.GESCHAEFTSFUEHRER,
+      }),
+      context: { recordType: "project", recordId: "project-mkg-209" },
+    });
+
+    expect(response).toMatchObject({
+      type: "answer",
+      structured: {
+        title: "Planung & Termine · HAS-1",
+        facts: [
+          { label: "Teilprüfwert", value: "92 / 100" },
+          { label: "Einordnung", value: "Prüfen" },
+          { label: "Auswahl", value: "Planung & Termine" },
+        ],
+      },
+    });
+    expect(JSON.stringify(response)).toContain(
+      "Dauerläufer hat keine zukünftige Planung"
+    );
   });
 
   it("offers a safe next step when an explicit project number is not found", async () => {

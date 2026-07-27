@@ -213,6 +213,44 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
   });
 
+  it("forwards the sanitized conversation record separately from the screen context", async () => {
+    mocks.sanitizeJarvisSurfaceContext.mockImplementation((value) => value);
+    mocks.resolveJarvisProjectHealthRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "project.health",
+      message: "HAS-1 wurde geprüft.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Und wie sieht die Planung aus?",
+          context: { recordType: "project", recordId: "project-mkg-209" },
+          conversationContext: {
+            recordType: "project",
+            recordId: "project-has-1",
+          },
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.resolveJarvisProjectHealthRequest).toHaveBeenCalledWith({
+      question: "Und wie sieht die Planung aus?",
+      organizationId: "organization-1",
+      accessProfile: { profile: true },
+      context: { recordType: "project", recordId: "project-mkg-209" },
+      conversationContext: {
+        recordType: "project",
+        recordId: "project-has-1",
+      },
+    });
+  });
+
   it("keeps normal questions on the established system-help path", async () => {
     mocks.resolveJarvisReadRequest.mockResolvedValue(undefined);
 

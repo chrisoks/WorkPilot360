@@ -51,6 +51,7 @@ function healthySnapshot(
     invoiceCount: 0,
     draftInvoiceCount: 0,
     logbookEntryCount: 2,
+    evaluationDateKey: "2026-07-27",
     checkedAreas: [
       "Stammdaten & Verantwortung",
       "Planung & Terminverknüpfungen",
@@ -81,6 +82,18 @@ describe("resolveJarvisProjectHealthIntent", () => {
       recordType: "project",
       recordId: "project-1",
     })).toBe(true);
+  });
+
+  it("recognizes a short explicit project switch", () => {
+    expect(resolveJarvisProjectHealthIntent("Und HAS-1?")).toBe(true);
+  });
+
+  it("recognizes a follow-up from the stable conversation project", () => {
+    expect(resolveJarvisProjectHealthIntent(
+      "Und wie sieht die Planung aus?",
+      { recordType: "project", recordId: "screen-project" },
+      { recordType: "project", recordId: "conversation-project" }
+    )).toBe(true);
   });
 
   it.each([
@@ -174,6 +187,24 @@ describe("evaluateProjectHealth", () => {
     }));
     expect(billing.issues.map((issue) => issue.id)).toContain(
       "billing-check-without-draft"
+    );
+  });
+
+  it("flags an active recurring project without any future planning", () => {
+    const base = healthySnapshot();
+    const result = evaluateProjectHealth(healthySnapshot({
+      project: {
+        ...base.project,
+        projectKind: "Dauerläufer-Projekt",
+        recurringBillingMode: "monthlyFlat",
+        projectRuntimeFrom: "2026-05-11",
+        projectRuntimeUntil: "2026-12-31",
+      },
+      futurePlanningCount: 0,
+    }));
+
+    expect(result.issues.map((issue) => issue.id)).toContain(
+      "recurring-without-future-planning"
     );
   });
 

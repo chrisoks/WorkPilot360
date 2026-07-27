@@ -79,6 +79,7 @@ export type ProjectHealthSnapshot = {
   invoiceCount?: number;
   draftInvoiceCount?: number;
   logbookEntryCount: number;
+  evaluationDateKey: string;
   stampDiagnostics?: StampDiagnosticResult;
   checkedAreas: string[];
   restrictedAreas: string[];
@@ -154,20 +155,28 @@ function addIssue(
 
 export function resolveJarvisProjectHealthIntent(
   question: string,
-  context?: JarvisSurfaceContext
+  context?: JarvisSurfaceContext,
+  conversationContext?: JarvisSurfaceContext
 ) {
   const value = normalize(question);
   const projectReference = extractProjectReference(question);
-  const projectContext = context?.recordType === "project" || Boolean(projectReference);
+  const projectContext =
+    context?.recordType === "project" ||
+    conversationContext?.recordType === "project" ||
+    Boolean(projectReference);
   const stampDiagnosticQuestion =
     projectContext &&
     /(stempel|zeiteintrag|stunden|rechnung)/.test(value) &&
     /(pruf|check|fehl|falsch|stimm|doppelt|uberschneid|warum)/.test(value);
   if (stampDiagnosticQuestion) return true;
+  if (projectContext && resolveProjectHealthScope(question)) return true;
   if (
     projectReference &&
     /(pruf|check|analysier|untersuch|kontrollier)/.test(value)
   ) {
+    return true;
+  }
+  if (projectReference && value.split(/\s+/).filter(Boolean).length <= 6) {
     return true;
   }
   if (!value.includes("projekt") && !value.includes("akte")) return false;
@@ -198,6 +207,10 @@ export function evaluateProjectHealth(
   const monthlyRecurring = recurring && project.recurringBillingMode === "monthlyFlat";
   const operational = isOperationalProject(project.status);
   const closed = isClosedProject(project.status);
+  const evaluationMonth = snapshot.evaluationDateKey.slice(0, 7);
+  const recurringRuntimeEndMonth = project.projectRuntimeUntil?.slice(0, 7) ?? "";
+  const recurringStillActive =
+    !recurringRuntimeEndMonth || recurringRuntimeEndMonth >= evaluationMonth;
   const hasStableCustomerReference = Boolean(
     project.contactId || project.contactPersonId || project.addressContactId
   );
@@ -345,6 +358,17 @@ export function evaluateProjectHealth(
   }, normalize(project.status) === "geplant" && snapshot.futurePlanningCount === 0);
 
   addIssue(issues, {
+    id: "recurring-without-future-planning",
+    severity: "warning",
+    area: "Planung",
+    title: "Dauerläufer hat keine zukünftige Planung",
+    evidence:
+      "Innerhalb der noch laufenden Projektlaufzeit wurde kein zukünftiger, nicht gelöschter Planungseintrag gefunden.",
+    recommendation:
+      "Die nächsten Einsätze beziehungsweise Monate planen oder nachvollziehbar festhalten, warum aktuell keine weitere Planung erforderlich ist.",
+  }, recurring && !closed && recurringStillActive && snapshot.futurePlanningCount === 0);
+
+  addIssue(issues, {
     id: "offer-status-without-offer",
     severity: "warning",
     area: "Angebot",
@@ -415,6 +439,15 @@ function extractProjectReference(question: string) {
   return candidates?.[0]?.trim() ?? "";
 }
 
+function refersToCurrentProjectSurface(question: string) {
+  const value = normalize(question);
+  return (
+    /dies(?:es|em) projekt/.test(value) ||
+    /aktuell geoffnete[sn]? projekt/.test(value) ||
+    /projekt hier/.test(value)
+  );
+}
+
 type ProjectHealthScope =
   | "full"
   | "stamps"
@@ -427,13 +460,15 @@ type ProjectHealthScope =
 function resolveProjectHealthScope(question: string): ProjectHealthScope | undefined {
   const value = normalize(question);
   if (/gesundheitscheck|vollstandiger projektcheck/.test(value)) return "full";
-  if (/stempel|zeiteintrag|arbeitszeit|stunden/.test(value)) return "stamps";
-  if (/planung|termin/.test(value)) return "planning";
-  if (/aufgabe|offene punkte|unterbrech/.test(value)) return "tasks";
-  if (/angebot|rechnung|abrechnung/.test(value)) return "commercial";
-  if (/automatik|zusammenhang/.test(value)) return "automation";
-  if (/auffallig|verbesser|was fehlt/.test(value)) return "improvements";
-  return undefined;
+  const matches: ProjectHealthScope[] = [
+    ...(/stempel|zeiteintrag|arbeitszeit|stunden/.test(value) ? ["stamps" as const] : []),
+    ...(/planung|termin/.test(value) ? ["planning" as const] : []),
+    ...(/aufgabe|offene punkte|unterbrech/.test(value) ? ["tasks" as const] : []),
+    ...(/angebot|rechnung|abrechnung/.test(value) ? ["commercial" as const] : []),
+    ...(/automatik|zusammenhang/.test(value) ? ["automation" as const] : []),
+    ...(/auffallig|verbesser|was fehlt/.test(value) ? ["improvements" as const] : []),
+  ];
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 const PROJECT_HEALTH_SCOPE_LABELS: Record<ProjectHealthScope, string> = {
@@ -608,7 +643,8 @@ function buildProjectHealthClarification(
 async function findProject(
   organizationId: string,
   question: string,
-  context?: JarvisSurfaceContext
+  context?: JarvisSurfaceContext,
+  conversationContext?: JarvisSurfaceContext
 ) {
   const reference = extractProjectReference(question);
   if (reference) {
@@ -624,6 +660,35 @@ async function findProject(
       LIMIT 2
     `);
     return rows.length === 1 ? rows[0] : undefined;
+  }
+
+  if (
+    refersToCurrentProjectSurface(question) &&
+    context?.recordType === "project" &&
+    context.recordId
+  ) {
+    const rows = await prisma.$queryRaw<ProjectHealthRow[]>(Prisma.sql`
+      SELECT *
+      FROM "WorkPilotProject"
+      WHERE "organizationId" = ${organizationId}
+        AND "id" = ${context.recordId}
+      LIMIT 1
+    `);
+    return rows[0];
+  }
+
+  if (
+    conversationContext?.recordType === "project" &&
+    conversationContext.recordId
+  ) {
+    const rows = await prisma.$queryRaw<ProjectHealthRow[]>(Prisma.sql`
+      SELECT *
+      FROM "WorkPilotProject"
+      WHERE "organizationId" = ${organizationId}
+        AND "id" = ${conversationContext.recordId}
+      LIMIT 1
+    `);
+    if (rows[0]) return rows[0];
   }
 
   if (context?.recordType === "project" && context.recordId) {
@@ -659,8 +724,17 @@ export async function resolveJarvisProjectHealthRequest(input: {
   organizationId: string;
   accessProfile: JarvisAccessProfile;
   context?: JarvisSurfaceContext;
+  conversationContext?: JarvisSurfaceContext;
 }): Promise<JarvisReadResponse | undefined> {
-  if (!resolveJarvisProjectHealthIntent(input.question, input.context)) return undefined;
+  if (
+    !resolveJarvisProjectHealthIntent(
+      input.question,
+      input.context,
+      input.conversationContext
+    )
+  ) {
+    return undefined;
+  }
 
   const authorization = authorizeJarvisQuestion(input.question, input.accessProfile);
   const projectDecision = getJarvisActionDecision("project.read", input.accessProfile);
@@ -676,7 +750,8 @@ export async function resolveJarvisProjectHealthRequest(input: {
   const project = await findProject(
     input.organizationId,
     input.question,
-    input.context
+    input.context,
+    input.conversationContext
   );
   if (!project) {
     const reference = extractProjectReference(input.question);
@@ -750,6 +825,7 @@ export async function resolveJarvisProjectHealthRequest(input: {
     project.contactPersonId,
     project.addressContactId,
   ].filter((value): value is string => Boolean(value));
+  const healthCheckDateKey = getBerlinDateKey();
 
   const [
     timeEntries,
@@ -827,7 +903,7 @@ export async function resolveJarvisProjectHealthRequest(input: {
         organizationId: input.organizationId,
         projectId: project.id,
         deletedAt: null,
-        date: { gte: getBerlinDateKey() },
+        date: { gte: healthCheckDateKey },
       },
     }),
     prisma.projectLogbookEntry.count({
@@ -1094,6 +1170,7 @@ export async function resolveJarvisProjectHealthRequest(input: {
     invoiceCount: activeInvoices?.length,
     draftInvoiceCount: activeInvoices?.filter((invoice) => invoice.status === "Entwurf").length,
     logbookEntryCount,
+    evaluationDateKey: healthCheckDateKey,
     stampDiagnostics,
     checkedAreas,
     restrictedAreas,
@@ -1112,6 +1189,8 @@ export async function resolveJarvisProjectHealthRequest(input: {
           ? "Angebote"
           : "Rechnungen"
       : PROJECT_HEALTH_SCOPE_LABELS[requestedScope];
+  const isPartialScope =
+    requestedScope !== "full" && requestedScope !== "improvements";
   const scopedCheckedAreas = checkedAreasForScope(snapshot, requestedScope);
   const criticalIssues = evaluation.issues.filter(
     (issue) => issue.severity === "critical"
@@ -1137,13 +1216,16 @@ export async function resolveJarvisProjectHealthRequest(input: {
           : `${criticalIssues.length} kritische und ${warningIssues.length} weitere Prüfungen wurden nachvollziehbar erkannt.`,
       facts: [
         {
-          label: "Prüfwert",
+          label: isPartialScope ? "Teilprüfwert" : "Prüfwert",
           value: `${evaluation.score} / 100`,
           tone: evaluation.status === "healthy" ? "positive" : "warning",
         },
         {
           label: "Einordnung",
-          value: formatHealthStatus(evaluation.status),
+          value:
+            isPartialScope && evaluation.status === "healthy"
+              ? "Im gewählten Umfang stabil"
+              : formatHealthStatus(evaluation.status),
           tone: evaluation.status === "healthy" ? "positive" : "warning",
         },
         requestedScope === "full" || requestedScope === "improvements"
@@ -1209,6 +1291,14 @@ export async function resolveJarvisProjectHealthRequest(input: {
               ],
             }]
           : []),
+        ...(isPartialScope
+          ? [{
+              title: "Abgrenzung",
+              items: [
+                "Dieser Teilprüfwert bewertet nur die ausgewählte Frage. Der Zustand des Gesamtprojekts wurde damit nicht vollständig bewertet.",
+              ],
+            }]
+          : []),
       ],
     },
     records: [{
@@ -1216,7 +1306,7 @@ export async function resolveJarvisProjectHealthRequest(input: {
       kind: "project",
       title: projectLabel,
       subtitle: project.customer || project.projectType || "Projekt",
-      summary: `${formatHealthStatus(evaluation.status)} · ${evaluation.issues.length} Prüfpunkt/Prüfpunkte`,
+      summary: `${isPartialScope ? "Teilprüfung" : formatHealthStatus(evaluation.status)} · ${evaluation.issues.length} Prüfpunkt/Prüfpunkte`,
       status: project.status,
       target: { kind: "project", id: project.id },
     }],

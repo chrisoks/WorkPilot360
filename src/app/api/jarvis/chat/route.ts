@@ -44,12 +44,16 @@ export async function POST(req: Request) {
   }
 
   const context = sanitizeJarvisSurfaceContext(body.context);
+  const conversationContext = body.conversationContext
+    ? sanitizeJarvisSurfaceContext(body.conversationContext)
+    : undefined;
   const accessProfile = createJarvisAccessProfile(sessionActor, actorResult.actor);
   const projectHealthResponse = await resolveJarvisProjectHealthRequest({
     question: message,
     organizationId: organization.id,
     accessProfile,
     context,
+    ...(conversationContext ? { conversationContext } : {}),
   });
   if (projectHealthResponse) {
     return NextResponse.json(projectHealthResponse);
