@@ -32077,6 +32077,9 @@ await addProjectLogbookEntry(
     loading: "JARVIS prüft deine Frage...",
   };
   const managementAiSuggestions = [
+    ...(selectedProjectFile
+      ? [{ label: "Projekt prüfen", question: "Prüfe dieses Projekt vollständig." }]
+      : []),
     { label: "Angebot anlegen", question: "Wie lege ich ein Angebot an?" },
     ...(canUseSalesAi
       ? [{ label: "Kunden heute angehen", question: "Welche Kunden oder Angebote soll ich heute aktiv angehen?" }]

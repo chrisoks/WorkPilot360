@@ -1,5 +1,26 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS-Projekt-Gesundheitscheck 2026-07-27: In einer geöffneten
+  Projektakte bietet JARVIS den direkten Einstieg `Projekt prüfen`. Fragen
+  wie `Prüfe dieses Projekt vollständig`, `Was fehlt bei diesem Projekt?`
+  oder `Wie können wir dieses Projekt verbessern?` werden vor allgemeiner
+  Systemhilfe als deterministische Diagnose erkannt. Der Check verbindet
+  Projektstammdaten, stabile Kundenzuordnung, Projektart, Verantwortlichkeit,
+  Gewerk und Ausführungsort mit den tatsächlich einschlägigen
+  Abrechnungsregeln: Dauerläufer-Abrechnungsmodell und Laufzeit,
+  Stundenabrechnung mit Gewerk/Abrechnungsleistung/Rechnungsentwurf,
+  Angebotszuweisung manueller Zeiten bei Einmalprojekten,
+  Pauschalabrechnungs-Konfiguration, Zeitbudget, Planung, sichtbare Aufgaben
+  und Projektgewinn-Datenqualität. Jeder Treffer enthält Beleg, Folge und
+  konkreten nächsten Schritt; kritische Blocker werden vor weiteren
+  Prüfhinweisen dargestellt. Das Ergebnis zeigt eine nachvollziehbare
+  0-bis-100-Einordnung und die für die Projektart erkannte Automatik.
+  Finanz-, Kontakt-, Aufgaben- und Kostensatzprüfungen werden nur ausgeführt,
+  wenn sowohl echte Sitzung als auch wirksame Rolle sie erlauben. Gesperrte
+  Daten werden nicht geladen. Der Check ist organisationsgebunden, rein
+  lesend, deterministisch und verursacht keine OpenAI-Tokenkosten. Keine
+  Prisma- oder Datenbankänderung; keine automatische Korrektur.
+
 - Einheitlicher JARVIS-Dialog 2026-07-27: Die sichtbaren Modi `Systemhilfe`,
   `Vertrieb` und `BWL` wurden zu einem gemeinsamen Chat mit der Bezeichnung
   `JARVIS · Dein KI-Assistent für WorkPilot360` zusammengeführt. Die
@@ -6016,3 +6037,4 @@ Wiederaufbau begonnen 2026-06-05:
 - Kundenakte Ansprechpartner-Karten 2026-07-22: Ansprechpartner werden als ruhige, responsive Karten mit Initialen, kompakten Statuskennzeichen und ausschließlich vorhandenen Telefon-, Mobil- und E-Mail-Werten dargestellt. Leere Mobilfelder sowie wiederholte Hinweise auf fehlende Projektzuordnungen entfallen; direkt zugeordnete Projekte erscheinen nur, wenn sie tatsächlich vorhanden sind. Der Hauptkontakt bleibt durch eine dezente Petrolkante erkennbar, Bearbeiten ist direkt an jeder Karte erreichbar und die interne Scrollfläche wurde entfernt. Keine Prisma-Schemaänderung.
 - Winterdienst-Kalkulation Grundlage 2026-07-23: Die Excel-Logik für Bereitschaft, Arbeitszeit und Streugut liegt zentral in `src/lib/winter-service/calculation.ts`. Variante `Streuen` ist die Basis, `Streuen und Schieben` startet mit einstellbaren Zuschlägen von 25 % Arbeitszeit und 50 % Salz, die Pauschalvariante ist eine einstellbare Mischkalkulation mit Standard 65/35. Das alternative Modell aus monatlicher Bereitschaft plus Aufwand bleibt eine getrennte Vergleichsrechnung. Der eigene Sidebar-Reiter `Kalkulations-Rechner` zeigt alle Eingaben und drei Ergebnisvarianten; Kalkulationen können ohne Zuordnung berechnet, aber nur mit einem dem Kunden fest zugeordneten Projekt gespeichert werden. Jeder Speichervorgang erzeugt eine unveränderliche neue Version mit vollständigem Eingabe-/Ergebnis-Snapshot. Paketgenerierung sowie bedingte Projekt-/Kundenakten-Reiter folgen auf dieser geprüften Basis. Der additive Prisma-Diff enthält ausschließlich die neue Tabelle `WinterServiceCalculation` samt Indizes.
 - Winterdienst-Einsatzhäufigkeit 2026-07-23: Die Kalkulation verwendet nur noch einen Planwert `Erwartete Einsätze`; der zweite Prognosewert und dessen Ergebnisfelder wurden entfernt (neue Snapshots: Schema-Version 2). Der Rechner zeigt als Entscheidungshilfe den historischen Durchschnitt je Kunde und Wintersaison Oktober bis April, systemweit als gewichteten Durchschnitt aller Kunden-Saisons sowie nach Kundenauswahl kundenspezifisch. Ein Einsatz ist ein eindeutiger Projekt-/Kalendertag, damit mehrere Mitarbeiterstempel nicht mehrfach zählen. `Nur Streuen` und `Streuen und Schieben` werden ausschließlich aus eindeutiger Leistungs-/Paketzuordnung oder dokumentierter Einsatzart gezählt; pauschale und alte unklare Einträge bleiben transparent nur in der Gesamthäufigkeit enthalten. Die Statistik liegt zentral in `src/lib/winter-service/analytics.ts` und wird über `/api/winter-service-analytics` organisations- und berechtigungsgebunden ausgeliefert.
+- JARVIS Stempelungsdiagnose 2026-07-27: Der rein lesende Projekt-Gesundheitscheck prüft Projektzeiten jetzt deterministisch auf ungültige oder ungewöhnliche Zeitwerte, Pausenbesonderheiten, Doppelungen, rollenabhängig auch projektübergreifende Überschneidungen, Mitarbeiter-/Terminverknüpfungen, aktive Sitzungen, Abschlussstatus, Unterbrechungsaufgaben und Überstundenfreigaben. Bei Dauerläufern mit Stundenabrechnung werden zusätzlich Monatsentwürfe, Gewerk und Abrechnungsleistung, Rechnungsverknüpfungen, Rundung, Stundenzeilen, Positionsmengen und Rechnungssummen gegengeprüft. Pausierte Stempelungen werden wegen der bestehenden Speicherung des letzten Wiederaufnahmezeitpunkts nicht fälschlich anhand von Start/Ende automatisch korrigiert, sondern als nur eingeschränkt rekonstruierbar erklärt. Datenabfragen bleiben doppelt an Session- und effektive Rolle gebunden; gesperrte Finanz-, Aufgaben-, Lohn- und projektübergreifende Mitarbeiterdaten werden nicht geladen. Keine Prisma-Schemaänderung und keine automatische Datenänderung.

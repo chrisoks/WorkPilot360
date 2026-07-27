@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   getSessionBoundActor: vi.fn(),
   sessionBoundActorResponse: vi.fn(),
   sanitizeJarvisSurfaceContext: vi.fn(),
+  resolveJarvisProjectHealthRequest: vi.fn(),
   resolveJarvisPersonDiagnosticRequest: vi.fn(),
   resolveJarvisPersonSummaryRequest: vi.fn(),
   resolveJarvisSalesAnalysisIntent: vi.fn(),
@@ -37,6 +38,10 @@ vi.mock("@/lib/jarvis/person-summary", () => ({
   resolveJarvisPersonSummaryRequest: mocks.resolveJarvisPersonSummaryRequest,
 }));
 
+vi.mock("@/lib/jarvis/project-health", () => ({
+  resolveJarvisProjectHealthRequest: mocks.resolveJarvisProjectHealthRequest,
+}));
+
 vi.mock("@/lib/jarvis/sales-analysis", () => ({
   resolveJarvisSalesAnalysisIntent: mocks.resolveJarvisSalesAnalysisIntent,
   resolveJarvisSalesAnalysisRequest: mocks.resolveJarvisSalesAnalysisRequest,
@@ -63,6 +68,7 @@ describe("POST /api/jarvis/chat", () => {
     });
     mocks.sanitizeJarvisSurfaceContext.mockReturnValue({ module: "Projekte" });
     mocks.createJarvisAccessProfile.mockReturnValue({ profile: true });
+    mocks.resolveJarvisProjectHealthRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisPersonDiagnosticRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisPersonSummaryRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisSalesAnalysisIntent.mockReturnValue(false);
@@ -166,6 +172,45 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.resolveJarvisPersonSummaryRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisSystemHelp).not.toHaveBeenCalled();
+  });
+
+  it("returns the project health check before other diagnostic paths", async () => {
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      recordType: "project",
+      recordId: "project-1",
+    });
+    mocks.resolveJarvisProjectHealthRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "project.health",
+      message: "Das Projekt erreicht 84 von 100 Punkten.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Prüfe dieses Projekt vollständig.",
+          context: { recordType: "project", recordId: "project-1" },
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      topicId: "project.health",
+      deterministic: true,
+    });
+    expect(mocks.resolveJarvisProjectHealthRequest).toHaveBeenCalledWith({
+      question: "Prüfe dieses Projekt vollständig.",
+      organizationId: "organization-1",
+      accessProfile: { profile: true },
+      context: { recordType: "project", recordId: "project-1" },
+    });
+    expect(mocks.resolveJarvisPersonDiagnosticRequest).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
   });
 
   it("keeps normal questions on the established system-help path", async () => {

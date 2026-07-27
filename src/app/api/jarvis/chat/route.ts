@@ -14,6 +14,7 @@ import {
   resolveJarvisSalesAnalysisIntent,
   resolveJarvisSalesAnalysisRequest,
 } from "@/lib/jarvis/sales-analysis";
+import { resolveJarvisProjectHealthRequest } from "@/lib/jarvis/project-health";
 import { createJarvisAccessProfile } from "@/lib/jarvis/security";
 
 export const dynamic = "force-dynamic";
@@ -44,6 +45,15 @@ export async function POST(req: Request) {
 
   const context = sanitizeJarvisSurfaceContext(body.context);
   const accessProfile = createJarvisAccessProfile(sessionActor, actorResult.actor);
+  const projectHealthResponse = await resolveJarvisProjectHealthRequest({
+    question: message,
+    organizationId: organization.id,
+    accessProfile,
+    context,
+  });
+  if (projectHealthResponse) {
+    return NextResponse.json(projectHealthResponse);
+  }
   const personDiagnosticResponse = await resolveJarvisPersonDiagnosticRequest({
     question: message,
     organizationId: organization.id,

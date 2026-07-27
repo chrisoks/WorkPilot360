@@ -163,7 +163,7 @@ export function canAccessJarvisTask(
   });
 }
 
-function getTaskActorWhere(
+export function getJarvisTaskActorWhere(
   actor: JarvisAccessProfile["sessionActor"]
 ): Prisma.TaskWhereInput {
   if (actor.role === Role.ADMIN || actor.role === Role.GESCHAEFTSFUEHRER) {
@@ -309,8 +309,8 @@ async function findTasks(
     where: {
       organizationId,
       AND: [
-        getTaskActorWhere(profile.sessionActor),
-        getTaskActorWhere(profile.effectiveActor),
+        getJarvisTaskActorWhere(profile.sessionActor),
+        getJarvisTaskActorWhere(profile.effectiveActor),
       ],
       ...(intent.query
         ? {
