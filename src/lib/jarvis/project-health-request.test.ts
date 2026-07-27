@@ -275,6 +275,41 @@ describe("resolveJarvisProjectHealthRequest", () => {
     expect(dbMocks.invoiceFindMany).not.toHaveBeenCalled();
   });
 
+  it("answers the same clear project-type question despite a transposed word", async () => {
+    dbMocks.queryRaw.mockResolvedValueOnce([{
+      ...project,
+      id: "project-has-1",
+      projectNumber: "HAS-1",
+      title: "Hausmeisterservice",
+      projectKind: "Dauerläufer-Projekt",
+      recurringBillingMode: "monthlyFlat",
+      projectRuntimeFrom: "2026-05-01",
+      projectRuntimeUntil: "2026-12-31",
+      billingInterval: "monatlich",
+    }]);
+
+    const response = await resolveJarvisProjectHealthRequest({
+      question: "Was ist HAS-1 für ein Proejkt?",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "employee-1",
+        role: Role.MITARBEITER,
+      }),
+    });
+
+    expect(response).toMatchObject({
+      type: "answer",
+      topicId: "project.logic.explanation",
+      structured: {
+        title: "Projektart · HAS-1",
+      },
+    });
+    expect(JSON.stringify(response)).toContain(
+      "Dauerläufer mit Monatspauschale"
+    );
+    expect(dbMocks.projectTimeEntryFindMany).not.toHaveBeenCalled();
+  });
+
   it("explains hourly billing directly and does not mistake it for a flat rate", async () => {
     dbMocks.queryRaw.mockResolvedValueOnce([{
       ...project,

@@ -1,25 +1,17 @@
+import { normalizeJarvisIntentText } from "@/lib/jarvis/intent-text";
+
 export type JarvisProjectDialogIntent =
   | "explainProjectType"
   | "explainBilling"
   | "explainProcess"
   | "ambiguousProjectQuestion";
 
-function normalize(value: string) {
-  return value
-    .toLocaleLowerCase("de-DE")
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[?!.,;:]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 export function resolveJarvisProjectDialogIntent(input: {
   question: string;
   hasProjectContext: boolean;
 }): JarvisProjectDialogIntent | undefined {
   if (!input.hasProjectContext) return undefined;
-  const value = normalize(input.question);
+  const value = normalizeJarvisIntentText(input.question);
   const diagnosticCommand =
     /(pruf|check|analysier|untersuch|kontrollier)/.test(value) ||
     /(gesundheitscheck|projektcheck|datenqualitat|auffallig|verbesserungspotenzial)/.test(

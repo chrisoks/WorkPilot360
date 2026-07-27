@@ -25,7 +25,21 @@ describe("JARVIS project dialog intent", () => {
   });
 
   it.each([
+    ["Was ist HAS-1 für ein Proejkt?", "explainProjectType"],
+    ["Welches Abrechnungsmodelll hat HAS-1?", "explainBilling"],
+    ["Welche Logki gilt bei HAS-1?", "explainProcess"],
+  ])("tolerates a clear intent typo in %s", (question, expected) => {
+    expect(
+      resolveJarvisProjectDialogIntent({
+        question,
+        hasProjectContext: true,
+      })
+    ).toBe(expected);
+  });
+
+  it.each([
     "Prüfe HAS-1 vollständig.",
+    "Pürfe HAS-1 vollständig.",
     "Prüfe Planung und Termine für HAS-1.",
     "Analysiere die Stempelungen von HAS-1.",
   ])("leaves diagnostic commands to the health router: %s", (question) => {

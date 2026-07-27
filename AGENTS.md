@@ -13,6 +13,13 @@
   genannte Projektnummer folgen weiterhin ihrer festgelegten Priorität.
   Umgangssprachliche Projektart-, Abrechnungs- und Prozessfragen besitzen
   einen eigenen getesteten Intent-Baustein statt einer HAS-1-Sonderregel.
+  Bekannte Intent- und Fachwörter werden bei einem eindeutigen leichten
+  Tippfehler tolerant normalisiert: kurze Wörter höchstens mit einer
+  Abweichung, lange Fachbegriffe mit höchstens zwei. Buchstabenvertauschungen
+  wie `proejkt` werden dadurch erkannt. Tokens mit Ziffern, Bindestrich,
+  E-Mail-/Pfadmerkmalen sowie Namen und unbekannte freie Datensatzwerte werden
+  nicht automatisch umgeschrieben; mehrdeutige oder zu weit entfernte Wörter
+  bleiben der sicheren Rückfrage vorbehalten.
   Rein lesend, ohne OpenAI-Aufruf und ohne Prisma-/Datenbankänderung.
 
 - JARVIS Projektarten-Regelmatrix 2026-07-27: Die Projektdiagnose leitet
