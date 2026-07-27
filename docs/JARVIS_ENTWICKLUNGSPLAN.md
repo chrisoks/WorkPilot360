@@ -1,6 +1,6 @@
 # JARVIS Entwicklungsplan
 
-Stand: 24.07.2026
+Stand: 27.07.2026
 
 ## Aktueller Umsetzungsstand
 
@@ -100,6 +100,49 @@ WorkPilot360. Er soll:
 JARVIS ist nicht die Quelle für Systemzustände, Berechnungen oder
 Berechtigungen. WorkPilot360 bleibt die führende und ausführende Instanz. Die
 KI versteht, verbindet, priorisiert und formuliert.
+
+Das Zielbild umfasst ausdrücklich auch:
+
+- neue Kunden, Projekte, Artikel, Leistungen und Prozessdaten automatisch
+  über aktuelle, organisationsgebundene Adapter zu berücksichtigen,
+- Materialverbräuche, Artikel, Leistungen, Pakete, Einkaufspreise,
+  Stundenverrechnungssätze, tatsächlich erzielte Erlöse, Kosten und Margen
+  gemeinsam zu bewerten,
+- nachvollziehbare Preis- und Prozessanpassungen vorzuschlagen, ohne
+  Stammdaten ungeprüft zu verändern,
+- Verbesserungspotenziale in Systembedienung, Datenqualität, Wertschöpfung,
+  Vertrieb, Kalkulation und Organisation proaktiv sichtbar zu machen,
+- Mitarbeitende bei Nachfassen, Neukundengewinnung, Potenzialausschöpfung und
+  Zusatzverkauf konkret zu unterstützen.
+
+### 1.1 Kontrolliertes Lernen
+
+JARVIS darf lernen, aber nicht unkontrolliert sein eigenes Systemwissen
+umschreiben. Der verbindliche Lernkreislauf lautet:
+
+1. JARVIS erkennt wiederkehrende Rückfragen, Prozessabweichungen,
+   Datenqualitätsprobleme oder Verbesserungspotenziale.
+2. Er formuliert einen belegten Lern- oder Optimierungsvorschlag mit Quelle,
+   betroffenen Rollen, Risiken und erwarteter Wirkung.
+3. Ein fachlich berechtigter Verantwortlicher prüft, ändert oder verwirft den
+   Vorschlag.
+4. Nur freigegebenes Wissen wird versioniert mit geprüftem Commit,
+   Gültigkeitsdatum und Regressionstest in Wissensbasis oder Systemlogik
+   übernommen.
+5. Veraltete Regeln werden nachvollziehbar ersetzt, nicht still überlagert.
+
+Gesprächsinhalte, einzelne Nutzerbehauptungen und Modellantworten sind niemals
+alleinige fachliche Wahrheit. Rollen, Datenschutz, Berechnungen und
+Kernprozesse bleiben durch WorkPilot360 und freigegebene Regeln bestimmt.
+
+### 1.2 Umgang mit neuen Ideen während der Entwicklung
+
+Neue JARVIS-Ideen werden sofort fachlich eingeordnet und an der passenden
+Stelle dieses Entwicklungsplans ergänzt. Sie verändern jedoch nicht
+automatisch das gerade aktive Entwicklungspaket. Vorgezogen wird ein Thema
+nur nach einer bewussten gemeinsamen Prioritätsentscheidung. Dadurch bleiben
+Abhängigkeiten, Sicherheitsfundament und chronologische Abnahme erhalten,
+ohne neue Ideen zu verlieren.
 
 ## 2. Verbindliche Sicherheitsgrundsätze
 
@@ -896,6 +939,15 @@ Sicherheitskontrollen wie die normale UI.
 
 - sichere Vertriebs- und Managementadapter,
 - verbundene Kunden-, Projekt-, Angebots-, Rechnungs- und Leistungsansichten,
+- Material- und Artikelverbräuche einschließlich Paketbestandteilen
+  positionsweise auswerten,
+- Leistungen und Stundenverrechnungssätze mit fakturiertem Umsatz,
+  zugeordneten Stempelstunden und rollengerecht freigegebenen Kosten
+  analysieren,
+- aktuelle Einkaufs-/Verkaufspreise mit historischen Kosten-Snapshots,
+  tatsächlich erzielten Preisen und Margen vergleichen,
+- fundierte Preis- und Anpassungskorridore nur bei ausreichender Datenbasis
+  vorschlagen; keine automatische Preisänderung,
 - historische Wiederholungs-, Nachfass- und Cross-Selling-Signale,
 - regelmäßiger Chancen- und Projektrisiko-Check zunächst im Dry-Run,
 - JARVIS-Cockpit und interne Hinweise an berechtigte Mitarbeitende,
@@ -996,7 +1048,9 @@ Nach Änderungen mindestens:
 - fachlichen Ausbau des Mietmoduls vor JARVIS-Mietaktionen abschließen,
 - Wissenspflege bei jeder neuen/änderten WorkPilot-Funktion verpflichtend
   machen,
-- Wissensabdeckungsbericht in Regression/CI integrieren.
+- Wissensabdeckungsbericht in Regression/CI integrieren,
+- Zielmargen, Mindestdatenbasis, Vergleichszeiträume und Freigaberollen für
+  Material-, Leistungs-, SVS- und Preisempfehlungen fachlich festlegen.
 
 ## 17. Definition „JARVIS kennt das System“
 
