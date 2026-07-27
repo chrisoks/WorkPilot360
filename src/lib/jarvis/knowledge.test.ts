@@ -31,6 +31,11 @@ describe("JARVIS system help", () => {
     const result = resolveJarvisSystemHelp("Wie trage ich einen Zeiteintrag ein?", {}, employeeAccess);
     expect(result.type).toBe("clarification");
     expect(result.choices).toHaveLength(3);
+    expect(result.choices?.[0]).toEqual({
+      id: "time-entry-one-time",
+      label: "Einmaliges Projekt",
+      prompt: "Wie erfasse ich einen manuellen Zeiteintrag für ein einmaliges Projekt?",
+    });
   });
 
   it("uses safe project context without requesting another clarification", () => {

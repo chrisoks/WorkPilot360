@@ -12,6 +12,7 @@ import {
   resolveJarvisReadIntent,
 } from "@/lib/jarvis/read-intent";
 import type { JarvisSurfaceContext } from "@/lib/jarvis/knowledge";
+import type { JarvisDialogChoice } from "@/lib/jarvis/dialog";
 import { canReadTask } from "@/lib/permissions";
 
 export type JarvisRecordTarget = {
@@ -49,11 +50,12 @@ export type JarvisStructuredAnswer = {
 };
 
 export type JarvisReadResponse = {
-  type: "answer" | "refusal" | "unknown";
+  type: "answer" | "clarification" | "refusal" | "unknown";
   message: string;
   topicId: string;
   records?: JarvisRecordResult[];
   structured?: JarvisStructuredAnswer;
+  choices?: JarvisDialogChoice[];
   deterministic: true;
 };
 

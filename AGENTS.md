@@ -1,5 +1,28 @@
 # WorkPilot360 Agent Handover
 
+- Einheitlicher JARVIS-Dialog 2026-07-27: Die sichtbaren Modi `Systemhilfe`,
+  `Vertrieb` und `BWL` wurden zu einem gemeinsamen Chat mit der Bezeichnung
+  `JARVIS · Dein KI-Assistent für WorkPilot360` zusammengeführt. Die
+  Fachgrenzen bleiben intern bestehen: Ein deterministischer Router ordnet
+  Bedienfragen, Vertrieb und BWL automatisch zu; die bisherigen
+  serverseitigen Rollen-, Sitzungs- und Datenklassenprüfungen werden dadurch
+  nicht aufgeweicht. Der Chat besitzt nur noch einen Gesprächsverlauf.
+  Auswahlantworten sind keine untypisierten Textstrings mehr, sondern
+  validierte Objekte aus ID, sichtbarem Label und vollständigem Folge-Prompt.
+  Dadurch funktionieren sowohl die bestehende Projektart-Rückfrage als auch
+  neue geführte Dialoge ohne fest verdrahtete Sonderlogik im Frontend.
+  Breite Personenfragen wie `Sag mir alles über Klaus Testmann` liefern nach
+  eindeutiger, organisationsgebundener Suche zunächst klickbare,
+  rollengerechte Bereiche für Überblick, Projekte, Dokumente, Aufgaben,
+  Aktivitäten, Kontaktdaten und Projektdiagnose. Erst der gewählte Bereich
+  lädt die dafür nötigen Daten; der sichtbare Klick bleibt kurz, während der
+  interne Folge-Prompt den Personenbezug sicher mitführt. Eindeutige
+  Detailfragen werden weiterhin direkt beantwortet. Deterministische
+  Vertriebsanalysen können im gemeinsamen Systempfad antworten; freie
+  Vertriebs- und BWL-Fragen werden intern zum bestehenden, weiterhin
+  rollengeschützten KI-Pfad geleitet. Keine Prisma- oder
+  Datenbankänderung.
+
 - JARVIS-Chat-Autoscroll 2026-07-27: Der Nachrichtenbereich folgt nach dem
   Senden der eigenen Nachricht, beim Einblenden der Tippanimation und beim
   Eintreffen der Antwort automatisch der neuesten Konversation. Wächst eine

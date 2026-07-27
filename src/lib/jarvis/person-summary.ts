@@ -11,10 +11,23 @@ import {
   type JarvisAccessProfile,
 } from "@/lib/jarvis/security";
 import type { JarvisSurfaceContext } from "@/lib/jarvis/knowledge";
+import {
+  createJarvisDialogChoice,
+  type JarvisDialogChoice,
+} from "@/lib/jarvis/dialog";
 
 type JarvisPersonIntent = {
   query: string;
+  scope?: JarvisPersonScope;
 };
+
+type JarvisPersonScope =
+  | "overview"
+  | "projects"
+  | "commercial"
+  | "tasks"
+  | "activities"
+  | "contact";
 
 type JarvisPersonDiagnosticIntent = {
   query?: string;
@@ -77,6 +90,11 @@ const PERSON_QUESTION_PATTERNS = [
   /was\s+(?:weisst|weiss)\s+du(?:\s+denn)?(?:\s+alles)?\s+uber\s+(.+)/i,
   /was\s+ist\s+dir(?:\s+alles)?\s+uber\s+(.+)\s+bekannt/i,
   /erzahl\s+mir(?:\s+bitte)?(?:\s+etwas|\s+alles)?\s+uber\s+(.+)/i,
+  /sag\s+mir(?:\s+bitte)?(?:\s+etwas|\s+alles)?\s+uber\s+(.+)/i,
+  /was\s+kannst\s+du\s+mir\s+(?:uber|zu)\s+(.+?)\s+sagen/i,
+  /(?:gib|zeig|zeige|nenn)\s+mir\s+.+?\s+(?:uber|zu|von|bei)\s+(.+)/i,
+  /welche\s+projekte\s+hat\s+(.+)/i,
+  /wie\s+ist\s+der\s+stand\s+bei\s+(.+)/i,
 ];
 
 const GENERIC_SUBJECTS = new Set([
@@ -109,6 +127,28 @@ function cleanQuery(value: string) {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 120);
+}
+
+function resolvePersonScope(normalizedQuestion: string): JarvisPersonScope | undefined {
+  if (/\b(gesamtuberblick|kompakter uberblick|kurzer uberblick)\b/.test(normalizedQuestion)) {
+    return "overview";
+  }
+  if (/\b(angebot|angebote|rechnung|rechnungen|dokumente)\b/.test(normalizedQuestion)) {
+    return "commercial";
+  }
+  if (/\b(aufgabe|aufgaben|offene punkte|to dos?)\b/.test(normalizedQuestion)) {
+    return "tasks";
+  }
+  if (/\b(aktivitat|aktivitaten|logbuch|letzte kontakte|kontaktverlauf)\b/.test(normalizedQuestion)) {
+    return "activities";
+  }
+  if (/\b(kontaktdaten|telefon|telefonnummer|e mail|email|adresse)\b/.test(normalizedQuestion)) {
+    return "contact";
+  }
+  if (/\b(projekt|projekte|projektstatus|projektstand)\b/.test(normalizedQuestion)) {
+    return "projects";
+  }
+  return undefined;
 }
 
 function formatDate(value: Date | string | null | undefined) {
@@ -200,7 +240,8 @@ export function resolveJarvisPersonIntent(question: string): JarvisPersonIntent 
     const match = normalizedQuestion.match(pattern);
     const query = cleanQuery(match?.[1] ?? "");
     if (!query || query.length < 3 || GENERIC_SUBJECTS.has(normalize(query))) continue;
-    return { query };
+    const scope = resolvePersonScope(normalizedQuestion);
+    return scope ? { query, scope } : { query };
   }
   return undefined;
 }
@@ -225,6 +266,8 @@ export function resolveJarvisPersonDiagnosticIntent(
     /\bbei\s+(.+?)\s+(?:nur\s+)?\d+\s+projekte?\b/,
     /\bfur\s+(.+?)\s+(?:nur\s+)?\d+\s+projekte?\b/,
     /\bvon\s+(.+?)\s+(?:nur\s+)?\d+\s+projekte?\b/,
+    /\bbei\s+(.+?)\s+(?:moglicherweise\s+)?unterschiedliche\s+projektzahlen\b/,
+    /\bprojektzahlen\s+(?:von|bei)\s+(.+)$/,
   ];
   for (const pattern of queryPatterns) {
     const match = normalizedQuestion.match(pattern);
@@ -404,10 +447,109 @@ function contactRecord(contact: ContactCandidate): JarvisRecordResult {
   };
 }
 
+function projectRecord(project: ProjectRow): JarvisRecordResult {
+  return {
+    id: `person-summary-project-${project.id}`,
+    kind: "project",
+    title: `${project.projectNumber || "Ohne Nummer"} · ${project.title}`,
+    subtitle: joinParts([project.status, project.trade]),
+    summary: joinParts([
+      project.projectKind || project.projectType || "Projektart nicht gepflegt",
+      `Aktualisiert: ${formatDate(project.updatedAt)}`,
+    ]),
+    status: project.status,
+    target: { kind: "project", id: project.id },
+  };
+}
+
+function buildPersonClarification(
+  candidate: PersonCandidate,
+  accessProfile: JarvisAccessProfile
+): JarvisReadResponse {
+  const choices: JarvisDialogChoice[] = [
+    createJarvisDialogChoice(
+      `person-overview-${candidate.id}`,
+      "Gesamtüberblick",
+      `Gib mir einen kompakten Gesamtüberblick zu ${candidate.displayName}.`
+    ),
+  ];
+
+  if (candidate.kind === "customer") {
+    if (getJarvisActionDecision("project.read", accessProfile).executable) {
+      choices.push(
+        createJarvisDialogChoice(
+          `person-projects-${candidate.id}`,
+          "Projekte & Status",
+          `Zeige mir die Projekte und Projektstatus von ${candidate.displayName}.`
+        )
+      );
+    }
+    const canReadOffers = getJarvisActionDecision("offer.read", accessProfile).executable;
+    const canReadInvoices = getJarvisActionDecision("invoice.read", accessProfile).executable;
+    if (canReadOffers || canReadInvoices) {
+      choices.push(
+        createJarvisDialogChoice(
+          `person-commercial-${candidate.id}`,
+          "Angebote & Rechnungen",
+          `Zeige mir Angebote und Rechnungen von ${candidate.displayName}.`
+        )
+      );
+    }
+    if (getJarvisActionDecision("task.read", accessProfile).executable) {
+      choices.push(
+        createJarvisDialogChoice(
+          `person-tasks-${candidate.id}`,
+          "Offene Aufgaben",
+          `Zeige mir offene Aufgaben und offene Punkte zu ${candidate.displayName}.`
+        )
+      );
+    }
+    choices.push(
+      createJarvisDialogChoice(
+        `person-activities-${candidate.id}`,
+        "Letzte Aktivitäten",
+        `Zeige mir die letzten Aktivitäten zu ${candidate.displayName}.`
+      ),
+      createJarvisDialogChoice(
+        `person-contact-${candidate.id}`,
+        "Kontaktdaten",
+        `Zeige mir die Kontaktdaten von ${candidate.displayName}.`
+      )
+    );
+    if (getJarvisActionDecision("project.read", accessProfile).executable) {
+      choices.push(
+        createJarvisDialogChoice(
+          `person-diagnostic-${candidate.id}`,
+          "Auffälligkeiten prüfen",
+          `Warum gibt es bei ${candidate.displayName} möglicherweise unterschiedliche Projektzahlen?`
+        )
+      );
+    }
+  } else {
+    choices.push(
+      createJarvisDialogChoice(
+        `employee-contact-${candidate.id}`,
+        "Dienstliche Kontaktdaten",
+        `Zeige mir die dienstlichen Kontaktdaten von ${candidate.displayName}.`
+      )
+    );
+  }
+
+  return {
+    type: "clarification",
+    topicId: "person.summary.clarification",
+    message: `Ich habe ${candidate.displayName} eindeutig gefunden. Was möchtest du konkret wissen?`,
+    choices,
+    records: candidate.kind === "customer" ? [contactRecord(candidate)] : undefined,
+    deterministic: true,
+  };
+}
+
 async function buildCustomerSummary(input: {
   organizationId: string;
   contact: ContactCandidate;
   accessProfile: JarvisAccessProfile;
+  scope: JarvisPersonScope;
 }): Promise<JarvisReadResponse> {
   const childContacts = await prisma.contact.findMany({
     where: {
@@ -422,7 +564,8 @@ async function buildCustomerSummary(input: {
     ...childContacts.map((contact) => contact.id),
   ].filter(Boolean);
 
-  const projects = linkedContactIds.length
+  const needsProjects = ["overview", "projects", "commercial", "tasks"].includes(input.scope);
+  const projects = needsProjects && linkedContactIds.length
     ? await prisma.$queryRaw<ProjectRow[]>(Prisma.sql`
         SELECT "id", "projectNumber", "title", "status", "projectKind",
                "projectType", "trade", "updatedAt"
@@ -442,7 +585,9 @@ async function buildCustomerSummary(input: {
   const offerDecision = getJarvisActionDecision("offer.read", input.accessProfile);
   const invoiceDecision = getJarvisActionDecision("invoice.read", input.accessProfile);
   const [offers, invoices, tasks, logbookEntries] = await Promise.all([
-    offerDecision.executable && projectIds.length
+    ["overview", "commercial"].includes(input.scope) &&
+    offerDecision.executable &&
+    projectIds.length
       ? prisma.offer.findMany({
           where: {
             organizationId: input.organizationId,
@@ -467,7 +612,9 @@ async function buildCustomerSummary(input: {
           },
         })
       : Promise.resolve([]),
-    invoiceDecision.executable && projectIds.length
+    ["overview", "commercial"].includes(input.scope) &&
+    invoiceDecision.executable &&
+    projectIds.length
       ? prisma.invoice.findMany({
           where: {
             organizationId: input.organizationId,
@@ -494,7 +641,7 @@ async function buildCustomerSummary(input: {
           },
         })
       : Promise.resolve([]),
-    projectIds.length
+    ["overview", "tasks"].includes(input.scope) && projectIds.length
       ? prisma.task.findMany({
           where: {
             organizationId: input.organizationId,
@@ -511,6 +658,10 @@ async function buildCustomerSummary(input: {
           take: 100,
           select: {
             id: true,
+            title: true,
+            status: true,
+            deadline: true,
+            updatedAt: true,
             ownerId: true,
             teamId: true,
             createdById: true,
@@ -519,22 +670,24 @@ async function buildCustomerSummary(input: {
           },
         })
       : Promise.resolve([]),
-    prisma.customerLogbookEntry.findMany({
-      where: {
-        organizationId: input.organizationId,
-        OR: [
-          { customerId: { in: linkedContactIds } },
-          { contactId: { in: linkedContactIds } },
-        ],
-      },
-      orderBy: { occurredAt: "desc" },
-      take: 1,
-      select: {
-        title: true,
-        eventType: true,
-        occurredAt: true,
-      },
-    }),
+    ["overview", "activities"].includes(input.scope)
+      ? prisma.customerLogbookEntry.findMany({
+          where: {
+            organizationId: input.organizationId,
+            OR: [
+              { customerId: { in: linkedContactIds } },
+              { contactId: { in: linkedContactIds } },
+            ],
+          },
+          orderBy: { occurredAt: "desc" },
+          take: 8,
+          select: {
+            title: true,
+            eventType: true,
+            occurredAt: true,
+          },
+        })
+      : Promise.resolve([]),
   ]);
 
   const visibleTasks = tasks.filter((task) =>
@@ -562,6 +715,168 @@ async function buildCustomerSummary(input: {
     input.contact.phone || input.contact.mobile,
     joinParts([input.contact.postalCode, input.contact.city]).replace(/ · /g, " "),
   ]);
+  const projectRecords = projects.map(projectRecord);
+  const offerRecords: JarvisRecordResult[] = offers.map((offer) => ({
+    id: `person-summary-offer-${offer.id}`,
+    kind: "offer",
+    title: `${offer.offerNumber} · ${offer.customerName || offer.projectTitle}`,
+    subtitle: joinParts([offer.projectNumber, offer.projectTitle]),
+    summary: `Zuletzt aktualisiert: ${formatDate(offer.updatedAt)}`,
+    status: offer.wonAt ? "Gewonnen" : offer.status,
+    target: { kind: "offer", id: offer.id, projectId: offer.projectId },
+  }));
+  const invoiceRecords: JarvisRecordResult[] = invoices.map((invoice) => ({
+    id: `person-summary-invoice-${invoice.id}`,
+    kind: "invoice",
+    title: invoice.invoiceNumber,
+    subtitle: invoice.dueDate ? `Fällig: ${formatDate(invoice.dueDate)}` : "Ohne Fälligkeit",
+    summary: `Zuletzt aktualisiert: ${formatDate(invoice.updatedAt)}`,
+    status: invoice.isPaid ? "Bezahlt" : invoice.status,
+    target: { kind: "invoice", id: invoice.id, projectId: invoice.projectId },
+  }));
+  const taskRecords: JarvisRecordResult[] = visibleTasks.map((task) => ({
+    id: `person-summary-task-${task.id}`,
+    kind: "task",
+    title: task.title,
+    subtitle: task.deadline ? `Fällig: ${formatDate(task.deadline)}` : "Ohne Frist",
+    summary: `Zuletzt aktualisiert: ${formatDate(task.updatedAt)}`,
+    status: task.status,
+    target: { kind: "task", id: task.id, projectId: task.projectId || undefined },
+  }));
+
+  if (input.scope === "projects") {
+    return {
+      type: "answer",
+      topicId: "person.customer.projects",
+      message:
+        `${input.contact.displayName} hat ${projects.length} verknüpfte Projekte, ` +
+        `davon sind ${openProjects.length} nicht abgeschlossen.`,
+      records: [contactRecord(input.contact), ...projectRecords.slice(0, 4)],
+      structured: {
+        title: `Projekte · ${input.contact.displayName}`,
+        subtitle: joinParts([contactType, input.contact.customerNumber]),
+        summary: "Aktueller Projektstand aus stabil verknüpften WorkPilot-Daten.",
+        facts: [
+          { label: "Projekte", value: `${projects.length} verknüpft` },
+          { label: "Offen", value: `${openProjects.length} nicht abgeschlossen` },
+        ],
+        sections: [{
+          title: "Aktueller Stand",
+          items: projects.length
+            ? projects.slice(0, 6).map(
+                (project) =>
+                  `${project.projectNumber || "Ohne Nummer"} · ${project.title}: ${project.status}`
+              )
+            : ["Keine stabil verknüpften Projekte gefunden."],
+          tone: projects.length ? "neutral" : "warning",
+        }],
+      },
+      deterministic: true,
+    };
+  }
+
+  if (input.scope === "commercial") {
+    const commercialRecords = [...offerRecords, ...invoiceRecords].slice(0, 5);
+    return {
+      type: "answer",
+      topicId: "person.customer.commercial",
+      message: [
+        offerDecision.executable
+          ? `${offers.length} Angebote, davon ${openOffers.length} offen.`
+          : "",
+        invoiceDecision.executable
+          ? `${invoices.length} Rechnungen, davon ${openInvoices.length} offen.`
+          : "",
+      ].filter(Boolean).join(" "),
+      records: [contactRecord(input.contact), ...commercialRecords].slice(0, 6),
+      structured: {
+        title: `Angebote & Rechnungen · ${input.contact.displayName}`,
+        subtitle: joinParts([contactType, input.contact.customerNumber]),
+        summary: "Es werden nur Dokumente angezeigt, die für deine Rolle freigegeben sind.",
+        facts: [
+          ...(offerDecision.executable
+            ? [{ label: "Angebote", value: `${offers.length} gesamt · ${openOffers.length} offen` }]
+            : []),
+          ...(invoiceDecision.executable
+            ? [{ label: "Rechnungen", value: `${invoices.length} gesamt · ${openInvoices.length} offen` }]
+            : []),
+        ],
+      },
+      deterministic: true,
+    };
+  }
+
+  if (input.scope === "tasks") {
+    return {
+      type: "answer",
+      topicId: "person.customer.tasks",
+      message:
+        visibleTasks.length > 0
+          ? `Zu ${input.contact.displayName} sind ${visibleTasks.length} offene, für dich sichtbare Aufgaben vorhanden.`
+          : `Zu ${input.contact.displayName} wurde keine offene, für dich sichtbare Aufgabe gefunden.`,
+      records: [contactRecord(input.contact), ...taskRecords.slice(0, 5)],
+      structured: {
+        title: `Offene Aufgaben · ${input.contact.displayName}`,
+        subtitle: "Rollenbasiert gefiltert",
+        summary:
+          visibleTasks.length > 0
+            ? "Diese offenen Punkte sind für deine aktuelle Rolle sichtbar."
+            : "Aktuell besteht kein sichtbarer offener Aufgabenpunkt.",
+        facts: [{ label: "Aufgaben", value: `${visibleTasks.length} offen und sichtbar` }],
+      },
+      deterministic: true,
+    };
+  }
+
+  if (input.scope === "activities") {
+    return {
+      type: "answer",
+      topicId: "person.customer.activities",
+      message: lastActivity
+        ? `Letzte dokumentierte Kundenaktivität: ${lastActivity.title || lastActivity.eventType} am ${formatDate(lastActivity.occurredAt)}.`
+        : `Zu ${input.contact.displayName} ist keine Kundenaktivität im Logbuch dokumentiert.`,
+      records: [contactRecord(input.contact)],
+      structured: {
+        title: `Letzte Aktivitäten · ${input.contact.displayName}`,
+        subtitle: "Kundenlogbuch",
+        sections: [{
+          title: "Verlauf",
+          items: logbookEntries.length
+            ? logbookEntries.slice(0, 6).map(
+                (entry) =>
+                  `${formatDate(entry.occurredAt)} · ${entry.title || entry.eventType}`
+              )
+            : ["Keine Kundenaktivität im Logbuch dokumentiert."],
+          tone: logbookEntries.length ? "neutral" : "warning",
+        }],
+      },
+      deterministic: true,
+    };
+  }
+
+  if (input.scope === "contact") {
+    return {
+      type: "answer",
+      topicId: "person.customer.contact",
+      message: contactDetails
+        ? `Kontaktdaten von ${input.contact.displayName}: ${contactDetails}.`
+        : `Für ${input.contact.displayName} sind keine direkten Kontaktdaten gepflegt.`,
+      records: [contactRecord(input.contact)],
+      structured: {
+        title: `Kontaktdaten · ${input.contact.displayName}`,
+        subtitle: joinParts([contactType, input.contact.customerNumber]),
+        sections: [{
+          title: "Erreichbarkeit",
+          items: contactDetails
+            ? [contactDetails]
+            : ["Keine direkten Kontaktdaten gepflegt."],
+          tone: contactDetails ? "neutral" : "warning",
+        }],
+      },
+      deterministic: true,
+    };
+  }
+
   const summaryParts = [
     `${input.contact.displayName} ist als ${contactType}${
       input.contact.customerNumber ? ` mit der Kundennummer ${input.contact.customerNumber}` : ""
@@ -586,27 +901,8 @@ async function buildCustomerSummary(input: {
 
   const records: JarvisRecordResult[] = [
     contactRecord(input.contact),
-    ...projects.slice(0, 2).map((project) => ({
-      id: `person-summary-project-${project.id}`,
-      kind: "project" as const,
-      title: `${project.projectNumber || "Ohne Nummer"} · ${project.title}`,
-      subtitle: joinParts([project.status, project.trade]),
-      summary: joinParts([
-        project.projectKind || project.projectType || "Projektart nicht gepflegt",
-        `Aktualisiert: ${formatDate(project.updatedAt)}`,
-      ]),
-      status: project.status,
-      target: { kind: "project" as const, id: project.id },
-    })),
-    ...offers.slice(0, Math.max(0, 5 - Math.min(3, 1 + projects.length))).map((offer) => ({
-      id: `person-summary-offer-${offer.id}`,
-      kind: "offer" as const,
-      title: `${offer.offerNumber} · ${offer.customerName || offer.projectTitle}`,
-      subtitle: joinParts([offer.projectNumber, offer.projectTitle]),
-      summary: `Zuletzt aktualisiert: ${formatDate(offer.updatedAt)}`,
-      status: offer.wonAt ? "Gewonnen" : offer.status,
-      target: { kind: "offer" as const, id: offer.id, projectId: offer.projectId },
-    })),
+    ...projectRecords.slice(0, 2),
+    ...offerRecords.slice(0, Math.max(0, 5 - Math.min(3, 1 + projects.length))),
   ].slice(0, 5);
 
   return {
@@ -1042,12 +1338,51 @@ export async function resolveJarvisPersonSummaryRequest(input: {
     };
   }
 
+  if (!intent.scope) {
+    return buildPersonClarification(selected, input.accessProfile);
+  }
+
   if (selected.kind === "employee") {
     return buildEmployeeSummary(selected);
+  }
+  if (
+    intent.scope === "projects" &&
+    !getJarvisActionDecision("project.read", input.accessProfile).executable
+  ) {
+    return {
+      type: "refusal",
+      topicId: "person.customer.projects.refused",
+      message: "Deine aktuelle WorkPilot-Rolle darf die Projekte dieses Kunden nicht über JARVIS lesen.",
+      deterministic: true,
+    };
+  }
+  if (
+    intent.scope === "tasks" &&
+    !getJarvisActionDecision("task.read", input.accessProfile).executable
+  ) {
+    return {
+      type: "refusal",
+      topicId: "person.customer.tasks.refused",
+      message: "Deine aktuelle WorkPilot-Rolle darf diese Kundenaufgaben nicht über JARVIS lesen.",
+      deterministic: true,
+    };
+  }
+  if (
+    intent.scope === "commercial" &&
+    !getJarvisActionDecision("offer.read", input.accessProfile).executable &&
+    !getJarvisActionDecision("invoice.read", input.accessProfile).executable
+  ) {
+    return {
+      type: "refusal",
+      topicId: "person.customer.commercial.refused",
+      message: "Deine aktuelle WorkPilot-Rolle darf Angebote oder Rechnungen dieses Kunden nicht über JARVIS lesen.",
+      deterministic: true,
+    };
   }
   return buildCustomerSummary({
     organizationId: input.organizationId,
     contact: selected,
     accessProfile: input.accessProfile,
+    scope: intent.scope,
   });
 }

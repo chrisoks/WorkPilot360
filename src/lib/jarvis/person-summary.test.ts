@@ -78,6 +78,33 @@ describe("JARVIS person summary", () => {
     expect(resolveJarvisPersonIntent("Erzähl mir bitte etwas über Klaus Testmann.")).toEqual({
       query: "klaus testmann",
     });
+    expect(resolveJarvisPersonIntent("Sag mir alles über Klaus Testmann.")).toEqual({
+      query: "klaus testmann",
+    });
+    expect(resolveJarvisPersonIntent("Gib mir einen kompakten Gesamtüberblick zu Klaus Testmann.")).toEqual({
+      query: "klaus testmann",
+      scope: "overview",
+    });
+    expect(resolveJarvisPersonIntent("Welche Projekte hat Klaus Testmann?")).toEqual({
+      query: "klaus testmann",
+      scope: "projects",
+    });
+    expect(resolveJarvisPersonIntent("Zeige mir Angebote und Rechnungen von Klaus Testmann.")).toEqual({
+      query: "klaus testmann",
+      scope: "commercial",
+    });
+    expect(resolveJarvisPersonIntent("Zeige mir offene Aufgaben und offene Punkte zu Klaus Testmann.")).toEqual({
+      query: "klaus testmann",
+      scope: "tasks",
+    });
+    expect(resolveJarvisPersonIntent("Zeige mir die letzten Aktivitäten zu Klaus Testmann.")).toEqual({
+      query: "klaus testmann",
+      scope: "activities",
+    });
+    expect(resolveJarvisPersonIntent("Zeige mir die Kontaktdaten von Klaus Testmann.")).toEqual({
+      query: "klaus testmann",
+      scope: "contact",
+    });
     expect(resolveJarvisPersonIntent("Was weißt du über WorkPilot360?")).toBeUndefined();
     expect(resolveJarvisPersonIntent("Wie lege ich einen Kunden an?")).toBeUndefined();
   });
@@ -96,6 +123,84 @@ describe("JARVIS person summary", () => {
     expect(
       resolveJarvisPersonDiagnosticIntent("Wie lege ich ein Projekt an?")
     ).toBeUndefined();
+  });
+
+  it("asks a role-aware follow-up for broad person questions", async () => {
+    dbMocks.contactFindMany.mockResolvedValue([contact]);
+
+    const response = await resolveJarvisPersonSummaryRequest({
+      question: "Sag mir alles über Klaus Testmann.",
+      organizationId: "org-1",
+      accessProfile: management,
+    });
+
+    expect(response).toMatchObject({
+      type: "clarification",
+      topicId: "person.summary.clarification",
+      message: "Ich habe Klaus Testmann eindeutig gefunden. Was möchtest du konkret wissen?",
+    });
+    expect(response?.choices?.map((choice) => choice.label)).toEqual([
+      "Gesamtüberblick",
+      "Projekte & Status",
+      "Angebote & Rechnungen",
+      "Offene Aufgaben",
+      "Letzte Aktivitäten",
+      "Kontaktdaten",
+      "Auffälligkeiten prüfen",
+    ]);
+    expect(response?.choices?.[1]).toMatchObject({
+      id: "person-projects-contact-klaus",
+      prompt: "Zeige mir die Projekte und Projektstatus von Klaus Testmann.",
+    });
+    expect(response?.records?.[0]?.target).toEqual({
+      kind: "customer",
+      id: "contact-klaus",
+    });
+    expect(dbMocks.queryRaw).not.toHaveBeenCalled();
+  });
+
+  it("loads only the selected project detail after a guided choice", async () => {
+    dbMocks.contactFindMany
+      .mockResolvedValueOnce([contact])
+      .mockResolvedValueOnce([]);
+    dbMocks.queryRaw.mockResolvedValue([
+      {
+        id: "project-1",
+        projectNumber: "P-100",
+        title: "Dachreinigung",
+        status: "Umsetzung",
+        projectKind: "Einmalig",
+        projectType: "Dach",
+        trade: "Reinigung",
+        updatedAt: new Date("2026-07-20T10:00:00.000Z"),
+      },
+    ]);
+
+    const response = await resolveJarvisPersonSummaryRequest({
+      question: "Zeige mir die Projekte und Projektstatus von Klaus Testmann.",
+      organizationId: "org-1",
+      accessProfile: management,
+    });
+
+    expect(response).toMatchObject({
+      type: "answer",
+      topicId: "person.customer.projects",
+      structured: {
+        title: "Projekte · Klaus Testmann",
+        facts: [
+          { label: "Projekte", value: "1 verknüpft" },
+          { label: "Offen", value: "1 nicht abgeschlossen" },
+        ],
+      },
+    });
+    expect(response?.records?.[1]?.target).toEqual({
+      kind: "project",
+      id: "project-1",
+    });
+    expect(dbMocks.offerFindMany).not.toHaveBeenCalled();
+    expect(dbMocks.invoiceFindMany).not.toHaveBeenCalled();
+    expect(dbMocks.taskFindMany).not.toHaveBeenCalled();
+    expect(dbMocks.logbookFindMany).not.toHaveBeenCalled();
   });
 
   it("builds a connected customer summary from stable contact and project ids", async () => {
@@ -148,7 +253,7 @@ describe("JARVIS person summary", () => {
     ]);
 
     const response = await resolveJarvisPersonSummaryRequest({
-      question: "Was weißt du über Klaus Testmann?",
+      question: "Gib mir einen kompakten Gesamtüberblick zu Klaus Testmann.",
       organizationId: "org-1",
       accessProfile: management,
     });

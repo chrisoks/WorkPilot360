@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   resolveJarvisPersonDiagnosticRequest: vi.fn(),
   resolveJarvisPersonSummaryRequest: vi.fn(),
   resolveJarvisSalesAnalysisIntent: vi.fn(),
+  resolveJarvisSalesAnalysisRequest: vi.fn(),
   resolveJarvisReadRequest: vi.fn(),
   resolveJarvisSystemHelp: vi.fn(),
   createJarvisAccessProfile: vi.fn(),
@@ -38,6 +39,7 @@ vi.mock("@/lib/jarvis/person-summary", () => ({
 
 vi.mock("@/lib/jarvis/sales-analysis", () => ({
   resolveJarvisSalesAnalysisIntent: mocks.resolveJarvisSalesAnalysisIntent,
+  resolveJarvisSalesAnalysisRequest: mocks.resolveJarvisSalesAnalysisRequest,
 }));
 
 vi.mock("@/lib/jarvis/security", () => ({
@@ -64,6 +66,7 @@ describe("POST /api/jarvis/chat", () => {
     mocks.resolveJarvisPersonDiagnosticRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisPersonSummaryRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisSalesAnalysisIntent.mockReturnValue(false);
+    mocks.resolveJarvisSalesAnalysisRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisSystemHelp.mockReturnValue({
       type: "answer",
       message: "Systemhilfe",
@@ -189,8 +192,14 @@ describe("POST /api/jarvis/chat", () => {
     );
   });
 
-  it("redirects analysis questions to the role-aware sales mode", async () => {
+  it("answers deterministic sales analysis inside the unified chat", async () => {
     mocks.resolveJarvisSalesAnalysisIntent.mockReturnValue(true);
+    mocks.resolveJarvisSalesAnalysisRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "sales.analysis",
+      message: "Drei Kunden sollten nachgefasst werden.",
+      deterministic: true,
+    });
 
     const response = await POST(
       new Request("http://localhost/api/jarvis/chat", {
@@ -206,8 +215,14 @@ describe("POST /api/jarvis/chat", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      topicId: "sales.analysis.mode-hint",
+      topicId: "sales.analysis",
+      message: "Drei Kunden sollten nachgefasst werden.",
       deterministic: true,
+    });
+    expect(mocks.resolveJarvisSalesAnalysisRequest).toHaveBeenCalledWith({
+      question: "Welche Kunden sollte ich nachfassen?",
+      organizationId: "organization-1",
+      accessProfile: { profile: true },
     });
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisSystemHelp).not.toHaveBeenCalled();

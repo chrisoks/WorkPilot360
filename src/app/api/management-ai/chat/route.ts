@@ -133,13 +133,13 @@ export async function POST(req: Request) {
   const mode = cleanMode(body.mode);
   const actorUser = users.find((user) => user.id === actorResult.actor.id);
   const actorWithFlags = { ...actorResult.actor, salesRoleEnabled: actorUser?.salesRoleEnabled };
-  const aiLabel = mode === "sales" ? "Vertriebs-KI" : "BWL-KI";
+  const aiLabel = "JARVIS";
 
   if (mode === "management" && !canUseManagementAi(actorWithFlags)) {
-    return NextResponse.json({ error: "Die BWL-KI ist fuer Geschaeftsfuehrung und Admin freigegeben." }, { status: 403 });
+    return NextResponse.json({ error: "Dieser JARVIS-Bereich ist fuer Geschaeftsfuehrung und Admin freigegeben." }, { status: 403 });
   }
   if (mode === "sales" && !canUseSalesAi(actorWithFlags)) {
-    return NextResponse.json({ error: "Die Vertriebs-KI ist fuer Vertrieb, Geschaeftsfuehrung und Admin freigegeben." }, { status: 403 });
+    return NextResponse.json({ error: "Dieser JARVIS-Bereich ist fuer Vertrieb, Geschaeftsfuehrung und Admin freigegeben." }, { status: 403 });
   }
 
   const userMessage = cleanText(body.message, 4000);
@@ -164,7 +164,7 @@ export async function POST(req: Request) {
   if (mode === "sales" && asksForSalesRestrictedData(userMessage)) {
     return NextResponse.json({
       reply:
-        "Dazu gebe ich in der Vertriebs-KI keine Auskunft. Gehaelter, interne Personalkosten, Kostensaetze und Rueckschluesse darauf sind gesperrt. Ich kann stattdessen Umsatzpotenzial, Nachfassprioritaeten oder Kundensegmente bewerten. Was soll ich vertrieblich einordnen?",
+        "Dazu gebe ich ueber JARVIS keine Auskunft. Gehaelter, interne Personalkosten, Kostensaetze und Rueckschluesse darauf sind gesperrt. Ich kann stattdessen Umsatzpotenzial, Nachfassprioritaeten oder Kundensegmente bewerten. Was soll ich vertrieblich einordnen?",
     });
   }
 

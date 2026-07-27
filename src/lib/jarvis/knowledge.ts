@@ -9,6 +9,10 @@ import {
   findJarvisSystemAreas,
 } from "@/lib/jarvis/system-map";
 import type { JarvisNavigationTarget, JarvisSystemArea } from "@/lib/jarvis/system-map";
+import {
+  createJarvisDialogChoice,
+  type JarvisDialogChoice,
+} from "@/lib/jarvis/dialog";
 
 export type JarvisSurfaceContext = {
   module?: string;
@@ -23,7 +27,7 @@ export type JarvisSurfaceContext = {
 export type JarvisHelpResult = {
   type: "answer" | "clarification" | "refusal" | "unknown";
   message: string;
-  choices?: string[];
+  choices?: JarvisDialogChoice[];
   topicId?: string;
   navigation?: JarvisNavigationTarget;
 };
@@ -37,10 +41,22 @@ type JarvisTopic = {
   actionId?: string;
 };
 
-const PROJECT_KIND_CHOICES = [
-  "Einmaliges Projekt",
-  "Dauerläufer mit Stundenabrechnung",
-  "Dauerläufer mit Monatspauschale",
+const PROJECT_KIND_CHOICES: JarvisDialogChoice[] = [
+  createJarvisDialogChoice(
+    "time-entry-one-time",
+    "Einmaliges Projekt",
+    "Wie erfasse ich einen manuellen Zeiteintrag für ein einmaliges Projekt?"
+  ),
+  createJarvisDialogChoice(
+    "time-entry-hourly",
+    "Dauerläufer mit Stundenabrechnung",
+    "Wie erfasse ich einen manuellen Zeiteintrag für einen Dauerläufer mit Stundenabrechnung?"
+  ),
+  createJarvisDialogChoice(
+    "time-entry-flat",
+    "Dauerläufer mit Monatspauschale",
+    "Wie erfasse ich einen manuellen Zeiteintrag für einen Dauerläufer mit Monatspauschale?"
+  ),
 ];
 
 const TOPICS: JarvisTopic[] = [
