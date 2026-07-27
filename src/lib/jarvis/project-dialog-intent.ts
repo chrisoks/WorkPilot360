@@ -20,7 +20,7 @@ export function resolveJarvisProjectDialogIntent(input: {
   if (diagnosticCommand) return undefined;
 
   if (
-    /(welche|was fur eine|was ist .* fur ein).*(projektart|projekttyp|projekt)/.test(
+    /(welche|was fur eine|was ist .* fur (?:ein|en|nen)).*(projektart|projekttyp|projekt)/.test(
       value
     ) ||
     /(projektart|projekttyp).*(hat|ist|von)/.test(value) ||

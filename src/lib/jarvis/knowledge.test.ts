@@ -99,6 +99,45 @@ describe("JARVIS system help", () => {
     expect(JSON.stringify(result.choices)).not.toContain("Rechnungen");
   });
 
+  it("asks an authenticated user when heavy spelling errors hide the intended workflow", () => {
+    const result = resolveJarvisSystemHelp(
+      "Wia mach ihc das jez?",
+      { module: "Projektakte", recordType: "project" },
+      employeeAccess
+    );
+
+    expect(result).toMatchObject({
+      type: "clarification",
+      topicId: "system-help.clarification",
+    });
+    expect(result.message).toContain("nicht sicher verstehen");
+    expect(result.choices?.map((choice) => choice.label)).toEqual([
+      "Aktuellen Bereich erklären",
+      "Projekte, Planung & Zeiten",
+      "Aufgaben & offene Punkte",
+    ]);
+  });
+
+  it("asks instead of inventing an answer when no intent can be inferred", () => {
+    const result = resolveJarvisSystemHelp(
+      "ksjdhf kjashdf",
+      {},
+      leadershipAccess
+    );
+
+    expect(result).toMatchObject({
+      type: "clarification",
+      topicId: "system-help.clarification",
+    });
+    expect(result.message).toContain("nicht sicher verstehen");
+    expect(result.choices?.map((choice) => choice.label)).toEqual([
+      "Projekte, Planung & Zeiten",
+      "Kunden & Kontakte",
+      "Aufgaben & offene Punkte",
+      "Angebote & Rechnungen",
+    ]);
+  });
+
   it("includes commercial fallback choices only for an authorized role", () => {
     const result = resolveJarvisSystemHelp(
       "Was ist mit HAS-1?",

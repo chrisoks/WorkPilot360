@@ -1,5 +1,22 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS sicherer Unklarheits-Fallback 2026-07-27: Wenn eine Frage wegen
+  starker Schreibfehler oder einer logisch unklaren Formulierung keinem
+  freigegebenen Intent sicher zugeordnet werden kann, fragt JARVIS eine
+  angemeldete Person jetzt nach dem gemeinten Ziel. Die klickbaren Vorschläge
+  werden aus aktuellem Kontext und effektiven Rollenrechten gebildet;
+  gesperrte Bereiche werden nicht angeboten. Sicherheitsablehnungen laufen
+  weiterhin vor diesem Fallback, eindeutige Fragen bleiben direkte Antworten.
+  JARVIS erfindet bei Unsicherheit keine Bedien- oder Fachantwort.
+
+- JARVIS umgangssprachliche Projektartfrage 2026-07-27: Eindeutige Fragen
+  wie `Und was ist HAS-1 für en Projekt?` werden trotz des verkürzten Artikels
+  direkt als Frage nach der Projektart erkannt und nicht mehr fälschlich mit
+  der Bedienhilfe des aktuell geöffneten Reiters beantwortet. Die Toleranz ist
+  bewusst auf diese eindeutige Satzstruktur begrenzt; kurze freie Wörter
+  werden weiterhin nicht global automatisch korrigiert. Rein lesend, ohne
+  OpenAI-Aufruf und ohne Prisma-/Datenbankänderung.
+
 - JARVIS Projekt-Dialogabsicht 2026-07-27: Projektfragen werden vor der
   Projektdiagnose nach Nutzerziel getrennt. Eindeutige Fragen nach Projektart,
   Abrechnungsmodell oder Sollprozess liefern sofort eine strukturierte,

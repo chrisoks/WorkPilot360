@@ -26,6 +26,7 @@ describe("JARVIS project dialog intent", () => {
 
   it.each([
     ["Was ist HAS-1 für ein Proejkt?", "explainProjectType"],
+    ["Und was ist HAS-1 für en Projekt?", "explainProjectType"],
     ["Welches Abrechnungsmodelll hat HAS-1?", "explainBilling"],
     ["Welche Logki gilt bei HAS-1?", "explainProcess"],
   ])("tolerates a clear intent typo in %s", (question, expected) => {

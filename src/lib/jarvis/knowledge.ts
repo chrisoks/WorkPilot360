@@ -487,15 +487,18 @@ export function resolveJarvisSystemHelp(
   const match = ranked[0];
 
   if (!match || match.score < 3) {
-    const choices = looksLikeWorkPilotQuestion(cleaned)
-      ? buildRoleAwareFallbackChoices(context, accessProfile)
-      : [];
+    const hasWorkPilotSignal = looksLikeWorkPilotQuestion(cleaned);
+    const choices =
+      hasWorkPilotSignal || accessProfile
+        ? buildRoleAwareFallbackChoices(context, accessProfile)
+        : [];
     if (choices.length > 0) {
       return {
         type: "clarification",
         topicId: "system-help.clarification",
-        message:
-          "Ich bin noch nicht sicher, was du in WorkPilot360 wissen möchtest. Wähle einen passenden Bereich oder beschreibe dein Ziel kurz.",
+        message: hasWorkPilotSignal
+          ? "Ich konnte deine Frage noch nicht eindeutig verstehen. Meinst du einen dieser WorkPilot360-Bereiche? Du kannst auch kurz beschreiben, was du erreichen möchtest."
+          : "Ich konnte deine Frage nicht sicher verstehen oder WorkPilot360 zuordnen. Meinst du einen dieser Bereiche? Du kannst dein Ziel auch noch einmal mit anderen Worten beschreiben.",
         choices,
       };
     }

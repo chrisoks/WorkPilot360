@@ -310,6 +310,43 @@ describe("resolveJarvisProjectHealthRequest", () => {
     expect(dbMocks.projectTimeEntryFindMany).not.toHaveBeenCalled();
   });
 
+  it("answers a colloquial project-type question instead of falling back to the current tab", async () => {
+    dbMocks.queryRaw.mockResolvedValueOnce([{
+      ...project,
+      id: "project-has-1",
+      projectNumber: "HAS-1",
+      title: "Hausmeisterservice",
+      projectKind: "Dauerläufer-Projekt",
+      recurringBillingMode: "monthlyFlat",
+      projectRuntimeFrom: "2026-05-01",
+      projectRuntimeUntil: "2026-12-31",
+      billingInterval: "monatlich",
+    }]);
+
+    const response = await resolveJarvisProjectHealthRequest({
+      question: "Und was ist HAS-1 für en Projekt?",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "employee-1",
+        role: Role.MITARBEITER,
+      }),
+      context: { recordType: "project", recordId: "different-project" },
+    });
+
+    expect(response).toMatchObject({
+      type: "answer",
+      topicId: "project.logic.explanation",
+      structured: {
+        title: "Projektart · HAS-1",
+      },
+    });
+    expect(JSON.stringify(response)).toContain(
+      "Dauerläufer mit Monatspauschale"
+    );
+    expect(dbMocks.projectTimeEntryFindMany).not.toHaveBeenCalled();
+    expect(dbMocks.invoiceFindMany).not.toHaveBeenCalled();
+  });
+
   it("explains hourly billing directly and does not mistake it for a flat rate", async () => {
     dbMocks.queryRaw.mockResolvedValueOnce([{
       ...project,
