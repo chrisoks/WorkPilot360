@@ -1,5 +1,20 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Projekt-Dialogabsicht 2026-07-27: Projektfragen werden vor der
+  Projektdiagnose nach Nutzerziel getrennt. Eindeutige Fragen nach Projektart,
+  Abrechnungsmodell oder Sollprozess liefern sofort eine strukturierte,
+  deterministische Antwort aus der zentralen Projektarten-Regelmatrix und
+  laden keine Stempel-, Rechnungs-, Aufgaben- oder Kostendaten. Wirklich
+  mehrdeutige Formulierungen wie `Was ist mit HAS-1?` führen dagegen zu einer
+  gezielten klickbaren Rückfrage. Diese bietet zuerst `Projektart &
+  Abrechnung` und anschließend nur die für Sitzung und effektive Rolle
+  erlaubten Prüfumfänge an. Ausdrückliche Prüfaufträge bleiben im bestehenden
+  Gesundheitscheck; Gesprächsprojekt, Bildschirmprojekt und ausdrücklich
+  genannte Projektnummer folgen weiterhin ihrer festgelegten Priorität.
+  Umgangssprachliche Projektart-, Abrechnungs- und Prozessfragen besitzen
+  einen eigenen getesteten Intent-Baustein statt einer HAS-1-Sonderregel.
+  Rein lesend, ohne OpenAI-Aufruf und ohne Prisma-/Datenbankänderung.
+
 - JARVIS Projektarten-Regelmatrix 2026-07-27: Die Projektdiagnose leitet
   ihren Sollprozess zentral aus Projektart und Abrechnungsmodell ab und trennt
   Einmalprojekte, Dauerläufer mit Monatspauschale und Dauerläufer mit

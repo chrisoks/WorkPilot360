@@ -30,6 +30,10 @@ import {
   diagnoseJarvisProjectLogic,
   resolveJarvisProjectLogic,
 } from "@/lib/jarvis/project-logic";
+import {
+  resolveJarvisProjectDialogIntent,
+  type JarvisProjectDialogIntent,
+} from "@/lib/jarvis/project-dialog-intent";
 
 type ProjectHealthSeverity = "critical" | "warning";
 
@@ -165,6 +169,14 @@ export function resolveJarvisProjectHealthIntent(
     context?.recordType === "project" ||
     conversationContext?.recordType === "project" ||
     Boolean(projectReference);
+  if (
+    resolveJarvisProjectDialogIntent({
+      question,
+      hasProjectContext: projectContext,
+    })
+  ) {
+    return true;
+  }
   const stampDiagnosticQuestion =
     projectContext &&
     /(stempel|zeiteintrag|stunden|rechnung)/.test(value) &&
@@ -532,12 +544,132 @@ function checkedAreasForScope(snapshot: ProjectHealthSnapshot, scope: ProjectHea
   );
 }
 
+function getProjectDialogIntent(
+  question: string,
+  context?: JarvisSurfaceContext,
+  conversationContext?: JarvisSurfaceContext
+) {
+  return resolveJarvisProjectDialogIntent({
+    question,
+    hasProjectContext:
+      Boolean(extractProjectReference(question)) ||
+      context?.recordType === "project" ||
+      conversationContext?.recordType === "project",
+  });
+}
+
+function getProjectBillingLabel(
+  variant: ReturnType<typeof resolveJarvisProjectLogic>["variant"]
+) {
+  if (variant === "oneTime") return "Projektbezogene Schlussrechnung";
+  if (variant === "recurringMonthlyFlat") return "Monatspauschale";
+  if (variant === "recurringHourly") return "Stundenabrechnung";
+  return "Nicht eindeutig gepflegt";
+}
+
+function buildProjectLogicExplanation(
+  project: ProjectHealthRow,
+  intent: Exclude<JarvisProjectDialogIntent, "ambiguousProjectQuestion">
+): JarvisReadResponse {
+  const diagnosis = diagnoseJarvisProjectLogic(project);
+  const profile = diagnosis.profile;
+  const reference = project.projectNumber || project.title;
+  const focus =
+    intent === "explainProjectType"
+      ? "Projektart"
+      : intent === "explainBilling"
+        ? "Abrechnung"
+        : "Sollprozess";
+  const summary =
+    profile.variant === "unknown" || profile.variant === "recurringUnknown"
+      ? `${reference} ist noch nicht eindeutig genug konfiguriert, um Projektart und Abrechnungslogik vollständig festzulegen.`
+      : `${reference} ist als „${profile.label}“ konfiguriert.`;
+
+  return {
+    type: "answer",
+    topicId: "project.logic.explanation",
+    message: `${summary} Bewertet wird ${
+      profile.evaluationScope === "month"
+        ? "jeder Leistungsmonat"
+        : profile.evaluationScope === "project"
+          ? "das Gesamtprojekt"
+          : "erst nach eindeutiger Pflege"
+    }.`,
+    structured: {
+      title: `${focus} · ${reference}`,
+      subtitle: `${project.customer || "Ohne Kundenanzeige"} · ${project.status || "Ohne Status"}`,
+      summary,
+      facts: [
+        {
+          label: "Projektart",
+          value: profile.label,
+          tone:
+            profile.variant === "unknown" ||
+            profile.variant === "recurringUnknown"
+              ? "warning"
+              : "positive",
+        },
+        {
+          label: "Abrechnung",
+          value: getProjectBillingLabel(profile.variant),
+        },
+        {
+          label: "Bewertung",
+          value:
+            profile.evaluationScope === "month"
+              ? "Monatsbezogen"
+              : profile.evaluationScope === "project"
+                ? "Gesamtprojekt"
+                : "Noch nicht eindeutig",
+        },
+        {
+          label: "Status",
+          value: project.status || "Nicht gepflegt",
+        },
+      ],
+      sections: [
+        {
+          title: "So funktioniert dieses Projekt",
+          items: profile.processSummary,
+          tone:
+            diagnosis.issues.length > 0 ? "neutral" : "positive",
+        },
+        ...(diagnosis.issues.length > 0
+          ? [{
+              title: "Konfiguration prüfen",
+              tone: "warning" as const,
+              items: diagnosis.issues.map(
+                (issue) =>
+                  `${issue.title}: ${issue.evidence} Nächster Schritt: ${issue.recommendation}`
+              ),
+            }]
+          : []),
+      ],
+    },
+    records: [{
+      id: `project-logic-${project.id}`,
+      kind: "project",
+      title: [project.projectNumber, project.title].filter(Boolean).join(" · "),
+      subtitle: project.customer || project.projectType || "Projekt",
+      summary: `${profile.label} · ${project.status || "Ohne Status"}`,
+      status: project.status,
+      target: { kind: "project", id: project.id },
+    }],
+    deterministic: true,
+  };
+}
+
 function buildProjectHealthClarification(
   project: ProjectHealthRow,
   accessProfile: JarvisAccessProfile
 ): JarvisReadResponse {
   const reference = project.projectNumber || project.title;
   const choices: JarvisDialogChoice[] = [
+    createJarvisDialogChoice(
+      `project-logic-explain-${project.id}`,
+      "Projektart & Abrechnung",
+      `Erkläre Projektart, Abrechnung und Sollprozess für ${reference}.`
+    ),
     createJarvisDialogChoice(
       `project-health-full-${project.id}`,
       "Vollständiger Projektcheck",
@@ -597,7 +729,7 @@ function buildProjectHealthClarification(
   return {
     type: "clarification",
     topicId: "project.health.clarification",
-    message: `Ich habe ${reference} eindeutig gefunden. Was soll ich für dieses Projekt prüfen?`,
+    message: `Ich habe ${reference} eindeutig gefunden. Was möchtest du zu diesem Projekt wissen oder prüfen?`,
     choices,
     records: [{
       id: `project-health-choice-${project.id}`,
@@ -759,6 +891,18 @@ export async function resolveJarvisProjectHealthRequest(input: {
         "Für den Gesundheitscheck brauche ich ein eindeutiges Projekt. Öffne die Projektakte und frage „Prüfe dieses Projekt“ oder nenne die vollständige Projektnummer.",
       deterministic: true,
     };
+  }
+
+  const projectDialogIntent = getProjectDialogIntent(
+    input.question,
+    input.context,
+    input.conversationContext
+  );
+  if (
+    projectDialogIntent &&
+    projectDialogIntent !== "ambiguousProjectQuestion"
+  ) {
+    return buildProjectLogicExplanation(project, projectDialogIntent);
   }
 
   const requestedScope = resolveProjectHealthScope(input.question);
