@@ -254,6 +254,61 @@ Der Router erkennt:
 Eindeutige häufige Absichten werden lokal/deterministisch erkannt. Nur
 mehrdeutige oder komplexe Fragen benötigen einen KI-Aufruf.
 
+### 5.2.1 Erweiterte Dialog- und Klärungslogik
+
+JARVIS darf unterschiedliche Nutzerformulierungen nicht über einzelne
+Sonderfälle oder starre Satzmuster behandeln. Vor jeder Antwort trennt die
+Dialogsteuerung mindestens:
+
+1. Welcher Datensatz oder Fachbereich ist gemeint?
+2. Welche Absicht verfolgt der Nutzer?
+3. Welche Angaben fehlen für eine belastbare Antwort oder Aktion?
+4. Welche Antworten und Folgeaktionen sind für die echte Rolle erlaubt?
+5. Ist die Absicht eindeutig, mehrdeutig oder noch unbekannt?
+
+Verbindliches Dialogverhalten:
+
+- Eine fachlich eindeutige Frage wird direkt beantwortet. JARVIS stellt keine
+  unnötige Rückfrage und zeigt nicht ersatzweise eine allgemeine Prüfauswahl.
+- Wenn mehrere fachlich unterschiedliche Absichten plausibel sind, fragt
+  JARVIS gezielt nach dem Ziel und erklärt knapp, welche Unterscheidung fehlt.
+- Rückfragen verwenden typisierte, klickbare Auswahlflächen mit stabiler ID,
+  sichtbarem Kurztext und vollständigem Folge-Prompt. Freie Texteingabe bleibt
+  immer möglich.
+- Auswahlmöglichkeiten werden vor ihrer Anzeige nach Sitzung, Rolle,
+  Berechtigung, Mandant, Team-/Eigentümerscope und Datenklasse gefiltert.
+- JARVIS fragt nur die tatsächlich fehlende Information ab und wiederholt
+  bereits eindeutig geklärte Angaben nicht.
+- Datensatzauflösung und Nutzerabsicht werden getrennt behandelt. Ein sicher
+  gefundenes Projekt bedeutet noch nicht automatisch, dass der Nutzer einen
+  vollständigen Projektcheck verlangt.
+- Ausdrückliche Nutzerangaben haben Vorrang vor Bildschirmkontext. Der
+  Bildschirmkontext bleibt ein Hinweis und darf einen erkennbaren
+  Gesprächswechsel nicht überschreiben.
+- Der Gesprächskontext hält den zuletzt eindeutig gewählten Datensatz,
+  Fachbereich, Zeitraum und Prüfumfang. Kurze Folgefragen und Pronomen werden
+  darauf bezogen, solange der Nutzer nicht erkennbar wechselt.
+- Bei einem Datensatzwechsel werden alte, nicht mehr passende Auswahl- und
+  Prüfkontexte verworfen. JARVIS darf Ergebnisse eines vorherigen Projekts
+  nicht auf das neue Projekt übertragen.
+- Rückfragen und Sicherheitsbestätigungen sind getrennte Dialogzustände. Eine
+  fachliche Auswahl ersetzt niemals die vorgeschriebene Vorschau und
+  Bestätigung einer schreibenden oder kritischen Aktion.
+- Verschachtelte Rückfragen bleiben begrenzt und bieten einen verständlichen
+  Ausstieg. Nach wiederholt fehlendem Kontext nennt JARVIS konkret, welche
+  Angabe benötigt wird, statt in eine allgemeine Sackgassenmeldung zu fallen.
+- Erst wenn weder deterministische Regeln noch eine sichere semantische
+  Einordnung eine belastbare Absicht ergeben, wird eine Wissenslücke
+  ausgewiesen. Ein erkennbarer WorkPilot-Bezug darf nicht vorschnell als
+  unbekanntes Fremdthema abgewiesen werden.
+
+Die Dialogsteuerung verwendet eine nachvollziehbare Konfidenz- und
+Kandidatenlogik. Deterministische bekannte Absichten, Datensatz-IDs und
+Projekt-/Abrechnungsvarianten haben Vorrang. Ein KI-Modell darf bei freier
+Sprache Kandidaten bilden und Rückfragen formulieren, aber keine Rechte,
+Systemzustände oder Fachregeln erfinden. Häufige Klärungsdialoge sollen ohne
+großen Modellaufruf funktionieren.
+
 ### 5.3 Wissens-Retrieval
 
 - Strukturierte, versionierte Wissenseinträge statt langer unstrukturierter
@@ -759,8 +814,14 @@ und Aktionen verursachen keinen oder nur einen sehr kleinen KI-Aufruf.
 
 ## 11. Dialog- und UI-Konzept
 
-- JARVIS bleibt globaler Slide-out mit den Modi Systemhilfe, Vertrieb und BWL.
+- JARVIS bleibt ein globaler, einheitlicher Slide-out. Systemhilfe, Vertrieb
+  und BWL werden intern automatisch geroutet und nicht als getrennte sichtbare
+  Chats geführt.
 - Aktueller Bereich und Datensatzkontext werden sichtbar angezeigt.
+- Direkte Antworten und Klärungsdialoge werden sichtbar unterschieden.
+- Klickbare Rückfragen zeigen nur wenige, konkrete und rollengerechte
+  Möglichkeiten; sie dürfen über mehrere Dialogschritte wiederverwendet
+  werden.
 - JARVIS zeigt bei Aktionen klar:
   - Verstanden,
   - Benötigte Angaben,
@@ -888,6 +949,29 @@ mit Navigation, Zweck, Rollen und Kernabläufen erfasst.
 Abnahmekriterium: JARVIS kann erlaubte Datensätze zuverlässig finden, öffnen
 und erklären, ohne schreibende Änderungen vorzunehmen.
 
+### Phase 3a: Erweiterte Dialog- und Intent-Logik
+
+- zentrale Intent-Kandidaten mit nachvollziehbarer Konfidenz,
+- Datensatz-, Absichts-, Zeitraum- und Aktionsklärung getrennt behandeln,
+- direkte Antwort bei eindeutiger Frage,
+- gezielte Rückfrage bei mehreren plausiblen Bedeutungen,
+- typisierte klickbare und rollengerecht gefilterte Antwortmöglichkeiten,
+- stabiler Gesprächskontext über Folgefragen und Datensatzwechsel,
+- Auflösung umgangssprachlicher, verkürzter und fehlerhafter Formulierungen,
+- sichere Behandlung kombinierter Fragen mit mehreren Teilabsichten,
+- klare Trennung zwischen Rückfrage, Vorschau und Aktionsbestätigung,
+- begrenzte Rückfrageschleifen mit verständlichem Ausstieg,
+- deterministische Standarddialoge ohne unnötige OpenAI-Kosten,
+- systematische Sammlung und kontrollierte Freigabe neuer Synonyme und
+  Absichtsvarianten,
+- Dialogtests über Projekt-, Kunden-, Aufgaben-, Dokument-, Vertriebs- und
+  BWL-Fragen.
+
+Abnahmekriterium: Eindeutige Fragen werden ohne unnötige Auswahl direkt
+beantwortet. Mehrdeutige WorkPilot-Fragen führen zu einer konkreten,
+rollengerechten Rückfrage und können danach ohne Verlust von Datensatz,
+Zeitraum oder Nutzerziel fortgesetzt werden.
+
 ### Phase 3b: Spracheingabe und Sprachausgabe
 
 - Mikrofon- und Berechtigungsoberfläche,
@@ -986,6 +1070,12 @@ Für jede Wissensfunktion und Aktion:
 - Scope: eigener Datensatz, eigenes Team, fremdes Team, anderer Mandant,
 - Kontext: richtiger Reiter, falscher Reiter, kein Datensatz, anderer Monat,
 - Eingabe: eindeutig, umgangssprachlich, mehrdeutig, unvollständig,
+- Dialog: direkte Antwort, gezielte Rückfrage, klickbare Auswahl, freie
+  Antwort, Abbruch und erneute Formulierung,
+- Fortsetzung: Pronomen, verkürzte Folgefrage, Fachbereichswechsel,
+  Datensatzwechsel, Zeitraumwechsel und Rückkehr zum vorherigen Thema,
+- Mehrdeutigkeit: mehrere Datensatztreffer, mehrere plausible Absichten,
+  kombinierte Teilfragen und wiederholt fehlende Pflichtangaben,
 - Datenschutz: Lohn, Personal, Kontakt, Kunde, Finanzdaten, Secrets,
 - Aktion: Vorschau, Abbruch, Bestätigung, Doppelklick, Wiederholung,
 - Fehler: API-Fehler, Teilfehler, veralteter Datensatz, fehlende Berechtigung,
