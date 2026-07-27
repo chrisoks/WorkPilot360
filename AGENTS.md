@@ -1,32 +1,32 @@
 # WorkPilot360 Agent Handover
 
-- HERO-Aktivprojekt-Cutover 2026-07-27: Nach einem vollständigen, verifizierten
-  Datenbank- und Quellbackup wurde der alte gemischte Fünfer-Pilot
-  `cms3n6886000xw4g8vfe1voip` sicher zurückgenommen. Anschließend wurden
-  ausschließlich die in HERO weder abgeschlossenen noch archivierten oder
-  gelöschten Projekte gegen WorkPilot abgeglichen. Maßgeblich ist allein die
-  normalisierte Projektnummer, unabhängig von den unterschiedlichen
-  Projektpipelines. Von 138 aktiven HERO-Projekten waren 111 bereits vorhanden;
-  Importlauf `cms3rhlut0000w4sc4r9nhthf` legte die übrigen 27 Projekte sowie
-  exakt 8 fehlende Kunden an und verknüpfte 16 vorhandene Kunden bzw. echte
-  Ansprechpartner über stabile IDs. Alle neuen Projekte starten neutral in
-  `Lead / Klärung`; Projektart und Abrechnungsmodell bleiben bewusst leer und
-  müssen fachlich in WorkPilot gepflegt werden. Der HERO-Status wird nur als
-  Quellenhinweis protokolliert und nicht in die WorkPilot-Pipeline übersetzt.
+- HERO-Aktivprojekt-Cutover 2026-07-27: Nach vollständigen, verifizierten
+  Datenbank- und Quellbackups wurde der alte gemischte Fünfer-Pilot
+  `cms3n6886000xw4g8vfe1voip` sicher zurückgenommen. Die Rücknahme wurde lokal
+  durch einen vollständigen Import mit anschließendem Rollback praktisch
+  geprüft. Maßgeblich für den finalen Abgleich war ausschließlich die
+  normalisierte Projektnummer; unterschiedliche HERO- und WorkPilot-Pipelines
+  wurden bewusst nicht gleichgesetzt. Von 138 aktiven HERO-Projekten waren im
+  Live-System 111 bereits vorhanden. Der Live-Importlauf
+  `cms3rvjqb0000jxhq8wy4dk8q` legte die übrigen 27 Projekte und exakt 8 fehlende
+  Kontakte an und verknüpfte 16 vorhandene Kunden bzw. echte Ansprechpartner
+  über stabile IDs. Alle neuen Projekte starten neutral in `Lead / Klärung`;
+  Projektart und Abrechnungsmodell bleiben bewusst leer und werden manuell
+  eingeordnet. Der HERO-Status ist nur als Quellenhinweis protokolliert.
   Angebote, Rechnungen, Positionen, Zahlungen und historische Belege wurden
-  nicht importiert oder verändert. Ein vollständiger erster Aktivimport wurde
-  unmittelbar wieder zurückgerollt und stellte exakt 132 Projekte, 291
-  Kontakte und 0 HERO-Referenzen her; damit ist die Rücknahme praktisch
-  nachgewiesen. Der bereinigte finale Lauf enthält 27 Projekt-, 8 Kontaktanlage-
-  und 16 Kontaktverknüpfungsprotokolle, 0 Dokumentprotokolle und 51 stabile
-  HERO-Referenzen. Nachher: 159 Projekte, 299 Kontakte, weiterhin 15 Angebote,
-  27 native Rechnungen, 596 Legacy-Rechnungen und 0 historische Belege. Ein
+  weder importiert noch verändert. Der Lauf enthält 27 Projekt-, 8
+  Kontaktanlage- und 16 Kontaktverknüpfungsprotokolle, 0 Dokumentprotokolle und
+  51 stabile HERO-Referenzen. Live-Nachherstand: 160 Projekte, 299 Kontakte,
+  weiterhin 13 Angebote, 22 native Rechnungen und 596 Legacy-Rechnungen. Ein
   frischer Gegenabgleich meldet 138 von 138 aktiven Projektnummern vorhanden,
-  keine Dublette und keinen Blocker. Prisma-Schema und Live-Diff, Regression,
-  Mojibake, 415 Tests, TypeScript, Diff-Check und Produktions-Build mit 88
-  Seiten bestanden. Port 3001 wurde danach aus dem kanonischen Repository neu
-  gestartet; `/dashboard` liefert HTTP 200. Kein Push und kein
-  Live-Deployment.
+  keine Dublette und keinen Blocker. Der Import bleibt über seinen Lauf
+  kontrolliert rücknehmbar; zusätzlich liegt das geprüfte Live-Datenbankbackup
+  `/var/backups/workpilot360/workpilot360-before-hero-active-20260727-215407.dump`
+  vor. Prisma-Schema und Live-Diff, Regression, Mojibake, 415 Tests,
+  TypeScript, Diff-Check und Produktions-Build mit 88 Seiten bestanden. Commit
+  `832c9ec15f217f7e225fa8507d73c6fcb8e896ce` wurde auf `main` gepusht und
+  live deployed. WorkPilot360 antwortet intern und öffentlich mit HTTP 200;
+  Kliniknavigator blieb unverändert online.
 
 - JARVIS sicherer Unklarheits-Fallback 2026-07-27: Wenn eine Frage wegen
   starker Schreibfehler oder einer logisch unklaren Formulierung keinem
