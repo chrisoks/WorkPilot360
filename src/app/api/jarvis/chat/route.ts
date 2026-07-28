@@ -3,8 +3,13 @@ import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/acto
 import { getDemoContext } from "@/lib/demo/context";
 import {
   resolveJarvisSystemHelp,
+  resolveJarvisSystemHelpTopic,
   sanitizeJarvisSurfaceContext,
 } from "@/lib/jarvis/knowledge";
+import {
+  classifyJarvisIntentWithAi,
+  type JarvisAiIntentClassification,
+} from "@/lib/jarvis/ai-intent-fallback";
 import {
   resolveJarvisPersonDiagnosticRequest,
   resolveJarvisPersonSummaryRequest,
@@ -41,6 +46,7 @@ import {
   sanitizeJarvisDialogState,
   shouldCarryJarvisActiveRecord,
 } from "@/lib/jarvis/dialog-state";
+import { createJarvisDialogChoice } from "@/lib/jarvis/dialog";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +58,9 @@ function shouldUseProjectHealthPath(
   question: string,
   decision: JarvisIntentDecision
 ) {
+  // Eindeutige Bedienfragen bleiben Bedienfragen. Der Projektkontext darf
+  // Begriffe wie "Termin" nicht automatisch in eine Diagnose umdeuten.
+  if (decision.goals.includes("how_to")) return false;
   const asksForProjectCollection =
     /\bprojekte\b/iu.test(question) &&
     extractJarvisProjectReferences(question).length === 0 &&
@@ -68,6 +77,46 @@ function shouldUseProjectHealthPath(
     extractJarvisProjectReferences(question).length > 0 ||
     isJarvisReferentialFollowUp(question)
   );
+}
+
+function buildAiIntentClarification(
+  classification: JarvisAiIntentClassification,
+  context: ReturnType<typeof sanitizeJarvisSurfaceContext>
+) {
+  if (
+    classification.helpTopicId !== "appointment.create" ||
+    (
+      classification.intent !== "prepare_action" &&
+      !classification.needsClarification
+    )
+  ) {
+    return undefined;
+  }
+  const choices = [
+    createJarvisDialogChoice(
+      "ai-intent-appointment-help",
+      "Termin anlegen erklären",
+      "Wie buche ich hier einen Termin?"
+    ),
+    ...(context.recordType === "project"
+      ? [
+          createJarvisDialogChoice(
+            "ai-intent-appointment-diagnose",
+            "Planung & Termine prüfen",
+            "Prüfe Planung und Termine für dieses Projekt."
+          ),
+        ]
+      : []),
+  ];
+  return {
+    type: "clarification" as const,
+    topicId: "intent.ai.appointment-clarification",
+    message:
+      classification.intent === "prepare_action"
+        ? "Die direkte Terminbuchung aus dem Chat ist in dieser Entwicklungsphase noch nicht freigegeben. Soll ich dir das Anlegen erklären oder die bestehende Projektplanung prüfen?"
+        : "Möchtest du einen Termin selbst anlegen oder soll JARVIS die bestehende Projektplanung prüfen?",
+    choices,
+  };
 }
 
 export async function POST(req: Request) {
@@ -229,6 +278,36 @@ export async function POST(req: Request) {
   );
   if (intentClarification) {
     return respond(intentClarification);
+  }
+  const aiIntentClassification = await classifyJarvisIntentWithAi({
+    question: message,
+    decision: intentDecision,
+    context,
+  });
+  if (
+    aiIntentClassification?.intent === "how_to" &&
+    aiIntentClassification.helpTopicId !== "none" &&
+    aiIntentClassification.confidence === "high" &&
+    !aiIntentClassification.needsClarification
+  ) {
+    return respond(
+      resolveJarvisSystemHelpTopic(
+        aiIntentClassification.helpTopicId,
+        message,
+        context,
+        accessProfile
+      ),
+      aiIntentClassification.domain
+    );
+  }
+  if (aiIntentClassification) {
+    const aiClarification = buildAiIntentClarification(
+      aiIntentClassification,
+      context
+    );
+    if (aiClarification) {
+      return respond(aiClarification, aiIntentClassification.domain);
+    }
   }
   const projectSequenceClarification =
     buildJarvisProjectSequenceClarification(

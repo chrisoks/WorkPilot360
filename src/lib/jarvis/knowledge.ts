@@ -154,11 +154,20 @@ const TOPICS: JarvisTopic[] = [
   {
     id: "appointment.create",
     title: "Termin oder Terminwunsch anlegen",
-    keywords: ["termin anlegen", "termin eintragen", "termin erstellen", "terminwunsch", "planungstermin"],
+    keywords: [
+      "termin anlegen",
+      "termin eintragen",
+      "termin erstellen",
+      "termin buchen",
+      "termin planen",
+      "wie buche ich einen termin",
+      "einsatztermin",
+      "terminwunsch",
+      "planungstermin",
+    ],
     surfaces: ["Planungsboard", "Projektakte"],
     actionId: "planning.prepare",
-    answer:
-      "Öffne das Projekt und den Reiter „Termine & Stempelungen“. Mit „+ Termin“ legst du einen festen Planungstermin an. Mit „+ Terminwunsch“ erfasst du einen noch freizugebenden Bedarf. Wähle Mitarbeiter, Datum, Zeit und die passende Zuordnung und speichere anschließend.",
+    answer: "",
   },
   {
     id: "planning.assignEmployees",
@@ -257,6 +266,11 @@ const TOPICS: JarvisTopic[] = [
       "Öffne „Kalkulations-Rechner“ und wähle „Fahrten“. Wähle ein Fahrzeug, trage die Gesamtstrecke ein und übernimm bei Bedarf einen aktuellen Kraftstoffpreis. Der Rechner berücksichtigt bewusst nur Fahrzeug- und Kraftstoffkosten, keine Personalkosten.",
   },
 ];
+
+export const JARVIS_HELP_TOPIC_CATALOG = TOPICS.map((topic) => ({
+  id: topic.id,
+  title: topic.title,
+}));
 
 function normalize(value: string) {
   return value
@@ -400,6 +414,35 @@ function getEmployeePlanningAnswer(context: JarvisSurfaceContext): JarvisHelpRes
   };
 }
 
+function extractHelpProjectReference(question: string) {
+  return question.match(/\b(?:[A-ZÄÖÜ]{2,}[- ]?\d+|\d{5,})\b/iu)?.[0]?.trim() ?? "";
+}
+
+function getAppointmentAnswer(
+  question: string,
+  context: JarvisSurfaceContext
+): JarvisHelpResult {
+  const explicitReference = extractHelpProjectReference(question);
+  const start = explicitReference
+    ? `Öffne das Projekt ${explicitReference} und dort „Termine & Stempelungen“. Klicke anschließend auf „+ Termin“.`
+    : context.recordType === "project"
+      ? "Du bist bereits in der Projektakte. Öffne links „Termine & Stempelungen“ und klicke auf „+ Termin“."
+      : "Öffne zuerst das passende Projekt und dort „Termine & Stempelungen“. Klicke anschließend auf „+ Termin“.";
+  const billingNote =
+    !explicitReference && context.billingMode === "hourly"
+      ? "Da dieses Projekt nach Stunden abgerechnet wird, wählst du zusätzlich „Termin-Gewerk“ und „Abrechnungsleistung“."
+      : !explicitReference && context.billingMode === "monthlyFlat"
+        ? "Bei diesem Projekt mit Monatspauschale ist keine zusätzliche Abrechnungsleistung erforderlich."
+        : "Bei einem Dauerläufer mit Stundenabrechnung sind zusätzlich „Termin-Gewerk“ und „Abrechnungsleistung“ erforderlich.";
+
+  return {
+    type: "answer",
+    topicId: "appointment.create",
+    message:
+      `${start} Wähle Planungsboard, Planungsgruppe, Mitarbeiter, Datum sowie Von/Bis und speichere den Termin. ${billingNote} „+ Terminwunsch“ verwendest du nur, wenn der Termin erst noch freigegeben werden soll.`,
+  };
+}
+
 function scoreTopic(topic: JarvisTopic, question: string, context: JarvisSurfaceContext) {
   const normalized = normalize(question);
   let intentScore = 0;
@@ -508,30 +551,70 @@ export function resolveJarvisSystemHelp(
         "Dazu habe ich noch keine freigegebene WorkPilot-Anleitung. Formuliere bitte kurz, welche Funktion oder welchen Reiter du bedienen möchtest.",
     };
   }
-  if (match.topic.actionId) {
+  return resolveJarvisSystemHelpTopic(
+    match.topic.id,
+    cleaned,
+    context,
+    accessProfile
+  );
+}
+
+export function resolveJarvisSystemHelpTopic(
+  topicId: string,
+  question: string,
+  context: JarvisSurfaceContext = {},
+  accessProfile?: JarvisAccessProfile
+): JarvisHelpResult {
+  const cleaned = question.trim().slice(0, 1800);
+  const topic = TOPICS.find((candidate) => candidate.id === topicId);
+  if (!topic) {
+    return {
+      type: "unknown",
+      message:
+        "Diese Bedienhilfe ist in WorkPilot360 noch nicht eindeutig hinterlegt.",
+    };
+  }
+
+  const authorization = authorizeJarvisQuestion(cleaned, accessProfile);
+  if (!authorization.allowed) {
+    return {
+      type: "refusal",
+      message: getJarvisRefusalMessage(authorization),
+    };
+  }
+  if (topic.actionId) {
     if (!accessProfile) {
       return {
         type: "refusal",
-        message: "Für diese Bedienhilfe muss deine aktuelle WorkPilot-Rolle eindeutig geprüft werden.",
+        message:
+          "Für diese Bedienhilfe muss deine aktuelle WorkPilot-Rolle eindeutig geprüft werden.",
       };
     }
-    const actionDecision = getJarvisActionDecision(match.topic.actionId, accessProfile);
+    const actionDecision = getJarvisActionDecision(
+      topic.actionId,
+      accessProfile
+    );
     if (!actionDecision.permitted) {
       return {
         type: "refusal",
-        topicId: match.topic.id,
+        topicId: topic.id,
         message:
           "Diese Funktion ist für deine aktuelle WorkPilot-Rolle nicht freigegeben. JARVIS kann sie deshalb weder erklären noch vorbereiten.",
       };
     }
   }
 
-  if (match.topic.id === "time.manual") return getTimeEntryAnswer(cleaned, context);
-  if (match.topic.id === "planning.assignEmployees") return getEmployeePlanningAnswer(context);
+  if (topic.id === "appointment.create") {
+    return getAppointmentAnswer(cleaned, context);
+  }
+  if (topic.id === "time.manual") return getTimeEntryAnswer(cleaned, context);
+  if (topic.id === "planning.assignEmployees") {
+    return getEmployeePlanningAnswer(context);
+  }
   return {
     type: "answer",
-    topicId: match.topic.id,
-    message: match.topic.answer,
+    topicId: topic.id,
+    message: topic.answer,
   };
 }
 

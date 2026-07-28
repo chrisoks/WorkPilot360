@@ -109,7 +109,7 @@ function scoreSegment(segment: string) {
 
   if (
     /\bwie\b/.test(value) &&
-    /\b(anleg|leg|erstell|erfass|eintrag|offn|find|bearbeit|ander|losch|stornier|bedien|plan|speicher)\w*\b/.test(
+    /\b(anleg|leg|erstell|erfass|eintrag|offn|find|bearbeit|ander|losch|stornier|bedien|plan|buch|speicher)\w*\b/.test(
       value
     )
   ) {
@@ -131,7 +131,7 @@ function scoreSegment(segment: string) {
     addSignal(scores, "system", 12, "Personen- oder Kundenauskunft");
   }
   if (
-    /\b(projekt|kunde|kontakt|aufgabe|angebot|rechnung|mitarbeiter|artikel|leistung|workpilot|jarvis|reiter|logbuch|stempel)\w*\b/.test(
+    /\b(projekt|kunde|kontakt|aufgabe|angebot|rechnung|mitarbeiter|artikel|leistung|workpilot|jarvis|reiter|logbuch|stempel|termin|planung)\w*\b/.test(
       value
     )
   ) {
@@ -205,14 +205,14 @@ function collectGoals(value: string): JarvisIntentGoal[] {
   };
   add(
     "how_to",
-    /\bwie\b.*\b(anleg|leg|erstell|erfass|eintrag|offn|find|bearbeit|ander|losch|bedien|plan|speicher)\w*\b/.test(
+    /\bwie\b.*\b(anleg|leg|erstell|erfass|eintrag|offn|find|bearbeit|ander|losch|bedien|plan|buch|speicher)\w*\b/.test(
       value
     )
   );
   add("read", /\b(finde|suche|offne|zeige|fasse|zusammenfassung|status)\w*\b/.test(value));
   add("diagnose", /\b(pruf|check|fehl|falsch|warum|ursache|auffallig|stimm)\w*\b/.test(value));
   add("analyze", /\b(analysier|vergleich|trend|entwickl|potenzial|wirtschaftlichkeit)\w*\b/.test(value));
-  add("change", /\b(anleg|leg|erstell|ander|bearbeit|losch|stornier|sende|speicher)\w*\b/.test(value));
+  add("change", /\b(anleg|leg|erstell|ander|bearbeit|losch|stornier|sende|buch|speicher)\w*\b/.test(value));
   add("explain", /\b(was ist|welche logik|erklar|wie funktioniert|wie lauft)\b/.test(value));
   return goals;
 }

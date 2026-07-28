@@ -52,6 +52,65 @@ describe("JARVIS system help", () => {
     expect(result.message).toContain("Verrechnungsgewerk");
   });
 
+  it("explains appointment creation from the current project context", () => {
+    const result = resolveJarvisSystemHelp(
+      "Wie buche ich hier einen Termin?",
+      {
+        recordType: "project",
+        projectKind: "recurring",
+        billingMode: "monthlyFlat",
+      },
+      leadershipAccess
+    );
+
+    expect(result).toMatchObject({
+      type: "answer",
+      topicId: "appointment.create",
+    });
+    expect(result.message).toContain("Du bist bereits in der Projektakte");
+    expect(result.message).toContain("„+ Termin“");
+    expect(result.message).toContain("Monatspauschale");
+  });
+
+  it("does not explain appointment management to a role without planning permission", () => {
+    const result = resolveJarvisSystemHelp(
+      "Wie buche ich hier einen Termin?",
+      {
+        recordType: "project",
+        projectKind: "recurring",
+        billingMode: "monthlyFlat",
+      },
+      employeeAccess
+    );
+
+    expect(result).toMatchObject({
+      type: "refusal",
+      topicId: "appointment.create",
+    });
+    expect(result.message).toContain("aktuelle WorkPilot-Rolle");
+    expect(result.message).not.toContain("+ Termin");
+  });
+
+  it("prioritizes an explicitly named project over a different open context", () => {
+    const result = resolveJarvisSystemHelp(
+      "Wie buche ich bei HAS-1 einen Termin?",
+      {
+        recordType: "project",
+        recordId: "different-project",
+        projectKind: "recurring",
+        billingMode: "hourly",
+      },
+      leadershipAccess
+    );
+
+    expect(result).toMatchObject({
+      type: "answer",
+      topicId: "appointment.create",
+    });
+    expect(result.message).toContain("Öffne das Projekt HAS-1");
+    expect(result.message).not.toContain("Du bist bereits");
+  });
+
   it("prioritizes the planning intent over the currently open document tab", () => {
     const result = resolveJarvisSystemHelp(
       "Wie verplane ich die Jungs hier richtig? Auf was muss ich achten?",

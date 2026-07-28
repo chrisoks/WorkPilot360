@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => ({
   resolveJarvisSalesAnalysisRequest: vi.fn(),
   resolveJarvisReadRequest: vi.fn(),
   resolveJarvisSystemHelp: vi.fn(),
+  resolveJarvisSystemHelpTopic: vi.fn(),
+  classifyJarvisIntentWithAi: vi.fn(),
   createJarvisAccessProfile: vi.fn(),
   resolveJarvisIntentDecision: vi.fn(),
   buildJarvisIntentClarification: vi.fn(),
@@ -38,6 +40,11 @@ vi.mock("@/lib/auth/actor", () => ({
 vi.mock("@/lib/jarvis/knowledge", () => ({
   sanitizeJarvisSurfaceContext: mocks.sanitizeJarvisSurfaceContext,
   resolveJarvisSystemHelp: mocks.resolveJarvisSystemHelp,
+  resolveJarvisSystemHelpTopic: mocks.resolveJarvisSystemHelpTopic,
+}));
+
+vi.mock("@/lib/jarvis/ai-intent-fallback", () => ({
+  classifyJarvisIntentWithAi: mocks.classifyJarvisIntentWithAi,
 }));
 
 vi.mock("@/lib/jarvis/read-model", () => ({
@@ -150,9 +157,14 @@ describe("POST /api/jarvis/chat", () => {
     mocks.resolveJarvisSalesAnalysisIntent.mockReturnValue(false);
     mocks.resolveJarvisSalesAnalysisRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisReadRequest.mockResolvedValue(undefined);
+    mocks.classifyJarvisIntentWithAi.mockResolvedValue(undefined);
     mocks.resolveJarvisSystemHelp.mockReturnValue({
       type: "answer",
       message: "Systemhilfe",
+    });
+    mocks.resolveJarvisSystemHelpTopic.mockReturnValue({
+      type: "answer",
+      message: "Spezifische Systemhilfe",
     });
   });
 
@@ -722,6 +734,218 @@ describe("POST /api/jarvis/chat", () => {
     });
     expect(mocks.resolveJarvisPersonDiagnosticRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+  });
+
+  it("does not turn a clear appointment how-to question into a project check", async () => {
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      recordType: "project",
+      recordId: "project-1",
+      billingMode: "monthlyFlat",
+    });
+    mocks.resolveJarvisIntentDecision.mockReturnValue({
+      state: "resolved",
+      domain: "system",
+      confidence: "high",
+      candidates: [],
+      clarificationReasons: [],
+      goals: ["how_to"],
+      entities: [],
+      timeScopes: [],
+      recordFilter: "all",
+      segments: [],
+    });
+    mocks.resolveJarvisProjectHealthRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "project.health",
+      message: "Falscher Projektcheck",
+      deterministic: true,
+    });
+    mocks.resolveJarvisSystemHelp.mockReturnValue({
+      type: "answer",
+      topicId: "appointment.create",
+      message: "Öffne Termine & Stempelungen und klicke auf + Termin.",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Wie buche ich hier einen Termin?",
+          context: { recordType: "project", recordId: "project-1" },
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      topicId: "appointment.create",
+    });
+    expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisSystemHelp).toHaveBeenCalledWith(
+      "Wie buche ich hier einen Termin?",
+      {
+        recordType: "project",
+        recordId: "project-1",
+        billingMode: "monthlyFlat",
+      },
+      { profile: true }
+    );
+  });
+
+  it("keeps a diagnostic appointment question on the project-check path", async () => {
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      recordType: "project",
+      recordId: "project-1",
+    });
+    mocks.resolveJarvisIntentDecision.mockReturnValue({
+      state: "resolved",
+      domain: "projects",
+      confidence: "high",
+      candidates: [],
+      clarificationReasons: [],
+      goals: ["diagnose"],
+      entities: [],
+      timeScopes: [],
+      recordFilter: "all",
+      segments: [],
+    });
+    mocks.resolveJarvisProjectHealthRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "project.health",
+      message: "Für HAS-1 fehlt im nächsten Monat noch ein bestätigter Termin.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Warum fehlt bei HAS-1 im nächsten Monat ein Termin?",
+          context: { recordType: "project", recordId: "project-1" },
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      topicId: "project.health",
+      deterministic: true,
+    });
+    expect(mocks.resolveJarvisProjectHealthRequest).toHaveBeenCalled();
+    expect(mocks.resolveJarvisSystemHelp).not.toHaveBeenCalled();
+  });
+
+  it("uses a validated AI intent only to select an existing help topic", async () => {
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      recordType: "project",
+      recordId: "project-1",
+    });
+    mocks.resolveJarvisIntentDecision.mockReturnValue({
+      state: "unrecognized",
+      domain: "system",
+      confidence: "low",
+      candidates: [],
+      clarificationReasons: [],
+      goals: [],
+      entities: [],
+      timeScopes: [],
+      recordFilter: "all",
+      segments: [],
+    });
+    mocks.classifyJarvisIntentWithAi.mockResolvedValue({
+      intent: "how_to",
+      domain: "system",
+      helpTopicId: "appointment.create",
+      confidence: "high",
+      needsClarification: false,
+      usesCurrentContext: true,
+    });
+    mocks.resolveJarvisSystemHelpTopic.mockReturnValue({
+      type: "answer",
+      topicId: "appointment.create",
+      message: "Öffne Termine & Stempelungen und klicke auf + Termin.",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Wie kriege ich den Einsatz hier in den Kalender?",
+          context: { recordType: "project", recordId: "project-1" },
+        }),
+      })
+    );
+
+    expect(await response.json()).toMatchObject({
+      topicId: "appointment.create",
+    });
+    expect(mocks.resolveJarvisSystemHelpTopic).toHaveBeenCalledWith(
+      "appointment.create",
+      "Wie kriege ich den Einsatz hier in den Kalender?",
+      { recordType: "project", recordId: "project-1" },
+      { profile: true }
+    );
+    expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
+  });
+
+  it("does not execute an AI-classified appointment action", async () => {
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      recordType: "project",
+      recordId: "project-1",
+    });
+    mocks.resolveJarvisIntentDecision.mockReturnValue({
+      state: "resolved",
+      domain: "system",
+      confidence: "low",
+      candidates: [],
+      clarificationReasons: [],
+      goals: ["change"],
+      entities: [],
+      timeScopes: [],
+      recordFilter: "all",
+      segments: [],
+    });
+    mocks.classifyJarvisIntentWithAi.mockResolvedValue({
+      intent: "prepare_action",
+      domain: "system",
+      helpTopicId: "appointment.create",
+      confidence: "high",
+      needsClarification: false,
+      usesCurrentContext: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Pack hier bitte einen Einsatz rein.",
+          context: { recordType: "project", recordId: "project-1" },
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      type: "clarification",
+      topicId: "intent.ai.appointment-clarification",
+    });
+    expect(payload.message).toContain("noch nicht freigegeben");
+    expect(payload.choices).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: "Termin anlegen erklären" }),
+        expect.objectContaining({ label: "Planung & Termine prüfen" }),
+      ])
+    );
+    expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisSystemHelpTopic).not.toHaveBeenCalled();
   });
 
   it("applies the focused answer-depth policy before returning the response", async () => {

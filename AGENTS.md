@@ -1,5 +1,25 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS hybride Absichtserkennung 2026-07-28: Eindeutige Bedienfragen wie
+  `Wie buche ich hier einen Termin?` und `Wie buche ich bei HAS-1 einen
+  Termin?` bleiben auch in einer geöffneten Projektakte Bedienfragen und
+  dürfen nicht allein wegen `Termin` oder des Projektkontexts in den
+  Projekt-Gesundheitscheck umgedeutet werden. Eine ausdrücklich genannte
+  Projektnummer hat Vorrang vor einem anderen geöffneten Projekt; `hier`
+  verwendet nur bei fehlender ausdrücklicher Referenz den aktuellen
+  Projektkontext. Bekannte Bedienfragen bleiben vollständig deterministisch
+  und verursachen keinen OpenAI-Aufruf. Nur bei einer noch nicht sicher
+  erkannten WorkPilot-Absicht darf ein kleiner, zeitlich und in der Ausgabe
+  begrenzter OpenAI-Klassifikationsaufruf einspringen. Er erhält eine
+  gekürzte Frage mit maskierten Projekt-, E-Mail- und Telefondaten sowie nur
+  abstrakten Oberflächenkontext, liefert ausschließlich ein strikt
+  validiertes JSON-Schema und darf nur eine vorhandene Bedienhilfe auswählen
+  oder eine Rückfrage auslösen. Er besitzt keinen Datenbank-, Rollen- oder
+  Aktionszugriff. Ungültige Ausgaben, API-Fehler, Timeout, fehlender Key oder
+  deaktivierter Fallback fallen ohne Crash auf die bestehende
+  deterministische Logik zurück. Eine als Aktion verstandene Terminbitte
+  wird in Phase 3a nicht ausgeführt; die kontrollierte Terminvorbereitung mit
+  Vorschau, Bestätigung, Audit und Doppelausführungsschutz bleibt Phase 4.
 - JARVIS Projektbestands-Browserkorrekturen 2026-07-28: Typische
   Schreibfehler dürfen nicht nur die Projektfrage erkennen, sondern müssen
   auch den gewünschten Prüfstatus erhalten. `Welche Porjekte wurden noch

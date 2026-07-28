@@ -12,6 +12,18 @@ describe("JARVIS central intent decision", () => {
     });
   });
 
+  it.each([
+    "Wie buche ich hier einen Termin?",
+    "Wie buche ich bei HAS-1 einen Termin?",
+    "Wie kann ich für HAS-1 einen Einsatztermin buchen?",
+  ])("recognizes appointment booking questions as how-to requests: %s", (question) => {
+    expect(resolveJarvisIntentDecision(question)).toMatchObject({
+      state: "resolved",
+      domain: "system",
+      goals: expect.arrayContaining(["how_to"]),
+    });
+  });
+
   it("resolves clear sales and management questions", () => {
     expect(
       resolveJarvisIntentDecision("Welche Kunden sollte ich heute nachfassen?")

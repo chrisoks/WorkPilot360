@@ -6,6 +6,24 @@ Stand: 28.07.2026
 
 Stand 28.07.2026:
 
+- Die Absichtserkennung arbeitet für Bedienfragen jetzt hybrid. Eindeutige
+  bekannte Fragen bleiben deterministisch und kosten keine OpenAI-Tokens.
+  Nur unerkannte oder niedrig-konfidente WorkPilot-Formulierungen dürfen
+  einen kleinen strukturierten Klassifikationsaufruf verwenden. Dieser
+  Aufruf erhält keine Live-Daten, Datensatz-IDs, Rechte oder ausführbaren
+  Werkzeuge. Projekt-, E-Mail- und Telefondaten werden vorab maskiert; die
+  Ausgabe ist auf die festen Absichten, Domänen und vorhandenen
+  Bedienhilfen begrenzt und wird anschließend erneut in WorkPilot360
+  validiert. Fehler oder ungültige Modellausgaben führen immer zur sicheren
+  deterministischen Rückfrage beziehungsweise zum bisherigen Fallback.
+- Terminfragen unterscheiden verbindlich zwischen Bedienung, Diagnose und
+  späterer Aktion. `Wie buche ich hier einen Termin?` erklärt im aktuellen
+  Projektkontext den vorhandenen Ablauf. `Wie buche ich bei HAS-1 einen
+  Termin?` priorisiert die ausdrücklich genannte Projektreferenz. Eine Frage
+  nach Fehlern oder fehlender Planung bleibt Diagnose. Eine
+  Ausführungsaufforderung wird in Phase 3a nicht gespeichert, sondern
+  transparent auf Erklärung oder Prüfung begrenzt; die echte
+  Terminvorbereitung folgt erst im Action Center der Phase 4.
 - Projektbezogene Material- und Stundenverrechnungssatzfragen berücksichtigen
   einen ausdrücklich genannten Monat. Andere Rechnungs- und Stempelmonate
   werden aus dieser fokussierten Auswertung ausgeschlossen. Verbrauchsfragen
@@ -1204,6 +1222,17 @@ deutschen Monatsnamen, Synonyme, verbundene Fachbereiche und typische
 Schreibfehler. Neue Fachadapter müssen künftig nicht nur Beispielsätze,
 sondern ganze Fragefamilien und ihre verbindlichen Routing- und
 Antwortinvarianten ergänzen.
+
+Hybride Intent-Ergänzung 28.07.2026: Die regelbasierte Absichtsschicht bleibt
+für bekannte, eindeutige Fragen führend. Ein strukturierter KI-Fallback darf
+ausschließlich bei unerkannter oder niedriger Konfidenz ergänzen. Das Modell
+klassifiziert nur Bedienung, Lesen, Diagnose, Analyse, spätere
+Aktionsvorbereitung oder Unklarheit und kann nur IDs aus dem vorhandenen
+Bedienhilfekatalog auswählen. Rechte, Datenzugriffe, Datensatzauflösung und
+Ausführung werden davon nicht abgeleitet. Direkte Termin-Bedienfragen werden
+vor dem Projekt-Diagnosepfad geschützt; unklare Terminabsichten führen zu
+einer klickbaren Auswahl zwischen Erklärung und Projektprüfung.
+Terminaktionen selbst bleiben Phase 4.
 
 Projekt-Materialanalyse 28.07.2026: Der erste Baustein der tieferen
 wirtschaftlichen Projektdiagnose wertet fertige Rechnungspositionen eines
