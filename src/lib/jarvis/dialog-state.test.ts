@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   buildJarvisDialogState,
+  extractJarvisProjectReferences,
   getJarvisDialogConversationContext,
   isJarvisReferentialFollowUp,
   resolveJarvisConversationDomain,
   resolveJarvisDialogChoiceInput,
+  resolveJarvisProjectIntentScopes,
   sanitizeJarvisDialogState,
 } from "@/lib/jarvis/dialog-state";
 
@@ -44,6 +46,37 @@ describe("JARVIS dialog state", () => {
         },
       ])
     ).toBeUndefined();
+  });
+
+  it("does not treat incomplete planning as a request for a full project check", () => {
+    expect(
+      resolveJarvisProjectIntentScopes(
+        "Warum ist der n\u00e4chste Monat bei HAS-1 noch nicht vollst\u00e4ndig geplant?"
+      )
+    ).toEqual(["planning"]);
+    expect(
+      resolveJarvisProjectIntentScopes("Checke HAS-1 komplett.")
+    ).toEqual(["full"]);
+  });
+
+  it("does not mistake a named calendar month for another project", () => {
+    expect(
+      extractJarvisProjectReferences(
+        "Warum wurde f\u00fcr HAS-1 im Juni 2026 keine fertige Rechnung erstellt?"
+      )
+    ).toEqual(["HAS-1"]);
+    expect(extractJarvisProjectReferences("Pr\u00fcfe HAS-1 und MKG-209.")).toEqual([
+      "HAS-1",
+      "MKG-209",
+    ]);
+  });
+
+  it("keeps a causal time-to-invoice question in one billing scope", () => {
+    expect(
+      resolveJarvisProjectIntentScopes(
+        "Warum wurde bei MKG-209 für Juli 2026 noch kein Rechnungsentwurf aus den Stempelungen erstellt?"
+      )
+    ).toEqual(["commercial"]);
   });
 
   it("resolves an unambiguous ordinal answer against the visible choices", () => {

@@ -1,8 +1,98 @@
 # JARVIS Entwicklungsplan
 
-Stand: 27.07.2026
+Stand: 28.07.2026
 
 ## Aktueller Umsetzungsstand
+
+Stand 28.07.2026:
+
+- Der explizite Prüf-/Freigabestatus für Artikel, Leistungen und Pakete ist
+  umgesetzt. GF/Admin können Katalogstammdaten als ungeprüft, prüfbedürftig
+  oder fachlich freigegeben kennzeichnen; Freigabebenutzer, Zeitpunkt,
+  Prüfnotiz und Statuswechsel werden nachvollziehbar gespeichert.
+  Fachlich relevante spätere Änderungen einschließlich Paketbestandteilen
+  entziehen die Freigabe automatisch. Bestehende Angebote, Rechnungen und
+  historische Kostenstände bleiben unverändert.
+- Der LK-Satz-Abgleich zeigt gespeicherten und aktuell korrekt gewichteten
+  Wert nebeneinander. Eine Übernahme erfolgt ausschließlich in den
+  bearbeiteten Entwurf und benötigt Speichern plus erneute fachliche
+  Freigabe. JARVIS verwendet nur freigegebene Katalogwerte als Grundlage für
+  Preis- und Stundensatzempfehlungen; ungeprüfte Werte bleiben ausschließlich
+  Diagnose- und Prüfgrundlage.
+- Der aktuelle Systembestand ist noch ein Vor-Live-/Prüfbestand. Projekte
+  müssen teilweise noch Projektart, Abrechnungsweg und richtigem Status
+  zugeordnet werden; Artikel und Leistungen sind ebenfalls noch nicht
+  vollständig überarbeitet und fachlich freigegeben. JARVIS darf technisch
+  plausible Werte daher nicht automatisch als fachlich bestätigt behandeln.
+  Der explizite Projekt-Prüfstatus ist umgesetzt: Projekte sind ungeprüft,
+  prüfbedürftig oder fachlich freigegeben. Die Freigabe verlangt eine
+  eindeutige Projektart, passende Abrechnungslogik, stabile Kundenverknüpfung,
+  bei Dauerläufern eine vollständige Laufzeit, Gewerk, Niederlassung,
+  Verantwortung und mindestens ein gültiges Angebot.
+  Prüfrelevante spätere Änderungen entziehen die Freigabe automatisch;
+  normale Pipeline-Statuswechsel tun dies bewusst nicht. JARVIS weist
+  ungeprüfte Projektdaten als unsichere Datenbasis aus und darf sie nicht als
+  bestätigte Sollwahrheit behandeln.
+  Die Freigabematrix ist für einmalige Projekte, Dauerläufer mit
+  Monatspauschale und Dauerläufer mit Stundenabrechnung deterministisch
+  getestet. Im aktuellen lokalen Datenbestand existiert noch kein fachlich
+  gepflegtes Stundenabrechnungs-Dauerläuferprojekt; deshalb wurde für diese
+  Variante bewusst kein künstlicher Echtdatensatz angelegt.
+- Die LK-Satz-Grundlage wurde vor dem Vollkostenausbau korrigiert.
+  Niederlassungs- und Planungsgruppenmittel verwenden jetzt den gewichteten
+  Kostensatz geteilt durch die Summe der tatsächlichen Mitarbeiteranteile.
+  Geteilte Niederlassungsanteile reduzieren Kosten und Kapazität gemeinsam
+  und dürfen deshalb den Kostensatz je tatsächlicher Stunde nicht künstlich
+  absenken. Bestehende Katalogleistungen, Angebotspositionen und historische
+  Kostensnapshots werden nicht automatisch verändert.
+- Der erste unternehmensweite Material- und Artikelvergleich ist als
+  deterministischer Managementadapter umgesetzt. Er wertet standardmäßig die
+  letzten zwölf Monate aus und verbindet fertige Rechnungspositionen,
+  historische Paketbestandteile, systemseitige Lagerbewegungen sowie aktuelle
+  Artikel-Verkaufspreise.
+- Freie Rechnungspositionen ohne stabile Artikel-ID werden nicht mit dem Lager
+  verglichen. Abgerechnete Menge, automatische Lagerentnahme und tatsächlicher
+  physischer Verbrauch bleiben fachlich getrennt. Einkaufs- und historische
+  Materialkosten sind ausschließlich GF/Admin zugänglich.
+- Eine wiederholte Preisbasis verlangt mindestens drei fertige Rechnungen je
+  Materialart. Die freigegebene Standardrichtlinie verwendet 18 %
+  Mindestmarge und 30 % Zielmarge. JARVIS berechnet daraus nur für GF/Admin
+  und nur bei vollständig gespeicherten historischen Kosten eine ausdrücklich
+  vorläufige Teilkostenspanne. Beschaffung, Lager, Verwaltung, Fahrzeuge und
+  weitere Gemeinkosten bleiben bis zur Vollkostenkonfiguration offen. JARVIS
+  ändert keine Stammdaten.
+- Der erste unternehmensweite Leistungs- und
+  Stundenverrechnungssatz-Vergleich ist als eigener Managementadapter
+  umgesetzt. Er vergleicht standardmäßig die letzten zwölf Monate über alle
+  Projekte hinweg, ohne eine ausdrücklich genannte Projektfrage zu
+  übernehmen.
+- Der Vergleich sortiert belegte Preis-, Stunden- und Zuordnungsabweichungen.
+  Finanzberechtigte Rollen sehen die freigegebenen Rechnungs- und
+  Leistungswerte; historische Mitarbeiterkosten bleiben ausschließlich
+  GF/Admin vorbehalten. Nicht berechtigte Rollen werden vor dem Laden der
+  Unternehmensdaten abgewiesen.
+- Die erste projektbezogene Leistungs- und
+  Stundenverrechnungssatz-Analyse ist umgesetzt. Sie verbindet fertige
+  Rechnungspositionen mit eindeutig über stabile Leistungs-IDs zugeordneten
+  Stempelstunden und dem aktuellen Leistungspreis. JARVIS unterscheidet den
+  tatsächlich berechneten Netto-Stundensatz vom Nettoerlös je eingesetzter
+  Stunde.
+- Stundenleistungen aus Paketen werden nur aus der zum Rechnungszeitpunkt
+  gespeicherten Paketzusammensetzung übernommen. Entwürfe, Stornos,
+  Stornorechnungen und gelöschte Belege werden nicht gewertet.
+- Interne Mitarbeiterkosten und Kostenabdeckung erscheinen ausschließlich
+  für GF/Admin und nur auf Basis gespeicherter historischer Kostenstände.
+  Material-, Fahrzeug- und Gemeinkosten werden ausdrücklich als zusätzlich
+  erforderliche Betrachtung genannt.
+- Konkrete Preisempfehlungen werden bei dünner Datenbasis bewusst
+  zurückgehalten. Die erste belastbare Schwelle verlangt je Leistung
+  mindestens drei fertige Rechnungen, zehn abgerechnete und zehn eindeutig
+  zugeordnete gestempelte Stunden. Bei vollständigen historischen
+  Mitarbeiterkosten berechnet JARVIS für GF/Admin mit 18 % Mindest- und 30 %
+  Zielmarge eine vorläufige Teilkostenspanne. Material-, Fahrzeug-, Werkzeug-,
+  Verwaltungs- und weitere Gemeinkosten werden ausdrücklich nicht als
+  enthalten ausgegeben. JARVIS ändert keine Stammdaten und stellt eine reine
+  Kostendeckungsgrenze nicht als fertigen Verkaufspreis dar.
 
 Stand 26.07.2026:
 
@@ -213,6 +303,8 @@ KI wird gezielt eingesetzt für:
 - fehlenden Kontext erkennen und Rückfragen formulieren,
 - komplexe Systeminformationen verständlich erklären,
 - Vertriebs- und BWL-Zusammenhänge analysieren,
+- berechnete Mitarbeiter-, Planungsgruppen- und Board-Auslastungen
+  rollengerecht einordnen und begründete Kapazitätsempfehlungen formulieren,
 - Prioritäten und mögliche nächste Schritte begründen,
 - individuelle E-Mail-, Aufgaben- und Beschreibungstexte formulieren,
 - einen natürlich fortlaufenden Dialog führen.
@@ -223,6 +315,8 @@ Keine KI ist erforderlich für:
 - Rollen-, Mandanten- und Rechteprüfung,
 - Datenbankabfragen über freigegebene Adapter,
 - Zahlen, Summen, Margen, Fristen und Statusberechnungen,
+- verfügbare Kapazität, geplante Stunden, Auslastungsquote und Überbuchung
+  anhand von Arbeitszeit, Planung, Feiertagen und Abwesenheiten berechnen,
 - Validierung und Pflichtfeldprüfung,
 - Speichern, Fakturieren, Stornieren und Mailversand,
 - Automationszeitpläne und Deduplizierung,
@@ -270,6 +364,16 @@ Verbindliches Dialogverhalten:
 
 - Eine fachlich eindeutige Frage wird direkt beantwortet. JARVIS stellt keine
   unnötige Rückfrage und zeigt nicht ersatzweise eine allgemeine Prüfauswahl.
+- Die Antworttiefe folgt der Nutzerabsicht: Eine konkrete Warum-, Status- oder
+  Monatsfrage erhält eine kurze Antwort mit Ursache beziehungsweise sicher
+  festgestelltem Zustand und nächstem Schritt. Ein vollständiger Prüfwert,
+  sämtliche Nebenbefunde und der Diagnoseumfang erscheinen nur bei einem
+  ausdrücklichen Prüf- oder Analyseauftrag. Nicht beweisbare Ursachen werden
+  klar als mögliche Ursache gekennzeichnet und niemals erfunden.
+- Ursache-Wirkungs-Fragen über verbundene WorkPilot-Bereiche bleiben ein
+  gemeinsamer Prüfpfad. Beispielsweise wird die Frage, warum Stempelungen
+  keinen Rechnungsentwurf erzeugt haben, nicht künstlich in eine Stempel- und
+  eine Rechnungsprüfung aufgeteilt.
 - Wenn mehrere fachlich unterschiedliche Absichten plausibel sind, fragt
   JARVIS gezielt nach dem Ziel und erklärt knapp, welche Unterscheidung fehlt.
 - Rückfragen verwenden typisierte, klickbare Auswahlflächen mit stabiler ID,
@@ -543,6 +647,12 @@ bewusste Aktion der betroffenen Person.
 - auffällige Projekte, Kunden und Rechnungen öffnen,
 - Szenarien berechnen und vergleichen,
 - Management-Zusammenfassungen erstellen,
+- Auslastung einzelner Mitarbeitender, Planungsgruppen und Planungsboards für
+  frei wählbare Zeiträume vergleichen,
+- Unterauslastung, Überlastung, freie Kapazität und wiederkehrende Engpässe
+  anhand nachvollziehbarer Systemwerte erkennen,
+- Kapazitätsausgleich, Umplanung oder Vertriebsaktivität als begründete
+  Empfehlung vorschlagen,
 - Handlungsempfehlungen als Aufgaben vorbereiten,
 - Monatsberichte vorbereiten,
 - Berichte und Arbeitslisten exportieren.
@@ -554,6 +664,21 @@ bewusste Aktion der betroffenen Person.
 - Übergabeaufgaben vorbereiten,
 - Planungseinstellungen öffnen,
 - Teamaufgaben und Auslastung zusammenfassen,
+- Geschäftsführung und Admin dürfen die freigegebene Auslastung aller
+  Mitarbeitenden, Planungsgruppen und Boards abfragen,
+- Führungskräfte dürfen ausschließlich die ihnen zugeordneten
+  Planungsgruppen beziehungsweise Planungsboards und deren Mitarbeitende
+  auswerten,
+- normale Mitarbeitende erhalten höchstens ihre eigene freigegebene
+  Auslastung, niemals fremde Personal-, Lohn- oder Kostendaten,
+- Auslastung wird deterministisch aus verfügbarer Arbeitskapazität,
+  Feiertagen, Abwesenheiten und bestätigter Planung berechnet; ein KI-Modell
+  darf den Zahlenwert nicht erfinden oder verändern,
+- Zielkorridore, Mindestvorlauf und Überlastungsgrenzen werden fachlich
+  konfigurierbar festgelegt und nicht pauschal im KI-Prompt versteckt,
+- KI wird erst für Trenddeutung, Ursachenhypothesen und verständliche
+  Handlungsempfehlungen verwendet; die Antwort nennt Datenbasis, Zeitraum und
+  Unsicherheit,
 - fehlende Kostensätze berechtigten Rollen anzeigen,
 - Personal- und Lohndaten ausschließlich rollengerecht erklären,
 - für Geschäftsführung berechtigte Personalstammdatenänderungen vorbereiten,
@@ -1035,6 +1160,40 @@ Abrechnung, Automatiken, Materialverbrauch und wirtschaftlichen
 Zusammenhängen. Schreibende JARVIS-Aktionen bleiben weiterhin einer späteren
 Phase mit Vorschau und ausdrücklicher Bestätigung vorbehalten.
 
+Qualitätsschicht 28.07.2026: Die bis dahin verteilte Erkennung von
+Projektreferenzen, Monatsangaben, Projektprüfumfang, verbundenen
+Ursache-Wirkungs-Fragen und Antworttiefe wurde in eine zentrale, typisierte
+Fragesemantik überführt. Dialogrouter und Projektdiagnose verwenden damit
+dieselbe Auswertung. Monatsnamen mit Jahreszahl können nicht mehr als
+Projektnummer in den Mehrprojektpfad gelangen; Formulierungen wie
+`vollständig geplant` werden von einem vollständigen Projektcheck getrennt;
+Stempelung-zu-Rechnungsentwurf bleibt eine gemeinsame Abrechnungskette.
+Monatsangaben ohne Jahreszahl werden im laufenden Arbeitskontext dem aktuellen
+Kalenderjahr zugeordnet; ein bloßer Angebotsentwurf bleibt davon abgegrenzt.
+
+Eine globale Antworttiefen-Regel kürzt fokussierte Warum-, Status- und
+Monatsfragen auf höchstens die wesentlichen Befunde sowie den sicheren
+nächsten Schritt. Prüfwert, Bereichsbewertung und vollständiger
+Diagnoseumfang bleiben ausdrücklichen Prüf- und Analyseaufträgen vorbehalten.
+Die automatisch erzeugte Evaluationsmatrix variiert Projekte, sämtliche
+deutschen Monatsnamen, Synonyme, verbundene Fachbereiche und typische
+Schreibfehler. Neue Fachadapter müssen künftig nicht nur Beispielsätze,
+sondern ganze Fragefamilien und ihre verbindlichen Routing- und
+Antwortinvarianten ergänzen.
+
+Projekt-Materialanalyse 28.07.2026: Der erste Baustein der tieferen
+wirtschaftlichen Projektdiagnose wertet fertige Rechnungspositionen eines
+Projekts positionsweise aus. Identische Positionen werden addiert und nicht
+anhand ihres Namens entfernt. Artikel in Paketen zählen ausschließlich über
+die auf der Rechnung gespeicherte historische Paketzusammensetzung.
+Abgerechnete Materialmengen werden mit den zugehörigen automatischen
+Lagerentnahmen und Gegenbuchungen verglichen. JARVIS erklärt dabei
+verbindlich, dass Rechnung und Lagerbewegung keinen tatsächlich physischen
+Baustellenverbrauch beweisen. Fehlende historische Paket- oder
+Materialkostenstände werden als Datenlücke ausgewiesen und nicht mit heutigen
+Stammdatenwerten erfunden. Der Adapter bleibt organisationsgebunden,
+rollengerecht und rein lesend.
+
 ### Phase 3b: Spracheingabe und Sprachausgabe
 
 - Mikrofon- und Berechtigungsoberfläche,
@@ -1085,6 +1244,16 @@ Sicherheitskontrollen wie die normale UI.
 ### Phase 6: Vertrieb und BWL
 
 - sichere Vertriebs- und Managementadapter,
+- erster rein lesender Unternehmensvergleich für Materialien, Artikelpreise,
+  historische Paketbestandteile und Lagerabweichungen über einen festen
+  Zwölfmonatszeitraum umgesetzt; physischer Verbrauch bleibt ohne separate
+  Erfassung ausdrücklich unbelegt,
+- erster rein lesender Unternehmensvergleich für Leistungen und
+  Stundenverrechnungssätze über einen festen Zwölfmonatszeitraum umgesetzt;
+  die fachlich freigegebenen Standardwerte 18 % Mindest- und 30 % Zielmarge
+  erzeugen bei vollständiger historischer Kostenbasis ausschließlich eine
+  klar gekennzeichnete vorläufige Teilkostenspanne; weitere Zeiträume und die
+  Vollkostenkonfiguration bleiben auszubauen,
 - verbundene Kunden-, Projekt-, Angebots-, Rechnungs- und Leistungsansichten,
 - Material- und Artikelverbräuche einschließlich Paketbestandteilen
   positionsweise auswerten,
@@ -1101,6 +1270,14 @@ Sicherheitskontrollen wie die normale UI.
 - Aufgaben und Kundenmailentwürfe mit verpflichtender menschlicher Prüfung,
 - priorisierte Vertriebsaktionen,
 - Ursachen- und Trendanalysen,
+- deterministischer Kapazitätsadapter für Mitarbeiter, Planungsgruppen und
+  Planungsboards mit Zeitraum-, Abwesenheits- und Feiertagsbezug,
+- rollengerechte Auslastungsanalyse: Geschäftsführung organisationsweit,
+  Führungskräfte nur für ihre zugeordneten Gruppen und Boards,
+- konfigurierbare Zielkorridore für Unterauslastung, gesunde Auslastung und
+  Überlastung sowie daraus abgeleitete, nachvollziehbare Empfehlungen,
+- Verbindung freier Kapazität mit Projektpipeline und Vertriebsbedarf, ohne
+  Beschäftigungs-, Leistungs- oder Personalentscheidungen autonom zu treffen,
 - Szenarien,
 - Handlungsempfehlungen,
 - Aufgabenübergabe aus Analysen,
@@ -1112,7 +1289,8 @@ Sicherheitskontrollen wie die normale UI.
 - Fahrzeuge und Fahrten,
 - Vermietung nach fachlicher Freigabe,
 - Dokumente, Checklisten und Tätigkeitsberichte,
-- Personal-, Planungs- und Einstellungstiefe.
+- Personal-, Planungs- und Einstellungstiefe einschließlich Detaildiagnose
+  einzelner Tage, Mitarbeitender, Planungsgruppen und Planungsboards.
 
 ### Phase 8: Freigegebene Automationen
 

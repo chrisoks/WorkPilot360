@@ -6880,75 +6880,54 @@
 .jarvisSidebarCard[data-active="true"] .jarvisSidebarLabel strong {
   text-shadow:
     0 1px 4px rgba(0, 0, 0, 0.9),
-    0 0 18px rgba(56, 189, 248, 0.92),
-    0 0 30px rgba(37, 99, 235, 0.58);
+    0 0 12px rgba(255, 255, 255, 0.54),
+    0 0 22px rgba(250, 204, 21, 0.28);
 }
 
 .jarvisSidebarCard::after {
   aspect-ratio: 1;
   border-radius: 50%;
-  background: conic-gradient(
-    from 0deg,
-    transparent 0deg 34deg,
-    rgba(14, 165, 233, 0.18) 54deg,
-    rgba(103, 232, 249, 0.96) 78deg,
-    rgba(37, 99, 235, 0.42) 104deg,
-    transparent 132deg 208deg,
-    rgba(37, 99, 235, 0.16) 226deg,
-    rgba(56, 189, 248, 0.72) 250deg,
-    transparent 282deg 360deg
+  background: radial-gradient(
+    circle,
+    rgba(254, 240, 138, 0.6) 0%,
+    rgba(250, 204, 21, 0.32) 28%,
+    rgba(245, 158, 11, 0.12) 54%,
+    transparent 76%
   );
   content: "";
   filter:
-    drop-shadow(0 0 7px rgba(56, 189, 248, 0.72))
-    drop-shadow(0 0 15px rgba(37, 99, 235, 0.42));
+    blur(4px)
+    drop-shadow(0 0 12px rgba(250, 204, 21, 0.72));
   left: 50%;
-  -webkit-mask: radial-gradient(
-    circle,
-    transparent calc(50% - 5px),
-    #000 calc(50% - 4px),
-    #000 calc(50% - 1px),
-    transparent 50%
-  );
-  mask: radial-gradient(
-    circle,
-    transparent calc(50% - 5px),
-    #000 calc(50% - 4px),
-    #000 calc(50% - 1px),
-    transparent 50%
-  );
+  mix-blend-mode: screen;
   opacity: 0;
   pointer-events: none;
   position: absolute;
   top: 50%;
-  transform: translate(-50%, -50%) rotate(0deg);
-  width: 48%;
+  transform: translate(-50%, -50%) scale(0.82);
+  will-change: opacity, transform;
+  width: 31%;
   z-index: 1;
 }
 
 .jarvisSidebarCard[data-active="true"]::after {
-  animation:
-    jarvisOrbWaveSpin 2.8s linear infinite,
-    jarvisOrbWaveBreathe 1.4s ease-in-out infinite alternate;
+  animation: jarvisOrbCorePulse 1.8s ease-in-out infinite;
 }
 
-@keyframes jarvisOrbWaveSpin {
-  to {
-    transform: translate(-50%, -50%) rotate(360deg);
+@keyframes jarvisOrbCorePulse {
+  0%,
+  100% {
+    opacity: 0.28;
+    transform: translate(-50%, -50%) scale(0.82);
   }
-}
-
-@keyframes jarvisOrbWaveBreathe {
-  from {
-    opacity: 0.44;
-  }
-  to {
-    opacity: 0.96;
+  50% {
+    opacity: 0.92;
+    transform: translate(-50%, -50%) scale(1.18);
   }
 }
 
 .jarvisSidebarCard:focus-visible {
-  outline: 3px solid rgba(103, 232, 249, 0.3);
+  outline: 3px solid rgba(253, 224, 71, 0.34);
   outline-offset: -3px;
 }
 
@@ -6962,11 +6941,16 @@
 
 .jarvisSidebarVisual img {
   display: block;
-  height: 100%;
+  height: 96%;
+  left: 50%;
+  max-width: none;
   mix-blend-mode: screen;
   object-fit: contain;
   object-position: center;
-  width: 100%;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 121%;
 }
 
 .jarvisSidebarLabel {
@@ -6978,18 +6962,22 @@
   pointer-events: none;
   position: absolute;
   transform: translate(-50%, -50%);
-  z-index: 1;
+  z-index: 2;
 }
 
 .jarvisSidebarLabel strong {
   color: #ffffff;
-  font-size: 0.94rem;
+  filter:
+    drop-shadow(0 1px 3px rgba(0, 0, 0, 0.92))
+    drop-shadow(0 0 6px rgba(255, 255, 255, 0.34));
+  font-family: "Eras Bold ITC", "Arial Black", sans-serif;
+  font-size: 1.34rem;
+  font-synthesis: none;
+  font-style: normal;
   font-weight: 700;
-  letter-spacing: 0.09em;
+  letter-spacing: 0.015em;
   line-height: 1;
-  text-shadow:
-    0 1px 4px rgba(0, 0, 0, 0.9),
-    0 0 14px rgba(56, 189, 248, 0.72);
+  text-transform: uppercase;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -6999,6 +6987,11 @@
   .managementAiPanel::before {
     animation: none;
     transition: none;
+  }
+
+  .jarvisSidebarCard[data-active="true"]::after {
+    opacity: 0.52;
+    transform: translate(-50%, -50%) scale(1);
   }
 }
 
@@ -24721,6 +24714,37 @@
   color: #475569;
 }
 
+.catalogReviewClip {
+  align-items: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  justify-content: center;
+  line-height: 1.2;
+  min-height: 28px;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.catalogReviewClip[data-review="unreviewed"] {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.catalogReviewClip[data-review="needs_review"] {
+  background: #fff7ed;
+  border-color: #fdba74;
+  color: #9a3412;
+}
+
+.catalogReviewClip[data-review="approved"] {
+  background: #ecfdf5;
+  border-color: #86efac;
+  color: #047857;
+}
+
 .catalogActionGroup {
   display: grid;
   gap: 6px;
@@ -24966,6 +24990,129 @@
   font-size: 20px;
 }
 
+.catalogLaborRatePreview {
+  background: #eef7f7;
+  border: 1px solid #99caca;
+  border-radius: 12px;
+  display: grid;
+  gap: 12px;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 14px;
+}
+
+.catalogLaborRatePreview article {
+  background: #ffffff;
+  border: 1px solid #d7e7e7;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.catalogLaborRatePreview span {
+  color: #64748b;
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.catalogLaborRatePreview strong {
+  color: #0f172a;
+  display: block;
+  font-size: 17px;
+  margin-top: 4px;
+}
+
+.catalogLaborRatePreview button {
+  align-self: center;
+  justify-self: stretch;
+}
+
+.catalogReviewPanel {
+  display: grid;
+  gap: 14px;
+  padding: 12px 0;
+}
+
+.catalogReviewSummary,
+.catalogReviewChecklist,
+.catalogReviewLaborComparison {
+  background: #f8fafc;
+  border: 1px solid #dbe4ee;
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.catalogReviewSummary {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.catalogReviewSummary p,
+.catalogReviewChecklist p,
+.catalogReviewLaborComparison p {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 5px 0 0;
+}
+
+.catalogReviewCheckGrid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 12px;
+}
+
+.catalogReviewCheckGrid article {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #dbe4ee;
+  border-radius: 9px;
+  color: #334155;
+  display: flex;
+  font-size: 13px;
+  font-weight: 650;
+  gap: 8px;
+  min-height: 42px;
+  padding: 9px 11px;
+}
+
+.catalogReviewCheckGrid article[data-ok="true"] {
+  border-color: #86efac;
+  color: #047857;
+}
+
+.catalogReviewLaborComparison {
+  margin-top: 12px;
+}
+
+.catalogReviewNote {
+  color: #334155;
+  display: grid;
+  font-size: 14px;
+  font-weight: 700;
+  gap: 6px;
+}
+
+.catalogReviewNote textarea {
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  font: inherit;
+  font-weight: 500;
+  min-height: 82px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+.catalogReviewActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .catalogPriceSchedulePanel {
   grid-column: 1 / -1;
   border: 1px solid rgba(148, 163, 184, 0.35);
@@ -25107,8 +25254,29 @@
 .catalogModal .catalogFormGrid,
 .catalogModal .catalogCalculationGrid,
 .catalogModal .catalogComponentsPanel,
-.catalogModal .catalogHistoryTable {
+.catalogModal .catalogHistoryTable,
+.catalogModal .catalogReviewPanel {
   margin-inline: 0;
+}
+
+@media (max-width: 760px) {
+  .catalogLaborRatePreview,
+  .catalogReviewCheckGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .catalogReviewSummary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .catalogReviewActions {
+    justify-content: stretch;
+  }
+
+  .catalogReviewActions button {
+    flex: 1 1 180px;
+  }
 }
 
 .catalogComponentsPanel {
@@ -35118,4 +35286,140 @@
   font-size: var(--wp-type-size-xs);
   font-weight: var(--wp-type-weight-semibold);
   line-height: 1;
+}
+.projectReviewCard {
+  margin: 22px 0 4px;
+  padding: 18px;
+  border: 1px solid #b9d8dc;
+  border-radius: 14px;
+  background: #f7fbfb;
+  display: grid;
+  gap: 14px;
+}
+
+.projectReviewHeader,
+.projectReviewActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.projectReviewHeader > div {
+  display: grid;
+  gap: 3px;
+}
+
+.projectReviewHeader span,
+.projectReviewMeta {
+  color: #5c747a;
+  font-size: 0.82rem;
+}
+
+.projectReviewStatus {
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  background: #eef3f4;
+  color: #445b60;
+}
+
+.projectReviewStatus[data-review="approved"] {
+  background: #dff7e8;
+  color: #17643d;
+}
+
+.projectReviewStatus[data-review="needs_review"] {
+  background: #fff0c9;
+  color: #805300;
+}
+
+.projectReviewChecklist {
+  display: grid;
+  gap: 8px;
+}
+
+.projectReviewChecklist > div {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.projectReviewChecklist span {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #fff0c9;
+  color: #805300;
+  font-weight: 800;
+}
+
+.projectReviewChecklist [data-ok="true"] span {
+  background: #dff7e8;
+  color: #17643d;
+}
+
+.projectReviewChecklist p,
+.projectReviewCard > p {
+  margin: 0;
+}
+
+.projectReviewWarning {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid #e7a412;
+  background: #fff8e5;
+  color: #634b17;
+}
+
+.projectReviewCard > label {
+  display: grid;
+  gap: 7px;
+  color: #263b40;
+  font-weight: 700;
+}
+
+.projectReviewCard textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 78px;
+  resize: vertical;
+}
+
+.projectReviewHistory {
+  border-top: 1px solid #d6e4e6;
+  padding-top: 12px;
+}
+
+.projectReviewHistory summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #075f68;
+}
+
+.projectReviewHistory > div {
+  display: grid;
+  gap: 2px;
+  padding: 10px 0;
+  border-bottom: 1px solid #e4edef;
+}
+
+.projectReviewHistory > div span {
+  color: #63777b;
+  font-size: 0.8rem;
+}
+
+.projectReviewHistory > div p {
+  margin: 4px 0 0;
+}
+
+@media (max-width: 720px) {
+  .projectReviewHeader,
+  .projectReviewActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }

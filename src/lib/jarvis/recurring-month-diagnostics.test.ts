@@ -65,8 +65,21 @@ describe("JARVIS recurring month diagnostics", () => {
       "recurring-history-underplanned",
       "recurring-history-invoice-missing",
       "recurring-current-month-underplanned",
+      "recurring-next-month-underplanned",
       "monthly-flat-previous-invoice-missing",
     ]);
+    const blockedInvoice = result.issues.find(
+      (issue) => issue.id === "monthly-flat-previous-invoice-missing"
+    );
+    expect(blockedInvoice?.title).toBe(
+      "Die automatische Monatsrechnung kann nicht erstellt werden"
+    );
+    expect(blockedInvoice?.evidence).toContain(
+      "darf keinen Monat überspringen"
+    );
+    expect(blockedInvoice?.recommendation).toContain(
+      "Öffne im Projekt „Rechnungen“"
+    );
   });
 
   it("detects multiple active invoices but ignores cancelled records", () => {
@@ -133,6 +146,47 @@ describe("JARVIS recurring month diagnostics", () => {
       expect.arrayContaining([
         expect.objectContaining({ id: "recurring-history-invoice-missing" }),
       ])
+    );
+  });
+
+  it("warns when the next active monthly-flat month has no planning basis", () => {
+    const result = diagnoseRecurringProjectMonths({
+      project: {
+        ...baseProject,
+        timeBudgetEnabled: false,
+        timeBudgetHours: null,
+        timeBudgetAllocations: [],
+      },
+      evaluationDateKey: "2026-07-28",
+      planningEntries: [],
+      timeEntries: [],
+    });
+
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "recurring-next-month-unplanned" }),
+      ])
+    );
+    expect(result.metrics.nextMonthPlannedHours).toBe(0);
+  });
+
+  it("does not force fixed future planning for an on-demand hourly project", () => {
+    const result = diagnoseRecurringProjectMonths({
+      project: {
+        ...baseProject,
+        recurringBillingMode: "hourly",
+        timeBudgetEnabled: false,
+        timeBudgetHours: null,
+        timeBudgetAllocations: [],
+        autoBillingEnabled: false,
+      },
+      evaluationDateKey: "2026-07-28",
+      planningEntries: [],
+      timeEntries: [],
+    });
+
+    expect(result.issues.map((issue) => issue.id)).not.toContain(
+      "recurring-next-month-unplanned"
     );
   });
 

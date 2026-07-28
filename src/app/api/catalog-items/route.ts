@@ -6,6 +6,12 @@ import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { canManageCatalogItems } from "@/lib/permissions";
 import { getNextWinterServiceCatalogNumber as selectNextWinterServiceCatalogNumber } from "@/lib/winter-service/catalog-number";
+import {
+  getCatalogReviewStatusAfterEdit,
+  hasCatalogPackageReviewRelevantChange,
+  hasCatalogReviewRelevantChange,
+  normalizeCatalogReviewStatus,
+} from "@/lib/catalog/review-status";
 
 type CatalogItemRow = {
   id: string;
@@ -47,6 +53,11 @@ type CatalogItemRow = {
   planningMinutesPerUnit: number;
   defaultPlanningBoard: string | null;
   defaultPlanningGroup: string | null;
+  reviewStatus: string;
+  reviewedAt: Date | null;
+  reviewedByUserId: string | null;
+  reviewedByName: string | null;
+  reviewNote: string | null;
   isActive: boolean;
   usedCount: number;
   createdAt: Date;
@@ -128,6 +139,11 @@ async function initializeCatalogTables() {
       "planningMinutesPerUnit" INTEGER NOT NULL DEFAULT 0,
       "defaultPlanningBoard" TEXT,
       "defaultPlanningGroup" TEXT,
+      "reviewStatus" TEXT NOT NULL DEFAULT 'unreviewed',
+      "reviewedAt" TIMESTAMP(3),
+      "reviewedByUserId" TEXT,
+      "reviewedByName" TEXT,
+      "reviewNote" TEXT,
       "isActive" BOOLEAN NOT NULL DEFAULT true,
       "usedCount" INTEGER NOT NULL DEFAULT 0,
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -138,6 +154,20 @@ async function initializeCatalogTables() {
   await prisma.$executeRaw`
     ALTER TABLE "CatalogItem"
     ADD COLUMN IF NOT EXISTS "laborCostRateKey" TEXT NOT NULL DEFAULT ''
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "CatalogItem"
+    ADD COLUMN IF NOT EXISTS "reviewStatus" TEXT NOT NULL DEFAULT 'unreviewed',
+    ADD COLUMN IF NOT EXISTS "reviewedAt" TIMESTAMP(3),
+    ADD COLUMN IF NOT EXISTS "reviewedByUserId" TEXT,
+    ADD COLUMN IF NOT EXISTS "reviewedByName" TEXT,
+    ADD COLUMN IF NOT EXISTS "reviewNote" TEXT
+  `;
+
+  await prisma.$executeRaw`
+    CREATE INDEX IF NOT EXISTS "CatalogItem_organizationId_reviewStatus_idx"
+    ON "CatalogItem" ("organizationId", "reviewStatus")
   `;
 
   await prisma.$executeRaw`
@@ -476,6 +506,11 @@ function formatCatalogItem(
     planningMinutesPerUnit: item.planningMinutesPerUnit,
     defaultPlanningBoard: item.defaultPlanningBoard ?? "",
     defaultPlanningGroup: item.defaultPlanningGroup ?? "",
+    reviewStatus: normalizeCatalogReviewStatus(item.reviewStatus),
+    reviewedAt: item.reviewedAt?.toISOString() ?? "",
+    reviewedByUserId: item.reviewedByUserId ?? "",
+    reviewedByName: item.reviewedByName ?? "",
+    reviewNote: item.reviewNote ?? "",
     isActive: item.isActive,
     usedCount: item.usedCount,
     createdAt: item.createdAt.toISOString(),
@@ -657,6 +692,7 @@ async function writeChangeHistory(
     ["isLaborPosition", "Arbeitsposition"],
     ["isPlanningRelevant", "Planungsrelevant"],
     ["planningMinutesPerUnit", "Planungszeit je Einheit"],
+    ["reviewStatus", "Prüfstatus"],
     ["isActive", "Status"],
   ];
 
@@ -920,6 +956,45 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Artikel/Leistung wurde nicht gefunden." }, { status: 404 });
   }
 
+  if (body.action === "set-review-status") {
+    const reviewStatus = normalizeCatalogReviewStatus(body.reviewStatus);
+    const reviewNote = nullableString(body.reviewNote);
+    const reviewedAt = reviewStatus === "approved" ? new Date() : null;
+    const reviewedByUserId = reviewStatus === "approved" ? actor.id : null;
+    const reviewedByName = reviewStatus === "approved" ? actorName : null;
+    const rows = await prisma.$queryRaw<CatalogItemRow[]>`
+      UPDATE "CatalogItem"
+      SET
+        "reviewStatus" = ${reviewStatus},
+        "reviewedAt" = ${reviewedAt},
+        "reviewedByUserId" = ${reviewedByUserId},
+        "reviewedByName" = ${reviewedByName},
+        "reviewNote" = ${reviewNote},
+        "updatedAt" = CURRENT_TIMESTAMP
+      WHERE "id" = ${id}
+        AND "organizationId" = ${organization.id}
+      RETURNING *
+    `;
+    const updated = rows[0];
+    await createHistory({
+      organizationId: organization.id,
+      catalogItemId: id,
+      eventType: reviewStatus === "approved" ? "review_approved" : "review_status_changed",
+      fieldName: "Prüfstatus",
+      oldValue: normalizeCatalogReviewStatus(before.reviewStatus),
+      newValue: reviewStatus,
+      actorUserId: actor.id,
+      actorName,
+      note:
+        reviewStatus === "approved"
+          ? "Stammdatensatz fachlich freigegeben"
+          : reviewStatus === "needs_review"
+            ? "Stammdatensatz zur Prüfung markiert"
+            : "Stammdatensatz als ungeprüft markiert",
+    });
+    return NextResponse.json(formatCatalogItem(updated));
+  }
+
   const type = cleanType(body.type);
   const name = cleanString(body.name);
   const isLaborPosition =
@@ -937,6 +1012,82 @@ export async function PATCH(req: Request) {
   const nextPurchasePrice = parseNumber(body.purchasePrice);
   const nextPlanningMinutes = parseInteger(body.planningMinutesPerUnit);
   const salesPriceChanged = comparableValue(before.salesPrice) !== comparableValue(nextSalesPrice);
+  const existingPackageItems =
+    before.type === "package" || type === "package"
+      ? await prisma.$queryRaw<Array<{
+          componentItemId: string;
+          quantity: number;
+          position: number;
+          descriptionOverride: string | null;
+          priceOverride: number | null;
+          purchasePriceSnapshot: number | null;
+          salesPriceSnapshot: number | null;
+          planningMinutesOverride: number | null;
+        }>>`
+          SELECT
+            "componentItemId", "quantity", "position", "descriptionOverride",
+            "priceOverride", "purchasePriceSnapshot", "salesPriceSnapshot",
+            "planningMinutesOverride"
+          FROM "CatalogPackageItem"
+          WHERE "organizationId" = ${organization.id}
+            AND "packageId" = ${id}
+          ORDER BY "position" ASC, "componentItemId" ASC
+        `
+      : [];
+  const packageItemsChanged =
+    (before.type === "package" || type === "package") &&
+    hasCatalogPackageReviewRelevantChange(
+      existingPackageItems,
+      body.packageItems
+    );
+  const reviewCandidate: Record<string, unknown> = {
+    ...before,
+    type,
+    number: cleanString(body.number) || before.number,
+    name,
+    category: nullableString(body.category),
+    trade: cleanString(body.trade),
+    unit: normalizeUnit(body.unit) || "Stk",
+    description: nullableString(body.description),
+    matchcode: nullableString(body.matchcode),
+    ean: nullableString(body.ean),
+    costCenter: nullableString(body.costCenter),
+    supplierName: nullableString(body.supplierName),
+    supplierNumber: nullableString(body.supplierNumber),
+    manufacturer: nullableString(body.manufacturer),
+    manufacturerNumber: nullableString(body.manufacturerNumber),
+    manufacturerTypeName: nullableString(body.manufacturerTypeName),
+    minimumOrderQuantity: parseNullableNumber(body.minimumOrderQuantity),
+    quantityScale: nullableString(body.quantityScale),
+    priceUnit: nullableString(body.priceUnit),
+    deliveryTime: nullableString(body.deliveryTime),
+    purchasePrice: nextPurchasePrice,
+    laborCostRateKey: cleanString(body.laborCostRateKey),
+    salesPrice: nextSalesPrice,
+    scheduledSalesPrice: scheduledPriceResult.scheduledSalesPrice,
+    scheduledSalesPriceValidFrom:
+      scheduledPriceResult.scheduledSalesPriceValidFrom,
+    scheduledSalesPriceUpdatePackages: Boolean(
+      body.scheduledSalesPriceUpdatePackages
+    ),
+    vatRate: parseNumber(body.vatRate, 19),
+    isLaborPosition,
+    isPlanningRelevant: Boolean(body.isPlanningRelevant),
+    planningMinutesPerUnit: nextPlanningMinutes,
+    defaultPlanningBoard: nullableString(body.defaultPlanningBoard),
+    defaultPlanningGroup: nullableString(body.defaultPlanningGroup),
+    isActive: body.isActive !== false,
+  };
+  const reviewStatus = getCatalogReviewStatusAfterEdit({
+    previousStatus: before.reviewStatus,
+    hasRelevantChange: hasCatalogReviewRelevantChange(
+      before as unknown as Record<string, unknown>,
+      reviewCandidate
+    ) || packageItemsChanged,
+  });
+  const reviewWasInvalidated =
+    normalizeCatalogReviewStatus(before.reviewStatus) === "approved" &&
+    reviewStatus === "needs_review";
 
   let rows: CatalogItemRow[];
   try {
@@ -986,6 +1137,10 @@ export async function PATCH(req: Request) {
         "planningMinutesPerUnit" = ${nextPlanningMinutes},
         "defaultPlanningBoard" = ${nullableString(body.defaultPlanningBoard)},
         "defaultPlanningGroup" = ${nullableString(body.defaultPlanningGroup)},
+        "reviewStatus" = ${reviewStatus},
+        "reviewedAt" = ${reviewWasInvalidated ? null : before.reviewedAt},
+        "reviewedByUserId" = ${reviewWasInvalidated ? null : before.reviewedByUserId},
+        "reviewedByName" = ${reviewWasInvalidated ? null : before.reviewedByName},
         "isActive" = ${body.isActive !== false},
         "updatedAt" = CURRENT_TIMESTAMP
       WHERE "id" = ${id}

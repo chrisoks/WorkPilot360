@@ -668,6 +668,11 @@ model CatalogItem {
   planningMinutesPerUnit            Int                  @default(0)
   defaultPlanningBoard              String?
   defaultPlanningGroup              String?
+  reviewStatus                      String               @default("unreviewed")
+  reviewedAt                        DateTime?
+  reviewedByUserId                  String?
+  reviewedByName                    String?
+  reviewNote                        String?
   isActive                          Boolean              @default(true)
   usedCount                         Int                  @default(0)
   createdAt                         DateTime             @default(now())
@@ -681,6 +686,7 @@ model CatalogItem {
   @@unique([organizationId, number])
   @@index([organizationId, type])
   @@index([organizationId, isActive])
+  @@index([organizationId, reviewStatus])
 }
 
 model CatalogPackageItem {
@@ -2102,9 +2108,32 @@ model WorkPilotProject {
   autoBillingTemplate         Json?
   winterGritPackageItemId     String?
   winterGritPushPackageItemId String?
+  reviewStatus                String    @default("unreviewed")
+  reviewedAt                  DateTime?
+  reviewedByUserId            String?
+  reviewedByName              String?
+  reviewNote                  String?
+  reviewedProjectStatus       String?
   createdAt                   DateTime  @default(now())
   updatedAt                   DateTime  @default(now())
   responsibleName             String?
+
+  @@index([organizationId, reviewStatus])
+}
+
+model WorkPilotProjectReviewHistory {
+  id             String   @id
+  organizationId String
+  projectId      String
+  eventType      String
+  oldStatus      String?
+  newStatus      String
+  actorUserId    String?
+  actorName      String
+  note           String?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, projectId, createdAt])
 }
 
 model WinterServiceCalculation {

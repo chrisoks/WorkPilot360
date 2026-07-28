@@ -44,7 +44,8 @@ const PROFILES: Record<JarvisProjectLogicVariant, JarvisProjectLogicProfile> = {
     isMonthlyFlatRecurring: false,
     evaluationScope: "project",
     processSummary: [
-      "Sollprozess Einmalprojekt: Auftragsgrundlage → Planung → Ausführung → Endkontrolle → Schlussrechnung → Abschluss.",
+      "Sollprozess Einmalprojekt: gültiges Angebot → Planung → Ausführung → Endkontrolle → Schlussrechnung → Abschluss.",
+      "Ein gültiges, im Projekt hinterlegtes Angebot ist in WorkPilot360 für jedes Projekt verpflichtend.",
       "Manuelle Zeiten benötigen eine Angebotszuweisung auf Angebotsebene.",
       "Nach der Schlussrechnung wird das Gesamtprojekt abgeschlossen; es gibt keine monatliche Dauerläufer-Fortsetzung.",
     ],
@@ -57,9 +58,10 @@ const PROFILES: Record<JarvisProjectLogicVariant, JarvisProjectLogicProfile> = {
     isMonthlyFlatRecurring: true,
     evaluationScope: "month",
     processSummary: [
-      "Sollprozess Monatspauschale: Laufzeit und Monatskontingent → Monatsplanung → Ausführung/Nachweise → Monatsrechnung → Folgemonat.",
+      "Sollprozess Monatspauschale: gültiges Angebot → Laufzeit und Monatskontingent → Monatsplanung → Ausführung/Nachweise → Monatsrechnung → Folgemonat.",
+      "Ein gültiges, im Projekt hinterlegtes Angebot ist in WorkPilot360 auch für Dauerläufer verpflichtend.",
       "Stempelzeiten benötigen keine einzelne Abrechnungsleistung; abgerechnet wird die vereinbarte Monatspauschale.",
-      "Die Stapelabrechnung verwendet die aktive Rechnung des direkten Vormonats als Vorlage und darf fehlende Monate nicht überspringen.",
+      "Die automatische Monatsabrechnung verwendet immer die aktive Rechnung des direkten Vormonats als Vorlage und darf keinen Monat überspringen.",
     ],
   },
   recurringHourly: {
@@ -70,7 +72,8 @@ const PROFILES: Record<JarvisProjectLogicVariant, JarvisProjectLogicProfile> = {
     isMonthlyFlatRecurring: false,
     evaluationScope: "month",
     processSummary: [
-      "Sollprozess Stunden-Dauerläufer: Laufzeit und Monatsplanung → Gewerk/Abrechnungsleistung → Stempelungen → Monatsentwurf → Faktura → Folgemonat.",
+      "Sollprozess Stunden-Dauerläufer: gültiges Angebot → Laufzeit und Monatsplanung → Gewerk/Abrechnungsleistung → Stempelungen → Monatsentwurf → fertige Rechnung → Folgemonat.",
+      "Ein gültiges, im Projekt hinterlegtes Angebot ist in WorkPilot360 auch für Dauerläufer verpflichtend.",
       "Die erste passende Monatsstempelung erzeugt genau einen Rechnungsentwurf; weitere Zeiten werden demselben Monatsentwurf zugeordnet.",
       "Abgerechnet werden die tatsächlich zugeordneten und geprüften Stunden, nicht eine Monatspauschale.",
     ],
@@ -153,9 +156,9 @@ export function diagnoseJarvisProjectLogic(
       area: "Projektlogik",
       title: "Projektart ist nicht eindeutig",
       evidence:
-        "WorkPilot360 kann nicht sicher zwischen einmaligem Projekt und Dauerläufer unterscheiden.",
+      "In den Projektinformationen ist nicht eindeutig festgelegt, ob die Leistung einmalig oder regelmäßig ausgeführt wird. JARVIS kann deshalb den richtigen Ablauf für Planung und Abrechnung nicht sicher prüfen.",
       recommendation:
-        "In den Projektinformationen „Einmaliges Projekt“ oder „Dauerläufer-Projekt“ festlegen.",
+        "Öffne die Projektinformationen und wähle dort entweder „Einmaliges Projekt“ oder „Dauerläufer-Projekt“ aus.",
     });
   }
 
@@ -164,11 +167,11 @@ export function diagnoseJarvisProjectLogic(
       id: "recurring-billing-mode-missing",
       severity: "critical",
       area: "Abrechnung",
-      title: "Abrechnungsmodell des Dauerläufers fehlt",
+      title: "Beim Dauerläufer fehlt die Art der Abrechnung",
       evidence:
-        "Der Dauerläufer ist weder als Stundenabrechnung noch als Monatspauschale eindeutig konfiguriert.",
+        "Es ist nicht festgelegt, ob dieser Dauerläufer mit einer festen Monatspauschale oder nach tatsächlich geleisteten Stunden abgerechnet wird. Dadurch kann WorkPilot360 Planung und Abrechnung der einzelnen Monate nicht richtig steuern.",
       recommendation:
-        "Das Abrechnungsmodell in den Projektinformationen festlegen.",
+        "Öffne die Projektinformationen und wähle als Abrechnung entweder „Monatspauschale“ oder „Stundenabrechnung“ aus.",
     });
   }
 
@@ -180,11 +183,11 @@ export function diagnoseJarvisProjectLogic(
       id: "one-time-recurring-mode-conflict",
       severity: "warning",
       area: "Projektlogik",
-      title: "Einmalprojekt enthält ein Dauerläufer-Abrechnungsmodell",
+      title: "Projektart und gespeicherte Abrechnung passen nicht zusammen",
       evidence:
-        "Projektart und gespeichertes Abrechnungsmodell widersprechen sich. JARVIS behandelt die Projektart als führend.",
+        "Das Projekt ist als einmaliges Projekt gespeichert, enthält aber zusätzlich eine Einstellung für die monatliche Dauerläufer-Abrechnung. JARVIS orientiert sich bei der Prüfung an der Projektart, die widersprüchliche Einstellung kann jedoch spätere Abläufe stören.",
       recommendation:
-        "Projektart fachlich bestätigen und die nicht passende Dauerläufer-Einstellung in den Projektinformationen bereinigen.",
+        "Prüfe in den Projektinformationen zuerst, welche Projektart richtig ist. Entferne anschließend die nicht passende Dauerläufer-Abrechnungseinstellung.",
     });
   }
 
@@ -202,14 +205,14 @@ export function diagnoseJarvisProjectLogic(
       area: "Abrechnungsautomatik",
       title:
         profile.variant === "oneTime"
-          ? "Pauschale Stapelabrechnung ist bei einem Einmalprojekt aktiv"
-          : "Pauschale Stapelabrechnung ist bei Stundenabrechnung aktiv",
+          ? "Automatische Monatsrechnungen sind bei einem Einmalprojekt aktiviert"
+          : "Monatspauschale und Stundenabrechnung sind gleichzeitig aktiviert",
       evidence:
         profile.variant === "oneTime"
-          ? "Die aktivierte Monatsautomatik gehört fachlich nur zu Dauerläufern mit Monatspauschale."
-          : "Stunden-Dauerläufer werden aus echten Stempelzeiten abgerechnet und dürfen nicht zusätzlich in die Pauschal-Stapelabrechnung gelangen.",
+          ? "Die aktivierte automatische Monatsabrechnung gehört nur zu Dauerläufern mit einer festen Monatspauschale. Bei einem einmaligen Projekt könnte sie ungewollte Rechnungsentwürfe erzeugen."
+          : "Dieser Dauerläufer soll nach den tatsächlich gestempelten Stunden abgerechnet werden. Gleichzeitig ist aber die automatische Abrechnung einer festen Monatspauschale aktiv. Dadurch besteht das Risiko einer doppelten Abrechnung.",
       recommendation:
-        "Die automatische Pauschalabrechnung deaktivieren und vor der nächsten Faktura vorhandene Monatsentwürfe auf Doppelungen prüfen.",
+        "Deaktiviere in den Projekteinstellungen die automatische Pauschalabrechnung. Prüfe vor dem Erstellen oder Versenden einer Rechnung außerdem, ob bereits doppelte Monatsentwürfe vorhanden sind.",
     });
   }
 
@@ -218,11 +221,11 @@ export function diagnoseJarvisProjectLogic(
       id: "recurring-runtime-missing",
       severity: "warning",
       area: "Laufzeit",
-      title: "Laufzeit des Dauerläufers ist unvollständig",
+      title: "Start- oder Endmonat des Dauerläufers fehlt",
       evidence:
-        "Start- oder Endmonat fehlt. Forecast, Vorgabezeiten und Monatslogik können dadurch unvollständig sein.",
+        "Die vereinbarte Projektlaufzeit ist nicht vollständig hinterlegt. Dadurch können Monatsplanung, Auslastungsvorschau und automatische Abrechnung Monate übersehen oder falsch einordnen.",
       recommendation:
-        "Ausführungszeitraum von und bis vollständig pflegen.",
+        "Öffne die Projektinformationen und trage den vereinbarten Ausführungszeitraum vollständig von Startmonat bis Endmonat ein.",
     });
   }
 
@@ -231,10 +234,10 @@ export function diagnoseJarvisProjectLogic(
       id: "recurring-runtime-reversed",
       severity: "critical",
       area: "Laufzeit",
-      title: "Die Dauerläufer-Laufzeit ist vertauscht",
-      evidence: `Der Startmonat ${runtimeFrom} liegt nach dem Endmonat ${runtimeUntil}.`,
+      title: "Start und Ende der Projektlaufzeit sind vertauscht",
+      evidence: `Als Startmonat ist ${runtimeFrom} gespeichert, als Endmonat ${runtimeUntil}. Der Start liegt damit nach dem Ende; Planung und Abrechnung können diesen Zeitraum nicht korrekt verarbeiten.`,
       recommendation:
-        "Start- und Endmonat in den Projektinformationen fachlich korrigieren.",
+        "Öffne die Projektinformationen und korrigiere Start- und Endmonat anhand der tatsächlichen Vereinbarung mit dem Kunden.",
     });
   }
 
@@ -243,11 +246,11 @@ export function diagnoseJarvisProjectLogic(
       id: "recurring-billing-interval-missing",
       severity: "warning",
       area: "Abrechnung",
-      title: "Abrechnungsintervall des Dauerläufers fehlt",
+      title: "Es ist kein Abrechnungsrhythmus hinterlegt",
       evidence:
-        "Der wiederkehrende Abrechnungsturnus ist in den Projektinformationen nicht gepflegt.",
+        "In den Projektinformationen steht nicht, in welchem Rhythmus der Dauerläufer abgerechnet werden soll. Dadurch ist nicht eindeutig, wann die nächste Rechnung fällig ist.",
       recommendation:
-        "Das vertraglich vereinbarte Abrechnungsintervall ergänzen.",
+        "Ergänze in den Projektinformationen den mit dem Kunden vereinbarten Abrechnungsrhythmus.",
     });
   }
 
@@ -262,10 +265,10 @@ export function diagnoseJarvisProjectLogic(
       id: "auto-billing-period-reversed",
       severity: "critical",
       area: "Abrechnungsautomatik",
-      title: "Der Zeitraum der Stapelabrechnung ist vertauscht",
-      evidence: `Der Automatikstart ${autoFrom} liegt nach dem Automatikende ${autoUntil}.`,
+      title: "Start und Ende der automatischen Monatsabrechnung sind vertauscht",
+      evidence: `Die automatische Abrechnung soll am ${autoFrom} beginnen, aber bereits am ${autoUntil} enden. Dadurch kann WorkPilot360 keinen gültigen Abrechnungszeitraum bestimmen.`,
       recommendation:
-        "Start- und Endmonat der automatischen Abrechnung korrigieren.",
+        "Korrigiere in den Projekteinstellungen Start- und Endmonat der automatischen Abrechnung anhand der vereinbarten Laufzeit.",
     });
   }
 
@@ -280,10 +283,10 @@ export function diagnoseJarvisProjectLogic(
       id: "auto-billing-start-before-runtime",
       severity: "warning",
       area: "Abrechnungsautomatik",
-      title: "Die Stapelabrechnung beginnt vor der Projektlaufzeit",
-      evidence: `Automatikstart ${autoFrom}, Projektstart ${runtimeFrom}.`,
+      title: "Die automatische Monatsabrechnung beginnt zu früh",
+      evidence: `Die automatische Abrechnung beginnt im Monat ${autoFrom}, die vereinbarte Projektlaufzeit aber erst im Monat ${runtimeFrom}. Dadurch könnte eine Rechnung für einen Monat ohne vereinbarte Leistung entstehen.`,
       recommendation:
-        "Automatikstart und vertraglichen Leistungsbeginn abgleichen.",
+        "Prüfe den Leistungsbeginn im Angebot und passe den Startmonat der automatischen Abrechnung in den Projekteinstellungen an.",
     });
   }
 
@@ -298,10 +301,10 @@ export function diagnoseJarvisProjectLogic(
       id: "auto-billing-end-after-runtime",
       severity: "warning",
       area: "Abrechnungsautomatik",
-      title: "Die Stapelabrechnung endet nach der Projektlaufzeit",
-      evidence: `Automatikende ${autoUntil}, Projektende ${runtimeUntil}.`,
+      title: "Die automatische Monatsabrechnung läuft zu lange",
+      evidence: `Die automatische Abrechnung endet im Monat ${autoUntil}, die vereinbarte Projektlaufzeit aber bereits im Monat ${runtimeUntil}. Dadurch könnte nach Projektende noch eine Rechnung entstehen.`,
       recommendation:
-        "Automatikende und vertragliches Leistungsende abgleichen.",
+        "Prüfe das Leistungsende im Angebot und passe den Endmonat der automatischen Abrechnung in den Projekteinstellungen an.",
     });
   }
 

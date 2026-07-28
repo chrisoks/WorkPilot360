@@ -9,10 +9,13 @@ const dbMocks = vi.hoisted(() => ({
   planningEntryCount: vi.fn(),
   planningEntryFindMany: vi.fn(),
   projectLogbookEntryCount: vi.fn(),
+  projectLogbookEntryFindMany: vi.fn(),
   offerFindMany: vi.fn(),
   invoiceFindMany: vi.fn(),
   invoiceLineFindMany: vi.fn(),
   invoiceLineLaborFindMany: vi.fn(),
+  catalogInventoryMovementFindMany: vi.fn(),
+  catalogItemFindMany: vi.fn(),
   taskFindMany: vi.fn(),
   contactCount: vi.fn(),
   getDeadlineSettings: vi.fn(),
@@ -27,11 +30,18 @@ vi.mock("@/lib/db/client", () => ({
       count: dbMocks.planningEntryCount,
       findMany: dbMocks.planningEntryFindMany,
     },
-    projectLogbookEntry: { count: dbMocks.projectLogbookEntryCount },
+    projectLogbookEntry: {
+      count: dbMocks.projectLogbookEntryCount,
+      findMany: dbMocks.projectLogbookEntryFindMany,
+    },
     offer: { findMany: dbMocks.offerFindMany },
     invoice: { findMany: dbMocks.invoiceFindMany },
     invoiceLine: { findMany: dbMocks.invoiceLineFindMany },
     invoiceLineLabor: { findMany: dbMocks.invoiceLineLaborFindMany },
+    catalogInventoryMovement: {
+      findMany: dbMocks.catalogInventoryMovementFindMany,
+    },
+    catalogItem: { findMany: dbMocks.catalogItemFindMany },
     task: { findMany: dbMocks.taskFindMany },
     contact: { count: dbMocks.contactCount },
   },
@@ -73,6 +83,10 @@ const project = {
   autoBillingNetAmount: null,
   autoBillingStartMonth: null,
   autoBillingEndMonth: null,
+  reviewStatus: "approved",
+  reviewedAt: new Date("2026-07-27T08:00:00.000Z"),
+  reviewedByName: "Christian Eid",
+  reviewedProjectStatus: "Umsetzung",
   updatedAt: new Date("2026-07-27T08:00:00.000Z"),
 };
 
@@ -85,12 +99,15 @@ describe("resolveJarvisProjectHealthRequest", () => {
     dbMocks.planningEntryCount.mockResolvedValue(0);
     dbMocks.planningEntryFindMany.mockResolvedValue([]);
     dbMocks.projectLogbookEntryCount.mockResolvedValue(3);
+    dbMocks.projectLogbookEntryFindMany.mockResolvedValue([]);
     dbMocks.offerFindMany.mockResolvedValue([
       { id: "offer-1", projectId: "project-1", status: "Gewonnen" },
     ]);
     dbMocks.invoiceFindMany.mockResolvedValue([]);
     dbMocks.invoiceLineFindMany.mockResolvedValue([]);
     dbMocks.invoiceLineLaborFindMany.mockResolvedValue([]);
+    dbMocks.catalogInventoryMovementFindMany.mockResolvedValue([]);
+    dbMocks.catalogItemFindMany.mockResolvedValue([]);
     dbMocks.taskFindMany.mockResolvedValue([]);
     dbMocks.contactCount.mockResolvedValue(1);
     dbMocks.getDeadlineSettings.mockResolvedValue({
@@ -117,7 +134,8 @@ describe("resolveJarvisProjectHealthRequest", () => {
         facts: [
           { label: "Prüfwert", value: "100 / 100", tone: "positive" },
           { label: "Einordnung", value: "Stabil", tone: "positive" },
-          { label: "Prüfumfang", value: "7 / 7 Bereiche" },
+          { label: "Datenbasis", value: "Fachlich freigegeben", tone: "positive" },
+          { label: "Prüfumfang", value: "8 / 8 Bereiche" },
           { label: "Stempelungen", value: "0 · 0 Std." },
         ],
       },
@@ -208,7 +226,7 @@ describe("resolveJarvisProjectHealthRequest", () => {
     expect(dbMocks.projectTimeEntryFindMany).not.toHaveBeenCalled();
   });
 
-  it("asks the same guided follow-up for a broad request about the open project", async () => {
+  it("runs the full check immediately when the open project is explicitly requested completely", async () => {
     const response = await resolveJarvisProjectHealthRequest({
       question: "Prüfe dieses Projekt vollständig.",
       organizationId: "org-1",
@@ -220,11 +238,13 @@ describe("resolveJarvisProjectHealthRequest", () => {
     });
 
     expect(response).toMatchObject({
-      type: "clarification",
-      topicId: "project.health.clarification",
-      message: "Ich habe MKG-209 eindeutig gefunden. Was möchtest du zu diesem Projekt wissen oder prüfen?",
+      type: "answer",
+      topicId: "project.health",
+      structured: {
+        title: "Vollständiger Projektcheck · MKG-209",
+      },
     });
-    expect(dbMocks.projectTimeEntryFindMany).not.toHaveBeenCalled();
+    expect(dbMocks.projectTimeEntryFindMany).toHaveBeenCalled();
   });
 
   it("answers a clear project-type question directly without running a health check", async () => {
@@ -420,7 +440,7 @@ describe("resolveJarvisProjectHealthRequest", () => {
     expect(JSON.stringify(response)).toContain("Gesamtprojekt");
   });
 
-  it("offers commercial project checks only to an authorized management role", async () => {
+  it("runs a named full project check directly for an authorized management role", async () => {
     dbMocks.queryRaw.mockResolvedValueOnce([{
       ...project,
       id: "project-has-1",
@@ -437,17 +457,16 @@ describe("resolveJarvisProjectHealthRequest", () => {
       context: { recordType: "project", recordId: "project-dar-399" },
     });
 
-    expect(response?.type).toBe("clarification");
-    expect(response?.choices?.map((choice) => choice.label)).toContain(
-      "Angebote & Rechnungen"
-    );
-    expect(response?.choices?.map((choice) => choice.label)).toContain(
-      "Projektart & Abrechnung"
+    expect(response?.type).toBe("answer");
+    expect(response?.structured?.title).toBe(
+      "Vollständiger Projektcheck · HAS-1"
     );
     expect(response?.records?.[0]?.target).toEqual({
       kind: "project",
       id: "project-has-1",
     });
+    expect(dbMocks.offerFindMany).toHaveBeenCalled();
+    expect(dbMocks.invoiceFindMany).toHaveBeenCalled();
   });
 
   it("continues with the selected project scope instead of asking again", async () => {
@@ -471,6 +490,7 @@ describe("resolveJarvisProjectHealthRequest", () => {
     expect(response?.structured?.facts?.map((fact) => fact.label)).toEqual([
       "Teilprüfwert",
       "Einordnung",
+      "Datenbasis",
       "Auswahl",
     ]);
     expect(response?.structured?.sections?.at(-1)).toMatchObject({
@@ -575,7 +595,11 @@ describe("resolveJarvisProjectHealthRequest", () => {
     });
 
     expect(response).toMatchObject({
-      type: "clarification",
+      type: "answer",
+      topicId: "project.health",
+      structured: {
+        title: "Vollständiger Projektcheck · MKG-209",
+      },
       records: [{
         target: { kind: "project", id: "project-mkg-209" },
       }],
@@ -610,14 +634,51 @@ describe("resolveJarvisProjectHealthRequest", () => {
       structured: {
         title: "Planung & Termine · HAS-1",
         facts: [
-          { label: "Teilprüfwert", value: "92 / 100" },
+          { label: "Teilprüfwert", value: "85 / 100" },
           { label: "Einordnung", value: "Prüfen" },
+          { label: "Datenbasis", value: "Fachlich freigegeben" },
           { label: "Auswahl", value: "Planung & Termine" },
         ],
       },
     });
     expect(JSON.stringify(response)).toContain(
-      "Dauerläufer hat keine zukünftige Planung"
+      "Für den nächsten Monat der Pauschalleistung ist noch kein Termin geplant"
+    );
+  });
+
+  it("answers a natural why-question about incomplete recurring planning directly", async () => {
+    dbMocks.queryRaw.mockResolvedValueOnce([{
+      ...project,
+      id: "project-has-1",
+      projectNumber: "HAS-1",
+      title: "Hausmeisterservice",
+      status: "Umsetzung",
+      projectKind: "Dauerläufer-Projekt",
+      projectRuntimeFrom: "2026-05-11",
+      projectRuntimeUntil: "2026-12-31",
+      recurringBillingMode: "monthlyFlat",
+    }]);
+
+    const response = await resolveJarvisProjectHealthRequest({
+      question:
+        "Warum ist der nächste Monat bei HAS-1 noch nicht vollständig geplant?",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "manager-1",
+        role: Role.GESCHAEFTSFUEHRER,
+      }),
+      context: { recordType: "customer", recordId: "customer-1" },
+    });
+
+    expect(response).toMatchObject({
+      type: "answer",
+      topicId: "project.health",
+      structured: {
+        title: "Planung & Termine · HAS-1",
+      },
+    });
+    expect(JSON.stringify(response)).toContain(
+      "Für den nächsten Monat der Pauschalleistung ist noch kein Termin geplant"
     );
   });
 
@@ -690,9 +751,348 @@ describe("resolveJarvisProjectHealthRequest", () => {
       },
     });
     expect(JSON.stringify(response)).toContain(
-      "Für abgeschlossene Leistungsmonate fehlt eine Rechnung"
+      "Für vergangene Leistungsmonate wurde keine fertige Rechnung gefunden"
     );
     expect(JSON.stringify(response)).toContain("Juni 2026");
+  });
+
+  it("answers a focused invoice-month question briefly without a full diagnosis", async () => {
+    dbMocks.queryRaw.mockResolvedValueOnce([{
+      ...project,
+      id: "project-has-1",
+      projectNumber: "HAS-1",
+      title: "Hausmeisterservice",
+      status: "Umsetzung",
+      projectKind: "Dauerläufer-Projekt",
+      projectRuntimeFrom: "2026-05-11",
+      projectRuntimeUntil: "2026-12-31",
+      recurringBillingMode: "monthlyFlat",
+      autoBillingEnabled: true,
+      autoBillingStartMonth: null,
+      autoBillingEndMonth: null,
+    }]);
+    dbMocks.invoiceFindMany.mockResolvedValueOnce([
+      {
+        id: "invoice-may",
+        projectId: "project-has-1",
+        status: "Fakturiert",
+        billingSource: "manual",
+        plannedExecutionMonth: "2026-05",
+        serviceDate: "2026-05-31",
+        netTotal: 800,
+        createdAt: new Date("2026-06-27T12:00:00.000Z"),
+      },
+      {
+        id: "invoice-june-draft",
+        projectId: "project-has-1",
+        status: "Entwurf",
+        billingSource: "hourly-recurring",
+        plannedExecutionMonth: "2026-06",
+        serviceDate: "",
+        netTotal: 800,
+        createdAt: new Date("2026-06-25T12:00:00.000Z"),
+      },
+    ]);
+
+    const response = await resolveJarvisProjectHealthRequest({
+      question: "Was verhindert die Juni-Abrechnung bei HAS-1?",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "manager-1",
+        role: Role.GESCHAEFTSFUEHRER,
+      }),
+    });
+
+    expect(response).toMatchObject({
+      type: "answer",
+      topicId: "project.invoice.month",
+      structured: {
+        title: "Rechnung Juni 2026 · HAS-1",
+        summary:
+          "Für Juni 2026 wurde bereits eine Rechnung angelegt, aber sie ist noch nicht fertiggestellt.",
+        facts: [
+          { label: "Rechnungsmonat", value: "Juni 2026" },
+          { label: "Stand", value: "Entwurf vorhanden" },
+        ],
+      },
+    });
+    const serialized = JSON.stringify(response);
+    expect(serialized).toContain("Stundenabrechnung");
+    expect(serialized).toContain("Monatspauschale");
+    expect(serialized).toContain("keine zweite Rechnung");
+    expect(serialized).not.toContain("Teilprüfwert");
+    expect(serialized).not.toContain("Bewertung nach Bereichen");
+    expect(response?.structured?.sections).toHaveLength(2);
+  });
+
+  it("explains a missing time-based draft as one causal chain", async () => {
+    const response = await resolveJarvisProjectHealthRequest({
+      question:
+        "Weshalb erzeugen die Arbeitszeiten bei MKG-209 keinen Juli-Entwurf?",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "manager-1",
+        role: Role.GESCHAEFTSFUEHRER,
+      }),
+    });
+
+    expect(response).toMatchObject({
+      type: "answer",
+      topicId: "project.invoice.from-time",
+      structured: {
+        title: "Stempelungen & Rechnung Juli 2026 · MKG-209",
+        facts: [
+          { label: "Stempelungen", value: "0 · 0 Std." },
+          {
+            label: "Stand",
+            value: "Keine Stunden-Dauerläufer-Abrechnung",
+          },
+        ],
+      },
+    });
+    const serialized = JSON.stringify(response);
+    expect(serialized).toContain(
+      "nicht als Dauerläufer mit Stundenabrechnung eingerichtet"
+    );
+    expect(serialized).toContain(
+      "Für Juli 2026 wurden außerdem keine Stempelungen gefunden"
+    );
+    expect(serialized).toContain("Ändere die Projektart nicht");
+    expect(serialized).not.toContain("Teilprüfwert");
+    expect(serialized).not.toContain("Bewertung nach Bereichen");
+  });
+
+  it("answers a project material question position by position", async () => {
+    dbMocks.invoiceFindMany.mockResolvedValueOnce([
+      {
+        id: "invoice-material",
+        projectId: "project-1",
+        invoiceNumber: "RE-MAT-1",
+        projectNumber: "MKG-209",
+        projectTitle: "Marketing",
+        customerName: "Klaus Testmann",
+        status: "Fakturiert",
+        billingSource: "manual",
+        plannedExecutionMonth: "2026-07",
+        serviceDate: "2026-07-15",
+        netTotal: 30,
+        createdAt: new Date("2026-07-15T12:00:00.000Z"),
+      },
+    ]);
+    dbMocks.invoiceLineFindMany.mockResolvedValueOnce([
+      {
+        id: "line-1",
+        invoiceId: "invoice-material",
+        catalogItemId: "salt-1",
+        catalogType: "article",
+        position: 1,
+        quantity: 10,
+        unit: "kg",
+        title: "Streusalz",
+        unitPrice: 2,
+        discountPercent: 0,
+        materialCostSnapshot: 8,
+        laborCostSnapshot: 0,
+        packageComponentsSnapshot: [],
+        catalogCostSnapshotVersion: 1,
+        costSnapshotAt: new Date("2026-07-15T12:00:00.000Z"),
+        totalNet: 20,
+      },
+      {
+        id: "line-2",
+        invoiceId: "invoice-material",
+        catalogItemId: "salt-1",
+        catalogType: "article",
+        position: 2,
+        quantity: 5,
+        unit: "kg",
+        title: "Streusalz",
+        unitPrice: 2,
+        discountPercent: 0,
+        materialCostSnapshot: 4,
+        laborCostSnapshot: 0,
+        packageComponentsSnapshot: [],
+        catalogCostSnapshotVersion: 1,
+        costSnapshotAt: new Date("2026-07-15T12:00:00.000Z"),
+        totalNet: 10,
+      },
+    ]);
+    dbMocks.catalogInventoryMovementFindMany.mockResolvedValueOnce([
+      {
+        catalogItemId: "salt-1",
+        movementType: "sale",
+        quantityDelta: -15,
+        invoiceId: "invoice-material",
+      },
+    ]);
+
+    const response = await resolveJarvisProjectHealthRequest({
+      question: "Welche Materialien wurden bei MKG-209 abgerechnet?",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "manager-1",
+        role: Role.GESCHAEFTSFUEHRER,
+      }),
+    });
+
+    expect(response).toMatchObject({
+      type: "answer",
+      topicId: "project.materials",
+      structured: {
+        title: "Materialanalyse · MKG-209",
+        facts: [
+          { label: "Fertige Rechnungen", value: "1" },
+          { label: "Materialpositionen", value: "2" },
+          {
+            label: "Lagerabgleich",
+            value: "Abgerechnete Mengen und Lagerbuchungen stimmen überein",
+          },
+        ],
+      },
+    });
+    const serialized = JSON.stringify(response);
+    expect(serialized).toContain("Streusalz: 15 kg");
+    expect(serialized).toContain("keinen tatsächlichen physischen Verbrauch");
+    expect(serialized).not.toContain("Prüfwert");
+  });
+
+  it("does not load invoice material data for an unauthorized employee", async () => {
+    const response = await resolveJarvisProjectHealthRequest({
+      question: "Welche Materialien wurden bei MKG-209 abgerechnet?",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "employee-1",
+        role: Role.MITARBEITER,
+      }),
+    });
+
+    expect(response).toMatchObject({
+      type: "refusal",
+      topicId: "project.materials.refused",
+    });
+    expect(dbMocks.invoiceLineFindMany).not.toHaveBeenCalled();
+    expect(dbMocks.catalogInventoryMovementFindMany).not.toHaveBeenCalled();
+  });
+
+  it("answers a project service-rate question from finished invoices and stable time links", async () => {
+    dbMocks.projectTimeEntryFindMany.mockResolvedValue([{
+      id: "time-1",
+      mode: "project",
+      projectId: "project-1",
+      trade: "Hausmeister",
+      planningEntryId: null,
+      billingCatalogItemId: "service-1",
+      billingCatalogItemLabel: "Hausmeisterstunde",
+      offerId: "offer-1",
+      userId: "manager-1",
+      employee: "Christian Eid",
+      entrySource: "stamped",
+      date: "2026-07-15",
+      startTime: "08:00",
+      endTime: "20:00",
+      pauseMs: 0,
+      invoiceId: "invoice-service",
+      durationMs: BigInt(12 * 3_600_000),
+      laborCostRateSnapshot: 30,
+      laborCostSnapshot: 360,
+      costSnapshotAt: new Date("2026-07-15T20:00:00.000Z"),
+      comment: null,
+      completionStatus: "completed",
+      overtimeApprovalStatus: "not_required",
+      overtimeApprovedByUserId: null,
+      overtimeApprovedByName: null,
+      overtimeApprovedAt: null,
+    }]);
+    dbMocks.invoiceFindMany.mockResolvedValueOnce([{
+      id: "invoice-service",
+      projectId: "project-1",
+      invoiceNumber: "RE-SVS-1",
+      projectNumber: "MKG-209",
+      projectTitle: "Marketing",
+      customerName: "Klaus Testmann",
+      status: "Fakturiert",
+      billingSource: "manual",
+      plannedExecutionMonth: "2026-07",
+      serviceDate: "2026-07-15",
+      netTotal: 600,
+      createdAt: new Date("2026-07-15T12:00:00.000Z"),
+    }]);
+    dbMocks.invoiceLineFindMany.mockResolvedValueOnce([{
+      id: "line-service",
+      invoiceId: "invoice-service",
+      catalogItemId: "service-1",
+      catalogType: "service",
+      position: 1,
+      quantity: 10,
+      unit: "Std.",
+      title: "Hausmeisterstunde",
+      unitPrice: 60,
+      discountPercent: 0,
+      materialCostSnapshot: 0,
+      laborCostSnapshot: 300,
+      packageComponentsSnapshot: [],
+      catalogCostSnapshotVersion: 1,
+      costSnapshotAt: new Date("2026-07-15T12:00:00.000Z"),
+      totalNet: 600,
+    }]);
+    dbMocks.catalogItemFindMany.mockResolvedValueOnce([{
+      id: "service-1",
+      number: "L-1",
+      name: "Hausmeisterstunde",
+      unit: "Std.",
+      salesPrice: 60,
+      isActive: true,
+    }]);
+
+    const response = await resolveJarvisProjectHealthRequest({
+      question:
+        "Wie hoch ist der tatsächlich erzielte Stundenverrechnungssatz bei MKG-209?",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "manager-1",
+        role: Role.GESCHAEFTSFUEHRER,
+      }),
+    });
+
+    expect(response).toMatchObject({
+      type: "answer",
+      topicId: "project.service-rates",
+      structured: {
+        title: "Leistungen & Stundenverrechnungssätze · MKG-209",
+        facts: [
+          { label: "Fertige Rechnungen", value: "1" },
+          { label: "Abgerechnete Stunden", value: "10 Std." },
+          { label: "Zugeordnete Stempelstunden", value: "12 Std." },
+        ],
+      },
+    });
+    const serialized = JSON.stringify(response);
+    expect(serialized).toContain(
+      "60,00 € tatsächlich je abgerechneter Stunde"
+    );
+    expect(serialized).toContain("50,00 € Nettoerlös je gestempelter Stunde");
+    expect(serialized).toContain("30,00 € gespeicherte Mitarbeiterkosten");
+    expect(serialized).toContain("weniger Stunden abgerechnet als gestempelt");
+    expect(serialized).toContain("keinen erfundenen neuen Stundensatz");
+    expect(serialized).not.toContain("Prüfwert");
+  });
+
+  it("does not load service-rate financial data for an unauthorized employee", async () => {
+    const response = await resolveJarvisProjectHealthRequest({
+      question: "Analysiere die Stundensätze bei MKG-209.",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "employee-1",
+        role: Role.MITARBEITER,
+      }),
+    });
+
+    expect(response).toMatchObject({
+      type: "refusal",
+      topicId: "project.service-rates.refused",
+    });
+    expect(dbMocks.invoiceLineFindMany).not.toHaveBeenCalled();
+    expect(dbMocks.catalogItemFindMany).not.toHaveBeenCalled();
   });
 
   it("offers a safe next step when an explicit project number is not found", async () => {

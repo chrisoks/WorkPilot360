@@ -166,6 +166,34 @@ describe("diagnoseProjectStamps", () => {
     );
   });
 
+  it("explains a missing interruption task from before the automation as legacy data", () => {
+    const result = diagnoseProjectStamps(diagnosticInput({
+      entries: [
+        entry({
+          id: "legacy-interruption",
+          date: "2026-06-25",
+          completionStatus: "interrupted",
+        }),
+      ],
+      verifyInterruptionTasks: true,
+      interruptionTaskDescriptions: [],
+    }));
+
+    const issue = result.issues.find(
+      (candidate) => candidate.id === "stamp-interruption-task-missing"
+    );
+    expect(issue).toMatchObject({
+      severity: "critical",
+      title: "Für eine ältere Arbeitsunterbrechung fehlt die Klärungsaufgabe",
+    });
+    expect(issue?.evidence).toContain(
+      "vor Einführung der automatischen Klärungsaufgabe am 27.06.2026"
+    );
+    expect(issue?.evidence).toContain(
+      "rückwirkend keine Aufgabe angelegt"
+    );
+  });
+
   it("accepts one coherent hourly monthly draft with rounded labor hours", () => {
     const result = diagnoseProjectStamps(diagnosticInput({
       isHourlyRecurring: true,
@@ -280,6 +308,15 @@ describe("diagnoseProjectStamps", () => {
         "hourly-labor-hours-mismatch",
         "hourly-invoice-total-mismatch",
       ])
+    );
+    const missingInvoiceLink = result.issues.find(
+      (issue) => issue.id === "hourly-invoice-link-missing"
+    );
+    expect(missingInvoiceLink?.evidence).toContain(
+      "bei der Monatsabrechnung fehlen"
+    );
+    expect(missingInvoiceLink?.recommendation).toContain(
+      "genau ein Entwurf"
     );
   });
 

@@ -39,6 +39,10 @@ function healthySnapshot(
       autoBillingNetAmount: null,
       autoBillingStartMonth: null,
       autoBillingEndMonth: null,
+      reviewStatus: "approved",
+      reviewedAt: new Date("2026-07-27T08:00:00.000Z"),
+      reviewedByName: "Christian Eid",
+      reviewedProjectStatus: "Umsetzung",
       updatedAt: new Date("2026-07-27T08:00:00.000Z"),
     },
     stableCustomerReferenceValid: true,
@@ -70,6 +74,7 @@ describe("resolveJarvisProjectHealthIntent", () => {
     "Was fehlt bei diesem Projekt?",
     "Wie können wir dieses Projekt verbessern?",
     "Und jetzt prüfe HAS-1 vollständig",
+    "Warum ist der nächste Monat bei HAS-1 noch nicht vollständig geplant?",
   ])("recognizes project health questions: %s", (question) => {
     expect(resolveJarvisProjectHealthIntent(question)).toBe(true);
   });
@@ -116,6 +121,23 @@ describe("evaluateProjectHealth", () => {
       issues: [],
     });
     expect(result.automationSummary.join(" ")).toContain("Angebotszuweisung");
+  });
+
+  it("does not call an unreviewed migration project fully healthy", () => {
+    const base = healthySnapshot();
+    const result = evaluateProjectHealth(healthySnapshot({
+      project: {
+        ...base.project,
+        reviewStatus: "unreviewed",
+        reviewedAt: null,
+        reviewedByName: null,
+        reviewedProjectStatus: null,
+      },
+    }));
+
+    expect(result.score).toBeLessThan(100);
+    expect(result.status).toBe("attention");
+    expect(result.issues.map((issue) => issue.id)).toContain("project-review-pending");
   });
 
   it("finds the configuration blockers of an hourly recurring project", () => {
@@ -214,6 +236,35 @@ describe("evaluateProjectHealth", () => {
         "address-missing",
       ])
     );
+    expect(result.score).toBeGreaterThan(0);
+    expect(result.areaAssessments).toHaveLength(3);
+    expect(
+      result.areaAssessments.find(
+        (assessment) => assessment.area === "Stammdaten & Verantwortung"
+      )
+    ).toMatchObject({
+      status: "critical",
+    });
+  });
+
+  it("uses zero points only when every released checked area is critical", () => {
+    const base = healthySnapshot();
+    const result = evaluateProjectHealth(healthySnapshot({
+      project: {
+        ...base.project,
+        projectKind: null,
+      },
+      checkedAreas: ["Stammdaten & Verantwortung"],
+    }));
+
+    expect(result).toMatchObject({
+      score: 0,
+      status: "critical",
+      areaAssessments: [{
+        area: "Stammdaten & Verantwortung",
+        status: "critical",
+      }],
+    });
   });
 
   it("checks status-dependent planning, invoicing and visible tasks", () => {
@@ -252,6 +303,15 @@ describe("evaluateProjectHealth", () => {
 
     expect(result.issues.map((issue) => issue.id)).toContain(
       "recurring-without-future-planning"
+    );
+    const planningIssue = result.issues.find(
+      (issue) => issue.id === "recurring-without-future-planning"
+    );
+    expect(planningIssue?.evidence).toContain(
+      "wann die nächste vereinbarte Leistung ausgeführt wird"
+    );
+    expect(planningIssue?.recommendation).toContain(
+      "„Termine & Stempelungen“"
     );
   });
 

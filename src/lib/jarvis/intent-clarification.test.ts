@@ -312,6 +312,32 @@ describe("JARVIS intent clarification", () => {
     ]);
   });
 
+  it("does not ask for a project choice when the second reference is a month", () => {
+    const question =
+      "Warum wurde f\u00fcr HAS-1 im Juni 2026 keine fertige Rechnung erstellt?";
+
+    expect(
+      buildJarvisProjectSequenceClarification(
+        question,
+        resolveJarvisIntentDecision(question),
+        managementProfile
+      )
+    ).toBeUndefined();
+  });
+
+  it("does not split a causal time-to-invoice question into separate checks", () => {
+    const question =
+      "Warum wurde bei MKG-209 für Juli 2026 noch kein Rechnungsentwurf aus den Stempelungen erstellt?";
+
+    expect(
+      buildJarvisProjectScopeSequenceClarification(
+        question,
+        resolveJarvisIntentDecision(question),
+        managementProfile
+      )
+    ).toBeUndefined();
+  });
+
   it("keeps several requested checks for one project in a guided sequence", () => {
     const question =
       "Wie sieht die Planung von MKG-209 aus und warum gibt es noch keinen Rechnungsentwurf?";
@@ -343,6 +369,19 @@ describe("JARVIS intent clarification", () => {
       "Planung & Termine",
       "Angebote & Rechnungen",
     ]);
+  });
+
+  it("does not interrupt a natural incomplete-planning question with a scope choice", () => {
+    const question =
+      "Warum ist der n\u00e4chste Monat bei HAS-1 noch nicht vollst\u00e4ndig geplant?";
+
+    expect(
+      buildJarvisProjectScopeSequenceClarification(
+        question,
+        resolveJarvisIntentDecision(question),
+        managementProfile
+      )
+    ).toBeUndefined();
   });
 
   it("keeps every project and scope in a bounded matrix sequence", () => {

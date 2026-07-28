@@ -61,6 +61,54 @@ describe("JARVIS action registry", () => {
     expect(decision.executable).toBe(false);
   });
 
+  it("limits the organization-wide service-rate analysis to financial roles", () => {
+    for (const role of [
+      Role.ADMIN,
+      Role.GESCHAEFTSFUEHRER,
+      Role.FUEHRUNGSKRAFT,
+      Role.BUCHHALTUNG,
+    ]) {
+      const decision = getJarvisActionDecision(
+        "management.service-rate-analysis.read",
+        createJarvisAccessProfile({ id: role, role })
+      );
+      expect(decision.executable).toBe(true);
+    }
+
+    const employeeDecision = getJarvisActionDecision(
+      "management.service-rate-analysis.read",
+      createJarvisAccessProfile({
+        id: "employee",
+        role: Role.MITARBEITER,
+      })
+    );
+    expect(employeeDecision.executable).toBe(false);
+  });
+
+  it("limits the organization-wide material analysis to financial roles", () => {
+    for (const role of [
+      Role.ADMIN,
+      Role.GESCHAEFTSFUEHRER,
+      Role.FUEHRUNGSKRAFT,
+      Role.BUCHHALTUNG,
+    ]) {
+      const decision = getJarvisActionDecision(
+        "management.material-analysis.read",
+        createJarvisAccessProfile({ id: role, role })
+      );
+      expect(decision.executable).toBe(true);
+    }
+
+    const employeeDecision = getJarvisActionDecision(
+      "management.material-analysis.read",
+      createJarvisAccessProfile({
+        id: "employee",
+        role: Role.MITARBEITER,
+      })
+    );
+    expect(employeeDecision.executable).toBe(false);
+  });
+
   it("gives employees only their permitted foundation catalog", () => {
     const profile = createJarvisAccessProfile({
       id: "employee",

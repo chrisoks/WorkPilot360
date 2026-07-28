@@ -14,8 +14,11 @@ import {
   resolveJarvisSalesAnalysisIntent,
   resolveJarvisSalesAnalysisRequest,
 } from "@/lib/jarvis/sales-analysis";
+import { resolveJarvisOrganizationMaterialRequest } from "@/lib/jarvis/organization-material-analysis";
+import { resolveJarvisOrganizationServiceRateRequest } from "@/lib/jarvis/organization-service-rate-analysis";
 import { resolveJarvisProjectHealthRequest } from "@/lib/jarvis/project-health";
 import { createJarvisAccessProfile } from "@/lib/jarvis/security";
+import { applyJarvisAnswerPolicy } from "@/lib/jarvis/answer-policy";
 import {
   resolveJarvisIntentDecision,
   type JarvisIntentDecision,
@@ -99,6 +102,7 @@ export async function POST(req: Request) {
       ? intentDecision.domain
       : previousDialogState?.domain ?? intentDecision.domain
   ) => {
+    payload = applyJarvisAnswerPolicy(message, payload);
     const intentSequenceContinuation =
       payload.type === "answer" || payload.type === "refusal"
         ? resolveJarvisIntentSequenceContinuation(
@@ -251,6 +255,24 @@ export async function POST(req: Request) {
   });
   if (personSummaryResponse) {
     return respond(personSummaryResponse);
+  }
+  const organizationServiceRateResponse =
+    await resolveJarvisOrganizationServiceRateRequest({
+      question: message,
+      organizationId: organization.id,
+      accessProfile,
+    });
+  if (organizationServiceRateResponse) {
+    return respond(organizationServiceRateResponse, "management");
+  }
+  const organizationMaterialResponse =
+    await resolveJarvisOrganizationMaterialRequest({
+      question: message,
+      organizationId: organization.id,
+      accessProfile,
+    });
+  if (organizationMaterialResponse) {
+    return respond(organizationMaterialResponse, "management");
   }
   if (resolveJarvisSalesAnalysisIntent(message)) {
     const salesAnalysisResponse = await resolveJarvisSalesAnalysisRequest({

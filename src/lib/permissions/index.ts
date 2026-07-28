@@ -222,6 +222,10 @@ export function canManageProjects(user: RoleCarrier): boolean {
   return canManageSalesPipeline(user);
 }
 
+export function canReviewProjects(user: RoleCarrier): boolean {
+  return canRunStatusEscalations(user);
+}
+
 export function canArchiveProjects(user: RoleCarrier): boolean {
   return canRunStatusEscalations(user);
 }

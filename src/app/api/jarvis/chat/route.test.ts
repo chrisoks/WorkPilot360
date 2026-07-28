@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   resolveJarvisProjectHealthRequest: vi.fn(),
   resolveJarvisPersonDiagnosticRequest: vi.fn(),
   resolveJarvisPersonSummaryRequest: vi.fn(),
+  resolveJarvisOrganizationMaterialRequest: vi.fn(),
+  resolveJarvisOrganizationServiceRateRequest: vi.fn(),
   resolveJarvisSalesAnalysisIntent: vi.fn(),
   resolveJarvisSalesAnalysisRequest: vi.fn(),
   resolveJarvisReadRequest: vi.fn(),
@@ -57,6 +59,16 @@ vi.mock("@/lib/jarvis/sales-analysis", () => ({
 
 vi.mock("@/lib/jarvis/security", () => ({
   createJarvisAccessProfile: mocks.createJarvisAccessProfile,
+}));
+
+vi.mock("@/lib/jarvis/organization-service-rate-analysis", () => ({
+  resolveJarvisOrganizationServiceRateRequest:
+    mocks.resolveJarvisOrganizationServiceRateRequest,
+}));
+
+vi.mock("@/lib/jarvis/organization-material-analysis", () => ({
+  resolveJarvisOrganizationMaterialRequest:
+    mocks.resolveJarvisOrganizationMaterialRequest,
 }));
 
 vi.mock("@/lib/jarvis/intent-decision", () => ({
@@ -120,8 +132,15 @@ describe("POST /api/jarvis/chat", () => {
     mocks.resolveJarvisProjectHealthRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisPersonDiagnosticRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisPersonSummaryRequest.mockResolvedValue(undefined);
+    mocks.resolveJarvisOrganizationMaterialRequest.mockResolvedValue(
+      undefined
+    );
+    mocks.resolveJarvisOrganizationServiceRateRequest.mockResolvedValue(
+      undefined
+    );
     mocks.resolveJarvisSalesAnalysisIntent.mockReturnValue(false);
     mocks.resolveJarvisSalesAnalysisRequest.mockResolvedValue(undefined);
+    mocks.resolveJarvisReadRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisSystemHelp.mockReturnValue({
       type: "answer",
       message: "Systemhilfe",
@@ -612,6 +631,127 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
   });
 
+  it("applies the focused answer-depth policy before returning the response", async () => {
+    mocks.resolveJarvisProjectHealthRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "project.health",
+      message: "HAS-1 erreicht im Prüfumfang 83 von 100 Punkten.",
+      structured: {
+        title: "Planung & Termine · HAS-1",
+        summary: "0 kritische und 2 weitere Prüfungen wurden erkannt.",
+        facts: [
+          { label: "Teilprüfwert", value: "83 / 100" },
+          { label: "Einordnung", value: "Prüfen" },
+        ],
+        sections: [
+          {
+            title: "Danach prüfen",
+            items: [
+              "Für den nächsten Monat fehlen Termine.",
+              "Im aktuellen Monat fehlen Stunden.",
+              "Dritter Nebenbefund.",
+            ],
+          },
+          {
+            title: "Bewertung nach Bereichen",
+            items: ["Planung: 83 / 100"],
+          },
+        ],
+      },
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message:
+            "Warum ist der nächste Monat bei HAS-1 noch nicht vollständig geplant?",
+        }),
+      })
+    );
+    const payload = await response.json();
+    const serialized = JSON.stringify(payload);
+
+    expect(response.status).toBe(200);
+    expect(payload.structured.summary).toBe(
+      "Für den nächsten Monat fehlen Termine."
+    );
+    expect(serialized).not.toContain("Teilprüfwert");
+    expect(serialized).not.toContain("Bewertung nach Bereichen");
+    expect(serialized).not.toContain("Dritter Nebenbefund");
+  });
+
+  it("routes a project material question through the secured project adapter", async () => {
+    mocks.resolveJarvisProjectHealthRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "project.materials",
+      message: "Die abgerechneten Materialien wurden ausgewertet.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Welche Materialien wurden bei HAS-1 abgerechnet?",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      topicId: "project.materials",
+      deterministic: true,
+    });
+    expect(mocks.resolveJarvisProjectHealthRequest).toHaveBeenCalledWith({
+      question: "Welche Materialien wurden bei HAS-1 abgerechnet?",
+      organizationId: "organization-1",
+      accessProfile: { profile: true },
+      context: { module: "Projekte" },
+    });
+    expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+  });
+
+  it("routes a project service-rate question through the secured project adapter", async () => {
+    mocks.resolveJarvisProjectHealthRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "project.service-rates",
+      message: "Die Stundenverrechnungssätze wurden ausgewertet.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message:
+            "Wie hoch ist der tatsächlich erzielte Stundenverrechnungssatz bei HAS-1?",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      topicId: "project.service-rates",
+      deterministic: true,
+    });
+    expect(mocks.resolveJarvisProjectHealthRequest).toHaveBeenCalledWith({
+      question:
+        "Wie hoch ist der tatsächlich erzielte Stundenverrechnungssatz bei HAS-1?",
+      organizationId: "organization-1",
+      accessProfile: { profile: true },
+      context: { module: "Projekte" },
+    });
+    expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+  });
+
   it("forwards the sanitized conversation record separately from the screen context", async () => {
     mocks.sanitizeJarvisSurfaceContext.mockImplementation((value) => value);
     mocks.resolveJarvisProjectHealthRequest.mockResolvedValue({
@@ -985,6 +1125,88 @@ describe("POST /api/jarvis/chat", () => {
       organizationId: "organization-1",
       accessProfile: { profile: true },
     });
+    expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisSystemHelp).not.toHaveBeenCalled();
+  });
+
+  it("answers the organization-wide service-rate comparison before generic paths", async () => {
+    mocks.resolveJarvisOrganizationServiceRateRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "management.service-rates",
+      message: "Drei Stundenleistungen wurden verglichen.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Analysiere unsere Stundenverrechnungssätze.",
+          context: {},
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      topicId: "management.service-rates",
+      message: "Drei Stundenleistungen wurden verglichen.",
+      deterministic: true,
+      dialogState: {
+        domain: "management",
+      },
+    });
+    expect(
+      mocks.resolveJarvisOrganizationServiceRateRequest
+    ).toHaveBeenCalledWith({
+      question: "Analysiere unsere Stundenverrechnungssätze.",
+      organizationId: "organization-1",
+      accessProfile: { profile: true },
+    });
+    expect(mocks.resolveJarvisSalesAnalysisRequest).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisSystemHelp).not.toHaveBeenCalled();
+  });
+
+  it("answers the organization-wide material comparison before generic paths", async () => {
+    mocks.resolveJarvisOrganizationMaterialRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "management.materials",
+      message: "Vier Materialarten wurden verglichen.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Analysiere unsere Materialien und Artikel.",
+          context: {},
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      topicId: "management.materials",
+      message: "Vier Materialarten wurden verglichen.",
+      deterministic: true,
+      dialogState: {
+        domain: "management",
+      },
+    });
+    expect(
+      mocks.resolveJarvisOrganizationMaterialRequest
+    ).toHaveBeenCalledWith({
+      question: "Analysiere unsere Materialien und Artikel.",
+      organizationId: "organization-1",
+      accessProfile: { profile: true },
+    });
+    expect(mocks.resolveJarvisSalesAnalysisRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisSystemHelp).not.toHaveBeenCalled();
   });

@@ -10,20 +10,18 @@ import {
 } from "@/lib/jarvis/intent-decision";
 import { normalizeJarvisIntentText } from "@/lib/jarvis/intent-text";
 import type { JarvisSurfaceContext } from "@/lib/jarvis/knowledge";
+import {
+  analyzeJarvisQuestion,
+  isJarvisTimeToInvoiceQuestion as isTimeToInvoiceQuestion,
+  type JarvisQuestionProjectScope,
+} from "@/lib/jarvis/question-semantics";
 
 export type JarvisDialogRecord = {
   kind: "project" | "customer";
   id: string;
 };
 
-export type JarvisProjectSequenceScope =
-  | "full"
-  | "planning"
-  | "stamps"
-  | "tasks"
-  | "commercial"
-  | "automation"
-  | "improvements";
+export type JarvisProjectSequenceScope = JarvisQuestionProjectScope;
 
 export type JarvisIntentSequenceEntity =
   | "project"
@@ -316,40 +314,17 @@ function sanitizeGuidedSequence(value: unknown) {
 }
 
 export function extractJarvisProjectReferences(question: string) {
-  const matches =
-    question.toUpperCase().match(/\b[\p{L}]{2,}[- ]?\d{1,8}\b/gu) ?? [];
-  return [...new Set(matches.map(sanitizeProjectReference).filter(Boolean))].slice(
-    0,
-    5
-  );
+  return analyzeJarvisQuestion(question).projectReferences;
 }
 
-export function resolveJarvisProjectIntentScopes(question: string) {
-  const value = normalize(question);
-  const scopes: JarvisProjectSequenceScope[] = [];
-  const add = (scope: JarvisProjectSequenceScope, condition: boolean) => {
-    if (condition && !scopes.includes(scope)) scopes.push(scope);
-  };
-  add(
-    "full",
-    /\b(vollstandig|gesundheitscheck|komplett|alles)\b/.test(value)
-  );
-  add("stamps", /\b(stempel|arbeitszeit|zeiteintrag|stunden)\w*\b/.test(value));
-  add("planning", /\b(planung|termin|verplan)\w*\b/.test(value));
-  add("tasks", /\b(aufgabe|offene punkte|todo|unterbrech)\w*\b/.test(value));
-  add(
-    "commercial",
-    /\b(angebot|rechnung|abrechnung|faktura)\w*\b/.test(value)
-  );
-  add(
-    "automation",
-    /\b(automatik|zusammenhang|workflow|prozess)\w*\b/.test(value)
-  );
-  add(
-    "improvements",
-    /\b(auffallig|verbesser|optimier|was fehlt)\w*\b/.test(value)
-  );
-  return scopes;
+export function isJarvisTimeToInvoiceQuestion(question: string) {
+  return isTimeToInvoiceQuestion(question);
+}
+
+export function resolveJarvisProjectIntentScopes(
+  question: string
+): JarvisProjectSequenceScope[] {
+  return analyzeJarvisQuestion(question).projectScopes;
 }
 
 export function sanitizeJarvisDialogState(

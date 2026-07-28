@@ -39,6 +39,9 @@ import {
   type ProjectAnalyticsMapPoint,
 } from "./project-analytics-map";
 import { getOfferAcceptanceFunnel } from "@/lib/offer-acceptance/analytics";
+import { calculateWeightedLaborCostRate } from "@/lib/employee-costs/labor-cost-rate";
+import type { CatalogReviewStatus } from "@/lib/catalog/review-status";
+import type { ProjectReviewStatus } from "@/lib/projects/review-status";
 import {
   type WinterServiceOfferTransfer,
 } from "@/components/calculators/winter-service-calculator";
@@ -1815,7 +1818,17 @@ type NewsFeedPost = {
 };
 
 type CatalogItemType = "article" | "service" | "package";
-type CatalogFormTab = "information" | "components" | "calculation" | "history";
+type CatalogFormTab = "information" | "components" | "calculation" | "review" | "history";
+const catalogReviewStatusLabels: Record<CatalogReviewStatus, string> = {
+  unreviewed: "Ungeprüft",
+  needs_review: "Prüfung notwendig",
+  approved: "Fachlich freigegeben",
+};
+const projectReviewStatusLabels: Record<ProjectReviewStatus, string> = {
+  unreviewed: "Noch nicht geprüft",
+  needs_review: "Prüfung notwendig",
+  approved: "Fachlich freigegeben",
+};
 type CatalogItemHistory = {
   id: string;
   catalogItemId: string;
@@ -1867,6 +1880,11 @@ type CatalogItem = {
   planningMinutesPerUnit: number;
   defaultPlanningBoard: string;
   defaultPlanningGroup: string;
+  reviewStatus: CatalogReviewStatus;
+  reviewedAt: string;
+  reviewedByUserId: string;
+  reviewedByName: string;
+  reviewNote: string;
   isActive: boolean;
   usedCount: number;
   createdAt: string;
@@ -2275,6 +2293,22 @@ type HeroProjectPreview = {
   autoBillingEndMonth?: string;
   autoBillingTemplateMode?: string;
   autoBillingTemplate?: AutoBillingTemplate | null;
+  reviewStatus?: ProjectReviewStatus;
+  reviewedAt?: string;
+  reviewedByUserId?: string;
+  reviewedByName?: string;
+  reviewNote?: string;
+  reviewedProjectStatus?: string;
+  reviewHistory?: Array<{
+    id: string;
+    eventType: string;
+    oldStatus: string;
+    newStatus: string;
+    actorUserId: string;
+    actorName: string;
+    note: string;
+    createdAt: string;
+  }>;
 };
 
 type StatusTimelineEntry = {
@@ -3680,6 +3714,11 @@ const emptyCatalogItemDraft: Omit<CatalogItem, "id" | "createdAt" | "updatedAt" 
   planningMinutesPerUnit: 0,
   defaultPlanningBoard: "",
   defaultPlanningGroup: "",
+  reviewStatus: "unreviewed",
+  reviewedAt: "",
+  reviewedByUserId: "",
+  reviewedByName: "",
+  reviewNote: "",
   isActive: true,
   packageItems: [],
 };
@@ -7264,12 +7303,13 @@ function CatalogListView({
   const [searchTerm, setSearchTerm] = useState("");
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const [statusFilter, setStatusFilter] = useState<"active" | "inactive" | "all">("active");
+  const [reviewFilter, setReviewFilter] = useState<CatalogReviewStatus | "all">("all");
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
 
   useEffect(() => {
     setPage(1);
-  }, [activeTab, deferredSearchTerm, pageSize, statusFilter]);
+  }, [activeTab, deferredSearchTerm, pageSize, statusFilter, reviewFilter]);
 
   const viewType: CatalogItemType | "" =
     activeTab === "articles"
@@ -7284,6 +7324,7 @@ function CatalogListView({
     if (viewType && item.type !== viewType) return false;
     if (statusFilter === "active" && !item.isActive) return false;
     if (statusFilter === "inactive" && item.isActive) return false;
+    if (reviewFilter !== "all" && item.reviewStatus !== reviewFilter) return false;
     const haystack = [
       item.number,
       item.name,
@@ -7410,6 +7451,20 @@ function CatalogListView({
             <option value="all">Alle</option>
           </select>
         </label>
+        <label>
+          Prüfstatus
+          <select
+            value={reviewFilter}
+            onChange={(event) =>
+              setReviewFilter(event.target.value as CatalogReviewStatus | "all")
+            }
+          >
+            <option value="all">Alle</option>
+            <option value="unreviewed">Ungeprüft</option>
+            <option value="needs_review">Prüfung notwendig</option>
+            <option value="approved">Fachlich freigegeben</option>
+          </select>
+        </label>
       </section>
 
       <div className={`${styles.contactPagination} ${styles.catalogPagination}`}>
@@ -7454,13 +7509,14 @@ function CatalogListView({
               <th>EK</th>
               <th>VK</th>
               <th>MwSt.</th>
+              <th>Prüfung</th>
               <th>Status</th>
               <th>Aktionen</th>
             </tr>
           </thead>
           <tbody>
             {pagedItems.length === 0 ? (
-              <tr><td colSpan={13}>Noch keine Einträge gefunden.</td></tr>
+              <tr><td colSpan={14}>Noch keine Einträge gefunden.</td></tr>
             ) : pagedItems.map((item) => (
               <tr key={item.id} data-selected={!item.isActive ? "true" : undefined}>
                 <td><button className={styles.tableTextLink} onClick={() => onEditItem(item)}>{item.number}</button></td>
@@ -7474,6 +7530,11 @@ function CatalogListView({
                 <td>{formatMoney(item.purchasePrice)}</td>
                 <td>{formatMoney(item.salesPrice)}</td>
                 <td>{formatHours(item.vatRate)}%</td>
+                <td>
+                  <span className={styles.catalogReviewClip} data-review={item.reviewStatus}>
+                    {catalogReviewStatusLabels[item.reviewStatus]}
+                  </span>
+                </td>
                 <td>
                   <span className={styles.catalogStatusClip} data-status={item.isActive ? "active" : "inactive"}>
                     {item.isActive ? "Aktiv" : "Inaktiv"}
@@ -8031,6 +8092,9 @@ export function DashboardPage() {
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [editingProjectDataId, setEditingProjectDataId] = useState("");
   const [projectDraft, setProjectDraft] = useState<ProjectDraft>(emptyProjectDraft);
+  const [projectReviewNote, setProjectReviewNote] = useState("");
+  const [projectReviewError, setProjectReviewError] = useState("");
+  const [isSavingProjectReview, setIsSavingProjectReview] = useState(false);
   const [isProjectContactPickerOpen, setIsProjectContactPickerOpen] = useState(false);
   const [projectContactPickerSearch, setProjectContactPickerSearch] = useState("");
   const [projectContactTarget, setProjectContactTarget] = useState<
@@ -10283,20 +10347,25 @@ export function DashboardPage() {
         user.includeInLaborCostRate !== false &&
         getLaborCostAllocationShare(user, board, planningGroup) > 0
     );
-    const allocationTotal = boardUsers.reduce((sum, user) => sum + getLaborCostAllocationShare(user, board, planningGroup), 0);
-    const total = boardUsers.reduce(
-      (sum, user) => sum + getEmployeeHourlyCostRate(user.id) * getLaborCostAllocationShare(user, board, planningGroup),
-      0
+    const weightedRate = calculateWeightedLaborCostRate(
+      boardUsers.map((user) => ({
+        hourlyCostRate: getEmployeeHourlyCostRate(user.id),
+        allocationShare: getLaborCostAllocationShare(
+          user,
+          board,
+          planningGroup
+        ),
+      }))
     );
     return {
       board,
       planningGroup,
       label: planningGroup ? `${board} ${planningGroup}` : board,
       users: boardUsers,
-      total,
-      allocationTotal,
-      average: boardUsers.length > 0 ? total / boardUsers.length : 0,
-      count: boardUsers.length,
+      total: weightedRate.weightedCostTotal,
+      allocationTotal: weightedRate.allocationTotal,
+      average: weightedRate.averageHourlyCostRate,
+      count: weightedRate.contributingPersonCount,
     };
   }
 
@@ -13800,6 +13869,11 @@ export function DashboardPage() {
       lastSalesPriceChangedAt: "",
       lastSalesPriceOldValue: null,
       lastSalesPriceNewValue: null,
+      reviewStatus: "unreviewed",
+      reviewedAt: "",
+      reviewedByUserId: "",
+      reviewedByName: "",
+      reviewNote: "",
     });
     setEditingCatalogItemId("");
     setCatalogFormTab("information");
@@ -14002,6 +14076,42 @@ export function DashboardPage() {
 
     setIsCatalogModalOpen(false);
     setEditingCatalogItemId("");
+  }
+
+  async function setCatalogReviewStatus(reviewStatus: CatalogReviewStatus) {
+    if (!editingCatalogItemId) {
+      setCatalogError("Speichere den Stammdatensatz zuerst, bevor du ihn fachlich freigibst.");
+      return;
+    }
+    const res = await fetch("/api/catalog-items", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        action: "set-review-status",
+        id: editingCatalogItemId,
+        actorId: activeUserId,
+        reviewStatus,
+        reviewNote: catalogDraft.reviewNote,
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      setCatalogError(data?.error ?? "Prüfstatus konnte nicht gespeichert werden.");
+      return;
+    }
+    const updated = (await res.json()) as CatalogItem;
+    setCatalogDraft((current) => ({
+      ...current,
+      reviewStatus: updated.reviewStatus,
+      reviewedAt: updated.reviewedAt,
+      reviewedByUserId: updated.reviewedByUserId,
+      reviewedByName: updated.reviewedByName,
+      reviewNote: updated.reviewNote,
+    }));
+    setCatalogError("");
+    await loadCatalogItems();
   }
 
   async function applyScheduledCatalogPriceChange() {
@@ -19524,6 +19634,8 @@ export function DashboardPage() {
     const nextPipelineType =
       activeTab === "projectsImmocare" ? "Projekt OK immocare" : "Projekt OK solutions";
     setEditingProjectDataId("");
+    setProjectReviewNote("");
+    setProjectReviewError("");
     setProjectDraft({
       ...emptyProjectDraft,
       projectType: nextPipelineType,
@@ -19539,12 +19651,16 @@ export function DashboardPage() {
   function closeProjectModal() {
     setIsProjectModalOpen(false);
     setEditingProjectDataId("");
+    setProjectReviewNote("");
+    setProjectReviewError("");
     setIsProjectContactPickerOpen(false);
     setProjectContactPickerSearch("");
   }
 
   function openProjectDataModal(project: HeroProjectPreview) {
     setEditingProjectDataId(project.id);
+    setProjectReviewNote(project.reviewNote || "");
+    setProjectReviewError("");
     setProjectDraft({
       ...emptyProjectDraft,
       contactId: project.contactId || "",
@@ -21478,6 +21594,47 @@ export function DashboardPage() {
     }
 
     return (await res.json()) as HeroProjectPreview;
+  }
+
+  async function setProjectReviewStatus(
+    project: HeroProjectPreview,
+    reviewStatus: ProjectReviewStatus
+  ) {
+    if (!activeUserId || isSavingProjectReview) return;
+    setProjectReviewError("");
+    setIsSavingProjectReview(true);
+    try {
+      const res = await fetch("/api/hero/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: project.id,
+          action: "set-review-status",
+          reviewStatus,
+          reviewNote: projectReviewNote,
+          actorId: activeUserId,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.error ?? "Die fachliche Projektprüfung konnte nicht gespeichert werden.");
+      }
+      const updatedProject = data as HeroProjectPreview;
+      setHeroProjects((currentProjects) =>
+        currentProjects.map((currentProject) =>
+          currentProject.id === updatedProject.id ? updatedProject : currentProject
+        )
+      );
+      setProjectReviewNote(updatedProject.reviewNote || "");
+    } catch (error) {
+      setProjectReviewError(
+        error instanceof Error
+          ? error.message
+          : "Die fachliche Projektprüfung konnte nicht gespeichert werden."
+      );
+    } finally {
+      setIsSavingProjectReview(false);
+    }
   }
 
   async function applyProjectStatus(input: {
@@ -25546,6 +25703,114 @@ await addProjectLogbookEntry(
               potential.customerName.trim().toLowerCase() === selectedProjectCompany.companyName.trim().toLowerCase()))
       )
     : [];
+  const editingProjectForReview = heroProjects.find(
+    (project) => project.id === editingProjectDataId
+  );
+  const mayReviewProjects =
+    activeUser?.role === "ADMIN" ||
+    activeUser?.role === "GESCHAEFTSFUEHRER" ||
+    activeUser?.role === "FUEHRUNGSKRAFT";
+  const projectReviewHasUnsavedChanges = Boolean(
+    editingProjectForReview &&
+      [
+        [editingProjectForReview.contactId || "", projectDraft.contactId],
+        [editingProjectForReview.contactPersonId || "", projectDraft.contactPersonId],
+        [editingProjectForReview.addressContactId || "", projectDraft.addressContactId],
+        [editingProjectForReview.objectAddressId || "", projectDraft.objectAddressId],
+        [editingProjectForReview.projectType || "", projectDraft.projectType],
+        [normalizeProjectKindValue(editingProjectForReview.projectKind), normalizeProjectKindValue(projectDraft.projectKind)],
+        [editingProjectForReview.projectRuntimeFrom || "", projectDraft.projectRuntimeFrom],
+        [editingProjectForReview.projectRuntimeUntil || "", projectDraft.projectRuntimeUntil],
+        [
+          editingProjectForReview.billingInterval || "",
+          isRecurringProjectKindValue(projectDraft.projectKind) ? projectDraft.billingInterval : "",
+        ],
+        [
+          isRecurringProjectKindValue(editingProjectForReview.projectKind)
+            ? getProjectRecurringBillingMode(editingProjectForReview)
+            : "",
+          isRecurringProjectKindValue(projectDraft.projectKind)
+            ? normalizeRecurringBillingMode(projectDraft.recurringBillingMode)
+            : "",
+        ],
+        [
+          editingProjectForReview.forecastBillingType || "",
+          isRecurringProjectKindValue(projectDraft.projectKind) &&
+          normalizeRecurringBillingMode(projectDraft.recurringBillingMode) === RECURRING_BILLING_MONTHLY_FLAT
+            ? projectDraft.forecastBillingType
+            : "",
+        ],
+        [
+          editingProjectForReview.forecastNetAmount || "",
+          isRecurringProjectKindValue(projectDraft.projectKind) &&
+          normalizeRecurringBillingMode(projectDraft.recurringBillingMode) === RECURRING_BILLING_MONTHLY_FLAT
+            ? projectDraft.forecastNetAmount
+            : "",
+        ],
+        [editingProjectForReview.trade || "", projectDraft.trade],
+        [editingProjectForReview.branch || "", projectDraft.branch],
+        [editingProjectForReview.title || "", projectDraft.name],
+        [editingProjectForReview.responsibleName || "", projectDraft.responsibleName],
+        [editingProjectForReview.timeBudgetHours || "", projectDraft.timeBudgetHours],
+      ].some(([savedValue, draftValue]) => String(savedValue).trim() !== String(draftValue).trim())
+  );
+  const projectHasValidOffer = Boolean(
+    editingProjectForReview &&
+      offers.some((offer) => {
+        if (offer.projectId !== editingProjectForReview.id) return false;
+        const status = offer.status
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase();
+        return ![
+          "entwurf",
+          "verloren",
+          "abgelehnt",
+          "storniert",
+          "geloscht",
+          "deleted",
+        ].some((blockedStatus) => status.includes(blockedStatus));
+      })
+  );
+  const projectReviewChecks = editingProjectForReview
+    ? [
+        {
+          label: "Projektart und Unternehmensbereich sind eindeutig gepflegt",
+          ok: Boolean(editingProjectForReview.projectType && editingProjectForReview.projectKind),
+        },
+        {
+          label: "Abrechnungsmodell, Intervall und Laufzeit passen zur Projektart",
+          ok:
+            !isRecurringProjectKindValue(editingProjectForReview.projectKind) ||
+            Boolean(
+              getProjectRecurringBillingMode(editingProjectForReview) &&
+                editingProjectForReview.billingInterval &&
+                editingProjectForReview.projectRuntimeFrom &&
+                editingProjectForReview.projectRuntimeUntil
+            ),
+        },
+        {
+          label: "Das Projekt ist eindeutig mit der richtigen Kundenakte verknüpft",
+          ok: Boolean(editingProjectForReview.contactId),
+        },
+        {
+          label: "Gewerk, Niederlassung und verantwortliche Person sind hinterlegt",
+          ok: Boolean(
+            editingProjectForReview.trade &&
+              editingProjectForReview.branch &&
+              editingProjectForReview.responsibleName
+          ),
+        },
+        {
+          label: "Ein gültiges Angebot ist im Projekt hinterlegt (Entwurf reicht nicht)",
+          ok: projectHasValidOffer,
+        },
+      ]
+    : [];
+  const projectReviewCanApprove =
+    projectReviewChecks.length > 0 &&
+    projectReviewChecks.every((check) => check.ok) &&
+    !projectReviewHasUnsavedChanges;
   const contactCompanyOptions = contacts
     .filter((contact) => contact.type === "company")
     .sort((first, second) => getContactDisplayName(first).localeCompare(getContactDisplayName(second), "de"));
@@ -32356,9 +32621,9 @@ await addProjectLogbookEntry(
           : undefined;
       const responseChoices = parseJarvisDialogChoices(data?.choices);
       const responseRecords = parseJarvisRecordResults(data?.records);
-      const responseStructured = isSystemHelp
-        ? parseJarvisStructuredAnswer(data?.structured)
-        : undefined;
+      const responseStructured = parseJarvisStructuredAnswer(
+        data?.structured
+      );
       const responseDialogState =
         sanitizeJarvisDialogState(data?.dialogState) ??
         buildJarvisDialogState({
@@ -55837,6 +56102,120 @@ await addProjectLogbookEntry(
       salesPrice > 0 ? ((salesPrice - purchasePrice) / salesPrice) * 100 : 0;
     const planningGroups = catalogDraft.defaultPlanningBoard === "OK immocare" ? ["VZK", "TZK"] : ["Marketing", "Arb.Sich.", "HR"];
     const laborCostRateOptions = getLaborCostRateOptions();
+    const selectedLaborCostRateKey =
+      catalogDraft.laborCostRateKey ||
+      getDefaultLaborCostRateKeyForCatalogItem(catalogDraft);
+    const selectedLaborCostRateOption = getLaborCostRateOption(
+      selectedLaborCostRateKey
+    );
+    const currentCalculatedLaborCostRate = roundCurrencyValue(
+      selectedLaborCostRateOption?.rate ?? 0
+    );
+    const laborCostRateDifference = roundCurrencyValue(
+      currentCalculatedLaborCostRate - catalogDraft.purchasePrice
+    );
+    const hasLaborCostRateDifference =
+      catalogDraft.type === "service" &&
+      currentCalculatedLaborCostRate > 0 &&
+      Math.abs(laborCostRateDifference) >= 0.01;
+    const reviewComparable = (item: typeof catalogDraft | CatalogItem) => ({
+      type: item.type,
+      number: item.number,
+      name: item.name,
+      category: item.category,
+      trade: item.trade,
+      unit: item.unit,
+      description: item.description,
+      matchcode: item.matchcode,
+      ean: item.ean,
+      costCenter: item.costCenter,
+      supplierName: item.supplierName,
+      supplierNumber: item.supplierNumber,
+      manufacturer: item.manufacturer,
+      manufacturerNumber: item.manufacturerNumber,
+      manufacturerTypeName: item.manufacturerTypeName,
+      minimumOrderQuantity: item.minimumOrderQuantity,
+      quantityScale: item.quantityScale,
+      priceUnit: item.priceUnit,
+      deliveryTime: item.deliveryTime,
+      purchasePrice: roundCurrencyValue(item.purchasePrice),
+      laborCostRateKey: item.laborCostRateKey,
+      salesPrice: roundCurrencyValue(item.salesPrice),
+      scheduledSalesPrice: item.scheduledSalesPrice,
+      scheduledSalesPriceValidFrom: item.scheduledSalesPriceValidFrom,
+      scheduledSalesPriceUpdatePackages: item.scheduledSalesPriceUpdatePackages,
+      vatRate: item.vatRate,
+      isLaborPosition: item.isLaborPosition,
+      isPlanningRelevant: item.isPlanningRelevant,
+      planningMinutesPerUnit: item.planningMinutesPerUnit,
+      defaultPlanningBoard: item.defaultPlanningBoard,
+      defaultPlanningGroup: item.defaultPlanningGroup,
+      isActive: item.isActive,
+      packageItems: item.packageItems.map((component) => ({
+        componentItemId: component.componentItemId,
+        quantity: component.quantity,
+        purchasePriceSnapshot: component.purchasePriceSnapshot,
+        salesPriceSnapshot: component.salesPriceSnapshot,
+        planningMinutesOverride: component.planningMinutesOverride,
+      })),
+    });
+    const hasUnsavedCatalogReviewChanges =
+      Boolean(editingItem) &&
+      JSON.stringify(reviewComparable(catalogDraft)) !==
+        JSON.stringify(reviewComparable(editingItem as CatalogItem));
+    const catalogReviewChecks = [
+      {
+        label: "Basisdaten",
+        complete: Boolean(
+          catalogDraft.number.trim() &&
+            catalogDraft.name.trim() &&
+            catalogDraft.unit.trim()
+        ),
+        detail: "Nummer, Name und Einheit",
+      },
+      {
+        label: "Zuordnung",
+        complete:
+          catalogDraft.type === "article"
+            ? Boolean(catalogDraft.category.trim())
+            : Boolean(catalogDraft.trade.trim()),
+        detail:
+          catalogDraft.type === "article"
+            ? "Kategorie"
+            : "Gewerk beziehungsweise fachliche Zuordnung",
+      },
+      {
+        label: "Kalkulation",
+        complete:
+          catalogDraft.salesPrice > 0 &&
+          (catalogDraft.type === "package"
+            ? catalogDraft.packageItems.length > 0
+            : catalogDraft.purchasePrice > 0),
+        detail: "Kostenbasis und Verkaufspreis",
+      },
+      {
+        label: "Planung & Abrechnung",
+        complete:
+          catalogDraft.type === "article" ||
+          (catalogDraft.planningMinutesPerUnit > 0 &&
+            Boolean(catalogDraft.defaultPlanningBoard.trim()) &&
+            Boolean(catalogDraft.defaultPlanningGroup.trim())),
+        detail:
+          catalogDraft.type === "article"
+            ? "Für Artikel nicht erforderlich"
+            : "Planungszeit, Board und Gruppe",
+      },
+      {
+        label: "Paketbestandteile",
+        complete:
+          catalogDraft.type !== "package" ||
+          catalogDraft.packageItems.length > 0,
+        detail:
+          catalogDraft.type === "package"
+            ? "Mindestens ein geprüfter Bestandteil"
+            : "Für diesen Typ nicht erforderlich",
+      },
+    ];
     const canEditLaborCostRateValue = activeUser?.role === "GESCHAEFTSFUEHRER";
     const renderCatalogHelp = (tooltip: string) => (
       <span className={styles.catalogLabelHelp} data-tooltip={tooltip} tabIndex={0} aria-label={tooltip}>
@@ -55866,6 +56245,8 @@ await addProjectLogbookEntry(
       created: "Angelegt",
       package_items_updated: "Paketbestandteile geändert",
       "scheduled-price-applied": "Preisänderung übernommen",
+      review_approved: "Fachlich freigegeben",
+      review_status_changed: "Prüfstatus geändert",
     };
     const formatCatalogHistoryValue = (entry: CatalogItemHistory, value: string) => {
       if (!value || value === "-") return "-";
@@ -55893,6 +56274,10 @@ await addProjectLogbookEntry(
         return ({ article: "Artikel", service: "Leistung", package: "Paket" } as Record<string, string>)[value] ?? value;
       }
 
+      if (entry.fieldName === "Prüfstatus") {
+        return catalogReviewStatusLabels[value as CatalogReviewStatus] ?? value;
+      }
+
       if (["Paketpreise mit aktualisieren", "Arbeitsposition", "Planungsrelevant", "Status"].includes(entry.fieldName)) {
         if (value === "true") return entry.fieldName === "Status" ? "Aktiv" : "Ja";
         if (value === "false") return entry.fieldName === "Status" ? "Inaktiv" : "Nein";
@@ -55917,6 +56302,7 @@ await addProjectLogbookEntry(
             {[
               ["information", "Informationen"],
               ["calculation", "Kalkulation"],
+              ["review", "Prüfung"],
               ["history", "Historie"],
             ].map(([id, label]) => (
               <button key={id} type="button" data-active={catalogFormTab === id} onClick={() => setCatalogFormTab(id as CatalogFormTab)}>{label}</button>
@@ -56382,6 +56768,46 @@ await addProjectLogbookEntry(
                       onChange={(event) => updateCatalogDraft("purchasePrice", roundCurrencyValue(Number(event.target.value)))}
                     />
                   </label>
+                  <section className={styles.catalogLaborRatePreview}>
+                    <div>
+                      <span>Gespeicherter LK-Satz</span>
+                      <strong>{formatMoney(catalogDraft.purchasePrice)} / Std.</strong>
+                    </div>
+                    <div>
+                      <span>Aktuell korrekt berechnet</span>
+                      <strong>{formatMoney(currentCalculatedLaborCostRate)} / Std.</strong>
+                      <small>{selectedLaborCostRateOption?.label ?? "Keine LK-Gruppe zugeordnet"}</small>
+                    </div>
+                    <div data-state={hasLaborCostRateDifference ? "warning" : "ok"}>
+                      <span>Abweichung</span>
+                      <strong>
+                        {laborCostRateDifference > 0 ? "+" : ""}
+                        {formatMoney(laborCostRateDifference)} / Std.
+                      </strong>
+                    </div>
+                    {hasLaborCostRateDifference ? (
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        disabled={!canEditLaborCostRateValue}
+                        onClick={() =>
+                          updateCatalogDraft(
+                            "purchasePrice",
+                            currentCalculatedLaborCostRate
+                          )
+                        }
+                      >
+                        In Entwurf übernehmen
+                      </button>
+                    ) : (
+                      <p>Gespeicherter und aktuell berechneter LK-Satz stimmen überein.</p>
+                    )}
+                    <p>
+                      Die Übernahme ändert zunächst nur diesen Entwurf. Erst „Speichern“
+                      aktualisiert die Leistung; bestehende Angebote und Rechnungen bleiben
+                      unverändert.
+                    </p>
+                  </section>
                 </>
               ) : (
                 <label>
@@ -56500,6 +56926,124 @@ await addProjectLogbookEntry(
                   </article>
                 </div>
               </section>
+            </div>
+          ) : null}
+          {catalogFormTab === "review" ? (
+            <div className={styles.catalogReviewPanel}>
+              <section className={styles.catalogReviewSummary}>
+                <div>
+                  <span>Aktueller Prüfstatus</span>
+                  <strong
+                    className={styles.catalogReviewClip}
+                    data-review={catalogDraft.reviewStatus}
+                  >
+                    {catalogReviewStatusLabels[catalogDraft.reviewStatus]}
+                  </strong>
+                </div>
+                <div>
+                  <span>Zuletzt fachlich freigegeben</span>
+                  <strong>
+                    {catalogDraft.reviewedAt
+                      ? formatDeadline(catalogDraft.reviewedAt)
+                      : "Noch nicht freigegeben"}
+                  </strong>
+                  <small>{catalogDraft.reviewedByName || "-"}</small>
+                </div>
+              </section>
+
+              <section className={styles.catalogReviewChecklist}>
+                <div>
+                  <strong>Prüfumfang</strong>
+                  <span>
+                    Die Hinweise unterstützen die Prüfung. Die fachliche Freigabe bleibt
+                    eine bewusste Entscheidung von GF/Admin.
+                  </span>
+                </div>
+                <div className={styles.catalogReviewCheckGrid}>
+                  {catalogReviewChecks.map((check) => (
+                    <article key={check.label} data-ok={check.complete}>
+                      <span aria-hidden="true">{check.complete ? "✓" : "!"}</span>
+                      <div>
+                        <strong>{check.label}</strong>
+                        <small>{check.detail}</small>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+
+              {catalogDraft.type === "service" ? (
+                <section className={styles.catalogReviewLaborComparison}>
+                  <div>
+                    <strong>LK-Satz-Abgleich</strong>
+                    <span>
+                      Gespeichert {formatMoney(catalogDraft.purchasePrice)} / Std. ·
+                      aktuell berechnet {formatMoney(currentCalculatedLaborCostRate)} / Std.
+                    </span>
+                  </div>
+                  <strong data-state={hasLaborCostRateDifference ? "warning" : "ok"}>
+                    {hasLaborCostRateDifference
+                      ? `${laborCostRateDifference > 0 ? "+" : ""}${formatMoney(laborCostRateDifference)} / Std. prüfen`
+                      : "Keine Abweichung"}
+                  </strong>
+                  {hasLaborCostRateDifference ? (
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      disabled={!canEditLaborCostRateValue}
+                      onClick={() => {
+                        updateCatalogDraft(
+                          "purchasePrice",
+                          currentCalculatedLaborCostRate
+                        );
+                        setCatalogFormTab("calculation");
+                      }}
+                    >
+                      In Kalkulationsentwurf übernehmen
+                    </button>
+                  ) : null}
+                </section>
+              ) : null}
+
+              <label className={styles.catalogReviewNote}>
+                Prüfnotiz
+                <textarea
+                  value={catalogDraft.reviewNote}
+                  onChange={(event) =>
+                    updateCatalogDraft("reviewNote", event.target.value)
+                  }
+                  placeholder="Was wurde geprüft oder muss noch geklärt werden?"
+                />
+              </label>
+
+              {hasUnsavedCatalogReviewChanges ? (
+                <p className={styles.modalWarning}>
+                  Es gibt ungespeicherte prüfrelevante Änderungen. Speichere sie zuerst;
+                  danach kann der aktuelle Stand fachlich freigegeben werden.
+                </p>
+              ) : null}
+
+              <div className={styles.catalogReviewActions}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  disabled={!editingCatalogItemId || hasUnsavedCatalogReviewChanges}
+                  onClick={() => void setCatalogReviewStatus("needs_review")}
+                >
+                  Prüfung notwendig
+                </button>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  disabled={!editingCatalogItemId || hasUnsavedCatalogReviewChanges}
+                  onClick={() => void setCatalogReviewStatus("approved")}
+                >
+                  Fachlich freigeben
+                </button>
+              </div>
+              {!editingCatalogItemId ? (
+                <p>Neue Stammdaten müssen zuerst gespeichert und anschließend bewusst freigegeben werden.</p>
+              ) : null}
             </div>
           ) : null}
           {catalogFormTab === "history" ? (
@@ -60170,7 +60714,7 @@ await addProjectLogbookEntry(
               aria-expanded={isManagementAiOpen}
             >
               <span className={styles.jarvisSidebarVisual} aria-hidden="true">
-                <img src="/media/jarvis-ring.webp" alt="" />
+                <img src="/media/jarvis-ring-gold-clean.webp" alt="" />
               </span>
               <span className={styles.jarvisSidebarLabel}>
                 <strong>JARVIS</strong>
@@ -66352,6 +66896,120 @@ await addProjectLogbookEntry(
                 </div>
               ) : null}
             </div>
+
+            {editingProjectForReview ? (
+              <section className={styles.projectReviewCard}>
+                <div className={styles.projectReviewHeader}>
+                  <div>
+                    <span>Fachliche Projektprüfung</span>
+                    <strong>
+                      {projectReviewStatusLabels[
+                        editingProjectForReview.reviewStatus || "unreviewed"
+                      ]}
+                    </strong>
+                  </div>
+                  <span
+                    className={styles.projectReviewStatus}
+                    data-review={editingProjectForReview.reviewStatus || "unreviewed"}
+                  >
+                    {projectReviewStatusLabels[
+                      editingProjectForReview.reviewStatus || "unreviewed"
+                    ]}
+                  </span>
+                </div>
+                <p>
+                  Diese Prüfung bestätigt, dass die wichtigsten Projektdaten fachlich kontrolliert
+                  wurden. Ein gültiges Angebot ist dabei Pflicht, weil es festlegt, welche
+                  Leistungen der Kunde beauftragt hat.
+                </p>
+                <div className={styles.projectReviewChecklist}>
+                  {projectReviewChecks.map((check) => (
+                    <div key={check.label} data-ok={check.ok}>
+                      <span aria-hidden="true">{check.ok ? "✓" : "!"}</span>
+                      <p>{check.label}</p>
+                    </div>
+                  ))}
+                </div>
+                {projectReviewHasUnsavedChanges ? (
+                  <p className={styles.projectReviewWarning}>
+                    Du hast prüfrelevante Projektdaten geändert. Speichere diese Änderungen zuerst;
+                    danach kann das Projekt auf Grundlage des aktuellen Stands geprüft werden.
+                  </p>
+                ) : null}
+                {editingProjectForReview.reviewedAt ? (
+                  <p className={styles.projectReviewMeta}>
+                    Zuletzt freigegeben von {editingProjectForReview.reviewedByName || "unbekannt"} am{" "}
+                    {new Intl.DateTimeFormat(APP_LOCALE, {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                      timeZone: APP_TIME_ZONE,
+                    }).format(new Date(editingProjectForReview.reviewedAt))}
+                    {editingProjectForReview.reviewedProjectStatus
+                      ? ` · damaliger Projektstatus: ${editingProjectForReview.reviewedProjectStatus}`
+                      : ""}
+                  </p>
+                ) : null}
+                <label>
+                  Prüfnotiz (optional)
+                  <textarea
+                    value={projectReviewNote}
+                    onChange={(event) => setProjectReviewNote(event.target.value)}
+                    placeholder="Was wurde geprüft oder was muss noch geklärt werden?"
+                  />
+                </label>
+                {projectReviewError ? (
+                  <p className={styles.projectReviewWarning}>{projectReviewError}</p>
+                ) : null}
+                {mayReviewProjects ? (
+                  <div className={styles.projectReviewActions}>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      disabled={isSavingProjectReview}
+                      onClick={() =>
+                        void setProjectReviewStatus(editingProjectForReview, "needs_review")
+                      }
+                    >
+                      Prüfung erforderlich
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      disabled={isSavingProjectReview || !projectReviewCanApprove}
+                      onClick={() =>
+                        void setProjectReviewStatus(editingProjectForReview, "approved")
+                      }
+                    >
+                      Fachlich freigeben
+                    </button>
+                  </div>
+                ) : (
+                  <p className={styles.projectReviewMeta}>
+                    Du kannst den Prüfstand sehen. Die fachliche Freigabe übernehmen
+                    Geschäftsführung, Administration oder Führungskraft.
+                  </p>
+                )}
+                {(editingProjectForReview.reviewHistory || []).length > 0 ? (
+                  <details className={styles.projectReviewHistory}>
+                    <summary>Prüfverlauf anzeigen</summary>
+                    {(editingProjectForReview.reviewHistory || []).map((entry) => (
+                      <div key={entry.id}>
+                        <strong>{projectReviewStatusLabels[entry.newStatus as ProjectReviewStatus] || entry.newStatus}</strong>
+                        <span>
+                          {entry.actorName} ·{" "}
+                          {new Intl.DateTimeFormat(APP_LOCALE, {
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                            timeZone: APP_TIME_ZONE,
+                          }).format(new Date(entry.createdAt))}
+                        </span>
+                        {entry.note ? <p>{entry.note}</p> : null}
+                      </div>
+                    ))}
+                  </details>
+                ) : null}
+              </section>
+            ) : null}
 
             </div>
 

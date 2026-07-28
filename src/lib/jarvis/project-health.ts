@@ -9,6 +9,10 @@ import {
 } from "@/lib/jarvis/dialog";
 import type { JarvisSurfaceContext } from "@/lib/jarvis/knowledge";
 import {
+  analyzeJarvisQuestion,
+  isJarvisTimeToInvoiceQuestion,
+} from "@/lib/jarvis/question-semantics";
+import {
   canAccessJarvisTask,
   getJarvisTaskActorWhere,
   type JarvisReadResponse,
@@ -26,6 +30,21 @@ import {
   diagnoseRecurringProjectMonths,
   type RecurringMonthDiagnosticResult,
 } from "@/lib/jarvis/recurring-month-diagnostics";
+import {
+  diagnoseProjectProcess,
+  type ProjectProcessDiagnosticResult,
+} from "@/lib/jarvis/project-process-diagnostics";
+import {
+  analyzeProjectMaterials,
+  type ProjectMaterialAnalysis,
+  type ProjectMaterialInvoice,
+} from "@/lib/jarvis/project-material-analysis";
+import {
+  analyzeProjectServiceRates,
+  type ProjectServiceRateAnalysis,
+  type ProjectServiceRateCatalogItem,
+  type ProjectServiceRateInvoice,
+} from "@/lib/jarvis/project-service-rate-analysis";
 import {
   diagnoseJarvisProjectLogic,
   resolveJarvisProjectLogic,
@@ -76,6 +95,10 @@ type ProjectHealthRow = {
   autoBillingNetAmount: string | null;
   autoBillingStartMonth: string | null;
   autoBillingEndMonth: string | null;
+  reviewStatus: string;
+  reviewedAt: Date | null;
+  reviewedByName: string | null;
+  reviewedProjectStatus: string | null;
   updatedAt: Date;
 };
 
@@ -95,6 +118,9 @@ export type ProjectHealthSnapshot = {
   evaluationDateKey: string;
   stampDiagnostics?: StampDiagnosticResult;
   recurringMonthDiagnostics?: RecurringMonthDiagnosticResult;
+  processDiagnostics?: ProjectProcessDiagnosticResult;
+  materialAnalysis?: ProjectMaterialAnalysis;
+  serviceRateAnalysis?: ProjectServiceRateAnalysis;
   checkedAreas: string[];
   restrictedAreas: string[];
 };
@@ -104,7 +130,29 @@ export type ProjectHealthEvaluation = {
   status: "healthy" | "attention" | "critical";
   issues: ProjectHealthIssue[];
   automationSummary: string[];
+  areaAssessments: ProjectHealthAreaAssessment[];
 };
+
+type ProjectHealthAreaAssessment = {
+  area: string;
+  score: number;
+  status: "healthy" | "attention" | "critical";
+  criticalIssues: number;
+  warningIssues: number;
+};
+
+const HEALTH_AREAS = {
+  masterData: "Stammdaten & Verantwortung",
+  planning: "Planung & Terminverknüpfungen",
+  stamps: "Stempelungen, Zeitmathematik & Status",
+  customer: "Kunden- & Objektverknüpfung",
+  commercial: "Angebote, Rechnungen & Abrechnungsautomatik",
+  recurring: "Dauerläufer-Monatskette",
+  process: "Sollprozess & Leistungsnachweise",
+  materials: "Material, Pakete & Lagerabgleich",
+  tasks: "Aufgaben & Unterbrechungen",
+  profitability: "Wirtschaftlichkeit & Kostensatzqualität",
+} as const;
 
 function normalize(value: string | null | undefined) {
   return (value ?? "")
@@ -115,9 +163,785 @@ function normalize(value: string | null | undefined) {
     .trim();
 }
 
+type FocusedInvoiceRecord = {
+  id: string;
+  status: string;
+  billingSource: string;
+  plannedExecutionMonth: string;
+  serviceDate: string;
+  createdAt: Date;
+};
+
+type FocusedTimeEntryRecord = {
+  date: string;
+  durationMs: number | bigint;
+  trade: string | null;
+  billingCatalogItemId: string | null;
+  billingCatalogItemLabel: string | null;
+  invoiceId: string | null;
+};
+
+function getMonthKey(value: string | Date | null | undefined) {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? "" : value.toISOString().slice(0, 7);
+  }
+  const match = String(value ?? "").match(/^(\d{4})-(\d{2})/);
+  return match ? `${match[1]}-${match[2]}` : "";
+}
+
+function shiftMonth(monthKey: string, amount: number) {
+  const [year, month] = monthKey.split("-").map(Number);
+  if (!year || !month) return "";
+  return new Date(Date.UTC(year, month - 1 + amount, 1))
+    .toISOString()
+    .slice(0, 7);
+}
+
+function formatMonthKey(monthKey: string) {
+  const [year, month] = monthKey.split("-").map(Number);
+  if (!year || !month) return monthKey;
+  return new Intl.DateTimeFormat("de-DE", {
+    month: "long",
+    year: "numeric",
+    timeZone: "Europe/Berlin",
+  }).format(new Date(Date.UTC(year, month - 1, 1, 12)));
+}
+
+function isFocusedInvoiceMonthQuestion(question: string) {
+  const semantics = analyzeJarvisQuestion(question);
+  return (
+    semantics.explicitMonths.length === 1 &&
+    semantics.answerDepth === "focused" &&
+    (
+      semantics.relation === "invoice_month" ||
+      semantics.relation === "time_to_invoice"
+    )
+  );
+}
+
+function getFocusedInvoiceMonth(invoice: FocusedInvoiceRecord) {
+  return (
+    getMonthKey(invoice.serviceDate) ||
+    getMonthKey(invoice.plannedExecutionMonth) ||
+    getMonthKey(invoice.createdAt)
+  );
+}
+
+function buildFocusedInvoiceMonthResponse(input: {
+  question: string;
+  project: ProjectHealthRow;
+  invoices: FocusedInvoiceRecord[];
+  timeEntries: FocusedTimeEntryRecord[];
+}): JarvisReadResponse | undefined {
+  if (!isFocusedInvoiceMonthQuestion(input.question)) return undefined;
+  const semantics = analyzeJarvisQuestion(input.question);
+  const monthKey = semantics.explicitMonths[0]?.key ?? "";
+  const monthLabel = formatMonthKey(monthKey);
+  const previousMonthKey = shiftMonth(monthKey, -1);
+  const previousMonthLabel = formatMonthKey(previousMonthKey);
+  const monthInvoices = input.invoices.filter(
+    (invoice) => getFocusedInvoiceMonth(invoice) === monthKey
+  );
+  const draftInvoices = monthInvoices.filter(
+    (invoice) => normalize(invoice.status) === "entwurf"
+  );
+  const finalInvoices = monthInvoices.filter(
+    (invoice) => normalize(invoice.status) !== "entwurf"
+  );
+  const previousFinalInvoice = input.invoices.find(
+    (invoice) =>
+      getFocusedInvoiceMonth(invoice) === previousMonthKey &&
+      normalize(invoice.status) !== "entwurf"
+  );
+  const monthlyFlat = input.project.recurringBillingMode === "monthlyFlat";
+  const hourlyDraftOnMonthlyFlat = draftInvoices.some(
+    (invoice) => invoice.billingSource === "hourly-recurring"
+  ) && monthlyFlat;
+  const autoBillingPeriodMissing =
+    monthlyFlat &&
+    input.project.autoBillingEnabled &&
+    (!getMonthKey(input.project.autoBillingStartMonth) ||
+      !getMonthKey(input.project.autoBillingEndMonth));
+  const reference = input.project.projectNumber || input.project.title;
+  const projectLabel = [reference, input.project.title]
+    .filter((value, index, values) => Boolean(value) && values.indexOf(value) === index)
+    .join(" · ");
+
+  if (isJarvisTimeToInvoiceQuestion(input.question)) {
+    const monthEntries = input.timeEntries.filter(
+      (entry) => getMonthKey(entry.date) === monthKey
+    );
+    const stampedHours =
+      Math.round(
+        monthEntries.reduce(
+          (sum, entry) => sum + Math.max(0, Number(entry.durationMs) || 0),
+          0
+        ) / 36_000
+      ) / 100;
+    const entriesWithoutTrade = monthEntries.filter(
+      (entry) => !entry.trade?.trim()
+    ).length;
+    const entriesWithoutBillingItem = monthEntries.filter(
+      (entry) =>
+        !entry.billingCatalogItemId?.trim() &&
+        !entry.billingCatalogItemLabel?.trim()
+    ).length;
+    const linkedEntries = monthEntries.filter((entry) =>
+      entry.invoiceId?.trim()
+    ).length;
+    const hourlyRecurring =
+      input.project.recurringBillingMode === "hourly";
+    const monthDrafts = monthInvoices.filter(
+      (invoice) => normalize(invoice.status) === "entwurf"
+    );
+    const monthFinals = monthInvoices.filter(
+      (invoice) => normalize(invoice.status) !== "entwurf"
+    );
+    const hoursLabel = `${new Intl.NumberFormat("de-DE", {
+      maximumFractionDigits: 2,
+    }).format(stampedHours)} Std.`;
+    let timeSummary = "";
+    let timeStatus = "";
+    const timeFindings: string[] = [];
+    let timeNextStep = "";
+
+    if (!hourlyRecurring) {
+      timeStatus = "Keine Stunden-Dauerläufer-Abrechnung";
+      timeSummary =
+        `${reference} ist nicht als Dauerläufer mit Stundenabrechnung eingerichtet. Deshalb erzeugen Stempelungen hier keinen monatlichen Rechnungsentwurf.`;
+      timeFindings.push(
+        monthEntries.length === 0
+          ? `Für ${monthLabel} wurden außerdem keine Stempelungen gefunden.`
+          : `Für ${monthLabel} wurden ${monthEntries.length} Stempelung/Stempelungen mit insgesamt ${hoursLabel} gefunden; die automatische Monatslogik für Stunden-Dauerläufer gilt für diese Projektart dennoch nicht.`
+      );
+      timeNextStep =
+        `Prüfe zuerst in den Projektinformationen und im gültigen Angebot, ob ${reference} tatsächlich ein einmaliges Projekt bleiben soll. Ist das korrekt, erfolgt die Abrechnung über den Angebots- und Rechnungsweg des einmaligen Projekts. Ändere die Projektart nicht nur, um einen Entwurf zu erzwingen.`;
+    } else if (monthFinals.length > 0) {
+      timeStatus = "Fertige Rechnung vorhanden";
+      timeSummary =
+        `Für ${monthLabel} ist bereits eine fertige Rechnung vorhanden.`;
+      timeFindings.push(
+        `${linkedEntries} von ${monthEntries.length} Stempelung/Stempelungen sind mit einer Rechnung verknüpft.`
+      );
+      timeNextStep =
+        `Öffne die Rechnung für ${monthLabel} und vergleiche die abgerechneten Leistungen mit den Stempelungen.`;
+    } else if (monthDrafts.length > 0) {
+      timeStatus = "Rechnungsentwurf vorhanden";
+      timeSummary =
+        `Für ${monthLabel} ist bereits ein Rechnungsentwurf vorhanden.`;
+      timeFindings.push(
+        `${linkedEntries} von ${monthEntries.length} Stempelung/Stempelungen sind mit einer Rechnung verknüpft.`
+      );
+      timeNextStep =
+        `Öffne den vorhandenen Entwurf und prüfe Gewerk, Abrechnungsleistung und enthaltene Zeiten. Lege keinen zweiten Entwurf für denselben Monat an.`;
+    } else if (monthEntries.length === 0) {
+      timeStatus = "Keine Stempelungen vorhanden";
+      timeSummary =
+        `Für ${monthLabel} gibt es keine Stempelung. Deshalb konnte noch kein monatlicher Rechnungsentwurf aus Arbeitszeiten entstehen.`;
+      timeNextStep =
+        `Prüfe unter „Termine & Stempelungen“, ob im richtigen Monat und auf dem richtigen Projekt gearbeitet wurde. Lege keine Stempelung nur zum Auslösen einer Rechnung an.`;
+    } else if (entriesWithoutTrade > 0 || entriesWithoutBillingItem > 0) {
+      timeStatus = "Stempelungen nicht vollständig abrechenbar";
+      timeSummary =
+        `Für ${monthLabel} sind Stempelungen vorhanden, aber nicht alle enthalten die Angaben, die WorkPilot360 für den Rechnungsentwurf benötigt.`;
+      if (entriesWithoutTrade > 0) {
+        timeFindings.push(
+          `${entriesWithoutTrade} Stempelung/Stempelungen haben kein Gewerk.`
+        );
+      }
+      if (entriesWithoutBillingItem > 0) {
+        timeFindings.push(
+          `${entriesWithoutBillingItem} Stempelung/Stempelungen haben keine Abrechnungsleistung.`
+        );
+      }
+      timeNextStep =
+        `Öffne die betroffenen Einträge unter „Termine & Stempelungen“ und ergänze nur die fachlich richtige Zuordnung. Prüfe danach, ob der vorhandene Monatsentwurf aktualisiert wurde; lege keinen doppelten Entwurf an.`;
+    } else {
+      timeStatus = "Auslösung nicht nachvollziehbar";
+      timeSummary =
+        `Für ${monthLabel} sind ${monthEntries.length} abrechenbare Stempelung/Stempelungen mit insgesamt ${hoursLabel} vorhanden, aber es wurde kein Rechnungsentwurf gefunden.`;
+      timeFindings.push(
+        "Nach der vorgesehenen Dauerläuferlogik hätte bereits die erste passende Stempelung genau einen Monatsentwurf anlegen müssen."
+      );
+      timeNextStep =
+        `Öffne „Termine & Stempelungen“ und prüfe die erste Stempelung des Monats sowie ihre Projekt-, Gewerk- und Abrechnungsleistungszuordnung. Erstelle nicht vorschnell manuell einen Entwurf, damit keine Doppelabrechnung entsteht.`;
+    }
+
+    return {
+      type: "answer",
+      topicId: "project.invoice.from-time",
+      message: timeSummary,
+      structured: {
+        title: `Stempelungen & Rechnung ${monthLabel} · ${reference}`,
+        subtitle: `${input.project.customer || "Ohne Kundenanzeige"} · ${input.project.status || "Ohne Status"}`,
+        summary: timeSummary,
+        facts: [
+          { label: "Stempelungen", value: `${monthEntries.length} · ${hoursLabel}` },
+          {
+            label: "Stand",
+            value: timeStatus,
+            tone:
+              monthFinals.length > 0 || monthDrafts.length > 0
+                ? "positive"
+                : "warning",
+          },
+        ],
+        sections: [
+          ...(timeFindings.length > 0
+            ? [{
+                title: "Festgestellt",
+                items: timeFindings.slice(0, 2),
+                tone: "warning" as const,
+              }]
+            : []),
+          {
+            title: "Nächster Schritt",
+            items: [timeNextStep],
+          },
+        ],
+      },
+      records: [{
+        id: `project-invoice-from-time-${input.project.id}-${monthKey}`,
+        kind: "project",
+        title: projectLabel,
+        subtitle: input.project.customer || input.project.projectType || "Projekt",
+        summary: `${monthLabel} · ${timeStatus}`,
+        status: input.project.status,
+        target: { kind: "project", id: input.project.id },
+      }],
+      deterministic: true,
+    };
+  }
+
+  let summary = "";
+  let status = "";
+  const findings: string[] = [];
+  let nextStep = "";
+
+  if (finalInvoices.length > 0) {
+    status = `Fertige Rechnung vorhanden (${finalInvoices[0].status})`;
+    summary = `Für ${monthLabel} ist bereits eine fertige Rechnung vorhanden.`;
+    findings.push(
+      `Die gespeicherten Projektdaten widersprechen deshalb der Annahme, dass für diesen Monat keine fertige Rechnung existiert.`
+    );
+    nextStep =
+      `Öffne im Projekt unter „Rechnungen“ die Rechnung für ${monthLabel} und prüfe dort Rechnungsnummer, Status und Leistungsmonat.`;
+  } else if (draftInvoices.length > 0) {
+    status =
+      draftInvoices.length === 1
+        ? "Entwurf vorhanden"
+        : `${draftInvoices.length} Entwürfe vorhanden`;
+    summary =
+      `Für ${monthLabel} wurde bereits eine Rechnung angelegt, aber sie ist noch nicht fertiggestellt.`;
+    findings.push(
+      `Der vorhandene Rechnungsdatensatz steht weiterhin auf „Entwurf“. Ein gespeicherter Grund, warum er nicht fertiggestellt wurde, ist nicht vorhanden.`
+    );
+    if (hourlyDraftOnMonthlyFlat) {
+      findings.push(
+        `Der Entwurf wurde über die Stundenabrechnung erzeugt, obwohl ${reference} als Dauerläufer mit Monatspauschale eingerichtet ist. Diese Abrechnungsarten passen nicht zusammen.`
+      );
+    } else if (autoBillingPeriodMissing) {
+      findings.push(
+        "Die automatische Monatsabrechnung ist aktiviert, aber Start- und Endmonat sind nicht vollständig hinterlegt."
+      );
+    }
+    nextStep =
+      `Öffne im Projekt unter „Rechnungen“ den vorhandenen Entwurf für ${monthLabel}. Prüfe zuerst Angebot, Abrechnungsart und Positionen und stelle anschließend genau diesen Entwurf fertig. Lege keine zweite Rechnung für denselben Monat an.`;
+  } else {
+    status = "Keine aktive Rechnung vorhanden";
+    summary = `Für ${monthLabel} wurde weder eine fertige Rechnung noch ein aktiver Entwurf gefunden.`;
+    if (monthlyFlat && !input.project.autoBillingEnabled) {
+      findings.push(
+        "Die automatische Monatsabrechnung ist für dieses Projekt nicht aktiviert."
+      );
+    } else if (monthlyFlat && autoBillingPeriodMissing) {
+      findings.push(
+        "Die automatische Monatsabrechnung ist aktiviert, aber ihr Start- oder Endmonat fehlt. Dadurch ist nicht eindeutig festgelegt, für welche Monate sie laufen soll."
+      );
+    } else if (monthlyFlat && !previousFinalInvoice) {
+      findings.push(
+        `Für ${previousMonthLabel} fehlt ebenfalls eine fertige Rechnung. Ohne diese Vorlage darf WorkPilot360 die automatische Monatskette nicht überspringen.`
+      );
+    } else if (monthlyFlat && previousFinalInvoice) {
+      findings.push(
+        `Die fertige Rechnung für ${previousMonthLabel} ist als Vorlage vorhanden. Aus den gespeicherten Projektdaten ist jedoch kein ausgeführter oder fehlgeschlagener Rechnungslauf für ${monthLabel} ersichtlich.`
+      );
+    } else {
+      findings.push(
+        "Aus den gespeicherten Projektdaten ist kein genauer technischer oder organisatorischer Grund für die fehlende Rechnung ersichtlich."
+      );
+    }
+    nextStep =
+      `Öffne im Projekt unter „Rechnungen“ und prüfe zuerst den Vormonat sowie die Einstellungen der Abrechnung. Erstelle eine neue Rechnung erst, wenn ausgeschlossen ist, dass bereits ein Entwurf oder eine Abrechnung vorhanden ist.`;
+  }
+
+  return {
+    type: "answer",
+    topicId: "project.invoice.month",
+    message: `${summary} ${findings[0] ?? ""}`.trim(),
+    structured: {
+      title: `Rechnung ${monthLabel} · ${reference}`,
+      subtitle: `${input.project.customer || "Ohne Kundenanzeige"} · ${input.project.status || "Ohne Status"}`,
+      summary,
+      facts: [
+        { label: "Rechnungsmonat", value: monthLabel },
+        {
+          label: "Stand",
+          value: status,
+          tone: finalInvoices.length > 0 ? "positive" : "warning",
+        },
+      ],
+      sections: [
+        {
+          title: "Festgestellt",
+          items: findings.slice(0, 2),
+          tone: finalInvoices.length > 0 ? "positive" : "warning",
+        },
+        {
+          title: "Nächster Schritt",
+          items: [nextStep],
+        },
+      ],
+    },
+    records: [{
+      id: `project-invoice-month-${input.project.id}-${monthKey}`,
+      kind: "project",
+      title: projectLabel,
+      subtitle: input.project.customer || input.project.projectType || "Projekt",
+      summary: `${monthLabel} · ${status}`,
+      status: input.project.status,
+      target: { kind: "project", id: input.project.id },
+    }],
+    deterministic: true,
+  };
+}
+
+function formatMaterialQuantity(value: number, unit: string) {
+  const quantity = new Intl.NumberFormat("de-DE", {
+    maximumFractionDigits: 3,
+  }).format(value);
+  return `${quantity} ${unit || "Einheiten"}`;
+}
+
+function buildFocusedProjectMaterialResponse(input: {
+  question: string;
+  project: ProjectHealthRow;
+  analysis: ProjectMaterialAnalysis;
+}): JarvisReadResponse | undefined {
+  const semantics = analyzeJarvisQuestion(input.question);
+  if (semantics.relation !== "project_materials") return undefined;
+
+  const reference = input.project.projectNumber || input.project.title;
+  const projectLabel = [reference, input.project.title]
+    .filter(
+      (value, index, values) =>
+        Boolean(value) && values.indexOf(value) === index
+    )
+    .join(" · ");
+  const materials = input.analysis.materials;
+  const summary =
+    input.analysis.finalInvoiceCount === 0
+      ? `Für ${reference} wurde noch keine fertige Rechnung gefunden. Deshalb kann JARVIS derzeit keine abgerechneten Materialmengen auswerten.`
+      : materials.length === 0
+        ? input.analysis.finalInvoiceCount === 1
+          ? `Für ${reference} wurde eine fertige Rechnung ausgewertet. Darin wurde keine Materialposition gefunden.`
+          : `Für ${reference} wurden ${input.analysis.finalInvoiceCount} fertige Rechnungen ausgewertet. Darin wurde keine Materialposition gefunden.`
+        : `Für ${reference} wurden die fertigen Rechnungen positionsweise ausgewertet. Dabei ${materials.length === 1 ? "wurde eine Materialart" : `wurden ${materials.length} Materialarten`} gefunden.`;
+  const materialItems = materials.slice(0, 8).map((material) => {
+    const sources = [
+      material.directQuantity > 0
+        ? `${formatMaterialQuantity(material.directQuantity, material.unit)} direkt`
+        : "",
+      material.packageQuantity > 0
+        ? `${formatMaterialQuantity(material.packageQuantity, material.unit)} aus Paketen`
+        : "",
+    ].filter(Boolean);
+    return `${material.title}: ${formatMaterialQuantity(material.quantity, material.unit)}${sources.length > 0 ? ` (${sources.join(", ")})` : ""}.`;
+  });
+  const inventoryStatus =
+    input.analysis.inventoryComparedMaterialCount === 0
+      ? "Kein belastbarer Vergleich"
+      : input.analysis.inventoryMatchedMaterialCount ===
+          input.analysis.inventoryComparedMaterialCount
+        ? "Abgerechnete Mengen und Lagerbuchungen stimmen überein"
+        : `${input.analysis.inventoryMatchedMaterialCount} von ${input.analysis.inventoryComparedMaterialCount} Materialarten stimmen überein`;
+  const issueItems = input.analysis.issues
+    .slice(0, 3)
+    .map((issue) => `${issue.title}: ${issue.evidence}`);
+  const nextStep =
+    input.analysis.issues.length > 0
+      ? "Öffne zuerst die genannten fertigen Rechnungen und vergleiche anschließend die Lagerbewegungshistorie der betroffenen Artikel. Korrigiere weder Rechnung noch Lagerbestand, bevor die Ursache der Abweichung geklärt ist."
+      : "Wenn du den tatsächlichen physischen Verbrauch bewerten möchtest, muss dieser getrennt von Rechnung und automatischer Lagerentnahme nachvollziehbar erfasst sein.";
+
+  return {
+    type: "answer",
+    topicId: "project.materials",
+    message: summary,
+    structured: {
+      title: `Materialanalyse · ${reference}`,
+      subtitle: `${input.project.customer || "Ohne Kundenanzeige"} · ${input.project.status || "Ohne Status"}`,
+      summary,
+      facts: [
+        {
+          label: "Fertige Rechnungen",
+          value: String(input.analysis.finalInvoiceCount),
+        },
+        {
+          label: "Materialpositionen",
+          value: String(input.analysis.materialPositionCount),
+        },
+        {
+          label: "Lagerabgleich",
+          value: inventoryStatus,
+          tone:
+            input.analysis.issues.some(
+              (issue) => issue.id === "project-material-inventory-mismatch"
+            )
+              ? "warning"
+              : "positive",
+        },
+      ],
+      sections: [
+        ...(materialItems.length > 0
+          ? [{ title: "Abgerechnete Materialien", items: materialItems }]
+          : []),
+        ...(issueItems.length > 0
+          ? [{
+              title: "Danach prüfen",
+              items: issueItems,
+              tone: "warning" as const,
+            }]
+          : []),
+        {
+          title: "Datenbasis",
+          items: [input.analysis.basisNote],
+        },
+        {
+          title: "Nächster Schritt",
+          items: [nextStep],
+        },
+      ],
+    },
+    records: [{
+      id: `project-materials-${input.project.id}`,
+      kind: "project",
+      title: projectLabel,
+      subtitle: input.project.customer || input.project.projectType || "Projekt",
+      summary: `${materials.length} Materialarten · ${inventoryStatus}`,
+      status: input.project.status,
+      target: { kind: "project", id: input.project.id },
+    }],
+    deterministic: true,
+  };
+}
+
+function formatServiceHours(value: number) {
+  return `${new Intl.NumberFormat("de-DE", {
+    maximumFractionDigits: 2,
+  }).format(value)} Std.`;
+}
+
+function formatServiceEuro(value: number) {
+  return new Intl.NumberFormat("de-DE", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function buildFocusedProjectServiceRateResponse(input: {
+  question: string;
+  project: ProjectHealthRow;
+  analysis: ProjectServiceRateAnalysis;
+}): JarvisReadResponse | undefined {
+  const semantics = analyzeJarvisQuestion(input.question);
+  if (semantics.relation !== "project_service_rates") return undefined;
+
+  const reference = input.project.projectNumber || input.project.title;
+  const projectLabel = [reference, input.project.title]
+    .filter(
+      (value, index, values) =>
+        Boolean(value) && values.indexOf(value) === index
+    )
+    .join(" · ");
+  const services = input.analysis.services;
+  const totalBilledHours = services.reduce(
+    (sum, service) => sum + service.billedHours,
+    0
+  );
+  const totalStampedHours = services.reduce(
+    (sum, service) => sum + service.stampedHours,
+    0
+  );
+  const sufficientServices = services.filter(
+    (service) => service.recommendationBasisSufficient
+  );
+  const summary =
+    input.analysis.finalInvoiceCount === 0
+      ? `Für ${reference} wurde noch keine fertige Rechnung gefunden. Deshalb kann JARVIS noch keinen tatsächlich berechneten Stundenverrechnungssatz ermitteln.`
+      : services.length === 0
+        ? `Für ${reference} wurden fertige Rechnungen gefunden, aber keine eindeutig als Stundenleistung auswertbare Position.`
+        : services.length === 1
+          ? `Für ${reference} wurde eine Stundenleistung aus fertigen Rechnungen und eindeutig zugeordneten Stempelungen ausgewertet.`
+          : `Für ${reference} wurden ${services.length} Stundenleistungen aus fertigen Rechnungen und eindeutig zugeordneten Stempelungen ausgewertet.`;
+  const serviceItems = services.slice(0, 6).map((service) => {
+    const parts = [
+      `${formatServiceHours(service.billedHours)} abgerechnet`,
+      `${formatServiceHours(service.stampedHours)} eindeutig gestempelt`,
+      service.realizedBilledRate > 0
+        ? `${formatServiceEuro(service.realizedBilledRate)} tatsächlich je abgerechneter Stunde berechnet`
+        : "",
+      service.revenuePerStampedHour > 0
+        ? `${formatServiceEuro(service.revenuePerStampedHour)} Nettoerlös je gestempelter Stunde`
+        : "",
+      service.currentSalesRate > 0
+        ? `${formatServiceEuro(service.currentSalesRate)} aktueller Stammdatenpreis`
+        : "",
+      input.analysis.includeCosts &&
+      service.costBasisComplete &&
+      service.stampedHours > 0
+        ? `${formatServiceEuro(service.laborCostPerStampedHour)} gespeicherte Mitarbeiterkosten je gestempelter Stunde`
+        : "",
+    ].filter(Boolean);
+    return `${service.title}: ${parts.join("; ")}.`;
+  });
+  const issueItems = input.analysis.issues
+    .slice(0, 4)
+    .map((issue) => `${issue.title}: ${issue.evidence}`);
+  const recommendation =
+    services.length === 0
+      ? "Prüfe, ob die abgerechneten Leistungen in „Artikel & Leistungen“ als Stundenleistungen gepflegt und die Rechnungspositionen mit diesen Leistungen verknüpft sind."
+      : sufficientServices.length === 0
+        ? "Die Datenmenge reicht noch nicht für eine belastbare allgemeine Preisempfehlung. JARVIS nennt deshalb bewusst keinen erfundenen neuen Stundensatz. Sammle zunächst mehrere fertige Rechnungen mit mindestens zehn abgerechneten und eindeutig zugeordneten gestempelten Stunden."
+        : input.analysis.issues.length > 0
+          ? "Kläre zuerst die genannten Abweichungen bei Stunden, Preisen und Kosten. Erst danach sollte entschieden werden, ob der Stammdatenpreis erhöht, ein Rabatt korrigiert oder der Arbeitsablauf verbessert werden muss."
+          : "Aus diesem Projekt ergibt sich derzeit kein belegter Grund für eine sofortige Preisänderung. Für eine allgemeine Empfehlung sollten zusätzlich weitere Projekte, Material-, Fahrzeug- und Gemeinkosten sowie ein festgelegtes Margenziel verglichen werden.";
+
+  return {
+    type: "answer",
+    topicId: "project.service-rates",
+    message: summary,
+    structured: {
+      title: `Leistungen & Stundenverrechnungssätze · ${reference}`,
+      subtitle: `${input.project.customer || "Ohne Kundenanzeige"} · ${input.project.status || "Ohne Status"}`,
+      summary,
+      facts: [
+        {
+          label: "Fertige Rechnungen",
+          value: String(input.analysis.finalInvoiceCount),
+        },
+        {
+          label: "Abgerechnete Stunden",
+          value: formatServiceHours(totalBilledHours),
+        },
+        {
+          label: "Zugeordnete Stempelstunden",
+          value: formatServiceHours(totalStampedHours),
+        },
+      ],
+      sections: [
+        ...(serviceItems.length > 0
+          ? [{ title: "Ausgewertete Stundenleistungen", items: serviceItems }]
+          : []),
+        ...(issueItems.length > 0
+          ? [{
+              title: "Danach prüfen",
+              items: issueItems,
+              tone: "warning" as const,
+            }]
+          : []),
+        {
+          title: "Nächster Schritt",
+          items: [recommendation, input.analysis.basisNote],
+        },
+      ],
+    },
+    records: [{
+      id: `project-service-rates-${input.project.id}`,
+      kind: "project",
+      title: projectLabel,
+      subtitle: input.project.customer || input.project.projectType || "Projekt",
+      summary: `${services.length} Stundenleistungen · ${formatServiceHours(totalBilledHours)} abgerechnet`,
+      status: input.project.status,
+      target: { kind: "project", id: input.project.id },
+    }],
+    deterministic: true,
+  };
+}
+
 function positiveNumber(value: string | null | undefined) {
   const parsed = Number(String(value ?? "").replace(",", "."));
   return Number.isFinite(parsed) && parsed > 0;
+}
+
+function resolveIssueHealthArea(
+  issue: ProjectHealthIssue,
+  checkedAreas: string[]
+) {
+  const id = issue.id;
+  const area = normalize(issue.area);
+  const choose = (...candidates: string[]) =>
+    candidates.find((candidate) => checkedAreas.includes(candidate));
+
+  const resolved =
+    (id === "cost-snapshot-missing" || area.includes("projektgewinn")
+      ? choose(HEALTH_AREAS.profitability)
+      : undefined) ??
+    (id === "stamp-interruption-task-missing" ||
+    id === "overdue-visible-tasks" ||
+    area.includes("aufgabe") ||
+    area.includes("unterbrech") ||
+    area.includes("uberstunden")
+      ? choose(HEALTH_AREAS.tasks)
+      : undefined) ??
+    (id.startsWith("recurring-") &&
+    !id.includes("invoice") &&
+    !id.includes("billing") &&
+    !id.includes("runtime")
+      ? choose(HEALTH_AREAS.recurring, HEALTH_AREAS.planning)
+      : undefined) ??
+    (area.includes("planung") || area.includes("vorausplanung")
+      ? choose(HEALTH_AREAS.planning, HEALTH_AREAS.recurring)
+      : undefined) ??
+    (id.startsWith("stamp-") ||
+    area.includes("stempel") ||
+    area.includes("pause") ||
+    area.includes("zeitberechnung") ||
+    area.includes("doppelbuch") ||
+    area.includes("zeituberschneid") ||
+    area.includes("mitarbeiterzuordnung") ||
+    area.includes("aktive stunden")
+      ? choose(HEALTH_AREAS.stamps)
+      : undefined) ??
+    (id.startsWith("process-") ||
+    id.startsWith("immocare-") ||
+    area.includes("leistungsnachweis") ||
+    area.includes("bildnachweis") ||
+    area.includes("tatigkeitsbericht") ||
+    area.includes("projektabschluss") ||
+    area.includes("statusautomatik")
+      ? choose(HEALTH_AREAS.process, HEALTH_AREAS.commercial)
+      : undefined) ??
+    (id.startsWith("project-material-") ||
+    id.startsWith("project-package-material-") ||
+    area.includes("material") ||
+    area.includes("lager") ||
+    area.includes("paket")
+      ? choose(
+          HEALTH_AREAS.materials,
+          HEALTH_AREAS.commercial,
+          HEALTH_AREAS.profitability
+        )
+      : undefined) ??
+    (id.startsWith("service-rate-") ||
+    area.includes("stundenverrechnung")
+      ? choose(HEALTH_AREAS.profitability, HEALTH_AREAS.commercial)
+      : undefined) ??
+    (id.includes("offer") ||
+    id.includes("invoice") ||
+    id.includes("billing") ||
+    id.startsWith("hourly-") ||
+    area.includes("angebot") ||
+    area.includes("abrechnung") ||
+    area.includes("rechnung") ||
+    area.includes("leistungszuordnung")
+      ? choose(HEALTH_AREAS.commercial, HEALTH_AREAS.process)
+      : undefined) ??
+    (id.startsWith("customer-") ||
+    id === "address-missing" ||
+    area.includes("kundenzuordnung") ||
+    area.includes("ausfuhrung")
+      ? choose(HEALTH_AREAS.customer, HEALTH_AREAS.masterData)
+      : undefined) ??
+    (area.includes("laufzeit") && checkedAreas.includes(HEALTH_AREAS.recurring)
+      ? HEALTH_AREAS.recurring
+      : undefined) ??
+    choose(HEALTH_AREAS.masterData);
+
+  return resolved ?? checkedAreas[0];
+}
+
+function evaluateProjectHealthAreas(
+  issues: ProjectHealthIssue[],
+  checkedAreas: string[]
+) {
+  if (checkedAreas.length === 0) {
+    return {
+      score: 0,
+      status: "critical" as const,
+      areaAssessments: [] as ProjectHealthAreaAssessment[],
+    };
+  }
+
+  const issuesByArea = new Map<string, ProjectHealthIssue[]>();
+  for (const issue of issues) {
+    const healthArea = resolveIssueHealthArea(issue, checkedAreas);
+    if (!healthArea) continue;
+    const areaIssues = issuesByArea.get(healthArea) ?? [];
+    areaIssues.push(issue);
+    issuesByArea.set(healthArea, areaIssues);
+  }
+
+  const areaAssessments = checkedAreas.map<ProjectHealthAreaAssessment>((area) => {
+    const areaIssues = issuesByArea.get(area) ?? [];
+    const criticalIssues = areaIssues.filter(
+      (issue) => issue.severity === "critical"
+    ).length;
+    const warningIssues = areaIssues.length - criticalIssues;
+    if (criticalIssues > 0) {
+      return {
+        area,
+        score: Math.max(15, 30 - (criticalIssues - 1) * 5),
+        status: "critical",
+        criticalIssues,
+        warningIssues,
+      };
+    }
+    if (warningIssues > 0) {
+      return {
+        area,
+        score: Math.max(55, 70 - (warningIssues - 1) * 5),
+        status: "attention",
+        criticalIssues,
+        warningIssues,
+      };
+    }
+    return {
+      area,
+      score: 100,
+      status: "healthy",
+      criticalIssues: 0,
+      warningIssues: 0,
+    };
+  });
+
+  const criticalAreas = areaAssessments.filter(
+    (assessment) => assessment.status === "critical"
+  ).length;
+  const warningAreas = areaAssessments.filter(
+    (assessment) => assessment.status === "attention"
+  ).length;
+  const status: ProjectHealthEvaluation["status"] =
+    criticalAreas > 0
+      ? "critical"
+      : warningAreas > 0
+        ? "attention"
+        : "healthy";
+  const averageScore = Math.round(
+    areaAssessments.reduce((sum, assessment) => sum + assessment.score, 0) /
+      areaAssessments.length
+  );
+  const score =
+    criticalAreas === areaAssessments.length
+      ? 0
+      : status === "critical"
+        ? Math.min(69, averageScore)
+        : status === "attention"
+          ? Math.min(89, averageScore)
+          : 100;
+
+  return { score, status, areaAssessments };
 }
 
 function getBerlinDateKey(value = new Date()) {
@@ -224,40 +1048,60 @@ export function evaluateProjectHealth(
   const recurringRuntimeEndMonth = project.projectRuntimeUntil?.slice(0, 7) ?? "";
   const recurringStillActive =
     !recurringRuntimeEndMonth || recurringRuntimeEndMonth >= evaluationMonth;
+  const recurringNextMonthPlanningExplained =
+    snapshot.recurringMonthDiagnostics?.issues.some((issue) =>
+      [
+        "recurring-next-month-underplanned",
+        "recurring-next-month-unplanned",
+      ].includes(issue.id)
+    ) ?? false;
   const hasStableCustomerReference = Boolean(
     project.contactId || project.contactPersonId || project.addressContactId
   );
   issues.push(...projectLogic.issues);
 
   addIssue(issues, {
+    id: "project-review-pending",
+    severity: "warning",
+    area: HEALTH_AREAS.masterData,
+    title: "Die Projektdaten sind noch nicht fachlich freigegeben",
+    evidence:
+      normalize(project.reviewStatus) === "needs_review"
+        ? "Das Projekt wurde als prüfbedürftig markiert oder wichtige Projektdaten wurden nach einer früheren Freigabe geändert. Deshalb müssen Projektart, Abrechnung, Kunde, Gewerk und Verantwortlichkeit fachlich kontrolliert werden."
+        : "Dieses Projekt wurde noch nicht vollständig fachlich geprüft. Da WorkPilot360 noch vorbereitet und Altdaten übernommen werden, können scheinbar vollständig ausgefüllte Angaben trotzdem falsch sein.",
+    recommendation:
+      "Öffne die Projektinformationen und führe dort die fachliche Projektprüfung durch. Prüfe besonders Projektart, Abrechnungsmodell, Kunde, Gewerk, Niederlassung, Verantwortlichkeit und das gültige Angebot.",
+  }, normalize(project.reviewStatus) !== "approved");
+
+  addIssue(issues, {
     id: "customer-reference-missing",
     severity: "warning",
     area: "Kundenzuordnung",
-    title: "Stabile Kunden-ID fehlt",
+    title: "Kunde ist nicht sicher mit dem Projekt verknüpft",
     evidence: project.customer
-      ? `Das Projekt zeigt „${project.customer}“, ist aber nur über einen Namen zugeordnet.`
-      : "Weder ein Kundenname noch eine stabile Kunden-ID ist gepflegt.",
+      ? `Im Projekt wird „${project.customer}“ angezeigt. Gespeichert ist aber nur der Name und keine eindeutige Verknüpfung zur Kundenakte. Dadurch kann JARVIS Projekte oder Auswertungen dem falschen Kunden zuordnen.`
+      : "Im Projekt ist weder ein Kunde angezeigt noch eine eindeutige Verknüpfung zu einer Kundenakte gespeichert.",
     recommendation:
-      "In den Projektinformationen den richtigen Kunden auswählen und die stabile Verknüpfung speichern.",
+      "Öffne die Projektinformationen, wähle den richtigen Kunden erneut aus der Kundensuche aus und speichere das Projekt.",
   }, !hasStableCustomerReference);
 
   addIssue(issues, {
     id: "customer-reference-invalid",
     severity: "critical",
     area: "Kundenzuordnung",
-    title: "Gespeicherte Kundenverknüpfung ist nicht mehr gültig",
-    evidence: "Mindestens eine gespeicherte Kontakt-ID gehört nicht mehr zu einem vorhandenen Kontakt dieses Mandanten.",
+    title: "Die verknüpfte Kundenakte wurde nicht gefunden",
+    evidence: "Das Projekt verweist auf eine Kunden- oder Ansprechpartnerakte, die in diesem Unternehmensbereich nicht mehr vorhanden ist. Dadurch kann JARVIS die zugehörigen Kundeninformationen nicht zuverlässig zusammenführen.",
     recommendation:
-      "Die Kundenzuordnung in den Projektinformationen erneut auswählen und speichern.",
+      "Öffne die Projektinformationen, wähle den richtigen Kunden und gegebenenfalls den Ansprechpartner erneut aus und speichere die Zuordnung.",
   }, hasStableCustomerReference && snapshot.stableCustomerReferenceValid === false);
 
   addIssue(issues, {
     id: "project-company-type-missing",
     severity: "warning",
     area: "Projektlogik",
-    title: "Unternehmensbereich ist nicht gepflegt",
-    evidence: "Die Zuordnung zu OK solutions oder OK immocare ist nicht belastbar hinterlegt.",
-    recommendation: "Den passenden Projekt-/Unternehmensbereich in den Projektinformationen auswählen.",
+    title: "Unternehmensbereich des Projekts fehlt",
+    evidence: "Es ist nicht eindeutig hinterlegt, ob das Projekt zu OK solutions oder OK immocare gehört. Davon hängen unter anderem Abläufe und erforderliche Nachweise ab.",
+    recommendation: "Öffne die Projektinformationen und wähle dort den richtigen Unternehmensbereich aus.",
   }, !project.projectType && !project.branch);
 
   addIssue(issues, {
@@ -266,7 +1110,7 @@ export function evaluateProjectHealth(
     area: "Verantwortung",
     title: "Projektverantwortung fehlt",
     evidence: "Für das aktive Projekt ist keine verantwortliche Person hinterlegt.",
-    recommendation: "Eine verantwortliche Person in den Projektinformationen festlegen.",
+    recommendation: "Öffne die Projektinformationen und lege fest, wer für dieses Projekt verantwortlich ist.",
   }, !closed && !project.responsibleName);
 
   addIssue(issues, {
@@ -274,8 +1118,8 @@ export function evaluateProjectHealth(
     severity: "warning",
     area: "Ausführung",
     title: "Projektgewerk fehlt",
-    evidence: "Das Projekt befindet sich in einer operativen Phase, hat aber kein Projektgewerk.",
-    recommendation: "Das führende Gewerk in den Projektinformationen ergänzen.",
+    evidence: "Das Projekt befindet sich bereits in der Planung oder Ausführung, aber es ist noch kein führendes Gewerk hinterlegt. Dadurch sind Planung und Leistungszuordnung nicht eindeutig.",
+    recommendation: "Öffne die Projektinformationen und ergänze das Gewerk, das den Schwerpunkt des Projekts beschreibt.",
   }, operational && !project.trade);
 
   addIssue(issues, {
@@ -283,8 +1127,8 @@ export function evaluateProjectHealth(
     severity: "warning",
     area: "Ausführung",
     title: "Ausführungsort ist nicht eindeutig",
-    evidence: "Weder eine Objektadresse noch eine freie Projektadresse ist hinterlegt.",
-    recommendation: "Eine vorhandene Objektadresse auswählen oder die Projektadresse ergänzen.",
+    evidence: "Im Projekt ist keine Objekt- oder Projektadresse hinterlegt. Mitarbeitende können dadurch nicht eindeutig erkennen, wo die Leistung ausgeführt werden soll.",
+    recommendation: "Wähle in den Projektinformationen eine vorhandene Objektadresse aus oder ergänze die vollständige Einsatzadresse.",
   }, operational && !project.objectAddressId && !project.address);
 
   addIssue(issues, {
@@ -292,45 +1136,45 @@ export function evaluateProjectHealth(
     severity: "critical",
     area: "Leistungszuordnung",
     title: "Manuelle Zeiten ohne Angebotszuweisung",
-    evidence: `${snapshot.manualOneTimeEntriesWithoutOffer} manuelle Zeiteintragung/Zeiteintragungen sind keinem Angebot zugewiesen.`,
-    recommendation: "Bei den betroffenen Zeiteinträgen das passende Projektangebot auswählen.",
+    evidence: `${snapshot.manualOneTimeEntriesWithoutOffer} manuell erfasste Zeiteintragung/Zeiteintragungen sind keinem Angebot dieses Projekts zugeordnet. Dadurch ist nicht nachvollziehbar, zu welcher vereinbarten Leistung die Arbeitszeit gehört.`,
+    recommendation: "Öffne im Projekt „Termine & Stempelungen“ und wähle bei den betroffenen manuellen Zeiteinträgen das passende gültige Angebot aus.",
   }, !recurring && snapshot.manualOneTimeEntriesWithoutOffer > 0);
 
   addIssue(issues, {
     id: "cost-snapshot-missing",
     severity: "warning",
     area: "Projektgewinn",
-    title: "Projektgewinn ist nicht vollständig belastbar",
-    evidence: `${snapshot.timeEntriesWithoutCostSnapshot} Zeiteintrag/Zeiteinträge enthalten keinen Mitarbeiterkostensatz-Snapshot.`,
+    title: "Für die Berechnung des Projektgewinns fehlen Kosten",
+    evidence: `Bei ${snapshot.timeEntriesWithoutCostSnapshot} Zeiteintrag/Zeiteinträgen wurde kein Mitarbeiterkostensatz zum Zeitpunkt der Arbeit gespeichert. Der angezeigte Projektgewinn kann deshalb zu hoch oder unvollständig sein.`,
     recommendation:
-      "Die betroffenen Stempelungen fachlich prüfen. Kostensätze nicht automatisch rückwirkend überschreiben.",
+      "Prüfe die betroffenen Stempelungen und den damals gültigen Mitarbeiterkostensatz. Übernimm aktuelle Kostensätze nicht ungeprüft rückwirkend, weil dies historische Auswertungen verfälschen kann.",
   }, typeof snapshot.timeEntriesWithoutCostSnapshot === "number" && snapshot.timeEntriesWithoutCostSnapshot > 0);
 
   addIssue(issues, {
     id: "time-budget-invalid",
     severity: "warning",
     area: "Zeitbudget",
-    title: "Aktiviertes Zeitbudget hat keinen gültigen Stundenwert",
-    evidence: "Die Zeitbudgetsteuerung ist eingeschaltet, aber das Gesamtbudget ist leer oder null.",
-    recommendation: "Ein belastbares Stundenbudget eintragen oder die Budgetsteuerung bewusst deaktivieren.",
+    title: "Zeitbudget ist aktiviert, aber es fehlen Budgetstunden",
+    evidence: "Die Überwachung des Zeitbudgets ist eingeschaltet, obwohl keine nutzbare Gesamtstundenzahl hinterlegt ist. WorkPilot360 kann deshalb nicht zuverlässig vor einer Überschreitung warnen.",
+    recommendation: "Trage in den Projektinformationen die vereinbarten Budgetstunden ein oder deaktiviere die Zeitbudget-Überwachung bewusst.",
   }, project.timeBudgetEnabled && !positiveNumber(project.timeBudgetHours));
 
   addIssue(issues, {
     id: "auto-billing-amount-invalid",
     severity: "critical",
     area: "Abrechnungsautomatik",
-    title: "Automatische Pauschalabrechnung ist unvollständig",
-    evidence: "Die Automatik ist aktiviert, aber der Nettoabrechnungsbetrag ist leer oder null.",
-    recommendation: "Nettoabrechnungsbetrag und Rechnungsvorlage vor dem nächsten Lauf prüfen.",
+    title: "Der automatischen Monatsrechnung fehlt der Rechnungsbetrag",
+    evidence: "Die automatische Abrechnung der Monatspauschale ist aktiviert, aber der Nettobetrag ist leer oder 0 Euro. Die nächste Monatsrechnung könnte dadurch falsch oder gar nicht erstellt werden.",
+    recommendation: "Prüfe im Projekt die Einstellungen der automatischen Abrechnung, den vereinbarten Nettobetrag und die Rechnungsvorlage, bevor der nächste Abrechnungslauf startet.",
   }, monthlyRecurring && project.autoBillingEnabled && !positiveNumber(project.autoBillingNetAmount));
 
   addIssue(issues, {
     id: "auto-billing-period-missing",
     severity: "warning",
     area: "Abrechnungsautomatik",
-    title: "Abrechnungszeitraum der Automatik fehlt",
-    evidence: "Start- oder Endmonat der automatischen Pauschalabrechnung ist nicht gepflegt.",
-    recommendation: "Start- und Endmonat passend zur Projektlaufzeit ergänzen.",
+    title: "Zeitraum für die automatischen Monatsrechnungen fehlt",
+    evidence: "Für die automatische Abrechnung der Monatspauschale fehlt der Start- oder Endmonat. Dadurch ist nicht eindeutig, für welche Monate Rechnungen erzeugt werden dürfen.",
+    recommendation: "Ergänze in den Projekteinstellungen Start- und Endmonat der automatischen Abrechnung passend zur vereinbarten Projektlaufzeit.",
   }, monthlyRecurring && project.autoBillingEnabled &&
     (!project.autoBillingStartMonth || !project.autoBillingEndMonth));
 
@@ -339,37 +1183,41 @@ export function evaluateProjectHealth(
     severity: "warning",
     area: "Planung",
     title: "Projektstatus und Terminplanung passen nicht zusammen",
-    evidence: "Das Projekt steht auf „Geplant“, hat aber keinen zukünftigen, nicht gelöschten Planungseintrag.",
-    recommendation: "Einen Termin anlegen oder den Projektstatus fachlich korrigieren.",
+    evidence: "Der Projektstatus lautet „Geplant“, aber es ist kein zukünftiger Termin vorhanden. Mitarbeitende können daher nicht erkennen, wann und durch wen die nächste Leistung ausgeführt werden soll.",
+    recommendation: "Öffne „Termine & Stempelungen“ und plane den nächsten Einsatz. Falls noch kein Termin vereinbart ist, korrigiere den Projektstatus passend zum tatsächlichen Stand.",
   }, normalize(project.status) === "geplant" && snapshot.futurePlanningCount === 0);
 
   addIssue(issues, {
     id: "recurring-without-future-planning",
     severity: "warning",
     area: "Planung",
-    title: "Dauerläufer hat keine zukünftige Planung",
+    title: "Für den laufenden Dauerläufer ist kein nächster Einsatz geplant",
     evidence:
-      "Innerhalb der noch laufenden Projektlaufzeit wurde kein zukünftiger, nicht gelöschter Planungseintrag gefunden.",
+      "Die Projektlaufzeit ist noch nicht beendet, aber es wurde kein zukünftiger Termin gefunden. Dadurch ist offen, wann die nächste vereinbarte Leistung ausgeführt wird.",
     recommendation:
-      "Die nächsten Einsätze beziehungsweise Monate planen oder nachvollziehbar festhalten, warum aktuell keine weitere Planung erforderlich ist.",
-  }, recurring && !closed && recurringStillActive && snapshot.futurePlanningCount === 0);
+      "Prüfe unter „Termine & Stempelungen“ den nächsten Leistungsmonat und plane die benötigten Einsätze. Wird die Leistung nur bei Bedarf abgerufen, dokumentiere nachvollziehbar, warum aktuell kein Termin erforderlich ist.",
+  }, recurring &&
+    !closed &&
+    recurringStillActive &&
+    snapshot.futurePlanningCount === 0 &&
+    !recurringNextMonthPlanningExplained);
 
   addIssue(issues, {
     id: "offer-status-without-offer",
     severity: "warning",
     area: "Angebot",
-    title: "Angebotsstatus ohne Angebotsdatensatz",
-    evidence: "Das Projekt steht in der Angebotsphase, aber es wurde kein sichtbares, nicht gelöschtes Angebot gefunden.",
-    recommendation: "Angebot anlegen oder den Projektstatus korrigieren.",
+    title: "Projekt steht auf „Angebot“, aber es ist kein Angebot vorhanden",
+    evidence: "Der Projektstatus zeigt die Angebotsphase, im Projekt wurde jedoch kein vorhandenes Angebot gefunden. Dadurch fehlt die Grundlage für die vereinbarten Leistungen.",
+    recommendation: "Öffne im Projekt „Angebote“ und lege das richtige Angebot an. Falls die Angebotsphase bereits abgeschlossen ist, stelle den Projektstatus auf den tatsächlichen Stand.",
   }, normalize(project.status) === "angebot" && snapshot.offerCount === 0);
 
   addIssue(issues, {
     id: "billing-check-without-draft",
     severity: "warning",
     area: "Abrechnung",
-    title: "Abrechnungsprüfung ohne Rechnungsentwurf",
-    evidence: "Das Projekt steht in der Abrechnungsprüfung, aber es ist kein Rechnungsentwurf vorhanden.",
-    recommendation: "Nachweise und Leistungen prüfen und anschließend einen Rechnungsentwurf anlegen.",
+    title: "Projekt steht in der Abrechnungsprüfung, aber ein Rechnungsentwurf fehlt",
+    evidence: "Der Projektstatus zeigt, dass die Abrechnung geprüft werden soll. Im Projekt ist jedoch noch kein Rechnungsentwurf vorhanden, der geprüft werden könnte.",
+    recommendation: "Prüfe zuerst Angebot, ausgeführte Leistungen und erforderliche Nachweise. Lege anschließend unter „Rechnungen“ den passenden Rechnungsentwurf an.",
   }, normalize(project.status).includes("abrechnungsprufung") &&
     snapshot.invoiceCount !== undefined &&
     snapshot.draftInvoiceCount === 0);
@@ -379,8 +1227,8 @@ export function evaluateProjectHealth(
     severity: "warning",
     area: "Aufgaben",
     title: "Überfällige Projektaufgaben sind offen",
-    evidence: `${snapshot.visibleOverdueTaskCount} für deine Rolle sichtbare Aufgabe/Aufgaben sind überfällig.`,
-    recommendation: "Verantwortung, Termin und nächsten Arbeitsschritt der betroffenen Aufgaben klären.",
+    evidence: `${snapshot.visibleOverdueTaskCount} für dich sichtbare Projektaufgabe/Projektaufgaben haben ihr Fälligkeitsdatum überschritten und sind noch nicht erledigt.`,
+    recommendation: "Öffne die betroffenen Aufgaben und kläre jeweils die verantwortliche Person, einen realistischen Termin und den nächsten konkreten Arbeitsschritt.",
   }, typeof snapshot.visibleOverdueTaskCount === "number" && snapshot.visibleOverdueTaskCount > 0);
 
   for (const stampIssue of snapshot.stampDiagnostics?.issues ?? []) {
@@ -393,16 +1241,26 @@ export function evaluateProjectHealth(
       issues.push(monthIssue);
     }
   }
+  for (const processIssue of snapshot.processDiagnostics?.issues ?? []) {
+    if (!issues.some((issue) => issue.id === processIssue.id)) {
+      issues.push(processIssue);
+    }
+  }
+  for (const materialIssue of snapshot.materialAnalysis?.issues ?? []) {
+    if (!issues.some((issue) => issue.id === materialIssue.id)) {
+      issues.push(materialIssue);
+    }
+  }
+  for (const serviceRateIssue of snapshot.serviceRateAnalysis?.issues ?? []) {
+    if (!issues.some((issue) => issue.id === serviceRateIssue.id)) {
+      issues.push(serviceRateIssue);
+    }
+  }
 
-  const criticalCount = issues.filter((issue) => issue.severity === "critical").length;
-  const warningCount = issues.length - criticalCount;
-  const score = Math.max(0, 100 - criticalCount * 22 - warningCount * 8);
-  const status =
-    criticalCount > 0 || score < 60
-      ? "critical"
-      : warningCount > 0 || score < 90
-        ? "attention"
-        : "healthy";
+  const areaEvaluation = evaluateProjectHealthAreas(
+    issues,
+    snapshot.checkedAreas
+  );
   const automationSummary = [...projectLogic.profile.processSummary];
   if (monthlyRecurring) {
     automationSummary.push(
@@ -412,8 +1270,9 @@ export function evaluateProjectHealth(
     );
   }
   automationSummary.push(...(snapshot.recurringMonthDiagnostics?.summary ?? []));
+  automationSummary.push(...(snapshot.processDiagnostics?.summary ?? []));
 
-  return { score, status, issues, automationSummary };
+  return { ...areaEvaluation, issues, automationSummary };
 }
 
 function extractProjectReference(question: string) {
@@ -440,17 +1299,8 @@ type ProjectHealthScope =
   | "improvements";
 
 function resolveProjectHealthScope(question: string): ProjectHealthScope | undefined {
-  const value = normalize(question);
-  if (/gesundheitscheck|vollstandiger projektcheck/.test(value)) return "full";
-  const matches: ProjectHealthScope[] = [
-    ...(/stempel|zeiteintrag|arbeitszeit|stunden/.test(value) ? ["stamps" as const] : []),
-    ...(/planung|termin/.test(value) ? ["planning" as const] : []),
-    ...(/aufgabe|offene punkte|unterbrech/.test(value) ? ["tasks" as const] : []),
-    ...(/angebot|rechnung|abrechnung/.test(value) ? ["commercial" as const] : []),
-    ...(/automatik|zusammenhang/.test(value) ? ["automation" as const] : []),
-    ...(/auffallig|verbesser|was fehlt/.test(value) ? ["improvements" as const] : []),
-  ];
-  return matches.length === 1 ? matches[0] : undefined;
+  const scopes = analyzeJarvisQuestion(question).projectScopes;
+  return scopes.length === 1 ? scopes[0] : undefined;
 }
 
 const PROJECT_HEALTH_SCOPE_LABELS: Record<ProjectHealthScope, string> = {
@@ -471,6 +1321,15 @@ function scopeProjectHealthEvaluation(
   if (scope === "full" || scope === "improvements") return evaluation;
   const stampIssueIds = new Set(
     snapshot.stampDiagnostics?.issues.map((issue) => issue.id) ?? []
+  );
+  const processIssueIds = new Set(
+    snapshot.processDiagnostics?.issues.map((issue) => issue.id) ?? []
+  );
+  const materialIssueIds = new Set(
+    snapshot.materialAnalysis?.issues.map((issue) => issue.id) ?? []
+  );
+  const serviceRateIssueIds = new Set(
+    snapshot.serviceRateAnalysis?.issues.map((issue) => issue.id) ?? []
   );
   const issues = evaluation.issues.filter((issue) => {
     const issueArea = normalize(issue.area);
@@ -500,6 +1359,9 @@ function scopeProjectHealthEvaluation(
     }
     if (scope === "commercial") {
       return (
+        processIssueIds.has(issue.id) ||
+        materialIssueIds.has(issue.id) ||
+        serviceRateIssueIds.has(issue.id) ||
         issueArea.includes("angebot") ||
         issueArea.includes("abrechnung") ||
         issueArea.includes("rechnung") ||
@@ -508,25 +1370,25 @@ function scopeProjectHealthEvaluation(
       );
     }
     return (
+      [
+        "invoice-source-project-type-conflict",
+        "one-time-final-invoice-status-open",
+        "recurring-runtime-ended-status-open",
+      ].includes(issue.id) ||
       issueArea.includes("automatik") ||
       issueArea.includes("projektlogik") ||
       issueArea.includes("laufzeit") ||
       issueArea.includes("stapelabrechnung")
     );
   });
-  const criticalCount = issues.filter((issue) => issue.severity === "critical").length;
-  const warningCount = issues.length - criticalCount;
-  const score = Math.max(0, 100 - criticalCount * 22 - warningCount * 8);
+  const areaEvaluation = evaluateProjectHealthAreas(
+    issues,
+    checkedAreasForScope(snapshot, scope)
+  );
   return {
     ...evaluation,
     issues,
-    score,
-    status:
-      criticalCount > 0 || score < 60
-        ? "critical"
-        : warningCount > 0 || score < 90
-          ? "attention"
-          : "healthy",
+    ...areaEvaluation,
   };
 }
 
@@ -536,9 +1398,17 @@ function checkedAreasForScope(snapshot: ProjectHealthSnapshot, scope: ProjectHea
     stamps: ["Stempelungen", "Wirtschaftlichkeit"],
     planning: ["Planung", "Dauerläufer-Monatskette"],
     tasks: ["Aufgaben"],
-    commercial: ["Angebote", "Kunden-", "Dauerläufer-Monatskette"],
+    commercial: [
+      "Angebote",
+      "Kunden-",
+      "Dauerläufer-Monatskette",
+      "Material",
+    ],
     automation: ["Stammdaten", "Dauerläufer-Monatskette"],
   };
+  if (scope === "commercial" || scope === "automation") {
+    markers[scope].push("Sollprozess");
+  }
   return snapshot.checkedAreas.filter((area) =>
     markers[scope].some((marker) => area.includes(marker))
   );
@@ -914,6 +1784,29 @@ export async function resolveJarvisProjectHealthRequest(input: {
   const invoiceDecision = getJarvisActionDecision("invoice.read", input.accessProfile);
   const taskDecision = getJarvisActionDecision("task.read", input.accessProfile);
   const contactDecision = getJarvisActionDecision("contact.read", input.accessProfile);
+  const questionSemantics = analyzeJarvisQuestion(input.question);
+  const asksForProjectMaterials =
+    questionSemantics.relation === "project_materials";
+  if (asksForProjectMaterials && !invoiceDecision.executable) {
+    return {
+      type: "refusal",
+      topicId: "project.materials.refused",
+      message:
+        "Die projektbezogene Materialauswertung verwendet fertige Rechnungspositionen und Lagerbuchungen. Diese Finanzdaten sind für deine aktuelle WorkPilot-Rolle nicht freigegeben.",
+      deterministic: true,
+    };
+  }
+  const asksForProjectServiceRates =
+    questionSemantics.relation === "project_service_rates";
+  if (asksForProjectServiceRates && !invoiceDecision.executable) {
+    return {
+      type: "refusal",
+      topicId: "project.service-rates.refused",
+      message:
+        "Die Analyse von Leistungen und Stundenverrechnungssätzen verwendet fertige Rechnungspositionen und zugeordnete Arbeitszeiten. Diese Finanzdaten sind für deine aktuelle WorkPilot-Rolle nicht freigegeben.",
+      deterministic: true,
+    };
+  }
   const canReadCosts = canAccessJarvisDataClass(input.accessProfile, "payroll");
   const canVerifyInterruptionTasks =
     taskDecision.executable && canVerifyAllProjectTasks(input.accessProfile);
@@ -948,6 +1841,7 @@ export async function resolveJarvisProjectHealthRequest(input: {
     activeSessions,
     projectPlanningEntries,
     logbookEntryCount,
+    processLogbookEntries,
     offers,
     invoices,
     tasks,
@@ -982,6 +1876,8 @@ export async function resolveJarvisProjectHealthRequest(input: {
         invoiceId: true,
         durationMs: true,
         laborCostRateSnapshot: true,
+        laborCostSnapshot: true,
+        costSnapshotAt: true,
         comment: true,
         completionStatus: true,
         overtimeApprovalStatus: true,
@@ -1036,6 +1932,26 @@ export async function resolveJarvisProjectHealthRequest(input: {
         projectId: project.id,
       },
     }),
+    prisma.projectLogbookEntry.findMany({
+      where: {
+        organizationId: input.organizationId,
+        projectId: project.id,
+        title: {
+          in: [
+            "Dokumente: Endkontrolle",
+            "Bilder: Vorherbilder",
+            "Bilder: Nachherbilder",
+            "Dokumente: Tätigkeitsberichte",
+          ],
+        },
+      },
+      select: {
+        title: true,
+        projectMonth: true,
+        attachments: true,
+        createdAt: true,
+      },
+    }),
     offerDecision.executable
       ? prisma.offer.findMany({
           where: {
@@ -1043,7 +1959,7 @@ export async function resolveJarvisProjectHealthRequest(input: {
             projectId: project.id,
             status: { notIn: ["Gelöscht", "Gel\u00c3\u00b6scht"] },
           },
-          select: { id: true, projectId: true, status: true },
+          select: { id: true, projectId: true, status: true, wonAt: true },
         })
       : Promise.resolve(undefined),
     invoiceDecision.executable
@@ -1055,6 +1971,10 @@ export async function resolveJarvisProjectHealthRequest(input: {
           select: {
             id: true,
             projectId: true,
+            invoiceNumber: true,
+            projectNumber: true,
+            projectTitle: true,
+            customerName: true,
             status: true,
             billingSource: true,
             plannedExecutionMonth: true,
@@ -1134,6 +2054,8 @@ export async function resolveJarvisProjectHealthRequest(input: {
             invoiceId: true,
             durationMs: true,
             laborCostRateSnapshot: true,
+            laborCostSnapshot: true,
+            costSnapshotAt: true,
             comment: true,
             completionStatus: true,
             overtimeApprovalStatus: true,
@@ -1152,7 +2074,12 @@ export async function resolveJarvisProjectHealthRequest(input: {
     ),
   ];
   const invoiceIds = invoices?.map((invoice) => invoice.id) ?? [];
-  const [linkedPlanningEntries, invoiceLines, invoiceLaborItems] = await Promise.all([
+  const [
+    linkedPlanningEntries,
+    invoiceLines,
+    invoiceLaborItems,
+    inventoryMovements,
+  ] = await Promise.all([
     planningEntryIds.length > 0
       ? prisma.planningEntry.findMany({
           where: {
@@ -1178,8 +2105,18 @@ export async function resolveJarvisProjectHealthRequest(input: {
             id: true,
             invoiceId: true,
             catalogItemId: true,
+            catalogType: true,
+            position: true,
             quantity: true,
+            unit: true,
+            title: true,
             unitPrice: true,
+            discountPercent: true,
+            materialCostSnapshot: true,
+            laborCostSnapshot: true,
+            packageComponentsSnapshot: true,
+            catalogCostSnapshotVersion: true,
+            costSnapshotAt: true,
             totalNet: true,
           },
         })
@@ -1195,6 +2132,22 @@ export async function resolveJarvisProjectHealthRequest(input: {
             invoiceLineId: true,
             userId: true,
             plannedHours: true,
+            totalCost: true,
+          },
+        })
+      : Promise.resolve(undefined),
+    invoiceDecision.executable && invoiceIds.length > 0
+      ? prisma.catalogInventoryMovement.findMany({
+          where: {
+            organizationId: input.organizationId,
+            projectId: project.id,
+            invoiceId: { in: invoiceIds },
+          },
+          select: {
+            catalogItemId: true,
+            movementType: true,
+            quantityDelta: true,
+            invoiceId: true,
           },
         })
       : Promise.resolve(undefined),
@@ -1239,6 +2192,114 @@ export async function resolveJarvisProjectHealthRequest(input: {
         evaluationDateKey: healthCheckDateKey,
       })
     : undefined;
+  const processDiagnostics = diagnoseProjectProcess({
+    project,
+    evaluationDateKey: healthCheckDateKey,
+    offers,
+    invoices,
+    logbookEntries: processLogbookEntries,
+    timeEntryDates: timeEntries.map((entry) => entry.date),
+  });
+  const materialInvoices: ProjectMaterialInvoice[] = (invoices ?? []).map(
+    (invoice) => ({
+      id: invoice.id,
+      invoiceNumber: invoice.invoiceNumber || invoice.id,
+      status: invoice.status,
+      projectId: invoice.projectId,
+      projectNumber: invoice.projectNumber || project.projectNumber,
+      projectTitle: invoice.projectTitle || project.title,
+      customerName: invoice.customerName || project.customer || "",
+      serviceDate: invoice.serviceDate,
+      createdAt: invoice.createdAt.toISOString(),
+      lines: (invoiceLines ?? [])
+        .filter((line) => line.invoiceId === invoice.id)
+        .map((line) => ({
+          id: line.id,
+          catalogItemId: line.catalogItemId,
+          catalogType: line.catalogType,
+          quantity: line.quantity,
+          unit: line.unit,
+          title: line.title,
+          unitPrice: line.unitPrice,
+          discountPercent: line.discountPercent,
+          materialCostSnapshot: line.materialCostSnapshot,
+          laborCostSnapshot: line.laborCostSnapshot,
+          packageComponentsSnapshot: Array.isArray(
+            line.packageComponentsSnapshot
+          )
+            ? line.packageComponentsSnapshot as NonNullable<
+                ProjectMaterialInvoice["lines"][number]["packageComponentsSnapshot"]
+              >
+            : [],
+          catalogCostSnapshotVersion: line.catalogCostSnapshotVersion,
+          costSnapshotAt: line.costSnapshotAt?.toISOString(),
+          laborItems: (invoiceLaborItems ?? [])
+            .filter((item) => item.invoiceLineId === line.id)
+            .map((item) => ({ totalCost: item.totalCost })),
+        })),
+    })
+  );
+  const materialAnalysis =
+    invoiceDecision.executable && invoices && invoiceLines
+      ? analyzeProjectMaterials({
+          invoices: materialInvoices,
+          inventoryMovements: inventoryMovements ?? [],
+          includeCosts: canReadCosts,
+        })
+      : undefined;
+  const serviceCatalogItemIds = [
+    ...new Set([
+      ...(invoiceLines ?? [])
+        .filter((line) => line.catalogType === "service")
+        .map((line) => line.catalogItemId),
+      ...(invoiceLines ?? []).flatMap((line) =>
+        Array.isArray(line.packageComponentsSnapshot)
+          ? (line.packageComponentsSnapshot as Array<{
+              componentItemId?: string;
+              componentType?: string;
+            }>)
+              .filter((component) => component.componentType === "service")
+              .map((component) => component.componentItemId ?? "")
+          : []
+      ),
+      ...timeEntries.map((entry) => entry.billingCatalogItemId ?? ""),
+    ].filter(Boolean)),
+  ];
+  const serviceCatalogItems: ProjectServiceRateCatalogItem[] =
+    invoiceDecision.executable && serviceCatalogItemIds.length > 0
+      ? await prisma.catalogItem.findMany({
+          where: {
+            organizationId: input.organizationId,
+            id: { in: serviceCatalogItemIds },
+            type: "service",
+          },
+          select: {
+            id: true,
+            number: true,
+            name: true,
+            unit: true,
+            salesPrice: true,
+            isActive: true,
+          },
+        })
+      : [];
+  const serviceRateAnalysis =
+    invoiceDecision.executable && invoices && invoiceLines
+      ? analyzeProjectServiceRates({
+          invoices: materialInvoices as ProjectServiceRateInvoice[],
+          timeEntries: timeEntries.map((entry) => ({
+            billingCatalogItemId: entry.billingCatalogItemId,
+            billingCatalogItemLabel: entry.billingCatalogItemLabel,
+            durationMs: entry.durationMs,
+            laborCostSnapshot: canReadCosts
+              ? entry.laborCostSnapshot
+              : 0,
+            costSnapshotAt: canReadCosts ? entry.costSnapshotAt : null,
+          })),
+          catalogItems: serviceCatalogItems,
+          includeCosts: canReadCosts,
+        })
+      : undefined;
   const activeInvoices = invoices?.filter(
     (invoice) =>
       ![
@@ -1248,6 +2309,36 @@ export async function resolveJarvisProjectHealthRequest(input: {
         "Stornorechnung",
       ].includes(invoice.status)
   );
+  const focusedInvoiceMonthResponse =
+    invoiceDecision.executable && activeInvoices
+      ? buildFocusedInvoiceMonthResponse({
+          question: input.question,
+          project,
+          invoices: activeInvoices,
+          timeEntries,
+        })
+      : undefined;
+  if (focusedInvoiceMonthResponse) return focusedInvoiceMonthResponse;
+  const focusedProjectMaterialResponse =
+    materialAnalysis
+      ? buildFocusedProjectMaterialResponse({
+          question: input.question,
+          project,
+          analysis: materialAnalysis,
+        })
+      : undefined;
+  if (focusedProjectMaterialResponse) return focusedProjectMaterialResponse;
+  const focusedProjectServiceRateResponse =
+    serviceRateAnalysis
+      ? buildFocusedProjectServiceRateResponse({
+          question: input.question,
+          project,
+          analysis: serviceRateAnalysis,
+        })
+      : undefined;
+  if (focusedProjectServiceRateResponse) {
+    return focusedProjectServiceRateResponse;
+  }
   const closedTaskStatuses = new Set<TaskStatus>([
     TaskStatus.ERLEDIGT,
     TaskStatus.ABGELEHNT,
@@ -1265,6 +2356,15 @@ export async function resolveJarvisProjectHealthRequest(input: {
       ? ["Angebote, Rechnungen & Abrechnungsautomatik"]
       : []),
     ...(recurring ? ["Dauerläufer-Monatskette"] : []),
+    "Sollprozess & Leistungsnachweise",
+    ...(materialAnalysis &&
+    (
+      materialAnalysis.materialPositionCount > 0 ||
+      materialAnalysis.packagePositionCount > 0 ||
+      materialAnalysis.issues.length > 0
+    )
+      ? ["Material, Pakete & Lagerabgleich"]
+      : []),
     ...(taskDecision.executable ? ["Aufgaben & Unterbrechungen"] : []),
     ...(canReadCosts ? ["Wirtschaftlichkeit & Kostensatzqualität"] : []),
   ];
@@ -1312,6 +2412,9 @@ export async function resolveJarvisProjectHealthRequest(input: {
     evaluationDateKey: healthCheckDateKey,
     stampDiagnostics,
     recurringMonthDiagnostics,
+    processDiagnostics,
+    materialAnalysis,
+    serviceRateAnalysis,
     checkedAreas,
     restrictedAreas,
   };
@@ -1368,6 +2471,19 @@ export async function resolveJarvisProjectHealthRequest(input: {
               : formatHealthStatus(evaluation.status),
           tone: evaluation.status === "healthy" ? "positive" : "warning",
         },
+        {
+          label: "Datenbasis",
+          value:
+            normalize(project.reviewStatus) === "approved"
+              ? "Fachlich freigegeben"
+              : normalize(project.reviewStatus) === "needs_review"
+                ? "Prüfung notwendig"
+                : "Noch nicht fachlich geprüft",
+          tone:
+            normalize(project.reviewStatus) === "approved"
+              ? "positive"
+              : "warning",
+        },
         requestedScope === "full" || requestedScope === "improvements"
           ? {
               label: "Prüfumfang",
@@ -1407,6 +2523,32 @@ export async function resolveJarvisProjectHealthRequest(input: {
               ),
             }]
           : []),
+        {
+          title: "Bewertung nach Bereichen",
+          items: evaluation.areaAssessments.map((assessment) => {
+            const statusLabel =
+              assessment.status === "critical"
+                ? "Kritisch"
+                : assessment.status === "attention"
+                  ? "Prüfen"
+                  : "Stabil";
+            const findings = [
+              assessment.criticalIssues > 0
+                ? `${assessment.criticalIssues} kritisch`
+                : "",
+              assessment.warningIssues > 0
+                ? `${assessment.warningIssues} weiterer Prüfpunkt/weitere Prüfpunkte`
+                : "",
+            ].filter(Boolean);
+            return (
+              `${assessment.area}: ${statusLabel} · ${assessment.score} / 100` +
+              (findings.length > 0
+                ? ` · ${findings.join(", ")}`
+                : " · keine Auffälligkeit")
+            );
+          }),
+          tone: evaluation.status === "healthy" ? "positive" : "neutral",
+        },
         {
           title: "Geprüfter Umfang",
           items: [

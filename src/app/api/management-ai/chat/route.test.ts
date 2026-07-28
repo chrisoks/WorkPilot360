@@ -4,6 +4,8 @@ const mocks = vi.hoisted(() => ({
   getDemoContext: vi.fn(),
   getSessionBoundActor: vi.fn(),
   sessionBoundActorResponse: vi.fn(),
+  resolveJarvisOrganizationMaterialRequest: vi.fn(),
+  resolveJarvisOrganizationServiceRateRequest: vi.fn(),
   resolveJarvisSalesAnalysisRequest: vi.fn(),
   resolveJarvisGuidedSequenceContinuation: vi.fn(),
   createJarvisAccessProfile: vi.fn(),
@@ -27,6 +29,16 @@ vi.mock("@/lib/auth/actor", () => ({
 
 vi.mock("@/lib/jarvis/sales-analysis", () => ({
   resolveJarvisSalesAnalysisRequest: mocks.resolveJarvisSalesAnalysisRequest,
+}));
+
+vi.mock("@/lib/jarvis/organization-service-rate-analysis", () => ({
+  resolveJarvisOrganizationServiceRateRequest:
+    mocks.resolveJarvisOrganizationServiceRateRequest,
+}));
+
+vi.mock("@/lib/jarvis/organization-material-analysis", () => ({
+  resolveJarvisOrganizationMaterialRequest:
+    mocks.resolveJarvisOrganizationMaterialRequest,
 }));
 
 vi.mock("@/lib/jarvis/intent-clarification", () => ({
@@ -76,6 +88,12 @@ describe("POST /api/management-ai/chat", () => {
     mocks.createJarvisAccessProfile.mockReturnValue({ profile: true });
     mocks.resolveJarvisGuidedSequenceContinuation.mockReturnValue(undefined);
     mocks.resolveJarvisSalesAnalysisRequest.mockResolvedValue(undefined);
+    mocks.resolveJarvisOrganizationMaterialRequest.mockResolvedValue(
+      undefined
+    );
+    mocks.resolveJarvisOrganizationServiceRateRequest.mockResolvedValue(
+      undefined
+    );
   });
 
   it("returns the deterministic live analysis before any OpenAI request", async () => {
@@ -138,6 +156,120 @@ describe("POST /api/management-ai/chat", () => {
       if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
       else process.env.OPENAI_API_KEY = previousKey;
     }
+  });
+
+  it("returns the deterministic service-rate analysis before any OpenAI request", async () => {
+    mocks.resolveJarvisOrganizationServiceRateRequest.mockResolvedValue({
+      type: "answer",
+      message: "Drei Stundenleistungen wurden verglichen.",
+      topicId: "management.service-rates",
+      structured: {
+        title: "Stundenverrechnungssätze · Unternehmensvergleich",
+      },
+      deterministic: true,
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    const response = await POST(
+      new Request("http://localhost/api/management-ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "gf-1",
+          mode: "management",
+          message: "Analysiere unsere Stundenverrechnungssätze.",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      reply: "Drei Stundenleistungen wurden verglichen.",
+      topicId: "management.service-rates",
+      structured: {
+        title: "Stundenverrechnungssätze · Unternehmensvergleich",
+      },
+      deterministic: true,
+    });
+    expect(
+      mocks.resolveJarvisOrganizationServiceRateRequest
+    ).toHaveBeenCalledWith({
+      question: "Analysiere unsere Stundenverrechnungssätze.",
+      organizationId: "organization-1",
+      accessProfile: { profile: true },
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("allows an action-authorized financial role to use the deterministic comparison only", async () => {
+    mocks.canUseManagementAi.mockReturnValue(false);
+    mocks.resolveJarvisOrganizationServiceRateRequest.mockResolvedValue({
+      type: "answer",
+      message: "Freigegebener Leistungsvergleich ohne allgemeine BWL-KI.",
+      topicId: "management.service-rates",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/management-ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "gf-1",
+          mode: "management",
+          message: "Welche Stundenleistungen sollten wir preislich prüfen?",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      reply: "Freigegebener Leistungsvergleich ohne allgemeine BWL-KI.",
+      topicId: "management.service-rates",
+    });
+  });
+
+  it("returns the deterministic material analysis before any OpenAI request", async () => {
+    mocks.resolveJarvisOrganizationMaterialRequest.mockResolvedValue({
+      type: "answer",
+      message: "Vier Materialarten wurden verglichen.",
+      topicId: "management.materials",
+      structured: {
+        title: "Material & Artikel · Unternehmensvergleich",
+      },
+      deterministic: true,
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    const response = await POST(
+      new Request("http://localhost/api/management-ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "gf-1",
+          mode: "management",
+          message: "Analysiere unsere Materialien und Artikel.",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      reply: "Vier Materialarten wurden verglichen.",
+      topicId: "management.materials",
+      structured: {
+        title: "Material & Artikel · Unternehmensvergleich",
+      },
+      deterministic: true,
+    });
+    expect(
+      mocks.resolveJarvisOrganizationMaterialRequest
+    ).toHaveBeenCalledWith({
+      question: "Analysiere unsere Materialien und Artikel.",
+      organizationId: "organization-1",
+      accessProfile: { profile: true },
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("returns the next guided topic after a management answer", async () => {

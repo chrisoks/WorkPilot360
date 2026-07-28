@@ -167,6 +167,22 @@ function scoreSegment(segment: string) {
     [/\boffene posten\b/, "Offene Posten"],
     [/\bforecast\w*\b/, "Forecast"],
     [/\bsvs\b/, "Stundenverrechnungssatz"],
+    [
+      /\b(stundenverrechnungssatz|stundensatz|stundenleistung|leistungspreis)\w*\b/,
+      "Leistungs- und Stundenpreis",
+    ],
+    [
+      /\b(materialverbrauch|materialkosten|artikelpreis|materialpreis|einkaufspreis|verkaufspreis|lagerabweichung|lagerentnahme|lagerbewegung)\w*\b/,
+      "Material- und Artikelwirtschaft",
+    ],
+    [
+      /\b(analysier|vergleich|auswert|bewert|pruf)\w*\b.*\b(material|artikel|lager)\w*\b/,
+      "Materialanalyse",
+    ],
+    [
+      /\b(material|artikel)\w*\b.*\b(preis|marge|kosten|zu gunstig)\w*\b/,
+      "Materialpreis",
+    ],
     [/\bwachstum\w*\b/, "Wachstum"],
     [/\bumsatz\w*\b/, "Umsatz"],
     [/\bkosten\w*\b/, "Kosten"],

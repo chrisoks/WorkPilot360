@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { getDemoContext } from "@/lib/demo/context";
+import { resolveJarvisOrganizationMaterialRequest } from "@/lib/jarvis/organization-material-analysis";
+import { resolveJarvisOrganizationServiceRateRequest } from "@/lib/jarvis/organization-service-rate-analysis";
 import { resolveJarvisSalesAnalysisRequest } from "@/lib/jarvis/sales-analysis";
 import { createJarvisAccessProfile } from "@/lib/jarvis/security";
 import {
@@ -154,9 +156,6 @@ export async function POST(req: Request) {
     actorWithFlags
   );
 
-  if (mode === "management" && !canUseManagementAi(actorWithFlags)) {
-    return NextResponse.json({ error: "Dieser JARVIS-Bereich ist fuer Geschaeftsfuehrung und Admin freigegeben." }, { status: 403 });
-  }
   if (mode === "sales" && !canUseSalesAi(actorWithFlags)) {
     return NextResponse.json({ error: "Dieser JARVIS-Bereich ist fuer Vertrieb, Geschaeftsfuehrung und Admin freigegeben." }, { status: 403 });
   }
@@ -239,6 +238,46 @@ export async function POST(req: Request) {
         topicId: analysisResponse.topicId,
         deterministic: true,
       });
+    }
+  }
+
+  if (mode === "management") {
+    const serviceRateResponse =
+      await resolveJarvisOrganizationServiceRateRequest({
+        question: userMessage,
+        organizationId: organization.id,
+        accessProfile,
+      });
+    if (serviceRateResponse) {
+      return respond({
+        reply: serviceRateResponse.message,
+        structured: serviceRateResponse.structured,
+        topicId: serviceRateResponse.topicId,
+        deterministic: true,
+      }, serviceRateResponse.type === "refusal" ? "refusal" : "answer");
+    }
+    const materialResponse =
+      await resolveJarvisOrganizationMaterialRequest({
+        question: userMessage,
+        organizationId: organization.id,
+        accessProfile,
+      });
+    if (materialResponse) {
+      return respond({
+        reply: materialResponse.message,
+        structured: materialResponse.structured,
+        topicId: materialResponse.topicId,
+        deterministic: true,
+      }, materialResponse.type === "refusal" ? "refusal" : "answer");
+    }
+    if (!canUseManagementAi(actorWithFlags)) {
+      return NextResponse.json(
+        {
+          error:
+            "Dieser JARVIS-Bereich ist fuer Geschaeftsfuehrung und Admin freigegeben.",
+        },
+        { status: 403 }
+      );
     }
   }
 

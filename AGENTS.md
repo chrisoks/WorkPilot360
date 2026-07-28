@@ -1,5 +1,234 @@
 # WorkPilot360 Agent Handover
 
+- Katalog-Prüf- und Freigabeworkflow 2026-07-28: Artikel, Leistungen und
+  Pakete besitzen die drei expliziten Zustände `Noch ungeprüft`,
+  `Prüfung notwendig` und `Fachlich freigegeben`. Die Freigabe wird mit
+  Benutzer, Zeitpunkt und optionaler Prüfnotiz protokolliert. Änderungen an
+  fachlich relevanten Stamm-, Kalkulations-, Planungs-, Preis- oder
+  Paketbestandteilsdaten setzen eine bestehende Freigabe automatisch auf
+  `Prüfung notwendig` zurück; Lagerbewegungen beziehungsweise reine
+  Bestandsänderungen tun dies nicht. Für Leistungen zeigt die Prüfung den
+  gespeicherten LK-Satz und den aktuell korrekt gewichteten LK-Satz getrennt.
+  Eine Übernahme ändert nur den geöffneten Entwurf und muss anschließend
+  ausdrücklich gespeichert und erneut freigegeben werden. Bestehende
+  Angebote, Rechnungen, historische Positionswerte und Kostensnapshots
+  werden nicht verändert. JARVIS darf ungeprüfte Katalogwerte weiterhin zur
+  Diagnose und zum Aufzeigen von Datenlücken verwenden, aber erst fachlich
+  freigegebene Artikel oder Leistungen als Grundlage einer Preis- oder
+  Stundensatzempfehlung behandeln.
+- Vor-Live-Datenstatus 2026-07-28: WorkPilot360 ist fachlich noch nicht im
+  Livebetrieb. Importierte beziehungsweise vorhandene Projekte müssen noch
+  den richtigen Projektarten, Abrechnungswegen und Status zugewiesen und
+  geprüft werden; auch Artikel und Leistungen sind noch nicht vollständig
+  überarbeitet oder fachlich freigegeben. Ein technisch gefülltes oder
+  widerspruchsfreies Feld ist deshalb kein Beweis für fachliche Richtigkeit.
+  JARVIS darf den aktuellen Bestand als Prüf- und Migrationsgrundlage
+  verwenden, aber ungeprüfte Stammdaten nicht als bestätigte Sollwahrheit
+  darstellen und daraus keine endgültige Preis-, Prozess- oder
+  Vollkostenempfehlung ableiten. Für Artikel, Leistungen und Pakete ist der
+  explizite Prüf-/Freigabestatus umgesetzt. Projekte besitzen ebenfalls die
+  Zustände ungeprüft, Prüfung notwendig und fachlich freigegeben. Eine
+  Projektfreigabe verlangt eine eindeutige Projektart, die dazu passende
+  Abrechnung, stabile Kundenverknüpfung, Gewerk, Niederlassung,
+  Verantwortlichkeit, bei Dauerläufern eine vollständige Laufzeit und
+  mindestens ein gültiges Angebot; ein Entwurf reicht nicht. Änderungen an
+  diesen prüfrelevanten Daten heben die Freigabe
+  automatisch auf. Routine-Statuswechsel der Projektpipeline werden
+  protokolliert, lösen aber keine erneute Stammdatenprüfung aus. JARVIS zeigt
+  den Prüfstand als Datenbasis und darf ungeprüfte Projekte nicht als
+  abschließend richtig bewerten.
+  Alle drei Projektvarianten sind über reine Fachlogiktests abgesichert.
+  Mangels eines vorhandenen Stundenabrechnungs-Dauerläufers im lokalen
+  Bestand darf für Tests kein künstliches Echtdatenprojekt angelegt werden.
+- LK-Satz Gewichtungskorrektur 2026-07-28: Der durchschnittliche
+  Niederlassungs-/Planungsgruppen-LK-Satz teilt die Summe aus individuellem
+  Mitarbeiterkostensatz mal Niederlassungsanteil jetzt durch die Summe der
+  tatsächlichen Mitarbeiteranteile und nicht mehr durch die bloße Anzahl der
+  Personen. Ein Mitarbeiter mit 50 % Anteil und 50 EUR individuellem
+  Stundensatz erzeugt dadurch weiterhin 50 EUR je tatsächlich zugeordneter
+  Arbeitsstunde, nicht fälschlich 25 EUR. Die reine Fachfunktion liegt in
+  `src/lib/employee-costs/labor-cost-rate.ts` und ist separat getestet.
+  Bestehende Katalogleistungen und Angebotspositionen werden nicht still
+  umgeschrieben. Historische Stempel-Kostensnapshots bleiben unverändert und
+  sind von der Korrektur fachlich nicht betroffen, weil sie direkt aus dem
+  individuellen Mitarbeiterkostensatz gebildet werden. Vor einer
+  kontrollierten Aktualisierung gespeicherter Katalog-LK-Sätze ist eine
+  Vorschau mit expliziter Bestätigung erforderlich.
+- JARVIS sichere Preisrichtlinie und Teilkostenkorridore 2026-07-28: Die
+  freigegebene Standardrichtlinie verwendet 18 % Mindestmarge und 30 %
+  Zielmarge, jeweils korrekt als Anteil am Verkaufspreis berechnet
+  (`Kosten / (1 - Marge)`). Organisationsbezogene Abweichungen sind über den
+  vorhandenen `OrganizationSetting`-Schlüssel `jarvis.pricing-policy.v1`
+  vorbereitet; ungültige, fehlende oder vertauschte Werte fallen sicher auf
+  18/30 zurück. Der unternehmensweite Material- und
+  Stundenverrechnungssatzvergleich zeigt einen numerischen Korridor nur für
+  GF/Admin, nur bei der bereits festgelegten Mindestdatenbasis und nur bei
+  vollständig gespeicherten historischen Kostenständen. Materialkorridore
+  beruhen vorläufig ausschließlich auf belegten Materialkosten,
+  Leistungskorridore ausschließlich auf gespeicherten Mitarbeiterkosten.
+  Beschaffung, Lager, Fahrzeuge, Werkzeuge, Verwaltung und weitere
+  Gemeinkosten sind noch nicht vollständig enthalten und werden deshalb
+  ausdrücklich als vorläufige Teilkostenberechnung bezeichnet. JARVIS ändert
+  keine Preise oder Stammdaten automatisch.
+- JARVIS unternehmensweiter Material- und Artikelvergleich 2026-07-28:
+  Fragen wie `Analysiere unsere Materialien und Artikel`, `Welche Artikel
+  verkaufen wir zu günstig?` oder `Wo stimmen Materialmenge und
+  Lagerentnahme nicht überein?` laufen über einen organisationsgebundenen,
+  rein lesenden Managementadapter. Standardzeitraum sind die letzten zwölf
+  Monate. Gewertet werden ausschließlich fertige Rechnungen; jede
+  Rechnungsposition zählt einzeln und identische Positionen werden über ihre
+  stabile Artikel-ID addiert, nicht anhand des Namens dedupliziert.
+  Materialbestandteile aus Paketen stammen ausschließlich aus der
+  historischen Paketzusammensetzung der Rechnung. Freie Materialpositionen
+  ohne stabile Artikel-ID werden nicht fälschlich mit dem Lager verglichen.
+  JARVIS trennt abgerechnete Menge, systemseitige Lagerentnahme und
+  tatsächlichen physischen Verbrauch. Aktuelle Einkaufs- sowie belegte
+  historische Materialkosten bleiben strikt GF/Admin vorbehalten;
+  Führungskräfte und Buchhaltung erhalten nur ihre freigegebenen Rechnungs-,
+  Mengen-, Lager- und Verkaufspreisinformationen. Eine allgemeine
+  Preisbewertung gilt erst ab mindestens drei fertigen Rechnungen je
+  Materialart als hinreichend wiederholt. Auch dann wird ohne fachlich
+  freigegebene Zielmarge kein neuer Verkaufspreis erfunden und kein
+  Artikelstamm automatisch geändert. Explizite Projektfragen bleiben beim
+  Projektadapter. Keine Lager-, Rechnungs-, Preis-, Prisma- oder
+  Datenbankänderung.
+- JARVIS unternehmensweiter Leistungs- und SVS-Vergleich 2026-07-28: Fragen
+  wie `Analysiere unsere Stundenverrechnungssätze` laufen über einen eigenen,
+  organisationsgebundenen und rein lesenden Managementadapter. Er vergleicht
+  standardmäßig die letzten zwölf Monate und verwendet dieselbe abgesicherte
+  Datenbasis wie die Projektanalyse: ausschließlich fertige Rechnungen,
+  Rechnungspositionen beziehungsweise historische Paketbestandteile,
+  eindeutige Leistungs-IDs, zugeordnete Stempelstunden und aktuelle
+  Stammdatenpreise. Führungskräfte und Buchhaltung dürfen die für ihre
+  Finanzberechtigung freigegebenen Leistungs- und Rechnungswerte sehen;
+  gespeicherte Mitarbeiterkosten bleiben auch in diesem Vergleich strikt
+  GF/Admin vorbehalten. Beschäftigte ohne Rechnungsberechtigung werden vor
+  jeder Datenabfrage abgewiesen. JARVIS sortiert Auffälligkeiten, trennt
+  nachgewiesene Abweichungen von Datenlücken und nennt keinen neuen
+  allgemeinen Stundensatz, solange je Leistung nicht mindestens drei fertige
+  Rechnungen, zehn abgerechnete sowie zehn eindeutig zugeordnete gestempelte
+  Stunden vorliegen. Selbst bei ausreichender Basis bleibt eine
+  Preisentscheidung manuell und muss Material-, Fahrzeug-, Gemeinkosten und
+  ein freigegebenes Margenziel zusätzlich berücksichtigen. Explizite
+  Projektfragen werden weiterhin vom Projektadapter beantwortet. Keine
+  Preis-, Rechnungs-, Stempel-, Prisma- oder Datenbankänderung.
+- JARVIS projektbezogene Leistungs- und SVS-Analyse 2026-07-28: Fragen wie
+  `Wie hoch ist der tatsächlich erzielte Stundenverrechnungssatz bei HAS-1?`
+  laufen über den gesicherten, rein lesenden Projektadapter. Ausgewertet
+  werden ausschließlich fertige Rechnungen. JARVIS trennt abgerechnete
+  Stunden, eindeutig über die stabile Leistungs-ID zugeordnete
+  Stempelstunden, tatsächlich berechneten Netto-Stundensatz, Nettoerlös je
+  eingesetzter Stunde und aktuellen Stammdatenpreis. Stundenleistungen aus
+  Paketen zählen nur aus der historischen Paketzusammensetzung der Rechnung.
+  Stempelungen ohne stabile Abrechnungsleistungs-ID werden nicht anhand
+  ähnlicher Namen geraten, sondern als Datenlücke ausgewiesen. Historische
+  Mitarbeiterkosten und Kostenabdeckung sind ausschließlich für GF/Admin
+  sichtbar und stammen nur aus gespeicherten Kostenständen. Eine
+  Preisempfehlung gilt erst ab mindestens drei fertigen Rechnungen sowie zehn
+  abgerechneten und zehn eindeutig zugeordneten gestempelten Stunden als
+  hinreichend belegt. Auch dann ändert JARVIS keinen Preis automatisch und
+  stellt eine reine Kostendeckungsgrenze niemals als sinnvollen Verkaufspreis
+  dar. Keine Rechnungs-, Preis-, Stempel-, Prisma- oder Datenbankänderung.
+- JARVIS projektbezogene Materialanalyse 2026-07-28: Fragen wie `Welche
+  Materialien wurden bei HAS-1 abgerechnet?` laufen über einen
+  organisations- und rollengebundenen, rein lesenden Projektadapter. Die
+  Auswertung berücksichtigt ausschließlich fertige Rechnungen, zählt jede
+  Rechnungsposition einzeln und addiert identische Positionen, ohne sie über
+  Namen zu deduplizieren. Materialbestandteile aus Paketen werden nur aus der
+  zum Rechnungszeitpunkt gespeicherten Paketzusammensetzung übernommen;
+  fehlt dieser historische Snapshot, darf die heutige Paketzusammensetzung
+  nicht als damaliger Verbrauch ausgegeben werden. Abgerechnete Mengen werden
+  mit den automatischen `sale`-/`reversal`-Lagerbewegungen des Projekts
+  verglichen. JARVIS trennt ausdrücklich abgerechnete Menge, systemseitige
+  Lagerentnahme und tatsächlich physischen Verbrauch. Historische
+  Materialkosten werden nur für GF/Admin und nur aus gespeicherten
+  Kostenständen bewertet. Keine Bestands-, Rechnungs-, Prisma- oder
+  Datenbankänderung.
+- JARVIS semantische Qualitätsschicht 2026-07-28: Datums-/Monatsangaben,
+  Projektreferenzen, Projektprüfumfang, Ursache-Wirkungs-Beziehung und
+  gewünschte Antworttiefe werden zentral in
+  `src/lib/jarvis/question-semantics.ts` ermittelt. Dialogrouter und
+  Projektdiagnose dürfen dafür keine voneinander abweichenden
+  Schlüsselwortregeln mehr aufbauen. `answer-policy.ts` begrenzt fokussierte
+  Warum-, Status- und Monatsantworten global auf die wesentlichen Befunde und
+  entfernt ungefragte Prüfwerte sowie Diagnoseanhänge; ausdrückliche
+  Prüfaufträge bleiben vollständig. Die Evaluationsmatrix erzeugt Varianten
+  über Projekte, alle deutschen Monatsnamen, Synonyme, Ursache-Wirkungs-
+  Fragen und typische Schreibfehler. Neue Fragefamilien benötigen
+  Semantik-, Routing- und Antworttiefen-Invarianten statt nur eines einzelnen
+  Beispielsatztests.
+- JARVIS angemessene Antworttiefe 2026-07-28: Eine konkrete, eng begrenzte
+  Warum-, Status- oder Monatsfrage erhält zuerst eine kurze direkte Antwort
+  mit festgestellter Ursache, höchstens den wichtigsten Zusatzbefunden und
+  einem sicheren nächsten Schritt. Prüfwert, Bereichsbewertung und kompletter
+  Diagnoseumfang erscheinen nur bei einem ausdrücklichen Prüf- oder
+  Analyseauftrag. JARVIS darf aus einer einfachen Frage keinen ungefragten
+  Vollcheck machen. Kann der genaue Grund nicht aus gespeicherten Daten
+  bewiesen werden, trennt JARVIS sicher festgestellten Zustand und mögliche
+  Ursache ausdrücklich, statt eine Ursache zu erfinden. Ursache-Wirkungs-
+  Fragen über zusammengehörige Bereiche, etwa von einer Stempelung zum
+  Rechnungsentwurf, bleiben eine gemeinsame Fachfrage und werden nicht in
+  getrennte Prüfauswahlen zerlegt.
+- JARVIS Auslastungsanalyse-Roadmap 2026-07-28: Der spätere Management- und
+  Planungsadapter beantwortet Auslastungsfragen für einzelne Mitarbeitende,
+  Planungsgruppen und Planungsboards. Geschäftsführung/Admin dürfen den
+  organisationsweiten freigegebenen Umfang sehen; Führungskräfte nur ihre
+  zugeordneten Gruppen beziehungsweise Boards, Mitarbeitende höchstens die
+  eigene Sicht. Kapazität, Planstunden, Feiertage, Abwesenheiten und
+  Auslastungsquote werden deterministisch in WorkPilot360 berechnet. KI dient
+  nur der Trenddeutung, Ursachenhypothese und verständlichen Empfehlung.
+  Zielkorridore für Unterauslastung und Überlastung müssen konfigurierbar sein.
+  Der Ausbau ist in Phase 6, die spätere Planungsdetailtiefe in Phase 7 des
+  JARVIS-Entwicklungsplans einsortiert und zieht den aktuellen
+  Projekt-Diagnoseabschluss nicht vor.
+- JARVIS bereichsbezogener Projektprüfwert 2026-07-28: Der Projektprüfwert
+  wird nicht mehr durch pauschale Abzüge je Einzelbefund bis auf 0 gedrückt.
+  Jeder freigegebene Prüfbereich wird mit seinem schlechtesten Zustand
+  bewertet; mehrere zusammenhängende Befunde desselben Bereichs führen nur zu
+  begrenzten Zusatzabzügen. Der Gesamtwert ist der nachvollziehbare Mittelwert
+  der Bereichswerte, bei kritischen Befunden auf höchstens 69 begrenzt.
+  0 Punkte gibt es nur, wenn sämtliche freigegebenen Prüfbereiche kritisch
+  sind. `Kritisch` bleibt unabhängig vom Zahlenwert bestehen, sobald ein echter
+  kritischer Befund vorliegt. JARVIS zeigt die Bewertung je Bereich in der
+  strukturierten Antwort. Fehlende Klärungsaufgaben zu Unterbrechungen vor dem
+  27.06.2026 werden als Altbestand vor Einführung der Aufgabenautomatik
+  erklärt; sie bleiben prüfpflichtig und werden nicht still rückwirkend
+  erzeugt.
+- JARVIS verständliche Diagnosesprache 2026-07-28: Projekt-, Planungs-,
+  Angebots-, Rechnungs-, Automatik- und Stempelbefunde erklären jetzt für
+  normale Mitarbeitende zuerst den konkret festgestellten Zustand, danach die
+  mögliche Auswirkung und schließlich den sicheren nächsten Prüfschritt mit
+  dem passenden WorkPilot-Bereich. Interne Begriffe wie Snapshot, Faktura,
+  Automatikweg oder Stapelabrechnung dürfen nicht unkommentiert als
+  Anwendererklärung erscheinen. Fachliche Regeln, Schweregrade und
+  Rollenfilter bleiben davon unberührt. Besonders bei Stunden-Dauerläufern
+  nennt JARVIS verständlich das Risiko fehlender Gewerke,
+  Abrechnungsleistungen, Monatsentwürfe und falscher
+  Rechnungsverknüpfungen. Angebote bleiben der verpflichtende Grundbaustein
+  jedes Projekts.
+- JARVIS projektartabhängige Tiefendiagnose 2026-07-28: Der rein lesende
+  Projektcheck verbindet die vorhandene Stempel- und Monatsdiagnose jetzt mit
+  der vollständigen Sollkette der jeweiligen Projektart. Ein gültiges,
+  finales und im Projekt hinterlegtes Angebot ist der verpflichtende
+  Grundbaustein jedes Projekts, ausdrücklich auch bei Dauerläufern; ein reiner
+  Angebotsentwurf genügt nicht. JARVIS erklärt diesen Befund in verständlicher
+  Alltagssprache und verweist auf den Projektbereich `Angebote`, statt den im
+  System nicht vorhandenen Bedienbegriff `Auftrag` zu verwenden.
+  Einmalprojekte werden zusätzlich auf Endkontrolle, Schlussrechnung und
+  Gesamtabschluss geprüft. Dauerläufer mit Monatspauschale und
+  Stundenabrechnung bleiben in ihren Abrechnungswegen strikt getrennt;
+  unpassende Stapel- oder Stundenrechnungsquellen werden als kritischer
+  Widerspruch ausgewiesen. Für abgelaufene Dauerläufer wird nachvollzogen, ob
+  letzter Rechnungsmonat und Projektabschluss zusammenpassen. Zusätzlich
+  kontrolliert JARVIS Endkontrollen sowie bei OK-immocare-Projekten
+  Vorherbilder, Nachherbilder und Tätigkeitsberichte je relevanter
+  Leistungsperiode. Der nächste aktive Pauschalmonat wird ausdrücklich gegen
+  bestätigte Planung beziehungsweise Monatskontingent geprüft, ohne
+  bedarfsabhängige Stundenprojekte fälschlich zu einer festen Vorausplanung zu
+  zwingen. Rollenbedingt gesperrte Angebote und Rechnungen werden weder
+  geladen noch aus fehlenden Daten abgeleitet. Keine automatische Korrektur,
+  keine Prisma- oder Datenbankänderung.
+
 - JARVIS mehrdimensionale Dialogfolgen 2026-07-28: Mehrere erlaubte
   Fachthemen, Zeiträume sowie Kombinationen aus mehreren Projekten und
   Prüfumfängen werden nicht mehr nach der ersten Auswahl vergessen. JARVIS

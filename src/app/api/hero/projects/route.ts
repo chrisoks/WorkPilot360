@@ -4,9 +4,20 @@ import { Prisma, type User } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
-import { canArchiveProjects, canManageProjects } from "@/lib/permissions";
+import {
+  canArchiveProjects,
+  canManageProjects,
+  canReviewProjects,
+} from "@/lib/permissions";
 import { recordStatusTransition, seedCurrentStatusTimeline } from "@/lib/status-tracking";
 import { getProjectBusinessAreaCode } from "@/lib/project-business-area";
+import {
+  getProjectReviewStatusAfterEdit,
+  hasProjectReviewRelevantChange,
+  normalizeProjectReviewStatus,
+  projectReviewStatuses,
+  validateProjectReviewApprovalInput,
+} from "@/lib/projects/review-status";
 
 export const dynamic = "force-dynamic";
 
@@ -61,8 +72,27 @@ type LocalProjectRow = {
   autoBillingTemplate: unknown;
   winterGritPackageItemId: string | null;
   winterGritPushPackageItemId: string | null;
+  reviewStatus: string;
+  reviewedAt: Date | null;
+  reviewedByUserId: string | null;
+  reviewedByName: string | null;
+  reviewNote: string | null;
+  reviewedProjectStatus: string | null;
   createdAt: Date;
   updatedAt: Date;
+};
+
+type ProjectReviewHistoryRow = {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  eventType: string;
+  oldStatus: string | null;
+  newStatus: string;
+  actorUserId: string | null;
+  actorName: string;
+  note: string | null;
+  createdAt: Date;
 };
 
 async function ensureLocalProjectTable() {
@@ -118,6 +148,12 @@ async function ensureLocalProjectTable() {
       "autoBillingTemplate" JSONB,
       "winterGritPackageItemId" TEXT,
       "winterGritPushPackageItemId" TEXT,
+      "reviewStatus" TEXT NOT NULL DEFAULT 'unreviewed',
+      "reviewedAt" TIMESTAMP(3),
+      "reviewedByUserId" TEXT,
+      "reviewedByName" TEXT,
+      "reviewNote" TEXT,
+      "reviewedProjectStatus" TEXT,
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
@@ -171,8 +207,39 @@ async function ensureLocalProjectTable() {
     ADD COLUMN IF NOT EXISTS "autoBillingTemplate" JSONB,
     ADD COLUMN IF NOT EXISTS "winterGritPackageItemId" TEXT,
     ADD COLUMN IF NOT EXISTS "winterGritPushPackageItemId" TEXT,
+    ADD COLUMN IF NOT EXISTS "reviewStatus" TEXT NOT NULL DEFAULT 'unreviewed',
+    ADD COLUMN IF NOT EXISTS "reviewedAt" TIMESTAMP(3),
+    ADD COLUMN IF NOT EXISTS "reviewedByUserId" TEXT,
+    ADD COLUMN IF NOT EXISTS "reviewedByName" TEXT,
+    ADD COLUMN IF NOT EXISTS "reviewNote" TEXT,
+    ADD COLUMN IF NOT EXISTS "reviewedProjectStatus" TEXT,
     ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+  `;
+
+  await prisma.$executeRaw`
+    CREATE INDEX IF NOT EXISTS "WorkPilotProject_organizationId_reviewStatus_idx"
+    ON "WorkPilotProject" ("organizationId", "reviewStatus")
+  `;
+
+  await prisma.$executeRaw`
+    CREATE TABLE IF NOT EXISTS "WorkPilotProjectReviewHistory" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "organizationId" TEXT NOT NULL,
+      "projectId" TEXT NOT NULL,
+      "eventType" TEXT NOT NULL,
+      "oldStatus" TEXT,
+      "newStatus" TEXT NOT NULL,
+      "actorUserId" TEXT,
+      "actorName" TEXT NOT NULL,
+      "note" TEXT,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
+
+  await prisma.$executeRaw`
+    CREATE INDEX IF NOT EXISTS "WorkPilotProjectReviewHistory_organizationId_projectId_crea_idx"
+    ON "WorkPilotProjectReviewHistory" ("organizationId", "projectId", "createdAt")
   `;
 }
 
@@ -261,7 +328,10 @@ function formatDateTime(value: Date) {
   }).format(value);
 }
 
-function formatLocalProject(project: LocalProjectRow) {
+function formatLocalProject(
+  project: LocalProjectRow,
+  reviewHistory: ProjectReviewHistoryRow[] = []
+) {
   const isRecurringProject = isRecurringProjectKind(project.projectKind ?? "");
   const recurringBillingMode =
     cleanRecurringBillingMode(project.recurringBillingMode) || (isRecurringProject ? "monthlyFlat" : "");
@@ -318,6 +388,22 @@ function formatLocalProject(project: LocalProjectRow) {
     autoBillingTemplate: project.autoBillingTemplate ?? null,
     winterGritPackageItemId: project.winterGritPackageItemId ?? "",
     winterGritPushPackageItemId: project.winterGritPushPackageItemId ?? "",
+    reviewStatus: normalizeProjectReviewStatus(project.reviewStatus),
+    reviewedAt: project.reviewedAt?.toISOString() ?? "",
+    reviewedByUserId: project.reviewedByUserId ?? "",
+    reviewedByName: project.reviewedByName ?? "",
+    reviewNote: project.reviewNote ?? "",
+    reviewedProjectStatus: project.reviewedProjectStatus ?? "",
+    reviewHistory: reviewHistory.map((entry) => ({
+      id: entry.id,
+      eventType: entry.eventType,
+      oldStatus: entry.oldStatus ?? "",
+      newStatus: entry.newStatus,
+      actorUserId: entry.actorUserId ?? "",
+      actorName: entry.actorName,
+      note: entry.note ?? "",
+      createdAt: entry.createdAt.toISOString(),
+    })),
   };
 }
 
@@ -372,14 +458,31 @@ function normalizeProjectStatus(status: string) {
 async function getLocalProjects(organizationId: string) {
   await ensureLocalProjectTable();
 
-  const projects = await prisma.$queryRaw<LocalProjectRow[]>`
-    SELECT *
-    FROM "WorkPilotProject"
-    WHERE "organizationId" = ${organizationId}
-    ORDER BY "createdAt" DESC
-  `;
+  const [projects, reviewHistory] = await Promise.all([
+    prisma.$queryRaw<LocalProjectRow[]>`
+      SELECT *
+      FROM "WorkPilotProject"
+      WHERE "organizationId" = ${organizationId}
+      ORDER BY "createdAt" DESC
+    `,
+    prisma.$queryRaw<ProjectReviewHistoryRow[]>`
+      SELECT *
+      FROM "WorkPilotProjectReviewHistory"
+      WHERE "organizationId" = ${organizationId}
+      ORDER BY "createdAt" DESC
+    `,
+  ]);
+  const historyByProjectId = new Map<string, ProjectReviewHistoryRow[]>();
+  for (const entry of reviewHistory) {
+    historyByProjectId.set(entry.projectId, [
+      ...(historyByProjectId.get(entry.projectId) ?? []),
+      entry,
+    ]);
+  }
 
-  return projects.map(formatLocalProject);
+  return projects.map((project) =>
+    formatLocalProject(project, historyByProjectId.get(project.id) ?? [])
+  );
 }
 
 async function validateProjectContactReferences(
@@ -465,6 +568,23 @@ async function validateProjectObjectAddress(
   return isImmocare ? "Bitte wähle für das Immocare-Projekt eine Objektadresse aus." : null;
 }
 
+async function validateProjectReviewApproval(
+  organizationId: string,
+  project: LocalProjectRow
+) {
+  const offers = await prisma.offer.findMany({
+    where: {
+      organizationId,
+      projectId: project.id,
+    },
+    select: { status: true },
+  });
+  return validateProjectReviewApprovalInput({
+    ...project,
+    offerStatuses: offers.map((offer) => offer.status),
+  });
+}
+
 export async function GET(req: Request) {
   const { organization, users } = await getDemoContext();
   const { searchParams } = new URL(req.url);
@@ -491,6 +611,100 @@ export async function POST(req: Request) {
   await ensureLocalProjectTable();
 
   const id = cleanString(body.id) || randomUUID();
+  if (body.action === "set-review-status") {
+    if (!canReviewProjects(actor)) {
+      return NextResponse.json(
+        { error: "Du darfst Projekte nicht fachlich freigeben." },
+        { status: 403 }
+      );
+    }
+    if (!projectReviewStatuses.includes(body.reviewStatus)) {
+      return NextResponse.json(
+        { error: "Der gewünschte Prüfstatus ist ungültig." },
+        { status: 400 }
+      );
+    }
+    const projectRows = await prisma.$queryRaw<LocalProjectRow[]>`
+      SELECT *
+      FROM "WorkPilotProject"
+      WHERE "id" = ${id}
+        AND "organizationId" = ${organization.id}
+      LIMIT 1
+    `;
+    const project = projectRows[0];
+    if (!project) {
+      return NextResponse.json(
+        { error: "Projekt wurde nicht gefunden." },
+        { status: 404 }
+      );
+    }
+    const reviewStatus = normalizeProjectReviewStatus(body.reviewStatus);
+    if (reviewStatus === "approved") {
+      const problems = await validateProjectReviewApproval(
+        organization.id,
+        project
+      );
+      if (problems.length > 0) {
+        return NextResponse.json(
+          {
+            error:
+              "Das Projekt kann noch nicht fachlich freigegeben werden: " +
+              problems.join("; ") +
+              ".",
+          },
+          { status: 400 }
+        );
+      }
+    }
+    const reviewNote = cleanString(body.reviewNote) || null;
+    const reviewedAt = reviewStatus === "approved" ? new Date() : null;
+    const reviewedByUserId = reviewStatus === "approved" ? actor.id : null;
+    const reviewedByName =
+      reviewStatus === "approved" ? getActorName(actor) : null;
+    const reviewedProjectStatus =
+      reviewStatus === "approved" ? project.status : null;
+    const updatedRows = await prisma.$queryRaw<LocalProjectRow[]>`
+      UPDATE "WorkPilotProject"
+      SET
+        "reviewStatus" = ${reviewStatus},
+        "reviewedAt" = ${reviewedAt},
+        "reviewedByUserId" = ${reviewedByUserId},
+        "reviewedByName" = ${reviewedByName},
+        "reviewNote" = ${reviewNote},
+        "reviewedProjectStatus" = ${reviewedProjectStatus},
+        "updatedAt" = CURRENT_TIMESTAMP
+      WHERE "id" = ${id}
+        AND "organizationId" = ${organization.id}
+      RETURNING *
+    `;
+    const historyRows = await prisma.$queryRaw<ProjectReviewHistoryRow[]>`
+      INSERT INTO "WorkPilotProjectReviewHistory" (
+        "id", "organizationId", "projectId", "eventType", "oldStatus",
+        "newStatus", "actorUserId", "actorName", "note"
+      )
+      VALUES (
+        ${randomUUID()}, ${organization.id}, ${id},
+        ${reviewStatus === "approved" ? "review_approved" : "review_status_changed"},
+        ${normalizeProjectReviewStatus(project.reviewStatus)},
+        ${reviewStatus}, ${actor.id}, ${getActorName(actor)}, ${reviewNote}
+      )
+      RETURNING *
+    `;
+    const previousHistory = await prisma.$queryRaw<ProjectReviewHistoryRow[]>`
+      SELECT *
+      FROM "WorkPilotProjectReviewHistory"
+      WHERE "organizationId" = ${organization.id}
+        AND "projectId" = ${id}
+        AND "id" <> ${historyRows[0].id}
+      ORDER BY "createdAt" DESC
+    `;
+    return NextResponse.json(
+      formatLocalProject(updatedRows[0], [
+        historyRows[0],
+        ...previousHistory,
+      ])
+    );
+  }
   const projectNumber = cleanString(body.projectNumber);
   const title = cleanString(body.title);
 
@@ -524,8 +738,8 @@ export async function POST(req: Request) {
   if (objectAddressError) {
     return NextResponse.json({ error: objectAddressError }, { status: 400 });
   }
-  const currentRows = await prisma.$queryRaw<Array<{ status: string; createdAt: Date }>>`
-    SELECT status, "createdAt"
+  const currentRows = await prisma.$queryRaw<LocalProjectRow[]>`
+    SELECT *
     FROM "WorkPilotProject"
     WHERE id = ${id}
       AND "organizationId" = ${organization.id}
@@ -542,6 +756,61 @@ export async function POST(req: Request) {
   }
   const recurringBillingMode =
     isRecurringProjectKind(projectKind) && !incomingRecurringBillingMode ? "monthlyFlat" : incomingRecurringBillingMode;
+  const reviewCandidate: Record<string, unknown> = {
+    projectNumber,
+    title,
+    contactId: cleanString(body.contactId),
+    contactPersonId: cleanString(body.contactPersonId),
+    addressContactId: cleanString(body.addressContactId),
+    objectAddressId: cleanString(body.objectAddressId),
+    projectType: cleanString(body.projectType),
+    projectKind,
+    projectRuntimeFrom: cleanString(body.projectRuntimeFrom),
+    projectRuntimeUntil: cleanString(body.projectRuntimeUntil),
+    billingInterval: cleanString(body.billingInterval),
+    recurringBillingMode,
+    forecastBillingType: cleanString(body.forecastBillingType),
+    forecastNetAmount: cleanString(body.forecastNetAmount),
+    trade: cleanString(body.trade),
+    branch: cleanString(body.branch),
+    address: cleanString(body.address),
+    responsibleName: cleanString(body.responsibleName),
+    timeBudgetEnabled: Boolean(body.timeBudgetEnabled),
+    timeBudgetHours: cleanString(body.timeBudgetHours),
+    autoBillingEnabled: Boolean(body.autoBillingEnabled),
+    autoBillingNetAmount: cleanString(body.autoBillingNetAmount),
+    autoBillingVatRate: cleanString(body.autoBillingVatRate),
+    autoBillingStartMonth: cleanString(body.autoBillingStartMonth),
+    autoBillingEndMonth: cleanString(body.autoBillingEndMonth),
+    autoBillingTemplateMode: cleanString(body.autoBillingTemplateMode) || "previous",
+  };
+  const reviewWasInvalidated = Boolean(
+    currentProject &&
+      normalizeProjectReviewStatus(currentProject.reviewStatus) === "approved" &&
+      hasProjectReviewRelevantChange(
+        currentProject as unknown as Record<string, unknown>,
+        reviewCandidate
+      )
+  );
+  const reviewStatus = currentProject
+    ? getProjectReviewStatusAfterEdit({
+        previousStatus: currentProject.reviewStatus,
+        hasRelevantChange: reviewWasInvalidated,
+      })
+    : "unreviewed";
+  const reviewedAt = reviewWasInvalidated ? null : currentProject?.reviewedAt ?? null;
+  const reviewedByUserId = reviewWasInvalidated
+    ? null
+    : currentProject?.reviewedByUserId ?? null;
+  const reviewedByName = reviewWasInvalidated
+    ? null
+    : currentProject?.reviewedByName ?? null;
+  const reviewNote = reviewWasInvalidated
+    ? null
+    : currentProject?.reviewNote ?? null;
+  const reviewedProjectStatus = reviewWasInvalidated
+    ? null
+    : currentProject?.reviewedProjectStatus ?? null;
 
   const rows = await prisma.$queryRaw<LocalProjectRow[]>`
     INSERT INTO "WorkPilotProject" (
@@ -587,7 +856,13 @@ export async function POST(req: Request) {
       "autoBillingTemplateMode",
       "autoBillingTemplate",
       "winterGritPackageItemId",
-      "winterGritPushPackageItemId"
+      "winterGritPushPackageItemId",
+      "reviewStatus",
+      "reviewedAt",
+      "reviewedByUserId",
+      "reviewedByName",
+      "reviewNote",
+      "reviewedProjectStatus"
     )
     VALUES (
       ${id},
@@ -632,7 +907,13 @@ export async function POST(req: Request) {
       ${cleanString(body.autoBillingTemplateMode) || "previous"},
       ${JSON.stringify(body.autoBillingTemplate ?? null)}::jsonb,
       ${cleanString(body.winterGritPackageItemId) || null},
-      ${cleanString(body.winterGritPushPackageItemId) || null}
+      ${cleanString(body.winterGritPushPackageItemId) || null},
+      ${reviewStatus},
+      ${reviewedAt},
+      ${reviewedByUserId},
+      ${reviewedByName},
+      ${reviewNote},
+      ${reviewedProjectStatus}
     )
     ON CONFLICT ("id") DO UPDATE SET
       "projectNumber" = EXCLUDED."projectNumber",
@@ -683,11 +964,31 @@ export async function POST(req: Request) {
       "autoBillingTemplate" = EXCLUDED."autoBillingTemplate",
       "winterGritPackageItemId" = EXCLUDED."winterGritPackageItemId",
       "winterGritPushPackageItemId" = EXCLUDED."winterGritPushPackageItemId",
+      "reviewStatus" = EXCLUDED."reviewStatus",
+      "reviewedAt" = EXCLUDED."reviewedAt",
+      "reviewedByUserId" = EXCLUDED."reviewedByUserId",
+      "reviewedByName" = EXCLUDED."reviewedByName",
+      "reviewNote" = EXCLUDED."reviewNote",
+      "reviewedProjectStatus" = EXCLUDED."reviewedProjectStatus",
       "updatedAt" = CURRENT_TIMESTAMP
     RETURNING *
   `;
 
   const savedProject = rows[0];
+  if (reviewWasInvalidated) {
+    await prisma.$executeRaw`
+      INSERT INTO "WorkPilotProjectReviewHistory" (
+        "id", "organizationId", "projectId", "eventType", "oldStatus",
+        "newStatus", "actorUserId", "actorName", "note"
+      )
+      VALUES (
+        ${randomUUID()}, ${organization.id}, ${savedProject.id},
+        'review_invalidated', 'approved', 'needs_review',
+        ${actor.id}, ${getActorName(actor)},
+        'Die fachliche Freigabe wurde automatisch aufgehoben, weil prüfrelevante Projektdaten geändert wurden.'
+      )
+    `;
+  }
   const entityLabel = `${savedProject.projectNumber || savedProject.id} | ${savedProject.title}`;
   if (currentProject) {
     await recordStatusTransition({
@@ -712,7 +1013,14 @@ export async function POST(req: Request) {
     });
   }
 
-  return NextResponse.json(formatLocalProject(rows[0]), { status: 201 });
+  const reviewHistory = await prisma.$queryRaw<ProjectReviewHistoryRow[]>`
+    SELECT *
+    FROM "WorkPilotProjectReviewHistory"
+    WHERE "organizationId" = ${organization.id}
+      AND "projectId" = ${savedProject.id}
+    ORDER BY "createdAt" DESC
+  `;
+  return NextResponse.json(formatLocalProject(savedProject, reviewHistory), { status: 201 });
 }
 
 export async function PATCH(req: Request) {

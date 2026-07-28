@@ -50,6 +50,8 @@ export type RecurringMonthDiagnosticResult = {
     currentPlannedHours: number;
     currentRequiredHours: number;
     currentStampedHours: number;
+    nextMonthPlannedHours: number;
+    nextMonthRequiredHours: number;
   };
   checkedRules: string[];
   summary: string[];
@@ -272,7 +274,7 @@ export function diagnoseRecurringProjectMonths(input: {
       id: "recurring-history-underplanned",
       severity: "warning",
       area: "Monatsplanung",
-      title: "Abgeschlossene Monate waren nicht vollständig geplant",
+      title: "In vergangenen Monaten wurden weniger Stunden geplant als vorgesehen",
       evidence: underplannedMonths
         .slice(-4)
         .map(
@@ -281,7 +283,7 @@ export function diagnoseRecurringProjectMonths(input: {
         )
         .join("; "),
       recommendation:
-        "Monatskontingente und bestätigte Termine prüfen. Historische Lücken nicht automatisch nachtragen, sondern Ursache und tatsächliche Leistung dokumentieren.",
+        "Öffne für die genannten Monate das Planungsboard und vergleiche die vorgesehenen Stunden mit den bestätigten Terminen und der tatsächlich erbrachten Leistung. Trage vergangene Termine nicht nur zur Korrektur der Anzeige nach, sondern dokumentiere den tatsächlichen Grund für die Abweichung.",
     });
   }
 
@@ -290,12 +292,12 @@ export function diagnoseRecurringProjectMonths(input: {
       id: "recurring-history-invoice-missing",
       severity: "critical",
       area: "Monatsabrechnung",
-      title: "Für abgeschlossene Leistungsmonate fehlt eine Rechnung",
+      title: "Für vergangene Leistungsmonate wurde keine fertige Rechnung gefunden",
       evidence:
-        `${missingInvoiceMonths.length} Monat/Monate ohne aktive Schlussrechnung: ` +
+        `${missingInvoiceMonths.length} bereits abgeschlossener Monat/abgeschlossene Monate haben keine aktive, fertiggestellte Rechnung: ` +
         missingInvoiceMonths.slice(-6).map(formatMonth).join(", ") + ".",
       recommendation:
-        "Die betroffenen Monate einzeln prüfen. Vor einer Rechnung Nachweise, Leistungsumfang und bereits abgerechnete Positionen kontrollieren.",
+        "Öffne im Projekt „Rechnungen“ und prüfe jeden genannten Monat einzeln. Vergleiche vor einer neuen Rechnung das gültige Angebot, die Leistungsnachweise und bereits abgerechnete Positionen, damit nichts doppelt berechnet wird.",
     });
   }
 
@@ -304,11 +306,11 @@ export function diagnoseRecurringProjectMonths(input: {
       id: "recurring-month-duplicate-invoices",
       severity: "critical",
       area: "Monatsabrechnung",
-      title: "Mehrere aktive Rechnungen liegen im selben Projektmonat",
+      title: "Für denselben Projektmonat gibt es mehrere aktive Rechnungen",
       evidence:
         `Betroffene Monate: ${duplicateInvoiceMonths.slice(-6).map(formatMonth).join(", ")}.`,
       recommendation:
-        "Entwurf, Faktura und mögliche Doppelabrechnung je Monat vergleichen. Keine Rechnung automatisch löschen oder stornieren.",
+        "Öffne im Projekt „Rechnungen“ und vergleiche für jeden genannten Monat Entwürfe und fertige Rechnungen. Kläre zuerst, ob eine Doppelabrechnung vorliegt; lösche oder storniere keine Rechnung ungeprüft.",
     });
   }
 
@@ -331,12 +333,47 @@ export function diagnoseRecurringProjectMonths(input: {
       id: "recurring-current-month-underplanned",
       severity: "warning",
       area: "Monatsplanung",
-      title: "Der aktuelle Monat ist noch nicht ausreichend bestätigt geplant",
+      title: "Für den aktuellen Monat sind noch nicht alle vorgesehenen Stunden fest eingeplant",
       evidence:
         `${formatMonth(evaluationMonth)}: ${formatHours(currentPlannedHours)} von ` +
         `${formatHours(currentRequiredHours)} bestätigt geplant.`,
       recommendation:
-        "Fehlende Termine im Planungsboard ergänzen beziehungsweise Terminwünsche bestätigen und das Monatskontingent gegen den realen Bedarf prüfen.",
+        "Öffne das Planungsboard, ergänze die fehlenden Termine oder bestätige vorhandene Terminwünsche. Prüfe außerdem, ob die hinterlegte Monatsvorgabe noch dem tatsächlichen Bedarf entspricht.",
+    });
+  }
+
+  const nextMonth = addMonths(evaluationMonth, 1);
+  const nextMonthActive = isMonthInside(nextMonth, runtimeStart, runtimeEnd);
+  const nextMonthRequiredHours = nextMonthActive
+    ? getRequiredHours(input.project, nextMonth)
+    : 0;
+  const nextMonthPlannedHours = nextMonthActive
+    ? getConfirmedPlanningHours(input.planningEntries, nextMonth)
+    : 0;
+  const nextMonthUnderplanned =
+    nextMonthActive &&
+    nextMonthRequiredHours > 0 &&
+    nextMonthPlannedHours + 0.01 < nextMonthRequiredHours;
+  const nextMonthUnplannedMonthlyFlat =
+    nextMonthActive &&
+    monthlyFlat &&
+    nextMonthRequiredHours === 0 &&
+    nextMonthPlannedHours === 0;
+  if (nextMonthUnderplanned || nextMonthUnplannedMonthlyFlat) {
+    issues.push({
+      id: nextMonthUnderplanned
+        ? "recurring-next-month-underplanned"
+        : "recurring-next-month-unplanned",
+      severity: "warning",
+      area: "Vorausplanung",
+      title: nextMonthUnderplanned
+        ? "Für den nächsten Projektmonat sind noch nicht alle vorgesehenen Stunden geplant"
+        : "Für den nächsten Monat der Pauschalleistung ist noch kein Termin geplant",
+      evidence: nextMonthUnderplanned
+        ? `${formatMonth(nextMonth)}: ${formatHours(nextMonthPlannedHours)} von ${formatHours(nextMonthRequiredHours)} bestätigt geplant.`
+        : `${formatMonth(nextMonth)} liegt innerhalb der Projektlaufzeit, enthält aber noch keinen bestätigten Termin.`,
+      recommendation:
+        "Öffne den nächsten Monat im Planungsboard und plane beziehungsweise bestätige die benötigten Termine. Wird die Leistung bewusst nur bei Bedarf erbracht, dokumentiere diesen Grund nachvollziehbar im Projekt.",
     });
   }
 
@@ -362,18 +399,20 @@ export function diagnoseRecurringProjectMonths(input: {
       issues.push({
         id: "monthly-flat-previous-invoice-missing",
         severity: "critical",
-        area: "Stapelabrechnung",
-        title: "Die Monatspauschale ist für die Stapelabrechnung blockiert",
+        area: "Automatische Monatsrechnung",
+        title: "Die automatische Monatsrechnung kann nicht erstellt werden",
         evidence:
-          `Für ${formatMonth(previousMonth)} fehlt die aktive Vormonatsrechnung, ` +
-          `die als Vorlage für ${formatMonth(evaluationMonth)} benötigt wird.`,
+          `Für ${formatMonth(previousMonth)} wurde keine aktive Rechnung gefunden. WorkPilot360 benötigt genau diese Rechnung als Vorlage für die automatische Rechnung von ${formatMonth(evaluationMonth)} und darf keinen Monat überspringen.`,
         recommendation:
-          "Vormonat fachlich prüfen und gegebenenfalls korrekt fakturieren. Keine Vorlage aus einem anderen Monat oder Projekt übernehmen.",
+          "Öffne im Projekt „Rechnungen“ und prüfe zuerst den Vormonat. Erstelle beziehungsweise stelle dessen Rechnung nur nach Prüfung von Angebot und Leistung fertig. Verwende keine Rechnung aus einem anderen Monat oder Projekt als Ersatzvorlage.",
       });
     }
   }
 
   const summary = [
+    nextMonthActive
+      ? `Folgemonat ${formatMonth(nextMonth)}: ${formatHours(nextMonthPlannedHours)} bestätigt geplant.`
+      : "Der Folgemonat liegt außerhalb der Projektlaufzeit.",
     `${historicalMonths.length} abgeschlossene Projektmonate geprüft.`,
     `${underplannedMonths.length} Planungsmonat(e) unter Soll.`,
     ...(canInspectInvoices
@@ -397,8 +436,11 @@ export function diagnoseRecurringProjectMonths(input: {
       currentPlannedHours,
       currentRequiredHours,
       currentStampedHours,
+      nextMonthPlannedHours,
+      nextMonthRequiredHours,
     },
     checkedRules: [
+      "Vorausplanung des nächsten aktiven Projektmonats",
       "Projektlaufzeit und betrachtete Monatskette",
       "Bestätigte Planung gegen Monatskontingent",
       "Gestempelte Stunden je Projektmonat",
@@ -406,7 +448,7 @@ export function diagnoseRecurringProjectMonths(input: {
         ? [
             "Aktive Monatsrechnungen und Doppelungen",
             ...(monthlyFlat && input.project.autoBillingEnabled
-              ? ["Vormonatsvorlage der Stapelabrechnung"]
+              ? ["Vormonatsvorlage für die automatische Monatsrechnung"]
               : []),
           ]
         : []),

@@ -62,6 +62,31 @@ describe("JARVIS central intent decision", () => {
     });
   });
 
+  it.each([
+    "Analysiere unsere Stundenverrechnungssätze.",
+    "Welche Stundenleistungen sollten wir preislich prüfen?",
+    "Wo sollten wir unsere Stundensätze erhöhen?",
+  ])("routes organization-wide service-rate questions to management: %s", (question) => {
+    expect(resolveJarvisIntentDecision(question)).toMatchObject({
+      state: "resolved",
+      domain: "management",
+      clarificationReasons: [],
+    });
+  });
+
+  it.each([
+    "Analysiere unsere Materialien und Artikel.",
+    "Welche Materialien sollten wir preislich prüfen?",
+    "Welche Artikel verkaufen wir zu günstig?",
+    "Wo stimmen Materialmenge und Lagerentnahme nicht überein?",
+  ])("routes organization-wide material questions to management: %s", (question) => {
+    expect(resolveJarvisIntentDecision(question)).toMatchObject({
+      state: "resolved",
+      domain: "management",
+      clarificationReasons: [],
+    });
+  });
+
   it("clarifies multiple record targets that the read adapters cannot safely combine", () => {
     expect(
       resolveJarvisIntentDecision("Zeige mir die offenen Angebote und Rechnungen.")
