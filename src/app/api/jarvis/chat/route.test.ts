@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   resolveJarvisReadRequest: vi.fn(),
   resolveJarvisSystemHelp: vi.fn(),
   createJarvisAccessProfile: vi.fn(),
+  resolveJarvisIntentDecision: vi.fn(),
+  buildJarvisIntentClarification: vi.fn(),
 }));
 
 vi.mock("@/lib/demo/context", () => ({
@@ -51,6 +53,14 @@ vi.mock("@/lib/jarvis/security", () => ({
   createJarvisAccessProfile: mocks.createJarvisAccessProfile,
 }));
 
+vi.mock("@/lib/jarvis/intent-decision", () => ({
+  resolveJarvisIntentDecision: mocks.resolveJarvisIntentDecision,
+}));
+
+vi.mock("@/lib/jarvis/intent-clarification", () => ({
+  buildJarvisIntentClarification: mocks.buildJarvisIntentClarification,
+}));
+
 import { POST } from "@/app/api/jarvis/chat/route";
 
 describe("POST /api/jarvis/chat", () => {
@@ -68,6 +78,19 @@ describe("POST /api/jarvis/chat", () => {
     });
     mocks.sanitizeJarvisSurfaceContext.mockReturnValue({ module: "Projekte" });
     mocks.createJarvisAccessProfile.mockReturnValue({ profile: true });
+    mocks.resolveJarvisIntentDecision.mockReturnValue({
+      state: "resolved",
+      domain: "system",
+      confidence: "high",
+      candidates: [],
+      clarificationReasons: [],
+      goals: [],
+      entities: [],
+      timeScopes: [],
+      recordFilter: "all",
+      segments: [],
+    });
+    mocks.buildJarvisIntentClarification.mockReturnValue(undefined);
     mocks.resolveJarvisProjectHealthRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisPersonDiagnosticRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisPersonSummaryRequest.mockResolvedValue(undefined);
@@ -111,6 +134,66 @@ describe("POST /api/jarvis/chat", () => {
       organizationId: "organization-1",
       accessProfile: { profile: true },
     });
+    expect(mocks.resolveJarvisSystemHelp).not.toHaveBeenCalled();
+  });
+
+  it("clarifies a combined intent before any specialized resolver loads data", async () => {
+    const decision = {
+      state: "clarification",
+      domain: "sales",
+      confidence: "medium",
+      candidates: [],
+      clarificationReasons: ["multiple_domains"],
+      goals: ["analyze"],
+      entities: ["customer"],
+      timeScopes: [],
+      recordFilter: "all",
+      segments: [
+        "Welche Kunden soll ich nachfassen",
+        "wie ist unsere Liquidität?",
+      ],
+    };
+    mocks.resolveJarvisIntentDecision.mockReturnValue(decision);
+    mocks.buildJarvisIntentClarification.mockReturnValue({
+      type: "clarification",
+      topicId: "intent.clarification",
+      message: "Welchen Teil soll JARVIS zuerst bearbeiten?",
+      choices: [
+        {
+          id: "intent-domain-sales-1",
+          label: "Vertrieb & Kundenchancen",
+          prompt: "Welche Kunden soll ich nachfassen.",
+        },
+      ],
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message:
+            "Welche Kunden soll ich nachfassen und wie ist unsere Liquidität?",
+          context: {},
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      type: "clarification",
+      topicId: "intent.clarification",
+      deterministic: true,
+    });
+    expect(mocks.buildJarvisIntentClarification).toHaveBeenCalledWith(
+      decision,
+      { profile: true }
+    );
+    expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisPersonSummaryRequest).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisSystemHelp).not.toHaveBeenCalled();
   });
 

@@ -1,5 +1,21 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS zentraler Intent-Entscheider 2026-07-28: Vor den spezialisierten
+  Projekt-, Personen-, Vertriebs-, Lese- und Systemhilfe-Resolvern bewertet
+  JARVIS eine Frage jetzt deterministisch nach Domäne, Nutzerziel,
+  Fachobjekten, Zeitraum und getrennten Satzteilen. Die Entscheidung enthält
+  eine nachvollziehbare Konfidenz und belegende Signale. Kombinierte Fragen
+  aus System, Vertrieb und BWL, mehrere gleichzeitig angeforderte
+  Datensatzarten sowie widersprüchliche Zeiträume werden vor jeder
+  Datenabfrage mit typisierten klickbaren Optionen geklärt. Geheimnis-,
+  Prompt-Injection- und Lohnsignale erzwingen weiterhin den abgesicherten
+  Systempfad und können nicht durch ein zusätzliches BWL-Schlüsselwort
+  umgangen werden. Klärungsoptionen verwenden die echte Action Registry und
+  die Schnittmenge aus Sitzungs- und effektiver Rolle; die bestehende
+  Vertriebsanalyse bleibt dadurch GF-exklusiv. Eindeutige Fragen laufen
+  unverändert in die vorhandenen Fachresolver. Rein lesend, ohne OpenAI-,
+  Prisma- oder Datenbankänderung.
+
 - HERO-Aktivprojekt-Cutover 2026-07-27: Nach vollständigen, verifizierten
   Datenbank- und Quellbackups wurde der alte gemischte Fünfer-Pilot
   `cms3n6886000xw4g8vfe1voip` sicher zurückgenommen. Die Rücknahme wurde lokal

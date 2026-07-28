@@ -972,6 +972,17 @@ beantwortet. Mehrdeutige WorkPilot-Fragen führen zu einer konkreten,
 rollengerechten Rückfrage und können danach ohne Verlust von Datensatz,
 Zeitraum oder Nutzerziel fortgesetzt werden.
 
+Umsetzungsstand 28.07.2026: Der zentrale, deterministische Intent-Entscheider
+ist als vorgeschaltete Ebene aktiv. Er bewertet Domäne, Nutzerziel,
+Fachobjekte, Zeiträume und getrennte Satzteile mit nachvollziehbarer
+Konfidenz. Kombinierte Domänen, mehrere nicht sicher gemeinsam lesbare
+Datensatzarten und widersprüchliche Zeiträume führen vor jeder Datenabfrage
+zu rollengerecht gefilterten, klickbaren Rückfragen. Sicherheits- und
+Lohnsignale haben absolute Priorität. Als nächste Ausbaustufe folgen die
+gezielte Fortsetzung nach der Auswahl über mehrere Dialogschritte, begrenzte
+Rückfrageschleifen sowie systematische Mehrfachabsichten innerhalb derselben
+Fachdomäne.
+
 ### Phase 3b: Spracheingabe und Sprachausgabe
 
 - Mikrofon- und Berechtigungsoberfläche,
