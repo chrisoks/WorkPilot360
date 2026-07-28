@@ -117,6 +117,25 @@ describe("JARVIS intent orchestrator V4", () => {
     });
   });
 
+  it("uses the open project for a diagnostic stamp question without global scope", () => {
+    const question = "Gibt es bei den Stempelungen Fehler?";
+    const plan = resolveJarvisRoutePlan({
+      question,
+      decision: resolveJarvisIntentDecision(question),
+      context: { recordType: "project", recordId: "project-1" },
+      ai: ai({
+        intent: "diagnose",
+        entity: "employee",
+        scope: "none",
+      }),
+    });
+
+    expect(plan).toMatchObject({
+      preferProjectHealth: true,
+      preferRead: false,
+    });
+  });
+
   it("routes a customer summary before project health despite project screen context", () => {
     const question = "Was weißt du über Klaus Testmann?";
     const plan = resolveJarvisRoutePlan({

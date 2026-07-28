@@ -2646,6 +2646,15 @@ export async function resolveJarvisProjectHealthRequest(input: {
   const noEvidenceLabel =
     requestedScope === "stamps" && timeEntries.length === 0
       ? "Stempelungen"
+      : requestedScope === "planning" &&
+          !recurring &&
+          projectPlanningEntries.filter(
+            (entry) => entry.date >= healthCheckDateKey
+          ).length === 0 &&
+          /\b(?:(?:nachsten|kommenden)\s+monat|folgemonat)\b/.test(
+            normalizedQuestion
+          )
+        ? "Planung im Folgemonat"
       : requestedScope === "tasks" && (visibleTasks?.length ?? 0) === 0
         ? "Aufgaben"
         : requestedScope === "commercial" &&

@@ -6,9 +6,11 @@ const mocks = vi.hoisted(() => ({
   sessionBoundActorResponse: vi.fn(),
   sanitizeJarvisSurfaceContext: vi.fn(),
   resolveJarvisProjectHealthRequest: vi.fn(),
+  resolveJarvisPersonDiagnosticIntent: vi.fn(),
   resolveJarvisPersonDiagnosticRequest: vi.fn(),
   resolveJarvisPersonIntent: vi.fn(),
   resolveJarvisPersonSummaryRequest: vi.fn(),
+  resolveJarvisProjectReviewInventoryIntent: vi.fn(),
   resolveJarvisProjectReviewInventoryRequest: vi.fn(),
   resolveJarvisOrganizationMaterialRequest: vi.fn(),
   resolveJarvisOrganizationServiceRateRequest: vi.fn(),
@@ -58,6 +60,7 @@ vi.mock("@/lib/jarvis/read-model", () => ({
 }));
 
 vi.mock("@/lib/jarvis/person-summary", () => ({
+  resolveJarvisPersonDiagnosticIntent: mocks.resolveJarvisPersonDiagnosticIntent,
   resolveJarvisPersonDiagnosticRequest: mocks.resolveJarvisPersonDiagnosticRequest,
   resolveJarvisPersonIntent: mocks.resolveJarvisPersonIntent,
   resolveJarvisPersonSummaryRequest: mocks.resolveJarvisPersonSummaryRequest,
@@ -94,6 +97,8 @@ vi.mock("@/lib/jarvis/organization-material-analysis", () => ({
 }));
 
 vi.mock("@/lib/jarvis/organization-project-review-analysis", () => ({
+  resolveJarvisProjectReviewInventoryIntent:
+    mocks.resolveJarvisProjectReviewInventoryIntent,
   resolveJarvisProjectReviewInventoryRequest:
     mocks.resolveJarvisProjectReviewInventoryRequest,
 }));
@@ -166,12 +171,14 @@ describe("POST /api/jarvis/chat", () => {
     mocks.buildJarvisProjectSequenceClarification.mockReturnValue(undefined);
     mocks.buildJarvisProjectSequenceContinuation.mockReturnValue([]);
     mocks.resolveJarvisProjectHealthRequest.mockResolvedValue(undefined);
+    mocks.resolveJarvisPersonDiagnosticIntent.mockReturnValue(undefined);
     mocks.resolveJarvisPersonDiagnosticRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisPersonIntent.mockReturnValue(undefined);
     mocks.resolveJarvisPersonSummaryRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisProjectReviewInventoryRequest.mockResolvedValue(
       undefined
     );
+    mocks.resolveJarvisProjectReviewInventoryIntent.mockReturnValue(undefined);
     mocks.resolveJarvisOrganizationMaterialRequest.mockResolvedValue(
       undefined
     );
@@ -1846,5 +1853,124 @@ describe("POST /api/jarvis/chat", () => {
     });
     expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisSystemHelp).not.toHaveBeenCalled();
+  });
+
+  it("keeps deterministic project-review inventory ahead of AI variance", async () => {
+    mocks.resolveJarvisProjectReviewInventoryIntent.mockReturnValue({
+      state: "needs_review",
+    });
+    mocks.resolveJarvisProjectReviewInventoryRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "management.project-review-inventory",
+      message: "160 Projekte müssen fachlich geprüft werden.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Wie viele Projekte müssen noch fachlich geprüft werden?",
+        }),
+      })
+    );
+
+    expect((await response.json()).topicId).toBe(
+      "management.project-review-inventory"
+    );
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+  });
+
+  it("does not let a raw AI clarification override a clear project diagnostic", async () => {
+    mocks.resolveJarvisIntentDecision.mockReturnValue({
+      state: "resolved",
+      domain: "system",
+      confidence: "high",
+      candidates: [],
+      clarificationReasons: [],
+      goals: ["diagnose"],
+      entities: ["project"],
+      timeScopes: [],
+      recordFilter: "all",
+      segments: [],
+    });
+    mocks.classifyJarvisIntentWithAi.mockResolvedValue({
+      intent: "unclear",
+      domain: "system",
+      entity: "project",
+      scope: "explicit_record",
+      helpTopicId: "none",
+      confidence: "high",
+      needsClarification: true,
+      usesCurrentContext: false,
+      actionKind: "none",
+    });
+    mocks.resolveJarvisProjectHealthRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "project.health",
+      message: "HAS-1 wurde vollständig geprüft.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Und jetzt prüfe HAS-1.",
+        }),
+      })
+    );
+
+    expect((await response.json()).topicId).toBe("project.health");
+  });
+
+  it("fails a deterministic direct action closed when AI misses it", async () => {
+    mocks.resolveJarvisIntentDecision.mockReturnValue({
+      state: "resolved",
+      domain: "system",
+      confidence: "high",
+      candidates: [],
+      clarificationReasons: [],
+      goals: ["change"],
+      entities: ["task"],
+      timeScopes: [],
+      recordFilter: "all",
+      segments: [],
+    });
+    mocks.classifyJarvisIntentWithAi.mockResolvedValue({
+      intent: "unclear",
+      domain: "system",
+      entity: "task",
+      scope: "current_record",
+      helpTopicId: "none",
+      confidence: "high",
+      needsClarification: true,
+      usesCurrentContext: true,
+      actionKind: "none",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Lege für den Projektverantwortlichen eine Aufgabe an.",
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      type: "clarification",
+      topicId: "intent.action-not-executed",
+    });
+    expect(payload.message).toContain("nicht ausgeführt");
+    expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
   });
 });

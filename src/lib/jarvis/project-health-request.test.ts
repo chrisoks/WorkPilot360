@@ -175,6 +175,29 @@ describe("resolveJarvisProjectHealthRequest", () => {
     expect(serialized).not.toContain("stabil");
   });
 
+  it("does not award a planning score without a next-month basis", async () => {
+    const response = await resolveJarvisProjectHealthRequest({
+      question: "Muss ich bei diesem Projekt nächsten Monat noch etwas planen?",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "manager-1",
+        role: Role.GESCHAEFTSFUEHRER,
+      }),
+      context: { recordType: "project", recordId: "project-1" },
+    });
+
+    expect(response).toMatchObject({
+      type: "answer",
+      topicId: "project.scope.no-evidence",
+      structured: {
+        facts: expect.arrayContaining([
+          { label: "Bewertung", value: "Nicht bewertbar" },
+        ]),
+      },
+    });
+    expect(JSON.stringify(response)).not.toContain("100 / 100");
+  });
+
   it("does not load or expose financial and payroll checks for employees", async () => {
     const response = await resolveJarvisProjectHealthRequest({
       question: "Führe den vollständigen Projekt-Gesundheitscheck aus.",

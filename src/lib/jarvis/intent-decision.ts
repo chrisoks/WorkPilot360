@@ -217,7 +217,7 @@ function collectGoals(value: string): JarvisIntentGoal[] {
   );
   add(
     "diagnose",
-    /\b(pruf|check|fehl|falsch|warum|ursache|auffallig|stimm|gesund|hakt|schief)\w*\b/.test(
+    /\b(pruf|check|fehl|falsch|warum|ursache|auffallig|stimm|gesund|hakt|schief|abschliess|abzuschliess)\w*\b/.test(
       value
     )
   );

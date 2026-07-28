@@ -4,6 +4,12 @@ import { resolveJarvisCapabilityGap } from "@/lib/jarvis/capability-gap";
 describe("resolveJarvisCapabilityGap", () => {
   it.each([
     "Wie viele offene Posten haben wir?",
+    "Wie hoch sind unsere offenen Posten?",
+    "Wie viele Rechnungsentwürfe gibt es aktuell?",
+    "Welche Angebote sind seit mehr als 30 Tagen offen?",
+    "Wie stark sind unsere Mitarbeiter aktuell ausgelastet?",
+    "Welche Planungsgruppe ist nächste Woche überlastet?",
+    "Welche Mitarbeiter haben im August zu wenig Arbeit?",
     "Welche Kunden haben offene Angebote, aber seit 30 Tagen keine Aktivität?",
     "Welche Projekte haben Zeiten, aber noch keine Rechnung?",
     "Welche Projekte laufen ohne gültiges Angebot?",

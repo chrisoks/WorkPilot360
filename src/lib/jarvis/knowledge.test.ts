@@ -41,6 +41,26 @@ describe("JARVIS system help", () => {
     expect(result.message).toContain("Abschlussprüfung");
   });
 
+  it.each([
+    ["Wo sehe ich offene Rechnungen?", "invoice.open"],
+    [
+      "Wie wird bei einem Dauerläufer die nächste Monatsrechnung erzeugt?",
+      "recurring.next-invoice",
+    ],
+    [
+      "Wo sehe ich den Kommentar zu einer Arbeitsunterbrechung?",
+      "stamp.interruption-comment",
+    ],
+  ])("answers the navigation family %s", (question, topicId) => {
+    expect(
+      resolveJarvisSystemHelp(
+        question,
+        { module: "Projektakte", recordType: "project" },
+        leadershipAccess
+      )
+    ).toMatchObject({ type: "answer", topicId });
+  });
+
   it("asks which project kind applies to a manual time entry", () => {
     const result = resolveJarvisSystemHelp("Wie trage ich einen Zeiteintrag ein?", {}, employeeAccess);
     expect(result.type).toBe("clarification");

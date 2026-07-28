@@ -42,6 +42,16 @@ const timeToInvoiceCases = PROJECT_REFERENCES.flatMap((reference) => [
 ]);
 
 describe("JARVIS question semantics evaluation matrix", () => {
+  it.each([
+    "Was läuft bei HAS-1 gerade schief?",
+    "Ist MKG-209 insgesamt gesund?",
+    "Wo hakt es bei diesem Projekt?",
+    "Gib mir bitte nur einen kurzen Überblick über MKG-209.",
+    "Hilf mir, MKG-209 korrekt abzuschließen.",
+  ])("treats a broad project assessment as a full check: %s", (question) => {
+    expect(analyzeJarvisQuestion(question).projectScopes).toEqual(["full"]);
+  });
+
   it.each(MONTHS)(
     "infers the current year for a bare billing month %s",
     (month, monthKey) => {

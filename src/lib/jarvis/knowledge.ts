@@ -213,10 +213,36 @@ const TOPICS: JarvisTopic[] = [
       "status einer rechnung",
       "rechnung finden",
       "wo finde ich die rechnung",
+      "wo sehe ich offene rechnungen",
+      "offene rechnungen sehen",
     ],
     surfaces: ["Projektakte", "Buchhaltung"],
     answer:
       "Öffne das betreffende Projekt und dort den Bereich „Rechnungen“. Wähle die gewünschte Rechnung aus und prüfe Status, Rechnungsdatum, Leistungsmonat und Positionen. Projektübergreifend findest du Rechnungen zusätzlich unter „Buchhaltung“.",
+  },
+  {
+    id: "recurring.next-invoice",
+    title: "Nächste Monatsrechnung beim Dauerläufer",
+    keywords: [
+      "nächste monatsrechnung erzeugt",
+      "dauerläufer nächste monatsrechnung",
+      "wie wird die nächste monatsrechnung erzeugt",
+    ],
+    surfaces: ["Projektakte", "Buchhaltung"],
+    answer:
+      "Bei einem Stunden-Dauerläufer erzeugt die erste vollständig zugeordnete Stempelung eines Leistungsmonats genau einen Rechnungsentwurf; weitere passende Zeiten werden diesem Entwurf zugeordnet. Bei einer Monatspauschale folgt die Monatskette der aktiven Rechnung des direkten Vormonats und darf keinen Monat überspringen. Prüfe vor dem Fertigstellen immer Projektart, Abrechnungsmodell, Leistungsmonat und den vorhandenen Entwurf, damit keine Doppelrechnung entsteht.",
+  },
+  {
+    id: "stamp.interruption-comment",
+    title: "Kommentar einer Arbeitsunterbrechung finden",
+    keywords: [
+      "kommentar zu einer arbeitsunterbrechung",
+      "grund der unterbrechung",
+      "unterbrechung kommentar",
+    ],
+    surfaces: ["Projektakte"],
+    answer:
+      "Öffne im Projekt „Termine & Stempelungen“ und wähle den betroffenen Zeiteintrag. Den dokumentierten Grund findest du in den Details der Unterbrechung beziehungsweise im Kommentarfeld des Eintrags. Prüfe zusätzlich eine verknüpfte Klärungsaufgabe und das Logbuch, falls der Arbeitsablauf dort fortgeführt wurde.",
   },
   {
     id: "offer.tracking",
@@ -674,6 +700,15 @@ export function resolveJarvisSystemHelp(
   }
   const systemMapHelp = getSystemMapHelp(cleaned, context, accessProfile);
   if (systemMapHelp) return systemMapHelp;
+  const matchedTopicId = findJarvisExactHelpTopicId(cleaned, context);
+  if (matchedTopicId) {
+    return resolveJarvisSystemHelpTopic(
+      matchedTopicId,
+      cleaned,
+      context,
+      accessProfile
+    );
+  }
   if (
     authorization.dataClass === "payroll" ||
     authorization.dataClass === "personnel" ||
@@ -686,9 +721,7 @@ export function resolveJarvisSystemHelp(
     };
   }
 
-  const matchedTopicId = findJarvisExactHelpTopicId(cleaned, context);
-
-  if (!matchedTopicId) {
+  {
     const hasWorkPilotSignal = looksLikeWorkPilotQuestion(cleaned);
     const choices =
       hasWorkPilotSignal || accessProfile
@@ -710,12 +743,6 @@ export function resolveJarvisSystemHelp(
         "Dazu habe ich noch keine freigegebene WorkPilot-Anleitung. Formuliere bitte kurz, welche Funktion oder welchen Reiter du bedienen möchtest.",
     };
   }
-  return resolveJarvisSystemHelpTopic(
-    matchedTopicId,
-    cleaned,
-    context,
-    accessProfile
-  );
 }
 
 export function resolveJarvisSystemHelpTopic(

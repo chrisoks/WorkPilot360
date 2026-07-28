@@ -141,7 +141,15 @@ export function resolveJarvisRoutePlan(input: {
       Boolean(input.ai?.usesCurrentContext));
   const projectScopedEntity =
     explicitProject ||
-    (usesCurrentContext && context.recordType === "project");
+    (usesCurrentContext && context.recordType === "project") ||
+    (
+      context.recordType === "project" &&
+      !organizationOrCollection &&
+      ["diagnose", "analyze"].includes(intent) &&
+      /\b(?:projekt|stempel|arbeitszeit|planung|termin|angebot|rechnung|abrechnung|automatik)\w*\b/iu.test(
+        input.question
+      )
+    );
   const targetIsNonProject =
     !projectScopedEntity &&
     entity !== "none" &&

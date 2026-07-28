@@ -12,6 +12,7 @@ import {
   type JarvisAiIntentClassification,
 } from "@/lib/jarvis/ai-intent-fallback";
 import {
+  resolveJarvisPersonDiagnosticIntent,
   resolveJarvisPersonDiagnosticRequest,
   resolveJarvisPersonIntent,
   resolveJarvisPersonSummaryRequest,
@@ -23,7 +24,10 @@ import {
 } from "@/lib/jarvis/sales-analysis";
 import { resolveJarvisOrganizationMaterialRequest } from "@/lib/jarvis/organization-material-analysis";
 import { resolveJarvisOrganizationServiceRateRequest } from "@/lib/jarvis/organization-service-rate-analysis";
-import { resolveJarvisProjectReviewInventoryRequest } from "@/lib/jarvis/organization-project-review-analysis";
+import {
+  resolveJarvisProjectReviewInventoryIntent,
+  resolveJarvisProjectReviewInventoryRequest,
+} from "@/lib/jarvis/organization-project-review-analysis";
 import { resolveJarvisProjectHealthRequest } from "@/lib/jarvis/project-health";
 import {
   authorizeJarvisQuestion,
@@ -337,6 +341,7 @@ export async function POST(req: Request) {
       sequencePayload.type === "clarification" &&
       previousDialogState?.clarification?.topicId ===
         sequencePayload.topicId &&
+      sequencePayload.topicId !== "intent.ai.action-clarification" &&
       (previousDialogState?.clarification?.depth ?? 0) >= 2
         ? {
             ...sequencePayload,
@@ -378,13 +383,28 @@ export async function POST(req: Request) {
   if (accessPolicyResponse) {
     return respond(accessPolicyResponse);
   }
+  const projectReviewInventoryIntent =
+    resolveJarvisProjectReviewInventoryIntent(message);
+  if (projectReviewInventoryIntent) {
+    const projectReviewInventoryResponse =
+      await resolveJarvisProjectReviewInventoryRequest({
+        question: message,
+        organizationId: organization.id,
+        accessProfile,
+      });
+    if (projectReviewInventoryResponse) {
+      return respond(projectReviewInventoryResponse, "management");
+    }
+  }
   const routingContext = conversationContext ?? context;
   const aiIntentClassification = await classifyJarvisIntentWithAi({
     question: message,
     decision: intentDecision,
     context: routingContext,
   });
-  const deterministicPersonIntent = resolveJarvisPersonIntent(message);
+  const deterministicPersonIntent =
+    resolveJarvisPersonIntent(message) ??
+    resolveJarvisPersonDiagnosticIntent(message);
   const routePlan = resolveJarvisRoutePlan({
     question: message,
     decision: intentDecision,
@@ -401,7 +421,23 @@ export async function POST(req: Request) {
     Boolean(exactHelpTopicId) &&
     looksLikeDeterministicHelpRequest(message) &&
     !directActionRequest;
-  if (aiIntentClassification && !deterministicHelpRequest && !deterministicPersonIntent) {
+  if (
+    directActionRequest &&
+    aiIntentClassification?.intent !== "prepare_action"
+  ) {
+    return respond({
+      type: "clarification",
+      topicId: "intent.action-not-executed",
+      message:
+        "Du möchtest, dass JARVIS direkt etwas ändert oder anlegt. Diese Aktion wurde nicht ausgeführt. Die ausführende Funktion ist noch nicht freigegeben; ich kann dir stattdessen den sicheren Ablauf in WorkPilot360 erklären.",
+    });
+  }
+  if (
+    aiIntentClassification &&
+    (routePlan.prepareAction || routePlan.needsClarification) &&
+    !deterministicHelpRequest &&
+    !deterministicPersonIntent
+  ) {
     const aiClarification = buildAiIntentClarification(
       aiIntentClassification,
       routingContext

@@ -3,9 +3,12 @@ import { normalizeJarvisIntentText } from "@/lib/jarvis/intent-text";
 import type { JarvisReadResponse } from "@/lib/jarvis/read-model";
 
 const ORGANIZATION_ANALYSIS_PATTERNS = [
-  /\boffene posten\b/,
+  /\boffen\w*\s+posten\b/,
   /\b(?:rechnungsentwurf|rechnungsentwurfe)\b.*\b(?:offen|insgesamt|wie viele)\b/,
+  /\bwie viele\b.*\brechnungsentwurf\w*\b/,
   /\b(?:offene|uberfallige)\b.*\b(?:forderung|posten)\b/,
+  /\bangebot\w*\b.*\b(?:mehr als|alter als)\b.*\b\d+\s+tag\w*\b.*\boffen\b/,
+  /\b(?:auslastung|ausgelastet|uberlastet|zu wenig arbeit)\b/,
   /\bwelche kunden\b.*\b(?:keine aktivitat|nichts passiert|lange nichts|nachfass)/,
   /\bwelche projekte\b.*\b(?:zeiten|stempel)\b.*\bkeine rechnung\b/,
   /\bwelche projekte\b.*\b(?:ohne|kein\w*)\b.*\b(?:gültig\w*\s+)?angebot\b/,

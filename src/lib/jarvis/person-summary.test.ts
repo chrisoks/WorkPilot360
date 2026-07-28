@@ -89,6 +89,10 @@ describe("JARVIS person summary", () => {
       query: "klaus testmann",
       scope: "projects",
     });
+    expect(resolveJarvisPersonIntent("Wie viele Projekte hat Klaus Testmann?")).toEqual({
+      query: "klaus testmann",
+      scope: "projects",
+    });
     expect(resolveJarvisPersonIntent("Zeige mir Angebote und Rechnungen von Klaus Testmann.")).toEqual({
       query: "klaus testmann",
       scope: "commercial",
@@ -105,6 +109,30 @@ describe("JARVIS person summary", () => {
       query: "klaus testmann",
       scope: "contact",
     });
+    expect(
+      resolveJarvisPersonIntent(
+        "Welche Kontaktdaten sind bei Klaus Testmann hinterlegt?"
+      )
+    ).toEqual({
+      query: "klaus testmann",
+      scope: "contact",
+    });
+    expect(
+      resolveJarvisPersonIntent(
+        "Wann hatten wir zuletzt Kontakt mit Klaus Testmann?"
+      )
+    ).toEqual({
+      query: "klaus testmann",
+      scope: "activities",
+    });
+    expect(resolveJarvisPersonIntent("Was weist du über Klaus Testman?")).toEqual({
+      query: "klaus testman",
+    });
+    expect(
+      resolveJarvisPersonIntent(
+        "Gib mir bitte nur einen kurzen Überblick über MKG-209."
+      )
+    ).toBeUndefined();
     expect(resolveJarvisPersonIntent("Was weißt du über WorkPilot360?")).toBeUndefined();
     expect(resolveJarvisPersonIntent("Wie lege ich einen Kunden an?")).toBeUndefined();
   });

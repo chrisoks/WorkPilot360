@@ -44,6 +44,7 @@ describe("JARVIS central intent decision", () => {
     "Ist MKG-209 insgesamt gesund?",
     "Wo hakt es bei diesem Projekt?",
     "Was läuft bei HAS-1 gerade schief?",
+    "Hilf mir, MKG-209 korrekt abzuschließen.",
   ])("recognizes broad project diagnostics: %s", (question) => {
     expect(resolveJarvisIntentDecision(question).goals).toContain("diagnose");
   });

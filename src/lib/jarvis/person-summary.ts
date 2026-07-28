@@ -15,6 +15,7 @@ import {
   createJarvisDialogChoice,
   type JarvisDialogChoice,
 } from "@/lib/jarvis/dialog";
+import { extractJarvisProjectReferences } from "@/lib/jarvis/dialog-state";
 
 type JarvisPersonIntent = {
   query: string;
@@ -87,13 +88,16 @@ type DiagnosticProjectRow = ProjectRow & {
 };
 
 const PERSON_QUESTION_PATTERNS = [
-  /was\s+(?:weisst|weiss)\s+du(?:\s+denn)?(?:\s+alles)?\s+uber\s+(.+)/i,
+  /was\s+(?:weisst|weiss|weist)\s+du(?:\s+denn)?(?:\s+alles)?\s+uber\s+(.+)/i,
   /was\s+ist\s+dir(?:\s+alles)?\s+uber\s+(.+)\s+bekannt/i,
   /erzahl\s+mir(?:\s+bitte)?(?:\s+etwas|\s+alles)?\s+uber\s+(.+)/i,
   /sag\s+mir(?:\s+bitte)?(?:\s+etwas|\s+alles)?\s+uber\s+(.+)/i,
   /was\s+kannst\s+du\s+mir\s+(?:uber|zu)\s+(.+?)\s+sagen/i,
   /(?:gib|zeig|zeige|nenn)\s+mir\s+.+?\s+(?:uber|zu|von|bei)\s+(.+)/i,
   /welche\s+projekte\s+hat\s+(.+)/i,
+  /wie\s+viele\s+projekte\s+hat\s+(.+)/i,
+  /welche\s+kontaktdaten\s+sind\s+bei\s+(.+?)\s+hinterlegt/i,
+  /wann\s+hatten\s+wir\s+zuletzt\s+kontakt\s+mit\s+(.+)/i,
   /wie\s+ist\s+der\s+stand\s+bei\s+(.+)/i,
 ];
 
@@ -139,7 +143,7 @@ function resolvePersonScope(normalizedQuestion: string): JarvisPersonScope | und
   if (/\b(aufgabe|aufgaben|offene punkte|to dos?)\b/.test(normalizedQuestion)) {
     return "tasks";
   }
-  if (/\b(aktivitat|aktivitaten|logbuch|letzte kontakte|kontaktverlauf)\b/.test(normalizedQuestion)) {
+  if (/\b(aktivitat|aktivitaten|logbuch|letzte kontakte|zuletzt kontakt|kontaktverlauf)\b/.test(normalizedQuestion)) {
     return "activities";
   }
   if (/\b(kontaktdaten|telefon|telefonnummer|e mail|email|adresse)\b/.test(normalizedQuestion)) {
@@ -240,6 +244,7 @@ export function resolveJarvisPersonIntent(question: string): JarvisPersonIntent 
     const match = normalizedQuestion.match(pattern);
     const query = cleanQuery(match?.[1] ?? "");
     if (!query || query.length < 3 || GENERIC_SUBJECTS.has(normalize(query))) continue;
+    if (extractJarvisProjectReferences(query).length > 0) continue;
     const scope = resolvePersonScope(normalizedQuestion);
     return scope ? { query, scope } : { query };
   }

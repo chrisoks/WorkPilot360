@@ -29,6 +29,15 @@ Stand: 29.07.2026
   KI und ohne Datensatzabruf aus der WorkPilot-Berechtigungsmatrix erklärt.
   Private Kontakt- und Adressdaten von Mitarbeitenden werden in
   JARVIS-Antworten nicht ausgegeben.
+- Der deterministische Projekt-Prüfbestand und eindeutig erkannte
+  Personenfragen haben Vorrang vor schwankenden KI-Einstufungen. Varianten
+  für Projektanzahl, Kontaktdaten, letzte Aktivität und leichte Tippfehler
+  laufen dadurch über denselben geprüften Personenadapter.
+- Breite Formulierungen wie `gesund`, `schief`, `wo hakt es`, `Überblick`
+  oder `korrekt abschließen` wählen bei eindeutigem Projekt direkt den
+  vollständigen Prüfbereich. Noch nicht angebundene Organisationsauswertungen
+  zu Offenen Posten, älteren Angeboten und Auslastung nennen stattdessen
+  ausdrücklich die Adaptergrenze.
 
 ### Intent-Orchestrator V4
 

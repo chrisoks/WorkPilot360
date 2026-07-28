@@ -258,6 +258,11 @@ function resolveProjectScopes(
       /\b(vollstandig|komplett|alles)\b/.test(normalized) &&
       /\b(pruf|check|analysier|untersuch|kontrollier)\w*\b/.test(normalized)
     );
+  const requestsBroadProjectAssessment =
+    /\b(gesund|schief|hakt|projektuberblick|kurzer uberblick|kurzen uberblick|korrekt abzuschliess)\w*\b/.test(
+      normalized
+    );
+  if (requestsBroadProjectAssessment && scopes.length === 0) return ["full"];
   if (explicitlyRequestsFullCheck && scopes.length === 0) return ["full"];
   return scopes;
 }
