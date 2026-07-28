@@ -115,9 +115,13 @@ export function resolveJarvisReadIntent(
   }
 
   const summarize = /\b(fasse|zusammenfassung|status von)\b/.test(normalized);
+  const explicitlyAsksForCollection =
+    (kind === "project" && /\bprojekte\b/.test(normalized)) ||
+    (kind === "customer" && /\b(kunden|kontakte)\b/.test(normalized));
   const contextMatches =
-    (kind === "project" && context.recordType === "project") ||
-    (kind === "customer" && context.recordType === "customer");
+    !explicitlyAsksForCollection &&
+    ((kind === "project" && context.recordType === "project") ||
+      (kind === "customer" && context.recordType === "customer"));
   const contextRecordId = contextMatches && context.recordId ? context.recordId : undefined;
 
   return {

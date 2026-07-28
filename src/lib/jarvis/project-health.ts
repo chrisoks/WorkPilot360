@@ -49,6 +49,8 @@ import {
   diagnoseJarvisProjectLogic,
   resolveJarvisProjectLogic,
 } from "@/lib/jarvis/project-logic";
+import { getJarvisProjectConsumptionGuidance } from "@/lib/jarvis/project-consumption-guidance";
+import { getJarvisProjectServiceRateGuidance } from "@/lib/jarvis/project-service-rate-guidance";
 import {
   resolveJarvisProjectDialogIntent,
   type JarvisProjectDialogIntent,
@@ -530,6 +532,19 @@ function buildFocusedProjectMaterialResponse(input: {
 }): JarvisReadResponse | undefined {
   const semantics = analyzeJarvisQuestion(input.question);
   if (semantics.relation !== "project_materials") return undefined;
+  const periodLabel =
+    semantics.explicitMonths.length === 1
+      ? semantics.explicitMonths[0].label
+      : "Gesamtes Projekt";
+  const asksForPhysicalConsumption =
+    /\b(verbraucht|verbrauch|eingesetzt|verwendet|gebraucht)\w*\b/.test(
+      semantics.normalized
+    );
+  const consumptionGuidance = getJarvisProjectConsumptionGuidance(input.project);
+  const projectDataApproved = normalize(input.project.reviewStatus) === "approved";
+  const projectTypeExplanation = projectDataApproved
+    ? consumptionGuidance.explanation
+    : `Das Projekt ist noch nicht fachlich freigegeben. Die aktuell gespeicherte Zuordnung lautet „${consumptionGuidance.projectTypeLabel}“, kann im Vor-Live-Bestand aber noch falsch sein. ${consumptionGuidance.explanation}`;
 
   const reference = input.project.projectNumber || input.project.title;
   const projectLabel = [reference, input.project.title]
@@ -539,7 +554,7 @@ function buildFocusedProjectMaterialResponse(input: {
     )
     .join(" · ");
   const materials = input.analysis.materials;
-  const summary =
+  const storedDataSummary =
     input.analysis.finalInvoiceCount === 0
       ? `Für ${reference} wurde noch keine fertige Rechnung gefunden. Deshalb kann JARVIS derzeit keine abgerechneten Materialmengen auswerten.`
       : materials.length === 0
@@ -547,6 +562,9 @@ function buildFocusedProjectMaterialResponse(input: {
           ? `Für ${reference} wurde eine fertige Rechnung ausgewertet. Darin wurde keine Materialposition gefunden.`
           : `Für ${reference} wurden ${input.analysis.finalInvoiceCount} fertige Rechnungen ausgewertet. Darin wurde keine Materialposition gefunden.`
         : `Für ${reference} wurden die fertigen Rechnungen positionsweise ausgewertet. Dabei ${materials.length === 1 ? "wurde eine Materialart" : `wurden ${materials.length} Materialarten`} gefunden.`;
+  const summary = asksForPhysicalConsumption
+    ? `Der tatsächliche physische Materialverbrauch bei ${reference} ist in WorkPilot360 mit den vorhandenen Rechnungs- und Lagerdaten nicht sicher belegt. ${storedDataSummary}`
+    : storedDataSummary;
   const materialItems = materials.slice(0, 8).map((material) => {
     const sources = [
       material.directQuantity > 0
@@ -583,6 +601,32 @@ function buildFocusedProjectMaterialResponse(input: {
       summary,
       facts: [
         {
+          label: "Zeitraum",
+          value: periodLabel,
+        },
+        {
+          label: "Projektart",
+          value: consumptionGuidance.projectTypeLabel,
+          tone:
+            projectDataApproved && consumptionGuidance.projectTypeVerified
+            ? "neutral"
+            : "warning",
+        },
+        {
+          label: "Projektdaten",
+          value: projectDataApproved
+            ? "Fachlich freigegeben"
+            : "Noch nicht fachlich freigegeben",
+          tone: projectDataApproved ? "positive" : "warning",
+        },
+        ...(asksForPhysicalConsumption
+          ? [{
+              label: "Physischer Verbrauch",
+              value: "Nicht separat belegt",
+              tone: "warning" as const,
+            }]
+          : []),
+        {
           label: "Fertige Rechnungen",
           value: String(input.analysis.finalInvoiceCount),
         },
@@ -614,7 +658,7 @@ function buildFocusedProjectMaterialResponse(input: {
           : []),
         {
           title: "Datenbasis",
-          items: [input.analysis.basisNote],
+          items: [projectTypeExplanation, input.analysis.basisNote],
         },
         {
           title: "Nächster Schritt",
@@ -657,6 +701,10 @@ function buildFocusedProjectServiceRateResponse(input: {
 }): JarvisReadResponse | undefined {
   const semantics = analyzeJarvisQuestion(input.question);
   if (semantics.relation !== "project_service_rates") return undefined;
+  const periodLabel =
+    semantics.explicitMonths.length === 1
+      ? semantics.explicitMonths[0].label
+      : "Gesamtes Projekt";
 
   const reference = input.project.projectNumber || input.project.title;
   const projectLabel = [reference, input.project.title]
@@ -677,7 +725,13 @@ function buildFocusedProjectServiceRateResponse(input: {
   const sufficientServices = services.filter(
     (service) => service.recommendationBasisSufficient
   );
-  const summary =
+  const projectApproved = normalize(input.project.reviewStatus) === "approved";
+  const serviceRateGuidance =
+    getJarvisProjectServiceRateGuidance(input.project);
+  const approvedServices = services.filter(
+    (service) => service.catalogApproved
+  );
+  const storedRateSummary =
     input.analysis.finalInvoiceCount === 0
       ? `Für ${reference} wurde noch keine fertige Rechnung gefunden. Deshalb kann JARVIS noch keinen tatsächlich berechneten Stundenverrechnungssatz ermitteln.`
       : services.length === 0
@@ -685,18 +739,26 @@ function buildFocusedProjectServiceRateResponse(input: {
         : services.length === 1
           ? `Für ${reference} wurde eine Stundenleistung aus fertigen Rechnungen und eindeutig zugeordneten Stempelungen ausgewertet.`
           : `Für ${reference} wurden ${services.length} Stundenleistungen aus fertigen Rechnungen und eindeutig zugeordneten Stempelungen ausgewertet.`;
+  const summary =
+    serviceRateGuidance.hasContractualHourlyBilling
+      ? storedRateSummary
+      : `${serviceRateGuidance.explanation} ${storedRateSummary}`;
   const serviceItems = services.slice(0, 6).map((service) => {
     const parts = [
       `${formatServiceHours(service.billedHours)} abgerechnet`,
       `${formatServiceHours(service.stampedHours)} eindeutig gestempelt`,
       service.realizedBilledRate > 0
-        ? `${formatServiceEuro(service.realizedBilledRate)} tatsächlich je abgerechneter Stunde berechnet`
+        ? serviceRateGuidance.hasContractualHourlyBilling
+          ? `${formatServiceEuro(service.realizedBilledRate)} tatsächlich je abgerechneter Stunde berechnet`
+          : `${formatServiceEuro(service.realizedBilledRate)} rechnerisch je gespeicherter Stundenkomponente`
         : "",
       service.revenuePerStampedHour > 0
         ? `${formatServiceEuro(service.revenuePerStampedHour)} Nettoerlös je gestempelter Stunde`
         : "",
       service.currentSalesRate > 0
-        ? `${formatServiceEuro(service.currentSalesRate)} aktueller Stammdatenpreis`
+        ? service.catalogApproved
+          ? `${formatServiceEuro(service.currentSalesRate)} aktueller fachlich freigegebener Stammdatenpreis`
+          : `${formatServiceEuro(service.currentSalesRate)} aktueller, noch nicht fachlich freigegebener Stammdatenpreis`
         : "",
       input.analysis.includeCosts &&
       service.costBasisComplete &&
@@ -712,6 +774,14 @@ function buildFocusedProjectServiceRateResponse(input: {
   const recommendation =
     services.length === 0
       ? "Prüfe, ob die abgerechneten Leistungen in „Artikel & Leistungen“ als Stundenleistungen gepflegt und die Rechnungspositionen mit diesen Leistungen verknüpft sind."
+      : !serviceRateGuidance.projectTypeConfigured
+        ? "Lege zuerst Projektart und Abrechnungsmodell in den Projektinformationen eindeutig fest. Bis dahin bestätigt JARVIS keinen projektartgerechten Stundensatz."
+      : !serviceRateGuidance.hasContractualHourlyBilling
+        ? "Bewerte die Monatspauschale nicht wie einen berechneten Stundenauftrag. Für eine belastbare Wirtschaftlichkeitsanalyse müssen der vollständige Monatsnettoerlös, alle zugehörigen Arbeitsstunden und die freigegebenen Kosten gemeinsam betrachtet werden."
+      : !projectApproved
+        ? "Die Projektdaten sind noch nicht fachlich freigegeben. JARVIS kann die vorhandenen Rechnungen und Zeiten zur Prüfung auswerten, leitet daraus aber noch keine Preisempfehlung ab. Prüfe zuerst die Projektart, den Abrechnungsweg und das gültige Angebot in der Projektakte."
+      : approvedServices.length === 0
+        ? "Keine ausgewertete Stundenleistung ist fachlich freigegeben. Prüfe zuerst die Leistung im Bereich „Artikel & Leistungen“. Bis dahin verwendet JARVIS den hinterlegten Stammdatenpreis nur als Prüfhinweis und nicht als Grundlage für eine Preisempfehlung."
       : sufficientServices.length === 0
         ? "Die Datenmenge reicht noch nicht für eine belastbare allgemeine Preisempfehlung. JARVIS nennt deshalb bewusst keinen erfundenen neuen Stundensatz. Sammle zunächst mehrere fertige Rechnungen mit mindestens zehn abgerechneten und eindeutig zugeordneten gestempelten Stunden."
         : input.analysis.issues.length > 0
@@ -728,6 +798,18 @@ function buildFocusedProjectServiceRateResponse(input: {
       summary,
       facts: [
         {
+          label: "Zeitraum",
+          value: periodLabel,
+        },
+        {
+          label: "Projektart",
+          value: serviceRateGuidance.projectTypeLabel,
+          tone:
+            projectApproved && serviceRateGuidance.projectTypeConfigured
+              ? "neutral"
+              : "warning",
+        },
+        {
           label: "Fertige Rechnungen",
           value: String(input.analysis.finalInvoiceCount),
         },
@@ -738,6 +820,21 @@ function buildFocusedProjectServiceRateResponse(input: {
         {
           label: "Zugeordnete Stempelstunden",
           value: formatServiceHours(totalStampedHours),
+        },
+        {
+          label: "Projektdaten",
+          value: projectApproved
+            ? "Fachlich freigegeben"
+            : "Noch nicht fachlich freigegeben",
+          tone: projectApproved ? "positive" : "warning",
+        },
+        {
+          label: "Freigegebene Leistungen",
+          value: `${approvedServices.length} von ${services.length}`,
+          tone:
+            services.length > 0 && approvedServices.length === services.length
+              ? "positive"
+              : "warning",
         },
       ],
       sections: [
@@ -2236,14 +2333,33 @@ export async function resolveJarvisProjectHealthRequest(input: {
           laborItems: (invoiceLaborItems ?? [])
             .filter((item) => item.invoiceLineId === line.id)
             .map((item) => ({ totalCost: item.totalCost })),
-        })),
+      })),
     })
+  );
+  const analysisMonthKey =
+    questionSemantics.explicitMonths.length === 1
+      ? questionSemantics.explicitMonths[0].key
+      : "";
+  const analysisInvoiceIds = new Set(
+    (invoices ?? [])
+      .filter(
+        (invoice) =>
+          !analysisMonthKey ||
+          getFocusedInvoiceMonth(invoice) === analysisMonthKey
+      )
+      .map((invoice) => invoice.id)
   );
   const materialAnalysis =
     invoiceDecision.executable && invoices && invoiceLines
       ? analyzeProjectMaterials({
-          invoices: materialInvoices,
-          inventoryMovements: inventoryMovements ?? [],
+          invoices: materialInvoices.filter(
+            (invoice) =>
+              !analysisMonthKey || analysisInvoiceIds.has(invoice.id)
+          ),
+          inventoryMovements: (inventoryMovements ?? []).filter(
+            (movement) =>
+              !analysisMonthKey || analysisInvoiceIds.has(movement.invoiceId)
+          ),
           includeCosts: canReadCosts,
         })
       : undefined;
@@ -2280,14 +2396,23 @@ export async function resolveJarvisProjectHealthRequest(input: {
             unit: true,
             salesPrice: true,
             isActive: true,
+            reviewStatus: true,
           },
         })
       : [];
   const serviceRateAnalysis =
     invoiceDecision.executable && invoices && invoiceLines
       ? analyzeProjectServiceRates({
-          invoices: materialInvoices as ProjectServiceRateInvoice[],
-          timeEntries: timeEntries.map((entry) => ({
+          invoices: materialInvoices.filter(
+            (invoice) =>
+              !analysisMonthKey || analysisInvoiceIds.has(invoice.id)
+          ) as ProjectServiceRateInvoice[],
+          timeEntries: timeEntries
+            .filter(
+              (entry) =>
+                !analysisMonthKey || getMonthKey(entry.date) === analysisMonthKey
+            )
+            .map((entry) => ({
             billingCatalogItemId: entry.billingCatalogItemId,
             billingCatalogItemLabel: entry.billingCatalogItemLabel,
             durationMs: entry.durationMs,
@@ -2295,9 +2420,10 @@ export async function resolveJarvisProjectHealthRequest(input: {
               ? entry.laborCostSnapshot
               : 0,
             costSnapshotAt: canReadCosts ? entry.costSnapshotAt : null,
-          })),
+            })),
           catalogItems: serviceCatalogItems,
           includeCosts: canReadCosts,
+          scope: analysisMonthKey ? "project_month" : "project",
         })
       : undefined;
   const activeInvoices = invoices?.filter(

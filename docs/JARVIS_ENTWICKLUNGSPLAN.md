@@ -6,6 +6,30 @@ Stand: 28.07.2026
 
 Stand 28.07.2026:
 
+- Projektbezogene Material- und Stundenverrechnungssatzfragen berücksichtigen
+  einen ausdrücklich genannten Monat. Andere Rechnungs- und Stempelmonate
+  werden aus dieser fokussierten Auswertung ausgeschlossen. Verbrauchsfragen
+  benennen offen, dass Rechnungsmenge und automatische Lagerentnahme keinen
+  tatsächlichen physischen Einsatz beweisen. Die Erklärung unterscheidet
+  Einmalprojekt, Monatspauschale und Stunden-Dauerläufer; eine ungeklärte
+  Projektart bleibt sichtbar und führt zu keiner erfundenen Sollannahme.
+  Natürliche Unternehmensfragen zu auffälligem Verbrauch, effektiv erzielten
+  Stundensätzen und wirtschaftlichen Stundenleistungen werden ohne
+  zusätzlichen KI-Aufruf den vorhandenen sicheren Analyseadaptern zugeordnet.
+- Projektbezogene Stundensatzfragen unterscheiden jetzt die Abrechnung der
+  Projektart: Stunden-Dauerläufer verwenden tatsächlich abgerechnete
+  Stundenleistungen, Einmalprojekte nur ausdrücklich vorhandene
+  Stundenpositionen. Bei einer Monatspauschale wird ein rechnerischer Erlös je
+  Arbeitsstunde nicht als vertraglicher Kunden-Stundensatz bezeichnet. Eine
+  unklare Projektart verhindert eine bestätigte projektartgerechte Einordnung.
+- Die projektbezogene Stundenverrechnungssatzanalyse trennt den aus
+  Rechnungen und Stempelungen belegten Ist-Zustand jetzt ausdrücklich von
+  einer fachlichen Preisempfehlung. Nur fachlich freigegebene Leistungen
+  können die Mindestdatenbasis für eine Empfehlung erfüllen. Zusätzlich zeigt
+  die fokussierte Projektantwort, ob das Projekt selbst und wie viele der
+  ausgewerteten Stundenleistungen fachlich freigegeben sind. Ungeprüfte
+  Stammdatenpreise bleiben sichtbare Prüfhinweise, werden aber nicht als
+  bestätigte Sollwerte behandelt.
 - Der explizite Prüf-/Freigabestatus für Artikel, Leistungen und Pakete ist
   umgesetzt. GF/Admin können Katalogstammdaten als ungeprüft, prüfbedürftig
   oder fachlich freigegeben kennzeichnen; Freigabebenutzer, Zeitpunkt,
@@ -1397,3 +1421,22 @@ Das Ziel gilt als erreicht, wenn:
 - Wissenslücken sichtbar gemessen und laufend geschlossen werden,
 - neue WorkPilot-Funktionen ohne zugehörige JARVIS-Prüfung nicht als
   vollständig abgeschlossen gelten.
+# Aktueller Ausbau: Projektbestand und fachlicher Prüfstatus
+
+- Der organisationsgebundene Projektbestandsadapter beantwortet Zähl-,
+  Listen-, Gruppierungs- und Filterfragen zum fachlichen Prüfstatus.
+- `Noch nie geprüft`, `nach Änderungen erneut prüfen` und `fachlich
+  freigegeben` werden getrennt ausgewiesen; Werte werden live gelesen und
+  niemals als feste Anzahl hinterlegt.
+- Natürliche Formulierungen, Synonyme und typische Schreibfehler werden als
+  Fragefamilie getestet. Echte Einzelprojekt-Diagnosen bleiben getrennt.
+- Listen liefern klickbare Projekte. Rollenprüfung erfolgt vor der
+  Datenabfrage; die Organisationsgrenze ist in der Quelle verpflichtend.
+- Unbekannte Prüfzustände werden nicht als Freigabe interpretiert, sondern
+  transparent als Datenproblem und prüfbedürftig ausgewiesen.
+- Browserprüfung ergänzt: Statusfilter bleiben auch bei typischen
+  Schreibfehlern erhalten. Explizite Mehrzahlfragen haben Vorrang vor einem
+  alten Einzelprojektkontext. Bis zu 20 Projektkarten werden übernommen,
+  zunächst fünf angezeigt und kontrolliert ausklappbar gemacht. Der
+  sichtbare Dashboardkontext darf nicht durch gespeicherte Projekt- oder
+  Kundenauswahlen verfälscht werden.

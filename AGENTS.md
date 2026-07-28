@@ -1,5 +1,77 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Projektbestands-Browserkorrekturen 2026-07-28: Typische
+  Schreibfehler dürfen nicht nur die Projektfrage erkennen, sondern müssen
+  auch den gewünschten Prüfstatus erhalten. `Welche Porjekte wurden noch
+  nicht geprfüt?` bleibt deshalb auf `Noch nie fachlich geprüft` begrenzt und
+  darf Projekte mit `Prüfung notwendig` nicht zusätzlich einmischen.
+  Ausdrückliche Mehrzahlfragen wie `Welche Projekte sind noch offen?`
+  überstimmen einen geöffneten oder aus dem Dialog gemerkten
+  Einzelprojektkontext. Der JARVIS-Bildschirmkontext gilt nur dann als
+  Projekt- beziehungsweise Kundenakte, wenn der zugehörige Hauptbereich
+  tatsächlich geöffnet ist; alte localStorage-Auswahlen dürfen den
+  Dashboardkontext nicht verfälschen. Ergebnislisten übernehmen bis zu
+  20 sichere Datensätze, zeigen zunächst fünf und bieten die restlichen
+  Einträge über `Weitere … anzeigen` an. Projektkarten nennen den
+  Prüfstatus nicht doppelt. Nullfälle werden verständlich mit `kein` oder
+  `bei keinem Projekt` formuliert. Reine Lese- und UI-Logik ohne Projekt-,
+  Prisma- oder Datenbankänderung.
+- JARVIS Projektbestands- und Prüfstatusadapter 2026-07-28: Fragen wie
+  `Wie viele Projekte müssen noch überarbeitet werden?`, `Welche Projekte
+  müssen noch geprüft werden?`, `Wie viele Projekte sind noch nicht
+  freigegeben?` und typische Schreibfehler werden als eine gemeinsame
+  Fragefamilie erkannt. JARVIS verwendet dafür ausschließlich den
+  organisationsgebundenen, gespeicherten Projekt-Prüfstatus und trennt
+  `Noch nie fachlich geprüft`, `Nach Änderungen erneut prüfen` und
+  `Fachlich freigegeben`. Unbekannte Altdatenzustände gelten sicherheitshalber
+  als prüfbedürftig und niemals als freigegeben. Zählfragen erhalten eine
+  kurze gruppierte Antwort; Listenfragen zusätzlich klickbare Projektkarten.
+  Filter nach Prüfstatus, Projektart/Abrechnungsweg und Niederlassung sind
+  vorbereitet. Explizit genannte Einzelprojekte bleiben bei der bestehenden
+  Projektdiagnose. Der Adapter läuft vor allgemeiner Projektsuche und
+  Systemhilfe, damit Wörter wie `geprüft werden` nicht als Projektname
+  gesucht werden. Bestehende Rollen- und Organisationsgrenzen bleiben
+  verbindlich; keine Projekt-, Prisma- oder Datenbankänderung.
+- JARVIS projektart- und monatsgerechte Verbrauchsanalyse 2026-07-28:
+  Explizite Monatsangaben begrenzen projektbezogene Material- und
+  Stundenverrechnungssatzfragen jetzt auf genau diesen Leistungsmonat;
+  andere Projektmonate dürfen das Ergebnis nicht mehr verfälschen.
+  Rechnungen werden dafür über Leistungsdatum, geplanten Ausführungsmonat
+  oder ersatzweise Erstellungsdatum zugeordnet, Stempelungen über ihr
+  Leistungsdatum. Bei Verbrauchsfragen trennt JARVIS weiterhin strikt
+  abgerechnete Menge, automatische Lagerbuchung und tatsächlich physisch
+  eingesetztes Material. Einmalprojekte, Dauerläufer mit Monatspauschale und
+  Dauerläufer mit Stundenabrechnung erhalten jeweils eine eigene
+  verständliche Einordnung; bei unklarer Projektart wird kein Sollprozess
+  erfunden. Natürliche Unternehmensfragen wie `Wie hoch ist unser
+  Materialverbrauch?`, `Wo verbrauchen wir auffällig viel Material?`,
+  `Welchen Stundensatz erzielen wir tatsächlich?` oder `Wie wirtschaftlich
+  sind unsere Stundenleistungen?` werden deterministisch denselben sicheren
+  Managementadaptern zugeordnet und benötigen keinen zusätzlichen
+  OpenAI-Aufruf. Reine Lese- und Diagnoselogik ohne Rechnungs-, Lager-,
+  Stempel-, Prisma- oder Datenbankänderung.
+- JARVIS projektartgerechte Stundensatz-Einordnung 2026-07-28:
+  Stunden-Dauerläufer, Monatspauschalen und Einmalprojekte werden bei
+  projektbezogenen SVS-Fragen fachlich getrennt. Nur beim
+  Stunden-Dauerläufer sowie bei ausdrücklich als Stundenleistung
+  abgerechneten Positionen eines Einmalprojekts kann von einem tatsächlich
+  berechneten Kunden-Stundensatz gesprochen werden. Eine Monatspauschale
+  besitzt keinen vertraglichen Kunden-Stundensatz; ein daraus rechnerisch
+  abgeleiteter Erlös je eingesetzter Stunde ist ausschließlich eine
+  Wirtschaftlichkeitskennzahl und benötigt vollständigen Monatsnettoerlös,
+  Arbeitszeit und freigegebene Kosten. Bei unklarer Projektart bestätigt
+  JARVIS keinen projektartgerechten Satz.
+- JARVIS projektbezogene Stundensatz-Freigabe 2026-07-28: Die rein lesende
+  Projektanalyse darf Rechnungs-, Leistungs- und Stempelwerte weiterhin als
+  Ist-Zustand und Prüfhinweis auswerten. Eine allgemeine Preis- oder
+  Stundensatzempfehlung gilt jedoch nur noch dann als belastbar, wenn die
+  verknüpfte Leistung fachlich freigegeben ist. Die fokussierte Projektantwort
+  zeigt deshalb den Freigabestand des Projekts und der ausgewerteten
+  Stundenleistungen ausdrücklich an. Bei ungeprüften beziehungsweise
+  prüfbedürftigen Projekten oder Leistungen nennt JARVIS zuerst den
+  notwendigen Prüfschritt und verwendet aktuelle Stammdatenpreise nicht als
+  bestätigte Sollwahrheit. Keine Preis-, Projekt-, Rechnungs-, Stempel-,
+  Prisma- oder Datenbankänderung.
 - Katalog-Prüf- und Freigabeworkflow 2026-07-28: Artikel, Leistungen und
   Pakete besitzen die drei expliziten Zustände `Noch ungeprüft`,
   `Prüfung notwendig` und `Fachlich freigegeben`. Die Freigabe wird mit

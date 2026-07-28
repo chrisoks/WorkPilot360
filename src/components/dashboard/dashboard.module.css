@@ -7273,6 +7273,32 @@
   margin-top: 12px;
 }
 
+.jarvisRecordRemainder {
+  display: grid;
+  gap: 8px;
+}
+
+.jarvisRecordRemainder > summary {
+  background: #e8f4f5;
+  border: 1px solid #b9dadd;
+  border-radius: 11px;
+  color: #0b5960;
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 700;
+  list-style-position: inside;
+  padding: 9px 11px;
+}
+
+.jarvisRecordRemainder[open] > summary {
+  margin-bottom: 8px;
+}
+
+.jarvisRecordRemainder > div {
+  display: grid;
+  gap: 8px;
+}
+
 .jarvisRecordCard {
   background: #f8fbfc;
   border: 1px solid #cfe2e5;

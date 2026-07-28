@@ -53,6 +53,9 @@ const INTENT_PATTERNS = [
   /\b(welche|wo)\b.*\b(material|artikel)\w*\b.*\b(meist|haufig|verkauf|abgerechnet|verbraucht)\w*\b/,
   /\b(materialverbrauch|materialmenge|lagerentnahme|lagerbewegung)\w*\b.*\b(stimm|abweich|vergleich|pruf)\w*\b/,
   /\b(stimm|abweich|vergleich|pruf)\w*\b.*\b(materialverbrauch|materialmenge|lagerentnahme|lagerbewegung)\w*\b/,
+  /\b(wie hoch|wie viel|zeig|nenne)\b.*\b(materialverbrauch|materialeinsatz|materialmenge|material|artikel|streugut|streusalz|salz)\w*\b/,
+  /\b(wo|welche)\b.*\b(verbrauch|einsatz|entnahme)\w*\b.*\b(material|artikel|streugut|streusalz|salz)\w*\b/,
+  /\b(wo|welche)\b.*\b(material|artikel|streugut|streusalz|salz)\w*\b.*\b(auffallig|zu viel|haufig|verbrauch|einsatz|entnahme)\w*\b/,
 ];
 
 function normalize(value: string) {

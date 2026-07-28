@@ -50,6 +50,7 @@ export type ProjectServiceRateRow = {
   contributionAfterLabor: number;
   contributionAfterLaborPercent: number;
   costBasisComplete: boolean;
+  catalogApproved: boolean;
   recommendationBasisSufficient: boolean;
 };
 
@@ -69,7 +70,7 @@ type ProjectServiceRateAnalysisInput = {
   timeEntries: ProjectServiceRateTimeEntry[];
   catalogItems: ProjectServiceRateCatalogItem[];
   includeCosts: boolean;
-  scope?: "project" | "organization";
+  scope?: "project" | "project_month" | "organization";
 };
 
 const INACTIVE_OR_UNFINISHED_STATUSES = [
@@ -266,6 +267,8 @@ export function analyzeProjectServiceRates(
         input.includeCosts &&
         stampedHours > 0 &&
         Boolean(time?.costBasisComplete);
+      const catalogApproved =
+        normalize(catalogById.get(service.id)?.reviewStatus) === "approved";
 
       return {
         id: service.id,
@@ -283,7 +286,9 @@ export function analyzeProjectServiceRates(
         contributionAfterLabor,
         contributionAfterLaborPercent,
         costBasisComplete,
+        catalogApproved,
         recommendationBasisSufficient:
+          catalogApproved &&
           service.invoiceCount >= 3 &&
           billedHours >= 10 &&
           stampedHours >= 10,
@@ -307,6 +312,7 @@ export function analyzeProjectServiceRates(
     input.includeCosts
   );
   const organizationWide = input.scope === "organization";
+  const projectMonth = input.scope === "project_month";
 
   return {
     finalInvoiceCount: finalInvoices.length,
@@ -320,12 +326,15 @@ export function analyzeProjectServiceRates(
       "Der tatsächlich berechnete Stundensatz ergibt sich aus Nettoerlös geteilt durch abgerechnete Stunden.",
       "Der wirtschaftliche Erlös je eingesetzter Stunde wird getrennt aus Nettoerlös und eindeutig zugeordneter Stempelzeit berechnet.",
       "Stempelungen werden nur über die stabile ID der Abrechnungsleistung zugeordnet und niemals anhand eines ähnlich klingenden Namens.",
+      "Eine allgemeine Preis- oder Stundensatzempfehlung verwendet nur fachlich freigegebene Leistungsstammdaten.",
       ...(input.includeCosts
         ? ["Mitarbeiterkosten werden nur aus gespeicherten historischen Kostenständen der Stempelungen einbezogen."]
         : []),
     ],
     basisNote: organizationWide
       ? "Die Auswertung vergleicht den gewählten Unternehmenszeitraum über alle Projekte. Neue, noch nicht abgerechnete Stempelungen können den Vergleich beeinflussen. Eine belastbare Preisempfehlung benötigt je Leistung mehrere fertige Rechnungen, ausreichend abgerechnete und eindeutig zugeordnete gestempelte Stunden sowie – für GF/Admin – vollständige historische Kostenstände. Material-, Fahrzeug- und Gemeinkosten müssen zusätzlich betrachtet werden."
+      : projectMonth
+        ? "Die Auswertung betrachtet ausschließlich den ausdrücklich genannten Projektmonat. Rechnungen werden über Leistungsdatum, geplanten Ausführungsmonat oder ersatzweise Erstellungsdatum zugeordnet; Stempelungen über ihr Leistungsdatum. Eine einzelne Monatsauswertung beweist noch keinen allgemein richtigen Verkaufspreis."
       : "Die Auswertung betrachtet das gesamte Projekt. Bei laufenden Projekten können neue, noch nicht abgerechnete Stempelungen den Vergleich beeinflussen. Eine einzelne Projektanalyse beweist noch keinen allgemein richtigen Verkaufspreis. Eine belastbare Preisempfehlung benötigt mehrere fertige Rechnungen, ausreichend abgerechnete und gestempelte Stunden sowie – für GF/Admin – vollständige historische Kostenstände. Material-, Fahrzeug- und Gemeinkosten müssen zusätzlich betrachtet werden.",
   };
 }

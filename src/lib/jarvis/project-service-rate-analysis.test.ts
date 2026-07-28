@@ -65,6 +65,7 @@ describe("analyzeProjectServiceRates", () => {
         unit: "Std.",
         salesPrice: 60,
         isActive: true,
+        reviewStatus: "approved",
       }],
       includeCosts: true,
     });
@@ -238,12 +239,57 @@ describe("analyzeProjectServiceRates", () => {
         laborCostSnapshot: 900,
         costSnapshotAt: new Date(),
       }],
-      catalogItems: [],
+      catalogItems: [{
+        id: "service-1",
+        number: "L-1",
+        name: "Hausmeisterstunde",
+        unit: "Std.",
+        salesPrice: 60,
+        isActive: true,
+        reviewStatus: "approved",
+      }],
       includeCosts: true,
     });
 
     expect(result.services[0]?.invoiceCount).toBe(3);
     expect(result.services[0]?.billedHours).toBe(30);
     expect(result.services[0]?.recommendationBasisSufficient).toBe(true);
+  });
+
+  it("withholds a price recommendation when the service is not fachlich approved", () => {
+    const result = analyzeProjectServiceRates({
+      invoices: [
+        invoice({ id: "invoice-1", invoiceNumber: "R-1" }),
+        invoice({ id: "invoice-2", invoiceNumber: "R-2" }),
+        invoice({ id: "invoice-3", invoiceNumber: "R-3" }),
+      ],
+      timeEntries: [{
+        billingCatalogItemId: "service-1",
+        billingCatalogItemLabel: "Hausmeisterstunde",
+        durationMs: 30 * 3_600_000,
+        laborCostSnapshot: 900,
+        costSnapshotAt: new Date(),
+      }],
+      catalogItems: [{
+        id: "service-1",
+        number: "L-1",
+        name: "Hausmeisterstunde",
+        unit: "Std.",
+        salesPrice: 60,
+        isActive: true,
+        reviewStatus: "needs_review",
+      }],
+      includeCosts: true,
+    });
+
+    expect(result.services[0]).toEqual(
+      expect.objectContaining({
+        catalogApproved: false,
+        recommendationBasisSufficient: false,
+      })
+    );
+    expect(result.checkedRules).toContain(
+      "Eine allgemeine Preis- oder Stundensatzempfehlung verwendet nur fachlich freigegebene Leistungsstammdaten."
+    );
   });
 });

@@ -40,6 +40,9 @@ const INTENT_PATTERNS = [
   /\b(welche|wo)\b.*\b((?:stunden)?leistung|stundenverrechnungssatz|stundensatz|svs)\w*\b.*\b(preis|erhoh|anpass|unwirtschaft|rentabel|marge)\w*\b/,
   /\b(mussen|sollten|konnen)\b.*\b(stundenverrechnungssatz|stundensatz|svs|leistungspreis)\w*\b.*\b(erhoh|anpass|pruf)\w*\b/,
   /\b(wie)\b.*\b(stehen|entwickel|sind)\w*\b.*\b(unsere|alle)\b.*\b(stundenverrechnungssatz|stundensatz|svs)\w*\b/,
+  /\b(welchen|wie hoch)\b.*\b(stundenverrechnungssatz|stundensatz|svs)\w*\b.*\b(erziel|tatsachlich|wirklich|effektiv|durchschnitt)\w*\b/,
+  /\b(welchen|wie hoch)\b.*\b(erziel|tatsachlich|wirklich|effektiv|durchschnitt)\w*\b.*\b(stundenverrechnungssatz|stundensatz|svs)\w*\b/,
+  /\b(wie wirtschaftlich|wie rentabel|wo verlieren)\b.*\b(stundenleistung|leistung|stundenverrechnungssatz|stundensatz|svs)\w*\b/,
 ];
 
 function normalize(value: string) {

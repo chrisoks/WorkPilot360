@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   resolveJarvisProjectHealthRequest: vi.fn(),
   resolveJarvisPersonDiagnosticRequest: vi.fn(),
   resolveJarvisPersonSummaryRequest: vi.fn(),
+  resolveJarvisProjectReviewInventoryRequest: vi.fn(),
   resolveJarvisOrganizationMaterialRequest: vi.fn(),
   resolveJarvisOrganizationServiceRateRequest: vi.fn(),
   resolveJarvisSalesAnalysisIntent: vi.fn(),
@@ -71,6 +72,11 @@ vi.mock("@/lib/jarvis/organization-material-analysis", () => ({
     mocks.resolveJarvisOrganizationMaterialRequest,
 }));
 
+vi.mock("@/lib/jarvis/organization-project-review-analysis", () => ({
+  resolveJarvisProjectReviewInventoryRequest:
+    mocks.resolveJarvisProjectReviewInventoryRequest,
+}));
+
 vi.mock("@/lib/jarvis/intent-decision", () => ({
   resolveJarvisIntentDecision: mocks.resolveJarvisIntentDecision,
 }));
@@ -132,6 +138,9 @@ describe("POST /api/jarvis/chat", () => {
     mocks.resolveJarvisProjectHealthRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisPersonDiagnosticRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisPersonSummaryRequest.mockResolvedValue(undefined);
+    mocks.resolveJarvisProjectReviewInventoryRequest.mockResolvedValue(
+      undefined
+    );
     mocks.resolveJarvisOrganizationMaterialRequest.mockResolvedValue(
       undefined
     );
@@ -182,6 +191,40 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.resolveJarvisSystemHelp).not.toHaveBeenCalled();
   });
 
+  it("answers organization-wide project review questions before generic record search", async () => {
+    mocks.resolveJarvisProjectReviewInventoryRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "management.project-review-inventory",
+      message:
+        "Aktuell müssen noch 158 Projekte fachlich geprüft werden. Davon wurden 157 noch nie geprüft und bei einem Projekt ist nach Änderungen eine erneute Prüfung notwendig. Ein Projekt ist bereits fachlich freigegeben.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Welche Projekte müssen noch geprüft werden?",
+          context: { module: "Kontakte" },
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload.message).toContain("158 Projekte");
+    expect(
+      mocks.resolveJarvisProjectReviewInventoryRequest
+    ).toHaveBeenCalledWith({
+      question: "Welche Projekte müssen noch geprüft werden?",
+      organizationId: "organization-1",
+      accessProfile: { profile: true },
+    });
+    expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisSystemHelp).not.toHaveBeenCalled();
+  });
+
   it("does not let an open project override a clear generic invoice search", async () => {
     mocks.resolveJarvisIntentDecision.mockReturnValue({
       state: "resolved",
@@ -224,6 +267,56 @@ describe("POST /api/jarvis/chat", () => {
     expect(await response.json()).toMatchObject({
       topicId: "records.invoice.search",
       message: "Offene Rechnungen",
+    });
+    expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisReadRequest).toHaveBeenCalled();
+  });
+
+  it("routes an explicit plural project search around an open single-project context", async () => {
+    mocks.resolveJarvisIntentDecision.mockReturnValue({
+      state: "resolved",
+      domain: "system",
+      confidence: "high",
+      candidates: [],
+      clarificationReasons: [],
+      goals: ["read"],
+      entities: ["project"],
+      timeScopes: [],
+      recordFilter: "open",
+      segments: ["Welche Projekte sind noch offen?"],
+    });
+    mocks.resolveJarvisProjectHealthRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "project.health",
+      message: "Falsche Einzelprojektantwort",
+      deterministic: true,
+    });
+    mocks.resolveJarvisReadRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "records.project.search",
+      message: "Offene Projekte",
+      records: [],
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Welche Projekte sind noch offen?",
+          context: {
+            module: "Projektakte",
+            recordType: "project",
+            recordId: "project-123",
+          },
+        }),
+      })
+    );
+
+    expect(await response.json()).toMatchObject({
+      message: "Offene Projekte",
     });
     expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisReadRequest).toHaveBeenCalled();

@@ -3,10 +3,23 @@ import { Role } from "@prisma/client";
 import { createJarvisAccessProfile } from "@/lib/jarvis/security";
 import {
   canAccessJarvisTask,
+  formatJarvisReadCollectionMessage,
   getJarvisReadAccessDecision,
 } from "@/lib/jarvis/read-model";
 
 describe("JARVIS read model permissions", () => {
+  it("explains a capped result list without broken or misleading grammar", () => {
+    expect(
+      formatJarvisReadCollectionMessage({
+        count: 20,
+        pluralLabel: "Projekte",
+        hasMore: true,
+      })
+    ).toBe(
+      "Ich zeige 20 passende Projekte in deinem erlaubten Bereich. Weitere Treffer sind vorhanden."
+    );
+  });
+
   it("lets employees read projects and their scoped tasks", () => {
     const employee = createJarvisAccessProfile({
       id: "employee",

@@ -16,6 +16,7 @@ import {
 } from "@/lib/jarvis/sales-analysis";
 import { resolveJarvisOrganizationMaterialRequest } from "@/lib/jarvis/organization-material-analysis";
 import { resolveJarvisOrganizationServiceRateRequest } from "@/lib/jarvis/organization-service-rate-analysis";
+import { resolveJarvisProjectReviewInventoryRequest } from "@/lib/jarvis/organization-project-review-analysis";
 import { resolveJarvisProjectHealthRequest } from "@/lib/jarvis/project-health";
 import { createJarvisAccessProfile } from "@/lib/jarvis/security";
 import { applyJarvisAnswerPolicy } from "@/lib/jarvis/answer-policy";
@@ -51,6 +52,11 @@ function shouldUseProjectHealthPath(
   question: string,
   decision: JarvisIntentDecision
 ) {
+  const asksForProjectCollection =
+    /\bprojekte\b/iu.test(question) &&
+    extractJarvisProjectReferences(question).length === 0 &&
+    !isJarvisReferentialFollowUp(question);
+  if (asksForProjectCollection) return false;
   const asksForGenericRecords =
     decision.goals.includes("read") &&
     decision.entities.some((entity) =>
@@ -190,6 +196,15 @@ export async function POST(req: Request) {
       dialogState,
     });
   };
+  const projectReviewInventoryResponse =
+    await resolveJarvisProjectReviewInventoryRequest({
+      question: message,
+      organizationId: organization.id,
+      accessProfile,
+    });
+  if (projectReviewInventoryResponse) {
+    return respond(projectReviewInventoryResponse, "management");
+  }
   const projectMatrixClarification =
     buildJarvisProjectMatrixClarification(
       message,

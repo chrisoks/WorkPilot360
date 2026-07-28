@@ -61,6 +61,10 @@ describe("organization-wide JARVIS material analysis", () => {
     "Welche Materialien sollten wir preislich prüfen?",
     "Welche Artikel verkaufen wir zu günstig?",
     "Wo stimmen Materialmenge und Lagerentnahme nicht überein?",
+    "Wie hoch ist unser Materialverbrauch?",
+    "Zeig mir unsere meistverbrauchten Materialien.",
+    "Wo verbrauchen wir auffällig viel Material?",
+    "Welche Artikel wurden besonders häufig aus dem Lager entnommen?",
   ])("recognizes the organization-wide intent: %s", (question) => {
     expect(resolveJarvisOrganizationMaterialIntent(question)).toBe(true);
   });

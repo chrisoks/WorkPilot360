@@ -59,6 +59,10 @@ describe("organization-wide JARVIS service-rate analysis", () => {
     "Analysiere unsere Stundenverrechnungssätze.",
     "Welche Stundenleistungen sollten wir preislich prüfen?",
     "Wo sollten wir unsere Stundensätze erhöhen?",
+    "Welchen Stundensatz erzielen wir tatsächlich?",
+    "Wie hoch ist unser effektiver Stundenverrechnungssatz?",
+    "Wie wirtschaftlich sind unsere Stundenleistungen?",
+    "Wo verlieren wir Geld bei unseren Stundenleistungen?",
   ])("recognizes the organization-wide intent: %s", (question) => {
     expect(resolveJarvisOrganizationServiceRateIntent(question)).toBe(true);
   });

@@ -794,7 +794,7 @@ function parseJarvisStructuredAnswer(value: unknown): JarvisStructuredAnswer | u
 
 function parseJarvisRecordResults(value: unknown): JarvisRecordResult[] | undefined {
   if (!Array.isArray(value)) return undefined;
-  const records = value.slice(0, 5).flatMap((candidate) => {
+  const records = value.slice(0, 20).flatMap((candidate) => {
     if (!candidate || typeof candidate !== "object") return [];
     const record = candidate as Record<string, unknown>;
     const target = record.target;
@@ -7137,6 +7137,36 @@ function JarvisComposer({
         {isSending ? "Denkt..." : "Senden"}
       </button>
     </form>
+  );
+}
+
+function JarvisRecordCardView({
+  record,
+  isSending,
+  onOpen,
+}: {
+  record: JarvisRecordResult;
+  isSending: boolean;
+  onOpen: (target: JarvisRecordTarget) => void;
+}) {
+  return (
+    <div className={styles.jarvisRecordCard}>
+      <div>
+        <strong>{record.title}</strong>
+        {record.subtitle ? <span>{record.subtitle}</span> : null}
+        {record.summary ? <small>{record.summary}</small> : null}
+      </div>
+      <footer>
+        <span>{record.status}</span>
+        <button
+          type="button"
+          disabled={isSending}
+          onClick={() => onOpen(record.target)}
+        >
+          Öffnen
+        </button>
+      </footer>
+    </div>
   );
 }
 
@@ -32394,8 +32424,15 @@ await addProjectLogbookEntry(
     emptyReply: "JARVIS hat keine verwertbare Antwort geliefert.",
     loading: "JARVIS prüft deine Frage...",
   };
+  const hasActiveProjectFile =
+    Boolean(selectedProjectFile) &&
+    (activeTab === "hero" ||
+      activeTab === "projectsSolutions" ||
+      activeTab === "projectsImmocare");
+  const hasActiveCustomerFile =
+    Boolean(selectedCustomerFile) && activeTab === "contacts";
   const managementAiSuggestions = [
-    ...(selectedProjectFile
+    ...(hasActiveProjectFile
       ? [{ label: "Projekt prüfen", question: "Prüfe dieses Projekt vollständig." }]
       : []),
     { label: "Angebot anlegen", question: "Wie lege ich ein Angebot an?" },
@@ -32423,8 +32460,8 @@ await addProjectLogbookEntry(
   }
   const buildJarvisSurfaceContext = () => {
     const navigation = getJarvisNavigationContext(activeTab);
-    const hasProjectFile = Boolean(selectedProjectFile);
-    const hasCustomerFile = Boolean(selectedCustomerFile);
+    const hasProjectFile = hasActiveProjectFile;
+    const hasCustomerFile = hasActiveCustomerFile;
     const projectKind = selectedProjectFile
       ? getProjectKind(selectedProjectFile) === ONE_TIME_PROJECT_KIND
         ? "oneTime"
@@ -68595,25 +68632,31 @@ await addProjectLogbookEntry(
                     ) : null}
                     {message.role === "assistant" && message.records?.length ? (
                       <div className={styles.jarvisRecordList}>
-                        {message.records.map((record) => (
-                          <div key={record.id} className={styles.jarvisRecordCard}>
-                            <div>
-                              <strong>{record.title}</strong>
-                              {record.subtitle ? <span>{record.subtitle}</span> : null}
-                              {record.summary ? <small>{record.summary}</small> : null}
-                            </div>
-                            <footer>
-                              <span>{record.status}</span>
-                              <button
-                                type="button"
-                                disabled={isManagementAiSending}
-                                onClick={() => openJarvisRecordTarget(record.target)}
-                              >
-                                Öffnen
-                              </button>
-                            </footer>
-                          </div>
+                        {message.records.slice(0, 5).map((record) => (
+                          <JarvisRecordCardView
+                            key={record.id}
+                            record={record}
+                            isSending={isManagementAiSending}
+                            onOpen={openJarvisRecordTarget}
+                          />
                         ))}
+                        {message.records.length > 5 ? (
+                          <details className={styles.jarvisRecordRemainder}>
+                            <summary>
+                              Weitere {message.records.length - 5} anzeigen
+                            </summary>
+                            <div>
+                              {message.records.slice(5).map((record) => (
+                                <JarvisRecordCardView
+                                  key={record.id}
+                                  record={record}
+                                  isSending={isManagementAiSending}
+                                  onOpen={openJarvisRecordTarget}
+                                />
+                              ))}
+                            </div>
+                          </details>
+                        ) : null}
                       </div>
                     ) : null}
                   </article>

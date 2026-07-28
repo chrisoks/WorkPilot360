@@ -89,6 +89,16 @@ const KIND_LABELS: Record<JarvisRecordKind, { singular: string; plural: string }
   invoice: { singular: "Rechnung", plural: "Rechnungen" },
 };
 
+export function formatJarvisReadCollectionMessage(input: {
+  count: number;
+  pluralLabel: string;
+  hasMore: boolean;
+}) {
+  return input.hasMore
+    ? `Ich zeige ${input.count} passende ${input.pluralLabel} in deinem erlaubten Bereich. Weitere Treffer sind vorhanden.`
+    : `Ich habe ${input.count} passende ${input.pluralLabel} in deinem erlaubten Bereich gefunden.`;
+}
+
 function formatMoney(value: number) {
   return new Intl.NumberFormat("de-DE", {
     style: "currency",
@@ -214,7 +224,7 @@ async function findProjects(
       ${queryCondition}
       ${statusCondition}
     ORDER BY "updatedAt" DESC
-    LIMIT 20
+    LIMIT 21
   `);
 
   return rows.map((project) => {
@@ -264,7 +274,7 @@ async function findCustomers(
           : {}),
     },
     orderBy: { updatedAt: "desc" },
-    take: 20,
+    take: 21,
     select: {
       id: true,
       customerNumber: true,
@@ -395,7 +405,7 @@ async function findOffers(
         : {}),
     },
     orderBy: { updatedAt: "desc" },
-    take: 20,
+    take: 21,
     select: {
       id: true,
       projectId: true,
@@ -446,7 +456,7 @@ async function findInvoices(
       ...(intent.filter === "overdue" ? { isPaid: false, dueDate: { lt: todayKey, not: "" } } : {}),
     },
     orderBy: [{ dueDate: "asc" }, { updatedAt: "desc" }],
-    take: 20,
+    take: 21,
     select: {
       id: true,
       projectId: true,
@@ -525,7 +535,7 @@ export async function resolveJarvisReadRequest(input: {
   }
 
   const allRecords = await loadRecords(input.organizationId, intent, input.accessProfile);
-  const records = allRecords.slice(0, 5);
+  const records = allRecords.slice(0, 20);
   const labels = KIND_LABELS[intent.kind];
   if (records.length === 0) {
     const filterLabel =
@@ -548,7 +558,11 @@ export async function resolveJarvisReadRequest(input: {
   const message =
     records.length === 1
       ? `${labels.singular} gefunden: ${records[0].title}. ${records[0].subtitle}. ${records[0].summary}. Status: ${records[0].status}.`
-      : `Ich habe ${records.length}${hasMore ? " von mehreren" : ""} passende ${labels.plural} in deinem erlaubten Bereich gefunden.`;
+      : formatJarvisReadCollectionMessage({
+          count: records.length,
+          pluralLabel: labels.plural,
+          hasMore,
+        });
 
   return {
     type: "answer",

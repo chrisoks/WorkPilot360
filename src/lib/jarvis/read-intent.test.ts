@@ -50,6 +50,21 @@ describe("JARVIS read intent", () => {
     });
   });
 
+  it("does not let an open project override an explicit plural project search", () => {
+    expect(
+      resolveJarvisReadIntent("Welche Projekte sind noch offen?", {
+        recordType: "project",
+        recordId: "project-123",
+      })
+    ).toEqual({
+      kind: "project",
+      query: "",
+      filter: "open",
+      contextRecordId: undefined,
+      summarize: false,
+    });
+  });
+
   it("does not treat normal system-help questions as record searches", () => {
     expect(resolveJarvisReadIntent("Wie lege ich ein Angebot an?")).toBeUndefined();
     expect(resolveJarvisReadIntent("Zeige mir, wie ich ein Angebot erstelle.")).toBeUndefined();

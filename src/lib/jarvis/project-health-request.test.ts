@@ -862,7 +862,7 @@ describe("resolveJarvisProjectHealthRequest", () => {
     expect(serialized).not.toContain("Bewertung nach Bereichen");
   });
 
-  it("answers a project material question position by position", async () => {
+  it("answers a physical-consumption question for the requested project month without inventing usage", async () => {
     dbMocks.invoiceFindMany.mockResolvedValueOnce([
       {
         id: "invoice-material",
@@ -877,6 +877,20 @@ describe("resolveJarvisProjectHealthRequest", () => {
         serviceDate: "2026-07-15",
         netTotal: 30,
         createdAt: new Date("2026-07-15T12:00:00.000Z"),
+      },
+      {
+        id: "invoice-material-june",
+        projectId: "project-1",
+        invoiceNumber: "RE-MAT-0",
+        projectNumber: "MKG-209",
+        projectTitle: "Marketing",
+        customerName: "Klaus Testmann",
+        status: "Fakturiert",
+        billingSource: "manual",
+        plannedExecutionMonth: "2026-06",
+        serviceDate: "2026-06-15",
+        netTotal: 200,
+        createdAt: new Date("2026-06-15T12:00:00.000Z"),
       },
     ]);
     dbMocks.invoiceLineFindMany.mockResolvedValueOnce([
@@ -916,6 +930,24 @@ describe("resolveJarvisProjectHealthRequest", () => {
         costSnapshotAt: new Date("2026-07-15T12:00:00.000Z"),
         totalNet: 10,
       },
+      {
+        id: "line-june",
+        invoiceId: "invoice-material-june",
+        catalogItemId: "salt-1",
+        catalogType: "article",
+        position: 1,
+        quantity: 100,
+        unit: "kg",
+        title: "Streusalz",
+        unitPrice: 2,
+        discountPercent: 0,
+        materialCostSnapshot: 80,
+        laborCostSnapshot: 0,
+        packageComponentsSnapshot: [],
+        catalogCostSnapshotVersion: 1,
+        costSnapshotAt: new Date("2026-06-15T12:00:00.000Z"),
+        totalNet: 200,
+      },
     ]);
     dbMocks.catalogInventoryMovementFindMany.mockResolvedValueOnce([
       {
@@ -924,10 +956,16 @@ describe("resolveJarvisProjectHealthRequest", () => {
         quantityDelta: -15,
         invoiceId: "invoice-material",
       },
+      {
+        catalogItemId: "salt-1",
+        movementType: "sale",
+        quantityDelta: -100,
+        invoiceId: "invoice-material-june",
+      },
     ]);
 
     const response = await resolveJarvisProjectHealthRequest({
-      question: "Welche Materialien wurden bei MKG-209 abgerechnet?",
+      question: "Wie viel Material wurde bei MKG-209 im Juli 2026 tatsächlich verbraucht?",
       organizationId: "org-1",
       accessProfile: createJarvisAccessProfile({
         id: "manager-1",
@@ -941,17 +979,38 @@ describe("resolveJarvisProjectHealthRequest", () => {
       structured: {
         title: "Materialanalyse · MKG-209",
         facts: [
+          { label: "Zeitraum", value: "Juli 2026" },
+          {
+            label: "Projektart",
+            value: "Einmaliges Projekt",
+            tone: "neutral",
+          },
+          {
+            label: "Projektdaten",
+            value: "Fachlich freigegeben",
+            tone: "positive",
+          },
+          {
+            label: "Physischer Verbrauch",
+            value: "Nicht separat belegt",
+            tone: "warning",
+          },
           { label: "Fertige Rechnungen", value: "1" },
           { label: "Materialpositionen", value: "2" },
           {
             label: "Lagerabgleich",
             value: "Abgerechnete Mengen und Lagerbuchungen stimmen überein",
+            tone: "positive",
           },
         ],
       },
     });
     const serialized = JSON.stringify(response);
     expect(serialized).toContain("Streusalz: 15 kg");
+    expect(serialized).not.toContain("115 kg");
+    expect(serialized).toContain(
+      "tatsächliche physische Materialverbrauch"
+    );
     expect(serialized).toContain("keinen tatsächlichen physischen Verbrauch");
     expect(serialized).not.toContain("Prüfwert");
   });
@@ -1002,6 +1061,33 @@ describe("resolveJarvisProjectHealthRequest", () => {
       overtimeApprovedByUserId: null,
       overtimeApprovedByName: null,
       overtimeApprovedAt: null,
+    }, {
+      id: "time-june",
+      mode: "project",
+      projectId: "project-1",
+      trade: "Hausmeister",
+      planningEntryId: null,
+      billingCatalogItemId: "service-1",
+      billingCatalogItemLabel: "Hausmeisterstunde",
+      offerId: "offer-1",
+      userId: "manager-1",
+      employee: "Christian Eid",
+      entrySource: "stamped",
+      date: "2026-06-15",
+      startTime: "08:00",
+      endTime: "18:00",
+      pauseMs: 0,
+      invoiceId: "invoice-service-june",
+      durationMs: BigInt(10 * 3_600_000),
+      laborCostRateSnapshot: 30,
+      laborCostSnapshot: 300,
+      costSnapshotAt: new Date("2026-06-15T18:00:00.000Z"),
+      comment: null,
+      completionStatus: "completed",
+      overtimeApprovalStatus: "not_required",
+      overtimeApprovedByUserId: null,
+      overtimeApprovedByName: null,
+      overtimeApprovedAt: null,
     }]);
     dbMocks.invoiceFindMany.mockResolvedValueOnce([{
       id: "invoice-service",
@@ -1016,6 +1102,19 @@ describe("resolveJarvisProjectHealthRequest", () => {
       serviceDate: "2026-07-15",
       netTotal: 600,
       createdAt: new Date("2026-07-15T12:00:00.000Z"),
+    }, {
+      id: "invoice-service-june",
+      projectId: "project-1",
+      invoiceNumber: "RE-SVS-0",
+      projectNumber: "MKG-209",
+      projectTitle: "Marketing",
+      customerName: "Klaus Testmann",
+      status: "Fakturiert",
+      billingSource: "manual",
+      plannedExecutionMonth: "2026-06",
+      serviceDate: "2026-06-15",
+      netTotal: 1_000,
+      createdAt: new Date("2026-06-15T12:00:00.000Z"),
     }]);
     dbMocks.invoiceLineFindMany.mockResolvedValueOnce([{
       id: "line-service",
@@ -1034,6 +1133,23 @@ describe("resolveJarvisProjectHealthRequest", () => {
       catalogCostSnapshotVersion: 1,
       costSnapshotAt: new Date("2026-07-15T12:00:00.000Z"),
       totalNet: 600,
+    }, {
+      id: "line-service-june",
+      invoiceId: "invoice-service-june",
+      catalogItemId: "service-1",
+      catalogType: "service",
+      position: 1,
+      quantity: 10,
+      unit: "Std.",
+      title: "Hausmeisterstunde",
+      unitPrice: 100,
+      discountPercent: 0,
+      materialCostSnapshot: 0,
+      laborCostSnapshot: 300,
+      packageComponentsSnapshot: [],
+      catalogCostSnapshotVersion: 1,
+      costSnapshotAt: new Date("2026-06-15T12:00:00.000Z"),
+      totalNet: 1_000,
     }]);
     dbMocks.catalogItemFindMany.mockResolvedValueOnce([{
       id: "service-1",
@@ -1042,11 +1158,12 @@ describe("resolveJarvisProjectHealthRequest", () => {
       unit: "Std.",
       salesPrice: 60,
       isActive: true,
+      reviewStatus: "approved",
     }]);
 
     const response = await resolveJarvisProjectHealthRequest({
       question:
-        "Wie hoch ist der tatsächlich erzielte Stundenverrechnungssatz bei MKG-209?",
+        "Wie hoch ist der tatsächlich erzielte Stundenverrechnungssatz bei MKG-209 im Juli 2026?",
       organizationId: "org-1",
       accessProfile: createJarvisAccessProfile({
         id: "manager-1",
@@ -1060,9 +1177,25 @@ describe("resolveJarvisProjectHealthRequest", () => {
       structured: {
         title: "Leistungen & Stundenverrechnungssätze · MKG-209",
         facts: [
+          { label: "Zeitraum", value: "Juli 2026" },
+          {
+            label: "Projektart",
+            value: "Einmaliges Projekt",
+            tone: "neutral",
+          },
           { label: "Fertige Rechnungen", value: "1" },
           { label: "Abgerechnete Stunden", value: "10 Std." },
           { label: "Zugeordnete Stempelstunden", value: "12 Std." },
+          {
+            label: "Projektdaten",
+            value: "Fachlich freigegeben",
+            tone: "positive",
+          },
+          {
+            label: "Freigegebene Leistungen",
+            value: "1 von 1",
+            tone: "positive",
+          },
         ],
       },
     });
