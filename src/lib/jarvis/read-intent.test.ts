@@ -69,5 +69,7 @@ describe("JARVIS read intent", () => {
     expect(resolveJarvisReadIntent("Wie lege ich ein Angebot an?")).toBeUndefined();
     expect(resolveJarvisReadIntent("Zeige mir, wie ich ein Angebot erstelle.")).toBeUndefined();
     expect(resolveJarvisReadIntent("Was ist bei Rechnungen zu beachten?")).toBeUndefined();
+    expect(resolveJarvisReadIntent("Wie suche ich einen bestimmten Kunden?")).toBeUndefined();
+    expect(resolveJarvisReadIntent("Wie kann ich ein Projekt finden und öffnen?")).toBeUndefined();
   });
 });

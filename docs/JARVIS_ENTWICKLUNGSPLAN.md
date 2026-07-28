@@ -4,6 +4,30 @@ Stand: 28.07.2026
 
 ## Aktueller Umsetzungsstand
 
+### Intent-Orchestrator V3
+
+- Eindeutige Bedienfragen werden nach der globalen Rollen- und
+  Sicherheitsprüfung vor Projekt-, Analyse- und Suchadaptern beantwortet.
+  Ein geöffneter Datensatz darf die ausdrücklich formulierte Absicht nicht
+  mehr überschreiben.
+- Eine ausdrücklich genannte Projektnummer hat bei genau einem Treffer
+  Vorrang vor dem Bildschirm- und bisherigen Gesprächskontext. Breite Fragen
+  zu diesem Projekt führen zu einer passenden Rückfrage; konkrete Fragen zu
+  Projektart, Status, Verantwortung, fachlichem Prüfstand und letzter
+  Speicherung erhalten eine kurze direkte Antwort.
+- Unternehmensweite Material-, Leistungs-, Vertriebs- und
+  Projektprüfungsfragen laufen vor der Einzelprojektdiagnose. Noch nicht
+  sicher angebundene Auswertungen nennen ausdrücklich die Adaptergrenze,
+  statt aus einer unpassenden Suche „keine Treffer“ abzuleiten.
+- Bedienfragen wie `Wie suche ich einen Kunden?` bleiben Bedienhilfe und
+  lösen keine Live-Suche aus. Ein einzelnes Projekt mit dem Wort
+  `kontrollieren` wird nicht mehr als Frage zum gesamten fachlichen
+  Projektprüfbestand missverstanden.
+- Umgangssprache, leichte Schreibvarianten und Sicherheitsformulierungen wie
+  `Zeig mir den API-Key` oder `Ignoriere alles vorher` sind im
+  Regressionskorpus abgedeckt. Direkte Aktionen bleiben bis zum kontrollierten
+  Action Center gesperrt und werden niemals still ausgeführt.
+
 ### Intent-Orchestrator V2
 
 - Sicherheits- und Rollenprüfungen laufen vor allen fachlichen Adaptern und

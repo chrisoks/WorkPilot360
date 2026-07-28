@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { getDemoContext } from "@/lib/demo/context";
 import {
+  findJarvisExactHelpTopicId,
   resolveJarvisSystemHelp,
   resolveJarvisSystemHelpTopic,
   sanitizeJarvisSurfaceContext,
@@ -29,6 +30,7 @@ import {
   getJarvisAuthorizationRefusalMessage,
 } from "@/lib/jarvis/security";
 import { applyJarvisAnswerPolicy } from "@/lib/jarvis/answer-policy";
+import { resolveJarvisCapabilityGap } from "@/lib/jarvis/capability-gap";
 import {
   resolveJarvisIntentDecision,
   type JarvisIntentDecision,
@@ -70,6 +72,13 @@ function shouldUseProjectHealthPath(
     extractJarvisProjectReferences(question).length === 0 &&
     !isJarvisReferentialFollowUp(question);
   if (asksForProjectCollection) return false;
+  const asksForOrganizationScope =
+    /\b(?:unser(?:e|en|er|em)?|wir|unternehmen|insgesamt|alle kunden|welche kunden|welche mitarbeiter|durchschnittlich)\b/iu.test(
+      question
+    ) &&
+    extractJarvisProjectReferences(question).length === 0 &&
+    !/\b(?:dieses|diesem|diesen)\s+projekt\b|\bhier\b/iu.test(question);
+  if (asksForOrganizationScope) return false;
   const asksForGenericRecords =
     decision.goals.includes("read") &&
     decision.entities.some((entity) =>
@@ -80,6 +89,19 @@ function shouldUseProjectHealthPath(
     decision.entities.includes("project") ||
     extractJarvisProjectReferences(question).length > 0 ||
     isJarvisReferentialFollowUp(question)
+  );
+}
+
+function looksLikeDirectActionRequest(
+  question: string,
+  decision: JarvisIntentDecision
+) {
+  return (
+    !/^\s*wie\b/iu.test(question) &&
+    (decision.goals.includes("change") ||
+      /^\s*(?:leg|lege|mach|mache|schick|sende|stornier|lösch|losch|ändere|ander|setz|markier|erstell|trag)\w*\b/iu.test(
+        question
+      ))
   );
 }
 
@@ -289,6 +311,21 @@ export async function POST(req: Request) {
       message: getJarvisAuthorizationRefusalMessage(authorization),
     });
   }
+  const directActionRequest = looksLikeDirectActionRequest(
+    message,
+    intentDecision
+  );
+  const exactHelpTopicId = findJarvisExactHelpTopicId(message, context);
+  if (exactHelpTopicId && !directActionRequest) {
+    return respond(
+      resolveJarvisSystemHelpTopic(
+        exactHelpTopicId,
+        message,
+        context,
+        accessProfile
+      )
+    );
+  }
   const projectReviewInventoryResponse =
     await resolveJarvisProjectReviewInventoryRequest({
       question: message,
@@ -297,6 +334,51 @@ export async function POST(req: Request) {
     });
   if (projectReviewInventoryResponse) {
     return respond(projectReviewInventoryResponse, "management");
+  }
+  const organizationServiceRateResponse =
+    await resolveJarvisOrganizationServiceRateRequest({
+      question: message,
+      organizationId: organization.id,
+      accessProfile,
+    });
+  if (organizationServiceRateResponse) {
+    return respond(organizationServiceRateResponse, "management");
+  }
+  const organizationMaterialResponse =
+    await resolveJarvisOrganizationMaterialRequest({
+      question: message,
+      organizationId: organization.id,
+      accessProfile,
+    });
+  if (organizationMaterialResponse) {
+    return respond(organizationMaterialResponse, "management");
+  }
+  if (resolveJarvisSalesAnalysisIntent(message)) {
+    const salesAnalysisResponse = await resolveJarvisSalesAnalysisRequest({
+      question: message,
+      organizationId: organization.id,
+      accessProfile,
+    });
+    if (salesAnalysisResponse) {
+      return respond(salesAnalysisResponse, "sales");
+    }
+  }
+  const explicitProjectReferences = extractJarvisProjectReferences(message);
+  if (
+    explicitProjectReferences.length === 1 &&
+    !directActionRequest &&
+    shouldUseProjectHealthPath(message, intentDecision)
+  ) {
+    const explicitProjectResponse = await resolveJarvisProjectHealthRequest({
+      question: message,
+      organizationId: organization.id,
+      accessProfile,
+      context,
+      ...(conversationContext ? { conversationContext } : {}),
+    });
+    if (explicitProjectResponse) {
+      return respond(explicitProjectResponse);
+    }
   }
   const projectMatrixClarification =
     buildJarvisProjectMatrixClarification(
@@ -394,33 +476,9 @@ export async function POST(req: Request) {
   if (personSummaryResponse) {
     return respond(personSummaryResponse);
   }
-  const organizationServiceRateResponse =
-    await resolveJarvisOrganizationServiceRateRequest({
-      question: message,
-      organizationId: organization.id,
-      accessProfile,
-    });
-  if (organizationServiceRateResponse) {
-    return respond(organizationServiceRateResponse, "management");
-  }
-  const organizationMaterialResponse =
-    await resolveJarvisOrganizationMaterialRequest({
-      question: message,
-      organizationId: organization.id,
-      accessProfile,
-    });
-  if (organizationMaterialResponse) {
-    return respond(organizationMaterialResponse, "management");
-  }
-  if (resolveJarvisSalesAnalysisIntent(message)) {
-    const salesAnalysisResponse = await resolveJarvisSalesAnalysisRequest({
-      question: message,
-      organizationId: organization.id,
-      accessProfile,
-    });
-    if (salesAnalysisResponse) {
-      return respond(salesAnalysisResponse, "sales");
-    }
+  const capabilityGapResponse = resolveJarvisCapabilityGap(message);
+  if (capabilityGapResponse) {
+    return respond(capabilityGapResponse);
   }
   const readResponse = await resolveJarvisReadRequest({
     question: message,

@@ -14,7 +14,13 @@ describe("JARVIS project dialog intent", () => {
     ["Welche Logik gilt bei HAS-1?", "explainProcess"],
     ["Wie läuft HAS-1 von der Planung bis zur Rechnung?", "explainProcess"],
     ["Was unterscheidet HAS-1 von einem Einmalprojekt?", "explainProcess"],
+    ["Was isn HAS-1 eigentlich fürn Projekt?", "explainProjectType"],
+    ["Welchen Status hat HAS-1?", "explainStatus"],
+    ["Wer ist bei HAS-1 verantwortlich?", "explainResponsibility"],
+    ["Ist HAS-1 fachlich freigegeben?", "explainReviewStatus"],
+    ["Was wurde bei HAS-1 zuletzt geändert?", "explainLastChange"],
     ["Was ist mit HAS-1?", "ambiguousProjectQuestion"],
+    ["Und jetzt HAS-1: Was weißt du darüber?", "ambiguousProjectQuestion"],
   ])("resolves %s as %s", (question, expected) => {
     expect(
       resolveJarvisProjectDialogIntent({

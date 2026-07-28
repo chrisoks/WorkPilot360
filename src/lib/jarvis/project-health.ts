@@ -1536,9 +1536,85 @@ function getProjectBillingLabel(
   return "Nicht eindeutig gepflegt";
 }
 
+function formatProjectFactDate(value: Date | null) {
+  if (!value) return "Nicht dokumentiert";
+  return new Intl.DateTimeFormat("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(value);
+}
+
+function buildProjectFactExplanation(
+  project: ProjectHealthRow,
+  intent:
+    | "explainStatus"
+    | "explainResponsibility"
+    | "explainReviewStatus"
+    | "explainLastChange"
+): JarvisReadResponse {
+  const reference = project.projectNumber || project.title;
+  const reviewLabel =
+    normalize(project.reviewStatus) === "approved"
+      ? "Fachlich freigegeben"
+      : normalize(project.reviewStatus) === "needs_review"
+        ? "Prüfung notwendig"
+        : "Noch nicht fachlich geprüft";
+  const facts = {
+    explainStatus: {
+      title: "Projektstatus",
+      value: project.status || "Nicht gepflegt",
+      message: `${reference} hat aktuell den Projektstatus „${project.status || "Nicht gepflegt"}“.`,
+    },
+    explainResponsibility: {
+      title: "Projektverantwortung",
+      value: project.responsibleName || "Nicht hinterlegt",
+      message: project.responsibleName
+        ? `Für ${reference} ist ${project.responsibleName} als projektverantwortliche Person hinterlegt.`
+        : `Für ${reference} ist aktuell keine projektverantwortliche Person hinterlegt.`,
+    },
+    explainReviewStatus: {
+      title: "Fachlicher Prüfstand",
+      value: reviewLabel,
+      message:
+        normalize(project.reviewStatus) === "approved"
+          ? `${reference} ist fachlich freigegeben.`
+          : `${reference} ist ${reviewLabel.toLocaleLowerCase("de-DE")}. Die vorhandenen Projektdaten sind deshalb noch keine bestätigte Sollwahrheit.`,
+    },
+    explainLastChange: {
+      title: "Letzte gespeicherte Änderung",
+      value: formatProjectFactDate(project.updatedAt),
+      message: `${reference} wurde zuletzt am ${formatProjectFactDate(project.updatedAt)} gespeichert. Der genaue geänderte Inhalt lässt sich aus diesem Zeitstempel allein nicht sicher ableiten; dafür muss das Logbuch geprüft werden.`,
+    },
+  } as const;
+  const fact = facts[intent];
+  return {
+    type: "answer",
+    topicId: `project.fact.${intent}`,
+    message: fact.message,
+    structured: {
+      title: `${fact.title} · ${reference}`,
+      subtitle: project.customer || "Ohne Kundenanzeige",
+      facts: [{ label: fact.title, value: fact.value }],
+    },
+    records: [{
+      id: `project-fact-${project.id}`,
+      kind: "project",
+      title: [project.projectNumber, project.title].filter(Boolean).join(" · "),
+      subtitle: project.customer || "Projekt",
+      summary: fact.value,
+      status: project.status,
+      target: { kind: "project", id: project.id },
+    }],
+    deterministic: true,
+  };
+}
+
 function buildProjectLogicExplanation(
   project: ProjectHealthRow,
-  intent: Exclude<JarvisProjectDialogIntent, "ambiguousProjectQuestion">
+  intent: "explainProjectType" | "explainBilling" | "explainProcess"
 ): JarvisReadResponse {
   const diagnosis = diagnoseJarvisProjectLogic(project);
   const profile = diagnosis.profile;
@@ -1871,7 +1947,27 @@ export async function resolveJarvisProjectHealthRequest(input: {
     projectDialogIntent &&
     projectDialogIntent !== "ambiguousProjectQuestion"
   ) {
-    return buildProjectLogicExplanation(project, projectDialogIntent);
+    return [
+      "explainStatus",
+      "explainResponsibility",
+      "explainReviewStatus",
+      "explainLastChange",
+    ].includes(projectDialogIntent)
+      ? buildProjectFactExplanation(
+          project,
+          projectDialogIntent as
+            | "explainStatus"
+            | "explainResponsibility"
+            | "explainReviewStatus"
+            | "explainLastChange"
+        )
+      : buildProjectLogicExplanation(
+          project,
+          projectDialogIntent as
+            | "explainProjectType"
+            | "explainBilling"
+            | "explainProcess"
+        );
   }
 
   const requestedScope = resolveProjectHealthScope(input.question);

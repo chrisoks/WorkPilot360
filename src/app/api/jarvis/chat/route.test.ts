@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   resolveJarvisReadRequest: vi.fn(),
   resolveJarvisSystemHelp: vi.fn(),
   resolveJarvisSystemHelpTopic: vi.fn(),
+  findJarvisExactHelpTopicId: vi.fn(),
   classifyJarvisIntentWithAi: vi.fn(),
   createJarvisAccessProfile: vi.fn(),
   authorizeJarvisQuestion: vi.fn(),
@@ -43,6 +44,7 @@ vi.mock("@/lib/jarvis/knowledge", () => ({
   sanitizeJarvisSurfaceContext: mocks.sanitizeJarvisSurfaceContext,
   resolveJarvisSystemHelp: mocks.resolveJarvisSystemHelp,
   resolveJarvisSystemHelpTopic: mocks.resolveJarvisSystemHelpTopic,
+  findJarvisExactHelpTopicId: mocks.findJarvisExactHelpTopicId,
 }));
 
 vi.mock("@/lib/jarvis/ai-intent-fallback", () => ({
@@ -171,6 +173,7 @@ describe("POST /api/jarvis/chat", () => {
     mocks.resolveJarvisSalesAnalysisRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisReadRequest.mockResolvedValue(undefined);
     mocks.classifyJarvisIntentWithAi.mockResolvedValue(undefined);
+    mocks.findJarvisExactHelpTopicId.mockReturnValue(undefined);
     mocks.resolveJarvisSystemHelp.mockReturnValue({
       type: "answer",
       message: "Systemhilfe",
@@ -804,7 +807,8 @@ describe("POST /api/jarvis/chat", () => {
       message: "Falscher Projektcheck",
       deterministic: true,
     });
-    mocks.resolveJarvisSystemHelp.mockReturnValue({
+    mocks.findJarvisExactHelpTopicId.mockReturnValue("appointment.create");
+    mocks.resolveJarvisSystemHelpTopic.mockReturnValue({
       type: "answer",
       topicId: "appointment.create",
       message: "Öffne Termine & Stempelungen und klicke auf + Termin.",
@@ -827,7 +831,8 @@ describe("POST /api/jarvis/chat", () => {
       topicId: "appointment.create",
     });
     expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
-    expect(mocks.resolveJarvisSystemHelp).toHaveBeenCalledWith(
+    expect(mocks.resolveJarvisSystemHelpTopic).toHaveBeenCalledWith(
+      "appointment.create",
       "Wie buche ich hier einen Termin?",
       {
         recordType: "project",

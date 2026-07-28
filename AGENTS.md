@@ -1,5 +1,19 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Intent-Orchestrator V3 2026-07-28: Nach globaler Sicherheits- und
+  Rollenprüfung haben eindeutige Bedienfragen und organisationsweite
+  Fachadapter Vorrang vor einem geöffneten Einzelprojekt. Genau eine
+  ausdrücklich genannte Projektnummer ersetzt den alten Bildschirm- oder
+  Gesprächskontext; mehrere Projektnummern bleiben eine geführte
+  Mehrfachauswahl. Projektart, Status, Verantwortung, fachlicher Prüfstand und
+  letzter Speicherzeitpunkt werden kurz und deterministisch beantwortet.
+  Bedienformulierungen wie `Wie suche ich einen Kunden?` dürfen keine
+  Live-Suche auslösen. Fehlende organisationsweite Datenadapter müssen ihre
+  Grenze ehrlich benennen und dürfen niemals ein falsches Nullergebnis
+  ausgeben. Einzelprojektfragen mit `kontrollieren` dürfen nicht in die
+  Projektbestandsprüfung abbiegen. Umgangssprache und weitere
+  Geheimnis-/Prompt-Injection-Varianten sind regressionspflichtig.
+
 - JARVIS Intent-Orchestrator V2 2026-07-28: Sicherheits- und Rollenprüfungen
   müssen global vor Datenadaptern, Diagnose, Systemhilfe und KI-Klassifikation
   erfolgen. Deterministische Bedienhilfen dürfen nur über vollständige

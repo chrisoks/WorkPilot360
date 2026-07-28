@@ -141,7 +141,15 @@ export function shouldUseJarvisAiIntentFallback(input: {
   ) {
     return false;
   }
-  if (findJarvisExactHelpTopicId(question, input.context)) return false;
+  const asksForAction =
+    !/^\s*wie\b/iu.test(question) &&
+    (input.decision.goals.includes("change") ||
+      /^\s*(?:leg|lege|mach|mache|schick|sende|stornier|losch|lösch|ander|ändere|setz|markier|erstell|trag)\w*\b/iu.test(
+        question
+      ));
+  if (findJarvisExactHelpTopicId(question, input.context) && !asksForAction) {
+    return false;
+  }
   const hasContext =
     Boolean(input.context?.module) ||
     input.context?.recordType === "project" ||

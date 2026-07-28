@@ -86,6 +86,14 @@ describe("JARVIS project review inventory intent", () => {
     ).toBeUndefined();
   });
 
+  it("does not mistake invoice control in one project for the organization review inventory", () => {
+    expect(
+      resolveJarvisProjectReviewInventoryIntent(
+        "Wo kann ich die Rechnung von diesem Projekt kontrollieren?"
+      )
+    ).toBeUndefined();
+  });
+
   it("distinguishes approved projects from projects whose approval is still missing", () => {
     expect(
       resolveJarvisProjectReviewInventoryIntent(

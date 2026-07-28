@@ -80,12 +80,18 @@ export function resolveJarvisProjectReviewInventoryIntent(
 ): ProjectReviewIntent | undefined {
   if (extractJarvisProjectReferences(question).length > 0) return undefined;
   const value = normalize(question);
-  const mentionsProjects =
-    /\bprojekt(?:e|en|bestand|liste|daten)?\b/.test(value) ||
+  const mentionsProjectCollection =
+    /\bprojekte\b|\bprojekt(?:bestand|liste|daten)\b/.test(value) ||
     value.includes("projektpruf") ||
     /\b(dauerlaufer|monatspauschale|stundenabrechnung|einmalprojekt)\b/.test(
       value
     );
+  const mentionsSingleProject = /\bprojekt\b/.test(value);
+  const hasStrongReviewSignal =
+    /\bfachlich\b.*\b(?:pruf|freig)\w*\b/.test(value) ||
+    /\bnoch nie\b.*\bpruf/.test(value) ||
+    /\b(?:erneut|noch einmal|wieder)\b.*\bpruf/.test(value) ||
+    /\bprufung notwendig\b|\bnach anderungen\b/.test(value);
   const mentionsReviewState =
     includesStem(value, [
       "pruf",
@@ -98,7 +104,13 @@ export function resolveJarvisProjectReviewInventoryIntent(
     ]) ||
     /\b(?:ge|un)?pr[uf]{1,3}\w*\b/.test(value) ||
     /\bnoch (?:zu )?(?:bearbeiten|klaren|sichten)\b/.test(value);
-  if (!mentionsProjects || !mentionsReviewState) return undefined;
+  if (
+    !mentionsReviewState ||
+    (!mentionsProjectCollection &&
+      !(mentionsSingleProject && hasStrongReviewSignal))
+  ) {
+    return undefined;
+  }
 
   const asksForNotApproved =
     /\b(?:noch )?nicht (?:fachlich )?freigegeben\w*\b/.test(value) ||

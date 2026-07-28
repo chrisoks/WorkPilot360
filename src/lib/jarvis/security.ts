@@ -37,14 +37,18 @@ export type JarvisQuestionAuthorization = {
 const PROMPT_INJECTION_PATTERNS = [
   /ignore (all )?(previous|above|earlier) instructions/i,
   /ignoriere .*anweisung/i,
+  /ignoriere\s+(?:alles\s+)?(?:vorher|bisher|oben)/i,
+  /vergiss .*anweisung/i,
   /system[-_ ]?prompt/i,
   /developer[-_ ]?message/i,
   /du bist jetzt/i,
   /forget .*instructions/i,
   /zeige .*prompt/i,
+  /zeig .*prompt/i,
 ];
 
 const SECRET_REQUEST_PATTERNS = [
+  /\b(?:zeig|nenn)\b.*\b(?:passwort|kennwort|api[-_ ]?key|secret|token|private key|\.env)\b/i,
   /\b(?:zeige|nenne|verrate|gib|lies|lese|sende|exportiere)\b.*\b[\w-]*api[-_ ]?key\b/i,
   /\b(?:zeige|nenne|verrate|gib|lies|lese|sende|exportiere)\b.*\bapi[-_ ]?key\b/i,
   /\b(?:zeige|nenne|verrate|gib|lies|lese|sende|exportiere)\b.*\.env\b/i,

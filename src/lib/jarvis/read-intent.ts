@@ -105,6 +105,14 @@ export function resolveJarvisReadIntent(
   context: JarvisSurfaceContext = {}
 ): JarvisReadIntent | undefined {
   const normalized = normalize(question);
+  const asksHowToSearchOrOpen =
+    /\bwie\s+(?:kann\s+ich\s+)?(?:suche|such|finde|offne|oeffne)\s+ich\b/.test(
+      normalized
+    ) ||
+    /\bwie\s+kann\s+ich\b.*\b(?:suchen|finden|offnen|oeffnen)\b/.test(
+      normalized
+    );
+  if (asksHowToSearchOrOpen) return undefined;
   const kind = getKind(normalized);
   if (!kind || !READ_INTENT_MARKERS.some((marker) => normalized.includes(normalize(marker)))) {
     return undefined;

@@ -4,6 +4,10 @@ export type JarvisProjectDialogIntent =
   | "explainProjectType"
   | "explainBilling"
   | "explainProcess"
+  | "explainStatus"
+  | "explainResponsibility"
+  | "explainReviewStatus"
+  | "explainLastChange"
   | "ambiguousProjectQuestion";
 
 export function resolveJarvisProjectDialogIntent(input: {
@@ -21,6 +25,9 @@ export function resolveJarvisProjectDialogIntent(input: {
 
   if (
     /(welche|was fur eine|was ist .* fur (?:ein|en|nen)).*(projektart|projekttyp|projekt)/.test(
+      value
+    ) ||
+    /(was|welch).*(furn|fur n|fur ein|fur eine).*(projekt|projektart|projekttyp)/.test(
       value
     ) ||
     /(projektart|projekttyp).*(hat|ist|von)/.test(value) ||
@@ -55,8 +62,40 @@ export function resolveJarvisProjectDialogIntent(input: {
   }
 
   if (
+    /\b(?:welchen|was fur einen|wie ist der|was ist der)\b.*\bprojektstatus\b/.test(
+      value
+    ) ||
+    /\bstatus\b.*\b(?:projekt|hat|ist)\b/.test(value)
+  ) {
+    return "explainStatus";
+  }
+
+  if (
+    /\bwer\b.*\b(?:verantwortlich|projektverantwort)\w*\b/.test(value) ||
+    /\bprojektverantwort\w*\b.*\b(?:wer|ist)\b/.test(value)
+  ) {
+    return "explainResponsibility";
+  }
+
+  if (
+    /\b(?:fachlich\s+)?(?:gepruft|freigegeben|prufstatus)\b/.test(value) ||
+    /\b(?:wie ist|was ist)\b.*\bprufstand\b/.test(value)
+  ) {
+    return "explainReviewStatus";
+  }
+
+  if (
+    /\b(?:was|welche)\b.*\bzuletzt\b.*\b(?:geandert|anderung)\w*\b/.test(
+      value
+    ) ||
+    /\bletzte\b.*\banderung\b/.test(value)
+  ) {
+    return "explainLastChange";
+  }
+
+  if (
     /^(und )?was ist mit\b/.test(value) ||
-    /^(und )?was weisst du (uber|zu)\b/.test(value) ||
+    /\bwas wei(?:ss|ß)t du (daruber|uber|zu)\b/.test(value) ||
     /^(und )?sag .* (uber|zu)\b/.test(value) ||
     /^(und )?erklar .* projekt\b/.test(value)
   ) {
