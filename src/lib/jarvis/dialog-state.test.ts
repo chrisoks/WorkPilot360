@@ -451,6 +451,9 @@ describe("JARVIS dialog state", () => {
 
   it("recognizes short references but excludes independent how-to questions", () => {
     expect(isJarvisReferentialFollowUp("Und was fehlt noch?")).toBe(true);
+    expect(isJarvisReferentialFollowUp("Was ist das für eine Projektart?")).toBe(
+      true
+    );
     expect(isJarvisReferentialFollowUp("Wie lege ich einen Kunden an?")).toBe(
       false
     );

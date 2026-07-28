@@ -4,6 +4,24 @@ Stand: 28.07.2026
 
 ## Aktueller Umsetzungsstand
 
+### Intent-Orchestrator V2
+
+- Sicherheits- und Rollenprüfungen laufen vor allen fachlichen Adaptern und
+  vor jedem KI-Aufruf.
+- Bekannte Bedienabläufe werden nur über vollständige Mehrwortsignale mit
+  leichter deutscher Formen-Erkennung zugeordnet. Einzelne allgemeine Wörter
+  wie `Projekt` oder `Mitarbeiter` dürfen keine unpassende Anleitung auslösen.
+- Schwache, konfliktbehaftete oder aktionsbezogene Formulierungen dürfen den
+  begrenzten KI-Klassifikator als semantischen Schiedsrichter nutzen. Er kann
+  nur vorhandene Hilfethemen oder fest definierte Aktionsarten auswählen und
+  besitzt weiterhin weder Live-Daten noch Werkzeuge.
+- Direkte Aktionen bleiben gesperrt und führen zu einer sicheren, klickbaren
+  Rückfrage.
+- Projektbezüge ohne Bindestrich benötigen bewusst eine großgeschriebene
+  Kennung, damit Angaben wie `30 Tage` nicht als Projekt gelesen werden.
+- Ein automatisierter 100-Varianten-Korpus schützt Bedienfragen,
+  Fehlzuordnungen, Zahlenangaben und Geheimnisanfragen vor Regressionen.
+
 Stand 28.07.2026:
 
 - Die Absichtserkennung arbeitet für Bedienfragen jetzt hybrid. Eindeutige

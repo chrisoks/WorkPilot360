@@ -37,15 +37,18 @@ export type JarvisQuestionAuthorization = {
 const PROMPT_INJECTION_PATTERNS = [
   /ignore (all )?(previous|above|earlier) instructions/i,
   /ignoriere .*anweisung/i,
-  /system prompt/i,
-  /developer message/i,
+  /system[-_ ]?prompt/i,
+  /developer[-_ ]?message/i,
   /du bist jetzt/i,
   /forget .*instructions/i,
   /zeige .*prompt/i,
 ];
 
 const SECRET_REQUEST_PATTERNS = [
-  /\bwas\s+wei\S*\s+du\b.*\b(?:passwort|kennwort|api[- ]?key|secret|token|private key)\b/i,
+  /\b(?:zeige|nenne|verrate|gib|lies|lese|sende|exportiere)\b.*\b[\w-]*api[-_ ]?key\b/i,
+  /\b(?:zeige|nenne|verrate|gib|lies|lese|sende|exportiere)\b.*\bapi[-_ ]?key\b/i,
+  /\b(?:zeige|nenne|verrate|gib|lies|lese|sende|exportiere)\b.*\.env\b/i,
+  /\bwas\s+wei\S*\s+du\b.*\b(?:passwort|kennwort|api[-_ ]?key|secret|token|private key)\b/i,
   /\b(?:zeige|nenne|verrate|gib|lies|sende|exportiere)\b.*\b(?:passwort|kennwort|api[- ]?key|secret|token|private key|privater schlüssel|umgebungsvariable|\.env)\b/i,
   /\bwie lautet\b.*\b(?:passwort|kennwort|api[- ]?key|secret|token|private key|privater schlüssel)\b/i,
   /\b(?:passwort|kennwort|api[- ]?key|secret|token|private key|privater schlüssel)\b.*\b(?:anzeigen|auslesen|offenlegen|herausgeben)\b/i,
@@ -164,4 +167,28 @@ export function authorizeJarvisQuestion(
     return { allowed: false, dataClass, reason: "role" };
   }
   return { allowed: true, dataClass, reason: "allowed" };
+}
+
+export function getJarvisAuthorizationRefusalMessage(
+  authorization: JarvisQuestionAuthorization
+) {
+  if (authorization.reason === "prompt_injection") {
+    return "Diese Anweisung kann ich nicht befolgen. Ich bleibe bei freigegebenen Hilfen und Daten aus WorkPilot360.";
+  }
+  if (authorization.reason === "secret") {
+    return "Passwörter, API-Schlüssel, Tokens, System-Prompts und technische Geheimnisse sind in JARVIS für alle Rollen gesperrt.";
+  }
+  if (
+    authorization.dataClass === "payroll" ||
+    authorization.dataClass === "personnel"
+  ) {
+    return "Deine aktuelle Rolle darf diese sensiblen Personal- oder Lohndaten nicht über JARVIS abrufen.";
+  }
+  if (authorization.dataClass === "financial") {
+    return "Deine aktuelle Rolle darf diese Finanzdaten oder Finanzfunktion nicht über JARVIS verwenden.";
+  }
+  if (authorization.dataClass === "customer") {
+    return "Deine aktuelle Rolle darf diese Kunden- oder Kontaktdaten nicht über JARVIS verwenden.";
+  }
+  return "Diese Information ist für deine aktuelle Rolle in JARVIS nicht freigegeben.";
 }

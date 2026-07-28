@@ -75,6 +75,7 @@ describe("JARVIS AI intent fallback", () => {
         confidence: "high",
         needsClarification: false,
         usesCurrentContext: true,
+        actionKind: "none",
       })
     );
     const question = "Wie kriege ich den Einsatz hier in den Kalender?";
@@ -101,7 +102,46 @@ describe("JARVIS AI intent fallback", () => {
     expect(requestBody.store).toBe(false);
     expect(requestBody.max_output_tokens).toBe(180);
     expect(requestBody.text.format.strict).toBe(true);
+    expect(requestBody.text.format.schema.required).toContain("actionKind");
     expect(JSON.stringify(requestBody)).not.toContain("secret-project-id");
+  });
+
+  it("uses the model as a bounded arbiter for an unclear direct action", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    const fetchImpl = vi.fn().mockResolvedValue(
+      responseWith({
+        intent: "prepare_action",
+        domain: "system",
+        helpTopicId: "none",
+        confidence: "high",
+        needsClarification: false,
+        usesCurrentContext: true,
+        actionKind: "task.create",
+      })
+    );
+    const question = "Leg mir dazu bitte etwas für morgen an.";
+    const decision = resolveJarvisIntentDecision(question);
+
+    expect(
+      shouldUseJarvisAiIntentFallback({
+        question,
+        decision,
+        context: { recordType: "project", recordId: "project-1" },
+      })
+    ).toBe(true);
+    await expect(
+      classifyJarvisIntentWithAi(
+        {
+          question,
+          decision,
+          context: { recordType: "project", recordId: "project-1" },
+        },
+        fetchImpl
+      )
+    ).resolves.toMatchObject({
+      intent: "prepare_action",
+      actionKind: "task.create",
+    });
   });
 
   it("rejects an unknown help topic even when the model returns valid JSON", async () => {
@@ -114,6 +154,7 @@ describe("JARVIS AI intent fallback", () => {
         confidence: "high",
         needsClarification: false,
         usesCurrentContext: true,
+        actionKind: "none",
       })
     );
     const question = "Wie kriege ich das hier rein?";

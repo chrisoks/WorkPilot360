@@ -1,5 +1,6 @@
 import {
   authorizeJarvisQuestion,
+  getJarvisAuthorizationRefusalMessage,
   JarvisAccessProfile,
   JarvisQuestionAuthorization,
 } from "@/lib/jarvis/security";
@@ -150,6 +151,87 @@ const TOPICS: JarvisTopic[] = [
     actionId: "offer.prepare",
     answer:
       "Öffne das Projekt und gehe in der Projektakte auf „Dokumente“. Wähle „Angebote: Nachtragsangebote“ und klicke auf „+ Nachtragsangebot“. Ergänze die Positionen und prüfe vor dem Erstellen die Vorschau.",
+  },
+  {
+    id: "project.documents.open",
+    title: "Projektdokumente finden",
+    keywords: [
+      "dokumente eines projekts",
+      "projektdokumente finden",
+      "wo sehe ich die dokumente",
+      "wo finde ich die dokumente",
+      "dokumente im projekt",
+    ],
+    surfaces: ["Projektakte"],
+    answer:
+      "Öffne das betreffende Projekt und wähle links „Dokumente“. Dort findest du die zum Projekt gespeicherten Angebote, Rechnungen und weiteren Dokumentarten. Über die Auswahl innerhalb des Reiters wechselst du zur benötigten Dokumentart.",
+  },
+  {
+    id: "project.tasks.open",
+    title: "Projektaufgaben finden",
+    keywords: [
+      "aufgaben eines projekts",
+      "projektaufgaben finden",
+      "wo finde ich die aufgaben",
+      "aufgaben im projekt",
+    ],
+    surfaces: ["Projektakte", "Aufgaben"],
+    answer:
+      "Öffne das betreffende Projekt und wähle links „Aufgaben“. Dort siehst du die mit diesem Projekt verknüpften Aufgaben und ihren aktuellen Status. Die zentrale Aufgabenübersicht findest du zusätzlich in der Sidebar unter „Aufgaben“.",
+  },
+  {
+    id: "project.status.change",
+    title: "Projektstatus ändern",
+    keywords: [
+      "status eines projekts ändern",
+      "projektstatus ändern",
+      "wie ändere ich den status",
+    ],
+    surfaces: ["Projektakte"],
+    actionId: "project.manage",
+    answer:
+      "Öffne das betreffende Projekt und klicke im Projektkopf auf „Status ändern“. Wähle den fachlich passenden neuen Status, ergänze einen notwendigen Hinweis und bestätige die Änderung. Beachte, dass ein Statuswechsel projektbezogene Automatiken und Prüfungen auslösen kann.",
+  },
+  {
+    id: "contact.search",
+    title: "Kunden oder Kontakt finden",
+    keywords: [
+      "bestimmten kunden finden",
+      "kunden suchen",
+      "kontakt suchen",
+      "wie finde ich einen kunden",
+    ],
+    surfaces: ["Kontakte", "Kundenakte"],
+    answer:
+      "Öffne „Kontakte“ und nutze dort die Suche nach Name, Firma, Kundennummer, E-Mail oder Ort. Für einen schnellen Direktaufruf kannst du auch die globale Suche oben in WorkPilot360 verwenden.",
+  },
+  {
+    id: "invoice.open",
+    title: "Rechnung finden oder Status prüfen",
+    keywords: [
+      "rechnung prüfen",
+      "status einer rechnung",
+      "rechnung finden",
+      "wo finde ich die rechnung",
+    ],
+    surfaces: ["Projektakte", "Buchhaltung"],
+    answer:
+      "Öffne das betreffende Projekt und dort den Bereich „Rechnungen“. Wähle die gewünschte Rechnung aus und prüfe Status, Rechnungsdatum, Leistungsmonat und Positionen. Projektübergreifend findest du Rechnungen zusätzlich unter „Buchhaltung“.",
+  },
+  {
+    id: "offer.tracking",
+    title: "Angebotsöffnung und Annahme prüfen",
+    keywords: [
+      "angebot geöffnet",
+      "angebot angesehen",
+      "angebot angenommen",
+      "verbindlich angenommen",
+      "status eines angebots",
+    ],
+    surfaces: ["Projektakte"],
+    actionId: "offer.prepare",
+    answer:
+      "Öffne im Projekt das betreffende Angebot. Dort siehst du, ob und wann der öffentliche Angebotslink geöffnet wurde, wie oft er aufgerufen wurde und ob eine verbindliche Annahme mit Freigabenachweis vorliegt.",
   },
   {
     id: "appointment.create",
@@ -415,7 +497,11 @@ function getEmployeePlanningAnswer(context: JarvisSurfaceContext): JarvisHelpRes
 }
 
 function extractHelpProjectReference(question: string) {
-  return question.match(/\b(?:[A-ZÄÖÜ]{2,}[- ]?\d+|\d{5,})\b/iu)?.[0]?.trim() ?? "";
+  return (
+    question
+      .match(/\b(?:[\p{L}]{2,}-\d+|[A-ZÄÖÜ]{2,}\s+\d+|\d{5,})\b/u)?.[0]
+      ?.trim() ?? ""
+  );
 }
 
 function getAppointmentAnswer(
@@ -445,14 +531,66 @@ function getAppointmentAnswer(
 
 function scoreTopic(topic: JarvisTopic, question: string, context: JarvisSurfaceContext) {
   const normalized = normalize(question);
+  const stopWords = new Set([
+    "als",
+    "am",
+    "an",
+    "auf",
+    "bei",
+    "das",
+    "dem",
+    "den",
+    "der",
+    "die",
+    "ein",
+    "eine",
+    "einen",
+    "einem",
+    "einer",
+    "eines",
+    "für",
+    "hier",
+    "ich",
+    "im",
+    "in",
+    "ist",
+    "kann",
+    "mit",
+    "oder",
+    "und",
+    "von",
+    "was",
+    "wie",
+    "wo",
+    "zu",
+    "zum",
+    "zur",
+  ]);
+  const stem = (word: string) => {
+    if (word.length < 5) return word;
+    return word.replace(/(?:em|en|es|e|n)$/u, "");
+  };
+  const questionTerms = new Set(
+    normalized
+      .split(" ")
+      .filter(Boolean)
+      .map(stem)
+  );
   let intentScore = 0;
 
   topic.keywords.forEach((keyword) => {
     const normalizedKeyword = normalize(keyword);
-    if (normalized.includes(normalizedKeyword)) intentScore += normalizedKeyword.split(" ").length * 4;
-    normalizedKeyword.split(" ").forEach((term) => {
-      if (term.length >= 5 && normalized.includes(term)) intentScore += 1;
-    });
+    const keywordTerms = normalizedKeyword
+      .split(" ")
+      .filter((term) => term && !stopWords.has(term))
+      .map(stem);
+    const matches =
+      normalized.includes(normalizedKeyword) ||
+      (keywordTerms.length > 0 &&
+        keywordTerms.every((term) => questionTerms.has(term)));
+    if (matches) {
+      intentScore += Math.max(keywordTerms.length, 1) * 4;
+    }
   });
 
   // Der Oberflächenkontext darf eine erkannte Absicht präzisieren, aber niemals
@@ -464,6 +602,16 @@ function scoreTopic(topic: JarvisTopic, question: string, context: JarvisSurface
   if (context.recordType === "project" && topic.surfaces?.includes("Projektakte")) score += 2;
   if (context.recordType === "customer" && topic.surfaces?.includes("Kundenakte")) score += 2;
   return score;
+}
+
+export function findJarvisExactHelpTopicId(
+  question: string,
+  context: JarvisSurfaceContext = {}
+) {
+  const ranked = TOPICS
+    .map((topic) => ({ topic, score: scoreTopic(topic, question, context) }))
+    .sort((first, second) => second.score - first.score);
+  return ranked[0]?.score >= 3 ? ranked[0].topic.id : undefined;
 }
 
 export function sanitizeJarvisSurfaceContext(value: unknown): JarvisSurfaceContext {
@@ -524,12 +672,9 @@ export function resolveJarvisSystemHelp(
     };
   }
 
-  const ranked = TOPICS
-    .map((topic) => ({ topic, score: scoreTopic(topic, cleaned, context) }))
-    .sort((first, second) => second.score - first.score);
-  const match = ranked[0];
+  const matchedTopicId = findJarvisExactHelpTopicId(cleaned, context);
 
-  if (!match || match.score < 3) {
+  if (!matchedTopicId) {
     const hasWorkPilotSignal = looksLikeWorkPilotQuestion(cleaned);
     const choices =
       hasWorkPilotSignal || accessProfile
@@ -552,7 +697,7 @@ export function resolveJarvisSystemHelp(
     };
   }
   return resolveJarvisSystemHelpTopic(
-    match.topic.id,
+    matchedTopicId,
     cleaned,
     context,
     accessProfile
@@ -619,22 +764,7 @@ export function resolveJarvisSystemHelpTopic(
 }
 
 function getJarvisRefusalMessage(authorization: JarvisQuestionAuthorization) {
-  if (authorization.reason === "prompt_injection") {
-    return "Diese Anweisung kann ich nicht befolgen. Ich bleibe bei freigegebenen Hilfen zur Bedienung von WorkPilot360.";
-  }
-  if (authorization.reason === "secret") {
-    return "Passwörter, API-Schlüssel, Tokens und technische Geheimnisse sind in JARVIS für alle Rollen gesperrt.";
-  }
-  if (authorization.dataClass === "payroll" || authorization.dataClass === "personnel") {
-    return "Deine aktuelle Rolle darf diese sensiblen Personal- oder Lohndaten nicht über JARVIS abrufen.";
-  }
-  if (authorization.dataClass === "financial") {
-    return "Deine aktuelle Rolle darf diese Finanzdaten oder Finanzfunktion nicht über JARVIS verwenden.";
-  }
-  if (authorization.dataClass === "customer") {
-    return "Deine aktuelle Rolle darf diese Kunden- oder Kontaktdaten nicht über JARVIS verwenden.";
-  }
-  return "Diese Information ist für deine aktuelle Rolle in JARVIS nicht freigegeben.";
+  return getJarvisAuthorizationRefusalMessage(authorization);
 }
 
 export function getJarvisKnowledgeExcerpt(topicId?: string) {

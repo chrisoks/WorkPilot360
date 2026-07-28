@@ -431,12 +431,17 @@ export function isJarvisReferentialFollowUp(question: string) {
     ) ||
     /^(wie sieht|was fehlt|warum|welche davon|was ist damit|pruf das|prufe das|check das)\b/.test(
       value
+    ) ||
+    /^(was ist das|welche projektart|welche abrechnung|wie funktioniert das|was gilt dort)\b/.test(
+      value
     )
   );
 }
 
 function hasExplicitProjectReference(question: string) {
-  return /\b[\p{L}]{2,}[- ]?\d{1,8}\b/iu.test(question);
+  return /\b(?:[\p{L}]{2,}-\d{1,8}|[A-ZÄÖÜ]{2,}\s+\d{1,8})\b/u.test(
+    question
+  );
 }
 
 export function shouldCarryJarvisActiveRecord(question: string) {

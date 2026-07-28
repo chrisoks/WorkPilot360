@@ -102,7 +102,9 @@ function isCalendarReference(reference: string) {
 
 function extractProjectReferences(question: string) {
   const matches =
-    question.toUpperCase().match(/\b[\p{L}]{2,}[- ]?\d{1,8}\b/gu) ?? [];
+    question.match(
+      /\b(?:[\p{L}]{2,}-\d{1,8}|[A-ZÄÖÜ]{2,}\s+\d{1,8})\b/gu
+    ) ?? [];
   return [
     ...new Set(
       matches

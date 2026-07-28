@@ -23,7 +23,11 @@ import { resolveJarvisOrganizationMaterialRequest } from "@/lib/jarvis/organizat
 import { resolveJarvisOrganizationServiceRateRequest } from "@/lib/jarvis/organization-service-rate-analysis";
 import { resolveJarvisProjectReviewInventoryRequest } from "@/lib/jarvis/organization-project-review-analysis";
 import { resolveJarvisProjectHealthRequest } from "@/lib/jarvis/project-health";
-import { createJarvisAccessProfile } from "@/lib/jarvis/security";
+import {
+  authorizeJarvisQuestion,
+  createJarvisAccessProfile,
+  getJarvisAuthorizationRefusalMessage,
+} from "@/lib/jarvis/security";
 import { applyJarvisAnswerPolicy } from "@/lib/jarvis/answer-policy";
 import {
   resolveJarvisIntentDecision,
@@ -84,21 +88,53 @@ function buildAiIntentClarification(
   context: ReturnType<typeof sanitizeJarvisSurfaceContext>
 ) {
   if (
-    classification.helpTopicId !== "appointment.create" ||
-    (
-      classification.intent !== "prepare_action" &&
-      !classification.needsClarification
-    )
+    classification.intent !== "prepare_action" &&
+    !classification.needsClarification
   ) {
     return undefined;
   }
-  const choices = [
-    createJarvisDialogChoice(
+  const actionChoices: Partial<
+    Record<
+      JarvisAiIntentClassification["actionKind"],
+      ReturnType<typeof createJarvisDialogChoice>
+    >
+  > = {
+    "appointment.create": createJarvisDialogChoice(
       "ai-intent-appointment-help",
       "Termin anlegen erklären",
       "Wie buche ich hier einen Termin?"
     ),
-    ...(context.recordType === "project"
+    "task.create": createJarvisDialogChoice(
+      "ai-intent-task-help",
+      "Aufgabe anlegen erklären",
+      "Wie lege ich hier eine Aufgabe an?"
+    ),
+    "email.send": createJarvisDialogChoice(
+      "ai-intent-email-help",
+      "E-Mail-Vorgehen erklären",
+      "Wie versende ich in WorkPilot360 eine E-Mail?"
+    ),
+    "invoice.cancel": createJarvisDialogChoice(
+      "ai-intent-invoice-cancel-help",
+      "Stornierung erklären",
+      "Wie storniere ich in WorkPilot360 eine Rechnung?"
+    ),
+    "stamp.delete": createJarvisDialogChoice(
+      "ai-intent-stamp-delete-help",
+      "Löschen erklären",
+      "Wie lösche ich in WorkPilot360 eine Stempelung?"
+    ),
+    "record.change": createJarvisDialogChoice(
+      "ai-intent-record-change-help",
+      "Änderung erklären",
+      "Wie ändere ich diesen Datensatz in WorkPilot360?"
+    ),
+  };
+  const actionChoice = actionChoices[classification.actionKind];
+  const choices = [
+    ...(actionChoice ? [actionChoice] : []),
+    ...(classification.actionKind === "appointment.create" &&
+    context.recordType === "project"
       ? [
           createJarvisDialogChoice(
             "ai-intent-appointment-diagnose",
@@ -110,11 +146,11 @@ function buildAiIntentClarification(
   ];
   return {
     type: "clarification" as const,
-    topicId: "intent.ai.appointment-clarification",
+    topicId: "intent.ai.action-clarification",
     message:
       classification.intent === "prepare_action"
-        ? "Die direkte Terminbuchung aus dem Chat ist in dieser Entwicklungsphase noch nicht freigegeben. Soll ich dir das Anlegen erklären oder die bestehende Projektplanung prüfen?"
-        : "Möchtest du einen Termin selbst anlegen oder soll JARVIS die bestehende Projektplanung prüfen?",
+        ? "Ich habe verstanden, dass JARVIS hier direkt etwas ausführen soll. Diese Aktion ist in der aktuellen Entwicklungsphase noch nicht freigegeben und wurde nicht ausgeführt. Soll ich dir das sichere Vorgehen erklären?"
+        : "Ich bin noch nicht sicher, ob du etwas nur erklärt, geprüft oder später direkt durch JARVIS erledigt haben möchtest. Bitte wähle das gewünschte Vorgehen.",
     choices,
   };
 }
@@ -245,6 +281,14 @@ export async function POST(req: Request) {
       dialogState,
     });
   };
+  const authorization = authorizeJarvisQuestion(message, accessProfile);
+  if (!authorization.allowed) {
+    return respond({
+      type: "refusal",
+      topicId: "security.refusal",
+      message: getJarvisAuthorizationRefusalMessage(authorization),
+    });
+  }
   const projectReviewInventoryResponse =
     await resolveJarvisProjectReviewInventoryRequest({
       question: message,
@@ -271,13 +315,6 @@ export async function POST(req: Request) {
     );
   if (projectScopeSequenceClarification) {
     return respond(projectScopeSequenceClarification);
-  }
-  const intentClarification = buildJarvisIntentClarification(
-    intentDecision,
-    accessProfile
-  );
-  if (intentClarification) {
-    return respond(intentClarification);
   }
   const aiIntentClassification = await classifyJarvisIntentWithAi({
     question: message,
@@ -308,6 +345,13 @@ export async function POST(req: Request) {
     if (aiClarification) {
       return respond(aiClarification, aiIntentClassification.domain);
     }
+  }
+  const intentClarification = buildJarvisIntentClarification(
+    intentDecision,
+    accessProfile
+  );
+  if (intentClarification) {
+    return respond(intentClarification);
   }
   const projectSequenceClarification =
     buildJarvisProjectSequenceClarification(

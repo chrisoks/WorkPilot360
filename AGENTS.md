@@ -1,5 +1,19 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Intent-Orchestrator V2 2026-07-28: Sicherheits- und Rollenprüfungen
+  müssen global vor Datenadaptern, Diagnose, Systemhilfe und KI-Klassifikation
+  erfolgen. Deterministische Bedienhilfen dürfen nur über vollständige
+  Mehrwortsignale mit leichter deutscher Formen-Erkennung gewählt werden;
+  einzelne allgemeine Wörter reichen nicht. Schwache, konfliktbehaftete und
+  aktionsbezogene Fragen dürfen einen streng strukturierten KI-Klassifikator
+  ohne Live-Daten, IDs oder Werkzeuge nutzen. Dessen Ergebnis darf
+  ausschließlich vorhandene Hilfethemen oder fest definierte Aktionsarten
+  auswählen. Aktionen werden weiterhin nicht ausgeführt, sondern sicher
+  zurückgefragt. Projektkennungen ohne Bindestrich werden nur als
+  großgeschriebene Kennung erkannt, damit Zeitangaben wie `30 Tage` nicht als
+  Projekt gelten. Der 100-Varianten-Regressionskorpus ist bei künftigen
+  Intent-Änderungen verpflichtend mitzuführen.
+
 - JARVIS hybride Absichtserkennung 2026-07-28: Eindeutige Bedienfragen wie
   `Wie buche ich hier einen Termin?` und `Wie buche ich bei HAS-1 einen
   Termin?` bleiben auch in einer geöffneten Projektakte Bedienfragen und

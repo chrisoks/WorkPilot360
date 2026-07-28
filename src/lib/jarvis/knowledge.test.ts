@@ -72,6 +72,38 @@ describe("JARVIS system help", () => {
     expect(result.message).toContain("Monatspauschale");
   });
 
+  it("routes exact project navigation questions without falling into project creation", () => {
+    expect(
+      resolveJarvisSystemHelp(
+        "Wo sehe ich die Dokumente eines Projekts?",
+        { module: "Projektakte", recordType: "project" },
+        leadershipAccess
+      )
+    ).toMatchObject({
+      type: "answer",
+      topicId: "project.documents.open",
+    });
+    expect(
+      resolveJarvisSystemHelp(
+        "Wie ändere ich den Projektstatus?",
+        { module: "Projektakte", recordType: "project" },
+        leadershipAccess
+      )
+    ).toMatchObject({
+      type: "answer",
+      topicId: "project.status.change",
+    });
+  });
+
+  it("does not select employee planning from an unrelated personnel question", () => {
+    const result = resolveJarvisSystemHelp(
+      "Wie lautet die private Telefonnummer von Mitarbeiter Müller?",
+      { module: "Mitarbeiter" },
+      leadershipAccess
+    );
+    expect(result.topicId).not.toBe("planning.assignEmployees");
+  });
+
   it("does not explain appointment management to a role without planning permission", () => {
     const result = resolveJarvisSystemHelp(
       "Wie buche ich hier einen Termin?",

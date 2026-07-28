@@ -229,4 +229,11 @@ describe("JARVIS question semantics evaluation matrix", () => {
       expect.objectContaining({ key: "2026-07" }),
     ]);
   });
+
+  it("does not reinterpret an ordinary duration as a project reference", () => {
+    const semantics = analyzeJarvisQuestion(
+      "Welche Angebote sind seit mehr als 30 Tagen offen?"
+    );
+    expect(semantics.projectReferences).toEqual([]);
+  });
 });

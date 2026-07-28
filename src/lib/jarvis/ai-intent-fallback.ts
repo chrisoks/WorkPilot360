@@ -1,5 +1,6 @@
 import type { JarvisIntentDecision } from "@/lib/jarvis/intent-decision";
 import {
+  findJarvisExactHelpTopicId,
   JARVIS_HELP_TOPIC_CATALOG,
   type JarvisSurfaceContext,
 } from "@/lib/jarvis/knowledge";
@@ -19,6 +20,14 @@ export type JarvisAiIntentClassification = {
   confidence: "low" | "medium" | "high";
   needsClarification: boolean;
   usesCurrentContext: boolean;
+  actionKind:
+    | "none"
+    | "appointment.create"
+    | "task.create"
+    | "email.send"
+    | "invoice.cancel"
+    | "stamp.delete"
+    | "record.change";
 };
 
 type FetchLike = (
@@ -27,7 +36,7 @@ type FetchLike = (
 ) => Promise<Response>;
 
 const SECRET_OR_PERSONNEL_SIGNAL =
-  /\b(passwort|kennwort|api[- ]?key|secret|token|private key|system prompt|developer message|gehalt|lohn|verdien|personalakte)\b/iu;
+  /\b(passwort|kennwort|api[-_ ]?key|secret|token|private key|system[-_ ]?prompt|developer[-_ ]?message|gehalt|lohn|verdien|personalakte)\b/iu;
 const WORKPILOT_SIGNAL =
   /\b(workpilot|jarvis|projekt|kunde|kontakt|angebot|rechnung|aufgabe|termin|planung|stempel|zeiteintrag|mitarbeiter|reiter|logbuch|dokument|leistung|artikel|kalkulation|dashboard|auswertung)\w*\b/iu;
 const HELP_TOPIC_IDS = new Set(
@@ -83,12 +92,22 @@ function sanitizeClassification(
   ]);
   const domains = new Set(["system", "sales", "management"]);
   const confidences = new Set(["low", "medium", "high"]);
+  const actionKinds = new Set([
+    "none",
+    "appointment.create",
+    "task.create",
+    "email.send",
+    "invoice.cancel",
+    "stamp.delete",
+    "record.change",
+  ]);
   if (
     !intents.has(source.intent as JarvisAiIntentKind) ||
     !domains.has(String(source.domain)) ||
     !confidences.has(String(source.confidence)) ||
     typeof source.needsClarification !== "boolean" ||
-    typeof source.usesCurrentContext !== "boolean"
+    typeof source.usesCurrentContext !== "boolean" ||
+    !actionKinds.has(String(source.actionKind))
   ) {
     return undefined;
   }
@@ -105,6 +124,8 @@ function sanitizeClassification(
       source.confidence as JarvisAiIntentClassification["confidence"],
     needsClarification: source.needsClarification,
     usesCurrentContext: source.usesCurrentContext,
+    actionKind:
+      source.actionKind as JarvisAiIntentClassification["actionKind"],
   };
 }
 
@@ -116,12 +137,11 @@ export function shouldUseJarvisAiIntentFallback(input: {
   const question = input.question.trim();
   if (
     question.length < 4 ||
-    input.decision.confidence === "high" ||
-    input.decision.clarificationReasons.length > 0 ||
     SECRET_OR_PERSONNEL_SIGNAL.test(question)
   ) {
     return false;
   }
+  if (findJarvisExactHelpTopicId(question, input.context)) return false;
   const hasContext =
     Boolean(input.context?.module) ||
     input.context?.recordType === "project" ||
@@ -129,7 +149,12 @@ export function shouldUseJarvisAiIntentFallback(input: {
   if (!hasContext && !WORKPILOT_SIGNAL.test(question)) return false;
   return (
     input.decision.state === "unrecognized" ||
-    input.decision.confidence === "low"
+    input.decision.state === "clarification" ||
+    input.decision.confidence !== "high" ||
+    input.decision.clarificationReasons.length > 0 ||
+    input.decision.goals.includes("change") ||
+    input.decision.goals.includes("how_to") ||
+    input.decision.goals.includes("read")
   );
 }
 
@@ -194,6 +219,7 @@ export async function classifyJarvisIntentWithAi(
               "Wenn mehrere Bedeutungen plausibel bleiben, setze needsClarification=true.",
               "Wähle helpTopicId nur bei einer klar passenden Bedienhilfe, sonst none.",
               "Verfügbare Bedienhilfen:",
+              "actionKind ist nur bei prepare_action gesetzt, sonst none. Nutze appointment.create fuer Termin, task.create fuer Aufgabe, email.send fuer Mail, invoice.cancel fuer Storno, stamp.delete fuer Stempelung loeschen und record.change fuer sonstige Aenderungen.",
               topics,
             ].join("\n"),
           },
@@ -235,6 +261,18 @@ export async function classifyJarvisIntentWithAi(
                 },
                 needsClarification: { type: "boolean" },
                 usesCurrentContext: { type: "boolean" },
+                actionKind: {
+                  type: "string",
+                  enum: [
+                    "none",
+                    "appointment.create",
+                    "task.create",
+                    "email.send",
+                    "invoice.cancel",
+                    "stamp.delete",
+                    "record.change",
+                  ],
+                },
               },
               required: [
                 "intent",
@@ -243,6 +281,7 @@ export async function classifyJarvisIntentWithAi(
                 "confidence",
                 "needsClarification",
                 "usesCurrentContext",
+                "actionKind",
               ],
               additionalProperties: false,
             },

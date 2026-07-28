@@ -1373,7 +1373,9 @@ export function evaluateProjectHealth(
 }
 
 function extractProjectReference(question: string) {
-  const candidates = question.match(/\b(?:[A-ZÄÖÜ]{2,}[- ]?\d+|\d{5,})\b/giu);
+  const candidates = question.match(
+    /\b(?:[\p{L}]{2,}-\d+|[A-ZÄÖÜ]{2,}\s+\d+|\d{5,})\b/gu
+  );
   return candidates?.[0]?.trim() ?? "";
 }
 
