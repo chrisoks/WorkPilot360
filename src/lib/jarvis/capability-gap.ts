@@ -3,7 +3,7 @@ import { normalizeJarvisIntentText } from "@/lib/jarvis/intent-text";
 import type { JarvisReadResponse } from "@/lib/jarvis/read-model";
 
 const ORGANIZATION_ANALYSIS_PATTERNS = [
-  /\boffen\w*\s+posten\b/,
+  /\b(?:offen|offn)\w*\s+posten\b/,
   /\b(?:rechnungsentwurf|rechnungsentwurfe)\b.*\b(?:offen|insgesamt|wie viele)\b/,
   /\bwie viele\b.*\brechnungsentwurf\w*\b/,
   /\b(?:offene|uberfallige)\b.*\b(?:forderung|posten)\b/,

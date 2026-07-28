@@ -33,6 +33,7 @@ const mocks = vi.hoisted(() => ({
   buildJarvisProjectSequenceClarification: vi.fn(),
   buildJarvisProjectSequenceContinuation: vi.fn(),
   resolveJarvisAccessPolicyQuestion: vi.fn(),
+  resolveJarvisProjectDialogIntent: vi.fn(),
 }));
 
 vi.mock("@/lib/demo/context", () => ({
@@ -68,6 +69,10 @@ vi.mock("@/lib/jarvis/person-summary", () => ({
 
 vi.mock("@/lib/jarvis/access-policy", () => ({
   resolveJarvisAccessPolicyQuestion: mocks.resolveJarvisAccessPolicyQuestion,
+}));
+
+vi.mock("@/lib/jarvis/project-dialog-intent", () => ({
+  resolveJarvisProjectDialogIntent: mocks.resolveJarvisProjectDialogIntent,
 }));
 
 vi.mock("@/lib/jarvis/project-health", () => ({
@@ -146,6 +151,7 @@ describe("POST /api/jarvis/chat", () => {
       reason: "allowed",
     });
     mocks.resolveJarvisAccessPolicyQuestion.mockReturnValue(undefined);
+    mocks.resolveJarvisProjectDialogIntent.mockReturnValue(undefined);
     mocks.getJarvisAuthorizationRefusalMessage.mockReturnValue(
       "Diese Anfrage ist gesperrt."
     );
@@ -1972,5 +1978,33 @@ describe("POST /api/jarvis/chat", () => {
     });
     expect(payload.message).toContain("nicht ausgeführt");
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+  });
+
+  it("answers a deterministic project fact before an AI clarification", async () => {
+    mocks.resolveJarvisProjectDialogIntent.mockReturnValue(
+      "explainResponsibility"
+    );
+    mocks.resolveJarvisProjectHealthRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "project.fact.responsibility",
+      message: "Christian Eid ist verantwortlich.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Wer ist für MKG-209 verantwortlich?",
+        }),
+      })
+    );
+
+    expect((await response.json()).topicId).toBe(
+      "project.fact.responsibility"
+    );
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
   });
 });

@@ -136,6 +136,28 @@ describe("JARVIS intent orchestrator V4", () => {
     });
   });
 
+  it("lets an explicit current-record pronoun outrank an AI collection scope", () => {
+    const question =
+      "Warum hat diese Stempelung keinen Rechnungsentwurf erzeugt?";
+    const plan = resolveJarvisRoutePlan({
+      question,
+      decision: resolveJarvisIntentDecision(question),
+      context: { recordType: "project", recordId: "project-1" },
+      ai: ai({
+        intent: "diagnose",
+        entity: "invoice",
+        scope: "collection",
+      }),
+    });
+
+    expect(plan).toMatchObject({
+      scope: "current_record",
+      preferProjectHealth: true,
+      preferRead: false,
+      usesCurrentContext: true,
+    });
+  });
+
   it("routes a customer summary before project health despite project screen context", () => {
     const question = "Was weißt du über Klaus Testmann?";
     const plan = resolveJarvisRoutePlan({

@@ -198,6 +198,25 @@ describe("resolveJarvisProjectHealthRequest", () => {
     expect(JSON.stringify(response)).not.toContain("100 / 100");
   });
 
+  it("treats a bare project check as a full read-only check", async () => {
+    const response = await resolveJarvisProjectHealthRequest({
+      question: "Und jetzt prüfe MKG-209.",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "manager-1",
+        role: Role.GESCHAEFTSFUEHRER,
+      }),
+    });
+
+    expect(response).toMatchObject({
+      type: "answer",
+      topicId: "project.health",
+      structured: {
+        title: "Vollständiger Projektcheck · MKG-209",
+      },
+    });
+  });
+
   it("does not load or expose financial and payroll checks for employees", async () => {
     const response = await resolveJarvisProjectHealthRequest({
       question: "Führe den vollständigen Projekt-Gesundheitscheck aus.",

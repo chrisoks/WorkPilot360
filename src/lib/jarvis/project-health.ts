@@ -1970,7 +1970,19 @@ export async function resolveJarvisProjectHealthRequest(input: {
         );
   }
 
-  const requestedScope = resolveProjectHealthScope(input.question);
+  let requestedScope = resolveProjectHealthScope(input.question);
+  if (
+    !requestedScope &&
+    (
+      Boolean(extractProjectReference(input.question)) ||
+      /\b(?:das|dort|hier)\b/.test(normalize(input.question))
+    ) &&
+    /\b(?:pruf|check|analysier|untersuch|kontrollier)\w*\b/.test(
+      normalize(input.question)
+    )
+  ) {
+    requestedScope = "full";
+  }
   if (!requestedScope) {
     return buildProjectHealthClarification(project, input.accessProfile);
   }
@@ -2651,7 +2663,7 @@ export async function resolveJarvisProjectHealthRequest(input: {
           projectPlanningEntries.filter(
             (entry) => entry.date >= healthCheckDateKey
           ).length === 0 &&
-          /\b(?:(?:nachsten|kommenden)\s+monat|folgemonat)\b/.test(
+          /\b(?:(?:nachste|nachsten|kommenden)\s+monat|folgemonat)\b/.test(
             normalizedQuestion
           )
         ? "Planung im Folgemonat"

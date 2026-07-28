@@ -38,6 +38,10 @@ Stand: 29.07.2026
   vollständigen Prüfbereich. Noch nicht angebundene Organisationsauswertungen
   zu Offenen Posten, älteren Angeboten und Auslastung nennen stattdessen
   ausdrücklich die Adaptergrenze.
+- Eindeutige Projektfakten und aktuelle Datensatzbezüge wie `diese
+  Stempelung` werden vor einer KI-Rückfrage aufgelöst. Ein bloßes
+  `Prüfe HAS-1` startet den sicheren vollständigen Projektcheck; Frageformen
+  wie `Warum wurde ... erstellt?` gelten dabei nicht als schreibende Aktion.
 
 ### Intent-Orchestrator V4
 

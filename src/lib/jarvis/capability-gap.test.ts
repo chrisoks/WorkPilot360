@@ -5,6 +5,7 @@ describe("resolveJarvisCapabilityGap", () => {
   it.each([
     "Wie viele offene Posten haben wir?",
     "Wie hoch sind unsere offenen Posten?",
+    "Wie hoch sint unser offnen Posten?",
     "Wie viele Rechnungsentwürfe gibt es aktuell?",
     "Welche Angebote sind seit mehr als 30 Tagen offen?",
     "Wie stark sind unsere Mitarbeiter aktuell ausgelastet?",

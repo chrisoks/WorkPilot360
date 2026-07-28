@@ -33,7 +33,7 @@ export type JarvisRoutePlan = {
 const ORGANIZATION_SCOPE_SIGNAL =
   /\b(?:wir|unser(?:e|en|er|em)?|unternehmen|insgesamt|alle|sämtliche|durchschnittlich)\b/iu;
 const CURRENT_RECORD_SIGNAL =
-  /\b(?:hier|dies(?:es|em|en|er)|aktuell(?:e|en|er|es)?|dazu|darüber)\b/iu;
+  /\b(?:hier|dies(?:e|es|em|en|er)|aktuell(?:e|en|er|es)?|dazu|darüber)\b/iu;
 
 function deterministicIntent(
   decision: JarvisIntentDecision
@@ -122,6 +122,11 @@ export function resolveJarvisRoutePlan(input: {
   const explicitProjectReferences =
     extractJarvisProjectReferences(input.question);
   const explicitProject = explicitProjectReferences.length > 0;
+  const deterministicCurrentRecord =
+    !explicitProject &&
+    (context.recordType === "project" || context.recordType === "customer") &&
+    (CURRENT_RECORD_SIGNAL.test(input.question) ||
+      isJarvisReferentialFollowUp(input.question));
   const entity = aiIsUsable
     ? input.ai!.entity
     : deterministicEntity(input.question, input.decision, context);
@@ -129,12 +134,15 @@ export function resolveJarvisRoutePlan(input: {
   // probabilistische Scope-Klassifizierung.
   const scope = explicitProject
     ? "explicit_record"
+    : deterministicCurrentRecord
+      ? "current_record"
     : aiIsUsable
       ? input.ai!.scope
       : deterministicScope(input.question, input.decision, context);
   const organizationOrCollection =
     scope === "organization" || scope === "collection";
   const usesCurrentContext =
+    deterministicCurrentRecord ||
     scope === "current_record" ||
     (!explicitProject &&
       !organizationOrCollection &&
