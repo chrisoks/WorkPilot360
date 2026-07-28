@@ -2,6 +2,21 @@ import { describe, expect, it } from "vitest";
 import { resolveJarvisReadIntent } from "@/lib/jarvis/read-intent";
 
 describe("JARVIS read intent", () => {
+  it("uses a validated orchestrator hint for a natural collection question", () => {
+    expect(
+      resolveJarvisReadIntent(
+        "Wie viele offene Angebote haben wir?",
+        { recordType: "project", recordId: "screen-project" },
+        { kind: "offer", filter: "open" }
+      )
+    ).toMatchObject({
+      kind: "offer",
+      query: "",
+      filter: "open",
+      contextRecordId: undefined,
+    });
+  });
+
   it("extracts a project search term", () => {
     expect(resolveJarvisReadIntent("Öffne bitte Projekt Müller.")).toEqual({
       kind: "project",

@@ -6,6 +6,7 @@ const ORGANIZATION_ANALYSIS_PATTERNS = [
   /\boffene posten\b/,
   /\bwelche kunden\b.*\b(?:keine aktivitat|nichts passiert|lange nichts|nachfass)/,
   /\bwelche projekte\b.*\b(?:zeiten|stempel)\b.*\bkeine rechnung\b/,
+  /\bwelche projekte\b.*\b(?:ohne|kein\w*)\b.*\b(?:gültig\w*\s+)?angebot\b/,
   /\bwelche projekte\b.*\b(?:auffallig|unwirtschaftlich|verlust|marge)\b/,
   /\bwelche (?:artikel|materialien|leistungen)\b.*\b(?:am haufigsten|meisten)\b/,
   /\b(?:wie|welche)\b.*\b(?:annahmequote|offnungsquote)\b/,

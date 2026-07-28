@@ -36,6 +36,11 @@ import {
   type JarvisIntentDecision,
 } from "@/lib/jarvis/intent-decision";
 import {
+  doesJarvisResponseFitRoute,
+  getJarvisReadHint,
+  resolveJarvisRoutePlan,
+} from "@/lib/jarvis/intent-orchestrator";
+import {
   buildJarvisIntentClarification,
   buildJarvisProjectMatrixClarification,
   buildJarvisProjectScopeSequenceClarification,
@@ -111,6 +116,7 @@ function buildAiIntentClarification(
 ) {
   if (
     classification.intent !== "prepare_action" &&
+    classification.intent !== "unclear" &&
     !classification.needsClarification
   ) {
     return undefined;
@@ -136,6 +142,26 @@ function buildAiIntentClarification(
       "E-Mail-Vorgehen erklären",
       "Wie versende ich in WorkPilot360 eine E-Mail?"
     ),
+    "project.create": createJarvisDialogChoice(
+      "ai-intent-project-create-help",
+      "Projektanlage erklären",
+      "Wie lege ich in WorkPilot360 ein Projekt an?"
+    ),
+    "customer.create": createJarvisDialogChoice(
+      "ai-intent-customer-create-help",
+      "Kundenanlage erklären",
+      "Wie lege ich in WorkPilot360 einen Kunden oder Kontakt an?"
+    ),
+    "offer.create": createJarvisDialogChoice(
+      "ai-intent-offer-create-help",
+      "Angebotserstellung erklären",
+      "Wie lege ich in WorkPilot360 ein Angebot an?"
+    ),
+    "invoice.create": createJarvisDialogChoice(
+      "ai-intent-invoice-create-help",
+      "Rechnungsentwurf erklären",
+      "Wie lege ich in WorkPilot360 einen Rechnungsentwurf an?"
+    ),
     "invoice.cancel": createJarvisDialogChoice(
       "ai-intent-invoice-cancel-help",
       "Stornierung erklären",
@@ -145,6 +171,21 @@ function buildAiIntentClarification(
       "ai-intent-stamp-delete-help",
       "Löschen erklären",
       "Wie lösche ich in WorkPilot360 eine Stempelung?"
+    ),
+    "time_entry.create": createJarvisDialogChoice(
+      "ai-intent-time-entry-create-help",
+      "Zeiteintrag erklären",
+      "Wie erfasse ich in WorkPilot360 einen manuellen Zeiteintrag?"
+    ),
+    "record.delete": createJarvisDialogChoice(
+      "ai-intent-record-delete-help",
+      "Sicheres Löschen erklären",
+      "Wie lösche ich diesen Datensatz in WorkPilot360?"
+    ),
+    "catalog.change": createJarvisDialogChoice(
+      "ai-intent-catalog-change-help",
+      "Artikel oder Leistung ändern",
+      "Wie bearbeite ich einen Artikel oder eine Leistung in WorkPilot360?"
     ),
     "record.change": createJarvisDialogChoice(
       "ai-intent-record-change-help",
@@ -311,12 +352,37 @@ export async function POST(req: Request) {
       message: getJarvisAuthorizationRefusalMessage(authorization),
     });
   }
+  const routingContext = conversationContext ?? context;
+  const aiIntentClassification = await classifyJarvisIntentWithAi({
+    question: message,
+    decision: intentDecision,
+    context: routingContext,
+  });
+  const routePlan = resolveJarvisRoutePlan({
+    question: message,
+    decision: intentDecision,
+    context: routingContext,
+    ai: aiIntentClassification,
+  });
   const directActionRequest = looksLikeDirectActionRequest(
     message,
     intentDecision
   );
+  if (aiIntentClassification) {
+    const aiClarification = buildAiIntentClarification(
+      aiIntentClassification,
+      routingContext
+    );
+    if (aiClarification) {
+      return respond(aiClarification, routePlan.domain);
+    }
+  }
   const exactHelpTopicId = findJarvisExactHelpTopicId(message, context);
-  if (exactHelpTopicId && !directActionRequest) {
+  if (
+    exactHelpTopicId &&
+    routePlan.allowExactHelp &&
+    !directActionRequest
+  ) {
     return respond(
       resolveJarvisSystemHelpTopic(
         exactHelpTopicId,
@@ -326,13 +392,43 @@ export async function POST(req: Request) {
       )
     );
   }
+  if (routePlan.needsClarification) {
+    const projectMatrixClarification =
+      buildJarvisProjectMatrixClarification(
+        message,
+        intentDecision,
+        accessProfile
+      );
+    if (projectMatrixClarification) {
+      return respond(projectMatrixClarification, routePlan.domain);
+    }
+    const projectScopeSequenceClarification =
+      buildJarvisProjectScopeSequenceClarification(
+        message,
+        intentDecision,
+        accessProfile
+      );
+    if (projectScopeSequenceClarification) {
+      return respond(projectScopeSequenceClarification, routePlan.domain);
+    }
+    const intentClarification = buildJarvisIntentClarification(
+      intentDecision,
+      accessProfile
+    );
+    if (intentClarification) {
+      return respond(intentClarification, routePlan.domain);
+    }
+  }
   const projectReviewInventoryResponse =
     await resolveJarvisProjectReviewInventoryRequest({
       question: message,
       organizationId: organization.id,
       accessProfile,
     });
-  if (projectReviewInventoryResponse) {
+  if (
+    projectReviewInventoryResponse &&
+    doesJarvisResponseFitRoute(routePlan, projectReviewInventoryResponse)
+  ) {
     return respond(projectReviewInventoryResponse, "management");
   }
   const organizationServiceRateResponse =
@@ -341,7 +437,10 @@ export async function POST(req: Request) {
       organizationId: organization.id,
       accessProfile,
     });
-  if (organizationServiceRateResponse) {
+  if (
+    organizationServiceRateResponse &&
+    doesJarvisResponseFitRoute(routePlan, organizationServiceRateResponse)
+  ) {
     return respond(organizationServiceRateResponse, "management");
   }
   const organizationMaterialResponse =
@@ -350,7 +449,10 @@ export async function POST(req: Request) {
       organizationId: organization.id,
       accessProfile,
     });
-  if (organizationMaterialResponse) {
+  if (
+    organizationMaterialResponse &&
+    doesJarvisResponseFitRoute(routePlan, organizationMaterialResponse)
+  ) {
     return respond(organizationMaterialResponse, "management");
   }
   if (resolveJarvisSalesAnalysisIntent(message)) {
@@ -359,14 +461,63 @@ export async function POST(req: Request) {
       organizationId: organization.id,
       accessProfile,
     });
-    if (salesAnalysisResponse) {
+    if (
+      salesAnalysisResponse &&
+      doesJarvisResponseFitRoute(routePlan, salesAnalysisResponse)
+    ) {
       return respond(salesAnalysisResponse, "sales");
+    }
+  }
+  const capabilityGapResponse = resolveJarvisCapabilityGap(message);
+  if (capabilityGapResponse) {
+    return respond(capabilityGapResponse, routePlan.domain);
+  }
+  if (routePlan.preferPerson) {
+    const personDiagnosticResponse =
+      await resolveJarvisPersonDiagnosticRequest({
+        question: message,
+        organizationId: organization.id,
+        accessProfile,
+        context,
+      });
+    if (
+      personDiagnosticResponse &&
+      doesJarvisResponseFitRoute(routePlan, personDiagnosticResponse)
+    ) {
+      return respond(personDiagnosticResponse, routePlan.domain);
+    }
+    const personSummaryResponse = await resolveJarvisPersonSummaryRequest({
+      question: message,
+      organizationId: organization.id,
+      accessProfile,
+    });
+    if (
+      personSummaryResponse &&
+      doesJarvisResponseFitRoute(routePlan, personSummaryResponse)
+    ) {
+      return respond(personSummaryResponse, routePlan.domain);
+    }
+  }
+  if (routePlan.preferRead) {
+    const readResponse = await resolveJarvisReadRequest({
+      question: message,
+      context,
+      organizationId: organization.id,
+      accessProfile,
+      intentHint: getJarvisReadHint(routePlan),
+    });
+    if (
+      readResponse &&
+      doesJarvisResponseFitRoute(routePlan, readResponse)
+    ) {
+      return respond(readResponse, routePlan.domain);
     }
   }
   const explicitProjectReferences = extractJarvisProjectReferences(message);
   if (
     explicitProjectReferences.length === 1 &&
     !directActionRequest &&
+    routePlan.preferProjectHealth &&
     shouldUseProjectHealthPath(message, intentDecision)
   ) {
     const explicitProjectResponse = await resolveJarvisProjectHealthRequest({
@@ -376,33 +527,13 @@ export async function POST(req: Request) {
       context,
       ...(conversationContext ? { conversationContext } : {}),
     });
-    if (explicitProjectResponse) {
+    if (
+      explicitProjectResponse &&
+      doesJarvisResponseFitRoute(routePlan, explicitProjectResponse)
+    ) {
       return respond(explicitProjectResponse);
     }
   }
-  const projectMatrixClarification =
-    buildJarvisProjectMatrixClarification(
-      message,
-      intentDecision,
-      accessProfile
-    );
-  if (projectMatrixClarification) {
-    return respond(projectMatrixClarification);
-  }
-  const projectScopeSequenceClarification =
-    buildJarvisProjectScopeSequenceClarification(
-      message,
-      intentDecision,
-      accessProfile
-    );
-  if (projectScopeSequenceClarification) {
-    return respond(projectScopeSequenceClarification);
-  }
-  const aiIntentClassification = await classifyJarvisIntentWithAi({
-    question: message,
-    decision: intentDecision,
-    context,
-  });
   if (
     aiIntentClassification?.intent === "how_to" &&
     aiIntentClassification.helpTopicId !== "none" &&
@@ -419,21 +550,14 @@ export async function POST(req: Request) {
       aiIntentClassification.domain
     );
   }
-  if (aiIntentClassification) {
-    const aiClarification = buildAiIntentClarification(
-      aiIntentClassification,
-      context
+  if (!routePlan.needsClarification) {
+    const intentClarification = buildJarvisIntentClarification(
+      intentDecision,
+      accessProfile
     );
-    if (aiClarification) {
-      return respond(aiClarification, aiIntentClassification.domain);
+    if (intentClarification) {
+      return respond(intentClarification, routePlan.domain);
     }
-  }
-  const intentClarification = buildJarvisIntentClarification(
-    intentDecision,
-    accessProfile
-  );
-  if (intentClarification) {
-    return respond(intentClarification);
   }
   const projectSequenceClarification =
     buildJarvisProjectSequenceClarification(
@@ -444,10 +568,9 @@ export async function POST(req: Request) {
   if (projectSequenceClarification) {
     return respond(projectSequenceClarification);
   }
-  const projectHealthResponse = shouldUseProjectHealthPath(
-    message,
-    intentDecision
-  )
+  const projectHealthResponse =
+    routePlan.preferProjectHealth &&
+    shouldUseProjectHealthPath(message, intentDecision)
     ? await resolveJarvisProjectHealthRequest({
         question: message,
         organizationId: organization.id,
@@ -456,7 +579,10 @@ export async function POST(req: Request) {
         ...(conversationContext ? { conversationContext } : {}),
       })
     : undefined;
-  if (projectHealthResponse) {
+  if (
+    projectHealthResponse &&
+    doesJarvisResponseFitRoute(routePlan, projectHealthResponse)
+  ) {
     return respond(projectHealthResponse);
   }
   const personDiagnosticResponse = await resolveJarvisPersonDiagnosticRequest({
@@ -465,7 +591,10 @@ export async function POST(req: Request) {
     accessProfile,
     context,
   });
-  if (personDiagnosticResponse) {
+  if (
+    personDiagnosticResponse &&
+    doesJarvisResponseFitRoute(routePlan, personDiagnosticResponse)
+  ) {
     return respond(personDiagnosticResponse);
   }
   const personSummaryResponse = await resolveJarvisPersonSummaryRequest({
@@ -473,20 +602,22 @@ export async function POST(req: Request) {
     organizationId: organization.id,
     accessProfile,
   });
-  if (personSummaryResponse) {
+  if (
+    personSummaryResponse &&
+    doesJarvisResponseFitRoute(routePlan, personSummaryResponse)
+  ) {
     return respond(personSummaryResponse);
-  }
-  const capabilityGapResponse = resolveJarvisCapabilityGap(message);
-  if (capabilityGapResponse) {
-    return respond(capabilityGapResponse);
   }
   const readResponse = await resolveJarvisReadRequest({
     question: message,
     context,
     organizationId: organization.id,
     accessProfile,
+    ...(getJarvisReadHint(routePlan)
+      ? { intentHint: getJarvisReadHint(routePlan) }
+      : {}),
   });
-  if (readResponse) {
+  if (readResponse && doesJarvisResponseFitRoute(routePlan, readResponse)) {
     return respond(readResponse);
   }
   const resolved = resolveJarvisSystemHelp(message, context, accessProfile);

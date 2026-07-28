@@ -71,6 +71,8 @@ describe("JARVIS AI intent fallback", () => {
       responseWith({
         intent: "how_to",
         domain: "system",
+        entity: "planning",
+        scope: "current_record",
         helpTopicId: "appointment.create",
         confidence: "high",
         needsClarification: false,
@@ -103,6 +105,8 @@ describe("JARVIS AI intent fallback", () => {
     expect(requestBody.max_output_tokens).toBe(180);
     expect(requestBody.text.format.strict).toBe(true);
     expect(requestBody.text.format.schema.required).toContain("actionKind");
+    expect(requestBody.text.format.schema.required).toContain("entity");
+    expect(requestBody.text.format.schema.required).toContain("scope");
     expect(JSON.stringify(requestBody)).not.toContain("secret-project-id");
   });
 
@@ -112,6 +116,8 @@ describe("JARVIS AI intent fallback", () => {
       responseWith({
         intent: "prepare_action",
         domain: "system",
+        entity: "task",
+        scope: "current_record",
         helpTopicId: "none",
         confidence: "high",
         needsClarification: false,
@@ -144,12 +150,89 @@ describe("JARVIS AI intent fallback", () => {
     });
   });
 
+  it("uses the arbiter for a live search that an exact help matcher could steal", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    const fetchImpl = vi.fn().mockResolvedValue(
+      responseWith({
+        intent: "read",
+        domain: "system",
+        entity: "customer",
+        scope: "explicit_record",
+        helpTopicId: "none",
+        confidence: "high",
+        needsClarification: false,
+        usesCurrentContext: false,
+        actionKind: "none",
+      })
+    );
+    const question = "Finde den Kunden Klaus Testmann.";
+    const decision = resolveJarvisIntentDecision(question);
+
+    expect(
+      shouldUseJarvisAiIntentFallback({
+        question,
+        decision,
+        context: { recordType: "project", recordId: "project-1" },
+      })
+    ).toBe(true);
+    await classifyJarvisIntentWithAi(
+      {
+        question,
+        decision,
+        context: { recordType: "project", recordId: "project-1" },
+      },
+      fetchImpl
+    );
+
+    const requestBody = JSON.parse(
+      String(fetchImpl.mock.calls[0]?.[1]?.body)
+    );
+    expect(JSON.stringify(requestBody)).not.toContain("Klaus Testmann");
+    expect(JSON.stringify(requestBody)).toContain(
+      "[PERSON_ODER_DATENSATZ]"
+    );
+  });
+
+  it("does not mask German WorkPilot nouns as if they were person names", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    const fetchImpl = vi.fn().mockResolvedValue(
+      responseWith({
+        intent: "read",
+        domain: "management",
+        entity: "invoice",
+        scope: "organization",
+        helpTopicId: "none",
+        confidence: "high",
+        needsClarification: false,
+        usesCurrentContext: false,
+        actionKind: "none",
+      })
+    );
+    const question = "Welche Rechnungen sind bei uns noch offen?";
+
+    await classifyJarvisIntentWithAi(
+      {
+        question,
+        decision: resolveJarvisIntentDecision(question),
+        context: { recordType: "project", recordId: "project-1" },
+      },
+      fetchImpl
+    );
+
+    const requestBody = JSON.parse(
+      String(fetchImpl.mock.calls[0]?.[1]?.body)
+    );
+    expect(JSON.stringify(requestBody)).toContain("Welche Rechnungen");
+  });
+
   it("rejects an unknown help topic even when the model returns valid JSON", async () => {
     process.env.OPENAI_API_KEY = "test-key";
     const fetchImpl = vi.fn().mockResolvedValue(
       responseWith({
         intent: "how_to",
         domain: "system",
+        entity: "planning",
+        scope: "current_record",
         helpTopicId: "invented.action",
         confidence: "high",
         needsClarification: false,

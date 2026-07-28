@@ -4,6 +4,37 @@ Stand: 28.07.2026
 
 ## Aktueller Umsetzungsstand
 
+### Intent-Orchestrator V4
+
+- Die semantische Klassifikation läuft nach Sicherheits- und Rollenprüfung,
+  aber vor Projekt-, Personen-, Such- und Analyseadaptern. Dadurch kann eine
+  spätere Spezialroute nicht mehr zuerst eine fachlich fremde Antwort
+  erzeugen.
+- Das KI-Schema liefert nur Absicht, Domäne, Fachobjekt, Umfang,
+  Kontextnutzung und eine fest definierte vorbereitete Aktionsart. Es
+  beantwortet keine Fachfrage und erhält keine Live-Daten, Rechte,
+  Datenbankwerkzeuge oder ausführbaren Aktionen.
+- Kontextpriorität: ausdrückliche Referenz vor ausdrücklich genanntem
+  Umfang, danach semantische Absicht, Gesprächskontext und zuletzt
+  Bildschirmkontext. Eine globale Rechnungs-, Aufgaben-, Angebots- oder
+  Kundenfrage darf deshalb nicht mehr in den Gesundheitscheck des geöffneten
+  Projekts abbiegen.
+- Eine Antwort-Fit-Prüfung vergleicht das erkannte Fachobjekt mit der
+  gewählten Spezialantwort. Nicht passende Projekt-, Personen-, Such-,
+  Vertriebs- oder Managementantworten werden nicht ausgegeben.
+- Projektkennungen, Namen, E-Mail-Adressen, Telefonnummern, lange Nummern
+  und interne IDs werden vor der Intent-KI maskiert. Technische Geheimnisse,
+  Personal- und Lohndaten erreichen die Intent-KI weiterhin überhaupt nicht.
+- Eindeutige bekannte Bedienfragen bleiben deterministisch. Für natürliche
+  Such-, Diagnose-, Analyse- und Aktionsformulierungen darf der kleine
+  Intent-Aufruf häufiger eingesetzt werden, um die bisherige
+  Schlüsselwort-Konkurrenz zu beenden. Modell, Eingabe-, Cache- und
+  Ausgabetokens werden ohne Fragetext oder Datensatzbezug technisch
+  protokolliert.
+- Aktionen werden weiterhin nicht ausgeführt. Projekt-, Kunden-, Angebots-,
+  Rechnungs-, Aufgaben-, Termin-, Zeit-, Katalog-, E-Mail-, Änderungs- und
+  Löschabsichten führen nur zu einer sicheren Erklärung oder Rückfrage.
+
 ### Intent-Orchestrator V3
 
 - Eindeutige Bedienfragen werden nach der globalen Rollen- und
@@ -980,16 +1011,17 @@ vor jeder Aktion.
 Kein OpenAI-Aufruf bei:
 
 - bekannten, freigegebenen Bedienfragen,
-- Navigation und Suche mit eindeutigen Filtern,
 - Ausführen bereits strukturierter Aktionen,
 - Validierung, Berechnung und Rechteprüfung,
 - Scheduler- und Automationsläufen,
-- Öffnen vorhandener Datensätze und Ansichten.
+- bereits eindeutig validierten internen Systemereignissen ohne
+  Nutzersprache.
 
 ### 10.2 Kleiner KI-Aufruf
 
 Ein kompakter Aufruf bei:
 
+- natürlicher Such-, Lese-, Diagnose-, Analyse- oder Aktionsformulierung,
 - freier oder mehrdeutiger Formulierung,
 - Erkennung mehrteiliger Nutzerabsichten,
 - Formulieren kurzer Aufgaben-, Beschreibungs- oder E-Mail-Texte,

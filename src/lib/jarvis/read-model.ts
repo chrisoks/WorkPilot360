@@ -8,6 +8,7 @@ import {
 } from "@/lib/jarvis/security";
 import {
   JarvisReadIntent,
+  JarvisReadIntentHint,
   JarvisRecordKind,
   resolveJarvisReadIntent,
 } from "@/lib/jarvis/read-intent";
@@ -510,8 +511,13 @@ export async function resolveJarvisReadRequest(input: {
   context?: JarvisSurfaceContext;
   organizationId: string;
   accessProfile: JarvisAccessProfile;
+  intentHint?: JarvisReadIntentHint;
 }): Promise<JarvisReadResponse | undefined> {
-  const intent = resolveJarvisReadIntent(input.question, input.context);
+  const intent = resolveJarvisReadIntent(
+    input.question,
+    input.context,
+    input.intentHint
+  );
   if (!intent) return undefined;
 
   const authorization = authorizeJarvisQuestion(input.question, input.accessProfile);

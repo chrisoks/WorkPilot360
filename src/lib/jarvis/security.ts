@@ -48,14 +48,14 @@ const PROMPT_INJECTION_PATTERNS = [
 ];
 
 const SECRET_REQUEST_PATTERNS = [
-  /\b(?:zeig|nenn)\b.*\b(?:passwort|kennwort|api[-_ ]?key|secret|token|private key|\.env)\b/i,
+  /\b(?:zeig|nenn)\b.*\b(?:passw(?:ort|örter)|kennw(?:ort|örter)|api[-_ ]?keys?|secrets?|tokens?|private keys?|\.env)\b/i,
   /\b(?:zeige|nenne|verrate|gib|lies|lese|sende|exportiere)\b.*\b[\w-]*api[-_ ]?key\b/i,
   /\b(?:zeige|nenne|verrate|gib|lies|lese|sende|exportiere)\b.*\bapi[-_ ]?key\b/i,
   /\b(?:zeige|nenne|verrate|gib|lies|lese|sende|exportiere)\b.*\.env\b/i,
-  /\bwas\s+wei\S*\s+du\b.*\b(?:passwort|kennwort|api[-_ ]?key|secret|token|private key)\b/i,
+  /\bwas\s+wei\S*\s+du\b.*\b(?:passw(?:ort|örter)|kennw(?:ort|örter)|api[-_ ]?keys?|secrets?|tokens?|private keys?)\b/i,
   /\b(?:zeige|nenne|verrate|gib|lies|sende|exportiere)\b.*\b(?:passwort|kennwort|api[- ]?key|secret|token|private key|privater schlüssel|umgebungsvariable|\.env)\b/i,
   /\bwie lautet\b.*\b(?:passwort|kennwort|api[- ]?key|secret|token|private key|privater schlüssel)\b/i,
-  /\b(?:passwort|kennwort|api[- ]?key|secret|token|private key|privater schlüssel)\b.*\b(?:anzeigen|auslesen|offenlegen|herausgeben)\b/i,
+  /\b(?:passw(?:ort|örter)|kennw(?:ort|örter)|api[- ]?keys?|secrets?|tokens?|private keys?|privater schlüssel)\b.*\b(?:anzeigen|auslesen|offenlegen|herausgeben)\b/i,
 ];
 
 const PAYROLL_PATTERNS = [

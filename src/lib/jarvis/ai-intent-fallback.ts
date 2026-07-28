@@ -8,14 +8,37 @@ import {
 export type JarvisAiIntentKind =
   | "how_to"
   | "read"
+  | "explain"
   | "diagnose"
   | "analyze"
   | "prepare_action"
   | "unclear";
 
+export type JarvisAiIntentEntity =
+  | "none"
+  | "project"
+  | "customer"
+  | "employee"
+  | "task"
+  | "offer"
+  | "invoice"
+  | "catalog"
+  | "planning"
+  | "organization";
+
+export type JarvisAiIntentScope =
+  | "none"
+  | "explicit_record"
+  | "current_record"
+  | "organization"
+  | "current_user"
+  | "collection";
+
 export type JarvisAiIntentClassification = {
   intent: JarvisAiIntentKind;
   domain: "system" | "sales" | "management";
+  entity: JarvisAiIntentEntity;
+  scope: JarvisAiIntentScope;
   helpTopicId: string;
   confidence: "low" | "medium" | "high";
   needsClarification: boolean;
@@ -25,8 +48,15 @@ export type JarvisAiIntentClassification = {
     | "appointment.create"
     | "task.create"
     | "email.send"
+    | "project.create"
+    | "customer.create"
+    | "offer.create"
+    | "invoice.create"
     | "invoice.cancel"
+    | "time_entry.create"
     | "stamp.delete"
+    | "record.delete"
+    | "catalog.change"
     | "record.change";
 };
 
@@ -36,15 +66,53 @@ type FetchLike = (
 ) => Promise<Response>;
 
 const SECRET_OR_PERSONNEL_SIGNAL =
-  /\b(passwort|kennwort|api[-_ ]?key|secret|token|private key|system[-_ ]?prompt|developer[-_ ]?message|gehalt|lohn|verdien|personalakte)\b/iu;
+  /\b(passw(?:ort|örter)|kennw(?:ort|örter)|api[-_ ]?keys?|secrets?|tokens?|private keys?|system[-_ ]?prompts?|developer[-_ ]?messages?|gehalt|lohn|verdien|personalakte)\b/iu;
 const WORKPILOT_SIGNAL =
   /\b(workpilot|jarvis|projekt|kunde|kontakt|angebot|rechnung|aufgabe|termin|planung|stempel|zeiteintrag|mitarbeiter|reiter|logbuch|dokument|leistung|artikel|kalkulation|dashboard|auswertung)\w*\b/iu;
 const HELP_TOPIC_IDS = new Set(
   JARVIS_HELP_TOPIC_CATALOG.map((topic) => topic.id)
 );
+const AI_INTENT_ENTITIES = new Set<JarvisAiIntentEntity>([
+  "none",
+  "project",
+  "customer",
+  "employee",
+  "task",
+  "offer",
+  "invoice",
+  "catalog",
+  "planning",
+  "organization",
+]);
+const AI_INTENT_SCOPES = new Set<JarvisAiIntentScope>([
+  "none",
+  "explicit_record",
+  "current_record",
+  "organization",
+  "current_user",
+  "collection",
+]);
+
+const NON_PERSON_WORDS =
+  /^(?:wie|was|warum|wer|wo|wann|welch\w*|zeig\w*|find\w*|such\w*|öffn\w*|offen\w*|aktuell\w*|nächst\w*|letzt\w*|unser\w*|mein\w*|dies\w*|projekt\w*|rechnung\w*|angebot\w*|aufgabe\w*|kund\w*|kontakt\w*|mitarbeiter\w*|planung\w*|termin\w*|stempel\w*|artikel\w*|leistung\w*|workpilot\w*|jarvis\w*)$/iu;
+
+function maskLikelyPersonOrRecordNames(value: string) {
+  const targeted = value.replace(
+    /(\b(?:über|von|bei|für|kund(?:e|en|in)|kontakt|mitarbeiter(?:in)?|ansprechpartner)\s+)([\p{Lu}][\p{Ll}ß-]{2,}\s+[\p{Lu}][\p{Ll}ß-]{2,})\b/giu,
+    "$1[PERSON_ODER_DATENSATZ]"
+  );
+  return targeted.replace(
+    /\b([\p{Lu}][\p{Ll}ß-]{2,})\s+([\p{Lu}][\p{Ll}ß-]{2,})\b/gu,
+    (match, first: string, second: string) =>
+      NON_PERSON_WORDS.test(first) || NON_PERSON_WORDS.test(second)
+        ? match
+        : "[PERSON_ODER_DATENSATZ]"
+  );
+}
 
 function cleanQuestionForIntent(value: string) {
-  return value
+  return maskLikelyPersonOrRecordNames(
+    value
     .trim()
     .slice(0, 600)
     .replace(
@@ -55,7 +123,9 @@ function cleanQuestionForIntent(value: string) {
       /\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/gu,
       "[E-MAIL]"
     )
-    .replace(/\+?\d[\d\s()/-]{6,}\d/gu, "[TELEFON]");
+    .replace(/\+?\d[\d\s()/-]{6,}\d/gu, "[TELEFON]")
+    .replace(/\b\d{5,}\b/gu, "[NUMMER]")
+  );
 }
 
 function extractResponseText(value: unknown) {
@@ -85,6 +155,7 @@ function sanitizeClassification(
   const intents = new Set<JarvisAiIntentKind>([
     "how_to",
     "read",
+    "explain",
     "diagnose",
     "analyze",
     "prepare_action",
@@ -97,13 +168,22 @@ function sanitizeClassification(
     "appointment.create",
     "task.create",
     "email.send",
+    "project.create",
+    "customer.create",
+    "offer.create",
+    "invoice.create",
     "invoice.cancel",
+    "time_entry.create",
     "stamp.delete",
+    "record.delete",
+    "catalog.change",
     "record.change",
   ]);
   if (
     !intents.has(source.intent as JarvisAiIntentKind) ||
     !domains.has(String(source.domain)) ||
+    !AI_INTENT_ENTITIES.has(source.entity as JarvisAiIntentEntity) ||
+    !AI_INTENT_SCOPES.has(source.scope as JarvisAiIntentScope) ||
     !confidences.has(String(source.confidence)) ||
     typeof source.needsClarification !== "boolean" ||
     typeof source.usesCurrentContext !== "boolean" ||
@@ -119,6 +199,8 @@ function sanitizeClassification(
   return {
     intent: source.intent as JarvisAiIntentKind,
     domain: source.domain as JarvisAiIntentClassification["domain"],
+    entity: source.entity as JarvisAiIntentEntity,
+    scope: source.scope as JarvisAiIntentScope,
     helpTopicId,
     confidence:
       source.confidence as JarvisAiIntentClassification["confidence"],
@@ -147,7 +229,15 @@ export function shouldUseJarvisAiIntentFallback(input: {
       /^\s*(?:leg|lege|mach|mache|schick|sende|stornier|losch|lösch|ander|ändere|setz|markier|erstell|trag)\w*\b/iu.test(
         question
       ));
-  if (findJarvisExactHelpTopicId(question, input.context) && !asksForAction) {
+  const isUnambiguousHowTo =
+    input.decision.goals.includes("how_to") &&
+    !input.decision.goals.includes("read") &&
+    !input.decision.goals.includes("diagnose") &&
+    !asksForAction;
+  if (
+    findJarvisExactHelpTopicId(question, input.context) &&
+    isUnambiguousHowTo
+  ) {
     return false;
   }
   const hasContext =
@@ -155,15 +245,41 @@ export function shouldUseJarvisAiIntentFallback(input: {
     input.context?.recordType === "project" ||
     input.context?.recordType === "customer";
   if (!hasContext && !WORKPILOT_SIGNAL.test(question)) return false;
-  return (
-    input.decision.state === "unrecognized" ||
-    input.decision.state === "clarification" ||
-    input.decision.confidence !== "high" ||
-    input.decision.clarificationReasons.length > 0 ||
-    input.decision.goals.includes("change") ||
-    input.decision.goals.includes("how_to") ||
-    input.decision.goals.includes("read")
-  );
+  return true;
+}
+
+function readIntentUsage(
+  value: unknown,
+  model: string
+): {
+  model: string;
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+} | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const usage = (value as Record<string, unknown>).usage;
+  if (!usage || typeof usage !== "object") return undefined;
+  const source = usage as Record<string, unknown>;
+  const inputDetails =
+    source.input_tokens_details &&
+    typeof source.input_tokens_details === "object"
+      ? (source.input_tokens_details as Record<string, unknown>)
+      : {};
+  const inputTokens = Number(source.input_tokens);
+  const outputTokens = Number(source.output_tokens);
+  const cachedInputTokens = Number(inputDetails.cached_tokens ?? 0);
+  if (!Number.isFinite(inputTokens) || !Number.isFinite(outputTokens)) {
+    return undefined;
+  }
+  return {
+    model,
+    inputTokens,
+    cachedInputTokens: Number.isFinite(cachedInputTokens)
+      ? cachedInputTokens
+      : 0,
+    outputTokens,
+  };
 }
 
 export async function classifyJarvisIntentWithAi(
@@ -223,11 +339,15 @@ export async function classifyJarvisIntentWithAi(
               "Rechte, Datenzugriff und Aktionen werden später ausschließlich von WorkPilot360 geprüft.",
               "how_to bedeutet: Der Nutzer fragt, wie er etwas selbst bedient.",
               "prepare_action bedeutet: Der Nutzer fordert JARVIS auf, etwas auszuführen oder vorzubereiten.",
+              "read bedeutet: Der Nutzer will vorhandene Datensätze, Listen oder Werte sehen. explain bedeutet: Der Nutzer will Bedeutung, Status, Verantwortung oder Logik eines Objekts verstehen.",
               "diagnose bedeutet: Der Nutzer fragt nach Fehler, Ursache, Abweichung oder Prüfung.",
+              "Entscheide entity nach dem ausdrücklich erfragten Fachobjekt und niemals nur nach dem geöffneten Bildschirm.",
+              "scope=explicit_record bei einer ausdrücklichen Referenz, current_record nur bei Wörtern wie hier/dieses Projekt, organization bei wir/unser/alle/insgesamt, collection bei einer Liste oder Mehrzahl.",
+              "Priorität: ausdrückliche Referenz vor ausdrücklichem Umfang, dann Absicht, dann aktueller Datensatz, zuletzt Bildschirmkontext.",
               "Wenn mehrere Bedeutungen plausibel bleiben, setze needsClarification=true.",
               "Wähle helpTopicId nur bei einer klar passenden Bedienhilfe, sonst none.",
               "Verfügbare Bedienhilfen:",
-              "actionKind ist nur bei prepare_action gesetzt, sonst none. Nutze appointment.create fuer Termin, task.create fuer Aufgabe, email.send fuer Mail, invoice.cancel fuer Storno, stamp.delete fuer Stempelung loeschen und record.change fuer sonstige Aenderungen.",
+              "actionKind ist nur bei prepare_action gesetzt, sonst none. Nutze appointment.create für Termin, task.create für Aufgabe, email.send für Mail, project.create für Projekt, customer.create für Kunde/Kontakt, offer.create für Angebot, invoice.create für Rechnungsentwurf, invoice.cancel für Storno, time_entry.create für Zeiteintrag, stamp.delete für Stempelung löschen, record.delete für sonstiges Löschen, catalog.change für Artikel/Leistung und record.change für sonstige Änderungen.",
               topics,
             ].join("\n"),
           },
@@ -252,6 +372,7 @@ export async function classifyJarvisIntentWithAi(
                   enum: [
                     "how_to",
                     "read",
+                    "explain",
                     "diagnose",
                     "analyze",
                     "prepare_action",
@@ -261,6 +382,32 @@ export async function classifyJarvisIntentWithAi(
                 domain: {
                   type: "string",
                   enum: ["system", "sales", "management"],
+                },
+                entity: {
+                  type: "string",
+                  enum: [
+                    "none",
+                    "project",
+                    "customer",
+                    "employee",
+                    "task",
+                    "offer",
+                    "invoice",
+                    "catalog",
+                    "planning",
+                    "organization",
+                  ],
+                },
+                scope: {
+                  type: "string",
+                  enum: [
+                    "none",
+                    "explicit_record",
+                    "current_record",
+                    "organization",
+                    "current_user",
+                    "collection",
+                  ],
                 },
                 helpTopicId: { type: "string", enum: topicEnum },
                 confidence: {
@@ -276,8 +423,15 @@ export async function classifyJarvisIntentWithAi(
                     "appointment.create",
                     "task.create",
                     "email.send",
+                    "project.create",
+                    "customer.create",
+                    "offer.create",
+                    "invoice.create",
                     "invoice.cancel",
+                    "time_entry.create",
                     "stamp.delete",
+                    "record.delete",
+                    "catalog.change",
                     "record.change",
                   ],
                 },
@@ -285,6 +439,8 @@ export async function classifyJarvisIntentWithAi(
               required: [
                 "intent",
                 "domain",
+                "entity",
+                "scope",
                 "helpTopicId",
                 "confidence",
                 "needsClarification",
@@ -303,7 +459,12 @@ export async function classifyJarvisIntentWithAi(
       );
       return undefined;
     }
-    const parsed = JSON.parse(extractResponseText(await response.json()));
+    const responseBody = await response.json();
+    const usage = readIntentUsage(responseBody, model);
+    if (usage) {
+      console.info("JARVIS intent usage", usage);
+    }
+    const parsed = JSON.parse(extractResponseText(responseBody));
     return sanitizeClassification(parsed);
   } catch {
     return undefined;

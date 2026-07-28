@@ -11,6 +11,11 @@ export type JarvisReadIntent = {
   summarize: boolean;
 };
 
+export type JarvisReadIntentHint = {
+  kind: JarvisRecordKind;
+  filter?: JarvisRecordFilter;
+};
+
 const READ_INTENT_MARKERS = [
   "finde",
   "finden",
@@ -91,6 +96,18 @@ function cleanQuery(kind: JarvisRecordKind, question: string) {
     "zusammen",
     "status",
     "von",
+    "wie",
+    "viel",
+    "viele",
+    "hoch",
+    "haben",
+    "hat",
+    "wir",
+    "unsere",
+    "unseren",
+    "unserer",
+    "gibt",
+    "es",
   ].sort((first, second) => second.length - first.length);
 
   let query = ` ${normalized} `;
@@ -102,7 +119,8 @@ function cleanQuery(kind: JarvisRecordKind, question: string) {
 
 export function resolveJarvisReadIntent(
   question: string,
-  context: JarvisSurfaceContext = {}
+  context: JarvisSurfaceContext = {},
+  hint?: JarvisReadIntentHint
 ): JarvisReadIntent | undefined {
   const normalized = normalize(question);
   const asksHowToSearchOrOpen =
@@ -113,19 +131,27 @@ export function resolveJarvisReadIntent(
       normalized
     );
   if (asksHowToSearchOrOpen) return undefined;
-  const kind = getKind(normalized);
-  if (!kind || !READ_INTENT_MARKERS.some((marker) => normalized.includes(normalize(marker)))) {
+  const kind = getKind(normalized) ?? hint?.kind;
+  if (
+    !kind ||
+    (!hint &&
+      !READ_INTENT_MARKERS.some((marker) =>
+        normalized.includes(normalize(marker))
+      ))
+  ) {
     return undefined;
   }
   const explicitSearchOrOpen = /\b(finde|finden|suche|such|offne|oeffne)\b/.test(normalized);
-  if (/\bwie\b/.test(normalized) && !explicitSearchOrOpen) {
+  if (!hint && /\bwie\b/.test(normalized) && !explicitSearchOrOpen) {
     return undefined;
   }
 
   const summarize = /\b(fasse|zusammenfassung|status von)\b/.test(normalized);
+  const filter = hint?.filter ?? getFilter(kind, normalized);
   const explicitlyAsksForCollection =
     (kind === "project" && /\bprojekte\b/.test(normalized)) ||
-    (kind === "customer" && /\b(kunden|kontakte)\b/.test(normalized));
+    (kind === "customer" && /\b(kunden|kontakte)\b/.test(normalized)) ||
+    filter !== "all";
   const contextMatches =
     !explicitlyAsksForCollection &&
     ((kind === "project" && context.recordType === "project") ||
@@ -135,7 +161,7 @@ export function resolveJarvisReadIntent(
   return {
     kind,
     query: contextRecordId ? "" : cleanQuery(kind, question),
-    filter: getFilter(kind, normalized),
+    filter,
     contextRecordId,
     summarize,
   };

@@ -908,6 +908,8 @@ describe("POST /api/jarvis/chat", () => {
     mocks.classifyJarvisIntentWithAi.mockResolvedValue({
       intent: "how_to",
       domain: "system",
+      entity: "planning",
+      scope: "current_record",
       helpTopicId: "appointment.create",
       confidence: "high",
       needsClarification: false,
@@ -964,6 +966,8 @@ describe("POST /api/jarvis/chat", () => {
     mocks.classifyJarvisIntentWithAi.mockResolvedValue({
       intent: "prepare_action",
       domain: "system",
+      entity: "planning",
+      scope: "current_record",
       helpTopicId: "appointment.create",
       confidence: "high",
       needsClarification: false,
@@ -1003,6 +1007,8 @@ describe("POST /api/jarvis/chat", () => {
     mocks.classifyJarvisIntentWithAi.mockResolvedValue({
       intent: "prepare_action",
       domain: "system",
+      entity: "task",
+      scope: "current_record",
       helpTopicId: "none",
       confidence: "high",
       needsClarification: false,
@@ -1029,6 +1035,45 @@ describe("POST /api/jarvis/chat", () => {
     });
     expect(payload.choices).toEqual([
       expect.objectContaining({ label: "Aufgabe anlegen erklären" }),
+    ]);
+    expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+  });
+
+  it("recognizes an offer action but never executes it", async () => {
+    mocks.classifyJarvisIntentWithAi.mockResolvedValue({
+      intent: "prepare_action",
+      domain: "system",
+      entity: "offer",
+      scope: "current_record",
+      helpTopicId: "none",
+      confidence: "high",
+      needsClarification: false,
+      usesCurrentContext: true,
+      actionKind: "offer.create",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Erstelle für diesen Kunden bitte ein Angebot.",
+          context: { recordType: "customer", recordId: "customer-1" },
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      type: "clarification",
+      topicId: "intent.ai.action-clarification",
+    });
+    expect(payload.choices).toEqual([
+      expect.objectContaining({
+        label: "Angebotserstellung erklären",
+      }),
     ]);
     expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
@@ -1458,12 +1503,12 @@ describe("POST /api/jarvis/chat", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(mocks.resolveJarvisProjectHealthRequest).toHaveBeenCalledWith({
-      question: "Wie lege ich ein Projekt an?",
-      organizationId: "organization-1",
-      accessProfile: { profile: true },
-      context: { module: "Projekte" },
-    });
+    expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisSystemHelp).toHaveBeenCalledWith(
+      "Wie lege ich ein Projekt an?",
+      { module: "Projekte" },
+      { profile: true }
+    );
     expect(await response.json()).toMatchObject({
       dialogState: {
         version: 1,
@@ -1611,6 +1656,74 @@ describe("POST /api/jarvis/chat", () => {
     });
     expect(mocks.resolveJarvisSalesAnalysisRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisSystemHelp).not.toHaveBeenCalled();
+  });
+
+  it("lets an AI-recognized global invoice read outrank the open project", async () => {
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      recordType: "project",
+      recordId: "screen-project",
+    });
+    mocks.resolveJarvisIntentDecision.mockReturnValue({
+      state: "resolved",
+      domain: "system",
+      confidence: "high",
+      candidates: [],
+      clarificationReasons: [],
+      goals: ["read"],
+      entities: ["invoice"],
+      timeScopes: [],
+      recordFilter: "open",
+      segments: [],
+    });
+    mocks.classifyJarvisIntentWithAi.mockResolvedValue({
+      intent: "read",
+      domain: "management",
+      entity: "invoice",
+      scope: "organization",
+      helpTopicId: "none",
+      confidence: "high",
+      needsClarification: false,
+      usesCurrentContext: false,
+      actionKind: "none",
+    });
+    mocks.resolveJarvisReadRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "records.invoice.search",
+      message: "Offene Rechnungen gefunden.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Welche Rechnungen sind bei uns noch offen?",
+          context: {
+            recordType: "project",
+            recordId: "screen-project",
+          },
+        }),
+      })
+    );
+
+    expect(await response.json()).toMatchObject({
+      topicId: "records.invoice.search",
+      message: "Offene Rechnungen gefunden.",
+    });
+    expect(mocks.resolveJarvisReadRequest).toHaveBeenCalledWith({
+      question: "Welche Rechnungen sind bei uns noch offen?",
+      context: {
+        recordType: "project",
+        recordId: "screen-project",
+      },
+      organizationId: "organization-1",
+      accessProfile: { profile: true },
+      intentHint: { kind: "invoice" },
+    });
+    expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisSystemHelp).not.toHaveBeenCalled();
   });
 });

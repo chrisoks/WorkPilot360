@@ -1,5 +1,26 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Intent-Orchestrator V4 2026-07-28: Nach der globalen Sicherheits-
+  und Rollenprüfung klassifiziert ein begrenzter KI-Aufruf natürliche
+  WorkPilot-Fragen vor den fachlichen Datenadaptern. Das strikt validierte
+  Schema trennt Absicht, Domäne, Fachobjekt, Umfang, Kontextnutzung und
+  vorbereitete Aktionsart. Verbindliche Priorität:
+  ausdrückliche Datensatzreferenz vor ausdrücklich genanntem Umfang, danach
+  semantische Absicht, aktiver Gesprächsdatensatz und zuletzt
+  Bildschirmkontext. Eindeutige bekannte Bedienfragen dürfen weiterhin
+  deterministisch ohne Tokenkosten laufen. Namen, Projektkennungen,
+  E-Mail-Adressen, Telefonnummern, lange Nummern und interne Datensatz-IDs
+  werden nicht an die Intent-KI übermittelt. Sie erhält keine Live-Daten,
+  Rollenrechte, Datenbank oder Werkzeuge. Daten, Berechnungen und Aktionen
+  bleiben ausschließlich deterministisch und rollengeprüft. Eine
+  Antwort-Fit-Prüfung verwirft fachlich unpassende Spezialantworten, statt
+  sie trotz abweichender Absicht auszugeben. Modellfehler und Timeout fallen
+  ohne Crash auf die deterministische Logik zurück. Tokenverbrauch wird nur
+  als technische Summen ohne Fragetext oder Datensatz protokolliert.
+  Schreibende Aktionen bleiben gesperrt; auch neu erkannte Projekt-, Kunden-,
+  Angebots-, Rechnungs-, Zeit-, Katalog- und Löschabsichten führen nur zu
+  einer sicheren Erklärung beziehungsweise Rückfrage.
+
 - JARVIS Intent-Orchestrator V3 2026-07-28: Nach globaler Sicherheits- und
   Rollenprüfung haben eindeutige Bedienfragen und organisationsweite
   Fachadapter Vorrang vor einem geöffneten Einzelprojekt. Genau eine

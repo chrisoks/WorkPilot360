@@ -6,6 +6,7 @@ describe("resolveJarvisCapabilityGap", () => {
     "Wie viele offene Posten haben wir?",
     "Welche Kunden haben offene Angebote, aber seit 30 Tagen keine Aktivität?",
     "Welche Projekte haben Zeiten, aber noch keine Rechnung?",
+    "Welche Projekte laufen ohne gültiges Angebot?",
   ])("meldet bei fehlendem Organisationsadapter sicher die Grenze: %s", (question) => {
     const result = resolveJarvisCapabilityGap(question);
     expect(result?.topicId).toBe("capability.analysis-adapter-missing");
