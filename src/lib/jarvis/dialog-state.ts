@@ -39,6 +39,14 @@ export type JarvisIntentSequenceTask = {
   projectScope?: JarvisProjectSequenceScope;
 };
 
+export type JarvisGuidedSequenceTask = {
+  kind: "domain" | "time" | "project_matrix";
+  domain: JarvisIntentDomain;
+  choice: JarvisDialogChoice;
+  projectReference?: string;
+  projectScope?: JarvisProjectSequenceScope;
+};
+
 export type JarvisDialogState = {
   version: 1;
   domain: JarvisIntentDomain;
@@ -62,6 +70,9 @@ export type JarvisDialogState = {
   intentSequence?: {
     remainingTasks: JarvisIntentSequenceTask[];
   };
+  guidedSequence?: {
+    remainingTasks: JarvisGuidedSequenceTask[];
+  };
 };
 
 type JarvisDialogResponse = {
@@ -71,6 +82,7 @@ type JarvisDialogResponse = {
   records?: unknown;
   dialogSequence?: unknown;
   dialogIntentSequence?: unknown;
+  dialogGuidedSequence?: unknown;
 };
 
 const DOMAINS = new Set<JarvisIntentDomain>([
@@ -123,6 +135,11 @@ const INTENT_SEQUENCE_ENTITIES = new Set<JarvisIntentSequenceEntity>([
   "task",
   "offer",
   "invoice",
+]);
+const GUIDED_SEQUENCE_KINDS = new Set<JarvisGuidedSequenceTask["kind"]>([
+  "domain",
+  "time",
+  "project_matrix",
 ]);
 
 function cleanText(value: unknown, maxLength: number) {
@@ -223,6 +240,81 @@ function sanitizeIntentSequence(value: unknown) {
   return remainingTasks.length > 0 ? { remainingTasks } : undefined;
 }
 
+function sanitizeDialogChoice(value: unknown): JarvisDialogChoice | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  const id = cleanText(candidate.id, 80);
+  const label = cleanText(candidate.label, 80);
+  const prompt = cleanText(candidate.prompt, 500);
+  if (!id || !label || !prompt) return undefined;
+  return { id, label, prompt };
+}
+
+function sanitizeGuidedSequenceTask(
+  value: unknown
+): JarvisGuidedSequenceTask | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  const kind = candidate.kind;
+  const domain = candidate.domain;
+  const choice = sanitizeDialogChoice(candidate.choice);
+  const projectReference = sanitizeProjectReference(
+    candidate.projectReference
+  );
+  const projectScope = candidate.projectScope;
+  if (
+    typeof kind !== "string" ||
+    !GUIDED_SEQUENCE_KINDS.has(kind as JarvisGuidedSequenceTask["kind"]) ||
+    typeof domain !== "string" ||
+    !DOMAINS.has(domain as JarvisIntentDomain) ||
+    !choice
+  ) {
+    return undefined;
+  }
+  if (
+    kind === "project_matrix" &&
+    (domain !== "system" ||
+      !projectReference ||
+      typeof projectScope !== "string" ||
+      !PROJECT_SEQUENCE_SCOPES.has(
+        projectScope as JarvisProjectSequenceScope
+      ))
+  ) {
+    return undefined;
+  }
+  if (
+    kind !== "project_matrix" &&
+    (projectReference || projectScope !== undefined)
+  ) {
+    return undefined;
+  }
+  return {
+    kind: kind as JarvisGuidedSequenceTask["kind"],
+    domain: domain as JarvisIntentDomain,
+    choice,
+    ...(projectReference ? { projectReference } : {}),
+    ...(typeof projectScope === "string" &&
+    PROJECT_SEQUENCE_SCOPES.has(projectScope as JarvisProjectSequenceScope)
+      ? { projectScope: projectScope as JarvisProjectSequenceScope }
+      : {}),
+  };
+}
+
+function sanitizeGuidedSequence(value: unknown) {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (!Array.isArray(candidate.remainingTasks)) return undefined;
+  const remainingTasks = candidate.remainingTasks
+    .map(sanitizeGuidedSequenceTask)
+    .filter((task): task is JarvisGuidedSequenceTask => Boolean(task))
+    .filter(
+      (task, index, list) =>
+        list.findIndex((other) => other.choice.id === task.choice.id) === index
+    )
+    .slice(0, 5);
+  return remainingTasks.length > 0 ? { remainingTasks } : undefined;
+}
+
 export function extractJarvisProjectReferences(question: string) {
   const matches =
     question.toUpperCase().match(/\b[\p{L}]{2,}[- ]?\d{1,8}\b/gu) ?? [];
@@ -305,6 +397,7 @@ export function sanitizeJarvisDialogState(
         .slice(0, 4)
     : [];
   const intentSequence = sanitizeIntentSequence(candidate.intentSequence);
+  const guidedSequence = sanitizeGuidedSequence(candidate.guidedSequence);
 
   return {
     version: 1,
@@ -341,6 +434,7 @@ export function sanitizeJarvisDialogState(
           }
         : undefined,
     intentSequence,
+    guidedSequence,
   };
 }
 
@@ -565,6 +659,27 @@ export function buildJarvisDialogState(input: {
       : remainingIntentTasks.length > 0
       ? { remainingTasks: remainingIntentTasks }
       : undefined;
+  const responseGuidedSequence = sanitizeGuidedSequence(
+    response.dialogGuidedSequence
+  );
+  const hasResponseGuidedSequence =
+    response.dialogGuidedSequence !== undefined;
+  const previousGuidedSequence = input.previousState?.guidedSequence;
+  const selectedGuidedChoice = resolveJarvisDialogChoiceInput(
+    question,
+    previousGuidedSequence?.remainingTasks.map((task) => task.choice)
+  );
+  const remainingGuidedTasks = selectedGuidedChoice
+    ? previousGuidedSequence?.remainingTasks.filter(
+        (task) => task.choice.id !== selectedGuidedChoice.id
+      ) ?? []
+    : [];
+  const guidedSequence =
+    hasResponseGuidedSequence
+      ? responseGuidedSequence
+      : remainingGuidedTasks.length > 0
+      ? { remainingTasks: remainingGuidedTasks }
+      : undefined;
 
   return {
     version: 1,
@@ -588,6 +703,7 @@ export function buildJarvisDialogState(input: {
         : undefined,
     projectSequence,
     intentSequence,
+    guidedSequence,
   };
 }
 

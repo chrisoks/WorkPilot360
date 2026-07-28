@@ -22,9 +22,11 @@ import {
 } from "@/lib/jarvis/intent-decision";
 import {
   buildJarvisIntentClarification,
+  buildJarvisProjectMatrixClarification,
   buildJarvisProjectScopeSequenceClarification,
   buildJarvisProjectSequenceClarification,
   buildJarvisProjectSequenceContinuation,
+  resolveJarvisGuidedSequenceContinuation,
   resolveJarvisIntentSequenceContinuation,
 } from "@/lib/jarvis/intent-clarification";
 import {
@@ -105,6 +107,14 @@ export async function POST(req: Request) {
             accessProfile
           )
         : undefined;
+    const guidedSequenceContinuation =
+      payload.type === "answer" || payload.type === "refusal"
+        ? resolveJarvisGuidedSequenceContinuation(
+            previousDialogState,
+            message,
+            accessProfile
+          )
+        : undefined;
     const sequenceChoices =
       payload.type === "answer" || payload.type === "refusal"
         ? [
@@ -114,16 +124,26 @@ export async function POST(req: Request) {
               accessProfile
             ),
             ...(intentSequenceContinuation?.choices ?? []),
+            ...(guidedSequenceContinuation?.choices ?? []),
           ]
         : [];
-    const payloadWithIntentSequence = intentSequenceContinuation
-      ? {
-          ...payload,
-          dialogIntentSequence: {
-            remainingTasks: intentSequenceContinuation.remainingTasks,
-          },
-        }
-      : payload;
+    const payloadWithIntentSequence: Record<string, unknown> = {
+      ...payload,
+      ...(intentSequenceContinuation
+        ? {
+            dialogIntentSequence: {
+              remainingTasks: intentSequenceContinuation.remainingTasks,
+            },
+          }
+        : {}),
+      ...(guidedSequenceContinuation
+        ? {
+            dialogGuidedSequence: {
+              remainingTasks: guidedSequenceContinuation.remainingTasks,
+            },
+          }
+        : {}),
+    };
     const sequencePayload =
       sequenceChoices.length > 0
         ? {
@@ -158,6 +178,7 @@ export async function POST(req: Request) {
     const {
       dialogSequence: _dialogSequence,
       dialogIntentSequence: _dialogIntentSequence,
+      dialogGuidedSequence: _dialogGuidedSequence,
       ...publicPayload
     } = responsePayload;
     return NextResponse.json({
@@ -165,6 +186,15 @@ export async function POST(req: Request) {
       dialogState,
     });
   };
+  const projectMatrixClarification =
+    buildJarvisProjectMatrixClarification(
+      message,
+      intentDecision,
+      accessProfile
+    );
+  if (projectMatrixClarification) {
+    return respond(projectMatrixClarification);
+  }
   const projectScopeSequenceClarification =
     buildJarvisProjectScopeSequenceClarification(
       message,

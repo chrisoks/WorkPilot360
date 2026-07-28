@@ -32330,7 +32330,7 @@ await addProjectLogbookEntry(
             role: message.role,
             content: message.requestContent || message.content,
           })),
-          dialogState: isSystemHelp ? previousDialogState : undefined,
+          dialogState: previousDialogState,
           conversationContext: isSystemHelp
             ? buildJarvisConversationContext(
                 currentManagementAiMessages,
@@ -32354,17 +32354,13 @@ await addProjectLogbookEntry(
         typeof data?.topicId === "string"
           ? data.topicId.slice(0, 120)
           : undefined;
-      const responseChoices = isSystemHelp
-        ? parseJarvisDialogChoices(data?.choices)
-        : undefined;
+      const responseChoices = parseJarvisDialogChoices(data?.choices);
       const responseRecords = parseJarvisRecordResults(data?.records);
       const responseStructured = isSystemHelp
         ? parseJarvisStructuredAnswer(data?.structured)
         : undefined;
       const responseDialogState =
-        (isSystemHelp
-          ? sanitizeJarvisDialogState(data?.dialogState)
-          : undefined) ??
+        sanitizeJarvisDialogState(data?.dialogState) ??
         buildJarvisDialogState({
           question: effectiveQuestion,
           domain: requestMode,

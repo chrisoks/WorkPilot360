@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => ({
   createJarvisAccessProfile: vi.fn(),
   resolveJarvisIntentDecision: vi.fn(),
   buildJarvisIntentClarification: vi.fn(),
+  buildJarvisProjectMatrixClarification: vi.fn(),
+  resolveJarvisGuidedSequenceContinuation: vi.fn(),
   resolveJarvisIntentSequenceContinuation: vi.fn(),
   buildJarvisProjectScopeSequenceClarification: vi.fn(),
   buildJarvisProjectSequenceClarification: vi.fn(),
@@ -63,6 +65,10 @@ vi.mock("@/lib/jarvis/intent-decision", () => ({
 
 vi.mock("@/lib/jarvis/intent-clarification", () => ({
   buildJarvisIntentClarification: mocks.buildJarvisIntentClarification,
+  buildJarvisProjectMatrixClarification:
+    mocks.buildJarvisProjectMatrixClarification,
+  resolveJarvisGuidedSequenceContinuation:
+    mocks.resolveJarvisGuidedSequenceContinuation,
   resolveJarvisIntentSequenceContinuation:
     mocks.resolveJarvisIntentSequenceContinuation,
   buildJarvisProjectScopeSequenceClarification:
@@ -103,6 +109,8 @@ describe("POST /api/jarvis/chat", () => {
       segments: [],
     });
     mocks.buildJarvisIntentClarification.mockReturnValue(undefined);
+    mocks.buildJarvisProjectMatrixClarification.mockReturnValue(undefined);
+    mocks.resolveJarvisGuidedSequenceContinuation.mockReturnValue(undefined);
     mocks.resolveJarvisIntentSequenceContinuation.mockReturnValue(undefined);
     mocks.buildJarvisProjectScopeSequenceClarification.mockReturnValue(
       undefined
@@ -778,6 +786,103 @@ describe("POST /api/jarvis/chat", () => {
         },
       },
     });
+  });
+
+  it("adds the remaining guided dimensions without exposing internal metadata", async () => {
+    mocks.sanitizeJarvisSurfaceContext.mockImplementation((value) => value);
+    mocks.resolveJarvisGuidedSequenceContinuation.mockReturnValue({
+      choices: [
+        {
+          id: "intent-time-previous_year",
+          label: "Vorjahr",
+          prompt: "Analysiere Umsatz für den Zeitraum „Vorjahr“.",
+        },
+      ],
+      remainingTasks: [
+        {
+          kind: "time",
+          domain: "management",
+          choice: {
+            id: "intent-time-previous_year",
+            label: "Vorjahr",
+            prompt: "Analysiere Umsatz für den Zeitraum „Vorjahr“.",
+          },
+        },
+      ],
+    });
+    mocks.resolveJarvisReadRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "management.revenue",
+      message: "Umsatz im aktuellen Monat.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Analysiere Umsatz für den Zeitraum „Aktueller Monat“.",
+          context: {},
+          dialogState: {
+            version: 1,
+            domain: "management",
+            lastQuestion: "Zeige den Umsatz im aktuellen Monat und Vorjahr.",
+            lastIntent: {
+              goals: ["analyze"],
+              entities: [],
+              timeScopes: ["current_month", "previous_year"],
+              recordFilter: "all",
+            },
+            guidedSequence: {
+              remainingTasks: [
+                {
+                  kind: "time",
+                  domain: "management",
+                  choice: {
+                    id: "intent-time-current_month",
+                    label: "Aktueller Monat",
+                    prompt:
+                      "Analysiere Umsatz für den Zeitraum „Aktueller Monat“.",
+                  },
+                },
+                {
+                  kind: "time",
+                  domain: "management",
+                  choice: {
+                    id: "intent-time-previous_year",
+                    label: "Vorjahr",
+                    prompt: "Analysiere Umsatz für den Zeitraum „Vorjahr“.",
+                  },
+                },
+              ],
+            },
+          },
+        }),
+      })
+    );
+
+    const body = await response.json();
+    expect(body).toMatchObject({
+      choices: [
+        {
+          label: "Vorjahr",
+          prompt: "Analysiere Umsatz für den Zeitraum „Vorjahr“.",
+        },
+      ],
+      dialogState: {
+        guidedSequence: {
+          remainingTasks: [
+            {
+              kind: "time",
+              domain: "management",
+            },
+          ],
+        },
+      },
+    });
+    expect(body.dialogGuidedSequence).toBeUndefined();
   });
 
   it("does not leak an old dialog record into an independent how-to question", async () => {

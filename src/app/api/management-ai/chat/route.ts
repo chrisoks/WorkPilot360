@@ -4,6 +4,11 @@ import { getDemoContext } from "@/lib/demo/context";
 import { resolveJarvisSalesAnalysisRequest } from "@/lib/jarvis/sales-analysis";
 import { createJarvisAccessProfile } from "@/lib/jarvis/security";
 import {
+  buildJarvisDialogState,
+  sanitizeJarvisDialogState,
+} from "@/lib/jarvis/dialog-state";
+import { resolveJarvisGuidedSequenceContinuation } from "@/lib/jarvis/intent-clarification";
+import {
   asksForSalesRestrictedData,
   canUseManagementAi,
   canUseSalesAi,
@@ -134,6 +139,20 @@ export async function POST(req: Request) {
   const actorUser = users.find((user) => user.id === actorResult.actor.id);
   const actorWithFlags = { ...actorResult.actor, salesRoleEnabled: actorUser?.salesRoleEnabled };
   const aiLabel = "JARVIS";
+  const sessionActor = users.find(
+    (user) =>
+      user.id === actorResult.sessionUserId && user.isActive !== false
+  );
+  if (!sessionActor) {
+    return NextResponse.json(
+      { error: "Angemeldeter Benutzer konnte nicht eindeutig bestimmt werden." },
+      { status: 401 }
+    );
+  }
+  const accessProfile = createJarvisAccessProfile(
+    sessionActor,
+    actorWithFlags
+  );
 
   if (mode === "management" && !canUseManagementAi(actorWithFlags)) {
     return NextResponse.json({ error: "Dieser JARVIS-Bereich ist fuer Geschaeftsfuehrung und Admin freigegeben." }, { status: 403 });
@@ -146,45 +165,75 @@ export async function POST(req: Request) {
   if (!userMessage) {
     return NextResponse.json({ error: `Bitte eine Frage an die ${aiLabel} eingeben.` }, { status: 400 });
   }
+  const previousDialogState = sanitizeJarvisDialogState(body.dialogState);
+  const respond = (
+    payload: Record<string, unknown>,
+    responseType: "answer" | "refusal" = "answer"
+  ) => {
+    const continuation = resolveJarvisGuidedSequenceContinuation(
+      previousDialogState,
+      userMessage,
+      accessProfile
+    );
+    const choices = [
+      ...(Array.isArray(payload.choices) ? payload.choices : []),
+      ...(continuation?.choices ?? []),
+    ];
+    const responseMetadata = {
+      type: responseType,
+      topicId: payload.topicId,
+      choices,
+      records: payload.records,
+      ...(continuation
+        ? {
+            dialogGuidedSequence: {
+              remainingTasks: continuation.remainingTasks,
+            },
+          }
+        : {}),
+    };
+    const dialogState = buildJarvisDialogState({
+      question: userMessage,
+      domain: mode,
+      response: responseMetadata,
+      previousState: previousDialogState,
+    });
+    return NextResponse.json({
+      ...payload,
+      ...(choices.length > 0 ? { choices } : {}),
+      dialogState,
+    });
+  };
 
   if (isClearlyOutOfScopeQuestion(userMessage)) {
-    return NextResponse.json({
+    return respond({
       reply:
         "Dazu antworte ich nicht. Ich bin nur fuer WorkPilot360, Unternehmenslage, Vertrieb, Projekte, Umsatz, Liquiditaet, Kapazitaet und die bereitgestellten Systemzahlen da.",
-    });
+    }, "refusal");
   }
 
   if (isPromptInjectionAttempt(userMessage)) {
-    return NextResponse.json({
+    return respond({
       reply:
         "Diese Anweisung kann ich nicht befolgen. Ich bleibe bei den WorkPilot360-Daten, den Rollenrechten und dem freigegebenen Analysekontext. Welche Unternehmens- oder Vertriebsfrage soll ich sauber einordnen?",
-    });
+    }, "refusal");
   }
 
   if (mode === "sales" && asksForSalesRestrictedData(userMessage)) {
-    return NextResponse.json({
+    return respond({
       reply:
         "Dazu gebe ich ueber JARVIS keine Auskunft. Gehaelter, interne Personalkosten, Kostensaetze und Rueckschluesse darauf sind gesperrt. Ich kann stattdessen Umsatzpotenzial, Nachfassprioritaeten oder Kundensegmente bewerten. Was soll ich vertrieblich einordnen?",
-    });
+    }, "refusal");
   }
 
   if (mode === "sales") {
-    const sessionActor = users.find(
-      (user) => user.id === actorResult.sessionUserId && user.isActive !== false
-    );
-    if (!sessionActor) {
-      return NextResponse.json(
-        { error: "Angemeldeter Benutzer konnte nicht eindeutig bestimmt werden." },
-        { status: 401 }
-      );
-    }
     const analysisResponse = await resolveJarvisSalesAnalysisRequest({
       question: userMessage,
       organizationId: organization.id,
-      accessProfile: createJarvisAccessProfile(sessionActor, actorWithFlags),
+      accessProfile,
     });
     if (analysisResponse) {
-      return NextResponse.json({
+      return respond({
         reply: analysisResponse.message,
         records: analysisResponse.records,
         topicId: analysisResponse.topicId,
@@ -195,7 +244,7 @@ export async function POST(req: Request) {
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    return NextResponse.json({
+    return respond({
       reply:
         `Die ${aiLabel} ist technisch vorbereitet, aber noch nicht verbunden. Bitte serverseitig OPENAI_API_KEY setzen und den Server neu starten.`,
       missingConfiguration: true,
@@ -242,7 +291,7 @@ export async function POST(req: Request) {
 
   const data = await response.json();
   const reply = normalizeAndLimitAiReply(extractResponseText(data), 140);
-  return NextResponse.json({
+  return respond({
     reply: reply || `Die ${aiLabel} hat keine verwertbare Antwort geliefert.`,
   });
 }

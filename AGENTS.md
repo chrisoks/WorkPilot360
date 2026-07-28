@@ -1,5 +1,20 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS mehrdimensionale Dialogfolgen 2026-07-28: Mehrere erlaubte
+  Fachthemen, Zeiträume sowie Kombinationen aus mehreren Projekten und
+  Prüfumfängen werden nicht mehr nach der ersten Auswahl vergessen. JARVIS
+  führt bis zu fünf streng typisierte Teilprüfungen als klickbare Folge und
+  prüft jeden Schritt erneut gegen Sitzung, effektive Rolle, Fachdomäne,
+  Action Registry und Sicherheitsregeln. Die Folge bleibt auch erhalten,
+  wenn eine Auswahl technisch vom Systempfad in den Vertriebs- oder
+  BWL-Antwortpfad wechselt. Projektmatrizen bis fünf Einzelprüfungen werden
+  vollständig vorgemerkt; größere Kombinationen werden nicht abgeschnitten,
+  sondern mit der tatsächlichen Anzahl transparent auf einen zuerst
+  auszuwählenden Prüfumfang begrenzt. Manipulierte Client-Metadaten,
+  Geheimnisanfragen und nachträglich entfallene Rechte können keine
+  Folgeschritte freischalten. Rein lesend, ohne Prisma-, Datenbank- oder
+  automatische Aktionsänderung.
+
 - JARVIS Teilanliegen-Orchestrierung 2026-07-28: Mehrere zusammengehörige
   Lese- oder Prüfanliegen innerhalb derselben Fachdomäne werden nicht mehr
   nach der ersten Auswahl vergessen. JARVIS bildet eine streng typisierte,

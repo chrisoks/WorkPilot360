@@ -1016,6 +1016,25 @@ Fachdomänen und mehrdimensionale Kombinationen aus mehreren Projekten,
 Prüfumfängen und Zeiträumen. Solche großen Aufträge müssen bewusst begrenzt,
 verständlich priorisiert und ohne stilles Weglassen zerlegt werden.
 
+Umsetzungsstand 28.07.2026 – mehrdimensionale Dialogfolgen: Mehrere erlaubte
+Fachdomänen und mehrere Zeiträume bleiben nach der ersten Auswahl als
+typisierte Folge erhalten. Diese Folge wird auch über den technisch getrennten
+Vertriebs-/BWL-Antwortpfad weitergegeben und bei jedem Schritt erneut gegen
+Sitzung und effektive Rolle geprüft. Kombinationen aus mehreren Projekten und
+mehreren Prüfumfängen werden bis zu fünf Einzelprüfungen vollständig
+vorgemerkt. Größere Matrizen werden mit ihrer tatsächlichen Anzahl transparent
+begrenzt und verlangen zuerst die Auswahl eines Prüfumfangs; es wird kein
+Projekt und kein Prüfschritt still abgeschnitten. Clientseitig zurückgesendete
+Folgemetadaten werden streng validiert, verleihen keine Rechte und werden nie
+als Aktionsfreigabe gewertet.
+
+Damit ist der sichere Orchestrierungskern von Phase 3a für die derzeit
+freigegebenen Lese- und Prüfanliegen geschlossen. Als nächster fachlicher
+Ausbau folgt die tiefere, projektartabhängige Diagnose von Projekt,
+Abrechnung, Automatiken, Materialverbrauch und wirtschaftlichen
+Zusammenhängen. Schreibende JARVIS-Aktionen bleiben weiterhin einer späteren
+Phase mit Vorschau und ausdrücklicher Bestätigung vorbehalten.
+
 ### Phase 3b: Spracheingabe und Sprachausgabe
 
 - Mikrofon- und Berechtigungsoberfläche,

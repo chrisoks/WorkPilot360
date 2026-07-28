@@ -16,8 +16,10 @@ import {
 } from "@/lib/jarvis/security";
 import {
   extractJarvisProjectReferences,
+  resolveJarvisDialogChoiceInput,
   resolveJarvisProjectIntentScopes,
   type JarvisDialogState,
+  type JarvisGuidedSequenceTask,
   type JarvisIntentSequenceTask,
   type JarvisProjectSequenceScope,
 } from "@/lib/jarvis/dialog-state";
@@ -29,6 +31,20 @@ export type JarvisIntentClarificationResponse = {
   choices: JarvisDialogChoice[];
   dialogIntentSequence?: {
     remainingTasks: JarvisIntentSequenceTask[];
+  };
+  dialogGuidedSequence?: {
+    remainingTasks: JarvisGuidedSequenceTask[];
+  };
+  deterministic: true;
+};
+
+export type JarvisProjectMatrixClarificationResponse = {
+  type: "clarification";
+  topicId: "project.matrix.clarification";
+  message: string;
+  choices: JarvisDialogChoice[];
+  dialogGuidedSequence?: {
+    remainingTasks: JarvisGuidedSequenceTask[];
   };
   deterministic: true;
 };
@@ -248,6 +264,89 @@ function getProjectScopeTaskChoice(task: JarvisIntentSequenceTask) {
   );
 }
 
+function formatProjectReferences(references: string[]) {
+  if (references.length <= 1) return references[0] ?? "";
+  return `${references.slice(0, -1).join(", ")} und ${
+    references[references.length - 1]
+  }`;
+}
+
+function getProjectMatrixTaskChoice(task: JarvisGuidedSequenceTask) {
+  const scope = task.projectScope ?? "full";
+  const reference = task.projectReference ?? "";
+  return createJarvisDialogChoice(
+    `project-matrix-${reference.toLocaleLowerCase("de-DE")}-${scope}`,
+    `${reference} · ${PROJECT_SCOPE_LABELS[scope]}`,
+    getProjectSequencePrompt(reference, scope)
+  );
+}
+
+export function buildJarvisProjectMatrixClarification(
+  question: string,
+  decision: JarvisIntentDecision,
+  profile: JarvisAccessProfile
+): JarvisProjectMatrixClarificationResponse | undefined {
+  if (
+    decision.candidates.some((candidate) => candidate.score >= 100) ||
+    decision.clarificationReasons.includes("multiple_domains") ||
+    decision.clarificationReasons.includes("multiple_time_scopes") ||
+    !decision.goals.some((goal) =>
+      ["read", "diagnose", "analyze"].includes(goal)
+    )
+  ) {
+    return undefined;
+  }
+  const references = extractJarvisProjectReferences(question);
+  const scopes = resolveJarvisProjectIntentScopes(question).filter((scope) =>
+    canUseProjectScope(scope, profile)
+  );
+  if (references.length < 2 || scopes.length < 2) return undefined;
+
+  const taskCount = references.length * scopes.length;
+  if (taskCount > 5) {
+    const referenceText = formatProjectReferences(references);
+    return {
+      type: "clarification",
+      topicId: "project.matrix.clarification",
+      message:
+        `Das sind ${taskCount} einzelne Prüfungen. Damit nichts übersehen wird, wähle bitte zuerst einen Prüfumfang für ${referenceText}. Danach können wir den nächsten Umfang gezielt starten.`,
+      choices: scopes.map((scope) =>
+        createJarvisDialogChoice(
+          `project-matrix-scope-${scope}`,
+          PROJECT_SCOPE_LABELS[scope],
+          getProjectSequencePrompt(referenceText, scope)
+        )
+      ),
+      deterministic: true,
+    };
+  }
+
+  const remainingTasks = references.flatMap((projectReference) =>
+    scopes.map<JarvisGuidedSequenceTask>((projectScope) => {
+      const baseTask: JarvisGuidedSequenceTask = {
+        kind: "project_matrix",
+        domain: "system",
+        choice: { id: "", label: "", prompt: "" },
+        projectReference,
+        projectScope,
+      };
+      return {
+        ...baseTask,
+        choice: getProjectMatrixTaskChoice(baseTask),
+      };
+    })
+  );
+  return {
+    type: "clarification",
+    topicId: "project.matrix.clarification",
+    message:
+      `Du hast ${taskCount} Prüfungen für mehrere Projekte genannt. Womit soll JARVIS beginnen? Alle weiteren Prüfungen bleiben vorgemerkt.`,
+    choices: remainingTasks.map((task) => task.choice),
+    dialogGuidedSequence: { remainingTasks },
+    deterministic: true,
+  };
+}
+
 export function buildJarvisProjectScopeSequenceClarification(
   question: string,
   decision: JarvisIntentDecision,
@@ -309,6 +408,28 @@ function getDomainChoices(
       )
     )
     .filter((choice) => choice.prompt);
+}
+
+function getDomainGuidedTasks(
+  decision: JarvisIntentDecision,
+  choices: JarvisDialogChoice[]
+) {
+  return choices.flatMap<JarvisGuidedSequenceTask>((choice) => {
+    const candidate = decision.candidates.find(
+      (entry) =>
+        choice.id.startsWith(`intent-domain-${entry.domain}-`) &&
+        normalizePrompt(entry.segment) === choice.prompt
+    );
+    return candidate
+      ? [
+          {
+            kind: "domain",
+            domain: candidate.domain,
+            choice,
+          },
+        ]
+      : [];
+  });
 }
 
 function getEntityPrompt(
@@ -498,6 +619,70 @@ function getTimeScopeChoices(
   );
 }
 
+function getTimeGuidedTasks(
+  decision: JarvisIntentDecision,
+  profile: JarvisAccessProfile,
+  choices: JarvisDialogChoice[]
+) {
+  const candidate = decision.candidates.find((entry) =>
+    canUseDomain(entry.domain, profile)
+  );
+  if (!candidate) return [];
+  return choices.map<JarvisGuidedSequenceTask>((choice) => ({
+    kind: "time",
+    domain: candidate.domain,
+    choice,
+  }));
+}
+
+function canUseGuidedSequenceTask(
+  task: JarvisGuidedSequenceTask,
+  profile: JarvisAccessProfile
+) {
+  if (!canUseDomain(task.domain, profile)) return false;
+  const decision = resolveJarvisIntentDecision(task.choice.prompt);
+  if (decision.candidates.some((candidate) => candidate.score >= 100)) {
+    return false;
+  }
+  if (task.kind === "project_matrix") {
+    const references = extractJarvisProjectReferences(task.choice.prompt);
+    const scopes = resolveJarvisProjectIntentScopes(task.choice.prompt);
+    return (
+      Boolean(task.projectReference) &&
+      Boolean(task.projectScope) &&
+      references.length === 1 &&
+      references[0] === task.projectReference &&
+      scopes.length === 1 &&
+      scopes[0] === task.projectScope &&
+      canUseProjectScope(task.projectScope, profile)
+    );
+  }
+  if (decision.state === "resolved" && decision.domain !== task.domain) {
+    return false;
+  }
+  return task.kind !== "time" || decision.timeScopes.length === 1;
+}
+
+export function resolveJarvisGuidedSequenceContinuation(
+  state: JarvisDialogState | undefined,
+  question: string,
+  profile: JarvisAccessProfile
+) {
+  if (!state?.guidedSequence) return undefined;
+  const selectedChoice = resolveJarvisDialogChoiceInput(
+    question,
+    state.guidedSequence.remainingTasks.map((task) => task.choice)
+  );
+  if (!selectedChoice) return undefined;
+  const remainingTasks = state.guidedSequence.remainingTasks
+    .filter((task) => task.choice.id !== selectedChoice.id)
+    .filter((task) => canUseGuidedSequenceTask(task, profile));
+  return {
+    choices: remainingTasks.map((task) => task.choice),
+    remainingTasks,
+  };
+}
+
 export function buildJarvisIntentClarification(
   decision: JarvisIntentDecision,
   profile: JarvisAccessProfile
@@ -507,12 +692,16 @@ export function buildJarvisIntentClarification(
   if (decision.clarificationReasons.includes("multiple_domains")) {
     const choices = getDomainChoices(decision, profile);
     if (choices.length === 0) return undefined;
+    const remainingTasks = getDomainGuidedTasks(decision, choices);
     return {
       type: "clarification",
       topicId: "intent.clarification",
       message:
-        "Deine Frage enthält mehrere Themen. Welchen Teil soll JARVIS zuerst bearbeiten?",
+        "Deine Frage enthält mehrere Themen. Welchen Teil soll JARVIS zuerst bearbeiten? Die übrigen erlaubten Teile bleiben vorgemerkt.",
       choices,
+      ...(remainingTasks.length > 1
+        ? { dialogGuidedSequence: { remainingTasks } }
+        : {}),
       deterministic: true,
     };
   }
@@ -537,12 +726,16 @@ export function buildJarvisIntentClarification(
   if (decision.clarificationReasons.includes("multiple_time_scopes")) {
     const choices = getTimeScopeChoices(decision, profile);
     if (choices.length === 0) return undefined;
+    const remainingTasks = getTimeGuidedTasks(decision, profile, choices);
     return {
       type: "clarification",
       topicId: "intent.clarification",
       message:
-        "Du hast mehrere Zeiträume genannt. Welchen Zeitraum soll JARVIS zuerst auswerten?",
+        "Du hast mehrere Zeiträume genannt. Welchen Zeitraum soll JARVIS zuerst auswerten? Die übrigen Zeiträume bleiben vorgemerkt.",
       choices,
+      ...(remainingTasks.length > 1
+        ? { dialogGuidedSequence: { remainingTasks } }
+        : {}),
       deterministic: true,
     };
   }

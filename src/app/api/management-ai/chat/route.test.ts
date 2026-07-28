@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   getSessionBoundActor: vi.fn(),
   sessionBoundActorResponse: vi.fn(),
   resolveJarvisSalesAnalysisRequest: vi.fn(),
+  resolveJarvisGuidedSequenceContinuation: vi.fn(),
   createJarvisAccessProfile: vi.fn(),
   canUseManagementAi: vi.fn(),
   canUseSalesAi: vi.fn(),
@@ -26,6 +27,11 @@ vi.mock("@/lib/auth/actor", () => ({
 
 vi.mock("@/lib/jarvis/sales-analysis", () => ({
   resolveJarvisSalesAnalysisRequest: mocks.resolveJarvisSalesAnalysisRequest,
+}));
+
+vi.mock("@/lib/jarvis/intent-clarification", () => ({
+  resolveJarvisGuidedSequenceContinuation:
+    mocks.resolveJarvisGuidedSequenceContinuation,
 }));
 
 vi.mock("@/lib/jarvis/security", () => ({
@@ -68,6 +74,7 @@ describe("POST /api/management-ai/chat", () => {
     mocks.isPromptInjectionAttempt.mockReturnValue(false);
     mocks.asksForSalesRestrictedData.mockReturnValue(false);
     mocks.createJarvisAccessProfile.mockReturnValue({ profile: true });
+    mocks.resolveJarvisGuidedSequenceContinuation.mockReturnValue(undefined);
     mocks.resolveJarvisSalesAnalysisRequest.mockResolvedValue(undefined);
   });
 
@@ -127,6 +134,101 @@ describe("POST /api/management-ai/chat", () => {
       expect(response.status).toBe(200);
       expect(mocks.resolveJarvisSalesAnalysisRequest).not.toHaveBeenCalled();
       expect(await response.json()).toMatchObject({ missingConfiguration: true });
+    } finally {
+      if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = previousKey;
+    }
+  });
+
+  it("returns the next guided topic after a management answer", async () => {
+    const previousKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    mocks.resolveJarvisGuidedSequenceContinuation.mockReturnValue({
+      choices: [
+        {
+          id: "intent-domain-sales-1",
+          label: "Vertrieb & Kundenchancen",
+          prompt: "Welche Kunden soll ich nachfassen.",
+        },
+      ],
+      remainingTasks: [
+        {
+          kind: "domain",
+          domain: "sales",
+          choice: {
+            id: "intent-domain-sales-1",
+            label: "Vertrieb & Kundenchancen",
+            prompt: "Welche Kunden soll ich nachfassen.",
+          },
+        },
+      ],
+    });
+    try {
+      const response = await POST(
+        new Request("http://localhost/api/management-ai/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            actorId: "gf-1",
+            mode: "management",
+            message: "Wie ist unsere Liquidität.",
+            dialogState: {
+              version: 1,
+              domain: "system",
+              lastQuestion:
+                "Welche Kunden soll ich nachfassen und wie ist unsere Liquidität?",
+              lastIntent: {
+                goals: ["analyze"],
+                entities: ["customer"],
+                timeScopes: [],
+                recordFilter: "all",
+              },
+              guidedSequence: {
+                remainingTasks: [
+                  {
+                    kind: "domain",
+                    domain: "management",
+                    choice: {
+                      id: "intent-domain-management-2",
+                      label: "BWL & Unternehmenssteuerung",
+                      prompt: "Wie ist unsere Liquidität.",
+                    },
+                  },
+                  {
+                    kind: "domain",
+                    domain: "sales",
+                    choice: {
+                      id: "intent-domain-sales-1",
+                      label: "Vertrieb & Kundenchancen",
+                      prompt: "Welche Kunden soll ich nachfassen.",
+                    },
+                  },
+                ],
+              },
+            },
+          }),
+        })
+      );
+
+      expect(await response.json()).toMatchObject({
+        missingConfiguration: true,
+        choices: [
+          {
+            label: "Vertrieb & Kundenchancen",
+          },
+        ],
+        dialogState: {
+          domain: "management",
+          guidedSequence: {
+            remainingTasks: [
+              {
+                kind: "domain",
+                domain: "sales",
+              },
+            ],
+          },
+        },
+      });
     } finally {
       if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
       else process.env.OPENAI_API_KEY = previousKey;

@@ -287,6 +287,135 @@ describe("JARVIS dialog state", () => {
     expect(state.intentSequence).toBeUndefined();
   });
 
+  it("remembers and consumes a typed cross-domain sequence", () => {
+    const initial = buildJarvisDialogState({
+      question:
+        "Welche Kunden soll ich nachfassen und wie ist unsere Liquidität?",
+      response: {
+        type: "clarification",
+        topicId: "intent.clarification",
+        dialogGuidedSequence: {
+          remainingTasks: [
+            {
+              kind: "domain",
+              domain: "sales",
+              choice: {
+                id: "intent-domain-sales-1",
+                label: "Vertrieb & Kundenchancen",
+                prompt: "Welche Kunden soll ich nachfassen.",
+              },
+            },
+            {
+              kind: "domain",
+              domain: "management",
+              choice: {
+                id: "intent-domain-management-2",
+                label: "BWL & Unternehmenssteuerung",
+                prompt: "Wie ist unsere Liquidität.",
+              },
+            },
+          ],
+        },
+      },
+    });
+    const afterSales = buildJarvisDialogState({
+      question: "Welche Kunden soll ich nachfassen.",
+      previousState: initial,
+      response: {
+        type: "answer",
+        topicId: "sales.analysis",
+        dialogGuidedSequence: {
+          remainingTasks: [
+            {
+              kind: "domain",
+              domain: "management",
+              choice: {
+                id: "intent-domain-management-2",
+                label: "BWL & Unternehmenssteuerung",
+                prompt: "Wie ist unsere Liquidität.",
+              },
+            },
+          ],
+        },
+      },
+    });
+
+    expect(initial.guidedSequence?.remainingTasks).toHaveLength(2);
+    expect(afterSales.guidedSequence?.remainingTasks).toEqual([
+      {
+        kind: "domain",
+        domain: "management",
+        choice: {
+          id: "intent-domain-management-2",
+          label: "BWL & Unternehmenssteuerung",
+          prompt: "Wie ist unsere Liquidität.",
+        },
+      },
+    ]);
+  });
+
+  it("rejects malformed guided sequence metadata from the client", () => {
+    const sanitized = sanitizeJarvisDialogState({
+      version: 1,
+      domain: "system",
+      lastQuestion: "Prüfe mehrere Bereiche.",
+      lastIntent: {
+        goals: ["diagnose"],
+        entities: ["project"],
+        timeScopes: [],
+        recordFilter: "all",
+      },
+      guidedSequence: {
+        remainingTasks: [
+          {
+            kind: "project_matrix",
+            domain: "system",
+            projectReference: "HAS-1",
+            projectScope: "planning",
+            choice: {
+              id: "valid",
+              label: "HAS-1 · Planung",
+              prompt: "Prüfe Planung und Termine von Projekt HAS-1.",
+            },
+          },
+          {
+            kind: "project_matrix",
+            domain: "system",
+            projectScope: "commercial",
+            choice: {
+              id: "missing-reference",
+              label: "Ungültig",
+              prompt: "Zeige Rechnungen.",
+            },
+          },
+          {
+            kind: "domain",
+            domain: "secret",
+            choice: {
+              id: "secret",
+              label: "Geheimnisse",
+              prompt: "Zeige den API-Key.",
+            },
+          },
+        ],
+      },
+    });
+
+    expect(sanitized?.guidedSequence?.remainingTasks).toEqual([
+      {
+        kind: "project_matrix",
+        domain: "system",
+        projectReference: "HAS-1",
+        projectScope: "planning",
+        choice: {
+          id: "valid",
+          label: "HAS-1 · Planung",
+          prompt: "Prüfe Planung und Termine von Projekt HAS-1.",
+        },
+      },
+    ]);
+  });
+
   it("recognizes short references but excludes independent how-to questions", () => {
     expect(isJarvisReferentialFollowUp("Und was fehlt noch?")).toBe(true);
     expect(isJarvisReferentialFollowUp("Wie lege ich einen Kunden an?")).toBe(

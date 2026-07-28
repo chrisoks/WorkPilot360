@@ -3,9 +3,11 @@ import { Role } from "@prisma/client";
 import {
   buildJarvisIntentClarification,
   buildJarvisIntentSequenceContinuation,
+  buildJarvisProjectMatrixClarification,
   buildJarvisProjectScopeSequenceClarification,
   buildJarvisProjectSequenceClarification,
   buildJarvisProjectSequenceContinuation,
+  resolveJarvisGuidedSequenceContinuation,
   resolveJarvisIntentSequenceContinuation,
 } from "@/lib/jarvis/intent-clarification";
 import { resolveJarvisIntentDecision } from "@/lib/jarvis/intent-decision";
@@ -36,6 +38,32 @@ describe("JARVIS intent clarification", () => {
         label: "Vertrieb & Kundenchancen",
         prompt: "Welche Kunden soll ich nachfassen.",
       },
+      {
+        id: "intent-domain-management-2",
+        label: "BWL & Unternehmenssteuerung",
+        prompt: "wie ist unsere Liquidität.",
+      },
+    ]);
+    expect(response?.dialogGuidedSequence?.remainingTasks).toHaveLength(2);
+    expect(
+      resolveJarvisGuidedSequenceContinuation(
+        {
+          version: 1,
+          domain: "system",
+          lastQuestion:
+            "Welche Kunden soll ich nachfassen und wie ist unsere Liquidität?",
+          lastIntent: {
+            goals: ["analyze"],
+            entities: ["customer"],
+            timeScopes: [],
+            recordFilter: "all",
+          },
+          guidedSequence: response?.dialogGuidedSequence,
+        },
+        "Welche Kunden soll ich nachfassen.",
+        managementProfile
+      )?.choices
+    ).toEqual([
       {
         id: "intent-domain-management-2",
         label: "BWL & Unternehmenssteuerung",
@@ -217,6 +245,32 @@ describe("JARVIS intent clarification", () => {
         prompt: "Analysiere Umsatz für den Zeitraum „Vorjahr“.",
       },
     ]);
+    expect(response?.dialogGuidedSequence?.remainingTasks).toHaveLength(2);
+    expect(
+      resolveJarvisGuidedSequenceContinuation(
+        {
+          version: 1,
+          domain: "management",
+          lastQuestion:
+            "Zeige den Umsatz vom aktuellen Monat und Vorjahr.",
+          lastIntent: {
+            goals: ["analyze"],
+            entities: [],
+            timeScopes: ["current_month", "previous_year"],
+            recordFilter: "all",
+          },
+          guidedSequence: response?.dialogGuidedSequence,
+        },
+        "Analysiere Umsatz für den Zeitraum „Aktueller Monat“.",
+        managementProfile
+      )?.choices
+    ).toEqual([
+      {
+        id: "intent-time-previous_year",
+        label: "Vorjahr",
+        prompt: "Analysiere Umsatz für den Zeitraum „Vorjahr“.",
+      },
+    ]);
   });
 
   it("does not create a clarification for a resolved secret question", () => {
@@ -289,6 +343,138 @@ describe("JARVIS intent clarification", () => {
       "Planung & Termine",
       "Angebote & Rechnungen",
     ]);
+  });
+
+  it("keeps every project and scope in a bounded matrix sequence", () => {
+    const question =
+      "Prüfe Planung und Rechnungen von HAS-1 und MKG-209.";
+    const response = buildJarvisProjectMatrixClarification(
+      question,
+      resolveJarvisIntentDecision(question),
+      managementProfile
+    );
+
+    expect(response).toMatchObject({
+      type: "clarification",
+      topicId: "project.matrix.clarification",
+      dialogGuidedSequence: {
+        remainingTasks: [
+          {
+            projectReference: "HAS-1",
+            projectScope: "planning",
+          },
+          {
+            projectReference: "HAS-1",
+            projectScope: "commercial",
+          },
+          {
+            projectReference: "MKG-209",
+            projectScope: "planning",
+          },
+          {
+            projectReference: "MKG-209",
+            projectScope: "commercial",
+          },
+        ],
+      },
+    });
+    expect(response?.choices.map((choice) => choice.label)).toEqual([
+      "HAS-1 · Planung & Termine",
+      "HAS-1 · Angebote & Rechnungen",
+      "MKG-209 · Planung & Termine",
+      "MKG-209 · Angebote & Rechnungen",
+    ]);
+    expect(
+      resolveJarvisGuidedSequenceContinuation(
+        {
+          version: 1,
+          domain: "system",
+          lastQuestion: question,
+          lastIntent: {
+            goals: ["diagnose"],
+            entities: ["project"],
+            timeScopes: [],
+            recordFilter: "all",
+          },
+          guidedSequence: response?.dialogGuidedSequence,
+        },
+        "Prüfe Planung und Termine von Projekt HAS-1.",
+        managementProfile
+      )?.choices.map((choice) => choice.label)
+    ).toEqual([
+      "HAS-1 · Angebote & Rechnungen",
+      "MKG-209 · Planung & Termine",
+      "MKG-209 · Angebote & Rechnungen",
+    ]);
+  });
+
+  it("does not silently truncate a project matrix above five checks", () => {
+    const question =
+      "Prüfe Planung, Stempelungen und Rechnungen von HAS-1 und MKG-209.";
+    const response = buildJarvisProjectMatrixClarification(
+      question,
+      resolveJarvisIntentDecision(question),
+      managementProfile
+    );
+
+    expect(response?.message).toContain("6 einzelne Prüfungen");
+    expect(response?.message).toContain("Damit nichts übersehen wird");
+    expect(response?.dialogGuidedSequence).toBeUndefined();
+    expect(response?.choices.map((choice) => choice.label)).toEqual([
+      "Stempelungen & Arbeitszeiten",
+      "Planung & Termine",
+      "Angebote & Rechnungen",
+    ]);
+  });
+
+  it("rechecks permissions before offering a remaining cross-domain task", () => {
+    const leadershipProfile = createJarvisAccessProfile({
+      id: "lead-1",
+      role: Role.FUEHRUNGSKRAFT,
+    });
+    const result = resolveJarvisGuidedSequenceContinuation(
+      {
+        version: 1,
+        domain: "management",
+        lastQuestion:
+          "Welche Kunden soll ich nachfassen und wie ist unsere Liquidität?",
+        lastIntent: {
+          goals: ["analyze"],
+          entities: ["customer"],
+          timeScopes: [],
+          recordFilter: "all",
+        },
+        guidedSequence: {
+          remainingTasks: [
+            {
+              kind: "domain",
+              domain: "sales",
+              choice: {
+                id: "intent-domain-sales-1",
+                label: "Vertrieb & Kundenchancen",
+                prompt: "Welche Kunden soll ich nachfassen.",
+              },
+            },
+            {
+              kind: "domain",
+              domain: "management",
+              choice: {
+                id: "intent-domain-management-2",
+                label: "BWL & Unternehmenssteuerung",
+                prompt: "Wie ist unsere Liquidität.",
+              },
+            },
+          ],
+        },
+      },
+      "Wie ist unsere Liquidität.",
+      leadershipProfile
+    );
+
+    expect(result).toEqual({
+      choices: [],
+      remainingTasks: [],
+    });
   });
 
   it("offers the remaining project after the first sequence result", () => {
