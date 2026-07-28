@@ -1,5 +1,25 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS mehrstufiger Dialogkontext 2026-07-28: Der gemeinsame Chat führt
+  Fachdomäne, letztes Ziel, Fachobjekte, Zeitraum, Datensatzbezug und
+  Klärungstiefe jetzt als typisierten, clientseitig erneut streng
+  validierten Dialogzustand fort. Kurze Antworten auf klickbare Rückfragen
+  wie `nur Rechnungen` werden nur bei genau einer Übereinstimmung in den
+  vollständigen, servergeprüften Folge-Prompt aufgelöst. Referenzielle
+  Folgefragen wie `Und im Vormonat?` oder `Und wie sieht die Planung aus?`
+  behalten Fachdomäne beziehungsweise den eindeutig gewählten Datensatz;
+  eigenständige Bedienfragen und ausdrücklich genannte andere
+  Projektnummern übernehmen keinen alten Datensatzbezug. Jede Folgefrage
+  durchläuft unverändert die serverseitigen Rollen-, Organisations-,
+  Datenklassen- und Sicherheitsprüfungen. Wiederholte identische
+  Klärungsschleifen sind auf zwei Stufen begrenzt und verlangen danach eine
+  bewusste Auswahl oder vollständige Neuformulierung. Mehrere ausdrücklich
+  genannte Projekte werden nicht mehr still auf den ersten Treffer
+  reduziert: JARVIS fragt nach der Reihenfolge, merkt sich bis zu fünf
+  geprüfte Projektreferenzen und bietet nach jedem Ergebnis das nächste
+  Projekt mit demselben Prüfumfang an. Rein lesend, ohne OpenAI-, Prisma-
+  oder Datenbankänderung.
+
 - JARVIS zentraler Intent-Entscheider 2026-07-28: Vor den spezialisierten
   Projekt-, Personen-, Vertriebs-, Lese- und Systemhilfe-Resolvern bewertet
   JARVIS eine Frage jetzt deterministisch nach Domäne, Nutzerziel,

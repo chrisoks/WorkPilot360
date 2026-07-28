@@ -55,6 +55,14 @@ import {
   resolveJarvisDomain,
 } from "@/lib/jarvis/domain-router";
 import type { JarvisDialogChoice } from "@/lib/jarvis/dialog";
+import {
+  buildJarvisDialogState,
+  getJarvisDialogConversationContext,
+  resolveJarvisDialogChoiceInput,
+  sanitizeJarvisDialogState,
+  shouldCarryJarvisActiveRecord,
+  type JarvisDialogState,
+} from "@/lib/jarvis/dialog-state";
 
 const DOCUMENT_PREVIEW_WIDTH = 595;
 const DOCUMENT_PREVIEW_HEIGHT = 842;
@@ -635,6 +643,7 @@ type ManagementAiChatMessage = {
   navigation?: JarvisNavigationTarget;
   records?: JarvisRecordResult[];
   structured?: JarvisStructuredAnswer;
+  dialogState?: JarvisDialogState;
 };
 
 const jarvisRecordKinds = new Set<JarvisRecordKind>([
@@ -669,7 +678,21 @@ function parseJarvisDialogChoices(value: unknown): JarvisDialogChoice[] | undefi
   return choices.length ? choices : undefined;
 }
 
-function buildJarvisConversationContext(messages: ManagementAiChatMessage[]) {
+function buildJarvisConversationContext(
+  messages: ManagementAiChatMessage[],
+  question: string
+) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role !== "assistant" || !message.dialogState) continue;
+    const context = getJarvisDialogConversationContext(
+      message.dialogState,
+      question
+    );
+    if (context) return context;
+    break;
+  }
+  if (!shouldCarryJarvisActiveRecord(question)) return undefined;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (message.role !== "assistant") continue;
@@ -692,7 +715,7 @@ function buildJarvisConversationContext(messages: ManagementAiChatMessage[]) {
     const target = targets[0];
     if (!target) continue;
     return {
-      recordType: target.kind,
+      recordType: target.kind === "project" ? "project" as const : "customer" as const,
       recordId: target.id,
     };
   }
@@ -32261,7 +32284,21 @@ await addProjectLogbookEntry(
   async function sendManagementAiMessage(questionInput: string, displayText?: string) {
     const question = questionInput.trim();
     if (!question || !activeUserId || isManagementAiSending) return;
-    const requestMode = resolveJarvisDomain(question);
+    const latestAssistantMessage = [...currentManagementAiMessages]
+      .reverse()
+      .find((message) => message.role === "assistant");
+    const selectedChoice = resolveJarvisDialogChoiceInput(
+      question,
+      currentManagementAiMessages.at(-1)?.role === "assistant"
+        ? currentManagementAiMessages.at(-1)?.choices
+        : undefined
+    );
+    const effectiveQuestion = selectedChoice?.prompt || question;
+    const previousDialogState = latestAssistantMessage?.dialogState;
+    const requestMode = resolveJarvisDomain(
+      effectiveQuestion,
+      previousDialogState
+    );
     const isSystemHelp = requestMode === "system";
     const responseStartedAt = Date.now();
     const waitForMinimumResponseDelay = async () => {
@@ -32273,8 +32310,8 @@ await addProjectLogbookEntry(
 
     const userMessage: ManagementAiChatMessage = {
       role: "user",
-      content: displayText?.trim() || question,
-      requestContent: question,
+      content: displayText?.trim() || selectedChoice?.label || question,
+      requestContent: effectiveQuestion,
       createdAt: new Date().toISOString(),
     };
     setManagementAiMessages((current) => [...current, userMessage]);
@@ -32288,13 +32325,17 @@ await addProjectLogbookEntry(
         body: JSON.stringify({
           actorId: activeUserId,
           mode: requestMode,
-          message: question,
+          message: effectiveQuestion,
           messages: currentManagementAiMessages.slice(-6).map((message) => ({
             role: message.role,
             content: message.requestContent || message.content,
           })),
+          dialogState: isSystemHelp ? previousDialogState : undefined,
           conversationContext: isSystemHelp
-            ? buildJarvisConversationContext(currentManagementAiMessages)
+            ? buildJarvisConversationContext(
+                currentManagementAiMessages,
+                effectiveQuestion
+              )
             : undefined,
           context: isSystemHelp
             ? buildJarvisSurfaceContext()
@@ -32309,14 +32350,46 @@ await addProjectLogbookEntry(
         setManagementAiError(data?.error ?? managementAiLabels.fallbackError);
         return;
       }
+      const responseTopicId =
+        typeof data?.topicId === "string"
+          ? data.topicId.slice(0, 120)
+          : undefined;
+      const responseChoices = isSystemHelp
+        ? parseJarvisDialogChoices(data?.choices)
+        : undefined;
+      const responseRecords = parseJarvisRecordResults(data?.records);
+      const responseStructured = isSystemHelp
+        ? parseJarvisStructuredAnswer(data?.structured)
+        : undefined;
+      const responseDialogState =
+        (isSystemHelp
+          ? sanitizeJarvisDialogState(data?.dialogState)
+          : undefined) ??
+        buildJarvisDialogState({
+          question: effectiveQuestion,
+          domain: requestMode,
+          response: {
+            type: data?.type,
+            topicId: responseTopicId,
+            choices: responseChoices,
+            records: responseRecords,
+          },
+          previousState: previousDialogState,
+          conversationContext: isSystemHelp
+            ? buildJarvisConversationContext(
+                currentManagementAiMessages,
+                effectiveQuestion
+              )
+            : undefined,
+        });
       setManagementAiMessages((current) => [
         ...current,
         {
           role: "assistant",
           content: (isSystemHelp ? data?.message : data?.reply) || managementAiLabels.emptyReply,
           createdAt: new Date().toISOString(),
-          topicId: typeof data?.topicId === "string" ? data.topicId.slice(0, 120) : undefined,
-          choices: isSystemHelp ? parseJarvisDialogChoices(data?.choices) : undefined,
+          topicId: responseTopicId,
+          choices: responseChoices,
           navigation:
             isSystemHelp &&
             data?.navigation &&
@@ -32344,10 +32417,9 @@ await addProjectLogbookEntry(
                       : undefined,
                 }
               : undefined,
-          records: parseJarvisRecordResults(data?.records),
-          structured: isSystemHelp
-            ? parseJarvisStructuredAnswer(data?.structured)
-            : undefined,
+          records: responseRecords,
+          structured: responseStructured,
+          dialogState: responseDialogState,
         },
       ]);
     } catch {
@@ -67838,7 +67910,9 @@ await addProjectLogbookEntry(
                     ) : (
                       <p>{message.content}</p>
                     )}
-                    {message.role === "assistant" && message.choices?.length ? (
+                    {message.role === "assistant" &&
+                    message.choices?.length &&
+                    index === currentManagementAiMessages.length - 1 ? (
                       <div className={styles.jarvisDialogChoiceList}>
                         {message.choices.map((choice) => (
                           <button

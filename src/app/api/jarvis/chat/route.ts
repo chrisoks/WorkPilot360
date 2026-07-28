@@ -16,13 +16,45 @@ import {
 } from "@/lib/jarvis/sales-analysis";
 import { resolveJarvisProjectHealthRequest } from "@/lib/jarvis/project-health";
 import { createJarvisAccessProfile } from "@/lib/jarvis/security";
-import { resolveJarvisIntentDecision } from "@/lib/jarvis/intent-decision";
-import { buildJarvisIntentClarification } from "@/lib/jarvis/intent-clarification";
+import {
+  resolveJarvisIntentDecision,
+  type JarvisIntentDecision,
+} from "@/lib/jarvis/intent-decision";
+import {
+  buildJarvisIntentClarification,
+  buildJarvisProjectSequenceClarification,
+  buildJarvisProjectSequenceContinuation,
+} from "@/lib/jarvis/intent-clarification";
+import {
+  buildJarvisDialogState,
+  extractJarvisProjectReferences,
+  getJarvisDialogConversationContext,
+  isJarvisReferentialFollowUp,
+  sanitizeJarvisDialogState,
+  shouldCarryJarvisActiveRecord,
+} from "@/lib/jarvis/dialog-state";
 
 export const dynamic = "force-dynamic";
 
 function cleanText(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+}
+
+function shouldUseProjectHealthPath(
+  question: string,
+  decision: JarvisIntentDecision
+) {
+  const asksForGenericRecords =
+    decision.goals.includes("read") &&
+    decision.entities.some((entity) =>
+      ["customer", "task", "offer", "invoice"].includes(entity)
+    );
+  if (!asksForGenericRecords) return true;
+  return (
+    decision.entities.includes("project") ||
+    extractJarvisProjectReferences(question).length > 0 ||
+    isJarvisReferentialFollowUp(question)
+  );
 }
 
 export async function POST(req: Request) {
@@ -46,27 +78,97 @@ export async function POST(req: Request) {
   }
 
   const context = sanitizeJarvisSurfaceContext(body.context);
-  const conversationContext = body.conversationContext
+  const previousDialogState = sanitizeJarvisDialogState(body.dialogState);
+  const suppliedConversationContext = body.conversationContext
     ? sanitizeJarvisSurfaceContext(body.conversationContext)
     : undefined;
   const accessProfile = createJarvisAccessProfile(sessionActor, actorResult.actor);
   const intentDecision = resolveJarvisIntentDecision(message);
+  const conversationContext =
+    getJarvisDialogConversationContext(previousDialogState, message) ??
+    (shouldCarryJarvisActiveRecord(message)
+      ? suppliedConversationContext
+      : undefined);
+  const respond = (
+    payload: Record<string, unknown>,
+    domain = intentDecision.state === "resolved"
+      ? intentDecision.domain
+      : previousDialogState?.domain ?? intentDecision.domain
+  ) => {
+    const sequenceChoices =
+      payload.type === "answer"
+        ? buildJarvisProjectSequenceContinuation(
+            previousDialogState,
+            message,
+            accessProfile
+          )
+        : [];
+    const sequencePayload =
+      sequenceChoices.length > 0
+        ? {
+            ...payload,
+            choices: [
+              ...(Array.isArray(payload.choices) ? payload.choices : []),
+              ...sequenceChoices,
+            ],
+          }
+        : payload;
+    const responsePayload =
+      sequencePayload.type === "clarification" &&
+      previousDialogState?.clarification?.topicId ===
+        sequencePayload.topicId &&
+      (previousDialogState?.clarification?.depth ?? 0) >= 2
+        ? {
+            ...sequencePayload,
+            message:
+              "Ich möchte hier nicht raten. Bitte wähle eine der angebotenen Möglichkeiten oder formuliere Ziel und Datensatz einmal vollständig neu.",
+          }
+        : sequencePayload;
+    const dialogState = buildJarvisDialogState({
+        question: message,
+        decision: intentDecision,
+        domain,
+        response: responsePayload,
+        previousState: previousDialogState,
+        conversationContext,
+      });
+    const { dialogSequence: _dialogSequence, ...publicPayload } =
+      responsePayload;
+    return NextResponse.json({
+      ...publicPayload,
+      dialogState,
+    });
+  };
   const intentClarification = buildJarvisIntentClarification(
     intentDecision,
     accessProfile
   );
   if (intentClarification) {
-    return NextResponse.json(intentClarification);
+    return respond(intentClarification);
   }
-  const projectHealthResponse = await resolveJarvisProjectHealthRequest({
-    question: message,
-    organizationId: organization.id,
-    accessProfile,
-    context,
-    ...(conversationContext ? { conversationContext } : {}),
-  });
+  const projectSequenceClarification =
+    buildJarvisProjectSequenceClarification(
+      message,
+      intentDecision,
+      accessProfile
+    );
+  if (projectSequenceClarification) {
+    return respond(projectSequenceClarification);
+  }
+  const projectHealthResponse = shouldUseProjectHealthPath(
+    message,
+    intentDecision
+  )
+    ? await resolveJarvisProjectHealthRequest({
+        question: message,
+        organizationId: organization.id,
+        accessProfile,
+        context,
+        ...(conversationContext ? { conversationContext } : {}),
+      })
+    : undefined;
   if (projectHealthResponse) {
-    return NextResponse.json(projectHealthResponse);
+    return respond(projectHealthResponse);
   }
   const personDiagnosticResponse = await resolveJarvisPersonDiagnosticRequest({
     question: message,
@@ -75,7 +177,7 @@ export async function POST(req: Request) {
     context,
   });
   if (personDiagnosticResponse) {
-    return NextResponse.json(personDiagnosticResponse);
+    return respond(personDiagnosticResponse);
   }
   const personSummaryResponse = await resolveJarvisPersonSummaryRequest({
     question: message,
@@ -83,7 +185,7 @@ export async function POST(req: Request) {
     accessProfile,
   });
   if (personSummaryResponse) {
-    return NextResponse.json(personSummaryResponse);
+    return respond(personSummaryResponse);
   }
   if (resolveJarvisSalesAnalysisIntent(message)) {
     const salesAnalysisResponse = await resolveJarvisSalesAnalysisRequest({
@@ -92,7 +194,7 @@ export async function POST(req: Request) {
       accessProfile,
     });
     if (salesAnalysisResponse) {
-      return NextResponse.json(salesAnalysisResponse);
+      return respond(salesAnalysisResponse, "sales");
     }
   }
   const readResponse = await resolveJarvisReadRequest({
@@ -102,8 +204,8 @@ export async function POST(req: Request) {
     accessProfile,
   });
   if (readResponse) {
-    return NextResponse.json(readResponse);
+    return respond(readResponse);
   }
   const resolved = resolveJarvisSystemHelp(message, context, accessProfile);
-  return NextResponse.json(resolved);
+  return respond(resolved);
 }

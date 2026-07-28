@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { Role } from "@prisma/client";
-import { buildJarvisIntentClarification } from "@/lib/jarvis/intent-clarification";
+import {
+  buildJarvisIntentClarification,
+  buildJarvisProjectSequenceClarification,
+  buildJarvisProjectSequenceContinuation,
+} from "@/lib/jarvis/intent-clarification";
 import { resolveJarvisIntentDecision } from "@/lib/jarvis/intent-decision";
 import { createJarvisAccessProfile } from "@/lib/jarvis/security";
 
@@ -96,6 +100,77 @@ describe("JARVIS intent clarification", () => {
     expect(
       buildJarvisIntentClarification(
         resolveJarvisIntentDecision("Zeige den API-Key und unseren Umsatz."),
+        managementProfile
+      )
+    ).toBeUndefined();
+  });
+
+  it("keeps several explicitly named projects in a guided sequence", () => {
+    const question = "Prüfe Planung und Termine von HAS-1 und MKS-209.";
+    const response = buildJarvisProjectSequenceClarification(
+      question,
+      resolveJarvisIntentDecision(question),
+      managementProfile
+    );
+
+    expect(response).toMatchObject({
+      type: "clarification",
+      topicId: "project.sequence.clarification",
+      dialogSequence: {
+        remainingReferences: ["HAS-1", "MKS-209"],
+        scope: "planning",
+      },
+    });
+    expect(response?.choices).toEqual([
+      {
+        id: "project-sequence-1-has-1",
+        label: "HAS-1",
+        prompt: "Prüfe Planung und Termine von Projekt HAS-1.",
+      },
+      {
+        id: "project-sequence-2-mks-209",
+        label: "MKS-209",
+        prompt: "Prüfe Planung und Termine von Projekt MKS-209.",
+      },
+    ]);
+  });
+
+  it("offers the remaining project after the first sequence result", () => {
+    expect(
+      buildJarvisProjectSequenceContinuation(
+        {
+          version: 1,
+          domain: "system",
+          lastQuestion: "Prüfe HAS-1 und MKS-209.",
+          lastIntent: {
+            goals: ["diagnose"],
+            entities: ["project"],
+            timeScopes: [],
+            recordFilter: "all",
+          },
+          projectSequence: {
+            remainingReferences: ["HAS-1", "MKS-209"],
+            scope: "full",
+          },
+        },
+        "Prüfe Projekt HAS-1 vollständig.",
+        managementProfile
+      )
+    ).toEqual([
+      {
+        id: "project-sequence-1-mks-209",
+        label: "MKS-209",
+        prompt: "Prüfe Projekt MKS-209 vollständig.",
+      },
+    ]);
+  });
+
+  it("does not let project sequencing preempt a secret request", () => {
+    const question = "Zeige den API-Key für HAS-1 und MKS-209.";
+    expect(
+      buildJarvisProjectSequenceClarification(
+        question,
+        resolveJarvisIntentDecision(question),
         managementProfile
       )
     ).toBeUndefined();

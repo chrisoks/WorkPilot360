@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => ({
   createJarvisAccessProfile: vi.fn(),
   resolveJarvisIntentDecision: vi.fn(),
   buildJarvisIntentClarification: vi.fn(),
+  buildJarvisProjectSequenceClarification: vi.fn(),
+  buildJarvisProjectSequenceContinuation: vi.fn(),
 }));
 
 vi.mock("@/lib/demo/context", () => ({
@@ -59,6 +61,10 @@ vi.mock("@/lib/jarvis/intent-decision", () => ({
 
 vi.mock("@/lib/jarvis/intent-clarification", () => ({
   buildJarvisIntentClarification: mocks.buildJarvisIntentClarification,
+  buildJarvisProjectSequenceClarification:
+    mocks.buildJarvisProjectSequenceClarification,
+  buildJarvisProjectSequenceContinuation:
+    mocks.buildJarvisProjectSequenceContinuation,
 }));
 
 import { POST } from "@/app/api/jarvis/chat/route";
@@ -91,6 +97,8 @@ describe("POST /api/jarvis/chat", () => {
       segments: [],
     });
     mocks.buildJarvisIntentClarification.mockReturnValue(undefined);
+    mocks.buildJarvisProjectSequenceClarification.mockReturnValue(undefined);
+    mocks.buildJarvisProjectSequenceContinuation.mockReturnValue([]);
     mocks.resolveJarvisProjectHealthRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisPersonDiagnosticRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisPersonSummaryRequest.mockResolvedValue(undefined);
@@ -135,6 +143,53 @@ describe("POST /api/jarvis/chat", () => {
       accessProfile: { profile: true },
     });
     expect(mocks.resolveJarvisSystemHelp).not.toHaveBeenCalled();
+  });
+
+  it("does not let an open project override a clear generic invoice search", async () => {
+    mocks.resolveJarvisIntentDecision.mockReturnValue({
+      state: "resolved",
+      domain: "system",
+      confidence: "high",
+      candidates: [],
+      clarificationReasons: [],
+      goals: ["read"],
+      entities: ["invoice"],
+      timeScopes: [],
+      recordFilter: "open",
+      segments: ["Zeige mir die offenen Rechnungen."],
+    });
+    mocks.resolveJarvisProjectHealthRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "project.health",
+      message: "Falsche Projektprüfung",
+      deterministic: true,
+    });
+    mocks.resolveJarvisReadRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "records.invoice.search",
+      message: "Offene Rechnungen",
+      records: [],
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Zeige mir die offenen Rechnungen.",
+          context: { recordType: "project", recordId: "project-mkg-209" },
+        }),
+      })
+    );
+
+    expect(await response.json()).toMatchObject({
+      topicId: "records.invoice.search",
+      message: "Offene Rechnungen",
+    });
+    expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisReadRequest).toHaveBeenCalled();
   });
 
   it("clarifies a combined intent before any specialized resolver loads data", async () => {
@@ -195,6 +250,113 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.resolveJarvisPersonSummaryRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisSystemHelp).not.toHaveBeenCalled();
+  });
+
+  it("clarifies a multi-project request before silently checking only one project", async () => {
+    mocks.buildJarvisProjectSequenceClarification.mockReturnValue({
+      type: "clarification",
+      topicId: "project.sequence.clarification",
+      message: "Welches Projekt soll JARVIS zuerst prüfen?",
+      choices: [
+        {
+          id: "project-sequence-1-has-1",
+          label: "HAS-1",
+          prompt: "Prüfe Projekt HAS-1 vollständig.",
+        },
+        {
+          id: "project-sequence-2-mks-209",
+          label: "MKS-209",
+          prompt: "Prüfe Projekt MKS-209 vollständig.",
+        },
+      ],
+      dialogSequence: {
+        remainingReferences: ["HAS-1", "MKS-209"],
+        scope: "full",
+      },
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Prüfe HAS-1 und MKS-209 vollständig.",
+          context: {},
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      type: "clarification",
+      topicId: "project.sequence.clarification",
+      dialogState: {
+        projectSequence: {
+          remainingReferences: ["HAS-1", "MKS-209"],
+          scope: "full",
+        },
+      },
+    });
+    expect(payload.dialogSequence).toBeUndefined();
+    expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+  });
+
+  it("stops escalating the same clarification loop after two attempts", async () => {
+    mocks.buildJarvisIntentClarification.mockReturnValue({
+      type: "clarification",
+      topicId: "intent.clarification",
+      message: "Welchen Bereich meinst du?",
+      choices: [
+        {
+          id: "intent-project",
+          label: "Projekte",
+          prompt: "Zeige mir die Projekte.",
+        },
+      ],
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Immer noch unklar",
+          context: {},
+          dialogState: {
+            version: 1,
+            domain: "system",
+            lastQuestion: "Keine Ahnung",
+            lastIntent: {
+              goals: [],
+              entities: [],
+              timeScopes: [],
+              recordFilter: "all",
+            },
+            clarification: {
+              topicId: "intent.clarification",
+              depth: 2,
+            },
+          },
+        }),
+      })
+    );
+
+    expect(await response.json()).toMatchObject({
+      type: "clarification",
+      message:
+        "Ich möchte hier nicht raten. Bitte wähle eine der angebotenen Möglichkeiten oder formuliere Ziel und Datensatz einmal vollständig neu.",
+      dialogState: {
+        clarification: {
+          topicId: "intent.clarification",
+          depth: 2,
+        },
+      },
+    });
   });
 
   it("returns a person summary before generic record and system help paths", async () => {
@@ -330,6 +492,188 @@ describe("POST /api/jarvis/chat", () => {
       conversationContext: {
         recordType: "project",
         recordId: "project-has-1",
+      },
+    });
+  });
+
+  it("uses the typed dialog state for a referential project follow-up", async () => {
+    mocks.sanitizeJarvisSurfaceContext.mockImplementation((value) => value);
+    mocks.resolveJarvisProjectHealthRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "project.health",
+      message: "Die Planung von HAS-1 wurde geprüft.",
+      deterministic: true,
+      records: [
+        {
+          id: "project-has-1",
+          kind: "project",
+          title: "HAS-1",
+          subtitle: "",
+          summary: "",
+          status: "Umsetzung",
+          target: { kind: "project", id: "project-has-1" },
+        },
+      ],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Und wie sieht die Planung aus?",
+          context: { recordType: "project", recordId: "screen-project" },
+          dialogState: {
+            version: 1,
+            domain: "system",
+            topicId: "project.logic.explanation",
+            activeRecord: { kind: "project", id: "project-has-1" },
+            lastQuestion: "Was ist HAS-1 für ein Projekt?",
+            lastIntent: {
+              goals: ["explain"],
+              entities: ["project"],
+              timeScopes: [],
+              recordFilter: "all",
+            },
+          },
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.resolveJarvisProjectHealthRequest).toHaveBeenCalledWith({
+      question: "Und wie sieht die Planung aus?",
+      organizationId: "organization-1",
+      accessProfile: { profile: true },
+      context: { recordType: "project", recordId: "screen-project" },
+      conversationContext: {
+        recordType: "project",
+        recordId: "project-has-1",
+      },
+    });
+    expect(await response.json()).toMatchObject({
+      dialogState: {
+        version: 1,
+        domain: "system",
+        activeRecord: {
+          kind: "project",
+          id: "project-has-1",
+        },
+      },
+    });
+  });
+
+  it("adds the next remembered project after a sequence answer", async () => {
+    mocks.sanitizeJarvisSurfaceContext.mockImplementation((value) => value);
+    mocks.buildJarvisProjectSequenceContinuation.mockReturnValue([
+      {
+        id: "project-sequence-1-mks-209",
+        label: "MKS-209",
+        prompt: "Prüfe Projekt MKS-209 vollständig.",
+      },
+    ]);
+    mocks.resolveJarvisProjectHealthRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "project.health",
+      message: "HAS-1 wurde geprüft.",
+      deterministic: true,
+      records: [
+        {
+          id: "project-has-1",
+          kind: "project",
+          title: "HAS-1",
+          subtitle: "",
+          summary: "",
+          status: "Stabil",
+          target: { kind: "project", id: "project-has-1" },
+        },
+      ],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Prüfe Projekt HAS-1 vollständig.",
+          context: {},
+          dialogState: {
+            version: 1,
+            domain: "system",
+            lastQuestion: "Prüfe HAS-1 und MKS-209.",
+            lastIntent: {
+              goals: ["diagnose"],
+              entities: ["project"],
+              timeScopes: [],
+              recordFilter: "all",
+            },
+            projectSequence: {
+              remainingReferences: ["HAS-1", "MKS-209"],
+              scope: "full",
+            },
+          },
+        }),
+      })
+    );
+
+    expect(await response.json()).toMatchObject({
+      choices: [
+        {
+          label: "MKS-209",
+          prompt: "Prüfe Projekt MKS-209 vollständig.",
+        },
+      ],
+      dialogState: {
+        projectSequence: {
+          remainingReferences: ["MKS-209"],
+          scope: "full",
+        },
+      },
+    });
+  });
+
+  it("does not leak an old dialog record into an independent how-to question", async () => {
+    mocks.sanitizeJarvisSurfaceContext.mockImplementation((value) => value);
+    mocks.resolveJarvisProjectHealthRequest.mockResolvedValue(undefined);
+    mocks.resolveJarvisReadRequest.mockResolvedValue(undefined);
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Wie lege ich ein Projekt an?",
+          context: { module: "Projekte" },
+          dialogState: {
+            version: 1,
+            domain: "system",
+            activeRecord: { kind: "project", id: "old-project" },
+            lastQuestion: "Prüfe das alte Projekt.",
+            lastIntent: {
+              goals: ["diagnose"],
+              entities: ["project"],
+              timeScopes: [],
+              recordFilter: "all",
+            },
+          },
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.resolveJarvisProjectHealthRequest).toHaveBeenCalledWith({
+      question: "Wie lege ich ein Projekt an?",
+      organizationId: "organization-1",
+      accessProfile: { profile: true },
+      context: { module: "Projekte" },
+    });
+    expect(await response.json()).toMatchObject({
+      dialogState: {
+        version: 1,
+        domain: "system",
       },
     });
   });

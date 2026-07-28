@@ -13,12 +13,29 @@ import {
   canAccessJarvisDataClass,
   type JarvisAccessProfile,
 } from "@/lib/jarvis/security";
+import {
+  extractJarvisProjectReferences,
+  type JarvisDialogState,
+  type JarvisProjectSequenceScope,
+} from "@/lib/jarvis/dialog-state";
 
 export type JarvisIntentClarificationResponse = {
   type: "clarification";
   topicId: "intent.clarification";
   message: string;
   choices: JarvisDialogChoice[];
+  deterministic: true;
+};
+
+export type JarvisProjectSequenceClarificationResponse = {
+  type: "clarification";
+  topicId: "project.sequence.clarification";
+  message: string;
+  choices: JarvisDialogChoice[];
+  dialogSequence: {
+    remainingReferences: string[];
+    scope: JarvisProjectSequenceScope;
+  };
   deterministic: true;
 };
 
@@ -60,6 +77,112 @@ function canUseDomain(domain: JarvisIntentDomain, profile: JarvisAccessProfile) 
 function normalizePrompt(value: string) {
   const cleaned = value.trim().replace(/[.?!]+$/g, "");
   return cleaned ? `${cleaned}.` : "";
+}
+
+function resolveProjectSequenceScope(
+  question: string
+): JarvisProjectSequenceScope {
+  const value = question.toLocaleLowerCase("de-DE");
+  if (/(stempel|arbeitszeit|zeiteintrag|stunden)/.test(value)) return "stamps";
+  if (/(planung|termin|verplan)/.test(value)) return "planning";
+  if (/(aufgabe|offene punkte|todo)/.test(value)) return "tasks";
+  if (/(angebot|rechnung|abrechnung|faktura)/.test(value)) return "commercial";
+  if (/(automatik|zusammenhang|workflow|prozess)/.test(value)) return "automation";
+  return "full";
+}
+
+function getProjectSequencePrompt(
+  reference: string,
+  scope: JarvisProjectSequenceScope
+) {
+  if (scope === "planning") {
+    return `Prüfe Planung und Termine von Projekt ${reference}.`;
+  }
+  if (scope === "stamps") {
+    return `Prüfe Stempelungen und Arbeitszeiten von Projekt ${reference}.`;
+  }
+  if (scope === "tasks") {
+    return `Prüfe Aufgaben und offene Punkte von Projekt ${reference}.`;
+  }
+  if (scope === "commercial") {
+    return `Prüfe Angebote, Rechnungen und Abrechnung von Projekt ${reference}.`;
+  }
+  if (scope === "automation") {
+    return `Prüfe Automatiken und Zusammenhänge von Projekt ${reference}.`;
+  }
+  return `Prüfe Projekt ${reference} vollständig.`;
+}
+
+function getProjectSequenceChoices(
+  references: string[],
+  scope: JarvisProjectSequenceScope
+) {
+  return references.map((reference, index) =>
+    createJarvisDialogChoice(
+      `project-sequence-${index + 1}-${reference.toLocaleLowerCase("de-DE")}`,
+      reference,
+      getProjectSequencePrompt(reference, scope)
+    )
+  );
+}
+
+export function buildJarvisProjectSequenceClarification(
+  question: string,
+  decision: JarvisIntentDecision,
+  profile: JarvisAccessProfile
+): JarvisProjectSequenceClarificationResponse | undefined {
+  if (
+    decision.candidates.some((candidate) => candidate.score >= 100) ||
+    !decision.goals.some((goal) =>
+      ["read", "diagnose", "analyze"].includes(goal)
+    ) ||
+    !getJarvisActionDecision("project.read", profile).executable
+  ) {
+    return undefined;
+  }
+  const references = extractJarvisProjectReferences(question);
+  if (references.length < 2) return undefined;
+  const scope = resolveProjectSequenceScope(question);
+  return {
+    type: "clarification",
+    topicId: "project.sequence.clarification",
+    message:
+      "Du hast mehrere Projekte genannt. Welches Projekt soll JARVIS zuerst prüfen?",
+    choices: getProjectSequenceChoices(references, scope),
+    dialogSequence: {
+      remainingReferences: references,
+      scope,
+    },
+    deterministic: true,
+  };
+}
+
+export function buildJarvisProjectSequenceContinuation(
+  state: JarvisDialogState | undefined,
+  question: string,
+  profile: JarvisAccessProfile
+) {
+  if (
+    !state?.projectSequence ||
+    !getJarvisActionDecision("project.read", profile).executable
+  ) {
+    return [];
+  }
+  const currentReferences = extractJarvisProjectReferences(question);
+  if (
+    currentReferences.length !== 1 ||
+    !state.projectSequence.remainingReferences.includes(currentReferences[0])
+  ) {
+    return [];
+  }
+  const remainingReferences =
+    state.projectSequence.remainingReferences.filter(
+      (reference) => reference !== currentReferences[0]
+    );
+  return getProjectSequenceChoices(
+    remainingReferences,
+    state.projectSequence.scope
+  );
 }
 
 function getDomainChoices(

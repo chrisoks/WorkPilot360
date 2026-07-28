@@ -1,0 +1,200 @@
+import { describe, expect, it } from "vitest";
+import {
+  buildJarvisDialogState,
+  getJarvisDialogConversationContext,
+  isJarvisReferentialFollowUp,
+  resolveJarvisConversationDomain,
+  resolveJarvisDialogChoiceInput,
+  sanitizeJarvisDialogState,
+} from "@/lib/jarvis/dialog-state";
+
+describe("JARVIS dialog state", () => {
+  it("matches a short typed answer to exactly one guided choice", () => {
+    expect(
+      resolveJarvisDialogChoiceInput("nur die Rechnungen", [
+        {
+          id: "offers",
+          label: "Angebote",
+          prompt: "Zeige mir die offenen Angebote.",
+        },
+        {
+          id: "invoices",
+          label: "Rechnungen",
+          prompt: "Zeige mir die offenen Rechnungen.",
+        },
+      ])
+    ).toMatchObject({
+      id: "invoices",
+      prompt: "Zeige mir die offenen Rechnungen.",
+    });
+  });
+
+  it("does not guess when a short answer matches several choices", () => {
+    expect(
+      resolveJarvisDialogChoiceInput("Projekte", [
+        {
+          id: "project-check",
+          label: "Projekte vollständig prüfen",
+          prompt: "Prüfe die Projekte vollständig.",
+        },
+        {
+          id: "project-times",
+          label: "Projekte und Zeiten",
+          prompt: "Prüfe Projekte und Zeiten.",
+        },
+      ])
+    ).toBeUndefined();
+  });
+
+  it("resolves an unambiguous ordinal answer against the visible choices", () => {
+    expect(
+      resolveJarvisDialogChoiceInput("das zweite", [
+        { id: "has", label: "HAS-1", prompt: "Prüfe HAS-1." },
+        { id: "mkg", label: "MKG-209", prompt: "Prüfe MKG-209." },
+      ])
+    ).toMatchObject({
+      id: "mkg",
+      prompt: "Prüfe MKG-209.",
+    });
+  });
+
+  it("keeps the previous domain only for a real referential follow-up", () => {
+    const previous = buildJarvisDialogState({
+      question: "Wie ist unsere Liquidität?",
+      domain: "management",
+    });
+    expect(resolveJarvisConversationDomain("Und im Vormonat?", previous)).toBe(
+      "management"
+    );
+    expect(resolveJarvisConversationDomain("Wie lege ich ein Angebot an?", previous)).toBe(
+      "system"
+    );
+  });
+
+  it("carries a project record for a referential follow-up", () => {
+    const previous = buildJarvisDialogState({
+      question: "Was ist HAS-1 für ein Projekt?",
+      response: {
+        topicId: "project.logic.explanation",
+        records: [
+          {
+            target: {
+              kind: "project",
+              id: "project-has-1",
+            },
+          },
+        ],
+      },
+    });
+
+    expect(
+      getJarvisDialogConversationContext(previous, "Und wie sieht die Planung aus?")
+    ).toEqual({
+      recordType: "project",
+      recordId: "project-has-1",
+    });
+    expect(
+      getJarvisDialogConversationContext(previous, "Wie lege ich ein Projekt an?")
+    ).toBeUndefined();
+  });
+
+  it("does not carry an old record across an explicit project switch", () => {
+    const previous = buildJarvisDialogState({
+      question: "Prüfe MKS-209.",
+      response: {
+        topicId: "project.health",
+        records: [{ target: { kind: "project", id: "project-mks-209" } }],
+      },
+    });
+    expect(
+      getJarvisDialogConversationContext(previous, "Und jetzt HAS-1?")
+    ).toBeUndefined();
+  });
+
+  it("limits repeated clarification depth and sanitizes client state", () => {
+    const first = buildJarvisDialogState({
+      question: "Was meinst du?",
+      response: {
+        type: "clarification",
+        topicId: "intent.clarification",
+        choices: [{ id: "one" }],
+      },
+    });
+    const second = buildJarvisDialogState({
+      question: "Keine Ahnung",
+      previousState: first,
+      response: {
+        type: "clarification",
+        topicId: "intent.clarification",
+        choices: [{ id: "one" }],
+      },
+    });
+    const third = buildJarvisDialogState({
+      question: "Immer noch unklar",
+      previousState: second,
+      response: {
+        type: "clarification",
+        topicId: "intent.clarification",
+        choices: [{ id: "one" }],
+      },
+    });
+
+    expect(first.clarification?.depth).toBe(1);
+    expect(second.clarification?.depth).toBe(2);
+    expect(third.clarification?.depth).toBe(2);
+    expect(
+      sanitizeJarvisDialogState({
+        ...third,
+        domain: "forbidden",
+      })
+    ).toBeUndefined();
+  });
+
+  it("remembers and consumes a guided multi-project sequence", () => {
+    const initial = buildJarvisDialogState({
+      question: "Prüfe HAS-1 und MKS-209.",
+      response: {
+        type: "clarification",
+        topicId: "project.sequence.clarification",
+        dialogSequence: {
+          remainingReferences: ["HAS-1", "MKS-209"],
+          scope: "full",
+        },
+      },
+    });
+    const afterFirstProject = buildJarvisDialogState({
+      question: "Prüfe Projekt HAS-1 vollständig.",
+      previousState: initial,
+      response: {
+        type: "answer",
+        topicId: "project.health",
+        records: [{ target: { kind: "project", id: "project-has-1" } }],
+      },
+    });
+    const afterSecondProject = buildJarvisDialogState({
+      question: "Prüfe Projekt MKS-209 vollständig.",
+      previousState: afterFirstProject,
+      response: {
+        type: "answer",
+        topicId: "project.health",
+        records: [{ target: { kind: "project", id: "project-mks-209" } }],
+      },
+    });
+
+    expect(initial.projectSequence?.remainingReferences).toEqual([
+      "HAS-1",
+      "MKS-209",
+    ]);
+    expect(afterFirstProject.projectSequence?.remainingReferences).toEqual([
+      "MKS-209",
+    ]);
+    expect(afterSecondProject.projectSequence).toBeUndefined();
+  });
+
+  it("recognizes short references but excludes independent how-to questions", () => {
+    expect(isJarvisReferentialFollowUp("Und was fehlt noch?")).toBe(true);
+    expect(isJarvisReferentialFollowUp("Wie lege ich einen Kunden an?")).toBe(
+      false
+    );
+  });
+});

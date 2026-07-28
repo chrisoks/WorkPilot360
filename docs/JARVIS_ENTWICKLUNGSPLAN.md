@@ -978,10 +978,22 @@ Fachobjekte, Zeiträume und getrennte Satzteile mit nachvollziehbarer
 Konfidenz. Kombinierte Domänen, mehrere nicht sicher gemeinsam lesbare
 Datensatzarten und widersprüchliche Zeiträume führen vor jeder Datenabfrage
 zu rollengerecht gefilterten, klickbaren Rückfragen. Sicherheits- und
-Lohnsignale haben absolute Priorität. Als nächste Ausbaustufe folgen die
-gezielte Fortsetzung nach der Auswahl über mehrere Dialogschritte, begrenzte
-Rückfrageschleifen sowie systematische Mehrfachabsichten innerhalb derselben
-Fachdomäne.
+Lohnsignale haben absolute Priorität.
+
+Der Chat führt inzwischen einen typisierten, streng validierten
+Dialogzustand für Fachdomäne, Ziel, Fachobjekte, Zeitraum, aktiven
+Projekt-/Kundenbezug und Klärungstiefe. Eindeutige kurze Auswahlantworten
+werden in den vollständigen Folge-Prompt übersetzt. Referenzielle
+Folgefragen behalten den gültigen Gesprächsbezug; eigenständige Fragen und
+ausdrückliche Datensatzwechsel setzen ihn kontrolliert neu. Identische
+Rückfrageschleifen sind auf zwei Stufen begrenzt. Mehrere ausdrücklich
+genannte Projekte werden als geführte, rollengeschützte Prüffolge behandelt,
+damit kein Projekt still verloren geht. Die Dialogmetadaten verleihen keine
+Rechte und jede Folgefrage wird serverseitig erneut geprüft.
+
+Als nächste Ausbaustufe folgen weitere gleichzeitige Teilabsichten innerhalb
+derselben Fachdomäne, insbesondere gemischte Prüfziele für einen Datensatz
+und geführte Folgen über unterschiedliche Datensatzarten.
 
 ### Phase 3b: Spracheingabe und Sprachausgabe
 
