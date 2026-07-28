@@ -1,8 +1,34 @@
 # JARVIS Entwicklungsplan
 
-Stand: 28.07.2026
+Stand: 29.07.2026
 
 ## Aktueller Umsetzungsstand
+
+### Intent-Orchestrator V4 – Live-Härtung
+
+- Ein vollständiger Live-Basislauf mit 110 natürlich formulierten Fragen
+  prüft Bedienung, Lesen, Diagnose, Analyse, Kontextwechsel, Aktionswünsche,
+  Rollen, Datenschutz und Geheimnisanfragen. Schreibende JARVIS-Aktionen
+  blieben vollständig gesperrt.
+- Eindeutige Navigationsfragen wie `Wo sehe ich ...?` oder
+  `Wie erkenne ich ...?` behalten jetzt Vorrang vor einer probabilistischen
+  Lese-Klassifikation. Der sichere Angebotsversand ist als eigene
+  Bedienhilfe dokumentiert.
+- Deterministisch erkannte Personenübersichten werden nicht mehr durch eine
+  unsichere KI-Rückfrage verdrängt. Ausdrücklich genannte Projekte haben
+  auch dann Vorrang, wenn die Frage innerhalb des Projekts Angebote oder
+  Rechnungen nennt.
+- Projektwechsel und kurze Projektfragen erkennen nun zusätzlich
+  Formulierungen wie `gesund`, `wo hakt es`, `schief`, `Überblick` und
+  `zuletzt gespeichert`.
+- Bereichsprüfungen ohne fachliche Datenbasis erhalten keinen irreführenden
+  100-von-100-Wert. Bei fehlenden Stempelungen, Aufgaben oder ausdrücklich
+  abgefragten Angebots-/Rechnungsdaten weist JARVIS den Bereich als nicht
+  bewertbar aus.
+- Allgemeine Rollenfragen zu Lohn-, Kunden- und Planungsrechten werden ohne
+  KI und ohne Datensatzabruf aus der WorkPilot-Berechtigungsmatrix erklärt.
+  Private Kontakt- und Adressdaten von Mitarbeitenden werden in
+  JARVIS-Antworten nicht ausgegeben.
 
 ### Intent-Orchestrator V4
 

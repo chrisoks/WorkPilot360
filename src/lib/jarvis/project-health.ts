@@ -2642,6 +2642,60 @@ export async function resolveJarvisProjectHealthRequest(input: {
     checkedAreas,
     restrictedAreas,
   };
+  const normalizedQuestion = normalize(input.question);
+  const noEvidenceLabel =
+    requestedScope === "stamps" && timeEntries.length === 0
+      ? "Stempelungen"
+      : requestedScope === "tasks" && (visibleTasks?.length ?? 0) === 0
+        ? "Aufgaben"
+        : requestedScope === "commercial" &&
+            /\bangebot\w*\b/.test(normalizedQuestion) &&
+            !/\brechnung\w*\b/.test(normalizedQuestion) &&
+            (offers?.length ?? 0) === 0
+          ? "Angebote"
+          : requestedScope === "commercial" &&
+              /\brechnung\w*\b/.test(normalizedQuestion) &&
+              !/\bangebot\w*\b/.test(normalizedQuestion) &&
+              (activeInvoices?.length ?? 0) === 0
+            ? "Rechnungen"
+            : undefined;
+  if (noEvidenceLabel) {
+    const projectLabel = [project.projectNumber, project.title]
+      .filter(Boolean)
+      .join(" · ");
+    return {
+      type: "answer",
+      topicId: "project.scope.no-evidence",
+      message: `Für ${project.projectNumber || project.title} wurden keine ${noEvidenceLabel} gefunden. Deshalb gibt JARVIS für diesen Bereich keinen Prüfwert und keine Qualitätsbewertung aus.`,
+      structured: {
+        title: `${PROJECT_HEALTH_SCOPE_LABELS[requestedScope]} · ${project.projectNumber || project.title}`,
+        subtitle: `${project.customer || "Ohne Kundenanzeige"} · ${project.status || "Ohne Status"}`,
+        summary: `Keine ${noEvidenceLabel} als belastbare Auswertungsgrundlage vorhanden.`,
+        facts: [
+          { label: "Datenbasis", value: `0 ${noEvidenceLabel}` },
+          { label: "Bewertung", value: "Nicht bewertbar" },
+        ],
+        sections: [
+          {
+            title: "Einordnung",
+            items: [
+              `Ohne vorhandene ${noEvidenceLabel} kann JARVIS weder Fehlerfreiheit noch eine vollständige Prüfung dieses Bereichs bestätigen.`,
+            ],
+          },
+        ],
+      },
+      records: [{
+        id: `project-scope-no-evidence-${project.id}`,
+        kind: "project",
+        title: projectLabel,
+        subtitle: project.customer || project.projectType || "Projekt",
+        summary: `${noEvidenceLabel}: keine Datenbasis`,
+        status: project.status,
+        target: { kind: "project", id: project.id },
+      }],
+      deterministic: true,
+    };
+  }
   const fullEvaluation = evaluateProjectHealth(snapshot);
   const evaluation = scopeProjectHealthEvaluation(
     fullEvaluation,

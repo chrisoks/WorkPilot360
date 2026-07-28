@@ -19,6 +19,8 @@ describe("JARVIS project dialog intent", () => {
     ["Wer ist bei HAS-1 verantwortlich?", "explainResponsibility"],
     ["Ist HAS-1 fachlich freigegeben?", "explainReviewStatus"],
     ["Was wurde bei HAS-1 zuletzt geändert?", "explainLastChange"],
+    ["Wann wurde MKG-209 zuletzt gespeichert?", "explainLastChange"],
+    ["Welche letzte Aktualisierung gab es bei HAS-1?", "explainLastChange"],
     ["Was ist mit HAS-1?", "ambiguousProjectQuestion"],
     ["Und jetzt HAS-1: Was weißt du darüber?", "ambiguousProjectQuestion"],
   ])("resolves %s as %s", (question, expected) => {

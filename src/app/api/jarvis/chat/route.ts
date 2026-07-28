@@ -13,6 +13,7 @@ import {
 } from "@/lib/jarvis/ai-intent-fallback";
 import {
   resolveJarvisPersonDiagnosticRequest,
+  resolveJarvisPersonIntent,
   resolveJarvisPersonSummaryRequest,
 } from "@/lib/jarvis/person-summary";
 import { resolveJarvisReadRequest } from "@/lib/jarvis/read-model";
@@ -30,6 +31,7 @@ import {
   getJarvisAuthorizationRefusalMessage,
 } from "@/lib/jarvis/security";
 import { applyJarvisAnswerPolicy } from "@/lib/jarvis/answer-policy";
+import { resolveJarvisAccessPolicyQuestion } from "@/lib/jarvis/access-policy";
 import { resolveJarvisCapabilityGap } from "@/lib/jarvis/capability-gap";
 import {
   resolveJarvisIntentDecision,
@@ -107,6 +109,23 @@ function looksLikeDirectActionRequest(
       /^\s*(?:leg|lege|mach|mache|schick|sende|stornier|lösch|losch|ändere|ander|setz|markier|erstell|trag)\w*\b/iu.test(
         question
       ))
+  );
+}
+
+function looksLikeDeterministicHelpRequest(question: string) {
+  const value = question
+    .toLocaleLowerCase("de-DE")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return (
+    /^(?:wo|wie)\b/.test(value) &&
+    (
+      /\b(?:sehe|erkenne|finde|offne|oeffne)\s+ich\b/.test(value) ||
+      /\bwo\b.*\b(?:sehe|erkenne|finde)\b/.test(value) ||
+      /\bwie\b.*\b(?:versende|verschicke|sende)\b/.test(value)
+    )
   );
 }
 
@@ -345,12 +364,19 @@ export async function POST(req: Request) {
     });
   };
   const authorization = authorizeJarvisQuestion(message, accessProfile);
+  const accessPolicyResponse = resolveJarvisAccessPolicyQuestion(message);
   if (!authorization.allowed) {
+    if (authorization.reason === "role" && accessPolicyResponse) {
+      return respond(accessPolicyResponse);
+    }
     return respond({
       type: "refusal",
       topicId: "security.refusal",
       message: getJarvisAuthorizationRefusalMessage(authorization),
     });
+  }
+  if (accessPolicyResponse) {
+    return respond(accessPolicyResponse);
   }
   const routingContext = conversationContext ?? context;
   const aiIntentClassification = await classifyJarvisIntentWithAi({
@@ -358,17 +384,24 @@ export async function POST(req: Request) {
     decision: intentDecision,
     context: routingContext,
   });
+  const deterministicPersonIntent = resolveJarvisPersonIntent(message);
   const routePlan = resolveJarvisRoutePlan({
     question: message,
     decision: intentDecision,
     context: routingContext,
     ai: aiIntentClassification,
+    hasDeterministicPersonIntent: Boolean(deterministicPersonIntent),
   });
   const directActionRequest = looksLikeDirectActionRequest(
     message,
     intentDecision
   );
-  if (aiIntentClassification) {
+  const exactHelpTopicId = findJarvisExactHelpTopicId(message, context);
+  const deterministicHelpRequest =
+    Boolean(exactHelpTopicId) &&
+    looksLikeDeterministicHelpRequest(message) &&
+    !directActionRequest;
+  if (aiIntentClassification && !deterministicHelpRequest && !deterministicPersonIntent) {
     const aiClarification = buildAiIntentClarification(
       aiIntentClassification,
       routingContext
@@ -377,10 +410,9 @@ export async function POST(req: Request) {
       return respond(aiClarification, routePlan.domain);
     }
   }
-  const exactHelpTopicId = findJarvisExactHelpTopicId(message, context);
   if (
     exactHelpTopicId &&
-    routePlan.allowExactHelp &&
+    (routePlan.allowExactHelp || deterministicHelpRequest) &&
     !directActionRequest
   ) {
     return respond(

@@ -40,6 +40,21 @@ describe("JARVIS central intent decision", () => {
     });
   });
 
+  it.each([
+    "Ist MKG-209 insgesamt gesund?",
+    "Wo hakt es bei diesem Projekt?",
+    "Was läuft bei HAS-1 gerade schief?",
+  ])("recognizes broad project diagnostics: %s", (question) => {
+    expect(resolveJarvisIntentDecision(question).goals).toContain("diagnose");
+  });
+
+  it("recognizes a short project overview as a read request", () => {
+    expect(
+      resolveJarvisIntentDecision("Gib mir einen kurzen Überblick zu MKG-209.")
+        .goals
+    ).toContain("read");
+  });
+
   it("separates combined sales and management questions before answering", () => {
     const result = resolveJarvisIntentDecision(
       "Welche Kunden soll ich nachfassen und wie ist unsere Liquidität?"

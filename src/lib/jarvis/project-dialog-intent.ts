@@ -85,10 +85,10 @@ export function resolveJarvisProjectDialogIntent(input: {
   }
 
   if (
-    /\b(?:was|welche)\b.*\bzuletzt\b.*\b(?:geandert|anderung)\w*\b/.test(
+    /\b(?:was|welche|wann)\b.*\bzuletzt\b.*\b(?:geandert|anderung|gespeichert|aktualisiert)\w*\b/.test(
       value
     ) ||
-    /\bletzte\b.*\banderung\b/.test(value)
+    /\bletzte\b.*\b(?:anderung|speicherung|aktualisierung)\b/.test(value)
   ) {
     return "explainLastChange";
   }

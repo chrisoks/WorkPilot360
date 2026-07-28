@@ -234,6 +234,20 @@ const TOPICS: JarvisTopic[] = [
       "Öffne im Projekt das betreffende Angebot. Dort siehst du, ob und wann der öffentliche Angebotslink geöffnet wurde, wie oft er aufgerufen wurde und ob eine verbindliche Annahme mit Freigabenachweis vorliegt.",
   },
   {
+    id: "offer.send",
+    title: "Angebot per E-Mail versenden",
+    keywords: [
+      "angebot per e mail versenden",
+      "angebot per email versenden",
+      "angebot verschicken",
+      "angebot senden",
+    ],
+    surfaces: ["Projektakte"],
+    actionId: "offer.prepare",
+    answer:
+      "Öffne im Projekt das fertige Angebot und prüfe zuerst Empfänger, Positionen, Gesamtbetrag und Vorschau. Wähle anschließend die E-Mail-Funktion am Angebot, kontrolliere Empfänger, Betreff, Nachricht und Anhänge und versende erst nach dieser Abschlussprüfung. Der Versand erzeugt den digitalen Angebotslink für Öffnungs- und Annahmenachweise.",
+  },
+  {
     id: "appointment.create",
     title: "Termin oder Terminwunsch anlegen",
     keywords: [

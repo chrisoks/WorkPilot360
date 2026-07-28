@@ -67,6 +67,56 @@ describe("JARVIS intent orchestrator V4", () => {
     });
   });
 
+  it.each([
+    ["Prüfe bei HAS-1 die Rechnungen.", "invoice"],
+    ["Jetzt zu MKG-209: Prüfe die Angebote.", "offer"],
+  ])(
+    "keeps project-scoped %s questions in the project health path",
+    (question, entity) => {
+      const plan = resolveJarvisRoutePlan({
+        question,
+        decision: resolveJarvisIntentDecision(question),
+        context: { recordType: "project", recordId: "screen-project" },
+        ai: ai({
+          intent: "diagnose",
+          entity: entity as "invoice" | "offer",
+          scope: "current_record",
+          usesCurrentContext: true,
+        }),
+      });
+
+      expect(plan).toMatchObject({
+        scope: "explicit_record",
+        preferProjectHealth: true,
+        preferRead: false,
+        needsClarification: false,
+      });
+    }
+  );
+
+  it("uses a deterministic person intent when AI asks an unnecessary clarification", () => {
+    const question = "Was weißt du über Klaus Testmann?";
+    const plan = resolveJarvisRoutePlan({
+      question,
+      decision: resolveJarvisIntentDecision(question),
+      context: { recordType: "project", recordId: "project-1" },
+      ai: ai({
+        intent: "unclear",
+        entity: "none",
+        scope: "none",
+        needsClarification: true,
+      }),
+      hasDeterministicPersonIntent: true,
+    });
+
+    expect(plan).toMatchObject({
+      preferPerson: true,
+      preferProjectHealth: false,
+      needsClarification: false,
+      source: "deterministic",
+    });
+  });
+
   it("routes a customer summary before project health despite project screen context", () => {
     const question = "Was weißt du über Klaus Testmann?";
     const plan = resolveJarvisRoutePlan({

@@ -27,6 +27,20 @@ describe("JARVIS system help", () => {
     expect(result.message).toContain("„+ Angebot“");
   });
 
+  it("explains safe offer e-mail sending without executing it", () => {
+    const result = resolveJarvisSystemHelp(
+      "Wie versende ich ein Angebot per E-Mail?",
+      { module: "Projektakte", recordType: "project" },
+      salesAccess
+    );
+    expect(result).toMatchObject({
+      type: "answer",
+      topicId: "offer.send",
+    });
+    expect(result.message).toContain("Empfänger");
+    expect(result.message).toContain("Abschlussprüfung");
+  });
+
   it("asks which project kind applies to a manual time entry", () => {
     const result = resolveJarvisSystemHelp("Wie trage ich einen Zeiteintrag ein?", {}, employeeAccess);
     expect(result.type).toBe("clarification");

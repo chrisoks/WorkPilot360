@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   sanitizeJarvisSurfaceContext: vi.fn(),
   resolveJarvisProjectHealthRequest: vi.fn(),
   resolveJarvisPersonDiagnosticRequest: vi.fn(),
+  resolveJarvisPersonIntent: vi.fn(),
   resolveJarvisPersonSummaryRequest: vi.fn(),
   resolveJarvisProjectReviewInventoryRequest: vi.fn(),
   resolveJarvisOrganizationMaterialRequest: vi.fn(),
@@ -29,6 +30,7 @@ const mocks = vi.hoisted(() => ({
   buildJarvisProjectScopeSequenceClarification: vi.fn(),
   buildJarvisProjectSequenceClarification: vi.fn(),
   buildJarvisProjectSequenceContinuation: vi.fn(),
+  resolveJarvisAccessPolicyQuestion: vi.fn(),
 }));
 
 vi.mock("@/lib/demo/context", () => ({
@@ -57,7 +59,12 @@ vi.mock("@/lib/jarvis/read-model", () => ({
 
 vi.mock("@/lib/jarvis/person-summary", () => ({
   resolveJarvisPersonDiagnosticRequest: mocks.resolveJarvisPersonDiagnosticRequest,
+  resolveJarvisPersonIntent: mocks.resolveJarvisPersonIntent,
   resolveJarvisPersonSummaryRequest: mocks.resolveJarvisPersonSummaryRequest,
+}));
+
+vi.mock("@/lib/jarvis/access-policy", () => ({
+  resolveJarvisAccessPolicyQuestion: mocks.resolveJarvisAccessPolicyQuestion,
 }));
 
 vi.mock("@/lib/jarvis/project-health", () => ({
@@ -133,6 +140,7 @@ describe("POST /api/jarvis/chat", () => {
       dataClass: "internal",
       reason: "allowed",
     });
+    mocks.resolveJarvisAccessPolicyQuestion.mockReturnValue(undefined);
     mocks.getJarvisAuthorizationRefusalMessage.mockReturnValue(
       "Diese Anfrage ist gesperrt."
     );
@@ -159,6 +167,7 @@ describe("POST /api/jarvis/chat", () => {
     mocks.buildJarvisProjectSequenceContinuation.mockReturnValue([]);
     mocks.resolveJarvisProjectHealthRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisPersonDiagnosticRequest.mockResolvedValue(undefined);
+    mocks.resolveJarvisPersonIntent.mockReturnValue(undefined);
     mocks.resolveJarvisPersonSummaryRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisProjectReviewInventoryRequest.mockResolvedValue(
       undefined
@@ -182,6 +191,118 @@ describe("POST /api/jarvis/chat", () => {
       type: "answer",
       message: "Spezifische Systemhilfe",
     });
+  });
+
+  it("answers a safe role-policy question without calling AI or data adapters", async () => {
+    mocks.authorizeJarvisQuestion.mockReturnValue({
+      allowed: false,
+      dataClass: "payroll",
+      reason: "role",
+    });
+    mocks.resolveJarvisAccessPolicyQuestion.mockReturnValue({
+      type: "answer",
+      topicId: "security.access-policy",
+      message: "Mitarbeiter dürfen keine Lohndaten abrufen.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Darf ein normaler Mitarbeiter Lohndaten sehen?",
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      type: "answer",
+      topicId: "security.access-policy",
+    });
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+  });
+
+  it("keeps deterministic navigation help ahead of an AI read classification", async () => {
+    mocks.classifyJarvisIntentWithAi.mockResolvedValue({
+      intent: "read",
+      domain: "system",
+      entity: "invoice",
+      scope: "collection",
+      helpTopicId: "none",
+      confidence: "high",
+      needsClarification: false,
+      usesCurrentContext: false,
+      actionKind: "none",
+    });
+    mocks.findJarvisExactHelpTopicId.mockReturnValue("invoice.open");
+    mocks.resolveJarvisSystemHelpTopic.mockReturnValue({
+      type: "answer",
+      topicId: "invoice.open",
+      message: "Öffne die Rechnung im Projekt oder in der Buchhaltung.",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Wo sehe ich den Status einer Rechnung?",
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      type: "answer",
+      topicId: "invoice.open",
+    });
+    expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+  });
+
+  it("keeps a deterministic person summary ahead of an AI clarification", async () => {
+    mocks.resolveJarvisPersonIntent.mockReturnValue({
+      query: "Klaus Testmann",
+      scope: "overview",
+    });
+    mocks.classifyJarvisIntentWithAi.mockResolvedValue({
+      intent: "unclear",
+      domain: "system",
+      entity: "none",
+      scope: "none",
+      helpTopicId: "none",
+      confidence: "high",
+      needsClarification: true,
+      usesCurrentContext: false,
+      actionKind: "none",
+    });
+    mocks.resolveJarvisPersonSummaryRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "person.summary",
+      message: "Klaus Testmann wurde eindeutig gefunden.",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Was weißt du über Klaus Testmann?",
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      type: "answer",
+      topicId: "person.summary",
+    });
+    expect(mocks.buildJarvisIntentClarification).not.toHaveBeenCalled();
   });
 
   it("blocks secrets globally before any data, diagnostic, AI, or help path runs", async () => {

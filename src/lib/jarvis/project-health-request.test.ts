@@ -149,6 +149,32 @@ describe("resolveJarvisProjectHealthRequest", () => {
     expect(dbMocks.invoiceFindMany).toHaveBeenCalled();
   });
 
+  it("does not award a perfect stamp score when no stamps exist", async () => {
+    const response = await resolveJarvisProjectHealthRequest({
+      question: "Prüfe die Stempelungen von MKG-209.",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "manager-1",
+        role: Role.GESCHAEFTSFUEHRER,
+      }),
+    });
+
+    expect(response).toMatchObject({
+      type: "answer",
+      topicId: "project.scope.no-evidence",
+      structured: {
+        summary: "Keine Stempelungen als belastbare Auswertungsgrundlage vorhanden.",
+        facts: [
+          { label: "Datenbasis", value: "0 Stempelungen" },
+          { label: "Bewertung", value: "Nicht bewertbar" },
+        ],
+      },
+    });
+    const serialized = JSON.stringify(response);
+    expect(serialized).not.toContain("100 / 100");
+    expect(serialized).not.toContain("stabil");
+  });
+
   it("does not load or expose financial and payroll checks for employees", async () => {
     const response = await resolveJarvisProjectHealthRequest({
       question: "Führe den vollständigen Projekt-Gesundheitscheck aus.",

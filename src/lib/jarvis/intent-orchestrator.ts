@@ -105,25 +105,33 @@ export function resolveJarvisRoutePlan(input: {
   decision: JarvisIntentDecision;
   context?: JarvisSurfaceContext;
   ai?: JarvisAiIntentClassification;
+  hasDeterministicPersonIntent?: boolean;
 }): JarvisRoutePlan {
   const context = input.context ?? {};
-  const aiIsUsable = Boolean(input.ai) && input.ai?.confidence !== "low";
+  const deterministicFallbackIntent = deterministicIntent(input.decision);
+  const aiIsUsable =
+    Boolean(input.ai) &&
+    input.ai?.confidence !== "low" &&
+    !(
+      input.ai?.intent === "unclear" &&
+      deterministicFallbackIntent !== "unclear"
+    );
   const intent = aiIsUsable
     ? input.ai!.intent
-    : deterministicIntent(input.decision);
+    : deterministicFallbackIntent;
+  const explicitProjectReferences =
+    extractJarvisProjectReferences(input.question);
+  const explicitProject = explicitProjectReferences.length > 0;
   const entity = aiIsUsable
     ? input.ai!.entity
     : deterministicEntity(input.question, input.decision, context);
-  const scope = aiIsUsable
-    ? input.ai!.scope
-    : deterministicScope(input.question, input.decision, context);
-  const explicitProject =
-    extractJarvisProjectReferences(input.question).length > 0;
-  const targetIsNonProject =
-    entity !== "none" &&
-    entity !== "project" &&
-    entity !== "planning" &&
-    entity !== "organization";
+  // Eine ausdrücklich genannte Projektnummer ist belastbarer als eine
+  // probabilistische Scope-Klassifizierung.
+  const scope = explicitProject
+    ? "explicit_record"
+    : aiIsUsable
+      ? input.ai!.scope
+      : deterministicScope(input.question, input.decision, context);
   const organizationOrCollection =
     scope === "organization" || scope === "collection";
   const usesCurrentContext =
@@ -131,10 +139,19 @@ export function resolveJarvisRoutePlan(input: {
     (!explicitProject &&
       !organizationOrCollection &&
       Boolean(input.ai?.usesCurrentContext));
+  const projectScopedEntity =
+    explicitProject ||
+    (usesCurrentContext && context.recordType === "project");
+  const targetIsNonProject =
+    !projectScopedEntity &&
+    entity !== "none" &&
+    entity !== "project" &&
+    entity !== "planning" &&
+    entity !== "organization";
   const projectIntent =
     entity === "project" ||
     entity === "planning" ||
-    explicitProject ||
+    projectScopedEntity ||
     (entity === "none" &&
       usesCurrentContext &&
       context.recordType === "project");
@@ -150,16 +167,24 @@ export function resolveJarvisRoutePlan(input: {
     confidence: aiIsUsable ? input.ai!.confidence : input.decision.confidence,
     source: aiIsUsable ? "ai" : "deterministic",
     needsClarification:
-      Boolean(input.ai?.needsClarification) ||
-      intent === "unclear" ||
-      (!aiIsUsable && input.decision.state === "clarification"),
+      !input.hasDeterministicPersonIntent &&
+      !(
+        explicitProjectReferences.length === 1 &&
+        projectIntent &&
+        ["read", "explain", "diagnose", "analyze"].includes(intent)
+      ) &&
+      (Boolean(input.ai?.needsClarification) ||
+        intent === "unclear" ||
+        (!aiIsUsable && input.decision.state === "clarification")),
     allowExactHelp: intent === "how_to",
     preferRead:
       intent === "read" &&
       readEntity &&
       (!projectIntent || organizationOrCollection),
     preferPerson:
-      (entity === "customer" || entity === "employee") &&
+      (input.hasDeterministicPersonIntent ||
+        entity === "customer" ||
+        entity === "employee") &&
       ["read", "explain", "diagnose", "analyze"].includes(intent),
     preferProjectHealth:
       !targetIsNonProject &&

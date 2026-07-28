@@ -209,8 +209,18 @@ function collectGoals(value: string): JarvisIntentGoal[] {
       value
     )
   );
-  add("read", /\b(finde|suche|offne|zeige|fasse|zusammenfassung|status)\w*\b/.test(value));
-  add("diagnose", /\b(pruf|check|fehl|falsch|warum|ursache|auffallig|stimm)\w*\b/.test(value));
+  add(
+    "read",
+    /\b(finde|suche|offne|zeige|fasse|zusammenfassung|status|uberblick)\w*\b/.test(
+      value
+    )
+  );
+  add(
+    "diagnose",
+    /\b(pruf|check|fehl|falsch|warum|ursache|auffallig|stimm|gesund|hakt|schief)\w*\b/.test(
+      value
+    )
+  );
   add("analyze", /\b(analysier|vergleich|trend|entwickl|potenzial|wirtschaftlichkeit)\w*\b/.test(value));
   add("change", /\b(anleg|leg|erstell|ander|bearbeit|losch|stornier|sende|buch|speicher)\w*\b/.test(value));
   add("explain", /\b(was ist|welche logik|erklar|wie funktioniert|wie lauft)\b/.test(value));
