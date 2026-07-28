@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => ({
   createJarvisAccessProfile: vi.fn(),
   resolveJarvisIntentDecision: vi.fn(),
   buildJarvisIntentClarification: vi.fn(),
+  resolveJarvisIntentSequenceContinuation: vi.fn(),
+  buildJarvisProjectScopeSequenceClarification: vi.fn(),
   buildJarvisProjectSequenceClarification: vi.fn(),
   buildJarvisProjectSequenceContinuation: vi.fn(),
 }));
@@ -61,6 +63,10 @@ vi.mock("@/lib/jarvis/intent-decision", () => ({
 
 vi.mock("@/lib/jarvis/intent-clarification", () => ({
   buildJarvisIntentClarification: mocks.buildJarvisIntentClarification,
+  resolveJarvisIntentSequenceContinuation:
+    mocks.resolveJarvisIntentSequenceContinuation,
+  buildJarvisProjectScopeSequenceClarification:
+    mocks.buildJarvisProjectScopeSequenceClarification,
   buildJarvisProjectSequenceClarification:
     mocks.buildJarvisProjectSequenceClarification,
   buildJarvisProjectSequenceContinuation:
@@ -97,6 +103,10 @@ describe("POST /api/jarvis/chat", () => {
       segments: [],
     });
     mocks.buildJarvisIntentClarification.mockReturnValue(undefined);
+    mocks.resolveJarvisIntentSequenceContinuation.mockReturnValue(undefined);
+    mocks.buildJarvisProjectScopeSequenceClarification.mockReturnValue(
+      undefined
+    );
     mocks.buildJarvisProjectSequenceClarification.mockReturnValue(undefined);
     mocks.buildJarvisProjectSequenceContinuation.mockReturnValue([]);
     mocks.resolveJarvisProjectHealthRequest.mockResolvedValue(undefined);
@@ -250,6 +260,142 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.resolveJarvisPersonSummaryRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisSystemHelp).not.toHaveBeenCalled();
+  });
+
+  it("keeps same-domain subtasks server-validated without exposing internal metadata", async () => {
+    const decision = {
+      state: "clarification",
+      domain: "system",
+      confidence: "high",
+      candidates: [],
+      clarificationReasons: ["multiple_record_targets"],
+      goals: ["read"],
+      entities: ["invoice", "offer"],
+      timeScopes: [],
+      recordFilter: "open",
+      segments: ["Zeige offene Rechnungen", "Angebote."],
+    };
+    mocks.resolveJarvisIntentDecision.mockReturnValue(decision);
+    mocks.buildJarvisIntentClarification.mockReturnValue({
+      type: "clarification",
+      topicId: "intent.clarification",
+      message: "Womit soll JARVIS beginnen?",
+      choices: [
+        {
+          id: "intent-entity-invoice",
+          label: "Rechnungen",
+          prompt: "Zeige mir die offenen Rechnungen.",
+        },
+        {
+          id: "intent-entity-offer",
+          label: "Angebote",
+          prompt: "Zeige mir die offenen Angebote.",
+        },
+      ],
+      dialogIntentSequence: {
+        remainingTasks: [
+          { entity: "invoice", recordFilter: "open" },
+          { entity: "offer", recordFilter: "open" },
+        ],
+      },
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Zeige mir die offenen Rechnungen und Angebote.",
+          context: {},
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload.dialogIntentSequence).toBeUndefined();
+    expect(payload.dialogState.intentSequence.remainingTasks).toEqual([
+      { entity: "invoice", recordFilter: "open" },
+      { entity: "offer", recordFilter: "open" },
+    ]);
+    expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+  });
+
+  it("appends the next allowed subtask after a completed partial answer", async () => {
+    mocks.resolveJarvisIntentDecision.mockReturnValue({
+      state: "resolved",
+      domain: "system",
+      confidence: "high",
+      candidates: [],
+      clarificationReasons: [],
+      goals: ["read"],
+      entities: ["invoice"],
+      timeScopes: [],
+      recordFilter: "open",
+      segments: ["Zeige mir die offenen Rechnungen."],
+    });
+    mocks.resolveJarvisIntentSequenceContinuation.mockReturnValue({
+      choices: [
+        {
+          id: "intent-sequence-offer",
+          label: "Angebote",
+          prompt: "Zeige mir die offenen Angebote.",
+        },
+      ],
+      remainingTasks: [{ entity: "offer", recordFilter: "open" }],
+    });
+    mocks.resolveJarvisReadRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "records.invoice.search",
+      message: "Offene Rechnungen",
+      records: [],
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Zeige mir die offenen Rechnungen.",
+          context: {},
+          dialogState: {
+            version: 1,
+            domain: "system",
+            lastQuestion: "Zeige offene Rechnungen und Angebote.",
+            lastIntent: {
+              goals: ["read"],
+              entities: ["invoice", "offer"],
+              timeScopes: [],
+              recordFilter: "open",
+            },
+            intentSequence: {
+              remainingTasks: [
+                { entity: "invoice", recordFilter: "open" },
+                { entity: "offer", recordFilter: "open" },
+              ],
+            },
+          },
+        }),
+      })
+    );
+
+    expect(await response.json()).toMatchObject({
+      message: "Offene Rechnungen",
+      choices: [
+        {
+          label: "Angebote",
+          prompt: "Zeige mir die offenen Angebote.",
+        },
+      ],
+      dialogState: {
+        intentSequence: {
+          remainingTasks: [{ entity: "offer", recordFilter: "open" }],
+        },
+      },
+    });
   });
 
   it("clarifies a multi-project request before silently checking only one project", async () => {

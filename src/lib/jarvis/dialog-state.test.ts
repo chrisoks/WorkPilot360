@@ -191,6 +191,102 @@ describe("JARVIS dialog state", () => {
     expect(afterSecondProject.projectSequence).toBeUndefined();
   });
 
+  it("remembers and consumes every guided same-domain subtask", () => {
+    const initial = buildJarvisDialogState({
+      question: "Zeige mir die offenen Angebote und Rechnungen.",
+      response: {
+        type: "clarification",
+        topicId: "intent.clarification",
+        dialogIntentSequence: {
+          remainingTasks: [
+            { entity: "invoice", recordFilter: "open" },
+            { entity: "offer", recordFilter: "open" },
+          ],
+        },
+      },
+    });
+    const afterInvoices = buildJarvisDialogState({
+      question: "Zeige mir die offenen Rechnungen.",
+      previousState: initial,
+      response: {
+        type: "answer",
+        topicId: "records.invoice.search",
+      },
+    });
+    const afterOffers = buildJarvisDialogState({
+      question: "Zeige mir die offenen Angebote.",
+      previousState: afterInvoices,
+      response: {
+        type: "answer",
+        topicId: "records.offer.search",
+      },
+    });
+
+    expect(initial.intentSequence?.remainingTasks).toEqual([
+      { entity: "invoice", recordFilter: "open" },
+      { entity: "offer", recordFilter: "open" },
+    ]);
+    expect(afterInvoices.intentSequence?.remainingTasks).toEqual([
+      { entity: "offer", recordFilter: "open" },
+    ]);
+    expect(afterOffers.intentSequence).toBeUndefined();
+  });
+
+  it("rejects malformed client-supplied subtask metadata", () => {
+    const sanitized = sanitizeJarvisDialogState({
+      version: 1,
+      domain: "system",
+      lastQuestion: "Zeige mir mehrere Bereiche.",
+      lastIntent: {
+        goals: ["read"],
+        entities: ["offer", "invoice"],
+        timeScopes: [],
+        recordFilter: "open",
+      },
+      intentSequence: {
+        remainingTasks: [
+          { entity: "invoice", recordFilter: "open" },
+          { entity: "salary", recordFilter: "all" },
+          { entity: "offer", recordFilter: "forbidden" },
+        ],
+      },
+    });
+
+    expect(sanitized?.intentSequence?.remainingTasks).toEqual([
+      { entity: "invoice", recordFilter: "open" },
+    ]);
+  });
+
+  it("clears a work sequence when the server returns no permitted remainder", () => {
+    const state = buildJarvisDialogState({
+      question: "Zeige mir die offenen Rechnungen.",
+      previousState: {
+        version: 1,
+        domain: "system",
+        lastQuestion: "Zeige offene Angebote und Rechnungen.",
+        lastIntent: {
+          goals: ["read"],
+          entities: ["offer", "invoice"],
+          timeScopes: [],
+          recordFilter: "open",
+        },
+        intentSequence: {
+          remainingTasks: [
+            { entity: "invoice", recordFilter: "open" },
+            { entity: "offer", recordFilter: "open" },
+          ],
+        },
+      },
+      response: {
+        type: "answer",
+        topicId: "records.invoice.search",
+        dialogIntentSequence: { remainingTasks: [] },
+      },
+    });
+
+    expect(state.intentSequence).toBeUndefined();
+  });
+
   it("recognizes short references but excludes independent how-to questions", () => {
     expect(isJarvisReferentialFollowUp("Und was fehlt noch?")).toBe(true);
     expect(isJarvisReferentialFollowUp("Wie lege ich einen Kunden an?")).toBe(

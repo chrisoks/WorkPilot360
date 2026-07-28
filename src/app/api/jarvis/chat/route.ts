@@ -22,8 +22,10 @@ import {
 } from "@/lib/jarvis/intent-decision";
 import {
   buildJarvisIntentClarification,
+  buildJarvisProjectScopeSequenceClarification,
   buildJarvisProjectSequenceClarification,
   buildJarvisProjectSequenceContinuation,
+  resolveJarvisIntentSequenceContinuation,
 } from "@/lib/jarvis/intent-clarification";
 import {
   buildJarvisDialogState,
@@ -95,24 +97,45 @@ export async function POST(req: Request) {
       ? intentDecision.domain
       : previousDialogState?.domain ?? intentDecision.domain
   ) => {
-    const sequenceChoices =
-      payload.type === "answer"
-        ? buildJarvisProjectSequenceContinuation(
+    const intentSequenceContinuation =
+      payload.type === "answer" || payload.type === "refusal"
+        ? resolveJarvisIntentSequenceContinuation(
             previousDialogState,
             message,
             accessProfile
           )
+        : undefined;
+    const sequenceChoices =
+      payload.type === "answer" || payload.type === "refusal"
+        ? [
+            ...buildJarvisProjectSequenceContinuation(
+              previousDialogState,
+              message,
+              accessProfile
+            ),
+            ...(intentSequenceContinuation?.choices ?? []),
+          ]
         : [];
+    const payloadWithIntentSequence = intentSequenceContinuation
+      ? {
+          ...payload,
+          dialogIntentSequence: {
+            remainingTasks: intentSequenceContinuation.remainingTasks,
+          },
+        }
+      : payload;
     const sequencePayload =
       sequenceChoices.length > 0
         ? {
-            ...payload,
+            ...payloadWithIntentSequence,
             choices: [
-              ...(Array.isArray(payload.choices) ? payload.choices : []),
+              ...(Array.isArray(payloadWithIntentSequence.choices)
+                ? payloadWithIntentSequence.choices
+                : []),
               ...sequenceChoices,
             ],
           }
-        : payload;
+        : payloadWithIntentSequence;
     const responsePayload =
       sequencePayload.type === "clarification" &&
       previousDialogState?.clarification?.topicId ===
@@ -132,13 +155,25 @@ export async function POST(req: Request) {
         previousState: previousDialogState,
         conversationContext,
       });
-    const { dialogSequence: _dialogSequence, ...publicPayload } =
-      responsePayload;
+    const {
+      dialogSequence: _dialogSequence,
+      dialogIntentSequence: _dialogIntentSequence,
+      ...publicPayload
+    } = responsePayload;
     return NextResponse.json({
       ...publicPayload,
       dialogState,
     });
   };
+  const projectScopeSequenceClarification =
+    buildJarvisProjectScopeSequenceClarification(
+      message,
+      intentDecision,
+      accessProfile
+    );
+  if (projectScopeSequenceClarification) {
+    return respond(projectScopeSequenceClarification);
+  }
   const intentClarification = buildJarvisIntentClarification(
     intentDecision,
     accessProfile

@@ -3,11 +3,12 @@ import {
   createJarvisDialogChoice,
   type JarvisDialogChoice,
 } from "@/lib/jarvis/dialog";
-import type {
-  JarvisIntentDecision,
-  JarvisIntentDomain,
-  JarvisIntentEntity,
-  JarvisIntentTimeScope,
+import {
+  resolveJarvisIntentDecision,
+  type JarvisIntentDecision,
+  type JarvisIntentDomain,
+  type JarvisIntentEntity,
+  type JarvisIntentTimeScope,
 } from "@/lib/jarvis/intent-decision";
 import {
   canAccessJarvisDataClass,
@@ -15,7 +16,9 @@ import {
 } from "@/lib/jarvis/security";
 import {
   extractJarvisProjectReferences,
+  resolveJarvisProjectIntentScopes,
   type JarvisDialogState,
+  type JarvisIntentSequenceTask,
   type JarvisProjectSequenceScope,
 } from "@/lib/jarvis/dialog-state";
 
@@ -24,6 +27,9 @@ export type JarvisIntentClarificationResponse = {
   topicId: "intent.clarification";
   message: string;
   choices: JarvisDialogChoice[];
+  dialogIntentSequence?: {
+    remainingTasks: JarvisIntentSequenceTask[];
+  };
   deterministic: true;
 };
 
@@ -35,6 +41,17 @@ export type JarvisProjectSequenceClarificationResponse = {
   dialogSequence: {
     remainingReferences: string[];
     scope: JarvisProjectSequenceScope;
+  };
+  deterministic: true;
+};
+
+export type JarvisProjectScopeSequenceClarificationResponse = {
+  type: "clarification";
+  topicId: "project.scope-sequence.clarification";
+  message: string;
+  choices: JarvisDialogChoice[];
+  dialogIntentSequence: {
+    remainingTasks: JarvisIntentSequenceTask[];
   };
   deterministic: true;
 };
@@ -109,6 +126,9 @@ function getProjectSequencePrompt(
   }
   if (scope === "automation") {
     return `Prüfe Automatiken und Zusammenhänge von Projekt ${reference}.`;
+  }
+  if (scope === "improvements") {
+    return `Prüfe Auffälligkeiten und Verbesserungen von Projekt ${reference}.`;
   }
   return `Prüfe Projekt ${reference} vollständig.`;
 }
@@ -185,6 +205,86 @@ export function buildJarvisProjectSequenceContinuation(
   );
 }
 
+const PROJECT_SCOPE_LABELS: Record<JarvisProjectSequenceScope, string> = {
+  full: "Vollständiger Projektcheck",
+  planning: "Planung & Termine",
+  stamps: "Stempelungen & Arbeitszeiten",
+  tasks: "Aufgaben & offene Punkte",
+  commercial: "Angebote & Rechnungen",
+  automation: "Automatik & Zusammenhänge",
+  improvements: "Auffälligkeiten & Verbesserungen",
+};
+
+function getProjectScopeTaskEntity(
+  scope: JarvisProjectSequenceScope
+): JarvisIntentSequenceTask["entity"] {
+  if (scope === "tasks") return "task";
+  return "project";
+}
+
+function canUseProjectScope(
+  scope: JarvisProjectSequenceScope,
+  profile: JarvisAccessProfile
+) {
+  if (!getJarvisActionDecision("project.read", profile).executable) return false;
+  if (scope === "tasks") {
+    return getJarvisActionDecision("task.read", profile).executable;
+  }
+  if (scope === "commercial") {
+    return (
+      getJarvisActionDecision("offer.read", profile).executable ||
+      getJarvisActionDecision("invoice.read", profile).executable
+    );
+  }
+  return true;
+}
+
+function getProjectScopeTaskChoice(task: JarvisIntentSequenceTask) {
+  const scope = task.projectScope ?? "full";
+  return createJarvisDialogChoice(
+    `project-scope-sequence-${scope}`,
+    PROJECT_SCOPE_LABELS[scope],
+    getProjectSequencePrompt(task.projectReference ?? "", scope)
+  );
+}
+
+export function buildJarvisProjectScopeSequenceClarification(
+  question: string,
+  decision: JarvisIntentDecision,
+  profile: JarvisAccessProfile
+): JarvisProjectScopeSequenceClarificationResponse | undefined {
+  if (
+    decision.candidates.some((candidate) => candidate.score >= 100) ||
+    decision.clarificationReasons.includes("multiple_domains") ||
+    decision.clarificationReasons.includes("multiple_time_scopes") ||
+    !decision.goals.some((goal) =>
+      ["read", "diagnose", "analyze"].includes(goal)
+    )
+  ) {
+    return undefined;
+  }
+  const references = extractJarvisProjectReferences(question);
+  const scopes = resolveJarvisProjectIntentScopes(question).filter((scope) =>
+    canUseProjectScope(scope, profile)
+  );
+  if (references.length !== 1 || scopes.length < 2) return undefined;
+  const remainingTasks = scopes.slice(0, 5).map((projectScope) => ({
+    entity: getProjectScopeTaskEntity(projectScope),
+    recordFilter: decision.recordFilter,
+    projectReference: references[0],
+    projectScope,
+  }));
+  return {
+    type: "clarification",
+    topicId: "project.scope-sequence.clarification",
+    message:
+      `Du möchtest ${references[0]} in mehreren Bereichen prüfen. Womit soll JARVIS beginnen? Die übrigen Prüfungen bleiben vorgemerkt.`,
+    choices: remainingTasks.map(getProjectScopeTaskChoice),
+    dialogIntentSequence: { remainingTasks },
+    deterministic: true,
+  };
+}
+
 function getDomainChoices(
   decision: JarvisIntentDecision,
   profile: JarvisAccessProfile
@@ -213,8 +313,23 @@ function getDomainChoices(
 
 function getEntityPrompt(
   entity: JarvisIntentEntity,
-  decision: JarvisIntentDecision
+  decision: JarvisIntentDecision,
+  projectReference?: string
 ) {
+  if (projectReference) {
+    if (entity === "project") {
+      return `Prüfe Projekt ${projectReference} vollständig.`;
+    }
+    if (entity === "task") {
+      return `Prüfe Aufgaben und offene Punkte für ${projectReference}.`;
+    }
+    if (entity === "offer") {
+      return `Prüfe Angebote für ${projectReference}.`;
+    }
+    if (entity === "invoice") {
+      return `Prüfe Rechnungen und Abrechnung für ${projectReference}.`;
+    }
+  }
   const entityText = ENTITY_CONFIG[entity].singular;
   if (decision.recordFilter === "overdue") {
     return `Zeige mir die überfälligen ${entityText}.`;
@@ -232,6 +347,9 @@ function getEntityChoices(
   decision: JarvisIntentDecision,
   profile: JarvisAccessProfile
 ) {
+  const projectReferences = extractJarvisProjectReferences(decision.question);
+  const projectReference =
+    projectReferences.length === 1 ? projectReferences[0] : undefined;
   return decision.entities
     .filter((entity) =>
       ["project", "customer", "task", "offer", "invoice"].includes(entity)
@@ -244,9 +362,120 @@ function getEntityChoices(
       createJarvisDialogChoice(
         `intent-entity-${entity}`,
         ENTITY_CONFIG[entity].label,
-        getEntityPrompt(entity, decision)
+        getEntityPrompt(entity, decision, projectReference)
       )
     );
+}
+
+function getIntentSequenceTasks(
+  decision: JarvisIntentDecision,
+  choices: JarvisDialogChoice[]
+): JarvisIntentSequenceTask[] {
+  const allowedChoiceIds = new Set(choices.map((choice) => choice.id));
+  const projectReferences = extractJarvisProjectReferences(decision.question);
+  const projectReference =
+    projectReferences.length === 1 ? projectReferences[0] : undefined;
+  return decision.entities
+    .filter(
+      (entity): entity is JarvisIntentSequenceTask["entity"] =>
+        ["project", "customer", "task", "offer", "invoice"].includes(entity) &&
+        allowedChoiceIds.has(`intent-entity-${entity}`)
+    )
+    .map((entity) => ({
+      entity,
+      recordFilter: decision.recordFilter,
+      ...(projectReference &&
+      ["project", "task", "offer", "invoice"].includes(entity)
+        ? { projectReference }
+        : {}),
+    }));
+}
+
+function getIntentSequenceTaskPrompt(task: JarvisIntentSequenceTask) {
+  if (task.projectReference && task.projectScope) {
+    return getProjectSequencePrompt(task.projectReference, task.projectScope);
+  }
+  return getEntityPrompt(
+    task.entity,
+    {
+      question: "",
+      state: "resolved",
+      domain: "system",
+      confidence: "high",
+      candidates: [],
+      clarificationReasons: [],
+      goals: ["read"],
+      entities: [task.entity],
+      timeScopes: [],
+      recordFilter: task.recordFilter,
+      segments: [],
+    },
+    task.projectReference
+  );
+}
+
+function getIntentSequenceTaskChoice(task: JarvisIntentSequenceTask) {
+  if (task.projectScope) return getProjectScopeTaskChoice(task);
+  return createJarvisDialogChoice(
+    `intent-sequence-${task.entity}`,
+    ENTITY_CONFIG[task.entity].label,
+    getIntentSequenceTaskPrompt(task)
+  );
+}
+
+function canUseIntentSequenceTask(
+  task: JarvisIntentSequenceTask,
+  profile: JarvisAccessProfile
+) {
+  if (task.projectScope) {
+    return canUseProjectScope(task.projectScope, profile);
+  }
+  const actionId = ENTITY_CONFIG[task.entity].actionId;
+  return !actionId || getJarvisActionDecision(actionId, profile).executable;
+}
+
+export function resolveJarvisIntentSequenceContinuation(
+  state: JarvisDialogState | undefined,
+  question: string,
+  profile: JarvisAccessProfile
+) {
+  if (!state?.intentSequence) return undefined;
+  const decision = resolveJarvisIntentDecision(question);
+  const selectedProjectScopes = resolveJarvisProjectIntentScopes(question);
+  const selectedEntities = decision.entities.filter((entity) =>
+    state.intentSequence?.remainingTasks.some(
+      (task) => task.entity === entity
+    )
+  );
+  const selectedTask = state.intentSequence.remainingTasks.find(
+    (task) =>
+      (task.projectScope
+        ? selectedProjectScopes.length === 1 &&
+          task.projectScope === selectedProjectScopes[0]
+        : selectedEntities.length === 1 &&
+          task.entity === selectedEntities[0]) &&
+      (!task.projectReference ||
+        extractJarvisProjectReferences(question).includes(task.projectReference))
+  );
+  if (!selectedTask) return undefined;
+  const remainingTasks = state.intentSequence.remainingTasks
+    .filter((task) => task !== selectedTask)
+    .filter((task) => canUseIntentSequenceTask(task, profile));
+  return {
+    choices: remainingTasks.map(getIntentSequenceTaskChoice),
+    remainingTasks,
+  };
+}
+
+export function buildJarvisIntentSequenceContinuation(
+  state: JarvisDialogState | undefined,
+  question: string,
+  profile: JarvisAccessProfile
+) {
+  return (
+    resolveJarvisIntentSequenceContinuation(state, question, profile)
+      ?.choices ?? []
+  );
 }
 
 function getTimeScopeChoices(
@@ -291,12 +520,16 @@ export function buildJarvisIntentClarification(
   if (decision.clarificationReasons.includes("multiple_record_targets")) {
     const choices = getEntityChoices(decision, profile);
     if (choices.length === 0) return undefined;
+    const remainingTasks = getIntentSequenceTasks(decision, choices);
     return {
       type: "clarification",
       topicId: "intent.clarification",
       message:
-        "Du hast mehrere Datenbereiche genannt. Welche Datensätze soll JARVIS zuerst anzeigen?",
+        "Du hast mehrere zusammengehörige Anliegen genannt. Welchen Teil soll JARVIS zuerst bearbeiten? Die übrigen bleiben vorgemerkt.",
       choices,
+      ...(remainingTasks.length > 1
+        ? { dialogIntentSequence: { remainingTasks } }
+        : {}),
       deterministic: true,
     };
   }

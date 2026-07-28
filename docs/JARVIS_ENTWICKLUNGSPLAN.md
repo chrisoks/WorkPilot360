@@ -995,6 +995,27 @@ Als nächste Ausbaustufe folgen weitere gleichzeitige Teilabsichten innerhalb
 derselben Fachdomäne, insbesondere gemischte Prüfziele für einen Datensatz
 und geführte Folgen über unterschiedliche Datensatzarten.
 
+Umsetzungsstand 28.07.2026 – Teilanliegen-Orchestrierung: Gleichzeitige
+Lese- und Prüfziele innerhalb derselben Fachdomäne werden als typisierte
+Arbeitsfolge mit höchstens fünf Teilaufträgen geführt. JARVIS fragt nach dem
+Startpunkt, merkt die übrigen erlaubten Teile vor und bietet nach jedem
+Ergebnis den nächsten noch offenen Schritt klickbar an. Für ein ausdrücklich
+genanntes Projekt bleiben Projektreferenz und Prüfumfang getrennt erhalten;
+damit können beispielsweise Planung, Stempelungen, Aufgaben,
+Abrechnung und Automatik nacheinander geprüft werden, ohne dass der zweite
+Teil still verloren geht. Auch mehrere Datensatzarten wie Angebote und
+Rechnungen werden in dieser Folge behandelt. Jeder Teil wird bei seiner
+Ausführung erneut über Sitzung, effektive Rolle, Organisation, Action
+Registry und Datenklasse geprüft. Entfallene Rechte entfernen einen
+Folgeschritt, ohne andere erlaubte Teile zu blockieren. Die Sequenz ist
+deterministisch, rein lesend und verursacht weder zusätzliche
+OpenAI-Aufrufe noch Prisma-/Datenbankänderungen.
+
+Als nächster Dialogbaustein folgen komplexere Folgen über mehrere
+Fachdomänen und mehrdimensionale Kombinationen aus mehreren Projekten,
+Prüfumfängen und Zeiträumen. Solche großen Aufträge müssen bewusst begrenzt,
+verständlich priorisiert und ohne stilles Weglassen zerlegt werden.
+
 ### Phase 3b: Spracheingabe und Sprachausgabe
 
 - Mikrofon- und Berechtigungsoberfläche,

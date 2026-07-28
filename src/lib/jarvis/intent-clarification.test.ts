@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import { Role } from "@prisma/client";
 import {
   buildJarvisIntentClarification,
+  buildJarvisIntentSequenceContinuation,
+  buildJarvisProjectScopeSequenceClarification,
   buildJarvisProjectSequenceClarification,
   buildJarvisProjectSequenceContinuation,
+  resolveJarvisIntentSequenceContinuation,
 } from "@/lib/jarvis/intent-clarification";
 import { resolveJarvisIntentDecision } from "@/lib/jarvis/intent-decision";
 import { createJarvisAccessProfile } from "@/lib/jarvis/security";
@@ -55,6 +58,126 @@ describe("JARVIS intent clarification", () => {
 
     expect(response?.choices.map((choice) => choice.label)).toEqual(["Angebote"]);
     expect(response?.choices[0].prompt).toBe("Zeige mir die offenen Angebote.");
+    expect(response?.dialogIntentSequence).toBeUndefined();
+  });
+
+  it("keeps every permitted record request in a guided work sequence", () => {
+    const response = buildJarvisIntentClarification(
+      resolveJarvisIntentDecision(
+        "Zeige mir die offenen Angebote und Rechnungen."
+      ),
+      managementProfile
+    );
+
+    expect(response).toMatchObject({
+      message:
+        "Du hast mehrere zusammengehörige Anliegen genannt. Welchen Teil soll JARVIS zuerst bearbeiten? Die übrigen bleiben vorgemerkt.",
+      dialogIntentSequence: {
+        remainingTasks: [
+          { entity: "invoice", recordFilter: "open" },
+          { entity: "offer", recordFilter: "open" },
+        ],
+      },
+    });
+  });
+
+  it("preserves a project reference in each matching subtask", () => {
+    const question =
+      "Prüfe Projekt HAS-1 vollständig und zeige die offenen Aufgaben.";
+    const response = buildJarvisIntentClarification(
+      resolveJarvisIntentDecision(question),
+      managementProfile
+    );
+
+    expect(response?.choices).toEqual([
+      {
+        id: "intent-entity-task",
+        label: "Aufgaben",
+        prompt: "Prüfe Aufgaben und offene Punkte für HAS-1.",
+      },
+      {
+        id: "intent-entity-project",
+        label: "Projekte",
+        prompt: "Prüfe Projekt HAS-1 vollständig.",
+      },
+    ]);
+    expect(response?.dialogIntentSequence?.remainingTasks).toEqual([
+      {
+        entity: "task",
+        recordFilter: "open",
+        projectReference: "HAS-1",
+      },
+      {
+        entity: "project",
+        recordFilter: "open",
+        projectReference: "HAS-1",
+      },
+    ]);
+  });
+
+  it("offers only the still-pending and currently permitted subtask", () => {
+    expect(
+      buildJarvisIntentSequenceContinuation(
+        {
+          version: 1,
+          domain: "system",
+          lastQuestion: "Zeige offene Angebote und Rechnungen.",
+          lastIntent: {
+            goals: ["read"],
+            entities: ["offer", "invoice"],
+            timeScopes: [],
+            recordFilter: "open",
+          },
+          intentSequence: {
+            remainingTasks: [
+              { entity: "invoice", recordFilter: "open" },
+              { entity: "offer", recordFilter: "open" },
+            ],
+          },
+        },
+        "Zeige mir die offenen Rechnungen.",
+        managementProfile
+      )
+    ).toEqual([
+      {
+        id: "intent-sequence-offer",
+        label: "Angebote",
+        prompt: "Zeige mir die offenen Angebote.",
+      },
+    ]);
+  });
+
+  it("drops a remaining subtask when the effective role no longer permits it", () => {
+    const salesProfile = createJarvisAccessProfile({
+      id: "sales-1",
+      role: Role.VERTRIEB,
+    });
+    expect(
+      resolveJarvisIntentSequenceContinuation(
+        {
+          version: 1,
+          domain: "system",
+          lastQuestion: "Zeige offene Angebote und Rechnungen.",
+          lastIntent: {
+            goals: ["read"],
+            entities: ["offer", "invoice"],
+            timeScopes: [],
+            recordFilter: "open",
+          },
+          intentSequence: {
+            remainingTasks: [
+              { entity: "offer", recordFilter: "open" },
+              { entity: "invoice", recordFilter: "open" },
+            ],
+          },
+        },
+        "Zeige mir die offenen Angebote.",
+        salesProfile
+      )
+    ).toEqual({
+      choices: [],
+      remainingTasks: [],
+    });
   });
 
   it("does not offer the GF-only sales analysis to a leadership role", () => {
@@ -132,6 +255,39 @@ describe("JARVIS intent clarification", () => {
         label: "MKS-209",
         prompt: "Prüfe Planung und Termine von Projekt MKS-209.",
       },
+    ]);
+  });
+
+  it("keeps several requested checks for one project in a guided sequence", () => {
+    const question =
+      "Wie sieht die Planung von MKG-209 aus und warum gibt es noch keinen Rechnungsentwurf?";
+    const response = buildJarvisProjectScopeSequenceClarification(
+      question,
+      resolveJarvisIntentDecision(question),
+      managementProfile
+    );
+
+    expect(response).toMatchObject({
+      type: "clarification",
+      topicId: "project.scope-sequence.clarification",
+      dialogIntentSequence: {
+        remainingTasks: [
+          {
+            entity: "project",
+            projectReference: "MKG-209",
+            projectScope: "planning",
+          },
+          {
+            entity: "project",
+            projectReference: "MKG-209",
+            projectScope: "commercial",
+          },
+        ],
+      },
+    });
+    expect(response?.choices.map((choice) => choice.label)).toEqual([
+      "Planung & Termine",
+      "Angebote & Rechnungen",
     ]);
   });
 

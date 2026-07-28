@@ -22,7 +22,22 @@ export type JarvisProjectSequenceScope =
   | "stamps"
   | "tasks"
   | "commercial"
-  | "automation";
+  | "automation"
+  | "improvements";
+
+export type JarvisIntentSequenceEntity =
+  | "project"
+  | "customer"
+  | "task"
+  | "offer"
+  | "invoice";
+
+export type JarvisIntentSequenceTask = {
+  entity: JarvisIntentSequenceEntity;
+  recordFilter: JarvisIntentRecordFilter;
+  projectReference?: string;
+  projectScope?: JarvisProjectSequenceScope;
+};
 
 export type JarvisDialogState = {
   version: 1;
@@ -44,6 +59,9 @@ export type JarvisDialogState = {
     remainingReferences: string[];
     scope: JarvisProjectSequenceScope;
   };
+  intentSequence?: {
+    remainingTasks: JarvisIntentSequenceTask[];
+  };
 };
 
 type JarvisDialogResponse = {
@@ -52,6 +70,7 @@ type JarvisDialogResponse = {
   choices?: unknown;
   records?: unknown;
   dialogSequence?: unknown;
+  dialogIntentSequence?: unknown;
 };
 
 const DOMAINS = new Set<JarvisIntentDomain>([
@@ -96,6 +115,14 @@ const PROJECT_SEQUENCE_SCOPES = new Set<JarvisProjectSequenceScope>([
   "tasks",
   "commercial",
   "automation",
+  "improvements",
+]);
+const INTENT_SEQUENCE_ENTITIES = new Set<JarvisIntentSequenceEntity>([
+  "project",
+  "customer",
+  "task",
+  "offer",
+  "invoice",
 ]);
 
 function cleanText(value: unknown, maxLength: number) {
@@ -138,6 +165,64 @@ function sanitizeProjectReference(value: unknown) {
     : "";
 }
 
+function sanitizeIntentSequenceTask(
+  value: unknown
+): JarvisIntentSequenceTask | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  const entity = candidate.entity;
+  const recordFilter = candidate.recordFilter;
+  const projectReference = sanitizeProjectReference(
+    candidate.projectReference
+  );
+  const projectScope = candidate.projectScope;
+  if (
+    typeof entity !== "string" ||
+    !INTENT_SEQUENCE_ENTITIES.has(entity as JarvisIntentSequenceEntity) ||
+    typeof recordFilter !== "string" ||
+    !RECORD_FILTERS.has(recordFilter as JarvisIntentRecordFilter)
+  ) {
+    return undefined;
+  }
+  if (
+    typeof projectScope === "string" &&
+    PROJECT_SEQUENCE_SCOPES.has(projectScope as JarvisProjectSequenceScope) &&
+    !projectReference
+  ) {
+    return undefined;
+  }
+  return {
+    entity: entity as JarvisIntentSequenceEntity,
+    recordFilter: recordFilter as JarvisIntentRecordFilter,
+    ...(projectReference ? { projectReference } : {}),
+    ...(typeof projectScope === "string" &&
+    PROJECT_SEQUENCE_SCOPES.has(projectScope as JarvisProjectSequenceScope)
+      ? { projectScope: projectScope as JarvisProjectSequenceScope }
+      : {}),
+  };
+}
+
+function sanitizeIntentSequence(value: unknown) {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (!Array.isArray(candidate.remainingTasks)) return undefined;
+  const remainingTasks = candidate.remainingTasks
+    .map(sanitizeIntentSequenceTask)
+    .filter((task): task is JarvisIntentSequenceTask => Boolean(task))
+    .filter(
+      (task, index, list) =>
+        list.findIndex(
+          (other) =>
+            other.entity === task.entity &&
+            other.recordFilter === task.recordFilter &&
+            other.projectReference === task.projectReference &&
+            other.projectScope === task.projectScope
+        ) === index
+    )
+    .slice(0, 5);
+  return remainingTasks.length > 0 ? { remainingTasks } : undefined;
+}
+
 export function extractJarvisProjectReferences(question: string) {
   const matches =
     question.toUpperCase().match(/\b[\p{L}]{2,}[- ]?\d{1,8}\b/gu) ?? [];
@@ -145,6 +230,34 @@ export function extractJarvisProjectReferences(question: string) {
     0,
     5
   );
+}
+
+export function resolveJarvisProjectIntentScopes(question: string) {
+  const value = normalize(question);
+  const scopes: JarvisProjectSequenceScope[] = [];
+  const add = (scope: JarvisProjectSequenceScope, condition: boolean) => {
+    if (condition && !scopes.includes(scope)) scopes.push(scope);
+  };
+  add(
+    "full",
+    /\b(vollstandig|gesundheitscheck|komplett|alles)\b/.test(value)
+  );
+  add("stamps", /\b(stempel|arbeitszeit|zeiteintrag|stunden)\w*\b/.test(value));
+  add("planning", /\b(planung|termin|verplan)\w*\b/.test(value));
+  add("tasks", /\b(aufgabe|offene punkte|todo|unterbrech)\w*\b/.test(value));
+  add(
+    "commercial",
+    /\b(angebot|rechnung|abrechnung|faktura)\w*\b/.test(value)
+  );
+  add(
+    "automation",
+    /\b(automatik|zusammenhang|workflow|prozess)\w*\b/.test(value)
+  );
+  add(
+    "improvements",
+    /\b(auffallig|verbesser|optimier|was fehlt)\w*\b/.test(value)
+  );
+  return scopes;
 }
 
 export function sanitizeJarvisDialogState(
@@ -191,6 +304,7 @@ export function sanitizeJarvisDialogState(
         .filter(Boolean)
         .slice(0, 4)
     : [];
+  const intentSequence = sanitizeIntentSequence(candidate.intentSequence);
 
   return {
     version: 1,
@@ -226,6 +340,7 @@ export function sanitizeJarvisDialogState(
             scope: projectSequenceScope as JarvisProjectSequenceScope,
           }
         : undefined,
+    intentSequence,
   };
 }
 
@@ -395,6 +510,11 @@ export function buildJarvisDialogState(input: {
     },
     projectSequence: response.dialogSequence,
   })?.projectSequence;
+  const responseIntentSequence = sanitizeIntentSequence(
+    response.dialogIntentSequence
+  );
+  const hasResponseIntentSequence =
+    response.dialogIntentSequence !== undefined;
   const questionReferences = extractJarvisProjectReferences(question);
   const previousSequence = input.previousState?.projectSequence;
   const belongsToPreviousSequence =
@@ -416,6 +536,35 @@ export function buildJarvisDialogState(input: {
           scope: previousSequence.scope,
         }
       : undefined);
+  const previousIntentSequence = input.previousState?.intentSequence;
+  const selectedIntentEntities = decision.entities.filter((entity) =>
+    INTENT_SEQUENCE_ENTITIES.has(entity as JarvisIntentSequenceEntity)
+  ) as JarvisIntentSequenceEntity[];
+  const selectedProjectScopes = resolveJarvisProjectIntentScopes(question);
+  const selectedIntentTask =
+    previousIntentSequence
+      ? previousIntentSequence.remainingTasks.find(
+          (task) =>
+            (task.projectScope
+              ? selectedProjectScopes.length === 1 &&
+                task.projectScope === selectedProjectScopes[0]
+              : selectedIntentEntities.length === 1 &&
+                task.entity === selectedIntentEntities[0]) &&
+            (!task.projectReference ||
+              questionReferences.includes(task.projectReference))
+        )
+      : undefined;
+  const remainingIntentTasks = selectedIntentTask
+    ? previousIntentSequence?.remainingTasks.filter(
+        (task) => task !== selectedIntentTask
+      ) ?? []
+    : [];
+  const intentSequence =
+    hasResponseIntentSequence
+      ? responseIntentSequence
+      : remainingIntentTasks.length > 0
+      ? { remainingTasks: remainingIntentTasks }
+      : undefined;
 
   return {
     version: 1,
@@ -438,6 +587,7 @@ export function buildJarvisDialogState(input: {
         ? { topicId, depth: clarificationDepth }
         : undefined,
     projectSequence,
+    intentSequence,
   };
 }
 

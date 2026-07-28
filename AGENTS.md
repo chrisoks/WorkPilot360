@@ -1,5 +1,23 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Teilanliegen-Orchestrierung 2026-07-28: Mehrere zusammengehörige
+  Lese- oder Prüfanliegen innerhalb derselben Fachdomäne werden nicht mehr
+  nach der ersten Auswahl vergessen. JARVIS bildet eine streng typisierte,
+  clientseitig erneut validierte Arbeitsfolge aus höchstens fünf erlaubten
+  Teilaufträgen. Nach jedem Ergebnis wird der noch offene nächste Teil als
+  klickbare Auswahl angeboten; erledigte Teile werden aus dem Dialogzustand
+  entfernt. Bei mehreren Prüfumfängen für ein ausdrücklich genanntes Projekt
+  bleiben Projektreferenz und Umfang getrennt erhalten, beispielsweise
+  Planung und anschließende Rechnungsprüfung für `MKG-209`. Generische
+  Kombinationen wie offene Angebote plus Rechnungen führen dieselbe
+  Datensatzfolge fort. Jeder Teilauftrag durchläuft bei Ausführung erneut
+  Sitzungs-, Rollen-, Organisations-, Action-Registry- und Datenklassenprüfung;
+  eine zwischenzeitlich entfallene Berechtigung blendet den betreffenden
+  Folgeschritt aus. Sicherheits-, Geheimnis- und bereichsübergreifende
+  Mehrdeutigkeiten bleiben vor der Orchestrierung gesperrt beziehungsweise
+  rückfragepflichtig. Rein lesend, deterministisch und ohne zusätzlichen
+  OpenAI-, Prisma- oder Datenbankzugriff.
+
 - JARVIS mehrstufiger Dialogkontext 2026-07-28: Der gemeinsame Chat führt
   Fachdomäne, letztes Ziel, Fachobjekte, Zeitraum, Datensatzbezug und
   Klärungstiefe jetzt als typisierten, clientseitig erneut streng
