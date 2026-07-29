@@ -14,6 +14,7 @@ import {
   createJarvisDialogChoice,
   type JarvisDialogChoice,
 } from "@/lib/jarvis/dialog";
+import { normalizeJarvisIntentText } from "@/lib/jarvis/intent-text";
 
 export type JarvisSurfaceContext = {
   module?: string;
@@ -648,6 +649,13 @@ export function findJarvisExactHelpTopicId(
   question: string,
   context: JarvisSurfaceContext = {}
 ) {
+  const normalizedIntent = normalizeJarvisIntentText(question);
+  if (
+    /\btermin\w*\b/.test(normalizedIntent) &&
+    /\b(?:buch|leg|erstell|eintrag|plan)\w*\b/.test(normalizedIntent)
+  ) {
+    return "appointment.create";
+  }
   const ranked = TOPICS
     .map((topic) => ({ topic, score: scoreTopic(topic, question, context) }))
     .sort((first, second) => second.score - first.score);

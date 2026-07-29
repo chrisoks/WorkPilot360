@@ -12,6 +12,7 @@ describe("JARVIS intent text tolerance", () => {
     ["monatsauschale", "monatspauschale"],
     ["stundenabrechnng", "stundenabrechnung"],
     ["sollprozes", "sollprozess"],
+    ["termn", "termin"],
   ])("corrects the known intent typo %s", (input, expected) => {
     expect(correctJarvisIntentToken(input)).toBe(expected);
   });

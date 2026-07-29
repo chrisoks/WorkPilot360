@@ -68,4 +68,13 @@ describe("JARVIS project dialog intent", () => {
       })
     ).toBeUndefined();
   });
+
+  it("does not turn a plural project-list question into the open project", () => {
+    expect(
+      resolveJarvisProjectDialogIntent({
+        question: "Welche Projekte sind noch offen?",
+        hasProjectContext: true,
+      })
+    ).toBeUndefined();
+  });
 });

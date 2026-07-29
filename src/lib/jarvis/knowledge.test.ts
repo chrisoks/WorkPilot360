@@ -106,6 +106,19 @@ describe("JARVIS system help", () => {
     expect(result.message).toContain("Monatspauschale");
   });
 
+  it("recognizes appointment help despite a typical intent typo", () => {
+    expect(
+      resolveJarvisSystemHelp(
+        "Wie buche ih hir einen Termn?",
+        { module: "Projektakte", recordType: "project" },
+        leadershipAccess
+      )
+    ).toMatchObject({
+      type: "answer",
+      topicId: "appointment.create",
+    });
+  });
+
   it("routes exact project navigation questions without falling into project creation", () => {
     expect(
       resolveJarvisSystemHelp(

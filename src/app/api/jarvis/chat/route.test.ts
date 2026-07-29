@@ -1677,6 +1677,17 @@ describe("POST /api/jarvis/chat", () => {
 
   it("answers deterministic sales analysis inside the unified chat", async () => {
     mocks.resolveJarvisSalesAnalysisIntent.mockReturnValue(true);
+    mocks.classifyJarvisIntentWithAi.mockResolvedValue({
+      intent: "unclear",
+      domain: "sales",
+      entity: "customer",
+      scope: "collection",
+      helpTopicId: "none",
+      confidence: "low",
+      needsClarification: true,
+      usesCurrentContext: false,
+      actionKind: "none",
+    });
     mocks.resolveJarvisSalesAnalysisRequest.mockResolvedValue({
       type: "answer",
       topicId: "sales.analysis",
@@ -2067,5 +2078,44 @@ describe("POST /api/jarvis/chat", () => {
       "capability.analysis-adapter-missing"
     );
     expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
+  });
+
+  it("resolves a referential project-check follow-up before AI clarification", async () => {
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      module: "Projekte",
+      recordType: "project",
+      recordId: "project-1",
+    });
+    mocks.classifyJarvisIntentWithAi.mockResolvedValue({
+      intent: "unclear",
+      domain: "system",
+      entity: "project",
+      scope: "current_record",
+      helpTopicId: "none",
+      confidence: "low",
+      needsClarification: true,
+      usesCurrentContext: true,
+      actionKind: "none",
+    });
+    mocks.resolveJarvisProjectHealthRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "project.health.full",
+      message: "Vollständiger Projektcheck.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Prüf das mal.",
+        }),
+      })
+    );
+
+    expect((await response.json()).topicId).toBe("project.health.full");
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
   });
 });

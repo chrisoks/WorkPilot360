@@ -33,6 +33,7 @@ describe("JARVIS sales analysis", () => {
     expect(resolveJarvisSalesAnalysisIntent("Welche Kunden sollte ich nachfassen?")).toBe(true);
     expect(resolveJarvisSalesAnalysisIntent("Analysiere unsere Projekte auf Vertriebschancen.")).toBe(true);
     expect(resolveJarvisSalesAnalysisIntent("Welche Kunden oder Angebote soll ich heute aktiv angehen?")).toBe(true);
+    expect(resolveJarvisSalesAnalysisIntent("Zeige Kunden mit ungenutztem Zusatzverkaufspotenzial.")).toBe(true);
     expect(resolveJarvisSalesAnalysisIntent("Wie lege ich einen Kunden an?")).toBe(false);
   });
 

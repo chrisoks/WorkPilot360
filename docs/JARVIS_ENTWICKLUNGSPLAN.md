@@ -45,6 +45,10 @@ Stand: 29.07.2026
 - Ein offener Projektkontext überstimmt dabei weder eindeutig erkannte
   Personenfragen noch unternehmensweite Analysefragen. Diese stabileren
   Deterministiken behalten Vorrang vor einer allgemeinen Projektklärung.
+- Referentielle Prüf-Folgefragen übernehmen den eindeutig geklärten
+  Projektdatensatz sicher. Mehrzahlfragen zu Projekten bleiben
+  projektübergreifend; klare Zusatzverkaufsfragen nutzen den lesenden
+  Vertriebs-Dry-Run statt einer probabilistischen Rückfrage.
 
 ### Intent-Orchestrator V4
 

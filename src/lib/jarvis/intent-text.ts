@@ -16,6 +16,8 @@ const KNOWN_JARVIS_INTENT_TERMS = [
   "planung",
   "geplant",
   "verplant",
+  "termin",
+  "termine",
   "folgemonat",
   "rechnung",
   "rechnungen",

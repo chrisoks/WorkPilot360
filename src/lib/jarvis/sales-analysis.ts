@@ -64,6 +64,7 @@ const ANALYSIS_PATTERNS = [
   /\bwo\b.*\bnachfass/i,
   /\bwelche\b.*\b(?:kunde|kunden|projekt|projekte)\b.*\b(?:nachfass|kontaktier|ansprech)/i,
   /\b(?:vertriebschance|vertriebschancen|verkaufschance|verkaufschancen)\b/i,
+  /\b(?:zusatzverkauf|cross.?sell|upsell)\w*\b/i,
   /\b(?:wiederholungsauftrag|wiederholungsauftrage|folgeauftrag|folgeauftrage)\b/i,
   /\b(?:vorjahresleistung|vorjahresleistungen|letztes jahr)\b.*\b(?:kunde|kunden|leistung|leistungen|projekt|projekte)\b/i,
   /\b(?:analysiere|prufe|checke|check)\b.*\b(?:vertrieb|kunden|projekte)\b/i,

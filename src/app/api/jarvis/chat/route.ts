@@ -65,6 +65,7 @@ import {
 } from "@/lib/jarvis/dialog-state";
 import { createJarvisDialogChoice } from "@/lib/jarvis/dialog";
 import { resolveJarvisProjectDialogIntent } from "@/lib/jarvis/project-dialog-intent";
+import { normalizeJarvisIntentText } from "@/lib/jarvis/intent-text";
 
 export const dynamic = "force-dynamic";
 
@@ -122,18 +123,14 @@ function looksLikeDirectActionRequest(
 }
 
 function looksLikeDeterministicHelpRequest(question: string) {
-  const value = question
-    .toLocaleLowerCase("de-DE")
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  const value = normalizeJarvisIntentText(question);
   return (
     /^(?:wo|wie)\b/.test(value) &&
     (
       /\b(?:sehe|erkenne|finde|offne|oeffne)\s+ich\b/.test(value) ||
       /\bwo\b.*\b(?:sehe|erkenne|finde)\b/.test(value) ||
-      /\bwie\b.*\b(?:versende|verschicke|sende)\b/.test(value)
+      /\bwie\b.*\b(?:versende|verschicke|sende)\b/.test(value) ||
+      /\bwie\b.*\b(?:buch|leg|erfass|trag|plan|verplan)\w*\b/.test(value)
     )
   );
 }
@@ -405,6 +402,7 @@ export async function POST(req: Request) {
     resolveJarvisPersonIntent(message) ??
     resolveJarvisPersonDiagnosticIntent(message);
   const deterministicCapabilityGap = resolveJarvisCapabilityGap(message);
+  const deterministicSalesIntent = resolveJarvisSalesAnalysisIntent(message);
   const deterministicProjectDialogIntent =
     resolveJarvisProjectDialogIntent({
       question: message,
@@ -413,10 +411,19 @@ export async function POST(req: Request) {
         context.recordType === "project" ||
         conversationContext?.recordType === "project",
     });
+  const deterministicProjectDiagnosticFollowUp =
+    (context.recordType === "project" ||
+      conversationContext?.recordType === "project") &&
+    isJarvisReferentialFollowUp(message) &&
+    /^\s*(?:prüf|pruef|pruf|check|analysier|untersuch|kontrollier)\w*\s+(?:das|dies|dort|hier)\b/iu.test(
+      message
+    );
   if (
-    deterministicProjectDialogIntent &&
+    (deterministicProjectDialogIntent ||
+      deterministicProjectDiagnosticFollowUp) &&
     !deterministicPersonIntent &&
-    !deterministicCapabilityGap
+    !deterministicCapabilityGap &&
+    !deterministicSalesIntent
   ) {
     const projectDialogResponse = await resolveJarvisProjectHealthRequest({
       question: message,
@@ -467,7 +474,8 @@ export async function POST(req: Request) {
     (routePlan.prepareAction || routePlan.needsClarification) &&
     !deterministicHelpRequest &&
     !deterministicPersonIntent &&
-    !deterministicCapabilityGap
+    !deterministicCapabilityGap &&
+    !deterministicSalesIntent
   ) {
     const aiClarification = buildAiIntentClarification(
       aiIntentClassification,
@@ -554,7 +562,7 @@ export async function POST(req: Request) {
   ) {
     return respond(organizationMaterialResponse, "management");
   }
-  if (resolveJarvisSalesAnalysisIntent(message)) {
+  if (deterministicSalesIntent) {
     const salesAnalysisResponse = await resolveJarvisSalesAnalysisRequest({
       question: message,
       organizationId: organization.id,
