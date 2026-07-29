@@ -178,7 +178,7 @@ function resolveRelation(
       normalized
     );
   const asksForMaterialAnalysis =
-    /\b(welche|wieviel|wie viel|menge|verbrauch|verwendet|abgerechnet|verkauft|lager|analysier|pruf|auswert|auffallig)\w*\b/.test(
+    /\b(welche|wieviel|wie viel|menge|verbrauch|verwendet|abgerechnet|verkauft|lager|analysier|pruf|auswert|auffallig|wirtschaftlich|rentabel)\w*\b/.test(
       normalized
     ) ||
     /\bwert\w*\b.*\baus\b/.test(normalized);

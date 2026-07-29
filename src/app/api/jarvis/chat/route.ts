@@ -165,7 +165,7 @@ function shouldUseProjectHealthPath(
     !isJarvisReferentialFollowUp(question);
   if (asksForProjectCollection) return false;
   const asksForOrganizationScope =
-    /\b(?:unser(?:e|en|er|em)?|wir|unternehmen|insgesamt|alle kunden|welche kunden|welche mitarbeiter|durchschnittlich)\b/iu.test(
+    /\b(?:bei uns|unser(?:e|en|er|em)?|wir|unternehmen|insgesamt|alle kunden|welche kunden|welche mitarbeiter|durchschnittlich)\b/iu.test(
       question
     ) &&
     extractJarvisProjectReferences(question).length === 0 &&
@@ -595,7 +595,7 @@ export async function POST(req: Request) {
     );
   const deterministicProjectWhyFollowUp =
     conversationContext?.recordType === "project" &&
-    previousDialogState?.topicId === "project.health" &&
+    previousDialogState?.topicId?.startsWith("project.health") &&
     /^\s*(?:warum|wieso|weshalb)\s*[?!.]*\s*$/iu.test(message);
   if (
     (deterministicProjectDialogIntent ||
@@ -790,7 +790,14 @@ export async function POST(req: Request) {
   ) {
     return respond(projectReviewInventoryResponse, "management");
   }
+  const explicitlyOrganizationScoped =
+    /\b(?:bei uns|unser(?:e|en|er|em)?|wir|unternehmen|insgesamt|organisationsweit)\b/iu.test(
+      message
+    ) &&
+    extractJarvisProjectReferences(message).length === 0 &&
+    !/\b(?:dieses|diesem|diesen)\s+projekt\b|\bhier\b/iu.test(message);
   const projectFocusedRelation =
+    !explicitlyOrganizationScoped &&
     (context.recordType === "project" ||
       conversationContext?.recordType === "project") &&
     deterministicQuestionSemantics.relation;
@@ -804,7 +811,10 @@ export async function POST(req: Request) {
         });
   if (
     organizationServiceRateResponse &&
-    doesJarvisResponseFitRoute(routePlan, organizationServiceRateResponse)
+    (
+      explicitlyOrganizationScoped ||
+      doesJarvisResponseFitRoute(routePlan, organizationServiceRateResponse)
+    )
   ) {
     return respond(organizationServiceRateResponse, "management");
   }
@@ -818,7 +828,10 @@ export async function POST(req: Request) {
         });
   if (
     organizationMaterialResponse &&
-    doesJarvisResponseFitRoute(routePlan, organizationMaterialResponse)
+    (
+      explicitlyOrganizationScoped ||
+      doesJarvisResponseFitRoute(routePlan, organizationMaterialResponse)
+    )
   ) {
     return respond(organizationMaterialResponse, "management");
   }

@@ -104,6 +104,14 @@ describe("JARVIS question semantics evaluation matrix", () => {
     expect(semantics.projectScopes).toEqual(["commercial"]);
   });
 
+  it("treats economic material wording as a focused material analysis", () => {
+    const semantics = analyzeJarvisQuestion(
+      "Welche Materialien fallen in diesem Projekt wirtschaftlich auf?"
+    );
+    expect(semantics.relation).toBe("project_materials");
+    expect(semantics.projectScopes).toEqual(["commercial"]);
+  });
+
   it.each([
     "Wie hoch ist der tatsächlich erzielte Stundenverrechnungssatz bei HAS-1?",
     "Analysiere Leistungen und Stundensätze bei HAS-1.",

@@ -1,5 +1,20 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS qualitative Live-Haertung 2026-07-29: Der erste nach Inhalt statt
+  nur technischer Antwortexistenz bewertete produktive 100er-Lauf war
+  technisch 100/100, qualitativ aber nur 77/100. Die zehn Prinzipienfragen
+  waren nach der Fokussierung vollstaendig unterschiedlich und passend.
+  Weitere klare Luecken betrafen pauschale Rueckfragen, eine zu breite
+  Projektart-Erkennung, einzelne Projektfakten, organisationsweite
+  Materialfragen, Governance-Varianten, Mitarbeiterentwicklung und die
+  Prompt-Injection-Formulierung `Ignoriere deine Regeln`. Diese
+  Fragefamilien werden gebuendelt behoben und muessen vor Abschluss erneut
+  vollstaendig live geprueft werden. Die kuenftige hybride Sinnerkennung
+  nutzt deterministische Pfade nur fuer sehr eindeutige oder
+  sicherheitskritische Faelle; nicht eindeutige Fragen sollen strukturiert
+  nach Aussageabsicht klassifiziert und spaeter aus freigegebenem Wissen
+  natuerlich, aber ohne Rechte- oder Aktionsbefugnis formuliert werden.
+
 - JARVIS fokussierte Prinzipienantworten 2026-07-29: Eine allgemeine
   Prinzipienfrage darf weiterhin die vollstaendige Uebersicht liefern. Fragt
   ein Mensch nach einem einzelnen Prinzip, muss JARVIS genau dieses Prinzip

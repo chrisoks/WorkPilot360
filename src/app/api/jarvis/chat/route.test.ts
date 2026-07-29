@@ -1101,7 +1101,7 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
   });
 
-  it("keeps a short why follow-up on the previous project health check", async () => {
+  it("keeps a short why follow-up after a plain-language project answer", async () => {
     mocks.resolveJarvisProjectHealthRequest.mockResolvedValue({
       type: "answer",
       topicId: "project.health",
@@ -1120,7 +1120,7 @@ describe("POST /api/jarvis/chat", () => {
           dialogState: {
             version: 1,
             domain: "system",
-            topicId: "project.health",
+            topicId: "project.health.plain-language",
             activeRecord: { kind: "project", id: "project-1" },
             lastQuestion: "Prüf das mal.",
             lastIntent: {
@@ -2311,6 +2311,45 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.resolveJarvisSalesAnalysisRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisSystemHelp).not.toHaveBeenCalled();
+  });
+
+  it("keeps 'bei uns' material wording organization-wide despite an open project", async () => {
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      module: "Projekte",
+      recordType: "project",
+      recordId: "project-1",
+    });
+    mocks.resolveJarvisOrganizationMaterialRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "management.materials",
+      message: "Vier Materialarten wurden verglichen.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Welche Materialien fallen bei uns wirtschaftlich auf?",
+          context: { recordType: "project", recordId: "project-1" },
+        }),
+      })
+    );
+
+    expect(await response.json()).toMatchObject({
+      topicId: "management.materials",
+      message: "Vier Materialarten wurden verglichen.",
+    });
+    expect(
+      mocks.resolveJarvisOrganizationMaterialRequest
+    ).toHaveBeenCalledWith({
+      question: "Welche Materialien fallen bei uns wirtschaftlich auf?",
+      organizationId: "organization-1",
+      accessProfile: { profile: true },
+    });
+    expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
   });
 
   it("lets an AI-recognized global invoice read outrank the open project", async () => {

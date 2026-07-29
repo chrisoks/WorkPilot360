@@ -4,10 +4,14 @@ export type JarvisProjectDialogIntent =
   | "explainIdentity"
   | "explainCustomer"
   | "explainAddress"
+  | "explainTrade"
+  | "explainVolume"
   | "explainProjectType"
   | "explainBilling"
   | "explainProcess"
   | "explainStatus"
+  | "explainPlanning"
+  | "explainRisk"
   | "explainResponsibility"
   | "explainReviewStatus"
   | "explainLastChange"
@@ -35,6 +39,7 @@ export function resolveJarvisProjectDialogIntent(input: {
 
   if (
     /\bwelch\w*\b.*\bkund\w*\b.*\bprojekt\b/.test(value) ||
+    /\bwer ist\b.*\bkund\w*\b.*\bprojekt\w*\b/.test(value) ||
     /\b(?:kunde|kunden)\b.*\b(?:gehort|ist|hat|verknupft)\b.*\bprojekt\b/.test(
       value
     )
@@ -54,7 +59,21 @@ export function resolveJarvisProjectDialogIntent(input: {
   }
 
   if (
-    /(welche|was fur eine|was ist .* fur (?:ein|en|nen)).*(projektart|projekttyp|projekt)\b/.test(
+    /\bwelch\w*\b.*\bgewerk\b/.test(value) ||
+    /\bgewerk\b.*\b(?:projekt|hat|ist|hinterlegt)\b/.test(value)
+  ) {
+    return "explainTrade";
+  }
+
+  if (
+    /\bwelch\w*\b.*\bprojektvolumen\b/.test(value) ||
+    /\bprojektvolumen\b.*\b(?:hinterlegt|hat|ist)\b/.test(value)
+  ) {
+    return "explainVolume";
+  }
+
+  if (
+    /\b(?:welche projektart|welchen projekttyp|was fur (?:ein|eine) projekt(?:art|typ)?|was ist .* fur (?:ein|en|nen) projekt)\b/.test(
       value
     ) ||
     /(was|welch).*(furn|fur n|fur ein|fur eine).*(projekt|projektart|projekttyp)/.test(
@@ -98,6 +117,20 @@ export function resolveJarvisProjectDialogIntent(input: {
     /\bstatus\b.*\b(?:projekt|hat|ist)\b/.test(value)
   ) {
     return "explainStatus";
+  }
+
+  if (
+    /\b(?:wie ist|was ist)\b.*\bplanungsstand\b/.test(value) ||
+    /\bplanungsstand\b.*\b(?:projekt|hat|ist)\b/.test(value)
+  ) {
+    return "explainPlanning";
+  }
+
+  if (
+    /\b(?:gro(?:ss|ß)te[snr]?|wichtigste[snr]?)\b.*\brisiko\b/.test(value) ||
+    /\brisiko\b.*\b(?:projekt|aktuell|gro(?:ss|ß))\b/.test(value)
+  ) {
+    return "explainRisk";
   }
 
   if (

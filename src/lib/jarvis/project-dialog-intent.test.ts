@@ -6,7 +6,10 @@ describe("JARVIS project dialog intent", () => {
     ["Was ist HAS-1 für ein Projekt?", "explainProjectType"],
     ["Wie lautet die Projektnummer hier?", "explainIdentity"],
     ["Welcher Kunde gehört zu diesem Projekt?", "explainCustomer"],
+    ["Wer ist der Kunde dieses Projekts?", "explainCustomer"],
     ["Welche Objektadresse ist mit dem Projekt verknüpft?", "explainAddress"],
+    ["Welches Gewerk hat dieses Projekt?", "explainTrade"],
+    ["Welches Projektvolumen ist hinterlegt?", "explainVolume"],
     ["Welche Projektart hat HAS-1?", "explainProjectType"],
     [
       "Erkläre Projektart, Abrechnung und Sollprozess für HAS-1.",
@@ -19,6 +22,8 @@ describe("JARVIS project dialog intent", () => {
     ["Was unterscheidet HAS-1 von einem Einmalprojekt?", "explainProcess"],
     ["Was isn HAS-1 eigentlich fürn Projekt?", "explainProjectType"],
     ["Welchen Status hat HAS-1?", "explainStatus"],
+    ["Wie ist der Planungsstand dieses Projekts?", "explainPlanning"],
+    ["Was ist aktuell das größte Risiko bei diesem Projekt?", "explainRisk"],
     ["Wer ist bei HAS-1 verantwortlich?", "explainResponsibility"],
     ["Wer kümmert sich um das Projekt?", "explainResponsibility"],
     ["Ist HAS-1 fachlich freigegeben?", "explainReviewStatus"],
@@ -77,6 +82,16 @@ describe("JARVIS project dialog intent", () => {
     expect(
       resolveJarvisProjectDialogIntent({
         question: "Welche Projekte sind noch offen?",
+        hasProjectContext: true,
+      })
+    ).toBeUndefined();
+  });
+
+  it("does not confuse a material question with the project type", () => {
+    expect(
+      resolveJarvisProjectDialogIntent({
+        question:
+          "Welche Materialien fallen in diesem Projekt wirtschaftlich auf?",
         hasProjectContext: true,
       })
     ).toBeUndefined();

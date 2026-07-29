@@ -30,6 +30,7 @@ function healthySnapshot(
       forecastNetAmount: null,
       trade: "Marketing",
       branch: "OK solutions",
+      volume: "25000",
       address: null,
       responsibleName: "Christian Eid",
       timeBudgetEnabled: false,

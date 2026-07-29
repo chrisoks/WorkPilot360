@@ -37,6 +37,7 @@ export type JarvisQuestionAuthorization = {
 const PROMPT_INJECTION_PATTERNS = [
   /ignore (all )?(previous|above|earlier) instructions/i,
   /ignoriere .*anweisung/i,
+  /ignoriere .*regel/i,
   /ignoriere\s+(?:alles\s+)?(?:vorher|bisher|oben)/i,
   /vergiss .*anweisung/i,
   /system[-_ ]?prompt/i,

@@ -126,12 +126,48 @@ betroffenen Menschen.
   Geheimnis- oder Aktionssperre.
 - Sichere exakte Bedienhilfen werden vor der optionalen KI-Klassifikation
   beantwortet. Dadurch benötigen häufige Navigation und Projektübersicht
-  keinen Modellaufruf. Der vollständige Live-Vergleich nach der Nachhärtung
-  lieferte 110/110 technisch vollständige Antworten ohne Wiederholung;
-  schreibende Befehle blieben blockiert und Geheimnisse wurden nicht
-  ausgegeben.
+  keinen Modellaufruf. Der damalige Live-Vergleich nach der Nachhärtung
+  lieferte 110/110 technisch vollständige Antworten; schreibende Befehle
+  blieben blockiert und Geheimnisse wurden nicht ausgegeben. Die strengere
+  qualitative Neubewertung vom 29.07.2026 hat gezeigt, dass technische
+  Vollständigkeit allein Wiederholungen, zu allgemeine Rückfragen und
+  einzelne Fehlzuordnungen nicht zuverlässig erkennt. Frühere technische
+  Grünwerte gelten deshalb nicht als qualitative Freigabe.
 
 ### Intent-Orchestrator V4 – Live-Härtung
+
+Qualitative Live-Härtung 29.07.2026:
+
+- Jede Antwort wird zusätzlich auf inhaltliche Richtigkeit, konkrete
+  Fragerelevanz, Verständlichkeit, Angemessenheit und Handlungsnutzen
+  bewertet. Eine technisch vorhandene Antwort ist allein kein bestandener
+  Test.
+- Ganze Fragenserien werden auf identische oder inhaltlich repetitive
+  Antworten, Widersprüche, Ausweichantworten und unnötige Textmenge geprüft.
+  Eine allgemeine Prinzipienfrage erhält die Übersicht; Fragen zu einem
+  einzelnen Prinzip, einer Sicherheitsgrenze oder einem Entwicklungsaspekt
+  erhalten eine fokussierte Erklärung und praktische Konsequenz.
+- Der erste nach diesem Maßstab bewertete 100er-Lauf war technisch 100/100,
+  qualitativ jedoch nur 77/100. Dieser Befund ist ausdrücklich
+  entwicklungsrelevant und löst eine erneute vollständige Live-Abnahme nach
+  der Korrektur aus.
+
+Geplanter hybrider Ausbau der Sinnerkennung:
+
+- Sehr eindeutige Navigation, Secrets, Rollen-, Organisations- und
+  Aktionsgrenzen bleiben deterministisch, schnell und fail-closed.
+- Für alle nicht eindeutig auflösbaren Fragen erweitert die Intent-KI ihr
+  strukturiertes Schema um die Aussageabsicht `erklären`, `begründen`,
+  `anwenden`, `Beispiel`, `vergleichen` oder `abwägen`. Bei verbleibender
+  Mehrdeutigkeit fragt JARVIS gezielt nach.
+- Eine spätere, getrennte Antwortkomposition darf aus freigegebenen
+  Prinzipien, Systemwissen und rollenberechtigten Live-Daten natürlich
+  formulieren. Sie erhält keine Befugnis für Datenzugriff, Rechte oder
+  Aktionen und muss Fakten, Ableitungen und Unsicherheiten sichtbar trennen.
+- Ein Qualitätsprüfer bewertet Antwortserien semantisch gegen Frage,
+  freigegebene Quellen und vorherige Antworten. Er ergänzt, ersetzt aber
+  nicht die deterministischen Sicherheits-, Rollen-, Mandanten- und
+  Speicherprüfungen.
 
 - Ein vollständiger Live-Basislauf mit 110 natürlich formulierten Fragen
   prüft Bedienung, Lesen, Diagnose, Analyse, Kontextwechsel, Aktionswünsche,

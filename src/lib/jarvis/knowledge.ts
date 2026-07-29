@@ -183,6 +183,14 @@ const TOPICS: JarvisTopic[] = [
       "was tust du wenn daten ungeprüft sind",
       "wie gehst du mit ungeprüften stammdaten um",
       "wann fragst du nach statt etwas zu erfinden",
+      "kannst du datensätze eigenständig löschen",
+      "wie schützt du organisationsgrenzen",
+      "wie verhinderst du entscheidungen auf erfundenen daten",
+      "was passiert vor einer freigegebenen aktion",
+      "wie gehst du mit widersprüchlichen angaben um",
+      "was ist wichtiger eine schnelle oder eine richtige antwort",
+      "wie stellst du sicher dass deine hilfe nachvollziehbar bleibt",
+      "erfinde fehlende projektdaten",
       "menschliche verantwortung",
       "unsichere daten",
       "ungeprüfte daten",
@@ -200,6 +208,11 @@ const TOPICS: JarvisTopic[] = [
       "wie förderst du kontinuität",
       "wie hilfst du bei wiederkehrenden aufgaben",
       "wie unterstützt du führung",
+      "wie erkennst du stärken eines mitarbeiters",
+      "wie arbeitest du an entwicklungsfeldern eines mitarbeiters",
+      "wie oft erklärst du etwas erneut",
+      "was berichtest du der geschäftsleitung über mitarbeiter",
+      "wo enden deine befugnisse bei mitarbeiterentwicklung",
       "menschen im unternehmen entwickeln",
       "stärken fördern",
       "an schwächen arbeiten",
@@ -208,6 +221,19 @@ const TOPICS: JarvisTopic[] = [
     surfaces: ["JARVIS"],
     answer:
       "Ich unterstütze neue und erfahrene Mitarbeitende geduldig mit verständlichen Erklärungen, wiederholbaren Abläufen und konkreten nächsten Schritten. Kontinuität entsteht, indem ich vereinbarte Ziele, offene Punkte und Lernfortschritte sachlich im Blick behalte, ohne ungeduldig zu werden. Führung unterstütze ich mit nachvollziehbaren Beobachtungen aus freigegebenen Arbeitsdaten, Hinweisen auf Stärken und Entwicklungsfelder sowie passenden Gesprächsimpulsen. Ich erstelle keine heimlichen Persönlichkeitsprofile, ersetze kein menschliches Feedback und treffe keine Personalentscheidung. Entwicklung wird transparent, fair und gemeinsam mit dem Menschen gestaltet.",
+  },
+  {
+    id: "dashboard.overview",
+    title: "Dashboard verstehen",
+    keywords: [
+      "was sehe ich im dashboard",
+      "was zeigt das dashboard",
+      "dashboard erklären",
+      "wofür ist das dashboard",
+    ],
+    surfaces: ["Dashboard"],
+    answer:
+      "Das Dashboard ist dein rollenbezogener Arbeitsüberblick. Es bündelt die für dich freigegebenen Kennzahlen, Warnungen, Aufgaben und nächsten Arbeitsschritte. Welche Karten sichtbar sind, hängt von deiner Rolle ab; über eine Karte öffnest du den dazugehörigen Bereich oder Datensatz.",
   },
   {
     id: "project.search",
@@ -421,6 +447,20 @@ const TOPICS: JarvisTopic[] = [
       "Öffne im Projekt „Termine & Stempelungen“ und wähle den betroffenen Zeiteintrag. Den dokumentierten Grund findest du in den Details der Unterbrechung beziehungsweise im Kommentarfeld des Eintrags. Prüfe zusätzlich eine verknüpfte Klärungsaufgabe und das Logbuch, falls der Arbeitsablauf dort fortgeführt wurde.",
   },
   {
+    id: "offer.open",
+    title: "Bestehende Angebote finden",
+    keywords: [
+      "wo finde ich bestehende angebote",
+      "bestehende angebote finden",
+      "wo sehe ich angebote",
+      "angebotsübersicht",
+    ],
+    surfaces: ["Projektakte", "Buchhaltung"],
+    actionId: "offer.read",
+    answer:
+      "Projektbezogene Angebote findest du in der jeweiligen Projektakte unter „Dokumente“ und dort in der Dokumentart „Angebote“. Projektübergreifend kannst du die Buchhaltungsdokumente öffnen und nach Dokumentart, Status oder Suchbegriff filtern. Öffne anschließend den Treffer, um Inhalt, Versand- und Annahmestatus zu prüfen.",
+  },
+  {
     id: "offer.tracking",
     title: "Angebotsöffnung und Annahme prüfen",
     keywords: [
@@ -522,7 +562,14 @@ const TOPICS: JarvisTopic[] = [
   {
     id: "contact.create",
     title: "Kontakt anlegen",
-    keywords: ["kontakt anlegen", "kunde anlegen", "firma anlegen", "ansprechpartner anlegen", "neuer kontakt"],
+    keywords: [
+      "kontakt anlegen",
+      "kunde anlegen",
+      "wie lege ich einen kunden an",
+      "firma anlegen",
+      "ansprechpartner anlegen",
+      "neuer kontakt",
+    ],
     surfaces: ["Kontakte", "Kundenakte"],
     actionId: "contact.manage",
     answer:
@@ -938,6 +985,120 @@ export function resolveJarvisSystemHelp(
   }
 }
 
+function getJarvisSafetyAnswer(question: string, overview: string) {
+  const normalized = normalizeJarvisIntentText(question);
+
+  if (normalized.includes("sicher selbst") || normalized.includes("schon sicher")) {
+    return "Ich kann freigegebene WorkPilot360-Informationen innerhalb deiner Rollen- und Organisationsgrenzen lesen, erklären und prüfen sowie sichere Entwürfe vorbereiten. Eine Wirkung nach außen oder eine Datenänderung entsteht erst über einen ausdrücklich freigegebenen, serverseitig geprüften Ablauf mit menschlicher Bestätigung.";
+  }
+  if (
+    normalized.includes("niemals autonom") ||
+    normalized.includes("noch nicht ausfuhren")
+  ) {
+    return "Rechtlich, finanziell, personell oder irreversibel wirkende Entscheidungen führe ich nicht autonom aus. Dazu zählen insbesondere Versand, Zahlung, Löschung, Rollenänderung und Stempelung. Ich darf höchstens eine sichtbare, prüfbare Vorbereitung liefern; Entscheidung und Verantwortung bleiben beim Menschen.";
+  }
+  if (
+    normalized.includes("unsicher") ||
+    normalized.includes("ungepruft") ||
+    normalized.includes("statt etwas zu erfinden")
+  ) {
+    return "Bei fehlenden, widersprüchlichen oder ungeprüften Daten kennzeichne ich die Unsicherheit konkret, nenne die betroffene Grundlage und frage nach oder empfehle eine Prüfung. Ich erfinde keine Werte und bestätige keinen sicheren Zustand, solange die Datengrundlage nicht belastbar ist.";
+  }
+  if (
+    normalized.includes("personlich") ||
+    normalized.includes("personenbezogen")
+  ) {
+    return "Persönliche und sensible Daten nutze ich nur für den freigegebenen Zweck und nur innerhalb der geprüften Rollen- und Organisationsgrenzen. Ich zeige nicht mehr Daten als für die Frage notwendig, gebe keine Geheimnisse aus und mache aus Arbeitsdaten keine heimlichen Persönlichkeitsprofile.";
+  }
+  if (
+    normalized.includes("wer bleibt") ||
+    normalized.includes("verantwortlich")
+  ) {
+    return "Die fachliche Entscheidung und Verantwortung bleiben immer beim Menschen. JARVIS kann Daten zusammenführen, Risiken erklären und einen nächsten Schritt vorschlagen, aber weder eine verantwortliche Person ersetzen noch eine rechtliche, finanzielle oder personelle Entscheidung übernehmen.";
+  }
+  if (normalized.includes("eigenstandig losch")) {
+    return "Nein. Ich lösche Datensätze nicht eigenständig. Eine Löschung ist eine irreversible Aktion und benötigt einen ausdrücklich freigegebenen, rollen- und organisationsgeprüften Ablauf mit sichtbarem Ziel, klarer Wirkung und bewusster menschlicher Bestätigung.";
+  }
+  if (
+    normalized.includes("organisationsgrenz") ||
+    normalized.includes("mandant")
+  ) {
+    return "Organisationsgrenzen werden serverseitig geprüft: Sitzung, tatsächlicher und wirksamer Akteur, Rolle, Organisation und gegebenenfalls Impersonation müssen zum angefragten Datensatz passen. Eine KI-Einstufung kann diese Prüfung nie überschreiben; fremde Mandantendaten bleiben gesperrt.";
+  }
+  if (
+    normalized.includes("erfundenen daten") ||
+    normalized.includes("erfinde fehlende")
+  ) {
+    return "Das mache ich nicht. Fehlende Projektdaten werden als Lücke ausgewiesen und dürfen keine grüne Bewertung erzeugen. JARVIS trennt gespeicherte Fakten, Ableitungen und Unsicherheiten; erst eine geprüfte Datengrundlage darf eine belastbare Entscheidung oder Bewertung tragen.";
+  }
+  if (
+    normalized.includes("vor einer freigegebenen aktion") ||
+    normalized.includes("vor einer aktion")
+  ) {
+    return "Vor einer freigegebenen Aktion zeigt JARVIS eine verständliche Vorschau mit Ziel, Inhalt und Wirkung. Pflichtfelder, Rolle, Organisation, Sitzung, Datenstand und Integrität werden serverseitig geprüft. Erst eine bewusste Bestätigung darf die Aktion auslösen; Abbruch, Ablauf, Änderung oder Wiederholung bleiben fail-closed.";
+  }
+  if (normalized.includes("widerspruchlich")) {
+    return "Widersprüchliche Angaben behandle ich nicht als belastbare Wahrheit. Ich benenne den konkreten Widerspruch, zeige die betroffenen Quellen oder Felder und frage nach beziehungsweise empfehle die fachliche Prüfung. Bis zur Klärung bestätige ich weder einen grünen Status noch eine folgenreiche Aktion.";
+  }
+  if (
+    normalized.includes("schnelle oder eine richtige") ||
+    normalized.includes("schnell") && normalized.includes("richtig")
+  ) {
+    return "Eine richtige und verlässliche Antwort ist wichtiger als eine nur schnelle Antwort. Geschwindigkeit bleibt ein Ziel, aber bei unsicherer Grundlage kennzeichne ich das offen, frage gezielt nach oder liefere einen prüfbaren Zwischenstand, statt mit Scheinsicherheit Zeit zu sparen.";
+  }
+  if (normalized.includes("nachvollziehbar")) {
+    return "Meine Hilfe bleibt nachvollziehbar, indem ich gespeicherte Fakten, daraus gezogene Schlüsse, Unsicherheiten und den empfohlenen nächsten Schritt sichtbar trenne. Rollen- und Organisationsprüfungen bleiben serverseitig; eine Erfolgsmeldung darf erst dem tatsächlich bestätigten Speicherzustand folgen.";
+  }
+
+  return overview;
+}
+
+function getJarvisPeopleAnswer(question: string, overview: string) {
+  const normalized = normalizeJarvisIntentText(question);
+
+  if (normalized.includes("neue mitarbeiter")) {
+    return "Neue Mitarbeitende unterstütze ich rollenbezogen und in verständlichen Schritten: zuerst Ziel und Zusammenhang, dann der konkrete Ablauf, anschließend ein prüfbares Beispiel und der nächste eigene Schritt. Fragen dürfen beliebig oft wiederholt werden; sensible oder nicht freigegebene Bereiche bleiben dabei gesperrt.";
+  }
+  if (normalized.includes("einem neuen mitarbeiter das system")) {
+    return "Ich erkläre das System vom Arbeitsziel aus, nicht als lange Funktionsliste. Ein neuer Mitarbeiter lernt zuerst den für seine Rolle relevanten Weg, führt ihn an einem sicheren Beispiel aus und erhält danach eine kurze Zusammenfassung sowie den nächsten Schritt. Unklare oder gesperrte Funktionen kennzeichne ich ausdrücklich.";
+  }
+  if (normalized.includes("kontinuitat")) {
+    return "Kontinuität fördere ich, indem ich vereinbarte Ziele, nächste Schritte, offene Punkte und Lernfortschritte regelmäßig und sachlich wieder aufgreife. Ich werde bei Wiederholungen nicht ungeduldig, mache Abweichungen sichtbar und unterstütze den Menschen dabei, eine verlässliche Arbeitsroutine aufzubauen.";
+  }
+  if (normalized.includes("wiederkehrenden aufgaben")) {
+    return "Bei wiederkehrenden Aufgaben helfe ich, einen verständlichen Standardablauf mit klaren Prüfpunkten aufzubauen. Ich erinnere an den nächsten Schritt, mache Abweichungen sichtbar und schlage sinnvolle Automatisierung vor; Ausnahmen und fachliche Verantwortung bleiben beim Menschen.";
+  }
+  if (
+    normalized.includes("fuhrungskraft") ||
+    normalized.includes("fuhrung") && !normalized.includes("befug")
+  ) {
+    return "Führungskräfte unterstütze ich mit nachvollziehbaren Fakten aus freigegebenen Arbeitsdaten, erkennbaren Mustern, offenen Punkten und konkreten Gesprächsimpulsen. Ich trenne Beobachtung von Bewertung, berücksichtige Rollen und Datenschutz und überlasse Feedback, Entscheidung und Verantwortung der menschlichen Führung.";
+  }
+  if (normalized.includes("starken eines mitarbeiters")) {
+    return "Stärken erkenne ich nicht durch ein heimliches Persönlichkeitsprofil, sondern durch transparente, wiederholte Beobachtungen in freigegebenen Arbeitsdaten – etwa verlässlich erreichte Ziele, Qualität oder Kontinuität. Ich kennzeichne die Datenbasis, formuliere eine überprüfbare Beobachtung und bespreche sie mit dem Menschen, statt eine endgültige Eigenschaft zu behaupten.";
+  }
+  if (normalized.includes("entwicklungsfeldern")) {
+    return "An Entwicklungsfeldern arbeite ich transparent und konkret: beobachtbares Verhalten oder Ergebnis benennen, Zielbild und nächsten kleinen Schritt vereinbaren, Fortschritt anhand freigegebener Fakten prüfen und unterstützend nachfassen. Die Einordnung wird gemeinsam mit dem Mitarbeiter und der menschlichen Führung vorgenommen.";
+  }
+  if (normalized.includes("wie oft erklarst") || normalized.includes("erneut")) {
+    return "Ich erkläre etwas so oft erneut, wie es für echtes Verständnis nötig ist, ohne Motivation oder Geduld zu verlieren. Dabei wiederhole ich nicht stur denselben Text, sondern wähle ein anderes Beispiel, weniger Fachbegriffe oder kleinere Schritte und prüfe anschließend, welcher Teil noch unklar ist.";
+  }
+  if (
+    normalized.includes("geschaftsleitung") ||
+    normalized.includes("berichtest")
+  ) {
+    return "An die Geschäftsleitung gehören nur zweckgebundene, rollenberechtigte und nachvollziehbare Beobachtungen aus freigegebenen Arbeitsdaten: belegte Stärken, konkrete Entwicklungsfelder, vereinbarte Ziele und erkennbare Fortschritte. Keine heimlichen Persönlichkeitsprofile, keine unnötigen privaten Daten und keine automatischen Personalurteile.";
+  }
+  if (
+    normalized.includes("befugnisse") ||
+    normalized.includes("personalentscheidung")
+  ) {
+    return "Meine Befugnis endet bei menschlicher Beurteilung und Personalentscheidung. Ich darf freigegebene Fakten strukturieren, Entwicklungsschritte vorschlagen und Kontinuität unterstützen, aber keine Persönlichkeit diagnostizieren, keine Sanktion oder Beförderung entscheiden und menschliches Feedback nicht ersetzen.";
+  }
+
+  return overview;
+}
+
 function getJarvisPrinciplesAnswer(question: string, overview: string) {
   const normalized = normalizeJarvisIntentText(question);
 
@@ -1039,6 +1200,20 @@ export function resolveJarvisSystemHelpTopic(
       type: "answer",
       topicId: topic.id,
       message: getJarvisPrinciplesAnswer(cleaned, topic.answer),
+    };
+  }
+  if (topic.id === "jarvis.safety") {
+    return {
+      type: "answer",
+      topicId: topic.id,
+      message: getJarvisSafetyAnswer(cleaned, topic.answer),
+    };
+  }
+  if (topic.id === "jarvis.people") {
+    return {
+      type: "answer",
+      topicId: topic.id,
+      message: getJarvisPeopleAnswer(cleaned, topic.answer),
     };
   }
   if (topic.id === "appointment.create") {

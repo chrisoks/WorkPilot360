@@ -82,40 +82,58 @@ describe("JARVIS system help", () => {
     expect(new Set(messages).size).toBe(cases.length);
   });
 
-  it.each([
-    "Was kannst du sicher selbst erledigen?",
-    "Was kannst du in WorkPilot360 schon sicher?",
-    "Welche Aktionen darfst du niemals autonom ausführen?",
-    "Welche Aktionen darfst du noch nicht ausführen?",
-    "Was machst du bei unsicheren Daten?",
-    "Wie gehst du mit persönlichen Daten um?",
-    "Wie schützt du personenbezogene Daten?",
-    "Wer bleibt bei Entscheidungen verantwortlich?",
-    "Was tust du wenn Daten ungeprüft sind?",
-    "Wie gehst du mit ungeprüften Stammdaten um?",
-    "Wann fragst du nach statt etwas zu erfinden?",
-  ])("explains safety and human responsibility: %s", (question) => {
-    const result = resolveJarvisSystemHelp(question, {}, employeeAccess);
-    expect(result).toMatchObject({
-      type: "answer",
-      topicId: "jarvis.safety",
+  it("answers individual safety questions specifically", () => {
+    const cases = [
+      ["Was kannst du sicher selbst erledigen?", "sichere Entwürfe"],
+      ["Welche Aktionen darfst du niemals autonom ausführen?", "irreversibel"],
+      ["Was machst du bei unsicheren Daten?", "Datengrundlage"],
+      ["Wie gehst du mit persönlichen Daten um?", "freigegebenen Zweck"],
+      ["Wer bleibt bei Entscheidungen verantwortlich?", "immer beim Menschen"],
+      ["Kannst du Datensätze eigenständig löschen?", "nicht eigenständig"],
+      ["Wie schützt du Organisationsgrenzen?", "serverseitig geprüft"],
+      ["Was passiert vor einer freigegebenen Aktion?", "verständliche Vorschau"],
+      ["Wie gehst du mit widersprüchlichen Angaben um?", "konkreten Widerspruch"],
+      ["Was ist wichtiger: eine schnelle oder eine richtige Antwort?", "verlässliche Antwort"],
+    ] as const;
+
+    const messages = cases.map(([question, expected]) => {
+      const result = resolveJarvisSystemHelp(question, {}, employeeAccess);
+      expect(result).toMatchObject({
+        type: "answer",
+        topicId: "jarvis.safety",
+      });
+      expect(result.message).toContain(expected);
+      return result.message;
     });
-    expect(result.message).toContain("Verantwortung bleiben immer beim Menschen");
+
+    expect(new Set(messages).size).toBe(cases.length);
   });
 
-  it.each([
-    "Wie unterstützt du neue Mitarbeiter?",
-    "Wie erklärst du einem neuen Mitarbeiter das System?",
-    "Wie förderst du Kontinuität?",
-    "Wie hilfst du bei wiederkehrenden Aufgaben?",
-    "Wie unterstützt du Führung?",
-  ])("explains transparent people development: %s", (question) => {
-    const result = resolveJarvisSystemHelp(question, {}, leadershipAccess);
-    expect(result).toMatchObject({
-      type: "answer",
-      topicId: "jarvis.people",
+  it("answers individual people-development questions specifically", () => {
+    const cases = [
+      ["Wie unterstützt du neue Mitarbeiter?", "prüfbares Beispiel"],
+      ["Wie erklärst du einem neuen Mitarbeiter das System?", "Arbeitsziel"],
+      ["Wie förderst du Kontinuität?", "Lernfortschritte"],
+      ["Wie hilfst du bei wiederkehrenden Aufgaben?", "Standardablauf"],
+      ["Wie unterstützt du Führungskräfte?", "Gesprächsimpulsen"],
+      ["Wie erkennst du Stärken eines Mitarbeiters?", "eine endgültige Eigenschaft"],
+      ["Wie arbeitest du an Entwicklungsfeldern eines Mitarbeiters?", "nächsten kleinen Schritt"],
+      ["Wie oft erklärst du etwas erneut?", "nicht stur denselben Text"],
+      ["Was berichtest du der Geschäftsleitung über Mitarbeiter?", "keine automatischen Personalurteile"],
+      ["Wo enden deine Befugnisse bei Mitarbeiterentwicklung?", "Personalentscheidung"],
+    ] as const;
+
+    const messages = cases.map(([question, expected]) => {
+      const result = resolveJarvisSystemHelp(question, {}, leadershipAccess);
+      expect(result).toMatchObject({
+        type: "answer",
+        topicId: "jarvis.people",
+      });
+      expect(result.message).toContain(expected);
+      return result.message;
     });
-    expect(result.message).toContain("keine heimlichen Persönlichkeitsprofile");
+
+    expect(new Set(messages).size).toBe(cases.length);
   });
 
   it("answers common task and invoice how-to wording", () => {
@@ -140,6 +158,16 @@ describe("JARVIS system help", () => {
         leadershipAccess
       )
     ).toMatchObject({ type: "answer", topicId: "invoice.preflight" });
+  });
+
+  it.each([
+    ["Wie lege ich einen Kunden an?", "contact.create"],
+    ["Was sehe ich im Dashboard?", "dashboard.overview"],
+    ["Wo finde ich bestehende Angebote?", "offer.open"],
+  ])("answers the clear live navigation wording %s", (question, topicId) => {
+    expect(
+      resolveJarvisSystemHelp(question, {}, leadershipAccess)
+    ).toMatchObject({ type: "answer", topicId });
   });
 
   it("opens accounting despite the common short typo", () => {

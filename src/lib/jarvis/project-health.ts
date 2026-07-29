@@ -88,6 +88,7 @@ type ProjectHealthRow = {
   forecastNetAmount: string | null;
   trade: string | null;
   branch: string | null;
+  volume: string | null;
   address: string | null;
   resolvedAddress?: string | null;
   responsibleName: string | null;
@@ -1554,12 +1555,29 @@ function formatProjectFactDate(value: Date | null) {
   }).format(value);
 }
 
+function formatProjectVolume(value: string | null) {
+  if (!value?.trim()) return "Nicht hinterlegt";
+  const numeric = value.replace(/[^\d,.-]/g, "");
+  const parsed = Number(
+    numeric.includes(",")
+      ? numeric.replace(/\./g, "").replace(",", ".")
+      : numeric
+  );
+  if (!Number.isFinite(parsed)) return value;
+  return new Intl.NumberFormat("de-DE", {
+    style: "currency",
+    currency: "EUR",
+  }).format(parsed);
+}
+
 function buildProjectFactExplanation(
   project: ProjectHealthRow,
   intent:
     | "explainIdentity"
     | "explainCustomer"
     | "explainAddress"
+    | "explainTrade"
+    | "explainVolume"
     | "explainStatus"
     | "explainResponsibility"
     | "explainReviewStatus"
@@ -1593,6 +1611,20 @@ function buildProjectFactExplanation(
       message: project.resolvedAddress || project.address
         ? `Für ${reference} ist die Projektadresse „${project.resolvedAddress || project.address}“ hinterlegt.`
         : `Für ${reference} ist aktuell keine Projektadresse hinterlegt.`,
+    },
+    explainTrade: {
+      title: "Gewerk",
+      value: project.trade || "Nicht hinterlegt",
+      message: project.trade
+        ? `Für ${reference} ist das Gewerk „${project.trade}“ hinterlegt.`
+        : `Für ${reference} ist aktuell kein Gewerk hinterlegt.`,
+    },
+    explainVolume: {
+      title: "Projektvolumen",
+      value: formatProjectVolume(project.volume),
+      message: project.volume?.trim()
+        ? `Für ${reference} ist ein Projektvolumen von ${formatProjectVolume(project.volume)} hinterlegt.`
+        : `Für ${reference} ist aktuell kein Projektvolumen hinterlegt.`,
     },
     explainStatus: {
       title: "Projektstatus",
@@ -2036,12 +2068,15 @@ export async function resolveJarvisProjectHealthRequest(input: {
   );
   if (
     projectDialogIntent &&
-    projectDialogIntent !== "ambiguousProjectQuestion"
+    projectDialogIntent !== "ambiguousProjectQuestion" &&
+    !["explainPlanning", "explainRisk"].includes(projectDialogIntent)
   ) {
     return [
       "explainIdentity",
       "explainCustomer",
       "explainAddress",
+      "explainTrade",
+      "explainVolume",
       "explainStatus",
       "explainResponsibility",
       "explainReviewStatus",
@@ -2053,6 +2088,8 @@ export async function resolveJarvisProjectHealthRequest(input: {
             | "explainIdentity"
             | "explainCustomer"
             | "explainAddress"
+            | "explainTrade"
+            | "explainVolume"
             | "explainStatus"
             | "explainResponsibility"
             | "explainReviewStatus"
@@ -2068,6 +2105,8 @@ export async function resolveJarvisProjectHealthRequest(input: {
   }
 
   let requestedScope = resolveProjectHealthScope(input.question);
+  if (projectDialogIntent === "explainPlanning") requestedScope = "planning";
+  if (projectDialogIntent === "explainRisk") requestedScope = "improvements";
   if (
     !requestedScope &&
     (
