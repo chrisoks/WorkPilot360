@@ -21,6 +21,11 @@
   Anschluss `ohne Fachbegriffe` nach einer Projektpruefung werden im
   bestehenden Dialogkontext weitergefuehrt. Direkte Stempelbefehle werden
   sicher als nicht freigegebene Schreibaktion erkannt.
+  Der erneute Live-Lauf fuehrte ausserdem `Pruef mal das Projekt hier` sicher
+  in den Vollcheck, haelt globale Fragen wie `bei uns offene Rechnungen`
+  weiterhin ausserhalb der geoeffneten Projektakte und beantwortet
+  `Wie kome ich zur Buchhaltung?` deterministisch. Ein rueckwirkender
+  Stempelbefehl erhaelt eine ausdrueckliche Nichtausfuehrungs-Meldung.
 
 - JARVIS Action-Center Proxy-Origin 2026-07-29: Schreibende
   Aufgabenentwurf-Anfragen akzeptieren den vom Browser gesendeten

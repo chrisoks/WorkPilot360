@@ -1435,6 +1435,40 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.resolveJarvisSystemHelpTopic).not.toHaveBeenCalled();
   });
 
+  it("refuses a direct retrospective stamping command deterministically", async () => {
+    mocks.resolveJarvisIntentDecision.mockReturnValue({
+      state: "resolved",
+      domain: "system",
+      confidence: "high",
+      candidates: [],
+      clarificationReasons: [],
+      goals: ["change"],
+      entities: [],
+      timeScopes: [],
+      recordFilter: "all",
+      segments: [],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Stemple mich rückwirkend für gestern ein.",
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      type: "refusal",
+      topicId: "action.time-write-not-released",
+    });
+    expect(payload.message).toContain("nicht ausgeführt");
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+  });
+
   it("does not misclassify an AI-recognized task action as a project diagnostic", async () => {
     mocks.classifyJarvisIntentWithAi.mockResolvedValue({
       intent: "prepare_action",

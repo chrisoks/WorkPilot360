@@ -48,6 +48,7 @@ describe("JARVIS question semantics evaluation matrix", () => {
     "Wo hakt es bei diesem Projekt?",
     "Gib mir bitte nur einen kurzen Überblick über MKG-209.",
     "Hilf mir, MKG-209 korrekt abzuschließen.",
+    "Prüf mal das Projekt hier.",
   ])("treats a broad project assessment as a full check: %s", (question) => {
     expect(analyzeJarvisQuestion(question).projectScopes).toEqual(["full"]);
   });

@@ -118,6 +118,16 @@ describe("JARVIS system help", () => {
     ).toMatchObject({ type: "answer", topicId: "invoice.preflight" });
   });
 
+  it("opens accounting despite the common short typo", () => {
+    expect(
+      resolveJarvisSystemHelp(
+        "Wie kome ich zur Buchhaltung?",
+        {},
+        leadershipAccess
+      )
+    ).toMatchObject({ type: "answer", topicId: "accounting.open" });
+  });
+
   it("explains safe offer e-mail sending without executing it", () => {
     const result = resolveJarvisSystemHelp(
       "Wie versende ich ein Angebot per E-Mail?",
@@ -235,7 +245,7 @@ describe("JARVIS system help", () => {
 
   it.each([
     ["Wo finde ich in WorkPilot360 alle Projekte?", "project.search"],
-    ["Wie komme ich zur Buchhaltung?", "systemMap.accounting"],
+    ["Wie komme ich zur Buchhaltung?", "accounting.open"],
     ["Wie gelange ich zu den Auswertungen?", "systemMap.reports"],
     ["Wie komme ich von hier aus zur Projektübersicht?", "project.search"],
     ["Wo sehe ich Benachrichtigungen?", "notifications.open"],

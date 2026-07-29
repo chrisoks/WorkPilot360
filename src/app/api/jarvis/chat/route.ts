@@ -584,17 +584,13 @@ export async function POST(req: Request) {
     (deterministicQuestionSemantics.projectReferences.length === 1 ||
       context.recordType === "project" ||
       conversationContext?.recordType === "project") &&
-    (deterministicQuestionSemantics.projectScopes.includes("full") ||
-      deterministicQuestionSemantics.projectScopes.includes("planning") ||
-      (
-        /\bfehler\w*\b/.test(deterministicQuestionSemantics.normalized) &&
-        deterministicQuestionSemantics.projectScopes.length > 0
-      ));
+    shouldUseProjectHealthPath(message, intentDecision) &&
+    deterministicQuestionSemantics.projectScopes.length === 1;
   const deterministicProjectDiagnosticFollowUp =
     (context.recordType === "project" ||
       conversationContext?.recordType === "project") &&
     isJarvisReferentialFollowUp(message) &&
-    /^\s*(?:prüf|pruef|pruf|check|analysier|untersuch|kontrollier)\w*\s+(?:das|dies|dort|hier)\b/iu.test(
+    /^\s*(?:prüf|pruef|pruf|check|analysier|untersuch|kontrollier)\w*\s+(?:mal\s+)?(?:(?:das|dies)\s+)?(?:projekt\s+)?(?:dort|hier|das|dies)\b/iu.test(
       message
     );
   const deterministicProjectWhyFollowUp =
@@ -627,6 +623,15 @@ export async function POST(req: Request) {
     message,
     intentDecision
   );
+  if (directActionRequest && /^\s*stemp(?:el|l)\w*\b/iu.test(message)) {
+    return respond({
+      type: "refusal",
+      topicId: "action.time-write-not-released",
+      message:
+        "Diese Stempelaktion ist für JARVIS nicht freigegeben und wurde nicht ausgeführt. Stempelungen bleiben eine bewusste Benutzeraktion in der Zeiterfassung; rückwirkende Änderungen müssen zusätzlich über den dafür berechtigten WorkPilot360-Weg geprüft werden.",
+      deterministic: true,
+    });
+  }
   const deterministicHelpRequest =
     Boolean(exactHelpTopicId) &&
     (

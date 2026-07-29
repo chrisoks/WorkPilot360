@@ -350,6 +350,19 @@ const TOPICS: JarvisTopic[] = [
       "Öffne oben rechts das Glockensymbol. Dort siehst du neue und bereits gelesene WorkPilot360-Benachrichtigungen und kannst ihre verknüpften Datensätze öffnen.",
   },
   {
+    id: "accounting.open",
+    title: "Buchhaltung öffnen",
+    keywords: [
+      "wie komme ich zur buchhaltung",
+      "wie kome ich zur buchhaltung",
+      "wo finde ich die buchhaltung",
+      "buchhaltung öffnen",
+    ],
+    surfaces: ["Buchhaltung"],
+    answer:
+      "Öffne in der linken Sidebar „Buchhaltung“. Dort findest du – abhängig von deiner Rolle – die freigegebenen Rechnungs-, Zahlungs- und Abrechnungsbereiche. Wenn der Eintrag nicht sichtbar ist, ist die Funktion für deine aktuelle Rolle nicht freigegeben.",
+  },
+  {
     id: "invoice.open",
     title: "Rechnung finden oder Status prüfen",
     keywords: [
