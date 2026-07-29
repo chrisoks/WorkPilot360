@@ -608,7 +608,9 @@ export async function POST(req: Request) {
   ) {
     const projectDialogResponse = await resolveJarvisProjectHealthRequest({
       question: deterministicProjectWhyFollowUp
-        ? "Was läuft beim zuletzt geprüften Projekt schief?"
+        ? previousDialogState?.topicId === "project.health.plain-language"
+          ? "Was ist der wichtigste nächste Schritt für dieses Projekt und warum?"
+          : "Was läuft beim zuletzt geprüften Projekt schief?"
         : message,
       organizationId: organization.id,
       accessProfile,
@@ -616,7 +618,15 @@ export async function POST(req: Request) {
       ...(conversationContext ? { conversationContext } : {}),
     });
     if (projectDialogResponse) {
-      return respond(projectDialogResponse);
+      return respond(
+        deterministicProjectWhyFollowUp
+          ? {
+              ...projectDialogResponse,
+              topicId: "project.health.why",
+              message: `Der Grund für diese Priorität: ${projectDialogResponse.message}`,
+            }
+          : projectDialogResponse
+      );
     }
   }
   const directActionRequest = looksLikeDirectActionRequest(

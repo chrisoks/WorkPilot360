@@ -20,6 +20,12 @@
   und der Imperativ `Stemple ...`. Auch diese Varianten gelten vor der
   finalen Zaehhlung als Pflichtkorrekturen und nicht als kosmetische
   Randfaelle.
+  Die anschliessende automatisierte Wertung erreichte 100/100. Die manuelle
+  Serienpruefung erkannte dennoch, dass die kurze Folgefrage `Warum?` nach
+  einer einfachen Projektantwort den vollstaendigen Projektcheck
+  wiederholte. Folgefragen nach einem Grund muessen deshalb eine fokussierte
+  Begruendung mit eigener Dialog-ID erhalten; ein formal passender
+  Vollcheck zaehlt hier nicht als qualitative Antwort.
 
 - JARVIS fokussierte Prinzipienantworten 2026-07-29: Eine allgemeine
   Prinzipienfrage darf weiterhin die vollstaendige Uebersicht liefern. Fragt

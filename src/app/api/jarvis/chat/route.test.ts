@@ -1135,11 +1135,13 @@ describe("POST /api/jarvis/chat", () => {
     );
 
     expect(await response.json()).toMatchObject({
-      topicId: "project.health",
-      message: "Die kritischen Ursachen sind belegt.",
+      topicId: "project.health.why",
+      message:
+        "Der Grund für diese Priorität: Die kritischen Ursachen sind belegt.",
     });
     expect(mocks.resolveJarvisProjectHealthRequest).toHaveBeenCalledWith({
-      question: "Was läuft beim zuletzt geprüften Projekt schief?",
+      question:
+        "Was ist der wichtigste nächste Schritt für dieses Projekt und warum?",
       organizationId: "organization-1",
       accessProfile: { profile: true },
       context: { module: "Projekte" },
