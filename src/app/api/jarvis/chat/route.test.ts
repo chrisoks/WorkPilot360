@@ -1145,6 +1145,80 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
   });
 
+  it("keeps invoice-draft checking on deterministic guidance despite an open project", async () => {
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      recordType: "project",
+      recordId: "project-1",
+    });
+    mocks.findJarvisExactHelpTopicId.mockReturnValue("invoice.preflight");
+    mocks.resolveJarvisSystemHelpTopic.mockReturnValue({
+      type: "answer",
+      topicId: "invoice.preflight",
+      message: "Prüfe Rechnungsempfänger, Leistungsmonat, Mengen und Preise.",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Wie prüfe ich einen Rechnungsentwurf?",
+          context: { recordType: "project", recordId: "project-1" },
+        }),
+      })
+    );
+
+    expect(await response.json()).toMatchObject({
+      type: "answer",
+      topicId: "invoice.preflight",
+    });
+    expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+  });
+
+  it("keeps plain-language follow-ups after a focused project-health answer", async () => {
+    mocks.resolveJarvisProjectHealthRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "project.health.next-step",
+      message: "Prüfe zuerst das gültige Angebot.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Erkläre das bitte ohne Fachbegriffe.",
+          context: {},
+          dialogState: {
+            version: 1,
+            domain: "system",
+            topicId: "project.health.next-step",
+            activeRecord: { kind: "project", id: "project-1" },
+            lastQuestion:
+              "Was ist der sinnvollste nächste Schritt für dieses Projekt?",
+            lastIntent: {
+              goals: ["diagnose"],
+              entities: ["project"],
+              timeScopes: [],
+              recordFilter: "all",
+            },
+          },
+        }),
+      })
+    );
+
+    expect(await response.json()).toMatchObject({
+      type: "answer",
+      topicId: "project.health.plain-language",
+      message: "Einfach gesagt: Prüfe zuerst das gültige Angebot.",
+    });
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+  });
+
   it("keeps a short why follow-up after a plain-language project answer", async () => {
     mocks.resolveJarvisProjectHealthRequest.mockResolvedValue({
       type: "answer",

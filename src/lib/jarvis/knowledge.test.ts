@@ -19,12 +19,31 @@ describe("JARVIS system help", () => {
     id: "sales",
     role: Role.VERTRIEB,
   });
+  const executiveAccess = createJarvisAccessProfile({
+    id: "executive",
+    role: Role.GESCHAEFTSFUEHRER,
+  });
 
   it("answers a supported offer workflow", () => {
     const result = resolveJarvisSystemHelp("Wie lege ich ein Angebot an?", {}, salesAccess);
     expect(result.type).toBe("answer");
     expect(result.topicId).toBe("offer.create");
     expect(result.message).toContain("„+ Angebot“");
+  });
+
+  it("answers invoice-draft checking as guidance instead of scanning the open project", () => {
+    const result = resolveJarvisSystemHelp(
+      "Wie prüfe ich einen Rechnungsentwurf?",
+      { recordType: "project", recordId: "project-1" },
+      executiveAccess
+    );
+
+    expect(result).toMatchObject({
+      type: "answer",
+      topicId: "invoice.preflight",
+    });
+    expect(result.message).toContain("Rechnungsempfänger");
+    expect(result.message).toContain("Mengen und Preise");
   });
 
   it.each([

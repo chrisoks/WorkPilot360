@@ -311,6 +311,7 @@ function looksLikeDeterministicHelpRequest(question: string) {
       /\b(?:sehe|erkenne|finde|offne|oeffne)\s+ich\b/.test(value) ||
       /\bwo\b.*\b(?:sehe|erkenne|finde)\b/.test(value) ||
       /\bwie\b.*\b(?:versende|verschicke|sende)\b/.test(value) ||
+      /\bwie\b.*\bpruf\w*\b.*\brechnungsentwurf\b/.test(value) ||
       /\bwie\b.*\b(?:buch|leg|erfass|trag|plan|verplan)\w*\b/.test(value) ||
       /\bwie\b.*\b(?:komme|gelange)\b/.test(value)
     )
@@ -629,7 +630,7 @@ export async function POST(req: Request) {
   }
   const plainLanguageProjectFollowUp =
     previousDialogState?.activeRecord?.kind === "project" &&
-    previousDialogState.topicId === "project.health" &&
+    previousDialogState.topicId?.startsWith("project.health") &&
     /\b(?:ohne fachbegriffe|einfach(?:er)? erkl[aä]r|leicht verst[aä]ndlich)\b/iu.test(
       message
     );

@@ -416,6 +416,8 @@ const TOPICS: JarvisTopic[] = [
     keywords: [
       "was sollte ich vor dem fakturieren prüfen",
       "was muss ich vor dem fakturieren prüfen",
+      "wie prüfe ich einen rechnungsentwurf",
+      "rechnungsentwurf prüfen",
       "prüfung vor fakturierung",
       "vor rechnungserstellung prüfen",
       "abrechnungsprüfung",
