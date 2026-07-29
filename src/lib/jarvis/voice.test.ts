@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  getJarvisSpeechRecognitionEndMessage,
+  getJarvisSpeechRecognitionErrorMessage,
+  JARVIS_SPEECH_LISTENING_MESSAGE,
   mergeJarvisSpeechTranscript,
   sanitizeJarvisSpeechOutput,
   sanitizeJarvisSpeechTranscript,
@@ -34,5 +37,31 @@ describe("JARVIS browser voice helpers", () => {
 
   it("bounds text before handing it to browser speech synthesis", () => {
     expect(sanitizeJarvisSpeechOutput(`Antwort ${"x".repeat(6_000)}`).length).toBe(5_000);
+  });
+
+  it.each([
+    ["not-allowed", "Mikrofonzugriff wurde nicht erlaubt."],
+    ["service-not-allowed", "Mikrofonzugriff wurde nicht erlaubt."],
+    ["audio-capture", "Es wurde kein verfügbares Mikrofon gefunden."],
+    ["no-speech", "Ich habe keine Sprache erkannt. Bitte versuche es erneut."],
+    ["aborted", "Die Spracheingabe wurde abgebrochen."],
+    ["network", "Die Spracheingabe ist wegen eines Netzwerkfehlers nicht verfügbar."],
+    [
+      "language-not-supported",
+      "Die deutsche Spracheingabe wird von diesem Browser nicht unterstützt.",
+    ],
+    ["unexpected", "Die Spracheingabe ist gerade nicht verfügbar."],
+  ])("maps the recognition error %s to an actionable status", (error, expected) => {
+    expect(getJarvisSpeechRecognitionErrorMessage(error)).toBe(expected);
+  });
+
+  it("only asks to review a transcript when speech was actually recognized", () => {
+    expect(getJarvisSpeechRecognitionEndMessage(true)).toBe(
+      "Transkript prüfen und anschließend bewusst senden."
+    );
+    expect(getJarvisSpeechRecognitionEndMessage(false)).toBe(
+      "Ich habe keine Sprache erkannt. Bitte versuche es erneut."
+    );
+    expect(JARVIS_SPEECH_LISTENING_MESSAGE).toContain("Loslassen");
   });
 });

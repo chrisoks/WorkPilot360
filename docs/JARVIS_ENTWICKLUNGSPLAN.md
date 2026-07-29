@@ -22,9 +22,15 @@ Stand: 29.07.2026
 - WorkPilot360 lädt in diesem Baustein kein Roh-Audio hoch und speichert kein
   Audio. Realtime-Audio, serverseitige Transkription, Audio-Kostenmessung und
   Sitzungsbudgets bleiben bewusst späteren Paketen vorbehalten.
-- Die technische Browserfähigkeit wird defensiv erkannt. Die vollständige
-  Phase-3b-Abnahme bleibt offen, bis Push-to-talk und Berechtigungsablauf in
-  einem Browser mit freigegebenem Mikrofon real geprüft wurden.
+- Die technische Browserfähigkeit wird defensiv erkannt. Push-to-talk wurde
+  mit freigegebenem Mikrofon in Google Chrome real geprüft. Der eingebettete
+  Codex-Browser reicht die Mikrofonfreigabe nicht an die Seite durch; der
+  Textchat bleibt dort unverändert nutzbar.
+- Stille, verweigerte Berechtigung, fehlendes Mikrofon, Abbruch, Netzwerkfehler
+  und nicht unterstützte Sprache führen zu eigenen verständlichen Zuständen.
+  Nur nach einem tatsächlich erkannten Transkript fordert JARVIS zur Prüfung
+  und zum bewussten Senden auf. Start, Stop und Komponenten-Cleanup sind gegen
+  schnelle Browserereignisse und verspätete Callbacks abgesichert.
 
 ### Intent-Orchestrator V4 – Live-Härtung
 
@@ -1423,16 +1429,18 @@ Abnahmekriterium: Nutzer können eine Systemfrage vollständig sprechen und eine
 gesprochene Antwort erhalten. Schreibende und kritische Sprachbefehle verwenden
 dieselben Vorschau- und Bestätigungsregeln wie Texteingaben.
 
-Umsetzungsstand 29.07.2026 – Browser-Sprachbasis: Push-to-talk,
+Umsetzungsstand 29.07.2026 – gehärteter Browser-Standardsprachmodus: Push-to-talk,
 Transkriptkorrektur sowie opt-in Vorlesen mit Stop/Stumm sind im gemeinsamen
 Composer umgesetzt. Gesprochene Eingaben werden nie automatisch gesendet,
 sondern erst nach sichtbarer Korrekturmöglichkeit bewusst bestätigt und danach
 wie Texteingaben serverseitig geprüft. Roh-Audio wird nicht an WorkPilot360
 übertragen oder dort gespeichert. Browser ohne die erforderlichen Web-Speech-
-Funktionen behalten einen vollständig funktionsfähigen Textchat. Noch offen
-sind die reale Mikrofonabnahme in einem unterstützten Browser,
-Sprechbeginn-/Sprechende-Feinschliff, Audio-Kosten- und Sitzungsgrenzen sowie
-ein späterer ausdrücklich gewählter Realtime-Modus.
+Funktionen behalten einen vollständig funktionsfähigen Textchat. Der reale
+Push-to-talk-Basislauf mit freigegebenem Mikrofon in Google Chrome ist
+bestanden. Fehler-, Stille-, Ende- und Cleanup-Zustände sind zusätzlich
+automatisiert abgesichert. Noch offen bleiben bewusst weiterführende
+Sprechbeginn-/Sprechende-Automatik, Audio-Kosten- und Sitzungsgrenzen sowie ein
+späterer ausdrücklich gewählter Realtime-Modus.
 
 ### Phase 4: Starkes Action Center 1.0
 

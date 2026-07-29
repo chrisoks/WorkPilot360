@@ -8,8 +8,12 @@ import {
   type PointerEvent,
 } from "react";
 import {
+  getJarvisSpeechRecognitionEndMessage,
+  getJarvisSpeechRecognitionErrorMessage,
+  JARVIS_SPEECH_LISTENING_MESSAGE,
   mergeJarvisSpeechTranscript,
   sanitizeJarvisSpeechOutput,
+  sanitizeJarvisSpeechTranscript,
 } from "@/lib/jarvis/voice";
 import styles from "./dashboard.module.css";
 
@@ -50,19 +54,6 @@ function getSpeechRecognitionConstructor() {
   if (typeof window === "undefined") return undefined;
   const voiceWindow = window as BrowserVoiceWindow;
   return voiceWindow.SpeechRecognition ?? voiceWindow.webkitSpeechRecognition;
-}
-
-function getSpeechRecognitionError(error?: string) {
-  if (error === "not-allowed" || error === "service-not-allowed") {
-    return "Mikrofonzugriff wurde nicht erlaubt.";
-  }
-  if (error === "audio-capture") {
-    return "Es wurde kein verfügbares Mikrofon gefunden.";
-  }
-  if (error === "no-speech") {
-    return "Ich habe keine Sprache erkannt. Bitte versuche es erneut.";
-  }
-  return "Die Spracheingabe ist gerade nicht verfügbar.";
 }
 
 function MicrophoneIcon() {
@@ -108,6 +99,8 @@ export function JarvisComposer({
   const [hasSpeechSynthesis, setHasSpeechSynthesis] = useState(false);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const isListeningRef = useRef(false);
+  const hasSpeechResultRef = useRef(false);
+  const speechRecognitionErrorRef = useRef<string | undefined>(undefined);
   const speechBaseDraftRef = useRef("");
   const lastSpokenAnswerRef = useRef("");
 
@@ -132,35 +125,45 @@ export function JarvisComposer({
     recognition.interimResults = true;
     recognition.onstart = () => {
       isListeningRef.current = true;
+      hasSpeechResultRef.current = false;
+      speechRecognitionErrorRef.current = undefined;
       setIsListening(true);
-      setSpeechStatus("Ich höre zu … Loslassen übernimmt das Transkript.");
+      setSpeechStatus(JARVIS_SPEECH_LISTENING_MESSAGE);
     };
     recognition.onresult = (event) => {
       const transcript = Array.from(event.results)
         .map((result) => result[0]?.transcript ?? "")
         .join(" ");
+      if (!sanitizeJarvisSpeechTranscript(transcript)) return;
+      hasSpeechResultRef.current = true;
       setDraft(
         mergeJarvisSpeechTranscript(speechBaseDraftRef.current, transcript)
       );
     };
     recognition.onerror = (event) => {
-      isListeningRef.current = false;
+      speechRecognitionErrorRef.current = event.error;
       setIsListening(false);
-      setSpeechStatus(getSpeechRecognitionError(event.error));
+      setSpeechStatus(getJarvisSpeechRecognitionErrorMessage(event.error));
     };
     recognition.onend = () => {
       isListeningRef.current = false;
       setIsListening(false);
-      setSpeechStatus((current) =>
-        current.startsWith("Ich höre zu")
-          ? "Transkript prüfen und anschließend bewusst senden."
-          : current
+      setSpeechStatus(
+        speechRecognitionErrorRef.current
+          ? getJarvisSpeechRecognitionErrorMessage(
+              speechRecognitionErrorRef.current
+            )
+          : getJarvisSpeechRecognitionEndMessage(hasSpeechResultRef.current)
       );
     };
     recognitionRef.current = recognition;
 
     return () => {
       isListeningRef.current = false;
+      recognition.onstart = null;
+      recognition.onresult = null;
+      recognition.onerror = null;
+      recognition.onend = null;
       recognition.abort();
       recognitionRef.current = null;
     };
@@ -205,6 +208,8 @@ export function JarvisComposer({
   function startListening() {
     if (isSending || isListeningRef.current || !recognitionRef.current) return;
     speechBaseDraftRef.current = draft;
+    hasSpeechResultRef.current = false;
+    speechRecognitionErrorRef.current = undefined;
     setSpeechStatus("");
     try {
       isListeningRef.current = true;
@@ -219,7 +224,13 @@ export function JarvisComposer({
 
   function stopListening() {
     if (!isListeningRef.current || !recognitionRef.current) return;
-    recognitionRef.current.stop();
+    try {
+      recognitionRef.current.stop();
+    } catch {
+      isListeningRef.current = false;
+      setIsListening(false);
+      setSpeechStatus("Die Spracheingabe konnte nicht beendet werden.");
+    }
   }
 
   function handleMicrophoneKeyDown(event: KeyboardEvent<HTMLButtonElement>) {

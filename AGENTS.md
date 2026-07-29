@@ -1,5 +1,18 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Sprachmodus-Härtung 2026-07-29: Der browserseitige
+  Standard-Sprachmodus unterscheidet jetzt zuverlässig zwischen erkanntem
+  Transkript, Stille, Berechtigungsfehler, fehlendem Mikrofon, Abbruch,
+  Netzwerkfehler und nicht unterstützter Sprache. Nach einem Fehler bleibt
+  die interne Erkennung bis zum tatsächlichen Browser-Ende gegen einen
+  verfrühten Neustart gesperrt; Start, Stop und Komponenten-Cleanup sind
+  defensiv abgesichert. Nur ein tatsächlich erkanntes, weiterhin editierbares
+  Transkript führt zur Aufforderung, es bewusst zu prüfen und zu senden.
+  Ein realer Push-to-talk-Basislauf mit freigegebenem Mikrofon wurde in Google
+  Chrome erfolgreich durchgeführt. Der eingebettete Codex-Browser stellt
+  dagegen keine nutzbare Mikrofonfreigabe bereit; das ist eine Einschränkung
+  der Testumgebung, der Textchat bleibt dort vollständig nutzbar.
+
 - Dashboard-Hintergrundpolling 2026-07-29: Die bestehenden Intervalle fuer
   Projektzeiten (5 Sekunden) und das offene Projekt-Logbuch (15 Sekunden)
   fragen nur noch bei einem sichtbaren Browser-Tab beim Server an. Beim
@@ -21,10 +34,10 @@
   Sprachsynthese, ist standardmäßig aus, kann jederzeit gestoppt werden und
   endet beim Schließen des Dialogs. Fehlende Browserunterstützung oder
   verweigerte Mikrofonberechtigung deaktivieren die jeweilige Funktion ohne
-  Auswirkung auf den Textchat. Die Abnahme des vollständigen Sprachmodus
-  bleibt offen, bis ein Browser mit freigegebenem Mikrofon real geprüft ist;
-  insbesondere Realtime-Audio, serverseitige Transkription und Audio-Budgets
-  sind nicht Bestandteil dieses Pakets.
+  Auswirkung auf den Textchat. Der Push-to-talk-Basislauf wurde mit
+  freigegebenem Mikrofon in Google Chrome real geprüft. Insbesondere
+  Realtime-Audio, serverseitige Transkription und Audio-Budgets sind nicht
+  Bestandteil dieses Pakets.
 
 - JARVIS Intent-Orchestrator V4 2026-07-28: Nach der globalen Sicherheits-
   und Rollenprüfung klassifiziert ein begrenzter KI-Aufruf natürliche
