@@ -105,6 +105,16 @@ function source(): OrganizationOfferAgingSource {
   };
 }
 
+function emptySource(): OrganizationOfferAgingSource {
+  return {
+    load: vi.fn().mockResolvedValue({
+      offers: [],
+      linkedInvoices: [],
+      sentDispatches: [],
+    }),
+  };
+}
+
 const salesProfile = createJarvisAccessProfile({
   id: "sales",
   role: Role.VERTRIEB,
@@ -166,6 +176,27 @@ describe("organization-wide JARVIS offer aging analysis", () => {
     expect(response?.records).toHaveLength(1);
     expect(response?.records?.[0].title).toContain("A-100");
     expect(JSON.stringify(response)).toContain("mindestens 30 Tage");
+  });
+
+  it.each([
+    [
+      "Welche Kunden haben offene Angebote?",
+      "keine offenen Angebote gefunden",
+    ],
+    [
+      "Welche Angebote sind seit mehr als 30 Tagen offen?",
+      "keine seit mindestens 30 Tagen offenen Angebote gefunden",
+    ],
+  ])("uses correct grammar for an empty result: %s", async (question, expected) => {
+    const response = await resolveJarvisOrganizationOfferAgingRequest({
+      question,
+      organizationId: "org-1",
+      accessProfile: salesProfile,
+      now: new Date("2026-07-29T10:00:00.000Z"),
+      source: emptySource(),
+    });
+
+    expect(response?.message).toContain(expected);
   });
 
   it("refuses unauthorized employees before loading offer data", async () => {

@@ -297,10 +297,10 @@ export async function resolveJarvisOrganizationOfferAgingRequest(input: {
   const unsentBasisCount = selected.filter(
     (offer) => offer.issueBasis === "created"
   ).length;
-  const scopeLabel =
+  const emptyScopeLabel =
     intent.minimumAgeDays === null
-      ? "offene Angebote"
-      : `seit mindestens ${intent.minimumAgeDays} Tagen offene Angebote`;
+      ? "offenen Angebote"
+      : `seit mindestens ${intent.minimumAgeDays} Tagen offenen Angebote`;
   const selectedDescription =
     intent.minimumAgeDays === null
       ? selected.length === 1
@@ -313,7 +313,7 @@ export async function resolveJarvisOrganizationOfferAgingRequest(input: {
     customerCount === 1 ? "einem Kunden" : `${customerCount} Kunden`;
   const message =
     selected.length === 0
-      ? `Aktuell wurden keine ${scopeLabel} gefunden.`
+      ? `Aktuell wurden keine ${emptyScopeLabel} gefunden.`
       : `Aktuell gibt es ${selectedDescription} von ${customerDescription} mit zusammen ${formatMoney(selectedValue)} netto. Insgesamt sind ${openOffers.length} Angebote mit ${formatMoney(openValue)} netto offen.`;
 
   return {
