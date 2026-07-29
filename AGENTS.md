@@ -10,6 +10,14 @@
   Projektadresse und umgangssprachliche Verantwortungsfragen direkte,
   organisations- und rollengeprüfte Fakten. Exakte Dokument-, Rechnungs- und
   sonstige Fachhilfen behalten Vorrang vor der allgemeineren Systemlandkarte.
+  Exakte sichere Bedienhilfen werden jetzt vor der optionalen
+  KI-Klassifikation beantwortet; insbesondere `alle Projekte` und
+  `Projektübersicht` führen direkt zur Projektübersichts-Hilfe. Das spart bei
+  wiederkehrenden Bedienfragen Modellaufrufe, Antwortzeit und Kosten. Der
+  zweite vollständige Live-Vergleichslauf beantwortete 110/110 Fragen ohne
+  leere Antwort oder UI-Wiederholung; Mittelwert 3,68 Sekunden, Maximum 10,44
+  Sekunden. Alle fünf schreibenden Befehle blieben blockiert und es wurde
+  kein technisches Geheimnis ausgegeben.
 
 - JARVIS Sprachmodus-Härtung 2026-07-29: Der browserseitige
   Standard-Sprachmodus unterscheidet jetzt zuverlässig zwischen erkanntem

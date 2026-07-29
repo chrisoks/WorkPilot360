@@ -499,6 +499,20 @@ export async function POST(req: Request) {
     intentDecision
   );
   const exactHelpTopicId = findJarvisExactHelpTopicId(message, context);
+  const deterministicHelpRequest =
+    Boolean(exactHelpTopicId) &&
+    looksLikeDeterministicHelpRequest(message) &&
+    !directActionRequest;
+  if (exactHelpTopicId && deterministicHelpRequest) {
+    return respond(
+      resolveJarvisSystemHelpTopic(
+        exactHelpTopicId,
+        message,
+        context,
+        accessProfile
+      )
+    );
+  }
   if (
     !directActionRequest &&
     !exactHelpTopicId &&
@@ -547,10 +561,6 @@ export async function POST(req: Request) {
     ai: aiIntentClassification,
     hasDeterministicPersonIntent: Boolean(deterministicPersonIntent),
   });
-  const deterministicHelpRequest =
-    Boolean(exactHelpTopicId) &&
-    looksLikeDeterministicHelpRequest(message) &&
-    !directActionRequest;
   if (
     directActionRequest &&
     aiIntentClassification?.intent !== "prepare_action"

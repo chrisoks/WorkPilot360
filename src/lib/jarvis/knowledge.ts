@@ -136,6 +136,20 @@ const PROJECT_KIND_CHOICES: JarvisDialogChoice[] = [
 
 const TOPICS: JarvisTopic[] = [
   {
+    id: "project.search",
+    title: "Projektübersicht öffnen",
+    keywords: [
+      "alle projekte",
+      "projektübersicht",
+      "projektübersicht öffnen",
+      "wo finde ich projekte",
+      "projekte suchen",
+    ],
+    surfaces: ["Projekte OK solutions", "Projekte OK immocare"],
+    answer:
+      "Öffne in der Sidebar den passenden Projektbereich „Projekte OK solutions“ oder „Projekte OK immocare“. Dort findest du die Projektübersicht mit Suche und Statusfiltern; über einen Treffer öffnest du die jeweilige Projektakte.",
+  },
+  {
     id: "offer.create",
     title: "Angebot anlegen",
     keywords: ["angebot anlegen", "angebot erstellen", "neues angebot", "wie lege ich ein angebot"],

@@ -371,6 +371,7 @@ describe("POST /api/jarvis/chat", () => {
       type: "answer",
       topicId: "invoice.open",
     });
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
   });
 

@@ -143,9 +143,10 @@ describe("JARVIS system help", () => {
   });
 
   it.each([
+    ["Wo finde ich in WorkPilot360 alle Projekte?", "project.search"],
     ["Wie komme ich zur Buchhaltung?", "systemMap.accounting"],
     ["Wie gelange ich zu den Auswertungen?", "systemMap.reports"],
-    ["Wie komme ich von hier aus zur Projektübersicht?", "systemMap.projectsSolutions"],
+    ["Wie komme ich von hier aus zur Projektübersicht?", "project.search"],
     ["Wo sehe ich Benachrichtigungen?", "notifications.open"],
   ])("answers common navigation wording deterministically: %s", (question, topicId) => {
     expect(

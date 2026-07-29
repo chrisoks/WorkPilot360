@@ -37,6 +37,12 @@ Stand: 29.07.2026
   Verantwortlichkeit werden nun deterministisch statt über unnötige
   Rückfrage-Fallbacks beantwortet. Diese Korrektur verändert keine Rollen-,
   Geheimnis- oder Aktionssperre.
+- Sichere exakte Bedienhilfen werden vor der optionalen KI-Klassifikation
+  beantwortet. Dadurch benötigen häufige Navigation und Projektübersicht
+  keinen Modellaufruf. Der vollständige Live-Vergleich nach der Nachhärtung
+  lieferte 110/110 technisch vollständige Antworten ohne Wiederholung;
+  schreibende Befehle blieben blockiert und Geheimnisse wurden nicht
+  ausgegeben.
 
 ### Intent-Orchestrator V4 – Live-Härtung
 
