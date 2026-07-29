@@ -1,5 +1,34 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS persistenter Aufgabenentwurf 2026-07-29: Der erste produktiv
+  schreibende Action-Center-Vertikalschnitt ist umgesetzt. Ein erkannter
+  Aufgabenwunsch erzeugt zunächst ausschließlich einen 15 Minuten gültigen,
+  serverseitig gespeicherten Entwurf. Er ist an Organisation, echte
+  serverseitige Sitzung, Sitzungsakteur, wirksamen Akteur, Rollenpaar und
+  Impersonationsstatus gebunden. Payload und Projektkontext besitzen
+  SHA-256-Nachweise sowie einen serverseitigen HMAC-Integritätstag; ein seit
+  der Vorschau geändertes Projekt sperrt die Anlage. Verantwortlichkeit und
+  Fälligkeit müssen sichtbar ergänzt und serverseitig geprüft werden. Jede
+  Änderung, Bestätigung und jeder Abbruch ist revisionsgebunden, sodass ein
+  älterer Tab keinen neueren Stand überschreiben oder bestätigen kann.
+  Ungeprüfte lokale Feldänderungen deaktivieren den Bestätigungsbutton.
+  Erst `Aufgabe jetzt anlegen` darf innerhalb derselben Datenbanktransaktion
+  den Entwurf atomar beanspruchen und genau eine Aufgabe über den
+  rollengeprüften Task-Service erzeugen. Wiederholung, Doppelklick und Replay
+  liefern das bereits gespeicherte Ergebnis statt einer Dublette. Abbruch,
+  Ablauf, Integritätsfehler, Rollen-/Session-/Mandantenwechsel und verbotene
+  Zuweisungen bleiben fail-closed. Erfolg wird erst nach bestätigtem
+  Datenbankzustand angezeigt; die neue Aufgabe lässt sich ohne Seitenreload
+  öffnen. Entwurfsereignisse werden fortlaufend und getrennt vom normalen
+  Aufgaben-Audit protokolliert. Der additive Prisma-Diff enthält nur
+  `JarvisActionDraft`, `JarvisActionDraftAuditEvent`, Indizes und
+  Fremdschlüssel. 1025/1025 Tests, TypeScript, Prisma-Validierung,
+  Regression, Mojibake, Diff-Check und Produktionsbuild sind lokal grün.
+  Ein echter lokaler Browser-/Datenbanklauf bestätigte Abbruch ohne Aufgabe
+  sowie Doppelklick mit exakt einer Aufgabe und vollständiger
+  `created → completed → confirmed_and_executed`-Auditfolge; die eindeutig
+  markierten lokalen E2E-Daten wurden anschließend vollständig bereinigt.
+
 - JARVIS Live-Intent-Nachhärtung 2026-07-29: Der nach dem ersten
   Sprachdeployment verpflichtend ausgeführte 110-Fragen-Lauf zeigte keine
   technischen Ausfälle, aber wiederkehrende Rückfrage-Fallbacks bei natürlicher

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { Role } from "@prisma/client";
-import { getAuthenticatedSessionUser } from "@/lib/auth/session";
+import { authenticateSession, getAuthenticatedSessionUser } from "@/lib/auth/session";
 
 type ActorCandidate = {
   id: string;
@@ -19,6 +19,7 @@ export type SessionBoundActorResult<TActor extends ActorCandidate> =
       ok: true;
       actor: TActor;
       sessionUserId: string;
+      sessionId: string | null;
       isImpersonating: boolean;
     }
   | SessionBoundActorFailure;
@@ -36,7 +37,8 @@ export async function getSessionBoundActor<TActor extends ActorCandidate>(
   users: TActor[],
   requestedActorId: unknown
 ): Promise<SessionBoundActorResult<TActor>> {
-  const sessionUser = await getAuthenticatedSessionUser(req);
+  const authentication = await authenticateSession(req);
+  const sessionUser = authentication?.user;
   if (!sessionUser) {
     return { ok: false, status: 401, error: "Aktive Sitzung erforderlich." };
   }
@@ -55,6 +57,7 @@ export async function getSessionBoundActor<TActor extends ActorCandidate>(
     ok: true,
     actor,
     sessionUserId: sessionUser.id,
+    sessionId: authentication.session?.id ?? null,
     isImpersonating: requestedId !== sessionUser.id,
   };
 }

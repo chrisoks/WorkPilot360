@@ -158,6 +158,59 @@ export type JarvisActionPreviewView = {
   };
 };
 
+export type JarvisTaskActionDraftState =
+  | "awaiting_input"
+  | "awaiting_confirmation"
+  | "cancelled"
+  | "expired"
+  | "executed";
+
+export type JarvisTaskActionDraftView = {
+  version: 2;
+  previewId: string;
+  actionId: "task.prepare";
+  title: "Aufgabe vorbereiten";
+  badge: "Entwurf" | "Bereit" | "Abgebrochen" | "Abgelaufen" | "Angelegt";
+  state: JarvisTaskActionDraftState;
+  revision: number;
+  expiresAt: string;
+  fields: Array<{
+    label: string;
+    value: string;
+  }>;
+  missingFields: string[];
+  editor: {
+    description: string;
+    assigneeId: string;
+    dueAt: string;
+    assigneeOptions: Array<{
+      id: string;
+      label: string;
+    }>;
+  };
+  confirmation: {
+    enabled: boolean;
+    reason:
+      | "ready"
+      | "missing_fields"
+      | "expired"
+      | "cancelled"
+      | "executed";
+  };
+  cancellation: {
+    enabled: boolean;
+  };
+  execution: {
+    enabled: false;
+    reason: "requires_confirmation" | "finalized";
+  };
+  result?: {
+    entityType: "task";
+    entityId: string;
+    label: string;
+  };
+};
+
 export type JarvisActionPreviewFailureCode =
   | "invalid_request"
   | "invalid_payload"

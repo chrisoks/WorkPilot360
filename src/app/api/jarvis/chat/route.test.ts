@@ -38,6 +38,7 @@ const mocks = vi.hoisted(() => ({
   buildJarvisProjectSequenceContinuation: vi.fn(),
   resolveJarvisAccessPolicyQuestion: vi.fn(),
   resolveJarvisProjectDialogIntent: vi.fn(),
+  createPersistedJarvisTaskDraft: vi.fn(),
 }));
 
 vi.mock("@/lib/demo/context", () => ({
@@ -77,6 +78,20 @@ vi.mock("@/lib/jarvis/access-policy", () => ({
 
 vi.mock("@/lib/jarvis/project-dialog-intent", () => ({
   resolveJarvisProjectDialogIntent: mocks.resolveJarvisProjectDialogIntent,
+}));
+
+vi.mock("@/lib/jarvis/action-draft-store", () => ({
+  createPersistedJarvisTaskDraft: mocks.createPersistedJarvisTaskDraft,
+  JarvisActionDraftError: class JarvisActionDraftError extends Error {
+    code: string;
+    status: number;
+
+    constructor(code: string, message: string, status: number) {
+      super(message);
+      this.code = code;
+      this.status = status;
+    }
+  },
 }));
 
 vi.mock("@/lib/jarvis/project-health", () => ({
@@ -160,8 +175,33 @@ describe("POST /api/jarvis/chat", () => {
     });
     mocks.getSessionBoundActor.mockResolvedValue({
       ok: true,
+      sessionId: "session-1",
       sessionUserId: user.id,
       actor: user,
+    });
+    mocks.createPersistedJarvisTaskDraft.mockResolvedValue({
+      version: 2,
+      previewId: "preview-1",
+      actionId: "task.prepare",
+      title: "Aufgabe vorbereiten",
+      badge: "Entwurf",
+      state: "awaiting_input",
+      revision: 1,
+      expiresAt: "2026-07-29T22:00:00.000Z",
+      fields: [
+        { label: "Titel", value: "Kunden wegen Angebot anrufen" },
+        { label: "Projektbezug", value: "Aktuelles Projekt verknüpft" },
+      ],
+      missingFields: ["Verantwortliche Person", "Fälligkeit"],
+      editor: {
+        description: "",
+        assigneeId: "",
+        dueAt: "",
+        assigneeOptions: [{ id: "user-1", label: "Test User" }],
+      },
+      confirmation: { enabled: false, reason: "missing_fields" },
+      cancellation: { enabled: true },
+      execution: { enabled: false, reason: "requires_confirmation" },
     });
     mocks.sanitizeJarvisSurfaceContext.mockReturnValue({ module: "Projekte" });
     mocks.createJarvisAccessProfile.mockReturnValue({ profile: true });
@@ -1432,7 +1472,7 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
   });
 
-  it("returns a non-executable task preview when the title is clear", async () => {
+  it("returns a persistent, confirmation-bound task draft when the title is clear", async () => {
     const actor = {
       id: "user-1",
       isActive: true,
@@ -1475,12 +1515,13 @@ describe("POST /api/jarvis/chat", () => {
 
     expect(payload).toMatchObject({
       type: "answer",
-      topicId: "action.preview.task",
-      actionPreview: {
-        version: 1,
+      topicId: "action.draft.task",
+      actionDraft: {
+        version: 2,
+        previewId: "preview-1",
         actionId: "task.prepare",
-        badge: "Nur Vorschau",
-        state: "awaiting_confirmation",
+        badge: "Entwurf",
+        state: "awaiting_input",
         fields: [
           {
             label: "Titel",
@@ -1494,19 +1535,31 @@ describe("POST /api/jarvis/chat", () => {
         missingFields: ["Verantwortliche Person", "Fälligkeit"],
         confirmation: {
           enabled: false,
-          reason: "not_released",
+          reason: "missing_fields",
         },
         execution: {
           enabled: false,
-          reason: "preview_only",
+          reason: "requires_confirmation",
         },
       },
     });
-    expect(payload.message).toContain("nichts gespeichert oder ausgeführt");
-    expect(JSON.stringify(payload.actionPreview)).not.toContain(
+    expect(payload.message).toContain("ausdrückliche Bestätigung");
+    expect(JSON.stringify(payload.actionDraft)).not.toContain(
       "organization-1"
     );
-    expect(JSON.stringify(payload.actionPreview)).not.toContain("user-1");
+    expect(JSON.stringify(payload.actionDraft)).not.toContain("session-1");
+    expect(mocks.createPersistedJarvisTaskDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "session-1",
+        organizationId: "organization-1",
+        preview: expect.objectContaining({
+          payload: expect.objectContaining({
+            title: "Kunden wegen Angebot anrufen",
+            projectId: "project-1",
+          }),
+        }),
+      })
+    );
     expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
     expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();

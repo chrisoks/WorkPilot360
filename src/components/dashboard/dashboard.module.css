@@ -7175,6 +7175,111 @@
   padding-top: 9px;
 }
 
+.jarvisActionPreview[data-state="executed"] {
+  background: linear-gradient(160deg, #f0fdf4 0%, #ecfdf5 100%);
+  border-color: #86cfa4;
+}
+
+.jarvisActionPreview[data-state="cancelled"],
+.jarvisActionPreview[data-state="expired"] {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.jarvisActionDraftEditor {
+  background: rgb(255 255 255 / 0.78);
+  border: 1px solid #cfe1e3;
+  border-radius: 11px;
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+}
+
+.jarvisActionDraftEditor label {
+  display: grid;
+  gap: 4px;
+}
+
+.jarvisActionDraftEditor label > span {
+  color: #526a72;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.jarvisActionDraftEditor input,
+.jarvisActionDraftEditor select,
+.jarvisActionDraftEditor textarea {
+  background: #fff;
+  border: 1px solid #b8cfd2;
+  border-radius: 8px;
+  color: #163b44;
+  font: inherit;
+  font-size: 0.76rem;
+  min-width: 0;
+  padding: 8px 9px;
+  width: 100%;
+}
+
+.jarvisActionDraftEditor textarea {
+  resize: vertical;
+}
+
+.jarvisActionDraftEditor input:focus-visible,
+.jarvisActionDraftEditor select:focus-visible,
+.jarvisActionDraftEditor textarea:focus-visible {
+  border-color: #0f7b83;
+  outline: 3px solid rgb(15 123 131 / 0.14);
+}
+
+.jarvisActionDraftEditor > button,
+.jarvisActionDraftActions button {
+  background: #fff;
+  border: 1px solid #8fb9bd;
+  border-radius: 9px;
+  color: #0d5960;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.73rem;
+  font-weight: 800;
+  min-height: 36px;
+  padding: 8px 11px;
+}
+
+.jarvisActionDraftEditor > button:hover:not(:disabled),
+.jarvisActionDraftActions button:hover:not(:disabled) {
+  border-color: #0f7b83;
+  box-shadow: 0 5px 14px rgb(15 52 64 / 0.1);
+}
+
+.jarvisActionDraftEditor > button:disabled,
+.jarvisActionDraftActions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.jarvisActionDraftActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.jarvisActionDraftActions button[data-primary="true"] {
+  background: #0f666d;
+  border-color: #0f666d;
+  color: #fff;
+}
+
+.jarvisActionDraftError {
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  border-radius: 9px;
+  color: #9f1239;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.45;
+  padding: 8px 10px;
+}
+
 .jarvisStructuredAnswer {
   display: grid;
   gap: 12px;

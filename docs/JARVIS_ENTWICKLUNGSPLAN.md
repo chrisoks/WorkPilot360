@@ -1543,20 +1543,43 @@ späterer ausdrücklich gewählter Realtime-Modus.
 
 ### Phase 4: Starkes Action Center 1.0
 
-Stand 29.07.2026: Die sicherheitskritische Grundlage ist begonnen. Für
-Aufgaben-, Termin- und manuelle Zeitentwürfe existiert eine strikt typisierte
-Vorschau mit Organisations- und Akteursbindung, expliziter Bestätigung,
-Abbruch und fortlaufendem Audit. Auch eine bestätigte Vorschau bleibt technisch
-nicht ausführbar (`preview_only`); produktive Schreibadapter, Persistenz und
-UI-Freigabe folgen erst nach separater fachlicher und sicherheitstechnischer
-Abnahme.
+Stand 29.07.2026: Der erste vollständige Vertikalschnitt für Aufgaben ist
+lokal technisch und sicherheitlich abgenommen. Eine eindeutig formulierte
+Aufgabenanlage erzeugt zunächst ausschließlich einen 15 Minuten gültigen,
+serverseitig persistierten Entwurf. Er ist an Organisation, serverseitige
+Sitzung, Sitzungs- und effektiven Akteur, beide Rollen und einen möglichen
+Impersonationszustand gebunden. Payload und Kontext werden gehasht und mit
+einem serverseitigen HMAC-Integritätstag geschützt. Der gespeicherte
+Projektstand wird vor der Ausführung erneut geprüft.
 
-Als erster sichtbarer Vertikalschnitt kann JARVIS eine eindeutig formulierte
-Aufgabenanlage mit ausreichend konkretem Titel nun als reine Chatvorschau
-darstellen. Die Vorschau zeigt fehlende Verantwortlichkeit und Fälligkeit,
-überträgt keine internen Akteurs- oder Organisationskennungen und kennzeichnet
-unmissverständlich, dass Bestätigen, Speichern und Ausführen noch gesperrt
-sind. Unvollständige Aufgabenwünsche bleiben bei der sicheren Rückfrage.
+Verantwortlichkeit und Fälligkeit bleiben Pflichtfelder. Nach ihrer Ergänzung
+muss der sichtbare Stand erneut geprüft werden; ungeprüfte lokale Änderungen
+sperren die Bestätigung. Alle Mutationen sind revisionsgebunden, sodass ein
+veralteter Tab keinen neueren Entwurf ändern, abbrechen oder ausführen kann.
+Erst der bewusste Klick auf `Aufgabe jetzt anlegen` beansprucht den Entwurf
+atomar in derselben Datenbanktransaktion und ruft den bestehenden
+rollengeprüften Task-Service auf. Der Service lädt Akteur, Verantwortlichen und
+Projekt unmittelbar vor dem Schreiben im richtigen Mandanten neu. Doppelklick,
+Wiederholung und Replay geben das bereits gespeicherte Ergebnis zurück und
+erzeugen keine zweite Aufgabe. Erfolg wird erst nach bestätigtem
+Datenbankzustand angezeigt; der neue Datensatz kann ohne Reload geöffnet
+werden.
+
+Abbruch, Ablauf, Rollen-/Session-/Organisationswechsel, manipulierte Payloads,
+veralteter Projektkontext, unzulässige Zuweisung und parallele Änderung laufen
+fail-closed. Die Auditfolge dokumentiert Erstellung, Vervollständigung,
+Abbruch/Ablauf, Fehler sowie bestätigte Ausführung. Der additive Prisma-Diff
+enthält ausschließlich die beiden Entwurfs-/Auditmodelle, deren Indizes und
+Fremdschlüssel. Die lokale Abnahme umfasst 1025/1025 Tests sowie einen echten
+Browser-/Datenbanklauf mit Abbruch ohne Anlage und bestätigtem Doppelklick mit
+exakt einer Aufgabe. Vor produktiver Freigabe bleiben separates Serverbackup,
+Deployment und der verpflichtende Lauf mit mindestens 110 menschenähnlichen
+Live-Fällen offen.
+
+Termin- und manuelle Zeitentwürfe besitzen weiterhin nur die typisierte
+Vorschaugrundlage und bleiben technisch nicht ausführbar (`preview_only`).
+Weitere Schreibadapter folgen erst nach derselben fachlichen und
+sicherheitstechnischen Abnahme.
 
 - Aufgaben und Nachfassaufgaben,
 - Termine und Terminwünsche,

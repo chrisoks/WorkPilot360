@@ -42,6 +42,8 @@ model Organization {
   invoiceLines                  InvoiceLine[]
   invoiceLineLabor              InvoiceLineLabor[]
   invoiceHistory                InvoiceHistory[]
+  jarvisActionDrafts            JarvisActionDraft[]
+  jarvisActionDraftAuditEvents  JarvisActionDraftAuditEvent[]
   employeeCostCalculations      EmployeeCostCalculation[]
   employeeDocuments             EmployeeDocument[]
   recurringRules                RecurringTaskRule[]
@@ -629,14 +631,14 @@ model CustomerFeedback {
 }
 
 model CatalogItem {
-  id                                String               @id @default(cuid())
+  id                                String                     @id @default(cuid())
   organizationId                    String
-  type                              String               @default("article")
+  type                              String                     @default("article")
   number                            String
   name                              String
   category                          String?
-  trade                             String               @default("")
-  unit                              String               @default("Stk")
+  trade                             String                     @default("")
+  unit                              String                     @default("Stk")
   description                       String?
   matchcode                         String?
   ean                               String?
@@ -651,37 +653,37 @@ model CatalogItem {
   priceUnit                         String?
   deliveryTime                      String?
   stockQuantity                     Float?
-  purchasePrice                     Float                @default(0)
-  laborCostRateKey                  String               @default("")
-  listPrice                         Float                @default(0)
-  salesPrice                        Float                @default(0)
+  purchasePrice                     Float                      @default(0)
+  laborCostRateKey                  String                     @default("")
+  listPrice                         Float                      @default(0)
+  salesPrice                        Float                      @default(0)
   scheduledSalesPrice               Float?
   scheduledSalesPriceValidFrom      DateTime?
   scheduledSalesPriceCreatedAt      DateTime?
-  scheduledSalesPriceUpdatePackages Boolean              @default(false)
+  scheduledSalesPriceUpdatePackages Boolean                    @default(false)
   lastSalesPriceChangedAt           DateTime?
   lastSalesPriceOldValue            Float?
   lastSalesPriceNewValue            Float?
-  vatRate                           Float                @default(19)
-  isLaborPosition                   Boolean              @default(false)
-  isPlanningRelevant                Boolean              @default(false)
-  planningMinutesPerUnit            Int                  @default(0)
+  vatRate                           Float                      @default(19)
+  isLaborPosition                   Boolean                    @default(false)
+  isPlanningRelevant                Boolean                    @default(false)
+  planningMinutesPerUnit            Int                        @default(0)
   defaultPlanningBoard              String?
   defaultPlanningGroup              String?
-  reviewStatus                      String               @default("unreviewed")
+  reviewStatus                      String                     @default("unreviewed")
   reviewedAt                        DateTime?
   reviewedByUserId                  String?
   reviewedByName                    String?
   reviewNote                        String?
-  isActive                          Boolean              @default(true)
-  usedCount                         Int                  @default(0)
-  createdAt                         DateTime             @default(now())
-  updatedAt                         DateTime             @updatedAt
-  organization                      Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  isActive                          Boolean                    @default(true)
+  usedCount                         Int                        @default(0)
+  createdAt                         DateTime                   @default(now())
+  updatedAt                         DateTime                   @updatedAt
+  organization                      Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   history                           CatalogItemHistory[]
   inventoryMovements                CatalogInventoryMovement[]
-  packageItems                      CatalogPackageItem[] @relation("CatalogPackage")
-  usedInPackages                    CatalogPackageItem[] @relation("CatalogPackageComponent")
+  packageItems                      CatalogPackageItem[]       @relation("CatalogPackage")
+  usedInPackages                    CatalogPackageItem[]       @relation("CatalogPackageComponent")
 
   @@unique([organizationId, number])
   @@index([organizationId, type])
@@ -1152,11 +1154,11 @@ model DataImportRun {
   summary            Json               @default("{}")
   errorMessage       String             @default("")
   rollbackStatus     String             @default("not_requested")
-  startedAt          DateTime            @default(now())
+  startedAt          DateTime           @default(now())
   completedAt        DateTime?
   rolledBackAt       DateTime?
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
   records            DataImportRecord[]
 
   @@index([organizationId, sourceSystem, createdAt])
@@ -1194,18 +1196,18 @@ model DataImportRecord {
 }
 
 model ExternalSourceReference {
-  id                 String    @id @default(cuid())
-  organizationId     String
-  sourceSystem       String
-  entityType         String
-  externalId         String
-  localEntityId      String
-  sourceHash         String    @default("")
-  sourceModifiedAt   DateTime?
-  lastImportRunId    String?
-  metadata           Json      @default("{}")
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id               String    @id @default(cuid())
+  organizationId   String
+  sourceSystem     String
+  entityType       String
+  externalId       String
+  localEntityId    String
+  sourceHash       String    @default("")
+  sourceModifiedAt DateTime?
+  lastImportRunId  String?
+  metadata         Json      @default("{}")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@unique([organizationId, sourceSystem, entityType, externalId])
   @@index([organizationId, entityType, localEntityId])
@@ -1286,6 +1288,64 @@ model AuditLog {
   createdAt      DateTime     @default(now())
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   task           Task?        @relation(fields: [taskId], references: [id])
+}
+
+model JarvisActionDraft {
+  id                 String    @id
+  organizationId     String
+  sessionId          String
+  sessionActorId     String
+  sessionActorRole   String
+  effectiveActorId   String
+  effectiveActorRole String
+  impersonating      Boolean   @default(false)
+  actionId           String
+  state              String    @default("awaiting_input")
+  revision           Int       @default(1)
+  payload            Json
+  context            Json
+  payloadHash        String
+  contextHash        String
+  integrityTag       String
+  expiresAt          DateTime
+  confirmedAt        DateTime?
+  cancelledAt        DateTime?
+  executedAt         DateTime?
+  resultEntityType   String?
+  resultEntityId     String?
+  lastErrorCode      String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  organization Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  auditEvents  JarvisActionDraftAuditEvent[]
+
+  @@index([organizationId, state, expiresAt])
+  @@index([sessionId, effectiveActorId, state])
+}
+
+model JarvisActionDraftAuditEvent {
+  id               String   @id
+  organizationId   String
+  draftId          String
+  sequence         Int
+  eventType        String
+  revision         Int
+  sessionId        String
+  sessionActorId   String
+  effectiveActorId String
+  payloadHash      String
+  contextHash      String
+  reasonCode       String?
+  resultEntityType String?
+  resultEntityId   String?
+  createdAt        DateTime @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  draft        JarvisActionDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+
+  @@unique([draftId, sequence])
+  @@index([organizationId, createdAt])
 }
 
 model EscalationRule {

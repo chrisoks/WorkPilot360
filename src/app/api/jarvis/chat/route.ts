@@ -79,8 +79,11 @@ import { analyzeJarvisQuestion } from "@/lib/jarvis/question-semantics";
 import {
   createJarvisActionPreview,
   extractJarvisTaskPreviewTitle,
-  toJarvisActionPreviewView,
 } from "@/lib/jarvis/action-center";
+import {
+  createPersistedJarvisTaskDraft,
+  JarvisActionDraftError,
+} from "@/lib/jarvis/action-draft-store";
 
 export const dynamic = "force-dynamic";
 
@@ -88,9 +91,10 @@ function cleanText(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
 
-function buildJarvisTaskPreview(input: {
+async function buildJarvisTaskPreview(input: {
   question: string;
   organizationId: string;
+  sessionId: string | null;
   accessProfile: ReturnType<typeof createJarvisAccessProfile>;
   context: ReturnType<typeof sanitizeJarvisSurfaceContext>;
 }) {
@@ -111,13 +115,41 @@ function buildJarvisTaskPreview(input: {
   });
   if (!preview.ok) return undefined;
 
-  return {
-    type: "answer" as const,
-    topicId: "action.preview.task",
-    message:
-      "Ich habe die Aufgabe ausschließlich als Vorschau vorbereitet. Es wurde nichts gespeichert oder ausgeführt. Prüfe den Titel und ergänze später Verantwortlichkeit und Fälligkeit; Bestätigen und Speichern bleiben in diesem Ausbauschritt gesperrt.",
-    actionPreview: toJarvisActionPreviewView(preview.value),
-  };
+  if (!input.sessionId) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.draft.session-required",
+      message:
+        "Für bestätigbare JARVIS-Aktionen ist eine aktuelle serverseitige Sitzung erforderlich. Bitte melde dich neu an; es wurde nichts gespeichert oder ausgeführt.",
+    };
+  }
+
+  try {
+    const actionDraft = await createPersistedJarvisTaskDraft({
+      preview: preview.value,
+      organizationId: input.organizationId,
+      sessionId: input.sessionId,
+      profile: input.accessProfile,
+      context: input.context,
+    });
+    return {
+      type: "answer" as const,
+      topicId: "action.draft.task",
+      message:
+        "Ich habe einen sicheren Aufgabenentwurf vorbereitet. Ergänze Verantwortlichkeit und Fälligkeit und prüfe anschließend alle Angaben. Erst deine ausdrückliche Bestätigung darf genau eine Aufgabe anlegen.",
+      actionDraft,
+    };
+  } catch (error) {
+    const message =
+      error instanceof JarvisActionDraftError
+        ? error.message
+        : "Der Aufgabenentwurf konnte nicht sicher gespeichert werden.";
+    return {
+      type: "refusal" as const,
+      topicId: "action.draft.unavailable",
+      message: `${message} Es wurde nichts ausgeführt.`,
+    };
+  }
 }
 
 function shouldUseProjectHealthPath(
@@ -608,9 +640,10 @@ export async function POST(req: Request) {
     directActionRequest &&
     looksLikeTaskCreationPreviewRequest(message)
   ) {
-    const taskPreview = buildJarvisTaskPreview({
+    const taskPreview = await buildJarvisTaskPreview({
       question: message,
       organizationId: organization.id,
+      sessionId: actorResult.sessionId,
       accessProfile,
       context,
     });
@@ -636,9 +669,10 @@ export async function POST(req: Request) {
     aiIntentClassification?.intent === "prepare_action" &&
     aiIntentClassification.actionKind === "task.create"
   ) {
-    const taskPreview = buildJarvisTaskPreview({
+    const taskPreview = await buildJarvisTaskPreview({
       question: message,
       organizationId: organization.id,
+      sessionId: actorResult.sessionId,
       accessProfile,
       context,
     });
