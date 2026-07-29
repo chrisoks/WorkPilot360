@@ -39,7 +39,7 @@ describe("JARVIS intent orchestrator V3 regressions", () => {
   });
 
   it.each([
-    "Wie viele offene Posten haben wir?",
+    "Wie viele Rechnungsentwürfe sind insgesamt offen?",
     "Welche Kunden haben seit 30 Tagen keine Aktivität?",
     "Welche Projekte haben Zeiten, aber noch keine Rechnung?",
   ])("never turns an unsupported analysis into a false zero result: %s", (question) => {

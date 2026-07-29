@@ -52,6 +52,12 @@ Stand: 29.07.2026
 - Die Projektprüfung akzeptiert diese kurzen Folgefragen auch an ihrer
   internen Adaptergrenze; die Orchestrierung allein gilt nicht als
   ausreichender Nachweis für einen funktionierenden Folgeturn.
+- Offene Posten besitzen jetzt eine deterministische, organisationsgebundene
+  Stichtagsauswertung. Sie trennt offene, überfällige, heute fällige und wegen
+  fehlendem Fälligkeitsdatum nicht sicher bewertbare Rechnungen, schließt
+  Entwürfe, gelöschte, stornierte und bezahlte Belege aus und weist Beträge
+  ausdrücklich netto aus. Mahnstufen werden ausschließlich gelesen; der
+  Adapter löst keine Mahnung und keine Datenänderung aus.
 
 ### Intent-Orchestrator V4
 

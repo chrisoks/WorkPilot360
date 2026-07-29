@@ -3,10 +3,8 @@ import { normalizeJarvisIntentText } from "@/lib/jarvis/intent-text";
 import type { JarvisReadResponse } from "@/lib/jarvis/read-model";
 
 const ORGANIZATION_ANALYSIS_PATTERNS = [
-  /\b(?:offen|offn)\w*\s+posten\b/,
   /\b(?:rechnungsentwurf|rechnungsentwurfe)\b.*\b(?:offen|insgesamt|wie viele)\b/,
   /\bwie viele\b.*\brechnungsentwurf\w*\b/,
-  /\b(?:offene|uberfallige)\b.*\b(?:forderung|posten)\b/,
   /\bangebot\w*\b.*\b(?:mehr als|alter als)\b.*\b\d+\s+tag\w*\b.*\boffen\b/,
   /\b(?:auslastung|ausgelastet|uberlastet|zu wenig arbeit)\b/,
   /\bwelche kunden\b.*\b(?:keine aktivitat|nichts passiert|lange nichts|nachfass)/,
@@ -15,7 +13,7 @@ const ORGANIZATION_ANALYSIS_PATTERNS = [
   /\bwelche projekte\b.*\b(?:auffallig|unwirtschaftlich|verlust|marge)\b/,
   /\bwelche (?:artikel|materialien|leistungen)\b.*\b(?:am haufigsten|meisten)\b/,
   /\b(?:wie|welche)\b.*\b(?:annahmequote|offnungsquote)\b/,
-  /\b(?:wie viel|wie hoch)\b.*\b(?:uberfallig|umsatz|forderungen)\b/,
+  /\b(?:wie viel|wie hoch)\b.*\b(?:umsatz)\b/,
 ];
 
 export function resolveJarvisCapabilityGap(

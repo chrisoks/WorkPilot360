@@ -25,6 +25,10 @@ import {
 import { resolveJarvisOrganizationMaterialRequest } from "@/lib/jarvis/organization-material-analysis";
 import { resolveJarvisOrganizationServiceRateRequest } from "@/lib/jarvis/organization-service-rate-analysis";
 import {
+  resolveJarvisOrganizationReceivablesIntent,
+  resolveJarvisOrganizationReceivablesRequest,
+} from "@/lib/jarvis/organization-receivables-analysis";
+import {
   resolveJarvisProjectReviewInventoryIntent,
   resolveJarvisProjectReviewInventoryRequest,
 } from "@/lib/jarvis/organization-project-review-analysis";
@@ -396,6 +400,19 @@ export async function POST(req: Request) {
       });
     if (projectReviewInventoryResponse) {
       return respond(projectReviewInventoryResponse, "management");
+    }
+  }
+  const organizationReceivablesIntent =
+    resolveJarvisOrganizationReceivablesIntent(message);
+  if (organizationReceivablesIntent) {
+    const organizationReceivablesResponse =
+      await resolveJarvisOrganizationReceivablesRequest({
+        question: message,
+        organizationId: organization.id,
+        accessProfile,
+      });
+    if (organizationReceivablesResponse) {
+      return respond(organizationReceivablesResponse, "management");
     }
   }
   const deterministicPersonIntent =

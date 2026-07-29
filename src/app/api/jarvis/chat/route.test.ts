@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   resolveJarvisProjectReviewInventoryRequest: vi.fn(),
   resolveJarvisOrganizationMaterialRequest: vi.fn(),
   resolveJarvisOrganizationServiceRateRequest: vi.fn(),
+  resolveJarvisOrganizationReceivablesIntent: vi.fn(),
+  resolveJarvisOrganizationReceivablesRequest: vi.fn(),
   resolveJarvisSalesAnalysisIntent: vi.fn(),
   resolveJarvisSalesAnalysisRequest: vi.fn(),
   resolveJarvisReadRequest: vi.fn(),
@@ -99,6 +101,13 @@ vi.mock("@/lib/jarvis/organization-service-rate-analysis", () => ({
 vi.mock("@/lib/jarvis/organization-material-analysis", () => ({
   resolveJarvisOrganizationMaterialRequest:
     mocks.resolveJarvisOrganizationMaterialRequest,
+}));
+
+vi.mock("@/lib/jarvis/organization-receivables-analysis", () => ({
+  resolveJarvisOrganizationReceivablesIntent:
+    mocks.resolveJarvisOrganizationReceivablesIntent,
+  resolveJarvisOrganizationReceivablesRequest:
+    mocks.resolveJarvisOrganizationReceivablesRequest,
 }));
 
 vi.mock("@/lib/jarvis/organization-project-review-analysis", () => ({
@@ -191,6 +200,10 @@ describe("POST /api/jarvis/chat", () => {
     mocks.resolveJarvisOrganizationServiceRateRequest.mockResolvedValue(
       undefined
     );
+    mocks.resolveJarvisOrganizationReceivablesIntent.mockReturnValue(undefined);
+    mocks.resolveJarvisOrganizationReceivablesRequest.mockResolvedValue(
+      undefined
+    );
     mocks.resolveJarvisSalesAnalysisIntent.mockReturnValue(false);
     mocks.resolveJarvisSalesAnalysisRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisReadRequest.mockResolvedValue(undefined);
@@ -234,6 +247,45 @@ describe("POST /api/jarvis/chat", () => {
     expect(payload).toMatchObject({
       type: "answer",
       topicId: "security.access-policy",
+    });
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+  });
+
+  it("answers an organization-wide receivables question before calling AI", async () => {
+    mocks.resolveJarvisOrganizationReceivablesIntent.mockReturnValue({
+      scope: "all_open",
+      presentation: "summary",
+    });
+    mocks.resolveJarvisOrganizationReceivablesRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "management.receivables",
+      message: "1.000,00 € sind netto offen.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Wie hoch sind unsere offenen Posten?",
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      type: "answer",
+      topicId: "management.receivables",
+    });
+    expect(
+      mocks.resolveJarvisOrganizationReceivablesRequest
+    ).toHaveBeenCalledWith({
+      question: "Wie hoch sind unsere offenen Posten?",
+      organizationId: "organization-1",
+      accessProfile: { profile: true },
     });
     expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();

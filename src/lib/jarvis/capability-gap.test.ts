@@ -3,9 +3,6 @@ import { resolveJarvisCapabilityGap } from "@/lib/jarvis/capability-gap";
 
 describe("resolveJarvisCapabilityGap", () => {
   it.each([
-    "Wie viele offene Posten haben wir?",
-    "Wie hoch sind unsere offenen Posten?",
-    "Wie hoch sint unser offnen Posten?",
     "Wie viele Rechnungsentwürfe gibt es aktuell?",
     "Welche Angebote sind seit mehr als 30 Tagen offen?",
     "Wie stark sind unsere Mitarbeiter aktuell ausgelastet?",
@@ -19,6 +16,14 @@ describe("resolveJarvisCapabilityGap", () => {
     expect(result?.topicId).toBe("capability.analysis-adapter-missing");
     expect(result?.message).toContain("noch nicht sicher");
     expect(result?.message).not.toContain("keine passenden");
+  });
+
+  it.each([
+    "Wie viele offene Posten haben wir?",
+    "Wie hoch sind unsere offenen Posten?",
+    "Wie hoch sint unser offnen Posten?",
+  ])("meldet für den angebundenen Offene-Posten-Adapter keine Lücke: %s", (question) => {
+    expect(resolveJarvisCapabilityGap(question)).toBeUndefined();
   });
 
   it("überlässt explizite Projektfragen dem Projektadapter", () => {
