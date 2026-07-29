@@ -1069,7 +1069,7 @@ describe("POST /api/jarvis/chat", () => {
       message: "Die kritischen Ursachen sind belegt.",
     });
     expect(mocks.resolveJarvisProjectHealthRequest).toHaveBeenCalledWith({
-      question: "Was läuft bei diesem Projekt schief?",
+      question: "Was läuft beim zuletzt geprüften Projekt schief?",
       organizationId: "organization-1",
       accessProfile: { profile: true },
       context: { module: "Projekte" },

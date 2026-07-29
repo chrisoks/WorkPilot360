@@ -478,7 +478,7 @@ export async function POST(req: Request) {
   ) {
     const projectDialogResponse = await resolveJarvisProjectHealthRequest({
       question: deterministicProjectWhyFollowUp
-        ? "Was läuft bei diesem Projekt schief?"
+        ? "Was läuft beim zuletzt geprüften Projekt schief?"
         : message,
       organizationId: organization.id,
       accessProfile,

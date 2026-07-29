@@ -241,6 +241,35 @@ describe("resolveJarvisProjectHealthRequest", () => {
     });
   });
 
+  it("prefers the last discussed project over the open screen for a why follow-up", async () => {
+    const response = await resolveJarvisProjectHealthRequest({
+      question: "Was läuft beim zuletzt geprüften Projekt schief?",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "manager-1",
+        role: Role.GESCHAEFTSFUEHRER,
+      }),
+      context: { recordType: "project", recordId: "screen-project" },
+      conversationContext: {
+        recordType: "project",
+        recordId: "project-1",
+      },
+    });
+
+    expect(response).toMatchObject({
+      type: "answer",
+      topicId: "project.health",
+      structured: {
+        title: "Vollständiger Projektcheck · MKG-209",
+      },
+    });
+    const firstQuery = dbMocks.queryRaw.mock.calls[0]?.[0] as {
+      values?: unknown[];
+    };
+    expect(firstQuery.values).toContain("project-1");
+    expect(firstQuery.values).not.toContain("screen-project");
+  });
+
   it("does not load or expose financial and payroll checks for employees", async () => {
     const response = await resolveJarvisProjectHealthRequest({
       question: "Führe den vollständigen Projekt-Gesundheitscheck aus.",
