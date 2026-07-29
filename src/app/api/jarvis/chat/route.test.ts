@@ -374,6 +374,33 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
   });
 
+  it("answers natural main-navigation wording before consulting the AI router", async () => {
+    mocks.resolveJarvisSystemHelp.mockReturnValue({
+      type: "answer",
+      topicId: "systemMap.accounting",
+      message: "Buchhaltung öffnen.",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Wie komme ich zur Buchhaltung?",
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      type: "answer",
+      topicId: "systemMap.accounting",
+    });
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+  });
+
   it("keeps a deterministic person summary ahead of an AI clarification", async () => {
     mocks.resolveJarvisPersonIntent.mockReturnValue({
       query: "Klaus Testmann",

@@ -1,5 +1,16 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Live-Intent-Nachhärtung 2026-07-29: Der nach dem ersten
+  Sprachdeployment verpflichtend ausgeführte 110-Fragen-Lauf zeigte keine
+  technischen Ausfälle, aber wiederkehrende Rückfrage-Fallbacks bei natürlicher
+  Hauptnavigation und kurzen Projektstammdatenfragen. Formulierungen wie
+  `Wie komme ich zur Buchhaltung?`, `Wie gelange ich zu den Auswertungen?`,
+  Projektübersicht und Benachrichtigungen werden nun deterministisch vor dem
+  KI-Router beantwortet. Im geöffneten Projekt liefern Projektnummer, Kunde,
+  Projektadresse und umgangssprachliche Verantwortungsfragen direkte,
+  organisations- und rollengeprüfte Fakten. Exakte Dokument-, Rechnungs- und
+  sonstige Fachhilfen behalten Vorrang vor der allgemeineren Systemlandkarte.
+
 - JARVIS Sprachmodus-Härtung 2026-07-29: Der browserseitige
   Standard-Sprachmodus unterscheidet jetzt zuverlässig zwischen erkanntem
   Transkript, Stille, Berechtigungsfehler, fehlendem Mikrofon, Abbruch,

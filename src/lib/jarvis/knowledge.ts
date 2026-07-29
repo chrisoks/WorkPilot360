@@ -207,6 +207,19 @@ const TOPICS: JarvisTopic[] = [
       "Öffne „Kontakte“ und nutze dort die Suche nach Name, Firma, Kundennummer, E-Mail oder Ort. Für einen schnellen Direktaufruf kannst du auch die globale Suche oben in WorkPilot360 verwenden.",
   },
   {
+    id: "notifications.open",
+    title: "Benachrichtigungen öffnen",
+    keywords: [
+      "benachrichtigungen sehen",
+      "benachrichtigungen öffnen",
+      "wo sehe ich benachrichtigungen",
+      "meldungen öffnen",
+    ],
+    surfaces: ["Dashboard"],
+    answer:
+      "Öffne oben rechts das Glockensymbol. Dort siehst du neue und bereits gelesene WorkPilot360-Benachrichtigungen und kannst ihre verknüpften Datensätze öffnen.",
+  },
+  {
     id: "invoice.open",
     title: "Rechnung finden oder Status prüfen",
     keywords: [
@@ -417,6 +430,9 @@ const SYSTEM_MAP_INTENTS = [
   "oeffne",
   "navigiere",
   "bring mich",
+  "wie komme ich",
+  "wie gelange ich",
+  "wo sehe ich",
   "was kann ich hier",
   "was mache ich hier",
   "wofür ist",
@@ -458,10 +474,11 @@ function getSystemMapHelp(
     "aktuelle bereich",
     "aktuellen bereich",
   ]);
-  const contextArea = asksAboutCurrentContext
+  const explicitArea = findJarvisSystemAreas(question, accessProfile, 1)[0]?.area;
+  const contextArea = asksAboutCurrentContext && !explicitArea
     ? findJarvisAreaByContext(context.module, context.subview, accessProfile)
     : undefined;
-  const areaDefinition = contextArea ?? findJarvisSystemAreas(question, accessProfile, 1)[0]?.area;
+  const areaDefinition = explicitArea ?? contextArea;
   if (!areaDefinition) return undefined;
 
   const isMatchingRecordContext =
@@ -706,8 +723,6 @@ export function resolveJarvisSystemHelp(
       message: getJarvisRefusalMessage(authorization),
     };
   }
-  const systemMapHelp = getSystemMapHelp(cleaned, context, accessProfile);
-  if (systemMapHelp) return systemMapHelp;
   const matchedTopicId = findJarvisExactHelpTopicId(cleaned, context);
   if (matchedTopicId) {
     return resolveJarvisSystemHelpTopic(
@@ -717,6 +732,8 @@ export function resolveJarvisSystemHelp(
       accessProfile
     );
   }
+  const systemMapHelp = getSystemMapHelp(cleaned, context, accessProfile);
+  if (systemMapHelp) return systemMapHelp;
   if (
     authorization.dataClass === "payroll" ||
     authorization.dataClass === "personnel" ||

@@ -142,6 +142,24 @@ describe("JARVIS system help", () => {
     });
   });
 
+  it.each([
+    ["Wie komme ich zur Buchhaltung?", "systemMap.accounting"],
+    ["Wie gelange ich zu den Auswertungen?", "systemMap.reports"],
+    ["Wie komme ich von hier aus zur Projektübersicht?", "systemMap.projectsSolutions"],
+    ["Wo sehe ich Benachrichtigungen?", "notifications.open"],
+  ])("answers common navigation wording deterministically: %s", (question, topicId) => {
+    expect(
+      resolveJarvisSystemHelp(
+        question,
+        { module: "Projektakte", recordType: "project" },
+        leadershipAccess
+      )
+    ).toMatchObject({
+      type: "answer",
+      topicId,
+    });
+  });
+
   it("does not select employee planning from an unrelated personnel question", () => {
     const result = resolveJarvisSystemHelp(
       "Wie lautet die private Telefonnummer von Mitarbeiter Müller?",

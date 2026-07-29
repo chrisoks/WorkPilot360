@@ -4,6 +4,9 @@ import { resolveJarvisProjectDialogIntent } from "@/lib/jarvis/project-dialog-in
 describe("JARVIS project dialog intent", () => {
   it.each([
     ["Was ist HAS-1 für ein Projekt?", "explainProjectType"],
+    ["Wie lautet die Projektnummer hier?", "explainIdentity"],
+    ["Welcher Kunde gehört zu diesem Projekt?", "explainCustomer"],
+    ["Welche Objektadresse ist mit dem Projekt verknüpft?", "explainAddress"],
     ["Welche Projektart hat HAS-1?", "explainProjectType"],
     [
       "Erkläre Projektart, Abrechnung und Sollprozess für HAS-1.",
@@ -17,6 +20,7 @@ describe("JARVIS project dialog intent", () => {
     ["Was isn HAS-1 eigentlich fürn Projekt?", "explainProjectType"],
     ["Welchen Status hat HAS-1?", "explainStatus"],
     ["Wer ist bei HAS-1 verantwortlich?", "explainResponsibility"],
+    ["Wer kümmert sich um das Projekt?", "explainResponsibility"],
     ["Ist HAS-1 fachlich freigegeben?", "explainReviewStatus"],
     ["Was wurde bei HAS-1 zuletzt geändert?", "explainLastChange"],
     ["Wann wurde MKG-209 zuletzt gespeichert?", "explainLastChange"],

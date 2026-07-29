@@ -139,7 +139,8 @@ function looksLikeDeterministicHelpRequest(question: string) {
       /\b(?:sehe|erkenne|finde|offne|oeffne)\s+ich\b/.test(value) ||
       /\bwo\b.*\b(?:sehe|erkenne|finde)\b/.test(value) ||
       /\bwie\b.*\b(?:versende|verschicke|sende)\b/.test(value) ||
-      /\bwie\b.*\b(?:buch|leg|erfass|trag|plan|verplan)\w*\b/.test(value)
+      /\bwie\b.*\b(?:buch|leg|erfass|trag|plan|verplan)\w*\b/.test(value) ||
+      /\bwie\b.*\b(?:komme|gelange)\b/.test(value)
     )
   );
 }
@@ -497,6 +498,21 @@ export async function POST(req: Request) {
     message,
     intentDecision
   );
+  const exactHelpTopicId = findJarvisExactHelpTopicId(message, context);
+  if (
+    !directActionRequest &&
+    !exactHelpTopicId &&
+    looksLikeDeterministicHelpRequest(message)
+  ) {
+    const deterministicHelp = resolveJarvisSystemHelp(
+      message,
+      context,
+      accessProfile
+    );
+    if (deterministicHelp.type !== "unknown") {
+      return respond(deterministicHelp);
+    }
+  }
   if (!directActionRequest) {
     const deterministicProjectClarification =
       buildJarvisProjectMatrixClarification(
@@ -531,7 +547,6 @@ export async function POST(req: Request) {
     ai: aiIntentClassification,
     hasDeterministicPersonIntent: Boolean(deterministicPersonIntent),
   });
-  const exactHelpTopicId = findJarvisExactHelpTopicId(message, context);
   const deterministicHelpRequest =
     Boolean(exactHelpTopicId) &&
     looksLikeDeterministicHelpRequest(message) &&

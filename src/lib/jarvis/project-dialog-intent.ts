@@ -1,6 +1,9 @@
 import { normalizeJarvisIntentText } from "@/lib/jarvis/intent-text";
 
 export type JarvisProjectDialogIntent =
+  | "explainIdentity"
+  | "explainCustomer"
+  | "explainAddress"
   | "explainProjectType"
   | "explainBilling"
   | "explainProcess"
@@ -22,6 +25,33 @@ export function resolveJarvisProjectDialogIntent(input: {
       value
     );
   if (diagnosticCommand) return undefined;
+
+  if (
+    /\b(?:welche|was ist die|wie lautet die)\b.*\bprojektnummer\b/.test(value) ||
+    /\bprojektnummer\b.*\b(?:hier|dieses|diesem|hat|lautet)\b/.test(value)
+  ) {
+    return "explainIdentity";
+  }
+
+  if (
+    /\bwelch\w*\b.*\bkund\w*\b.*\bprojekt\b/.test(value) ||
+    /\b(?:kunde|kunden)\b.*\b(?:gehort|ist|hat|verknupft)\b.*\bprojekt\b/.test(
+      value
+    )
+  ) {
+    return "explainCustomer";
+  }
+
+  if (
+    /\b(?:welche|was ist die|wie lautet die)\b.*\b(?:objektadresse|projektadresse|adresse)\b/.test(
+      value
+    ) ||
+    /\b(?:objektadresse|projektadresse)\b.*\b(?:projekt|hier|hat|verknupft)\b/.test(
+      value
+    )
+  ) {
+    return "explainAddress";
+  }
 
   if (
     /(welche|was fur eine|was ist .* fur (?:ein|en|nen)).*(projektart|projekttyp|projekt)\b/.test(
@@ -72,7 +102,8 @@ export function resolveJarvisProjectDialogIntent(input: {
 
   if (
     /\bwer\b.*\b(?:verantwortlich|projektverantwort)\w*\b/.test(value) ||
-    /\bprojektverantwort\w*\b.*\b(?:wer|ist)\b/.test(value)
+    /\bprojektverantwort\w*\b.*\b(?:wer|ist)\b/.test(value) ||
+    /\bwer\b.*\b(?:kummert|betreut)\b.*\bprojekt\b/.test(value)
   ) {
     return "explainResponsibility";
   }

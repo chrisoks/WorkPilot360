@@ -31,6 +31,12 @@ Stand: 29.07.2026
   Nur nach einem tatsächlich erkannten Transkript fordert JARVIS zur Prüfung
   und zum bewussten Senden auf. Start, Stop und Komponenten-Cleanup sind gegen
   schnelle Browserereignisse und verspätete Callbacks abgesichert.
+- Der anschließende 110-Fragen-Live-Lauf wurde zusätzlich als
+  Qualitätsrückkopplung genutzt: häufige natürliche Navigationsformulierungen
+  sowie kurze Fragen nach Projektnummer, Kunde, Projektadresse und
+  Verantwortlichkeit werden nun deterministisch statt über unnötige
+  Rückfrage-Fallbacks beantwortet. Diese Korrektur verändert keine Rollen-,
+  Geheimnis- oder Aktionssperre.
 
 ### Intent-Orchestrator V4 – Live-Härtung
 

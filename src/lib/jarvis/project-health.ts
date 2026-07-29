@@ -89,6 +89,7 @@ type ProjectHealthRow = {
   trade: string | null;
   branch: string | null;
   address: string | null;
+  resolvedAddress?: string | null;
   responsibleName: string | null;
   timeBudgetEnabled: boolean;
   timeBudgetHours: string | null;
@@ -1556,6 +1557,9 @@ function formatProjectFactDate(value: Date | null) {
 function buildProjectFactExplanation(
   project: ProjectHealthRow,
   intent:
+    | "explainIdentity"
+    | "explainCustomer"
+    | "explainAddress"
     | "explainStatus"
     | "explainResponsibility"
     | "explainReviewStatus"
@@ -1569,6 +1573,27 @@ function buildProjectFactExplanation(
         ? "Prüfung notwendig"
         : "Noch nicht fachlich geprüft";
   const facts = {
+    explainIdentity: {
+      title: "Projektnummer",
+      value: project.projectNumber || "Nicht hinterlegt",
+      message: project.projectNumber
+        ? `Die Projektnummer des geöffneten Projekts lautet ${project.projectNumber}.`
+        : "Für das geöffnete Projekt ist keine Projektnummer hinterlegt.",
+    },
+    explainCustomer: {
+      title: "Projektkunde",
+      value: project.customer || "Nicht hinterlegt",
+      message: project.customer
+        ? `${project.customer} ist als Kunde von ${reference} hinterlegt.`
+        : `Für ${reference} ist aktuell kein Kunde hinterlegt.`,
+    },
+    explainAddress: {
+      title: "Projektadresse",
+      value: project.resolvedAddress || project.address || "Nicht hinterlegt",
+      message: project.resolvedAddress || project.address
+        ? `Für ${reference} ist die Projektadresse „${project.resolvedAddress || project.address}“ hinterlegt.`
+        : `Für ${reference} ist aktuell keine Projektadresse hinterlegt.`,
+    },
     explainStatus: {
       title: "Projektstatus",
       value: project.status || "Nicht gepflegt",
@@ -1804,14 +1829,29 @@ async function findProject(
   const reference = extractProjectReference(question);
   if (reference) {
     const rows = await prisma.$queryRaw<ProjectHealthRow[]>(Prisma.sql`
-      SELECT *
-      FROM "WorkPilotProject"
-      WHERE "organizationId" = ${organizationId}
+      SELECT project.*,
+        COALESCE(
+          NULLIF(project."address", ''),
+          NULLIF(CONCAT_WS(
+            ', ',
+            NULLIF(object_address."street", ''),
+            NULLIF(CONCAT_WS(
+              ' ',
+              NULLIF(object_address."postalCode", ''),
+              NULLIF(object_address."city", '')
+            ), '')
+          ), '')
+        ) AS "resolvedAddress"
+      FROM "WorkPilotProject" project
+      LEFT JOIN "ObjectAddress" object_address
+        ON object_address."id" = project."objectAddressId"
+        AND object_address."organizationId" = project."organizationId"
+      WHERE project."organizationId" = ${organizationId}
         AND (
-          "projectNumber" ILIKE ${reference}
-          OR "id" = ${reference}
+          project."projectNumber" ILIKE ${reference}
+          OR project."id" = ${reference}
         )
-      ORDER BY "updatedAt" DESC
+      ORDER BY project."updatedAt" DESC
       LIMIT 2
     `);
     return rows.length === 1 ? rows[0] : undefined;
@@ -1823,10 +1863,25 @@ async function findProject(
     context.recordId
   ) {
     const rows = await prisma.$queryRaw<ProjectHealthRow[]>(Prisma.sql`
-      SELECT *
-      FROM "WorkPilotProject"
-      WHERE "organizationId" = ${organizationId}
-        AND "id" = ${context.recordId}
+      SELECT project.*,
+        COALESCE(
+          NULLIF(project."address", ''),
+          NULLIF(CONCAT_WS(
+            ', ',
+            NULLIF(object_address."street", ''),
+            NULLIF(CONCAT_WS(
+              ' ',
+              NULLIF(object_address."postalCode", ''),
+              NULLIF(object_address."city", '')
+            ), '')
+          ), '')
+        ) AS "resolvedAddress"
+      FROM "WorkPilotProject" project
+      LEFT JOIN "ObjectAddress" object_address
+        ON object_address."id" = project."objectAddressId"
+        AND object_address."organizationId" = project."organizationId"
+      WHERE project."organizationId" = ${organizationId}
+        AND project."id" = ${context.recordId}
       LIMIT 1
     `);
     return rows[0];
@@ -1837,10 +1892,25 @@ async function findProject(
     conversationContext.recordId
   ) {
     const rows = await prisma.$queryRaw<ProjectHealthRow[]>(Prisma.sql`
-      SELECT *
-      FROM "WorkPilotProject"
-      WHERE "organizationId" = ${organizationId}
-        AND "id" = ${conversationContext.recordId}
+      SELECT project.*,
+        COALESCE(
+          NULLIF(project."address", ''),
+          NULLIF(CONCAT_WS(
+            ', ',
+            NULLIF(object_address."street", ''),
+            NULLIF(CONCAT_WS(
+              ' ',
+              NULLIF(object_address."postalCode", ''),
+              NULLIF(object_address."city", '')
+            ), '')
+          ), '')
+        ) AS "resolvedAddress"
+      FROM "WorkPilotProject" project
+      LEFT JOIN "ObjectAddress" object_address
+        ON object_address."id" = project."objectAddressId"
+        AND object_address."organizationId" = project."organizationId"
+      WHERE project."organizationId" = ${organizationId}
+        AND project."id" = ${conversationContext.recordId}
       LIMIT 1
     `);
     if (rows[0]) return rows[0];
@@ -1848,10 +1918,25 @@ async function findProject(
 
   if (context?.recordType === "project" && context.recordId) {
     const rows = await prisma.$queryRaw<ProjectHealthRow[]>(Prisma.sql`
-      SELECT *
-      FROM "WorkPilotProject"
-      WHERE "organizationId" = ${organizationId}
-        AND "id" = ${context.recordId}
+      SELECT project.*,
+        COALESCE(
+          NULLIF(project."address", ''),
+          NULLIF(CONCAT_WS(
+            ', ',
+            NULLIF(object_address."street", ''),
+            NULLIF(CONCAT_WS(
+              ' ',
+              NULLIF(object_address."postalCode", ''),
+              NULLIF(object_address."city", '')
+            ), '')
+          ), '')
+        ) AS "resolvedAddress"
+      FROM "WorkPilotProject" project
+      LEFT JOIN "ObjectAddress" object_address
+        ON object_address."id" = project."objectAddressId"
+        AND object_address."organizationId" = project."organizationId"
+      WHERE project."organizationId" = ${organizationId}
+        AND project."id" = ${context.recordId}
       LIMIT 1
     `);
     return rows[0];
@@ -1954,6 +2039,9 @@ export async function resolveJarvisProjectHealthRequest(input: {
     projectDialogIntent !== "ambiguousProjectQuestion"
   ) {
     return [
+      "explainIdentity",
+      "explainCustomer",
+      "explainAddress",
       "explainStatus",
       "explainResponsibility",
       "explainReviewStatus",
@@ -1962,6 +2050,9 @@ export async function resolveJarvisProjectHealthRequest(input: {
       ? buildProjectFactExplanation(
           project,
           projectDialogIntent as
+            | "explainIdentity"
+            | "explainCustomer"
+            | "explainAddress"
             | "explainStatus"
             | "explainResponsibility"
             | "explainReviewStatus"

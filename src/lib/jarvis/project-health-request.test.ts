@@ -416,6 +416,36 @@ describe("resolveJarvisProjectHealthRequest", () => {
     expect(dbMocks.invoiceFindMany).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["Wie lautet die Projektnummer hier?", "Projektnummer", "MKG-209"],
+    ["Welcher Kunde gehört zu diesem Projekt?", "Projektkunde", "Klaus Testmann"],
+    ["Welche Objektadresse ist mit dem Projekt verknüpft?", "Projektadresse", "Musterstraße 1"],
+  ])("answers the current project's stable fact directly: %s", async (question, label, value) => {
+    dbMocks.queryRaw.mockResolvedValueOnce([{
+      ...project,
+      resolvedAddress: "Musterstraße 1",
+    }]);
+
+    const response = await resolveJarvisProjectHealthRequest({
+      question,
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "manager-1",
+        role: Role.GESCHAEFTSFUEHRER,
+      }),
+      context: { recordType: "project", recordId: project.id },
+    });
+
+    expect(response).toMatchObject({
+      type: "answer",
+      structured: {
+        facts: [{ label, value }],
+      },
+    });
+    expect(dbMocks.projectTimeEntryFindMany).not.toHaveBeenCalled();
+    expect(dbMocks.invoiceFindMany).not.toHaveBeenCalled();
+  });
+
   it("answers the same clear project-type question despite a transposed word", async () => {
     dbMocks.queryRaw.mockResolvedValueOnce([{
       ...project,
