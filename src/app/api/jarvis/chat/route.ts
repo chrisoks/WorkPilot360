@@ -463,16 +463,23 @@ export async function POST(req: Request) {
     /^\s*(?:prüf|pruef|pruf|check|analysier|untersuch|kontrollier)\w*\s+(?:das|dies|dort|hier)\b/iu.test(
       message
     );
+  const deterministicProjectWhyFollowUp =
+    conversationContext?.recordType === "project" &&
+    previousDialogState?.topicId === "project.health" &&
+    /^\s*(?:warum|wieso|weshalb)\s*[?!.]*\s*$/iu.test(message);
   if (
     (deterministicProjectDialogIntent ||
       deterministicProjectDiagnosticIntent ||
-      deterministicProjectDiagnosticFollowUp) &&
+      deterministicProjectDiagnosticFollowUp ||
+      deterministicProjectWhyFollowUp) &&
     !deterministicPersonIntent &&
     !deterministicCapabilityGap &&
     !deterministicSalesIntent
   ) {
     const projectDialogResponse = await resolveJarvisProjectHealthRequest({
-      question: message,
+      question: deterministicProjectWhyFollowUp
+        ? "Was läuft bei diesem Projekt schief?"
+        : message,
       organizationId: organization.id,
       accessProfile,
       context,

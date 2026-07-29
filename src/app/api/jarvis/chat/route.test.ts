@@ -1031,6 +1031,53 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
   });
 
+  it("keeps a short why follow-up on the previous project health check", async () => {
+    mocks.resolveJarvisProjectHealthRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "project.health",
+      message: "Die kritischen Ursachen sind belegt.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Warum?",
+          context: {},
+          dialogState: {
+            version: 1,
+            domain: "system",
+            topicId: "project.health",
+            activeRecord: { kind: "project", id: "project-1" },
+            lastQuestion: "Prüf das mal.",
+            lastIntent: {
+              goals: ["diagnose"],
+              entities: ["project"],
+              timeScopes: [],
+              recordFilter: "all",
+            },
+          },
+        }),
+      })
+    );
+
+    expect(await response.json()).toMatchObject({
+      topicId: "project.health",
+      message: "Die kritischen Ursachen sind belegt.",
+    });
+    expect(mocks.resolveJarvisProjectHealthRequest).toHaveBeenCalledWith({
+      question: "Was läuft bei diesem Projekt schief?",
+      organizationId: "organization-1",
+      accessProfile: { profile: true },
+      context: { module: "Projekte" },
+      conversationContext: { recordType: "project", recordId: "project-1" },
+    });
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+  });
+
   it("does not turn a clear appointment how-to question into a project check", async () => {
     mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
       recordType: "project",
