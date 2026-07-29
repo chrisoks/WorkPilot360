@@ -809,6 +809,21 @@ describe("POST /api/jarvis/chat", () => {
   });
 
   it("clarifies a multi-project request before silently checking only one project", async () => {
+    mocks.classifyJarvisIntentWithAi.mockResolvedValue({
+      intent: "clarify",
+      domain: "project",
+      confidence: "high",
+      needsClarification: true,
+      clarificationReason: "action_scope",
+      helpTopicId: "none",
+    });
+    mocks.buildJarvisIntentClarification.mockReturnValue({
+      type: "clarification",
+      topicId: "intent.clarification",
+      message: "Soll JARVIS erklären, prüfen oder analysieren?",
+      choices: [],
+      deterministic: true,
+    });
     mocks.buildJarvisProjectSequenceClarification.mockReturnValue({
       type: "clarification",
       topicId: "project.sequence.clarification",
@@ -856,6 +871,8 @@ describe("POST /api/jarvis/chat", () => {
       },
     });
     expect(payload.dialogSequence).toBeUndefined();
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+    expect(mocks.buildJarvisIntentClarification).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
   });

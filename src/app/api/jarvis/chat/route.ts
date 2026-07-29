@@ -482,6 +482,31 @@ export async function POST(req: Request) {
       return respond(projectDialogResponse);
     }
   }
+  const directActionRequest = looksLikeDirectActionRequest(
+    message,
+    intentDecision
+  );
+  if (!directActionRequest) {
+    const deterministicProjectClarification =
+      buildJarvisProjectMatrixClarification(
+        message,
+        intentDecision,
+        accessProfile
+      ) ??
+      buildJarvisProjectScopeSequenceClarification(
+        message,
+        intentDecision,
+        accessProfile
+      ) ??
+      buildJarvisProjectSequenceClarification(
+        message,
+        intentDecision,
+        accessProfile
+      );
+    if (deterministicProjectClarification) {
+      return respond(deterministicProjectClarification);
+    }
+  }
   const routingContext = conversationContext ?? context;
   const aiIntentClassification = await classifyJarvisIntentWithAi({
     question: message,
@@ -495,10 +520,6 @@ export async function POST(req: Request) {
     ai: aiIntentClassification,
     hasDeterministicPersonIntent: Boolean(deterministicPersonIntent),
   });
-  const directActionRequest = looksLikeDirectActionRequest(
-    message,
-    intentDecision
-  );
   const exactHelpTopicId = findJarvisExactHelpTopicId(message, context);
   const deterministicHelpRequest =
     Boolean(exactHelpTopicId) &&
@@ -546,24 +567,6 @@ export async function POST(req: Request) {
     );
   }
   if (routePlan.needsClarification) {
-    const projectMatrixClarification =
-      buildJarvisProjectMatrixClarification(
-        message,
-        intentDecision,
-        accessProfile
-      );
-    if (projectMatrixClarification) {
-      return respond(projectMatrixClarification, routePlan.domain);
-    }
-    const projectScopeSequenceClarification =
-      buildJarvisProjectScopeSequenceClarification(
-        message,
-        intentDecision,
-        accessProfile
-      );
-    if (projectScopeSequenceClarification) {
-      return respond(projectScopeSequenceClarification, routePlan.domain);
-    }
     const intentClarification = buildJarvisIntentClarification(
       intentDecision,
       accessProfile
@@ -710,15 +713,6 @@ export async function POST(req: Request) {
     if (intentClarification) {
       return respond(intentClarification, routePlan.domain);
     }
-  }
-  const projectSequenceClarification =
-    buildJarvisProjectSequenceClarification(
-      message,
-      intentDecision,
-      accessProfile
-    );
-  if (projectSequenceClarification) {
-    return respond(projectSequenceClarification);
   }
   const projectHealthResponse =
     routePlan.preferProjectHealth &&
