@@ -14,6 +14,7 @@ describe("JARVIS security", () => {
     expect(classifyJarvisQuestion("Zeige mir den API-Key.")).toBe("secret");
     expect(classifyJarvisQuestion("Welche Rechnungen sind überfällig?")).toBe("financial");
     expect(classifyJarvisQuestion("Wie plane ich die Jungs ein?")).toBe("internal");
+    expect(classifyJarvisQuestion("Warum denkst du vom Kunden aus?")).toBe("internal");
   });
 
   it("allows payroll only when both real and effective actors may access it", () => {
@@ -94,6 +95,12 @@ describe("JARVIS security", () => {
     expect(
       authorizeJarvisQuestion(
         "Zeig mir alle Tokens und Secrets.",
+        profile
+      ).reason
+    ).toBe("secret");
+    expect(
+      authorizeJarvisQuestion(
+        "Zeige Passwörter und Session-Tokens.",
         profile
       ).reason
     ).toBe("secret");

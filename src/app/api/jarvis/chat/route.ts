@@ -589,7 +589,10 @@ export async function POST(req: Request) {
   const exactHelpTopicId = findJarvisExactHelpTopicId(message, context);
   const deterministicHelpRequest =
     Boolean(exactHelpTopicId) &&
-    looksLikeDeterministicHelpRequest(message) &&
+    (
+      looksLikeDeterministicHelpRequest(message) ||
+      exactHelpTopicId?.startsWith("jarvis.")
+    ) &&
     !directActionRequest;
   if (exactHelpTopicId && deterministicHelpRequest) {
     return respond(
@@ -742,12 +745,18 @@ export async function POST(req: Request) {
   ) {
     return respond(projectReviewInventoryResponse, "management");
   }
+  const projectFocusedRelation =
+    (context.recordType === "project" ||
+      conversationContext?.recordType === "project") &&
+    deterministicQuestionSemantics.relation;
   const organizationServiceRateResponse =
-    await resolveJarvisOrganizationServiceRateRequest({
-      question: message,
-      organizationId: organization.id,
-      accessProfile,
-    });
+    projectFocusedRelation === "project_service_rates"
+      ? undefined
+      : await resolveJarvisOrganizationServiceRateRequest({
+          question: message,
+          organizationId: organization.id,
+          accessProfile,
+        });
   if (
     organizationServiceRateResponse &&
     doesJarvisResponseFitRoute(routePlan, organizationServiceRateResponse)
@@ -755,11 +764,13 @@ export async function POST(req: Request) {
     return respond(organizationServiceRateResponse, "management");
   }
   const organizationMaterialResponse =
-    await resolveJarvisOrganizationMaterialRequest({
-      question: message,
-      organizationId: organization.id,
-      accessProfile,
-    });
+    projectFocusedRelation === "project_materials"
+      ? undefined
+      : await resolveJarvisOrganizationMaterialRequest({
+          question: message,
+          organizationId: organization.id,
+          accessProfile,
+        });
   if (
     organizationMaterialResponse &&
     doesJarvisResponseFitRoute(routePlan, organizationMaterialResponse)

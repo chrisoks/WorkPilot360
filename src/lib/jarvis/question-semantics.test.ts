@@ -95,6 +95,14 @@ describe("JARVIS question semantics evaluation matrix", () => {
     expect(semantics.projectScopes).toEqual(["commercial"]);
   });
 
+  it("treats natural project material anomalies as a focused material analysis", () => {
+    const semantics = analyzeJarvisQuestion(
+      "Gibt es Auffälligkeiten beim Material?"
+    );
+    expect(semantics.relation).toBe("project_materials");
+    expect(semantics.projectScopes).toEqual(["commercial"]);
+  });
+
   it.each([
     "Wie hoch ist der tatsächlich erzielte Stundenverrechnungssatz bei HAS-1?",
     "Analysiere Leistungen und Stundensätze bei HAS-1.",
@@ -105,6 +113,14 @@ describe("JARVIS question semantics evaluation matrix", () => {
     expect(semantics.projectReferences).toEqual(["HAS-1"]);
     expect(semantics.relation).toBe("project_service_rates");
     expect(semantics.projectScopes).toEqual(["commercial"]);
+  });
+
+  it.each([
+    ["Wie wirtschaftlich ist dieses Projekt?", ["improvements"]],
+    ["Was fehlt bis zur Abrechnung?", ["commercial"]],
+    ["Was ist der wichtigste nächste Schritt im Projekt?", ["improvements"]],
+  ])("maps the natural project question %s to one scope", (question, scopes) => {
+    expect(analyzeJarvisQuestion(question).projectScopes).toEqual(scopes);
   });
 
   it("does not reinterpret an offer draft without a month as an invoice", () => {

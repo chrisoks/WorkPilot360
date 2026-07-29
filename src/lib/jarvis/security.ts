@@ -48,6 +48,7 @@ const PROMPT_INJECTION_PATTERNS = [
 ];
 
 const SECRET_REQUEST_PATTERNS = [
+  /\b(?:zeig\w*|nenn\w*|verrat\w*|gib\w*|lies\w*|lese\w*|send\w*|exportier\w*)\b.*\b(?:passw(?:ort|örter)|kennw(?:ort|örter)|api[-_ ]?keys?|secrets?|(?:session[-_ ]?)?tokens?|private keys?|private schlüssel|\.env)\b/i,
   /\b(?:zeig|nenn)\b.*\b(?:passw(?:ort|örter)|kennw(?:ort|örter)|api[-_ ]?keys?|secrets?|tokens?|private keys?|\.env)\b/i,
   /\b(?:zeige|nenne|verrate|gib|lies|lese|sende|exportiere)\b.*\b[\w-]*api[-_ ]?key\b/i,
   /\b(?:zeige|nenne|verrate|gib|lies|lese|sende|exportiere)\b.*\bapi[-_ ]?key\b/i,
@@ -151,6 +152,9 @@ export function classifyJarvisQuestion(question: string): JarvisDataClass {
   if (PAYROLL_PATTERNS.some((pattern) => pattern.test(question))) return "payroll";
   if (PERSONNEL_PATTERNS.some((pattern) => pattern.test(question))) return "personnel";
   if (FINANCIAL_PATTERNS.some((pattern) => pattern.test(question))) return "financial";
+  if (/\b(?:vom kunden aus|kundenperspektive|kundensicht)\b/i.test(question)) {
+    return "internal";
+  }
   if (CUSTOMER_PATTERNS.some((pattern) => pattern.test(question))) return "customer";
   return "internal";
 }

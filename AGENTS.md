@@ -1,5 +1,18 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Prinzipien- und Kontext-Haertung 2026-07-29: Natuerliche
+  Fragen zu den neun Unternehmensprinzipien, Sicherheitsgrenzen,
+  menschlicher Verantwortung, Mitarbeiterentwicklung, Kontinuitaet und
+  Fuehrungsunterstuetzung werden deterministisch beantwortet. JARVIS
+  kennzeichnet unsichere Daten, erfindet nichts, erstellt keine heimlichen
+  Persoenlichkeitsprofile und laesst fachliche Entscheidungen beim Menschen.
+  Passwort- und Session-Token-Anfragen sind auch in natuerlicher
+  Pluralform ausdruecklich gesperrt. Haeufige Aufgaben-, Rechnungs- und
+  Fakturierungs-Hilfefragen wurden ergaenzt. Material-, Stundensatz-,
+  Wirtschaftlichkeits-, Abrechnungs- und Naechster-Schritt-Fragen bleiben bei
+  geoeffneter Projektakte im Projektkontext statt in eine
+  Unternehmensauswertung abzurutschen.
+
 - JARVIS Action-Center Proxy-Origin 2026-07-29: Schreibende
   Aufgabenentwurf-Anfragen akzeptieren den vom Browser gesendeten
   oeffentlichen HTTPS-Origin nun auch dann, wenn Next.js hinter dem

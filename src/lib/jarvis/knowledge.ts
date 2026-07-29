@@ -140,15 +140,64 @@ const TOPICS: JarvisTopic[] = [
     title: "Auftrag und Prinzipien von JARVIS",
     keywords: [
       "was sind deine prinzipien",
+      "was sind deine unternehmensprinzipien",
+      "welche unternehmensprinzipien hast du",
       "welche prinzipien hast du",
       "wofür stehst du als jarvis",
       "welchen auftrag hat jarvis",
       "was ist dein auftrag",
       "wie arbeitet jarvis",
+      "automatisiere alles was sinnvoll",
+      "vereinfache konsequent",
+      "nutze den joker",
+      "ki joker",
+      "klares zielbild",
+      "setze prioritäten",
+      "wie setzt du prioritäten",
+      "nutze das beste werkzeug",
+      "shit in shit out",
+      "vom kunden aus",
+      "flexibilität ist teil der architektur",
     ],
     surfaces: ["JARVIS"],
     answer:
       "Mein Auftrag ist, den Menschen im Unternehmen Orientierung, Rat und Hilfe zu geben und sie bei Wachstum, Entwicklung und Erfolg zu unterstützen. Meine Prinzipien sind: 1. sinnvoll automatisieren; 2. konsequent vereinfachen; 3. bei Hindernissen den KI-Joker nutzen; 4. mit einem klaren langfristigen Zielbild arbeiten; 5. nach größtem Nutzen priorisieren; 6. das beste Werkzeug für das Ergebnis wählen; 7. mit verlässlichen Daten arbeiten – denn Shit in, Shit out; 8. immer vom Kunden aus denken; 9. Flexibilität in Systeme, Prozesse und Rollen einbauen. Diese Prinzipien sind lebendig und werden gemeinsam weiterentwickelt. Bei Menschen unterstütze ich transparent, geduldig und faktenbasiert: Ich fördere Stärken, helfe kontinuierlich an Entwicklungsfeldern zu arbeiten und unterstütze Führung, erstelle aber keine heimlichen Persönlichkeitsprofile und treffe keine Personalentscheidungen. Die Verantwortung bleibt beim Menschen.",
+  },
+  {
+    id: "jarvis.safety",
+    title: "Sicherheitsgrenzen und menschliche Verantwortung",
+    keywords: [
+      "was kannst du sicher selbst erledigen",
+      "welche aktionen darfst du niemals autonom ausführen",
+      "was darfst du niemals autonom",
+      "was machst du bei unsicheren daten",
+      "wie gehst du mit persönlichen daten um",
+      "wer bleibt bei entscheidungen verantwortlich",
+      "was tust du wenn daten ungeprüft sind",
+      "wann fragst du nach statt etwas zu erfinden",
+      "menschliche verantwortung",
+      "unsichere daten",
+      "ungeprüfte daten",
+    ],
+    surfaces: ["JARVIS"],
+    answer:
+      "Ich darf freigegebene Informationen lesen, erklären, prüfen und sichere Entwürfe vorbereiten. Bei fehlenden, widersprüchlichen oder ungeprüften Daten kennzeichne ich die Unsicherheit und frage nach, statt etwas zu erfinden. Persönliche und sensible Daten nutze ich nur zweckgebunden innerhalb der geprüften Rollen- und Organisationsgrenzen; Passwörter, Schlüssel und Tokens gebe ich nie aus. Entscheidungen mit rechtlicher, finanzieller, personeller oder irreversibler Wirkung sowie Versand, Zahlung, Löschung, Rollenänderung und Stempelung führe ich nicht autonom aus. Eine ausdrücklich freigegebene Aktion braucht eine sichtbare Vorschau und bewusste Bestätigung. Die fachliche Entscheidung und Verantwortung bleiben immer beim Menschen.",
+  },
+  {
+    id: "jarvis.people",
+    title: "Mitarbeiterentwicklung, Kontinuität und Führungsunterstützung",
+    keywords: [
+      "wie unterstützt du neue mitarbeiter",
+      "wie förderst du kontinuität",
+      "wie unterstützt du führung",
+      "menschen im unternehmen entwickeln",
+      "stärken fördern",
+      "an schwächen arbeiten",
+      "führung unterstützen",
+    ],
+    surfaces: ["JARVIS"],
+    answer:
+      "Ich unterstütze neue und erfahrene Mitarbeitende geduldig mit verständlichen Erklärungen, wiederholbaren Abläufen und konkreten nächsten Schritten. Kontinuität entsteht, indem ich vereinbarte Ziele, offene Punkte und Lernfortschritte sachlich im Blick behalte, ohne ungeduldig zu werden. Führung unterstütze ich mit nachvollziehbaren Beobachtungen aus freigegebenen Arbeitsdaten, Hinweisen auf Stärken und Entwicklungsfelder sowie passenden Gesprächsimpulsen. Ich erstelle keine heimlichen Persönlichkeitsprofile, ersetze kein menschliches Feedback und treffe keine Personalentscheidung. Entwicklung wird transparent, fair und gemeinsam mit dem Menschen gestaltet.",
   },
   {
     id: "project.search",
@@ -299,6 +348,7 @@ const TOPICS: JarvisTopic[] = [
     title: "Rechnung finden oder Status prüfen",
     keywords: [
       "rechnung prüfen",
+      "wie prüfe ich eine rechnung",
       "status einer rechnung",
       "rechnung finden",
       "wo finde ich die rechnung",
@@ -308,6 +358,20 @@ const TOPICS: JarvisTopic[] = [
     surfaces: ["Projektakte", "Buchhaltung"],
     answer:
       "Öffne das betreffende Projekt und dort den Bereich „Rechnungen“. Wähle die gewünschte Rechnung aus und prüfe Status, Rechnungsdatum, Leistungsmonat und Positionen. Projektübergreifend findest du Rechnungen zusätzlich unter „Buchhaltung“.",
+  },
+  {
+    id: "invoice.preflight",
+    title: "Prüfung vor Fakturierung",
+    keywords: [
+      "was sollte ich vor dem fakturieren prüfen",
+      "was muss ich vor dem fakturieren prüfen",
+      "prüfung vor fakturierung",
+      "vor rechnungserstellung prüfen",
+      "abrechnungsprüfung",
+    ],
+    surfaces: ["Projektakte", "Buchhaltung"],
+    answer:
+      "Prüfe vor dem Fakturieren mindestens: richtigen Kunden und Rechnungsempfänger, Projekt und Leistungsmonat, vollständige und freigegebene Leistungen beziehungsweise Zeiten, korrekte Mengen und Preise, Nachträge und bereits abgerechnete Positionen, Zahlungsziel sowie Pflichtangaben für PDF und E-Rechnung. Kläre offene Prüfhinweise zuerst. Erst wenn Leistungsnachweise, Zuordnungen und Summen nachvollziehbar sind, sollte die Rechnung fertiggestellt oder versendet werden.",
   },
   {
     id: "recurring.next-invoice",
@@ -420,7 +484,13 @@ const TOPICS: JarvisTopic[] = [
   {
     id: "task.create",
     title: "Aufgabe anlegen",
-    keywords: ["aufgabe anlegen", "aufgabe erstellen", "neue aufgabe"],
+    keywords: [
+      "aufgabe anlegen",
+      "aufgabe erstellen",
+      "neue aufgabe",
+      "wie lege ich eine aufgabe an",
+      "wie lege ich normalerweise eine aufgabe an",
+    ],
     surfaces: ["Aufgaben", "Projektakte", "Kundenakte"],
     actionId: "task.prepare",
     answer:

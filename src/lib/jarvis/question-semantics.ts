@@ -178,7 +178,7 @@ function resolveRelation(
       normalized
     );
   const asksForMaterialAnalysis =
-    /\b(welche|wieviel|wie viel|menge|verbrauch|verwendet|abgerechnet|verkauft|lager|analysier|pruf|auswert)\w*\b/.test(
+    /\b(welche|wieviel|wie viel|menge|verbrauch|verwendet|abgerechnet|verkauft|lager|analysier|pruf|auswert|auffallig)\w*\b/.test(
       normalized
     ) ||
     /\bwert\w*\b.*\baus\b/.test(normalized);
@@ -221,6 +221,13 @@ function resolveProjectScopes(
   if (relation === "time_to_invoice") return ["commercial"];
   if (relation === "project_materials") return ["commercial"];
   if (relation === "project_service_rates") return ["commercial"];
+  if (
+    /\b(?:was fehlt|fehl\w*)\b.*\b(?:abrechnung|faktura)\w*\b/.test(
+      normalized
+    )
+  ) {
+    return ["commercial"];
+  }
 
   const scopes: JarvisQuestionProjectScope[] = [];
   const add = (scope: JarvisQuestionProjectScope, condition: boolean) => {
@@ -247,7 +254,10 @@ function resolveProjectScopes(
   );
   add(
     "improvements",
-    /\b(auffallig|verbesser|optimier|was fehlt)\w*\b/.test(normalized)
+    /\b(auffallig|verbesser|optimier|was fehlt|wirtschaftlich|rentabel|projektgewinn)\w*\b/.test(
+      normalized
+    ) ||
+      /\b(?:wichtigste[rn]?|nachste[rn]?)\s+schritt\b/.test(normalized)
   );
 
   const explicitlyRequestsFullCheck =

@@ -43,6 +43,75 @@ describe("JARVIS system help", () => {
     expect(result.message).toContain("Die Verantwortung bleibt beim Menschen");
   });
 
+  it.each([
+    "Was sind deine Unternehmensprinzipien?",
+    "Was bedeutet: Vereinfache konsequent?",
+    "Was bedeutet: Nutze den Joker?",
+    "Wie setzt du Prioritäten?",
+    "Was heißt Shit in, Shit out?",
+    "Warum denkst du vom Kunden aus?",
+    "Was bedeutet Flexibilität ist Teil der Architektur?",
+  ])("recognizes principle wording from natural conversations: %s", (question) => {
+    expect(resolveJarvisSystemHelp(question, {}, employeeAccess)).toMatchObject({
+      type: "answer",
+      topicId: "jarvis.principles",
+    });
+  });
+
+  it.each([
+    "Was kannst du sicher selbst erledigen?",
+    "Welche Aktionen darfst du niemals autonom ausführen?",
+    "Was machst du bei unsicheren Daten?",
+    "Wie gehst du mit persönlichen Daten um?",
+    "Wer bleibt bei Entscheidungen verantwortlich?",
+    "Was tust du wenn Daten ungeprüft sind?",
+    "Wann fragst du nach statt etwas zu erfinden?",
+  ])("explains safety and human responsibility: %s", (question) => {
+    const result = resolveJarvisSystemHelp(question, {}, employeeAccess);
+    expect(result).toMatchObject({
+      type: "answer",
+      topicId: "jarvis.safety",
+    });
+    expect(result.message).toContain("Verantwortung bleiben immer beim Menschen");
+  });
+
+  it.each([
+    "Wie unterstützt du neue Mitarbeiter?",
+    "Wie förderst du Kontinuität?",
+    "Wie unterstützt du Führung?",
+  ])("explains transparent people development: %s", (question) => {
+    const result = resolveJarvisSystemHelp(question, {}, leadershipAccess);
+    expect(result).toMatchObject({
+      type: "answer",
+      topicId: "jarvis.people",
+    });
+    expect(result.message).toContain("keine heimlichen Persönlichkeitsprofile");
+  });
+
+  it("answers common task and invoice how-to wording", () => {
+    expect(
+      resolveJarvisSystemHelp(
+        "Wie lege ich normalerweise eine Aufgabe an?",
+        {},
+        leadershipAccess
+      )
+    ).toMatchObject({ type: "answer", topicId: "task.create" });
+    expect(
+      resolveJarvisSystemHelp(
+        "Wie prüfe ich eine Rechnung?",
+        {},
+        leadershipAccess
+      )
+    ).toMatchObject({ type: "answer", topicId: "invoice.open" });
+    expect(
+      resolveJarvisSystemHelp(
+        "Was sollte ich vor dem Fakturieren prüfen?",
+        {},
+        leadershipAccess
+      )
+    ).toMatchObject({ type: "answer", topicId: "invoice.preflight" });
+  });
+
   it("explains safe offer e-mail sending without executing it", () => {
     const result = resolveJarvisSystemHelp(
       "Wie versende ich ein Angebot per E-Mail?",
