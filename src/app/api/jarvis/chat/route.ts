@@ -618,15 +618,15 @@ export async function POST(req: Request) {
       ...(conversationContext ? { conversationContext } : {}),
     });
     if (projectDialogResponse) {
-      return respond(
-        deterministicProjectWhyFollowUp
-          ? {
-              ...projectDialogResponse,
-              topicId: "project.health.why",
-              message: `Der Grund für diese Priorität: ${projectDialogResponse.message}`,
-            }
-          : projectDialogResponse
-      );
+      if (deterministicProjectWhyFollowUp) {
+        return respond({
+          type: "answer",
+          topicId: "project.health.why",
+          message: `Der Grund für diese Priorität: ${projectDialogResponse.message}`,
+          deterministic: true,
+        });
+      }
+      return respond(projectDialogResponse);
     }
   }
   const directActionRequest = looksLikeDirectActionRequest(

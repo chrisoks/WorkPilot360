@@ -26,6 +26,11 @@
   wiederholte. Folgefragen nach einem Grund muessen deshalb eine fokussierte
   Begruendung mit eigener Dialog-ID erhalten; ein formal passender
   Vollcheck zaehlt hier nicht als qualitative Antwort.
+  Eine reine API-Nachhaertung genuegt dabei nicht: Solange die Antwort noch
+  eine strukturierte Vollcheck-Karte enthaelt, rendert die echte Oberflaeche
+  diese Karte statt der kurzen Begruendung. Die `Warum?`-Antwort muss daher
+  bewusst ohne `structured`- und `records`-Vollcheck ausgeliefert und am
+  sichtbaren UI-Text abgenommen werden.
 
 - JARVIS fokussierte Prinzipienantworten 2026-07-29: Eine allgemeine
   Prinzipienfrage darf weiterhin die vollstaendige Uebersicht liefern. Fragt

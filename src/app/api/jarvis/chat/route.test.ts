@@ -1134,11 +1134,15 @@ describe("POST /api/jarvis/chat", () => {
       })
     );
 
-    expect(await response.json()).toMatchObject({
+    const payload = await response.json();
+    expect(payload).toMatchObject({
+      type: "answer",
       topicId: "project.health.why",
       message:
         "Der Grund für diese Priorität: Die kritischen Ursachen sind belegt.",
+      deterministic: true,
     });
+    expect(payload.structured).toBeUndefined();
     expect(mocks.resolveJarvisProjectHealthRequest).toHaveBeenCalledWith({
       question:
         "Was ist der wichtigste nächste Schritt für dieses Projekt und warum?",
