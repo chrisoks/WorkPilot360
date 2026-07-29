@@ -136,6 +136,15 @@ describe("JARVIS system help", () => {
     expect(new Set(messages).size).toBe(cases.length);
   });
 
+  it.each([
+    ["Was tust du, wenn Stammdaten ungeprüft sind?", "jarvis.safety", "Datengrundlage"],
+    ["Darfst du Personalentscheidungen treffen?", "jarvis.people", "Personalentscheidung"],
+  ])("answers the final live quality wording %s", (question, topicId, expected) => {
+    const result = resolveJarvisSystemHelp(question, {}, leadershipAccess);
+    expect(result).toMatchObject({ type: "answer", topicId });
+    expect(result.message).toContain(expected);
+  });
+
   it("answers common task and invoice how-to wording", () => {
     expect(
       resolveJarvisSystemHelp(

@@ -1442,7 +1442,7 @@ describe("POST /api/jarvis/chat", () => {
       confidence: "high",
       candidates: [],
       clarificationReasons: [],
-      goals: ["change"],
+      goals: [],
       entities: [],
       timeScopes: [],
       recordFilter: "all",

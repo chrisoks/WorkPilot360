@@ -14,6 +14,12 @@
   sicherheitskritische Faelle; nicht eindeutige Fragen sollen strukturiert
   nach Aussageabsicht klassifiziert und spaeter aus freigegebenem Wissen
   natuerlich, aber ohne Rechte- oder Aktionsbefugnis formuliert werden.
+  Der anschliessende Wiederholungslauf reduzierte die qualitativen Fehler
+  auf vier klare Sprachvarianten: organisationsweite wirtschaftliche
+  Materialauffaelligkeiten, ungepruefte Stammdaten, Personalentscheidungen
+  und der Imperativ `Stemple ...`. Auch diese Varianten gelten vor der
+  finalen Zaehhlung als Pflichtkorrekturen und nicht als kosmetische
+  Randfaelle.
 
 - JARVIS fokussierte Prinzipienantworten 2026-07-29: Eine allgemeine
   Prinzipienfrage darf weiterhin die vollstaendige Uebersicht liefern. Fragt

@@ -202,7 +202,7 @@ function looksLikeDirectActionRequest(
   return (
     !/^\s*wie\b/iu.test(question) &&
     ((!startsWithQuestion && decision.goals.includes("change")) ||
-      /^\s*(?:leg|lege|mach|mache|schick|sende|stornier|stempel|lösch|losch|ändere|ander|setz|markier|erstell|trag|plane)\w*\b/iu.test(
+      /^\s*(?:leg|lege|mach|mache|schick|sende|stornier|stemp(?:el|le)|lösch|losch|ändere|ander|setz|markier|erstell|trag|plane)\w*\b/iu.test(
         question
       ))
   );
@@ -623,7 +623,7 @@ export async function POST(req: Request) {
     message,
     intentDecision
   );
-  if (directActionRequest && /^\s*stemp(?:el|l)\w*\b/iu.test(message)) {
+  if (directActionRequest && /^\s*stemp(?:el|le|l)\w*\b/iu.test(message)) {
     return respond({
       type: "refusal",
       topicId: "action.time-write-not-released",

@@ -49,7 +49,7 @@ export type OrganizationMaterialSource = JarvisPricingPolicySource & {
 
 const INTENT_PATTERNS = [
   /\b(analysier|pruf|vergleich|auswert|bewert)\w*\b.*\b(material|artikel|lager|paketbestandteil)\w*\b/,
-  /\b(welche|wo)\b.*\b(material|artikel)\w*\b.*\b(preis|zu gunstig|marge|kosten|anpass|erhoh|auffallig)\w*\b/,
+  /\b(welche|wo)\b.*\b(material|artikel)\w*\b.*\b(preis|zu gunstig|marge|kosten|anpass|erhoh|auffallig|wirtschaftlich|rentabel)\w*\b/,
   /\b(welche|wo)\b.*\b(material|artikel)\w*\b.*\b(meist|haufig|verkauf|abgerechnet|verbraucht)\w*\b/,
   /\b(materialverbrauch|materialmenge|lagerentnahme|lagerbewegung)\w*\b.*\b(stimm|abweich|vergleich|pruf)\w*\b/,
   /\b(stimm|abweich|vergleich|pruf)\w*\b.*\b(materialverbrauch|materialmenge|lagerentnahme|lagerbewegung)\w*\b/,
