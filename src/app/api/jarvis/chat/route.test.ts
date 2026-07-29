@@ -1394,7 +1394,7 @@ describe("POST /api/jarvis/chat", () => {
 
     expect(await response.json()).toMatchObject({
       type: "clarification",
-      topicId: "intent.action-not-executed",
+      topicId: "action.preview.planning.details-required",
     });
     expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
   });
@@ -1720,6 +1720,84 @@ describe("POST /api/jarvis/chat", () => {
     );
     expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+  });
+
+  it("returns a non-executable appointment preview without persisting planning data", async () => {
+    const user = {
+      id: "user-1",
+      isActive: true,
+      role: "GESCHAEFTSFUEHRER",
+      firstName: "Christian",
+      lastName: "Eid",
+      email: "christian@example.test",
+    };
+    mocks.getDemoContext.mockResolvedValue({
+      organization: { id: "organization-1" },
+      users: [user],
+    });
+    mocks.getSessionBoundActor.mockResolvedValue({
+      ok: true,
+      sessionId: "session-1",
+      sessionUserId: user.id,
+      actor: user,
+    });
+    mocks.createJarvisAccessProfile.mockReturnValue({
+      sessionActor: user,
+      effectiveActor: user,
+      isImpersonating: false,
+    });
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      recordType: "project",
+      recordId: "project-1",
+    });
+    mocks.findJarvisExactHelpTopicId.mockReturnValue("appointment.create");
+    mocks.resolveJarvisIntentDecision.mockReturnValue({
+      state: "resolved",
+      domain: "system",
+      confidence: "high",
+      candidates: [],
+      clarificationReasons: [],
+      goals: ["change"],
+      entities: [],
+      timeScopes: [],
+      recordFilter: "all",
+      segments: [],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message:
+            'Plane am 03.08.2026 von 10:00 bis 11:00 den Termin "Vor-Ort-Prüfung" für Christian Eid.',
+          context: { recordType: "project", recordId: "project-1" },
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      type: "answer",
+      topicId: "action.preview.planning",
+      actionPreview: {
+        actionId: "planning.prepare",
+        badge: "Nur Vorschau",
+        confirmation: { enabled: false, reason: "not_released" },
+        execution: { enabled: false, reason: "preview_only" },
+        fields: expect.arrayContaining([
+          { label: "Titel", value: "Vor-Ort-Prüfung" },
+          { label: "Beginn", value: "03.08.2026, 10:00" },
+          { label: "Ende", value: "03.08.2026, 11:00" },
+          { label: "Mitarbeitende", value: "Christian Eid" },
+        ]),
+      },
+    });
+    expect(JSON.stringify(payload.actionPreview)).not.toContain("project-1");
+    expect(JSON.stringify(payload.actionPreview)).not.toContain("user-1");
+    expect(mocks.createPersistedJarvisTaskDraft).not.toHaveBeenCalled();
     expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
   });
 

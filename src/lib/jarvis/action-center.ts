@@ -271,8 +271,111 @@ export function extractJarvisTaskPreviewTitle(question: string) {
   return significantTerms.length >= 2 ? afterTask : undefined;
 }
 
+function berlinLocalDateTimeToIso(input: {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+}) {
+  const utcGuess = Date.UTC(
+    input.year,
+    input.month - 1,
+    input.day,
+    input.hour,
+    input.minute
+  );
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Berlin",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(utcGuess));
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((candidate) => candidate.type === type)?.value);
+  const representedAsUtc = Date.UTC(
+    part("year"),
+    part("month") - 1,
+    part("day"),
+    part("hour"),
+    part("minute")
+  );
+  const value = new Date(utcGuess - (representedAsUtc - utcGuess));
+  const validation = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Berlin",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(value);
+  const validatedPart = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(validation.find((candidate) => candidate.type === type)?.value);
+  return validatedPart("year") === input.year &&
+    validatedPart("month") === input.month &&
+    validatedPart("day") === input.day &&
+    validatedPart("hour") === input.hour &&
+    validatedPart("minute") === input.minute
+    ? value.toISOString()
+    : undefined;
+}
+
+export function extractJarvisPlanningPreviewDetails(question: string) {
+  const cleaned = question.trim().replace(/\s+/g, " ").slice(0, 1800);
+  const title =
+    cleaned.match(/[„"']([^„“"']{3,180})[“"']/u)?.[1]?.trim() ?? "";
+  const dateMatch = cleaned.match(
+    /\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b/
+  );
+  const timeMatch = cleaned.match(
+    /\bvon\s+([01]?\d|2[0-3]):([0-5]\d)\s+(?:uhr\s+)?bis\s+([01]?\d|2[0-3]):([0-5]\d)\b/iu
+  );
+  if (!title || !dateMatch || !timeMatch) return undefined;
+  const day = Number(dateMatch[1]);
+  const month = Number(dateMatch[2]);
+  const year = Number(dateMatch[3]);
+  const startAt = berlinLocalDateTimeToIso({
+    year,
+    month,
+    day,
+    hour: Number(timeMatch[1]),
+    minute: Number(timeMatch[2]),
+  });
+  const endAt = berlinLocalDateTimeToIso({
+    year,
+    month,
+    day,
+    hour: Number(timeMatch[3]),
+    minute: Number(timeMatch[4]),
+  });
+  if (
+    !startAt ||
+    !endAt ||
+    Date.parse(endAt) <= Date.parse(startAt)
+  ) {
+    return undefined;
+  }
+  return { title, startAt, endAt };
+}
+
+function formatPreviewDateTime(value: string) {
+  return new Intl.DateTimeFormat("de-DE", {
+    timeZone: "Europe/Berlin",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 export function toJarvisActionPreviewView(
-  preview: JarvisActionPreview
+  preview: JarvisActionPreview,
+  options: { assigneeLabels?: string[] } = {}
 ): JarvisActionPreviewView {
   const fields: JarvisActionPreviewView["fields"] = [];
   const missingFields: string[] = [];
@@ -293,9 +396,16 @@ export function toJarvisActionPreviewView(
       preview.payload as JarvisActionPreviewPayloadMap["planning.prepare"];
     fields.push(
       { label: "Titel", value: payload.title },
-      { label: "Beginn", value: payload.startAt },
-      { label: "Ende", value: payload.endAt }
+      { label: "Beginn", value: formatPreviewDateTime(payload.startAt) },
+      { label: "Ende", value: formatPreviewDateTime(payload.endAt) },
+      { label: "Projektbezug", value: "Aktuelles Projekt verknüpft" }
     );
+    if (options.assigneeLabels?.length) {
+      fields.push({
+        label: "Mitarbeitende",
+        value: options.assigneeLabels.join(", "),
+      });
+    }
   } else {
     const payload = preview.payload as JarvisActionPreviewPayloadMap["time.prepare"];
     fields.push(

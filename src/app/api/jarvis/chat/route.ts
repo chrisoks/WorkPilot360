@@ -78,7 +78,9 @@ import { normalizeJarvisIntentText } from "@/lib/jarvis/intent-text";
 import { analyzeJarvisQuestion } from "@/lib/jarvis/question-semantics";
 import {
   createJarvisActionPreview,
+  extractJarvisPlanningPreviewDetails,
   extractJarvisTaskPreviewTitle,
+  toJarvisActionPreviewView,
 } from "@/lib/jarvis/action-center";
 import {
   createPersistedJarvisTaskDraft,
@@ -150,6 +152,97 @@ async function buildJarvisTaskPreview(input: {
       message: `${message} Es wurde nichts ausgeführt.`,
     };
   }
+}
+
+function normalizePersonLabel(value: string) {
+  return value
+    .toLocaleLowerCase("de-DE")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildJarvisPlanningPreview(input: {
+  question: string;
+  organizationId: string;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+  context: ReturnType<typeof sanitizeJarvisSurfaceContext>;
+  users: Array<{
+    id: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+    isActive?: boolean;
+  }>;
+}) {
+  if (input.context.recordType !== "project" || !input.context.recordId) {
+    return {
+      type: "clarification" as const,
+      topicId: "action.preview.planning.project-required",
+      message:
+        "Für eine sichere Termin-Vorschau brauche ich ein eindeutig geöffnetes Projekt. Öffne zuerst die Projektakte; es wurde nichts gespeichert.",
+    };
+  }
+  const details = extractJarvisPlanningPreviewDetails(input.question);
+  if (!details) {
+    return {
+      type: "clarification" as const,
+      topicId: "action.preview.planning.details-required",
+      message:
+        "Für die Termin-Vorschau brauche ich einen Titel in Anführungszeichen, ein Datum sowie Beginn und Ende, zum Beispiel: Plane am 03.08.2026 von 10:00 bis 11:00 den Termin „Vor-Ort-Prüfung“ für Christian Eid. Es wurde nichts gespeichert.",
+    };
+  }
+  const normalizedQuestion = normalizePersonLabel(input.question);
+  const assignee = input.users.find((user) => {
+    if (user.isActive === false || !user.id) return false;
+    const label = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
+    return label.length >= 3 &&
+      normalizedQuestion.includes(normalizePersonLabel(label));
+  });
+  if (!assignee) {
+    return {
+      type: "clarification" as const,
+      topicId: "action.preview.planning.assignee-required",
+      message:
+        "Ich konnte die verantwortliche Person nicht eindeutig zuordnen. Nenne bitte den vollständigen Namen einer aktiven Person; es wurde nichts gespeichert.",
+    };
+  }
+  const assigneeLabel =
+    [assignee.firstName, assignee.lastName].filter(Boolean).join(" ").trim() ||
+    assignee.email ||
+    "Ausgewählte Person";
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(),
+    actionId: "planning.prepare",
+    payload: {
+      title: details.title,
+      startAt: details.startAt,
+      endAt: details.endAt,
+      projectId: input.context.recordId,
+      assigneeIds: [assignee.id],
+    },
+    organizationId: input.organizationId,
+    profile: input.accessProfile,
+    createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.preview.planning.refused",
+      message: `${preview.message} Es wurde nichts gespeichert oder ausgeführt.`,
+    };
+  }
+  return {
+    type: "answer" as const,
+    topicId: "action.preview.planning",
+    message:
+      "Ich habe eine sichere Termin-Vorschau erstellt. Prüfe Projekt, Mitarbeitenden, Beginn und Ende. Bestätigen und Speichern sind noch nicht freigegeben; diese Vorschau verändert keine WorkPilot360-Daten.",
+    actionPreview: toJarvisActionPreviewView(preview.value, {
+      assigneeLabels: [assigneeLabel],
+    }),
+  };
 }
 
 function shouldUseProjectHealthPath(
@@ -300,6 +393,14 @@ function looksLikeTaskCreationPreviewRequest(question: string) {
     hasExplicitCreationMarker &&
     /\baufgabe\b/.test(value) &&
     !/\b(?:losch|loesch|ander|aender|archivier)\w*\b/.test(value)
+  );
+}
+
+function looksLikePlanningPreviewRequest(question: string) {
+  const value = normalizeJarvisIntentText(question);
+  return (
+    /^\s*(?:plan|plane|leg|lege|erstell|erstelle)\w*\b/.test(value) &&
+    /\b(?:termin|einsatztermin|planungstermin)\w*\b/.test(value)
   );
 }
 
@@ -791,6 +892,20 @@ export async function POST(req: Request) {
     if (taskPreview) {
       return respond(taskPreview);
     }
+  }
+  if (
+    directActionRequest &&
+    looksLikePlanningPreviewRequest(message)
+  ) {
+    return respond(
+      buildJarvisPlanningPreview({
+        question: message,
+        organizationId: organization.id,
+        accessProfile,
+        context,
+        users,
+      })
+    );
   }
   const routingContext = conversationContext ?? context;
   const aiIntentClassification = await classifyJarvisIntentWithAi({

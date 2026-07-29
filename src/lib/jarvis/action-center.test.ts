@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Role } from "@prisma/client";
 import {
   createJarvisActionPreview,
+  extractJarvisPlanningPreviewDetails,
   extractJarvisTaskPreviewTitle,
   toJarvisActionPreviewView,
   transitionJarvisActionPreview,
@@ -141,6 +142,53 @@ describe("JARVIS Action Center 1.0 foundation", () => {
       ok: false,
       code: "invalid_payload",
     });
+  });
+
+  it("extracts an explicit Berlin appointment window and renders a data-minimized preview", () => {
+    expect(
+      extractJarvisPlanningPreviewDetails(
+        'Plane am 03.08.2026 von 10:00 bis 11:00 den Termin "Vor-Ort-Prüfung" für Christian Eid.'
+      )
+    ).toEqual({
+      title: "Vor-Ort-Prüfung",
+      startAt: "2026-08-03T08:00:00.000Z",
+      endAt: "2026-08-03T09:00:00.000Z",
+    });
+
+    const created = createJarvisActionPreview({
+      previewId: "preview-planning",
+      actionId: "planning.prepare",
+      payload: {
+        title: "Vor-Ort-Prüfung",
+        startAt: "2026-08-03T08:00:00.000Z",
+        endAt: "2026-08-03T09:00:00.000Z",
+        projectId: "project-1",
+        assigneeIds: ["leader-1"],
+      },
+      organizationId: "org-1",
+      profile: leadershipProfile,
+      createdAt: "2026-07-29T12:00:00.000Z",
+    });
+    if (!created.ok) throw new Error("Termin-Vorschau wurde nicht erstellt.");
+
+    const view = toJarvisActionPreviewView(created.value, {
+      assigneeLabels: ["Christian Eid"],
+    });
+    expect(view).toMatchObject({
+      actionId: "planning.prepare",
+      badge: "Nur Vorschau",
+      fields: [
+        { label: "Titel", value: "Vor-Ort-Prüfung" },
+        { label: "Beginn", value: "03.08.2026, 10:00" },
+        { label: "Ende", value: "03.08.2026, 11:00" },
+        { label: "Projektbezug", value: "Aktuelles Projekt verknüpft" },
+        { label: "Mitarbeitende", value: "Christian Eid" },
+      ],
+      confirmation: { enabled: false, reason: "not_released" },
+      execution: { enabled: false, reason: "preview_only" },
+    });
+    expect(JSON.stringify(view)).not.toContain("leader-1");
+    expect(JSON.stringify(view)).not.toContain("project-1");
   });
 
   it("confirms only the preview and appends an audit event", () => {
