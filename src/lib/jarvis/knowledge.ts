@@ -148,15 +148,19 @@ const TOPICS: JarvisTopic[] = [
       "was ist dein auftrag",
       "wie arbeitet jarvis",
       "automatisiere alles was sinnvoll",
+      "warum automatisieren wir routine",
       "vereinfache konsequent",
       "nutze den joker",
       "ki joker",
       "klares zielbild",
+      "warum ist ein klares zielbild wichtig",
       "setze prioritäten",
       "wie setzt du prioritäten",
       "nutze das beste werkzeug",
       "shit in shit out",
+      "erklaere shit in shit out",
       "vom kunden aus",
+      "wie denkst du vom kunden aus",
       "flexibilität ist teil der architektur",
     ],
     surfaces: ["JARVIS"],
@@ -934,6 +938,57 @@ export function resolveJarvisSystemHelp(
   }
 }
 
+function getJarvisPrinciplesAnswer(question: string, overview: string) {
+  const normalized = normalizeJarvisIntentText(question);
+
+  if (
+    normalized.includes("automatisier") ||
+    normalized.includes("routine")
+  ) {
+    return "Sinnvolle Automatisierung nimmt Menschen wiederholbare Routine ab, damit mehr Zeit für Entscheidungen, Kreativität und Kunden bleibt. Praktisch heißt das: Einen stabilen, wiederkehrenden Ablauf automatisieren wir mit sichtbaren Kontrollen; Ausnahmen und Verantwortung bleiben beim Menschen.";
+  }
+  if (
+    normalized.includes("vereinfach") ||
+    normalized.includes("einfacher")
+  ) {
+    return "Konsequent vereinfachen heißt: Eine neue Lösung muss für den Anwender leichter verständlich und mit weniger unnötigen Schritten nutzbar sein. Wird ein Ablauf komplizierter, reduzieren wir zuerst Schritte, Entscheidungen und Sonderwege und suchen weiter, bis der Nutzen ohne vermeidbare Komplexität entsteht.";
+  }
+  if (normalized.includes("joker")) {
+    return "Den Joker nutzen heißt: Wenn jemand nicht weiterkommt oder eine zweite Sicht braucht, wird die KI gezielt einbezogen. Der Mensch nennt Ziel und Kontext, JARVIS liefert Orientierung oder einen Entwurf, und das Ergebnis wird vor einer Entscheidung geprüft – Zusammenarbeit statt blindes Vertrauen.";
+  }
+  if (normalized.includes("zielbild")) {
+    return "Ein klares Zielbild gibt jeder Einzelentscheidung eine Richtung. Wir prüfen deshalb nicht nur, was heute bequem ist, sondern ob eine Lösung dem langfristig gewünschten Zustand näherkommt und vermeiden kurzfristige Verbesserungen, die später neue Hindernisse schaffen.";
+  }
+  if (normalized.includes("priorit")) {
+    return "Priorisieren bedeutet: Nicht alles gleichzeitig und nicht alles gleich wichtig behandeln. Zuerst kommt, was für Kunden und Unternehmen den größten Nutzen bringt; Risiko, Dringlichkeit und Abhängigkeiten entscheiden mit. JARVIS soll diese Reihenfolge nachvollziehbar begründen.";
+  }
+  if (normalized.includes("werkzeug")) {
+    return "Das beste Werkzeug ist das, das im konkreten Fall das beste sichere Ergebnis für den Kunden ermöglicht. Wir sind nicht an ein Produkt gebunden, berücksichtigen aber Eignung, Aufwand, Datenschutz, Rollen und Anschlussfähigkeit, bevor wir wechseln oder etwas Neues einführen.";
+  }
+  if (
+    normalized.includes("shit in") ||
+    normalized.includes("datenqualitat") ||
+    normalized.includes("qualitat der daten")
+  ) {
+    return "„Shit in, Shit out“ bedeutet: Eine Auswertung oder KI-Antwort kann nur so verlässlich sein wie ihre Eingangsdaten. Fehlende, veraltete oder ungeprüfte Daten muss JARVIS sichtbar benennen, statt Sicherheit vorzutäuschen oder Werte zu erfinden; zuerst wird die Datengrundlage verbessert.";
+  }
+  if (
+    normalized.includes("vom kunden") ||
+    normalized.includes("kunden aus") ||
+    normalized.includes("kundenperspektive")
+  ) {
+    return "Vom Kunden aus denken heißt: Ausgangspunkt ist sein gewünschtes Ergebnis – eine schnelle, einfache und zuverlässige Lösung – und nicht unsere Abteilungs- oder Prozessgrenze. Praktisch verfolgen wir sein Anliegen durch den gesamten Ablauf und vermeiden interne Übergaben, die ihm keinen Nutzen bringen.";
+  }
+  if (
+    normalized.includes("flexibilitat") ||
+    normalized.includes("architektur")
+  ) {
+    return "Flexibilität als Teil der Architektur bedeutet, Systeme, Prozesse und Rollen modular, erweiterbar und neu kombinierbar zu bauen. Wir vermeiden starre Einzellösungen, damit neue Anforderungen ergänzt werden können, ohne bewährte Abläufe jedes Mal komplett neu zu bauen.";
+  }
+
+  return overview;
+}
+
 export function resolveJarvisSystemHelpTopic(
   topicId: string,
   question: string,
@@ -979,6 +1034,13 @@ export function resolveJarvisSystemHelpTopic(
     }
   }
 
+  if (topic.id === "jarvis.principles") {
+    return {
+      type: "answer",
+      topicId: topic.id,
+      message: getJarvisPrinciplesAnswer(cleaned, topic.answer),
+    };
+  }
   if (topic.id === "appointment.create") {
     return getAppointmentAnswer(cleaned, context);
   }

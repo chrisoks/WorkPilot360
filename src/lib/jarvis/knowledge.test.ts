@@ -45,17 +45,41 @@ describe("JARVIS system help", () => {
 
   it.each([
     "Was sind deine Unternehmensprinzipien?",
-    "Was bedeutet: Vereinfache konsequent?",
-    "Was bedeutet: Nutze den Joker?",
-    "Wie setzt du Prioritäten?",
-    "Was heißt Shit in, Shit out?",
-    "Warum denkst du vom Kunden aus?",
-    "Was bedeutet Flexibilität ist Teil der Architektur?",
   ])("recognizes principle wording from natural conversations: %s", (question) => {
     expect(resolveJarvisSystemHelp(question, {}, employeeAccess)).toMatchObject({
       type: "answer",
       topicId: "jarvis.principles",
     });
+  });
+
+  it("answers individual principles specifically instead of repeating the overview", () => {
+    const cases = [
+      ["Warum automatisieren wir Routine?", "wiederholbare Routine"],
+      ["Was bedeutet: Vereinfache konsequent?", "weniger unnötigen Schritten"],
+      ["Was bedeutet: Nutze den Joker?", "Ziel und Kontext"],
+      ["Warum ist ein klares Zielbild wichtig?", "langfristig gewünschten Zustand"],
+      ["Wie setzt du Prioritäten?", "Risiko, Dringlichkeit und Abhängigkeiten"],
+      ["Was bedeutet: Nutze das beste Werkzeug?", "Eignung, Aufwand, Datenschutz"],
+      ["Erkläre Shit in, Shit out.", "Eingangsdaten"],
+      ["Wie denkst du vom Kunden aus?", "Abteilungs- oder Prozessgrenze"],
+      [
+        "Was bedeutet Flexibilität ist Teil der Architektur?",
+        "modular, erweiterbar und neu kombinierbar",
+      ],
+    ] as const;
+
+    const messages = cases.map(([question, expected]) => {
+      const result = resolveJarvisSystemHelp(question, {}, employeeAccess);
+      expect(result).toMatchObject({
+        type: "answer",
+        topicId: "jarvis.principles",
+      });
+      expect(result.message).toContain(expected);
+      expect(result.message).not.toContain("Meine Prinzipien sind:");
+      return result.message;
+    });
+
+    expect(new Set(messages).size).toBe(cases.length);
   });
 
   it.each([

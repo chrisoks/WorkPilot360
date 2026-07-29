@@ -1,5 +1,13 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS fokussierte Prinzipienantworten 2026-07-29: Eine allgemeine
+  Prinzipienfrage darf weiterhin die vollstaendige Uebersicht liefern. Fragt
+  ein Mensch nach einem einzelnen Prinzip, muss JARVIS genau dieses Prinzip
+  verstaendlich erklaeren, auf praktisches Verhalten uebertragen und darf
+  nicht erneut die identische Gesamtliste ausgeben. Die Abnahme prueft deshalb
+  nicht nur Themenrouting und technische Gueltigkeit, sondern auch
+  Antwortspezifitaet und Wiederholungen ueber die gesamte Fragenserie.
+
 - JARVIS Prinzipien- und Kontext-Haertung 2026-07-29: Natuerliche
   Fragen zu den neun Unternehmensprinzipien, Sicherheitsgrenzen,
   menschlicher Verantwortung, Mitarbeiterentwicklung, Kontinuitaet und
