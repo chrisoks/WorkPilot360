@@ -592,9 +592,10 @@ export async function createPersistedJarvisTaskDraft(
 
 export async function getJarvisTaskDraft(
   previewId: string,
-  binding: JarvisTaskDraftBinding
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
 ) {
-  const { draft } = await loadBoundDraft(previewId, binding);
+  const { draft } = await loadBoundDraft(previewId, binding, now);
   return toJarvisTaskActionDraftView(draft, binding);
 }
 

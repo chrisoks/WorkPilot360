@@ -391,7 +391,7 @@ describe("persistent JARVIS task drafts", () => {
   it("expires stale drafts and rejects later mutation", async () => {
     await createDraft();
     const afterTtl = new Date("2026-07-29T20:16:00.000Z");
-    const expired = await getJarvisTaskDraft("preview-1", binding());
+    const expired = await getJarvisTaskDraft("preview-1", binding(), baseNow);
     expect(expired.state).toBe("awaiting_input");
 
     await expect(

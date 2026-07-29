@@ -1,5 +1,13 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Action-Center Proxy-Origin 2026-07-29: Schreibende
+  Aufgabenentwurf-Anfragen akzeptieren den vom Browser gesendeten
+  oeffentlichen HTTPS-Origin nun auch dann, wenn Next.js hinter dem
+  Reverse-Proxy intern eine localhost-URL sieht. Die Pruefung verwendet den
+  zentralen validierten Public-Origin-Resolver; ein fremder Origin bleibt mit
+  403 gesperrt. Der TTL-Test des persistenten Entwurfs nutzt eine explizite
+  Testzeit und ist damit unabhaengig von der realen Uhrzeit.
+
 - JARVIS persistenter Aufgabenentwurf 2026-07-29: Der erste produktiv
   schreibende Action-Center-Vertikalschnitt ist umgesetzt. Ein erkannter
   Aufgabenwunsch erzeugt zunächst ausschließlich einen 15 Minuten gültigen,

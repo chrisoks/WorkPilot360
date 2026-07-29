@@ -131,6 +131,65 @@ describe("JARVIS action-draft API", () => {
     expect(mocks.confirmJarvisTaskDraft).not.toHaveBeenCalled();
   });
 
+  it("accepts the public HTTPS origin behind the trusted reverse proxy", async () => {
+    const response = (await POST(
+      new Request(
+        "http://127.0.0.1:3000/api/jarvis/action-drafts/preview-1",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-jarvis-action": "task-draft-v1",
+            origin: "https://workpilot360.oks-cloudservices.com",
+            host: "127.0.0.1:3000",
+            "x-forwarded-host": "workpilot360.oks-cloudservices.com",
+            "x-forwarded-proto": "https",
+          },
+          body: JSON.stringify({
+            actorId: "user-1",
+            command: "confirm",
+            revision: 2,
+          }),
+        }
+      ),
+      context
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(mocks.confirmJarvisTaskDraft).toHaveBeenCalledWith(
+      "preview-1",
+      expect.anything(),
+      2
+    );
+  });
+
+  it("rejects a foreign origin even when the app is behind a proxy", async () => {
+    const response = (await POST(
+      new Request(
+        "http://127.0.0.1:3000/api/jarvis/action-drafts/preview-1",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-jarvis-action": "task-draft-v1",
+            origin: "https://evil.example",
+            "x-forwarded-host": "workpilot360.oks-cloudservices.com",
+            "x-forwarded-proto": "https",
+          },
+          body: JSON.stringify({
+            actorId: "user-1",
+            command: "confirm",
+            revision: 2,
+          }),
+        }
+      ),
+      context
+    ))!;
+
+    expect(response.status).toBe(403);
+    expect(mocks.confirmJarvisTaskDraft).not.toHaveBeenCalled();
+  });
+
   it("rejects legacy requests without a real session", async () => {
     mocks.getSessionBoundActor.mockResolvedValue({
       ok: true,

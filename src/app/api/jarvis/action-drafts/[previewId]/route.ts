@@ -10,6 +10,7 @@ import {
   type JarvisTaskDraftBinding,
 } from "@/lib/jarvis/action-draft-store";
 import { createJarvisAccessProfile } from "@/lib/jarvis/security";
+import { getPublicAppOrigin } from "@/lib/http/public-app-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,13 @@ function mutationIsSameOrigin(req: Request) {
   const origin = req.headers.get("origin");
   if (!origin) return true;
   try {
-    return new URL(origin).origin === new URL(req.url).origin;
+    const originUrl = new URL(origin);
+    const requestUrl = new URL(req.url);
+    if (originUrl.origin === requestUrl.origin) return true;
+    // Next.js can see the internal upstream URL behind the reverse proxy.
+    // Reuse the application's validated public-origin resolver instead of
+    // trusting any payload value.
+    return originUrl.origin === getPublicAppOrigin(req);
   } catch {
     return false;
   }
