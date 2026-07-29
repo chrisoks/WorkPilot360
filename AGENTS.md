@@ -7,6 +7,11 @@
   nicht erneut die identische Gesamtliste ausgeben. Die Abnahme prueft deshalb
   nicht nur Themenrouting und technische Gueltigkeit, sondern auch
   Antwortspezifitaet und Wiederholungen ueber die gesamte Fragenserie.
+  Eine technisch vorhandene Antwort gilt nicht als bestanden: Jede
+  Live-Antwort wird zusaetzlich auf inhaltliche Richtigkeit, konkrete
+  Fragerelevanz, Verstaendlichkeit, Angemessenheit und Handlungsnutzen
+  bewertet. Serien werden ausserdem auf Wiederholung, Widerspruch,
+  Ausweichantworten und unnoetige Textmenge geprueft.
 
 - JARVIS Prinzipien- und Kontext-Haertung 2026-07-29: Natuerliche
   Fragen zu den neun Unternehmensprinzipien, Sicherheitsgrenzen,
