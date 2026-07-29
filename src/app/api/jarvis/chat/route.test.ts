@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
   resolveJarvisOrganizationServiceRateRequest: vi.fn(),
   resolveJarvisOrganizationReceivablesIntent: vi.fn(),
   resolveJarvisOrganizationReceivablesRequest: vi.fn(),
+  resolveJarvisOrganizationOfferAgingIntent: vi.fn(),
+  resolveJarvisOrganizationOfferAgingRequest: vi.fn(),
   resolveJarvisSalesAnalysisIntent: vi.fn(),
   resolveJarvisSalesAnalysisRequest: vi.fn(),
   resolveJarvisReadRequest: vi.fn(),
@@ -108,6 +110,13 @@ vi.mock("@/lib/jarvis/organization-receivables-analysis", () => ({
     mocks.resolveJarvisOrganizationReceivablesIntent,
   resolveJarvisOrganizationReceivablesRequest:
     mocks.resolveJarvisOrganizationReceivablesRequest,
+}));
+
+vi.mock("@/lib/jarvis/organization-offer-aging-analysis", () => ({
+  resolveJarvisOrganizationOfferAgingIntent:
+    mocks.resolveJarvisOrganizationOfferAgingIntent,
+  resolveJarvisOrganizationOfferAgingRequest:
+    mocks.resolveJarvisOrganizationOfferAgingRequest,
 }));
 
 vi.mock("@/lib/jarvis/organization-project-review-analysis", () => ({
@@ -204,6 +213,10 @@ describe("POST /api/jarvis/chat", () => {
     mocks.resolveJarvisOrganizationReceivablesRequest.mockResolvedValue(
       undefined
     );
+    mocks.resolveJarvisOrganizationOfferAgingIntent.mockReturnValue(undefined);
+    mocks.resolveJarvisOrganizationOfferAgingRequest.mockResolvedValue(
+      undefined
+    );
     mocks.resolveJarvisSalesAnalysisIntent.mockReturnValue(false);
     mocks.resolveJarvisSalesAnalysisRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisReadRequest.mockResolvedValue(undefined);
@@ -287,6 +300,38 @@ describe("POST /api/jarvis/chat", () => {
       organizationId: "organization-1",
       accessProfile: { profile: true },
     });
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+  });
+
+  it("answers an organization-wide open-offer question before calling AI", async () => {
+    mocks.resolveJarvisOrganizationOfferAgingIntent.mockReturnValue({
+      minimumAgeDays: 30,
+    });
+    mocks.resolveJarvisOrganizationOfferAgingRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "management.offer-aging",
+      message: "Zwei Angebote sind seit mindestens 30 Tagen offen.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Welche Angebote sind seit mehr als 30 Tagen offen?",
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      type: "answer",
+      topicId: "management.offer-aging",
+    });
+    expect(mocks.resolveJarvisOrganizationOfferAgingRequest).toHaveBeenCalled();
     expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
   });

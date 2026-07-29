@@ -58,6 +58,13 @@ Stand: 29.07.2026
   Entwürfe, gelöschte, stornierte und bezahlte Belege aus und weist Beträge
   ausdrücklich netto aus. Mahnstufen werden ausschließlich gelesen; der
   Adapter löst keine Mahnung und keine Datenänderung aus.
+- Offene Angebote besitzen eine eigene organisationsgebundene Nachfasssicht.
+  Sie schließt Entwürfe, gelöschte, verlorene, gewonnene und bereits
+  fakturierte Angebote aus, berücksichtigt frei formulierte Altersgrenzen
+  und verwendet vorrangig den ersten dokumentierten E-Mail-Versand als
+  Altersbasis. Fehlt dieser, wird das Erstellungsdatum ausdrücklich als
+  Ersatzbasis gekennzeichnet. JARVIS ändert dabei weder Status noch Aufgaben
+  oder Nachrichten.
 
 ### Intent-Orchestrator V4
 

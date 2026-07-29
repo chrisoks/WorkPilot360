@@ -29,6 +29,10 @@ import {
   resolveJarvisOrganizationReceivablesRequest,
 } from "@/lib/jarvis/organization-receivables-analysis";
 import {
+  resolveJarvisOrganizationOfferAgingIntent,
+  resolveJarvisOrganizationOfferAgingRequest,
+} from "@/lib/jarvis/organization-offer-aging-analysis";
+import {
   resolveJarvisProjectReviewInventoryIntent,
   resolveJarvisProjectReviewInventoryRequest,
 } from "@/lib/jarvis/organization-project-review-analysis";
@@ -414,6 +418,19 @@ export async function POST(req: Request) {
       });
     if (organizationReceivablesResponse) {
       return respond(organizationReceivablesResponse, "management");
+    }
+  }
+  const organizationOfferAgingIntent =
+    resolveJarvisOrganizationOfferAgingIntent(message);
+  if (organizationOfferAgingIntent) {
+    const organizationOfferAgingResponse =
+      await resolveJarvisOrganizationOfferAgingRequest({
+        question: message,
+        organizationId: organization.id,
+        accessProfile,
+      });
+    if (organizationOfferAgingResponse) {
+      return respond(organizationOfferAgingResponse, "management");
     }
   }
   const deterministicPersonIntent =

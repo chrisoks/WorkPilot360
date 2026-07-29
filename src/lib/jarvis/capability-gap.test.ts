@@ -4,7 +4,6 @@ import { resolveJarvisCapabilityGap } from "@/lib/jarvis/capability-gap";
 describe("resolveJarvisCapabilityGap", () => {
   it.each([
     "Wie viele Rechnungsentwürfe gibt es aktuell?",
-    "Welche Angebote sind seit mehr als 30 Tagen offen?",
     "Wie stark sind unsere Mitarbeiter aktuell ausgelastet?",
     "Welche Planungsgruppe ist nächste Woche überlastet?",
     "Welche Mitarbeiter haben im August zu wenig Arbeit?",
@@ -22,7 +21,8 @@ describe("resolveJarvisCapabilityGap", () => {
     "Wie viele offene Posten haben wir?",
     "Wie hoch sind unsere offenen Posten?",
     "Wie hoch sint unser offnen Posten?",
-  ])("meldet für den angebundenen Offene-Posten-Adapter keine Lücke: %s", (question) => {
+    "Welche Angebote sind seit mehr als 30 Tagen offen?",
+  ])("meldet für einen angebundenen Organisationsadapter keine Lücke: %s", (question) => {
     expect(resolveJarvisCapabilityGap(question)).toBeUndefined();
   });
 
