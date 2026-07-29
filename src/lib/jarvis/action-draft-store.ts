@@ -103,6 +103,7 @@ function canonicalize(value: unknown): string {
     return `[${value.map(canonicalize).join(",")}]`;
   }
   return `{${Object.entries(value as Record<string, unknown>)
+    .filter(([, entry]) => entry !== undefined)
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalize(entry)}`)
     .join(",")}}`;
@@ -653,9 +654,13 @@ export async function completeJarvisTaskDraft(
       403
     );
   }
+  const { description: _previousDescription, ...payloadWithoutDescription } =
+    payload;
   const nextPayload = taskPayloadSchema.parse({
-    ...payload,
-    description: completed.data.description || undefined,
+    ...payloadWithoutDescription,
+    ...(completed.data.description
+      ? { description: completed.data.description }
+      : {}),
     assigneeId: completed.data.assigneeId,
     dueAt: dueAt.toISOString(),
   });

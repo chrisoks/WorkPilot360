@@ -345,6 +345,33 @@ describe("persistent JARVIS task drafts", () => {
     ]);
   });
 
+  it("keeps the integrity hash valid after JSON storage drops an empty optional description", async () => {
+    await createDraft();
+    const ready = await completeJarvisTaskDraft(
+      "preview-1",
+      binding(),
+      {
+        revision: 1,
+        description: "",
+        assigneeId: "user-1",
+        dueAt,
+      },
+      baseNow
+    );
+    expect(ready.state).toBe("awaiting_confirmation");
+
+    const persisted = fake.drafts.get("preview-1")!;
+    persisted.payload = JSON.parse(JSON.stringify(persisted.payload));
+
+    await expect(
+      getJarvisTaskDraft("preview-1", binding(), baseNow)
+    ).resolves.toMatchObject({
+      state: "awaiting_confirmation",
+      revision: 2,
+      confirmation: { enabled: true, reason: "ready" },
+    });
+  });
+
   it("rejects stale visible revisions before changing or executing data", async () => {
     await createDraft();
     await completeDraft();
