@@ -18969,11 +18969,20 @@ export function DashboardPage() {
     if (!selectedProjectFileId) return;
     if (!["hero", "projectsSolutions", "projectsImmocare"].includes(activeTab)) return;
 
-    const intervalId = window.setInterval(() => {
-      void loadProjectTimeEntries();
-    }, 5000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        void loadProjectTimeEntries();
+      }
+    };
 
-    return () => window.clearInterval(intervalId);
+    const intervalId = window.setInterval(refreshWhenVisible, 5000);
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [activeTab, activeUserId, authChecked, isAuthenticated, selectedProjectFileId]);
 
   useEffect(() => {
@@ -19055,7 +19064,9 @@ export function DashboardPage() {
     if (!selectedProjectFileId) return;
 
     const intervalId = window.setInterval(() => {
-      void syncOpenProjectLogbookEntries(selectedProjectFileId);
+      if (document.visibilityState === "visible") {
+        void syncOpenProjectLogbookEntries(selectedProjectFileId);
+      }
     }, 15000);
 
     return () => window.clearInterval(intervalId);

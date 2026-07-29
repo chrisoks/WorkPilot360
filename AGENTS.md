@@ -1,5 +1,15 @@
 # WorkPilot360 Agent Handover
 
+- Dashboard-Hintergrundpolling 2026-07-29: Die bestehenden Intervalle fuer
+  Projektzeiten (5 Sekunden) und das offene Projekt-Logbuch (15 Sekunden)
+  fragen nur noch bei einem sichtbaren Browser-Tab beim Server an. Beim
+  Zurueckkehren beziehungsweise Fokussieren werden beide Projektbereiche
+  sofort synchronisiert. Die Intervalle, Ladewege und Schreiblogik fuer
+  Stempelungen bleiben unveraendert. Notifications laufen ausdruecklich auch
+  bei unsichtbarem Tab weiter, damit die daran gekoppelte
+  Desktopbenachrichtigung nicht durch diese Optimierung eingeschraenkt wird.
+  Keine API-, Rollen-, Prisma- oder Datenbankaenderung.
+
 - JARVIS Browser-Sprachbasis 2026-07-29: Der erste sichere Baustein aus
   Phase 3b ergänzt den gemeinsamen JARVIS-Composer um browserseitiges
   Push-to-talk und opt-in Sprachausgabe. Erkannte Sprache wird ausschließlich
