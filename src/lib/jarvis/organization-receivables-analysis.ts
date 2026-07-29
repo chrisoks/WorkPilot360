@@ -117,6 +117,10 @@ function formatMoney(value: number) {
   }).format(Number(value) || 0);
 }
 
+function invoiceCountAfterFrom(count: number) {
+  return count === 1 ? "einer Rechnung" : `${count} Rechnungen`;
+}
+
 function formatDate(value: string) {
   const [year, month, day] = value.split("-");
   return year && month && day ? `${day}.${month}.${year}` : "Fälligkeit fehlt";
@@ -213,8 +217,8 @@ export async function resolveJarvisOrganizationReceivablesRequest(
       : intent.scope === "overdue"
         ? overdueInvoices.length === 0
           ? `Aktuell ist von ${formatMoney(openTotal)} offenen Nettoforderungen keine überfällig.`
-          : `${formatMoney(overdueTotal)} aus ${overdueInvoices.length} offenen Rechnungen sind überfällig. Insgesamt sind ${formatMoney(openTotal)} netto offen.`
-        : `Aktuell sind ${formatMoney(openTotal)} netto aus ${openInvoices.length} Rechnungen offen. Davon sind ${formatMoney(overdueTotal)} aus ${overdueInvoices.length} Rechnungen überfällig.`;
+          : `${formatMoney(overdueTotal)} aus ${invoiceCountAfterFrom(overdueInvoices.length)} sind überfällig. Insgesamt sind ${formatMoney(openTotal)} netto offen.`
+        : `Aktuell sind ${formatMoney(openTotal)} netto aus ${invoiceCountAfterFrom(openInvoices.length)} offen. Davon sind ${formatMoney(overdueTotal)} aus ${invoiceCountAfterFrom(overdueInvoices.length)} überfällig.`;
 
   return {
     type: "answer",

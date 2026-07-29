@@ -2170,4 +2170,46 @@ describe("POST /api/jarvis/chat", () => {
     expect((await response.json()).topicId).toBe("project.health.full");
     expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
   });
+
+  it.each([
+    "Gibt es bei den Stemellungen fehler?",
+    "Hilf mir, MKG-209 korrekt abzuschließen.",
+  ])("resolves a deterministic project diagnostic before AI: %s", async (message) => {
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      module: "Projekte",
+      recordType: "project",
+      recordId: "project-1",
+    });
+    mocks.classifyJarvisIntentWithAi.mockResolvedValue({
+      intent: "unclear",
+      domain: "system",
+      entity: "project",
+      scope: "current_record",
+      helpTopicId: "none",
+      confidence: "low",
+      needsClarification: true,
+      usesCurrentContext: true,
+      actionKind: "none",
+    });
+    mocks.resolveJarvisProjectHealthRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "project.health.full",
+      message: "Deterministische Projektdiagnose.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message,
+        }),
+      })
+    );
+
+    expect((await response.json()).topicId).toBe("project.health.full");
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+  });
 });

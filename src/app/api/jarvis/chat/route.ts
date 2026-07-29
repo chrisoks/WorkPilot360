@@ -70,6 +70,7 @@ import {
 import { createJarvisDialogChoice } from "@/lib/jarvis/dialog";
 import { resolveJarvisProjectDialogIntent } from "@/lib/jarvis/project-dialog-intent";
 import { normalizeJarvisIntentText } from "@/lib/jarvis/intent-text";
+import { analyzeJarvisQuestion } from "@/lib/jarvis/question-semantics";
 
 export const dynamic = "force-dynamic";
 
@@ -428,6 +429,16 @@ export async function POST(req: Request) {
         context.recordType === "project" ||
         conversationContext?.recordType === "project",
     });
+  const deterministicQuestionSemantics = analyzeJarvisQuestion(message);
+  const deterministicProjectDiagnosticIntent =
+    (deterministicQuestionSemantics.projectReferences.length === 1 ||
+      context.recordType === "project" ||
+      conversationContext?.recordType === "project") &&
+    (deterministicQuestionSemantics.projectScopes.includes("full") ||
+      (
+        /\bfehler\w*\b/.test(deterministicQuestionSemantics.normalized) &&
+        deterministicQuestionSemantics.projectScopes.length > 0
+      ));
   const deterministicProjectDiagnosticFollowUp =
     (context.recordType === "project" ||
       conversationContext?.recordType === "project") &&
@@ -437,6 +448,7 @@ export async function POST(req: Request) {
     );
   if (
     (deterministicProjectDialogIntent ||
+      deterministicProjectDiagnosticIntent ||
       deterministicProjectDiagnosticFollowUp) &&
     !deterministicPersonIntent &&
     !deterministicCapabilityGap &&

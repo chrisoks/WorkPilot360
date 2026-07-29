@@ -153,6 +153,8 @@ describe("organization-wide JARVIS receivables analysis", () => {
       ])
     );
     const rendered = JSON.stringify(response);
+    expect(rendered).toContain("aus einer Rechnung überfällig");
+    expect(rendered).not.toContain("1 Rechnungen");
     expect(rendered).toContain("kein belastbares Fälligkeitsdatum");
     expect(rendered).toContain("noch keine Mahnstufe");
     expect(rendered).not.toContain("R-103");
