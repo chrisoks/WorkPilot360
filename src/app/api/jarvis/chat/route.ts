@@ -401,6 +401,9 @@ export async function POST(req: Request) {
       return respond(projectReviewInventoryResponse, "management");
     }
   }
+  const deterministicPersonIntent =
+    resolveJarvisPersonIntent(message) ??
+    resolveJarvisPersonDiagnosticIntent(message);
   const deterministicCapabilityGap = resolveJarvisCapabilityGap(message);
   const deterministicProjectDialogIntent =
     resolveJarvisProjectDialogIntent({
@@ -410,7 +413,11 @@ export async function POST(req: Request) {
         context.recordType === "project" ||
         conversationContext?.recordType === "project",
     });
-  if (deterministicProjectDialogIntent) {
+  if (
+    deterministicProjectDialogIntent &&
+    !deterministicPersonIntent &&
+    !deterministicCapabilityGap
+  ) {
     const projectDialogResponse = await resolveJarvisProjectHealthRequest({
       question: message,
       organizationId: organization.id,
@@ -428,9 +435,6 @@ export async function POST(req: Request) {
     decision: intentDecision,
     context: routingContext,
   });
-  const deterministicPersonIntent =
-    resolveJarvisPersonIntent(message) ??
-    resolveJarvisPersonDiagnosticIntent(message);
   const routePlan = resolveJarvisRoutePlan({
     question: message,
     decision: intentDecision,

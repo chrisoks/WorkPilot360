@@ -2007,4 +2007,65 @@ describe("POST /api/jarvis/chat", () => {
     );
     expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
   });
+
+  it("keeps a deterministic person question ahead of an ambiguous project context", async () => {
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      module: "Projekte",
+      recordType: "project",
+      recordId: "project-1",
+    });
+    mocks.resolveJarvisProjectDialogIntent.mockReturnValue(
+      "ambiguousProjectQuestion"
+    );
+    mocks.resolveJarvisPersonIntent.mockReturnValue({
+      query: "Klaus Testmann",
+    });
+    mocks.resolveJarvisPersonSummaryRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "person.summary",
+      message: "Klaus Testmann wurde eindeutig gefunden.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Was weißt du über Klaus Testmann?",
+        }),
+      })
+    );
+
+    expect((await response.json()).topicId).toBe("person.summary");
+    expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
+  });
+
+  it("keeps an organization capability gap ahead of the open project context", async () => {
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      module: "Projekte",
+      recordType: "project",
+      recordId: "project-1",
+    });
+    mocks.resolveJarvisProjectDialogIntent.mockReturnValue(
+      "explainProjectType"
+    );
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Welche Projekte haben kein gültiges Angebot?",
+        }),
+      })
+    );
+
+    expect((await response.json()).topicId).toBe(
+      "capability.analysis-adapter-missing"
+    );
+    expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
+  });
 });

@@ -42,6 +42,9 @@ Stand: 29.07.2026
   Stempelung` werden vor einer KI-Rückfrage aufgelöst. Ein bloßes
   `Prüfe HAS-1` startet den sicheren vollständigen Projektcheck; Frageformen
   wie `Warum wurde ... erstellt?` gelten dabei nicht als schreibende Aktion.
+- Ein offener Projektkontext überstimmt dabei weder eindeutig erkannte
+  Personenfragen noch unternehmensweite Analysefragen. Diese stabileren
+  Deterministiken behalten Vorrang vor einer allgemeinen Projektklärung.
 
 ### Intent-Orchestrator V4
 
