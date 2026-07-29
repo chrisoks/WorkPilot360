@@ -102,6 +102,16 @@ describe("resolveJarvisProjectHealthIntent", () => {
     )).toBe(true);
   });
 
+  it("recognizes a short referential diagnostic in project context", () => {
+    expect(
+      resolveJarvisProjectHealthIntent(
+        "Prüf das mal.",
+        { recordType: "project", recordId: "screen-project" },
+        { recordType: "project", recordId: "conversation-project" }
+      )
+    ).toBe(true);
+  });
+
   it.each([
     "Wie lege ich ein Projekt an?",
     "Was weißt du über Klaus Testmann?",

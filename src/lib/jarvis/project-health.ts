@@ -1103,6 +1103,12 @@ export function resolveJarvisProjectHealthIntent(
     /(stempel|zeiteintrag|stunden|rechnung)/.test(value) &&
     /(pruf|check|fehl|falsch|stimm|doppelt|uberschneid|warum)/.test(value);
   if (stampDiagnosticQuestion) return true;
+  const referentialDiagnosticQuestion =
+    projectContext &&
+    /^(?:pruf|check|analysier|untersuch|kontrollier)\w*\s+(?:das|dies|dort|hier)\b/.test(
+      value
+    );
+  if (referentialDiagnosticQuestion) return true;
   if (projectContext && resolveProjectHealthScope(question)) return true;
   if (
     projectReference &&

@@ -49,6 +49,9 @@ Stand: 29.07.2026
   Projektdatensatz sicher. Mehrzahlfragen zu Projekten bleiben
   projektübergreifend; klare Zusatzverkaufsfragen nutzen den lesenden
   Vertriebs-Dry-Run statt einer probabilistischen Rückfrage.
+- Die Projektprüfung akzeptiert diese kurzen Folgefragen auch an ihrer
+  internen Adaptergrenze; die Orchestrierung allein gilt nicht als
+  ausreichender Nachweis für einen funktionierenden Folgeturn.
 
 ### Intent-Orchestrator V4
 

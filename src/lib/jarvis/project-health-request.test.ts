@@ -217,6 +217,30 @@ describe("resolveJarvisProjectHealthRequest", () => {
     });
   });
 
+  it("runs a short referential follow-up as a full read-only check", async () => {
+    const response = await resolveJarvisProjectHealthRequest({
+      question: "Prüf das mal.",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "manager-1",
+        role: Role.GESCHAEFTSFUEHRER,
+      }),
+      context: { recordType: "project", recordId: "screen-project" },
+      conversationContext: {
+        recordType: "project",
+        recordId: "project-1",
+      },
+    });
+
+    expect(response).toMatchObject({
+      type: "answer",
+      topicId: "project.health",
+      structured: {
+        title: "Vollständiger Projektcheck · MKG-209",
+      },
+    });
+  });
+
   it("does not load or expose financial and payroll checks for employees", async () => {
     const response = await resolveJarvisProjectHealthRequest({
       question: "Führe den vollständigen Projekt-Gesundheitscheck aus.",
