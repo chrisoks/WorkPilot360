@@ -449,6 +449,8 @@ export async function POST(req: Request) {
   const deterministicQuestionSemantics = analyzeJarvisQuestion(message);
   const deterministicProjectDiagnosticIntent =
     !intentDecision.goals.includes("how_to") &&
+    !looksLikeDeterministicHelpRequest(message) &&
+    !looksLikeDirectActionRequest(message, intentDecision) &&
     (deterministicQuestionSemantics.projectReferences.length === 1 ||
       context.recordType === "project" ||
       conversationContext?.recordType === "project") &&

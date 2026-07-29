@@ -1138,6 +1138,73 @@ describe("POST /api/jarvis/chat", () => {
     );
   });
 
+  it("keeps colloquial staff planning as help even without an intent goal", async () => {
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      recordType: "project",
+      recordId: "project-1",
+    });
+    mocks.resolveJarvisProjectHealthRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "project.health",
+      message: "Falscher Projektcheck",
+      deterministic: true,
+    });
+    mocks.findJarvisExactHelpTopicId.mockReturnValue("planning.assign");
+    mocks.resolveJarvisSystemHelpTopic.mockReturnValue({
+      type: "answer",
+      topicId: "planning.assign",
+      message: "Öffne Termine & Stempelungen und klicke auf + Termin.",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Wie verplane ich die Jungs auf dieses Projekt?",
+          context: { recordType: "project", recordId: "project-1" },
+        }),
+      })
+    );
+
+    expect(await response.json()).toMatchObject({
+      topicId: "planning.assign",
+    });
+    expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
+  });
+
+  it("keeps a direct appointment request out of project diagnostics", async () => {
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      recordType: "project",
+      recordId: "project-1",
+    });
+    mocks.resolveJarvisProjectHealthRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "project.health",
+      message: "Falscher Projektcheck",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Plane hier nächsten Montag um 8 Uhr einen Termin ein.",
+          context: { recordType: "project", recordId: "project-1" },
+        }),
+      })
+    );
+
+    expect(await response.json()).toMatchObject({
+      type: "clarification",
+      topicId: "intent.action-not-executed",
+    });
+    expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
+  });
+
   it("keeps a diagnostic appointment question on the project-check path", async () => {
     mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
       recordType: "project",
