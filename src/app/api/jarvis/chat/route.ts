@@ -208,6 +208,83 @@ function looksLikeDirectActionRequest(
   );
 }
 
+function resolveExplicitSafetyPolicyQuestion(question: string) {
+  const value = normalizeJarvisIntentText(question);
+  if (
+    /\b(?:darfst|kannst|wirst)\b.*\brechnung\w*\b.*\bversend\w*\b/.test(
+      value
+    )
+  ) {
+    return {
+      type: "answer" as const,
+      topicId: "jarvis.safety.invoice-send",
+      message:
+        "Nein. JARVIS versendet Rechnungen nicht eigenständig. Ein Versand ist eine finanzielle Außenwirkung und benötigt den freigegebenen Rechnungsablauf, eine sichtbare Vorschau, Rollen- und Organisationsprüfung sowie eine bewusste menschliche Bestätigung.",
+      deterministic: true,
+    };
+  }
+  if (
+    /\b(?:darfst|kannst|sollst)\b.*\brolle\w*\b.*\b(?:ander|aender|wechsel|vergeb)\w*\b/.test(
+      value
+    )
+  ) {
+    return {
+      type: "answer" as const,
+      topicId: "jarvis.safety.role-change",
+      message:
+        "Nein. JARVIS ändert oder vergibt Rollen nicht eigenständig. Rollen steuern Zugriffe und müssen über den dafür berechtigten Verwaltungsweg mit sichtbarer Zielperson, neuer Rolle und bewusster menschlicher Bestätigung geändert werden.",
+      deterministic: true,
+    };
+  }
+  if (
+    /\b(?:darfst|kannst|sollst)\b.*\bstempel\w*\b.*\b(?:ander|aender|losch|loesch|korrigier)\w*\b/.test(
+      value
+    )
+  ) {
+    return {
+      type: "answer" as const,
+      topicId: "jarvis.safety.stamp-change",
+      message:
+        "Nein. JARVIS ändert oder löscht Stempelungen nicht eigenständig. Zeitbuchungen bleiben eine nachvollziehbare Benutzer- beziehungsweise berechtigte Korrekturaktion; Ziel, Zeitraum, Begründung und Wirkung müssen vor der Bestätigung sichtbar sein.",
+      deterministic: true,
+    };
+  }
+  if (/\b(?:heimlich\w*\s+)?personlichkeitsprofil\w*\b/.test(value)) {
+    return {
+      type: "answer" as const,
+      topicId: "jarvis.safety.people-profile",
+      message:
+        "Nein. JARVIS erstellt keine heimlichen Persönlichkeitsprofile. Zulässig sind nur transparente, zweckgebundene und rollenberechtigte Beobachtungen aus freigegebenen Arbeitsdaten; menschliche Einordnung, Feedback und Personalentscheidungen bleiben bei den Verantwortlichen.",
+      deterministic: true,
+    };
+  }
+  if (
+    /^\s*(?:losch|loesch)\w*\b/.test(value) &&
+    /\bprojekt\w*\b/.test(value)
+  ) {
+    return {
+      type: "refusal" as const,
+      topicId: "jarvis.safety.project-delete",
+      message:
+        "Das Projekt wurde nicht gelöscht. Eine Projektlöschung ist irreversibel und für JARVIS nicht freigegeben; sie darf nur über den berechtigten Verwaltungsweg mit eindeutigem Ziel, sichtbaren Folgen und bewusster menschlicher Bestätigung erfolgen.",
+      deterministic: true,
+    };
+  }
+  if (
+    /^\s*(?:send|sende|schick)\w*\b/.test(value) &&
+    /\brechnung\w*\b/.test(value)
+  ) {
+    return {
+      type: "refusal" as const,
+      topicId: "jarvis.safety.invoice-send",
+      message:
+        "Die Rechnung wurde nicht versendet. Rechnungsversand ist eine finanzielle Außenwirkung und für JARVIS noch nicht freigegeben; prüfe Empfänger, Dokument, Betrag und Versandweg im vorgesehenen Rechnungsablauf und bestätige dort bewusst.",
+      deterministic: true,
+    };
+  }
+  return undefined;
+}
+
 function looksLikeTaskCreationPreviewRequest(question: string) {
   const value = normalizeJarvisIntentText(question);
   const startsWithCreate =
@@ -484,11 +561,16 @@ export async function POST(req: Request) {
     return respond({
       type: "refusal",
       topicId: "security.refusal",
-      message: getJarvisAuthorizationRefusalMessage(authorization),
+      message: getJarvisAuthorizationRefusalMessage(authorization, message),
     });
   }
   if (accessPolicyResponse) {
     return respond(accessPolicyResponse);
+  }
+  const explicitSafetyPolicyResponse =
+    resolveExplicitSafetyPolicyQuestion(message);
+  if (explicitSafetyPolicyResponse) {
+    return respond(explicitSafetyPolicyResponse);
   }
   const projectReviewInventoryIntent =
     resolveJarvisProjectReviewInventoryIntent(message);

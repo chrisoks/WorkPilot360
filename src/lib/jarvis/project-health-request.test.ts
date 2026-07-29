@@ -217,6 +217,63 @@ describe("resolveJarvisProjectHealthRequest", () => {
     });
   });
 
+  it("answers an open-project overview as an overview, not as a person search", async () => {
+    const response = await resolveJarvisProjectHealthRequest({
+      question: "Was weißt du über das aktuell geöffnete Projekt?",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "manager-1",
+        role: Role.GESCHAEFTSFUEHRER,
+      }),
+      context: { recordType: "project", recordId: "project-1" },
+    });
+
+    expect(response).toMatchObject({
+      type: "answer",
+      topicId: "project.overview",
+      deterministic: true,
+    });
+    expect(response?.message).toContain("MKG-209");
+    expect(response?.message).toContain("Klaus Testmann");
+    expect(response?.message).not.toContain("Kontakt");
+  });
+
+  it.each([
+    [
+      "Was ist aktuell das größte Risiko bei diesem Projekt?",
+      "project.health.risk",
+      "Projektrisiko",
+    ],
+    [
+      "Ist dieses Projekt wirtschaftlich gesund?",
+      "project.health.economic",
+      "Wirtschaftlichkeit",
+    ],
+    [
+      "Was ist der sinnvollste nächste Schritt für dieses Projekt?",
+      "project.health.next-step",
+      "nächste sinnvolle Schritt",
+    ],
+  ])("keeps the answer focus for %s", async (question, topicId, expected) => {
+    const response = await resolveJarvisProjectHealthRequest({
+      question,
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "manager-1",
+        role: Role.GESCHAEFTSFUEHRER,
+      }),
+      context: { recordType: "project", recordId: "project-1" },
+    });
+
+    expect(response).toMatchObject({
+      type: "answer",
+      topicId,
+      deterministic: true,
+    });
+    expect(response?.message).toContain(expected);
+    expect(response).not.toHaveProperty("structured");
+  });
+
   it("runs a short referential follow-up as a full read-only check", async () => {
     const response = await resolveJarvisProjectHealthRequest({
       question: "Prüf das mal.",

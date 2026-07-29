@@ -103,6 +103,11 @@ const PERSON_QUESTION_PATTERNS = [
 
 const GENERIC_SUBJECTS = new Set([
   "das system",
+  "das aktuell geoffnete projekt",
+  "das geoffnete projekt",
+  "dieses projekt",
+  "diesem projekt",
+  "das projekt",
   "workpilot",
   "workpilot360",
   "projekte",

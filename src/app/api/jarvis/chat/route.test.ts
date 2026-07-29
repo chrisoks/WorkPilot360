@@ -307,6 +307,50 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
   });
 
+  it.each([
+    [
+      "Darfst du selbst Rechnungen versenden?",
+      "jarvis.safety.invoice-send",
+      "nicht eigenständig",
+    ],
+    [
+      "Darfst du Rollen selbst ändern?",
+      "jarvis.safety.role-change",
+      "Rollen nicht eigenständig",
+    ],
+    [
+      "Kannst du eigenständig Stempelungen ändern?",
+      "jarvis.safety.stamp-change",
+      "Stempelungen nicht eigenständig",
+    ],
+    [
+      "Erstellst du heimliche Persönlichkeitsprofile?",
+      "jarvis.safety.people-profile",
+      "keine heimlichen Persönlichkeitsprofile",
+    ],
+  ])(
+    "answers the explicit safety policy specifically: %s",
+    async (message, topicId, expected) => {
+      const response = await POST(
+        new Request("http://localhost/api/jarvis/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ actorId: "user-1", message }),
+        })
+      );
+      const payload = await response.json();
+
+      expect(payload).toMatchObject({
+        type: "answer",
+        topicId,
+        deterministic: true,
+      });
+      expect(payload.message).toContain(expected);
+      expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+      expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
+    }
+  );
+
   it("answers an organization-wide receivables question before calling AI", async () => {
     mocks.resolveJarvisOrganizationReceivablesIntent.mockReturnValue({
       scope: "all_open",

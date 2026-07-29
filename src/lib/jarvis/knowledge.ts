@@ -937,7 +937,7 @@ export function resolveJarvisSystemHelp(
   if (!authorization.allowed) {
     return {
       type: "refusal",
-      message: getJarvisRefusalMessage(authorization),
+      message: getJarvisRefusalMessage(authorization, cleaned),
     };
   }
   const matchedTopicId = findJarvisExactHelpTopicId(cleaned, context);
@@ -1172,7 +1172,7 @@ export function resolveJarvisSystemHelpTopic(
   if (!authorization.allowed) {
     return {
       type: "refusal",
-      message: getJarvisRefusalMessage(authorization),
+      message: getJarvisRefusalMessage(authorization, cleaned),
     };
   }
   if (topic.actionId) {
@@ -1232,8 +1232,11 @@ export function resolveJarvisSystemHelpTopic(
   };
 }
 
-function getJarvisRefusalMessage(authorization: JarvisQuestionAuthorization) {
-  return getJarvisAuthorizationRefusalMessage(authorization);
+function getJarvisRefusalMessage(
+  authorization: JarvisQuestionAuthorization,
+  question: string
+) {
+  return getJarvisAuthorizationRefusalMessage(authorization, question);
 }
 
 export function getJarvisKnowledgeExcerpt(topicId?: string) {

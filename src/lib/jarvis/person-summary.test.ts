@@ -134,6 +134,11 @@ describe("JARVIS person summary", () => {
       )
     ).toBeUndefined();
     expect(resolveJarvisPersonIntent("Was weißt du über WorkPilot360?")).toBeUndefined();
+    expect(
+      resolveJarvisPersonIntent(
+        "Was weißt du über das aktuell geöffnete Projekt?"
+      )
+    ).toBeUndefined();
     expect(resolveJarvisPersonIntent("Wie lege ich einen Kunden an?")).toBeUndefined();
   });
 

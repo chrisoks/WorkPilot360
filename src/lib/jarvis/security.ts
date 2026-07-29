@@ -179,9 +179,16 @@ export function authorizeJarvisQuestion(
 }
 
 export function getJarvisAuthorizationRefusalMessage(
-  authorization: JarvisQuestionAuthorization
+  authorization: JarvisQuestionAuthorization,
+  question = ""
 ) {
   if (authorization.reason === "prompt_injection") {
+    if (/\b(?:system[-_ ]?prompt|api[-_ ]?keys?|secret|token)\b/i.test(question)) {
+      return "Ich lege keine System-Prompts, API-Schlüssel, Tokens oder technischen Geheimnisse offen. Diese Informationen bleiben unabhängig von Rolle oder Formulierung gesperrt.";
+    }
+    if (/\b(?:fremde|anderer?|anderen)\b.*\b(?:kunde|kontakt|mandant|organisation|daten)\w*\b/i.test(question)) {
+      return "Ich ignoriere meine Sicherheitsregeln nicht und gebe keine fremden Kunden-, Organisations- oder Mandantendaten aus. Rollen- und Organisationsgrenzen bleiben serverseitig verbindlich.";
+    }
     return "Diese Anweisung kann ich nicht befolgen. Ich bleibe bei freigegebenen Hilfen und Daten aus WorkPilot360.";
   }
   if (authorization.reason === "secret") {

@@ -1675,6 +1675,35 @@ function buildProjectFactExplanation(
   };
 }
 
+function buildProjectOverviewExplanation(
+  project: ProjectHealthRow
+): JarvisReadResponse {
+  const reference = [project.projectNumber, project.title]
+    .filter(Boolean)
+    .join(" · ");
+  const address = project.resolvedAddress || project.address;
+  const details = [
+    project.customer ? `Kunde: ${project.customer}` : "Kunde: nicht hinterlegt",
+    `Status: ${project.status || "nicht gepflegt"}`,
+    project.projectType
+      ? `Projektart: ${project.projectType}`
+      : "Projektart: nicht eindeutig gepflegt",
+    project.trade ? `Gewerk: ${project.trade}` : "Gewerk: nicht hinterlegt",
+    project.responsibleName
+      ? `Verantwortlich: ${project.responsibleName}`
+      : "Verantwortung: nicht hinterlegt",
+    address ? `Adresse: ${address}` : "Adresse: nicht hinterlegt",
+  ];
+  return {
+    type: "answer",
+    topicId: "project.overview",
+    message: `${reference} ist das aktuell geöffnete Projekt. ${details.join(
+      ". "
+    )}. Für eine Qualitäts- oder Risikobewertung muss ich das Projekt zusätzlich gezielt prüfen.`,
+    deterministic: true,
+  };
+}
+
 function buildProjectLogicExplanation(
   project: ProjectHealthRow,
   intent: "explainProjectType" | "explainBilling" | "explainProcess"
@@ -2066,9 +2095,11 @@ export async function resolveJarvisProjectHealthRequest(input: {
     input.context,
     input.conversationContext
   );
+  if (projectDialogIntent === "ambiguousProjectQuestion") {
+    return buildProjectOverviewExplanation(project);
+  }
   if (
     projectDialogIntent &&
-    projectDialogIntent !== "ambiguousProjectQuestion" &&
     !["explainPlanning", "explainRisk"].includes(projectDialogIntent)
   ) {
     return [
@@ -2878,6 +2909,45 @@ export async function resolveJarvisProjectHealthRequest(input: {
   );
   const topIssue = criticalIssues[0] ?? warningIssues[0];
   const projectLabel = [project.projectNumber, project.title].filter(Boolean).join(" · ");
+  const asksForEconomicHealth =
+    /\b(?:wirtschaftlich gesund|wirtschaftliche gesundheit|rentabel)\b/.test(
+      normalizedQuestion
+    );
+  const asksForNextStep =
+    /\b(?:wichtigste[rn]?|nachste[rn]?)\s+(?:sinnvolle[nr]?\s+)?schritt\b/.test(
+      normalizedQuestion
+    );
+
+  if (projectDialogIntent === "explainRisk") {
+    return {
+      type: "answer",
+      topicId: "project.health.risk",
+      message: topIssue
+        ? `Das aktuell größte belegte Risiko bei ${projectLabel} ist „${topIssue.title}“. ${topIssue.evidence} Empfohlener nächster Schritt: ${topIssue.recommendation}`
+        : `Für ${projectLabel} wurde im freigegebenen Prüfumfang aktuell kein konkretes Projektrisiko gefunden. Das ist keine Garantie für nicht geprüfte oder rollenbedingt gesperrte Bereiche.`,
+      deterministic: true,
+    };
+  }
+  if (asksForEconomicHealth) {
+    return {
+      type: "answer",
+      topicId: "project.health.economic",
+      message: topIssue
+        ? `Die wirtschaftliche Gesundheit von ${projectLabel} ist derzeit nicht belastbar bestätigt. Der Projektcheck erreicht ${evaluation.score} von 100 Punkten; der wichtigste belegte Prüfpunkt ist „${topIssue.title}“. Das ist ein Daten- oder Prozessrisiko und noch keine vollständige Gewinnrechnung. ${topIssue.recommendation}`
+        : `Im freigegebenen Prüfumfang erreicht ${projectLabel} ${evaluation.score} von 100 Punkten. Eine belastbare Aussage zur Wirtschaftlichkeit setzt zusätzlich vollständige Erlös-, Leistungs- und Kostendaten voraus.`,
+      deterministic: true,
+    };
+  }
+  if (asksForNextStep) {
+    return {
+      type: "answer",
+      topicId: "project.health.next-step",
+      message: topIssue
+        ? `Der sinnvollste nächste Schritt bei ${projectLabel} ist: ${topIssue.recommendation} Priorität hat das, weil „${topIssue.title}“ aktuell der wichtigste belegte Prüfpunkt ist.`
+        : `Für ${projectLabel} wurde im freigegebenen Prüfumfang kein konkreter Fehler gefunden. Der nächste sinnvolle Schritt ist deshalb die fachliche Endkontrolle der noch ungeprüften oder rollenbedingt nicht sichtbaren Bereiche.`,
+      deterministic: true,
+    };
+  }
 
   return {
     type: "answer",
