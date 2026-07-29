@@ -148,6 +148,11 @@ describe("JARVIS system help", () => {
     ["Wie gelange ich zu den Auswertungen?", "systemMap.reports"],
     ["Wie komme ich von hier aus zur Projektübersicht?", "project.search"],
     ["Wo sehe ich Benachrichtigungen?", "notifications.open"],
+    ["Wofür ist das Logbuch gedacht?", "project.logbook.open"],
+    ["Wie kann ich einen Logbucheintrag hinzufügen?", "project.logbook.open"],
+    ["Wo kann ich die Bilder zum Projekt ansehen?", "project.images.open"],
+    ["Wo finde ich Vorherbilder und Nachherbilder?", "project.images.open"],
+    ["Wo sehe ich die Freigaben im Projekt?", "project.approvals.open"],
   ])("answers common navigation wording deterministically: %s", (question, topicId) => {
     expect(
       resolveJarvisSystemHelp(

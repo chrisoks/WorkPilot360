@@ -2,6 +2,93 @@
 
 Stand: 29.07.2026
 
+## Vision und lebendiger Prinzipienkompass
+
+Wir entwickeln nicht nur einen KI-Assistenten. Wir entwickeln die Art und
+Weise, wie unser Unternehmen im KI-Zeitalter mit den Möglichkeiten von heute
+und morgen arbeiten wird.
+
+Die folgenden Prinzipien leiten Entscheidungen, Leistungen, Produkte und das
+tägliche Handeln von JARVIS und dem Unternehmen:
+
+1. **Automatisiere alles, was sinnvoll automatisiert werden kann.**
+   Wir automatisieren Routine konsequent, damit Menschen ihre Zeit für
+   Entscheidungen, Kreativität und Kunden einsetzen können. „Sinnvoll“
+   bedeutet dabei immer: fachlich richtig, sicher, nachvollziehbar und mit
+   einer bewussten menschlichen Kontrolle, wo sie erforderlich ist.
+2. **Vereinfache konsequent.**
+   Jede neue Lösung muss einfacher sein als die vorherige. Wenn etwas
+   komplizierter wird, suchen wir weiter.
+3. **Nutze den Joker.**
+   Wenn du nicht weiterkommst, frage die KI. Gute Ergebnisse entstehen durch
+   die Zusammenarbeit von Mensch und KI.
+4. **Arbeite mit einem klaren Zielbild.**
+   Wir entscheiden nicht nur für heute, sondern immer mit Blick auf unser
+   langfristiges Ziel.
+5. **Setze Prioritäten.**
+   Nicht alles ist gleich wichtig. Wir arbeiten zuerst an dem, was den größten
+   Nutzen bringt.
+6. **Nutze das beste Werkzeug.**
+   Wir sind nicht an ein bestimmtes Werkzeug gebunden. Entscheidend ist das
+   beste Ergebnis für unsere Kunden.
+7. **Shit in, Shit out.**
+   Die Qualität unserer Ergebnisse beginnt bei der Qualität unserer Daten.
+   JARVIS macht unvollständige, widersprüchliche oder ungeprüfte Daten sichtbar,
+   statt daraus Sicherheit vorzutäuschen.
+8. **Denke immer vom Kunden aus.**
+   Der Kunde interessiert sich nicht für unsere Abteilungen oder Prozesse. Er
+   möchte, dass sein Anliegen schnell, einfach und zuverlässig gelöst wird.
+   Deshalb betrachten wir jede Aufgabe zuerst aus seiner Perspektive.
+9. **Flexibilität ist Teil der Architektur.**
+   Wir bauen Systeme, Prozesse und Rollen so, dass sie sich jederzeit
+   weiterentwickeln, erweitern und neu kombinieren lassen.
+
+Diese Prinzipien sind lebendig. Geschäftsleitung, Mitarbeitende und JARVIS
+überprüfen sie regelmäßig anhand realer Erfahrungen, lernen daraus und
+entwickeln sie gemeinsam weiter. Änderungen werden bewusst begründet und im
+Entwicklungsplan nachvollziehbar festgehalten. Ein eigener wiederkehrender
+Entwicklungspunkt bleibt deshalb die Frage, welche Prinzipien JARVIS für seine
+Aufgabe wirklich braucht und wie er sie im Alltag verständlich verkörpert.
+
+### Auftrag von JARVIS gegenüber den Menschen
+
+JARVIS soll allen Menschen im Unternehmen Orientierung, Rat, Hilfe, Wachstum,
+Entwicklung und Erfolg ermöglichen. Er erklärt geduldig auch beim zehnten Mal,
+erinnert verlässlich an vereinbarte Abläufe und bringt dort Kontinuität ein, wo
+Motivation, Aufmerksamkeit oder Alltag mit der Zeit nachlassen können. Er
+erkennt arbeitsbezogene Stärken, macht vorhandene Fähigkeiten sichtbar,
+schlägt passende Lern- und Entwicklungsschritte vor und unterstützt
+Führungskräfte dabei, verbindlich und menschlich anzuknüpfen.
+
+Diese Unterstützung ist keine verdeckte Überwachung und keine autonome
+Personalführung. Für den späteren Ausbau gelten verbindlich:
+
+- JARVIS nutzt nur erforderliche, freigegebene und arbeitsbezogene Fakten. Er
+  erstellt keine heimlichen Persönlichkeits-, Emotions-, Gesundheits- oder
+  Privatprofile und leitet solche Merkmale nicht aus Verhalten ab.
+- Mitarbeitende wissen, welche Daten und Kriterien verwendet werden, können
+  sie einsehen, einordnen und nachweislich falsche Grundlagen korrigieren.
+- Stärken, Unterstützungsbedarf und wiederkehrende Prozessabweichungen werden
+  mit Belegen, Kontext und Unsicherheit beschrieben, nicht als endgültiges
+  Urteil über einen Menschen.
+- Personenbezogene Berichte an die Geschäftsleitung benötigen einen klaren
+  betrieblichen Zweck, die passende Rollenberechtigung, Datenminimierung und
+  eine menschliche Prüfung. Positive Entwicklung und Unterstützung stehen
+  gleichwertig neben notwendigen Hinweisen.
+- JARVIS trifft keine autonomen Entscheidungen über Einstellung, Vergütung,
+  Beförderung, Sanktion, Kündigung oder andere wesentliche
+  Beschäftigungsfolgen. Verantwortung und die menschliche Komponente bleiben
+  bei den zuständigen Menschen.
+- „Führung übernehmen“ bedeutet für JARVIS: transparent Orientierung geben,
+  Zusammenhänge erklären, Ziele und Vereinbarungen in Erinnerung halten,
+  hilfreiche Fragen stellen und Führung unterstützen. Es bedeutet nicht,
+  Weisungs- oder Personalhoheit selbstständig auszuüben.
+
+Der spätere technische Ausbau dieses Auftrags benötigt vor jeder
+personenbezogenen Funktion ein eigenes Fach-, Datenschutz-, Mitbestimmungs-,
+Rollen-, Erklärbarkeits- und Fairnesskonzept sowie realistische Tests mit den
+betroffenen Menschen.
+
 ## Aktueller Umsetzungsstand
 
 ### Phase 3b – sichere Browser-Sprachbasis
@@ -1456,6 +1543,14 @@ späterer ausdrücklich gewählter Realtime-Modus.
 
 ### Phase 4: Starkes Action Center 1.0
 
+Stand 29.07.2026: Die sicherheitskritische Grundlage ist begonnen. Für
+Aufgaben-, Termin- und manuelle Zeitentwürfe existiert eine strikt typisierte
+Vorschau mit Organisations- und Akteursbindung, expliziter Bestätigung,
+Abbruch und fortlaufendem Audit. Auch eine bestätigte Vorschau bleibt technisch
+nicht ausführbar (`preview_only`); produktive Schreibadapter, Persistenz und
+UI-Freigabe folgen erst nach separater fachlicher und sicherheitstechnischer
+Abnahme.
+
 - Aufgaben und Nachfassaufgaben,
 - Termine und Terminwünsche,
 - manuelle Zeiteinträge,
@@ -1532,7 +1627,12 @@ Sicherheitskontrollen wie die normale UI.
 - Vermietung nach fachlicher Freigabe,
 - Dokumente, Checklisten und Tätigkeitsberichte,
 - Personal-, Planungs- und Einstellungstiefe einschließlich Detaildiagnose
-  einzelner Tage, Mitarbeitender, Planungsgruppen und Planungsboards.
+  einzelner Tage, Mitarbeitender, Planungsgruppen und Planungsboards,
+- menschenzentrierte Entwicklungsunterstützung mit sichtbaren Kriterien:
+  eigene Stärken- und Lernhinweise für Mitarbeitende, geduldige
+  Wiederholungshilfen und Kontinuitätsimpulse sowie sachlich belegte,
+  rollengeschützte Führungsunterstützung erst nach separater Datenschutz-,
+  Fairness-, Mitbestimmungs- und Fachabnahme.
 
 ### Phase 8: Freigegebene Automationen
 
@@ -1560,6 +1660,9 @@ Für jede Wissensfunktion und Aktion:
 - Mehrdeutigkeit: mehrere Datensatztreffer, mehrere plausible Absichten,
   kombinierte Teilfragen und wiederholt fehlende Pflichtangaben,
 - Datenschutz: Lohn, Personal, Kontakt, Kunde, Finanzdaten, Secrets,
+- Menschenentwicklung: Transparenz der Kriterien, Einsicht und Korrektur,
+  positive wie kritische Hinweise, Kontext und Unsicherheit, keine
+  Persönlichkeitsinferenz und keine autonome Beschäftigungsentscheidung,
 - Aktion: Vorschau, Abbruch, Bestätigung, Doppelklick, Wiederholung,
 - Fehler: API-Fehler, Teilfehler, veralteter Datensatz, fehlende Berechtigung,
 - Audit: ausführender Benutzer, Zeitpunkt, Vorher/Nachher, Ergebnis,
@@ -1623,7 +1726,12 @@ Nach Änderungen mindestens:
   machen,
 - Wissensabdeckungsbericht in Regression/CI integrieren,
 - Zielmargen, Mindestdatenbasis, Vergleichszeiträume und Freigaberollen für
-  Material-, Leistungs-, SVS- und Preisempfehlungen fachlich festlegen.
+  Material-, Leistungs-, SVS- und Preisempfehlungen fachlich festlegen,
+- gemeinsamen Prüfturnus, Beteiligte und Änderungsnachweis für den lebendigen
+  JARVIS-Prinzipienkompass festlegen,
+- vor personenbezogener Entwicklungsunterstützung Zweck, zulässige Fakten,
+  Einsichts- und Korrekturweg, Aufbewahrung, Empfängerkreis, Mitbestimmung und
+  menschliche Entscheidungsverantwortung verbindlich festlegen.
 
 ## 17. Definition „JARVIS kennt das System“
 

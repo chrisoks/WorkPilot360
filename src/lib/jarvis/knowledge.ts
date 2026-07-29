@@ -182,6 +182,52 @@ const TOPICS: JarvisTopic[] = [
       "Öffne das betreffende Projekt und wähle links „Dokumente“. Dort findest du die zum Projekt gespeicherten Angebote, Rechnungen und weiteren Dokumentarten. Über die Auswahl innerhalb des Reiters wechselst du zur benötigten Dokumentart.",
   },
   {
+    id: "project.logbook.open",
+    title: "Projekt-Logbuch nutzen",
+    keywords: [
+      "wofür ist das logbuch",
+      "wozu dient das logbuch",
+      "projekt logbuch",
+      "logbucheintrag hinzufügen",
+      "logbucheintrag anlegen",
+      "eintrag ins logbuch",
+    ],
+    surfaces: ["Projektakte"],
+    answer:
+      "Das Projekt-Logbuch ist die nachvollziehbare Chronik für Kommentare, Arbeitsstände und Systemereignisse. Öffne das betreffende Projekt und wähle links „Logbuch“. Einen neuen manuellen Eintrag erstellst du dort über „+ Eintrag“; dokumentiere nur tatsächliche Vorgänge und ordne den Eintrag dem richtigen Projektzeitraum zu.",
+  },
+  {
+    id: "project.images.open",
+    title: "Projektbilder und Bildnachweise finden",
+    keywords: [
+      "bilder zum projekt ansehen",
+      "bilder eines projekts",
+      "projektbilder ansehen",
+      "projektbilder finden",
+      "wo finde ich bilder",
+      "vorherbilder",
+      "nachherbilder",
+      "bildnachweise",
+    ],
+    surfaces: ["Projektakte"],
+    answer:
+      "Öffne das betreffende Projekt und wähle links „Bilder“. Dort findest du die vorhandenen Projektbilder sowie – wenn für den Ablauf vorgesehen – die Gruppen „Vorherbilder“ und „Nachherbilder“. Prüfe bei Nachweisen immer den richtigen Leistungsmonat; fehlende Originalbilder dürfen nicht durch erfundene oder duplizierte Bilder ersetzt werden.",
+  },
+  {
+    id: "project.approvals.open",
+    title: "Projektfreigaben finden",
+    keywords: [
+      "projektfreigaben finden",
+      "freigaben im projekt",
+      "wo finde ich freigaben",
+      "wo sehe ich freigaben",
+      "angebotsfreigaben finden",
+    ],
+    surfaces: ["Projektakte"],
+    answer:
+      "Öffne das betreffende Projekt und wähle links „Freigaben“. Dort prüfst du vorhandene digitale Angebotsaufrufe, Annahmen und Freigabenachweise. Ob für das konkrete Projekt bereits eine Freigabe vorliegt, beantwortet nur der tatsächlich gespeicherte Eintrag – JARVIS nimmt sie nicht pauschal an.",
+  },
+  {
     id: "project.tasks.open",
     title: "Projektaufgaben finden",
     keywords: [
