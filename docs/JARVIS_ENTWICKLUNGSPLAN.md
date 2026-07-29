@@ -4,6 +4,28 @@ Stand: 29.07.2026
 
 ## Aktueller Umsetzungsstand
 
+### Phase 3b – sichere Browser-Sprachbasis
+
+- Der gemeinsame JARVIS-Composer besitzt einen ersten rein browserseitigen
+  Push-to-talk-Einstieg. Das Mikrofon ist nur während des bewussten Drückens
+  aktiv; verweigerte Berechtigungen und fehlende Browserunterstützung fallen
+  ohne Beeinträchtigung des Textchats zurück.
+- Das erkannte Transkript landet ausschließlich im editierbaren Textfeld.
+  Es wird nicht automatisch abgesendet. Dadurch können Nutzer Fehler vor dem
+  bewussten Senden korrigieren; anschließend gelten unverändert dieselben
+  serverseitigen Rollen-, Datenschutz-, Dialog- und Aktionssperren wie für
+  getippte Eingaben.
+- Neue Antworten können optional mit der lokalen Browser-Sprachsynthese
+  vorgelesen werden. Vorlesen ist standardmäßig deaktiviert, lässt sich
+  stoppen beziehungsweise stummschalten und wird beim Schließen des Dialogs
+  beendet.
+- WorkPilot360 lädt in diesem Baustein kein Roh-Audio hoch und speichert kein
+  Audio. Realtime-Audio, serverseitige Transkription, Audio-Kostenmessung und
+  Sitzungsbudgets bleiben bewusst späteren Paketen vorbehalten.
+- Die technische Browserfähigkeit wird defensiv erkannt. Die vollständige
+  Phase-3b-Abnahme bleibt offen, bis Push-to-talk und Berechtigungsablauf in
+  einem Browser mit freigegebenem Mikrofon real geprüft wurden.
+
 ### Intent-Orchestrator V4 – Live-Härtung
 
 - Ein vollständiger Live-Basislauf mit 110 natürlich formulierten Fragen
@@ -1400,6 +1422,17 @@ rollengerecht und rein lesend.
 Abnahmekriterium: Nutzer können eine Systemfrage vollständig sprechen und eine
 gesprochene Antwort erhalten. Schreibende und kritische Sprachbefehle verwenden
 dieselben Vorschau- und Bestätigungsregeln wie Texteingaben.
+
+Umsetzungsstand 29.07.2026 – Browser-Sprachbasis: Push-to-talk,
+Transkriptkorrektur sowie opt-in Vorlesen mit Stop/Stumm sind im gemeinsamen
+Composer umgesetzt. Gesprochene Eingaben werden nie automatisch gesendet,
+sondern erst nach sichtbarer Korrekturmöglichkeit bewusst bestätigt und danach
+wie Texteingaben serverseitig geprüft. Roh-Audio wird nicht an WorkPilot360
+übertragen oder dort gespeichert. Browser ohne die erforderlichen Web-Speech-
+Funktionen behalten einen vollständig funktionsfähigen Textchat. Noch offen
+sind die reale Mikrofonabnahme in einem unterstützten Browser,
+Sprechbeginn-/Sprechende-Feinschliff, Audio-Kosten- und Sitzungsgrenzen sowie
+ein späterer ausdrücklich gewählter Realtime-Modus.
 
 ### Phase 4: Starkes Action Center 1.0
 

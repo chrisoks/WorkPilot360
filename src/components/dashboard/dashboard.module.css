@@ -7435,8 +7435,102 @@
   resize: vertical;
 }
 
-.managementAiComposer button {
-  justify-self: end;
+.jarvisComposerActions {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.jarvisVoiceControls {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+  min-width: 0;
+}
+
+.jarvisVoiceControls > span {
+  color: #64748b;
+  font-size: 0.68rem;
+  line-height: 1.25;
+  max-width: 150px;
+}
+
+.jarvisVoiceButton {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  color: #0f5960;
+  cursor: pointer;
+  display: inline-flex;
+  height: 36px;
+  justify-content: center;
+  padding: 0;
+  touch-action: none;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+  width: 36px;
+}
+
+.jarvisVoiceButton svg {
+  fill: none;
+  height: 19px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+  width: 19px;
+}
+
+.jarvisVoiceButton:hover:not(:disabled),
+.jarvisVoiceButton:focus-visible {
+  background: #e6f5f4;
+  border-color: #69aaa8;
+}
+
+.jarvisVoiceButton[data-state="active"] {
+  background: #dff4ef;
+  border-color: #4c9b91;
+  color: #075b52;
+}
+
+.jarvisVoiceButton[data-state="listening"] {
+  animation: jarvisVoicePulse 1.2s ease-in-out infinite;
+  background: #fff1f2;
+  border-color: #fb7185;
+  color: #be123c;
+  transform: scale(1.04);
+}
+
+.jarvisVoiceButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.jarvisVoiceStatus {
+  color: #475569;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  margin: -2px 2px 0;
+}
+
+.jarvisVoiceStatus[data-state="listening"] {
+  color: #9f1239;
+  font-weight: 700;
+}
+
+@keyframes jarvisVoicePulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.24);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(244, 63, 94, 0);
+  }
 }
 
 .jarvisScrollToLatest {
@@ -7496,6 +7590,10 @@
 
   .managementAiComposer {
     padding: 13px 16px 16px;
+  }
+
+  .jarvisVoiceControls > span {
+    display: none;
   }
 
   .jarvisAnswerFacts {

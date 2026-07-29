@@ -16,6 +16,7 @@ import { getDashboardDailyImpulse } from "@/lib/dashboard-daily-impulses";
 import { getLoginErrorMessage } from "@/lib/auth/login-error";
 import { shouldAttemptHourlyDraftAttachment } from "@/lib/billing/hourly-stamp-automation";
 import styles from "./dashboard.module.css";
+import { JarvisComposer } from "./jarvis-composer";
 import {
   getEffectiveMonthlyFinancialAmount,
   parseMonthlyFinancialInput,
@@ -7086,57 +7087,6 @@ function IsolatedFilterInput({
       onChange={(event) => setDraft(event.target.value)}
       placeholder={placeholder}
     />
-  );
-}
-
-function JarvisComposer({
-  prefill,
-  placeholder,
-  isSending,
-  onSend,
-}: {
-  prefill: { value: string; revision: number };
-  placeholder: string;
-  isSending: boolean;
-  onSend: (question: string) => void;
-}) {
-  const [draft, setDraft] = useState("");
-
-  useEffect(() => {
-    setDraft(prefill.value);
-  }, [prefill]);
-
-  function submitDraft() {
-    const question = draft.trim();
-    if (!question || isSending) return;
-    setDraft("");
-    onSend(question);
-  }
-
-  return (
-    <form
-      className={styles.managementAiComposer}
-      onSubmit={(event) => {
-        event.preventDefault();
-        submitDraft();
-      }}
-    >
-      <textarea
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        placeholder={placeholder}
-        rows={3}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.shiftKey) {
-            event.preventDefault();
-            submitDraft();
-          }
-        }}
-      />
-      <button type="submit" className={styles.primaryButton} disabled={!draft.trim() || isSending}>
-        {isSending ? "Denkt..." : "Senden"}
-      </button>
-    </form>
   );
 }
 
@@ -68682,6 +68632,11 @@ await addProjectLogbookEntry(
               prefill={managementAiComposerPrefill}
               placeholder={managementAiLabels.placeholder}
               isSending={isManagementAiSending}
+              latestAnswer={
+                currentManagementAiMessages.at(-1)?.role === "assistant"
+                  ? currentManagementAiMessages.at(-1)?.content
+                  : undefined
+              }
               onSend={(question) => void sendManagementAiMessage(question)}
             />
           </aside>

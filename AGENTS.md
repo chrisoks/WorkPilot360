@@ -1,5 +1,21 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Browser-Sprachbasis 2026-07-29: Der erste sichere Baustein aus
+  Phase 3b ergänzt den gemeinsamen JARVIS-Composer um browserseitiges
+  Push-to-talk und opt-in Sprachausgabe. Erkannte Sprache wird ausschließlich
+  als editierbarer Text in das vorhandene Eingabefeld übernommen und niemals
+  automatisch abgesendet. Erst der bewusste Klick auf `Senden` führt den Text
+  durch exakt dieselbe serverseitige Sicherheits-, Rollen-, Dialog- und
+  Aktionsprüfung wie eine getippte Frage. WorkPilot360 lädt oder speichert
+  dabei kein Roh-Audio. Vorlesen verwendet nur die lokale Browser-
+  Sprachsynthese, ist standardmäßig aus, kann jederzeit gestoppt werden und
+  endet beim Schließen des Dialogs. Fehlende Browserunterstützung oder
+  verweigerte Mikrofonberechtigung deaktivieren die jeweilige Funktion ohne
+  Auswirkung auf den Textchat. Die Abnahme des vollständigen Sprachmodus
+  bleibt offen, bis ein Browser mit freigegebenem Mikrofon real geprüft ist;
+  insbesondere Realtime-Audio, serverseitige Transkription und Audio-Budgets
+  sind nicht Bestandteil dieses Pakets.
+
 - JARVIS Intent-Orchestrator V4 2026-07-28: Nach der globalen Sicherheits-
   und Rollenprüfung klassifiziert ein begrenzter KI-Aufruf natürliche
   WorkPilot-Fragen vor den fachlichen Datenadaptern. Das strikt validierte
