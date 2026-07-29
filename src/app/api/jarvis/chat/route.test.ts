@@ -2283,6 +2283,7 @@ describe("POST /api/jarvis/chat", () => {
   it.each([
     "Gibt es bei den Stemellungen fehler?",
     "Hilf mir, MKG-209 korrekt abzuschließen.",
+    "Muss ich bei diesem Projekt nächsten Monat noch etwas planen?",
   ])("resolves a deterministic project diagnostic before AI: %s", async (message) => {
     mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
       module: "Projekte",

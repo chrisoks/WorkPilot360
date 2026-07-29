@@ -448,10 +448,12 @@ export async function POST(req: Request) {
     });
   const deterministicQuestionSemantics = analyzeJarvisQuestion(message);
   const deterministicProjectDiagnosticIntent =
+    !intentDecision.goals.includes("how_to") &&
     (deterministicQuestionSemantics.projectReferences.length === 1 ||
       context.recordType === "project" ||
       conversationContext?.recordType === "project") &&
     (deterministicQuestionSemantics.projectScopes.includes("full") ||
+      deterministicQuestionSemantics.projectScopes.includes("planning") ||
       (
         /\bfehler\w*\b/.test(deterministicQuestionSemantics.normalized) &&
         deterministicQuestionSemantics.projectScopes.length > 0
