@@ -4,6 +4,7 @@ const KNOWN_JARVIS_INTENT_TERMS = [
   "projektart",
   "projektarten",
   "projekttyp",
+  "projektnummer",
   "abrechnung",
   "abrechnungen",
   "abrechnungsmodell",
@@ -41,6 +42,8 @@ const KNOWN_JARVIS_INTENT_TERMS = [
   "analysiere",
   "untersuche",
   "kontrolliere",
+  "buchhaltung",
+  "komme",
 ] as const;
 
 function baseNormalize(value: string) {
@@ -96,7 +99,7 @@ function correctionThreshold(term: string) {
 
 export function correctJarvisIntentToken(token: string) {
   if (
-    token.length < 5 ||
+    token.length < 4 ||
     /[\d@/_\\-]/.test(token) ||
     KNOWN_JARVIS_INTENT_TERMS.includes(
       token as (typeof KNOWN_JARVIS_INTENT_TERMS)[number]

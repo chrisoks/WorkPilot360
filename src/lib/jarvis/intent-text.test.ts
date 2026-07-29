@@ -13,6 +13,8 @@ describe("JARVIS intent text tolerance", () => {
     ["stundenabrechnng", "stundenabrechnung"],
     ["sollprozes", "sollprozess"],
     ["termn", "termin"],
+    ["kome", "komme"],
+    ["projecktnummer", "projektnummer"],
   ])("corrects the known intent typo %s", (input, expected) => {
     expect(correctJarvisIntentToken(input)).toBe(expected);
   });

@@ -119,6 +119,7 @@ describe("JARVIS question semantics evaluation matrix", () => {
     ["Wie wirtschaftlich ist dieses Projekt?", ["improvements"]],
     ["Was fehlt bis zur Abrechnung?", ["commercial"]],
     ["Was ist der wichtigste nächste Schritt im Projekt?", ["improvements"]],
+    ["Gib mir kurz den nächsten sinnvollen Schritt.", ["improvements"]],
   ])("maps the natural project question %s to one scope", (question, scopes) => {
     expect(analyzeJarvisQuestion(question).projectScopes).toEqual(scopes);
   });

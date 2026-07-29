@@ -188,6 +188,13 @@ function looksLikeDirectActionRequest(
   question: string,
   decision: JarvisIntentDecision
 ) {
+  if (
+    /\b(?:wichtigste[rn]?|nächste[rn]?)\s+(?:sinnvolle[nr]?\s+)?schritt\b/iu.test(
+      question
+    )
+  ) {
+    return false;
+  }
   const startsWithQuestion =
     /^\s*(?:warum|weshalb|wieso|wann|wo|wer|welch\w*|was|ist|sind|wurde|wurden|hat|haben|gibt|kann|können)\b/iu.test(
       question
@@ -195,7 +202,7 @@ function looksLikeDirectActionRequest(
   return (
     !/^\s*wie\b/iu.test(question) &&
     ((!startsWithQuestion && decision.goals.includes("change")) ||
-      /^\s*(?:leg|lege|mach|mache|schick|sende|stornier|lösch|losch|ändere|ander|setz|markier|erstell|trag|plane)\w*\b/iu.test(
+      /^\s*(?:leg|lege|mach|mache|schick|sende|stornier|stempel|lösch|losch|ändere|ander|setz|markier|erstell|trag|plane)\w*\b/iu.test(
         question
       ))
   );
@@ -527,6 +534,40 @@ export async function POST(req: Request) {
     resolveJarvisPersonDiagnosticIntent(message);
   const deterministicCapabilityGap = resolveJarvisCapabilityGap(message);
   const deterministicSalesIntent = resolveJarvisSalesAnalysisIntent(message);
+  const exactHelpTopicId = findJarvisExactHelpTopicId(message, context);
+  if (exactHelpTopicId?.startsWith("jarvis.")) {
+    return respond(
+      resolveJarvisSystemHelpTopic(
+        exactHelpTopicId,
+        message,
+        context,
+        accessProfile
+      )
+    );
+  }
+  const plainLanguageProjectFollowUp =
+    previousDialogState?.activeRecord?.kind === "project" &&
+    previousDialogState.topicId === "project.health" &&
+    /\b(?:ohne fachbegriffe|einfach(?:er)? erkl[aä]r|leicht verst[aä]ndlich)\b/iu.test(
+      message
+    );
+  if (plainLanguageProjectFollowUp) {
+    const previousProjectResponse = await resolveJarvisProjectHealthRequest({
+      question: previousDialogState.lastQuestion,
+      organizationId: organization.id,
+      accessProfile,
+      context,
+      ...(conversationContext ? { conversationContext } : {}),
+    });
+    if (previousProjectResponse) {
+      return respond({
+        type: "answer",
+        topicId: "project.health.plain-language",
+        message: `Einfach gesagt: ${previousProjectResponse.message}`,
+        deterministic: true,
+      });
+    }
+  }
   const deterministicProjectDialogIntent =
     resolveJarvisProjectDialogIntent({
       question: message,
@@ -586,7 +627,6 @@ export async function POST(req: Request) {
     message,
     intentDecision
   );
-  const exactHelpTopicId = findJarvisExactHelpTopicId(message, context);
   const deterministicHelpRequest =
     Boolean(exactHelpTopicId) &&
     (

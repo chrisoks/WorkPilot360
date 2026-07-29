@@ -257,7 +257,9 @@ function resolveProjectScopes(
     /\b(auffallig|verbesser|optimier|was fehlt|wirtschaftlich|rentabel|projektgewinn)\w*\b/.test(
       normalized
     ) ||
-      /\b(?:wichtigste[rn]?|nachste[rn]?)\s+schritt\b/.test(normalized)
+      /\b(?:wichtigste[rn]?|nachste[rn]?)\s+(?:sinnvolle[nr]?\s+)?schritt\b/.test(
+        normalized
+      )
   );
 
   const explicitlyRequestsFullCheck =

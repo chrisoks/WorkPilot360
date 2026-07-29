@@ -60,11 +60,15 @@ describe("JARVIS system help", () => {
 
   it.each([
     "Was kannst du sicher selbst erledigen?",
+    "Was kannst du in WorkPilot360 schon sicher?",
     "Welche Aktionen darfst du niemals autonom ausführen?",
+    "Welche Aktionen darfst du noch nicht ausführen?",
     "Was machst du bei unsicheren Daten?",
     "Wie gehst du mit persönlichen Daten um?",
+    "Wie schützt du personenbezogene Daten?",
     "Wer bleibt bei Entscheidungen verantwortlich?",
     "Was tust du wenn Daten ungeprüft sind?",
+    "Wie gehst du mit ungeprüften Stammdaten um?",
     "Wann fragst du nach statt etwas zu erfinden?",
   ])("explains safety and human responsibility: %s", (question) => {
     const result = resolveJarvisSystemHelp(question, {}, employeeAccess);
@@ -77,7 +81,9 @@ describe("JARVIS system help", () => {
 
   it.each([
     "Wie unterstützt du neue Mitarbeiter?",
+    "Wie erklärst du einem neuen Mitarbeiter das System?",
     "Wie förderst du Kontinuität?",
+    "Wie hilfst du bei wiederkehrenden Aufgaben?",
     "Wie unterstützt du Führung?",
   ])("explains transparent people development: %s", (question) => {
     const result = resolveJarvisSystemHelp(question, {}, leadershipAccess);

@@ -12,6 +12,15 @@
   Wirtschaftlichkeits-, Abrechnungs- und Naechster-Schritt-Fragen bleiben bei
   geoeffneter Projektakte im Projektkontext statt in eine
   Unternehmensauswertung abzurutschen.
+  Der produktive 100er-Lauf hat weitere natuerliche Varianten fuer sichere
+  Faehigkeiten, noch gesperrte Aktionen, personenbezogene und ungepruefte
+  Stammdaten sowie Onboarding und wiederkehrende Aufgaben geliefert; auch
+  diese Formulierungen sind jetzt abgedeckt. Governance-Fragen haben Vorrang
+  vor dem zufaellig geoeffneten Projektkontext. Die Tippfehler `kome` und
+  `Projecktnummer`, projektbezogene Naechster-Schritt-Fragen sowie der
+  Anschluss `ohne Fachbegriffe` nach einer Projektpruefung werden im
+  bestehenden Dialogkontext weitergefuehrt. Direkte Stempelbefehle werden
+  sicher als nicht freigegebene Schreibaktion erkannt.
 
 - JARVIS Action-Center Proxy-Origin 2026-07-29: Schreibende
   Aufgabenentwurf-Anfragen akzeptieren den vom Browser gesendeten
