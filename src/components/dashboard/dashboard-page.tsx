@@ -59,6 +59,7 @@ import {
   resolveJarvisDomain,
 } from "@/lib/jarvis/domain-router";
 import type { JarvisDialogChoice } from "@/lib/jarvis/dialog";
+import type { JarvisActionPreviewView } from "@/lib/jarvis/action-center";
 import {
   buildJarvisDialogState,
   getJarvisDialogConversationContext,
@@ -647,6 +648,7 @@ type ManagementAiChatMessage = {
   navigation?: JarvisNavigationTarget;
   records?: JarvisRecordResult[];
   structured?: JarvisStructuredAnswer;
+  actionPreview?: JarvisActionPreviewView;
   dialogState?: JarvisDialogState;
 };
 
@@ -658,6 +660,11 @@ const jarvisRecordKinds = new Set<JarvisRecordKind>([
   "invoice",
 ]);
 const jarvisAnswerTones = new Set(["neutral", "positive", "warning"]);
+const jarvisPreviewActionIds = new Set([
+  "task.prepare",
+  "planning.prepare",
+  "time.prepare",
+]);
 
 function parseJarvisDialogChoices(value: unknown): JarvisDialogChoice[] | undefined {
   if (!Array.isArray(value)) return undefined;
@@ -680,6 +687,88 @@ function parseJarvisDialogChoices(value: unknown): JarvisDialogChoice[] | undefi
     .filter((choice): choice is JarvisDialogChoice => Boolean(choice))
     .slice(0, 8);
   return choices.length ? choices : undefined;
+}
+
+function parseJarvisActionPreview(
+  value: unknown
+): JarvisActionPreviewView | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.version !== 1 ||
+    typeof candidate.previewId !== "string" ||
+    typeof candidate.actionId !== "string" ||
+    !jarvisPreviewActionIds.has(candidate.actionId) ||
+    typeof candidate.title !== "string" ||
+    candidate.badge !== "Nur Vorschau" ||
+    candidate.state !== "awaiting_confirmation" ||
+    !candidate.confirmation ||
+    typeof candidate.confirmation !== "object" ||
+    (candidate.confirmation as Record<string, unknown>).enabled !== false ||
+    (candidate.confirmation as Record<string, unknown>).reason !==
+      "not_released" ||
+    !candidate.execution ||
+    typeof candidate.execution !== "object" ||
+    (candidate.execution as Record<string, unknown>).enabled !== false ||
+    (candidate.execution as Record<string, unknown>).reason !== "preview_only"
+  ) {
+    return undefined;
+  }
+
+  const previewId = candidate.previewId.trim().slice(0, 120);
+  const title = candidate.title.trim().slice(0, 160);
+  const fields = Array.isArray(candidate.fields)
+    ? candidate.fields
+        .map((field) => {
+          if (!field || typeof field !== "object") return undefined;
+          const row = field as Record<string, unknown>;
+          if (typeof row.label !== "string" || typeof row.value !== "string") {
+            return undefined;
+          }
+          const label = row.label.trim().slice(0, 80);
+          const fieldValue = row.value.trim().slice(0, 500);
+          return label && fieldValue
+            ? { label, value: fieldValue }
+            : undefined;
+        })
+        .filter(
+          (
+            field
+          ): field is {
+            label: string;
+            value: string;
+          } => Boolean(field)
+        )
+        .slice(0, 10)
+    : [];
+  const missingFields = Array.isArray(candidate.missingFields)
+    ? candidate.missingFields
+        .filter((field): field is string => typeof field === "string")
+        .map((field) => field.trim().slice(0, 80))
+        .filter(Boolean)
+        .slice(0, 10)
+    : [];
+  if (!previewId || !title || fields.length === 0) return undefined;
+
+  return {
+    version: 1,
+    previewId,
+    actionId:
+      candidate.actionId as JarvisActionPreviewView["actionId"],
+    title,
+    badge: "Nur Vorschau",
+    state: "awaiting_confirmation",
+    fields,
+    missingFields,
+    confirmation: {
+      enabled: false,
+      reason: "not_released",
+    },
+    execution: {
+      enabled: false,
+      reason: "preview_only",
+    },
+  };
 }
 
 function buildJarvisConversationContext(
@@ -32622,6 +32711,9 @@ await addProjectLogbookEntry(
       const responseStructured = parseJarvisStructuredAnswer(
         data?.structured
       );
+      const responseActionPreview = parseJarvisActionPreview(
+        data?.actionPreview
+      );
       const responseDialogState =
         sanitizeJarvisDialogState(data?.dialogState) ??
         buildJarvisDialogState({
@@ -32678,6 +32770,7 @@ await addProjectLogbookEntry(
               : undefined,
           records: responseRecords,
           structured: responseStructured,
+          actionPreview: responseActionPreview,
           dialogState: responseDialogState,
         },
       ]);
@@ -68519,7 +68612,16 @@ await addProjectLogbookEntry(
                   <article
                     key={`${message.createdAt}-${index}`}
                     data-role={message.role}
-                    className={message.structured ? styles.jarvisStructuredMessage : undefined}
+                    className={[
+                      message.structured
+                        ? styles.jarvisStructuredMessage
+                        : "",
+                      message.actionPreview
+                        ? styles.jarvisActionPreviewMessage
+                        : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ") || undefined}
                   >
                     {message.role === "assistant" && message.structured ? (
                       <div className={styles.jarvisStructuredAnswer}>
@@ -68562,6 +68664,41 @@ await addProjectLogbookEntry(
                     ) : (
                       <p>{message.content}</p>
                     )}
+                    {message.role === "assistant" &&
+                    message.actionPreview ? (
+                      <section
+                        className={styles.jarvisActionPreview}
+                        aria-label={`${message.actionPreview.title} – nur Vorschau`}
+                      >
+                        <header>
+                          <div>
+                            <span>Action Center</span>
+                            <strong>{message.actionPreview.title}</strong>
+                          </div>
+                          <em>{message.actionPreview.badge}</em>
+                        </header>
+                        <dl>
+                          {message.actionPreview.fields.map((field) => (
+                            <div key={`${field.label}-${field.value}`}>
+                              <dt>{field.label}</dt>
+                              <dd>{field.value}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                        {message.actionPreview.missingFields.length ? (
+                          <div className={styles.jarvisActionPreviewMissing}>
+                            <strong>Vor dem Speichern noch erforderlich</strong>
+                            <span>
+                              {message.actionPreview.missingFields.join(" · ")}
+                            </span>
+                          </div>
+                        ) : null}
+                        <footer>
+                          Bestätigen und Speichern sind noch nicht freigegeben.
+                          Diese Vorschau verändert keine WorkPilot360-Daten.
+                        </footer>
+                      </section>
+                    ) : null}
                     {message.role === "assistant" &&
                     message.choices?.length &&
                     index === currentManagementAiMessages.length - 1 ? (

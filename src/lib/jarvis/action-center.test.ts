@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { Role } from "@prisma/client";
 import {
   createJarvisActionPreview,
+  extractJarvisTaskPreviewTitle,
+  toJarvisActionPreviewView,
   transitionJarvisActionPreview,
 } from "@/lib/jarvis/action-center";
 import { createJarvisAccessProfile } from "@/lib/jarvis/security";
@@ -31,6 +33,27 @@ function createTaskPreview() {
 }
 
 describe("JARVIS Action Center 1.0 foundation", () => {
+  it("extracts only a sufficiently clear task title", () => {
+    expect(
+      extractJarvisTaskPreviewTitle(
+        "Lege bitte eine Aufgabe „Kunden wegen Angebot anrufen“ an."
+      )
+    ).toBe("Kunden wegen Angebot anrufen");
+    expect(
+      extractJarvisTaskPreviewTitle(
+        "Erstelle eine Aufgabe Kunden wegen Angebot anrufen bis Freitag."
+      )
+    ).toBe("Kunden wegen Angebot anrufen bis Freitag");
+    expect(
+      extractJarvisTaskPreviewTitle("Leg dazu bitte eine Aufgabe für morgen an.")
+    ).toBeUndefined();
+    expect(
+      extractJarvisTaskPreviewTitle(
+        "Lege für den Projektverantwortlichen eine Aufgabe an."
+      )
+    ).toBeUndefined();
+  });
+
   it("creates a strictly typed preview without enabling execution", () => {
     const result = createTaskPreview();
 
@@ -146,6 +169,32 @@ describe("JARVIS Action Center 1.0 foundation", () => {
       "preview_created",
       "preview_confirmed",
     ]);
+  });
+
+  it("creates a data-minimized client view without actor or organization ids", () => {
+    const created = createTaskPreview();
+    if (!created.ok) throw new Error("Vorschau wurde nicht erstellt.");
+
+    const view = toJarvisActionPreviewView(created.value);
+
+    expect(view).toMatchObject({
+      actionId: "task.prepare",
+      badge: "Nur Vorschau",
+      state: "awaiting_confirmation",
+      fields: [
+        { label: "Titel", value: "Angebot nachfassen" },
+        {
+          label: "Beschreibung",
+          value: "Kundenrückmeldung zum offenen Angebot erfragen.",
+        },
+        { label: "Projektbezug", value: "Aktuelles Projekt verknüpft" },
+      ],
+      missingFields: ["Verantwortliche Person", "Fälligkeit"],
+      confirmation: { enabled: false, reason: "not_released" },
+      execution: { enabled: false, reason: "preview_only" },
+    });
+    expect(JSON.stringify(view)).not.toContain("employee-1");
+    expect(JSON.stringify(view)).not.toContain("org-1");
   });
 
   it("supports an explicit, audited cancellation", () => {

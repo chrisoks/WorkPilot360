@@ -93,6 +93,8 @@ vi.mock("@/lib/jarvis/security", () => ({
   authorizeJarvisQuestion: mocks.authorizeJarvisQuestion,
   getJarvisAuthorizationRefusalMessage:
     mocks.getJarvisAuthorizationRefusalMessage,
+  canAccessJarvisDataClass: () => true,
+  classifyJarvisQuestion: () => "internal",
 }));
 
 vi.mock("@/lib/jarvis/organization-service-rate-analysis", () => ({
@@ -1428,6 +1430,170 @@ describe("POST /api/jarvis/chat", () => {
     ]);
     expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+  });
+
+  it("returns a non-executable task preview when the title is clear", async () => {
+    const actor = {
+      id: "user-1",
+      isActive: true,
+      role: "GESCHAEFTSFUEHRER",
+    };
+    mocks.createJarvisAccessProfile.mockReturnValue({
+      sessionActor: actor,
+      effectiveActor: actor,
+      isImpersonating: false,
+    });
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      recordType: "project",
+      recordId: "project-1",
+    });
+    mocks.classifyJarvisIntentWithAi.mockResolvedValue({
+      intent: "prepare_action",
+      domain: "system",
+      entity: "task",
+      scope: "current_record",
+      helpTopicId: "none",
+      confidence: "high",
+      needsClarification: false,
+      usesCurrentContext: true,
+      actionKind: "task.create",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message:
+            "Lege eine Aufgabe „Kunden wegen Angebot anrufen“ an.",
+          context: { recordType: "project", recordId: "project-1" },
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      type: "answer",
+      topicId: "action.preview.task",
+      actionPreview: {
+        version: 1,
+        actionId: "task.prepare",
+        badge: "Nur Vorschau",
+        state: "awaiting_confirmation",
+        fields: [
+          {
+            label: "Titel",
+            value: "Kunden wegen Angebot anrufen",
+          },
+          {
+            label: "Projektbezug",
+            value: "Aktuelles Projekt verknüpft",
+          },
+        ],
+        missingFields: ["Verantwortliche Person", "Fälligkeit"],
+        confirmation: {
+          enabled: false,
+          reason: "not_released",
+        },
+        execution: {
+          enabled: false,
+          reason: "preview_only",
+        },
+      },
+    });
+    expect(payload.message).toContain("nichts gespeichert oder ausgeführt");
+    expect(JSON.stringify(payload.actionPreview)).not.toContain(
+      "organization-1"
+    );
+    expect(JSON.stringify(payload.actionPreview)).not.toContain("user-1");
+    expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+  });
+
+  it("never turns task deletion into a task creation preview", async () => {
+    mocks.resolveJarvisIntentDecision.mockReturnValue({
+      state: "resolved",
+      domain: "system",
+      confidence: "high",
+      candidates: [],
+      clarificationReasons: [],
+      goals: ["change"],
+      entities: ["task"],
+      timeScopes: [],
+      recordFilter: "all",
+      segments: [],
+    });
+    mocks.classifyJarvisIntentWithAi.mockResolvedValue({
+      intent: "prepare_action",
+      domain: "system",
+      entity: "task",
+      scope: "current_record",
+      helpTopicId: "none",
+      confidence: "high",
+      needsClarification: false,
+      usesCurrentContext: true,
+      actionKind: "record.delete",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Lösche die Aufgabe Kunden wegen Angebot anrufen.",
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload.topicId).not.toBe("action.preview.task");
+    expect(payload.message).toContain("nicht freigegeben");
+    expect(payload.actionPreview).toBeUndefined();
+  });
+
+  it("never turns an ambiguous task change into a creation preview", async () => {
+    mocks.resolveJarvisIntentDecision.mockReturnValue({
+      state: "resolved",
+      domain: "system",
+      confidence: "high",
+      candidates: [],
+      clarificationReasons: [],
+      goals: ["change"],
+      entities: ["task"],
+      timeScopes: [],
+      recordFilter: "all",
+      segments: [],
+    });
+    mocks.classifyJarvisIntentWithAi.mockResolvedValue({
+      intent: "unclear",
+      domain: "system",
+      entity: "task",
+      scope: "current_record",
+      helpTopicId: "none",
+      confidence: "medium",
+      needsClarification: true,
+      usesCurrentContext: true,
+      actionKind: "none",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Mach die Aufgabe Kunden wegen Angebot anrufen fertig.",
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload.topicId).not.toBe("action.preview.task");
+    expect(payload.message).toContain("nicht ausgeführt");
+    expect(payload.actionPreview).toBeUndefined();
   });
 
   it("recognizes an offer action but never executes it", async () => {

@@ -1551,6 +1551,13 @@ nicht ausführbar (`preview_only`); produktive Schreibadapter, Persistenz und
 UI-Freigabe folgen erst nach separater fachlicher und sicherheitstechnischer
 Abnahme.
 
+Als erster sichtbarer Vertikalschnitt kann JARVIS eine eindeutig formulierte
+Aufgabenanlage mit ausreichend konkretem Titel nun als reine Chatvorschau
+darstellen. Die Vorschau zeigt fehlende Verantwortlichkeit und Fälligkeit,
+überträgt keine internen Akteurs- oder Organisationskennungen und kennzeichnet
+unmissverständlich, dass Bestätigen, Speichern und Ausführen noch gesperrt
+sind. Unvollständige Aufgabenwünsche bleiben bei der sicheren Rückfrage.
+
 - Aufgaben und Nachfassaufgaben,
 - Termine und Terminwünsche,
 - manuelle Zeiteinträge,

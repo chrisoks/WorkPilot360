@@ -7062,6 +7062,119 @@
   width: 92%;
 }
 
+.managementAiMessages article.jarvisActionPreviewMessage {
+  width: 92%;
+}
+
+.jarvisActionPreview {
+  background: linear-gradient(160deg, #f7fbfb 0%, #eef7f7 100%);
+  border: 1px solid #a9cfd2;
+  border-radius: 14px;
+  display: grid;
+  gap: 11px;
+  margin-top: 12px;
+  overflow: hidden;
+  padding: 13px;
+}
+
+.jarvisActionPreview > header {
+  align-items: flex-start;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.jarvisActionPreview > header > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.jarvisActionPreview > header span {
+  color: #567079;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.jarvisActionPreview > header strong {
+  color: #0f3440;
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
+.jarvisActionPreview > header em {
+  background: #fff7df;
+  border: 1px solid #f1d58a;
+  border-radius: 999px;
+  color: #765500;
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 800;
+  padding: 5px 8px;
+}
+
+.jarvisActionPreview dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.jarvisActionPreview dl > div {
+  background: rgb(255 255 255 / 0.78);
+  border: 1px solid #d5e5e7;
+  border-radius: 10px;
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+}
+
+.jarvisActionPreview dt {
+  color: #60747b;
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.jarvisActionPreview dd {
+  color: #163b44;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.4;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.jarvisActionPreviewMissing {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+}
+
+.jarvisActionPreviewMissing strong {
+  color: #8a5b00;
+  font-size: 0.7rem;
+}
+
+.jarvisActionPreviewMissing span {
+  color: #604200;
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+.jarvisActionPreview > footer {
+  border-top: 1px solid #cfe1e3;
+  color: #526a72;
+  font-size: 0.7rem;
+  line-height: 1.45;
+  padding-top: 9px;
+}
+
 .jarvisStructuredAnswer {
   display: grid;
   gap: 12px;

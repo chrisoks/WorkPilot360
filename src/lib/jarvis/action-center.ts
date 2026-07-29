@@ -136,6 +136,28 @@ export type JarvisActionPreview<
   audit: JarvisActionPreviewAuditEvent[];
 };
 
+export type JarvisActionPreviewView = {
+  version: 1;
+  previewId: string;
+  actionId: JarvisPreviewActionId;
+  title: string;
+  badge: "Nur Vorschau";
+  state: "awaiting_confirmation";
+  fields: Array<{
+    label: string;
+    value: string;
+  }>;
+  missingFields: string[];
+  confirmation: {
+    enabled: false;
+    reason: "not_released";
+  };
+  execution: {
+    enabled: false;
+    reason: "preview_only";
+  };
+};
+
 export type JarvisActionPreviewFailureCode =
   | "invalid_request"
   | "invalid_payload"
@@ -154,6 +176,102 @@ export type JarvisActionPreviewResult<T> =
       message: string;
       issues?: string[];
     };
+
+export function extractJarvisTaskPreviewTitle(question: string) {
+  const cleaned = question.trim().replace(/\s+/g, " ").slice(0, 1800);
+  const quotedTitle =
+    cleaned.match(/\baufgabe\b[^„“"']*[„"']([^„“"']{3,180})[“"']/iu)?.[1] ??
+    cleaned.match(/[„"']([^„“"']{3,180})[“"']/u)?.[1];
+  if (quotedTitle) return quotedTitle.trim();
+
+  const taskIndex = cleaned.search(/\baufgabe\b/iu);
+  if (taskIndex < 0) return undefined;
+  const afterTask = cleaned
+    .slice(taskIndex)
+    .replace(/^\baufgabe\b/iu, "")
+    .replace(/^(?:\s*(?:mit dem titel|namens|zum thema)\s*)/iu, "")
+    .replace(/\s+an[.!?]*$/iu, "")
+    .replace(/^[\s:–—-]+|[\s.!?]+$/gu, "")
+    .trim()
+    .slice(0, 180);
+  if (!afterTask || !/\p{L}/u.test(afterTask)) return undefined;
+  const significantTerms = afterTask
+    .toLocaleLowerCase("de-DE")
+    .split(/\s+/)
+    .filter(
+      (term) =>
+        term &&
+        ![
+          "bitte",
+          "dazu",
+          "dafür",
+          "hier",
+          "für",
+          "morgen",
+          "heute",
+          "neu",
+          "neue",
+          "einen",
+          "eine",
+        ].includes(term)
+    );
+  return significantTerms.length >= 2 ? afterTask : undefined;
+}
+
+export function toJarvisActionPreviewView(
+  preview: JarvisActionPreview
+): JarvisActionPreviewView {
+  const fields: JarvisActionPreviewView["fields"] = [];
+  const missingFields: string[] = [];
+
+  if (preview.actionId === "task.prepare") {
+    const payload = preview.payload as JarvisActionPreviewPayloadMap["task.prepare"];
+    fields.push({ label: "Titel", value: payload.title });
+    if (payload.description) {
+      fields.push({ label: "Beschreibung", value: payload.description });
+    }
+    if (payload.projectId) {
+      fields.push({ label: "Projektbezug", value: "Aktuelles Projekt verknüpft" });
+    }
+    if (!payload.assigneeId) missingFields.push("Verantwortliche Person");
+    if (!payload.dueAt) missingFields.push("Fälligkeit");
+  } else if (preview.actionId === "planning.prepare") {
+    const payload =
+      preview.payload as JarvisActionPreviewPayloadMap["planning.prepare"];
+    fields.push(
+      { label: "Titel", value: payload.title },
+      { label: "Beginn", value: payload.startAt },
+      { label: "Ende", value: payload.endAt }
+    );
+  } else {
+    const payload = preview.payload as JarvisActionPreviewPayloadMap["time.prepare"];
+    fields.push(
+      { label: "Beginn", value: payload.startAt },
+      { label: "Ende", value: payload.endAt },
+      { label: "Pause", value: `${payload.pauseMinutes} Minuten` },
+      { label: "Beschreibung", value: payload.description }
+    );
+  }
+
+  return {
+    version: 1,
+    previewId: preview.previewId,
+    actionId: preview.actionId,
+    title: preview.actionTitle,
+    badge: "Nur Vorschau",
+    state: "awaiting_confirmation",
+    fields,
+    missingFields,
+    confirmation: {
+      enabled: false,
+      reason: "not_released",
+    },
+    execution: {
+      enabled: false,
+      reason: "preview_only",
+    },
+  };
+}
 
 function getActorIds(profile: JarvisAccessProfile) {
   const sessionActorId = profile.sessionActor.id?.trim();

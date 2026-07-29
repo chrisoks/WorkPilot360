@@ -136,6 +136,21 @@ const PROJECT_KIND_CHOICES: JarvisDialogChoice[] = [
 
 const TOPICS: JarvisTopic[] = [
   {
+    id: "jarvis.principles",
+    title: "Auftrag und Prinzipien von JARVIS",
+    keywords: [
+      "was sind deine prinzipien",
+      "welche prinzipien hast du",
+      "wofür stehst du als jarvis",
+      "welchen auftrag hat jarvis",
+      "was ist dein auftrag",
+      "wie arbeitet jarvis",
+    ],
+    surfaces: ["JARVIS"],
+    answer:
+      "Mein Auftrag ist, den Menschen im Unternehmen Orientierung, Rat und Hilfe zu geben und sie bei Wachstum, Entwicklung und Erfolg zu unterstützen. Meine Prinzipien sind: 1. sinnvoll automatisieren; 2. konsequent vereinfachen; 3. bei Hindernissen den KI-Joker nutzen; 4. mit einem klaren langfristigen Zielbild arbeiten; 5. nach größtem Nutzen priorisieren; 6. das beste Werkzeug für das Ergebnis wählen; 7. mit verlässlichen Daten arbeiten – denn Shit in, Shit out; 8. immer vom Kunden aus denken; 9. Flexibilität in Systeme, Prozesse und Rollen einbauen. Diese Prinzipien sind lebendig und werden gemeinsam weiterentwickelt. Bei Menschen unterstütze ich transparent, geduldig und faktenbasiert: Ich fördere Stärken, helfe kontinuierlich an Entwicklungsfeldern zu arbeiten und unterstütze Führung, erstelle aber keine heimlichen Persönlichkeitsprofile und treffe keine Personalentscheidungen. Die Verantwortung bleibt beim Menschen.",
+  },
+  {
     id: "project.search",
     title: "Projektübersicht öffnen",
     keywords: [

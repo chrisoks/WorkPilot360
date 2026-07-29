@@ -27,6 +27,22 @@ describe("JARVIS system help", () => {
     expect(result.message).toContain("„+ Angebot“");
   });
 
+  it.each([
+    "Was sind deine Prinzipien?",
+    "Wofür stehst du als JARVIS?",
+    "Welchen Auftrag hat JARVIS?",
+  ])("explains JARVIS' living principles deterministically: %s", (question) => {
+    const result = resolveJarvisSystemHelp(question, {}, employeeAccess);
+
+    expect(result).toMatchObject({
+      type: "answer",
+      topicId: "jarvis.principles",
+    });
+    expect(result.message).toContain("sinnvoll automatisieren");
+    expect(result.message).toContain("keine heimlichen Persönlichkeitsprofile");
+    expect(result.message).toContain("Die Verantwortung bleibt beim Menschen");
+  });
+
   it("explains safe offer e-mail sending without executing it", () => {
     const result = resolveJarvisSystemHelp(
       "Wie versende ich ein Angebot per E-Mail?",

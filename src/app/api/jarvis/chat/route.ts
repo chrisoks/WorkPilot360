@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
 import { getDemoContext } from "@/lib/demo/context";
 import {
@@ -75,11 +76,48 @@ import { createJarvisDialogChoice } from "@/lib/jarvis/dialog";
 import { resolveJarvisProjectDialogIntent } from "@/lib/jarvis/project-dialog-intent";
 import { normalizeJarvisIntentText } from "@/lib/jarvis/intent-text";
 import { analyzeJarvisQuestion } from "@/lib/jarvis/question-semantics";
+import {
+  createJarvisActionPreview,
+  extractJarvisTaskPreviewTitle,
+  toJarvisActionPreviewView,
+} from "@/lib/jarvis/action-center";
 
 export const dynamic = "force-dynamic";
 
 function cleanText(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+}
+
+function buildJarvisTaskPreview(input: {
+  question: string;
+  organizationId: string;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+  context: ReturnType<typeof sanitizeJarvisSurfaceContext>;
+}) {
+  const title = extractJarvisTaskPreviewTitle(input.question);
+  if (!title) return undefined;
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(),
+    actionId: "task.prepare",
+    payload: {
+      title,
+      ...(input.context.recordType === "project" && input.context.recordId
+        ? { projectId: input.context.recordId }
+        : {}),
+    },
+    organizationId: input.organizationId,
+    profile: input.accessProfile,
+    createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) return undefined;
+
+  return {
+    type: "answer" as const,
+    topicId: "action.preview.task",
+    message:
+      "Ich habe die Aufgabe ausschließlich als Vorschau vorbereitet. Es wurde nichts gespeichert oder ausgeführt. Prüfe den Titel und ergänze später Verantwortlichkeit und Fälligkeit; Bestätigen und Speichern bleiben in diesem Ausbauschritt gesperrt.",
+    actionPreview: toJarvisActionPreviewView(preview.value),
+  };
 }
 
 function shouldUseProjectHealthPath(
@@ -128,6 +166,24 @@ function looksLikeDirectActionRequest(
       /^\s*(?:leg|lege|mach|mache|schick|sende|stornier|lösch|losch|ändere|ander|setz|markier|erstell|trag|plane)\w*\b/iu.test(
         question
       ))
+  );
+}
+
+function looksLikeTaskCreationPreviewRequest(question: string) {
+  const value = normalizeJarvisIntentText(question);
+  const startsWithCreate =
+    /^\s*(?:leg|lege|erstell|erstelle)\w*\b/.test(value);
+  const startsWithLay =
+    /^\s*(?:leg|lege)\w*\b/.test(value);
+  const hasExplicitCreationMarker =
+    !startsWithLay ||
+    /\ban\s*[.!?]*$/iu.test(question) ||
+    /\bneue\s+aufgabe\b/iu.test(question);
+  return (
+    startsWithCreate &&
+    hasExplicitCreationMarker &&
+    /\baufgabe\b/.test(value) &&
+    !/\b(?:losch|loesch|ander|aender|archivier)\w*\b/.test(value)
   );
 }
 
@@ -548,6 +604,20 @@ export async function POST(req: Request) {
       return respond(deterministicProjectClarification);
     }
   }
+  if (
+    directActionRequest &&
+    looksLikeTaskCreationPreviewRequest(message)
+  ) {
+    const taskPreview = buildJarvisTaskPreview({
+      question: message,
+      organizationId: organization.id,
+      accessProfile,
+      context,
+    });
+    if (taskPreview) {
+      return respond(taskPreview);
+    }
+  }
   const routingContext = conversationContext ?? context;
   const aiIntentClassification = await classifyJarvisIntentWithAi({
     question: message,
@@ -561,6 +631,21 @@ export async function POST(req: Request) {
     ai: aiIntentClassification,
     hasDeterministicPersonIntent: Boolean(deterministicPersonIntent),
   });
+  if (
+    directActionRequest &&
+    aiIntentClassification?.intent === "prepare_action" &&
+    aiIntentClassification.actionKind === "task.create"
+  ) {
+    const taskPreview = buildJarvisTaskPreview({
+      question: message,
+      organizationId: organization.id,
+      accessProfile,
+      context,
+    });
+    if (taskPreview) {
+      return respond(taskPreview);
+    }
+  }
   if (
     directActionRequest &&
     aiIntentClassification?.intent !== "prepare_action"
