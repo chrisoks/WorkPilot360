@@ -63,6 +63,7 @@ const planningPreviewPayloadSchema = z
     endAt: isoDateTime,
     projectId: boundedId,
     assigneeIds: z.array(boundedId).min(1).max(50),
+    approvalStatus: z.enum(["confirmed", "requested"]).optional(),
     location: optionalText(500),
     note: optionalText(4000),
   })
@@ -161,6 +162,7 @@ export type JarvisActionPreviewView = {
 export type JarvisTaskActionDraftState =
   | "awaiting_input"
   | "awaiting_confirmation"
+  | "executing"
   | "cancelled"
   | "expired"
   | "executed";
@@ -170,7 +172,7 @@ export type JarvisTaskActionDraftView = {
   previewId: string;
   actionId: "task.prepare";
   title: "Aufgabe vorbereiten";
-  badge: "Entwurf" | "Bereit" | "Abgebrochen" | "Abgelaufen" | "Angelegt";
+  badge: "Entwurf" | "Bereit" | "Wird angelegt" | "Abgebrochen" | "Abgelaufen" | "Angelegt";
   state: JarvisTaskActionDraftState;
   revision: number;
   expiresAt: string;
@@ -195,6 +197,7 @@ export type JarvisTaskActionDraftView = {
       | "missing_fields"
       | "expired"
       | "cancelled"
+      | "executing"
       | "executed";
   };
   cancellation: {
@@ -206,6 +209,54 @@ export type JarvisTaskActionDraftView = {
   };
   result?: {
     entityType: "task";
+    entityId: string;
+    label: string;
+  };
+};
+
+export type JarvisPlanningActionDraftCheck = {
+  code: string;
+  label: string;
+  status: "ok" | "warning" | "blocked";
+  detail: string;
+};
+
+export type JarvisPlanningActionDraftView = {
+  version: 2;
+  previewId: string;
+  actionId: "planning.prepare";
+  title: "Termin vorbereiten" | "Terminwunsch vorbereiten";
+  badge: "Entwurf" | "Bereit" | "Wird angelegt" | "Abgebrochen" | "Abgelaufen" | "Angelegt";
+  state: JarvisTaskActionDraftState;
+  revision: number;
+  expiresAt: string;
+  fields: Array<{
+    label: string;
+    value: string;
+  }>;
+  missingFields: string[];
+  checks: JarvisPlanningActionDraftCheck[];
+  editor: {
+    title: string;
+    note: string;
+    assigneeId: string;
+    startAt: string;
+    endAt: string;
+    approvalStatus: "confirmed" | "requested";
+    approvalStatusOptions: Array<{
+      value: "confirmed" | "requested";
+      label: string;
+    }>;
+    assigneeOptions: Array<{
+      id: string;
+      label: string;
+    }>;
+  };
+  confirmation: JarvisTaskActionDraftView["confirmation"];
+  cancellation: JarvisTaskActionDraftView["cancellation"];
+  execution: JarvisTaskActionDraftView["execution"];
+  result?: {
+    entityType: "planning";
     entityId: string;
     label: string;
   };

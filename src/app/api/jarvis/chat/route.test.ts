@@ -40,6 +40,7 @@ const mocks = vi.hoisted(() => ({
   resolveJarvisAccessPolicyQuestion: vi.fn(),
   resolveJarvisProjectDialogIntent: vi.fn(),
   createPersistedJarvisTaskDraft: vi.fn(),
+  createPersistedJarvisPlanningDraft: vi.fn(),
 }));
 
 vi.mock("@/lib/demo/context", () => ({
@@ -83,6 +84,8 @@ vi.mock("@/lib/jarvis/project-dialog-intent", () => ({
 
 vi.mock("@/lib/jarvis/action-draft-store", () => ({
   createPersistedJarvisTaskDraft: mocks.createPersistedJarvisTaskDraft,
+  createPersistedJarvisPlanningDraft:
+    mocks.createPersistedJarvisPlanningDraft,
   JarvisActionDraftError: class JarvisActionDraftError extends Error {
     code: string;
     status: number;
@@ -203,6 +206,44 @@ describe("POST /api/jarvis/chat", () => {
         assigneeOptions: [{ id: "user-1", label: "Test User" }],
       },
       confirmation: { enabled: false, reason: "missing_fields" },
+      cancellation: { enabled: true },
+      execution: { enabled: false, reason: "requires_confirmation" },
+    });
+    mocks.createPersistedJarvisPlanningDraft.mockResolvedValue({
+      version: 2,
+      previewId: "planning-preview-1",
+      actionId: "planning.prepare",
+      title: "Termin vorbereiten",
+      badge: "Bereit",
+      state: "awaiting_confirmation",
+      revision: 1,
+      expiresAt: "2026-08-03T08:15:00.000Z",
+      fields: [
+        { label: "Titel", value: "Vor-Ort-Prüfung" },
+        { label: "Mitarbeitend", value: "Christian Eid" },
+      ],
+      missingFields: [],
+      checks: [
+        {
+          code: "date_time",
+          label: "Datum und Zeit (Berlin)",
+          status: "ok",
+          detail: "03.08.2026, 10:00–11:00 Uhr.",
+        },
+      ],
+      editor: {
+        title: "Vor-Ort-Prüfung",
+        note: "",
+        assigneeId: "user-1",
+        startAt: "2026-08-03T08:00:00.000Z",
+        endAt: "2026-08-03T09:00:00.000Z",
+        approvalStatus: "confirmed",
+        approvalStatusOptions: [
+          { value: "confirmed", label: "Bestätigter Termin" },
+        ],
+        assigneeOptions: [{ id: "user-1", label: "Christian Eid" }],
+      },
+      confirmation: { enabled: true, reason: "ready" },
       cancellation: { enabled: true },
       execution: { enabled: false, reason: "requires_confirmation" },
     });
@@ -1733,7 +1774,7 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
   });
 
-  it("returns a non-executable appointment preview without persisting planning data", async () => {
+  it("returns a persistent preflighted appointment draft without writing planning data", async () => {
     const user = {
       id: "user-1",
       isActive: true,
@@ -1791,23 +1832,24 @@ describe("POST /api/jarvis/chat", () => {
 
     expect(payload).toMatchObject({
       type: "answer",
-      topicId: "action.preview.planning",
-      actionPreview: {
+      topicId: "action.draft.planning",
+      actionDraft: {
         actionId: "planning.prepare",
-        badge: "Nur Vorschau",
-        confirmation: { enabled: false, reason: "not_released" },
-        execution: { enabled: false, reason: "preview_only" },
-        fields: expect.arrayContaining([
-          { label: "Titel", value: "Vor-Ort-Prüfung" },
-          { label: "Beginn", value: "03.08.2026, 10:00" },
-          { label: "Ende", value: "03.08.2026, 11:00" },
-          { label: "Mitarbeitende", value: "Christian Eid" },
-        ]),
+        badge: "Bereit",
+        confirmation: { enabled: true, reason: "ready" },
+        execution: { enabled: false, reason: "requires_confirmation" },
       },
     });
-    expect(JSON.stringify(payload.actionPreview)).not.toContain("project-1");
-    expect(JSON.stringify(payload.actionPreview)).not.toContain("user-1");
+    expect(JSON.stringify(payload.actionDraft)).not.toContain("project-1");
+    expect(JSON.stringify(payload.actionDraft)).not.toContain("session-1");
     expect(mocks.createPersistedJarvisTaskDraft).not.toHaveBeenCalled();
+    expect(mocks.createPersistedJarvisPlanningDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: "organization-1",
+        sessionId: "session-1",
+        context: { recordType: "project", recordId: "project-1" },
+      })
+    );
     expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
   });
 

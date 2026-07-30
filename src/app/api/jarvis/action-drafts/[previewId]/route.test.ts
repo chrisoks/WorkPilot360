@@ -5,10 +5,14 @@ const mocks = vi.hoisted(() => ({
   getSessionBoundActor: vi.fn(),
   sessionBoundActorResponse: vi.fn(),
   createJarvisAccessProfile: vi.fn(),
-  getJarvisTaskDraft: vi.fn(),
+  getJarvisActionDraft: vi.fn(),
   completeJarvisTaskDraft: vi.fn(),
   cancelJarvisTaskDraft: vi.fn(),
   confirmJarvisTaskDraft: vi.fn(),
+  completeJarvisPlanningDraft: vi.fn(),
+  cancelJarvisPlanningDraft: vi.fn(),
+  confirmJarvisPlanningDraft: vi.fn(),
+  savePlanningEntry: vi.fn(),
 }));
 
 vi.mock("@/lib/demo/context", () => ({
@@ -22,10 +26,13 @@ vi.mock("@/lib/jarvis/security", () => ({
   createJarvisAccessProfile: mocks.createJarvisAccessProfile,
 }));
 vi.mock("@/lib/jarvis/action-draft-store", () => ({
-  getJarvisTaskDraft: mocks.getJarvisTaskDraft,
+  getJarvisActionDraft: mocks.getJarvisActionDraft,
   completeJarvisTaskDraft: mocks.completeJarvisTaskDraft,
   cancelJarvisTaskDraft: mocks.cancelJarvisTaskDraft,
   confirmJarvisTaskDraft: mocks.confirmJarvisTaskDraft,
+  completeJarvisPlanningDraft: mocks.completeJarvisPlanningDraft,
+  cancelJarvisPlanningDraft: mocks.cancelJarvisPlanningDraft,
+  confirmJarvisPlanningDraft: mocks.confirmJarvisPlanningDraft,
   JarvisActionDraftError: class JarvisActionDraftError extends Error {
     constructor(
       public readonly code: string,
@@ -35,6 +42,9 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
       super(message);
     }
   },
+}));
+vi.mock("@/app/api/planning-entries/route", () => ({
+  POST: mocks.savePlanningEntry,
 }));
 
 import {
@@ -84,7 +94,7 @@ describe("JARVIS action-draft API", () => {
       effectiveActor: actor,
       isImpersonating: false,
     });
-    mocks.getJarvisTaskDraft.mockResolvedValue(draft);
+    mocks.getJarvisActionDraft.mockResolvedValue(draft);
     mocks.completeJarvisTaskDraft.mockResolvedValue(draft);
     mocks.cancelJarvisTaskDraft.mockResolvedValue({
       ...draft,
@@ -95,6 +105,44 @@ describe("JARVIS action-draft API", () => {
       state: "executed",
       result: { entityType: "task", entityId: "task-1", label: "Öffnen" },
     });
+    mocks.confirmJarvisPlanningDraft.mockImplementation(
+      async (
+        _previewId: string,
+        _binding: unknown,
+        _revision: number,
+        execute: (input: Record<string, unknown>) => Promise<{ id: string }>
+      ) => {
+        await execute({
+          id: "planning-preview-1",
+          actorUserId: "user-1",
+          title: "Vor-Ort-Prüfung",
+          description: "",
+          userId: "user-1",
+          date: "2026-08-03",
+          startTime: "10:00",
+          endTime: "11:00",
+          durationMinutes: 60,
+          board: "OK solutions",
+          groupName: "Marketing",
+          projectId: "project-1",
+          projectLabel: "MKG-209 · Marketing",
+          approvalStatus: "confirmed",
+        });
+        return {
+          ...draft,
+          actionId: "planning.prepare",
+          state: "executed",
+          result: {
+            entityType: "planning",
+            entityId: "planning-preview-1",
+            label: "Öffnen",
+          },
+        };
+      }
+    );
+    mocks.savePlanningEntry.mockResolvedValue(
+      Response.json({ id: "planning-preview-1" }, { status: 201 })
+    );
   });
 
   it("binds reads to the server session and effective actor", async () => {
@@ -103,7 +151,7 @@ describe("JARVIS action-draft API", () => {
       context
     ))!;
     expect(response.status).toBe(200);
-    expect(mocks.getJarvisTaskDraft).toHaveBeenCalledWith(
+    expect(mocks.getJarvisActionDraft).toHaveBeenCalledWith(
       "preview-1",
       expect.objectContaining({
         organizationId: "org-1",
@@ -280,6 +328,41 @@ describe("JARVIS action-draft API", () => {
       expect.anything(),
       2
     );
+  });
+
+  it("executes planning confirmation only through the existing planning service", async () => {
+    const response = (await POST(
+      request(
+        "POST",
+        {
+          actorId: "user-1",
+          actionId: "planning.prepare",
+          command: "confirm",
+          revision: 1,
+          organizationId: "evil-org",
+          board: "Manipulated board",
+        },
+        {
+          "x-jarvis-action": "jarvis-action-draft-v2",
+          origin: "https://workpilot.example",
+          cookie: "workpilot_session=signed",
+        }
+      ) as never,
+      context
+    ))!;
+    expect(response.status).toBe(200);
+    expect(mocks.confirmJarvisPlanningDraft).toHaveBeenCalledTimes(1);
+    expect(mocks.savePlanningEntry).toHaveBeenCalledTimes(1);
+    const forwarded = mocks.savePlanningEntry.mock.calls[0][0] as Request;
+    const body = await forwarded.json();
+    expect(body).toMatchObject({
+      id: "planning-preview-1",
+      board: "OK solutions",
+      groupName: "Marketing",
+      actorUserId: "user-1",
+      source: "manual",
+    });
+    expect(body.organizationId).toBeUndefined();
   });
 
   it("rejects unknown commands without touching draft state", async () => {

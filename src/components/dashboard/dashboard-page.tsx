@@ -61,6 +61,7 @@ import {
 import type { JarvisDialogChoice } from "@/lib/jarvis/dialog";
 import type {
   JarvisActionPreviewView,
+  JarvisPlanningActionDraftView,
   JarvisTaskActionDraftView,
 } from "@/lib/jarvis/action-center";
 import {
@@ -652,7 +653,7 @@ type ManagementAiChatMessage = {
   records?: JarvisRecordResult[];
   structured?: JarvisStructuredAnswer;
   actionPreview?: JarvisActionPreviewView;
-  actionDraft?: JarvisTaskActionDraftView;
+  actionDraft?: JarvisTaskActionDraftView | JarvisPlanningActionDraftView;
   dialogState?: JarvisDialogState;
 };
 
@@ -778,6 +779,7 @@ function parseJarvisActionPreview(
 const jarvisTaskDraftStates = new Set([
   "awaiting_input",
   "awaiting_confirmation",
+  "executing",
   "cancelled",
   "expired",
   "executed",
@@ -785,6 +787,7 @@ const jarvisTaskDraftStates = new Set([
 const jarvisTaskDraftBadges = new Set([
   "Entwurf",
   "Bereit",
+  "Wird angelegt",
   "Abgebrochen",
   "Abgelaufen",
   "Angelegt",
@@ -794,6 +797,7 @@ const jarvisTaskDraftConfirmationReasons = new Set([
   "missing_fields",
   "expired",
   "cancelled",
+  "executing",
   "executed",
 ]);
 
@@ -955,6 +959,228 @@ function parseJarvisTaskActionDraft(
   };
 }
 
+function parseJarvisPlanningActionDraft(
+  value: unknown
+): JarvisPlanningActionDraftView | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  const editor =
+    candidate.editor && typeof candidate.editor === "object"
+      ? (candidate.editor as Record<string, unknown>)
+      : undefined;
+  const confirmation =
+    candidate.confirmation && typeof candidate.confirmation === "object"
+      ? (candidate.confirmation as Record<string, unknown>)
+      : undefined;
+  const cancellation =
+    candidate.cancellation && typeof candidate.cancellation === "object"
+      ? (candidate.cancellation as Record<string, unknown>)
+      : undefined;
+  const execution =
+    candidate.execution && typeof candidate.execution === "object"
+      ? (candidate.execution as Record<string, unknown>)
+      : undefined;
+  if (
+    candidate.version !== 2 ||
+    candidate.actionId !== "planning.prepare" ||
+    !["Termin vorbereiten", "Terminwunsch vorbereiten"].includes(
+      String(candidate.title)
+    ) ||
+    typeof candidate.previewId !== "string" ||
+    typeof candidate.badge !== "string" ||
+    !jarvisTaskDraftBadges.has(candidate.badge) ||
+    typeof candidate.state !== "string" ||
+    !jarvisTaskDraftStates.has(candidate.state) ||
+    !Number.isSafeInteger(candidate.revision) ||
+    Number(candidate.revision) < 1 ||
+    typeof candidate.expiresAt !== "string" ||
+    !Number.isFinite(Date.parse(candidate.expiresAt)) ||
+    !editor ||
+    typeof editor.title !== "string" ||
+    typeof editor.note !== "string" ||
+    typeof editor.assigneeId !== "string" ||
+    typeof editor.startAt !== "string" ||
+    typeof editor.endAt !== "string" ||
+    !Number.isFinite(Date.parse(editor.startAt)) ||
+    !Number.isFinite(Date.parse(editor.endAt)) ||
+    !["confirmed", "requested"].includes(String(editor.approvalStatus)) ||
+    !Array.isArray(editor.assigneeOptions) ||
+    !Array.isArray(editor.approvalStatusOptions) ||
+    !Array.isArray(candidate.checks) ||
+    !confirmation ||
+    typeof confirmation.enabled !== "boolean" ||
+    typeof confirmation.reason !== "string" ||
+    !jarvisTaskDraftConfirmationReasons.has(confirmation.reason) ||
+    !cancellation ||
+    typeof cancellation.enabled !== "boolean" ||
+    !execution ||
+    execution.enabled !== false ||
+    !["requires_confirmation", "finalized"].includes(String(execution.reason))
+  ) {
+    return undefined;
+  }
+  const parseFields = (raw: unknown) =>
+    Array.isArray(raw)
+      ? raw
+          .map((field) => {
+            if (!field || typeof field !== "object") return undefined;
+            const row = field as Record<string, unknown>;
+            if (typeof row.label !== "string" || typeof row.value !== "string") {
+              return undefined;
+            }
+            const label = row.label.trim().slice(0, 80);
+            const fieldValue = row.value.trim().slice(0, 500);
+            return label && fieldValue
+              ? { label, value: fieldValue }
+              : undefined;
+          })
+          .filter(
+            (field): field is { label: string; value: string } =>
+              Boolean(field)
+          )
+          .slice(0, 12)
+      : [];
+  const assigneeOptions = editor.assigneeOptions
+    .map((option) => {
+      if (!option || typeof option !== "object") return undefined;
+      const row = option as Record<string, unknown>;
+      if (typeof row.id !== "string" || typeof row.label !== "string") {
+        return undefined;
+      }
+      const id = row.id.trim().slice(0, 120);
+      const label = row.label.trim().slice(0, 160);
+      return id && label ? { id, label } : undefined;
+    })
+    .filter(
+      (option): option is { id: string; label: string } => Boolean(option)
+    )
+    .slice(0, 200);
+  const approvalStatusOptions = editor.approvalStatusOptions
+    .map((option) => {
+      if (!option || typeof option !== "object") return undefined;
+      const row = option as Record<string, unknown>;
+      if (
+        !["confirmed", "requested"].includes(String(row.value)) ||
+        typeof row.label !== "string"
+      ) {
+        return undefined;
+      }
+      return {
+        value: row.value as "confirmed" | "requested",
+        label: row.label.trim().slice(0, 80),
+      };
+    })
+    .filter(
+      (
+        option
+      ): option is {
+        value: "confirmed" | "requested";
+        label: string;
+      } => Boolean(option?.label)
+    );
+  const checks = candidate.checks
+    .map((check) => {
+      if (!check || typeof check !== "object") return undefined;
+      const row = check as Record<string, unknown>;
+      if (
+        typeof row.code !== "string" ||
+        typeof row.label !== "string" ||
+        typeof row.detail !== "string" ||
+        !["ok", "warning", "blocked"].includes(String(row.status))
+      ) {
+        return undefined;
+      }
+      return {
+        code: row.code.trim().slice(0, 80),
+        label: row.label.trim().slice(0, 120),
+        status: row.status as "ok" | "warning" | "blocked",
+        detail: row.detail.trim().slice(0, 600),
+      };
+    })
+    .filter(
+      (
+        check
+      ): check is JarvisPlanningActionDraftView["checks"][number] =>
+        Boolean(check?.code && check.label && check.detail)
+    )
+    .slice(0, 20);
+  const previewId = candidate.previewId.trim().slice(0, 120);
+  const fields = parseFields(candidate.fields);
+  if (
+    !previewId ||
+    fields.length === 0 ||
+    assigneeOptions.length === 0 ||
+    approvalStatusOptions.length === 0 ||
+    checks.length === 0
+  ) {
+    return undefined;
+  }
+  const resultCandidate =
+    candidate.result && typeof candidate.result === "object"
+      ? (candidate.result as Record<string, unknown>)
+      : undefined;
+  const result =
+    resultCandidate?.entityType === "planning" &&
+    typeof resultCandidate.entityId === "string" &&
+    typeof resultCandidate.label === "string"
+      ? {
+          entityType: "planning" as const,
+          entityId: resultCandidate.entityId.trim().slice(0, 120),
+          label: resultCandidate.label.trim().slice(0, 120),
+        }
+      : undefined;
+  return {
+    version: 2,
+    previewId,
+    actionId: "planning.prepare",
+    title: candidate.title as JarvisPlanningActionDraftView["title"],
+    badge: candidate.badge as JarvisPlanningActionDraftView["badge"],
+    state: candidate.state as JarvisPlanningActionDraftView["state"],
+    revision: Number(candidate.revision),
+    expiresAt: candidate.expiresAt,
+    fields,
+    missingFields: Array.isArray(candidate.missingFields)
+      ? candidate.missingFields
+          .filter((field): field is string => typeof field === "string")
+          .map((field) => field.trim().slice(0, 120))
+          .filter(Boolean)
+          .slice(0, 20)
+      : [],
+    checks,
+    editor: {
+      title: editor.title.trim().slice(0, 180),
+      note: editor.note.slice(0, 4000),
+      assigneeId: editor.assigneeId.trim().slice(0, 120),
+      startAt: editor.startAt,
+      endAt: editor.endAt,
+      approvalStatus: editor.approvalStatus as "confirmed" | "requested",
+      approvalStatusOptions,
+      assigneeOptions,
+    },
+    confirmation: {
+      enabled: confirmation.enabled,
+      reason:
+        confirmation.reason as JarvisPlanningActionDraftView["confirmation"]["reason"],
+    },
+    cancellation: { enabled: cancellation.enabled },
+    execution: {
+      enabled: false,
+      reason:
+        execution.reason as JarvisPlanningActionDraftView["execution"]["reason"],
+    },
+    ...(result?.entityId && result.label ? { result } : {}),
+  };
+}
+
+function parseJarvisActionDraft(
+  value: unknown
+): JarvisTaskActionDraftView | JarvisPlanningActionDraftView | undefined {
+  return (
+    parseJarvisTaskActionDraft(value) ??
+    parseJarvisPlanningActionDraft(value)
+  );
+}
+
 function jarvisIsoToLocalInput(value: string) {
   if (!value || !Number.isFinite(Date.parse(value))) return "";
   const date = new Date(value);
@@ -1021,6 +1247,7 @@ function JarvisTaskDraftCard({
           },
           body: JSON.stringify({
             actorId,
+            actionId: "task.prepare",
             revision: draft.revision,
             ...body,
           }),
@@ -1185,6 +1412,320 @@ function JarvisTaskDraftCard({
                   "de-DE",
                   { hour: "2-digit", minute: "2-digit" }
                 )} Uhr an diese Sitzung gebunden. Erst „Aufgabe jetzt anlegen“ schreibt Daten.`}
+      </footer>
+    </section>
+  );
+}
+
+function JarvisPlanningDraftCard({
+  draft,
+  actorId,
+  disabled,
+  onChange,
+  onOpenPlanning,
+}: {
+  draft: JarvisPlanningActionDraftView;
+  actorId: string;
+  disabled: boolean;
+  onChange: (next: JarvisPlanningActionDraftView, message?: string) => void;
+  onOpenPlanning: () => void;
+}) {
+  const [title, setTitle] = useState(draft.editor.title);
+  const [note, setNote] = useState(draft.editor.note);
+  const [assigneeId, setAssigneeId] = useState(draft.editor.assigneeId);
+  const [startAt, setStartAt] = useState(
+    jarvisIsoToLocalInput(draft.editor.startAt)
+  );
+  const [endAt, setEndAt] = useState(
+    jarvisIsoToLocalInput(draft.editor.endAt)
+  );
+  const [approvalStatus, setApprovalStatus] = useState<
+    "confirmed" | "requested"
+  >(draft.editor.approvalStatus);
+  const [isWorking, setIsWorking] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setTitle(draft.editor.title);
+    setNote(draft.editor.note);
+    setAssigneeId(draft.editor.assigneeId);
+    setStartAt(jarvisIsoToLocalInput(draft.editor.startAt));
+    setEndAt(jarvisIsoToLocalInput(draft.editor.endAt));
+    setApprovalStatus(draft.editor.approvalStatus);
+    setError("");
+  }, [
+    draft.previewId,
+    draft.revision,
+    draft.state,
+    draft.editor.title,
+    draft.editor.note,
+    draft.editor.assigneeId,
+    draft.editor.startAt,
+    draft.editor.endAt,
+    draft.editor.approvalStatus,
+  ]);
+
+  const isOpen =
+    draft.state === "awaiting_input" ||
+    draft.state === "awaiting_confirmation";
+  const isDirty =
+    title.trim() !== draft.editor.title ||
+    note.trim() !== draft.editor.note ||
+    assigneeId !== draft.editor.assigneeId ||
+    startAt !== jarvisIsoToLocalInput(draft.editor.startAt) ||
+    endAt !== jarvisIsoToLocalInput(draft.editor.endAt) ||
+    approvalStatus !== draft.editor.approvalStatus;
+  const request = async (
+    method: "PATCH" | "POST",
+    body: Record<string, unknown>
+  ) => {
+    setIsWorking(true);
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/jarvis/action-drafts/${encodeURIComponent(draft.previewId)}`,
+        {
+          method,
+          headers: {
+            "Content-Type": "application/json",
+            "X-Jarvis-Action": "jarvis-action-draft-v2",
+          },
+          body: JSON.stringify({
+            actorId,
+            actionId: "planning.prepare",
+            revision: draft.revision,
+            ...body,
+          }),
+        }
+      );
+      const data = await response.json().catch(() => null);
+      const next = parseJarvisPlanningActionDraft(data?.actionDraft);
+      if (!response.ok || !next) {
+        setError(
+          data?.error ??
+            "Der Terminentwurf konnte nicht sicher verarbeitet werden."
+        );
+        return;
+      }
+      onChange(
+        next,
+        typeof data?.message === "string" ? data.message : undefined
+      );
+    } catch {
+      setError(
+        "Das Action Center ist gerade nicht erreichbar. Es wurden keine Planungsdaten geschrieben."
+      );
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
+  return (
+    <section
+      className={styles.jarvisActionPreview}
+      data-state={draft.state}
+      aria-label={`${draft.title} – ${draft.badge}`}
+    >
+      <header>
+        <div>
+          <span>Action Center</span>
+          <strong>{draft.title}</strong>
+        </div>
+        <em>{draft.badge}</em>
+      </header>
+      <dl>
+        {draft.fields.map((field) => (
+          <div key={`${field.label}-${field.value}`}>
+            <dt>{field.label}</dt>
+            <dd>{field.value}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className={styles.jarvisPlanningChecks}>
+        <strong>Fachliche Vorprüfung</strong>
+        {draft.checks.map((check) => (
+          <div key={check.code} data-status={check.status}>
+            <span>
+              {check.status === "ok"
+                ? "✓"
+                : check.status === "warning"
+                  ? "!"
+                  : "×"}
+            </span>
+            <p>
+              <b>{check.label}</b>
+              <small>{check.detail}</small>
+            </p>
+          </div>
+        ))}
+      </div>
+      {isOpen ? (
+        <div className={styles.jarvisActionDraftEditor}>
+          <label>
+            <span>Titel</span>
+            <input
+              type="text"
+              maxLength={180}
+              value={title}
+              disabled={disabled || isWorking}
+              onChange={(event) => setTitle(event.target.value)}
+            />
+          </label>
+          <label>
+            <span>Mitarbeitende Person</span>
+            <select
+              value={assigneeId}
+              disabled={disabled || isWorking}
+              onChange={(event) => setAssigneeId(event.target.value)}
+            >
+              <option value="">Bitte auswählen</option>
+              {draft.editor.assigneeOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Terminart</span>
+            <select
+              value={approvalStatus}
+              disabled={disabled || isWorking}
+              onChange={(event) =>
+                setApprovalStatus(
+                  event.target.value as "confirmed" | "requested"
+                )
+              }
+            >
+              {draft.editor.approvalStatusOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Beginn</span>
+            <input
+              type="datetime-local"
+              value={startAt}
+              disabled={disabled || isWorking}
+              onChange={(event) => setStartAt(event.target.value)}
+            />
+          </label>
+          <label>
+            <span>Ende</span>
+            <input
+              type="datetime-local"
+              value={endAt}
+              disabled={disabled || isWorking}
+              onChange={(event) => setEndAt(event.target.value)}
+            />
+          </label>
+          <label>
+            <span>Notiz (optional)</span>
+            <textarea
+              rows={3}
+              maxLength={4000}
+              value={note}
+              disabled={disabled || isWorking}
+              onChange={(event) => setNote(event.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            disabled={
+              disabled ||
+              isWorking ||
+              !title.trim() ||
+              !assigneeId ||
+              !startAt ||
+              !endAt ||
+              !Number.isFinite(new Date(startAt).getTime()) ||
+              !Number.isFinite(new Date(endAt).getTime())
+            }
+            onClick={() =>
+              void request("PATCH", {
+                title,
+                note,
+                assigneeId,
+                startAt: new Date(startAt).toISOString(),
+                endAt: new Date(endAt).toISOString(),
+                approvalStatus,
+              })
+            }
+          >
+            Änderungen erneut prüfen
+          </button>
+        </div>
+      ) : null}
+      {draft.missingFields.length ? (
+        <div className={styles.jarvisActionPreviewMissing}>
+          <strong>Speichern ist noch blockiert</strong>
+          <span>{draft.missingFields.join(" · ")}</span>
+        </div>
+      ) : null}
+      {draft.confirmation.enabled && isDirty ? (
+        <div className={styles.jarvisActionPreviewMissing}>
+          <strong>Änderungen noch nicht geprüft</strong>
+          <span>
+            Prüfe die geänderten Angaben erneut, bevor du den Termin anlegst.
+          </span>
+        </div>
+      ) : null}
+      {error ? (
+        <div className={styles.jarvisActionDraftError} role="alert">
+          {error}
+        </div>
+      ) : null}
+      <div className={styles.jarvisActionDraftActions}>
+        {draft.confirmation.enabled ? (
+          <button
+            type="button"
+            data-primary="true"
+            disabled={disabled || isWorking || isDirty}
+            onClick={() => void request("POST", { command: "confirm" })}
+          >
+            {draft.editor.approvalStatus === "requested"
+              ? "Terminwunsch jetzt anlegen"
+              : "Termin jetzt anlegen"}
+          </button>
+        ) : null}
+        {draft.cancellation.enabled ? (
+          <button
+            type="button"
+            disabled={disabled || isWorking}
+            onClick={() => void request("POST", { command: "cancel" })}
+          >
+            Entwurf abbrechen
+          </button>
+        ) : null}
+        {draft.result ? (
+          <button
+            type="button"
+            data-primary="true"
+            disabled={disabled || isWorking}
+            onClick={onOpenPlanning}
+          >
+            {draft.result.label}
+          </button>
+        ) : null}
+      </div>
+      <footer>
+        {draft.state === "executed"
+          ? "Die Datenbank hat die Anlage bestätigt. Eine erneute Bestätigung erzeugt keinen zweiten Termin."
+          : draft.state === "executing"
+            ? "Der bestehende Planning-Service verarbeitet die bestätigte Anlage."
+            : draft.state === "cancelled"
+              ? "Der Entwurf wurde beendet. Es wurden keine Planungsdaten angelegt."
+              : draft.state === "expired"
+                ? "Der Entwurf ist abgelaufen und kann nicht mehr bestätigt werden."
+                : `Der Entwurf ist bis ${new Date(
+                    draft.expiresAt
+                  ).toLocaleTimeString("de-DE", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })} Uhr an diese Sitzung gebunden. Nur der ausdrückliche Anlage-Button schreibt über den Planning-Service.`}
       </footer>
     </section>
   );
@@ -33133,7 +33674,7 @@ await addProjectLogbookEntry(
       const responseActionPreview = parseJarvisActionPreview(
         data?.actionPreview
       );
-      const responseActionDraft = parseJarvisTaskActionDraft(
+      const responseActionDraft = parseJarvisActionDraft(
         data?.actionDraft
       );
       const responseDialogState =
@@ -33205,9 +33746,9 @@ await addProjectLogbookEntry(
     }
   }
 
-  function updateJarvisTaskDraftMessage(
+  function updateJarvisActionDraftMessage(
     messageIndex: number,
-    nextDraft: JarvisTaskActionDraftView,
+    nextDraft: JarvisTaskActionDraftView | JarvisPlanningActionDraftView,
     message?: string
   ) {
     setManagementAiMessages((current) =>
@@ -33222,7 +33763,11 @@ await addProjectLogbookEntry(
       )
     );
     if (nextDraft.state === "executed") {
-      void loadTasks();
+      if (nextDraft.actionId === "planning.prepare") {
+        void loadPlanningEntries();
+      } else {
+        void loadTasks();
+      }
     }
   }
 
@@ -69158,13 +69703,13 @@ await addProjectLogbookEntry(
                       </section>
                     ) : null}
                     {message.role === "assistant" &&
-                    message.actionDraft ? (
+                    message.actionDraft?.actionId === "task.prepare" ? (
                       <JarvisTaskDraftCard
                         draft={message.actionDraft}
                         actorId={activeUserId}
                         disabled={isManagementAiSending}
                         onChange={(nextDraft, nextMessage) =>
-                          updateJarvisTaskDraftMessage(
+                          updateJarvisActionDraftMessage(
                             index,
                             nextDraft,
                             nextMessage
@@ -69173,6 +69718,25 @@ await addProjectLogbookEntry(
                         onOpenTask={(taskId) =>
                           void openJarvisCreatedTask(taskId)
                         }
+                      />
+                    ) : null}
+                    {message.role === "assistant" &&
+                    message.actionDraft?.actionId === "planning.prepare" ? (
+                      <JarvisPlanningDraftCard
+                        draft={message.actionDraft}
+                        actorId={activeUserId}
+                        disabled={isManagementAiSending}
+                        onChange={(nextDraft, nextMessage) =>
+                          updateJarvisActionDraftMessage(
+                            index,
+                            nextDraft,
+                            nextMessage
+                          )
+                        }
+                        onOpenPlanning={() => {
+                          setActiveTab("planningBoard");
+                          void loadPlanningEntries();
+                        }}
                       />
                     ) : null}
                     {message.role === "assistant" &&

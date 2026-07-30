@@ -15,6 +15,7 @@ import {
   type JarvisDialogChoice,
 } from "@/lib/jarvis/dialog";
 import { normalizeJarvisIntentText } from "@/lib/jarvis/intent-text";
+import { canManagePlanningEntries } from "@/lib/permissions";
 
 export type JarvisSurfaceContext = {
   module?: string;
@@ -783,8 +784,20 @@ function extractHelpProjectReference(question: string) {
 
 function getAppointmentAnswer(
   question: string,
-  context: JarvisSurfaceContext
+  context: JarvisSurfaceContext,
+  accessProfile?: JarvisAccessProfile
 ): JarvisHelpResult {
+  if (
+    accessProfile &&
+    !canManagePlanningEntries(accessProfile.effectiveActor)
+  ) {
+    return {
+      type: "answer",
+      topicId: "appointment.create",
+      message:
+        "Für die aktuelle WorkPilot-Rolle ist ausschließlich ein eigener Terminwunsch freigegeben: Öffne das passende Projekt, wechsle zu „Termine & Stempelungen“, wähle „+ Terminwunsch“, trage Datum sowie Von/Bis ein und sende ihn zur Freigabe. Einen bestätigten Termin oder eine Planung für andere Mitarbeitende darfst du nicht anlegen.",
+    };
+  }
   const explicitReference = extractHelpProjectReference(question);
   const start = explicitReference
     ? `Öffne das Projekt ${explicitReference} und dort „Termine & Stempelungen“. Klicke anschließend auf „+ Termin“.`
@@ -1197,6 +1210,17 @@ export function resolveJarvisSystemHelpTopic(
           "Diese Funktion ist für deine aktuelle WorkPilot-Rolle nicht freigegeben. JARVIS kann sie deshalb weder erklären noch vorbereiten.",
       };
     }
+    if (
+      topic.id === "planning.assignEmployees" &&
+      !canManagePlanningEntries(accessProfile.effectiveActor)
+    ) {
+      return {
+        type: "refusal",
+        topicId: topic.id,
+        message:
+          "Die Planung anderer Mitarbeitender ist für deine aktuelle WorkPilot-Rolle nicht freigegeben.",
+      };
+    }
   }
 
   if (topic.id === "jarvis.principles") {
@@ -1221,7 +1245,7 @@ export function resolveJarvisSystemHelpTopic(
     };
   }
   if (topic.id === "appointment.create") {
-    return getAppointmentAnswer(cleaned, context);
+    return getAppointmentAnswer(cleaned, context, accessProfile);
   }
   if (topic.id === "time.manual") return getTimeEntryAnswer(cleaned, context);
   if (topic.id === "planning.assignEmployees") {

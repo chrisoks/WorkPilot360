@@ -194,7 +194,7 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     confirmation: "preview",
     dataClasses: ["internal"],
     implementation: "planned",
-    canUse: canManagePlanningEntries,
+    canUse: isActiveInternalUser,
   },
   {
     id: "planning.create",
@@ -204,7 +204,7 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     confirmation: "confirm",
     dataClasses: ["internal"],
     implementation: "planned",
-    canUse: canManagePlanningEntries,
+    canUse: isActiveInternalUser,
   },
   {
     id: "time.prepare",

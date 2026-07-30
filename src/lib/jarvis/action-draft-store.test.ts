@@ -13,6 +13,8 @@ const fake = vi.hoisted(() => {
       firstName: "Jarvis",
       lastName: "Tester",
       email: "jarvis@example.test",
+      planningBoard: "OK solutions",
+      planningGroup: "Marketing",
     },
     {
       id: "user-2",
@@ -22,9 +24,13 @@ const fake = vi.hoisted(() => {
       firstName: "Zweite",
       lastName: "Person",
       email: "zweite@example.test",
+      planningBoard: "OK solutions",
+      planningGroup: "Marketing",
     },
   ];
   let projectUpdatedAt = new Date("2026-07-29T18:00:00.000Z");
+  const planningEntries: Array<Record<string, any>> = [];
+  const absences: Array<Record<string, any>> = [];
 
   const matches = (
     row: Record<string, any>,
@@ -130,6 +136,39 @@ const fake = vi.hoisted(() => {
             : null
       ),
     },
+    planningEntry: {
+      findMany: vi.fn(async ({ where }: { where: Record<string, any> }) =>
+        planningEntries.filter(
+          (entry) =>
+            entry.organizationId === where.organizationId &&
+            entry.userId === where.userId &&
+            entry.date === where.date &&
+            entry.id !== where.id?.not &&
+            entry.deletedAt === null
+        )
+      ),
+      findFirst: vi.fn(async ({ where }: { where: Record<string, any> }) =>
+        planningEntries.find(
+          (entry) =>
+            entry.id === where.id &&
+            entry.organizationId === where.organizationId &&
+            entry.deletedAt === null
+        ) ?? null
+      ),
+    },
+    absence: {
+      findFirst: vi.fn(async ({ where }: { where: Record<string, any> }) =>
+        absences.find(
+          (absence) =>
+            absence.organizationId === where.organizationId &&
+            absence.userId === where.userId &&
+            absence.date.toISOString() === where.date.toISOString()
+        ) ?? null
+      ),
+    },
+    organizationSetting: {
+      findUnique: vi.fn(async () => ({ value: { state: "BW" } })),
+    },
     $transaction: vi.fn(async (callback: (tx: any) => unknown) =>
       callback(prisma)
     ),
@@ -144,11 +183,15 @@ const fake = vi.hoisted(() => {
     reset() {
       drafts.clear();
       audits.length = 0;
+      planningEntries.length = 0;
+      absences.length = 0;
       projectUpdatedAt = new Date("2026-07-29T18:00:00.000Z");
     },
     changeProject() {
       projectUpdatedAt = new Date("2026-07-29T19:00:00.000Z");
     },
+    planningEntries,
+    absences,
   };
 });
 
@@ -158,9 +201,13 @@ vi.mock("@/lib/services/task-service", () => ({
 }));
 
 import {
+  cancelJarvisPlanningDraft,
   cancelJarvisTaskDraft,
+  completeJarvisPlanningDraft,
   completeJarvisTaskDraft,
+  confirmJarvisPlanningDraft,
   confirmJarvisTaskDraft,
+  createPersistedJarvisPlanningDraft,
   createPersistedJarvisTaskDraft,
   getJarvisTaskDraft,
   JarvisActionDraftError,
@@ -442,5 +489,192 @@ describe("persistent JARVIS task drafts", () => {
       confirmJarvisTaskDraft("preview-1", binding(), 2, baseNow)
     ).rejects.toMatchObject({ code: "stale_context" });
     expect(fake.createJarvisConfirmedTask).not.toHaveBeenCalled();
+  });
+});
+
+async function createPlanningDraft(
+  overrides: {
+    approvalStatus?: "confirmed" | "requested";
+    assigneeId?: string;
+    bindingProfile?: JarvisAccessProfile;
+  } = {}
+) {
+  const selectedProfile = overrides.bindingProfile ?? profile();
+  return createPersistedJarvisPlanningDraft({
+    organizationId: "org-1",
+    sessionId: "session-1",
+    profile: selectedProfile,
+    now: baseNow,
+    preview: {
+      version: 1,
+      previewId: "planning-preview-1",
+      actionId: "planning.prepare",
+      actionTitle: "Termin vorbereiten",
+      state: "awaiting_confirmation",
+      organizationId: "org-1",
+      sessionActorId: "user-1",
+      effectiveActorId: selectedProfile.effectiveActor.id!,
+      impersonating: selectedProfile.isImpersonating,
+      payload: {
+        title: "Vor-Ort-Prüfung",
+        projectId: "project-1",
+        assigneeIds: [overrides.assigneeId ?? "user-1"],
+        startAt: "2026-07-31T08:00:00.000Z",
+        endAt: "2026-07-31T09:00:00.000Z",
+        approvalStatus: overrides.approvalStatus ?? "confirmed",
+      },
+      execution: { enabled: false, reason: "preview_only" },
+      audit: [],
+    },
+    context: { recordType: "project", recordId: "project-1" },
+  });
+}
+
+describe("persistent JARVIS planning drafts", () => {
+  beforeEach(() => {
+    fake.reset();
+    vi.clearAllMocks();
+    process.env.WORKPILOT_SESSION_SECRET =
+      "jarvis-test-integrity-secret-with-more-than-32-characters";
+  });
+
+  it("persists a ready draft with visible complete preflight", async () => {
+    const view = await createPlanningDraft();
+    expect(view).toMatchObject({
+      actionId: "planning.prepare",
+      state: "awaiting_confirmation",
+      confirmation: { enabled: true, reason: "ready" },
+    });
+    expect(view.checks.map((check) => check.code)).toEqual(
+      expect.arrayContaining([
+        "date_time",
+        "active_assignee",
+        "board_group",
+        "role",
+        "project_context",
+        "duplicate",
+        "overlap",
+        "absence",
+        "holiday",
+        "offer_contingent",
+      ])
+    );
+    expect(JSON.stringify(view)).not.toContain("session-1");
+    expect(fake.audits.at(-1)?.eventType).toBe("draft_created");
+  });
+
+  it("allows employees only their own requested appointment", async () => {
+    const employeeProfile = profile(Role.MITARBEITER, "user-2");
+    const ownRequest = await createPlanningDraft({
+      approvalStatus: "requested",
+      assigneeId: "user-2",
+      bindingProfile: employeeProfile,
+    });
+    expect(ownRequest.confirmation.enabled).toBe(true);
+    expect(ownRequest.editor.approvalStatusOptions).toEqual([
+      { value: "requested", label: "Terminwunsch" },
+    ]);
+  });
+
+  it("blocks absence and duplicate while exposing overlap as warning", async () => {
+    fake.planningEntries.push({
+      id: "existing-1",
+      organizationId: "org-1",
+      userId: "user-1",
+      date: "2026-07-31",
+      projectId: "project-1",
+      startTime: "10:30",
+      endTime: "12:00",
+      title: "Bestehend",
+      deletedAt: null,
+    });
+    fake.absences.push({
+      id: "absence-1",
+      organizationId: "org-1",
+      userId: "user-1",
+      date: new Date("2026-07-31T00:00:00.000Z"),
+      type: "urlaub",
+      dayPart: "full",
+    });
+    const view = await createPlanningDraft();
+    expect(view.confirmation.enabled).toBe(false);
+    expect(view.checks.find((check) => check.code === "duplicate")?.status).toBe(
+      "blocked"
+    );
+    expect(view.checks.find((check) => check.code === "overlap")?.status).toBe(
+      "warning"
+    );
+    expect(view.checks.find((check) => check.code === "absence")?.status).toBe(
+      "blocked"
+    );
+  });
+
+  it("rechecks edits, cancels without write and protects stale revisions", async () => {
+    await createPlanningDraft();
+    const updated = await completeJarvisPlanningDraft(
+      "planning-preview-1",
+      binding(),
+      {
+        revision: 1,
+        title: "Geänderte Vor-Ort-Prüfung",
+        note: "Mit Kundin abstimmen",
+        assigneeId: "user-1",
+        startAt: "2026-08-03T08:00:00.000Z",
+        endAt: "2026-08-03T09:00:00.000Z",
+        approvalStatus: "confirmed",
+      },
+      baseNow
+    );
+    expect(updated.revision).toBe(2);
+    await expect(
+      cancelJarvisPlanningDraft(
+        "planning-preview-1",
+        binding(),
+        1,
+        baseNow
+      )
+    ).rejects.toMatchObject({ code: "conflict" });
+    const cancelled = await cancelJarvisPlanningDraft(
+      "planning-preview-1",
+      binding(),
+      2,
+      baseNow
+    );
+    expect(cancelled.state).toBe("cancelled");
+    expect(fake.planningEntries).toHaveLength(0);
+  });
+
+  it("claims once, executes through the callback and makes replay idempotent", async () => {
+    const first = await createPlanningDraft();
+    const execute = vi.fn(async (input) => {
+      fake.planningEntries.push({
+        ...input,
+        organizationId: "org-1",
+        deletedAt: null,
+      });
+      return { id: input.id };
+    });
+    const executed = await confirmJarvisPlanningDraft(
+      "planning-preview-1",
+      binding(),
+      first.revision,
+      execute,
+      baseNow
+    );
+    const replay = await confirmJarvisPlanningDraft(
+      "planning-preview-1",
+      binding(),
+      first.revision,
+      execute,
+      baseNow
+    );
+    expect(executed.state).toBe("executed");
+    expect(replay.result?.entityId).toBe("planning-preview-1");
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(fake.audits.map((entry) => entry.eventType)).toEqual([
+      "draft_created",
+      "draft_confirmed",
+      "draft_executed",
+    ]);
   });
 });

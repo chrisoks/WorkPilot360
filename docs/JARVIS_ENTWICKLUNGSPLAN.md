@@ -1579,8 +1579,8 @@ späterer ausdrücklich gewählter Realtime-Modus.
 
 ### Phase 4: Starkes Action Center 1.0
 
-Stand 29.07.2026: Der erste vollständige Vertikalschnitt für Aufgaben ist
-lokal technisch und sicherheitlich abgenommen. Eine eindeutig formulierte
+Stand 30.07.2026: Der erste vollständige Vertikalschnitt für Aufgaben ist
+produktiv technisch, fachlich und sicherheitlich abgenommen. Eine eindeutig formulierte
 Aufgabenanlage erzeugt zunächst ausschließlich einen 15 Minuten gültigen,
 serverseitig persistierten Entwurf. Er ist an Organisation, serverseitige
 Sitzung, Sitzungs- und effektiven Akteur, beide Rollen und einen möglichen
@@ -1606,16 +1606,52 @@ veralteter Projektkontext, unzulässige Zuweisung und parallele Änderung laufen
 fail-closed. Die Auditfolge dokumentiert Erstellung, Vervollständigung,
 Abbruch/Ablauf, Fehler sowie bestätigte Ausführung. Der additive Prisma-Diff
 enthält ausschließlich die beiden Entwurfs-/Auditmodelle, deren Indizes und
-Fremdschlüssel. Die lokale Abnahme umfasst 1025/1025 Tests sowie einen echten
-Browser-/Datenbanklauf mit Abbruch ohne Anlage und bestätigtem Doppelklick mit
-exakt einer Aufgabe. Vor produktiver Freigabe bleiben separates Serverbackup,
-Deployment und der verpflichtende Lauf mit mindestens 110 menschenähnlichen
-Live-Fällen offen.
+Fremdschlüssel. Nach verifiziertem Serverbackup und kontrolliertem
+WorkPilot360-Deployment bestanden 110/110 menschennahe Fragen mit zusätzlicher
+qualitativer Bewertung sowie zehn weitere Aufgaben-Aktionsfälle. Der
+produktive Browser-/Datenbanklauf bestätigte Abbruch ohne Aufgabe,
+Recheck-Sperre nach einer Änderung und bestätigten Doppelklick mit exakt einer
+Aufgabe und genau einem Ausführungs-Audit. Fehlerlog, Mandant, Fremdprozess
+und HTTP-Health blieben sauber.
 
-Termin- und manuelle Zeitentwürfe besitzen weiterhin nur die typisierte
-Vorschaugrundlage und bleiben technisch nicht ausführbar (`preview_only`).
-Weitere Schreibadapter folgen erst nach derselben fachlichen und
-sicherheitstechnischen Abnahme.
+Der zweite vollständige Vertikalschnitt ist der persistente Termin- und
+Terminwunsch-Entwurf. Er übernimmt Organisation, Sitzung, beide Akteure,
+Rollenpaar, Impersonationsstatus, 15-Minuten-TTL, Revision,
+Payload-/Kontexthashes, HMAC-Integrität, Audit, Abbruch und Replay-Schutz vom
+Aufgabenentwurf. Nach jeder sichtbaren Bearbeitung ist eine neue serverseitige
+Prüfung Pflicht; ein veralteter Stand kann weder abbrechen noch bestätigen.
+
+Die Oberfläche weist Berliner Datum/Zeit, aktive Person, Rolle und Terminart,
+Projektstand, Board/Gruppe, vorhandene gleichartige Projektplanung,
+Überschneidung, genehmigte Abwesenheit, Bundesland-Feiertag, Wochenende und
+den Angebots-/Kontingentbedarf einzeln als bestanden, Warnung oder Blockade
+aus. Gleichartige Projektplanung, Abwesenheit, ungültige Zeit, fehlender oder
+veränderter Projektkontext, inaktive Person, fehlende Planungsgruppe und
+unzulässige Rolle blockieren fail-closed. Überschneidung, Feiertag und
+Wochenende sind bewusst sichtbare Warnungen, weil auch der vorhandene
+Planning-Service diese Fälle nicht pauschal verbietet. Für manuelle
+Projekttermine verlangt dieser Service keinen Angebots- oder
+Kontingentbezug; JARVIS weist dies explizit aus, statt eine Prüfung
+vorzutäuschen.
+
+Mitarbeitende können nur einen eigenen Terminwunsch anlegen. Führung,
+Geschäftsführung und Admin können Termin oder Terminwunsch für aktive
+Personen vorbereiten. Die bewusste Bestätigung beansprucht den Entwurf,
+prüft den Projektstand nochmals und delegiert den einzigen produktiven
+Schreibvorgang an den bestehenden rollengeprüften
+`POST /api/planning-entries`. Die Entwurfs-ID ist zugleich der
+idempotente Planungsschlüssel; parallele Bestätigung und Replay erzeugen
+keinen zweiten Eintrag. Nach bestätigtem Ergebnis aktualisiert die Oberfläche
+Planungsdaten und Karte ohne Reload.
+
+Der Kandidat besteht 1.080 Unit-/Integrationstests, TypeScript,
+Regressions-/Mojibake-Checks, Prisma-Validierung und leeren
+Schema-vs.-Datenbank-Diff sowie den Produktionsbuild. Produktive Freigabe
+setzt zusätzlich das verifizierte Serverbackup, das isolierte
+WorkPilot360-Deployment, Browser-/DB-/Auditnachweis, Fehlerlog, Speicher,
+Latenz und mindestens 110 qualitativ bewertete Live-Fälle voraus. Manuelle
+Zeitentwürfe besitzen bis zu diesem Nachweis weiterhin nur die typisierte
+Vorschaugrundlage (`preview_only`).
 
 - Aufgaben und Nachfassaufgaben,
 - Termine und Terminwünsche,

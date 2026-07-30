@@ -83,9 +83,9 @@ import {
   createJarvisActionPreview,
   extractJarvisPlanningPreviewDetails,
   extractJarvisTaskPreviewTitle,
-  toJarvisActionPreviewView,
 } from "@/lib/jarvis/action-center";
 import {
+  createPersistedJarvisPlanningDraft,
   createPersistedJarvisTaskDraft,
   JarvisActionDraftError,
 } from "@/lib/jarvis/action-draft-store";
@@ -167,9 +167,10 @@ function normalizePersonLabel(value: string) {
     .trim();
 }
 
-function buildJarvisPlanningPreview(input: {
+async function buildJarvisPlanningPreview(input: {
   question: string;
   organizationId: string;
+  sessionId: string | null;
   accessProfile: ReturnType<typeof createJarvisAccessProfile>;
   context: ReturnType<typeof sanitizeJarvisSurfaceContext>;
   users: Array<{
@@ -219,10 +220,9 @@ function buildJarvisPlanningPreview(input: {
         "Ich konnte die verantwortliche Person nicht eindeutig zuordnen. Nenne bitte den vollständigen Namen einer aktiven Person; es wurde nichts gespeichert.",
     };
   }
-  const assigneeLabel =
-    [assignee.firstName, assignee.lastName].filter(Boolean).join(" ").trim() ||
-    assignee.email ||
-    "Ausgewählte Person";
+  const approvalStatus = /\bterminwunsch\w*\b/iu.test(input.question)
+    ? "requested"
+    : "confirmed";
   const preview = createJarvisActionPreview({
     previewId: randomUUID(),
     actionId: "planning.prepare",
@@ -232,6 +232,7 @@ function buildJarvisPlanningPreview(input: {
       endAt: details.endAt,
       projectId: input.context.recordId,
       assigneeIds: [assignee.id],
+      approvalStatus,
     },
     organizationId: input.organizationId,
     profile: input.accessProfile,
@@ -244,15 +245,40 @@ function buildJarvisPlanningPreview(input: {
       message: `${preview.message} Es wurde nichts gespeichert oder ausgeführt.`,
     };
   }
-  return {
-    type: "answer" as const,
-    topicId: "action.preview.planning",
-    message:
-      "Ich habe eine sichere Termin-Vorschau erstellt. Prüfe Projekt, Mitarbeitenden, Beginn und Ende. Bestätigen und Speichern sind noch nicht freigegeben; diese Vorschau verändert keine WorkPilot360-Daten.",
-    actionPreview: toJarvisActionPreviewView(preview.value, {
-      assigneeLabels: [assigneeLabel],
-    }),
-  };
+  if (!input.sessionId) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.draft.session-required",
+      message:
+        "Für bestätigbare JARVIS-Aktionen ist eine aktuelle serverseitige Sitzung erforderlich. Bitte melde dich neu an; es wurde nichts gespeichert oder ausgeführt.",
+    };
+  }
+  try {
+    const actionDraft = await createPersistedJarvisPlanningDraft({
+      preview: preview.value,
+      organizationId: input.organizationId,
+      sessionId: input.sessionId,
+      profile: input.accessProfile,
+      context: input.context,
+    });
+    return {
+      type: "answer" as const,
+      topicId: "action.draft.planning",
+      message:
+        "Ich habe einen sicheren Terminentwurf gespeichert und fachlich vorgeprüft. Prüfe die sichtbaren Ergebnisse und bearbeite die Angaben bei Bedarf. Erst deine ausdrückliche Bestätigung darf über den bestehenden Planning-Service genau einen Eintrag anlegen.",
+      actionDraft,
+    };
+  } catch (error) {
+    const message =
+      error instanceof JarvisActionDraftError
+        ? error.message
+        : "Der Terminentwurf konnte nicht sicher gespeichert werden.";
+    return {
+      type: "refusal" as const,
+      topicId: "action.draft.unavailable",
+      message: `${message} Es wurde nichts ausgeführt.`,
+    };
+  }
 }
 
 function shouldUseProjectHealthPath(
@@ -921,9 +947,10 @@ export async function POST(req: Request) {
     looksLikePlanningPreviewRequest(message)
   ) {
     return respond(
-      buildJarvisPlanningPreview({
+      await buildJarvisPlanningPreview({
         question: message,
         organizationId: organization.id,
+        sessionId: actorResult.sessionId,
         accessProfile,
         context,
         users,

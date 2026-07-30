@@ -356,7 +356,7 @@ describe("JARVIS system help", () => {
     expect(result.topicId).not.toBe("planning.assignEmployees");
   });
 
-  it("does not explain appointment management to a role without planning permission", () => {
+  it("limits appointment help for employees to their own appointment request", () => {
     const result = resolveJarvisSystemHelp(
       "Wie buche ich hier einen Termin?",
       {
@@ -368,11 +368,12 @@ describe("JARVIS system help", () => {
     );
 
     expect(result).toMatchObject({
-      type: "refusal",
+      type: "answer",
       topicId: "appointment.create",
     });
     expect(result.message).toContain("aktuelle WorkPilot-Rolle");
-    expect(result.message).not.toContain("+ Termin");
+    expect(result.message).toContain("+ Terminwunsch");
+    expect(result.message).toContain("nicht anlegen");
   });
 
   it("prioritizes an explicitly named project over a different open context", () => {

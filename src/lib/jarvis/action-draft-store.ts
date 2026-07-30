@@ -15,17 +15,28 @@ import {
   createJarvisActionPreview,
   type JarvisActionPreview,
   type JarvisActionPreviewPayloadMap,
+  type JarvisPlanningActionDraftCheck,
+  type JarvisPlanningActionDraftView,
   type JarvisTaskActionDraftView,
 } from "@/lib/jarvis/action-center";
 import type { JarvisAccessProfile } from "@/lib/jarvis/security";
-import { canAssignTasksToOthers } from "@/lib/permissions";
+import {
+  canAssignTasksToOthers,
+  canManagePlanningEntries,
+} from "@/lib/permissions";
 import {
   createJarvisConfirmedTask,
-  type JarvisCreatedTaskResult,
 } from "@/lib/services/task-service";
+import {
+  getGermanHoliday,
+  normalizeGermanState,
+} from "@/lib/planning/german-holidays";
 
 const JARVIS_TASK_DRAFT_TTL_MS = 15 * 60 * 1000;
 const JARVIS_TASK_DRAFT_MAX_FUTURE_MS = 5 * 365 * 24 * 60 * 60 * 1000;
+const JARVIS_PLANNING_DRAFT_TTL_MS = 15 * 60 * 1000;
+const JARVIS_PLANNING_DRAFT_MAX_FUTURE_MS =
+  2 * 365 * 24 * 60 * 60 * 1000;
 const OPEN_DRAFT_STATES = ["awaiting_input", "awaiting_confirmation"] as const;
 
 const taskPayloadSchema = z
@@ -57,6 +68,38 @@ const completeDraftSchema = z
   })
   .strict();
 
+const planningPayloadSchema = z
+  .object({
+    title: z.string().trim().min(1).max(180),
+    startAt: z.string().datetime({ offset: true }),
+    endAt: z.string().datetime({ offset: true }),
+    projectId: z.string().trim().min(1).max(120),
+    assigneeIds: z.array(z.string().trim().min(1).max(120)).length(1),
+    approvalStatus: z.enum(["confirmed", "requested"]).default("confirmed"),
+    location: z.string().trim().max(500).optional(),
+    note: z.string().trim().max(4000).optional(),
+  })
+  .strict()
+  .refine(
+    (payload) => Date.parse(payload.endAt) > Date.parse(payload.startAt),
+    {
+      message: "Das Terminende muss nach dem Terminbeginn liegen.",
+      path: ["endAt"],
+    }
+  );
+
+const completePlanningDraftSchema = z
+  .object({
+    revision: z.number().int().min(1),
+    title: z.string().trim().min(1).max(180),
+    note: z.string().trim().max(4000).optional(),
+    assigneeId: z.string().trim().min(1).max(120),
+    startAt: z.string().datetime({ offset: true }),
+    endAt: z.string().datetime({ offset: true }),
+    approvalStatus: z.enum(["confirmed", "requested"]),
+  })
+  .strict();
+
 export type JarvisTaskDraftBinding = {
   organizationId: string;
   sessionId: string;
@@ -70,6 +113,32 @@ export type CreateJarvisTaskDraftInput = JarvisTaskDraftBinding & {
     recordId?: string;
   };
   now?: Date;
+};
+
+export type CreateJarvisPlanningDraftInput = JarvisTaskDraftBinding & {
+  preview: JarvisActionPreview<"planning.prepare">;
+  context: {
+    recordType?: string;
+    recordId?: string;
+  };
+  now?: Date;
+};
+
+export type JarvisPlanningExecutionInput = {
+  id: string;
+  actorUserId: string;
+  title: string;
+  description: string;
+  userId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  durationMinutes: number;
+  board: string;
+  groupName: string;
+  projectId: string;
+  projectLabel: string;
+  approvalStatus: "confirmed" | "requested";
 };
 
 export class JarvisActionDraftError extends Error {
@@ -260,7 +329,7 @@ async function appendAuditEvent(
     draft: JarvisActionDraft;
     eventType: string;
     reasonCode?: string;
-    result?: JarvisCreatedTaskResult;
+    result?: { id: string; entityType?: "task" | "planning" };
   }
 ) {
   const last = await tx.jarvisActionDraftAuditEvent.findFirst({
@@ -282,7 +351,9 @@ async function appendAuditEvent(
       payloadHash: input.draft.payloadHash,
       contextHash: input.draft.contextHash,
       reasonCode: input.reasonCode,
-      resultEntityType: input.result ? "task" : undefined,
+      resultEntityType: input.result
+        ? input.result.entityType ?? "task"
+        : undefined,
       resultEntityId: input.result?.id,
     },
   });
@@ -360,6 +431,395 @@ async function loadBoundDraft(
   const current = await expireDraftIfNeeded(found, now);
   const parsed = validateBinding(current, binding);
   return { draft: current, ...parsed };
+}
+
+function validatePlanningBinding(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+) {
+  const actorIds = getActorIds(binding.profile);
+  if (
+    draft.organizationId !== binding.organizationId ||
+    draft.sessionId !== binding.sessionId ||
+    draft.sessionActorId !== actorIds.sessionActorId ||
+    draft.effectiveActorId !== actorIds.effectiveActorId ||
+    draft.impersonating !== binding.profile.isImpersonating
+  ) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Dieser Entwurf gehört nicht zur aktuellen Organisation, Sitzung oder wirksamen Identität.",
+      403
+    );
+  }
+  if (
+    draft.sessionActorRole !== binding.profile.sessionActor.role ||
+    draft.effectiveActorRole !== binding.profile.effectiveActor.role
+  ) {
+    throw new JarvisActionDraftError(
+      "role_changed",
+      "Die Rolle hat sich seit Erstellung des Entwurfs geändert. Bitte erstelle eine neue Vorschau.",
+      409
+    );
+  }
+  if (!integrityMatches(draft)) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Der Integritätsnachweis des Entwurfs ist ungültig. Es wurde nichts ausgeführt.",
+      409
+    );
+  }
+  const payload = planningPayloadSchema.safeParse(draft.payload);
+  const context = taskContextSchema.safeParse(draft.context);
+  if (
+    draft.actionId !== "planning.prepare" ||
+    !payload.success ||
+    !context.success ||
+    hashJson(payload.data) !== draft.payloadHash ||
+    hashJson(context.data) !== draft.contextHash
+  ) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Termin-Payload oder Kontext stimmen nicht mit dem gespeicherten Nachweis überein.",
+      409
+    );
+  }
+  return { payload: payload.data, context: context.data };
+}
+
+async function loadBoundPlanningDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const found = await prisma.jarvisActionDraft.findUnique({
+    where: { id: previewId },
+  });
+  if (!found) {
+    throw new JarvisActionDraftError(
+      "not_found",
+      "Der Terminentwurf wurde nicht gefunden.",
+      404
+    );
+  }
+  validatePlanningBinding(found, binding);
+  const current = await expireDraftIfNeeded(found, now);
+  const parsed = validatePlanningBinding(current, binding);
+  return { draft: current, ...parsed };
+}
+
+type PlanningAssigneeOption = {
+  id: string;
+  label: string;
+  board: string;
+  groupName: string;
+};
+
+async function getPlanningAssigneeOptions(
+  binding: JarvisTaskDraftBinding
+): Promise<PlanningAssigneeOption[]> {
+  const actorId = getActorIds(binding.profile).effectiveActorId;
+  const mayManage = canManagePlanningEntries(binding.profile.effectiveActor);
+  const users = await prisma.user.findMany({
+    where: {
+      organizationId: binding.organizationId,
+      isActive: true,
+      ...(mayManage ? {} : { id: actorId }),
+    },
+    orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      planningBoard: true,
+      planningGroup: true,
+    },
+  });
+  return users.map((user) => ({
+    id: user.id,
+    label: `${user.firstName} ${user.lastName}`.trim() || user.email,
+    board: user.planningBoard?.trim() || "OK solutions",
+    groupName: user.planningGroup?.trim() || "",
+  }));
+}
+
+function berlinDateTimeParts(value: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Berlin",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    weekday: "short",
+  }).formatToParts(new Date(value));
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  return {
+    date: `${get("year")}-${get("month")}-${get("day")}`,
+    time: `${get("hour")}:${get("minute")}`,
+    weekday: get("weekday"),
+  };
+}
+
+function planningCheck(
+  code: string,
+  label: string,
+  status: JarvisPlanningActionDraftCheck["status"],
+  detail: string
+): JarvisPlanningActionDraftCheck {
+  return { code, label, status, detail };
+}
+
+async function evaluatePlanningDraft(
+  payload: z.infer<typeof planningPayloadSchema>,
+  context: z.infer<typeof taskContextSchema>,
+  binding: JarvisTaskDraftBinding,
+  draftId: string,
+  now = new Date()
+) {
+  const checks: JarvisPlanningActionDraftCheck[] = [];
+  const start = new Date(payload.startAt);
+  const end = new Date(payload.endAt);
+  const startParts = berlinDateTimeParts(payload.startAt);
+  const endParts = berlinDateTimeParts(payload.endAt);
+  const durationMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
+  const timeValid =
+    Number.isFinite(start.getTime()) &&
+    Number.isFinite(end.getTime()) &&
+    startParts.date === endParts.date &&
+    durationMinutes > 0 &&
+    durationMinutes <= 24 * 60 &&
+    start.getTime() > now.getTime() &&
+    start.getTime() <= now.getTime() + JARVIS_PLANNING_DRAFT_MAX_FUTURE_MS;
+  checks.push(
+    planningCheck(
+      "date_time",
+      "Datum und Zeit (Berlin)",
+      timeValid ? "ok" : "blocked",
+      timeValid
+        ? `${startParts.date}, ${startParts.time}–${endParts.time} Uhr (${durationMinutes} Minuten).`
+        : "Beginn und Ende müssen am selben Berliner Kalendertag, in der Zukunft und innerhalb von zwei Jahren liegen."
+    )
+  );
+
+  const options = await getPlanningAssigneeOptions(binding);
+  const assignee = options.find((option) => option.id === payload.assigneeIds[0]);
+  checks.push(
+    planningCheck(
+      "active_assignee",
+      "Aktiver Mitarbeitender",
+      assignee ? "ok" : "blocked",
+      assignee
+        ? `${assignee.label} ist aktiv und mit der aktuellen Rolle auswählbar.`
+        : "Die gewählte Person ist in dieser Organisation nicht aktiv oder mit der aktuellen Rolle nicht zulässig."
+    )
+  );
+  const boardGroupValid = Boolean(assignee?.board && assignee.groupName);
+  checks.push(
+    planningCheck(
+      "board_group",
+      "Planungsboard und -gruppe",
+      boardGroupValid ? "ok" : "blocked",
+      boardGroupValid
+        ? `${assignee?.board} · ${assignee?.groupName}`
+        : "Für die gewählte Person fehlt eine eindeutige Planungsgruppe."
+    )
+  );
+
+  const mayManage = canManagePlanningEntries(binding.profile.effectiveActor);
+  const actorId = getActorIds(binding.profile).effectiveActorId;
+  const roleValid =
+    mayManage ||
+    (payload.approvalStatus === "requested" &&
+      payload.assigneeIds[0] === actorId);
+  checks.push(
+    planningCheck(
+      "role",
+      payload.approvalStatus === "requested" ? "Terminwunsch" : "Bestätigter Termin",
+      roleValid ? "ok" : "blocked",
+      roleValid
+        ? mayManage
+          ? "Die aktuelle Rolle darf diesen Planungsstatus anlegen."
+          : "Eigener Terminwunsch; eine Führungskraft muss ihn später bestätigen."
+        : "Diese Rolle darf ausschließlich einen eigenen Terminwunsch anlegen."
+    )
+  );
+
+  const project = await prisma.workPilotProject.findFirst({
+    where: {
+      id: payload.projectId,
+      organizationId: binding.organizationId,
+    },
+    select: {
+      id: true,
+      projectNumber: true,
+      title: true,
+      updatedAt: true,
+    },
+  });
+  const contextValid =
+    Boolean(project) &&
+    context.recordType === "project" &&
+    context.recordId === project?.id &&
+    context.recordUpdatedAt === project?.updatedAt.toISOString();
+  checks.push(
+    planningCheck(
+      "project_context",
+      "Projektbezug",
+      contextValid ? "ok" : "blocked",
+      contextValid && project
+        ? `${project.projectNumber} · ${project.title}`
+        : "Das Projekt fehlt, gehört nicht zur Organisation oder wurde seit der Vorschau verändert."
+    )
+  );
+
+  let duplicate = false;
+  let overlap = false;
+  let absence: { type: string; dayPart: string } | null = null;
+  if (assignee && timeValid) {
+    const entries = await prisma.planningEntry.findMany({
+      where: {
+        organizationId: binding.organizationId,
+        userId: assignee.id,
+        date: startParts.date,
+        deletedAt: null,
+        id: { not: draftId },
+      },
+      select: {
+        projectId: true,
+        startTime: true,
+        endTime: true,
+        title: true,
+      },
+    });
+    duplicate = entries.some((entry) => entry.projectId === payload.projectId);
+    overlap = entries.some(
+      (entry) =>
+        entry.startTime < endParts.time && entry.endTime > startParts.time
+    );
+    absence = await prisma.absence.findFirst({
+      where: {
+        organizationId: binding.organizationId,
+        userId: assignee.id,
+        date: new Date(`${startParts.date}T00:00:00.000Z`),
+        deletedAt: null,
+        status: "genehmigt",
+        type: { in: ["urlaub", "krank", "ueberstundenabbau"] },
+        OR: [
+          { dayPart: "full" },
+          ...(startParts.time < "12:00" ? [{ dayPart: "first-half" }] : []),
+          ...(endParts.time > "12:00" ? [{ dayPart: "second-half" }] : []),
+        ],
+      },
+      select: { type: true, dayPart: true },
+    });
+  }
+  checks.push(
+    planningCheck(
+      "duplicate",
+      "Vorhandene Projektplanung",
+      duplicate ? "blocked" : "ok",
+      duplicate
+        ? "Diese Person ist an diesem Tag bereits auf dieses Projekt geplant. Bitte den vorhandenen Termin bearbeiten."
+        : "Keine gleichartige Projektplanung für diese Person an diesem Tag gefunden."
+    )
+  );
+  checks.push(
+    planningCheck(
+      "overlap",
+      "Zeitliche Überschneidung",
+      overlap ? "warning" : "ok",
+      overlap
+        ? "Es gibt eine andere Planung im selben Zeitfenster. Der bestehende Planning-Service kennzeichnet dies als Warnung."
+        : "Keine zeitliche Überschneidung gefunden."
+    )
+  );
+  checks.push(
+    planningCheck(
+      "absence",
+      "Genehmigte Abwesenheit",
+      absence ? "blocked" : "ok",
+      absence
+        ? `Blockiert durch ${absence.type} (${absence.dayPart}).`
+        : "Keine blockierende genehmigte Abwesenheit gefunden."
+    )
+  );
+
+  const holidaySetting = await prisma.organizationSetting.findUnique({
+    where: {
+      organizationId_key: {
+        organizationId: binding.organizationId,
+        key: "holiday-state",
+      },
+    },
+    select: { value: true },
+  });
+  const settingValue = holidaySetting?.value;
+  const holidayState = normalizeGermanState(
+    settingValue &&
+      typeof settingValue === "object" &&
+      !Array.isArray(settingValue) &&
+      "state" in settingValue
+      ? settingValue.state
+      : undefined
+  );
+  const holiday = timeValid
+    ? getGermanHoliday(startParts.date, holidayState)
+    : null;
+  checks.push(
+    planningCheck(
+      "holiday",
+      `Feiertag (${holidayState})`,
+      holiday ? "warning" : "ok",
+      holiday ? `${holiday}; bewusste Planung erforderlich.` : "Kein gesetzlicher Feiertag."
+    )
+  );
+  const weekend = startParts.weekday === "Sat" || startParts.weekday === "Sun";
+  checks.push(
+    planningCheck(
+      "weekend",
+      "Wochenende",
+      weekend ? "warning" : "ok",
+      weekend ? "Der Termin liegt am Wochenende." : "Der Termin liegt an einem Werktag."
+    )
+  );
+  checks.push(
+    planningCheck(
+      "offer_contingent",
+      "Angebot und Kontingent",
+      "ok",
+      "Für manuelle Projekttermine verlangt der bestehende Planning-Service keinen Angebots- oder Kontingentbezug."
+    )
+  );
+
+  return {
+    checks,
+    options,
+    assignee,
+    project,
+    executable: checks.every((check) => check.status !== "blocked"),
+    executionInput:
+      assignee && project && timeValid
+        ? ({
+            id: draftId,
+            actorUserId: actorId,
+            title: payload.title,
+            description: payload.note ?? "",
+            userId: assignee.id,
+            date: startParts.date,
+            startTime: startParts.time,
+            endTime: endParts.time,
+            durationMinutes,
+            board: assignee.board,
+            groupName: assignee.groupName,
+            projectId: project.id,
+            projectLabel: `${project.projectNumber} · ${project.title}`,
+            approvalStatus: payload.approvalStatus,
+          } satisfies JarvisPlanningExecutionInput)
+        : null,
+  };
 }
 
 async function getAssigneeOptions(
@@ -444,6 +904,8 @@ export async function toJarvisTaskActionDraftView(
         ? "cancelled"
         : state === "executed"
           ? "executed"
+          : state === "executing"
+            ? "executing"
           : isReady
             ? "ready"
             : "missing_fields";
@@ -452,8 +914,10 @@ export async function toJarvisTaskActionDraftView(
       ? "Angelegt"
       : state === "cancelled"
         ? "Abgebrochen"
-        : state === "expired"
+      : state === "expired"
           ? "Abgelaufen"
+          : state === "executing"
+            ? "Wird angelegt"
           : isReady
             ? "Bereit"
             : "Entwurf";
@@ -1044,6 +1508,639 @@ export async function confirmJarvisTaskDraft(
     throw new JarvisActionDraftError(
       "execution_failed",
       "Die Aufgabe wurde nicht angelegt. Der Entwurf bleibt zur Prüfung erhalten.",
+      500
+    );
+  }
+}
+
+export async function toJarvisPlanningActionDraftView(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+): Promise<JarvisPlanningActionDraftView> {
+  const { payload, context } = validatePlanningBinding(draft, binding);
+  const evaluation = await evaluatePlanningDraft(
+    payload,
+    context,
+    binding,
+    draft.id,
+    now
+  );
+  const assignee = evaluation.options.find(
+    (option) => option.id === payload.assigneeIds[0]
+  );
+  const missingFields = evaluation.checks
+    .filter((check) => check.status === "blocked")
+    .map((check) => check.label);
+  const state = draft.state as JarvisPlanningActionDraftView["state"];
+  const isOpen =
+    state === "awaiting_input" || state === "awaiting_confirmation";
+  const isReady =
+    state === "awaiting_confirmation" && evaluation.executable;
+  const reason: JarvisPlanningActionDraftView["confirmation"]["reason"] =
+    state === "expired"
+      ? "expired"
+      : state === "cancelled"
+        ? "cancelled"
+        : state === "executed"
+          ? "executed"
+          : state === "executing"
+            ? "executing"
+            : isReady
+              ? "ready"
+              : "missing_fields";
+  const badge: JarvisPlanningActionDraftView["badge"] =
+    state === "executed"
+      ? "Angelegt"
+      : state === "executing"
+        ? "Wird angelegt"
+        : state === "cancelled"
+          ? "Abgebrochen"
+          : state === "expired"
+            ? "Abgelaufen"
+            : isReady
+              ? "Bereit"
+              : "Entwurf";
+  const fields: JarvisPlanningActionDraftView["fields"] = [
+    { label: "Titel", value: payload.title },
+    {
+      label:
+        payload.approvalStatus === "requested" ? "Art" : "Status",
+      value:
+        payload.approvalStatus === "requested"
+          ? "Terminwunsch"
+          : "Bestätigter Termin",
+    },
+    {
+      label: "Zeitfenster",
+      value: `${formatDueAt(payload.startAt)} bis ${new Intl.DateTimeFormat(
+        "de-DE",
+        {
+          timeZone: "Europe/Berlin",
+          timeStyle: "short",
+        }
+      ).format(new Date(payload.endAt))} Uhr`,
+    },
+  ];
+  if (assignee) fields.push({ label: "Mitarbeitend", value: assignee.label });
+  if (context.recordLabel) {
+    fields.push({ label: "Projektbezug", value: context.recordLabel });
+  }
+  if (payload.note) fields.push({ label: "Notiz", value: payload.note });
+
+  return {
+    version: 2,
+    previewId: draft.id,
+    actionId: "planning.prepare",
+    title:
+      payload.approvalStatus === "requested"
+        ? "Terminwunsch vorbereiten"
+        : "Termin vorbereiten",
+    badge,
+    state,
+    revision: draft.revision,
+    expiresAt: draft.expiresAt.toISOString(),
+    fields,
+    missingFields,
+    checks: evaluation.checks,
+    editor: {
+      title: payload.title,
+      note: payload.note ?? "",
+      assigneeId: payload.assigneeIds[0] ?? "",
+      startAt: payload.startAt,
+      endAt: payload.endAt,
+      approvalStatus: payload.approvalStatus,
+      approvalStatusOptions: canManagePlanningEntries(
+        binding.profile.effectiveActor
+      )
+        ? [
+            { value: "confirmed", label: "Bestätigter Termin" },
+            { value: "requested", label: "Terminwunsch" },
+          ]
+        : [{ value: "requested", label: "Terminwunsch" }],
+      assigneeOptions: evaluation.options.map(({ id, label }) => ({
+        id,
+        label,
+      })),
+    },
+    confirmation: { enabled: isReady, reason },
+    cancellation: { enabled: isOpen },
+    execution: {
+      enabled: false,
+      reason: state === "executed" ? "finalized" : "requires_confirmation",
+    },
+    ...(state === "executed" &&
+    draft.resultEntityType === "planning" &&
+    draft.resultEntityId
+      ? {
+          result: {
+            entityType: "planning" as const,
+            entityId: draft.resultEntityId,
+            label: "Angelegten Termin öffnen",
+          },
+        }
+      : {}),
+  };
+}
+
+export async function createPersistedJarvisPlanningDraft(
+  input: CreateJarvisPlanningDraftInput
+) {
+  if (!input.sessionId) {
+    throw new JarvisActionDraftError(
+      "session_required",
+      "Für bestätigbare Aktionen ist eine aktuelle serverseitige Sitzung erforderlich.",
+      401
+    );
+  }
+  const now = input.now ?? new Date();
+  const actorIds = getActorIds(input.profile);
+  const payload = planningPayloadSchema.parse(input.preview.payload);
+  const project = await prisma.workPilotProject.findFirst({
+    where: {
+      id: payload.projectId,
+      organizationId: input.organizationId,
+    },
+    select: {
+      id: true,
+      projectNumber: true,
+      title: true,
+      updatedAt: true,
+    },
+  });
+  if (!project) {
+    throw new JarvisActionDraftError(
+      "stale_context",
+      "Das verknüpfte Projekt ist nicht mehr eindeutig verfügbar.",
+      409
+    );
+  }
+  if (
+    input.context.recordType !== "project" ||
+    input.context.recordId !== project.id
+  ) {
+    throw new JarvisActionDraftError(
+      "stale_context",
+      "Ein Terminentwurf benötigt den eindeutigen aktuellen Projektkontext.",
+      409
+    );
+  }
+  const context = taskContextSchema.parse({
+    recordType: "project",
+    recordId: project.id,
+    recordLabel: `${project.projectNumber} · ${project.title}`.slice(0, 240),
+    recordUpdatedAt: project.updatedAt.toISOString(),
+  });
+  const payloadHash = hashJson(payload);
+  const contextHash = hashJson(context);
+  const draftData: DraftIntegrityData = {
+    id: input.preview.previewId,
+    organizationId: input.organizationId,
+    sessionId: input.sessionId,
+    sessionActorId: actorIds.sessionActorId,
+    sessionActorRole: input.profile.sessionActor.role,
+    effectiveActorId: actorIds.effectiveActorId,
+    effectiveActorRole: input.profile.effectiveActor.role,
+    impersonating: input.profile.isImpersonating,
+    actionId: "planning.prepare",
+    state: "awaiting_confirmation",
+    revision: 1,
+    payloadHash,
+    contextHash,
+    expiresAt: new Date(now.getTime() + JARVIS_PLANNING_DRAFT_TTL_MS),
+    confirmedAt: null,
+    cancelledAt: null,
+    executedAt: null,
+    resultEntityType: null,
+    resultEntityId: null,
+    lastErrorCode: null,
+  };
+  const draft = await prisma.$transaction(async (tx) => {
+    const created = await tx.jarvisActionDraft.create({
+      data: {
+        ...draftData,
+        payload: payload as Prisma.InputJsonValue,
+        context: context as Prisma.InputJsonValue,
+        integrityTag: createIntegrityTag(draftData),
+      },
+    });
+    await appendAuditEvent(tx, {
+      draft: created,
+      eventType: "draft_created",
+    });
+    return created;
+  });
+  return toJarvisPlanningActionDraftView(draft, input, now);
+}
+
+export async function getJarvisPlanningDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const { draft } = await loadBoundPlanningDraft(previewId, binding, now);
+  return toJarvisPlanningActionDraftView(draft, binding, now);
+}
+
+export async function getJarvisActionDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const draft = await prisma.jarvisActionDraft.findUnique({
+    where: { id: previewId },
+    select: { actionId: true },
+  });
+  return draft?.actionId === "planning.prepare"
+    ? getJarvisPlanningDraft(previewId, binding, now)
+    : getJarvisTaskDraft(previewId, binding, now);
+}
+
+export async function completeJarvisPlanningDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  rawInput: unknown,
+  now = new Date()
+) {
+  const completed = completePlanningDraftSchema.safeParse(rawInput);
+  if (!completed.success) {
+    throw new JarvisActionDraftError(
+      "invalid_input",
+      "Titel, Person, Terminart sowie ein gültiger Beginn und ein gültiges Ende sind erforderlich.",
+      400
+    );
+  }
+  const parsedPayload = planningPayloadSchema.safeParse({
+    title: completed.data.title,
+    ...(completed.data.note ? { note: completed.data.note } : {}),
+    assigneeIds: [completed.data.assigneeId],
+    startAt: completed.data.startAt,
+    endAt: completed.data.endAt,
+    approvalStatus: completed.data.approvalStatus,
+    projectId: "temporary",
+  });
+  if (!parsedPayload.success) {
+    throw new JarvisActionDraftError(
+      "invalid_input",
+      "Das Terminende muss nach dem Beginn liegen; beide Werte benötigen eine eindeutige Zeitzone.",
+      400
+    );
+  }
+  const loaded = await loadBoundPlanningDraft(previewId, binding, now);
+  if (loaded.draft.revision !== completed.data.revision) {
+    throw new JarvisActionDraftError(
+      "conflict",
+      "Dieser Entwurf wurde zwischenzeitlich verändert. Bitte verwende den aktuellen Stand.",
+      409
+    );
+  }
+  if (!OPEN_DRAFT_STATES.includes(loaded.draft.state as never)) {
+    throw new JarvisActionDraftError(
+      loaded.draft.state === "expired" ? "expired" : "invalid_state",
+      "Dieser Terminentwurf kann nicht mehr bearbeitet werden.",
+      loaded.draft.state === "expired" ? 410 : 409
+    );
+  }
+  const nextPayload = planningPayloadSchema.parse({
+    ...loaded.payload,
+    title: completed.data.title,
+    note: completed.data.note || undefined,
+    assigneeIds: [completed.data.assigneeId],
+    startAt: completed.data.startAt,
+    endAt: completed.data.endAt,
+    approvalStatus: completed.data.approvalStatus,
+  });
+  const previewValidation = createJarvisActionPreview({
+    previewId: loaded.draft.id,
+    actionId: "planning.prepare",
+    payload: nextPayload,
+    organizationId: binding.organizationId,
+    profile: binding.profile,
+    createdAt: now.toISOString(),
+  });
+  if (!previewValidation.ok) {
+    throw new JarvisActionDraftError(
+      "invalid_input",
+      previewValidation.message,
+      400
+    );
+  }
+  const evaluation = await evaluatePlanningDraft(
+    nextPayload,
+    loaded.context,
+    binding,
+    loaded.draft.id,
+    now
+  );
+  const revision = loaded.draft.revision + 1;
+  const payloadHash = hashJson(nextPayload);
+  const nextData: DraftIntegrityData = {
+    ...loaded.draft,
+    state: "awaiting_confirmation",
+    revision,
+    payloadHash,
+    lastErrorCode: evaluation.executable ? null : "preflight_blocked",
+  };
+  const updated = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: {
+        id: loaded.draft.id,
+        revision: loaded.draft.revision,
+        state: loaded.draft.state,
+        integrityTag: loaded.draft.integrityTag,
+      },
+      data: {
+        state: "awaiting_confirmation",
+        revision,
+        payload: nextPayload as Prisma.InputJsonValue,
+        payloadHash,
+        lastErrorCode: nextData.lastErrorCode,
+        integrityTag: createIntegrityTag(nextData),
+      },
+    });
+    if (changed.count !== 1) {
+      throw new JarvisActionDraftError(
+        "conflict",
+        "Der Entwurf wurde zwischenzeitlich verändert. Bitte lade ihn neu.",
+        409
+      );
+    }
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+      where: { id: loaded.draft.id },
+    });
+    await appendAuditEvent(tx, {
+      draft: current,
+      eventType: "draft_rechecked",
+      reasonCode: evaluation.executable ? "ready" : "preflight_blocked",
+    });
+    return current;
+  });
+  return toJarvisPlanningActionDraftView(updated, binding, now);
+}
+
+export async function cancelJarvisPlanningDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  expectedRevision: number,
+  now = new Date()
+) {
+  const { draft } = await loadBoundPlanningDraft(previewId, binding, now);
+  if (draft.state === "cancelled") {
+    return toJarvisPlanningActionDraftView(draft, binding, now);
+  }
+  if (
+    !OPEN_DRAFT_STATES.includes(draft.state as never) ||
+    draft.revision !== expectedRevision
+  ) {
+    throw new JarvisActionDraftError(
+      draft.state === "expired" ? "expired" : "conflict",
+      "Dieser Terminentwurf ist nicht mehr abbrechbar oder wurde zwischenzeitlich verändert.",
+      draft.state === "expired" ? 410 : 409
+    );
+  }
+  const nextData: DraftIntegrityData = {
+    ...draft,
+    state: "cancelled",
+    cancelledAt: now,
+    lastErrorCode: null,
+  };
+  const cancelled = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: {
+        id: draft.id,
+        revision: draft.revision,
+        state: draft.state,
+        integrityTag: draft.integrityTag,
+      },
+      data: {
+        state: "cancelled",
+        cancelledAt: now,
+        lastErrorCode: null,
+        integrityTag: createIntegrityTag(nextData),
+      },
+    });
+    if (changed.count !== 1) {
+      throw new JarvisActionDraftError(
+        "conflict",
+        "Der Entwurf wurde bereits verändert.",
+        409
+      );
+    }
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+      where: { id: draft.id },
+    });
+    await appendAuditEvent(tx, {
+      draft: current,
+      eventType: "draft_cancelled",
+      reasonCode: "user_cancelled",
+    });
+    return current;
+  });
+  return toJarvisPlanningActionDraftView(cancelled, binding, now);
+}
+
+async function finalizePlanningDraft(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding,
+  resultId: string,
+  now: Date
+) {
+  return prisma.$transaction(async (tx) => {
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+      where: { id: draft.id },
+    });
+    validatePlanningBinding(current, binding);
+    if (current.state === "executed") return current;
+    if (current.state !== "executing") {
+      throw new JarvisActionDraftError(
+        "conflict",
+        "Der Terminentwurf befindet sich nicht mehr in Ausführung.",
+        409
+      );
+    }
+    const executedData: DraftIntegrityData = {
+      ...current,
+      state: "executed",
+      executedAt: now,
+      resultEntityType: "planning",
+      resultEntityId: resultId,
+      lastErrorCode: null,
+    };
+    const executed = await tx.jarvisActionDraft.update({
+      where: { id: current.id },
+      data: {
+        state: "executed",
+        executedAt: now,
+        resultEntityType: "planning",
+        resultEntityId: resultId,
+        lastErrorCode: null,
+        integrityTag: createIntegrityTag(executedData),
+      },
+    });
+    await appendAuditEvent(tx, {
+      draft: executed,
+      eventType: "draft_executed",
+      result: { id: resultId, entityType: "planning" },
+    });
+    return executed;
+  });
+}
+
+export async function confirmJarvisPlanningDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  expectedRevision: number,
+  execute: (input: JarvisPlanningExecutionInput) => Promise<{ id: string }>,
+  now = new Date()
+) {
+  const loaded = await loadBoundPlanningDraft(previewId, binding, now);
+  if (loaded.draft.state === "executed") {
+    return toJarvisPlanningActionDraftView(loaded.draft, binding, now);
+  }
+  if (loaded.draft.state === "executing") {
+    const existing = await prisma.planningEntry.findFirst({
+      where: {
+        id: loaded.draft.id,
+        organizationId: binding.organizationId,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      const finalized = await finalizePlanningDraft(
+        loaded.draft,
+        binding,
+        existing.id,
+        now
+      );
+      return toJarvisPlanningActionDraftView(finalized, binding, now);
+    }
+    throw new JarvisActionDraftError(
+      "conflict",
+      "Der Termin wird bereits verarbeitet. Es wurde kein zweiter Schreibvorgang gestartet.",
+      409
+    );
+  }
+  if (
+    loaded.draft.state !== "awaiting_confirmation" ||
+    loaded.draft.revision !== expectedRevision
+  ) {
+    throw new JarvisActionDraftError(
+      loaded.draft.state === "expired" ? "expired" : "conflict",
+      "Der Terminentwurf ist nicht mehr aktuell oder nicht bestätigbar.",
+      loaded.draft.state === "expired" ? 410 : 409
+    );
+  }
+  const evaluation = await evaluatePlanningDraft(
+    loaded.payload,
+    loaded.context,
+    binding,
+    loaded.draft.id,
+    now
+  );
+  if (!evaluation.executable || !evaluation.executionInput) {
+    throw new JarvisActionDraftError(
+      "invalid_input",
+      "Die fachliche Vorprüfung blockiert das Speichern. Bitte bearbeite und prüfe den Entwurf erneut.",
+      409
+    );
+  }
+
+  const executing = await prisma.$transaction(async (tx) => {
+    await verifyCurrentProjectContext(
+      tx,
+      binding.organizationId,
+      loaded.context
+    );
+    const nextData: DraftIntegrityData = {
+      ...loaded.draft,
+      state: "executing",
+      confirmedAt: now,
+      lastErrorCode: null,
+    };
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: {
+        id: loaded.draft.id,
+        revision: loaded.draft.revision,
+        state: "awaiting_confirmation",
+        integrityTag: loaded.draft.integrityTag,
+      },
+      data: {
+        state: "executing",
+        confirmedAt: now,
+        lastErrorCode: null,
+        integrityTag: createIntegrityTag(nextData),
+      },
+    });
+    if (changed.count !== 1) {
+      throw new JarvisActionDraftError(
+        "conflict",
+        "Der Termin wird bereits verarbeitet.",
+        409
+      );
+    }
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+      where: { id: loaded.draft.id },
+    });
+    await appendAuditEvent(tx, {
+      draft: current,
+      eventType: "draft_confirmed",
+    });
+    return current;
+  });
+
+  try {
+    const result = await execute(evaluation.executionInput);
+    const finalized = await finalizePlanningDraft(
+      executing,
+      binding,
+      result.id,
+      new Date()
+    );
+    return toJarvisPlanningActionDraftView(finalized, binding, now);
+  } catch (error) {
+    if (error instanceof JarvisActionDraftError) throw error;
+    await prisma.$transaction(async (tx) => {
+      const current = await tx.jarvisActionDraft.findUnique({
+        where: { id: executing.id },
+      });
+      if (!current || current.state !== "executing" || !integrityMatches(current)) {
+        return;
+      }
+      const nextData: DraftIntegrityData = {
+        ...current,
+        state: "awaiting_confirmation",
+        lastErrorCode: "planning_service_failed",
+      };
+      const changed = await tx.jarvisActionDraft.updateMany({
+        where: {
+          id: current.id,
+          state: "executing",
+          revision: current.revision,
+          integrityTag: current.integrityTag,
+        },
+        data: {
+          state: "awaiting_confirmation",
+          lastErrorCode: "planning_service_failed",
+          integrityTag: createIntegrityTag(nextData),
+        },
+      });
+      if (changed.count === 1) {
+        const reverted = await tx.jarvisActionDraft.findUniqueOrThrow({
+          where: { id: current.id },
+        });
+        await appendAuditEvent(tx, {
+          draft: reverted,
+          eventType: "execution_failed",
+          reasonCode: "planning_service_failed",
+        });
+      }
+    });
+    throw new JarvisActionDraftError(
+      "execution_failed",
+      error instanceof Error
+        ? `Der Planning-Service hat den Termin nicht angelegt: ${error.message}`
+        : "Der Planning-Service hat den Termin nicht angelegt.",
       500
     );
   }

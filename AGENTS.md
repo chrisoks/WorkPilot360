@@ -1,5 +1,56 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Action Center Termin-/Terminwunsch-Vertikalschnitt 2026-07-30:
+  Der persistente 15-Minuten-Entwurf übernimmt die vollständige
+  Organisations-, Sitzungs-, Akteurs-, Rollen-, Impersonations-, Revisions-,
+  Hash-, HMAC-, TTL- und Auditbindung des Aufgabenwegs. Jede Änderung sperrt
+  die Bestätigung bis zur erneuten serverseitigen Prüfung. Sichtbar geprüft
+  werden Berliner Datum/Zeit, aktive Person, Rolle und Terminart,
+  Projektkontext, Board/Gruppe, gleichartige Projektplanung,
+  Überschneidung, genehmigte Abwesenheit, landesspezifischer Feiertag,
+  Wochenende sowie die im manuellen Planning-Workflow nicht erforderliche
+  Angebots-/Kontingentbindung. Blockaden verhindern technisch das Schreiben;
+  Überschneidung, Feiertag und Wochenende bleiben entsprechend dem bestehenden
+  Planning-Verhalten bewusst sichtbare Warnungen.
+  Mitarbeitende dürfen ausschließlich einen eigenen Terminwunsch vorbereiten
+  und anlegen; bestätigte Termine und fremde Personen bleiben Führung,
+  Geschäftsführung oder Admin vorbehalten. Erst die ausdrückliche
+  Bestätigung beansprucht den Entwurf und ruft den unveränderten,
+  rollengeprüften `POST /api/planning-entries` mit der Entwurfs-ID als
+  idempotentem Schlüssel auf. Doppelklick und Replay erzeugen keinen zweiten
+  Termin. Erfolg aktualisiert Planungsdaten und Action-Center-Karte ohne
+  Seitenreload. Die Sicherheits- und Regressionsebene umfasst 1.080 grüne
+  Unit-/Integrationstests, TypeScript, Prisma-Diff, Mojibake,
+  Regressionen und Produktionsbuild. Produktiver Abschluss gilt erst mit
+  verifiziertem Backup, kontrolliertem WorkPilot360-Deployment sowie
+  Browser-, DB-/Audit-, Fehlerlog-, Speicher-, Latenz- und qualitativem
+  110er-Live-Nachweis; bis dahin ist nur der bisherige Produktionsstand
+  `fff308f` maßgeblich.
+
+- JARVIS Action Center Aufgabenabschluss und Termin-Vorschau 2026-07-30:
+  Der Aufgaben-Vertikalschnitt ist auf Produktion vollständig freigegeben.
+  Entwurf, Pflichtfelder, erneute Prüfung nach Änderungen, Abbruch, Ablauf,
+  Rollen-/Session-/Organisationsbindung, Integritätsnachweis, Doppelklick,
+  Replay und Exactly-once-Ausführung wurden über die echte Oberfläche und
+  direkt in der Datenbank abgenommen. Der finale Stand `fff308f` beantwortete
+  110/110 menschennahe Fragen qualitativ passend; anschließend bestanden zehn
+  weitere Aufgaben-Aktionsfälle. Ein Doppelklick erzeugte exakt eine Aufgabe
+  und genau ein `draft_confirmed_and_executed`-Ereignis, der Abbruch keine
+  Aufgabe. Der Produktionsfehlerlog blieb unverändert.
+  Die erste Termin-Vorschau ist ebenfalls produktiv, speichert aber bewusst
+  noch nichts. Sie verlangt geöffnetes Projekt, gültiges Berliner
+  Datum/Zeitfenster, Titel und eine eindeutig aktive Person, zeigt
+  menschenlesbare Werte ohne interne IDs und besitzt keine Bestätigen- oder
+  Speichern-Schaltfläche. Wiederholte ungültige Angaben behalten eine
+  konkrete Feld- beziehungsweise Plausibilitätsrückfrage.
+  Nächster Phase-4-Vertikalschnitt ist der serverseitig persistente Termin-
+  und Terminwunsch-Entwurf. Er muss die Sicherheitsinvarianten des
+  Aufgabenentwurfs übernehmen und zusätzlich Planungskonflikte,
+  Abwesenheiten, Feiertage, Board/Gruppe sowie Projekt- und gegebenenfalls
+  Angebots-/Kontingentbezug vor einer möglichen Ausführung prüfen. Eine echte
+  Planungsanlage bleibt bis zur vollständigen Fach-, Sicherheits-, Browser-
+  und Live-Abnahme gesperrt.
+
 - JARVIS qualitative Live-Haertung 2026-07-29: Der erste nach Inhalt statt
   nur technischer Antwortexistenz bewertete produktive 100er-Lauf war
   technisch 100/100, qualitativ aber nur 77/100. Die zehn Prinzipienfragen
