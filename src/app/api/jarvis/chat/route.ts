@@ -187,11 +187,18 @@ function buildJarvisPlanningPreview(input: {
   }
   const details = extractJarvisPlanningPreviewDetails(input.question);
   if (!details) {
+    const hasCompleteShape =
+      /[„"'][^„“"']{3,180}[“"']/u.test(input.question) &&
+      /\b\d{1,2}\.\d{1,2}\.\d{4}\b/u.test(input.question) &&
+      /\bvon\s+(?:[01]?\d|2[0-3]):[0-5]\d\s+(?:uhr\s+)?bis\s+(?:[01]?\d|2[0-3]):[0-5]\d\b/iu.test(
+        input.question
+      );
     return {
       type: "clarification" as const,
       topicId: "action.preview.planning.details-required",
-      message:
-        "Für die Termin-Vorschau brauche ich einen Titel in Anführungszeichen, ein Datum sowie Beginn und Ende, zum Beispiel: Plane am 03.08.2026 von 10:00 bis 11:00 den Termin „Vor-Ort-Prüfung“ für Christian Eid. Es wurde nichts gespeichert.",
+      message: hasCompleteShape
+        ? "Datum oder Zeitfenster sind unplausibel. Verwende ein gültiges Kalenderdatum und stelle sicher, dass das Ende nach dem Beginn liegt; es wurde nichts gespeichert."
+        : "Für die Termin-Vorschau brauche ich einen Titel in Anführungszeichen, ein Datum sowie Beginn und Ende, zum Beispiel: Plane am 03.08.2026 von 10:00 bis 11:00 den Termin „Vor-Ort-Prüfung“ für Christian Eid. Es wurde nichts gespeichert.",
     };
   }
   const normalizedQuestion = normalizePersonLabel(input.question);
@@ -628,6 +635,8 @@ export async function POST(req: Request) {
       previousDialogState?.clarification?.topicId ===
         sequencePayload.topicId &&
       sequencePayload.topicId !== "intent.ai.action-clarification" &&
+      Array.isArray(sequencePayload.choices) &&
+      sequencePayload.choices.length > 0 &&
       (previousDialogState?.clarification?.depth ?? 0) >= 2
         ? {
             ...sequencePayload,

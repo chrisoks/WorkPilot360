@@ -1801,6 +1801,63 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
   });
 
+  it("keeps repeated appointment validation specific when no choices exist", async () => {
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      recordType: "project",
+      recordId: "project-1",
+    });
+    mocks.findJarvisExactHelpTopicId.mockReturnValue("appointment.create");
+    mocks.resolveJarvisIntentDecision.mockReturnValue({
+      state: "resolved",
+      domain: "system",
+      confidence: "high",
+      candidates: [],
+      clarificationReasons: [],
+      goals: ["change"],
+      entities: [],
+      timeScopes: [],
+      recordFilter: "all",
+      segments: [],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message:
+            'Plane am 31.02.2027 von 10:00 bis 11:00 den Termin "Ungültiges Datum" für Christian Eid.',
+          context: { recordType: "project", recordId: "project-1" },
+          dialogState: {
+            version: 1,
+            domain: "system",
+            lastQuestion:
+              'Plane am 09.08.2026 von 12:00 bis 11:00 den Termin "Falsches Zeitfenster" für Christian Eid.',
+            lastIntent: {
+              goals: ["change"],
+              entities: [],
+              timeScopes: [],
+              recordFilter: "all",
+            },
+            clarification: {
+              topicId: "action.preview.planning.details-required",
+              depth: 2,
+            },
+          },
+        }),
+      })
+    );
+
+    expect(await response.json()).toMatchObject({
+      type: "clarification",
+      topicId: "action.preview.planning.details-required",
+      message: expect.stringContaining(
+        "Datum oder Zeitfenster sind unplausibel"
+      ),
+    });
+  });
+
   it("never turns task deletion into a task creation preview", async () => {
     mocks.resolveJarvisIntentDecision.mockReturnValue({
       state: "resolved",
