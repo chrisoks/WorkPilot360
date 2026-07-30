@@ -62575,6 +62575,15 @@ await addProjectLogbookEntry(
                   preload="auto"
                   tabIndex={-1}
                 />
+                <svg
+                  className={styles.jarvisFlowBlend}
+                  viewBox="0 0 1000 500"
+                  preserveAspectRatio="none"
+                  focusable="false"
+                >
+                  <path d="M145 0H855C816 45 785 83 761 126C726 190 704 226 650 246H350C296 226 274 190 239 126C215 83 184 45 145 0Z" />
+                  <path d="M350 254H650C704 274 726 310 761 374C785 417 816 455 855 500H145C184 455 215 417 239 374C274 310 296 274 350 254Z" />
+                </svg>
                 <img src="/media/jarvis-ring-gold-clean.webp" alt="" />
                 {isManagementAiOpen &&
                 !isManagementAiSending &&
