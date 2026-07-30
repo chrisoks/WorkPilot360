@@ -1,6 +1,6 @@
 # JARVIS Systemlandkarte
 
-Stand: 26.07.2026
+Stand: 30.07.2026
 
 ## Zweck
 
@@ -64,7 +64,8 @@ Kernabläufe ab. Folgende Tiefenarbeit bleibt offen:
   rollenberechtigte Suche für Projekte, Kunden/Kontakte, Aufgaben, Angebote
   und Rechnungen hinaus,
 - vollständige Dialogvarianten und Umgangssprache je Workflow,
-- schreibende Aktionen mit Vorschau, Bestätigung, Audit und Idempotenz,
+- weitere schreibende Aktionen außerhalb der bereits vollständigen Aufgaben-
+  und projektartgerechten Termin-/Terminwunsch-Vertikalschnitte,
 - Sprachsteuerung,
 - der fachlich noch nicht abgeschlossene Ausbau der Fahrzeugvermietung.
 
@@ -101,3 +102,22 @@ Bei jedem neuen oder umbenannten produktiven Bereich muss gleichzeitig:
 
 Ohne diese vier Schritte gilt ein neuer WorkPilot-Bereich für JARVIS nicht als
 vollständig eingeführt.
+
+## Action Center: produktive Vertikalschnitte
+
+Die Systemlandkarte erklärt weiterhin Bereiche und Navigation. Schreibende
+Aktionen werden getrennt über das Action Center abgesichert:
+
+- Aufgaben: persistenter Entwurf, Recheck, bewusste Bestätigung, Audit und
+  Exactly-once sind produktiv.
+- Termine und Terminwünsche: Einmalprojekt, Stunden-Dauerläufer und
+  Monatspauschale verwenden denselben serverseitigen Planungs-Batch wie die
+  normale Maske. Mehrfachmitarbeiter, Serien, Angebot/Monatskontingent,
+  begründete Überplanung, Rollen, Abwesenheit, Deduplizierung und Exactly-once
+  sind Bestandteil des gemeinsamen Vertrags.
+- Manuelle Zeiterfassung bleibt auf der typisierten Vorschaugrundlage und ist
+  noch kein produktiver Schreib-Vertikalschnitt.
+
+Ein JARVIS-Entwurf darf weder Organisation, Projektart, Projektstand,
+Mitarbeiterzugehörigkeit noch Kontingent aus seinem eigenen Payload bestimmen.
+Diese Werte werden bei Vorprüfung und Bestätigung aus WorkPilot360 neu geladen.

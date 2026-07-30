@@ -66,6 +66,24 @@ const planningPreviewPayloadSchema = z
     approvalStatus: z.enum(["confirmed", "requested"]).optional(),
     location: optionalText(500),
     note: optionalText(4000),
+    offerId: boundedId.optional(),
+    planningTrade: optionalText(180),
+    billingCatalogItemId: boundedId.optional(),
+    recurrence: z
+      .object({
+        type: z.enum(["once", "weekly", "biweekly", "monthly"]),
+        until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        weekdays: z.array(z.number().int().min(0).max(6)).max(7),
+      })
+      .strict()
+      .optional(),
+    overbookingApproval: z
+      .object({
+        fingerprint: boundedText(180),
+        reason: boundedText(1000),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .refine(
@@ -239,15 +257,39 @@ export type JarvisPlanningActionDraftView = {
   editor: {
     title: string;
     note: string;
-    assigneeId: string;
+    assigneeIds: string[];
     startAt: string;
     endAt: string;
     approvalStatus: "confirmed" | "requested";
+    variant: "single" | "recurring_hourly" | "recurring_flat";
+    offerId: string;
+    planningTrade: string;
+    billingCatalogItemId: string;
+    recurrence: {
+      type: "once" | "weekly" | "biweekly" | "monthly";
+      until: string;
+      weekdays: number[];
+    };
+    overbooking: {
+      required: boolean;
+      fingerprint: string;
+      reason: string;
+      detail: string;
+    };
     approvalStatusOptions: Array<{
       value: "confirmed" | "requested";
       label: string;
     }>;
     assigneeOptions: Array<{
+      id: string;
+      label: string;
+    }>;
+    offerOptions: Array<{
+      id: string;
+      label: string;
+      executionMonth: string;
+    }>;
+    billingCatalogItemOptions: Array<{
       id: string;
       label: string;
     }>;

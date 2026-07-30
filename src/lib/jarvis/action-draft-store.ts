@@ -25,6 +25,15 @@ import {
   canManagePlanningEntries,
 } from "@/lib/permissions";
 import {
+  evaluatePlanningBatch,
+  type PlanningBatchEvaluation,
+} from "@/lib/planning/planning-batch-service";
+import {
+  resolvePlanningActionVariant,
+  sharedPlanningRequestSchema,
+  type SharedPlanningRequest,
+} from "@/lib/planning/shared-planning";
+import {
   createJarvisConfirmedTask,
 } from "@/lib/services/task-service";
 import {
@@ -74,10 +83,28 @@ const planningPayloadSchema = z
     startAt: z.string().datetime({ offset: true }),
     endAt: z.string().datetime({ offset: true }),
     projectId: z.string().trim().min(1).max(120),
-    assigneeIds: z.array(z.string().trim().min(1).max(120)).length(1),
+    assigneeIds: z.array(z.string().trim().min(1).max(120)).min(1).max(50),
     approvalStatus: z.enum(["confirmed", "requested"]).default("confirmed"),
     location: z.string().trim().max(500).optional(),
     note: z.string().trim().max(4000).optional(),
+    offerId: z.string().trim().min(1).max(120).optional(),
+    planningTrade: z.string().trim().max(180).optional(),
+    billingCatalogItemId: z.string().trim().min(1).max(120).optional(),
+    recurrence: z
+      .object({
+        type: z.enum(["once", "weekly", "biweekly", "monthly"]),
+        until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        weekdays: z.array(z.number().int().min(0).max(6)).max(7),
+      })
+      .strict()
+      .default({ type: "once", weekdays: [] }),
+    overbookingApproval: z
+      .object({
+        fingerprint: z.string().trim().min(16).max(180),
+        reason: z.string().trim().min(10).max(1000),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .refine(
@@ -92,11 +119,23 @@ const completePlanningDraftSchema = z
   .object({
     revision: z.number().int().min(1),
     title: z.string().trim().min(1).max(180),
-    note: z.string().trim().max(4000).optional(),
-    assigneeId: z.string().trim().min(1).max(120),
+    note: z.string().trim().max(4000),
+    assigneeIds: z.array(z.string().trim().min(1).max(120)).min(1).max(50),
     startAt: z.string().datetime({ offset: true }),
     endAt: z.string().datetime({ offset: true }),
     approvalStatus: z.enum(["confirmed", "requested"]),
+    offerId: z.string().trim().max(120).optional(),
+    planningTrade: z.string().trim().max(180).optional(),
+    billingCatalogItemId: z.string().trim().max(120).optional(),
+    recurrence: z
+      .object({
+        type: z.enum(["once", "weekly", "biweekly", "monthly"]),
+        until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        weekdays: z.array(z.number().int().min(0).max(6)).max(7),
+      })
+      .strict(),
+    overbookingReason: z.string().trim().max(1000).optional(),
+    overbookingFingerprint: z.string().trim().max(180).optional(),
   })
   .strict();
 
@@ -125,20 +164,8 @@ export type CreateJarvisPlanningDraftInput = JarvisTaskDraftBinding & {
 };
 
 export type JarvisPlanningExecutionInput = {
-  id: string;
   actorUserId: string;
-  title: string;
-  description: string;
-  userId: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  durationMinutes: number;
-  board: string;
-  groupName: string;
-  projectId: string;
-  projectLabel: string;
-  approvalStatus: "confirmed" | "requested";
+  planning: SharedPlanningRequest;
 };
 
 export class JarvisActionDraftError extends Error {
@@ -605,26 +632,34 @@ async function evaluatePlanningDraft(
   );
 
   const options = await getPlanningAssigneeOptions(binding);
-  const assignee = options.find((option) => option.id === payload.assigneeIds[0]);
+  const assignees = payload.assigneeIds
+    .map((id) => options.find((option) => option.id === id))
+    .filter((option): option is PlanningAssigneeOption => Boolean(option));
+  const assignee = assignees[0];
+  const allAssigneesValid =
+    assignees.length === payload.assigneeIds.length &&
+    new Set(payload.assigneeIds).size === payload.assigneeIds.length;
   checks.push(
     planningCheck(
       "active_assignee",
       "Aktiver Mitarbeitender",
-      assignee ? "ok" : "blocked",
-      assignee
-        ? `${assignee.label} ist aktiv und mit der aktuellen Rolle auswählbar.`
-        : "Die gewählte Person ist in dieser Organisation nicht aktiv oder mit der aktuellen Rolle nicht zulässig."
+      allAssigneesValid ? "ok" : "blocked",
+      allAssigneesValid
+        ? `${assignees.map((entry) => entry.label).join(", ")} sind aktiv und mit der aktuellen Rolle auswählbar.`
+        : "Mindestens eine gewählte Person ist in dieser Organisation nicht aktiv, doppelt oder mit der aktuellen Rolle nicht zulässig."
     )
   );
-  const boardGroupValid = Boolean(assignee?.board && assignee.groupName);
+  const boardGroupValid =
+    allAssigneesValid &&
+    assignees.every((entry) => Boolean(entry.board && entry.groupName));
   checks.push(
     planningCheck(
       "board_group",
       "Planungsboard und -gruppe",
       boardGroupValid ? "ok" : "blocked",
       boardGroupValid
-        ? `${assignee?.board} · ${assignee?.groupName}`
-        : "Für die gewählte Person fehlt eine eindeutige Planungsgruppe."
+        ? assignees.map((entry) => `${entry.label}: ${entry.board} · ${entry.groupName}`).join("; ")
+        : "Für mindestens eine gewählte Person fehlt eine eindeutige Planungsgruppe."
     )
   );
 
@@ -633,6 +668,7 @@ async function evaluatePlanningDraft(
   const roleValid =
     mayManage ||
     (payload.approvalStatus === "requested" &&
+      payload.assigneeIds.length === 1 &&
       payload.assigneeIds[0] === actorId);
   checks.push(
     planningCheck(
@@ -787,42 +823,182 @@ async function evaluatePlanningDraft(
       weekend ? "Der Termin liegt am Wochenende." : "Der Termin liegt an einem Werktag."
     )
   );
+  const variant = resolvePlanningActionVariant(project ?? {});
+  const variantFieldsValid =
+    Boolean(payload.note?.trim()) &&
+    (variant !== "single" || Boolean(payload.offerId)) &&
+    (variant !== "recurring_hourly" ||
+      Boolean(payload.planningTrade?.trim() && payload.billingCatalogItemId)) &&
+    (variant !== "single" || payload.recurrence.type === "once");
   checks.push(
     planningCheck(
-      "offer_contingent",
+      "project_variant_fields",
       "Projektartgerechte Terminmaske",
-      "blocked",
-      project?.projectKind?.toLocaleLowerCase("de-DE").startsWith("dauer")
-        ? project.recurringBillingMode === "hourly"
-          ? "Dauerläufer mit Stundenabrechnung benötigen zusätzlich Beschreibung, Termin-Gewerk, passende Abrechnungsleistung und die bewusste Angabe zu weiteren Mitarbeitenden. Diese Felder sind im JARVIS-Entwurf noch nicht vollständig freigegeben."
-          : "Dauerläufer mit Monatspauschale benötigen mindestens Beschreibung sowie den projektmonat- und seriengerechten Planungskontext. Diese Felder sind im JARVIS-Entwurf noch nicht vollständig freigegeben."
-        : "Einmalprojekte benötigen die gültige finale Angebotszuordnung, Angebotskontingent und gegebenenfalls eine Bestätigung des Ausführungsmonats. Diese Felder sind im JARVIS-Entwurf noch nicht vollständig freigegeben."
+      variantFieldsValid ? "ok" : "blocked",
+      variant === "single"
+        ? variantFieldsValid
+          ? "Beschreibung, finales Angebot, Ausführungsmonat und Angebotskontingent werden gemeinsam geprüft."
+          : "Beschreibung und finales Angebot sind Pflicht; Einmalprojekte werden ohne Terminserie geplant."
+        : variant === "recurring_hourly"
+          ? variantFieldsValid
+            ? "Beschreibung, Termin-Gewerk, Abrechnungsleistung, Mitarbeitende und Serienkontext sind vollständig."
+            : "Beschreibung, Termin-Gewerk und Abrechnungsleistung sind für Stunden-Dauerläufer Pflicht."
+          : variantFieldsValid
+            ? "Beschreibung, Mitarbeitende sowie Monats- und Serienkontext werden gegen das Monatskontingent geprüft."
+            : "Für die Monatspauschale ist eine Terminbeschreibung erforderlich."
     )
   );
+
+  let batchEvaluation: PlanningBatchEvaluation | null = null;
+  let sharedRequest: SharedPlanningRequest | null = null;
+  if (project && context.recordUpdatedAt && variantFieldsValid && timeValid && allAssigneesValid) {
+    const parsedRequest = sharedPlanningRequestSchema.safeParse({
+      requestId: draftId,
+      projectId: project.id,
+      expectedProjectUpdatedAt: context.recordUpdatedAt,
+      approvalStatus: payload.approvalStatus,
+      assigneeIds: payload.assigneeIds,
+      title: payload.title,
+      description: payload.note,
+      startAt: payload.startAt,
+      endAt: payload.endAt,
+      recurrence: payload.recurrence,
+      ...(payload.offerId ? { offerId: payload.offerId } : {}),
+      ...(payload.planningTrade ? { planningTrade: payload.planningTrade } : {}),
+      ...(payload.billingCatalogItemId
+        ? { billingCatalogItemId: payload.billingCatalogItemId }
+        : {}),
+      ...(payload.overbookingApproval
+        ? { overbookingApproval: payload.overbookingApproval }
+        : {}),
+    });
+    if (parsedRequest.success) {
+      sharedRequest = parsedRequest.data;
+      try {
+        const [actor, organizationUsers] = await Promise.all([
+          prisma.user.findFirst({
+            where: { id: actorId, organizationId: binding.organizationId, isActive: true },
+          }),
+          prisma.user.findMany({
+            where: { organizationId: binding.organizationId, isActive: true },
+          }),
+        ]);
+        if (!actor) throw new Error("Aktiver JARVIS-Akteur nicht gefunden.");
+        batchEvaluation = await evaluatePlanningBatch({
+          organizationId: binding.organizationId,
+          timezone: "Europe/Berlin",
+          actor,
+          users: organizationUsers,
+          request: parsedRequest.data,
+        });
+        checks.push(
+          planningCheck(
+            "shared_planning_preflight",
+            "Gemeinsamer Planning-Service",
+            "ok",
+            `${batchEvaluation.entryCount} Eintrag/Einträge für ${batchEvaluation.assignees.length} Mitarbeitende wurden serverseitig geprüft.`
+          )
+        );
+      } catch (error) {
+        checks.push(
+          planningCheck(
+            "shared_planning_preflight",
+            "Gemeinsamer Planning-Service",
+            "blocked",
+            error instanceof Error ? error.message : "Die gemeinsame Planungsprüfung ist fehlgeschlagen."
+          )
+        );
+      }
+    }
+  }
+
+  if (batchEvaluation?.overbooking.required) {
+    const approvalMatches =
+      payload.overbookingApproval?.fingerprint ===
+        batchEvaluation.overbooking.fingerprint &&
+      (payload.overbookingApproval?.reason.trim().length ?? 0) >= 10;
+    checks.push(
+      planningCheck(
+        "overbooking_confirmation",
+        "Überplanung bewusst bestätigen",
+        approvalMatches ? "warning" : "blocked",
+        approvalMatches
+          ? `Überplanung ist begründet: ${payload.overbookingApproval?.reason}`
+          : batchEvaluation.overbooking.details
+              .map(
+                (detail) =>
+                  `${detail.month}: ${detail.requestedMinutes} Min. geplant, ${detail.availableMinutes} Min. frei.`
+              )
+              .join(" ")
+      )
+    );
+  } else if (batchEvaluation) {
+    checks.push(
+      planningCheck(
+        "overbooking_confirmation",
+        "Verfügbares Kontingent",
+        "ok",
+        "Die Planung bleibt innerhalb des aktuell verfügbaren Kontingents."
+      )
+    );
+  }
+  const [offerOptions, billingCatalogItemOptions] = project
+    ? await Promise.all([
+        prisma.offer?.findMany({
+          where: {
+            organizationId: binding.organizationId,
+            projectId: project.id,
+            status: {
+              notIn: [
+                "Entwurf",
+                "Verloren",
+                "Angebot verloren",
+                "Gelöscht",
+              ],
+            },
+            lines: { some: { laborItems: { some: { plannedHours: { gt: 0 } } } } },
+          },
+          orderBy: { updatedAt: "desc" },
+          select: {
+            id: true,
+            offerNumber: true,
+            plannedExecutionMonth: true,
+          },
+        }) ?? Promise.resolve([]),
+        prisma.catalogItem?.findMany({
+          where: {
+            organizationId: binding.organizationId,
+            isActive: true,
+            isPlanningRelevant: true,
+          },
+          orderBy: { name: "asc" },
+          select: { id: true, number: true, name: true },
+        }) ?? Promise.resolve([]),
+      ])
+    : [[], []];
 
   return {
     checks,
     options,
     assignee,
     project,
+    variant,
+    batchEvaluation,
+    offerOptions: offerOptions.map((offer) => ({
+      id: offer.id,
+      label: offer.offerNumber,
+      executionMonth: offer.plannedExecutionMonth,
+    })),
+    billingCatalogItemOptions: billingCatalogItemOptions.map((item) => ({
+      id: item.id,
+      label: `${item.number} · ${item.name}`,
+    })),
     executable: checks.every((check) => check.status !== "blocked"),
     executionInput:
-      assignee && project && timeValid
+      sharedRequest && batchEvaluation
         ? ({
-            id: draftId,
             actorUserId: actorId,
-            title: payload.title,
-            description: payload.note ?? "",
-            userId: assignee.id,
-            date: startParts.date,
-            startTime: startParts.time,
-            endTime: endParts.time,
-            durationMinutes,
-            board: assignee.board,
-            groupName: assignee.groupName,
-            projectId: project.id,
-            projectLabel: `${project.projectNumber} · ${project.title}`,
-            approvalStatus: payload.approvalStatus,
+            planning: sharedRequest,
           } satisfies JarvisPlanningExecutionInput)
         : null,
   };
@@ -1532,9 +1708,9 @@ export async function toJarvisPlanningActionDraftView(
     draft.id,
     now
   );
-  const assignee = evaluation.options.find(
-    (option) => option.id === payload.assigneeIds[0]
-  );
+  const assignees = payload.assigneeIds
+    .map((id) => evaluation.options.find((option) => option.id === id))
+    .filter((option): option is PlanningAssigneeOption => Boolean(option));
   const missingFields = evaluation.checks
     .filter((check) => check.status === "blocked")
     .map((check) => check.label);
@@ -1588,11 +1764,31 @@ export async function toJarvisPlanningActionDraftView(
       ).format(new Date(payload.endAt))} Uhr`,
     },
   ];
-  if (assignee) fields.push({ label: "Mitarbeitend", value: assignee.label });
+  if (assignees.length > 0) {
+    fields.push({
+      label: assignees.length === 1 ? "Mitarbeitend" : "Mitarbeitende",
+      value: assignees.map((entry) => entry.label).join(", "),
+    });
+  }
   if (context.recordLabel) {
     fields.push({ label: "Projektbezug", value: context.recordLabel });
   }
-  if (payload.note) fields.push({ label: "Notiz", value: payload.note });
+  if (payload.note) fields.push({ label: "Beschreibung", value: payload.note });
+  fields.push({
+    label: "Projektart",
+    value:
+      evaluation.variant === "single"
+        ? "Einmalprojekt"
+        : evaluation.variant === "recurring_hourly"
+          ? "Stunden-Dauerläufer"
+          : "Monatspauschale",
+  });
+  if (evaluation.batchEvaluation?.offer) {
+    fields.push({
+      label: "Finales Angebot / Ausführung",
+      value: `${evaluation.batchEvaluation.offer.label} · ${evaluation.batchEvaluation.offer.executionMonth}`,
+    });
+  }
 
   return {
     version: 2,
@@ -1612,10 +1808,32 @@ export async function toJarvisPlanningActionDraftView(
     editor: {
       title: payload.title,
       note: payload.note ?? "",
-      assigneeId: payload.assigneeIds[0] ?? "",
+      assigneeIds: payload.assigneeIds,
       startAt: payload.startAt,
       endAt: payload.endAt,
       approvalStatus: payload.approvalStatus,
+      variant: evaluation.variant,
+      offerId: payload.offerId ?? "",
+      planningTrade: payload.planningTrade ?? "",
+      billingCatalogItemId: payload.billingCatalogItemId ?? "",
+      recurrence: {
+        type: payload.recurrence.type,
+        until: payload.recurrence.until ?? "",
+        weekdays: payload.recurrence.weekdays,
+      },
+      overbooking: {
+        required: Boolean(evaluation.batchEvaluation?.overbooking.required),
+        fingerprint:
+          evaluation.batchEvaluation?.overbooking.fingerprint ?? "",
+        reason: payload.overbookingApproval?.reason ?? "",
+        detail:
+          evaluation.batchEvaluation?.overbooking.details
+            .map(
+              (detail) =>
+                `${detail.month}: ${detail.requestedMinutes} Min. geplant, ${detail.availableMinutes} Min. frei`
+            )
+            .join("; ") ?? "",
+      },
       approvalStatusOptions: canManagePlanningEntries(
         binding.profile.effectiveActor
       )
@@ -1628,6 +1846,8 @@ export async function toJarvisPlanningActionDraftView(
         id,
         label,
       })),
+      offerOptions: evaluation.offerOptions,
+      billingCatalogItemOptions: evaluation.billingCatalogItemOptions,
     },
     confirmation: { enabled: isReady, reason },
     cancellation: { enabled: isOpen },
@@ -1778,11 +1998,19 @@ export async function completeJarvisPlanningDraft(
   }
   const parsedPayload = planningPayloadSchema.safeParse({
     title: completed.data.title,
-    ...(completed.data.note ? { note: completed.data.note } : {}),
-    assigneeIds: [completed.data.assigneeId],
+    note: completed.data.note,
+    assigneeIds: completed.data.assigneeIds,
     startAt: completed.data.startAt,
     endAt: completed.data.endAt,
     approvalStatus: completed.data.approvalStatus,
+    recurrence: completed.data.recurrence,
+    ...(completed.data.offerId ? { offerId: completed.data.offerId } : {}),
+    ...(completed.data.planningTrade
+      ? { planningTrade: completed.data.planningTrade }
+      : {}),
+    ...(completed.data.billingCatalogItemId
+      ? { billingCatalogItemId: completed.data.billingCatalogItemId }
+      : {}),
     projectId: "temporary",
   });
   if (!parsedPayload.success) {
@@ -1811,10 +2039,22 @@ export async function completeJarvisPlanningDraft(
     ...loaded.payload,
     title: completed.data.title,
     note: completed.data.note || undefined,
-    assigneeIds: [completed.data.assigneeId],
+    assigneeIds: completed.data.assigneeIds,
     startAt: completed.data.startAt,
     endAt: completed.data.endAt,
     approvalStatus: completed.data.approvalStatus,
+    offerId: completed.data.offerId || undefined,
+    planningTrade: completed.data.planningTrade || undefined,
+    billingCatalogItemId: completed.data.billingCatalogItemId || undefined,
+    recurrence: completed.data.recurrence,
+    overbookingApproval:
+      completed.data.overbookingFingerprint &&
+      completed.data.overbookingReason
+        ? {
+            fingerprint: completed.data.overbookingFingerprint,
+            reason: completed.data.overbookingReason,
+          }
+        : undefined,
   });
   const previewValidation = createJarvisActionPreview({
     previewId: loaded.draft.id,
@@ -2004,19 +2244,31 @@ export async function confirmJarvisPlanningDraft(
     return toJarvisPlanningActionDraftView(loaded.draft, binding, now);
   }
   if (loaded.draft.state === "executing") {
-    const existing = await prisma.planningEntry.findFirst({
-      where: {
-        id: loaded.draft.id,
-        organizationId: binding.organizationId,
-        deletedAt: null,
-      },
-      select: { id: true },
-    });
-    if (existing) {
+    const existing = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"
+      FROM "PlanningBatch"
+      WHERE "organizationId" = ${binding.organizationId}
+        AND "requestId" = ${loaded.draft.id}
+        AND "status" = 'completed'
+      LIMIT 1
+    `;
+    const legacyEntry =
+      existing.length === 0
+        ? await prisma.planningEntry.findFirst({
+            where: {
+              id: loaded.draft.id,
+              organizationId: binding.organizationId,
+              deletedAt: null,
+            },
+            select: { id: true },
+          })
+        : null;
+    const existingResultId = existing[0]?.id ?? legacyEntry?.id;
+    if (existingResultId) {
       const finalized = await finalizePlanningDraft(
         loaded.draft,
         binding,
-        existing.id,
+        existingResultId,
         now
       );
       return toJarvisPlanningActionDraftView(finalized, binding, now);

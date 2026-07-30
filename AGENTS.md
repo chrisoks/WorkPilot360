@@ -1,5 +1,58 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS projektartgerechte Terminplanung 2026-07-30:
+  Die bisherige harte Blockade `Projektartgerechte Terminmaske` ist technisch
+  ersetzt. Normale Planung, Terminwunsch und JARVIS verwenden für neue
+  Projekttermine denselben serverseitigen Planungs-Batch. Der Kern leitet die
+  Variante ausschließlich aus dem aktuellen Projekt ab und prüft unmittelbar
+  vor dem Schreiben erneut Organisation, wirksamen Akteur, Rolle,
+  Projektstand, aktive Mitarbeitende, Board/Gruppe, Abwesenheiten,
+  Projektdubletten, Serie und Kontingent.
+  Einmalprojekte verlangen Beschreibung und ein aktives finales Angebot mit
+  Stundenkontingent; der Termin muss im Ausführungsmonat des Angebots liegen.
+  Stunden-Dauerläufer verlangen Beschreibung, Termin-Gewerk und eine aktive,
+  planungsrelevante Abrechnungsleistung desselben Gewerks. Monatspauschalen
+  zeigen und prüfen das freie Kontingent für jeden betroffenen Serienmonat.
+  Alle drei Masken erlauben mehrere Mitarbeitende. Serien gibt es nur für
+  Dauerläufer. Termin und Terminwunsch bleiben dieselbe Maske; der
+  Terminwunsch unterscheidet sich ausschließlich durch
+  `approvalStatus=requested` und die spätere Freigabe.
+
+  Überschreitet ein Einmalprojekt das Angebotskontingent oder eine
+  Monatspauschale ihr Monatskontingent, liefert die Vorprüfung einen an
+  Projektstand, Angebot, Personen, Zeiten, Serie und Kontingent gebundenen
+  SHA-256-Fingerprint. Ausführung ist erst mit genau diesem Prüfstand und
+  einer Begründung ab zehn Zeichen möglich. Grund und Überplanungsart werden
+  am Batch und an jedem Termin gespeichert, die Historie enthält den Grund,
+  und Führung/Geschäftsführung/Admin erhalten je Batch höchstens eine sichtbare
+  App-Meldung. Terminwunsch-Verantwortliche und eingeplante Mitarbeitende
+  werden weiterhin passend informiert.
+
+  Mehrfachmitarbeiter und Serien werden nicht mehr nacheinander aus dem Client
+  geschrieben. Eine serialisierbare Datenbanktransaktion legt Batch,
+  sämtliche `PlanningEntry`-Zeilen, Historien und Meldungen vollständig oder
+  gar nicht an. `organizationId + requestId`, kanonischer Payload-Hash,
+  deterministische Termin-IDs, Ergebnisnachweis und bis zu drei
+  Serialisierungswiederholungen sichern Exactly-once, Doppelklick, Replay und
+  parallele Kontingentnutzung ab. JARVIS nutzt denselben Kern mit der
+  Entwurfs-ID als `requestId`; der bestehende Sitzungs-, HMAC-, TTL-,
+  Revisions-, Kontext- und Auditvertrag bleibt erhalten. Neue additive
+  Speicherung: `PlanningBatch` sowie `PlanningEntry.batchId`,
+  `overbookingKind`, `overbookingReason`; defensive Runtime-DDL und additive
+  Migration sind beide vorhanden.
+
+  Lokale Abnahme vor Deployment: Sicherheitsbundle
+  `.codex-safety/before-jarvis-project-planning-masks-20260730-135215.bundle`,
+  additiver Prisma-Diff ohne Drop, lokale DB synchron, 104 Testdateien mit
+  1.183/1.183 Tests, TypeScript, Regression, Mojibake, Prisma-Validierung,
+  `git diff --check` und Produktionsbuild mit 89 Seiten grün. Die sichtbare
+  Maske bestätigte für `MKG-400` Mehrfachmitarbeiter, freies
+  Monatskontingent, Mitarbeiterfaktor und Serienkontext. Der Browser konnte
+  nach dem Wechsel vom Dev- auf den Produktionsserver wegen der lokalen
+  URL-Sicherheitsrichtlinie nicht erneut geladen werden; die erste echte
+  Maskenabnahme war vollständig, der Produktionsbuild selbst startete lokal
+  mit HTTP 200.
+
 - JARVIS Action Center Termin-/Terminwunsch-Vertikalschnitt 2026-07-30:
   Produktionsstand `93fd70f`: Der persistente 15-Minuten-Entwurf übernimmt die vollständige
   Organisations-, Sitzungs-, Akteurs-, Rollen-, Impersonations-, Revisions-,

@@ -14,7 +14,9 @@ import {
 } from "@/lib/jarvis/action-draft-store";
 import { createJarvisAccessProfile } from "@/lib/jarvis/security";
 import { getPublicAppOrigin } from "@/lib/http/public-app-origin";
-import { POST as savePlanningEntry } from "@/app/api/planning-entries/route";
+import {
+  executePlanningBatch,
+} from "@/lib/planning/planning-batch-service";
 
 export const dynamic = "force-dynamic";
 
@@ -150,10 +152,16 @@ export async function PATCH(
             revision: body.revision,
             title: body.title,
             note: body.note,
-            assigneeId: body.assigneeId,
+            assigneeIds: body.assigneeIds,
             startAt: body.startAt,
             endAt: body.endAt,
             approvalStatus: body.approvalStatus,
+            offerId: body.offerId,
+            planningTrade: body.planningTrade,
+            billingCatalogItemId: body.billingCatalogItemId,
+            recurrence: body.recurrence,
+            overbookingReason: body.overbookingReason,
+            overbookingFingerprint: body.overbookingFingerprint,
           }
         )
       : await completeJarvisTaskDraft(
@@ -232,41 +240,22 @@ export async function POST(
           resolved.binding,
           body.revision,
           async (planningInput) => {
-            const headers = new Headers({
-              "content-type": "application/json",
-            });
-            const cookie = req.headers.get("cookie");
-            const origin = req.headers.get("origin");
-            if (cookie) headers.set("cookie", cookie);
-            if (origin) headers.set("origin", origin);
-            const planningResponse = await savePlanningEntry(
-              new Request(
-                new URL("/api/planning-entries", req.url),
-                {
-                  method: "POST",
-                  headers,
-                  body: JSON.stringify({
-                    ...planningInput,
-                    source: "manual",
-                    actorUserId: planningInput.actorUserId,
-                  }),
-                }
-              )
+            const { organization, users } = await getDemoContext();
+            const actor = users.find(
+              (user) => user.id === planningInput.actorUserId && user.isActive
             );
-            const result = await planningResponse.json().catch(() => ({}));
-            if (!planningResponse.ok) {
-              throw new Error(
-                typeof result?.error === "string"
-                  ? result.error
-                  : "Unbekannter Fehler des Planning-Service."
-              );
+            if (!actor || organization.id !== resolved.binding.organizationId) {
+              throw new Error("Der gebundene JARVIS-Akteur ist nicht mehr aktiv.");
             }
-            if (!result?.id || result.id !== planningInput.id) {
-              throw new Error(
-                "Der Planning-Service lieferte keinen eindeutigen Ergebnisnachweis."
-              );
-            }
-            return { id: result.id as string };
+            const result = await executePlanningBatch({
+              organizationId: organization.id,
+              timezone: organization.timezone || "Europe/Berlin",
+              actor,
+              users,
+              request: planningInput.planning,
+              source: "jarvis",
+            });
+            return { id: result.batchId };
           }
         )
       : await confirmJarvisTaskDraft(

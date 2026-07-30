@@ -558,7 +558,7 @@ describe("persistent JARVIS planning drafts", () => {
         "overlap",
         "absence",
         "holiday",
-        "offer_contingent",
+        "project_variant_fields",
       ])
     );
     expect(JSON.stringify(view)).not.toContain("session-1");
@@ -620,10 +620,14 @@ describe("persistent JARVIS planning drafts", () => {
         revision: 1,
         title: "Geänderte Vor-Ort-Prüfung",
         note: "Mit Kundin abstimmen",
-        assigneeId: "user-1",
+        assigneeIds: ["user-1"],
         startAt: "2026-08-03T08:00:00.000Z",
         endAt: "2026-08-03T09:00:00.000Z",
         approvalStatus: "confirmed",
+        offerId: "",
+        planningTrade: "",
+        billingCatalogItemId: "",
+        recurrence: { type: "once", weekdays: [] },
       },
       baseNow
     );

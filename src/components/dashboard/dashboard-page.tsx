@@ -998,7 +998,7 @@ function parseJarvisPlanningActionDraft(
     !editor ||
     typeof editor.title !== "string" ||
     typeof editor.note !== "string" ||
-    typeof editor.assigneeId !== "string" ||
+    !Array.isArray(editor.assigneeIds) ||
     typeof editor.startAt !== "string" ||
     typeof editor.endAt !== "string" ||
     !Number.isFinite(Date.parse(editor.startAt)) ||
@@ -1006,6 +1006,16 @@ function parseJarvisPlanningActionDraft(
     !["confirmed", "requested"].includes(String(editor.approvalStatus)) ||
     !Array.isArray(editor.assigneeOptions) ||
     !Array.isArray(editor.approvalStatusOptions) ||
+    !["single", "recurring_hourly", "recurring_flat"].includes(String(editor.variant)) ||
+    typeof editor.offerId !== "string" ||
+    typeof editor.planningTrade !== "string" ||
+    typeof editor.billingCatalogItemId !== "string" ||
+    !Array.isArray(editor.offerOptions) ||
+    !Array.isArray(editor.billingCatalogItemOptions) ||
+    !editor.recurrence ||
+    typeof editor.recurrence !== "object" ||
+    !editor.overbooking ||
+    typeof editor.overbooking !== "object" ||
     !Array.isArray(candidate.checks) ||
     !confirmation ||
     typeof confirmation.enabled !== "boolean" ||
@@ -1078,6 +1088,29 @@ function parseJarvisPlanningActionDraft(
         label: string;
       } => Boolean(option?.label)
     );
+  const assigneeIds = (editor.assigneeIds as unknown[])
+    .filter((id: unknown): id is string => typeof id === "string")
+    .map((id) => id.trim().slice(0, 120))
+    .filter(Boolean)
+    .slice(0, 50);
+  const offerOptions = editor.offerOptions
+    .filter((option): option is Record<string, unknown> => Boolean(option && typeof option === "object"))
+    .map((option) => ({
+      id: typeof option.id === "string" ? option.id.trim().slice(0, 120) : "",
+      label: typeof option.label === "string" ? option.label.trim().slice(0, 180) : "",
+      executionMonth:
+        typeof option.executionMonth === "string" ? option.executionMonth.trim().slice(0, 7) : "",
+    }))
+    .filter((option) => option.id && option.label);
+  const billingCatalogItemOptions = editor.billingCatalogItemOptions
+    .filter((option): option is Record<string, unknown> => Boolean(option && typeof option === "object"))
+    .map((option) => ({
+      id: typeof option.id === "string" ? option.id.trim().slice(0, 120) : "",
+      label: typeof option.label === "string" ? option.label.trim().slice(0, 180) : "",
+    }))
+    .filter((option) => option.id && option.label);
+  const recurrence = editor.recurrence as Record<string, unknown>;
+  const overbooking = editor.overbooking as Record<string, unknown>;
   const checks = candidate.checks
     .map((check) => {
       if (!check || typeof check !== "object") return undefined;
@@ -1150,12 +1183,34 @@ function parseJarvisPlanningActionDraft(
     editor: {
       title: editor.title.trim().slice(0, 180),
       note: editor.note.slice(0, 4000),
-      assigneeId: editor.assigneeId.trim().slice(0, 120),
+      assigneeIds,
       startAt: editor.startAt,
       endAt: editor.endAt,
       approvalStatus: editor.approvalStatus as "confirmed" | "requested",
+      variant: editor.variant as JarvisPlanningActionDraftView["editor"]["variant"],
+      offerId: editor.offerId.trim().slice(0, 120),
+      planningTrade: editor.planningTrade.trim().slice(0, 180),
+      billingCatalogItemId: editor.billingCatalogItemId.trim().slice(0, 120),
+      recurrence: {
+        type: ["once", "weekly", "biweekly", "monthly"].includes(String(recurrence.type))
+          ? (recurrence.type as JarvisPlanningActionDraftView["editor"]["recurrence"]["type"])
+          : "once",
+        until: typeof recurrence.until === "string" ? recurrence.until.slice(0, 10) : "",
+        weekdays: Array.isArray(recurrence.weekdays)
+          ? recurrence.weekdays.filter((day): day is number => Number.isInteger(day) && day >= 0 && day <= 6)
+          : [],
+      },
+      overbooking: {
+        required: overbooking.required === true,
+        fingerprint:
+          typeof overbooking.fingerprint === "string" ? overbooking.fingerprint.slice(0, 180) : "",
+        reason: typeof overbooking.reason === "string" ? overbooking.reason.slice(0, 1000) : "",
+        detail: typeof overbooking.detail === "string" ? overbooking.detail.slice(0, 1000) : "",
+      },
       approvalStatusOptions,
       assigneeOptions,
+      offerOptions,
+      billingCatalogItemOptions,
     },
     confirmation: {
       enabled: confirmation.enabled,
@@ -1432,7 +1487,7 @@ function JarvisPlanningDraftCard({
 }) {
   const [title, setTitle] = useState(draft.editor.title);
   const [note, setNote] = useState(draft.editor.note);
-  const [assigneeId, setAssigneeId] = useState(draft.editor.assigneeId);
+  const [assigneeIds, setAssigneeIds] = useState(draft.editor.assigneeIds);
   const [startAt, setStartAt] = useState(
     jarvisIsoToLocalInput(draft.editor.startAt)
   );
@@ -1442,16 +1497,36 @@ function JarvisPlanningDraftCard({
   const [approvalStatus, setApprovalStatus] = useState<
     "confirmed" | "requested"
   >(draft.editor.approvalStatus);
+  const [offerId, setOfferId] = useState(draft.editor.offerId);
+  const [planningTrade, setPlanningTrade] = useState(draft.editor.planningTrade);
+  const [billingCatalogItemId, setBillingCatalogItemId] = useState(
+    draft.editor.billingCatalogItemId
+  );
+  const [recurrenceType, setRecurrenceType] = useState(
+    draft.editor.recurrence.type
+  );
+  const [recurrenceUntil, setRecurrenceUntil] = useState(
+    draft.editor.recurrence.until
+  );
+  const [overbookingReason, setOverbookingReason] = useState(
+    draft.editor.overbooking.reason
+  );
   const [isWorking, setIsWorking] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     setTitle(draft.editor.title);
     setNote(draft.editor.note);
-    setAssigneeId(draft.editor.assigneeId);
+    setAssigneeIds(draft.editor.assigneeIds);
     setStartAt(jarvisIsoToLocalInput(draft.editor.startAt));
     setEndAt(jarvisIsoToLocalInput(draft.editor.endAt));
     setApprovalStatus(draft.editor.approvalStatus);
+    setOfferId(draft.editor.offerId);
+    setPlanningTrade(draft.editor.planningTrade);
+    setBillingCatalogItemId(draft.editor.billingCatalogItemId);
+    setRecurrenceType(draft.editor.recurrence.type);
+    setRecurrenceUntil(draft.editor.recurrence.until);
+    setOverbookingReason(draft.editor.overbooking.reason);
     setError("");
   }, [
     draft.previewId,
@@ -1459,10 +1534,16 @@ function JarvisPlanningDraftCard({
     draft.state,
     draft.editor.title,
     draft.editor.note,
-    draft.editor.assigneeId,
+    draft.editor.assigneeIds,
     draft.editor.startAt,
     draft.editor.endAt,
     draft.editor.approvalStatus,
+    draft.editor.offerId,
+    draft.editor.planningTrade,
+    draft.editor.billingCatalogItemId,
+    draft.editor.recurrence.type,
+    draft.editor.recurrence.until,
+    draft.editor.overbooking.reason,
   ]);
 
   const isOpen =
@@ -1471,10 +1552,16 @@ function JarvisPlanningDraftCard({
   const isDirty =
     title.trim() !== draft.editor.title ||
     note.trim() !== draft.editor.note ||
-    assigneeId !== draft.editor.assigneeId ||
+    assigneeIds.join("|") !== draft.editor.assigneeIds.join("|") ||
     startAt !== jarvisIsoToLocalInput(draft.editor.startAt) ||
     endAt !== jarvisIsoToLocalInput(draft.editor.endAt) ||
-    approvalStatus !== draft.editor.approvalStatus;
+    approvalStatus !== draft.editor.approvalStatus ||
+    offerId !== draft.editor.offerId ||
+    planningTrade !== draft.editor.planningTrade ||
+    billingCatalogItemId !== draft.editor.billingCatalogItemId ||
+    recurrenceType !== draft.editor.recurrence.type ||
+    recurrenceUntil !== draft.editor.recurrence.until ||
+    overbookingReason !== draft.editor.overbooking.reason;
   const request = async (
     method: "PATCH" | "POST",
     body: Record<string, unknown>
@@ -1571,21 +1658,77 @@ function JarvisPlanningDraftCard({
               onChange={(event) => setTitle(event.target.value)}
             />
           </label>
-          <label>
-            <span>Mitarbeitende Person</span>
-            <select
-              value={assigneeId}
-              disabled={disabled || isWorking}
-              onChange={(event) => setAssigneeId(event.target.value)}
-            >
-              <option value="">Bitte auswählen</option>
+          <div className={styles.planningWeekdayPicker}>
+            <span>Mitarbeitende Personen</span>
+            <div>
               {draft.editor.assigneeOptions.map((option) => (
-                <option key={option.id} value={option.id}>
+                <button
+                  key={option.id}
+                  type="button"
+                  data-active={assigneeIds.includes(option.id)}
+                  disabled={disabled || isWorking}
+                  onClick={() =>
+                    setAssigneeIds((current) =>
+                      current.includes(option.id)
+                        ? current.length > 1
+                          ? current.filter((id) => id !== option.id)
+                          : current
+                        : [...current, option.id]
+                    )
+                  }
+                >
                   {option.label}
-                </option>
+                </button>
               ))}
-            </select>
-          </label>
+            </div>
+          </div>
+          {draft.editor.variant === "single" ? (
+            <label>
+              <span>Finales Angebot</span>
+              <select
+                value={offerId}
+                disabled={disabled || isWorking}
+                onChange={(event) => setOfferId(event.target.value)}
+              >
+                <option value="">Bitte auswählen</option>
+                {draft.editor.offerOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label} · Ausführung {option.executionMonth || "fehlt"}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {draft.editor.variant === "recurring_hourly" ? (
+            <>
+              <label>
+                <span>Termin-Gewerk</span>
+                <input
+                  value={planningTrade}
+                  maxLength={180}
+                  disabled={disabled || isWorking}
+                  onChange={(event) => setPlanningTrade(event.target.value)}
+                />
+              </label>
+              <label>
+                <span>Abrechnungsleistung</span>
+                <select
+                  value={billingCatalogItemId}
+                  disabled={disabled || isWorking}
+                  onChange={(event) =>
+                    setBillingCatalogItemId(event.target.value)
+                  }
+                >
+                  <option value="">Bitte auswählen</option>
+                  {draft.editor.billingCatalogItemOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          ) : null}
           <label>
             <span>Terminart</span>
             <select
@@ -1623,7 +1766,7 @@ function JarvisPlanningDraftCard({
             />
           </label>
           <label>
-            <span>Notiz (optional)</span>
+            <span>Terminbeschreibung</span>
             <textarea
               rows={3}
               maxLength={4000}
@@ -1632,13 +1775,66 @@ function JarvisPlanningDraftCard({
               onChange={(event) => setNote(event.target.value)}
             />
           </label>
+          {draft.editor.variant !== "single" ? (
+            <>
+              <label>
+                <span>Terminserie</span>
+                <select
+                  value={recurrenceType}
+                  disabled={disabled || isWorking}
+                  onChange={(event) =>
+                    setRecurrenceType(
+                      event.target.value as typeof recurrenceType
+                    )
+                  }
+                >
+                  <option value="once">Einmalig</option>
+                  <option value="weekly">Wöchentlich</option>
+                  <option value="biweekly">Alle zwei Wochen</option>
+                  <option value="monthly">Monatlich</option>
+                </select>
+              </label>
+              {recurrenceType !== "once" ? (
+                <label>
+                  <span>Serienende</span>
+                  <input
+                    type="date"
+                    value={recurrenceUntil}
+                    disabled={disabled || isWorking}
+                    onChange={(event) => setRecurrenceUntil(event.target.value)}
+                  />
+                </label>
+              ) : null}
+            </>
+          ) : null}
+          {draft.editor.overbooking.required ? (
+            <label>
+              <span>Begründung der Überplanung</span>
+              <small>{draft.editor.overbooking.detail}</small>
+              <textarea
+                rows={3}
+                minLength={10}
+                maxLength={1000}
+                value={overbookingReason}
+                disabled={disabled || isWorking}
+                onChange={(event) => setOverbookingReason(event.target.value)}
+              />
+            </label>
+          ) : null}
           <button
             type="button"
             disabled={
               disabled ||
               isWorking ||
               !title.trim() ||
-              !assigneeId ||
+              assigneeIds.length === 0 ||
+              !note.trim() ||
+              (draft.editor.variant === "single" && !offerId) ||
+              (draft.editor.variant === "recurring_hourly" &&
+                (!planningTrade.trim() || !billingCatalogItemId)) ||
+              (recurrenceType !== "once" && !recurrenceUntil) ||
+              (draft.editor.overbooking.required &&
+                overbookingReason.trim().length < 10) ||
               !startAt ||
               !endAt ||
               !Number.isFinite(new Date(startAt).getTime()) ||
@@ -1648,10 +1844,29 @@ function JarvisPlanningDraftCard({
               void request("PATCH", {
                 title,
                 note,
-                assigneeId,
+                assigneeIds,
                 startAt: new Date(startAt).toISOString(),
                 endAt: new Date(endAt).toISOString(),
                 approvalStatus,
+                offerId,
+                planningTrade,
+                billingCatalogItemId,
+                recurrence: {
+                  type:
+                    draft.editor.variant === "single"
+                      ? "once"
+                      : recurrenceType,
+                  ...(recurrenceType !== "once" && recurrenceUntil
+                    ? { until: recurrenceUntil }
+                    : {}),
+                  weekdays:
+                    draft.editor.recurrence.weekdays.length > 0
+                      ? draft.editor.recurrence.weekdays
+                      : [new Date(startAt).getDay()],
+                },
+                overbookingReason,
+                overbookingFingerprint:
+                  draft.editor.overbooking.fingerprint,
               })
             }
           >
@@ -3326,6 +3541,7 @@ type HeroProjectPreview = {
   deputyFrom?: string;
   deputyUntil?: string;
   createdAt?: string;
+  updatedAt?: string;
   timeBudgetEnabled?: boolean;
   timeBudgetHours?: string;
   timeBudgetHistory?: Array<{
@@ -9448,6 +9664,7 @@ export function DashboardPage() {
   const [planningRecurrenceType, setPlanningRecurrenceType] = useState<PlanningRecurrenceType>("once");
   const [planningRecurrenceUntil, setPlanningRecurrenceUntil] = useState("");
   const [planningRecurrenceWeekdays, setPlanningRecurrenceWeekdays] = useState<number[]>([]);
+  const planningBatchRequestIdRef = useRef(crypto.randomUUID());
   const [planningEntryApprovalStatus, setPlanningEntryApprovalStatus] =
     useState<PlanningEntryApprovalStatus>("confirmed");
   const [planningBoardView, setPlanningBoardView] = useState<"board" | "open">("board");
@@ -17907,6 +18124,7 @@ export function DashboardPage() {
   }
 
   function resetPlanningEntryForm() {
+    planningBatchRequestIdRef.current = crypto.randomUUID();
     setEditingPlanningEntryId("");
     setPlanningEntryApprovalStatus("confirmed");
     setPlanningEntrySource("manual");
@@ -18462,22 +18680,23 @@ export function DashboardPage() {
         return;
       }
 
-      if (!planningEntryHasAdditionalEmployees) {
-        setPlanningEntryError("Bitte auswählen, ob weitere Mitarbeiter für diesen Termin eingeplant werden.");
-        return;
-      }
+    }
 
-      if (planningEntryHasAdditionalEmployees === "yes" && selectedAdditionalUsers.length === 0) {
-        setPlanningEntryError("Bitte mindestens einen weiteren Mitarbeiter auswählen.");
-        return;
-      }
+    if (selectedProject && !planningEntryHasAdditionalEmployees) {
+      setPlanningEntryError("Bitte auswählen, ob weitere Mitarbeiter für diesen Termin eingeplant werden.");
+      return;
+    }
+
+    if (selectedProject && planningEntryHasAdditionalEmployees === "yes" && selectedAdditionalUsers.length === 0) {
+      setPlanningEntryError("Bitte mindestens einen weiteren Mitarbeiter auswählen.");
+      return;
     }
 
     const isSingleProjectWithOfferPlanning =
       selectedProject &&
       !getProjectKind(selectedProject).startsWith("Dauer") &&
       offers.some((offer) => {
-        if (offer.projectId !== selectedProject.id || offer.status === "Entwurf") return false;
+        if (offer.projectId !== selectedProject.id || !isActiveFinalOffer(offer)) return false;
         return getOfferLaborPlanningHours(offer) > 0;
       });
     const selectedPlanningOffer = planningEntryOfferId
@@ -18491,6 +18710,158 @@ export function DashboardPage() {
 
     if (isSingleProjectWithOfferPlanning && !selectedPlanningOffer) {
       setPlanningEntryError("Bitte ein Angebot für diese Planung auswählen.");
+      return;
+    }
+
+    if (!editingPlanningEntryId && selectedProject) {
+      if (!selectedProject.updatedAt) {
+        setPlanningEntryError("Der Projektstand fehlt. Bitte die Projektliste neu laden und die Planung erneut öffnen.");
+        return;
+      }
+      const makeIsoDateTime = (date: string, time: string) =>
+        new Date(`${date}T${time}:00`).toISOString();
+      const planning = {
+        requestId: planningBatchRequestIdRef.current,
+        projectId: selectedProject.id,
+        expectedProjectUpdatedAt: selectedProject.updatedAt,
+        approvalStatus: nextApprovalStatus,
+        assigneeIds: [selectedUser.id, ...selectedAdditionalUsers.map((user) => user.id)],
+        title,
+        description,
+        startAt: makeIsoDateTime(planningEntryDate, planningEntryStartTime),
+        endAt: makeIsoDateTime(planningEntryDate, planningEntryEndTime),
+        recurrence: {
+          type: getProjectKind(selectedProject).startsWith("Dauer") ? planningRecurrenceType : "once",
+          ...(planningRecurrenceType !== "once" && planningRecurrenceUntil
+            ? { until: planningRecurrenceUntil }
+            : {}),
+          weekdays: planningRecurrenceWeekdays,
+        },
+        ...(planningEntryOfferId ? { offerId: planningEntryOfferId } : {}),
+        ...(planningEntryTrade.trim() ? { planningTrade: planningEntryTrade.trim() } : {}),
+        ...(planningEntryBillingCatalogItemId
+          ? { billingCatalogItemId: planningEntryBillingCatalogItemId }
+          : {}),
+      };
+
+      const preflightResponse = await fetch("/api/planning-batches", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          command: "preflight",
+          source: "manual",
+          actorUserId: activeUserId,
+          planning,
+        }),
+      });
+      const preflightData = await preflightResponse.json().catch(() => null);
+      if (!preflightResponse.ok) {
+        setPlanningEntryError(preflightData?.error ?? "Die Planung konnte nicht geprüft werden.");
+        return;
+      }
+
+      let planningWithApproval: typeof planning & {
+        overbookingApproval?: { fingerprint: string; reason: string };
+      } = planning;
+      const overbooking = preflightData?.evaluation?.overbooking;
+      if (overbooking?.required) {
+        const details = (overbooking.details ?? [])
+          .map(
+            (detail: {
+              month: string;
+              exceededMinutes: number;
+              availableMinutes: number;
+              requestedMinutes: number;
+            }) =>
+              `${formatMonthLabel(detail.month)}: ${formatMinutes(detail.requestedMinutes)} geplant, ` +
+              `${formatMinutes(detail.availableMinutes)} frei, ${formatMinutes(detail.exceededMinutes)} darüber`
+          )
+          .join("\n");
+        const reason = window.prompt(
+          `Die Planung überschreitet das verfügbare Kontingent.\n\n${details}\n\n` +
+            "Wenn das beabsichtigt ist, gib bitte den Grund für die Überplanung an (mindestens 10 Zeichen). " +
+            "Die Führungskräfte und Geschäftsführung werden mit diesem Grund informiert."
+        );
+        if (reason === null) return;
+        if (reason.trim().length < 10) {
+          setPlanningEntryError("Bitte die Überplanung mit mindestens 10 Zeichen nachvollziehbar begründen.");
+          return;
+        }
+        planningWithApproval = {
+          ...planning,
+          overbookingApproval: {
+            fingerprint: overbooking.fingerprint,
+            reason: reason.trim(),
+          },
+        };
+      }
+
+      const executeResponse = await fetch("/api/planning-batches", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          command: "execute",
+          source: "manual",
+          actorUserId: activeUserId,
+          planning: planningWithApproval,
+        }),
+      });
+      const executeData = await executeResponse.json().catch(() => null);
+      if (!executeResponse.ok) {
+        setPlanningEntryError(executeData?.error ?? "Die Planung konnte nicht sicher gespeichert werden.");
+        return;
+      }
+
+      await confirmAndApplyProjectStatus({
+        project: selectedProject,
+        ...(nextApprovalStatus === "requested"
+          ? {
+              nextStatus: "Zur Planung bereit",
+              reason: `Terminwunsch ${title} am ${formatDateOnly(planningEntryDate)} gespeichert`,
+              question: "Terminwunsch wurde gespeichert. Soll der Projektstatus auf „Zur Planung bereit“ gesetzt werden?",
+            }
+          : {
+              nextStatus: "Geplant",
+              reason: `Fester Termin ${title} am ${formatDateOnly(planningEntryDate)} gespeichert`,
+              question: "Fester Termin wurde gespeichert. Soll der Projektstatus auf „Geplant“ gesetzt werden?",
+            }),
+      });
+
+      if (
+        selectedPlanningOffer &&
+        isActiveFinalOffer(selectedPlanningOffer) &&
+        !isWonOffer(selectedPlanningOffer)
+      ) {
+        const confirmed = window.confirm(
+          `Soll Angebot ${selectedPlanningOffer.offerNumber} jetzt als gewonnen markiert werden?`
+        );
+        if (confirmed) {
+          await markOfferWon(
+            selectedPlanningOffer,
+            nextApprovalStatus === "requested"
+              ? `Terminwunsch aus Angebot ${selectedPlanningOffer.offerNumber}`
+              : `Termin aus Angebot ${selectedPlanningOffer.offerNumber} bestätigt`,
+            selectedProject.id
+          );
+        }
+      }
+
+      const plannedNames = [selectedUser, ...selectedAdditionalUsers]
+        .map((user) => user.name)
+        .join(", ");
+      setIsPlanningEntryModalOpen(false);
+      resetPlanningEntryForm();
+      await loadPlanningEntries();
+      await loadNotifications(true);
+      await addProjectLogbookEntry(
+        selectedProject.id,
+        "Planung",
+        `${nextApprovalStatus === "requested" ? "Terminwunsch" : "Planung"} atomar angelegt: ` +
+          `${title} am ${formatProjectDate(planningEntryDate)} von ${planningEntryStartTime} bis ` +
+          `${planningEntryEndTime} für ${plannedNames}.`
+      );
       return;
     }
 
@@ -27376,8 +27747,12 @@ await addProjectLogbookEntry(
     setPlanningEntryProjectSearch(`${project.projectNumber} | ${project.title}`);
     setPlanningEntryTrade(isHourlyRecurringProject(project) ? project.trade || "" : "");
     setPlanningEntryBillingCatalogItemId("");
-    setPlanningEntryHasAdditionalEmployees(isHourlyRecurringProject(project) ? "" : "no");
+    setPlanningEntryHasAdditionalEmployees("");
     setPlanningEntryAdditionalUserIds([]);
+    if (!getProjectKind(project).startsWith("Dauer")) {
+      setPlanningRecurrenceType("once");
+      setPlanningRecurrenceUntil("");
+    }
     setIsPlanningEntryProjectSearchOpen(false);
     if (isHourlyRecurringProject(project) && catalogItems.length === 0) void loadCatalogItems();
   }
@@ -64870,9 +65245,72 @@ await addProjectLogbookEntry(
                 })()}
                 {(() => {
                   const selectedProject = heroProjects.find((project) => project.id === planningEntryProjectId);
-                  const monthKey = planningEntryDate.slice(0, 7);
-                  const monthBudgetHours = selectedProject ? getProjectBudgetAllocationHours(selectedProject, monthKey) : 0;
-                  if (!selectedProject || monthBudgetHours <= 0) return null;
+                  if (!selectedProject || isHourlyRecurringProject(selectedProject)) return null;
+                  const additionalUserOptions = getAdditionalPlanningUserOptions();
+                  return (
+                    <section className={`${styles.planningRecurrencePanel} ${styles.fullWidth}`}>
+                      <div>
+                        <strong>Mitarbeiter gemeinsam buchen</strong>
+                        <span>Der Termin erscheint mit einem Speichervorgang bei allen ausgewählten Mitarbeitern.</span>
+                      </div>
+                      <label
+                        className={styles.requiredPlanningField}
+                        data-required-missing={!planningEntryHasAdditionalEmployees}
+                      >
+                        Weitere Mitarbeiter?
+                        <select
+                          value={planningEntryHasAdditionalEmployees}
+                          onChange={(event) => {
+                            const nextValue = event.target.value as "" | "yes" | "no";
+                            setPlanningEntryHasAdditionalEmployees(nextValue);
+                            if (nextValue !== "yes") setPlanningEntryAdditionalUserIds([]);
+                          }}
+                        >
+                          <option value="">Bitte auswählen</option>
+                          <option value="no">Nein</option>
+                          <option value="yes">Ja</option>
+                        </select>
+                      </label>
+                      {planningEntryHasAdditionalEmployees === "yes" ? (
+                        <div className={`${styles.planningWeekdayPicker} ${styles.hourlyPlanningEmployeePicker}`}>
+                          <span>Weitere Mitarbeiter</span>
+                          <div>
+                            {additionalUserOptions.length === 0 ? (
+                              <button type="button" disabled>
+                                Keine weiteren Mitarbeiter in dieser Gruppe
+                              </button>
+                            ) : (
+                              additionalUserOptions.map((user) => (
+                                <button
+                                  key={user.id}
+                                  type="button"
+                                  data-active={planningEntryAdditionalUserIds.includes(user.id)}
+                                  onClick={() =>
+                                    setPlanningEntryAdditionalUserIds((current) =>
+                                      current.includes(user.id)
+                                        ? current.filter((id) => id !== user.id)
+                                        : [...current, user.id]
+                                    )
+                                  }
+                                >
+                                  {user.name}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      ) : null}
+                    </section>
+                  );
+                })()}
+                {(() => {
+                  const selectedProject = heroProjects.find((project) => project.id === planningEntryProjectId);
+                  if (
+                    !selectedProject ||
+                    getProjectRecurringBillingMode(selectedProject) !== RECURRING_BILLING_MONTHLY_FLAT
+                  ) {
+                    return null;
+                  }
 
                   const previewUsers = [
                     users.find((user) => user.id === planningEntryUserId),
@@ -64882,49 +65320,73 @@ await addProjectLogbookEntry(
                         planningEntryAdditionalUserIds.includes(user.id)
                     ),
                   ].filter(Boolean) as UserOption[];
-                  const currentMinutes = previewUsers.reduce(
-                    (sum, user) =>
-                      sum +
-                      getPlanningNetMinutesBetween(
-                        planningEntryStartTime,
-                        planningEntryEndTime,
-                        getUserBreakWindowForDate(user, planningEntryDate)
-                      ),
-                    0
-                  );
-                  const alreadyPlannedMinutes = planningEntries
-                    .filter(
-                      (entry) =>
-                        entry.projectId === selectedProject.id &&
-                        entry.date.startsWith(monthKey) &&
-                        entry.id !== editingPlanningEntryId &&
-                        !entry.deletedAt
-                    )
-                    .reduce((sum, entry) => sum + Number(entry.durationMinutes || 0), 0);
-                  const afterSaveHours = (alreadyPlannedMinutes + currentMinutes) / 60;
-                  const remainingAfterSaveHours = Math.max(monthBudgetHours - afterSaveHours, 0);
-                  const overAfterSaveHours = Math.max(afterSaveHours - monthBudgetHours, 0);
-
+                  const dates = getPlanningRecurrenceDates();
+                  const months = Array.from(new Set(dates.map((date) => date.slice(0, 7))));
                   return (
-                    <div
-                      className={`${styles.planningBudgetInfo} ${styles.fullWidth}`}
-                      data-state={overAfterSaveHours > 0 ? "over" : "ok"}
-                    >
-                      <span>Monatskontingent {formatMonthLabel(monthKey)}</span>
-                      <strong>
-                        {formatHours(afterSaveHours)} von {formatHours(monthBudgetHours)} Std. geplant
-                      </strong>
-                      <small>
-                        Bereits {formatHours(alreadyPlannedMinutes / 60)} Std. | Dieser Termin{" "}
-                        {formatHours(currentMinutes / 60)} Std.
-                        {previewUsers.length > 1 ? ` (${previewUsers.length} Mitarbeiter)` : ""} | Danach{" "}
-                        {overAfterSaveHours > 0
-                          ? `${formatHours(overAfterSaveHours)} Std. überplant`
-                          : `${formatHours(remainingAfterSaveHours)} Std. offen`}
-                      </small>
-                    </div>
+                    <>
+                      {months.map((monthKey) => {
+                        const monthBudgetHours = getProjectBudgetAllocationHours(selectedProject, monthKey);
+                        const currentMinutes = dates
+                          .filter((date) => date.startsWith(monthKey))
+                          .reduce(
+                            (dateSum, date) =>
+                              dateSum +
+                              previewUsers.reduce(
+                                (userSum, user) =>
+                                  userSum +
+                                  getPlanningNetMinutesBetween(
+                                    planningEntryStartTime,
+                                    planningEntryEndTime,
+                                    getUserBreakWindowForDate(user, date)
+                                  ),
+                                0
+                              ),
+                            0
+                          );
+                        const alreadyPlannedMinutes = planningEntries
+                          .filter(
+                            (entry) =>
+                              entry.projectId === selectedProject.id &&
+                              entry.date.startsWith(monthKey) &&
+                              entry.id !== editingPlanningEntryId &&
+                              !entry.deletedAt
+                          )
+                          .reduce((sum, entry) => sum + Number(entry.durationMinutes || 0), 0);
+                        const availableHours = Math.max(
+                          monthBudgetHours - alreadyPlannedMinutes / 60,
+                          0
+                        );
+                        const afterSaveHours = (alreadyPlannedMinutes + currentMinutes) / 60;
+                        const overAfterSaveHours = Math.max(afterSaveHours - monthBudgetHours, 0);
+                        return (
+                          <div
+                            key={monthKey}
+                            className={`${styles.planningBudgetInfo} ${styles.fullWidth}`}
+                            data-state={overAfterSaveHours > 0 ? "over" : "ok"}
+                          >
+                            <span>Monats- und Serienkontingent {formatMonthLabel(monthKey)}</span>
+                            <strong>
+                              Vor Planung {formatHours(availableHours)} Std. frei
+                            </strong>
+                            <small>
+                              Kontingent {formatHours(monthBudgetHours)} Std. | Bereits{" "}
+                              {formatHours(alreadyPlannedMinutes / 60)} Std. | Diese Serie{" "}
+                              {formatHours(currentMinutes / 60)} Std.
+                              {previewUsers.length > 1 ? ` (${previewUsers.length} Mitarbeiter)` : ""} | Danach{" "}
+                              {overAfterSaveHours > 0
+                                ? `${formatHours(overAfterSaveHours)} Std. überplant`
+                                : `${formatHours(Math.max(monthBudgetHours - afterSaveHours, 0))} Std. offen`}
+                            </small>
+                          </div>
+                        );
+                      })}
+                    </>
                   );
                 })()}
+                {(() => {
+                  const selectedProject = heroProjects.find((project) => project.id === planningEntryProjectId);
+                  if (selectedProject && !getProjectKind(selectedProject).startsWith("Dauer")) return null;
+                  return (
                 <section className={`${styles.planningRecurrencePanel} ${styles.fullWidth}`}>
                   <div>
                     <strong>Terminserie anlegen</strong>
@@ -64982,6 +65444,8 @@ await addProjectLogbookEntry(
                     </div>
                   </div>
                 </section>
+                  );
+                })()}
                 {(planningEntrySource === "offer" || shouldShowPlanningOfferAssignment()) && (
                   <>
                     {(() => {
@@ -64992,7 +65456,7 @@ await addProjectLogbookEntry(
                         ? offers.filter(
                             (offer) =>
                               offer.projectId === selectedPlanningProject.id &&
-                              offer.status !== "Entwurf" &&
+                              isActiveFinalOffer(offer) &&
                               getOfferLaborPlanningHours(offer) > 0
                           )
                         : [];
@@ -65022,13 +65486,26 @@ await addProjectLogbookEntry(
                               setPlanningEntryOfferTotalHours(
                                 selectedOffer ? String(getOfferLaborPlanningHours(selectedOffer)) : "0"
                               );
+                              if (selectedOffer?.plannedExecutionMonth) {
+                                const [year, month] = selectedOffer.plannedExecutionMonth.split("-").map(Number);
+                                const currentDay = Number(planningEntryDate.slice(8, 10)) || 1;
+                                const lastDay = new Date(year, month, 0).getDate();
+                                setPlanningDateAndDefaultWeekday(
+                                  `${selectedOffer.plannedExecutionMonth}-${String(
+                                    Math.min(currentDay, lastDay)
+                                  ).padStart(2, "0")}`
+                                );
+                              }
                             }}
                           >
                             <option value="">Angebot auswählen</option>
                             {planningOfferOptions.map((offer) => (
                               <option key={offer.id} value={offer.id}>
                                 {offer.offerNumber} | {offer.offerType === "addendum" ? "Nachtragsangebot" : "Basisangebot"} |{" "}
-                                {formatHours(getOfferLaborPlanningHours(offer))} Std.
+                                {formatHours(getOfferLaborPlanningHours(offer))} Std. | Ausführung{" "}
+                                {offer.plannedExecutionMonth
+                                  ? formatMonthLabel(offer.plannedExecutionMonth)
+                                  : "Monat fehlt"}
                               </option>
                             ))}
                           </select>
@@ -65038,13 +65515,23 @@ await addProjectLogbookEntry(
                     <div className={styles.planningOfferInfo}>
                       <span>Kontingent vorbereitet</span>
                       {(() => {
-                        const currentMinutes = getPlanningNetMinutesBetween(
-                          planningEntryStartTime,
-                          planningEntryEndTime,
-                          getUserBreakWindowForDate(
-                            users.find((user) => user.id === planningEntryUserId),
-                            planningEntryDate
-                          )
+                        const previewUsers = [
+                          users.find((user) => user.id === planningEntryUserId),
+                          ...users.filter(
+                            (user) =>
+                              planningEntryHasAdditionalEmployees === "yes" &&
+                              planningEntryAdditionalUserIds.includes(user.id)
+                          ),
+                        ].filter(Boolean) as UserOption[];
+                        const currentMinutes = previewUsers.reduce(
+                          (sum, user) =>
+                            sum +
+                            getPlanningNetMinutesBetween(
+                              planningEntryStartTime,
+                              planningEntryEndTime,
+                              getUserBreakWindowForDate(user, planningEntryDate)
+                            ),
+                          0
                         );
                         const alreadyPlannedMinutes = getAlreadyPlannedOfferMinutesForPlanningEntry();
                         const offerTotalMinutes = Math.round((Number(planningEntryOfferTotalHours) || 0) * 60);
@@ -65060,7 +65547,8 @@ await addProjectLogbookEntry(
                             </strong>
                             <small>
                               Bisher {formatHours(alreadyPlannedMinutes / 60)} Std. | Dieser Termin{" "}
-                              {formatHours(currentMinutes / 60)} Std. |{" "}
+                              {formatHours(currentMinutes / 60)} Std.
+                              {previewUsers.length > 1 ? ` (${previewUsers.length} Mitarbeiter)` : ""} |{" "}
                               {remainingAfterSaveMinutes < -0.01
                                 ? `Danach ${formatHours(Math.abs(remainingAfterSaveMinutes) / 60)} Std. überplant`
                                 : `Danach offen ${formatHours(Math.max(remainingAfterSaveMinutes, 0) / 60)} Std.`}

@@ -1957,6 +1957,9 @@ model PlanningEntry {
   offerLabel                 String?
   offerTotalMinutes          Int?
   offerPlannedMinutes        Int?
+  batchId                    String?
+  overbookingKind            String?
+  overbookingReason          String?
   marketingContentItemId     String?
   marketingContentScheduleId String?
   recurrenceId               String?
@@ -1969,6 +1972,29 @@ model PlanningEntry {
   deletedAt                  DateTime?
   createdAt                  DateTime  @default(now())
   updatedAt                  DateTime  @default(now())
+
+  @@index([organizationId, batchId])
+}
+
+model PlanningBatch {
+  id                     String    @id
+  organizationId         String
+  requestId              String
+  payloadHash            String
+  status                 String    @default("pending")
+  source                 String    @default("manual")
+  actorUserId            String
+  projectId              String
+  approvalStatus         String
+  overbookingKind        String?
+  overbookingReason      String?
+  overbookingFingerprint String?
+  resultJson             Json?
+  createdAt              DateTime  @default(now())
+  completedAt            DateTime?
+
+  @@unique([organizationId, requestId])
+  @@index([organizationId, projectId, createdAt])
 }
 
 model PlanningEntryHistory {

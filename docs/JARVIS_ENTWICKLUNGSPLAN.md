@@ -1632,28 +1632,34 @@ Wochenende sind bewusst sichtbare Warnungen, weil auch der vorhandene
 Planning-Service diese Fälle nicht pauschal verbietet.
 
 Der erste echte Live-Doppelklicktest bestätigte Exactly-once, zeigte aber
-zugleich, dass die allgemeine JARVIS-Maske fachlich zu klein war.
-Einmalprojekte benötigen dieselbe finale Angebotszuordnung, Kontingent- und
-Ausführungsmonatsprüfung wie ihre Originalmaske. Stunden-Dauerläufer benötigen
-Termin-Gewerk, passende Abrechnungsleistung und die bewusste Entscheidung zu
-weiteren Mitarbeitenden. Monatspauschalen benötigen ihren projektmonat- und
-seriengerechten Kontext; Beschreibung ist in der normalen Planungsmaske
-generell Pflicht. Eine erfolgreiche Low-Level-API-Anlage ist deshalb kein
-ausreichender Fachnachweis.
+zugleich, dass die damalige allgemeine JARVIS-Maske fachlich zu klein war.
+Diese Lücke ist am 30.07.2026 geschlossen worden. Normale Planung,
+Terminwunsch und JARVIS verwenden nun denselben serverseitigen
+Planungs-Batch. Einmalprojekte verlangen Beschreibung, aktives finales
+Angebot, dessen Stundenkontingent und den im Angebot gespeicherten
+Ausführungsmonat. Stunden-Dauerläufer verlangen Beschreibung, Termin-Gewerk
+und eine aktive planungsrelevante Abrechnungsleistung desselben Gewerks.
+Monatspauschalen prüfen für jeden betroffenen Serienmonat das freie
+Monatskontingent. Alle Varianten können mehrere Mitarbeitende buchen;
+Terminserien sind auf Dauerläufer begrenzt.
 
 Mitarbeitende können nur einen eigenen Terminwunsch anlegen. Führung,
 Geschäftsführung und Admin können Termin oder Terminwunsch für aktive
 Personen vorbereiten. Die spätere bewusste Bestätigung beansprucht den Entwurf,
-prüft den Projektstand nochmals und delegiert den einzigen produktiven
-Schreibvorgang an den bestehenden rollengeprüften
-`POST /api/planning-entries`. Die Entwurfs-ID ist zugleich der
-idempotente Planungsschlüssel; parallele Bestätigung und Replay erzeugen
-keinen zweiten Eintrag. Nach bestätigtem Ergebnis aktualisiert die Oberfläche
-Planungsdaten und Karte ohne Reload. Bis alle drei Projektvarianten dieselben
-Pflichtfelder und Prüfungen wie die vorhandenen Masken verwenden, setzt die
-serverseitige Vorprüfung jedoch die harte Blockade
-`Projektartgerechte Terminmaske`; im JARVIS-UI existiert dann kein produktiver
-Anlageknopf.
+prüft den Projektstand nochmals und delegiert genau einen Aufruf an den
+gemeinsamen Batch-Service. Die Entwurfs-ID ist zugleich der idempotente
+Planungsschlüssel. Eine serialisierbare Transaktion schreibt Batch, alle
+Mitarbeiter-/Serientermine, Historien und Meldungen vollständig oder gar
+nicht. Deterministische Termin-IDs, Payload-Hash und gespeichertes Ergebnis
+sichern Doppelklick, Wiederholung und Replay ab.
+
+Übersteigt die Planung das Angebots- oder Monatskontingent, ist der
+Bestätigungsbutton gesperrt, bis der aktuelle serverseitige
+Überplanungs-Fingerprint und eine Begründung ab zehn Zeichen gemeinsam erneut
+geprüft wurden. Der Fingerprint bindet Projektstand, Angebot, Personen,
+Termine, Serie und Kontingent. Grund und Art werden am Batch und an den
+Terminen gespeichert, im Planungsaudit dokumentiert und dedupliziert an
+Führung/Geschäftsführung/Admin gemeldet.
 
 Finaler Produktionsstand dieses Vertikalschnitts ist `93fd70f`. Vor dem
 Deployment wurde das separate Backup
@@ -1679,16 +1685,15 @@ UI-Lauf benötigte im Mittel 4,95 Sekunden und p95 5,44 Sekunden. 50
 öffentliche Dashboard-Aufrufe lagen bei durchschnittlich 70,8 ms und p95
 159,9 ms.
 
-Der echte Terminwunsch `Live-Abnahme` wurde persistent angelegt, sichtbar in
-`Live-Abnahme geändert` bearbeitet, serverseitig erneut geprüft und wegen
-`Projektartgerechte Terminmaske` weiterhin fail-closed gesperrt. Nach dem
-bewussten Abbruch zeigte die Datenbank `state=cancelled`, Revision 2 sowie
-`draft_created → draft_rechecked(preflight_blocked) →
-draft_cancelled(user_cancelled)`; es entstand kein `PlanningEntry`. Die
-Browserkonsole blieb fehlerfrei, der Produktionsfehlerlog blieb während der
-110 Fragen stabil und WorkPilot360 blieb online. Damit ist der sichere
-Entwurfslebenszyklus abgenommen; die produktive Terminanlage bleibt bis zur
-vollständigen Nachbildung aller drei Originalmasken bewusst gesperrt.
+Die damalige Abnahme des Entwurfslebenszyklus bleibt als Sicherheitsnachweis
+gültig; die dabei noch aktive Blockade `Projektartgerechte Terminmaske` ist
+jetzt entfernt. Lokale Neuabnahme: additiver Prisma-Diff ohne Drop,
+1.183/1.183 Tests in 104 Dateien, TypeScript, Regression, Mojibake,
+Prisma-Validierung, Diff-Check und Produktionsbuild mit 89 Seiten grün.
+Die sichtbare Monatspauschalen-Maske bestätigte freies Kontingent,
+Mehrfachmitarbeiter und Serienkontext. Produktive Terminanlage ist damit
+technisch freigegeben; die abschließende Produktionsabnahme wird mit Backup,
+WorkPilot360-only-Deployment und erneuter Live-Prüfung dokumentiert.
 Manuelle Zeitentwürfe besitzen bis zu einem späteren Nachweis weiterhin nur
 die typisierte Vorschaugrundlage (`preview_only`).
 
@@ -1701,8 +1706,8 @@ wird als eine der folgenden Klassen geführt:
    gebaut.
 2. Der JARVIS-Weg ist begonnen, aber fachlich unvollständig. Dann bleibt er
    fail-closed und die fehlenden Masken, Pflichtfelder und Prüfungen sind der
-   konkrete nächste Entwicklungsschritt. Die Terminmasken gehören aktuell in
-   diese Klasse.
+   konkrete nächste Entwicklungsschritt. Die Terminmasken sind seit
+   30.07.2026 nicht mehr in dieser Klasse; manuelle Zeitentwürfe bleiben dort.
 3. Die Aktion ist wegen hoher rechtlicher, finanzieller, personeller oder
    irreversibler Wirkung bewusst gesperrt. Eine spätere Freigabe benötigt
    einen eigenen Beschluss und den vollständigen Sicherheitsnachweis; ein

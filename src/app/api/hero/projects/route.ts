@@ -375,6 +375,7 @@ function formatLocalProject(
     deputyFrom: project.deputyFrom ?? "",
     deputyUntil: project.deputyUntil ?? "",
     createdAt: formatDateTime(project.createdAt),
+    updatedAt: project.updatedAt.toISOString(),
     timeBudgetEnabled: Boolean(project.timeBudgetEnabled),
     timeBudgetHours: project.timeBudgetHours ?? "",
     timeBudgetHistory: cleanBudgetHistory(project.timeBudgetHistory),

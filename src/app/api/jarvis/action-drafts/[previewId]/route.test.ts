@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   completeJarvisPlanningDraft: vi.fn(),
   cancelJarvisPlanningDraft: vi.fn(),
   confirmJarvisPlanningDraft: vi.fn(),
-  savePlanningEntry: vi.fn(),
+  executePlanningBatch: vi.fn(),
 }));
 
 vi.mock("@/lib/demo/context", () => ({
@@ -43,8 +43,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     }
   },
 }));
-vi.mock("@/app/api/planning-entries/route", () => ({
-  POST: mocks.savePlanningEntry,
+vi.mock("@/lib/planning/planning-batch-service", () => ({
+  executePlanningBatch: mocks.executePlanningBatch,
 }));
 
 import {
@@ -113,20 +113,11 @@ describe("JARVIS action-draft API", () => {
         execute: (input: Record<string, unknown>) => Promise<{ id: string }>
       ) => {
         await execute({
-          id: "planning-preview-1",
           actorUserId: "user-1",
-          title: "Vor-Ort-Prüfung",
-          description: "",
-          userId: "user-1",
-          date: "2026-08-03",
-          startTime: "10:00",
-          endTime: "11:00",
-          durationMinutes: 60,
-          board: "OK solutions",
-          groupName: "Marketing",
-          projectId: "project-1",
-          projectLabel: "MKG-209 · Marketing",
-          approvalStatus: "confirmed",
+          planning: {
+            requestId: "planning-preview-1",
+            projectId: "project-1",
+          },
         });
         return {
           ...draft,
@@ -140,9 +131,9 @@ describe("JARVIS action-draft API", () => {
         };
       }
     );
-    mocks.savePlanningEntry.mockResolvedValue(
-      Response.json({ id: "planning-preview-1" }, { status: 201 })
-    );
+    mocks.executePlanningBatch.mockResolvedValue({
+      batchId: "planning-preview-1",
+    });
   });
 
   it("binds reads to the server session and effective actor", async () => {
@@ -352,17 +343,16 @@ describe("JARVIS action-draft API", () => {
     ))!;
     expect(response.status).toBe(200);
     expect(mocks.confirmJarvisPlanningDraft).toHaveBeenCalledTimes(1);
-    expect(mocks.savePlanningEntry).toHaveBeenCalledTimes(1);
-    const forwarded = mocks.savePlanningEntry.mock.calls[0][0] as Request;
-    const body = await forwarded.json();
-    expect(body).toMatchObject({
-      id: "planning-preview-1",
-      board: "OK solutions",
-      groupName: "Marketing",
-      actorUserId: "user-1",
-      source: "manual",
-    });
-    expect(body.organizationId).toBeUndefined();
+    expect(mocks.executePlanningBatch).toHaveBeenCalledTimes(1);
+    expect(mocks.executePlanningBatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: "org-1",
+        source: "jarvis",
+        request: expect.objectContaining({
+          requestId: "planning-preview-1",
+        }),
+      })
+    );
   });
 
   it("rejects unknown commands without touching draft state", async () => {
