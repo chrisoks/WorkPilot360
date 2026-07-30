@@ -13838,14 +13838,15 @@
 
 .customerFileNav > button[data-active="true"],
 .customerFileNavGroup > button[data-active="true"] {
-  background: linear-gradient(180deg, #2b3038 0%, #05070a 58%, #000000 100%);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background:
+    radial-gradient(circle at 88% 18%, rgba(68, 196, 181, 0.2), transparent 34%),
+    linear-gradient(135deg, #0d3540 0%, #14515a 100%);
+  border: 1px solid #174f57;
   box-shadow:
-    0 10px 18px rgba(15, 23, 42, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.72);
+    0 8px 18px rgba(9, 42, 51, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
   color: #ffffff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  text-shadow: none;
 }
 
 .customerFileNav > button[data-active="true"] .projectNavCount,
@@ -13928,9 +13929,9 @@
 }
 
 .customerFileSubNav button[data-active="true"] {
-  background: #eef2f7;
-  box-shadow: inset 3px 0 0 #1f2937;
-  color: #0f172a;
+  background: #eaf6f3;
+  box-shadow: inset 3px 0 0 #126d70;
+  color: #10464b;
   font-weight: 700;
 }
 
@@ -13940,7 +13941,7 @@
 
 .customerFileSubNav button strong {
   align-items: center;
-  background: #1f2937;
+  background: #126d70;
   border-radius: 999px;
   color: #ffffff;
   display: inline-flex;
@@ -13953,7 +13954,7 @@
 }
 
 .customerFileSubNav button[data-active="true"] strong {
-  background: #111827;
+  background: #0f5f62;
 }
 
 .customerFileMain {
@@ -14740,19 +14741,18 @@
 .projectFileHeader {
   align-items: flex-start;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.07), transparent 34%),
-    #0b1020;
-  border: 1px solid #eef3f8;
-  border-radius: 8px;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.96) inset,
-    0 -1px 0 rgba(148, 163, 184, 0.24) inset,
-    0 0 0 2px rgba(238, 243, 248, 0.92),
-    0 10px 22px rgba(15, 23, 42, 0.18);
+    radial-gradient(circle at 88% 16%, rgba(40, 166, 157, 0.2), transparent 25%),
+    linear-gradient(135deg, #0c2e3a 0%, #113b45 56%, #174d54 100%);
+  border: 0;
+  border-radius: 18px;
+  box-shadow: 0 18px 38px rgba(9, 42, 51, 0.14);
   display: grid;
   gap: 18px;
   grid-template-columns: minmax(0, 1fr) auto;
-  padding: 18px 20px;
+  min-height: 142px;
+  overflow: hidden;
+  padding: 24px 28px;
+  position: relative;
 }
 
 .projectFileTitleBlock {
@@ -14764,18 +14764,20 @@
 }
 
 .projectFileHeader h1 {
-  color: #f8fafc;
-  font-size: 1.42rem;
-  font-weight: 600;
-  line-height: 1.28;
+  color: #ffffff;
+  font-size: clamp(1.55rem, 2.2vw, 2.25rem);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.12;
   margin: 0;
 }
 
 .projectFileHeader p {
-  color: #cbd5e1;
-  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 0.9rem;
   font-weight: 500;
-  margin: 8px 0 0;
+  line-height: 1.5;
+  margin: 7px 0 0;
 }
 
 .projectFileTitleBlock > button {
@@ -14799,7 +14801,7 @@
 
 .projectHeaderChip {
   align-items: center;
-  background: rgba(15, 23, 42, 0.68);
+  background: rgba(4, 39, 46, 0.58);
   border: 1px solid rgba(226, 232, 240, 0.18);
   border-radius: 999px;
   color: #e2e8f0;
@@ -14860,9 +14862,9 @@
 
 .projectFileActions {
   align-content: start;
-  background: rgba(15, 23, 42, 0.56);
-  border: 1px solid rgba(226, 232, 240, 0.16);
-  border-radius: 8px;
+  background: rgba(4, 39, 46, 0.38);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
   display: grid;
   gap: 7px;
   grid-template-columns: minmax(180px, 220px);
@@ -36153,8 +36155,7 @@
 }
 
 .customerFileHeader h1,
-.employeeFileHeader h1,
-.projectFileHeader h1 {
+.employeeFileHeader h1 {
   font-size: var(--wp-type-size-2xl);
 }
 
