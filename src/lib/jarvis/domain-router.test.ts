@@ -5,6 +5,9 @@ describe("JARVIS domain router", () => {
   it("keeps system how-to questions in system help", () => {
     expect(resolveJarvisDomain("Wie lege ich ein Angebot an?")).toBe("system");
     expect(resolveJarvisDomain("Wie plane ich Mitarbeiter in einem Projekt ein?")).toBe("system");
+    expect(resolveJarvisDomain("Wo finde ich Zusatzverkäufe?")).toBe("system");
+    expect(resolveJarvisDomain("Wo ist das Planungsboard?")).toBe("system");
+    expect(resolveJarvisDomain("Wo liegen die Firmeneinstellungen?")).toBe("system");
   });
 
   it("routes sales and management analysis without visible modes", () => {
