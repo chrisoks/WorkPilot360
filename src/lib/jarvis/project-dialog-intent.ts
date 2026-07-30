@@ -12,6 +12,7 @@ export type JarvisProjectDialogIntent =
   | "explainBilling"
   | "explainProcess"
   | "explainStatus"
+  | "explainPlanningMask"
   | "explainPlanning"
   | "explainRisk"
   | "explainNextStep"
@@ -119,6 +120,20 @@ export function resolveJarvisProjectDialogIntent(input: {
     /(monatspauschale|stundenabrechnung).*(oder|gilt|hat)/.test(value)
   ) {
     return "explainBilling";
+  }
+
+  if (
+    /\b(?:welche|was fur eine|was ist die)\b.*\b(?:termin|planungs)\s*maske\b.*\b(?:projekt|hier|dies\w*)\b/.test(
+      value
+    ) ||
+    /\b(?:termin|planungs)\s*maske\b.*\b(?:gilt|brauche|verwende|passt)\b/.test(
+      value
+    ) ||
+    /\bwie\b.*\b(?:projekt|hier|dies\w*)\b.*\b(?:termin|planung)\b.*\b(?:anlegen|planen|buchen)\b/.test(
+      value
+    )
+  ) {
+    return "explainPlanningMask";
   }
 
   if (

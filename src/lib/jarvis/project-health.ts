@@ -1812,6 +1812,75 @@ function buildProjectLogicExplanation(
   };
 }
 
+export function buildProjectPlanningMaskExplanation(
+  project: Pick<
+    ProjectHealthRow,
+    | "id"
+    | "projectNumber"
+    | "title"
+    | "customer"
+    | "status"
+    | "projectKind"
+    | "recurringBillingMode"
+  >
+): JarvisReadResponse {
+  const profile = resolveJarvisProjectLogic(project);
+  const reference = project.projectNumber || project.title;
+  const sharedRules =
+    "Termin und Terminwunsch verwenden dieselben Fachfelder und Prüfungen; nur der Terminwunsch benötigt zusätzlich die Freigabe einer berechtigten Führungskraft oder Planungsverantwortung.";
+  const variantGuidance = {
+    oneTime:
+      "Es gilt die Einmalprojekt-Maske: Mitarbeitende, Titel, Beschreibung, Datum und Zeit, Planungsboard und Gruppe sowie ein gültiges finales Angebot. Aus dem Angebot werden Ausführungsmonat und Arbeitsstundenkontingent gelesen; die Maske zeigt das noch freie Angebotskontingent. Eine Überplanung braucht ausdrückliche Bestätigung und einen Grund. Eine Terminserie ist nicht vorgesehen.",
+    recurringHourly:
+      "Es gilt die Stunden-Dauerläufer-Maske: Mitarbeitende, Titel, Beschreibung, Datum und Zeit, Planungsboard und Gruppe, Termin-Gewerk sowie eine aktive Abrechnungsleistung desselben Gewerks. Optional kann eine Terminserie angelegt werden.",
+    recurringMonthlyFlat:
+      "Es gilt die Monatspauschalen-Maske: Mitarbeitende, Titel, Beschreibung, Datum und Zeit, Planungsboard und Gruppe sowie Monats- und gegebenenfalls Serienkontext. Die Maske zeigt je betroffenem Monat das noch freie Kontingent. Eine Überplanung braucht ausdrückliche Bestätigung und einen Grund; eine Terminserie ist optional.",
+    recurringUnknown:
+      "Für diesen Dauerläufer kann noch keine sichere Terminmaske gewählt werden, weil die Abrechnung nicht eindeutig als Stundenabrechnung oder Monatspauschale gepflegt ist. JARVIS führt die Planung deshalb nicht auf Verdacht aus.",
+    unknown:
+      "Für dieses Projekt kann noch keine sichere Terminmaske gewählt werden, weil die Projektart nicht eindeutig als Einmalprojekt oder Dauerläufer gepflegt ist. JARVIS führt die Planung deshalb nicht auf Verdacht aus.",
+  } satisfies Record<typeof profile.variant, string>;
+  const blocked =
+    profile.variant === "unknown" || profile.variant === "recurringUnknown";
+
+  return {
+    type: "answer",
+    topicId: "project.planning-mask",
+    message: `${reference}: ${variantGuidance[profile.variant]} ${sharedRules}`,
+    structured: {
+      title: `Terminmaske · ${reference}`,
+      subtitle: project.customer || "Projekt",
+      facts: [
+        {
+          label: "Projektvariante",
+          value: profile.label,
+          tone: blocked ? "warning" : "positive",
+        },
+        {
+          label: "Terminwunsch",
+          value: "Gleiche Fachlogik, zusätzliche Freigabe",
+        },
+        {
+          label: "Mehrere Mitarbeitende",
+          value: blocked ? "Erst nach eindeutiger Projektlogik" : "Unterstützt",
+        },
+      ],
+    },
+    records: [{
+      id: `project-planning-mask-${project.id}`,
+      kind: "project",
+      title: [project.projectNumber, project.title].filter(Boolean).join(" · "),
+      subtitle: project.customer || profile.label,
+      summary: blocked
+        ? "Planungsmaske noch nicht sicher bestimmbar"
+        : profile.label,
+      status: project.status,
+      target: { kind: "project", id: project.id },
+    }],
+    deterministic: true,
+  };
+}
+
 function buildProjectHealthClarification(
   project: ProjectHealthRow,
   accessProfile: JarvisAccessProfile
@@ -2123,6 +2192,9 @@ export async function resolveJarvisProjectHealthRequest(input: {
       "explainEvidence",
     ].includes(projectDialogIntent)
   ) {
+    if (projectDialogIntent === "explainPlanningMask") {
+      return buildProjectPlanningMaskExplanation(project);
+    }
     return [
       "explainIdentity",
       "explainTitle",

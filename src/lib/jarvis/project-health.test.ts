@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildProjectPlanningMaskExplanation,
   evaluateProjectHealth,
   resolveJarvisProjectHealthIntent,
   type ProjectHealthSnapshot,
@@ -119,6 +120,68 @@ describe("resolveJarvisProjectHealthIntent", () => {
     "Welche Kunden sollte ich nachfassen?",
   ])("does not catch unrelated questions: %s", (question) => {
     expect(resolveJarvisProjectHealthIntent(question)).toBe(false);
+  });
+});
+
+describe("buildProjectPlanningMaskExplanation", () => {
+  const project = healthySnapshot().project;
+
+  it.each([
+    [
+      "einmaliges Projekt",
+      null,
+      "Einmalprojekt-Maske",
+      "finales Angebot",
+      "Terminserie ist nicht vorgesehen",
+    ],
+    [
+      "Dauerläufer-Projekt",
+      "hourly",
+      "Stunden-Dauerläufer-Maske",
+      "Termin-Gewerk",
+      "Terminserie",
+    ],
+    [
+      "Dauerläufer-Projekt",
+      "monthlyFlat",
+      "Monatspauschalen-Maske",
+      "freie Kontingent",
+      "Terminserie",
+    ],
+  ])(
+    "explains the project-specific mask for %s / %s",
+    (projectKind, recurringBillingMode, mask, field, series) => {
+      const result = buildProjectPlanningMaskExplanation({
+        ...project,
+        projectKind,
+        recurringBillingMode,
+      });
+
+      expect(result).toMatchObject({
+        type: "answer",
+        topicId: "project.planning-mask",
+        deterministic: true,
+      });
+      expect(result.message).toContain(mask);
+      expect(result.message).toContain(field);
+      expect(result.message).toContain(series);
+      expect(result.message).toContain(
+        "Termin und Terminwunsch verwenden dieselben Fachfelder"
+      );
+    }
+  );
+
+  it("fails closed when a recurring billing mode is missing", () => {
+    const result = buildProjectPlanningMaskExplanation({
+      ...project,
+      projectKind: "Dauerläufer-Projekt",
+      recurringBillingMode: null,
+    });
+
+    expect(result.message).toContain(
+      "keine sichere Terminmaske gewählt werden"
+    );
+    expect(result.message).toContain("nicht auf Verdacht");
   });
 });
 
