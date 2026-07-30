@@ -6891,7 +6891,7 @@
 }
 
 .jarvisSidebarVisual {
-  --jarvis-sidebar-surface: #0a0728;
+  --jarvis-sidebar-surface: var(--wp-sidebar-surface, #081f29);
 
   background: var(--jarvis-sidebar-surface);
   display: block;
@@ -27882,7 +27882,7 @@
 .onlineRequestSidebarBadge {
   align-items: center;
   background: #f6c94c;
-  border: 2px solid #111827;
+  border: 2px solid var(--wp-sidebar-surface, #081f29);
   border-radius: 999px;
   color: #172033;
   display: inline-flex;
@@ -27911,7 +27911,7 @@
 
 .sidebarTaskBadge {
   align-items: center;
-  border: 2px solid #111827;
+  border: 2px solid var(--wp-sidebar-surface, #081f29);
   border-radius: 999px;
   display: inline-flex;
   font-size: 0.74rem;
@@ -32829,12 +32829,13 @@
   --wp-line: #dde3ea;
   --wp-brand: #0f6268;
   --wp-brand-strong: #0b4d52;
+  --wp-sidebar-surface: #081f29;
   --wp-focus: #2563eb;
   background:
     linear-gradient(
       to right,
-      #0a0728 0,
-      #0a0728 var(--wp-sidebar-width),
+      var(--wp-sidebar-surface) 0,
+      var(--wp-sidebar-surface) var(--wp-sidebar-width),
       var(--wp-bg) var(--wp-sidebar-width),
       var(--wp-bg) 100%
     );
@@ -32844,8 +32845,8 @@
   background:
     linear-gradient(
       to right,
-      #0a0728 0,
-      #0a0728 var(--wp-sidebar-width),
+      var(--wp-sidebar-surface) 0,
+      var(--wp-sidebar-surface) var(--wp-sidebar-width),
       var(--wp-bg) var(--wp-sidebar-width),
       var(--wp-bg) 100%
     );
@@ -32906,7 +32907,9 @@
 }
 
 .tabs {
-  background: #0a0728;
+  background:
+    radial-gradient(circle at 14% 4%, rgba(46, 176, 163, 0.09), transparent 24%),
+    linear-gradient(180deg, #08232d 0%, var(--wp-sidebar-surface) 58%, #071b25 100%);
   gap: 2px;
   height: calc(100dvh - 68px);
   min-height: calc(100dvh - 68px);
@@ -35747,6 +35750,30 @@
   font-size: var(--wp-type-size-sm);
   font-weight: var(--wp-type-weight-semibold);
   line-height: 1.35;
+}
+
+/*
+ * Einheitlicher Tabellenkopf für operative Ansichten.
+ * Druck- und Dokumentvorschauen behalten bewusst ihr eigenes Papierdesign.
+ */
+.page table:not(.documentPreviewTable):not(.offerPreviewTable) thead > tr:first-child > th {
+  background: #103944;
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -1px 0 rgba(4, 29, 36, 0.32);
+  color: rgba(255, 255, 255, 0.96);
+  letter-spacing: 0.005em;
+  padding-bottom: 10px;
+  padding-top: 10px;
+}
+
+.page table:not(.documentPreviewTable):not(.offerPreviewTable) thead > tr:first-child > th:first-child {
+  border-top-left-radius: 12px;
+}
+
+.page table:not(.documentPreviewTable):not(.offerPreviewTable) thead > tr:first-child > th:last-child {
+  border-top-right-radius: 12px;
 }
 
 .page table td {
