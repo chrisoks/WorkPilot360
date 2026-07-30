@@ -12,6 +12,9 @@ const mocks = vi.hoisted(() => ({
   completeJarvisPlanningDraft: vi.fn(),
   cancelJarvisPlanningDraft: vi.fn(),
   confirmJarvisPlanningDraft: vi.fn(),
+  completeJarvisWinterCalculationDraft: vi.fn(),
+  cancelJarvisWinterCalculationDraft: vi.fn(),
+  confirmJarvisWinterCalculationDraft: vi.fn(),
   executePlanningBatch: vi.fn(),
 }));
 
@@ -33,6 +36,12 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
   completeJarvisPlanningDraft: mocks.completeJarvisPlanningDraft,
   cancelJarvisPlanningDraft: mocks.cancelJarvisPlanningDraft,
   confirmJarvisPlanningDraft: mocks.confirmJarvisPlanningDraft,
+  completeJarvisWinterCalculationDraft:
+    mocks.completeJarvisWinterCalculationDraft,
+  cancelJarvisWinterCalculationDraft:
+    mocks.cancelJarvisWinterCalculationDraft,
+  confirmJarvisWinterCalculationDraft:
+    mocks.confirmJarvisWinterCalculationDraft,
   JarvisActionDraftError: class JarvisActionDraftError extends Error {
     constructor(
       public readonly code: string,
@@ -133,6 +142,25 @@ describe("JARVIS action-draft API", () => {
     );
     mocks.executePlanningBatch.mockResolvedValue({
       batchId: "planning-preview-1",
+    });
+    mocks.completeJarvisWinterCalculationDraft.mockResolvedValue({
+      ...draft,
+      actionId: "winter-calculation.prepare",
+    });
+    mocks.cancelJarvisWinterCalculationDraft.mockResolvedValue({
+      ...draft,
+      actionId: "winter-calculation.prepare",
+      state: "cancelled",
+    });
+    mocks.confirmJarvisWinterCalculationDraft.mockResolvedValue({
+      ...draft,
+      actionId: "winter-calculation.prepare",
+      state: "executed",
+      result: {
+        entityType: "winterServiceCalculation",
+        entityId: "winter-1",
+        label: "Öffnen",
+      },
     });
   });
 
@@ -353,6 +381,79 @@ describe("JARVIS action-draft API", () => {
         }),
       })
     );
+  });
+
+  it("routes winter calculation edits and explicit confirmation only to the winter draft store", async () => {
+    const headers = {
+      "x-jarvis-action": "jarvis-action-draft-v2",
+      origin: "https://workpilot.example",
+    };
+    const input = {
+      areaSqm: 1000,
+      readinessPricePerSqmPerMonth: 0.2,
+      seasonMonths: 5,
+      expectedDeployments: 20,
+      baseServiceMinutes: 60,
+      laborSalesRatePerHour: 45,
+      saltGramsPerSqm: 15,
+      saltSalesPricePerKg: 0.8,
+      plowTimeIncreasePercent: 30,
+      plowSaltIncreasePercent: 10,
+      mixedSpreadingPercent: 70,
+      mixedPlowingPercent: 30,
+    };
+    const edited = (await PATCH(
+      request(
+        "PATCH",
+        {
+          actorId: "user-1",
+          actionId: "winter-calculation.prepare",
+          revision: 1,
+          input,
+          projectId: "project-1",
+          note: "Freigabe laut Ortstermin",
+          organizationId: "evil-org",
+        },
+        headers
+      ) as never,
+      context
+    ))!;
+    expect(edited.status).toBe(200);
+    expect(mocks.completeJarvisWinterCalculationDraft).toHaveBeenCalledWith(
+      "preview-1",
+      expect.objectContaining({
+        organizationId: "org-1",
+        sessionId: "session-1",
+      }),
+      {
+        revision: 1,
+        input,
+        projectId: "project-1",
+        note: "Freigabe laut Ortstermin",
+      }
+    );
+    expect(mocks.completeJarvisTaskDraft).not.toHaveBeenCalled();
+
+    const confirmed = (await POST(
+      request(
+        "POST",
+        {
+          actorId: "user-1",
+          actionId: "winter-calculation.prepare",
+          command: "confirm",
+          revision: 2,
+        },
+        headers
+      ) as never,
+      context
+    ))!;
+    expect(confirmed.status).toBe(200);
+    expect(mocks.confirmJarvisWinterCalculationDraft).toHaveBeenCalledWith(
+      "preview-1",
+      expect.anything(),
+      2
+    );
+    expect(mocks.executePlanningBatch).not.toHaveBeenCalled();
   });
 
   it("rejects unknown commands without touching draft state", async () => {

@@ -152,9 +152,9 @@ export async function POST(req: Request) {
   }
   const actor = actorResult.actor;
 
-  if (!canManageProjects(actor)) {
+  if (!canViewCustomerRevenueAnalytics(actor)) {
     return NextResponse.json(
-      { error: "Du darfst Winterdienst-Kalkulationen nicht bearbeiten." },
+      { error: "Du darfst Winterdienst-Kalkulationen nicht berechnen." },
       { status: 403 }
     );
   }
@@ -174,6 +174,15 @@ export async function POST(req: Request) {
   }
   if (action !== "save") {
     return NextResponse.json({ error: "Unbekannte Aktion." }, { status: 400 });
+  }
+  if (!canManageProjects(actor)) {
+    return NextResponse.json(
+      {
+        error:
+          "Du darfst Winterdienst-Kalkulationen berechnen, aber nicht dauerhaft einem Projekt zuordnen.",
+      },
+      { status: 403 }
+    );
   }
 
   const customerId = cleanString(body.customerId);

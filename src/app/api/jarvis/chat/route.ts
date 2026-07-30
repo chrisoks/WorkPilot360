@@ -91,6 +91,7 @@ import {
 import {
   createPersistedJarvisPlanningDraft,
   createPersistedJarvisTaskDraft,
+  createPersistedJarvisWinterCalculationDraft,
   JarvisActionDraftError,
 } from "@/lib/jarvis/action-draft-store";
 
@@ -157,6 +158,67 @@ async function buildJarvisTaskPreview(input: {
       type: "refusal" as const,
       topicId: "action.draft.unavailable",
       message: `${message} Es wurde nichts ausgeführt.`,
+    };
+  }
+}
+
+function looksLikeWinterCalculationStartRequest(question: string) {
+  const value = normalizeJarvisIntentText(question);
+  if (
+    !/\bwinterdienst\w*\b/.test(value) ||
+    !/\b(?:kalkulier|berechne|rechne|rechnung|kalkulation|rechner)\w*\b/.test(
+      value
+    )
+  ) {
+    return false;
+  }
+  return (
+    /^\s*(?:starte|start|kalkulier|berechne|rechne|erstelle|mach|mache|offne)\w*\b/.test(
+      value
+    ) ||
+    /\bich mochte\b.*\b(?:kalkulier|berechne|rechne)\w*\b/.test(value) ||
+    /\bmit jarvis\b.*\b(?:kalkulier|berechne|rechne)\w*\b/.test(value)
+  );
+}
+
+async function buildJarvisWinterCalculationDraft(input: {
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+  context: ReturnType<typeof sanitizeJarvisSurfaceContext>;
+}) {
+  if (!input.sessionId) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.draft.session-required",
+      message:
+        "Für eine bestätigbare JARVIS-Kalkulation ist eine aktuelle serverseitige Sitzung erforderlich. Bitte melde dich neu an; es wurde nichts gespeichert.",
+    };
+  }
+  try {
+    const actionDraft =
+      await createPersistedJarvisWinterCalculationDraft({
+        organizationId: input.organizationId,
+        sessionId: input.sessionId,
+        profile: input.accessProfile,
+        context: input.context,
+      });
+    return {
+      type: "answer" as const,
+      topicId: "action.draft.winter-calculation",
+      message:
+        "Ich habe eine sichere Winterdienst-Kalkulation vorbereitet. Trage die Rechengrundlagen ein und lasse alle drei Varianten mit der zentralen WorkPilot-Logik berechnen. Die Berechnung selbst verändert keine Geschäftsdaten; dauerhaftes Speichern benötigt ein passendes Kundenprojekt, die vorhandene Rollenberechtigung und deine ausdrückliche Bestätigung.",
+      actionDraft,
+    };
+  } catch (error) {
+    const message =
+      error instanceof JarvisActionDraftError
+        ? error.message
+        : "Die Winterdienst-Kalkulation konnte nicht sicher vorbereitet werden.";
+    return {
+      type: "refusal" as const,
+      topicId: "action.draft.unavailable",
+      message: `${message} Es wurde nichts gespeichert.`,
     };
   }
 }
@@ -970,6 +1032,17 @@ export async function POST(req: Request) {
     message,
     intentDecision
   );
+  if (looksLikeWinterCalculationStartRequest(message)) {
+    return respond(
+      await buildJarvisWinterCalculationDraft({
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+        context,
+      }),
+      "system"
+    );
+  }
   if (directActionRequest && /^\s*stemp(?:el|le|l)\w*\b/iu.test(message)) {
     return respond({
       type: "refusal",

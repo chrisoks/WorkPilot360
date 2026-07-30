@@ -1106,6 +1106,25 @@ die normale Rechen- und Speicherlogik, erzeugt keine ungeprüften
 Stammdatenänderungen und hält Doppelklick-, Replay-, Rollen-, Organisations-
 und Auditprüfungen ein.
 
+Umsetzungsstand 30.07.2026:
+
+- Der Winterdienst-Vertikalschnitt ist umgesetzt. Eine natürliche
+  Startaufforderung erzeugt einen persistenten Action-Center-Entwurf ohne
+  stillschweigende Ausgangswerte.
+- Die Berechnung nutzt ausschließlich
+  `src/lib/winter-service/calculation.ts`; Bereitschaft und alle drei
+  vorhandenen Winterdienstvarianten werden aus derselben Rechenlogik wie in
+  der normalen Oberfläche erzeugt.
+- Alle aktiven internen Rollen dürfen rechnen. Die dauerhafte Zuordnung und
+  Speicherung bleibt an `canManageProjects` für Sitzungs- und effektive Rolle
+  sowie an ein bewusst gewähltes, aktuelles Kundenprojekt gebunden.
+- Bestätigung, erneute Serverberechnung, unveränderlicher Snapshot,
+  Transaktion, Audit, Revision, Ablaufzeit, Exactly-once und Replay-Schutz
+  sind Bestandteil des produktiven Vertrags.
+- Chronologisch als Nächstes folgen der Fahrtenrechner und danach die
+  fachlich freigegebenen Fahrzeugkalkulationen. Vermietung bleibt weiterhin
+  fail-closed.
+
 ### 7.16 Firmeneinstellungen
 
 - passende Einstellung öffnen,

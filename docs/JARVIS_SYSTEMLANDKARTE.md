@@ -115,6 +115,14 @@ Aktionen werden getrennt über das Action Center abgesichert:
   normale Maske. Mehrfachmitarbeiter, Serien, Angebot/Monatskontingent,
   begründete Überplanung, Rollen, Abwesenheit, Deduplizierung und Exactly-once
   sind Bestandteil des gemeinsamen Vertrags.
+- Winterdienst-Kalkulation: Der persistente Entwurf erfasst alle zwölf
+  fachlichen Eingaben ohne erfundene Defaults und berechnet Bereitschaft,
+  Pauschalpreis, Streuen sowie Streuen und Schieben ausschließlich über die
+  zentrale Winterdienst-Rechenfunktion. Interne Mitarbeitende dürfen rechnen.
+  Eine unveränderliche Projektversion darf nur eine projektberechtigte
+  Sitzungs-/Effektivrollenkombination nach bewusster Bestätigung erzeugen;
+  Projekt-, Kunden- und Rollenstand werden in derselben Transaktion erneut
+  geprüft. Audit, Revision, Ablaufzeit und Exactly-once sind verbindlich.
 - Manuelle Zeiterfassung bleibt auf der typisierten Vorschaugrundlage und ist
   noch kein produktiver Schreib-Vertikalschnitt.
 

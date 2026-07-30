@@ -83,6 +83,28 @@
   vollständigen Fachfreigabe fail-closed. Die vollständige Definition of Done
   steht in `docs/JARVIS_ENTWICKLUNGSPLAN.md`, Abschnitt 7.15.
 
+- JARVIS Winterdienst-Kalkulationsvertikalschnitt 2026-07-30:
+  Der erste Rechner aus Abschnitt 7.15 ist als persistenter Action-Center-
+  Ablauf umgesetzt. Eine eindeutige Aufforderung wie `Starte eine
+  Winterdienst-Kalkulation` öffnet einen organisations-, sitzungs-, rollen-
+  und revisionsgebundenen Entwurf. Alle zwölf Eingaben beginnen bewusst leer
+  beziehungsweise mit `0`; JARVIS darf keine Werte aus UI-Defaults erfinden.
+  Die Vorschau verwendet ausschließlich
+  `src/lib/winter-service/calculation.ts` und zeigt Bereitschaft sowie die
+  drei vorhandenen Varianten. Aktive interne Mitarbeitende einschließlich
+  `MITARBEITER` dürfen rechnen; `GAST` bleibt gesperrt. Ein dauerhaftes
+  Speichern ist nur möglich, wenn sowohl Sitzungs- als auch effektive Rolle
+  `canManageProjects` erfüllen und ein aktuelles, organisationsgebundenes
+  Kundenprojekt bewusst ausgewählt wurde. Die Bestätigung lädt Projekt,
+  Kunde, Akteur, Rollen und Projektstand erneut, rechnet serverseitig neu und
+  erzeugt transaktional genau eine unveränderliche
+  `WinterServiceCalculation`-Version samt Audit. Replay, Doppelklick,
+  fremde Sitzung, Rollenwechsel, Payload-Manipulation und veralteter
+  Projektstand sind fail-closed. Kalkulieren verändert weder Projekt,
+  Katalog, Angebot, Paket noch Fahrzeugstammdaten. Fahrten- und
+  Fahrzeugkalkulationen bleiben die chronologisch nächsten Rechnerblöcke;
+  Vermietung bleibt fail-closed.
+
 - JARVIS projektartgerechte Terminplanung 2026-07-30:
   Die bisherige harte Blockade `Projektartgerechte Terminmaske` ist technisch
   ersetzt. Normale Planung, Terminwunsch und JARVIS verwenden für neue

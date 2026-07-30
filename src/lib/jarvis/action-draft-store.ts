@@ -18,11 +18,16 @@ import {
   type JarvisPlanningActionDraftCheck,
   type JarvisPlanningActionDraftView,
   type JarvisTaskActionDraftView,
+  type JarvisWinterCalculationDraftView,
 } from "@/lib/jarvis/action-center";
-import type { JarvisAccessProfile } from "@/lib/jarvis/security";
+import {
+  authorizeJarvisQuestion,
+  type JarvisAccessProfile,
+} from "@/lib/jarvis/security";
 import {
   canAssignTasksToOthers,
   canManagePlanningEntries,
+  canManageProjects,
 } from "@/lib/permissions";
 import {
   evaluatePlanningBatch,
@@ -40,12 +45,19 @@ import {
   getGermanHoliday,
   normalizeGermanState,
 } from "@/lib/planning/german-holidays";
+import {
+  calculateWinterService,
+  WinterServiceCalculationValidationError,
+  type WinterServiceCalculationInput,
+  type WinterServiceCalculationResult,
+} from "@/lib/winter-service/calculation";
 
 const JARVIS_TASK_DRAFT_TTL_MS = 15 * 60 * 1000;
 const JARVIS_TASK_DRAFT_MAX_FUTURE_MS = 5 * 365 * 24 * 60 * 60 * 1000;
 const JARVIS_PLANNING_DRAFT_TTL_MS = 15 * 60 * 1000;
 const JARVIS_PLANNING_DRAFT_MAX_FUTURE_MS =
   2 * 365 * 24 * 60 * 60 * 1000;
+const JARVIS_WINTER_CALCULATION_DRAFT_TTL_MS = 15 * 60 * 1000;
 const OPEN_DRAFT_STATES = ["awaiting_input", "awaiting_confirmation"] as const;
 
 const taskPayloadSchema = z
@@ -138,6 +150,63 @@ const completePlanningDraftSchema = z
     overbookingFingerprint: z.string().trim().max(180).optional(),
   })
   .strict();
+
+const winterCalculationInputSchema = z
+  .object({
+    areaSqm: z.number(),
+    readinessPricePerSqmPerMonth: z.number(),
+    seasonMonths: z.number(),
+    expectedDeployments: z.number(),
+    baseServiceMinutes: z.number(),
+    laborSalesRatePerHour: z.number(),
+    saltGramsPerSqm: z.number(),
+    saltSalesPricePerKg: z.number(),
+    plowTimeIncreasePercent: z.number(),
+    plowSaltIncreasePercent: z.number(),
+    mixedSpreadingPercent: z.number(),
+    mixedPlowingPercent: z.number(),
+  })
+  .strict();
+
+const winterCalculationPayloadSchema = z
+  .object({
+    input: winterCalculationInputSchema,
+    projectId: z.string().trim().max(120).optional(),
+    note: z.string().trim().max(2000).optional(),
+  })
+  .strict();
+
+const completeWinterCalculationDraftSchema = z
+  .object({
+    revision: z.number().int().min(1),
+    input: winterCalculationInputSchema,
+    projectId: z.string().trim().max(120),
+    note: z.string().trim().max(2000),
+  })
+  .strict();
+
+const winterCalculationContextSchema = z
+  .object({
+    projectId: z.string().trim().min(1).max(120).optional(),
+    projectUpdatedAt: z.string().datetime({ offset: true }).optional(),
+    customerId: z.string().trim().min(1).max(120).optional(),
+  })
+  .strict();
+
+const EMPTY_WINTER_CALCULATION_INPUT: WinterServiceCalculationInput = {
+  areaSqm: 0,
+  readinessPricePerSqmPerMonth: 0,
+  seasonMonths: 0,
+  expectedDeployments: 0,
+  baseServiceMinutes: 0,
+  laborSalesRatePerHour: 0,
+  saltGramsPerSqm: 0,
+  saltSalesPricePerKg: 0,
+  plowTimeIncreasePercent: 0,
+  plowSaltIncreasePercent: 0,
+  mixedSpreadingPercent: 0,
+  mixedPlowingPercent: 0,
+};
 
 export type JarvisTaskDraftBinding = {
   organizationId: string;
@@ -356,7 +425,10 @@ async function appendAuditEvent(
     draft: JarvisActionDraft;
     eventType: string;
     reasonCode?: string;
-    result?: { id: string; entityType?: "task" | "planning" };
+    result?: {
+      id: string;
+      entityType?: "task" | "planning" | "winterServiceCalculation";
+    };
   }
 ) {
   const last = await tx.jarvisActionDraftAuditEvent.findFirst({
@@ -1977,9 +2049,13 @@ export async function getJarvisActionDraft(
     where: { id: previewId },
     select: { actionId: true },
   });
-  return draft?.actionId === "planning.prepare"
-    ? getJarvisPlanningDraft(previewId, binding, now)
-    : getJarvisTaskDraft(previewId, binding, now);
+  if (draft?.actionId === "planning.prepare") {
+    return getJarvisPlanningDraft(previewId, binding, now);
+  }
+  if (draft?.actionId === "winter-calculation.prepare") {
+    return getJarvisWinterCalculationDraft(previewId, binding, now);
+  }
+  return getJarvisTaskDraft(previewId, binding, now);
 }
 
 export async function completeJarvisPlanningDraft(
@@ -2399,6 +2475,968 @@ export async function confirmJarvisPlanningDraft(
       error instanceof Error
         ? `Der Planning-Service hat den Termin nicht angelegt: ${error.message}`
         : "Der Planning-Service hat den Termin nicht angelegt.",
+      500
+    );
+  }
+}
+
+type WinterCalculationPayload = z.infer<
+  typeof winterCalculationPayloadSchema
+>;
+type WinterCalculationContext = z.infer<
+  typeof winterCalculationContextSchema
+>;
+
+const WINTER_INPUT_LABELS: Record<
+  keyof WinterServiceCalculationInput | "mixedShares",
+  string
+> = {
+  areaSqm: "Fläche",
+  readinessPricePerSqmPerMonth: "Bereitschaftspreis",
+  seasonMonths: "Saisonmonate",
+  expectedDeployments: "Erwartete Einsätze",
+  baseServiceMinutes: "Einsatzzeit",
+  laborSalesRatePerHour: "Stundenverrechnungssatz",
+  saltGramsPerSqm: "Streugutmenge",
+  saltSalesPricePerKg: "Streugutpreis",
+  plowTimeIncreasePercent: "Zeitaufschlag Räumen",
+  plowSaltIncreasePercent: "Streugutaufschlag Räumen",
+  mixedSpreadingPercent: "Mischanteil Streuen",
+  mixedPlowingPercent: "Mischanteil Räumen",
+  mixedShares: "Mischanteile",
+};
+
+function validateWinterCalculationBinding(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+) {
+  const actorIds = getActorIds(binding.profile);
+  if (
+    draft.organizationId !== binding.organizationId ||
+    draft.sessionId !== binding.sessionId ||
+    draft.sessionActorId !== actorIds.sessionActorId ||
+    draft.effectiveActorId !== actorIds.effectiveActorId ||
+    draft.impersonating !== binding.profile.isImpersonating
+  ) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Diese Kalkulation gehört nicht zur aktuellen Organisation, Sitzung oder wirksamen Identität.",
+      403
+    );
+  }
+  if (
+    draft.sessionActorRole !== binding.profile.sessionActor.role ||
+    draft.effectiveActorRole !== binding.profile.effectiveActor.role
+  ) {
+    throw new JarvisActionDraftError(
+      "role_changed",
+      "Die Rolle hat sich seit Erstellung der Kalkulation geändert. Bitte starte eine neue Kalkulation.",
+      409
+    );
+  }
+  if (!integrityMatches(draft)) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Der Integritätsnachweis der Kalkulation ist ungültig. Es wurde nichts gespeichert.",
+      409
+    );
+  }
+  const payload = winterCalculationPayloadSchema.safeParse(draft.payload);
+  const context = winterCalculationContextSchema.safeParse(draft.context);
+  if (
+    draft.actionId !== "winter-calculation.prepare" ||
+    !payload.success ||
+    !context.success ||
+    hashJson(payload.data) !== draft.payloadHash ||
+    hashJson(context.data) !== draft.contextHash
+  ) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Kalkulationswerte oder Projektkontext stimmen nicht mit dem gespeicherten Nachweis überein.",
+      409
+    );
+  }
+  return { payload: payload.data, context: context.data };
+}
+
+async function loadBoundWinterCalculationDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const found = await prisma.jarvisActionDraft.findUnique({
+    where: { id: previewId },
+  });
+  if (!found) {
+    throw new JarvisActionDraftError(
+      "not_found",
+      "Der Winterdienst-Kalkulationsentwurf wurde nicht gefunden.",
+      404
+    );
+  }
+  validateWinterCalculationBinding(found, binding);
+  const current = await expireDraftIfNeeded(found, now);
+  const parsed = validateWinterCalculationBinding(current, binding);
+  return { draft: current, ...parsed };
+}
+
+function maySaveWinterCalculation(binding: JarvisTaskDraftBinding) {
+  return (
+    canManageProjects(binding.profile.sessionActor) &&
+    canManageProjects(binding.profile.effectiveActor)
+  );
+}
+
+function evaluateWinterCalculation(input: WinterServiceCalculationInput) {
+  try {
+    return {
+      result: calculateWinterService(input),
+      invalidFields: [] as string[],
+    };
+  } catch (error) {
+    if (error instanceof WinterServiceCalculationValidationError) {
+      return {
+        result: undefined,
+        invalidFields: Object.keys(error.fields).map(
+          (field) =>
+            WINTER_INPUT_LABELS[
+              field as keyof typeof WINTER_INPUT_LABELS
+            ] || field
+        ),
+      };
+    }
+    throw error;
+  }
+}
+
+async function getWinterCalculationProjectOptions(
+  binding: JarvisTaskDraftBinding
+) {
+  if (!maySaveWinterCalculation(binding)) return [];
+  const projects = await prisma.workPilotProject.findMany({
+    where: {
+      organizationId: binding.organizationId,
+      contactId: { not: null },
+    },
+    orderBy: [{ projectNumber: "asc" }],
+    take: 500,
+    select: {
+      id: true,
+      projectNumber: true,
+      title: true,
+      customer: true,
+      contactId: true,
+    },
+  });
+  const contactIds = Array.from(
+    new Set(
+      projects
+        .map((project) => project.contactId)
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+  const contacts =
+    contactIds.length === 0
+      ? []
+      : await prisma.contact.findMany({
+          where: {
+            organizationId: binding.organizationId,
+            id: { in: contactIds },
+          },
+          select: {
+            id: true,
+            companyName: true,
+            firstName: true,
+            lastName: true,
+            customerNumber: true,
+          },
+        });
+  const contactLabels = new Map(
+    contacts.map((contact) => [
+      contact.id,
+      contact.companyName?.trim() ||
+        [contact.firstName, contact.lastName].filter(Boolean).join(" ") ||
+        contact.customerNumber,
+    ])
+  );
+  return projects.map((project) => ({
+    id: project.id,
+    label: `${project.projectNumber} · ${project.title}`.slice(0, 240),
+    customerLabel:
+      (project.contactId && contactLabels.get(project.contactId)) ||
+      project.customer?.trim() ||
+      "Kunde nicht benannt",
+    contactId: project.contactId!,
+  }));
+}
+
+function winterResultView(
+  result: WinterServiceCalculationResult
+): NonNullable<JarvisWinterCalculationDraftView["calculation"]> {
+  const labels = {
+    mixed: "Pauschalpreis pro Einsatz",
+    spreading: "Winterdienst – Streuen",
+    spreadingAndPlowing: "Winterdienst – Streuen und Schieben",
+  } as const;
+  return {
+    readiness: result.readiness,
+    variants: (
+      ["mixed", "spreading", "spreadingAndPlowing"] as const
+    ).map((key) => {
+      const variant = result.variants[key];
+      return {
+        key,
+        label: labels[key],
+        serviceMinutes: variant.serviceMinutes,
+        laborHours: variant.laborHours,
+        laborAmount: variant.laborAmount,
+        saltKg: variant.saltKg,
+        saltAmount: variant.saltAmount,
+        readinessAmountPerDeployment:
+          variant.readinessAmountPerDeployment,
+        effortAmountPerDeployment: variant.effortAmountPerDeployment,
+        pricePerDeployment: variant.pricePerDeployment,
+        plannedSeasonRevenue: variant.plannedSeasonRevenue,
+        monthlyReadinessRevenue:
+          variant.monthlyReadinessModel.plannedSeasonRevenue,
+      };
+    }),
+  };
+}
+
+function formatWinterCurrency(value: number) {
+  return new Intl.NumberFormat("de-DE", {
+    style: "currency",
+    currency: "EUR",
+  }).format(value);
+}
+
+export async function toJarvisWinterCalculationDraftView(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+): Promise<JarvisWinterCalculationDraftView> {
+  const { payload } = validateWinterCalculationBinding(draft, binding);
+  const evaluation = evaluateWinterCalculation(
+    payload.input as WinterServiceCalculationInput
+  );
+  const projectOptions = await getWinterCalculationProjectOptions(binding);
+  const selectedProject = payload.projectId
+    ? projectOptions.find((project) => project.id === payload.projectId)
+    : undefined;
+  const savePermitted = maySaveWinterCalculation(binding);
+  const missingFields = [
+    ...evaluation.invalidFields,
+    ...(evaluation.result && savePermitted && !selectedProject
+      ? ["Projekt zum dauerhaften Speichern"]
+      : []),
+    ...(evaluation.result && !savePermitted
+      ? ["Dauerhaftes Speichern ist für diese Rolle nicht freigegeben"]
+      : []),
+  ];
+  const state = draft.state as JarvisWinterCalculationDraftView["state"];
+  const isOpen =
+    state === "awaiting_input" || state === "awaiting_confirmation";
+  const isReady =
+    state === "awaiting_confirmation" &&
+    Boolean(evaluation.result) &&
+    Boolean(selectedProject) &&
+    savePermitted;
+  const reason: JarvisWinterCalculationDraftView["confirmation"]["reason"] =
+    state === "expired"
+      ? "expired"
+      : state === "cancelled"
+        ? "cancelled"
+        : state === "executed"
+          ? "executed"
+          : state === "executing"
+            ? "executing"
+            : !savePermitted
+              ? "not_permitted"
+              : isReady
+                ? "ready"
+                : "missing_fields";
+  const badge: JarvisWinterCalculationDraftView["badge"] =
+    state === "executed"
+      ? "Gespeichert"
+      : state === "executing"
+        ? "Wird gespeichert"
+        : state === "cancelled"
+          ? "Abgebrochen"
+          : state === "expired"
+            ? "Abgelaufen"
+            : evaluation.result
+              ? "Berechnet"
+              : "Entwurf";
+  const fields: JarvisWinterCalculationDraftView["fields"] = [
+    {
+      label: "Rechenlogik",
+      value: "Zentraler WorkPilot-Winterdienstrechner",
+    },
+    {
+      label: "Projekt",
+      value: selectedProject?.label || "Noch nicht zugeordnet",
+    },
+    ...(evaluation.result
+      ? [
+          {
+            label: "Bereitschaft pro Saison",
+            value: formatWinterCurrency(
+              evaluation.result.readiness.seasonFee
+            ),
+          },
+          {
+            label: "Pauschalpreis je Einsatz",
+            value: formatWinterCurrency(
+              evaluation.result.variants.mixed.pricePerDeployment
+            ),
+          },
+        ]
+      : []),
+  ];
+  return {
+    version: 2,
+    previewId: draft.id,
+    actionId: "winter-calculation.prepare",
+    title: "Winterdienst kalkulieren",
+    badge,
+    state,
+    revision: draft.revision,
+    expiresAt: draft.expiresAt.toISOString(),
+    fields,
+    missingFields,
+    editor: {
+      input: payload.input as WinterServiceCalculationInput,
+      projectId: payload.projectId ?? "",
+      note: payload.note ?? "",
+      projectOptions: projectOptions.map(
+        ({ id, label, customerLabel }) => ({
+          id,
+          label,
+          customerLabel,
+        })
+      ),
+    },
+    ...(evaluation.result
+      ? { calculation: winterResultView(evaluation.result) }
+      : {}),
+    confirmation: { enabled: isReady, reason },
+    cancellation: { enabled: isOpen },
+    execution: {
+      enabled: false,
+      reason: state === "executed" ? "finalized" : "requires_confirmation",
+    },
+    ...(state === "executed" &&
+    draft.resultEntityType === "winterServiceCalculation" &&
+    draft.resultEntityId
+      ? {
+          result: {
+            entityType: "winterServiceCalculation" as const,
+            entityId: draft.resultEntityId,
+            label: "Gespeicherte Kalkulation öffnen",
+          },
+        }
+      : {}),
+  };
+}
+
+export async function createPersistedJarvisWinterCalculationDraft(input: {
+  organizationId: string;
+  sessionId: string;
+  profile: JarvisAccessProfile;
+  context: { recordType?: string; recordId?: string };
+  now?: Date;
+}) {
+  if (!input.sessionId) {
+    throw new JarvisActionDraftError(
+      "session_required",
+      "Für eine JARVIS-Kalkulation ist eine aktuelle serverseitige Sitzung erforderlich.",
+      401
+    );
+  }
+  if (
+    input.profile.sessionActor.role === Role.GAST ||
+    input.profile.effectiveActor.role === Role.GAST
+  ) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Diese Rollenkombination darf keine interne Kalkulation vorbereiten.",
+      403
+    );
+  }
+  const now = input.now ?? new Date();
+  const actorIds = getActorIds(input.profile);
+  let context: WinterCalculationContext = {};
+  let projectId = "";
+  if (
+    maySaveWinterCalculation({
+      organizationId: input.organizationId,
+      sessionId: input.sessionId,
+      profile: input.profile,
+    }) &&
+    input.context.recordType === "project" &&
+    input.context.recordId
+  ) {
+    const project = await prisma.workPilotProject.findFirst({
+      where: {
+        id: input.context.recordId,
+        organizationId: input.organizationId,
+      },
+      select: {
+        id: true,
+        contactId: true,
+        updatedAt: true,
+      },
+    });
+    if (project?.contactId) {
+      projectId = project.id;
+      context = {
+        projectId: project.id,
+        projectUpdatedAt: project.updatedAt.toISOString(),
+        customerId: project.contactId,
+      };
+    }
+  }
+  const payload = winterCalculationPayloadSchema.parse({
+    input: EMPTY_WINTER_CALCULATION_INPUT,
+    ...(projectId ? { projectId } : {}),
+  });
+  const payloadHash = hashJson(payload);
+  const contextHash = hashJson(context);
+  const draftData: DraftIntegrityData = {
+    id: randomUUID(),
+    organizationId: input.organizationId,
+    sessionId: input.sessionId,
+    sessionActorId: actorIds.sessionActorId,
+    sessionActorRole: input.profile.sessionActor.role,
+    effectiveActorId: actorIds.effectiveActorId,
+    effectiveActorRole: input.profile.effectiveActor.role,
+    impersonating: input.profile.isImpersonating,
+    actionId: "winter-calculation.prepare",
+    state: "awaiting_input",
+    revision: 1,
+    payloadHash,
+    contextHash,
+    expiresAt: new Date(
+      now.getTime() + JARVIS_WINTER_CALCULATION_DRAFT_TTL_MS
+    ),
+    confirmedAt: null,
+    cancelledAt: null,
+    executedAt: null,
+    resultEntityType: null,
+    resultEntityId: null,
+    lastErrorCode: null,
+  };
+  const draft = await prisma.$transaction(async (tx) => {
+    const created = await tx.jarvisActionDraft.create({
+      data: {
+        ...draftData,
+        payload: payload as Prisma.InputJsonValue,
+        context: context as Prisma.InputJsonValue,
+        integrityTag: createIntegrityTag(draftData),
+      },
+    });
+    await appendAuditEvent(tx, {
+      draft: created,
+      eventType: "draft_created",
+    });
+    return created;
+  });
+  return toJarvisWinterCalculationDraftView(draft, {
+    organizationId: input.organizationId,
+    sessionId: input.sessionId,
+    profile: input.profile,
+  });
+}
+
+export async function getJarvisWinterCalculationDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const { draft } = await loadBoundWinterCalculationDraft(
+    previewId,
+    binding,
+    now
+  );
+  return toJarvisWinterCalculationDraftView(draft, binding);
+}
+
+export async function completeJarvisWinterCalculationDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  rawInput: unknown,
+  now = new Date()
+) {
+  const completed = completeWinterCalculationDraftSchema.safeParse(rawInput);
+  if (!completed.success) {
+    throw new JarvisActionDraftError(
+      "invalid_input",
+      "Die Winterdienst-Eingaben sind unvollständig oder ungültig.",
+      400
+    );
+  }
+  const loaded = await loadBoundWinterCalculationDraft(
+    previewId,
+    binding,
+    now
+  );
+  if (loaded.draft.revision !== completed.data.revision) {
+    throw new JarvisActionDraftError(
+      "conflict",
+      "Die Kalkulation wurde zwischenzeitlich verändert. Bitte verwende den aktuellen Stand.",
+      409
+    );
+  }
+  if (!OPEN_DRAFT_STATES.includes(loaded.draft.state as never)) {
+    throw new JarvisActionDraftError(
+      loaded.draft.state === "expired" ? "expired" : "invalid_state",
+      "Diese Kalkulation kann nicht mehr bearbeitet werden.",
+      loaded.draft.state === "expired" ? 410 : 409
+    );
+  }
+  if (completed.data.note) {
+    const noteAuthorization = authorizeJarvisQuestion(
+      completed.data.note,
+      binding.profile
+    );
+    if (
+      noteAuthorization.reason === "prompt_injection" ||
+      noteAuthorization.reason === "secret"
+    ) {
+      throw new JarvisActionDraftError(
+        "invalid_input",
+        "Die Notiz enthält eine gesperrte technische Anweisung oder ein Geheimnis und wurde nicht gespeichert.",
+        400
+      );
+    }
+  }
+  const calculation = evaluateWinterCalculation(
+    completed.data.input as WinterServiceCalculationInput
+  );
+  const savePermitted = maySaveWinterCalculation(binding);
+  let context: WinterCalculationContext = {};
+  if (savePermitted && completed.data.projectId) {
+    const project = await prisma.workPilotProject.findFirst({
+      where: {
+        id: completed.data.projectId,
+        organizationId: binding.organizationId,
+        contactId: { not: null },
+      },
+      select: { id: true, contactId: true, updatedAt: true },
+    });
+    if (!project?.contactId) {
+      throw new JarvisActionDraftError(
+        "stale_context",
+        "Das ausgewählte Projekt ist nicht mehr eindeutig mit einem Kunden verknüpft.",
+        409
+      );
+    }
+    context = {
+      projectId: project.id,
+      projectUpdatedAt: project.updatedAt.toISOString(),
+      customerId: project.contactId,
+    };
+  }
+  const nextPayload = winterCalculationPayloadSchema.parse({
+    input: completed.data.input,
+    ...(savePermitted && completed.data.projectId
+      ? { projectId: completed.data.projectId }
+      : {}),
+    ...(completed.data.note ? { note: completed.data.note } : {}),
+  });
+  const payloadHash = hashJson(nextPayload);
+  const contextHash = hashJson(context);
+  const revision = loaded.draft.revision + 1;
+  const nextData: DraftIntegrityData = {
+    ...loaded.draft,
+    state: calculation.result
+      ? "awaiting_confirmation"
+      : "awaiting_input",
+    revision,
+    payloadHash,
+    contextHash,
+    lastErrorCode: calculation.result ? null : "invalid_input",
+  };
+  const updated = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: {
+        id: loaded.draft.id,
+        revision: loaded.draft.revision,
+        state: loaded.draft.state,
+        integrityTag: loaded.draft.integrityTag,
+      },
+      data: {
+        state: nextData.state,
+        revision,
+        payload: nextPayload as Prisma.InputJsonValue,
+        context: context as Prisma.InputJsonValue,
+        payloadHash,
+        contextHash,
+        lastErrorCode: nextData.lastErrorCode,
+        integrityTag: createIntegrityTag(nextData),
+      },
+    });
+    if (changed.count !== 1) {
+      throw new JarvisActionDraftError(
+        "conflict",
+        "Die Kalkulation wurde zwischenzeitlich verändert. Bitte lade sie neu.",
+        409
+      );
+    }
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+      where: { id: loaded.draft.id },
+    });
+    await appendAuditEvent(tx, {
+      draft: current,
+      eventType: calculation.result
+        ? "draft_calculated"
+        : "draft_validation_failed",
+      ...(!calculation.result ? { reasonCode: "invalid_input" } : {}),
+    });
+    return current;
+  });
+  return toJarvisWinterCalculationDraftView(updated, binding);
+}
+
+export async function cancelJarvisWinterCalculationDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  expectedRevision: number,
+  now = new Date()
+) {
+  const { draft } = await loadBoundWinterCalculationDraft(
+    previewId,
+    binding,
+    now
+  );
+  if (!OPEN_DRAFT_STATES.includes(draft.state as never)) {
+    if (draft.state === "cancelled") {
+      return toJarvisWinterCalculationDraftView(draft, binding);
+    }
+    throw new JarvisActionDraftError(
+      draft.state === "expired" ? "expired" : "invalid_state",
+      "Diese Kalkulation kann nicht mehr abgebrochen werden.",
+      draft.state === "expired" ? 410 : 409
+    );
+  }
+  if (
+    !Number.isSafeInteger(expectedRevision) ||
+    expectedRevision !== draft.revision
+  ) {
+    throw new JarvisActionDraftError(
+      "conflict",
+      "Die Kalkulation wurde zwischenzeitlich verändert.",
+      409
+    );
+  }
+  const nextData: DraftIntegrityData = {
+    ...draft,
+    state: "cancelled",
+    cancelledAt: now,
+    lastErrorCode: null,
+  };
+  const cancelled = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: {
+        id: draft.id,
+        revision: draft.revision,
+        state: draft.state,
+        integrityTag: draft.integrityTag,
+      },
+      data: {
+        state: "cancelled",
+        cancelledAt: now,
+        lastErrorCode: null,
+        integrityTag: createIntegrityTag(nextData),
+      },
+    });
+    if (changed.count !== 1) {
+      throw new JarvisActionDraftError(
+        "conflict",
+        "Die Kalkulation wurde bereits verändert.",
+        409
+      );
+    }
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+      where: { id: draft.id },
+    });
+    await appendAuditEvent(tx, {
+      draft: current,
+      eventType: "draft_cancelled",
+      reasonCode: "user_cancelled",
+    });
+    return current;
+  });
+  return toJarvisWinterCalculationDraftView(cancelled, binding);
+}
+
+export async function confirmJarvisWinterCalculationDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  expectedRevision: number,
+  now = new Date()
+) {
+  const loaded = await loadBoundWinterCalculationDraft(
+    previewId,
+    binding,
+    now
+  );
+  if (loaded.draft.state === "executed") {
+    return toJarvisWinterCalculationDraftView(loaded.draft, binding);
+  }
+  if (
+    !Number.isSafeInteger(expectedRevision) ||
+    expectedRevision !== loaded.draft.revision
+  ) {
+    throw new JarvisActionDraftError(
+      "conflict",
+      "Die Kalkulation wurde zwischenzeitlich verändert.",
+      409
+    );
+  }
+  if (loaded.draft.state !== "awaiting_confirmation") {
+    throw new JarvisActionDraftError(
+      loaded.draft.state === "expired" ? "expired" : "invalid_state",
+      "Nur eine vollständig berechnete Kalkulation darf gespeichert werden.",
+      loaded.draft.state === "expired" ? 410 : 409
+    );
+  }
+  if (!maySaveWinterCalculation(binding)) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Deine aktuelle Rollenkombination darf Kalkulationen berechnen, aber nicht dauerhaft einem Projekt zuordnen.",
+      403
+    );
+  }
+  if (
+    !loaded.payload.projectId ||
+    !loaded.context.projectId ||
+    !loaded.context.customerId ||
+    !loaded.context.projectUpdatedAt
+  ) {
+    throw new JarvisActionDraftError(
+      "invalid_input",
+      "Zum Speichern muss ein aktuelles Kundenprojekt ausgewählt sein.",
+      400
+    );
+  }
+  try {
+    const executed = await prisma.$transaction(async (tx) => {
+      const current = await tx.jarvisActionDraft.findUnique({
+        where: { id: loaded.draft.id },
+      });
+      if (!current) {
+        throw new JarvisActionDraftError(
+          "not_found",
+          "Die Kalkulation wurde nicht gefunden.",
+          404
+        );
+      }
+      const parsed = validateWinterCalculationBinding(current, binding);
+      const contextCustomerId = parsed.context.customerId;
+      const contextProjectId = parsed.context.projectId;
+      const contextProjectUpdatedAt =
+        parsed.context.projectUpdatedAt;
+      if (
+        !contextCustomerId ||
+        !contextProjectId ||
+        !contextProjectUpdatedAt
+      ) {
+        throw new JarvisActionDraftError(
+          "invalid_input",
+          "Der bestätigte Projektkontext ist unvollständig.",
+          400
+        );
+      }
+      const calculated = calculateWinterService(
+        parsed.payload.input as WinterServiceCalculationInput
+      );
+      if (current.state === "executed") return current;
+      if (
+        current.state !== "awaiting_confirmation" ||
+        current.expiresAt.getTime() <= now.getTime()
+      ) {
+        throw new JarvisActionDraftError(
+          current.expiresAt.getTime() <= now.getTime()
+            ? "expired"
+            : "conflict",
+          "Die Kalkulation ist nicht mehr ausführbar.",
+          current.expiresAt.getTime() <= now.getTime() ? 410 : 409
+        );
+      }
+      const project = await tx.workPilotProject.findFirst({
+        where: {
+          id: contextProjectId,
+          organizationId: binding.organizationId,
+          contactId: contextCustomerId,
+        },
+        select: {
+          id: true,
+          projectNumber: true,
+          title: true,
+          customer: true,
+          contactId: true,
+          updatedAt: true,
+        },
+      });
+      if (
+        !project ||
+        project.updatedAt.toISOString() !==
+          contextProjectUpdatedAt
+      ) {
+        throw new JarvisActionDraftError(
+          "stale_context",
+          "Das Projekt wurde seit der Berechnung geändert. Bitte rechne mit dem aktuellen Stand erneut.",
+          409
+        );
+      }
+      const [customer, actor] = await Promise.all([
+        tx.contact.findFirst({
+          where: {
+            id: contextCustomerId,
+            organizationId: binding.organizationId,
+          },
+          select: {
+            companyName: true,
+            firstName: true,
+            lastName: true,
+            customerNumber: true,
+          },
+        }),
+        tx.user.findFirst({
+          where: {
+            id: current.effectiveActorId,
+            organizationId: binding.organizationId,
+            isActive: true,
+          },
+          select: {
+            id: true,
+            role: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            salesRoleEnabled: true,
+          },
+        }),
+      ]);
+      if (!customer || !actor || !canManageProjects(actor)) {
+        throw new JarvisActionDraftError(
+          "role_changed",
+          "Kunde, Projekt oder Berechtigung sind nicht mehr aktuell. Es wurde nichts gespeichert.",
+          409
+        );
+      }
+      const confirmedData: DraftIntegrityData = {
+        ...current,
+        state: "executing",
+        confirmedAt: now,
+        lastErrorCode: null,
+      };
+      const claimed = await tx.jarvisActionDraft.updateMany({
+        where: {
+          id: current.id,
+          revision: current.revision,
+          state: "awaiting_confirmation",
+          integrityTag: current.integrityTag,
+        },
+        data: {
+          state: "executing",
+          confirmedAt: now,
+          lastErrorCode: null,
+          integrityTag: createIntegrityTag(confirmedData),
+        },
+      });
+      if (claimed.count !== 1) {
+        throw new JarvisActionDraftError(
+          "conflict",
+          "Die Kalkulation wird bereits gespeichert.",
+          409
+        );
+      }
+      const customerName =
+        customer.companyName?.trim() ||
+        [customer.firstName, customer.lastName].filter(Boolean).join(" ") ||
+        customer.customerNumber;
+      const actorName =
+        [actor.firstName, actor.lastName].filter(Boolean).join(" ") ||
+        actor.email;
+      const calculationId = randomUUID();
+      await tx.winterServiceCalculation.create({
+        data: {
+          id: calculationId,
+          organizationId: binding.organizationId,
+          seriesId: current.id,
+          version: 1,
+          customerId: contextCustomerId,
+          projectId: project.id,
+          customerName,
+          projectNumber: project.projectNumber,
+          projectTitle: project.title,
+          createdById: actor.id,
+          createdByName: actorName,
+          inputSnapshot: {
+            schemaVersion: 2,
+            ...(parsed.payload
+              .input as WinterServiceCalculationInput),
+          },
+          resultSnapshot: {
+            schemaVersion: 2,
+            ...calculated,
+          },
+          generatedPackageIds: [],
+          note: parsed.payload.note ?? "",
+        },
+      });
+      const executedAt = new Date();
+      const executedData: DraftIntegrityData = {
+        ...confirmedData,
+        state: "executed",
+        executedAt,
+        resultEntityType: "winterServiceCalculation",
+        resultEntityId: calculationId,
+      };
+      const finalDraft = await tx.jarvisActionDraft.update({
+        where: { id: current.id },
+        data: {
+          state: "executed",
+          executedAt,
+          resultEntityType: "winterServiceCalculation",
+          resultEntityId: calculationId,
+          integrityTag: createIntegrityTag(executedData),
+        },
+      });
+      await appendAuditEvent(tx, {
+        draft: finalDraft,
+        eventType: "draft_confirmed_and_executed",
+        result: {
+          id: calculationId,
+          entityType: "winterServiceCalculation",
+        },
+      });
+      return finalDraft;
+    });
+    return toJarvisWinterCalculationDraftView(executed, binding);
+  } catch (error) {
+    if (
+      error instanceof JarvisActionDraftError &&
+      error.code === "conflict"
+    ) {
+      const latest = await loadBoundWinterCalculationDraft(
+        previewId,
+        binding,
+        now
+      );
+      if (latest.draft.state === "executed") {
+        return toJarvisWinterCalculationDraftView(
+          latest.draft,
+          binding
+        );
+      }
+    }
+    if (error instanceof JarvisActionDraftError) throw error;
+    throw new JarvisActionDraftError(
+      "execution_failed",
+      "Die Winterdienst-Kalkulation wurde nicht gespeichert. Der Entwurf bleibt zur Prüfung erhalten.",
       500
     );
   }

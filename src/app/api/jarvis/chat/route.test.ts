@@ -45,6 +45,7 @@ const mocks = vi.hoisted(() => ({
   resolveJarvisProjectDialogIntent: vi.fn(),
   createPersistedJarvisTaskDraft: vi.fn(),
   createPersistedJarvisPlanningDraft: vi.fn(),
+  createPersistedJarvisWinterCalculationDraft: vi.fn(),
 }));
 
 vi.mock("@/lib/demo/context", () => ({
@@ -96,6 +97,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
   createPersistedJarvisTaskDraft: mocks.createPersistedJarvisTaskDraft,
   createPersistedJarvisPlanningDraft:
     mocks.createPersistedJarvisPlanningDraft,
+  createPersistedJarvisWinterCalculationDraft:
+    mocks.createPersistedJarvisWinterCalculationDraft,
   JarvisActionDraftError: class JarvisActionDraftError extends Error {
     code: string;
     status: number;
@@ -259,6 +262,32 @@ describe("POST /api/jarvis/chat", () => {
         assigneeOptions: [{ id: "user-1", label: "Christian Eid" }],
       },
       confirmation: { enabled: true, reason: "ready" },
+      cancellation: { enabled: true },
+      execution: { enabled: false, reason: "requires_confirmation" },
+    });
+    mocks.createPersistedJarvisWinterCalculationDraft.mockResolvedValue({
+      version: 2,
+      previewId: "winter-preview-1",
+      actionId: "winter-calculation.prepare",
+      title: "Winterdienst kalkulieren",
+      badge: "Entwurf",
+      state: "awaiting_input",
+      revision: 1,
+      expiresAt: "2026-07-30T22:00:00.000Z",
+      fields: [
+        {
+          label: "Rechenlogik",
+          value: "Zentraler WorkPilot-Winterdienstrechner",
+        },
+      ],
+      missingFields: ["Fläche"],
+      editor: {
+        input: {},
+        projectId: "",
+        note: "",
+        projectOptions: [],
+      },
+      confirmation: { enabled: false, reason: "missing_fields" },
       cancellation: { enabled: true },
       execution: { enabled: false, reason: "requires_confirmation" },
     });
@@ -2177,6 +2206,48 @@ describe("POST /api/jarvis/chat", () => {
         context: { recordType: "project", recordId: "project-1" },
       })
     );
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+  });
+
+  it("opens a secure Winterdienst calculation draft without inventing calculator values", async () => {
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      recordType: "project",
+      recordId: "project-1",
+    });
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Starte bitte eine Winterdienst-Kalkulation.",
+          context: { recordType: "project", recordId: "project-1" },
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      type: "answer",
+      topicId: "action.draft.winter-calculation",
+      actionDraft: {
+        actionId: "winter-calculation.prepare",
+        state: "awaiting_input",
+        confirmation: { enabled: false },
+      },
+    });
+    expect(
+      mocks.createPersistedJarvisWinterCalculationDraft
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: "organization-1",
+        sessionId: "session-1",
+        context: { recordType: "project", recordId: "project-1" },
+      })
+    );
+    expect(mocks.createPersistedJarvisPlanningDraft).not.toHaveBeenCalled();
+    expect(mocks.createPersistedJarvisTaskDraft).not.toHaveBeenCalled();
     expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
   });
 

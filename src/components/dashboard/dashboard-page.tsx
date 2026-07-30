@@ -71,6 +71,7 @@ import type {
   JarvisActionPreviewView,
   JarvisPlanningActionDraftView,
   JarvisTaskActionDraftView,
+  JarvisWinterCalculationDraftView,
 } from "@/lib/jarvis/action-center";
 import {
   buildJarvisDialogState,
@@ -662,7 +663,10 @@ type ManagementAiChatMessage = {
   records?: JarvisRecordResult[];
   structured?: JarvisStructuredAnswer;
   actionPreview?: JarvisActionPreviewView;
-  actionDraft?: JarvisTaskActionDraftView | JarvisPlanningActionDraftView;
+  actionDraft?:
+    | JarvisTaskActionDraftView
+    | JarvisPlanningActionDraftView
+    | JarvisWinterCalculationDraftView;
   dialogState?: JarvisDialogState;
 };
 
@@ -1236,12 +1240,281 @@ function parseJarvisPlanningActionDraft(
   };
 }
 
+const jarvisWinterCalculationInputKeys = [
+  "areaSqm",
+  "readinessPricePerSqmPerMonth",
+  "seasonMonths",
+  "expectedDeployments",
+  "baseServiceMinutes",
+  "laborSalesRatePerHour",
+  "saltGramsPerSqm",
+  "saltSalesPricePerKg",
+  "plowTimeIncreasePercent",
+  "plowSaltIncreasePercent",
+  "mixedSpreadingPercent",
+  "mixedPlowingPercent",
+] as const;
+
+function parseJarvisWinterCalculationDraft(
+  value: unknown
+): JarvisWinterCalculationDraftView | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  const editor =
+    candidate.editor && typeof candidate.editor === "object"
+      ? (candidate.editor as Record<string, unknown>)
+      : undefined;
+  const input =
+    editor?.input && typeof editor.input === "object"
+      ? (editor.input as Record<string, unknown>)
+      : undefined;
+  const confirmation =
+    candidate.confirmation && typeof candidate.confirmation === "object"
+      ? (candidate.confirmation as Record<string, unknown>)
+      : undefined;
+  const cancellation =
+    candidate.cancellation && typeof candidate.cancellation === "object"
+      ? (candidate.cancellation as Record<string, unknown>)
+      : undefined;
+  const execution =
+    candidate.execution && typeof candidate.execution === "object"
+      ? (candidate.execution as Record<string, unknown>)
+      : undefined;
+  if (
+    candidate.version !== 2 ||
+    candidate.actionId !== "winter-calculation.prepare" ||
+    candidate.title !== "Winterdienst kalkulieren" ||
+    typeof candidate.previewId !== "string" ||
+    ![
+      "Entwurf",
+      "Berechnet",
+      "Wird gespeichert",
+      "Abgebrochen",
+      "Abgelaufen",
+      "Gespeichert",
+    ].includes(String(candidate.badge)) ||
+    typeof candidate.state !== "string" ||
+    !jarvisTaskDraftStates.has(candidate.state) ||
+    !Number.isSafeInteger(candidate.revision) ||
+    typeof candidate.expiresAt !== "string" ||
+    !Number.isFinite(Date.parse(candidate.expiresAt)) ||
+    !editor ||
+    !input ||
+    !jarvisWinterCalculationInputKeys.every(
+      (key) => typeof input[key] === "number" && Number.isFinite(input[key])
+    ) ||
+    typeof editor.projectId !== "string" ||
+    typeof editor.note !== "string" ||
+    !Array.isArray(editor.projectOptions) ||
+    !confirmation ||
+    typeof confirmation.enabled !== "boolean" ||
+    ![
+      "ready",
+      "missing_fields",
+      "not_permitted",
+      "expired",
+      "cancelled",
+      "executing",
+      "executed",
+    ].includes(String(confirmation.reason)) ||
+    !cancellation ||
+    typeof cancellation.enabled !== "boolean" ||
+    !execution ||
+    execution.enabled !== false ||
+    !["requires_confirmation", "finalized"].includes(
+      String(execution.reason)
+    )
+  ) {
+    return undefined;
+  }
+  const fields = Array.isArray(candidate.fields)
+    ? candidate.fields
+        .filter(
+          (field): field is Record<string, unknown> =>
+            Boolean(field && typeof field === "object")
+        )
+        .map((field) => ({
+          label:
+            typeof field.label === "string"
+              ? field.label.trim().slice(0, 80)
+              : "",
+          value:
+            typeof field.value === "string"
+              ? field.value.trim().slice(0, 500)
+              : "",
+        }))
+        .filter((field) => field.label && field.value)
+        .slice(0, 12)
+    : [];
+  const projectOptions = editor.projectOptions
+    .filter(
+      (option): option is Record<string, unknown> =>
+        Boolean(option && typeof option === "object")
+    )
+    .map((option) => ({
+      id:
+        typeof option.id === "string"
+          ? option.id.trim().slice(0, 120)
+          : "",
+      label:
+        typeof option.label === "string"
+          ? option.label.trim().slice(0, 240)
+          : "",
+      customerLabel:
+        typeof option.customerLabel === "string"
+          ? option.customerLabel.trim().slice(0, 200)
+          : "",
+    }))
+    .filter((option) => option.id && option.label && option.customerLabel)
+    .slice(0, 500);
+  const rawCalculation =
+    candidate.calculation && typeof candidate.calculation === "object"
+      ? (candidate.calculation as Record<string, unknown>)
+      : undefined;
+  const rawReadiness =
+    rawCalculation?.readiness &&
+    typeof rawCalculation.readiness === "object"
+      ? (rawCalculation.readiness as Record<string, unknown>)
+      : undefined;
+  const rawVariants = Array.isArray(rawCalculation?.variants)
+    ? rawCalculation.variants
+    : [];
+  const variants = rawVariants
+    .filter(
+      (variant): variant is Record<string, unknown> =>
+        Boolean(variant && typeof variant === "object")
+    )
+    .map((variant) => ({
+      key: variant.key,
+      label: variant.label,
+      serviceMinutes: variant.serviceMinutes,
+      laborHours: variant.laborHours,
+      laborAmount: variant.laborAmount,
+      saltKg: variant.saltKg,
+      saltAmount: variant.saltAmount,
+      readinessAmountPerDeployment:
+        variant.readinessAmountPerDeployment,
+      effortAmountPerDeployment: variant.effortAmountPerDeployment,
+      pricePerDeployment: variant.pricePerDeployment,
+      plannedSeasonRevenue: variant.plannedSeasonRevenue,
+      monthlyReadinessRevenue: variant.monthlyReadinessRevenue,
+    }))
+    .filter(
+      (
+        variant
+      ): variant is JarvisWinterCalculationDraftView["calculation"] extends {
+        variants: infer T;
+      }
+        ? T extends Array<infer U>
+          ? U
+          : never
+        : never =>
+        ["mixed", "spreading", "spreadingAndPlowing"].includes(
+          String(variant.key)
+        ) &&
+        typeof variant.label === "string" &&
+        [
+          variant.serviceMinutes,
+          variant.laborHours,
+          variant.laborAmount,
+          variant.saltKg,
+          variant.saltAmount,
+          variant.readinessAmountPerDeployment,
+          variant.effortAmountPerDeployment,
+          variant.pricePerDeployment,
+          variant.plannedSeasonRevenue,
+          variant.monthlyReadinessRevenue,
+        ].every(
+          (entry) => typeof entry === "number" && Number.isFinite(entry)
+        )
+    );
+  const calculation =
+    rawReadiness &&
+    ["monthlyFee", "seasonFee", "amountPerDeployment"].every(
+      (key) =>
+        typeof rawReadiness[key] === "number" &&
+        Number.isFinite(rawReadiness[key])
+    ) &&
+    variants.length === 3
+      ? {
+          readiness: {
+            monthlyFee: rawReadiness.monthlyFee as number,
+            seasonFee: rawReadiness.seasonFee as number,
+            amountPerDeployment:
+              rawReadiness.amountPerDeployment as number,
+          },
+          variants,
+        }
+      : undefined;
+  const resultCandidate =
+    candidate.result && typeof candidate.result === "object"
+      ? (candidate.result as Record<string, unknown>)
+      : undefined;
+  const result =
+    resultCandidate?.entityType === "winterServiceCalculation" &&
+    typeof resultCandidate.entityId === "string" &&
+    typeof resultCandidate.label === "string"
+      ? {
+          entityType: "winterServiceCalculation" as const,
+          entityId: resultCandidate.entityId.trim().slice(0, 120),
+          label: resultCandidate.label.trim().slice(0, 120),
+        }
+      : undefined;
+  if (!candidate.previewId.trim() || fields.length === 0) return undefined;
+  return {
+    version: 2,
+    previewId: candidate.previewId.trim().slice(0, 120),
+    actionId: "winter-calculation.prepare",
+    title: "Winterdienst kalkulieren",
+    badge:
+      candidate.badge as JarvisWinterCalculationDraftView["badge"],
+    state:
+      candidate.state as JarvisWinterCalculationDraftView["state"],
+    revision: Number(candidate.revision),
+    expiresAt: candidate.expiresAt,
+    fields,
+    missingFields: Array.isArray(candidate.missingFields)
+      ? candidate.missingFields
+          .filter((field): field is string => typeof field === "string")
+          .map((field) => field.trim().slice(0, 120))
+          .filter(Boolean)
+          .slice(0, 20)
+      : [],
+    editor: {
+      input: Object.fromEntries(
+        jarvisWinterCalculationInputKeys.map((key) => [key, input[key]])
+      ) as JarvisWinterCalculationDraftView["editor"]["input"],
+      projectId: editor.projectId.trim().slice(0, 120),
+      note: editor.note.slice(0, 2000),
+      projectOptions,
+    },
+    ...(calculation ? { calculation } : {}),
+    confirmation: {
+      enabled: confirmation.enabled,
+      reason:
+        confirmation.reason as JarvisWinterCalculationDraftView["confirmation"]["reason"],
+    },
+    cancellation: { enabled: cancellation.enabled },
+    execution: {
+      enabled: false,
+      reason:
+        execution.reason as JarvisWinterCalculationDraftView["execution"]["reason"],
+    },
+    ...(result?.entityId && result.label ? { result } : {}),
+  };
+}
+
 function parseJarvisActionDraft(
   value: unknown
-): JarvisTaskActionDraftView | JarvisPlanningActionDraftView | undefined {
+):
+  | JarvisTaskActionDraftView
+  | JarvisPlanningActionDraftView
+  | JarvisWinterCalculationDraftView
+  | undefined {
   return (
     parseJarvisTaskActionDraft(value) ??
-    parseJarvisPlanningActionDraft(value)
+    parseJarvisPlanningActionDraft(value) ??
+    parseJarvisWinterCalculationDraft(value)
   );
 }
 
@@ -1950,6 +2223,371 @@ function JarvisPlanningDraftCard({
                     hour: "2-digit",
                     minute: "2-digit",
                   })} Uhr an diese Sitzung gebunden. Nur der ausdrückliche Anlage-Button schreibt über den Planning-Service.`}
+      </footer>
+    </section>
+  );
+}
+
+const jarvisWinterInputFields: Array<{
+  key: keyof JarvisWinterCalculationDraftView["editor"]["input"];
+  label: string;
+  unit: string;
+  step: string;
+}> = [
+  { key: "areaSqm", label: "Fläche", unit: "m²", step: "1" },
+  {
+    key: "readinessPricePerSqmPerMonth",
+    label: "Bereitschaft je m²/Monat",
+    unit: "€",
+    step: "0.001",
+  },
+  { key: "seasonMonths", label: "Saisonmonate", unit: "", step: "1" },
+  {
+    key: "expectedDeployments",
+    label: "Erwartete Einsätze",
+    unit: "",
+    step: "1",
+  },
+  {
+    key: "baseServiceMinutes",
+    label: "Grundzeit je Einsatz",
+    unit: "Min.",
+    step: "1",
+  },
+  {
+    key: "laborSalesRatePerHour",
+    label: "Stundenverrechnungssatz",
+    unit: "€/Std.",
+    step: "0.01",
+  },
+  {
+    key: "saltGramsPerSqm",
+    label: "Streugut je m²",
+    unit: "g",
+    step: "0.1",
+  },
+  {
+    key: "saltSalesPricePerKg",
+    label: "Streugutpreis",
+    unit: "€/kg",
+    step: "0.01",
+  },
+  {
+    key: "plowTimeIncreasePercent",
+    label: "Zeitaufschlag Räumen",
+    unit: "%",
+    step: "0.1",
+  },
+  {
+    key: "plowSaltIncreasePercent",
+    label: "Streugutaufschlag Räumen",
+    unit: "%",
+    step: "0.1",
+  },
+  {
+    key: "mixedSpreadingPercent",
+    label: "Mischanteil Streuen",
+    unit: "%",
+    step: "0.1",
+  },
+  {
+    key: "mixedPlowingPercent",
+    label: "Mischanteil Räumen",
+    unit: "%",
+    step: "0.1",
+  },
+];
+
+function JarvisWinterCalculationDraftCard({
+  draft,
+  actorId,
+  disabled,
+  onChange,
+  onOpenCalculators,
+}: {
+  draft: JarvisWinterCalculationDraftView;
+  actorId: string;
+  disabled: boolean;
+  onChange: (
+    next: JarvisWinterCalculationDraftView,
+    message?: string
+  ) => void;
+  onOpenCalculators: () => void;
+}) {
+  const [input, setInput] = useState(draft.editor.input);
+  const [projectId, setProjectId] = useState(draft.editor.projectId);
+  const [note, setNote] = useState(draft.editor.note);
+  const [isWorking, setIsWorking] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setInput(draft.editor.input);
+    setProjectId(draft.editor.projectId);
+    setNote(draft.editor.note);
+    setError("");
+  }, [
+    draft.previewId,
+    draft.revision,
+    draft.state,
+    draft.editor.input,
+    draft.editor.projectId,
+    draft.editor.note,
+  ]);
+
+  const isOpen =
+    draft.state === "awaiting_input" ||
+    draft.state === "awaiting_confirmation";
+  const isDirty =
+    JSON.stringify(input) !== JSON.stringify(draft.editor.input) ||
+    projectId !== draft.editor.projectId ||
+    note.trim() !== draft.editor.note;
+  const currency = (value: number) =>
+    new Intl.NumberFormat("de-DE", {
+      style: "currency",
+      currency: "EUR",
+    }).format(value);
+  const number = (value: number) =>
+    new Intl.NumberFormat("de-DE", {
+      maximumFractionDigits: 2,
+    }).format(value);
+
+  const request = async (
+    method: "PATCH" | "POST",
+    body: Record<string, unknown>
+  ) => {
+    setIsWorking(true);
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/jarvis/action-drafts/${encodeURIComponent(
+          draft.previewId
+        )}`,
+        {
+          method,
+          headers: {
+            "Content-Type": "application/json",
+            "X-Jarvis-Action": "jarvis-action-draft-v2",
+          },
+          body: JSON.stringify({
+            actorId,
+            actionId: "winter-calculation.prepare",
+            revision: draft.revision,
+            ...body,
+          }),
+        }
+      );
+      const data = await response.json().catch(() => null);
+      const next = parseJarvisWinterCalculationDraft(
+        data?.actionDraft
+      );
+      if (!response.ok || !next) {
+        setError(
+          data?.error ??
+            "Die Winterdienst-Kalkulation konnte nicht sicher verarbeitet werden."
+        );
+        return;
+      }
+      onChange(
+        next,
+        typeof data?.message === "string" ? data.message : undefined
+      );
+    } catch {
+      setError(
+        "Das Action Center ist gerade nicht erreichbar. Es wurde keine Kalkulation gespeichert."
+      );
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
+  return (
+    <section
+      className={styles.jarvisActionPreview}
+      data-state={draft.state}
+      aria-label={`${draft.title} – ${draft.badge}`}
+    >
+      <header>
+        <div>
+          <span>Action Center · Kalkulation</span>
+          <strong>{draft.title}</strong>
+        </div>
+        <em>{draft.badge}</em>
+      </header>
+      <dl>
+        {draft.fields.map((field) => (
+          <div key={`${field.label}-${field.value}`}>
+            <dt>{field.label}</dt>
+            <dd>{field.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {isOpen ? (
+        <div className={styles.jarvisActionDraftEditor}>
+          {jarvisWinterInputFields.map((field) => (
+            <label key={field.key}>
+              <span>
+                {field.label}
+                {field.unit ? ` · ${field.unit}` : ""}
+              </span>
+              <input
+                type="number"
+                min="0"
+                step={field.step}
+                value={input[field.key]}
+                disabled={disabled || isWorking}
+                onChange={(event) =>
+                  setInput((current) => ({
+                    ...current,
+                    [field.key]:
+                      event.target.value === ""
+                        ? 0
+                        : Number(event.target.value),
+                  }))
+                }
+              />
+            </label>
+          ))}
+          {draft.editor.projectOptions.length ? (
+            <label>
+              <span>Projekt zum dauerhaften Speichern</span>
+              <select
+                value={projectId}
+                disabled={disabled || isWorking}
+                onChange={(event) => setProjectId(event.target.value)}
+              >
+                <option value="">Nur berechnen</option>
+                {draft.editor.projectOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label} · {option.customerLabel}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          <label>
+            <span>Notiz zur Kalkulation</span>
+            <textarea
+              rows={3}
+              maxLength={2000}
+              value={note}
+              disabled={disabled || isWorking}
+              onChange={(event) => setNote(event.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            disabled={
+              disabled ||
+              isWorking ||
+              !jarvisWinterCalculationInputKeys.every((key) =>
+                Number.isFinite(input[key])
+              )
+            }
+            onClick={() =>
+              void request("PATCH", { input, projectId, note })
+            }
+          >
+            Mit WorkPilot neu berechnen
+          </button>
+        </div>
+      ) : null}
+      {draft.calculation ? (
+        <div className={styles.jarvisStructuredAnswer}>
+          <header>
+            <strong>Berechnungsergebnis</strong>
+            <span>
+              Bereitschaft Saison{" "}
+              {currency(draft.calculation.readiness.seasonFee)}
+            </span>
+          </header>
+          <div className={styles.jarvisAnswerFacts}>
+            {draft.calculation.variants.map((variant) => (
+              <div key={variant.key} data-tone="neutral">
+                <span>{variant.label}</span>
+                <strong>{currency(variant.pricePerDeployment)}</strong>
+                <small>
+                  {number(variant.serviceMinutes)} Min. ·{" "}
+                  {number(variant.saltKg)} kg Streugut · Saison{" "}
+                  {currency(variant.plannedSeasonRevenue)}
+                </small>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {draft.missingFields.length ? (
+        <div className={styles.jarvisActionPreviewMissing}>
+          <strong>
+            {draft.calculation
+              ? "Dauerhaftes Speichern noch blockiert"
+              : "Für die Berechnung noch erforderlich"}
+          </strong>
+          <span>{draft.missingFields.join(" · ")}</span>
+        </div>
+      ) : null}
+      {draft.confirmation.enabled && isDirty ? (
+        <div className={styles.jarvisActionPreviewMissing}>
+          <strong>Änderungen noch nicht geprüft</strong>
+          <span>
+            Berechne die geänderten Werte erneut, bevor du speicherst.
+          </span>
+        </div>
+      ) : null}
+      {error ? (
+        <div className={styles.jarvisActionDraftError} role="alert">
+          {error}
+        </div>
+      ) : null}
+      <div className={styles.jarvisActionDraftActions}>
+        {draft.confirmation.enabled ? (
+          <button
+            type="button"
+            data-primary="true"
+            disabled={disabled || isWorking || isDirty}
+            onClick={() =>
+              void request("POST", { command: "confirm" })
+            }
+          >
+            Kalkulation jetzt speichern
+          </button>
+        ) : null}
+        {draft.cancellation.enabled ? (
+          <button
+            type="button"
+            disabled={disabled || isWorking}
+            onClick={() =>
+              void request("POST", { command: "cancel" })
+            }
+          >
+            Entwurf abbrechen
+          </button>
+        ) : null}
+        {draft.result ? (
+          <button
+            type="button"
+            data-primary="true"
+            disabled={disabled || isWorking}
+            onClick={onOpenCalculators}
+          >
+            {draft.result.label}
+          </button>
+        ) : null}
+      </div>
+      <footer>
+        {draft.state === "executed"
+          ? "Die Datenbank hat genau eine unveränderliche Kalkulationsversion gespeichert. Eine erneute Bestätigung erzeugt keine zweite Version."
+          : draft.state === "cancelled"
+            ? "Der Entwurf wurde beendet. Es wurde keine Kalkulation gespeichert."
+            : draft.state === "expired"
+              ? "Der Kalkulationsentwurf ist abgelaufen."
+              : draft.confirmation.reason === "not_permitted"
+                ? "Du darfst mit JARVIS rechnen. Dauerhaftes Speichern bleibt den vorhandenen projektberechtigten Rollen vorbehalten."
+                : `Der Entwurf ist bis ${new Date(
+                    draft.expiresAt
+                  ).toLocaleTimeString("de-DE", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })} Uhr an diese Sitzung gebunden. Erst der ausdrückliche Speicher-Button schreibt eine Kalkulationsversion.`}
       </footer>
     </section>
   );
@@ -34458,7 +35096,10 @@ await addProjectLogbookEntry(
 
   function updateJarvisActionDraftMessage(
     messageIndex: number,
-    nextDraft: JarvisTaskActionDraftView | JarvisPlanningActionDraftView,
+    nextDraft:
+      | JarvisTaskActionDraftView
+      | JarvisPlanningActionDraftView
+      | JarvisWinterCalculationDraftView,
     message?: string
   ) {
     setManagementAiMessages((current) =>
@@ -34475,6 +35116,10 @@ await addProjectLogbookEntry(
     if (nextDraft.state === "executed") {
       if (nextDraft.actionId === "planning.prepare") {
         void loadPlanningEntries();
+      } else if (
+        nextDraft.actionId === "winter-calculation.prepare"
+      ) {
+        // Die Kalkulationshistorie lädt beim Öffnen des Rechners frisch.
       } else {
         void loadTasks();
       }
@@ -70803,6 +71448,25 @@ await addProjectLogbookEntry(
                           setActiveTab("planningBoard");
                           void loadPlanningEntries();
                         }}
+                      />
+                    ) : null}
+                    {message.role === "assistant" &&
+                    message.actionDraft?.actionId ===
+                      "winter-calculation.prepare" ? (
+                      <JarvisWinterCalculationDraftCard
+                        draft={message.actionDraft}
+                        actorId={activeUserId}
+                        disabled={isManagementAiSending}
+                        onChange={(nextDraft, nextMessage) =>
+                          updateJarvisActionDraftMessage(
+                            index,
+                            nextDraft,
+                            nextMessage
+                          )
+                        }
+                        onOpenCalculators={() =>
+                          setActiveTab("calculators")
+                        }
                       />
                     ) : null}
                     {message.role === "assistant" &&

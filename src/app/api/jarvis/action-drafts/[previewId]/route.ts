@@ -4,10 +4,13 @@ import { getDemoContext } from "@/lib/demo/context";
 import {
   cancelJarvisPlanningDraft,
   cancelJarvisTaskDraft,
+  cancelJarvisWinterCalculationDraft,
   completeJarvisPlanningDraft,
   completeJarvisTaskDraft,
+  completeJarvisWinterCalculationDraft,
   confirmJarvisPlanningDraft,
   confirmJarvisTaskDraft,
+  confirmJarvisWinterCalculationDraft,
   getJarvisActionDraft,
   JarvisActionDraftError,
   type JarvisTaskDraftBinding,
@@ -144,8 +147,21 @@ export async function PATCH(
   if ("response" in resolved) return resolved.response;
   try {
     const isPlanning = body.actionId === "planning.prepare";
-    const actionDraft = isPlanning
-      ? await completeJarvisPlanningDraft(
+    const isWinterCalculation =
+      body.actionId === "winter-calculation.prepare";
+    const actionDraft = isWinterCalculation
+      ? await completeJarvisWinterCalculationDraft(
+          previewId,
+          resolved.binding,
+          {
+            revision: body.revision,
+            input: body.input,
+            projectId: body.projectId,
+            note: body.note,
+          }
+        )
+      : isPlanning
+        ? await completeJarvisPlanningDraft(
           previewId,
           resolved.binding,
           {
@@ -164,7 +180,7 @@ export async function PATCH(
             overbookingFingerprint: body.overbookingFingerprint,
           }
         )
-      : await completeJarvisTaskDraft(
+        : await completeJarvisTaskDraft(
           previewId,
           resolved.binding,
           {
@@ -176,7 +192,9 @@ export async function PATCH(
         );
     return NextResponse.json({
       message:
-        isPlanning
+        isWinterCalculation
+          ? "Die Winterdienst-Kalkulation wurde mit der zentralen WorkPilot-Rechenlogik neu berechnet. Prüfe alle Varianten; nur ein freigegebener und ausdrücklich bestätigter Projektbezug darf dauerhaft gespeichert werden."
+          : isPlanning
           ? "Der Terminentwurf wurde erneut fachlich geprüft. Nur wenn keine Prüfung blockiert, kannst du die Anlage bewusst bestätigen."
           : "Der Entwurf ist vollständig. Prüfe die Angaben und bestätige die Anlage bewusst.",
       actionDraft,
@@ -206,20 +224,30 @@ export async function POST(
 
   try {
     const isPlanning = body.actionId === "planning.prepare";
+    const isWinterCalculation =
+      body.actionId === "winter-calculation.prepare";
     if (body.command === "cancel") {
-      const actionDraft = isPlanning
-        ? await cancelJarvisPlanningDraft(
+      const actionDraft = isWinterCalculation
+        ? await cancelJarvisWinterCalculationDraft(
             previewId,
             resolved.binding,
             body.revision
           )
-        : await cancelJarvisTaskDraft(
+        : isPlanning
+          ? await cancelJarvisPlanningDraft(
+            previewId,
+            resolved.binding,
+            body.revision
+          )
+          : await cancelJarvisTaskDraft(
             previewId,
             resolved.binding,
             body.revision
           );
       return NextResponse.json({
-        message: isPlanning
+        message: isWinterCalculation
+          ? "Der Kalkulationsentwurf wurde abgebrochen. Es wurde keine Winterdienst-Kalkulation gespeichert."
+          : isPlanning
           ? "Der Terminentwurf wurde abgebrochen. Es wurden keine Planungsdaten angelegt."
           : "Der Aufgabenentwurf wurde abgebrochen. Es wurden keine Aufgabendaten angelegt.",
         actionDraft,
@@ -234,8 +262,14 @@ export async function POST(
         { status: 400 }
       );
     }
-    const actionDraft = isPlanning
-      ? await confirmJarvisPlanningDraft(
+    const actionDraft = isWinterCalculation
+      ? await confirmJarvisWinterCalculationDraft(
+          previewId,
+          resolved.binding,
+          body.revision
+        )
+      : isPlanning
+        ? await confirmJarvisPlanningDraft(
           previewId,
           resolved.binding,
           body.revision,
@@ -258,7 +292,7 @@ export async function POST(
             return { id: result.batchId };
           }
         )
-      : await confirmJarvisTaskDraft(
+        : await confirmJarvisTaskDraft(
           previewId,
           resolved.binding,
           body.revision
@@ -266,10 +300,14 @@ export async function POST(
     return NextResponse.json({
       message:
         actionDraft.state === "executed"
-          ? isPlanning
+          ? isWinterCalculation
+            ? "Die Winterdienst-Kalkulation wurde nach deiner Bestätigung genau einmal als unveränderliche Version gespeichert."
+            : isPlanning
             ? "Der Termin wurde nach deiner Bestätigung über den Planning-Service genau einmal angelegt."
             : "Die Aufgabe wurde nach deiner Bestätigung genau einmal angelegt."
-          : isPlanning
+          : isWinterCalculation
+            ? "Der Kalkulationsentwurf wurde nicht gespeichert."
+            : isPlanning
             ? "Der Terminentwurf wurde nicht ausgeführt."
             : "Der Aufgabenentwurf wurde nicht ausgeführt.",
       actionDraft,

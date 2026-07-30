@@ -304,6 +304,94 @@ export type JarvisPlanningActionDraftView = {
   };
 };
 
+export type JarvisWinterCalculationInputView = {
+  areaSqm: number;
+  readinessPricePerSqmPerMonth: number;
+  seasonMonths: number;
+  expectedDeployments: number;
+  baseServiceMinutes: number;
+  laborSalesRatePerHour: number;
+  saltGramsPerSqm: number;
+  saltSalesPricePerKg: number;
+  plowTimeIncreasePercent: number;
+  plowSaltIncreasePercent: number;
+  mixedSpreadingPercent: number;
+  mixedPlowingPercent: number;
+};
+
+export type JarvisWinterCalculationResultView = {
+  readiness: {
+    monthlyFee: number;
+    seasonFee: number;
+    amountPerDeployment: number;
+  };
+  variants: Array<{
+    key: "mixed" | "spreading" | "spreadingAndPlowing";
+    label: string;
+    serviceMinutes: number;
+    laborHours: number;
+    laborAmount: number;
+    saltKg: number;
+    saltAmount: number;
+    readinessAmountPerDeployment: number;
+    effortAmountPerDeployment: number;
+    pricePerDeployment: number;
+    plannedSeasonRevenue: number;
+    monthlyReadinessRevenue: number;
+  }>;
+};
+
+export type JarvisWinterCalculationDraftView = {
+  version: 2;
+  previewId: string;
+  actionId: "winter-calculation.prepare";
+  title: "Winterdienst kalkulieren";
+  badge:
+    | "Entwurf"
+    | "Berechnet"
+    | "Wird gespeichert"
+    | "Abgebrochen"
+    | "Abgelaufen"
+    | "Gespeichert";
+  state: JarvisTaskActionDraftState;
+  revision: number;
+  expiresAt: string;
+  fields: Array<{ label: string; value: string }>;
+  missingFields: string[];
+  editor: {
+    input: JarvisWinterCalculationInputView;
+    projectId: string;
+    note: string;
+    projectOptions: Array<{
+      id: string;
+      label: string;
+      customerLabel: string;
+    }>;
+  };
+  calculation?: JarvisWinterCalculationResultView;
+  confirmation: {
+    enabled: boolean;
+    reason:
+      | "ready"
+      | "missing_fields"
+      | "not_permitted"
+      | "expired"
+      | "cancelled"
+      | "executing"
+      | "executed";
+  };
+  cancellation: { enabled: boolean };
+  execution: {
+    enabled: false;
+    reason: "requires_confirmation" | "finalized";
+  };
+  result?: {
+    entityType: "winterServiceCalculation";
+    entityId: string;
+    label: string;
+  };
+};
+
 export type JarvisActionPreviewFailureCode =
   | "invalid_request"
   | "invalid_payload"

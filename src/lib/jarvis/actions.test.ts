@@ -31,7 +31,7 @@ describe("JARVIS action registry", () => {
     expect(decision.requiresConfirmation).toBe(true);
   });
 
-  it("makes only the safe navigation action executable", () => {
+  it("makes only safe read and preparation actions executable for employees", () => {
     const profile = createJarvisAccessProfile({
       id: "employee",
       role: Role.MITARBEITER,
@@ -47,7 +47,51 @@ describe("JARVIS action registry", () => {
       "navigation.open",
       "project.read",
       "task.read",
+      "winter-calculation.prepare",
     ]);
+  });
+
+  it("lets internal employees calculate winter service but keeps project persistence role-bound", () => {
+    for (const role of [
+      Role.ADMIN,
+      Role.GESCHAEFTSFUEHRER,
+      Role.FUEHRUNGSKRAFT,
+      Role.BUCHHALTUNG,
+      Role.VERTRIEB,
+      Role.MITARBEITER,
+    ]) {
+      expect(
+        getJarvisActionDecision(
+          "winter-calculation.prepare",
+          createJarvisAccessProfile({ id: role, role })
+        ).executable
+      ).toBe(true);
+    }
+
+    expect(
+      getJarvisActionDecision(
+        "winter-calculation.prepare",
+        createJarvisAccessProfile({ id: "guest", role: Role.GAST })
+      ).executable
+    ).toBe(false);
+    expect(
+      getJarvisActionDecision(
+        "winter-calculation.save",
+        createJarvisAccessProfile({
+          id: "employee",
+          role: Role.MITARBEITER,
+        })
+      ).executable
+    ).toBe(false);
+    expect(
+      getJarvisActionDecision(
+        "winter-calculation.save",
+        createJarvisAccessProfile({
+          id: "executive",
+          role: Role.GESCHAEFTSFUEHRER,
+        })
+      ).executable
+    ).toBe(true);
   });
 
   it("prevents privilege escalation through impersonation", () => {
