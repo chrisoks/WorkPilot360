@@ -80,6 +80,12 @@ export function resolveJarvisProjectReviewInventoryIntent(
 ): ProjectReviewIntent | undefined {
   if (extractJarvisProjectReferences(question).length > 0) return undefined;
   const value = normalize(question);
+  const refersToSingleProject =
+    /\b(?:dies(?:es|em|e)|das|jenes|geoffnete|aktuelle)\s+projekt\b/.test(
+      value
+    ) ||
+    /\bprojekt\b.*\b(?:hier|dieses|diesem|dort)\b/.test(value);
+  if (refersToSingleProject) return undefined;
   const mentionsProjectCollection =
     /\bprojekte\b|\bprojekt(?:bestand|liste|daten)\b/.test(value) ||
     value.includes("projektpruf") ||

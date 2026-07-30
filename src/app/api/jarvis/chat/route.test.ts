@@ -721,6 +721,48 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.resolveJarvisSystemHelp).not.toHaveBeenCalled();
   });
 
+  it("keeps a referential review question on the open project", async () => {
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      module: "Projekte",
+      recordType: "project",
+      recordId: "project-mkg-209",
+    });
+    mocks.resolveJarvisProjectDialogIntent.mockReturnValue(
+      "explainReviewStatus"
+    );
+    mocks.resolveJarvisProjectHealthRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "project.fact.explainReviewStatus",
+      message: "MKG-209 ist noch nicht fachlich geprüft.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Ist dieses Projekt fachlich freigegeben?",
+          context: {
+            module: "Projekte",
+            recordType: "project",
+            recordId: "project-mkg-209",
+          },
+        }),
+      })
+    );
+
+    expect(await response.json()).toMatchObject({
+      topicId: "project.fact.explainReviewStatus",
+      message: "MKG-209 ist noch nicht fachlich geprüft.",
+    });
+    expect(
+      mocks.resolveJarvisProjectReviewInventoryRequest
+    ).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisProjectHealthRequest).toHaveBeenCalled();
+  });
+
   it("does not let an open project override a clear generic invoice search", async () => {
     mocks.resolveJarvisIntentDecision.mockReturnValue({
       state: "resolved",

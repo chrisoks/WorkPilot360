@@ -18,6 +18,7 @@ describe("JARVIS intent orchestrator V3 regressions", () => {
     "Wo kann ich die Rechnung von diesem Projekt kontrollieren?",
     "Wie kontrolliere ich das Angebot im Projekt?",
     "Was muss ich bei der Rechnung in diesem Projekt prüfen?",
+    "Ist dieses Projekt fachlich freigegeben?",
   ])("does not steal a single-project workflow as inventory: %s", (question) => {
     expect(resolveJarvisProjectReviewInventoryIntent(question)).toBeUndefined();
   });

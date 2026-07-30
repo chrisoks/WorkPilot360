@@ -66,6 +66,14 @@ const management = createJarvisAccessProfile({
 
 describe("JARVIS project review inventory intent", () => {
   it.each([
+    "Ist dieses Projekt fachlich freigegeben?",
+    "Ist das geöffnete Projekt fachlich geprüft?",
+    "Muss das Projekt hier erneut geprüft werden?",
+  ])("does not steal a referential single-project review question: %s", (question) => {
+    expect(resolveJarvisProjectReviewInventoryIntent(question)).toBeUndefined();
+  });
+
+  it.each([
     "Wie viele Projekte müssen deiner Meinung nach noch überarbeitet werden?",
     "Welche Projekte müssen noch geprüft werden?",
     "Wie ist der fachliche Prüfstand unserer Projekte?",
