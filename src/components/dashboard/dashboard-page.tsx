@@ -43060,6 +43060,24 @@ await addProjectLogbookEntry(
       },
     ];
     const currentProjectMonthKey = projectComparisonMonth || formatInputDate(new Date()).slice(0, 7);
+    const projectPlanningDefaultDate = (() => {
+      const todayKey = formatDateKey(new Date());
+      if (todayKey.startsWith(currentProjectMonthKey)) return todayKey;
+      if (!/^\d{4}-\d{2}$/.test(currentProjectMonthKey)) return todayKey;
+
+      const [year, month] = currentProjectMonthKey.split("-").map(Number);
+      const firstDay = new Date(year, month - 1, 1, 12);
+      for (let dayOffset = 0; dayOffset < 31; dayOffset += 1) {
+        const candidate = new Date(firstDay);
+        candidate.setDate(firstDay.getDate() + dayOffset);
+        const candidateKey = formatDateKey(candidate);
+        if (!candidateKey.startsWith(currentProjectMonthKey)) break;
+        if (!isWeekendDateKey(candidateKey) && !getHolidayForDateKey(candidateKey)) {
+          return candidateKey;
+        }
+      }
+      return `${currentProjectMonthKey}-01`;
+    })();
     const projectLogbookQuery = projectLogbookSearch.trim().toLowerCase();
     const projectLogEntries = projectLogbookEntries.filter(
       (entry) => String(entry.projectId) === String(selectedProjectFile.id)
@@ -44540,7 +44558,7 @@ await addProjectLogbookEntry(
       }
       const groupName = isOwnEmployeeRequest ? ownGroup : groups[0];
       const remainingHours = Math.max(row.plannedHours - row.plannedPlanningHours, 0);
-      const defaultPlanningDate = formatDateKey(new Date());
+      const defaultPlanningDate = projectPlanningDefaultDate;
 
       resetPlanningEntryForm();
       setPlanningEntrySource("offer");
@@ -44607,7 +44625,7 @@ await addProjectLogbookEntry(
         return;
       }
       const groupName = isOwnEmployeeRequest ? ownGroup : groupOptions[0];
-      const defaultPlanningDate = formatDateKey(new Date());
+      const defaultPlanningDate = projectPlanningDefaultDate;
 
       resetPlanningEntryForm();
       setPlanningEntrySource(!isSelectedProjectRecurring && singleProjectOfferPlanningRows.length > 0 ? "offer" : "manual");
