@@ -145,7 +145,7 @@ describe("buildProjectPlanningMaskExplanation", () => {
       "Dauerläufer-Projekt",
       "monthlyFlat",
       "Monatspauschalen-Maske",
-      "freie Kontingent",
+      "Monatskontingent",
       "Terminserie",
     ],
   ])(
@@ -167,6 +167,10 @@ describe("buildProjectPlanningMaskExplanation", () => {
       expect(result.message).toContain(series);
       expect(result.message).toContain(
         "Termin und Terminwunsch verwenden dieselben Fachfelder"
+      );
+      expect(result.structured?.sections?.[0]?.items.join(" ")).toContain(field);
+      expect(result.structured?.sections?.[1]?.items.join(" ")).toContain(
+        "Alle ausgewählten Mitarbeitenden"
       );
     }
   );

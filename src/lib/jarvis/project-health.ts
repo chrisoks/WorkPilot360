@@ -1829,24 +1829,62 @@ export function buildProjectPlanningMaskExplanation(
   const sharedRules =
     "Termin und Terminwunsch verwenden dieselben Fachfelder und Prüfungen; nur der Terminwunsch benötigt zusätzlich die Freigabe einer berechtigten Führungskraft oder Planungsverantwortung.";
   const variantGuidance = {
-    oneTime:
-      "Es gilt die Einmalprojekt-Maske: Mitarbeitende, Titel, Beschreibung, Datum und Zeit, Planungsboard und Gruppe sowie ein gültiges finales Angebot. Aus dem Angebot werden Ausführungsmonat und Arbeitsstundenkontingent gelesen; die Maske zeigt das noch freie Angebotskontingent. Eine Überplanung braucht ausdrückliche Bestätigung und einen Grund. Eine Terminserie ist nicht vorgesehen.",
-    recurringHourly:
-      "Es gilt die Stunden-Dauerläufer-Maske: Mitarbeitende, Titel, Beschreibung, Datum und Zeit, Planungsboard und Gruppe, Termin-Gewerk sowie eine aktive Abrechnungsleistung desselben Gewerks. Optional kann eine Terminserie angelegt werden.",
-    recurringMonthlyFlat:
-      "Es gilt die Monatspauschalen-Maske: Mitarbeitende, Titel, Beschreibung, Datum und Zeit, Planungsboard und Gruppe sowie Monats- und gegebenenfalls Serienkontext. Die Maske zeigt je betroffenem Monat das noch freie Kontingent. Eine Überplanung braucht ausdrückliche Bestätigung und einen Grund; eine Terminserie ist optional.",
-    recurringUnknown:
-      "Für diesen Dauerläufer kann noch keine sichere Terminmaske gewählt werden, weil die Abrechnung nicht eindeutig als Stundenabrechnung oder Monatspauschale gepflegt ist. JARVIS führt die Planung deshalb nicht auf Verdacht aus.",
-    unknown:
-      "Für dieses Projekt kann noch keine sichere Terminmaske gewählt werden, weil die Projektart nicht eindeutig als Einmalprojekt oder Dauerläufer gepflegt ist. JARVIS führt die Planung deshalb nicht auf Verdacht aus.",
-  } satisfies Record<typeof profile.variant, string>;
+    oneTime: {
+      message:
+        "Es gilt die Einmalprojekt-Maske: Mitarbeitende, Titel, Beschreibung, Datum und Zeit, Planungsboard und Gruppe sowie ein gültiges finales Angebot. Aus dem Angebot werden Ausführungsmonat und Arbeitsstundenkontingent gelesen; die Maske zeigt das noch freie Angebotskontingent. Eine Überplanung braucht ausdrückliche Bestätigung und einen Grund. Eine Terminserie ist nicht vorgesehen.",
+      items: [
+        "Mitarbeitende, Titel, Beschreibung, Datum und Zeit, Planungsboard und Gruppe",
+        "Gültiges finales Angebot; daraus Ausführungsmonat und Arbeitsstundenkontingent",
+        "Sichtbares freies Angebotskontingent; Überplanung nur mit Bestätigung und Grund",
+        "Einzeltermin oder einzelner Terminwunsch, keine Terminserie",
+      ],
+    },
+    recurringHourly: {
+      message:
+        "Es gilt die Stunden-Dauerläufer-Maske: Mitarbeitende, Titel, Beschreibung, Datum und Zeit, Planungsboard und Gruppe, Termin-Gewerk sowie eine aktive Abrechnungsleistung desselben Gewerks. Optional kann eine Terminserie angelegt werden.",
+      items: [
+        "Mitarbeitende, Titel, Beschreibung, Datum und Zeit, Planungsboard und Gruppe",
+        "Termin-Gewerk und aktive Abrechnungsleistung desselben Gewerks",
+        "Einzeltermin, Terminwunsch oder optionale Terminserie",
+      ],
+    },
+    recurringMonthlyFlat: {
+      message:
+        "Es gilt die Monatspauschalen-Maske: Mitarbeitende, Titel, Beschreibung, Datum und Zeit, Planungsboard und Gruppe sowie Monats- und gegebenenfalls Serienkontext. Die Maske zeigt je betroffenem Monat das noch freie Monatskontingent. Eine Überplanung braucht ausdrückliche Bestätigung und einen Grund; eine Terminserie ist optional.",
+      items: [
+        "Mitarbeitende, Titel, Beschreibung, Datum und Zeit, Planungsboard und Gruppe",
+        "Monatskontext und bei einer Serie der vollständige Serienkontext",
+        "Sichtbares freies Monatskontingent je betroffenem Monat",
+        "Überplanung nur mit Bestätigung und Grund; Terminserie optional",
+      ],
+    },
+    recurringUnknown: {
+      message:
+        "Für diesen Dauerläufer kann noch keine sichere Terminmaske gewählt werden, weil die Abrechnung nicht eindeutig als Stundenabrechnung oder Monatspauschale gepflegt ist. JARVIS führt die Planung deshalb nicht auf Verdacht aus.",
+      items: [
+        "In den Projektinformationen Stundenabrechnung oder Monatspauschale festlegen",
+        "Erst danach die passende Termin- oder Terminwunschmaske verwenden",
+      ],
+    },
+    unknown: {
+      message:
+        "Für dieses Projekt kann noch keine sichere Terminmaske gewählt werden, weil die Projektart nicht eindeutig als Einmalprojekt oder Dauerläufer gepflegt ist. JARVIS führt die Planung deshalb nicht auf Verdacht aus.",
+      items: [
+        "In den Projektinformationen Einmalprojekt oder Dauerläufer festlegen",
+        "Bei einem Dauerläufer zusätzlich die Abrechnungsart festlegen",
+      ],
+    },
+  } satisfies Record<
+    typeof profile.variant,
+    { message: string; items: string[] }
+  >;
   const blocked =
     profile.variant === "unknown" || profile.variant === "recurringUnknown";
 
   return {
     type: "answer",
     topicId: "project.planning-mask",
-    message: `${reference}: ${variantGuidance[profile.variant]} ${sharedRules}`,
+    message: `${reference}: ${variantGuidance[profile.variant].message} ${sharedRules}`,
     structured: {
       title: `Terminmaske · ${reference}`,
       subtitle: project.customer || "Projekt",
@@ -1863,6 +1901,22 @@ export function buildProjectPlanningMaskExplanation(
         {
           label: "Mehrere Mitarbeitende",
           value: blocked ? "Erst nach eindeutiger Projektlogik" : "Unterstützt",
+        },
+      ],
+      sections: [
+        {
+          title: blocked ? "Vor der Planung klären" : "Felder und Regeln",
+          items: variantGuidance[profile.variant].items,
+          tone: blocked ? "warning" : "neutral",
+        },
+        {
+          title: "Termin und Terminwunsch",
+          items: [
+            "Beide verwenden dieselben Fachfelder und Prüfungen.",
+            "Nur der Terminwunsch benötigt zusätzlich die Freigabe einer berechtigten Führungskraft oder Planungsverantwortung.",
+            "Alle ausgewählten Mitarbeitenden werden gemeinsam und ohne Teilanlage gebucht.",
+          ],
+          tone: "neutral",
         },
       ],
     },
