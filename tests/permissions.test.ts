@@ -3,7 +3,10 @@ import { Role } from '@prisma/client';
 import {
   canAccessEmployeeCosts,
   canEditTask,
+  canConvertOnlineRequests,
+  canManageOnlineRequests,
   canManageProcessAutomation,
+  canReadOnlineRequests,
   canReadTask,
   canViewCustomerRevenueAnalytics,
   canViewCustomerRevenueAnalyticsDetails,
@@ -85,5 +88,37 @@ describe('permissions', () => {
     expect(canManageProcessAutomation({ role: Role.MITARBEITER })).toBe(false);
     expect(canManageProcessAutomation({ role: Role.VERTRIEB })).toBe(false);
     expect(canManageProcessAutomation({ role: Role.BUCHHALTUNG })).toBe(false);
+  });
+
+  it('limits online-request access to sales and project-pipeline roles', () => {
+    const allowed = [
+      Role.ADMIN,
+      Role.GESCHAEFTSFUEHRER,
+      Role.FUEHRUNGSKRAFT,
+      Role.VERTRIEB,
+    ];
+    const denied = [Role.MITARBEITER, Role.BUCHHALTUNG, Role.GAST];
+
+    for (const role of allowed) {
+      expect(canReadOnlineRequests({ role })).toBe(true);
+      expect(canManageOnlineRequests({ role })).toBe(true);
+      expect(canConvertOnlineRequests({ role })).toBe(true);
+    }
+    for (const role of denied) {
+      expect(canReadOnlineRequests({ role })).toBe(false);
+      expect(canManageOnlineRequests({ role })).toBe(false);
+      expect(canConvertOnlineRequests({ role })).toBe(false);
+    }
+  });
+
+  it('honors the explicit sales-role assignment for online requests', () => {
+    const assignedEmployee = {
+      role: Role.MITARBEITER,
+      salesRoleEnabled: true,
+    };
+
+    expect(canReadOnlineRequests(assignedEmployee)).toBe(true);
+    expect(canManageOnlineRequests(assignedEmployee)).toBe(true);
+    expect(canConvertOnlineRequests(assignedEmployee)).toBe(true);
   });
 });

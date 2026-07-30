@@ -25,6 +25,10 @@
     "oks-phone:legacy-duplicates:dry-run": "node --env-file=.env scripts/cleanup-imported-company-phone-duplicates.mjs",
     "oks-phone:legacy-duplicates:apply": "node --env-file=.env scripts/cleanup-imported-company-phone-duplicates.mjs --apply",
     "oks-phone:credential:provision": "node --env-file=.env scripts/provision-oks-phone-credential.mjs",
+    "online-requests:configure": "node --env-file=.env scripts/configure-online-request-portal.mjs",
+    "online-requests:configure:apply": "node --env-file=.env scripts/configure-online-request-portal.mjs --apply",
+    "online-requests:qa": "node --env-file=.env scripts/qa-online-requests.mjs",
+    "online-requests:qa:apply": "node --env-file=.env scripts/qa-online-requests.mjs --apply",
     "test": "vitest run",
     "test:watch": "vitest"
   },

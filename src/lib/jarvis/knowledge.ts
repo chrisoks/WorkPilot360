@@ -94,6 +94,32 @@ export function resolveJarvisOperationalGuidance(
         "Öffne links „Kalkulations-Rechner“. Dort erfasst du die Kalkulationsgrundlagen, vergleichst die berechneten Varianten und speicherst eine neue unveränderliche Version nur dann, wenn ein passendes Kundenprojekt zugeordnet ist.",
     };
   }
+  if (/\bonline\s*anfrag\w*|\bformularanfrag\w*|\banfragenposteingang\b/.test(value)) {
+    if (
+      /\b(?:umwandel|projekt|kunde|lead)\w*\b/.test(value)
+    ) {
+      return {
+        type: "answer",
+        topicId: "online-requests.convert",
+        message:
+          "Öffne links „Online-Anfragen“. Prüfe zuerst Inhalt, Verantwortlichkeit und die eindeutige Kundenentscheidung „vorhandener Kunde“ oder „neuer Kunde“. Erst danach darf die Anfrage bewusst umgewandelt werden. WorkPilot360 legt dabei immer ein neues Projekt unter „OK immocare → Lead / Klärung“ an; es wird niemals automatisch das erstbeste offene Kundenprojekt verwendet. Originaltext, Zusatzinteressen und Kontaktdaten kommen ins Projektlogbuch, sichere Formularbilder in die Bildgruppe „Anfragebilder“ und ein Termin- oder Rückrufwunsch in eine verknüpfte Aufgabe.",
+        navigation: {
+          label: "Online-Anfragen öffnen",
+          tab: "onlineRequests",
+        },
+      };
+    }
+    return {
+      type: "answer",
+      topicId: "online-requests.open",
+      message:
+        "Neue Formularanfragen erscheinen als Hinweis auf dem Dashboard und im geschützten Sidebar-Bereich „Online-Anfragen“. Dort können berechtigte Vertriebs- und Leitungsrollen die Anfrage öffnen, zuweisen, den Kunden eindeutig prüfen und erst anschließend kontrolliert in ein neues OK-immocare-Projekt unter „Lead / Klärung“ überführen.",
+      navigation: {
+        label: "Online-Anfragen öffnen",
+        tab: "onlineRequests",
+      },
+    };
+  }
   if (/\bproje?c?kt?u?bersicht\b|\bprojecktubersicht\b/.test(value)) {
     return {
       type: "answer",

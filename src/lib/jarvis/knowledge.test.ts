@@ -65,11 +65,27 @@ describe("JARVIS system help", () => {
     ["Kannst du organisationsübergreifend Daten lesen?", "jarvis.governance.organization-boundary"],
     ["Gibt es bei den Stemellungen fehler?", "project.time-errors.open-project"],
     ["Kann ich bei einem Einmalprojekt eine Terminserie anlegen?", "planning.one-time.no-series"],
+    ["Wo finde ich neue Online-Anfragen?", "online-requests.open"],
+    ["Wie wandle ich eine Online-Anfrage in ein Projekt um?", "online-requests.convert"],
   ])("answers operational guidance deterministically: %s", (question, topicId) => {
     expect(resolveJarvisOperationalGuidance(question)).toMatchObject({
       type: "answer",
       topicId,
     });
+  });
+
+  it("explains the safe online-request conversion without attaching to an arbitrary project", () => {
+    const result = resolveJarvisOperationalGuidance(
+      "Wie mache ich aus einer Formularanfrage ein neues Lead-Projekt?"
+    );
+    expect(result).toMatchObject({
+      type: "answer",
+      topicId: "online-requests.convert",
+      navigation: { tab: "onlineRequests" },
+    });
+    expect(result?.message).toContain("immer ein neues Projekt");
+    expect(result?.message).toContain("Anfragebilder");
+    expect(result?.message).toContain("niemals automatisch");
   });
 
   it.each([

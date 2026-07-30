@@ -2003,6 +2003,23 @@ Das Ziel gilt als erreicht, wenn:
 - Wissenslücken sichtbar gemessen und laufend geschlossen werden,
 - neue WorkPilot-Funktionen ohne zugehörige JARVIS-Prüfung nicht als
   vollständig abgeschlossen gelten.
+
+## 18. Integrierter Online-Anfragen-Vertikalschnitt
+
+Mit dem OK-immocare-Online-Anfragenportal kennt JARVIS nun zusätzlich den
+Hauptbereich `onlineRequests` und dessen sichere Übergabe in die Projektpipeline.
+Deterministische Systemhilfe beantwortet, wo Formularanfragen erscheinen, wie
+die Kundenentscheidung erfolgt und welche Daten bei einer bewussten Umwandlung
+übernommen werden. Das Navigationsziel ist rollenbegrenzt und führt ausschließlich
+in den geschützten Posteingang.
+
+JARVIS bleibt in diesem Prozess erklärend: Es darf weder eigenständig einen
+Kunden auswählen noch eine Anfrage umwandeln. Der serverseitige Fachprozess
+erzeugt nach menschlicher Prüfung immer ein neues Projekt unter
+`OK immocare → Lead / Klärung`, schreibt die Originalbeschreibung ins Logbuch,
+ordnet Bilder der Kategorie `Anfragebilder` zu und erzeugt erforderliche
+Termin-/Rückrufaufgaben. Systemlandkarte, natürliche Fragen, Rollenabdeckung und
+Browsernavigation besitzen eigene Regressionstests.
 # Aktueller Ausbau: Projektbestand und fachlicher Prüfstatus
 
 - Der organisationsgebundene Projektbestandsadapter beantwortet Zähl-,

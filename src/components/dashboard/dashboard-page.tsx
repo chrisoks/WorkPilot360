@@ -58,6 +58,14 @@ import type { JarvisRecordKind } from "@/lib/jarvis/read-intent";
 import {
   resolveJarvisDomain,
 } from "@/lib/jarvis/domain-router";
+import {
+  OnlineRequestsWorkspace,
+  type OnlineRequestCustomerDecision,
+  type OnlineRequestStatus,
+  type OnlineRequestViewItem as OnlineRequestItem,
+  type OnlineRequestViewSummary as OnlineRequestSummary,
+  type OnlineRequestWorkspaceFilter,
+} from "@/components/online-requests/online-requests-workspace";
 import type { JarvisDialogChoice } from "@/lib/jarvis/dialog";
 import type {
   JarvisActionPreviewView,
@@ -546,6 +554,7 @@ type AppTab =
   | "hero"
   | "projectsSolutions"
   | "projectsImmocare"
+  | "onlineRequests"
   | "contacts"
   | "documents"
   | "approvals"
@@ -5104,6 +5113,7 @@ const contentStatusOptions: ContentStatus[] = [
 const allNavigationTabs: Array<[AppTab, string]> = [
   ["overview", "Dashboard"],
   ["reports", "Auswertungen"],
+  ["onlineRequests", "Online-Anfragen"],
   ["contacts", "Kontakte"],
   ["newsFeed", "News-Feed"],
   ["salesHub", "Meine Ziele"],
@@ -5223,6 +5233,15 @@ function isAccountingRole(role?: string) {
 function isTabAllowedForRole(tab: AppTab, role?: string) {
   if (isAccountingRole(role)) return tab === "reports";
   if (
+    tab === "onlineRequests" &&
+    role !== "ADMIN" &&
+    role !== "GESCHAEFTSFUEHRER" &&
+    role !== "FUEHRUNGSKRAFT" &&
+    role !== "VERTRIEB"
+  ) {
+    return false;
+  }
+  if (
     role &&
     tab === "processAutomation" &&
     role !== "ADMIN" &&
@@ -5239,6 +5258,7 @@ function getVisibleNavigationTabs(role?: string, hasSalesRole = false) {
     const allowedSalesTabs = new Set<AppTab>([
       "overview",
       "reports",
+      "onlineRequests",
       "contacts",
       "newsFeed",
       "salesHub",
@@ -5301,6 +5321,7 @@ const allAppTabs: AppTab[] = [
   "hero",
   "projectsSolutions",
   "projectsImmocare",
+  "onlineRequests",
   "contacts",
   "documents",
   "documentOverview",
@@ -5581,6 +5602,22 @@ function SidebarIcon({ tab }: { tab: AppTab }) {
       <svg {...common}>
         <path d="M11 3a9 9 0 1 0 9 9h-9V3Z" />
         <path d="M13 3v7h7a7 7 0 0 0-7-7Z" />
+      </svg>
+    );
+  }
+
+  if (tab === "onlineRequests") {
+    return (
+      <svg {...common}>
+        <rect x="3.5" y="5" width="17" height="14" rx="2.5" />
+        <path
+          d="m5.5 7 6.5 5 6.5-5M7 16h5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </svg>
     );
   }
@@ -9505,6 +9542,22 @@ export function DashboardPage() {
   } | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [onlineRequests, setOnlineRequests] = useState<OnlineRequestItem[]>([]);
+  const [onlineRequestSummary, setOnlineRequestSummary] =
+    useState<OnlineRequestSummary>({
+      newCount: 0,
+      activeCount: 0,
+      oldestNewAt: "",
+    });
+  const [selectedOnlineRequestId, setSelectedOnlineRequestId] = useState("");
+  const [onlineRequestStatusFilter, setOnlineRequestStatusFilter] =
+    useState<OnlineRequestWorkspaceFilter>("active");
+  const [onlineRequestSearch, setOnlineRequestSearch] = useState("");
+  const [onlineRequestError, setOnlineRequestError] = useState("");
+  const [isOnlineRequestsLoading, setIsOnlineRequestsLoading] = useState(false);
+  const [isOnlineRequestSaving, setIsOnlineRequestSaving] = useState(false);
+  const [convertingOnlineRequestId, setConvertingOnlineRequestId] =
+    useState("");
   const [notificationHistory, setNotificationHistory] = useState<AppNotification[]>([]);
   const [notificationHistoryHasMore, setNotificationHistoryHasMore] = useState(false);
   const [notificationHistoryOffset, setNotificationHistoryOffset] = useState(0);
@@ -10803,6 +10856,180 @@ export function DashboardPage() {
 
     const data = (await res.json()) as ContactItem[];
     setContacts(data);
+  }
+
+  async function loadOnlineRequestSummary() {
+    if (!activeUserId) return;
+    const params = new URLSearchParams({
+      actorId: activeUserId,
+      summary: "1",
+    });
+    const response = await fetch(
+      `/api/online-requests?${params.toString()}`,
+      { cache: "no-store" }
+    );
+    if (!response.ok) {
+      if (response.status !== 403) {
+        setOnlineRequestError(
+          "Die Schnellübersicht der Online-Anfragen konnte nicht geladen werden."
+        );
+      }
+      return;
+    }
+    setOnlineRequestSummary((await response.json()) as OnlineRequestSummary);
+  }
+
+  async function loadOnlineRequests() {
+    if (!activeUserId) return;
+    setIsOnlineRequestsLoading(true);
+    try {
+      const params = new URLSearchParams({ actorId: activeUserId });
+      const response = await fetch(
+        `/api/online-requests?${params.toString()}`,
+        { cache: "no-store" }
+      );
+      const data = (await response.json().catch(() => null)) as
+        | OnlineRequestItem[]
+        | { error?: string }
+        | null;
+      if (!response.ok || !Array.isArray(data)) {
+        setOnlineRequestError(
+          (data && !Array.isArray(data) && data.error) ||
+            "Online-Anfragen konnten nicht geladen werden."
+        );
+        return;
+      }
+      setOnlineRequests(data);
+      setOnlineRequestSummary({
+        newCount: data.filter((item) => item.status === "new").length,
+        activeCount: data.filter((item) =>
+          ["new", "in_review", "waiting_customer"].includes(item.status)
+        ).length,
+        oldestNewAt:
+          data
+            .filter((item) => item.status === "new")
+            .sort((left, right) => left.createdAt.localeCompare(right.createdAt))[0]
+            ?.createdAt ?? "",
+      });
+      setSelectedOnlineRequestId((current) =>
+        current && data.some((item) => item.id === current)
+          ? current
+          : data[0]?.id ?? ""
+      );
+      setOnlineRequestError("");
+    } finally {
+      setIsOnlineRequestsLoading(false);
+    }
+  }
+
+  async function updateOnlineRequest(
+    item: OnlineRequestItem,
+    changes: {
+      status?: OnlineRequestStatus;
+      assignedUserId?: string;
+      customerDecision?: OnlineRequestCustomerDecision;
+      matchedContactId?: string;
+    }
+  ) {
+    if (!activeUserId || isOnlineRequestSaving) return;
+    setIsOnlineRequestSaving(true);
+    setOnlineRequestError("");
+    try {
+      const response = await fetch("/api/online-requests", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: activeUserId,
+          id: item.id,
+          status: changes.status ?? item.status,
+          assignedUserId:
+            changes.assignedUserId ?? item.assignedUserId ?? "",
+          customerDecision:
+            changes.customerDecision ?? item.customerDecision,
+          matchedContactId:
+            changes.matchedContactId ?? item.matchedContactId ?? "",
+        }),
+      });
+      const data = (await response.json().catch(() => null)) as
+        | OnlineRequestItem
+        | { error?: string }
+        | null;
+      if (!response.ok || !data || !("id" in data)) {
+        setOnlineRequestError(
+          (data && "error" in data && data.error) ||
+            "Online-Anfrage konnte nicht gespeichert werden."
+        );
+        return;
+      }
+      setOnlineRequests((current) =>
+        current.map((requestItem) =>
+          requestItem.id === data.id ? data : requestItem
+        )
+      );
+      await Promise.all([loadOnlineRequestSummary(), loadNotifications()]);
+    } finally {
+      setIsOnlineRequestSaving(false);
+    }
+  }
+
+  async function convertOnlineRequest(item: OnlineRequestItem) {
+    if (!activeUserId || convertingOnlineRequestId) return;
+    setConvertingOnlineRequestId(item.id);
+    setOnlineRequestError("");
+    try {
+      const response = await fetch(
+        `/api/online-requests/${encodeURIComponent(item.id)}/convert`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Online-Request-Action": "online-request-convert-v1",
+          },
+          body: JSON.stringify({ actorId: activeUserId }),
+        }
+      );
+      const data = (await response.json().catch(() => null)) as
+        | {
+            projectId: string;
+            duplicate?: boolean;
+          }
+        | { error?: string }
+        | null;
+      if (
+        !response.ok ||
+        !data ||
+        !("projectId" in data)
+      ) {
+        setOnlineRequestError(
+          (data && "error" in data && data.error) ||
+            "Die Anfrage konnte nicht sicher in ein Projekt übernommen werden."
+        );
+        return;
+      }
+      setSelectedOnlineRequestId(item.id);
+      await Promise.all([
+        loadOnlineRequests(),
+        loadOnlineRequestSummary(),
+        loadHeroProjects(),
+        loadContacts(),
+        loadTasks(),
+        loadProjectLogbookEntries(),
+        loadNotifications(),
+      ]);
+    } finally {
+      setConvertingOnlineRequestId("");
+    }
+  }
+
+  function openConvertedOnlineRequestProject(projectId: string) {
+    if (!projectId) return;
+    setSelectedProjectFileId(projectId);
+    setProjectFileTab("logbook");
+    setActiveTab("projectsImmocare");
+    setOpenProjectNav({
+      projectsSolutions: false,
+      projectsImmocare: true,
+    });
   }
 
   async function loadCustomerLogbookEntries(customerId: string) {
@@ -17801,6 +18028,17 @@ export function DashboardPage() {
       setIsNotificationsOpen(false);
     }
 
+    if (
+      notification.linkTarget === "online-requests" &&
+      notification.linkTargetId
+    ) {
+      await loadOnlineRequests();
+      setSelectedOnlineRequestId(notification.linkTargetId);
+      setOnlineRequestStatusFilter("active");
+      setActiveTab("onlineRequests");
+      setIsNotificationsOpen(false);
+    }
+
     if (notification.linkTarget === "content-item" && notification.linkTargetId) {
       if (!CONTENT_MANAGEMENT_ENABLED) {
         setIsNotificationsOpen(false);
@@ -20228,6 +20466,7 @@ export function DashboardPage() {
 
     const operationalLoadTimer = window.setTimeout(() => {
       void loadContacts();
+      void loadOnlineRequestSummary();
       void loadObjectAddresses();
       void loadCatalogItems();
       void loadOffers();
@@ -20269,6 +20508,18 @@ export function DashboardPage() {
       window.clearTimeout(secondaryLoadTimer);
     };
   }, [authChecked, isAuthenticated, activeUserId, activeUser?.role, activeUserHasSalesRole]);
+
+  useEffect(() => {
+    if (
+      !authChecked ||
+      !isAuthenticated ||
+      !activeUserId ||
+      activeTab !== "onlineRequests"
+    ) {
+      return;
+    }
+    void loadOnlineRequests();
+  }, [activeTab, activeUserId, authChecked, isAuthenticated]);
 
   useEffect(() => {
     if (!authChecked || !isAuthenticated || !activeUserId || activeTab !== "newsFeed") return;
@@ -41851,7 +42102,12 @@ await addProjectLogbookEntry(
             );
           });
         const isImmocareProject = project.projectType === "Projekt OK immocare";
-        const categoryOrder = ["Objektbesichtigungen", "Vorherbilder", "Nachherbilder"];
+        const categoryOrder = [
+          "Anfragebilder",
+          "Objektbesichtigungen",
+          "Vorherbilder",
+          "Nachherbilder",
+        ];
         const categoryLabels = Array.from(new Set(imageItems.map((image) => image.category))).sort((first, second) => {
           const firstIndex = categoryOrder.indexOf(first);
           const secondIndex = categoryOrder.indexOf(second);
@@ -45075,6 +45331,12 @@ await addProjectLogbookEntry(
     ].filter((step) => selectedProjectSupportsProofImages || !["beforeImages", "afterImages", "activityReport"].includes(step.id)) as Array<{ id: string; label: string; state: "done" | "partial" | "open"; hint: string; onClick: () => void }>;
     const projectImageCategories = [
       {
+        label: "Anfragebilder",
+        shortLabel: "Anfrage",
+        description:
+          "Originalbilder aus der Online-Anfrage vor der Projektanlage.",
+      },
+      {
         label: "Objektbesichtigungen",
         shortLabel: "Objekt",
         description: "Bilder aus Besichtigung, Aufmaß oder Erstaufnahme.",
@@ -45089,7 +45351,12 @@ await addProjectLogbookEntry(
         shortLabel: "Nachher",
         description: "Dokumentation nach Fertigstellung.",
       },
-    ].filter((category) => selectedProjectSupportsProofImages || category.label === "Objektbesichtigungen");
+    ].filter(
+      (category) =>
+        selectedProjectSupportsProofImages ||
+        category.label === "Objektbesichtigungen" ||
+        category.label === "Anfragebilder"
+    );
     const projectImageCount = projectImageCategories.reduce(
       (sum, category) =>
         sum +
@@ -62249,6 +62516,18 @@ await addProjectLogbookEntry(
                 <span className={styles.navLabel}>
                   <SidebarIcon tab={tab} />
                   {label}
+                  {tab === "onlineRequests" &&
+                  onlineRequestSummary.newCount > 0 ? (
+                    <span
+                      className={styles.onlineRequestSidebarBadge}
+                      aria-label={`${onlineRequestSummary.newCount} neue Online-Anfragen`}
+                      title={`${onlineRequestSummary.newCount} neue Online-Anfragen`}
+                    >
+                      {onlineRequestSummary.newCount > 99
+                        ? "99+"
+                        : onlineRequestSummary.newCount}
+                    </span>
+                  ) : null}
                 </span>
               </button>
             );
@@ -62357,6 +62636,52 @@ await addProjectLogbookEntry(
                   <em><i aria-hidden="true" /> Dashboard aktuell</em>
                 </aside>
               </div>
+
+              {visibleNavigationActiveTabs.has("onlineRequests") ? (
+                <button
+                  type="button"
+                  className={styles.onlineRequestDashboardAlert}
+                  data-empty={onlineRequestSummary.activeCount === 0}
+                  onClick={() => openMainView("onlineRequests")}
+                >
+                  <span className={styles.onlineRequestDashboardIcon} aria-hidden="true">
+                    <SidebarIcon tab="onlineRequests" />
+                  </span>
+                  <span className={styles.onlineRequestDashboardCopy}>
+                    <small>Online-Anfragen</small>
+                    <strong>
+                      {onlineRequestSummary.newCount > 0
+                        ? `${onlineRequestSummary.newCount} neue ${
+                            onlineRequestSummary.newCount === 1
+                              ? "Anfrage"
+                              : "Anfragen"
+                          }`
+                        : "Keine ungelesenen Anfragen"}
+                    </strong>
+                    <span>
+                      {onlineRequestSummary.activeCount > 0
+                        ? `${onlineRequestSummary.activeCount} aktive Vorgänge${
+                            onlineRequestSummary.oldestNewAt
+                              ? ` · älteste neue Anfrage seit ${new Intl.DateTimeFormat(
+                                  "de-DE",
+                                  {
+                                    dateStyle: "medium",
+                                    timeStyle: "short",
+                                    timeZone: APP_TIME_ZONE,
+                                  }
+                                ).format(
+                                  new Date(onlineRequestSummary.oldestNewAt)
+                                )}`
+                              : ""
+                          }`
+                        : "Der Posteingang ist aktuell vollständig bearbeitet."}
+                    </span>
+                  </span>
+                  <span className={styles.onlineRequestDashboardAction}>
+                    Posteingang öffnen
+                  </span>
+                </button>
+              ) : null}
 
               <section className={styles.dashboardMainGrid}>
                 <section className={styles.employeeStampPanel}>
@@ -63596,6 +63921,63 @@ await addProjectLogbookEntry(
                 </div>
               </div>
             </section>
+          ) : activeTab === "onlineRequests" ? (
+            <OnlineRequestsWorkspace
+              actorId={activeUserId}
+              requests={onlineRequests}
+              selectedId={selectedOnlineRequestId}
+              statusFilter={onlineRequestStatusFilter}
+              search={onlineRequestSearch}
+              users={users
+                .filter(
+                  (user) =>
+                    user.isActive &&
+                    (user.role === "ADMIN" ||
+                      user.role === "GESCHAEFTSFUEHRER" ||
+                      user.role === "FUEHRUNGSKRAFT" ||
+                      user.role === "VERTRIEB" ||
+                      user.salesRoleEnabled === true)
+                )
+                .map((user) => ({ id: user.id, name: user.name }))
+                .sort((left, right) =>
+                  left.name.localeCompare(right.name, APP_LOCALE)
+                )}
+              contacts={contacts
+                .filter(
+                  (contact) =>
+                    contact.type === "company" ||
+                    contact.type === "private" ||
+                    /kunde/i.test(contact.category)
+                )
+                .map((contact) => ({
+                  id: contact.id,
+                  label: getContactDisplayName(contact),
+                  detail: [
+                    contact.customerNumber,
+                    [contact.postalCode, contact.city]
+                      .filter(Boolean)
+                      .join(" "),
+                  ]
+                    .filter(Boolean)
+                    .join(" · "),
+                }))
+                .sort((left, right) =>
+                  left.label.localeCompare(right.label, APP_LOCALE)
+                )}
+              error={onlineRequestError}
+              loading={isOnlineRequestsLoading}
+              saving={isOnlineRequestSaving}
+              converting={convertingOnlineRequestId === selectedOnlineRequestId}
+              onSelectedIdChange={setSelectedOnlineRequestId}
+              onStatusFilterChange={setOnlineRequestStatusFilter}
+              onSearchChange={setOnlineRequestSearch}
+              onRefresh={() => void loadOnlineRequests()}
+              onUpdate={(item, changes) =>
+                void updateOnlineRequest(item, changes)
+              }
+              onConvert={(item) => void convertOnlineRequest(item)}
+              onOpenProject={openConvertedOnlineRequestProject}
+            />
           ) : activeTab === "contacts" ? selectedCustomerFile ? (
             renderCustomerFile()
           ) : (

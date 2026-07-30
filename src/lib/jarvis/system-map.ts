@@ -63,7 +63,7 @@ const MASTER_DATA_ROLES: Role[] = [Role.ADMIN, Role.GESCHAEFTSFUEHRER];
 const ACCOUNTING_NAVIGATION_ROLES: Role[] = [Role.ADMIN, Role.GESCHAEFTSFUEHRER, Role.FUEHRUNGSKRAFT];
 
 const DASHBOARD_SOURCE = "src/components/dashboard/dashboard-page.tsx";
-const VERIFIED_AT = "2026-07-26";
+const VERIFIED_AT = "2026-07-30";
 
 function area(
   definition: Omit<JarvisSystemArea, "status" | "verification"> &
@@ -144,6 +144,7 @@ function childArea(input: {
 const MAIN_AREAS: JarvisSystemArea[] = [
   moduleArea("overview", "Dashboard", "Persönlicher und rollenbezogener Arbeitsüberblick.", ["Kennzahlen überblicken", "Warnungen und nächste Arbeitsschritte öffnen"], ALL_INTERNAL_ROLES, ["startseite", "übersicht"]),
   moduleArea("reports", "Auswertungen", "Rollenbezogene operative, vertriebliche und kaufmännische Analysen.", ["Zeitraum und Filter setzen", "KPI-Details prüfen", "zu Datensätzen springen"], REPORT_NAVIGATION_ROLES, ["berichte", "kennzahlen"]),
+  moduleArea("onlineRequests", "Online-Anfragen", "Öffentliche Formularanfragen prüfen und kontrolliert als neue OK-immocare-Leads übernehmen.", ["neue Anfrage öffnen", "Kundenentscheidung und Verantwortung prüfen", "in ein neues Projekt unter Lead / Klärung umwandeln"], SALES_ROLES, ["online anfragen", "formularanfragen", "anfragenposteingang", "lead klärung"]),
   moduleArea("contacts", "Kontakte", "Kunden, Firmen und Ansprechpartner verwalten.", ["Kontakte suchen", "Kundenakte öffnen", "Ansprechpartner und Objektadressen pflegen"], SALES_ROLES, ["kunden", "crm"]),
   moduleArea("newsFeed", "News-Feed", "Interne Nachrichten, Reaktionen und Abstimmungen.", ["Beiträge lesen", "kommentieren und reagieren"], ALL_INTERNAL_ROLES, ["neuigkeiten"]),
   moduleArea("salesHub", "Meine Ziele", "Eigene Vertriebs- und Leistungsziele verfolgen.", ["eigene Ziele prüfen", "Fortschritt und Historie öffnen"], [Role.ADMIN, Role.GESCHAEFTSFUEHRER, Role.FUEHRUNGSKRAFT, Role.MITARBEITER, Role.VERTRIEB], ["zielübersicht"]),

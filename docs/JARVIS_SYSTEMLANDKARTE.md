@@ -121,3 +121,30 @@ Aktionen werden getrennt über das Action Center abgesichert:
 Ein JARVIS-Entwurf darf weder Organisation, Projektart, Projektstand,
 Mitarbeiterzugehörigkeit noch Kontingent aus seinem eigenen Payload bestimmen.
 Diese Werte werden bei Vorprüfung und Bestätigung aus WorkPilot360 neu geladen.
+
+## Online-Anfragen und Lead-Übernahme
+
+Der produktive Hauptbereich `onlineRequests` gehört zur vertrieblichen
+Systemlandkarte. JARVIS kennt dabei folgenden verbindlichen Prozess:
+
+- Neue öffentliche Formularanfragen erscheinen auf dem Dashboard und im
+  Sidebar-Bereich `Online-Anfragen`.
+- Zugriff, Bearbeitung, Bilder und Umwandlung sind an Vertriebs- beziehungsweise
+  Projektpipeline-Rechte sowie an die aktuelle Organisation gebunden.
+- Vor einer Umwandlung muss ein Mensch ausdrücklich `vorhandener Kunde` oder
+  `neuer Kunde` entscheiden; ein vorhandener Kunde muss organisationsgebunden
+  ausgewählt werden.
+- Die Umwandlung erzeugt immer ein neues Projekt unter
+  `OK immocare → Lead / Klärung`. Ein beliebiges bestehendes Kundenprojekt wird
+  niemals automatisch verwendet.
+- Die Originalanfrage wird als Projektlogbuch-Eintrag `Online-Anfrage`
+  übernommen. Sicher normalisierte Bilder landen in `Anfragebilder`;
+  Termin- und Rückrufwünsche werden als verknüpfte Aufgaben angelegt.
+- JARVIS darf diesen Ablauf erklären und den Posteingang öffnen, aber keine
+  Kundenentscheidung oder Projektumwandlung autonom ausführen.
+
+Verifizierte Quellen sind
+`src/components/online-requests/online-requests-workspace.tsx`,
+`src/app/api/online-requests/route.ts`,
+`src/app/api/online-requests/[requestId]/convert/route.ts` und
+`src/lib/online-requests/conversion.ts`.

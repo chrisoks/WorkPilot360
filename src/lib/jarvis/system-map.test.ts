@@ -19,6 +19,7 @@ describe("JARVIS system map", () => {
     expect(JARVIS_MAIN_NAVIGATION_AREA_IDS).toEqual([
       "overview",
       "reports",
+      "onlineRequests",
       "contacts",
       "newsFeed",
       "salesHub",
@@ -55,7 +56,7 @@ describe("JARVIS system map", () => {
   });
 
   it("keeps every entry traceable and useful", () => {
-    expect(JARVIS_SYSTEM_AREAS).toHaveLength(88);
+    expect(JARVIS_SYSTEM_AREAS).toHaveLength(89);
     expect(new Set(JARVIS_SYSTEM_AREAS.map((item) => item.id)).size).toBe(JARVIS_SYSTEM_AREAS.length);
     JARVIS_SYSTEM_AREAS.forEach((item) => {
       expect(item.purpose.length).toBeGreaterThan(12);
@@ -69,6 +70,15 @@ describe("JARVIS system map", () => {
   it("finds natural navigation terms", () => {
     const result = findJarvisSystemAreas("Wo finde ich die Zeiterfassung?", management);
     expect(result[0]?.area.id).toBe("employees.timeTracking");
+  });
+
+  it("maps the protected online-request inbox only for sales roles", () => {
+    expect(
+      findJarvisSystemAreas("Formularanfragen öffnen", management)[0]?.area.id
+    ).toBe("onlineRequests");
+    expect(
+      findJarvisSystemAreas("Online-Anfragen öffnen", employee)
+    ).toEqual([]);
   });
 
   it("resolves the current visible context", () => {

@@ -27813,6 +27813,23 @@
   min-width: 0;
 }
 
+.onlineRequestSidebarBadge {
+  align-items: center;
+  background: #f6c94c;
+  border: 2px solid #111827;
+  border-radius: 999px;
+  color: #172033;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  font-weight: 850;
+  height: 23px;
+  justify-content: center;
+  line-height: 1;
+  min-width: 23px;
+  padding: 0 6px;
+}
+
 .sidebarTaskBadges {
   align-items: center;
   display: inline-flex;
@@ -28029,6 +28046,113 @@
   display: grid;
   gap: 16px;
   grid-template-columns: minmax(500px, 0.82fr) minmax(720px, 1.18fr);
+}
+
+.onlineRequestDashboardAlert {
+  align-items: center;
+  background:
+    radial-gradient(circle at 92% 20%, rgba(53, 188, 174, 0.18), transparent 28%),
+    linear-gradient(120deg, #102f3a, #17464e);
+  border: 0;
+  border-radius: 15px;
+  box-shadow: 0 12px 28px rgba(15, 49, 58, 0.15);
+  color: #ffffff;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 92px;
+  padding: 16px 18px;
+  text-align: left;
+  width: 100%;
+}
+
+.onlineRequestDashboardAlert:hover {
+  filter: brightness(1.035);
+  transform: translateY(-1px);
+}
+
+.onlineRequestDashboardAlert[data-empty="true"] {
+  background: linear-gradient(120deg, #eef5f4, #f7faf9);
+  border: 1px solid #d6e4e2;
+  box-shadow: none;
+  color: #173640;
+}
+
+.onlineRequestDashboardIcon {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.13);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  display: inline-flex;
+  height: 48px;
+  justify-content: center;
+  width: 48px;
+}
+
+.onlineRequestDashboardAlert[data-empty="true"] .onlineRequestDashboardIcon {
+  background: #dff1ee;
+  border-color: #c8e3df;
+  color: #137c72;
+}
+
+.onlineRequestDashboardIcon .navIcon {
+  height: 23px;
+  width: 23px;
+}
+
+.onlineRequestDashboardCopy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.onlineRequestDashboardCopy small {
+  color: #55d2c2;
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.onlineRequestDashboardAlert[data-empty="true"]
+  .onlineRequestDashboardCopy
+  small {
+  color: #148478;
+}
+
+.onlineRequestDashboardCopy strong {
+  font-size: 1.16rem;
+}
+
+.onlineRequestDashboardCopy > span {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.84rem;
+}
+
+.onlineRequestDashboardAlert[data-empty="true"]
+  .onlineRequestDashboardCopy
+  > span {
+  color: #647784;
+}
+
+.onlineRequestDashboardAction {
+  background: #2aab9d;
+  border-radius: 10px;
+  color: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 10px 13px;
+}
+
+@media (max-width: 720px) {
+  .onlineRequestDashboardAlert {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .onlineRequestDashboardAction {
+    grid-column: 1 / -1;
+    text-align: center;
+  }
 }
 
 .overviewHeroStats {

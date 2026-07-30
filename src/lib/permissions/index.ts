@@ -222,6 +222,18 @@ export function canManageProjects(user: RoleCarrier): boolean {
   return canManageSalesPipeline(user);
 }
 
+export function canReadOnlineRequests(user: RoleCarrier): boolean {
+  return canManageSalesPipeline(user);
+}
+
+export function canManageOnlineRequests(user: RoleCarrier): boolean {
+  return canManageSalesPipeline(user);
+}
+
+export function canConvertOnlineRequests(user: RoleCarrier): boolean {
+  return canManageProjects(user);
+}
+
 export function canReviewProjects(user: RoleCarrier): boolean {
   return canRunStatusEscalations(user);
 }

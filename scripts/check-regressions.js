@@ -74,6 +74,9 @@ const files = {
   projectTimeEntriesRoute: read("src/app/api/project-time-entries/route.ts"),
   smokeDetectorReportsRoute: read("src/app/api/smoke-detector-reports/route.ts"),
   tasksRoute: read("src/app/api/tasks/route.ts"),
+  onlineRequestSubmitRoute: read("src/app/api/public/online-requests/submit/route.ts"),
+  onlineRequestConversionRoute: read("src/app/api/online-requests/[requestId]/convert/route.ts"),
+  onlineRequestWorkspace: read("src/components/online-requests/online-requests-workspace.tsx"),
   packageJson: read("package.json"),
 };
 
@@ -618,6 +621,48 @@ const required = [
     needle: "isCustomerFeedbackLinkedToActiveSalesUser",
     min: 3,
   },
+  {
+    label: "Online-Anfragen bleiben ein eigener geschuetzter Hauptbereich",
+    file: "page",
+    needle: "\"onlineRequests\"",
+    min: 8,
+  },
+  {
+    label: "Online-Anfragen-Posteingang erzwingt eine Kundenentscheidung",
+    file: "onlineRequestWorkspace",
+    needle: "customerDecision",
+    min: 8,
+  },
+  {
+    label: "Oeffentliche Online-Anfragen verwenden einmalige Sitzungen",
+    file: "onlineRequestSubmitRoute",
+    needle: "consumedAt: null",
+    min: 2,
+  },
+  {
+    label: "Oeffentliche Bilder werden serverseitig neu codiert",
+    file: "onlineRequestSubmitRoute",
+    needle: "photos_reencoded",
+    min: 1,
+  },
+  {
+    label: "Online-Anfragen werden immer als OK-immocare-Lead angelegt",
+    file: "onlineRequestConversionRoute",
+    needle: "const PROJECT_STATUS = \"Lead / Klärung\"",
+    min: 1,
+  },
+  {
+    label: "Online-Anfragebilder bleiben eine eigene Projektbildgruppe",
+    file: "onlineRequestConversionRoute",
+    needle: "Bilder: Anfragebilder",
+    min: 1,
+  },
+  {
+    label: "Online-Anfragen-Umwandlung hat einen expliziten Aktionsmarker",
+    file: "onlineRequestConversionRoute",
+    needle: "online-request-convert-v1",
+    min: 1,
+  },
 ];
 
 const forbidden = [
@@ -673,6 +718,31 @@ const requiredPrismaFields = [
     model: "WorkPilotProject",
     field: "timeBudgetEnabled",
     reason: "Aktivierung von Projektzeitkontingenten wird in Projektakte und Planung genutzt.",
+  },
+  {
+    model: "OnlineRequestPortal",
+    field: "trustedHostnames",
+    reason: "Oeffentliche Formularmutationen sind an die Portal-Hostname-Allowlist gebunden.",
+  },
+  {
+    model: "OnlineRequest",
+    field: "submissionIpHash",
+    reason: "Missbrauchsschutz speichert nur den HMAC der Netzwerkkennung.",
+  },
+  {
+    model: "OnlineRequest",
+    field: "convertedProjectId",
+    reason: "Replay-sichere Projektumwandlung braucht den dauerhaften Projektnachweis.",
+  },
+  {
+    model: "OnlineRequestPhoto",
+    field: "data",
+    reason: "Sicher normalisierte Anfragebilder werden organisationsgebunden gespeichert.",
+  },
+  {
+    model: "OnlineRequestPublicSession",
+    field: "consumedAt",
+    reason: "Oeffentliche Formularsitzungen muessen genau einmal verwendbar bleiben.",
   },
 ];
 
