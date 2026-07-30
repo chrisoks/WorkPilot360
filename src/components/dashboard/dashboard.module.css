@@ -35815,6 +35815,7 @@
  * Nur bereits als Hero/Header modernisierte Hauptansichten verwenden diesen
  * visuellen Vertrag; Fachkarten und Aktenköpfe bleiben bewusst eigenständig.
  */
+.overviewHero,
 .taskModuleHeader,
 .employeeListHero,
 .planningBoardHero,
@@ -35838,6 +35839,7 @@
   border-radius: 18px 18px 0 0;
 }
 
+.overviewHero h1,
 .taskModuleHeader h1,
 .employeeListHero h1,
 .planningBoardHero h1,
@@ -35852,6 +35854,7 @@
   margin: 0;
 }
 
+.overviewHero .eyebrow,
 .taskModuleEyebrow,
 .employeeListHero .eyebrow,
 .planningBoardHero .eyebrow,
@@ -35878,6 +35881,46 @@
   line-height: 1.5;
   margin: 8px 0 0;
   max-width: 760px;
+}
+
+.overviewHero h1 span {
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 0.52em;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+  margin-top: 7px;
+}
+
+.overviewHero .dashboardHeaderWeek {
+  color: rgba(255, 255, 255, 0.07);
+}
+
+.overviewHero .dashboardHeaderDate {
+  border-left-color: rgba(255, 255, 255, 0.2);
+}
+
+.overviewHero .dashboardHeaderDate > span,
+.overviewHero .dashboardHeaderDate em,
+.overviewHero .dashboardHeaderDate small {
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.overviewHero .dashboardHeaderDate strong,
+.overviewHero .dashboardHeaderDate p {
+  color: #ffffff;
+}
+
+.overviewHero .dashboardHeaderDate i {
+  background: #49d2bd;
+  box-shadow: 0 0 0 3px rgba(73, 210, 189, 0.16);
+}
+
+@media (max-width: 560px) {
+  .overviewHero .dashboardHeaderDate {
+    border-left: 0;
+    border-top-color: rgba(255, 255, 255, 0.2);
+  }
 }
 
 .taskModuleHeader .primaryButton,
@@ -36084,7 +36127,6 @@
 
 .customerFileHeader h1,
 .employeeFileHeader h1,
-.overviewHero h1,
 .projectFileHeader h1 {
   font-size: var(--wp-type-size-2xl);
 }
