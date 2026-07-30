@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   resolveJarvisReadRequest: vi.fn(),
   resolveJarvisSystemHelp: vi.fn(),
   resolveJarvisDirectNavigationHelp: vi.fn(),
+  resolveJarvisOperationalGuidance: vi.fn(),
   resolveJarvisProjectTypeOverview: vi.fn(),
   resolveJarvisSystemHelpTopic: vi.fn(),
   findJarvisExactHelpTopicId: vi.fn(),
@@ -59,6 +60,8 @@ vi.mock("@/lib/jarvis/knowledge", () => ({
   resolveJarvisSystemHelp: mocks.resolveJarvisSystemHelp,
   resolveJarvisDirectNavigationHelp:
     mocks.resolveJarvisDirectNavigationHelp,
+  resolveJarvisOperationalGuidance:
+    mocks.resolveJarvisOperationalGuidance,
   resolveJarvisProjectTypeOverview:
     mocks.resolveJarvisProjectTypeOverview,
   resolveJarvisSystemHelpTopic: mocks.resolveJarvisSystemHelpTopic,
@@ -1587,6 +1590,34 @@ describe("POST /api/jarvis/chat", () => {
       message: expect.stringContaining("ein konkretes Datum"),
     });
   });
+
+  it.each([
+    "Buche einen Einmalprojekt-Termin ohne finales Angebot.",
+    "Überplane das Monatskontingent und bestätige die Überbuchung.",
+  ])(
+    "routes a risky planning command through the safe project-bound preview: %s",
+    async (message) => {
+      mocks.sanitizeJarvisSurfaceContext.mockReturnValue({});
+
+      const response = await POST(
+        new Request("http://localhost/api/jarvis/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            actorId: "user-1",
+            message,
+          }),
+        })
+      );
+
+      expect(await response.json()).toMatchObject({
+        type: "clarification",
+        topicId: "action.preview.planning.project-required",
+        message: expect.stringContaining("nichts gespeichert"),
+      });
+      expect(mocks.createPersistedJarvisPlanningDraft).not.toHaveBeenCalled();
+    }
+  );
 
   it("names only the still-missing fields in an incomplete appointment request", async () => {
     mocks.sanitizeJarvisSurfaceContext.mockReturnValue({

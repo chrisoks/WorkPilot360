@@ -5,6 +5,7 @@ import { getDemoContext } from "@/lib/demo/context";
 import {
   findJarvisExactHelpTopicId,
   resolveJarvisDirectNavigationHelp,
+  resolveJarvisOperationalGuidance,
   resolveJarvisProjectTypeOverview,
   resolveJarvisSystemHelp,
   resolveJarvisSystemHelpTopic,
@@ -365,7 +366,7 @@ function looksLikeDirectActionRequest(
   return (
     !/^\s*wie\b/iu.test(question) &&
     ((!startsWithQuestion && decision.goals.includes("change")) ||
-      /^\s*(?:leg|lege|mach|mache|schick|sende|stornier|stemp(?:el|le)|lösch|losch|ändere|ander|setz|markier|erstell|trag|plane)\w*\b/iu.test(
+      /^\s*(?:leg|lege|mach|mache|schick|sende|stornier|stemp(?:el|le)|lösch|losch|ändere|ander|setz|markier|erstell|trag|plane|buch|buche|überplan|uberplan|bestätig|bestatig)\w*\b/iu.test(
         question
       ))
   );
@@ -483,11 +484,15 @@ function looksLikeTaskCreationPreviewRequest(question: string) {
 function looksLikePlanningPreviewRequest(question: string) {
   const value = normalizeJarvisIntentText(question);
   const startsWithPlanningCommand =
-    /^\s*(?:plan|plane|leg|lege|erstell|erstelle)\w*\b/.test(value);
+    /^\s*(?:plan|plane|leg|lege|erstell|erstelle|buch|buche|uberplan|bestatig)\w*\b/.test(
+      value
+    );
   return (
     startsWithPlanningCommand &&
     (
-      /\b(?:termin|einsatztermin|planungstermin)\w*\b/.test(value) ||
+      /\b(?:termin|einsatztermin|planungstermin|uberplanung|monatskontingent|angebotskontingent)\w*\b/.test(
+        value
+      ) ||
       (
         /^\s*(?:plan|plane)\w*\b/.test(value) &&
         /\b(?:heute|morgen|ubermorgen|nachste\w*\s+woche|diese\w*\s+woche|am\s+\d{1,2}\.\d{1,2}\.\d{4}|um\s+\d{1,2}(?::\d{2})?)\b/.test(
@@ -790,6 +795,10 @@ export async function POST(req: Request) {
   const projectTypeOverview = resolveJarvisProjectTypeOverview(message);
   if (projectTypeOverview) {
     return respond(projectTypeOverview, "system");
+  }
+  const operationalGuidance = resolveJarvisOperationalGuidance(message);
+  if (operationalGuidance) {
+    return respond(operationalGuidance, "system");
   }
   const projectReviewInventoryIntent =
     resolveJarvisProjectReviewInventoryIntent(message);

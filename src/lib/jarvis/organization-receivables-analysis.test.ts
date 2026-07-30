@@ -109,6 +109,8 @@ describe("organization-wide JARVIS receivables analysis", () => {
     "Wie hoch sint unser offnen Posten?",
     "Welche offenen Forderungen sind überfällig?",
     "Zeig mir die überfälligen Forderungen.",
+    "Zeig mir offene Rechnungen bei uns.",
+    "Wie viele Rechnungen sind überfällig?",
   ])("recognizes the organization-wide intent: %s", (question) => {
     expect(resolveJarvisOrganizationReceivablesIntent(question)).toBeDefined();
   });

@@ -68,7 +68,9 @@ export function resolveJarvisOrganizationReceivablesIntent(
   const value = normalize(question);
   const mentionsReceivables =
     /\b(?:offen|offn)\w*\s+posten\b/.test(value) ||
-    /\b(?:offen|offn|uberfallig)\w*\s+forderung\w*\b/.test(value);
+    /\b(?:offen|offn|uberfallig)\w*\s+forderung\w*\b/.test(value) ||
+    /\b(?:offen|offn)\w*\s+rechnung\w*\b/.test(value) ||
+    /\brechnung\w*\b.*\buberfallig\w*\b/.test(value);
   if (!mentionsReceivables) return undefined;
 
   return {

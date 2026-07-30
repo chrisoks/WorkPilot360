@@ -42,7 +42,7 @@ export function resolveJarvisProjectTypeOverview(
     .toLocaleLowerCase("de-DE")
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[?!.,;:]+/g, " ")
+    .replace(/[?!.,;:()/_-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
   const asksForOverview =
@@ -60,6 +60,311 @@ export function resolveJarvisProjectTypeOverview(
     message:
       "In WorkPilot360 gibt es drei planungsrelevante Varianten: Einmalprojekte mit finalem Angebot, Ausführungsmonat und Angebotskontingent; Dauerläufer mit Stundenabrechnung samt Gewerk und Abrechnungsleistung; sowie Dauerläufer mit Monatspauschale und monatlichem Kontingent. Termine und Terminwünsche verwenden je Variante dieselben Fachfelder. Ein Terminwunsch muss zusätzlich von einer zuständigen Führungskraft oder Planungsverantwortung freigegeben werden.",
   };
+}
+
+export function resolveJarvisOperationalGuidance(
+  question: string
+): JarvisHelpResult | undefined {
+  const value = question
+    .toLocaleLowerCase("de-DE")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[?!.,;:()/_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const asks = /^(?:wie|wo|was|wer|warum|wann|kann|konnen|wird|welche|ist)\b/.test(
+    value
+  );
+  if (!asks) return undefined;
+
+  if (/\bpersonlich\w*\s+daten\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "personal-data.open",
+      message:
+        "Öffne links „Persönliche Daten“. Dort kannst du die für dich freigegebenen Angaben und Dokumente einsehen. Änderungen erfolgen nur in den dort ausdrücklich bearbeitbaren Feldern; sensible Personal- und Lohndaten bleiben rollenbegrenzt.",
+    };
+  }
+  if (/\bkalkulations?\s*rechner\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "calculator.open",
+      message:
+        "Öffne links „Kalkulations-Rechner“. Dort erfasst du die Kalkulationsgrundlagen, vergleichst die berechneten Varianten und speicherst eine neue unveränderliche Version nur dann, wenn ein passendes Kundenprojekt zugeordnet ist.",
+    };
+  }
+  if (/\bproje?c?kt?u?bersicht\b|\bprojecktubersicht\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "project.search",
+      message:
+        "Öffne in der Sidebar „Projekte OK solutions“ oder „Projekte OK immocare“. Dort findest du die Projektübersicht mit Suche und Statusfiltern.",
+    };
+  }
+  if (/\b(?:stempel\w*|stemell\w*)\b.*\bfehler\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "project.time-errors.open-project",
+      message:
+        "Für eine belastbare Stempelungsprüfung brauche ich ein eindeutig geöffnetes Projekt. Dort kann JARVIS je nach Rolle Zeitwerte, Pausen, Doppelungen, Überschneidungen, Mitarbeiter- und Terminbezug sowie Abrechnungszuordnungen prüfen. Ohne Projektbezug wurde nichts bewertet oder verändert.",
+    };
+  }
+
+  if (/\bstunden\s*dauerlaufer\b.*\babgerechnet\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "planning.hourly.explain",
+      message:
+        "Ein Stunden-Dauerläufer wird nach den tatsächlich zugeordneten Zeiten abgerechnet. Termin und Stempelung benötigen das passende Gewerk und eine aktive planungs- beziehungsweise abrechnungsrelevante Leistung desselben Gewerks; der Leistungsmonat führt in den dazugehörigen Rechnungsentwurf.",
+    };
+  }
+  if (/\bmonatspauschale\b/.test(value) && /\b(?:funktioniert|was ist)\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "planning.flat.explain",
+      message:
+        "Bei einer Monatspauschale gilt je Leistungsmonat ein festes Stundenkontingent. Planung und Terminserien zeigen für jeden betroffenen Monat, was bereits verplant und noch frei ist. Eine Überschreitung ist nur nach sichtbarer Vorprüfung, ausdrücklicher Bestätigung und Begründung zulässig.",
+    };
+  }
+  if (/\bausfuhrungsmonat\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "planning.offer.execution-month",
+      message:
+        "Der Ausführungsmonat ist der im finalen Angebot vorgesehene Leistungsmonat. WorkPilot360 liest ihn aus dem gewählten Angebot; ein Einmalprojekt-Termin muss in diesem Monat liegen, damit Angebot, Kontingent und Ausführung zusammenpassen.",
+    };
+  }
+  if (/\bangebotskontingent\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "planning.offer.quota",
+      message:
+        "Das Angebotskontingent sind die im finalen Angebot vorgesehenen Arbeitsstunden. Bereits geplante Projektstunden werden abgezogen. Soll mehr verplant werden, verlangt JARVIS eine ausdrückliche Bestätigung mit Grund und protokolliert die Überplanung.",
+    };
+  }
+  if (/\bmonatskontingent\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "planning.flat.quota",
+      message:
+        "Das Monatskontingent ist die für eine Monatspauschale je Leistungsmonat verfügbare Planungszeit. Die Maske zeigt Kontingent, bereits geplante Zeit, neue Serienzeit und den verbleibenden oder überplanten Betrag für jeden betroffenen Monat.",
+    };
+  }
+  if (/\bwer\b.*\bterminwunsch\b.*\bfreig/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "planning.request.approval",
+      message:
+        "Ein Terminwunsch wird von einer dafür berechtigten Führungskraft, Planungsverantwortung, Geschäftsführung oder Administration freigegeben. Bis dahin bleibt er als angefragte Planung sichtbar und wird nicht wie ein bestätigter Termin behandelt.",
+    };
+  }
+  if (/\bterminserie\b.*\bmehrere mitarbeiter\b|\bmehrere mitarbeiter\b.*\bterminserie\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "planning.series.multiple-assignees",
+      message:
+        "Ja. Bei Stunden-Dauerläufern und Monatspauschalen kann eine Terminserie mehrere Mitarbeitende gemeinsam buchen. Ein Speichervorgang erzeugt alle Personen- und Serientermine als zusammengehörigen Vorgang; schlägt eine Prüfung fehl, wird nichts teilweise angelegt.",
+    };
+  }
+  if (/\bmehrere mitarbeiter\b.*\btermin\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "planning.multiple-assignees",
+      message:
+        "Ja. In allen drei projektartgerechten Termin- und Terminwunschmasken kannst du neben der ersten Person weitere Mitarbeitende auswählen. Der Termin erscheint nach einem gemeinsamen, atomaren Speichervorgang bei allen ausgewählten Personen.",
+    };
+  }
+  if (/\bdoppelte termine\b|\bdoppelklick\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "planning.idempotency",
+      message:
+        "Jeder Planungsvorgang besitzt eine eindeutige Anforderungs-ID und einen Hash der geprüften Nutzlast. Doppelklick, Wiederholung oder Replay liefern das bereits gespeicherte Ergebnis zurück und erzeugen keine zweiten Termine.",
+    };
+  }
+  if (/\bserienanlage\b.*\b(?:teilweise|fehlschlagt)\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "planning.atomic-series",
+      message:
+        "Eine Serienanlage wird vollständig in einer serialisierbaren Datenbanktransaktion geschrieben. Kann auch nur ein notwendiger Termin nicht sicher angelegt werden, wird der gesamte Vorgang zurückgerollt; es bleibt keine Teilserie zurück.",
+    };
+  }
+  if (/\bterminwunsch\b.*\bfachlich anders\b|\bfachlich anders\b.*\btermin\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "planning.request.same-rules",
+      message:
+        "Nein. Termin und Terminwunsch verwenden dieselben Fachfelder und Prüfungen. Der einzige Prozessunterschied ist der Status: Der Termin ist bestätigt, der Terminwunsch bleibt angefragt, bis eine berechtigte Person ihn freigibt.",
+    };
+  }
+  if (/\bfelder\b.*\bstunden\s*dauerlaufer\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "planning.hourly.fields",
+      message:
+        "Für einen Stunden-Dauerläufer brauchst du Mitarbeitende, Titel, Beschreibung, Datum und Zeit, Planungsboard und Gruppe, Termin-Gewerk sowie eine aktive Abrechnungsleistung desselben Gewerks. Optional kannst du eine Terminserie anlegen.",
+    };
+  }
+  if (/\bfelder\b.*\bmonatspauschal\w*\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "planning.flat.fields",
+      message:
+        "Für eine Monatspauschale brauchst du Mitarbeitende, Titel, Beschreibung, Datum und Zeit, Planungsboard und Gruppe sowie Monats- und gegebenenfalls Serienkontext. Die Maske zeigt das freie Kontingent für jeden Serienmonat; Überplanung benötigt Bestätigung und Grund.",
+    };
+  }
+  if (/\bfelder\b.*\beinmalprojekt\b|\beinmalprojekt\b.*\bplanung\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "planning.one-time.fields",
+      message:
+        "Für ein Einmalprojekt brauchst du Mitarbeitende, Titel, Beschreibung, Datum und Zeit, Planungsboard und Gruppe sowie ein gültiges finales Angebot. Aus dem Angebot kommen Ausführungsmonat und Arbeitsstundenkontingent; eine Serie ist hier bewusst nicht vorgesehen.",
+    };
+  }
+  if (/\buberplan\w*\b|\bkontingent\b.*\buberschreit\w*\b/.test(value)) {
+    if (/\bwer\b.*\binformiert\b/.test(value)) {
+      return {
+        type: "answer",
+        topicId: "planning.overbooking.notification",
+        message:
+          "Nach einer bestätigten Überplanung erhalten die zuständigen Führungskräfte, die Geschäftsführung und Administration je Vorgang höchstens eine deduplizierte App-Meldung. Grund und Überplanungsart bleiben außerdem am Batch, Termin und in der Historie nachvollziehbar.",
+      };
+    }
+    if (/\bwarum\b.*\bgrund\b/.test(value)) {
+      return {
+        type: "answer",
+        topicId: "planning.overbooking.reason",
+        message:
+          "Der Grund macht eine bewusste Ausnahme fachlich nachvollziehbar. Er wird an den geprüften Kontingentstand gebunden, revisionssicher gespeichert und mit der Meldung an die zuständige Leitung weitergegeben; eine leere oder zu kurze Begründung wird abgelehnt.",
+      };
+    }
+    return {
+      type: "answer",
+      topicId: "planning.overbooking",
+      message:
+        "Eine Überplanung wird niemals still ausgeführt. JARVIS zeigt die Überschreitung und den geprüften Kontingentstand, fragt ausdrücklich nach, verlangt eine belastbare Begründung und führt erst nach bewusster Bestätigung aus. Ändern sich Projekt, Angebot, Personen, Zeiten oder Kontingent, ist die Bestätigung ungültig.",
+    };
+  }
+
+  if (
+    /\bverantwortung\b.*\bempfehl|\bempfehl\w*\b.*\bverantwortung\b/.test(
+      value
+    )
+  ) {
+    return {
+      type: "answer",
+      topicId: "jarvis.governance.responsibility",
+      message:
+        "Die fachliche Entscheidung und Verantwortung bleiben immer beim Menschen. JARVIS kann Fakten zusammenführen, Risiken erklären und nächste Schritte vorschlagen, ersetzt aber keine verantwortliche Person und trifft keine rechtliche, finanzielle oder personelle Entscheidung.",
+    };
+  }
+  if (/\berfind\w*\b.*\bprojekt(?:daten)?\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "jarvis.governance.no-invention",
+      message:
+        "Nein. Fehlende Projektdaten werden als Lücke ausgewiesen und nicht erfunden. JARVIS trennt gespeicherte Fakten, Ableitungen und Unsicherheiten; ohne belastbare Grundlage bestätigt er weder einen sicheren Zustand noch eine folgenreiche Aktion.",
+    };
+  }
+  if (/\borganisations?ubergreifend\b|\bfremde organisation\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "jarvis.governance.organization-boundary",
+      message:
+        "Nein. Sitzung, tatsächlicher und wirksamer Akteur, Rolle, Organisation und gegebenenfalls Impersonation werden serverseitig geprüft. Daten einer fremden Organisation bleiben gesperrt; eine KI-Einstufung kann diese Grenze nicht überschreiben.",
+    };
+  }
+  if (/\bpersonlichkeit\b.*\bmitarbeiter\b/.test(value)) {
+    return {
+      type: "refusal",
+      topicId: "jarvis.governance.no-personality-profiling",
+      message:
+        "Ich erstelle keine heimlichen Persönlichkeitsprofile von Mitarbeitenden. Zulässig sind nur zweckgebundene, rollenberechtigte Arbeitsfakten und nachvollziehbare Beobachtungen; persönliche Bewertung und Führungsgespräch bleiben beim Menschen.",
+    };
+  }
+  if (/\bentlass\w*\b/.test(value)) {
+    return {
+      type: "refusal",
+      topicId: "jarvis.governance.no-personnel-decision",
+      message:
+        "Ich entscheide nicht, wer eingestellt, versetzt oder entlassen wird. Personalentscheidungen bleiben vollständig bei den dafür verantwortlichen Menschen; JARVIS darf höchstens erlaubte Fakten strukturiert bereitstellen, ohne Persönlichkeitsprofil oder autonome Empfehlung.",
+    };
+  }
+  if (/\bderzeit\b.*\bwirklich ausfuhren\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "jarvis.governance.current-actions",
+      message:
+        "JARVIS kann freigegebene Daten lesen und erklären sowie sichere Aufgaben- und projektartgerechte Termin- oder Terminwunsch-Entwürfe vorbereiten. Vollständig geprüfte Entwürfe werden erst nach bewusster menschlicher Bestätigung ausgeführt. Versand, Zahlung, Löschung, Rollen-, Personal- und Stempelaktionen führt JARVIS nicht aus.",
+    };
+  }
+  if (/\bniemals\b.*\bautonom\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "jarvis.governance.no-autonomy",
+      message:
+        "Rechtlich, finanziell, personell oder irreversibel wirkende Entscheidungen trifft JARVIS niemals autonom. Dazu zählen insbesondere Versand, Zahlung, Löschung, Rollenänderung, Personalentscheidung und Stempelung; Verantwortung und bewusste Freigabe bleiben beim Menschen.",
+    };
+  }
+  if (/\bnachvollziehbar\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "jarvis.governance.traceability",
+      message:
+        "Aktionen bleiben durch sichtbare Vorschau, serverseitige Vorprüfung, revisionsgebundene Bestätigung, unveränderten Nutzlastnachweis, Auditfolge und den tatsächlich bestätigten Datenbankzustand nachvollziehbar. Erst danach meldet JARVIS Erfolg.",
+    };
+  }
+  if (/\bwiderspruchlich\w*\s+angaben\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "jarvis.governance.contradictions",
+      message:
+        "Widersprüchliche Angaben gelten nicht als belastbare Wahrheit. JARVIS benennt den konkreten Widerspruch und die betroffenen Grundlagen und verlangt Klärung; bis dahin bestätigt er weder einen grünen Status noch eine folgenreiche Aktion.",
+    };
+  }
+  if (/\bentwurf\b.*\babbrech\w*\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "action.draft.cancel",
+      message:
+        "Beim Abbruch wird der Entwurf revisionsgebunden als abgebrochen protokolliert und nicht ausgeführt. Es entsteht weder eine Aufgabe noch ein Termin; ein späterer Bestätigungsversuch bleibt gesperrt.",
+    };
+  }
+  if (/\bentwurf\b.*\bablauf\w*\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "action.draft.expiry",
+      message:
+        "Ein abgelaufener Entwurf kann nicht mehr geändert oder bestätigt werden. Der Server prüft die Ablaufzeit erneut und bleibt fail-closed; für die gewünschte Aktion ist eine neue Vorschau mit aktuellem Datenstand nötig.",
+    };
+  }
+  if (/\balter tab\b.*\bentwurf\b.*\bbestatigen\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "action.draft.revision",
+      message:
+        "Nein. Jede Änderung erhöht die serverseitige Revision. Ein alter Tab besitzt damit einen veralteten Stand und kann den neueren Entwurf weder überschreiben noch bestätigen.",
+    };
+  }
+  if (/\baufgabe\b.*\bvorschau\b.*\bander\w*\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "action.draft.edit",
+      message:
+        "Ja. Du kannst die freigegebenen Entwurfsfelder nach der Vorschau ändern. Jede Änderung macht die bisherige Bestätigung ungültig und löst eine neue serverseitige Prüfung mit höherer Revision aus.",
+    };
+  }
+  if (/\bwann\b.*\baktion\b.*\berfolgreich\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "action.success.evidence",
+      message:
+        "JARVIS meldet Erfolg erst, wenn der serverseitig geprüfte Vorgang vollständig ausgeführt und der bestätigte Datenbankzustand gespeichert ist. Vorschau, Klick oder gestartete Anfrage allein gelten nicht als Erfolg.",
+    };
+  }
+
+  return undefined;
 }
 
 function buildRoleAwareFallbackChoices(

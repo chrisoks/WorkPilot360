@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   resolveJarvisDirectNavigationHelp,
+  resolveJarvisOperationalGuidance,
   resolveJarvisProjectTypeOverview,
   resolveJarvisSystemHelp,
   sanitizeJarvisSurfaceContext,
@@ -47,6 +48,24 @@ describe("JARVIS system help", () => {
         "Welche Projektart hat das geöffnete Projekt?"
       )
     ).toBeUndefined();
+  });
+
+  it.each([
+    ["Was bedeutet Ausführungsmonat beim Angebot?", "planning.offer.execution-month"],
+    ["Kann eine Terminserie mehrere Mitarbeiter gemeinsam buchen?", "planning.series.multiple-assignees"],
+    ["Was passiert bei einer Überplanung?", "planning.overbooking"],
+    ["Wer wird über eine Überplanung informiert?", "planning.overbooking.notification"],
+    ["Welche Felder braucht ein Stunden-Dauerläufer-Termin?", "planning.hourly.fields"],
+    ["Welche Felder braucht eine Monatspauschalen-Terminserie?", "planning.flat.fields"],
+    ["Welche Felder braucht ein Einmalprojekt-Termin?", "planning.one-time.fields"],
+    ["Wer trägt bei deinen Empfehlungen die Verantwortung?", "jarvis.governance.responsibility"],
+    ["Was passiert, wenn ein Entwurf abläuft?", "action.draft.expiry"],
+    ["Kann ein alter Tab einen neueren Entwurf bestätigen?", "action.draft.revision"],
+  ])("answers operational guidance deterministically: %s", (question, topicId) => {
+    expect(resolveJarvisOperationalGuidance(question)).toMatchObject({
+      type: "answer",
+      topicId,
+    });
   });
 
   it("answers a supported offer workflow", () => {
