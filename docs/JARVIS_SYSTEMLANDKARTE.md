@@ -137,6 +137,17 @@ Systemlandkarte. JARVIS kennt dabei folgenden verbindlichen Prozess:
 - Die Umwandlung erzeugt immer ein neues Projekt unter
   `OK immocare → Lead / Klärung`. Ein beliebiges bestehendes Kundenprojekt wird
   niemals automatisch verwendet.
+- Die `OKI-...`-Referenz bleibt Anfrage-, Quellen-, Audit- und
+  Logbuchreferenz. Innerhalb der serialisierbaren Umwandlung wird unter einem
+  organisationsgebundenen Advisory-Lock die nächste globale Projektnummer mit
+  dem `projectPrefix` des gewählten Gewerks vergeben. Der Titel folgt
+  `Projekt <Nummer> - <Gewerk>`. `Sonstige / Andere Leistung` bleibt
+  `tradeId=null`, behält den lesbaren Namen und verwendet das neutrale Präfix
+  `SON`.
+- Im öffentlichen Formular stehen in Schritt 2 zunächst Grünpflege,
+  Objektbetreuung und Hausmeisterservice sichtbar bereit. 13 weitere
+  freigegebene Optionen einschließlich `Sonstige / Andere Leistung` liegen
+  hinter dem beschrifteten Aufklapper.
 - Die Originalanfrage wird als Projektlogbuch-Eintrag `Online-Anfrage`
   übernommen. Sicher normalisierte Bilder landen in `Anfragebilder`;
   Termin- und Rückrufwünsche werden als verknüpfte Aufgaben angelegt.

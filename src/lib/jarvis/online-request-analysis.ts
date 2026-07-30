@@ -59,6 +59,10 @@ export type JarvisOnlineRequestSource = {
     statusCounts: Record<string, number>;
     requests: JarvisOnlineRequestRow[];
     assigneeNames: Record<string, string>;
+    convertedProjects: Record<
+      string,
+      { projectNumber: string; title: string }
+    >;
   }>;
 };
 
@@ -129,10 +133,17 @@ const liveSource: JarvisOnlineRequestSource = {
           .filter((id): id is string => Boolean(id))
       )
     );
-    const assignees =
+    const convertedProjectIds = Array.from(
+      new Set(
+        requests
+          .map((request) => request.convertedProjectId)
+          .filter((id): id is string => Boolean(id))
+      )
+    );
+    const [assignees, convertedProjects] = await Promise.all([
       assigneeIds.length === 0
         ? []
-        : await prisma.user.findMany({
+        : prisma.user.findMany({
             where: { organizationId, id: { in: assigneeIds } },
             select: {
               id: true,
@@ -140,7 +151,21 @@ const liveSource: JarvisOnlineRequestSource = {
               lastName: true,
               email: true,
             },
-          });
+          }),
+      convertedProjectIds.length === 0
+        ? []
+        : prisma.workPilotProject.findMany({
+            where: {
+              organizationId,
+              id: { in: convertedProjectIds },
+            },
+            select: {
+              id: true,
+              projectNumber: true,
+              title: true,
+            },
+          }),
+    ]);
 
     return {
       statusCounts: Object.fromEntries(
@@ -157,6 +182,15 @@ const liveSource: JarvisOnlineRequestSource = {
           [user.firstName, user.lastName].filter(Boolean).join(" ") ||
             user.email ||
             "Zugewiesene Person",
+        ])
+      ),
+      convertedProjects: Object.fromEntries(
+        convertedProjects.map((project) => [
+          project.id,
+          {
+            projectNumber: project.projectNumber,
+            title: project.title,
+          },
         ])
       ),
     };
@@ -313,7 +347,11 @@ function listLabel(
 
 function detailResponse(
   request: JarvisOnlineRequestRow,
-  assigneeNames: Record<string, string>
+  assigneeNames: Record<string, string>,
+  convertedProjects: Record<
+    string,
+    { projectNumber: string; title: string }
+  >
 ): JarvisReadResponse {
   const assignee = request.assignedUserId
     ? assigneeNames[request.assignedUserId] || "Zugewiesene Person"
@@ -323,6 +361,9 @@ function detailResponse(
         (entry): entry is string => typeof entry === "string"
       )
     : [];
+  const convertedProject = request.convertedProjectId
+    ? convertedProjects[request.convertedProjectId]
+    : undefined;
   const contact = [
     request.email,
     request.phone,
@@ -426,10 +467,14 @@ function detailResponse(
           title: "Sichere Weiterverarbeitung",
           items: [
             request.convertedProjectId
-              ? "Die Anfrage wurde bereits kontrolliert in ein neues Projekt umgewandelt."
+              ? convertedProject
+                ? `Die Anfrage wurde kontrolliert in das neue Projekt ${convertedProject.projectNumber} („${convertedProject.title}“) umgewandelt.`
+                : "Die Anfrage wurde bereits kontrolliert in ein neues Projekt umgewandelt."
               : "Vor einer Umwandlung müssen Kundenentscheidung und Verantwortung eindeutig geprüft werden.",
             "Eine Online-Anfrage wird niemals automatisch einem bestehenden Projekt zugeordnet.",
-            "Bei bewusster Umwandlung entsteht immer ein neues Projekt unter OK immocare → Lead / Klärung; Originalbeschreibung, Anfragebilder und Termin- oder Rückrufwunsch werden strukturiert übernommen.",
+            "Die OKI-Referenz bleibt Anfrage-, Quellen-, Audit- und Logbuchreferenz; sie wird nicht als Projektnummer verwendet.",
+            "Bei bewusster Umwandlung entsteht unter OK immocare → Lead / Klärung eine neue globale Projektnummer mit dem Präfix des gewählten Gewerks. Für „Sonstige / Andere Leistung“ gilt das neutrale Präfix SON.",
+            "Originalbeschreibung, Anfragebilder und Termin- oder Rückrufwunsch werden strukturiert übernommen.",
             `${request.auditEventCount} Audit-Ereignisse dokumentieren den bisherigen Ablauf.`,
           ],
           tone:
@@ -488,7 +533,11 @@ export async function resolveJarvisOnlineRequestAnalysis(input: {
         deterministic: true,
       };
     }
-    return detailResponse(request, data.assigneeNames);
+    return detailResponse(
+      request,
+      data.assigneeNames,
+      data.convertedProjects
+    );
   }
 
   const newCount = count(data.statusCounts, "new");
@@ -578,6 +627,7 @@ export async function resolveJarvisOnlineRequestAnalysis(input: {
           items: [
             "Online-Anfragen werden niemals automatisch einem bestehenden Projekt zugeordnet.",
             "Erst nach manueller Kundenprüfung und bewusster Umwandlung entsteht ein neues Projekt unter OK immocare → Lead / Klärung.",
+            "Die OKI-Referenz bleibt Quellenreferenz. Die Projektnummer verwendet die nächste globale Nummer mit dem Gewerk-Präfix; bei „Sonstige / Andere Leistung“ gilt SON.",
           ],
           tone: "neutral",
         },

@@ -2034,6 +2034,17 @@ Termin-/Rückrufaufgaben. Systemlandkarte, natürliche Fragen, Rollenabdeckung u
 Browsernavigation besitzen eigene Regressionstests. Live-Intent, Statusfilter,
 Mandantengrenze, fehlende Referenz, Rollenverweigerung, Impersonation und die
 Bestandsprojekt-Invariante sind zusätzlich automatisiert abgesichert.
+
+Die `OKI-...`-Referenz bleibt dabei ausschließlich Anfrage-, Quellen-, Audit-
+und Logbuchreferenz. JARVIS erklärt und liest für bereits umgewandelte Anfragen
+die tatsächliche organisationsgebundene Projektnummer: Die Umwandlung vergibt
+unter einem organisationsgebundenen Advisory-Lock die nächste globale Nummer
+mit dem `projectPrefix` des gewählten Gewerks und bildet den Titel als
+`Projekt <Nummer> - <Gewerk>`. Für `Sonstige / Andere Leistung` bleibt
+`tradeId=null`, der lesbare Leistungsname erhalten und das Präfix neutral
+`SON`. Die öffentliche Leistungsauswahl zeigt zuerst Grünpflege,
+Objektbetreuung und Hausmeisterservice; 13 weitere freigegebene Optionen liegen
+hinter einem deutlichen Aufklapper.
 # Aktueller Ausbau: Projektbestand und fachlicher Prüfstatus
 
 - Der organisationsgebundene Projektbestandsadapter beantwortet Zähl-,

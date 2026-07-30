@@ -35,7 +35,11 @@
   Zuordnung zu einem Bestandsprojekt; bewusste Umwandlung erzeugt immer ein
   neues Projekt unter `OK immocare → Lead / Klärung`. Der Adapter ist
   ausschließlich lesend und führt weder Kundenentscheidung noch Umwandlung
-  aus.
+  aus. Seit der Projektstandard-Fortschreibung liest JARVIS bei einer bereits
+  umgewandelten Anfrage zusätzlich organisationsgebunden die tatsächliche
+  Projektnummer und den Titel. Die `OKI-...`-Referenz wird niemals als
+  Projektnummer dargestellt; erklärt werden Gewerk-Präfix, globale Sequenz und
+  das neutrale Präfix `SON` für `Sonstige / Andere Leistung`.
 
 - Verbindlicher JARVIS-Kalkulationsausbau 2026-07-30:
   JARVIS soll die vorhandenen Kalkulations-Rechner nicht nur öffnen und

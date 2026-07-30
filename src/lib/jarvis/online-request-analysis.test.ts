@@ -54,6 +54,7 @@ function source(
       },
       requests: [request],
       assigneeNames: { "sales-1": "Verena Vertrieb" },
+      convertedProjects: {},
       ...overrides,
     }),
   };
@@ -121,6 +122,9 @@ describe("JARVIS online request analysis", () => {
     expect(JSON.stringify(response)).toContain(
       "OK immocare → Lead / Klärung"
     );
+    expect(JSON.stringify(response)).toContain(
+      "nächste globale Nummer mit dem Gewerk-Präfix"
+    );
   });
 
   it("uses the selected status as an organization-bound source filter", async () => {
@@ -157,8 +161,37 @@ describe("JARVIS online request analysis", () => {
     expect(rendered).toContain(
       "niemals automatisch einem bestehenden Projekt zugeordnet"
     );
+    expect(rendered).toContain("nicht als Projektnummer verwendet");
     expect(rendered).not.toContain("submissionIpHash");
     expect(rendered).not.toContain("securitySignals");
+  });
+
+  it("shows the organization-bound standard project identity after conversion", async () => {
+    const response = await resolveJarvisOnlineRequestAnalysis({
+      question: "Fasse OKI-20260730-A1B2C3 zusammen.",
+      organizationId: "org-1",
+      accessProfile: salesProfile,
+      source: source({
+        requests: [
+          {
+            ...request,
+            status: "converted",
+            convertedProjectId: "project-1",
+          },
+        ],
+        convertedProjects: {
+          "project-1": {
+            projectNumber: "GLR-449",
+            title: "Projekt GLR-449 - Glasreinigung",
+          },
+        },
+      }),
+    });
+    const rendered = JSON.stringify(response);
+
+    expect(rendered).toContain("GLR-449");
+    expect(rendered).toContain("Projekt GLR-449 - Glasreinigung");
+    expect(rendered).toContain("OKI-Referenz bleibt");
   });
 
   it("does not fall back to another organization's request when a reference is absent", async () => {

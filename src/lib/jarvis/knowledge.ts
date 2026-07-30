@@ -127,12 +127,28 @@ export function resolveJarvisOperationalGuidance(
           "Das öffentliche Portal verwendet signierte Einmalsitzungen, Honeypot, Mindestausfüllzeit, Proof-of-Work, persistente Rate-Limits, Host-/Origin-Prüfung und strikte Eingabevalidierung. Fotos werden sicher neu kodiert und Metadaten entfernt; Netzwerkmerkmale liegen nur gehasht vor. Turnstile kann zusätzlich aktiviert werden. Diese Schutzdaten sind kein Inhalt für normale JARVIS-Auswertungen.",
       };
     }
+    if (
+      /\b(?:projektnummer|projekttitel|projektname|praefix|oki referenz|sonstige|andere leistung)\w*\b/.test(
+        value
+      )
+    ) {
+      return {
+        type: "answer",
+        topicId: "online-requests.project-identity",
+        message:
+          "Die OKI-Referenz bleibt ausschließlich die Anfrage-, Quellen-, Audit- und Logbuchreferenz und wird nicht zur Projektnummer. Bei der bewussten Umwandlung vergibt WorkPilot360 transaktional die nächste globale Projektnummer mit dem Präfix des gewählten Gewerks, zum Beispiel „GLR-449“. Der Titel folgt exakt dem Muster „Projekt GLR-449 - Glasreinigung“. Für „Sonstige / Andere Leistung“ bleibt die Anfrage ohne vorgetäuschtes Gewerk (`tradeId` ist leer), der lesbare Leistungsname bleibt erhalten und die Projektnummer verwendet das neutrale Präfix „SON“.",
+        navigation: {
+          label: "Online-Anfragen öffnen",
+          tab: "onlineRequests",
+        },
+      };
+    }
     if (/\b(?:anliegen|anfrageart|angebot|ruckmeldung|durchfuhrung|mangel|gewerk)\w*\b/.test(value)) {
       return {
         type: "answer",
         topicId: "online-requests.scope",
         message:
-          "Das allgemeine OK-immocare-Portal nimmt die Anliegenarten Angebot, Rückmeldung beziehungsweise Rückruf, Durchführung, Mangel oder Problem und allgemeine Anfrage auf. Dazu kommen eines der freigegebenen WorkPilot-Gewerke, Beschreibung, Kontaktdaten, gegebenenfalls Wunschdatum oder Zeitfenster und Fotos. Bei Angebotshinweisen kann „Passt häufig dazu“ mild auf passende Zusatzleistungen hinweisen; die Auswahl bleibt immer beim Menschen.",
+          "Das allgemeine OK-immocare-Portal nimmt die Anliegenarten Angebot, Rückmeldung beziehungsweise Rückruf, Durchführung, Mangel oder Problem und allgemeine Anfrage auf. In Schritt 2 stehen zunächst Grünpflege, Objektbetreuung und Hausmeisterservice im Vordergrund; 13 weitere freigegebene Optionen einschließlich „Sonstige / Andere Leistung“ sind über „Weitere Leistungen anzeigen“ erreichbar. Dazu kommen Beschreibung, Kontaktdaten, gegebenenfalls Wunschdatum oder Zeitfenster und Fotos. Bei Angebotshinweisen kann „Passt häufig dazu“ mild auf passende Zusatzleistungen hinweisen; die Auswahl bleibt immer beim Menschen.",
       };
     }
     if (
@@ -142,7 +158,7 @@ export function resolveJarvisOperationalGuidance(
         type: "answer",
         topicId: "online-requests.convert",
         message:
-          "Öffne links „Online-Anfragen“. Prüfe zuerst Inhalt, Verantwortlichkeit und die eindeutige Kundenentscheidung „vorhandener Kunde“ oder „neuer Kunde“. Erst danach darf die Anfrage bewusst umgewandelt werden. WorkPilot360 legt dabei immer ein neues Projekt unter „OK immocare → Lead / Klärung“ an; es wird niemals automatisch das erstbeste offene Kundenprojekt verwendet. Originaltext, Zusatzinteressen und Kontaktdaten kommen ins Projektlogbuch, sichere Formularbilder in die Bildgruppe „Anfragebilder“ und ein Termin- oder Rückrufwunsch in eine verknüpfte Aufgabe.",
+          "Öffne links „Online-Anfragen“. Prüfe zuerst Inhalt, Verantwortlichkeit und die eindeutige Kundenentscheidung „vorhandener Kunde“ oder „neuer Kunde“. Erst danach darf die Anfrage bewusst umgewandelt werden. WorkPilot360 legt dabei immer ein neues Projekt unter „OK immocare → Lead / Klärung“ an; es wird niemals automatisch das erstbeste offene Kundenprojekt verwendet. Die OKI-Referenz bleibt Quellen- und Auditnachweis. Die neue Projektnummer erhält die nächste globale Nummer mit dem Präfix des gewählten Gewerks, bei „Sonstige / Andere Leistung“ mit „SON“; der Titel folgt „Projekt <Nummer> - <Gewerk>“. Originaltext, Zusatzinteressen und Kontaktdaten kommen ins Projektlogbuch, sichere Formularbilder in die Bildgruppe „Anfragebilder“ und ein Termin- oder Rückrufwunsch in eine verknüpfte Aufgabe.",
         navigation: {
           label: "Online-Anfragen öffnen",
           tab: "onlineRequests",

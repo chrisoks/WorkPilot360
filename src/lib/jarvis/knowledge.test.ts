@@ -71,6 +71,8 @@ describe("JARVIS system help", () => {
     ["Was passiert mit dem Rückrufwunsch einer Online-Anfrage?", "online-requests.appointment-task"],
     ["Wie ist das Online-Anfragen-Portal gegen Spam geschützt?", "online-requests.security"],
     ["Welche Anliegenarten hat das Online-Anfragen-Formular?", "online-requests.scope"],
+    ["Welche Projektnummer bekommt eine Online-Anfrage?", "online-requests.project-identity"],
+    ["Welches Präfix bekommt Sonstige bei einer Online-Anfrage?", "online-requests.project-identity"],
   ])("answers operational guidance deterministically: %s", (question, topicId) => {
     expect(resolveJarvisOperationalGuidance(question)).toMatchObject({
       type: "answer",
@@ -90,6 +92,20 @@ describe("JARVIS system help", () => {
     expect(result?.message).toContain("immer ein neues Projekt");
     expect(result?.message).toContain("Anfragebilder");
     expect(result?.message).toContain("niemals automatisch");
+    expect(result?.message).toContain("OKI-Referenz");
+    expect(result?.message).toContain("Präfix");
+  });
+
+  it("explains the featured and expanded public service choices", () => {
+    const result = resolveJarvisOperationalGuidance(
+      "Welche Anliegenarten hat das Online-Anfragen-Formular?"
+    );
+
+    expect(result?.message).toContain("Grünpflege");
+    expect(result?.message).toContain("Objektbetreuung");
+    expect(result?.message).toContain("Hausmeisterservice");
+    expect(result?.message).toContain("13 weitere");
+    expect(result?.message).toContain("Sonstige / Andere Leistung");
   });
 
   it.each([
