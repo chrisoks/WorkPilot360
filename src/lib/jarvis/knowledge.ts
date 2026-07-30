@@ -167,6 +167,14 @@ export function resolveJarvisOperationalGuidance(
         "Ja. Bei Stunden-Dauerläufern und Monatspauschalen kann eine Terminserie mehrere Mitarbeitende gemeinsam buchen. Ein Speichervorgang erzeugt alle Personen- und Serientermine als zusammengehörigen Vorgang; schlägt eine Prüfung fehl, wird nichts teilweise angelegt.",
     };
   }
+  if (/\beinmalprojekt\b.*\bterminserie\b|\bterminserie\b.*\beinmalprojekt\b/.test(value)) {
+    return {
+      type: "answer",
+      topicId: "planning.one-time.no-series",
+      message:
+        "Nein. Einmalprojekte werden bewusst als einzelne Termine oder Terminwünsche innerhalb des Ausführungsmonats geplant. Terminserien sind nur für Stunden-Dauerläufer und Monatspauschalen vorgesehen.",
+    };
+  }
   if (/\bmehrere mitarbeiter\b.*\btermin\b/.test(value)) {
     return {
       type: "answer",

@@ -64,6 +64,7 @@ describe("JARVIS system help", () => {
     ["Erfindest du fehlende Projektdaten?", "jarvis.governance.no-invention"],
     ["Kannst du organisationsübergreifend Daten lesen?", "jarvis.governance.organization-boundary"],
     ["Gibt es bei den Stemellungen fehler?", "project.time-errors.open-project"],
+    ["Kann ich bei einem Einmalprojekt eine Terminserie anlegen?", "planning.one-time.no-series"],
   ])("answers operational guidance deterministically: %s", (question, topicId) => {
     expect(resolveJarvisOperationalGuidance(question)).toMatchObject({
       type: "answer",
