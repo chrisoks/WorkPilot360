@@ -156,6 +156,18 @@ describe("JARVIS system help", () => {
     expect(new Set(messages).size).toBe(cases.length);
   });
 
+  it.each([
+    ["Wie gehst du mit personenbezogenen Daten um?", "freigegebenen Zweck"],
+    ["Wie schützt du Organisations- und Mandantengrenzen?", "serverseitig geprüft"],
+  ])("answers natural safety wording specifically: %s", (question, expected) => {
+    const result = resolveJarvisSystemHelp(question, {}, employeeAccess);
+    expect(result).toMatchObject({
+      type: "answer",
+      topicId: "jarvis.safety",
+    });
+    expect(result.message).toContain(expected);
+  });
+
   it("answers individual people-development questions specifically", () => {
     const cases = [
       ["Wie unterstützt du neue Mitarbeiter?", "prüfbares Beispiel"],
@@ -230,6 +242,23 @@ describe("JARVIS system help", () => {
         leadershipAccess
       )
     ).toMatchObject({ type: "answer", topicId: "invoice.preflight" });
+  });
+
+  it.each([
+    ["Was ist der Unterschied zwischen Termin und Terminwunsch?", "appointment.difference", "bestätigte Planung"],
+    ["Wie prüfe ich, ob Zeiten fakturierbar sind?", "time.invoiceability", "Abrechnungsleistung"],
+    ["Wie erstelle ich einen Logbucheintrag im Projekt?", "project.logbook.open", "„+ Eintrag“"],
+    ["Wie sehe ich Abwesenheiten?", "employees.absences.open", "Team-Kalender"],
+    ["Wie finde ich die Zeiterfassung?", "systemMap.employees.timeTracking", "Projektzeiten"],
+    ["Wie kann ich ein Dokument zu einem Projekt hochladen?", "project.documents.open", "Upload"],
+    ["Wie sehe ich den Projektgewinn?", "project.profit.open", "Datenqualität"],
+  ])("answers final natural workflow wording %s", (question, topicId, expected) => {
+    const result = resolveJarvisSystemHelp(question, {
+      recordType: "project",
+      recordId: "project-1",
+    }, executiveAccess);
+    expect(result).toMatchObject({ type: "answer", topicId });
+    expect(result.message).toContain(expected);
   });
 
   it.each([

@@ -10,6 +10,7 @@ const ORGANIZATION_ANALYSIS_PATTERNS = [
   /\bwelche projekte\b.*\b(?:zeiten|stempel)\b.*\bkeine rechnung\b/,
   /\bwelche projekte\b.*\b(?:ohne|kein\w*)\b.*\b(?:gültig\w*\s+)?angebot\b/,
   /\bwelche projekte\b.*\b(?:auffallig|unwirtschaftlich|verlust|marge)\b/,
+  /\bwelche projekte\b.*\b(?:kritisch|risiko|gefahrdet)\b/,
   /\bwelche (?:artikel|materialien|leistungen)\b.*\b(?:am haufigsten|meisten)\b/,
   /\b(?:wie|welche)\b.*\b(?:annahmequote|offnungsquote)\b/,
   /\b(?:wie viel|wie hoch)\b.*\b(?:umsatz)\b/,

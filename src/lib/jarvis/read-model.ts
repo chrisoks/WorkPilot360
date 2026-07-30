@@ -332,7 +332,9 @@ async function findTasks(
             ],
           }
         : {}),
-      ...(intent.filter === "open" || intent.filter === "today"
+      ...(intent.filter === "open" ||
+      intent.filter === "today" ||
+      intent.filter === "overdue"
         ? { status: { notIn: [TaskStatus.ERLEDIGT, TaskStatus.ABGELEHNT, TaskStatus.ARCHIVIERT] } }
         : {}),
     },
@@ -366,6 +368,11 @@ async function findTasks(
       return canAccessJarvisTask(profile, accessTarget);
     })
     .filter((task) => intent.filter !== "today" || getBerlinDateKey(task.deadline) === todayKey)
+    .filter(
+      (task) =>
+        intent.filter !== "overdue" ||
+        (Boolean(task.deadline) && getBerlinDateKey(task.deadline) < todayKey)
+    )
     .map((task) => {
       const ownerName = [task.owner.firstName, task.owner.lastName].filter(Boolean).join(" ");
       return {

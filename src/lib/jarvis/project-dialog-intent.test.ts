@@ -27,6 +27,8 @@ describe("JARVIS project dialog intent", () => {
     ["Welchen Status hat HAS-1?", "explainStatus"],
     ["Wie ist der Planungsstand dieses Projekts?", "explainPlanning"],
     ["Was ist aktuell das größte Risiko bei diesem Projekt?", "explainRisk"],
+    ["Welche nächsten Schritte empfiehlst du für dieses Projekt?", "explainNextStep"],
+    ["Welche Datenbasis nutzt du für diese Empfehlung?", "explainEvidence"],
     ["Wer ist bei HAS-1 verantwortlich?", "explainResponsibility"],
     ["Wer kümmert sich um das Projekt?", "explainResponsibility"],
     ["Ist HAS-1 fachlich freigegeben?", "explainReviewStatus"],

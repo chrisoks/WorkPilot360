@@ -43,6 +43,7 @@ describe("JARVIS intent orchestrator V3 regressions", () => {
     "Wie viele Rechnungsentwürfe sind insgesamt offen?",
     "Welche Kunden haben seit 30 Tagen keine Aktivität?",
     "Welche Projekte haben Zeiten, aber noch keine Rechnung?",
+    "Welche Projekte sind aktuell kritisch?",
   ])("never turns an unsupported analysis into a false zero result: %s", (question) => {
     const result = resolveJarvisCapabilityGap(question);
     expect(result?.type).toBe("unknown");

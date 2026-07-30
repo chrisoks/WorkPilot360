@@ -8,6 +8,9 @@ describe("JARVIS domain router", () => {
     expect(resolveJarvisDomain("Wo finde ich Zusatzverkäufe?")).toBe("system");
     expect(resolveJarvisDomain("Wo ist das Planungsboard?")).toBe("system");
     expect(resolveJarvisDomain("Wo liegen die Firmeneinstellungen?")).toBe("system");
+    expect(resolveJarvisDomain("Was ist der Unterschied zwischen Termin und Terminwunsch?")).toBe("system");
+    expect(resolveJarvisDomain("Wie prüfe ich, ob Zeiten fakturierbar sind?")).toBe("system");
+    expect(resolveJarvisDomain("Wie erstelle ich einen Logbucheintrag im Projekt?")).toBe("system");
   });
 
   it("routes sales and management analysis without visible modes", () => {

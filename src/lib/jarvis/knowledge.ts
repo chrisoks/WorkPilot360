@@ -187,6 +187,7 @@ const TOPICS: JarvisTopic[] = [
       "was darfst du niemals autonom",
       "was machst du bei unsicheren daten",
       "wie gehst du mit persönlichen daten um",
+      "wie gehst du mit personenbezogenen daten um",
       "wie schützt du personenbezogene daten",
       "wer bleibt bei entscheidungen verantwortlich",
       "was tust du wenn daten ungeprüft sind",
@@ -195,6 +196,7 @@ const TOPICS: JarvisTopic[] = [
       "wann fragst du nach statt etwas zu erfinden",
       "kannst du datensätze eigenständig löschen",
       "wie schützt du organisationsgrenzen",
+      "wie schützt du organisations und mandantengrenzen",
       "wie verhinderst du entscheidungen auf erfundenen daten",
       "was passiert vor einer freigegebenen aktion",
       "wie gehst du mit widersprüchlichen angaben um",
@@ -295,10 +297,11 @@ const TOPICS: JarvisTopic[] = [
       "wo sehe ich die dokumente",
       "wo finde ich die dokumente",
       "dokumente im projekt",
+      "wie kann ich ein dokument zu einem projekt hochladen",
     ],
     surfaces: ["Projektakte"],
     answer:
-      "Öffne das betreffende Projekt und wähle links „Dokumente“. Dort findest du die zum Projekt gespeicherten Angebote, Rechnungen und weiteren Dokumentarten. Über die Auswahl innerhalb des Reiters wechselst du zur benötigten Dokumentart.",
+      "Öffne das betreffende Projekt und wähle links „Dokumente“. Dort findest du die gespeicherten Dokumentarten und kannst im passenden Bereich über die dortige Upload- beziehungsweise Hinzufügen-Funktion eine Datei auswählen. Prüfe vor dem Hochladen Projekt, Dokumentart, Dateiname und Inhalt; Angebote oder Rechnungen gehören in ihren jeweiligen Fachworkflow und nicht als beliebige Datei in einen falschen Bereich.",
   },
   {
     id: "project.logbook.open",
@@ -310,10 +313,23 @@ const TOPICS: JarvisTopic[] = [
       "logbucheintrag hinzufügen",
       "logbucheintrag anlegen",
       "eintrag ins logbuch",
+      "wie erstelle ich einen logbucheintrag im projekt",
     ],
     surfaces: ["Projektakte"],
     answer:
       "Das Projekt-Logbuch ist die nachvollziehbare Chronik für Kommentare, Arbeitsstände und Systemereignisse. Öffne das betreffende Projekt und wähle links „Logbuch“. Einen neuen manuellen Eintrag erstellst du dort über „+ Eintrag“; dokumentiere nur tatsächliche Vorgänge und ordne den Eintrag dem richtigen Projektzeitraum zu.",
+  },
+  {
+    id: "project.profit.open",
+    title: "Projektgewinn prüfen",
+    keywords: [
+      "wie sehe ich den projektgewinn",
+      "wo finde ich den projektgewinn",
+      "projektgewinn öffnen",
+    ],
+    surfaces: ["Projektakte"],
+    answer:
+      "Öffne das betreffende Projekt und wähle links „Projektgewinn“. Dort werden die vorhandenen Erlöse, Stempelzeiten und Materialkosten zusammengeführt. Prüfe immer die Datenqualität und Kosten-Snapshots; fehlende oder ungeprüfte Grundlagen dürfen nicht als belastbare Marge verstanden werden.",
   },
   {
     id: "project.images.open",
@@ -511,6 +527,18 @@ const TOPICS: JarvisTopic[] = [
       "Öffne im Projekt das fertige Angebot und prüfe zuerst Empfänger, Positionen, Gesamtbetrag und Vorschau. Wähle anschließend die E-Mail-Funktion am Angebot, kontrolliere Empfänger, Betreff, Nachricht und Anhänge und versende erst nach dieser Abschlussprüfung. Der Versand erzeugt den digitalen Angebotslink für Öffnungs- und Annahmenachweise.",
   },
   {
+    id: "appointment.difference",
+    title: "Termin und Terminwunsch unterscheiden",
+    keywords: [
+      "unterschied zwischen termin und terminwunsch",
+      "was ist der unterschied zwischen termin und terminwunsch",
+      "termin oder terminwunsch",
+    ],
+    surfaces: ["Planungsboard", "Projektakte"],
+    answer:
+      "Ein Termin ist eine bestätigte Planung und belegt die ausgewählte Person im Planungsboard. Ein Terminwunsch ist zunächst eine Anfrage, die erst durch eine berechtigte Freigabe zum verbindlichen Termin wird. Mitarbeitende dürfen über JARVIS ausschließlich einen eigenen Terminwunsch vorbereiten; bestätigte Termine und Planungen für andere Personen bleiben den dafür berechtigten Rollen vorbehalten.",
+  },
+  {
     id: "appointment.create",
     title: "Termin oder Terminwunsch anlegen",
     keywords: [
@@ -564,6 +592,41 @@ const TOPICS: JarvisTopic[] = [
     surfaces: ["Projektakte", "Persönliche Daten"],
     actionId: "time.prepare",
     answer: "",
+  },
+  {
+    id: "time.invoiceability",
+    title: "Fakturierbarkeit von Zeiten prüfen",
+    keywords: [
+      "wie prüfe ich ob zeiten fakturierbar sind",
+      "zeiten fakturierbar",
+      "stempelzeiten fakturieren",
+    ],
+    surfaces: ["Projektakte", "Buchhaltung"],
+    answer:
+      "Öffne im Projekt „Termine & Stempelungen“ und prüfe beim Zeiteintrag Projekt, Leistungsmonat, Status, Unterbrechungen sowie die Zuordnung zu Angebot oder Nachtrag und – bei Stunden-Dauerläufern – zur passenden Abrechnungsleistung. In der Abrechnungsprüfung muss außerdem erkennbar sein, ob die Zeit bereits einer Rechnung zugeordnet oder noch ungeklärt ist. Fehlende Zuordnungen zuerst klären; JARVIS erklärt sie nicht automatisch für fakturierbar.",
+  },
+  {
+    id: "employees.absences.open",
+    title: "Abwesenheiten öffnen",
+    keywords: [
+      "wie sehe ich abwesenheiten",
+      "wo finde ich abwesenheiten",
+      "abwesenheiten prüfen",
+      "urlaub sehen",
+    ],
+    surfaces: ["Mitarbeiter", "Planungsboard"],
+    answer:
+      "Öffne in der Sidebar „Mitarbeiter“ und dort den „Team-Kalender“ beziehungsweise den Bereich „Abwesenheiten“. Dort prüfst du Zeitraum, Person, Status und Verfügbarkeit; welche Teamdaten sichtbar sind, hängt von deiner Rolle ab.",
+  },
+  {
+    id: "employees.time-tracking.open",
+    title: "Zeiterfassung öffnen",
+    keywords: [
+      "zeiterfassung öffnen",
+    ],
+    surfaces: ["Mitarbeiter", "Persönliche Daten"],
+    answer:
+      "Öffne in der Sidebar „Mitarbeiter“ und dort „Zeiterfassung“. Abhängig von deiner Rolle kannst du Zeitraum und Mitarbeitende filtern sowie Stempelungen und Projektzeiten prüfen. Deine aktuelle eigene Stempelung erreichst du zusätzlich über die Zeiterfassungsanzeige unten links.",
   },
   {
     id: "task.create",
@@ -660,6 +723,7 @@ function includesOne(value: string, candidates: string[]) {
 
 const SYSTEM_MAP_INTENTS = [
   "wo finde ich",
+  "wie finde ich",
   "wo ist",
   "wo liegt",
   "wo liegen",

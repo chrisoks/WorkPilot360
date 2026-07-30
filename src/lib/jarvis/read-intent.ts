@@ -54,7 +54,12 @@ function getKind(normalized: string): JarvisRecordKind | undefined {
 }
 
 function getFilter(kind: JarvisRecordKind, normalized: string): JarvisRecordFilter {
-  if (kind === "invoice" && /\buberfallig\w*\b/.test(normalized)) return "overdue";
+  if (
+    (kind === "invoice" || kind === "task") &&
+    /\buberfallig\w*\b/.test(normalized)
+  ) {
+    return "overdue";
+  }
   if (kind === "task" && /\bheute\b/.test(normalized)) return "today";
   if (/\b(offen|offene|offenen|noch offen)\b/.test(normalized)) return "open";
   return "all";

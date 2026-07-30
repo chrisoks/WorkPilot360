@@ -254,6 +254,11 @@ describe("resolveJarvisProjectHealthRequest", () => {
       "project.health.next-step",
       "nächste sinnvolle Schritt",
     ],
+    [
+      "Welche nächsten Schritte empfiehlst du für dieses Projekt?",
+      "project.health.next-step",
+      "nächste sinnvolle Schritt",
+    ],
   ])("keeps the answer focus for %s", async (question, topicId, expected) => {
     const response = await resolveJarvisProjectHealthRequest({
       question,
@@ -272,6 +277,27 @@ describe("resolveJarvisProjectHealthRequest", () => {
     });
     expect(response?.message).toContain(expected);
     expect(response).not.toHaveProperty("structured");
+  });
+
+  it("explains the concrete project data basis behind a recommendation", async () => {
+    const response = await resolveJarvisProjectHealthRequest({
+      question: "Welche Datenbasis nutzt du für diese Empfehlung?",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "manager-1",
+        role: Role.GESCHAEFTSFUEHRER,
+      }),
+      context: { recordType: "project", recordId: "project-1" },
+    });
+
+    expect(response).toMatchObject({
+      type: "answer",
+      topicId: "project.health.evidence",
+      deterministic: true,
+    });
+    expect(response?.message).toContain("Projektstammdaten");
+    expect(response?.message).toContain("Zeiteinträge");
+    expect(response?.message).toContain("Logbucheinträge");
   });
 
   it("runs a short referential follow-up as a full read-only check", async () => {

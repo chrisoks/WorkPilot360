@@ -13,9 +13,11 @@ export type JarvisProjectDialogIntent =
   | "explainStatus"
   | "explainPlanning"
   | "explainRisk"
+  | "explainNextStep"
   | "explainResponsibility"
   | "explainReviewStatus"
   | "explainLastChange"
+  | "explainEvidence"
   | "ambiguousProjectQuestion";
 
 export function resolveJarvisProjectDialogIntent(input: {
@@ -139,9 +141,23 @@ export function resolveJarvisProjectDialogIntent(input: {
 
   if (
     /\b(?:gro(?:ss|ß)te[snr]?|wichtigste[snr]?)\b.*\brisiko\b/.test(value) ||
-    /\brisiko\b.*\b(?:projekt|aktuell|gro(?:ss|ß))\b/.test(value)
+    /\brisiko\b.*\b(?:projekt|aktuell|gro(?:ss|ß))\b/.test(value) ||
+    /\b(?:welche|was sind die|welchen)\b.*\b(?:nachste[nr]?|sinnvolle[nr]?)\b.*\bschritt\w*\b.*\b(?:empfiehl|projekt)\w*\b/.test(
+      value
+    )
   ) {
-    return "explainRisk";
+    return /\bschritt\w*\b/.test(value) ? "explainNextStep" : "explainRisk";
+  }
+
+  if (
+    /\b(?:welche|was fur eine|auf welcher)\b.*\b(?:datenbasis|datengrundlage|grundlage|quelle\w*)\b.*\b(?:empfehl|bewert|pruf)\w*\b/.test(
+      value
+    ) ||
+    /\b(?:datenbasis|datengrundlage|grundlage|quelle\w*)\b.*\b(?:nutzt|verwendest)\b.*\b(?:empfehl|bewert|pruf)\w*\b/.test(
+      value
+    )
+  ) {
+    return "explainEvidence";
   }
 
   if (

@@ -2108,7 +2108,12 @@ export async function resolveJarvisProjectHealthRequest(input: {
   }
   if (
     projectDialogIntent &&
-    !["explainPlanning", "explainRisk"].includes(projectDialogIntent)
+    ![
+      "explainPlanning",
+      "explainRisk",
+      "explainNextStep",
+      "explainEvidence",
+    ].includes(projectDialogIntent)
   ) {
     return [
       "explainIdentity",
@@ -2148,6 +2153,8 @@ export async function resolveJarvisProjectHealthRequest(input: {
   let requestedScope = resolveProjectHealthScope(input.question);
   if (projectDialogIntent === "explainPlanning") requestedScope = "planning";
   if (projectDialogIntent === "explainRisk") requestedScope = "improvements";
+  if (projectDialogIntent === "explainNextStep") requestedScope = "improvements";
+  if (projectDialogIntent === "explainEvidence") requestedScope = "full";
   if (
     !requestedScope &&
     (
@@ -2924,9 +2931,11 @@ export async function resolveJarvisProjectHealthRequest(input: {
       normalizedQuestion
     );
   const asksForNextStep =
-    /\b(?:wichtigste[rn]?|nachste[rn]?)\s+(?:sinnvolle[nr]?\s+)?schritt\b/.test(
+    projectDialogIntent === "explainNextStep" ||
+    /\b(?:wichtigste[rn]?|nachste[rn]?)\s+(?:sinnvolle[nr]?\s+)?schritt\w*\b/.test(
       normalizedQuestion
     );
+  const asksForEvidence = projectDialogIntent === "explainEvidence";
 
   if (projectDialogIntent === "explainRisk") {
     return {
@@ -2955,6 +2964,21 @@ export async function resolveJarvisProjectHealthRequest(input: {
       message: topIssue
         ? `Der sinnvollste nächste Schritt bei ${projectLabel} ist: ${topIssue.recommendation} Priorität hat das, weil „${topIssue.title}“ aktuell der wichtigste belegte Prüfpunkt ist.`
         : `Für ${projectLabel} wurde im freigegebenen Prüfumfang kein konkreter Fehler gefunden. Der nächste sinnvolle Schritt ist deshalb die fachliche Endkontrolle der noch ungeprüften oder rollenbedingt nicht sichtbaren Bereiche.`,
+      deterministic: true,
+    };
+  }
+  if (asksForEvidence) {
+    const checked = snapshot.checkedAreas.join(", ");
+    const restricted =
+      snapshot.restrictedAreas.length > 0
+        ? ` Rollenbedingt nicht geladen wurden: ${snapshot.restrictedAreas.join(", ")}.`
+        : " Es gab in diesem Lauf keinen rollenbedingt gesperrten Prüfbereich.";
+    return {
+      type: "answer",
+      topicId: "project.health.evidence",
+      message:
+        `Die Empfehlung zu ${projectLabel} basiert ausschließlich auf den aktuell organisationsgebunden geladenen WorkPilot360-Daten: Projektstammdaten und fachlicher Prüfstatus sowie ${checked}. ` +
+        `Dabei wurden ${snapshot.timeEntryCount} Zeiteinträge, ${snapshot.futurePlanningCount} künftige Planungen, ${snapshot.offerCount ?? 0} Angebote, ${snapshot.invoiceCount ?? 0} Rechnungen, ${snapshot.visibleOpenTaskCount ?? 0} sichtbare offene Aufgaben und ${snapshot.logbookEntryCount} Logbucheinträge berücksichtigt.${restricted} Fehlende oder ungeprüfte Grundlagen bleiben als Unsicherheit sichtbar.`,
       deterministic: true,
     };
   }
