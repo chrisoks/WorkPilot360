@@ -1,5 +1,24 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS Online-Anfragen-Liveadapter 2026-07-30:
+  JARVIS kennt den produktiven Posteingang nicht mehr nur als
+  Navigationshilfe. Der organisationsgebundene Read-only-Adapter
+  `src/lib/jarvis/online-request-analysis.ts` beantwortet für berechtigte
+  Vertriebs-/Projektpipeline-Rollen Live-Zählungen und Statuslisten, findet
+  eine exakte `OKI-...`-Referenz und fasst Inhalt, Anliegen, Gewerk,
+  Verantwortung, Kundenprüfung, Kontaktpräferenz, Wunschdatum,
+  Zusatzinteressen, Fotoanzahl und Auditstand zusammen. Netzwerk-Hashes,
+  Sicherheitssignale und Bild-Binärdaten werden dafür nicht geladen.
+  Sitzungs- und effektive Rolle müssen beide `online-request.read` erlauben;
+  Mitarbeitende und eine Managementrolle in Mitarbeiter-Impersonation werden
+  vor der Datenabfrage abgewiesen. Reine Bedien-, Foto-, Sicherheits-,
+  Anliegenarten- und Umwandlungsfragen bleiben im deterministischen
+  Wissenspfad. Jede Live-Antwort bewahrt die Invariante: niemals automatische
+  Zuordnung zu einem Bestandsprojekt; bewusste Umwandlung erzeugt immer ein
+  neues Projekt unter `OK immocare → Lead / Klärung`. Der Adapter ist
+  ausschließlich lesend und führt weder Kundenentscheidung noch Umwandlung
+  aus.
+
 - Verbindlicher JARVIS-Kalkulationsausbau 2026-07-30:
   JARVIS soll die vorhandenen Kalkulations-Rechner nicht nur öffnen und
   erklären, sondern als eigenen sicheren Action-Center-Vertikalschnitt

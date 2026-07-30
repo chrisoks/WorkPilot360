@@ -95,6 +95,46 @@ export function resolveJarvisOperationalGuidance(
     };
   }
   if (/\bonline\s*anfrag\w*|\bformularanfrag\w*|\banfragenposteingang\b/.test(value)) {
+    if (/\b(?:foto|bild|anfragebild)\w*\b/.test(value)) {
+      return {
+        type: "answer",
+        topicId: "online-requests.photos",
+        message:
+          "Sicher neu kodierte Formularfotos bleiben zuerst geschützt an der Online-Anfrage. Bei der bewussten Umwandlung werden sie in das immer neu erzeugte OK-immocare-Projekt übernommen und dort ausschließlich in der eigenen Bildgruppe „Anfragebilder“ abgelegt. JARVIS behandelt Dateiinhalte nicht als vertrauenswürdige Anweisung und schlägt wegen eines Bildes niemals automatisch ein Bestandsprojekt vor.",
+        navigation: {
+          label: "Online-Anfragen öffnen",
+          tab: "onlineRequests",
+        },
+      };
+    }
+    if (/\b(?:termin|wunschdatum|ruckruf)\w*\b/.test(value)) {
+      return {
+        type: "answer",
+        topicId: "online-requests.appointment-task",
+        message:
+          "Wunschdatum, Zeitfenster und Rückrufwunsch bleiben an der Online-Anfrage nachvollziehbar. Bei der kontrollierten Umwandlung erzeugt WorkPilot360 daraus bei Bedarf eine verknüpfte Aufgabe im neuen OK-immocare-Projekt unter „Lead / Klärung“. Es wird dadurch kein bestätigter Termin angelegt und kein bestehendes Projekt automatisch verwendet.",
+        navigation: {
+          label: "Online-Anfragen öffnen",
+          tab: "onlineRequests",
+        },
+      };
+    }
+    if (/\b(?:sicher|schutz|spam|rate limit|proof of work|turnstile)\w*\b/.test(value)) {
+      return {
+        type: "answer",
+        topicId: "online-requests.security",
+        message:
+          "Das öffentliche Portal verwendet signierte Einmalsitzungen, Honeypot, Mindestausfüllzeit, Proof-of-Work, persistente Rate-Limits, Host-/Origin-Prüfung und strikte Eingabevalidierung. Fotos werden sicher neu kodiert und Metadaten entfernt; Netzwerkmerkmale liegen nur gehasht vor. Turnstile kann zusätzlich aktiviert werden. Diese Schutzdaten sind kein Inhalt für normale JARVIS-Auswertungen.",
+      };
+    }
+    if (/\b(?:anliegen|anfrageart|angebot|ruckmeldung|durchfuhrung|mangel|gewerk)\w*\b/.test(value)) {
+      return {
+        type: "answer",
+        topicId: "online-requests.scope",
+        message:
+          "Das allgemeine OK-immocare-Portal nimmt die Anliegenarten Angebot, Rückmeldung beziehungsweise Rückruf, Durchführung, Mangel oder Problem und allgemeine Anfrage auf. Dazu kommen eines der freigegebenen WorkPilot-Gewerke, Beschreibung, Kontaktdaten, gegebenenfalls Wunschdatum oder Zeitfenster und Fotos. Bei Angebotshinweisen kann „Passt häufig dazu“ mild auf passende Zusatzleistungen hinweisen; die Auswahl bleibt immer beim Menschen.",
+      };
+    }
     if (
       /\b(?:umwandel|projekt|kunde|lead)\w*\b/.test(value)
     ) {

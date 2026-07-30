@@ -67,6 +67,10 @@ describe("JARVIS system help", () => {
     ["Kann ich bei einem Einmalprojekt eine Terminserie anlegen?", "planning.one-time.no-series"],
     ["Wo finde ich neue Online-Anfragen?", "online-requests.open"],
     ["Wie wandle ich eine Online-Anfrage in ein Projekt um?", "online-requests.convert"],
+    ["Was passiert mit Fotos einer Online-Anfrage?", "online-requests.photos"],
+    ["Was passiert mit dem Rückrufwunsch einer Online-Anfrage?", "online-requests.appointment-task"],
+    ["Wie ist das Online-Anfragen-Portal gegen Spam geschützt?", "online-requests.security"],
+    ["Welche Anliegenarten hat das Online-Anfragen-Formular?", "online-requests.scope"],
   ])("answers operational guidance deterministically: %s", (question, topicId) => {
     expect(resolveJarvisOperationalGuidance(question)).toMatchObject({
       type: "answer",

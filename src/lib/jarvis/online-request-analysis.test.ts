@@ -1,0 +1,208 @@
+import { Role } from "@prisma/client";
+import { describe, expect, it, vi } from "vitest";
+import {
+  resolveJarvisOnlineRequestAnalysis,
+  resolveJarvisOnlineRequestIntent,
+  type JarvisOnlineRequestRow,
+  type JarvisOnlineRequestSource,
+} from "@/lib/jarvis/online-request-analysis";
+import { createJarvisAccessProfile } from "@/lib/jarvis/security";
+
+const request: JarvisOnlineRequestRow = {
+  id: "request-1",
+  referenceNumber: "OKI-20260730-A1B2C3",
+  status: "new",
+  requestType: "execution",
+  tradeName: "Winterdienst",
+  recommendationNames: ["Grünpflege"],
+  desiredDate: "2026-11-02",
+  desiredTimeWindow: "morning",
+  callbackTimeWindow: null,
+  urgency: "normal",
+  street: "Musterstraße 1",
+  postalCode: "74722",
+  city: "Buchen",
+  objectHint: "Hinterhaus",
+  description: "Bitte den Winterdienst für das Objekt anbieten.",
+  company: "Muster GmbH",
+  firstName: "Max",
+  lastName: "Muster",
+  email: "max@example.test",
+  phone: "012345",
+  preferredContact: "email",
+  assignedUserId: "sales-1",
+  customerDecision: "existing",
+  matchedContactId: "contact-1",
+  convertedProjectId: null,
+  createdAt: new Date("2026-07-30T08:00:00.000Z"),
+  updatedAt: new Date("2026-07-30T09:00:00.000Z"),
+  photoCount: 2,
+  auditEventCount: 3,
+};
+
+function source(
+  overrides: Partial<Awaited<ReturnType<JarvisOnlineRequestSource["load"]>>> = {}
+): JarvisOnlineRequestSource {
+  return {
+    load: vi.fn().mockResolvedValue({
+      statusCounts: {
+        new: 2,
+        in_review: 1,
+        waiting_customer: 1,
+        converted: 3,
+        closed: 4,
+      },
+      requests: [request],
+      assigneeNames: { "sales-1": "Verena Vertrieb" },
+      ...overrides,
+    }),
+  };
+}
+
+const salesProfile = createJarvisAccessProfile({
+  id: "sales-1",
+  role: Role.VERTRIEB,
+});
+
+describe("JARVIS online request analysis", () => {
+  it.each([
+    ["Wie viele neue Online-Anfragen gibt es?", "summary"],
+    ["Zeig mir die offenen Online-Anfragen.", "list"],
+    ["Welche Online-Anfrage ist am ältesten?", "list"],
+    ["Welche Online-Anfragen warten auf Rückmeldung?", "list"],
+    ["Fasse OKI-20260730-A1B2C3 zusammen.", "detail"],
+  ])("recognizes live request intent: %s", (question, presentation) => {
+    expect(resolveJarvisOnlineRequestIntent(question)?.presentation).toBe(
+      presentation
+    );
+  });
+
+  it.each([
+    "Wo finde ich neue Online-Anfragen?",
+    "Wie wandle ich eine Online-Anfrage in ein Projekt um?",
+    "Wie funktioniert das Online-Anfragen-Formular?",
+    "Welche Anliegenarten hat das Online-Anfragen-Formular?",
+    "Was passiert mit Fotos einer Online-Anfrage?",
+    "Wie ist das Online-Anfragen-Portal gegen Spam geschützt?",
+  ])("keeps pure how-to questions in deterministic guidance: %s", (question) => {
+    expect(resolveJarvisOnlineRequestIntent(question)).toBeUndefined();
+  });
+
+  it("extracts the exact reference and never guesses a record", () => {
+    expect(
+      resolveJarvisOnlineRequestIntent(
+        "Was ist der Status von oki-20260730-a1b2c3?"
+      )
+    ).toMatchObject({
+      referenceNumber: "OKI-20260730-A1B2C3",
+      presentation: "detail",
+    });
+  });
+
+  it("summarizes exact status counts and preserves the no-auto-link invariant", async () => {
+    const response = await resolveJarvisOnlineRequestAnalysis({
+      question: "Wie viele Online-Anfragen gibt es aktuell?",
+      organizationId: "org-1",
+      accessProfile: salesProfile,
+      source: source(),
+    });
+
+    expect(response).toMatchObject({
+      type: "answer",
+      topicId: "online-requests.inventory",
+      navigation: { tab: "onlineRequests" },
+      deterministic: true,
+    });
+    expect(response?.message).toContain("Insgesamt gibt es 11");
+    expect(response?.message).toContain("4 aktiv");
+    expect(JSON.stringify(response)).toContain(
+      "niemals automatisch einem bestehenden Projekt zugeordnet"
+    );
+    expect(JSON.stringify(response)).toContain(
+      "OK immocare → Lead / Klärung"
+    );
+  });
+
+  it("uses the selected status as an organization-bound source filter", async () => {
+    const dataSource = source();
+    await resolveJarvisOnlineRequestAnalysis({
+      question: "Welche Online-Anfragen warten auf Rückmeldung?",
+      organizationId: "org-1",
+      accessProfile: salesProfile,
+      source: dataSource,
+    });
+
+    expect(dataSource.load).toHaveBeenCalledWith({
+      organizationId: "org-1",
+      referenceNumber: null,
+      statuses: ["waiting_customer"],
+      oldestFirst: false,
+    });
+  });
+
+  it("renders a safe detailed summary without loading network security evidence", async () => {
+    const response = await resolveJarvisOnlineRequestAnalysis({
+      question: "Fasse OKI-20260730-A1B2C3 zusammen.",
+      organizationId: "org-1",
+      accessProfile: salesProfile,
+      source: source(),
+    });
+    const rendered = JSON.stringify(response);
+
+    expect(response?.topicId).toBe("online-requests.detail");
+    expect(rendered).toContain("Verena Vertrieb");
+    expect(rendered).toContain("Bitte den Winterdienst");
+    expect(rendered).toContain("2");
+    expect(rendered).toContain("3 Audit-Ereignisse");
+    expect(rendered).toContain(
+      "niemals automatisch einem bestehenden Projekt zugeordnet"
+    );
+    expect(rendered).not.toContain("submissionIpHash");
+    expect(rendered).not.toContain("securitySignals");
+  });
+
+  it("does not fall back to another organization's request when a reference is absent", async () => {
+    const response = await resolveJarvisOnlineRequestAnalysis({
+      question: "Fasse OKI-20260730-FFFFFF zusammen.",
+      organizationId: "org-1",
+      accessProfile: salesProfile,
+      source: source({ requests: [] }),
+    });
+
+    expect(response?.message).toContain(
+      "wurde in deiner Organisation nicht gefunden"
+    );
+  });
+
+  it("refuses employees before any online request is loaded", async () => {
+    const dataSource = source();
+    const response = await resolveJarvisOnlineRequestAnalysis({
+      question: "Wie viele neue Online-Anfragen gibt es?",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "employee",
+        role: Role.MITARBEITER,
+      }),
+      source: dataSource,
+    });
+
+    expect(response?.type).toBe("refusal");
+    expect(dataSource.load).not.toHaveBeenCalled();
+  });
+
+  it("uses the narrower role while management impersonates an employee", async () => {
+    const dataSource = source();
+    const response = await resolveJarvisOnlineRequestAnalysis({
+      question: "Zeig mir die offenen Online-Anfragen.",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile(
+        { id: "admin", role: Role.ADMIN },
+        { id: "employee", role: Role.MITARBEITER }
+      ),
+      source: dataSource,
+    });
+
+    expect(response?.type).toBe("refusal");
+    expect(dataSource.load).not.toHaveBeenCalled();
+  });
+});

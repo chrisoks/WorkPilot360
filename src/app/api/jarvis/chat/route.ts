@@ -31,6 +31,7 @@ import {
   resolveJarvisOrganizationMaterialRequest,
 } from "@/lib/jarvis/organization-material-analysis";
 import { resolveJarvisOrganizationServiceRateRequest } from "@/lib/jarvis/organization-service-rate-analysis";
+import { resolveJarvisOnlineRequestAnalysis } from "@/lib/jarvis/online-request-analysis";
 import {
   resolveJarvisOrganizationReceivablesIntent,
   resolveJarvisOrganizationReceivablesRequest,
@@ -776,6 +777,14 @@ export async function POST(req: Request) {
       topicId: "security.refusal",
       message: getJarvisAuthorizationRefusalMessage(authorization, message),
     });
+  }
+  const onlineRequestResponse = await resolveJarvisOnlineRequestAnalysis({
+    question: message,
+    organizationId: organization.id,
+    accessProfile,
+  });
+  if (onlineRequestResponse) {
+    return respond(onlineRequestResponse, "sales");
   }
   const directNavigationHelp = resolveJarvisDirectNavigationHelp(
     message,

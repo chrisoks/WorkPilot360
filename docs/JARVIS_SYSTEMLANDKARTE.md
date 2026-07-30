@@ -140,11 +140,17 @@ Systemlandkarte. JARVIS kennt dabei folgenden verbindlichen Prozess:
 - Die Originalanfrage wird als Projektlogbuch-Eintrag `Online-Anfrage`
   übernommen. Sicher normalisierte Bilder landen in `Anfragebilder`;
   Termin- und Rückrufwünsche werden als verknüpfte Aufgaben angelegt.
-- JARVIS darf diesen Ablauf erklären und den Posteingang öffnen, aber keine
-  Kundenentscheidung oder Projektumwandlung autonom ausführen.
+- JARVIS darf diesen Ablauf erklären, den Posteingang öffnen und
+  rollenberechtigt Live-Bestände, Statuslisten und eine exakte
+  `OKI-...`-Anfrage zusammenfassen. Dafür werden keine Netzwerk-Hashes,
+  Sicherheitssignale oder Bild-Binärdaten geladen.
+- JARVIS darf keine Kundenentscheidung oder Projektumwandlung autonom
+  ausführen. Auch aus einer Detailzusammenfassung entsteht keine automatische
+  Bestandsprojekt-Zuordnung.
 
 Verifizierte Quellen sind
 `src/components/online-requests/online-requests-workspace.tsx`,
 `src/app/api/online-requests/route.ts`,
 `src/app/api/online-requests/[requestId]/convert/route.ts` und
-`src/lib/online-requests/conversion.ts`.
+`src/lib/online-requests/conversion.ts`. Der JARVIS-Liveadapter liegt in
+`src/lib/jarvis/online-request-analysis.ts`.

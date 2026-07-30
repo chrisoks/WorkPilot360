@@ -17,6 +17,7 @@ import {
   canManageUsers,
   canSendDocumentMails,
   canReadContacts,
+  canReadOnlineRequests,
 } from "@/lib/permissions";
 import {
   canAccessJarvisDataClass,
@@ -125,6 +126,16 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     dataClasses: ["financial"],
     implementation: "available",
     canUse: canManageInvoices,
+  },
+  {
+    id: "online-request.read",
+    title: "Online-Anfragen lesen und zusammenfassen",
+    category: "sales",
+    risk: "read",
+    confirmation: "none",
+    dataClasses: ["customer"],
+    implementation: "available",
+    canUse: canReadOnlineRequests,
   },
   {
     id: "sales.analysis.read",

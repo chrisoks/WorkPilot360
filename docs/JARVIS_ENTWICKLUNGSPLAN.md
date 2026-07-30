@@ -2013,13 +2013,27 @@ die Kundenentscheidung erfolgt und welche Daten bei einer bewussten Umwandlung
 übernommen werden. Das Navigationsziel ist rollenbegrenzt und führt ausschließlich
 in den geschützten Posteingang.
 
-JARVIS bleibt in diesem Prozess erklärend: Es darf weder eigenständig einen
+Der organisationsgebundene Live-Read-Adapter beantwortet zusätzlich Zählungen
+nach Status, Listen offener, neuer oder auf Rückmeldung wartender Anfragen,
+die älteste passende Anfrage und Detailzusammenfassungen für eine exakte
+`OKI-...`-Referenz. Die Detailansicht erklärt Anliegen, Gewerk, Beschreibung,
+Verantwortung, Kundenprüfung, Kontaktpräferenz, Wunschdatum,
+Zusatzinteressen, Fotoanzahl und Auditstand. Netzwerk-Hashes,
+Sicherheitssignale und Bild-Binärdaten werden nicht geladen. Zugriff ist als
+eigene verfügbare Aktion `online-request.read` registriert; Sitzungs- und
+effektive Rolle müssen beide die vorhandene WorkPilot-Berechtigung besitzen.
+Eine Managementrolle in Mitarbeiter-Impersonation erhält daher keinen
+erweiterten Zugriff.
+
+JARVIS bleibt bei Änderungen in diesem Prozess erklärend und rein lesend: Es darf weder eigenständig einen
 Kunden auswählen noch eine Anfrage umwandeln. Der serverseitige Fachprozess
 erzeugt nach menschlicher Prüfung immer ein neues Projekt unter
 `OK immocare → Lead / Klärung`, schreibt die Originalbeschreibung ins Logbuch,
 ordnet Bilder der Kategorie `Anfragebilder` zu und erzeugt erforderliche
 Termin-/Rückrufaufgaben. Systemlandkarte, natürliche Fragen, Rollenabdeckung und
-Browsernavigation besitzen eigene Regressionstests.
+Browsernavigation besitzen eigene Regressionstests. Live-Intent, Statusfilter,
+Mandantengrenze, fehlende Referenz, Rollenverweigerung, Impersonation und die
+Bestandsprojekt-Invariante sind zusätzlich automatisiert abgesichert.
 # Aktueller Ausbau: Projektbestand und fachlicher Prüfstatus
 
 - Der organisationsgebundene Projektbestandsadapter beantwortet Zähl-,

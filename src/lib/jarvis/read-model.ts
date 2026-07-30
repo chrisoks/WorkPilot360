@@ -14,6 +14,7 @@ import {
 } from "@/lib/jarvis/read-intent";
 import type { JarvisSurfaceContext } from "@/lib/jarvis/knowledge";
 import type { JarvisDialogChoice } from "@/lib/jarvis/dialog";
+import type { JarvisNavigationTarget } from "@/lib/jarvis/system-map";
 import { canReadTask } from "@/lib/permissions";
 
 export type JarvisRecordTarget = {
@@ -57,6 +58,7 @@ export type JarvisReadResponse = {
   records?: JarvisRecordResult[];
   structured?: JarvisStructuredAnswer;
   choices?: JarvisDialogChoice[];
+  navigation?: JarvisNavigationTarget;
   deterministic: true;
 };
 

@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   resolveJarvisOrganizationReceivablesRequest: vi.fn(),
   resolveJarvisOrganizationOfferAgingIntent: vi.fn(),
   resolveJarvisOrganizationOfferAgingRequest: vi.fn(),
+  resolveJarvisOnlineRequestAnalysis: vi.fn(),
   resolveJarvisSalesAnalysisIntent: vi.fn(),
   resolveJarvisSalesAnalysisRequest: vi.fn(),
   resolveJarvisReadRequest: vi.fn(),
@@ -149,6 +150,11 @@ vi.mock("@/lib/jarvis/organization-offer-aging-analysis", () => ({
     mocks.resolveJarvisOrganizationOfferAgingIntent,
   resolveJarvisOrganizationOfferAgingRequest:
     mocks.resolveJarvisOrganizationOfferAgingRequest,
+}));
+
+vi.mock("@/lib/jarvis/online-request-analysis", () => ({
+  resolveJarvisOnlineRequestAnalysis:
+    mocks.resolveJarvisOnlineRequestAnalysis,
 }));
 
 vi.mock("@/lib/jarvis/organization-project-review-analysis", () => ({
@@ -319,6 +325,7 @@ describe("POST /api/jarvis/chat", () => {
     mocks.resolveJarvisOrganizationOfferAgingRequest.mockResolvedValue(
       undefined
     );
+    mocks.resolveJarvisOnlineRequestAnalysis.mockResolvedValue(undefined);
     mocks.resolveJarvisSalesAnalysisIntent.mockReturnValue(false);
     mocks.resolveJarvisSalesAnalysisRequest.mockResolvedValue(undefined);
     mocks.resolveJarvisReadRequest.mockResolvedValue(undefined);
@@ -1211,6 +1218,46 @@ describe("POST /api/jarvis/chat", () => {
         },
       },
     });
+  });
+
+  it("returns live online requests before generic navigation and guidance", async () => {
+    mocks.resolveJarvisOnlineRequestAnalysis.mockResolvedValue({
+      type: "answer",
+      topicId: "online-requests.inventory",
+      message: "Aktuell gibt es zwei neue Online-Anfragen.",
+      navigation: {
+        label: "Online-Anfragen öffnen",
+        tab: "onlineRequests",
+      },
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Wie viele neue Online-Anfragen gibt es?",
+          context: {},
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      topicId: "online-requests.inventory",
+      navigation: { tab: "onlineRequests" },
+      deterministic: true,
+    });
+    expect(mocks.resolveJarvisOnlineRequestAnalysis).toHaveBeenCalledWith({
+      question: "Wie viele neue Online-Anfragen gibt es?",
+      organizationId: "organization-1",
+      accessProfile: { profile: true },
+    });
+    expect(mocks.resolveJarvisDirectNavigationHelp).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisOperationalGuidance).not.toHaveBeenCalled();
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
   });
 
   it("returns a person summary before generic record and system help paths", async () => {

@@ -109,6 +109,31 @@ describe("JARVIS action registry", () => {
     expect(employeeDecision.executable).toBe(false);
   });
 
+  it("limits online request reads to existing sales-pipeline roles", () => {
+    for (const role of [
+      Role.ADMIN,
+      Role.GESCHAEFTSFUEHRER,
+      Role.FUEHRUNGSKRAFT,
+      Role.VERTRIEB,
+    ]) {
+      expect(
+        getJarvisActionDecision(
+          "online-request.read",
+          createJarvisAccessProfile({ id: role, role })
+        ).executable
+      ).toBe(true);
+    }
+
+    for (const role of [Role.MITARBEITER, Role.BUCHHALTUNG, Role.GAST]) {
+      expect(
+        getJarvisActionDecision(
+          "online-request.read",
+          createJarvisAccessProfile({ id: role, role })
+        ).executable
+      ).toBe(false);
+    }
+  });
+
   it("gives employees only their permitted foundation catalog", () => {
     const profile = createJarvisAccessProfile({
       id: "employee",
