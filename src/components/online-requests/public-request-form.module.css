@@ -70,12 +70,9 @@
 }
 
 .logo {
-  width: 108px;
+  width: 124px;
   height: auto;
-  padding: 10px 12px 8px;
-  border-radius: 18px;
-  background: #fff;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  filter: drop-shadow(0 9px 18px rgba(0, 0, 0, 0.22));
   object-fit: contain;
 }
 
@@ -1287,9 +1284,7 @@
   }
 
   .logo {
-    width: 91px;
-    padding: 8px 10px 7px;
-    border-radius: 15px;
+    width: 108px;
   }
 
   .heroContent {

@@ -757,10 +757,10 @@ export function PublicRequestForm() {
             <Image
               alt="OK immocare"
               className={styles.logo}
-              height={88}
+              height={275}
               priority
               src="/ok-immocare-logo.png"
-              width={112}
+              width={362}
             />
             {isLocalPreview ? (
               <span className={styles.previewBadge}>Formular-Vorschau</span>
