@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/client";
 import { ensureOnlineRequestStorage } from "@/lib/online-requests/ensure";
+import { ONLINE_REQUEST_OTHER_SERVICE_ID } from "@/lib/online-requests/form-config";
 import { processPublicRequestPhotos, PublicPhotoError } from "@/lib/online-requests/photos";
 import {
   consumePublicRequestRateLimit,
@@ -259,8 +260,10 @@ export async function POST(request: Request) {
     }
 
     const allowedTradeIds = new Set(readStringList(portal.allowedTradeIds));
+    const isOtherService =
+      form.tradeId === ONLINE_REQUEST_OTHER_SERVICE_ID;
     if (
-      !allowedTradeIds.has(form.tradeId) ||
+      (!isOtherService && !allowedTradeIds.has(form.tradeId)) ||
       form.recommendationTradeIds.some((tradeId) => !allowedTradeIds.has(tradeId))
     ) {
       throw new PublicRequestSecurityError(
@@ -269,7 +272,7 @@ export async function POST(request: Request) {
       );
     }
     const requestedTradeIds = [
-      form.tradeId,
+      ...(isOtherService ? [] : [form.tradeId]),
       ...form.recommendationTradeIds,
     ];
     const trades = await prisma.category.findMany({
@@ -280,7 +283,12 @@ export async function POST(request: Request) {
       select: { id: true, name: true },
     });
     const tradesById = new Map(trades.map((trade) => [trade.id, trade]));
-    const mainTrade = tradesById.get(form.tradeId);
+    const mainTrade = isOtherService
+      ? {
+          id: ONLINE_REQUEST_OTHER_SERVICE_ID,
+          name: "Sonstige / Andere Leistung",
+        }
+      : tradesById.get(form.tradeId);
     const recommendations = form.recommendationTradeIds
       .map((tradeId) => tradesById.get(tradeId))
       .filter((trade): trade is { id: string; name: string } => Boolean(trade));
@@ -398,7 +406,7 @@ export async function POST(request: Request) {
             clientSubmissionId: form.clientSubmissionId,
             payloadHash,
             requestType: form.requestType,
-            tradeId: mainTrade.id,
+            tradeId: isOtherService ? null : mainTrade.id,
             tradeName: mainTrade.name,
             recommendationTradeIds: recommendations.map((trade) => trade.id),
             recommendationNames: recommendations.map((trade) => trade.name),

@@ -472,6 +472,101 @@
   border-radius: 16px;
 }
 
+.moreServices {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.moreServicesButton {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 78px;
+  padding: 13px 15px;
+  border: 2px solid #78b94f;
+  border-radius: 17px;
+  color: var(--oki-ink);
+  background:
+    radial-gradient(circle at 90% 20%, rgba(123, 201, 67, 0.22), transparent 9rem),
+    linear-gradient(135deg, #fbfff8, #eef9e8);
+  box-shadow: 0 9px 25px rgba(67, 123, 39, 0.11);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.moreServicesButton:hover {
+  border-color: var(--oki-green-dark);
+  box-shadow: 0 12px 30px rgba(67, 123, 39, 0.16);
+  transform: translateY(-1px);
+}
+
+.moreServicesButton:focus-visible {
+  outline: 3px solid rgba(123, 201, 67, 0.28);
+  outline-offset: 2px;
+}
+
+.moreServicesIcon {
+  display: inline-grid;
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  margin-right: 12px;
+  place-items: center;
+  border-radius: 13px;
+  color: #fff;
+  background: var(--oki-green-dark);
+}
+
+.moreServicesCopy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.moreServicesCopy strong {
+  font-size: 0.94rem;
+  font-weight: 750;
+}
+
+.moreServicesCopy small {
+  color: var(--oki-muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.moreServicesCount {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--oki-green-dark);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.moreServicesChevron {
+  flex: 0 0 auto;
+  margin-left: 10px;
+  color: var(--oki-green-dark);
+  font-size: 1.25rem;
+  font-weight: 800;
+  transition: transform 160ms ease;
+}
+
+.moreServicesChevronOpen {
+  transform: rotate(180deg);
+}
+
+.additionalServiceGrid {
+  padding-top: 2px;
+}
+
 .serviceIcon {
   width: 38px;
   height: 38px;
@@ -1276,6 +1371,26 @@
   .serviceCard {
     align-items: center;
     min-height: 78px;
+  }
+
+  .moreServicesButton {
+    min-height: 82px;
+    padding: 12px;
+  }
+
+  .moreServicesIcon {
+    flex-basis: 38px;
+    width: 38px;
+    height: 38px;
+    margin-right: 10px;
+  }
+
+  .moreServicesCount {
+    padding: 4px 7px;
+  }
+
+  .moreServicesChevron {
+    margin-left: 7px;
   }
 
   .crossSellHeading {

@@ -1,5 +1,23 @@
 # WorkPilot360 Agent Handover
 
+- Online-Anfragen Projektstandard und mobile Leistungsauswahl 2026-07-30:
+  Die kontrollierte Umwandlung einer Online-Anfrage verwendet keine
+  `ONL-...`-Projektnummer mehr. Innerhalb der serialisierbaren
+  Umwandlungstransaktion schützt ein organisationsgebundener PostgreSQL-
+  Advisory-Lock die Ermittlung der nächsten globalen Projektnummer. Das
+  Präfix stammt aus dem ausgewählten WorkPilot-Gewerk; der Titel folgt dem
+  normalen Muster `Projekt <Nummer> - <Gewerk>`. Die `OKI-...`-Referenz bleibt
+  ausschließlich als Anfrage-, Quellen-, Audit- und Logbuchreferenz erhalten.
+  Für `Sonstige / Andere Leistung` wird kein bestehendes Gewerk vorgetäuscht;
+  die Anfrage speichert `tradeId=null`, den lesbaren Leistungsnamen und erhält
+  bei Umwandlung das neutrale Präfix `SON`.
+  Das öffentliche Formular zeigt in Schritt 2 zuerst ausschließlich
+  `Grünpflege`, `Objektbetreuung` und `Hausmeisterservice`. Alle weiteren
+  freigegebenen WorkPilot-Gewerke sowie `Sonstige / Andere Leistung` liegen
+  hinter einem auffälligen, barrierefrei beschrifteten Aufklapper mit
+  sichtbarer Anzahl. Cross-Selling bleibt nur im Angebotsmodus und verwendet
+  weiterhin ausschließlich tatsächlich freigegebene Gewerke.
+
 - JARVIS Online-Anfragen-Liveadapter 2026-07-30:
   JARVIS kennt den produktiven Posteingang nicht mehr nur als
   Navigationshilfe. Der organisationsgebundene Read-only-Adapter

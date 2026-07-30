@@ -65,28 +65,26 @@ export function getOnlineRequestCustomerName(
   );
 }
 
-export function createOnlineRequestProjectNumber(referenceNumber: string) {
-  const normalized = oneLine(referenceNumber)
+export function createOnlineRequestProjectNumber(
+  projectPrefix: string,
+  sequence: number
+) {
+  const normalizedPrefix = oneLine(projectPrefix)
     .toLocaleUpperCase("de-DE")
-    .replace(/[^A-Z0-9-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 52);
-  return `ONL-${normalized || "ANFRAGE"}`;
+    .replace(/[^A-Z0-9]+/g, "")
+    .slice(0, 12);
+  const normalizedSequence =
+    Number.isSafeInteger(sequence) && sequence > 0 ? sequence : 1;
+  return `${normalizedPrefix || "SON"}-${normalizedSequence}`;
 }
 
 export function createOnlineRequestProjectTitle(
-  request: Pick<
-    OnlineRequestConversionSource,
-    "tradeName" | "company" | "firstName" | "lastName"
-  >
+  projectNumber: string,
+  tradeName: string
 ) {
-  return [
-    oneLine(request.tradeName) || "Anfrage",
-    getOnlineRequestCustomerName(request),
-  ]
-    .join(" · ")
-    .slice(0, 180);
+  return `Projekt ${oneLine(projectNumber)} - ${
+    oneLine(tradeName) || "Sonstige Leistung"
+  }`.slice(0, 180);
 }
 
 export function buildOnlineRequestLogbookBody(

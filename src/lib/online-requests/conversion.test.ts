@@ -29,13 +29,16 @@ const request = {
 };
 
 describe("online request conversion helpers", () => {
-  it("creates a deterministic project identity and readable title", () => {
-    expect(createOnlineRequestProjectNumber(request.referenceNumber)).toBe(
-      "ONL-OKI-20260730-AB12CD"
+  it("creates a standard project identity and title", () => {
+    expect(createOnlineRequestProjectNumber("GLR", 449)).toBe("GLR-449");
+    expect(createOnlineRequestProjectTitle("GLR-449", request.tradeName)).toBe(
+      "Projekt GLR-449 - Glasreinigung"
     );
-    expect(createOnlineRequestProjectTitle(request)).toBe(
-      "Glasreinigung · Muster GmbH"
-    );
+  });
+
+  it("normalizes the project prefix and has a safe fallback", () => {
+    expect(createOnlineRequestProjectNumber(" gpfl ", 450)).toBe("GPFL-450");
+    expect(createOnlineRequestProjectNumber("", 0)).toBe("SON-1");
   });
 
   it("preserves the submitted request in a structured logbook body", () => {

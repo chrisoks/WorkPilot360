@@ -148,6 +148,56 @@ async function getNextCustomerNumber(tx: Prisma.TransactionClient, organizationI
   return String(rows[0]?.nextNumber ?? 7000049);
 }
 
+async function createStandardProjectIdentity(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  projectPrefix: string,
+  tradeName: string
+) {
+  await tx.$queryRaw<Array<{ locked: number }>>`
+    SELECT 1::INTEGER AS "locked"
+    FROM (
+      SELECT pg_advisory_xact_lock(
+        hashtext(${"workpilot-project-number:" + organizationId})
+      )
+    ) AS "projectNumberLock"
+  `;
+  const rows = await tx.$queryRaw<
+    Array<{ nextNumber: bigint | number | string }>
+  >`
+    SELECT (
+      COALESCE(
+        MAX(
+          CASE
+            WHEN "projectNumber" ~ '[0-9]+$'
+              THEN substring("projectNumber" FROM '([0-9]+)$')::BIGINT
+            ELSE NULL
+          END
+        ),
+        0
+      ) + 1
+    ) AS "nextNumber"
+    FROM "WorkPilotProject"
+    WHERE "organizationId" = ${organizationId}
+  `;
+  const nextNumber = Number(rows[0]?.nextNumber ?? 1);
+  if (!Number.isSafeInteger(nextNumber) || nextNumber < 1) {
+    throw new OnlineRequestConversionError(
+      "Die nächste Projektnummer konnte nicht sicher ermittelt werden.",
+      500,
+      "project_number_invalid"
+    );
+  }
+  const projectNumber = createOnlineRequestProjectNumber(
+    projectPrefix,
+    nextNumber
+  );
+  return {
+    projectNumber,
+    projectTitle: createOnlineRequestProjectTitle(projectNumber, tradeName),
+  };
+}
+
 function buildImageAttachments(
   photos: Array<{
     fileName: string;
@@ -386,6 +436,15 @@ async function performConversion({
           select: { id: true },
         }));
 
+      const validTrade = onlineRequest.tradeId
+        ? await tx.category.findFirst({
+            where: {
+              id: onlineRequest.tradeId,
+              organizationId,
+            },
+            select: { id: true, projectPrefix: true },
+          })
+        : null;
       const taskOwner =
         users.find(
           (user) =>
@@ -395,14 +454,17 @@ async function performConversion({
         ) ?? actor;
       const taskOwnerName = actorName(taskOwner);
       const projectId = randomUUID();
-      const projectNumber = createOnlineRequestProjectNumber(
-        onlineRequest.referenceNumber
-      );
+      const { projectNumber, projectTitle } =
+        await createStandardProjectIdentity(
+          tx,
+          organizationId,
+          validTrade?.projectPrefix || "SON",
+          onlineRequest.tradeName
+        );
       const conversionSource = {
         ...onlineRequest,
         recommendationNames: stringList(onlineRequest.recommendationNames),
       };
-      const projectTitle = createOnlineRequestProjectTitle(conversionSource);
       const customerName =
         contactDisplayName(contact) ||
         getOnlineRequestCustomerName(conversionSource);
@@ -484,15 +546,6 @@ async function performConversion({
         });
       }
 
-      const validTrade = onlineRequest.tradeId
-        ? await tx.category.findFirst({
-            where: {
-              id: onlineRequest.tradeId,
-              organizationId,
-            },
-            select: { id: true },
-          })
-        : null;
       const taskSpecifications = buildOnlineRequestConversionTasks(
         conversionSource,
         now

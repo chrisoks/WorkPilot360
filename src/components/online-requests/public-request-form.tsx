@@ -16,6 +16,7 @@ import {
   getOnlineRequestOptionRecommendations,
   getOnlineRequestTimeWindowLabel,
   getOnlineRequestUrgencyLabel,
+  partitionOnlineRequestServiceOptions,
   type OnlineRequestServiceOption,
   type OnlineRequestType,
 } from "@/lib/online-requests/form-config";
@@ -444,6 +445,7 @@ export function PublicRequestForm() {
   const [contactError, setContactError] = useState("");
   const [reviewMode, setReviewMode] = useState(false);
   const [services, setServices] = useState<OnlineRequestServiceOption[]>([]);
+  const [showAdditionalServices, setShowAdditionalServices] = useState(false);
   const [portalSession, setPortalSession] = useState<PortalSession | null>(null);
   const [portalStatus, setPortalStatus] = useState<
     "loading" | "ready" | "error"
@@ -466,6 +468,10 @@ export function PublicRequestForm() {
   const recommendations = useMemo(
     () => getOnlineRequestOptionRecommendations(form.serviceId, services),
     [form.serviceId, services]
+  );
+  const serviceGroups = useMemo(
+    () => partitionOnlineRequestServiceOptions(services),
+    [services]
   );
   const selectedRecommendations = recommendations.filter((service) =>
     form.recommendationIds.includes(service.id)
@@ -556,6 +562,33 @@ export function PublicRequestForm() {
       serviceId,
       recommendationIds: [],
     }));
+  }
+
+  function renderServiceCard(service: OnlineRequestServiceOption) {
+    return (
+      <label
+        className={`${styles.serviceCard} ${
+          form.serviceId === service.id ? styles.selectedCard : ""
+        }`}
+        key={service.id}
+      >
+        <input
+          checked={form.serviceId === service.id}
+          name="service"
+          onChange={() => selectService(service.id)}
+          required
+          type="radio"
+          value={service.id}
+        />
+        <span className={styles.serviceIcon}>
+          <Icon name={service.icon} size={22} />
+        </span>
+        <span>
+          <strong>{service.label}</strong>
+          <small>{service.shortDescription}</small>
+        </span>
+      </label>
+    );
   }
 
   function selectRequestType(requestType: OnlineRequestType) {
@@ -1043,43 +1076,74 @@ export function PublicRequestForm() {
                 step="2"
                 title="Um welche Leistung geht es?"
               />
-              <div className={styles.serviceGrid}>
-                {portalStatus === "loading" ? (
-                  <div className={styles.portalState}>
-                    <Icon name="shield" size={22} />
-                    Leistungen werden sicher geladen …
+              {portalStatus === "loading" ? (
+                <div className={styles.portalState}>
+                  <Icon name="shield" size={22} />
+                  Leistungen werden sicher geladen …
+                </div>
+              ) : portalStatus === "error" ? (
+                <div className={styles.portalError} role="alert">
+                  <strong>Anfrageportal derzeit nicht verfügbar</strong>
+                  <span>{portalError}</span>
+                </div>
+              ) : null}
+
+              {portalStatus === "ready" ? (
+                <>
+                  <div className={styles.serviceGrid}>
+                    {serviceGroups.featured.map(renderServiceCard)}
                   </div>
-                ) : portalStatus === "error" ? (
-                  <div className={styles.portalError} role="alert">
-                    <strong>Anfrageportal derzeit nicht verfügbar</strong>
-                    <span>{portalError}</span>
-                  </div>
-                ) : null}
-                {services.map((service) => (
-                  <label
-                    className={`${styles.serviceCard} ${
-                      form.serviceId === service.id ? styles.selectedCard : ""
-                    }`}
-                    key={service.id}
-                  >
-                    <input
-                      checked={form.serviceId === service.id}
-                      name="service"
-                      onChange={() => selectService(service.id)}
-                      required
-                      type="radio"
-                      value={service.id}
-                    />
-                    <span className={styles.serviceIcon}>
-                      <Icon name={service.icon} size={22} />
-                    </span>
-                    <span>
-                      <strong>{service.label}</strong>
-                      <small>{service.shortDescription}</small>
-                    </span>
-                  </label>
-                ))}
-              </div>
+                  {serviceGroups.additional.length ? (
+                    <div className={styles.moreServices}>
+                      <button
+                        aria-controls="additional-online-request-services"
+                        aria-expanded={showAdditionalServices}
+                        className={styles.moreServicesButton}
+                        onClick={() =>
+                          setShowAdditionalServices((current) => !current)
+                        }
+                        type="button"
+                      >
+                        <span className={styles.moreServicesIcon}>
+                          <Icon name="help" size={22} />
+                        </span>
+                        <span className={styles.moreServicesCopy}>
+                          <strong>
+                            {showAdditionalServices
+                              ? "Weitere Leistungen ausblenden"
+                              : "Weitere Leistungen anzeigen"}
+                          </strong>
+                          <small>
+                            {serviceGroups.additional.length} weitere
+                            Möglichkeiten inklusive „Sonstige“
+                          </small>
+                        </span>
+                        <span className={styles.moreServicesCount}>
+                          +{serviceGroups.additional.length}
+                        </span>
+                        <span
+                          aria-hidden="true"
+                          className={`${styles.moreServicesChevron} ${
+                            showAdditionalServices
+                              ? styles.moreServicesChevronOpen
+                              : ""
+                          }`}
+                        >
+                          ↓
+                        </span>
+                      </button>
+                      {showAdditionalServices ? (
+                        <div
+                          className={`${styles.serviceGrid} ${styles.additionalServiceGrid}`}
+                          id="additional-online-request-services"
+                        >
+                          {serviceGroups.additional.map(renderServiceCard)}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
 
               {form.requestType === "offer" && recommendations.length ? (
                 <div className={styles.crossSell}>

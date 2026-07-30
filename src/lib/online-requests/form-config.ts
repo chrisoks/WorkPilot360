@@ -122,8 +122,8 @@ export const ONLINE_REQUEST_SERVICES = [
   },
   {
     id: "other",
-    label: "Unsicher / Sonstiges",
-    shortDescription: "Wir ordnen Ihr Anliegen gemeinsam ein",
+    label: "Sonstige / Andere Leistung",
+    shortDescription: "Nicht dabei? Wir ordnen Ihr Anliegen gemeinsam ein",
     icon: "help",
   },
 ] as const;
@@ -137,6 +137,14 @@ export type OnlineRequestServiceOption = {
   shortDescription: string;
   icon: string;
 };
+
+export const ONLINE_REQUEST_OTHER_SERVICE_ID = "other";
+
+export const ONLINE_REQUEST_FEATURED_SERVICE_IDS = [
+  "green-care",
+  "object-care",
+  "caretaker",
+] as const;
 
 const workPilotTradeNames: Record<OnlineRequestServiceId, string[]> = {
   "object-care": ["Objektbetreuung"],
@@ -168,7 +176,7 @@ function normalizeTradeName(value: string) {
 export function buildOnlineRequestServiceOptions(
   trades: readonly { id: string; name: string }[]
 ): OnlineRequestServiceOption[] {
-  return trades.map((trade) => {
+  const mappedTrades: OnlineRequestServiceOption[] = trades.map((trade) => {
     const normalizedName = normalizeTradeName(trade.name);
     const presentation = ONLINE_REQUEST_SERVICES.find((service) =>
       workPilotTradeNames[service.id].some(
@@ -185,6 +193,32 @@ export function buildOnlineRequestServiceOptions(
       icon: presentation?.icon ?? "building",
     };
   });
+  const other = ONLINE_REQUEST_SERVICES.find(
+    (service) => service.id === ONLINE_REQUEST_OTHER_SERVICE_ID
+  );
+  const otherOption: OnlineRequestServiceOption = {
+    id: ONLINE_REQUEST_OTHER_SERVICE_ID,
+    configId: ONLINE_REQUEST_OTHER_SERVICE_ID,
+    label: other?.label ?? "Sonstige / Andere Leistung",
+    shortDescription:
+      other?.shortDescription ?? "Wir ordnen Ihr Anliegen gemeinsam ein",
+    icon: other?.icon ?? "help",
+  };
+  return [...mappedTrades, otherOption];
+}
+
+export function partitionOnlineRequestServiceOptions(
+  services: readonly OnlineRequestServiceOption[]
+) {
+  const featured = ONLINE_REQUEST_FEATURED_SERVICE_IDS.flatMap((configId) => {
+    const service = services.find((candidate) => candidate.configId === configId);
+    return service ? [service] : [];
+  });
+  const featuredIds = new Set(featured.map((service) => service.id));
+  return {
+    featured,
+    additional: services.filter((service) => !featuredIds.has(service.id)),
+  };
 }
 
 const recommendations: Partial<

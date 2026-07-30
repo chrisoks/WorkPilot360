@@ -230,7 +230,7 @@ async function main() {
         organizationId: portal.organizationId,
         name: "Glasreinigung",
       },
-      select: { id: true, name: true },
+      select: { id: true, name: true, projectPrefix: true },
     });
     const recommendation = await prisma.category.findFirst({
       where: {
@@ -496,8 +496,23 @@ async function main() {
         project.projectType === "Projekt OK immocare" &&
         project.branch === "OK immocare GmbH" &&
         project.trade === trade.name &&
-        project.contactId === cleanup.contactId,
-      "Projektklassifizierung ist unvollständig"
+        project.contactId === cleanup.contactId &&
+        new RegExp(`^${trade.projectPrefix}-\\d+$`).test(
+          project.projectNumber
+        ) &&
+        project.title ===
+          `Projekt ${project.projectNumber} - ${trade.name}`,
+      `Projektklassifizierung ist unvollständig: ${JSON.stringify({
+        projectNumber: project.projectNumber,
+        projectTitle: project.title,
+        projectStatus: project.status,
+        projectType: project.projectType,
+        projectBranch: project.branch,
+        projectTrade: project.trade,
+        expectedPrefix: trade.projectPrefix,
+        expectedContactId: cleanup.contactId,
+        actualContactId: project.contactId,
+      })}`
     );
     const [logbooks, tasks, convertedRequest, unresolvedNotifications] =
       await Promise.all([
