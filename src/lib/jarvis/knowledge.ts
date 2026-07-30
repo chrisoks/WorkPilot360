@@ -144,6 +144,12 @@ const TOPICS: JarvisTopic[] = [
       "was sind deine unternehmensprinzipien",
       "welche unternehmensprinzipien hast du",
       "welche prinzipien hast du",
+      "welche prinzipien leiten dich",
+      "welche prinzipien leiten deine arbeit",
+      "wie helfen dir die prinzipien bei entscheidungen",
+      "wie wendest du deine prinzipien im alltag an",
+      "sind deine prinzipien lebendig",
+      "wie entwickelst du deine prinzipien weiter",
       "wofür stehst du als jarvis",
       "welchen auftrag hat jarvis",
       "was ist dein auftrag",
@@ -211,10 +217,18 @@ const TOPICS: JarvisTopic[] = [
       "wie hilfst du bei wiederkehrenden aufgaben",
       "wie unterstützt du führung",
       "wie erkennst du stärken eines mitarbeiters",
+      "wie förderst du stärken von mitarbeitenden",
+      "wie förderst du stärken bei mitarbeitern",
       "wie arbeitest du an entwicklungsfeldern eines mitarbeiters",
+      "wie gehst du mit schwächen von mitarbeitenden um",
+      "wie gehst du mit schwächen bei mitarbeitern um",
       "wie oft erklärst du etwas erneut",
+      "was tust du wenn jemand dieselbe frage zehnmal stellt",
       "was berichtest du der geschäftsleitung über mitarbeiter",
+      "wie berichtest du entwicklungsfelder an die geschäftsleitung",
       "wo enden deine befugnisse bei mitarbeiterentwicklung",
+      "wie vermeidest du überwachung bei mitarbeiterentwicklung",
+      "welche rolle spielt kontinuität für dich",
       "darfst du personalentscheidungen treffen",
       "menschen im unternehmen entwickeln",
       "stärken fördern",
@@ -1125,13 +1139,26 @@ function getJarvisPeopleAnswer(question: string, overview: string) {
   ) {
     return "Führungskräfte unterstütze ich mit nachvollziehbaren Fakten aus freigegebenen Arbeitsdaten, erkennbaren Mustern, offenen Punkten und konkreten Gesprächsimpulsen. Ich trenne Beobachtung von Bewertung, berücksichtige Rollen und Datenschutz und überlasse Feedback, Entscheidung und Verantwortung der menschlichen Führung.";
   }
-  if (normalized.includes("starken eines mitarbeiters")) {
+  if (
+    normalized.includes("starken eines mitarbeiters") ||
+    normalized.includes("starken von mitarbeitenden") ||
+    normalized.includes("starken bei mitarbeitern")
+  ) {
     return "Stärken erkenne ich nicht durch ein heimliches Persönlichkeitsprofil, sondern durch transparente, wiederholte Beobachtungen in freigegebenen Arbeitsdaten – etwa verlässlich erreichte Ziele, Qualität oder Kontinuität. Ich kennzeichne die Datenbasis, formuliere eine überprüfbare Beobachtung und bespreche sie mit dem Menschen, statt eine endgültige Eigenschaft zu behaupten.";
   }
-  if (normalized.includes("entwicklungsfeldern")) {
+  if (
+    normalized.includes("entwicklungsfeldern") ||
+    normalized.includes("schwachen von mitarbeitenden") ||
+    normalized.includes("schwachen bei mitarbeitern")
+  ) {
     return "An Entwicklungsfeldern arbeite ich transparent und konkret: beobachtbares Verhalten oder Ergebnis benennen, Zielbild und nächsten kleinen Schritt vereinbaren, Fortschritt anhand freigegebener Fakten prüfen und unterstützend nachfassen. Die Einordnung wird gemeinsam mit dem Mitarbeiter und der menschlichen Führung vorgenommen.";
   }
-  if (normalized.includes("wie oft erklarst") || normalized.includes("erneut")) {
+  if (
+    normalized.includes("wie oft erklarst") ||
+    normalized.includes("erneut") ||
+    normalized.includes("dieselbe frage zehnmal") ||
+    normalized.includes("zehnten mal")
+  ) {
     return "Ich erkläre etwas so oft erneut, wie es für echtes Verständnis nötig ist, ohne Motivation oder Geduld zu verlieren. Dabei wiederhole ich nicht stur denselben Text, sondern wähle ein anderes Beispiel, weniger Fachbegriffe oder kleinere Schritte und prüfe anschließend, welcher Teil noch unklar ist.";
   }
   if (
@@ -1139,6 +1166,12 @@ function getJarvisPeopleAnswer(question: string, overview: string) {
     normalized.includes("berichtest")
   ) {
     return "An die Geschäftsleitung gehören nur zweckgebundene, rollenberechtigte und nachvollziehbare Beobachtungen aus freigegebenen Arbeitsdaten: belegte Stärken, konkrete Entwicklungsfelder, vereinbarte Ziele und erkennbare Fortschritte. Keine heimlichen Persönlichkeitsprofile, keine unnötigen privaten Daten und keine automatischen Personalurteile.";
+  }
+  if (
+    normalized.includes("uberwachung") ||
+    normalized.includes("heimliche personlichkeitsprofile")
+  ) {
+    return "Mitarbeiterentwicklung darf keine verdeckte Überwachung sein. Ich nutze nur erforderliche, freigegebene und arbeitsbezogene Fakten für einen klaren Zweck, mache Datenbasis und Kriterien für die betroffene Person nachvollziehbar und beschreibe Beobachtungen mit Kontext und Unsicherheit. Heimliche Persönlichkeits-, Emotions-, Gesundheits- oder Privatprofile sind ausgeschlossen; menschliches Gespräch und Verantwortung bleiben unverzichtbar.";
   }
   if (
     normalized.includes("befugnisse") ||
@@ -1152,6 +1185,22 @@ function getJarvisPeopleAnswer(question: string, overview: string) {
 
 function getJarvisPrinciplesAnswer(question: string, overview: string) {
   const normalized = normalizeJarvisIntentText(question);
+
+  if (
+    normalized.includes("prinzipien lebendig") ||
+    normalized.includes("prinzipien weiter") ||
+    normalized.includes("prinzipien entwickel") ||
+    normalized.includes("prinzipien uberpruf")
+  ) {
+    return "Meine Prinzipien sind bewusst lebendig: Geschäftsleitung, Mitarbeitende und JARVIS überprüfen sie regelmäßig an realen Erfahrungen, begründen Änderungen und entwickeln sie gemeinsam weiter. Verbindliche Sicherheits-, Rollen-, Datenschutz- und Organisationsgrenzen werden dabei nicht stillschweigend aufgeweicht.";
+  }
+  if (
+    normalized.includes("prinzipien bei entscheidungen") ||
+    normalized.includes("prinzipien im alltag") ||
+    normalized.includes("prinzipien leiten deine arbeit")
+  ) {
+    return "Im Arbeitsalltag nutze ich die Prinzipien als überprüfbare Entscheidungsreihenfolge: zuerst Kundennutzen und Zielbild klären, dann Datenqualität und Risiken prüfen, den größten Nutzen priorisieren und die einfachste sichere Lösung mit dem passenden Werkzeug wählen. Automatisierung folgt erst, wenn Ablauf, Grenzen und menschliche Verantwortung geklärt sind.";
+  }
 
   if (
     normalized.includes("automatisier") ||

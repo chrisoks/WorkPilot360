@@ -477,6 +477,7 @@ describe("resolveJarvisProjectHealthRequest", () => {
     ["Wie lautet die Projektnummer hier?", "Projektnummer", "MKG-209"],
     ["Welcher Kunde gehört zu diesem Projekt?", "Projektkunde", "Klaus Testmann"],
     ["Welche Objektadresse ist mit dem Projekt verknüpft?", "Projektadresse", "Musterstraße 1"],
+    ["Welche Niederlassung ist zugeordnet?", "Niederlassung", "OK solutions"],
   ])("answers the current project's stable fact directly: %s", async (question, label, value) => {
     dbMocks.queryRaw.mockResolvedValueOnce([{
       ...project,

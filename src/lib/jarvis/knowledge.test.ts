@@ -65,11 +65,24 @@ describe("JARVIS system help", () => {
 
   it.each([
     "Was sind deine Unternehmensprinzipien?",
+    "Welche Prinzipien leiten dich?",
   ])("recognizes principle wording from natural conversations: %s", (question) => {
     expect(resolveJarvisSystemHelp(question, {}, employeeAccess)).toMatchObject({
       type: "answer",
       topicId: "jarvis.principles",
     });
+  });
+
+  it.each([
+    ["Sind deine Prinzipien lebendig und wie entwickelst du sie weiter?", "regelmäßig an realen Erfahrungen"],
+    ["Wie helfen dir deine Prinzipien bei Entscheidungen im Alltag?", "überprüfbare Entscheidungsreihenfolge"],
+  ])("answers living-principle wording specifically: %s", (question, expected) => {
+    const result = resolveJarvisSystemHelp(question, {}, employeeAccess);
+    expect(result).toMatchObject({
+      type: "answer",
+      topicId: "jarvis.principles",
+    });
+    expect(result.message).toContain(expected);
   });
 
   it("answers individual principles specifically instead of repeating the overview", () => {
@@ -154,6 +167,22 @@ describe("JARVIS system help", () => {
     });
 
     expect(new Set(messages).size).toBe(cases.length);
+  });
+
+  it.each([
+    ["Wie förderst du Stärken von Mitarbeitenden?", "überprüfbare Beobachtung"],
+    ["Wie gehst du mit Schwächen von Mitarbeitenden um?", "nächsten kleinen Schritt"],
+    ["Was tust du, wenn jemand dieselbe Frage zehnmal stellt?", "nicht stur denselben Text"],
+    ["Wie berichtest du Entwicklungsfelder an die Geschäftsleitung?", "zweckgebundene"],
+    ["Wie vermeidest du Überwachung bei Mitarbeiterentwicklung?", "keine verdeckte Überwachung"],
+    ["Welche Rolle spielt Kontinuität für dich?", "Lernfortschritte"],
+  ])("answers natural people-development wording specifically: %s", (question, expected) => {
+    const result = resolveJarvisSystemHelp(question, {}, leadershipAccess);
+    expect(result).toMatchObject({
+      type: "answer",
+      topicId: "jarvis.people",
+    });
+    expect(result.message).toContain(expected);
   });
 
   it.each([

@@ -5,6 +5,7 @@ export type JarvisProjectDialogIntent =
   | "explainCustomer"
   | "explainAddress"
   | "explainTrade"
+  | "explainBranch"
   | "explainVolume"
   | "explainProjectType"
   | "explainBilling"
@@ -64,6 +65,15 @@ export function resolveJarvisProjectDialogIntent(input: {
     /\bgewerk\b.*\b(?:projekt|hat|ist|hinterlegt)\b/.test(value)
   ) {
     return "explainTrade";
+  }
+
+  if (
+    /\bwelch\w*\b.*\bniederlassung\b/.test(value) ||
+    /\bniederlassung\b.*\b(?:projekt|hat|ist|hinterlegt|zugeordnet)\b/.test(
+      value
+    )
+  ) {
+    return "explainBranch";
   }
 
   if (

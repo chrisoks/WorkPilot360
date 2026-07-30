@@ -10,6 +10,8 @@ describe("JARVIS project dialog intent", () => {
     ["Wie heißt der Kunde dieses Projekts?", "explainCustomer"],
     ["Welche Objektadresse ist mit dem Projekt verknüpft?", "explainAddress"],
     ["Welches Gewerk hat dieses Projekt?", "explainTrade"],
+    ["Welche Niederlassung ist zugeordnet?", "explainBranch"],
+    ["Welche Niederlassung hat dieses Projekt?", "explainBranch"],
     ["Welches Projektvolumen ist hinterlegt?", "explainVolume"],
     ["Welche Projektart hat HAS-1?", "explainProjectType"],
     [

@@ -1577,6 +1577,7 @@ function buildProjectFactExplanation(
     | "explainCustomer"
     | "explainAddress"
     | "explainTrade"
+    | "explainBranch"
     | "explainVolume"
     | "explainStatus"
     | "explainResponsibility"
@@ -1618,6 +1619,13 @@ function buildProjectFactExplanation(
       message: project.trade
         ? `Für ${reference} ist das Gewerk „${project.trade}“ hinterlegt.`
         : `Für ${reference} ist aktuell kein Gewerk hinterlegt.`,
+    },
+    explainBranch: {
+      title: "Niederlassung",
+      value: project.branch || "Nicht hinterlegt",
+      message: project.branch
+        ? `Für ${reference} ist die Niederlassung „${project.branch}“ hinterlegt.`
+        : `Für ${reference} ist aktuell keine Niederlassung hinterlegt.`,
     },
     explainVolume: {
       title: "Projektvolumen",
@@ -2107,6 +2115,7 @@ export async function resolveJarvisProjectHealthRequest(input: {
       "explainCustomer",
       "explainAddress",
       "explainTrade",
+      "explainBranch",
       "explainVolume",
       "explainStatus",
       "explainResponsibility",
@@ -2120,6 +2129,7 @@ export async function resolveJarvisProjectHealthRequest(input: {
             | "explainCustomer"
             | "explainAddress"
             | "explainTrade"
+            | "explainBranch"
             | "explainVolume"
             | "explainStatus"
             | "explainResponsibility"
