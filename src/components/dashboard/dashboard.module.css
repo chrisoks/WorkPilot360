@@ -6859,6 +6859,7 @@
   display: block;
   font: inherit;
   height: clamp(150px, 10vw, 180px);
+  margin-inline: -10px;
   overflow: hidden;
   padding: 0;
   position: relative;
@@ -6866,7 +6867,7 @@
   transition:
     filter 180ms ease,
     opacity 180ms ease;
-  width: 100%;
+  width: calc(100% + 20px);
 }
 
 .jarvisSidebarCard:hover,
@@ -6882,48 +6883,6 @@
     0 1px 4px rgba(0, 0, 0, 0.9),
     0 0 12px rgba(255, 255, 255, 0.54),
     0 0 22px rgba(250, 204, 21, 0.28);
-}
-
-.jarvisSidebarCard::after {
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    rgba(254, 240, 138, 0.6) 0%,
-    rgba(250, 204, 21, 0.32) 28%,
-    rgba(245, 158, 11, 0.12) 54%,
-    transparent 76%
-  );
-  content: "";
-  filter:
-    blur(4px)
-    drop-shadow(0 0 12px rgba(250, 204, 21, 0.72));
-  left: 50%;
-  mix-blend-mode: screen;
-  opacity: 0;
-  pointer-events: none;
-  position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%) scale(0.82);
-  will-change: opacity, transform;
-  width: 31%;
-  z-index: 1;
-}
-
-.jarvisSidebarCard[data-active="true"]::after {
-  animation: jarvisOrbCorePulse 1.8s ease-in-out infinite;
-}
-
-@keyframes jarvisOrbCorePulse {
-  0%,
-  100% {
-    opacity: 0.28;
-    transform: translate(-50%, -50%) scale(0.82);
-  }
-  50% {
-    opacity: 0.92;
-    transform: translate(-50%, -50%) scale(1.18);
-  }
 }
 
 .jarvisSidebarCard:focus-visible {
@@ -6957,16 +6916,18 @@
     filter 420ms ease,
     opacity 420ms ease;
   width: 100%;
-  -webkit-mask-image: radial-gradient(
-    ellipse 91% 80% at 50% 50%,
-    #000 32%,
-    rgba(0, 0, 0, 0.9) 57%,
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    #000 14%,
+    #000 86%,
     transparent 100%
   );
-  mask-image: radial-gradient(
-    ellipse 91% 80% at 50% 50%,
-    #000 32%,
-    rgba(0, 0, 0, 0.9) 57%,
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    #000 14%,
+    #000 86%,
     transparent 100%
   );
   z-index: 0;
@@ -6983,30 +6944,6 @@
     saturate(1.3)
     drop-shadow(0 0 7px rgba(34, 211, 238, 0.3));
   opacity: 1;
-}
-
-.jarvisOrbCore {
-  aspect-ratio: 1;
-  background:
-    radial-gradient(
-      circle at 44% 38%,
-      rgba(92, 78, 117, 0.6) 0%,
-      rgba(28, 22, 47, 0.97) 42%,
-      rgba(7, 5, 18, 0.99) 70%,
-      rgba(7, 5, 18, 0.88) 79%,
-      transparent 82%
-    );
-  border-radius: 50%;
-  box-shadow:
-    0 0 24px rgba(250, 204, 21, 0.14),
-    inset -7px -8px 18px rgba(0, 0, 0, 0.42);
-  left: 50%;
-  pointer-events: none;
-  position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 39%;
-  z-index: 1;
 }
 
 .jarvisSidebarVisual img {
@@ -7085,17 +7022,11 @@
 
 @media (prefers-reduced-motion: reduce) {
   .jarvisSidebarCard,
-  .jarvisSidebarCard[data-active="true"]::after,
   .jarvisOutputPulse,
   .managementAiPanel,
   .managementAiPanel::before {
     animation: none;
     transition: none;
-  }
-
-  .jarvisSidebarCard[data-active="true"]::after {
-    opacity: 0.52;
-    transform: translate(-50%, -50%) scale(1);
   }
 
   .jarvisSidebarCard[data-state="active"] .jarvisDataFlowVideo,

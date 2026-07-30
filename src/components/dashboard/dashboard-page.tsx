@@ -62575,7 +62575,6 @@ await addProjectLogbookEntry(
                   preload="auto"
                   tabIndex={-1}
                 />
-                <span className={styles.jarvisOrbCore} />
                 <img src="/media/jarvis-ring-gold-clean.webp" alt="" />
                 {isManagementAiOpen &&
                 !isManagementAiSending &&
