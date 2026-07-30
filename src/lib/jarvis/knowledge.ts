@@ -645,6 +645,8 @@ function includesOne(value: string, candidates: string[]) {
 const SYSTEM_MAP_INTENTS = [
   "wo finde ich",
   "wo ist",
+  "wo liegt",
+  "wo liegen",
   "wo kann ich",
   "öffne",
   "oeffne",

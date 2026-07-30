@@ -40,6 +40,7 @@ export function resolveJarvisProjectDialogIntent(input: {
   if (
     /\bwelch\w*\b.*\bkund\w*\b.*\bprojekt\b/.test(value) ||
     /\bwer ist\b.*\bkund\w*\b.*\bprojekt\w*\b/.test(value) ||
+    /\bwie hei(?:ss|ß)t\b.*\bkund\w*\b.*\bprojekt\w*\b/.test(value) ||
     /\b(?:kunde|kunden)\b.*\b(?:gehort|ist|hat|verknupft)\b.*\bprojekt\b/.test(
       value
     )

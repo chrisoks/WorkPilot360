@@ -539,6 +539,39 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["Wo ist das Planungsboard?", "systemMap.planningBoard"],
+    ["Wo liegen die Firmeneinstellungen?", "systemMap.settings"],
+    ["Wo finde ich Zusatzverkäufe?", "systemMap.salesOpportunities"],
+  ])(
+    "keeps explicit main navigation ahead of project and analysis routes: %s",
+    async (message, topicId) => {
+      mocks.resolveJarvisSalesAnalysisIntent.mockReturnValue(
+        message.includes("Zusatzverkäufe")
+      );
+      mocks.resolveJarvisSystemHelp.mockReturnValue({
+        type: "answer",
+        topicId,
+        message: "Den Bereich findest du in der Hauptnavigation.",
+        navigation: { label: "Bereich öffnen", tab: "target" },
+      });
+
+      const response = await POST(
+        new Request("http://localhost/api/jarvis/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ actorId: "user-1", message }),
+        })
+      );
+      const payload = await response.json();
+
+      expect(payload).toMatchObject({ type: "answer", topicId });
+      expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+      expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
+      expect(mocks.resolveJarvisSalesAnalysisRequest).not.toHaveBeenCalled();
+    }
+  );
+
   it("keeps a deterministic person summary ahead of an AI clarification", async () => {
     mocks.resolveJarvisPersonIntent.mockReturnValue({
       query: "Klaus Testmann",
