@@ -45,6 +45,7 @@ const mocks = vi.hoisted(() => ({
   resolveJarvisProjectDialogIntent: vi.fn(),
   createPersistedJarvisTaskDraft: vi.fn(),
   createPersistedJarvisPlanningDraft: vi.fn(),
+  createPersistedJarvisTimeDraft: vi.fn(),
   createPersistedJarvisWinterCalculationDraft: vi.fn(),
   createPersistedJarvisVehicleTripCalculationDraft: vi.fn(),
 }));
@@ -98,6 +99,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
   createPersistedJarvisTaskDraft: mocks.createPersistedJarvisTaskDraft,
   createPersistedJarvisPlanningDraft:
     mocks.createPersistedJarvisPlanningDraft,
+  createPersistedJarvisTimeDraft:
+    mocks.createPersistedJarvisTimeDraft,
   createPersistedJarvisWinterCalculationDraft:
     mocks.createPersistedJarvisWinterCalculationDraft,
   createPersistedJarvisVehicleTripCalculationDraft:
@@ -289,6 +292,46 @@ describe("POST /api/jarvis/chat", () => {
         projectId: "",
         note: "",
         projectOptions: [],
+      },
+      confirmation: { enabled: false, reason: "missing_fields" },
+      cancellation: { enabled: true },
+      execution: { enabled: false, reason: "requires_confirmation" },
+    });
+    mocks.createPersistedJarvisTimeDraft.mockResolvedValue({
+      version: 2,
+      previewId: "time-preview-1",
+      actionId: "time.prepare",
+      title: "Manuellen Zeiteintrag vorbereiten",
+      badge: "Entwurf",
+      state: "awaiting_input",
+      revision: 1,
+      expiresAt: "2026-07-30T22:00:00.000Z",
+      fields: [{ label: "Art", value: "Manuelle Projektzeit" }],
+      missingFields: ["Auftragsgrundlage"],
+      checks: [],
+      editor: {
+        mode: "project",
+        projectId: "",
+        unproductiveLabel: "",
+        employeeId: "user-1",
+        date: "",
+        startTime: "",
+        endTime: "",
+        pauseMinutes: 0,
+        comment: "",
+        offerId: "",
+        trade: "",
+        billingCatalogItemId: "",
+        completionStatus: "",
+        overtimeApprovalStatus: "not_required",
+        projectVariant: "unproductive",
+        employeeOptions: [],
+        projectOptions: [],
+        offerOptions: [],
+        tradeOptions: [],
+        billingCatalogItemOptions: [],
+        completionStatusOptions: [],
+        overtimeApprovalStatusOptions: [],
       },
       confirmation: { enabled: false, reason: "missing_fields" },
       cancellation: { enabled: true },
@@ -2245,6 +2288,199 @@ describe("POST /api/jarvis/chat", () => {
       })
     );
     expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+  });
+
+  it("opens a secure manual time draft and extracts natural German details", async () => {
+    const user = {
+      id: "user-1",
+      isActive: true,
+      role: "GESCHAEFTSFUEHRER",
+      firstName: "Christian",
+      lastName: "Eid",
+      email: "christian@example.test",
+    };
+    const colleague = {
+      id: "user-2",
+      isActive: true,
+      role: "MITARBEITER",
+      firstName: "Lea",
+      lastName: "Muster",
+      email: "lea@example.test",
+    };
+    mocks.getDemoContext.mockResolvedValue({
+      organization: { id: "organization-1" },
+      users: [user, colleague],
+    });
+    mocks.getSessionBoundActor.mockResolvedValue({
+      ok: true,
+      sessionId: "session-1",
+      sessionUserId: user.id,
+      actor: user,
+    });
+    mocks.createJarvisAccessProfile.mockReturnValue({
+      sessionActor: user,
+      effectiveActor: user,
+      isImpersonating: false,
+    });
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      recordType: "project",
+      recordId: "project-1",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message:
+            "Buche bitte für Lea Muster am 31.07.2026 Arbeitszeit von 08:15 bis 10:45 Uhr, Pause 15 Minuten, Begründung: Fenster vollständig gereinigt; Überstunden freigegeben.",
+          context: { recordType: "project", recordId: "project-1" },
+        }),
+      })
+    );
+    const result = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(result).toMatchObject({
+      type: "answer",
+      topicId: "action.draft.time",
+      actionDraft: { actionId: "time.prepare" },
+    });
+    expect(mocks.createPersistedJarvisTimeDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: "organization-1",
+        sessionId: "session-1",
+        projectId: "project-1",
+        initial: expect.objectContaining({
+          mode: "project",
+          employeeId: "user-2",
+          date: "2026-07-31",
+          startTime: "08:15",
+          endTime: "10:45",
+          pauseMinutes: 15,
+          comment: "Fenster vollständig gereinigt",
+          overtimeApprovalStatus: "approved",
+        }),
+      })
+    );
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+  });
+
+  it("keeps unproductive time separate from the open project context", async () => {
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      recordType: "project",
+      recordId: "project-1",
+    });
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message:
+            "Erfasse bitte unproduktive Arbeitszeit am 31.07.2026 von 11:00 bis 12:00 Uhr.",
+          context: { recordType: "project", recordId: "project-1" },
+        }),
+      })
+    );
+
+    expect((await response.json()).topicId).toBe("action.draft.time");
+    expect(mocks.createPersistedJarvisTimeDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: undefined,
+        initial: expect.objectContaining({ mode: "unproductive" }),
+      })
+    );
+  });
+
+  it("understands unproductive time without requiring the word Arbeitszeit and reuses its reason as activity", async () => {
+    const berlinDateParts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Berlin",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(new Date());
+    const berlinDatePart = (type: Intl.DateTimeFormatPartTypes) =>
+      berlinDateParts.find((part) => part.type === type)?.value ?? "";
+    const todayInBerlin = `${berlinDatePart("year")}-${berlinDatePart("month")}-${berlinDatePart("day")}`;
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message:
+            "Erfasse heute von 14:00 bis 14:20 Uhr unproduktive Zeit, Begründung: Interne Teambesprechung.",
+        }),
+      })
+    );
+
+    expect((await response.json()).topicId).toBe("action.draft.time");
+    expect(mocks.createPersistedJarvisTimeDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: undefined,
+        initial: expect.objectContaining({
+          mode: "unproductive",
+          comment: "Interne Teambesprechung",
+          unproductiveLabel: "Interne Teambesprechung",
+          date: todayInBerlin,
+          startTime: "14:00",
+          endTime: "14:20",
+        }),
+      })
+    );
+  });
+
+  it("understands a retrospective Stempelung as a manual entry instead of a live clock command", async () => {
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      recordType: "project",
+      recordId: "project-1",
+    });
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message:
+            "Trage bitte die Stempelung am 30.07.2026 von 07:30 bis 09:00 Uhr nach.",
+          context: { recordType: "project", recordId: "project-1" },
+        }),
+      })
+    );
+
+    expect((await response.json()).topicId).toBe("action.draft.time");
+    expect(mocks.createPersistedJarvisTimeDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "project-1",
+        initial: expect.objectContaining({
+          date: "2026-07-30",
+          startTime: "07:30",
+          endTime: "09:00",
+        }),
+      })
+    );
+  });
+
+  it("never turns a live stamping request into a manual time draft", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Stempel mich jetzt bitte auf Projekt GLR-1 ein.",
+        }),
+      })
+    );
+    const result = await response.json();
+
+    expect(result).toMatchObject({
+      type: "refusal",
+      topicId: "action.time-write-not-released",
+    });
+    expect(mocks.createPersistedJarvisTimeDraft).not.toHaveBeenCalled();
   });
 
   it("opens a secure Winterdienst calculation draft without inventing calculator values", async () => {

@@ -304,6 +304,75 @@ export type JarvisPlanningActionDraftView = {
   };
 };
 
+export type JarvisTimeActionDraftCheck = {
+  code: string;
+  label: string;
+  status: "ok" | "warning" | "blocked";
+  detail: string;
+};
+
+export type JarvisTimeActionDraftView = {
+  version: 2;
+  previewId: string;
+  actionId: "time.prepare";
+  title: "Manuellen Zeiteintrag vorbereiten";
+  badge:
+    | "Entwurf"
+    | "Bereit"
+    | "Wird gespeichert"
+    | "Abgebrochen"
+    | "Abgelaufen"
+    | "Gespeichert";
+  state: JarvisTaskActionDraftState;
+  revision: number;
+  expiresAt: string;
+  fields: Array<{ label: string; value: string }>;
+  missingFields: string[];
+  checks: JarvisTimeActionDraftCheck[];
+  editor: {
+    mode: "project" | "unproductive";
+    projectId: string;
+    unproductiveLabel: string;
+    employeeId: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    pauseMinutes: number;
+    comment: string;
+    offerId: string;
+    trade: string;
+    billingCatalogItemId: string;
+    completionStatus: "" | "finished" | "interrupted";
+    overtimeApprovalStatus: "not_required" | "pending" | "approved";
+    projectVariant: "single" | "recurring_hourly" | "recurring_flat" | "unproductive";
+    employeeOptions: Array<{ id: string; label: string }>;
+    projectOptions: Array<{ id: string; label: string }>;
+    offerOptions: Array<{ id: string; label: string }>;
+    tradeOptions: string[];
+    billingCatalogItemOptions: Array<{
+      id: string;
+      label: string;
+      trade: string;
+    }>;
+    completionStatusOptions: Array<{
+      value: "" | "finished" | "interrupted";
+      label: string;
+    }>;
+    overtimeApprovalStatusOptions: Array<{
+      value: "not_required" | "pending" | "approved";
+      label: string;
+    }>;
+  };
+  confirmation: JarvisTaskActionDraftView["confirmation"];
+  cancellation: JarvisTaskActionDraftView["cancellation"];
+  execution: JarvisTaskActionDraftView["execution"];
+  result?: {
+    entityType: "projectTimeEntry";
+    entityId: string;
+    label: string;
+  };
+};
+
 export type JarvisWinterCalculationInputView = {
   areaSqm: number;
   readinessPricePerSqmPerMonth: number;

@@ -91,6 +91,7 @@ import {
 import {
   createPersistedJarvisPlanningDraft,
   createPersistedJarvisTaskDraft,
+  createPersistedJarvisTimeDraft,
   createPersistedJarvisVehicleTripCalculationDraft,
   createPersistedJarvisWinterCalculationDraft,
   JarvisActionDraftError,
@@ -180,6 +181,180 @@ function looksLikeWinterCalculationStartRequest(question: string) {
     /\bich mochte\b.*\b(?:kalkulier|berechne|rechne)\w*\b/.test(value) ||
     /\bmit jarvis\b.*\b(?:kalkulier|berechne|rechne)\w*\b/.test(value)
   );
+}
+
+function looksLikeManualTimeEntryRequest(question: string) {
+  const value = normalizeJarvisIntentText(question);
+  if (
+    /\b(?:loschen|entfernen|korrigieren|bearbeiten)\w*\b/.test(value) ||
+    looksLikeLiveStampRequest(question)
+  ) {
+    return false;
+  }
+  return (
+    (/\b(?:zeiteintrag|projektzeit|arbeitszeit|stunden|stempelung)\w*\b/.test(
+      value
+    ) ||
+      /\bunproduktiv\w*\s+zeit\b/.test(value)) &&
+    /\b(?:erfass|trag|trage|buch|buche|speicher|leg|lege|nachtrag|nachtragen|hinzufug)\w*\b/.test(
+      value
+    )
+  );
+}
+
+function looksLikeLiveStampRequest(question: string) {
+  return /^\s*(?:stempel|stemple)\b/u.test(
+    normalizeJarvisIntentText(question)
+  );
+}
+
+function getRelativeBerlinDateKey(offsetDays: number, now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Berlin",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((candidate) => candidate.type === type)?.value ?? 0);
+  return new Date(
+    Date.UTC(part("year"), part("month") - 1, part("day") + offsetDays, 12)
+  )
+    .toISOString()
+    .slice(0, 10);
+}
+
+function extractManualTimeInitialValues(question: string) {
+  const normalizedQuestion = normalizeJarvisIntentText(question);
+  const dateMatch = question.match(
+    /\b(\d{1,2})\.(\d{1,2})\.(\d{4}|\d{2})\b/u
+  );
+  const timeMatch = question.match(
+    /\bvon\s+([01]?\d|2[0-3]):([0-5]\d)\s*(?:uhr\s*)?bis\s+([01]?\d|2[0-3]):([0-5]\d)\b/iu
+  );
+  const pauseMatch = question.match(
+    /\bpause\s+(?:von\s+)?(\d{1,4})\s*(?:minuten?|min\.?)\b/iu
+  );
+  const commentMatch =
+    question.match(
+      /\b(?:kommentar|begr[uü]ndung|notiz)\s*[„"']([^„“"']{1,2000})[“"']/iu
+    ) ??
+    question.match(
+      /\b(?:kommentar|begr[uü]ndung|notiz)\s*:\s*([^.;]{1,2000})/iu
+    );
+  const comment = commentMatch?.[1]?.trim() ?? "";
+  const mode = /\bunproduktiv\w*\b/iu.test(question)
+    ? ("unproductive" as const)
+    : ("project" as const);
+  let date: string | undefined;
+  if (dateMatch) {
+    const yearNumber = Number(dateMatch[3]);
+    date = `${yearNumber < 100 ? 2000 + yearNumber : yearNumber}-${dateMatch[2].padStart(2, "0")}-${dateMatch[1].padStart(2, "0")}`;
+  } else if (/\bvorgestern\b/u.test(normalizedQuestion)) {
+    date = getRelativeBerlinDateKey(-2);
+  } else if (/\bgestern\b/u.test(normalizedQuestion)) {
+    date = getRelativeBerlinDateKey(-1);
+  } else if (/\bheute\b/u.test(normalizedQuestion)) {
+    date = getRelativeBerlinDateKey(0);
+  }
+  return {
+    ...(date ? { date } : {}),
+    ...(timeMatch
+      ? {
+          startTime: `${timeMatch[1].padStart(2, "0")}:${timeMatch[2]}`,
+          endTime: `${timeMatch[3].padStart(2, "0")}:${timeMatch[4]}`,
+        }
+      : {}),
+    pauseMinutes: pauseMatch ? Number(pauseMatch[1]) : 0,
+    ...(comment ? { comment } : {}),
+    ...(mode === "unproductive" && comment
+      ? { unproductiveLabel: comment.slice(0, 240) }
+      : {}),
+    mode,
+    ...(/\b(?:erledigt|fertig|abgeschlossen)\b/iu.test(question)
+      ? { completionStatus: "finished" as const }
+      : /\bunterbrochen\b/iu.test(question)
+        ? { completionStatus: "interrupted" as const }
+        : {}),
+    ...(/\buberstunden?\b.*\bfreigegeben\b/u.test(normalizedQuestion)
+      ? { overtimeApprovalStatus: "approved" as const }
+      : /\buberstunden?\b.*\b(?:prufen|offen|ausstehend)\b/u.test(
+            normalizedQuestion
+          )
+        ? { overtimeApprovalStatus: "pending" as const }
+        : {}),
+  };
+}
+
+async function buildJarvisTimeDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+  context: ReturnType<typeof sanitizeJarvisSurfaceContext>;
+  users: Array<{
+    id: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+    isActive?: boolean;
+  }>;
+}) {
+  if (!input.sessionId) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.draft.session-required",
+      message:
+        "Für einen bestätigbaren manuellen Zeiteintrag ist eine aktuelle serverseitige Sitzung erforderlich. Bitte melde dich neu an; es wurde nichts gespeichert.",
+    };
+  }
+  const normalizedQuestion = normalizePersonLabel(input.question);
+  const namedEmployee = input.users.find((user) => {
+    if (!user.id || user.isActive === false) return false;
+    const label = [user.firstName, user.lastName]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    return (
+      label.length >= 3 &&
+      normalizedQuestion.includes(normalizePersonLabel(label))
+    );
+  });
+  const initial = {
+    ...extractManualTimeInitialValues(input.question),
+    ...(namedEmployee ? { employeeId: namedEmployee.id } : {}),
+  };
+  try {
+    const actionDraft = await createPersistedJarvisTimeDraft({
+      organizationId: input.organizationId,
+      sessionId: input.sessionId,
+      profile: input.accessProfile,
+      projectId:
+        initial.mode === "project" &&
+        input.context.recordType === "project" &&
+        input.context.recordId
+          ? input.context.recordId
+          : undefined,
+      initial,
+    });
+    return {
+      type: "answer" as const,
+      topicId: "action.draft.time",
+      message:
+        "Ich habe einen sicheren Entwurf für einen manuellen Zeiteintrag angelegt. Ergänze die noch fehlenden Angaben und prüfe Projektart, Auftragsgrundlage beziehungsweise Gewerk und Abrechnungsleistung. Erst deine ausdrückliche Bestätigung darf genau einen Zeiteintrag speichern. Eine laufende Stempelung wird dadurch weder gestartet noch verändert.",
+      actionDraft,
+    };
+  } catch (error) {
+    const message =
+      error instanceof JarvisActionDraftError
+        ? error.message
+        : "Der manuelle Zeitentwurf konnte nicht sicher vorbereitet werden.";
+    return {
+      type: "refusal" as const,
+      topicId: "action.draft.unavailable",
+      message: `${message} Es wurde kein Zeiteintrag gespeichert.`,
+    };
+  }
 }
 
 function looksLikeVehicleTripCalculationStartRequest(question: string) {
@@ -1136,7 +1311,20 @@ export async function POST(req: Request) {
       deterministic: true,
     });
   }
-  if (directActionRequest && /^\s*stemp(?:el|le|l)\w*\b/iu.test(message)) {
+  if (looksLikeManualTimeEntryRequest(message)) {
+    return respond(
+      await buildJarvisTimeDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+        context,
+        users,
+      }),
+      "system"
+    );
+  }
+  if (directActionRequest && looksLikeLiveStampRequest(message)) {
     return respond({
       type: "refusal",
       topicId: "action.time-write-not-released",

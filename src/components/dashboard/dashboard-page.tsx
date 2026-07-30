@@ -71,6 +71,7 @@ import type {
   JarvisActionPreviewView,
   JarvisPlanningActionDraftView,
   JarvisTaskActionDraftView,
+  JarvisTimeActionDraftView,
   JarvisVehicleTripCalculationDraftView,
   JarvisWinterCalculationDraftView,
 } from "@/lib/jarvis/action-center";
@@ -667,6 +668,7 @@ type ManagementAiChatMessage = {
   actionDraft?:
     | JarvisTaskActionDraftView
     | JarvisPlanningActionDraftView
+    | JarvisTimeActionDraftView
     | JarvisWinterCalculationDraftView
     | JarvisVehicleTripCalculationDraftView;
   dialogState?: JarvisDialogState;
@@ -1779,17 +1781,288 @@ function parseJarvisVehicleTripCalculationDraft(
   };
 }
 
+function parseJarvisTimeActionDraft(
+  value: unknown
+): JarvisTimeActionDraftView | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  const editor =
+    candidate.editor && typeof candidate.editor === "object"
+      ? (candidate.editor as Record<string, unknown>)
+      : undefined;
+  const confirmation =
+    candidate.confirmation && typeof candidate.confirmation === "object"
+      ? (candidate.confirmation as Record<string, unknown>)
+      : undefined;
+  const cancellation =
+    candidate.cancellation && typeof candidate.cancellation === "object"
+      ? (candidate.cancellation as Record<string, unknown>)
+      : undefined;
+  const execution =
+    candidate.execution && typeof candidate.execution === "object"
+      ? (candidate.execution as Record<string, unknown>)
+      : undefined;
+  if (
+    candidate.version !== 2 ||
+    candidate.actionId !== "time.prepare" ||
+    candidate.title !== "Manuellen Zeiteintrag vorbereiten" ||
+    typeof candidate.previewId !== "string" ||
+    typeof candidate.badge !== "string" ||
+    !new Set([
+      "Entwurf",
+      "Bereit",
+      "Wird gespeichert",
+      "Abgebrochen",
+      "Abgelaufen",
+      "Gespeichert",
+    ]).has(candidate.badge) ||
+    typeof candidate.state !== "string" ||
+    !jarvisTaskDraftStates.has(candidate.state) ||
+    !Number.isSafeInteger(candidate.revision) ||
+    typeof candidate.expiresAt !== "string" ||
+    !Number.isFinite(Date.parse(candidate.expiresAt)) ||
+    !editor ||
+    !["project", "unproductive"].includes(String(editor.mode)) ||
+    typeof editor.projectId !== "string" ||
+    typeof editor.unproductiveLabel !== "string" ||
+    typeof editor.employeeId !== "string" ||
+    typeof editor.date !== "string" ||
+    typeof editor.startTime !== "string" ||
+    typeof editor.endTime !== "string" ||
+    typeof editor.pauseMinutes !== "number" ||
+    typeof editor.comment !== "string" ||
+    typeof editor.offerId !== "string" ||
+    typeof editor.trade !== "string" ||
+    typeof editor.billingCatalogItemId !== "string" ||
+    !["", "finished", "interrupted"].includes(
+      String(editor.completionStatus)
+    ) ||
+    !["not_required", "pending", "approved"].includes(
+      String(editor.overtimeApprovalStatus)
+    ) ||
+    !["single", "recurring_hourly", "recurring_flat", "unproductive"].includes(
+      String(editor.projectVariant)
+    ) ||
+    !Array.isArray(editor.employeeOptions) ||
+    !Array.isArray(editor.projectOptions) ||
+    !Array.isArray(editor.offerOptions) ||
+    !Array.isArray(editor.tradeOptions) ||
+    !Array.isArray(editor.billingCatalogItemOptions) ||
+    !Array.isArray(editor.completionStatusOptions) ||
+    !Array.isArray(editor.overtimeApprovalStatusOptions) ||
+    !Array.isArray(candidate.checks) ||
+    !confirmation ||
+    typeof confirmation.enabled !== "boolean" ||
+    typeof confirmation.reason !== "string" ||
+    !jarvisTaskDraftConfirmationReasons.has(confirmation.reason) ||
+    !cancellation ||
+    typeof cancellation.enabled !== "boolean" ||
+    !execution ||
+    execution.enabled !== false ||
+    !["requires_confirmation", "finalized"].includes(String(execution.reason))
+  ) {
+    return undefined;
+  }
+  const parseFields = (raw: unknown) =>
+    Array.isArray(raw)
+      ? raw
+          .filter(
+            (field): field is Record<string, unknown> =>
+              Boolean(field && typeof field === "object")
+          )
+          .map((field) => ({
+            label:
+              typeof field.label === "string"
+                ? field.label.trim().slice(0, 100)
+                : "",
+            value:
+              typeof field.value === "string"
+                ? field.value.trim().slice(0, 500)
+                : "",
+          }))
+          .filter((field) => field.label && field.value)
+          .slice(0, 20)
+      : [];
+  const parseOptions = (raw: unknown) =>
+    Array.isArray(raw)
+      ? raw
+          .filter(
+            (option): option is Record<string, unknown> =>
+              Boolean(option && typeof option === "object")
+          )
+          .map((option) => ({
+            id:
+              typeof option.id === "string"
+                ? option.id.trim().slice(0, 120)
+                : "",
+            label:
+              typeof option.label === "string"
+                ? option.label.trim().slice(0, 240)
+                : "",
+          }))
+          .filter((option) => option.id && option.label)
+          .slice(0, 1000)
+      : [];
+  const checks = candidate.checks
+    .filter(
+      (check): check is Record<string, unknown> =>
+        Boolean(check && typeof check === "object")
+    )
+    .map((check) => ({
+      code: typeof check.code === "string" ? check.code.slice(0, 100) : "",
+      label:
+        typeof check.label === "string" ? check.label.slice(0, 160) : "",
+      status: ["ok", "warning", "blocked"].includes(String(check.status))
+        ? (check.status as "ok" | "warning" | "blocked")
+        : ("blocked" as const),
+      detail:
+        typeof check.detail === "string" ? check.detail.slice(0, 1000) : "",
+    }))
+    .filter((check) => check.code && check.label && check.detail)
+    .slice(0, 30);
+  const employeeOptions = parseOptions(editor.employeeOptions);
+  const projectOptions = parseOptions(editor.projectOptions);
+  const offerOptions = parseOptions(editor.offerOptions);
+  const billingCatalogItemOptions = editor.billingCatalogItemOptions
+    .filter(
+      (option): option is Record<string, unknown> =>
+        Boolean(option && typeof option === "object")
+    )
+    .map((option) => ({
+      id: typeof option.id === "string" ? option.id.slice(0, 120) : "",
+      label:
+        typeof option.label === "string" ? option.label.slice(0, 240) : "",
+      trade:
+        typeof option.trade === "string" ? option.trade.slice(0, 180) : "",
+    }))
+    .filter((option) => option.id && option.label)
+    .slice(0, 1000);
+  const completionStatusOptions = editor.completionStatusOptions
+    .filter(
+      (option): option is Record<string, unknown> =>
+        Boolean(option && typeof option === "object")
+    )
+    .map((option) => ({
+      value: ["", "finished", "interrupted"].includes(String(option.value))
+        ? (option.value as "" | "finished" | "interrupted")
+        : ("" as const),
+      label:
+        typeof option.label === "string" ? option.label.slice(0, 120) : "",
+    }))
+    .filter((option) => option.label);
+  const overtimeApprovalStatusOptions = editor.overtimeApprovalStatusOptions
+    .filter(
+      (option): option is Record<string, unknown> =>
+        Boolean(option && typeof option === "object")
+    )
+    .map((option) => ({
+      value: ["not_required", "pending", "approved"].includes(
+        String(option.value)
+      )
+        ? (option.value as "not_required" | "pending" | "approved")
+        : ("not_required" as const),
+      label:
+        typeof option.label === "string" ? option.label.slice(0, 120) : "",
+    }))
+    .filter((option) => option.label);
+  const fields = parseFields(candidate.fields);
+  if (!candidate.previewId.trim() || fields.length === 0 || checks.length === 0) {
+    return undefined;
+  }
+  const resultCandidate =
+    candidate.result && typeof candidate.result === "object"
+      ? (candidate.result as Record<string, unknown>)
+      : undefined;
+  const result =
+    resultCandidate?.entityType === "projectTimeEntry" &&
+    typeof resultCandidate.entityId === "string" &&
+    typeof resultCandidate.label === "string"
+      ? {
+          entityType: "projectTimeEntry" as const,
+          entityId: resultCandidate.entityId.slice(0, 120),
+          label: resultCandidate.label.slice(0, 120),
+        }
+      : undefined;
+  return {
+    version: 2,
+    previewId: candidate.previewId.trim().slice(0, 120),
+    actionId: "time.prepare",
+    title: "Manuellen Zeiteintrag vorbereiten",
+    badge: candidate.badge as JarvisTimeActionDraftView["badge"],
+    state: candidate.state as JarvisTimeActionDraftView["state"],
+    revision: Number(candidate.revision),
+    expiresAt: candidate.expiresAt,
+    fields,
+    missingFields: Array.isArray(candidate.missingFields)
+      ? candidate.missingFields
+          .filter((field): field is string => typeof field === "string")
+          .map((field) => field.slice(0, 120))
+          .slice(0, 30)
+      : [],
+    checks,
+    editor: {
+      mode: editor.mode as "project" | "unproductive",
+      projectId: editor.projectId.slice(0, 120),
+      unproductiveLabel: editor.unproductiveLabel.slice(0, 240),
+      employeeId: editor.employeeId.slice(0, 120),
+      date: editor.date.slice(0, 10),
+      startTime: editor.startTime.slice(0, 5),
+      endTime: editor.endTime.slice(0, 5),
+      pauseMinutes: Math.max(0, Math.round(editor.pauseMinutes)),
+      comment: editor.comment.slice(0, 2000),
+      offerId: editor.offerId.slice(0, 120),
+      trade: editor.trade.slice(0, 180),
+      billingCatalogItemId: editor.billingCatalogItemId.slice(0, 120),
+      completionStatus: editor.completionStatus as
+        | ""
+        | "finished"
+        | "interrupted",
+      overtimeApprovalStatus: editor.overtimeApprovalStatus as
+        | "not_required"
+        | "pending"
+        | "approved",
+      projectVariant:
+        editor.projectVariant as JarvisTimeActionDraftView["editor"]["projectVariant"],
+      employeeOptions,
+      projectOptions,
+      offerOptions,
+      tradeOptions: editor.tradeOptions
+        .filter((trade): trade is string => typeof trade === "string")
+        .map((trade) => trade.slice(0, 180))
+        .filter(Boolean)
+        .slice(0, 500),
+      billingCatalogItemOptions,
+      completionStatusOptions,
+      overtimeApprovalStatusOptions,
+    },
+    confirmation: {
+      enabled: confirmation.enabled,
+      reason:
+        confirmation.reason as JarvisTimeActionDraftView["confirmation"]["reason"],
+    },
+    cancellation: { enabled: cancellation.enabled },
+    execution: {
+      enabled: false,
+      reason:
+        execution.reason as JarvisTimeActionDraftView["execution"]["reason"],
+    },
+    ...(result?.entityId && result.label ? { result } : {}),
+  };
+}
+
 function parseJarvisActionDraft(
   value: unknown
 ):
   | JarvisTaskActionDraftView
   | JarvisPlanningActionDraftView
+  | JarvisTimeActionDraftView
   | JarvisWinterCalculationDraftView
   | JarvisVehicleTripCalculationDraftView
   | undefined {
   return (
     parseJarvisTaskActionDraft(value) ??
     parseJarvisPlanningActionDraft(value) ??
+    parseJarvisTimeActionDraft(value) ??
     parseJarvisWinterCalculationDraft(value) ??
     parseJarvisVehicleTripCalculationDraft(value)
   );
@@ -2574,6 +2847,402 @@ const jarvisWinterInputFields: Array<{
     step: "0.1",
   },
 ];
+
+function JarvisTimeDraftCard({
+  draft,
+  actorId,
+  disabled,
+  onChange,
+  onOpenTime,
+}: {
+  draft: JarvisTimeActionDraftView;
+  actorId: string;
+  disabled: boolean;
+  onChange: (next: JarvisTimeActionDraftView, message?: string) => void;
+  onOpenTime: () => void;
+}) {
+  const [editor, setEditor] = useState(draft.editor);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    setEditor(draft.editor);
+  }, [draft]);
+  const locked =
+    disabled ||
+    pending ||
+    !["awaiting_input", "awaiting_confirmation"].includes(draft.state);
+  const request = async (
+    method: "PATCH" | "POST",
+    payload: Record<string, unknown>
+  ) => {
+    setPending(true);
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/jarvis/action-drafts/${encodeURIComponent(draft.previewId)}`,
+        {
+          method,
+          credentials: "same-origin",
+          headers: {
+            "Content-Type": "application/json",
+            "x-jarvis-action": "jarvis-action-draft-v2",
+          },
+          body: JSON.stringify({
+            actorId,
+            actionId: "time.prepare",
+            revision: draft.revision,
+            ...payload,
+          }),
+        }
+      );
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(
+          data?.error ?? "Der Zeitentwurf konnte nicht verarbeitet werden."
+        );
+      }
+      const next = parseJarvisTimeActionDraft(data?.actionDraft);
+      if (!next) {
+        throw new Error("Der Server hat keinen gültigen Zeitentwurf geliefert.");
+      }
+      onChange(next, typeof data?.message === "string" ? data.message : undefined);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Der Zeitentwurf konnte nicht verarbeitet werden."
+      );
+    } finally {
+      setPending(false);
+    }
+  };
+  const update = <K extends keyof JarvisTimeActionDraftView["editor"]>(
+    key: K,
+    value: JarvisTimeActionDraftView["editor"][K]
+  ) => setEditor((current) => ({ ...current, [key]: value }));
+  const billingOptions = editor.billingCatalogItemOptions.filter(
+    (option) => !editor.trade || option.trade === editor.trade
+  );
+  const isDirty = JSON.stringify(editor) !== JSON.stringify(draft.editor);
+  return (
+    <section className={styles.jarvisActionPreview} data-state={draft.state}>
+      <header>
+        <div>
+          <span>Action Center</span>
+          <strong>{draft.title}</strong>
+        </div>
+        <em>{draft.badge} · Revision {draft.revision}</em>
+      </header>
+      <div className={`${styles.jarvisActionDraftEditor} ${styles.jarvisTimeDraftEditor}`}>
+        <label>
+          Zeitart
+          <select
+            value={editor.mode}
+            disabled={locked}
+            onChange={(event) =>
+              setEditor((current) => ({
+                ...current,
+                mode: event.target.value as "project" | "unproductive",
+                projectId: "",
+                unproductiveLabel: "",
+                offerId: "",
+                trade: "",
+                billingCatalogItemId: "",
+                completionStatus: "",
+              }))
+            }
+          >
+            <option value="project">Projektzeit</option>
+            <option value="unproductive">Unproduktive Zeit</option>
+          </select>
+        </label>
+        <label>
+          Mitarbeiter
+          <select
+            value={editor.employeeId}
+            disabled={locked}
+            onChange={(event) => update("employeeId", event.target.value)}
+          >
+            <option value="">Bitte auswählen</option>
+            {editor.employeeOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {editor.mode === "project" ? (
+          <label className={styles.jarvisTimeDraftWideField}>
+            Projekt
+            <select
+              value={editor.projectId}
+              disabled={locked}
+              onChange={(event) =>
+                setEditor((current) => ({
+                  ...current,
+                  projectId: event.target.value,
+                  offerId: "",
+                  trade: "",
+                  billingCatalogItemId: "",
+                }))
+              }
+            >
+              <option value="">Bitte auswählen</option>
+              {editor.projectOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <label className={styles.jarvisTimeDraftWideField}>
+            Unproduktive Tätigkeit
+            <input
+              value={editor.unproductiveLabel}
+              disabled={locked}
+              maxLength={240}
+              onChange={(event) =>
+                update("unproductiveLabel", event.target.value)
+              }
+              placeholder="z. B. interne Besprechung"
+            />
+          </label>
+        )}
+        <label>
+          Datum
+          <input
+            type="date"
+            value={editor.date}
+            disabled={locked}
+            onChange={(event) => update("date", event.target.value)}
+          />
+        </label>
+        <label>
+          Pause in Minuten
+          <input
+            type="number"
+            min={0}
+            max={1440}
+            step={1}
+            value={editor.pauseMinutes}
+            disabled={locked}
+            onChange={(event) =>
+              update("pauseMinutes", Math.max(0, Number(event.target.value) || 0))
+            }
+          />
+        </label>
+        <label>
+          Beginn
+          <input
+            type="time"
+            value={editor.startTime}
+            disabled={locked}
+            onChange={(event) => update("startTime", event.target.value)}
+          />
+        </label>
+        <label>
+          Ende
+          <input
+            type="time"
+            value={editor.endTime}
+            disabled={locked}
+            onChange={(event) => update("endTime", event.target.value)}
+          />
+        </label>
+        {editor.mode === "project" && editor.projectVariant === "single" ? (
+          <label className={styles.jarvisTimeDraftWideField}>
+            Auftragsgrundlage
+            <select
+              value={editor.offerId}
+              disabled={locked}
+              onChange={(event) => update("offerId", event.target.value)}
+            >
+              <option value="">Bitte auswählen</option>
+              {editor.offerOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        {editor.mode === "project" &&
+        editor.projectVariant === "recurring_hourly" ? (
+          <>
+            <label>
+              Verrechnungsgewerk
+              <select
+                value={editor.trade}
+                disabled={locked}
+                onChange={(event) =>
+                  setEditor((current) => ({
+                    ...current,
+                    trade: event.target.value,
+                    billingCatalogItemId: "",
+                  }))
+                }
+              >
+                <option value="">Bitte auswählen</option>
+                {editor.tradeOptions.map((trade) => (
+                  <option key={trade} value={trade}>
+                    {trade}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Abrechnungsleistung
+              <select
+                value={editor.billingCatalogItemId}
+                disabled={locked || !editor.trade}
+                onChange={(event) =>
+                  update("billingCatalogItemId", event.target.value)
+                }
+              >
+                <option value="">Bitte auswählen</option>
+                {billingOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        ) : null}
+        {editor.mode === "project" ? (
+          <label>
+            Abschlussstatus
+            <select
+              value={editor.completionStatus}
+              disabled={locked}
+              onChange={(event) =>
+                update(
+                  "completionStatus",
+                  event.target.value as "" | "finished" | "interrupted"
+                )
+              }
+            >
+              {editor.completionStatusOptions.map((option) => (
+                <option key={option.value || "none"} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        <label>
+          Überstundenstatus
+          <select
+            value={editor.overtimeApprovalStatus}
+            disabled={locked}
+            onChange={(event) =>
+              update(
+                "overtimeApprovalStatus",
+                event.target.value as "not_required" | "pending" | "approved"
+              )
+            }
+          >
+            {editor.overtimeApprovalStatusOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className={styles.jarvisTimeDraftWideField}>
+          Kommentar
+          <textarea
+            rows={3}
+            maxLength={2000}
+            value={editor.comment}
+            disabled={locked}
+            onChange={(event) => update("comment", event.target.value)}
+            placeholder="Begründung oder Tätigkeitsbeschreibung"
+          />
+        </label>
+      </div>
+      <div className={styles.jarvisPlanningChecks}>
+        {draft.checks.map((check) => (
+          <div key={check.code} data-status={check.status}>
+            <span aria-hidden="true">
+              {check.status === "ok" ? "✓" : check.status === "warning" ? "!" : "×"}
+            </span>
+            <p>
+              <b>{check.label}</b>
+              <small>{check.detail}</small>
+            </p>
+          </div>
+        ))}
+      </div>
+      {draft.missingFields.length ? (
+        <div className={styles.jarvisActionPreviewMissing}>
+          <strong>Vor der Bestätigung noch erforderlich</strong>
+          <span>{draft.missingFields.join(" · ")}</span>
+        </div>
+      ) : null}
+      {isDirty ? (
+        <div className={styles.jarvisActionPreviewMissing}>
+          <strong>Änderungen noch nicht geprüft</strong>
+          <span>
+            Bitte zuerst „Angaben prüfen“ wählen. JARVIS bestätigt ausschließlich
+            den zuletzt serverseitig geprüften Stand.
+          </span>
+        </div>
+      ) : null}
+      {error ? <p className={styles.managementAiError}>{error}</p> : null}
+      <div className={styles.jarvisActionDraftActions}>
+        {draft.result ? (
+          <button type="button" onClick={onOpenTime}>
+            {draft.result.label}
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              disabled={locked}
+              onClick={() =>
+                void request("PATCH", {
+                  mode: editor.mode,
+                  projectId: editor.projectId,
+                  unproductiveLabel: editor.unproductiveLabel,
+                  employeeId: editor.employeeId,
+                  date: editor.date,
+                  startTime: editor.startTime,
+                  endTime: editor.endTime,
+                  pauseMinutes: editor.pauseMinutes,
+                  comment: editor.comment,
+                  offerId: editor.offerId,
+                  trade: editor.trade,
+                  billingCatalogItemId: editor.billingCatalogItemId,
+                  completionStatus: editor.completionStatus,
+                  overtimeApprovalStatus: editor.overtimeApprovalStatus,
+                })
+              }
+            >
+              Angaben prüfen
+            </button>
+            <button
+              type="button"
+              data-primary="true"
+              disabled={locked || isDirty || !draft.confirmation.enabled}
+              onClick={() => void request("POST", { command: "confirm" })}
+            >
+              Zeiteintrag jetzt speichern
+            </button>
+            <button
+              type="button"
+              disabled={locked || !draft.cancellation.enabled}
+              onClick={() => void request("POST", { command: "cancel" })}
+            >
+              Abbrechen
+            </button>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
 
 function JarvisWinterCalculationDraftCard({
   draft,
@@ -35781,6 +36450,7 @@ await addProjectLogbookEntry(
     nextDraft:
       | JarvisTaskActionDraftView
       | JarvisPlanningActionDraftView
+      | JarvisTimeActionDraftView
       | JarvisWinterCalculationDraftView
       | JarvisVehicleTripCalculationDraftView,
     message?: string
@@ -35799,6 +36469,8 @@ await addProjectLogbookEntry(
     if (nextDraft.state === "executed") {
       if (nextDraft.actionId === "planning.prepare") {
         void loadPlanningEntries();
+      } else if (nextDraft.actionId === "time.prepare") {
+        void loadProjectTimeEntries();
       } else if (
         nextDraft.actionId === "winter-calculation.prepare" ||
         nextDraft.actionId === "vehicle-trip-calculation.prepare"
@@ -72131,6 +72803,29 @@ await addProjectLogbookEntry(
                         onOpenPlanning={() => {
                           setActiveTab("planningBoard");
                           void loadPlanningEntries();
+                        }}
+                      />
+                    ) : null}
+                    {message.role === "assistant" &&
+                    message.actionDraft?.actionId === "time.prepare" ? (
+                      <JarvisTimeDraftCard
+                        draft={message.actionDraft}
+                        actorId={activeUserId}
+                        disabled={isManagementAiSending}
+                        onChange={(nextDraft, nextMessage) =>
+                          updateJarvisActionDraftMessage(
+                            index,
+                            nextDraft,
+                            nextMessage
+                          )
+                        }
+                        onOpenTime={() => {
+                          setTimeTrackingEmployeeId(
+                            message.actionDraft?.actionId === "time.prepare"
+                              ? message.actionDraft.editor.employeeId
+                              : ""
+                          );
+                          setActiveTab("timeTracking");
                         }}
                       />
                     ) : null}

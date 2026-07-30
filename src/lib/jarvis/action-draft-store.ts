@@ -18,6 +18,8 @@ import {
   type JarvisPlanningActionDraftCheck,
   type JarvisPlanningActionDraftView,
   type JarvisTaskActionDraftView,
+  type JarvisTimeActionDraftCheck,
+  type JarvisTimeActionDraftView,
   type JarvisVehicleTripCalculationDraftView,
   type JarvisWinterCalculationDraftView,
 } from "@/lib/jarvis/action-center";
@@ -27,7 +29,9 @@ import {
 } from "@/lib/jarvis/security";
 import {
   canAssignTasksToOthers,
+  canApproveProjectOvertime,
   canManagePlanningEntries,
+  canManageProjectTimeEntries,
   canManageProjects,
 } from "@/lib/permissions";
 import {
@@ -62,12 +66,19 @@ import {
   fuelPriceForVehicleType,
   loadVehicleFuelPrices,
 } from "@/lib/vehicle-fuel-prices";
+import {
+  ensureProjectTimeEntryTable,
+  ProjectTimeEntryServiceError,
+  saveProjectTimeEntry,
+  WITHOUT_OFFER_ASSIGNMENT,
+} from "@/lib/time/project-time-entry-service";
 
 const JARVIS_TASK_DRAFT_TTL_MS = 15 * 60 * 1000;
 const JARVIS_TASK_DRAFT_MAX_FUTURE_MS = 5 * 365 * 24 * 60 * 60 * 1000;
 const JARVIS_PLANNING_DRAFT_TTL_MS = 15 * 60 * 1000;
 const JARVIS_PLANNING_DRAFT_MAX_FUTURE_MS =
   2 * 365 * 24 * 60 * 60 * 1000;
+const JARVIS_TIME_DRAFT_TTL_MS = 15 * 60 * 1000;
 const JARVIS_WINTER_CALCULATION_DRAFT_TTL_MS = 15 * 60 * 1000;
 const JARVIS_VEHICLE_TRIP_DRAFT_TTL_MS = 15 * 60 * 1000;
 const OPEN_DRAFT_STATES = ["awaiting_input", "awaiting_confirmation"] as const;
@@ -160,6 +171,49 @@ const completePlanningDraftSchema = z
       .strict(),
     overbookingReason: z.string().trim().max(1000).optional(),
     overbookingFingerprint: z.string().trim().max(180).optional(),
+  })
+  .strict();
+
+const timePayloadSchema = z
+  .object({
+    mode: z.enum(["project", "unproductive"]),
+    projectId: z.string().trim().max(120).optional(),
+    unproductiveLabel: z.string().trim().max(240).optional(),
+    employeeId: z.string().trim().max(120).optional(),
+    date: z.string().trim().max(10).optional(),
+    startTime: z.string().trim().max(5).optional(),
+    endTime: z.string().trim().max(5).optional(),
+    pauseMinutes: z.number().int().min(0).max(1440).default(0),
+    comment: z.string().trim().max(2000).optional(),
+    offerId: z.string().trim().max(120).optional(),
+    trade: z.string().trim().max(180).optional(),
+    billingCatalogItemId: z.string().trim().max(120).optional(),
+    completionStatus: z
+      .enum(["", "finished", "interrupted"])
+      .default(""),
+    overtimeApprovalStatus: z
+      .enum(["not_required", "pending", "approved"])
+      .default("not_required"),
+  })
+  .strict();
+
+const completeTimeDraftSchema = timePayloadSchema.extend({
+  revision: z.number().int().min(1),
+});
+
+const timeContextSchema = z
+  .object({
+    projectId: z.string().trim().min(1).max(120).optional(),
+    projectUpdatedAt: z.string().datetime({ offset: true }).optional(),
+    employeeId: z.string().trim().min(1).max(120).optional(),
+    employeeUpdatedAt: z.string().datetime({ offset: true }).optional(),
+    offerId: z.string().trim().min(1).max(120).optional(),
+    offerUpdatedAt: z.string().datetime({ offset: true }).optional(),
+    billingCatalogItemId: z.string().trim().min(1).max(120).optional(),
+    billingCatalogItemUpdatedAt: z
+      .string()
+      .datetime({ offset: true })
+      .optional(),
   })
   .strict();
 
@@ -488,8 +542,9 @@ async function appendAuditEvent(
       id: string;
       entityType?:
         | "task"
-        | "planning"
-        | "winterServiceCalculation"
+         | "planning"
+        | "projectTimeEntry"
+         | "winterServiceCalculation"
         | "vehicleCalculation";
     };
   }
@@ -2115,6 +2170,9 @@ export async function getJarvisActionDraft(
   if (draft?.actionId === "planning.prepare") {
     return getJarvisPlanningDraft(previewId, binding, now);
   }
+  if (draft?.actionId === "time.prepare") {
+    return getJarvisTimeDraft(previewId, binding, now);
+  }
   if (draft?.actionId === "winter-calculation.prepare") {
     return getJarvisWinterCalculationDraft(previewId, binding, now);
   }
@@ -2545,6 +2603,1292 @@ export async function confirmJarvisPlanningDraft(
       error instanceof Error
         ? `Der Planning-Service hat den Termin nicht angelegt: ${error.message}`
         : "Der Planning-Service hat den Termin nicht angelegt.",
+      500
+    );
+  }
+}
+
+type TimePayload = z.infer<typeof timePayloadSchema>;
+type TimeContext = z.infer<typeof timeContextSchema>;
+
+function validateTimeBinding(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+) {
+  const actorIds = getActorIds(binding.profile);
+  if (
+    draft.organizationId !== binding.organizationId ||
+    draft.sessionId !== binding.sessionId ||
+    draft.sessionActorId !== actorIds.sessionActorId ||
+    draft.effectiveActorId !== actorIds.effectiveActorId ||
+    draft.impersonating !== binding.profile.isImpersonating
+  ) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Dieser Zeitentwurf gehört nicht zur aktuellen Organisation, Sitzung oder wirksamen Identität.",
+      403
+    );
+  }
+  if (
+    draft.sessionActorRole !== binding.profile.sessionActor.role ||
+    draft.effectiveActorRole !== binding.profile.effectiveActor.role
+  ) {
+    throw new JarvisActionDraftError(
+      "role_changed",
+      "Die Rolle hat sich seit Erstellung des Zeitentwurfs geändert. Bitte beginne neu.",
+      409
+    );
+  }
+  if (!integrityMatches(draft)) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Der Integritätsnachweis des Zeitentwurfs ist ungültig.",
+      409
+    );
+  }
+  const payload = timePayloadSchema.safeParse(draft.payload);
+  const context = timeContextSchema.safeParse(draft.context);
+  if (
+    draft.actionId !== "time.prepare" ||
+    !payload.success ||
+    !context.success ||
+    hashJson(payload.data) !== draft.payloadHash ||
+    hashJson(context.data) !== draft.contextHash
+  ) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Zeit-Payload oder Fachkontext stimmen nicht mit dem gespeicherten Nachweis überein.",
+      409
+    );
+  }
+  return { payload: payload.data, context: context.data };
+}
+
+async function loadBoundTimeDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const found = await prisma.jarvisActionDraft.findUnique({
+    where: { id: previewId },
+  });
+  if (!found) {
+    throw new JarvisActionDraftError(
+      "not_found",
+      "Der manuelle Zeitentwurf wurde nicht gefunden.",
+      404
+    );
+  }
+  validateTimeBinding(found, binding);
+  const current = await expireDraftIfNeeded(found, now);
+  const parsed = validateTimeBinding(current, binding);
+  return { draft: current, ...parsed };
+}
+
+function normalizeTimeText(value: string) {
+  return value
+    .trim()
+    .toLocaleLowerCase("de-DE")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function timeMinutes(value?: string) {
+  const match = value?.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+}
+
+function isValidDateKey(value?: string) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T12:00:00.000Z`);
+  return (
+    Number.isFinite(date.getTime()) &&
+    date.toISOString().slice(0, 10) === value
+  );
+}
+
+function timeProjectVariant(project?: {
+  projectKind: string | null;
+  recurringBillingMode: string | null;
+} | null): JarvisTimeActionDraftView["editor"]["projectVariant"] {
+  if (!project) return "unproductive";
+  const recurring = normalizeTimeText(project.projectKind ?? "").includes(
+    "dauerlaufer"
+  );
+  if (!recurring) return "single";
+  return project.recurringBillingMode === "hourly"
+    ? "recurring_hourly"
+    : "recurring_flat";
+}
+
+function canonicalizeTimePayload(
+  payload: TimePayload,
+  project?: {
+    projectKind: string | null;
+    recurringBillingMode: string | null;
+  } | null
+): TimePayload {
+  const variant =
+    payload.mode === "unproductive"
+      ? "unproductive"
+      : timeProjectVariant(project);
+  return timePayloadSchema.parse({
+    mode: payload.mode,
+    ...(payload.mode === "project" && payload.projectId
+      ? { projectId: payload.projectId }
+      : {}),
+    ...(payload.mode === "unproductive" && payload.unproductiveLabel
+      ? { unproductiveLabel: payload.unproductiveLabel }
+      : {}),
+    ...(payload.employeeId ? { employeeId: payload.employeeId } : {}),
+    ...(payload.date ? { date: payload.date } : {}),
+    ...(payload.startTime ? { startTime: payload.startTime } : {}),
+    ...(payload.endTime ? { endTime: payload.endTime } : {}),
+    pauseMinutes: payload.pauseMinutes,
+    ...(payload.comment ? { comment: payload.comment } : {}),
+    ...(variant === "single" && payload.offerId
+      ? { offerId: payload.offerId }
+      : {}),
+    ...(variant === "recurring_hourly" && payload.trade
+      ? { trade: payload.trade }
+      : {}),
+    ...(variant === "recurring_hourly" && payload.billingCatalogItemId
+      ? { billingCatalogItemId: payload.billingCatalogItemId }
+      : {}),
+    completionStatus:
+      payload.mode === "project" ? payload.completionStatus : "",
+    overtimeApprovalStatus: payload.overtimeApprovalStatus,
+  });
+}
+
+function timeCheck(
+  code: string,
+  label: string,
+  status: JarvisTimeActionDraftCheck["status"],
+  detail: string
+): JarvisTimeActionDraftCheck {
+  return { code, label, status, detail };
+}
+
+function mayManageTimeForOthers(binding: JarvisTaskDraftBinding) {
+  return (
+    canManageProjectTimeEntries(binding.profile.sessionActor) &&
+    canManageProjectTimeEntries(binding.profile.effectiveActor)
+  );
+}
+
+function mayApproveTimeOvertime(binding: JarvisTaskDraftBinding) {
+  return (
+    canApproveProjectOvertime(binding.profile.sessionActor) &&
+    canApproveProjectOvertime(binding.profile.effectiveActor)
+  );
+}
+
+async function getTimeDraftResources(
+  payload: TimePayload,
+  binding: JarvisTaskDraftBinding
+) {
+  const effectiveActorId = getActorIds(binding.profile).effectiveActorId;
+  const manageOthers = mayManageTimeForOthers(binding);
+  const [employees, projects, catalogItems] = await Promise.all([
+    prisma.user.findMany({
+      where: {
+        organizationId: binding.organizationId,
+        isActive: true,
+        ...(manageOthers ? {} : { id: effectiveActorId }),
+      },
+      orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        updatedAt: true,
+      },
+    }),
+    prisma.workPilotProject.findMany({
+      where: {
+        organizationId: binding.organizationId,
+        status: { notIn: ["Gelöscht", "Gel\u00c3\u00b6scht", "Archiviert"] },
+      },
+      orderBy: [{ projectNumber: "asc" }],
+      take: 1000,
+      select: {
+        id: true,
+        projectNumber: true,
+        title: true,
+        trade: true,
+        projectKind: true,
+        recurringBillingMode: true,
+        updatedAt: true,
+      },
+    }),
+    prisma.catalogItem.findMany({
+      where: {
+        organizationId: binding.organizationId,
+        isActive: true,
+        type: "service",
+        isLaborPosition: true,
+      },
+      orderBy: [{ trade: "asc" }, { name: "asc" }],
+      take: 1000,
+      select: {
+        id: true,
+        number: true,
+        name: true,
+        trade: true,
+        unit: true,
+        salesPrice: true,
+        updatedAt: true,
+      },
+    }),
+  ]);
+  const project =
+    payload.mode === "project" && payload.projectId
+      ? projects.find((entry) => entry.id === payload.projectId)
+      : undefined;
+  const employee = payload.employeeId
+    ? employees.find((entry) => entry.id === payload.employeeId)
+    : undefined;
+  const offers = project
+    ? await prisma.offer.findMany({
+        where: {
+          organizationId: binding.organizationId,
+          projectId: project.id,
+        },
+        orderBy: { updatedAt: "desc" },
+        select: {
+          id: true,
+          offerNumber: true,
+          offerType: true,
+          status: true,
+          updatedAt: true,
+        },
+      })
+    : [];
+  const activeOffers = offers.filter((offer) => {
+    const status = normalizeTimeText(offer.status);
+    return (
+      status !== "entwurf" &&
+      !status.includes("verloren") &&
+      !status.includes("geloscht")
+    );
+  });
+  const offer =
+    payload.offerId && payload.offerId !== WITHOUT_OFFER_ASSIGNMENT
+      ? activeOffers.find((entry) => entry.id === payload.offerId)
+      : undefined;
+  const hourlyItems = catalogItems.filter(
+    (item) =>
+      normalizeTimeText(item.unit ?? "").replace(/\./g, "") === "std" &&
+      Number(item.salesPrice || 0) > 0
+  );
+  const billingItem = payload.billingCatalogItemId
+    ? hourlyItems.find((entry) => entry.id === payload.billingCatalogItemId)
+    : undefined;
+  return {
+    employees,
+    projects,
+    project,
+    employee,
+    activeOffers,
+    offer,
+    hourlyItems,
+    billingItem,
+    manageOthers,
+    effectiveActorId,
+  };
+}
+
+function buildTimeContext(
+  resources: Awaited<ReturnType<typeof getTimeDraftResources>>
+): TimeContext {
+  return {
+    ...(resources.project
+      ? {
+          projectId: resources.project.id,
+          projectUpdatedAt: resources.project.updatedAt.toISOString(),
+        }
+      : {}),
+    ...(resources.employee
+      ? {
+          employeeId: resources.employee.id,
+          employeeUpdatedAt: resources.employee.updatedAt.toISOString(),
+        }
+      : {}),
+    ...(resources.offer
+      ? {
+          offerId: resources.offer.id,
+          offerUpdatedAt: resources.offer.updatedAt.toISOString(),
+        }
+      : {}),
+    ...(resources.billingItem
+      ? {
+          billingCatalogItemId: resources.billingItem.id,
+          billingCatalogItemUpdatedAt:
+            resources.billingItem.updatedAt.toISOString(),
+        }
+      : {}),
+  };
+}
+
+async function evaluateTimeDraft(
+  payload: TimePayload,
+  context: TimeContext,
+  binding: JarvisTaskDraftBinding
+) {
+  const resources = await getTimeDraftResources(payload, binding);
+  const checks: JarvisTimeActionDraftCheck[] = [];
+  const variant =
+    payload.mode === "unproductive"
+      ? "unproductive"
+      : timeProjectVariant(resources.project);
+  const currentContext = buildTimeContext(resources);
+  const contextMatches =
+    canonicalize(currentContext) === canonicalize(context);
+  checks.push(
+    timeCheck(
+      "scope",
+      "Organisation, Sitzung und Rolle",
+      "ok",
+      "Entwurf und wirksame Identität sind serverseitig gebunden."
+    )
+  );
+  const employeeAllowed =
+    Boolean(resources.employee) &&
+    (resources.manageOthers ||
+      resources.employee?.id === resources.effectiveActorId);
+  checks.push(
+    timeCheck(
+      "employee",
+      "Aktiver Mitarbeitender",
+      employeeAllowed ? "ok" : "blocked",
+      employeeAllowed
+        ? `${resources.employee?.firstName} ${resources.employee?.lastName}`.trim()
+        : "Die Person fehlt, ist inaktiv oder darf mit dieser Rollenkombination nicht bebucht werden."
+    )
+  );
+  const projectValid =
+    payload.mode === "unproductive"
+      ? Boolean(payload.unproductiveLabel?.trim())
+      : Boolean(resources.project);
+  checks.push(
+    timeCheck(
+      "work_context",
+      payload.mode === "unproductive"
+        ? "Unproduktive Tätigkeit"
+        : "Projektbezug",
+      projectValid ? "ok" : "blocked",
+      payload.mode === "unproductive"
+        ? payload.unproductiveLabel?.trim() ||
+            "Eine eindeutige Tätigkeitsbezeichnung fehlt."
+        : resources.project
+          ? `${resources.project.projectNumber} · ${resources.project.title}`
+          : "Das Projekt fehlt oder gehört nicht zur Organisation."
+    )
+  );
+  const start = timeMinutes(payload.startTime);
+  const end = timeMinutes(payload.endTime);
+  const durationMinutes =
+    start !== null && end !== null
+      ? end - start - payload.pauseMinutes
+      : 0;
+  const timeValid =
+    isValidDateKey(payload.date) &&
+    start !== null &&
+    end !== null &&
+    durationMinutes > 0;
+  checks.push(
+    timeCheck(
+      "date_time",
+      "Datum, Zeit und Pause",
+      timeValid ? "ok" : "blocked",
+      timeValid
+        ? `${payload.date}, ${payload.startTime}–${payload.endTime} Uhr, ${payload.pauseMinutes} Min. Pause, ${durationMinutes} Min. Arbeitszeit.`
+        : "Datum muss gültig sein; Ende muss nach Beginn liegen und die Pause kleiner als das Zeitfenster sein."
+    )
+  );
+  const offerValid =
+    variant !== "single" ||
+    Boolean(resources.offer) ||
+    (payload.offerId === WITHOUT_OFFER_ASSIGNMENT &&
+      Boolean(payload.comment?.trim()));
+  checks.push(
+    timeCheck(
+      "offer",
+      "Auftragsgrundlage",
+      offerValid ? "ok" : "blocked",
+      variant !== "single"
+        ? "Für diese Projektart ist keine Angebotszuordnung Pflicht."
+        : resources.offer
+          ? `${resources.offer.offerNumber} · ${resources.offer.status}`
+          : payload.offerId === WITHOUT_OFFER_ASSIGNMENT
+            ? payload.comment?.trim()
+              ? "Ohne Angebotszuweisung; die Begründung ist dokumentiert."
+              : "Ohne Angebotszuweisung ist eine Begründung im Kommentar erforderlich."
+            : "Für ein Einmalprojekt muss ein aktives finales Angebot oder bewusst „ohne Angebot“ gewählt werden."
+    )
+  );
+  const billingItemFits =
+    Boolean(resources.billingItem) &&
+    normalizeTimeText(resources.billingItem?.trade ?? "") ===
+      normalizeTimeText(payload.trade ?? "");
+  const billingValid =
+    variant !== "recurring_hourly" ||
+    Boolean(payload.trade?.trim() && billingItemFits);
+  checks.push(
+    timeCheck(
+      "billing",
+      "Gewerk und Abrechnungsleistung",
+      billingValid ? "ok" : "blocked",
+      variant !== "recurring_hourly"
+        ? "Für diese Projektart ist keine Stunden-Abrechnungsleistung Pflicht."
+        : billingItemFits
+          ? `${payload.trade} · ${resources.billingItem?.number} | ${resources.billingItem?.name}`
+          : "Für den Stunden-Dauerläufer fehlen ein Gewerk oder eine aktive, passende Stundenleistung."
+    )
+  );
+  const completionValid =
+    payload.mode === "unproductive" ||
+    payload.completionStatus !== "interrupted" ||
+    Boolean(payload.comment?.trim());
+  checks.push(
+    timeCheck(
+      "completion",
+      "Abschlussstatus",
+      completionValid ? "ok" : "blocked",
+      payload.mode === "unproductive"
+        ? "Für unproduktive Zeit wird kein Projektabschlussstatus gesetzt."
+        : payload.completionStatus === "finished"
+          ? "Arbeit als erledigt gekennzeichnet."
+          : payload.completionStatus === "interrupted"
+            ? completionValid
+              ? "Unterbrechung ist mit Kommentar dokumentiert."
+              : "Eine Unterbrechung benötigt einen Kommentar."
+            : "Kein Abschlussstatus; der Zeiteintrag verändert den Projektstatus nicht."
+    )
+  );
+  const overtimeValid =
+    payload.overtimeApprovalStatus === "not_required" ||
+    mayApproveTimeOvertime(binding);
+  checks.push(
+    timeCheck(
+      "overtime",
+      "Überstundenstatus",
+      overtimeValid ? "ok" : "blocked",
+      overtimeValid
+        ? payload.overtimeApprovalStatus === "approved"
+          ? "Überstunden werden durch die aktuell berechtigte Person freigegeben."
+          : payload.overtimeApprovalStatus === "pending"
+            ? "Überstunden werden als zu prüfen gespeichert."
+            : "Keine Überstundenfreigabe angefordert."
+        : "Diese Rollenkombination darf keinen Überstundenstatus setzen."
+    )
+  );
+  checks.push(
+    timeCheck(
+      "freshness",
+      "Aktueller Fachstand",
+      contextMatches ? "ok" : "blocked",
+      contextMatches
+        ? "Projekt, Person, Angebot und Abrechnungsleistung entsprechen dem zuletzt geprüften Serverstand."
+        : "Mindestens ein gebundener Datensatz wurde verändert. Bitte den Entwurf erneut prüfen."
+    )
+  );
+  return {
+    ...resources,
+    checks,
+    variant,
+    currentContext,
+    durationMinutes,
+    executable: checks.every((check) => check.status !== "blocked"),
+  };
+}
+
+export async function toJarvisTimeActionDraftView(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+): Promise<JarvisTimeActionDraftView> {
+  const { payload, context } = validateTimeBinding(draft, binding);
+  const evaluation = await evaluateTimeDraft(payload, context, binding);
+  const state = draft.state as JarvisTimeActionDraftView["state"];
+  const isOpen =
+    state === "awaiting_input" || state === "awaiting_confirmation";
+  const ready =
+    state === "awaiting_confirmation" && evaluation.executable;
+  const reason: JarvisTimeActionDraftView["confirmation"]["reason"] =
+    state === "expired"
+      ? "expired"
+      : state === "cancelled"
+        ? "cancelled"
+        : state === "executed"
+          ? "executed"
+          : state === "executing"
+            ? "executing"
+            : ready
+              ? "ready"
+              : "missing_fields";
+  const badge: JarvisTimeActionDraftView["badge"] =
+    state === "executed"
+      ? "Gespeichert"
+      : state === "executing"
+        ? "Wird gespeichert"
+        : state === "cancelled"
+          ? "Abgebrochen"
+          : state === "expired"
+            ? "Abgelaufen"
+            : ready
+              ? "Bereit"
+              : "Entwurf";
+  const employeeLabel = evaluation.employee
+    ? `${evaluation.employee.firstName} ${evaluation.employee.lastName}`.trim() ||
+      evaluation.employee.email
+    : "Noch nicht ausgewählt";
+  const fields: JarvisTimeActionDraftView["fields"] = [
+    {
+      label: "Art",
+      value:
+        payload.mode === "project"
+          ? "Manuelle Projektzeit"
+          : "Manuelle unproduktive Zeit",
+    },
+    { label: "Mitarbeitend", value: employeeLabel },
+    {
+      label: "Arbeitsbezug",
+      value:
+        payload.mode === "project"
+          ? evaluation.project
+            ? `${evaluation.project.projectNumber} · ${evaluation.project.title}`
+            : "Noch kein Projekt ausgewählt"
+          : payload.unproductiveLabel || "Noch nicht angegeben",
+    },
+  ];
+  if (isValidDateKey(payload.date) && payload.startTime && payload.endTime) {
+    fields.push({
+      label: "Zeitfenster",
+      value: `${payload.date} · ${payload.startTime}–${payload.endTime} Uhr · ${payload.pauseMinutes} Min. Pause`,
+    });
+  }
+  if (payload.comment) {
+    fields.push({ label: "Kommentar", value: payload.comment });
+  }
+  const trades = Array.from(
+    new Set(
+      evaluation.hourlyItems
+        .map((item) => item.trade?.trim() ?? "")
+        .filter(Boolean)
+    )
+  ).sort((left, right) => left.localeCompare(right, "de"));
+  return {
+    version: 2,
+    previewId: draft.id,
+    actionId: "time.prepare",
+    title: "Manuellen Zeiteintrag vorbereiten",
+    badge,
+    state,
+    revision: draft.revision,
+    expiresAt: draft.expiresAt.toISOString(),
+    fields,
+    missingFields: evaluation.checks
+      .filter((check) => check.status === "blocked")
+      .map((check) => check.label),
+    checks: evaluation.checks,
+    editor: {
+      mode: payload.mode,
+      projectId: payload.projectId ?? "",
+      unproductiveLabel: payload.unproductiveLabel ?? "",
+      employeeId: payload.employeeId ?? "",
+      date: payload.date ?? "",
+      startTime: payload.startTime ?? "",
+      endTime: payload.endTime ?? "",
+      pauseMinutes: payload.pauseMinutes,
+      comment: payload.comment ?? "",
+      offerId: payload.offerId ?? "",
+      trade: payload.trade ?? "",
+      billingCatalogItemId: payload.billingCatalogItemId ?? "",
+      completionStatus: payload.completionStatus,
+      overtimeApprovalStatus: payload.overtimeApprovalStatus,
+      projectVariant: evaluation.variant,
+      employeeOptions: evaluation.employees.map((employee) => ({
+        id: employee.id,
+        label:
+          `${employee.firstName} ${employee.lastName}`.trim() ||
+          employee.email,
+      })),
+      projectOptions: evaluation.projects.map((project) => ({
+        id: project.id,
+        label: `${project.projectNumber} · ${project.title}`,
+      })),
+      offerOptions:
+        evaluation.variant === "single"
+          ? [
+              ...evaluation.activeOffers.map((offer) => ({
+                id: offer.id,
+                label: `${offer.offerNumber} · ${offer.offerType === "addendum" ? "Nachtrag" : "Angebot"} · ${offer.status}`,
+              })),
+              {
+                id: WITHOUT_OFFER_ASSIGNMENT,
+                label: "Ohne Angebotszuweisung",
+              },
+            ]
+          : [],
+      tradeOptions: trades,
+      billingCatalogItemOptions: evaluation.hourlyItems.map((item) => ({
+        id: item.id,
+        label: `${item.number} | ${item.name}`,
+        trade: item.trade ?? "",
+      })),
+      completionStatusOptions:
+        payload.mode === "project"
+          ? [
+              { value: "", label: "Kein Abschlussstatus" },
+              { value: "finished", label: "Arbeit erledigt" },
+              { value: "interrupted", label: "Arbeit unterbrochen" },
+            ]
+          : [{ value: "", label: "Kein Abschlussstatus" }],
+      overtimeApprovalStatusOptions: mayApproveTimeOvertime(binding)
+        ? [
+            { value: "not_required", label: "Nicht erforderlich" },
+            { value: "pending", label: "Zu prüfen" },
+            { value: "approved", label: "Freigegeben" },
+          ]
+        : [{ value: "not_required", label: "Nicht erforderlich" }],
+    },
+    confirmation: { enabled: ready, reason },
+    cancellation: { enabled: isOpen },
+    execution: {
+      enabled: false,
+      reason: state === "executed" ? "finalized" : "requires_confirmation",
+    },
+    ...(state === "executed" &&
+    draft.resultEntityType === "projectTimeEntry" &&
+    draft.resultEntityId
+      ? {
+          result: {
+            entityType: "projectTimeEntry" as const,
+            entityId: draft.resultEntityId,
+            label: "Gespeicherten Zeiteintrag öffnen",
+          },
+        }
+      : {}),
+  };
+}
+
+export async function createPersistedJarvisTimeDraft(input: {
+  organizationId: string;
+  sessionId: string;
+  profile: JarvisAccessProfile;
+  initial?: Partial<TimePayload>;
+  projectId?: string;
+  now?: Date;
+}) {
+  if (!input.sessionId) {
+    throw new JarvisActionDraftError(
+      "session_required",
+      "Für einen bestätigbaren Zeitentwurf ist eine aktuelle Sitzung erforderlich.",
+      401
+    );
+  }
+  if (
+    input.profile.sessionActor.role === Role.GAST ||
+    input.profile.effectiveActor.role === Role.GAST
+  ) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Gäste dürfen keine internen Zeiteinträge vorbereiten.",
+      403
+    );
+  }
+  const now = input.now ?? new Date();
+  const actorIds = getActorIds(input.profile);
+  const requestedPayload = timePayloadSchema.parse({
+    mode: input.initial?.mode ?? (input.projectId ? "project" : "project"),
+    ...(input.projectId ? { projectId: input.projectId } : {}),
+    employeeId: input.initial?.employeeId ?? actorIds.effectiveActorId,
+    pauseMinutes: input.initial?.pauseMinutes ?? 0,
+    completionStatus: input.initial?.completionStatus ?? "",
+    overtimeApprovalStatus:
+      input.initial?.overtimeApprovalStatus ?? "not_required",
+    ...input.initial,
+  });
+  const binding = {
+    organizationId: input.organizationId,
+    sessionId: input.sessionId,
+    profile: input.profile,
+  };
+  const requestedResources = await getTimeDraftResources(
+    requestedPayload,
+    binding
+  );
+  const payload = canonicalizeTimePayload(
+    requestedPayload,
+    requestedResources.project
+  );
+  const resources =
+    payload === requestedPayload
+      ? requestedResources
+      : await getTimeDraftResources(payload, binding);
+  const context = buildTimeContext(resources);
+  const draftData: DraftIntegrityData = {
+    id: randomUUID(),
+    organizationId: input.organizationId,
+    sessionId: input.sessionId,
+    sessionActorId: actorIds.sessionActorId,
+    sessionActorRole: input.profile.sessionActor.role,
+    effectiveActorId: actorIds.effectiveActorId,
+    effectiveActorRole: input.profile.effectiveActor.role,
+    impersonating: input.profile.isImpersonating,
+    actionId: "time.prepare",
+    state: "awaiting_input",
+    revision: 1,
+    payloadHash: hashJson(payload),
+    contextHash: hashJson(context),
+    expiresAt: new Date(now.getTime() + JARVIS_TIME_DRAFT_TTL_MS),
+    confirmedAt: null,
+    cancelledAt: null,
+    executedAt: null,
+    resultEntityType: null,
+    resultEntityId: null,
+    lastErrorCode: null,
+  };
+  const draft = await prisma.$transaction(async (tx) => {
+    const created = await tx.jarvisActionDraft.create({
+      data: {
+        ...draftData,
+        payload: payload as Prisma.InputJsonValue,
+        context: context as Prisma.InputJsonValue,
+        integrityTag: createIntegrityTag(draftData),
+      },
+    });
+    await appendAuditEvent(tx, {
+      draft: created,
+      eventType: "draft_created",
+    });
+    return created;
+  });
+  return toJarvisTimeActionDraftView(draft, {
+    organizationId: input.organizationId,
+    sessionId: input.sessionId,
+    profile: input.profile,
+  });
+}
+
+export async function getJarvisTimeDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const { draft } = await loadBoundTimeDraft(previewId, binding, now);
+  return toJarvisTimeActionDraftView(draft, binding);
+}
+
+export async function completeJarvisTimeDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  rawInput: unknown,
+  now = new Date()
+) {
+  const completed = completeTimeDraftSchema.safeParse(rawInput);
+  if (!completed.success) {
+    throw new JarvisActionDraftError(
+      "invalid_input",
+      "Die Angaben des manuellen Zeiteintrags sind unvollständig oder ungültig.",
+      400
+    );
+  }
+  const loaded = await loadBoundTimeDraft(previewId, binding, now);
+  if (
+    loaded.draft.revision !== completed.data.revision ||
+    !OPEN_DRAFT_STATES.includes(loaded.draft.state as never)
+  ) {
+    throw new JarvisActionDraftError(
+      loaded.draft.state === "expired" ? "expired" : "conflict",
+      "Der Zeitentwurf ist nicht mehr aktuell oder bearbeitbar.",
+      loaded.draft.state === "expired" ? 410 : 409
+    );
+  }
+  for (const value of [
+    completed.data.comment,
+    completed.data.unproductiveLabel,
+  ]) {
+    if (!value) continue;
+    const authorization = authorizeJarvisQuestion(value, binding.profile);
+    if (
+      authorization.reason === "prompt_injection" ||
+      authorization.reason === "secret"
+    ) {
+      throw new JarvisActionDraftError(
+        "invalid_input",
+        "Kommentar oder Tätigkeitsbezeichnung enthalten gesperrte technische Inhalte.",
+        400
+      );
+    }
+  }
+  const { revision: _revision, ...payloadInput } = completed.data;
+  const requestedPayload = timePayloadSchema.parse(payloadInput);
+  const requestedResources = await getTimeDraftResources(
+    requestedPayload,
+    binding
+  );
+  const nextPayload = canonicalizeTimePayload(
+    requestedPayload,
+    requestedResources.project
+  );
+  const resources = await getTimeDraftResources(nextPayload, binding);
+  const nextContext = buildTimeContext(resources);
+  const evaluation = await evaluateTimeDraft(
+    nextPayload,
+    nextContext,
+    binding
+  );
+  const revision = loaded.draft.revision + 1;
+  const nextData: DraftIntegrityData = {
+    ...loaded.draft,
+    state: "awaiting_confirmation",
+    revision,
+    payloadHash: hashJson(nextPayload),
+    contextHash: hashJson(nextContext),
+    lastErrorCode: evaluation.executable ? null : "preflight_blocked",
+  };
+  const updated = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: {
+        id: loaded.draft.id,
+        revision: loaded.draft.revision,
+        state: loaded.draft.state,
+        integrityTag: loaded.draft.integrityTag,
+      },
+      data: {
+        state: "awaiting_confirmation",
+        revision,
+        payload: nextPayload as Prisma.InputJsonValue,
+        context: nextContext as Prisma.InputJsonValue,
+        payloadHash: nextData.payloadHash,
+        contextHash: nextData.contextHash,
+        lastErrorCode: nextData.lastErrorCode,
+        integrityTag: createIntegrityTag(nextData),
+      },
+    });
+    if (changed.count !== 1) {
+      throw new JarvisActionDraftError(
+        "conflict",
+        "Der Zeitentwurf wurde zwischenzeitlich verändert.",
+        409
+      );
+    }
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+      where: { id: loaded.draft.id },
+    });
+    await appendAuditEvent(tx, {
+      draft: current,
+      eventType: "draft_rechecked",
+      reasonCode: evaluation.executable ? "ready" : "preflight_blocked",
+    });
+    return current;
+  });
+  return toJarvisTimeActionDraftView(updated, binding);
+}
+
+export async function cancelJarvisTimeDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  expectedRevision: number,
+  now = new Date()
+) {
+  const { draft } = await loadBoundTimeDraft(previewId, binding, now);
+  if (draft.state === "cancelled") {
+    return toJarvisTimeActionDraftView(draft, binding);
+  }
+  if (
+    !OPEN_DRAFT_STATES.includes(draft.state as never) ||
+    draft.revision !== expectedRevision
+  ) {
+    throw new JarvisActionDraftError(
+      draft.state === "expired" ? "expired" : "conflict",
+      "Der Zeitentwurf ist nicht mehr abbrechbar oder wurde verändert.",
+      draft.state === "expired" ? 410 : 409
+    );
+  }
+  const nextData: DraftIntegrityData = {
+    ...draft,
+    state: "cancelled",
+    cancelledAt: now,
+    lastErrorCode: null,
+  };
+  const cancelled = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: {
+        id: draft.id,
+        revision: draft.revision,
+        state: draft.state,
+        integrityTag: draft.integrityTag,
+      },
+      data: {
+        state: "cancelled",
+        cancelledAt: now,
+        lastErrorCode: null,
+        integrityTag: createIntegrityTag(nextData),
+      },
+    });
+    if (changed.count !== 1) {
+      throw new JarvisActionDraftError(
+        "conflict",
+        "Der Zeitentwurf wurde bereits verändert.",
+        409
+      );
+    }
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+      where: { id: draft.id },
+    });
+    await appendAuditEvent(tx, {
+      draft: current,
+      eventType: "draft_cancelled",
+      reasonCode: "user_cancelled",
+    });
+    return current;
+  });
+  return toJarvisTimeActionDraftView(cancelled, binding);
+}
+
+async function verifyTimeContext(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  context: TimeContext
+) {
+  const [project, employee, offer, item] = await Promise.all([
+    context.projectId
+      ? tx.workPilotProject.findFirst({
+          where: { id: context.projectId, organizationId },
+          select: { updatedAt: true },
+        })
+      : null,
+    context.employeeId
+      ? tx.user.findFirst({
+          where: {
+            id: context.employeeId,
+            organizationId,
+            isActive: true,
+          },
+          select: { updatedAt: true },
+        })
+      : null,
+    context.offerId
+      ? tx.offer.findFirst({
+          where: { id: context.offerId, organizationId },
+          select: { updatedAt: true },
+        })
+      : null,
+    context.billingCatalogItemId
+      ? tx.catalogItem.findFirst({
+          where: { id: context.billingCatalogItemId, organizationId },
+          select: { updatedAt: true },
+        })
+      : null,
+  ]);
+  const matches =
+    (!context.projectId ||
+      project?.updatedAt.toISOString() === context.projectUpdatedAt) &&
+    (!context.employeeId ||
+      employee?.updatedAt.toISOString() === context.employeeUpdatedAt) &&
+    (!context.offerId ||
+      offer?.updatedAt.toISOString() === context.offerUpdatedAt) &&
+    (!context.billingCatalogItemId ||
+      item?.updatedAt.toISOString() ===
+        context.billingCatalogItemUpdatedAt);
+  if (!matches) {
+    throw new JarvisActionDraftError(
+      "stale_context",
+      "Projekt, Person, Angebot oder Abrechnungsleistung wurden seit der Prüfung verändert.",
+      409
+    );
+  }
+}
+
+async function finalizeExistingTimeDraft(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding,
+  now: Date
+) {
+  return prisma.$transaction(
+    async (tx) => {
+      const current = await tx.jarvisActionDraft.findUnique({
+        where: { id: draft.id },
+      });
+      if (!current) {
+        throw new JarvisActionDraftError(
+          "not_found",
+          "Der Zeitentwurf wurde nicht gefunden.",
+          404
+        );
+      }
+      validateTimeBinding(current, binding);
+      if (current.state === "executed") return current;
+      if (current.state !== "executing") {
+        throw new JarvisActionDraftError(
+          "conflict",
+          "Der Zeitentwurf befindet sich nicht mehr in Ausführung.",
+          409
+        );
+      }
+      const existing = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "ProjectTimeEntry"
+        WHERE "id" = ${current.id}
+          AND "organizationId" = ${binding.organizationId}
+        LIMIT 1
+      `;
+      if (!existing[0]) {
+        throw new JarvisActionDraftError(
+          "conflict",
+          "Der Zeiteintrag wird bereits verarbeitet. Es wurde kein zweiter Schreibvorgang gestartet.",
+          409
+        );
+      }
+      const executedData: DraftIntegrityData = {
+        ...current,
+        state: "executed",
+        executedAt: now,
+        resultEntityType: "projectTimeEntry",
+        resultEntityId: current.id,
+        lastErrorCode: null,
+      };
+      const executed = await tx.jarvisActionDraft.update({
+        where: { id: current.id },
+        data: {
+          state: "executed",
+          executedAt: now,
+          resultEntityType: "projectTimeEntry",
+          resultEntityId: current.id,
+          lastErrorCode: null,
+          integrityTag: createIntegrityTag(executedData),
+        },
+      });
+      await appendAuditEvent(tx, {
+        draft: executed,
+        eventType: "draft_executed",
+        reasonCode: "existing_result_recovered",
+        result: { id: current.id, entityType: "projectTimeEntry" },
+      });
+      return executed;
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+  );
+}
+
+export async function confirmJarvisTimeDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  expectedRevision: number,
+  now = new Date()
+) {
+  await ensureProjectTimeEntryTable();
+  const loaded = await loadBoundTimeDraft(previewId, binding, now);
+  if (loaded.draft.state === "executed") {
+    return toJarvisTimeActionDraftView(loaded.draft, binding);
+  }
+  if (loaded.draft.state === "executing") {
+    const finalized = await finalizeExistingTimeDraft(
+      loaded.draft,
+      binding,
+      now
+    );
+    return toJarvisTimeActionDraftView(finalized, binding);
+  }
+  if (
+    loaded.draft.state !== "awaiting_confirmation" ||
+    loaded.draft.revision !== expectedRevision
+  ) {
+    throw new JarvisActionDraftError(
+      loaded.draft.state === "expired" ? "expired" : "conflict",
+      "Der Zeitentwurf ist nicht mehr aktuell oder nicht bestätigbar.",
+      loaded.draft.state === "expired" ? 410 : 409
+    );
+  }
+  const evaluation = await evaluateTimeDraft(
+    loaded.payload,
+    loaded.context,
+    binding
+  );
+  if (!evaluation.executable) {
+    if (
+      evaluation.checks.some(
+        (check) => check.code === "freshness" && check.status === "blocked"
+      )
+    ) {
+      throw new JarvisActionDraftError(
+        "stale_context",
+        "Projekt, Person, Angebot oder Abrechnungsleistung wurden seit der letzten Prüfung verändert.",
+        409
+      );
+    }
+    throw new JarvisActionDraftError(
+      "invalid_input",
+      "Die fachliche Vorprüfung blockiert das Speichern. Bitte bearbeite und prüfe den Entwurf erneut.",
+      409
+    );
+  }
+  try {
+    const executed = await prisma.$transaction(
+      async (tx) => {
+        const current = await tx.jarvisActionDraft.findUnique({
+          where: { id: loaded.draft.id },
+        });
+        if (!current) {
+          throw new JarvisActionDraftError(
+            "not_found",
+            "Der Zeitentwurf wurde nicht gefunden.",
+            404
+          );
+        }
+        const parsed = validateTimeBinding(current, binding);
+        if (current.state === "executed") return current;
+        if (
+          current.state !== "awaiting_confirmation" ||
+          current.revision !== expectedRevision ||
+          current.expiresAt.getTime() <= now.getTime()
+        ) {
+          throw new JarvisActionDraftError(
+            current.expiresAt.getTime() <= now.getTime()
+              ? "expired"
+              : "conflict",
+            "Der Zeitentwurf ist nicht mehr ausführbar.",
+            current.expiresAt.getTime() <= now.getTime() ? 410 : 409
+          );
+        }
+        await verifyTimeContext(tx, binding.organizationId, parsed.context);
+        const [actor, users] = await Promise.all([
+          tx.user.findFirst({
+            where: {
+              id: current.effectiveActorId,
+              organizationId: binding.organizationId,
+              isActive: true,
+            },
+          }),
+          tx.user.findMany({
+            where: { organizationId: binding.organizationId, isActive: true },
+          }),
+        ]);
+        if (!actor) {
+          throw new JarvisActionDraftError(
+            "role_changed",
+            "Der wirksame Benutzer ist nicht mehr aktiv.",
+            409
+          );
+        }
+        const confirmedData: DraftIntegrityData = {
+          ...current,
+          state: "executing",
+          confirmedAt: now,
+          lastErrorCode: null,
+        };
+        const claimed = await tx.jarvisActionDraft.updateMany({
+          where: {
+            id: current.id,
+            revision: current.revision,
+            state: "awaiting_confirmation",
+            integrityTag: current.integrityTag,
+          },
+          data: {
+            state: "executing",
+            confirmedAt: now,
+            lastErrorCode: null,
+            integrityTag: createIntegrityTag(confirmedData),
+          },
+        });
+        if (claimed.count !== 1) {
+          throw new JarvisActionDraftError(
+            "conflict",
+            "Der Zeiteintrag wird bereits gespeichert.",
+            409
+          );
+        }
+        try {
+          await saveProjectTimeEntry({
+            db: tx,
+            organizationId: binding.organizationId,
+            actor,
+            users,
+            createOnly: true,
+            createLogbookEntry: true,
+            payload: {
+              id: current.id,
+              mode: parsed.payload.mode,
+              projectId: parsed.payload.projectId,
+              unproductiveLabel: parsed.payload.unproductiveLabel,
+              userId: parsed.payload.employeeId,
+              entrySource: "manual",
+              date: parsed.payload.date,
+              startTime: parsed.payload.startTime,
+              endTime: parsed.payload.endTime,
+              pauseMs: parsed.payload.pauseMinutes * 60_000,
+              comment: parsed.payload.comment,
+              offerId: parsed.payload.offerId,
+              trade: parsed.payload.trade,
+              billingCatalogItemId:
+                parsed.payload.billingCatalogItemId,
+              completionStatus: parsed.payload.completionStatus,
+              overtimeApprovalStatus:
+                parsed.payload.overtimeApprovalStatus,
+            },
+          });
+        } catch (error) {
+          if (error instanceof ProjectTimeEntryServiceError) {
+            throw new JarvisActionDraftError(
+              error.code === "forbidden"
+                ? "role_changed"
+                : error.code === "conflict"
+                  ? "conflict"
+                  : "invalid_input",
+              error.message,
+              error.status === 404 ? 409 : error.status
+            );
+          }
+          throw error;
+        }
+        const executedAt = new Date();
+        const executedData: DraftIntegrityData = {
+          ...confirmedData,
+          state: "executed",
+          executedAt,
+          resultEntityType: "projectTimeEntry",
+          resultEntityId: current.id,
+        };
+        const finalDraft = await tx.jarvisActionDraft.update({
+          where: { id: current.id },
+          data: {
+            state: "executed",
+            executedAt,
+            resultEntityType: "projectTimeEntry",
+            resultEntityId: current.id,
+            integrityTag: createIntegrityTag(executedData),
+          },
+        });
+        await appendAuditEvent(tx, {
+          draft: finalDraft,
+          eventType: "draft_confirmed_and_executed",
+          result: {
+            id: current.id,
+            entityType: "projectTimeEntry",
+          },
+        });
+        return finalDraft;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
+    return toJarvisTimeActionDraftView(executed, binding);
+  } catch (error) {
+    if (
+      error instanceof JarvisActionDraftError &&
+      error.code === "conflict"
+    ) {
+      const latest = await loadBoundTimeDraft(previewId, binding, now);
+      if (latest.draft.state === "executed") {
+        return toJarvisTimeActionDraftView(latest.draft, binding);
+      }
+    }
+    if (error instanceof JarvisActionDraftError) throw error;
+    throw new JarvisActionDraftError(
+      "execution_failed",
+      "Der manuelle Zeiteintrag wurde nicht gespeichert. Der Entwurf bleibt erhalten.",
       500
     );
   }

@@ -12,6 +12,9 @@ const mocks = vi.hoisted(() => ({
   completeJarvisPlanningDraft: vi.fn(),
   cancelJarvisPlanningDraft: vi.fn(),
   confirmJarvisPlanningDraft: vi.fn(),
+  completeJarvisTimeDraft: vi.fn(),
+  cancelJarvisTimeDraft: vi.fn(),
+  confirmJarvisTimeDraft: vi.fn(),
   completeJarvisWinterCalculationDraft: vi.fn(),
   cancelJarvisWinterCalculationDraft: vi.fn(),
   confirmJarvisWinterCalculationDraft: vi.fn(),
@@ -39,6 +42,9 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
   completeJarvisPlanningDraft: mocks.completeJarvisPlanningDraft,
   cancelJarvisPlanningDraft: mocks.cancelJarvisPlanningDraft,
   confirmJarvisPlanningDraft: mocks.confirmJarvisPlanningDraft,
+  completeJarvisTimeDraft: mocks.completeJarvisTimeDraft,
+  cancelJarvisTimeDraft: mocks.cancelJarvisTimeDraft,
+  confirmJarvisTimeDraft: mocks.confirmJarvisTimeDraft,
   completeJarvisWinterCalculationDraft:
     mocks.completeJarvisWinterCalculationDraft,
   cancelJarvisWinterCalculationDraft:
@@ -151,6 +157,25 @@ describe("JARVIS action-draft API", () => {
     );
     mocks.executePlanningBatch.mockResolvedValue({
       batchId: "planning-preview-1",
+    });
+    mocks.completeJarvisTimeDraft.mockResolvedValue({
+      ...draft,
+      actionId: "time.prepare",
+    });
+    mocks.cancelJarvisTimeDraft.mockResolvedValue({
+      ...draft,
+      actionId: "time.prepare",
+      state: "cancelled",
+    });
+    mocks.confirmJarvisTimeDraft.mockResolvedValue({
+      ...draft,
+      actionId: "time.prepare",
+      state: "executed",
+      result: {
+        entityType: "projectTimeEntry",
+        entityId: "time-entry-1",
+        label: "Öffnen",
+      },
     });
     mocks.completeJarvisWinterCalculationDraft.mockResolvedValue({
       ...draft,
@@ -409,6 +434,110 @@ describe("JARVIS action-draft API", () => {
         }),
       })
     );
+  });
+
+  it("routes time edits, cancellation and confirmation with an allowlisted payload", async () => {
+    const headers = {
+      "x-jarvis-action": "jarvis-action-draft-v2",
+      origin: "https://workpilot.example",
+    };
+    const edited = (await PATCH(
+      request(
+        "PATCH",
+        {
+          actorId: "user-1",
+          actionId: "time.prepare",
+          revision: 1,
+          mode: "project",
+          projectId: "project-1",
+          unproductiveLabel: "",
+          employeeId: "employee-1",
+          date: "2026-07-31",
+          startTime: "08:00",
+          endTime: "10:00",
+          pauseMinutes: 15,
+          comment: "Fenster gereinigt",
+          offerId: "offer-1",
+          trade: "",
+          billingCatalogItemId: "",
+          completionStatus: "finished",
+          overtimeApprovalStatus: "approved",
+          organizationId: "evil-org",
+          durationMs: 1,
+          entrySource: "stamped",
+        },
+        headers
+      ) as never,
+      context
+    ))!;
+
+    expect(edited.status).toBe(200);
+    expect(mocks.completeJarvisTimeDraft).toHaveBeenCalledWith(
+      "preview-1",
+      expect.objectContaining({
+        organizationId: "org-1",
+        sessionId: "session-1",
+      }),
+      {
+        revision: 1,
+        mode: "project",
+        projectId: "project-1",
+        unproductiveLabel: "",
+        employeeId: "employee-1",
+        date: "2026-07-31",
+        startTime: "08:00",
+        endTime: "10:00",
+        pauseMinutes: 15,
+        comment: "Fenster gereinigt",
+        offerId: "offer-1",
+        trade: "",
+        billingCatalogItemId: "",
+        completionStatus: "finished",
+        overtimeApprovalStatus: "approved",
+      }
+    );
+    expect(mocks.completeJarvisTaskDraft).not.toHaveBeenCalled();
+
+    const cancelled = (await POST(
+      request(
+        "POST",
+        {
+          actorId: "user-1",
+          actionId: "time.prepare",
+          command: "cancel",
+          revision: 2,
+        },
+        headers
+      ) as never,
+      context
+    ))!;
+    expect(cancelled.status).toBe(200);
+    expect(mocks.cancelJarvisTimeDraft).toHaveBeenCalledWith(
+      "preview-1",
+      expect.anything(),
+      2
+    );
+
+    const confirmed = (await POST(
+      request(
+        "POST",
+        {
+          actorId: "user-1",
+          actionId: "time.prepare",
+          command: "confirm",
+          revision: 2,
+        },
+        headers
+      ) as never,
+      context
+    ))!;
+    expect(confirmed.status).toBe(200);
+    expect(mocks.confirmJarvisTimeDraft).toHaveBeenCalledWith(
+      "preview-1",
+      expect.anything(),
+      2
+    );
+    expect(mocks.executePlanningBatch).not.toHaveBeenCalled();
   });
 
   it("routes winter calculation edits and explicit confirmation only to the winter draft store", async () => {

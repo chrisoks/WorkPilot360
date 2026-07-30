@@ -72,6 +72,7 @@ const files = {
   heroProjectsRoute: read("src/app/api/hero/projects/route.ts"),
   projectLogbookRoute: read("src/app/api/project-logbook-entries/route.ts"),
   projectTimeEntriesRoute: read("src/app/api/project-time-entries/route.ts"),
+  projectTimeEntryService: read("src/lib/time/project-time-entry-service.ts"),
   smokeDetectorReportsRoute: read("src/app/api/smoke-detector-reports/route.ts"),
   tasksRoute: read("src/app/api/tasks/route.ts"),
   onlineRequestSubmitRoute: read("src/app/api/public/online-requests/submit/route.ts"),
@@ -460,8 +461,14 @@ const required = [
     min: 3,
   },
   {
-    label: "Zeiteintraege speichern Rechnungsverknuepfung",
+    label: "Zeiteintraege delegieren an den gemeinsamen Schreibservice",
     file: "projectTimeEntriesRoute",
+    needle: "saveProjectTimeEntry",
+    min: 2,
+  },
+  {
+    label: "Gemeinsamer Zeiteintragsservice bewahrt Rechnungsverknuepfung",
+    file: "projectTimeEntryService",
     needle: "invoiceId",
     min: 4,
   },

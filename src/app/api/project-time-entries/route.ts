@@ -4,7 +4,12 @@ import { Role } from "@prisma/client";
 import { getDemoContext } from "@/lib/demo/context";
 import { prisma } from "@/lib/db/client";
 import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/actor";
-import { canApproveProjectOvertime, canManageProjectTimeEntries, canViewInternalCostData } from "@/lib/permissions";
+import { canManageProjectTimeEntries, canViewInternalCostData } from "@/lib/permissions";
+import {
+  ensureProjectTimeEntryTable,
+  ProjectTimeEntryServiceError,
+  saveProjectTimeEntry,
+} from "@/lib/time/project-time-entry-service";
 
 type DemoUser = {
   id: string;
@@ -55,77 +60,6 @@ type ProjectTimeEntryRow = {
   createdAt: Date;
 };
 
-async function ensureProjectTimeEntryTable() {
-  await prisma.$executeRaw`
-    CREATE TABLE IF NOT EXISTS "ProjectTimeEntry" (
-      "id" TEXT NOT NULL PRIMARY KEY,
-      "organizationId" TEXT NOT NULL,
-      "mode" TEXT NOT NULL DEFAULT 'project',
-      "projectId" TEXT NOT NULL,
-      "projectLabel" TEXT,
-      "trade" TEXT,
-      "planningEntryId" TEXT,
-      "planningBillingGroupId" TEXT,
-      "offerId" TEXT,
-      "offerLabel" TEXT,
-      "billingCatalogItemId" TEXT,
-      "billingCatalogItemLabel" TEXT,
-      "userId" TEXT,
-      "employee" TEXT,
-      "entrySource" TEXT NOT NULL DEFAULT 'stamped',
-      "date" TEXT NOT NULL,
-      "startTime" TEXT NOT NULL,
-      "endTime" TEXT NOT NULL,
-      "durationMs" BIGINT NOT NULL DEFAULT 0,
-      "pauseMs" BIGINT NOT NULL DEFAULT 0,
-      "laborCostRateSnapshot" DOUBLE PRECISION NOT NULL DEFAULT 0,
-      "laborCostSnapshot" DOUBLE PRECISION NOT NULL DEFAULT 0,
-      "costSnapshotAt" TIMESTAMP(3),
-      "comment" TEXT,
-      "invoiceId" TEXT,
-      "invoiceNumber" TEXT,
-      "invoicedAt" TIMESTAMP(3),
-      "completionStatus" TEXT,
-      "overtimeApprovalStatus" TEXT NOT NULL DEFAULT 'not_required',
-      "overtimeApprovedByUserId" TEXT,
-      "overtimeApprovedByName" TEXT,
-      "overtimeApprovedAt" TIMESTAMP(3),
-      "editHistory" JSONB NOT NULL DEFAULT '[]'::jsonb,
-      "deletedAt" TIMESTAMP(3),
-      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
-  `;
-
-  await prisma.$executeRaw`
-    ALTER TABLE "ProjectTimeEntry"
-    ADD COLUMN IF NOT EXISTS "mode" TEXT NOT NULL DEFAULT 'project',
-    ADD COLUMN IF NOT EXISTS "userId" TEXT,
-    ADD COLUMN IF NOT EXISTS "trade" TEXT,
-    ADD COLUMN IF NOT EXISTS "planningEntryId" TEXT,
-    ADD COLUMN IF NOT EXISTS "planningBillingGroupId" TEXT,
-    ADD COLUMN IF NOT EXISTS "offerId" TEXT,
-    ADD COLUMN IF NOT EXISTS "offerLabel" TEXT,
-    ADD COLUMN IF NOT EXISTS "billingCatalogItemId" TEXT,
-    ADD COLUMN IF NOT EXISTS "billingCatalogItemLabel" TEXT,
-    ADD COLUMN IF NOT EXISTS "entrySource" TEXT NOT NULL DEFAULT 'stamped',
-    ADD COLUMN IF NOT EXISTS "invoiceId" TEXT,
-    ADD COLUMN IF NOT EXISTS "invoiceNumber" TEXT,
-    ADD COLUMN IF NOT EXISTS "invoicedAt" TIMESTAMP(3),
-    ADD COLUMN IF NOT EXISTS "laborCostRateSnapshot" DOUBLE PRECISION NOT NULL DEFAULT 0,
-    ADD COLUMN IF NOT EXISTS "laborCostSnapshot" DOUBLE PRECISION NOT NULL DEFAULT 0,
-    ADD COLUMN IF NOT EXISTS "costSnapshotAt" TIMESTAMP(3),
-    ADD COLUMN IF NOT EXISTS "marketingContentItemId" TEXT,
-    ADD COLUMN IF NOT EXISTS "marketingContentType" TEXT,
-    ADD COLUMN IF NOT EXISTS "completionStatus" TEXT,
-    ADD COLUMN IF NOT EXISTS "overtimeApprovalStatus" TEXT NOT NULL DEFAULT 'not_required',
-    ADD COLUMN IF NOT EXISTS "overtimeApprovedByUserId" TEXT,
-    ADD COLUMN IF NOT EXISTS "overtimeApprovedByName" TEXT,
-    ADD COLUMN IF NOT EXISTS "overtimeApprovedAt" TIMESTAMP(3),
-    ADD COLUMN IF NOT EXISTS "editHistory" JSONB NOT NULL DEFAULT '[]'::jsonb,
-    ADD COLUMN IF NOT EXISTS "deletedAt" TIMESTAMP(3)
-  `;
-}
-
 function cleanString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -134,128 +68,10 @@ function getUserName(user: Pick<DemoUser, "firstName" | "lastName" | "email">) {
   return `${user.firstName} ${user.lastName}`.trim() || user.email;
 }
 
-function getRequestUser(users: DemoUser[], userId: unknown) {
-  if (typeof userId !== "string" || !userId.trim()) {
-    return null;
-  }
-
-  return users.find((user) => user.id === userId.trim() && user.isActive) ?? null;
-}
-
 function formatDateKeyDisplay(value: string) {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!match) return value || "-";
   return `${match[3]}.${match[2]}.${match[1]}`;
-}
-
-function parseMilliseconds(value: unknown) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : 0;
-}
-
-function roundMoney(value: number) {
-  return Math.round((Number(value) || 0) * 100) / 100;
-}
-
-function normalizeTradeName(value: string) {
-  return value.trim().toLowerCase();
-}
-
-function normalizeUnit(value: string | null) {
-  return cleanString(value).toLowerCase().replace(/\./g, "");
-}
-
-async function isHourlyRecurringProject(organizationId: string, projectId: string) {
-  if (!projectId || projectId === "__unproductive__") return false;
-
-  const rows = await prisma.$queryRaw<Array<{ projectKind: string | null; recurringBillingMode: string | null }>>`
-    SELECT "projectKind", "recurringBillingMode"
-    FROM "WorkPilotProject"
-    WHERE "organizationId" = ${organizationId}
-      AND "id" = ${projectId}
-    LIMIT 1
-  `;
-  const project = rows[0];
-  if (!project) return false;
-
-  return (
-    project.recurringBillingMode === "hourly" &&
-    (project.projectKind ?? "").toLowerCase().includes("dauerl")
-  );
-}
-
-async function validateHourlyBillingCatalogItem(
-  organizationId: string,
-  input: { trade: string; billingCatalogItemId: string; billingCatalogItemLabel: string }
-) {
-  if (!input.billingCatalogItemId || !input.billingCatalogItemLabel) {
-    return "Bitte fuer diese Stundenabrechnung eine Abrechnungsleistung auswaehlen.";
-  }
-
-  const rows = await prisma.$queryRaw<
-    Array<{
-      id: string;
-      number: string | null;
-      name: string | null;
-      type: string | null;
-      unit: string | null;
-      trade: string | null;
-      salesPrice: number | null;
-      isActive: boolean | null;
-      isLaborPosition: boolean | null;
-    }>
-  >`
-    SELECT id, number, name, type, unit, trade, "salesPrice", "isActive", "isLaborPosition"
-    FROM "CatalogItem"
-    WHERE "organizationId" = ${organizationId}
-      AND id = ${input.billingCatalogItemId}
-    LIMIT 1
-  `;
-  const item = rows[0];
-
-  if (!item) return "Die ausgewaehlte Abrechnungsleistung wurde nicht gefunden.";
-  if (!item.isActive || item.type !== "service" || !item.isLaborPosition) {
-    return "Die ausgewaehlte Abrechnungsleistung ist keine aktive Arbeitsposition.";
-  }
-  if (normalizeUnit(item.unit) !== "std" || Number(item.salesPrice || 0) <= 0) {
-    return "Die ausgewaehlte Abrechnungsleistung ist keine abrechenbare Stundenleistung.";
-  }
-  if (normalizeTradeName(item.trade || "") !== normalizeTradeName(input.trade)) {
-    return "Die ausgewaehlte Abrechnungsleistung passt nicht zum Gewerk.";
-  }
-
-  const expectedLabel = [item.number, item.name].filter(Boolean).join(" | ");
-  if (expectedLabel && expectedLabel !== input.billingCatalogItemLabel) {
-    return "Die Bezeichnung der Abrechnungsleistung passt nicht zur hinterlegten Leistung.";
-  }
-
-  return "";
-}
-
-async function getEmployeeHourlyCostRateSnapshot(organizationId: string, userId: string) {
-  if (!userId) return 0;
-  const rows = await prisma.$queryRaw<Array<{
-    monthlySalary: number;
-    fullCostFactor: number;
-    annualHours: number;
-    vacationDays: number;
-    trainingDays: number;
-    sickDays: number;
-    hoursPerDay: number;
-  }>>`
-    SELECT "monthlySalary", "fullCostFactor", "annualHours", "vacationDays", "trainingDays", "sickDays", "hoursPerDay"
-    FROM "EmployeeCostCalculation"
-    WHERE "organizationId" = ${organizationId} AND "userId" = ${userId}
-    LIMIT 1
-  `;
-  const cost = rows[0];
-  if (!cost) return 0;
-  const deductionHours =
-    (Number(cost.vacationDays || 0) + Number(cost.trainingDays || 0) + Number(cost.sickDays || 0)) *
-    Number(cost.hoursPerDay || 0);
-  const sellableAnnualHours = Math.max(0, Number(cost.annualHours || 0) - deductionHours);
-  if (sellableAnnualHours <= 0) return 0;
-  return roundMoney((Number(cost.monthlySalary || 0) * 12 * Number(cost.fullCostFactor || 0)) / sellableAnnualHours);
 }
 
 function normalizeDateKeyValue(value: string) {
@@ -398,261 +214,29 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const mode = cleanString(body.mode) === "unproductive" ? "unproductive" : "project";
-  const projectId = cleanString(body.projectId) || (mode === "unproductive" ? "__unproductive__" : "");
-  const durationMs = parseMilliseconds(body.durationMs);
-
-  if (!projectId) {
-    return NextResponse.json({ error: "Bitte ein Projekt angeben." }, { status: 400 });
-  }
-
-  if (!durationMs) {
-    return NextResponse.json({ error: "Bitte eine Laufzeit angeben." }, { status: 400 });
-  }
-
   const { organization, users } = await getDemoContext();
   await ensureProjectTimeEntryTable();
-
   const actorResult = await getSessionBoundActor(req, users, body.actorUserId);
   if (!actorResult.ok) {
     return sessionBoundActorResponse(actorResult);
   }
-  const actor = actorResult.actor;
-  const includeInternalCosts = canViewInternalCostData(actor);
-
-  const actorName = getUserName(actor);
-  const actorCanManageProjectTime = canManageProjectTimeEntries(actor);
-  const actorCanApproveOvertime = canApproveProjectOvertime(actor);
-  const id = cleanString(body.id) || randomUUID();
-  const projectLabel = cleanString(body.projectLabel);
-  const trade = mode === "project" ? cleanString(body.trade) : "";
-  const planningEntryId = cleanString(body.planningEntryId);
-  const planningBillingGroupId = cleanString(body.planningBillingGroupId);
-  const offerId = mode === "project" ? cleanString(body.offerId) : "";
-  let offerLabel = mode === "project" ? cleanString(body.offerLabel) : "";
-  const billingCatalogItemId = cleanString(body.billingCatalogItemId);
-  const billingCatalogItemLabel = cleanString(body.billingCatalogItemLabel);
-  const userId = cleanString(body.userId);
-  const targetUser = getRequestUser(users, userId);
-  if (!targetUser) {
-    return NextResponse.json({ error: "Bitte einen aktiven Mitarbeiter zuweisen." }, { status: 400 });
-  }
-
-  const employee = getUserName(targetUser);
-  const entrySource = cleanString(body.entrySource) === "manual" ? "manual" : "stamped";
-  const date = normalizeDateKeyValue(cleanString(body.date));
-  const startTime = cleanString(body.startTime);
-  const endTime = cleanString(body.endTime);
-  const pauseMs = parseMilliseconds(body.pauseMs);
-  const comment = cleanString(body.comment);
-  const marketingContentItemId = cleanString(body.marketingContentItemId);
-  const marketingContentType = cleanString(body.marketingContentType);
-  const completionStatus =
-    mode === "project" && ["finished", "interrupted"].includes(cleanString(body.completionStatus))
-      ? cleanString(body.completionStatus)
-      : "";
-  const requestedOvertimeApprovalStatus = ["pending", "approved"].includes(cleanString(body.overtimeApprovalStatus))
-    ? cleanString(body.overtimeApprovalStatus)
-    : "not_required";
-  const incomingEditHistory: unknown[] = Array.isArray(body.editHistory) ? body.editHistory : [];
-
-  const existingRows = await prisma.$queryRaw<ProjectTimeEntryRow[]>`
-    SELECT *
-    FROM "ProjectTimeEntry"
-    WHERE "id" = ${id}
-      AND "organizationId" = ${organization.id}
-    LIMIT 1
-  `;
-  const existingEntry = existingRows[0] ?? null;
-
-  if (!actorCanManageProjectTime) {
-    const isOwnManualEntry =
-      targetUser.id === actor.id && entrySource === "manual" && (!existingEntry || existingEntry.entrySource === "manual");
-    if (!isOwnManualEntry) {
-      return NextResponse.json(
-        { error: "Du darfst nur eigene manuelle Zeiteintraege anlegen oder bearbeiten." },
-        { status: 403 }
-      );
-    }
-  }
-
-  const overtimeApprovalStatus = actorCanApproveOvertime
-    ? requestedOvertimeApprovalStatus
-    : existingEntry?.overtimeApprovalStatus ?? "not_required";
-  const overtimeApprovedByUserId =
-    actorCanApproveOvertime && overtimeApprovalStatus === "approved"
-      ? actor.id
-      : existingEntry?.overtimeApprovedByUserId ?? "";
-  const overtimeApprovedByName =
-    actorCanApproveOvertime && overtimeApprovalStatus === "approved"
-      ? actorName
-      : existingEntry?.overtimeApprovedByName ?? "";
-  const overtimeApprovedAt =
-    actorCanApproveOvertime && overtimeApprovalStatus === "approved"
-      ? cleanString(body.overtimeApprovedAt) || new Date().toISOString()
-      : existingEntry?.overtimeApprovedAt?.toISOString() ?? "";
-  const editHistory = incomingEditHistory.map((entry, index) =>
-    index === 0 && entry && typeof entry === "object"
-      ? { ...(entry as Record<string, unknown>), actorUserId: actor.id, actorName }
-      : entry
-  );
-  const laborCostRateSnapshot = await getEmployeeHourlyCostRateSnapshot(organization.id, targetUser.id);
-  const laborCostSnapshot = roundMoney((durationMs / 3_600_000) * laborCostRateSnapshot);
-
-  if (!date || !startTime || !endTime) {
-    return NextResponse.json({ error: "Datum und Uhrzeit fehlen." }, { status: 400 });
-  }
-
-  const projectRequiresHourlyBillingContext =
-    mode === "project" && (await isHourlyRecurringProject(organization.id, projectId));
-
-  if (projectRequiresHourlyBillingContext && !trade) {
-    return NextResponse.json(
-      { error: "Bitte fuer diese Stundenabrechnung ein Gewerk auswaehlen." },
-      { status: 400 }
-    );
-  }
-
-  if (projectRequiresHourlyBillingContext && (!billingCatalogItemId || !billingCatalogItemLabel)) {
-    return NextResponse.json(
-      { error: "Bitte fuer diese Stundenabrechnung eine Abrechnungsleistung auswaehlen." },
-      { status: 400 }
-    );
-  }
-
-  if (projectRequiresHourlyBillingContext) {
-    const billingCatalogItemError = await validateHourlyBillingCatalogItem(organization.id, {
-      trade,
-      billingCatalogItemId,
-      billingCatalogItemLabel,
+  try {
+    const saved = await saveProjectTimeEntry({
+      organizationId: organization.id,
+      actor: actorResult.actor,
+      users,
+      payload: body,
     });
-    if (billingCatalogItemError) {
-      return NextResponse.json({ error: billingCatalogItemError }, { status: 400 });
-    }
-  }
-
-  if (offerId) {
-    const offerRows = await prisma.$queryRaw<Array<{ offerNumber: string; status: string }>>`
-      SELECT "offerNumber", "status"
-      FROM "Offer"
-      WHERE "organizationId" = ${organization.id}
-        AND "id" = ${offerId}
-        AND "projectId" = ${projectId}
-      LIMIT 1
-    `;
-    const linkedOffer = offerRows[0];
-    if (!linkedOffer) {
+    return NextResponse.json(saved, { status: 201 });
+  } catch (error) {
+    if (error instanceof ProjectTimeEntryServiceError) {
       return NextResponse.json(
-        { error: "Das ausgewählte Angebot gehört nicht zu diesem Projekt." },
-        { status: 400 }
+        { error: error.message, code: error.code },
+        { status: error.status }
       );
     }
-    offerLabel = `${linkedOffer.offerNumber} · ${linkedOffer.status}`;
+    throw error;
   }
-
-  const rows = await prisma.$queryRaw<ProjectTimeEntryRow[]>`
-    INSERT INTO "ProjectTimeEntry" (
-      "id",
-      "organizationId",
-      "mode",
-      "projectId",
-      "projectLabel",
-      "trade",
-      "planningEntryId",
-      "planningBillingGroupId",
-      "offerId",
-      "offerLabel",
-      "billingCatalogItemId",
-      "billingCatalogItemLabel",
-      "userId",
-      "employee",
-      "entrySource",
-      "date",
-      "startTime",
-      "endTime",
-      "durationMs",
-      "pauseMs",
-      "laborCostRateSnapshot",
-      "laborCostSnapshot",
-      "costSnapshotAt",
-      "comment",
-      "marketingContentItemId",
-      "marketingContentType",
-      "completionStatus",
-      "overtimeApprovalStatus",
-      "overtimeApprovedByUserId",
-      "overtimeApprovedByName",
-      "overtimeApprovedAt",
-      "editHistory"
-    )
-    VALUES (
-      ${id},
-      ${organization.id},
-      ${mode},
-      ${projectId},
-      ${projectLabel || null},
-      ${trade || null},
-      ${planningEntryId || null},
-      ${planningBillingGroupId || null},
-      ${offerId || null},
-      ${offerLabel || null},
-      ${billingCatalogItemId || null},
-      ${billingCatalogItemLabel || null},
-      ${targetUser.id},
-      ${employee || null},
-      ${entrySource},
-      ${date},
-      ${startTime},
-      ${endTime},
-      ${durationMs},
-      ${pauseMs},
-      ${laborCostRateSnapshot},
-      ${laborCostSnapshot},
-      CURRENT_TIMESTAMP,
-      ${comment || null},
-      ${marketingContentItemId || null},
-      ${marketingContentType || null},
-      ${completionStatus || null},
-      ${overtimeApprovalStatus},
-      ${overtimeApprovedByUserId || null},
-      ${overtimeApprovedByName || null},
-      ${overtimeApprovedAt ? new Date(overtimeApprovedAt) : null},
-      CAST(${JSON.stringify(editHistory)} AS jsonb)
-    )
-    ON CONFLICT ("id") DO UPDATE SET
-      "mode" = EXCLUDED."mode",
-      "projectLabel" = EXCLUDED."projectLabel",
-      "trade" = EXCLUDED."trade",
-      "planningEntryId" = EXCLUDED."planningEntryId",
-      "planningBillingGroupId" = EXCLUDED."planningBillingGroupId",
-      "offerId" = EXCLUDED."offerId",
-      "offerLabel" = EXCLUDED."offerLabel",
-      "billingCatalogItemId" = EXCLUDED."billingCatalogItemId",
-      "billingCatalogItemLabel" = EXCLUDED."billingCatalogItemLabel",
-      "userId" = EXCLUDED."userId",
-      "employee" = EXCLUDED."employee",
-      "entrySource" = EXCLUDED."entrySource",
-      "date" = EXCLUDED."date",
-      "startTime" = EXCLUDED."startTime",
-      "endTime" = EXCLUDED."endTime",
-      "durationMs" = EXCLUDED."durationMs",
-      "pauseMs" = EXCLUDED."pauseMs",
-      "laborCostRateSnapshot" = EXCLUDED."laborCostRateSnapshot",
-      "laborCostSnapshot" = EXCLUDED."laborCostSnapshot",
-      "costSnapshotAt" = EXCLUDED."costSnapshotAt",
-      "comment" = EXCLUDED."comment",
-      "marketingContentItemId" = EXCLUDED."marketingContentItemId",
-      "marketingContentType" = EXCLUDED."marketingContentType",
-      "completionStatus" = EXCLUDED."completionStatus",
-      "overtimeApprovalStatus" = EXCLUDED."overtimeApprovalStatus",
-      "overtimeApprovedByUserId" = EXCLUDED."overtimeApprovedByUserId",
-      "overtimeApprovedByName" = EXCLUDED."overtimeApprovedByName",
-      "overtimeApprovedAt" = EXCLUDED."overtimeApprovedAt",
-      "editHistory" = EXCLUDED."editHistory"
-    RETURNING *
-  `;
-
-  return NextResponse.json(formatEntry(rows[0], { includeInternalCosts }), { status: 201 });
 }
 
 export async function DELETE(req: Request) {

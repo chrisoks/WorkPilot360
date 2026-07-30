@@ -31,7 +31,7 @@ describe("JARVIS action registry", () => {
     expect(decision.requiresConfirmation).toBe(true);
   });
 
-  it("makes only safe read and preparation actions executable for employees", () => {
+  it("exposes the released, service-guarded action-center slices to employees", () => {
     const profile = createJarvisAccessProfile({
       id: "employee",
       role: Role.MITARBEITER,
@@ -49,7 +49,41 @@ describe("JARVIS action registry", () => {
       "task.read",
       "winter-calculation.prepare",
       "vehicle-trip-calculation.prepare",
+      "task.prepare",
+      "task.create",
+      "planning.prepare",
+      "planning.create",
+      "time.prepare",
+      "time.create",
     ]);
+  });
+
+  it("separates own manual time creation from managing another employee", () => {
+    const employeeProfile = createJarvisAccessProfile({
+      id: "employee",
+      role: Role.MITARBEITER,
+    });
+    const leaderProfile = createJarvisAccessProfile({
+      id: "leader",
+      role: Role.FUEHRUNGSKRAFT,
+    });
+
+    expect(getJarvisActionDecision("time.prepare", employeeProfile)).toMatchObject({
+      executable: true,
+      reason: "allowed",
+    });
+    expect(getJarvisActionDecision("time.create", employeeProfile)).toMatchObject({
+      executable: true,
+      requiresConfirmation: true,
+    });
+    expect(getJarvisActionDecision("time.manage", employeeProfile)).toMatchObject({
+      executable: false,
+      reason: "role",
+    });
+    expect(getJarvisActionDecision("time.manage", leaderProfile)).toMatchObject({
+      executable: true,
+      requiresConfirmation: true,
+    });
   });
 
   it("lets internal employees calculate winter service but keeps project persistence role-bound", () => {

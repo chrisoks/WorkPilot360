@@ -1,5 +1,27 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS manuelle Zeiterfassung 2026-07-30:
+  Der dritte produktive Action-Center-Vertikalschnitt bereitet natürliche
+  Wünsche für manuelle Projektzeit, unproduktive Zeit und rückwirkend
+  nachzutragende Stempelungen als persistenten, 15 Minuten gültigen Entwurf
+  vor. Die sichtbare Maske erfasst Mitarbeitenden, Projekt oder unproduktive
+  Tätigkeit, Datum, Beginn, Ende, Pause, Kommentar, Abschluss- und
+  Überstundenstatus. Einmalprojekte verlangen ein aktives finales Angebot
+  oder eine begründete Buchung ohne Angebotszuweisung; Stunden-Dauerläufer
+  verlangen Gewerk plus aktive positive Stundenleistung desselben Gewerks;
+  Monatspauschalen bleiben frei von künstlichen Angebotsfeldern. Mitarbeitende
+  dürfen nur eigene explizit manuelle Einträge anlegen, berechtigte Rollen
+  auch Einträge für andere. Normale manuelle Maske und JARVIS schreiben über
+  `src/lib/time/project-time-entry-service.ts`; dieser berechnet die Dauer
+  aus Zeitfenster minus Pause, lädt alle Fachobjekte organisationsgebunden neu
+  und blockiert auch fremdmandantlich belegte Ausführungs-IDs. Bestätigung
+  bindet Organisation, Sitzung, beide Rollen, Impersonation, Revision, TTL,
+  Integrität und Fachstand. Zeitdatensatz, deduplizierter Projektlogbuchbeleg,
+  Entwurfsstatus und Audit entstehen gemeinsam in einer serialisierbaren
+  Transaktion; Doppelklick und Replay bleiben exactly-once. Starten, Pausieren,
+  Fortsetzen und Stoppen einer persönlichen Live-Stempelung ist ausdrücklich
+  nicht Teil dieses Schnitts.
+
 - Persönlicher Servicezugang und späteres Kundenportal 2026-07-30:
   Das öffentliche OK-immocare-Anfrageformular bleibt ohne vorgeschaltete
   Auswahl unmittelbar nutzbar. In der Kopfzeile ergänzt ein eigenständiger

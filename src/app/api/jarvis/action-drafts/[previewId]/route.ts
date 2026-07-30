@@ -4,14 +4,17 @@ import { getDemoContext } from "@/lib/demo/context";
 import {
   cancelJarvisPlanningDraft,
   cancelJarvisTaskDraft,
+  cancelJarvisTimeDraft,
   cancelJarvisVehicleTripCalculationDraft,
   cancelJarvisWinterCalculationDraft,
   completeJarvisPlanningDraft,
   completeJarvisTaskDraft,
+  completeJarvisTimeDraft,
   completeJarvisVehicleTripCalculationDraft,
   completeJarvisWinterCalculationDraft,
   confirmJarvisPlanningDraft,
   confirmJarvisTaskDraft,
+  confirmJarvisTimeDraft,
   confirmJarvisVehicleTripCalculationDraft,
   confirmJarvisWinterCalculationDraft,
   getJarvisActionDraft,
@@ -150,6 +153,7 @@ export async function PATCH(
   if ("response" in resolved) return resolved.response;
   try {
     const isPlanning = body.actionId === "planning.prepare";
+    const isTime = body.actionId === "time.prepare";
     const isWinterCalculation =
       body.actionId === "winter-calculation.prepare";
     const isVehicleTripCalculation =
@@ -178,6 +182,28 @@ export async function PATCH(
             note: body.note,
           }
         )
+      : isTime
+        ? await completeJarvisTimeDraft(
+            previewId,
+            resolved.binding,
+            {
+              revision: body.revision,
+              mode: body.mode,
+              projectId: body.projectId,
+              unproductiveLabel: body.unproductiveLabel,
+              employeeId: body.employeeId,
+              date: body.date,
+              startTime: body.startTime,
+              endTime: body.endTime,
+              pauseMinutes: body.pauseMinutes,
+              comment: body.comment,
+              offerId: body.offerId,
+              trade: body.trade,
+              billingCatalogItemId: body.billingCatalogItemId,
+              completionStatus: body.completionStatus,
+              overtimeApprovalStatus: body.overtimeApprovalStatus,
+            }
+          )
       : isPlanning
         ? await completeJarvisPlanningDraft(
           previewId,
@@ -214,6 +240,8 @@ export async function PATCH(
           ? "Die Fahrt wurde mit den aktuellen Fahrzeugwerten und der ausgewählten Kraftstoffpreisquelle neu berechnet. Prüfe Selbstkosten, Verkauf, Gewinn, Aufschlag und Marge; gespeichert wird erst nach deiner ausdrücklichen Bestätigung."
           : isWinterCalculation
           ? "Die Winterdienst-Kalkulation wurde mit der zentralen WorkPilot-Rechenlogik neu berechnet. Prüfe alle Varianten; nur ein freigegebener und ausdrücklich bestätigter Projektbezug darf dauerhaft gespeichert werden."
+          : isTime
+          ? "Der Zeitentwurf wurde mit den aktuellen Mitarbeiter-, Projekt-, Angebots- und Leistungsdaten erneut geprüft. Erst deine bewusste Bestätigung darf ihn speichern."
           : isPlanning
           ? "Der Terminentwurf wurde erneut fachlich geprüft. Nur wenn keine Prüfung blockiert, kannst du die Anlage bewusst bestätigen."
           : "Der Entwurf ist vollständig. Prüfe die Angaben und bestätige die Anlage bewusst.",
@@ -244,6 +272,7 @@ export async function POST(
 
   try {
     const isPlanning = body.actionId === "planning.prepare";
+    const isTime = body.actionId === "time.prepare";
     const isWinterCalculation =
       body.actionId === "winter-calculation.prepare";
     const isVehicleTripCalculation =
@@ -261,6 +290,12 @@ export async function POST(
             resolved.binding,
             body.revision
           )
+        : isTime
+          ? await cancelJarvisTimeDraft(
+              previewId,
+              resolved.binding,
+              body.revision
+            )
         : isPlanning
           ? await cancelJarvisPlanningDraft(
             previewId,
@@ -277,6 +312,8 @@ export async function POST(
           ? "Der Fahrtenentwurf wurde abgebrochen. Es wurde keine Fahrtenkalkulation gespeichert."
           : isWinterCalculation
           ? "Der Kalkulationsentwurf wurde abgebrochen. Es wurde keine Winterdienst-Kalkulation gespeichert."
+          : isTime
+          ? "Der Zeitentwurf wurde abgebrochen. Es wurde kein Zeiteintrag angelegt."
           : isPlanning
           ? "Der Terminentwurf wurde abgebrochen. Es wurden keine Planungsdaten angelegt."
           : "Der Aufgabenentwurf wurde abgebrochen. Es wurden keine Aufgabendaten angelegt.",
@@ -304,6 +341,12 @@ export async function POST(
           resolved.binding,
           body.revision
         )
+      : isTime
+        ? await confirmJarvisTimeDraft(
+            previewId,
+            resolved.binding,
+            body.revision
+          )
       : isPlanning
         ? await confirmJarvisPlanningDraft(
           previewId,
@@ -340,6 +383,8 @@ export async function POST(
             ? "Die Fahrtenkalkulation wurde nach deiner Bestätigung genau einmal als unveränderlicher Snapshot gespeichert."
             : isWinterCalculation
             ? "Die Winterdienst-Kalkulation wurde nach deiner Bestätigung genau einmal als unveränderliche Version gespeichert."
+            : isTime
+            ? "Der manuelle Zeiteintrag wurde nach deiner Bestätigung genau einmal gespeichert."
             : isPlanning
             ? "Der Termin wurde nach deiner Bestätigung über den Planning-Service genau einmal angelegt."
             : "Die Aufgabe wurde nach deiner Bestätigung genau einmal angelegt."
@@ -347,6 +392,8 @@ export async function POST(
             ? "Der Fahrtenentwurf wurde nicht gespeichert."
             : isWinterCalculation
             ? "Der Kalkulationsentwurf wurde nicht gespeichert."
+            : isTime
+            ? "Der Zeitentwurf wurde nicht ausgeführt."
             : isPlanning
             ? "Der Terminentwurf wurde nicht ausgeführt."
             : "Der Aufgabenentwurf wurde nicht ausgeführt.",

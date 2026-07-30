@@ -138,8 +138,24 @@ Aktionen werden getrennt über das Action Center abgesichert:
 - Fahrzeugstammdatenänderungen gehören nicht zu diesem Kalkulationsschnitt.
   Vermietungs-, Mietpreis-, Vertrags- und Rückgabeaktionen bleiben
   `limited/needs_review` und für JARVIS fail-closed.
-- Manuelle Zeiterfassung bleibt auf der typisierten Vorschaugrundlage und ist
-  noch kein produktiver Schreib-Vertikalschnitt.
+- Manuelle Zeiterfassung: Natürliche Wünsche wie `Zeiteintrag erfassen`,
+  `Projektzeit buchen` oder `Stempelung nachtragen` öffnen einen persistenten
+  Entwurf. Die Maske unterscheidet Projektzeit und unproduktive Zeit, eigene
+  Einträge und rollenberechtigte Einträge für andere sowie Einmalprojekt,
+  Stunden-Dauerläufer und Monatspauschale. Datum, Beginn, Ende, Pause,
+  Kommentar, Abschluss- und Überstundenstatus werden sichtbar geprüft.
+  Einmalprojekte verlangen ein aktives finales Angebot oder eine ausdrücklich
+  begründete Buchung ohne Angebotszuweisung. Stunden-Dauerläufer verlangen
+  Gewerk und eine aktive, preislich belegte Stundenleistung desselben Gewerks;
+  Monatspauschalen benötigen keinen künstlichen Angebots- oder
+  Leistungskontext. Normale manuelle Maske und JARVIS verwenden
+  `src/lib/time/project-time-entry-service.ts` als gemeinsame serverseitige
+  Schreib- und Validierungsquelle. Bestätigung lädt Organisation, Rolle,
+  Person, Projekt, Angebot und Abrechnungsleistung neu, schreibt Zeit und
+  JARVIS-Logbuchnachweis in einer serialisierbaren Transaktion und schützt
+  Revision, Ablauf, Abbruch, Doppelklick und Replay. Persönliches Starten,
+  Pausieren, Fortsetzen und Stoppen einer laufenden Stempelung bleibt bewusst
+  eine direkte Benutzeraktion außerhalb dieses Vertikalschnitts.
 
 Ein JARVIS-Entwurf darf weder Organisation, Projektart, Projektstand,
 Mitarbeiterzugehörigkeit noch Kontingent aus seinem eigenen Payload bestimmen.

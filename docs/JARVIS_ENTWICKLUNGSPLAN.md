@@ -1816,8 +1816,37 @@ allein deployed; `kliniknavigator` blieb mit PID 242528 unangetastet.
 
 Produktive Terminanlage und projektartgerechte JARVIS-Masken sind damit
 fachlich, technisch und sicherheitlich freigegeben.
-Manuelle Zeitentwürfe besitzen bis zu einem späteren Nachweis weiterhin nur
-die typisierte Vorschaugrundlage (`preview_only`).
+
+Der dritte vollständige Action-Center-Vertikalschnitt ist die manuelle
+Zeiterfassung. Eine natürlich formulierte Erfassung oder rückwirkend
+nachzutragende Stempelung erzeugt einen 15 Minuten gültigen, persistenten
+Entwurf; Starten, Pausieren, Fortsetzen und Stoppen einer laufenden
+persönlichen Stempelung bleiben ausdrücklich außerhalb dieses Schritts.
+Projektzeit und unproduktive Zeit, eigener Mitarbeitender und rollenberechtigte
+Erfassung für andere, Datum, Beginn, Ende, Pause, Kommentar, Abschlussstatus
+und Überstundenstatus werden serverseitig geprüft. Die Arbeitsdauer wird
+ausschließlich aus dem bestätigten Zeitfenster abzüglich Pause berechnet.
+
+Die fachliche Maske folgt dem tatsächlichen Projekt: Einmalprojekte verlangen
+ein aktives finales Angebot oder eine bewusst begründete Erfassung ohne
+Angebotszuweisung. Stunden-Dauerläufer verlangen Gewerk und eine aktive,
+positive, planungsrelevante Stundenleistung desselben Gewerks.
+Monatspauschalen benötigen keinen erfundenen Angebots- oder Leistungskontext.
+Irrelevante, manipulativ mitgesendete Felder werden vor der Bestätigung
+kanonisch entfernt. Mitarbeitende dürfen ausschließlich eigene explizit
+manuelle Zeiten erzeugen; die bestehende WorkPilot-Berechtigung entscheidet
+über Einträge für andere und Überstundenfreigaben.
+
+Normale manuelle Zeitmaske und JARVIS delegieren an denselben zentralen
+`project-time-entry-service`. Er lädt Person, Projekt, finales Angebot,
+Abrechnungsleistung und Kostenbasis organisationsgebunden neu, schützt
+fremdmandantlich gebundene Ausführungs-IDs und bewahrt den bestehenden
+Stempelungsweg. Die Bestätigung prüft Sitzung, Organisationsbindung,
+Sitzungs-/Effektivrolle, Impersonation, Revision, TTL, Integrität und den
+aktuellen Fachstand erneut. Zeitdatensatz, genau ein deduplizierter
+Projektlogbuchnachweis, Entwurfsstatus und Audit werden in derselben
+serialisierbaren Transaktion gespeichert. Doppelklick und Replay liefern den
+bereits erzeugten Datensatz zurück.
 
 Für alle weiteren Action-Center-Schritte gilt verbindlich: Die Formulierung
 `noch nicht freigegeben` ersetzt keine Entwicklung. Jede gesperrte Fähigkeit
@@ -1829,7 +1858,8 @@ wird als eine der folgenden Klassen geführt:
 2. Der JARVIS-Weg ist begonnen, aber fachlich unvollständig. Dann bleibt er
    fail-closed und die fehlenden Masken, Pflichtfelder und Prüfungen sind der
    konkrete nächste Entwicklungsschritt. Die Terminmasken sind seit
-   30.07.2026 nicht mehr in dieser Klasse; manuelle Zeitentwürfe bleiben dort.
+   30.07.2026 nicht mehr in dieser Klasse; die manuelle Zeiterfassung ist
+   ebenfalls als vollständiger Vertikalschnitt umgesetzt.
 3. Die Aktion ist wegen hoher rechtlicher, finanzieller, personeller oder
    irreversibler Wirkung bewusst gesperrt. Eine spätere Freigabe benötigt
    einen eigenen Beschluss und den vollständigen Sicherheitsnachweis; ein
@@ -1846,7 +1876,8 @@ Freigabekriterium ausweisen.
 
 - Aufgaben und Nachfassaufgaben,
 - Termine und Terminwünsche,
-- manuelle Zeiteinträge,
+- manuelle Zeiteinträge (produktiver Vertikalschnitt; laufende persönliche
+  Stempelsteuerung bleibt bewusst separat),
 - Kalkulations-Rechner dialoggeführt bedienen, Ergebnisse erklären und
   kontrolliert als unveränderliche Version speichern,
 - Logbuch- und Kommentaraktionen,

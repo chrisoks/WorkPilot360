@@ -214,7 +214,7 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     risk: "prepare",
     confirmation: "preview",
     dataClasses: ["internal"],
-    implementation: "planned",
+    implementation: "available",
     canUse: isActiveInternalUser,
   },
   {
@@ -224,7 +224,7 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     risk: "write",
     confirmation: "confirm",
     dataClasses: ["internal"],
-    implementation: "planned",
+    implementation: "available",
     canUse: isActiveInternalUser,
   },
   {
@@ -244,7 +244,7 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     risk: "prepare",
     confirmation: "preview",
     dataClasses: ["internal"],
-    implementation: "planned",
+    implementation: "available",
     canUse: isActiveInternalUser,
   },
   {
@@ -254,7 +254,7 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     risk: "write",
     confirmation: "confirm",
     dataClasses: ["internal"],
-    implementation: "planned",
+    implementation: "available",
     canUse: isActiveInternalUser,
   },
   {
@@ -264,7 +264,17 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     risk: "prepare",
     confirmation: "preview",
     dataClasses: ["internal"],
-    implementation: "planned",
+    implementation: "available",
+    canUse: isActiveInternalUser,
+  },
+  {
+    id: "time.create",
+    title: "Eigenen manuellen Zeiteintrag speichern",
+    category: "time",
+    risk: "write",
+    confirmation: "confirm",
+    dataClasses: ["internal"],
+    implementation: "available",
     canUse: isActiveInternalUser,
   },
   {
@@ -274,7 +284,7 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     risk: "write",
     confirmation: "confirm",
     dataClasses: ["internal"],
-    implementation: "planned",
+    implementation: "available",
     canUse: canManageProjectTimeEntries,
   },
   {

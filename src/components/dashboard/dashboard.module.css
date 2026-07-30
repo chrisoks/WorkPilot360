@@ -7257,7 +7257,10 @@
 }
 
 .jarvisActionDraftEditor label {
+  color: #526a72;
   display: grid;
+  font-size: 0.68rem;
+  font-weight: 800;
   gap: 4px;
 }
 
@@ -7283,6 +7286,30 @@
 
 .jarvisActionDraftEditor textarea {
   resize: vertical;
+}
+
+.jarvisTimeDraftEditor {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.jarvisTimeDraftWideField {
+  grid-column: 1 / -1;
+}
+
+.jarvisTimeDraftEditor input,
+.jarvisTimeDraftEditor select,
+.jarvisTimeDraftEditor textarea {
+  font-weight: 400;
+}
+
+@media (max-width: 560px) {
+  .jarvisTimeDraftEditor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .jarvisTimeDraftWideField {
+    grid-column: auto;
+  }
 }
 
 .jarvisActionDraftEditor input:focus-visible,
