@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   resolveJarvisSalesAnalysisRequest: vi.fn(),
   resolveJarvisReadRequest: vi.fn(),
   resolveJarvisSystemHelp: vi.fn(),
+  resolveJarvisDirectNavigationHelp: vi.fn(),
   resolveJarvisSystemHelpTopic: vi.fn(),
   findJarvisExactHelpTopicId: vi.fn(),
   classifyJarvisIntentWithAi: vi.fn(),
@@ -55,6 +56,8 @@ vi.mock("@/lib/auth/actor", () => ({
 vi.mock("@/lib/jarvis/knowledge", () => ({
   sanitizeJarvisSurfaceContext: mocks.sanitizeJarvisSurfaceContext,
   resolveJarvisSystemHelp: mocks.resolveJarvisSystemHelp,
+  resolveJarvisDirectNavigationHelp:
+    mocks.resolveJarvisDirectNavigationHelp,
   resolveJarvisSystemHelpTopic: mocks.resolveJarvisSystemHelpTopic,
   findJarvisExactHelpTopicId: mocks.findJarvisExactHelpTopicId,
 }));
@@ -315,6 +318,7 @@ describe("POST /api/jarvis/chat", () => {
     mocks.resolveJarvisReadRequest.mockResolvedValue(undefined);
     mocks.classifyJarvisIntentWithAi.mockResolvedValue(undefined);
     mocks.findJarvisExactHelpTopicId.mockReturnValue(undefined);
+    mocks.resolveJarvisDirectNavigationHelp.mockReturnValue(undefined);
     mocks.resolveJarvisSystemHelp.mockReturnValue({
       type: "answer",
       message: "Systemhilfe",
@@ -549,7 +553,7 @@ describe("POST /api/jarvis/chat", () => {
       mocks.resolveJarvisSalesAnalysisIntent.mockReturnValue(
         message.includes("Zusatzverkäufe")
       );
-      mocks.resolveJarvisSystemHelp.mockReturnValue({
+      mocks.resolveJarvisDirectNavigationHelp.mockReturnValue({
         type: "answer",
         topicId,
         message: "Den Bereich findest du in der Hauptnavigation.",
@@ -567,6 +571,10 @@ describe("POST /api/jarvis/chat", () => {
 
       expect(payload).toMatchObject({ type: "answer", topicId });
       expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+      expect(mocks.resolveJarvisDirectNavigationHelp).toHaveBeenCalledWith(
+        message,
+        { profile: true }
+      );
       expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
       expect(mocks.resolveJarvisSalesAnalysisRequest).not.toHaveBeenCalled();
     }

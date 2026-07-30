@@ -721,6 +721,38 @@ function getSystemMapHelp(
   };
 }
 
+export function resolveJarvisDirectNavigationHelp(
+  question: string,
+  accessProfile?: JarvisAccessProfile
+): JarvisHelpResult | undefined {
+  const normalized = normalize(question);
+  if (
+    !/^(?:wo\s+(?:ist|sind|liegt|liegen|befindet|befinden)\b|wo\s+(?:finde|sehe)\s+ich\b|wie\s+(?:komme|gelange)\s+ich\b)/.test(
+      normalized
+    )
+  ) {
+    return undefined;
+  }
+  const areaDefinition = findJarvisSystemAreas(
+    question,
+    accessProfile,
+    1
+  )[0]?.area;
+  if (
+    !areaDefinition ||
+    areaDefinition.kind !== "module" ||
+    !normalized.includes(normalize(areaDefinition.label))
+  ) {
+    return undefined;
+  }
+  return {
+    type: "answer",
+    topicId: `systemMap.${areaDefinition.id}`,
+    message: getSystemAreaMessage(areaDefinition),
+    navigation: areaDefinition.target,
+  };
+}
+
 function getTimeEntryAnswer(question: string, context: JarvisSurfaceContext): JarvisHelpResult {
   const normalized = normalize(question);
   const isOneTime =

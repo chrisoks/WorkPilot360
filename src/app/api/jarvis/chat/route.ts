@@ -4,6 +4,7 @@ import { getSessionBoundActor, sessionBoundActorResponse } from "@/lib/auth/acto
 import { getDemoContext } from "@/lib/demo/context";
 import {
   findJarvisExactHelpTopicId,
+  resolveJarvisDirectNavigationHelp,
   resolveJarvisSystemHelp,
   resolveJarvisSystemHelpTopic,
   sanitizeJarvisSurfaceContext,
@@ -455,15 +456,6 @@ function looksLikeDeterministicHelpRequest(question: string) {
   );
 }
 
-function looksLikeDirectNavigationRequest(question: string) {
-  const value = normalizeJarvisIntentText(question);
-  return (
-    /^(?:wo\s+(?:ist|sind|liegt|liegen|befindet|befinden)\b|wo\s+(?:finde|sehe)\s+ich\b|wie\s+(?:komme|gelange)\s+ich\b)/.test(
-      value
-    )
-  );
-}
-
 function buildAiIntentClarification(
   classification: JarvisAiIntentClassification,
   context: ReturnType<typeof sanitizeJarvisSurfaceContext>
@@ -713,6 +705,13 @@ export async function POST(req: Request) {
       message: getJarvisAuthorizationRefusalMessage(authorization, message),
     });
   }
+  const directNavigationHelp = resolveJarvisDirectNavigationHelp(
+    message,
+    accessProfile
+  );
+  if (directNavigationHelp) {
+    return respond(directNavigationHelp, "system");
+  }
   if (accessPolicyResponse) {
     return respond(accessPolicyResponse);
   }
@@ -720,16 +719,6 @@ export async function POST(req: Request) {
     resolveExplicitSafetyPolicyQuestion(message);
   if (explicitSafetyPolicyResponse) {
     return respond(explicitSafetyPolicyResponse);
-  }
-  if (looksLikeDirectNavigationRequest(message)) {
-    const navigationHelp = resolveJarvisSystemHelp(
-      message,
-      context,
-      accessProfile
-    );
-    if (navigationHelp.type === "answer" && navigationHelp.navigation) {
-      return respond(navigationHelp, "system");
-    }
   }
   const projectReviewInventoryIntent =
     resolveJarvisProjectReviewInventoryIntent(message);

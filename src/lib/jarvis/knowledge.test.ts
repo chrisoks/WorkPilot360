@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  resolveJarvisDirectNavigationHelp,
   resolveJarvisSystemHelp,
   sanitizeJarvisSurfaceContext,
 } from "@/lib/jarvis/knowledge";
@@ -348,6 +349,25 @@ describe("JARVIS system help", () => {
       type: "answer",
       topicId,
     });
+  });
+
+  it("resolves a named main-navigation area before analysis or AI routing", () => {
+    expect(
+      resolveJarvisDirectNavigationHelp(
+        "Wo finde ich Zusatzverkäufe?",
+        leadershipAccess
+      )
+    ).toMatchObject({
+      type: "answer",
+      topicId: "systemMap.salesOpportunities",
+      navigation: { tab: "salesOpportunities" },
+    });
+    expect(
+      resolveJarvisDirectNavigationHelp(
+        "Wo sehe ich offene Rechnungen?",
+        leadershipAccess
+      )
+    ).toBeUndefined();
   });
 
   it("does not select employee planning from an unrelated personnel question", () => {
