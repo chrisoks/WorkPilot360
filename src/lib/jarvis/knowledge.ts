@@ -146,6 +146,9 @@ const TOPICS: JarvisTopic[] = [
       "welche prinzipien hast du",
       "welche prinzipien leiten dich",
       "welche prinzipien leiten deine arbeit",
+      "welche unternehmensprinzipien gelten für jarvis",
+      "wer trägt bei entscheidungen nach den prinzipien die verantwortung",
+      "sind die unternehmensprinzipien unveränderlich",
       "wie helfen dir die prinzipien bei entscheidungen",
       "wie wendest du deine prinzipien im alltag an",
       "sind deine prinzipien lebendig",
@@ -165,7 +168,10 @@ const TOPICS: JarvisTopic[] = [
       "warum ist ein klares zielbild wichtig",
       "setze prioritäten",
       "wie setzt du prioritäten",
+      "wie priorisiere ich heute meine arbeit",
+      "wie erkenne ich was den größten nutzen bringt",
       "nutze das beste werkzeug",
+      "wann ist das beste werkzeug wichtiger als gewohnheit",
       "shit in shit out",
       "erklaere shit in shit out",
       "vom kunden aus",
@@ -189,20 +195,28 @@ const TOPICS: JarvisTopic[] = [
       "wie gehst du mit persönlichen daten um",
       "wie gehst du mit personenbezogenen daten um",
       "wie schützt du personenbezogene daten",
+      "darfst du personenbezogene daten ohne anlass auswerten",
       "wer bleibt bei entscheidungen verantwortlich",
+      "wie bleibt der mensch bei ki empfehlungen verantwortlich",
       "was tust du wenn daten ungeprüft sind",
       "was tust du wenn stammdaten ungeprüft sind",
       "wie gehst du mit ungeprüften stammdaten um",
+      "wie gehe ich mit ungeprüften projektdaten um",
       "wann fragst du nach statt etwas zu erfinden",
       "kannst du datensätze eigenständig löschen",
       "wie schützt du organisationsgrenzen",
       "wie schützt du organisations und mandantengrenzen",
+      "kannst du daten aus einem anderen mandanten anzeigen",
+      "zeige mir daten aus einer anderen organisation",
       "wie verhinderst du entscheidungen auf erfundenen daten",
       "was passiert vor einer freigegebenen aktion",
       "wie gehst du mit widersprüchlichen angaben um",
       "was ist wichtiger eine schnelle oder eine richtige antwort",
       "wie stellst du sicher dass deine hilfe nachvollziehbar bleibt",
       "erfinde fehlende projektdaten",
+      "erfindest du fehlende informationen wenn es schneller geht",
+      "kann jarvis eigenständig rechnungen versenden",
+      "welche aktionen kannst du derzeit wirklich ausführen",
       "menschliche verantwortung",
       "unsichere daten",
       "ungeprüfte daten",
@@ -220,20 +234,34 @@ const TOPICS: JarvisTopic[] = [
       "wie förderst du kontinuität",
       "wie hilfst du bei wiederkehrenden aufgaben",
       "wie unterstützt du führung",
+      "wie unterstützt jarvis führungskräfte",
+      "wo endet die führung durch jarvis",
       "wie erkennst du stärken eines mitarbeiters",
       "wie förderst du stärken von mitarbeitenden",
       "wie förderst du stärken bei mitarbeitern",
+      "wie fördert jarvis die stärken eines mitarbeiters",
       "wie arbeitest du an entwicklungsfeldern eines mitarbeiters",
       "wie gehst du mit schwächen von mitarbeitenden um",
       "wie gehst du mit schwächen bei mitarbeitern um",
+      "wie spricht jarvis schwächen angemessen an",
       "wie oft erklärst du etwas erneut",
       "was tust du wenn jemand dieselbe frage zehnmal stellt",
+      "was passiert wenn jemand dieselbe frage zehnmal stellt",
       "was berichtest du der geschäftsleitung über mitarbeiter",
       "wie berichtest du entwicklungsfelder an die geschäftsleitung",
+      "wie sollte die geschäftsleitung entwicklungsberichte nutzen",
       "wo enden deine befugnisse bei mitarbeiterentwicklung",
       "wie vermeidest du überwachung bei mitarbeiterentwicklung",
       "welche rolle spielt kontinuität für dich",
+      "warum ist kontinuität eine stärke von jarvis",
       "darfst du personalentscheidungen treffen",
+      "darf jarvis selbst personalentscheidungen treffen",
+      "wie schützt jarvis mitarbeiter vor ungerechter bewertung",
+      "wer darf stärken und schwächen von mitarbeitenden sehen",
+      "welche mitarbeiterentscheidung sollte ich heute treffen",
+      "wie kann jarvis beim onboarding helfen",
+      "wie hilft jarvis bei wiederkehrenden aufgaben",
+      "wie verhindert jarvis dass wichtige dinge vergessen werden",
       "menschen im unternehmen entwickeln",
       "stärken fördern",
       "an schwächen arbeiten",
@@ -376,6 +404,54 @@ const TOPICS: JarvisTopic[] = [
       "Öffne das betreffende Projekt und wähle links „Aufgaben“. Dort siehst du die mit diesem Projekt verknüpften Aufgaben und ihren aktuellen Status. Die zentrale Aufgabenübersicht findest du zusätzlich in der Sidebar unter „Aufgaben“.",
   },
   {
+    id: "project.checklists.open",
+    title: "Projektchecklisten prüfen",
+    keywords: [
+      "wie kontrolliere ich offene checklisten",
+      "offene checklisten prüfen",
+      "checklisten im projekt prüfen",
+    ],
+    surfaces: ["Projektakte"],
+    answer:
+      "Öffne das betreffende Projekt und wähle links „Checklisten“. Prüfe dort jede offene Position, Zuständigkeit und gegebenenfalls Fälligkeit. Eine Checklistenposition gilt erst als erledigt, wenn der tatsächliche Arbeitsschritt beziehungsweise Nachweis vorliegt; JARVIS setzt sie nicht aufgrund einer Vermutung auf erledigt.",
+  },
+  {
+    id: "project.logbook.quality",
+    title: "Guten Logbucheintrag verfassen",
+    keywords: [
+      "was sollte ein guter logbucheintrag enthalten",
+      "was gehört in einen logbucheintrag",
+      "kundentermin sauber dokumentieren",
+    ],
+    surfaces: ["Projektakte"],
+    answer:
+      "Ein guter Logbucheintrag nennt Datum und Anlass, Beteiligte, den tatsächlich besprochenen oder ausgeführten Inhalt, klare Ergebnisse beziehungsweise Entscheidungen, offene Punkte mit Zuständigkeit und nächstem Termin sowie vorhandene Nachweise. Formuliere sachlich, trenne Fakten von Einschätzungen und speichere keine unnötigen sensiblen Angaben.",
+  },
+  {
+    id: "planning.preflight",
+    title: "Terminplanung fachlich vorbereiten",
+    keywords: [
+      "welche informationen brauche ich vor einer terminplanung",
+      "was brauche ich vor einer terminplanung",
+      "terminplanung vorbereiten",
+    ],
+    surfaces: ["Planungsboard", "Projektakte"],
+    answer:
+      "Vor einer Terminplanung brauchst du mindestens das eindeutige Projekt, Termin oder Terminwunsch, Titel beziehungsweise Beschreibung, Berliner Datum sowie Beginn und Ende und eine aktive Person. Prüfe zusätzlich Rolle, Planungsboard und Gruppe, vorhandene Planungen, Überschneidungen, genehmigte Abwesenheiten, Feiertage sowie die projektartabhängige Angebots-, Kontingent-, Gewerk-, Leistungs- oder Monatszuordnung. Unsichere oder fehlende Angaben bleiben sichtbar und dürfen nicht erfunden werden.",
+  },
+  {
+    id: "planning.conflicts",
+    title: "Konflikte und Abwesenheiten bei der Planung prüfen",
+    keywords: [
+      "wie gehe ich mit einer abwesenheit bei der terminplanung um",
+      "wie erkenne ich terminüberschneidungen",
+      "was muss ich an einem feiertag bei der planung beachten",
+    ],
+    surfaces: ["Planungsboard", "Projektakte"],
+    answer:
+      "Prüfe vor der Bestätigung die Person am gesamten Berliner Zeitfenster: genehmigte Abwesenheiten und gleichartige Projektplanungen blockieren den Entwurf, Überschneidungen werden sichtbar ausgewiesen. Feiertag und Wochenende bleiben entsprechend dem bestehenden Planning-Verhalten deutliche Warnungen und müssen bewusst fachlich eingeordnet werden. JARVIS darf keinen konfliktfreien Zustand behaupten, wenn die Prüfung fehlt oder unsicher ist.",
+  },
+  {
     id: "project.status.change",
     title: "Projektstatus ändern",
     keywords: [
@@ -449,6 +525,7 @@ const TOPICS: JarvisTopic[] = [
     keywords: [
       "was sollte ich vor dem fakturieren prüfen",
       "was muss ich vor dem fakturieren prüfen",
+      "was muss ich vor der rechnungsstellung prüfen",
       "wie prüfe ich einen rechnungsentwurf",
       "rechnungsentwurf prüfen",
       "prüfung vor fakturierung",
@@ -490,6 +567,7 @@ const TOPICS: JarvisTopic[] = [
       "wo finde ich bestehende angebote",
       "bestehende angebote finden",
       "wo sehe ich angebote",
+      "wie erkenne ich ob ein angebot fehlt",
       "angebotsübersicht",
     ],
     surfaces: ["Projektakte", "Buchhaltung"],
@@ -533,6 +611,7 @@ const TOPICS: JarvisTopic[] = [
       "unterschied zwischen termin und terminwunsch",
       "was ist der unterschied zwischen termin und terminwunsch",
       "termin oder terminwunsch",
+      "wann sollte ich einen terminwunsch statt eines termins verwenden",
     ],
     surfaces: ["Planungsboard", "Projektakte"],
     answer:
@@ -598,6 +677,7 @@ const TOPICS: JarvisTopic[] = [
     title: "Fakturierbarkeit von Zeiten prüfen",
     keywords: [
       "wie prüfe ich ob zeiten fakturierbar sind",
+      "wie prüfe ich ob stempelzeiten abrechenbar sind",
       "zeiten fakturierbar",
       "stempelzeiten fakturieren",
     ],
@@ -1016,6 +1096,13 @@ export function findJarvisExactHelpTopicId(
   const normalizedIntent = normalizeJarvisIntentText(question);
   if (
     /\btermin\w*\b/.test(normalizedIntent) &&
+    /\bterminwunsch\w*\b/.test(normalizedIntent) &&
+    /\b(?:unterschied|statt|verwenden|wann sollte)\b/.test(normalizedIntent)
+  ) {
+    return "appointment.difference";
+  }
+  if (
+    /\btermin\w*\b/.test(normalizedIntent) &&
     /\b(?:buch|leg|erstell|eintrag|plan)\w*\b/.test(normalizedIntent)
   ) {
     return "appointment.create";
@@ -1132,19 +1219,23 @@ function getJarvisSafetyAnswer(question: string, overview: string) {
   if (
     normalized.includes("unsicher") ||
     normalized.includes("ungepruft") ||
-    normalized.includes("statt etwas zu erfinden")
+    normalized.includes("statt etwas zu erfinden") ||
+    normalized.includes("fehlende informationen") ||
+    normalized.includes("schneller geht")
   ) {
     return "Bei fehlenden, widersprüchlichen oder ungeprüften Daten kennzeichne ich die Unsicherheit konkret, nenne die betroffene Grundlage und frage nach oder empfehle eine Prüfung. Ich erfinde keine Werte und bestätige keinen sicheren Zustand, solange die Datengrundlage nicht belastbar ist.";
   }
   if (
     normalized.includes("personlich") ||
-    normalized.includes("personenbezogen")
+    normalized.includes("personenbezogen") ||
+    normalized.includes("ohne anlass")
   ) {
     return "Persönliche und sensible Daten nutze ich nur für den freigegebenen Zweck und nur innerhalb der geprüften Rollen- und Organisationsgrenzen. Ich zeige nicht mehr Daten als für die Frage notwendig, gebe keine Geheimnisse aus und mache aus Arbeitsdaten keine heimlichen Persönlichkeitsprofile.";
   }
   if (
     normalized.includes("wer bleibt") ||
-    normalized.includes("verantwortlich")
+    normalized.includes("verantwortlich") ||
+    normalized.includes("ki empfehlungen")
   ) {
     return "Die fachliche Entscheidung und Verantwortung bleiben immer beim Menschen. JARVIS kann Daten zusammenführen, Risiken erklären und einen nächsten Schritt vorschlagen, aber weder eine verantwortliche Person ersetzen noch eine rechtliche, finanzielle oder personelle Entscheidung übernehmen.";
   }
@@ -1153,7 +1244,8 @@ function getJarvisSafetyAnswer(question: string, overview: string) {
   }
   if (
     normalized.includes("organisationsgrenz") ||
-    normalized.includes("mandant")
+    normalized.includes("mandant") ||
+    normalized.includes("anderen organisation")
   ) {
     return "Organisationsgrenzen werden serverseitig geprüft: Sitzung, tatsächlicher und wirksamer Akteur, Rolle, Organisation und gegebenenfalls Impersonation müssen zum angefragten Datensatz passen. Eine KI-Einstufung kann diese Prüfung nie überschreiben; fremde Mandantendaten bleiben gesperrt.";
   }
@@ -1181,6 +1273,18 @@ function getJarvisSafetyAnswer(question: string, overview: string) {
   if (normalized.includes("nachvollziehbar")) {
     return "Meine Hilfe bleibt nachvollziehbar, indem ich gespeicherte Fakten, daraus gezogene Schlüsse, Unsicherheiten und den empfohlenen nächsten Schritt sichtbar trenne. Rollen- und Organisationsprüfungen bleiben serverseitig; eine Erfolgsmeldung darf erst dem tatsächlich bestätigten Speicherzustand folgen.";
   }
+  if (
+    normalized.includes("rechnung") &&
+    normalized.includes("versend")
+  ) {
+    return "Nein. JARVIS versendet Rechnungen nicht eigenständig. Finanzielle Außenwirkung benötigt einen ausdrücklich freigegebenen, rollen- und organisationsgeprüften Ablauf mit vollständiger Vorschau und bewusster menschlicher Bestätigung.";
+  }
+  if (
+    normalized.includes("aktionen") &&
+    (normalized.includes("wirklich") || normalized.includes("derzeit"))
+  ) {
+    return "Derzeit kann ich freigegebene Daten lesen und erklären sowie sichere Aufgaben- und Termin-/Terminwunsch-Entwürfe vorbereiten. Aufgaben können nach vollständiger Prüfung bewusst bestätigt werden. Die produktive Terminbestätigung bleibt wegen der noch nicht vollständig nachgebildeten projektartgerechten Terminmasken technisch gesperrt. Versand, Rechnung, Zahlung, Löschung, Rollen-, Personal- und Stempelaktionen führe ich nicht aus.";
+  }
 
   return overview;
 }
@@ -1188,26 +1292,37 @@ function getJarvisSafetyAnswer(question: string, overview: string) {
 function getJarvisPeopleAnswer(question: string, overview: string) {
   const normalized = normalizeJarvisIntentText(question);
 
-  if (normalized.includes("neue mitarbeiter")) {
+  if (
+    normalized.includes("neue mitarbeiter") ||
+    normalized.includes("onboarding")
+  ) {
     return "Neue Mitarbeitende unterstütze ich rollenbezogen und in verständlichen Schritten: zuerst Ziel und Zusammenhang, dann der konkrete Ablauf, anschließend ein prüfbares Beispiel und der nächste eigene Schritt. Fragen dürfen beliebig oft wiederholt werden; sensible oder nicht freigegebene Bereiche bleiben dabei gesperrt.";
   }
   if (normalized.includes("einem neuen mitarbeiter das system")) {
     return "Ich erkläre das System vom Arbeitsziel aus, nicht als lange Funktionsliste. Ein neuer Mitarbeiter lernt zuerst den für seine Rolle relevanten Weg, führt ihn an einem sicheren Beispiel aus und erhält danach eine kurze Zusammenfassung sowie den nächsten Schritt. Unklare oder gesperrte Funktionen kennzeichne ich ausdrücklich.";
   }
-  if (normalized.includes("kontinuitat")) {
+  if (
+    normalized.includes("kontinuitat") ||
+    normalized.includes("wichtige dinge vergessen")
+  ) {
     return "Kontinuität fördere ich, indem ich vereinbarte Ziele, nächste Schritte, offene Punkte und Lernfortschritte regelmäßig und sachlich wieder aufgreife. Ich werde bei Wiederholungen nicht ungeduldig, mache Abweichungen sichtbar und unterstütze den Menschen dabei, eine verlässliche Arbeitsroutine aufzubauen.";
   }
-  if (normalized.includes("wiederkehrenden aufgaben")) {
+  if (
+    normalized.includes("wiederkehrenden aufgaben") ||
+    normalized.includes("wiederkehrende aufgaben")
+  ) {
     return "Bei wiederkehrenden Aufgaben helfe ich, einen verständlichen Standardablauf mit klaren Prüfpunkten aufzubauen. Ich erinnere an den nächsten Schritt, mache Abweichungen sichtbar und schlage sinnvolle Automatisierung vor; Ausnahmen und fachliche Verantwortung bleiben beim Menschen.";
   }
   if (
     normalized.includes("fuhrungskraft") ||
+    normalized.includes("fuhrungskrafte") ||
     normalized.includes("fuhrung") && !normalized.includes("befug")
   ) {
     return "Führungskräfte unterstütze ich mit nachvollziehbaren Fakten aus freigegebenen Arbeitsdaten, erkennbaren Mustern, offenen Punkten und konkreten Gesprächsimpulsen. Ich trenne Beobachtung von Bewertung, berücksichtige Rollen und Datenschutz und überlasse Feedback, Entscheidung und Verantwortung der menschlichen Führung.";
   }
   if (
     normalized.includes("starken eines mitarbeiters") ||
+    normalized.includes("starken eines mitarbeiter") ||
     normalized.includes("starken von mitarbeitenden") ||
     normalized.includes("starken bei mitarbeitern")
   ) {
@@ -1215,6 +1330,7 @@ function getJarvisPeopleAnswer(question: string, overview: string) {
   }
   if (
     normalized.includes("entwicklungsfeldern") ||
+    normalized.includes("schwachen angemessen") ||
     normalized.includes("schwachen von mitarbeitenden") ||
     normalized.includes("schwachen bei mitarbeitern")
   ) {
@@ -1230,19 +1346,29 @@ function getJarvisPeopleAnswer(question: string, overview: string) {
   }
   if (
     normalized.includes("geschaftsleitung") ||
+    normalized.includes("entwicklungsberichte") ||
     normalized.includes("berichtest")
   ) {
     return "An die Geschäftsleitung gehören nur zweckgebundene, rollenberechtigte und nachvollziehbare Beobachtungen aus freigegebenen Arbeitsdaten: belegte Stärken, konkrete Entwicklungsfelder, vereinbarte Ziele und erkennbare Fortschritte. Keine heimlichen Persönlichkeitsprofile, keine unnötigen privaten Daten und keine automatischen Personalurteile.";
   }
   if (
+    normalized.includes("wer darf") &&
+    (normalized.includes("starken") || normalized.includes("schwachen"))
+  ) {
+    return "Stärken und Entwicklungsfelder dürfen nur die betroffene Person selbst und die für den klaren Entwicklungszweck rollenberechtigten menschlichen Verantwortlichen sehen. JARVIS zeigt keine pauschalen Personenprofile, beschränkt die Daten auf notwendige arbeitsbezogene Fakten und macht Grundlage, Zweck und Unsicherheit transparent.";
+  }
+  if (
     normalized.includes("uberwachung") ||
-    normalized.includes("heimliche personlichkeitsprofile")
+    normalized.includes("heimliche personlichkeitsprofile") ||
+    normalized.includes("ungerechter bewertung")
   ) {
     return "Mitarbeiterentwicklung darf keine verdeckte Überwachung sein. Ich nutze nur erforderliche, freigegebene und arbeitsbezogene Fakten für einen klaren Zweck, mache Datenbasis und Kriterien für die betroffene Person nachvollziehbar und beschreibe Beobachtungen mit Kontext und Unsicherheit. Heimliche Persönlichkeits-, Emotions-, Gesundheits- oder Privatprofile sind ausgeschlossen; menschliches Gespräch und Verantwortung bleiben unverzichtbar.";
   }
   if (
     normalized.includes("befugnisse") ||
-    normalized.includes("personalentscheidung")
+    normalized.includes("personalentscheidung") ||
+    normalized.includes("mitarbeiterentscheidung") ||
+    normalized.includes("wo endet")
   ) {
     return "Meine Befugnis endet bei menschlicher Beurteilung und Personalentscheidung. Ich darf freigegebene Fakten strukturieren, Entwicklungsschritte vorschlagen und Kontinuität unterstützen, aber keine Persönlichkeit diagnostizieren, keine Sanktion oder Beförderung entscheiden und menschliches Feedback nicht ersetzen.";
   }
@@ -1255,6 +1381,7 @@ function getJarvisPrinciplesAnswer(question: string, overview: string) {
 
   if (
     normalized.includes("prinzipien lebendig") ||
+    normalized.includes("unveranderlich") ||
     normalized.includes("prinzipien weiter") ||
     normalized.includes("prinzipien entwickel") ||
     normalized.includes("prinzipien uberpruf")
@@ -1263,10 +1390,11 @@ function getJarvisPrinciplesAnswer(question: string, overview: string) {
   }
   if (
     normalized.includes("prinzipien bei entscheidungen") ||
+    normalized.includes("verantwortung") ||
     normalized.includes("prinzipien im alltag") ||
     normalized.includes("prinzipien leiten deine arbeit")
   ) {
-    return "Im Arbeitsalltag nutze ich die Prinzipien als überprüfbare Entscheidungsreihenfolge: zuerst Kundennutzen und Zielbild klären, dann Datenqualität und Risiken prüfen, den größten Nutzen priorisieren und die einfachste sichere Lösung mit dem passenden Werkzeug wählen. Automatisierung folgt erst, wenn Ablauf, Grenzen und menschliche Verantwortung geklärt sind.";
+    return "Im Arbeitsalltag nutze ich die Prinzipien als überprüfbare Entscheidungsreihenfolge: zuerst Kundennutzen und Zielbild klären, dann Datenqualität und Risiken prüfen, den größten Nutzen priorisieren und die einfachste sichere Lösung mit dem passenden Werkzeug wählen. Automatisierung folgt erst, wenn Ablauf und Grenzen geklärt sind; Entscheidung und Verantwortung bleiben beim Menschen.";
   }
 
   if (
@@ -1289,6 +1417,9 @@ function getJarvisPrinciplesAnswer(question: string, overview: string) {
   }
   if (normalized.includes("priorit")) {
     return "Priorisieren bedeutet: Nicht alles gleichzeitig und nicht alles gleich wichtig behandeln. Zuerst kommt, was für Kunden und Unternehmen den größten Nutzen bringt; Risiko, Dringlichkeit und Abhängigkeiten entscheiden mit. JARVIS soll diese Reihenfolge nachvollziehbar begründen.";
+  }
+  if (normalized.includes("großten nutzen") || normalized.includes("grossten nutzen")) {
+    return "Den größten Nutzen erkennst du, indem du Kundennutzen, Risiko, Dringlichkeit, Reichweite und Abhängigkeiten vergleichst. Zuerst kommt der Schritt, der ein wichtiges Kunden- oder Unternehmensziel messbar voranbringt oder ein erhebliches Risiko beseitigt; JARVIS soll die Priorität mit diesen Kriterien begründen.";
   }
   if (normalized.includes("werkzeug")) {
     return "Das beste Werkzeug ist das, das im konkreten Fall das beste sichere Ergebnis für den Kunden ermöglicht. Wir sind nicht an ein Produkt gebunden, berücksichtigen aber Eignung, Aufwand, Datenschutz, Rollen und Anschlussfähigkeit, bevor wir wechseln oder etwas Neues einführen.";

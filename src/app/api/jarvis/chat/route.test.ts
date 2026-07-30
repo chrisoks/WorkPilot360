@@ -516,6 +516,32 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["Was ist der Unterschied zwischen Termin und Terminwunsch?", "appointment.difference"],
+    ["Welche Informationen brauche ich vor einer Terminplanung?", "planning.preflight"],
+    ["Was muss ich an einem Feiertag bei der Planung beachten?", "planning.conflicts"],
+  ])("keeps deterministic workflow guidance ahead of project diagnostics: %s", async (message, topicId) => {
+    mocks.findJarvisExactHelpTopicId.mockReturnValue(topicId);
+    mocks.resolveJarvisSystemHelpTopic.mockReturnValue({
+      type: "answer",
+      topicId,
+      message: "Sichere, fachlich passende Bedienhilfe.",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actorId: "user-1", message }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({ type: "answer", topicId });
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+    expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
+  });
+
   it("answers natural main-navigation wording before consulting the AI router", async () => {
     mocks.resolveJarvisSystemHelp.mockReturnValue({
       type: "answer",

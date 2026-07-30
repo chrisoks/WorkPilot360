@@ -228,6 +228,12 @@ function resolveProjectScopes(
   ) {
     return ["commercial"];
   }
+  if (
+    /\bangebot\w*\b/.test(normalized) &&
+    /\bfehl\w*\b/.test(normalized)
+  ) {
+    return ["commercial"];
+  }
 
   const scopes: JarvisQuestionProjectScope[] = [];
   const add = (scope: JarvisQuestionProjectScope, condition: boolean) => {
@@ -257,6 +263,10 @@ function resolveProjectScopes(
     /\b(auffallig|verbesser|optimier|was fehlt|wirtschaftlich|rentabel|projektgewinn)\w*\b/.test(
       normalized
     ) ||
+      (
+        /\b\w*nachweis\w*\b/.test(normalized) &&
+        /\bfehl\w*\b/.test(normalized)
+      ) ||
       /\b(?:wichtigste[rn]?|nachste[rn]?)\s+(?:sinnvolle[nr]?\s+)?schritt\b/.test(
         normalized
       )

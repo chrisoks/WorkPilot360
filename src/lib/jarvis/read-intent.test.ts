@@ -64,6 +64,20 @@ describe("JARVIS read intent", () => {
     });
   });
 
+  it("does not turn an organization-wide overdue task question into a text search", () => {
+    expect(
+      resolveJarvisReadIntent(
+        "Welche Aufgaben sind im Unternehmen überfällig?",
+        { recordType: "project", recordId: "project-1" }
+      )
+    ).toMatchObject({
+      kind: "task",
+      filter: "overdue",
+      query: "",
+      contextRecordId: undefined,
+    });
+  });
+
   it("uses an allowlisted current project id for summaries", () => {
     expect(
       resolveJarvisReadIntent("Fasse dieses Projekt kurz zusammen.", {

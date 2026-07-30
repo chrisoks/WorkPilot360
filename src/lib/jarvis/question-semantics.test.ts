@@ -127,6 +127,9 @@ describe("JARVIS question semantics evaluation matrix", () => {
   it.each([
     ["Wie wirtschaftlich ist dieses Projekt?", ["improvements"]],
     ["Was fehlt bis zur Abrechnung?", ["commercial"]],
+    ["Wie erkenne ich, ob ein Angebot fehlt?", ["commercial"]],
+    ["Welche Nachweise fehlen in dieser Projektakte?", ["improvements"]],
+    ["Wie prüfe ich fehlende Leistungsnachweise?", ["improvements"]],
     ["Was ist der wichtigste nächste Schritt im Projekt?", ["improvements"]],
     ["Gib mir kurz den nächsten sinnvollen Schritt.", ["improvements"]],
   ])("maps the natural project question %s to one scope", (question, scopes) => {

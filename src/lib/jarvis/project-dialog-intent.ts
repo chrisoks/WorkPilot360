@@ -161,10 +161,18 @@ export function resolveJarvisProjectDialogIntent(input: {
   }
 
   if (
-    /\b(?:welche|was fur eine|auf welcher)\b.*\b(?:datenbasis|datengrundlage|grundlage|quelle\w*)\b.*\b(?:empfehl|bewert|pruf)\w*\b/.test(
+    /\bwas\b.*\b(?:bei|in)\b.*\bprojekt\b.*\b(?:jetzt|als nachstes)\b.*\b(?:konkret )?(?:tun|machen)\b/.test(
+      value
+    )
+  ) {
+    return "explainNextStep";
+  }
+
+  if (
+    /\b(?:welche|was fur eine|auf welcher)\b.*\b(?:datenbasis|datengrundlage|grundlage|quelle\w*|beleg\w*)\b.*\b(?:empfehl|bewert|pruf|einschatz)\w*\b/.test(
       value
     ) ||
-    /\b(?:datenbasis|datengrundlage|grundlage|quelle\w*)\b.*\b(?:nutzt|verwendest)\b.*\b(?:empfehl|bewert|pruf)\w*\b/.test(
+    /\b(?:datenbasis|datengrundlage|grundlage|quelle\w*|beleg\w*)\b.*\b(?:nutzt|verwendest|stutz\w*)\b.*\b(?:empfehl|bewert|pruf|einschatz)\w*\b/.test(
       value
     )
   ) {

@@ -444,14 +444,23 @@ function looksLikePlanningPreviewRequest(question: string) {
 function looksLikeDeterministicHelpRequest(question: string) {
   const value = normalizeJarvisIntentText(question);
   return (
-    /^(?:wo|wie)\b/.test(value) &&
     (
+      /^(?:wo|wie)\b/.test(value) &&
+      (
       /\b(?:sehe|erkenne|finde|offne|oeffne)\s+ich\b/.test(value) ||
       /\bwo\b.*\b(?:sehe|erkenne|finde)\b/.test(value) ||
       /\bwie\b.*\b(?:versende|verschicke|sende)\b/.test(value) ||
+      /\bwie\b.*\b(?:dokumentier|bereit)\w*\b/.test(value) ||
       /\bwie\b.*\bpruf\w*\b.*\brechnungsentwurf\b/.test(value) ||
       /\bwie\b.*\b(?:buch|leg|erfass|trag|plan|verplan)\w*\b/.test(value) ||
       /\bwie\b.*\b(?:komme|gelange)\b/.test(value)
+      )
+    ) ||
+    (
+      /^(?:was|wann|welche)\b/.test(value) &&
+      /\b(?:unterschied|statt|verwenden|brauche|enthalten|beachten|vor .+ pruf)\w*\b/.test(
+        value
+      )
     )
   );
 }

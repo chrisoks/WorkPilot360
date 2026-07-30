@@ -78,6 +78,23 @@ describe("JARVIS system help", () => {
   });
 
   it.each([
+    ["Welche Unternehmensprinzipien gelten für JARVIS?", "jarvis.principles"],
+    ["Wer trägt bei Entscheidungen nach den Prinzipien die Verantwortung?", "jarvis.principles"],
+    ["Sind die Unternehmensprinzipien unveränderlich?", "jarvis.principles"],
+    ["Darfst du personenbezogene Daten ohne Anlass auswerten?", "jarvis.safety"],
+    ["Kannst du Daten aus einem anderen Mandanten anzeigen?", "jarvis.safety"],
+    ["Welche Aktionen kannst du derzeit wirklich ausführen?", "jarvis.safety"],
+    ["Wie fördert JARVIS die Stärken eines Mitarbeiters?", "jarvis.people"],
+    ["Wie spricht JARVIS Schwächen angemessen an?", "jarvis.people"],
+    ["Wie unterstützt JARVIS Führungskräfte?", "jarvis.people"],
+    ["Wie kann JARVIS beim Onboarding helfen?", "jarvis.people"],
+  ])("recognizes the natural governance wording %s", (question, topicId) => {
+    expect(
+      resolveJarvisSystemHelp(question, {}, leadershipAccess)
+    ).toMatchObject({ type: "answer", topicId });
+  });
+
+  it.each([
     "Was sind deine Unternehmensprinzipien?",
     "Welche Prinzipien leiten dich?",
   ])("recognizes principle wording from natural conversations: %s", (question) => {
@@ -421,6 +438,25 @@ describe("JARVIS system help", () => {
       type: "answer",
       topicId,
     });
+  });
+
+  it.each([
+    ["Was ist der Unterschied zwischen Termin und Terminwunsch?", "appointment.difference"],
+    ["Wann sollte ich einen Terminwunsch statt eines Termins verwenden?", "appointment.difference"],
+    ["Welche Informationen brauche ich vor einer Terminplanung?", "planning.preflight"],
+    ["Wie kontrolliere ich offene Checklisten?", "project.checklists.open"],
+    ["Was sollte ein guter Logbucheintrag enthalten?", "project.logbook.quality"],
+    ["Wie gehe ich mit einer Abwesenheit bei der Terminplanung um?", "planning.conflicts"],
+    ["Wie erkenne ich Terminüberschneidungen?", "planning.conflicts"],
+    ["Was muss ich an einem Feiertag bei der Planung beachten?", "planning.conflicts"],
+  ])("answers the natural workflow wording %s", (question, topicId) => {
+    expect(
+      resolveJarvisSystemHelp(
+        question,
+        { module: "Projektakte", recordType: "project" },
+        leadershipAccess
+      )
+    ).toMatchObject({ type: "answer", topicId });
   });
 
   it.each([
