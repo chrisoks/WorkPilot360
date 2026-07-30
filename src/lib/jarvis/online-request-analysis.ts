@@ -226,7 +226,7 @@ export function resolveJarvisOnlineRequestIntent(
     (/\bwo\b.*\b(?:find|offn|seh)\w*\b/.test(value) ||
       /\bwie\b.*\b(?:umwandel|konvertier|projekt anleg)\w*\b/.test(value) ||
       /\bwie funktioniert\b/.test(value) ||
-      /\b(?:anliegenart|anfrageart|formularfeld|foto|bild|spam|sicherheit|schutz|proof of work|turnstile|gewerk)\w*\b/.test(
+      /\b(?:anliegenart|anfrageart|formularfeld|foto|bild|spam|sicherheit|schutz|proof of work|turnstile|gewerk|projektnummer|projekttitel|projektname|praefix|oki referenz|sonstige|andere leistung)\w*\b/.test(
         value
       ))
   ) {

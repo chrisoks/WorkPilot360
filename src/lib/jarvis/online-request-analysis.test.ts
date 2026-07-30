@@ -85,6 +85,7 @@ describe("JARVIS online request analysis", () => {
     "Welche Anliegenarten hat das Online-Anfragen-Formular?",
     "Was passiert mit Fotos einer Online-Anfrage?",
     "Wie ist das Online-Anfragen-Portal gegen Spam geschützt?",
+    "Welche Projektnummer bekommt eine Online-Anfrage und was gilt bei Sonstige?",
   ])("keeps pure how-to questions in deterministic guidance: %s", (question) => {
     expect(resolveJarvisOnlineRequestIntent(question)).toBeUndefined();
   });
