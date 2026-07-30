@@ -51,6 +51,7 @@ describe("JARVIS system help", () => {
     "Was sind deine Prinzipien?",
     "Wofür stehst du als JARVIS?",
     "Welchen Auftrag hat JARVIS?",
+    "Welchen Auftrag hast du gegenüber den Menschen im Unternehmen?",
   ])("explains JARVIS' living principles deterministically: %s", (question) => {
     const result = resolveJarvisSystemHelp(question, {}, employeeAccess);
 
@@ -61,6 +62,19 @@ describe("JARVIS system help", () => {
     expect(result.message).toContain("sinnvoll automatisieren");
     expect(result.message).toContain("keine heimlichen Persönlichkeitsprofile");
     expect(result.message).toContain("Die Verantwortung bleibt beim Menschen");
+  });
+
+  it("connects automation with human responsibility", () => {
+    const result = resolveJarvisSystemHelp(
+      "Wie verbindest du Automatisierung mit menschlicher Verantwortung?",
+      {},
+      employeeAccess
+    );
+    expect(result).toMatchObject({
+      type: "answer",
+      topicId: "jarvis.principles",
+    });
+    expect(result.message).toContain("Verantwortung bleiben beim Menschen");
   });
 
   it.each([

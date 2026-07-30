@@ -26,6 +26,8 @@ describe("JARVIS domain router", () => {
   it.each([
     "Welche Prinzipien leiten dich?",
     "Wie helfen dir deine Prinzipien bei Entscheidungen im Alltag?",
+    "Welchen Auftrag hast du gegenüber den Menschen im Unternehmen?",
+    "Wie verbindest du Automatisierung mit menschlicher Verantwortung?",
     "Wie förderst du Stärken von Mitarbeitenden?",
     "Wie gehst du mit Schwächen von Mitarbeitenden um?",
     "Wie berichtest du Entwicklungsfelder an die Geschäftsleitung?",

@@ -153,6 +153,8 @@ const TOPICS: JarvisTopic[] = [
       "wofür stehst du als jarvis",
       "welchen auftrag hat jarvis",
       "was ist dein auftrag",
+      "welchen auftrag hast du gegenüber den menschen im unternehmen",
+      "wie verbindest du automatisierung mit menschlicher verantwortung",
       "wie arbeitet jarvis",
       "automatisiere alles was sinnvoll",
       "warum automatisieren wir routine",
