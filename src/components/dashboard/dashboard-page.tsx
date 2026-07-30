@@ -9667,6 +9667,12 @@ export function DashboardPage() {
   const planningBatchRequestIdRef = useRef(crypto.randomUUID());
   const [planningEntryApprovalStatus, setPlanningEntryApprovalStatus] =
     useState<PlanningEntryApprovalStatus>("confirmed");
+  const [planningOverbookingConfirmation, setPlanningOverbookingConfirmation] = useState<{
+    fingerprint: string;
+    details: string;
+    approvalStatus: PlanningEntryApprovalStatus;
+  } | null>(null);
+  const [planningOverbookingReason, setPlanningOverbookingReason] = useState("");
   const [planningBoardView, setPlanningBoardView] = useState<"board" | "open">("board");
   const [planningBoardStartDate, setPlanningBoardStartDate] = useState(() =>
     getWeekStartDateKey(formatDateKey(new Date()))
@@ -18153,6 +18159,8 @@ export function DashboardPage() {
     setPlanningRecurrenceType("once");
     setPlanningRecurrenceUntil("");
     setPlanningRecurrenceWeekdays([getWeekdayFromDateKey(formatDateKey(new Date()))]);
+    setPlanningOverbookingConfirmation(null);
+    setPlanningOverbookingReason("");
   }
 
   function openPlanningEntryModal(options: Partial<{
@@ -18593,7 +18601,10 @@ export function DashboardPage() {
     return "einmalig";
   }
 
-  async function savePlanningEntry(nextApprovalStatus = planningEntryApprovalStatus) {
+  async function savePlanningEntry(
+    nextApprovalStatus = planningEntryApprovalStatus,
+    confirmedOverbooking?: { fingerprint: string; reason: string }
+  ) {
     setPlanningEntryError("");
     setErrorMessage("");
     const selectedUser = users.find((user) => user.id === planningEntryUserId);
@@ -18778,23 +18789,37 @@ export function DashboardPage() {
               `${formatMinutes(detail.availableMinutes)} frei, ${formatMinutes(detail.exceededMinutes)} darüber`
           )
           .join("\n");
-        const reason = window.prompt(
-          `Die Planung überschreitet das verfügbare Kontingent.\n\n${details}\n\n` +
-            "Wenn das beabsichtigt ist, gib bitte den Grund für die Überplanung an (mindestens 10 Zeichen). " +
-            "Die Führungskräfte und Geschäftsführung werden mit diesem Grund informiert."
-        );
-        if (reason === null) return;
-        if (reason.trim().length < 10) {
+        const fingerprint =
+          typeof overbooking.fingerprint === "string"
+            ? overbooking.fingerprint
+            : "";
+        if (
+          !confirmedOverbooking ||
+          confirmedOverbooking.fingerprint !== fingerprint
+        ) {
+          setPlanningOverbookingConfirmation({
+            fingerprint,
+            details,
+            approvalStatus: nextApprovalStatus,
+          });
+          setPlanningOverbookingReason("");
+          return;
+        }
+        if (confirmedOverbooking.reason.trim().length < 10) {
           setPlanningEntryError("Bitte die Überplanung mit mindestens 10 Zeichen nachvollziehbar begründen.");
           return;
         }
+        setPlanningOverbookingConfirmation(null);
         planningWithApproval = {
           ...planning,
           overbookingApproval: {
-            fingerprint: overbooking.fingerprint,
-            reason: reason.trim(),
+            fingerprint,
+            reason: confirmedOverbooking.reason.trim(),
           },
         };
+      } else {
+        setPlanningOverbookingConfirmation(null);
+        setPlanningOverbookingReason("");
       }
 
       const executeResponse = await fetch("/api/planning-batches", {
@@ -65581,6 +65606,63 @@ await addProjectLogbookEntry(
               {planningEntryError ? (
                 <p className={styles.modalWarning}>{planningEntryError}</p>
               ) : null}
+              {planningOverbookingConfirmation ? (
+                <section
+                  className={styles.planningOverbookingConfirmation}
+                  aria-label="Überplanung bestätigen"
+                  aria-live="polite"
+                >
+                  <strong>Kontingentüberschreitung ausdrücklich bestätigen</strong>
+                  <p>
+                    Die Planung überschreitet das verfügbare Kontingent. Sie wird
+                    nur mit einer nachvollziehbaren Begründung ausgeführt.
+                    Zuständige Führungskräfte und die Geschäftsführung werden
+                    mit diesem Grund informiert.
+                  </p>
+                  <pre>{planningOverbookingConfirmation.details}</pre>
+                  <label>
+                    Begründung der Überplanung
+                    <textarea
+                      rows={3}
+                      value={planningOverbookingReason}
+                      onChange={(event) =>
+                        setPlanningOverbookingReason(event.target.value)
+                      }
+                      placeholder="Mindestens 10 Zeichen"
+                      autoFocus
+                    />
+                  </label>
+                  <div className={styles.modalActions}>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => {
+                        setPlanningOverbookingConfirmation(null);
+                        setPlanningOverbookingReason("");
+                      }}
+                    >
+                      Überplanung abbrechen
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.dangerButton}
+                      disabled={planningOverbookingReason.trim().length < 10}
+                      onClick={() =>
+                        void savePlanningEntry(
+                          planningOverbookingConfirmation.approvalStatus,
+                          {
+                            fingerprint:
+                              planningOverbookingConfirmation.fingerprint,
+                            reason: planningOverbookingReason,
+                          }
+                        )
+                      }
+                    >
+                      Überplanung begründet bestätigen
+                    </button>
+                  </div>
+                </section>
+              ) : (
               <div className={styles.modalActions}>
                 {editingPlanningEntryId && (
                   <button
@@ -65617,6 +65699,7 @@ await addProjectLogbookEntry(
                     : "Planung speichern"}
                 </button>
               </div>
+              )}
             </div>
           </div>
         </div>
