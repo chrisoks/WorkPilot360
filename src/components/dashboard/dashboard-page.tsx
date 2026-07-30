@@ -20445,8 +20445,16 @@ export function DashboardPage() {
       return;
     }
 
-    video.pause();
-    video.currentTime = 0;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const stopTimer = window.setTimeout(
+      () => {
+        video.pause();
+        video.currentTime = 0;
+      },
+      reduceMotion ? 0 : 1800
+    );
+
+    return () => window.clearTimeout(stopTimer);
   }, [isManagementAiOpen, isManagementAiSending]);
 
   useEffect(() => {

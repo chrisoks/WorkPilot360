@@ -6918,6 +6918,8 @@
 }
 
 .jarvisDataFlowVideo {
+  -webkit-clip-path: inset(0 50% 0 50%);
+  clip-path: inset(0 50% 0 50%);
   display: block;
   filter: none;
   height: 100%;
@@ -6925,12 +6927,13 @@
   mix-blend-mode: normal;
   object-fit: cover;
   object-position: center;
-  opacity: 0;
+  opacity: 1;
   pointer-events: none;
   position: absolute;
   transition:
+    clip-path 1.7s cubic-bezier(0.22, 0.72, 0.18, 1),
     filter 420ms ease,
-    opacity 420ms ease;
+    -webkit-clip-path 1.7s cubic-bezier(0.22, 0.72, 0.18, 1);
   width: 100%;
   -webkit-mask-image: linear-gradient(
     to bottom,
@@ -6946,11 +6949,14 @@
     #000 86%,
     transparent 100%
   );
+  will-change: clip-path;
   z-index: 0;
 }
 
-.jarvisSidebarCard[data-state="active"] .jarvisDataFlowVideo {
-  opacity: 1;
+.jarvisSidebarCard[data-state="active"] .jarvisDataFlowVideo,
+.jarvisSidebarCard[data-state="thinking"] .jarvisDataFlowVideo {
+  -webkit-clip-path: inset(0);
+  clip-path: inset(0);
 }
 
 .jarvisSidebarCard[data-state="thinking"] .jarvisDataFlowVideo {
@@ -6958,7 +6964,6 @@
     brightness(1.08)
     contrast(1.04)
     drop-shadow(0 0 7px rgba(34, 211, 238, 0.3));
-  opacity: 1;
 }
 
 .jarvisSidebarVisual img {
@@ -7046,7 +7051,8 @@
 
   .jarvisSidebarCard[data-state="active"] .jarvisDataFlowVideo,
   .jarvisSidebarCard[data-state="thinking"] .jarvisDataFlowVideo {
-    opacity: 0.6;
+    -webkit-clip-path: inset(0);
+    clip-path: inset(0);
   }
 }
 
