@@ -160,6 +160,16 @@ export function filterOnlineRequests(
   });
 }
 
+export function resolveVisibleOnlineRequest(
+  filteredRequests: OnlineRequestViewItem[],
+  selectedId: string
+) {
+  return (
+    filteredRequests.find((request) => request.id === selectedId) ??
+    filteredRequests[0]
+  );
+}
+
 function formatDateTime(value: string | null | undefined) {
   if (!value) return "–";
   const date = new Date(value);
@@ -258,10 +268,7 @@ export function OnlineRequestsWorkspace({
     statusFilter,
     search
   );
-  const selected =
-    filteredRequests.find((request) => request.id === selectedId) ??
-    requests.find((request) => request.id === selectedId) ??
-    filteredRequests[0];
+  const selected = resolveVisibleOnlineRequest(filteredRequests, selectedId);
   const canConvert =
     Boolean(selected) &&
     selected.status !== "converted" &&

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   filterOnlineRequests,
+  resolveVisibleOnlineRequest,
   type OnlineRequestViewItem,
 } from "./online-requests-workspace";
 
@@ -74,5 +75,19 @@ describe("filterOnlineRequests", () => {
     expect(filterOnlineRequests(requests, "all", "rahmen")[0]?.id).toBe(
       "request-1"
     );
+  });
+
+  it("does not keep a hidden converted request selected in the active inbox", () => {
+    const activeRequests = filterOnlineRequests(requests, "active", "");
+
+    expect(resolveVisibleOnlineRequest(activeRequests, "request-2")?.id).toBe(
+      "request-1"
+    );
+    expect(
+      resolveVisibleOnlineRequest(
+        filterOnlineRequests([requests[1]], "active", ""),
+        "request-2"
+      )
+    ).toBeUndefined();
   });
 });

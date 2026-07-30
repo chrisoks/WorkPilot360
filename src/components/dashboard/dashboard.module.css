@@ -35832,13 +35832,105 @@
   line-height: 1.4;
 }
 
+/*
+ * Einheitlicher moderner Modulkopf.
+ * Nur bereits als Hero/Header modernisierte Hauptansichten verwenden diesen
+ * visuellen Vertrag; Fachkarten und Aktenköpfe bleiben bewusst eigenständig.
+ */
+.taskModuleHeader,
+.employeeListHero,
+.planningBoardHero {
+  background:
+    radial-gradient(circle at 88% 16%, rgba(40, 166, 157, 0.2), transparent 25%),
+    linear-gradient(135deg, #0c2e3a 0%, #113b45 56%, #174d54 100%);
+  border: 0;
+  border-radius: 18px;
+  box-shadow: 0 18px 38px rgba(9, 42, 51, 0.14);
+  color: #ffffff;
+  min-height: 142px;
+  overflow: hidden;
+  padding: 24px 28px;
+  position: relative;
+}
+
+.taskModuleHeader h1,
+.employeeListHero h1,
+.planningBoardHero h1 {
+  color: #ffffff;
+  font-size: clamp(1.8rem, 3vw, 2.65rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
+  margin: 0;
+}
+
+.taskModuleEyebrow,
+.employeeListHero .eyebrow,
+.planningBoardHero .eyebrow {
+  color: #3fc6b5;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  margin: 0 0 5px;
+  text-transform: uppercase;
+}
+
+.taskModuleHeader p:not(.taskModuleEyebrow),
+.employeeListHero .subline,
+.planningBoardHero .subline {
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 0.9rem;
+  font-weight: 500;
+  line-height: 1.5;
+  margin: 8px 0 0;
+  max-width: 760px;
+}
+
+.taskModuleHeader .primaryButton,
+.employeeListHero .primaryButton,
+.personalDataHeroAction,
+.planningBoardHeroActions > button {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 11px;
+  box-shadow: none;
+  color: #ffffff;
+  min-height: 44px;
+  padding: 0 17px;
+}
+
+.taskModuleHeader .primaryButton:hover,
+.employeeListHero .primaryButton:hover,
+.personalDataHeroAction:hover,
+.planningBoardHeroActions > button:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.46);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+@media (max-width: 760px) {
+  .taskModuleHeader,
+  .employeeListHero,
+  .planningBoardHero {
+    align-items: stretch;
+    border-radius: 16px;
+    flex-direction: column;
+    min-height: 0;
+    padding: 21px 20px;
+  }
+
+  .taskModuleHeader h1,
+  .employeeListHero h1,
+  .planningBoardHero h1 {
+    font-size: clamp(1.65rem, 8vw, 2.15rem);
+  }
+}
+
 .customerFileHeader h1,
 .employeeFileHeader h1,
-.employeeListHero h1,
 .overviewHero h1,
-.planningBoardHero h1,
-.projectFileHeader h1,
-.taskModuleHeader h1 {
+.projectFileHeader h1 {
   font-size: var(--wp-type-size-2xl);
 }
 
