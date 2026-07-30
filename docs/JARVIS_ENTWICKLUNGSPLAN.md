@@ -1051,7 +1051,62 @@ gesetzt.
 - Mietangebot, Verfügbarkeit, Vertrag und Rückgabecheckliste vorbereiten,
 - Mietaktionen erst nach Abschluss der fachlichen Mietlogik aktivieren.
 
-### 7.15 Firmeneinstellungen
+### 7.15 Kalkulations-Rechner
+
+JARVIS muss die vorhandenen Kalkulations-Rechner nicht nur finden und
+erklären, sondern rollenberechtigt vollständig dialoggeführt bedienen können.
+Ein Mitarbeiter soll beispielsweise schreiben können: „Kalkuliere mir diese
+Winterdienstleistung“ oder „Was kostet die Fahrt mit Fahrzeug X über 180
+Kilometer?“. JARVIS wählt den fachlich passenden Rechner, fragt ausschließlich
+die noch fehlenden Eingaben ab und verwendet für das Ergebnis zwingend
+dieselben zentralen Berechnungsfunktionen wie die normale WorkPilot-Oberfläche.
+Das Sprachmodell darf keine eigene Ersatzformel erfinden oder fehlende Werte
+unbemerkt schätzen.
+
+Der vollständige Vertikalschnitt umfasst:
+
+- Winterdienst-, Fahrten- und freigegebene Fahrzeugkalkulationen erkennen,
+- vorhandene aktive Fahrzeuge und erlaubte Kalkulationsgrundlagen
+  rollen- und organisationsgebunden auswählen,
+- Einheiten, Strecke, Verbrauch, Kraftstoffpreis, Einsatzhäufigkeit,
+  Bereitschaft, Arbeitszeit, Streugut, Zuschläge und weitere fachlich
+  erforderliche Eingaben validieren,
+- fehlende Werte einzeln und verständlich nachfragen,
+- Eingaben, Annahmen, Preisquelle und Berechnungszeitpunkt sichtbar
+  zusammenfassen,
+- Varianten, Selbstkosten, Verkaufspreis, Gewinn, Aufschlag und echte Marge
+  nachvollziehbar erklären,
+- klar kennzeichnen, dass der Fahrtenrechner bewusst keine Personalkosten
+  enthält,
+- die Kalkulation zunächst nur als überprüfbare Vorschau ausgeben,
+- Speichern oder Übernehmen erst nach ausdrücklicher menschlicher Bestätigung
+  und der normalen WorkPilot-Rollenprüfung ausführen,
+- bestehende Kalkulationen niemals überschreiben, sondern entsprechend der
+  jeweiligen Fachlogik eine unveränderliche neue Snapshot-Version erzeugen,
+- erforderliche Kunden-, Projekt-, Angebots- oder Paketzuordnungen
+  serverseitig erneut prüfen und keine Zuordnung erfinden,
+- Replay, Doppelklick und parallele Bestätigung idempotent behandeln sowie
+  Vorschau, Bestätigung, Speicherung und Ergebnis revisionsgebunden
+  auditieren.
+
+Mitarbeitende dürfen die für ihre Rolle freigegebenen Rechner benutzen und
+Kalkulationen vorbereiten. Das Bearbeiten von Fahrzeugstammdaten,
+Katalogpreisen, Angeboten oder Paketen bleibt bei den jeweils vorhandenen
+WorkPilot-Berechtigungen und ist keine stillschweigende Nebenwirkung einer
+Kalkulation. Winterdienst darf ohne Projektzuordnung berechnet, aber nur nach
+der bestehenden Fachregel mit einem eindeutig zugeordneten Kundenprojekt
+gespeichert oder weiterverarbeitet werden. Der Vermietungsbereich bleibt für
+JARVIS fail-closed, solange seine Fachlogik in WorkPilot selbst nur als
+vorbereiteter beziehungsweise eingeschränkt geprüfter Bereich geführt wird.
+
+Abnahmekriterium: Ein berechtigter Mitarbeiter kann eine Kalkulation vom
+freien Sprachwunsch über vollständige Rückfragen bis zur nachvollziehbaren
+Vorschau durchführen. Eine Speicherung verwendet nach erneuter Prüfung exakt
+die normale Rechen- und Speicherlogik, erzeugt keine ungeprüften
+Stammdatenänderungen und hält Doppelklick-, Replay-, Rollen-, Organisations-
+und Auditprüfungen ein.
+
+### 7.16 Firmeneinstellungen
 
 - passende Einstellung öffnen,
 - aktuelle Konfiguration erklären,
@@ -1063,7 +1118,7 @@ gesetzt.
 - globale Änderungen nur für berechtigte Rollen nach Vorher-/Nachhervergleich
   ausführen.
 
-### 7.16 Massenänderungen
+### 7.17 Massenänderungen
 
 Jede Massenänderung benötigt:
 
@@ -1078,7 +1133,7 @@ Jede Massenänderung benötigt:
 - Transaktion oder kontrollierte Teilbatches,
 - Audit und Wiederherstellungsplan.
 
-### 7.17 Automationen ohne Einzelbestätigung
+### 7.18 Automationen ohne Einzelbestätigung
 
 Zulässige Beispiele:
 
@@ -1103,7 +1158,7 @@ benötigen eine vorher eingerichtete, eng begrenzte Unternehmensregel mit:
 
 Eine frei handelnde KI darf keine kritische Aktion selbstständig beschließen.
 
-### 7.18 Proaktiver Vertriebs-, Projekt- und BWL-Analyst
+### 7.19 Proaktiver Vertriebs-, Projekt- und BWL-Analyst
 
 JARVIS soll Chancen und Risiken nicht nur auf Nachfrage erklären, sondern in
 einem festgelegten Turnus kontrolliert erkennen. Beispiele:
@@ -1753,6 +1808,8 @@ Freigabekriterium ausweisen.
 - Aufgaben und Nachfassaufgaben,
 - Termine und Terminwünsche,
 - manuelle Zeiteinträge,
+- Kalkulations-Rechner dialoggeführt bedienen, Ergebnisse erklären und
+  kontrolliert als unveränderliche Version speichern,
 - Logbuch- und Kommentaraktionen,
 - Angebote/Nachträge als Entwurf,
 - Rechnungsentwurf und Fakturavorprüfung,

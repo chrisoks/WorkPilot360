@@ -1,5 +1,25 @@
 # WorkPilot360 Agent Handover
 
+- Verbindlicher JARVIS-Kalkulationsausbau 2026-07-30:
+  JARVIS soll die vorhandenen Kalkulations-Rechner nicht nur öffnen und
+  erklären, sondern als eigenen sicheren Action-Center-Vertikalschnitt
+  dialoggeführt bedienen. Berechtigte Mitarbeitende können eine Winterdienst-,
+  Fahrten- oder freigegebene Fahrzeugkalkulation in natürlicher Sprache
+  beginnen. JARVIS fragt fehlende Eingaben ab und verwendet ausschließlich
+  dieselben zentralen Rechenfunktionen wie die normale WorkPilot-Oberfläche;
+  eigene KI-Ersatzformeln oder unbemerkte Schätzwerte sind verboten.
+  Eingaben, Annahmen, Preisquelle, Varianten, Selbstkosten, Verkaufspreis,
+  Gewinn, Aufschlag und Marge werden vor einer Folgeaktion sichtbar erklärt.
+  Speichern oder Übernehmen benötigt die vorhandene Rollenberechtigung,
+  ausdrückliche Bestätigung, erneute serverseitige Prüfung, unveränderlichen
+  Snapshot, Audit und Idempotenz. Kunden-, Projekt-, Angebots- oder
+  Paketzuordnungen werden nie erfunden. Fahrzeugstammdaten, Katalogpreise,
+  Angebote oder Pakete werden nicht als Nebenwirkung verändert. Winterdienst
+  darf ohne Projekt gerechnet, aber nur entsprechend der bestehenden
+  Projektzuordnungsregel gespeichert werden. Vermietung bleibt bis zur
+  vollständigen Fachfreigabe fail-closed. Die vollständige Definition of Done
+  steht in `docs/JARVIS_ENTWICKLUNGSPLAN.md`, Abschnitt 7.15.
+
 - JARVIS projektartgerechte Terminplanung 2026-07-30:
   Die bisherige harte Blockade `Projektartgerechte Terminmaske` ist technisch
   ersetzt. Normale Planung, Terminwunsch und JARVIS verwenden für neue
