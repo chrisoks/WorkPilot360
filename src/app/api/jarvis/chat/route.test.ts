@@ -1581,8 +1581,73 @@ describe("POST /api/jarvis/chat", () => {
     expect(await response.json()).toMatchObject({
       type: "clarification",
       topicId: "action.preview.planning.details-required",
-      message: expect.stringContaining("Termin-Vorschau"),
+      message: expect.stringContaining("ein konkretes Datum"),
     });
+  });
+
+  it("names only the still-missing fields in an incomplete appointment request", async () => {
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      recordType: "project",
+      recordId: "project-1",
+    });
+    mocks.getDemoContext.mockResolvedValue({
+      organization: { id: "organization-1" },
+      users: [
+        {
+          id: "user-1",
+          firstName: "Christian",
+          lastName: "Eid",
+          isActive: true,
+        },
+      ],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Lege am 31.07.2026 einen Termin für Christian Eid an.",
+          context: { recordType: "project", recordId: "project-1" },
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      type: "clarification",
+      topicId: "action.preview.planning.details-required",
+      message: expect.stringContaining(
+        "einen eindeutigen Titel in Anführungszeichen"
+      ),
+    });
+    expect(payload.message).toContain("Beginn und Ende");
+    expect(payload.message).not.toContain("ein konkretes Datum");
+    expect(payload.message).not.toContain("vollständigen Namen");
+  });
+
+  it("refuses combined invoice sending and project deletion explicitly", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message:
+            "Versende sofort eine Rechnung und lösche danach das Projekt.",
+        }),
+      })
+    );
+
+    expect(await response.json()).toMatchObject({
+      type: "refusal",
+      topicId: "jarvis.safety.combined-financial-delete",
+      message: expect.stringContaining(
+        "Weder wurde eine Rechnung versendet noch ein Projekt gelöscht"
+      ),
+    });
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
   });
 
   it("keeps a diagnostic appointment question on the project-check path", async () => {

@@ -192,18 +192,50 @@ async function buildJarvisPlanningPreview(input: {
   }
   const details = extractJarvisPlanningPreviewDetails(input.question);
   if (!details) {
-    const hasCompleteShape =
-      /[„"'][^„“"']{3,180}[“"']/u.test(input.question) &&
-      /\b\d{1,2}\.\d{1,2}\.\d{4}\b/u.test(input.question) &&
+    const hasQuotedTitle = /[„"'][^„“"']{3,180}[“"']/u.test(
+      input.question
+    );
+    const hasExactDate = /\b\d{1,2}\.\d{1,2}\.\d{4}\b/u.test(
+      input.question
+    );
+    const hasCompleteTimeWindow =
       /\bvon\s+(?:[01]?\d|2[0-3]):[0-5]\d\s+(?:uhr\s+)?bis\s+(?:[01]?\d|2[0-3]):[0-5]\d\b/iu.test(
         input.question
       );
+    const normalizedQuestion = normalizePersonLabel(input.question);
+    const hasUnambiguousAssignee = input.users.some((user) => {
+      if (user.isActive === false || !user.id) return false;
+      const label = [user.firstName, user.lastName]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+      return (
+        label.length >= 3 &&
+        normalizedQuestion.includes(normalizePersonLabel(label))
+      );
+    });
+    const hasCompleteShape =
+      hasQuotedTitle && hasExactDate && hasCompleteTimeWindow;
+    const missingDetails = [
+      !hasQuotedTitle ? "einen eindeutigen Titel in Anführungszeichen" : "",
+      !hasExactDate ? "ein konkretes Datum im Format TT.MM.JJJJ" : "",
+      !hasCompleteTimeWindow ? "Beginn und Ende im Format HH:MM" : "",
+      !hasUnambiguousAssignee
+        ? "den vollständigen Namen einer aktiven Person"
+        : "",
+    ].filter(Boolean);
+    const missingDetailsText =
+      missingDetails.length <= 1
+        ? missingDetails[0]
+        : `${missingDetails.slice(0, -1).join(", ")} und ${
+            missingDetails[missingDetails.length - 1]
+          }`;
     return {
       type: "clarification" as const,
       topicId: "action.preview.planning.details-required",
       message: hasCompleteShape
         ? "Datum oder Zeitfenster sind unplausibel. Verwende ein gültiges Kalenderdatum und stelle sicher, dass das Ende nach dem Beginn liegt; es wurde nichts gespeichert."
-        : "Für die Termin-Vorschau brauche ich einen Titel in Anführungszeichen, ein Datum sowie Beginn und Ende, zum Beispiel: Plane am 03.08.2026 von 10:00 bis 11:00 den Termin „Vor-Ort-Prüfung“ für Christian Eid. Es wurde nichts gespeichert.",
+        : `Für die Termin-Vorschau fehlen noch: ${missingDetailsText}. Beispiel: Plane am 03.08.2026 von 10:00 bis 11:00 den Termin „Vor-Ort-Prüfung“ für Christian Eid. Es wurde nichts gespeichert.`,
     };
   }
   const normalizedQuestion = normalizePersonLabel(input.question);
@@ -340,6 +372,20 @@ function looksLikeDirectActionRequest(
 
 function resolveExplicitSafetyPolicyQuestion(question: string) {
   const value = normalizeJarvisIntentText(question);
+  if (
+    /\brechnung\w*\b/.test(value) &&
+    /\b(?:send|sende|versend|schick)\w*\b/.test(value) &&
+    /\bprojekt\w*\b/.test(value) &&
+    /\b(?:losch|loesch|entfern)\w*\b/.test(value)
+  ) {
+    return {
+      type: "refusal" as const,
+      topicId: "jarvis.safety.combined-financial-delete",
+      message:
+        "Weder wurde eine Rechnung versendet noch ein Projekt gelöscht. Rechnungsversand hat finanzielle Außenwirkung und Projektlöschung ist irreversibel; beide Aktionen sind für JARVIS nicht autonom freigegeben und dürfen nicht zu einer kombinierten Ausführung verkettet werden. Nutze jeweils den berechtigten Fachablauf mit eindeutigem Ziel, sichtbarer Wirkung und bewusster menschlicher Bestätigung.",
+      deterministic: true,
+    };
+  }
   if (
     /\b(?:darfst|kannst|wirst)\b.*\brechnung\w*\b.*\bversend\w*\b/.test(
       value
