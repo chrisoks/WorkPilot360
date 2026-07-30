@@ -2417,6 +2417,52 @@ export async function resolveJarvisProjectHealthRequest(input: {
     getDeadlineSettings(input.organizationId),
   ]);
 
+  const asksForNextAppointment =
+    /\b(?:gibt es|wann ist|welcher ist|was ist)\b.*\b(?:nachste[nr]?|kommende[nr]?)\b.*\b(?:termin|planung)\b/.test(
+      normalize(input.question)
+    );
+  if (asksForNextAppointment) {
+    const nextPlanningEntry = projectPlanningEntries
+      .filter((entry) => entry.date >= healthCheckDateKey)
+      .sort((first, second) => first.date.localeCompare(second.date))[0];
+    const projectLabel = [project.projectNumber, project.title]
+      .filter(Boolean)
+      .join(" · ");
+    const nextDate = nextPlanningEntry
+      ? new Intl.DateTimeFormat("de-DE", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          timeZone: "Europe/Berlin",
+        }).format(new Date(`${nextPlanningEntry.date}T12:00:00.000Z`))
+      : undefined;
+    const value = nextPlanningEntry
+      ? `${nextDate} · ${nextPlanningEntry.durationMinutes} Minuten`
+      : "Kein zukünftiger Termin";
+    return {
+      type: "answer",
+      topicId: "project.fact.nextAppointment",
+      message: nextPlanningEntry
+        ? `Der nächste hinterlegte Termin für ${project.projectNumber || project.title} ist am ${nextDate} und dauert ${nextPlanningEntry.durationMinutes} Minuten.`
+        : `Für ${project.projectNumber || project.title} ist aktuell kein zukünftiger Termin hinterlegt.`,
+      structured: {
+        title: `Nächster Termin · ${project.projectNumber || project.title}`,
+        subtitle: project.customer || "Projekt",
+        facts: [{ label: "Nächster Termin", value }],
+      },
+      records: [{
+        id: `project-next-appointment-${project.id}`,
+        kind: "project",
+        title: projectLabel,
+        subtitle: project.customer || "Projekt",
+        summary: value,
+        status: project.status,
+        target: { kind: "project", id: project.id },
+      }],
+      deterministic: true,
+    };
+  }
+
   const comparedUserIds = [
     ...new Set(
       timeEntries

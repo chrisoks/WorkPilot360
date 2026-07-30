@@ -532,6 +532,31 @@ describe("resolveJarvisProjectHealthRequest", () => {
     expect(dbMocks.invoiceFindMany).not.toHaveBeenCalled();
   });
 
+  it("answers a direct next-appointment question without a misleading health score", async () => {
+    dbMocks.planningEntryFindMany.mockResolvedValueOnce([]);
+
+    const response = await resolveJarvisProjectHealthRequest({
+      question: "Gibt es bereits einen nächsten Termin?",
+      organizationId: "org-1",
+      accessProfile: createJarvisAccessProfile({
+        id: "manager-1",
+        role: Role.GESCHAEFTSFUEHRER,
+      }),
+      context: { recordType: "project", recordId: project.id },
+    });
+
+    expect(response).toMatchObject({
+      type: "answer",
+      topicId: "project.fact.nextAppointment",
+      message: expect.stringContaining("kein zukünftiger Termin"),
+      structured: {
+        facts: [
+          { label: "Nächster Termin", value: "Kein zukünftiger Termin" },
+        ],
+      },
+    });
+  });
+
   it("answers the same clear project-type question despite a transposed word", async () => {
     dbMocks.queryRaw.mockResolvedValueOnce([{
       ...project,
