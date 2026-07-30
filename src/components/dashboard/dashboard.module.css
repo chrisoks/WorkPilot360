@@ -35932,12 +35932,111 @@
   width: 25px;
 }
 
+/*
+ * Zusammenhängende klickbare Übersichtsfilter.
+ * Kategorien und Status bleiben einzeln erkennbar, wirken aber nicht mehr
+ * wie voneinander unabhängige, farblich gemischte KPI-Karten.
+ */
+.catalogTypeStrip,
+.potentialStatusBar,
+.taskSummaryStrip {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #d7e2e7;
+  border-radius: 16px;
+  box-shadow: 0 12px 28px rgba(12, 46, 58, 0.07);
+  gap: 5px;
+  padding: 6px;
+}
+
+.potentialWorkflowFilters {
+  gap: 5px;
+}
+
+.catalogTypeStrip .catalogTypeButton,
+.potentialStatusBar .potentialWorkflowFilters button,
+.potentialStatusBar .potentialDueFilter,
+.taskSummaryStrip > .taskSummaryMetric {
+  background: linear-gradient(180deg, #fbfdfd 0%, #f4f8f8 100%);
+  border: 1px solid #dfe8ea;
+  border-radius: 11px;
+  box-shadow: inset 0 1px 0 #ffffff;
+  transform: none;
+}
+
+.catalogTypeStrip .catalogTypeButton::before,
+.potentialStatusBar .potentialWorkflowFilters button::before,
+.potentialStatusBar .potentialDueFilter::before,
+.taskSummaryStrip > .taskSummaryMetric::before {
+  display: none;
+}
+
+.catalogTypeStrip .catalogTypeButton:hover,
+.potentialStatusBar .potentialWorkflowFilters button:hover,
+.potentialStatusBar .potentialDueFilter:hover,
+.taskSummaryStrip > .taskSummaryMetric:hover {
+  background: linear-gradient(180deg, #f4fbf9 0%, #eaf6f3 100%);
+  border-color: #c6dfda;
+  box-shadow:
+    inset 0 1px 0 #ffffff,
+    0 5px 12px rgba(12, 67, 70, 0.08);
+  transform: translateY(-1px);
+}
+
+.catalogTypeStrip .catalogTypeButton[data-active="true"],
+.potentialStatusBar .potentialWorkflowFilters button[data-active="true"],
+.potentialStatusBar .potentialDueFilter[data-active="true"],
+.taskSummaryStrip > .taskSummaryMetric[data-active="true"] {
+  background:
+    radial-gradient(circle at 88% 18%, rgba(68, 196, 181, 0.22), transparent 34%),
+    linear-gradient(135deg, #0d3540 0%, #14515a 100%);
+  border-color: #174f57;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 8px 18px rgba(9, 42, 51, 0.18);
+  color: #ffffff;
+  transform: none;
+}
+
+.catalogTypeStrip .catalogTypeIcon {
+  background: #e7f3f1;
+  border-color: #c7e1dd;
+  color: #126d70;
+}
+
+.catalogTypeStrip .catalogTypeButton[data-active="true"] .catalogTypeIcon {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.34);
+  color: #ffffff;
+}
+
+.catalogTypeStrip .catalogTypeButton[data-active="true"] .catalogTypeLabel,
+.catalogTypeStrip .catalogTypeButton[data-active="true"] strong,
+.potentialStatusBar .potentialWorkflowFilters button[data-active="true"] strong,
+.potentialStatusBar .potentialDueFilter[data-active="true"] strong,
+.taskSummaryStrip > .taskSummaryMetric[data-active="true"] strong {
+  color: #ffffff;
+}
+
+.potentialStatusBar .potentialWorkflowFilters button[data-active="true"] span,
+.potentialStatusBar .potentialDueFilter[data-active="true"] span,
+.taskSummaryStrip > .taskSummaryMetric[data-active="true"] > span {
+  color: #78d8cb;
+}
+
 .topline .compactField,
 .topline .inlineSelectLabel {
   color: rgba(255, 255, 255, 0.82);
 }
 
 @media (max-width: 760px) {
+  .catalogTypeStrip {
+    grid-template-columns: 1fr;
+  }
+
+  .potentialWorkflowFilters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .taskModuleHeader,
   .employeeListHero,
   .planningBoardHero,
