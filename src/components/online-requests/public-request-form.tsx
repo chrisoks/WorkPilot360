@@ -256,6 +256,25 @@ function Icon({
         </>
       );
       break;
+    case "user":
+      content = (
+        <>
+          <circle cx="12" cy="8" r="3.5" />
+          <path d="M5 21c.5-4.2 3-6.5 7-6.5s6.5 2.3 7 6.5" />
+        </>
+      );
+      break;
+    case "lock":
+      content = (
+        <>
+          <rect x="5" y="10" width="14" height="11" rx="2.5" />
+          <path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10M12 14v3" />
+        </>
+      );
+      break;
+    case "close":
+      content = <path d="m6 6 12 12M18 6 6 18" />;
+      break;
     case "clock":
       content = (
         <>
@@ -438,6 +457,7 @@ function TurnstileChallenge({
 }
 
 export function PublicRequestForm() {
+  const serviceAccessDialogRef = useRef<HTMLDialogElement>(null);
   const [form, setForm] = useState<FormState>(initialFormState);
   const [photos, setPhotos] = useState<PhotoPreview[]>([]);
   const photosRef = useRef<PhotoPreview[]>([]);
@@ -460,6 +480,7 @@ export function PublicRequestForm() {
   const [submissionError, setSubmissionError] = useState("");
   const [submissionResult, setSubmissionResult] =
     useState<SubmissionResult | null>(null);
+  const [serviceAccessNotice, setServiceAccessNotice] = useState("");
   const clientSubmissionIdRef = useRef("");
 
   const selectedService = services.find(
@@ -748,6 +769,23 @@ export function PublicRequestForm() {
     ONLINE_REQUEST_TYPES.find((type) => type.id === form.requestType)?.label ??
     "";
 
+  function openServiceAccess() {
+    setServiceAccessNotice("");
+    serviceAccessDialogRef.current?.showModal();
+  }
+
+  function closeServiceAccess() {
+    serviceAccessDialogRef.current?.close();
+    setServiceAccessNotice("");
+  }
+
+  function handleServiceAccessSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setServiceAccessNotice(
+      "Der sichere Kundenabgleich wird im nächsten Ausbauschritt mit WorkPilot verbunden. Bitte nutzen Sie bis zur Freischaltung das Anfrageformular."
+    );
+  }
+
   return (
     <main className={styles.page}>
       <header className={styles.hero}>
@@ -762,9 +800,19 @@ export function PublicRequestForm() {
               src="/ok-immocare-logo.png"
               width={362}
             />
-            {isLocalPreview ? (
-              <span className={styles.previewBadge}>Formular-Vorschau</span>
-            ) : null}
+            <div className={styles.heroActions}>
+              {isLocalPreview ? (
+                <span className={styles.previewBadge}>Formular-Vorschau</span>
+              ) : null}
+              <button
+                className={styles.customerAccessButton}
+                onClick={openServiceAccess}
+                type="button"
+              >
+                <Icon name="user" size={18} />
+                Ich bin bereits Kunde
+              </button>
+            </div>
           </div>
           <div className={styles.heroContent}>
             <span className={styles.eyebrow}>Direkt. Einfach. Persönlich.</span>
@@ -790,6 +838,76 @@ export function PublicRequestForm() {
           </div>
         </div>
       </header>
+
+      <dialog
+        aria-labelledby="service-access-title"
+        className={styles.serviceAccessDialog}
+        onClick={(event) => {
+          if (event.target === event.currentTarget) closeServiceAccess();
+        }}
+        onClose={() => setServiceAccessNotice("")}
+        ref={serviceAccessDialogRef}
+      >
+        <div className={styles.serviceAccessCard}>
+          <button
+            aria-label="Servicezugang schließen"
+            className={styles.dialogCloseButton}
+            onClick={closeServiceAccess}
+            type="button"
+          >
+            <Icon name="close" size={20} />
+          </button>
+          <span className={styles.serviceAccessIcon}>
+            <Icon name="lock" size={24} />
+          </span>
+          <span className={styles.eyebrowDark}>Persönlicher Servicezugang</span>
+          <h2 id="service-access-title">Willkommen zurück</h2>
+          <p>
+            Mit Ihrer Kundennummer und Ihrem persönlichen Service-PIN können
+            Ihre Kontaktdaten und freigegebenen Projekte direkt übernommen
+            werden.
+          </p>
+          <form onSubmit={handleServiceAccessSubmit}>
+            <label>
+              <span>Kundennummer oder Service-ID</span>
+              <input
+                autoComplete="username"
+                inputMode="text"
+                name="serviceId"
+                placeholder="z. B. KD-1024"
+                required
+              />
+            </label>
+            <label>
+              <span>Service-PIN</span>
+              <input
+                autoComplete="current-password"
+                inputMode="numeric"
+                maxLength={6}
+                minLength={6}
+                name="servicePin"
+                pattern="[0-9]{6}"
+                placeholder="6-stelliger PIN"
+                required
+                type="password"
+              />
+            </label>
+            <button className={styles.serviceAccessSubmit} type="submit">
+              Servicezugang öffnen
+              <Icon name="arrow" size={18} />
+            </button>
+          </form>
+          {serviceAccessNotice ? (
+            <p className={styles.serviceAccessNotice} role="status">
+              {serviceAccessNotice}
+            </p>
+          ) : null}
+          <p className={styles.serviceAccessHelp}>
+            Noch keine Service-PIN? Sie können das Anfrageformular weiterhin
+            ohne Zugang vollständig nutzen.
+          </p>
+        </div>
+      </dialog>
 
       <div className={styles.content}>
         {isLocalPreview ? (

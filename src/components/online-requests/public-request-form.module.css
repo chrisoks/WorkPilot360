@@ -69,11 +69,53 @@
   gap: 20px;
 }
 
+.heroActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .logo {
   width: 124px;
   height: auto;
   filter: drop-shadow(0 9px 18px rgba(0, 0, 0, 0.22));
   object-fit: contain;
+}
+
+.customerAccessButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 15px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.09);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    transform 150ms ease;
+}
+
+.customerAccessButton:hover {
+  border-color: rgba(123, 201, 67, 0.72);
+  background: rgba(123, 201, 67, 0.16);
+  transform: translateY(-1px);
+}
+
+.customerAccessButton:focus-visible,
+.dialogCloseButton:focus-visible,
+.serviceAccessSubmit:focus-visible {
+  outline: 3px solid rgba(123, 201, 67, 0.35);
+  outline-offset: 3px;
 }
 
 .previewBadge {
@@ -87,6 +129,146 @@
   color: rgba(255, 255, 255, 0.78);
   font-size: 0.75rem;
   letter-spacing: 0.02em;
+}
+
+.serviceAccessDialog {
+  width: min(100% - 28px, 470px);
+  max-height: min(90vh, 690px);
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  border: 0;
+  border-radius: 24px;
+  color: var(--oki-ink);
+  background: transparent;
+  box-shadow: 0 26px 80px rgba(20, 27, 22, 0.28);
+}
+
+.serviceAccessDialog::backdrop {
+  background: rgba(22, 28, 24, 0.68);
+  backdrop-filter: blur(5px);
+}
+
+.serviceAccessCard {
+  position: relative;
+  padding: 34px;
+  background:
+    radial-gradient(circle at 100% 0, rgba(123, 201, 67, 0.14), transparent 15rem),
+    #fff;
+}
+
+.dialogCloseButton {
+  position: absolute;
+  top: 17px;
+  right: 17px;
+  display: grid;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--oki-border);
+  border-radius: 50%;
+  color: #68716c;
+  background: rgba(255, 255, 255, 0.88);
+  cursor: pointer;
+}
+
+.serviceAccessIcon {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 20px;
+  place-items: center;
+  border-radius: 16px;
+  color: #fff;
+  background: linear-gradient(135deg, #78c943, var(--oki-green-dark));
+  box-shadow: 0 10px 25px rgba(72, 139, 38, 0.2);
+}
+
+.serviceAccessCard h2 {
+  margin: 0;
+  color: var(--oki-ink);
+  font-size: 1.55rem;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+}
+
+.serviceAccessCard > p {
+  margin: 10px 0 0;
+  color: var(--oki-muted);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.serviceAccessCard form {
+  display: grid;
+  gap: 15px;
+  margin-top: 25px;
+}
+
+.serviceAccessCard form label {
+  display: grid;
+  gap: 7px;
+}
+
+.serviceAccessCard form label > span {
+  color: #414a45;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.serviceAccessCard input {
+  width: 100%;
+  min-height: 50px;
+  padding: 0 13px;
+  border: 1px solid #cfd8d0;
+  border-radius: 12px;
+  outline: none;
+  color: var(--oki-ink);
+  background: #fff;
+  font: inherit;
+}
+
+.serviceAccessCard input:focus {
+  border-color: var(--oki-green-dark);
+  box-shadow: 0 0 0 3px rgba(123, 201, 67, 0.17);
+}
+
+.serviceAccessCard input::placeholder {
+  color: #9aa39e;
+}
+
+.serviceAccessSubmit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 52px;
+  margin-top: 2px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 13px;
+  color: #fff;
+  background: linear-gradient(135deg, #68b635, var(--oki-green-dark));
+  box-shadow: 0 9px 23px rgba(70, 132, 39, 0.2);
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 750;
+}
+
+.serviceAccessNotice {
+  padding: 11px 13px;
+  border: 1px solid #d8e4d1;
+  border-radius: 12px;
+  color: #506349 !important;
+  background: #f4f9f1;
+  font-size: 0.76rem !important;
+}
+
+.serviceAccessHelp {
+  padding-top: 16px;
+  border-top: 1px solid #edf0ed;
+  font-size: 0.73rem !important;
 }
 
 .heroContent {
@@ -1287,6 +1469,16 @@
     width: 108px;
   }
 
+  .heroActions {
+    align-items: flex-end;
+    flex-direction: column-reverse;
+  }
+
+  .customerAccessButton {
+    min-height: 40px;
+    padding: 7px 13px;
+  }
+
   .heroContent {
     margin-top: 27px;
   }
@@ -1331,6 +1523,22 @@
 }
 
 @media (max-width: 520px) {
+  .brandRow {
+    align-items: center;
+  }
+
+  .heroActions {
+    max-width: 190px;
+  }
+
+  .customerAccessButton {
+    font-size: 0.72rem;
+  }
+
+  .serviceAccessCard {
+    padding: 28px 22px 24px;
+  }
+
   .heroContent h1 {
     font-size: 2.15rem;
   }

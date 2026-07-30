@@ -1,5 +1,27 @@
 # WorkPilot360 Agent Handover
 
+- Persönlicher Servicezugang und späteres Kundenportal 2026-07-30:
+  Das öffentliche OK-immocare-Anfrageformular bleibt ohne vorgeschaltete
+  Auswahl unmittelbar nutzbar. In der Kopfzeile ergänzt ein eigenständiger
+  Button `Ich bin bereits Kunde` den normalen Einstieg. Er öffnet einen
+  smartphoneoptimierten Dialog für `Kundennummer oder Service-ID` plus
+  sechsstelligen Service-PIN. Die aktuell umgesetzte Oberfläche ist bewusst
+  nur das sichtbare Fundament: Kundenerkennung, PIN-Ausgabe und -Hashing,
+  Fehlversuchs-/Sperrlogik, widerrufbare Sitzung, organisationsgebundene
+  Projektfreigabe, Formularvorbelegung und die eindeutige Quellenverknüpfung
+  einer Anfrage müssen vor Aktivierung vollständig serverseitig umgesetzt
+  und sicherheitsgeprüft werden. Ein kurzer PIN darf niemals allein
+  organisationsfremde oder sensible Projekt-, Dokument- oder Rechnungsdaten
+  offenlegen. Die vorhandene Invariante bleibt bestehen: kein erstbestes
+  offenes Projekt automatisch wählen; entweder wählt der verifizierte Kunde
+  ein freigegebenes Projekt bewusst oder die Anfrage bleibt ohne
+  Projektbindung im Online-Posteingang.
+  Ein späteres echtes Kundenportal mit Status, Terminen, Dokumenten und
+  Kommunikation ist ausdrücklich als wertvolle Ausbaustufe vorgemerkt, aber
+  nicht Teil des jetzigen Formularfundaments. Dieser Vertikalschnitt muss
+  separat und bewusst fachlich, rollenbezogen, datenschutzrechtlich und
+  sicherheitstechnisch konzipiert werden.
+
 - Online-Anfragen Projektstandard und mobile Leistungsauswahl 2026-07-30:
   Die kontrollierte Umwandlung einer Online-Anfrage verwendet keine
   `ONL-...`-Projektnummer mehr. Innerhalb der serialisierbaren
