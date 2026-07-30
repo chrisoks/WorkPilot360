@@ -6939,6 +6939,96 @@
   position: absolute;
 }
 
+.jarvisDataFlow {
+  color: #38bdf8;
+  filter:
+    drop-shadow(0 0 2px rgba(56, 189, 248, 0.76))
+    drop-shadow(0 0 8px rgba(14, 165, 233, 0.24));
+  height: 100%;
+  inset: 0;
+  opacity: 0.08;
+  pointer-events: none;
+  position: absolute;
+  transition:
+    filter 420ms ease,
+    opacity 420ms ease;
+  width: 100%;
+  -webkit-mask-image: radial-gradient(
+    ellipse 92% 78% at 50% 50%,
+    #000 34%,
+    rgba(0, 0, 0, 0.86) 56%,
+    transparent 100%
+  );
+  mask-image: radial-gradient(
+    ellipse 92% 78% at 50% 50%,
+    #000 34%,
+    rgba(0, 0, 0, 0.86) 56%,
+    transparent 100%
+  );
+  z-index: 0;
+}
+
+.jarvisDataFlow path {
+  animation: jarvisDataStream 3.8s linear infinite;
+  animation-play-state: paused;
+  fill: none;
+  opacity: 0.48;
+  stroke: currentColor;
+  stroke-dasharray: 0.018 0.055 0.008 0.11;
+  stroke-linecap: round;
+  stroke-width: 0.9;
+  vector-effect: non-scaling-stroke;
+}
+
+.jarvisDataFlow g:nth-child(2) path {
+  animation-direction: reverse;
+}
+
+.jarvisDataFlow path:nth-child(2n) {
+  animation-delay: -0.72s;
+  opacity: 0.3;
+  stroke-width: 0.65;
+}
+
+.jarvisDataFlow path:nth-child(3n) {
+  animation-delay: -1.68s;
+  opacity: 0.62;
+  stroke-width: 1.15;
+}
+
+.jarvisDataFlow path:nth-child(4n) {
+  animation-delay: -2.44s;
+}
+
+.jarvisSidebarCard[data-state="active"] .jarvisDataFlow,
+.jarvisSidebarCard[data-state="thinking"] .jarvisDataFlow {
+  opacity: 0.72;
+}
+
+.jarvisSidebarCard[data-state="active"] .jarvisDataFlow path,
+.jarvisSidebarCard[data-state="thinking"] .jarvisDataFlow path {
+  animation-play-state: running;
+}
+
+.jarvisSidebarCard[data-state="thinking"] .jarvisDataFlow {
+  color: #67e8f9;
+  filter:
+    drop-shadow(0 0 3px rgba(103, 232, 249, 0.94))
+    drop-shadow(0 0 12px rgba(14, 165, 233, 0.48));
+  opacity: 0.98;
+}
+
+.jarvisSidebarCard[data-state="thinking"] .jarvisDataFlow path {
+  animation-duration: 1.35s;
+  stroke-width: 1.2;
+}
+
+@keyframes jarvisDataStream {
+  to {
+    stroke-dashoffset: -1;
+  }
+}
+
 .jarvisSidebarVisual img {
   display: block;
   height: 96%;
@@ -6951,6 +7041,39 @@
   top: 50%;
   transform: translate(-50%, -50%);
   width: 121%;
+  z-index: 1;
+}
+
+.jarvisOutputPulse {
+  aspect-ratio: 1;
+  border: 1px solid rgba(103, 232, 249, 0.82);
+  border-radius: 50%;
+  box-shadow:
+    0 0 18px rgba(56, 189, 248, 0.42),
+    0 0 34px rgba(250, 204, 21, 0.16);
+  left: 50%;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%) scale(0.42);
+  width: 34%;
+  z-index: 2;
+  animation: jarvisOutputWave 920ms cubic-bezier(0.16, 0.76, 0.34, 1) both;
+}
+
+@keyframes jarvisOutputWave {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.42);
+  }
+  24% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(2.55);
+  }
 }
 
 .jarvisSidebarLabel {
@@ -6962,7 +7085,7 @@
   pointer-events: none;
   position: absolute;
   transform: translate(-50%, -50%);
-  z-index: 2;
+  z-index: 3;
 }
 
 .jarvisSidebarLabel strong {
@@ -6983,6 +7106,8 @@
 @media (prefers-reduced-motion: reduce) {
   .jarvisSidebarCard,
   .jarvisSidebarCard[data-active="true"]::after,
+  .jarvisDataFlow path,
+  .jarvisOutputPulse,
   .managementAiPanel,
   .managementAiPanel::before {
     animation: none;
@@ -6992,6 +7117,11 @@
   .jarvisSidebarCard[data-active="true"]::after {
     opacity: 0.52;
     transform: translate(-50%, -50%) scale(1);
+  }
+
+  .jarvisSidebarCard[data-state="active"] .jarvisDataFlow,
+  .jarvisSidebarCard[data-state="thinking"] .jarvisDataFlow {
+    opacity: 0.34;
   }
 }
 
