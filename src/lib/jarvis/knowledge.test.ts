@@ -423,6 +423,19 @@ describe("JARVIS system help", () => {
     });
   });
 
+  it.each([
+    ["Wo kann ich eine Rechnung anlegen?", "systemMap.accounting"],
+    ["Wo ändere ich Firmeneinstellungen?", "systemMap.settings"],
+  ])("keeps natural navigation commands ahead of analysis: %s", (question, topicId) => {
+    expect(
+      resolveJarvisDirectNavigationHelp(question, leadershipAccess)
+    ).toMatchObject({
+      type: "answer",
+      topicId,
+      navigation: expect.any(Object),
+    });
+  });
+
   it("resolves a named main-navigation area before analysis or AI routing", () => {
     expect(
       resolveJarvisDirectNavigationHelp(
