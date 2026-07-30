@@ -52,6 +52,12 @@ type OfferRow = {
   totalMinutes: number;
 };
 
+type OfferPlanningLineRow = {
+  quantity: number;
+  isLaborPosition: boolean;
+  plannedLaborHours: number;
+};
+
 type CatalogRow = {
   id: string;
   name: string;
@@ -273,29 +279,34 @@ async function getProject(db: PlanningDb, organizationId: string, projectId: str
   return project;
 }
 
+export function resolveOfferPlanningMinutes(lines: OfferPlanningLineRow[]) {
+  const totalHours = lines.reduce((sum, line) => {
+    if (!line.isLaborPosition) return sum;
+    const assignedHours = Number(line.plannedLaborHours) || 0;
+    const fallbackQuantity = Number(line.quantity) || 0;
+    return sum + Math.max(0, assignedHours > 0 ? assignedHours : fallbackQuantity);
+  }, 0);
+  return Math.round(totalHours * 60);
+}
+
 async function getOffer(db: PlanningDb, organizationId: string, projectId: string, offerId: string) {
-  const rows = await db.$queryRaw<OfferRow[]>`
+  const rows = await db.$queryRaw<Array<Omit<OfferRow, "totalMinutes">>>`
     SELECT
       o."id",
       o."offerNumber",
       o."status",
-      o."plannedExecutionMonth",
-      COALESCE(ROUND(SUM(l."plannedHours") * 60), 0)::integer AS "totalMinutes"
+      o."plannedExecutionMonth"
     FROM "Offer" o
-    LEFT JOIN "OfferLineLabor" l
-      ON l."organizationId" = o."organizationId"
-      AND l."offerId" = o."id"
     WHERE o."organizationId" = ${organizationId}
       AND o."projectId" = ${projectId}
       AND o."id" = ${offerId}
-    GROUP BY o."id"
     LIMIT 1
   `;
-  const offer = rows[0];
+  const header = rows[0];
   if (
-    !offer ||
+    !header ||
     ["Entwurf", "Verloren", "Angebot verloren", "Gelöscht"].includes(
-      offer.status
+      header.status
     )
   ) {
     throw new PlanningBatchError(
@@ -304,13 +315,32 @@ async function getOffer(db: PlanningDb, organizationId: string, projectId: strin
       "final_offer_required"
     );
   }
-  if (!/^\d{4}-\d{2}$/.test(offer.plannedExecutionMonth)) {
+  if (!/^\d{4}-\d{2}$/.test(header.plannedExecutionMonth)) {
     throw new PlanningBatchError(
       "Im finalen Angebot fehlt der Ausführungsmonat.",
       409,
       "offer_execution_month_missing"
     );
   }
+  const planningLines = await db.$queryRaw<OfferPlanningLineRow[]>`
+    SELECT
+      line."quantity",
+      line."isLaborPosition",
+      COALESCE(SUM(labor."plannedHours"), 0)::double precision AS "plannedLaborHours"
+    FROM "OfferLine" line
+    LEFT JOIN "OfferLineLabor" labor
+      ON labor."organizationId" = line."organizationId"
+      AND labor."offerId" = line."offerId"
+      AND labor."offerLineId" = line."id"
+    WHERE line."organizationId" = ${organizationId}
+      AND line."offerId" = ${offerId}
+    GROUP BY line."id"
+    ORDER BY line."position", line."id"
+  `;
+  const offer: OfferRow = {
+    ...header,
+    totalMinutes: resolveOfferPlanningMinutes(planningLines),
+  };
   if (offer.totalMinutes <= 0) {
     throw new PlanningBatchError(
       "Das finale Angebot enthält kein planbares Stundenkontingent.",
