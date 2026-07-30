@@ -12461,29 +12461,26 @@
 }
 
 .contactSummaryGrid {
-  background: transparent;
-  border: 0;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #d7e2e7;
+  border-radius: 16px;
+  box-shadow: 0 12px 28px rgba(12, 46, 58, 0.07);
   display: grid;
-  gap: 8px;
+  gap: 5px;
   grid-template-columns: repeat(6, minmax(0, 1fr));
+  padding: 6px;
 }
 
 .contactSummaryCard {
-  --contact-accent: #64748b;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-  border: 1px solid #cbd5e1;
-  border-bottom-color: #aebccc;
-  border-radius: 10px;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.96),
-    0 3px 0 #d8e0e9,
-    0 8px 16px rgba(15, 23, 42, 0.07);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  box-shadow: none;
   cursor: pointer;
   display: grid;
-  gap: 6px;
-  min-height: 76px;
-  overflow: hidden;
-  padding: 14px 15px 12px;
+  gap: 5px;
+  min-height: 70px;
+  padding: 11px 13px;
   position: relative;
   text-align: left;
   transition:
@@ -12493,78 +12490,38 @@
     transform 0.16s ease;
 }
 
-.contactSummaryCard::before {
-  background: var(--contact-accent);
-  content: "";
-  height: 3px;
-  inset: 0 0 auto;
-  opacity: 0.78;
-  position: absolute;
-}
-
-.contactSummaryCard[data-tone="blue"] {
-  --contact-accent: #2563eb;
-}
-
-.contactSummaryCard[data-tone="teal"] {
-  --contact-accent: #0f9fa8;
-}
-
-.contactSummaryCard[data-tone="amber"] {
-  --contact-accent: #d99a16;
-}
-
-.contactSummaryCard[data-tone="indigo"] {
-  --contact-accent: #6366f1;
-}
-
-.contactSummaryCard[data-tone="cyan"] {
-  --contact-accent: #0891b2;
-}
-
 .contactSummaryCard:hover {
-  background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
-  border-color: #94a3b8;
-  box-shadow:
-    inset 0 1px 0 #ffffff,
-    0 4px 0 #cbd5e1,
-    0 11px 20px rgba(15, 23, 42, 0.1);
-  transform: translateY(-2px);
+  background: #edf7f5;
+  border-color: #d5ebe6;
+  transform: translateY(-1px);
 }
 
 .contactSummaryCard[data-active="true"] {
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 42%),
-    #0b1020;
-  border-color: #0b1020;
+    radial-gradient(circle at 88% 18%, rgba(68, 196, 181, 0.22), transparent 34%),
+    linear-gradient(135deg, #0d3540 0%, #14515a 100%);
+  border-color: #174f57;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.14),
-    0 3px 0 #020617,
-    0 10px 20px rgba(15, 23, 42, 0.22);
-  transform: translateY(-2px);
-}
-
-.contactSummaryCard[data-active="true"]::before {
-  box-shadow: 0 0 12px color-mix(in srgb, var(--contact-accent) 64%, transparent);
-  height: 4px;
-  opacity: 1;
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 8px 18px rgba(9, 42, 51, 0.18);
 }
 
 .contactSummaryCard span {
-  color: #64748b;
+  color: #60717f;
   font-size: 0.76rem;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .contactSummaryCard strong {
-  color: var(--ink);
-  font-size: 1.5rem;
+  color: #122936;
+  font-size: 1.42rem;
   font-weight: 700;
+  letter-spacing: -0.025em;
   line-height: 1;
 }
 
 .contactSummaryCard[data-active="true"] span {
-  color: #cbd5e1;
+  color: #78d8cb;
 }
 
 .contactSummaryCard[data-active="true"] strong {
