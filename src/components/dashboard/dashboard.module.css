@@ -6701,12 +6701,12 @@
 }
 
 .analyticsPage {
-  background: #ffffff;
-  border: 1px solid #dbe3ee;
-  border-radius: 8px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
   display: grid;
   gap: 18px;
-  padding: 20px 24px 28px;
+  padding: 0;
   position: relative;
 }
 
@@ -35839,7 +35839,10 @@
  */
 .taskModuleHeader,
 .employeeListHero,
-.planningBoardHero {
+.planningBoardHero,
+.topline,
+.documentTypeHeader,
+.documentConfiguratorHeader {
   background:
     radial-gradient(circle at 88% 16%, rgba(40, 166, 157, 0.2), transparent 25%),
     linear-gradient(135deg, #0c2e3a 0%, #113b45 56%, #174d54 100%);
@@ -35853,9 +35856,16 @@
   position: relative;
 }
 
+.documentTypeOverview > .documentTypeHeader {
+  border-radius: 18px 18px 0 0;
+}
+
 .taskModuleHeader h1,
 .employeeListHero h1,
-.planningBoardHero h1 {
+.planningBoardHero h1,
+.topline h1,
+.documentTypeHeader h1,
+.documentConfiguratorHeader h1 {
   color: #ffffff;
   font-size: clamp(1.8rem, 3vw, 2.65rem);
   font-weight: 700;
@@ -35866,7 +35876,10 @@
 
 .taskModuleEyebrow,
 .employeeListHero .eyebrow,
-.planningBoardHero .eyebrow {
+.planningBoardHero .eyebrow,
+.topline .eyebrow,
+.documentTypeHeader .eyebrow,
+.documentConfiguratorHeader .eyebrow {
   color: #3fc6b5;
   font-size: 0.76rem;
   font-weight: 800;
@@ -35877,7 +35890,10 @@
 
 .taskModuleHeader p:not(.taskModuleEyebrow),
 .employeeListHero .subline,
-.planningBoardHero .subline {
+.planningBoardHero .subline,
+.topline .subline,
+.documentTypeHeader p,
+.documentConfiguratorHeader .subline {
   color: rgba(255, 255, 255, 0.76);
   font-size: 0.9rem;
   font-weight: 500;
@@ -35889,30 +35905,85 @@
 .taskModuleHeader .primaryButton,
 .employeeListHero .primaryButton,
 .personalDataHeroAction,
-.planningBoardHeroActions > button {
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  border-radius: 11px;
-  box-shadow: none;
-  color: #ffffff;
-  min-height: 44px;
-  padding: 0 17px;
+.planningBoardHeroActions > .primaryButton,
+.topline .primaryButton,
+.documentTypeHeader .primaryButton,
+.documentConfiguratorHeader .primaryButton {
+  background: linear-gradient(180deg, #ffffff 0%, #eaf8f5 100%);
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  border-radius: 12px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    0 9px 22px rgba(4, 31, 37, 0.22);
+  color: #10464b;
+  min-height: 46px;
+  padding: 0 18px;
 }
 
 .taskModuleHeader .primaryButton:hover,
 .employeeListHero .primaryButton:hover,
 .personalDataHeroAction:hover,
-.planningBoardHeroActions > button:hover {
-  background: rgba(255, 255, 255, 0.18);
-  border-color: rgba(255, 255, 255, 0.46);
+.planningBoardHeroActions > .primaryButton:hover,
+.topline .primaryButton:hover,
+.documentTypeHeader .primaryButton:hover,
+.documentConfiguratorHeader .primaryButton:hover {
+  background: linear-gradient(180deg, #ffffff 0%, #dff4ef 100%);
+  border-color: #ffffff;
+  box-shadow:
+    inset 0 1px 0 #ffffff,
+    0 12px 27px rgba(4, 31, 37, 0.28);
+  color: #0b5557;
+  transform: translateY(-2px);
+}
+
+.planningBoardHeroActions > .requestButton,
+.documentConfiguratorHeader .secondaryButton {
+  background: rgba(255, 255, 255, 0.11);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: none;
   color: #ffffff;
-  transform: translateY(-1px);
+}
+
+.planningBoardHeroActions > .requestButton:hover,
+.documentConfiguratorHeader .secondaryButton:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.52);
+  color: #ffffff;
+}
+
+.headerPrimaryAction {
+  align-items: center;
+  display: inline-flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.headerActionIcon {
+  align-items: center;
+  background: #126d70;
+  border-radius: 999px;
+  color: #ffffff;
+  display: inline-flex;
+  font-size: 1.05rem;
+  font-weight: 800;
+  height: 25px;
+  justify-content: center;
+  line-height: 1;
+  width: 25px;
+}
+
+.topline .compactField,
+.topline .inlineSelectLabel {
+  color: rgba(255, 255, 255, 0.82);
 }
 
 @media (max-width: 760px) {
   .taskModuleHeader,
   .employeeListHero,
-  .planningBoardHero {
+  .planningBoardHero,
+  .topline,
+  .documentTypeHeader,
+  .documentConfiguratorHeader {
     align-items: stretch;
     border-radius: 16px;
     flex-direction: column;
@@ -35920,9 +35991,16 @@
     padding: 21px 20px;
   }
 
+  .documentTypeOverview > .documentTypeHeader {
+    border-radius: 16px 16px 0 0;
+  }
+
   .taskModuleHeader h1,
   .employeeListHero h1,
-  .planningBoardHero h1 {
+  .planningBoardHero h1,
+  .topline h1,
+  .documentTypeHeader h1,
+  .documentConfiguratorHeader h1 {
     font-size: clamp(1.65rem, 8vw, 2.15rem);
   }
 }

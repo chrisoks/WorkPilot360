@@ -10165,8 +10165,12 @@ function ContactsListView({
           <h1>Kontakte</h1>
           <p>Kunden, Lieferanten, Partner und Ansprechpartner zentral verwalten.</p>
         </div>
-        <button className={styles.primaryButton} onClick={onCreateContact}>
-          + Kontakt
+        <button
+          className={`${styles.primaryButton} ${styles.headerPrimaryAction}`}
+          onClick={onCreateContact}
+        >
+          <span className={styles.headerActionIcon} aria-hidden="true">+</span>
+          <span>Kontakt anlegen</span>
         </button>
       </header>
 
@@ -37553,6 +37557,17 @@ await addProjectLogbookEntry(
   };
   const renderReportsAnalytics = () => (
     <section className={styles.analyticsPage}>
+      <header className={styles.taskModuleHeader}>
+        <div>
+          <p className={styles.taskModuleEyebrow}>Unternehmenssteuerung</p>
+          <h1>Auswertungen</h1>
+          <p>
+            Kennzahlen, Entwicklungen und Handlungsbedarf aus Vertrieb,
+            Projekten, Finanzen und Teamarbeit an einem Ort.
+          </p>
+        </div>
+      </header>
+
       <div className={styles.analyticsTabs} role="tablist" aria-label="Auswertungsbereiche">
         {visibleReportTabs.map((tab) => (
           <button
