@@ -1687,13 +1687,41 @@ UI-Lauf benötigte im Mittel 4,95 Sekunden und p95 5,44 Sekunden. 50
 
 Die damalige Abnahme des Entwurfslebenszyklus bleibt als Sicherheitsnachweis
 gültig; die dabei noch aktive Blockade `Projektartgerechte Terminmaske` ist
-jetzt entfernt. Lokale Neuabnahme: additiver Prisma-Diff ohne Drop,
-1.183/1.183 Tests in 104 Dateien, TypeScript, Regression, Mojibake,
-Prisma-Validierung, Diff-Check und Produktionsbuild mit 89 Seiten grün.
-Die sichtbare Monatspauschalen-Maske bestätigte freies Kontingent,
-Mehrfachmitarbeiter und Serienkontext. Produktive Terminanlage ist damit
-technisch freigegeben; die abschließende Produktionsabnahme wird mit Backup,
-WorkPilot360-only-Deployment und erneuter Live-Prüfung dokumentiert.
+entfernt. Die vollständige Produktionsabnahme des Planungscodes `92fbbd2`
+ist abgeschlossen. Das Sicherheitsbundle
+`.codex-safety/before-jarvis-project-planning-masks-20260730-135215.bundle`,
+das Serverbackup
+`/var/backups/workpilot360/before-jarvis-project-planning-20260730T123317Z`
+und der exakte Vor-Cleanup-Nachweis
+`/var/backups/workpilot360/qa-release-0d23d19-before-cleanup-20260730T1414Z.json`
+mit SHA-256
+`c19ff1ca3e57315a4cfb8c4b871bd2e03ab44ed67c61de38f983d8c2fba7be8d`
+sind vorhanden.
+
+105 Testdateien mit 1.219/1.219 Tests, TypeScript, Regression, Mojibake,
+Prisma-Validierung, leerer Schema-/Datenbank-Diff, Diff-Check und
+Produktionsbuild mit 89 Seiten sind grün. Der vollständige sichtbare
+JARVIS-Lauf bestand 110/110 Fragen. Die zusätzliche finale Live-Abnahme
+bestätigte die projektbezogene Maskenantwort für Einmalprojekt und
+Monatspauschale sowie den produktiven Fachdialog für
+Stunden-Dauerläufer-Felder, Mehrmitarbeiter-Serie, Überplanung und identische
+Termin-/Terminwunsch-Fachregeln. Mangels eines tatsächlich als
+Stundenabrechnung konfigurierten produktiven Dauerläufers wurde kein
+Bestandsprojekt dafür umgedeutet; die Variante bleibt durch deterministische
+Produktionsantwort und Variantentests belegt.
+
+Der kontrollierte Mehrpersonen-Überplanungs-Terminwunsch und die kontrollierte
+Mehrpersonen-Monatsserie bestanden jeweils Exactly-once-Replay,
+Payload-Konflikt mit HTTP 409, Batch-, Historien- und
+Benachrichtigungsprüfung. Der exakte Cleanup stellte Projekt und Angebot
+wieder her; danach verblieben keine QA-Termine, -Historien, -Meldungen oder
+-Batches. 50 öffentliche Dashboard-Aufrufe lagen zuletzt bei 169 ms im
+Mittel und 192,1 ms p95. HTTP war 200, das Fehlerlog blieb seit
+13:57:40 UTC unverändert bei 146.549 Zeilen. WorkPilot360 wurde ausschließlich
+allein deployed; `kliniknavigator` blieb mit PID 242528 unangetastet.
+
+Produktive Terminanlage und projektartgerechte JARVIS-Masken sind damit
+fachlich, technisch und sicherheitlich freigegeben.
 Manuelle Zeitentwürfe besitzen bis zu einem späteren Nachweis weiterhin nur
 die typisierte Vorschaugrundlage (`preview_only`).
 

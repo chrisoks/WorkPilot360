@@ -41,17 +41,43 @@
   `overbookingKind`, `overbookingReason`; defensive Runtime-DDL und additive
   Migration sind beide vorhanden.
 
-  Lokale Abnahme vor Deployment: Sicherheitsbundle
+  Vollständige Releaseabnahme: Sicherheitsbundle
   `.codex-safety/before-jarvis-project-planning-masks-20260730-135215.bundle`,
-  additiver Prisma-Diff ohne Drop, lokale DB synchron, 104 Testdateien mit
-  1.183/1.183 Tests, TypeScript, Regression, Mojibake, Prisma-Validierung,
-  `git diff --check` und Produktionsbuild mit 89 Seiten grün. Die sichtbare
-  Maske bestätigte für `MKG-400` Mehrfachmitarbeiter, freies
-  Monatskontingent, Mitarbeiterfaktor und Serienkontext. Der Browser konnte
-  nach dem Wechsel vom Dev- auf den Produktionsserver wegen der lokalen
-  URL-Sicherheitsrichtlinie nicht erneut geladen werden; die erste echte
-  Maskenabnahme war vollständig, der Produktionsbuild selbst startete lokal
-  mit HTTP 200.
+  Serverbackup
+  `/var/backups/workpilot360/before-jarvis-project-planning-20260730T123317Z`
+  sowie exakter Vor-Cleanup-Nachweis
+  `/var/backups/workpilot360/qa-release-0d23d19-before-cleanup-20260730T1414Z.json`
+  mit SHA-256
+  `c19ff1ca3e57315a4cfb8c4b871bd2e03ab44ed67c61de38f983d8c2fba7be8d`.
+  Der finale Planungscode ist auf `92fbbd2` produktiv. 105 Testdateien mit
+  1.219/1.219 Tests, TypeScript, Regression, Mojibake, Prisma-Validierung,
+  leerer Schema-/Datenbank-Diff, `git diff --check` und Produktionsbuild mit
+  89 Seiten sind grün.
+
+  Die echte Produktionsoberfläche bestätigte für `MKG-209` die
+  Einmalprojekt-Maske mit mehreren Mitarbeitenden, finalem Angebot,
+  Ausführungsmonat, freiem Angebotskontingent, begründeter Überplanung und
+  ohne Serie. Für `MKG-400` wurden Monatspauschale, Mehrmitarbeiter-Serie,
+  Monatskontingent und lesbare Serienregel bestätigt. Ein realer
+  Stunden-Dauerläufer ist in den produktiven Stammdaten derzeit nicht
+  konfiguriert; dessen Fachdialog und Variante sind durch produktive
+  deterministische JARVIS-Antworten und Variantentests belegt, ohne
+  Geschäftsdaten umzudeuten.
+
+  Die kontrollierten Schreibnachweise umfassten einen überplanten
+  Mehrpersonen-Terminwunsch sowie eine Mehrpersonen-Monatsserie. Beide
+  Vorgänge bestanden Replay ohne Doppelanlage, Payload-Konflikt mit HTTP 409,
+  Batch-/Historien-/Meldungsprüfung und exakten Cleanup. Danach blieben
+  0 QA-Termine, 0 QA-Historien, 0 QA-Meldungen und 0 QA-Batches; der
+  ursprüngliche Projekt- und Angebotsstand wurde exakt wiederhergestellt.
+  Der vollständige sichtbare JARVIS-Lauf bestand 110/110 Fragen; die finale
+  gezielte Abnahme bestätigte zusätzlich projektbezogene Terminmasken,
+  Stunden-Dauerläufer-Felder, Mehrmitarbeiter-Serie, Überplanung und
+  Termin-/Terminwunsch-Gleichheit. 50 öffentliche Dashboard-Aufrufe lagen
+  zuletzt bei 169 ms im Mittel und 192,1 ms p95. HTTP war 200, das
+  Produktionsfehlerlog blieb seit 13:57:40 UTC unverändert bei 146.549
+  Zeilen. WorkPilot360 lief dabei separat; `kliniknavigator` blieb mit PID
+  242528 unangetastet.
 
 - JARVIS Action Center Termin-/Terminwunsch-Vertikalschnitt 2026-07-30:
   Produktionsstand `93fd70f`: Der persistente 15-Minuten-Entwurf übernimmt die vollständige
