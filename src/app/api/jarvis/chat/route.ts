@@ -877,7 +877,10 @@ export async function POST(req: Request) {
     );
   if (plainLanguageProjectFollowUp) {
     const previousProjectResponse = await resolveJarvisProjectHealthRequest({
-      question: previousDialogState.lastQuestion,
+      question:
+        previousDialogState.topicId === "project.health.why"
+          ? "Was läuft beim zuletzt geprüften Projekt schief?"
+          : previousDialogState.lastQuestion,
       organizationId: organization.id,
       accessProfile,
       context,

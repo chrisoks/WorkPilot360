@@ -1439,6 +1439,52 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
   });
 
+  it("keeps a plain-language follow-up after a short project why answer", async () => {
+    mocks.resolveJarvisProjectHealthRequest.mockResolvedValue({
+      type: "answer",
+      topicId: "project.health",
+      message: "Die fachliche Freigabe fehlt noch.",
+      deterministic: true,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Erkläre das ohne Fachbegriffe.",
+          context: { recordType: "project", recordId: "project-1" },
+          dialogState: {
+            version: 1,
+            domain: "system",
+            topicId: "project.health.why",
+            activeRecord: { kind: "project", id: "project-1" },
+            lastQuestion: "Warum?",
+            lastIntent: {
+              goals: ["diagnose"],
+              entities: ["project"],
+              timeScopes: [],
+              recordFilter: "all",
+            },
+          },
+        }),
+      })
+    );
+
+    expect(await response.json()).toMatchObject({
+      type: "answer",
+      topicId: "project.health.plain-language",
+      message: "Einfach gesagt: Die fachliche Freigabe fehlt noch.",
+    });
+    expect(mocks.resolveJarvisProjectHealthRequest).toHaveBeenCalledWith(expect.objectContaining({
+      question: "Was läuft beim zuletzt geprüften Projekt schief?",
+      organizationId: "organization-1",
+      accessProfile: { profile: true },
+    }));
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+  });
+
   it("does not turn a clear appointment how-to question into a project check", async () => {
     mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
       recordType: "project",
