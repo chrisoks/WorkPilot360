@@ -5,14 +5,17 @@ describe("JARVIS project dialog intent", () => {
   it.each([
     ["Was ist HAS-1 für ein Projekt?", "explainProjectType"],
     ["Wie lautet die Projektnummer hier?", "explainIdentity"],
+    ["Wie heißt das aktuell geöffnete Projekt?", "explainTitle"],
     ["Welcher Kunde gehört zu diesem Projekt?", "explainCustomer"],
     ["Wer ist der Kunde dieses Projekts?", "explainCustomer"],
     ["Wie heißt der Kunde dieses Projekts?", "explainCustomer"],
     ["Welche Objektadresse ist mit dem Projekt verknüpft?", "explainAddress"],
+    ["Wie lautet die Projektanschrift?", "explainAddress"],
     ["Welches Gewerk hat dieses Projekt?", "explainTrade"],
     ["Welche Niederlassung ist zugeordnet?", "explainBranch"],
     ["Welche Niederlassung hat dieses Projekt?", "explainBranch"],
     ["Welches Projektvolumen ist hinterlegt?", "explainVolume"],
+    ["Wie hoch ist das Projektvolumen?", "explainVolume"],
     ["Welche Projektart hat HAS-1?", "explainProjectType"],
     [
       "Erkläre Projektart, Abrechnung und Sollprozess für HAS-1.",

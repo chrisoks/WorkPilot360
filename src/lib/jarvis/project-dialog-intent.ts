@@ -2,6 +2,7 @@ import { normalizeJarvisIntentText } from "@/lib/jarvis/intent-text";
 
 export type JarvisProjectDialogIntent =
   | "explainIdentity"
+  | "explainTitle"
   | "explainCustomer"
   | "explainAddress"
   | "explainTrade"
@@ -41,6 +42,15 @@ export function resolveJarvisProjectDialogIntent(input: {
   }
 
   if (
+    /\b(?:wie hei(?:ss|ß)t|wie lautet der name|welchen namen hat)\b.*\b(?:aktuell geoffnete[sn]? |dieses? )?projekt\b/.test(
+      value
+    ) ||
+    /\bprojektname\b.*\b(?:lautet|ist|hat)\b/.test(value)
+  ) {
+    return "explainTitle";
+  }
+
+  if (
     /\bwelch\w*\b.*\bkund\w*\b.*\bprojekt\b/.test(value) ||
     /\bwer ist\b.*\bkund\w*\b.*\bprojekt\w*\b/.test(value) ||
     /\bwie hei(?:ss|ß)t\b.*\bkund\w*\b.*\bprojekt\w*\b/.test(value) ||
@@ -52,10 +62,10 @@ export function resolveJarvisProjectDialogIntent(input: {
   }
 
   if (
-    /\b(?:welche|was ist die|wie lautet die)\b.*\b(?:objektadresse|projektadresse|adresse)\b/.test(
+    /\b(?:welche|was ist die|wie lautet die)\b.*\b(?:objektadresse|projektadresse|projektanschrift|anschrift|adresse)\b/.test(
       value
     ) ||
-    /\b(?:objektadresse|projektadresse)\b.*\b(?:projekt|hier|hat|verknupft)\b/.test(
+    /\b(?:objektadresse|projektadresse|projektanschrift)\b.*\b(?:projekt|hier|hat|verknupft)\b/.test(
       value
     )
   ) {
@@ -80,6 +90,7 @@ export function resolveJarvisProjectDialogIntent(input: {
 
   if (
     /\bwelch\w*\b.*\bprojektvolumen\b/.test(value) ||
+    /\bwie hoch\b.*\bprojektvolumen\b/.test(value) ||
     /\bprojektvolumen\b.*\b(?:hinterlegt|hat|ist)\b/.test(value)
   ) {
     return "explainVolume";

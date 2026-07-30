@@ -1574,6 +1574,7 @@ function buildProjectFactExplanation(
   project: ProjectHealthRow,
   intent:
     | "explainIdentity"
+    | "explainTitle"
     | "explainCustomer"
     | "explainAddress"
     | "explainTrade"
@@ -1598,6 +1599,13 @@ function buildProjectFactExplanation(
       message: project.projectNumber
         ? `Die Projektnummer des geöffneten Projekts lautet ${project.projectNumber}.`
         : "Für das geöffnete Projekt ist keine Projektnummer hinterlegt.",
+    },
+    explainTitle: {
+      title: "Projektname",
+      value: project.title || "Nicht hinterlegt",
+      message: project.title
+        ? `Das geöffnete Projekt heißt „${project.title}“.`
+        : "Für das geöffnete Projekt ist kein Projektname hinterlegt.",
     },
     explainCustomer: {
       title: "Projektkunde",
@@ -2117,6 +2125,7 @@ export async function resolveJarvisProjectHealthRequest(input: {
   ) {
     return [
       "explainIdentity",
+      "explainTitle",
       "explainCustomer",
       "explainAddress",
       "explainTrade",
@@ -2131,6 +2140,7 @@ export async function resolveJarvisProjectHealthRequest(input: {
           project,
           projectDialogIntent as
             | "explainIdentity"
+            | "explainTitle"
             | "explainCustomer"
             | "explainAddress"
             | "explainTrade"
