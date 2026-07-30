@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   resolveJarvisDirectNavigationHelp,
+  resolveJarvisProjectTypeOverview,
   resolveJarvisSystemHelp,
   sanitizeJarvisSurfaceContext,
 } from "@/lib/jarvis/knowledge";
@@ -23,6 +24,29 @@ describe("JARVIS system help", () => {
   const executiveAccess = createJarvisAccessProfile({
     id: "executive",
     role: Role.GESCHAEFTSFUEHRER,
+  });
+
+  it.each([
+    "Welche Projektarten gibt es bei uns?",
+    "Was sind die Projekttypen in WorkPilot360?",
+    "Erkläre den Unterschied zwischen Einmalprojekt und Dauerläufer.",
+  ])("explains the project-type overview without searching projects: %s", (question) => {
+    const result = resolveJarvisProjectTypeOverview(question);
+    expect(result).toMatchObject({
+      type: "answer",
+      topicId: "project.types.overview",
+    });
+    expect(result?.message).toContain("Einmalprojekte");
+    expect(result?.message).toContain("Stundenabrechnung");
+    expect(result?.message).toContain("Monatspauschale");
+  });
+
+  it("does not steal a question about one concrete project's type", () => {
+    expect(
+      resolveJarvisProjectTypeOverview(
+        "Welche Projektart hat das geöffnete Projekt?"
+      )
+    ).toBeUndefined();
   });
 
   it("answers a supported offer workflow", () => {

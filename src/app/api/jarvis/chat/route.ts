@@ -5,6 +5,7 @@ import { getDemoContext } from "@/lib/demo/context";
 import {
   findJarvisExactHelpTopicId,
   resolveJarvisDirectNavigationHelp,
+  resolveJarvisProjectTypeOverview,
   resolveJarvisSystemHelp,
   resolveJarvisSystemHelpTopic,
   sanitizeJarvisSurfaceContext,
@@ -785,6 +786,10 @@ export async function POST(req: Request) {
     resolveExplicitSafetyPolicyQuestion(message);
   if (explicitSafetyPolicyResponse) {
     return respond(explicitSafetyPolicyResponse);
+  }
+  const projectTypeOverview = resolveJarvisProjectTypeOverview(message);
+  if (projectTypeOverview) {
+    return respond(projectTypeOverview, "system");
   }
   const projectReviewInventoryIntent =
     resolveJarvisProjectReviewInventoryIntent(message);

@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   resolveJarvisReadRequest: vi.fn(),
   resolveJarvisSystemHelp: vi.fn(),
   resolveJarvisDirectNavigationHelp: vi.fn(),
+  resolveJarvisProjectTypeOverview: vi.fn(),
   resolveJarvisSystemHelpTopic: vi.fn(),
   findJarvisExactHelpTopicId: vi.fn(),
   classifyJarvisIntentWithAi: vi.fn(),
@@ -58,6 +59,8 @@ vi.mock("@/lib/jarvis/knowledge", () => ({
   resolveJarvisSystemHelp: mocks.resolveJarvisSystemHelp,
   resolveJarvisDirectNavigationHelp:
     mocks.resolveJarvisDirectNavigationHelp,
+  resolveJarvisProjectTypeOverview:
+    mocks.resolveJarvisProjectTypeOverview,
   resolveJarvisSystemHelpTopic: mocks.resolveJarvisSystemHelpTopic,
   findJarvisExactHelpTopicId: mocks.findJarvisExactHelpTopicId,
 }));

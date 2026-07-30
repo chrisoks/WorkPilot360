@@ -35,6 +35,33 @@ export type JarvisHelpResult = {
   navigation?: JarvisNavigationTarget;
 };
 
+export function resolveJarvisProjectTypeOverview(
+  question: string
+): JarvisHelpResult | undefined {
+  const normalized = question
+    .toLocaleLowerCase("de-DE")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[?!.,;:]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const asksForOverview =
+    /\b(?:welche|was fur|was sind|nenne|erklare)\b.*\b(?:projektarten|projekttypen?|arten von projekten)\b/.test(
+      normalized
+    ) ||
+    /\b(?:unterschied|unterscheid)\w*\b.*\b(?:einmalprojekt|dauerlaufer|monatspauschale|stundenabrechnung)\b/.test(
+      normalized
+    );
+  if (!asksForOverview) return undefined;
+
+  return {
+    type: "answer",
+    topicId: "project.types.overview",
+    message:
+      "In WorkPilot360 gibt es drei planungsrelevante Varianten: Einmalprojekte mit finalem Angebot, Ausführungsmonat und Angebotskontingent; Dauerläufer mit Stundenabrechnung samt Gewerk und Abrechnungsleistung; sowie Dauerläufer mit Monatspauschale und monatlichem Kontingent. Termine und Terminwünsche verwenden je Variante dieselben Fachfelder. Ein Terminwunsch muss zusätzlich von einer zuständigen Führungskraft oder Planungsverantwortung freigegeben werden.",
+  };
+}
+
 function buildRoleAwareFallbackChoices(
   context: JarvisSurfaceContext,
   accessProfile?: JarvisAccessProfile
@@ -1283,7 +1310,7 @@ function getJarvisSafetyAnswer(question: string, overview: string) {
     normalized.includes("aktionen") &&
     (normalized.includes("wirklich") || normalized.includes("derzeit"))
   ) {
-    return "Derzeit kann ich freigegebene Daten lesen und erklären sowie sichere Aufgaben- und Termin-/Terminwunsch-Entwürfe vorbereiten. Aufgaben können nach vollständiger Prüfung bewusst bestätigt werden. Die produktive Terminbestätigung bleibt wegen der noch nicht vollständig nachgebildeten projektartgerechten Terminmasken technisch gesperrt. Versand, Rechnung, Zahlung, Löschung, Rollen-, Personal- und Stempelaktionen führe ich nicht aus.";
+    return "Derzeit kann ich freigegebene Daten lesen und erklären sowie sichere Aufgaben- und projektartgerechte Termin-/Terminwunsch-Entwürfe vorbereiten. Aufgaben und vollständig geprüfte Planungsvorgänge können nach einer bewussten menschlichen Bestätigung ausgeführt werden. Versand, Rechnung, Zahlung, Löschung, Rollen-, Personal- und Stempelaktionen führe ich nicht aus.";
   }
 
   return overview;
