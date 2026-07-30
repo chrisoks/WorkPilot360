@@ -23,7 +23,10 @@ import {
   resolveJarvisSalesAnalysisIntent,
   resolveJarvisSalesAnalysisRequest,
 } from "@/lib/jarvis/sales-analysis";
-import { resolveJarvisOrganizationMaterialRequest } from "@/lib/jarvis/organization-material-analysis";
+import {
+  resolveJarvisOrganizationMaterialIntent,
+  resolveJarvisOrganizationMaterialRequest,
+} from "@/lib/jarvis/organization-material-analysis";
 import { resolveJarvisOrganizationServiceRateRequest } from "@/lib/jarvis/organization-service-rate-analysis";
 import {
   resolveJarvisOrganizationReceivablesIntent,
@@ -694,6 +697,17 @@ export async function POST(req: Request) {
       });
     if (projectReviewInventoryResponse) {
       return respond(projectReviewInventoryResponse, "management");
+    }
+  }
+  if (resolveJarvisOrganizationMaterialIntent(message)) {
+    const organizationMaterialResponse =
+      await resolveJarvisOrganizationMaterialRequest({
+        question: message,
+        organizationId: organization.id,
+        accessProfile,
+      });
+    if (organizationMaterialResponse) {
+      return respond(organizationMaterialResponse, "management");
     }
   }
   const organizationReceivablesIntent =

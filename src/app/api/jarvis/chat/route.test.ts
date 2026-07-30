@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   resolveJarvisPersonSummaryRequest: vi.fn(),
   resolveJarvisProjectReviewInventoryIntent: vi.fn(),
   resolveJarvisProjectReviewInventoryRequest: vi.fn(),
+  resolveJarvisOrganizationMaterialIntent: vi.fn(),
   resolveJarvisOrganizationMaterialRequest: vi.fn(),
   resolveJarvisOrganizationServiceRateRequest: vi.fn(),
   resolveJarvisOrganizationReceivablesIntent: vi.fn(),
@@ -118,6 +119,8 @@ vi.mock("@/lib/jarvis/organization-service-rate-analysis", () => ({
 }));
 
 vi.mock("@/lib/jarvis/organization-material-analysis", () => ({
+  resolveJarvisOrganizationMaterialIntent:
+    mocks.resolveJarvisOrganizationMaterialIntent,
   resolveJarvisOrganizationMaterialRequest:
     mocks.resolveJarvisOrganizationMaterialRequest,
 }));
@@ -256,6 +259,13 @@ describe("POST /api/jarvis/chat", () => {
       undefined
     );
     mocks.resolveJarvisOrganizationOfferAgingIntent.mockReturnValue(undefined);
+    mocks.resolveJarvisOrganizationMaterialIntent.mockImplementation(
+      (question: string) =>
+        /\banalysier\w*\b.*\b(?:material|artikel)\w*\b/iu.test(question) ||
+        /\b(?:welche|wo)\b.*\bmaterial\w*\b.*\b(?:wirtschaftlich|auffällig|preis|marge|kosten)\w*\b/iu.test(
+          question
+        )
+    );
     mocks.resolveJarvisOrganizationOfferAgingRequest.mockResolvedValue(
       undefined
     );
