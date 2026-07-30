@@ -72,9 +72,10 @@ export function resolveJarvisOperationalGuidance(
     .replace(/[?!.,;:()/_-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  const asks = /^(?:wie|wo|was|wer|warum|wann|kann|konnen|wird|welche|ist)\b/.test(
-    value
-  );
+  const asks =
+    /^(?:wie|wo|was|wer|warum|wann|kann|konnen|wird|welche|ist|gibt|erfind|bewert|entscheid)\w*\b/.test(
+      value
+    );
   if (!asks) return undefined;
 
   if (/\bpersonlich\w*\s+daten\b/.test(value)) {

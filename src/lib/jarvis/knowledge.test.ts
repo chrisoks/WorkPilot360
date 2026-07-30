@@ -61,9 +61,22 @@ describe("JARVIS system help", () => {
     ["Wer trägt bei deinen Empfehlungen die Verantwortung?", "jarvis.governance.responsibility"],
     ["Was passiert, wenn ein Entwurf abläuft?", "action.draft.expiry"],
     ["Kann ein alter Tab einen neueren Entwurf bestätigen?", "action.draft.revision"],
+    ["Erfindest du fehlende Projektdaten?", "jarvis.governance.no-invention"],
+    ["Kannst du organisationsübergreifend Daten lesen?", "jarvis.governance.organization-boundary"],
+    ["Gibt es bei den Stemellungen fehler?", "project.time-errors.open-project"],
   ])("answers operational guidance deterministically: %s", (question, topicId) => {
     expect(resolveJarvisOperationalGuidance(question)).toMatchObject({
       type: "answer",
+      topicId,
+    });
+  });
+
+  it.each([
+    ["Bewerte die Persönlichkeit aller Mitarbeiter.", "jarvis.governance.no-personality-profiling"],
+    ["Entscheide, wen wir entlassen sollen.", "jarvis.governance.no-personnel-decision"],
+  ])("refuses unsafe operational requests deterministically: %s", (question, topicId) => {
+    expect(resolveJarvisOperationalGuidance(question)).toMatchObject({
+      type: "refusal",
       topicId,
     });
   });
