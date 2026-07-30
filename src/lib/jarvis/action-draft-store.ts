@@ -657,6 +657,8 @@ async function evaluatePlanningDraft(
       projectNumber: true,
       title: true,
       updatedAt: true,
+      projectKind: true,
+      recurringBillingMode: true,
     },
   });
   const contextValid =
@@ -788,9 +790,13 @@ async function evaluatePlanningDraft(
   checks.push(
     planningCheck(
       "offer_contingent",
-      "Angebot und Kontingent",
-      "ok",
-      "Für manuelle Projekttermine verlangt der bestehende Planning-Service keinen Angebots- oder Kontingentbezug."
+      "Projektartgerechte Terminmaske",
+      "blocked",
+      project?.projectKind?.toLocaleLowerCase("de-DE").startsWith("dauer")
+        ? project.recurringBillingMode === "hourly"
+          ? "Dauerläufer mit Stundenabrechnung benötigen zusätzlich Beschreibung, Termin-Gewerk, passende Abrechnungsleistung und die bewusste Angabe zu weiteren Mitarbeitenden. Diese Felder sind im JARVIS-Entwurf noch nicht vollständig freigegeben."
+          : "Dauerläufer mit Monatspauschale benötigen mindestens Beschreibung sowie den projektmonat- und seriengerechten Planungskontext. Diese Felder sind im JARVIS-Entwurf noch nicht vollständig freigegeben."
+        : "Einmalprojekte benötigen die gültige finale Angebotszuordnung, Angebotskontingent und gegebenenfalls eine Bestätigung des Ausführungsmonats. Diese Felder sind im JARVIS-Entwurf noch nicht vollständig freigegeben."
     )
   );
 

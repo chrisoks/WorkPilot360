@@ -1623,34 +1623,48 @@ Prüfung Pflicht; ein veralteter Stand kann weder abbrechen noch bestätigen.
 
 Die Oberfläche weist Berliner Datum/Zeit, aktive Person, Rolle und Terminart,
 Projektstand, Board/Gruppe, vorhandene gleichartige Projektplanung,
-Überschneidung, genehmigte Abwesenheit, Bundesland-Feiertag, Wochenende und
-den Angebots-/Kontingentbedarf einzeln als bestanden, Warnung oder Blockade
+Überschneidung, genehmigte Abwesenheit, Bundesland-Feiertag, Wochenende,
+Projektart und Abrechnungsweg einzeln als bestanden, Warnung oder Blockade
 aus. Gleichartige Projektplanung, Abwesenheit, ungültige Zeit, fehlender oder
 veränderter Projektkontext, inaktive Person, fehlende Planungsgruppe und
 unzulässige Rolle blockieren fail-closed. Überschneidung, Feiertag und
 Wochenende sind bewusst sichtbare Warnungen, weil auch der vorhandene
-Planning-Service diese Fälle nicht pauschal verbietet. Für manuelle
-Projekttermine verlangt dieser Service keinen Angebots- oder
-Kontingentbezug; JARVIS weist dies explizit aus, statt eine Prüfung
-vorzutäuschen.
+Planning-Service diese Fälle nicht pauschal verbietet.
+
+Der erste echte Live-Doppelklicktest bestätigte Exactly-once, zeigte aber
+zugleich, dass die allgemeine JARVIS-Maske fachlich zu klein war.
+Einmalprojekte benötigen dieselbe finale Angebotszuordnung, Kontingent- und
+Ausführungsmonatsprüfung wie ihre Originalmaske. Stunden-Dauerläufer benötigen
+Termin-Gewerk, passende Abrechnungsleistung und die bewusste Entscheidung zu
+weiteren Mitarbeitenden. Monatspauschalen benötigen ihren projektmonat- und
+seriengerechten Kontext; Beschreibung ist in der normalen Planungsmaske
+generell Pflicht. Eine erfolgreiche Low-Level-API-Anlage ist deshalb kein
+ausreichender Fachnachweis.
 
 Mitarbeitende können nur einen eigenen Terminwunsch anlegen. Führung,
 Geschäftsführung und Admin können Termin oder Terminwunsch für aktive
-Personen vorbereiten. Die bewusste Bestätigung beansprucht den Entwurf,
+Personen vorbereiten. Die spätere bewusste Bestätigung beansprucht den Entwurf,
 prüft den Projektstand nochmals und delegiert den einzigen produktiven
 Schreibvorgang an den bestehenden rollengeprüften
 `POST /api/planning-entries`. Die Entwurfs-ID ist zugleich der
 idempotente Planungsschlüssel; parallele Bestätigung und Replay erzeugen
 keinen zweiten Eintrag. Nach bestätigtem Ergebnis aktualisiert die Oberfläche
-Planungsdaten und Karte ohne Reload.
+Planungsdaten und Karte ohne Reload. Bis alle drei Projektvarianten dieselben
+Pflichtfelder und Prüfungen wie die vorhandenen Masken verwenden, setzt die
+serverseitige Vorprüfung jedoch die harte Blockade
+`Projektartgerechte Terminmaske`; im JARVIS-UI existiert dann kein produktiver
+Anlageknopf.
 
-Der Kandidat besteht 1.080 Unit-/Integrationstests, TypeScript,
+Der technische Kandidat bestand vor diesem Fachfund 1.080
+Unit-/Integrationstests, TypeScript,
 Regressions-/Mojibake-Checks, Prisma-Validierung und leeren
 Schema-vs.-Datenbank-Diff sowie den Produktionsbuild. Produktive Freigabe
 setzt zusätzlich das verifizierte Serverbackup, das isolierte
 WorkPilot360-Deployment, Browser-/DB-/Auditnachweis, Fehlerlog, Speicher,
-Latenz und mindestens 110 qualitativ bewertete Live-Fälle voraus. Manuelle
-Zeitentwürfe besitzen bis zu diesem Nachweis weiterhin nur die typisierte
+Latenz und mindestens 110 qualitativ bewertete Live-Fälle voraus. Der breite
+Lauf wurde nach 20 Fällen pausiert, damit die projektartgerechte Schreibsperre
+zuerst ausgeliefert und der einzige Testtermin bereinigt wird. Manuelle
+Zeitentwürfe besitzen bis zu einem späteren Nachweis weiterhin nur die typisierte
 Vorschaugrundlage (`preview_only`).
 
 - Aufgaben und Nachfassaufgaben,

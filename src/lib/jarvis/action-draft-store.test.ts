@@ -132,6 +132,8 @@ const fake = vi.hoisted(() => {
                 projectNumber: "MKG-209",
                 title: "Marketing",
                 updatedAt: projectUpdatedAt,
+                projectKind: "einmaliges Projekt",
+                recurringBillingMode: null,
               }
             : null
       ),
@@ -538,12 +540,12 @@ describe("persistent JARVIS planning drafts", () => {
       "jarvis-test-integrity-secret-with-more-than-32-characters";
   });
 
-  it("persists a ready draft with visible complete preflight", async () => {
+  it("persists a visible draft but keeps writing locked until the project-specific mask is complete", async () => {
     const view = await createPlanningDraft();
     expect(view).toMatchObject({
       actionId: "planning.prepare",
       state: "awaiting_confirmation",
-      confirmation: { enabled: true, reason: "ready" },
+      confirmation: { enabled: false, reason: "missing_fields" },
     });
     expect(view.checks.map((check) => check.code)).toEqual(
       expect.arrayContaining([
@@ -570,7 +572,7 @@ describe("persistent JARVIS planning drafts", () => {
       assigneeId: "user-2",
       bindingProfile: employeeProfile,
     });
-    expect(ownRequest.confirmation.enabled).toBe(true);
+    expect(ownRequest.confirmation.enabled).toBe(false);
     expect(ownRequest.editor.approvalStatusOptions).toEqual([
       { value: "requested", label: "Terminwunsch" },
     ]);
@@ -644,7 +646,7 @@ describe("persistent JARVIS planning drafts", () => {
     expect(fake.planningEntries).toHaveLength(0);
   });
 
-  it("claims once, executes through the callback and makes replay idempotent", async () => {
+  it("does not call the planning service while project-specific fields are incomplete", async () => {
     const first = await createPlanningDraft();
     const execute = vi.fn(async (input) => {
       fake.planningEntries.push({
@@ -654,27 +656,16 @@ describe("persistent JARVIS planning drafts", () => {
       });
       return { id: input.id };
     });
-    const executed = await confirmJarvisPlanningDraft(
-      "planning-preview-1",
-      binding(),
-      first.revision,
-      execute,
-      baseNow
-    );
-    const replay = await confirmJarvisPlanningDraft(
-      "planning-preview-1",
-      binding(),
-      first.revision,
-      execute,
-      baseNow
-    );
-    expect(executed.state).toBe("executed");
-    expect(replay.result?.entityId).toBe("planning-preview-1");
-    expect(execute).toHaveBeenCalledTimes(1);
-    expect(fake.audits.map((entry) => entry.eventType)).toEqual([
-      "draft_created",
-      "draft_confirmed",
-      "draft_executed",
-    ]);
+    await expect(
+      confirmJarvisPlanningDraft(
+        "planning-preview-1",
+        binding(),
+        first.revision,
+        execute,
+        baseNow
+      )
+    ).rejects.toMatchObject({ code: "invalid_input", status: 409 });
+    expect(execute).not.toHaveBeenCalled();
+    expect(fake.planningEntries).toHaveLength(0);
   });
 });

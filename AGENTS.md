@@ -8,8 +8,8 @@
   werden Berliner Datum/Zeit, aktive Person, Rolle und Terminart,
   Projektkontext, Board/Gruppe, gleichartige Projektplanung,
   Überschneidung, genehmigte Abwesenheit, landesspezifischer Feiertag,
-  Wochenende sowie die im manuellen Planning-Workflow nicht erforderliche
-  Angebots-/Kontingentbindung. Blockaden verhindern technisch das Schreiben;
+  Wochenende sowie Projektart und Abrechnungsweg. Blockaden verhindern
+  technisch das Schreiben;
   Überschneidung, Feiertag und Wochenende bleiben entsprechend dem bestehenden
   Planning-Verhalten bewusst sichtbare Warnungen.
   Mitarbeitende dürfen ausschließlich einen eigenen Terminwunsch vorbereiten
@@ -17,15 +17,21 @@
   Geschäftsführung oder Admin vorbehalten. Erst die ausdrückliche
   Bestätigung beansprucht den Entwurf und ruft den unveränderten,
   rollengeprüften `POST /api/planning-entries` mit der Entwurfs-ID als
-  idempotentem Schlüssel auf. Doppelklick und Replay erzeugen keinen zweiten
-  Termin. Erfolg aktualisiert Planungsdaten und Action-Center-Karte ohne
-  Seitenreload. Die Sicherheits- und Regressionsebene umfasst 1.080 grüne
-  Unit-/Integrationstests, TypeScript, Prisma-Diff, Mojibake,
-  Regressionen und Produktionsbuild. Produktiver Abschluss gilt erst mit
-  verifiziertem Backup, kontrolliertem WorkPilot360-Deployment sowie
-  Browser-, DB-/Audit-, Fehlerlog-, Speicher-, Latenz- und qualitativem
-  110er-Live-Nachweis; bis dahin ist nur der bisherige Produktionsstand
-  `fff308f` maßgeblich.
+  idempotentem Schlüssel auf. Der erste echte Doppelklicktest bewies zwar
+  Exactly-once, deckte aber zugleich eine fachliche Lücke auf: Die allgemeine
+  JARVIS-Maske bildete die drei vorhandenen Terminvarianten nicht vollständig
+  ab. Einmalprojekte benötigen Angebotszuordnung, Kontingent und gegebenenfalls
+  Ausführungsmonat; Stunden-Dauerläufer Gewerk, Abrechnungsleistung und die
+  Entscheidung zu weiteren Mitarbeitenden; Monatspauschalen ihren Monats- und
+  Serienkontext. Beschreibung ist in der normalen Maske Pflicht. Deshalb bleibt
+  die produktive JARVIS-Bestätigung im Korrekturstand für alle drei Varianten
+  technisch gesperrt. Persistieren, Prüfen, Bearbeiten und Abbrechen bleiben
+  testbar. Der einzige Live-Testtermin wird nachvollziehbar bereinigt.
+  Die Sicherheits- und Regressionsebene umfasste vor diesem Fachfund 1.080
+  grüne Unit-/Integrationstests, TypeScript, Prisma-Diff, Mojibake,
+  Regressionen und Produktionsbuild. Der breite Live-Lauf wurde nach 20 Fällen
+  bewusst pausiert; technische Grünwerte dürfen die Fachlücke nicht
+  überstimmen.
 
 - JARVIS Action Center Aufgabenabschluss und Termin-Vorschau 2026-07-30:
   Der Aufgaben-Vertikalschnitt ist auf Produktion vollständig freigegeben.
