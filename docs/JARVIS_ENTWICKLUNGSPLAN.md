@@ -1655,17 +1655,67 @@ serverseitige Vorprüfung jedoch die harte Blockade
 `Projektartgerechte Terminmaske`; im JARVIS-UI existiert dann kein produktiver
 Anlageknopf.
 
-Der technische Kandidat bestand vor diesem Fachfund 1.080
-Unit-/Integrationstests, TypeScript,
-Regressions-/Mojibake-Checks, Prisma-Validierung und leeren
-Schema-vs.-Datenbank-Diff sowie den Produktionsbuild. Produktive Freigabe
-setzt zusätzlich das verifizierte Serverbackup, das isolierte
-WorkPilot360-Deployment, Browser-/DB-/Auditnachweis, Fehlerlog, Speicher,
-Latenz und mindestens 110 qualitativ bewertete Live-Fälle voraus. Der breite
-Lauf wurde nach 20 Fällen pausiert, damit die projektartgerechte Schreibsperre
-zuerst ausgeliefert und der einzige Testtermin bereinigt wird. Manuelle
-Zeitentwürfe besitzen bis zu einem späteren Nachweis weiterhin nur die typisierte
-Vorschaugrundlage (`preview_only`).
+Finaler Produktionsstand dieses Vertikalschnitts ist `93fd70f`. Vor dem
+Deployment wurde das separate Backup
+`/var/backups/workpilot360/before-jarvis-tailored-planning-clarifications-20260730T100824Z`
+mit Git-Bundle, Archiv der getrackten Dateien, PostgreSQL-Dump und
+SHA-256-Prüfung vollständig verifiziert. 102 Testdateien mit 1.173/1.173
+Unit-/Integrationstests, TypeScript, Regressions-/Mojibake-Checks,
+Prisma-Validierung, leerer Schema-vs.-Datenbank-Diff, `git diff --check` und
+Produktionsbuild waren grün. Das Deployment betraf ausschließlich
+WorkPilot360; der Klinikprozess blieb unverändert.
+
+Direkt danach wurde über die sichtbare Produktionsoberfläche ein vollständig
+neuer 110er-Lauf ausgeführt. 110/110 Antworten wurden ausgeliefert, ohne
+technischen Fehler oder leere Antwort. Entscheidend war nicht nur die
+Antwortexistenz: Jede Antwort wurde manuell nach konkreter Fragerelevanz,
+fachlicher Richtigkeit, Angemessenheit, Datenbasis, Handlungsnutzen und
+Sicherheitsverhalten bewertet. Mehrere vorher technisch grüne Läufe wurden
+wegen pauschaler oder wiederholter Antworten verworfen. Im finalen Stand
+antworten Prinzipien-, Datenschutz-, Führungs-, Priorisierungs-,
+Planungskonflikt- und Sicherheitsfragen fokussiert; unvollständige
+Terminangaben nennen nur die tatsächlich noch fehlenden Pflichtangaben. Der
+UI-Lauf benötigte im Mittel 4,95 Sekunden und p95 5,44 Sekunden. 50
+öffentliche Dashboard-Aufrufe lagen bei durchschnittlich 70,8 ms und p95
+159,9 ms.
+
+Der echte Terminwunsch `Live-Abnahme` wurde persistent angelegt, sichtbar in
+`Live-Abnahme geändert` bearbeitet, serverseitig erneut geprüft und wegen
+`Projektartgerechte Terminmaske` weiterhin fail-closed gesperrt. Nach dem
+bewussten Abbruch zeigte die Datenbank `state=cancelled`, Revision 2 sowie
+`draft_created → draft_rechecked(preflight_blocked) →
+draft_cancelled(user_cancelled)`; es entstand kein `PlanningEntry`. Die
+Browserkonsole blieb fehlerfrei, der Produktionsfehlerlog blieb während der
+110 Fragen stabil und WorkPilot360 blieb online. Damit ist der sichere
+Entwurfslebenszyklus abgenommen; die produktive Terminanlage bleibt bis zur
+vollständigen Nachbildung aller drei Originalmasken bewusst gesperrt.
+Manuelle Zeitentwürfe besitzen bis zu einem späteren Nachweis weiterhin nur
+die typisierte Vorschaugrundlage (`preview_only`).
+
+Für alle weiteren Action-Center-Schritte gilt verbindlich: Die Formulierung
+`noch nicht freigegeben` ersetzt keine Entwicklung. Jede gesperrte Fähigkeit
+wird als eine der folgenden Klassen geführt:
+
+1. Die WorkPilot-Funktion existiert, besitzt aber noch keinen sicheren
+   JARVIS-Adapter. Dann wird der vollständige Vertikalschnitt geplant und
+   gebaut.
+2. Der JARVIS-Weg ist begonnen, aber fachlich unvollständig. Dann bleibt er
+   fail-closed und die fehlenden Masken, Pflichtfelder und Prüfungen sind der
+   konkrete nächste Entwicklungsschritt. Die Terminmasken gehören aktuell in
+   diese Klasse.
+3. Die Aktion ist wegen hoher rechtlicher, finanzieller, personeller oder
+   irreversibler Wirkung bewusst gesperrt. Eine spätere Freigabe benötigt
+   einen eigenen Beschluss und den vollständigen Sicherheitsnachweis; ein
+   Konfigurationsschalter allein genügt nie.
+4. Die Fähigkeit liegt außerhalb des aktuell beschlossenen Umfangs. JARVIS
+   benennt das konkret, ohne vorzutäuschen, die Funktion sei technisch bereits
+   fertig.
+
+Eine pauschale Nichtfreigabe trotz vorhandener sicherer Hilfe oder aufgrund
+eines Routingfehlers gilt in menschenähnlichen Tests als Qualitätsfehler.
+Roadmap und Abnahmebericht sollen deshalb künftig pro gesperrter Fähigkeit
+Grundklasse, fehlende Bausteine, nächsten Entwicklungsschritt und
+Freigabekriterium ausweisen.
 
 - Aufgaben und Nachfassaufgaben,
 - Termine und Terminwünsche,

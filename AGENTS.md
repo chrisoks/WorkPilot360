@@ -1,7 +1,7 @@
 # WorkPilot360 Agent Handover
 
 - JARVIS Action Center Termin-/Terminwunsch-Vertikalschnitt 2026-07-30:
-  Der persistente 15-Minuten-Entwurf übernimmt die vollständige
+  Produktionsstand `93fd70f`: Der persistente 15-Minuten-Entwurf übernimmt die vollständige
   Organisations-, Sitzungs-, Akteurs-, Rollen-, Impersonations-, Revisions-,
   Hash-, HMAC-, TTL- und Auditbindung des Aufgabenwegs. Jede Änderung sperrt
   die Bestätigung bis zur erneuten serverseitigen Prüfung. Sichtbar geprüft
@@ -12,26 +12,63 @@
   technisch das Schreiben;
   Überschneidung, Feiertag und Wochenende bleiben entsprechend dem bestehenden
   Planning-Verhalten bewusst sichtbare Warnungen.
-  Mitarbeitende dürfen ausschließlich einen eigenen Terminwunsch vorbereiten
-  und anlegen; bestätigte Termine und fremde Personen bleiben Führung,
-  Geschäftsführung oder Admin vorbehalten. Erst die ausdrückliche
-  Bestätigung beansprucht den Entwurf und ruft den unveränderten,
+  Mitarbeitende dürfen ausschließlich einen eigenen Terminwunsch vorbereiten;
+  bestätigte Termine und fremde Personen bleiben Führung, Geschäftsführung
+  oder Admin vorbehalten. Eine spätere ausdrückliche Bestätigung würde den
+  Entwurf atomar beanspruchen und ausschließlich den unveränderten,
   rollengeprüften `POST /api/planning-entries` mit der Entwurfs-ID als
-  idempotentem Schlüssel auf. Der erste echte Doppelklicktest bewies zwar
-  Exactly-once, deckte aber zugleich eine fachliche Lücke auf: Die allgemeine
-  JARVIS-Maske bildete die drei vorhandenen Terminvarianten nicht vollständig
-  ab. Einmalprojekte benötigen Angebotszuordnung, Kontingent und gegebenenfalls
+  idempotentem Schlüssel aufrufen. Die allgemeine JARVIS-Maske bildet die drei
+  vorhandenen Terminvarianten jedoch noch nicht vollständig ab:
+  Einmalprojekte benötigen Angebotszuordnung, Kontingent und gegebenenfalls
   Ausführungsmonat; Stunden-Dauerläufer Gewerk, Abrechnungsleistung und die
   Entscheidung zu weiteren Mitarbeitenden; Monatspauschalen ihren Monats- und
-  Serienkontext. Beschreibung ist in der normalen Maske Pflicht. Deshalb bleibt
-  die produktive JARVIS-Bestätigung im Korrekturstand für alle drei Varianten
-  technisch gesperrt. Persistieren, Prüfen, Bearbeiten und Abbrechen bleiben
-  testbar. Der einzige Live-Testtermin wird nachvollziehbar bereinigt.
-  Die Sicherheits- und Regressionsebene umfasste vor diesem Fachfund 1.080
-  grüne Unit-/Integrationstests, TypeScript, Prisma-Diff, Mojibake,
-  Regressionen und Produktionsbuild. Der breite Live-Lauf wurde nach 20 Fällen
-  bewusst pausiert; technische Grünwerte dürfen die Fachlücke nicht
-  überstimmen.
+  Serienkontext. Beschreibung ist in der normalen Maske Pflicht. Deshalb
+  setzt der Server für alle drei Varianten weiterhin fail-closed die Blockade
+  `Projektartgerechte Terminmaske`; es gibt im JARVIS-UI keinen produktiven
+  Anlageknopf.
+
+  Die finale Produktionsabnahme erfolgte auf `93fd70f` nach einem separaten,
+  vollständig geprüften 322-MB-Backup unter
+  `/var/backups/workpilot360/before-jarvis-tailored-planning-clarifications-20260730T100824Z`.
+  102 Testdateien mit 1.173/1.173 Tests, TypeScript, Regression, Mojibake,
+  Prisma-Validierung, leerer Schema-/Datenbank-Diff, `git diff --check` und
+  Produktionsbuild sind grün. Der anschließend von Grund auf ausgeführte
+  sichtbare 110er-Lauf beantwortete 110/110 Fälle ohne technischen Fehler,
+  leere Antwort oder kritischen Qualitätsbefund. Jede Antwort wurde zusätzlich
+  auf Relevanz, fachliche Richtigkeit, Angemessenheit, Konkretheit,
+  Datenbasis und Sicherheitsverhalten geprüft. Der UI-Lauf lag bei 4,95 s im
+  Mittel und 5,44 s p95; 50 öffentliche Dashboard-Aufrufe lagen bei 70,8 ms
+  im Mittel und 159,9 ms p95.
+
+  Der Live-Terminwunsch `Live-Abnahme` wurde gespeichert, sichtbar in
+  `Live-Abnahme geändert` bearbeitet, serverseitig erneut geprüft und wegen
+  der Projektartmaske weiterhin gesperrt. Der bewusste Abbruch führte zu
+  `state=cancelled`, Revision 2 und der Auditfolge
+  `draft_created → draft_rechecked(preflight_blocked) →
+  draft_cancelled(user_cancelled)`. Die Datenbank enthält dafür null
+  `PlanningEntry`-Datensätze. Browserkonsole und neue JARVIS-Fehler blieben
+  leer; der Produktionsfehlerlog blieb während des finalen Laufs stabil bei
+  146.513 Zeilen. WorkPilot360 ist online; `kliniknavigator` blieb mit PID
+  242528 unangetastet.
+
+  Nach außen bleibt JARVIS ein einziger Assistent. Systemhilfe, Management,
+  Vertrieb, Projektprüfung und sichere Aktionen werden intern als
+  spezialisierte Fähigkeiten geroutet; getrennte sichtbare KI-Chats werden
+  nicht weitergeführt.
+
+  `Noch nicht freigegeben` ist kein pauschaler Endzustand. Jeder solche Fall
+  muss fachlich einer von vier Klassen zugeordnet werden: vorhandene
+  WorkPilot-Funktion noch nicht sicher an JARVIS angebunden; JARVIS-
+  Vertikalschnitt fachlich unvollständig; bewusst sicherheitsgesperrte
+  Hochrisikoaktion; oder außerhalb des aktuell beschlossenen
+  Entwicklungsumfangs. Für die ersten beiden Klassen gehört ein konkreter
+  nächster Ausbauschritt in den Entwicklungsplan. Behauptet JARVIS eine
+  fehlende Freigabe, obwohl die vorhandene Funktion sicher erklärt oder
+  genutzt werden könnte, ist das ein Routing-/Qualitätsfehler und kein
+  bestandener Sicherheitstest. Aktiviert wird niemals nur ein Schalter:
+  Rollen, Fachprüfung, Vorschau, bewusste Bestätigung, Audit, Exactly-once,
+  Browser- und Live-Abnahme müssen für den jeweiligen Vertikalschnitt
+  vollständig nachgewiesen sein.
 
 - JARVIS Action Center Aufgabenabschluss und Termin-Vorschau 2026-07-30:
   Der Aufgaben-Vertikalschnitt ist auf Produktion vollständig freigegeben.
