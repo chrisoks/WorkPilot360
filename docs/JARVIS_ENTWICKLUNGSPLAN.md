@@ -1121,9 +1121,29 @@ Umsetzungsstand 30.07.2026:
 - Bestätigung, erneute Serverberechnung, unveränderlicher Snapshot,
   Transaktion, Audit, Revision, Ablaufzeit, Exactly-once und Replay-Schutz
   sind Bestandteil des produktiven Vertrags.
-- Chronologisch als Nächstes folgen der Fahrtenrechner und danach die
-  fachlich freigegebenen Fahrzeugkalkulationen. Vermietung bleibt weiterhin
-  fail-closed.
+- Der Fahrten- und Fahrzeugkosten-Vertikalschnitt ist ebenfalls umgesetzt.
+  Natürliche Startaufforderungen zu Fahrten-, Fahrtkosten- und
+  Fahrzeugkostenkalkulation führen in denselben fachlich freigegebenen
+  aktiven-fahrzeuggebundenen Rechner. Eine weitere Fahrzeugformel ist in
+  WorkPilot nicht freigegeben und wird nicht erfunden.
+- Der Entwurf startet ohne Fahrzeug, Strecke oder Preisannahme. Aktive
+  Fahrzeuge, Verbrauch, Selbstkosten/km, Verkauf/km und Änderungsstand werden
+  organisationsgebunden geladen. Die Kraftstoffpreisquelle ist entweder der
+  zentrale Livepreis aus Tankerkönig/MTS-K oder eine bewusste manuelle
+  Eingabe; Quelle und Abrufzeitpunkt bleiben sichtbar und im Snapshot.
+- Die Berechnung nutzt ausschließlich `src/lib/vehicle-calculation.ts` und
+  weist ausdrücklich aus, dass Personalkosten nicht enthalten sind.
+  Mitarbeitende dürfen rechnen; dauerhaftes Speichern bleibt an
+  `canManageProjects` für Sitzungs- und effektive Rolle gebunden.
+- Bestätigung, erneute Serverberechnung, aktueller Fahrzeugstamm,
+  unveränderlicher `VehicleCalculation`-Snapshot, Transaktion, Audit,
+  Revision, Ablaufzeit, Exactly-once und Replay-Schutz sind Bestandteil des
+  Vertrags. Der direkte Speicherweg übernimmt ebenfalls keine angelieferten
+  Kilometerstammdaten, sondern lädt sie vor dem Schreiben erneut.
+- Fahrzeugstammdatenpflege ist weiterhin eine getrennte berechtigte Funktion
+  und keine Nebenwirkung der Kalkulation. Vermietung bleibt weiterhin
+  fail-closed und wird erst nach eigener fachlicher Freigabe chronologisch
+  fortgesetzt.
 
 ### 7.16 Firmeneinstellungen
 

@@ -76,20 +76,36 @@ export async function POST(req: Request) {
   const { organization, users } = await getDemoContext();
   const actorResult = await getSessionBoundActor(req, users, body.actorId);
   if (!actorResult.ok) return sessionBoundActorResponse(actorResult);
-  if (!canManageProjects(actorResult.actor)) {
+  if (!canViewCustomerRevenueAnalytics(actorResult.actor)) {
     return NextResponse.json(
-      { error: "Du darfst Fahrtenkalkulationen nicht speichern." },
+      { error: "Du darfst Fahrtenkalkulationen nicht berechnen." },
       { status: 403 }
     );
   }
 
   try {
-    const input = inputSchema.parse(body.input) as VehicleTripCalculationInput;
-    const result = calculateVehicleTrip(input);
+    const requestedInput = inputSchema.parse(
+      body.input
+    ) as VehicleTripCalculationInput;
+    const requestedResult = calculateVehicleTrip(requestedInput);
     const action = cleanString(body.action) || "calculate";
-    if (action === "calculate") return NextResponse.json({ input, result });
+    if (action === "calculate") {
+      return NextResponse.json({
+        input: requestedInput,
+        result: requestedResult,
+      });
+    }
     if (action !== "save") {
       return NextResponse.json({ error: "Unbekannte Aktion." }, { status: 400 });
+    }
+    if (!canManageProjects(actorResult.actor)) {
+      return NextResponse.json(
+        {
+          error:
+            "Du darfst Fahrtenkalkulationen berechnen, aber nicht dauerhaft speichern.",
+        },
+        { status: 403 }
+      );
     }
 
     const vehicleId = cleanString(body.vehicleId);
@@ -99,6 +115,14 @@ export async function POST(req: Request) {
     if (!vehicle) {
       return NextResponse.json({ error: "Das ausgewählte Fahrzeug wurde nicht gefunden." }, { status: 404 });
     }
+    const input: VehicleTripCalculationInput = {
+      ...requestedInput,
+      consumptionLitersPer100Km:
+        vehicle.consumptionLitersPer100Km,
+      selfCostPerKm: vehicle.selfCostPerKm,
+      salesPricePerKm: vehicle.salesPricePerKm,
+    };
+    const result = calculateVehicleTrip(input);
 
     const fuelPriceFetchedAt = cleanString(body.fuelPriceFetchedAt);
     const calculation = await prisma.vehicleCalculation.create({
@@ -119,6 +143,7 @@ export async function POST(req: Request) {
             name: vehicle.name,
             licensePlate: vehicle.licensePlate,
             fuelType: vehicle.fuelType,
+            updatedAt: vehicle.updatedAt.toISOString(),
           },
         },
         resultSnapshot: result,

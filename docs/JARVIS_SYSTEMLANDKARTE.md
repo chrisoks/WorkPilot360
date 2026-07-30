@@ -123,6 +123,21 @@ Aktionen werden getrennt über das Action Center abgesichert:
   Sitzungs-/Effektivrollenkombination nach bewusster Bestätigung erzeugen;
   Projekt-, Kunden- und Rollenstand werden in derselben Transaktion erneut
   geprüft. Audit, Revision, Ablaufzeit und Exactly-once sind verbindlich.
+- Fahrten- und Fahrzeugkostenkalkulation: Natürliche Fahrten-, Fahrtkosten-
+  und Fahrzeugkostenwünsche verwenden denselben fachlich freigegebenen
+  aktiven-fahrzeuggebundenen Rechner. Der persistente Entwurf startet ohne
+  Annahmen, lädt Fahrzeug-, Verbrauchs-, Selbstkosten-, Verkaufs- und
+  Änderungsdaten organisationsgebunden und verwendet transparent den zentralen
+  Live-Kraftstoffpreis oder eine bewusste manuelle Eingabe. Die einzige
+  Rechenquelle ist `src/lib/vehicle-calculation.ts`; Personalkosten sind
+  ausdrücklich nicht enthalten. Interne Mitarbeitende dürfen rechnen,
+  dauerhaftes Speichern verlangt die bestehende Projektberechtigung beider
+  Akteure sowie bewusste Bestätigung. Fahrzeugstand und Rolle werden in der
+  Transaktion erneut geprüft; unveränderlicher `VehicleCalculation`-Snapshot,
+  Audit, Revision, Ablauf und Exactly-once sind verbindlich.
+- Fahrzeugstammdatenänderungen gehören nicht zu diesem Kalkulationsschnitt.
+  Vermietungs-, Mietpreis-, Vertrags- und Rückgabeaktionen bleiben
+  `limited/needs_review` und für JARVIS fail-closed.
 - Manuelle Zeiterfassung bleibt auf der typisierten Vorschaugrundlage und ist
   noch kein produktiver Schreib-Vertikalschnitt.
 

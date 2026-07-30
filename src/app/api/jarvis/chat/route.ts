@@ -91,6 +91,7 @@ import {
 import {
   createPersistedJarvisPlanningDraft,
   createPersistedJarvisTaskDraft,
+  createPersistedJarvisVehicleTripCalculationDraft,
   createPersistedJarvisWinterCalculationDraft,
   JarvisActionDraftError,
 } from "@/lib/jarvis/action-draft-store";
@@ -179,6 +180,79 @@ function looksLikeWinterCalculationStartRequest(question: string) {
     /\bich mochte\b.*\b(?:kalkulier|berechne|rechne)\w*\b/.test(value) ||
     /\bmit jarvis\b.*\b(?:kalkulier|berechne|rechne)\w*\b/.test(value)
   );
+}
+
+function looksLikeVehicleTripCalculationStartRequest(question: string) {
+  const value = normalizeJarvisIntentText(question);
+  const hasCalculation =
+    /\b\w*(?:kalkulier|berechne|rechne|rechnung|kalkulation|rechner)\w*\b/.test(
+      value
+    );
+  const hasVehicleTripScope =
+    /\b(?:fahrt(?:en)?(?:kosten)?|fahrzeug(?:kosten|kalkulation)?|kilometerkosten)\w*\b/.test(
+      value
+    );
+  if (!hasCalculation || !hasVehicleTripScope) return false;
+  if (/\b(?:vermiet|mietfahrzeug|mietpreis)\w*\b/.test(value)) return false;
+  return (
+    /^\s*(?:starte|start|kalkulier|berechne|rechne|erstelle|mach|mache|offne)\w*\b/.test(
+      value
+    ) ||
+    /\bich mochte\b.*\b(?:kalkulier|berechne|rechne)\w*\b/.test(value) ||
+    /\bmit jarvis\b.*\b(?:kalkulier|berechne|rechne)\w*\b/.test(value)
+  );
+}
+
+function looksLikeVehicleRentalRequest(question: string) {
+  const value = normalizeJarvisIntentText(question);
+  return (
+    /\b\w*(?:vermiet|mietfahrzeug|mietpreis|fahrzeugmiete)\w*\b/.test(
+      value
+    ) &&
+    /\b\w*(?:kalkulier|berechne|rechne|erstelle|angebot|vertrag|verfugbarkeit|ruckgabe)\w*\b/.test(
+      value
+    )
+  );
+}
+
+async function buildJarvisVehicleTripCalculationDraft(input: {
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+}) {
+  if (!input.sessionId) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.draft.session-required",
+      message:
+        "Für eine bestätigbare JARVIS-Kalkulation ist eine aktuelle serverseitige Sitzung erforderlich. Bitte melde dich neu an; es wurde nichts gespeichert.",
+    };
+  }
+  try {
+    const actionDraft =
+      await createPersistedJarvisVehicleTripCalculationDraft({
+        organizationId: input.organizationId,
+        sessionId: input.sessionId,
+        profile: input.accessProfile,
+      });
+    return {
+      type: "answer" as const,
+      topicId: "action.draft.vehicle-trip-calculation",
+      message:
+        "Ich habe eine sichere Fahrten- und Fahrzeugkostenkalkulation vorbereitet. Wähle ein aktives Fahrzeug und die Strecke; JARVIS verwendet die aktuellen WorkPilot-Fahrzeugwerte und wahlweise den Live-Kraftstoffpreis oder einen transparenten manuellen Preis. Personalkosten sind in diesem Rechner ausdrücklich nicht enthalten. Erst deine ausdrückliche Bestätigung darf eine unveränderliche Kalkulationsversion speichern.",
+      actionDraft,
+    };
+  } catch (error) {
+    const message =
+      error instanceof JarvisActionDraftError
+        ? error.message
+        : "Die Fahrten- und Fahrzeugkostenkalkulation konnte nicht sicher vorbereitet werden.";
+    return {
+      type: "refusal" as const,
+      topicId: "action.draft.unavailable",
+      message: `${message} Es wurde nichts gespeichert.`,
+    };
+  }
 }
 
 async function buildJarvisWinterCalculationDraft(input: {
@@ -1042,6 +1116,25 @@ export async function POST(req: Request) {
       }),
       "system"
     );
+  }
+  if (looksLikeVehicleTripCalculationStartRequest(message)) {
+    return respond(
+      await buildJarvisVehicleTripCalculationDraft({
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+      }),
+      "system"
+    );
+  }
+  if (looksLikeVehicleRentalRequest(message)) {
+    return respond({
+      type: "refusal",
+      topicId: "action.vehicle-rental-not-released",
+      message:
+        "Fahrzeugvermietung, Mietpreise, Verfügbarkeit, Verträge und Rückgabechecks sind für JARVIS noch nicht fachlich freigegeben. Ich habe deshalb weder eine Kalkulation gestartet noch Daten verändert. Der sichere Fahrten- und Fahrzeugkostenrechner ohne Personalkosten bleibt davon getrennt verfügbar.",
+      deterministic: true,
+    });
   }
   if (directActionRequest && /^\s*stemp(?:el|le|l)\w*\b/iu.test(message)) {
     return respond({

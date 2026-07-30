@@ -71,6 +71,7 @@ import type {
   JarvisActionPreviewView,
   JarvisPlanningActionDraftView,
   JarvisTaskActionDraftView,
+  JarvisVehicleTripCalculationDraftView,
   JarvisWinterCalculationDraftView,
 } from "@/lib/jarvis/action-center";
 import {
@@ -666,7 +667,8 @@ type ManagementAiChatMessage = {
   actionDraft?:
     | JarvisTaskActionDraftView
     | JarvisPlanningActionDraftView
-    | JarvisWinterCalculationDraftView;
+    | JarvisWinterCalculationDraftView
+    | JarvisVehicleTripCalculationDraftView;
   dialogState?: JarvisDialogState;
 };
 
@@ -1504,17 +1506,292 @@ function parseJarvisWinterCalculationDraft(
   };
 }
 
+function parseJarvisVehicleTripCalculationDraft(
+  value: unknown
+): JarvisVehicleTripCalculationDraftView | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  const editor =
+    candidate.editor && typeof candidate.editor === "object"
+      ? (candidate.editor as Record<string, unknown>)
+      : undefined;
+  const fuelPrice =
+    editor?.fuelPrice && typeof editor.fuelPrice === "object"
+      ? (editor.fuelPrice as Record<string, unknown>)
+      : undefined;
+  const confirmation =
+    candidate.confirmation && typeof candidate.confirmation === "object"
+      ? (candidate.confirmation as Record<string, unknown>)
+      : undefined;
+  const cancellation =
+    candidate.cancellation && typeof candidate.cancellation === "object"
+      ? (candidate.cancellation as Record<string, unknown>)
+      : undefined;
+  const execution =
+    candidate.execution && typeof candidate.execution === "object"
+      ? (candidate.execution as Record<string, unknown>)
+      : undefined;
+  if (
+    candidate.version !== 2 ||
+    candidate.actionId !== "vehicle-trip-calculation.prepare" ||
+    candidate.title !== "Fahrt und Fahrzeugkosten kalkulieren" ||
+    typeof candidate.previewId !== "string" ||
+    ![
+      "Entwurf",
+      "Berechnet",
+      "Wird gespeichert",
+      "Abgebrochen",
+      "Abgelaufen",
+      "Gespeichert",
+    ].includes(String(candidate.badge)) ||
+    typeof candidate.state !== "string" ||
+    !jarvisTaskDraftStates.has(candidate.state) ||
+    !Number.isSafeInteger(candidate.revision) ||
+    typeof candidate.expiresAt !== "string" ||
+    !Number.isFinite(Date.parse(candidate.expiresAt)) ||
+    !editor ||
+    typeof editor.vehicleId !== "string" ||
+    typeof editor.distanceKm !== "number" ||
+    !Number.isFinite(editor.distanceKm) ||
+    !["live", "manual"].includes(String(editor.fuelPriceMode)) ||
+    typeof editor.manualFuelPricePerLiter !== "number" ||
+    !Number.isFinite(editor.manualFuelPricePerLiter) ||
+    typeof editor.note !== "string" ||
+    !Array.isArray(editor.vehicleOptions) ||
+    !fuelPrice ||
+    !["live", "unavailable", "not_configured"].includes(
+      String(fuelPrice.status)
+    ) ||
+    typeof fuelPrice.source !== "string" ||
+    typeof fuelPrice.stationLabel !== "string" ||
+    !(
+      fuelPrice.fetchedAt === null ||
+      typeof fuelPrice.fetchedAt === "string"
+    ) ||
+    typeof fuelPrice.message !== "string" ||
+    !confirmation ||
+    typeof confirmation.enabled !== "boolean" ||
+    ![
+      "ready",
+      "missing_fields",
+      "not_permitted",
+      "expired",
+      "cancelled",
+      "executing",
+      "executed",
+    ].includes(String(confirmation.reason)) ||
+    !cancellation ||
+    typeof cancellation.enabled !== "boolean" ||
+    !execution ||
+    execution.enabled !== false ||
+    !["requires_confirmation", "finalized"].includes(
+      String(execution.reason)
+    )
+  ) {
+    return undefined;
+  }
+  const fields = Array.isArray(candidate.fields)
+    ? candidate.fields
+        .filter(
+          (field): field is Record<string, unknown> =>
+            Boolean(field && typeof field === "object")
+        )
+        .map((field) => ({
+          label:
+            typeof field.label === "string"
+              ? field.label.trim().slice(0, 80)
+              : "",
+          value:
+            typeof field.value === "string"
+              ? field.value.trim().slice(0, 500)
+              : "",
+        }))
+        .filter((field) => field.label && field.value)
+        .slice(0, 12)
+    : [];
+  const vehicleOptions = editor.vehicleOptions
+    .filter(
+      (option): option is Record<string, unknown> =>
+        Boolean(option && typeof option === "object")
+    )
+    .map((option) => ({
+      id: typeof option.id === "string" ? option.id.slice(0, 120) : "",
+      label:
+        typeof option.label === "string" ? option.label.slice(0, 240) : "",
+      fuelType:
+        typeof option.fuelType === "string"
+          ? option.fuelType.slice(0, 80)
+          : "",
+      consumptionLitersPer100Km: option.consumptionLitersPer100Km,
+      selfCostPerKm: option.selfCostPerKm,
+      salesPricePerKm: option.salesPricePerKm,
+      updatedAt: option.updatedAt,
+      liveFuelPrice: option.liveFuelPrice,
+    }))
+    .filter(
+      (
+        option
+      ): option is JarvisVehicleTripCalculationDraftView["editor"]["vehicleOptions"][number] =>
+        Boolean(option.id && option.label && option.fuelType) &&
+        [
+          option.consumptionLitersPer100Km,
+          option.selfCostPerKm,
+          option.salesPricePerKm,
+        ].every(
+          (entry) => typeof entry === "number" && Number.isFinite(entry)
+        ) &&
+        typeof option.updatedAt === "string" &&
+        Number.isFinite(Date.parse(option.updatedAt)) &&
+        (option.liveFuelPrice === null ||
+          (typeof option.liveFuelPrice === "number" &&
+            Number.isFinite(option.liveFuelPrice)))
+    )
+    .slice(0, 500);
+  const rawCalculation =
+    candidate.calculation && typeof candidate.calculation === "object"
+      ? (candidate.calculation as Record<string, unknown>)
+      : undefined;
+  const rawInput =
+    rawCalculation?.input && typeof rawCalculation.input === "object"
+      ? (rawCalculation.input as Record<string, unknown>)
+      : undefined;
+  const rawResult =
+    rawCalculation?.result && typeof rawCalculation.result === "object"
+      ? (rawCalculation.result as Record<string, unknown>)
+      : undefined;
+  const inputKeys = [
+    "distanceKm",
+    "consumptionLitersPer100Km",
+    "fuelPricePerLiter",
+    "selfCostPerKm",
+    "salesPricePerKm",
+  ] as const;
+  const resultKeys = [
+    "fuelLiters",
+    "fuelCost",
+    "vehicleSelfCost",
+    "totalSelfCost",
+    "vehicleSales",
+    "totalSales",
+    "profit",
+    "markupPercent",
+    "marginPercent",
+  ] as const;
+  const calculation =
+    rawCalculation &&
+    rawInput &&
+    rawResult &&
+    inputKeys.every(
+      (key) =>
+        typeof rawInput[key] === "number" &&
+        Number.isFinite(rawInput[key])
+    ) &&
+    resultKeys.every(
+      (key) =>
+        typeof rawResult[key] === "number" &&
+        Number.isFinite(rawResult[key])
+    ) &&
+    typeof rawCalculation.priceSource === "string" &&
+    (rawCalculation.priceFetchedAt === null ||
+      typeof rawCalculation.priceFetchedAt === "string") &&
+    rawCalculation.includesPersonnelCosts === false
+      ? {
+          input: Object.fromEntries(
+            inputKeys.map((key) => [key, rawInput[key]])
+          ) as NonNullable<
+            JarvisVehicleTripCalculationDraftView["calculation"]
+          >["input"],
+          result: Object.fromEntries(
+            resultKeys.map((key) => [key, rawResult[key]])
+          ) as NonNullable<
+            JarvisVehicleTripCalculationDraftView["calculation"]
+          >["result"],
+          priceSource: rawCalculation.priceSource.slice(0, 240),
+          priceFetchedAt: rawCalculation.priceFetchedAt as string | null,
+          includesPersonnelCosts: false as const,
+        }
+      : undefined;
+  const resultCandidate =
+    candidate.result && typeof candidate.result === "object"
+      ? (candidate.result as Record<string, unknown>)
+      : undefined;
+  const result =
+    resultCandidate?.entityType === "vehicleCalculation" &&
+    typeof resultCandidate.entityId === "string" &&
+    typeof resultCandidate.label === "string"
+      ? {
+          entityType: "vehicleCalculation" as const,
+          entityId: resultCandidate.entityId.trim().slice(0, 120),
+          label: resultCandidate.label.trim().slice(0, 120),
+        }
+      : undefined;
+  if (!candidate.previewId.trim() || fields.length === 0) return undefined;
+  return {
+    version: 2,
+    previewId: candidate.previewId.trim().slice(0, 120),
+    actionId: "vehicle-trip-calculation.prepare",
+    title: "Fahrt und Fahrzeugkosten kalkulieren",
+    badge:
+      candidate.badge as JarvisVehicleTripCalculationDraftView["badge"],
+    state:
+      candidate.state as JarvisVehicleTripCalculationDraftView["state"],
+    revision: Number(candidate.revision),
+    expiresAt: candidate.expiresAt,
+    fields,
+    missingFields: Array.isArray(candidate.missingFields)
+      ? candidate.missingFields
+          .filter((field): field is string => typeof field === "string")
+          .map((field) => field.trim().slice(0, 120))
+          .filter(Boolean)
+          .slice(0, 20)
+      : [],
+    editor: {
+      vehicleId: editor.vehicleId.trim().slice(0, 120),
+      distanceKm: editor.distanceKm,
+      fuelPriceMode: editor.fuelPriceMode as "live" | "manual",
+      manualFuelPricePerLiter: editor.manualFuelPricePerLiter,
+      note: editor.note.slice(0, 2000),
+      vehicleOptions,
+      fuelPrice: {
+        status: fuelPrice.status as
+          | "live"
+          | "unavailable"
+          | "not_configured",
+        source: fuelPrice.source.slice(0, 240),
+        stationLabel: fuelPrice.stationLabel.slice(0, 240),
+        fetchedAt: fuelPrice.fetchedAt as string | null,
+        message: fuelPrice.message.slice(0, 500),
+      },
+    },
+    ...(calculation ? { calculation } : {}),
+    confirmation: {
+      enabled: confirmation.enabled,
+      reason:
+        confirmation.reason as JarvisVehicleTripCalculationDraftView["confirmation"]["reason"],
+    },
+    cancellation: { enabled: cancellation.enabled },
+    execution: {
+      enabled: false,
+      reason:
+        execution.reason as JarvisVehicleTripCalculationDraftView["execution"]["reason"],
+    },
+    ...(result?.entityId && result.label ? { result } : {}),
+  };
+}
+
 function parseJarvisActionDraft(
   value: unknown
 ):
   | JarvisTaskActionDraftView
   | JarvisPlanningActionDraftView
   | JarvisWinterCalculationDraftView
+  | JarvisVehicleTripCalculationDraftView
   | undefined {
   return (
     parseJarvisTaskActionDraft(value) ??
     parseJarvisPlanningActionDraft(value) ??
-    parseJarvisWinterCalculationDraft(value)
+    parseJarvisWinterCalculationDraft(value) ??
+    parseJarvisVehicleTripCalculationDraft(value)
   );
 }
 
@@ -2580,6 +2857,411 @@ function JarvisWinterCalculationDraftCard({
             ? "Der Entwurf wurde beendet. Es wurde keine Kalkulation gespeichert."
             : draft.state === "expired"
               ? "Der Kalkulationsentwurf ist abgelaufen."
+              : draft.confirmation.reason === "not_permitted"
+                ? "Du darfst mit JARVIS rechnen. Dauerhaftes Speichern bleibt den vorhandenen projektberechtigten Rollen vorbehalten."
+                : `Der Entwurf ist bis ${new Date(
+                    draft.expiresAt
+                  ).toLocaleTimeString("de-DE", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })} Uhr an diese Sitzung gebunden. Erst der ausdrückliche Speicher-Button schreibt eine Kalkulationsversion.`}
+      </footer>
+    </section>
+  );
+}
+
+function JarvisVehicleTripCalculationDraftCard({
+  draft,
+  actorId,
+  disabled,
+  onChange,
+  onOpenCalculators,
+}: {
+  draft: JarvisVehicleTripCalculationDraftView;
+  actorId: string;
+  disabled: boolean;
+  onChange: (
+    next: JarvisVehicleTripCalculationDraftView,
+    message?: string
+  ) => void;
+  onOpenCalculators: () => void;
+}) {
+  const [vehicleId, setVehicleId] = useState(draft.editor.vehicleId);
+  const [distanceKm, setDistanceKm] = useState(
+    draft.editor.distanceKm
+  );
+  const [fuelPriceMode, setFuelPriceMode] = useState(
+    draft.editor.fuelPriceMode
+  );
+  const [manualFuelPricePerLiter, setManualFuelPricePerLiter] =
+    useState(draft.editor.manualFuelPricePerLiter);
+  const [note, setNote] = useState(draft.editor.note);
+  const [isWorking, setIsWorking] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setVehicleId(draft.editor.vehicleId);
+    setDistanceKm(draft.editor.distanceKm);
+    setFuelPriceMode(draft.editor.fuelPriceMode);
+    setManualFuelPricePerLiter(
+      draft.editor.manualFuelPricePerLiter
+    );
+    setNote(draft.editor.note);
+    setError("");
+  }, [
+    draft.previewId,
+    draft.revision,
+    draft.state,
+    draft.editor.vehicleId,
+    draft.editor.distanceKm,
+    draft.editor.fuelPriceMode,
+    draft.editor.manualFuelPricePerLiter,
+    draft.editor.note,
+  ]);
+
+  const selectedVehicle = draft.editor.vehicleOptions.find(
+    (vehicle) => vehicle.id === vehicleId
+  );
+  const isElectric = selectedVehicle?.fuelType === "ELECTRIC";
+  const isOpen =
+    draft.state === "awaiting_input" ||
+    draft.state === "awaiting_confirmation";
+  const isDirty =
+    vehicleId !== draft.editor.vehicleId ||
+    distanceKm !== draft.editor.distanceKm ||
+    fuelPriceMode !== draft.editor.fuelPriceMode ||
+    manualFuelPricePerLiter !==
+      draft.editor.manualFuelPricePerLiter ||
+    note.trim() !== draft.editor.note;
+  const currency = (value: number) =>
+    new Intl.NumberFormat("de-DE", {
+      style: "currency",
+      currency: "EUR",
+    }).format(value);
+  const number = (value: number, digits = 2) =>
+    new Intl.NumberFormat("de-DE", {
+      maximumFractionDigits: digits,
+    }).format(value);
+
+  const request = async (
+    method: "PATCH" | "POST",
+    body: Record<string, unknown>
+  ) => {
+    setIsWorking(true);
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/jarvis/action-drafts/${encodeURIComponent(
+          draft.previewId
+        )}`,
+        {
+          method,
+          headers: {
+            "Content-Type": "application/json",
+            "X-Jarvis-Action": "jarvis-action-draft-v2",
+          },
+          body: JSON.stringify({
+            actorId,
+            actionId: "vehicle-trip-calculation.prepare",
+            revision: draft.revision,
+            ...body,
+          }),
+        }
+      );
+      const data = await response.json().catch(() => null);
+      const next = parseJarvisVehicleTripCalculationDraft(
+        data?.actionDraft
+      );
+      if (!response.ok || !next) {
+        setError(
+          data?.error ??
+            "Die Fahrtenkalkulation konnte nicht sicher verarbeitet werden."
+        );
+        return;
+      }
+      onChange(
+        next,
+        typeof data?.message === "string" ? data.message : undefined
+      );
+    } catch {
+      setError(
+        "Das Action Center ist gerade nicht erreichbar. Es wurde keine Fahrtenkalkulation gespeichert."
+      );
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
+  return (
+    <section
+      className={styles.jarvisActionPreview}
+      data-state={draft.state}
+      aria-label={`${draft.title} – ${draft.badge}`}
+    >
+      <header>
+        <div>
+          <span>Action Center · Kalkulation</span>
+          <strong>{draft.title}</strong>
+        </div>
+        <em>{draft.badge}</em>
+      </header>
+      <dl>
+        {draft.fields.map((field) => (
+          <div key={`${field.label}-${field.value}`}>
+            <dt>{field.label}</dt>
+            <dd>{field.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {isOpen ? (
+        <div className={styles.jarvisActionDraftEditor}>
+          <label>
+            <span>Aktives Fahrzeug</span>
+            <select
+              value={vehicleId}
+              disabled={disabled || isWorking}
+              onChange={(event) => setVehicleId(event.target.value)}
+            >
+              <option value="">Fahrzeug auswählen</option>
+              {draft.editor.vehicleOptions.map((vehicle) => (
+                <option key={vehicle.id} value={vehicle.id}>
+                  {vehicle.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Fahrtstrecke · km</span>
+            <input
+              type="number"
+              min="0.01"
+              step="0.1"
+              value={distanceKm}
+              disabled={disabled || isWorking}
+              onChange={(event) =>
+                setDistanceKm(
+                  event.target.value === ""
+                    ? 0
+                    : Number(event.target.value)
+                )
+              }
+            />
+          </label>
+          {!isElectric ? (
+            <>
+              <label>
+                <span>Kraftstoffpreisquelle</span>
+                <select
+                  value={fuelPriceMode}
+                  disabled={disabled || isWorking}
+                  onChange={(event) =>
+                    setFuelPriceMode(
+                      event.target.value as "live" | "manual"
+                    )
+                  }
+                >
+                  <option value="live">Live-Preis aus WorkPilot</option>
+                  <option value="manual">
+                    Manuellen Preis verwenden
+                  </option>
+                </select>
+              </label>
+              {fuelPriceMode === "manual" ? (
+                <label>
+                  <span>Manueller Kraftstoffpreis · €/Liter</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.001"
+                    value={manualFuelPricePerLiter}
+                    disabled={disabled || isWorking}
+                    onChange={(event) =>
+                      setManualFuelPricePerLiter(
+                        event.target.value === ""
+                          ? 0
+                          : Number(event.target.value)
+                      )
+                    }
+                  />
+                </label>
+              ) : null}
+            </>
+          ) : null}
+          {selectedVehicle ? (
+            <div className={styles.jarvisActionPreviewMissing}>
+              <strong>Aktuelle WorkPilot-Fahrzeugwerte</strong>
+              <span>
+                {number(selectedVehicle.consumptionLitersPer100Km)} l/100
+                km · Selbstkosten{" "}
+                {currency(selectedVehicle.selfCostPerKm)}/km · Verkauf{" "}
+                {currency(selectedVehicle.salesPricePerKm)}/km
+              </span>
+            </div>
+          ) : null}
+          {fuelPriceMode === "live" && !isElectric ? (
+            <div className={styles.jarvisActionPreviewMissing}>
+              <strong>
+                {draft.editor.fuelPrice.source || "Live-Preis"}
+              </strong>
+              <span>
+                {draft.editor.fuelPrice.message}
+                {draft.editor.fuelPrice.stationLabel
+                  ? ` · ${draft.editor.fuelPrice.stationLabel}`
+                  : ""}
+              </span>
+            </div>
+          ) : null}
+          <label>
+            <span>Notiz zur Kalkulation</span>
+            <textarea
+              rows={3}
+              maxLength={2000}
+              value={note}
+              disabled={disabled || isWorking}
+              onChange={(event) => setNote(event.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            disabled={
+              disabled ||
+              isWorking ||
+              !vehicleId ||
+              !(distanceKm > 0) ||
+              (!isElectric &&
+                fuelPriceMode === "manual" &&
+                !(manualFuelPricePerLiter >= 0))
+            }
+            onClick={() =>
+              void request("PATCH", {
+                vehicleId,
+                distanceKm,
+                fuelPriceMode,
+                manualFuelPricePerLiter,
+                note,
+              })
+            }
+          >
+            Mit WorkPilot neu berechnen
+          </button>
+        </div>
+      ) : null}
+      {draft.calculation ? (
+        <div className={styles.jarvisStructuredAnswer}>
+          <header>
+            <strong>Berechnungsergebnis</strong>
+            <span>{draft.calculation.priceSource}</span>
+          </header>
+          <div className={styles.jarvisAnswerFacts}>
+            <div data-tone="neutral">
+              <span>Gesamte Selbstkosten</span>
+              <strong>
+                {currency(draft.calculation.result.totalSelfCost)}
+              </strong>
+              <small>
+                Fahrzeug{" "}
+                {currency(draft.calculation.result.vehicleSelfCost)} ·
+                Kraftstoff {currency(draft.calculation.result.fuelCost)}
+              </small>
+            </div>
+            <div data-tone="neutral">
+              <span>Verkaufspreis Fahrt</span>
+              <strong>
+                {currency(draft.calculation.result.totalSales)}
+              </strong>
+              <small>
+                {number(draft.calculation.input.distanceKm)} km ·{" "}
+                {number(draft.calculation.result.fuelLiters)} Liter
+              </small>
+            </div>
+            <div data-tone="positive">
+              <span>Gewinn</span>
+              <strong>
+                {currency(draft.calculation.result.profit)}
+              </strong>
+              <small>
+                Aufschlag{" "}
+                {number(draft.calculation.result.markupPercent)} % ·
+                echte Marge{" "}
+                {number(draft.calculation.result.marginPercent)} %
+              </small>
+            </div>
+          </div>
+          <div className={styles.jarvisActionPreviewMissing}>
+            <strong>Abgrenzung</strong>
+            <span>
+              Diese Kalkulation enthält keine Personalkosten. Die
+              Fahrzeugstammdaten und die sichtbare Kraftstoffpreisquelle
+              wurden serverseitig gebunden.
+            </span>
+          </div>
+        </div>
+      ) : null}
+      {draft.missingFields.length ? (
+        <div className={styles.jarvisActionPreviewMissing}>
+          <strong>
+            {draft.calculation
+              ? "Dauerhaftes Speichern noch blockiert"
+              : "Für die Berechnung noch erforderlich"}
+          </strong>
+          <span>{draft.missingFields.join(" · ")}</span>
+        </div>
+      ) : null}
+      {draft.confirmation.enabled && isDirty ? (
+        <div className={styles.jarvisActionPreviewMissing}>
+          <strong>Änderungen noch nicht geprüft</strong>
+          <span>
+            Berechne die geänderten Werte erneut, bevor du speicherst.
+          </span>
+        </div>
+      ) : null}
+      {error ? (
+        <div className={styles.jarvisActionDraftError} role="alert">
+          {error}
+        </div>
+      ) : null}
+      <div className={styles.jarvisActionDraftActions}>
+        {draft.confirmation.enabled ? (
+          <button
+            type="button"
+            data-primary="true"
+            disabled={disabled || isWorking || isDirty}
+            onClick={() =>
+              void request("POST", { command: "confirm" })
+            }
+          >
+            Kalkulation jetzt speichern
+          </button>
+        ) : null}
+        {draft.cancellation.enabled ? (
+          <button
+            type="button"
+            disabled={disabled || isWorking}
+            onClick={() =>
+              void request("POST", { command: "cancel" })
+            }
+          >
+            Entwurf abbrechen
+          </button>
+        ) : null}
+        {draft.result ? (
+          <button
+            type="button"
+            data-primary="true"
+            disabled={disabled || isWorking}
+            onClick={onOpenCalculators}
+          >
+            {draft.result.label}
+          </button>
+        ) : null}
+      </div>
+      <footer>
+        {draft.state === "executed"
+          ? "Die Datenbank hat genau eine unveränderliche Fahrzeugkalkulation gespeichert. Eine erneute Bestätigung erzeugt keine zweite Version."
+          : draft.state === "cancelled"
+            ? "Der Entwurf wurde beendet. Es wurde keine Fahrtenkalkulation gespeichert."
+            : draft.state === "expired"
+              ? "Der Fahrtenentwurf ist abgelaufen."
               : draft.confirmation.reason === "not_permitted"
                 ? "Du darfst mit JARVIS rechnen. Dauerhaftes Speichern bleibt den vorhandenen projektberechtigten Rollen vorbehalten."
                 : `Der Entwurf ist bis ${new Date(
@@ -35099,7 +35781,8 @@ await addProjectLogbookEntry(
     nextDraft:
       | JarvisTaskActionDraftView
       | JarvisPlanningActionDraftView
-      | JarvisWinterCalculationDraftView,
+      | JarvisWinterCalculationDraftView
+      | JarvisVehicleTripCalculationDraftView,
     message?: string
   ) {
     setManagementAiMessages((current) =>
@@ -35117,7 +35800,8 @@ await addProjectLogbookEntry(
       if (nextDraft.actionId === "planning.prepare") {
         void loadPlanningEntries();
       } else if (
-        nextDraft.actionId === "winter-calculation.prepare"
+        nextDraft.actionId === "winter-calculation.prepare" ||
+        nextDraft.actionId === "vehicle-trip-calculation.prepare"
       ) {
         // Die Kalkulationshistorie lädt beim Öffnen des Rechners frisch.
       } else {
@@ -71454,6 +72138,25 @@ await addProjectLogbookEntry(
                     message.actionDraft?.actionId ===
                       "winter-calculation.prepare" ? (
                       <JarvisWinterCalculationDraftCard
+                        draft={message.actionDraft}
+                        actorId={activeUserId}
+                        disabled={isManagementAiSending}
+                        onChange={(nextDraft, nextMessage) =>
+                          updateJarvisActionDraftMessage(
+                            index,
+                            nextDraft,
+                            nextMessage
+                          )
+                        }
+                        onOpenCalculators={() =>
+                          setActiveTab("calculators")
+                        }
+                      />
+                    ) : null}
+                    {message.role === "assistant" &&
+                    message.actionDraft?.actionId ===
+                      "vehicle-trip-calculation.prepare" ? (
+                      <JarvisVehicleTripCalculationDraftCard
                         draft={message.actionDraft}
                         actorId={activeUserId}
                         disabled={isManagementAiSending}

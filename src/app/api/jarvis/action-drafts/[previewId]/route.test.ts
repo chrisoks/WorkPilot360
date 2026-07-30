@@ -15,6 +15,9 @@ const mocks = vi.hoisted(() => ({
   completeJarvisWinterCalculationDraft: vi.fn(),
   cancelJarvisWinterCalculationDraft: vi.fn(),
   confirmJarvisWinterCalculationDraft: vi.fn(),
+  completeJarvisVehicleTripCalculationDraft: vi.fn(),
+  cancelJarvisVehicleTripCalculationDraft: vi.fn(),
+  confirmJarvisVehicleTripCalculationDraft: vi.fn(),
   executePlanningBatch: vi.fn(),
 }));
 
@@ -42,6 +45,12 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.cancelJarvisWinterCalculationDraft,
   confirmJarvisWinterCalculationDraft:
     mocks.confirmJarvisWinterCalculationDraft,
+  completeJarvisVehicleTripCalculationDraft:
+    mocks.completeJarvisVehicleTripCalculationDraft,
+  cancelJarvisVehicleTripCalculationDraft:
+    mocks.cancelJarvisVehicleTripCalculationDraft,
+  confirmJarvisVehicleTripCalculationDraft:
+    mocks.confirmJarvisVehicleTripCalculationDraft,
   JarvisActionDraftError: class JarvisActionDraftError extends Error {
     constructor(
       public readonly code: string,
@@ -159,6 +168,25 @@ describe("JARVIS action-draft API", () => {
       result: {
         entityType: "winterServiceCalculation",
         entityId: "winter-1",
+        label: "Öffnen",
+      },
+    });
+    mocks.completeJarvisVehicleTripCalculationDraft.mockResolvedValue({
+      ...draft,
+      actionId: "vehicle-trip-calculation.prepare",
+    });
+    mocks.cancelJarvisVehicleTripCalculationDraft.mockResolvedValue({
+      ...draft,
+      actionId: "vehicle-trip-calculation.prepare",
+      state: "cancelled",
+    });
+    mocks.confirmJarvisVehicleTripCalculationDraft.mockResolvedValue({
+      ...draft,
+      actionId: "vehicle-trip-calculation.prepare",
+      state: "executed",
+      result: {
+        entityType: "vehicleCalculation",
+        entityId: "vehicle-calculation-1",
         label: "Öffnen",
       },
     });
@@ -453,6 +481,70 @@ describe("JARVIS action-draft API", () => {
       expect.anything(),
       2
     );
+    expect(mocks.executePlanningBatch).not.toHaveBeenCalled();
+  });
+
+  it("routes vehicle trip edits and confirmation only with allowed fields", async () => {
+    const headers = {
+      "x-jarvis-action": "jarvis-action-draft-v2",
+      origin: "https://workpilot.example",
+    };
+    const edited = (await PATCH(
+      request(
+        "PATCH",
+        {
+          actorId: "user-1",
+          actionId: "vehicle-trip-calculation.prepare",
+          revision: 1,
+          vehicleId: "vehicle-1",
+          distanceKm: 125,
+          fuelPriceMode: "manual",
+          manualFuelPricePerLiter: 1.95,
+          note: "Kundenfahrt",
+          selfCostPerKm: 0,
+          organizationId: "evil-org",
+        },
+        headers
+      ) as never,
+      context
+    ))!;
+    expect(edited.status).toBe(200);
+    expect(
+      mocks.completeJarvisVehicleTripCalculationDraft
+    ).toHaveBeenCalledWith(
+      "preview-1",
+      expect.objectContaining({
+        organizationId: "org-1",
+        sessionId: "session-1",
+      }),
+      {
+        revision: 1,
+        vehicleId: "vehicle-1",
+        distanceKm: 125,
+        fuelPriceMode: "manual",
+        manualFuelPricePerLiter: 1.95,
+        note: "Kundenfahrt",
+      }
+    );
+    expect(mocks.completeJarvisTaskDraft).not.toHaveBeenCalled();
+
+    const confirmed = (await POST(
+      request(
+        "POST",
+        {
+          actorId: "user-1",
+          actionId: "vehicle-trip-calculation.prepare",
+          command: "confirm",
+          revision: 2,
+        },
+        headers
+      ) as never,
+      context
+    ))!;
+    expect(confirmed.status).toBe(200);
+    expect(
+      mocks.confirmJarvisVehicleTripCalculationDraft
+    ).toHaveBeenCalledWith("preview-1", expect.anything(), 2);
     expect(mocks.executePlanningBatch).not.toHaveBeenCalled();
   });
 

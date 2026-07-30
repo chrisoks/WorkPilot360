@@ -105,6 +105,31 @@
   Fahrzeugkalkulationen bleiben die chronologisch nächsten Rechnerblöcke;
   Vermietung bleibt fail-closed.
 
+- JARVIS Fahrten-/Fahrzeugkosten-Vertikalschnitt 2026-07-30:
+  Der zweite freigegebene Rechner aus Abschnitt 7.15 ist ein persistenter
+  Action-Center-Ablauf für `Fahrtenkalkulation`, `Fahrtkosten` und
+  `Fahrzeugkostenkalkulation`. Diese Begriffe bezeichnen fachlich denselben
+  aktiven-fahrzeuggebundenen WorkPilot-Rechner; es existiert keine zweite
+  freigegebene Fahrzeugformel, und JARVIS darf keine erfinden. Der Entwurf
+  beginnt ohne Fahrzeug, Strecke oder geschätzte Preise. Fahrzeug,
+  Verbrauch, Selbstkosten/km, Verkauf/km und Änderungsstand werden
+  organisationsgebunden aus dem aktiven Fahrzeugstamm geladen. Kraftstoff
+  stammt transparent aus der zentralen Tankerkönig/MTS-K-Quelle oder aus
+  einer bewusst gewählten manuellen Eingabe; Elektrofahrzeuge verwenden
+  kraftstoffseitig `0`. Berechnet wird ausschließlich über
+  `src/lib/vehicle-calculation.ts`, ausdrücklich ohne Personalkosten.
+  Interne Rollen dürfen rechnen, `GAST` nicht. Dauerhaftes Speichern verlangt
+  `canManageProjects` für Sitzungs- und effektive Rolle, ausdrückliche
+  Bestätigung, aktuellen Fahrzeugstand und erzeugt transaktional genau eine
+  unveränderliche `VehicleCalculation` mit Eingabe-, Ergebnis-, Fahrzeug-
+  und Preisquellen-Snapshot sowie Audit. Replay, Doppelklick, fremde Sitzung,
+  Rollenwechsel, Payload-/Notizmanipulation und veraltete Stammdaten sind
+  fail-closed. Auch der vorhandene direkte Speicherweg ersetzt angelieferte
+  Kilometerwerte vor dem Schreiben erneut durch aktuelle Fahrzeugstammdaten.
+  Fahrzeugstammdaten-Bearbeitung ist keine Kalkulationsnebenwirkung.
+  Vermietung, Mietpreise, Verfügbarkeit, Vertrag und Rückgabe bleiben bis zur
+  separaten Fachfreigabe fail-closed.
+
 - JARVIS projektartgerechte Terminplanung 2026-07-30:
   Die bisherige harte Blockade `Projektartgerechte Terminmaske` ist technisch
   ersetzt. Normale Planung, Terminwunsch und JARVIS verwenden für neue

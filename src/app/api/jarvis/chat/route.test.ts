@@ -46,6 +46,7 @@ const mocks = vi.hoisted(() => ({
   createPersistedJarvisTaskDraft: vi.fn(),
   createPersistedJarvisPlanningDraft: vi.fn(),
   createPersistedJarvisWinterCalculationDraft: vi.fn(),
+  createPersistedJarvisVehicleTripCalculationDraft: vi.fn(),
 }));
 
 vi.mock("@/lib/demo/context", () => ({
@@ -99,6 +100,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.createPersistedJarvisPlanningDraft,
   createPersistedJarvisWinterCalculationDraft:
     mocks.createPersistedJarvisWinterCalculationDraft,
+  createPersistedJarvisVehicleTripCalculationDraft:
+    mocks.createPersistedJarvisVehicleTripCalculationDraft,
   JarvisActionDraftError: class JarvisActionDraftError extends Error {
     code: string;
     status: number;
@@ -286,6 +289,41 @@ describe("POST /api/jarvis/chat", () => {
         projectId: "",
         note: "",
         projectOptions: [],
+      },
+      confirmation: { enabled: false, reason: "missing_fields" },
+      cancellation: { enabled: true },
+      execution: { enabled: false, reason: "requires_confirmation" },
+    });
+    mocks.createPersistedJarvisVehicleTripCalculationDraft.mockResolvedValue({
+      version: 2,
+      previewId: "vehicle-trip-preview-1",
+      actionId: "vehicle-trip-calculation.prepare",
+      title: "Fahrt und Fahrzeugkosten kalkulieren",
+      badge: "Entwurf",
+      state: "awaiting_input",
+      revision: 1,
+      expiresAt: "2026-07-30T22:00:00.000Z",
+      fields: [
+        {
+          label: "Rechenlogik",
+          value: "Zentraler WorkPilot-Fahrtenrechner ohne Personalkosten",
+        },
+      ],
+      missingFields: ["Aktives Fahrzeug", "Gesamtstrecke"],
+      editor: {
+        vehicleId: "",
+        distanceKm: 0,
+        fuelPriceMode: "live",
+        manualFuelPricePerLiter: 0,
+        note: "",
+        vehicleOptions: [],
+        fuelPrice: {
+          status: "live",
+          source: "Tankerkönig / MTS-K",
+          stationLabel: "Testtankstelle",
+          fetchedAt: "2026-07-30T20:00:00.000Z",
+          message: "Live-Preis",
+        },
       },
       confirmation: { enabled: false, reason: "missing_fields" },
       cancellation: { enabled: true },
@@ -2249,6 +2287,70 @@ describe("POST /api/jarvis/chat", () => {
     expect(mocks.createPersistedJarvisPlanningDraft).not.toHaveBeenCalled();
     expect(mocks.createPersistedJarvisTaskDraft).not.toHaveBeenCalled();
     expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+  });
+
+  it("opens a secure vehicle trip calculation draft without inventing vehicle values", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Starte bitte eine Fahrtenkalkulation.",
+        }),
+      })
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      type: "answer",
+      topicId: "action.draft.vehicle-trip-calculation",
+      actionDraft: {
+        actionId: "vehicle-trip-calculation.prepare",
+        state: "awaiting_input",
+        editor: {
+          vehicleId: "",
+          distanceKm: 0,
+        },
+        confirmation: { enabled: false },
+      },
+    });
+    expect(
+      mocks.createPersistedJarvisVehicleTripCalculationDraft
+    ).toHaveBeenCalledWith({
+      organizationId: "organization-1",
+      sessionId: "session-1",
+      profile: { profile: true },
+    });
+    expect(
+      mocks.createPersistedJarvisWinterCalculationDraft
+    ).not.toHaveBeenCalled();
+    expect(mocks.createPersistedJarvisPlanningDraft).not.toHaveBeenCalled();
+    expect(mocks.createPersistedJarvisTaskDraft).not.toHaveBeenCalled();
+    expect(mocks.classifyJarvisIntentWithAi).not.toHaveBeenCalled();
+  });
+
+  it("keeps vehicle rental fail-closed instead of opening the trip calculator", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Berechne mir einen Mietpreis für die Fahrzeugvermietung.",
+        }),
+      })
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      type: "refusal",
+      topicId: "action.vehicle-rental-not-released",
+      deterministic: true,
+    });
+    expect(
+      mocks.createPersistedJarvisVehicleTripCalculationDraft
+    ).not.toHaveBeenCalled();
   });
 
   it("keeps repeated appointment validation specific when no choices exist", async () => {

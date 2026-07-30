@@ -48,6 +48,7 @@ describe("JARVIS action registry", () => {
       "project.read",
       "task.read",
       "winter-calculation.prepare",
+      "vehicle-trip-calculation.prepare",
     ]);
   });
 
@@ -86,6 +87,48 @@ describe("JARVIS action registry", () => {
     expect(
       getJarvisActionDecision(
         "winter-calculation.save",
+        createJarvisAccessProfile({
+          id: "executive",
+          role: Role.GESCHAEFTSFUEHRER,
+        })
+      ).executable
+    ).toBe(true);
+  });
+
+  it("lets internal employees calculate vehicle trips but keeps persistence role-bound", () => {
+    for (const role of [
+      Role.ADMIN,
+      Role.GESCHAEFTSFUEHRER,
+      Role.FUEHRUNGSKRAFT,
+      Role.BUCHHALTUNG,
+      Role.VERTRIEB,
+      Role.MITARBEITER,
+    ]) {
+      expect(
+        getJarvisActionDecision(
+          "vehicle-trip-calculation.prepare",
+          createJarvisAccessProfile({ id: role, role })
+        ).executable
+      ).toBe(true);
+    }
+    expect(
+      getJarvisActionDecision(
+        "vehicle-trip-calculation.prepare",
+        createJarvisAccessProfile({ id: "guest", role: Role.GAST })
+      ).executable
+    ).toBe(false);
+    expect(
+      getJarvisActionDecision(
+        "vehicle-trip-calculation.save",
+        createJarvisAccessProfile({
+          id: "employee",
+          role: Role.MITARBEITER,
+        })
+      ).executable
+    ).toBe(false);
+    expect(
+      getJarvisActionDecision(
+        "vehicle-trip-calculation.save",
         createJarvisAccessProfile({
           id: "executive",
           role: Role.GESCHAEFTSFUEHRER,

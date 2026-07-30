@@ -18,6 +18,7 @@ import {
   type JarvisPlanningActionDraftCheck,
   type JarvisPlanningActionDraftView,
   type JarvisTaskActionDraftView,
+  type JarvisVehicleTripCalculationDraftView,
   type JarvisWinterCalculationDraftView,
 } from "@/lib/jarvis/action-center";
 import {
@@ -51,6 +52,16 @@ import {
   type WinterServiceCalculationInput,
   type WinterServiceCalculationResult,
 } from "@/lib/winter-service/calculation";
+import {
+  calculateVehicleTrip,
+  VehicleTripCalculationValidationError,
+  type VehicleTripCalculationInput,
+  type VehicleTripCalculationResult,
+} from "@/lib/vehicle-calculation";
+import {
+  fuelPriceForVehicleType,
+  loadVehicleFuelPrices,
+} from "@/lib/vehicle-fuel-prices";
 
 const JARVIS_TASK_DRAFT_TTL_MS = 15 * 60 * 1000;
 const JARVIS_TASK_DRAFT_MAX_FUTURE_MS = 5 * 365 * 24 * 60 * 60 * 1000;
@@ -58,6 +69,7 @@ const JARVIS_PLANNING_DRAFT_TTL_MS = 15 * 60 * 1000;
 const JARVIS_PLANNING_DRAFT_MAX_FUTURE_MS =
   2 * 365 * 24 * 60 * 60 * 1000;
 const JARVIS_WINTER_CALCULATION_DRAFT_TTL_MS = 15 * 60 * 1000;
+const JARVIS_VEHICLE_TRIP_DRAFT_TTL_MS = 15 * 60 * 1000;
 const OPEN_DRAFT_STATES = ["awaiting_input", "awaiting_confirmation"] as const;
 
 const taskPayloadSchema = z
@@ -207,6 +219,53 @@ const EMPTY_WINTER_CALCULATION_INPUT: WinterServiceCalculationInput = {
   mixedSpreadingPercent: 0,
   mixedPlowingPercent: 0,
 };
+
+const vehicleTripInputSchema = z
+  .object({
+    distanceKm: z.number(),
+    consumptionLitersPer100Km: z.number(),
+    fuelPricePerLiter: z.number(),
+    selfCostPerKm: z.number(),
+    salesPricePerKm: z.number(),
+  })
+  .strict();
+
+const vehicleTripCalculationSchema = z
+  .object({
+    input: vehicleTripInputSchema,
+    priceSource: z.string().trim().min(1).max(500),
+    priceFetchedAt: z.string().datetime({ offset: true }).nullable(),
+  })
+  .strict();
+
+const vehicleTripPayloadSchema = z
+  .object({
+    vehicleId: z.string().trim().max(120).optional(),
+    distanceKm: z.number(),
+    fuelPriceMode: z.enum(["live", "manual"]),
+    manualFuelPricePerLiter: z.number(),
+    note: z.string().trim().max(2000).optional(),
+    calculation: vehicleTripCalculationSchema.optional(),
+  })
+  .strict();
+
+const completeVehicleTripDraftSchema = z
+  .object({
+    revision: z.number().int().min(1),
+    vehicleId: z.string().trim().max(120),
+    distanceKm: z.number(),
+    fuelPriceMode: z.enum(["live", "manual"]),
+    manualFuelPricePerLiter: z.number(),
+    note: z.string().trim().max(2000),
+  })
+  .strict();
+
+const vehicleTripContextSchema = z
+  .object({
+    vehicleId: z.string().trim().min(1).max(120).optional(),
+    vehicleUpdatedAt: z.string().datetime({ offset: true }).optional(),
+  })
+  .strict();
 
 export type JarvisTaskDraftBinding = {
   organizationId: string;
@@ -427,7 +486,11 @@ async function appendAuditEvent(
     reasonCode?: string;
     result?: {
       id: string;
-      entityType?: "task" | "planning" | "winterServiceCalculation";
+      entityType?:
+        | "task"
+        | "planning"
+        | "winterServiceCalculation"
+        | "vehicleCalculation";
     };
   }
 ) {
@@ -2055,6 +2118,13 @@ export async function getJarvisActionDraft(
   if (draft?.actionId === "winter-calculation.prepare") {
     return getJarvisWinterCalculationDraft(previewId, binding, now);
   }
+  if (draft?.actionId === "vehicle-trip-calculation.prepare") {
+    return getJarvisVehicleTripCalculationDraft(
+      previewId,
+      binding,
+      now
+    );
+  }
   return getJarvisTaskDraft(previewId, binding, now);
 }
 
@@ -3437,6 +3507,912 @@ export async function confirmJarvisWinterCalculationDraft(
     throw new JarvisActionDraftError(
       "execution_failed",
       "Die Winterdienst-Kalkulation wurde nicht gespeichert. Der Entwurf bleibt zur Prüfung erhalten.",
+      500
+    );
+  }
+}
+
+type VehicleTripPayload = z.infer<typeof vehicleTripPayloadSchema>;
+type VehicleTripContext = z.infer<typeof vehicleTripContextSchema>;
+
+function validateVehicleTripBinding(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+) {
+  const actorIds = getActorIds(binding.profile);
+  if (
+    draft.organizationId !== binding.organizationId ||
+    draft.sessionId !== binding.sessionId ||
+    draft.sessionActorId !== actorIds.sessionActorId ||
+    draft.effectiveActorId !== actorIds.effectiveActorId ||
+    draft.sessionActorRole !== binding.profile.sessionActor.role ||
+    draft.effectiveActorRole !== binding.profile.effectiveActor.role ||
+    draft.impersonating !== binding.profile.isImpersonating
+  ) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Der Fahrtenentwurf gehört nicht zu dieser Sitzung, Organisation oder Rollenkombination.",
+      403
+    );
+  }
+  if (!integrityMatches(draft)) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Der Fahrtenentwurf stimmt nicht mit seinem Integritätsnachweis überein.",
+      409
+    );
+  }
+  const payload = vehicleTripPayloadSchema.safeParse(draft.payload);
+  const context = vehicleTripContextSchema.safeParse(draft.context);
+  if (
+    draft.actionId !== "vehicle-trip-calculation.prepare" ||
+    !payload.success ||
+    !context.success ||
+    hashJson(payload.data) !== draft.payloadHash ||
+    hashJson(context.data) !== draft.contextHash
+  ) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Payload oder Fahrzeugkontext wurden verändert.",
+      409
+    );
+  }
+  return { payload: payload.data, context: context.data };
+}
+
+async function loadBoundVehicleTripDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const found = await prisma.jarvisActionDraft.findUnique({
+    where: { id: previewId },
+  });
+  if (!found) {
+    throw new JarvisActionDraftError(
+      "not_found",
+      "Der Fahrtenkalkulationsentwurf wurde nicht gefunden.",
+      404
+    );
+  }
+  validateVehicleTripBinding(found, binding);
+  const current = await expireDraftIfNeeded(found, now);
+  const parsed = validateVehicleTripBinding(current, binding);
+  return { draft: current, ...parsed };
+}
+
+function maySaveVehicleTrip(binding: JarvisTaskDraftBinding) {
+  return (
+    canManageProjects(binding.profile.sessionActor) &&
+    canManageProjects(binding.profile.effectiveActor)
+  );
+}
+
+async function getVehicleTripOptions(binding: JarvisTaskDraftBinding) {
+  const [vehicles, fuelPrice] = await Promise.all([
+    prisma.vehicle.findMany({
+      where: {
+        organizationId: binding.organizationId,
+        isActive: true,
+      },
+      orderBy: [{ name: "asc" }, { vehicleNumber: "asc" }],
+      take: 500,
+      select: {
+        id: true,
+        vehicleNumber: true,
+        name: true,
+        licensePlate: true,
+        fuelType: true,
+        consumptionLitersPer100Km: true,
+        selfCostPerKm: true,
+        salesPricePerKm: true,
+        updatedAt: true,
+      },
+    }),
+    loadVehicleFuelPrices(),
+  ]);
+  return {
+    fuelPrice,
+    vehicles: vehicles.map((vehicle) => ({
+      ...vehicle,
+      label: `${vehicle.vehicleNumber} · ${vehicle.name}${
+        vehicle.licensePlate ? ` · ${vehicle.licensePlate}` : ""
+      }`,
+      liveFuelPrice: fuelPriceForVehicleType(
+        vehicle.fuelType,
+        fuelPrice
+      ),
+    })),
+  };
+}
+
+function evaluateVehicleTrip(
+  calculation: VehicleTripPayload["calculation"]
+) {
+  if (!calculation) return undefined;
+  try {
+    return calculateVehicleTrip(
+      calculation.input as VehicleTripCalculationInput
+    );
+  } catch (error) {
+    if (error instanceof VehicleTripCalculationValidationError) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+export async function toJarvisVehicleTripCalculationDraftView(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+): Promise<JarvisVehicleTripCalculationDraftView> {
+  const { payload } = validateVehicleTripBinding(draft, binding);
+  const { vehicles, fuelPrice } = await getVehicleTripOptions(binding);
+  const selectedVehicle = payload.vehicleId
+    ? vehicles.find((vehicle) => vehicle.id === payload.vehicleId)
+    : undefined;
+  const calculated = evaluateVehicleTrip(payload.calculation);
+  const savePermitted = maySaveVehicleTrip(binding);
+  const missingFields = [
+    ...(!selectedVehicle ? ["Aktives Fahrzeug"] : []),
+    ...(!(payload.distanceKm > 0) ? ["Gesamtstrecke"] : []),
+    ...(!calculated &&
+    selectedVehicle &&
+    selectedVehicle.fuelType !== "ELECTRIC" &&
+    payload.fuelPriceMode === "live" &&
+    selectedVehicle.liveFuelPrice === null
+      ? ["Live-Kraftstoffpreis oder manueller Preis"]
+      : []),
+    ...(selectedVehicle &&
+    selectedVehicle.fuelType !== "ELECTRIC" &&
+    payload.fuelPriceMode === "manual" &&
+    !(payload.manualFuelPricePerLiter >= 0)
+      ? ["Manueller Kraftstoffpreis"]
+      : []),
+    ...(calculated && !savePermitted
+      ? ["Dauerhaftes Speichern ist für diese Rolle nicht freigegeben"]
+      : []),
+  ];
+  const state =
+    draft.state as JarvisVehicleTripCalculationDraftView["state"];
+  const isOpen =
+    state === "awaiting_input" || state === "awaiting_confirmation";
+  const ready =
+    state === "awaiting_confirmation" &&
+    Boolean(calculated) &&
+    Boolean(selectedVehicle) &&
+    savePermitted;
+  const reason: JarvisVehicleTripCalculationDraftView["confirmation"]["reason"] =
+    state === "expired"
+      ? "expired"
+      : state === "cancelled"
+        ? "cancelled"
+        : state === "executed"
+          ? "executed"
+          : state === "executing"
+            ? "executing"
+            : !savePermitted
+              ? "not_permitted"
+              : ready
+                ? "ready"
+                : "missing_fields";
+  const badge: JarvisVehicleTripCalculationDraftView["badge"] =
+    state === "executed"
+      ? "Gespeichert"
+      : state === "executing"
+        ? "Wird gespeichert"
+        : state === "cancelled"
+          ? "Abgebrochen"
+          : state === "expired"
+            ? "Abgelaufen"
+            : calculated
+              ? "Berechnet"
+              : "Entwurf";
+  const currency = (value: number) =>
+    new Intl.NumberFormat("de-DE", {
+      style: "currency",
+      currency: "EUR",
+    }).format(value);
+  return {
+    version: 2,
+    previewId: draft.id,
+    actionId: "vehicle-trip-calculation.prepare",
+    title: "Fahrt und Fahrzeugkosten kalkulieren",
+    badge,
+    state,
+    revision: draft.revision,
+    expiresAt: draft.expiresAt.toISOString(),
+    fields: [
+      {
+        label: "Rechenlogik",
+        value: "Zentraler WorkPilot-Fahrtenrechner ohne Personalkosten",
+      },
+      {
+        label: "Fahrzeug",
+        value: selectedVehicle?.label || "Noch nicht ausgewählt",
+      },
+      {
+        label: "Preisquelle",
+        value:
+          payload.calculation?.priceSource ||
+          (payload.fuelPriceMode === "live"
+            ? fuelPrice.source
+            : "Manuelle Eingabe"),
+      },
+      ...(calculated
+        ? [
+            {
+              label: "Gesamte Selbstkosten",
+              value: currency(calculated.totalSelfCost),
+            },
+            {
+              label: "Verkaufspreis Fahrt",
+              value: currency(calculated.totalSales),
+            },
+          ]
+        : []),
+    ],
+    missingFields,
+    editor: {
+      vehicleId: payload.vehicleId ?? "",
+      distanceKm: payload.distanceKm,
+      fuelPriceMode: payload.fuelPriceMode,
+      manualFuelPricePerLiter: payload.manualFuelPricePerLiter,
+      note: payload.note ?? "",
+      vehicleOptions: vehicles.map((vehicle) => ({
+        id: vehicle.id,
+        label: vehicle.label,
+        fuelType: vehicle.fuelType,
+        consumptionLitersPer100Km:
+          vehicle.consumptionLitersPer100Km,
+        selfCostPerKm: vehicle.selfCostPerKm,
+        salesPricePerKm: vehicle.salesPricePerKm,
+        updatedAt: vehicle.updatedAt.toISOString(),
+        liveFuelPrice: vehicle.liveFuelPrice,
+      })),
+      fuelPrice: {
+        status: fuelPrice.status,
+        source: fuelPrice.source,
+        stationLabel: `${fuelPrice.station.name} · ${fuelPrice.station.address}`,
+        fetchedAt: fuelPrice.fetchedAt,
+        message: fuelPrice.message,
+      },
+    },
+    ...(calculated && payload.calculation
+      ? {
+          calculation: {
+            input:
+              payload.calculation.input as VehicleTripCalculationInput,
+            result: calculated,
+            priceSource: payload.calculation.priceSource,
+            priceFetchedAt: payload.calculation.priceFetchedAt,
+            includesPersonnelCosts: false as const,
+          },
+        }
+      : {}),
+    confirmation: { enabled: ready, reason },
+    cancellation: { enabled: isOpen },
+    execution: {
+      enabled: false,
+      reason:
+        state === "executed" ? "finalized" : "requires_confirmation",
+    },
+    ...(state === "executed" &&
+    draft.resultEntityType === "vehicleCalculation" &&
+    draft.resultEntityId
+      ? {
+          result: {
+            entityType: "vehicleCalculation" as const,
+            entityId: draft.resultEntityId,
+            label: "Gespeicherte Fahrtenkalkulation öffnen",
+          },
+        }
+      : {}),
+  };
+}
+
+export async function createPersistedJarvisVehicleTripCalculationDraft(
+  input: {
+    organizationId: string;
+    sessionId: string;
+    profile: JarvisAccessProfile;
+    now?: Date;
+  }
+) {
+  if (!input.sessionId) {
+    throw new JarvisActionDraftError(
+      "session_required",
+      "Für eine JARVIS-Fahrtenkalkulation ist eine aktuelle Sitzung erforderlich.",
+      401
+    );
+  }
+  if (
+    input.profile.sessionActor.role === Role.GAST ||
+    input.profile.effectiveActor.role === Role.GAST
+  ) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Diese Rollenkombination darf keine interne Fahrzeugkalkulation vorbereiten.",
+      403
+    );
+  }
+  const now = input.now ?? new Date();
+  const actorIds = getActorIds(input.profile);
+  const payload = vehicleTripPayloadSchema.parse({
+    distanceKm: 0,
+    fuelPriceMode: "live",
+    manualFuelPricePerLiter: 0,
+  });
+  const context: VehicleTripContext = {};
+  const draftData: DraftIntegrityData = {
+    id: randomUUID(),
+    organizationId: input.organizationId,
+    sessionId: input.sessionId,
+    sessionActorId: actorIds.sessionActorId,
+    sessionActorRole: input.profile.sessionActor.role,
+    effectiveActorId: actorIds.effectiveActorId,
+    effectiveActorRole: input.profile.effectiveActor.role,
+    impersonating: input.profile.isImpersonating,
+    actionId: "vehicle-trip-calculation.prepare",
+    state: "awaiting_input",
+    revision: 1,
+    payloadHash: hashJson(payload),
+    contextHash: hashJson(context),
+    expiresAt: new Date(
+      now.getTime() + JARVIS_VEHICLE_TRIP_DRAFT_TTL_MS
+    ),
+    confirmedAt: null,
+    cancelledAt: null,
+    executedAt: null,
+    resultEntityType: null,
+    resultEntityId: null,
+    lastErrorCode: null,
+  };
+  const draft = await prisma.$transaction(async (tx) => {
+    const created = await tx.jarvisActionDraft.create({
+      data: {
+        ...draftData,
+        payload: payload as Prisma.InputJsonValue,
+        context: context as Prisma.InputJsonValue,
+        integrityTag: createIntegrityTag(draftData),
+      },
+    });
+    await appendAuditEvent(tx, {
+      draft: created,
+      eventType: "draft_created",
+    });
+    return created;
+  });
+  return toJarvisVehicleTripCalculationDraftView(draft, {
+    organizationId: input.organizationId,
+    sessionId: input.sessionId,
+    profile: input.profile,
+  });
+}
+
+export async function getJarvisVehicleTripCalculationDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const { draft } = await loadBoundVehicleTripDraft(
+    previewId,
+    binding,
+    now
+  );
+  return toJarvisVehicleTripCalculationDraftView(draft, binding);
+}
+
+export async function completeJarvisVehicleTripCalculationDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  rawInput: unknown,
+  now = new Date()
+) {
+  const completed = completeVehicleTripDraftSchema.safeParse(rawInput);
+  if (!completed.success) {
+    throw new JarvisActionDraftError(
+      "invalid_input",
+      "Die Fahrteneingaben sind unvollständig oder ungültig.",
+      400
+    );
+  }
+  const loaded = await loadBoundVehicleTripDraft(
+    previewId,
+    binding,
+    now
+  );
+  if (loaded.draft.revision !== completed.data.revision) {
+    throw new JarvisActionDraftError(
+      "conflict",
+      "Die Fahrtenkalkulation wurde zwischenzeitlich verändert.",
+      409
+    );
+  }
+  if (!OPEN_DRAFT_STATES.includes(loaded.draft.state as never)) {
+    throw new JarvisActionDraftError(
+      loaded.draft.state === "expired" ? "expired" : "invalid_state",
+      "Diese Fahrtenkalkulation kann nicht mehr bearbeitet werden.",
+      loaded.draft.state === "expired" ? 410 : 409
+    );
+  }
+  if (completed.data.note) {
+    const authorization = authorizeJarvisQuestion(
+      completed.data.note,
+      binding.profile
+    );
+    if (
+      authorization.reason === "prompt_injection" ||
+      authorization.reason === "secret"
+    ) {
+      throw new JarvisActionDraftError(
+        "invalid_input",
+        "Die Notiz enthält eine gesperrte technische Anweisung oder ein Geheimnis.",
+        400
+      );
+    }
+  }
+  const vehicle = completed.data.vehicleId
+    ? await prisma.vehicle.findFirst({
+        where: {
+          id: completed.data.vehicleId,
+          organizationId: binding.organizationId,
+          isActive: true,
+        },
+        select: {
+          id: true,
+          fuelType: true,
+          consumptionLitersPer100Km: true,
+          selfCostPerKm: true,
+          salesPricePerKm: true,
+          updatedAt: true,
+        },
+      })
+    : null;
+  const fuelPayload = await loadVehicleFuelPrices();
+  let calculation: VehicleTripPayload["calculation"];
+  let validationFailed = false;
+  if (vehicle && completed.data.distanceKm > 0) {
+    const liveFuelPrice = fuelPriceForVehicleType(
+      vehicle.fuelType,
+      fuelPayload
+    );
+    const isElectric = vehicle.fuelType === "ELECTRIC";
+    const fuelPricePerLiter = isElectric
+      ? 0
+      : completed.data.fuelPriceMode === "live"
+        ? liveFuelPrice
+        : completed.data.manualFuelPricePerLiter;
+    if (
+      typeof fuelPricePerLiter === "number" &&
+      Number.isFinite(fuelPricePerLiter) &&
+      fuelPricePerLiter >= 0
+    ) {
+      const normalizedInput: VehicleTripCalculationInput = {
+        distanceKm: completed.data.distanceKm,
+        consumptionLitersPer100Km:
+          vehicle.consumptionLitersPer100Km,
+        fuelPricePerLiter,
+        selfCostPerKm: vehicle.selfCostPerKm,
+        salesPricePerKm: vehicle.salesPricePerKm,
+      };
+      try {
+        calculateVehicleTrip(normalizedInput);
+        calculation = {
+          input: normalizedInput,
+          priceSource: isElectric
+            ? "Elektrisches Fahrzeug · kein Literpreis"
+            : completed.data.fuelPriceMode === "live"
+              ? `${fuelPayload.source} · ${fuelPayload.station.name}`
+              : "Manuelle Eingabe",
+          priceFetchedAt:
+            !isElectric && completed.data.fuelPriceMode === "live"
+              ? fuelPayload.fetchedAt
+              : null,
+        };
+      } catch (error) {
+        if (error instanceof VehicleTripCalculationValidationError) {
+          validationFailed = true;
+        } else {
+          throw error;
+        }
+      }
+    } else {
+      validationFailed = true;
+    }
+  } else {
+    validationFailed = true;
+  }
+  const nextPayload = vehicleTripPayloadSchema.parse({
+    ...(vehicle ? { vehicleId: vehicle.id } : {}),
+    distanceKm: completed.data.distanceKm,
+    fuelPriceMode: completed.data.fuelPriceMode,
+    manualFuelPricePerLiter: completed.data.manualFuelPricePerLiter,
+    ...(completed.data.note ? { note: completed.data.note } : {}),
+    ...(calculation ? { calculation } : {}),
+  });
+  const context: VehicleTripContext = vehicle
+    ? {
+        vehicleId: vehicle.id,
+        vehicleUpdatedAt: vehicle.updatedAt.toISOString(),
+      }
+    : {};
+  const revision = loaded.draft.revision + 1;
+  const nextData: DraftIntegrityData = {
+    ...loaded.draft,
+    state: calculation
+      ? "awaiting_confirmation"
+      : "awaiting_input",
+    revision,
+    payloadHash: hashJson(nextPayload),
+    contextHash: hashJson(context),
+    lastErrorCode: validationFailed ? "invalid_input" : null,
+  };
+  const updated = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: {
+        id: loaded.draft.id,
+        revision: loaded.draft.revision,
+        state: loaded.draft.state,
+        integrityTag: loaded.draft.integrityTag,
+      },
+      data: {
+        state: nextData.state,
+        revision,
+        payload: nextPayload as Prisma.InputJsonValue,
+        context: context as Prisma.InputJsonValue,
+        payloadHash: nextData.payloadHash,
+        contextHash: nextData.contextHash,
+        lastErrorCode: nextData.lastErrorCode,
+        integrityTag: createIntegrityTag(nextData),
+      },
+    });
+    if (changed.count !== 1) {
+      throw new JarvisActionDraftError(
+        "conflict",
+        "Die Fahrtenkalkulation wurde zwischenzeitlich verändert.",
+        409
+      );
+    }
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+      where: { id: loaded.draft.id },
+    });
+    await appendAuditEvent(tx, {
+      draft: current,
+      eventType: calculation
+        ? "draft_calculated"
+        : "draft_validation_failed",
+      ...(!calculation ? { reasonCode: "invalid_input" } : {}),
+    });
+    return current;
+  });
+  return toJarvisVehicleTripCalculationDraftView(updated, binding);
+}
+
+export async function cancelJarvisVehicleTripCalculationDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  expectedRevision: number,
+  now = new Date()
+) {
+  const { draft } = await loadBoundVehicleTripDraft(
+    previewId,
+    binding,
+    now
+  );
+  if (!OPEN_DRAFT_STATES.includes(draft.state as never)) {
+    if (draft.state === "cancelled") {
+      return toJarvisVehicleTripCalculationDraftView(draft, binding);
+    }
+    throw new JarvisActionDraftError(
+      draft.state === "expired" ? "expired" : "invalid_state",
+      "Diese Fahrtenkalkulation kann nicht mehr abgebrochen werden.",
+      draft.state === "expired" ? 410 : 409
+    );
+  }
+  if (
+    !Number.isSafeInteger(expectedRevision) ||
+    expectedRevision !== draft.revision
+  ) {
+    throw new JarvisActionDraftError(
+      "conflict",
+      "Die Fahrtenkalkulation wurde zwischenzeitlich verändert.",
+      409
+    );
+  }
+  const nextData: DraftIntegrityData = {
+    ...draft,
+    state: "cancelled",
+    cancelledAt: now,
+    lastErrorCode: null,
+  };
+  const cancelled = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: {
+        id: draft.id,
+        revision: draft.revision,
+        state: draft.state,
+        integrityTag: draft.integrityTag,
+      },
+      data: {
+        state: "cancelled",
+        cancelledAt: now,
+        lastErrorCode: null,
+        integrityTag: createIntegrityTag(nextData),
+      },
+    });
+    if (changed.count !== 1) {
+      throw new JarvisActionDraftError(
+        "conflict",
+        "Die Fahrtenkalkulation wurde bereits verändert.",
+        409
+      );
+    }
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+      where: { id: draft.id },
+    });
+    await appendAuditEvent(tx, {
+      draft: current,
+      eventType: "draft_cancelled",
+      reasonCode: "user_cancelled",
+    });
+    return current;
+  });
+  return toJarvisVehicleTripCalculationDraftView(cancelled, binding);
+}
+
+export async function confirmJarvisVehicleTripCalculationDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  expectedRevision: number,
+  now = new Date()
+) {
+  const loaded = await loadBoundVehicleTripDraft(
+    previewId,
+    binding,
+    now
+  );
+  if (loaded.draft.state === "executed") {
+    return toJarvisVehicleTripCalculationDraftView(
+      loaded.draft,
+      binding
+    );
+  }
+  if (
+    !Number.isSafeInteger(expectedRevision) ||
+    expectedRevision !== loaded.draft.revision
+  ) {
+    throw new JarvisActionDraftError(
+      "conflict",
+      "Die Fahrtenkalkulation wurde zwischenzeitlich verändert.",
+      409
+    );
+  }
+  if (
+    loaded.draft.state !== "awaiting_confirmation" ||
+    !loaded.payload.calculation ||
+    !loaded.context.vehicleId ||
+    !loaded.context.vehicleUpdatedAt
+  ) {
+    throw new JarvisActionDraftError(
+      loaded.draft.state === "expired" ? "expired" : "invalid_input",
+      "Nur eine vollständig berechnete Fahrt darf gespeichert werden.",
+      loaded.draft.state === "expired" ? 410 : 409
+    );
+  }
+  if (!maySaveVehicleTrip(binding)) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Deine aktuelle Rollenkombination darf rechnen, aber keine Fahrtenkalkulation dauerhaft speichern.",
+      403
+    );
+  }
+  try {
+    const executed = await prisma.$transaction(async (tx) => {
+      const current = await tx.jarvisActionDraft.findUnique({
+        where: { id: loaded.draft.id },
+      });
+      if (!current) {
+        throw new JarvisActionDraftError(
+          "not_found",
+          "Die Fahrtenkalkulation wurde nicht gefunden.",
+          404
+        );
+      }
+      const parsed = validateVehicleTripBinding(current, binding);
+      if (current.state === "executed") return current;
+      if (
+        current.state !== "awaiting_confirmation" ||
+        current.expiresAt.getTime() <= now.getTime() ||
+        !parsed.payload.calculation ||
+        !parsed.context.vehicleId ||
+        !parsed.context.vehicleUpdatedAt
+      ) {
+        throw new JarvisActionDraftError(
+          current.expiresAt.getTime() <= now.getTime()
+            ? "expired"
+            : "conflict",
+          "Die Fahrtenkalkulation ist nicht mehr ausführbar.",
+          current.expiresAt.getTime() <= now.getTime() ? 410 : 409
+        );
+      }
+      const [vehicle, actor] = await Promise.all([
+        tx.vehicle.findFirst({
+          where: {
+            id: parsed.context.vehicleId,
+            organizationId: binding.organizationId,
+            isActive: true,
+          },
+        }),
+        tx.user.findFirst({
+          where: {
+            id: current.effectiveActorId,
+            organizationId: binding.organizationId,
+            isActive: true,
+          },
+          select: {
+            id: true,
+            role: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            salesRoleEnabled: true,
+          },
+        }),
+      ]);
+      if (
+        !vehicle ||
+        vehicle.updatedAt.toISOString() !==
+          parsed.context.vehicleUpdatedAt
+      ) {
+        throw new JarvisActionDraftError(
+          "stale_context",
+          "Das Fahrzeug wurde seit der Berechnung verändert. Bitte rechne erneut.",
+          409
+        );
+      }
+      if (!actor || !canManageProjects(actor)) {
+        throw new JarvisActionDraftError(
+          "role_changed",
+          "Akteur oder Speicherberechtigung sind nicht mehr aktuell.",
+          409
+        );
+      }
+      const normalizedInput =
+        parsed.payload.calculation.input as VehicleTripCalculationInput;
+      if (
+        normalizedInput.consumptionLitersPer100Km !==
+          vehicle.consumptionLitersPer100Km ||
+        normalizedInput.selfCostPerKm !== vehicle.selfCostPerKm ||
+        normalizedInput.salesPricePerKm !== vehicle.salesPricePerKm
+      ) {
+        throw new JarvisActionDraftError(
+          "stale_context",
+          "Die gespeicherten Fahrzeugwerte stimmen nicht mehr mit dem Fahrzeugstamm überein.",
+          409
+        );
+      }
+      const calculated: VehicleTripCalculationResult =
+        calculateVehicleTrip(normalizedInput);
+      const confirmedData: DraftIntegrityData = {
+        ...current,
+        state: "executing",
+        confirmedAt: now,
+        lastErrorCode: null,
+      };
+      const claimed = await tx.jarvisActionDraft.updateMany({
+        where: {
+          id: current.id,
+          revision: current.revision,
+          state: "awaiting_confirmation",
+          integrityTag: current.integrityTag,
+        },
+        data: {
+          state: "executing",
+          confirmedAt: now,
+          lastErrorCode: null,
+          integrityTag: createIntegrityTag(confirmedData),
+        },
+      });
+      if (claimed.count !== 1) {
+        throw new JarvisActionDraftError(
+          "conflict",
+          "Die Fahrtenkalkulation wird bereits gespeichert.",
+          409
+        );
+      }
+      const calculationId = randomUUID();
+      const actorName =
+        [actor.firstName, actor.lastName].filter(Boolean).join(" ") ||
+        actor.email;
+      await tx.vehicleCalculation.create({
+        data: {
+          id: calculationId,
+          organizationId: binding.organizationId,
+          vehicleId: vehicle.id,
+          vehicleNumber: vehicle.vehicleNumber,
+          vehicleName: vehicle.name,
+          customerId: "",
+          projectId: "",
+          createdById: actor.id,
+          createdByName: actorName,
+          inputSnapshot: {
+            schemaVersion: 2,
+            ...normalizedInput,
+            vehicle: {
+              id: vehicle.id,
+              vehicleNumber: vehicle.vehicleNumber,
+              name: vehicle.name,
+              licensePlate: vehicle.licensePlate,
+              fuelType: vehicle.fuelType,
+              updatedAt: vehicle.updatedAt.toISOString(),
+            },
+          },
+          resultSnapshot: {
+            schemaVersion: 2,
+            ...calculated,
+          },
+          fuelPriceSource:
+            parsed.payload.calculation.priceSource,
+          fuelPriceFetchedAt:
+            parsed.payload.calculation.priceFetchedAt
+              ? new Date(
+                  parsed.payload.calculation.priceFetchedAt
+                )
+              : null,
+          note: parsed.payload.note ?? "",
+        },
+      });
+      const executedAt = new Date();
+      const executedData: DraftIntegrityData = {
+        ...confirmedData,
+        state: "executed",
+        executedAt,
+        resultEntityType: "vehicleCalculation",
+        resultEntityId: calculationId,
+      };
+      const finalDraft = await tx.jarvisActionDraft.update({
+        where: { id: current.id },
+        data: {
+          state: "executed",
+          executedAt,
+          resultEntityType: "vehicleCalculation",
+          resultEntityId: calculationId,
+          integrityTag: createIntegrityTag(executedData),
+        },
+      });
+      await appendAuditEvent(tx, {
+        draft: finalDraft,
+        eventType: "draft_confirmed_and_executed",
+        result: {
+          id: calculationId,
+          entityType: "vehicleCalculation",
+        },
+      });
+      return finalDraft;
+    });
+    return toJarvisVehicleTripCalculationDraftView(executed, binding);
+  } catch (error) {
+    if (
+      error instanceof JarvisActionDraftError &&
+      error.code === "conflict"
+    ) {
+      const latest = await loadBoundVehicleTripDraft(
+        previewId,
+        binding,
+        now
+      );
+      if (latest.draft.state === "executed") {
+        return toJarvisVehicleTripCalculationDraftView(
+          latest.draft,
+          binding
+        );
+      }
+    }
+    if (error instanceof JarvisActionDraftError) throw error;
+    throw new JarvisActionDraftError(
+      "execution_failed",
+      "Die Fahrtenkalkulation wurde nicht gespeichert. Der Entwurf bleibt erhalten.",
       500
     );
   }

@@ -392,6 +392,93 @@ export type JarvisWinterCalculationDraftView = {
   };
 };
 
+export type JarvisVehicleTripCalculationDraftView = {
+  version: 2;
+  previewId: string;
+  actionId: "vehicle-trip-calculation.prepare";
+  title: "Fahrt und Fahrzeugkosten kalkulieren";
+  badge:
+    | "Entwurf"
+    | "Berechnet"
+    | "Wird gespeichert"
+    | "Abgebrochen"
+    | "Abgelaufen"
+    | "Gespeichert";
+  state: JarvisTaskActionDraftState;
+  revision: number;
+  expiresAt: string;
+  fields: Array<{ label: string; value: string }>;
+  missingFields: string[];
+  editor: {
+    vehicleId: string;
+    distanceKm: number;
+    fuelPriceMode: "live" | "manual";
+    manualFuelPricePerLiter: number;
+    note: string;
+    vehicleOptions: Array<{
+      id: string;
+      label: string;
+      fuelType: string;
+      consumptionLitersPer100Km: number;
+      selfCostPerKm: number;
+      salesPricePerKm: number;
+      updatedAt: string;
+      liveFuelPrice: number | null;
+    }>;
+    fuelPrice: {
+      status: "live" | "unavailable" | "not_configured";
+      source: string;
+      stationLabel: string;
+      fetchedAt: string | null;
+      message: string;
+    };
+  };
+  calculation?: {
+    input: {
+      distanceKm: number;
+      consumptionLitersPer100Km: number;
+      fuelPricePerLiter: number;
+      selfCostPerKm: number;
+      salesPricePerKm: number;
+    };
+    result: {
+      fuelLiters: number;
+      fuelCost: number;
+      vehicleSelfCost: number;
+      totalSelfCost: number;
+      vehicleSales: number;
+      totalSales: number;
+      profit: number;
+      markupPercent: number;
+      marginPercent: number;
+    };
+    priceSource: string;
+    priceFetchedAt: string | null;
+    includesPersonnelCosts: false;
+  };
+  confirmation: {
+    enabled: boolean;
+    reason:
+      | "ready"
+      | "missing_fields"
+      | "not_permitted"
+      | "expired"
+      | "cancelled"
+      | "executing"
+      | "executed";
+  };
+  cancellation: { enabled: boolean };
+  execution: {
+    enabled: false;
+    reason: "requires_confirmation" | "finalized";
+  };
+  result?: {
+    entityType: "vehicleCalculation";
+    entityId: string;
+    label: string;
+  };
+};
+
 export type JarvisActionPreviewFailureCode =
   | "invalid_request"
   | "invalid_payload"
