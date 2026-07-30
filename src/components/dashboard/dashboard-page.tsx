@@ -9574,6 +9574,7 @@ export function DashboardPage() {
   const quickCreateRef = useRef<HTMLDivElement | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const notificationCenterRef = useRef<HTMLDivElement | null>(null);
+  const jarvisDataFlowVideoRef = useRef<HTMLVideoElement | null>(null);
   const hasLoadedNotifications = useRef(false);
   const notificationHistoryRequestId = useRef(0);
   const isProjectTimeEntriesLoadingRef = useRef(false);
@@ -20433,6 +20434,20 @@ export function DashboardPage() {
     setIsAbsenceModalOpen(true);
     setSelectedCalendarActionDate("");
   }
+
+  useEffect(() => {
+    const video = jarvisDataFlowVideoRef.current;
+    if (!video) return;
+
+    video.playbackRate = isManagementAiSending ? 1.35 : 1;
+    if (isManagementAiOpen) {
+      void video.play().catch(() => undefined);
+      return;
+    }
+
+    video.pause();
+    video.currentTime = 0;
+  }, [isManagementAiOpen, isManagementAiSending]);
 
   useEffect(() => {
     if (previousOfferDraftRef.current === offerDraft) return;
@@ -62550,32 +62565,17 @@ await addProjectLogbookEntry(
               aria-expanded={isManagementAiOpen}
             >
               <span className={styles.jarvisSidebarVisual} aria-hidden="true">
-                <svg
-                  className={styles.jarvisDataFlow}
-                  viewBox="0 0 480 180"
-                  preserveAspectRatio="none"
-                >
-                  <g>
-                    <path pathLength="1" d="M-24 24 C62 22 112 73 239 89" />
-                    <path pathLength="1" d="M-22 43 C71 41 122 79 239 90" />
-                    <path pathLength="1" d="M-18 62 C80 62 137 83 239 90" />
-                    <path pathLength="1" d="M-18 81 C83 80 150 87 239 90" />
-                    <path pathLength="1" d="M-18 101 C83 100 150 93 239 90" />
-                    <path pathLength="1" d="M-18 121 C80 119 137 97 239 90" />
-                    <path pathLength="1" d="M-22 140 C71 138 122 101 239 90" />
-                    <path pathLength="1" d="M-24 158 C62 158 112 107 239 91" />
-                  </g>
-                  <g>
-                    <path pathLength="1" d="M504 24 C418 22 368 73 241 89" />
-                    <path pathLength="1" d="M502 43 C409 41 358 79 241 90" />
-                    <path pathLength="1" d="M498 62 C400 62 343 83 241 90" />
-                    <path pathLength="1" d="M498 81 C397 80 330 87 241 90" />
-                    <path pathLength="1" d="M498 101 C397 100 330 93 241 90" />
-                    <path pathLength="1" d="M498 121 C400 119 343 97 241 90" />
-                    <path pathLength="1" d="M502 140 C409 138 358 101 241 90" />
-                    <path pathLength="1" d="M504 158 C418 158 368 107 241 91" />
-                  </g>
-                </svg>
+                <video
+                  ref={jarvisDataFlowVideoRef}
+                  className={styles.jarvisDataFlowVideo}
+                  src="/media/jarvis-data-flow.mp4"
+                  muted
+                  loop
+                  playsInline
+                  preload="auto"
+                  tabIndex={-1}
+                />
+                <span className={styles.jarvisOrbCore} />
                 <img src="/media/jarvis-ring-gold-clean.webp" alt="" />
                 {isManagementAiOpen &&
                 !isManagementAiSending &&
