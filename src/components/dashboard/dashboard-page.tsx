@@ -5938,6 +5938,42 @@ const planningWeekdayOptions = [
   { value: 0, label: "So" },
 ];
 
+function formatPlanningRecurrenceRule(value: string) {
+  if (!value.trim()) return "Serie";
+  try {
+    const parsed = JSON.parse(value) as {
+      type?: PlanningRecurrenceType;
+      until?: string;
+      weekdays?: number[];
+    };
+    const intervalLabel: Record<PlanningRecurrenceType, string> = {
+      once: "Einmalig",
+      weekly: "Wöchentlich",
+      biweekly: "Alle 2 Wochen",
+      monthly: "Monatlich",
+    };
+    if (!parsed.type || !intervalLabel[parsed.type]) return value;
+    const weekdayLabels = Array.isArray(parsed.weekdays)
+      ? parsed.weekdays
+          .map((weekday) => planningWeekdayOptions.find((option) => option.value === weekday)?.label)
+          .filter((label): label is string => Boolean(label))
+      : [];
+    const untilLabel =
+      typeof parsed.until === "string" && /^\d{4}-\d{2}-\d{2}$/.test(parsed.until)
+        ? formatProjectDate(parsed.until)
+        : "";
+    return [
+      intervalLabel[parsed.type],
+      weekdayLabels.length > 0 ? weekdayLabels.join(", ") : "",
+      untilLabel ? `bis ${untilLabel}` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  } catch {
+    return value;
+  }
+}
+
 type TaskItem = {
   id: string;
   createdAt: string;
@@ -47888,7 +47924,9 @@ await addProjectLogbookEntry(
                                 {entry.groupName || "-"}
                               </span>
                               {entry.recurrenceId ? (
-                                <span className={styles.planningSeriesBadge}>{entry.recurrenceRule || "Serie"}</span>
+                                <span className={styles.planningSeriesBadge}>
+                                  {formatPlanningRecurrenceRule(entry.recurrenceRule)}
+                                </span>
                               ) : null}
                             </td>
                             <td>{formatProjectDate(entry.date)}</td>
