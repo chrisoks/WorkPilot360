@@ -109,6 +109,13 @@ function isManagementActor(profile: JarvisAccessProfile) {
 
 export function resolveJarvisSalesAnalysisIntent(question: string) {
   const normalized = normalizeAnalysisText(question);
+  if (
+    /^(?:wo\s+(?:ist|sind|liegt|liegen|befindet|befinden)\b|wo\s+(?:finde|sehe)\s+ich\b|wie\s+(?:komme|gelange)\s+ich\b)/.test(
+      normalized
+    )
+  ) {
+    return false;
+  }
   return ANALYSIS_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
