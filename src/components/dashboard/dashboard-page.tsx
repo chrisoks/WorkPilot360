@@ -62581,8 +62581,8 @@ await addProjectLogbookEntry(
                   preserveAspectRatio="none"
                   focusable="false"
                 >
-                  <path d="M145 0H855C816 45 785 83 761 126C726 190 704 226 650 246H350C296 226 274 190 239 126C215 83 184 45 145 0Z" />
-                  <path d="M350 254H650C704 274 726 310 761 374C785 417 816 455 855 500H145C184 455 215 417 239 374C274 310 296 274 350 254Z" />
+                  <path d="M0 0H1000V112C880 121 766 165 650 246H350C234 165 120 121 0 112V0Z" />
+                  <path d="M0 388C120 379 234 335 350 254H650C766 335 880 379 1000 388V500H0V388Z" />
                 </svg>
                 <img src="/media/jarvis-ring-gold-clean.webp" alt="" />
                 {isManagementAiOpen &&
