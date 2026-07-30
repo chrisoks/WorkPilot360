@@ -1329,6 +1329,12 @@ function getJarvisPeopleAnswer(question: string, overview: string) {
     return "Stärken erkenne ich nicht durch ein heimliches Persönlichkeitsprofil, sondern durch transparente, wiederholte Beobachtungen in freigegebenen Arbeitsdaten – etwa verlässlich erreichte Ziele, Qualität oder Kontinuität. Ich kennzeichne die Datenbasis, formuliere eine überprüfbare Beobachtung und bespreche sie mit dem Menschen, statt eine endgültige Eigenschaft zu behaupten.";
   }
   if (
+    normalized.includes("wer darf") &&
+    (normalized.includes("starken") || normalized.includes("schwachen"))
+  ) {
+    return "Stärken und Entwicklungsfelder dürfen nur die betroffene Person selbst und die für den klaren Entwicklungszweck rollenberechtigten menschlichen Verantwortlichen sehen. JARVIS zeigt keine pauschalen Personenprofile, beschränkt die Daten auf notwendige arbeitsbezogene Fakten und macht Grundlage, Zweck und Unsicherheit transparent.";
+  }
+  if (
     normalized.includes("entwicklungsfeldern") ||
     normalized.includes("schwachen angemessen") ||
     normalized.includes("schwachen von mitarbeitenden") ||
@@ -1350,12 +1356,6 @@ function getJarvisPeopleAnswer(question: string, overview: string) {
     normalized.includes("berichtest")
   ) {
     return "An die Geschäftsleitung gehören nur zweckgebundene, rollenberechtigte und nachvollziehbare Beobachtungen aus freigegebenen Arbeitsdaten: belegte Stärken, konkrete Entwicklungsfelder, vereinbarte Ziele und erkennbare Fortschritte. Keine heimlichen Persönlichkeitsprofile, keine unnötigen privaten Daten und keine automatischen Personalurteile.";
-  }
-  if (
-    normalized.includes("wer darf") &&
-    (normalized.includes("starken") || normalized.includes("schwachen"))
-  ) {
-    return "Stärken und Entwicklungsfelder dürfen nur die betroffene Person selbst und die für den klaren Entwicklungszweck rollenberechtigten menschlichen Verantwortlichen sehen. JARVIS zeigt keine pauschalen Personenprofile, beschränkt die Daten auf notwendige arbeitsbezogene Fakten und macht Grundlage, Zweck und Unsicherheit transparent.";
   }
   if (
     normalized.includes("uberwachung") ||
@@ -1415,7 +1415,10 @@ function getJarvisPrinciplesAnswer(question: string, overview: string) {
   if (normalized.includes("zielbild")) {
     return "Ein klares Zielbild gibt jeder Einzelentscheidung eine Richtung. Wir prüfen deshalb nicht nur, was heute bequem ist, sondern ob eine Lösung dem langfristig gewünschten Zustand näherkommt und vermeiden kurzfristige Verbesserungen, die später neue Hindernisse schaffen.";
   }
-  if (normalized.includes("priorit")) {
+  if (
+    normalized.includes("priorit") ||
+    normalized.includes("prioris")
+  ) {
     return "Priorisieren bedeutet: Nicht alles gleichzeitig und nicht alles gleich wichtig behandeln. Zuerst kommt, was für Kunden und Unternehmen den größten Nutzen bringt; Risiko, Dringlichkeit und Abhängigkeiten entscheiden mit. JARVIS soll diese Reihenfolge nachvollziehbar begründen.";
   }
   if (normalized.includes("großten nutzen") || normalized.includes("grossten nutzen")) {

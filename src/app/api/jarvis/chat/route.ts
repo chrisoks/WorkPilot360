@@ -435,9 +435,19 @@ function looksLikeTaskCreationPreviewRequest(question: string) {
 
 function looksLikePlanningPreviewRequest(question: string) {
   const value = normalizeJarvisIntentText(question);
+  const startsWithPlanningCommand =
+    /^\s*(?:plan|plane|leg|lege|erstell|erstelle)\w*\b/.test(value);
   return (
-    /^\s*(?:plan|plane|leg|lege|erstell|erstelle)\w*\b/.test(value) &&
-    /\b(?:termin|einsatztermin|planungstermin)\w*\b/.test(value)
+    startsWithPlanningCommand &&
+    (
+      /\b(?:termin|einsatztermin|planungstermin)\w*\b/.test(value) ||
+      (
+        /^\s*(?:plan|plane)\w*\b/.test(value) &&
+        /\b(?:heute|morgen|ubermorgen|nachste\w*\s+woche|diese\w*\s+woche|am\s+\d{1,2}\.\d{1,2}\.\d{4}|um\s+\d{1,2}(?::\d{2})?)\b/.test(
+          value
+        )
+      )
+    )
   );
 }
 
@@ -453,6 +463,7 @@ function looksLikeDeterministicHelpRequest(question: string) {
       /\bwie\b.*\b(?:dokumentier|bereit)\w*\b/.test(value) ||
       /\bwie\b.*\bpruf\w*\b.*\brechnungsentwurf\b/.test(value) ||
       /\bwie\b.*\b(?:buch|leg|erfass|trag|plan|verplan)\w*\b/.test(value) ||
+      /\bwie\b.*\bgeh\w*\b.*\b(?:abwesenheit|terminplanung)\b/.test(value) ||
       /\bwie\b.*\b(?:komme|gelange)\b/.test(value)
       )
     ) ||
@@ -785,6 +796,9 @@ export async function POST(req: Request) {
   const deterministicCapabilityGap = resolveJarvisCapabilityGap(message);
   const deterministicSalesIntent = resolveJarvisSalesAnalysisIntent(message);
   const exactHelpTopicId = findJarvisExactHelpTopicId(message, context);
+  const exactWorkflowHelpRequest =
+    Boolean(exactHelpTopicId) &&
+    looksLikeDeterministicHelpRequest(message);
   if (exactHelpTopicId?.startsWith("jarvis.")) {
     return respond(
       resolveJarvisSystemHelpTopic(
@@ -854,7 +868,8 @@ export async function POST(req: Request) {
       deterministicProjectWhyFollowUp) &&
     !deterministicPersonIntent &&
     !deterministicCapabilityGap &&
-    !deterministicSalesIntent
+    !deterministicSalesIntent &&
+    !exactWorkflowHelpRequest
   ) {
     const projectDialogResponse = await resolveJarvisProjectHealthRequest({
       question: deterministicProjectWhyFollowUp

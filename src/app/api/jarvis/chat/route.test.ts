@@ -519,6 +519,7 @@ describe("POST /api/jarvis/chat", () => {
   it.each([
     ["Was ist der Unterschied zwischen Termin und Terminwunsch?", "appointment.difference"],
     ["Welche Informationen brauche ich vor einer Terminplanung?", "planning.preflight"],
+    ["Wie gehe ich mit einer Abwesenheit bei der Terminplanung um?", "planning.conflicts"],
     ["Was muss ich an einem Feiertag bei der Planung beachten?", "planning.conflicts"],
   ])("keeps deterministic workflow guidance ahead of project diagnostics: %s", async (message, topicId) => {
     mocks.findJarvisExactHelpTopicId.mockReturnValue(topicId);
@@ -1557,6 +1558,31 @@ describe("POST /api/jarvis/chat", () => {
       topicId: "action.preview.planning.details-required",
     });
     expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
+  });
+
+  it("treats a vague direct planning command as an incomplete planning preview", async () => {
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({
+      recordType: "project",
+      recordId: "project-1",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/jarvis/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actorId: "user-1",
+          message: "Plane Christian irgendwann nächste Woche ein.",
+          context: { recordType: "project", recordId: "project-1" },
+        }),
+      })
+    );
+
+    expect(await response.json()).toMatchObject({
+      type: "clarification",
+      topicId: "action.preview.planning.details-required",
+      message: expect.stringContaining("Termin-Vorschau"),
+    });
   });
 
   it("keeps a diagnostic appointment question on the project-check path", async () => {

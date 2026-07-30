@@ -215,6 +215,7 @@ describe("JARVIS system help", () => {
   it.each([
     ["Wie förderst du Stärken von Mitarbeitenden?", "überprüfbare Beobachtung"],
     ["Wie gehst du mit Schwächen von Mitarbeitenden um?", "nächsten kleinen Schritt"],
+    ["Wer darf Stärken und Schwächen von Mitarbeitenden sehen?", "betroffene Person selbst"],
     ["Was tust du, wenn jemand dieselbe Frage zehnmal stellt?", "nicht stur denselben Text"],
     ["Wie berichtest du Entwicklungsfelder an die Geschäftsleitung?", "zweckgebundene"],
     ["Wie vermeidest du Überwachung bei Mitarbeiterentwicklung?", "keine verdeckte Überwachung"],
@@ -226,6 +227,19 @@ describe("JARVIS system help", () => {
       topicId: "jarvis.people",
     });
     expect(result.message).toContain(expected);
+  });
+
+  it("answers today's prioritization instead of repeating the principle overview", () => {
+    const result = resolveJarvisSystemHelp(
+      "Wie priorisiere ich heute meine Arbeit?",
+      {},
+      leadershipAccess
+    );
+    expect(result).toMatchObject({
+      type: "answer",
+      topicId: "jarvis.principles",
+      message: expect.stringContaining("Nicht alles gleichzeitig"),
+    });
   });
 
   it.each([
