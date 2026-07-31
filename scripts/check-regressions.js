@@ -68,6 +68,7 @@ const files = {
   finalInspectionsRoute: read("src/app/api/final-inspections/route.ts"),
   invoicesRoute: read("src/app/api/invoices/route.ts"),
   invoiceCancellationService: read("src/lib/invoices/invoice-cancellation-service.ts"),
+  invoiceCreditService: read("src/lib/invoices/invoice-credit-service.ts"),
   potentialsRoute: read("src/app/api/potentials/route.ts"),
   offersRoute: read("src/app/api/offers/route.ts"),
   heroProjectsRoute: read("src/app/api/hero/projects/route.ts"),
@@ -462,6 +463,24 @@ const required = [
     min: 1,
   },
   {
+    label: "Teilgutschriften pruefen kumulierte Restbetraege",
+    file: "invoiceCreditService",
+    needle: "alreadyCreditedByLine",
+    min: 4,
+  },
+  {
+    label: "Teilgutschriften bleiben ohne Zeit- und Lagerwirkung",
+    file: "invoiceCreditService",
+    needle: "Keine automatische Zeitfreigabe und keine Materialrückbuchung",
+    min: 1,
+  },
+  {
+    label: "Rechnungen bleiben fuer Dashboard und Buchhaltung lesbar",
+    file: "invoicesRoute",
+    needle: "export async function GET(req: Request)",
+    min: 1,
+  },
+  {
     label: "Zeiteintraege delegieren an den gemeinsamen Schreibservice",
     file: "projectTimeEntriesRoute",
     needle: "saveProjectTimeEntry",
@@ -751,6 +770,16 @@ const requiredPrismaFields = [
     model: "OnlineRequestPublicSession",
     field: "consumedAt",
     reason: "Oeffentliche Formularsitzungen muessen genau einmal verwendbar bleiben.",
+  },
+  {
+    model: "Invoice",
+    field: "sourceInvoiceId",
+    reason: "Gutschriften muessen dauerhaft und mandantengebunden auf ihre Ursprungsrechnung verweisen.",
+  },
+  {
+    model: "InvoiceLine",
+    field: "sourceInvoiceLineId",
+    reason: "Kumulierte Teilgutschriften muessen positionsgenau gegen den Restbetrag geprueft werden.",
   },
 ];
 

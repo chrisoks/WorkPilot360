@@ -116,7 +116,7 @@ export class InvoiceDraftServiceError extends Error {
 
 const DEFAULT_INTRO = "wir stellen Ihnen folgende Leistungen in Rechnung.";
 const DEFAULT_CLOSING = "Bitte überweisen Sie den Rechnungsbetrag innerhalb der vereinbarten Zahlungsfrist.";
-const INACTIVE_STATUSES = ["Gelöscht", "Geloescht", "Archiviert", "Storniert", "Stornorechnung"];
+const INACTIVE_STATUSES = ["Gelöscht", "Geloescht", "Archiviert", "Storniert", "Stornorechnung", "Gutschrift"];
 
 function isArchived(status: string | null | undefined) {
   const value = (status ?? "").toLocaleLowerCase("de-DE");

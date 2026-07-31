@@ -99,6 +99,7 @@ import {
   createPersistedJarvisInvoicePaymentDraft,
   createPersistedJarvisInvoiceReminderDraft,
   createPersistedJarvisInvoiceCancellationDraft,
+  createPersistedJarvisInvoiceCreditDraft,
   createPersistedJarvisInvoiceDeliveryDraft,
   createPersistedJarvisCommunicationDraft,
   createPersistedJarvisTaskDraft,
@@ -124,6 +125,8 @@ import {
   extractInvoicePaymentDate,
   extractInvoiceReminderDeadline,
   extractInvoiceCancellationReason,
+  extractInvoiceCreditReason,
+  extractInvoiceCreditNetAmount,
   extractInvoiceServiceDate,
   looksLikeInvoiceDraftRequest,
   looksLikeInvoiceDeliveryRequest,
@@ -615,6 +618,106 @@ async function buildJarvisInvoiceCancellationDraft(input: {
       type: "refusal" as const,
       topicId: "action.invoice-cancellation.unavailable",
       message: `${error instanceof JarvisActionDraftError ? error.message : "Die Stornovorschau konnte nicht sicher vorbereitet werden."} Es wurde nichts storniert.`,
+    };
+  }
+}
+
+async function buildJarvisInvoiceCreditDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+  context: ReturnType<typeof sanitizeJarvisSurfaceContext>;
+}) {
+  if (!input.sessionId) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-credit.session-required",
+      message: "Für eine kontrollierte Teilgutschrift ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts verändert.",
+    };
+  }
+  const invoiceNumber = extractInvoiceNumber(input.question);
+  const invoice = invoiceNumber
+    ? await prisma.invoice.findFirst({
+        where: { invoiceNumber: { equals: invoiceNumber, mode: "insensitive" }, organizationId: input.organizationId },
+        select: {
+          id: true, invoiceNumber: true, customerName: true, status: true,
+          lines: { orderBy: { position: "asc" }, select: { id: true, title: true, position: true } },
+        },
+      })
+    : null;
+  if (invoiceNumber && !invoice) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-credit.not-found",
+      message: `${invoiceNumber} wurde in dieser Organisation nicht gefunden. Es wurde keine andere Rechnung ausgewählt und keine Gutschrift erstellt.`,
+    };
+  }
+  if (!invoice) {
+    const invoices = await prisma.invoice.findMany({
+      where: { organizationId: input.organizationId, status: { in: ["Fakturiert", "Bezahlt"] } },
+      orderBy: { updatedAt: "desc" },
+      take: 5,
+      select: { invoiceNumber: true, customerName: true, status: true },
+    });
+    return {
+      type: "clarification" as const,
+      topicId: "action.invoice-credit.choose",
+      message: invoices.length
+        ? "Zu welcher fakturierten oder bezahlten Rechnung soll eine Teilgutschrift vorbereitet werden? Es wurde noch nichts verändert."
+        : "Es gibt aktuell keine Rechnung, zu der JARVIS eine Teilgutschrift vorbereiten kann.",
+      choices: invoices.map((candidate) => createJarvisDialogChoice(
+        `invoice-credit-${candidate.invoiceNumber}`,
+        `${candidate.invoiceNumber} · ${candidate.customerName || "ohne Kunde"} · ${candidate.status}`,
+        `Erstelle eine Teilgutschrift zu Rechnung ${candidate.invoiceNumber}`
+      )),
+    };
+  }
+  if (!["Fakturiert", "Bezahlt"].includes(invoice.status)) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-credit.invalid-state",
+      message: `${invoice.invoiceNumber} kann im Status ${invoice.status} nicht teilgutgeschrieben werden. Es wurde nichts verändert.`,
+    };
+  }
+  const netAmount = extractInvoiceCreditNetAmount(input.question);
+  const reason = extractInvoiceCreditReason(input.question);
+  const items = netAmount && invoice.lines.length === 1
+    ? [{ sourceInvoiceLineId: invoice.lines[0].id, netAmount }]
+    : [];
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(),
+    actionId: "invoice.credit",
+    payload: {
+      invoiceId: invoice.id,
+      ...(reason ? { reason } : {}),
+      ...(items.length ? { items } : {}),
+    },
+    organizationId: input.organizationId,
+    profile: input.accessProfile,
+    createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) {
+    return { type: "refusal" as const, topicId: "action.invoice-credit.refused", message: `${preview.message} Es wurde keine Gutschrift erstellt.` };
+  }
+  try {
+    const actionDraft = await createPersistedJarvisInvoiceCreditDraft({
+      preview: preview.value,
+      organizationId: input.organizationId,
+      sessionId: input.sessionId,
+      profile: input.accessProfile,
+    });
+    return {
+      type: "answer" as const,
+      topicId: "action.invoice-credit",
+      message: "Ich habe eine kontrollierte Teilgutschrift vorbereitet. Ordne den Nettobetrag transparent den Rechnungspositionen zu und dokumentiere den Grund. JARVIS prüft frühere Gutschriften und verhindert eine Überkorrektur. Erst die exakt angezeigte kritische Bestätigungsphrase erzeugt den GU-Beleg genau einmal. Zahlung, Auszahlung, Zeit, Lager und Versand bleiben getrennt.",
+      actionDraft,
+    };
+  } catch (error) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-credit.unavailable",
+      message: `${error instanceof JarvisActionDraftError ? error.message : "Die Gutschriftvorschau konnte nicht sicher vorbereitet werden."} Es wurde keine Gutschrift erstellt.`,
     };
   }
 }
@@ -2075,11 +2178,16 @@ export async function POST(req: Request) {
     return respond(explicitSafetyPolicyResponse);
   }
   if (looksLikeInvoiceCreditRequest(message)) {
-    return respond({
-      type: "refusal",
-      topicId: "action.invoice-credit.unsupported",
-      message: "WorkPilot unterstützt derzeit nur die vollständige Stornorechnung. Eine Teilgutschrift, Rechnungskorrektur oder teilweise Stornierung hat noch keinen freigegebenen Fachprozess; ich führe deshalb kein Vollstorno als Ersatz aus. Es wurde nichts verändert.",
-    });
+    return respond(
+      await buildJarvisInvoiceCreditDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+        context,
+      }),
+      "sales"
+    );
   }
   if (looksLikeInvoiceCancellationRequest(message)) {
     return respond(

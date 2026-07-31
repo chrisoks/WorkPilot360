@@ -12,6 +12,7 @@ const INACTIVE_INVOICE_STATUSES = new Set([
   "Entwurf",
   "Storniert",
   "Stornorechnung",
+  "Gutschrift",
   "Gelöscht",
   "Geloescht",
   "deleted",

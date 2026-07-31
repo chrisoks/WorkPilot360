@@ -2371,9 +2371,10 @@ freizugebende Zeiteinträge. Ein dokumentierter Grund ist Pflicht; erst
 Fachservice schützt ST-Nummer und Rechnung mit organisationsgebundenen
 Advisory Locks und schreibt ST-PDF, negative Positionen, Originalstatus,
 Zeit-/Lagerfreigabe, Historie und Logbuch in einer serialisierbaren
-Transaktion. Bezahlte Rechnungen lösen keine Rückzahlung aus. Teilgutschrift,
-Rechnungskorrektur und Teilstorno bleiben bis zu einem eigenen fachlich und
-buchhalterisch freigegebenen Datenmodell gesperrt.
+Transaktion. Bezahlte Rechnungen lösen keine Rückzahlung aus. Teilgutschrift
+und Rechnungskorrektur werden ausschließlich über den nachfolgend
+dokumentierten `invoice.credit`-Prozess ausgeführt und nie als Vollstorno
+umgedeutet.
 
 Release-Abnahme: Code-Commit `36898b7`, Backup
 `/var/backups/workpilot360/before-jarvis-cancellation-20260731T164000Z`,
@@ -2382,3 +2383,22 @@ Ausführungs-QA bestätigte zusätzlich falsche-Phrase-Blockade, fail-closed
 Teilgutschrift, genau eine negative ST-Rechnung samt PDF, zwei
 Historienereignisse, einen Logbucheintrag und idempotentes Replay. Alle
 isolierten QA-Daten wurden anschließend vollständig bereinigt.
+
+### Kontrollierte Teilgutschrift / Rechnungskorrektur (umgesetzt 2026-07-31)
+
+JARVIS kann eine finanzielle Teilgutschrift zu einer fakturierten oder
+bezahlten Rechnung vorbereiten. Der GU-Beleg und jede GU-Position tragen eine
+dauerhafte Referenz auf Ursprungsrechnung und Ursprungsposition. Frühere
+aktive Gutschriften werden positionsgenau vom gutschreibbaren Rest abgezogen;
+Überkorrekturen und die versehentliche vollständige Aufhebung über den
+Teilprozess bleiben gesperrt. Die Maske zeigt alle Positionen mit ursprünglichem,
+bereits gutgeschriebenem und verbleibendem Nettobetrag und berechnet die
+Bruttosumme mit dem jeweiligen Positionssteuersatz.
+
+Der kritische Ausführungssatz lautet
+`GUTSCHRIFT GU-... ZU RE-... ÜBER ...,.. EUR`. Nach Bestätigung entstehen in
+einer serialisierbaren, advisory-lock-geschützten Transaktion genau ein
+negativer GU-Beleg samt PDF, zwei Historienereignisse und ein
+Projektlogbucheintrag. Auszahlung, Zahlungsstatus, Zeiten, Lager und Versand
+bleiben getrennt. Der Vollstorno prüft aktive Teilgutschriften und blockiert
+eine sonst mögliche doppelte Gegenbuchung.

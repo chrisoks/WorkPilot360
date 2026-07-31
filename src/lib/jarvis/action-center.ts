@@ -18,6 +18,7 @@ export const JARVIS_PREVIEW_ACTION_IDS = [
   "invoice.mark-paid",
   "invoice.remind",
   "invoice.cancel",
+  "invoice.credit",
   "document.send",
 ] as const;
 
@@ -217,6 +218,24 @@ const invoiceCancellationPreviewPayloadSchema = z
   })
   .strict();
 
+const invoiceCreditPreviewPayloadSchema = z
+  .object({
+    invoiceId: boundedId,
+    reason: z.string().trim().max(500).optional(),
+    items: z
+      .array(
+        z
+          .object({
+            sourceInvoiceLineId: boundedId,
+            netAmount: z.number().min(0).max(10_000_000),
+          })
+          .strict()
+      )
+      .max(30)
+      .optional(),
+  })
+  .strict();
+
 const documentSendPreviewPayloadSchema = z
   .object({
     invoiceId: boundedId,
@@ -235,6 +254,7 @@ const PREVIEW_PAYLOAD_SCHEMAS = {
   "invoice.mark-paid": invoiceMarkPaidPreviewPayloadSchema,
   "invoice.remind": invoiceReminderPreviewPayloadSchema,
   "invoice.cancel": invoiceCancellationPreviewPayloadSchema,
+  "invoice.credit": invoiceCreditPreviewPayloadSchema,
   "document.send": documentSendPreviewPayloadSchema,
 } satisfies Record<JarvisPreviewActionId, z.ZodType>;
 
@@ -252,6 +272,7 @@ export type JarvisActionPreviewPayloadMap = {
   "invoice.mark-paid": z.infer<typeof invoiceMarkPaidPreviewPayloadSchema>;
   "invoice.remind": z.infer<typeof invoiceReminderPreviewPayloadSchema>;
   "invoice.cancel": z.infer<typeof invoiceCancellationPreviewPayloadSchema>;
+  "invoice.credit": z.infer<typeof invoiceCreditPreviewPayloadSchema>;
   "document.send": z.infer<typeof documentSendPreviewPayloadSchema>;
 };
 
@@ -857,6 +878,42 @@ export type JarvisInvoiceCancellationDraftView = {
   projectId: string;
   fields: Array<{ label: string; value: string }>;
   editor: { reason: string };
+  checks: Array<{ key: string; label: string; status: "ok" | "warning" | "blocked"; detail: string }>;
+  warnings: string[];
+  blockingIssues: string[];
+  confirmation: {
+    enabled: boolean;
+    reason: "ready" | "blocked" | "not_permitted" | "expired" | "cancelled" | "executing" | "executed";
+    requiredText: string;
+  };
+  cancellation: { enabled: boolean };
+  result?: { entityType: "invoice"; entityId: string; label: string };
+};
+
+export type JarvisInvoiceCreditDraftView = {
+  version: 2;
+  previewId: string;
+  actionId: "invoice.credit";
+  title: "Teilgutschrift kontrolliert erstellen";
+  badge: "Prüfung" | "Bereit" | "Wird erstellt" | "Abgebrochen" | "Abgelaufen" | "Erstellt";
+  state: JarvisTaskActionDraftState;
+  revision: number;
+  expiresAt: string;
+  invoiceId: string;
+  projectId: string;
+  fields: Array<{ label: string; value: string }>;
+  editor: {
+    reason: string;
+    items: Array<{
+      sourceInvoiceLineId: string;
+      label: string;
+      vatRate: number;
+      originalNet: number;
+      alreadyCreditedNet: number;
+      remainingNet: number;
+      netAmount: number;
+    }>;
+  };
   checks: Array<{ key: string; label: string; status: "ok" | "warning" | "blocked"; detail: string }>;
   warnings: string[];
   blockingIssues: string[];

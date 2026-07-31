@@ -41,6 +41,7 @@ const fake = vi.hoisted(() => {
   const paidInvoices: Array<Record<string, any>> = [];
   const reminderInvoices: Array<Record<string, any>> = [];
   const cancellationInvoices: Array<Record<string, any>> = [];
+  const creditInvoices: Array<Record<string, any>> = [];
   const evaluateInvoicePayment = vi.fn(async ({ invoiceId, paymentDate }: { invoiceId: string; paymentDate?: string }) => ({
     invoice: {
       id: invoiceId,
@@ -117,6 +118,8 @@ const fake = vi.hoisted(() => {
     cancellationNumber: "ST-10100",
     lineCount: 1,
     releasedTimeEntryCount: 2,
+    activeCreditCount: 0,
+    creditedGrossTotal: 0,
     checks: [{ key: "amount", label: "Gegenbuchung", status: "ok", detail: "-119,00 €" }],
     warnings: [], blockingIssues: [], fingerprint: "c".repeat(64),
   }));
@@ -124,6 +127,34 @@ const fake = vi.hoisted(() => {
     const row = { id: "cancellation-1", invoiceId, reason };
     cancellationInvoices.push(row);
     return { originalInvoiceId: invoiceId, cancellationInvoice: row };
+  });
+  const evaluateInvoiceCredit = vi.fn(async ({ invoiceId, items = [] }: { invoiceId: string; items?: Array<{ sourceInvoiceLineId: string; netAmount: number }> }) => {
+    const creditNet = Number(items.find((item) => item.sourceInvoiceLineId === "line-1")?.netAmount ?? 0);
+    const creditGross = Math.round(creditNet * 119) / 100;
+    const blockingIssues = creditNet > 0 && creditNet < 100 ? [] : [creditNet <= 0 ? "Mindestens eine Position auswählen." : "Vollaufhebung ist kein Teilgutschriftfall."];
+    return {
+      invoice: {
+        id: invoiceId, invoiceNumber: "RE-10119", status: "Fakturiert", projectId: "project-1",
+        projectNumber: "MKG-209", projectTitle: "Marketing", company: "OK solutions", customerName: "Musterkunde",
+        customerStreet: "Testweg 1", customerCity: "74722 Buchen", contactName: "", serviceDate: "2026-07-20",
+        netTotal: 100, grossTotal: 119, isPaid: false, updatedAt: "2026-07-31T08:00:00.000Z",
+      },
+      creditNumber: "GU-10100",
+      lines: [{ id: "line-1", position: 1, title: "Leistung", vatRate: 19, originalNet: 100, alreadyCreditedNet: 0, remainingNet: 100, creditNet, creditGross }],
+      totalCreditNet: creditNet,
+      totalCreditGross: creditGross,
+      remainingInvoiceNet: 100,
+      remainingInvoiceGross: 119,
+      checks: [{ key: "amount", label: "Ausgewählt", status: blockingIssues.length ? "blocked" : "ok", detail: `${creditNet} EUR` }],
+      warnings: ["Keine Zeit- oder Lagerwirkung."],
+      blockingIssues,
+      fingerprint: "d".repeat(64),
+    };
+  });
+  const createInvoiceCredit = vi.fn(async ({ invoiceId, reason, items }: { invoiceId: string; reason: string; items: unknown[] }) => {
+    const row = { id: "credit-1", invoiceId, reason, items };
+    creditInvoices.push(row);
+    return { originalInvoiceId: invoiceId, creditInvoice: row, totalCreditNet: 20, totalCreditGross: 23.8 };
   });
   const evaluateInvoiceDraft = vi.fn(async ({ draft }: { draft: Record<string, any> }) => {
     const lines = Array.isArray(draft.lines) ? draft.lines : [];
@@ -566,6 +597,7 @@ const fake = vi.hoisted(() => {
       paidInvoices.length = 0;
       reminderInvoices.length = 0;
       cancellationInvoices.length = 0;
+      creditInvoices.length = 0;
       evaluateInvoiceDraft.mockClear();
       createConfirmedInvoiceDraft.mockClear();
       evaluateInvoicePayment.mockClear();
@@ -574,6 +606,8 @@ const fake = vi.hoisted(() => {
       createInvoiceReminder.mockClear();
       evaluateInvoiceCancellation.mockClear();
       createInvoiceCancellation.mockClear();
+      evaluateInvoiceCredit.mockClear();
+      createInvoiceCredit.mockClear();
       createProjectLogbookEntry.mockClear();
       projectUpdatedAt = new Date("2026-07-29T18:00:00.000Z");
       vehicleUpdatedAt = new Date("2026-07-29T18:30:00.000Z");
@@ -602,6 +636,9 @@ const fake = vi.hoisted(() => {
     cancellationInvoices,
     evaluateInvoiceCancellation,
     createInvoiceCancellation,
+    creditInvoices,
+    evaluateInvoiceCredit,
+    createInvoiceCredit,
   };
 });
 
@@ -638,6 +675,14 @@ vi.mock("@/lib/invoices/invoice-cancellation-service", async () => {
     ...actual,
     evaluateInvoiceCancellation: fake.evaluateInvoiceCancellation,
     createInvoiceCancellation: fake.createInvoiceCancellation,
+  };
+});
+vi.mock("@/lib/invoices/invoice-credit-service", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/invoices/invoice-credit-service")>("@/lib/invoices/invoice-credit-service");
+  return {
+    ...actual,
+    evaluateInvoiceCredit: fake.evaluateInvoiceCredit,
+    createInvoiceCredit: fake.createInvoiceCredit,
   };
 });
 vi.mock("@/lib/services/task-service", () => ({
@@ -755,6 +800,9 @@ import {
   completeJarvisInvoiceCancellationDraft,
   confirmJarvisInvoiceCancellationDraft,
   createPersistedJarvisInvoiceCancellationDraft,
+  completeJarvisInvoiceCreditDraft,
+  confirmJarvisInvoiceCreditDraft,
+  createPersistedJarvisInvoiceCreditDraft,
   JarvisActionDraftError,
 } from "@/lib/jarvis/action-draft-store";
 import { calculateWinterService } from "@/lib/winter-service/calculation";
@@ -2556,5 +2604,68 @@ describe("persistent JARVIS invoice cancellation drafts", () => {
       created.previewId, binding(), created.revision, "Stornieren RE-10119 MIT ST-10100", baseNow
     )).rejects.toMatchObject({ code: "invalid_input" });
     expect(fake.cancellationInvoices).toHaveLength(0);
+  });
+});
+
+describe("persistent JARVIS invoice credit drafts", () => {
+  beforeEach(() => fake.reset());
+
+  const preview = (previewId: string, reason = "", netAmount = 0) => ({
+    version: 1 as const,
+    previewId,
+    actionId: "invoice.credit" as const,
+    actionTitle: "Teilgutschrift kontrolliert erstellen",
+    state: "awaiting_confirmation" as const,
+    organizationId: "org-1",
+    sessionActorId: "user-1",
+    effectiveActorId: "user-1",
+    impersonating: false,
+    payload: {
+      invoiceId: "invoice-1",
+      ...(reason ? { reason } : {}),
+      ...(netAmount ? { items: [{ sourceInvoiceLineId: "line-1", netAmount }] } : {}),
+    },
+    execution: { enabled: false as const, reason: "preview_only" as const },
+    audit: [],
+  });
+
+  it("requires reviewed line amounts and executes exactly once", async () => {
+    const created = await createPersistedJarvisInvoiceCreditDraft({
+      ...binding(), now: baseNow, preview: preview("invoice-credit-1"),
+    });
+    expect(created.state).toBe("awaiting_input");
+    const ready = await completeJarvisInvoiceCreditDraft(
+      created.previewId,
+      binding(),
+      { revision: created.revision, reason: "Preisnachlass laut Abstimmung", items: [{ sourceInvoiceLineId: "line-1", netAmount: 20 }] },
+      baseNow
+    );
+    expect(ready.confirmation.requiredText).toBe("GUTSCHRIFT GU-10100 ZU RE-10119 ÜBER 23,80 EUR");
+    const first = await confirmJarvisInvoiceCreditDraft(ready.previewId, binding(), ready.revision, ready.confirmation.requiredText, baseNow);
+    const replay = await confirmJarvisInvoiceCreditDraft(ready.previewId, binding(), ready.revision, ready.confirmation.requiredText, baseNow);
+    expect(first.state).toBe("executed");
+    expect(replay.result?.entityId).toBe(first.result?.entityId);
+    expect(fake.creditInvoices).toHaveLength(1);
+    expect(fake.createInvoiceCredit).toHaveBeenCalledWith(expect.objectContaining({
+      invoiceId: "invoice-1", reason: "Preisnachlass laut Abstimmung", items: [{ sourceInvoiceLineId: "line-1", netAmount: 20 }], source: "jarvis",
+    }));
+  });
+
+  it("rejects employees, full remaining credits and an inexact phrase", async () => {
+    await expect(createPersistedJarvisInvoiceCreditDraft({
+      organizationId: "org-1", sessionId: "session-1", profile: profile(Role.MITARBEITER), now: baseNow,
+      preview: preview("invoice-credit-employee", "Preisnachlass", 20),
+    })).rejects.toMatchObject({ code: "scope_mismatch" });
+    const blocked = await createPersistedJarvisInvoiceCreditDraft({
+      ...binding(), now: baseNow, preview: preview("invoice-credit-full", "Vollkorrektur", 100),
+    });
+    expect(blocked.state).toBe("awaiting_input");
+    const ready = await createPersistedJarvisInvoiceCreditDraft({
+      ...binding(), now: baseNow, preview: preview("invoice-credit-phrase", "Preisnachlass", 20),
+    });
+    await expect(confirmJarvisInvoiceCreditDraft(
+      ready.previewId, binding(), ready.revision, ready.confirmation.requiredText.toLowerCase(), baseNow
+    )).rejects.toMatchObject({ code: "invalid_input" });
+    expect(fake.creditInvoices).toHaveLength(0);
   });
 });

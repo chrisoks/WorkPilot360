@@ -60,6 +60,7 @@ export type JarvisAiIntentClassification = {
     | "offer.create"
     | "invoice.create"
     | "invoice.cancel"
+    | "invoice.credit"
     | "time_entry.create"
     | "stamp.delete"
     | "record.delete"
@@ -182,6 +183,7 @@ function sanitizeClassification(
     "offer.create",
     "invoice.create",
     "invoice.cancel",
+    "invoice.credit",
     "time_entry.create",
     "stamp.delete",
     "record.delete",
@@ -321,7 +323,7 @@ export async function classifyJarvisIntentWithAi(
               "Wenn mehrere Bedeutungen plausibel bleiben, setze needsClarification=true.",
               "Wähle helpTopicId nur bei einer klar passenden Bedienhilfe, sonst none.",
               "Verfügbare Bedienhilfen:",
-              "actionKind ist nur bei prepare_action gesetzt, sonst none. Nutze appointment.create für Termin, task.create für Aufgabe, project_logbook.create für einen neuen Projektlogbuch-Eintrag, task_comment.create für einen Kommentar an einer bestehenden Aufgabe, email.send für Mail, project.create für Projekt, customer.create für Kunde/Kontakt, offer.create für Angebot, invoice.create für Rechnungsentwurf, invoice.cancel für Storno, time_entry.create für Zeiteintrag, stamp.delete für Stempelung löschen, record.delete für sonstiges Löschen, catalog.change für Artikel/Leistung und record.change für sonstige Änderungen.",
+              "actionKind ist nur bei prepare_action gesetzt, sonst none. Nutze appointment.create für Termin, task.create für Aufgabe, project_logbook.create für einen neuen Projektlogbuch-Eintrag, task_comment.create für einen Kommentar an einer bestehenden Aufgabe, email.send für Mail, project.create für Projekt, customer.create für Kunde/Kontakt, offer.create für Angebot, invoice.create für Rechnungsentwurf, invoice.cancel für Vollstorno, invoice.credit für Teilgutschrift/Rechnungskorrektur, time_entry.create für Zeiteintrag, stamp.delete für Stempelung löschen, record.delete für sonstiges Löschen, catalog.change für Artikel/Leistung und record.change für sonstige Änderungen.",
               topics,
             ].join("\n"),
           },
@@ -404,6 +406,7 @@ export async function classifyJarvisIntentWithAi(
                     "offer.create",
                     "invoice.create",
                     "invoice.cancel",
+                    "invoice.credit",
                     "time_entry.create",
                     "stamp.delete",
                     "record.delete",

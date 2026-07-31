@@ -1031,6 +1031,9 @@ model Invoice {
   serviceDate           String        @default("")
   sourceOfferId         String        @default("")
   sourceOfferNumber     String        @default("")
+  sourceInvoiceId       String        @default("")
+  sourceInvoiceNumber   String        @default("")
+  correctionReason      String        @default("")
   introText             String        @default("")
   closingText           String        @default("")
   netTotal              Float         @default(0)
@@ -1051,6 +1054,7 @@ model Invoice {
 
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId, projectId])
+  @@index([organizationId, sourceInvoiceId])
 }
 
 model InvoiceLine {
@@ -1059,6 +1063,7 @@ model InvoiceLine {
   invoiceId                  String
   catalogItemId              String             @default("")
   catalogType                String             @default("")
+  sourceInvoiceLineId        String             @default("")
   position                   Int                @default(0)
   quantity                   Float              @default(1)
   unit                       String             @default("Stk")
@@ -1083,6 +1088,7 @@ model InvoiceLine {
   laborItems                 InvoiceLineLabor[]
 
   @@index([organizationId, invoiceId])
+  @@index([organizationId, sourceInvoiceLineId])
 }
 
 model InvoiceLineLabor {

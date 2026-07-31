@@ -9,6 +9,7 @@ import {
   cancelJarvisInvoicePaymentDraft,
   cancelJarvisInvoiceReminderDraft,
   cancelJarvisInvoiceCancellationDraft,
+  cancelJarvisInvoiceCreditDraft,
   cancelJarvisInvoiceDeliveryDraft,
   cancelJarvisCommunicationDraft,
   cancelJarvisTaskDraft,
@@ -21,6 +22,7 @@ import {
   completeJarvisInvoicePaymentDraft,
   completeJarvisInvoiceReminderDraft,
   completeJarvisInvoiceCancellationDraft,
+  completeJarvisInvoiceCreditDraft,
   completeJarvisInvoiceDeliveryDraft,
   completeJarvisCommunicationDraft,
   completeJarvisTaskDraft,
@@ -34,6 +36,7 @@ import {
   confirmJarvisInvoicePaymentDraft,
   confirmJarvisInvoiceReminderDraft,
   confirmJarvisInvoiceCancellationDraft,
+  confirmJarvisInvoiceCreditDraft,
   confirmJarvisInvoiceDeliveryDraft,
   confirmJarvisCommunicationDraft,
   confirmJarvisTaskDraft,
@@ -182,6 +185,7 @@ export async function PATCH(
     const isInvoicePayment = body.actionId === "invoice.mark-paid";
     const isInvoiceReminder = body.actionId === "invoice.remind";
     const isInvoiceCancellation = body.actionId === "invoice.cancel";
+    const isInvoiceCredit = body.actionId === "invoice.credit";
     const isInvoiceDelivery = body.actionId === "document.send";
     const isTime = body.actionId === "time.prepare";
     const isWinterCalculation =
@@ -214,6 +218,12 @@ export async function PATCH(
           previewId,
           resolved.binding,
           { revision: body.revision, reason: body.reason }
+        )
+      : isInvoiceCredit
+      ? await completeJarvisInvoiceCreditDraft(
+          previewId,
+          resolved.binding,
+          { revision: body.revision, reason: body.reason, items: body.items }
         )
       : isInvoiceDelivery
       ? await completeJarvisInvoiceDeliveryDraft(
@@ -416,6 +426,7 @@ export async function POST(
     const isInvoicePayment = body.actionId === "invoice.mark-paid";
     const isInvoiceReminder = body.actionId === "invoice.remind";
     const isInvoiceCancellation = body.actionId === "invoice.cancel";
+    const isInvoiceCredit = body.actionId === "invoice.credit";
     const isInvoiceDelivery = body.actionId === "document.send";
     const isTime = body.actionId === "time.prepare";
     const isWinterCalculation =
@@ -445,7 +456,7 @@ export async function POST(
             body.revision
           )
         : isInvoiceCancellation
-        ? await cancelJarvisInvoiceCancellationDraft(
+          ? await cancelJarvisInvoiceCancellationDraft(
             previewId,
             resolved.binding,
             body.revision
@@ -492,6 +503,12 @@ export async function POST(
               resolved.binding,
               body.revision
             )
+        : isInvoiceCredit
+          ? await cancelJarvisInvoiceCreditDraft(
+              previewId,
+              resolved.binding,
+              body.revision
+            )
         : isPlanning
           ? await cancelJarvisPlanningDraft(
             previewId,
@@ -512,6 +529,8 @@ export async function POST(
           ? "Die Mahnvorschau wurde abgebrochen. Es wurde kein Mahndokument erzeugt und keine Mahnstufe verändert."
           : isInvoiceCancellation
           ? "Die Stornovorschau wurde abgebrochen. Rechnung, Zeiten und Lager blieben unverändert."
+          : isInvoiceCredit
+          ? "Die Gutschriftvorschau wurde abgebrochen. Rechnung, Zeiten, Lager und Zahlung blieben unverändert."
           : isInvoiceDelivery
           ? "Der Rechnungsversand wurde abgebrochen. Es wurde keine E-Mail versendet."
           : isInvoice
@@ -570,6 +589,13 @@ export async function POST(
         )
       : isInvoiceCancellation
       ? await confirmJarvisInvoiceCancellationDraft(
+          previewId,
+          resolved.binding,
+          body.revision,
+          typeof body.confirmationText === "string" ? body.confirmationText : ""
+        )
+      : isInvoiceCredit
+      ? await confirmJarvisInvoiceCreditDraft(
           previewId,
           resolved.binding,
           body.revision,
@@ -661,6 +687,8 @@ export async function POST(
             ? "Die Mahnung wurde nach deiner kritischen Bestätigung genau einmal als PDF erzeugt, in der Projektakte abgelegt und mit der neuen Mahnstufe protokolliert. Es wurde keine E-Mail versendet."
             : isInvoiceCancellation
             ? "Die Rechnung wurde nach deiner kritischen Bestätigung genau einmal vollständig storniert. Stornorechnung, Historie, Logbuch sowie Zeit- und Lagerfreigaben wurden gemeinsam ausgeführt."
+            : isInvoiceCredit
+            ? "Die Teilgutschrift wurde nach deiner kritischen Bestätigung genau einmal erstellt. GU-Beleg, Historie und Logbuch wurden gemeinsam geschrieben; Zeit, Lager, Zahlung und Versand blieben unverändert."
             : isInvoiceDelivery
             ? "Die freigegebene Rechnung wurde nach deiner kritischen Bestätigung genau einmal an Microsoft 365 übergeben. Der Versand ist protokolliert."
             : isInvoice
@@ -686,6 +714,8 @@ export async function POST(
             ? "Die Mahnung wurde nicht erzeugt."
             : isInvoiceCancellation
             ? "Die Rechnung wurde nicht storniert."
+            : isInvoiceCredit
+            ? "Die Teilgutschrift wurde nicht erstellt."
             : isInvoiceDelivery
             ? "Die Rechnung wurde nicht versendet."
             : isInvoice

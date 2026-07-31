@@ -38,7 +38,7 @@ const invoice = {
 
 function dbWithInvoice(value: Record<string, unknown> | null = invoice) {
   return {
-    invoice: { findFirst: vi.fn().mockResolvedValue(value) },
+    invoice: { findFirst: vi.fn().mockResolvedValue(value), findMany: vi.fn().mockResolvedValue([]) },
     projectTimeEntry: { count: vi.fn().mockResolvedValue(2) },
     $queryRaw: vi.fn().mockResolvedValue([{ invoiceNumber: "ST-10103" }]),
   } as never;
@@ -51,6 +51,15 @@ describe("invoice cancellation service", () => {
     );
     expect(matchesInvoiceCancellationConfirmation("RE-10119", "ST-10104", "STORNIEREN RE-10119 MIT ST-10104")).toBe(true);
     expect(matchesInvoiceCancellationConfirmation("RE-10119", "ST-10104", "Stornieren RE-10119 MIT ST-10104")).toBe(false);
+  });
+
+  it("blocks a full cancellation after an active partial credit", async () => {
+    const db = dbWithInvoice() as any;
+    db.invoice.findMany.mockResolvedValue([{ id: "credit-1", invoiceNumber: "GU-10100", grossTotal: -23.8, updatedAt: new Date("2026-07-31T09:00:00.000Z") }]);
+    const result = await evaluateInvoiceCancellation({ organizationId: "org-1", invoiceId: "invoice-1", db });
+    expect(result.activeCreditCount).toBe(1);
+    expect(result.creditedGrossTotal).toBe(23.8);
+    expect(result.blockingIssues.join(" ")).toContain("würde überkorrigieren");
   });
 
   it("binds positions, time releases, amount and next ST number into the evaluation", async () => {

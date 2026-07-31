@@ -34,6 +34,21 @@ describe("JARVIS action registry", () => {
     });
   });
 
+  it("releases invoice credits only as a critical confirmed action", () => {
+    const profile = createJarvisAccessProfile({
+      id: "accounting",
+      role: Role.BUCHHALTUNG,
+    });
+    const decision = getJarvisActionDecision("invoice.credit", profile);
+
+    expect(decision).toMatchObject({
+      permitted: true,
+      executable: true,
+      reason: "allowed",
+      requiresConfirmation: true,
+    });
+  });
+
   it("releases invoice finalization only as a critical confirmed action", () => {
     const profile = createJarvisAccessProfile({
       id: "gf",

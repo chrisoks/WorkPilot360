@@ -53,6 +53,8 @@ export type InvoiceCancellationEvaluation = {
   cancellationNumber: string;
   lineCount: number;
   releasedTimeEntryCount: number;
+  activeCreditCount: number;
+  creditedGrossTotal: number;
   checks: Array<{
     key: string;
     label: string;
@@ -145,6 +147,17 @@ export async function evaluateInvoiceCancellation(input: {
       deletedAt: null,
     },
   });
+  const activeCredits = await db.invoice.findMany({
+    where: {
+      organizationId: input.organizationId,
+      sourceInvoiceId: invoice.id,
+      status: "Gutschrift",
+    },
+    select: { id: true, invoiceNumber: true, grossTotal: true, updatedAt: true },
+  });
+  const creditedGrossTotal = Math.round(
+    activeCredits.reduce((sum, credit) => sum + Math.abs(Number(credit.grossTotal)), 0) * 100
+  ) / 100;
   const checks: InvoiceCancellationEvaluation["checks"] = [];
   const warnings: string[] = [];
   const blockingIssues: string[] = [];
@@ -181,6 +194,13 @@ export async function evaluateInvoiceCancellation(input: {
       ? `${releasedTimeEntryCount} verknüpfte Zeiteinträge werden wieder zur Abrechnung freigegeben.`
       : "Es sind keine verknüpften Zeiteinträge freizugeben.",
   });
+  if (activeCredits.length) {
+    const issue = `Zu ${invoice.invoiceNumber} existieren bereits ${activeCredits.length} aktive Teilgutschrift(en) über ${formatEuro(creditedGrossTotal)} brutto. Ein Vollstorno würde überkorrigieren und bleibt blockiert.`;
+    blockingIssues.push(issue);
+    checks.push({ key: "credits", label: "Bestehende Gutschriften", status: "blocked", detail: issue });
+  } else {
+    checks.push({ key: "credits", label: "Bestehende Gutschriften", status: "ok", detail: "Es existiert keine aktive Teilgutschrift zur Rechnung." });
+  }
   checks.push({
     key: "amount",
     label: "Gegenbuchung",
@@ -201,6 +221,12 @@ export async function evaluateInvoiceCancellation(input: {
     },
     cancellationNumber,
     releasedTimeEntryCount,
+    activeCredits: activeCredits.map((credit) => ({
+      id: credit.id,
+      invoiceNumber: credit.invoiceNumber,
+      grossTotal: credit.grossTotal,
+      updatedAt: credit.updatedAt.toISOString(),
+    })),
     lines: invoice.lines.map((line) => ({
       id: line.id,
       quantity: line.quantity,
@@ -240,6 +266,8 @@ export async function evaluateInvoiceCancellation(input: {
     cancellationNumber,
     lineCount: invoice.lines.length,
     releasedTimeEntryCount,
+    activeCreditCount: activeCredits.length,
+    creditedGrossTotal,
     checks,
     warnings,
     blockingIssues,

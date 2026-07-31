@@ -458,6 +458,16 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     canUse: canManageInvoices,
   },
   {
+    id: "invoice.credit",
+    title: "Teilgutschrift oder Rechnungskorrektur erstellen",
+    category: "invoice",
+    risk: "critical",
+    confirmation: "critical",
+    dataClasses: ["financial"],
+    implementation: "available",
+    canUse: canManageInvoices,
+  },
+  {
     id: "invoice.delete",
     title: "Rechnung löschen",
     category: "invoice",

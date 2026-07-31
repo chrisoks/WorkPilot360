@@ -77,6 +77,7 @@ import type {
   JarvisInvoicePaymentDraftView,
   JarvisInvoiceReminderDraftView,
   JarvisInvoiceCancellationDraftView,
+  JarvisInvoiceCreditDraftView,
   JarvisPlanningActionDraftView,
   JarvisTaskActionDraftView,
   JarvisTimeActionDraftView,
@@ -683,6 +684,7 @@ type ManagementAiChatMessage = {
     | JarvisInvoicePaymentDraftView
     | JarvisInvoiceReminderDraftView
     | JarvisInvoiceCancellationDraftView
+    | JarvisInvoiceCreditDraftView
     | JarvisPlanningActionDraftView
     | JarvisTimeActionDraftView
     | JarvisWinterCalculationDraftView
@@ -708,6 +710,7 @@ const jarvisPreviewActionIds = new Set([
   "invoice.mark-paid",
   "invoice.remind",
   "invoice.cancel",
+  "invoice.credit",
   "document.send",
 ]);
 
@@ -2243,6 +2246,7 @@ function parseJarvisActionDraft(
   | JarvisInvoicePaymentDraftView
   | JarvisInvoiceReminderDraftView
   | JarvisInvoiceCancellationDraftView
+  | JarvisInvoiceCreditDraftView
   | JarvisPlanningActionDraftView
   | JarvisTimeActionDraftView
   | JarvisWinterCalculationDraftView
@@ -2257,6 +2261,7 @@ function parseJarvisActionDraft(
     parseJarvisInvoicePaymentDraft(value) ??
     parseJarvisInvoiceReminderDraft(value) ??
     parseJarvisInvoiceCancellationDraft(value) ??
+    parseJarvisInvoiceCreditDraft(value) ??
     parseJarvisInvoiceFinalizationDraft(value) ??
     parseJarvisPlanningActionDraft(value) ??
     parseJarvisTimeActionDraft(value) ??
@@ -2339,6 +2344,43 @@ function parseJarvisInvoiceCancellationDraft(
     typeof cancellation.enabled !== "boolean"
   ) return undefined;
   return candidate as unknown as JarvisInvoiceCancellationDraftView;
+}
+
+function parseJarvisInvoiceCreditDraft(
+  value: unknown
+): JarvisInvoiceCreditDraftView | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.version !== 2 ||
+    candidate.actionId !== "invoice.credit" ||
+    typeof candidate.previewId !== "string" ||
+    typeof candidate.title !== "string" ||
+    typeof candidate.badge !== "string" ||
+    typeof candidate.state !== "string" ||
+    typeof candidate.revision !== "number" ||
+    typeof candidate.expiresAt !== "string" ||
+    typeof candidate.invoiceId !== "string" ||
+    typeof candidate.projectId !== "string" ||
+    !Array.isArray(candidate.fields) ||
+    !Array.isArray(candidate.checks) ||
+    !Array.isArray(candidate.warnings) ||
+    !Array.isArray(candidate.blockingIssues) ||
+    !candidate.editor || typeof candidate.editor !== "object" ||
+    !candidate.confirmation || typeof candidate.confirmation !== "object" ||
+    !candidate.cancellation || typeof candidate.cancellation !== "object"
+  ) return undefined;
+  const editor = candidate.editor as Record<string, unknown>;
+  const confirmation = candidate.confirmation as Record<string, unknown>;
+  const cancellation = candidate.cancellation as Record<string, unknown>;
+  if (
+    typeof editor.reason !== "string" ||
+    !Array.isArray(editor.items) ||
+    typeof confirmation.enabled !== "boolean" ||
+    typeof confirmation.requiredText !== "string" ||
+    typeof cancellation.enabled !== "boolean"
+  ) return undefined;
+  return candidate as unknown as JarvisInvoiceCreditDraftView;
 }
 
 function parseJarvisInvoicePaymentDraft(
@@ -3797,6 +3839,109 @@ function JarvisInvoiceCancellationCard({
         {draft.result ? <button type="button" data-primary="true" disabled={disabled || isWorking} onClick={() => onOpenInvoice(draft)}>{draft.result.label}</button> : null}
       </div>
       <footer>{draft.state === "executed" ? "Das Vollstorno wurde genau einmal ausgeführt. Eine Rückzahlung oder E-Mail wurde nicht ausgelöst." : draft.state === "cancelled" ? "Die Stornovorschau wurde beendet. Rechnung, Zeiten und Lager blieben unverändert." : draft.state === "expired" ? "Die Stornovorschau ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`}</footer>
+    </section>
+  );
+}
+
+function JarvisInvoiceCreditCard({
+  draft,
+  actorId,
+  disabled,
+  onChange,
+  onOpenInvoice,
+}: {
+  draft: JarvisInvoiceCreditDraftView;
+  actorId: string;
+  disabled: boolean;
+  onChange: (next: JarvisInvoiceCreditDraftView, message?: string) => void;
+  onOpenInvoice: (draft: JarvisInvoiceCreditDraftView) => void;
+}) {
+  const [reason, setReason] = useState(draft.editor.reason);
+  const [items, setItems] = useState(() => draft.editor.items.map((item) => ({ sourceInvoiceLineId: item.sourceInvoiceLineId, netAmount: item.netAmount })));
+  const [confirmationText, setConfirmationText] = useState("");
+  const [isWorking, setIsWorking] = useState(false);
+  const [error, setError] = useState("");
+  const isOpen = draft.state === "awaiting_input" || draft.state === "awaiting_confirmation";
+  const currentSignature = JSON.stringify({ reason, items });
+  const savedSignature = JSON.stringify({
+    reason: draft.editor.reason,
+    items: draft.editor.items.map((item) => ({ sourceInvoiceLineId: item.sourceInvoiceLineId, netAmount: item.netAmount })),
+  });
+  const isDirty = currentSignature !== savedSignature;
+
+  useEffect(() => {
+    setReason(draft.editor.reason);
+    setItems(draft.editor.items.map((item) => ({ sourceInvoiceLineId: item.sourceInvoiceLineId, netAmount: item.netAmount })));
+    setConfirmationText("");
+    setError("");
+  }, [draft.previewId, draft.revision, draft.state, draft.editor.reason, draft.editor.items]);
+
+  const request = async (method: "PATCH" | "POST", payload: Record<string, unknown>) => {
+    setIsWorking(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/jarvis/action-drafts/${encodeURIComponent(draft.previewId)}`, {
+        method,
+        headers: { "Content-Type": "application/json", "X-Jarvis-Action": "jarvis-action-draft-v2" },
+        body: JSON.stringify({ actorId, actionId: "invoice.credit", revision: draft.revision, ...payload }),
+      });
+      const data = await response.json().catch(() => null);
+      const next = parseJarvisInvoiceCreditDraft(data?.actionDraft);
+      if (!response.ok || !next) {
+        setError(data?.error ?? "Die Teilgutschrift konnte nicht sicher verarbeitet werden.");
+        return;
+      }
+      onChange(next, typeof data?.message === "string" ? data.message : undefined);
+    } catch {
+      setError("Das Action Center ist gerade nicht erreichbar. Es wurde keine Gutschrift erstellt.");
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
+  return (
+    <section className={styles.jarvisActionPreview} data-state={draft.state} aria-label={`${draft.title} – ${draft.badge}`}>
+      <header><div><span>Action Center · Kritische Finanzaktion</span><strong>{draft.title}</strong></div><em>{draft.badge}</em></header>
+      <dl>{draft.fields.map((field) => <div key={`${field.label}-${field.value}`}><dt>{field.label}</dt><dd>{field.value}</dd></div>)}</dl>
+      {isOpen ? (
+        <div className={styles.jarvisActionDraftEditor}>
+          <label><span>Verbindlicher Korrekturgrund</span><textarea value={reason} maxLength={500} disabled={disabled || isWorking} onChange={(event) => setReason(event.target.value)} /></label>
+          {draft.editor.items.map((line, index) => (
+            <label key={line.sourceInvoiceLineId}>
+              <span>{line.label} · noch {line.remainingNet.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EUR netto · {line.vatRate.toLocaleString("de-DE")} % MwSt.</span>
+              <input
+                type="number"
+                min="0"
+                max={line.remainingNet}
+                step="0.01"
+                value={items[index]?.netAmount ?? 0}
+                disabled={disabled || isWorking || line.remainingNet <= 0}
+                onChange={(event) => setItems((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, netAmount: Number(event.target.value) } : item))}
+              />
+            </label>
+          ))}
+          <button type="button" disabled={disabled || isWorking || !isDirty || reason.trim().length < 3} onClick={() => void request("PATCH", { reason, items })}>Gutschrift neu prüfen</button>
+        </div>
+      ) : null}
+      <div className={styles.jarvisPlanningChecks}>
+        <strong>Teilgutschrift-Prüfung</strong>
+        {draft.checks.map((check) => <div key={check.key} data-status={check.status}><span>{check.status === "ok" ? "✓" : "!"}</span><p><b>{check.label}</b><small>{check.detail}</small></p></div>)}
+      </div>
+      {draft.warnings.map((warning) => <div key={warning} className={styles.jarvisActionPreviewMissing}><strong>Bewusster Prüfhinweis</strong><span>{warning}</span></div>)}
+      {draft.blockingIssues.length ? <div className={styles.jarvisActionPreviewMissing}><strong>Teilgutschrift ist noch blockiert</strong><span>{draft.blockingIssues.join(" · ")}</span></div> : null}
+      {draft.confirmation.enabled && isDirty ? <div className={styles.jarvisActionPreviewMissing}><strong>Änderung noch nicht geprüft</strong><span>Prüfe Grund und Positionsbeträge erneut.</span></div> : null}
+      {draft.confirmation.enabled && isOpen && !isDirty ? (
+        <div className={styles.jarvisActionDraftEditor}>
+          <label><span>Zur kritischen Bestätigung exakt eingeben: <strong>{draft.confirmation.requiredText}</strong></span><input value={confirmationText} disabled={disabled || isWorking} autoComplete="off" onChange={(event) => setConfirmationText(event.target.value)} /></label>
+        </div>
+      ) : null}
+      {error ? <div className={styles.jarvisActionDraftError} role="alert">{error}</div> : null}
+      <div className={styles.jarvisActionDraftActions}>
+        {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || isDirty || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("POST", { command: "confirm", confirmationText })}>Teilgutschrift verbindlich erstellen</button> : null}
+        {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("POST", { command: "cancel" })}>Gutschriftvorschau abbrechen</button> : null}
+        {draft.result ? <button type="button" data-primary="true" disabled={disabled || isWorking} onClick={() => onOpenInvoice(draft)}>{draft.result.label}</button> : null}
+      </div>
+      <footer>{draft.state === "executed" ? "Die Teilgutschrift wurde genau einmal erstellt. Auszahlung, Zeit, Lager und Versand wurden nicht ausgelöst." : draft.state === "cancelled" ? "Die Gutschriftvorschau wurde beendet. Alle Geschäftsdaten blieben unverändert." : draft.state === "expired" ? "Die Gutschriftvorschau ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`}</footer>
     </section>
   );
 }
@@ -7518,6 +7663,7 @@ type CatalogPackageItem = {
 };
 type OfferLineDraft = {
   id: string;
+  sourceInvoiceLineId?: string;
   catalogItemId: string;
   catalogType: CatalogItemType | "";
   isLaborPosition?: boolean;
@@ -7592,7 +7738,7 @@ type InvoiceItem = {
   company: "OK solutions" | "OK immocare";
   invoiceNumber: string;
   status: string;
-  billingSource: "manual" | "batch" | "hourly-recurring";
+  billingSource: "manual" | "batch" | "hourly-recurring" | "cancellation" | "credit-note";
   customerName: string;
   customerStreet: string;
   customerCity: string;
@@ -7604,6 +7750,9 @@ type InvoiceItem = {
   serviceDate: string;
   sourceOfferId: string;
   sourceOfferNumber: string;
+  sourceInvoiceId: string;
+  sourceInvoiceNumber: string;
+  correctionReason: string;
   introText: string;
   closingText: string;
   netTotal: number;
@@ -17015,7 +17164,7 @@ export function DashboardPage() {
   }
 
   function isUsableAutoBillingInvoice(invoice: InvoiceItem) {
-    return !isDeletedInvoice(invoice) && !["Entwurf", "Storniert", "Stornorechnung"].includes(invoice.status);
+    return !isDeletedInvoice(invoice) && !["Entwurf", "Storniert", "Stornorechnung", "Gutschrift"].includes(invoice.status);
   }
 
   function getProjectInvoicesSorted(projectId: string) {
@@ -18882,7 +19031,7 @@ export function DashboardPage() {
 
   async function cancelInvoice(invoice: InvoiceItem) {
     if (!selectedProjectFile) return;
-    if (["Storniert", "Stornorechnung"].includes(invoice.status) || isDeletedStatus(invoice.status)) return;
+    if (["Storniert", "Stornorechnung", "Gutschrift"].includes(invoice.status) || isDeletedStatus(invoice.status)) return;
 
     const reason = window.prompt(
       `Warum soll ${invoice.invoiceNumber} vollständig storniert werden? Es wird eine eigene Stornorechnung erstellt.`,
@@ -38822,6 +38971,7 @@ await addProjectLogbookEntry(
       | JarvisInvoicePaymentDraftView
       | JarvisInvoiceReminderDraftView
       | JarvisInvoiceCancellationDraftView
+      | JarvisInvoiceCreditDraftView
       | JarvisPlanningActionDraftView
       | JarvisTimeActionDraftView
       | JarvisWinterCalculationDraftView
@@ -38856,6 +39006,7 @@ await addProjectLogbookEntry(
         nextDraft.actionId === "invoice.mark-paid" ||
         nextDraft.actionId === "invoice.remind" ||
         nextDraft.actionId === "invoice.cancel" ||
+        nextDraft.actionId === "invoice.credit" ||
         nextDraft.actionId === "document.send"
       ) {
         void loadInvoices();
@@ -47141,14 +47292,16 @@ await addProjectLogbookEntry(
                                 >
                                   PDF öffnen
                                 </button>
-                                <button
-                                  type="button"
-                                  className={styles.timeEntryEditButton}
-                                  onClick={() => openDocumentMailDialog(getInvoiceDocumentMailKind(invoice), invoice)}
-                                >
-                                  Per E-Mail senden
-                                </button>
-                                {!["Entwurf", "Storniert", "Stornorechnung"].includes(invoice.status) && !isDeletedStatus(invoice.status) ? (
+                                {invoice.status !== "Gutschrift" ? (
+                                  <button
+                                    type="button"
+                                    className={styles.timeEntryEditButton}
+                                    onClick={() => openDocumentMailDialog(getInvoiceDocumentMailKind(invoice), invoice)}
+                                  >
+                                    Per E-Mail senden
+                                  </button>
+                                ) : null}
+                                {!["Entwurf", "Storniert", "Stornorechnung", "Gutschrift"].includes(invoice.status) && !isDeletedStatus(invoice.status) ? (
                                   <button
                                     type="button"
                                     className={styles.timeEntryEditButton}
@@ -48503,7 +48656,7 @@ await addProjectLogbookEntry(
       const unratedStampHours = getUnratedStampHours(scopeStampEntries);
       const unratedStampDetails = getUnratedStampDetails(scopeStampEntries);
       const hasCancelledInvoice = scopeAllInvoices.some((invoice) =>
-        ["Storniert", "Stornorechnung"].includes(invoice.status)
+        ["Storniert", "Stornorechnung", "Gutschrift"].includes(invoice.status)
       );
       const isSnapshotFinal =
         revenue > 0 &&
@@ -50851,14 +51004,16 @@ await addProjectLogbookEntry(
                                 >
                                   Drucken
                                 </button>
-                                <button
-                                  type="button"
-                                  className={styles.timeEntryEditButton}
-                                  onClick={() => openDocumentMailDialog(getInvoiceDocumentMailKind(invoice), invoice)}
-                                >
-                                  Per E-Mail senden
-                                </button>
-                                {!["Entwurf", "Storniert", "Stornorechnung"].includes(invoice.status) && !isDeletedStatus(invoice.status) ? (
+                                {invoice.status !== "Gutschrift" ? (
+                                  <button
+                                    type="button"
+                                    className={styles.timeEntryEditButton}
+                                    onClick={() => openDocumentMailDialog(getInvoiceDocumentMailKind(invoice), invoice)}
+                                  >
+                                    Per E-Mail senden
+                                  </button>
+                                ) : null}
+                                {!["Entwurf", "Storniert", "Stornorechnung", "Gutschrift"].includes(invoice.status) && !isDeletedStatus(invoice.status) ? (
                                   <button
                                     type="button"
                                     className={styles.timeEntryEditButton}
@@ -75299,6 +75454,25 @@ await addProjectLogbookEntry(
                     {message.role === "assistant" &&
                     message.actionDraft?.actionId === "invoice.cancel" ? (
                       <JarvisInvoiceCancellationCard
+                        draft={message.actionDraft}
+                        actorId={activeUserId}
+                        disabled={isManagementAiSending}
+                        onChange={(nextDraft, nextMessage) =>
+                          updateJarvisActionDraftMessage(index, nextDraft, nextMessage)
+                        }
+                        onOpenInvoice={(invoiceDraft) => {
+                          const project = heroProjects.find((candidate) => candidate.id === invoiceDraft.projectId);
+                          if (!project) {
+                            setManagementAiError("Das Projekt ist mit der aktuellen Rolle nicht sichtbar.");
+                            return;
+                          }
+                          openProjectFile(project, { tab: "documents", documentType: "Rechnungen" });
+                        }}
+                      />
+                    ) : null}
+                    {message.role === "assistant" &&
+                    message.actionDraft?.actionId === "invoice.credit" ? (
+                      <JarvisInvoiceCreditCard
                         draft={message.actionDraft}
                         actorId={activeUserId}
                         disabled={isManagementAiSending}

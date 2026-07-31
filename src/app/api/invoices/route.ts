@@ -49,6 +49,11 @@ import {
   createInvoiceCancellation,
   InvoiceCancellationServiceError,
 } from "@/lib/invoices/invoice-cancellation-service";
+import {
+  createInvoiceCredit,
+  InvoiceCreditServiceError,
+  type InvoiceCreditItemInput,
+} from "@/lib/invoices/invoice-credit-service";
 
 type InvoiceCompany = "OK solutions" | "OK immocare";
 
@@ -99,6 +104,7 @@ type InvoiceInput = {
   serviceDate?: string;
   sourceOfferId?: string;
   sourceOfferNumber?: string;
+  creditItems?: InvoiceCreditItemInput[];
   introText?: string;
   closingText?: string;
   vatRate?: number;
@@ -136,6 +142,9 @@ type InvoiceRow = {
   serviceDate: string;
   sourceOfferId: string;
   sourceOfferNumber: string;
+  sourceInvoiceId: string;
+  sourceInvoiceNumber: string;
+  correctionReason: string;
   introText: string;
   closingText: string;
   netTotal: number;
@@ -158,6 +167,7 @@ type InvoiceLineRow = {
   invoiceId: string;
   catalogItemId: string;
   catalogType: string;
+  sourceInvoiceLineId: string;
   isLaborPosition: boolean;
   position: number;
   quantity: number;
@@ -210,7 +220,7 @@ const DELETED_INVOICE_STATUS = "Gelöscht";
 const LEGACY_DELETED_INVOICE_STATUS = "Gel\u00c3\u00b6scht";
 
 function isInvoiceBlockedForXRechnung(status: unknown) {
-  return ["Storniert", "Stornorechnung", DELETED_INVOICE_STATUS, LEGACY_DELETED_INVOICE_STATUS].includes(
+  return ["Storniert", "Stornorechnung", "Gutschrift", DELETED_INVOICE_STATUS, LEGACY_DELETED_INVOICE_STATUS].includes(
     cleanString(status)
   );
 }
@@ -328,6 +338,12 @@ async function ensureInvoiceTables() {
   `;
   await prisma.$executeRaw`
     ALTER TABLE "Invoice"
+    ADD COLUMN IF NOT EXISTS "sourceInvoiceId" TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS "sourceInvoiceNumber" TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS "correctionReason" TEXT NOT NULL DEFAULT ''
+  `;
+  await prisma.$executeRaw`
+    ALTER TABLE "Invoice"
     ADD COLUMN IF NOT EXISTS "serviceDate" TEXT NOT NULL DEFAULT '',
     ADD COLUMN IF NOT EXISTS "sourceOfferId" TEXT NOT NULL DEFAULT '',
     ADD COLUMN IF NOT EXISTS "sourceOfferNumber" TEXT NOT NULL DEFAULT ''
@@ -345,6 +361,11 @@ async function ensureInvoiceTables() {
   await prisma.$executeRaw`
     CREATE INDEX IF NOT EXISTS "Invoice_organizationId_projectId_idx"
     ON "Invoice" ("organizationId", "projectId")
+  `;
+
+  await prisma.$executeRaw`
+    CREATE INDEX IF NOT EXISTS "Invoice_organizationId_sourceInvoiceId_idx"
+    ON "Invoice" ("organizationId", "sourceInvoiceId")
   `;
 
   await prisma.$executeRaw`
@@ -383,6 +404,16 @@ async function ensureInvoiceTables() {
   await prisma.$executeRaw`
     ALTER TABLE "InvoiceLine"
     ADD COLUMN IF NOT EXISTS "isLaborPosition" BOOLEAN NOT NULL DEFAULT false
+  `;
+
+  await prisma.$executeRaw`
+    ALTER TABLE "InvoiceLine"
+    ADD COLUMN IF NOT EXISTS "sourceInvoiceLineId" TEXT NOT NULL DEFAULT ''
+  `;
+
+  await prisma.$executeRaw`
+    CREATE INDEX IF NOT EXISTS "InvoiceLine_organizationId_sourceInvoiceLineId_idx"
+    ON "InvoiceLine" ("organizationId", "sourceInvoiceLineId")
   `;
 
   await prisma.$executeRaw`
@@ -1663,6 +1694,396 @@ async function cancelInvoice(input: {
   }
 }
 
+async function creditInvoice(input: {
+  organizationId: string;
+  invoiceId: string;
+  actorName: string;
+  actorUserId: string;
+  reason: string;
+  items: InvoiceCreditItemInput[];
+  includeInternalCosts: boolean;
+}) {
+  try {
+    const result = await prisma.$transaction(
+      (tx) => createInvoiceCredit({
+        tx,
+        organizationId: input.organizationId,
+        invoiceId: input.invoiceId,
+        actorName: input.actorName,
+        actorUserId: input.actorUserId,
+        reason: input.reason,
+        items: input.items,
+        source: "ui",
+      }),
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
+    return NextResponse.json({
+      creditInvoice: serializeInvoice(
+        result.creditInvoice as unknown as InvoiceRow,
+        result.creditInvoice.lines as unknown as InvoiceLineRow[],
+        result.creditInvoice.lines.flatMap((line) => line.laborItems) as unknown as InvoiceLineLaborRow[],
+        { includeInternalCosts: input.includeInternalCosts }
+      ),
+    });
+  } catch (error) {
+    console.error("Invoice credit failed", error);
+    const known = error instanceof InvoiceCreditServiceError;
+    return NextResponse.json(
+      { error: known ? error.message : "Teilgutschrift konnte nicht sicher erstellt werden." },
+      {
+        status: known
+          ? error.code === "not_found"
+            ? 404
+            : error.code === "conflict" || error.code === "stale_context"
+              ? 409
+              : 400
+          : 500,
+      }
+    );
+  }
+}
+
+export async function GET(req: Request) {
+  const { organization, users } = await getDemoContext();
+  await ensureInvoiceTables();
+  const { searchParams } = new URL(req.url);
+  const requestedActorId = searchParams.get("actorId");
+  const pdfId = cleanString(searchParams.get("pdfId"));
+  const xrechnungId = cleanString(searchParams.get("xrechnungId"));
+  const xrechnungValidationId = cleanString(searchParams.get("xrechnungValidationId"));
+  const zugferdId = cleanString(searchParams.get("zugferdId"));
+  const historyProjectId = cleanString(searchParams.get("historyProjectId"));
+  const actorResult = await getSessionBoundActor(req, users, requestedActorId);
+  if (!actorResult.ok) {
+    if (
+      actorResult.status === 401 &&
+      !cleanString(requestedActorId) &&
+      !pdfId &&
+      !xrechnungId &&
+      !xrechnungValidationId &&
+      !zugferdId &&
+      !historyProjectId
+    ) {
+      return NextResponse.json([]);
+    }
+    return sessionBoundActorResponse(actorResult);
+  }
+  const actor = actorResult.actor;
+  if (!canSendDocumentMails(actor)) {
+    return forbiddenInvoiceResponse();
+  }
+  const includeInternalCosts = canViewInternalCostData(actor);
+
+  if (xrechnungId || xrechnungValidationId || zugferdId) {
+    const targetInvoiceId = xrechnungId || xrechnungValidationId || zugferdId;
+    const rows = await prisma.$queryRaw<InvoiceRow[]>`
+      SELECT *
+      FROM "Invoice"
+      WHERE "organizationId" = ${organization.id} AND "id" = ${targetInvoiceId}
+      LIMIT 1
+    `;
+    const invoice = rows[0];
+    if (!invoice) {
+      return NextResponse.json({ error: "Rechnung wurde nicht gefunden." }, { status: 404 });
+    }
+    if (isInvoiceBlockedForXRechnung(invoice.status)) {
+      return NextResponse.json(
+        { error: "XRechnung kann fuer geloeschte oder stornierte Rechnungen sowie Gutschriften nicht erzeugt werden." },
+        { status: 409 }
+      );
+    }
+
+    const lineRows = await getInvoiceLinesForInvoice(organization.id, invoice.id);
+    if (!lineRows.length) {
+      return NextResponse.json({ error: "XRechnung kann ohne Rechnungspositionen nicht erzeugt werden." }, { status: 400 });
+    }
+
+    const buyerReference = await getInvoiceBuyerReference(
+      organization.id,
+      invoice.projectId,
+      invoice.projectNumber || invoice.invoiceNumber
+    );
+    const seller = getXRechnungSellerProfile(invoice.company);
+    const missingSellerFields = getMissingXRechnungSellerFields(seller);
+    if (missingSellerFields.length > 0) {
+      return NextResponse.json(
+        {
+          error: `XRechnung kann nicht erzeugt werden, weil Firmendaten fehlen: ${missingSellerFields.join(", ")}.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    const paymentTermDays = Number(invoice.paymentTermDays ?? 14);
+    const serviceDate = cleanDateKey(invoice.serviceDate);
+    const dueDate = cleanDateKey(invoice.dueDate) || addDaysToDateKey(serviceDate, paymentTermDays);
+    const xrechnungInvoice = {
+      invoiceNumber: invoice.invoiceNumber,
+      issueDate: invoice.createdAt?.toISOString?.().slice(0, 10) || new Date().toISOString().slice(0, 10),
+      serviceDate,
+      dueDate,
+      seller,
+      customerName: invoice.customerName,
+      customerStreet: invoice.customerStreet,
+      customerCity: invoice.customerCity,
+      contactName: invoice.contactName,
+      netTotal: Number(invoice.netTotal ?? 0),
+      vatRate: Number(invoice.vatRate ?? 19),
+      grossTotal: Number(invoice.grossTotal ?? 0),
+      paymentTermDays,
+      buyerReference,
+    };
+    const xrechnungLines = lineRows.map((line, index) => ({
+      position: Number(line.position ?? index + 1),
+      quantity: Number(line.quantity ?? 0),
+      unit: line.unit || "Stk",
+      title: cleanInvoiceLineTitle(line.title) || "Position",
+      description: line.description || "",
+      unitPrice: Number(line.unitPrice ?? 0),
+      discountPercent: Number(line.discountPercent ?? 0),
+      vatRate: Number(line.vatRate ?? invoice.vatRate ?? 19),
+      totalNet: Number(line.totalNet ?? 0),
+    }));
+    const validation = validateXRechnungPayload(xrechnungInvoice, xrechnungLines);
+    const xml = generateXRechnungXml(xrechnungInvoice, xrechnungLines);
+    const kositValidation = validation.valid
+      ? await validateXRechnungWithKosit(xml)
+      : {
+          available: false,
+          valid: false,
+          status: "not-configured" as const,
+          message: "KoSIT-Validierung wurde wegen technischer Mindestfehler nicht ausgeführt.",
+          issues: [],
+        };
+
+    if (xrechnungValidationId) {
+      return NextResponse.json({
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        validation,
+        kositValidation,
+      });
+    }
+
+    if (!validation.valid || (kositValidation.available && !kositValidation.valid)) {
+      return NextResponse.json(
+        {
+          error: zugferdId
+            ? "ZUGFeRD kann wegen Validierungsfehlern nicht erzeugt werden."
+            : "XRechnung kann wegen Validierungsfehlern nicht erzeugt werden.",
+          validation,
+          kositValidation,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (zugferdId) {
+      if (!invoice.pdfData) {
+        return NextResponse.json({ error: "ZUGFeRD kann nicht erzeugt werden: Rechnungs-PDF fehlt." }, { status: 404 });
+      }
+
+      const zugferd = await buildValidatedZugferdPdf({
+        invoicePdfBytes: Buffer.from(invoice.pdfData, "base64"),
+        xrechnungXml: Buffer.from(xml, "utf8"),
+      });
+      if (!zugferd.conversion.available) {
+        return NextResponse.json(
+          { error: "ZUGFeRD kann nicht erzeugt werden: PDF/A-3-Konverter ist nicht konfiguriert.", zugferdConversion: zugferd.conversion },
+          { status: 503 }
+        );
+      }
+      if (!zugferd.conversion.converted) {
+        return NextResponse.json(
+          { error: `ZUGFeRD kann nicht erzeugt werden: ${zugferd.conversion.message}`, zugferdConversion: zugferd.conversion },
+          { status: 500 }
+        );
+      }
+      if (!zugferd.validation?.available) {
+        return NextResponse.json(
+          { error: "ZUGFeRD kann nicht erzeugt werden: PDF/A-3-Validator ist nicht konfiguriert." },
+          { status: 503 }
+        );
+      }
+      if (!zugferd.validation.valid || !zugferd.pdfBytes) {
+        return NextResponse.json(
+          {
+            error: "ZUGFeRD wurde vom PDF/A-3-Validator abgelehnt.",
+            zugferdValidation: zugferd.validation,
+          },
+          { status: 400 }
+        );
+      }
+
+      return new Response(new Uint8Array(zugferd.pdfBytes), {
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename="${invoice.invoiceNumber}-zugferd.pdf"`,
+        },
+      });
+    }
+
+    return new Response(xml, {
+      headers: {
+        "Content-Type": "application/xml; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${invoice.invoiceNumber}-xrechnung.xml"`,
+      },
+    });
+  }
+
+  if (pdfId) {
+    const rows = await prisma.$queryRaw<InvoiceRow[]>`
+      SELECT *
+      FROM "Invoice"
+      WHERE "organizationId" = ${organization.id} AND "id" = ${pdfId}
+      LIMIT 1
+    `;
+    const Invoice = rows[0];
+    if (!Invoice) {
+      return NextResponse.json({ error: "PDF wurde nicht gefunden." }, { status: 404 });
+    }
+    if (Invoice.status === "Entwurf") {
+      const lineRows = await getInvoiceLinesForInvoice(organization.id, Invoice.id);
+      const draftLines = lineRows.map((line) => ({
+        catalogItemId: line.catalogItemId,
+        catalogType: line.catalogType,
+        isLaborPosition: Boolean(line.isLaborPosition),
+        quantity: Number(line.quantity ?? 0),
+        unit: line.unit || "Stk",
+        title: cleanInvoiceLineTitle(line.title) || "-",
+        description: line.description || "",
+        unitPrice: Number(line.unitPrice ?? 0),
+        discountPercent: Number(line.discountPercent ?? 0),
+        materialUnitCostSnapshot: Number(line.materialUnitCostSnapshot ?? 0),
+        materialCostSnapshot: Number(line.materialCostSnapshot ?? 0),
+        laborUnitCostSnapshot: Number(line.laborUnitCostSnapshot ?? 0),
+        laborCostSnapshot: Number(line.laborCostSnapshot ?? 0),
+        packageComponentsSnapshot: cleanPackageComponentsSnapshot(line.packageComponentsSnapshot),
+        catalogCostSnapshotVersion: Number(line.catalogCostSnapshotVersion ?? 0),
+        vatRate: Number(line.vatRate ?? Invoice.vatRate ?? 19),
+        laborItems: [],
+      })) as Required<InvoiceLineInput>[];
+      const draftPdf = await generateInvoicePdf(
+        {
+          projectId: Invoice.projectId,
+          projectNumber: Invoice.projectNumber,
+          projectTitle: Invoice.projectTitle,
+          company: Invoice.company,
+          customerName: Invoice.customerName,
+          customerStreet: Invoice.customerStreet,
+          customerCity: Invoice.customerCity,
+          contactName: Invoice.contactName,
+          internalContactName: Invoice.internalContactName,
+          internalPhone: Invoice.internalPhone,
+          internalEmail: Invoice.internalEmail,
+          plannedExecutionMonth: Invoice.plannedExecutionMonth,
+          serviceDate: Invoice.serviceDate,
+          sourceOfferId: Invoice.sourceOfferId,
+          sourceOfferNumber: Invoice.sourceOfferNumber,
+          introText: Invoice.introText,
+          closingText: Invoice.closingText,
+          vatRate: Number(Invoice.vatRate ?? 19),
+          discountPercent: Number(Invoice.discountPercent ?? 0),
+          invoiceNumber: Invoice.invoiceNumber,
+          documentTitle: "Rechnungsentwurf",
+        },
+        draftLines
+      );
+      const bytes = Buffer.from(draftPdf.pdfData ?? "", "base64");
+      return new Response(bytes, {
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `inline; filename="Rechnungsentwurf-${Invoice.projectNumber || Invoice.id}.pdf"`,
+        },
+      });
+    }
+    if (!Invoice.pdfData) {
+      return NextResponse.json({ error: "PDF wurde nicht gefunden." }, { status: 404 });
+    }
+    const bytes = Buffer.from(Invoice.pdfData, "base64");
+    return new Response(bytes, {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `inline; filename="${Invoice.invoiceNumber}.pdf"`,
+      },
+    });
+  }
+
+  if (historyProjectId) {
+    const historyRows = await prisma.$queryRaw<InvoiceHistoryRow[]>`
+      SELECT *
+      FROM "InvoiceHistory"
+      WHERE "organizationId" = ${organization.id} AND "projectId" = ${historyProjectId}
+      ORDER BY "createdAt" DESC
+    `;
+    return NextResponse.json(historyRows.map(serializeInvoiceHistory));
+  }
+
+  const projectId = cleanString(searchParams.get("projectId"));
+  const rows = projectId
+    ? await prisma.$queryRaw<InvoiceRow[]>`
+        SELECT "id", "organizationId", "projectId", "projectNumber", "projectTitle", "company",
+               "invoiceNumber", "status", "billingSource", "customerName", "customerStreet",
+               "customerCity", "contactName", "internalContactName", "internalPhone",
+               "internalEmail", "plannedExecutionMonth", "serviceDate", "sourceOfferId",
+               "sourceOfferNumber", "sourceInvoiceId", "sourceInvoiceNumber", "correctionReason", "introText", "closingText", "netTotal", "vatRate",
+               "grossTotal", "discountPercent", "paymentTermDays", "dueDate",
+               "reminderLevel", "lastReminderAt", "isPaid", "paidAt",
+               CASE WHEN "pdfData" IS NULL THEN NULL ELSE 'available' END AS "pdfData",
+               "createdAt", "updatedAt"
+        FROM "Invoice"
+        WHERE "organizationId" = ${organization.id} AND "projectId" = ${projectId} AND "status" NOT IN (${DELETED_INVOICE_STATUS}, ${LEGACY_DELETED_INVOICE_STATUS})
+        ORDER BY "createdAt" DESC
+      `
+    : await prisma.$queryRaw<InvoiceRow[]>`
+        SELECT "id", "organizationId", "projectId", "projectNumber", "projectTitle", "company",
+               "invoiceNumber", "status", "billingSource", "customerName", "customerStreet",
+               "customerCity", "contactName", "internalContactName", "internalPhone",
+               "internalEmail", "plannedExecutionMonth", "serviceDate", "sourceOfferId",
+               "sourceOfferNumber", "sourceInvoiceId", "sourceInvoiceNumber", "correctionReason", "introText", "closingText", "netTotal", "vatRate",
+               "grossTotal", "discountPercent", "paymentTermDays", "dueDate",
+               "reminderLevel", "lastReminderAt", "isPaid", "paidAt",
+               CASE WHEN "pdfData" IS NULL THEN NULL ELSE 'available' END AS "pdfData",
+               "createdAt", "updatedAt"
+        FROM "Invoice"
+        WHERE "organizationId" = ${organization.id} AND "status" NOT IN (${DELETED_INVOICE_STATUS}, ${LEGACY_DELETED_INVOICE_STATUS})
+        ORDER BY "createdAt" DESC
+      `;
+
+  const lineRows: InvoiceLineRow[] = [];
+  const laborRows: InvoiceLineLaborRow[] = [];
+  for (const Invoice of rows) {
+    const rowsForInvoice = await prisma.$queryRaw<InvoiceLineRow[]>`
+      SELECT *
+      FROM "InvoiceLine"
+      WHERE "organizationId" = ${organization.id} AND "invoiceId" = ${Invoice.id}
+      ORDER BY "position" ASC
+    `;
+    lineRows.push(...rowsForInvoice);
+
+    const laborRowsForInvoice = await prisma.$queryRaw<InvoiceLineLaborRow[]>`
+      SELECT *
+      FROM "InvoiceLineLabor"
+      WHERE "organizationId" = ${organization.id} AND "invoiceId" = ${Invoice.id}
+      ORDER BY "position" ASC
+    `;
+    laborRows.push(...laborRowsForInvoice);
+  }
+
+  return NextResponse.json(
+    rows.map((row) =>
+      serializeInvoice(
+        row,
+        lineRows.filter((line) => line.invoiceId === row.id),
+        laborRows.filter((labor) => labor.invoiceId === row.id),
+        { includeInternalCosts }
+      )
+    )
+  );
+}
+
+
+
 export async function POST(req: Request) {
   const { organization, users } = await getDemoContext();
   await ensureInvoiceTables();
@@ -1898,6 +2319,18 @@ export async function PATCH(req: Request) {
       actorName,
       actorUserId: actor.id,
       reason: cleanString(body.reason),
+      includeInternalCosts,
+    });
+  }
+
+  if (cleanString(body.action) === "credit") {
+    return creditInvoice({
+      organizationId: organization.id,
+      invoiceId: id,
+      actorName,
+      actorUserId: actor.id,
+      reason: cleanString(body.reason),
+      items: Array.isArray(body.creditItems) ? body.creditItems : [],
       includeInternalCosts,
     });
   }

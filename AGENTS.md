@@ -1,5 +1,33 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS kontrollierte Teilgutschrift / Rechnungskorrektur 2026-07-31:
+  Der elfte Action-Center-Vertikalschnitt erstellt eine finanzielle
+  Teilgutschrift zu einer Rechnung im Status `Fakturiert` oder `Bezahlt` als
+  eigenständigen negativen Beleg im Nummernkreis `GU-...`. Jede GU-Rechnung
+  verweist dauerhaft über `sourceInvoiceId` und `sourceInvoiceNumber` auf die
+  Ursprungsrechnung; jede GU-Position ist über `sourceInvoiceLineId` an genau
+  eine ursprüngliche Rechnungsposition gebunden. Der gemeinsame Service
+  summiert frühere aktive Gutschriften positionsgenau und gibt nur den
+  verbleibenden Nettobetrag frei. Überkorrektur, fremde Positionen, leere
+  Auswahl und eine vollständige Aufhebung des noch offenen Rechnungswertes
+  bleiben blockiert. Für eine vollständige Aufhebung ohne frühere
+  Teilgutschrift bleibt der separate Vollstorno zuständig.
+  JARVIS zeigt Referenzrechnung, vorgesehene GU-Nummer, Projekt, Kunde,
+  Rechnungsstatus, Restkontingent sowie Netto-/Bruttosumme. In der Maske
+  werden der verbindliche Grund und der Nettobetrag je Ursprungsposition
+  bearbeitet; jede Änderung erzwingt eine neue serverseitige Prüfung. Erst
+  die exakte, groß-/kleinschreibungssensitive Phrase
+  `GUTSCHRIFT GU-... ZU RE-... ÜBER ...,.. EUR` darf ausführen. Die Erstellung
+  ist organisations-, sitzungs-, rollen-, revisions-, TTL-, HMAC- und
+  fingerprintgebunden, serialisierbar und unter Advisory Locks exactly-once.
+  Gemeinsam entstehen negative GU-Rechnung samt PDF, zwei
+  Historienereignisse und genau ein Projektlogbucheintrag. Die
+  Ursprungsrechnung bleibt unverändert fakturiert beziehungsweise bezahlt.
+  Eine Teilgutschrift löst bewusst keine Auszahlung, Zahlungsbuchung,
+  Zeitfreigabe, Materialrückgabe oder E-Mail aus. Existiert bereits eine
+  aktive Teilgutschrift, blockiert nun auch der Vollstorno, damit keine
+  doppelte Gegenbuchung entstehen kann.
+
 - JARVIS kontrolliertes Rechnungs-Vollstorno 2026-07-31:
   Der zehnte Action-Center-Vertikalschnitt storniert ausschließlich Rechnungen
   im Status `Fakturiert` oder `Bezahlt` vollständig. JARVIS zeigt Original- und
@@ -10,9 +38,9 @@
   groß-/kleinschreibungssensitive Phrase
   `STORNIEREN RE-... MIT ST-...` darf ausführen. Bezahlte Rechnungen weisen
   ausdrücklich darauf hin, dass weder Rückzahlung noch separate
-  Zahlungsbuchung ausgelöst werden. Teilgutschrift, Rechnungskorrektur und
-  Teilstorno bleiben mangels eigenem Fachmodell fail-closed und werden niemals
-  ersatzweise als Vollstorno ausgeführt.
+  Zahlungsbuchung ausgelöst werden. Teilgutschrift und Rechnungskorrektur
+  laufen ausschließlich über den separaten `invoice.credit`-Fachprozess und
+  werden niemals ersatzweise als Vollstorno ausgeführt.
   Normale Rechnungsmaske und JARVIS verwenden gemeinsam
   `src/lib/invoices/invoice-cancellation-service.ts`. Der Service lädt
   Organisation, Rechnung, Positionen, Kosten-/Arbeitszeilen und verknüpfte

@@ -115,6 +115,23 @@ async function main() {
     },
   });
   const cancellationInvoice = paymentInvoice;
+  const creditInvoice = await prisma.invoice.findFirst({
+    where: {
+      organizationId: actor.organizationId,
+      status: { in: ["Fakturiert", "Bezahlt"] },
+      sourceInvoiceId: "",
+      lines: { some: { totalNet: { gt: 20 } } },
+    },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      id: true,
+      invoiceNumber: true,
+      status: true,
+      isPaid: true,
+      updatedAt: true,
+      lines: { orderBy: { position: "asc" }, select: { id: true, totalNet: true } },
+    },
+  });
   const sessionId = randomUUID();
   await prisma.authSession.create({
     data: {
@@ -135,6 +152,7 @@ async function main() {
   let invoicePaymentDraftPrepared = false;
   let invoiceReminderDraftPrepared = false;
   let invoiceCancellationDraftPrepared = false;
+  let invoiceCreditDraftPrepared = false;
 
   try {
     for (const item of corpus) {
@@ -145,6 +163,7 @@ async function main() {
         const paymentDate = getBerlinDateKey(now);
         const isReminderCase = item.question.includes("Erstelle eine Mahnung");
         const isCancellationCase = item.question.includes("Storniere Rechnung");
+        const isCreditCase = item.question.includes("Teilgutschrift");
         const reminderDeadlineDate = new Date(`${paymentDate}T12:00:00.000Z`);
         reminderDeadlineDate.setUTCDate(reminderDeadlineDate.getUTCDate() + 7);
         const reminderDeadline = reminderDeadlineDate.toISOString().slice(0, 10);
@@ -157,6 +176,8 @@ async function main() {
               ? `Erstelle eine Mahnung für Rechnung ${reminderInvoice.invoiceNumber} mit Zahlungsfrist bis ${formatGermanDate(reminderDeadline)}.`
             : isCancellationCase && cancellationInvoice
               ? `Storniere Rechnung ${cancellationInvoice.invoiceNumber} vollständig wegen QA-Doppelberechnung.`
+            : isCreditCase && creditInvoice
+              ? `Erstelle eine Teilgutschrift zu Rechnung ${creditInvoice.invoiceNumber} über 20 Euro netto wegen QA-Preisnachlass.`
             : item.question;
         const response = await fetch(`${baseUrl}/api/jarvis/chat`, {
           method: "POST",
@@ -253,6 +274,17 @@ async function main() {
             });
           } else {
             invoiceCancellationDraftPrepared = true;
+          }
+        }
+        if (isCreditCase && creditInvoice) {
+          if (payload.actionDraft?.actionId !== "invoice.credit") {
+            failures.push({
+              id: item.id,
+              status: response.status,
+              error: "Die Gutschriftfrage hat keine kontrollierte invoice.credit-Vorschau erzeugt.",
+            });
+          } else {
+            invoiceCreditDraftPrepared = true;
           }
         }
       } catch (error) {
@@ -397,6 +429,43 @@ async function main() {
         });
       }
     }
+    if (creditInvoice) {
+      const [currentInvoice, creditHistoryCount, creditRecordCount] = await Promise.all([
+        prisma.invoice.findUnique({
+          where: { id: creditInvoice.id },
+          select: { status: true, isPaid: true, updatedAt: true },
+        }),
+        prisma.invoiceHistory.count({
+          where: {
+            organizationId: actor.organizationId,
+            invoiceId: creditInvoice.id,
+            eventType: "credit-created",
+            createdAt: { gte: now },
+          },
+        }),
+        prisma.invoice.count({
+          where: {
+            organizationId: actor.organizationId,
+            status: "Gutschrift",
+            createdAt: { gte: now },
+          },
+        }),
+      ]);
+      if (
+        !currentInvoice ||
+        currentInvoice.status !== creditInvoice.status ||
+        currentInvoice.isPaid !== creditInvoice.isPaid ||
+        currentInvoice.updatedAt.toISOString() !== creditInvoice.updatedAt.toISOString() ||
+        creditHistoryCount !== 0 ||
+        creditRecordCount !== 0
+      ) {
+        failures.push({
+          id: "side-effect-invoice-credit",
+          status: 0,
+          error: "Die 110-Fragen-Prüfung hat unerwartet eine Teilgutschrift oder Gutschrifthistorie erzeugt.",
+        });
+      }
+    }
   } finally {
     if (createdDraftIds.size) {
       await prisma.jarvisActionDraft.deleteMany({
@@ -423,6 +492,7 @@ async function main() {
     invoicePaymentDraftPrepared,
     invoiceReminderDraftPrepared,
     invoiceCancellationDraftPrepared,
+    invoiceCreditDraftPrepared,
     executedActions: 0,
     failures,
     qaDraftsRemaining: remainingDrafts,

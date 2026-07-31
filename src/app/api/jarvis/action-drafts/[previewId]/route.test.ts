@@ -29,6 +29,9 @@ const mocks = vi.hoisted(() => ({
   completeJarvisInvoiceCancellationDraft: vi.fn(),
   cancelJarvisInvoiceCancellationDraft: vi.fn(),
   confirmJarvisInvoiceCancellationDraft: vi.fn(),
+  completeJarvisInvoiceCreditDraft: vi.fn(),
+  cancelJarvisInvoiceCreditDraft: vi.fn(),
+  confirmJarvisInvoiceCreditDraft: vi.fn(),
   completeJarvisInvoiceDeliveryDraft: vi.fn(),
   cancelJarvisInvoiceDeliveryDraft: vi.fn(),
   confirmJarvisInvoiceDeliveryDraft: vi.fn(),
@@ -90,6 +93,12 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.cancelJarvisInvoiceCancellationDraft,
   confirmJarvisInvoiceCancellationDraft:
     mocks.confirmJarvisInvoiceCancellationDraft,
+  completeJarvisInvoiceCreditDraft:
+    mocks.completeJarvisInvoiceCreditDraft,
+  cancelJarvisInvoiceCreditDraft:
+    mocks.cancelJarvisInvoiceCreditDraft,
+  confirmJarvisInvoiceCreditDraft:
+    mocks.confirmJarvisInvoiceCreditDraft,
   completeJarvisInvoiceDeliveryDraft:
     mocks.completeJarvisInvoiceDeliveryDraft,
   cancelJarvisInvoiceDeliveryDraft:
@@ -1109,6 +1118,31 @@ describe("JARVIS action-draft API", () => {
     );
     expect(mocks.confirmJarvisInvoicePaymentDraft).not.toHaveBeenCalled();
     expect(mocks.confirmJarvisInvoiceDeliveryDraft).not.toHaveBeenCalled();
+  });
+
+  it("passes only the bound critical phrase to partial credit creation", async () => {
+    mocks.confirmJarvisInvoiceCreditDraft.mockResolvedValue({ state: "executed", actionId: "invoice.credit" });
+    const response = (await POST(
+      request("POST", {
+        actorId: "user-1",
+        actionId: "invoice.credit",
+        command: "confirm",
+        revision: 7,
+        confirmationText: "GUTSCHRIFT GU-10100 ZU RE-10119 ÜBER 23,80 EUR",
+        refundPayment: true,
+        releaseTime: true,
+      }, {
+        "x-jarvis-action": "jarvis-action-draft-v2",
+        origin: "https://workpilot.example",
+      }) as never,
+      context
+    ))!;
+    expect(response.status).toBe(200);
+    expect(mocks.confirmJarvisInvoiceCreditDraft).toHaveBeenCalledWith(
+      "preview-1", expect.anything(), 7, "GUTSCHRIFT GU-10100 ZU RE-10119 ÜBER 23,80 EUR"
+    );
+    expect(mocks.confirmJarvisInvoiceCancellationDraft).not.toHaveBeenCalled();
+    expect(mocks.confirmJarvisInvoicePaymentDraft).not.toHaveBeenCalled();
   });
 
   it("rejects unknown commands without touching draft state", async () => {

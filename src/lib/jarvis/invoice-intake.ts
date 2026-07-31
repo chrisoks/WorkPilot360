@@ -87,6 +87,16 @@ export function extractInvoiceCancellationReason(question: string) {
   return match?.[1]?.trim();
 }
 
+export const extractInvoiceCreditReason = extractInvoiceCancellationReason;
+
+export function extractInvoiceCreditNetAmount(question: string) {
+  const normalized = question.replace(/\./g, "").replace(/,(?=\d{1,2}\b)/g, ".");
+  const afterAmount = normalized.match(/\b(\d+(?:\.\d{1,2})?)\s*(?:eur|euro|€)\s*netto\b/i);
+  const beforeAmount = normalized.match(/\bnetto\s*(?:über|in höhe von|von)?\s*(\d+(?:\.\d{1,2})?)\s*(?:eur|euro|€)?\b/i);
+  const value = Number(afterAmount?.[1] ?? beforeAmount?.[1]);
+  return Number.isFinite(value) && value > 0 ? Math.round(value * 100) / 100 : undefined;
+}
+
 export function extractInvoiceNumber(question: string) {
   return question.match(/\bRE-\d+\b/i)?.[0]?.toUpperCase();
 }

@@ -24,6 +24,7 @@ import {
   type JarvisInvoicePaymentDraftView,
   type JarvisInvoiceReminderDraftView,
   type JarvisInvoiceCancellationDraftView,
+  type JarvisInvoiceCreditDraftView,
   type JarvisInvoiceDeliveryDraftView,
   type JarvisTaskActionDraftState,
   type JarvisTaskActionDraftView,
@@ -142,6 +143,14 @@ import {
   matchesInvoiceCancellationConfirmation,
   type InvoiceCancellationEvaluation,
 } from "@/lib/invoices/invoice-cancellation-service";
+import {
+  createInvoiceCredit,
+  evaluateInvoiceCredit,
+  getInvoiceCreditConfirmationText,
+  InvoiceCreditServiceError,
+  matchesInvoiceCreditConfirmation,
+  type InvoiceCreditEvaluation,
+} from "@/lib/invoices/invoice-credit-service";
 import { syncInvoiceInventoryMovements } from "@/lib/inventory/catalog-inventory";
 import {
   evaluateInvoiceDelivery,
@@ -738,6 +747,60 @@ const invoiceCancellationContextSchema = z
     cancellationNumber: z.string(),
     lineCount: z.number().int().min(0),
     releasedTimeEntryCount: z.number().int().min(0),
+    activeCreditCount: z.number().int().min(0),
+    creditedGrossTotal: z.number().min(0),
+    checks: z.array(z.object({
+      key: z.string(), label: z.string(), status: z.enum(["ok", "warning", "blocked"]), detail: z.string(),
+    }).strict()),
+    warnings: z.array(z.string()),
+    blockingIssues: z.array(z.string()),
+    fingerprint: z.string().length(64),
+  })
+  .strict();
+
+const invoiceCreditItemSchema = z
+  .object({
+    sourceInvoiceLineId: z.string().trim().min(1).max(120),
+    netAmount: z.number().min(0).max(10_000_000),
+  })
+  .strict();
+
+const invoiceCreditPayloadSchema = z
+  .object({
+    invoiceId: z.string().trim().min(1).max(120),
+    reason: z.string().trim().max(500),
+    items: z.array(invoiceCreditItemSchema).max(30),
+  })
+  .strict();
+
+const completeInvoiceCreditSchema = z
+  .object({
+    revision: z.number().int().min(1),
+    reason: z.string().trim().max(500),
+    items: z.array(invoiceCreditItemSchema).max(30),
+  })
+  .strict();
+
+const invoiceCreditContextSchema = z
+  .object({
+    invoice: z
+      .object({
+        id: z.string(), invoiceNumber: z.string(), status: z.string(), projectId: z.string(),
+        projectNumber: z.string(), projectTitle: z.string(), company: z.string(), customerName: z.string(),
+        customerStreet: z.string(), customerCity: z.string(), contactName: z.string(), serviceDate: z.string(),
+        netTotal: z.number(), grossTotal: z.number(), isPaid: z.boolean(), updatedAt: z.string().datetime({ offset: true }),
+      })
+      .strict(),
+    creditNumber: z.string(),
+    lines: z.array(z.object({
+      id: z.string(), position: z.number().int(), title: z.string(), vatRate: z.number(),
+      originalNet: z.number(), alreadyCreditedNet: z.number(), remainingNet: z.number(),
+      creditNet: z.number(), creditGross: z.number(),
+    }).strict()),
+    totalCreditNet: z.number(),
+    totalCreditGross: z.number(),
+    remainingInvoiceNet: z.number(),
+    remainingInvoiceGross: z.number(),
     checks: z.array(z.object({
       key: z.string(), label: z.string(), status: z.enum(["ok", "warning", "blocked"]), detail: z.string(),
     }).strict()),
@@ -3603,6 +3666,9 @@ export async function getJarvisActionDraft(
   }
   if (draft?.actionId === "invoice.cancel") {
     return getJarvisInvoiceCancellationDraft(previewId, binding, now);
+  }
+  if (draft?.actionId === "invoice.credit") {
+    return getJarvisInvoiceCreditDraft(previewId, binding, now);
   }
   if (draft?.actionId === "document.send") {
     return getJarvisInvoiceDeliveryDraft(previewId, binding, now);
@@ -9705,6 +9771,7 @@ function toJarvisInvoiceCancellationDraftView(
       { label: "Status", value: context.invoice.status },
       { label: "Vollständige Gegenbuchung", value: currency.format(-Math.abs(context.invoice.grossTotal)) },
       { label: "Freizugebende Zeiten", value: String(context.releasedTimeEntryCount) },
+      { label: "Bestehende Teilgutschriften", value: context.activeCreditCount ? `${context.activeCreditCount} · ${currency.format(context.creditedGrossTotal)}` : "Keine" },
     ],
     editor: { reason: payload.reason },
     checks: context.checks,
@@ -9849,6 +9916,237 @@ export async function confirmJarvisInvoiceCancellationDraft(previewId: string, b
     if (error instanceof JarvisActionDraftError) throw error;
     if (error instanceof InvoiceCancellationServiceError) throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : "invalid_input", error.message, 409);
     throw new JarvisActionDraftError("execution_failed", "Die Rechnung wurde nicht storniert und die Vorschau bleibt zur Prüfung erhalten.", 500);
+  }
+}
+
+function mayCreateInvoiceCredit(binding: JarvisTaskDraftBinding) {
+  return canManageInvoices(binding.profile.sessionActor) && canManageInvoices(binding.profile.effectiveActor);
+}
+
+function validateInvoiceCreditBinding(draft: JarvisActionDraft, binding: JarvisTaskDraftBinding) {
+  const actorIds = getActorIds(binding.profile);
+  if (
+    draft.organizationId !== binding.organizationId || draft.sessionId !== binding.sessionId ||
+    draft.sessionActorId !== actorIds.sessionActorId || draft.effectiveActorId !== actorIds.effectiveActorId ||
+    draft.impersonating !== binding.profile.isImpersonating
+  ) {
+    throw new JarvisActionDraftError("scope_mismatch", "Diese Gutschriftvorschau gehört nicht zur aktuellen Organisation, Sitzung oder wirksamen Identität.", 403);
+  }
+  if (draft.sessionActorRole !== binding.profile.sessionActor.role || draft.effectiveActorRole !== binding.profile.effectiveActor.role) {
+    throw new JarvisActionDraftError("role_changed", "Die Rolle hat sich seit der Gutschriftprüfung geändert. Bitte erstelle eine neue Vorschau.", 409);
+  }
+  if (!integrityMatches(draft)) {
+    throw new JarvisActionDraftError("integrity_failed", "Der Integritätsnachweis der Gutschriftvorschau ist ungültig.", 409);
+  }
+  const payload = invoiceCreditPayloadSchema.safeParse(draft.payload);
+  const context = invoiceCreditContextSchema.safeParse(draft.context);
+  if (
+    draft.actionId !== "invoice.credit" || !payload.success || !context.success ||
+    hashJson(payload.data) !== draft.payloadHash || hashJson(context.data) !== draft.contextHash
+  ) {
+    throw new JarvisActionDraftError("integrity_failed", "Gutschriftdaten oder Prüfkontext stimmen nicht mit dem Integritätsnachweis überein.", 409);
+  }
+  return { payload: payload.data, context: context.data };
+}
+
+async function loadBoundInvoiceCreditDraft(previewId: string, binding: JarvisTaskDraftBinding, now = new Date()) {
+  const found = await prisma.jarvisActionDraft.findUnique({ where: { id: previewId } });
+  if (!found) throw new JarvisActionDraftError("not_found", "Die Gutschriftvorschau wurde nicht gefunden.", 404);
+  validateInvoiceCreditBinding(found, binding);
+  const current = await expireDraftIfNeeded(found, now);
+  return { draft: current, ...validateInvoiceCreditBinding(current, binding) };
+}
+
+function toJarvisInvoiceCreditDraftView(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+): JarvisInvoiceCreditDraftView {
+  const { payload, context } = validateInvoiceCreditBinding(draft, binding);
+  const state = draft.state as JarvisTaskActionDraftState;
+  const permitted = mayCreateInvoiceCredit(binding);
+  const ready = state === "awaiting_confirmation" && permitted && !context.blockingIssues.length && payload.reason.length >= 3 && context.totalCreditNet > 0;
+  const confirmationReason: JarvisInvoiceCreditDraftView["confirmation"]["reason"] =
+    state === "expired" ? "expired" : state === "cancelled" ? "cancelled" : state === "executed" ? "executed" :
+    state === "executing" ? "executing" : !permitted ? "not_permitted" : !ready ? "blocked" : "ready";
+  const currency = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
+  return {
+    version: 2,
+    previewId: draft.id,
+    actionId: "invoice.credit",
+    title: "Teilgutschrift kontrolliert erstellen",
+    badge: state === "executed" ? "Erstellt" : state === "executing" ? "Wird erstellt" : state === "cancelled" ? "Abgebrochen" : state === "expired" ? "Abgelaufen" : ready ? "Bereit" : "Prüfung",
+    state,
+    revision: draft.revision,
+    expiresAt: draft.expiresAt.toISOString(),
+    invoiceId: context.invoice.id,
+    projectId: context.invoice.projectId,
+    fields: [
+      { label: "Referenzrechnung", value: context.invoice.invoiceNumber },
+      { label: "Gutschrift", value: context.creditNumber },
+      { label: "Projekt", value: `${context.invoice.projectNumber} · ${context.invoice.projectTitle}` },
+      { label: "Kunde", value: context.invoice.customerName || "–" },
+      { label: "Rechnungsstatus", value: context.invoice.status },
+      { label: "Ausgewählt", value: `${currency.format(context.totalCreditNet)} netto / ${currency.format(context.totalCreditGross)} brutto` },
+      { label: "Vorher noch gutschreibbar", value: `${currency.format(context.remainingInvoiceNet)} netto` },
+    ],
+    editor: {
+      reason: payload.reason,
+      items: context.lines.map((line) => ({
+        sourceInvoiceLineId: line.id,
+        label: `${String(line.position).padStart(3, "0")} · ${line.title}`,
+        vatRate: line.vatRate,
+        originalNet: line.originalNet,
+        alreadyCreditedNet: line.alreadyCreditedNet,
+        remainingNet: line.remainingNet,
+        netAmount: line.creditNet,
+      })),
+    },
+    checks: context.checks,
+    warnings: context.warnings,
+    blockingIssues: [
+      ...context.blockingIssues,
+      ...(payload.reason.length < 3 ? ["Ein nachvollziehbarer Korrekturgrund mit mindestens 3 Zeichen ist erforderlich."] : []),
+      ...(!permitted ? ["Diese Rollenkombination darf keine Teilgutschrift erstellen."] : []),
+    ],
+    confirmation: {
+      enabled: ready,
+      reason: confirmationReason,
+      requiredText: getInvoiceCreditConfirmationText(context.invoice.invoiceNumber, context.creditNumber, context.totalCreditGross),
+    },
+    cancellation: { enabled: OPEN_DRAFT_STATES.includes(state as never) },
+    ...(state === "executed" && draft.resultEntityId ? {
+      result: { entityType: "invoice" as const, entityId: draft.resultEntityId, label: "Gutschrift öffnen" },
+    } : {}),
+  };
+}
+
+export async function createPersistedJarvisInvoiceCreditDraft(input: {
+  preview: JarvisActionPreview<"invoice.credit">;
+  organizationId: string;
+  sessionId: string;
+  profile: JarvisAccessProfile;
+  now?: Date;
+}) {
+  if (!input.sessionId) throw new JarvisActionDraftError("session_required", "Für eine Teilgutschrift ist eine aktuelle serverseitige Sitzung erforderlich.", 401);
+  if (!mayCreateInvoiceCredit(input)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf keine Teilgutschrift erstellen.", 403);
+  const now = input.now ?? new Date();
+  const payload = invoiceCreditPayloadSchema.parse({
+    invoiceId: input.preview.payload.invoiceId,
+    reason: input.preview.payload.reason ?? "",
+    items: input.preview.payload.items ?? [],
+  });
+  const evaluation = await evaluateInvoiceCredit({ organizationId: input.organizationId, invoiceId: payload.invoiceId, items: payload.items });
+  const context = invoiceCreditContextSchema.parse(evaluation);
+  const state = context.blockingIssues.length || payload.reason.length < 3 ? "awaiting_input" : "awaiting_confirmation";
+  const actorIds = getActorIds(input.profile);
+  const draftData: DraftIntegrityData = {
+    id: input.preview.previewId, organizationId: input.organizationId, sessionId: input.sessionId,
+    sessionActorId: actorIds.sessionActorId, sessionActorRole: input.profile.sessionActor.role,
+    effectiveActorId: actorIds.effectiveActorId, effectiveActorRole: input.profile.effectiveActor.role,
+    impersonating: input.profile.isImpersonating, actionId: "invoice.credit", state, revision: 1,
+    payloadHash: hashJson(payload), contextHash: hashJson(context),
+    expiresAt: new Date(now.getTime() + JARVIS_INVOICE_DRAFT_TTL_MS), confirmedAt: null, cancelledAt: null,
+    executedAt: null, resultEntityType: null, resultEntityId: null,
+    lastErrorCode: state === "awaiting_input" ? "invalid_input" : null,
+  };
+  const created = await prisma.$transaction(async (tx) => {
+    const draft = await tx.jarvisActionDraft.create({ data: { ...draftData, payload: payload as Prisma.InputJsonValue, context: context as Prisma.InputJsonValue, integrityTag: createIntegrityTag(draftData) } });
+    await appendAuditEvent(tx, { draft, eventType: state === "awaiting_confirmation" ? "draft_created_ready" : "draft_created_blocked" });
+    return draft;
+  });
+  return toJarvisInvoiceCreditDraftView(created, input);
+}
+
+export async function getJarvisInvoiceCreditDraft(previewId: string, binding: JarvisTaskDraftBinding, now = new Date()) {
+  const { draft } = await loadBoundInvoiceCreditDraft(previewId, binding, now);
+  return toJarvisInvoiceCreditDraftView(draft, binding);
+}
+
+export async function completeJarvisInvoiceCreditDraft(previewId: string, binding: JarvisTaskDraftBinding, rawInput: unknown, now = new Date()) {
+  const completed = completeInvoiceCreditSchema.safeParse(rawInput);
+  if (!completed.success) throw new JarvisActionDraftError("invalid_input", "Korrekturgrund, Positionsbeträge oder Entwurfsrevision sind ungültig.", 400);
+  const loaded = await loadBoundInvoiceCreditDraft(previewId, binding, now);
+  if (!OPEN_DRAFT_STATES.includes(loaded.draft.state as never)) throw new JarvisActionDraftError(loaded.draft.state === "expired" ? "expired" : "invalid_state", "Diese Gutschriftvorschau kann nicht mehr geändert werden.", loaded.draft.state === "expired" ? 410 : 409);
+  if (completed.data.revision !== loaded.draft.revision) throw new JarvisActionDraftError("conflict", "Die Gutschriftvorschau wurde zwischenzeitlich verändert.", 409);
+  const payload = invoiceCreditPayloadSchema.parse({ invoiceId: loaded.payload.invoiceId, reason: completed.data.reason, items: completed.data.items });
+  const evaluation: InvoiceCreditEvaluation = await evaluateInvoiceCredit({ organizationId: binding.organizationId, invoiceId: payload.invoiceId, items: payload.items });
+  const context = invoiceCreditContextSchema.parse(evaluation);
+  const state = context.blockingIssues.length || payload.reason.length < 3 ? "awaiting_input" : "awaiting_confirmation";
+  const nextData: DraftIntegrityData = { ...loaded.draft, state, revision: loaded.draft.revision + 1, payloadHash: hashJson(payload), contextHash: hashJson(context), confirmedAt: null, lastErrorCode: state === "awaiting_input" ? "invalid_input" : null };
+  const updated = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: { id: loaded.draft.id, revision: loaded.draft.revision, state: loaded.draft.state, integrityTag: loaded.draft.integrityTag },
+      data: { state, revision: nextData.revision, payload: payload as Prisma.InputJsonValue, context: context as Prisma.InputJsonValue, payloadHash: nextData.payloadHash, contextHash: nextData.contextHash, confirmedAt: null, lastErrorCode: nextData.lastErrorCode, integrityTag: createIntegrityTag(nextData) },
+    });
+    if (changed.count !== 1) throw new JarvisActionDraftError("conflict", "Die Gutschriftvorschau wurde bereits verändert.", 409);
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({ where: { id: loaded.draft.id } });
+    await appendAuditEvent(tx, { draft: current, eventType: state === "awaiting_confirmation" ? "draft_completed_ready" : "draft_completed_blocked" });
+    return current;
+  });
+  return toJarvisInvoiceCreditDraftView(updated, binding);
+}
+
+export async function cancelJarvisInvoiceCreditDraft(previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, now = new Date()) {
+  const { draft } = await loadBoundInvoiceCreditDraft(previewId, binding, now);
+  if (draft.state === "cancelled") return toJarvisInvoiceCreditDraftView(draft, binding);
+  if (!OPEN_DRAFT_STATES.includes(draft.state as never)) throw new JarvisActionDraftError(draft.state === "expired" ? "expired" : "invalid_state", "Diese Gutschriftvorschau kann nicht mehr abgebrochen werden.", draft.state === "expired" ? 410 : 409);
+  if (expectedRevision !== draft.revision) throw new JarvisActionDraftError("conflict", "Die Gutschriftvorschau wurde zwischenzeitlich verändert.", 409);
+  const nextData: DraftIntegrityData = { ...draft, state: "cancelled", cancelledAt: now, lastErrorCode: null };
+  const cancelled = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: { id: draft.id, revision: draft.revision, state: draft.state, integrityTag: draft.integrityTag },
+      data: { state: "cancelled", cancelledAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(nextData) },
+    });
+    if (changed.count !== 1) throw new JarvisActionDraftError("conflict", "Die Gutschriftvorschau wurde bereits verändert.", 409);
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({ where: { id: draft.id } });
+    await appendAuditEvent(tx, { draft: current, eventType: "draft_cancelled", reasonCode: "user_cancelled" });
+    return current;
+  });
+  return toJarvisInvoiceCreditDraftView(cancelled, binding);
+}
+
+export async function confirmJarvisInvoiceCreditDraft(previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, confirmationText: string, now = new Date()) {
+  const loaded = await loadBoundInvoiceCreditDraft(previewId, binding, now);
+  if (loaded.draft.state === "executed") return toJarvisInvoiceCreditDraftView(loaded.draft, binding);
+  const requiredText = getInvoiceCreditConfirmationText(loaded.context.invoice.invoiceNumber, loaded.context.creditNumber, loaded.context.totalCreditGross);
+  if (!matchesInvoiceCreditConfirmation(loaded.context.invoice.invoiceNumber, loaded.context.creditNumber, loaded.context.totalCreditGross, confirmationText)) {
+    throw new JarvisActionDraftError("invalid_input", `Gib zur kritischen Bestätigung exakt „${requiredText}“ ein.`, 400);
+  }
+  if (expectedRevision !== loaded.draft.revision || loaded.draft.state !== "awaiting_confirmation") throw new JarvisActionDraftError("conflict", "Nur die aktuelle, vollständig geprüfte Gutschriftvorschau darf bestätigt werden.", 409);
+  if (!mayCreateInvoiceCredit(binding)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf keine Teilgutschrift erstellen.", 403);
+  try {
+    const executed = await prisma.$transaction(async (tx) => {
+      const current = await tx.jarvisActionDraft.findUnique({ where: { id: loaded.draft.id } });
+      if (!current) throw new JarvisActionDraftError("not_found", "Die Gutschriftvorschau wurde nicht gefunden.", 404);
+      const parsed = validateInvoiceCreditBinding(current, binding);
+      if (current.state === "executed") return current;
+      if (current.state !== "awaiting_confirmation" || current.expiresAt.getTime() <= now.getTime()) throw new JarvisActionDraftError(current.expiresAt.getTime() <= now.getTime() ? "expired" : "conflict", "Die Gutschriftvorschau ist nicht mehr ausführbar.", current.expiresAt.getTime() <= now.getTime() ? 410 : 409);
+      const actor = await tx.user.findFirst({ where: { id: current.effectiveActorId, organizationId: binding.organizationId, isActive: true }, select: { id: true, role: true, firstName: true, lastName: true, email: true } });
+      if (!actor || !canManageInvoices(actor)) throw new JarvisActionDraftError("role_changed", "Akteur oder Rechnungsberechtigung sind nicht mehr aktuell.", 409);
+      const claimedData: DraftIntegrityData = { ...current, state: "executing", confirmedAt: now, lastErrorCode: null };
+      const claimed = await tx.jarvisActionDraft.updateMany({ where: { id: current.id, revision: current.revision, state: "awaiting_confirmation", integrityTag: current.integrityTag }, data: { state: "executing", confirmedAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(claimedData) } });
+      if (claimed.count !== 1) throw new JarvisActionDraftError("conflict", "Die Gutschrift wird bereits erstellt.", 409);
+      const actorName = [actor.firstName, actor.lastName].filter(Boolean).join(" ") || actor.email;
+      const result = await createInvoiceCredit({
+        tx, organizationId: binding.organizationId, invoiceId: parsed.payload.invoiceId,
+        actorName, actorUserId: actor.id, reason: parsed.payload.reason, items: parsed.payload.items,
+        expectedFingerprint: parsed.context.fingerprint, source: "jarvis",
+      });
+      const executedAt = new Date();
+      const executedData: DraftIntegrityData = { ...claimedData, state: "executed", executedAt, resultEntityType: "invoice", resultEntityId: result.creditInvoice.id };
+      const finalDraft = await tx.jarvisActionDraft.update({ where: { id: current.id }, data: { state: "executed", executedAt, resultEntityType: "invoice", resultEntityId: result.creditInvoice.id, integrityTag: createIntegrityTag(executedData) } });
+      await appendAuditEvent(tx, { draft: finalDraft, eventType: "draft_confirmed_and_executed", result: { id: result.creditInvoice.id, entityType: "invoice" } });
+      return finalDraft;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    return toJarvisInvoiceCreditDraftView(executed, binding);
+  } catch (error) {
+    if (error instanceof JarvisActionDraftError && error.code === "conflict") {
+      const latest = await loadBoundInvoiceCreditDraft(previewId, binding, now);
+      if (latest.draft.state === "executed") return toJarvisInvoiceCreditDraftView(latest.draft, binding);
+    }
+    if (error instanceof JarvisActionDraftError) throw error;
+    if (error instanceof InvoiceCreditServiceError) throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : "invalid_input", error.message, 409);
+    throw new JarvisActionDraftError("execution_failed", "Die Teilgutschrift wurde nicht erstellt und die Vorschau bleibt zur Prüfung erhalten.", 500);
   }
 }
 
