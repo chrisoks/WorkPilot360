@@ -47707,7 +47707,7 @@ await addProjectLogbookEntry(
           <div className={styles.projectFileActions}>
             <button
               type="button"
-              className={styles.secondaryButton}
+              className={styles.primaryButton}
               onClick={() => openProjectTaskModal(selectedProjectFile, "task")}
             >
               + Aufgabe
@@ -47733,7 +47733,7 @@ await addProjectLogbookEntry(
             <div className={styles.projectStatusAction} ref={projectStatusActionRef}>
               <button
                 type="button"
-                className={styles.secondaryButton}
+                className={styles.requestButton}
                 onClick={() => setIsProjectStatusMenuOpen((isOpen) => !isOpen)}
               >
                 Status ändern

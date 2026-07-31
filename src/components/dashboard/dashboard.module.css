@@ -14862,7 +14862,7 @@
 
 .projectFileActions {
   align-items: center;
-  align-self: start;
+  align-self: center;
   background: transparent;
   border: 0;
   display: flex;
@@ -14888,29 +14888,36 @@
 
 .projectFileActions > button,
 .projectFileActions > .projectStatusAction > button {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.11);
+  border-color: rgba(255, 255, 255, 0.3);
   box-shadow: none;
   color: #ffffff;
-  padding: 0 17px;
+  padding: 14px 22px;
   white-space: nowrap;
 }
 
 .projectFileActions > button:first-child {
   background: linear-gradient(180deg, #ffffff 0%, #eaf8f5 100%);
   border-color: rgba(255, 255, 255, 0.82);
+  border-radius: 12px;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.96),
     0 9px 22px rgba(4, 31, 37, 0.22);
   color: #10464b;
   order: 1;
+  padding: 0 18px;
+}
+
+.projectFileActions > .projectStatusAction > button {
+  border-radius: 16px;
 }
 
 .projectFileActions > button:nth-of-type(2) {
   align-items: center;
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.24);
-  color: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.11);
+  border-color: rgba(255, 255, 255, 0.3);
+  border-radius: 16px;
+  color: #ffffff;
   display: inline-flex;
   justify-content: center;
   min-height: 46px;
