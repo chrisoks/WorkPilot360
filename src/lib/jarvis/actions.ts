@@ -454,7 +454,7 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     risk: "critical",
     confirmation: "critical",
     dataClasses: ["financial"],
-    implementation: "planned",
+    implementation: "available",
     canUse: canManageInvoices,
   },
   {

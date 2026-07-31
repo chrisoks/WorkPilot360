@@ -51,6 +51,7 @@ const mocks = vi.hoisted(() => ({
   createPersistedJarvisInvoiceFinalizationDraft: vi.fn(),
   createPersistedJarvisInvoicePaymentDraft: vi.fn(),
   createPersistedJarvisInvoiceReminderDraft: vi.fn(),
+  createPersistedJarvisInvoiceCancellationDraft: vi.fn(),
   createPersistedJarvisInvoiceDeliveryDraft: vi.fn(),
   createPersistedJarvisTimeDraft: vi.fn(),
   createPersistedJarvisWinterCalculationDraft: vi.fn(),
@@ -124,6 +125,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.createPersistedJarvisInvoicePaymentDraft,
   createPersistedJarvisInvoiceReminderDraft:
     mocks.createPersistedJarvisInvoiceReminderDraft,
+  createPersistedJarvisInvoiceCancellationDraft:
+    mocks.createPersistedJarvisInvoiceCancellationDraft,
   createPersistedJarvisInvoiceDeliveryDraft:
     mocks.createPersistedJarvisInvoiceDeliveryDraft,
   createPersistedJarvisTimeDraft:
@@ -221,6 +224,7 @@ vi.mock("@/lib/jarvis/intent-clarification", () => ({
 }));
 
 import { POST } from "@/app/api/jarvis/chat/route";
+import { prisma } from "@/lib/db/client";
 
 describe("POST /api/jarvis/chat", () => {
   beforeEach(() => {
@@ -3239,6 +3243,42 @@ describe("POST /api/jarvis/chat", () => {
       preview: expect.objectContaining({ payload: expect.objectContaining({ projectId: "project-1", company: "OK immocare", serviceDate: "2026-07-31" }) }),
     }));
     expect(mocks.createPersistedJarvisOfferDraft).not.toHaveBeenCalled();
+  });
+
+  it("prepares only a controlled full cancellation and carries the explicit reason", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    const invoiceLookup = vi.spyOn(prisma.invoice, "findFirst").mockResolvedValueOnce({
+      id: "invoice-1", invoiceNumber: "RE-10119", customerName: "Musterkunde", status: "Fakturiert", isPaid: false,
+    } as never);
+    mocks.createPersistedJarvisInvoiceCancellationDraft.mockImplementation(async ({ preview }) => ({
+      version: 2, previewId: preview.previewId, actionId: "invoice.cancel", title: "Rechnung kontrolliert vollständig stornieren",
+      badge: "Bereit", state: "awaiting_confirmation", revision: 1, expiresAt: "2026-07-31T10:00:00.000Z",
+      invoiceId: "invoice-1", projectId: "project-1", fields: [], editor: { reason: preview.payload.reason ?? "" },
+      checks: [], warnings: [], blockingIssues: [], confirmation: { enabled: true, reason: "ready", requiredText: "STORNIEREN RE-10119 MIT ST-10100" },
+      cancellation: { enabled: true },
+    }));
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Storniere Rechnung RE-10119 vollständig wegen Doppelberechnung" }),
+    }));
+    const payload = await response.json();
+    expect(payload).toMatchObject({ type: "answer", topicId: "action.invoice-cancellation", actionDraft: { actionId: "invoice.cancel" } });
+    expect(mocks.createPersistedJarvisInvoiceCancellationDraft).toHaveBeenCalledWith(expect.objectContaining({
+      preview: expect.objectContaining({ payload: { invoiceId: "invoice-1", reason: "Doppelberechnung" } }),
+    }));
+    invoiceLookup.mockRestore();
+  });
+
+  it("refuses partial credit language without preparing a full cancellation", async () => {
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Erstelle eine Teilgutschrift zu Rechnung RE-10119" }),
+    }));
+    const payload = await response.json();
+    expect(payload.topicId).toBe("action.invoice-credit.unsupported");
+    expect(payload.message).toContain("kein Vollstorno als Ersatz");
+    expect(mocks.createPersistedJarvisInvoiceCancellationDraft).not.toHaveBeenCalled();
   });
 
   it("applies the focused answer-depth policy before returning the response", async () => {

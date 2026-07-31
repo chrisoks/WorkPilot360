@@ -1,5 +1,39 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS kontrolliertes Rechnungs-Vollstorno 2026-07-31:
+  Der zehnte Action-Center-Vertikalschnitt storniert ausschließlich Rechnungen
+  im Status `Fakturiert` oder `Bezahlt` vollständig. JARVIS zeigt Original- und
+  vorgesehene ST-Nummer, Projekt, Kunde, Status, vollständige negative
+  Gegenbuchung, freizugebende Zeiteinträge, Prüfungen und Warnungen. Ein
+  nachvollziehbarer Grund mit 3 bis 500 Zeichen ist Pflicht und jede Änderung
+  daran erzwingt eine neue serverseitige Prüfung. Erst die exakte,
+  groß-/kleinschreibungssensitive Phrase
+  `STORNIEREN RE-... MIT ST-...` darf ausführen. Bezahlte Rechnungen weisen
+  ausdrücklich darauf hin, dass weder Rückzahlung noch separate
+  Zahlungsbuchung ausgelöst werden. Teilgutschrift, Rechnungskorrektur und
+  Teilstorno bleiben mangels eigenem Fachmodell fail-closed und werden niemals
+  ersatzweise als Vollstorno ausgeführt.
+  Normale Rechnungsmaske und JARVIS verwenden gemeinsam
+  `src/lib/invoices/invoice-cancellation-service.ts`. Der Service lädt
+  Organisation, Rechnung, Positionen, Kosten-/Arbeitszeilen und verknüpfte
+  Zeiten neu, bindet sie zusammen mit der vorgesehenen ST-Nummer in einen
+  Fingerprint und verwendet organisationsgebundene PostgreSQL-Advisory-Locks.
+  In derselben serialisierbaren Transaktion entstehen negative ST-Rechnung
+  samt PDF und Positionen, beide Historienereignisse und genau ein
+  Projektlogbucheintrag; das Original wechselt bedingt zu `Storniert`, Zeiten
+  werden freigegeben und Materialbewegungen gegengebucht. Rollenpaar,
+  Impersonation, Sitzung, Revision, TTL, HMAC, Mandant, Doppelklick und Replay
+  bleiben fail-closed beziehungsweise exactly-once.
+  Lokal sind 1.435 Tests, TypeScript, Mojibake-/Regressionschecks,
+  Prisma-Validierung, leerer Prisma-Diff und der 90-Seiten-Build grün. Der
+  permanente Korpus bestand 110/110 mit vorbereiteter `invoice.cancel`-
+  Vorschau, null Ausführungen und null Rückständen. Der echte lokale Klicktest
+  prüfte sichtbare Gegenbuchung, drei Zeitfreigaben, Grundänderung, falsche
+  Phrase und Abbruch. Eine isolierte Ausführungs-QA erzeugte genau eine
+  ST-Rechnung samt 623-KB-PDF, zwei Historienereignissen und einem Logbuchbeleg;
+  Replay lieferte dieselbe Entität. Sämtliche QA-Rechnungen, Historien,
+  Logbücher, Entwürfe und Sitzungen wurden vollständig bereinigt.
+
 - JARVIS kontrollierte Mahnung 2026-07-31:
   Der neunte Action-Center-Vertikalschnitt erstellt für eine überfällige,
   unbezahlte Rechnung im Status `Fakturiert` kontrolliert die nächste Mahnung.

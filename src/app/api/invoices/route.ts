@@ -45,6 +45,10 @@ import {
   createInvoiceReminder,
   InvoiceReminderServiceError,
 } from "@/lib/invoices/invoice-reminder-service";
+import {
+  createInvoiceCancellation,
+  InvoiceCancellationServiceError,
+} from "@/lib/invoices/invoice-cancellation-service";
 
 type InvoiceCompany = "OK solutions" | "OK immocare";
 
@@ -1601,533 +1605,62 @@ async function cancelInvoice(input: {
   organizationId: string;
   invoiceId: string;
   actorName: string;
+  actorUserId: string;
+  reason: string;
   includeInternalCosts: boolean;
 }) {
   try {
-  const existingRows = await prisma.$queryRaw<InvoiceRow[]>`
-    SELECT *
-    FROM "Invoice"
-    WHERE "organizationId" = ${input.organizationId} AND "id" = ${input.invoiceId}
-    LIMIT 1
-  `;
-  const existingInvoice = existingRows[0];
-  if (!existingInvoice) {
-    return NextResponse.json({ error: "Rechnung wurde nicht gefunden." }, { status: 404 });
-  }
-  if (["Storniert", "Stornorechnung", DELETED_INVOICE_STATUS, LEGACY_DELETED_INVOICE_STATUS].includes(existingInvoice.status)) {
-    return NextResponse.json({ error: "Diese Rechnung kann nicht storniert werden." }, { status: 400 });
-  }
-
-  const originalLines = await getInvoiceLinesForInvoice(input.organizationId, input.invoiceId);
-  const originalLaborRows = await getInvoiceLaborRowsForInvoice(input.organizationId, input.invoiceId);
-  if (originalLines.length === 0) {
-    return NextResponse.json({ error: "Die Rechnung hat keine Positionen." }, { status: 400 });
-  }
-
-  const cancellationNumber = await getNextinvoiceNumber(input.organizationId, "ST");
-  const cancellationId = randomUUID();
-  const cancellationLines = originalLines.map((line) => ({
-    catalogItemId: line.catalogItemId,
-    catalogType: line.catalogType,
-    isLaborPosition: Boolean(line.isLaborPosition),
-    quantity: Number(line.quantity ?? 0),
-    unit: line.unit || "Stk",
-    title: cleanInvoiceLineTitle(line.title) || "-",
-    description: [line.description, `Storno zu Rechnung ${existingInvoice.invoiceNumber}`].filter(Boolean).join("\n"),
-    unitPrice: -Math.abs(Number(line.unitPrice ?? 0)),
-    discountPercent: Number(line.discountPercent ?? 0),
-    materialUnitCostSnapshot: Number(line.materialUnitCostSnapshot ?? 0),
-    materialCostSnapshot: -Math.abs(Number(line.materialCostSnapshot ?? 0)),
-    laborUnitCostSnapshot: Number(line.laborUnitCostSnapshot ?? 0),
-    laborCostSnapshot: -Math.abs(Number(line.laborCostSnapshot ?? 0)),
-    packageComponentsSnapshot: cleanPackageComponentsSnapshot(line.packageComponentsSnapshot),
-    catalogCostSnapshotVersion: Number(line.catalogCostSnapshotVersion ?? 0),
-    vatRate: Number(line.vatRate ?? existingInvoice.vatRate ?? 19),
-    laborItems: [],
-  })) as Required<InvoiceLineInput>[];
-  const pdf = await generateInvoicePdf(
-    {
-      projectId: existingInvoice.projectId,
-      projectNumber: existingInvoice.projectNumber,
-      projectTitle: existingInvoice.projectTitle,
-      company: existingInvoice.company,
-      customerName: existingInvoice.customerName,
-      customerStreet: existingInvoice.customerStreet,
-      customerCity: existingInvoice.customerCity,
-      contactName: existingInvoice.contactName,
-      internalContactName: existingInvoice.internalContactName,
-      internalPhone: existingInvoice.internalPhone,
-      internalEmail: existingInvoice.internalEmail,
-      plannedExecutionMonth: existingInvoice.plannedExecutionMonth,
-      serviceDate: existingInvoice.serviceDate,
-      sourceOfferId: existingInvoice.sourceOfferId,
-      sourceOfferNumber: existingInvoice.sourceOfferNumber,
-      introText: `hiermit stornieren wir die Rechnung ${existingInvoice.invoiceNumber} vollständig.`,
-      closingText: "Diese Stornorechnung hebt die ursprüngliche Rechnung auf.",
-      vatRate: Number(existingInvoice.vatRate ?? 19),
-      discountPercent: Number(existingInvoice.discountPercent ?? 0),
-      invoiceNumber: cancellationNumber,
-      documentTitle: "Stornorechnung",
-    },
-    cancellationLines
-  );
-
-  const cancellationRows = await prisma.$queryRaw<InvoiceRow[]>`
-    INSERT INTO "Invoice" (
-      "id", "organizationId", "projectId", "projectNumber", "projectTitle", "company",
-      "invoiceNumber", "status", "customerName", "customerStreet", "customerCity",
-      "contactName", "internalContactName", "internalPhone", "internalEmail",
-      "plannedExecutionMonth", "serviceDate", "sourceOfferId", "sourceOfferNumber",
-      "introText", "closingText", "discountPercent", "netTotal", "vatRate", "grossTotal", "pdfData", "updatedAt"
-    ) VALUES (
-      ${cancellationId}, ${input.organizationId}, ${existingInvoice.projectId}, ${existingInvoice.projectNumber},
-      ${existingInvoice.projectTitle}, ${existingInvoice.company}, ${cancellationNumber}, ${"Stornorechnung"},
-      ${existingInvoice.customerName}, ${existingInvoice.customerStreet}, ${existingInvoice.customerCity},
-      ${existingInvoice.contactName}, ${existingInvoice.internalContactName}, ${existingInvoice.internalPhone},
-      ${existingInvoice.internalEmail}, ${existingInvoice.plannedExecutionMonth ?? ""}, ${existingInvoice.serviceDate ?? ""},
-      ${existingInvoice.sourceOfferId ?? ""}, ${existingInvoice.sourceOfferNumber ?? ""},
-      ${`hiermit stornieren wir die Rechnung ${existingInvoice.invoiceNumber} vollständig.`},
-      ${"Diese Stornorechnung hebt die ursprüngliche Rechnung auf."},
-      ${Number(existingInvoice.discountPercent ?? 0)}, ${pdf.netTotal}, ${pdf.vatRate}, ${pdf.grossTotal}, ${pdf.pdfData}, CURRENT_TIMESTAMP
-    )
-    RETURNING *
-  `;
-
-  const savedLines: InvoiceLineRow[] = [];
-  const savedLaborRows: InvoiceLineLaborRow[] = [];
-  for (const [index, line] of cancellationLines.entries()) {
-    const lineRows = await prisma.$queryRaw<InvoiceLineRow[]>`
-      INSERT INTO "InvoiceLine" (
-        "id", "organizationId", "invoiceId", "catalogItemId", "catalogType", "isLaborPosition", "position",
-        "quantity", "unit", "title", "description", "unitPrice", "discountPercent",
-        "materialUnitCostSnapshot", "materialCostSnapshot", "laborUnitCostSnapshot", "laborCostSnapshot",
-        "packageComponentsSnapshot", "catalogCostSnapshotVersion", "costSnapshotAt", "vatRate", "totalNet", "updatedAt"
-      ) VALUES (
-        ${randomUUID()}, ${input.organizationId}, ${cancellationId}, ${line.catalogItemId}, ${line.catalogType}, ${line.isLaborPosition}, ${index + 1},
-        ${line.quantity}, ${line.unit}, ${line.title}, ${line.description},
-        ${line.unitPrice}, ${line.discountPercent},
-        ${line.materialUnitCostSnapshot}, ${line.materialCostSnapshot}, ${line.laborUnitCostSnapshot}, ${line.laborCostSnapshot},
-        ${JSON.stringify(line.packageComponentsSnapshot)}::jsonb, ${line.catalogCostSnapshotVersion}, CURRENT_TIMESTAMP,
-        ${line.vatRate}, ${getLineTotalNet(line)}, CURRENT_TIMESTAMP
-      )
-      RETURNING *
-    `;
-    savedLines.push(lineRows[0]);
-
-    const originalLine = originalLines[index];
-    const laborForLine = originalLaborRows.filter((labor) => labor.invoiceLineId === originalLine.id);
-    for (const [laborIndex, labor] of laborForLine.entries()) {
-      const laborRows = await prisma.$queryRaw<InvoiceLineLaborRow[]>`
-        INSERT INTO "InvoiceLineLabor" (
-          "id", "organizationId", "invoiceId", "invoiceLineId", "userId", "employeeName",
-          "plannedHours", "hourlyCostRate", "totalCost", "position", "updatedAt"
-        ) VALUES (
-          ${randomUUID()}, ${input.organizationId}, ${cancellationId}, ${lineRows[0].id}, ${labor.userId}, ${labor.employeeName},
-          ${-Math.abs(Number(labor.plannedHours ?? 0))}, ${Number(labor.hourlyCostRate ?? 0)}, ${-Math.abs(Number(labor.totalCost ?? 0))}, ${laborIndex + 1}, CURRENT_TIMESTAMP
-        )
-        RETURNING *
-      `;
-      savedLaborRows.push(laborRows[0]);
-    }
-  }
-
-  const originalRows = await prisma.$queryRaw<InvoiceRow[]>`
-    UPDATE "Invoice"
-    SET "status" = 'Storniert', "updatedAt" = CURRENT_TIMESTAMP
-    WHERE "organizationId" = ${input.organizationId} AND "id" = ${input.invoiceId}
-    RETURNING *
-  `;
-
-  await releaseStampedHoursFromInvoice({
-    organizationId: input.organizationId,
-    invoiceId: input.invoiceId,
-    invoiceNumber: existingInvoice.invoiceNumber,
-  });
-
-  await addInvoiceHistory({
-    organizationId: input.organizationId,
-    invoiceId: input.invoiceId,
-    projectId: existingInvoice.projectId,
-    invoiceNumber: existingInvoice.invoiceNumber,
-    eventType: "cancelled",
-    title: "Rechnung storniert",
-    note: `${existingInvoice.invoiceNumber} wurde mit ${cancellationNumber} storniert.`,
-    actorName: input.actorName,
-  });
-  await addInvoiceHistory({
-    organizationId: input.organizationId,
-    invoiceId: cancellationId,
-    projectId: existingInvoice.projectId,
-    invoiceNumber: cancellationNumber,
-    eventType: "created",
-    title: "Stornorechnung erstellt",
-    note: `${cancellationNumber} wurde als Storno zu ${existingInvoice.invoiceNumber} erstellt.`,
-    actorName: input.actorName,
-  });
-
-  await syncInvoiceInventoryMovements({
-    db: prisma,
-    organizationId: input.organizationId,
-    invoiceId: input.invoiceId,
-    actorName: input.actorName,
-  });
-
-  return NextResponse.json({
-    originalInvoice: serializeInvoice(originalRows[0], originalLines, originalLaborRows, {
-      includeInternalCosts: input.includeInternalCosts,
-    }),
-    cancellationInvoice: serializeInvoice(cancellationRows[0], savedLines, savedLaborRows, {
-      includeInternalCosts: input.includeInternalCosts,
-    }),
-  });
+    const result = await prisma.$transaction(
+      (tx) =>
+        createInvoiceCancellation({
+          tx,
+          organizationId: input.organizationId,
+          invoiceId: input.invoiceId,
+          actorName: input.actorName,
+          actorUserId: input.actorUserId,
+          reason: input.reason,
+          source: "ui",
+        }),
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
+    const originalInvoice = await prisma.invoice.findFirstOrThrow({
+      where: { id: result.originalInvoiceId, organizationId: input.organizationId },
+      include: { lines: { orderBy: { position: "asc" }, include: { laborItems: true } } },
+    });
+    return NextResponse.json({
+      originalInvoice: serializeInvoice(
+        originalInvoice as unknown as InvoiceRow,
+        originalInvoice.lines as unknown as InvoiceLineRow[],
+        originalInvoice.lines.flatMap((line) => line.laborItems) as unknown as InvoiceLineLaborRow[],
+        { includeInternalCosts: input.includeInternalCosts }
+      ),
+      cancellationInvoice: serializeInvoice(
+        result.cancellationInvoice as unknown as InvoiceRow,
+        result.cancellationInvoice.lines as unknown as InvoiceLineRow[],
+        result.cancellationInvoice.lines.flatMap((line) => line.laborItems) as unknown as InvoiceLineLaborRow[],
+        { includeInternalCosts: input.includeInternalCosts }
+      ),
+    });
   } catch (error) {
     console.error("Invoice cancellation failed", error);
+    const known = error instanceof InvoiceCancellationServiceError;
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Stornorechnung konnte nicht erstellt werden.",
+        error: known
+          ? error.message
+          : "Stornorechnung konnte nicht sicher erstellt werden.",
       },
-      { status: 500 }
+      {
+        status: known
+          ? error.code === "not_found"
+            ? 404
+            : error.code === "conflict" || error.code === "stale_context"
+              ? 409
+              : 400
+          : 500,
+      }
     );
   }
-}
-
-export async function GET(req: Request) {
-  const { organization, users } = await getDemoContext();
-  await ensureInvoiceTables();
-  const { searchParams } = new URL(req.url);
-  const requestedActorId = searchParams.get("actorId");
-  const pdfId = cleanString(searchParams.get("pdfId"));
-  const xrechnungId = cleanString(searchParams.get("xrechnungId"));
-  const xrechnungValidationId = cleanString(searchParams.get("xrechnungValidationId"));
-  const zugferdId = cleanString(searchParams.get("zugferdId"));
-  const historyProjectId = cleanString(searchParams.get("historyProjectId"));
-  const actorResult = await getSessionBoundActor(req, users, requestedActorId);
-  if (!actorResult.ok) {
-    if (
-      actorResult.status === 401 &&
-      !cleanString(requestedActorId) &&
-      !pdfId &&
-      !xrechnungId &&
-      !xrechnungValidationId &&
-      !zugferdId &&
-      !historyProjectId
-    ) {
-      return NextResponse.json([]);
-    }
-    return sessionBoundActorResponse(actorResult);
-  }
-  const actor = actorResult.actor;
-  if (!canSendDocumentMails(actor)) {
-    return forbiddenInvoiceResponse();
-  }
-  const includeInternalCosts = canViewInternalCostData(actor);
-
-  if (xrechnungId || xrechnungValidationId || zugferdId) {
-    const targetInvoiceId = xrechnungId || xrechnungValidationId || zugferdId;
-    const rows = await prisma.$queryRaw<InvoiceRow[]>`
-      SELECT *
-      FROM "Invoice"
-      WHERE "organizationId" = ${organization.id} AND "id" = ${targetInvoiceId}
-      LIMIT 1
-    `;
-    const invoice = rows[0];
-    if (!invoice) {
-      return NextResponse.json({ error: "Rechnung wurde nicht gefunden." }, { status: 404 });
-    }
-    if (isInvoiceBlockedForXRechnung(invoice.status)) {
-      return NextResponse.json(
-        { error: "XRechnung kann fuer geloeschte oder stornierte Rechnungen nicht erzeugt werden." },
-        { status: 409 }
-      );
-    }
-
-    const lineRows = await getInvoiceLinesForInvoice(organization.id, invoice.id);
-    if (!lineRows.length) {
-      return NextResponse.json({ error: "XRechnung kann ohne Rechnungspositionen nicht erzeugt werden." }, { status: 400 });
-    }
-
-    const buyerReference = await getInvoiceBuyerReference(
-      organization.id,
-      invoice.projectId,
-      invoice.projectNumber || invoice.invoiceNumber
-    );
-    const seller = getXRechnungSellerProfile(invoice.company);
-    const missingSellerFields = getMissingXRechnungSellerFields(seller);
-    if (missingSellerFields.length > 0) {
-      return NextResponse.json(
-        {
-          error: `XRechnung kann nicht erzeugt werden, weil Firmendaten fehlen: ${missingSellerFields.join(", ")}.`,
-        },
-        { status: 400 }
-      );
-    }
-
-    const paymentTermDays = Number(invoice.paymentTermDays ?? 14);
-    const serviceDate = cleanDateKey(invoice.serviceDate);
-    const dueDate = cleanDateKey(invoice.dueDate) || addDaysToDateKey(serviceDate, paymentTermDays);
-    const xrechnungInvoice = {
-      invoiceNumber: invoice.invoiceNumber,
-      issueDate: invoice.createdAt?.toISOString?.().slice(0, 10) || new Date().toISOString().slice(0, 10),
-      serviceDate,
-      dueDate,
-      seller,
-      customerName: invoice.customerName,
-      customerStreet: invoice.customerStreet,
-      customerCity: invoice.customerCity,
-      contactName: invoice.contactName,
-      netTotal: Number(invoice.netTotal ?? 0),
-      vatRate: Number(invoice.vatRate ?? 19),
-      grossTotal: Number(invoice.grossTotal ?? 0),
-      paymentTermDays,
-      buyerReference,
-    };
-    const xrechnungLines = lineRows.map((line, index) => ({
-      position: Number(line.position ?? index + 1),
-      quantity: Number(line.quantity ?? 0),
-      unit: line.unit || "Stk",
-      title: cleanInvoiceLineTitle(line.title) || "Position",
-      description: line.description || "",
-      unitPrice: Number(line.unitPrice ?? 0),
-      discountPercent: Number(line.discountPercent ?? 0),
-      vatRate: Number(line.vatRate ?? invoice.vatRate ?? 19),
-      totalNet: Number(line.totalNet ?? 0),
-    }));
-    const validation = validateXRechnungPayload(xrechnungInvoice, xrechnungLines);
-    const xml = generateXRechnungXml(xrechnungInvoice, xrechnungLines);
-    const kositValidation = validation.valid
-      ? await validateXRechnungWithKosit(xml)
-      : {
-          available: false,
-          valid: false,
-          status: "not-configured" as const,
-          message: "KoSIT-Validierung wurde wegen technischer Mindestfehler nicht ausgeführt.",
-          issues: [],
-        };
-
-    if (xrechnungValidationId) {
-      return NextResponse.json({
-        invoiceId: invoice.id,
-        invoiceNumber: invoice.invoiceNumber,
-        validation,
-        kositValidation,
-      });
-    }
-
-    if (!validation.valid || (kositValidation.available && !kositValidation.valid)) {
-      return NextResponse.json(
-        {
-          error: zugferdId
-            ? "ZUGFeRD kann wegen Validierungsfehlern nicht erzeugt werden."
-            : "XRechnung kann wegen Validierungsfehlern nicht erzeugt werden.",
-          validation,
-          kositValidation,
-        },
-        { status: 400 }
-      );
-    }
-
-    if (zugferdId) {
-      if (!invoice.pdfData) {
-        return NextResponse.json({ error: "ZUGFeRD kann nicht erzeugt werden: Rechnungs-PDF fehlt." }, { status: 404 });
-      }
-
-      const zugferd = await buildValidatedZugferdPdf({
-        invoicePdfBytes: Buffer.from(invoice.pdfData, "base64"),
-        xrechnungXml: Buffer.from(xml, "utf8"),
-      });
-      if (!zugferd.conversion.available) {
-        return NextResponse.json(
-          { error: "ZUGFeRD kann nicht erzeugt werden: PDF/A-3-Konverter ist nicht konfiguriert.", zugferdConversion: zugferd.conversion },
-          { status: 503 }
-        );
-      }
-      if (!zugferd.conversion.converted) {
-        return NextResponse.json(
-          { error: `ZUGFeRD kann nicht erzeugt werden: ${zugferd.conversion.message}`, zugferdConversion: zugferd.conversion },
-          { status: 500 }
-        );
-      }
-      if (!zugferd.validation?.available) {
-        return NextResponse.json(
-          { error: "ZUGFeRD kann nicht erzeugt werden: PDF/A-3-Validator ist nicht konfiguriert." },
-          { status: 503 }
-        );
-      }
-      if (!zugferd.validation.valid || !zugferd.pdfBytes) {
-        return NextResponse.json(
-          {
-            error: "ZUGFeRD wurde vom PDF/A-3-Validator abgelehnt.",
-            zugferdValidation: zugferd.validation,
-          },
-          { status: 400 }
-        );
-      }
-
-      return new Response(new Uint8Array(zugferd.pdfBytes), {
-        headers: {
-          "Content-Type": "application/pdf",
-          "Content-Disposition": `attachment; filename="${invoice.invoiceNumber}-zugferd.pdf"`,
-        },
-      });
-    }
-
-    return new Response(xml, {
-      headers: {
-        "Content-Type": "application/xml; charset=utf-8",
-        "Content-Disposition": `attachment; filename="${invoice.invoiceNumber}-xrechnung.xml"`,
-      },
-    });
-  }
-
-  if (pdfId) {
-    const rows = await prisma.$queryRaw<InvoiceRow[]>`
-      SELECT *
-      FROM "Invoice"
-      WHERE "organizationId" = ${organization.id} AND "id" = ${pdfId}
-      LIMIT 1
-    `;
-    const Invoice = rows[0];
-    if (!Invoice) {
-      return NextResponse.json({ error: "PDF wurde nicht gefunden." }, { status: 404 });
-    }
-    if (Invoice.status === "Entwurf") {
-      const lineRows = await getInvoiceLinesForInvoice(organization.id, Invoice.id);
-      const draftLines = lineRows.map((line) => ({
-        catalogItemId: line.catalogItemId,
-        catalogType: line.catalogType,
-        isLaborPosition: Boolean(line.isLaborPosition),
-        quantity: Number(line.quantity ?? 0),
-        unit: line.unit || "Stk",
-        title: cleanInvoiceLineTitle(line.title) || "-",
-        description: line.description || "",
-        unitPrice: Number(line.unitPrice ?? 0),
-        discountPercent: Number(line.discountPercent ?? 0),
-        materialUnitCostSnapshot: Number(line.materialUnitCostSnapshot ?? 0),
-        materialCostSnapshot: Number(line.materialCostSnapshot ?? 0),
-        laborUnitCostSnapshot: Number(line.laborUnitCostSnapshot ?? 0),
-        laborCostSnapshot: Number(line.laborCostSnapshot ?? 0),
-        packageComponentsSnapshot: cleanPackageComponentsSnapshot(line.packageComponentsSnapshot),
-        catalogCostSnapshotVersion: Number(line.catalogCostSnapshotVersion ?? 0),
-        vatRate: Number(line.vatRate ?? Invoice.vatRate ?? 19),
-        laborItems: [],
-      })) as Required<InvoiceLineInput>[];
-      const draftPdf = await generateInvoicePdf(
-        {
-          projectId: Invoice.projectId,
-          projectNumber: Invoice.projectNumber,
-          projectTitle: Invoice.projectTitle,
-          company: Invoice.company,
-          customerName: Invoice.customerName,
-          customerStreet: Invoice.customerStreet,
-          customerCity: Invoice.customerCity,
-          contactName: Invoice.contactName,
-          internalContactName: Invoice.internalContactName,
-          internalPhone: Invoice.internalPhone,
-          internalEmail: Invoice.internalEmail,
-          plannedExecutionMonth: Invoice.plannedExecutionMonth,
-          serviceDate: Invoice.serviceDate,
-          sourceOfferId: Invoice.sourceOfferId,
-          sourceOfferNumber: Invoice.sourceOfferNumber,
-          introText: Invoice.introText,
-          closingText: Invoice.closingText,
-          vatRate: Number(Invoice.vatRate ?? 19),
-          discountPercent: Number(Invoice.discountPercent ?? 0),
-          invoiceNumber: Invoice.invoiceNumber,
-          documentTitle: "Rechnungsentwurf",
-        },
-        draftLines
-      );
-      const bytes = Buffer.from(draftPdf.pdfData ?? "", "base64");
-      return new Response(bytes, {
-        headers: {
-          "Content-Type": "application/pdf",
-          "Content-Disposition": `inline; filename="Rechnungsentwurf-${Invoice.projectNumber || Invoice.id}.pdf"`,
-        },
-      });
-    }
-    if (!Invoice.pdfData) {
-      return NextResponse.json({ error: "PDF wurde nicht gefunden." }, { status: 404 });
-    }
-    const bytes = Buffer.from(Invoice.pdfData, "base64");
-    return new Response(bytes, {
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `inline; filename="${Invoice.invoiceNumber}.pdf"`,
-      },
-    });
-  }
-
-  if (historyProjectId) {
-    const historyRows = await prisma.$queryRaw<InvoiceHistoryRow[]>`
-      SELECT *
-      FROM "InvoiceHistory"
-      WHERE "organizationId" = ${organization.id} AND "projectId" = ${historyProjectId}
-      ORDER BY "createdAt" DESC
-    `;
-    return NextResponse.json(historyRows.map(serializeInvoiceHistory));
-  }
-
-  const projectId = cleanString(searchParams.get("projectId"));
-  const rows = projectId
-    ? await prisma.$queryRaw<InvoiceRow[]>`
-        SELECT "id", "organizationId", "projectId", "projectNumber", "projectTitle", "company",
-               "invoiceNumber", "status", "billingSource", "customerName", "customerStreet",
-               "customerCity", "contactName", "internalContactName", "internalPhone",
-               "internalEmail", "plannedExecutionMonth", "serviceDate", "sourceOfferId",
-               "sourceOfferNumber", "introText", "closingText", "netTotal", "vatRate",
-               "grossTotal", "discountPercent", "paymentTermDays", "dueDate",
-               "reminderLevel", "lastReminderAt", "isPaid", "paidAt",
-               CASE WHEN "pdfData" IS NULL THEN NULL ELSE 'available' END AS "pdfData",
-               "createdAt", "updatedAt"
-        FROM "Invoice"
-        WHERE "organizationId" = ${organization.id} AND "projectId" = ${projectId} AND "status" NOT IN (${DELETED_INVOICE_STATUS}, ${LEGACY_DELETED_INVOICE_STATUS})
-        ORDER BY "createdAt" DESC
-      `
-    : await prisma.$queryRaw<InvoiceRow[]>`
-        SELECT "id", "organizationId", "projectId", "projectNumber", "projectTitle", "company",
-               "invoiceNumber", "status", "billingSource", "customerName", "customerStreet",
-               "customerCity", "contactName", "internalContactName", "internalPhone",
-               "internalEmail", "plannedExecutionMonth", "serviceDate", "sourceOfferId",
-               "sourceOfferNumber", "introText", "closingText", "netTotal", "vatRate",
-               "grossTotal", "discountPercent", "paymentTermDays", "dueDate",
-               "reminderLevel", "lastReminderAt", "isPaid", "paidAt",
-               CASE WHEN "pdfData" IS NULL THEN NULL ELSE 'available' END AS "pdfData",
-               "createdAt", "updatedAt"
-        FROM "Invoice"
-        WHERE "organizationId" = ${organization.id} AND "status" NOT IN (${DELETED_INVOICE_STATUS}, ${LEGACY_DELETED_INVOICE_STATUS})
-        ORDER BY "createdAt" DESC
-      `;
-
-  const lineRows: InvoiceLineRow[] = [];
-  const laborRows: InvoiceLineLaborRow[] = [];
-  for (const Invoice of rows) {
-    const rowsForInvoice = await prisma.$queryRaw<InvoiceLineRow[]>`
-      SELECT *
-      FROM "InvoiceLine"
-      WHERE "organizationId" = ${organization.id} AND "invoiceId" = ${Invoice.id}
-      ORDER BY "position" ASC
-    `;
-    lineRows.push(...rowsForInvoice);
-
-    const laborRowsForInvoice = await prisma.$queryRaw<InvoiceLineLaborRow[]>`
-      SELECT *
-      FROM "InvoiceLineLabor"
-      WHERE "organizationId" = ${organization.id} AND "invoiceId" = ${Invoice.id}
-      ORDER BY "position" ASC
-    `;
-    laborRows.push(...laborRowsForInvoice);
-  }
-
-  return NextResponse.json(
-    rows.map((row) =>
-      serializeInvoice(
-        row,
-        lineRows.filter((line) => line.invoiceId === row.id),
-        laborRows.filter((labor) => labor.invoiceId === row.id),
-        { includeInternalCosts }
-      )
-    )
-  );
 }
 
 export async function POST(req: Request) {
@@ -2340,7 +1873,7 @@ export async function PUT(req: Request) {
 export async function PATCH(req: Request) {
   const { organization, users } = await getDemoContext();
   await ensureInvoiceTables();
-  const body = (await req.json()) as InvoiceInput & { id?: string; action?: string; actorName?: string };
+  const body = (await req.json()) as InvoiceInput & { id?: string; action?: string; actorName?: string; reason?: string };
   const actorResult = await getSessionBoundActor(req, users, body.actorId);
   if (!actorResult.ok) {
     return sessionBoundActorResponse(actorResult);
@@ -2363,6 +1896,8 @@ export async function PATCH(req: Request) {
       organizationId: organization.id,
       invoiceId: id,
       actorName,
+      actorUserId: actor.id,
+      reason: cleanString(body.reason),
       includeInternalCosts,
     });
   }

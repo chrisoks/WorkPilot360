@@ -67,6 +67,7 @@ const files = {
   activityReportsRoute: read("src/app/api/activity-reports/route.ts"),
   finalInspectionsRoute: read("src/app/api/final-inspections/route.ts"),
   invoicesRoute: read("src/app/api/invoices/route.ts"),
+  invoiceCancellationService: read("src/lib/invoices/invoice-cancellation-service.ts"),
   potentialsRoute: read("src/app/api/potentials/route.ts"),
   offersRoute: read("src/app/api/offers/route.ts"),
   heroProjectsRoute: read("src/app/api/hero/projects/route.ts"),
@@ -456,9 +457,9 @@ const required = [
   },
   {
     label: "Storno loest verknuepfte Stempelungen wieder von der Rechnung",
-    file: "invoicesRoute",
-    needle: "releaseStampedHoursFromInvoice",
-    min: 3,
+    file: "invoiceCancellationService",
+    needle: "invoiceId: null, invoiceNumber: null, invoicedAt: null",
+    min: 1,
   },
   {
     label: "Zeiteintraege delegieren an den gemeinsamen Schreibservice",

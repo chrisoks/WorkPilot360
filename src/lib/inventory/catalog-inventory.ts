@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import type { CatalogPackageComponentSnapshot } from "@/lib/analytics/catalog-performance";
 
 type InvoiceMaterialLine = {
@@ -55,12 +55,13 @@ function inventoryDate(serviceDate: string, fallback: Date) {
 }
 
 export async function syncInvoiceInventoryMovements(input: {
-  db: PrismaClient;
+  db: PrismaClient | Prisma.TransactionClient;
   organizationId: string;
   invoiceId: string;
   actorUserId?: string;
   actorName?: string;
   catalogItemIds?: string[];
+  useExistingTransaction?: boolean;
 }) {
   const invoice = await input.db.invoice.findFirst({
     where: { id: input.invoiceId, organizationId: input.organizationId },
@@ -96,7 +97,7 @@ export async function syncInvoiceInventoryMovements(input: {
   const itemIds = new Set([...desired.keys(), ...current.keys()]);
   const occurredAt = inventoryDate(invoice.serviceDate, invoice.createdAt);
 
-  await input.db.$transaction(async (tx) => {
+  const applyChanges = async (tx: Prisma.TransactionClient) => {
     for (const catalogItemId of itemIds) {
       const delta = finite(desired.get(catalogItemId)) - finite(current.get(catalogItemId));
       if (Math.abs(delta) < 0.000001) continue;
@@ -131,5 +132,10 @@ export async function syncInvoiceInventoryMovements(input: {
         WHERE "organizationId" = ${input.organizationId} AND "id" = ${catalogItemId}
       `;
     }
-  });
+  };
+  if (input.useExistingTransaction) {
+    await applyChanges(input.db as Prisma.TransactionClient);
+  } else {
+    await (input.db as PrismaClient).$transaction(applyChanges);
+  }
 }

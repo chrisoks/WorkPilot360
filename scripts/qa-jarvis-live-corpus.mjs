@@ -114,6 +114,7 @@ async function main() {
       updatedAt: true,
     },
   });
+  const cancellationInvoice = paymentInvoice;
   const sessionId = randomUUID();
   await prisma.authSession.create({
     data: {
@@ -133,6 +134,7 @@ async function main() {
   let actionDraftCount = 0;
   let invoicePaymentDraftPrepared = false;
   let invoiceReminderDraftPrepared = false;
+  let invoiceCancellationDraftPrepared = false;
 
   try {
     for (const item of corpus) {
@@ -142,6 +144,7 @@ async function main() {
         );
         const paymentDate = getBerlinDateKey(now);
         const isReminderCase = item.question.includes("Erstelle eine Mahnung");
+        const isCancellationCase = item.question.includes("Storniere Rechnung");
         const reminderDeadlineDate = new Date(`${paymentDate}T12:00:00.000Z`);
         reminderDeadlineDate.setUTCDate(reminderDeadlineDate.getUTCDate() + 7);
         const reminderDeadline = reminderDeadlineDate.toISOString().slice(0, 10);
@@ -152,6 +155,8 @@ async function main() {
               )} kontrolliert als bezahlt.`
             : isReminderCase && reminderInvoice
               ? `Erstelle eine Mahnung für Rechnung ${reminderInvoice.invoiceNumber} mit Zahlungsfrist bis ${formatGermanDate(reminderDeadline)}.`
+            : isCancellationCase && cancellationInvoice
+              ? `Storniere Rechnung ${cancellationInvoice.invoiceNumber} vollständig wegen QA-Doppelberechnung.`
             : item.question;
         const response = await fetch(`${baseUrl}/api/jarvis/chat`, {
           method: "POST",
@@ -227,6 +232,27 @@ async function main() {
             });
           } else {
             invoiceReminderDraftPrepared = true;
+          }
+        }
+        if (isCancellationCase && cancellationInvoice) {
+          if (payload.actionDraft?.actionId !== "invoice.cancel") {
+            failures.push({
+              id: item.id,
+              status: response.status,
+              error: "Die Stornofrage hat keine kontrollierte invoice.cancel-Vorschau erzeugt.",
+            });
+          } else if (
+            payload.actionDraft.state !== "awaiting_confirmation" ||
+            payload.actionDraft.confirmation?.enabled !== true ||
+            payload.actionDraft.blockingIssues?.length
+          ) {
+            failures.push({
+              id: item.id,
+              status: response.status,
+              error: "Die Stornofrage hat keine vollständig prüfbare, unblockierte Bestätigungsvorschau erzeugt.",
+            });
+          } else {
+            invoiceCancellationDraftPrepared = true;
           }
         }
       } catch (error) {
@@ -334,6 +360,43 @@ async function main() {
         });
       }
     }
+    if (cancellationInvoice) {
+      const [currentInvoice, cancellationHistoryCount, cancellationRecordCount] = await Promise.all([
+        prisma.invoice.findUnique({
+          where: { id: cancellationInvoice.id },
+          select: { status: true, isPaid: true, updatedAt: true },
+        }),
+        prisma.invoiceHistory.count({
+          where: {
+            organizationId: actor.organizationId,
+            invoiceId: cancellationInvoice.id,
+            eventType: "cancelled",
+            createdAt: { gte: now },
+          },
+        }),
+        prisma.invoice.count({
+          where: {
+            organizationId: actor.organizationId,
+            status: "Stornorechnung",
+            createdAt: { gte: now },
+          },
+        }),
+      ]);
+      if (
+        !currentInvoice ||
+        currentInvoice.status !== cancellationInvoice.status ||
+        currentInvoice.isPaid !== cancellationInvoice.isPaid ||
+        currentInvoice.updatedAt.toISOString() !== cancellationInvoice.updatedAt.toISOString() ||
+        cancellationHistoryCount !== 0 ||
+        cancellationRecordCount !== 0
+      ) {
+        failures.push({
+          id: "side-effect-invoice-cancellation",
+          status: 0,
+          error: "Die 110-Fragen-Prüfung hat unerwartet eine Rechnung storniert oder eine Stornorechnung erzeugt.",
+        });
+      }
+    }
   } finally {
     if (createdDraftIds.size) {
       await prisma.jarvisActionDraft.deleteMany({
@@ -359,6 +422,7 @@ async function main() {
     actionDraftsPrepared: actionDraftCount,
     invoicePaymentDraftPrepared,
     invoiceReminderDraftPrepared,
+    invoiceCancellationDraftPrepared,
     executedActions: 0,
     failures,
     qaDraftsRemaining: remainingDrafts,

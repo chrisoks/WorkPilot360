@@ -23,6 +23,7 @@ import {
   type JarvisInvoiceFinalizationDraftView,
   type JarvisInvoicePaymentDraftView,
   type JarvisInvoiceReminderDraftView,
+  type JarvisInvoiceCancellationDraftView,
   type JarvisInvoiceDeliveryDraftView,
   type JarvisTaskActionDraftState,
   type JarvisTaskActionDraftView,
@@ -133,6 +134,14 @@ import {
   matchesInvoiceReminderConfirmation,
   type InvoiceReminderEvaluation,
 } from "@/lib/invoices/invoice-reminder-service";
+import {
+  createInvoiceCancellation,
+  evaluateInvoiceCancellation,
+  getInvoiceCancellationConfirmationText,
+  InvoiceCancellationServiceError,
+  matchesInvoiceCancellationConfirmation,
+  type InvoiceCancellationEvaluation,
+} from "@/lib/invoices/invoice-cancellation-service";
 import { syncInvoiceInventoryMovements } from "@/lib/inventory/catalog-inventory";
 import {
   evaluateInvoiceDelivery,
@@ -697,6 +706,41 @@ const invoiceReminderContextSchema = z
         })
         .strict()
     ),
+    warnings: z.array(z.string()),
+    blockingIssues: z.array(z.string()),
+    fingerprint: z.string().length(64),
+  })
+  .strict();
+
+const invoiceCancellationPayloadSchema = z
+  .object({
+    invoiceId: z.string().trim().min(1).max(120),
+    reason: z.string().trim().max(500),
+  })
+  .strict();
+
+const completeInvoiceCancellationSchema = z
+  .object({
+    revision: z.number().int().min(1),
+    reason: z.string().trim().max(500),
+  })
+  .strict();
+
+const invoiceCancellationContextSchema = z
+  .object({
+    invoice: z.object({
+      id: z.string(), invoiceNumber: z.string(), status: z.string(), projectId: z.string(),
+      projectNumber: z.string(), projectTitle: z.string(), company: z.string(), customerName: z.string(),
+      customerStreet: z.string(), customerCity: z.string(), contactName: z.string(), internalContactName: z.string(),
+      serviceDate: z.string(), netTotal: z.number(), vatRate: z.number(), grossTotal: z.number(), isPaid: z.boolean(),
+      updatedAt: z.string().datetime({ offset: true }),
+    }).strict(),
+    cancellationNumber: z.string(),
+    lineCount: z.number().int().min(0),
+    releasedTimeEntryCount: z.number().int().min(0),
+    checks: z.array(z.object({
+      key: z.string(), label: z.string(), status: z.enum(["ok", "warning", "blocked"]), detail: z.string(),
+    }).strict()),
     warnings: z.array(z.string()),
     blockingIssues: z.array(z.string()),
     fingerprint: z.string().length(64),
@@ -3556,6 +3600,9 @@ export async function getJarvisActionDraft(
   }
   if (draft?.actionId === "invoice.remind") {
     return getJarvisInvoiceReminderDraft(previewId, binding, now);
+  }
+  if (draft?.actionId === "invoice.cancel") {
+    return getJarvisInvoiceCancellationDraft(previewId, binding, now);
   }
   if (draft?.actionId === "document.send") {
     return getJarvisInvoiceDeliveryDraft(previewId, binding, now);
@@ -9586,6 +9633,222 @@ export async function confirmJarvisInvoiceReminderDraft(
       "Die Mahnung wurde nicht erstellt und die Vorschau bleibt zur Prüfung erhalten.",
       500
     );
+  }
+}
+
+function mayCreateInvoiceCancellation(binding: JarvisTaskDraftBinding) {
+  return canManageInvoices(binding.profile.sessionActor) && canManageInvoices(binding.profile.effectiveActor);
+}
+
+function validateInvoiceCancellationBinding(draft: JarvisActionDraft, binding: JarvisTaskDraftBinding) {
+  const actorIds = getActorIds(binding.profile);
+  if (
+    draft.organizationId !== binding.organizationId || draft.sessionId !== binding.sessionId ||
+    draft.sessionActorId !== actorIds.sessionActorId || draft.effectiveActorId !== actorIds.effectiveActorId ||
+    draft.impersonating !== binding.profile.isImpersonating
+  ) {
+    throw new JarvisActionDraftError("scope_mismatch", "Diese Stornovorschau gehört nicht zur aktuellen Organisation, Sitzung oder wirksamen Identität.", 403);
+  }
+  if (draft.sessionActorRole !== binding.profile.sessionActor.role || draft.effectiveActorRole !== binding.profile.effectiveActor.role) {
+    throw new JarvisActionDraftError("role_changed", "Die Rolle hat sich seit der Stornoprüfung geändert. Bitte erstelle eine neue Vorschau.", 409);
+  }
+  if (!integrityMatches(draft)) {
+    throw new JarvisActionDraftError("integrity_failed", "Der Integritätsnachweis der Stornovorschau ist ungültig.", 409);
+  }
+  const payload = invoiceCancellationPayloadSchema.safeParse(draft.payload);
+  const context = invoiceCancellationContextSchema.safeParse(draft.context);
+  if (
+    draft.actionId !== "invoice.cancel" || !payload.success || !context.success ||
+    hashJson(payload.data) !== draft.payloadHash || hashJson(context.data) !== draft.contextHash
+  ) {
+    throw new JarvisActionDraftError("integrity_failed", "Stornovorschau oder Prüfkontext stimmen nicht mit dem Integritätsnachweis überein.", 409);
+  }
+  return { payload: payload.data, context: context.data };
+}
+
+async function loadBoundInvoiceCancellationDraft(previewId: string, binding: JarvisTaskDraftBinding, now = new Date()) {
+  const found = await prisma.jarvisActionDraft.findUnique({ where: { id: previewId } });
+  if (!found) throw new JarvisActionDraftError("not_found", "Die Stornovorschau wurde nicht gefunden.", 404);
+  validateInvoiceCancellationBinding(found, binding);
+  const current = await expireDraftIfNeeded(found, now);
+  return { draft: current, ...validateInvoiceCancellationBinding(current, binding) };
+}
+
+function toJarvisInvoiceCancellationDraftView(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+): JarvisInvoiceCancellationDraftView {
+  const { payload, context } = validateInvoiceCancellationBinding(draft, binding);
+  const state = draft.state as JarvisTaskActionDraftState;
+  const permitted = mayCreateInvoiceCancellation(binding);
+  const ready = state === "awaiting_confirmation" && permitted && !context.blockingIssues.length && payload.reason.length >= 3;
+  const reason: JarvisInvoiceCancellationDraftView["confirmation"]["reason"] =
+    state === "expired" ? "expired" : state === "cancelled" ? "cancelled" : state === "executed" ? "executed" :
+    state === "executing" ? "executing" : !permitted ? "not_permitted" : context.blockingIssues.length || payload.reason.length < 3 ? "blocked" : "ready";
+  const currency = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
+  return {
+    version: 2,
+    previewId: draft.id,
+    actionId: "invoice.cancel",
+    title: "Rechnung kontrolliert vollständig stornieren",
+    badge: state === "executed" ? "Storniert" : state === "executing" ? "Wird storniert" : state === "cancelled" ? "Abgebrochen" : state === "expired" ? "Abgelaufen" : ready ? "Bereit" : "Prüfung",
+    state,
+    revision: draft.revision,
+    expiresAt: draft.expiresAt.toISOString(),
+    invoiceId: context.invoice.id,
+    projectId: context.invoice.projectId,
+    fields: [
+      { label: "Rechnung", value: context.invoice.invoiceNumber },
+      { label: "Stornorechnung", value: context.cancellationNumber },
+      { label: "Projekt", value: `${context.invoice.projectNumber} · ${context.invoice.projectTitle}` },
+      { label: "Kunde", value: context.invoice.customerName || "–" },
+      { label: "Status", value: context.invoice.status },
+      { label: "Vollständige Gegenbuchung", value: currency.format(-Math.abs(context.invoice.grossTotal)) },
+      { label: "Freizugebende Zeiten", value: String(context.releasedTimeEntryCount) },
+    ],
+    editor: { reason: payload.reason },
+    checks: context.checks,
+    warnings: context.warnings,
+    blockingIssues: [
+      ...context.blockingIssues,
+      ...(payload.reason.length < 3 ? ["Ein nachvollziehbarer Stornogrund mit mindestens 3 Zeichen ist erforderlich."] : []),
+      ...(!permitted ? ["Das Vollstorno ist für diese Rollenkombination nicht freigegeben."] : []),
+    ],
+    confirmation: {
+      enabled: ready,
+      reason,
+      requiredText: getInvoiceCancellationConfirmationText(context.invoice.invoiceNumber, context.cancellationNumber),
+    },
+    cancellation: { enabled: OPEN_DRAFT_STATES.includes(state as never) },
+    ...(state === "executed" && draft.resultEntityId ? {
+      result: { entityType: "invoice" as const, entityId: draft.resultEntityId, label: "Stornorechnung öffnen" },
+    } : {}),
+  };
+}
+
+export async function createPersistedJarvisInvoiceCancellationDraft(input: {
+  preview: JarvisActionPreview<"invoice.cancel">;
+  organizationId: string;
+  sessionId: string;
+  profile: JarvisAccessProfile;
+  now?: Date;
+}) {
+  if (!input.sessionId) throw new JarvisActionDraftError("session_required", "Für ein Vollstorno ist eine aktuelle serverseitige Sitzung erforderlich.", 401);
+  if (!mayCreateInvoiceCancellation(input)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf keine Rechnung stornieren.", 403);
+  const now = input.now ?? new Date();
+  const evaluation = await evaluateInvoiceCancellation({ organizationId: input.organizationId, invoiceId: input.preview.payload.invoiceId });
+  const payload = invoiceCancellationPayloadSchema.parse({ invoiceId: input.preview.payload.invoiceId, reason: input.preview.payload.reason ?? "" });
+  const context = invoiceCancellationContextSchema.parse(evaluation);
+  const state = context.blockingIssues.length || payload.reason.length < 3 ? "awaiting_input" : "awaiting_confirmation";
+  const actorIds = getActorIds(input.profile);
+  const draftData: DraftIntegrityData = {
+    id: input.preview.previewId, organizationId: input.organizationId, sessionId: input.sessionId,
+    sessionActorId: actorIds.sessionActorId, sessionActorRole: input.profile.sessionActor.role,
+    effectiveActorId: actorIds.effectiveActorId, effectiveActorRole: input.profile.effectiveActor.role,
+    impersonating: input.profile.isImpersonating, actionId: "invoice.cancel", state, revision: 1,
+    payloadHash: hashJson(payload), contextHash: hashJson(context),
+    expiresAt: new Date(now.getTime() + JARVIS_INVOICE_DRAFT_TTL_MS), confirmedAt: null, cancelledAt: null,
+    executedAt: null, resultEntityType: null, resultEntityId: null,
+    lastErrorCode: state === "awaiting_input" ? "invalid_input" : null,
+  };
+  const created = await prisma.$transaction(async (tx) => {
+    const draft = await tx.jarvisActionDraft.create({ data: { ...draftData, payload: payload as Prisma.InputJsonValue, context: context as Prisma.InputJsonValue, integrityTag: createIntegrityTag(draftData) } });
+    await appendAuditEvent(tx, { draft, eventType: state === "awaiting_confirmation" ? "draft_created_ready" : "draft_created_blocked" });
+    return draft;
+  });
+  return toJarvisInvoiceCancellationDraftView(created, input);
+}
+
+export async function getJarvisInvoiceCancellationDraft(previewId: string, binding: JarvisTaskDraftBinding, now = new Date()) {
+  const { draft } = await loadBoundInvoiceCancellationDraft(previewId, binding, now);
+  return toJarvisInvoiceCancellationDraftView(draft, binding);
+}
+
+export async function completeJarvisInvoiceCancellationDraft(previewId: string, binding: JarvisTaskDraftBinding, rawInput: unknown, now = new Date()) {
+  const completed = completeInvoiceCancellationSchema.safeParse(rawInput);
+  if (!completed.success) throw new JarvisActionDraftError("invalid_input", "Stornogrund oder Entwurfsrevision sind ungültig.", 400);
+  const loaded = await loadBoundInvoiceCancellationDraft(previewId, binding, now);
+  if (!OPEN_DRAFT_STATES.includes(loaded.draft.state as never)) throw new JarvisActionDraftError(loaded.draft.state === "expired" ? "expired" : "invalid_state", "Diese Stornovorschau kann nicht mehr geändert werden.", loaded.draft.state === "expired" ? 410 : 409);
+  if (completed.data.revision !== loaded.draft.revision) throw new JarvisActionDraftError("conflict", "Die Stornovorschau wurde zwischenzeitlich verändert.", 409);
+  const evaluation: InvoiceCancellationEvaluation = await evaluateInvoiceCancellation({ organizationId: binding.organizationId, invoiceId: loaded.payload.invoiceId });
+  const payload = invoiceCancellationPayloadSchema.parse({ invoiceId: loaded.payload.invoiceId, reason: completed.data.reason });
+  const context = invoiceCancellationContextSchema.parse(evaluation);
+  const state = context.blockingIssues.length || payload.reason.length < 3 ? "awaiting_input" : "awaiting_confirmation";
+  const nextData: DraftIntegrityData = { ...loaded.draft, state, revision: loaded.draft.revision + 1, payloadHash: hashJson(payload), contextHash: hashJson(context), confirmedAt: null, lastErrorCode: state === "awaiting_input" ? "invalid_input" : null };
+  const updated = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: { id: loaded.draft.id, revision: loaded.draft.revision, state: loaded.draft.state, integrityTag: loaded.draft.integrityTag },
+      data: { state, revision: nextData.revision, payload: payload as Prisma.InputJsonValue, context: context as Prisma.InputJsonValue, payloadHash: nextData.payloadHash, contextHash: nextData.contextHash, confirmedAt: null, lastErrorCode: nextData.lastErrorCode, integrityTag: createIntegrityTag(nextData) },
+    });
+    if (changed.count !== 1) throw new JarvisActionDraftError("conflict", "Die Stornovorschau wurde bereits verändert.", 409);
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({ where: { id: loaded.draft.id } });
+    await appendAuditEvent(tx, { draft: current, eventType: state === "awaiting_confirmation" ? "draft_completed_ready" : "draft_completed_blocked" });
+    return current;
+  });
+  return toJarvisInvoiceCancellationDraftView(updated, binding);
+}
+
+export async function cancelJarvisInvoiceCancellationDraft(previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, now = new Date()) {
+  const { draft } = await loadBoundInvoiceCancellationDraft(previewId, binding, now);
+  if (draft.state === "cancelled") return toJarvisInvoiceCancellationDraftView(draft, binding);
+  if (!OPEN_DRAFT_STATES.includes(draft.state as never)) throw new JarvisActionDraftError(draft.state === "expired" ? "expired" : "invalid_state", "Diese Stornovorschau kann nicht mehr abgebrochen werden.", draft.state === "expired" ? 410 : 409);
+  if (expectedRevision !== draft.revision) throw new JarvisActionDraftError("conflict", "Die Stornovorschau wurde zwischenzeitlich verändert.", 409);
+  const nextData: DraftIntegrityData = { ...draft, state: "cancelled", cancelledAt: now, lastErrorCode: null };
+  const cancelled = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: { id: draft.id, revision: draft.revision, state: draft.state, integrityTag: draft.integrityTag },
+      data: { state: "cancelled", cancelledAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(nextData) },
+    });
+    if (changed.count !== 1) throw new JarvisActionDraftError("conflict", "Die Stornovorschau wurde bereits verändert.", 409);
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({ where: { id: draft.id } });
+    await appendAuditEvent(tx, { draft: current, eventType: "draft_cancelled", reasonCode: "user_cancelled" });
+    return current;
+  });
+  return toJarvisInvoiceCancellationDraftView(cancelled, binding);
+}
+
+export async function confirmJarvisInvoiceCancellationDraft(previewId: string, binding: JarvisTaskDraftBinding, expectedRevision: number, confirmationText: string, now = new Date()) {
+  const loaded = await loadBoundInvoiceCancellationDraft(previewId, binding, now);
+  if (loaded.draft.state === "executed") return toJarvisInvoiceCancellationDraftView(loaded.draft, binding);
+  const requiredText = getInvoiceCancellationConfirmationText(loaded.context.invoice.invoiceNumber, loaded.context.cancellationNumber);
+  if (!matchesInvoiceCancellationConfirmation(loaded.context.invoice.invoiceNumber, loaded.context.cancellationNumber, confirmationText)) {
+    throw new JarvisActionDraftError("invalid_input", `Gib zur kritischen Bestätigung exakt „${requiredText}“ ein.`, 400);
+  }
+  if (expectedRevision !== loaded.draft.revision || loaded.draft.state !== "awaiting_confirmation") throw new JarvisActionDraftError("conflict", "Nur die aktuelle, vollständig geprüfte Stornovorschau darf bestätigt werden.", 409);
+  if (!mayCreateInvoiceCancellation(binding)) throw new JarvisActionDraftError("scope_mismatch", "Diese Rollenkombination darf keine Rechnung stornieren.", 403);
+  try {
+    const executed = await prisma.$transaction(async (tx) => {
+      const current = await tx.jarvisActionDraft.findUnique({ where: { id: loaded.draft.id } });
+      if (!current) throw new JarvisActionDraftError("not_found", "Die Stornovorschau wurde nicht gefunden.", 404);
+      const parsed = validateInvoiceCancellationBinding(current, binding);
+      if (current.state === "executed") return current;
+      if (current.state !== "awaiting_confirmation" || current.expiresAt.getTime() <= now.getTime()) throw new JarvisActionDraftError(current.expiresAt.getTime() <= now.getTime() ? "expired" : "conflict", "Die Stornovorschau ist nicht mehr ausführbar.", current.expiresAt.getTime() <= now.getTime() ? 410 : 409);
+      const actor = await tx.user.findFirst({ where: { id: current.effectiveActorId, organizationId: binding.organizationId, isActive: true }, select: { id: true, role: true, firstName: true, lastName: true, email: true } });
+      if (!actor || !canManageInvoices(actor)) throw new JarvisActionDraftError("role_changed", "Akteur oder Rechnungsberechtigung sind nicht mehr aktuell.", 409);
+      const claimedData: DraftIntegrityData = { ...current, state: "executing", confirmedAt: now, lastErrorCode: null };
+      const claimed = await tx.jarvisActionDraft.updateMany({ where: { id: current.id, revision: current.revision, state: "awaiting_confirmation", integrityTag: current.integrityTag }, data: { state: "executing", confirmedAt: now, lastErrorCode: null, integrityTag: createIntegrityTag(claimedData) } });
+      if (claimed.count !== 1) throw new JarvisActionDraftError("conflict", "Die Rechnung wird bereits storniert.", 409);
+      const actorName = [actor.firstName, actor.lastName].filter(Boolean).join(" ") || actor.email;
+      const result = await createInvoiceCancellation({
+        tx, organizationId: binding.organizationId, invoiceId: parsed.payload.invoiceId,
+        actorName, actorUserId: actor.id, reason: parsed.payload.reason,
+        expectedFingerprint: parsed.context.fingerprint, source: "jarvis",
+      });
+      const executedAt = new Date();
+      const executedData: DraftIntegrityData = { ...claimedData, state: "executed", executedAt, resultEntityType: "invoice", resultEntityId: result.cancellationInvoice.id };
+      const finalDraft = await tx.jarvisActionDraft.update({ where: { id: current.id }, data: { state: "executed", executedAt, resultEntityType: "invoice", resultEntityId: result.cancellationInvoice.id, integrityTag: createIntegrityTag(executedData) } });
+      await appendAuditEvent(tx, { draft: finalDraft, eventType: "draft_confirmed_and_executed", result: { id: result.cancellationInvoice.id, entityType: "invoice" } });
+      return finalDraft;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    return toJarvisInvoiceCancellationDraftView(executed, binding);
+  } catch (error) {
+    if (error instanceof JarvisActionDraftError && error.code === "conflict") {
+      const latest = await loadBoundInvoiceCancellationDraft(previewId, binding, now);
+      if (latest.draft.state === "executed") return toJarvisInvoiceCancellationDraftView(latest.draft, binding);
+    }
+    if (error instanceof JarvisActionDraftError) throw error;
+    if (error instanceof InvoiceCancellationServiceError) throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : "invalid_input", error.message, 409);
+    throw new JarvisActionDraftError("execution_failed", "Die Rechnung wurde nicht storniert und die Vorschau bleibt zur Prüfung erhalten.", 500);
   }
 }
 

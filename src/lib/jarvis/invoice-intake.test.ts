@@ -10,6 +10,9 @@ import {
   looksLikeInvoiceFinalizationRequest,
   looksLikeInvoicePaymentRequest,
   looksLikeInvoiceReminderRequest,
+  looksLikeInvoiceCancellationRequest,
+  looksLikeInvoiceCreditRequest,
+  extractInvoiceCancellationReason,
 } from "@/lib/jarvis/invoice-intake";
 
 describe("JARVIS invoice intake", () => {
@@ -81,6 +84,15 @@ describe("JARVIS invoice intake", () => {
     expect(extractInvoiceReminderDeadline("Zahlungsfrist bis 07.08.2026")).toBe(
       "2026-08-07"
     );
+  });
+
+  it("separates a full cancellation from unsupported partial credits", () => {
+    expect(looksLikeInvoiceCancellationRequest("Storniere Rechnung RE-10119 vollständig wegen Doppelberechnung")).toBe(true);
+    expect(looksLikeInvoiceCancellationRequest("Wie storniere ich eine Rechnung?")).toBe(false);
+    expect(looksLikeInvoiceCancellationRequest("Erstelle eine Teilgutschrift für RE-10119")).toBe(false);
+    expect(looksLikeInvoiceCreditRequest("Storniere RE-10119 teilweise")).toBe(true);
+    expect(looksLikeInvoiceCreditRequest("Erstelle eine Gutschrift zu Rechnung RE-10119")).toBe(true);
+    expect(extractInvoiceCancellationReason("Storniere RE-10119, Grund: Doppelberechnung")).toBe("Doppelberechnung");
   });
 
   it("extracts service date and company", () => {

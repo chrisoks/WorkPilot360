@@ -26,6 +26,9 @@ const mocks = vi.hoisted(() => ({
   completeJarvisInvoiceReminderDraft: vi.fn(),
   cancelJarvisInvoiceReminderDraft: vi.fn(),
   confirmJarvisInvoiceReminderDraft: vi.fn(),
+  completeJarvisInvoiceCancellationDraft: vi.fn(),
+  cancelJarvisInvoiceCancellationDraft: vi.fn(),
+  confirmJarvisInvoiceCancellationDraft: vi.fn(),
   completeJarvisInvoiceDeliveryDraft: vi.fn(),
   cancelJarvisInvoiceDeliveryDraft: vi.fn(),
   confirmJarvisInvoiceDeliveryDraft: vi.fn(),
@@ -81,6 +84,12 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.cancelJarvisInvoiceReminderDraft,
   confirmJarvisInvoiceReminderDraft:
     mocks.confirmJarvisInvoiceReminderDraft,
+  completeJarvisInvoiceCancellationDraft:
+    mocks.completeJarvisInvoiceCancellationDraft,
+  cancelJarvisInvoiceCancellationDraft:
+    mocks.cancelJarvisInvoiceCancellationDraft,
+  confirmJarvisInvoiceCancellationDraft:
+    mocks.confirmJarvisInvoiceCancellationDraft,
   completeJarvisInvoiceDeliveryDraft:
     mocks.completeJarvisInvoiceDeliveryDraft,
   cancelJarvisInvoiceDeliveryDraft:
@@ -1075,6 +1084,31 @@ describe("JARVIS action-draft API", () => {
     );
     expect(mocks.confirmJarvisInvoiceDeliveryDraft).not.toHaveBeenCalled();
     expect(mocks.confirmJarvisInvoicePaymentDraft).not.toHaveBeenCalled();
+  });
+
+  it("passes only the bound critical phrase to full invoice cancellation", async () => {
+    mocks.confirmJarvisInvoiceCancellationDraft.mockResolvedValue({ state: "executed", actionId: "invoice.cancel" });
+    const response = (await POST(
+      request("POST", {
+        actorId: "user-1",
+        actionId: "invoice.cancel",
+        command: "confirm",
+        revision: 6,
+        confirmationText: "STORNIEREN RE-10119 MIT ST-10100",
+        refundPayment: true,
+        sendMail: true,
+      }, {
+        "x-jarvis-action": "jarvis-action-draft-v2",
+        origin: "https://workpilot.example",
+      }) as never,
+      context
+    ))!;
+    expect(response.status).toBe(200);
+    expect(mocks.confirmJarvisInvoiceCancellationDraft).toHaveBeenCalledWith(
+      "preview-1", expect.anything(), 6, "STORNIEREN RE-10119 MIT ST-10100"
+    );
+    expect(mocks.confirmJarvisInvoicePaymentDraft).not.toHaveBeenCalled();
+    expect(mocks.confirmJarvisInvoiceDeliveryDraft).not.toHaveBeenCalled();
   });
 
   it("rejects unknown commands without touching draft state", async () => {

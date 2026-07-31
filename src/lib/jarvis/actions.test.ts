@@ -18,7 +18,7 @@ describe("JARVIS action registry", () => {
     expect(criticalActions.every((action) => action.confirmation === "critical")).toBe(true);
   });
 
-  it("does not make planned actions executable", () => {
+  it("releases invoice cancellation only as a critical confirmed action", () => {
     const profile = createJarvisAccessProfile({
       id: "gf",
       role: Role.GESCHAEFTSFUEHRER,
@@ -26,9 +26,12 @@ describe("JARVIS action registry", () => {
     const decision = getJarvisActionDecision("invoice.cancel", profile);
 
     expect(decision.permitted).toBe(true);
-    expect(decision.executable).toBe(false);
-    expect(decision.reason).toBe("not_implemented");
-    expect(decision.requiresConfirmation).toBe(true);
+    expect(decision).toMatchObject({
+      permitted: true,
+      executable: true,
+      reason: "allowed",
+      requiresConfirmation: true,
+    });
   });
 
   it("releases invoice finalization only as a critical confirmed action", () => {

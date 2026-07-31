@@ -64,6 +64,29 @@ export function looksLikeInvoiceReminderRequest(question: string) {
   );
 }
 
+export function looksLikeInvoiceCancellationRequest(question: string) {
+  const value = normalizeJarvisIntentText(question);
+  return (
+    (/(?:^|\s)re-\d+\b/.test(value) || /\brechnung\w*\b/.test(value)) &&
+    /\b(?:stornier|storno)\w*\b/.test(value) &&
+    !/\b(?:teil|teilweise|gutschrift|rechnungskorrektur)\w*\b/.test(value) &&
+    !/^\s*(?:ist|war|wurde|zeig|pruf|pruef|welch|wann|warum|wieso|wie)\w*\b/.test(value)
+  );
+}
+
+export function looksLikeInvoiceCreditRequest(question: string) {
+  const value = normalizeJarvisIntentText(question);
+  return (
+    (/(?:^|\s)re-\d+\b/.test(value) || /\brechnung\w*\b/.test(value)) &&
+    /\b(?:gutschrift|teilgutschrift|rechnungskorrektur|teilstorno|teilweise\s+storn|storn\w*\s+.*teilweise)\w*\b/.test(value)
+  );
+}
+
+export function extractInvoiceCancellationReason(question: string) {
+  const match = question.match(/(?:grund|weil|wegen)\s*[:=-]?\s*(.{3,500})$/i);
+  return match?.[1]?.trim();
+}
+
 export function extractInvoiceNumber(question: string) {
   return question.match(/\bRE-\d+\b/i)?.[0]?.toUpperCase();
 }

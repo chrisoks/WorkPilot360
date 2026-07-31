@@ -98,6 +98,7 @@ import {
   createPersistedJarvisInvoiceFinalizationDraft,
   createPersistedJarvisInvoicePaymentDraft,
   createPersistedJarvisInvoiceReminderDraft,
+  createPersistedJarvisInvoiceCancellationDraft,
   createPersistedJarvisInvoiceDeliveryDraft,
   createPersistedJarvisCommunicationDraft,
   createPersistedJarvisTaskDraft,
@@ -122,12 +123,15 @@ import {
   extractInvoiceNumber,
   extractInvoicePaymentDate,
   extractInvoiceReminderDeadline,
+  extractInvoiceCancellationReason,
   extractInvoiceServiceDate,
   looksLikeInvoiceDraftRequest,
   looksLikeInvoiceDeliveryRequest,
   looksLikeInvoiceFinalizationRequest,
   looksLikeInvoicePaymentRequest,
   looksLikeInvoiceReminderRequest,
+  looksLikeInvoiceCancellationRequest,
+  looksLikeInvoiceCreditRequest,
 } from "@/lib/jarvis/invoice-intake";
 import { getBerlinDateKey } from "@/lib/invoices/invoice-payment-service";
 
@@ -520,6 +524,97 @@ async function buildJarvisInvoicePaymentDraft(input: {
           ? error.message
           : "Die Zahlungsvorschau konnte nicht sicher vorbereitet werden."
       } Es wurde kein Zahlungseingang gebucht.`,
+    };
+  }
+}
+
+async function buildJarvisInvoiceCancellationDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+  context: ReturnType<typeof sanitizeJarvisSurfaceContext>;
+}) {
+  if (!input.sessionId) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-cancellation.session-required",
+      message: "Für ein kontrolliertes Vollstorno ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts verändert.",
+    };
+  }
+  const invoiceNumber = extractInvoiceNumber(input.question);
+  const invoice = invoiceNumber
+    ? await prisma.invoice.findFirst({
+        where: { invoiceNumber: { equals: invoiceNumber, mode: "insensitive" }, organizationId: input.organizationId },
+        select: { id: true, invoiceNumber: true, customerName: true, status: true, isPaid: true },
+      })
+    : null;
+  if (invoiceNumber && !invoice) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-cancellation.not-found",
+      message: `${invoiceNumber} wurde in dieser Organisation nicht gefunden. Es wurde keine andere Rechnung ausgewählt und nichts storniert.`,
+    };
+  }
+  if (!invoice) {
+    const invoices = await prisma.invoice.findMany({
+      where: { organizationId: input.organizationId, status: { in: ["Fakturiert", "Bezahlt"] } },
+      orderBy: { updatedAt: "desc" },
+      take: 5,
+      select: { invoiceNumber: true, customerName: true, status: true },
+    });
+    return {
+      type: "clarification" as const,
+      topicId: "action.invoice-cancellation.choose",
+      message: invoices.length
+        ? "Welche fakturierte oder bezahlte Rechnung soll vollständig storniert werden? Es wurde noch nichts verändert."
+        : "Es gibt aktuell keine Rechnung, für die JARVIS ein Vollstorno vorbereiten kann.",
+      choices: invoices.map((candidate) => createJarvisDialogChoice(
+        `invoice-cancellation-${candidate.invoiceNumber}`,
+        `${candidate.invoiceNumber} · ${candidate.customerName || "ohne Kunde"} · ${candidate.status}`,
+        `Storniere Rechnung ${candidate.invoiceNumber} vollständig`
+      )),
+    };
+  }
+  if (!["Fakturiert", "Bezahlt"].includes(invoice.status)) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-cancellation.invalid-state",
+      message: `${invoice.invoiceNumber} kann im Status ${invoice.status} nicht vollständig storniert werden. Es wurde nichts verändert.`,
+    };
+  }
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(),
+    actionId: "invoice.cancel",
+    payload: {
+      invoiceId: invoice.id,
+      ...(extractInvoiceCancellationReason(input.question) ? { reason: extractInvoiceCancellationReason(input.question) } : {}),
+    },
+    organizationId: input.organizationId,
+    profile: input.accessProfile,
+    createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) {
+    return { type: "refusal" as const, topicId: "action.invoice-cancellation.refused", message: `${preview.message} Es wurde nichts storniert.` };
+  }
+  try {
+    const actionDraft = await createPersistedJarvisInvoiceCancellationDraft({
+      preview: preview.value,
+      organizationId: input.organizationId,
+      sessionId: input.sessionId,
+      profile: input.accessProfile,
+    });
+    return {
+      type: "answer" as const,
+      topicId: "action.invoice-cancellation",
+      message: "Ich habe eine kontrollierte Vollstorno-Vorschau vorbereitet. Prüfe Rechnung, ST-Nummer, vollständige Gegenbuchung, Zahlungswarnung, freizugebende Zeiten und den dokumentierten Grund. Erst die exakt angezeigte kritische Bestätigungsphrase führt das Vollstorno genau einmal aus. Es wird keine E-Mail versendet und keine Rückzahlung gebucht.",
+      actionDraft,
+    };
+  } catch (error) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-cancellation.unavailable",
+      message: `${error instanceof JarvisActionDraftError ? error.message : "Die Stornovorschau konnte nicht sicher vorbereitet werden."} Es wurde nichts storniert.`,
     };
   }
 }
@@ -1978,6 +2073,25 @@ export async function POST(req: Request) {
     resolveExplicitSafetyPolicyQuestion(message);
   if (explicitSafetyPolicyResponse) {
     return respond(explicitSafetyPolicyResponse);
+  }
+  if (looksLikeInvoiceCreditRequest(message)) {
+    return respond({
+      type: "refusal",
+      topicId: "action.invoice-credit.unsupported",
+      message: "WorkPilot unterstützt derzeit nur die vollständige Stornorechnung. Eine Teilgutschrift, Rechnungskorrektur oder teilweise Stornierung hat noch keinen freigegebenen Fachprozess; ich führe deshalb kein Vollstorno als Ersatz aus. Es wurde nichts verändert.",
+    });
+  }
+  if (looksLikeInvoiceCancellationRequest(message)) {
+    return respond(
+      await buildJarvisInvoiceCancellationDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+        context,
+      }),
+      "sales"
+    );
   }
   if (looksLikeInvoiceReminderRequest(message)) {
     return respond(

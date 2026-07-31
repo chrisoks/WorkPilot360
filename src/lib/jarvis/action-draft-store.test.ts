@@ -40,6 +40,7 @@ const fake = vi.hoisted(() => {
   const invoiceDrafts: Array<Record<string, any>> = [];
   const paidInvoices: Array<Record<string, any>> = [];
   const reminderInvoices: Array<Record<string, any>> = [];
+  const cancellationInvoices: Array<Record<string, any>> = [];
   const evaluateInvoicePayment = vi.fn(async ({ invoiceId, paymentDate }: { invoiceId: string; paymentDate?: string }) => ({
     invoice: {
       id: invoiceId,
@@ -104,6 +105,25 @@ const fake = vi.hoisted(() => {
     const row = { id: invoiceId, reminderLevel: 1, reminderDate, paymentDeadline };
     reminderInvoices.push(row);
     return { invoice: row, reminderDocument: { documentNumber: "MA-RE-10119-1", fileName: "MA-RE-10119-1.pdf" } };
+  });
+  const evaluateInvoiceCancellation = vi.fn(async ({ invoiceId }: { invoiceId: string }) => ({
+    invoice: {
+      id: invoiceId, invoiceNumber: "RE-10119", status: "Fakturiert", projectId: "project-1",
+      projectNumber: "MKG-209", projectTitle: "Marketing", company: "OK solutions", customerName: "Musterkunde",
+      customerStreet: "Testweg 1", customerCity: "74722 Buchen", contactName: "", internalContactName: "Jarvis Tester",
+      serviceDate: "2026-07-20", netTotal: 100, vatRate: 19, grossTotal: 119, isPaid: false,
+      updatedAt: "2026-07-31T08:00:00.000Z",
+    },
+    cancellationNumber: "ST-10100",
+    lineCount: 1,
+    releasedTimeEntryCount: 2,
+    checks: [{ key: "amount", label: "Gegenbuchung", status: "ok", detail: "-119,00 €" }],
+    warnings: [], blockingIssues: [], fingerprint: "c".repeat(64),
+  }));
+  const createInvoiceCancellation = vi.fn(async ({ invoiceId, reason }: { invoiceId: string; reason: string }) => {
+    const row = { id: "cancellation-1", invoiceId, reason };
+    cancellationInvoices.push(row);
+    return { originalInvoiceId: invoiceId, cancellationInvoice: row };
   });
   const evaluateInvoiceDraft = vi.fn(async ({ draft }: { draft: Record<string, any> }) => {
     const lines = Array.isArray(draft.lines) ? draft.lines : [];
@@ -545,12 +565,15 @@ const fake = vi.hoisted(() => {
       invoiceDrafts.length = 0;
       paidInvoices.length = 0;
       reminderInvoices.length = 0;
+      cancellationInvoices.length = 0;
       evaluateInvoiceDraft.mockClear();
       createConfirmedInvoiceDraft.mockClear();
       evaluateInvoicePayment.mockClear();
       markInvoicePaid.mockClear();
       evaluateInvoiceReminder.mockClear();
       createInvoiceReminder.mockClear();
+      evaluateInvoiceCancellation.mockClear();
+      createInvoiceCancellation.mockClear();
       createProjectLogbookEntry.mockClear();
       projectUpdatedAt = new Date("2026-07-29T18:00:00.000Z");
       vehicleUpdatedAt = new Date("2026-07-29T18:30:00.000Z");
@@ -576,6 +599,9 @@ const fake = vi.hoisted(() => {
     markInvoicePaid,
     evaluateInvoiceReminder,
     createInvoiceReminder,
+    cancellationInvoices,
+    evaluateInvoiceCancellation,
+    createInvoiceCancellation,
   };
 });
 
@@ -604,6 +630,14 @@ vi.mock("@/lib/invoices/invoice-reminder-service", async () => {
     ...actual,
     evaluateInvoiceReminder: fake.evaluateInvoiceReminder,
     createInvoiceReminder: fake.createInvoiceReminder,
+  };
+});
+vi.mock("@/lib/invoices/invoice-cancellation-service", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/invoices/invoice-cancellation-service")>("@/lib/invoices/invoice-cancellation-service");
+  return {
+    ...actual,
+    evaluateInvoiceCancellation: fake.evaluateInvoiceCancellation,
+    createInvoiceCancellation: fake.createInvoiceCancellation,
   };
 });
 vi.mock("@/lib/services/task-service", () => ({
@@ -718,6 +752,9 @@ import {
   completeJarvisInvoiceReminderDraft,
   confirmJarvisInvoiceReminderDraft,
   createPersistedJarvisInvoiceReminderDraft,
+  completeJarvisInvoiceCancellationDraft,
+  confirmJarvisInvoiceCancellationDraft,
+  createPersistedJarvisInvoiceCancellationDraft,
   JarvisActionDraftError,
 } from "@/lib/jarvis/action-draft-store";
 import { calculateWinterService } from "@/lib/winter-service/calculation";
@@ -2460,5 +2497,64 @@ describe("persistent JARVIS invoice reminder drafts", () => {
       )
     ).rejects.toMatchObject({ code: "invalid_input" });
     expect(fake.reminderInvoices).toHaveLength(0);
+  });
+});
+
+describe("persistent JARVIS invoice cancellation drafts", () => {
+  beforeEach(() => fake.reset());
+
+  const preview = (previewId: string, reason = "") => ({
+    version: 1 as const,
+    previewId,
+    actionId: "invoice.cancel" as const,
+    actionTitle: "Rechnung kontrolliert vollständig stornieren",
+    state: "awaiting_confirmation" as const,
+    organizationId: "org-1",
+    sessionActorId: "user-1",
+    effectiveActorId: "user-1",
+    impersonating: false,
+    payload: { invoiceId: "invoice-1", ...(reason ? { reason } : {}) },
+    execution: { enabled: false as const, reason: "preview_only" as const },
+    audit: [],
+  });
+
+  it("requires a reviewed reason and executes a full cancellation exactly once", async () => {
+    const created = await createPersistedJarvisInvoiceCancellationDraft({
+      ...binding(), now: baseNow, preview: preview("invoice-cancel-1"),
+    });
+    expect(created.state).toBe("awaiting_input");
+    const ready = await completeJarvisInvoiceCancellationDraft(
+      created.previewId,
+      binding(),
+      { revision: created.revision, reason: "Doppelberechnung" },
+      baseNow
+    );
+    expect(ready.confirmation.requiredText).toBe("STORNIEREN RE-10119 MIT ST-10100");
+    const first = await confirmJarvisInvoiceCancellationDraft(
+      ready.previewId, binding(), ready.revision, ready.confirmation.requiredText, baseNow
+    );
+    const replay = await confirmJarvisInvoiceCancellationDraft(
+      ready.previewId, binding(), ready.revision, ready.confirmation.requiredText, baseNow
+    );
+    expect(first.state).toBe("executed");
+    expect(replay.result?.entityId).toBe(first.result?.entityId);
+    expect(fake.cancellationInvoices).toHaveLength(1);
+    expect(fake.createInvoiceCancellation).toHaveBeenCalledWith(expect.objectContaining({
+      invoiceId: "invoice-1", reason: "Doppelberechnung", source: "jarvis",
+    }));
+  });
+
+  it("rejects employees and an inexact critical phrase", async () => {
+    await expect(createPersistedJarvisInvoiceCancellationDraft({
+      organizationId: "org-1", sessionId: "session-1", profile: profile(Role.MITARBEITER), now: baseNow,
+      preview: preview("invoice-cancel-employee", "Doppelberechnung"),
+    })).rejects.toMatchObject({ code: "scope_mismatch" });
+    const created = await createPersistedJarvisInvoiceCancellationDraft({
+      ...binding(), now: baseNow, preview: preview("invoice-cancel-phrase", "Doppelberechnung"),
+    });
+    await expect(confirmJarvisInvoiceCancellationDraft(
+      created.previewId, binding(), created.revision, "Stornieren RE-10119 MIT ST-10100", baseNow
+    )).rejects.toMatchObject({ code: "invalid_input" });
+    expect(fake.cancellationInvoices).toHaveLength(0);
   });
 });

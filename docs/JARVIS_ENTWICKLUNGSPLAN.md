@@ -2361,3 +2361,16 @@ ohne fachliche Nebenwirkung.
   zunächst fünf angezeigt und kontrolliert ausklappbar gemacht. Der
   sichtbare Dashboardkontext darf nicht durch gespeicherte Projekt- oder
   Kundenauswahlen verfälscht werden.
+### Kontrolliertes Rechnungs-Vollstorno (umgesetzt 2026-07-31)
+
+JARVIS kann eine fakturierte oder bezahlte Rechnung nach vollständiger
+Vorprüfung kontrolliert stornieren. Die Vorschau zeigt Original- und ST-Nummer,
+Projekt, Kunde, Zahlungsstatus, vollständige Gegenbuchung, Positionen und
+freizugebende Zeiteinträge. Ein dokumentierter Grund ist Pflicht; erst
+`STORNIEREN RE-... MIT ST-...` führt die Aktion aus. Der gemeinsame
+Fachservice schützt ST-Nummer und Rechnung mit organisationsgebundenen
+Advisory Locks und schreibt ST-PDF, negative Positionen, Originalstatus,
+Zeit-/Lagerfreigabe, Historie und Logbuch in einer serialisierbaren
+Transaktion. Bezahlte Rechnungen lösen keine Rückzahlung aus. Teilgutschrift,
+Rechnungskorrektur und Teilstorno bleiben bis zu einem eigenen fachlich und
+buchhalterisch freigegebenen Datenmodell gesperrt.
