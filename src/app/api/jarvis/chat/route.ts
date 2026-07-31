@@ -95,6 +95,7 @@ import {
   createPersistedJarvisPlanningDraft,
   createPersistedJarvisOfferDraft,
   createPersistedJarvisInvoiceDraft,
+  createPersistedJarvisInvoiceFinalizationDraft,
   createPersistedJarvisCommunicationDraft,
   createPersistedJarvisTaskDraft,
   createPersistedJarvisTimeDraft,
@@ -115,8 +116,10 @@ import {
 } from "@/lib/jarvis/offer-intake";
 import {
   extractInvoiceCompany,
+  extractInvoiceNumber,
   extractInvoiceServiceDate,
   looksLikeInvoiceDraftRequest,
+  looksLikeInvoiceFinalizationRequest,
 } from "@/lib/jarvis/invoice-intake";
 
 export const dynamic = "force-dynamic";
@@ -284,6 +287,110 @@ async function buildJarvisInvoiceDraft(input: {
           ? error.message
           : "Der Rechnungsentwurf konnte nicht sicher vorbereitet werden."
       } Es wurde keine Rechnung angelegt.`,
+    };
+  }
+}
+
+async function buildJarvisInvoiceFinalizationDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+  context: ReturnType<typeof sanitizeJarvisSurfaceContext>;
+}) {
+  if (!input.sessionId) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-finalize.session-required",
+      message:
+        "Für eine kritische Fakturierung ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts verändert.",
+    };
+  }
+  const invoiceNumber = extractInvoiceNumber(input.question);
+  const invoice = invoiceNumber
+    ? await prisma.invoice.findFirst({
+        where: {
+          invoiceNumber: {
+            equals: invoiceNumber,
+            mode: "insensitive",
+          },
+          organizationId: input.organizationId,
+        },
+        select: { id: true, invoiceNumber: true, status: true },
+      })
+    : null;
+  if (!invoice) {
+    const drafts = await prisma.invoice.findMany({
+      where: {
+        organizationId: input.organizationId,
+        status: "Entwurf",
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 5,
+      select: { invoiceNumber: true, customerName: true },
+    });
+    return {
+      type: "clarification" as const,
+      topicId: "action.invoice-finalize.choose",
+      message:
+        drafts.length > 0
+          ? "Welche Rechnungsnummer soll kontrolliert fakturiert werden? Es wurde noch nichts verändert."
+          : "Es gibt aktuell keinen Rechnungsentwurf, den JARVIS fakturieren könnte.",
+      choices: drafts.map((draft) =>
+        createJarvisDialogChoice(
+          `invoice-finalize-${draft.invoiceNumber}`,
+          `${draft.invoiceNumber} · ${draft.customerName || "ohne Kunde"}`,
+          `Fakturiere Rechnung ${draft.invoiceNumber}`
+        )
+      ),
+    };
+  }
+  if (invoice.status !== "Entwurf") {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-finalize.invalid-state",
+      message: `${invoice.invoiceNumber} ist keine fakturierbare Entwurfsrechnung. Es wurde nichts verändert.`,
+    };
+  }
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(),
+    actionId: "invoice.finalize",
+    payload: { invoiceId: invoice.id },
+    organizationId: input.organizationId,
+    profile: input.accessProfile,
+    createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-finalize.refused",
+      message: `${preview.message} Es wurde nichts fakturiert.`,
+    };
+  }
+  try {
+    const actionDraft =
+      await createPersistedJarvisInvoiceFinalizationDraft({
+        preview: preview.value,
+        organizationId: input.organizationId,
+        sessionId: input.sessionId,
+        profile: input.accessProfile,
+      });
+    return {
+      type: "answer" as const,
+      topicId: "action.invoice-finalize",
+      message:
+        "Ich habe den aktuellen Rechnungsentwurf erneut serverseitig geprüft. Kontrolliere Betrag, Nachweise und Warnungen. Zur Fakturierung musst du die angezeigte kritische Bestätigungsphrase exakt eingeben. Versand, Mahnung und Bezahlt-Markierung werden nicht ausgelöst.",
+      actionDraft,
+    };
+  } catch (error) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-finalize.unavailable",
+      message: `${
+        error instanceof JarvisActionDraftError
+          ? error.message
+          : "Die Fakturavorschau konnte nicht sicher vorbereitet werden."
+      } Es wurde nichts fakturiert.`,
     };
   }
 }
@@ -1508,6 +1615,18 @@ export async function POST(req: Request) {
     resolveExplicitSafetyPolicyQuestion(message);
   if (explicitSafetyPolicyResponse) {
     return respond(explicitSafetyPolicyResponse);
+  }
+  if (looksLikeInvoiceFinalizationRequest(message)) {
+    return respond(
+      await buildJarvisInvoiceFinalizationDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+        context,
+      }),
+      "sales"
+    );
   }
   if (looksLikeInvoiceDraftRequest(message)) {
     return respond(

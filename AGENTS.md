@@ -1,5 +1,24 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS kontrollierte Rechnungsfinalisierung 2026-07-31:
+  Der sechste Action-Center-Vertikalschnitt fakturiert einen vorhandenen
+  Rechnungsentwurf erst nach erneuter serverseitiger Fakturavorprüfung und
+  exakter kritischer Phrase `FAKTURIEREN RE-...`. JARVIS zeigt Rechnung,
+  Projekt, Kunde, Leistungsdatum, Netto/Brutto, Prüfstatus, Warnungen und
+  Blockaden. Harte Abweichungen wie veränderte Summen oder ein veralteter
+  Fachstand sperren die Aktion; Warnungen benötigen die bewusste Bestätigung.
+  Organisation, Sitzung, Session- und Effektivrolle, Impersonation, Revision,
+  TTL, HMAC, Fachfingerprint, PostgreSQL-Advisory-Lock, bedingter
+  Statuswechsel, serialisierbare Transaktion, Audit und Exactly-once-Replay
+  bleiben verbindlich. Normale Rechnungsmaske und JARVIS verwenden
+  `src/lib/invoices/invoice-finalization-service.ts`. Fakturierung löst
+  ausdrücklich keinen Versand, keine Mahnung, keine Bezahlt-Markierung und
+  kein Storno aus. Der lokale echte Oberflächentest prüfte falsche und exakte
+  Phrase sowie einen Doppelklick; Datenbank und Oberfläche bestätigten genau
+  ein Fakturaereignis. Der authentifizierte permanente Korpus bestand 110/110
+  Fragen mit null ausgeführten Entwurfsaktionen; alle QA-Daten wurden
+  rückstandsfrei bereinigt.
+
 - JARVIS Angebots-/Nachtragsentwurf 2026-07-31:
   Der nächste Action-Center-Vertikalschnitt verwendet für normale
   Angebotsmasken und JARVIS die gemeinsame Rechenbasis

@@ -72,6 +72,7 @@ import type {
   JarvisCommunicationActionDraftView,
   JarvisOfferDraftView,
   JarvisInvoiceDraftView,
+  JarvisInvoiceFinalizationDraftView,
   JarvisPlanningActionDraftView,
   JarvisTaskActionDraftView,
   JarvisTimeActionDraftView,
@@ -673,6 +674,7 @@ type ManagementAiChatMessage = {
     | JarvisCommunicationActionDraftView
     | JarvisOfferDraftView
     | JarvisInvoiceDraftView
+    | JarvisInvoiceFinalizationDraftView
     | JarvisPlanningActionDraftView
     | JarvisTimeActionDraftView
     | JarvisWinterCalculationDraftView
@@ -694,6 +696,7 @@ const jarvisPreviewActionIds = new Set([
   "time.prepare",
   "offer.prepare",
   "invoice.prepare",
+  "invoice.finalize",
 ]);
 
 function parseJarvisDialogChoices(value: unknown): JarvisDialogChoice[] | undefined {
@@ -2223,6 +2226,7 @@ function parseJarvisActionDraft(
   | JarvisCommunicationActionDraftView
   | JarvisOfferDraftView
   | JarvisInvoiceDraftView
+  | JarvisInvoiceFinalizationDraftView
   | JarvisPlanningActionDraftView
   | JarvisTimeActionDraftView
   | JarvisWinterCalculationDraftView
@@ -2233,11 +2237,51 @@ function parseJarvisActionDraft(
     parseJarvisCommunicationActionDraft(value) ??
     parseJarvisOfferDraft(value) ??
     parseJarvisInvoiceDraft(value) ??
+    parseJarvisInvoiceFinalizationDraft(value) ??
     parseJarvisPlanningActionDraft(value) ??
     parseJarvisTimeActionDraft(value) ??
     parseJarvisWinterCalculationDraft(value) ??
     parseJarvisVehicleTripCalculationDraft(value)
   );
+}
+
+function parseJarvisInvoiceFinalizationDraft(
+  value: unknown
+): JarvisInvoiceFinalizationDraftView | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.version !== 2 ||
+    candidate.actionId !== "invoice.finalize" ||
+    typeof candidate.previewId !== "string" ||
+    typeof candidate.title !== "string" ||
+    typeof candidate.badge !== "string" ||
+    typeof candidate.state !== "string" ||
+    typeof candidate.revision !== "number" ||
+    typeof candidate.expiresAt !== "string" ||
+    typeof candidate.invoiceId !== "string" ||
+    typeof candidate.projectId !== "string" ||
+    !Array.isArray(candidate.fields) ||
+    !Array.isArray(candidate.preflight) ||
+    !Array.isArray(candidate.warnings) ||
+    !Array.isArray(candidate.blockingIssues) ||
+    !candidate.confirmation ||
+    typeof candidate.confirmation !== "object" ||
+    !candidate.cancellation ||
+    typeof candidate.cancellation !== "object"
+  ) {
+    return undefined;
+  }
+  const confirmation = candidate.confirmation as Record<string, unknown>;
+  const cancellation = candidate.cancellation as Record<string, unknown>;
+  if (
+    typeof confirmation.enabled !== "boolean" ||
+    typeof confirmation.requiredText !== "string" ||
+    typeof cancellation.enabled !== "boolean"
+  ) {
+    return undefined;
+  }
+  return candidate as unknown as JarvisInvoiceFinalizationDraftView;
 }
 
 function parseJarvisInvoiceDraft(
@@ -3097,6 +3141,204 @@ function JarvisInvoiceDraftCard({
         {draft.result ? <button type="button" data-primary="true" disabled={disabled || isWorking} onClick={() => onOpenInvoice(draft)}>{draft.result.label}</button> : null}
       </div>
       <footer>{draft.state === "executed" ? "Die Datenbank hat genau einen Rechnungsentwurf bestätigt. Er wurde weder fakturiert noch versendet." : draft.state === "cancelled" ? "Der Entwurf wurde beendet. Es wurde keine Rechnung angelegt." : draft.state === "expired" ? "Der Entwurf ist abgelaufen und kann nicht mehr bestätigt werden." : `Der Entwurf ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`}</footer>
+    </section>
+  );
+}
+
+function JarvisInvoiceFinalizationCard({
+  draft,
+  actorId,
+  disabled,
+  onChange,
+  onOpenInvoice,
+}: {
+  draft: JarvisInvoiceFinalizationDraftView;
+  actorId: string;
+  disabled: boolean;
+  onChange: (
+    next: JarvisInvoiceFinalizationDraftView,
+    message?: string
+  ) => void;
+  onOpenInvoice: (draft: JarvisInvoiceFinalizationDraftView) => void;
+}) {
+  const [confirmationText, setConfirmationText] = useState("");
+  const [isWorking, setIsWorking] = useState(false);
+  const [error, setError] = useState("");
+  const isOpen =
+    draft.state === "awaiting_input" ||
+    draft.state === "awaiting_confirmation";
+
+  useEffect(() => {
+    setConfirmationText("");
+    setError("");
+  }, [draft.previewId, draft.revision, draft.state]);
+
+  const request = async (command: "confirm" | "cancel") => {
+    setIsWorking(true);
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/jarvis/action-drafts/${encodeURIComponent(draft.previewId)}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Jarvis-Action": "jarvis-action-draft-v2",
+          },
+          body: JSON.stringify({
+            actorId,
+            actionId: "invoice.finalize",
+            revision: draft.revision,
+            command,
+            ...(command === "confirm" ? { confirmationText } : {}),
+          }),
+        }
+      );
+      const data = await response.json().catch(() => null);
+      const next = parseJarvisInvoiceFinalizationDraft(data?.actionDraft);
+      if (!response.ok || !next) {
+        setError(
+          data?.error ??
+            "Die Rechnung konnte nicht sicher fakturiert werden."
+        );
+        return;
+      }
+      onChange(
+        next,
+        typeof data?.message === "string" ? data.message : undefined
+      );
+    } catch {
+      setError(
+        "Das Action Center ist gerade nicht erreichbar. Es wurde nichts fakturiert."
+      );
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
+  return (
+    <section
+      className={styles.jarvisActionPreview}
+      data-state={draft.state}
+      aria-label={`${draft.title} – ${draft.badge}`}
+    >
+      <header>
+        <div>
+          <span>Action Center · Kritische Aktion</span>
+          <strong>{draft.title}</strong>
+        </div>
+        <em>{draft.badge}</em>
+      </header>
+      <dl>
+        {draft.fields.map((field) => (
+          <div key={`${field.label}-${field.value}`}>
+            <dt>{field.label}</dt>
+            <dd>{field.value}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className={styles.jarvisPlanningChecks}>
+        <strong>Aktuelle Fakturavorprüfung</strong>
+        {draft.preflight.map((check) => (
+          <div
+            key={check.key}
+            data-status={
+              check.status === "blocked" ? "blocked" : check.status
+            }
+          >
+            <span>{check.status === "ok" ? "✓" : "!"}</span>
+            <p>
+              <b>{check.label}</b>
+              <small>{check.detail}</small>
+            </p>
+          </div>
+        ))}
+      </div>
+      {draft.warnings.map((warning) => (
+        <div
+          key={warning}
+          className={styles.jarvisActionPreviewMissing}
+        >
+          <strong>Bewusster Prüfhinweis</strong>
+          <span>{warning}</span>
+        </div>
+      ))}
+      {draft.blockingIssues.length ? (
+        <div className={styles.jarvisActionPreviewMissing}>
+          <strong>Fakturierung ist blockiert</strong>
+          <span>{draft.blockingIssues.join(" · ")}</span>
+        </div>
+      ) : null}
+      {draft.confirmation.enabled && isOpen ? (
+        <div className={styles.jarvisActionDraftEditor}>
+          <label>
+            <span>
+              Zur kritischen Bestätigung exakt eingeben:{" "}
+              <strong>{draft.confirmation.requiredText}</strong>
+            </span>
+            <input
+              value={confirmationText}
+              disabled={disabled || isWorking}
+              autoComplete="off"
+              onChange={(event) => setConfirmationText(event.target.value)}
+            />
+          </label>
+        </div>
+      ) : null}
+      {error ? (
+        <div className={styles.jarvisActionDraftError} role="alert">
+          {error}
+        </div>
+      ) : null}
+      <div className={styles.jarvisActionDraftActions}>
+        {draft.confirmation.enabled ? (
+          <button
+            type="button"
+            data-primary="true"
+            disabled={
+              disabled ||
+              isWorking ||
+              confirmationText !== draft.confirmation.requiredText
+            }
+            onClick={() => void request("confirm")}
+          >
+            Rechnung jetzt fakturieren
+          </button>
+        ) : null}
+        {draft.cancellation.enabled ? (
+          <button
+            type="button"
+            disabled={disabled || isWorking}
+            onClick={() => void request("cancel")}
+          >
+            Fakturierung abbrechen
+          </button>
+        ) : null}
+        {draft.result ? (
+          <button
+            type="button"
+            data-primary="true"
+            disabled={disabled || isWorking}
+            onClick={() => onOpenInvoice(draft)}
+          >
+            {draft.result.label}
+          </button>
+        ) : null}
+      </div>
+      <footer>
+        {draft.state === "executed"
+          ? "Die Rechnung wurde genau einmal fakturiert. Es wurde kein Versand, keine Mahnung und keine Bezahlt-Markierung ausgelöst."
+          : draft.state === "cancelled"
+            ? "Die Fakturierung wurde beendet. Die Rechnung blieb ein Entwurf."
+            : draft.state === "expired"
+              ? "Die Fakturavorschau ist abgelaufen und muss neu erstellt werden."
+              : `Die Prüfung ist bis ${new Date(
+                  draft.expiresAt
+                ).toLocaleTimeString("de-DE", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })} Uhr an diese Sitzung gebunden.`}
+      </footer>
     </section>
   );
 }
@@ -17767,13 +18009,7 @@ export function DashboardPage() {
       body: JSON.stringify({
         id: invoice.id,
         actorId: activeUserId,
-        ...invoiceDraftForFinalize,
-        saveAsDraft: false,
-        billedStampEntryIds: [],
-        allowUnderbilledStampedHours: false,
-        projectId: project.id,
-        projectNumber: project.projectNumber || project.id,
-        projectTitle: project.title,
+        action: "finalize",
       }),
     });
 
@@ -37742,6 +37978,7 @@ await addProjectLogbookEntry(
       | JarvisCommunicationActionDraftView
       | JarvisOfferDraftView
       | JarvisInvoiceDraftView
+      | JarvisInvoiceFinalizationDraftView
       | JarvisPlanningActionDraftView
       | JarvisTimeActionDraftView
       | JarvisWinterCalculationDraftView
@@ -37770,7 +38007,10 @@ await addProjectLogbookEntry(
         void loadTasks();
       } else if (nextDraft.actionId === "offer.prepare") {
         void loadOffers();
-      } else if (nextDraft.actionId === "invoice.prepare") {
+      } else if (
+        nextDraft.actionId === "invoice.prepare" ||
+        nextDraft.actionId === "invoice.finalize"
+      ) {
         void loadInvoices();
       } else if (
         nextDraft.actionId === "winter-calculation.prepare" ||
@@ -74112,6 +74352,37 @@ await addProjectLogbookEntry(
                           Diese Vorschau verändert keine WorkPilot360-Daten.
                         </footer>
                       </section>
+                    ) : null}
+                    {message.role === "assistant" &&
+                    message.actionDraft?.actionId === "invoice.finalize" ? (
+                      <JarvisInvoiceFinalizationCard
+                        draft={message.actionDraft}
+                        actorId={activeUserId}
+                        disabled={isManagementAiSending}
+                        onChange={(nextDraft, nextMessage) =>
+                          updateJarvisActionDraftMessage(
+                            index,
+                            nextDraft,
+                            nextMessage
+                          )
+                        }
+                        onOpenInvoice={(invoiceDraft) => {
+                          const project = heroProjects.find(
+                            (candidate) =>
+                              candidate.id === invoiceDraft.projectId
+                          );
+                          if (!project) {
+                            setManagementAiError(
+                              "Das Projekt ist mit der aktuellen Rolle nicht sichtbar."
+                            );
+                            return;
+                          }
+                          openProjectFile(project, {
+                            tab: "documents",
+                            documentType: "Rechnungen",
+                          });
+                        }}
+                      />
                     ) : null}
                     {message.role === "assistant" &&
                     message.actionDraft?.actionId === "invoice.prepare" ? (

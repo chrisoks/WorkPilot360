@@ -10,6 +10,21 @@ export function looksLikeInvoiceDraftRequest(question: string) {
   );
 }
 
+export function looksLikeInvoiceFinalizationRequest(question: string) {
+  const value = normalizeJarvisIntentText(question);
+  return (
+    /\bfakturier\w*\b/.test(value) &&
+    /\b(?:rechnung|rechnungsentwurf)\w*\b/.test(value) &&
+    !/\b(?:versend|send|schick|mahn|bezahlt|storn|losch|archivier)\w*\b/.test(
+      value
+    )
+  );
+}
+
+export function extractInvoiceNumber(question: string) {
+  return question.match(/\bRE-\d+\b/i)?.[0]?.toUpperCase();
+}
+
 export function extractInvoiceServiceDate(question: string) {
   const iso = question.match(/\b(20\d{2})-(0[1-9]|1[0-2])-([012]\d|3[01])\b/)?.[0];
   if (iso) return iso;

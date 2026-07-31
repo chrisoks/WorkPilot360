@@ -1954,6 +1954,35 @@ Beanspruchung und Exactly-once-Replay entsprechen mindestens dem
 Angebotsvertrag. Fakturierung, PDF-/E-Rechnungsfreigabe, Versand, Mahnung,
 Bezahlt-Markierung und Storno bleiben eigene kritische Phase-5-Aktionen.
 
+Der sechste Action-Center-Vertikalschnitt setzt die kritische
+Rechnungsfinalisierung um. Ein eindeutiger Fakturierungswunsch wird strikt von
+Entwurfserstellung, Suche, Versand, Mahnung, Bezahlt-Markierung, Storno und
+Löschung getrennt. JARVIS lädt die Entwurfsrechnung organisationsgebunden neu,
+führt dieselbe zentrale Fakturavorprüfung erneut aus und zeigt Rechnung,
+Projekt, Kunde, Leistungsdatum, Netto/Brutto, Prüfstatus, Warnungen und harte
+Blockaden. Der eigene Datensatz wird bei der Doppelrechnungsprüfung korrekt
+ausgenommen; veränderte Summen, ein nicht mehr aktueller Fachfingerprint oder
+ein anderer Rechnungsstatus sperren fail-closed.
+
+Die Bestätigung benötigt die exakt sichtbare, groß-/kleinschreibungssensitive
+Phrase `FAKTURIEREN RE-...`. Organisation, Sitzung, beide Rollen,
+Impersonation, Revision, TTL, HMAC, unveränderter Fachkontext,
+PostgreSQL-Advisory-Lock, bedingter Statuswechsel von `Entwurf` zu
+`Fakturiert`, serialisierbare Transaktion, Audit und Exactly-once-Replay
+schützen auch Doppelklick und Wiederholung. Die normale Rechnungsmaske und
+JARVIS verwenden dafür denselben `invoice-finalization-service`; eine
+erfolgreiche Fakturierung schreibt genau ein Historienereignis. Sie versendet
+keine Rechnung, startet keine Mahnung, setzt keine Bezahlt-Markierung und
+storniert nichts. Die normale Maske behält ihre bestehende PDF-Erzeugung;
+PDF-/E-Rechnungsfreigabe und Versand bleiben getrennte Folgeschritte.
+
+Die lokale echte UI-Abnahme prüfte eine falsche Phrase, die exakte Phrase und
+einen Doppelklick. Oberfläche und Datenbank bestätigten genau eine
+Fakturierung, null Versand-/Mahn-/Bezahlt-Nebenwirkungen und eine vollständige
+Auditspur. Der anschließende authentifizierte Live-Korpus bestand 110/110
+Fragen; sieben sichere Entwurfsvorschauen wurden erzeugt, keine Aktion
+ausgeführt und alle QA-Daten vollständig bereinigt.
+
 Die bisher nur laufbezogen dokumentierten 110 menschenähnlichen Fragen sind
 nun als exakt 110 eindeutige, versionierte Fälle dauerhaft im Repository
 verankert. Sie decken Navigation, Projekte, Kunden, Aufgaben, Planung, Zeit,
@@ -1979,6 +2008,7 @@ telemetriert.
   Anhänge bleiben ein eigener Sicherheitsblock),
 - Angebote/Nachträge als Entwurf (produktiv abgenommen),
 - Rechnungsentwurf und Fakturavorprüfung (produktiver Vertikalschnitt),
+- kontrollierte Rechnungsfinalisierung mit exakter kritischer Phrase,
 - Dokument-/Mailvorbereitung,
 - Vertriebsaktionslisten in Aufgaben überführen,
 - UI-Refresh, Audit und Fehlerbehandlung.
@@ -1989,7 +2019,8 @@ Chat vollständig vorbereiten und kontrolliert speichern.
 ### Phase 5: Kritische Aktionen
 
 - direkter Mailversand nach Vorschau,
-- Fakturieren,
+- Fakturieren (kontrollierte Einzelrechnung als erster produktiver
+  Vertikalschnitt umgesetzt; PDF-/E-Rechnung und Versand bleiben getrennt),
 - Mahnung und Bezahlt-Markierung,
 - Stornieren,
 - Archivieren/Löschen/Wiederherstellen,

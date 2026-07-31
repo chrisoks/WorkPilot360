@@ -31,6 +31,10 @@ import {
   normalizeInvoicePaymentTermDays,
   roundInvoiceMoney,
 } from "@/lib/invoices/invoice-core";
+import {
+  finalizeInvoiceDraft,
+  InvoiceFinalizationServiceError,
+} from "@/lib/invoices/invoice-finalization-service";
 
 type InvoiceCompany = "OK solutions" | "OK immocare";
 
@@ -2457,6 +2461,134 @@ export async function PATCH(req: Request) {
       actorName,
       includeInternalCosts,
     });
+  }
+
+  if (cleanString(body.action) === "finalize") {
+    try {
+      const storedDraft = await prisma.invoice.findFirst({
+        where: {
+          id,
+          organizationId: organization.id,
+          status: "Entwurf",
+        },
+        include: { lines: { orderBy: { position: "asc" } } },
+      });
+      if (!storedDraft) {
+        return NextResponse.json(
+          { error: "Der Rechnungsentwurf wurde nicht gefunden oder bereits fakturiert." },
+          { status: 409 }
+        );
+      }
+      const storedLines = normalizeInvoiceLines(
+        storedDraft.lines.map((line) => ({
+          catalogItemId: line.catalogItemId,
+          catalogType: line.catalogType,
+          isLaborPosition: line.isLaborPosition,
+          quantity: line.quantity,
+          unit: line.unit,
+          title: line.title,
+          description: line.description,
+          unitPrice: line.unitPrice,
+          discountPercent: line.discountPercent,
+          materialUnitCostSnapshot: line.materialUnitCostSnapshot,
+          materialCostSnapshot: line.materialCostSnapshot,
+          laborUnitCostSnapshot: line.laborUnitCostSnapshot,
+          laborCostSnapshot: line.laborCostSnapshot,
+          packageComponentsSnapshot: cleanPackageComponentsSnapshot(
+            line.packageComponentsSnapshot
+          ),
+          catalogCostSnapshotVersion: line.catalogCostSnapshotVersion,
+          vatRate: line.vatRate,
+        }))
+      );
+      const { lines: _storedInvoiceLines, ...storedInvoiceData } =
+        storedDraft;
+      const finalizedPdf = await generateInvoicePdf(
+        {
+          ...storedInvoiceData,
+          company:
+            storedDraft.company === "OK immocare"
+              ? "OK immocare"
+              : "OK solutions",
+          invoiceNumber: storedDraft.invoiceNumber,
+          documentTitle: "Rechnung",
+        },
+        storedLines
+      );
+      const finalized = await prisma.$transaction(
+        async (tx) => {
+          await tx.invoice.update({
+            where: { id: storedDraft.id },
+            data: { pdfData: finalizedPdf.pdfData },
+          });
+          return finalizeInvoiceDraft({
+            tx,
+            organizationId: organization.id,
+            invoiceId: id,
+            actorName,
+            source: "ui",
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      );
+      try {
+        await syncInvoiceInventoryMovements({
+          db: prisma,
+          organizationId: organization.id,
+          invoiceId: finalized.id,
+          actorUserId: actor.id,
+          actorName,
+        });
+      } catch (inventoryError) {
+        console.error(
+          "Invoice inventory synchronization failed after finalization",
+          inventoryError
+        );
+      }
+      const [lines, laborRows] = await Promise.all([
+        getInvoiceLinesForInvoice(organization.id, finalized.id),
+        prisma.invoiceLineLabor.findMany({
+          where: {
+            organizationId: organization.id,
+            invoiceId: finalized.id,
+          },
+          orderBy: { position: "asc" },
+        }),
+      ]);
+      return NextResponse.json(
+        serializeInvoice(
+          {
+            ...finalized,
+            company:
+              finalized.company === "OK immocare"
+                ? "OK immocare"
+                : "OK solutions",
+          },
+          lines,
+          laborRows,
+          {
+          includeInternalCosts,
+          }
+        )
+      );
+    } catch (error) {
+      if (error instanceof InvoiceFinalizationServiceError) {
+        const status =
+          error.code === "not_found"
+            ? 404
+            : error.code === "blocked" ||
+                error.code === "stale_context" ||
+                error.code === "conflict" ||
+                error.code === "invalid_state"
+              ? 409
+              : 400;
+        return NextResponse.json(
+          { error: error.message, code: error.code },
+          { status }
+        );
+      }
+      throw error;
+    }
   }
 
   if (cleanString(body.action) === "mark-paid") {

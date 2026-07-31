@@ -188,7 +188,7 @@ export async function loadInvoiceDraftWorkspace(organizationId: string, db: Invo
   };
 }
 
-export async function evaluateInvoiceDraft(input: { organizationId: string; draft: InvoiceDraftInput; db?: InvoiceDb; restrictToCatalog?: boolean }): Promise<EvaluatedInvoiceDraft> {
+export async function evaluateInvoiceDraft(input: { organizationId: string; draft: InvoiceDraftInput; db?: InvoiceDb; restrictToCatalog?: boolean; excludeInvoiceId?: string }): Promise<EvaluatedInvoiceDraft> {
   const db = input.db ?? prisma;
   const projectId = cleanInvoiceText(input.draft.projectId, 120);
   const project = projectId ? await db.workPilotProject.findFirst({
@@ -273,7 +273,12 @@ export async function evaluateInvoiceDraft(input: { organizationId: string; draf
   const preflight: EvaluatedInvoiceDraft["preflight"] = [];
   if (project && plannedExecutionMonth) {
     const activeInvoices = await db.invoice.findMany({
-      where: { organizationId: input.organizationId, projectId, status: { notIn: INACTIVE_STATUSES } },
+      where: {
+        organizationId: input.organizationId,
+        projectId,
+        status: { notIn: INACTIVE_STATUSES },
+        ...(input.excludeInvoiceId ? { id: { not: input.excludeInvoiceId } } : {}),
+      },
       select: { id: true, invoiceNumber: true, status: true, plannedExecutionMonth: true, serviceDate: true, sourceOfferId: true },
     });
     const sameMonth = activeInvoices.filter((invoice) => (invoice.serviceDate || "").slice(0, 7) === plannedExecutionMonth || invoice.plannedExecutionMonth === plannedExecutionMonth);

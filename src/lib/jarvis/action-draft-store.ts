@@ -20,6 +20,7 @@ import {
   type JarvisPlanningActionDraftView,
   type JarvisOfferDraftView,
   type JarvisInvoiceDraftView,
+  type JarvisInvoiceFinalizationDraftView,
   type JarvisTaskActionDraftState,
   type JarvisTaskActionDraftView,
   type JarvisTimeActionDraftCheck,
@@ -103,6 +104,14 @@ import {
   InvoiceDraftServiceError,
   type InvoiceDraftInput,
 } from "@/lib/invoices/invoice-draft-service";
+import {
+  evaluateInvoiceFinalization,
+  finalizeInvoiceDraft,
+  getInvoiceFinalizationConfirmationText,
+  InvoiceFinalizationServiceError,
+  matchesInvoiceFinalizationConfirmation,
+} from "@/lib/invoices/invoice-finalization-service";
+import { syncInvoiceInventoryMovements } from "@/lib/inventory/catalog-inventory";
 
 const JARVIS_TASK_DRAFT_TTL_MS = 15 * 60 * 1000;
 const JARVIS_TASK_DRAFT_MAX_FUTURE_MS = 5 * 365 * 24 * 60 * 60 * 1000;
@@ -512,6 +521,46 @@ const invoiceDraftContextSchema = z.object({
   sourceOfferUpdatedAt: z.string().datetime({ offset: true }).optional(),
   catalogVersions: z.array(z.object({ id: z.string().trim().min(1).max(120), updatedAt: z.string().datetime({ offset: true }) }).strict()).max(30).default([]),
 }).strict();
+
+const invoiceFinalizationPayloadSchema = z
+  .object({ invoiceId: z.string().trim().min(1).max(120) })
+  .strict();
+
+const invoiceFinalizationContextSchema = z
+  .object({
+    invoice: z
+      .object({
+        id: z.string(),
+        invoiceNumber: z.string(),
+        status: z.string(),
+        projectId: z.string(),
+        projectNumber: z.string(),
+        projectTitle: z.string(),
+        customerName: z.string(),
+        company: z.string(),
+        serviceDate: z.string(),
+        dueDate: z.string(),
+        netTotal: z.number(),
+        vatRate: z.number(),
+        grossTotal: z.number(),
+        updatedAt: z.string().datetime({ offset: true }),
+      })
+      .strict(),
+    preflight: z.array(
+      z
+        .object({
+          key: z.string(),
+          label: z.string(),
+          status: z.enum(["ok", "warning", "blocked"]),
+          detail: z.string(),
+        })
+        .strict()
+    ),
+    warnings: z.array(z.string()),
+    blockingIssues: z.array(z.string()),
+    fingerprint: z.string().length(64),
+  })
+  .strict();
 
 export type JarvisTaskDraftBinding = {
   organizationId: string;
@@ -3262,6 +3311,9 @@ export async function getJarvisActionDraft(
   }
   if (draft?.actionId === "invoice.prepare") {
     return getJarvisInvoiceDraft(previewId, binding, now);
+  }
+  if (draft?.actionId === "invoice.finalize") {
+    return getJarvisInvoiceFinalizationDraft(previewId, binding, now);
   }
   if (
     draft?.actionId === "project-logbook.prepare" ||
@@ -7758,5 +7810,546 @@ export async function confirmJarvisInvoiceDraft(previewId: string, binding: Jarv
     if (error instanceof JarvisActionDraftError) throw error;
     if (error instanceof InvoiceDraftServiceError) throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : "invalid_input", error.message, 409);
     throw new JarvisActionDraftError("execution_failed", "Der Rechnungsentwurf wurde nicht gespeichert und bleibt zur Prüfung erhalten.", 500);
+  }
+}
+
+function mayFinalizeInvoice(binding: JarvisTaskDraftBinding) {
+  return (
+    canManageInvoices(binding.profile.sessionActor) &&
+    canManageInvoices(binding.profile.effectiveActor)
+  );
+}
+
+function validateInvoiceFinalizationBinding(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+) {
+  const actorIds = getActorIds(binding.profile);
+  if (
+    draft.organizationId !== binding.organizationId ||
+    draft.sessionId !== binding.sessionId ||
+    draft.sessionActorId !== actorIds.sessionActorId ||
+    draft.effectiveActorId !== actorIds.effectiveActorId ||
+    draft.impersonating !== binding.profile.isImpersonating
+  ) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Diese Fakturavorschau gehört nicht zur aktuellen Organisation, Sitzung oder wirksamen Identität.",
+      403
+    );
+  }
+  if (
+    draft.sessionActorRole !== binding.profile.sessionActor.role ||
+    draft.effectiveActorRole !== binding.profile.effectiveActor.role
+  ) {
+    throw new JarvisActionDraftError(
+      "role_changed",
+      "Die Rolle hat sich seit der Fakturavorprüfung geändert. Bitte erstelle eine neue Vorschau.",
+      409
+    );
+  }
+  if (!integrityMatches(draft)) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Der Integritätsnachweis der Fakturavorschau ist ungültig.",
+      409
+    );
+  }
+  const payload = invoiceFinalizationPayloadSchema.safeParse(draft.payload);
+  const context = invoiceFinalizationContextSchema.safeParse(draft.context);
+  if (
+    draft.actionId !== "invoice.finalize" ||
+    !payload.success ||
+    !context.success ||
+    hashJson(payload.data) !== draft.payloadHash ||
+    hashJson(context.data) !== draft.contextHash
+  ) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Fakturavorschau oder Prüfkontext stimmen nicht mit dem Integritätsnachweis überein.",
+      409
+    );
+  }
+  return { payload: payload.data, context: context.data };
+}
+
+async function loadBoundInvoiceFinalizationDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const found = await prisma.jarvisActionDraft.findUnique({
+    where: { id: previewId },
+  });
+  if (!found) {
+    throw new JarvisActionDraftError(
+      "not_found",
+      "Die Fakturavorschau wurde nicht gefunden.",
+      404
+    );
+  }
+  validateInvoiceFinalizationBinding(found, binding);
+  const current = await expireDraftIfNeeded(found, now);
+  const parsed = validateInvoiceFinalizationBinding(current, binding);
+  return { draft: current, ...parsed };
+}
+
+function toJarvisInvoiceFinalizationDraftView(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+): JarvisInvoiceFinalizationDraftView {
+  const { context } = validateInvoiceFinalizationBinding(draft, binding);
+  const state = draft.state as JarvisTaskActionDraftState;
+  const permitted = mayFinalizeInvoice(binding);
+  const ready =
+    state === "awaiting_confirmation" &&
+    permitted &&
+    context.blockingIssues.length === 0;
+  const reason: JarvisInvoiceFinalizationDraftView["confirmation"]["reason"] =
+    state === "expired"
+      ? "expired"
+      : state === "cancelled"
+        ? "cancelled"
+        : state === "executed"
+          ? "executed"
+          : state === "executing"
+            ? "executing"
+            : !permitted
+              ? "not_permitted"
+              : context.blockingIssues.length
+                ? "blocked"
+                : "ready";
+  const currency = (value: number) =>
+    new Intl.NumberFormat("de-DE", {
+      style: "currency",
+      currency: "EUR",
+    }).format(value);
+  return {
+    version: 2,
+    previewId: draft.id,
+    actionId: "invoice.finalize",
+    title: "Rechnung kontrolliert fakturieren",
+    badge:
+      state === "executed"
+        ? "Fakturiert"
+        : state === "executing"
+          ? "Wird fakturiert"
+          : state === "cancelled"
+            ? "Abgebrochen"
+            : state === "expired"
+              ? "Abgelaufen"
+              : ready
+                ? "Bereit"
+                : "Prüfung",
+    state,
+    revision: draft.revision,
+    expiresAt: draft.expiresAt.toISOString(),
+    invoiceId: context.invoice.id,
+    projectId: context.invoice.projectId,
+    fields: [
+      { label: "Rechnung", value: context.invoice.invoiceNumber },
+      {
+        label: "Projekt",
+        value: `${context.invoice.projectNumber} · ${context.invoice.projectTitle}`,
+      },
+      { label: "Kunde", value: context.invoice.customerName || "–" },
+      { label: "Leistungsdatum", value: context.invoice.serviceDate || "–" },
+      { label: "Netto", value: currency(context.invoice.netTotal) },
+      { label: "Brutto", value: currency(context.invoice.grossTotal) },
+    ],
+    preflight: context.preflight,
+    warnings: context.warnings,
+    blockingIssues: [
+      ...context.blockingIssues,
+      ...(!permitted
+        ? ["Fakturierung ist für diese Rollenkombination nicht freigegeben."]
+        : []),
+    ],
+    confirmation: {
+      enabled: ready,
+      reason,
+      requiredText: getInvoiceFinalizationConfirmationText(
+        context.invoice.invoiceNumber
+      ),
+    },
+    cancellation: {
+      enabled:
+        state === "awaiting_input" || state === "awaiting_confirmation",
+    },
+    ...(state === "executed" && draft.resultEntityId
+      ? {
+          result: {
+            entityType: "invoice" as const,
+            entityId: draft.resultEntityId,
+            label: "Fakturierte Rechnung öffnen",
+          },
+        }
+      : {}),
+  };
+}
+
+export async function createPersistedJarvisInvoiceFinalizationDraft(input: {
+  preview: JarvisActionPreview<"invoice.finalize">;
+  organizationId: string;
+  sessionId: string;
+  profile: JarvisAccessProfile;
+  now?: Date;
+}) {
+  if (!input.sessionId) {
+    throw new JarvisActionDraftError(
+      "session_required",
+      "Für eine Fakturierung ist eine aktuelle serverseitige Sitzung erforderlich.",
+      401
+    );
+  }
+  if (!mayFinalizeInvoice(input)) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Diese Rollenkombination darf keine Rechnung fakturieren.",
+      403
+    );
+  }
+  const now = input.now ?? new Date();
+  const evaluation = await evaluateInvoiceFinalization({
+    organizationId: input.organizationId,
+    invoiceId: input.preview.payload.invoiceId,
+  });
+  const payload = invoiceFinalizationPayloadSchema.parse(input.preview.payload);
+  const context = invoiceFinalizationContextSchema.parse(evaluation);
+  const actorIds = getActorIds(input.profile);
+  const state =
+    context.blockingIssues.length === 0
+      ? "awaiting_confirmation"
+      : "awaiting_input";
+  const draftData: DraftIntegrityData = {
+    id: input.preview.previewId,
+    organizationId: input.organizationId,
+    sessionId: input.sessionId,
+    sessionActorId: actorIds.sessionActorId,
+    sessionActorRole: input.profile.sessionActor.role,
+    effectiveActorId: actorIds.effectiveActorId,
+    effectiveActorRole: input.profile.effectiveActor.role,
+    impersonating: input.profile.isImpersonating,
+    actionId: "invoice.finalize",
+    state,
+    revision: 1,
+    payloadHash: hashJson(payload),
+    contextHash: hashJson(context),
+    expiresAt: new Date(now.getTime() + JARVIS_INVOICE_DRAFT_TTL_MS),
+    confirmedAt: null,
+    cancelledAt: null,
+    executedAt: null,
+    resultEntityType: null,
+    resultEntityId: null,
+    lastErrorCode:
+      context.blockingIssues.length > 0 ? "invalid_input" : null,
+  };
+  const created = await prisma.$transaction(async (tx) => {
+    const draft = await tx.jarvisActionDraft.create({
+      data: {
+        ...draftData,
+        payload: payload as Prisma.InputJsonValue,
+        context: context as Prisma.InputJsonValue,
+        integrityTag: createIntegrityTag(draftData),
+      },
+    });
+    await appendAuditEvent(tx, {
+      draft,
+      eventType:
+        state === "awaiting_confirmation"
+          ? "draft_created_ready"
+          : "draft_created_blocked",
+    });
+    return draft;
+  });
+  return toJarvisInvoiceFinalizationDraftView(created, input);
+}
+
+export async function getJarvisInvoiceFinalizationDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const { draft } = await loadBoundInvoiceFinalizationDraft(
+    previewId,
+    binding,
+    now
+  );
+  return toJarvisInvoiceFinalizationDraftView(draft, binding);
+}
+
+export async function cancelJarvisInvoiceFinalizationDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  expectedRevision: number,
+  now = new Date()
+) {
+  const { draft } = await loadBoundInvoiceFinalizationDraft(
+    previewId,
+    binding,
+    now
+  );
+  if (draft.state === "cancelled") {
+    return toJarvisInvoiceFinalizationDraftView(draft, binding);
+  }
+  if (!OPEN_DRAFT_STATES.includes(draft.state as never)) {
+    throw new JarvisActionDraftError(
+      draft.state === "expired" ? "expired" : "invalid_state",
+      "Diese Fakturavorschau kann nicht mehr abgebrochen werden.",
+      draft.state === "expired" ? 410 : 409
+    );
+  }
+  if (expectedRevision !== draft.revision) {
+    throw new JarvisActionDraftError(
+      "conflict",
+      "Die Fakturavorschau wurde zwischenzeitlich verändert.",
+      409
+    );
+  }
+  const nextData: DraftIntegrityData = {
+    ...draft,
+    state: "cancelled",
+    cancelledAt: now,
+    lastErrorCode: null,
+  };
+  const cancelled = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: {
+        id: draft.id,
+        revision: draft.revision,
+        state: draft.state,
+        integrityTag: draft.integrityTag,
+      },
+      data: {
+        state: "cancelled",
+        cancelledAt: now,
+        lastErrorCode: null,
+        integrityTag: createIntegrityTag(nextData),
+      },
+    });
+    if (changed.count !== 1) {
+      throw new JarvisActionDraftError(
+        "conflict",
+        "Die Fakturavorschau wurde bereits verändert.",
+        409
+      );
+    }
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+      where: { id: draft.id },
+    });
+    await appendAuditEvent(tx, {
+      draft: current,
+      eventType: "draft_cancelled",
+      reasonCode: "user_cancelled",
+    });
+    return current;
+  });
+  return toJarvisInvoiceFinalizationDraftView(cancelled, binding);
+}
+
+export async function confirmJarvisInvoiceFinalizationDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  expectedRevision: number,
+  confirmationText: string,
+  now = new Date()
+) {
+  const loaded = await loadBoundInvoiceFinalizationDraft(
+    previewId,
+    binding,
+    now
+  );
+  if (loaded.draft.state === "executed") {
+    return toJarvisInvoiceFinalizationDraftView(loaded.draft, binding);
+  }
+  const requiredText = getInvoiceFinalizationConfirmationText(
+    loaded.context.invoice.invoiceNumber
+  );
+  if (
+    !matchesInvoiceFinalizationConfirmation(
+      loaded.context.invoice.invoiceNumber,
+      confirmationText
+    )
+  ) {
+    throw new JarvisActionDraftError(
+      "invalid_input",
+      `Gib zur kritischen Bestätigung exakt „${requiredText}“ ein.`,
+      400
+    );
+  }
+  if (
+    expectedRevision !== loaded.draft.revision ||
+    loaded.draft.state !== "awaiting_confirmation"
+  ) {
+    throw new JarvisActionDraftError(
+      "conflict",
+      "Nur die aktuelle, vollständig geprüfte Fakturavorschau darf bestätigt werden.",
+      409
+    );
+  }
+  if (!mayFinalizeInvoice(binding)) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Diese Rollenkombination darf keine Rechnung fakturieren.",
+      403
+    );
+  }
+  try {
+    const executed = await prisma.$transaction(
+      async (tx) => {
+        const current = await tx.jarvisActionDraft.findUnique({
+          where: { id: loaded.draft.id },
+        });
+        if (!current) {
+          throw new JarvisActionDraftError(
+            "not_found",
+            "Die Fakturavorschau wurde nicht gefunden.",
+            404
+          );
+        }
+        const parsed = validateInvoiceFinalizationBinding(current, binding);
+        if (current.state === "executed") return current;
+        if (
+          current.state !== "awaiting_confirmation" ||
+          current.expiresAt.getTime() <= now.getTime()
+        ) {
+          throw new JarvisActionDraftError(
+            current.expiresAt.getTime() <= now.getTime()
+              ? "expired"
+              : "conflict",
+            "Die Fakturavorschau ist nicht mehr ausführbar.",
+            current.expiresAt.getTime() <= now.getTime() ? 410 : 409
+          );
+        }
+        const actor = await tx.user.findFirst({
+          where: {
+            id: current.effectiveActorId,
+            organizationId: binding.organizationId,
+            isActive: true,
+          },
+          select: {
+            id: true,
+            role: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        });
+        if (!actor || !canManageInvoices(actor)) {
+          throw new JarvisActionDraftError(
+            "role_changed",
+            "Akteur oder Rechnungsberechtigung sind nicht mehr aktuell.",
+            409
+          );
+        }
+        const claimedData: DraftIntegrityData = {
+          ...current,
+          state: "executing",
+          confirmedAt: now,
+          lastErrorCode: null,
+        };
+        const claimed = await tx.jarvisActionDraft.updateMany({
+          where: {
+            id: current.id,
+            revision: current.revision,
+            state: "awaiting_confirmation",
+            integrityTag: current.integrityTag,
+          },
+          data: {
+            state: "executing",
+            confirmedAt: now,
+            lastErrorCode: null,
+            integrityTag: createIntegrityTag(claimedData),
+          },
+        });
+        if (claimed.count !== 1) {
+          throw new JarvisActionDraftError(
+            "conflict",
+            "Die Rechnung wird bereits fakturiert.",
+            409
+          );
+        }
+        const actorName =
+          [actor.firstName, actor.lastName].filter(Boolean).join(" ") ||
+          actor.email;
+        const invoice = await finalizeInvoiceDraft({
+          tx,
+          organizationId: binding.organizationId,
+          invoiceId: parsed.payload.invoiceId,
+          actorName,
+          expectedFingerprint: parsed.context.fingerprint,
+          source: "jarvis",
+        });
+        const executedAt = new Date();
+        const executedData: DraftIntegrityData = {
+          ...claimedData,
+          state: "executed",
+          executedAt,
+          resultEntityType: "invoice",
+          resultEntityId: invoice.id,
+        };
+        const finalDraft = await tx.jarvisActionDraft.update({
+          where: { id: current.id },
+          data: {
+            state: "executed",
+            executedAt,
+            resultEntityType: "invoice",
+            resultEntityId: invoice.id,
+            integrityTag: createIntegrityTag(executedData),
+          },
+        });
+        await appendAuditEvent(tx, {
+          draft: finalDraft,
+          eventType: "draft_confirmed_and_executed",
+          result: { id: invoice.id, entityType: "invoice" },
+        });
+        return finalDraft;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
+    if (executed.resultEntityId) {
+      try {
+        await syncInvoiceInventoryMovements({
+          db: prisma,
+          organizationId: binding.organizationId,
+          invoiceId: executed.resultEntityId,
+          actorUserId: executed.effectiveActorId,
+          actorName: "JARVIS",
+        });
+      } catch (inventoryError) {
+        console.error(
+          "JARVIS invoice inventory synchronization failed after finalization",
+          inventoryError
+        );
+      }
+    }
+    return toJarvisInvoiceFinalizationDraftView(executed, binding);
+  } catch (error) {
+    if (
+      error instanceof JarvisActionDraftError &&
+      error.code === "conflict"
+    ) {
+      const latest = await loadBoundInvoiceFinalizationDraft(
+        previewId,
+        binding,
+        now
+      );
+      if (latest.draft.state === "executed") {
+        return toJarvisInvoiceFinalizationDraftView(latest.draft, binding);
+      }
+    }
+    if (error instanceof JarvisActionDraftError) throw error;
+    if (error instanceof InvoiceFinalizationServiceError) {
+      throw new JarvisActionDraftError(
+        error.code === "stale_context" ? "stale_context" : "invalid_input",
+        error.message,
+        409
+      );
+    }
+    throw new JarvisActionDraftError(
+      "execution_failed",
+      "Die Rechnung wurde nicht fakturiert und die Vorschau bleibt zur Prüfung erhalten.",
+      500
+    );
   }
 }

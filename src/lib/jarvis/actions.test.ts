@@ -23,12 +23,27 @@ describe("JARVIS action registry", () => {
       id: "gf",
       role: Role.GESCHAEFTSFUEHRER,
     });
-    const decision = getJarvisActionDecision("invoice.finalize", profile);
+    const decision = getJarvisActionDecision("invoice.cancel", profile);
 
     expect(decision.permitted).toBe(true);
     expect(decision.executable).toBe(false);
     expect(decision.reason).toBe("not_implemented");
     expect(decision.requiresConfirmation).toBe(true);
+  });
+
+  it("releases invoice finalization only as a critical confirmed action", () => {
+    const profile = createJarvisAccessProfile({
+      id: "gf",
+      role: Role.GESCHAEFTSFUEHRER,
+    });
+    const decision = getJarvisActionDecision("invoice.finalize", profile);
+
+    expect(decision).toMatchObject({
+      permitted: true,
+      executable: true,
+      reason: "allowed",
+      requiresConfirmation: true,
+    });
   });
 
   it("exposes the released, service-guarded action-center slices to employees", () => {

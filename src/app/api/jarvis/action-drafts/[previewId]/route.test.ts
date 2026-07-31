@@ -18,6 +18,8 @@ const mocks = vi.hoisted(() => ({
   completeJarvisInvoiceDraft: vi.fn(),
   cancelJarvisInvoiceDraft: vi.fn(),
   confirmJarvisInvoiceDraft: vi.fn(),
+  cancelJarvisInvoiceFinalizationDraft: vi.fn(),
+  confirmJarvisInvoiceFinalizationDraft: vi.fn(),
   completeJarvisTimeDraft: vi.fn(),
   cancelJarvisTimeDraft: vi.fn(),
   confirmJarvisTimeDraft: vi.fn(),
@@ -54,6 +56,10 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
   completeJarvisInvoiceDraft: mocks.completeJarvisInvoiceDraft,
   cancelJarvisInvoiceDraft: mocks.cancelJarvisInvoiceDraft,
   confirmJarvisInvoiceDraft: mocks.confirmJarvisInvoiceDraft,
+  cancelJarvisInvoiceFinalizationDraft:
+    mocks.cancelJarvisInvoiceFinalizationDraft,
+  confirmJarvisInvoiceFinalizationDraft:
+    mocks.confirmJarvisInvoiceFinalizationDraft,
   completeJarvisTimeDraft: mocks.completeJarvisTimeDraft,
   cancelJarvisTimeDraft: mocks.cancelJarvisTimeDraft,
   confirmJarvisTimeDraft: mocks.confirmJarvisTimeDraft,
@@ -201,6 +207,21 @@ describe("JARVIS action-draft API", () => {
     mocks.confirmJarvisInvoiceDraft.mockResolvedValue({
       ...draft,
       actionId: "invoice.prepare",
+      state: "executed",
+      result: {
+        entityType: "invoice",
+        entityId: "invoice-1",
+        label: "Öffnen",
+      },
+    });
+    mocks.cancelJarvisInvoiceFinalizationDraft.mockResolvedValue({
+      ...draft,
+      actionId: "invoice.finalize",
+      state: "cancelled",
+    });
+    mocks.confirmJarvisInvoiceFinalizationDraft.mockResolvedValue({
+      ...draft,
+      actionId: "invoice.finalize",
       state: "executed",
       result: {
         entityType: "invoice",
@@ -870,6 +891,40 @@ describe("JARVIS action-draft API", () => {
     expect(confirmed.status).toBe(200);
     expect(mocks.confirmJarvisInvoiceDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 4);
     expect(mocks.executePlanningBatch).not.toHaveBeenCalled();
+  });
+
+  it("passes the critical invoice phrase only to finalization", async () => {
+    const response = (await POST(
+      request(
+        "POST",
+        {
+          actorId: "user-1",
+          actionId: "invoice.finalize",
+          command: "confirm",
+          revision: 2,
+          confirmationText: "FAKTURIEREN RE-10124",
+          sendNow: true,
+          markPaid: true,
+        },
+        {
+          "x-jarvis-action": "jarvis-action-draft-v2",
+          origin: "https://workpilot.example",
+        }
+      ) as never,
+      context
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(
+      mocks.confirmJarvisInvoiceFinalizationDraft
+    ).toHaveBeenCalledWith(
+      "preview-1",
+      expect.anything(),
+      2,
+      "FAKTURIEREN RE-10124"
+    );
+    expect(mocks.confirmJarvisInvoiceDraft).not.toHaveBeenCalled();
+    expect(mocks.confirmJarvisTaskDraft).not.toHaveBeenCalled();
   });
 
   it("rejects unknown commands without touching draft state", async () => {

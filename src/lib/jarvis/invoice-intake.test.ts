@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { extractInvoiceCompany, extractInvoiceServiceDate, looksLikeInvoiceDraftRequest } from "@/lib/jarvis/invoice-intake";
+import {
+  extractInvoiceCompany,
+  extractInvoiceNumber,
+  extractInvoiceServiceDate,
+  looksLikeInvoiceDraftRequest,
+  looksLikeInvoiceFinalizationRequest,
+} from "@/lib/jarvis/invoice-intake";
 
 describe("JARVIS invoice intake", () => {
   it("recognizes safe draft creation but excludes reads and critical actions", () => {
@@ -7,6 +13,20 @@ describe("JARVIS invoice intake", () => {
     expect(looksLikeInvoiceDraftRequest("Zeig mir offene Rechnungen")).toBe(false);
     expect(looksLikeInvoiceDraftRequest("Fakturiere und versende die Rechnung")).toBe(false);
     expect(looksLikeInvoiceDraftRequest("Storniere die Rechnung")).toBe(false);
+  });
+
+  it("recognizes isolated finalization and excludes combined critical actions", () => {
+    expect(
+      looksLikeInvoiceFinalizationRequest("Fakturiere Rechnung RE-10124")
+    ).toBe(true);
+    expect(
+      looksLikeInvoiceFinalizationRequest(
+        "Fakturiere und versende Rechnung RE-10124"
+      )
+    ).toBe(false);
+    expect(extractInvoiceNumber("Bitte RE-10124 fakturieren")).toBe(
+      "RE-10124"
+    );
   });
 
   it("extracts service date and company", () => {

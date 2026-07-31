@@ -14,6 +14,7 @@ export const JARVIS_PREVIEW_ACTION_IDS = [
   "task-comment.prepare",
   "offer.prepare",
   "invoice.prepare",
+  "invoice.finalize",
 ] as const;
 
 export type JarvisPreviewActionId = (typeof JARVIS_PREVIEW_ACTION_IDS)[number];
@@ -184,6 +185,12 @@ const invoicePreviewPayloadSchema = z
   })
   .strict();
 
+const invoiceFinalizePreviewPayloadSchema = z
+  .object({
+    invoiceId: boundedId,
+  })
+  .strict();
+
 const PREVIEW_PAYLOAD_SCHEMAS = {
   "task.prepare": taskPreviewPayloadSchema,
   "planning.prepare": planningPreviewPayloadSchema,
@@ -192,6 +199,7 @@ const PREVIEW_PAYLOAD_SCHEMAS = {
   "task-comment.prepare": taskCommentPreviewPayloadSchema,
   "offer.prepare": offerPreviewPayloadSchema,
   "invoice.prepare": invoicePreviewPayloadSchema,
+  "invoice.finalize": invoiceFinalizePreviewPayloadSchema,
 } satisfies Record<JarvisPreviewActionId, z.ZodType>;
 
 export type JarvisActionPreviewPayloadMap = {
@@ -204,6 +212,7 @@ export type JarvisActionPreviewPayloadMap = {
   "task-comment.prepare": z.infer<typeof taskCommentPreviewPayloadSchema>;
   "offer.prepare": z.infer<typeof offerPreviewPayloadSchema>;
   "invoice.prepare": z.infer<typeof invoicePreviewPayloadSchema>;
+  "invoice.finalize": z.infer<typeof invoiceFinalizePreviewPayloadSchema>;
 };
 
 export type JarvisActionPreviewAuditEvent = {
@@ -653,6 +662,52 @@ export type JarvisInvoiceDraftView = {
   cancellation: { enabled: boolean };
   execution: { enabled: false; reason: "requires_confirmation" | "finalized" };
   result?: { entityType: "invoice"; entityId: string; label: string };
+};
+
+export type JarvisInvoiceFinalizationDraftView = {
+  version: 2;
+  previewId: string;
+  actionId: "invoice.finalize";
+  title: "Rechnung kontrolliert fakturieren";
+  badge:
+    | "Prüfung"
+    | "Bereit"
+    | "Wird fakturiert"
+    | "Abgebrochen"
+    | "Abgelaufen"
+    | "Fakturiert";
+  state: JarvisTaskActionDraftState;
+  revision: number;
+  expiresAt: string;
+  invoiceId: string;
+  projectId: string;
+  fields: Array<{ label: string; value: string }>;
+  preflight: Array<{
+    key: string;
+    label: string;
+    status: "ok" | "warning" | "blocked";
+    detail: string;
+  }>;
+  warnings: string[];
+  blockingIssues: string[];
+  confirmation: {
+    enabled: boolean;
+    reason:
+      | "ready"
+      | "blocked"
+      | "not_permitted"
+      | "expired"
+      | "cancelled"
+      | "executing"
+      | "executed";
+    requiredText: string;
+  };
+  cancellation: { enabled: boolean };
+  result?: {
+    entityType: "invoice";
+    entityId: string;
+    label: string;
+  };
 };
 
 export type JarvisWinterCalculationResultView = {
@@ -1141,9 +1196,13 @@ export function createJarvisActionPreview<
       message: "Die aktuelle Rollenkombination darf diese Vorschau nicht vorbereiten.",
     };
   }
+  const isReleasedPreviewContract =
+    (decision.action.risk === "prepare" &&
+      decision.action.confirmation === "preview") ||
+    (decision.action.risk === "critical" &&
+      decision.action.confirmation === "critical");
   if (
-    decision.action.risk !== "prepare" ||
-    decision.action.confirmation !== "preview" ||
+    !isReleasedPreviewContract ||
     !JARVIS_PREVIEW_ACTION_IDS.includes(input.actionId)
   ) {
     return {
