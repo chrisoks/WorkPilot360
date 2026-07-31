@@ -2028,6 +2028,43 @@ OKW-Antwort, vollständige kritische Angebotskarte, exakte Phrase und sicheren
 Abbruch ohne Browserfehler; alle UI-QA-Daten wurden bereinigt. Das Backup liegt
 unter `/var/backups/workpilot360/20260731-230000-jarvis-offer-decision`.
 
+Das kontrollierte Löschen und Wiederherstellen eines Angebots ist seit
+31.07.2026 als eigener kritischer Vertikalschnitt umgesetzt. JARVIS trennt
+beide Wünsche strikt von Suche, Finalisierung, Versand, Gewonnen/Verloren,
+Aufgaben und Projektstatus. Die Vorschau zeigt Angebot, Projekt, Kunde,
+Status, Summen, Begründung und die ausdrücklich abgegrenzten Folgen. Ein
+dokumentierter Grund mit mindestens drei Zeichen ist Pflicht. Erst die exakt
+sichtbare, groß-/kleinschreibungssensitive Phrase `ANGEBOT LÖSCHEN ANG-...`
+beziehungsweise `ANGEBOT WIEDERHERSTELLEN ANG-...` darf ausführen.
+
+Die normale Angebotsmaske und JARVIS verwenden denselben
+organisationsgebundenen Soft-Delete-Fachservice. Aktive verknüpfte Rechnungen
+und digital angenommene Angebote blockieren eine Löschung. Noch nicht
+angenommene Annahmelinks werden beim Löschen widerrufen und beim
+Wiederherstellen nicht heimlich reaktiviert. Der vorherige Angebotsstatus
+wird in der Historie gesichert; Altdaten erhalten eine nachvollziehbare
+Statusableitung. Angebot, Historie und Projektlogbuch ändern sich gemeinsam
+oder gar nicht. Projektstatus, Termine, Aufgaben, Rechnungen und Versand
+bleiben unverändert.
+
+Sitzung, Organisation, Rollenpaar, Impersonation, Revision, TTL, HMAC,
+Fachfingerprint, serialisierbare Transaktion, organisations- und
+angebotsgebundener PostgreSQL-Advisory-Lock, bedingtes Update, Audit und
+Exactly-once-Replay sichern den Vorgang. Die lokale und produktive Abnahme auf
+Code-Commit `3fce1276f856153f21cb15124ad1d5a5d885f391` bestand 139 Testdateien
+mit 1.481 Tests, TypeScript, Prisma-Validierung, leerem Live-Diff, dem
+90-Seiten-Build und dem permanenten Korpus mit 110/110 Fragen. Fünfzehn
+Action-Center-Entwürfe einschließlich `offer.delete` wurden vorbereitet, aber
+keine Korpusaktion ausgeführt. Die isolierte Produktions-QA bestand Löschen,
+Wiederherstellen, Abbruch, falsche Phrase, Exactly-once-Replay, Historie,
+Logbuch und die Abwesenheit unerlaubter Nebenwirkungen. Der echte produktive
+Klicktest bestätigte vollständige kritische Karten, exakte Phrasen und das
+sichtbare Archiv mit Wiederherstellen-Aktion ohne Browserfehler. Ein im
+Klicktest entdeckter Fehlgriff auf `Listen` innerhalb der Begründung wurde
+behoben und mit einem Regressionstest abgesichert; sämtliche QA-Daten wurden
+danach bereinigt. Das Backup liegt unter
+`/var/backups/workpilot360/20260731-234000-jarvis-offer-lifecycle`.
+
 Der fünfte Action-Center-Vertikalschnitt für Rechnungsentwürfe und die
 Fakturavorprüfung ist am 31.07.2026 umgesetzt. Natürliche Erstellungswünsche
 öffnen einen persistenten, bearbeitbaren Entwurf; reine Rechnungsfragen sowie

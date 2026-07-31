@@ -1,5 +1,33 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS kontrolliertes Löschen/Wiederherstellen von Angeboten 2026-07-31:
+  JARVIS und die normale Angebotsmaske verwenden jetzt denselben
+  organisationsgebundenen Soft-Delete-Fachservice. Ein dokumentierter Grund
+  mit mindestens drei Zeichen und die exakte Phrase `ANGEBOT LÖSCHEN ANG-...`
+  beziehungsweise `ANGEBOT WIEDERHERSTELLEN ANG-...` sind Pflicht. Aktive
+  Rechnungen oder ein digital angenommenes Angebot blockieren die Löschung;
+  noch nicht angenommene Annahmelinks werden beim Löschen widerrufen und beim
+  Wiederherstellen bewusst nicht reaktiviert. Vorstatus, Angebotshistorie und
+  Projektlogbuch werden atomar gesichert. Projektstatus, Termine, Aufgaben,
+  Rechnungen und Versand bleiben unverändert. Sitzung, Organisation,
+  Rollenpaar, Impersonation, Revision, TTL, HMAC, Fachfingerprint,
+  serialisierbare Transaktion, PostgreSQL-Advisory-Lock, bedingtes Update und
+  Exactly-once-Replay schützen die Aktion. Produktiv auf Code-Commit
+  `3fce1276f856153f21cb15124ad1d5a5d885f391`; Backup:
+  `/var/backups/workpilot360/20260731-234000-jarvis-offer-lifecycle`.
+  Lokal und produktiv sind 139 Testdateien mit 1.481 Tests, TypeScript,
+  Prisma-Validierung, leerer Live-Diff und der 90-Seiten-Build grün. Der
+  permanente Korpus bestand 110/110, bereitete 15 Entwürfe einschließlich
+  `offer.delete` vor und führte keine Aktion aus. Isolierte Produktions-QA
+  bestand Löschen, Wiederherstellen, Abbruch, falsche Phrase,
+  Exactly-once-Replay, Historie, Logbuch und Nebenwirkungsgrenzen. Der echte
+  produktive Klicktest bestätigte Lösch- und Wiederherstellungskarten,
+  exakte Phrasen, das sichtbare Archiv samt Wiederherstellen-Aktion sowie eine
+  fehlerfreie Browserkonsole. Der dabei gefundene Fehlgriff auf das Wort
+  `Listen` innerhalb der Begründung ist behoben und regressionstestgesichert.
+  Alle QA-Daten wurden bereinigt. WorkPilot läuft unter PID `534394`;
+  KlinikNavigator blieb unverändert unter PID `398228`.
+
 - JARVIS kontrollierte Angebotsentscheidung und klare OKW-Leersuche 2026-07-31:
   JARVIS erkennt jetzt Gewonnen-/Verloren-Wünsche für ein konkretes Angebot
   getrennt von Suche, Finalisierung, Versand, Löschung, Aufgaben und
