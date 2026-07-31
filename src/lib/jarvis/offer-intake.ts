@@ -58,11 +58,12 @@ export function looksLikeOfferDecisionRequest(question: string) {
 
 export function looksLikeOfferLifecycleRequest(question: string) {
   const value = normalizeJarvisIntentText(question);
+  const command = value.split(/\b(?:grund|weil|wegen)\b/, 1)[0] || value;
   return (
-    /\bangebot\w*\b/.test(value) &&
-    /\b(?:losch|loesch|entfern|wiederherstell|zuruckhol|reaktivier)\w*\b|\bwieder\s+her\b/.test(value) &&
-    !/\b(?:aufgabe|rechnung|termin)\w*\b/.test(value) &&
-    !/\b(?:zeig|liste|such|welche|warum|status)\w*\b/.test(value)
+    /\bangebot\w*\b/.test(command) &&
+    /\b(?:losch|loesch|entfern|wiederherstell|zuruckhol|reaktivier)\w*\b|\bwieder\s+her\b/.test(command) &&
+    !/\b(?:aufgabe|rechnung|termin)\w*\b/.test(command) &&
+    !/\b(?:zeig|liste|such|welche|warum|status)\w*\b/.test(command)
   );
 }
 

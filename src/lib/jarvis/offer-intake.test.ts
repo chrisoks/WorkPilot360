@@ -54,6 +54,7 @@ describe("JARVIS offer intake", () => {
     });
     expect(looksLikeOfferLifecycleRequest("Zeig mir gelöschte Angebote")).toBe(false);
     expect(looksLikeOfferLifecycleRequest("Lösche die Aufgabe Kunden wegen Angebot anrufen.")).toBe(false);
+    expect(looksLikeOfferLifecycleRequest("Lösche Angebot ANG-10124. Grund: Sichtbarer Listen-Test.")).toBe(true);
   });
 
   it("recognizes isolated finalization and excludes combined follow-up actions", () => {
