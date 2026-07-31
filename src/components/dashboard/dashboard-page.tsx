@@ -47714,10 +47714,21 @@ await addProjectLogbookEntry(
             </button>
             <button
               type="button"
-              className={styles.secondaryButton}
+              className={`${styles.secondaryButton} ${styles.projectPrintAction}`}
+              aria-label="Projekt drucken"
+              title="Projekt drucken"
               onClick={() => printProjectOverview(selectedProjectFile, address)}
             >
-              Projekt drucken
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M7 8V4h10v4M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2M7 14h10v6H7z"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.8"
+                />
+              </svg>
             </button>
             <div className={styles.projectStatusAction} ref={projectStatusActionRef}>
               <button
