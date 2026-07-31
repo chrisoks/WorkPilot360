@@ -94,6 +94,7 @@ import {
   completeJarvisWinterCalculationDraft,
   createPersistedJarvisPlanningDraft,
   createPersistedJarvisOfferDraft,
+  createPersistedJarvisInvoiceDraft,
   createPersistedJarvisCommunicationDraft,
   createPersistedJarvisTaskDraft,
   createPersistedJarvisTimeDraft,
@@ -112,6 +113,11 @@ import {
   extractOfferExecutionMonth,
   looksLikeOfferDraftRequest,
 } from "@/lib/jarvis/offer-intake";
+import {
+  extractInvoiceCompany,
+  extractInvoiceServiceDate,
+  looksLikeInvoiceDraftRequest,
+} from "@/lib/jarvis/invoice-intake";
 
 export const dynamic = "force-dynamic";
 
@@ -199,6 +205,85 @@ async function buildJarvisOfferDraft(input: {
           ? error.message
           : "Der Angebotsentwurf konnte nicht sicher vorbereitet werden."
       } Es wurde kein Angebot angelegt.`,
+    };
+  }
+}
+
+async function buildJarvisInvoiceDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+  context: ReturnType<typeof sanitizeJarvisSurfaceContext>;
+}) {
+  if (!input.sessionId) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.draft.session-required",
+      message:
+        "Für einen bestätigbaren Rechnungsentwurf ist eine aktuelle serverseitige Sitzung erforderlich. Bitte melde dich neu an; es wurde nichts gespeichert.",
+    };
+  }
+  const projectReferences = extractJarvisProjectReferences(input.question);
+  const explicitProject =
+    input.context.recordType === "project" && input.context.recordId
+      ? { id: input.context.recordId }
+      : projectReferences.length === 1
+        ? await prisma.workPilotProject.findFirst({
+            where: {
+              organizationId: input.organizationId,
+              projectNumber: {
+                equals: projectReferences[0],
+                mode: "insensitive",
+              },
+            },
+            select: { id: true },
+          })
+        : null;
+  const serviceDate = extractInvoiceServiceDate(input.question);
+  const company = extractInvoiceCompany(input.question);
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(),
+    actionId: "invoice.prepare",
+    payload: {
+      ...(explicitProject?.id ? { projectId: explicitProject.id } : {}),
+      ...(company ? { company } : {}),
+      ...(serviceDate ? { serviceDate } : {}),
+    },
+    organizationId: input.organizationId,
+    profile: input.accessProfile,
+    createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.draft.invoice.refused",
+      message: `${preview.message} Es wurde keine Rechnung angelegt.`,
+    };
+  }
+  try {
+    const actionDraft = await createPersistedJarvisInvoiceDraft({
+      preview: preview.value,
+      organizationId: input.organizationId,
+      sessionId: input.sessionId,
+      profile: input.accessProfile,
+    });
+    return {
+      type: "answer" as const,
+      topicId: "action.draft.invoice",
+      message:
+        "Ich habe einen sicheren Rechnungsentwurf mit Fakturavorprüfung vorbereitet. Prüfe Projekt, Leistungsdatum, Angebot, Positionen, Nachlass, Umsatzsteuer, Zahlungsziel und alle Warnungen. Erst deine ausdrückliche Bestätigung legt genau einen Entwurf an; JARVIS fakturiert oder versendet ihn nicht.",
+      actionDraft,
+    };
+  } catch (error) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.draft.unavailable",
+      message: `${
+        error instanceof JarvisActionDraftError
+          ? error.message
+          : "Der Rechnungsentwurf konnte nicht sicher vorbereitet werden."
+      } Es wurde keine Rechnung angelegt.`,
     };
   }
 }
@@ -1423,6 +1508,18 @@ export async function POST(req: Request) {
     resolveExplicitSafetyPolicyQuestion(message);
   if (explicitSafetyPolicyResponse) {
     return respond(explicitSafetyPolicyResponse);
+  }
+  if (looksLikeInvoiceDraftRequest(message)) {
+    return respond(
+      await buildJarvisInvoiceDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+        context,
+      }),
+      "sales"
+    );
   }
   if (looksLikeOfferDraftRequest(message)) {
     return respond(

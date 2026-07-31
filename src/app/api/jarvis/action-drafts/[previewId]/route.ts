@@ -4,6 +4,7 @@ import { getDemoContext } from "@/lib/demo/context";
 import {
   cancelJarvisPlanningDraft,
   cancelJarvisOfferDraft,
+  cancelJarvisInvoiceDraft,
   cancelJarvisCommunicationDraft,
   cancelJarvisTaskDraft,
   cancelJarvisTimeDraft,
@@ -11,6 +12,7 @@ import {
   cancelJarvisWinterCalculationDraft,
   completeJarvisPlanningDraft,
   completeJarvisOfferDraft,
+  completeJarvisInvoiceDraft,
   completeJarvisCommunicationDraft,
   completeJarvisTaskDraft,
   completeJarvisTimeDraft,
@@ -18,6 +20,7 @@ import {
   completeJarvisWinterCalculationDraft,
   confirmJarvisPlanningDraft,
   confirmJarvisOfferDraft,
+  confirmJarvisInvoiceDraft,
   confirmJarvisCommunicationDraft,
   confirmJarvisTaskDraft,
   confirmJarvisTimeDraft,
@@ -160,6 +163,7 @@ export async function PATCH(
   try {
     const isPlanning = body.actionId === "planning.prepare";
     const isOffer = body.actionId === "offer.prepare";
+    const isInvoice = body.actionId === "invoice.prepare";
     const isTime = body.actionId === "time.prepare";
     const isWinterCalculation =
       body.actionId === "winter-calculation.prepare";
@@ -168,7 +172,26 @@ export async function PATCH(
     const isCommunication =
       body.actionId === "project-logbook.prepare" ||
       body.actionId === "task-comment.prepare";
-    const actionDraft = isOffer
+    const actionDraft = isInvoice
+      ? await completeJarvisInvoiceDraft(
+          previewId,
+          resolved.binding,
+          {
+            revision: body.revision,
+            projectId: body.projectId,
+            company: body.company,
+            serviceDate: body.serviceDate,
+            sourceOfferId: body.sourceOfferId,
+            introText: body.introText,
+            closingText: body.closingText,
+            vatRate: body.vatRate,
+            discountPercent: body.discountPercent,
+            paymentTermDays: body.paymentTermDays,
+            dueDate: body.dueDate,
+            lines: body.lines,
+          }
+        )
+      : isOffer
       ? await completeJarvisOfferDraft(
           previewId,
           resolved.binding,
@@ -278,7 +301,9 @@ export async function PATCH(
         );
     return NextResponse.json({
       message:
-        isOffer
+        isInvoice
+          ? "Der Rechnungsentwurf wurde mit den aktuellen Projekt-, Angebots-, Leistungs- und Fakturadaten neu geprüft. Erst deine bewusste Bestätigung legt genau einen Entwurf an."
+          : isOffer
           ? "Der Angebotsentwurf wurde mit den aktuellen Projekt-, Katalog-, Preis- und Nachtragsdaten neu berechnet. Erst deine bewusste Bestätigung legt genau einen Entwurf an."
           : isCommunication
           ? "Der Logbuch-/Kommentarentwurf wurde mit dem aktuellen Ziel-, Rollen- und Beteiligtenstand erneut geprüft. Erst deine bewusste Bestätigung darf genau einen Text speichern."
@@ -319,6 +344,7 @@ export async function POST(
   try {
     const isPlanning = body.actionId === "planning.prepare";
     const isOffer = body.actionId === "offer.prepare";
+    const isInvoice = body.actionId === "invoice.prepare";
     const isTime = body.actionId === "time.prepare";
     const isWinterCalculation =
       body.actionId === "winter-calculation.prepare";
@@ -328,7 +354,13 @@ export async function POST(
       body.actionId === "project-logbook.prepare" ||
       body.actionId === "task-comment.prepare";
     if (body.command === "cancel") {
-      const actionDraft = isOffer
+      const actionDraft = isInvoice
+        ? await cancelJarvisInvoiceDraft(
+            previewId,
+            resolved.binding,
+            body.revision
+          )
+        : isOffer
         ? await cancelJarvisOfferDraft(
             previewId,
             resolved.binding,
@@ -370,7 +402,9 @@ export async function POST(
             body.revision
           );
       return NextResponse.json({
-        message: isOffer
+        message: isInvoice
+          ? "Der Rechnungsentwurf wurde abgebrochen. Es wurde keine Rechnung angelegt."
+          : isOffer
           ? "Der Angebotsentwurf wurde abgebrochen. Es wurde kein Angebot angelegt."
           : isCommunication
           ? "Der Logbuch-/Kommentarentwurf wurde abgebrochen. Es wurde kein Text gespeichert."
@@ -395,7 +429,13 @@ export async function POST(
         { status: 400 }
       );
     }
-    const actionDraft = isOffer
+    const actionDraft = isInvoice
+      ? await confirmJarvisInvoiceDraft(
+          previewId,
+          resolved.binding,
+          body.revision
+        )
+      : isOffer
       ? await confirmJarvisOfferDraft(
           previewId,
           resolved.binding,
@@ -457,7 +497,9 @@ export async function POST(
     return NextResponse.json({
       message:
         actionDraft.state === "executed"
-          ? isOffer
+          ? isInvoice
+            ? "Die Rechnung wurde nach deiner Bestätigung genau einmal als Entwurf angelegt. Sie wurde weder fakturiert noch versendet."
+            : isOffer
             ? "Das Angebot wurde nach deiner Bestätigung genau einmal als Entwurf angelegt. Es wurde weder finalisiert noch versendet."
             : isCommunication
             ? "Der Text wurde nach deiner Bestätigung über den gemeinsamen WorkPilot-Service genau einmal gespeichert."
@@ -470,7 +512,9 @@ export async function POST(
             : isPlanning
             ? "Der Termin wurde nach deiner Bestätigung über den Planning-Service genau einmal angelegt."
             : "Die Aufgabe wurde nach deiner Bestätigung genau einmal angelegt."
-          : isOffer
+          : isInvoice
+            ? "Der Rechnungsentwurf wurde nicht ausgeführt."
+            : isOffer
             ? "Der Angebotsentwurf wurde nicht ausgeführt."
             : isCommunication
             ? "Der Logbuch-/Kommentarentwurf wurde nicht gespeichert."

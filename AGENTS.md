@@ -376,6 +376,31 @@
   Planungsanlage bleibt bis zur vollständigen Fach-, Sicherheits-, Browser-
   und Live-Abnahme gesperrt.
 
+- JARVIS Rechnungsentwurf und permanente 110er-Suite 2026-07-31:
+  `invoice.prepare` ist als vollständiger sicherer Action-Center-
+  Vertikalschnitt verfügbar. JARVIS erkennt natürliche Erstellungswünsche,
+  öffnet eine bearbeitbare Rechnungskarte und zeigt Projekt, Firma,
+  Leistungsdatum, Bezugsangebot, Katalogpositionen, Mengen, Preise,
+  Nachlässe, Umsatzsteuer, Zahlungsziel, Fälligkeit, Texte, Summen und die
+  Fakturavorprüfung. Reine Leseanfragen und kritische Befehle zu Fakturierung,
+  Versand, Mahnung, Bezahlt-Markierung, Storno oder Löschung dürfen niemals
+  in diesen Entwurfspfad fallen.
+  Normale Rechnungsmaske und JARVIS teilen die zentralen Datums-, Zahlungsziel-,
+  Prozent-, Rundungs- und Positionsnettoregeln. Der Speicherdienst lädt
+  Projekt, Kontakte, Katalog, Angebot, vorhandene Rechnungen, Nachweise und
+  offene Zeiten organisationsgebunden neu. Er speichert ausschließlich
+  `Entwurf` plus Historie. Rechnungsnummer, serialisierbare Transaktion,
+  Advisory-Lock, Rollenpaar, Impersonation, Sitzung, Revision, TTL, HMAC,
+  Kontext-Fingerprint, Audit und Exactly-once sind verpflichtend; Fakturieren
+  und Versenden bleiben getrennt gesperrt.
+  `src/lib/jarvis/live-question-corpus.ts` ist der verbindliche permanente
+  Korpus mit exakt 110 eindeutigen Fragen. Er muss bei jedem weiteren
+  JARVIS-Release automatisiert und authentifiziert live ausgeführt werden.
+  Testentwürfe dürfen nicht bestätigt werden und sind danach samt Audit und
+  Testsitzung zu bereinigen. Der Rechnungs-Klicktest prüft zusätzlich Abbruch,
+  sichtbare Vorprüfung, Doppelklick/Replay, genau eine Entwurfsrechnung und
+  null Fakturierungs-/Versandwirkung.
+
 - JARVIS qualitative Live-Haertung 2026-07-29: Der erste nach Inhalt statt
   nur technischer Antwortexistenz bewertete produktive 100er-Lauf war
   technisch 100/100, qualitativ aber nur 77/100. Die zehn Prinzipienfragen

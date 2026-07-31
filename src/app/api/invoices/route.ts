@@ -22,6 +22,15 @@ import { canDeleteInvoices, canManageInvoices, canSendDocumentMails, canViewInte
 import { sendNotificationMailSafely } from "@/lib/mail/notifications";
 import type { CatalogPackageComponentSnapshot } from "@/lib/analytics/catalog-performance";
 import { syncInvoiceInventoryMovements } from "@/lib/inventory/catalog-inventory";
+import {
+  addInvoiceDays,
+  calculateInvoiceLineNet,
+  clampInvoicePercent,
+  cleanInvoiceNumber,
+  normalizeInvoiceDate,
+  normalizeInvoicePaymentTermDays,
+  roundInvoiceMoney,
+} from "@/lib/invoices/invoice-core";
 
 type InvoiceCompany = "OK solutions" | "OK immocare";
 
@@ -779,8 +788,7 @@ function forbiddenInvoiceResponse() {
 }
 
 function cleanDateKey(value: unknown) {
-  const normalized = cleanString(value);
-  return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : "";
+  return normalizeInvoiceDate(value);
 }
 
 function getInvoiceMonthFromInput(input: InvoiceInput) {
@@ -789,18 +797,11 @@ function getInvoiceMonthFromInput(input: InvoiceInput) {
 }
 
 function cleanPaymentTermDays(value: unknown) {
-  const parsed = Math.round(cleanNumber(value, 14));
-  if (!Number.isFinite(parsed)) return 14;
-  return Math.min(Math.max(parsed, 0), 365);
+  return normalizeInvoicePaymentTermDays(value);
 }
 
 function addDaysToDateKey(dateKey: string, days: number) {
-  const cleanDate = cleanDateKey(dateKey);
-  if (!cleanDate) return "";
-  const [year, month, day] = cleanDate.split("-").map(Number);
-  const date = new Date(year, month - 1, day, 12, 0, 0);
-  date.setDate(date.getDate() + cleanPaymentTermDays(days));
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return addInvoiceDays(dateKey, days);
 }
 
 function getInvoiceDueDate(input: InvoiceInput, serviceDate: string, paymentTermDays: number) {
@@ -808,16 +809,15 @@ function getInvoiceDueDate(input: InvoiceInput, serviceDate: string, paymentTerm
 }
 
 function cleanNumber(value: unknown, fallback = 0) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
+  return cleanInvoiceNumber(value, fallback);
 }
 
 function cleanPercent(value: unknown) {
-  return Math.min(Math.max(cleanNumber(value, 0), 0), 100);
+  return clampInvoicePercent(value);
 }
 
 function roundMoney(value: number) {
-  return Math.round((Number(value) || 0) * 100) / 100;
+  return roundInvoiceMoney(value);
 }
 
 function normalizeUnit(value: unknown) {
@@ -847,7 +847,7 @@ function getLineDiscountAmount(line: Pick<Required<InvoiceLineInput>, "quantity"
 }
 
 function getLineTotalNet(line: Pick<Required<InvoiceLineInput>, "quantity" | "unitPrice" | "discountPercent">) {
-  return roundMoney(getLineBaseNet(line) - getLineDiscountAmount(line));
+  return calculateInvoiceLineNet(line);
 }
 
 async function getCatalogLineCostSnapshot(organizationId: string, line: Required<InvoiceLineInput>) {

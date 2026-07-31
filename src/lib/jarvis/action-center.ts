@@ -13,6 +13,7 @@ export const JARVIS_PREVIEW_ACTION_IDS = [
   "project-logbook.prepare",
   "task-comment.prepare",
   "offer.prepare",
+  "invoice.prepare",
 ] as const;
 
 export type JarvisPreviewActionId = (typeof JARVIS_PREVIEW_ACTION_IDS)[number];
@@ -166,6 +167,23 @@ const offerPreviewPayloadSchema = z
   })
   .strict();
 
+const invoicePreviewPayloadSchema = z
+  .object({
+    projectId: boundedId.optional(),
+    company: z.enum(["OK solutions", "OK immocare"]).optional(),
+    serviceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    plannedExecutionMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional(),
+    sourceOfferId: boundedId.optional(),
+    introText: optionalText(4000),
+    closingText: optionalText(4000),
+    vatRate: z.number().min(0).max(100).optional(),
+    discountPercent: z.number().min(0).max(100).optional(),
+    paymentTermDays: z.number().int().min(0).max(365).optional(),
+    dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    lines: z.array(offerPreviewLineSchema).max(30).optional(),
+  })
+  .strict();
+
 const PREVIEW_PAYLOAD_SCHEMAS = {
   "task.prepare": taskPreviewPayloadSchema,
   "planning.prepare": planningPreviewPayloadSchema,
@@ -173,6 +191,7 @@ const PREVIEW_PAYLOAD_SCHEMAS = {
   "project-logbook.prepare": projectLogbookPreviewPayloadSchema,
   "task-comment.prepare": taskCommentPreviewPayloadSchema,
   "offer.prepare": offerPreviewPayloadSchema,
+  "invoice.prepare": invoicePreviewPayloadSchema,
 } satisfies Record<JarvisPreviewActionId, z.ZodType>;
 
 export type JarvisActionPreviewPayloadMap = {
@@ -184,6 +203,7 @@ export type JarvisActionPreviewPayloadMap = {
   >;
   "task-comment.prepare": z.infer<typeof taskCommentPreviewPayloadSchema>;
   "offer.prepare": z.infer<typeof offerPreviewPayloadSchema>;
+  "invoice.prepare": z.infer<typeof invoicePreviewPayloadSchema>;
 };
 
 export type JarvisActionPreviewAuditEvent = {
@@ -588,6 +608,51 @@ export type JarvisOfferDraftView = {
     entityId: string;
     label: string;
   };
+};
+
+export type JarvisInvoiceDraftView = {
+  version: 2;
+  previewId: string;
+  actionId: "invoice.prepare";
+  title: "Rechnungsentwurf mit Fakturavorprüfung";
+  badge: "Entwurf" | "Bereit" | "Wird gespeichert" | "Abgebrochen" | "Abgelaufen" | "Gespeichert";
+  state: JarvisTaskActionDraftState;
+  revision: number;
+  expiresAt: string;
+  fields: Array<{ label: string; value: string }>;
+  missingFields: string[];
+  errors: string[];
+  warnings: string[];
+  preflight: Array<{ key: string; label: string; status: "ok" | "warning" | "blocked"; detail: string }>;
+  editor: {
+    projectId: string;
+    company: "OK solutions" | "OK immocare";
+    serviceDate: string;
+    plannedExecutionMonth: string;
+    sourceOfferId: string;
+    introText: string;
+    closingText: string;
+    vatRate: number;
+    discountPercent: number;
+    paymentTermDays: number;
+    dueDate: string;
+    lines: JarvisOfferDraftLineView[];
+    projectOptions: Array<{ id: string; label: string; customerLabel: string; projectKind: string; defaultCompany: "OK solutions" | "OK immocare"; updatedAt: string }>;
+    catalogOptions: Array<{ id: string; label: string; type: string; unit: string; description: string; salesPrice: number; vatRate: number; updatedAt: string }>;
+    offerOptions: Array<{ id: string; label: string; projectId: string; executionMonth: string; updatedAt: string }>;
+  };
+  calculation: {
+    lineNetBeforeInvoiceDiscount: number;
+    invoiceDiscountAmount: number;
+    netTotal: number;
+    vatRate: number;
+    vatAmount: number;
+    grossTotal: number;
+  };
+  confirmation: { enabled: boolean; reason: "ready" | "missing_fields" | "invalid_input" | "not_permitted" | "expired" | "cancelled" | "executing" | "executed" };
+  cancellation: { enabled: boolean };
+  execution: { enabled: false; reason: "requires_confirmation" | "finalized" };
+  result?: { entityType: "invoice"; entityId: string; label: string };
 };
 
 export type JarvisWinterCalculationResultView = {

@@ -1927,6 +1927,41 @@ Bestandteil des Vertrags. Finalisierung, PDF-/Druckfreigabe, Versand,
 Gewonnen/Verloren und Löschung bleiben getrennte, nicht durch diesen
 Vertikalschnitt freigegebene Aktionen.
 
+Der fünfte Action-Center-Vertikalschnitt für Rechnungsentwürfe und die
+Fakturavorprüfung ist am 31.07.2026 umgesetzt. Natürliche Erstellungswünsche
+öffnen einen persistenten, bearbeitbaren Entwurf; reine Rechnungsfragen sowie
+Fakturieren, Versand, Mahnung, Bezahlt-Markierung, Storno, Löschung und Suche
+werden nicht als Entwurfsanlage umgedeutet. Projekt, Absenderfirma,
+Leistungsdatum, Bezugsangebot, Katalogpositionen, Mengen, Einzelpreise,
+Positions-/Gesamtnachlass, Umsatzsteuer, Zahlungsziel, Fälligkeit und Texte
+bleiben vor der Bestätigung sichtbar.
+
+Die Vorprüfung weist Doppelabrechnungen zum Bezugsangebot, weitere Rechnungen
+im Leistungsmonat, Endkontrolle, offene Arbeitszeiten und bei OK immocare
+Vorher-/Nachherbilder sowie Tätigkeitsbericht aus. Fehlende Pflichtangaben,
+inaktive oder organisationsfremde Katalogpositionen und bereits abgerechnete
+Bezugsangebote blockieren. Hinweise bleiben sichtbar, werden aber nicht als
+heimliche Fakturafreigabe interpretiert. Normale Rechnungsmaske und JARVIS
+verwenden gemeinsame Kernregeln für Datum, Zahlungsziel, Prozente,
+Positionsnetto und Rundung.
+
+JARVIS erzeugt ausschließlich eine Rechnung mit Status `Entwurf` samt
+Rechnungshistorie. Die nächste globale `RE-...`-Nummer wird innerhalb der
+serialisierbaren Bestätigung durch einen organisationsgebundenen
+PostgreSQL-Advisory-Lock geschützt. Rollenpaar, Impersonation, Sitzung,
+Organisation, Revision, TTL, HMAC, Kontext-Fingerprint, Audit, atomare
+Beanspruchung und Exactly-once-Replay entsprechen mindestens dem
+Angebotsvertrag. Fakturierung, PDF-/E-Rechnungsfreigabe, Versand, Mahnung,
+Bezahlt-Markierung und Storno bleiben eigene kritische Phase-5-Aktionen.
+
+Die bisher nur laufbezogen dokumentierten 110 menschenähnlichen Fragen sind
+nun als exakt 110 eindeutige, versionierte Fälle dauerhaft im Repository
+verankert. Sie decken Navigation, Projekte, Kunden, Aufgaben, Planung, Zeit,
+Kalkulationsrechner, Angebote, Rechnungen, Online-Anfragen und Sicherheit ab.
+Jeder weitere JARVIS-Release muss diesen Korpus automatisiert und als
+authentifizierten Live-Lauf ausführen; neu erzeugte, unbestätigte QA-Entwürfe
+werden anschließend vollständig bereinigt.
+
 Die Modellwahl ist ebenfalls zentralisiert: Luna bleibt der kleine
 strukturierte Intent-Fallback, Terra das normale Vertriebs-/Managementmodell.
 Sol ist nur für ausdrücklich klassifizierte spätere Komplexanalysen
@@ -1943,7 +1978,7 @@ telemetriert.
 - Logbuch- und Kommentaraktionen (produktiver textbasierter Vertikalschnitt;
   Anhänge bleiben ein eigener Sicherheitsblock),
 - Angebote/Nachträge als Entwurf (produktiv abgenommen),
-- Rechnungsentwurf und Fakturavorprüfung,
+- Rechnungsentwurf und Fakturavorprüfung (produktiver Vertikalschnitt),
 - Dokument-/Mailvorbereitung,
 - Vertriebsaktionslisten in Aufgaben überführen,
 - UI-Refresh, Audit und Fehlerbehandlung.

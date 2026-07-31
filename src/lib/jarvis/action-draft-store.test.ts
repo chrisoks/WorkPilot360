@@ -37,6 +37,37 @@ const fake = vi.hoisted(() => {
   const vehicleCalculations: Array<Record<string, any>> = [];
   const offerDrafts: Array<Record<string, any>> = [];
   const offerHistory: Array<Record<string, any>> = [];
+  const invoiceDrafts: Array<Record<string, any>> = [];
+  const evaluateInvoiceDraft = vi.fn(async ({ draft }: { draft: Record<string, any> }) => {
+    const lines = Array.isArray(draft.lines) ? draft.lines : [];
+    const canonicalLines = lines.map((line: Record<string, any>) => ({
+      catalogItemId: line.catalogItemId || "",
+      catalogType: "Leistung",
+      quantity: Number(line.quantity || 1),
+      unit: "Std",
+      title: "Glasreinigung Stunde",
+      description: line.description || "",
+      unitPrice: Number(line.unitPrice ?? 55),
+      discountPercent: Number(line.discountPercent || 0),
+      vatRate: 19,
+      totalNet: Number(line.quantity || 1) * Number(line.unitPrice ?? 55),
+    }));
+    const netTotal = canonicalLines.reduce((sum: number, line: Record<string, any>) => sum + line.totalNet, 0);
+    return {
+      input: { projectId: draft.projectId || "", company: draft.company || "OK solutions", serviceDate: draft.serviceDate || "", plannedExecutionMonth: (draft.serviceDate || "").slice(0, 7), sourceOfferId: draft.sourceOfferId || "", introText: draft.introText || "Einleitung", closingText: draft.closingText || "Schluss", vatRate: 19, discountPercent: 0, paymentTermDays: 14, dueDate: "2026-08-14", lines: canonicalLines },
+      project: draft.projectId ? { id: "project-1", projectNumber: "GLR-449", projectTitle: "Glasreinigung", customerName: "Musterkunde", customerStreet: "Testweg 1", customerCity: "74722 Buchen", contactName: "", projectKind: "einmaliges Projekt", projectType: "OK solutions", updatedAt: "2026-07-31T08:00:00.000Z" } : null,
+      sourceOffer: null,
+      catalogVersions: canonicalLines.map((line: Record<string, any>) => ({ id: line.catalogItemId, updatedAt: "2026-07-31T08:00:00.000Z" })),
+      totals: { lineNetBeforeInvoiceDiscount: netTotal, invoiceDiscountAmount: 0, netTotal, vatRate: 19, vatAmount: netTotal * 0.19, grossTotal: netTotal * 1.19 },
+      missingFields: [...(!draft.projectId ? ["Projekt"] : []), ...(!draft.serviceDate ? ["Leistungsdatum"] : []), ...(canonicalLines.length ? [] : ["Mindestens eine Position"])],
+      errors: [], warnings: [], preflight: [],
+    };
+  });
+  const createConfirmedInvoiceDraft = vi.fn(async () => {
+    const row = { id: `invoice-draft-${invoiceDrafts.length + 1}`, status: "Entwurf" };
+    invoiceDrafts.push(row);
+    return row;
+  });
   const createProjectLogbookEntry = vi.fn(async () => ({
     entry: { id: "logbook-entry-1" },
     project: { id: "project-1", label: "MKG-209 · Marketing" },
@@ -444,6 +475,9 @@ const fake = vi.hoisted(() => {
       vehicleCalculations.length = 0;
       offerDrafts.length = 0;
       offerHistory.length = 0;
+      invoiceDrafts.length = 0;
+      evaluateInvoiceDraft.mockClear();
+      createConfirmedInvoiceDraft.mockClear();
       createProjectLogbookEntry.mockClear();
       projectUpdatedAt = new Date("2026-07-29T18:00:00.000Z");
       vehicleUpdatedAt = new Date("2026-07-29T18:30:00.000Z");
@@ -460,10 +494,23 @@ const fake = vi.hoisted(() => {
     vehicleCalculations,
     offerDrafts,
     offerHistory,
+    invoiceDrafts,
+    evaluateInvoiceDraft,
+    createConfirmedInvoiceDraft,
   };
 });
 
 vi.mock("@/lib/db/client", () => ({ prisma: fake.prisma }));
+vi.mock("@/lib/invoices/invoice-draft-service", () => ({
+  evaluateInvoiceDraft: fake.evaluateInvoiceDraft,
+  loadInvoiceDraftWorkspace: vi.fn(async () => ({
+    projectOptions: [], catalogOptions: [], offerOptions: [],
+  })),
+  createConfirmedInvoiceDraft: fake.createConfirmedInvoiceDraft,
+  InvoiceDraftServiceError: class InvoiceDraftServiceError extends Error {
+    constructor(public readonly code: string, message: string) { super(message); }
+  },
+}));
 vi.mock("@/lib/services/task-service", () => ({
   createJarvisConfirmedTask: fake.createJarvisConfirmedTask,
 }));
@@ -567,6 +614,9 @@ import {
   completeJarvisOfferDraft,
   confirmJarvisOfferDraft,
   createPersistedJarvisOfferDraft,
+  completeJarvisInvoiceDraft,
+  confirmJarvisInvoiceDraft,
+  createPersistedJarvisInvoiceDraft,
   JarvisActionDraftError,
 } from "@/lib/jarvis/action-draft-store";
 import { calculateWinterService } from "@/lib/winter-service/calculation";
@@ -1986,5 +2036,81 @@ describe("persistent JARVIS offer drafts", () => {
       })
     ).rejects.toMatchObject({ code: "scope_mismatch" });
     expect(fake.offerDrafts).toHaveLength(0);
+  });
+});
+
+describe("persistent JARVIS invoice drafts", () => {
+  beforeEach(() => {
+    fake.reset();
+  });
+
+  it("creates one safe invoice draft and makes confirmation replay-safe", async () => {
+    const created = await createPersistedJarvisInvoiceDraft({
+      ...binding(),
+      now: baseNow,
+      preview: {
+        version: 1,
+        previewId: "invoice-preview-1",
+        actionId: "invoice.prepare",
+        actionTitle: "Rechnungsentwurf mit Fakturavorprüfung vorbereiten",
+        state: "awaiting_confirmation",
+        organizationId: "org-1",
+        sessionActorId: "user-1",
+        effectiveActorId: "user-1",
+        impersonating: false,
+        payload: {},
+        execution: { enabled: false, reason: "preview_only" },
+        audit: [],
+      },
+    });
+    expect(created.state).toBe("awaiting_input");
+
+    const ready = await completeJarvisInvoiceDraft(created.previewId, binding(), {
+      revision: created.revision,
+      projectId: "project-1",
+      company: "OK solutions",
+      serviceDate: "2026-07-31",
+      sourceOfferId: "",
+      introText: "Einleitung",
+      closingText: "Schluss",
+      vatRate: 19,
+      discountPercent: 0,
+      paymentTermDays: 14,
+      dueDate: "2026-08-14",
+      lines: [{ catalogItemId: "service-hourly", quantity: 2, description: "Zwei Stunden", unitPrice: 55, discountPercent: 0 }],
+    }, baseNow);
+    expect(ready.state).toBe("awaiting_confirmation");
+    expect(ready.calculation).toMatchObject({ netTotal: 110, grossTotal: 130.9 });
+
+    const first = await confirmJarvisInvoiceDraft(ready.previewId, binding(), ready.revision, baseNow);
+    const replay = await confirmJarvisInvoiceDraft(ready.previewId, binding(), ready.revision, baseNow);
+    expect(first.state).toBe("executed");
+    expect(replay.result?.entityId).toBe(first.result?.entityId);
+    expect(fake.invoiceDrafts).toHaveLength(1);
+    expect(fake.invoiceDrafts[0]).toMatchObject({ status: "Entwurf" });
+  });
+
+  it("blocks employees before persisting an invoice draft", async () => {
+    await expect(createPersistedJarvisInvoiceDraft({
+      organizationId: "org-1",
+      sessionId: "session-1",
+      profile: profile(Role.MITARBEITER),
+      now: baseNow,
+      preview: {
+        version: 1,
+        previewId: "invoice-preview-employee",
+        actionId: "invoice.prepare",
+        actionTitle: "Rechnungsentwurf mit Fakturavorprüfung vorbereiten",
+        state: "awaiting_confirmation",
+        organizationId: "org-1",
+        sessionActorId: "user-1",
+        effectiveActorId: "user-1",
+        impersonating: false,
+        payload: {},
+        execution: { enabled: false, reason: "preview_only" },
+        audit: [],
+      },
+    })).rejects.toMatchObject({ code: "scope_mismatch" });
+    expect(fake.invoiceDrafts).toHaveLength(0);
   });
 });

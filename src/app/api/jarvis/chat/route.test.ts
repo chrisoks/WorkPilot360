@@ -47,6 +47,7 @@ const mocks = vi.hoisted(() => ({
   createPersistedJarvisCommunicationDraft: vi.fn(),
   createPersistedJarvisPlanningDraft: vi.fn(),
   createPersistedJarvisOfferDraft: vi.fn(),
+  createPersistedJarvisInvoiceDraft: vi.fn(),
   createPersistedJarvisTimeDraft: vi.fn(),
   createPersistedJarvisWinterCalculationDraft: vi.fn(),
   createPersistedJarvisVehicleTripCalculationDraft: vi.fn(),
@@ -111,6 +112,8 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
     mocks.createPersistedJarvisPlanningDraft,
   createPersistedJarvisOfferDraft:
     mocks.createPersistedJarvisOfferDraft,
+  createPersistedJarvisInvoiceDraft:
+    mocks.createPersistedJarvisInvoiceDraft,
   createPersistedJarvisTimeDraft:
     mocks.createPersistedJarvisTimeDraft,
   createPersistedJarvisWinterCalculationDraft:
@@ -352,6 +355,24 @@ describe("POST /api/jarvis/chat", () => {
           vatAmount: 0,
           grossTotal: 0,
         },
+        confirmation: { enabled: false, reason: "missing_fields" },
+        cancellation: { enabled: true },
+        execution: { enabled: false, reason: "requires_confirmation" },
+      })
+    );
+    mocks.createPersistedJarvisInvoiceDraft.mockImplementation(
+      async ({ preview }) => ({
+        version: 2,
+        previewId: preview.previewId,
+        actionId: "invoice.prepare",
+        title: "Rechnungsentwurf mit Fakturavorprüfung",
+        badge: "Entwurf",
+        state: "awaiting_input",
+        revision: 1,
+        expiresAt: "2026-07-31T10:00:00.000Z",
+        fields: [], missingFields: ["Mindestens eine Position"], errors: [], warnings: [], preflight: [],
+        editor: { projectId: preview.payload.projectId ?? "", company: preview.payload.company ?? "OK solutions", serviceDate: preview.payload.serviceDate ?? "", plannedExecutionMonth: "", sourceOfferId: "", introText: "", closingText: "", vatRate: 19, discountPercent: 0, paymentTermDays: 14, dueDate: "", lines: [], projectOptions: [], catalogOptions: [], offerOptions: [] },
+        calculation: { lineNetBeforeInvoiceDiscount: 0, invoiceDiscountAmount: 0, netTotal: 0, vatRate: 19, vatAmount: 0, grossTotal: 0 },
         confirmation: { enabled: false, reason: "missing_fields" },
         cancellation: { enabled: true },
         execution: { enabled: false, reason: "requires_confirmation" },
@@ -3182,6 +3203,30 @@ describe("POST /api/jarvis/chat", () => {
     );
     expect(mocks.resolveJarvisProjectHealthRequest).not.toHaveBeenCalled();
     expect(mocks.resolveJarvisReadRequest).not.toHaveBeenCalled();
+  });
+
+  it("prepares an invoice draft with preflight but never fakturizes or sends", async () => {
+    const actor = { id: "user-1", isActive: true, role: "GESCHAEFTSFUEHRER" };
+    mocks.createJarvisAccessProfile.mockReturnValue({ sessionActor: actor, effectiveActor: actor, isImpersonating: false });
+    mocks.sanitizeJarvisSurfaceContext.mockReturnValue({ recordType: "project", recordId: "project-1" });
+
+    const response = await POST(new Request("http://localhost/api/jarvis/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId: "user-1", message: "Erstelle einen Rechnungsentwurf für OK immocare mit Leistungsdatum 31.07.2026.", context: { recordType: "project", recordId: "project-1" } }),
+    }));
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      type: "answer",
+      topicId: "action.draft.invoice",
+      actionDraft: { actionId: "invoice.prepare", state: "awaiting_input", execution: { enabled: false, reason: "requires_confirmation" } },
+    });
+    expect(payload.message).toContain("fakturiert oder versendet ihn nicht");
+    expect(mocks.createPersistedJarvisInvoiceDraft).toHaveBeenCalledWith(expect.objectContaining({
+      preview: expect.objectContaining({ payload: expect.objectContaining({ projectId: "project-1", company: "OK immocare", serviceDate: "2026-07-31" }) }),
+    }));
+    expect(mocks.createPersistedJarvisOfferDraft).not.toHaveBeenCalled();
   });
 
   it("applies the focused answer-depth policy before returning the response", async () => {

@@ -409,12 +409,12 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
   },
   {
     id: "invoice.prepare",
-    title: "Rechnungsentwurf oder Mahnung vorbereiten",
+    title: "Rechnungsentwurf mit Fakturavorprüfung vorbereiten",
     category: "invoice",
     risk: "prepare",
     confirmation: "preview",
     dataClasses: ["financial"],
-    implementation: "planned",
+    implementation: "available",
     canUse: canManageInvoices,
   },
   {

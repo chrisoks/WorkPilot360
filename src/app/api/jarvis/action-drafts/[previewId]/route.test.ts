@@ -15,6 +15,9 @@ const mocks = vi.hoisted(() => ({
   completeJarvisOfferDraft: vi.fn(),
   cancelJarvisOfferDraft: vi.fn(),
   confirmJarvisOfferDraft: vi.fn(),
+  completeJarvisInvoiceDraft: vi.fn(),
+  cancelJarvisInvoiceDraft: vi.fn(),
+  confirmJarvisInvoiceDraft: vi.fn(),
   completeJarvisTimeDraft: vi.fn(),
   cancelJarvisTimeDraft: vi.fn(),
   confirmJarvisTimeDraft: vi.fn(),
@@ -48,6 +51,9 @@ vi.mock("@/lib/jarvis/action-draft-store", () => ({
   completeJarvisOfferDraft: mocks.completeJarvisOfferDraft,
   cancelJarvisOfferDraft: mocks.cancelJarvisOfferDraft,
   confirmJarvisOfferDraft: mocks.confirmJarvisOfferDraft,
+  completeJarvisInvoiceDraft: mocks.completeJarvisInvoiceDraft,
+  cancelJarvisInvoiceDraft: mocks.cancelJarvisInvoiceDraft,
+  confirmJarvisInvoiceDraft: mocks.confirmJarvisInvoiceDraft,
   completeJarvisTimeDraft: mocks.completeJarvisTimeDraft,
   cancelJarvisTimeDraft: mocks.cancelJarvisTimeDraft,
   confirmJarvisTimeDraft: mocks.confirmJarvisTimeDraft,
@@ -180,6 +186,25 @@ describe("JARVIS action-draft API", () => {
       result: {
         entityType: "offer",
         entityId: "offer-1",
+        label: "Öffnen",
+      },
+    });
+    mocks.completeJarvisInvoiceDraft.mockResolvedValue({
+      ...draft,
+      actionId: "invoice.prepare",
+    });
+    mocks.cancelJarvisInvoiceDraft.mockResolvedValue({
+      ...draft,
+      actionId: "invoice.prepare",
+      state: "cancelled",
+    });
+    mocks.confirmJarvisInvoiceDraft.mockResolvedValue({
+      ...draft,
+      actionId: "invoice.prepare",
+      state: "executed",
+      result: {
+        entityType: "invoice",
+        entityId: "invoice-1",
         label: "Öffnen",
       },
     });
@@ -787,6 +812,63 @@ describe("JARVIS action-draft API", () => {
     expect(
       mocks.confirmJarvisVehicleTripCalculationDraft
     ).toHaveBeenCalledWith("preview-1", expect.anything(), 2);
+    expect(mocks.executePlanningBatch).not.toHaveBeenCalled();
+  });
+
+  it("routes invoice drafts through the allowlist and never through task execution", async () => {
+    const headers = {
+      "x-jarvis-action": "jarvis-action-draft-v2",
+      origin: "https://workpilot.example",
+    };
+    const edited = (await PATCH(
+      request("PATCH", {
+        actorId: "user-1",
+        actionId: "invoice.prepare",
+        revision: 3,
+        projectId: "project-1",
+        company: "OK solutions",
+        serviceDate: "2026-07-31",
+        sourceOfferId: "offer-1",
+        introText: "Einleitung",
+        closingText: "Schluss",
+        vatRate: 19,
+        discountPercent: 2,
+        paymentTermDays: 14,
+        dueDate: "2026-08-14",
+        lines: [{ catalogItemId: "service-1", quantity: 2 }],
+        status: "Fakturiert",
+        sendNow: true,
+        organizationId: "evil-org",
+      }, headers) as never,
+      context
+    ))!;
+    expect(edited.status).toBe(200);
+    expect(mocks.completeJarvisInvoiceDraft).toHaveBeenCalledWith(
+      "preview-1",
+      expect.objectContaining({ organizationId: "org-1", sessionId: "session-1" }),
+      {
+        revision: 3,
+        projectId: "project-1",
+        company: "OK solutions",
+        serviceDate: "2026-07-31",
+        sourceOfferId: "offer-1",
+        introText: "Einleitung",
+        closingText: "Schluss",
+        vatRate: 19,
+        discountPercent: 2,
+        paymentTermDays: 14,
+        dueDate: "2026-08-14",
+        lines: [{ catalogItemId: "service-1", quantity: 2 }],
+      }
+    );
+    expect(mocks.completeJarvisTaskDraft).not.toHaveBeenCalled();
+
+    const confirmed = (await POST(
+      request("POST", { actorId: "user-1", actionId: "invoice.prepare", command: "confirm", revision: 4 }, headers) as never,
+      context
+    ))!;
+    expect(confirmed.status).toBe(200);
+    expect(mocks.confirmJarvisInvoiceDraft).toHaveBeenCalledWith("preview-1", expect.anything(), 4);
     expect(mocks.executePlanningBatch).not.toHaveBeenCalled();
   });
 
