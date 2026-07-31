@@ -2402,3 +2402,24 @@ negativer GU-Beleg samt PDF, zwei Historienereignisse und ein
 Projektlogbucheintrag. Auszahlung, Zahlungsstatus, Zeiten, Lager und Versand
 bleiben getrennt. Der Vollstorno prüft aktive Teilgutschriften und blockiert
 eine sonst mögliche doppelte Gegenbuchung.
+
+Der Baustein ist auf Code-Commit `af01f03` produktiv abgenommen. Das geprüfte
+Rollback-Paket liegt unter
+`/var/backups/workpilot360/20260731-161405-jarvis-invoice-credit` und enthält
+Repository-Bundle, vorherigen `.next`-Build, Datenbankdump und SHA-256-
+Prüfsummen. Lokal und produktiv bestanden 1.446 Tests, TypeScript,
+Mojibake-/Regressionschecks, Prisma-Validierung, leerer Live-Diff und der
+90-Seiten-Build. Der permanente Korpus bestand jeweils 110/110; produktiv
+wurden zwölf kontrollierte Entwürfe und keine Ausführung erzeugt.
+
+Die isolierte produktive Ausführungs-QA bestätigte: falsche
+Groß-/Kleinschreibung wird mit HTTP 400 abgelehnt, die exakte Phrase erzeugt
+genau einen GU-Beleg über -20 EUR netto / -23,80 EUR brutto, Replay bleibt
+exactly-once, Überkorrektur sowie ein anschließender Vollstorno sind gesperrt
+und Originalrechnung, Zahlung, Zeiten, Lager und Versand bleiben unverändert.
+PDF, zwei Historienereignisse und genau ein Logbucheintrag wurden gemeinsam
+erzeugt; anschließend blieben null QA-Rückstände. Die beim vorherigen
+Storno-Umbau versehentlich entfernte lesende Rechnungsroute wurde ebenfalls
+wiederhergestellt und mit einem dauerhaften Regressionsmarker abgesichert.
+Produktiv liefert sie HTTP 200 und alle GU-Referenzfelder. WorkPilot läuft
+unter PID `494621`, KlinikNavigator unverändert unter PID `398228`.

@@ -27,6 +27,24 @@
   Zeitfreigabe, Materialrückgabe oder E-Mail aus. Existiert bereits eine
   aktive Teilgutschrift, blockiert nun auch der Vollstorno, damit keine
   doppelte Gegenbuchung entstehen kann.
+  Produktiv abgenommen auf Code-Commit `af01f03` mit Serverbackup
+  `/var/backups/workpilot360/20260731-161405-jarvis-invoice-credit`.
+  Lokal und produktiv sind 1.446 Tests, TypeScript, Mojibake-/
+  Regressionschecks, Prisma-Validierung, leerer Live-Diff und der
+  90-Seiten-Build grün. Der permanente Korpus bestand jeweils 110/110; auf
+  Produktion wurden zwölf kontrollierte Entwürfe vorbereitet, keine Aktion
+  ausgeführt und keine QA-Daten hinterlassen. Die isolierte echte
+  Produktions-QA lehnte eine falsch geschriebene Phrase mit HTTP 400 ab,
+  erstellte anschließend genau `GU-10100` über -20 EUR netto / -23,80 EUR
+  brutto samt PDF, zwei Historienereignissen und einem Logbucheintrag und gab
+  beim Replay dieselbe Entität zurück. Originalrechnung, Zahlungsstatus,
+  Zeiten und Lager blieben unverändert; Überkorrektur und nachfolgender
+  Vollstorno waren blockiert. Alle QA-Rechnungen, Historien, Logbücher,
+  Entwürfe und Sitzungen wurden bereinigt. Zusätzlich ist die beim vorherigen
+  Storno-Umbau verlorene lesende Rechnungsroute wiederhergestellt und durch
+  den Regressionscheck geschützt; die produktive Rechnungsliste liefert
+  wieder HTTP 200 inklusive der neuen Referenzfelder. WorkPilot läuft unter
+  PID `494621`; KlinikNavigator blieb unverändert unter PID `398228`.
 
 - JARVIS kontrolliertes Rechnungs-Vollstorno 2026-07-31:
   Der zehnte Action-Center-Vertikalschnitt storniert ausschließlich Rechnungen
