@@ -66835,51 +66835,93 @@ await addProjectLogbookEntry(
                 </aside>
               </div>
 
-              {visibleNavigationActiveTabs.has("onlineRequests") ? (
+              <section className={styles.dashboardAttentionGrid} aria-label="Aktuelle Eingänge">
+                {visibleNavigationActiveTabs.has("onlineRequests") ? (
+                  <button
+                    type="button"
+                    className={styles.onlineRequestDashboardAlert}
+                    data-empty={onlineRequestSummary.activeCount === 0}
+                    onClick={() => openMainView("onlineRequests")}
+                  >
+                    <span className={styles.onlineRequestDashboardIcon} aria-hidden="true">
+                      <SidebarIcon tab="onlineRequests" />
+                    </span>
+                    <span className={styles.onlineRequestDashboardCopy}>
+                      <small>Online-Anfragen</small>
+                      <strong>
+                        {onlineRequestSummary.newCount > 0
+                          ? `${onlineRequestSummary.newCount} neue ${
+                              onlineRequestSummary.newCount === 1
+                                ? "Anfrage"
+                                : "Anfragen"
+                            }`
+                          : "Keine ungelesenen Anfragen"}
+                      </strong>
+                      <span>
+                        {onlineRequestSummary.activeCount > 0
+                          ? `${onlineRequestSummary.activeCount} aktive Vorgänge${
+                              onlineRequestSummary.oldestNewAt
+                                ? ` · älteste neue Anfrage seit ${new Intl.DateTimeFormat(
+                                    "de-DE",
+                                    {
+                                      dateStyle: "medium",
+                                      timeStyle: "short",
+                                      timeZone: APP_TIME_ZONE,
+                                    }
+                                  ).format(
+                                    new Date(onlineRequestSummary.oldestNewAt)
+                                  )}`
+                                : ""
+                            }`
+                          : "Der Posteingang ist aktuell vollständig bearbeitet."}
+                      </span>
+                    </span>
+                    <span className={styles.onlineRequestDashboardAction}>
+                      Posteingang öffnen
+                    </span>
+                  </button>
+                ) : null}
+
                 <button
                   type="button"
-                  className={styles.onlineRequestDashboardAlert}
-                  data-empty={onlineRequestSummary.activeCount === 0}
-                  onClick={() => openMainView("onlineRequests")}
+                  className={`${styles.onlineRequestDashboardAlert} ${styles.notificationDashboardAlert}`}
+                  data-empty={unreadNotifications.length === 0}
+                  onClick={() => {
+                    setIsNotificationsOpen(true);
+                    setShowNotificationHistory(false);
+                    setNotificationSearchTerm("");
+                    setIsQuickCreateOpen(false);
+                    setIsUserMenuOpen(false);
+                  }}
                 >
                   <span className={styles.onlineRequestDashboardIcon} aria-hidden="true">
-                    <SidebarIcon tab="onlineRequests" />
+                    <svg viewBox="0 0 24 24">
+                      <path d="M18 16v-5a6 6 0 0 0-12 0v5l-2 2h16l-2-2Z" />
+                      <path d="M10 21h4" />
+                    </svg>
                   </span>
                   <span className={styles.onlineRequestDashboardCopy}>
-                    <small>Online-Anfragen</small>
+                    <small>Benachrichtigungen</small>
                     <strong>
-                      {onlineRequestSummary.newCount > 0
-                        ? `${onlineRequestSummary.newCount} neue ${
-                            onlineRequestSummary.newCount === 1
-                              ? "Anfrage"
-                              : "Anfragen"
+                      {unreadNotifications.length > 0
+                        ? `${unreadNotifications.length} ungelesene ${
+                            unreadNotifications.length === 1
+                              ? "Benachrichtigung"
+                              : "Benachrichtigungen"
                           }`
-                        : "Keine ungelesenen Anfragen"}
+                        : "Keine ungelesenen Benachrichtigungen"}
                     </strong>
                     <span>
-                      {onlineRequestSummary.activeCount > 0
-                        ? `${onlineRequestSummary.activeCount} aktive Vorgänge${
-                            onlineRequestSummary.oldestNewAt
-                              ? ` · älteste neue Anfrage seit ${new Intl.DateTimeFormat(
-                                  "de-DE",
-                                  {
-                                    dateStyle: "medium",
-                                    timeStyle: "short",
-                                    timeZone: APP_TIME_ZONE,
-                                  }
-                                ).format(
-                                  new Date(onlineRequestSummary.oldestNewAt)
-                                )}`
-                              : ""
-                          }`
-                        : "Der Posteingang ist aktuell vollständig bearbeitet."}
+                      {unreadNotifications.length > 0
+                        ? "Diese Meldungen warten auf deine Sichtung."
+                        : "Aktuell wartet keine neue Meldung auf dich."}
                     </span>
                   </span>
                   <span className={styles.onlineRequestDashboardAction}>
-                    Posteingang öffnen
+                    Center öffnen
                   </span>
                 </button>
-              ) : null}
+              </section>
 
               <section className={styles.dashboardMainGrid}>
                 <section className={styles.employeeStampPanel}>

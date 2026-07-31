@@ -14955,6 +14955,144 @@
   color: #ffffff;
 }
 
+/* Notification-Center im aktuellen WorkPilot-Design. */
+.notificationCount {
+  background: #dc3e45;
+  box-shadow: 0 3px 9px rgba(190, 24, 33, 0.3);
+}
+
+.notificationPanel {
+  background: #ffffff;
+  border: 1px solid #d3e1e2;
+  border-radius: 18px;
+  box-shadow:
+    0 28px 70px rgba(9, 42, 51, 0.2),
+    inset 0 1px 0 #ffffff;
+  padding: 16px;
+  width: min(420px, calc(100vw - 32px));
+}
+
+.notificationHeader {
+  margin-bottom: 12px;
+}
+
+.notificationHeader strong {
+  color: #102f3a;
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+}
+
+.notificationHeader button,
+.notificationPermission {
+  background: linear-gradient(180deg, #ffffff 0%, #eef7f5 100%);
+  border: 1px solid #bddbd6;
+  border-radius: 10px;
+  color: #0f6268;
+  font-weight: 700;
+}
+
+.notificationHeader button:hover,
+.notificationPermission:hover {
+  background: #e7f4f1;
+  border-color: #8fc4bd;
+}
+
+.notificationTabs {
+  background: #edf6f4;
+  border-color: #cfe3df;
+  border-radius: 12px;
+  padding: 4px;
+}
+
+.notificationTabs button {
+  border-radius: 9px;
+  color: #477078;
+  min-height: 38px;
+}
+
+.notificationTabs button[data-active="true"] {
+  background: #0f6268;
+  box-shadow: 0 7px 16px rgba(9, 72, 76, 0.18);
+  color: #ffffff;
+}
+
+.notificationTabs span {
+  background: rgba(15, 98, 104, 0.12);
+  color: #0f6268;
+}
+
+.notificationTabs button[data-active="true"] span {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
+.notificationSearch input:focus {
+  border-color: #5aaea5;
+  box-shadow: 0 0 0 4px rgba(63, 198, 181, 0.14);
+}
+
+.notificationList {
+  gap: 9px;
+  max-height: min(480px, calc(100vh - 280px));
+  padding-right: 3px;
+}
+
+.notificationItem {
+  background: #ffffff;
+  border: 1px solid #dce7e8;
+  border-radius: 13px;
+  box-shadow: 0 5px 14px rgba(9, 42, 51, 0.045);
+  padding: 12px 13px;
+}
+
+.notificationItem[data-unread="true"] {
+  background: linear-gradient(135deg, #eff9f7 0%, #f8fcfb 100%);
+  border-color: #83c9c0;
+  box-shadow: inset 3px 0 0 #1b9a8e;
+}
+
+.notificationItem[data-unread="true"] .notificationItemHeader small {
+  background: #d9f2ed;
+  color: #0c756d;
+}
+
+.notificationItemHeader {
+  align-items: flex-start;
+}
+
+.notificationItemHeader strong {
+  color: #102f3a;
+  line-height: 1.35;
+}
+
+.notificationItem p {
+  color: #526873;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.notificationItemState > button {
+  border-color: #c8d9da;
+  color: #567078;
+}
+
+.notificationLinkButton {
+  background: linear-gradient(135deg, #0f6268 0%, #167a78 100%);
+  border: 1px solid #0f6268;
+  box-shadow: 0 5px 12px rgba(9, 72, 76, 0.14);
+}
+
+.notificationResolveButton {
+  background: #effaf6;
+  border: 1px solid #9cd9c4;
+  color: #147451;
+}
+
+.notificationHistoryMore {
+  border-color: #bddbd6;
+  color: #0f6268;
+}
+
 .potentialStatusList button {
   min-height: 60px;
   text-align: center;
@@ -35802,6 +35940,27 @@
   line-height: 1.35;
 }
 
+.dashboardAttentionGrid {
+  align-items: stretch;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dashboardAttentionGrid .onlineRequestDashboardAlert {
+  height: 100%;
+}
+
+.notificationDashboardAlert .onlineRequestDashboardIcon svg {
+  fill: none;
+  height: 23px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  width: 23px;
+}
+
 /*
  * Einheitlicher Tabellenkopf für operative Ansichten.
  * Druck- und Dokumentvorschauen behalten bewusst ihr eigenes Papierdesign.
@@ -36470,9 +36629,45 @@
 }
 
 @media (max-width: 720px) {
+  .dashboardAttentionGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .projectReviewHeader,
   .projectReviewActions {
     align-items: stretch;
     flex-direction: column;
   }
+}
+
+/* Abschließende Header-Priorität gegen ältere globale Button-Regeln. */
+.headerActions .notificationBell {
+  animation: none;
+  background: linear-gradient(180deg, #ffffff 0%, #eef7f5 100%);
+  border: 1px solid #bddbd6;
+  border-radius: 12px;
+  box-shadow:
+    inset 0 1px 0 #ffffff,
+    0 6px 16px rgba(12, 67, 70, 0.1);
+  color: #0f6268;
+  height: 42px;
+  width: 42px;
+}
+
+.headerActions .notificationBell:hover {
+  background: linear-gradient(180deg, #ffffff 0%, #e2f2ef 100%);
+  border-color: #84bdb6;
+  box-shadow:
+    inset 0 1px 0 #ffffff,
+    0 9px 20px rgba(12, 67, 70, 0.15);
+}
+
+.headerActions .notificationBell.notificationBellActive {
+  animation: none;
+  background: linear-gradient(135deg, #0f6268 0%, #167a78 100%);
+  border-color: #0f6268;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 9px 22px rgba(9, 72, 76, 0.22);
+  color: #ffffff;
 }
