@@ -47,6 +47,27 @@ export function looksLikeOfferDeliveryRequest(question: string) {
   );
 }
 
+export function looksLikeOfferDecisionRequest(question: string) {
+  const value = normalizeJarvisIntentText(question);
+  return (
+    /\bangebot\w*\b/.test(value) &&
+    /\b(?:gewonnen|verloren|gewinnen|verlieren)\b/.test(value) &&
+    /\b(?:markier|setz|entscheide|ist)\w*\b/.test(value)
+  );
+}
+
+export function extractOfferDecision(question: string) {
+  const value = normalizeJarvisIntentText(question);
+  const decision = /\b(?:verloren|verlieren)\b/.test(value)
+    ? ("lost" as const)
+    : /\b(?:gewonnen|gewinnen)\b/.test(value)
+      ? ("won" as const)
+      : undefined;
+  const reason = question.match(/\b(?:Grund|weil|wegen)\s*[:\-]?\s*([^\n.]+(?:\.(?!\s*Kommentar\b)[^\n.]*)?)/i)?.[1]?.trim();
+  const note = question.match(/\bKommentar\s*[:\-]\s*(.+)$/i)?.[1]?.trim();
+  return { decision, reason, note };
+}
+
 export function extractOfferNumber(question: string) {
   return question.match(/\bANG-\d+\b/i)?.[0]?.toUpperCase();
 }

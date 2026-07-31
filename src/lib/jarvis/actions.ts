@@ -415,7 +415,7 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     risk: "write",
     confirmation: "confirm",
     dataClasses: ["customer"],
-    implementation: "planned",
+    implementation: "available",
     canUse: canManageOffers,
   },
   {

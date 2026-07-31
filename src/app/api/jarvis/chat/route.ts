@@ -96,6 +96,7 @@ import {
   createPersistedJarvisOfferDraft,
   createPersistedJarvisOfferFinalizationDraft,
   createPersistedJarvisOfferDeliveryDraft,
+  createPersistedJarvisOfferDecisionDraft,
   createPersistedJarvisInvoiceDraft,
   createPersistedJarvisInvoiceFinalizationDraft,
   createPersistedJarvisInvoicePaymentDraft,
@@ -123,6 +124,8 @@ import {
   looksLikeOfferDraftRequest,
   looksLikeOfferFinalizationRequest,
   looksLikeOfferDeliveryRequest,
+  looksLikeOfferDecisionRequest,
+  extractOfferDecision,
 } from "@/lib/jarvis/offer-intake";
 import {
   extractInvoiceCompany,
@@ -524,6 +527,100 @@ async function buildJarvisOfferDeliveryDraft(input: {
           ? error.message
           : "Die Angebotsversandvorschau konnte nicht sicher vorbereitet werden."
       } Es wurde nichts versendet.`,
+    };
+  }
+}
+
+async function buildJarvisOfferDecisionDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+}) {
+  if (!input.sessionId) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.offer-decision.session-required",
+      message: "Für eine Angebotsentscheidung ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts verändert.",
+    };
+  }
+  const offerNumber = extractOfferNumber(input.question);
+  const details = extractOfferDecision(input.question);
+  if (!details.decision) {
+    return {
+      type: "clarification" as const,
+      topicId: "action.offer-decision.decision-required",
+      message: "Soll das Angebot als gewonnen oder als verloren markiert werden? Es wurde noch nichts verändert.",
+    };
+  }
+  if (!offerNumber) {
+    return {
+      type: "clarification" as const,
+      topicId: "action.offer-decision.offer-required",
+      message: "Welche Angebotsnummer soll entschieden werden? Nenne sie bitte im Format ANG-12345. Es wurde noch nichts verändert.",
+    };
+  }
+  if (!details.reason || (details.decision === "lost" && !details.note)) {
+    return {
+      type: "clarification" as const,
+      topicId: "action.offer-decision.documentation-required",
+      message: details.decision === "lost"
+        ? `Für eine Verlustentscheidung brauche ich Grund und Kommentar, zum Beispiel: „Markiere Angebot ${offerNumber} als verloren. Grund: Preis. Kommentar: Kunde hat abgesagt.“ Es wurde nichts verändert.`
+        : `Für eine Gewinnentscheidung brauche ich einen dokumentierten Grund, zum Beispiel: „Markiere Angebot ${offerNumber} als gewonnen. Grund: Schriftliche Kundenzusage.“ Es wurde nichts verändert.`,
+    };
+  }
+  const offer = await prisma.offer.findFirst({
+    where: {
+      offerNumber: { equals: offerNumber, mode: "insensitive" },
+      organizationId: input.organizationId,
+    },
+    select: { id: true },
+  });
+  if (!offer) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.offer-decision.not-found",
+      message: `${offerNumber} wurde in der aktuellen Organisation nicht gefunden. Es wurde nichts verändert.`,
+    };
+  }
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(),
+    actionId: "offer.manage",
+    payload: {
+      offerId: offer.id,
+      decision: details.decision,
+      reason: details.reason,
+      ...(details.note ? { note: details.note } : {}),
+    },
+    organizationId: input.organizationId,
+    profile: input.accessProfile,
+    createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.offer-decision.refused",
+      message: `${preview.message} Es wurde nichts verändert.`,
+    };
+  }
+  try {
+    const actionDraft = await createPersistedJarvisOfferDecisionDraft({
+      preview: preview.value,
+      organizationId: input.organizationId,
+      sessionId: input.sessionId,
+      profile: input.accessProfile,
+    });
+    return {
+      type: "answer" as const,
+      topicId: "action.offer-decision",
+      message: "Ich habe die Angebotsentscheidung serverseitig geprüft. Kontrolliere Angebot, Projekt, Kunde, Summen, Entscheidung, Grund, Kommentar und die ausdrücklich abgegrenzten Folgen. Erst die exakte Bestätigungsphrase entscheidet das Angebot genau einmal.",
+      actionDraft,
+    };
+  } catch (error) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.offer-decision.unavailable",
+      message: `${error instanceof JarvisActionDraftError ? error.message : "Die Angebotsentscheidung konnte nicht sicher vorbereitet werden."} Es wurde nichts verändert.`,
     };
   }
 }
@@ -2485,6 +2582,17 @@ export async function POST(req: Request) {
   if (looksLikeOfferFinalizationRequest(message)) {
     return respond(
       await buildJarvisOfferFinalizationDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+      }),
+      "sales"
+    );
+  }
+  if (looksLikeOfferDecisionRequest(message)) {
+    return respond(
+      await buildJarvisOfferDecisionDraft({
         question: message,
         organizationId: organization.id,
         sessionId: actorResult.sessionId,

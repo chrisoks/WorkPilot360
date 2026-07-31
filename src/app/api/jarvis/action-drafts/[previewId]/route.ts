@@ -6,6 +6,7 @@ import {
   cancelJarvisOfferDraft,
   cancelJarvisOfferFinalizationDraft,
   cancelJarvisOfferDeliveryDraft,
+  cancelJarvisOfferDecisionDraft,
   cancelJarvisInvoiceDraft,
   cancelJarvisInvoiceFinalizationDraft,
   cancelJarvisInvoicePaymentDraft,
@@ -36,6 +37,7 @@ import {
   confirmJarvisOfferDraft,
   confirmJarvisOfferFinalizationDraft,
   confirmJarvisOfferDeliveryDraft,
+  confirmJarvisOfferDecisionDraft,
   confirmJarvisInvoiceDraft,
   confirmJarvisInvoiceFinalizationDraft,
   confirmJarvisInvoicePaymentDraft,
@@ -187,6 +189,7 @@ export async function PATCH(
     const isOffer = body.actionId === "offer.prepare";
     const isOfferFinalization = body.actionId === "offer.finalize";
     const isOfferDelivery = body.actionId === "offer.send";
+    const isOfferDecision = body.actionId === "offer.manage";
     const isInvoice = body.actionId === "invoice.prepare";
     const isInvoiceFinalization = body.actionId === "invoice.finalize";
     const isInvoicePayment = body.actionId === "invoice.mark-paid";
@@ -202,7 +205,7 @@ export async function PATCH(
     const isCommunication =
       body.actionId === "project-logbook.prepare" ||
       body.actionId === "task-comment.prepare";
-    const actionDraft = isOfferFinalization || isInvoiceFinalization
+    const actionDraft = isOfferFinalization || isOfferDecision || isInvoiceFinalization
       ? await getJarvisActionDraft(previewId, resolved.binding)
       : isOfferDelivery
       ? await completeJarvisOfferDeliveryDraft(
@@ -391,6 +394,8 @@ export async function PATCH(
       message:
         isOfferFinalization
           ? "Die Angebotsvorschau ist fest an den aktuellen Entwurfs- und Kalkulationsstand gebunden. Änderungen erfordern eine neue Vorschau."
+          : isOfferDecision
+          ? "Die Angebotsentscheidung ist fest an Angebot, Entscheidungsart und Dokumentation gebunden. Änderungen erfordern eine neue Vorschau."
           : isInvoiceFinalization
           ? "Die Fakturavorschau ist fest an den aktuellen Rechnungs- und Prüfstand gebunden. Änderungen erfordern eine neue Vorschau."
           : isOfferDelivery
@@ -448,6 +453,7 @@ export async function POST(
     const isOffer = body.actionId === "offer.prepare";
     const isOfferFinalization = body.actionId === "offer.finalize";
     const isOfferDelivery = body.actionId === "offer.send";
+    const isOfferDecision = body.actionId === "offer.manage";
     const isInvoice = body.actionId === "invoice.prepare";
     const isInvoiceFinalization = body.actionId === "invoice.finalize";
     const isInvoicePayment = body.actionId === "invoice.mark-paid";
@@ -472,6 +478,12 @@ export async function POST(
           )
         : isOfferDelivery
         ? await cancelJarvisOfferDeliveryDraft(
+            previewId,
+            resolved.binding,
+            body.revision
+          )
+        : isOfferDecision
+        ? await cancelJarvisOfferDecisionDraft(
             previewId,
             resolved.binding,
             body.revision
@@ -562,6 +574,8 @@ export async function POST(
       return NextResponse.json({
         message: isOfferFinalization
           ? "Die Angebotsfinalisierung wurde abgebrochen. Das Angebot blieb ein Entwurf."
+          : isOfferDecision
+          ? "Die Angebotsentscheidung wurde abgebrochen. Angebot und Projekt blieben unverändert."
           : isOfferDelivery
           ? "Der Angebotsversand wurde abgebrochen. Es wurde keine E-Mail versendet."
           : isInvoiceFinalization
@@ -617,6 +631,13 @@ export async function POST(
           body.revision,
           typeof body.confirmationText === "string" ? body.confirmationText : "",
           req
+        )
+      : isOfferDecision
+      ? await confirmJarvisOfferDecisionDraft(
+          previewId,
+          resolved.binding,
+          body.revision,
+          typeof body.confirmationText === "string" ? body.confirmationText : ""
         )
       : isInvoiceFinalization
       ? await confirmJarvisInvoiceFinalizationDraft(
@@ -741,6 +762,8 @@ export async function POST(
             ? "Das Angebot wurde nach deiner kritischen Bestätigung genau einmal finalisiert und als PDF erzeugt. Versand, Gewonnen/Verloren und Projektstatus blieben unverändert."
             : isOfferDelivery
             ? "Das freigegebene Angebot wurde nach deiner kritischen Bestätigung genau einmal an Microsoft 365 übergeben. PDF, Annahmelink und Versand sind protokolliert; Gewonnen/Verloren und Projektstatus blieben unverändert."
+            : isOfferDecision
+            ? "Das Angebot wurde nach deiner exakten Bestätigung genau einmal entschieden. Angebotshistorie und Projektlogbuch wurden geschrieben; Projektstatus, Termine, Aufgaben, Rechnungen und Versand blieben unverändert."
             : isInvoiceFinalization
             ? "Die Rechnung wurde nach deiner kritischen Bestätigung genau einmal fakturiert. Sie wurde weder versendet noch gemahnt oder als bezahlt markiert."
             : isInvoicePayment
@@ -770,6 +793,8 @@ export async function POST(
             : "Die Aufgabe wurde nach deiner Bestätigung genau einmal angelegt."
           : isOfferFinalization
             ? "Das Angebot wurde nicht finalisiert."
+            : isOfferDecision
+            ? "Das Angebot wurde nicht entschieden."
             : isOfferDelivery
             ? "Das Angebot wurde nicht versendet."
             : isInvoiceFinalization

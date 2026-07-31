@@ -3,11 +3,29 @@ import { Role } from "@prisma/client";
 import { createJarvisAccessProfile } from "@/lib/jarvis/security";
 import {
   canAccessJarvisTask,
+  formatJarvisEmptyReadMessage,
   formatJarvisReadCollectionMessage,
   getJarvisReadAccessDecision,
 } from "@/lib/jarvis/read-model";
 
 describe("JARVIS read model permissions", () => {
+  it("states clearly when a recognized customer has no offers", () => {
+    expect(
+      formatJarvisEmptyReadMessage({
+        intent: { kind: "offer", query: "okw", filter: "all" },
+        subjectLabel: "OKW GmbH",
+      })
+    ).toBe("Für OKW GmbH sind aktuell keine Angebote in WorkPilot360 vorhanden.");
+  });
+
+  it("names the search term when no matching subject can be resolved", () => {
+    expect(
+      formatJarvisEmptyReadMessage({
+        intent: { kind: "offer", query: "unbekannt", filter: "open" },
+      })
+    ).toBe("Zu „unbekannt“ habe ich aktuell keine offenen Angebote in WorkPilot360 gefunden.");
+  });
+
   it("explains a capped result list without broken or misleading grammar", () => {
     expect(
       formatJarvisReadCollectionMessage({

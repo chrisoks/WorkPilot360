@@ -43,6 +43,14 @@ describe("JARVIS read intent", () => {
     });
   });
 
+  it("extracts a customer abbreviation from an offer collection request", () => {
+    expect(resolveJarvisReadIntent("Zeig mal alle Angebote von OKW.")).toMatchObject({
+      kind: "offer",
+      query: "okw",
+      filter: "all",
+    });
+  });
+
   it("recognizes overdue invoices", () => {
     expect(resolveJarvisReadIntent("Zeige mir die überfälligen Rechnungen.")).toMatchObject({
       kind: "invoice",

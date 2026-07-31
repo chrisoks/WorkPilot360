@@ -15,6 +15,7 @@ export const JARVIS_PREVIEW_ACTION_IDS = [
   "offer.prepare",
   "offer.finalize",
   "offer.send",
+  "offer.manage",
   "invoice.prepare",
   "invoice.finalize",
   "invoice.mark-paid",
@@ -210,6 +211,15 @@ const offerSendPreviewPayloadSchema = z
   })
   .strict();
 
+const offerDecisionPreviewPayloadSchema = z
+  .object({
+    offerId: boundedId,
+    decision: z.enum(["won", "lost"]),
+    reason: boundedText(500),
+    note: optionalText(2000),
+  })
+  .strict();
+
 const invoiceMarkPaidPreviewPayloadSchema = z
   .object({
     invoiceId: boundedId,
@@ -265,6 +275,7 @@ const PREVIEW_PAYLOAD_SCHEMAS = {
   "offer.prepare": offerPreviewPayloadSchema,
   "offer.finalize": offerFinalizePreviewPayloadSchema,
   "offer.send": offerSendPreviewPayloadSchema,
+  "offer.manage": offerDecisionPreviewPayloadSchema,
   "invoice.prepare": invoicePreviewPayloadSchema,
   "invoice.finalize": invoiceFinalizePreviewPayloadSchema,
   "invoice.mark-paid": invoiceMarkPaidPreviewPayloadSchema,
@@ -285,6 +296,7 @@ export type JarvisActionPreviewPayloadMap = {
   "offer.prepare": z.infer<typeof offerPreviewPayloadSchema>;
   "offer.finalize": z.infer<typeof offerFinalizePreviewPayloadSchema>;
   "offer.send": z.infer<typeof offerSendPreviewPayloadSchema>;
+  "offer.manage": z.infer<typeof offerDecisionPreviewPayloadSchema>;
   "invoice.prepare": z.infer<typeof invoicePreviewPayloadSchema>;
   "invoice.finalize": z.infer<typeof invoiceFinalizePreviewPayloadSchema>;
   "invoice.mark-paid": z.infer<typeof invoiceMarkPaidPreviewPayloadSchema>;
@@ -895,6 +907,36 @@ export type JarvisOfferDeliveryDraftView = {
     entityId: string;
     label: string;
   };
+};
+
+export type JarvisOfferDecisionDraftView = {
+  version: 2;
+  previewId: string;
+  actionId: "offer.manage";
+  title: "Angebot kontrolliert entscheiden";
+  badge: "Prüfung" | "Bereit" | "Wird entschieden" | "Abgebrochen" | "Abgelaufen" | "Entschieden";
+  state: JarvisTaskActionDraftState;
+  revision: number;
+  expiresAt: string;
+  offerId: string;
+  projectId: string;
+  decision: "won" | "lost";
+  fields: Array<{ label: string; value: string }>;
+  checks: Array<{
+    key: string;
+    label: string;
+    status: "ok" | "warning" | "blocked";
+    detail: string;
+  }>;
+  warnings: string[];
+  blockingIssues: string[];
+  confirmation: {
+    enabled: boolean;
+    reason: "ready" | "blocked" | "not_permitted" | "expired" | "cancelled" | "executing" | "executed";
+    requiredText: string;
+  };
+  cancellation: { enabled: boolean };
+  result?: { entityType: "offer"; entityId: string; label: string };
 };
 
 export type JarvisInvoicePaymentDraftView = {

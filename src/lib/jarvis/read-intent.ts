@@ -78,6 +78,7 @@ function cleanQuery(kind: JarvisRecordKind, question: string) {
     ...READ_INTENT_MARKERS,
     ...entityWords[kind],
     "bitte",
+    "mal",
     "mir",
     "die",
     "den",

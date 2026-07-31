@@ -5,6 +5,8 @@ import {
   extractOfferNumber,
   looksLikeOfferDraftRequest,
   looksLikeOfferDeliveryRequest,
+  looksLikeOfferDecisionRequest,
+  extractOfferDecision,
   looksLikeOfferFinalizationRequest,
 } from "@/lib/jarvis/offer-intake";
 
@@ -13,6 +15,17 @@ describe("JARVIS offer intake", () => {
     expect(looksLikeOfferDraftRequest("Erstelle ein Angebot für Projekt GLR-449")).toBe(true);
     expect(looksLikeOfferDraftRequest("Zeig mir offene Angebote")).toBe(false);
     expect(looksLikeOfferDraftRequest("Versende das Angebot")).toBe(false);
+  });
+
+  it("recognizes and extracts controlled offer decisions", () => {
+    const question = "Markiere Angebot ANG-10124 als verloren. Grund: Preis. Kommentar: Kunde hat abgesagt.";
+    expect(looksLikeOfferDecisionRequest(question)).toBe(true);
+    expect(extractOfferDecision(question)).toEqual({
+      decision: "lost",
+      reason: "Preis",
+      note: "Kunde hat abgesagt.",
+    });
+    expect(looksLikeOfferDecisionRequest("Zeig mir verlorene Angebote")).toBe(false);
   });
 
   it("recognizes isolated controlled offer delivery", () => {

@@ -73,6 +73,7 @@ import type {
   JarvisOfferDraftView,
   JarvisOfferFinalizationDraftView,
   JarvisOfferDeliveryDraftView,
+  JarvisOfferDecisionDraftView,
   JarvisInvoiceDraftView,
   JarvisInvoiceDeliveryDraftView,
   JarvisInvoiceFinalizationDraftView,
@@ -682,6 +683,7 @@ type ManagementAiChatMessage = {
     | JarvisOfferDraftView
     | JarvisOfferFinalizationDraftView
     | JarvisOfferDeliveryDraftView
+    | JarvisOfferDecisionDraftView
     | JarvisInvoiceDraftView
     | JarvisInvoiceDeliveryDraftView
     | JarvisInvoiceFinalizationDraftView
@@ -711,6 +713,7 @@ const jarvisPreviewActionIds = new Set([
   "offer.prepare",
   "offer.finalize",
   "offer.send",
+  "offer.manage",
   "invoice.prepare",
   "invoice.finalize",
   "invoice.mark-paid",
@@ -2248,6 +2251,7 @@ function parseJarvisActionDraft(
   | JarvisOfferDraftView
   | JarvisOfferFinalizationDraftView
   | JarvisOfferDeliveryDraftView
+  | JarvisOfferDecisionDraftView
   | JarvisInvoiceDraftView
   | JarvisInvoiceDeliveryDraftView
   | JarvisInvoiceFinalizationDraftView
@@ -2266,6 +2270,7 @@ function parseJarvisActionDraft(
     parseJarvisOfferDraft(value) ??
     parseJarvisOfferFinalizationDraft(value) ??
     parseJarvisOfferDeliveryDraft(value) ??
+    parseJarvisOfferDecisionDraft(value) ??
     parseJarvisInvoiceDraft(value) ??
     parseJarvisInvoiceDeliveryDraft(value) ??
     parseJarvisInvoicePaymentDraft(value) ??
@@ -2559,6 +2564,29 @@ function parseJarvisOfferFinalizationDraft(
     typeof cancellation.enabled !== "boolean"
   ) return undefined;
   return candidate as unknown as JarvisOfferFinalizationDraftView;
+}
+
+function parseJarvisOfferDecisionDraft(
+  value: unknown
+): JarvisOfferDecisionDraftView | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.version !== 2 || candidate.actionId !== "offer.manage" ||
+    typeof candidate.previewId !== "string" || typeof candidate.title !== "string" ||
+    typeof candidate.badge !== "string" || typeof candidate.state !== "string" ||
+    typeof candidate.revision !== "number" || typeof candidate.expiresAt !== "string" ||
+    typeof candidate.offerId !== "string" || typeof candidate.projectId !== "string" ||
+    (candidate.decision !== "won" && candidate.decision !== "lost") ||
+    !Array.isArray(candidate.fields) || !Array.isArray(candidate.checks) ||
+    !Array.isArray(candidate.warnings) || !Array.isArray(candidate.blockingIssues) ||
+    !candidate.confirmation || typeof candidate.confirmation !== "object" ||
+    !candidate.cancellation || typeof candidate.cancellation !== "object"
+  ) return undefined;
+  const confirmation = candidate.confirmation as Record<string, unknown>;
+  const cancellation = candidate.cancellation as Record<string, unknown>;
+  if (typeof confirmation.enabled !== "boolean" || typeof confirmation.requiredText !== "string" || typeof cancellation.enabled !== "boolean") return undefined;
+  return candidate as unknown as JarvisOfferDecisionDraftView;
 }
 
 function parseJarvisInvoiceFinalizationDraft(
@@ -3468,11 +3496,11 @@ function JarvisOfferFinalizationCard({
   onChange,
   onOpenOffer,
 }: {
-  draft: JarvisOfferFinalizationDraftView;
+  draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView;
   actorId: string;
   disabled: boolean;
-  onChange: (next: JarvisOfferFinalizationDraftView, message?: string) => void;
-  onOpenOffer: (draft: JarvisOfferFinalizationDraftView) => void;
+  onChange: (next: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView, message?: string) => void;
+  onOpenOffer: (draft: JarvisOfferFinalizationDraftView | JarvisOfferDecisionDraftView) => void;
 }) {
   const [confirmationText, setConfirmationText] = useState("");
   const [isWorking, setIsWorking] = useState(false);
@@ -3493,21 +3521,23 @@ function JarvisOfferFinalizationCard({
         headers: { "Content-Type": "application/json", "X-Jarvis-Action": "jarvis-action-draft-v2" },
         body: JSON.stringify({
           actorId,
-          actionId: "offer.finalize",
+          actionId: draft.actionId,
           revision: draft.revision,
           command,
           ...(command === "confirm" ? { confirmationText } : {}),
         }),
       });
       const data = await response.json().catch(() => null);
-      const next = parseJarvisOfferFinalizationDraft(data?.actionDraft);
+      const next = draft.actionId === "offer.manage"
+        ? parseJarvisOfferDecisionDraft(data?.actionDraft)
+        : parseJarvisOfferFinalizationDraft(data?.actionDraft);
       if (!response.ok || !next) {
-        setError(data?.error ?? "Das Angebot konnte nicht sicher finalisiert werden.");
+        setError(data?.error ?? (draft.actionId === "offer.manage" ? "Das Angebot konnte nicht sicher entschieden werden." : "Das Angebot konnte nicht sicher finalisiert werden."));
         return;
       }
       onChange(next, typeof data?.message === "string" ? data.message : undefined);
     } catch {
-      setError("Das Action Center ist gerade nicht erreichbar. Es wurde nichts finalisiert.");
+      setError(draft.actionId === "offer.manage" ? "Das Action Center ist gerade nicht erreichbar. Es wurde nichts entschieden." : "Das Action Center ist gerade nicht erreichbar. Es wurde nichts finalisiert.");
     } finally {
       setIsWorking(false);
     }
@@ -3522,7 +3552,7 @@ function JarvisOfferFinalizationCard({
         {draft.checks.map((check) => <div key={check.key} data-status={check.status}><span>{check.status === "ok" ? "✓" : "!"}</span><p><b>{check.label}</b><small>{check.detail}</small></p></div>)}
       </div>
       {draft.warnings.map((warning) => <div key={warning} className={styles.jarvisActionPreviewMissing}><strong>Bewusster Prüfhinweis</strong><span>{warning}</span></div>)}
-      {draft.blockingIssues.length ? <div className={styles.jarvisActionPreviewMissing}><strong>Finalisierung ist blockiert</strong><span>{draft.blockingIssues.join(" · ")}</span></div> : null}
+      {draft.blockingIssues.length ? <div className={styles.jarvisActionPreviewMissing}><strong>{draft.actionId === "offer.manage" ? "Entscheidung" : "Finalisierung"} ist blockiert</strong><span>{draft.blockingIssues.join(" · ")}</span></div> : null}
       {draft.confirmation.enabled && isOpen ? (
         <div className={styles.jarvisActionDraftEditor}>
           <label><span>Zur kritischen Bestätigung exakt eingeben: <strong>{draft.confirmation.requiredText}</strong></span><input value={confirmationText} disabled={disabled || isWorking} autoComplete="off" onChange={(event) => setConfirmationText(event.target.value)} /></label>
@@ -3530,11 +3560,11 @@ function JarvisOfferFinalizationCard({
       ) : null}
       {error ? <div className={styles.jarvisActionDraftError} role="alert">{error}</div> : null}
       <div className={styles.jarvisActionDraftActions}>
-        {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>Angebot jetzt finalisieren</button> : null}
-        {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>Finalisierung abbrechen</button> : null}
+        {draft.confirmation.enabled ? <button type="button" data-primary="true" disabled={disabled || isWorking || confirmationText !== draft.confirmation.requiredText} onClick={() => void request("confirm")}>{draft.actionId === "offer.manage" ? `Angebot als ${draft.decision === "won" ? "gewonnen" : "verloren"} markieren` : "Angebot jetzt finalisieren"}</button> : null}
+        {draft.cancellation.enabled ? <button type="button" disabled={disabled || isWorking} onClick={() => void request("cancel")}>{draft.actionId === "offer.manage" ? "Entscheidung abbrechen" : "Finalisierung abbrechen"}</button> : null}
         {draft.result ? <button type="button" data-primary="true" disabled={disabled || isWorking} onClick={() => onOpenOffer(draft)}>{draft.result.label}</button> : null}
       </div>
-      <footer>{draft.state === "executed" ? "Das Angebot wurde genau einmal finalisiert und als PDF erzeugt. Versand, Gewonnen/Verloren und Projektstatus blieben unverändert." : draft.state === "cancelled" ? "Die Finalisierung wurde beendet. Das Angebot blieb ein Entwurf." : draft.state === "expired" ? "Die Angebotsvorschau ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`}</footer>
+      <footer>{draft.actionId === "offer.manage" ? (draft.state === "executed" ? "Das Angebot wurde genau einmal entschieden. Projektstatus, Termine, Aufgaben, Rechnungen und Versand blieben unverändert." : draft.state === "cancelled" ? "Die Entscheidung wurde beendet. Das Angebot blieb unverändert." : draft.state === "expired" ? "Die Entscheidungsvorschau ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`) : (draft.state === "executed" ? "Das Angebot wurde genau einmal finalisiert und als PDF erzeugt. Versand, Gewonnen/Verloren und Projektstatus blieben unverändert." : draft.state === "cancelled" ? "Die Finalisierung wurde beendet. Das Angebot blieb ein Entwurf." : draft.state === "expired" ? "Die Angebotsvorschau ist abgelaufen und muss neu erstellt werden." : `Die Prüfung ist bis ${new Date(draft.expiresAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr an diese Sitzung gebunden.`)}</footer>
     </section>
   );
 }
@@ -39347,6 +39377,7 @@ await addProjectLogbookEntry(
       | JarvisCommunicationActionDraftView
       | JarvisOfferDraftView
       | JarvisOfferFinalizationDraftView
+      | JarvisOfferDecisionDraftView
       | JarvisOfferDeliveryDraftView
       | JarvisInvoiceDraftView
       | JarvisInvoiceDeliveryDraftView
@@ -39385,7 +39416,8 @@ await addProjectLogbookEntry(
         void loadOffers();
       } else if (
         nextDraft.actionId === "offer.finalize" ||
-        nextDraft.actionId === "offer.send"
+        nextDraft.actionId === "offer.send" ||
+        nextDraft.actionId === "offer.manage"
       ) {
         void loadOffers();
         void loadOfferHistory(nextDraft.projectId);
@@ -75891,7 +75923,8 @@ await addProjectLogbookEntry(
                       />
                     ) : null}
                     {message.role === "assistant" &&
-                    message.actionDraft?.actionId === "offer.finalize" ? (
+                    (message.actionDraft?.actionId === "offer.finalize" ||
+                      message.actionDraft?.actionId === "offer.manage") ? (
                       <JarvisOfferFinalizationCard
                         draft={message.actionDraft}
                         actorId={activeUserId}

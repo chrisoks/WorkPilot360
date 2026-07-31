@@ -102,6 +102,29 @@ export function formatJarvisReadCollectionMessage(input: {
     : `Ich habe ${input.count} passende ${input.pluralLabel} in deinem erlaubten Bereich gefunden.`;
 }
 
+export function formatJarvisEmptyReadMessage(input: {
+  intent: Pick<JarvisReadIntent, "kind" | "query" | "filter">;
+  subjectLabel?: string;
+}) {
+  const labels = KIND_LABELS[input.intent.kind];
+  const filterLabel =
+    input.intent.filter === "overdue"
+      ? "überfälligen "
+      : input.intent.filter === "open"
+        ? "offenen "
+        : input.intent.filter === "today"
+          ? "heutigen "
+          : "";
+
+  if (input.subjectLabel) {
+    return `Für ${input.subjectLabel} sind aktuell keine ${filterLabel}${labels.plural} in WorkPilot360 vorhanden.`;
+  }
+  if (input.intent.query) {
+    return `Zu „${input.intent.query}“ habe ich aktuell keine ${filterLabel}${labels.plural} in WorkPilot360 gefunden.`;
+  }
+  return `Aktuell sind keine ${filterLabel}${labels.plural} in WorkPilot360 vorhanden.`;
+}
+
 function formatMoney(value: number) {
   return new Intl.NumberFormat("de-DE", {
     style: "currency",
@@ -515,6 +538,40 @@ async function loadRecords(
   }
 }
 
+async function findEmptyResultSubjectLabel(
+  organizationId: string,
+  intent: JarvisReadIntent
+) {
+  if (intent.kind !== "offer" || !intent.query) return undefined;
+
+  const contact = await prisma.contact.findFirst({
+    where: {
+      organizationId,
+      OR: [
+        { companyName: { contains: intent.query, mode: "insensitive" } },
+        { customerNumber: { contains: intent.query, mode: "insensitive" } },
+        { firstName: { contains: intent.query, mode: "insensitive" } },
+        { lastName: { contains: intent.query, mode: "insensitive" } },
+      ],
+    },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      companyName: true,
+      firstName: true,
+      lastName: true,
+      customerNumber: true,
+    },
+  });
+  if (!contact) return undefined;
+
+  return (
+    contact.companyName?.trim() ||
+    [contact.firstName, contact.lastName].filter(Boolean).join(" ").trim() ||
+    contact.customerNumber?.trim() ||
+    undefined
+  );
+}
+
 export async function resolveJarvisReadRequest(input: {
   question: string;
   context?: JarvisSurfaceContext;
@@ -553,18 +610,11 @@ export async function resolveJarvisReadRequest(input: {
   const records = allRecords.slice(0, 20);
   const labels = KIND_LABELS[intent.kind];
   if (records.length === 0) {
-    const filterLabel =
-      intent.filter === "overdue"
-        ? "überfälligen "
-        : intent.filter === "open"
-          ? "offenen "
-          : intent.filter === "today"
-            ? "heutigen "
-            : "";
+    const subjectLabel = await findEmptyResultSubjectLabel(input.organizationId, intent);
     return {
       type: "unknown",
       topicId: `records.${intent.kind}.empty`,
-      message: `Ich habe keine passenden ${filterLabel}${labels.plural} in deinem erlaubten Bereich gefunden.`,
+      message: formatJarvisEmptyReadMessage({ intent, subjectLabel }),
       deterministic: true,
     };
   }
