@@ -22,6 +22,7 @@ import {
   type JarvisInvoiceDraftView,
   type JarvisInvoiceFinalizationDraftView,
   type JarvisInvoicePaymentDraftView,
+  type JarvisInvoiceReminderDraftView,
   type JarvisInvoiceDeliveryDraftView,
   type JarvisTaskActionDraftState,
   type JarvisTaskActionDraftView,
@@ -124,6 +125,14 @@ import {
   normalizeInvoicePaymentDate,
   type InvoicePaymentEvaluation,
 } from "@/lib/invoices/invoice-payment-service";
+import {
+  createInvoiceReminder,
+  evaluateInvoiceReminder,
+  getInvoiceReminderConfirmationText,
+  InvoiceReminderServiceError,
+  matchesInvoiceReminderConfirmation,
+  type InvoiceReminderEvaluation,
+} from "@/lib/invoices/invoice-reminder-service";
 import { syncInvoiceInventoryMovements } from "@/lib/inventory/catalog-inventory";
 import {
   evaluateInvoiceDelivery,
@@ -619,6 +628,65 @@ const invoicePaymentContextSchema = z
       })
       .strict(),
     paymentDate: z.string(),
+    checks: z.array(
+      z
+        .object({
+          key: z.string(),
+          label: z.string(),
+          status: z.enum(["ok", "warning", "blocked"]),
+          detail: z.string(),
+        })
+        .strict()
+    ),
+    warnings: z.array(z.string()),
+    blockingIssues: z.array(z.string()),
+    fingerprint: z.string().length(64),
+  })
+  .strict();
+
+const invoiceReminderPayloadSchema = z
+  .object({
+    invoiceId: z.string().trim().min(1).max(120),
+    reminderDate: z.string().trim().max(10),
+    paymentDeadline: z.string().trim().max(10),
+  })
+  .strict();
+
+const completeInvoiceReminderSchema = z
+  .object({
+    revision: z.number().int().min(1),
+    reminderDate: z.string().trim().max(10),
+    paymentDeadline: z.string().trim().max(10),
+  })
+  .strict();
+
+const invoiceReminderContextSchema = z
+  .object({
+    invoice: z
+      .object({
+        id: z.string(),
+        invoiceNumber: z.string(),
+        status: z.string(),
+        projectId: z.string(),
+        projectNumber: z.string(),
+        projectTitle: z.string(),
+        customerName: z.string(),
+        customerStreet: z.string(),
+        customerCity: z.string(),
+        contactName: z.string(),
+        internalContactName: z.string(),
+        company: z.string(),
+        dueDate: z.string(),
+        grossTotal: z.number(),
+        reminderLevel: z.number(),
+        lastReminderAt: z.string(),
+        updatedAt: z.string().datetime({ offset: true }),
+      })
+      .strict(),
+    reminderDate: z.string(),
+    paymentDeadline: z.string(),
+    nextReminderLevel: z.number().int().min(1).max(3),
+    documentNumber: z.string(),
     checks: z.array(
       z
         .object({
@@ -3485,6 +3553,9 @@ export async function getJarvisActionDraft(
   }
   if (draft?.actionId === "invoice.mark-paid") {
     return getJarvisInvoicePaymentDraft(previewId, binding, now);
+  }
+  if (draft?.actionId === "invoice.remind") {
+    return getJarvisInvoiceReminderDraft(previewId, binding, now);
   }
   if (draft?.actionId === "document.send") {
     return getJarvisInvoiceDeliveryDraft(previewId, binding, now);
@@ -8905,6 +8976,616 @@ export async function confirmJarvisInvoicePaymentDraft(
       throw new JarvisActionDraftError(error.code === "stale_context" ? "stale_context" : "invalid_input", error.message, 409);
     }
     throw new JarvisActionDraftError("execution_failed", "Die Rechnung wurde nicht als bezahlt markiert und die Vorschau bleibt zur Prüfung erhalten.", 500);
+  }
+}
+
+function mayCreateInvoiceReminder(binding: JarvisTaskDraftBinding) {
+  return (
+    canManageInvoices(binding.profile.sessionActor) &&
+    canManageInvoices(binding.profile.effectiveActor)
+  );
+}
+
+function validateInvoiceReminderBinding(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+) {
+  const actorIds = getActorIds(binding.profile);
+  if (
+    draft.organizationId !== binding.organizationId ||
+    draft.sessionId !== binding.sessionId ||
+    draft.sessionActorId !== actorIds.sessionActorId ||
+    draft.effectiveActorId !== actorIds.effectiveActorId ||
+    draft.impersonating !== binding.profile.isImpersonating
+  ) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Diese Mahnvorschau gehört nicht zur aktuellen Organisation, Sitzung oder wirksamen Identität.",
+      403
+    );
+  }
+  if (
+    draft.sessionActorRole !== binding.profile.sessionActor.role ||
+    draft.effectiveActorRole !== binding.profile.effectiveActor.role
+  ) {
+    throw new JarvisActionDraftError(
+      "role_changed",
+      "Die Rolle hat sich seit der Mahnprüfung geändert. Bitte erstelle eine neue Vorschau.",
+      409
+    );
+  }
+  if (!integrityMatches(draft)) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Der Integritätsnachweis der Mahnvorschau ist ungültig.",
+      409
+    );
+  }
+  const payload = invoiceReminderPayloadSchema.safeParse(draft.payload);
+  const context = invoiceReminderContextSchema.safeParse(draft.context);
+  if (
+    draft.actionId !== "invoice.remind" ||
+    !payload.success ||
+    !context.success ||
+    hashJson(payload.data) !== draft.payloadHash ||
+    hashJson(context.data) !== draft.contextHash
+  ) {
+    throw new JarvisActionDraftError(
+      "integrity_failed",
+      "Mahnvorschau oder Prüfkontext stimmen nicht mit dem Integritätsnachweis überein.",
+      409
+    );
+  }
+  return { payload: payload.data, context: context.data };
+}
+
+async function loadBoundInvoiceReminderDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const found = await prisma.jarvisActionDraft.findUnique({ where: { id: previewId } });
+  if (!found) {
+    throw new JarvisActionDraftError("not_found", "Die Mahnvorschau wurde nicht gefunden.", 404);
+  }
+  validateInvoiceReminderBinding(found, binding);
+  const current = await expireDraftIfNeeded(found, now);
+  const parsed = validateInvoiceReminderBinding(current, binding);
+  return { draft: current, ...parsed };
+}
+
+function toJarvisInvoiceReminderDraftView(
+  draft: JarvisActionDraft,
+  binding: JarvisTaskDraftBinding
+): JarvisInvoiceReminderDraftView {
+  const { payload, context } = validateInvoiceReminderBinding(draft, binding);
+  const state = draft.state as JarvisTaskActionDraftState;
+  const permitted = mayCreateInvoiceReminder(binding);
+  const ready =
+    state === "awaiting_confirmation" &&
+    permitted &&
+    context.blockingIssues.length === 0;
+  const reason: JarvisInvoiceReminderDraftView["confirmation"]["reason"] =
+    state === "expired"
+      ? "expired"
+      : state === "cancelled"
+        ? "cancelled"
+        : state === "executed"
+          ? "executed"
+          : state === "executing"
+            ? "executing"
+            : !permitted
+              ? "not_permitted"
+              : context.blockingIssues.length
+                ? "blocked"
+                : "ready";
+  const currency = new Intl.NumberFormat("de-DE", {
+    style: "currency",
+    currency: "EUR",
+  });
+  return {
+    version: 2,
+    previewId: draft.id,
+    actionId: "invoice.remind",
+    title: "Mahnung kontrolliert erzeugen",
+    badge:
+      state === "executed"
+        ? "Erstellt"
+        : state === "executing"
+          ? "Wird erstellt"
+          : state === "cancelled"
+            ? "Abgebrochen"
+            : state === "expired"
+              ? "Abgelaufen"
+              : ready
+                ? "Bereit"
+                : "Prüfung",
+    state,
+    revision: draft.revision,
+    expiresAt: draft.expiresAt.toISOString(),
+    invoiceId: context.invoice.id,
+    projectId: context.invoice.projectId,
+    fields: [
+      { label: "Mahnung", value: context.documentNumber },
+      { label: "Rechnung", value: context.invoice.invoiceNumber },
+      {
+        label: "Projekt",
+        value: `${context.invoice.projectNumber} · ${context.invoice.projectTitle}`,
+      },
+      { label: "Kunde", value: context.invoice.customerName || "–" },
+      {
+        label: "Fällig am",
+        value: context.invoice.dueDate
+          ? formatInvoicePaymentDate(context.invoice.dueDate)
+          : "–",
+      },
+      { label: "Offener Betrag", value: currency.format(context.invoice.grossTotal) },
+      { label: "Nächste Mahnstufe", value: String(context.nextReminderLevel) },
+    ],
+    editor: {
+      reminderDate: payload.reminderDate,
+      paymentDeadline: payload.paymentDeadline,
+    },
+    checks: context.checks,
+    warnings: context.warnings,
+    blockingIssues: [
+      ...context.blockingIssues,
+      ...(!permitted
+        ? ["Die Mahnung ist für diese Rollenkombination nicht freigegeben."]
+        : []),
+    ],
+    confirmation: {
+      enabled: ready,
+      reason,
+      requiredText: getInvoiceReminderConfirmationText(
+        context.documentNumber,
+        payload.paymentDeadline
+      ),
+    },
+    cancellation: { enabled: OPEN_DRAFT_STATES.includes(state as never) },
+    ...(state === "executed" && draft.resultEntityId
+      ? {
+          result: {
+            entityType: "invoice" as const,
+            entityId: draft.resultEntityId,
+            label: "Gemahnte Rechnung öffnen",
+          },
+        }
+      : {}),
+  };
+}
+
+export async function createPersistedJarvisInvoiceReminderDraft(input: {
+  preview: JarvisActionPreview<"invoice.remind">;
+  organizationId: string;
+  sessionId: string;
+  profile: JarvisAccessProfile;
+  now?: Date;
+}) {
+  if (!input.sessionId) {
+    throw new JarvisActionDraftError(
+      "session_required",
+      "Für eine Mahnung ist eine aktuelle serverseitige Sitzung erforderlich.",
+      401
+    );
+  }
+  if (!mayCreateInvoiceReminder(input)) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Diese Rollenkombination darf keine Mahnung erzeugen.",
+      403
+    );
+  }
+  const now = input.now ?? new Date();
+  const evaluation = await evaluateInvoiceReminder({
+    organizationId: input.organizationId,
+    invoiceId: input.preview.payload.invoiceId,
+    reminderDate: input.preview.payload.reminderDate,
+    paymentDeadline: input.preview.payload.paymentDeadline,
+    now,
+  });
+  const payload = invoiceReminderPayloadSchema.parse({
+    invoiceId: input.preview.payload.invoiceId,
+    reminderDate: evaluation.reminderDate,
+    paymentDeadline: evaluation.paymentDeadline,
+  });
+  const context = invoiceReminderContextSchema.parse(evaluation);
+  const actorIds = getActorIds(input.profile);
+  const state = context.blockingIssues.length
+    ? "awaiting_input"
+    : "awaiting_confirmation";
+  const draftData: DraftIntegrityData = {
+    id: input.preview.previewId,
+    organizationId: input.organizationId,
+    sessionId: input.sessionId,
+    sessionActorId: actorIds.sessionActorId,
+    sessionActorRole: input.profile.sessionActor.role,
+    effectiveActorId: actorIds.effectiveActorId,
+    effectiveActorRole: input.profile.effectiveActor.role,
+    impersonating: input.profile.isImpersonating,
+    actionId: "invoice.remind",
+    state,
+    revision: 1,
+    payloadHash: hashJson(payload),
+    contextHash: hashJson(context),
+    expiresAt: new Date(now.getTime() + JARVIS_INVOICE_DRAFT_TTL_MS),
+    confirmedAt: null,
+    cancelledAt: null,
+    executedAt: null,
+    resultEntityType: null,
+    resultEntityId: null,
+    lastErrorCode: context.blockingIssues.length ? "invalid_input" : null,
+  };
+  const created = await prisma.$transaction(async (tx) => {
+    const draft = await tx.jarvisActionDraft.create({
+      data: {
+        ...draftData,
+        payload: payload as Prisma.InputJsonValue,
+        context: context as Prisma.InputJsonValue,
+        integrityTag: createIntegrityTag(draftData),
+      },
+    });
+    await appendAuditEvent(tx, {
+      draft,
+      eventType:
+        state === "awaiting_confirmation"
+          ? "draft_created_ready"
+          : "draft_created_blocked",
+    });
+    return draft;
+  });
+  return toJarvisInvoiceReminderDraftView(created, input);
+}
+
+export async function getJarvisInvoiceReminderDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  now = new Date()
+) {
+  const { draft } = await loadBoundInvoiceReminderDraft(previewId, binding, now);
+  return toJarvisInvoiceReminderDraftView(draft, binding);
+}
+
+export async function completeJarvisInvoiceReminderDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  rawInput: unknown,
+  now = new Date()
+) {
+  const completed = completeInvoiceReminderSchema.safeParse(rawInput);
+  if (!completed.success) {
+    throw new JarvisActionDraftError(
+      "invalid_input",
+      "Mahndatum, Zahlungsfrist oder Entwurfsrevision sind ungültig.",
+      400
+    );
+  }
+  const loaded = await loadBoundInvoiceReminderDraft(previewId, binding, now);
+  if (!OPEN_DRAFT_STATES.includes(loaded.draft.state as never)) {
+    throw new JarvisActionDraftError(
+      loaded.draft.state === "expired" ? "expired" : "invalid_state",
+      "Diese Mahnvorschau kann nicht mehr geändert werden.",
+      loaded.draft.state === "expired" ? 410 : 409
+    );
+  }
+  if (completed.data.revision !== loaded.draft.revision) {
+    throw new JarvisActionDraftError(
+      "conflict",
+      "Die Mahnvorschau wurde zwischenzeitlich verändert.",
+      409
+    );
+  }
+  const evaluation: InvoiceReminderEvaluation = await evaluateInvoiceReminder({
+    organizationId: binding.organizationId,
+    invoiceId: loaded.payload.invoiceId,
+    reminderDate: normalizeInvoicePaymentDate(completed.data.reminderDate),
+    paymentDeadline: normalizeInvoicePaymentDate(completed.data.paymentDeadline),
+    now,
+  });
+  const payload = invoiceReminderPayloadSchema.parse({
+    invoiceId: loaded.payload.invoiceId,
+    reminderDate: evaluation.reminderDate,
+    paymentDeadline: evaluation.paymentDeadline,
+  });
+  const context = invoiceReminderContextSchema.parse(evaluation);
+  const state = context.blockingIssues.length
+    ? "awaiting_input"
+    : "awaiting_confirmation";
+  const nextData: DraftIntegrityData = {
+    ...loaded.draft,
+    state,
+    revision: loaded.draft.revision + 1,
+    payloadHash: hashJson(payload),
+    contextHash: hashJson(context),
+    confirmedAt: null,
+    lastErrorCode: context.blockingIssues.length ? "invalid_input" : null,
+  };
+  const updated = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: {
+        id: loaded.draft.id,
+        revision: loaded.draft.revision,
+        state: loaded.draft.state,
+        integrityTag: loaded.draft.integrityTag,
+      },
+      data: {
+        state,
+        revision: nextData.revision,
+        payload: payload as Prisma.InputJsonValue,
+        context: context as Prisma.InputJsonValue,
+        payloadHash: nextData.payloadHash,
+        contextHash: nextData.contextHash,
+        confirmedAt: null,
+        lastErrorCode: nextData.lastErrorCode,
+        integrityTag: createIntegrityTag(nextData),
+      },
+    });
+    if (changed.count !== 1) {
+      throw new JarvisActionDraftError(
+        "conflict",
+        "Die Mahnvorschau wurde bereits verändert.",
+        409
+      );
+    }
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+      where: { id: loaded.draft.id },
+    });
+    await appendAuditEvent(tx, {
+      draft: current,
+      eventType:
+        state === "awaiting_confirmation"
+          ? "draft_completed_ready"
+          : "draft_completed_blocked",
+    });
+    return current;
+  });
+  return toJarvisInvoiceReminderDraftView(updated, binding);
+}
+
+export async function cancelJarvisInvoiceReminderDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  expectedRevision: number,
+  now = new Date()
+) {
+  const { draft } = await loadBoundInvoiceReminderDraft(previewId, binding, now);
+  if (draft.state === "cancelled") {
+    return toJarvisInvoiceReminderDraftView(draft, binding);
+  }
+  if (!OPEN_DRAFT_STATES.includes(draft.state as never)) {
+    throw new JarvisActionDraftError(
+      draft.state === "expired" ? "expired" : "invalid_state",
+      "Diese Mahnvorschau kann nicht mehr abgebrochen werden.",
+      draft.state === "expired" ? 410 : 409
+    );
+  }
+  if (expectedRevision !== draft.revision) {
+    throw new JarvisActionDraftError(
+      "conflict",
+      "Die Mahnvorschau wurde zwischenzeitlich verändert.",
+      409
+    );
+  }
+  const nextData: DraftIntegrityData = {
+    ...draft,
+    state: "cancelled",
+    cancelledAt: now,
+    lastErrorCode: null,
+  };
+  const cancelled = await prisma.$transaction(async (tx) => {
+    const changed = await tx.jarvisActionDraft.updateMany({
+      where: {
+        id: draft.id,
+        revision: draft.revision,
+        state: draft.state,
+        integrityTag: draft.integrityTag,
+      },
+      data: {
+        state: "cancelled",
+        cancelledAt: now,
+        lastErrorCode: null,
+        integrityTag: createIntegrityTag(nextData),
+      },
+    });
+    if (changed.count !== 1) {
+      throw new JarvisActionDraftError(
+        "conflict",
+        "Die Mahnvorschau wurde bereits verändert.",
+        409
+      );
+    }
+    const current = await tx.jarvisActionDraft.findUniqueOrThrow({
+      where: { id: draft.id },
+    });
+    await appendAuditEvent(tx, {
+      draft: current,
+      eventType: "draft_cancelled",
+      reasonCode: "user_cancelled",
+    });
+    return current;
+  });
+  return toJarvisInvoiceReminderDraftView(cancelled, binding);
+}
+
+export async function confirmJarvisInvoiceReminderDraft(
+  previewId: string,
+  binding: JarvisTaskDraftBinding,
+  expectedRevision: number,
+  confirmationText: string,
+  now = new Date()
+) {
+  const loaded = await loadBoundInvoiceReminderDraft(previewId, binding, now);
+  if (loaded.draft.state === "executed") {
+    return toJarvisInvoiceReminderDraftView(loaded.draft, binding);
+  }
+  const requiredText = getInvoiceReminderConfirmationText(
+    loaded.context.documentNumber,
+    loaded.payload.paymentDeadline
+  );
+  if (
+    !matchesInvoiceReminderConfirmation(
+      loaded.context.documentNumber,
+      loaded.payload.paymentDeadline,
+      confirmationText
+    )
+  ) {
+    throw new JarvisActionDraftError(
+      "invalid_input",
+      `Gib zur kritischen Bestätigung exakt „${requiredText}“ ein.`,
+      400
+    );
+  }
+  if (
+    expectedRevision !== loaded.draft.revision ||
+    loaded.draft.state !== "awaiting_confirmation"
+  ) {
+    throw new JarvisActionDraftError(
+      "conflict",
+      "Nur die aktuelle, vollständig geprüfte Mahnvorschau darf bestätigt werden.",
+      409
+    );
+  }
+  if (!mayCreateInvoiceReminder(binding)) {
+    throw new JarvisActionDraftError(
+      "scope_mismatch",
+      "Diese Rollenkombination darf keine Mahnung erzeugen.",
+      403
+    );
+  }
+  try {
+    const executed = await prisma.$transaction(
+      async (tx) => {
+        const current = await tx.jarvisActionDraft.findUnique({
+          where: { id: loaded.draft.id },
+        });
+        if (!current) {
+          throw new JarvisActionDraftError(
+            "not_found",
+            "Die Mahnvorschau wurde nicht gefunden.",
+            404
+          );
+        }
+        const parsed = validateInvoiceReminderBinding(current, binding);
+        if (current.state === "executed") return current;
+        if (
+          current.state !== "awaiting_confirmation" ||
+          current.expiresAt.getTime() <= now.getTime()
+        ) {
+          throw new JarvisActionDraftError(
+            current.expiresAt.getTime() <= now.getTime() ? "expired" : "conflict",
+            "Die Mahnvorschau ist nicht mehr ausführbar.",
+            current.expiresAt.getTime() <= now.getTime() ? 410 : 409
+          );
+        }
+        const actor = await tx.user.findFirst({
+          where: {
+            id: current.effectiveActorId,
+            organizationId: binding.organizationId,
+            isActive: true,
+          },
+          select: {
+            id: true,
+            role: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        });
+        if (!actor || !canManageInvoices(actor)) {
+          throw new JarvisActionDraftError(
+            "role_changed",
+            "Akteur oder Rechnungsberechtigung sind nicht mehr aktuell.",
+            409
+          );
+        }
+        const claimedData: DraftIntegrityData = {
+          ...current,
+          state: "executing",
+          confirmedAt: now,
+          lastErrorCode: null,
+        };
+        const claimed = await tx.jarvisActionDraft.updateMany({
+          where: {
+            id: current.id,
+            revision: current.revision,
+            state: "awaiting_confirmation",
+            integrityTag: current.integrityTag,
+          },
+          data: {
+            state: "executing",
+            confirmedAt: now,
+            lastErrorCode: null,
+            integrityTag: createIntegrityTag(claimedData),
+          },
+        });
+        if (claimed.count !== 1) {
+          throw new JarvisActionDraftError(
+            "conflict",
+            "Die Mahnung wird bereits erstellt.",
+            409
+          );
+        }
+        const actorName =
+          [actor.firstName, actor.lastName].filter(Boolean).join(" ") || actor.email;
+        const result = await createInvoiceReminder({
+          tx,
+          organizationId: binding.organizationId,
+          invoiceId: parsed.payload.invoiceId,
+          reminderDate: parsed.payload.reminderDate,
+          paymentDeadline: parsed.payload.paymentDeadline,
+          actorName,
+          actorUserId: actor.id,
+          expectedFingerprint: parsed.context.fingerprint,
+          source: "jarvis",
+        });
+        const executedAt = new Date();
+        const executedData: DraftIntegrityData = {
+          ...claimedData,
+          state: "executed",
+          executedAt,
+          resultEntityType: "invoice",
+          resultEntityId: result.invoice.id,
+        };
+        const finalDraft = await tx.jarvisActionDraft.update({
+          where: { id: current.id },
+          data: {
+            state: "executed",
+            executedAt,
+            resultEntityType: "invoice",
+            resultEntityId: result.invoice.id,
+            integrityTag: createIntegrityTag(executedData),
+          },
+        });
+        await appendAuditEvent(tx, {
+          draft: finalDraft,
+          eventType: "draft_confirmed_and_executed",
+          result: { id: result.invoice.id, entityType: "invoice" },
+        });
+        return finalDraft;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    );
+    return toJarvisInvoiceReminderDraftView(executed, binding);
+  } catch (error) {
+    if (error instanceof JarvisActionDraftError && error.code === "conflict") {
+      const latest = await loadBoundInvoiceReminderDraft(previewId, binding, now);
+      if (latest.draft.state === "executed") {
+        return toJarvisInvoiceReminderDraftView(latest.draft, binding);
+      }
+    }
+    if (error instanceof JarvisActionDraftError) throw error;
+    if (error instanceof InvoiceReminderServiceError) {
+      throw new JarvisActionDraftError(
+        error.code === "stale_context" ? "stale_context" : "invalid_input",
+        error.message,
+        409
+      );
+    }
+    throw new JarvisActionDraftError(
+      "execution_failed",
+      "Die Mahnung wurde nicht erstellt und die Vorschau bleibt zur Prüfung erhalten.",
+      500
+    );
   }
 }
 

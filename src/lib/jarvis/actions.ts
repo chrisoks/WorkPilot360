@@ -438,6 +438,16 @@ export const JARVIS_ACTIONS: JarvisActionDefinition[] = [
     canUse: canManageInvoices,
   },
   {
+    id: "invoice.remind",
+    title: "Mahnung kontrolliert erzeugen",
+    category: "invoice",
+    risk: "critical",
+    confirmation: "critical",
+    dataClasses: ["financial", "customer"],
+    implementation: "available",
+    canUse: canManageInvoices,
+  },
+  {
     id: "invoice.cancel",
     title: "Rechnung stornieren",
     category: "invoice",

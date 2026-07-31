@@ -97,6 +97,7 @@ import {
   createPersistedJarvisInvoiceDraft,
   createPersistedJarvisInvoiceFinalizationDraft,
   createPersistedJarvisInvoicePaymentDraft,
+  createPersistedJarvisInvoiceReminderDraft,
   createPersistedJarvisInvoiceDeliveryDraft,
   createPersistedJarvisCommunicationDraft,
   createPersistedJarvisTaskDraft,
@@ -120,12 +121,15 @@ import {
   extractInvoiceCompany,
   extractInvoiceNumber,
   extractInvoicePaymentDate,
+  extractInvoiceReminderDeadline,
   extractInvoiceServiceDate,
   looksLikeInvoiceDraftRequest,
   looksLikeInvoiceDeliveryRequest,
   looksLikeInvoiceFinalizationRequest,
   looksLikeInvoicePaymentRequest,
+  looksLikeInvoiceReminderRequest,
 } from "@/lib/jarvis/invoice-intake";
+import { getBerlinDateKey } from "@/lib/invoices/invoice-payment-service";
 
 export const dynamic = "force-dynamic";
 
@@ -516,6 +520,135 @@ async function buildJarvisInvoicePaymentDraft(input: {
           ? error.message
           : "Die Zahlungsvorschau konnte nicht sicher vorbereitet werden."
       } Es wurde kein Zahlungseingang gebucht.`,
+    };
+  }
+}
+
+async function buildJarvisInvoiceReminderDraft(input: {
+  question: string;
+  organizationId: string;
+  sessionId: string | null;
+  accessProfile: ReturnType<typeof createJarvisAccessProfile>;
+  context: ReturnType<typeof sanitizeJarvisSurfaceContext>;
+}) {
+  if (!input.sessionId) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-reminder.session-required",
+      message:
+        "Für eine kritische Mahnerstellung ist eine aktuelle serverseitige Sitzung erforderlich. Es wurde nichts verändert.",
+    };
+  }
+  const invoiceNumber = extractInvoiceNumber(input.question);
+  const invoice = invoiceNumber
+    ? await prisma.invoice.findFirst({
+        where: {
+          invoiceNumber: { equals: invoiceNumber, mode: "insensitive" },
+          organizationId: input.organizationId,
+        },
+        select: {
+          id: true,
+          invoiceNumber: true,
+          customerName: true,
+          status: true,
+          isPaid: true,
+          reminderLevel: true,
+        },
+      })
+    : null;
+  if (invoiceNumber && !invoice) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-reminder.not-found",
+      message: `${invoiceNumber} wurde in dieser Organisation nicht gefunden. Es wurde keine andere Rechnung ausgewählt und keine Mahnung erzeugt.`,
+    };
+  }
+  if (!invoice) {
+    const invoices = await prisma.invoice.findMany({
+      where: {
+        organizationId: input.organizationId,
+        status: "Fakturiert",
+        isPaid: false,
+        reminderLevel: { lt: 3 },
+        dueDate: { lt: getBerlinDateKey() },
+      },
+      orderBy: [{ dueDate: "asc" }, { updatedAt: "desc" }],
+      take: 5,
+      select: { invoiceNumber: true, customerName: true },
+    });
+    return {
+      type: "clarification" as const,
+      topicId: "action.invoice-reminder.choose",
+      message:
+        invoices.length > 0
+          ? "Welche überfällige fakturierte Rechnung soll gemahnt werden? Es wurde noch nichts verändert."
+          : "Es gibt aktuell keine überfällige fakturierte Rechnung, für die JARVIS eine Mahnung vorbereiten kann.",
+      choices: invoices.map((candidate) =>
+        createJarvisDialogChoice(
+          `invoice-reminder-${candidate.invoiceNumber}`,
+          `${candidate.invoiceNumber} · ${candidate.customerName || "ohne Kunde"}`,
+          `Erstelle eine Mahnung für Rechnung ${candidate.invoiceNumber}`
+        )
+      ),
+    };
+  }
+  if (
+    invoice.status !== "Fakturiert" ||
+    invoice.isPaid ||
+    invoice.reminderLevel >= 3
+  ) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-reminder.invalid-state",
+      message: invoice.isPaid || invoice.status === "Bezahlt"
+        ? `${invoice.invoiceNumber} ist bereits bezahlt und darf nicht gemahnt werden. Es wurde nichts verändert.`
+        : invoice.reminderLevel >= 3
+          ? `${invoice.invoiceNumber} hat bereits Mahnstufe 3 erreicht. Eine weitere automatische Mahnung ist gesperrt.`
+          : `${invoice.invoiceNumber} ist keine offene fakturierte Rechnung und darf deshalb nicht gemahnt werden. Es wurde nichts verändert.`,
+    };
+  }
+  const paymentDeadline = extractInvoiceReminderDeadline(input.question);
+  const preview = createJarvisActionPreview({
+    previewId: randomUUID(),
+    actionId: "invoice.remind",
+    payload: {
+      invoiceId: invoice.id,
+      ...(paymentDeadline ? { paymentDeadline } : {}),
+    },
+    organizationId: input.organizationId,
+    profile: input.accessProfile,
+    createdAt: new Date().toISOString(),
+  });
+  if (!preview.ok) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-reminder.refused",
+      message: `${preview.message} Es wurde keine Mahnung erzeugt.`,
+    };
+  }
+  try {
+    const actionDraft = await createPersistedJarvisInvoiceReminderDraft({
+      preview: preview.value,
+      organizationId: input.organizationId,
+      sessionId: input.sessionId,
+      profile: input.accessProfile,
+    });
+    return {
+      type: "answer" as const,
+      topicId: "action.invoice-reminder",
+      message:
+        "Ich habe eine kontrollierte Mahnvorschau vorbereitet. Prüfe Rechnung, offenen Betrag, Fälligkeit, Mahnstufe, Mahndatum, neue Zahlungsfrist und Empfängeranschrift. Erst die exakt angezeigte kritische Bestätigungsphrase erzeugt das Mahndokument genau einmal und legt es in der Projektakte ab. Eine E-Mail wird dabei nicht versendet.",
+      actionDraft,
+    };
+  } catch (error) {
+    return {
+      type: "refusal" as const,
+      topicId: "action.invoice-reminder.unavailable",
+      message: `${
+        error instanceof JarvisActionDraftError
+          ? error.message
+          : "Die Mahnvorschau konnte nicht sicher vorbereitet werden."
+      } Es wurde keine Mahnung erzeugt.`,
     };
   }
 }
@@ -1845,6 +1978,18 @@ export async function POST(req: Request) {
     resolveExplicitSafetyPolicyQuestion(message);
   if (explicitSafetyPolicyResponse) {
     return respond(explicitSafetyPolicyResponse);
+  }
+  if (looksLikeInvoiceReminderRequest(message)) {
+    return respond(
+      await buildJarvisInvoiceReminderDraft({
+        question: message,
+        organizationId: organization.id,
+        sessionId: actorResult.sessionId,
+        accessProfile,
+        context,
+      }),
+      "sales"
+    );
   }
   if (looksLikeInvoicePaymentRequest(message)) {
     return respond(

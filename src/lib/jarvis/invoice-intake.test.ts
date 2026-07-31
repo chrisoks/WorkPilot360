@@ -3,11 +3,13 @@ import {
   extractInvoiceCompany,
   extractInvoiceNumber,
   extractInvoicePaymentDate,
+  extractInvoiceReminderDeadline,
   extractInvoiceServiceDate,
   looksLikeInvoiceDraftRequest,
   looksLikeInvoiceDeliveryRequest,
   looksLikeInvoiceFinalizationRequest,
   looksLikeInvoicePaymentRequest,
+  looksLikeInvoiceReminderRequest,
 } from "@/lib/jarvis/invoice-intake";
 
 describe("JARVIS invoice intake", () => {
@@ -62,6 +64,23 @@ describe("JARVIS invoice intake", () => {
       )
     ).toBe(false);
     expect(extractInvoicePaymentDate("Bezahlt am 31.07.2026")).toBe("2026-07-31");
+  });
+
+  it("recognizes only an isolated reminder creation", () => {
+    expect(
+      looksLikeInvoiceReminderRequest(
+        "Erstelle eine Mahnung für Rechnung RE-10119 mit Zahlungsfrist bis 07.08.2026"
+      )
+    ).toBe(true);
+    expect(looksLikeInvoiceReminderRequest("Welche Mahnstufe hat RE-10119?")).toBe(false);
+    expect(
+      looksLikeInvoiceReminderRequest(
+        "Erstelle und versende eine Mahnung für RE-10119"
+      )
+    ).toBe(false);
+    expect(extractInvoiceReminderDeadline("Zahlungsfrist bis 07.08.2026")).toBe(
+      "2026-08-07"
+    );
   });
 
   it("extracts service date and company", () => {

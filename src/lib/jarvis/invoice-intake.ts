@@ -49,6 +49,21 @@ export function looksLikeInvoicePaymentRequest(question: string) {
   );
 }
 
+export function looksLikeInvoiceReminderRequest(question: string) {
+  const value = normalizeJarvisIntentText(question);
+  return (
+    (/(?:^|\s)re-\d+\b/.test(value) || /\brechnung\w*\b/.test(value)) &&
+    /\b(?:mahn\w*|zahlungserinnerung\w*)\b/.test(value) &&
+    /\b(?:erstell|erstelle|erzeuge|leg|lege|mahn)\w*\b/.test(value) &&
+    !/\b(?:versend|send|schick|bezahlt|zahlungseingang|storn|losch|loesch|archivier|fakturier)\w*\b/.test(
+      value
+    ) &&
+    !/^\s*(?:ist|war|wurde|zeig|pruf|pruef|welch|wann|warum|wieso)\w*\b/.test(
+      value
+    )
+  );
+}
+
 export function extractInvoiceNumber(question: string) {
   return question.match(/\bRE-\d+\b/i)?.[0]?.toUpperCase();
 }
@@ -62,6 +77,13 @@ export function extractInvoiceServiceDate(question: string) {
 }
 
 export const extractInvoicePaymentDate = extractInvoiceServiceDate;
+
+export function extractInvoiceReminderDeadline(question: string) {
+  const match = question.match(
+    /(?:bis|zahlungsfrist(?:\s+bis)?)\s+((?:20\d{2}-(?:0[1-9]|1[0-2])-(?:[012]\d|3[01]))|(?:(?:[012]?\d|3[01])\.(?:0?\d|1[0-2])\.20\d{2}))/i
+  );
+  return match ? extractInvoiceServiceDate(match[1]) : undefined;
+}
 
 export function extractInvoiceCompany(question: string) {
   const value = normalizeJarvisIntentText(question);

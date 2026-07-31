@@ -187,6 +187,18 @@ Aktionen werden getrennt über das Action Center abgesichert:
   organisationsgebundenem Advisory Lock, Rechnungsfingerprint und genau einem
   Historienereignis. Teilzahlungen, Mahnung, Versand und Storno sind nicht
   Bestandteil dieser Aktion.
+- Kontrollierte Mahnung: Nur überfällige, unbezahlte Rechnungen im Status
+  `Fakturiert` dürfen einen Entwurf für die nächste Mahnstufe erzeugen. JARVIS
+  zeigt Betrag, Fälligkeit, aktuelle und nächste Stufe, Empfängeranschrift,
+  Mahndatum und neue Zahlungsfrist; jede Datumsänderung wird serverseitig neu
+  geprüft. Die exakte Phrase `MAHNUNG MA-RE-...-<Stufe> BIS TT.MM.JJJJ`
+  bestätigt die Erstellung genau einmal. Normale Rechnungsmaske und JARVIS
+  verwenden denselben advisory-lock-geschützten Reminder-Service. Mahnstufe,
+  Zeitstempel, PDF im Projektlogbuch und genau ein Historienereignis werden
+  transaktional geschrieben. Bezahlte, nicht fällige, nicht fakturierte,
+  bereits für denselben oder einen späteren Tag gemahnte Rechnungen und Stufe 3
+  bleiben blockiert. Die Aktion sendet keine E-Mail und löst weder Zahlung
+  noch Storno aus.
 
 Ein JARVIS-Entwurf darf weder Organisation, Projektart, Projektstand,
 Mitarbeiterzugehörigkeit noch Kontingent aus seinem eigenen Payload bestimmen.

@@ -7,6 +7,7 @@ import {
   cancelJarvisInvoiceDraft,
   cancelJarvisInvoiceFinalizationDraft,
   cancelJarvisInvoicePaymentDraft,
+  cancelJarvisInvoiceReminderDraft,
   cancelJarvisInvoiceDeliveryDraft,
   cancelJarvisCommunicationDraft,
   cancelJarvisTaskDraft,
@@ -17,6 +18,7 @@ import {
   completeJarvisOfferDraft,
   completeJarvisInvoiceDraft,
   completeJarvisInvoicePaymentDraft,
+  completeJarvisInvoiceReminderDraft,
   completeJarvisInvoiceDeliveryDraft,
   completeJarvisCommunicationDraft,
   completeJarvisTaskDraft,
@@ -28,6 +30,7 @@ import {
   confirmJarvisInvoiceDraft,
   confirmJarvisInvoiceFinalizationDraft,
   confirmJarvisInvoicePaymentDraft,
+  confirmJarvisInvoiceReminderDraft,
   confirmJarvisInvoiceDeliveryDraft,
   confirmJarvisCommunicationDraft,
   confirmJarvisTaskDraft,
@@ -174,6 +177,7 @@ export async function PATCH(
     const isInvoice = body.actionId === "invoice.prepare";
     const isInvoiceFinalization = body.actionId === "invoice.finalize";
     const isInvoicePayment = body.actionId === "invoice.mark-paid";
+    const isInvoiceReminder = body.actionId === "invoice.remind";
     const isInvoiceDelivery = body.actionId === "document.send";
     const isTime = body.actionId === "time.prepare";
     const isWinterCalculation =
@@ -190,6 +194,16 @@ export async function PATCH(
           previewId,
           resolved.binding,
           { revision: body.revision, paymentDate: body.paymentDate }
+        )
+      : isInvoiceReminder
+      ? await completeJarvisInvoiceReminderDraft(
+          previewId,
+          resolved.binding,
+          {
+            revision: body.revision,
+            reminderDate: body.reminderDate,
+            paymentDeadline: body.paymentDeadline,
+          }
         )
       : isInvoiceDelivery
       ? await completeJarvisInvoiceDeliveryDraft(
@@ -338,6 +352,8 @@ export async function PATCH(
           ? "Die Fakturavorschau ist fest an den aktuellen Rechnungs- und Prüfstand gebunden. Änderungen erfordern eine neue Vorschau."
           : isInvoicePayment
           ? "Die Zahlungsvorschau wurde mit dem aktuellen Rechnungsstand und Zahlungsdatum neu geprüft. Gebucht wird erst nach deiner exakten kritischen Bestätigung."
+          : isInvoiceReminder
+          ? "Die Mahnvorschau wurde mit Rechnungsstand, Fälligkeit, Mahnstufe, Mahndatum und neuer Zahlungsfrist neu geprüft. Erst die exakte kritische Bestätigung erzeugt das Mahndokument."
           : isInvoiceDelivery
           ? "Die Versandvorschau wurde mit Empfängern, Dokumentformat, Anhängen und aktuellem Rechnungsstand neu geprüft. Versendet wird erst nach deiner exakten kritischen Bestätigung."
           : isInvoice
@@ -386,6 +402,7 @@ export async function POST(
     const isInvoice = body.actionId === "invoice.prepare";
     const isInvoiceFinalization = body.actionId === "invoice.finalize";
     const isInvoicePayment = body.actionId === "invoice.mark-paid";
+    const isInvoiceReminder = body.actionId === "invoice.remind";
     const isInvoiceDelivery = body.actionId === "document.send";
     const isTime = body.actionId === "time.prepare";
     const isWinterCalculation =
@@ -404,6 +421,12 @@ export async function POST(
           )
         : isInvoicePayment
         ? await cancelJarvisInvoicePaymentDraft(
+            previewId,
+            resolved.binding,
+            body.revision
+          )
+        : isInvoiceReminder
+        ? await cancelJarvisInvoiceReminderDraft(
             previewId,
             resolved.binding,
             body.revision
@@ -466,6 +489,8 @@ export async function POST(
           ? "Die Fakturierung wurde abgebrochen. Die Rechnung blieb ein Entwurf."
           : isInvoicePayment
           ? "Die Zahlungsvorschau wurde abgebrochen. Die Rechnung blieb unverändert offen."
+          : isInvoiceReminder
+          ? "Die Mahnvorschau wurde abgebrochen. Es wurde kein Mahndokument erzeugt und keine Mahnstufe verändert."
           : isInvoiceDelivery
           ? "Der Rechnungsversand wurde abgebrochen. Es wurde keine E-Mail versendet."
           : isInvoice
@@ -506,6 +531,15 @@ export async function POST(
         )
       : isInvoicePayment
       ? await confirmJarvisInvoicePaymentDraft(
+          previewId,
+          resolved.binding,
+          body.revision,
+          typeof body.confirmationText === "string"
+            ? body.confirmationText
+            : ""
+        )
+      : isInvoiceReminder
+      ? await confirmJarvisInvoiceReminderDraft(
           previewId,
           resolved.binding,
           body.revision,
@@ -595,6 +629,8 @@ export async function POST(
             ? "Die Rechnung wurde nach deiner kritischen Bestätigung genau einmal fakturiert. Sie wurde weder versendet noch gemahnt oder als bezahlt markiert."
             : isInvoicePayment
             ? "Der vollständige Zahlungseingang wurde nach deiner kritischen Bestätigung genau einmal gebucht. Es wurde keine Mahnung, kein Storno und kein Versand ausgelöst."
+            : isInvoiceReminder
+            ? "Die Mahnung wurde nach deiner kritischen Bestätigung genau einmal als PDF erzeugt, in der Projektakte abgelegt und mit der neuen Mahnstufe protokolliert. Es wurde keine E-Mail versendet."
             : isInvoiceDelivery
             ? "Die freigegebene Rechnung wurde nach deiner kritischen Bestätigung genau einmal an Microsoft 365 übergeben. Der Versand ist protokolliert."
             : isInvoice
@@ -616,6 +652,8 @@ export async function POST(
             ? "Die Rechnung wurde nicht fakturiert."
             : isInvoicePayment
             ? "Der Zahlungseingang wurde nicht gebucht."
+            : isInvoiceReminder
+            ? "Die Mahnung wurde nicht erzeugt."
             : isInvoiceDelivery
             ? "Die Rechnung wurde nicht versendet."
             : isInvoice

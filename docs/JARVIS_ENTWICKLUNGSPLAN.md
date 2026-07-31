@@ -2314,6 +2314,34 @@ und Storno werden durch diese Aktion nicht ausgelöst. Teilzahlungen benötigen
 später ein eigenes fachliches Datenmodell mit offenen Restbeträgen,
 Zahlungsereignissen und eigener Abnahme.
 
+## 21. Kontrollierte Mahnung
+
+Eine Mahnung ist eine eigenständige kritische Finanzaktion. Ein eindeutiger
+Wunsch erzeugt nur für eine überfällige, unbezahlte Rechnung im Status
+`Fakturiert` einen 15 Minuten gültigen serverseitigen Entwurf. Sichtbar sind
+Rechnung, Projekt, Kunde, offener Bruttobetrag, Fälligkeit, aktuelle und nächste
+Mahnstufe, Mahndatum, neue Zahlungsfrist und Empfängeranschrift. Änderungen an
+Mahndatum oder Frist müssen vor der Bestätigung serverseitig neu geprüft
+werden. Die Frist muss nach dem Mahndatum liegen.
+
+Erst die exakt angezeigte, groß-/kleinschreibungssensitive Phrase
+`MAHNUNG MA-RE-...-<Stufe> BIS TT.MM.JJJJ` darf die nächste Mahnung erstellen.
+Organisation, Sitzung, Session- und Effektivrolle, Impersonation, Revision,
+TTL, HMAC, Payload-/Kontexthash und Rechnungsfingerprint werden neu geprüft.
+Ein organisationsgebundener PostgreSQL-Advisory-Lock, ein bedingtes Update und
+die serialisierbare Transaktion schützen Parallelzugriffe, Doppelklick und
+Replay. Mahnstufe, Zeitstempel, PDF im Projektlogbuch und genau ein
+Historienereignis entstehen gemeinsam oder gar nicht.
+
+Die normale Rechnungsmaske und JARVIS delegieren beide an
+`src/lib/invoices/invoice-reminder-service.ts`. Bezahlte, nicht fakturierte,
+nicht überfällige, bereits am selben oder einem späteren Tag gemahnte
+Rechnungen und Mahnstufe 3 bleiben blockiert. Diese Aktion erstellt das
+Mahndokument, versendet aber keine E-Mail. Versand, Bezahlt-Markierung und
+Storno bleiben getrennte, erneut zu bestätigende Vorgänge. Der permanente
+Korpus bleibt exakt 110 Fälle groß und prüft die Mahnung als reine Vorschau
+ohne fachliche Nebenwirkung.
+
 # Aktueller Ausbau: Projektbestand und fachlicher Prüfstatus
 
 - Der organisationsgebundene Projektbestandsadapter beantwortet Zähl-,

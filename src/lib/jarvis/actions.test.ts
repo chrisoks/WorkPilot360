@@ -76,6 +76,21 @@ describe("JARVIS action registry", () => {
     });
   });
 
+  it("releases reminder creation only as a critical confirmed action", () => {
+    const profile = createJarvisAccessProfile({
+      id: "accounting",
+      role: Role.BUCHHALTUNG,
+    });
+    const decision = getJarvisActionDecision("invoice.remind", profile);
+
+    expect(decision).toMatchObject({
+      permitted: true,
+      executable: true,
+      reason: "allowed",
+      requiresConfirmation: true,
+    });
+  });
+
   it("exposes the released, service-guarded action-center slices to employees", () => {
     const profile = createJarvisAccessProfile({
       id: "employee",

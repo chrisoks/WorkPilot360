@@ -39,6 +39,7 @@ const fake = vi.hoisted(() => {
   const offerHistory: Array<Record<string, any>> = [];
   const invoiceDrafts: Array<Record<string, any>> = [];
   const paidInvoices: Array<Record<string, any>> = [];
+  const reminderInvoices: Array<Record<string, any>> = [];
   const evaluateInvoicePayment = vi.fn(async ({ invoiceId, paymentDate }: { invoiceId: string; paymentDate?: string }) => ({
     invoice: {
       id: invoiceId,
@@ -67,6 +68,42 @@ const fake = vi.hoisted(() => {
     const row = { id: invoiceId, status: "Bezahlt", isPaid: true, paymentDate };
     paidInvoices.push(row);
     return row;
+  });
+  const evaluateInvoiceReminder = vi.fn(async ({ invoiceId, reminderDate, paymentDeadline }: { invoiceId: string; reminderDate?: string; paymentDeadline?: string }) => ({
+    invoice: {
+      id: invoiceId,
+      invoiceNumber: "RE-10119",
+      status: "Fakturiert",
+      projectId: "project-1",
+      projectNumber: "MKG-209",
+      projectTitle: "Marketing",
+      customerName: "Musterkunde",
+      customerStreet: "Testweg 1",
+      customerCity: "74722 Buchen",
+      contactName: "",
+      internalContactName: "Jarvis Tester",
+      company: "OK solutions",
+      dueDate: "2026-07-14",
+      grossTotal: 119,
+      reminderLevel: 0,
+      lastReminderAt: "",
+      updatedAt: "2026-07-31T08:00:00.000Z",
+    },
+    reminderDate: reminderDate === undefined ? "2026-07-31" : reminderDate,
+    paymentDeadline: paymentDeadline === undefined ? "2026-08-07" : paymentDeadline,
+    nextReminderLevel: 1,
+    documentNumber: "MA-RE-10119-1",
+    checks: reminderDate === "" || paymentDeadline === ""
+      ? [{ key: "dates", label: "Mahndaten", status: "blocked", detail: "Mahndaten fehlen." }]
+      : [{ key: "overdue", label: "Fälligkeit", status: "ok", detail: "Überfällig." }],
+    warnings: [],
+    blockingIssues: reminderDate === "" || paymentDeadline === "" ? ["Mahndaten fehlen."] : [],
+    fingerprint: "b".repeat(64),
+  }));
+  const createInvoiceReminder = vi.fn(async ({ invoiceId, reminderDate, paymentDeadline }: { invoiceId: string; reminderDate: string; paymentDeadline: string }) => {
+    const row = { id: invoiceId, reminderLevel: 1, reminderDate, paymentDeadline };
+    reminderInvoices.push(row);
+    return { invoice: row, reminderDocument: { documentNumber: "MA-RE-10119-1", fileName: "MA-RE-10119-1.pdf" } };
   });
   const evaluateInvoiceDraft = vi.fn(async ({ draft }: { draft: Record<string, any> }) => {
     const lines = Array.isArray(draft.lines) ? draft.lines : [];
@@ -507,10 +544,13 @@ const fake = vi.hoisted(() => {
       offerHistory.length = 0;
       invoiceDrafts.length = 0;
       paidInvoices.length = 0;
+      reminderInvoices.length = 0;
       evaluateInvoiceDraft.mockClear();
       createConfirmedInvoiceDraft.mockClear();
       evaluateInvoicePayment.mockClear();
       markInvoicePaid.mockClear();
+      evaluateInvoiceReminder.mockClear();
+      createInvoiceReminder.mockClear();
       createProjectLogbookEntry.mockClear();
       projectUpdatedAt = new Date("2026-07-29T18:00:00.000Z");
       vehicleUpdatedAt = new Date("2026-07-29T18:30:00.000Z");
@@ -529,10 +569,13 @@ const fake = vi.hoisted(() => {
     offerHistory,
     invoiceDrafts,
     paidInvoices,
+    reminderInvoices,
     evaluateInvoiceDraft,
     createConfirmedInvoiceDraft,
     evaluateInvoicePayment,
     markInvoicePaid,
+    evaluateInvoiceReminder,
+    createInvoiceReminder,
   };
 });
 
@@ -553,6 +596,14 @@ vi.mock("@/lib/invoices/invoice-payment-service", async () => {
     ...actual,
     evaluateInvoicePayment: fake.evaluateInvoicePayment,
     markInvoicePaid: fake.markInvoicePaid,
+  };
+});
+vi.mock("@/lib/invoices/invoice-reminder-service", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/invoices/invoice-reminder-service")>("@/lib/invoices/invoice-reminder-service");
+  return {
+    ...actual,
+    evaluateInvoiceReminder: fake.evaluateInvoiceReminder,
+    createInvoiceReminder: fake.createInvoiceReminder,
   };
 });
 vi.mock("@/lib/services/task-service", () => ({
@@ -664,6 +715,9 @@ import {
   completeJarvisInvoicePaymentDraft,
   confirmJarvisInvoicePaymentDraft,
   createPersistedJarvisInvoicePaymentDraft,
+  completeJarvisInvoiceReminderDraft,
+  confirmJarvisInvoiceReminderDraft,
+  createPersistedJarvisInvoiceReminderDraft,
   JarvisActionDraftError,
 } from "@/lib/jarvis/action-draft-store";
 import { calculateWinterService } from "@/lib/winter-service/calculation";
@@ -2290,5 +2344,121 @@ describe("persistent JARVIS invoice payment drafts", () => {
       )
     ).rejects.toMatchObject({ code: "invalid_input" });
     expect(fake.paidInvoices).toHaveLength(0);
+  });
+});
+
+describe("persistent JARVIS invoice reminder drafts", () => {
+  beforeEach(() => {
+    fake.reset();
+  });
+
+  const preview = (previewId: string) => ({
+    version: 1 as const,
+    previewId,
+    actionId: "invoice.remind" as const,
+    actionTitle: "Mahnung kontrolliert erzeugen",
+    state: "awaiting_confirmation" as const,
+    organizationId: "org-1",
+    sessionActorId: "user-1",
+    effectiveActorId: "user-1",
+    impersonating: false,
+    payload: {
+      invoiceId: "invoice-1",
+      reminderDate: "2026-07-31",
+      paymentDeadline: "2026-08-07",
+    },
+    execution: { enabled: false as const, reason: "preview_only" as const },
+    audit: [],
+  });
+
+  it("rejects an employee before persisting a reminder", async () => {
+    await expect(
+      createPersistedJarvisInvoiceReminderDraft({
+        organizationId: "org-1",
+        sessionId: "session-1",
+        profile: profile(Role.MITARBEITER),
+        now: baseNow,
+        preview: preview("invoice-reminder-employee"),
+      })
+    ).rejects.toMatchObject({ code: "scope_mismatch" });
+    expect(fake.evaluateInvoiceReminder).not.toHaveBeenCalled();
+    expect(fake.reminderInvoices).toHaveLength(0);
+  });
+
+  it("rechecks edited dates and creates a reminder exactly once", async () => {
+    const created = await createPersistedJarvisInvoiceReminderDraft({
+      ...binding(),
+      now: baseNow,
+      preview: preview("invoice-reminder-1"),
+    });
+    const blocked = await completeJarvisInvoiceReminderDraft(
+      created.previewId,
+      binding(),
+      {
+        revision: created.revision,
+        reminderDate: "",
+        paymentDeadline: "",
+      },
+      baseNow
+    );
+    expect(blocked.state).toBe("awaiting_input");
+    expect(blocked.confirmation.enabled).toBe(false);
+
+    const ready = await completeJarvisInvoiceReminderDraft(
+      created.previewId,
+      binding(),
+      {
+        revision: blocked.revision,
+        reminderDate: "2026-07-31",
+        paymentDeadline: "2026-08-07",
+      },
+      baseNow
+    );
+    expect(ready.confirmation.requiredText).toBe(
+      "MAHNUNG MA-RE-10119-1 BIS 07.08.2026"
+    );
+    const first = await confirmJarvisInvoiceReminderDraft(
+      ready.previewId,
+      binding(),
+      ready.revision,
+      ready.confirmation.requiredText,
+      baseNow
+    );
+    const replay = await confirmJarvisInvoiceReminderDraft(
+      ready.previewId,
+      binding(),
+      ready.revision,
+      ready.confirmation.requiredText,
+      baseNow
+    );
+    expect(first.state).toBe("executed");
+    expect(replay.result?.entityId).toBe(first.result?.entityId);
+    expect(fake.reminderInvoices).toHaveLength(1);
+    expect(fake.createInvoiceReminder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        invoiceId: "invoice-1",
+        reminderDate: "2026-07-31",
+        paymentDeadline: "2026-08-07",
+        source: "jarvis",
+      })
+    );
+  });
+
+  it("rejects an inexact critical phrase before creating a reminder", async () => {
+    const created = await createPersistedJarvisInvoiceReminderDraft({
+      ...binding(),
+      now: baseNow,
+      preview: preview("invoice-reminder-phrase"),
+    });
+    await expect(
+      confirmJarvisInvoiceReminderDraft(
+        created.previewId,
+        binding(),
+        created.revision,
+        "Mahnung MA-RE-10119-1 BIS 07.08.2026",
+        baseNow
+      )
+    ).rejects.toMatchObject({ code: "invalid_input" });
+    expect(fake.reminderInvoices).toHaveLength(0);
   });
 });

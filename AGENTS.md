@@ -1,5 +1,27 @@
 # WorkPilot360 Agent Handover
 
+- JARVIS kontrollierte Mahnung 2026-07-31:
+  Der neunte Action-Center-Vertikalschnitt erstellt für eine überfällige,
+  unbezahlte Rechnung im Status `Fakturiert` kontrolliert die nächste Mahnung.
+  JARVIS zeigt Rechnung, Projekt, Kunde, offenen Bruttobetrag, Fälligkeit,
+  aktuelle und nächste Mahnstufe, Mahndatum, neue Zahlungsfrist, Anschrift,
+  Warnungen und Blockaden. Änderungen an den beiden Datumsfeldern erfordern
+  eine neue serverseitige Prüfung. Erst die exakte,
+  groß-/kleinschreibungssensitive Phrase
+  `MAHNUNG MA-RE-...-<Stufe> BIS TT.MM.JJJJ` darf erstellen. Die normale
+  Rechnungsmaske und JARVIS verwenden gemeinsam
+  `src/lib/invoices/invoice-reminder-service.ts`; Organisation, Rechnung,
+  Fälligkeit, Zahlungsstatus, Mahnstufe und Anschrift werden neu geladen und
+  in einen Fingerprint gebunden. Ein organisationsgebundener Advisory Lock,
+  bedingtes Update und serialisierbare Transaktion schützen Parallelzugriff,
+  Doppelklick und Replay. PDF, Mahnstufe, Zeitstempel, genau ein
+  Historienereignis und genau ein Projektlogbucheintrag entstehen gemeinsam.
+  Bezahlte, nicht fakturierte, nicht fällige, bereits am selben oder späteren
+  Tag gemahnte Rechnungen und Mahnstufe 3 bleiben blockiert. Die Aktion
+  versendet keine E-Mail und löst weder Zahlung noch Storno aus; der bestehende
+  kontrollierte Rechnungsversand bleibt ein separater, erneut zu bestätigender
+  Schritt.
+
 - JARVIS kontrollierte Bezahlt-Markierung 2026-07-31:
   Der achte Action-Center-Vertikalschnitt markiert ausschließlich offene,
   fakturierte Rechnungen vollständig als bezahlt. JARVIS zeigt Rechnung,

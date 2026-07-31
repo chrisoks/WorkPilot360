@@ -96,6 +96,24 @@ async function main() {
       updatedAt: true,
     },
   });
+  const reminderInvoice = await prisma.invoice.findFirst({
+    where: {
+      organizationId: actor.organizationId,
+      status: "Fakturiert",
+      isPaid: false,
+      reminderLevel: { lt: 3 },
+      dueDate: { lt: getBerlinDateKey(now), not: "" },
+      customerName: { not: "" },
+    },
+    orderBy: [{ dueDate: "asc" }, { updatedAt: "desc" }],
+    select: {
+      id: true,
+      invoiceNumber: true,
+      reminderLevel: true,
+      lastReminderAt: true,
+      updatedAt: true,
+    },
+  });
   const sessionId = randomUUID();
   await prisma.authSession.create({
     data: {
@@ -114,6 +132,7 @@ async function main() {
   const failures = [];
   let actionDraftCount = 0;
   let invoicePaymentDraftPrepared = false;
+  let invoiceReminderDraftPrepared = false;
 
   try {
     for (const item of corpus) {
@@ -122,11 +141,17 @@ async function main() {
           "kontrolliert als bezahlt"
         );
         const paymentDate = getBerlinDateKey(now);
+        const isReminderCase = item.question.includes("Erstelle eine Mahnung");
+        const reminderDeadlineDate = new Date(`${paymentDate}T12:00:00.000Z`);
+        reminderDeadlineDate.setUTCDate(reminderDeadlineDate.getUTCDate() + 7);
+        const reminderDeadline = reminderDeadlineDate.toISOString().slice(0, 10);
         const question =
           isPaymentCase && paymentInvoice
             ? `Markiere Rechnung ${paymentInvoice.invoiceNumber} am ${formatGermanDate(
                 paymentDate
               )} kontrolliert als bezahlt.`
+            : isReminderCase && reminderInvoice
+              ? `Erstelle eine Mahnung für Rechnung ${reminderInvoice.invoiceNumber} mit Zahlungsfrist bis ${formatGermanDate(reminderDeadline)}.`
             : item.question;
         const response = await fetch(`${baseUrl}/api/jarvis/chat`, {
           method: "POST",
@@ -179,6 +204,29 @@ async function main() {
             });
           } else {
             invoicePaymentDraftPrepared = true;
+          }
+        }
+        if (isReminderCase && reminderInvoice) {
+          if (payload.actionDraft?.actionId !== "invoice.remind") {
+            failures.push({
+              id: item.id,
+              status: response.status,
+              error:
+                "Die Mahnfrage hat keine kontrollierte invoice.remind-Vorschau erzeugt.",
+            });
+          } else if (
+            payload.actionDraft.state !== "awaiting_confirmation" ||
+            payload.actionDraft.confirmation?.enabled !== true ||
+            payload.actionDraft.blockingIssues?.length
+          ) {
+            failures.push({
+              id: item.id,
+              status: response.status,
+              error:
+                "Die Mahnfrage hat keine vollständig prüfbare, unblockierte Bestätigungsvorschau erzeugt.",
+            });
+          } else {
+            invoiceReminderDraftPrepared = true;
           }
         }
       } catch (error) {
@@ -240,6 +288,52 @@ async function main() {
         });
       }
     }
+    if (reminderInvoice) {
+      const [currentReminderInvoice, reminderHistoryCount, reminderLogbookCount] =
+        await Promise.all([
+          prisma.invoice.findUnique({
+            where: { id: reminderInvoice.id },
+            select: {
+              reminderLevel: true,
+              lastReminderAt: true,
+              updatedAt: true,
+            },
+          }),
+          prisma.invoiceHistory.count({
+            where: {
+              organizationId: actor.organizationId,
+              invoiceId: reminderInvoice.id,
+              eventType: "reminder-document",
+              createdAt: { gte: now },
+            },
+          }),
+          prisma.projectLogbookEntry.count({
+            where: {
+              organizationId: actor.organizationId,
+              projectId: { not: "" },
+              title: "Dokumente: Mahnung",
+              createdAt: { gte: now },
+            },
+          }),
+        ]);
+      if (
+        !currentReminderInvoice ||
+        currentReminderInvoice.reminderLevel !== reminderInvoice.reminderLevel ||
+        currentReminderInvoice.lastReminderAt?.toISOString() !==
+          reminderInvoice.lastReminderAt?.toISOString() ||
+        currentReminderInvoice.updatedAt.toISOString() !==
+          reminderInvoice.updatedAt.toISOString() ||
+        reminderHistoryCount !== 0 ||
+        reminderLogbookCount !== 0
+      ) {
+        failures.push({
+          id: "side-effect-invoice-reminder",
+          status: 0,
+          error:
+            "Die 110-Fragen-Prüfung hat unerwartet Mahnstufe, Mahnhistorie oder Projektakte verändert.",
+        });
+      }
+    }
   } finally {
     if (createdDraftIds.size) {
       await prisma.jarvisActionDraft.deleteMany({
@@ -264,6 +358,7 @@ async function main() {
     total: corpus.length,
     actionDraftsPrepared: actionDraftCount,
     invoicePaymentDraftPrepared,
+    invoiceReminderDraftPrepared,
     executedActions: 0,
     failures,
     qaDraftsRemaining: remainingDrafts,

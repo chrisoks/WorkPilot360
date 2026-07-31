@@ -40,6 +40,11 @@ import {
   InvoicePaymentServiceError,
   markInvoicePaid,
 } from "@/lib/invoices/invoice-payment-service";
+import {
+  addReminderDays,
+  createInvoiceReminder,
+  InvoiceReminderServiceError,
+} from "@/lib/invoices/invoice-reminder-service";
 
 type InvoiceCompany = "OK solutions" | "OK immocare";
 
@@ -97,6 +102,8 @@ type InvoiceInput = {
   paymentTermDays?: number | null;
   dueDate?: string;
   paymentDate?: string;
+  reminderDate?: string;
+  paymentDeadline?: string;
   lines?: InvoiceLineInput[];
   billedStampEntryIds?: string[];
   allowUnderbilledStampedHours?: boolean;
@@ -1381,115 +1388,6 @@ async function generateInvoicePdf(Invoice: InvoiceInput & { invoiceNumber: strin
   };
 }
 
-async function createReminderDocument(input: {
-  organizationId: string;
-  invoice: InvoiceRow;
-  actorName: string;
-}) {
-  const nextReminderLevel = Math.min(Number(input.invoice.reminderLevel ?? 0) + 1, 3);
-  const company = input.invoice.company === "OK immocare" ? "OK immocare" : "OK solutions";
-  const templateBytes = await readFile(getTemplatePath(company));
-  const templateDoc = await PDFDocument.load(templateBytes);
-  const pdfDoc = await PDFDocument.create();
-  const { regular, bold } = await embedInvoiceFonts(pdfDoc);
-  const page = await addTemplatePage(pdfDoc, templateDoc, 0);
-  const reminderDate = formatDate();
-  const paymentDeadline = addDaysToDateKey(cleanDateKey(new Date().toISOString().slice(0, 10)), 7);
-  const documentNumber = `MA-${input.invoice.invoiceNumber}-${nextReminderLevel}`;
-
-  page.drawText(input.invoice.customerName || "-", { x: 71, y: 672, size: 8.7, font: bold, color: INK });
-  page.drawText(input.invoice.customerStreet || "", { x: 71, y: 660, size: 8.4, font: bold, color: INK });
-  page.drawText(input.invoice.customerCity || "", { x: 71, y: 648, size: 8.4, font: bold, color: INK });
-
-  const infoRows = [
-    ["Mahnung", documentNumber],
-    ["Referenzrechnung", input.invoice.invoiceNumber],
-    ["Datum", reminderDate],
-    ["Fällig am", formatDateValue(input.invoice.dueDate) || "-"],
-    ["Mahnstufe", String(nextReminderLevel)],
-    ["Neue Zahlungsfrist", formatDateValue(paymentDeadline) || "-"],
-  ];
-  infoRows.forEach(([label, value], index) => {
-    const rowY = 676 - index * 13;
-    page.drawText(label, { x: 313, y: rowY, size: 8.5, font: bold, color: MUTED });
-    drawRightAlignedText(page, value || "-", 552, rowY, { size: 8.5, font: regular, color: INK });
-  });
-
-  page.drawText(`Mahnung zu Rechnung ${input.invoice.invoiceNumber}`, {
-    x: 71,
-    y: 520,
-    size: 11,
-    font: bold,
-    color: INK,
-  });
-  const greeting = input.invoice.contactName ? `Sehr geehrte/r ${input.invoice.contactName},` : "Sehr geehrte Damen und Herren,";
-  page.drawText(greeting, { x: 71, y: 492, size: 8.8, font: regular, color: INK });
-  drawTextBlock(
-    page,
-    [
-      `unsere Rechnung ${input.invoice.invoiceNumber} über ${formatEuro(Number(input.invoice.grossTotal ?? 0))} war am ${
-        formatDateValue(input.invoice.dueDate) || "-"
-      } zur Zahlung fällig.`,
-      "Leider konnten wir bislang keinen Zahlungseingang feststellen.",
-      `Bitte überweisen Sie den offenen Betrag bis spätestens ${formatDateValue(paymentDeadline) || "-"} unter Angabe der Rechnungsnummer.`,
-    ].join("\n\n"),
-    71,
-    468,
-    { font: regular, size: 8.8, maxWidth: 480, lineHeight: 13 }
-  );
-  drawTextBlock(
-    page,
-    "Sollte sich Ihre Zahlung mit diesem Schreiben überschneiden, betrachten Sie diese Mahnung bitte als gegenstandslos.\n\nMit freundlichen Grüßen\n\n" +
-      (input.invoice.internalContactName || input.actorName || "System"),
-    71,
-    348,
-    { font: regular, size: 8.8, maxWidth: 480, lineHeight: 13 }
-  );
-
-  pdfDoc.setTitle(`${documentNumber} ${input.invoice.customerName || "Mahnung"}`);
-  const pdfBytes = await pdfDoc.save();
-  const dataUrl = `data:application/pdf;base64,${Buffer.from(pdfBytes).toString("base64")}`;
-  const fileName = `${documentNumber}.pdf`;
-  const attachment = {
-    name: fileName,
-    type: "Dokument",
-    mimeType: "application/pdf",
-    size: dataUrl.length,
-    dataUrl,
-  };
-
-  await prisma.$executeRaw`
-    CREATE TABLE IF NOT EXISTS "ProjectLogbookEntry" (
-      "id" TEXT NOT NULL PRIMARY KEY,
-      "organizationId" TEXT NOT NULL,
-      "projectId" TEXT NOT NULL,
-      "title" TEXT,
-      "body" TEXT NOT NULL,
-      "author" TEXT,
-      "authorUserId" TEXT,
-      "colleague" TEXT,
-      "visibleFor" JSONB NOT NULL DEFAULT '[]'::jsonb,
-      "attachments" JSONB NOT NULL DEFAULT '[]'::jsonb,
-      "projectMonth" TEXT,
-      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
-  `;
-
-  await prisma.$queryRaw`
-    INSERT INTO "ProjectLogbookEntry" (
-      "id", "organizationId", "projectId", "title", "body", "author", "visibleFor", "attachments", "createdAt"
-    )
-    VALUES (
-      ${randomUUID()}, ${input.organizationId}, ${input.invoice.projectId}, ${"Dokumente: Mahnung"},
-      ${`Mahnung ${documentNumber} zu Rechnung ${input.invoice.invoiceNumber} erstellt.`},
-      ${input.actorName || "System"}, ${JSON.stringify(["GF", "Büro", "Mitarbeiter"])}::jsonb,
-      ${JSON.stringify([attachment])}::jsonb, CURRENT_TIMESTAMP
-    )
-  `;
-
-  return { documentNumber, fileName };
-}
-
 function normalizeInvoiceLines(lines: InvoiceLineInput[] = []) {
   return lines
     .map((line) => {
@@ -2663,61 +2561,56 @@ export async function PATCH(req: Request) {
   }
 
   if (cleanString(body.action) === "create-reminder-document") {
-    const existingRows = await prisma.$queryRaw<InvoiceRow[]>`
-      SELECT *
-      FROM "Invoice"
-      WHERE "organizationId" = ${organization.id}
-        AND "id" = ${id}
-        AND "status" NOT IN ('Entwurf', 'Storniert', 'Stornorechnung')
-        AND "isPaid" = false
-      LIMIT 1
-    `;
-    const invoice = existingRows[0];
-    if (!invoice) {
-      return NextResponse.json({ error: "Mahnung konnte nicht erstellt werden." }, { status: 404 });
+    try {
+      const reminderDate = cleanString(body.reminderDate) || getBerlinDateKey();
+      const result = await prisma.$transaction(
+        (tx) =>
+          createInvoiceReminder({
+            tx,
+            organizationId: organization.id,
+            invoiceId: id,
+            reminderDate,
+            paymentDeadline:
+              cleanString(body.paymentDeadline) || addReminderDays(reminderDate, 7),
+            actorName,
+            actorUserId: actor.id,
+            source: "ui",
+          }),
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      );
+      await notifyCriticalReminderCreated({
+        organizationId: organization.id,
+        projectId: result.invoice.projectId,
+        projectLabel:
+          [result.invoice.projectNumber, result.invoice.projectTitle]
+            .filter(Boolean)
+            .join(" · ") || result.invoice.projectId,
+        invoiceNumber: result.invoice.invoiceNumber,
+        documentNumber: result.reminderDocument.documentNumber,
+        reminderLevel: Number(result.invoice.reminderLevel ?? 0),
+        actorName,
+      });
+      return NextResponse.json({
+        invoice: serializeInvoice(result.invoice as InvoiceRow, [], [], {
+          includeInternalCosts,
+        }),
+        reminderDocument: result.reminderDocument,
+      });
+    } catch (error) {
+      if (error instanceof InvoiceReminderServiceError) {
+        const status =
+          error.code === "not_found"
+            ? 404
+            : error.code === "invalid_input"
+              ? 400
+              : 409;
+        return NextResponse.json(
+          { error: error.message, code: error.code },
+          { status }
+        );
+      }
+      throw error;
     }
-
-    const reminderDocument = await createReminderDocument({
-      organizationId: organization.id,
-      invoice,
-      actorName,
-    });
-    const rows = await prisma.$queryRaw<InvoiceRow[]>`
-      UPDATE "Invoice"
-      SET "reminderLevel" = LEAST(COALESCE("reminderLevel", 0) + 1, 3),
-          "lastReminderAt" = CURRENT_TIMESTAMP,
-          "updatedAt" = CURRENT_TIMESTAMP
-      WHERE "organizationId" = ${organization.id} AND "id" = ${id}
-      RETURNING *
-    `;
-
-    await addInvoiceHistory({
-      organizationId: organization.id,
-      invoiceId: id,
-      projectId: rows[0].projectId,
-      invoiceNumber: rows[0].invoiceNumber,
-      eventType: "reminder-document",
-      title: `Mahnung ${reminderDocument.documentNumber} erstellt`,
-      note: `${reminderDocument.fileName} wurde unter Dokumente: Mahnung abgelegt.`,
-      actorName,
-    });
-
-    await notifyCriticalReminderCreated({
-      organizationId: organization.id,
-      projectId: rows[0].projectId,
-      projectLabel:
-        [rows[0].projectNumber, rows[0].projectTitle].filter(Boolean).join(" · ") ||
-        rows[0].projectId,
-      invoiceNumber: rows[0].invoiceNumber,
-      documentNumber: reminderDocument.documentNumber,
-      reminderLevel: Number(rows[0].reminderLevel ?? 0),
-      actorName,
-    });
-
-    return NextResponse.json({
-      invoice: serializeInvoice(rows[0], [], [], { includeInternalCosts }),
-      reminderDocument,
-    });
   }
 
   if (cleanString(body.action) === "mark-printed") {
