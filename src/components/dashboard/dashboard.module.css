@@ -36671,3 +36671,81 @@
     0 9px 22px rgba(9, 72, 76, 0.22);
   color: #ffffff;
 }
+
+/* Beide Eingangskacheln verwenden unabhängig vom Status dasselbe Farbsystem. */
+.dashboardAttentionGrid .onlineRequestDashboardAlert,
+.dashboardAttentionGrid .onlineRequestDashboardAlert[data-empty="true"] {
+  background:
+    radial-gradient(circle at 92% 20%, rgba(53, 188, 174, 0.1), transparent 28%),
+    linear-gradient(120deg, #eef7f5 0%, #f8fbfa 100%);
+  border: 1px solid #cfe2df;
+  box-shadow: 0 7px 18px rgba(15, 73, 78, 0.06);
+  color: #173640;
+}
+
+.dashboardAttentionGrid .onlineRequestDashboardAlert .onlineRequestDashboardIcon,
+.dashboardAttentionGrid .onlineRequestDashboardAlert[data-empty="true"] .onlineRequestDashboardIcon {
+  background: #dff1ee;
+  border-color: #c5e0dc;
+  color: #137c72;
+}
+
+.dashboardAttentionGrid .onlineRequestDashboardAlert .onlineRequestDashboardCopy small,
+.dashboardAttentionGrid .onlineRequestDashboardAlert[data-empty="true"] .onlineRequestDashboardCopy small {
+  color: #148478;
+}
+
+.dashboardAttentionGrid .onlineRequestDashboardAlert .onlineRequestDashboardCopy > span,
+.dashboardAttentionGrid .onlineRequestDashboardAlert[data-empty="true"] .onlineRequestDashboardCopy > span {
+  color: #647784;
+}
+
+.dashboardAttentionGrid .onlineRequestDashboardAlert:not([data-empty="true"]) {
+  animation: dashboard-attention-pulse 2.8s ease-in-out infinite;
+  border-color: #83c9c0;
+}
+
+.headerActions .notificationBell.notificationBellActive svg,
+.notificationDashboardAlert:not([data-empty="true"]) .onlineRequestDashboardIcon svg {
+  animation: notification-bell-attention 2.4s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: 50% 8%;
+}
+
+@keyframes dashboard-attention-pulse {
+  0%,
+  100% {
+    box-shadow: 0 7px 18px rgba(15, 73, 78, 0.06), 0 0 0 0 rgba(27, 154, 142, 0);
+  }
+  50% {
+    box-shadow: 0 10px 24px rgba(15, 73, 78, 0.1), 0 0 0 5px rgba(27, 154, 142, 0.11);
+  }
+}
+
+@keyframes notification-bell-attention {
+  0%,
+  58%,
+  100% {
+    transform: rotate(0deg);
+  }
+  66% {
+    transform: rotate(13deg);
+  }
+  74% {
+    transform: rotate(-11deg);
+  }
+  82% {
+    transform: rotate(8deg);
+  }
+  90% {
+    transform: rotate(-5deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboardAttentionGrid .onlineRequestDashboardAlert,
+  .headerActions .notificationBell.notificationBellActive svg,
+  .notificationDashboardAlert .onlineRequestDashboardIcon svg {
+    animation: none;
+  }
+}
