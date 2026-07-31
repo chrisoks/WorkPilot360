@@ -31,6 +31,10 @@ describe("JARVIS action registry", () => {
       executable: true,
       reason: "allowed",
       requiresConfirmation: true,
+      action: {
+        risk: "critical",
+        confirmation: "critical",
+      },
     });
   });
 
@@ -79,7 +83,7 @@ describe("JARVIS action registry", () => {
     });
   });
 
-  it("releases offer decisions only as a confirmed write action", () => {
+  it("releases offer decisions only as a critically confirmed action", () => {
     const profile = createJarvisAccessProfile({
       id: "gf",
       role: Role.GESCHAEFTSFUEHRER,
@@ -91,6 +95,10 @@ describe("JARVIS action registry", () => {
       executable: true,
       reason: "allowed",
       requiresConfirmation: true,
+      action: {
+        risk: "critical",
+        confirmation: "critical",
+      },
     });
   });
 

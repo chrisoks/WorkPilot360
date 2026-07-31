@@ -74,7 +74,7 @@ async function main() {
         actorId: actor.id, message, context: { activeTab: "dashboard", activeMainView: "dashboard" },
       }) });
       assert(response.response.ok, `Entscheidungsvorschau fehlgeschlagen (${response.response.status}): ${response.payload?.error || response.payload?.message || ""}`);
-      assert(response.payload?.actionDraft?.actionId === "offer.manage", "JARVIS hat keine offer.manage-Vorschau erzeugt.");
+      assert(response.payload?.actionDraft?.actionId === "offer.manage", `JARVIS hat keine offer.manage-Vorschau erzeugt: ${JSON.stringify(response.payload)}`);
       draftIds.add(response.payload.actionDraft.previewId);
       return response.payload.actionDraft;
     };
